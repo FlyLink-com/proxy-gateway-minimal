@@ -777,13 +777,6 @@ export function parseDependencyArtifactManifest({ bytes } = {}) {
   return Object.freeze({ value, sha256: hashBytes(bytes), sizeBytes: bytes.length });
 }
 
-function detectLibc() {
-  try {
-    const value = process.report?.getReport?.().header?.glibcVersionRuntime;
-    return value ? `glibc-${value}` : "musl";
-  } catch { return "musl"; }
-}
-
 const NODE_RUNTIME_PROBE = "const h=process.report?.getReport?.().header||{}; process.stdout.write(JSON.stringify({platform:process.platform,arch:process.arch,nodeVersion:process.version,nodeAbi:process.versions.modules,libc:h.glibcVersionRuntime?`glibc-${h.glibcVersionRuntime}`:'musl'}));";
 
 function probeNodeRuntime(nodePath) {
