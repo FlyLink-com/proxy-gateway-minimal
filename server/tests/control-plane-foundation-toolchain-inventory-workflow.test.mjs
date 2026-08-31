@@ -10,10 +10,10 @@ const WORKFLOW_PATH = resolve(
   REPOSITORY_ROOT,
   ".github/workflows/control-plane-foundation-toolchain-inventory.yml"
 );
-const CHECKOUT_PIN = "df4cb1c069e1874edd31b4311f1884172cec0e10";
+const CHECKOUT_PIN = "d23441a48e516b6c34aea4fa41551a30e30af803";
 const FOUNDATION_TOOLCHAIN_CONTAINER_IMAGE =
   "docker.io/library/node:22.23.1-bookworm@sha256:175215a1f306ed5df592434b99cc2019f70624373fe49cb659240a618a846aed";
-const EXPECTED_WORKFLOW_SHA256 = "88236687400c263b979bde3f00e39acf31dd8e7976649618462e852cf8c4cd39";
+const EXPECTED_WORKFLOW_SHA256 = "f1ebd301b19f3a93606ed7cfb352895441ebc594dca4b67e90fb6c4ad553fa59";
 
 function sha256Hex(value) {
   return createHash("sha256").update(value).digest("hex");
