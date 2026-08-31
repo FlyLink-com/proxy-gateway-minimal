@@ -14,6 +14,7 @@ import { createSqliteSubscriptionStore } from "./services/subscriptions/reposito
 import { createSubscriptionCore } from "./services/subscriptions/core.mjs";
 import { DEFAULT_ADMIN_ALLOWED_CIDRS, DEFAULT_TRUSTED_PROXY_CIDRS } from "./services/ip-address.mjs";
 import { createPlatformAccountEntitlementShell } from "./services/platform/account-entitlement-shell.mjs";
+import { loadControlPlaneReleaseIdentity } from "./services/platform/control-plane-release-identity.mjs";
 import { createCoinCommerceCoordinator } from "./services/platform/coin-commerce-coordinator.mjs";
 import { createSqliteCoinCommerceStore } from "./services/platform/coin-commerce-store.mjs";
 import { createSqliteCoinWalletStore } from "./services/platform/coin-wallet-store.mjs";
@@ -1386,6 +1387,9 @@ function createReceiptBackedSubscriptionChannelGate({ controlStore } = {}) {
 export function createRuntimeState(options = {}) {
   const rootDir = rootPathFrom(options.rootDir || new URL("..", import.meta.url));
   const env = options.env || process.env;
+  const releaseIdentity = loadControlPlaneReleaseIdentity({
+    path: env.CONTROL_PLANE_RELEASE_IDENTITY_PATH
+  });
   const trafficCollectorStatusPath = optionalEnvText(env.EDGE_USAGE_COLLECTOR_STATUS_PATH);
   const japanTuicRepairObservationPath = optionalEnvText(env.EDGE_JAPAN_TUIC_REPAIR_OBSERVATION_PATH);
   if (japanTuicRepairObservationPath && !trafficCollectorStatusPath) {
@@ -2797,6 +2801,7 @@ export function createRuntimeState(options = {}) {
     host,
     ports,
     proxyConfig,
+    releaseIdentity,
     consoleToken: consoleToken.token,
     consoleTokenSource: consoleToken.source,
     consoleTokenStorePath: consoleToken.tokenStorePath,

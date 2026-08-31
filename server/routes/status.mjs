@@ -1,4 +1,5 @@
 export function statusRoutes(state) {
+  const releaseIdentity = state.releaseIdentity || Object.freeze({ state: "unavailable" });
   return async function statusHandler(_req, res) {
     const [socks5, httpProxy] = await Promise.all([
       state.isPortListening(state.ports.socks, state.host),
@@ -8,6 +9,7 @@ export function statusRoutes(state) {
     res.json({
       ok: true,
       generatedAt: new Date().toISOString(),
+      releaseIdentity,
       ports: {
         console: { port: state.ports.console, ok: true },
         socks5: { port: state.ports.socks, ok: socks5 },

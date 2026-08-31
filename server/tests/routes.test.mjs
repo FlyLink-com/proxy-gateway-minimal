@@ -11,6 +11,7 @@ function fakeState(overrides = {}) {
     host: "127.0.0.1",
     ports: { console: 3456, socks: 1080, httpProxy: 18180 },
     consoleToken: "secret",
+    releaseIdentity: Object.freeze({ state: "unavailable" }),
     proxyConfig: { servers: [], pingHosts: [], nginx: { host: "127.0.0.1", ports: [] } },
     services: {
       ssLocal: {
@@ -109,6 +110,49 @@ test("/api/status returns aggregate state for new UI", async () => {
     assert.equal(body.ports.socks5.ok, true);
     assert.equal(body.runtime.ssLocal.running, true);
     assert.equal(body.runtime.httpProxy.running, true);
+    assert.deepEqual(body.releaseIdentity, { state: "unavailable" });
+  } finally {
+    server.close();
+  }
+});
+
+test("release identity is exposed only by bearer-protected status", async () => {
+  const releaseIdentity = Object.freeze({
+    schemaVersion: "1",
+    type: "control_plane_release_identity",
+    state: "verified",
+    releaseUnit: "control-plane-app",
+    sourceCommit: "a".repeat(40),
+    artifactRelease: "ci-20260830",
+    artifactManifestSha256: "b".repeat(64),
+    sourceArtifactSha256: "c".repeat(64),
+    dependencyArtifactManifestSha256: "d".repeat(64),
+    dependencyArchiveSha256: "e".repeat(64),
+    identitySha256: "f".repeat(64)
+  });
+  const state = fakeState({ releaseIdentity });
+  const app = createApp(state);
+  state.releaseIdentity = Object.freeze({ state: "unavailable" });
+  const { server, baseUrl } = await listen(app);
+  try {
+    const health = await fetch(`${baseUrl}/api/health`);
+    assert.equal(health.status, 200);
+    const healthBody = await health.json();
+    assert.deepEqual(Object.keys(healthBody).sort(), ["authRequired", "ok", "ts"]);
+    assert.equal(JSON.stringify(healthBody).includes(releaseIdentity.sourceCommit), false);
+    assert.equal(JSON.stringify(healthBody).includes(releaseIdentity.identitySha256), false);
+
+    const query = await fetch(`${baseUrl}/api/status?token=secret`);
+    assert.equal(query.status, 401);
+
+    const unauthorized = await fetch(`${baseUrl}/api/status`);
+    assert.equal(unauthorized.status, 401);
+
+    const status = await fetch(`${baseUrl}/api/status`, {
+      headers: { authorization: "Bearer secret" }
+    });
+    assert.equal(status.status, 200);
+    assert.deepEqual((await status.json()).releaseIdentity, releaseIdentity);
   } finally {
     server.close();
   }
