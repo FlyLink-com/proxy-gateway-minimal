@@ -19,6 +19,7 @@ import {
   DEPENDENCY_ARTIFACT_SCHEMA_VERSION,
   DEPENDENCY_ARTIFACT_SMOKE_SCHEMA_VERSION,
   DEPENDENCY_ARTIFACT_TYPE,
+  DEPENDENCY_SMOKE_SOURCE_CLOSURE,
   WELCOME_COINS_NATIVE_LAUNCHER_PATH,
   WELCOME_COINS_NATIVE_OUTER_WRAPPER_PATH,
   WELCOME_COINS_POST_EXEC_BOOTSTRAP_PATH,
@@ -2498,7 +2499,132 @@ function unlock(value, supplied = null) {
   }
   return eraseFile(value);
 }
-function snapshotSource(context, runtime) { const source = fileIn(context.candidateRoot, "scripts/control-plane-db-snapshot-gate-lib.mjs", runtime, "native_module_validation_failed"); return { path: source.path, digest: hashFile(source.path) }; }
+const SNAPSHOT_SOURCE_IDENTITY_KEYS = Object.freeze([
+  "dev", "ino", "size", "nlink", "mode", "uid", "gid", "mtimeNs", "ctimeNs"
+]);
+function snapshotSourceIdentity(metadata) {
+  return Object.freeze(Object.fromEntries(
+    SNAPSHOT_SOURCE_IDENTITY_KEYS.map((key) => [key, String(metadata[key])])
+  ));
+}
+function sameSnapshotSourceIdentity(left, right) {
+  return left && right && SNAPSHOT_SOURCE_IDENTITY_KEYS.every((key) => left[key] === right[key]);
+}
+function validatePinnedSnapshotSource(source) {
+  try {
+    const descriptorMetadata = fstatSync(source.descriptor, { bigint: true });
+    const pathMetadata = lstatSync(source.path, { bigint: true });
+    if (!descriptorMetadata.isFile() || descriptorMetadata.isSymbolicLink()
+      || descriptorMetadata.nlink !== 1n
+      || !pathMetadata.isFile() || pathMetadata.isSymbolicLink() || pathMetadata.nlink !== 1n
+      || !sameSnapshotSourceIdentity(source.identity, snapshotSourceIdentity(descriptorMetadata))
+      || !sameSnapshotSourceIdentity(source.identity, snapshotSourceIdentity(pathMetadata))
+      || realpathSync(source.path) !== source.path) fail("native_module_validation_failed");
+  } catch (error) {
+    if (error instanceof CandidateDependencyGateError) throw error;
+    fail("native_module_validation_failed");
+  }
+}
+function openPinnedSnapshotSource(context, relativePath, runtime) {
+  let descriptor;
+  try {
+    const source = fileIn(
+      context.candidateRoot,
+      relativePath,
+      runtime,
+      "native_module_validation_failed"
+    );
+    const before = lstatSync(source.path, { bigint: true });
+    if (process.platform === "linux"
+      && (!Number.isSafeInteger(fsConstants.O_NOFOLLOW) || !Number.isSafeInteger(fsConstants.O_NONBLOCK))) {
+      fail("native_module_validation_failed");
+    }
+    const linuxSafetyFlags = process.platform === "linux"
+      ? fsConstants.O_NOFOLLOW | fsConstants.O_NONBLOCK
+      : 0;
+    descriptor = openSync(
+      source.path,
+      fsConstants.O_RDONLY | linuxSafetyFlags
+        | (Number.isSafeInteger(fsConstants.O_CLOEXEC) ? fsConstants.O_CLOEXEC : 0)
+    );
+    const opened = fstatSync(descriptor, { bigint: true });
+    const identity = snapshotSourceIdentity(opened);
+    if (!before.isFile() || before.isSymbolicLink() || before.nlink !== 1n
+      || before.size < 1n || before.size > BigInt(SERVICE_NATIVE_SMOKE_PROJECT_METADATA_MAX_BYTES)
+      || !opened.isFile() || opened.isSymbolicLink() || opened.nlink !== 1n
+      || !sameSnapshotSourceIdentity(snapshotSourceIdentity(before), identity)) {
+      fail("native_module_validation_failed");
+    }
+    const chunks = [], buffer = Buffer.allocUnsafe(64 * 1024);
+    let total = 0;
+    for (;;) {
+      const count = readSync(
+        descriptor,
+        buffer,
+        0,
+        Math.min(buffer.length, SERVICE_NATIVE_SMOKE_PROJECT_METADATA_MAX_BYTES + 1 - total),
+        null
+      );
+      if (!Number.isSafeInteger(count) || count < 0) fail("native_module_validation_failed");
+      if (count === 0) break;
+      total += count;
+      if (total > SERVICE_NATIVE_SMOKE_PROJECT_METADATA_MAX_BYTES) fail("native_module_validation_failed");
+      chunks.push(Buffer.from(buffer.subarray(0, count)));
+    }
+    if (BigInt(total) !== opened.size) fail("native_module_validation_failed");
+    const bytes = Buffer.concat(chunks, total);
+    const pinned = Object.freeze({
+      descriptor,
+      relativePath,
+      path: source.path,
+      identity,
+      bytes,
+      digest: hash(bytes)
+    });
+    validatePinnedSnapshotSource(pinned);
+    descriptor = undefined;
+    return pinned;
+  } catch (error) {
+    if (error instanceof CandidateDependencyGateError) throw error;
+    fail("native_module_validation_failed");
+  } finally {
+    if (descriptor !== undefined) try { closeSync(descriptor); } catch { fail("native_module_validation_failed"); }
+  }
+}
+function closePinnedSnapshotSources(sources) {
+  let closeFailed = false;
+  for (const source of sources) {
+    try { closeSync(source.descriptor); } catch { closeFailed = true; }
+  }
+  if (closeFailed) fail("native_module_validation_failed");
+}
+function withPinnedSnapshotSources(context, runtime, operation) {
+  if (DEPENDENCY_SMOKE_SOURCE_CLOSURE[0] !== A3_SMOKE_SNAPSHOT_MODULE) {
+    fail("native_module_validation_failed");
+  }
+  const sources = [];
+  try {
+    for (const relativePath of DEPENDENCY_SMOKE_SOURCE_CLOSURE) {
+      sources.push(openPinnedSnapshotSource(context, relativePath, runtime));
+    }
+    for (const source of sources) validatePinnedSnapshotSource(source);
+    if (runtime?.allowTestWorkerStorage === true && Object.hasOwn(runtime, "afterSnapshotSourcesPinned")) {
+      if (typeof runtime.afterSnapshotSourcesPinned !== "function") {
+        fail("native_module_validation_failed");
+      }
+      runtime.afterSnapshotSourcesPinned(Object.freeze({ sourceCount: sources.length }));
+    }
+    for (const source of sources) validatePinnedSnapshotSource(source);
+    const result = operation(Object.freeze(sources));
+    for (const source of sources) validatePinnedSnapshotSource(source);
+    return result;
+  } catch (error) {
+    if (error instanceof CandidateDependencyGateError) throw error;
+    fail("native_module_validation_failed");
+  } finally {
+    closePinnedSnapshotSources(sources);
+  }
+}
 
 function evidenceHash(value) { return hash(Buffer.from(JSON.stringify(value))); }
 function quotaEvidenceForMaterialization(supplied) {
@@ -2944,24 +3070,47 @@ export function stageServiceNativeSmokeProjectMetadata({ root, packageJsonBytes,
 }
 
 function stageSnapshotModule(extracted, context, supplied) {
-  const source = snapshotSource(context, supplied), owner = rootWorkerOwner(supplied);
-  try {
+  const owner = rootWorkerOwner(supplied);
+  return withPinnedSnapshotSources(context, supplied, (sources) => {
+    try {
     const extractedRoot = directory(extracted.root, supplied, "native_module_validation_failed");
-    const scripts = rootControlledDirectory(
-      resolve(extractedRoot, "scripts"), extractedRoot, owner, 0o755, "native_module_validation_failed"
-    ).path;
-    const target = resolve(scripts, "control-plane-db-snapshot-gate-lib.mjs");
-    if (existsSync(target)) {
-      const existing = rootOwnedRegular(target, supplied, "native_module_validation_failed", null);
-      if (process.platform !== "win32") unlinkSync(existing.path); else unlinkSync(existing.path);
+    let snapshotTarget = null;
+    for (const source of sources) {
+      let parent = extractedRoot;
+      const parts = source.relativePath.split("/");
+      for (const part of parts.slice(0, -1)) {
+        parent = rootControlledDirectory(
+          resolve(parent, part),
+          parent,
+          owner,
+          0o755,
+          "native_module_validation_failed"
+        ).path;
+      }
+      const target = resolve(parent, parts.at(-1));
+      if (existsSync(target)) fail("native_module_validation_failed");
+      writeFileSync(target, source.bytes, { mode: 0o644, flag: "wx" });
+      if (process.platform !== "win32") chownSync(target, owner.uid, owner.gid);
+      chmodSync(target, 0o644);
+      fsync(target, "native_module_validation_failed");
+      const staged = rootOwnedRegular(target, supplied, "native_module_validation_failed", 0o644);
+      const stagedBytes = boundedCandidateMetadataBytes(
+        staged,
+        "native_module_validation_failed"
+      );
+      if (hash(stagedBytes) !== source.digest) {
+        fail("native_module_validation_failed");
+      }
+      if (process.platform !== "win32") fsync(parent, "native_module_validation_failed");
+      if (source.relativePath === A3_SMOKE_SNAPSHOT_MODULE) snapshotTarget = staged.path;
     }
-    writeFileSync(target, readFileSync(source.path), { mode: 0o644, flag: "wx" });
-    if (process.platform !== "win32") chownSync(target, owner.uid, owner.gid);
-    chmodSync(target, 0o644);
-    fsync(target, "native_module_validation_failed");
-    if (hashFile(target) !== source.digest || hashFile(source.path) !== source.digest) fail("native_module_validation_failed");
-    return target;
-  } catch (error) { if (error instanceof CandidateDependencyGateError) throw error; fail("native_module_validation_failed"); }
+    if (!snapshotTarget) fail("native_module_validation_failed");
+    return snapshotTarget;
+    } catch (error) {
+      if (error instanceof CandidateDependencyGateError) throw error;
+      fail("native_module_validation_failed");
+    }
+  });
 }
 
 function serviceNativeSmoke(root, service, supplied, smokePhase) {

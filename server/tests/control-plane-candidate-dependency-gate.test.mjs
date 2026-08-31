@@ -61,7 +61,12 @@ import {
 } from "../../scripts/control-plane-candidate-dependency-gate-lib.mjs";
 import * as candidateDependencyGate from "../../scripts/control-plane-candidate-dependency-gate-lib.mjs";
 import { createArtifactManifest } from "../../scripts/create-artifact-manifest.mjs";
-import { auditDependencyTree, buildDependencyArtifactManifest, extractDependencyArchive } from "../../scripts/control-plane-dependency-artifact-lib.mjs";
+import {
+  DEPENDENCY_SMOKE_SOURCE_CLOSURE,
+  auditDependencyTree,
+  buildDependencyArtifactManifest,
+  extractDependencyArchive
+} from "../../scripts/control-plane-dependency-artifact-lib.mjs";
 import {
   WELCOME_COINS_NATIVE_BUILD_PROFILE,
   canonicalWelcomeCoinsNativeBuildReceipt
@@ -76,6 +81,19 @@ const ARTIFACT = Object.freeze({
   sha256: "b".repeat(64),
   sizeBytes: 1234,
   createdAt: "2026-08-16T00:00:00.000Z"
+});
+const SNAPSHOT_SOURCE_FIXTURE = Object.freeze({
+  "scripts/control-plane-db-snapshot-gate-lib.mjs": [
+    'import "../server/services/platform/portal-registration-welcome-bonus-migrations.mjs";',
+    "export const safeImport = true;",
+    ""
+  ].join("\n"),
+  "server/services/platform/portal-registration-welcome-bonus-migrations.mjs": [
+    'import "./coin-wallet-migrations.mjs";',
+    "export const portalMigrationImport = true;",
+    ""
+  ].join("\n"),
+  "server/services/platform/coin-wallet-migrations.mjs": "export const walletMigrationImport = true;\n"
 });
 
 function write(path, value, mode = 0o600) {
@@ -290,7 +308,10 @@ function fixture(t, { artifactMutate, artifactManifestMutate, setupNpm, root: fi
   write(join(candidateRoot, "config", "proxy-servers.json"), proxyBytes, 0o640);
   write(join(candidateRoot, "package.json"), packageBytes);
   write(join(candidateRoot, "package-lock.json"), lockBytes);
-  write(join(candidateRoot, "scripts", "control-plane-db-snapshot-gate-lib.mjs"), "export const safeImport = true;\n");
+  assert.deepEqual(Object.keys(SNAPSHOT_SOURCE_FIXTURE), [...DEPENDENCY_SMOKE_SOURCE_CLOSURE]);
+  for (const [path, bytes] of Object.entries(SNAPSHOT_SOURCE_FIXTURE)) {
+    write(join(candidateRoot, path), bytes);
+  }
   const assemblyRoot = join(root, "assembly-receipts", candidate);
   write(join(assemblyRoot, "release-assembly.json"), `${JSON.stringify(assembly({ active, candidate, envBytes, proxyBytes }))}\n`);
   const manifest = artifactManifest({ mutate: artifactManifestMutate });
@@ -1627,7 +1648,6 @@ test("CI artifact materialization uses only the verified artifact extraction and
   write(join(extractedModules, "better-sqlite3", "index.js"), "module.exports = {};\n", 0o600);
   write(join(extractedModules, "better-sqlite3", "package.json"), '{"version":"12.10.0"}\n', 0o600);
   write(join(extractedModules, "better-sqlite3", "build", "Release", "better_sqlite3.node"), "native\n", 0o600);
-  write(join(extractedSource, "scripts", "control-plane-db-snapshot-gate-lib.mjs"), "export const safeImport = true;\n", 0o600);
   const nativeCustody = stageNativeCustodyFixture(extractedSource);
   const artifactTree = auditDependencyTree(extractedModules, { checkAclCapabilities: () => true });
 
@@ -1650,7 +1670,11 @@ test("CI artifact materialization uses only the verified artifact extraction and
         packageJsonBound: existsSync(join(root, "package.json"))
           && readFileSync(join(root, "package.json")).equals(value.packageBytes),
         packageLockBound: existsSync(join(root, "package-lock.json"))
-          && readFileSync(join(root, "package-lock.json")).equals(value.lockBytes)
+          && readFileSync(join(root, "package-lock.json")).equals(value.lockBytes),
+        snapshotClosureBound: DEPENDENCY_SMOKE_SOURCE_CLOSURE.every((path) => (
+          existsSync(join(root, path))
+          && readFileSync(join(root, path)).equals(readFileSync(join(value.candidateRoot, path)))
+        ))
       });
       return {
         serviceUid: smokeService.uid, serviceGid: smokeService.gid, fixedNodePath,
@@ -1732,6 +1756,37 @@ test("CI artifact materialization uses only the verified artifact extraction and
   smokePrincipals.length = 0;
   smokeProjectBindings.length = 0;
 
+  const firstSnapshotSource = join(value.candidateRoot, DEPENDENCY_SMOKE_SOURCE_CLOSURE[0]);
+  const firstSnapshotSourceBytes = readFileSync(firstSnapshotSource);
+  value.runtime.afterSnapshotSourcesPinned = () => {
+    unlinkSync(firstSnapshotSource);
+    write(firstSnapshotSource, "export default false;\n", 0o600);
+  };
+  await assert.rejects(materializeCandidateDependencies({
+    candidateRelease: value.candidate,
+    expectedCurrentRelease: value.active,
+    expectedSourceCommit: SOURCE_COMMIT,
+    expectedArtifactRelease: ARTIFACT_RELEASE,
+    expectedDependencyManifestSha256: "c".repeat(64),
+    expectedDependencyArchiveSha256: "d".repeat(64),
+    apply: true,
+    runtime: value.runtime
+  }), condition("native_module_validation_failed"));
+  assert.equal(smokePrincipals.length, 0);
+  assert.equal(existsSync(join(value.candidateRoot, "node_modules")), false);
+  assert.equal(existsSync(join(value.root, "dependency-receipts", value.candidate, "node-modules-materialization.json")), false);
+  delete value.runtime.afterSnapshotSourcesPinned;
+  unlinkSync(firstSnapshotSource);
+  write(firstSnapshotSource, firstSnapshotSourceBytes, 0o600);
+  verifyCalls = 0;
+  extractCalls = 0;
+  renameCalls = 0;
+  legacyCalls = 0;
+  cleanupCalls = 0;
+  stagedRoot = null;
+  smokePrincipals.length = 0;
+  smokeProjectBindings.length = 0;
+
   const result = await materializeCandidateDependencies({
     candidateRelease: value.candidate,
     expectedCurrentRelease: value.active,
@@ -1754,8 +1809,8 @@ test("CI artifact materialization uses only the verified artifact extraction and
     { root: value.candidateRoot, uid: service.uid, gid: service.gid }
   ]);
   assert.deepEqual(smokeProjectBindings, [
-    { packageJsonBound: true, packageLockBound: true },
-    { packageJsonBound: true, packageLockBound: true }
+    { packageJsonBound: true, packageLockBound: true, snapshotClosureBound: true },
+    { packageJsonBound: true, packageLockBound: true, snapshotClosureBound: true }
   ]);
   assert.equal(existsSync(join(value.candidateRoot, "node_modules", "better-sqlite3", "index.js")), true);
   assert.equal(existsSync(join(value.root, "dependency-receipts", value.candidate, "node-modules-materialization.json")), true);
@@ -1868,7 +1923,7 @@ test("Linux materialization consumes a real three-file CI artifact and cleans it
     packageJsonBytes: value.packageBytes,
     packageLockBytes: value.lockBytes,
     archivePath,
-    root: value.candidateRoot,
+    root: sourceRoot,
     runtime: {
       enforceOwnership: false,
       checkAclCapabilities: () => true,

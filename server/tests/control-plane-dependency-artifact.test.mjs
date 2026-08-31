@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { chmodSync, existsSync, linkSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { pathToFileURL } from "node:url";
 import test from "node:test";
@@ -12,6 +12,7 @@ import {
   DEPENDENCY_ARTIFACT_SCHEMA_VERSION,
   DEPENDENCY_ARTIFACT_SMOKE_SCHEMA_VERSION,
   DEPENDENCY_ARTIFACT_TYPE,
+  DEPENDENCY_SMOKE_SOURCE_CLOSURE,
   DependencyArtifactError,
   MAX_MANIFEST_BYTES,
   auditDependencyTree,
@@ -652,6 +653,145 @@ test("native smoke rejects a fixed snapshot path implemented as an escaping syml
     assert.throws(() => runNativeBetterSqliteSmoke({ root: value.root, runtime: { nativeSmoke: () => { calls += 1; return true; } } }), condition("dependency_smoke_snapshot_invalid"));
     assert.equal(calls, 0);
   } finally { cleanup(value.root); }
+});
+
+test("fixed dependency smoke source closure matches the current local import graph", () => {
+  const repositoryRoot = resolve(".");
+  const discovered = new Set([DEPENDENCY_SMOKE_SOURCE_CLOSURE[0]]);
+  const localImport = /(?:\bfrom\s+|\bimport\s*(?:\(\s*)?)["'](\.[^"']+)["']/gu;
+  for (const path of DEPENDENCY_SMOKE_SOURCE_CLOSURE) {
+    const source = readFileSync(resolve(repositoryRoot, path), "utf8");
+    for (const match of source.matchAll(localImport)) {
+      discovered.add(
+        relative(repositoryRoot, resolve(dirname(resolve(repositoryRoot, path)), match[1]))
+          .split("\\")
+          .join("/")
+      );
+    }
+  }
+  assert.deepEqual(
+    [...discovered].sort(),
+    [...DEPENDENCY_SMOKE_SOURCE_CLOSURE].sort()
+  );
+});
+
+const SNAPSHOT_SOURCE_MODULES = Object.freeze({
+  "scripts/control-plane-db-snapshot-gate-lib.mjs": [
+    'import "../server/services/platform/portal-registration-welcome-bonus-migrations.mjs";',
+    "export default true;",
+    ""
+  ].join("\n"),
+  "server/services/platform/portal-registration-welcome-bonus-migrations.mjs": [
+    'import "./coin-wallet-migrations.mjs";',
+    "export default true;",
+    ""
+  ].join("\n"),
+  "server/services/platform/coin-wallet-migrations.mjs": "export default true;\n"
+});
+
+function snapshotClosureReplayFixture(name) {
+  const value = fixture(name);
+  const sourceRoot = makeRoot(`${name}-source`);
+  for (const [path, bytes] of Object.entries(SNAPSHOT_SOURCE_MODULES)) {
+    const target = join(sourceRoot, path);
+    mkdirSync(dirname(target), { recursive: true });
+    writeFileSync(target, bytes);
+  }
+  unlinkSync(join(value.root, "scripts", "control-plane-db-snapshot-gate-lib.mjs"));
+  writeFileSync(join(value.nodeModules, "better-sqlite3", "index.js"), [
+    "module.exports = class Database {",
+    "  exec() {}",
+    "  prepare(statement) {",
+    "    return statement.startsWith('SELECT')",
+    "      ? { get: () => ({ v: 7 }) }",
+    "      : { run: () => undefined };",
+    "  }",
+    "  close() {}",
+    "};",
+    ""
+  ].join("\n"));
+  writeFileSync(
+    join(value.nodeModules, "better-sqlite3", "package.json"),
+    '{"version":"12.10.0","main":"index.js"}\n'
+  );
+  const tree = auditDependencyTree(value.nodeModules, {
+    enforceOwnership: false,
+    checkAclCapabilities: () => true
+  });
+  const manifest = {
+    ...value.manifest,
+    tree: {
+      sha256: tree.sha256,
+      entryCount: tree.entryCount,
+      totalBytes: tree.totalBytes,
+      hardlinksBroken: tree.hardlinksBroken,
+      symlinksInternal: tree.symlinksInternal
+    }
+  };
+  const runtimeFixture = {
+    enforceOwnership: false,
+    detect: () => runtime,
+    listArchive: () => Buffer.from("node_modules\0"),
+    extractArchive: () => ({
+      root: value.root,
+      nodeModulesRoot: value.nodeModules,
+      cleanup: () => {}
+    }),
+    checkAclCapabilities: () => true,
+    nodePath: process.execPath
+  };
+  return { ...value, sourceRoot, manifest, runtimeFixture };
+}
+
+function verifySnapshotClosureReplay(value, runtimeOverrides = {}) {
+  return verifyDependencyArtifact({
+    manifestBytes: Buffer.from(`${JSON.stringify(value.manifest, null, 2)}\n`),
+    archivePath: value.archivePath,
+    packageJsonBytes: value.packageJson,
+    packageLockBytes: value.packageLock,
+    expectedSourceCommit: value.manifest.sourceCommit,
+    expectedArtifactRelease: value.manifest.artifactRelease,
+    projectRoot: value.sourceRoot,
+    runtime: { ...value.runtimeFixture, ...runtimeOverrides }
+  });
+}
+
+test("artifact replay stages the fixed transitive snapshot source closure before native import", () => {
+  const value = snapshotClosureReplayFixture("snapshot-source-closure");
+  try {
+    const result = verifySnapshotClosureReplay(value);
+    assert.deepEqual(result.smoke, {
+      betterSqlite3Memory: true,
+      snapshotImport: true
+    });
+    for (const [path, bytes] of Object.entries(SNAPSHOT_SOURCE_MODULES)) {
+      assert.equal(readFileSync(join(value.root, path), "utf8"), bytes, path);
+    }
+  } finally {
+    cleanup(value.sourceRoot);
+    cleanup(value.root);
+  }
+});
+
+test("artifact replay rejects a mixed snapshot closure before staging", () => {
+  const value = snapshotClosureReplayFixture("snapshot-source-mixed-closure");
+  const firstSource = join(value.sourceRoot, DEPENDENCY_SMOKE_SOURCE_CLOSURE[0]);
+  try {
+    assert.throws(
+      () => verifySnapshotClosureReplay(value, {
+        allowTestSnapshotSourceMutation: true,
+        afterSnapshotSourcesPinned() {
+          unlinkSync(firstSource);
+          writeFileSync(firstSource, "export default false;\n");
+        }
+      }),
+      condition("dependency_smoke_snapshot_invalid")
+    );
+    assert.equal(existsSync(join(value.root, DEPENDENCY_SMOKE_SOURCE_CLOSURE[0])), false);
+  } finally {
+    cleanup(value.sourceRoot);
+    cleanup(value.root);
+  }
 });
 
 test("verify CLI requires and enforces source commit and release identity", async () => {

@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { chmodSync, closeSync, constants as fsConstants, copyFileSync, existsSync, fstatSync, lstatSync, mkdirSync, mkdtempSync, openSync, readFileSync, readlinkSync, readSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, closeSync, constants as fsConstants, existsSync, fstatSync, lstatSync, mkdirSync, mkdtempSync, openSync, readFileSync, readlinkSync, readSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { tmpdir } from "node:os";
 import { pathToFileURL } from "node:url";
@@ -52,6 +52,11 @@ const EXTRACTION_RESERVE_BYTES = 512 * 1024 * 1024;
 const EXTRACTION_RESERVE_INODES = 4096;
 const ARCHIVE_PIN_TOKEN = Symbol("archive-pin-token");
 const SNAPSHOT_MODULE = "scripts/control-plane-db-snapshot-gate-lib.mjs";
+export const DEPENDENCY_SMOKE_SOURCE_CLOSURE = Object.freeze([
+  SNAPSHOT_MODULE,
+  "server/services/platform/portal-registration-welcome-bonus-migrations.mjs",
+  "server/services/platform/coin-wallet-migrations.mjs"
+]);
 const CLEAN_ENV = Object.freeze({ PATH: "/usr/bin:/bin", LANG: "C", LC_ALL: "C" });
 const ARCHIVE_LIST = String.raw`import os,sys,tarfile
 MAX_ENTRIES=int(sys.argv[1])
@@ -905,15 +910,176 @@ function safeSnapshotPath(root, snapshotModule) {
   return current;
 }
 
-function extractedSnapshotModule({ sourceRoot, extractedRoot, snapshotModule } = {}) {
-  const source = safeSnapshotPath(sourceRoot, snapshotModule);
+function openPinnedSnapshotSource(root, relativePath) {
+  const rootPath = resolve(root);
+  const requested = resolve(rootPath, relativePath);
+  const normalized = relative(rootPath, requested).split(/[\\/]+/).filter(Boolean).join("/");
+  if (!DEPENDENCY_SMOKE_SOURCE_CLOSURE.includes(relativePath)
+    || normalized !== relativePath
+    || !within(rootPath, requested)) fail("dependency_smoke_snapshot_invalid");
+  let descriptor;
+  try {
+    const rootMetadata = lstatSync(rootPath);
+    if (!rootMetadata.isDirectory() || rootMetadata.isSymbolicLink()
+      || realpathSync(rootPath) !== rootPath) {
+      fail("dependency_smoke_snapshot_invalid");
+    }
+    let current = rootPath;
+    const parts = relativePath.split("/");
+    for (let index = 0; index < parts.length - 1; index += 1) {
+      current = join(current, parts[index]);
+      const metadata = lstatSync(current);
+      if (!metadata.isDirectory() || metadata.isSymbolicLink()) {
+        fail("dependency_smoke_snapshot_invalid");
+      }
+    }
+    const before = lstatSync(requested, { bigint: true });
+    if (!before.isFile() || before.isSymbolicLink() || before.nlink !== 1n
+      || before.size < 1n || before.size > BigInt(MAX_MANIFEST_BYTES)
+      || realpathSync(requested) !== requested) {
+      fail("dependency_smoke_snapshot_invalid");
+    }
+    descriptor = openSync(
+      requested,
+      fsConstants.O_RDONLY | (process.platform === "linux" ? fsConstants.O_NOFOLLOW : 0)
+    );
+    const opened = fstatSync(descriptor, { bigint: true });
+    if (!sameFileIdentity(fileIdentity(before), fileIdentity(opened))) {
+      fail("dependency_smoke_snapshot_invalid");
+    }
+    const bytes = Buffer.alloc(Number(opened.size));
+    let offset = 0;
+    while (offset < bytes.length) {
+      const count = readSync(descriptor, bytes, offset, bytes.length - offset, offset);
+      if (count <= 0) fail("dependency_smoke_snapshot_invalid");
+      offset += count;
+    }
+    const pinned = Object.freeze({
+      descriptor,
+      relativePath,
+      path: requested,
+      identity: fileIdentity(opened),
+      bytes
+    });
+    validatePinnedSnapshotSource(pinned);
+    descriptor = undefined;
+    return pinned;
+  } catch (error) {
+    if (error instanceof DependencyArtifactError) throw error;
+    fail("dependency_smoke_snapshot_invalid");
+  } finally {
+    if (descriptor !== undefined) closeSync(descriptor);
+  }
+}
+
+function validatePinnedSnapshotSource(pinned) {
+  try {
+    const descriptorMetadata = fstatSync(pinned.descriptor, { bigint: true });
+    const pathMetadata = lstatSync(pinned.path, { bigint: true });
+    if (!descriptorMetadata.isFile() || descriptorMetadata.isSymbolicLink()
+      || descriptorMetadata.nlink !== 1n
+      || !pathMetadata.isFile() || pathMetadata.isSymbolicLink() || pathMetadata.nlink !== 1n
+      || !sameFileIdentity(pinned.identity, fileIdentity(descriptorMetadata))
+      || !sameFileIdentity(pinned.identity, fileIdentity(pathMetadata))
+      || realpathSync(pinned.path) !== pinned.path) fail("dependency_smoke_snapshot_invalid");
+  } catch (error) {
+    if (error instanceof DependencyArtifactError) throw error;
+    fail("dependency_smoke_snapshot_invalid");
+  }
+}
+
+function closePinnedSnapshotSources(sources) {
+  let closeFailed = false;
+  for (const source of sources) {
+    try { closeSync(source.descriptor); } catch { closeFailed = true; }
+  }
+  if (closeFailed) fail("dependency_smoke_snapshot_invalid");
+}
+
+function readPinnedSnapshotSource(root, relativePath) {
+  const pinned = openPinnedSnapshotSource(root, relativePath);
+  try {
+    validatePinnedSnapshotSource(pinned);
+    return Buffer.from(pinned.bytes);
+  } finally {
+    closePinnedSnapshotSources([pinned]);
+  }
+}
+
+function withPinnedSnapshotSources(root, runtime, operation) {
+  const sources = [];
+  try {
+    for (const relativePath of DEPENDENCY_SMOKE_SOURCE_CLOSURE) {
+      sources.push(openPinnedSnapshotSource(root, relativePath));
+    }
+    for (const source of sources) validatePinnedSnapshotSource(source);
+    if (runtime?.allowTestSnapshotSourceMutation === true) {
+      if (!Object.hasOwn(runtime, "afterSnapshotSourcesPinned")
+        || typeof runtime.afterSnapshotSourcesPinned !== "function") {
+        fail("dependency_smoke_snapshot_invalid");
+      }
+      runtime.afterSnapshotSourcesPinned(Object.freeze({ sourceCount: sources.length }));
+    }
+    for (const source of sources) validatePinnedSnapshotSource(source);
+    const result = operation(Object.freeze(sources.map((source) => Object.freeze({
+      relativePath: source.relativePath,
+      bytes: Buffer.from(source.bytes)
+    }))));
+    for (const source of sources) validatePinnedSnapshotSource(source);
+    return result;
+  } catch (error) {
+    if (error instanceof DependencyArtifactError) throw error;
+    fail("dependency_smoke_snapshot_invalid");
+  } finally {
+    closePinnedSnapshotSources(sources);
+  }
+}
+
+function stageSnapshotSource(extractedRoot, relativePath, bytes) {
+  const rootPath = resolve(extractedRoot);
+  const target = resolve(rootPath, relativePath);
+  if (!Buffer.isBuffer(bytes) || bytes.length < 1 || bytes.length > MAX_MANIFEST_BYTES
+    || !within(rootPath, target)) fail("dependency_smoke_snapshot_invalid");
+  try {
+    const rootMetadata = lstatSync(rootPath);
+    if (!rootMetadata.isDirectory() || rootMetadata.isSymbolicLink()
+      || realpathSync(rootPath) !== rootPath) fail("dependency_smoke_snapshot_invalid");
+    let current = rootPath;
+    for (const part of relativePath.split("/").slice(0, -1)) {
+      const next = join(current, part);
+      if (!existsSync(next)) mkdirSync(next, { mode: 0o700 });
+      current = next;
+      const metadata = lstatSync(current);
+      if (!metadata.isDirectory() || metadata.isSymbolicLink()
+        || realpathSync(current) !== current) {
+        fail("dependency_smoke_snapshot_invalid");
+      }
+    }
+    if (dirname(target) !== current) fail("dependency_smoke_snapshot_invalid");
+    writeFileSync(target, bytes, { flag: "wx", mode: 0o600 });
+    chmodSync(target, 0o400);
+    const metadata = lstatSync(target);
+    const readback = readPinnedSnapshotSource(rootPath, relativePath);
+    if (!metadata.isFile() || metadata.isSymbolicLink() || metadata.nlink !== 1
+      || metadata.size !== bytes.length || !readback.equals(bytes)) {
+      fail("dependency_smoke_snapshot_invalid");
+    }
+  } catch (error) {
+    if (error instanceof DependencyArtifactError) throw error;
+    fail("dependency_smoke_snapshot_invalid");
+  }
+}
+
+function extractedSnapshotModule({ sourceRoot, extractedRoot, snapshotModule, runtime = {} } = {}) {
+  safeSnapshotPath(sourceRoot, snapshotModule);
   let extractedMetadata; try { extractedMetadata = lstatSync(resolve(extractedRoot)); } catch { fail("dependency_smoke_snapshot_invalid"); }
   if (!extractedMetadata.isDirectory() || extractedMetadata.isSymbolicLink()) fail("dependency_smoke_snapshot_invalid");
-  const target = resolve(extractedRoot, SNAPSHOT_MODULE);
-  mkdirSync(dirname(target), { recursive: true, mode: 0o700 });
-  copyFileSync(source, target);
-  chmodSync(target, 0o400);
-  return safeSnapshotPath(extractedRoot, target);
+  withPinnedSnapshotSources(sourceRoot, runtime, (sources) => {
+    for (const source of sources) {
+      stageSnapshotSource(extractedRoot, source.relativePath, source.bytes);
+    }
+  });
+  return safeSnapshotPath(extractedRoot, resolve(extractedRoot, SNAPSHOT_MODULE));
 }
 
 function assertControlledDestinationParent(root, runtime) {
@@ -1116,7 +1282,7 @@ export function verifyDependencyArtifact({ manifestBytes, archivePath, packageJs
   });
   let smoke;
   try {
-    const extractedSnapshot = typeof runtime.nativeSmoke === "function" ? snapshotModule : extractedSnapshotModule({ sourceRoot, extractedRoot: prepared.extracted.root, snapshotModule });
+    const extractedSnapshot = typeof runtime.nativeSmoke === "function" ? snapshotModule : extractedSnapshotModule({ sourceRoot, extractedRoot: prepared.extracted.root, snapshotModule, runtime });
     smoke = runNativeBetterSqliteSmoke({ root: prepared.extracted.root, snapshotModule: extractedSnapshot, runtime });
   } finally {
     prepared.extracted.cleanup();
@@ -1137,7 +1303,7 @@ export function buildDependencyArtifactManifest({ sourceCommit, artifactRelease,
   const extracted = extractDependencyArchive(archivePath, runtime, { token: ARCHIVE_PIN_TOKEN, identity: archiveRecord.identity });
   let tree; let smoke; let actualRuntime; let nativeCustody;
   try {
-    const extractedSnapshot = typeof runtime.nativeSmoke === "function" ? snapshotModule : extractedSnapshotModule({ sourceRoot: projectRoot, extractedRoot: extracted.root, snapshotModule });
+    const extractedSnapshot = typeof runtime.nativeSmoke === "function" ? snapshotModule : extractedSnapshotModule({ sourceRoot: projectRoot, extractedRoot: extracted.root, snapshotModule, runtime });
     tree = auditDependencyTree(extracted.nodeModulesRoot, runtime);
     nativeCustody = inspectWelcomeCoinsNativeCustodyBundle({ root: projectRoot, enforceModes: true });
     sameNativeCustody(nativeCustody, inspectWelcomeCoinsNativeCustodyBundle({ root: extracted.root, enforceModes: false }));

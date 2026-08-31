@@ -2540,12 +2540,19 @@ function createWelcomeCoinsSchemaCustodyChildChannel() {
       if (!capabilityOpen || process.platform !== "linux") {
         fail("execution_envelope_required");
       }
+      let capabilityDescriptorOwned = false;
       try {
-        const metadata = fstatSync(WELCOME_COINS_SCHEMA_CUSTODY_CAPABILITY_FD);
-        const fdInfo = readFileSync(
-          `/proc/self/fdinfo/${WELCOME_COINS_SCHEMA_CUSTODY_CAPABILITY_FD}`,
-          "utf8"
-        );
+        let metadata;
+        let fdInfo;
+        try {
+          metadata = fstatSync(WELCOME_COINS_SCHEMA_CUSTODY_CAPABILITY_FD);
+          fdInfo = readFileSync(
+            `/proc/self/fdinfo/${WELCOME_COINS_SCHEMA_CUSTODY_CAPABILITY_FD}`,
+            "utf8"
+          );
+        } catch {
+          fail("execution_envelope_required");
+        }
         const flags = /^flags:\s*([0-7]+)$/mu.exec(fdInfo);
         if (
           !metadata.isFile()
@@ -2559,17 +2566,20 @@ function createWelcomeCoinsSchemaCustodyChildChannel() {
         ) {
           fail("execution_envelope_required");
         }
+        capabilityDescriptorOwned = true;
         return readCanonicalFrame(
           WELCOME_COINS_SCHEMA_CUSTODY_CAPABILITY_FD,
           "execution_envelope_invalid"
         );
       } finally {
-        try {
-          closeSync(WELCOME_COINS_SCHEMA_CUSTODY_CAPABILITY_FD);
-        } catch {
-          fail("execution_envelope_invalid");
-        }
         capabilityOpen = false;
+        if (capabilityDescriptorOwned) {
+          try {
+            closeSync(WELCOME_COINS_SCHEMA_CUSTODY_CAPABILITY_FD);
+          } catch {
+            fail("execution_envelope_invalid");
+          }
+        }
       }
     },
     async readBoundChannelIdentity() {

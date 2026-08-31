@@ -436,6 +436,28 @@ test("closed child runner uses root-owned unlinked FD3 plus fixed acquired/autho
   assert.match(channelSource, /writeSync\s*\(/u);
 });
 
+test("closed child never closes an unvalidated FD3 owned by the Node runtime", () => {
+  const source = readFileSync(SNAPSHOT_GATE_SOURCE, "utf8");
+  const channelSource = declaredFunctionSource(source, CHILD_CHANNEL_FACTORY);
+  const validationIndex = channelSource.indexOf("metadata.nlink !== 0");
+  const ownershipIndex = channelSource.indexOf("capabilityDescriptorOwned = true");
+  const guardedCloseIndex = channelSource.indexOf("if (capabilityDescriptorOwned)");
+
+  assert.ok(validationIndex >= 0, "FD3 ownership validation remains explicit");
+  assert.ok(
+    ownershipIndex > validationIndex,
+    "the child owns FD3 only after the complete capability metadata check"
+  );
+  assert.ok(
+    guardedCloseIndex > ownershipIndex,
+    "only an owned capability descriptor reaches closeSync"
+  );
+  assert.match(
+    channelSource.slice(guardedCloseIndex),
+    /if \(capabilityDescriptorOwned\) \{[\s\S]*?closeSync\s*\(\s*WELCOME_COINS_SCHEMA_CUSTODY_CAPABILITY_FD\s*\)/u
+  );
+});
+
 test("FD3 carries only a challenge commitment and FD4/FD5 expose exact bound endpoint identities", () => {
   const source = readFileSync(SNAPSHOT_GATE_SOURCE, "utf8");
   const envelopeSource = declaredFunctionSource(
