@@ -1,4 +1,4 @@
-import { constants, closeSync, fstatSync, lstatSync, openSync, readFileSync, realpathSync } from "node:fs";
+import { constants, closeSync, fstatSync, lstatSync, openSync, readSync, realpathSync } from "node:fs";
 import { isAbsolute, resolve } from "node:path";
 
 import {
@@ -79,6 +79,27 @@ function assertSafeRegularFile(metadata) {
   }
 }
 
+function readBoundedIdentityBytes(descriptor) {
+  const buffer = Buffer.allocUnsafe(MAX_BYTES + 1);
+  let length = 0;
+  while (length < buffer.length) {
+    const count = readSync(
+      descriptor,
+      buffer,
+      length,
+      buffer.length - length,
+      null
+    );
+    if (!Number.isSafeInteger(count) || count < 0 || count > buffer.length - length) {
+      throw invalid();
+    }
+    if (count === 0) break;
+    length += count;
+  }
+  if (length < 1 || length > MAX_BYTES) throw invalid();
+  return buffer.subarray(0, length);
+}
+
 export function serializeControlPlaneReleaseIdentity(value) {
   try {
     return serializeCanonicalJsonBytes(value, CONTROL_PLANE_RELEASE_IDENTITY_CONTRACT);
@@ -108,7 +129,8 @@ export function loadControlPlaneReleaseIdentity({ path } = {}) {
     assertSafeRegularFile(opened);
     if (!sameIdentity(before, opened)) throw invalid();
 
-    const bytes = readFileSync(descriptor);
+    const bytes = readBoundedIdentityBytes(descriptor);
+    if (bytes.length !== opened.size) throw invalid();
     const afterRead = fstatSync(descriptor);
     const linked = lstatSync(configuredPath);
     assertSafeRegularFile(afterRead);

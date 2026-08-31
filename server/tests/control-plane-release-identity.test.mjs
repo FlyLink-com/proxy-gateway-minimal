@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import {
+import fs, {
   chmodSync,
   linkSync,
   mkdtempSync,
@@ -8,6 +8,7 @@ import {
   symlinkSync,
   writeFileSync
 } from "node:fs";
+import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import test from "node:test";
@@ -149,6 +150,79 @@ test("configured release identity fails closed for unsafe paths and bytes", () =
     assert.throws(() => loadControlPlaneReleaseIdentity({ path: canonicalPath }), invalidIdentity);
   }
 }));
+
+test(
+  "release identity descriptor reads stay bounded if the file grows after metadata validation",
+  { concurrency: false },
+  () => withDirectory("growth", (directory) => {
+    const path = join(directory, "identity.json");
+    writeFileSync(path, serializeControlPlaneReleaseIdentity(fixtureValue()), { mode: 0o600 });
+    const target = fs.statSync(path);
+
+    const originalFstatSync = fs.fstatSync;
+    const originalReadFileSync = fs.readFileSync;
+    const originalReadSync = fs.readSync;
+    const requested = [];
+    const returned = [];
+    let readFileBytes = 0;
+    let readFileCalls = 0;
+    let targetDescriptor;
+    let grew = false;
+    try {
+      fs.fstatSync = (descriptor, ...args) => {
+        const metadata = originalFstatSync.call(fs, descriptor, ...args);
+        if (!grew && metadata.dev === target.dev && metadata.ino === target.ino) {
+          grew = true;
+          targetDescriptor = descriptor;
+          fs.truncateSync(path, 8 * 1024 * 1024);
+        }
+        return metadata;
+      };
+      fs.readFileSync = (descriptor, ...args) => {
+        const bytes = originalReadFileSync.call(fs, descriptor, ...args);
+        if (descriptor === targetDescriptor) {
+          readFileCalls += 1;
+          readFileBytes += bytes.length;
+        }
+        return bytes;
+      };
+      fs.readSync = (descriptor, buffer, offset, length, ...args) => {
+        const count = originalReadSync.call(
+          fs,
+          descriptor,
+          buffer,
+          offset,
+          length,
+          ...args
+        );
+        if (descriptor === targetDescriptor) {
+          requested.push(length);
+          returned.push(count);
+        }
+        return count;
+      };
+      syncBuiltinESMExports();
+
+      assert.throws(() => loadControlPlaneReleaseIdentity({ path }), invalidIdentity);
+    } finally {
+      fs.fstatSync = originalFstatSync;
+      fs.readFileSync = originalReadFileSync;
+      fs.readSync = originalReadSync;
+      syncBuiltinESMExports();
+    }
+
+    assert.equal(grew, true);
+    assert.equal(readFileCalls, 0);
+    assert.equal(readFileBytes, 0);
+    assert.ok(requested.length > 0);
+    assert.ok(requested.every((length) => length <= 4097));
+    assert.ok(returned.reduce((total, length) => total + length, 0) <= 4097);
+    assert.throws(
+      () => originalFstatSync.call(fs, targetDescriptor),
+      (error) => error?.code === "EBADF"
+    );
+  })
+);
 
 test("configured release identity rejects empty, oversized and non-file inputs", () => withDirectory("bounded", (directory) => {
   const path = join(directory, "identity.json");
