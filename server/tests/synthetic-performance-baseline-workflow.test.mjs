@@ -10,7 +10,7 @@ const WORKFLOW_PATH = resolve(
   ".github/workflows/synthetic-performance-baseline.yml"
 );
 const ACTION_PINS = [
-  "actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10",
+  "actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803",
   "actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38",
   "actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c",
   "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a"

@@ -526,7 +526,10 @@ test("Ubuntu workflow is a CI artifact producer, not a production builder", () =
     "the second archive must be created from a fresh second npm ci");
   assert.match(workflow, /cmp --silent/);
   assert.match(workflow, /mv \.dependency-artifacts\/node-modules-b\.tar \.dependency-artifacts\/node-modules\.tar/);
-  assert.match(workflow, /actions\/upload-artifact@v7/);
+  assert.match(
+    workflow,
+    /actions\/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7/
+  );
   assert.match(uploadStep, /\.dependency-artifacts\/node-modules\.tar/);
   assert.match(uploadStep, /\.dependency-artifacts\/dependency-artifact\.json/);
   assert.match(uploadStep, /\.dependency-artifacts\/release-label\.txt/);

@@ -121,7 +121,7 @@ test("secretless preflight is isolated from the protected execute job", () => {
 test("both jobs use immutable Actions and verify the frozen artifact", () => {
   const workflow = workflowText();
   assert.equal(
-    (workflow.match(/actions\/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6/g) ?? []).length,
+    (workflow.match(/actions\/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6/g) ?? []).length,
     3
   );
   assert.equal(
