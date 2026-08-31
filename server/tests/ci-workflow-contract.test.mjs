@@ -117,6 +117,40 @@ const YAML_BLOCK_SCALAR_HEADER =
 const YAML_INDIRECTION_TOKEN =
   /(?:^|[ \t:[{,?])(?:[&*][A-Za-z0-9_-]+|<<:)/u;
 
+function stripYamlComment(line) {
+  let quote = null;
+  for (let index = 0; index < line.length; index += 1) {
+    const character = line[index];
+    if (quote === "'") {
+      if (character === "'" && line[index + 1] === "'") {
+        index += 1;
+      } else if (character === "'") {
+        quote = null;
+      }
+      continue;
+    }
+    if (quote === '"') {
+      if (character === "\\") {
+        index += 1;
+      } else if (character === '"') {
+        quote = null;
+      }
+      continue;
+    }
+    if (character === "'" || character === '"') {
+      quote = character;
+      continue;
+    }
+    if (
+      character === "#"
+      && (index === 0 || line[index - 1] === " " || line[index - 1] === "\t")
+    ) {
+      return line.slice(0, index).trimEnd();
+    }
+  }
+  return line;
+}
+
 function readRepositoryFile(path) {
   return readFileSync(resolve(REPOSITORY_ROOT, path), "utf8");
 }
@@ -163,7 +197,7 @@ function inspectWorkflowActionInventory(
 
     if (!parsed) {
       if (/^\s*#/u.test(line)) continue;
-      const sourceLine = line.replace(/\s+#.*$/u, "");
+      const sourceLine = stripYamlComment(line);
       if (YAML_BLOCK_SCALAR_HEADER.test(sourceLine)) {
         blockScalarIndent = indentation;
       }
@@ -221,6 +255,19 @@ test("workflow Action inventory parser fails closed outside the canonical source
     accepted.references.map(({ action }) => action),
     ["actions/checkout"]
   );
+  assert.equal(
+    stripYamlComment('name: "quoted # value" # comment'),
+    'name: "quoted # value"'
+  );
+  assert.equal(
+    stripYamlComment("name: 'it''s # value' # comment"),
+    "name: 'it''s # value'"
+  );
+  assert.equal(
+    stripYamlComment(String.raw`name: "escaped \"#\" and \\ value" # comment`),
+    String.raw`name: "escaped \"#\" and \\ value"`
+  );
+  assert.equal(stripYamlComment("name: abc#def # comment"), "name: abc#def");
 
   const rejected = {
     "mutable tag": "steps:\n  - uses: actions/checkout@v6 # v6",
@@ -239,6 +286,16 @@ test("workflow Action inventory parser fails closed outside the canonical source
     "multiline escaped explicit key":
       "steps:\n  - ? \"\\u0075" + "\\" + "\n      ses\"\n    : evil/action@v1",
     "flow mapping": `steps:\n  - { uses: actions/checkout@${checkout.sha} }`,
+    "double-quoted hash before flow mapping uses":
+      'steps:\n  - { name: " #", uses: attacker/action@v1 }',
+    "single-quoted hash before flow mapping uses":
+      "steps:\n  - { name: ' #', uses: attacker/action@v1 }",
+    "single-quoted doubled quote before flow mapping uses":
+      "steps:\n  - { name: 'it''s # text', uses: attacker/action@v1 }",
+    "external comment after flow mapping uses":
+      "steps:\n  - { name: ok, uses: attacker/action@v1 } # comment",
+    "plain scalar hash before flow mapping uses":
+      "steps:\n  - { name: abc#def, uses: attacker/action@v1 }",
     "space before colon": `steps:\n  - uses : actions/checkout@${checkout.sha} # v6`,
     alias: "steps:\n  - uses: *reviewed_checkout",
     expression: "steps:\n  - uses: ${{ env.REVIEWED_ACTION }}",
