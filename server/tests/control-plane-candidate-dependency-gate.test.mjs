@@ -18,6 +18,7 @@ import {
   rmSync,
   statSync,
   symlinkSync,
+  unlinkSync,
   writeSync,
   writeFileSync
 } from "node:fs";
