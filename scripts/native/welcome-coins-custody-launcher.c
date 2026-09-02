@@ -42,7 +42,14 @@
 #define WELCOME_COINS_LAUNCHER_SUFFIX "/node_modules/.gccgw-native/welcome-coins-custody-launcher"
 #define WELCOME_COINS_PRELOAD_SUFFIX "/node_modules/.gccgw-native/welcome-coins-post-exec-bootstrap.so"
 #define WELCOME_COINS_CHILD_SUFFIX "/scripts/control-plane-welcome-coins-activation-transaction-custody-cli.mjs"
+#ifdef WELCOME_COINS_SYNTHETIC_DIAGNOSTIC
+#ifndef WELCOME_COINS_SYNTHETIC_NODE_PATH
+#error "WELCOME_COINS_SYNTHETIC_NODE_PATH must bind the isolated test runtime"
+#endif
+#define WELCOME_COINS_NODE_PATH WELCOME_COINS_SYNTHETIC_NODE_PATH
+#else
 #define WELCOME_COINS_NODE_PATH "/usr/bin/node"
+#endif
 
 extern char **environ;
 

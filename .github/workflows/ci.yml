@@ -84,22 +84,63 @@ jobs:
 
   validate:
     name: Validate
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Checkout
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
 
       - name: Setup Node
         uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
-          node-version: 22
+          node-version: 22.23.1
           cache: npm
           cache-dependency-path: |
             package-lock.json
             admin/package-lock.json
+
+      - name: Run privileged Welcome Coins custody synthetic gate
+        env:
+          EXPECTED_REPOSITORY: ${{ github.repository }}
+          PULL_REQUEST_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
+          PULL_REQUEST_SOURCE_COMMIT: ${{ github.event.pull_request.head.sha }}
+          WORKFLOW_SOURCE_COMMIT: ${{ github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "$GITHUB_EVENT_NAME" in
+            pull_request)
+              test -n "$PULL_REQUEST_REPOSITORY"
+              test "$PULL_REQUEST_REPOSITORY" = "$EXPECTED_REPOSITORY"
+              expected_source_commit="$PULL_REQUEST_SOURCE_COMMIT"
+              ;;
+            push|workflow_dispatch)
+              expected_source_commit="$WORKFLOW_SOURCE_COMMIT"
+              ;;
+            *)
+              exit 1
+              ;;
+          esac
+          [[ "$expected_source_commit" =~ ^[0-9a-f]{40}$ ]]
+          source_commit="$(git rev-parse HEAD)"
+          test "$source_commit" = "$expected_source_commit"
+
+          node_binary="$(realpath "$(type -P node)")"
+          test -x "$node_binary"
+          test "$("$node_binary" --version)" = "v22.23.1"
+
+          /usr/bin/sudo -n /usr/bin/env -i \
+              PATH=/usr/bin:/bin \
+              LANG=C \
+              LC_ALL=C \
+              WELCOME_COINS_PRIVILEGED_SYNTHETIC_GATE=1 \
+              /usr/bin/timeout --signal=TERM --kill-after=10s 180s \
+              "$node_binary" --test --test-concurrency=1 \
+              server/tests/control-plane-welcome-coins-native-synthetic-runner.test.mjs
 
       - name: Determine validation lane
         id: changes
