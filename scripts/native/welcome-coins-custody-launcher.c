@@ -680,7 +680,7 @@ static int verify_child_proc(
       return -1;
     }
   }
-  if (snprintf(path, sizeof(path), "/proc/%ld", (long)child) <= 0
+  if (snprintf(path, sizeof(path), "/proc/%ld/status", (long)child) <= 0
       || stat(path, &proc_metadata) != 0
       || proc_metadata.st_uid != 0U
       || proc_metadata.st_gid != 0U) {

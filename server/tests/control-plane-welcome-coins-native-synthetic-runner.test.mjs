@@ -590,6 +590,11 @@ test("compile-time synthetic diagnostics preserve the public post-exec condition
   assert.match(launcher, /synthetic_post_exec_status_namespace_invalid/u);
   assert.match(
     launcher,
+    /snprintf\s*\(\s*path\s*,\s*sizeof\(path\)\s*,\s*"\/proc\/%ld\/status"[\s\S]*?proc_metadata\.st_uid\s*!=\s*0U[\s\S]*?proc_metadata\.st_gid\s*!=\s*0U/u
+  );
+  assert.doesNotMatch(launcher, /"\/proc\/%ld"/u);
+  assert.match(
+    launcher,
     /status_one_id_equals\s*\(\s*status\s*,\s*"NSpid"\s*,\s*\(unsigned long\)child\s*\)/u
   );
   assert.doesNotMatch(launcher, /strchr\s*\(\s*namespace_pid\s*,\s*'\\t'\s*\)/u);
