@@ -47,8 +47,7 @@ export const WELCOME_COINS_NATIVE_OUTER_WRAPPER_FLAGS = Object.freeze([
 export const WELCOME_COINS_NATIVE_OUTER_POST_EXEC_FLAGS = Object.freeze([
   "-fPIC",
   "-shared",
-  "-fvisibility=hidden",
-  "-Wl,-z,initfirst"
+  "-fvisibility=hidden"
 ]);
 export const WELCOME_COINS_NATIVE_SOURCE_PATHS = Object.freeze({
   outerWrapper: "scripts/native/welcome-coins-activation-outer-wrapper.c",

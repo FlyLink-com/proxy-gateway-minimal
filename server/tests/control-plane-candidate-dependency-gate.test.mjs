@@ -291,7 +291,12 @@ function assembly({ active, candidate, envBytes, proxyBytes }) {
   };
 }
 
-function fixture(t, { artifactMutate, artifactManifestMutate, setupNpm, root: fixtureRoot } = {}) {
+function fixture(t, options = {}) {
+  const inheritedUmask = process.umask(0o022);
+  try { return createFixture(t, options); } finally { process.umask(inheritedUmask); }
+}
+
+function createFixture(t, { artifactMutate, artifactManifestMutate, setupNpm, root: fixtureRoot } = {}) {
   const root = fixtureRoot ? resolve(fixtureRoot) : resolve(tmpdir(), `gccgw-dependency-gate-${Date.now()}-${Math.random().toString(16).slice(2)}`);
   const active = "active-release";
   const candidate = "candidate-release";
@@ -419,6 +424,20 @@ function fixture(t, { artifactMutate, artifactManifestMutate, setupNpm, root: fi
 function condition(expected) {
   return (error) => error instanceof CandidateDependencyGateError && error.condition === expected;
 }
+
+test("candidate dependency fixture normalizes controlled modes despite an ambient group-write umask", { skip: isWindows }, (t) => {
+  const inheritedUmask = process.umask(0o002);
+  let value;
+  try {
+    value = fixture(t);
+  } finally {
+    process.umask(inheritedUmask);
+  }
+
+  for (const path of [value.root, join(value.root, "releases"), value.activeRoot, value.candidateRoot, join(value.candidateRoot, "config")]) {
+    assert.equal(lstatSync(path).mode & 0o022, 0, path);
+  }
+});
 
 test("candidate artifact modes preserve exactly the two reviewed native executables", () => {
   assert.equal(typeof candidateDependencyGate.candidateArtifactMaterializationMode, "function");
