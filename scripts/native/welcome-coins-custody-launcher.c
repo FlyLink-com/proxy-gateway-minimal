@@ -128,6 +128,15 @@ static void emit_blocked(const char *condition) {
   }
 }
 
+
+static void emit_post_exec_security_invalid(const char *synthetic_condition) {
+#ifdef WELCOME_COINS_SYNTHETIC_DIAGNOSTIC
+  emit_blocked(synthetic_condition);
+#else
+  (void)synthetic_condition;
+  emit_blocked("post_exec_security_invalid");
+#endif
+}
 static int64_t monotonic_milliseconds(void) {
   struct timespec now;
   if (clock_gettime(CLOCK_MONOTONIC, &now) != 0) {
@@ -606,6 +615,17 @@ static int status_zero_capability(const char *status, const char *name) {
       && (value[16] == '\n' || value[16] == '\0') ? 0 : -1;
 }
 
+static const char *synthetic_post_exec_barrier_condition;
+
+static void record_synthetic_post_exec_stage(const char *synthetic_condition) {
+#ifdef WELCOME_COINS_SYNTHETIC_DIAGNOSTIC
+  synthetic_post_exec_barrier_condition = synthetic_condition;
+#else
+  (void)synthetic_condition;
+#endif
+}
+
+
 static int verify_child_proc(
   pid_t child,
   uid_t service_uid,
@@ -619,32 +639,40 @@ static int verify_child_proc(
   struct stat proc_metadata;
 
   if (snprintf(path, sizeof(path), "/proc/%ld/status", (long)child) <= 0
-      || read_small_file(path, status, sizeof(status)) != 0
-      || status_four_ids_equal(status, "Uid", (unsigned long)service_uid) != 0
+      || read_small_file(path, status, sizeof(status)) != 0) {
+    record_synthetic_post_exec_stage("synthetic_post_exec_status_read_invalid");
+    return -1;
+  }
+  if (status_four_ids_equal(status, "Uid", (unsigned long)service_uid) != 0
       || status_four_ids_equal(status, "Gid", (unsigned long)service_gid) != 0
-      || status_integer_equals(status, "PPid", (unsigned long)getpid()) != 0
-      || status_integer_equals(status, "TracerPid", (unsigned long)tracer_pid) != 0
-      || status_integer_equals(status, "NoNewPrivs", 1UL) != 0
+      || status_one_id_equals(status, "Groups", (unsigned long)service_gid) != 0) {
+    record_synthetic_post_exec_stage("synthetic_post_exec_status_identity_invalid");
+    return -1;
+  }
+  if (status_integer_equals(status, "PPid", (unsigned long)getpid()) != 0
+      || status_integer_equals(status, "TracerPid", (unsigned long)tracer_pid) != 0) {
+    record_synthetic_post_exec_stage("synthetic_post_exec_status_parent_invalid");
+    return -1;
+  }
+  if (status_integer_equals(status, "NoNewPrivs", 1UL) != 0
       || status_zero_capability(status, "CapInh") != 0
       || status_zero_capability(status, "CapPrm") != 0
       || status_zero_capability(status, "CapEff") != 0
       || status_zero_capability(status, "CapBnd") != 0
-      || status_zero_capability(status, "CapAmb") != 0
-      || status_one_id_equals(
-        status,
-        "Groups",
-        (unsigned long)service_gid
-      ) != 0) {
+      || status_zero_capability(status, "CapAmb") != 0) {
+    record_synthetic_post_exec_stage("synthetic_post_exec_status_security_invalid");
     return -1;
   }
   namespace_pid = status_value(status, "NSpid");
   if (namespace_pid == NULL || strtoul(namespace_pid, NULL, 10) != (unsigned long)child
       || strchr(namespace_pid, '\t') != NULL) {
+    record_synthetic_post_exec_stage("synthetic_post_exec_status_namespace_invalid");
     return -1;
   }
   if (require_stopped != 0) {
     const char *state = status_value(status, "State");
     if (state == NULL || (*state != 'T' && *state != 't')) {
+      record_synthetic_post_exec_stage("synthetic_post_exec_status_stop_invalid");
       return -1;
     }
   }
@@ -652,6 +680,7 @@ static int verify_child_proc(
       || stat(path, &proc_metadata) != 0
       || proc_metadata.st_uid != 0U
       || proc_metadata.st_gid != 0U) {
+    record_synthetic_post_exec_stage("synthetic_post_exec_status_proc_invalid");
     return -1;
   }
   return 0;
@@ -839,26 +868,58 @@ static int wait_for_detached_stop(pid_t child, uid_t service_uid, gid_t service_
   }
 }
 
+static const char *synthetic_post_exec_barrier_condition =
+  "synthetic_post_exec_barrier_invalid";
+
+static int post_exec_barrier_failure(const char *synthetic_condition) {
+#ifdef WELCOME_COINS_SYNTHETIC_DIAGNOSTIC
+  synthetic_post_exec_barrier_condition = synthetic_condition;
+#else
+  (void)synthetic_condition;
+#endif
+  return -1;
+}
+
 static int establish_exec_barrier(pid_t child, uid_t service_uid, gid_t service_gid) {
   int status;
 
-  if (waitpid_bounded(child, &status, WUNTRACED, WELCOME_COINS_IO_TIMEOUT_MS) != 0
-      || !WIFSTOPPED(status)
-      || WSTOPSIG(status) != SIGSTOP
-      || ptrace(PTRACE_SETOPTIONS, child, NULL, (void *)(uintptr_t)PTRACE_O_TRACEEXEC) != 0
-      || ptrace(PTRACE_CONT, child, NULL, NULL) != 0
-      || waitpid_bounded(child, &status, WUNTRACED, WELCOME_COINS_IO_TIMEOUT_MS) != 0
-      || !WIFSTOPPED(status)
-      || WSTOPSIG(status) != SIGTRAP
-      || ((unsigned int)status >> 16U) != PTRACE_EVENT_EXEC
-      || ptrace(PTRACE_CONT, child, NULL, NULL) != 0
-      || waitpid_bounded(child, &status, WUNTRACED, WELCOME_COINS_IO_TIMEOUT_MS) != 0
-      || !WIFSTOPPED(status)
-      || WSTOPSIG(status) != SIGSTOP
-      || verify_child_proc(child, service_uid, service_gid, getpid(), 1) != 0
-      || ptrace(PTRACE_DETACH, child, NULL, (void *)(uintptr_t)SIGSTOP) != 0
-      || wait_for_detached_stop(child, service_uid, service_gid) != 0) {
-    return -1;
+  if (waitpid_bounded(child, &status, WUNTRACED, WELCOME_COINS_IO_TIMEOUT_MS) != 0) {
+    return post_exec_barrier_failure("synthetic_post_exec_initial_stop_wait_invalid");
+  }
+  if (!WIFSTOPPED(status) || WSTOPSIG(status) != SIGSTOP) {
+    return post_exec_barrier_failure("synthetic_post_exec_initial_stop_invalid");
+  }
+  if (ptrace(PTRACE_SETOPTIONS, child, NULL, (void *)(uintptr_t)PTRACE_O_TRACEEXEC) != 0) {
+    return post_exec_barrier_failure("synthetic_post_exec_ptrace_setoptions_invalid");
+  }
+  if (ptrace(PTRACE_CONT, child, NULL, NULL) != 0) {
+    return post_exec_barrier_failure("synthetic_post_exec_ptrace_continue_invalid");
+  }
+  if (waitpid_bounded(child, &status, WUNTRACED, WELCOME_COINS_IO_TIMEOUT_MS) != 0) {
+    return post_exec_barrier_failure("synthetic_post_exec_exec_wait_invalid");
+  }
+  if (!WIFSTOPPED(status) || WSTOPSIG(status) != SIGTRAP
+      || ((unsigned int)status >> 16U) != PTRACE_EVENT_EXEC) {
+    return post_exec_barrier_failure("synthetic_post_exec_exec_event_invalid");
+  }
+  if (ptrace(PTRACE_CONT, child, NULL, NULL) != 0) {
+    return post_exec_barrier_failure("synthetic_post_exec_bootstrap_continue_invalid");
+  }
+  if (waitpid_bounded(child, &status, WUNTRACED, WELCOME_COINS_IO_TIMEOUT_MS) != 0) {
+    return post_exec_barrier_failure("synthetic_post_exec_bootstrap_stop_wait_invalid");
+  }
+  if (!WIFSTOPPED(status) || WSTOPSIG(status) != SIGSTOP) {
+    return post_exec_barrier_failure("synthetic_post_exec_bootstrap_stop_invalid");
+  }
+  record_synthetic_post_exec_stage("synthetic_post_exec_bootstrap_process_invalid");
+  if (verify_child_proc(child, service_uid, service_gid, getpid(), 1) != 0) {
+    return post_exec_barrier_failure(synthetic_post_exec_barrier_condition);
+  }
+  if (ptrace(PTRACE_DETACH, child, NULL, (void *)(uintptr_t)SIGSTOP) != 0) {
+    return post_exec_barrier_failure("synthetic_post_exec_ptrace_detach_invalid");
+  }
+  if (wait_for_detached_stop(child, service_uid, service_gid) != 0) {
+    return post_exec_barrier_failure("synthetic_post_exec_detached_stop_invalid");
   }
   return 0;
 }
@@ -1172,10 +1233,13 @@ int main(int argc, char **argv) {
   active_child_pidfd = child_pidfd;
   (void)close(bootstrap_pair[1]);
   bootstrap_pair[1] = -1;
-  if (establish_exec_barrier(child, service_uid, service_gid) != 0
-      || fstat(acquired_pipe[1], &acquired_metadata) != 0
+  if (establish_exec_barrier(child, service_uid, service_gid) != 0) {
+    emit_post_exec_security_invalid(synthetic_post_exec_barrier_condition);
+    goto cleanup;
+  }
+  if (fstat(acquired_pipe[1], &acquired_metadata) != 0
       || fstat(authorization_pipe[0], &authorization_metadata) != 0) {
-    emit_blocked("post_exec_security_invalid");
+    emit_post_exec_security_invalid("synthetic_post_exec_pipe_invalid");
     goto cleanup;
   }
   memcpy(ready.magic, WELCOME_COINS_READY_MAGIC, sizeof(WELCOME_COINS_READY_MAGIC));
