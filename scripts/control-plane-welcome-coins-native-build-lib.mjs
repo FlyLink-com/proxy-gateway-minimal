@@ -329,6 +329,7 @@ function inspectElf(path, runtime, kind) {
     || /GNU_STACK[^\n]*RWE/u.test(output)
     || !/GNU_RELRO/u.test(output)
     || !/BIND_NOW/u.test(output)
+    || /\(FLAGS_1\)[^\n]*\bINITFIRST\b/u.test(output)
     || /\b(?:RPATH|RUNPATH)\b/u.test(output)
     || /Build ID:/u.test(output)
   ) {

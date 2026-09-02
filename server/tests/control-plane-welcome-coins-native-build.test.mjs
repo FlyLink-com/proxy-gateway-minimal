@@ -123,13 +123,15 @@ function fakeRuntime({ drift = false, readelf, beforeCompile } = {}) {
       }
       if (file === "/usr/bin/readelf") {
         const outputPath = args.at(-1);
-        const output = readelf ?? (
+        const output = typeof readelf === "function"
+          ? readelf(outputPath)
+          : readelf ?? (
           outputPath.endsWith(".so")
             ? GOOD_BOOTSTRAP_READELF
             : outputPath.endsWith("welcome-coins-activation-outer-wrapper")
               ? GOOD_STATIC_PIE_READELF
               : GOOD_LAUNCHER_READELF
-        );
+          );
         return { status: 0, stdout: output, stderr: "" };
       }
       throw new Error(`unexpected executable ${file}`);
@@ -203,8 +205,8 @@ test("build profile and output paths are closed constants", () => {
     WELCOME_COINS_NATIVE_BUILD_PROFILE.outerPostExecBootstrapFlags.includes(
       "-Wl,-z,initfirst"
     ),
-    true,
-    "the approved constructor must run before the Node program image"
+    false,
+    "the preload constructor runs before Node main without taking dynamic-loader INITFIRST priority"
   );
 });
 
@@ -402,6 +404,25 @@ test("builder rejects RPATH or RUNPATH ELF evidence", (t) => {
     () => buildWelcomeCoinsNativeBootstrap({
       root,
       runtime: fakeRuntime({ readelf: `${GOOD_LAUNCHER_READELF} 0x1d (RUNPATH) Library runpath: [/tmp]\n` })
+    }),
+    (error) => error?.condition === "native_elf_invalid"
+  );
+});
+
+test("builder rejects an outer preload that requests dynamic-loader INITFIRST priority", (t) => {
+  const root = fixture(t);
+  assert.throws(
+    () => buildWelcomeCoinsNativeBootstrap({
+      root,
+      runtime: fakeRuntime({
+        readelf: (outputPath) => outputPath.endsWith("welcome-coins-outer-post-exec-bootstrap.so")
+          ? `${GOOD_BOOTSTRAP_READELF} 0x000000006ffffffb (FLAGS_1) Flags: INITFIRST\n`
+          : outputPath.endsWith("welcome-coins-activation-outer-wrapper")
+            ? GOOD_STATIC_PIE_READELF
+            : outputPath.endsWith(".so")
+              ? GOOD_BOOTSTRAP_READELF
+              : GOOD_LAUNCHER_READELF
+      })
     }),
     (error) => error?.condition === "native_elf_invalid"
   );
