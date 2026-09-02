@@ -642,7 +642,6 @@ static int verify_child_proc(
 ) {
   char path[64];
   char status[8192];
-  const char *namespace_pid;
   struct stat proc_metadata;
 
   if (snprintf(path, sizeof(path), "/proc/%ld/status", (long)child) <= 0
@@ -670,9 +669,7 @@ static int verify_child_proc(
     record_synthetic_post_exec_stage("synthetic_post_exec_status_security_invalid");
     return -1;
   }
-  namespace_pid = status_value(status, "NSpid");
-  if (namespace_pid == NULL || strtoul(namespace_pid, NULL, 10) != (unsigned long)child
-      || strchr(namespace_pid, '\t') != NULL) {
+  if (status_one_id_equals(status, "NSpid", (unsigned long)child) != 0) {
     record_synthetic_post_exec_stage("synthetic_post_exec_status_namespace_invalid");
     return -1;
   }
