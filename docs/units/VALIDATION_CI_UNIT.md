@@ -72,7 +72,7 @@ whether it passed or failed
 whether GitHub-hosted CI was blocked before job execution
 whether manual CI fallback was used
 which HP lane was selected when HP manual CI was used
-whether cleanup was completed for manual validation hosts
+whether an explicitly approved cleanup was performed for a manual validation host
 ```
 
 ## Explicit Non-Responsibilities

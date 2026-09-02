@@ -292,17 +292,28 @@ The validation host must be:
 - Not a staging target.
 - Not attached to the production security group.
 - Not connected to `/opt/proxy-gateway-minimal` production runtime.
-- Cleaned after each validation run.
+- Kept isolated and traceable; a long-lived host is not reset or wiped after
+  each validation run.
 
-For any approved long-lived manual CI validation host, do not destroy the host
-after each run. Destroying or reprovisioning that host is a separate ops
-decision. Cleanup means deleting run-specific workspaces, archives, logs,
-credentials, and caches from the host after each validation.
+For an approved long-lived manual CI/development validation host, `clean Linux`
+means the explicitly established non-production baseline; it does **not** mean
+that every completed test must return the machine to an empty filesystem. Keep
+the repository checkout, approved private runtime/dependency material, and
+redacted validation evidence when they are needed for repeatable development or
+diagnosis. Use a distinct, named run workspace for every execution and record
+the exact commit and input identities. Retained dependencies may be reused only
+after verifying the exact lockfile identity; otherwise use a new run workspace
+or the approved dependency artifact.
 
-For the historical Aliyun host, cleanup and retirement from the CI lane are
-separate Risk A-adjacent operations because the target plan may reuse that host
-as the production subscription control-plane candidate. Do not mutate it for CI
-cleanup without a specific approval record.
+Do not perform automatic workspace, archive, log, cache, or credential deletion
+after a long-lived-host run. Any cleanup, credential rotation/revocation, host
+reset, reprovisioning, or retirement is a separate explicit operator/ops
+decision. Retention never permits production secrets, production SSH keys,
+production databases, or production runtime material on the validation host.
+
+For the fixed Aliyun long-lived validation host, cleanup, reset, reprovisioning,
+and retirement remain separate operations. Do not mutate it for cleanup without
+a specific approval record.
 
 For fallback temporary validation servers, destroy the server after validation
 unless the operator explicitly approves reuse.
@@ -420,6 +431,8 @@ Host lifecycle: long-lived manual validation host retained / temporary host dest
 Repository:
 Target: master / PR #<number>
 Commit SHA:
+Run workspace identity:
+Dependency reuse identity (or fresh install):
 Node:
 npm:
 npm ci:
@@ -430,31 +443,27 @@ npm run admin:build:
 GitHub Actions blocked run:
 Secrets copied: none
 Cloud / production touched: no
-Environment cleanup:
+Retention / explicit cleanup decision:
 Notes:
 ```
 
 If any command fails, keep only the minimum logs needed for diagnosis, redact
-sensitive values, then clean the run workspace and credentials after the failure
-is recorded. Do not promote, merge, or deploy based on a failed manual
-validation run.
+sensitive values, and preserve the named run workspace until the operator makes
+an explicit cleanup decision. Do not promote, merge, or deploy based on a
+failed manual validation run.
 
-## Per-Run Cleanup
+## Per-Run Retention And Explicit Cleanup
 
-On the long-lived validation host, run cleanup after every validation:
+The default for a long-lived validation host is retention, not automatic
+cleanup. Do not run broad deletion commands as part of a test result. Preserve
+each named run workspace, its redacted logs, and the exact source/dependency
+identity until an operator explicitly authorizes a bounded cleanup target.
 
-```bash
-cd "$HOME"
-rm -rf "$HOME/proxy-gateway-manual-ci"
-rm -f /tmp/proxy-gateway-ci-*.tar
-rm -rf ~/.npm ~/.cache ~/.config/gh ~/.git-credentials
-history -c || true
-```
-
-Record that the workspace, repository credentials, local archives, logs, and
-caches were removed. Do not leave a checked-out repository, `node_modules`, GH
-credentials, archives, PEM files, logs, or production-derived files on the
-host.
+Every retained item must remain within the non-production host boundary. Never
+retain production-derived files, production credentials, production SSH keys,
+unredacted secrets, customer data, or a copied production database. Repository
+access material remains least-privilege and is governed by its own explicit
+credential lifecycle; it is not silently removed or broadened by a test run.
 
 For fallback temporary validation servers, perform the same cleanup and then
 terminate the VM from the cloud provider console or CLI. Record the destroyed
