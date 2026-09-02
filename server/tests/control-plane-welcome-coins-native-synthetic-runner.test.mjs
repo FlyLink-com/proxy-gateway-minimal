@@ -565,6 +565,54 @@ test("synthetic child consumes commit and release as two bounded FD5 frames", as
   }
 });
 
+test("native status parser rejects nested namespace pid lists", {
+  skip: process.platform !== "linux" || !existsSync("/usr/bin/gcc")
+}, () => {
+  const root = mkdtempSync(resolve(tmpdir(), "gccgw-custody-status-parser-"));
+  const harnessPath = resolve(root, "status-parser-harness.c");
+  const harnessOutput = resolve(root, "status-parser-harness");
+
+  try {
+    writeFileSync(harnessPath, `
+#define main welcome_coins_launcher_entrypoint_for_status_parser_test
+#include ${JSON.stringify(LAUNCHER_PATH)}
+#undef main
+
+int main(void) {
+  if (status_one_id_equals("NSpid:\\t4242\\nGroups:\\t65534\\n", "NSpid", 4242UL) != 0) return 1;
+  if (status_one_id_equals("NSpid:\\t4242\\t4242\\n", "NSpid", 4242UL) == 0) return 2;
+  if (status_one_id_equals("NSpid:\\t4242 4242\\n", "NSpid", 4242UL) == 0) return 3;
+  if (status_one_id_equals("NSpid:\\t4243\\n", "NSpid", 4242UL) == 0) return 4;
+  if (status_one_id_equals("NSpid:\\t4242junk\\n", "NSpid", 4242UL) == 0) return 5;
+  if (status_one_id_equals("Groups:\\t65534\\n", "NSpid", 4242UL) == 0) return 6;
+  return 0;
+}
+`, { mode: 0o600 });
+    compileNativeTarget([
+      ...WELCOME_COINS_NATIVE_COMMON_FLAGS,
+      ...WELCOME_COINS_NATIVE_LAUNCHER_FLAGS,
+      harnessPath,
+      "-o",
+      harnessOutput
+    ], "status parser harness");
+
+    const result = spawnSync(harnessOutput, [], {
+      cwd: "/",
+      encoding: "utf8",
+      env: CLEAN_NATIVE_ENVIRONMENT,
+      timeout: 5000,
+      maxBuffer: 1024 * 1024
+    });
+    assert.equal(result.error, undefined, "status parser harness launch");
+    assert.equal(result.signal, null, result.stderr);
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.stdout, "");
+    assert.equal(result.stderr, "");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 
 test("compile-time synthetic diagnostics preserve the public post-exec condition", () => {
   const launcher = requiredSource(
@@ -572,6 +620,14 @@ test("compile-time synthetic diagnostics preserve the public post-exec condition
     "native launcher"
   );
   const main = launcher.slice(launcher.indexOf("int main("));
+  const verifyChildProcStart = launcher.indexOf("static int verify_child_proc(");
+  const verifyChildProcEnd = launcher.indexOf(
+    "\nstatic int verify_stopped_child_liveness(",
+    verifyChildProcStart
+  );
+  assert.notEqual(verifyChildProcStart, -1, "verify_child_proc must exist");
+  assert.notEqual(verifyChildProcEnd, -1, "verify_child_proc must have a fixed boundary");
+  const verifyChildProc = launcher.slice(verifyChildProcStart, verifyChildProcEnd);
 
   assert.match(launcher, /#ifdef WELCOME_COINS_SYNTHETIC_DIAGNOSTIC/u);
   assert.match(
@@ -588,14 +644,19 @@ test("compile-time synthetic diagnostics preserve the public post-exec condition
   assert.match(launcher, /synthetic_post_exec_status_parent_invalid/u);
   assert.match(launcher, /synthetic_post_exec_status_security_invalid/u);
   assert.match(launcher, /synthetic_post_exec_status_namespace_invalid/u);
-  assert.match(
-    launcher,
-    /snprintf\s*\(\s*path\s*,\s*sizeof\(path\)\s*,\s*"\/proc\/%ld\/status"[\s\S]*?proc_metadata\.st_uid\s*!=\s*0U[\s\S]*?proc_metadata\.st_gid\s*!=\s*0U/u
+  assert.equal(
+    verifyChildProc.match(/"\/proc\/%ld\/status"/gu)?.length,
+    2,
+    "verify_child_proc must read and stat the same status inode path"
   );
-  assert.doesNotMatch(launcher, /"\/proc\/%ld"/u);
   assert.match(
-    launcher,
-    /status_one_id_equals\s*\(\s*status\s*,\s*"NSpid"\s*,\s*\(unsigned long\)child\s*\)/u
+    verifyChildProc,
+    /if\s*\(\s*snprintf\s*\(\s*path\s*,\s*sizeof\(path\)\s*,\s*"\/proc\/%ld\/status"\s*,\s*\(long\)child\s*\)\s*<=\s*0\s*\|\|\s*stat\s*\(\s*path\s*,\s*&proc_metadata\s*\)\s*!=\s*0\s*\|\|\s*proc_metadata\.st_uid\s*!=\s*0U\s*\|\|\s*proc_metadata\.st_gid\s*!=\s*0U\s*\)\s*\{\s*record_synthetic_post_exec_stage\s*\(\s*"synthetic_post_exec_status_proc_invalid"\s*\)\s*;\s*return\s+-1\s*;\s*\}/u
+  );
+  assert.doesNotMatch(verifyChildProc, /"\/proc\/%ld"/u);
+  assert.match(
+    verifyChildProc,
+    /if\s*\(\s*status_one_id_equals\s*\(\s*status\s*,\s*"NSpid"\s*,\s*\(unsigned long\)child\s*\)\s*!=\s*0\s*\)\s*\{\s*record_synthetic_post_exec_stage\s*\(\s*"synthetic_post_exec_status_namespace_invalid"\s*\)\s*;\s*return\s+-1\s*;\s*\}/u
   );
   assert.doesNotMatch(launcher, /strchr\s*\(\s*namespace_pid\s*,\s*'\\t'\s*\)/u);
   assert.doesNotMatch(
