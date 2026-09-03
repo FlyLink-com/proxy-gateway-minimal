@@ -2,12 +2,12 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import test from "node:test";
 
 import * as productionModule from "../../scripts/control-plane-welcome-coins-holder-observer-lib.mjs";
 
-const REPOSITORY_ROOT = resolve(import.meta.dirname, "../..");
+const REPOSITORY_ROOT = resolve(fileURLToPath(new URL("../../", import.meta.url)));
 const SOURCE_PATH = resolve(
   REPOSITORY_ROOT,
   "scripts/control-plane-welcome-coins-holder-observer-lib.mjs"
@@ -230,6 +230,7 @@ test("production exports only the closed read-only observer", () => {
   const source = readFileSync(SOURCE_PATH, "utf8");
   assert.doesNotMatch(source, /\b(?:write|append|rename|unlink|rm|mkdir|chmod|chown|spawn|exec)(?:File)?Sync\b/u);
   assert.doesNotMatch(source, /node:(?:child_process|net|http|https)/u);
+  assert.match(source, /inspectWelcomeCoinsExternalHoldersCore\(options, DEFAULT_RUNTIME\)/u);
 });
 
 test("initial observation returns only a zero-holder aggregate and stable database boundary", async () => {
@@ -617,16 +618,23 @@ test("an unbranded runtime cannot reach the observer core", async () => {
   );
 });
 
-test("production entry fails closed off Linux without reading a private path", () => {
-  assert.throws(
-    () => productionModule.inspectWelcomeCoinsExternalHolders({
+test("observer core fails closed off Linux without reading a private path", async () => {
+  let databaseBoundaryReads = 0;
+  const { __createRuntime, __inspectCore } = await loadHarness();
+  const runtime = __createRuntime({
+    ...syntheticState(),
+    platform: "win32",
+    inspectDatabaseBoundary() {
+      databaseBoundaryReads += 1;
+      return SHA256;
+    }
+  });
+  await rejectsCondition(
+    () => __inspectCore({
       dbPath: DB_PATH,
       phase: "inactive_pre_custody"
-    }),
-    (error) => {
-      assert.equal(error?.condition, "holder_observation_failed");
-      assert.equal(error?.message.includes(DB_PATH), false);
-      return true;
-    }
+    }, runtime),
+    "holder_observation_failed"
   );
+  assert.equal(databaseBoundaryReads, 0);
 });

@@ -335,7 +335,3 @@ test("native final image rejects loader and Node environment pollution", () => {
   }
   assert.match(launcher, /clearenv\s*\(/u);
 });
-
-test("real privileged launcher proof remains a separately authorized clean Linux gate", {
-  skip: "source/build contracts do not substitute for privileged clean-Linux integration"
-}, () => {});

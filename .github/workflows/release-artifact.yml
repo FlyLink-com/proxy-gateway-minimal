@@ -41,6 +41,9 @@ jobs:
         with:
           node-version: 22
 
+      - name: Preflight source validation environment
+        run: npm run validation:environment:source
+
       - name: Determine release lane
         id: changes
         env:
@@ -66,6 +69,9 @@ jobs:
         uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: 22
+
+      - name: Preflight source validation environment
+        run: npm run validation:environment:source
 
       - name: Resolve release label
         id: release
@@ -141,6 +147,9 @@ jobs:
           cache: npm
           cache-dependency-path: admin/package-lock.json
 
+      - name: Preflight source validation environment
+        run: npm run validation:environment:source
+
       - name: Install Portal dependencies
         run: npm ci --prefix admin
 
@@ -181,6 +190,25 @@ jobs:
             cd admin/dist-portal
             zip -q -r "$GITHUB_WORKSPACE/$artifact" .
           )
+
+      - name: Re-extract and verify Portal static zip
+        shell: bash
+        run: |
+          set -euo pipefail
+          artifact=".release-artifacts/globalcircle-portal-${{ steps.release.outputs.release }}.zip"
+          extracted="$(mktemp -d "$RUNNER_TEMP/portal-static-replay.XXXXXX")"
+          trap 'rm -rf "$extracted"' EXIT
+          unzip -q "$artifact" -d "$extracted"
+          node scripts/static-artifact-tree-verifier.mjs \
+            --expected admin/dist-portal \
+            --actual "$extracted"
+          node scripts/verify-portal-build.mjs "$extracted"
+
+      - name: Write Portal static checksum
+        shell: bash
+        run: |
+          set -euo pipefail
+          artifact=".release-artifacts/globalcircle-portal-${{ steps.release.outputs.release }}.zip"
           sha256sum "$artifact" | tee "$artifact.sha256"
 
       - name: Create Portal artifact manifest
@@ -223,6 +251,9 @@ jobs:
           cache: npm
           cache-dependency-path: admin/package-lock.json
 
+      - name: Preflight source validation environment
+        run: npm run validation:environment:source
+
       - name: Install Admin dependencies
         run: npm ci --prefix admin
 
@@ -261,6 +292,25 @@ jobs:
             cd admin/dist
             zip -q -r "$GITHUB_WORKSPACE/$artifact" .
           )
+
+      - name: Re-extract and verify Admin static zip
+        shell: bash
+        run: |
+          set -euo pipefail
+          artifact=".release-artifacts/globalcircle-admin-${{ steps.release.outputs.release }}.zip"
+          extracted="$(mktemp -d "$RUNNER_TEMP/admin-static-replay.XXXXXX")"
+          trap 'rm -rf "$extracted"' EXIT
+          unzip -q "$artifact" -d "$extracted"
+          node scripts/static-artifact-tree-verifier.mjs \
+            --expected admin/dist \
+            --actual "$extracted"
+          node scripts/verify-admin-build.mjs "$extracted"
+
+      - name: Write Admin static checksum
+        shell: bash
+        run: |
+          set -euo pipefail
+          artifact=".release-artifacts/globalcircle-admin-${{ steps.release.outputs.release }}.zip"
           sha256sum "$artifact" | tee "$artifact.sha256"
 
       - name: Create Admin artifact manifest

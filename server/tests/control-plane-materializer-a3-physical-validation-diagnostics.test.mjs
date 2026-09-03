@@ -36,6 +36,7 @@ import {
   runA3PhysicalValidationCore
 } from "../../scripts/control-plane-materializer-a3-physical-validation-lib.mjs";
 import { runCandidateDependencyA3PhysicalValidation } from "../../scripts/control-plane-candidate-dependency-gate-lib.mjs";
+import { sanitizeSourceValidationChildEnvironment } from "../../scripts/source-validation-test-runner.mjs";
 
 const A3_VALIDATION_LIBRARY_PATH = resolve("scripts/control-plane-materializer-a3-physical-validation-lib.mjs");
 const A3_VALIDATION_CLI_PATH = resolve("scripts/control-plane-materializer-a3-physical-validation-cli.mjs");
@@ -50,7 +51,11 @@ function withDiagnosticsDir(callback) {
     });
 }
 
-function captureCli({ env, argv = ["--mode", "quota", "--run-label", "probe-1", "--project-id", "4242"] }) {
+function captureCli({
+  env,
+  argv = ["--mode", "quota", "--run-label", "probe-1", "--project-id", "4242"],
+  runCollector = () => { throw new Error("synthetic_source_validation_collector"); }
+}) {
   let stdout = "", stderr = "";
   const code = runA3PhysicalValidationCli({
     argv,
@@ -60,7 +65,8 @@ function captureCli({ env, argv = ["--mode", "quota", "--run-label", "probe-1", 
     // These helpers test portable CLI parsing/publication semantics. The
     // dedicated iteration-7 cases below pass platform:"linux" explicitly
     // and pin the mandatory Linux UID + owned-root custody gate.
-    platform: "win32"
+    platform: "win32",
+    runCollector
   });
   return { code, stdout, stderr };
 }
@@ -118,7 +124,10 @@ test("A3 physical validation separates its import-only implementation from uncon
   const packageJson = JSON.parse(readFileSync(resolve("package.json"), "utf8"));
   assert.equal(packageJson.scripts["control-plane:materializer:a3-physical-validation"], "node scripts/control-plane-materializer-a3-physical-validation-cli.mjs");
   const probe = `await import(${JSON.stringify(pathToFileURL(A3_VALIDATION_LIBRARY_PATH).href)}); process.stdout.write("imported\\n");`;
-  const result = spawnSync(process.execPath, ["--input-type=module", "--eval", probe], { encoding: "utf8" });
+  const result = spawnSync(process.execPath, ["--input-type=module", "--eval", probe], {
+    encoding: "utf8",
+    env: sanitizeSourceValidationChildEnvironment(process.env)
+  });
   assert.equal(result.status, 0);
   assert.equal(result.stdout, "imported\n");
   assert.equal(result.stderr, "");
@@ -139,7 +148,10 @@ test("A3 physical-validation CLI cannot silently succeed through directory or fi
     return;
   }
   for (const entry of [join(directoryAlias, "control-plane-materializer-a3-physical-validation-cli.mjs"), fileAlias, compatibilityAlias]) {
-    const result = spawnSync(process.execPath, [entry, "--unexpected"], { encoding: "utf8" });
+    const result = spawnSync(process.execPath, [entry, "--unexpected"], {
+      encoding: "utf8",
+      env: sanitizeSourceValidationChildEnvironment(process.env)
+    });
     assert.notEqual(result.status, 0, `entry=${entry}\nstdout=${result.stdout}\nstderr=${result.stderr}`);
     assert.notEqual(result.stderr, "");
   }

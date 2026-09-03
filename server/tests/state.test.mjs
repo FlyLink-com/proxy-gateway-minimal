@@ -12,9 +12,11 @@ import {
   writeFileSync
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 import Database from "better-sqlite3";
+import { buildSourceValidationTestEnvironment } from "../../scripts/source-validation-test-runner.mjs";
 import { createRuntimeState } from "../state.mjs";
 import { createDataPlaneHandoffRuntimeAdapter } from "../services/edge/data-plane-handoff-runtime-adapter.mjs";
 import {
@@ -65,26 +67,7 @@ function fakeSubscriptionStore(overrides = {}) {
   };
 }
 
-const VULTR_MULTICHANNEL_ENV = {
-  VULTR_TUIC_HOST: "tuic.example.test",
-  VULTR_TUIC_UUID: "11111111-1111-4111-8111-111111111111",
-  VULTR_TUIC_PASSWORD: "synthetic-tuic-password",
-  VULTR_TUIC_SNI: "tuic.example.test",
-  VULTR_VLESS_REALITY_HOST: "vless.example.test",
-  VULTR_VLESS_REALITY_UUID: "22222222-2222-4222-8222-222222222222",
-  VULTR_VLESS_REALITY_SNI: "www.example.test",
-  VULTR_VLESS_REALITY_PUBLIC_KEY: "synthetic-public-key",
-  VULTR_VLESS_REALITY_SHORT_ID: "synthetic-short-id",
-  VULTR_HY2_HOST: "hy2.example.test",
-  VULTR_HY2_PASSWORD: "synthetic-hy2-password",
-  VULTR_HY2_SNI: "hy2.example.test",
-  SGP_TUIC_STATIC_UUID: "33333333-3333-4333-8333-333333333333",
-  SGP_TUIC_STATIC_PASSWORD: "synthetic-sgp-tuic-password",
-  SGP_VLESS_STATIC_UUID: "44444444-4444-4444-8444-444444444444",
-  SGP_XRAY_VLESS_REALITY_PUBLIC_KEY: "synthetic-sgp-public-key",
-  SGP_XRAY_VLESS_REALITY_SHORT_ID: "synthetic-sgp-short-id",
-  SGP_HY2_STATIC_PASSWORD: "synthetic-sgp-hy2-password",
-};
+const REPOSITORY_ROOT = resolve(fileURLToPath(new URL("../../", import.meta.url)));
 const PORTAL_TOTP_PROTECTOR_KEY = "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff";
 const PORTAL_TOTP_PROTECTOR_IV = Buffer.from("000102030405060708090a0b", "hex");
 
@@ -120,7 +103,7 @@ function removeTempDir(dir) {
 
 function runtimeEnv(overrides = {}) {
   return {
-    ...VULTR_MULTICHANNEL_ENV,
+    ...buildSourceValidationTestEnvironment({}, { repositoryRoot: REPOSITORY_ROOT }),
     ...overrides
   };
 }

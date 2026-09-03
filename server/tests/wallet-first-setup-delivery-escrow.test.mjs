@@ -254,10 +254,13 @@ test("setup delivery escrow rejects links and non-sticky writable parents before
     () => createWalletFirstSetupDeliveryEscrow({ key: ESCROW_KEY, filePath: linkedPath }),
     (error) => error?.code === "wallet_first_setup_delivery_invalid"
   );
+  const sharedParent = join(fixture.directory, "shared-parent");
+  mkdirSync(sharedParent, { mode: 0o777 });
+  chmodSync(sharedParent, 0o1777);
   assert.throws(
     () => createWalletFirstSetupDeliveryEscrow({
       key: ESCROW_KEY,
-      filePath: join(tmpdir(), "wallet-first-direct-shared-parent-escrow.json")
+      filePath: join(sharedParent, "wallet-first-direct-shared-parent-escrow.json")
     }),
     (error) => error?.code === "wallet_first_setup_delivery_invalid"
   );

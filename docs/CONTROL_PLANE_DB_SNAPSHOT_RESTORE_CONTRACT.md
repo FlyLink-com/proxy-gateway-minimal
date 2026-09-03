@@ -1,6 +1,6 @@
 # Control-Plane SQLite Snapshot and Restore Contract
 
-Last updated: 2026-08-14, America/Los_Angeles.
+Last updated: 2026-09-02, America/Los_Angeles.
 
 ```yaml
 document_metadata:
@@ -8,7 +8,7 @@ document_metadata:
   lifecycle: active
   authority_scope: control_plane_database_snapshot_restore
   superseded_by: null
-  last_verified_at: 2026-08-14
+  last_verified_at: 2026-09-02
   production_authority: false
 ```
 
@@ -131,10 +131,13 @@ objects and directions. The candidate now includes a fixed no-argument native
 root broker and a post-exec bootstrap that establishes `PR_SET_DUMPABLE=0`
 before the child receives its three custody descriptors. The outer controller
 also performs independent host-root `/proc/<child>` identity and hardening
-readback; namespace ambiguity or missing proof remains fail-closed. These are
-locally tested source/build contracts only: until clean-Linux privileged
-validation, final hash freeze and terminal review are complete, and a new exact
-Risk A execution approval is granted, production remains NO-GO.
+readback; namespace ambiguity or missing proof remains fail-closed. The
+required CI supplies exact-source-ref, same-repository privileged protocol
+evidence against an isolated temporary candidate tree. That Source/Merge
+evidence does not validate the real production host, `current` pointer,
+systemd state, or SQLite custody. Production remains NO-GO until the successful
+result is bound to the final frozen candidate hashes and terminal review, and a
+new exact Risk A execution approval is granted.
 
 The private artifact binding covers the exact transaction CLI, activation and
 snapshot libraries, holder observer, both migration modules, custody CLI,
@@ -296,11 +299,12 @@ and own the root-to-service-principal child capability. It composes the fixed
 native launcher, inner post-exec bootstrap, aggregate-only holder observer, and
 private in-module custody call; only that single child may reach the mutation
 boundary.
-The candidate is not production-executable merely because this source path now
-exists: clean-Linux privileged validation, final freeze/review, and a new exact
-Risk A approval remain mandatory. The three historical non-`-lib` script names are
-also unconditional compatibility launchers, so invoking an old command emits
-the same safe receipt and nonzero status instead of a false success.
+The candidate is not production-executable merely because this source path
+exists or the isolated privileged synthetic gate passes: final freeze/review,
+fresh live inventory, and a new exact Risk A approval remain mandatory. The
+three historical non-`-lib` script names are also unconditional compatibility
+launchers, so invoking an old command emits the same safe receipt and nonzero
+status instead of a false success.
 
 ## Required approval packet
 

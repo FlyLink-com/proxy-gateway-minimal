@@ -1067,7 +1067,7 @@ test("open failure cleanup waits, rebinds the broker, kills once, and proves rea
   }
 });
 
-test("timed-out socket writes retain an owned frame until the transport callback", async () => {
+test("timed-out socket writes retain an owned frame until the transport callback", async (t) => {
   const { __nativeControllerHarness: harness } = await loadHarness();
   assert.equal(typeof harness.writeSocket, "function");
   assert.equal(typeof harness.deadline, "function");
@@ -1081,6 +1081,8 @@ test("timed-out socket writes retain an owned frame until the transport callback
       transportCallback = callback;
     }
   };
+  const keepAlive = setTimeout(() => {}, 1_000);
+  t.after(() => clearTimeout(keepAlive));
 
   await assert.rejects(
     harness.writeSocket(socket, original, harness.deadline(1)),

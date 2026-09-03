@@ -97,7 +97,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
-          node-version: 22.23.1
+          node-version: 22
           cache: npm
           cache-dependency-path: |
             package-lock.json
@@ -131,7 +131,17 @@ jobs:
 
           node_binary="$(realpath "$(type -P node)")"
           test -x "$node_binary"
-          test "$("$node_binary" --version)" = "v22.23.1"
+          node_major="$("$node_binary" --input-type=module --eval 'process.stdout.write(process.versions.node.split(".")[0])')"
+          test "$node_major" = "22"
+
+          /usr/bin/sudo -n /usr/bin/env -i \
+              PATH=/usr/bin:/bin \
+              LANG=C \
+              LC_ALL=C \
+              WELCOME_COINS_PRIVILEGED_SYNTHETIC_GATE=1 \
+              /usr/bin/timeout --signal=TERM --kill-after=2s 10s \
+              "$node_binary" scripts/validation-environment-preflight.mjs \
+              --profile privileged-synthetic
 
           /usr/bin/sudo -n /usr/bin/env -i \
               PATH=/usr/bin:/bin \
@@ -153,6 +163,10 @@ jobs:
           --base "$CI_DIFF_BASE"
           --head "$CI_DIFF_HEAD"
           --github-output "$GITHUB_OUTPUT"
+
+      - name: Preflight source validation environment
+        if: steps.changes.outputs.run_full != '0'
+        run: npm run validation:environment:source
 
       - name: Check diff
         if: always()

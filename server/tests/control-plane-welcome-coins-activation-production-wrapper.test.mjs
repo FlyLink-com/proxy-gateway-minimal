@@ -13,6 +13,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import test from "node:test";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { sanitizeSourceValidationChildEnvironment } from "../../scripts/source-validation-test-runner.mjs";
 
 const REPOSITORY_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const LIBRARY_PATH = resolve(
@@ -269,7 +270,7 @@ test("outer execution envelope is exact, fresh, single-use, fixed-scope, and bou
   }
 });
 
-test("zero-argv public CLI accepts only canonical FD3 plus stdin digest and blocks before consumption when native runtime is absent", () => {
+test("direct internal JS CLI invocation is not a public boundary and blocks before durable consumption", () => {
   const directory = mkdtempSync(join(tmpdir(), "welcome-coins-production-envelope-"));
   const path = join(directory, "envelope.json");
   let descriptor;
@@ -280,6 +281,7 @@ test("zero-argv public CLI accepts only canonical FD3 plus stdin digest and bloc
       cwd: REPOSITORY_ROOT,
       encoding: "utf8",
       input: `${CANARY_DIGEST}\n`,
+      env: sanitizeSourceValidationChildEnvironment(process.env),
       stdio: ["pipe", "pipe", "pipe", descriptor]
     });
 
@@ -290,7 +292,7 @@ test("zero-argv public CLI accepts only canonical FD3 plus stdin digest and bloc
       type: "control_plane_welcome_coins_production_transaction",
       state: "blocked",
       condition: process.platform === "linux" && process.geteuid?.() === 0
-        ? "execution_envelope_invalid"
+        ? "outer_runtime_invalid"
         : "invoker_not_root"
     });
     for (const privateValue of [

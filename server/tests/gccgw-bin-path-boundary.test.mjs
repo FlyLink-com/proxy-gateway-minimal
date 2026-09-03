@@ -5,9 +5,14 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
+import { buildSourceValidationTestEnvironment } from "../../scripts/source-validation-test-runner.mjs";
 
 const repoRoot = resolve(fileURLToPath(new URL("../..", import.meta.url)));
-const nodeCommand = "node";
+const nodeCommand = process.execPath;
+const sourceValidationConfig = "config/proxy-servers.vultr-multichannel.template.json";
+const childEnvironment = () => buildSourceValidationTestEnvironment(process.env, {
+  repositoryRoot: repoRoot
+});
 
 test("gccgw refuses JSON input paths outside the repository", () => {
   const tempDir = mkdtempSync(join(tmpdir(), "gccgw-path-boundary-"));
@@ -28,7 +33,8 @@ test("gccgw refuses JSON input paths outside the repository", () => {
       "--json"
     ], {
       cwd: repoRoot,
-      encoding: "utf8"
+      encoding: "utf8",
+      env: childEnvironment()
     });
 
     assert.equal(result.status, 1);
@@ -45,15 +51,16 @@ test("gccgw accepts JSON input paths inside the repository", () => {
     "node",
     "inspect",
     "--config",
-    "config/proxy-servers.json",
+    sourceValidationConfig,
     "--json"
   ], {
     cwd: repoRoot,
-    encoding: "utf8"
+    encoding: "utf8",
+    env: childEnvironment()
   });
 
   const report = JSON.parse(stdout);
   assert.equal(report.type, "gccgw_node_inspect");
-  assert.equal(report.configPath, "config/proxy-servers.json");
+  assert.equal(report.configPath, sourceValidationConfig);
   assert.equal(report.mutation, false);
 });

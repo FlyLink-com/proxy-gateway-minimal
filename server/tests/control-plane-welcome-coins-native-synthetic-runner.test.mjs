@@ -43,7 +43,11 @@ const REQUIRED_CI_WORKFLOW_PATH = resolve(
   REPOSITORY_ROOT,
   ".github/workflows/ci.yml"
 );
-const CLEAN_NATIVE_ENVIRONMENT = Object.freeze({
+const DEPENDENCY_ARTIFACT_WORKFLOW_PATH = resolve(
+  REPOSITORY_ROOT,
+  ".github/workflows/control-plane-dependency-artifact.yml"
+);
+const BOUNDED_NATIVE_ENVIRONMENT = Object.freeze({
   PATH: "/usr/bin:/bin",
   LANG: "C",
   LC_ALL: "C",
@@ -201,7 +205,7 @@ function compileNativeTarget(argumentsList, label) {
   const compiled = spawnSync("/usr/bin/gcc", argumentsList, {
     cwd: REPOSITORY_ROOT,
     encoding: "utf8",
-    env: CLEAN_NATIVE_ENVIRONMENT,
+    env: BOUNDED_NATIVE_ENVIRONMENT,
     timeout: 60_000,
     maxBuffer: 1024 * 1024
   });
@@ -401,17 +405,28 @@ process.exit(0);`)
   }
 });
 
-test("required CI runs only the exact same-repository privileged candidate", () => {
+test("required CI binds the privileged gate to the exact same-repository source ref without production mutation", () => {
   const workflow = requiredSource(
     REQUIRED_CI_WORKFLOW_PATH,
     "required CI workflow"
   );
+  const validateStart = workflow.indexOf("\n  validate:");
+  const setupStart = workflow.indexOf("- name: Setup Node", validateStart);
+  const gateStart = workflow.indexOf(
+    "- name: Run privileged Welcome Coins custody synthetic gate",
+    setupStart
+  );
+  const gateEnd = workflow.indexOf("- name: Determine validation lane", gateStart);
+  assert.ok(validateStart >= 0 && setupStart > validateStart && gateStart > setupStart && gateEnd > gateStart);
+  const setupStep = workflow.slice(setupStart, gateStart);
+  assert.match(setupStep, /\n\s+node-version: 22\s*\n/u);
+  assert.doesNotMatch(setupStep, /node-version:\s*22\./u);
+
   for (const requiredValue of [
     "permissions:\n  contents: read",
     "validate:\n    name: Validate\n    runs-on: ubuntu-24.04",
     "ref: ${{ github.event.pull_request.head.sha || github.sha }}",
     "persist-credentials: false",
-    "node-version: 22.23.1",
     "PULL_REQUEST_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}",
     "PULL_REQUEST_SOURCE_COMMIT: ${{ github.event.pull_request.head.sha }}",
     "WORKFLOW_SOURCE_COMMIT: ${{ github.sha }}",
@@ -435,8 +450,26 @@ test("required CI runs only the exact same-repository privileged candidate", () 
     workflow,
     /\/usr\/bin\/sudo -n \/usr\/bin\/env -i[\s\S]*?\/usr\/bin\/timeout --signal=TERM --kill-after=10s 180s/u
   );
+  const gateStep = workflow.slice(gateStart, gateEnd);
+  assert.match(gateStep, /process\.versions\.node\.split\("\."\)\[0\]/u);
+  assert.doesNotMatch(gateStep, /\bv22\.\d+\.\d+\b|--version\)"\s*=/u);
+  assert.doesNotMatch(
+    gateStep,
+    /\b(?:ssh|scp|rsync|systemctl|systemd-run|nginx|wrangler)\b|\bgit\s+(?:switch|checkout|reset)\b|\bnpm\s+(?:ci|install|test)\b|--apply|--execute-production-mutation|\/opt\/proxy-gateway-minimal-candidate/u,
+    "the exact-source-ref synthetic gate must not become a production deployment or pointer mutation"
+  );
   assert.doesNotMatch(workflow, /PULL_REQUEST_(?:REPOSITORY|SOURCE_COMMIT):[^\n]*\|\|/u);
   assert.doesNotMatch(workflow, /sudo[^\n]*\bnpm\s+test\b/u);
+
+  const artifactWorkflow = requiredSource(
+    DEPENDENCY_ARTIFACT_WORKFLOW_PATH,
+    "dependency artifact workflow"
+  );
+  assert.match(
+    artifactWorkflow,
+    /- name: Setup exact Node runtime[\s\S]*?\n\s+node-version: 22\.23\.1\s*\n/u,
+    "the reproducible native dependency artifact must retain its exact Node runtime"
+  );
 });
 
 test("privileged custody synthetic gate completes the native protocol", {
@@ -599,7 +632,7 @@ int main(void) {
     const result = spawnSync(harnessOutput, [], {
       cwd: "/",
       encoding: "utf8",
-      env: CLEAN_NATIVE_ENVIRONMENT,
+      env: BOUNDED_NATIVE_ENVIRONMENT,
       timeout: 5000,
       maxBuffer: 1024 * 1024
     });
