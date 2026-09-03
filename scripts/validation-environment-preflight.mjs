@@ -125,6 +125,7 @@ const WORKSPACE_EXTENDED_CUSTODY_GLOBAL_REASONS = new Set([
   "getcap_unavailable",
   "ancestor_limit"
 ]);
+const WORKSPACE_EXTENDED_CUSTODY_ADVISORY_REASON = "non_leaf_getfacl_finding";
 
 function parseVersion(value) {
   const match = /^([0-9]+)\.([0-9]+)\.([0-9]+)$/u.exec(value || "");
@@ -223,6 +224,13 @@ function normalizedWorkspaceExtendedCustody(runtime) {
   const rawIndex = runtime.workspaceExtendedCustodyAncestorIndex;
   if (rawOk && rawReason === "none" && rawIndex === null) {
     return Object.freeze({ ok: true, reason: "none", ancestorIndex: null });
+  }
+  if (rawOk
+    && rawReason === WORKSPACE_EXTENDED_CUSTODY_ADVISORY_REASON
+    && Number.isSafeInteger(rawIndex)
+    && rawIndex > 0
+    && rawIndex < MAX_WORKSPACE_ANCESTORS) {
+    return Object.freeze({ ok: true, reason: rawReason, ancestorIndex: rawIndex });
   }
   if (!rawOk
     && WORKSPACE_EXTENDED_CUSTODY_GLOBAL_REASONS.has(rawReason)
@@ -477,7 +485,11 @@ export function inspectValidationEnvironment({ profile, runtime } = {}) {
     && runtime.workspaceChain?.at(-1)?.uid === expectedLeafOwner
   );
   const workspaceModeOwnerOk = workspaceCustodyValid(runtime.workspaceChain, expectedLeafOwner);
-  const workspaceExtended = normalizedWorkspaceExtendedCustody(runtime);
+  const normalizedWorkspaceExtended = normalizedWorkspaceExtendedCustody(runtime);
+  const workspaceExtended = normalizedWorkspaceExtended.reason === WORKSPACE_EXTENDED_CUSTODY_ADVISORY_REASON
+    && !workspaceModeOwnerOk
+    ? Object.freeze({ ok: false, reason: "inspection_invalid", ancestorIndex: null })
+    : normalizedWorkspaceExtended;
   const workspaceExtendedOk = workspaceExtended.ok;
   const workspaceOk = workspaceModeOwnerOk && workspaceExtendedOk;
   const workspaceCustody = Object.freeze({
@@ -648,11 +660,27 @@ export function classifySecurityInspectionResult(result, kind) {
   return `${prefix}_finding`;
 }
 
+export function nonLeafAclFindingCoveredByModeCustody({
+  reason,
+  ancestorIndex,
+  modeOwnerSecure
+} = {}) {
+  // Linux exposes an access ACL's effective mask through the group mode bits,
+  // which workspaceCustodyValid already requires to be non-writable. A default
+  // ACL on an existing ancestor does not propagate through the already-created
+  // child chain. The leaf remains strict because it creates validation output.
+  return reason === "getfacl_finding"
+    && Number.isSafeInteger(ancestorIndex)
+    && ancestorIndex > 0
+    && ancestorIndex < MAX_WORKSPACE_ANCESTORS
+    && modeOwnerSecure === true;
+}
+
 function workspaceExtendedCustodyResult(ok, reason, ancestorIndex = null) {
   return Object.freeze({ ok, reason, ancestorIndex });
 }
 
-function workspaceExtendedCustody(root) {
+function workspaceExtendedCustody(root, { modeOwnerSecure = false } = {}) {
   if (!executable(TOOL_PATHS.getfacl)) return workspaceExtendedCustodyResult(false, "getfacl_unavailable");
   if (!executable(TOOL_PATHS.getcap)) return workspaceExtendedCustodyResult(false, "getcap_unavailable");
   const environment = Object.freeze({ PATH: "/usr/bin:/bin", LANG: "C", LC_ALL: "C" });
@@ -660,6 +688,7 @@ function workspaceExtendedCustody(root) {
   if (paths.length > MAX_WORKSPACE_ANCESTORS) {
     return workspaceExtendedCustodyResult(false, "ancestor_limit");
   }
+  let closestCoveredAclIndex = null;
   for (let ancestorIndex = 0; ancestorIndex < paths.length; ancestorIndex += 1) {
     const path = paths[paths.length - ancestorIndex - 1];
     const acl = spawnSync(TOOL_PATHS.getfacl, [
@@ -678,9 +707,15 @@ function workspaceExtendedCustody(root) {
       windowsHide: true
     });
     const aclReason = classifySecurityInspectionResult(acl, "getfacl");
-    if (aclReason !== "none") {
+    const aclCoveredByMode = nonLeafAclFindingCoveredByModeCustody({
+      reason: aclReason,
+      ancestorIndex,
+      modeOwnerSecure
+    });
+    if (aclReason !== "none" && !aclCoveredByMode) {
       return workspaceExtendedCustodyResult(false, aclReason, ancestorIndex);
     }
+    if (aclCoveredByMode && closestCoveredAclIndex === null) closestCoveredAclIndex = ancestorIndex;
     const capabilities = spawnSync(TOOL_PATHS.getcap, ["--", path], {
       encoding: "utf8",
       env: environment,
@@ -692,7 +727,13 @@ function workspaceExtendedCustody(root) {
       return workspaceExtendedCustodyResult(false, capabilityReason, ancestorIndex);
     }
   }
-  return workspaceExtendedCustodyResult(true, "none");
+  return closestCoveredAclIndex === null
+    ? workspaceExtendedCustodyResult(true, "none")
+    : workspaceExtendedCustodyResult(
+      true,
+      WORKSPACE_EXTENDED_CUSTODY_ADVISORY_REASON,
+      closestCoveredAclIndex
+    );
 }
 
 function filePresent(path) {
@@ -827,7 +868,10 @@ function nobodyIdentity() {
 export function collectValidationEnvironmentRuntime({ root = REPOSITORY_ROOT } = {}) {
   const environment = { ...process.env };
   const npm = npmIdentity(environment, process.execPath, process.platform);
-  const extendedCustody = workspaceExtendedCustody(root);
+  const custodyChain = workspaceChain(root);
+  const extendedCustody = workspaceExtendedCustody(root, {
+    modeOwnerSecure: workspaceCustodyValid(custodyChain)
+  });
   const uid = process.getuid?.();
   const gid = process.getgid?.();
   const euid = process.geteuid?.();
@@ -843,7 +887,7 @@ export function collectValidationEnvironmentRuntime({ root = REPOSITORY_ROOT } =
     sourceNodeRange: packageNodeRange(root),
     identity: Object.freeze({ uid, gid, euid, egid }),
     environmentSignals: classifyValidationEnvironmentVariables(environment, { platform: process.platform }),
-    workspaceChain: workspaceChain(root),
+    workspaceChain: custodyChain,
     workspaceExtendedCustody: extendedCustody.ok,
     workspaceExtendedCustodyReason: extendedCustody.reason,
     workspaceExtendedCustodyAncestorIndex: extendedCustody.ancestorIndex,

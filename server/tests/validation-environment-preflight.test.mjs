@@ -11,6 +11,7 @@ import {
   classifyValidationEnvironmentVariables,
   inspectValidationEnvironment,
   isExecutableOnPath,
+  nonLeafAclFindingCoveredByModeCustody,
   runValidationEnvironmentPreflightCli
 } from "../../scripts/validation-environment-preflight.mjs";
 import {
@@ -366,6 +367,39 @@ test("dependency-artifact profile binds exact runtime, ABI, non-root identity, t
   );
   assert.equal(invalidExtendedCustody.checks.workspaceCustody.aclCapabilitiesAncestorIndex, null);
 
+  const coveredAncestorAcl = inspectValidationEnvironment({
+    profile: "dependency-artifact",
+    runtime: readyRuntime({
+      workspaceExtendedCustodyReason: "non_leaf_getfacl_finding",
+      workspaceExtendedCustodyAncestorIndex: 4
+    })
+  });
+  assert.equal(coveredAncestorAcl.ok, true);
+  assert.equal(
+    coveredAncestorAcl.checks.workspaceCustody.aclCapabilitiesReason,
+    "non_leaf_getfacl_finding"
+  );
+  assert.equal(coveredAncestorAcl.checks.workspaceCustody.aclCapabilitiesAncestorIndex, 4);
+
+  const coveredAclWithUnsafeMode = inspectValidationEnvironment({
+    profile: "dependency-artifact",
+    runtime: readyRuntime({
+      workspaceChain: [
+        { kind: "directory", mode: 0o755, uid: 0 },
+        { kind: "directory", mode: 0o722, uid: 1000 }
+      ],
+      workspaceExtendedCustodyReason: "non_leaf_getfacl_finding",
+      workspaceExtendedCustodyAncestorIndex: 4
+    })
+  });
+  assert.equal(coveredAclWithUnsafeMode.ok, false);
+  assert.equal(coveredAclWithUnsafeMode.checks.workspaceCustody.modeOwner, false);
+  assert.equal(coveredAclWithUnsafeMode.checks.workspaceCustody.aclCapabilities, false);
+  assert.equal(
+    coveredAclWithUnsafeMode.checks.workspaceCustody.aclCapabilitiesReason,
+    "inspection_invalid"
+  );
+
   const untrustedNpm = inspectValidationEnvironment({
     profile: "dependency-artifact",
     runtime: readyRuntime({ npmTrusted: false })
@@ -444,6 +478,21 @@ test("extended custody reports bounded reason codes without exposing findings", 
     () => classifySecurityInspectionResult(empty, "unknown"),
     /security_inspection_kind_invalid/u
   );
+
+  assert.equal(nonLeafAclFindingCoveredByModeCustody({
+    reason: "getfacl_finding",
+    ancestorIndex: 4,
+    modeOwnerSecure: true
+  }), true);
+  for (const candidate of [
+    { reason: "getfacl_finding", ancestorIndex: 0, modeOwnerSecure: true },
+    { reason: "getfacl_finding", ancestorIndex: 4, modeOwnerSecure: false },
+    { reason: "getfacl_special_flags", ancestorIndex: 4, modeOwnerSecure: true },
+    { reason: "getcap_finding", ancestorIndex: 4, modeOwnerSecure: true },
+    { reason: "getfacl_finding", ancestorIndex: 32, modeOwnerSecure: true }
+  ]) {
+    assert.equal(nonLeafAclFindingCoveredByModeCustody(candidate), false);
+  }
 
   const source = readFileSync(
     resolve(REPOSITORY_ROOT, "scripts/validation-environment-preflight.mjs"),
