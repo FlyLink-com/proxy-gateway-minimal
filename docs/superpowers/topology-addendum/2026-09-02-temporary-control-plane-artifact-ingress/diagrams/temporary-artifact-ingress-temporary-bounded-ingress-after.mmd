@@ -1,0 +1,6 @@
+flowchart LR
+  GH[Protected manual workflow] -->|private key and fixed stream| RX[Forced-command receiver]
+  RX -->|manifest digest expiry checks| Q[Root-owned quarantine]
+  Q -->|aggregate-safe receipt only| G[Separate promotion Gate]
+  G -. no automatic activation .-> S[Release pointer and service]
+  RC[Existing repair identity] -. unchanged .-> S

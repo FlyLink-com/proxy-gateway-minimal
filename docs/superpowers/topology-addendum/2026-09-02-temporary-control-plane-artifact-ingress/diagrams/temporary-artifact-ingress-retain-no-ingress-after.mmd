@@ -1,0 +1,5 @@
+flowchart LR
+  GH[GitHub manual workflow] -->|artifact remains in GitHub| A[Actions artifact]
+  H[Japan control-plane host] -->|read-only source only| R[Git repository]
+  RC[Fixed-purpose repair workflow] -->|unchanged| H
+  A -. rejected: no receiver .-> H

@@ -1,0 +1,157 @@
+{
+  "documentType": "codex-security.hardening-analysis",
+  "schemaVersion": "1.0",
+  "analysisId": "temporary_control_plane_artifact_ingress_20260902",
+  "sourceEvidence": {
+    "kind": "repository_document_collection",
+    "label": "Canonical deployment design and delivery-boundary sources",
+    "collectionSha256": "e3a434907107fab09b6535271dfa2fef9b9adae961ea43e803f5a513dbd084eb",
+    "artifactCount": 5,
+    "sourceDrift": "none",
+    "targetRevision": "34efe687c8886f1b77d53a720a1ecf2fd339b432"
+  },
+  "assessment": {
+    "outcome": "opportunities_identified",
+    "summary": "A temporary forced-command ingress is a design candidate, not an implementation or production authorization."
+  },
+  "constraints": {
+    "profile": "strict",
+    "changeHorizons": ["incremental", "isolation"],
+    "nonNegotiables": [
+      "The full-Sigstore owner, lock-postverification, offline-closure, and explicit Risk A resume holds remain active.",
+      "The existing Japan runtime-config repair channel cannot be reused or widened.",
+      "No credentials, host state, workflow source, or production action is authorized by this addendum."
+    ],
+    "assumptions": [
+      "The redacted production inventory must be refreshed before any execution Gate.",
+      "The payload can remain within a 64 MiB aggregate cap and a 24-hour retention window."
+    ]
+  },
+  "opportunities": [
+    {
+      "opportunityId": "temporary-artifact-ingress",
+      "title": "Constrain a future Actions-to-host artifact delivery edge",
+      "summary": "Define a dedicated, forced-command receiver for a matched control-plane source and dependency artifact pair without changing the existing production control plane.",
+      "diagnosis": "Current artifact workflows and repository read access do not provide a bounded artifact-receiving authority, while the only existing production SSH workflow is deliberately purpose-specific.",
+      "evidence": [
+        {
+          "evidenceId": "T01",
+          "claimType": "observed",
+          "sourceKind": "document",
+          "path": "docs/superpowers/specs/2026-08-08-github-control-plane-production-deploy-design.md",
+          "claim": "A new Risk A topology addendum is required for a proposed extra predecessor or delivery authority."
+        },
+        {
+          "evidenceId": "T03",
+          "claimType": "observed",
+          "sourceKind": "source",
+          "path": ".github/workflows/production-deploy-dry-run.yml",
+          "claim": "The dry run creates a review packet but has no production-host execution path."
+        },
+        {
+          "evidenceId": "T05",
+          "claimType": "observed",
+          "sourceKind": "source",
+          "path": ".github/workflows/japan-runtime-config-additive-repair.yml",
+          "claim": "The existing Japan SSH workflow is fixed-purpose and restrictive."
+        },
+        {
+          "evidenceId": "T06",
+          "claimType": "inferred",
+          "sourceKind": "coverage",
+          "claim": "A distinct artifact receiver is required rather than widening repository read access or the repair identity."
+        }
+      ],
+      "desiredInvariants": [
+        "Only the exact four-object, source-bound payload can reach the receiver.",
+        "The receiver provides no arbitrary command execution or network forwarding.",
+        "Every accepted object is digest-bound, size-bounded, owner-checked, and expires automatically.",
+        "Receiving a valid artifact never activates it, changes a release pointer, or restarts a service."
+      ],
+      "proposalPath": "proposals/temporary-artifact-ingress.md",
+      "options": [
+        {
+          "optionId": "retain-no-ingress",
+          "title": "Retain no artifact ingress",
+          "kind": "baseline",
+          "summary": "Keep the current no-host-delivery state and rely only on existing read-only repository access.",
+          "diagramPaths": {
+            "before": "diagrams/temporary-artifact-ingress-before.mmd",
+            "after": "diagrams/temporary-artifact-ingress-retain-no-ingress-after.mmd"
+          },
+          "evidenceCoverage": [
+            {
+              "evidenceId": "T05",
+              "effect": "addresses",
+              "tacticalFixRequired": false,
+              "rationale": "It preserves the existing repair-channel purpose boundary."
+            }
+          ],
+          "tradeoffs": [
+            {"dimension": "security", "direction": "neutral", "confidence": "high", "basis": "source-derived", "assessment": "No new receiver or credential exists.", "validationPlan": "Reconfirm no new delivery identity or workflow exists."},
+            {"dimension": "performance", "direction": "neutral", "confidence": "high", "basis": "source-derived", "assessment": "There is no new data path.", "validationPlan": "No benchmark applies."},
+            {"dimension": "memory", "direction": "neutral", "confidence": "high", "basis": "source-derived", "assessment": "There is no receiver process or buffer.", "validationPlan": "No benchmark applies."},
+            {"dimension": "reliability", "direction": "unknown", "confidence": "medium", "basis": "source-derived", "assessment": "It cannot provide a controlled artifact delivery route.", "validationPlan": "Confirm the downstream deployment program remains stopped."},
+            {"dimension": "operability", "direction": "neutral", "confidence": "high", "basis": "source-derived", "assessment": "It adds no operational surface.", "validationPlan": "Read back existing identity and workflow scope."},
+            {"dimension": "migration", "direction": "neutral", "confidence": "high", "basis": "source-derived", "assessment": "No migration occurs.", "validationPlan": "No migration validation applies."}
+          ],
+          "residualRisks": ["The approved deployment program remains unable to deliver Actions artifacts to the host."],
+          "implementationReadiness": {
+            "affectedComponents": [],
+            "workPackages": [],
+            "acceptanceCriteria": ["No host delivery authority exists."],
+            "migrationNotes": [],
+            "rollback": "Not applicable."
+          }
+        },
+        {
+          "optionId": "temporary-bounded-ingress",
+          "title": "Temporary forced-command artifact ingress",
+          "kind": "isolation",
+          "summary": "Use a future dedicated low-privilege receiver with a protected Environment private key, a host-only public key, fixed object labels, digest checks, 64 MiB aggregate cap, and 24-hour expiry.",
+          "diagramPaths": {
+            "before": "diagrams/temporary-artifact-ingress-before.mmd",
+            "after": "diagrams/temporary-artifact-ingress-temporary-bounded-ingress-after.mmd"
+          },
+          "evidenceCoverage": [
+            {
+              "evidenceId": "T03",
+              "effect": "mitigates",
+              "tacticalFixRequired": true,
+              "rationale": "A new controlled edge can consume the dry-run artifact only after separate approval; the dry-run workflow itself remains non-executing."
+            },
+            {
+              "evidenceId": "T05",
+              "effect": "addresses",
+              "tacticalFixRequired": true,
+              "rationale": "The new identity avoids expanding the fixed-purpose repair channel."
+            }
+          ],
+          "tradeoffs": [
+            {"dimension": "security", "direction": "improves", "confidence": "medium", "basis": "source-derived", "assessment": "A forced command and fixed manifest constrain delivery, but the protected private key and receiver become new sensitive controls.", "validationPlan": "Negative protocol, manifest, size, expiry, command, TTY, forwarding, and digest tests must all fail closed."},
+            {"dimension": "performance", "direction": "unknown", "confidence": "low", "basis": "hypothetical", "assessment": "The path adds one bounded stream and hashing pass.", "validationPlan": "Measure 64 MiB transfer wall time against a defined target after implementation."},
+            {"dimension": "memory", "direction": "neutral", "confidence": "medium", "basis": "source-derived", "assessment": "Streaming and capped buffers should bound memory, but this remains unmeasured.", "validationPlan": "Measure peak receiver RSS for the maximum payload."},
+            {"dimension": "reliability", "direction": "improves", "confidence": "medium", "basis": "source-derived", "assessment": "Atomic receipt publication and no-replace behavior prevent partial payloads from becoming candidates.", "validationPlan": "Inject interrupted streams, duplicate deliveries, and expiry races."},
+            {"dimension": "operability", "direction": "regresses", "confidence": "high", "basis": "source-derived", "assessment": "It introduces a protected Environment, a short-lived receiver, retention cleanup, and receipt review.", "validationPlan": "Exercise creation, readback, expiry cleanup, key removal, and evidence-only receipt review."},
+            {"dimension": "migration", "direction": "unknown", "confidence": "medium", "basis": "source-derived", "assessment": "It requires a new deployment path but must not change the current pointer-based activation path.", "validationPlan": "Use disposable validation with synthetic artifacts and prove no release pointer or service change."}
+          ],
+          "residualRisks": ["A correctly bounded ingress still cannot satisfy the separate owner, closure, or production-promotion gates.", "Key exposure, receiver bugs, or retention failure remain fail-closed Gate conditions."],
+          "implementationReadiness": {
+            "affectedComponents": ["Future dedicated workflow, receiver, and non-executable receipt schema only after separate approval."],
+            "workPackages": ["Create a bounded receiver and contract tests.", "Create a protected manual workflow and exact-secret readback.", "Validate in a disposable environment.", "Request a separate promotion decision."],
+            "acceptanceCriteria": ["No interactive capability.", "Only exact manifest-bound objects accepted.", "No activation side effect.", "All negative tests fail closed."],
+            "migrationNotes": ["Keep the existing release pointer and repair channel unchanged."],
+            "rollback": "Remove the protected secret and host public key under a separate approved destructive cleanup gate; preserve only aggregate-safe evidence."
+          }
+        }
+      ],
+      "recommendedOptionId": "temporary-bounded-ingress",
+      "recommendation": "Record temporary bounded ingress only as a later execution-Gate candidate; retain no ingress until all independent prerequisites are green."
+    }
+  ],
+  "openQuestions": [
+    "Can the future selected full-Sigstore owner and offline closure gates become green without altering this delivery boundary?",
+    "Which protected GitHub Environment name and independent reviewers can be read back under a separate Settings Gate?",
+    "Can a disposable environment prove the exact receiver semantics without production data or activation?"
+  ]
+}

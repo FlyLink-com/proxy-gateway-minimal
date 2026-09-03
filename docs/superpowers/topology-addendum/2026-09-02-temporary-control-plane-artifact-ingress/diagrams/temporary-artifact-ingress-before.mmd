@@ -1,0 +1,6 @@
+flowchart LR
+  GH[GitHub manual workflow] -->|review packet only| A[Actions artifact]
+  H[Japan control-plane host] -->|read-only source| R[Git repository]
+  RC[Fixed-purpose repair workflow] -->|restricted config repair| H
+  A -. no approved artifact receiver .-> H
+  RC -. cannot be widened .-> A
