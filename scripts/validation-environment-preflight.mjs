@@ -578,11 +578,24 @@ function workspaceAncestorPaths(root) {
   return paths.reverse();
 }
 
+export function securityInspectionReportedNoFindings(result) {
+  return Boolean(
+    result
+    && !result.error
+    && result.status === 0
+    && !String(result.stdout || "").trim()
+    && !String(result.stderr || "").trim()
+  );
+}
+
 function workspaceExtendedCustody(root) {
   if (!executable(TOOL_PATHS.getfacl) || !executable(TOOL_PATHS.getcap)) return false;
   const environment = Object.freeze({ PATH: "/usr/bin:/bin", LANG: "C", LC_ALL: "C" });
   for (const path of workspaceAncestorPaths(root)) {
     const acl = spawnSync(TOOL_PATHS.getfacl, [
+      "--skip-base",
+      "--numeric",
+      "--no-effective",
       "--absolute-names",
       "--omit-header",
       "--physical",
@@ -594,23 +607,14 @@ function workspaceExtendedCustody(root) {
       maxBuffer: 64 * 1024,
       windowsHide: true
     });
-    const aclLines = String(acl.stdout || "").trim().split(/\r?\n/u).filter(Boolean);
-    if (acl.error || acl.status !== 0 || String(acl.stderr || "").trim()
-      || aclLines.length !== 3
-      || !aclLines.every((line) => /^(?:user|group|other)::[rwx-]{3}$/u.test(line))) {
-      return false;
-    }
+    if (!securityInspectionReportedNoFindings(acl)) return false;
     const capabilities = spawnSync(TOOL_PATHS.getcap, ["--", path], {
       encoding: "utf8",
       env: environment,
       maxBuffer: 64 * 1024,
       windowsHide: true
     });
-    if (capabilities.error || capabilities.status !== 0
-      || String(capabilities.stdout || "").trim()
-      || String(capabilities.stderr || "").trim()) {
-      return false;
-    }
+    if (!securityInspectionReportedNoFindings(capabilities)) return false;
   }
   return true;
 }

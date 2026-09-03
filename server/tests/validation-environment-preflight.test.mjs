@@ -10,7 +10,8 @@ import {
   classifyValidationEnvironmentVariables,
   inspectValidationEnvironment,
   isExecutableOnPath,
-  runValidationEnvironmentPreflightCli
+  runValidationEnvironmentPreflightCli,
+  securityInspectionReportedNoFindings
 } from "../../scripts/validation-environment-preflight.mjs";
 import {
   buildSourceValidationTestEnvironment,
@@ -346,6 +347,38 @@ test("dependency-artifact profile binds exact runtime, ABI, non-root identity, t
   });
   assert.equal(untrustedNpm.ok, false);
   assert.deepEqual(untrustedNpm.blockers.map(({ code }) => code), ["node_runtime_mismatch"]);
+});
+
+test("extended custody accepts only successful security inspections with no findings", () => {
+  assert.equal(securityInspectionReportedNoFindings({
+    status: 0,
+    stdout: "\n",
+    stderr: ""
+  }), true);
+
+  for (const result of [
+    null,
+    { status: null, stdout: "", stderr: "" },
+    { status: 1, stdout: "", stderr: "" },
+    { status: 0, stdout: "", stderr: "tool failure" },
+    { status: 0, stdout: "user:1001:r-x\n", stderr: "" },
+    { status: 0, stdout: "mask::r-x\n", stderr: "" },
+    { status: 0, stdout: "default:user::rwx\n", stderr: "" },
+    { status: 0, stdout: "/workspace =\n", stderr: "" },
+    { status: 0, stdout: "cap_setuid=ep\n", stderr: "" },
+    { status: 0, stdout: "", stderr: "", error: new Error("spawn failed") }
+  ]) {
+    assert.equal(securityInspectionReportedNoFindings(result), false);
+  }
+
+  const source = readFileSync(
+    resolve(REPOSITORY_ROOT, "scripts/validation-environment-preflight.mjs"),
+    "utf8"
+  );
+  assert.match(
+    source,
+    /spawnSync\(TOOL_PATHS\.getfacl, \[\s*"--skip-base",\s*"--numeric",\s*"--no-effective"/u
+  );
 });
 
 test("privileged-synthetic profile requires root, Node 22, native toolchain, nobody, and effective plus bounding capabilities", () => {
