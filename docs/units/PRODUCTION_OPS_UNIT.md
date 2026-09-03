@@ -1,6 +1,6 @@
 # Production Operations Unit
 
-Last updated: 2026-05-25, Asia/Shanghai.
+Last updated: 2026-09-02, Asia/Shanghai.
 
 ```yaml
 document_metadata:
@@ -8,7 +8,7 @@ document_metadata:
   lifecycle: active
   authority_scope: production_ops_unit
   superseded_by: null
-  last_verified_at: 2026-05-25
+  last_verified_at: 2026-09-02
   production_authority: false
 ```
 
@@ -99,11 +99,16 @@ For A-tier work, required inputs include:
 read-only inventory
 dry-run or preflight notes
 explicit operator approval
-staging or clean validation evidence where applicable
+runbook-bound validation evidence where applicable
 rollback plan
 post-change validation checklist
 sensitive-data handling boundary
 ```
+
+The runbook may bind staging, a clean host, or an isolated immutable candidate
+with a temporary `current` pointer fixture. The isolated fixture is Source/Merge
+evidence only: a Git branch is not a release identity, and the fixture neither
+satisfies the Production Gate nor authorizes external-state mutation.
 
 ## Outputs
 
@@ -203,7 +208,7 @@ A-tier work requires:
 read-only inventory
 dry-run or preflight
 explicit operator approval
-staging or clean validation environment where applicable
+runbook-bound validation environment where applicable
 implementation plan
 post-change validation
 rollback plan

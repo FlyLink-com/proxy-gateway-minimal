@@ -1,6 +1,6 @@
 # Validation Baseline
 
-Last updated: 2026-08-27, America/Los_Angeles.
+Last updated: 2026-09-02, America/Los_Angeles.
 
 ```yaml
 document_metadata:
@@ -8,7 +8,7 @@ document_metadata:
   lifecycle: active
   authority_scope: validation_baseline
   superseded_by: null
-  last_verified_at: 2026-08-27
+  last_verified_at: 2026-09-02
   production_authority: false
 ```
 
@@ -103,6 +103,25 @@ Any head, scope, test, identity, or mutation-boundary failure stops the active
 gate. Preserve historical receipts without rewriting or retroactive
 reclassification; a corrected attempt uses a new exact gate and, when approval
 is required, a new approval.
+
+## Node Runtime Boundary
+
+`engines.node` is the source-compatibility claim. Local Source Gate tests may
+use any listed Node release, but dependencies containing native modules must be
+materialized with `npm ci` under that same runtime in the isolated test tree.
+Do not reuse a dependency artifact or `node_modules` tree built for a different
+Node module ABI. A version/ABI mismatch is a validation-setup failure, not a
+source-test regression, and must not be hidden by rebuilding the reviewed
+artifact in place.
+
+The hosted `Validate` job rolls within the supported Node 22 release line; it
+does not make one patch release a repository-wide source-test requirement.
+Exact Node patch pins remain valid for reproducible dependency artifacts,
+Foundation toolchains, and comparable performance runs. A broader
+`engines.node` range never authorizes one native dependency artifact to cross a
+runtime tuple: production admission still requires the artifact-bound runtime,
+native smoke, exact selected Node binary identity, and the runbook-specific
+Production Gate before any pointer switch.
 
 ## Baseline Commands
 

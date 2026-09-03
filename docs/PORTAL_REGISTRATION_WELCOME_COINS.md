@@ -6,7 +6,7 @@ document_metadata:
   lifecycle: active
   authority_scope: portal_registration_welcome_coins
   superseded_by: null
-  last_verified_at: 2026-08-15
+  last_verified_at: 2026-09-02
   production_authority: false
 ```
 
@@ -150,9 +150,11 @@ FD3/FD4/FD5 identities and directions. Root ownership of the followed
 reviewed host-procfs boundary. The candidate now adds a fixed no-argument native
 root broker and post-exec bootstrap that establishes `PR_SET_DUMPABLE=0` before
 descriptor delivery, plus independent host-root `/proc/<child>` readback.
-Absent or namespace-ambiguous proof remains NO-GO, and these local source/build
-contracts do not replace clean-Linux privileged validation or production
-authorization.
+Absent or namespace-ambiguous proof remains NO-GO. The required CI supplies
+exact-source-ref, same-repository privileged protocol evidence against an
+isolated temporary candidate tree. That Source/Merge evidence does not validate
+the production host, `current` pointer, systemd state, protected environment,
+or database, and it does not grant production authorization.
 The wrapper's private artifact binding covers the exact transaction CLI,
 activation/snapshot libraries, holder observer, both migration modules, custody
 CLI, static outer wrapper, native broker, both post-exec bootstraps, native build
@@ -248,8 +250,9 @@ minimal wrapper must terminate as
 retained. Service start, post-start health, a new operator canary, and guard
 cleanup are later independent Risk A actions. The wrapper and closed-child
 capability now exist as locally tested candidate source, but are not an
-executable production activation path until clean-Linux privileged validation,
-final freeze/review, and a new exact Risk A approval are complete.
+executable production activation path merely because the isolated privileged
+synthetic gate passes. Final freeze/review, fresh live inventory, and a new
+exact Risk A approval remain mandatory.
 
 No production enablement is authorized by this document. Any future production
 change needs fresh inventory, an exact approval boundary, backup and rollback

@@ -1,6 +1,6 @@
 # GitHub Deployment Runbook
 
-Last updated: 2026-08-23, America/Los_Angeles.
+Last updated: 2026-09-02, America/Los_Angeles.
 
 ```yaml
 document_metadata:
@@ -8,7 +8,7 @@ document_metadata:
   lifecycle: active
   authority_scope: github_deployment_runbook
   superseded_by: null
-  last_verified_at: 2026-08-15
+  last_verified_at: 2026-09-02
   production_authority: false
 ```
 
@@ -44,6 +44,12 @@ production promotion and it does not run `npm ci` on a production host.
 
 The workflow performs the following bounded sequence on Ubuntu 24.04 with the
 exact Node `22.23.1` runtime:
+
+That patch pin is the identity of this reproducible dependency-artifact lane,
+not a repository-wide Source Gate requirement. General source validation rolls
+within its declared Node release line after a fresh same-runtime `npm ci`; it
+must never reuse this materialized native dependency tree under another Node
+module ABI.
 
 1. install from the committed `package-lock.json` with `npm ci --omit=dev`;
 2. load `better-sqlite3`, execute a `:memory:` query, and import the snapshot
@@ -640,8 +646,12 @@ Inside one separately approved Risk A change, use the sequence below:
     boundary. The candidate's fixed native root broker and post-exec bootstrap
     establish `PR_SET_DUMPABLE=0` before descriptor delivery, and the outer root
     controller independently reads back the exact child. Missing or
-    namespace-ambiguous proof remains NO-GO. The source/build contract does not
-    replace clean-Linux privileged validation or an exact production approval.
+    namespace-ambiguous proof remains NO-GO. The required CI supplies
+    exact-source-ref, same-repository privileged protocol evidence against an
+    isolated temporary candidate tree under a bounded root process environment.
+    That is Source/Merge evidence, not proof of a clean or reprovisioned
+    production host, a production release-pointer switch, or an exact production
+    approval.
     The production entry is the fixed, no-argument static-PIE outer wrapper,
     invoked by its reviewed absolute candidate path rather than through
     `node`, `npm`, `/usr/bin/env`, a shell, or `PATH` lookup. It selects exact
@@ -713,8 +723,11 @@ Inside one separately approved Risk A change, use the sequence below:
     wrapper owns the private root-to-service-principal child capability and
     durable approval consumption.
     The candidate wrapper and native custody path now exist locally, but this
-    sequence remains NO-GO until clean-Linux privileged validation, final hash
-    freeze and terminal review, and a new exact Risk A execution approval.
+    sequence remains NO-GO until a successful exact-source-ref privileged result
+    is bound to the final frozen candidate hashes and terminal review, and a new
+    exact Risk A execution approval is granted. Production preparation still
+    uses an immutable physical candidate while `current` remains unchanged;
+    any atomic `current` switch is a later separately approved mutation.
 3. While the child still holds the second EXCLUSIVE transaction, the same
    one-shot root wrapper invokes its private activation and verification
    operations with the preflight environment identity and approved digest from
