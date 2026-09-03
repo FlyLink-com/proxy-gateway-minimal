@@ -8,6 +8,9 @@
 >
 > The GitHub Settings input below is amended by the later
 > [branch-restricted Environment decision](../../2026-09-03-temporary-control-plane-artifact-ingress-unreviewed-environment/README.md).
+> The Supply-chain prerequisites input below is narrowly superseded for a
+> quarantine-only candidate transfer by the later
+> [single-use operator Gate decision](../../2026-09-03-temporary-control-plane-artifact-ingress-single-use-operator-gate/README.md).
 > The execution status remains **NOT GRANTED**.
 
 ## Decision Input
@@ -17,7 +20,7 @@ Any missing, stale, ambiguous, or mismatched input is NO_GO.
 
 | Input | Required evidence |
 | --- | --- |
-| Supply-chain prerequisites | Exact current result showing the shared-owner, lock postverification, offline closure, and explicit Risk A resume gates are green. A dry run or CI success is not a substitute. |
+| Supply-chain prerequisites | The legacy shared-owner, lock-postverification, and offline-closure chain is not required only for the narrow quarantine-only candidate-transfer exception recorded in the linked amendment. It remains mandatory for every release, activation, deployment, promotion, or rollback path. The exception instead requires a new exact single-use operator decision after every other row of this Gate has fresh matching evidence. |
 | Source identity | Exact protected-master commit, reviewed source archive digest, dependency-artifact digest, and canonical manifest digest. |
 | Artifact scope | Exactly source archive, dependency artifact, manifest, checksum; aggregate size <= 64 MiB; one source revision; no customer or runtime configuration material. |
 | GitHub Settings | An exact branch-restricted Environment and the explicit manual workflow binding, with before/after redacted readback. The independent-reviewer requirement is superseded only as recorded in the linked amendment; that selection does not grant execution, key creation, or secret storage. |
