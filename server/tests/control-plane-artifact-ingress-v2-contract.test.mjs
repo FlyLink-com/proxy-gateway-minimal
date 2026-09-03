@@ -4,6 +4,8 @@ import test from "node:test";
 import {
   ArtifactIngressV2ContractError,
   buildIngressV2Header,
+  parseIngressV2Receipt,
+  safeIngressV2Receipt,
   validateIngressV2Header
 } from "../../scripts/control-plane-artifact-ingress-v2-contract.mjs";
 
@@ -54,6 +56,24 @@ test("v2 contract rejects overlong TTL, reordered entries, and archive/checksum 
   ]) {
     assert.throws(
       () => validateIngressV2Header(invalid, { now: NOW }),
+      (error) => error instanceof ArtifactIngressV2ContractError
+    );
+  }
+});
+
+test("v2 receipt parser strictly rebuilds the canonical unexpired header", () => {
+  const value = header();
+  const receipt = safeIngressV2Receipt({ candidateId: PACKET_ID, header: value, acceptedAt: NOW });
+  const bytes = Buffer.from(`${JSON.stringify(receipt)}\n`, "utf8");
+  assert.deepEqual(parseIngressV2Receipt({ bytes, now: NOW }), { value: receipt, header: value });
+
+  for (const invalid of [
+    Buffer.from(JSON.stringify(receipt), "utf8"),
+    Buffer.from(`${JSON.stringify({ ...receipt, extra: true })}\n`, "utf8"),
+    Buffer.from(`${JSON.stringify({ ...receipt, acceptedAt: "2026-09-03T07:00:00.000Z" })}\n`, "utf8")
+  ]) {
+    assert.throws(
+      () => parseIngressV2Receipt({ bytes: invalid, now: NOW }),
       (error) => error instanceof ArtifactIngressV2ContractError
     );
   }

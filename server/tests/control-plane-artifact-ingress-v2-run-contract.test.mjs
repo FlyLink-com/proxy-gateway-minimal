@@ -81,6 +81,31 @@ test("v2 producer-run contract rejects every mutable provenance dimension", () =
   }
 });
 
+test("v2 producer-run contract accepts only safe positive run identifiers", () => {
+  const maximum = structuredClone(input());
+  maximum.releaseRunId = String(Number.MAX_SAFE_INTEGER);
+  maximum.dependencyRunId = String(Number.MAX_SAFE_INTEGER);
+  maximum.releaseRun.id = Number.MAX_SAFE_INTEGER;
+  maximum.dependencyRun.id = Number.MAX_SAFE_INTEGER;
+  assert.equal(validateArtifactIngressV2ProducerRuns(maximum).releaseRunId, Number.MAX_SAFE_INTEGER);
+
+  for (const invalid of [
+    "0",
+    "01",
+    "9007199254740992",
+    "10000000000000000",
+    "not-a-run"
+  ]) {
+    const value = structuredClone(input());
+    value.releaseRunId = invalid;
+    assert.throws(
+      () => validateArtifactIngressV2ProducerRuns(value),
+      (error) => error instanceof ArtifactIngressV2RunError
+        && error.code === "artifact_ingress_v2_producer_run_invalid"
+    );
+  }
+});
+
 test("v2 producer-run CLI reads only its exact bounded argument set", async (t) => {
   const root = mkdtempSync(join(tmpdir(), "gccgw-artifact-ingress-v2-runs-"));
   t.after(() => rmSync(root, { recursive: true, force: true }));

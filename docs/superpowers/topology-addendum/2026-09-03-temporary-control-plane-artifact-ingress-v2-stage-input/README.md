@@ -41,6 +41,13 @@ reads payload bytes, rejects concurrent or later replay, validates expiry both
 before and after the stream, and publishes no candidate when the stream has
 expired.
 
+The first initially valid header consumes its packet ID even when the payload
+is later truncated, tampered, or expires in flight. Its root-bound receipt
+directory retains an immutable replay tombstone through `expiresAt`; deleting
+the candidate or terminal receipt must not reopen that ID. A zero-byte or
+partial tombstone left by process termination is also fail-closed and cannot be
+repaired or removed by the admission path.
+
 The packet and quarantined candidate may be valid for no more than 24 hours.
 That TTL does **not** apply to the dedicated SSH key pair. The host keeps only
 the restricted public key, the GitHub Environment keeps only the paired
@@ -72,41 +79,54 @@ requires a new exact Risk A Gate and must proceed serially:
 
 1. refresh the redacted host, receiver, key, quarantine, storage, and rollback
    inventory;
-2. install the reviewed v2 contract beside the receiver, then atomically
-   replace the receiver while retaining a rollback copy of the v1 closure;
-3. run host-local v1 and v2 synthetic validation, including tamper, expiry,
-   concurrent replay, cleanup, and zero-activation checks;
-4. read back receiver and forced-command state; and
+2. install the reviewed v2 contract beside the receiver and the independent
+   root-local stage-input custodian, then atomically replace the receiver while
+   retaining a rollback copy of the v1 closure;
+3. run host-local v1 and v2 synthetic validation, including low-privilege
+   receipt, durable replay tombstone, root-custody import, production ownership
+   and mode preflight, tamper, expiry, concurrent replay, cleanup, and
+   zero-activation checks;
+4. read back receiver, forced-command, and root-custodian state; and
 5. only then issue a new single-use transfer Gate and dispatch v2 with exact
    packet, artifact, source, target, and expiry bindings.
 
 A v2 receipt proves only that a complete immutable six-file candidate entered
-quarantine. The existing stage-controller preflight, database snapshot,
+quarantine under the low-privilege receiver identity. The receiver and GitHub
+workflow cannot invoke the root custodian. A later exact host Gate must bind the
+packet, receipt, header, expiry, source, and artifact digests before the
+custodian can no-replace copy those six files to a root-owned `0700` input with
+`0600` files. Its custody receipt proves only stage-input ownership and byte
+closure. The existing stage-controller preflight, database snapshot,
 protected-overlay assembly, candidate validation, promotion, health check, and
-rollback decisions remain separate. No ingress success may imply deployment.
+rollback decisions remain separate. No ingress or custody success may imply
+deployment.
 
 ## Rollback
 
 Receiver rollout rollback restores the reviewed v1 receiver closure and proves
-v1 synthetic acceptance before ending the host Gate. Workflow rollback pauses
-or removes only the v2 manual workflow; it does not delete the long-lived key
-unless the operator separately requests credential revocation. Failed or
-expired v2 attempts must leave no completed candidate or receipt. An orphaned
-candidate, partial receipt, or atomic claim after process termination is
-fail-closed and requires a separate read-only inventory before any cleanup
-approval.
+v1 synthetic acceptance before ending the host Gate; the custodian remains
+disabled or is restored from its separately inventoried rollback closure.
+Workflow rollback pauses or removes only the v2 manual workflow; it does not
+delete the long-lived key unless the operator separately requests credential
+revocation. Failed or expired v2 attempts must leave no completed candidate or
+terminal receipt, but retain the replay tombstone. An orphaned candidate,
+partial receipt, replay tombstone, custody claim, or root-owned stage input
+after process termination is fail-closed and requires a separate read-only
+inventory before any cleanup approval.
 
 ## Source Validation Requirements
 
 The source PR must prove:
 
 - exact six-file positive delivery and byte preservation;
-- direct acceptance of the receiver output by production stage-controller
-  preflight;
+- low-privilege receiver output passing only through the independent root-local
+  custodian before production stage-controller ownership and mode preflight;
 - malformed manifests, commit/release drift, missing/extra/path-selected files,
   checksum/label drift, archive tamper, excessive/expired TTL, and digest
   mismatch all fail closed;
 - concurrent and serial replay leave exactly one candidate and one receipt;
+- candidate/receipt cleanup before expiry does not remove the replay tombstone,
+  and header/body source mutation cannot change the sender's verified snapshot;
 - v1 contract, sender, receiver, builder, and workflow regression tests remain
   green; and
 - the new workflow uses reviewed immutable Action pins, protected-master

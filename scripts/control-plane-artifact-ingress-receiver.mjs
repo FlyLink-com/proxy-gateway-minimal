@@ -159,6 +159,7 @@ async function writeReceipt(receiptRoot, receipt) {
   } finally {
     await handle?.close();
   }
+  await syncDirectory(receiptRoot);
 }
 
 export async function receiveArtifactIngress({
@@ -175,7 +176,6 @@ export async function receiveArtifactIngress({
   const reader = new ByteReader(input);
   let candidatePath;
   let temporaryPath;
-  let claimPath;
   let claimHandle;
   let published = false;
   try {
@@ -183,24 +183,39 @@ export async function receiveArtifactIngress({
     if (headerLength === 0 || headerLength > MAX_HEADER_BYTES) {
       fail("artifact_ingress_header_invalid");
     }
-    const header = validateAcceptedHeader(parseHeader(await reader.readExact(headerLength)), now ?? clock());
+    const admittedAt = now ?? clock();
+    const header = validateAcceptedHeader(parseHeader(await reader.readExact(headerLength)), admittedAt);
     const acceptedCandidateId = header.schemaVersion === "2" ? header.packetId : candidateId;
     candidatePath = join(quarantineRoot, acceptedCandidateId);
     temporaryPath = header.schemaVersion === "2"
       ? join(quarantineRoot, `.receiving-${acceptedCandidateId}-${randomUUID()}`)
       : join(quarantineRoot, `.receiving-${acceptedCandidateId}`);
-    await ensureMissing(candidatePath);
-    await ensureMissing(temporaryPath);
     if (header.schemaVersion === "2") {
-      const proposedClaimPath = join(receiptRoot, `.receiving-${acceptedCandidateId}`);
+      const proposedClaimPath = join(receiptRoot, `.replay-${acceptedCandidateId}.json`);
       try {
         claimHandle = await open(proposedClaimPath, "wx", 0o600);
-        claimPath = proposedClaimPath;
+        await writeAll(claimHandle, Buffer.from(JSON.stringify({
+          schemaVersion: "1",
+          type: "control_plane_artifact_ingress_replay_claim",
+          packetId: header.packetId,
+          sourceCommit: header.sourceCommit,
+          issuedAt: header.issuedAt,
+          claimedAt: admittedAt,
+          expiresAt: header.expiresAt,
+          headerSha256: createHash("sha256")
+            .update(Buffer.from(JSON.stringify(header), "utf8"))
+            .digest("hex")
+        }) + "\n", "utf8"));
+        await claimHandle.sync();
+        await syncDirectory(receiptRoot);
       } catch (error) {
         if (error?.code === "EEXIST") fail("artifact_ingress_candidate_exists");
+        if (error instanceof ArtifactIngressReceiveError) throw error;
         fail("artifact_ingress_storage_invalid");
       }
     }
+    await ensureMissing(candidatePath);
+    await ensureMissing(temporaryPath);
     await mkdir(temporaryPath, { mode: 0o700 });
 
     for (const entry of header.entries) {
@@ -220,6 +235,7 @@ export async function receiveArtifactIngress({
         fail("artifact_ingress_digest_mismatch");
       }
     }
+    await syncDirectory(temporaryPath);
     await reader.assertEnd();
     const acceptedAt = now ?? clock();
     if (header.schemaVersion === "2") validateIngressV2Header(header, { now: acceptedAt });
@@ -230,11 +246,19 @@ export async function receiveArtifactIngress({
       throw error;
     }
     published = true;
+    await syncDirectory(quarantineRoot);
     const receipt = safeAcceptedReceipt(acceptedCandidateId, header, acceptedAt);
     await writeReceipt(receiptRoot, receipt);
     return receipt;
   } catch (error) {
-    if (published && candidatePath) await rm(candidatePath, { recursive: true, force: true });
+    if (published && candidatePath) {
+      try {
+        await rm(candidatePath, { recursive: true, force: true });
+        await syncDirectory(quarantineRoot);
+      } catch {
+        fail("artifact_ingress_storage_invalid");
+      }
+    }
     if (temporaryPath) await rm(temporaryPath, { recursive: true, force: true });
     if (error instanceof ArtifactIngressContractError || error instanceof ArtifactIngressV2ContractError || error instanceof ArtifactIngressReceiveError) {
       throw error;
@@ -242,7 +266,19 @@ export async function receiveArtifactIngress({
     fail("artifact_ingress_receive_failed");
   } finally {
     await claimHandle?.close().catch(() => {});
-    if (claimPath) await rm(claimPath, { force: true }).catch(() => {});
+  }
+}
+
+async function syncDirectory(path) {
+  if (process.platform === "win32") return;
+  let handle;
+  try {
+    handle = await open(path, "r");
+    await handle.sync();
+  } catch {
+    fail("artifact_ingress_storage_invalid");
+  } finally {
+    await handle?.close().catch(() => {});
   }
 }
 

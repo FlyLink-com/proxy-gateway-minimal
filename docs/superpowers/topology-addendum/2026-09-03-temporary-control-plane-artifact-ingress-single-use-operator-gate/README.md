@@ -45,9 +45,10 @@ The packet must contain, without secret material or customer data:
    repair identity, service, or release pointer.
 5. The reviewed forced-command receiver, its negative tests, a public-key-only
    host entry, and the paired private key only in the named Environment.
-6. A candidate expiry no later than 24 hours, a no-replace receipt, a
-   dedicated key whose operator-managed rotation state is freshly read back,
-   and an approved revocation/cleanup command with post-cleanup readback.
+6. A candidate expiry no later than 24 hours, a durable packet-ID replay
+   tombstone, a no-replace receipt, a dedicated key whose operator-managed
+   rotation state is freshly read back, and an approved revocation/cleanup
+   command with post-cleanup readback.
 7. A disposable, target-matched synthetic validation plan proving malformed,
    expired, oversized, duplicate, digest-mismatched, forwarded, shell, and
    path-selected requests fail closed with zero activation side effects.

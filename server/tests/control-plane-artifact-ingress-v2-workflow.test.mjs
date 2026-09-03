@@ -28,6 +28,8 @@ test("v2 ingress remains an independent manual workflow with a receiver-upgrade 
   assert.match(v2, /ref: \$\{\{ github\.sha \}\}/);
   assert.match(v2, /fetch-depth: 0/);
   assert.match(v2, /git merge-base --is-ancestor "\$SOURCE_COMMIT" "\$GITHUB_SHA"/);
+  assert.equal((v2.match(/\^\[1-9\]\[0-9\]\{0,15\}\$/g) ?? []).length, 2);
+  assert.equal((v2.match(/10#\$[A-Z_]+ <= 9007199254740991/g) ?? []).length, 2);
   assert.match(v2, /repos\/\$GITHUB_REPOSITORY\/actions\/runs\/\$RELEASE_RUN_ID/);
   assert.match(v2, /repos\/\$GITHUB_REPOSITORY\/actions\/runs\/\$DEPENDENCY_RUN_ID/);
   assert.match(v2, /scripts\/control-plane-artifact-ingress-v2-run-contract\.mjs/);
@@ -40,7 +42,8 @@ test("v2 ingress remains an independent manual workflow with a receiver-upgrade 
   assert.match(v2, /scripts\/control-plane-artifact-ingress-v2-delivery-cli\.mjs/);
   assert.match(v2, /artifact_ingress_v2_packet_verified/);
   assert.match(v2, /control-plane-ingress-v2-delivery\/packet\.bin/);
-  assert.match(v2, /cat "\$RUNNER_TEMP\/control-plane-ingress-v2-delivery\/packet\.bin" \| \\\r?\n\s+ssh -T -i/);
+  assert.match(v2, /\/usr\/bin\/timeout --signal=TERM --kill-after=5s 300s \\\r?\n\s+ssh -T -i/);
+  assert.match(v2, /"github-artifact-ingest@\$INGRESS_HOST" \\\r?\n\s+< "\$RUNNER_TEMP\/control-plane-ingress-v2-delivery\/packet\.bin"/);
   assert.match(v2, /ConnectTimeout=15/);
   assert.match(v2, /StrictHostKeyChecking=yes/);
   assert.match(v2, /IdentitiesOnly=yes/);

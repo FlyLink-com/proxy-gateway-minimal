@@ -1,5 +1,6 @@
 const MAX_INGRESS_BYTES = 64 * 1024 * 1024;
 const MAX_TTL_MS = 24 * 60 * 60 * 1000;
+const MAX_RECEIPT_BYTES = 64 * 1024;
 const SOURCE_ARCHIVE = /^proxy-gateway-([A-Za-z0-9][A-Za-z0-9._-]{0,159})\.zip$/;
 const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
@@ -103,4 +104,47 @@ export function safeIngressV2Receipt({ candidateId, header, acceptedAt } = {}) {
     aggregateSizeBytes: value.aggregateSizeBytes,
     entries: value.entries.map(({ name, sizeBytes, sha256 }) => ({ name, sizeBytes, sha256 }))
   };
+}
+
+export function parseIngressV2Receipt({ bytes, now = new Date().toISOString() } = {}) {
+  if (!(Buffer.isBuffer(bytes) || bytes instanceof Uint8Array)
+    || bytes.length === 0 || bytes.length > MAX_RECEIPT_BYTES) {
+    fail("artifact_ingress_receipt_invalid");
+  }
+  const payload = Buffer.from(bytes);
+  let value;
+  try {
+    value = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(payload));
+  } catch {
+    fail("artifact_ingress_receipt_invalid");
+  }
+  if (!exactKeys(value, [
+    "acceptedAt", "aggregateSizeBytes", "candidateId", "entries", "expiresAt", "issuedAt",
+    "packetId", "schemaVersion", "sourceCommit", "state", "type"
+  ])
+    || value.schemaVersion !== "2"
+    || value.type !== "control_plane_artifact_ingress_receipt"
+    || value.state !== "candidate_received") {
+    fail("artifact_ingress_receipt_invalid");
+  }
+  const header = validateIngressV2Header({
+    schemaVersion: "2",
+    type: CONTROL_PLANE_ARTIFACT_INGRESS_V2.type,
+    packetId: value.packetId,
+    sourceCommit: value.sourceCommit,
+    issuedAt: value.issuedAt,
+    expiresAt: value.expiresAt,
+    aggregateSizeBytes: value.aggregateSizeBytes,
+    entries: value.entries
+  }, { now });
+  const receipt = safeIngressV2Receipt({
+    candidateId: value.candidateId,
+    header,
+    acceptedAt: value.acceptedAt
+  });
+  if (Date.parse(receipt.acceptedAt) > Date.parse(now)
+    || !payload.equals(Buffer.from(`${JSON.stringify(receipt)}\n`, "utf8"))) {
+    fail("artifact_ingress_receipt_invalid");
+  }
+  return Object.freeze({ value: Object.freeze(receipt), header: Object.freeze(header) });
 }

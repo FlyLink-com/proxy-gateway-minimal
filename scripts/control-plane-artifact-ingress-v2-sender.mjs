@@ -1,26 +1,67 @@
 import { createHash } from "node:crypto";
-import { createReadStream } from "node:fs";
-import { lstat } from "node:fs/promises";
+import { constants as fsConstants } from "node:fs";
+import { lstat, open } from "node:fs/promises";
 import { once } from "node:events";
 import { basename } from "node:path";
 
-import { ArtifactIngressV2ContractError, buildIngressV2Header } from "./control-plane-artifact-ingress-v2-contract.mjs";
+import {
+  ArtifactIngressV2ContractError,
+  buildIngressV2Header,
+  validateIngressV2Header
+} from "./control-plane-artifact-ingress-v2-contract.mjs";
 
 const FILE_KEYS = Object.freeze([
   "artifactManifest", "sourceArchive", "sourceChecksum", "dependencyManifest", "dependencyArchive", "releaseLabel"
 ]);
+const MAX_AGGREGATE_BYTES = 64 * 1024 * 1024;
 
 function fail(code) { throw new ArtifactIngressV2ContractError(code); }
 
-async function inspectFile(path) {
+function sameIdentity(left, right) {
+  return left.dev === right.dev
+    && left.ino === right.ino
+    && left.nlink === right.nlink
+    && left.size === right.size
+    && left.mtimeMs === right.mtimeMs
+    && left.ctimeMs === right.ctimeMs;
+}
+
+async function snapshotFile(path, expectedEntry) {
   if (typeof path !== "string" || path.length === 0 || path.length > 4096) fail("artifact_ingress_sender_input_invalid");
-  let metadata;
-  try { metadata = await lstat(path); } catch { fail("artifact_ingress_sender_input_invalid"); }
-  if (!metadata.isFile() || metadata.isSymbolicLink() || !Number.isSafeInteger(metadata.size)) fail("artifact_ingress_sender_input_invalid");
-  const hash = createHash("sha256");
-  try { for await (const chunk of createReadStream(path, { highWaterMark: 64 * 1024 })) hash.update(chunk); }
-  catch { fail("artifact_ingress_sender_input_invalid"); }
-  return { path, fileName: basename(path), sizeBytes: metadata.size, sha256: hash.digest("hex") };
+  let handle;
+  try {
+    const lexical = await lstat(path);
+    handle = await open(path, fsConstants.O_RDONLY | (fsConstants.O_NOFOLLOW ?? 0));
+    const before = await handle.stat();
+    if (basename(path) !== expectedEntry.name
+      || lexical.isSymbolicLink() || !lexical.isFile() || !before.isFile()
+      || before.nlink !== 1 || !Number.isSafeInteger(before.size)
+      || before.size !== expectedEntry.sizeBytes || before.size > MAX_AGGREGATE_BYTES
+      || lexical.dev !== before.dev || lexical.ino !== before.ino) {
+      fail("artifact_ingress_sender_input_invalid");
+    }
+    const bytes = await handle.readFile();
+    const after = await handle.stat();
+    const lexicalAfter = await lstat(path);
+    if (after.nlink !== 1 || !sameIdentity(before, after) || !sameIdentity(lexical, lexicalAfter)
+      || lexicalAfter.dev !== after.dev || lexicalAfter.ino !== after.ino
+      || bytes.length !== before.size) {
+      fail("artifact_ingress_sender_input_changed");
+    }
+    const sha256 = createHash("sha256").update(bytes).digest("hex");
+    if (sha256 !== expectedEntry.sha256) fail("artifact_ingress_sender_input_changed");
+    return {
+      fileName: basename(path),
+      sizeBytes: bytes.length,
+      sha256,
+      bytes
+    };
+  } catch (error) {
+    if (error instanceof ArtifactIngressV2ContractError) throw error;
+    fail("artifact_ingress_sender_input_invalid");
+  } finally {
+    await handle?.close().catch(() => {});
+  }
 }
 
 async function write(output, bytes) {
@@ -33,7 +74,11 @@ async function write(output, bytes) {
 export async function writeArtifactIngressV2Packet({ output, files, expectedHeader } = {}) {
   if (!files || typeof files !== "object" || Array.isArray(files)
     || Object.keys(files).sort().join("\n") !== [...FILE_KEYS].sort().join("\n")) fail("artifact_ingress_sender_input_invalid");
-  const inspected = Object.fromEntries(await Promise.all(FILE_KEYS.map(async (key) => [key, await inspectFile(files[key])])));
+  const validatedExpectedHeader = validateIngressV2Header(expectedHeader, { now: expectedHeader?.issuedAt });
+  const inspected = Object.fromEntries(await Promise.all(FILE_KEYS.map(async (key, index) => [
+    key,
+    await snapshotFile(files[key], validatedExpectedHeader.entries[index])
+  ])));
   const entries = [
     { name: "artifact.json", ...inspected.artifactManifest },
     { name: inspected.sourceArchive.fileName, ...inspected.sourceArchive },
@@ -58,10 +103,11 @@ export async function writeArtifactIngressV2Packet({ output, files, expectedHead
   await write(output, prefix);
   await write(output, headerBytes);
   for (const item of entries) {
-    try { for await (const chunk of createReadStream(item.path, { highWaterMark: 64 * 1024 })) await write(output, chunk); }
-    catch (error) {
-      if (error instanceof ArtifactIngressV2ContractError) throw error;
-      fail("artifact_ingress_sender_stream_failed");
+    for (let offset = 0; offset < item.bytes.length; offset += 64 * 1024) {
+      await write(
+        output,
+        item.bytes.subarray(offset, Math.min(offset + 64 * 1024, item.bytes.length))
+      );
     }
   }
   return header;

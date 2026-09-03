@@ -65,8 +65,8 @@ jobs:
           set -euo pipefail
           [[ "$PACKET_ID" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$ ]] || { echo packet_id_invalid >&2; exit 1; }
           [[ "$SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]] || { echo source_commit_invalid >&2; exit 1; }
-          [[ "$RELEASE_RUN_ID" =~ ^[1-9][0-9]{0,18}$ ]] || { echo release_run_id_invalid >&2; exit 1; }
-          [[ "$DEPENDENCY_RUN_ID" =~ ^[1-9][0-9]{0,18}$ ]] || { echo dependency_run_id_invalid >&2; exit 1; }
+          [[ "$RELEASE_RUN_ID" =~ ^[1-9][0-9]{0,15}$ ]] && (( 10#$RELEASE_RUN_ID <= 9007199254740991 )) || { echo release_run_id_invalid >&2; exit 1; }
+          [[ "$DEPENDENCY_RUN_ID" =~ ^[1-9][0-9]{0,15}$ ]] && (( 10#$DEPENDENCY_RUN_ID <= 9007199254740991 )) || { echo dependency_run_id_invalid >&2; exit 1; }
           [[ "$SOURCE_ARTIFACT_NAME" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,159}$ ]] || { echo source_artifact_name_invalid >&2; exit 1; }
           [[ "$DEPENDENCY_ARTIFACT_NAME" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,159}$ ]] || { echo dependency_artifact_name_invalid >&2; exit 1; }
           test "$SOURCE_ARTIFACT_NAME" = "proxy-gateway-${SOURCE_COMMIT:0:12}" || { echo source_artifact_name_invalid >&2; exit 1; }
@@ -185,12 +185,13 @@ jobs:
         run: |
           set -euo pipefail
           set -o pipefail
-          cat "$RUNNER_TEMP/control-plane-ingress-v2-delivery/packet.bin" | \
+          /usr/bin/timeout --signal=TERM --kill-after=5s 300s \
             ssh -T -i "$RUNNER_TEMP/control-plane-ingress-ssh/id_ed25519" \
               -o BatchMode=yes -o ConnectTimeout=15 -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
               -o UserKnownHostsFile="$RUNNER_TEMP/control-plane-ingress-ssh/known_hosts" \
               -o GlobalKnownHostsFile=/dev/null -p "$INGRESS_PORT" \
-              "github-artifact-ingest@$INGRESS_HOST"
+              "github-artifact-ingest@$INGRESS_HOST" \
+              < "$RUNNER_TEMP/control-plane-ingress-v2-delivery/packet.bin"
 
       - name: Remove ephemeral v2 packet materials
         if: always()
