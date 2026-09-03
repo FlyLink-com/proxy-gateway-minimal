@@ -1,0 +1,29 @@
+name: Control Plane Artifact Ingress
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: Type "prepare artifact ingress" to run the inert preflight.
+        required: true
+        type: string
+
+permissions: {}
+
+concurrency:
+  group: control-plane-artifact-ingress-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  topology-preflight:
+    name: Stop until the separate execution Gate is granted
+    if: inputs.confirmation == 'prepare artifact ingress'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Preserve the execution boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo 'temporary_artifact_ingress_execution_not_granted' >&2
+          echo 'No credential, receiver, host, artifact, or deployment action was attempted.' >&2
+          exit 1

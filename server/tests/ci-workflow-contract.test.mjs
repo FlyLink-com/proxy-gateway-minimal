@@ -15,6 +15,9 @@ const EXPECTED_WORKFLOW_ACTIONS = {
     "actions/checkout",
     "actions/setup-node"
   ],
+  // The ingress workflow is intentionally inert pending a separate Risk A
+  // execution Gate. It has no third-party Action invocation to pin.
+  "control-plane-artifact-ingress.yml": [],
   "control-plane-dependency-artifact.yml": [
     "actions/checkout",
     "actions/setup-node",

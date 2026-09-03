@@ -3,7 +3,9 @@
 ## Selected Design And Constraints
 
 This is a future implementation handoff for the selected topology direction.
-It is not currently executable. The authoritative stop remains the independent
+The source-only contract implementation may be prepared and reviewed in an
+isolated Draft PR, but it is not executable against a host. The authoritative
+stop remains the independent
 shared-owner, lock-postverification, offline-closure, and explicit Risk A
 resume chain. This plan may not be used to create credentials or host state
 until [the execution Gate](../gates/temporary-artifact-ingress-execution-gate.md)
