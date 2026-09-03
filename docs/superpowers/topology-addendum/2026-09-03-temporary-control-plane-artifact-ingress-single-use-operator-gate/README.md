@@ -7,6 +7,12 @@
 > does not authorize any release, activation, deployment, promotion, rollback,
 > service action, pointer change, database operation, runtime configuration
 > change, or customer-data access.
+>
+> The later
+> [v2 stage-input and key-lifecycle amendment](../2026-09-03-temporary-control-plane-artifact-ingress-v2-stage-input/README.md)
+> supersedes this document only for the v2 six-file payload shape and the
+> long-lived, manually rotated dedicated key. Execution remains separately
+> gated.
 
 ## Decision
 
@@ -39,7 +45,8 @@ The packet must contain, without secret material or customer data:
    repair identity, service, or release pointer.
 5. The reviewed forced-command receiver, its negative tests, a public-key-only
    host entry, and the paired private key only in the named Environment.
-6. A key and candidate expiry no later than 24 hours, a no-replace receipt,
+6. A candidate expiry no later than 24 hours, a no-replace receipt, a
+   dedicated key whose operator-managed rotation state is freshly read back,
    and an approved revocation/cleanup command with post-cleanup readback.
 7. A disposable, target-matched synthetic validation plan proving malformed,
    expired, oversized, duplicate, digest-mismatched, forwarded, shell, and
@@ -53,10 +60,10 @@ less expiry, candidate-only scope, validation plan, cleanup/revocation plan,
 and the explicit prohibition on release pointer, service, database, runtime
 configuration, Nginx, DNS, firewall, and customer-data operations.
 
-Only after that decision may a short-lived key pair be generated, the public
-key be installed for the fixed forced command, the private key be written to
-the named Environment, and a synthetic transfer be run. Each later production
-transfer requires a new evidence packet and a new decision.
+Only after that decision may the dedicated key's public/private placement be
+read back and a synthetic transfer be run. The key may be long-lived and
+manually rotated, but each later production transfer still requires a new
+evidence packet, fresh packet ID and expiry, and a new decision.
 
 ## Non-Substitution Boundary
 

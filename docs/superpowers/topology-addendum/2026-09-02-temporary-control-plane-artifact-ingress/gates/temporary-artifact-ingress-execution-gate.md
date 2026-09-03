@@ -11,6 +11,9 @@
 > The Supply-chain prerequisites input below is narrowly superseded for a
 > quarantine-only candidate transfer by the later
 > [single-use operator Gate decision](../../2026-09-03-temporary-control-plane-artifact-ingress-single-use-operator-gate/README.md).
+> The v2 six-file payload and long-lived manually rotated key lifecycle are
+> governed by the later
+> [v2 stage-input amendment](../../2026-09-03-temporary-control-plane-artifact-ingress-v2-stage-input/README.md).
 > The execution status remains **NOT GRANTED**.
 
 ## Decision Input
@@ -22,11 +25,11 @@ Any missing, stale, ambiguous, or mismatched input is NO_GO.
 | --- | --- |
 | Supply-chain prerequisites | The legacy shared-owner, lock-postverification, and offline-closure chain is not required only for the narrow quarantine-only candidate-transfer exception recorded in the linked amendment. It remains mandatory for every release, activation, deployment, promotion, or rollback path. The exception instead requires a new exact single-use operator decision after every other row of this Gate has fresh matching evidence. |
 | Source identity | Exact protected-master commit, reviewed source archive digest, dependency-artifact digest, and canonical manifest digest. |
-| Artifact scope | Exactly source archive, dependency artifact, manifest, checksum; aggregate size <= 64 MiB; one source revision; no customer or runtime configuration material. |
+| Artifact scope | V1 remains exactly source archive, dependency artifact, manifest, and checksum. V2 is exactly the six raw stage-input files named in the linked v2 amendment. Both remain aggregate size <= 64 MiB, one source revision, and contain no customer or runtime configuration material. |
 | GitHub Settings | An exact branch-restricted Environment and the explicit manual workflow binding, with before/after redacted readback. The independent-reviewer requirement is superseded only as recorded in the linked amendment; that selection does not grant execution, key creation, or secret storage. |
 | Host inventory | Fresh redacted read-only inventory proving a new dedicated low-privilege receiver, no collision with existing repair identities, root-owned quarantine boundary, sufficient bounded storage, and no service/pointer change. |
 | Receiver contract | Reviewed source and tests proving forced-command-only behavior; no shell, TTY, port/X11/agent forwarding, scp, rsync, SFTP, path selection, repository write, package install, service control, or pointer switch. |
-| Lifecycle | Public key only on host; paired private key only in the protected Environment; 24-hour maximum artifact lifetime; no-replace receipt; separately approved cleanup/revocation plan. |
+| Lifecycle | Public key only on host; paired private key only in the protected Environment; long-lived key manually rotated or revoked by the operator; 24-hour maximum packet/candidate lifetime; no-replace receipt; separately approved cleanup/revocation plan. |
 | Validation | Disposable target-matched validation with synthetic data, complete negative matrix, digest/expiry readback, and direct proof of zero activation side effects. |
 | Promotion | A separate exact operator approval naming target, source commit, candidate release, rollback target, validation result, and no database/runtime configuration changes. |
 
