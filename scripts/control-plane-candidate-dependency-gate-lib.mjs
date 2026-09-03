@@ -53,8 +53,10 @@ const A3_SERVICE_SMOKE_BIND_ROOT = "/run/control-plane-a3-service-smoke";
 const A3_RUN_LABEL = /^[a-z0-9][a-z0-9-]{0,63}$/;
 const A3_SMOKE_PHASES = new Set(["validation", "prepublish", "postpublish", "verify"]);
 const A3_SMOKE_SNAPSHOT_MODULE = "scripts/control-plane-db-snapshot-gate-lib.mjs";
-const A3_UNIT_GC_POLL_ATTEMPTS = 20;
 const A3_UNIT_GC_POLL_INTERVAL_MS = 50;
+const A3_UNIT_GC_GRACE_MS = 10_000;
+const A3_UNIT_GC_READBACK_TIMEOUT_MS = 1_000;
+const A3_UNIT_GC_POLL_ATTEMPTS = A3_UNIT_GC_GRACE_MS / A3_UNIT_GC_POLL_INTERVAL_MS;
 const A3_PHYSICAL_COMMAND_TIMEOUT_MS = 15_000;
 const A3_SERVICE_SMOKE_COMMAND_TIMEOUT_MS = 300_000;
 const A3_PHYSICAL_MAX_OUTPUT_BYTES = 64 * 1024;
@@ -956,20 +958,70 @@ function removeA3ServiceSmokeCapture(path, supplied) {
   if (a3PhysicalLeafState(path, supplied) !== "absent") fail("worker_cleanup_uncertain", true);
 }
 
+function a3UnitGcMonotonicNowNs(supplied) {
+  try {
+    const read = typeof supplied.a3UnitGcMonotonicNowNs === "function"
+      ? supplied.a3UnitGcMonotonicNowNs
+      : process.hrtime.bigint;
+    const value = read();
+    if (typeof value !== "bigint" || value < 0n) fail("worker_cleanup_uncertain", true);
+    return value;
+  } catch (error) {
+    if (error instanceof CandidateDependencyGateError) throw error;
+    fail("worker_cleanup_uncertain", true);
+  }
+}
+
+function sleepForA3UnitGc(milliseconds, supplied) {
+  try {
+    if (!Number.isSafeInteger(milliseconds) || milliseconds <= 0 || milliseconds > A3_UNIT_GC_POLL_INTERVAL_MS) {
+      fail("worker_cleanup_uncertain", true);
+    }
+    if (typeof supplied.a3UnitGcSleep === "function") {
+      if (supplied.a3UnitGcSleep(milliseconds) !== true) fail("worker_cleanup_uncertain", true);
+      return;
+    }
+    if (typeof supplied.executePhysicalCommand !== "function") {
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, milliseconds);
+    }
+  } catch (error) {
+    if (error instanceof CandidateDependencyGateError) throw error;
+    fail("worker_cleanup_uncertain", true);
+  }
+}
+
 function waitForA3ServiceSmokeCollection(context, serviceUnit, cleanupProperties, supplied) {
-  for (let attempt = 0; attempt < A3_UNIT_GC_POLL_ATTEMPTS; attempt += 1) {
+  const cgroupRoot = `/sys/fs/cgroup/system.slice/${serviceUnit}`;
+  // The grace period bounds the requested sleep budget. Each readback has its
+  // own small cap, and one final capped observation follows the last bounded
+  // sleep so scheduler overshoot cannot recreate a sleep-without-readback gap.
+  const deadline = a3UnitGcMonotonicNowNs(supplied) + BigInt(A3_UNIT_GC_GRACE_MS) * 1_000_000n;
+  for (let attempt = 0; attempt <= A3_UNIT_GC_POLL_ATTEMPTS; attempt += 1) {
+    // One final observation after the last bounded sleep is intentional:
+    // scheduler overshoot must not recreate a sleep-without-readback gap.
     const state = parseA3SystemctlProperties(executeA3Physical(
       context.tools.systemctl,
       ["show", serviceUnit, `--property=${cleanupProperties.join(",")}`, "--no-page"],
       supplied,
       "worker_cleanup_uncertain",
-      { attentionRequired: true }
+      { attentionRequired: true, timeoutMs: A3_UNIT_GC_READBACK_TIMEOUT_MS }
     ), cleanupProperties);
-    if (state.LoadState === "not-found" && state.ActiveState === "inactive" && state.SubState === "dead") return;
-    if (state.LoadState !== "loaded" || state.ActiveState !== "inactive" || state.SubState !== "dead") fail("worker_cleanup_uncertain", true);
-    if (typeof supplied.executePhysicalCommand !== "function") {
-      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, A3_UNIT_GC_POLL_INTERVAL_MS);
+    const unitCollected = state.LoadState === "not-found" && state.ActiveState === "inactive" && state.SubState === "dead";
+    const unitCollecting = state.LoadState === "loaded" && state.ActiveState === "inactive" && state.SubState === "dead";
+    if (!unitCollected && !unitCollecting) fail("worker_cleanup_uncertain", true);
+    const cgroupState = a3PhysicalPathExists(cgroupRoot, supplied)
+      ? readA3PhysicalCgroupState(cgroupRoot, supplied)
+      : null;
+    if (cgroupState && (!/(?:^|\n)populated 0(?:\n|$)/.test(cgroupState.events) || cgroupState.procs.trim() !== "")) {
+      fail("worker_cleanup_uncertain", true);
     }
+    const observationCompletedAt = a3UnitGcMonotonicNowNs(supplied);
+    if (unitCollected && cgroupState === null) return;
+    if (attempt === A3_UNIT_GC_POLL_ATTEMPTS) break;
+    const remainingNs = deadline - observationCompletedAt;
+    if (remainingNs <= 0n) break;
+    const remainingMs = Number((remainingNs + 999_999n) / 1_000_000n);
+    sleepForA3UnitGc(Math.min(A3_UNIT_GC_POLL_INTERVAL_MS, remainingMs), supplied);
   }
   fail("worker_cleanup_uncertain", true);
 }
@@ -1052,8 +1104,6 @@ function cleanupA3ServiceSmoke(context, invocation, supplied) {
     }
   }
   waitForA3ServiceSmokeCollection(context, serviceUnit, cleanupProperties, supplied);
-  const cgroupRoot = `/sys/fs/cgroup/system.slice/${serviceUnit}`;
-  if (a3PhysicalPathExists(cgroupRoot, supplied)) fail("worker_cleanup_uncertain", true);
   removeA3ServiceSmokeCapture(invocation.captureStdout, supplied);
   removeA3ServiceSmokeCapture(invocation.captureStderr, supplied);
 }

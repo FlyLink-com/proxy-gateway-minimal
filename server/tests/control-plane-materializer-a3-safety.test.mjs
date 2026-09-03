@@ -774,6 +774,8 @@ function serviceSmokeHarness({
   launchStatus = 0,
   autoCollectFailedUnit = false,
   gcLoadedPolls = 0,
+  cgroupGcPolls = 0,
+  unitGcLastSleepOvershootMs = 0,
   completionPolls = 0,
   activatingOverrides = {},
   completionOverrides = {},
@@ -806,6 +808,9 @@ function serviceSmokeHarness({
   let unitLoaded = initialUnitLoaded;
   let cgroupAvailable = cgroupPresent;
   let remainingGcPolls = 0;
+  let remainingCgroupGcPolls = 0;
+  let unitGcClockMs = 0;
+  const unitGcSleeps = [];
   let remainingCompletionPolls = 0;
   let startCollision = false;
   let unitFailed = initialUnitFailed;
@@ -822,6 +827,8 @@ function serviceSmokeHarness({
       stopped = false;
       unitLoaded = true;
       unitFailed = false;
+      cgroupAvailable = cgroupPresent;
+      remainingCgroupGcPolls = 0;
       const propertyEntries = args
         .filter((value) => value.startsWith("--property="))
         .map((value) => value.slice("--property=".length));
@@ -851,6 +858,7 @@ function serviceSmokeHarness({
       if (stopStatus === 0) {
         stopped = true;
         remainingGcPolls = gcLoadedPolls;
+        remainingCgroupGcPolls = cgroupGcPolls;
         if (unitFailed && stopCollectsFailedUnit) {
           unitFailed = false;
           unitLoaded = false;
@@ -864,6 +872,7 @@ function serviceSmokeHarness({
         unitFailed = false;
         stopped = true;
         remainingGcPolls = gcLoadedPolls;
+        remainingCgroupGcPolls = cgroupGcPolls;
       }
       return { status: effectiveResetStatus, stdout: "", stderr: effectiveResetStatus === 0 ? "" : "reset failed" };
     }
@@ -952,7 +961,24 @@ function serviceSmokeHarness({
       if (path !== "/sys/fs/cgroup") throw new Error("unexpected filesystem path");
       return cgroupFilesystemType;
     },
-    physicalPathExists: (path) => captures.get(path) === "regular" || path === cgroupRoot && unitLoaded && cgroupAvailable && !stopped,
+    physicalPathExists: (path) => {
+      if (captures.get(path) === "regular") return true;
+      if (path !== cgroupRoot || !cgroupAvailable) return false;
+      if (!stopped) return unitLoaded;
+      if (remainingCgroupGcPolls > 0) {
+        remainingCgroupGcPolls -= 1;
+        return true;
+      }
+      cgroupAvailable = false;
+      return false;
+    },
+    a3UnitGcMonotonicNowNs: () => BigInt(unitGcClockMs) * 1_000_000n,
+    a3UnitGcSleep: (milliseconds) => {
+      unitGcSleeps.push(milliseconds);
+      unitGcClockMs += milliseconds;
+      if (unitGcClockMs === 10_000) unitGcClockMs += unitGcLastSleepOvershootMs;
+      return true;
+    },
     physicalLeafState: (path) => captures.get(path) || "absent",
     validateA3ServiceSmokeCaptureBoundary: () => captureBoundaryValid,
     validateA3ServiceSmokeSource: () => sourceCustodyValid,
@@ -983,7 +1009,15 @@ function serviceSmokeHarness({
     },
     removePhysicalFile: (path) => { captures.delete(path); }
   });
-  return { runtime, calls, captures, wasStopped: () => stopped, hadStartCollision: () => startCollision };
+  return {
+    runtime,
+    calls,
+    captures,
+    wasStopped: () => stopped,
+    hadStartCollision: () => startCollision,
+    unitGcClockMs: () => unitGcClockMs,
+    unitGcSleeps
+  };
 }
 
 function collectServiceSmoke(runtime, service = { uid: 4711, gid: 4712 }) {
@@ -1135,7 +1169,7 @@ test("collectServiceNativeSmokeEvidence rejects malformed or unavailable system-
   }
 });
 
-test("collectServiceNativeSmokeEvidence gives only the native smoke launch a longer bounded command timeout", () => {
+test("collectServiceNativeSmokeEvidence bounds the native launch and collection readbacks", () => {
   const harness = serviceSmokeHarness();
   collectServiceSmoke(harness.runtime);
   const launch = harness.calls.find(([command]) => command === "/usr/bin/systemd-run");
@@ -1144,9 +1178,22 @@ test("collectServiceNativeSmokeEvidence gives only the native smoke launch a lon
   const analyze = harness.calls.find(([command]) => command === "/usr/bin/systemd-analyze");
   assert.deepEqual(analyze[2], { timeoutMs: 15_000, maxOutputBytes: 256 * 1024 });
   assert.equal(Object.isFrozen(analyze[2]), true);
-  for (const call of harness.calls.filter(([command]) => (
-    command !== "/usr/bin/systemd-run" && command !== "/usr/bin/systemd-analyze"
-  ))) {
+  const collectionReadbacks = harness.calls.filter(([command, args, execution]) => (
+    command === "/usr/bin/systemctl"
+    && args[0] === "show"
+    && args.includes("--property=LoadState,ActiveState,SubState")
+    && execution.timeoutMs !== 15_000
+  ));
+  assert.equal(collectionReadbacks.length, 2);
+  for (const call of collectionReadbacks) {
+    assert.deepEqual(call[2], { timeoutMs: 1_000 });
+    assert.equal(Object.isFrozen(call[2]), true);
+  }
+  for (const call of harness.calls.filter((candidate) => {
+    const [command] = candidate;
+    return command !== "/usr/bin/systemd-run" && command !== "/usr/bin/systemd-analyze"
+      && !collectionReadbacks.includes(candidate);
+  })) {
     assert.deepEqual(call[2], { timeoutMs: 15_000 });
     assert.equal(Object.isFrozen(call[2]), true);
   }
@@ -1486,21 +1533,76 @@ test("collectServiceNativeSmokeEvidence preserves stale state when the capture p
 });
 
 test("collectServiceNativeSmokeEvidence waits for transient unit GC before a same-name retry", () => {
-  const harness = serviceSmokeHarness({ initialCaptures: true, gcLoadedPolls: 2 });
+  const harness = serviceSmokeHarness({ initialCaptures: true, gcLoadedPolls: 60 });
   const evidence = collectServiceSmoke(harness.runtime);
   assert.equal(evidence.cgroupEmpty, true);
   assert.equal(harness.hadStartCollision(), false);
   assert.equal(harness.captures.size, 0);
 });
 
+test("collectServiceNativeSmokeEvidence waits for empty cgroup GC after unit collection", () => {
+  const harness = serviceSmokeHarness({ cgroupGcPolls: 60 });
+  const evidence = collectServiceSmoke(harness.runtime);
+  assert.equal(evidence.cgroupEmpty, true);
+  assert.equal(harness.hadStartCollision(), false);
+  assert.equal(harness.captures.size, 0);
+  assert.equal(harness.unitGcClockMs(), 3_000);
+  assert.deepEqual(new Set(harness.unitGcSleeps), new Set([50]));
+});
+
+test("collectServiceNativeSmokeEvidence observes joint unit and cgroup GC at the final bounded readback", () => {
+  const harness = serviceSmokeHarness({ gcLoadedPolls: 201, cgroupGcPolls: 200 });
+  const evidence = collectServiceSmoke(harness.runtime);
+  assert.equal(evidence.cgroupEmpty, true);
+  assert.equal(harness.hadStartCollision(), false);
+  assert.equal(harness.captures.size, 0);
+  assert.equal(harness.unitGcClockMs(), 10_000);
+  assert.equal(harness.unitGcSleeps.length, 200);
+  assert.deepEqual(new Set(harness.unitGcSleeps), new Set([50]));
+  const finalReadback = harness.calls.filter(([, args]) => (
+    args[0] === "show" && args.includes("--property=LoadState,ActiveState,SubState")
+  )).at(-1);
+  assert.deepEqual(finalReadback[2], { timeoutMs: 1_000 });
+});
+
+test("collectServiceNativeSmokeEvidence performs one final readback after bounded sleep overshoot", () => {
+  const harness = serviceSmokeHarness({
+    gcLoadedPolls: 201,
+    cgroupGcPolls: 200,
+    unitGcLastSleepOvershootMs: 1
+  });
+  const evidence = collectServiceSmoke(harness.runtime);
+  assert.equal(evidence.cgroupEmpty, true);
+  assert.equal(harness.unitGcClockMs(), 10_001);
+  assert.equal(harness.unitGcSleeps.length, 200);
+  const finalReadback = harness.calls.filter(([, args]) => (
+    args[0] === "show" && args.includes("--property=LoadState,ActiveState,SubState")
+  )).at(-1);
+  assert.deepEqual(finalReadback[2], { timeoutMs: 1_000 });
+});
+
 test("collectServiceNativeSmokeEvidence fails attention-required when transient unit GC exceeds the bound", () => {
-  const harness = serviceSmokeHarness({ initialCaptures: true, gcLoadedPolls: 50 });
+  const harness = serviceSmokeHarness({ gcLoadedPolls: 202 });
   assert.throws(
     () => collectServiceSmoke(harness.runtime),
     (error) => condition("worker_cleanup_uncertain")(error) && error.attentionRequired === true
   );
   assert.equal(harness.hadStartCollision(), false);
   assert.equal(harness.captures.size, 2);
+  assert.equal(harness.unitGcClockMs(), 10_000);
+  assert.equal(harness.unitGcSleeps.length, 200);
+});
+
+test("collectServiceNativeSmokeEvidence fails attention-required when empty cgroup GC exceeds the bound", () => {
+  const harness = serviceSmokeHarness({ cgroupGcPolls: 201 });
+  assert.throws(
+    () => collectServiceSmoke(harness.runtime),
+    (error) => condition("worker_cleanup_uncertain")(error) && error.attentionRequired === true
+  );
+  assert.equal(harness.hadStartCollision(), false);
+  assert.equal(harness.captures.size, 2);
+  assert.equal(harness.unitGcClockMs(), 10_000);
+  assert.equal(harness.unitGcSleeps.length, 200);
 });
 
 test("collectServiceNativeSmokeEvidence rejects false or throwing source custody proof before launch", () => {
