@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
 import { lstat, readFile, unlink, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { buildIngressHeader } from "./control-plane-artifact-ingress-contract.mjs";
 
@@ -20,6 +21,14 @@ const COMMIT_PATTERN = /^[0-9a-f]{40}$/;
 const SHA256_PATTERN = /^[0-9a-f]{64}$/;
 const RELEASE_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,159}$/;
 const MAX_INPUT_MANIFEST_BYTES = 64 * 1024;
+const ARGUMENT_NAMES = Object.freeze([
+  "source-directory",
+  "dependency-directory",
+  "output-directory",
+  "source-commit",
+  "issued-at",
+  "expires-at"
+]);
 
 export class ArtifactIngressPacketError extends Error {
   constructor(code) {
@@ -93,6 +102,25 @@ async function inspectRegularFile(path, code) {
     fail(code);
   }
   return { path, fileName: basename(path), sizeBytes: metadata.size, sha256: hash.digest("hex") };
+}
+
+async function inspectDirectory(path, code) {
+  if (typeof path !== "string" || path.length === 0 || path.length > 4096) fail(code);
+  let metadata;
+  try {
+    metadata = await lstat(path);
+  } catch {
+    fail(code);
+  }
+  if (!metadata.isDirectory() || metadata.isSymbolicLink()) fail(code);
+}
+
+function safeArtifactFileName(value) {
+  if (typeof value !== "string" || value.length === 0 || value.length > 255
+    || basename(value) !== value || value === "." || value === "..") {
+    fail("artifact_ingress_packet_manifest_invalid");
+  }
+  return value;
 }
 
 async function readJson(path) {
@@ -248,4 +276,92 @@ export async function buildCanonicalIngressPacket({
       checksum: files.checksum
     }
   };
+}
+
+export async function buildCanonicalIngressPacketFromArtifactDirectories({
+  sourceDirectory,
+  dependencyDirectory,
+  output,
+  expectedSourceCommit,
+  issuedAt,
+  expiresAt
+} = {}) {
+  await Promise.all([
+    inspectDirectory(sourceDirectory, "artifact_ingress_packet_source_invalid"),
+    inspectDirectory(dependencyDirectory, "artifact_ingress_packet_dependency_invalid")
+  ]);
+  const sourceManifest = join(sourceDirectory, "artifact.json");
+  const dependencyManifest = join(dependencyDirectory, "dependency-artifact.json");
+  const [sourceValue, dependencyValue] = await Promise.all([
+    readJson(sourceManifest),
+    readJson(dependencyManifest)
+  ]);
+  if (sourceCommit(expectedSourceCommit) !== sourceCommit(sourceValue?.sourceCommit)
+    || sourceCommit(expectedSourceCommit) !== sourceCommit(dependencyValue?.sourceCommit)) {
+    fail("artifact_ingress_packet_manifest_invalid");
+  }
+  const sourceArchive = join(sourceDirectory, safeArtifactFileName(sourceValue?.artifact?.fileName));
+  const dependencyArtifact = join(
+    dependencyDirectory,
+    safeArtifactFileName(dependencyValue?.archive?.fileName)
+  );
+  return buildCanonicalIngressPacket({
+    sourceArchive,
+    dependencyArtifact,
+    sourceManifest,
+    dependencyManifest,
+    output,
+    issuedAt,
+    expiresAt
+  });
+}
+
+function parseCliArguments(argv) {
+  const values = new Map();
+  for (let index = 0; index < argv.length; index += 2) {
+    const argument = argv[index];
+    const value = argv[index + 1];
+    if (!argument || value === undefined || !argument.startsWith("--")) {
+      fail("artifact_ingress_packet_cli_invalid");
+    }
+    const name = argument.slice(2);
+    if (!ARGUMENT_NAMES.includes(name) || values.has(name) || value.length === 0) {
+      fail("artifact_ingress_packet_cli_invalid");
+    }
+    values.set(name, value);
+  }
+  if (values.size !== ARGUMENT_NAMES.length) fail("artifact_ingress_packet_cli_invalid");
+  return Object.fromEntries(values);
+}
+
+export async function runArtifactIngressPacketBuilderCli({
+  argv = process.argv.slice(2),
+  stdout = process.stdout,
+  stderr = process.stderr
+} = {}) {
+  try {
+    const options = parseCliArguments(argv);
+    const packet = await buildCanonicalIngressPacketFromArtifactDirectories({
+      sourceDirectory: options["source-directory"],
+      dependencyDirectory: options["dependency-directory"],
+      output: options["output-directory"],
+      expectedSourceCommit: options["source-commit"],
+      issuedAt: options["issued-at"],
+      expiresAt: options["expires-at"]
+    });
+    const aggregateBytes = packet.header.entries.reduce((total, entry) => total + entry.sizeBytes, 0);
+    stdout.write(`artifact_ingress_packet_staged source_commit=${packet.header.sourceCommit} aggregate_bytes=${aggregateBytes}\n`);
+    return 0;
+  } catch (error) {
+    const code = error instanceof ArtifactIngressPacketError
+      ? error.code
+      : "artifact_ingress_packet_failed";
+    stderr.write(`${code}\n`);
+    return 1;
+  }
+}
+
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+  const exitCode = await runArtifactIngressPacketBuilderCli();
+  if (exitCode !== 0) process.exitCode = exitCode;
 }

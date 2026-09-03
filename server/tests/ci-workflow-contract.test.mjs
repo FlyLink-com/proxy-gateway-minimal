@@ -15,9 +15,12 @@ const EXPECTED_WORKFLOW_ACTIONS = {
     "actions/checkout",
     "actions/setup-node"
   ],
-  // The ingress workflow is intentionally inert pending a separate Risk A
-  // execution Gate. It has no third-party Action invocation to pin.
-  "control-plane-artifact-ingress.yml": [],
+  "control-plane-artifact-ingress.yml": [
+    "actions/checkout",
+    "actions/setup-node",
+    "actions/download-artifact",
+    "actions/download-artifact"
+  ],
   "control-plane-dependency-artifact.yml": [
     "actions/checkout",
     "actions/setup-node",
@@ -85,17 +88,17 @@ const REVIEWED_ACTION_PINS = {
   "actions/checkout": {
     sha: DEFAULT_CHECKOUT_PIN,
     annotation: "v6",
-    count: 19
+    count: 20
   },
   "actions/download-artifact": {
     sha: "3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c",
     annotation: "v8.0.1",
-    count: 3
+    count: 5
   },
   "actions/setup-node": {
     sha: "249970729cb0ef3589644e2896645e5dc5ba9c38",
     annotation: "v6",
-    count: 16
+    count: 17
   },
   "actions/upload-artifact": {
     sha: "043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",
@@ -103,12 +106,12 @@ const REVIEWED_ACTION_PINS = {
     count: 6
   }
 };
-const EXPECTED_ACTION_REFERENCE_COUNT = 44;
+const EXPECTED_ACTION_REFERENCE_COUNT = 48;
 const EXPECTED_ACTION_REVISION_COUNTS = {
-  [`actions/checkout@${DEFAULT_CHECKOUT_PIN}`]: 17,
+  [`actions/checkout@${DEFAULT_CHECKOUT_PIN}`]: 18,
   [`actions/checkout@${TRUSTED_GOVERNANCE_CHECKOUT_PIN}`]: 2,
-  [`actions/download-artifact@${REVIEWED_ACTION_PINS["actions/download-artifact"].sha}`]: 3,
-  [`actions/setup-node@${REVIEWED_ACTION_PINS["actions/setup-node"].sha}`]: 16,
+  [`actions/download-artifact@${REVIEWED_ACTION_PINS["actions/download-artifact"].sha}`]: 5,
+  [`actions/setup-node@${REVIEWED_ACTION_PINS["actions/setup-node"].sha}`]: 17,
   [`actions/upload-artifact@${REVIEWED_ACTION_PINS["actions/upload-artifact"].sha}`]: 6
 };
 // Keep this source-only guard dependency-free: every uncommented `uses` token is

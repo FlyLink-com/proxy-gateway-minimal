@@ -7,7 +7,9 @@ import test from "node:test";
 
 import {
   ArtifactIngressPacketError,
-  buildCanonicalIngressPacket
+  buildCanonicalIngressPacket,
+  buildCanonicalIngressPacketFromArtifactDirectories,
+  runArtifactIngressPacketBuilderCli
 } from "../../scripts/control-plane-artifact-ingress-packet-builder.mjs";
 
 const NOW = "2026-09-03T06:00:00.000Z";
@@ -17,17 +19,23 @@ function sha256(value) {
   return createHash("sha256").update(value).digest("hex");
 }
 
-function fixture(t, { dependencyCommit = SOURCE_COMMIT } = {}) {
+function fixture(t, { dependencyCommit = SOURCE_COMMIT, separateDirectories = false } = {}) {
   const root = mkdtempSync(join(tmpdir(), "gccgw-artifact-packet-"));
   const input = join(root, "input");
+  const sourceDirectory = separateDirectories ? join(root, "source") : input;
+  const dependencyDirectory = separateDirectories ? join(root, "dependency") : input;
   const output = join(root, "output");
   mkdirSync(input);
+  if (separateDirectories) {
+    mkdirSync(sourceDirectory);
+    mkdirSync(dependencyDirectory);
+  }
   mkdirSync(output);
   t.after(() => rmSync(root, { recursive: true, force: true }));
-  const sourceArchive = join(input, "source.zip");
-  const dependencyArtifact = join(input, "node-modules.tar");
-  const sourceManifest = join(input, "artifact.json");
-  const dependencyManifest = join(input, "dependency-artifact.json");
+  const sourceArchive = join(sourceDirectory, "source.zip");
+  const dependencyArtifact = join(dependencyDirectory, "node-modules.tar");
+  const sourceManifest = join(sourceDirectory, "artifact.json");
+  const dependencyManifest = join(dependencyDirectory, "dependency-artifact.json");
   writeFileSync(sourceArchive, "source artifact bytes");
   writeFileSync(dependencyArtifact, "dependency artifact bytes");
   const sourceBytes = Buffer.byteLength("source artifact bytes");
@@ -57,7 +65,10 @@ function fixture(t, { dependencyCommit = SOURCE_COMMIT } = {}) {
       sizeBytes: dependencyBytes
     }
   }));
-  return { output, sourceArchive, dependencyArtifact, sourceManifest, dependencyManifest };
+  return {
+    output, sourceArchive, dependencyArtifact, sourceManifest, dependencyManifest,
+    sourceDirectory, dependencyDirectory
+  };
 }
 
 test("packet builder emits one canonical four-object packet bound to both verified manifests", async (t) => {
@@ -126,4 +137,68 @@ test("packet builder rejects an archive whose bytes drift from its reviewed mani
       && error.code === "artifact_ingress_packet_manifest_invalid"
   );
   assert.deepEqual(readdirSync(input.output), []);
+});
+
+test("directory builder derives only manifest-named regular artifacts under fixed directories", async (t) => {
+  const input = fixture(t, { separateDirectories: true });
+  const packet = await buildCanonicalIngressPacketFromArtifactDirectories({
+    sourceDirectory: input.sourceDirectory,
+    dependencyDirectory: input.dependencyDirectory,
+    output: input.output,
+    expectedSourceCommit: SOURCE_COMMIT,
+    issuedAt: NOW,
+    expiresAt: "2026-09-04T05:00:00.000Z"
+  });
+  assert.equal(packet.header.sourceCommit, SOURCE_COMMIT);
+  assert.deepEqual(readdirSync(input.output).sort(), ["ingress-checksum.sha256", "ingress-manifest.json"]);
+});
+
+test("directory builder rejects a manifest artifact path that escapes its download directory", async (t) => {
+  const input = fixture(t, { separateDirectories: true });
+  const sourceManifest = JSON.parse(readFileSync(input.sourceManifest, "utf8"));
+  sourceManifest.artifact.fileName = "../node-modules.tar";
+  writeFileSync(input.sourceManifest, JSON.stringify(sourceManifest));
+  await assert.rejects(
+    () => buildCanonicalIngressPacketFromArtifactDirectories({
+      sourceDirectory: input.sourceDirectory,
+      dependencyDirectory: input.dependencyDirectory,
+      output: input.output,
+      expectedSourceCommit: SOURCE_COMMIT,
+      issuedAt: NOW,
+      expiresAt: "2026-09-04T05:00:00.000Z"
+    }),
+    (error) => error instanceof ArtifactIngressPacketError
+      && error.code === "artifact_ingress_packet_manifest_invalid"
+  );
+  assert.deepEqual(readdirSync(input.output), []);
+});
+
+test("packet builder CLI accepts only complete exact option sets", async (t) => {
+  const input = fixture(t, { separateDirectories: true });
+  let output = "";
+  let errors = "";
+  const exitCode = await runArtifactIngressPacketBuilderCli({
+    argv: [
+      "--source-directory", input.sourceDirectory,
+      "--dependency-directory", input.dependencyDirectory,
+      "--output-directory", input.output,
+      "--source-commit", SOURCE_COMMIT,
+      "--issued-at", NOW,
+      "--expires-at", "2026-09-04T05:00:00.000Z"
+    ],
+    stdout: { write(value) { output += value; } },
+    stderr: { write(value) { errors += value; } }
+  });
+  assert.equal(exitCode, 0);
+  assert.match(output, /^artifact_ingress_packet_staged source_commit=/);
+  assert.equal(errors, "");
+
+  let invalidErrors = "";
+  const invalidExitCode = await runArtifactIngressPacketBuilderCli({
+    argv: ["--source-directory", input.sourceDirectory],
+    stdout: { write() {} },
+    stderr: { write(value) { invalidErrors += value; } }
+  });
+  assert.equal(invalidExitCode, 1);
+  assert.equal(invalidErrors, "artifact_ingress_packet_cli_invalid\n");
 });
