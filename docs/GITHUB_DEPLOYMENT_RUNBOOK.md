@@ -21,15 +21,20 @@ changes still require a separate Risk A gate.
 ## Current Baseline
 
 - `.github/workflows/ci.yml` validates pushes and pull requests to `master`.
-- `release-artifact.yml` packages the current commit as a source artifact and
-  records its SHA256.
+- `release-artifact.yml` runs the Source environment preflight on each
+  independent runner, packages the current commit as a source artifact, and
+  records its SHA256. Its Portal and Admin jobs also re-extract each locally
+  produced ZIP, require the unpacked relative tree, entry types, file bytes,
+  and executable intent to match the verified build directory, and rerun the
+  static semantic verifier before writing the checksum or manifest.
 - `control-plane-dependency-artifact.yml` builds a Linux/Node 22 dependency
   layer in CI, runs the `better-sqlite3` memory-database and snapshot-import
   smoke, and publishes a lock/source/runtime-bound manifest with the archive
   and fixed GitHub Actions provenance.
-- `deploy-cloudflare-site.yml` builds and verifies the public static site. It
-  only deploys when the protected `cloudflare-production` environment allows
-  it and either manual confirmation is provided or
+- `deploy-cloudflare-site.yml` runs the Source environment preflight on both
+  its validation and deploy runners, then builds and verifies the public static
+  site. It only deploys when the protected `cloudflare-production` environment
+  allows it and either manual confirmation is provided or
   `CLOUDFLARE_SITE_AUTO_DEPLOY=true` is set as a repository or environment
   variable.
 - `production-deploy-dry-run.yml` creates a production deploy packet and runs

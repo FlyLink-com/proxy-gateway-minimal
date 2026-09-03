@@ -1,6 +1,6 @@
 # Cloudflare Public Site CI
 
-Last updated: 2026-06-09.
+Last updated: 2026-09-02.
 
 ```yaml
 document_metadata:
@@ -8,7 +8,7 @@ document_metadata:
   lifecycle: active
   authority_scope: cloudflare_public_site_ci
   superseded_by: null
-  last_verified_at: 2026-06-09
+  last_verified_at: 2026-09-02
   production_authority: false
 ```
 
@@ -69,9 +69,16 @@ configuration without dashboard-only path overrides.
 
 The main CI workflow runs the same public-site checks after the Admin build:
 
-1. `npm run cloudflare:site:build`
-2. `npm run cloudflare:site:verify`
-3. `npm run cloudflare:site:dry-run`
+1. `npm run validation:environment:source`
+2. `npm ci` and `npm ci --prefix admin`
+3. `npm run cloudflare:site:build`
+4. `npm run cloudflare:site:verify`
+5. `npm run cloudflare:site:dry-run`
+
+The separately scheduled deploy job repeats the Source preflight and build
+instead of inheriting a dependency tree from the validation runner. This proves
+the repository-owned runner boundary only; it does not validate the Cloudflare
+account, token, routes, DNS, or production network.
 
 These checks are safe for pull requests because they do not require Cloudflare
 credentials and do not deploy.
@@ -82,7 +89,7 @@ If Cloudflare Git integration or a future GitHub Actions deploy gate is enabled,
 use this boundary:
 
 - Repository root: project root.
-- Build command: `npm ci && npm ci --prefix admin && npm run cloudflare:site:build && npm run cloudflare:site:verify`
+- Build command: `npm run validation:environment:source && npm ci && npm ci --prefix admin && npm run cloudflare:site:build && npm run cloudflare:site:verify`
 - Deploy command: `npx wrangler deploy` or `npx --yes wrangler@4.99.0 deploy --config wrangler.jsonc`
 - Static output source: `admin/dist-site`.
 

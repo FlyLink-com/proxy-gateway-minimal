@@ -50,6 +50,9 @@ jobs:
             package-lock.json
             admin/package-lock.json
 
+      - name: Preflight source validation environment
+        run: npm run validation:environment:source
+
       - name: Install root dependencies
         run: npm ci
 
@@ -89,6 +92,9 @@ jobs:
           cache-dependency-path: |
             package-lock.json
             admin/package-lock.json
+
+      - name: Preflight source validation environment
+        run: npm run validation:environment:source
 
       - name: Install root dependencies
         run: npm ci

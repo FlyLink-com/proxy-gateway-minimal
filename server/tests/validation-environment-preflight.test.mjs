@@ -626,4 +626,62 @@ test("package and workflow contracts invoke each explicit profile without weaken
     productionDryRun.slice(dryRunPreflight, dryRunInstall),
     /continue-on-error|\|\|\s*true/u
   );
+
+  function workflowJob(workflow, jobName, nextJobName) {
+    const start = workflow.indexOf(`  ${jobName}:`);
+    const end = nextJobName ? workflow.indexOf(`  ${nextJobName}:`, start + 1) : workflow.length;
+    assert.ok(start >= 0 && end > start, `missing ${jobName} job`);
+    return workflow.slice(start, end);
+  }
+
+  function assertSourcePreflightBefore(job, firstWorkMarker, description) {
+    const setup = job.indexOf("node-version: 22");
+    const preflight = job.indexOf("npm run validation:environment:source", setup);
+    const firstWork = job.indexOf(firstWorkMarker, setup);
+    assert.ok(setup >= 0, `${description} must select Node 22`);
+    assert.ok(preflight > setup, `${description} must preflight its own runner`);
+    assert.ok(firstWork > preflight, `${description} must preflight before ${firstWorkMarker}`);
+    assert.equal(
+      (job.match(/npm run validation:environment:source/gu) ?? []).length,
+      1,
+      `${description} must run one source preflight`
+    );
+    assert.doesNotMatch(
+      job.slice(preflight, firstWork),
+      /continue-on-error|\|\|\s*true/u,
+      `${description} preflight must fail closed`
+    );
+  }
+
+  const releaseArtifact = readFileSync(
+    resolve(REPOSITORY_ROOT, ".github/workflows/release-artifact.yml"),
+    "utf8"
+  );
+  for (const [jobName, nextJobName, firstWorkMarker] of [
+    ["classify", "package", "node scripts/ci-change-classifier.mjs"],
+    ["package", "portal-static", "- name: Resolve release label"],
+    ["portal-static", "admin-static", "- name: Install Portal dependencies"],
+    ["admin-static", null, "- name: Install Admin dependencies"]
+  ]) {
+    assertSourcePreflightBefore(
+      workflowJob(releaseArtifact, jobName, nextJobName),
+      firstWorkMarker,
+      `Release Artifact ${jobName}`
+    );
+  }
+
+  const cloudflare = readFileSync(
+    resolve(REPOSITORY_ROOT, ".github/workflows/deploy-cloudflare-site.yml"),
+    "utf8"
+  );
+  assertSourcePreflightBefore(
+    workflowJob(cloudflare, "validate", "deploy"),
+    "- name: Install root dependencies",
+    "Cloudflare validate"
+  );
+  assertSourcePreflightBefore(
+    workflowJob(cloudflare, "deploy", null),
+    "- name: Install root dependencies",
+    "Cloudflare deploy"
+  );
 });
