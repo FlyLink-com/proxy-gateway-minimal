@@ -7,11 +7,11 @@ import test from "node:test";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import {
+  classifySecurityInspectionResult,
   classifyValidationEnvironmentVariables,
   inspectValidationEnvironment,
   isExecutableOnPath,
-  runValidationEnvironmentPreflightCli,
-  securityInspectionReportedNoFindings
+  runValidationEnvironmentPreflightCli
 } from "../../scripts/validation-environment-preflight.mjs";
 import {
   buildSourceValidationTestEnvironment,
@@ -76,6 +76,8 @@ function readyRuntime(overrides = {}) {
       node: true
     },
     workspaceExtendedCustody: true,
+    workspaceExtendedCustodyReason: "none",
+    workspaceExtendedCustodyAncestorIndex: null,
     capabilities: {
       effective: { kill: false, setgid: false, setuid: false, setpcap: false },
       bounding: { kill: false, setgid: false, setuid: false, setpcap: false }
@@ -297,6 +299,8 @@ test("dependency-artifact profile binds exact runtime, ABI, non-root identity, t
   assert.equal(ready.ok, true);
   assert.equal(ready.checks.nodeRuntime.policy, "exact_dependency_runtime");
   assert.equal(ready.checks.processIdentity.identity, "non_root");
+  assert.equal(ready.checks.workspaceCustody.aclCapabilitiesReason, "none");
+  assert.equal(ready.checks.workspaceCustody.aclCapabilitiesAncestorIndex, null);
 
   const blocked = inspectValidationEnvironment({
     profile: "dependency-artifact",
@@ -336,10 +340,31 @@ test("dependency-artifact profile binds exact runtime, ABI, non-root identity, t
 
   const unsafeExtendedCustody = inspectValidationEnvironment({
     profile: "dependency-artifact",
-    runtime: readyRuntime({ workspaceExtendedCustody: false })
+    runtime: readyRuntime({
+      workspaceExtendedCustody: false,
+      workspaceExtendedCustodyReason: "getfacl_finding",
+      workspaceExtendedCustodyAncestorIndex: 3
+    })
   });
   assert.equal(unsafeExtendedCustody.ok, false);
   assert.deepEqual(unsafeExtendedCustody.blockers.map(({ code }) => code), ["workspace_custody_invalid"]);
+  assert.equal(unsafeExtendedCustody.checks.workspaceCustody.aclCapabilitiesReason, "getfacl_finding");
+  assert.equal(unsafeExtendedCustody.checks.workspaceCustody.aclCapabilitiesAncestorIndex, 3);
+
+  const invalidExtendedCustody = inspectValidationEnvironment({
+    profile: "dependency-artifact",
+    runtime: readyRuntime({
+      workspaceExtendedCustody: false,
+      workspaceExtendedCustodyReason: "getfacl_finding",
+      workspaceExtendedCustodyAncestorIndex: 999
+    })
+  });
+  assert.equal(invalidExtendedCustody.ok, false);
+  assert.equal(
+    invalidExtendedCustody.checks.workspaceCustody.aclCapabilitiesReason,
+    "inspection_invalid"
+  );
+  assert.equal(invalidExtendedCustody.checks.workspaceCustody.aclCapabilitiesAncestorIndex, null);
 
   const untrustedNpm = inspectValidationEnvironment({
     profile: "dependency-artifact",
@@ -349,27 +374,76 @@ test("dependency-artifact profile binds exact runtime, ABI, non-root identity, t
   assert.deepEqual(untrustedNpm.blockers.map(({ code }) => code), ["node_runtime_mismatch"]);
 });
 
-test("extended custody accepts only successful security inspections with no findings", () => {
-  assert.equal(securityInspectionReportedNoFindings({
-    status: 0,
-    stdout: "\n",
-    stderr: ""
-  }), true);
+test("extended custody reports bounded reason codes without exposing findings", () => {
+  const empty = { status: 0, stdout: "\n", stderr: "" };
+  assert.equal(classifySecurityInspectionResult(empty, "getfacl"), "none");
+  assert.equal(classifySecurityInspectionResult(empty, "getcap"), "none");
+
+  assert.equal(
+    classifySecurityInspectionResult({
+      status: 0,
+      stdout: "# flags: -s-\n",
+      stderr: ""
+    }, "getfacl"),
+    "getfacl_special_flags"
+  );
 
   for (const result of [
-    null,
-    { status: null, stdout: "", stderr: "" },
-    { status: 1, stdout: "", stderr: "" },
-    { status: 0, stdout: "", stderr: "tool failure" },
     { status: 0, stdout: "user:1001:r-x\n", stderr: "" },
     { status: 0, stdout: "mask::r-x\n", stderr: "" },
     { status: 0, stdout: "default:user::rwx\n", stderr: "" },
-    { status: 0, stdout: "/workspace =\n", stderr: "" },
-    { status: 0, stdout: "cap_setuid=ep\n", stderr: "" },
-    { status: 0, stdout: "", stderr: "", error: new Error("spawn failed") }
+    { status: 0, stdout: "# flags: -s-\nuser::rwx\n", stderr: "" }
   ]) {
-    assert.equal(securityInspectionReportedNoFindings(result), false);
+    assert.equal(classifySecurityInspectionResult(result, "getfacl"), "getfacl_finding");
   }
+
+  const outputLimit = new Error("private output limit detail");
+  outputLimit.code = "ENOBUFS";
+  assert.equal(
+    classifySecurityInspectionResult({ status: null, stdout: "", stderr: "", error: outputLimit }, "getfacl"),
+    "getfacl_output_limit"
+  );
+  assert.equal(classifySecurityInspectionResult(null, "getfacl"), "getfacl_spawn_error");
+  assert.equal(
+    classifySecurityInspectionResult({
+      status: null,
+      stdout: "",
+      stderr: "",
+      error: new Error("private spawn detail")
+    }, "getfacl"),
+    "getfacl_spawn_error"
+  );
+  assert.equal(
+    classifySecurityInspectionResult({ status: null, stdout: "", stderr: "" }, "getfacl"),
+    "getfacl_status_error"
+  );
+  assert.equal(
+    classifySecurityInspectionResult({ status: 1, stdout: "", stderr: "" }, "getfacl"),
+    "getfacl_status_error"
+  );
+  assert.equal(
+    classifySecurityInspectionResult({ status: 0, stdout: "", stderr: "private failure" }, "getfacl"),
+    "getfacl_stderr"
+  );
+
+  for (const result of [
+    { status: 0, stdout: "/workspace =\n", stderr: "" },
+    { status: 0, stdout: "cap_setuid=ep\n", stderr: "" }
+  ]) {
+    assert.equal(classifySecurityInspectionResult(result, "getcap"), "getcap_finding");
+  }
+  assert.equal(
+    classifySecurityInspectionResult({ status: 0, stdout: "", stderr: "private failure" }, "getcap"),
+    "getcap_stderr"
+  );
+  assert.equal(
+    classifySecurityInspectionResult({ status: 127, stdout: "", stderr: "" }, "getcap"),
+    "getcap_status_error"
+  );
+  assert.throws(
+    () => classifySecurityInspectionResult(empty, "unknown"),
+    /security_inspection_kind_invalid/u
+  );
 
   const source = readFileSync(
     resolve(REPOSITORY_ROOT, "scripts/validation-environment-preflight.mjs"),

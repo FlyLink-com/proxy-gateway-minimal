@@ -106,6 +106,25 @@ const REQUIRED_TOOLS = Object.freeze({
 });
 
 const REQUIRED_CAPABILITIES = Object.freeze(["kill", "setgid", "setuid", "setpcap"]);
+const MAX_WORKSPACE_ANCESTORS = 32;
+const WORKSPACE_EXTENDED_CUSTODY_ANCESTOR_REASONS = new Set([
+  "getfacl_output_limit",
+  "getfacl_spawn_error",
+  "getfacl_status_error",
+  "getfacl_stderr",
+  "getfacl_special_flags",
+  "getfacl_finding",
+  "getcap_output_limit",
+  "getcap_spawn_error",
+  "getcap_status_error",
+  "getcap_stderr",
+  "getcap_finding"
+]);
+const WORKSPACE_EXTENDED_CUSTODY_GLOBAL_REASONS = new Set([
+  "getfacl_unavailable",
+  "getcap_unavailable",
+  "ancestor_limit"
+]);
 
 function parseVersion(value) {
   const match = /^([0-9]+)\.([0-9]+)\.([0-9]+)$/u.exec(value || "");
@@ -196,6 +215,28 @@ function workspaceCustodyValid(chain, expectedLeafOwner) {
     && Number.isSafeInteger(entry.uid)
     && (entry.uid === 0 || entry.uid === leafOwner)
   ));
+}
+
+function normalizedWorkspaceExtendedCustody(runtime) {
+  const rawOk = runtime.workspaceExtendedCustody === true;
+  const rawReason = runtime.workspaceExtendedCustodyReason;
+  const rawIndex = runtime.workspaceExtendedCustodyAncestorIndex;
+  if (rawOk && rawReason === "none" && rawIndex === null) {
+    return Object.freeze({ ok: true, reason: "none", ancestorIndex: null });
+  }
+  if (!rawOk
+    && WORKSPACE_EXTENDED_CUSTODY_GLOBAL_REASONS.has(rawReason)
+    && rawIndex === null) {
+    return Object.freeze({ ok: false, reason: rawReason, ancestorIndex: null });
+  }
+  if (!rawOk
+    && WORKSPACE_EXTENDED_CUSTODY_ANCESTOR_REASONS.has(rawReason)
+    && Number.isSafeInteger(rawIndex)
+    && rawIndex >= 0
+    && rawIndex < MAX_WORKSPACE_ANCESTORS) {
+    return Object.freeze({ ok: false, reason: rawReason, ancestorIndex: rawIndex });
+  }
+  return Object.freeze({ ok: false, reason: "inspection_invalid", ancestorIndex: null });
 }
 
 function normalizedEnvironmentValues(
@@ -436,7 +477,8 @@ export function inspectValidationEnvironment({ profile, runtime } = {}) {
     && runtime.workspaceChain?.at(-1)?.uid === expectedLeafOwner
   );
   const workspaceModeOwnerOk = workspaceCustodyValid(runtime.workspaceChain, expectedLeafOwner);
-  const workspaceExtendedOk = runtime.workspaceExtendedCustody === true;
+  const workspaceExtended = normalizedWorkspaceExtendedCustody(runtime);
+  const workspaceExtendedOk = workspaceExtended.ok;
   const workspaceOk = workspaceModeOwnerOk && workspaceExtendedOk;
   const workspaceCustody = Object.freeze({
     required: workspaceRequired,
@@ -444,7 +486,9 @@ export function inspectValidationEnvironment({ profile, runtime } = {}) {
     secure: workspaceOk,
     ownerBound: workspaceOwnerBound,
     modeOwner: workspaceModeOwnerOk,
-    aclCapabilities: workspaceExtendedOk
+    aclCapabilities: workspaceExtendedOk,
+    aclCapabilitiesReason: workspaceExtended.reason,
+    aclCapabilitiesAncestorIndex: workspaceExtended.ancestorIndex
   });
   if (workspaceRequired && !workspaceOk) makeBlocker(blockers, "workspace_custody_invalid");
 
@@ -578,20 +622,46 @@ function workspaceAncestorPaths(root) {
   return paths.reverse();
 }
 
-export function securityInspectionReportedNoFindings(result) {
-  return Boolean(
-    result
-    && !result.error
-    && result.status === 0
-    && !String(result.stdout || "").trim()
-    && !String(result.stderr || "").trim()
-  );
+export function classifySecurityInspectionResult(result, kind) {
+  const prefix = kind === "getfacl"
+    ? "getfacl"
+    : kind === "getcap"
+      ? "getcap"
+      : null;
+  if (!prefix) throw new TypeError("security_inspection_kind_invalid");
+  if (result?.error?.code === "ENOBUFS") return `${prefix}_output_limit`;
+  if (!result || result.error) return `${prefix}_spawn_error`;
+  if (result.status !== 0) return `${prefix}_status_error`;
+  let stdout;
+  let stderr;
+  try {
+    stdout = String(result.stdout || "").trim();
+    stderr = String(result.stderr || "").trim();
+  } catch {
+    return `${prefix}_spawn_error`;
+  }
+  if (stderr) return `${prefix}_stderr`;
+  if (!stdout) return "none";
+  if (kind === "getfacl" && /^# flags: [s-][s-][t-]$/u.test(stdout)) {
+    return "getfacl_special_flags";
+  }
+  return `${prefix}_finding`;
+}
+
+function workspaceExtendedCustodyResult(ok, reason, ancestorIndex = null) {
+  return Object.freeze({ ok, reason, ancestorIndex });
 }
 
 function workspaceExtendedCustody(root) {
-  if (!executable(TOOL_PATHS.getfacl) || !executable(TOOL_PATHS.getcap)) return false;
+  if (!executable(TOOL_PATHS.getfacl)) return workspaceExtendedCustodyResult(false, "getfacl_unavailable");
+  if (!executable(TOOL_PATHS.getcap)) return workspaceExtendedCustodyResult(false, "getcap_unavailable");
   const environment = Object.freeze({ PATH: "/usr/bin:/bin", LANG: "C", LC_ALL: "C" });
-  for (const path of workspaceAncestorPaths(root)) {
+  const paths = workspaceAncestorPaths(root);
+  if (paths.length > MAX_WORKSPACE_ANCESTORS) {
+    return workspaceExtendedCustodyResult(false, "ancestor_limit");
+  }
+  for (let ancestorIndex = 0; ancestorIndex < paths.length; ancestorIndex += 1) {
+    const path = paths[paths.length - ancestorIndex - 1];
     const acl = spawnSync(TOOL_PATHS.getfacl, [
       "--skip-base",
       "--numeric",
@@ -607,16 +677,22 @@ function workspaceExtendedCustody(root) {
       maxBuffer: 64 * 1024,
       windowsHide: true
     });
-    if (!securityInspectionReportedNoFindings(acl)) return false;
+    const aclReason = classifySecurityInspectionResult(acl, "getfacl");
+    if (aclReason !== "none") {
+      return workspaceExtendedCustodyResult(false, aclReason, ancestorIndex);
+    }
     const capabilities = spawnSync(TOOL_PATHS.getcap, ["--", path], {
       encoding: "utf8",
       env: environment,
       maxBuffer: 64 * 1024,
       windowsHide: true
     });
-    if (!securityInspectionReportedNoFindings(capabilities)) return false;
+    const capabilityReason = classifySecurityInspectionResult(capabilities, "getcap");
+    if (capabilityReason !== "none") {
+      return workspaceExtendedCustodyResult(false, capabilityReason, ancestorIndex);
+    }
   }
-  return true;
+  return workspaceExtendedCustodyResult(true, "none");
 }
 
 function filePresent(path) {
@@ -751,6 +827,7 @@ function nobodyIdentity() {
 export function collectValidationEnvironmentRuntime({ root = REPOSITORY_ROOT } = {}) {
   const environment = { ...process.env };
   const npm = npmIdentity(environment, process.execPath, process.platform);
+  const extendedCustody = workspaceExtendedCustody(root);
   const uid = process.getuid?.();
   const gid = process.getgid?.();
   const euid = process.geteuid?.();
@@ -767,7 +844,9 @@ export function collectValidationEnvironmentRuntime({ root = REPOSITORY_ROOT } =
     identity: Object.freeze({ uid, gid, euid, egid }),
     environmentSignals: classifyValidationEnvironmentVariables(environment, { platform: process.platform }),
     workspaceChain: workspaceChain(root),
-    workspaceExtendedCustody: workspaceExtendedCustody(root),
+    workspaceExtendedCustody: extendedCustody.ok,
+    workspaceExtendedCustodyReason: extendedCustody.reason,
+    workspaceExtendedCustodyAncestorIndex: extendedCustody.ancestorIndex,
     tools: Object.freeze({
       ...Object.fromEntries(Object.entries(TOOL_PATHS).map(([name, path]) => [name, executable(path)])),
       node: executable(process.execPath),
