@@ -93,7 +93,7 @@ test("Linux umask 077 cannot reduce the DEBIAN directory below 0755", {
     "}, sort_keys=True, separators=(',', ':')))",
     ""
   ].join("\n");
-  const result = spawnSync("/usr/bin/python3", ["-I", "-S", "-c", probe, HARNESS], {
+  const result = spawnSync("/usr/bin/python3", ["-B", "-I", "-S", "-c", probe, HARNESS], {
     cwd: "/",
     encoding: "utf8",
     env: {

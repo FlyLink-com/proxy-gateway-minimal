@@ -1301,7 +1301,12 @@ test("Linux physical evidence rejects symlink, type, and hardlink substitutions 
   const publicPath = join(publicRoot, unit);
   const inputDirectory = join(inputRoot, unit);
   const buildInput = [join(inputDirectory, "package.json"), join(inputDirectory, "package-lock.json")];
-  const runtime = createCandidateDependencyGateTestRuntime({ stateRoot, statePublicRoot: publicRoot, workerInputRoot: inputRoot });
+  const runtime = createCandidateDependencyGateTestRuntime({
+    stateRoot,
+    statePublicRoot: publicRoot,
+    workerInputRoot: inputRoot,
+    checkAclCapabilities: () => true
+  });
   const terminal = () => ({ serviceUnit: `${unit}.service`, activeState: "inactive", subState: "dead", result: "success", execMainStatus: 0, controlGroup: `/system.slice/${unit}.service`, cgroupEventsPopulated: 0, cgroupProcs: [] });
   const reset = () => {
     rmSync(base, { recursive: true, force: true });
@@ -1917,7 +1922,13 @@ test("CI artifact materialization rejects a dangling candidate node_modules link
 });
 
 test("Linux materialization consumes a real three-file CI artifact and cleans its staging tree", { skip: process.platform !== "linux" }, async (t) => {
-  const controlledRoot = mkdtempSync(join(process.cwd(), ".control-plane-materializer-e2e-"));
+  const secureTemporaryRoot = process.env.SOURCE_VALIDATION_SECURE_TMPDIR;
+  if (typeof secureTemporaryRoot !== "string" || resolve(secureTemporaryRoot) !== secureTemporaryRoot
+    || !existsSync(secureTemporaryRoot)) {
+    t.skip("secure validation temporary root is unavailable");
+    return;
+  }
+  const controlledRoot = mkdtempSync(join(secureTemporaryRoot, "control-plane-materializer-e2e-"));
   const value = fixture(t, { root: controlledRoot });
   const artifactRoot = join(value.root, "dependency-artifacts", value.candidate);
   const sourceRoot = join(value.root, "real-artifact-source");
@@ -1970,6 +1981,14 @@ test("Linux materialization consumes a real three-file CI artifact and cleans it
   const smokeRoots = [];
   const smokeSnapshotModes = [];
   Object.assign(value.runtime, {
+    readService: () => ({
+      main: 31,
+      exec: 31,
+      uid: 4242,
+      gid: 4243,
+      cwd: value.activeRoot,
+      restarts: 7
+    }),
     detectArtifact: () => runtimeTuple,
     runServiceNativeSmoke({ root, service, fixedNodePath }) {
       smokeRoots.push({ root, uid: service.uid, gid: service.gid });

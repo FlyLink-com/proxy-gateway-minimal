@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
-import { chmodSync, existsSync, linkSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, linkSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, statSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { pathToFileURL } from "node:url";
@@ -927,10 +927,18 @@ test("Linux consumer extracts the archive before auditing the dependency tree", 
   } finally { cleanup(value.root); }
 });
 
-test("Linux extractor rejects compressed tar input before creating a destination tree", { skip: process.platform !== "linux" }, () => {
+test("Linux extractor rejects compressed tar input before creating a destination tree", { skip: process.platform !== "linux" }, (t) => {
   const value = fixture("compressed-archive-rejected");
   const archivePath = join(value.root, "node-modules.tar.gz");
-  const destinationRoot = resolve(process.cwd(), `.dependency-compressed-destination-${Date.now()}-${Math.random().toString(16).slice(2)}`);
+  const secureTemporaryRoot = process.env.SOURCE_VALIDATION_SECURE_TMPDIR;
+  if (typeof secureTemporaryRoot !== "string" || resolve(secureTemporaryRoot) !== secureTemporaryRoot
+    || !existsSync(secureTemporaryRoot)) {
+    cleanup(value.root);
+    t.skip("secure validation temporary root is unavailable");
+    return;
+  }
+  const controlledParent = mkdtempSync(join(secureTemporaryRoot, "dependency-compressed-parent-"));
+  const destinationRoot = join(controlledParent, "destination");
   try {
     const tar = spawnSync("/usr/bin/tar", ["--create", "--gzip", "--file", archivePath, "--", "node_modules"], { cwd: value.root, encoding: "utf8" });
     assert.equal(tar.status, 0, String(tar.stderr || ""));
@@ -941,7 +949,7 @@ test("Linux extractor rejects compressed tar input before creating a destination
     }), condition("dependency_archive_extract_failed"));
     assert.equal(existsSync(destinationRoot), false);
   } finally {
-    cleanup(destinationRoot);
+    cleanup(controlledParent);
     cleanup(value.root);
   }
 });

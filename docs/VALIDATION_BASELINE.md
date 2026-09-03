@@ -123,6 +123,38 @@ runtime tuple: production admission still requires the artifact-bound runtime,
 native smoke, exact selected Node binary identity, and the runbook-specific
 Production Gate before any pointer switch.
 
+## Validation Environment Profiles
+
+Run an explicit environment preflight before the corresponding validation
+lane. The preflight uses Node core APIs only, performs no network access or
+mutation, emits one bounded JSON record, and always records
+`productionAuthority: false`. It validates whether the current process may run
+that lane; it does not validate production and cannot replace a runbook Gate.
+
+| Profile | Command | Required boundary |
+| --- | --- | --- |
+| Source | `npm run validation:environment:source` | Any Node release allowed by the semantic `engines.node` range, tracked synthetic fixtures, Node/npm/Git, and no active early-process module or dynamic-loader injection. Root identity and workspace custody are reported but are not Source Gate blockers. Resource-only `NODE_OPTIONS`, module search path, proxy, and custom CA variables are warnings because the server-test runner removes them from test children. |
+| Dependency artifact | `npm run validation:environment:dependency-artifact` | Linux x64, exact Node `22.23.1`, module ABI `127`, npm `10.9.8`, glibc `2.39`, non-root identity, mode/owner plus ACL/file-capability-safe workspace ancestry, and the fixed artifact toolset. |
+| Privileged synthetic | `npm run validation:environment:privileged-synthetic` | Linux x64, Node 22, root identity, mode/owner plus ACL/file-capability-safe workspace ancestry, one PID-namespace layer, the fixed native test toolset, a non-root `nobody` principal, and effective plus bounding `KILL`, `SETGID`, `SETUID`, and `SETPCAP` capabilities. |
+
+`npm test` enters through `scripts/source-validation-test-runner.mjs`. That
+runner passes only the fixed OS execution variables, uses a controlled tool
+path, C locale, UTC clock, private temporary directory, empty dotenv and Git
+configuration, and synthetic test values. It enumerates the tracked server
+tests by bounded relative path and binds the tracked synthetic multi-channel
+proxy template. No inherited credential, database path, feature or mutation
+flag, Node/loader setting, proxy, cloud/CI variable, or checkout-local `.env`
+enters the test child. Source artifacts therefore do not require
+`config/proxy-servers.json`; tests that inspect that protected overlay must
+report an explicit skip when it is absent. Production validation still
+requires the protected overlay and fresh live evidence under its
+runbook-specific Production Gate.
+
+These validation commands are checkout/CI contracts. The published npm
+runtime tarball intentionally excludes `server/tests` and is not a Source
+validation carrier; an attempted checkout validation from that tarball must
+fail closed rather than silently run an incomplete inventory.
+
 ## Baseline Commands
 
 ### C: Docs Only
@@ -241,6 +273,7 @@ Run:
 
 ```powershell
 git diff --check origin/master...HEAD
+npm run validation:environment:source
 npm test
 ```
 
@@ -261,6 +294,7 @@ Run:
 
 ```powershell
 git diff --check origin/master...HEAD
+npm run validation:environment:source
 npm run admin:test
 npm run admin:build
 npm test
@@ -279,6 +313,7 @@ Run:
 
 ```powershell
 git diff --check origin/master...HEAD
+npm run validation:environment:source
 npm test
 ```
 
@@ -398,7 +433,7 @@ Do not keep growing current handoff docs with old pass-count lists.
 ```text
 docs only -> git diff --check
 project-state JSON -> project-state:check + diff check
-server/shared code -> npm test + diff check
-Admin UI -> admin:test + admin:build + npm test + diff check
+server/shared code -> source environment preflight + npm test + diff check
+Admin UI -> source environment preflight + admin:test + admin:build + npm test + diff check
 production/cloud/node/runtime -> runbook-specific A-tier gate
 ```

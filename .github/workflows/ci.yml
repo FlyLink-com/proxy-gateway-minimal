@@ -139,6 +139,15 @@ jobs:
               LANG=C \
               LC_ALL=C \
               WELCOME_COINS_PRIVILEGED_SYNTHETIC_GATE=1 \
+              /usr/bin/timeout --signal=TERM --kill-after=2s 10s \
+              "$node_binary" scripts/validation-environment-preflight.mjs \
+              --profile privileged-synthetic
+
+          /usr/bin/sudo -n /usr/bin/env -i \
+              PATH=/usr/bin:/bin \
+              LANG=C \
+              LC_ALL=C \
+              WELCOME_COINS_PRIVILEGED_SYNTHETIC_GATE=1 \
               /usr/bin/timeout --signal=TERM --kill-after=10s 180s \
               "$node_binary" --test --test-concurrency=1 \
               server/tests/control-plane-welcome-coins-native-synthetic-runner.test.mjs
@@ -154,6 +163,10 @@ jobs:
           --base "$CI_DIFF_BASE"
           --head "$CI_DIFF_HEAD"
           --github-output "$GITHUB_OUTPUT"
+
+      - name: Preflight source validation environment
+        if: steps.changes.outputs.run_full != '0'
+        run: npm run validation:environment:source
 
       - name: Check diff
         if: always()

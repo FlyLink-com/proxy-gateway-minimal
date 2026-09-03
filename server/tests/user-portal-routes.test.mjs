@@ -12,6 +12,7 @@ import { createPortalPasswordCredentialService } from "../services/platform/port
 import { createSqliteSubscriptionControlStore } from "../services/platform/subscription-control-db.mjs";
 import { createUserPortalAuthService } from "../services/platform/user-portal-auth.mjs";
 import { listen } from "./helpers/listen.mjs";
+import { buildSourceValidationTestEnvironment } from "../../scripts/source-validation-test-runner.mjs";
 
 const NOW = "2026-05-31T00:00:00.000Z";
 const FUTURE = "2099-06-04T00:00:00.000Z";
@@ -19,26 +20,7 @@ const SESSION_EXPIRES = "2026-05-31T00:30:00.000Z";
 const TEST_TOTP_SECRET_PROTECTOR = {
   protect: (secret) => `v2:test-protected:${secret}`
 };
-const VULTR_MULTICHANNEL_ENV = {
-  VULTR_TUIC_HOST: "tuic.example.test",
-  VULTR_TUIC_UUID: "11111111-1111-4111-8111-111111111111",
-  VULTR_TUIC_PASSWORD: "synthetic-tuic-password",
-  VULTR_TUIC_SNI: "tuic.example.test",
-  VULTR_VLESS_REALITY_HOST: "vless.example.test",
-  VULTR_VLESS_REALITY_UUID: "22222222-2222-4222-8222-222222222222",
-  VULTR_VLESS_REALITY_SNI: "www.example.test",
-  VULTR_VLESS_REALITY_PUBLIC_KEY: "synthetic-public-key",
-  VULTR_VLESS_REALITY_SHORT_ID: "synthetic-short-id",
-  VULTR_HY2_HOST: "hy2.example.test",
-  VULTR_HY2_PASSWORD: "synthetic-hy2-password",
-  VULTR_HY2_SNI: "hy2.example.test",
-  SGP_TUIC_STATIC_UUID: "33333333-3333-4333-8333-333333333333",
-  SGP_TUIC_STATIC_PASSWORD: "synthetic-sgp-tuic-password",
-  SGP_VLESS_STATIC_UUID: "44444444-4444-4444-8444-444444444444",
-  SGP_XRAY_VLESS_REALITY_PUBLIC_KEY: "synthetic-sgp-public-key",
-  SGP_XRAY_VLESS_REALITY_SHORT_ID: "synthetic-sgp-short-id",
-  SGP_HY2_STATIC_PASSWORD: "synthetic-sgp-hy2-password",
-};
+const REPOSITORY_ROOT = resolve(fileURLToPath(new URL("../../", import.meta.url)));
 
 function seedAccountAndEntitlement(store) {
   store.createAccount({
@@ -891,7 +873,7 @@ test("runtime-wired portal login preflight routes bypass console auth without ex
     state = createRuntimeState({
       rootDir: new URL("../../", import.meta.url),
       env: {
-        ...VULTR_MULTICHANNEL_ENV,
+        ...buildSourceValidationTestEnvironment({}, { repositoryRoot: REPOSITORY_ROOT }),
         CONSOLE_TOKEN: "secret",
         SS_PASSWORD: "pw",
         USER_PORTAL_ROUTES_ENABLED: "true",

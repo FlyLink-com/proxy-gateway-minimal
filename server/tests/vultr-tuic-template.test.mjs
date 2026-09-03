@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import test from "node:test";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -7,6 +7,10 @@ import { loadProxyConfig } from "../services/config.mjs";
 import { generateClashSubscription } from "../services/clash-subscription.mjs";
 
 const rootDir = resolve(fileURLToPath(new URL("../../", import.meta.url)));
+const protectedProxyConfigPath = resolve(rootDir, "config", "proxy-servers.json");
+const protectedProxyConfigSkip = existsSync(protectedProxyConfigPath)
+  ? false
+  : "protected production proxy config is intentionally omitted from source artifacts";
 const retiredPortalDomain = "portal.globalcirclecat.icu";
 const retiredCloudDomains = [
   "sub.globalcirclecat.cloud",
@@ -251,9 +255,9 @@ test("Vultr multi-channel template separates runtime listen tuples from web and 
   assert.equal(runtimeTuples.some((tuple) => tuple.endsWith(":tcp:443")), false);
 });
 
-test("production proxy config uses the SGP domain for SGP VLESS client server host", () => {
+test("production proxy config uses the SGP domain for SGP VLESS client server host", { skip: protectedProxyConfigSkip }, () => {
   const proxyConfig = loadProxyConfig({
-    configPath: resolve(rootDir, "config", "proxy-servers.json"),
+    configPath: protectedProxyConfigPath,
     env: {
       VULTR_TUIC_HOST: "jp.gccwebos.com",
       VULTR_TUIC_UUID: "11111111-1111-4111-8111-111111111111",
@@ -287,14 +291,19 @@ test("production proxy config uses the SGP domain for SGP VLESS client server ho
 });
 
 test("active proxy configs do not reference the retired SGP portal domain", () => {
-  for (const fileName of ["proxy-servers.json", "proxy-servers.vultr-multichannel.template.json"]) {
+  for (const fileName of ["proxy-servers.vultr-multichannel.template.json"]) {
     const content = readFileSync(resolve(rootDir, "config", fileName), "utf8");
     assert.doesNotMatch(content, new RegExp(retiredPortalDomain.replaceAll(".", "\\.")), fileName);
   }
 });
 
+test("protected proxy config does not reference the retired SGP portal domain", { skip: protectedProxyConfigSkip }, () => {
+  const content = readFileSync(protectedProxyConfigPath, "utf8");
+  assert.doesNotMatch(content, new RegExp(retiredPortalDomain.replaceAll(".", "\\.")), "proxy-servers.json");
+});
+
 test("active proxy configs do not retain retired globalcirclecat.cloud public domains", () => {
-  for (const fileName of ["proxy-servers.json", "proxy-servers.vultr-multichannel.template.json"]) {
+  for (const fileName of ["proxy-servers.vultr-multichannel.template.json"]) {
     const content = readFileSync(resolve(rootDir, "config", fileName), "utf8");
     for (const domain of retiredCloudDomains) {
       assert.doesNotMatch(content, new RegExp(domain.replaceAll(".", "\\.")), `${fileName}:${domain}`);
@@ -302,4 +311,13 @@ test("active proxy configs do not retain retired globalcirclecat.cloud public do
     assert.match(content, /"sub\.gccwebos\.com"/, fileName);
     assert.match(content, /"portal\.gccwebos\.com"/, fileName);
   }
+});
+
+test("protected proxy config does not retain retired globalcirclecat.cloud public domains", { skip: protectedProxyConfigSkip }, () => {
+  const content = readFileSync(protectedProxyConfigPath, "utf8");
+  for (const domain of retiredCloudDomains) {
+    assert.doesNotMatch(content, new RegExp(domain.replaceAll(".", "\\.")), `proxy-servers.json:${domain}`);
+  }
+  assert.match(content, /"sub\.gccwebos\.com"/, "proxy-servers.json");
+  assert.match(content, /"portal\.gccwebos\.com"/, "proxy-servers.json");
 });

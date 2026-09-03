@@ -221,6 +221,10 @@ test("package root exports stable module APIs", () => {
 test("package test-runner contract requires Node concurrency support", () => {
   const rootDir = resolve(fileURLToPath(new URL("../../", import.meta.url)));
   const packageJson = JSON.parse(readFileSync(resolve(rootDir, "package.json"), "utf8"));
+  const sourceValidationRunner = readFileSync(
+    resolve(rootDir, "scripts", "source-validation-test-runner.mjs"),
+    "utf8"
+  );
 
   assert.equal(
     packageJson.engines.node,
@@ -228,8 +232,10 @@ test("package test-runner contract requires Node concurrency support", () => {
   );
   assert.equal(
     packageJson.scripts["test:server"],
-    "node --test --test-concurrency=4 server/tests/*.test.mjs"
+    "node scripts/source-validation-test-runner.mjs"
   );
+  assert.match(sourceValidationRunner, /"--test-concurrency=4"/u);
+  assert.match(sourceValidationRunner, /name\.endsWith\("\.test\.mjs"\)/u);
   assert.equal(
     packageJson.scripts["platform:wallet-first-resource-effect-runtime-claims:schema"],
     "node scripts/platform-wallet-first-resource-effect-runtime-claims-schema.mjs"
