@@ -1,17 +1,23 @@
 # Temporary Artifact Ingress: Branch-Restricted Environment Amendment
 
-> Status: **ACTIVE GOVERNANCE AMENDMENT; EXECUTION NOT GRANTED**
+> Status: **ACTIVE GOVERNANCE AMENDMENT; HOST TRANSFER EXECUTION NOT GRANTED**
 >
 > Risk: **A**. This amendment records a deliberate reduction of the original
 > independent-reviewer control. It does not authorize a key, secret, host
-> mutation, workflow dispatch, artifact transfer, validation, activation, or
-> production promotion.
+> mutation, artifact transfer, activation, or production promotion. A later
+> source-only change may stage and validate an exact four-object packet in a
+> disposable GitHub-hosted runner; that is not host-transfer execution.
 
 ## Decision
 
 The selected GitHub Environment is `control-plane-artifact-ingress`. It is
 restricted to protected branches and is bound only to the manual
-`Control Plane Artifact Ingress` workflow's inert `topology-preflight` job.
+`Control Plane Artifact Ingress` workflow's `stage-packet` job. That job may
+retrieve operator-selected source and dependency workflow artifacts into the
+disposable GitHub-hosted runner, verify the canonical four-object packet, and
+remove those materials before completion. It has no host connection, no
+repository or Environment secret reference, no packet upload, and no release
+or deployment action.
 
 The organization can host Environments and branch policies, but the attempted
 required-reviewer policy was rejected by GitHub with an entitlement error. The
@@ -23,15 +29,17 @@ made for this path.
 
 Because an Environment without reviewers cannot provide independent approval,
 its branch restriction is only a source-selection control. Before any private
-key generation, secret creation, host public-key installation, or dispatch,
+key generation, secret creation, host public-key installation, or
+host-transfer dispatch,
 all of the following remain mandatory:
 
 1. A new explicit, single-use operator decision bound to the exact protected
    `master` commit, artifact identities, target, and 24-hour expiry.
 2. Fresh redacted readback that the Environment permits protected branches
-   only, the job has `permissions: {}`, and the workflow remains free of
-   checkout, SSH, artifact transfer, and secret references until the separately
-   reviewed transfer implementation exists.
+   only; the staged job has only `actions: read` and `contents: read`, uses a
+   non-persistent checkout credential, accepts exact manifest-bound artifact
+   identities, and remains free of SSH, host transfer, packet upload, and
+   repository or Environment secret references.
 3. The unchanged supply-chain, artifact-scope, host-inventory, receiver,
    lifecycle, disposable-validation, and separate-promotion inputs in the
    parent execution Gate.
@@ -43,11 +51,12 @@ no-bypass credential boundary.
 ## Scope And Non-Goals
 
 This amendment changes only the Environment selection model and binds the
-already-inert manual workflow to that named Environment. It leaves the existing
-repair identity, release pointer, candidate service, runtime configuration,
-databases, Nginx, DNS, firewall, production data, and artifact transfer path
-unchanged. The workflow continues to exit before any credential, receiver,
-host, artifact, or deployment action.
+manual hosted staging workflow to that named Environment. It leaves the
+existing repair identity, release pointer, candidate service, runtime
+configuration, databases, Nginx, DNS, firewall, production data, and host
+artifact-transfer path unchanged. The workflow can only stage verified
+artifacts inside a disposable hosted runner; it never uses a user-managed
+credential, receiver, host, or deployment action.
 
 ## Rollback
 

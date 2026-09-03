@@ -4,28 +4,153 @@ on:
   workflow_dispatch:
     inputs:
       confirmation:
-        description: Type "prepare artifact ingress" to run the inert preflight.
+        description: Type "deliver artifact ingress packet" to send one verified four-object packet to the fixed receiver.
+        required: true
+        type: string
+      source_commit:
+        description: Exact lowercase 40-character commit bound by both selected manifests.
+        required: true
+        type: string
+      release_run_id:
+        description: Numeric Release Artifact workflow run that uploaded the source artifact.
+        required: true
+        type: string
+      source_artifact_name:
+        description: Exact source artifact name from the selected Release Artifact workflow run.
+        required: true
+        type: string
+      dependency_run_id:
+        description: Numeric Dependency Artifact workflow run that uploaded the dependency artifact.
+        required: true
+        type: string
+      dependency_artifact_name:
+        description: Exact dependency artifact name from the selected Dependency Artifact workflow run.
         required: true
         type: string
 
-permissions: {}
+permissions:
+  actions: read
+  contents: read
 
 concurrency:
   group: control-plane-artifact-ingress-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
-  topology-preflight:
-    name: Stop until the separate execution Gate is granted
-    if: inputs.confirmation == 'prepare artifact ingress'
+  deliver-packet:
+    name: Deliver one verified ingress packet to the forced-command receiver
+    if: inputs.confirmation == 'deliver artifact ingress packet'
     environment:
       name: control-plane-artifact-ingress
     runs-on: ubuntu-latest
     steps:
-      - name: Preserve the execution boundary
+      - name: Validate dispatch identifiers before retrieving artifacts
+        shell: bash
+        env:
+          SOURCE_COMMIT: ${{ inputs.source_commit }}
+          RELEASE_RUN_ID: ${{ inputs.release_run_id }}
+          SOURCE_ARTIFACT_NAME: ${{ inputs.source_artifact_name }}
+          DEPENDENCY_RUN_ID: ${{ inputs.dependency_run_id }}
+          DEPENDENCY_ARTIFACT_NAME: ${{ inputs.dependency_artifact_name }}
+        run: |
+          set -euo pipefail
+          [[ "$SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]] || { echo source_commit_invalid >&2; exit 1; }
+          [[ "$RELEASE_RUN_ID" =~ ^[1-9][0-9]{0,18}$ ]] || { echo release_run_id_invalid >&2; exit 1; }
+          [[ "$DEPENDENCY_RUN_ID" =~ ^[1-9][0-9]{0,18}$ ]] || { echo dependency_run_id_invalid >&2; exit 1; }
+          [[ "$SOURCE_ARTIFACT_NAME" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,159}$ ]] || { echo source_artifact_name_invalid >&2; exit 1; }
+          [[ "$DEPENDENCY_ARTIFACT_NAME" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,159}$ ]] || { echo dependency_artifact_name_invalid >&2; exit 1; }
+
+      - name: Check out the commit bound by the requested artifacts
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ inputs.source_commit }}
+          persist-credentials: false
+
+      - name: Use the verified artifact runtime
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 22.23.1
+
+      - name: Retrieve the selected source artifact into the ephemeral runner
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ${{ inputs.source_artifact_name }}
+          run-id: ${{ inputs.release_run_id }}
+          github-token: ${{ github.token }}
+          path: .ingress-input/source
+
+      - name: Retrieve the selected dependency artifact into the ephemeral runner
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ${{ inputs.dependency_artifact_name }}
+          run-id: ${{ inputs.dependency_run_id }}
+          github-token: ${{ github.token }}
+          path: .ingress-input/dependency
+
+      - name: Build and verify the canonical four-object packet locally
+        shell: bash
+        env:
+          SOURCE_COMMIT: ${{ inputs.source_commit }}
+        run: |
+          set -euo pipefail
+          issued_at="$(date -u +%Y-%m-%dT%H:%M:%S.000Z)"
+          expires_at="$(date -u -d '+23 hours' +%Y-%m-%dT%H:%M:%S.000Z)"
+          mkdir -p "$RUNNER_TEMP/control-plane-ingress-packet"
+          node scripts/control-plane-artifact-ingress-packet-builder.mjs \
+            --source-directory "$GITHUB_WORKSPACE/.ingress-input/source" \
+            --dependency-directory "$GITHUB_WORKSPACE/.ingress-input/dependency" \
+            --output-directory "$RUNNER_TEMP/control-plane-ingress-packet" \
+            --source-commit "$SOURCE_COMMIT" \
+            --issued-at "$issued_at" \
+            --expires-at "$expires_at"
+          echo 'artifact_ingress_packet_prepared'
+
+      - name: Materialize the host-bound delivery identity
+        shell: bash
+        env:
+          INGRESS_PRIVATE_KEY: ${{ secrets.CONTROL_PLANE_ARTIFACT_INGRESS_SSH_PRIVATE_KEY }}
+          INGRESS_HOST: ${{ secrets.CONTROL_PLANE_ARTIFACT_INGRESS_HOST }}
+          INGRESS_PORT: ${{ secrets.CONTROL_PLANE_ARTIFACT_INGRESS_SSH_PORT }}
+          INGRESS_KNOWN_HOSTS: ${{ secrets.CONTROL_PLANE_ARTIFACT_INGRESS_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          [[ -n "$INGRESS_PRIVATE_KEY" && -n "$INGRESS_HOST" && -n "$INGRESS_PORT" && -n "$INGRESS_KNOWN_HOSTS" ]] || { echo ingress_identity_missing >&2; exit 1; }
+          [[ "$INGRESS_HOST" =~ ^[A-Za-z0-9][A-Za-z0-9.-]{0,252}$ ]] || { echo ingress_host_invalid >&2; exit 1; }
+          [[ "$INGRESS_PORT" =~ ^[1-9][0-9]{0,4}$ ]] && (( INGRESS_PORT <= 65535 )) || { echo ingress_port_invalid >&2; exit 1; }
+          install -d -m 0700 "$RUNNER_TEMP/control-plane-ingress-ssh"
+          printf '%s\n' "$INGRESS_PRIVATE_KEY" > "$RUNNER_TEMP/control-plane-ingress-ssh/id_ed25519"
+          printf '%s\n' "$INGRESS_KNOWN_HOSTS" > "$RUNNER_TEMP/control-plane-ingress-ssh/known_hosts"
+          chmod 0600 "$RUNNER_TEMP/control-plane-ingress-ssh/id_ed25519" "$RUNNER_TEMP/control-plane-ingress-ssh/known_hosts"
+          ssh-keygen -lf "$RUNNER_TEMP/control-plane-ingress-ssh/id_ed25519" >/dev/null
+          ssh-keygen -F "$INGRESS_HOST" -f "$RUNNER_TEMP/control-plane-ingress-ssh/known_hosts" >/dev/null
+
+      - name: Stream the verified packet to the fixed receiver
+        shell: bash
+        env:
+          SOURCE_COMMIT: ${{ inputs.source_commit }}
+          INGRESS_HOST: ${{ secrets.CONTROL_PLANE_ARTIFACT_INGRESS_HOST }}
+          INGRESS_PORT: ${{ secrets.CONTROL_PLANE_ARTIFACT_INGRESS_SSH_PORT }}
+        run: |
+          set -euo pipefail
+          set -o pipefail
+          issued_at="$(date -u +%Y-%m-%dT%H:%M:%S.000Z)"
+          expires_at="$(date -u -d '+23 hours' +%Y-%m-%dT%H:%M:%S.000Z)"
+          node scripts/control-plane-artifact-ingress-delivery-cli.mjs \
+            --source-directory "$GITHUB_WORKSPACE/.ingress-input/source" \
+            --dependency-directory "$GITHUB_WORKSPACE/.ingress-input/dependency" \
+            --output-directory "$RUNNER_TEMP/control-plane-ingress-delivery" \
+            --source-commit "$SOURCE_COMMIT" \
+            --issued-at "$issued_at" \
+            --expires-at "$expires_at" | \
+            ssh -T -i "$RUNNER_TEMP/control-plane-ingress-ssh/id_ed25519" \
+              -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+              -o UserKnownHostsFile="$RUNNER_TEMP/control-plane-ingress-ssh/known_hosts" \
+              -o GlobalKnownHostsFile=/dev/null -p "$INGRESS_PORT" \
+              "github-artifact-ingest@$INGRESS_HOST"
+
+      - name: Remove ephemeral packet materials
+        if: always()
         shell: bash
         run: |
           set -euo pipefail
-          echo 'temporary_artifact_ingress_execution_not_granted' >&2
-          echo 'No credential, receiver, host, artifact, or deployment action was attempted.' >&2
-          exit 1
+          rm -rf -- "$GITHUB_WORKSPACE/.ingress-input" "$RUNNER_TEMP/control-plane-ingress-packet" "$RUNNER_TEMP/control-plane-ingress-delivery" "$RUNNER_TEMP/control-plane-ingress-ssh"
