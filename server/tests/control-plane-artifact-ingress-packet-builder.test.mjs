@@ -3,6 +3,7 @@ import { mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSyn
 import { createHash } from "node:crypto";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { Writable } from "node:stream";
 import test from "node:test";
 
 import {
@@ -11,6 +12,8 @@ import {
   buildCanonicalIngressPacketFromArtifactDirectories,
   runArtifactIngressPacketBuilderCli
 } from "../../scripts/control-plane-artifact-ingress-packet-builder.mjs";
+import { writeCanonicalIngressDelivery } from "../../scripts/control-plane-artifact-ingress-delivery-cli.mjs";
+import { receiveArtifactIngress } from "../../scripts/control-plane-artifact-ingress-receiver.mjs";
 
 const NOW = "2026-09-03T06:00:00.000Z";
 const SOURCE_COMMIT = "a".repeat(40);
@@ -201,4 +204,44 @@ test("packet builder CLI accepts only complete exact option sets", async (t) => 
   });
   assert.equal(invalidExitCode, 1);
   assert.equal(invalidErrors, "artifact_ingress_packet_cli_invalid\n");
+});
+
+test("canonical delivery streams a receiver-accepted packet after its output directory is prepared", async (t) => {
+  const input = fixture(t, { separateDirectories: true });
+  const deliveryOutput = join(input.output, "delivery");
+  const quarantineRoot = join(input.output, "quarantine");
+  const receiptRoot = join(input.output, "receipts");
+  mkdirSync(deliveryOutput);
+  mkdirSync(quarantineRoot);
+  mkdirSync(receiptRoot);
+  const chunks = [];
+  const output = new Writable({
+    write(chunk, _encoding, callback) {
+      chunks.push(Buffer.from(chunk));
+      callback();
+    }
+  });
+
+  await writeCanonicalIngressDelivery({
+    output,
+    sourceDirectory: input.sourceDirectory,
+    dependencyDirectory: input.dependencyDirectory,
+    outputDirectory: deliveryOutput,
+    sourceCommit: SOURCE_COMMIT,
+    issuedAt: NOW,
+    expiresAt: "2026-09-04T05:00:00.000Z"
+  });
+
+  assert.deepEqual(readdirSync(deliveryOutput).sort(), [
+    "ingress-checksum.sha256",
+    "ingress-manifest.json"
+  ]);
+  const receipt = await receiveArtifactIngress({
+    input: chunks,
+    quarantineRoot,
+    receiptRoot,
+    now: NOW,
+    candidateId: "33333333-3333-4333-8333-333333333333"
+  });
+  assert.equal(receipt.sourceCommit, SOURCE_COMMIT);
 });

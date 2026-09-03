@@ -135,15 +135,17 @@ jobs:
           set -o pipefail
           issued_at="$(date -u +%Y-%m-%dT%H:%M:%S.000Z)"
           expires_at="$(date -u -d '+23 hours' +%Y-%m-%dT%H:%M:%S.000Z)"
+          mkdir -p "$RUNNER_TEMP/control-plane-ingress-delivery"
           node scripts/control-plane-artifact-ingress-delivery-cli.mjs \
             --source-directory "$GITHUB_WORKSPACE/.ingress-input/source" \
             --dependency-directory "$GITHUB_WORKSPACE/.ingress-input/dependency" \
             --output-directory "$RUNNER_TEMP/control-plane-ingress-delivery" \
             --source-commit "$SOURCE_COMMIT" \
             --issued-at "$issued_at" \
-            --expires-at "$expires_at" | \
+            --expires-at "$expires_at" > "$RUNNER_TEMP/control-plane-ingress-delivery/packet.bin"
+          cat "$RUNNER_TEMP/control-plane-ingress-delivery/packet.bin" | \
             ssh -T -i "$RUNNER_TEMP/control-plane-ingress-ssh/id_ed25519" \
-              -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+              -o BatchMode=yes -o ConnectTimeout=15 -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
               -o UserKnownHostsFile="$RUNNER_TEMP/control-plane-ingress-ssh/known_hosts" \
               -o GlobalKnownHostsFile=/dev/null -p "$INGRESS_PORT" \
               "github-artifact-ingest@$INGRESS_HOST"
