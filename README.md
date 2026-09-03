@@ -1,6 +1,7 @@
 # proxy-gateway-minimal / gccgw
 
 [![CI](https://github.com/gccwebos-com/proxy-gateway-minimal/actions/workflows/ci.yml/badge.svg?branch=master&event=push)](https://github.com/gccwebos-com/proxy-gateway-minimal/actions/workflows/ci.yml?query=branch%3Amaster+event%3Apush)
+[![Control Plane Artifact Ingress](https://github.com/gccwebos-com/proxy-gateway-minimal/actions/workflows/control-plane-artifact-ingress.yml/badge.svg?branch=master)](https://github.com/gccwebos-com/proxy-gateway-minimal/actions/workflows/control-plane-artifact-ingress.yml?query=branch%3Amaster)
 [![Docs](https://img.shields.io/badge/docs-docs%2FCONVENTIONS-blue)](docs/CONVENTIONS.md)
 
 [English](README_EN.md) | [文档索引](docs/README.md)
@@ -13,6 +14,10 @@
 > docs-only 任务下的“绿色”徽章只表示文档与治理门禁通过,并不代表
 > 应用测试或构建被执行。完整任务合同见
 > [`docs/VALIDATION_BASELINE.md`](docs/VALIDATION_BASELINE.md)。
+
+> Control Plane Artifact Ingress 徽章反映该**手动**候选制品下发工作流的
+> 最近一次运行结果。它不代表生产部署、release 指针切换、服务重启或运行
+> 健康状态；成功仅表示受限四对象包已通过工作流边界处理。
 
 `proxy-gateway-minimal` 是一个订阅控制与交付项目。现在的主线不是
 “再写一个代理面板”，而是把订阅生产、发放、审计、撤回、安装配置和节点包
