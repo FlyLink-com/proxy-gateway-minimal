@@ -1,0 +1,202 @@
+name: Control Plane Artifact Ingress V2
+run-name: Control Plane Artifact Ingress V2 - receiver v2 prerequisite
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: Type "deliver artifact ingress v2 packet after receiver upgrade" only after the receiver-v2 Gate is complete.
+        required: true
+        type: string
+      packet_id:
+        description: Fresh lowercase UUIDv4 bound to this single-use delivery Gate.
+        required: true
+        type: string
+      source_commit:
+        description: Exact lowercase 40-character payload commit bound by both selected manifests.
+        required: true
+        type: string
+      release_run_id:
+        description: Numeric Release Artifact workflow run that uploaded the source artifact.
+        required: true
+        type: string
+      source_artifact_name:
+        description: Exact source artifact name from the selected Release Artifact workflow run.
+        required: true
+        type: string
+      dependency_run_id:
+        description: Numeric Dependency Artifact workflow run that uploaded the dependency artifact.
+        required: true
+        type: string
+      dependency_artifact_name:
+        description: Exact dependency artifact name from the selected Dependency Artifact workflow run.
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: control-plane-artifact-ingress-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  deliver-v2-packet:
+    name: Deliver one verified six-file packet to the upgraded forced-command receiver
+    if: >-
+      github.ref == 'refs/heads/master' &&
+      inputs.confirmation == 'deliver artifact ingress v2 packet after receiver upgrade'
+    environment:
+      name: control-plane-artifact-ingress
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Validate dispatch identifiers before retrieving artifacts
+        shell: bash
+        env:
+          PACKET_ID: ${{ inputs.packet_id }}
+          SOURCE_COMMIT: ${{ inputs.source_commit }}
+          RELEASE_RUN_ID: ${{ inputs.release_run_id }}
+          SOURCE_ARTIFACT_NAME: ${{ inputs.source_artifact_name }}
+          DEPENDENCY_RUN_ID: ${{ inputs.dependency_run_id }}
+          DEPENDENCY_ARTIFACT_NAME: ${{ inputs.dependency_artifact_name }}
+        run: |
+          set -euo pipefail
+          [[ "$PACKET_ID" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$ ]] || { echo packet_id_invalid >&2; exit 1; }
+          [[ "$SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]] || { echo source_commit_invalid >&2; exit 1; }
+          [[ "$RELEASE_RUN_ID" =~ ^[1-9][0-9]{0,15}$ ]] && (( 10#$RELEASE_RUN_ID <= 9007199254740991 )) || { echo release_run_id_invalid >&2; exit 1; }
+          [[ "$DEPENDENCY_RUN_ID" =~ ^[1-9][0-9]{0,15}$ ]] && (( 10#$DEPENDENCY_RUN_ID <= 9007199254740991 )) || { echo dependency_run_id_invalid >&2; exit 1; }
+          [[ "$SOURCE_ARTIFACT_NAME" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,159}$ ]] || { echo source_artifact_name_invalid >&2; exit 1; }
+          [[ "$DEPENDENCY_ARTIFACT_NAME" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,159}$ ]] || { echo dependency_artifact_name_invalid >&2; exit 1; }
+          test "$SOURCE_ARTIFACT_NAME" = "proxy-gateway-${SOURCE_COMMIT:0:12}" || { echo source_artifact_name_invalid >&2; exit 1; }
+          test "$DEPENDENCY_ARTIFACT_NAME" = "control-plane-dependency-${SOURCE_COMMIT}" || { echo dependency_artifact_name_invalid >&2; exit 1; }
+
+      - name: Check out the protected v2 delivery tooling
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Require the payload commit to be retained in protected master history
+        shell: bash
+        env:
+          SOURCE_COMMIT: ${{ inputs.source_commit }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          git cat-file -e "${SOURCE_COMMIT}^{commit}"
+          git merge-base --is-ancestor "$SOURCE_COMMIT" "$GITHUB_SHA"
+
+      - name: Use the verified artifact runtime
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 22.23.1
+
+      - name: Verify both selected producer runs before downloading artifacts
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_COMMIT: ${{ inputs.source_commit }}
+          RELEASE_RUN_ID: ${{ inputs.release_run_id }}
+          DEPENDENCY_RUN_ID: ${{ inputs.dependency_run_id }}
+          RUN_EVIDENCE_ROOT: ${{ runner.temp }}/control-plane-ingress-v2-run-evidence
+        run: |
+          set -euo pipefail
+          umask 077
+          install -d -m 0700 "$RUN_EVIDENCE_ROOT"
+          gh api --method GET \
+            "repos/$GITHUB_REPOSITORY/actions/runs/$RELEASE_RUN_ID" \
+            > "$RUN_EVIDENCE_ROOT/release.json"
+          gh api --method GET \
+            "repos/$GITHUB_REPOSITORY/actions/runs/$DEPENDENCY_RUN_ID" \
+            > "$RUN_EVIDENCE_ROOT/dependency.json"
+          node scripts/control-plane-artifact-ingress-v2-run-contract.mjs \
+            --source-commit "$SOURCE_COMMIT" \
+            --repository "$GITHUB_REPOSITORY" \
+            --release-run-id "$RELEASE_RUN_ID" \
+            --release-run-json "$RUN_EVIDENCE_ROOT/release.json" \
+            --dependency-run-id "$DEPENDENCY_RUN_ID" \
+            --dependency-run-json "$RUN_EVIDENCE_ROOT/dependency.json"
+
+      - name: Retrieve the selected source artifact into the ephemeral runner
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ${{ inputs.source_artifact_name }}
+          run-id: ${{ inputs.release_run_id }}
+          github-token: ${{ github.token }}
+          path: .ingress-v2-input/source
+
+      - name: Retrieve the selected dependency artifact into the ephemeral runner
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ${{ inputs.dependency_artifact_name }}
+          run-id: ${{ inputs.dependency_run_id }}
+          github-token: ${{ github.token }}
+          path: .ingress-v2-input/dependency
+
+      - name: Build and verify the complete v2 packet before loading an SSH identity
+        shell: bash
+        env:
+          PACKET_ID: ${{ inputs.packet_id }}
+          SOURCE_COMMIT: ${{ inputs.source_commit }}
+        run: |
+          set -euo pipefail
+          umask 077
+          issued_at="$(date -u +%Y-%m-%dT%H:%M:%S.000Z)"
+          expires_at="$(date -u -d '+23 hours' +%Y-%m-%dT%H:%M:%S.000Z)"
+          install -d -m 0700 "$RUNNER_TEMP/control-plane-ingress-v2-delivery"
+          node scripts/control-plane-artifact-ingress-v2-delivery-cli.mjs \
+            --source-directory "$GITHUB_WORKSPACE/.ingress-v2-input/source" \
+            --dependency-directory "$GITHUB_WORKSPACE/.ingress-v2-input/dependency" \
+            --packet-id "$PACKET_ID" \
+            --source-commit "$SOURCE_COMMIT" \
+            --issued-at "$issued_at" \
+            --expires-at "$expires_at" \
+            > "$RUNNER_TEMP/control-plane-ingress-v2-delivery/packet.bin"
+          test -s "$RUNNER_TEMP/control-plane-ingress-v2-delivery/packet.bin"
+          echo 'artifact_ingress_v2_packet_verified'
+
+      - name: Materialize the host-bound delivery identity
+        shell: bash
+        env:
+          INGRESS_PRIVATE_KEY: ${{ secrets.CONTROL_PLANE_ARTIFACT_INGRESS_SSH_PRIVATE_KEY }}
+          INGRESS_HOST: ${{ secrets.CONTROL_PLANE_ARTIFACT_INGRESS_HOST }}
+          INGRESS_PORT: ${{ secrets.CONTROL_PLANE_ARTIFACT_INGRESS_SSH_PORT }}
+          INGRESS_KNOWN_HOSTS: ${{ secrets.CONTROL_PLANE_ARTIFACT_INGRESS_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          [[ -n "$INGRESS_PRIVATE_KEY" && -n "$INGRESS_HOST" && -n "$INGRESS_PORT" && -n "$INGRESS_KNOWN_HOSTS" ]] || { echo ingress_identity_missing >&2; exit 1; }
+          [[ "$INGRESS_HOST" =~ ^[A-Za-z0-9][A-Za-z0-9.-]{0,252}$ ]] || { echo ingress_host_invalid >&2; exit 1; }
+          [[ "$INGRESS_PORT" =~ ^[1-9][0-9]{0,4}$ ]] && (( INGRESS_PORT <= 65535 )) || { echo ingress_port_invalid >&2; exit 1; }
+          install -d -m 0700 "$RUNNER_TEMP/control-plane-ingress-ssh"
+          printf '%s\n' "$INGRESS_PRIVATE_KEY" > "$RUNNER_TEMP/control-plane-ingress-ssh/id_ed25519"
+          printf '%s\n' "$INGRESS_KNOWN_HOSTS" > "$RUNNER_TEMP/control-plane-ingress-ssh/known_hosts"
+          chmod 0600 "$RUNNER_TEMP/control-plane-ingress-ssh/id_ed25519" "$RUNNER_TEMP/control-plane-ingress-ssh/known_hosts"
+          ssh-keygen -lf "$RUNNER_TEMP/control-plane-ingress-ssh/id_ed25519" >/dev/null
+          ssh-keygen -F "$INGRESS_HOST" -f "$RUNNER_TEMP/control-plane-ingress-ssh/known_hosts" >/dev/null
+
+      - name: Stream the verified v2 packet to the fixed receiver
+        shell: bash
+        env:
+          INGRESS_HOST: ${{ secrets.CONTROL_PLANE_ARTIFACT_INGRESS_HOST }}
+          INGRESS_PORT: ${{ secrets.CONTROL_PLANE_ARTIFACT_INGRESS_SSH_PORT }}
+        run: |
+          set -euo pipefail
+          set -o pipefail
+          /usr/bin/timeout --signal=TERM --kill-after=5s 300s \
+            ssh -T -i "$RUNNER_TEMP/control-plane-ingress-ssh/id_ed25519" \
+              -o BatchMode=yes -o ConnectTimeout=15 -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+              -o UserKnownHostsFile="$RUNNER_TEMP/control-plane-ingress-ssh/known_hosts" \
+              -o GlobalKnownHostsFile=/dev/null -p "$INGRESS_PORT" \
+              "github-artifact-ingest@$INGRESS_HOST" \
+              < "$RUNNER_TEMP/control-plane-ingress-v2-delivery/packet.bin"
+
+      - name: Remove ephemeral v2 packet materials
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf -- "$GITHUB_WORKSPACE/.ingress-v2-input" "$RUNNER_TEMP/control-plane-ingress-v2-delivery" "$RUNNER_TEMP/control-plane-ingress-ssh"
+          rm -rf -- "$RUNNER_TEMP/control-plane-ingress-v2-run-evidence"

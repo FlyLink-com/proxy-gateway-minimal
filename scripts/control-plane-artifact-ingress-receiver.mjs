@@ -9,6 +9,11 @@ import {
   safeIngressReceipt,
   validateIngressHeader
 } from "./control-plane-artifact-ingress-contract.mjs";
+import {
+  ArtifactIngressV2ContractError,
+  safeIngressV2Receipt,
+  validateIngressV2Header
+} from "./control-plane-artifact-ingress-v2-contract.mjs";
 
 const MAX_HEADER_BYTES = 64 * 1024;
 
@@ -120,6 +125,17 @@ function parseHeader(bytes) {
   }
 }
 
+function validateAcceptedHeader(value, now) {
+  if (value?.schemaVersion === "2") return validateIngressV2Header(value, { now });
+  return validateIngressHeader(value, { now });
+}
+
+function safeAcceptedReceipt(candidateId, header, acceptedAt) {
+  return header.schemaVersion === "2"
+    ? safeIngressV2Receipt({ candidateId, header, acceptedAt })
+    : safeIngressReceipt({ candidateId, header });
+}
+
 async function ensureMissing(path) {
   try {
     await lstat(path);
@@ -143,31 +159,63 @@ async function writeReceipt(receiptRoot, receipt) {
   } finally {
     await handle?.close();
   }
+  await syncDirectory(receiptRoot);
 }
 
 export async function receiveArtifactIngress({
   input,
   quarantineRoot: rawQuarantineRoot,
   receiptRoot: rawReceiptRoot,
-  now = new Date().toISOString(),
+  now,
+  clock = () => new Date().toISOString(),
   candidateId = randomUUID()
 } = {}) {
   if (!isSafeCandidateId(candidateId)) fail("artifact_ingress_candidate_invalid");
   const quarantineRoot = await assertDirectoryRoot(rawQuarantineRoot);
   const receiptRoot = await assertDirectoryRoot(rawReceiptRoot);
-  const candidatePath = join(quarantineRoot, candidateId);
-  const temporaryPath = join(quarantineRoot, ".receiving-" + candidateId);
-  await ensureMissing(candidatePath);
-  await ensureMissing(temporaryPath);
-
   const reader = new ByteReader(input);
+  let candidatePath;
+  let temporaryPath;
+  let claimHandle;
   let published = false;
   try {
     const headerLength = (await reader.readExact(4)).readUInt32BE(0);
     if (headerLength === 0 || headerLength > MAX_HEADER_BYTES) {
       fail("artifact_ingress_header_invalid");
     }
-    const header = validateIngressHeader(parseHeader(await reader.readExact(headerLength)), { now });
+    const admittedAt = now ?? clock();
+    const header = validateAcceptedHeader(parseHeader(await reader.readExact(headerLength)), admittedAt);
+    const acceptedCandidateId = header.schemaVersion === "2" ? header.packetId : candidateId;
+    candidatePath = join(quarantineRoot, acceptedCandidateId);
+    temporaryPath = header.schemaVersion === "2"
+      ? join(quarantineRoot, `.receiving-${acceptedCandidateId}-${randomUUID()}`)
+      : join(quarantineRoot, `.receiving-${acceptedCandidateId}`);
+    if (header.schemaVersion === "2") {
+      const proposedClaimPath = join(receiptRoot, `.replay-${acceptedCandidateId}.json`);
+      try {
+        claimHandle = await open(proposedClaimPath, "wx", 0o600);
+        await writeAll(claimHandle, Buffer.from(JSON.stringify({
+          schemaVersion: "1",
+          type: "control_plane_artifact_ingress_replay_claim",
+          packetId: header.packetId,
+          sourceCommit: header.sourceCommit,
+          issuedAt: header.issuedAt,
+          claimedAt: admittedAt,
+          expiresAt: header.expiresAt,
+          headerSha256: createHash("sha256")
+            .update(Buffer.from(JSON.stringify(header), "utf8"))
+            .digest("hex")
+        }) + "\n", "utf8"));
+        await claimHandle.sync();
+        await syncDirectory(receiptRoot);
+      } catch (error) {
+        if (error?.code === "EEXIST") fail("artifact_ingress_candidate_exists");
+        if (error instanceof ArtifactIngressReceiveError) throw error;
+        fail("artifact_ingress_storage_invalid");
+      }
+    }
+    await ensureMissing(candidatePath);
+    await ensureMissing(temporaryPath);
     await mkdir(temporaryPath, { mode: 0o700 });
 
     for (const entry of header.entries) {
@@ -187,19 +235,50 @@ export async function receiveArtifactIngress({
         fail("artifact_ingress_digest_mismatch");
       }
     }
+    await syncDirectory(temporaryPath);
     await reader.assertEnd();
-    await rename(temporaryPath, candidatePath);
+    const acceptedAt = now ?? clock();
+    if (header.schemaVersion === "2") validateIngressV2Header(header, { now: acceptedAt });
+    try {
+      await rename(temporaryPath, candidatePath);
+    } catch (error) {
+      if (["EEXIST", "ENOTEMPTY"].includes(error?.code)) fail("artifact_ingress_candidate_exists");
+      throw error;
+    }
     published = true;
-    const receipt = safeIngressReceipt({ candidateId, header });
+    await syncDirectory(quarantineRoot);
+    const receipt = safeAcceptedReceipt(acceptedCandidateId, header, acceptedAt);
     await writeReceipt(receiptRoot, receipt);
     return receipt;
   } catch (error) {
-    if (published) await rm(candidatePath, { recursive: true, force: true });
-    await rm(temporaryPath, { recursive: true, force: true });
-    if (error instanceof ArtifactIngressContractError || error instanceof ArtifactIngressReceiveError) {
+    if (published && candidatePath) {
+      try {
+        await rm(candidatePath, { recursive: true, force: true });
+        await syncDirectory(quarantineRoot);
+      } catch {
+        fail("artifact_ingress_storage_invalid");
+      }
+    }
+    if (temporaryPath) await rm(temporaryPath, { recursive: true, force: true });
+    if (error instanceof ArtifactIngressContractError || error instanceof ArtifactIngressV2ContractError || error instanceof ArtifactIngressReceiveError) {
       throw error;
     }
     fail("artifact_ingress_receive_failed");
+  } finally {
+    await claimHandle?.close().catch(() => {});
+  }
+}
+
+async function syncDirectory(path) {
+  if (process.platform === "win32") return;
+  let handle;
+  try {
+    handle = await open(path, "r");
+    await handle.sync();
+  } catch {
+    fail("artifact_ingress_storage_invalid");
+  } finally {
+    await handle?.close().catch(() => {});
   }
 }
 
@@ -217,7 +296,7 @@ function parseReceiverArguments(argv) {
 }
 
 function safeErrorCode(error) {
-  return error instanceof ArtifactIngressContractError || error instanceof ArtifactIngressReceiveError
+  return error instanceof ArtifactIngressContractError || error instanceof ArtifactIngressV2ContractError || error instanceof ArtifactIngressReceiveError
     ? error.code
     : "artifact_ingress_receive_failed";
 }

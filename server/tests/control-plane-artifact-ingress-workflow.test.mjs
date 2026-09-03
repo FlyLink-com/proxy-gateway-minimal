@@ -36,7 +36,7 @@ test("manual artifact-ingress workflow streams only one verified packet to the f
   assert.match(workflow, /scripts\/control-plane-artifact-ingress-delivery-cli\.mjs/);
   assert.match(workflow, /mkdir -p "\$RUNNER_TEMP\/control-plane-ingress-delivery"/);
   assert.match(workflow, /--expires-at "\$expires_at" > "\$RUNNER_TEMP\/control-plane-ingress-delivery\/packet\.bin"/);
-  assert.match(workflow, /cat "\$RUNNER_TEMP\/control-plane-ingress-delivery\/packet\.bin" \| \\\n\s+ssh -T -i/);
+  assert.match(workflow, /cat "\$RUNNER_TEMP\/control-plane-ingress-delivery\/packet\.bin" \| \\\r?\n\s+ssh -T -i/);
   assert.match(workflow, /ConnectTimeout=15/);
   assert.match(workflow, /secrets\.CONTROL_PLANE_ARTIFACT_INGRESS_SSH_PRIVATE_KEY/);
   assert.match(workflow, /secrets\.CONTROL_PLANE_ARTIFACT_INGRESS_HOST/);
