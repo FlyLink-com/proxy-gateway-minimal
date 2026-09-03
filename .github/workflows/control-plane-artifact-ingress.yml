@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       confirmation:
-        description: Type "stage artifact ingress packet" to stage and verify the four-object packet in GitHub-hosted storage only.
+        description: Type "deliver artifact ingress packet" to send one verified four-object packet to the fixed receiver.
         required: true
         type: string
       source_commit:
@@ -37,9 +37,9 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  stage-packet:
-    name: Stage and verify an ingress packet without host transfer
-    if: inputs.confirmation == 'stage artifact ingress packet'
+  deliver-packet:
+    name: Deliver one verified ingress packet to the forced-command receiver
+    if: inputs.confirmation == 'deliver artifact ingress packet'
     environment:
       name: control-plane-artifact-ingress
     runs-on: ubuntu-latest
@@ -103,11 +103,54 @@ jobs:
             --source-commit "$SOURCE_COMMIT" \
             --issued-at "$issued_at" \
             --expires-at "$expires_at"
-          echo 'artifact_ingress_transfer_not_executed'
+          echo 'artifact_ingress_packet_prepared'
+
+      - name: Materialize the host-bound delivery identity
+        shell: bash
+        env:
+          INGRESS_PRIVATE_KEY: ${{ secrets.CONTROL_PLANE_ARTIFACT_INGRESS_SSH_PRIVATE_KEY }}
+          INGRESS_HOST: ${{ secrets.CONTROL_PLANE_ARTIFACT_INGRESS_HOST }}
+          INGRESS_PORT: ${{ secrets.CONTROL_PLANE_ARTIFACT_INGRESS_SSH_PORT }}
+          INGRESS_KNOWN_HOSTS: ${{ secrets.CONTROL_PLANE_ARTIFACT_INGRESS_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          [[ -n "$INGRESS_PRIVATE_KEY" && -n "$INGRESS_HOST" && -n "$INGRESS_PORT" && -n "$INGRESS_KNOWN_HOSTS" ]] || { echo ingress_identity_missing >&2; exit 1; }
+          [[ "$INGRESS_HOST" =~ ^[A-Za-z0-9][A-Za-z0-9.-]{0,252}$ ]] || { echo ingress_host_invalid >&2; exit 1; }
+          [[ "$INGRESS_PORT" =~ ^[1-9][0-9]{0,4}$ ]] && (( INGRESS_PORT <= 65535 )) || { echo ingress_port_invalid >&2; exit 1; }
+          install -d -m 0700 "$RUNNER_TEMP/control-plane-ingress-ssh"
+          printf '%s\n' "$INGRESS_PRIVATE_KEY" > "$RUNNER_TEMP/control-plane-ingress-ssh/id_ed25519"
+          printf '%s\n' "$INGRESS_KNOWN_HOSTS" > "$RUNNER_TEMP/control-plane-ingress-ssh/known_hosts"
+          chmod 0600 "$RUNNER_TEMP/control-plane-ingress-ssh/id_ed25519" "$RUNNER_TEMP/control-plane-ingress-ssh/known_hosts"
+          ssh-keygen -lf "$RUNNER_TEMP/control-plane-ingress-ssh/id_ed25519" >/dev/null
+          ssh-keygen -F "$INGRESS_HOST" -f "$RUNNER_TEMP/control-plane-ingress-ssh/known_hosts" >/dev/null
+
+      - name: Stream the verified packet to the fixed receiver
+        shell: bash
+        env:
+          SOURCE_COMMIT: ${{ inputs.source_commit }}
+          INGRESS_HOST: ${{ secrets.CONTROL_PLANE_ARTIFACT_INGRESS_HOST }}
+          INGRESS_PORT: ${{ secrets.CONTROL_PLANE_ARTIFACT_INGRESS_SSH_PORT }}
+        run: |
+          set -euo pipefail
+          set -o pipefail
+          issued_at="$(date -u +%Y-%m-%dT%H:%M:%S.000Z)"
+          expires_at="$(date -u -d '+23 hours' +%Y-%m-%dT%H:%M:%S.000Z)"
+          node scripts/control-plane-artifact-ingress-delivery-cli.mjs \
+            --source-directory "$GITHUB_WORKSPACE/.ingress-input/source" \
+            --dependency-directory "$GITHUB_WORKSPACE/.ingress-input/dependency" \
+            --output-directory "$RUNNER_TEMP/control-plane-ingress-delivery" \
+            --source-commit "$SOURCE_COMMIT" \
+            --issued-at "$issued_at" \
+            --expires-at "$expires_at" | \
+            ssh -T -i "$RUNNER_TEMP/control-plane-ingress-ssh/id_ed25519" \
+              -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+              -o UserKnownHostsFile="$RUNNER_TEMP/control-plane-ingress-ssh/known_hosts" \
+              -o GlobalKnownHostsFile=/dev/null -p "$INGRESS_PORT" \
+              "github-artifact-ingest@$INGRESS_HOST"
 
       - name: Remove ephemeral packet materials
         if: always()
         shell: bash
         run: |
           set -euo pipefail
-          rm -rf -- "$GITHUB_WORKSPACE/.ingress-input" "$RUNNER_TEMP/control-plane-ingress-packet"
+          rm -rf -- "$GITHUB_WORKSPACE/.ingress-input" "$RUNNER_TEMP/control-plane-ingress-packet" "$RUNNER_TEMP/control-plane-ingress-delivery" "$RUNNER_TEMP/control-plane-ingress-ssh"

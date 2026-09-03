@@ -8,14 +8,14 @@ const workflow = readFileSync(
   "utf8"
 );
 
-test("manual artifact-ingress workflow stages only one validated packet in the hosted runner", () => {
+test("manual artifact-ingress workflow streams only one verified packet to the fixed receiver", () => {
   assert.match(workflow, /^name: Control Plane Artifact Ingress$/m);
   assert.match(workflow, /^\s+workflow_dispatch:$/m);
   for (const input of [
     "confirmation", "source_commit", "release_run_id", "source_artifact_name",
     "dependency_run_id", "dependency_artifact_name"
   ]) assert.match(workflow, new RegExp(`^\\s+${input}:$`, "m"));
-  assert.match(workflow, /inputs\.confirmation == 'stage artifact ingress packet'/);
+  assert.match(workflow, /inputs\.confirmation == 'deliver artifact ingress packet'/);
   assert.match(workflow, /^\s+actions: read$/m);
   assert.match(workflow, /^\s+contents: read$/m);
   assert.match(
@@ -32,9 +32,17 @@ test("manual artifact-ingress workflow stages only one validated packet in the h
   );
   assert.match(workflow, /source_commit_invalid/);
   assert.match(workflow, /scripts\/control-plane-artifact-ingress-packet-builder\.mjs/);
-  assert.match(workflow, /artifact_ingress_transfer_not_executed/);
+  assert.match(workflow, /artifact_ingress_packet_prepared/);
+  assert.match(workflow, /scripts\/control-plane-artifact-ingress-delivery-cli\.mjs/);
+  assert.match(workflow, /secrets\.CONTROL_PLANE_ARTIFACT_INGRESS_SSH_PRIVATE_KEY/);
+  assert.match(workflow, /secrets\.CONTROL_PLANE_ARTIFACT_INGRESS_HOST/);
+  assert.match(workflow, /secrets\.CONTROL_PLANE_ARTIFACT_INGRESS_SSH_PORT/);
+  assert.match(workflow, /secrets\.CONTROL_PLANE_ARTIFACT_INGRESS_KNOWN_HOSTS/);
+  assert.match(workflow, /ssh -T -i/);
+  assert.match(workflow, /StrictHostKeyChecking=yes/);
+  assert.match(workflow, /IdentitiesOnly=yes/);
+  assert.match(workflow, /GlobalKnownHostsFile=\/dev\/null/);
   assert.match(workflow, /Remove ephemeral packet materials/);
-  assert.doesNotMatch(workflow, /\bsecrets\./);
-  assert.doesNotMatch(workflow, /\bssh\b|\bscp\b|\brsync\b/i);
+  assert.doesNotMatch(workflow, /\bscp\b|\brsync\b/i);
   assert.doesNotMatch(workflow, /actions\/upload-artifact|writeArtifactIngressPacket/);
 });
