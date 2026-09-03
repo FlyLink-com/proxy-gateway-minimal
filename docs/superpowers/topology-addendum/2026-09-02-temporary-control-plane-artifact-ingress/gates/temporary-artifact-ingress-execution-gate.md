@@ -5,6 +5,10 @@
 > This document defines the evidence required for a future request. It does not
 > authorize a GitHub Settings change, key creation, host mutation, source change,
 > validation run, or production transfer.
+>
+> The GitHub Settings input below is amended by the later
+> [branch-restricted Environment decision](../../2026-09-03-temporary-control-plane-artifact-ingress-unreviewed-environment/README.md).
+> The execution status remains **NOT GRANTED**.
 
 ## Decision Input
 
@@ -16,7 +20,7 @@ Any missing, stale, ambiguous, or mismatched input is NO_GO.
 | Supply-chain prerequisites | Exact current result showing the shared-owner, lock postverification, offline closure, and explicit Risk A resume gates are green. A dry run or CI success is not a substitute. |
 | Source identity | Exact protected-master commit, reviewed source archive digest, dependency-artifact digest, and canonical manifest digest. |
 | Artifact scope | Exactly source archive, dependency artifact, manifest, checksum; aggregate size <= 64 MiB; one source revision; no customer or runtime configuration material. |
-| GitHub Settings | A separately approved protected Environment with no bypass, independent human review, exact manual workflow binding, no broad reusable credential, and before/after redacted readback. |
+| GitHub Settings | An exact branch-restricted Environment and the explicit manual workflow binding, with before/after redacted readback. The independent-reviewer requirement is superseded only as recorded in the linked amendment; that selection does not grant execution, key creation, or secret storage. |
 | Host inventory | Fresh redacted read-only inventory proving a new dedicated low-privilege receiver, no collision with existing repair identities, root-owned quarantine boundary, sufficient bounded storage, and no service/pointer change. |
 | Receiver contract | Reviewed source and tests proving forced-command-only behavior; no shell, TTY, port/X11/agent forwarding, scp, rsync, SFTP, path selection, repository write, package install, service control, or pointer switch. |
 | Lifecycle | Public key only on host; paired private key only in the protected Environment; 24-hour maximum artifact lifetime; no-replace receipt; separately approved cleanup/revocation plan. |

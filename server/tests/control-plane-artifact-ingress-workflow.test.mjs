@@ -14,7 +14,10 @@ test("manual artifact-ingress workflow is inert until a later execution Gate", (
   assert.match(workflow, /^permissions: \{\}$/m);
   assert.match(workflow, /inputs\.confirmation == 'prepare artifact ingress'/);
   assert.match(workflow, /temporary_artifact_ingress_execution_not_granted/);
+  assert.match(
+    workflow,
+    /^\s+environment:\r?\n\s+name: control-plane-artifact-ingress$/m
+  );
   assert.doesNotMatch(workflow, /\bsecrets\./);
-  assert.doesNotMatch(workflow, /^\s+environment:/m);
   assert.doesNotMatch(workflow, /\bssh\b|\bscp\b|\brsync\b/i);
 });

@@ -18,6 +18,8 @@ jobs:
   topology-preflight:
     name: Stop until the separate execution Gate is granted
     if: inputs.confirmation == 'prepare artifact ingress'
+    environment:
+      name: control-plane-artifact-ingress
     runs-on: ubuntu-latest
     steps:
       - name: Preserve the execution boundary
