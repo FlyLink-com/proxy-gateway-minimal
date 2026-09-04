@@ -312,6 +312,8 @@ function makeFixture(t, {
     expectedExpiresAt: EXPIRES_AT,
     expectedHeaderSha256: headerSha256,
     expectedReceiptSha256: sha256(ingressReceiptBytes),
+    expectedReplayClaimSha256: sha256(replayClaimBytes),
+    expectedReplayClaimSizeBytes: replayClaimBytes.length,
     expectedArtifactManifestSha256: header.entries[0].sha256,
     expectedSourceArtifactSha256: header.entries[1].sha256,
     expectedDependencyManifestSha256: header.entries[3].sha256,
@@ -341,6 +343,8 @@ function cliArguments(value) {
     "--expected-expires-at", value.expectedExpiresAt,
     "--expected-header-sha256", value.expectedHeaderSha256,
     "--expected-receipt-sha256", value.expectedReceiptSha256,
+    "--expected-replay-claim-sha256", value.expectedReplayClaimSha256,
+    "--expected-replay-claim-size-bytes", String(value.expectedReplayClaimSizeBytes),
     "--expected-artifact-manifest-sha256", value.expectedArtifactManifestSha256,
     "--expected-source-artifact-sha256", value.expectedSourceArtifactSha256,
     "--expected-dependency-manifest-sha256", value.expectedDependencyManifestSha256,
@@ -354,6 +358,8 @@ test("root-local custody copies the exact six files and yields a stage-controlle
   const receipt = await custodyArtifactIngressV2StageInput(value.options);
   const destination = join(value.roots.stageInputRoot, PACKET_ID);
   assert.equal(receipt.state, "stage_input_custodied");
+  assert.equal(receipt.replayClaimSha256, value.options.expectedReplayClaimSha256);
+  assert.equal(receipt.replayClaimSizeBytes, value.options.expectedReplayClaimSizeBytes);
   assert.deepEqual(readdirSync(destination).sort(), [...value.fileBytes.keys()].sort());
   for (const [name, bytes] of sourceBefore) {
     assert.deepEqual(readFileSync(join(destination, name)), bytes);
@@ -363,6 +369,12 @@ test("root-local custody copies the exact six files and yields a stage-controlle
   assert.equal(existsSync(value.replayClaimPath), true);
   assert.equal(existsSync(join(value.roots.custodyReceiptRoot, `${PACKET_ID}.json`)), true);
   assert.equal(existsSync(join(value.roots.custodyReceiptRoot, `.claim-${PACKET_ID}.json`)), true);
+  const custodyClaim = JSON.parse(readFileSync(
+    join(value.roots.custodyReceiptRoot, `.claim-${PACKET_ID}.json`),
+    "utf8"
+  ));
+  assert.equal(custodyClaim.replayClaimSha256, value.options.expectedReplayClaimSha256);
+  assert.equal(custodyClaim.replayClaimSizeBytes, value.options.expectedReplayClaimSizeBytes);
   assert.equal(value.custodyTrace.filter(({ kind }) => kind === "directory").length, 1);
   assert.equal(value.custodyTrace.filter(({ kind }) => kind === "file").length, 8);
   assert.equal(value.anchorTrace.some(({ root, name }) => root === value.roots.stageInputRoot
@@ -402,6 +414,56 @@ test("root-local custody copies the exact six files and yields a stage-controlle
     "the cross-platform trace is not a substitute for the required target-Linux root synthetic");
 });
 
+test("custody binds the exact replay-claim digest and size before publishing", async (t) => {
+  const exact = makeFixture(t);
+  const exactClaimBytes = readFileSync(exact.replayClaimPath);
+  const exactReceipt = await custodyArtifactIngressV2StageInput({
+    ...exact.options,
+    expectedReplayClaimSha256: sha256(exactClaimBytes),
+    expectedReplayClaimSizeBytes: exactClaimBytes.length
+  });
+  assert.equal(exactReceipt.state, "stage_input_custodied");
+
+  const drifted = makeFixture(t);
+  const originalClaimBytes = readFileSync(drifted.replayClaimPath);
+  const claim = JSON.parse(originalClaimBytes.toString("utf8"));
+  const driftedClaimBytes = Buffer.from(`${JSON.stringify({
+    type: claim.type,
+    schemaVersion: claim.schemaVersion,
+    packetId: claim.packetId,
+    sourceCommit: claim.sourceCommit,
+    issuedAt: claim.issuedAt,
+    claimedAt: claim.claimedAt,
+    expiresAt: claim.expiresAt,
+    headerSha256: claim.headerSha256
+  })}\n`);
+  assert.equal(driftedClaimBytes.length, originalClaimBytes.length,
+    "the negative probe must preserve size and remain semantically valid");
+  assert.notEqual(sha256(driftedClaimBytes), sha256(originalClaimBytes));
+  writeFileSync(drifted.replayClaimPath, driftedClaimBytes);
+  await assert.rejects(
+    () => custodyArtifactIngressV2StageInput({
+      ...drifted.options,
+      expectedReplayClaimSha256: sha256(originalClaimBytes),
+      expectedReplayClaimSizeBytes: originalClaimBytes.length
+    }),
+    condition("artifact_ingress_stage_custody_claim_mismatch")
+  );
+  assert.deepEqual(readdirSync(drifted.roots.stageInputRoot), []);
+  assert.deepEqual(readdirSync(drifted.roots.custodyReceiptRoot), []);
+
+  const wrongSize = makeFixture(t);
+  await assert.rejects(
+    () => custodyArtifactIngressV2StageInput({
+      ...wrongSize.options,
+      expectedReplayClaimSizeBytes: wrongSize.options.expectedReplayClaimSizeBytes - 1
+    }),
+    condition("artifact_ingress_stage_custody_claim_mismatch")
+  );
+  assert.deepEqual(readdirSync(wrongSize.roots.stageInputRoot), []);
+  assert.deepEqual(readdirSync(wrongSize.roots.custodyReceiptRoot), []);
+});
+
 test("custody rejects Gate, replay-claim, and source inode drift without publishing", async (t) => {
   const noApply = makeFixture(t);
   await assert.rejects(
@@ -431,9 +493,14 @@ test("custody rejects Gate, replay-claim, and source inode drift without publish
 
   const badClaim = makeFixture(t);
   const claim = JSON.parse(readFileSync(badClaim.replayClaimPath, "utf8"));
-  writeFileSync(badClaim.replayClaimPath, `${JSON.stringify({ ...claim, headerSha256: "e".repeat(64) })}\n`);
+  const badClaimBytes = Buffer.from(`${JSON.stringify({ ...claim, headerSha256: "e".repeat(64) })}\n`);
+  writeFileSync(badClaim.replayClaimPath, badClaimBytes);
   await assert.rejects(
-    () => custodyArtifactIngressV2StageInput(badClaim.options),
+    () => custodyArtifactIngressV2StageInput({
+      ...badClaim.options,
+      expectedReplayClaimSha256: sha256(badClaimBytes),
+      expectedReplayClaimSizeBytes: badClaimBytes.length
+    }),
     condition("artifact_ingress_stage_custody_claim_invalid")
   );
   assert.deepEqual(readdirSync(badClaim.roots.stageInputRoot), []);
@@ -543,6 +610,20 @@ test("CLI accepts only the exact Gate-bound root and evidence argument order", a
   }), 1);
   assert.equal(invalidError, "artifact_ingress_stage_custody_arguments_invalid\n");
   assert.deepEqual(readdirSync(invalid.roots.stageInputRoot), []);
+
+  const missing = makeFixture(t);
+  let missingError = "";
+  const missingReplaySize = cliArguments(missing.options);
+  const replaySizeIndex = missingReplaySize.indexOf("--expected-replay-claim-size-bytes");
+  missingReplaySize.splice(replaySizeIndex, 2);
+  assert.equal(await runArtifactIngressV2StageInputCustodianCli({
+    argv: missingReplaySize,
+    runtime: missing.runtime,
+    stdout: { write() {} },
+    stderr: { write(bytes) { missingError += bytes; } }
+  }), 1);
+  assert.equal(missingError, "artifact_ingress_stage_custody_arguments_invalid\n");
+  assert.deepEqual(readdirSync(missing.roots.stageInputRoot), []);
 
   const valid = makeFixture(t);
   let output = "";
