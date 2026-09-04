@@ -44,6 +44,8 @@ const ARGUMENT_NAMES = Object.freeze([
   "expected-expires-at",
   "expected-header-sha256",
   "expected-receipt-sha256",
+  "expected-replay-claim-sha256",
+  "expected-replay-claim-size-bytes",
   "expected-artifact-manifest-sha256",
   "expected-source-artifact-sha256",
   "expected-dependency-manifest-sha256",
@@ -58,6 +60,8 @@ const OPTION_NAMES = Object.freeze([
   "expectedExpiresAt",
   "expectedHeaderSha256",
   "expectedReceiptSha256",
+  "expectedReplayClaimSha256",
+  "expectedReplayClaimSizeBytes",
   "expectedSourceArtifactSha256",
   "expectedSourceCommit",
   "ingressReceiptRoot",
@@ -586,6 +590,10 @@ function validateExpected(options) {
     || !canonicalIso(options.expectedExpiresAt)
     || !HASH.test(options.expectedHeaderSha256 || "")
     || !HASH.test(options.expectedReceiptSha256 || "")
+    || !HASH.test(options.expectedReplayClaimSha256 || "")
+    || !Number.isSafeInteger(options.expectedReplayClaimSizeBytes)
+    || options.expectedReplayClaimSizeBytes <= 0
+    || options.expectedReplayClaimSizeBytes > MAX_RECEIPT_BYTES
     || !HASH.test(options.expectedArtifactManifestSha256 || "")
     || !HASH.test(options.expectedSourceArtifactSha256 || "")
     || !HASH.test(options.expectedDependencyManifestSha256 || "")
@@ -598,6 +606,8 @@ function validateExpected(options) {
     expiresAt: options.expectedExpiresAt,
     headerSha256: options.expectedHeaderSha256,
     receiptSha256: options.expectedReceiptSha256,
+    replayClaimSha256: options.expectedReplayClaimSha256,
+    replayClaimSizeBytes: options.expectedReplayClaimSizeBytes,
     artifactManifestSha256: options.expectedArtifactManifestSha256,
     sourceArtifactSha256: options.expectedSourceArtifactSha256,
     dependencyManifestSha256: options.expectedDependencyManifestSha256,
@@ -776,6 +786,10 @@ export async function custodyArtifactIngressV2StageInput(options = {}) {
       fail("artifact_ingress_stage_custody_header_mismatch");
     }
     const replayClaimBytes = await readStableFile(replayClaim, runtime);
+    if (replayClaimBytes.length !== expected.replayClaimSizeBytes
+      || sha256(replayClaimBytes) !== expected.replayClaimSha256) {
+      fail("artifact_ingress_stage_custody_claim_mismatch");
+    }
     parseReplayClaim(replayClaimBytes, {
       packetId: expected.packetId,
       sourceCommit: expected.sourceCommit,
@@ -822,6 +836,8 @@ export async function custodyArtifactIngressV2StageInput(options = {}) {
       expiresAt: expected.expiresAt,
       headerSha256: expected.headerSha256,
       receiptSha256: expected.receiptSha256,
+      replayClaimSha256: expected.replayClaimSha256,
+      replayClaimSizeBytes: expected.replayClaimSizeBytes,
       rootSetSha256: rootSetSha256(roots)
     })}\n`, "utf8"));
     await custodyClaim.handle.sync();
@@ -907,6 +923,8 @@ export async function custodyArtifactIngressV2StageInput(options = {}) {
       expiresAt: expected.expiresAt,
       headerSha256: expected.headerSha256,
       ingressReceiptSha256: expected.receiptSha256,
+      replayClaimSha256: expected.replayClaimSha256,
+      replayClaimSizeBytes: expected.replayClaimSizeBytes,
       rootSetSha256: rootSetSha256(roots),
       aggregateSizeBytes: parsed.header.aggregateSizeBytes,
       entries: parsed.header.entries.map(({ name, sizeBytes, sha256: digest }) => ({ name, sizeBytes, sha256: digest }))
@@ -1029,6 +1047,8 @@ export async function runArtifactIngressV2StageInputCustodianCli({
       expectedExpiresAt: value["expected-expires-at"],
       expectedHeaderSha256: value["expected-header-sha256"],
       expectedReceiptSha256: value["expected-receipt-sha256"],
+      expectedReplayClaimSha256: value["expected-replay-claim-sha256"],
+      expectedReplayClaimSizeBytes: Number(value["expected-replay-claim-size-bytes"]),
       expectedArtifactManifestSha256: value["expected-artifact-manifest-sha256"],
       expectedSourceArtifactSha256: value["expected-source-artifact-sha256"],
       expectedDependencyManifestSha256: value["expected-dependency-manifest-sha256"],
