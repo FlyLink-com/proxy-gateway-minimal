@@ -604,15 +604,32 @@ function walletFirstModelDeprecatedError() {
   return error;
 }
 
-function createRegistrationWelcomeCoinsCanaryEmailEligibilityReader(value) {
+function createRegistrationWelcomeCoinsEmailEligibilityReader({
+  audience,
+  canaryEmailHash,
+  canaryEmailHashPresent
+}) {
   const emailHashPattern = /^[0-9a-f]{64}$/;
-  if (typeof value !== "string" || !emailHashPattern.test(value)) {
+  if (audience === "all_new_registrations") {
+    if (canaryEmailHashPresent) {
+      throw registrationWelcomeCoinsPrerequisiteError();
+    }
+    return ({ emailDigest } = {}) => (
+      typeof emailDigest === "string"
+      && emailHashPattern.test(emailDigest)
+    );
+  }
+  if (
+    audience !== "canary"
+    || typeof canaryEmailHash !== "string"
+    || !emailHashPattern.test(canaryEmailHash)
+  ) {
     throw registrationWelcomeCoinsPrerequisiteError();
   }
   return ({ emailDigest } = {}) => (
     typeof emailDigest === "string"
     && emailHashPattern.test(emailDigest)
-    && emailDigest === value
+    && emailDigest === canaryEmailHash
   );
 }
 
@@ -1462,9 +1479,25 @@ export function createRuntimeState(options = {}) {
   }
   const registrationWelcomeCoinsCanaryEmailEligibilityReader =
     registrationWelcomeCoinsEnabled
-      ? createRegistrationWelcomeCoinsCanaryEmailEligibilityReader(
-        env.USER_PORTAL_REGISTRATION_WELCOME_COINS_CANARY_EMAIL_HASHES
-      )
+      ? (() => {
+        const audience = Object.hasOwn(
+          env,
+          "USER_PORTAL_REGISTRATION_WELCOME_COINS_AUDIENCE"
+        )
+          ? env.USER_PORTAL_REGISTRATION_WELCOME_COINS_AUDIENCE
+          : "canary";
+        const canaryEmailHashPresent = Object.hasOwn(
+          env,
+          "USER_PORTAL_REGISTRATION_WELCOME_COINS_CANARY_EMAIL_HASHES"
+        );
+        return createRegistrationWelcomeCoinsEmailEligibilityReader({
+          audience,
+          canaryEmailHashPresent,
+          canaryEmailHash: audience === "canary" && canaryEmailHashPresent
+            ? env.USER_PORTAL_REGISTRATION_WELCOME_COINS_CANARY_EMAIL_HASHES
+            : undefined
+        });
+      })()
       : null;
   // This release deliberately leaves the disputed deferred-runtime lane
   // dormant. Its former environment switch is not consulted here, so an

@@ -6,7 +6,7 @@ document_metadata:
   lifecycle: active
   authority_scope: portal_registration_welcome_coins
   superseded_by: null
-  last_verified_at: 2026-09-02
+  last_verified_at: 2026-09-04
   production_authority: false
 ```
 
@@ -30,8 +30,9 @@ The following protected runtime settings control admission:
 
 | Setting | Required value | Meaning |
 | --- | --- | --- |
-| `USER_PORTAL_REGISTRATION_WELCOME_COINS_ENABLED` | `true` | Permits the narrowly selected new-registration promotion. The default is `false`. |
-| `USER_PORTAL_REGISTRATION_WELCOME_COINS_CANARY_EMAIL_HASHES` | Exactly one lowercase SHA-256 digest | Selects the one approved registration email after trim-and-lowercase normalization. |
+| `USER_PORTAL_REGISTRATION_WELCOME_COINS_ENABLED` | `true` | Permits admission to the new-registration promotion. The default is `false`. |
+| `USER_PORTAL_REGISTRATION_WELCOME_COINS_AUDIENCE` | `canary` or `all_new_registrations` | Selects one exact canary email or every eligible new registration. An absent key retains the historical `canary` behavior; a present empty or unknown value fails closed. |
+| `USER_PORTAL_REGISTRATION_WELCOME_COINS_CANARY_EMAIL_HASHES` | Exactly one lowercase SHA-256 digest in `canary`; completely absent in `all_new_registrations` | Selects the one approved registration email after trim-and-lowercase normalization. |
 
 The admission flag requires Portal registration, Coins Wallet, ordinary Coins
 Commerce, and the welcome-grant schema to be ready. If the admission flag is
@@ -43,10 +44,15 @@ are ready, the internal coordinator may drain or expire durable grants that
 already exist, even after admission is disabled; that drain behavior does not
 admit a new registration or introduce another environment flag.
 
-Only the admission flag parses the canary setting. The canary must be exactly
-one 64-character lowercase hexadecimal SHA-256 digest. Empty values, raw email
-addresses, duplicate or multiple values, non-canonical values, and
-`all_active` fail closed. The digest is pseudonymous rather than anonymous: it
+Only an enabled admission flag reads the audience or canary setting. In
+`canary` mode, the canary must be exactly one 64-character lowercase
+hexadecimal SHA-256 digest. A missing audience key is interpreted as `canary`
+only for compatibility with an existing exact digest. In
+`all_new_registrations` mode, the canary key must be completely absent; leaving
+it present with an empty value is an ambiguous configuration and fails closed.
+A present empty audience, unknown audience (including `all_active`), raw email,
+duplicate or multiple digests, and any non-canonical digest also fail closed
+before database access. The digest is pseudonymous rather than anonymous: it
 belongs only in protected runtime configuration and must not be committed,
 returned by the Portal, or printed in logs or deployment evidence.
 
@@ -56,8 +62,9 @@ wallet-first, a deferred runtime, or any other capability.
 
 ## New-registration Contract
 
-For a matching **new** registration while the admission flag is enabled, the
-source contract is:
+For a matching canary, or any **new** registration under
+`all_new_registrations`, while the admission flag is enabled, the source
+contract is:
 
 1. create the normal Portal account and credentials/session records;
 2. omit `commercialModel` from persistent account metadata, including
@@ -72,11 +79,12 @@ registration. A pending grant at or after its expiry must not be credited. The
 grant/retry path is durable and idempotent, so a crash/retry cannot create a
 second credit for the same registration.
 
-A non-matching new registration or a registration while the flag is disabled
-uses the legacy 7-day trial behavior. Changing the canary does not migrate,
-rewrite, or re-route an existing account. The durable-grant worker may only
-resolve an already-recorded grant under its existing credit-or-expire lifecycle;
-it does not make an account newly eligible for this promotion.
+A non-matching new registration in `canary`, or a registration while the flag
+is disabled, uses the legacy 7-day trial behavior. Changing the audience or
+canary does not migrate, rewrite, or re-route an existing account. The
+durable-grant worker may only resolve an already-recorded grant under its
+existing credit-or-expire lifecycle; it does not make an account newly eligible
+for this promotion.
 
 ## Commerce and Fulfillment Boundary
 
@@ -264,10 +272,12 @@ The repository-owned Welcome Coins activation gate is intentionally narrower
 than a generic runtime-configuration editor. It derives the current release's
 protected `.env` from the approved `current` pointer and permits a one-time
 atomic insertion of only the admission flag and a single normalized-email
-digest. The digest is stdin-only and is not returned in a receipt. Its bounded
-deactivation mode accepts only the exact active environment identity plus the
-retained preflight identity, removes only the canonical two-key suffix, and
-must reproduce the preflight bytes and SHA-256 exactly.
+digest. It does not set the audience key or activate `all_new_registrations`;
+that production configuration change requires a separate, freshly inventoried
+Risk A gate. The digest is stdin-only and is not returned in a receipt. Its
+bounded deactivation mode accepts only the exact active environment identity
+plus the retained preflight identity, removes only the canonical two-key
+suffix, and must reproduce the preflight bytes and SHA-256 exactly.
 
 The module-private activation/deactivation mutators require the service to be
 inactive under the pinned runtime guard. The closed activation transaction owns
