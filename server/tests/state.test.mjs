@@ -1213,6 +1213,18 @@ test("createRuntimeState keeps registration welcome Coins default-off without ap
     });
   }
   let registrationCanaryGetterCalls = 0;
+  let registrationAudienceGetterCalls = 0;
+  Object.defineProperty(
+    env,
+    "USER_PORTAL_REGISTRATION_WELCOME_COINS_AUDIENCE",
+    {
+      enumerable: true,
+      get() {
+        registrationAudienceGetterCalls += 1;
+        throw new Error("default-off registration welcome Coins audience must stay untouched");
+      }
+    }
+  );
   Object.defineProperty(
     env,
     "USER_PORTAL_REGISTRATION_WELCOME_COINS_CANARY_EMAIL_HASHES",
@@ -1246,6 +1258,7 @@ test("createRuntimeState keeps registration welcome Coins default-off without ap
     assert.equal(state.platform.walletFirstCurrentResourceProjection, null);
     assert.equal(deferredNodeGetterCalls, 0);
     assert.equal(setupDeliveryGetterCalls, 0);
+    assert.equal(registrationAudienceGetterCalls, 0);
     assert.equal(registrationCanaryGetterCalls, 0);
     await state.close();
     state = null;
@@ -1319,7 +1332,8 @@ test("createRuntimeState requires one canonical registration welcome Coins canar
         USER_PORTAL_ROUTES_ENABLED: "true",
         COINS_WALLET_ENABLED: "true",
         COINS_COMMERCE_ENABLED: "true",
-        USER_PORTAL_REGISTRATION_WELCOME_COINS_ENABLED: "true"
+        USER_PORTAL_REGISTRATION_WELCOME_COINS_ENABLED: "true",
+        USER_PORTAL_REGISTRATION_WELCOME_COINS_AUDIENCE: "canary"
       });
       if (canaryEmailHashes !== undefined) {
         env.USER_PORTAL_REGISTRATION_WELCOME_COINS_CANARY_EMAIL_HASHES =
@@ -1344,6 +1358,202 @@ test("createRuntimeState requires one canonical registration welcome Coins canar
       unexpectedState?.close();
       removeTempDir(dir);
     }
+  }
+});
+
+test("createRuntimeState rejects invalid or ambiguous registration welcome Coins audiences before database access", () => {
+  const canonicalDigest = registrationEmailHash("canary@example.test");
+  const cases = [
+    ["present undefined audience", undefined, canonicalDigest],
+    ["explicitly empty audience", "", canonicalDigest],
+    ["unknown audience", "unknown", canonicalDigest],
+    ["legacy all-active sentinel", "all_active", canonicalDigest],
+    ["uppercase audience", "CANARY", canonicalDigest],
+    ["whitespace audience", " canary ", canonicalDigest],
+    ["all-new with an empty canary key", "all_new_registrations", ""],
+    ["all-new with a canary digest", "all_new_registrations", canonicalDigest]
+  ];
+
+  for (const [label, audience, canaryEmailHashes] of cases) {
+    const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-registration-welcome-coins-audience-"));
+    let unexpectedState;
+    try {
+      assert.throws(
+        () => {
+          unexpectedState = createRuntimeState({
+            rootDir: new URL("../../", import.meta.url),
+            env: runtimeEnv({
+              CONSOLE_TOKEN: "secret",
+              USER_PORTAL_ROUTES_ENABLED: "true",
+              COINS_WALLET_ENABLED: "true",
+              COINS_COMMERCE_ENABLED: "true",
+              USER_PORTAL_REGISTRATION_WELCOME_COINS_ENABLED: "true",
+              USER_PORTAL_REGISTRATION_WELCOME_COINS_AUDIENCE: audience,
+              USER_PORTAL_REGISTRATION_WELCOME_COINS_CANARY_EMAIL_HASHES:
+                canaryEmailHashes
+            }),
+            controlDbPath: join(dir, "control.sqlite"),
+            subscriptionDbPath: join(dir, "subscriptions.sqlite"),
+            autoStartHttpProxy: false
+          });
+        },
+        (error) => error?.code === "registration_welcome_coins_prerequisite_missing",
+        label
+      );
+      assert.equal(existsSync(join(dir, "control.sqlite")), false, label);
+      assert.equal(existsSync(join(dir, "subscriptions.sqlite")), false, label);
+    } finally {
+      unexpectedState?.close();
+      removeTempDir(dir);
+    }
+  }
+});
+
+test("createRuntimeState keeps an absent welcome Coins audience compatible with one exact canary", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-registration-welcome-coins-default-audience-"));
+  const controlDbPath = prepareMigratedRegistrationWelcomeCoinsControlDatabase(dir);
+  const matchingEmail = "missing-audience-canary@example.test";
+  const env = runtimeEnv({
+    CONSOLE_TOKEN: "secret",
+    USER_PORTAL_ROUTES_ENABLED: "true",
+    COINS_WALLET_ENABLED: "true",
+    COINS_COMMERCE_ENABLED: "true",
+    USER_PORTAL_REGISTRATION_WELCOME_COINS_ENABLED: "true",
+    USER_PORTAL_REGISTRATION_WELCOME_COINS_CANARY_EMAIL_HASHES:
+      registrationEmailHash(matchingEmail)
+  });
+  assert.equal(Object.hasOwn(env, "USER_PORTAL_REGISTRATION_WELCOME_COINS_AUDIENCE"), false);
+  let state;
+
+  try {
+    state = createRuntimeState({
+      rootDir: new URL("../../", import.meta.url),
+      env,
+      controlDbPath,
+      subscriptionDbPath: join(dir, "subscriptions.sqlite"),
+      coinCommerceFulfillmentHandler: coinCommerceFulfillmentHandler(),
+      userPortalNowFn: () => new Date("2026-08-15T00:00:00.000Z"),
+      autoStartHttpProxy: false
+    });
+
+    const matching = state.platform.portalRegistrations.submitRegistration({
+      accountId: "acct_missing_audience_match",
+      approvalRef: "approval_missing_audience_match",
+      email: matchingEmail,
+      password: "synthetic-registration-password",
+      legalAgreement: {
+        termsAccepted: true,
+        privacyAccepted: true
+      }
+    });
+    const nonMatching = state.platform.portalRegistrations.submitRegistration({
+      accountId: "acct_missing_audience_miss",
+      entitlementId: "ent_missing_audience_miss",
+      approvalRef: "approval_missing_audience_miss",
+      email: "missing-audience-miss@example.test",
+      password: "synthetic-registration-password",
+      legalAgreement: {
+        termsAccepted: true,
+        privacyAccepted: true
+      }
+    });
+
+    assert.equal(matching.registration.welcomeBonus.amountUnits, 10);
+    assert.equal(matching.registration.trial, undefined);
+    assert.equal(nonMatching.registration.welcomeBonus, undefined);
+    assert.equal(nonMatching.registration.trial.durationDays, 7);
+  } finally {
+    await state?.close();
+    removeTempDir(dir);
+  }
+});
+
+test("createRuntimeState grants welcome Coins to every new registration in the all-new audience", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-registration-welcome-coins-all-new-"));
+  const controlDbPath = prepareMigratedRegistrationWelcomeCoinsControlDatabase(dir);
+  const env = runtimeEnv({
+    CONSOLE_TOKEN: "secret",
+    USER_PORTAL_ROUTES_ENABLED: "true",
+    COINS_WALLET_ENABLED: "true",
+    COINS_COMMERCE_ENABLED: "true",
+    USER_PORTAL_REGISTRATION_WELCOME_COINS_ENABLED: "true",
+    USER_PORTAL_REGISTRATION_WELCOME_COINS_AUDIENCE: "all_new_registrations"
+  });
+  assert.equal(
+    Object.hasOwn(env, "USER_PORTAL_REGISTRATION_WELCOME_COINS_CANARY_EMAIL_HASHES"),
+    false
+  );
+  let state;
+
+  try {
+    state = createRuntimeState({
+      rootDir: new URL("../../", import.meta.url),
+      env,
+      controlDbPath,
+      subscriptionDbPath: join(dir, "subscriptions.sqlite"),
+      coinCommerceFulfillmentHandler: coinCommerceFulfillmentHandler(),
+      userPortalNowFn: () => new Date("2026-08-15T00:00:00.000Z"),
+      autoStartHttpProxy: false
+    });
+
+    for (const suffix of ["alpha", "bravo"]) {
+      const accountId = `acct_all_new_${suffix}`;
+      const registration = state.platform.portalRegistrations.submitRegistration({
+        accountId,
+        entitlementId: `ent_all_new_${suffix}`,
+        approvalRef: `approval_all_new_${suffix}`,
+        email: `all-new-${suffix}@example.test`,
+        password: "synthetic-registration-password",
+        legalAgreement: {
+          termsAccepted: true,
+          privacyAccepted: true
+        }
+      });
+
+      assert.equal(registration.registration.trial, undefined, suffix);
+      assert.deepEqual(registration.registration.welcomeBonus, {
+        status: "pending",
+        coinType: "bonus_coins",
+        amountUnits: 10,
+        expiresAt: "2026-08-22T00:00:00.000Z"
+      }, suffix);
+      assert.equal(state.platform.controlStore.getEntitlement(`ent_all_new_${suffix}`), null, suffix);
+      assert.deepEqual(
+        state.platform.controlStore.listPortalAccessRequests({ portalUserRef: accountId }),
+        [],
+        suffix
+      );
+      assert.equal(
+        state.platform.controlStore.getPortalRegistrationWelcomeCoinGrant({ accountId }).amountUnits,
+        10,
+        suffix
+      );
+    }
+
+    assert.deepEqual(
+      await state.platform.portalRegistrationWelcomeBonusCoordinator.runOnce(),
+      {
+        expired: 0,
+        expiredLots: 0,
+        claimed: 2,
+        credited: 2,
+        deferred: 0,
+        reconciliationRequired: 0
+      }
+    );
+    for (const suffix of ["alpha", "bravo"]) {
+      assert.equal(
+        state.platform.coinsWalletStore.getWalletProjection(
+          { accountId: `acct_all_new_${suffix}` },
+          "2026-08-15T00:00:00.000Z"
+        ).totals.bonus_coins,
+        10,
+        suffix
+      );
+    }
+  } finally {
+    await state?.close();
+    removeTempDir(dir);
   }
 });
 
@@ -1578,6 +1788,7 @@ test("createRuntimeState admits welcome Coins without deferred runtime or node c
     COINS_WALLET_ENABLED: "true",
     COINS_COMMERCE_ENABLED: "true",
     USER_PORTAL_REGISTRATION_WELCOME_COINS_ENABLED: "true",
+    USER_PORTAL_REGISTRATION_WELCOME_COINS_AUDIENCE: "canary",
     USER_PORTAL_REGISTRATION_WELCOME_COINS_CANARY_EMAIL_HASHES:
       registrationEmailHash("welcome-coins-admission@example.test")
   });
