@@ -128,6 +128,35 @@ accounting authority，不能证明历史累计量属于哪个账期。
 | 差额 | 可验证累计量、可分账量、不可可靠追回量分别汇总；不猜缺失流量 |
 | 处置 | 历史差额保留待处理；首个新计量边界的准确定义、数据动作、最大影响 |
 
+### 五通道首次入账策略候选
+
+下表是当前源码约束下的具体策略，不是已执行 baseline。待审批政策为：
+不能可靠分账的历史差额保留为缺口证据，批准时刻 T0 之后的新量才进入新计量边界。
+
+| 主通道 | 已核实源码语义 | 首次边界策略与必要审批 |
+| --- | --- | --- |
+| 日本 Hy2 | read-and-clear delta；collector 固定 `clear:true`，无累计 cursor | 先核实统计源和 identity scope。若确为共享源，按统计源一次切换，将清零返回的历史量保存为受保护证据，不进入当前扣量；receipt 完成后计新量。精确审批包含不可逆清零及证据写入，不能每通道各 clear 一次。 |
+| SGP Hy2 | 与日本 Hy2 复用同一个 reader 和配置 URL；默认 reader 不读取 `channelRef` | 当前保持 NO-GO。先证明共享源确实包含 SGP 的流量及 binding；若不包含，必须准备独立来源接线，启动修复不能恢复该通道。不得把后一次调用返回空值当作 SGP idle。 |
+| 日本 TUIC | 主 reader 默认 cumulative；`connections` 载荷先按 credential 汇总当前连接，再作累计差分 | 核实实际 source/path 后保存 T0 快照，定向更新批准的 `(source, channel, credential)` cursor，保留旧值和 epoch 证据，不生成历史 sample/rollup 或生命周期动作。若来源为活动连接合计，关闭连接可导致计数下降；一次新基线不能解决这种持续精度限制。 |
+| 日本 VLESS | Xray statsquery cumulative，命令不带 reset | 从日本来源非清零读取 T0，保存证据并定向建立新 cursor 边界，旧 epoch 不归零；之后仅计 T0 后差额。读数至提交间发生 reset/身份变化/并发 cursor 写入时停止重核，不重启 runtime 来归零。 |
+| SGP VLESS | 同类 Xray reader，实际 binary/server/channel scope 按各 source 配置 | 独立核实 SGP 来源，再取该源 T0 快照和定向 cursor 边界；不能复用日本返回值，也不能按相同 sourceRef 合并通道。本地转发可达不证明来源正确。 |
+
+上述 Hy2 来源共享是 `server/state.mjs` 中 `createHysteria2TrafficStatsReader`
+及 Hy2 collector composition 的代码事实；已有现场证据未证明日本/SGP 来源
+独立，清零准入保持 NO-GO。远端清零后响应丢失或本地证据持久化失败，无法由
+SQLite 事务恢复远端计数，不能盲目重试后把零值当作成功 receipt。
+
+日本 TUIC 主入口使用 `mihomo-external-controller-usage-reader.mjs`，不是
+SGP sidecar 的 `mihomo-connection-delta-usage-reader.mjs`。本次没有改动这两种
+reader 或它们的精度边界；必须在验收中记录真实来源是否提供稳定累计总量。
+Xray 来源使用 `xray-stats-cli-usage-reader.mjs`；长断档中 reset 后计数再次超过
+旧值的情形，当前数值比较不能识别，因此不能由差额推断历史用量完整。
+
+SGP TUIC sidecar 的 connection state 和持续入账不属于上述 baseline 范围。
+保持其正常运行和状态文件；不得用清空 sidecar state 作为主链路恢复步骤。
+现有累计记账服务没有显式恢复 baseline 接口，上表策略不能通过普通
+`--collect` 或手写 SQL 临时代替，需有独立的受审查实现和失败证据。
+
 若采用“从批准时刻建立新基线，历史缺口另行处理”，必须先实现并验证独立、
 有边界的 baseline 操作。它需要保护旧证据、不生成历史扣量样本、不触发
 suspend/rollover、只修改批准的主采集通道状态，并可证明重试不重复消费
@@ -227,8 +256,10 @@ samples/rollups/cursors 保持同一事务边界，备份后源继续写入；�
 Windows 仅验证 SQLite、exclusive create 和 reparse 拒绝语义，不验证 POSIX
 ownership/mode 或 Windows ACL；receipt 明确
 `posixProtectionVerified=false`、`windowsAclVerified=false`。
-生产 Linux 权限/持久化行为的物理验证尚未执行，不能由这 7 项本地通过替代。
-该 helper 已完成独立源代码审查，仍需 Linux 物理验证、准确输入和生产备份审批；它不授权采集或 restore。
+该 helper 的同一组测试已在托管 Ubuntu 24.04 / Node 22.23.2 通过，包含
+POSIX ownership/mode、目录同步及并发 WAL 备份路径；见下方精确提交 CI 记录。
+这不验证生产文件系统、硬件断电恢复或 systemd。该 helper 已完成独立源代码
+审查，仍需准确输入、生产路径/权限核验和备份审批；它不授权采集或 restore。
 
 回退优先恢复本次修改的主采集代码/单元并保持主定时器隔离；复核 Web 和
 sidecar 的服务与持续入账状态。**禁止用整库 restore 作为这次采集修复的自动回退**，
@@ -276,7 +307,7 @@ identity 异常未处置；任一主通道缺失；status 已过期；sidecar �
 - 未修改基线同环境完整 `npm test`：4284 tests / 4210 pass / 18 fail / 56 skip，退出 1。逐项比较 18 个失败名称完全一致；本次净增加 31 个通过用例，不能据此声称完整套件全绿。
 - 首次候选完整测试另有两个文档 metadata 失败；修正 lifecycle 为 active 后，上述最终完整测试与 strict document authority 均确认这两项已通过。
 - 独立复审：P0=0、P1=0、Source Review GO；复审包含在线备份父目录 fsync、live WAL 预检、无自动采集准入及输出脱敏边界。
-- HP SSH 两次在连接层被关闭；本机 WSL 报告未启用虚拟化，未能执行 Linux Node 22 验证。托管 CI 的实际结果需在 PR 中绑定精确 head；本地成功不替代 Linux/systemd 物理验证。
+- HP SSH 两次在连接层被关闭；本机 WSL 报告未启用虚拟化，未更改环境配置。转用托管 Ubuntu 24.04 / Node 22.23.2，代码提交 `d822886f20944d4407cbe319db17be14dd1e6a9d` 的 [CI 33959022517](https://github.com/gccwebos-com/proxy-gateway-minimal/actions/runs/33959022517) 完整通过：server 4324 tests / 4318 pass / 0 fail / 6 skip；Admin tests/build、Portal/site build 与边界校验均通过。production systemd 和真实流量未测试。
 
 Source Review: GO，仅为 P0/P1 源代码审查结论；完整验证仍以上述限制为准。
 Production Gate: NO-GO；首次逐通道政策、备份和精确操作尚未审批。
@@ -287,6 +318,6 @@ Production Gate: NO-GO；首次逐通道政策、备份和精确操作尚未审�
 调用，不能把整个 master 应用 release 一并升级。最终清单和 Git blob 摘要在
 批准前必须精确展开并绑定，不能用通配符作为执行命令。
 
-待绑定：Linux 验证、生产精确文件清单和部署方式、fresh 只读 inventory、可接受的备份路径、
+待绑定：最终 PR head 的 CI readback、生产精确文件清单和部署方式、fresh 只读 inventory、可接受的备份路径、
 baseline 实现及清零失败恢复证据、三个生产决策点的精确命令和审批。
 上述未绑定事项不能标为已通过、已执行或生产已恢复。
