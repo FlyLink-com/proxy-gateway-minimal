@@ -60,7 +60,7 @@ import { createMihomoTuicUsageCollector } from "./services/edge/mihomo-tuic-usag
 import { createMihomoExternalControllerUsageSnapshotReader } from "./services/edge/mihomo-external-controller-usage-reader.mjs";
 import { createXrayVlessUsageCollector } from "./services/edge/xray-vless-usage-collector.mjs";
 import { createXrayStatsCliUsageSnapshotReader } from "./services/edge/xray-stats-cli-usage-reader.mjs";
-import { createRuntimeUsageAccountingService } from "./services/platform/runtime-usage-accounting.mjs";
+import { createRuntimeUsageAccountingService, normalizeTrafficUsageCollectionScope } from "./services/platform/runtime-usage-accounting.mjs";
 import { createTrafficAccountingService } from "./services/platform/traffic-accounting.mjs";
 import { createFileTrafficCollectorStatusStore } from "./services/platform/traffic-collector-admin-projection.mjs";
 import { createJapanTuicRepairObservationStore } from "./services/platform/japan-tuic-repair-observation.mjs";
@@ -1018,6 +1018,45 @@ function runtimeFromProxyServer(server = {}, fallback = "mihomo-tuic") {
   return fallback;
 }
 
+function prepareScopedVlessUsageSources({ scope, env, configuredServers, edgeChannelRefs, options }) {
+  if (!scope) return null;
+  const invalid = () => {
+    const error = new Error("traffic usage collection scope does not have unique configured VLESS sources");
+    error.code = "traffic_usage_collection_scope_invalid";
+    return error;
+  };
+  if (!envFlag(env.EDGE_USAGE_COLLECTOR_ENABLED || env.EDGE_USAGE_ACCOUNTING_ENABLED)
+    || options.edgeUsageCollectors !== undefined || options.edgeUsageAccounting !== undefined) throw invalid();
+  for (const ref of scope.channelRefs) {
+    const matches = configuredServers.filter((server) => proxyServerRef(server) === ref);
+    if (matches.length !== 1 || !isXrayVlessProxyServer(matches[0])
+      || isMihomoTuicProxyServer(matches[0]) || isHysteria2ProxyServer(matches[0])
+      || (edgeChannelRefs.length > 0 && !edgeChannelRefs.includes(ref))) throw invalid();
+  }
+  let sources;
+  try { sources = createXrayUsageSourceConfigs(env); } catch { throw invalid(); }
+  const selected = [];
+  const endpoints = new Set();
+  for (const source of sources) {
+    // A reader returns all user counters at its endpoint, with no channel filter.
+    // Recovery therefore requires one explicit channel per selected source.
+    if (source.channelRefs.length === 0) throw invalid();
+    const targets = source.channelRefs.filter((ref) => scope.channelRefs.includes(ref));
+    if (targets.length === 0) continue;
+    if (targets.length !== 1 || source.channelRefs.length !== 1) throw invalid();
+    let endpoint;
+    try { endpoint = new URL(`http://${source.statsServer}`); } catch { throw invalid(); }
+    if (!endpoint.port || source.statsServer.includes("://") || endpoint.username || endpoint.password
+      || endpoint.pathname !== "/" || endpoint.search || endpoint.hash || !isLoopbackHostname(endpoint.hostname)) throw invalid();
+    const endpointKey = `loopback:${endpoint.port}`;
+    if (endpoints.has(endpointKey)) throw invalid();
+    endpoints.add(endpointKey);
+    selected.push({ ...source, channelRefs: [...targets] });
+  }
+  if (scope.channelRefs.some((ref) => selected.filter((source) => source.channelRefs[0] === ref).length !== 1)) throw invalid();
+  return selected;
+}
+
 function createEnvEdgeUsageCollectors({
   env,
   proxyConfig,
@@ -1025,21 +1064,23 @@ function createEnvEdgeUsageCollectors({
   hysteria2TrafficReader,
   fetchFn,
   xrayStatsCommandRunner,
-  nowFn
+  nowFn,
+  collectionScope,
+  scopedVlessUsageSources
 } = {}) {
   if (!envFlag(env.EDGE_USAGE_COLLECTOR_ENABLED || env.EDGE_USAGE_ACCOUNTING_ENABLED)) {
     return [];
   }
 
   const configuredServers = Array.isArray(proxyConfig?.servers) ? proxyConfig.servers : [];
-  const allowedChannelRefs = new Set(edgeChannelRefs.map((ref) => optionalEnvText(ref)).filter(Boolean));
+  const allowedChannelRefs = new Set((collectionScope?.channelRefs || edgeChannelRefs).map((ref) => optionalEnvText(ref)).filter(Boolean));
   const collectors = [];
   const hy2ChannelRefs = configuredServers
     .filter(isHysteria2ProxyServer)
     .map(proxyServerRef)
     .filter((channelRef) => channelRef && (allowedChannelRefs.size === 0 || allowedChannelRefs.has(channelRef)));
 
-  if (hy2ChannelRefs.length > 0) {
+  if (!collectionScope && hy2ChannelRefs.length > 0) {
     const trafficReader = typeof hysteria2TrafficReader === "function"
       ? hysteria2TrafficReader
       : createHysteria2TrafficStatsReader({
@@ -1058,7 +1099,7 @@ function createEnvEdgeUsageCollectors({
     })));
   }
 
-  for (const mihomoUsageSource of createMihomoUsageSourceConfigs(env)) {
+  for (const mihomoUsageSource of collectionScope ? [] : createMihomoUsageSourceConfigs(env)) {
     const allowedMihomoUsageChannelRefs = new Set(
       mihomoUsageSource.channelRefs.map((ref) => optionalEnvText(ref)).filter(Boolean)
     );
@@ -1091,7 +1132,7 @@ function createEnvEdgeUsageCollectors({
     })));
   }
 
-  for (const xrayUsageSource of createXrayUsageSourceConfigs(env)) {
+  for (const xrayUsageSource of scopedVlessUsageSources || createXrayUsageSourceConfigs(env)) {
     const allowedXrayUsageChannelRefs = new Set(
       xrayUsageSource.channelRefs.map((ref) => optionalEnvText(ref)).filter(Boolean)
     );
@@ -1106,6 +1147,7 @@ function createEnvEdgeUsageCollectors({
     const snapshotReader = createXrayStatsCliUsageSnapshotReader({
       xrayBinary: optionalEnvText(xrayUsageSource.xrayBinary) || optionalEnvText(env.EDGE_XRAY_BINARY) || "xray",
       statsServer: xrayUsageSource.statsServer,
+      ...(collectionScope ? { strictCounters: true } : {}),
       ...(typeof xrayStatsCommandRunner === "function" ? { commandRunner: xrayStatsCommandRunner } : {}),
       nowFn
     });
@@ -1402,6 +1444,7 @@ function createReceiptBackedSubscriptionChannelGate({ controlStore } = {}) {
 }
 
 export function createRuntimeState(options = {}) {
+  const trafficUsageCollectionScope = normalizeTrafficUsageCollectionScope(options.trafficUsageCollectionScope);
   const rootDir = rootPathFrom(options.rootDir || new URL("..", import.meta.url));
   const env = options.env || process.env;
   const releaseIdentity = loadControlPlaneReleaseIdentity({
@@ -1689,6 +1732,9 @@ export function createRuntimeState(options = {}) {
     );
   }
   const edgeChannelRefs = filterConfiguredProxyRefs(requestedEdgeChannelRefs, configuredProxyRefs);
+  const scopedVlessUsageSources = prepareScopedVlessUsageSources({
+    scope: trafficUsageCollectionScope, env, configuredServers, edgeChannelRefs, options
+  });
   const edgeChannelRef = (
     configuredEdgeChannelRef && (!configuredProxyRefs.size || configuredProxyRefs.has(configuredEdgeChannelRef))
       ? configuredEdgeChannelRef
@@ -2257,14 +2303,18 @@ export function createRuntimeState(options = {}) {
       hysteria2TrafficReader: options.hysteria2TrafficReader,
       fetchFn: options.edgeUsageFetch,
       xrayStatsCommandRunner: options.edgeUsageCommandRunner || options.edgeRuntimeCommandRunner,
-      nowFn: options.usageCollectorNowFn
+      nowFn: options.usageCollectorNowFn,
+      collectionScope: trafficUsageCollectionScope,
+      scopedVlessUsageSources
     });
   const edgeUsageAccounting = options.edgeUsageAccounting || (
     edgeUsageCollectors.length > 0
       ? createRuntimeUsageAccountingService({
         collectors: edgeUsageCollectors,
         accounting: platformTrafficAccounting,
-        trafficSupplyLifecycleGate: orderUsageQuotaLifecycleGate
+        trafficSupplyLifecycleGate: orderUsageQuotaLifecycleGate,
+        collectionScope: trafficUsageCollectionScope || undefined,
+        beforeRecordGuard: trafficUsageCollectionScope ? options.trafficUsageCollectionAdmission : undefined
       })
       : null
   );

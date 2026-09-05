@@ -107,6 +107,26 @@ function normalizeCollectors(collectors = []) {
     .filter(({ collector }) => collector && typeof collector.collect === "function");
 }
 
+export function normalizeTrafficUsageCollectionScope(scope) {
+  if (scope === undefined) return null;
+  if (!scope || typeof scope !== "object" || Array.isArray(scope)
+    || Object.keys(scope).some((key) => !["channelRefs", "protocol", "lifecycleMode"].includes(key))
+    || scope.protocol !== "vless" || scope.lifecycleMode !== "record-only"
+    || !Array.isArray(scope.channelRefs) || scope.channelRefs.length === 0
+    || scope.channelRefs.some((ref) => typeof ref !== "string" || !/^[A-Za-z0-9._:-]{1,128}$/.test(ref))
+    || new Set(scope.channelRefs).size !== scope.channelRefs.length) {
+    throw usageError("traffic_usage_collection_scope_invalid", "traffic usage collection scope is invalid");
+  }
+  return Object.freeze({ channelRefs: Object.freeze([...scope.channelRefs]), protocol: "vless", lifecycleMode: "record-only" });
+}
+
+function deferredLifecycleResult() {
+  return {
+    ok: true, status: "deferred_for_recovery_review", mutation: false,
+    blockers: [], nextAction: "review_deferred_traffic_supply_lifecycle"
+  };
+}
+
 function trafficSupplySuspendRequired(result = {}) {
   return result?.status === "over_quota_disable_required"
     || result?.lifecycleAction === "traffic_supply_suspend_required"
@@ -154,9 +174,20 @@ function safeQuotaCycleRolloverSummary(result = {}) {
 export function createRuntimeUsageAccountingService({
   collectors = [],
   accounting,
-  trafficSupplyLifecycleGate
+  trafficSupplyLifecycleGate,
+  collectionScope,
+  beforeRecordGuard
 } = {}) {
+  const scope = normalizeTrafficUsageCollectionScope(collectionScope);
+  if (scope && beforeRecordGuard !== undefined && typeof beforeRecordGuard !== "function") {
+    throw usageError("traffic_usage_collection_scope_invalid", "traffic usage collection admission guard is invalid");
+  }
   const normalizedCollectors = normalizeCollectors(collectors);
+  if (scope && (normalizedCollectors.length !== scope.channelRefs.length
+    || normalizedCollectors.length !== collectors.length
+    || scope.channelRefs.some((ref) => normalizedCollectors.filter(({ channelRef }) => channelRef === ref).length !== 1))) {
+    throw usageError("traffic_usage_collection_scope_invalid", "traffic usage collectors do not match collection scope");
+  }
   if (!accounting || typeof accounting.recordUsageObservation !== "function") {
     throw usageError("validation_error", "accounting service is required");
   }
@@ -181,12 +212,50 @@ export function createRuntimeUsageAccountingService({
     let trafficSupplySuspendExecutedCount = 0;
     let trafficSupplySuspendFailedCount = 0;
     let trafficSupplySuspendPendingCount = 0;
+    let trafficSupplySuspendDeferredCount = 0;
     let idleCollectorCount = 0;
 
-    for (const { channelRef, collector } of normalizedCollectors) {
+    // Recovery mode must validate the complete read batch before the first write.
+    // VLESS reads are non-clearing; the ordinary sequential path is unchanged.
+    const scopedBatch = [];
+    if (scope) {
+      for (const { channelRef, collector } of normalizedCollectors) {
+        let collected;
+        try {
+          collected = await collector.collect({ since: sinceByChannelRef[channelRef] || since });
+        } catch {
+          collected = collectorExceptionResult(channelRef);
+        }
+        scopedBatch.push({ channelRef, collected });
+      }
+      const invalid = scopedBatch.some(({ channelRef, collected }) => collected?.ok !== true
+        || collected.channelRef !== channelRef || collected.accountingMode !== "cumulative"
+        || !Array.isArray(collected.observations)
+        || collected.observations.some((observation) => !observation || observation.channelRef !== channelRef
+          || (observation.accountingMode !== undefined && observation.accountingMode !== "cumulative")));
+      let batchErrorCode = invalid ? "traffic_usage_collection_scope_violation" : null;
+      if (!invalid && beforeRecordGuard) {
+        try {
+          if (await beforeRecordGuard(scopedBatch) !== true) batchErrorCode = "traffic_usage_collection_admission_rejected";
+        } catch {
+          batchErrorCode = "traffic_usage_collection_admission_rejected";
+        }
+      }
+      if (batchErrorCode) return {
+        type: "gccgw_runtime_usage_accounting_report", ok: false,
+        errorCode: batchErrorCode, collectionScope: scope,
+        lifecycleDeferred: true, collectorCount: normalizedCollectors.length,
+        observationCount: 0, recordedCount: 0, insertedCount: 0, unresolvedCount: 0,
+        reports: [], nextAction: "review_scoped_collection_batch_before_retry",
+        execution: { directRuntimeMutationAllowed: false, trafficSupplyMutationAttempted: false, trafficSupplyMutationExecuted: false, safeToRetry: true },
+        safety: { noRawRuntimePayload: true, noSecretMaterialReturned: true }, redacted: true
+      };
+    }
+
+    for (const [collectorIndex, { channelRef, collector }] of normalizedCollectors.entries()) {
       let collected;
       try {
-        collected = await collector.collect({
+        collected = scope ? scopedBatch[collectorIndex].collected : await collector.collect({
           since: sinceByChannelRef[channelRef] || since
         });
       } catch {
@@ -231,7 +300,10 @@ export function createRuntimeUsageAccountingService({
         }
         let trafficSupplyLifecycle = null;
         if (result.ok === true && trafficSupplySuspendRequired(result)) {
-          if (result.sampleInserted === true && lifecycleGate) {
+          if (scope) {
+            trafficSupplySuspendDeferredCount += 1;
+            trafficSupplyLifecycle = deferredLifecycleResult();
+          } else if (result.sampleInserted === true && lifecycleGate) {
             trafficSupplySuspendAttemptedCount += 1;
             try {
               trafficSupplyLifecycle = await lifecycleGate.handleUsageDecision(result, {
@@ -305,8 +377,8 @@ export function createRuntimeUsageAccountingService({
       });
     }
 
-    let quotaCycleRollover = null;
-    if (quotaCycleRolloverSweep) {
+    let quotaCycleRollover = scope ? safeQuotaCycleRolloverSummary(deferredLifecycleResult()) : null;
+    if (!scope && quotaCycleRolloverSweep) {
       try {
         quotaCycleRollover = safeQuotaCycleRolloverSummary(
           await quotaCycleRolloverSweep({
@@ -334,6 +406,7 @@ export function createRuntimeUsageAccountingService({
     return {
       type: "gccgw_runtime_usage_accounting_report",
       ok,
+      ...(scope ? { collectionScope: scope, lifecycleDeferred: true, trafficSupplySuspendDeferredCount } : {}),
       collectorCount: normalizedCollectors.length,
       idleCollectorCount,
       observationCount,
@@ -349,7 +422,8 @@ export function createRuntimeUsageAccountingService({
       trafficSupplySuspendPendingCount,
       ...(quotaCycleRollover ? { quotaCycleRollover } : {}),
       reports,
-      nextAction: ok ? "continue_usage_monitoring" : "review_usage_collector_mapping_or_traffic_supply_lifecycle",
+      nextAction: scope && ok ? "review_deferred_traffic_supply_lifecycle"
+        : ok ? "continue_usage_monitoring" : "review_usage_collector_mapping_or_traffic_supply_lifecycle",
       execution: {
         directRuntimeMutationAllowed: false,
         subscriptionMutationRequired: quotaDisableRequiredCount > 0,

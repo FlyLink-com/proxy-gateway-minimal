@@ -3,6 +3,7 @@ import { realpathSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { runTrafficUsageRecoveryPreflight } from "./lib/traffic-usage-recovery-preflight.mjs";
+import { loadTrafficVlessRecoveryScope, writeTrafficVlessRecoveryStatus } from "./lib/traffic-vless-recovery-scope.mjs";
 import { createRuntimeState } from "../server/state.mjs";
 import { sanitizeTrafficCollectorState } from "../server/services/platform/traffic-collector-state.mjs";
 import {
@@ -167,6 +168,12 @@ export function summarizeUsageAccountingReport(report, {
     trafficSupplySuspendExecutedCount: Number(report?.trafficSupplySuspendExecutedCount || 0),
     trafficSupplySuspendFailedCount: Number(report?.trafficSupplySuspendFailedCount || 0),
     trafficSupplySuspendPendingCount: Number(report?.trafficSupplySuspendPendingCount || 0),
+    ...(report?.collectionScope ? {
+      collectionScope: { channelRefs: report.collectionScope.channelRefs, protocol: "vless", lifecycleMode: "record-only" },
+      lifecycleDeferred: report.lifecycleDeferred === true,
+      trafficSupplySuspendDeferredCount: Number(report.trafficSupplySuspendDeferredCount || 0),
+      quotaCycleRolloverStatus: String(report.quotaCycleRollover?.status || "")
+    } : {}),
     unresolvedPolicy,
     unresolvedBindingTolerated,
     mappingReviewRequired: unresolvedBindingTolerated,
@@ -204,7 +211,9 @@ export async function runTrafficUsageCollectOnce({
   stdout = process.stdout,
   stderr = process.stderr,
   runtimeStateFactory = createRuntimeState,
-  nowFn = () => new Date()
+  nowFn = () => new Date(),
+  recoveryScopeLoader = loadTrafficVlessRecoveryScope,
+  recoveryStatusWriter = writeTrafficVlessRecoveryStatus
 } = {}) {
   if (argv.includes("--recovery-preflight")) {
     const summary = argv.length === 1
@@ -221,12 +230,35 @@ export async function runTrafficUsageCollectOnce({
     // reads succeeded. It must end before constructing any business runtime.
     return 2;
   }
+  let recoveryScope = null;
+  let recoveryScopePath;
+  if (argv.some((arg) => arg.startsWith("--recovery-"))) {
+    try {
+      const index = argv.indexOf("--recovery-scope-file");
+      if (argv.length !== 3 || index < 0 || index === 2 || !argv[index + 1]
+        || argv.filter((arg) => arg === "--check" || arg === "--collect").length !== 1
+        || argv.some((arg, i) => i !== index && i !== index + 1 && arg !== "--check" && arg !== "--collect")) throw new Error("invalid_scope_arguments");
+      recoveryScopePath = argv[index + 1];
+      recoveryScope = recoveryScopeLoader({ path: recoveryScopePath, env, nowFn });
+    } catch {
+      stderr.write(`${JSON.stringify({ type: "traffic_vless_recovery_scope", ok: false, errorCode: "recovery_scope_admission_rejected" })}\n`);
+      return 2;
+    }
+  }
   const mode = argv.includes("--collect") ? "collect" : "check";
   let state;
   try {
     state = runtimeStateFactory({
       rootDir: cwd,
-      env: collectorRuntimeEnvironment(env)
+      env: collectorRuntimeEnvironment(env),
+      ...(recoveryScope ? {
+        trafficUsageCollectionScope: recoveryScope.collectionScope,
+        trafficUsageCollectionAdmission: (batch) => {
+          const fresh = recoveryScopeLoader({ path: recoveryScopePath, env, nowFn, batch });
+          if (fresh.packetSha256 !== recoveryScope.packetSha256) throw new Error("recovery_scope_changed");
+          return true;
+        }
+      } : {})
     });
   } catch (error) {
     stderr.write(`${JSON.stringify(summarizeCollectorStartupFailure(error, {
@@ -238,7 +270,10 @@ export async function runTrafficUsageCollectOnce({
   }
 
   if (mode === "check") {
-    stdout.write(`${JSON.stringify(summarizeCollectorCheck(state))}\n`);
+    stdout.write(`${JSON.stringify({ ...summarizeCollectorCheck(state), ...(recoveryScope ? {
+      collectionScope: recoveryScope.collectionScope, lifecycleDeferred: true,
+      productionRecoveryComplete: false, nextAction: "review_temporary_vless_recovery_activation"
+    } : {}) })}\n`);
     return summarizeCollectorCheck(state).ok ? 0 : 2;
   }
 
@@ -254,8 +289,22 @@ export async function runTrafficUsageCollectOnce({
 
   const report = await accounting.collectAndRecord({});
   const summary = summarizeUsageAccountingReport(report, {
-    unresolvedPolicy: "tolerate_unresolved_bindings"
+    unresolvedPolicy: recoveryScope ? "fail_unresolved_bindings" : "tolerate_unresolved_bindings"
   });
+  if (recoveryScope) {
+    try {
+      recoveryStatusWriter(recoveryScope.statusFile, {
+        type: "traffic_vless_recovery_status", observedAt: nowFn().toISOString(),
+        baselinePlanDigest: recoveryScope.baselinePlanDigest, summary,
+        coverage: "selected_channels_only", productionRecoveryComplete: false
+      });
+    } catch {
+      stderr.write(`${JSON.stringify({ type: "traffic_vless_recovery_status", ok: false, errorCode: "recovery_status_write_failed" })}\n`);
+      return 1;
+    }
+    stdout.write(`${JSON.stringify(summary)}\n`);
+    return summary.ok && summary.rawReportOk ? 0 : 1;
+  }
   const statusStore = state.platform?.trafficCollectorStatusStore;
   let statusProjection = null;
   if (statusStore && typeof statusStore.write === "function") {
