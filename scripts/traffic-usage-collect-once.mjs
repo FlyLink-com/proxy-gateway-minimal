@@ -2,6 +2,7 @@
 import { realpathSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { runTrafficUsageRecoveryPreflight } from "./lib/traffic-usage-recovery-preflight.mjs";
 import { createRuntimeState } from "../server/state.mjs";
 import { sanitizeTrafficCollectorState } from "../server/services/platform/traffic-collector-state.mjs";
 import {
@@ -35,6 +36,22 @@ function safeObservability(value) {
 
 function envFlag(value) {
   return ["1", "true", "yes", "on"].includes(String(value || "").trim().toLowerCase());
+}
+
+function collectorRuntimeEnvironment(env) {
+  // This oneshot owns accounting, not storefront/payment workers. Keep the
+  // caller's environment and the accounting/edge lifecycle configuration intact.
+  return {
+    ...env,
+    COINS_WALLET_ENABLED: "false",
+    COINS_COMMERCE_ENABLED: "false",
+    COINS_COMMERCE_ACCOUNT_RESOURCE_AUTHORITY_ENABLED: "false",
+    USER_PORTAL_REGISTRATION_WELCOME_COINS_ENABLED: "false",
+    PLATFORM_COIN_RECHARGE_ENABLED: "false",
+    PLATFORM_PAYPAL_SANDBOX_ENABLED: "false",
+    PLATFORM_XSD_PAYMENT_ENABLED: "false",
+    PLATFORM_CHAOJIPAY_PAYMENT_ENABLED: "false"
+  };
 }
 
 function envPresent(env, key) {
@@ -189,12 +206,27 @@ export async function runTrafficUsageCollectOnce({
   runtimeStateFactory = createRuntimeState,
   nowFn = () => new Date()
 } = {}) {
+  if (argv.includes("--recovery-preflight")) {
+    const summary = argv.length === 1
+      ? runTrafficUsageRecoveryPreflight({ env, nowFn })
+      : {
+          type: "traffic_usage_recovery_preflight",
+          ok: false,
+          status: "requires_review",
+          productionCollectionAuthorized: false,
+          errorCode: "recovery_arguments_invalid"
+        };
+    stdout.write(`${JSON.stringify(summary)}\n`);
+    // This mode produces evidence, never collection admission, even if all
+    // reads succeeded. It must end before constructing any business runtime.
+    return 2;
+  }
   const mode = argv.includes("--collect") ? "collect" : "check";
   let state;
   try {
     state = runtimeStateFactory({
       rootDir: cwd,
-      env
+      env: collectorRuntimeEnvironment(env)
     });
   } catch (error) {
     stderr.write(`${JSON.stringify(summarizeCollectorStartupFailure(error, {

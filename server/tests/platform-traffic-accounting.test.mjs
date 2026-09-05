@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
 import Database from "better-sqlite3";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { createSqliteSubscriptionControlStore } from "../services/platform/subscription-control-db.mjs";
 import { createTrafficAccountingService } from "../services/platform/traffic-accounting.mjs";
+import { runTrafficUsageRecoveryPreflight } from "../../scripts/lib/traffic-usage-recovery-preflight.mjs";
 
 function withStore(fn, seedOverrides = {}) {
   const tempDir = mkdtempSync(join(tmpdir(), "platform-traffic-accounting-"));
@@ -109,6 +110,71 @@ function cumulativeObservation(overrides = {}) {
     ...overrides
   };
 }
+
+test("recovery preflight preserves a 35-day gap whose unreviewed collection would charge the current cycle", () => {
+  const directory = mkdtempSync(join(tmpdir(), "traffic-recovery-first-intake-"));
+  const dbPath = join(directory, "control.sqlite");
+  const statusPath = join(directory, "status.json");
+  const store = createSqliteSubscriptionControlStore({ dbPath });
+  const oldTime = "2026-08-01T15:38:48.000Z";
+  const recoveredAt = "2026-09-05T09:00:00.000Z";
+  try {
+    seedIssuedOrder(store, {
+      now: "2026-08-01T00:00:00.000Z", validUntil: "2027-08-01T00:00:00.000Z",
+      plan: "yearly", trafficLimitBytes: 1000
+    });
+    const service = createTrafficAccountingService({ controlStore: store, nowFn: () => recoveredAt });
+    const old = cumulativeObservation({ observedAt: oldTime, intervalStartedAt: oldTime, intervalEndedAt: oldTime });
+    assert.equal(service.recordUsageObservation(old).accountingStatus, "cursor_initialized");
+    const originalCursor = store.getUsageCounterCursor(old);
+    writeFileSync(statusPath, JSON.stringify({
+      type: "traffic_collector_admin_projection", schemaVersion: "1", availability: "available",
+      observedAt: oldTime, run: { runOk: true, rawReportOk: true, collectorCount: 0, idleCollectorCount: 0 },
+      accounting: { recordingOk: true, observationCount: 0, recordedCount: 0, insertedCount: 0, unresolvedCount: 0 },
+      collectors: [], producers: [], omittedCollectorCount: 0, omittedProducerCount: 0
+    }));
+    const preflight = runTrafficUsageRecoveryPreflight({
+      env: { SUBSCRIPTION_CONTROL_DB_PATH: dbPath, EDGE_USAGE_COLLECTOR_STATUS_PATH: statusPath },
+      nowFn: () => new Date(recoveredAt)
+    });
+    assert.equal(preflight.ok, true);
+    assert.equal(preflight.status, "requires_review");
+    assert.equal(preflight.productionCollectionAuthorized, false);
+    assert.equal(preflight.statusEvidence.stale, true);
+    assert.equal(preflight.cursorEvidence.staleCount, 1);
+    assert.deepEqual(store.getUsageCounterCursor(old), originalCursor);
+    assert.equal(store.listUsageSamples({}).length, 0);
+
+    // Demonstrate why read success must never authorize the preserved --collect
+    // path: its existing accounting contract does not split cross-cycle deltas.
+    const resumed = cumulativeObservation({
+      observedAt: recoveredAt, intervalStartedAt: oldTime, intervalEndedAt: recoveredAt,
+      uploadBytes: 600, downloadBytes: 800
+    });
+    const charged = service.recordUsageObservation(resumed);
+    assert.equal(charged.quota.usedBytes, 1100);
+    assert.equal(charged.status, "over_quota_disable_required");
+    assert.equal(charged.lifecycleAction, "traffic_supply_suspend_required");
+    assert.equal(charged.sample.intervalStartedAt, oldTime);
+    assert.equal(store.listUsageSamples({ observedFrom: "2026-08-01T00:00:00.000Z", observedTo: "2026-09-01T00:00:00.000Z" }).length, 0);
+    assert.equal(store.listUsageSamples({ observedFrom: "2026-09-01T00:00:00.000Z", observedTo: "2026-10-01T00:00:00.000Z" })[0].totalBytes, 1100);
+    assert.equal(service.recordUsageObservation(resumed).sampleInserted, false);
+    assert.equal(store.listUsageSamples({}).length, 1);
+
+    const reset = service.recordUsageObservation({
+      ...resumed, observedAt: "2026-09-05T09:05:00.000Z", intervalEndedAt: "2026-09-05T09:05:00.000Z",
+      uploadBytes: 1, downloadBytes: 2
+    });
+    assert.equal(reset.accountingStatus, "counter_reset_detected");
+    assert.equal(reset.sampleInserted, false);
+    assert.equal(reset.quota.usedBytes, 1100);
+    assert.equal(store.getUsageCounterCursor(old).epoch, 1);
+    assert.equal(store.listUsageSamples({}).length, 1);
+  } finally {
+    store.close();
+    rmSync(directory, { recursive: true, force: true, maxRetries: 3, retryDelay: 50 });
+  }
+});
 
 test("traffic accounting resets quota decisions at entitlement monthly cycle boundary", () => {
   withStore((store) => {
