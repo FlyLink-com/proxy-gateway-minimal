@@ -52,6 +52,7 @@ export type PortalRechargeClient = {
     sessionRef: string;
     offerRef: string;
     idempotencyKey: string;
+    signal?: AbortSignal;
   }): Promise<PortalRechargeOrder>;
   listOrders(input: { sessionRef: string }): Promise<PortalRechargeOrder[]>;
   getOrder(input: {
@@ -396,12 +397,13 @@ export function createPortalRechargeClient({
         (body) => exactArray(exactObject(body, ["offers"]).offers).map(offerProjection),
       );
     },
-    createOrder({ sessionRef, offerRef, idempotencyKey }) {
+    createOrder({ sessionRef, offerRef, idempotencyKey, signal }) {
       return request(
         fetchFn,
         endpoint(baseUrl, "/api/portal/coins/recharge/orders"),
         {
           method: "POST",
+          signal,
           headers: headers(sessionRef, true),
           body: JSON.stringify({ offerRef: reference(offerRef), idempotencyKey: reference(idempotencyKey) }),
         },

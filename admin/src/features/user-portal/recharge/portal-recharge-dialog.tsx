@@ -170,7 +170,14 @@ export function PortalRechargeDialog({
     >
       {model.error ? (
         <div className="portal-recharge-state" role="alert">
-          {model.error === "unavailable"
+          {model.error === "create_unknown"
+            ? zh
+              ? "充值订单结果尚未确认。请确认本次订单，不要重新创建或重复支付。"
+              : "The recharge order result is not yet confirmed. Check this attempt; do not create another order or pay again."
+            : model.error === "entry_expired"
+              ? zh ? "支付入口已过期，请更新订单状态后再继续；未创建新的充值订单。"
+                : "The payment entry has expired. Refresh the order status before continuing; no new order was created."
+            : model.error === "unavailable"
             ? zh ? "Coins 充值暂不可用。" : "Coins recharge is unavailable."
             : model.error === "delayed"
               ? zh
@@ -179,7 +186,19 @@ export function PortalRechargeDialog({
               : zh ? "充值请求失败，请安全重试。" : "Recharge request failed. Retry safely."}
         </div>
       ) : null}
-      {order ? (
+      {model.unresolvedCreateOfferRef ? (
+        <div className="portal-recharge-state">
+          <button type="button" disabled={model.busy}
+            aria-busy={model.busy ? "true" : undefined}
+            onClick={() => void model.retryCreateOrder?.()}>
+            {model.busy
+              ? zh ? "正在确认本次订单…" : "Checking this attempt…"
+              : zh ? "确认本次充值订单" : "Check this recharge attempt"}
+          </button>
+          <p>{zh ? "可关闭此窗口，稍后返回确认。关闭不会取消已经创建的订单。"
+            : "You can close this window and return to check. Closing does not cancel an order already created."}</p>
+        </div>
+      ) : order ? (
         <section className="portal-recharge-order" aria-label={zh ? "充值订单" : "Recharge order"}>
           <div
             aria-busy={model.busy || pending ? "true" : undefined}

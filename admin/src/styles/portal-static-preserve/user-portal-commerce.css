@@ -696,6 +696,10 @@
   padding: 20px;
 }
 
+.portal-v2-shell .portal-recharge-dialog > .portal-recharge-state {
+  color: var(--portal-wallet-text);
+}
+
 .portal-v2-shell .portal-recharge-offers {
   display: grid;
   gap: 12px;

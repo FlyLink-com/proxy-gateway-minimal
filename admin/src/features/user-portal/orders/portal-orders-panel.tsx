@@ -429,7 +429,9 @@ export function PortalOrdersPanel({
   const [rechargeOrders, setRechargeOrders] = useState<PortalRechargeOrder[]>([]);
   const [rechargeFailure, setRechargeFailure] = useState(false);
   const [rechargeLoading, setRechargeLoading] = useState(false);
-  const [rechargeContinuationError, setRechargeContinuationError] = useState(false);
+  const [rechargeContinuationError, setRechargeContinuationError] = useState<
+    Exclude<PortalRechargePaymentRedirectResult, "redirected"> | null
+  >(null);
   const showsCoins = filter === "all" || filter === "coins_consumption";
   const showsRecharge = filter === "all" || filter === "coin_recharge";
 
@@ -453,7 +455,7 @@ export function PortalOrdersPanel({
     setSelectedLegacyDetailRef(null);
     setSelectedRechargeDetailRef(null);
     setSelectedServiceDetailRef(null);
-    setRechargeContinuationError(false);
+    setRechargeContinuationError(null);
     setNextCursor(null);
     setListRetryRequest({ cursor: null, append: false });
     visibleOrderRefsRef.current.clear();
@@ -933,7 +935,11 @@ export function PortalOrdersPanel({
       ) : null}
       {rechargeContinuationError && showsRecharge ? (
         <div className="portal-orders-inline-note" role="alert">
-          {copy(
+          {rechargeContinuationError === "expired" ? copy(
+            locale,
+            "该支付入口已过期，请刷新订单查看状态。未创建新的充值订单。",
+            "This payment entry has expired. Refresh Orders to check its status. No new recharge order was created."
+          ) : copy(
             locale,
             "无法安全继续该笔充值支付，未创建新的充值订单。",
             "Could not safely continue this payment. No new recharge order was created."
@@ -1107,7 +1113,7 @@ export function PortalOrdersPanel({
                             aria-label={continuePaymentLabel}
                             onClick={() => {
                               const result = onContinueRechargeOrder(rechargeOrderForContinuation);
-                              setRechargeContinuationError(result !== "redirected");
+                              setRechargeContinuationError(result === "redirected" ? null : result);
                             }}
                           >
                             {copy(locale, "继续支付", "Continue payment")}

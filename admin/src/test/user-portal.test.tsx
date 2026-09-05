@@ -2799,6 +2799,7 @@ describe("user portal product surface", () => {
   });
 
   test("continues one exact ready recharge from Orders without creating a replacement order", async () => {
+    vi.spyOn(Date, "now").mockReturnValue(Date.parse("2026-08-01T00:00:00.000Z"));
     const session = portalWalletSession(
       "session_recharge_continue_001",
       "recharge-continue@example.test"

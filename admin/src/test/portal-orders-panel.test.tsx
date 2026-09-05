@@ -25,8 +25,10 @@ import type {
 import { PortalCoinCommerceClientError } from "../features/user-portal/commerce";
 import type {
   PortalRechargeClient,
-  PortalRechargeOrder
+  PortalRechargeOrder,
+  PortalRechargePaymentRedirectResult,
 } from "../features/user-portal/recharge";
+import { handoffPortalRechargeOrderToPayment } from "../features/user-portal/recharge/portal-recharge-payment-handoff";
 import type {
   PortalPaymentOrder,
   PortalSubscriptionRequest
@@ -199,9 +201,7 @@ type DirectPanelProps = Pick<
   PortalOrdersPanelProps,
   "locale" | "commerceClient" | "sessionRef" | "sessionGeneration" | "onSessionInvalid"
 >> & {
-  onContinueRechargeOrder?: (order: PortalRechargeOrder) => (
-    "redirected" | "blocked" | "not_applicable"
-  );
+  onContinueRechargeOrder?: (order: PortalRechargeOrder) => PortalRechargePaymentRedirectResult;
 };
 
 function PortalOrdersPanel(props: DirectPanelProps) {
@@ -454,10 +454,11 @@ describe("PortalOrdersPanel", () => {
       status: "entry_ready",
       walletOperationRef: null,
       walletLotRef: null,
+      expiresAt: "2099-08-01T00:10:00.000Z",
       nextAction: {
         type: "redirect",
         url: "https://cashier.example.test/continue/payment_recharge_001",
-        expiresAt: "2026-08-01T00:10:00.000Z"
+        expiresAt: "2099-08-01T00:10:00.000Z"
       }
     };
     const onContinueRechargeOrder = vi.fn(() => "redirected" as const);
@@ -493,10 +494,11 @@ describe("PortalOrdersPanel", () => {
       status: "entry_ready",
       walletOperationRef: null,
       walletLotRef: null,
+      expiresAt: "2099-08-01T00:10:00.000Z",
       nextAction: {
         type: "redirect",
         url: "https://cashier.example.test/continue/payment_recharge_001",
-        expiresAt: "2026-08-01T00:10:00.000Z"
+        expiresAt: "2099-08-01T00:10:00.000Z"
       }
     };
     const rechargeClient = {
@@ -522,6 +524,68 @@ describe("PortalOrdersPanel", () => {
       "Could not safely continue this payment. No new recharge order was created."
     );
     expect(onContinueRechargeOrder).toHaveBeenCalledWith(entryReadyOrder);
+  });
+
+  test.each(["order", "action"] as const)("keeps expired %s history visible without offering payment", async (field) => {
+    const entryReadyOrder: PortalRechargeOrder = {
+      ...RECHARGE_ORDER,
+      status: "entry_ready",
+      expiresAt: field === "order" ? "2000-01-01T00:00:00.000Z" : "2099-01-01T00:00:00.000Z",
+      nextAction: {
+        type: "redirect",
+        url: "https://cashier.example.test/synthetic-no-network",
+        expiresAt: field === "action" ? "2000-01-01T00:00:00.000Z" : "2099-01-01T00:00:00.000Z",
+      },
+    };
+    const onContinueRechargeOrder = vi.fn(() => "redirected" as const);
+    render(createElement(PortalOrdersPanel, {
+      locale: "en", commerceClient: null,
+      rechargeClient: { listOrders: vi.fn(async () => [entryReadyOrder]) } as unknown as PortalRechargeClient,
+      sessionRef: "session_recharge_orders", sessionGeneration: 1,
+      onSessionInvalid: vi.fn(), onContinueRechargeOrder,
+    }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Coins recharges" }));
+    expect(await screen.findByRole("button", { name: /view:.*payment_recharge_001/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /continue payment/i })).toBeNull();
+    expect(onContinueRechargeOrder).not.toHaveBeenCalled();
+  });
+
+  test("shows an explicit expiry message if a visible payment button expires before clicking", async () => {
+    const clock = vi.spyOn(Date, "now").mockReturnValue(Date.parse("2026-09-05T12:00:00.000Z"));
+    try {
+      const entryReadyOrder: PortalRechargeOrder = {
+        ...RECHARGE_ORDER,
+        status: "entry_ready",
+        expiresAt: "2026-09-05T12:01:00.000Z",
+        nextAction: {
+          type: "redirect", url: "https://cashier.example.test/synthetic-no-network",
+          expiresAt: "2026-09-05T12:00:01.000Z",
+        },
+      };
+      const redirect = vi.fn();
+      const continuation = vi.fn((order: PortalRechargeOrder) => handoffPortalRechargeOrderToPayment(order, redirect));
+      render(createElement(PortalOrdersPanel, {
+        locale: "en", commerceClient: null,
+        rechargeClient: { listOrders: vi.fn(async () => [entryReadyOrder]) } as unknown as PortalRechargeClient,
+        sessionRef: "session_recharge_orders", sessionGeneration: 1,
+        onSessionInvalid: vi.fn(), onContinueRechargeOrder: continuation,
+      }));
+      fireEvent.click(screen.getByRole("button", { name: "Coins recharges" }));
+      const button = await screen.findByRole("button", { name: /continue payment.*payment_recharge_001/i });
+
+      clock.mockReturnValue(Date.parse("2026-09-05T12:00:01.000Z"));
+      fireEvent.click(button);
+
+      expect(redirect).not.toHaveBeenCalled();
+      expect(screen.getByRole("alert")).toHaveTextContent(
+        "This payment entry has expired. Refresh Orders to check its status. No new recharge order was created."
+      );
+      expect(screen.queryByRole("button", { name: /continue payment/i })).toBeNull();
+    } finally {
+      clock.mockRestore();
+      window.sessionStorage.clear();
+    }
   });
 
   test.each([

@@ -63,7 +63,45 @@ function desktopDeclaration(
   return mediaDeclaration(css, DESKTOP_MEDIA, selector, property);
 }
 
+function baseDeclaration(css: string, selector: string, property: string) {
+  const style = document.createElement("style");
+  style.textContent = css;
+  document.head.append(style);
+  try {
+    let value = "";
+    for (const rule of Array.from(style.sheet?.cssRules ?? [])) {
+      if (rule instanceof CSSStyleRule && normalizedSelectors(rule).includes(selector)) {
+        value = rule.style.getPropertyValue(property).trim() || value;
+      }
+    }
+    return value;
+  } finally {
+    style.remove();
+  }
+}
+
 describe("Portal commerce desktop style contract", () => {
+  test("makes recharge alerts and recovery text consume the readable day/night wallet token at every width", () => {
+    expect(baseDeclaration(
+      commerceStyles,
+      ".portal-v2-shell .portal-recharge-dialog > .portal-recharge-state",
+      "color"
+    )).toBe("var(--portal-wallet-text)");
+    for (const [theme, expected] of [["dark", "#f0f6fc"], ["light", "#1f2937"]] as const) {
+      const shell = theme === "light" ? '.portal-v2-shell[data-portal-theme="light"]' : ".portal-v2-shell";
+      expect(baseDeclaration(
+        commerceStyles,
+        `${shell} .portal-commerce-layout--wallet`,
+        "--portal-wallet-text"
+      )).toBe(expected);
+      expect(desktopDeclaration(
+        commerceStyles,
+        `${shell} .modal-backdrop .portal-recharge-dialog`,
+        "--portal-wallet-text"
+      )).toBe(expected);
+    }
+  });
+
   test("keeps the signed-in desktop Header focused on title and global search", () => {
     expect(desktopDeclaration(
       desktopStyles,
