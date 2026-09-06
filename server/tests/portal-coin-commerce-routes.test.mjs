@@ -2,8 +2,20 @@ import assert from "node:assert/strict";
 import { request as httpRequest } from "node:http";
 import test from "node:test";
 import { types } from "node:util";
+import Database from "better-sqlite3";
 
 import { createApp } from "../app.mjs";
+import {
+  COIN_COMMERCE_MIGRATIONS,
+  REQUIRED_COIN_COMMERCE_MIGRATION_ID,
+  applyCoinCommerceMigrations
+} from "../services/platform/coin-commerce-migrations.mjs";
+import {
+  COIN_WALLET_MIGRATIONS,
+  REQUIRED_COIN_WALLET_MIGRATION_ID,
+  applyCoinWalletMigrations
+} from "../services/platform/coin-wallet-migrations.mjs";
+import { createSqliteCoinCommerceStore } from "../services/platform/coin-commerce-store.mjs";
 import { listen } from "./helpers/listen.mjs";
 
 const ROOT_DIR = new URL("../../", import.meta.url).pathname;
@@ -255,6 +267,142 @@ function createStore(overrides = {}) {
     ...overrides
   };
   return { store, calls };
+}
+
+function createReconciliationStoreFixture(fulfillmentStatus) {
+  const database = new Database(":memory:");
+  const clock = { value: "2026-07-27T00:00:00.000Z" };
+  database.pragma("foreign_keys = ON");
+  database.exec(`
+    create table platform_accounts (
+      id text primary key,
+      owner_ref text not null,
+      status text not null,
+      created_at text not null,
+      updated_at text not null,
+      metadata_json text not null default '{}'
+    )
+  `);
+  applyCoinWalletMigrations({
+    database,
+    expectedMigrationId: REQUIRED_COIN_WALLET_MIGRATION_ID,
+    expectedDdlChecksum: COIN_WALLET_MIGRATIONS[0].ddlChecksum,
+    nowFn: () => new Date(clock.value)
+  });
+  applyCoinCommerceMigrations({
+    database,
+    expectedMigrationId: REQUIRED_COIN_COMMERCE_MIGRATION_ID,
+    expectedDdlChecksum: COIN_COMMERCE_MIGRATIONS[0].ddlChecksum,
+    nowFn: () => new Date(clock.value)
+  });
+  database.prepare(`
+    insert into platform_accounts
+      (id, owner_ref, status, created_at, updated_at)
+    values ('acct_alpha', 'owner_synthetic', 'active', ?, ?)
+  `).run(clock.value, clock.value);
+  const fixedClockDatabase = new Proxy(database, {
+    get(target, property) {
+      if (property === "prepare") return (sql) => {
+        if (/select\s+strftime\('%Y-%m-%dT%H:%M:%fZ',\s*'now'\)/i.test(sql)) {
+          return { pluck: () => ({ get: () => clock.value }) };
+        }
+        return target.prepare(sql);
+      };
+      const value = Reflect.get(target, property, target);
+      return typeof value === "function" ? value.bind(target) : value;
+    }
+  });
+  const counts = new Map();
+  const refFactory = (kind) => {
+    const count = (counts.get(kind) ?? 0) + 1;
+    counts.set(kind, count);
+    return `${kind}_route_contract_${count}`;
+  };
+  const store = createSqliteCoinCommerceStore({
+    database: fixedClockDatabase,
+    commerceRefFactory: refFactory,
+    walletRefFactory: refFactory
+  });
+  store.walletStore.creditCoins({
+    accountId: "acct_alpha",
+    coinType: "paid_coins",
+    amountUnits: 1_000,
+    availability: "available",
+    sourceType: "synthetic_seed",
+    sourceRef: "source_route_contract",
+    sourceDigest: "a".repeat(64),
+    policyRef: null,
+    policyVersion: null,
+    expiresAt: null,
+    operation: {
+      actorScope: "system:route-contract",
+      idempotencyKey: "synthetic_credit",
+      actorType: "system",
+      actorRef: "route_contract"
+    }
+  });
+  store.publishOfferVersion(clone(FULL_OFFER));
+  const quote = store.createCheckoutQuote({
+    accountId: "acct_alpha", offerRef: FULL_OFFER.offerRef
+  });
+  const held = store.confirmOrder({
+    accountId: "acct_alpha",
+    quoteRef: quote.quoteRef,
+    operation: {
+      actorScope: "portal:acct_alpha",
+      idempotencyKey: "synthetic_confirm",
+      actorType: "portal_user",
+      actorRef: "acct_alpha"
+    }
+  });
+  clock.value = held.cancelUntil;
+  store.claimDueCaptures({ limit: 1 });
+  if (fulfillmentStatus === "not_requested") {
+    // The public capture path isolates an expired Hold without a command.
+    clock.value = "2099-01-01T00:00:00.000Z";
+  }
+  store.captureClaimedOrder({ orderRef: held.orderRef });
+  if (fulfillmentStatus !== "not_requested") {
+    const command = store.claimNextFulfillmentCommand({ leaseMs: 1_000 });
+    const lease = {
+      commandRef: command.commandRef,
+      leaseGeneration: command.leaseGeneration,
+      leaseToken: command.leaseToken
+    };
+    if (fulfillmentStatus === "failed") {
+      store.failFulfillmentCommand({
+        ...lease, safeCode: "fulfillment_handler_unavailable"
+      });
+    } else {
+      store.completeFulfillmentCommand({
+        ...lease, effectRef: "effect_route_contract", status: "delivered"
+      });
+      // In-memory terminal-state fixture only: retain the real immutable
+      // command and receipt, and require both store projections to validate it.
+      // This is not a simulated public reconciliation mutation API.
+      database.prepare(`
+        update platform_coin_commerce_orders
+           set payment_status = 'reconciliation_required'
+         where order_ref = ?
+      `).run(held.orderRef);
+    }
+  }
+  const order = store.getOrder({
+    accountId: "acct_alpha", orderRef: held.orderRef
+  });
+  assert.equal(order.paymentStatus, "reconciliation_required");
+  assert.equal(order.fulfillment.status, fulfillmentStatus);
+  assert.deepEqual(store.listOrders({ accountId: "acct_alpha", limit: 25 }), {
+    orders: [order], nextCursor: null
+  });
+  return {
+    store,
+    order,
+    close() {
+      store.close();
+      database.close();
+    }
+  };
 }
 
 function createState({
@@ -2018,6 +2166,74 @@ test("checkout preview limiter is fixed-window, per-account, and resets without 
       calls.filter(([method]) => method === "createCheckoutQuote").length,
       32
     );
+  } finally {
+    await closeServer(server);
+  }
+});
+
+for (const fulfillmentStatus of ["not_requested", "failed", "delivered"]) {
+  for (const surface of ["list", "detail"]) {
+    test(`reconciliation terminal fulfillment ${fulfillmentStatus} survives the ${surface} route`, async () => {
+      const fixture = createReconciliationStoreFixture(fulfillmentStatus);
+      let server;
+      try {
+        const listener = await listen(createApp(createState({ store: fixture.store })));
+        server = listener.server;
+        const endpoint = surface === "list"
+          ? "/api/portal/commerce/orders?limit=25"
+          : `/api/portal/commerce/orders/${fixture.order.orderRef}`;
+        const response = await fetch(`${listener.baseUrl}${endpoint}`, {
+          headers: portalHeaders()
+        });
+        assert.equal(response.status, 200);
+        const expected = { ...fixture.order, offer: clone(PORTAL_OFFER) };
+        assert.deepEqual(await response.json(), surface === "list"
+          ? { orders: [expected], nextCursor: null }
+          : { order: expected });
+      } finally {
+        if (server) await closeServer(server);
+        fixture.close();
+      }
+    });
+  }
+}
+
+test("reconciliation compatibility retains fulfillment and payment fail-closed boundaries", async () => {
+  let orderResult = clone(FULL_HELD_ORDER);
+  const { store } = createStore({
+    getOrder: () => orderResult,
+    listOrders: () => ({ orders: [orderResult], nextCursor: null })
+  });
+  const { server, baseUrl } = await listen(createApp(createState({ store })));
+  const invalidPairs = [
+    ...["held", "capture_pending", "cancelled", "capture_failed"].flatMap((paymentStatus) => [
+      { paymentStatus, fulfillment: { status: "delivered", safeCode: null } },
+      { paymentStatus, fulfillment: { status: "failed", safeCode: "fulfillment_handler_failed" } }
+    ]),
+    ...["pending", "processing"].map((status) => ({
+      paymentStatus: "reconciliation_required", fulfillment: { status, safeCode: null }
+    })),
+    ...[
+      { status: "failed", safeCode: null },
+      { status: "failed", safeCode: "unknown_failure" },
+      { status: "delivered", safeCode: "fulfillment_handler_failed" },
+      { status: "not_requested", safeCode: "fulfillment_handler_unavailable" }
+    ].map((fulfillment) => ({ paymentStatus: "reconciliation_required", fulfillment })),
+    { paymentStatus: "captured", fulfillment: { status: "not_requested", safeCode: null } }
+  ];
+  try {
+    for (const pair of invalidPairs) {
+      orderResult = { ...clone(FULL_HELD_ORDER), ...pair };
+      for (const endpoint of [
+        "/api/portal/commerce/orders?limit=25",
+        "/api/portal/commerce/orders/order_monthly_basic_1"
+      ]) {
+        const response = await fetch(`${baseUrl}${endpoint}`, {
+          headers: portalHeaders()
+        });
+        await expectCommerceError(response, 503, "commerce_unavailable", true);
+      }
+    }
   } finally {
     await closeServer(server);
   }
