@@ -566,10 +566,54 @@ describe("Portal commerce desktop style contract", () => {
       ".portal-v2-shell .modal-backdrop .portal-recharge-offers strong",
       "color"
     )).toBe("var(--portal-wallet-text)");
-    expect(desktopDeclaration(
+    expect(baseDeclaration(
       commerceStyles,
       ".portal-v2-shell .portal-orders-panel .portal-order-table",
       "min-width"
-    )).toBe("100%");
+    )).toBe("1080px");
+  });
+
+  test("keeps Orders as one compact horizontally scrollable table at every width", () => {
+    const panel = ".portal-v2-shell .portal-orders-panel";
+    const table = `${panel} .portal-order-table`;
+    expect(baseDeclaration(commerceStyles, `${panel} .portal-order-table-wrap`, "overflow-x")).toBe("auto");
+    expect(baseDeclaration(commerceStyles, table, "display")).toBe("table");
+    expect(baseDeclaration(commerceStyles, table, "table-layout")).toBe("fixed");
+    expect(baseDeclaration(commerceStyles, `${table} thead`, "display")).toBe("table-header-group");
+    expect(baseDeclaration(commerceStyles, `${table} tbody`, "display")).toBe("table-row-group");
+    expect(baseDeclaration(commerceStyles, `${table} tr`, "display")).toBe("table-row");
+    expect(baseDeclaration(commerceStyles, `${table} td`, "display")).toBe("table-cell");
+    expect(baseDeclaration(commerceStyles, `${table} td::before`, "content")).toBe("none");
+    expect(baseDeclaration(commerceStyles, `${panel} .portal-order-summary-row > td`, "white-space")).toBe("nowrap");
+    expect(baseDeclaration(commerceStyles, `${panel} .portal-order-summary-row > td`, "height")).toBe("64px");
+    expect(baseDeclaration(commerceStyles, `${panel} .portal-order-summary-text`, "text-overflow")).toBe("ellipsis");
+    expect(baseDeclaration(commerceStyles, `${panel} .portal-order-summary-text`, "overflow")).toBe("hidden");
+    expect(baseDeclaration(commerceStyles, `${panel} .portal-order-actions`, "flex-wrap")).toBe("nowrap");
+    expect(baseDeclaration(commerceStyles, `${panel} .portal-order-actions button`, "white-space")).toBe("nowrap");
+    expect(baseDeclaration(commerceStyles, `${panel} .portal-order-actions button`, "min-height")).toBe("40px");
+  });
+
+  test("lets expanded order details wrap without changing summary-row alignment", () => {
+    const panel = ".portal-v2-shell .portal-orders-panel";
+    expect(baseDeclaration(commerceStyles, `${panel} .portal-order-detail-row > td`, "white-space")).toBe("normal");
+    expect(baseDeclaration(commerceStyles, `${panel} .portal-order-detail-grid strong`, "overflow-wrap")).toBe("anywhere");
+    expect(baseDeclaration(commerceStyles, `${panel} .portal-order-detail-grid`, "grid-template-columns")).toBe("minmax(0, 1fr) minmax(0, 1fr)");
+    expect(baseDeclaration(commerceStyles, `${panel} .portal-order-detail`, "grid-template-columns")).toBe("minmax(0, 1fr)");
+    expect(baseDeclaration(commerceStyles, `${panel} .portal-order-detail__title`, "overflow-wrap")).toBe("anywhere");
+    expect(mediaDeclaration(commerceStyles, "(max-width: 720px)", `${panel} .portal-order-detail-grid`, "grid-template-columns")).toBe("minmax(0, 1fr)");
+    expect(baseDeclaration(commerceStyles, `${panel} .portal-order-detail-meta dd`, "overflow-wrap")).toBe("anywhere");
+    expect(baseDeclaration(commerceStyles, `${panel} .portal-order-detail-meta`, "grid-template-columns")).toBe("minmax(0, 1fr) minmax(0, 1fr)");
+  });
+
+  test("keeps empty content and opened details inside the horizontal scroll viewport", () => {
+    const panel = ".portal-v2-shell .portal-orders-panel";
+    const wrap = `${panel} .portal-order-table-wrap`;
+    expect(baseDeclaration(commerceStyles, wrap, "container-type")).toBe("inline-size");
+    expect(baseDeclaration(commerceStyles, `${wrap}[data-empty="true"]`, "overflow-x")).toBe("hidden");
+    expect(baseDeclaration(commerceStyles, `${wrap}[data-empty="true"] .portal-order-table`, "min-width")).toBe("100%");
+    expect(baseDeclaration(commerceStyles, `${panel} .portal-order-detail`, "position")).toBe("sticky");
+    expect(baseDeclaration(commerceStyles, `${panel} .portal-order-detail`, "left")).toBe("0");
+    expect(baseDeclaration(commerceStyles, `${panel} .portal-order-detail`, "width")).toBe("min(100%, 100cqw)");
+    expect(baseDeclaration(commerceStyles, `${panel} .portal-order-detail`, "box-sizing")).toBe("border-box");
   });
 });

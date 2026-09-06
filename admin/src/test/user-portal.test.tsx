@@ -4035,8 +4035,15 @@ describe("user portal product surface", () => {
     await enterPortal();
     openPortalOrders();
 
-    expect(await screen.findByRole("table", { name: "订单列表" })).not.toBeNull();
-    expect(screen.getByText("P-existing_monthly")).not.toBeNull();
+    const orderTable = await screen.findByRole("table", { name: "订单列表" });
+    const paymentView = within(orderTable).getByRole("button", {
+      name: "查看：pay_existing_monthly：基础月付：待付款"
+    });
+    expect(paymentView.closest("tr")).toHaveTextContent("套餐付款");
+    fireEvent.click(paymentView);
+    expect(within(screen.getByRole("region", {
+      name: "套餐付款详情：P-existing_monthly"
+    })).getByText("pay_existing_monthly")).toBeInTheDocument();
     expect(screen.queryByRole("dialog", { name: "选择套餐" })).toBeNull();
     expect(screen.queryByRole("dialog", { name: "选择支付方式" })).toBeNull();
     expect(client.createPaymentCheckout).not.toHaveBeenCalled();
@@ -4119,16 +4126,19 @@ describe("user portal product surface", () => {
     expect(within(orderTable).getByText("商城测试商品")).toBeInTheDocument();
     expect(within(orderTable).getByText("套餐付款")).toBeInTheDocument();
     expect(within(orderTable).getByText("遗留套餐测试")).toBeInTheDocument();
-    expect(within(orderTable).getByText("服务记录")).toBeInTheDocument();
     expect(within(orderTable).getAllByText("订阅服务测试").length)
       .toBeGreaterThan(0);
 
     const serviceView = within(orderTable).getByRole("button", {
       name: /^查看：.*订阅服务测试/
     });
+    expect(serviceView.closest("tr")).toHaveTextContent("服务记录");
     if (serviceView.getAttribute("aria-expanded") !== "true") {
       fireEvent.click(serviceView);
     }
+    expect(within(screen.getByRole("region", {
+      name: "服务记录详情：O-existing_monthly"
+    })).getByText("subreq_existing_monthly")).toBeInTheDocument();
     expect(within(orderTable).getByText("客户端")).toBeInTheDocument();
   });
 
@@ -4316,7 +4326,9 @@ describe("user portal product surface", () => {
     expect(screen.queryByRole("link", { name: "打开支付页面" })).toBeNull();
 
     const orderTable = screen.getByRole("table", { name: "订单列表" });
-    expect(within(orderTable).getByText("P-monthly_plus")).not.toBeNull();
+    expect(within(screen.getByRole("region", {
+      name: "套餐付款详情：P-monthly_plus"
+    })).getByText("pay_monthly_plus")).toBeInTheDocument();
     expect(within(orderTable).getByRole("button", { name: /^查看：/ }))
       .toHaveAttribute("aria-expanded", "true");
     expect(within(orderTable).queryByRole("button", { name: /^去付款：/ }))
@@ -4342,7 +4354,9 @@ describe("user portal product surface", () => {
     expect(screen.queryByRole("link", { name: "打开支付页面" })).toBeNull();
 
     const orderTable = screen.getByRole("table", { name: "订单列表" });
-    expect(within(orderTable).getByText("P-existing_monthly")).not.toBeNull();
+    expect(within(screen.getByRole("region", {
+      name: "套餐付款详情：P-existing_monthly"
+    })).getByText("pay_existing_monthly")).toBeInTheDocument();
     expect(within(orderTable).getByRole("button", { name: /^查看：/ }))
       .toHaveAttribute("aria-expanded", "true");
     expect(within(orderTable).queryByRole("button", { name: /^去付款：/ }))
@@ -4608,7 +4622,15 @@ describe("user portal product surface", () => {
     expect(screen.getByDisplayValue("https://sub.example.test/import/existing-visible-once")).not.toBeNull();
     openPortalOrders();
     const orderTable = screen.getByRole("table", { name: "订单列表" });
-    expect(within(orderTable).getByText("O-existing_yearly")).not.toBeNull();
+    const yearlyView = within(orderTable).getByRole("button", {
+      name: "查看：subreq_existing_yearly：年付套餐：生效中"
+    });
+    if (yearlyView.getAttribute("aria-expanded") !== "true") {
+      fireEvent.click(yearlyView);
+    }
+    expect(within(screen.getByRole("region", {
+      name: "服务记录详情：O-existing_yearly"
+    })).getByText("subreq_existing_yearly")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /刷新订阅/ })).toBeNull();
     expect(screen.queryByRole("button", { name: "停用订阅" })).toBeNull();
     expect(client.applyForSubscription).not.toHaveBeenCalled();
@@ -4688,8 +4710,26 @@ describe("user portal product surface", () => {
 
     openPortalOrders();
     const orderTable = screen.getByRole("table", { name: "订单列表" });
-    expect(within(orderTable).getByText("pareq_trial_1")).not.toBeNull();
-    expect(within(orderTable).getByText("pareq_monthly_2")).not.toBeNull();
+    const trialView = within(orderTable).getByRole("button", {
+      name: /^查看：pareq_trial_1：.*：待开通$/
+    });
+    expect(trialView.closest("tr")).toHaveTextContent("服务记录");
+    if (trialView.getAttribute("aria-expanded") !== "true") {
+      fireEvent.click(trialView);
+    }
+    expect(within(screen.getByRole("region", {
+      name: "服务记录详情：pareq_trial_1"
+    })).getByText("pareq_trial_1")).toBeInTheDocument();
+    const monthlyView = within(orderTable).getByRole("button", {
+      name: /^查看：pareq_monthly_2：.*：生效中$/
+    });
+    expect(monthlyView.closest("tr")).toHaveTextContent("服务记录");
+    if (monthlyView.getAttribute("aria-expanded") !== "true") {
+      fireEvent.click(monthlyView);
+    }
+    expect(within(screen.getByRole("region", {
+      name: "服务记录详情：pareq_monthly_2"
+    })).getByText("pareq_monthly_2")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "用量" }));
     expect(await screen.findByRole("heading", { name: "流量消耗" })).not.toBeNull();
     expect(screen.getAllByText(/7 天/).length).toBeGreaterThan(0);
@@ -4739,7 +4779,15 @@ describe("user portal product surface", () => {
 
     expect(screen.queryByText("暂无完成套餐记录")).toBeNull();
     const orderTable = screen.getByRole("table", { name: "订单列表" });
-    expect(within(orderTable).getByText("O-existing_yearly")).not.toBeNull();
+    const yearlyView = within(orderTable).getByRole("button", {
+      name: "查看：subreq_existing_yearly：年付套餐：生效中"
+    });
+    if (yearlyView.getAttribute("aria-expanded") !== "true") {
+      fireEvent.click(yearlyView);
+    }
+    expect(within(screen.getByRole("region", {
+      name: "服务记录详情：O-existing_yearly"
+    })).getByText("subreq_existing_yearly")).toBeInTheDocument();
     expect(screen.queryByText(/申请年度套餐（已开通）/)).toBeNull();
   });
 

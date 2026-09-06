@@ -106,6 +106,15 @@ function formatDateTime(value: string, locale: PortalOrdersPanelProps["locale"])
   }).format(date);
 }
 
+function formatSummaryDate(value: string, locale: PortalOrdersPanelProps["locale"]) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "—";
+  return new Intl.DateTimeFormat(locale === "en" ? "en-GB" : "zh-CN", {
+    year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", hour12: false
+  }).format(date);
+}
+
 function formatBytes(value: number) {
   let amount = Number.isFinite(value) && value > 0 ? value : 0;
   const units = ["B", "KB", "MB", "GB", "TB"];
@@ -254,7 +263,7 @@ function legacyPaymentProductLabel(
 
 function productLabel(item: PortalOrderCenterItem, locale: PortalOrdersPanelProps["locale"]) {
   if (item.kind === "coins_consumption") return item.source.offer.title[locale];
-  if (item.kind === "coin_recharge") return `${item.source.expectedPaidCoinUnits} paid Coins`;
+  if (item.kind === "coin_recharge") return `${item.source.expectedPaidCoinUnits} Coins`;
   if (item.kind === "legacy_payment") return legacyPaymentProductLabel(item.source, locale);
   return serviceProductLabel(item.source, locale);
 }
@@ -800,7 +809,7 @@ export function PortalOrdersPanel({
       const order = item.source;
       return (
         <div className="portal-order-detail-grid">
-          <div><span>{copy(locale, "到账", "Credit")}</span><strong>{order.expectedPaidCoinUnits} paid Coins</strong></div>
+          <div><span>{copy(locale, "到账", "Credit")}</span><strong>{order.expectedPaidCoinUnits} Coins</strong></div>
           <div><span>{copy(locale, "支付金额", "Payment amount")}</span><strong>{amountLabel(item)}</strong></div>
           <div><span>{copy(locale, "支付方式", "Payment method")}</span><strong>{portalRechargePaymentMethodLabel(order.paymentMethod, locale)}</strong></div>
           <div><span>{copy(locale, "状态", "Status")}</span><strong>{itemStatusLabel(item, locale)}</strong></div>
@@ -853,8 +862,8 @@ export function PortalOrdersPanel({
       >
         {copy(
           locale,
-          "订单中心记录订单生命周期；充值订单记录 Coins 入账状态；钱包账变记录已到账或已消费的余额变化。",
-          "Orders track order lifecycles; recharge orders track Coins crediting; Wallet activity records credited or spent balance changes."
+          "查看购买、充值与服务记录；余额变化请前往 Coins 钱包。",
+          "View purchases, recharges and services; find balance changes in your Coins Wallet."
         )}
       </p>
 
@@ -947,22 +956,21 @@ export function PortalOrdersPanel({
         </div>
       ) : null}
       <div
-        aria-label={desktopScrollRegion && !showEmptyState
+        aria-label={!showEmptyState
           ? copy(locale, "可滚动订单表格", "Scrollable orders table")
           : undefined}
         aria-busy={isLoadingOrders ? "true" : undefined}
         className="portal-order-table-wrap"
-        data-empty={useContextualEmptyState ? "true" : undefined}
+        data-empty={showEmptyState ? "true" : undefined}
         data-loading={isLoadingOrders ? "true" : undefined}
-        role={desktopScrollRegion && !showEmptyState ? "region" : undefined}
-        tabIndex={desktopScrollRegion && !showEmptyState ? 0 : undefined}
+        role={!showEmptyState ? "region" : undefined}
+        tabIndex={!showEmptyState ? 0 : undefined}
       >
         <table className="portal-order-table" aria-label={copy(locale, "订单列表", "Orders")}>
           <thead>
             <tr>
-              <th scope="col">{copy(locale, "订单", "Order")}</th>
-              <th scope="col">{copy(locale, "类型", "Type")}</th>
               <th scope="col">{copy(locale, "商品或服务", "Product or service")}</th>
+              <th scope="col">{copy(locale, "类型", "Type")}</th>
               <th scope="col">{copy(locale, "金额", "Amount")}</th>
               <th scope="col">{copy(locale, "状态", "Status")}</th>
               <th scope="col">{copy(locale, "创建时间", "Created")}</th>
@@ -972,13 +980,13 @@ export function PortalOrdersPanel({
           <tbody>
             {showLoadingRow ? (
               <tr>
-                <td colSpan={7} className="portal-order-loading-state">
+                <td colSpan={6} className="portal-order-loading-state">
                   <span>{loadingLabel}</span>
                 </td>
               </tr>
             ) : showEmptyState ? (
               <tr>
-                <td colSpan={7} className="portal-order-empty-state">
+                <td colSpan={6} className="portal-order-empty-state">
                   {desktopScrollRegion ? (
                     <div className="portal-order-empty-content">
                       <strong>
@@ -1081,24 +1089,30 @@ export function PortalOrdersPanel({
               ].join(locale === "zh" ? "：" : ": ");
               return (
                 <Fragment key={item.key}>
-                  <tr className={expanded ? "selected" : undefined}>
-                    <td data-label={copy(locale, "订单", "Order")}>
-                      <span className="portal-order-main-text">{displayOrderRef(item)}</span>
+                  <tr className={`portal-order-summary-row${expanded ? " selected" : ""}`}>
+                    <td data-label={copy(locale, "商品或服务", "Product or service")}>
+                      <strong className="portal-order-summary-text">{productLabel(item, locale)}</strong>
                     </td>
-                    <td data-label={copy(locale, "类型", "Type")}>{itemTypeLabel(item, locale)}</td>
-                    <td data-label={copy(locale, "商品或服务", "Product or service")}>{productLabel(item, locale)}</td>
-                    <td data-label={copy(locale, "金额", "Amount")}>{amountLabel(item)}</td>
+                    <td data-label={copy(locale, "类型", "Type")}>
+                      <span className="portal-order-summary-text">{itemTypeLabel(item, locale)}</span>
+                    </td>
+                    <td data-label={copy(locale, "金额", "Amount")}>
+                      <span className="portal-order-summary-text portal-order-amount">{amountLabel(item)}</span>
+                    </td>
                     <td data-label={copy(locale, "状态", "Status")}>
-                      <span className={`portal-order-status ${item.status}`}>{itemStatusLabel(item, locale)}</span>
+                      <span className={`portal-order-status ${item.status}`}>
+                        {item.kind === "coins_consumption" ? centerStatusLabel(item.status, locale) : itemStatusLabel(item, locale)}
+                      </span>
                     </td>
                     <td data-label={copy(locale, "创建时间", "Created")}>
-                      <time dateTime={item.createdAt}>
-                        {formatDateTime(item.createdAt, locale)}
+                      <time className="portal-order-summary-text" dateTime={item.createdAt}>
+                        {formatSummaryDate(item.createdAt, locale)}
                       </time>
                     </td>
                     <td data-label={copy(locale, "操作", "Actions")}>
                       <div className="portal-order-actions">
                         <button
+                          className="portal-order-view"
                           type="button"
                           onClick={action}
                           aria-controls={expanded ? detailId : undefined}
@@ -1124,7 +1138,7 @@ export function PortalOrdersPanel({
                   </tr>
                   {expanded ? (
                     <tr className="portal-order-detail-row">
-                      <td colSpan={7}>
+                      <td colSpan={6}>
                         <div
                           aria-label={orderDetailLabel(item, locale)}
                           className="portal-order-detail"
@@ -1132,8 +1146,18 @@ export function PortalOrdersPanel({
                           role="region"
                         >
                           <p className="portal-order-detail__title">
-                            {productLabel(item, locale)} · {displayOrderRef(item)}
+                            {productLabel(item, locale)}
                           </p>
+                          <dl className="portal-order-detail-meta">
+                            <div>
+                              <dt>{copy(locale, "订单号", "Order ID")}</dt>
+                              <dd>{accessibleOrderRef(item)}</dd>
+                            </div>
+                            <div>
+                              <dt>{copy(locale, "订单类型", "Order type")}</dt>
+                              <dd>{itemTypeLabel(item, locale)}</dd>
+                            </div>
+                          </dl>
                           {detailContent(item)}
                         </div>
                       </td>
