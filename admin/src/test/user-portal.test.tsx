@@ -773,7 +773,7 @@ function openPortalWallet() {
 }
 
 function openPortalOrders() {
-  fireEvent.click(screen.getByRole("button", { name: "订单" }));
+  fireEvent.click(screen.getByRole("button", { name: "订单管理" }));
 }
 
 function expectMarketplaceWithoutLegacyCheckout(client: UserPortalClient) {
@@ -855,7 +855,7 @@ describe("user portal route", () => {
     await waitFor(() => expect(document.title).toBe("GCC WebOS - 用户中心"));
     expect(screen.getByRole("navigation", { name: "用户中心导航" })).not.toBeNull();
     expect(screen.getByRole("button", { name: "开始使用" })).not.toBeNull();
-    expect(screen.getByRole("button", { name: "订单" })).not.toBeNull();
+    expect(screen.getByRole("button", { name: "订单管理" })).not.toBeNull();
     expect(screen.queryByRole("button", { name: "订阅" })).toBeNull();
     expect(screen.queryByRole("region", { name: "用户登录" })).toBeNull();
   });
@@ -933,7 +933,7 @@ describe("user portal route", () => {
     openPortalStartGuide();
     expect(await screen.findByRole("heading", { name: "Welcome" })).not.toBeNull();
     expect(screen.getByRole("navigation", { name: "User center navigation" })).not.toBeNull();
-    expect(screen.getByRole("button", { name: "Orders" })).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Order management" })).not.toBeNull();
     expect(screen.queryByRole("button", { name: "Subscriptions" })).toBeNull();
 
     expect(screen.getByRole("button", { name: "Start setup" })).not.toBeNull();
@@ -2541,7 +2541,7 @@ describe("user portal product surface", () => {
     expect(within(portalNav).getByRole("button", { name: "用量" })).not.toBeNull();
     expect(within(portalNav).getByRole("button", { name: "个人中心" })).not.toBeNull();
     expect(within(portalNav).getByRole("button", { name: "支持" })).not.toBeNull();
-    expect(within(portalNav).getByRole("button", { name: "订单" })).not.toBeNull();
+    expect(within(portalNav).getByRole("button", { name: "订单管理" })).not.toBeNull();
     expect(within(portalNav).queryByRole("button", { name: "订阅" })).toBeNull();
     expect(within(portalNav).queryByText("Dashboard")).toBeNull();
     expect(screen.getByRole("heading", { name: "先选择适合你的套餐" })).not.toBeNull();
@@ -2710,7 +2710,7 @@ describe("user portal product surface", () => {
       "概览",
       "用量",
       "商城",
-      "订单",
+      "订单管理",
       "Coins 钱包",
       "推荐奖励",
       "个人中心",
@@ -3074,6 +3074,10 @@ describe("user portal product surface", () => {
 
     expect(await screen.findByRole("heading", { name: "服务资源已可用" })).toBeInTheDocument();
     expect(requestUrls.some((url) => url.startsWith("/api/portal/commerce/orders"))).toBe(false);
+    expect(screen.queryByRole("group", { name: "订单分类" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "商城消费" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "充值订单" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "套餐与服务" })).toBeNull();
   });
 
   test.each([
@@ -3160,7 +3164,7 @@ describe("user portal product surface", () => {
     }
     expect(client.createCurrentResourceSetup).not.toHaveBeenCalled();
     expect(client.acknowledgeCurrentResourceSetup).not.toHaveBeenCalled();
-    for (const viewName of ["概览", "用量", "订单"]) {
+    for (const viewName of ["概览", "用量", "订单管理"]) {
       fireEvent.click(screen.getByRole("button", { name: viewName }));
       expect(await screen.findByRole("heading", { name: heading })).toBeInTheDocument();
       if (resource.state !== "none") {
@@ -3798,6 +3802,152 @@ describe("user portal product surface", () => {
     expect(screen.getByText("Coins · 333")).toBeInTheDocument();
   });
 
+  test.each(["zh", "en"] as const)("%s routes Orders subnavigation to the exact read-only order category", async (locale) => {
+    window.localStorage.setItem("gccwebos-site-locale", locale);
+    const coin = marketplaceOrder();
+    const rechargeOrder = returnedRechargeOrder("credited");
+    const service = activeSubscriptionRequest();
+    const createCoinOrder = vi.fn();
+    const commerce = {
+      listOrders: vi.fn(async () => ({ orders: [coin], nextCursor: null })),
+      getOrder: vi.fn(async () => coin),
+      createOrder: createCoinOrder
+    } as unknown as PortalCoinCommerceClient;
+    const recharge: PortalRechargeClient = {
+      listOffers: vi.fn(async () => []),
+      listOrders: vi.fn(async () => [rechargeOrder]),
+      createOrder: vi.fn(async () => rechargeOrder),
+      getOrder: vi.fn(async () => rechargeOrder),
+      captureOrder: vi.fn(async () => rechargeOrder)
+    };
+    const client = portalClientWithPaymentOrders([paymentOrder()], {
+      subscriptionRequest: service
+    }, { commerce, recharge });
+    const paymentRedirect = vi.fn();
+    render(createElement(UserPortalPage, {
+      initialSession: portalWalletSession("session_order_navigation", "order-navigation@example.test"),
+      portalClient: client,
+      paymentRedirect
+    }));
+    const nav = await screen.findByRole("navigation", {
+      name: locale === "zh" ? "用户中心导航" : "User center navigation"
+    });
+    const parent = within(nav).getByRole("button", {
+      name: locale === "zh" ? "订单管理" : "Order management"
+    });
+    expect(parent).toHaveAttribute("aria-expanded", "false");
+    fireEvent.click(parent);
+    const children = within(nav).getByRole("group", {
+      name: locale === "zh" ? "订单分类" : "Order categories"
+    });
+    const childButtons = within(children).getAllByRole("button");
+    expect(childButtons.map((button) => button.textContent)).toEqual(locale === "zh"
+      ? ["商城消费", "充值订单", "套餐与服务"]
+      : ["Marketplace purchases", "Coins recharges", "Plans and services"]);
+    expect(parent).toHaveAttribute("aria-expanded", "true");
+    expect(parent).toHaveAttribute("aria-current", "page");
+    const panel = screen.getByRole("region", { name: locale === "zh" ? "订单记录" : "Order records" });
+    expect(within(panel).queryByRole("group", { name: locale === "zh" ? "订单类型" : "Order type" })).toBeNull();
+    await waitFor(() => expect(panel.querySelectorAll(".portal-order-summary-row")).toHaveLength(4));
+    expect(panel.querySelectorAll(".portal-order-detail-row")).toHaveLength(0);
+
+    fireEvent.click(childButtons[0]);
+    await waitFor(() => expect(panel.querySelectorAll(".portal-order-summary-row")).toHaveLength(1));
+    const viewCoin = within(panel).getByRole("button", { name: new RegExp(coin.orderRef) });
+    expect(viewCoin).toHaveAttribute("aria-expanded", "false");
+    expect(childButtons[0]).toHaveAttribute("aria-current", "page");
+    expect(parent).not.toHaveAttribute("aria-current");
+    expect(nav.querySelectorAll('[aria-current="page"]')).toHaveLength(1);
+    fireEvent.click(viewCoin);
+    await waitFor(() => expect(viewCoin).toHaveAttribute("aria-expanded", "true"));
+
+    fireEvent.click(childButtons[1]);
+    expect(within(panel).getByRole("button", { name: new RegExp(rechargeOrder.orderRef) }))
+      .toHaveAttribute("aria-expanded", "false");
+    expect(panel.querySelectorAll(".portal-order-summary-row")).toHaveLength(1);
+    expect(panel.querySelectorAll(".portal-order-detail-row")).toHaveLength(0);
+    expect(childButtons[1]).toHaveAttribute("aria-current", "page");
+
+    fireEvent.click(childButtons[2]);
+    expect(panel.querySelectorAll(".portal-order-summary-row")).toHaveLength(2);
+    expect(within(panel).getByRole("button", { name: new RegExp(service.requestRef) }))
+      .toHaveAttribute("aria-expanded", "false");
+    expect(childButtons[2]).toHaveAttribute("aria-current", "page");
+    fireEvent.click(parent);
+    await waitFor(() => expect(panel.querySelectorAll(".portal-order-summary-row")).toHaveLength(4));
+    expect(panel.querySelectorAll(".portal-order-detail-row")).toHaveLength(0);
+    expect(parent).toHaveAttribute("aria-current", "page");
+    expect(nav.querySelectorAll('[aria-current="page"]')).toHaveLength(1);
+    expect(createCoinOrder).not.toHaveBeenCalled();
+    expect(recharge.createOrder).not.toHaveBeenCalled();
+    expect(recharge.captureOrder).not.toHaveBeenCalled();
+    expect(client.createPaymentCheckout).not.toHaveBeenCalled();
+    expect(client.applyForSubscription).not.toHaveBeenCalled();
+    expect(paymentRedirect).not.toHaveBeenCalled();
+  });
+
+  test("synchronizes cleared Orders filters with parent navigation and scopes global search to all orders", async () => {
+    const coin = marketplaceOrder();
+    const commerce = {
+      listOrders: vi.fn(async () => ({ orders: [coin], nextCursor: null }))
+    } as unknown as PortalCoinCommerceClient;
+    render(createElement(UserPortalPage, {
+      initialSession: portalWalletSession("session_order_navigation_clear", "order-navigation-clear@example.test"),
+      portalClient: portalClientWithPaymentOrders([], {}, { commerce })
+    }));
+    const nav = await screen.findByRole("navigation", { name: "用户中心导航" });
+    const parent = within(nav).getByRole("button", { name: "订单管理" });
+    fireEvent.click(parent);
+    fireEvent.click(within(nav).getByRole("button", { name: "套餐与服务" }));
+    fireEvent.click(await screen.findByRole("button", { name: "清除筛选" }));
+    expect(parent).toHaveAttribute("aria-current", "page");
+    const panel = screen.getByRole("region", { name: "订单记录" });
+    expect(document.activeElement).toBe(within(panel).getByRole("textbox", { name: "搜索订单" }));
+    expect(await within(panel).findByRole("button", { name: new RegExp(coin.orderRef) })).toBeInTheDocument();
+
+    fireEvent.click(within(nav).getByRole("button", { name: "套餐与服务" }));
+    const globalSearch = screen.getByRole("searchbox", { name: "订单搜索" });
+    fireEvent.change(globalSearch, { target: { value: "商城测试商品" } });
+    fireEvent.submit(globalSearch.closest("form") as HTMLFormElement);
+    expect(parent).toHaveAttribute("aria-current", "page");
+    expect(await within(panel).findByRole("button", { name: new RegExp(coin.orderRef) })).toBeInTheDocument();
+    expect(within(panel).getByRole("textbox", { name: "搜索订单" })).toHaveValue("商城测试商品");
+  });
+
+  test("keeps expanded desktop order navigation scrollable and retains the shared focus treatment", () => {
+    const css = readFileSync(resolve(process.cwd(), "src/styles/portal-static-preserve/user-portal-commerce.css"), "utf8");
+    expect(css).toMatch(/@media \(min-width: 721px\)\s*\{\s*\.portal-v2-shell \.portal-use-nav\s*\{[^}]*min-height:\s*0;[^}]*overflow-y:\s*auto;/s);
+    expect(css).toMatch(/\.portal-v2-shell \.portal-order-subnav\[hidden\]\s*\{\s*display:\s*none;/);
+    expect(css).toMatch(/\.portal-v2-shell \.portal-use-nav-item:focus-visible,[^}]*outline:\s*3px solid var\(--portal-commerce-focus-accent\);/s);
+  });
+
+  test("keeps narrow-screen order navigation a single bottom-nav entry without a hidden disclosure", async () => {
+    const restoreViewport = installMobilePaymentDevice();
+    try {
+      render(createElement(UserPortalPage, {
+        initialSession: portalWalletSession("session_order_navigation_narrow", "order-navigation-narrow@example.test"),
+        portalClient: portalClientWithPaymentOrders([paymentOrder()])
+      }));
+      const nav = await screen.findByRole("navigation", { name: "用户中心导航" });
+      const parent = within(nav).getByRole("button", { name: "订单管理" });
+      fireEvent.click(parent);
+      expect(parent).toHaveAttribute("aria-current", "page");
+      expect(parent).not.toHaveAttribute("aria-expanded");
+      expect(parent).not.toHaveAttribute("aria-controls");
+      expect(within(nav).queryByRole("group", { name: "订单分类" })).toBeNull();
+      expect(nav.querySelector(".portal-order-subnav")).toHaveAttribute("hidden");
+      expect(within(nav).queryByRole("button", { name: "商城消费" })).toBeNull();
+      expect(within(nav).queryByRole("button", { name: "充值订单" })).toBeNull();
+      expect(within(nav).queryByRole("button", { name: "套餐与服务" })).toBeNull();
+      expect(nav.querySelectorAll('[aria-current="page"]')).toHaveLength(1);
+      expect(screen.getByRole("region", { name: "订单记录" })).toBeInTheDocument();
+      const css = readFileSync(resolve(process.cwd(), "src/styles/portal-static-preserve/user-portal-commerce.css"), "utf8");
+      expect(css).toMatch(/@media \(max-width: 720px\)\s*\{\s*\.portal-v2-sidebar \.portal-order-subnav,\s*\.portal-v2-sidebar \.portal-order-nav-chevron\s*\{\s*display:\s*none;/s);
+    } finally {
+      restoreViewport();
+    }
+  });
+
   test("places Orders in navigation and expands legacy payment detail in place", async () => {
     const client = portalClientWithPaymentOrders([paymentOrder()]);
     render(createElement(UserPortalPage, { portalClient: client }));
@@ -3813,7 +3963,7 @@ describe("user portal product surface", () => {
       "概览",
       "用量",
       "商城",
-      "订单",
+      "订单管理",
       "Coins 钱包",
       "推荐奖励",
       "个人中心",
@@ -3983,7 +4133,7 @@ describe("user portal product surface", () => {
 
     const portalNav = await enterPortal();
 
-    fireEvent.click(within(portalNav).getByRole("button", { name: "订单" }));
+    fireEvent.click(within(portalNav).getByRole("button", { name: "订单管理" }));
     expect(screen.queryByText("统一查看订单记录")).toBeNull();
     expect(screen.getByRole("region", { name: "订单记录" })).not.toBeNull();
     expect(screen.queryByRole("dialog", { name: "选择套餐" })).toBeNull();
@@ -4000,7 +4150,7 @@ describe("user portal product surface", () => {
     expect(document.querySelector('[data-portal-view="start"]')?.classList.contains("active")).toBe(true);
 
     expect(within(portalNav).queryByRole("button", { name: "订阅" })).toBeNull();
-    expect(within(portalNav).getByRole("button", { name: "订单" })).not.toBeNull();
+    expect(within(portalNav).getByRole("button", { name: "订单管理" })).not.toBeNull();
 
     fireEvent.click(within(portalNav).getByRole("button", { name: "开始使用" }));
     await waitFor(() => expect(screen.getByRole("heading", { name: "欢迎使用" })).not.toBeNull());
@@ -4050,7 +4200,7 @@ describe("user portal product surface", () => {
     expect(client.applyForSubscription).not.toHaveBeenCalled();
   });
 
-  test("keeps Orders to one heading, one type filter, and one list", async () => {
+  test("keeps Orders to one heading and list with categories only in navigation", async () => {
     const commerceClient = {
       listOrders: vi.fn(async () => ({ orders: [marketplaceOrder()], nextCursor: null }))
     } as unknown as PortalCoinCommerceClient;
@@ -4080,7 +4230,9 @@ describe("user portal product surface", () => {
     await enterPortal();
     openPortalOrders();
 
-    expect(screen.getByRole("group", { name: "订单类型" })).toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: "订单类型" })).toBeNull();
+    expect(within(screen.getByRole("navigation", { name: "用户中心导航" }))
+      .getByRole("group", { name: "订单分类" })).toBeInTheDocument();
     expect(screen.getAllByRole("table", { name: "订单列表" })).toHaveLength(1);
     const ordersRegion = screen.getByRole("region", { name: "订单记录" });
     expect(within(ordersRegion).queryByRole("heading")).toBeNull();
@@ -4775,7 +4927,7 @@ describe("user portal product surface", () => {
     render(createElement(UserPortalPage, { portalClient: client }));
 
     await enterPortal();
-    fireEvent.click(screen.getByRole("button", { name: "订单" }));
+    fireEvent.click(screen.getByRole("button", { name: "订单管理" }));
 
     expect(screen.queryByText("暂无完成套餐记录")).toBeNull();
     const orderTable = screen.getByRole("table", { name: "订单列表" });

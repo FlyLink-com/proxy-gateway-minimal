@@ -2246,7 +2246,57 @@
   box-shadow: none;
 }
 
+.portal-v2-shell .portal-order-subnav[hidden] {
+  display: none;
+}
+
+@media (max-width: 720px) {
+  .portal-v2-sidebar .portal-order-subnav,
+  .portal-v2-sidebar .portal-order-nav-chevron {
+    display: none;
+  }
+}
+
 @media (min-width: 721px) {
+  .portal-v2-shell .portal-use-nav {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    margin: -5px;
+    padding: 5px;
+  }
+
+  .portal-v2-shell .portal-use-nav-item.portal-order-nav-parent {
+    grid-template-columns: 14px minmax(0, 1fr) 14px;
+  }
+
+  .portal-v2-shell .portal-order-nav-parent[aria-expanded="true"] .portal-order-nav-chevron {
+    transform: rotate(90deg);
+  }
+
+  .portal-v2-shell .portal-order-subnav:not([hidden]) {
+    display: grid;
+    gap: 3px;
+    margin: 1px 0 4px 15px;
+    padding-left: 8px;
+    border-left: 1px solid #30363d;
+  }
+
+  .portal-v2-shell[data-portal-theme="light"] .portal-order-subnav {
+    border-left-color: #d8e2ef;
+  }
+
+  .portal-v2-shell .portal-use-nav-item.portal-order-nav-child {
+    grid-template-columns: minmax(0, 1fr);
+    padding-left: 12px;
+  }
+
+  .portal-v2-shell .portal-order-nav-child strong {
+    line-height: 1.4;
+    white-space: normal;
+  }
+
   .portal-v2-shell[data-portal-theme="dark"] .portal-orders-panel {
     --portal-orders-text: #f0f6fc;
     --portal-orders-border: #30363d;
