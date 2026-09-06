@@ -922,6 +922,202 @@ export const COIN_COMMERCE_MIGRATIONS = Object.freeze([
   })
 ]);
 
+// Optional, explicitly installed extension. The foundation DDL and checksum above
+// remain frozen so an unused extension can be removed without rewriting history.
+export const REQUIRED_COIN_COMMERCE_INITIAL_CONFIRMATION_MIGRATION_ID =
+  "20260906_001_coin_commerce_initial_confirmation";
+const INITIAL_CONFIRMATION_TABLE = "platform_coin_commerce_initial_confirmations";
+const INITIAL_CONFIRMATION_OBJECTS = Object.freeze([
+  ["table", INITIAL_CONFIRMATION_TABLE],
+  ["trigger", "coin_commerce_initial_confirmations_insert_guard"],
+  ["trigger", "coin_commerce_initial_confirmations_immutable_update"],
+  ["trigger", "coin_commerce_initial_confirmations_immutable_delete"]
+]);
+const INITIAL_CONFIRMATION_TRIGGER_NAMES = Object.freeze([
+  "coin_commerce_orders_payment_status_transition",
+  "coin_commerce_fulfillment_commands_status_transition"
+]);
+const INITIAL_CONFIRMATION_STATEMENTS = Object.freeze([
+  `create table platform_coin_commerce_initial_confirmations (
+    confirmation_ref text primary key not null check (length(trim(confirmation_ref)) > 0),
+    command_ref text not null unique references platform_coin_commerce_fulfillment_commands(command_ref),
+    order_ref text not null unique references platform_coin_commerce_orders(order_ref),
+    account_id text not null references platform_accounts(id),
+    effect_ref text not null unique references platform_audit_events(id),
+    approval_sha256 text not null unique check (
+      length(approval_sha256) = 64 and approval_sha256 not glob '*[^0-9a-f]*'
+    ),
+    inventory_sha256 text not null check (
+      length(inventory_sha256) = 64 and inventory_sha256 not glob '*[^0-9a-f]*'
+    ),
+    effect_sha256 text not null check (
+      length(effect_sha256) = 64 and effect_sha256 not glob '*[^0-9a-f]*'
+    ),
+    receipt_ref text not null unique check (length(trim(receipt_ref)) > 0),
+    operator_ref text not null check (length(trim(operator_ref)) > 0),
+    resource_request_ref text not null references platform_issuance_requests(id),
+    entitlement_ref text not null references platform_entitlements(id),
+    issued_link_ref text not null references platform_issued_subscription_links(id),
+    failed_updated_at text not null,
+    attempt_count integer not null check (
+      typeof(attempt_count) = 'integer' and attempt_count between 1 and ${COUNTER_MAX}
+    ),
+    lease_generation integer not null check (
+      typeof(lease_generation) = 'integer' and lease_generation between 1 and ${COUNTER_MAX}
+    ),
+    confirmed_at text not null check (
+      length(confirmed_at) = 24
+      and strftime('%Y-%m-%dT%H:%M:%fZ', confirmed_at) is not null
+      and strftime('%Y-%m-%dT%H:%M:%fZ', confirmed_at) = confirmed_at
+      and confirmed_at >= failed_updated_at
+    )
+  )`,
+  `create trigger coin_commerce_initial_confirmations_insert_guard
+   before insert on platform_coin_commerce_initial_confirmations
+   when not exists (
+     select 1
+       from platform_coin_commerce_fulfillment_commands c
+       join platform_coin_commerce_orders o on o.order_ref = c.order_ref
+       join platform_coin_holds h on h.hold_ref = o.hold_ref
+       join platform_coin_wallets w on w.wallet_ref = h.wallet_ref
+       join platform_audit_events a on a.id = new.effect_ref
+       join platform_issuance_requests r on r.id = new.resource_request_ref
+       join platform_entitlements e on e.id = new.entitlement_ref
+       join platform_issued_subscription_links l on l.id = new.issued_link_ref
+      where c.command_ref = new.command_ref
+        and c.order_ref = new.order_ref and c.account_id = new.account_id
+        and c.status = 'failed' and c.safe_failure_code = 'fulfillment_handler_unavailable'
+        and c.lease_token is null and c.lease_until is null
+        and c.updated_at = new.failed_updated_at
+        and c.attempt_count = new.attempt_count and c.lease_generation = new.lease_generation
+        and o.account_id = new.account_id and o.payment_status = 'reconciliation_required'
+        and o.updated_at = new.failed_updated_at
+        and h.status = 'captured' and h.purpose = 'product_purchase'
+        and h.purpose_ref = o.order_ref and h.amount_units = o.amount_units
+        and w.account_id = new.account_id
+        and a.entity_type = 'coin_commerce_subscription_fulfillment'
+        and a.entity_ref = new.entitlement_ref
+        and a.action = 'subscription_fulfillment_applied'
+        and a.actor_ref = 'coin_commerce_fulfillment' and a.created_at = new.confirmed_at
+        and json_valid(a.metadata_json)
+        and json_extract(a.metadata_json, '$.version') = 1
+        and json_extract(a.metadata_json, '$.commandRef') = new.command_ref
+        and json_extract(a.metadata_json, '$.orderRef') = new.order_ref
+        and json_extract(a.metadata_json, '$.accountId') = new.account_id
+        and json_extract(a.metadata_json, '$.requestRef') = new.resource_request_ref
+        and json_extract(a.metadata_json, '$.entitlementRef') = new.entitlement_ref
+        and json_extract(a.metadata_json, '$.issuedLinkRef') = new.issued_link_ref
+        and json_extract(a.metadata_json, '$.offerVersionRef') = o.offer_version_ref
+        and r.account_id = new.account_id and r.entitlement_id = e.id
+        and r.status = 'issued' and r.quantity = 1
+        and r.purpose = 'coin_commerce_product_fulfillment'
+        and e.account_id = new.account_id and e.status = 'active'
+        and l.request_id = r.id and l.status = 'active'
+        and json_extract(a.metadata_json, '$.tenantRef') = l.tenant_ref
+        and json_extract(a.metadata_json, '$.artifactRef') = l.artifact_ref
+        and not exists (
+          select 1 from platform_coin_commerce_fulfillment_receipts f
+           where f.command_ref = c.command_ref or f.receipt_ref = new.receipt_ref
+        )
+   )
+   begin select raise(abort, 'coin_commerce_initial_confirmation_binding_invalid'); end`,
+  `create trigger coin_commerce_initial_confirmations_immutable_update
+   before update on platform_coin_commerce_initial_confirmations
+   begin select raise(abort, 'coin_commerce_initial_confirmation_immutable'); end`,
+  `create trigger coin_commerce_initial_confirmations_immutable_delete
+   before delete on platform_coin_commerce_initial_confirmations
+   begin select raise(abort, 'coin_commerce_initial_confirmation_immutable'); end`,
+  `create trigger coin_commerce_orders_payment_status_transition
+   before update of payment_status on platform_coin_commerce_orders
+   when new.payment_status <> old.payment_status and not (
+     (old.payment_status = 'held' and new.payment_status in ('cancelled', 'capture_pending'))
+     or (old.payment_status = 'capture_pending'
+       and new.payment_status in ('captured', 'capture_failed', 'reconciliation_required'))
+     or (old.payment_status = 'capture_failed' and new.payment_status = 'capture_pending')
+     or (old.payment_status in ('captured', 'cancelled') and new.payment_status = 'reconciliation_required')
+     or (old.payment_status = 'reconciliation_required' and new.payment_status = 'captured'
+       and exists (
+         select 1 from platform_coin_commerce_initial_confirmations x
+         join platform_coin_commerce_fulfillment_commands c on c.command_ref = x.command_ref
+         join platform_coin_commerce_fulfillment_receipts f on f.receipt_ref = x.receipt_ref
+         join platform_coin_holds h on h.hold_ref = old.hold_ref
+         join platform_coin_wallets w on w.wallet_ref = h.wallet_ref
+         where x.order_ref = old.order_ref and x.account_id = old.account_id
+           and old.updated_at = x.failed_updated_at
+           and c.order_ref = old.order_ref and c.account_id = old.account_id
+           and c.status = 'delivered' and c.safe_failure_code is null
+           and c.lease_token is null and c.lease_until is null
+           and c.updated_at = x.confirmed_at and c.attempt_count = x.attempt_count
+           and c.lease_generation = x.lease_generation
+           and new.updated_at = x.confirmed_at
+           and f.command_ref = c.command_ref and f.effect_ref = x.effect_ref
+           and f.status = 'delivered' and f.safe_code is null and f.recorded_at = x.confirmed_at
+           and (select count(*) from platform_coin_commerce_fulfillment_receipts
+                 where command_ref = c.command_ref) = 1
+           and h.status = 'captured' and h.purpose = 'product_purchase'
+           and h.purpose_ref = old.order_ref and h.amount_units = old.amount_units
+           and w.account_id = old.account_id
+       ))
+   )
+   begin select raise(abort, 'coin_commerce_order_payment_status_transition'); end`,
+  `create trigger coin_commerce_fulfillment_commands_status_transition
+   before update of status on platform_coin_commerce_fulfillment_commands
+   when new.status <> old.status and not (
+     (old.status = 'pending' and new.status in ('processing', 'failed'))
+     or (old.status = 'processing' and new.status in ('pending', 'delivered', 'failed'))
+     or (old.status = 'failed' and new.status = 'delivered'
+       and old.safe_failure_code = 'fulfillment_handler_unavailable'
+       and old.lease_token is null and old.lease_until is null
+       and new.safe_failure_code is null and new.lease_token is null and new.lease_until is null
+       and new.command_ref = old.command_ref and new.order_ref = old.order_ref
+       and new.account_id = old.account_id and new.payload_json = old.payload_json
+       and new.attempt_count = old.attempt_count and new.lease_generation = old.lease_generation
+       and new.created_at = old.created_at
+       and exists (
+         select 1 from platform_coin_commerce_initial_confirmations x
+         join platform_coin_commerce_orders o on o.order_ref = x.order_ref
+         join platform_coin_commerce_fulfillment_receipts f on f.receipt_ref = x.receipt_ref
+         join platform_audit_events a on a.id = x.effect_ref
+         join platform_coin_holds h on h.hold_ref = o.hold_ref
+         join platform_coin_wallets w on w.wallet_ref = h.wallet_ref
+         where x.command_ref = old.command_ref and x.order_ref = old.order_ref
+           and x.account_id = old.account_id and x.failed_updated_at = old.updated_at
+           and x.attempt_count = old.attempt_count and x.lease_generation = old.lease_generation
+           and new.updated_at = x.confirmed_at
+           and o.account_id = old.account_id and o.payment_status = 'reconciliation_required'
+           and o.updated_at = x.failed_updated_at
+           and f.command_ref = old.command_ref and f.effect_ref = x.effect_ref
+           and f.status = 'delivered' and f.safe_code is null and f.recorded_at = x.confirmed_at
+           and (select count(*) from platform_coin_commerce_fulfillment_receipts
+                 where command_ref = old.command_ref) = 1
+           and a.entity_type = 'coin_commerce_subscription_fulfillment'
+           and a.entity_ref = x.entitlement_ref and a.action = 'subscription_fulfillment_applied'
+           and a.actor_ref = 'coin_commerce_fulfillment' and a.created_at = x.confirmed_at
+           and json_extract(a.metadata_json, '$.commandRef') = old.command_ref
+           and json_extract(a.metadata_json, '$.orderRef') = old.order_ref
+           and json_extract(a.metadata_json, '$.accountId') = old.account_id
+           and h.status = 'captured' and h.purpose = 'product_purchase'
+           and h.purpose_ref = old.order_ref and h.amount_units = o.amount_units
+           and w.account_id = old.account_id
+       ))
+   )
+   begin select raise(abort, 'coin_commerce_fulfillment_command_status_transition'); end`
+]);
+const INITIAL_CONFIRMATION_OBJECT_SQL = new Map(
+  [...INITIAL_CONFIRMATION_OBJECTS,
+    ...INITIAL_CONFIRMATION_TRIGGER_NAMES.map((name) => ["trigger", name])]
+    .map(([type, name], index) => [
+      `${type}:${name}`, normalizeSql(INITIAL_CONFIRMATION_STATEMENTS[index])
+    ])
+);
+const INITIAL_CONFIRMATION_CHECKSUM = createHash("sha256")
+  .update(`GCCWEBOS:COIN_COMMERCE_INITIAL_CONFIRMATION_DDL:v1\0${INITIAL_CONFIRMATION_STATEMENTS
+    .map(normalizeSql).join("\0")}`, "utf8").digest("hex");
+export const COIN_COMMERCE_INITIAL_CONFIRMATION_MIGRATIONS = Object.freeze([
+  Object.freeze({ id: REQUIRED_COIN_COMMERCE_INITIAL_CONFIRMATION_MIGRATION_ID,
+    ddlChecksum: INITIAL_CONFIRMATION_CHECKSUM })
+]);
+
 const KNOWN_ERROR_CODES = new Set([
   "commerce_invalid_migration_contract",
   "commerce_invalid_database_path",
@@ -931,6 +1127,8 @@ const KNOWN_ERROR_CODES = new Set([
   "commerce_migration_dependency_missing",
   "commerce_owned_object_without_migration",
   "commerce_applied_schema_incompatible",
+  "commerce_initial_confirmation_schema_incompatible",
+  "commerce_initial_confirmation_migration_in_use",
   "commerce_source_changed_during_dry_run"
 ]);
 
@@ -972,11 +1170,33 @@ function commerceNamespaceObjects(database) {
   ));
 }
 
-function commerceNamespaceIsExact(database) {
+function commerceNamespaceIsExact(database, extensionPresent = false) {
   const actual = commerceNamespaceObjects(database)
     .map(({ type, name }) => `${type}:${name}`);
-  return actual.length === EXPECTED_NAMESPACE_OBJECTS.size
-    && actual.every((key) => EXPECTED_NAMESPACE_OBJECTS.has(key));
+  const expected = extensionPresent
+    ? new Set([...EXPECTED_NAMESPACE_OBJECTS,
+      ...INITIAL_CONFIRMATION_OBJECTS.map(([type, name]) => `${type}:${name}`)])
+    : EXPECTED_NAMESPACE_OBJECTS;
+  return actual.length === expected.size
+    && actual.every((key) => expected.has(key));
+}
+
+function initialConfirmationExtensionState(database) {
+  const ledger = objectRow(database, "table", "platform_schema_migrations")
+    ? database.prepare(`select ddl_checksum from platform_schema_migrations where migration_id = ?`)
+      .get(REQUIRED_COIN_COMMERCE_INITIAL_CONFIRMATION_MIGRATION_ID)
+    : null;
+  const objects = INITIAL_CONFIRMATION_OBJECTS.map(([type, name]) => objectRow(database, type, name));
+  const present = Boolean(ledger) || objects.some(Boolean);
+  if (!present) return { present: false, exact: false };
+  const exact = ledger?.ddl_checksum === INITIAL_CONFIRMATION_CHECKSUM
+    && [...INITIAL_CONFIRMATION_OBJECT_SQL].every(([key, expected]) => {
+      const [type, name] = key.split(":");
+      const row = objectRow(database, type, name);
+      return Boolean(row) && normalizeSql(row.sql) === expected;
+    })
+    && commerceNamespaceIsExact(database, true);
+  return { present: true, exact };
 }
 
 function commerceMigrationRow(database) {
@@ -1095,6 +1315,17 @@ function closedInspection(database) {
     foreignKeyViolations: 0
   };
   let schemaExact = true;
+  let extension = { present: false, exact: false };
+  try {
+    extension = initialConfirmationExtensionState(database);
+    if (extension.present && !extension.exact) {
+      reasons.push("commerce_initial_confirmation_schema_incompatible");
+      schemaExact = false;
+    }
+  } catch {
+    reasons.push("commerce_initial_confirmation_schema_incompatible");
+    schemaExact = false;
+  }
 
   for (const [type, name] of OWNED_OBJECTS) {
     const actual = objectRow(database, type, name);
@@ -1104,14 +1335,17 @@ function closedInspection(database) {
       continue;
     }
     counts[type === "index" ? "indexes" : `${type}s`] += 1;
-    if (normalizeSql(actual.sql) !== EXPECTED_OBJECT_SQL.get(`${type}:${name}`)) {
+    const key = `${type}:${name}`;
+    const expectedSql = extension.exact && INITIAL_CONFIRMATION_OBJECT_SQL.has(key)
+      ? INITIAL_CONFIRMATION_OBJECT_SQL.get(key) : EXPECTED_OBJECT_SQL.get(key);
+    if (normalizeSql(actual.sql) !== expectedSql) {
       reasons.push("commerce_owned_object_incompatible");
       schemaExact = false;
     }
   }
 
   try {
-    if (!commerceNamespaceIsExact(database)) {
+    if (!commerceNamespaceIsExact(database, extension.exact)) {
       reasons.push("commerce_owned_object_incompatible");
       schemaExact = false;
     }
@@ -1323,6 +1557,116 @@ export function applyCoinCommerceMigrations({
   }
 }
 
+export function inspectCoinCommerceInitialConfirmationSchema({ database } = {}) {
+  const foundation = inspectCoinCommerceSchema({ database });
+  let extension = { present: false, exact: false };
+  try {
+    extension = initialConfirmationExtensionState(database);
+  } catch {
+    // Return a bounded schema result rather than SQLite errors or stored values.
+  }
+  const ok = foundation.ok && extension.exact;
+  return {
+    ...foundation,
+    ok,
+    schemaState: ok ? "ready" : "blocked",
+    requiredMigrationId: REQUIRED_COIN_COMMERCE_INITIAL_CONFIRMATION_MIGRATION_ID,
+    checks: { ...foundation.checks, initialConfirmationExtension: extension.exact },
+    reasonCodes: [...new Set([...foundation.reasonCodes, ...(!extension.exact
+      ? [extension.present ? "commerce_initial_confirmation_schema_incompatible"
+        : "commerce_initial_confirmation_migration_missing"] : [])])].sort()
+  };
+}
+
+function mutateInitialConfirmationMigration({
+  dbPath, database, expectedMigrationId, expectedDdlChecksum,
+  nowFn = () => new Date()
+} = {}, remove = false) {
+  if (expectedMigrationId !== REQUIRED_COIN_COMMERCE_INITIAL_CONFIRMATION_MIGRATION_ID) {
+    throw commerceMigrationError("commerce_migration_id_mismatch");
+  }
+  if (expectedDdlChecksum !== INITIAL_CONFIRMATION_CHECKSUM) {
+    throw commerceMigrationError("commerce_migration_checksum_mismatch");
+  }
+  if (typeof nowFn !== "function" || (!database && dbPath === undefined)
+    || (database && (typeof database.transaction !== "function" || database.inTransaction))) {
+    throw commerceMigrationError("commerce_invalid_migration_contract");
+  }
+  if (!database) assertDatabasePath(dbPath);
+  let owned;
+  try {
+    const connection = database ?? (owned = new Database(dbPath, { fileMustExist: true }));
+    connection.pragma("foreign_keys = ON");
+    if (connection.pragma("foreign_keys", { simple: true }) !== 1) {
+      throw commerceMigrationError("commerce_invalid_migration_contract");
+    }
+    const sourceChanged = connection.transaction(() => {
+      if (!inspectCoinCommerceSchema({ database: connection }).ok) {
+        throw commerceMigrationError("commerce_initial_confirmation_schema_incompatible");
+      }
+      const state = initialConfirmationExtensionState(connection);
+      if (remove ? !state.present : state.exact) return false;
+      if (remove) {
+        if (!state.exact) {
+          throw commerceMigrationError("commerce_initial_confirmation_schema_incompatible");
+        }
+        if (connection.prepare(`select count(*) from ${INITIAL_CONFIRMATION_TABLE}`).pluck().get() !== 0) {
+          throw commerceMigrationError("commerce_initial_confirmation_migration_in_use");
+        }
+      }
+      // These two exact transitions are replaced atomically with the versioned
+      // extension. No caller can request arbitrary trigger removal or SQL.
+      for (const name of INITIAL_CONFIRMATION_TRIGGER_NAMES) {
+        connection.exec(`drop trigger ${name}`);
+      }
+      if (remove) {
+        for (const [type, name] of [...INITIAL_CONFIRMATION_OBJECTS].reverse()) {
+          connection.exec(`drop ${type} ${name}`);
+        }
+        for (const name of INITIAL_CONFIRMATION_TRIGGER_NAMES) {
+          const index = OWNED_OBJECTS.findIndex(([type, candidate]) => type === "trigger" && candidate === name);
+          connection.exec(MIGRATION_STATEMENTS[index]);
+        }
+        connection.prepare("delete from platform_schema_migrations where migration_id = ?")
+          .run(REQUIRED_COIN_COMMERCE_INITIAL_CONFIRMATION_MIGRATION_ID);
+      } else {
+        for (const statement of INITIAL_CONFIRMATION_STATEMENTS) connection.exec(statement);
+        connection.prepare(`insert into platform_schema_migrations (migration_id, ddl_checksum, applied_at)
+          values (?, ?, ?)`).run(REQUIRED_COIN_COMMERCE_INITIAL_CONFIRMATION_MIGRATION_ID,
+          INITIAL_CONFIRMATION_CHECKSUM, normalizeAppliedAt(nowFn));
+      }
+      const verified = remove ? inspectCoinCommerceSchema({ database: connection })
+        : inspectCoinCommerceInitialConfirmationSchema({ database: connection });
+      if (!verified.ok) {
+        throw commerceMigrationError("commerce_initial_confirmation_schema_incompatible");
+      }
+      return true;
+    }).immediate();
+    const inspection = remove ? inspectCoinCommerceSchema({ database: connection })
+      : inspectCoinCommerceInitialConfirmationSchema({ database: connection });
+    return {
+      ...inspection,
+      mode: remove ? "remove-unused" : "apply",
+      sourceChanged,
+      appliedMigrationIds: !remove && sourceChanged ? [REQUIRED_COIN_COMMERCE_INITIAL_CONFIRMATION_MIGRATION_ID] : [],
+      removedMigrationIds: remove && sourceChanged ? [REQUIRED_COIN_COMMERCE_INITIAL_CONFIRMATION_MIGRATION_ID] : []
+    };
+  } catch (error) {
+    if (KNOWN_ERROR_CODES.has(error?.code)) throw error;
+    throw commerceMigrationError("commerce_initial_confirmation_migration_failed");
+  } finally {
+    owned?.close();
+  }
+}
+
+export function applyCoinCommerceInitialConfirmationMigrations(options = {}) {
+  return mutateInitialConfirmationMigration(options);
+}
+
+export function removeUnusedCoinCommerceInitialConfirmationMigration(options = {}) {
+  return mutateInitialConfirmationMigration(options, true);
+}
+
 function sha256File(filePath) {
   return createHash("sha256").update(readFileSync(filePath)).digest("hex");
 }
@@ -1402,6 +1746,63 @@ export async function dryRunCoinCommerceMigrations({ dbPath, tempRoot } = {}) {
       source?.close();
     } finally {
       safeRemoveOwnedDirectory(workDirectory, root);
+    }
+  }
+}
+
+export async function dryRunCoinCommerceInitialConfirmationMigrations({ dbPath, tempRoot } = {}) {
+  assertDatabasePath(dbPath);
+  const root = tempRoot ?? tmpdir();
+  if (typeof root !== "string" || !isAbsolute(root)) {
+    throw commerceMigrationError("commerce_invalid_temp_root");
+  }
+  mkdirSync(root, { recursive: true });
+  const workDirectory = mkdtempSync(join(root, "coin-commerce-initial-confirmation-dry-run-"));
+  let source;
+  let clone;
+  try {
+    const sourceHashBefore = sha256File(dbPath);
+    source = new Database(dbPath, { readonly: true, fileMustExist: true });
+    const sourceStateBefore = sourceInspectionState(source);
+    if (!sourceStateBefore.inspection.ok) {
+      throw commerceMigrationError("commerce_initial_confirmation_schema_incompatible");
+    }
+    const wasApplied = initialConfirmationExtensionState(source).exact;
+    const snapshotPath = join(workDirectory, "snapshot.sqlite");
+    await source.backup(snapshotPath);
+    clone = new Database(snapshotPath, { fileMustExist: true });
+    const contract = { database: clone,
+      expectedMigrationId: REQUIRED_COIN_COMMERCE_INITIAL_CONFIRMATION_MIGRATION_ID,
+      expectedDdlChecksum: INITIAL_CONFIRMATION_CHECKSUM };
+    const applied = applyCoinCommerceInitialConfirmationMigrations(contract);
+    const unused = clone.prepare(`select count(*) from ${INITIAL_CONFIRMATION_TABLE}`).pluck().get() === 0;
+    if (unused) {
+      removeUnusedCoinCommerceInitialConfirmationMigration(contract);
+      if (!inspectCoinCommerceSchema({ database: clone }).ok
+        || initialConfirmationExtensionState(clone).present) {
+        throw commerceMigrationError("commerce_initial_confirmation_schema_incompatible");
+      }
+      applyCoinCommerceInitialConfirmationMigrations(contract);
+    }
+    const validated = inspectCoinCommerceInitialConfirmationSchema({ database: clone });
+    if (!validated.ok) throw commerceMigrationError("commerce_initial_confirmation_schema_incompatible");
+    const sourceStateAfter = sourceInspectionState(source);
+    if (sha256File(dbPath) !== sourceHashBefore
+      || !sourceInspectionStateIsUnchanged(sourceStateBefore, sourceStateAfter)) {
+      throw commerceMigrationError("commerce_source_changed_during_dry_run");
+    }
+    return { ...validated, mode: "dry-run", sourceChanged: false,
+      unusedInverseVerified: unused,
+      pendingMigrationIds: wasApplied ? [] : [REQUIRED_COIN_COMMERCE_INITIAL_CONFIRMATION_MIGRATION_ID],
+      appliedMigrationIds: applied.appliedMigrationIds };
+  } catch (error) {
+    if (KNOWN_ERROR_CODES.has(error?.code)) throw error;
+    throw commerceMigrationError("commerce_initial_confirmation_dry_run_failed");
+  } finally {
+    try {
+      clone?.close();
+    } finally {
+      try { source?.close(); } finally { safeRemoveOwnedDirectory(workDirectory, root); }
     }
   }
 }

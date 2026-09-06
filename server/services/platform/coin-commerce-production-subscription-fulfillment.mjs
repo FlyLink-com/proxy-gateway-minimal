@@ -41,12 +41,6 @@ function safeIssuedRef(prefix, value) {
     .slice(0, 16)}`;
 }
 
-function fulfillmentEffectRef(commandRef) {
-  return `effect_coin_commerce_${createHash("sha256")
-    .update(`GCCWEBOS:COIN_COMMERCE_SUBSCRIPTION_FULFILLMENT:v1\0${commandRef}`)
-    .digest("hex")}`;
-}
-
 function hasText(value) {
   return typeof value === "string" && value.trim() === value && value.length > 0;
 }
@@ -397,41 +391,6 @@ function resolveEligibleSubscriptionBinding({
   };
 }
 
-function isUnrecordedInitialCommerceIssuance({
-  controlStore,
-  resolved,
-  commandRef,
-  offer
-}) {
-  try {
-    if (
-      typeof controlStore.getAuditEvent !== "function"
-      || controlStore.getAuditEvent(fulfillmentEffectRef(commandRef))
-      || resolved.issuanceRequest.purpose !== "coin_commerce_product_fulfillment"
-      || resolved.entitlement.plan !== offer.offerVersionRef
-      || resolved.entitlement.validFrom !== resolved.accessRequest.submittedAt
-      || resolved.entitlement.createdAt !== resolved.accessRequest.submittedAt
-      || resolved.accessRequest.plan !== (
-        offer.delivery.durationDays === 365 ? "yearly" : "monthly"
-      )
-      || resolved.accessRequest.durationDays !== offer.delivery.durationDays
-      || resolved.entitlement.trafficLimitBytes
-        !== offer.delivery.monthlyTrafficGb * 1024 ** 3
-    ) {
-      return false;
-    }
-    const targetMs = Date.parse(resolved.accessRequest.submittedAt)
-      + offer.delivery.durationDays * 24 * 60 * 60 * 1000;
-    return (
-      Number.isSafeInteger(targetMs)
-      && Math.abs(targetMs) <= 8.64e15
-      && resolved.entitlement.validUntil === new Date(targetMs).toISOString()
-    );
-  } catch {
-    return false;
-  }
-}
-
 export function createCoinCommerceProductionSubscriptionFulfillment({
   controlStore,
   runtimeCore,
@@ -632,7 +591,7 @@ export function createCoinCommerceProductionSubscriptionFulfillment({
       "delivery",
       ...(authorityEnabled ? ["authority"] : [])
     ]);
-    if (!command) {
+    if (!command || ![command.commandRef, command.orderRef].every(hasText)) {
       throw safeFulfillmentError(
         "coin_commerce_fulfillment_invalid_input",
         "Coin Commerce subscription fulfillment input is invalid"
@@ -701,7 +660,8 @@ export function createCoinCommerceProductionSubscriptionFulfillment({
           offerVersionRef: offer.offerVersionRef,
           portalPlan,
           durationDays: offer.delivery.durationDays,
-          trafficLimitBytes: offer.delivery.monthlyTrafficGb * 1024 ** 3
+          trafficLimitBytes: offer.delivery.monthlyTrafficGb * 1024 ** 3,
+          issuedAt: now
         });
         issuedInitialResource = true;
         resolved = resolveEligibleSubscriptionBinding({
@@ -719,6 +679,20 @@ export function createCoinCommerceProductionSubscriptionFulfillment({
       }
     }
     if (!resolved) {
+      throw createCoinCommerceFulfillmentReconciliationError();
+    }
+    const initialRequestRef = `pareq_commerce_${createHash("sha256")
+      .update(command.commandRef).digest("hex")}`;
+    // A partial issuance for this command must never fall through to renewing
+    // a different resource. The store validates the complete lineage atomically.
+    let ownInitialRequest;
+    try {
+      ownInitialRequest = !authorityEnabled
+        && controlStore.getPortalAccessRequest(initialRequestRef);
+    } catch {
+      throw createCoinCommerceFulfillmentRetryableError();
+    }
+    if (ownInitialRequest && resolved.accessRequest.id !== initialRequestRef) {
       throw createCoinCommerceFulfillmentReconciliationError();
     }
     if (resolved.runtimeError) {
@@ -765,12 +739,7 @@ export function createCoinCommerceProductionSubscriptionFulfillment({
         monthlyTrafficGb: offer.delivery.monthlyTrafficGb,
         initialIssuance: authorityEnabled
           ? false
-          : issuedInitialResource || isUnrecordedInitialCommerceIssuance({
-            controlStore,
-            resolved,
-            commandRef: command.commandRef,
-            offer
-          }),
+          : issuedInitialResource || resolved.accessRequest.id === initialRequestRef,
         requireExistingEffect,
         recoveryOnly: resolved.runtimeReady !== true,
         ...(authority ? { authority } : {}),
