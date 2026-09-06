@@ -779,7 +779,7 @@ function openPortalOrders() {
 function expectMarketplaceWithoutLegacyCheckout(client: UserPortalClient) {
   expect(screen.getByRole("region", { name: "商城目录" })).not.toBeNull();
   expect(screen.getByRole("status")).toHaveTextContent(
-    "当前客户端未提供服务端商城能力"
+    "商城暂时不可用，请稍后再试。"
   );
   expect(screen.queryByRole("heading", { name: "平台服务商城" })).toBeNull();
   expect(screen.queryByRole("dialog", { name: "选择套餐" })).toBeNull();
@@ -2742,7 +2742,7 @@ describe("user portal product surface", () => {
     fireEvent.click(within(portalNav).getByRole("button", { name: "商城" }));
     expect(await screen.findByRole("region", { name: "商城目录" })).not.toBeNull();
     expect(screen.getByRole("status")).toHaveTextContent(
-      "当前客户端未提供服务端商城能力"
+      "商城暂时不可用，请稍后再试。"
     );
     expect(screen.queryByText("商品")).toBeNull();
     expect(screen.queryByText("增值项")).toBeNull();
@@ -2799,6 +2799,7 @@ describe("user portal product surface", () => {
   });
 
   test("continues one exact ready recharge from Orders without creating a replacement order", async () => {
+    vi.spyOn(Date, "now").mockReturnValue(Date.parse("2026-08-01T00:00:00.000Z"));
     const session = portalWalletSession(
       "session_recharge_continue_001",
       "recharge-continue@example.test"

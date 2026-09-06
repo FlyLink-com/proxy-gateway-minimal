@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import "@testing-library/jest-dom/vitest";
-import { afterEach, describe, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import {
   PortalRechargeDialog,
@@ -88,9 +88,15 @@ function rechargeOrder(status: PortalRechargeOrder["status"]): PortalRechargeOrd
   };
 }
 
+beforeEach(() => {
+  // Expiry is now checked at handoff; keep fixtures on an explicit clock.
+  vi.setSystemTime(new Date("2026-08-01T00:00:00.000Z"));
+});
+
 afterEach(() => {
   cleanup();
   window.sessionStorage.clear();
+  vi.useRealTimers();
 });
 
 describe("Portal recharge client", () => {
@@ -1051,6 +1057,7 @@ describe("Portal recharge interaction", () => {
       sessionRef: "session_recharge_1",
       offerRef: "coins_30",
       idempotencyKey: expect.any(String),
+      signal: expect.any(AbortSignal),
     }));
     expect(paymentRedirect).toHaveBeenCalledWith(
       "https://www.sandbox.paypal.com/checkoutnow?token=safe",
