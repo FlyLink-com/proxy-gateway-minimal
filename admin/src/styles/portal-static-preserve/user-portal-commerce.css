@@ -2009,17 +2009,192 @@
 }
 
 .portal-v2-shell .portal-orders-panel .portal-order-table-wrap {
+  container-type: inline-size;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
   border-color: var(--portal-orders-border);
   background: var(--portal-orders-surface);
 }
 
+.portal-v2-shell .portal-orders-panel .portal-order-table-wrap[data-empty="true"] {
+  overflow-x: hidden;
+}
+
+.portal-v2-shell .portal-orders-panel .portal-order-table-wrap[data-empty="true"] .portal-order-table {
+  min-width: 100%;
+}
+
+.portal-v2-shell .portal-orders-panel .portal-order-table {
+  display: table;
+  table-layout: fixed;
+  border-collapse: collapse;
+  width: 100%;
+  min-width: 1080px;
+}
+
+.portal-v2-shell .portal-orders-panel .portal-order-table thead {
+  display: table-header-group;
+}
+
+.portal-v2-shell .portal-orders-panel .portal-order-table tbody {
+  display: table-row-group;
+}
+
+.portal-v2-shell .portal-orders-panel .portal-order-table tr {
+  display: table-row;
+  margin: 0;
+  border: 0;
+  padding: 0;
+  background: transparent;
+}
+
 .portal-v2-shell .portal-orders-panel .portal-order-table th,
 .portal-v2-shell .portal-orders-panel .portal-order-table td {
+  display: table-cell;
+  width: auto;
+  border: 0;
+  border-bottom: 1px solid var(--portal-orders-border);
   border-color: var(--portal-orders-border);
+  padding: 12px 14px;
+  vertical-align: middle;
+  line-height: 1.45;
+  font-size: 13px;
+}
+
+.portal-v2-shell .portal-orders-panel .portal-order-table td::before {
+  content: none;
+}
+
+.portal-v2-shell .portal-orders-panel .portal-order-table th:nth-child(1) { width: 24%; }
+.portal-v2-shell .portal-orders-panel .portal-order-table th:nth-child(2) { width: 13%; }
+.portal-v2-shell .portal-orders-panel .portal-order-table th:nth-child(3) { width: 11%; }
+.portal-v2-shell .portal-orders-panel .portal-order-table th:nth-child(4) { width: 13%; }
+.portal-v2-shell .portal-orders-panel .portal-order-table th:nth-child(5) { width: 17%; }
+.portal-v2-shell .portal-orders-panel .portal-order-table th:nth-child(6) { width: 22%; }
+
+.portal-v2-shell .portal-orders-panel .portal-order-summary-row > td {
+  box-sizing: border-box;
+  height: 64px;
+  white-space: nowrap;
+  overflow-wrap: normal;
+  word-break: normal;
+}
+
+.portal-v2-shell .portal-orders-panel .portal-order-summary-text {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  overflow-wrap: normal;
+  word-break: normal;
+}
+
+.portal-v2-shell .portal-orders-panel .portal-order-summary-row .portal-order-status {
+  display: inline-block;
+  max-width: 100%;
+  box-sizing: border-box;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: middle;
+  overflow-wrap: normal;
+  word-break: normal;
+}
+
+.portal-v2-shell .portal-orders-panel .portal-order-amount {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.portal-v2-shell .portal-orders-panel .portal-order-actions {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.portal-v2-shell .portal-orders-panel .portal-order-actions button {
+  width: auto;
+  min-width: 56px;
+  min-height: 40px;
+  flex: 0 0 auto;
+  padding: 8px 12px;
+  white-space: nowrap;
+  overflow-wrap: normal;
+  word-break: normal;
+  color: var(--portal-orders-text);
+}
+
+.portal-v2-shell .portal-orders-panel .portal-order-actions .portal-order-view {
+  border-color: var(--portal-orders-accent);
+  background: var(--portal-orders-accent);
+  color: var(--portal-orders-on-accent);
+}
+
+.portal-v2-shell .portal-orders-panel .portal-order-table th:last-child {
+  text-align: right;
+}
+
+.portal-v2-shell .portal-orders-panel .portal-order-detail-row > td {
+  white-space: normal;
+  padding: 0;
+}
+
+.portal-v2-shell .portal-orders-panel .portal-order-detail {
+  box-sizing: border-box;
+  position: sticky;
+  left: 0;
+  width: min(100%, 100cqw);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 18px;
+  padding: 24px;
+}
+
+.portal-v2-shell .portal-orders-panel .portal-order-detail__title {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.portal-v2-shell .portal-orders-panel .portal-order-detail-grid {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+
+.portal-v2-shell .portal-orders-panel .portal-order-detail-meta {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 18px 32px;
+  margin: 0;
+  padding-bottom: 18px;
+  border-bottom: 1px solid var(--portal-orders-border);
+}
+
+.portal-v2-shell .portal-orders-panel .portal-order-detail-meta dt {
+  margin-bottom: 6px;
+  color: var(--portal-orders-muted);
+  font-size: 12px;
+}
+
+.portal-v2-shell .portal-orders-panel .portal-order-detail-meta dd {
+  margin: 0;
+  color: var(--portal-orders-text);
+  overflow-wrap: anywhere;
+  font-variant-numeric: tabular-nums;
+}
+
+.portal-v2-shell .portal-orders-panel .portal-order-detail-grid strong {
+  overflow-wrap: anywhere;
 }
 
 .portal-v2-shell .portal-orders-panel .portal-order-table th {
   color: var(--portal-orders-muted);
+  white-space: nowrap;
+  background: var(--portal-orders-subtle);
 }
 
 .portal-v2-shell .portal-orders-panel .portal-order-table td {
@@ -2229,74 +2404,12 @@
     outline-offset: 2px;
   }
 
-  .portal-v2-shell .portal-orders-panel .portal-order-table {
-    table-layout: fixed;
-    min-width: 100%;
-    width: 100%;
-  }
-
-  .portal-v2-shell .portal-orders-panel .portal-order-table th:nth-child(1),
-  .portal-v2-shell .portal-orders-panel .portal-order-table td:nth-child(1) {
-    width: 13%;
-  }
-
-  .portal-v2-shell .portal-orders-panel .portal-order-table th:nth-child(2),
-  .portal-v2-shell .portal-orders-panel .portal-order-table td:nth-child(2) {
-    width: 13%;
-  }
-
-  .portal-v2-shell .portal-orders-panel .portal-order-table th:nth-child(3),
-  .portal-v2-shell .portal-orders-panel .portal-order-table td:nth-child(3) {
-    width: 20%;
-  }
-
-  .portal-v2-shell .portal-orders-panel .portal-order-table th:nth-child(4),
-  .portal-v2-shell .portal-orders-panel .portal-order-table td:nth-child(4) {
-    width: 12%;
-  }
-
-  .portal-v2-shell .portal-orders-panel .portal-order-table th:nth-child(5),
-  .portal-v2-shell .portal-orders-panel .portal-order-table td:nth-child(5) {
-    width: 18%;
-  }
-
-  .portal-v2-shell .portal-orders-panel .portal-order-table th:nth-child(6),
-  .portal-v2-shell .portal-orders-panel .portal-order-table td:nth-child(6) {
-    width: 15%;
-  }
-
-  .portal-v2-shell .portal-orders-panel .portal-order-table th:nth-child(7),
-  .portal-v2-shell .portal-orders-panel .portal-order-table td:nth-child(7) {
-    width: 9%;
-  }
-
-  .portal-v2-shell .portal-orders-panel .portal-order-table-wrap[data-empty="true"] {
-    overflow-x: hidden;
-  }
-
-  .portal-v2-shell
-    .portal-orders-panel
-    .portal-order-table-wrap[data-empty="true"]
-    .portal-order-table {
-    min-width: 100%;
-  }
-
   .portal-v2-shell .portal-orders-filters button,
   .portal-v2-shell .portal-orders-inline-note button,
   .portal-v2-shell .portal-orders-panel .portal-order-toolbar select,
   .portal-v2-shell .portal-orders-panel .portal-order-actions button,
   .portal-v2-shell .portal-orders-load-more {
     min-height: 44px;
-  }
-
-  .portal-v2-shell .portal-orders-panel .portal-order-table td {
-    line-height: 1.45;
-    white-space: normal;
-    overflow-wrap: anywhere;
-  }
-
-  .portal-v2-shell .portal-orders-panel .portal-order-main-text {
-    overflow-wrap: anywhere;
   }
 
   .portal-v2-shell .portal-orders-panel .portal-order-detail {
@@ -2326,8 +2439,17 @@
 }
 
 @media (max-width: 720px) {
+  .portal-v2-shell .portal-orders-panel .portal-order-table-wrap[data-empty="true"] thead {
+    display: none;
+  }
+
+  .portal-v2-shell .portal-orders-panel .portal-order-detail-meta,
+  .portal-v2-shell .portal-orders-panel .portal-order-detail-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .portal-v2-shell .portal-orders-panel td.portal-order-empty-state {
-    display: block;
+    display: table-cell;
     min-height: 0;
     padding: 28px 16px;
   }
