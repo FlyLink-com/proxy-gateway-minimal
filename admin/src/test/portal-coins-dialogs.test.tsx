@@ -88,6 +88,74 @@ afterEach(() => {
 });
 
 describe("Portal Coins dialogs", () => {
+  test("removes the unfinished-order explanation when the resumed order completes", () => {
+    const props = {
+      locale: "en" as const,
+      quote: null,
+      order: heldOrder,
+      submitting: false,
+      cancelling: false,
+      resumingExistingOrder: true,
+      errorCode: null,
+      onConfirm: vi.fn(),
+      onCancel: vi.fn(),
+      onRefresh: vi.fn(),
+      onRequestClose: vi.fn()
+    };
+    const view = render(createElement(CoinsPurchaseDialog, props));
+    expect(screen.getByRole("status")).toHaveTextContent("You have an unfinished order.");
+    view.rerender(createElement(CoinsPurchaseDialog, {
+      ...props,
+      order: {
+        ...heldOrder,
+        paymentStatus: "captured",
+        fulfillment: { status: "delivered", safeCode: null }
+      }
+    }));
+    expect(screen.queryByRole("status")).toBeNull();
+    expect(screen.getByText("Purchase complete. Your service is active."))
+      .toBeInTheDocument();
+  });
+
+  test.each([
+    ["zh", "取消期限已结束，无法再取消此订单，请刷新订单查看进度。"],
+    ["en", "This order can no longer be cancelled. Refresh it to check its progress."]
+  ] as const)("explains a closed cancellation window in %s without claiming a refresh failure", (locale, message) => {
+    render(createElement(CoinsPaymentStatusCard, {
+      locale,
+      order: heldOrder,
+      cancelling: false,
+      errorCode: "cancel_window_closed",
+      onCancel: vi.fn(),
+      onRefresh: vi.fn()
+    }));
+    expect(screen.getByRole("alert")).toHaveTextContent(message);
+    expect(screen.getByRole("alert")).not.toHaveTextContent(/安全重试|Retry safely|无法刷新|Unable to refresh/);
+  });
+
+  test.each([
+    "fulfillment_attempt_limit",
+    "fulfillment_handler_failed",
+    "fulfillment_handler_unavailable",
+    "fulfillment_result_invalid"
+  ] as const)("presents %s as an incomplete service, not an internal handler failure or success", (safeCode) => {
+    render(createElement(CoinsPaymentStatusCard, {
+      locale: "zh",
+      order: {
+        ...heldOrder,
+        paymentStatus: "captured",
+        fulfillment: { status: "failed", safeCode }
+      },
+      cancelling: false,
+      errorCode: null,
+      onCancel: vi.fn(),
+      onRefresh: vi.fn()
+    }));
+    const card = screen.getByRole("region", { name: "Coins 订单状态" });
+    expect(card).toHaveTextContent("本次服务开通结果尚未确认，请联系支持");
+    expect(card).not.toHaveTextContent(/服务暂未开通|尚未发放|无法发放|交付|处理失败|结果无效|次数已达|handler|fulfillment_|购买完成|购买成功/);
+  });
+
   test("product detail is a labelled focus-contained modal with caller-owned close restoration", () => {
     const onPreview = vi.fn();
     const onRequestClose = vi.fn();
@@ -362,7 +430,7 @@ describe("Portal Coins dialogs", () => {
       name: "Confirm Coins purchase"
     });
     expect(within(dialog).getByRole("alert")).toHaveTextContent(
-      "Unable to refresh the Order. Retry safely."
+      "The Marketplace is temporarily unavailable. Try again later."
     );
   });
 

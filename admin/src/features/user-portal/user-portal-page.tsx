@@ -51,7 +51,7 @@ import {
   PORTAL_COIN_ORDER_STORAGE_KEY,
   type PortalCommerceModel
 } from "./commerce";
-import { PortalOrdersPanel } from "./orders/portal-orders-panel";
+import { PortalOrdersPanel, type PortalOrdersFilter } from "./orders/portal-orders-panel";
 import type { PortalServiceOrder } from "./orders/portal-order-center-model";
 import { PortalPersonalCenterPanel } from "./profile/portal-personal-center-panel";
 import {
@@ -196,12 +196,18 @@ const navItems: Array<{ id: PortalView; label: string; description: string; icon
   { id: "dashboard", label: "概览", description: "查看账户状态、当前套餐、流量和开始使用。", icon: LayoutGrid },
   { id: "usage", label: "用量", description: "查看流量消耗、套餐额度和用量更新状态。", icon: LineChart },
   { id: "marketplace", label: "商城", description: "浏览平台商品、套餐、流量包和增值项。", icon: ShoppingBag },
-  { id: "orders", label: "订单", description: "查看订单历史、支付状态和付款详情。", icon: ReceiptText },
+  { id: "orders", label: "订单管理", description: "查看订单历史、支付状态和付款详情。", icon: ReceiptText },
   { id: "wallet", label: "Coins 钱包", description: "查看可用余额、分类余额和钱包流水。", icon: WalletCards },
   { id: "referrals", label: "推荐奖励", description: "查看推荐链接、归因绩效和奖励状态。", icon: Gift },
   { id: "profile", label: "个人中心", description: "管理账户信息、身份验证器和通行密钥。", icon: UserCog },
   { id: "settings", label: "设置", description: "管理界面语言和显示主题。", icon: Settings },
   { id: "support", label: "支持", description: "提交订阅、客户端或账户问题并追踪处理编号。", icon: Headphones }
+];
+
+const portalOrderNavigationItems: Array<{ id: Exclude<PortalOrdersFilter, "all">; zh: string; en: string }> = [
+  { id: "coins_consumption", zh: "商城消费", en: "Marketplace purchases" },
+  { id: "coin_recharge", zh: "充值订单", en: "Coins recharges" },
+  { id: "plans_services", zh: "套餐与服务", en: "Plans and services" }
 ];
 
 type PortalNavigationGroup = {
@@ -493,7 +499,11 @@ function localizedPortalViewCopy(view: PortalView, locale: PortalAuthLocale) {
 }
 
 function localizedNavItems(locale: PortalAuthLocale) {
-  return navItems.map((item) => ({ ...item, ...localizedPortalViewCopy(item.id, locale) }));
+  return navItems.map((item) => ({
+    ...item,
+    ...localizedPortalViewCopy(item.id, locale),
+    ...(item.id === "orders" ? { label: uiText(locale, "订单管理", "Order management") } : {})
+  }));
 }
 
 function localizedNavGroups(locale: PortalAuthLocale) {
@@ -1489,6 +1499,7 @@ export function UserPortalPage({
 }) {
   const { locale, setLocale } = usePublicLocalePreference();
   const { theme, setTheme } = usePublicThemePreference();
+  const desktopOrderNavigation = useDesktopScrollRegion();
   const authCopy = portalAuthEntryCopy[locale];
   const [portalSession, setPortalSession] = useState<PortalSession | null>(null);
   const [commerceModel, setCommerceModel] = useState<PortalCommerceModel | null>(null);
@@ -1505,6 +1516,7 @@ export function UserPortalPage({
   const [humanChallengeReady, setHumanChallengeReady] = useState(false);
   const [humanChallengeLoading, setHumanChallengeLoading] = useState(true);
   const [activeView, setActiveView] = useState<PortalView>("start");
+  const [orderCenterFilter, setOrderCenterFilter] = useState<PortalOrdersFilter>("all");
   const [personalCenterSubview, setPersonalCenterSubview] = useState<"profile" | "security">("profile");
   const [selectedPlanId, setSelectedPlanId] = useState<PortalPlanId>("monthly_basic");
   const [clientTarget, setClientTarget] = useState<PortalClientId>("clash");
@@ -1784,6 +1796,7 @@ export function UserPortalPage({
       }
       setHistorySummary(portalState.historySummary ?? subscriptionRequests.flatMap((request) => request.historySummary ?? []));
       setActivePaymentOrderRef(null);
+      setOrderCenterFilter("all");
       setActiveView(destination);
     })();
     return { isCurrent, promise };
@@ -2110,10 +2123,17 @@ export function UserPortalPage({
 
   function navigatePortalView(view: PortalView) {
     setActivePaymentOrderRef(null);
+    setOrderCenterFilter("all");
     if (view === "profile") {
       setPersonalCenterSubview("profile");
     }
     setActiveView(view);
+  }
+
+  function navigatePortalOrderFilter(filter: PortalOrdersFilter) {
+    setActivePaymentOrderRef(null);
+    setOrderCenterFilter(filter);
+    setActiveView("orders");
   }
 
   async function refreshPaymentOrders(targetOrderRef?: string) {
@@ -2577,28 +2597,64 @@ export function UserPortalPage({
                 </span>
                 {group.items.map((item) => {
                   const Icon = item.icon;
+                  const hasOrderCategories = item.id === "orders"
+                    && commerceModel !== "wallet_first_unique_v1";
+                  const hasOrderDisclosure = hasOrderCategories && desktopOrderNavigation;
+                  const orderCategoriesExpanded = hasOrderDisclosure && activeView === "orders";
+                  const current = activeView === item.id
+                    && (!hasOrderDisclosure || orderCenterFilter === "all");
                   return (
-                    <button
-                      key={item.id}
-                      type="button"
-                      aria-label={item.label}
-                      aria-describedby={item.id === "wallet" ? "portal-wallet-nav-balance" : undefined}
-                      aria-current={activeView === item.id ? "page" : undefined}
-                      data-portal-view={item.id}
-                      className={cn("portal-use-nav-item", activeView === item.id && "active")}
-                      onClick={() => navigatePortalView(item.id)}
-                    >
-                      <Icon aria-hidden="true" />
-                      <span>
-                        <strong>{item.label}</strong>
-                        <small>{item.description}</small>
-                      </span>
-                      {item.id === "wallet" ? (
-                        <span className="sr-only" id="portal-wallet-nav-balance">
-                          Coins · {authoritativeWalletBalance ?? "--"}
+                    <Fragment key={item.id}>
+                      <button
+                        type="button"
+                        aria-label={item.label}
+                        aria-describedby={item.id === "wallet" ? "portal-wallet-nav-balance" : undefined}
+                        aria-current={current ? "page" : undefined}
+                        aria-expanded={hasOrderDisclosure ? orderCategoriesExpanded : undefined}
+                        aria-controls={hasOrderDisclosure ? "portal-order-categories" : undefined}
+                        data-portal-view={item.id}
+                        className={cn("portal-use-nav-item", current && "active", hasOrderCategories && "portal-order-nav-parent")}
+                        onClick={() => navigatePortalView(item.id)}
+                      >
+                        <Icon aria-hidden="true" />
+                        <span>
+                          <strong>{item.label}</strong>
+                          <small>{item.description}</small>
                         </span>
+                        {item.id === "wallet" ? (
+                          <span className="sr-only" id="portal-wallet-nav-balance">
+                            Coins · {authoritativeWalletBalance ?? "--"}
+                          </span>
+                        ) : null}
+                        {hasOrderCategories ? <ChevronRight className="portal-order-nav-chevron" aria-hidden="true" /> : null}
+                      </button>
+                      {hasOrderCategories ? (
+                        <div
+                          id="portal-order-categories"
+                          className="portal-order-subnav"
+                          role="group"
+                          aria-label={uiText(locale, "订单分类", "Order categories")}
+                          hidden={!orderCategoriesExpanded}
+                        >
+                          {portalOrderNavigationItems.map((category) => {
+                            const categoryCurrent = orderCategoriesExpanded && orderCenterFilter === category.id;
+                            const label = uiText(locale, category.zh, category.en);
+                            return (
+                              <button
+                                key={category.id}
+                                type="button"
+                                className={cn("portal-use-nav-item portal-order-nav-child", categoryCurrent && "active")}
+                                aria-label={label}
+                                aria-current={categoryCurrent ? "page" : undefined}
+                                onClick={() => navigatePortalOrderFilter(category.id)}
+                              >
+                                <span><strong>{label}</strong></span>
+                              </button>
+                            );
+                          })}
+                        </div>
                       ) : null}
-                    </button>
+                    </Fragment>
                   );
                 })}
               </div>
@@ -2800,6 +2856,8 @@ export function UserPortalPage({
           ) : activeView === "orders" && paymentFlowActive ? renderLegacyPaymentFlow() : null}
           {activeView === "orders" && commerceModel !== "wallet_first_unique_v1" && !paymentFlowActive ? (
             <PortalOrdersPanel
+              filter={orderCenterFilter}
+              onFilterChange={setOrderCenterFilter}
               commerceClient={portalClient.commerce ?? null}
               rechargeClient={portalClient.recharge ?? null}
               legacyPaymentOrders={paymentOrders}
