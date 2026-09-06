@@ -1291,6 +1291,126 @@ test("commerce product fulfillment creates one stable account resource and repla
   });
 });
 
+test("commerce product fulfillment binds an optional internal issuedAt to initial resource validity", async (t) => {
+  const issuerNow = "2026-05-31T00:00:00.007Z";
+  for (const scenario of [
+    { name: "operation issuedAt precedes the issuer clock", clockInput: { issuedAt: NOW }, expected: NOW },
+    { name: "absent issuedAt retains the standalone issuer clock", clockInput: {}, expected: issuerNow }
+  ]) {
+    await t.test(scenario.name, () => withControlStore((store) => {
+      const runtimeCore = lifecycleRuntimeCore();
+      const requests = createPortalAccessRequestService({
+        nowFn: () => issuerNow,
+        runtimeCore,
+        controlStore: store,
+        autoIssuance: {
+          enabled: true,
+          nodeId: "channel-aliyun-a-tuic",
+          reviewedByRef: "commerce_product_issuer"
+        }
+      });
+      const input = {
+        commandRef: "coincmd_initial_clock_handoff",
+        orderRef: "coinord_initial_clock_handoff",
+        accountId: "acct_initial_clock_handoff",
+        offerVersionRef: "offerv_plan_30d_50gb_monthly_v1",
+        portalPlan: "monthly",
+        durationDays: 30,
+        trafficLimitBytes: 50 * 1024 ** 3,
+        ...scenario.clockInput
+      };
+      store.createAccount({
+        id: input.accountId,
+        ownerRef: input.accountId,
+        status: "active",
+        createdAt: NOW,
+        updatedAt: NOW
+      });
+
+      const result = requests.fulfillCommerceProduct(input);
+      const resource = store.getPortalAccessRequest(result.requestRef);
+      const entitlement = store.getEntitlement(resource.entitlementRef);
+      const issuance = store.getIssuanceRequest(resource.id);
+      const expiresAt = new Date(Date.parse(scenario.expected) + 30 * 86400000).toISOString();
+
+      assert.equal(result.status, "delivered");
+      assert.equal(resource.submittedAt, scenario.expected);
+      assert.equal(resource.expiresAt, expiresAt);
+      assert.equal(resource.validUntil, expiresAt);
+      assert.equal(entitlement.validFrom, scenario.expected);
+      assert.equal(entitlement.createdAt, scenario.expected);
+      assert.equal(entitlement.validUntil, expiresAt);
+      assert.equal(issuance.createdAt, scenario.expected);
+      assert.equal(entitlement.plan, input.offerVersionRef);
+      assert.equal(entitlement.trafficLimitBytes, input.trafficLimitBytes);
+      assert.equal(store.listPortalAccessRequests({ portalUserRef: input.accountId }).length, 1);
+      assert.equal(store.getAccountControlSummary(input.accountId).entitlements.length, 1);
+      const tenantCalls = runtimeCore.calls.filter(([name]) => name === "createTenant");
+      assert.equal(tenantCalls.length, 1);
+      assert.equal(tenantCalls[0][1].expiresAt, expiresAt);
+    }));
+  }
+});
+
+test("commerce product fulfillment rejects malformed or noncanonical issuedAt before creating records", async (t) => {
+  for (const [name, issuedAt] of [
+    ["null", null],
+    ["empty", ""],
+    ["invalid date", "not-a-timestamp"],
+    ["leading whitespace", ` ${NOW}`],
+    ["missing milliseconds", "2026-05-31T00:00:00Z"],
+    ["non-UTC offset", "2026-05-31T08:00:00.000+08:00"],
+    ["calendar rollover", "2026-02-30T00:00:00.000Z"],
+    ["Date object", new Date(NOW)],
+    ["numeric timestamp", Date.parse(NOW)]
+  ]) {
+    await t.test(name, () => withControlStore((store) => {
+      const runtimeCore = lifecycleRuntimeCore();
+      const requests = createPortalAccessRequestService({
+        nowFn: () => NOW,
+        runtimeCore,
+        controlStore: store,
+        autoIssuance: {
+          enabled: true,
+          nodeId: "channel-aliyun-a-tuic",
+          reviewedByRef: "commerce_product_issuer"
+        }
+      });
+      const input = {
+        commandRef: "coincmd_invalid_clock_handoff",
+        orderRef: "coinord_invalid_clock_handoff",
+        accountId: "acct_invalid_clock_handoff",
+        offerVersionRef: "offerv_plan_30d_50gb_monthly_v1",
+        portalPlan: "monthly",
+        durationDays: 30,
+        trafficLimitBytes: 50 * 1024 ** 3,
+        issuedAt
+      };
+      store.createAccount({
+        id: input.accountId,
+        ownerRef: input.accountId,
+        status: "active",
+        createdAt: NOW,
+        updatedAt: NOW
+      });
+      const accountBefore = store.getAccount(input.accountId);
+      const commandDigest = createHash("sha256").update(input.commandRef).digest("hex");
+
+      assert.throws(
+        () => requests.fulfillCommerceProduct(input),
+        (error) => error?.code === "commerce_product_fulfillment_drift"
+      );
+      assert.deepEqual(store.getAccount(input.accountId), accountBefore);
+      assert.equal(store.listPortalAccessRequests({ portalUserRef: input.accountId }).length, 0);
+      assert.equal(store.getAccountControlSummary(input.accountId).entitlements.length, 0);
+      assert.equal(store.getEntitlement(`ent_commerce_${commandDigest}`), null);
+      assert.equal(store.getIssuanceRequest(`pareq_commerce_${commandDigest}`), null);
+      assert.equal(store.listIssuedSubscriptionBindings().length, 0);
+      assert.equal(runtimeCore.calls.length, 0);
+    }));
+  }
+});
+
 test("every production Commerce product can issue its exact first account resource", async (t) => {
   for (const [index, offer] of COIN_COMMERCE_PRODUCTION_OFFERS.entries()) {
     await t.test(offer.offerVersionRef, () => withControlStore((store) => {

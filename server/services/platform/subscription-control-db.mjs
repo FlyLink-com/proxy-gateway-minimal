@@ -4948,7 +4948,16 @@ export function createSqliteSubscriptionControlStore({
       const previousValidFrom = isoText(entitlement.validFrom, "validFrom");
       const storedValidUntil = isoText(entitlement.validUntil, "validUntil");
       if (previousValidFrom >= storedValidUntil) failDrift();
-      const expectedInitialTargetMs = Date.parse(record.now) + durationMs;
+      // Confirmation may run after issuance (including after a transient
+      // failure). Preserve the original entitlement period, not the retry time.
+      const initialIssuedAt = record.initialIssuance
+        ? isoText(accessRequest.submittedAt, "submittedAt")
+        : null;
+      // Keep this deterministic contract aligned with commerceProductRef in
+      // the issuer without expanding the immutable database-tool import closure.
+      const initialDigest = sha256(record.commandRef);
+      const initialRequestRef = `pareq_commerce_${initialDigest}`;
+      const expectedInitialTargetMs = Date.parse(initialIssuedAt) + durationMs;
       const expectedInitialTarget = Number.isSafeInteger(expectedInitialTargetMs)
         && Math.abs(expectedInitialTargetMs) <= 8.64e15
         ? new Date(expectedInitialTargetMs).toISOString()
@@ -4956,13 +4965,21 @@ export function createSqliteSubscriptionControlStore({
       if (
         record.initialIssuance
         && (
-          entitlement.plan !== record.offerVersionRef
-          || entitlement.validFrom !== record.now
-          || entitlement.createdAt !== record.now
+          record.requestRef !== initialRequestRef
+          || record.entitlementRef !== `ent_commerce_${initialDigest}`
+          || record.issuedLinkRef !== `${initialRequestRef}_link_1`
+          || accessRequest.accessGrantRef !== `grant_commerce_${initialDigest}`
+          || issuanceRequest.approvalRef
+            !== `approval_commerce_${sha256(`${record.commandRef}\0${record.orderRef}`)}`
+          || issuanceRequest.purpose !== "coin_commerce_product_fulfillment"
+          || initialIssuedAt > record.now
+          || entitlement.plan !== record.offerVersionRef
+          || entitlement.validFrom !== initialIssuedAt
+          || entitlement.createdAt !== initialIssuedAt
           || entitlement.trafficLimitBytes !== trafficLimitBytes
           || accessRequest.plan !== record.portalPlan
           || accessRequest.durationDays !== record.durationDays
-          || accessRequest.submittedAt !== record.now
+          || accessRequest.submittedAt !== initialIssuedAt
           || storedValidUntil !== expectedInitialTarget
         )
       ) {
@@ -4972,7 +4989,7 @@ export function createSqliteSubscriptionControlStore({
         ? previousValidFrom
         : record.now;
       const previousValidUntil = record.initialIssuance
-        ? record.now
+        ? initialIssuedAt
         : storedValidUntil;
       const targetMs = record.initialIssuance
         ? Date.parse(storedValidUntil)

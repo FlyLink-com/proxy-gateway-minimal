@@ -1814,6 +1814,16 @@ export function createPortalAccessRequestService(options = {}) {
     const portalPlan = normalizePlan(input.portalPlan);
     const durationDays = Number(input.durationDays);
     const trafficLimitBytes = Number(input.trafficLimitBytes);
+    // Internal handoff from the fulfillment operation; standalone callers
+    // retain the service clock. Never normalize a malformed supplied timestamp.
+    const issuedAt = input.issuedAt;
+    if (
+      issuedAt !== undefined
+      && (typeof issuedAt !== "string" || Number.isNaN(Date.parse(issuedAt))
+        || new Date(issuedAt).toISOString() !== issuedAt)
+    ) {
+      throw commerceProductFulfillmentError("commerce product issuance time is invalid");
+    }
     if (
       !Number.isSafeInteger(durationDays)
       || durationDays <= 0
@@ -1831,6 +1841,7 @@ export function createPortalAccessRequestService(options = {}) {
       portalPlan,
       durationDays,
       trafficLimitBytes,
+      issuedAt,
       requestRef: commerceProductRef("pareq_commerce", commandRef),
       entitlementRef: commerceProductRef("ent_commerce", commandRef),
       accessGrantRef: commerceProductRef("grant_commerce", commandRef),
@@ -1961,7 +1972,7 @@ export function createPortalAccessRequestService(options = {}) {
       if (replay) return replay;
 
       const account = controlStore.getAccount(product.accountId);
-      const now = isoNow(nowFn);
+      const now = product.issuedAt ?? isoNow(nowFn);
       if (
         !account
         || account.id !== product.accountId
