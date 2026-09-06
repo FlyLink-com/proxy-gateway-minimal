@@ -732,7 +732,10 @@ function projectOrder(input) {
   ) {
     throw projectionInvalid();
   }
-  if (value.paymentStatus !== "captured") {
+  if (
+    value.paymentStatus !== "captured"
+    && value.paymentStatus !== "reconciliation_required"
+  ) {
     if (
       fulfillmentValue.status !== "not_requested"
       || fulfillmentValue.safeCode !== null
@@ -740,9 +743,13 @@ function projectOrder(input) {
       throw projectionInvalid();
     }
   } else {
+    // Reconciliation can retain a terminal command/receipt after settlement.
+    // Preserve that store-validated history, but never admit a live command.
+    const allowedStatuses = value.paymentStatus === "reconciliation_required"
+      ? new Set(["not_requested", "delivered", "failed"])
+      : new Set(["pending", "processing", "delivered", "failed"]);
     if (
-      !new Set(["pending", "processing", "delivered", "failed"])
-        .has(fulfillmentValue.status)
+      !allowedStatuses.has(fulfillmentValue.status)
     ) {
       throw projectionInvalid();
     }
