@@ -43,6 +43,8 @@ export type PortalOrdersFilter =
 
 export type PortalOrdersPanelProps = {
   locale: "zh" | "en";
+  filter?: PortalOrdersFilter;
+  onFilterChange?: (filter: PortalOrdersFilter) => void;
   commerceClient: PortalCoinCommerceClient | null;
   rechargeClient?: PortalRechargeClient | null;
   sessionRef: string | null;
@@ -59,13 +61,6 @@ export type PortalOrdersPanelProps = {
     order: PortalRechargeOrder,
   ) => PortalRechargePaymentRedirectResult;
 };
-
-const FILTERS: Array<{ id: PortalOrdersFilter; zh: string; en: string }> = [
-  { id: "all", zh: "全部", en: "All" },
-  { id: "coins_consumption", zh: "商城消费", en: "Marketplace purchases" },
-  { id: "coin_recharge", zh: "充值订单", en: "Coins recharges" },
-  { id: "plans_services", zh: "套餐与服务", en: "Plans and services" }
-];
 
 type ReadState<T> =
   | { phase: "loading" }
@@ -382,6 +377,8 @@ const EMPTY_COIN_ORDERS: PortalCoinOrder[] = [];
 
 export function PortalOrdersPanel({
   locale,
+  filter = "all",
+  onFilterChange = () => undefined,
   commerceClient,
   rechargeClient = null,
   sessionRef,
@@ -389,7 +386,6 @@ export function PortalOrdersPanel({
   onSessionInvalid,
   legacyPaymentOrders = [],
   serviceOrders = [],
-  selectedServiceOrderRef = null,
   orderSearch = "",
   onOrderSearchChange = () => undefined,
   onOpenServiceOrder = () => undefined,
@@ -397,11 +393,10 @@ export function PortalOrdersPanel({
   onContinueRechargeOrder
 }: PortalOrdersPanelProps) {
   const desktopScrollRegion = useDesktopScrollRegion();
-  const allFilterButtonRef = useRef<HTMLButtonElement | null>(null);
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
   const toolbarMarketplaceButtonRef = useRef<HTMLButtonElement | null>(null);
   const emptyActionButtonRef = useRef<HTMLButtonElement | null>(null);
   const emptyActionFocusedRef = useRef(false);
-  const [filter, setFilter] = useState<PortalOrdersFilter>("all");
   const [statusFilter, setStatusFilter] = useState<"all" | PortalOrderCenterStatus>("all");
   const [sort, setSort] = useState<"newest" | "oldest">("newest");
   const [listState, setListState] = useState<ReadState<PortalCoinOrder[]>>({
@@ -422,7 +417,7 @@ export function PortalOrdersPanel({
   const [selectedRechargeDetailRef, setSelectedRechargeDetailRef] =
     useState<string | null>(null);
   const [selectedServiceDetailRef, setSelectedServiceDetailRef] =
-    useState<string | null>(selectedServiceOrderRef);
+    useState<string | null>(null);
   const initialIdentity = { commerceClient, sessionRef, sessionGeneration };
   const [listIdentity, setListIdentity] = useState<PortalOrdersIdentity>(initialIdentity);
   const [detailIdentity, setDetailIdentity] = useState<PortalOrdersIdentity>(initialIdentity);
@@ -505,10 +500,6 @@ export function PortalOrdersPanel({
     });
     return () => { rechargeRequestRef.current += 1; };
   }, [rechargeClient, rechargeRevision, sessionGeneration, sessionRef]);
-
-  useLayoutEffect(() => {
-    setSelectedServiceDetailRef(selectedServiceOrderRef);
-  }, [selectedServiceOrderRef]);
 
   const listCurrent = useCallback((current: CurrentInputs, requestId: number) => (
     current.alive
@@ -682,6 +673,13 @@ export function PortalOrdersPanel({
     setDetailState({ phase: "empty", value: null as never });
   }, []);
 
+  useLayoutEffect(() => {
+    invalidateCoinDetail();
+    setSelectedLegacyDetailRef(null);
+    setSelectedRechargeDetailRef(null);
+    setSelectedServiceDetailRef(null);
+  }, [filter, invalidateCoinDetail]);
+
   const toggleCoinDetail = useCallback((orderRef: string) => {
     if (selectedDetailRef === orderRef) {
       invalidateCoinDetail();
@@ -747,10 +745,10 @@ export function PortalOrdersPanel({
     ? copy(locale, "正在加载商城订单…", "Loading Marketplace orders…")
     : copy(locale, "正在加载 Coins 充值订单…", "Loading Coins recharge orders…");
   const clearFilters = () => {
-    setFilter("all");
+    onFilterChange("all");
     setStatusFilter("all");
     onOrderSearchChange("");
-    allFilterButtonRef.current?.focus();
+    searchInputRef.current?.focus();
   };
   useLayoutEffect(() => {
     if (
@@ -842,19 +840,6 @@ export function PortalOrdersPanel({
 
   return (
     <section className="portal-orders-panel" aria-label={copy(locale, "订单记录", "Order records")}>
-      <div className="portal-orders-filters" role="group" aria-label={copy(locale, "订单类型", "Order type")}>
-        {FILTERS.map((item) => (
-          <button
-            key={item.id}
-            ref={item.id === "all" ? allFilterButtonRef : undefined}
-            type="button"
-            aria-pressed={filter === item.id}
-            onClick={() => setFilter(item.id)}
-          >
-            {copy(locale, item.zh, item.en)}
-          </button>
-        ))}
-      </div>
       <p
         className="portal-orders-scope-note"
         role="note"
@@ -868,6 +853,20 @@ export function PortalOrdersPanel({
       </p>
 
       <div className="portal-order-toolbar">
+        {!desktopScrollRegion ? (
+          <label>
+            <span>{copy(locale, "订单类型", "Order type")}</span>
+            <select
+              value={filter}
+              onChange={(event) => onFilterChange(event.target.value as PortalOrdersFilter)}
+            >
+              <option value="all">{copy(locale, "全部", "All")}</option>
+              <option value="coins_consumption">{copy(locale, "商城消费", "Marketplace purchases")}</option>
+              <option value="coin_recharge">{copy(locale, "充值订单", "Coins recharges")}</option>
+              <option value="plans_services">{copy(locale, "套餐与服务", "Plans and services")}</option>
+            </select>
+          </label>
+        ) : null}
         <label className="portal-order-search-control">
           <span>{copy(locale, "搜索订单", "Search orders")}</span>
           <span
@@ -876,6 +875,7 @@ export function PortalOrdersPanel({
           >
             <Search aria-hidden="true" />
             <input
+              ref={searchInputRef}
               className="portal-order-search-input"
               value={orderSearch}
               onChange={(event) => onOrderSearchChange(event.target.value)}

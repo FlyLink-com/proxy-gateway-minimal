@@ -298,6 +298,98 @@ afterEach(() => {
 });
 
 describe("Portal server-backed Marketplace", () => {
+  test.each(["quote_expired", "quote_stale"] as const)(
+    "%s focuses a new-preview alert without reusing the rejected confirmation",
+    async (code) => {
+      const commerce = commerceClient({
+        previewCheckout: vi.fn(async () => availableQuote),
+        createOrder: vi.fn().mockRejectedValue(new PortalCoinCommerceClientError(code, false))
+      });
+      render(createElement(MarketplacePanel, {
+        commerceClient: commerce,
+        locale: "en",
+        sessionRef: session.sessionRef ?? null,
+        theme: "light"
+      }));
+      const card = (await screen.findByRole("heading", { name: planOffer.title.en }))
+        .closest("article") as HTMLElement;
+      fireEvent.click(within(card).getByRole("button"));
+      const dialog = await screen.findByRole("dialog");
+      fireEvent.click(within(dialog).getByRole("button", { name: "Confirm purchase" }));
+      const alert = await screen.findByRole("alert");
+      expect(alert).toHaveTextContent("Preview again.");
+      expect(screen.queryByRole("dialog")).toBeNull();
+      await waitFor(() => expect(alert).toHaveFocus());
+      expect(commerce.createOrder).toHaveBeenCalledTimes(1);
+      fireEvent.click(within(alert).getByRole("button", { name: "Retry" }));
+      expect(await screen.findByRole("dialog")).toBeInTheDocument();
+      expect(commerce.previewCheckout).toHaveBeenCalledTimes(2);
+      expect(commerce.createOrder).toHaveBeenCalledTimes(1);
+    }
+  );
+
+  test.each([
+    ["deferred_transition_conflict", "zh", "已有服务切换尚未完成，请先查看其处理进度。"],
+    ["deferred_transition_conflict", "en", "A service change is still pending. Check its progress first."],
+    ["wallet_first_deferred_required", "zh", "当前账户需要通过服务切换办理，请刷新商城后查看可用操作。"],
+    ["wallet_first_deferred_required", "en", "This account needs a service change. Refresh the Marketplace to see the available options."],
+    ["offer_unavailable", "zh", "该商品当前不可用。"],
+    ["offer_unavailable", "en", "This product is currently unavailable."]
+  ] as const)(
+    "presents %s consistently in %s at preview and confirmation without a duplicate submission",
+    async (code, locale, expectedText) => {
+      for (const phase of ["preview", "confirm"] as const) {
+        const failure = new PortalCoinCommerceClientError(code, false);
+        const commerce = commerceClient({
+          previewCheckout: phase === "preview"
+            ? vi.fn().mockRejectedValue(failure)
+            : vi.fn(async () => availableQuote),
+          createOrder: vi.fn().mockRejectedValue(failure)
+        });
+        const view = render(createElement(MarketplacePanel, {
+          commerceClient: commerce,
+          locale,
+          sessionRef: session.sessionRef ?? null,
+          theme: "light"
+        }));
+        const card = (await screen.findByRole("heading", {
+          name: planOffer.title[locale]
+        })).closest("article") as HTMLElement;
+        const purchase = within(card).getByRole("button");
+        fireEvent.click(purchase);
+        if (phase === "confirm") {
+          const dialog = await screen.findByRole("dialog");
+          fireEvent.click(within(dialog).getByRole("button", {
+            name: locale === "zh" ? "确认购买" : "Confirm purchase"
+          }));
+        }
+        const alert = await screen.findByRole("alert");
+        expect(alert).toHaveTextContent(expectedText);
+        expect(alert).not.toHaveTextContent(/安全重试|Retry safely|deferred_|offer_unavailable/);
+        await waitFor(() => expect(alert).toHaveFocus());
+        if (phase === "preview") {
+          expect(within(alert).queryByRole("button")).toBeNull();
+          expect(screen.queryByRole("dialog")).toBeNull();
+          expect(commerce.createOrder).not.toHaveBeenCalled();
+        } else {
+          const dialog = screen.getByRole("dialog");
+          const confirm = within(dialog).getByRole("button", {
+            name: locale === "zh" ? "确认购买" : "Confirm purchase"
+          });
+          expect(confirm).toBeDisabled();
+          fireEvent.click(confirm);
+          expect(commerce.createOrder).toHaveBeenCalledTimes(1);
+          fireEvent.click(within(dialog).getByRole("button", {
+            name: locale === "zh" ? "关闭" : "Close"
+          }));
+          await waitFor(() => expect(purchase).toHaveFocus());
+        }
+        expect(commerce.previewCheckout).toHaveBeenCalledTimes(1);
+        view.unmount();
+      }
+    }
+  );
+
   test("keeps quote-bound purchase terms in the direct confirmation without implementation copy", async () => {
     const quotedOffer = {
       ...planOffer,
@@ -483,7 +575,7 @@ describe("Portal server-backed Marketplace", () => {
       listOffers: authList
     })));
     const authAlert = await screen.findByRole("alert");
-    expect(authAlert).toHaveTextContent("商城会话已失效，请重新登录");
+    expect(authAlert).toHaveTextContent("会话已失效，请重新登录");
     expect(authAlert).toHaveAttribute("data-state", "error");
     expect(authAlert).toHaveAttribute("aria-live", "assertive");
     const authMarker = authAlert.querySelector(
@@ -504,7 +596,7 @@ describe("Portal server-backed Marketplace", () => {
     const failingCommerce = commerceClient({ listOffers: failingList });
     await openMarketplace(portalClientWithCommerce(failingCommerce));
     const retryAlert = await screen.findByRole("alert");
-    expect(retryAlert).toHaveTextContent("Coins 购买流程暂时不可用");
+    expect(retryAlert).toHaveTextContent("商城暂时不可用，请稍后重试。");
     fireEvent.click(within(retryAlert).getByRole("button", { name: "重试" }));
     expect(await screen.findByRole("heading", {
       name: "服务端基础套餐"
@@ -606,7 +698,7 @@ describe("Portal server-backed Marketplace", () => {
     });
     const flowErrorNotice = await screen.findByRole("alert");
     expect(flowErrorNotice).toHaveTextContent(
-      "Coins 购买流程暂时不可用"
+      "商城暂时不可用，请稍后重试。"
     );
     expect(flowErrorNotice).toHaveAttribute("data-state", "error");
     expect(flowErrorNotice).toHaveAttribute("aria-live", "assertive");
@@ -845,6 +937,9 @@ describe("Portal server-backed Marketplace", () => {
     });
     expect(within(reopenedDialog).getByText("Coins 已预留"))
       .toBeInTheDocument();
+    expect(within(reopenedDialog).getByRole("status")).toHaveTextContent(
+      "你有一笔订单尚未完成，已打开该订单供你查看进度。"
+    );
     expect(commerce.getOffer).toHaveBeenCalledTimes(1);
     expect(commerce.previewCheckout).toHaveBeenCalledTimes(1);
     expect(commerce.createOrder).toHaveBeenCalledTimes(1);
@@ -899,12 +994,13 @@ describe("Portal server-backed Marketplace", () => {
     }));
     expect(await within(dialog).findByText("Coins 已预留"))
       .toBeInTheDocument();
-    expect(within(dialog).queryByText("购买和交付已完成"))
+    expect(within(dialog).queryByRole("status")).not.toBeInTheDocument();
+    expect(within(dialog).queryByText("购买完成，服务已开通"))
       .not.toBeInTheDocument();
     fireEvent.click(within(dialog).getByRole("button", {
       name: "刷新订单"
     }));
-    expect(await within(dialog).findByText("购买和交付已完成"))
+    expect(await within(dialog).findByText("购买完成，服务已开通"))
       .toBeInTheDocument();
   });
 
@@ -948,7 +1044,7 @@ describe("Portal server-backed Marketplace", () => {
     fireEvent.click(within(dialog).getByRole("button", {
       name: "刷新订单"
     }));
-    expect(await within(dialog).findByText("购买和交付已完成"))
+    expect(await within(dialog).findByText("购买完成，服务已开通"))
       .toBeInTheDocument();
     await waitFor(() => {
       expect(wallet.getSummary).toHaveBeenCalledTimes(3);
