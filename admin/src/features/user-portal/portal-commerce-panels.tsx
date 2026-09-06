@@ -19,6 +19,7 @@ import {
 import type { PortalWalletFirstCommerceClient } from "./commerce";
 import { MarketplaceOfferCard } from "./marketplace-offer-card";
 import { WalletFirstMarketplacePanel } from "./wallet-first-marketplace-panel";
+import { portalCoinCommerceErrorText as safeCommerceErrorText } from "./commerce/commerce-error-presentation";
 
 export type PortalCommerceLocale = "zh" | "en";
 
@@ -98,41 +99,6 @@ function safeCommerceFailure(error: unknown): {
   };
 }
 
-function safeCommerceErrorText(
-  errorCode: PortalCoinCommerceClientErrorCode,
-  locale: PortalCommerceLocale
-) {
-  const zh = isChinese(locale);
-  if (errorCode === "commerce_session_invalid") {
-    return zh
-      ? "商城会话已失效，请重新登录。"
-      : "The Marketplace session is no longer valid. Sign in again.";
-  }
-  if (errorCode === "wallet_not_active") {
-    return zh
-      ? "Coins 钱包尚未启用。"
-      : "The Coins wallet is not active.";
-  }
-  if (errorCode === "insufficient_coins") {
-    return zh
-      ? "Coins 余额不足，请查看购买金额。"
-      : "Your Coins balance is insufficient. Review the purchase amount.";
-  }
-  if (errorCode === "quote_expired" || errorCode === "quote_stale") {
-    return zh
-      ? "购买信息已失效，请重新确认。"
-      : "The purchase details are no longer current. Review them again.";
-  }
-  if (errorCode === "reconciliation_required") {
-    return zh
-      ? "订单需要人工核对，尚未完成。"
-      : "The Order needs support review and is not complete.";
-  }
-  return zh
-    ? "Coins 购买流程暂时不可用，请安全重试。"
-    : "The Coins purchase flow is temporarily unavailable. Retry safely.";
-}
-
 function LegacyMarketplacePanel({
   commerceClient,
   locale,
@@ -152,6 +118,9 @@ function LegacyMarketplacePanel({
   const [productIntent, setProductIntent] =
     useState<MarketplaceProductIntent | null>(null);
   const [dialogVisible, setDialogVisible] = useState(false);
+  const [resumingExistingOrder, setResumingExistingOrder] = useState(false);
+  const startedProductRef = useRef(false);
+  const flowErrorRef = useRef<HTMLDivElement | null>(null);
   const originFocusRef = useRef<HTMLButtonElement | null>(null);
   const productClientRef = useRef(commerceClient);
   const productSessionRef = useRef(sessionRef);
@@ -172,6 +141,8 @@ function LegacyMarketplacePanel({
     productIntentSequenceRef.current += 1;
     setProductIntent(null);
     setDialogVisible(false);
+    setResumingExistingOrder(false);
+    startedProductRef.current = false;
     originFocusRef.current = null;
   }, [sessionRef]);
 
@@ -190,6 +161,7 @@ function LegacyMarketplacePanel({
     productIntentSequenceRef.current += 1;
     setProductIntent(null);
     setDialogVisible(false);
+    setResumingExistingOrder(false);
     purchaseFlow.reset();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- `purchaseFlow` is destructured into individual property deps above; adding the whole object would re-run on every render (its identity changes per render) without semantic change
   }, [
@@ -265,10 +237,13 @@ function LegacyMarketplacePanel({
       && !isPortalCoinOrderTerminal(purchaseFlow.order)
     ) {
       setProductIntent(null);
+      setResumingExistingOrder(true);
       setDialogVisible(true);
       return;
     }
     purchaseFlow.reset();
+    startedProductRef.current = true;
+    setResumingExistingOrder(false);
     setProductIntent({ offerRef });
     setDialogVisible(true);
     await purchaseFlow.openProduct(offerRef);
@@ -287,6 +262,7 @@ function LegacyMarketplacePanel({
       autoOpenedOrderRef.current = purchaseFlow.order.orderRef;
     }
     setDialogVisible(false);
+    setResumingExistingOrder(false);
     setProductIntent(null);
     if (
       !purchaseFlow.order
@@ -302,6 +278,11 @@ function LegacyMarketplacePanel({
   }, [productIntent, startProduct]);
 
   const activeOrderRef = purchaseFlow.order?.orderRef ?? null;
+  useEffect(() => {
+    if (productIntent && purchaseFlow.errorCode && !purchaseFlow.quote && !purchaseFlow.order) {
+      flowErrorRef.current?.focus();
+    }
+  }, [productIntent, purchaseFlow.errorCode, purchaseFlow.order, purchaseFlow.quote]);
   const confirmationBlocked = Boolean(
     purchaseFlow.quote
     && !purchaseFlow.order
@@ -316,8 +297,11 @@ function LegacyMarketplacePanel({
       return;
     }
     autoOpenedOrderRef.current = activeOrderRef;
+    if (!startedProductRef.current && purchaseFlow.order && !isPortalCoinOrderTerminal(purchaseFlow.order)) {
+      setResumingExistingOrder(true);
+    }
     setDialogVisible(true);
-  }, [activeOrderRef]);
+  }, [activeOrderRef, purchaseFlow.order, purchaseFlow.quote]);
 
   return (
     <section
@@ -456,7 +440,9 @@ function LegacyMarketplacePanel({
             aria-live="assertive"
             className="portal-marketplace-flow-state"
             data-state="error"
+            ref={flowErrorRef}
             role="alert"
+            tabIndex={-1}
           >
             <MarketplaceNoticeIndicator state="error" />
             <p>{safeCommerceErrorText(purchaseFlow.errorCode, locale)}</p>
@@ -489,6 +475,7 @@ function LegacyMarketplacePanel({
               onRestoreFocus={restoreProductFocus}
               order={purchaseFlow.order}
               quote={purchaseFlow.quote}
+              resumingExistingOrder={resumingExistingOrder}
               submitting={purchaseFlow.phase === "submitting"}
             />
           ) : null}
