@@ -159,16 +159,16 @@ const UI_OFFERS = Object.freeze([
     version: 1,
     category: "plan",
     title: Object.freeze({
-      zh: "本地合成 50 GB 月卡",
-      en: "Local synthetic 50 GB monthly plan"
+      zh: "50 GB 月度套餐",
+      en: "50 GB monthly plan"
     }),
     summary: Object.freeze({
-      zh: "每月 50 GB，本地合成验证专用",
-      en: "50 GB monthly, local synthetic validation only"
+      zh: "有效期 30 天，每月 50 GB 流量。",
+      en: "50 GB per month, valid for 30 days."
     }),
     importantNotices: Object.freeze({
-      zh: Object.freeze(["仅用于本机 UI 验证"]),
-      en: Object.freeze(["Local UI validation only"])
+      zh: Object.freeze(["套餐有效期为 30 天。"]),
+      en: Object.freeze(["The plan is valid for 30 days."])
     }),
     baseCoinUnits: 20,
     referencePrice: Object.freeze({ currency: "CNY", amountMinor: 2_000 }),
@@ -192,16 +192,16 @@ const UI_OFFERS = Object.freeze([
     version: 1,
     category: "plan",
     title: Object.freeze({
-      zh: "本地合成 100 GB 月卡",
-      en: "Local synthetic 100 GB monthly plan"
+      zh: "100 GB 月度套餐",
+      en: "100 GB monthly plan"
     }),
     summary: Object.freeze({
-      zh: "每月 100 GB，本地合成验证专用",
-      en: "100 GB monthly, local synthetic validation only"
+      zh: "有效期 30 天，每月 100 GB 流量。",
+      en: "100 GB per month, valid for 30 days."
     }),
     importantNotices: Object.freeze({
-      zh: Object.freeze(["仅用于本机 UI 验证"]),
-      en: Object.freeze(["Local UI validation only"])
+      zh: Object.freeze(["套餐有效期为 30 天。"]),
+      en: Object.freeze(["The plan is valid for 30 days."])
     }),
     baseCoinUnits: 30,
     referencePrice: Object.freeze({ currency: "CNY", amountMinor: 3_000 }),
@@ -225,16 +225,16 @@ const UI_OFFERS = Object.freeze([
     version: 1,
     category: "plan",
     title: Object.freeze({
-      zh: "本地合成 200 GB 年卡",
-      en: "Local synthetic 200 GB annual plan"
+      zh: "200 GB 年度套餐",
+      en: "200 GB annual plan"
     }),
     summary: Object.freeze({
-      zh: "每月 200 GB，本地合成验证专用",
-      en: "200 GB monthly, local synthetic validation only"
+      zh: "有效期 365 天，每月 200 GB 流量。",
+      en: "200 GB per month, valid for 365 days."
     }),
     importantNotices: Object.freeze({
-      zh: Object.freeze(["仅用于本机 UI 验证"]),
-      en: Object.freeze(["Local UI validation only"])
+      zh: Object.freeze(["套餐有效期为 365 天。"]),
+      en: Object.freeze(["The plan is valid for 365 days."])
     }),
     baseCoinUnits: 200,
     referencePrice: Object.freeze({ currency: "CNY", amountMinor: 20_000 }),
@@ -258,16 +258,16 @@ const UI_OFFERS = Object.freeze([
     version: 1,
     category: "data_pack",
     title: Object.freeze({
-      zh: "本地合成 100 GB 流量包",
-      en: "Local synthetic 100 GB data pack"
+      zh: "100 GB 流量包",
+      en: "100 GB data pack"
     }),
     summary: Object.freeze({
-      zh: "100 GB 不过期流量，本地合成验证专用",
-      en: "100 GB non-expiring data, local synthetic validation only"
+      zh: "100 GB 流量，不限使用期限。",
+      en: "100 GB of data with no expiry date."
     }),
     importantNotices: Object.freeze({
-      zh: Object.freeze(["仅用于本机 UI 验证"]),
-      en: Object.freeze(["Local UI validation only"])
+      zh: Object.freeze(["流量包没有到期日。"]),
+      en: Object.freeze(["The data pack has no expiry date."])
     }),
     baseCoinUnits: 30,
     referencePrice: Object.freeze({ currency: "CNY", amountMinor: 3_000 }),
@@ -291,16 +291,16 @@ const UI_OFFERS = Object.freeze([
     version: 1,
     category: "data_pack",
     title: Object.freeze({
-      zh: "本地合成 200 GB 流量包",
-      en: "Local synthetic 200 GB data pack"
+      zh: "200 GB 流量包",
+      en: "200 GB data pack"
     }),
     summary: Object.freeze({
-      zh: "200 GB 不过期流量，本地合成验证专用",
-      en: "200 GB non-expiring data, local synthetic validation only"
+      zh: "200 GB 流量，不限使用期限。",
+      en: "200 GB of data with no expiry date."
     }),
     importantNotices: Object.freeze({
-      zh: Object.freeze(["仅用于本机 UI 验证"]),
-      en: Object.freeze(["Local UI validation only"])
+      zh: Object.freeze(["流量包没有到期日。"]),
+      en: Object.freeze(["The data pack has no expiry date."])
     }),
     baseCoinUnits: 50,
     referencePrice: Object.freeze({ currency: "CNY", amountMinor: 5_000 }),

@@ -2,20 +2,19 @@ import {
   useCallback,
   useEffect,
   useRef,
-  useState,
-  type MouseEvent
+  useState
 } from "react";
 import { Circle, LoaderCircle } from "lucide-react";
 import {
   CoinsDialogFrame,
   PortalCoinCommerceClientError,
-  ProductDetailDialog,
   type PortalCoinCommerceClientErrorCode,
   type PortalCoinOffer,
   type PortalDeferredCheckoutQuote,
   type PortalDeferredTransition,
   type PortalWalletFirstCommerceClient
 } from "./commerce";
+import { MarketplaceOfferCard } from "./marketplace-offer-card";
 import {
   formatPortalDateTime,
   portalCoinTypeListLabel
@@ -85,13 +84,13 @@ function errorText(
   }
   if (errorCode === "insufficient_coins") {
     return zh
-      ? "Coins 余额不足，请查看服务端报价。"
-      : "The Coins balance is insufficient. Review the server Quote.";
+      ? "Coins 余额不足，请查看购买金额。"
+      : "Your Coins balance is insufficient. Review the purchase amount.";
   }
   if (errorCode === "quote_expired" || errorCode === "quote_stale") {
     return zh
-      ? "服务端报价已失效，请重新预览。"
-      : "The server Quote is no longer current. Preview again.";
+      ? "购买信息已失效，请重新确认。"
+      : "The purchase details are no longer current. Review them again.";
   }
   if (
     errorCode === "reconciliation_required"
@@ -137,20 +136,16 @@ function offerTitle(offer: PortalCoinOffer, locale: CommerceLocale) {
   return isChinese(locale) ? offer.title.zh : offer.title.en;
 }
 
-function offerSummary(offer: PortalCoinOffer, locale: CommerceLocale) {
-  return isChinese(locale) ? offer.summary.zh : offer.summary.en;
-}
-
 function deliveryText(offer: PortalCoinOffer, locale: CommerceLocale) {
-  const zh = isChinese(locale);
-  if (offer.delivery.kind === "subscription_plan") {
-    return zh
-      ? `${offer.delivery.durationDays} 天 · 每月 ${offer.delivery.monthlyTrafficGb} GB`
-      : `${offer.delivery.durationDays} days · ${offer.delivery.monthlyTrafficGb} GB monthly`;
+  const delivery = offer.delivery;
+  if (delivery.kind === "subscription_plan") {
+    return isChinese(locale)
+      ? `${delivery.durationDays} 天 · 每月 ${delivery.monthlyTrafficGb} GB`
+      : `${delivery.durationDays} days · ${delivery.monthlyTrafficGb} GB monthly`;
   }
-  return zh
-    ? `${offer.delivery.trafficGb} GB · 永不过期`
-    : `${offer.delivery.trafficGb} GB · never expires`;
+  return isChinese(locale)
+    ? `${delivery.trafficGb} GB · 永不过期`
+    : `${delivery.trafficGb} GB · never expires`;
 }
 
 function nextIdempotencyKey() {
@@ -182,68 +177,6 @@ function MarketplaceNotice({
   );
 }
 
-function WalletFirstOfferCard({
-  busy,
-  locale,
-  offer,
-  onDetails,
-  onPurchase
-}: {
-  busy: boolean;
-  locale: CommerceLocale;
-  offer: PortalCoinOffer;
-  onDetails: (event: MouseEvent<HTMLButtonElement>) => void;
-  onPurchase: (event: MouseEvent<HTMLButtonElement>) => void;
-}) {
-  const zh = isChinese(locale);
-  const title = offerTitle(offer, locale);
-  const notices = zh ? offer.importantNotices.zh : offer.importantNotices.en;
-  return (
-    <li className="portal-marketplace-card">
-      <article>
-        <h3>{title}</h3>
-        <p>{offerSummary(offer, locale)}</p>
-        <dl className="portal-marketplace-card__facts">
-          <div>
-            <dt>{zh ? "交付" : "Delivery"}</dt>
-            <dd>{deliveryText(offer, locale)}</dd>
-          </div>
-          <div>
-            <dt>{zh ? "价格" : "Price"}</dt>
-            <dd>{offer.baseCoinUnits} Coins</dd>
-          </div>
-          <div>
-            <dt>{zh ? "接受的 Coins" : "Accepted Coins"}</dt>
-            <dd>{portalCoinTypeListLabel(offer.acceptedCoinTypes, locale)}</dd>
-          </div>
-        </dl>
-        <ul className="portal-marketplace-card__notices">
-          {notices.map((notice) => <li key={notice}>{notice}</li>)}
-        </ul>
-        <div className="portal-marketplace-card__actions">
-          <button
-            aria-label={zh ? `查看详情：${title}` : `Details: ${title}`}
-            disabled={busy}
-            type="button"
-            onClick={onDetails}
-          >
-            {zh ? "查看详情" : "Details"}
-          </button>
-          <button
-            aria-label={zh ? `使用 Coins 预约：${title}` : `Reserve with Coins: ${title}`}
-            className="portal-marketplace-card__purchase"
-            disabled={busy}
-            type="button"
-            onClick={onPurchase}
-          >
-            {zh ? "使用 Coins 预约" : "Reserve with Coins"}
-          </button>
-        </div>
-      </article>
-    </li>
-  );
-}
-
 function isActiveTransition(transition: PortalDeferredTransition) {
   return transition.state !== "settled" && transition.state !== "cancelled";
 }
@@ -266,13 +199,13 @@ function DeferredTransitionList({
     return <p role="status">{emptyText}</p>;
   }
   return (
-    <ul className="portal-marketplace-grid">
+    <ul className="portal-deferred-transition-list">
       {transitions.map((transition) => (
-        <li className="portal-marketplace-card" key={transition.transitionRef}>
+        <li className="portal-deferred-transition" key={transition.transitionRef}>
           <article>
             <h4>{offerTitle(transition.offer, locale)}</h4>
             <p>{transitionStateText(transition.state, locale)}</p>
-            <dl className="portal-marketplace-card__facts">
+            <dl className="portal-deferred-transition__facts">
               <div>
                 <dt>{zh ? "执行方式" : "Execution"}</dt>
                 <dd>{transitionFlowText(transition.flowKind, locale)}</dd>
@@ -287,7 +220,7 @@ function DeferredTransitionList({
               </div>
             </dl>
             {transition.state === "reserved" ? (
-              <div className="portal-marketplace-card__actions">
+              <div className="portal-deferred-transition__actions">
                 <button
                   disabled={cancellingTransitionRef === transition.transitionRef}
                   type="button"
@@ -412,7 +345,6 @@ export function WalletFirstMarketplacePanel({
   const [offers, setOffers] = useState<PortalCoinOffer[]>([]);
   const [transitions, setTransitions] = useState<PortalDeferredTransition[]>([]);
   const [flow, setFlow] = useState<FlowState>(EMPTY_FLOW);
-  const [detailOffer, setDetailOffer] = useState<PortalCoinOffer | null>(null);
   const [cancellingTransitionRef, setCancellingTransitionRef] = useState<string | null>(null);
   const [refreshingTransitions, setRefreshingTransitions] = useState(false);
   const [transitionRefreshError, setTransitionRefreshError] = useState<{
@@ -426,7 +358,6 @@ export function WalletFirstMarketplacePanel({
     const initialTransitionRequestId = transitionRefreshSequenceRef.current + 1;
     transitionRefreshSequenceRef.current = initialTransitionRequestId;
     reserveIntentRef.current = null;
-    setDetailOffer(null);
     setFlow(EMPTY_FLOW);
     if (!commerceClient || !sessionRef) {
       setOffers([]);
@@ -507,7 +438,6 @@ export function WalletFirstMarketplacePanel({
   const previewOffer = useCallback(async (offer: PortalCoinOffer) => {
     if (!commerceClient || !sessionRef) return;
     const generation = generationRef.current;
-    setDetailOffer(null);
     setFlow({ status: "previewing" });
     try {
       const quote = await commerceClient.previewDeferredCheckout({
@@ -625,20 +555,20 @@ export function WalletFirstMarketplacePanel({
   return (
     <section
       aria-busy={load.status === "loading" || busy || undefined}
-      aria-label={zh ? "钱包优先商城目录" : "Wallet-first Marketplace catalog"}
+      aria-label={zh ? "商城目录" : "Marketplace catalog"}
       className="portal-commerce-layout portal-commerce-layout--marketplace"
       data-commerce-model="wallet_first_unique_v1"
     >
       {load.status === "unavailable" ? (
         <div aria-live="polite" className="portal-marketplace-state" data-state="unavailable" role="status">
           <MarketplaceNotice state="unavailable" />
-          <p>{zh ? "钱包优先商城暂不可用。" : "The wallet-first Marketplace is unavailable."}</p>
+          <p>{zh ? "商城暂时不可用，请稍后再试。" : "The Marketplace is temporarily unavailable. Please try again later."}</p>
         </div>
       ) : null}
       {load.status === "loading" ? (
         <div aria-live="polite" className="portal-marketplace-state" data-state="loading" role="status">
           <MarketplaceNotice state="loading" />
-          <span>{zh ? "正在加载钱包优先商城…" : "Loading wallet-first Marketplace…"}</span>
+          <span>{zh ? "正在加载商城…" : "Loading the Marketplace…"}</span>
         </div>
       ) : null}
       {load.status === "error" ? (
@@ -666,34 +596,32 @@ export function WalletFirstMarketplacePanel({
             </div>
           ) : null}
           {planOffers.length > 0 ? (
-            <section aria-labelledby="portal-wallet-first-plan-heading" className="portal-marketplace-group">
-              <h2 id="portal-wallet-first-plan-heading">{zh ? "套餐" : "Plans"}</h2>
+            <section aria-label={zh ? "套餐" : "Plans"} className="portal-marketplace-group">
               <ul className="portal-marketplace-grid">
                 {planOffers.map((offer) => (
-                  <WalletFirstOfferCard
+                  <MarketplaceOfferCard
                     busy={busy}
                     key={offer.offerRef}
                     locale={locale}
+                    mode="reserve"
                     offer={offer}
-                    onDetails={() => setDetailOffer(offer)}
-                    onPurchase={() => { void previewOffer(offer); }}
+                    onPrimary={() => { void previewOffer(offer); }}
                   />
                 ))}
               </ul>
             </section>
           ) : null}
           {dataPackOffers.length > 0 ? (
-            <section aria-labelledby="portal-wallet-first-data-pack-heading" className="portal-marketplace-group">
-              <h2 id="portal-wallet-first-data-pack-heading">{zh ? "流量包" : "Data packs"}</h2>
+            <section aria-label={zh ? "流量包" : "Data packs"} className="portal-marketplace-group">
               <ul className="portal-marketplace-grid">
                 {dataPackOffers.map((offer) => (
-                  <WalletFirstOfferCard
+                  <MarketplaceOfferCard
                     busy={busy}
                     key={offer.offerRef}
                     locale={locale}
+                    mode="reserve"
                     offer={offer}
-                    onDetails={() => setDetailOffer(offer)}
-                    onPurchase={() => { void previewOffer(offer); }}
+                    onPrimary={() => { void previewOffer(offer); }}
                   />
                 ))}
               </ul>
@@ -709,14 +637,6 @@ export function WalletFirstMarketplacePanel({
         </div>
       ) : null}
       <div className="portal-coins-dialog-theme" data-portal-theme={theme}>
-        {detailOffer ? (
-          <ProductDetailDialog
-            locale={locale}
-            offer={detailOffer}
-            onPreview={() => { void previewOffer(detailOffer); }}
-            onRequestClose={() => setDetailOffer(null)}
-          />
-        ) : null}
         {(flow.status === "quote" || flow.status === "reserving") ? (
           <CoinsDialogFrame
             busy={flow.status === "reserving"}
@@ -744,7 +664,7 @@ export function WalletFirstMarketplacePanel({
           >
             <p>
               {flow.quote.purchaseAvailability === "available"
-                ? (zh ? "服务端已生成报价。确认后会创建可追踪的服务切换队列。" : "The server has issued a Quote. Confirm to create a traceable service-transition queue entry.")
+                ? (zh ? "确认后将预留 Coins，按以下时间安排服务；进度可在商城查看。" : "Confirm to reserve Coins and schedule your service as shown below. Track its progress in the Marketplace.")
                 : (zh ? `Coins 余额不足，仍缺少 ${flow.quote.shortfallUnits} Coins。` : `There is a ${flow.quote.shortfallUnits} Coins shortfall.`)}
             </p>
             <dl>
@@ -757,7 +677,15 @@ export function WalletFirstMarketplacePanel({
                 <dd>{flow.quote.amountUnits} Coins</dd>
               </div>
               <div>
-                <dt>{zh ? "执行方式" : "Execution"}</dt>
+                <dt>{zh ? "服务内容" : "Service includes"}</dt>
+                <dd>{deliveryText(flow.quote.offer, locale)}</dd>
+              </div>
+              <div>
+                <dt>{zh ? "接受的 Coins" : "Accepted Coins"}</dt>
+                <dd>{portalCoinTypeListLabel(flow.quote.offer.acceptedCoinTypes, locale)}</dd>
+              </div>
+              <div>
+                <dt>{zh ? "开通方式" : "Activation"}</dt>
                 <dd>{transitionFlowText(flow.quote.transition.flowKind, locale)}</dd>
               </div>
               <div>
@@ -765,6 +693,13 @@ export function WalletFirstMarketplacePanel({
                 <dd>{formatPortalDateTime(flow.quote.transition.scheduledFor, locale)}</dd>
               </div>
             </dl>
+            {flow.quote.offer.importantNotices[locale].length > 0 ? (
+              <ul aria-label={zh ? "购买须知" : "Purchase terms"}>
+                {flow.quote.offer.importantNotices[locale].map((notice, index) => (
+                  <li key={`${index}:${notice}`}>{notice}</li>
+                ))}
+              </ul>
+            ) : null}
             {flow.quote.purchaseAvailability === "insufficient_balance" ? (
               <button
                 className="portal-coins-dialog__secondary"

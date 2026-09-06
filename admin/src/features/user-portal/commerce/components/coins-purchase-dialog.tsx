@@ -94,10 +94,16 @@ function QuoteFacts({
 }) {
   const before = quote.balances.before;
   const after = quote.balances.after;
+  const notices = quote.offer.importantNotices[locale];
   return (
     <div className="portal-coins-purchase-dialog__quote">
       <h3>{locale === "zh" ? quote.offer.title.zh : quote.offer.title.en}</h3>
       <p>{deliveryText(quote, locale)}</p>
+      {notices.length > 0 ? (
+        <ul aria-label={localized(locale, "购买须知", "Purchase terms")}>
+          {notices.map((notice, index) => <li key={`${index}:${notice}`}>{notice}</li>)}
+        </ul>
+      ) : null}
       <dl>
         <div>
           <dt>{localized(locale, "接受的 Coins", "Accepted Coins")}</dt>
@@ -183,7 +189,7 @@ export function CoinsPurchaseDialog({
         )
       : submitting
         ? localized(locale, "正在提交订单。", "Submitting the Order.")
-        : localized(locale, "请确认服务端报价。", "Review the server Quote.");
+        : localized(locale, "请确认商品和购买金额。", "Review the product and purchase amount.");
 
   return (
     <CoinsDialogFrame

@@ -238,8 +238,12 @@ export function PortalRechargeDialog({
             return (
               <li key={offer.offerRef}>
                 <div className="portal-recharge-offer-details">
+                  <span className="portal-recharge-offer-label">{zh ? "到账 Coins" : "Coins to receive"}</span>
                   <strong>{offer.paidCoinUnits} Coins</strong>
-                  <span>{amount}</span>
+                  <div className="portal-recharge-offer-amount">
+                    <span className="portal-recharge-offer-label">{zh ? "支付金额" : "Payment amount"}</span>
+                    <span>{amount}</span>
+                  </div>
                   <div className="portal-recharge-payment-methods" aria-label={zh ? "支付方式" : "Payment methods"}>
                     {offer.paymentMethods.map((paymentMethod) => (
                       <span key={paymentMethod}>{paymentMethodLabel(paymentMethod, zh)}</span>
