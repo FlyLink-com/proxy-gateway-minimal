@@ -2,6 +2,16 @@
 
 Date: 2026-09-06. Source-only implementation record; no production authority.
 
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: active
+  authority_scope: commerce_initial_fulfillment_clock_repair
+  superseded_by: null
+  last_verified_at: 2026-09-06
+  production_authority: false
+```
+
 ## Scope
 
 - Source Gate: Risk B; one focused code/test PR.
