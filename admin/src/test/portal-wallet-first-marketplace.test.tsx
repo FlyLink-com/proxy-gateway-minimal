@@ -1,4 +1,6 @@
 import { createElement } from "react";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import "@testing-library/jest-dom/vitest";
 import {
   afterEach,
@@ -8,6 +10,7 @@ import {
   vi
 } from "vitest";
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -25,6 +28,7 @@ import type {
 } from "../features/user-portal/commerce";
 import { PortalCoinCommerceClientError } from "../features/user-portal/commerce";
 import { MarketplacePanel } from "../features/user-portal/portal-commerce-panels";
+import { WalletFirstMarketplacePanel } from "../features/user-portal/wallet-first-marketplace-panel";
 
 const OFFER: PortalCoinOffer = {
   offerRef: "offer_annual_premium",
@@ -184,6 +188,198 @@ afterEach(() => {
 });
 
 describe("Portal wallet-first Marketplace model gate", () => {
+  test.each(["zh", "en"] as const)("%s names catalog regions without visible section headings and retains product CTAs", async (locale) => {
+    const client = walletFirstClient();
+    const pack: PortalCoinOffer = {
+      ...OFFER,
+      offerRef: "offer_data_pack",
+      offerVersionRef: "offer_version_data_pack",
+      category: "data_pack",
+      title: { zh: "100 GB 流量包", en: "100 GB data pack" },
+      delivery: {
+        kind: "data_pack", durationDays: null, monthlyTrafficGb: null,
+        trafficGb: 100, neverExpires: true, discountBasisPoints: null
+      }
+    };
+    vi.mocked(client.listOffers).mockResolvedValue([OFFER, pack]);
+    vi.mocked(client.listDeferredTransitions).mockResolvedValue([]);
+    render(<WalletFirstMarketplacePanel
+      commerceClient={client} locale={locale} sessionRef="test_session" theme="light"
+    />);
+    const label = locale === "zh" ? "套餐" : "Plans";
+    const plans = await screen.findByRole("region", { name: label });
+    expect(plans).toHaveAttribute("aria-label", label);
+    expect(plans).not.toHaveAttribute("aria-labelledby");
+    expect(within(plans).queryByRole("heading", { level: 2 })).not.toBeInTheDocument();
+    expect(within(plans).getByRole("heading", { level: 3, name: OFFER.title[locale] })).toBeInTheDocument();
+    expect(within(plans).getByRole("button", {
+      name: locale === "zh" ? "使用 Coins 预约：年度套餐" : "Reserve with Coins: Annual plan"
+    })).toBeInTheDocument();
+    const packLabel = locale === "zh" ? "流量包" : "Data packs";
+    const dataPacks = screen.getByRole("region", { name: packLabel });
+    expect(dataPacks).toHaveAttribute("aria-label", packLabel);
+    expect(dataPacks).not.toHaveAttribute("aria-labelledby");
+    expect(within(dataPacks).queryByRole("heading", { level: 2 })).not.toBeInTheDocument();
+    expect(within(dataPacks).getByRole("heading", { level: 3, name: pack.title[locale] })).toBeInTheDocument();
+    expect(within(dataPacks).getByRole("button", {
+      name: locale === "zh" ? "使用 Coins 预约：100 GB 流量包" : "Reserve with Coins: 100 GB data pack"
+    })).toBeInTheDocument();
+    expect(client.previewDeferredCheckout).not.toHaveBeenCalled();
+    expect(client.reserveDeferredTransition).not.toHaveBeenCalled();
+  });
+
+  test.each(["zh", "en"] as const)("%s keeps loading and unavailable copy consumer-facing", (locale) => {
+    const client = walletFirstClient();
+    vi.mocked(client.listOffers).mockReturnValue(new Promise(() => {}));
+    const view = render(<WalletFirstMarketplacePanel
+      commerceClient={client} locale={locale} sessionRef="test_session" theme="light"
+    />);
+    expect(screen.getByRole("status")).toHaveTextContent(locale === "zh" ? "正在加载商城…" : "Loading the Marketplace…");
+    expect(screen.getByRole("status")).not.toHaveTextContent(/钱包优先|wallet-first/i);
+    view.rerender(<WalletFirstMarketplacePanel
+      commerceClient={null} locale={locale} sessionRef={null} theme="light"
+    />);
+    expect(screen.getByRole("status")).toHaveTextContent(locale === "zh" ? "商城暂时不可用，请稍后再试。" : "The Marketplace is temporarily unavailable. Please try again later.");
+    expect(screen.getByRole("status")).not.toHaveTextContent(/钱包优先|wallet-first/i);
+  });
+
+  test("keeps reservation facts and cancellation independent of simplified product cards", async () => {
+    vi.stubGlobal("crypto", { randomUUID: () => "wallet_first_cancel_1" });
+    let resolveCancellation!: (transition: PortalDeferredTransition) => void;
+    const cancellation = new Promise<PortalDeferredTransition>((resolve) => {
+      resolveCancellation = resolve;
+    });
+    const legacy = legacyClient();
+    const walletFirst = walletFirstClient();
+    vi.mocked(walletFirst.cancelDeferredTransition).mockReturnValue(cancellation);
+    renderMarketplace({ legacy, model: "wallet_first_unique_v1", walletFirst });
+    const active = (await screen.findByRole("heading", { name: "正在进行的切换" })).closest("section")!;
+    expect(screen.getByRole("region", { name: "商城目录" })).toHaveAttribute("data-commerce-model", "wallet_first_unique_v1");
+    const card = within(active).getByRole("article");
+    expect(card.parentElement).toHaveClass("portal-deferred-transition");
+    expect(card.parentElement).not.toHaveClass("portal-marketplace-card");
+    expect(card.parentElement?.parentElement).toHaveClass("portal-deferred-transition-list");
+    const facts = card.querySelector(".portal-deferred-transition__facts");
+    expect(facts).toHaveTextContent("执行方式到期后切换");
+    expect(facts).toHaveTextContent("计划时间");
+    expect(facts).toHaveTextContent("200 Coins");
+    expect(card.querySelector(".portal-marketplace-card__facts")).toBeNull();
+    expect(card.querySelector(".portal-marketplace-card__actions")).toBeNull();
+    const cancel = within(card).getByRole("button", { name: "取消预留" });
+    expect(cancel.parentElement).toHaveClass("portal-deferred-transition__actions");
+    fireEvent.click(cancel);
+    expect(cancel).toBeDisabled();
+    expect(cancel).toHaveTextContent("正在取消…");
+    fireEvent.click(cancel);
+    expect(walletFirst.cancelDeferredTransition).toHaveBeenCalledTimes(1);
+    expect(facts).toHaveTextContent("200 Coins");
+    await act(async () => {
+      resolveCancellation({ ...QUEUED_TRANSITION, state: "cancelled" });
+      await cancellation;
+    });
+    expect(screen.queryByRole("button", { name: "取消预留" })).not.toBeInTheDocument();
+    const recent = screen.getByRole("heading", { name: "近期切换" }).closest("section");
+    expect(recent).toHaveTextContent("已取消");
+    expect(recent).toHaveTextContent("200 Coins");
+    expect(walletFirst.reserveDeferredTransition).not.toHaveBeenCalled();
+    expect(legacy.createOrder).not.toHaveBeenCalled();
+  });
+
+  test("owns responsive reservation facts and intrinsic actions outside product-card selectors", () => {
+    const style = document.createElement("style");
+    style.textContent = readFileSync(resolve("src/styles/portal-static-preserve/user-portal-commerce.css"), "utf8");
+    document.head.append(style);
+    try {
+      const prefix = ".portal-v2-shell .portal-wallet-first-transition-queue";
+      const readDeclaration = (suffix: string, property: string, media?: string) => {
+        let value = "";
+        for (const rule of Array.from(style.sheet?.cssRules ?? [])) {
+          const candidates = media && rule instanceof CSSMediaRule && rule.conditionText === media
+            ? Array.from(rule.cssRules) : media ? [] : [rule];
+          for (const candidate of candidates) {
+            if (candidate instanceof CSSStyleRule && candidate.selectorText === `${prefix} ${suffix}`) {
+              value = candidate.style.getPropertyValue(property).trim() || value;
+            }
+          }
+        }
+        return value;
+      };
+      expect(readDeclaration(".portal-deferred-transition-list", "grid-template-columns")).toBe("repeat(2, minmax(0, 1fr))");
+      expect(readDeclaration(".portal-deferred-transition > article", "display")).toBe("flex");
+      expect(readDeclaration(".portal-deferred-transition h4", "font-size")).toBe("17px");
+      expect(readDeclaration(".portal-deferred-transition__facts", "grid-template-columns")).toBe("repeat(2, minmax(0, 1fr))");
+      expect(readDeclaration(".portal-deferred-transition__facts", "grid-template-columns", "(max-width: 720px)")).toBe("minmax(0, 1fr)");
+      expect(readDeclaration(".portal-deferred-transition-list", "grid-template-columns", "(max-width: 720px)")).toBe("minmax(0, 1fr)");
+      expect(readDeclaration(".portal-deferred-transition__actions", "display")).toBe("flex");
+      expect(readDeclaration(".portal-deferred-transition__actions button", "width")).toBe("auto");
+      expect(readDeclaration(".portal-deferred-transition__actions button", "min-height")).toBe("44px");
+      expect(readDeclaration(".portal-deferred-transition__actions button:disabled", "cursor")).toBe("not-allowed");
+      expect(readDeclaration(".portal-deferred-transition__actions button:focus-visible", "outline")).toBe("3px solid var(--portal-commerce-accent)");
+    } finally {
+      style.remove();
+    }
+  });
+
+  test("keeps quote-bound reservation terms without implementation copy before any reserve", async () => {
+    const legacy = legacyClient();
+    const walletFirst = walletFirstClient();
+    vi.mocked(walletFirst.previewDeferredCheckout).mockResolvedValue({
+      ...QUOTE,
+      offer: { ...OFFER, importantNotices: { zh: ["本次预约须知"], en: ["Terms for this reservation"] } }
+    });
+    renderMarketplace({ legacy, model: "wallet_first_unique_v1", walletFirst });
+    fireEvent.click(await screen.findByRole("button", {
+      name: "使用 Coins 预约：年度套餐"
+    }));
+    const dialog = await screen.findByRole("dialog", { name: "确认 Coins 服务切换" });
+    expect(within(dialog).getByText("本次预约须知")).toBeInTheDocument();
+    expect(within(dialog).queryByText("按订阅周期交付")).not.toBeInTheDocument();
+    expect(within(dialog).getByText("365 天 · 每月 200 GB")).toBeInTheDocument();
+    expect(within(dialog).getByText("赠送 Coins、已购 Coins、奖励 Coins")).toBeInTheDocument();
+    expect(within(dialog).getByText("确认后将预留 Coins，按以下时间安排服务；进度可在商城查看。")).toBeInTheDocument();
+    expect(within(dialog).queryByText(/服务端|报价队列|server|queue entry/i)).not.toBeInTheDocument();
+    expect(walletFirst.reserveDeferredTransition).not.toHaveBeenCalled();
+    expect(legacy.createOrder).not.toHaveBeenCalled();
+  });
+
+  test("retains English data-pack reservation terms and never promises immediate purchase", async () => {
+    const pack: PortalCoinOffer = {
+      ...OFFER,
+      category: "data_pack",
+      title: { zh: "100 GB 流量包", en: "100 GB data pack" },
+      delivery: {
+        kind: "data_pack", durationDays: null, monthlyTrafficGb: null,
+        trafficGb: 100, neverExpires: true, discountBasisPoints: null
+      }
+    };
+    const legacy = legacyClient();
+    const walletFirst = walletFirstClient();
+    vi.mocked(walletFirst.listOffers).mockResolvedValue([pack]);
+    vi.mocked(walletFirst.previewDeferredCheckout).mockResolvedValue({
+      ...QUOTE,
+      offer: { ...pack, importantNotices: { zh: [], en: ["Terms for this data pack"] } }
+    });
+    render(createElement(MarketplacePanel, {
+      commerceClient: legacy,
+      commerceModelClient: { getCommerceModel: vi.fn().mockResolvedValue("wallet_first_unique_v1") },
+      locale: "en",
+      sessionRef: "portal_session_wallet_first",
+      theme: "light",
+      walletFirstCommerceClient: walletFirst
+    }));
+    expect(screen.queryByRole("button", { name: /Details/ })).not.toBeInTheDocument();
+    fireEvent.click(await screen.findByRole("button", { name: "Reserve with Coins: 100 GB data pack" }));
+    const dialog = await screen.findByRole("dialog", { name: "Confirm Coins service transition" });
+    expect(within(dialog).getByText("100 GB · never expires")).toBeInTheDocument();
+    expect(within(dialog).getByText("Accepted Coins").parentElement).toHaveTextContent("Bonus Coins, Purchased Coins, Reward Coins");
+    expect(within(dialog).getByRole("list", { name: "Purchase terms" })).toHaveTextContent("Terms for this data pack");
+    expect(within(dialog).queryByText(OFFER.importantNotices.en[0])).not.toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: "Reserve Coins" })).toBeInTheDocument();
+    expect(within(dialog).queryByRole("button", { name: "Confirm purchase" })).not.toBeInTheDocument();
+    expect(walletFirst.reserveDeferredTransition).not.toHaveBeenCalled();
+    expect(legacy.createOrder).not.toHaveBeenCalled();
+  });
+
   test("uses only the deferred client for a server-projected wallet-first account and presents its queue", async () => {
     vi.stubGlobal("crypto", { randomUUID: () => "wallet_first_reserve_1" });
     const legacy = legacyClient();

@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import type {
   PortalCoinCommerceClientErrorCode,
   PortalCoinOrder,
@@ -12,6 +13,8 @@ import {
   CoinsDialogFrame
 } from "./product-detail-dialog";
 import { CoinsPaymentStatusCard } from "./coins-payment-status-card";
+import { portalCoinCommerceErrorText } from "../commerce-error-presentation";
+import { isPortalCoinOrderTerminal } from "../use-coins-purchase-flow";
 
 type CommerceLocale = "zh" | "en";
 
@@ -27,6 +30,7 @@ export type CoinsPurchaseDialogProps = {
   onRestoreFocus?: () => void;
   order: PortalCoinOrder | null;
   quote: PortalCoinQuote | null;
+  resumingExistingOrder?: boolean;
   submitting: boolean;
 };
 
@@ -58,33 +62,6 @@ function balanceTotal(balance: PortalCoinQuote["balances"]["before"]) {
   return balance.bonusCoins + balance.paidCoins + balance.rewardCoins;
 }
 
-function safeErrorText(
-  code: PortalCoinCommerceClientErrorCode,
-  locale: CommerceLocale
-) {
-  const labels: Record<PortalCoinCommerceClientErrorCode, [string, string]> = {
-    cancel_window_closed: ["取消期限已结束，请刷新订单。", "The cancellation window has closed. Refresh the Order."],
-    capture_in_progress: ["结算处理中，请刷新订单。", "Settlement is in progress. Refresh the Order."],
-    commerce_not_found: ["未找到该商城记录。", "The Commerce record was not found."],
-    commerce_rate_limited: ["请求过于频繁，请稍后重试。", "Too many requests. Try again shortly."],
-    commerce_request_failed: ["商城暂时不可用，请安全重试。", "Commerce is temporarily unavailable. Retry safely."],
-    commerce_request_invalid: ["商城请求无效，请重新开始。", "The Commerce request is invalid. Start again."],
-    commerce_session_invalid: ["会话已失效，请重新登录。", "The session is no longer valid. Sign in again."],
-    commerce_unavailable: ["商城暂时不可用，请稍后重试。", "Commerce is temporarily unavailable. Try again later."],
-    deferred_transition_conflict: ["存在待处理的服务切换，请先刷新商城。", "A service transition is already pending. Refresh the Marketplace."],
-    idempotency_key_required: ["操作标识无效，请重新开始。", "The operation identifier is invalid. Start again."],
-    idempotency_key_reused: ["操作状态冲突，请刷新订单。", "The operation state conflicts. Refresh the Order."],
-    insufficient_coins: ["Coins 余额不足。", "The Coins balance is insufficient."],
-    offer_unavailable: ["该商品当前不可用。", "This product is currently unavailable."],
-    quote_expired: ["报价已过期，请重新预览。", "The Quote expired. Preview again."],
-    quote_stale: ["报价已更新，请重新预览。", "The Quote changed. Preview again."],
-    reconciliation_required: ["订单需要人工核对，尚未完成。", "The Order needs support review and is not complete."],
-    wallet_first_deferred_required: ["该账户需要使用新的服务切换流程。", "This account requires the new service-transition flow."],
-    wallet_not_active: ["Coins 钱包尚未启用。", "The Coins wallet is not active."]
-  };
-  return localized(locale, labels[code][0], labels[code][1]);
-}
-
 function QuoteFacts({
   locale,
   quote
@@ -94,10 +71,16 @@ function QuoteFacts({
 }) {
   const before = quote.balances.before;
   const after = quote.balances.after;
+  const notices = quote.offer.importantNotices[locale];
   return (
     <div className="portal-coins-purchase-dialog__quote">
       <h3>{locale === "zh" ? quote.offer.title.zh : quote.offer.title.en}</h3>
       <p>{deliveryText(quote, locale)}</p>
+      {notices.length > 0 ? (
+        <ul aria-label={localized(locale, "购买须知", "Purchase terms")}>
+          {notices.map((notice, index) => <li key={`${index}:${notice}`}>{notice}</li>)}
+        </ul>
+      ) : null}
       <dl>
         <div>
           <dt>{localized(locale, "接受的 Coins", "Accepted Coins")}</dt>
@@ -170,11 +153,16 @@ export function CoinsPurchaseDialog({
   onRestoreFocus,
   order,
   quote,
+  resumingExistingOrder = false,
   submitting
 }: CoinsPurchaseDialogProps) {
   const insufficient = quote?.purchaseAvailability === "insufficient_balance";
+  const errorRef = useRef<HTMLParagraphElement | null>(null);
+  useEffect(() => {
+    if (errorCode && !order) errorRef.current?.focus();
+  }, [errorCode, order]);
   const liveText = errorCode
-    ? safeErrorText(errorCode, locale)
+    ? portalCoinCommerceErrorText(errorCode, locale)
     : insufficient && quote
       ? localized(
           locale,
@@ -183,7 +171,7 @@ export function CoinsPurchaseDialog({
         )
       : submitting
         ? localized(locale, "正在提交订单。", "Submitting the Order.")
-        : localized(locale, "请确认服务端报价。", "Review the server Quote.");
+        : localized(locale, "请确认商品和购买金额。", "Review the product and purchase amount.");
 
   return (
     <CoinsDialogFrame
@@ -206,6 +194,18 @@ export function CoinsPurchaseDialog({
         </button>
       ) : null}
     >
+      {order && resumingExistingOrder && !isPortalCoinOrderTerminal(order) ? (
+        <p role="status">
+          {localized(
+            locale,
+            "你有一笔订单尚未完成，已打开该订单供你查看进度。",
+            "You have an unfinished order. It has been opened so you can check its progress."
+          )}
+        </p>
+      ) : null}
+      {!order && errorCode ? (
+        <p ref={errorRef} role="alert" tabIndex={-1}>{liveText}</p>
+      ) : null}
       {order ? (
         <CoinsPaymentStatusCard
           cancelling={cancelling}
@@ -216,7 +216,7 @@ export function CoinsPurchaseDialog({
           order={order}
         />
       ) : quote ? <QuoteFacts locale={locale} quote={quote} /> : null}
-      {!order ? <p aria-live="polite">{liveText}</p> : null}
+      {!order && !errorCode ? <p aria-live="polite">{liveText}</p> : null}
     </CoinsDialogFrame>
   );
 }

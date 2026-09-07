@@ -2933,6 +2933,8 @@ export function createRuntimeState(options = {}) {
       adminAuthorizationEnabled,
       adminAuth: platformAdminAuth,
       userPortalRoutesEnabled,
+      // Explicit Portal origin only; do not infer from subscription delivery.
+      portalBrowserOrigin: env.PLATFORM_PORTAL_BROWSER_ORIGIN || undefined,
       userPortalAuth: platformUserPortalAuth,
       portalHumanChallenges: platformPortalHumanChallenges,
       portalRegistrationEmailDelivery: platformPortalRegistrationEmailDelivery,

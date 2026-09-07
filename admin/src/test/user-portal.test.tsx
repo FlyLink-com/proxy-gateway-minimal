@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { createElement } from "react";
 import "@testing-library/jest-dom/vitest";
 import { readFileSync } from "node:fs";
@@ -12,6 +12,7 @@ import {
 import { UserRegistrationPage } from "../features/user-portal/user-registration-page";
 import { UserPortalPage } from "../features/user-portal/user-portal-page";
 import { createTotpCode } from "../features/user-portal/totp-preview";
+const COOKIE_CONTEXT = `portalctx_${"a".repeat(64)}`;
 import {
   createHttpUserPortalClient,
   createLocalUserPortalClient,
@@ -59,12 +60,14 @@ import type {
   PortalRechargeOrder
 } from "../features/user-portal/recharge";
 
+beforeEach(() => { vi.stubGlobal("BroadcastChannel", undefined); });
 afterEach(() => {
   cleanup();
   window.localStorage.clear();
   window.sessionStorage.clear();
   window.location.hash = "";
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 function installMobilePaymentDevice() {
@@ -773,13 +776,13 @@ function openPortalWallet() {
 }
 
 function openPortalOrders() {
-  fireEvent.click(screen.getByRole("button", { name: "订单" }));
+  fireEvent.click(screen.getByRole("button", { name: "订单管理" }));
 }
 
 function expectMarketplaceWithoutLegacyCheckout(client: UserPortalClient) {
   expect(screen.getByRole("region", { name: "商城目录" })).not.toBeNull();
   expect(screen.getByRole("status")).toHaveTextContent(
-    "当前客户端未提供服务端商城能力"
+    "商城暂时不可用，请稍后再试。"
   );
   expect(screen.queryByRole("heading", { name: "平台服务商城" })).toBeNull();
   expect(screen.queryByRole("dialog", { name: "选择套餐" })).toBeNull();
@@ -812,6 +815,7 @@ function openPortalStartGuide() {
 }
 
 async function submitPortalLogin(accountId = "user_safe_ref", password = "user-password") {
+  await screen.findByLabelText("电子邮箱");
   fireEvent.change(screen.getByLabelText("电子邮箱"), { target: { value: accountId } });
   fireEvent.change(screen.getByLabelText("密码"), { target: { value: password } });
   fireEvent.change(screen.getByLabelText("防机器人校验"), { target: { value: await waitForRobotAnswer() } });
@@ -855,7 +859,7 @@ describe("user portal route", () => {
     await waitFor(() => expect(document.title).toBe("GCC WebOS - 用户中心"));
     expect(screen.getByRole("navigation", { name: "用户中心导航" })).not.toBeNull();
     expect(screen.getByRole("button", { name: "开始使用" })).not.toBeNull();
-    expect(screen.getByRole("button", { name: "订单" })).not.toBeNull();
+    expect(screen.getByRole("button", { name: "订单管理" })).not.toBeNull();
     expect(screen.queryByRole("button", { name: "订阅" })).toBeNull();
     expect(screen.queryByRole("region", { name: "用户登录" })).toBeNull();
   });
@@ -933,7 +937,7 @@ describe("user portal route", () => {
     openPortalStartGuide();
     expect(await screen.findByRole("heading", { name: "Welcome" })).not.toBeNull();
     expect(screen.getByRole("navigation", { name: "User center navigation" })).not.toBeNull();
-    expect(screen.getByRole("button", { name: "Orders" })).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Order management" })).not.toBeNull();
     expect(screen.queryByRole("button", { name: "Subscriptions" })).toBeNull();
 
     expect(screen.getByRole("button", { name: "Start setup" })).not.toBeNull();
@@ -1343,7 +1347,10 @@ describe("user portal product surface", () => {
         });
         return new Response(JSON.stringify({
           session: {
-            accountId: "acct_portal_1",
+            sessionRef: COOKIE_CONTEXT,
+            transport: "cookie",
+            userRef: "acct_portal_1",
+            authMethod: "totp",
             issuedAt: "2026-06-03T00:00:00.000Z",
             expiresAt: "2026-06-03T00:30:00.000Z"
           }
@@ -1418,7 +1425,9 @@ describe("user portal product surface", () => {
           }
         },
         session: {
-          sessionRef: "portal_session_registration_1",
+          sessionRef: COOKIE_CONTEXT,
+          transport: "cookie",
+          expiresAt: "2026-07-01T09:30:00.000Z",
           userRef: "local-user@example.test",
           displayName: "local-user@example.test",
           authMethod: "password",
@@ -1481,7 +1490,9 @@ describe("user portal product surface", () => {
         }
       },
       session: {
-        sessionRef: "portal_session_registration_legacy_rollout",
+        sessionRef: COOKIE_CONTEXT,
+        transport: "cookie",
+        expiresAt: "2026-07-01T09:30:00.000Z",
         userRef: "local-user@example.test",
         displayName: "local-user@example.test",
         authMethod: "password",
@@ -1593,7 +1604,9 @@ describe("user portal product surface", () => {
         return new Response(JSON.stringify({
           registration,
           session: {
-            sessionRef: "portal_session_registration_invalid_model",
+            sessionRef: COOKIE_CONTEXT,
+            transport: "cookie",
+            expiresAt: "2026-07-01T09:30:00.000Z",
             userRef: "local-user@example.test",
             displayName: "local-user@example.test",
             authMethod: "password",
@@ -1656,7 +1669,9 @@ describe("user portal product surface", () => {
           }
         },
         session: {
-          sessionRef: "portal_session_normal_commerce_1",
+          sessionRef: COOKIE_CONTEXT,
+          transport: "cookie",
+          expiresAt: "2026-07-01T09:30:00.000Z",
           userRef: "normal-commerce@example.test",
           displayName: "normal-commerce@example.test",
           authMethod: "password",
@@ -1732,7 +1747,9 @@ describe("user portal product surface", () => {
           }
         },
         session: {
-          sessionRef: "portal_session_wallet_first_1",
+          sessionRef: COOKIE_CONTEXT,
+          transport: "cookie",
+          expiresAt: "2026-07-01T09:30:00.000Z",
           userRef: "wallet-first@example.test",
           displayName: "wallet-first@example.test",
           authMethod: "password",
@@ -1936,6 +1953,7 @@ describe("user portal product surface", () => {
       expect(JSON.parse(String(init?.body))).toEqual({
         accountId: "user@example.test",
         password: "secret-passphrase",
+        rememberMe: false,
         humanVerification: {
           challengeRef: "phc_http_1",
           answer: "13"
@@ -1985,7 +2003,8 @@ describe("user portal product surface", () => {
       });
       return new Response(JSON.stringify({
         session: {
-          sessionRef: "portal_session_http_1",
+          sessionRef: COOKIE_CONTEXT,
+          transport: "cookie",
           userRef: "user@example.test",
           displayName: "user@example.test",
           authMethod: "totp",
@@ -2003,7 +2022,7 @@ describe("user portal product surface", () => {
     });
 
     expect(session.status).toBe("authenticated_preview");
-    expect(session.sessionRef).toBe("portal_session_http_1");
+    expect(session.sessionRef).toBe(COOKIE_CONTEXT);
     expect(session.userRef).toBe("user@example.test");
     expect(session.authMode).toBe("authenticator");
     expect(fetchFn).toHaveBeenCalledTimes(1);
@@ -2105,9 +2124,7 @@ describe("user portal product surface", () => {
     const fetchFn = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       expect(String(input)).toBe("/api/portal/access-requests");
       expect(init?.method).toBe("POST");
-      expect(init?.headers).toMatchObject({
-        "X-Portal-Session": "portal_session_http_1"
-      });
+      expect(new Headers(init?.headers).get("X-Portal-Session")).toBe("portal_session_http_1");
       expect(JSON.parse(String(init?.body))).toEqual({
         portalUserRef: "user_safe_ref",
         plan: "trial",
@@ -2150,9 +2167,7 @@ describe("user portal product surface", () => {
     const fetchFn = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       expect(String(input)).toBe("/api/portal/payments/checkout");
       expect(init?.method).toBe("POST");
-      expect(init?.headers).toMatchObject({
-        "X-Portal-Session": "portal_session_http_1"
-      });
+      expect(new Headers(init?.headers).get("X-Portal-Session")).toBe("portal_session_http_1");
       expect(JSON.parse(String(init?.body))).toEqual({
         plan: "monthly_plus",
         clientTarget: "clash",
@@ -2209,9 +2224,7 @@ describe("user portal product surface", () => {
     const fetchFn = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       expect(String(input)).toBe("/api/portal/payments/current?status=paid_access_delivered");
       expect(init?.method).toBe("GET");
-      expect(init?.headers).toMatchObject({
-        "X-Portal-Session": "portal_session_http_1"
-      });
+      expect(new Headers(init?.headers).get("X-Portal-Session")).toBe("portal_session_http_1");
       return new Response(JSON.stringify({
         payments: {
           orders: [
@@ -2276,9 +2289,7 @@ describe("user portal product surface", () => {
   test("http portal client starts and confirms backend authenticator enrollment with a portal session", async () => {
     const fetchFn = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
-      expect(init?.headers).toMatchObject({
-        "X-Portal-Session": "portal_session_http_1"
-      });
+      expect(new Headers(init?.headers).get("X-Portal-Session")).toBe("portal_session_http_1");
       if (url === "/api/portal/security/totp/enrollment") {
         expect(init?.method).toBe("POST");
         expect(JSON.parse(String(init?.body))).toEqual({});
@@ -2541,7 +2552,7 @@ describe("user portal product surface", () => {
     expect(within(portalNav).getByRole("button", { name: "用量" })).not.toBeNull();
     expect(within(portalNav).getByRole("button", { name: "个人中心" })).not.toBeNull();
     expect(within(portalNav).getByRole("button", { name: "支持" })).not.toBeNull();
-    expect(within(portalNav).getByRole("button", { name: "订单" })).not.toBeNull();
+    expect(within(portalNav).getByRole("button", { name: "订单管理" })).not.toBeNull();
     expect(within(portalNav).queryByRole("button", { name: "订阅" })).toBeNull();
     expect(within(portalNav).queryByText("Dashboard")).toBeNull();
     expect(screen.getByRole("heading", { name: "先选择适合你的套餐" })).not.toBeNull();
@@ -2710,7 +2721,7 @@ describe("user portal product surface", () => {
       "概览",
       "用量",
       "商城",
-      "订单",
+      "订单管理",
       "Coins 钱包",
       "推荐奖励",
       "个人中心",
@@ -2742,7 +2753,7 @@ describe("user portal product surface", () => {
     fireEvent.click(within(portalNav).getByRole("button", { name: "商城" }));
     expect(await screen.findByRole("region", { name: "商城目录" })).not.toBeNull();
     expect(screen.getByRole("status")).toHaveTextContent(
-      "当前客户端未提供服务端商城能力"
+      "商城暂时不可用，请稍后再试。"
     );
     expect(screen.queryByText("商品")).toBeNull();
     expect(screen.queryByText("增值项")).toBeNull();
@@ -2783,7 +2794,7 @@ describe("user portal product surface", () => {
 
     expect(await screen.findByRole("navigation", { name: "用户中心导航" }))
       .toBeInTheDocument();
-    expect(await screen.findByRole("heading", { name: "钱包总览" }))
+    expect(await screen.findByRole("region", { name: "Coins 钱包" }))
       .toBeInTheDocument();
     expect(await screen.findByRole("dialog", { name: "充值 Coins" }))
       .toBeInTheDocument();
@@ -2799,6 +2810,7 @@ describe("user portal product surface", () => {
   });
 
   test("continues one exact ready recharge from Orders without creating a replacement order", async () => {
+    vi.spyOn(Date, "now").mockReturnValue(Date.parse("2026-08-01T00:00:00.000Z"));
     const session = portalWalletSession(
       "session_recharge_continue_001",
       "recharge-continue@example.test"
@@ -2988,6 +3000,7 @@ describe("user portal product surface", () => {
     const fetchFn = vi.fn<typeof fetch>(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       requestUrls.push(url);
+      if (url === "/api/portal/browser-session") return response({ session: null });
       if (url === "/api/portal/human-challenges") {
         return response({
           challenge: {
@@ -3001,7 +3014,9 @@ describe("user portal product surface", () => {
       if (url === "/api/portal/password/session") {
         return response({
           session: {
-            sessionRef: "portal_hydration_wallet_001",
+            sessionRef: COOKIE_CONTEXT,
+            transport: "cookie",
+            expiresAt: "2026-08-14T00:30:00.000Z",
             userRef: "wallet-hydration@example.test",
             displayName: "wallet-hydration@example.test",
             authMethod: "password",
@@ -3024,12 +3039,8 @@ describe("user portal product surface", () => {
         });
       }
       if (url === "/api/portal/resources/current") {
-        expect(init).toMatchObject({
-          method: "GET",
-          headers: {
-            "X-Portal-Session": "portal_hydration_wallet_001"
-          }
-        });
+        expect(init?.method).toBe("GET");
+        expect(new Headers(init?.headers).get("X-Portal-Session-Context")).toBe(COOKIE_CONTEXT);
         return response({
           resource: {
             state: "available",
@@ -3073,6 +3084,10 @@ describe("user portal product surface", () => {
 
     expect(await screen.findByRole("heading", { name: "服务资源已可用" })).toBeInTheDocument();
     expect(requestUrls.some((url) => url.startsWith("/api/portal/commerce/orders"))).toBe(false);
+    expect(screen.queryByRole("group", { name: "订单分类" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "商城消费" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "充值订单" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "套餐与服务" })).toBeNull();
   });
 
   test.each([
@@ -3159,7 +3174,7 @@ describe("user portal product surface", () => {
     }
     expect(client.createCurrentResourceSetup).not.toHaveBeenCalled();
     expect(client.acknowledgeCurrentResourceSetup).not.toHaveBeenCalled();
-    for (const viewName of ["概览", "用量", "订单"]) {
+    for (const viewName of ["概览", "用量", "订单管理"]) {
       fireEvent.click(screen.getByRole("button", { name: viewName }));
       expect(await screen.findByRole("heading", { name: heading })).toBeInTheDocument();
       if (resource.state !== "none") {
@@ -3429,6 +3444,7 @@ describe("user portal product surface", () => {
     const fetchFn = vi.fn<typeof fetch>(async (input: RequestInfo | URL) => {
       const url = String(input);
       requestUrls.push(url);
+      if (url === "/api/portal/browser-session") return response({ session: null });
       if (url === "/api/portal/human-challenges") {
         return response({
           challenge: {
@@ -3442,7 +3458,9 @@ describe("user portal product surface", () => {
       if (url === "/api/portal/password/session") {
         return response({
           session: {
-            sessionRef: "portal_hydration_legacy_001",
+            sessionRef: COOKIE_CONTEXT,
+            transport: "cookie",
+            expiresAt: "2026-08-14T00:30:00.000Z",
             userRef: "legacy-hydration@example.test",
             displayName: "legacy-hydration@example.test",
             authMethod: "password",
@@ -3494,6 +3512,7 @@ describe("user portal product surface", () => {
     const fetchFn = vi.fn<typeof fetch>(async (input: RequestInfo | URL) => {
       const url = String(input);
       requestUrls.push(url);
+      if (url === "/api/portal/browser-session") return response({ session: null });
       if (url === "/api/portal/human-challenges") {
         return response({
           challenge: {
@@ -3507,7 +3526,9 @@ describe("user portal product surface", () => {
       if (url === "/api/portal/password/session") {
         return response({
           session: {
-            sessionRef: "portal_hydration_unknown_001",
+            sessionRef: COOKIE_CONTEXT,
+            transport: "cookie",
+            expiresAt: "2026-08-14T00:30:00.000Z",
             userRef: "unknown-hydration@example.test",
             displayName: "unknown-hydration@example.test",
             authMethod: "password",
@@ -3797,6 +3818,152 @@ describe("user portal product surface", () => {
     expect(screen.getByText("Coins · 333")).toBeInTheDocument();
   });
 
+  test.each(["zh", "en"] as const)("%s routes Orders subnavigation to the exact read-only order category", async (locale) => {
+    window.localStorage.setItem("gccwebos-site-locale", locale);
+    const coin = marketplaceOrder();
+    const rechargeOrder = returnedRechargeOrder("credited");
+    const service = activeSubscriptionRequest();
+    const createCoinOrder = vi.fn();
+    const commerce = {
+      listOrders: vi.fn(async () => ({ orders: [coin], nextCursor: null })),
+      getOrder: vi.fn(async () => coin),
+      createOrder: createCoinOrder
+    } as unknown as PortalCoinCommerceClient;
+    const recharge: PortalRechargeClient = {
+      listOffers: vi.fn(async () => []),
+      listOrders: vi.fn(async () => [rechargeOrder]),
+      createOrder: vi.fn(async () => rechargeOrder),
+      getOrder: vi.fn(async () => rechargeOrder),
+      captureOrder: vi.fn(async () => rechargeOrder)
+    };
+    const client = portalClientWithPaymentOrders([paymentOrder()], {
+      subscriptionRequest: service
+    }, { commerce, recharge });
+    const paymentRedirect = vi.fn();
+    render(createElement(UserPortalPage, {
+      initialSession: portalWalletSession("session_order_navigation", "order-navigation@example.test"),
+      portalClient: client,
+      paymentRedirect
+    }));
+    const nav = await screen.findByRole("navigation", {
+      name: locale === "zh" ? "用户中心导航" : "User center navigation"
+    });
+    const parent = within(nav).getByRole("button", {
+      name: locale === "zh" ? "订单管理" : "Order management"
+    });
+    expect(parent).toHaveAttribute("aria-expanded", "false");
+    fireEvent.click(parent);
+    const children = within(nav).getByRole("group", {
+      name: locale === "zh" ? "订单分类" : "Order categories"
+    });
+    const childButtons = within(children).getAllByRole("button");
+    expect(childButtons.map((button) => button.textContent)).toEqual(locale === "zh"
+      ? ["商城消费", "充值订单", "套餐与服务"]
+      : ["Marketplace purchases", "Coins recharges", "Plans and services"]);
+    expect(parent).toHaveAttribute("aria-expanded", "true");
+    expect(parent).toHaveAttribute("aria-current", "page");
+    const panel = screen.getByRole("region", { name: locale === "zh" ? "订单记录" : "Order records" });
+    expect(within(panel).queryByRole("group", { name: locale === "zh" ? "订单类型" : "Order type" })).toBeNull();
+    await waitFor(() => expect(panel.querySelectorAll(".portal-order-summary-row")).toHaveLength(4));
+    expect(panel.querySelectorAll(".portal-order-detail-row")).toHaveLength(0);
+
+    fireEvent.click(childButtons[0]);
+    await waitFor(() => expect(panel.querySelectorAll(".portal-order-summary-row")).toHaveLength(1));
+    const viewCoin = within(panel).getByRole("button", { name: new RegExp(coin.orderRef) });
+    expect(viewCoin).toHaveAttribute("aria-expanded", "false");
+    expect(childButtons[0]).toHaveAttribute("aria-current", "page");
+    expect(parent).not.toHaveAttribute("aria-current");
+    expect(nav.querySelectorAll('[aria-current="page"]')).toHaveLength(1);
+    fireEvent.click(viewCoin);
+    await waitFor(() => expect(viewCoin).toHaveAttribute("aria-expanded", "true"));
+
+    fireEvent.click(childButtons[1]);
+    expect(within(panel).getByRole("button", { name: new RegExp(rechargeOrder.orderRef) }))
+      .toHaveAttribute("aria-expanded", "false");
+    expect(panel.querySelectorAll(".portal-order-summary-row")).toHaveLength(1);
+    expect(panel.querySelectorAll(".portal-order-detail-row")).toHaveLength(0);
+    expect(childButtons[1]).toHaveAttribute("aria-current", "page");
+
+    fireEvent.click(childButtons[2]);
+    expect(panel.querySelectorAll(".portal-order-summary-row")).toHaveLength(2);
+    expect(within(panel).getByRole("button", { name: new RegExp(service.requestRef) }))
+      .toHaveAttribute("aria-expanded", "false");
+    expect(childButtons[2]).toHaveAttribute("aria-current", "page");
+    fireEvent.click(parent);
+    await waitFor(() => expect(panel.querySelectorAll(".portal-order-summary-row")).toHaveLength(4));
+    expect(panel.querySelectorAll(".portal-order-detail-row")).toHaveLength(0);
+    expect(parent).toHaveAttribute("aria-current", "page");
+    expect(nav.querySelectorAll('[aria-current="page"]')).toHaveLength(1);
+    expect(createCoinOrder).not.toHaveBeenCalled();
+    expect(recharge.createOrder).not.toHaveBeenCalled();
+    expect(recharge.captureOrder).not.toHaveBeenCalled();
+    expect(client.createPaymentCheckout).not.toHaveBeenCalled();
+    expect(client.applyForSubscription).not.toHaveBeenCalled();
+    expect(paymentRedirect).not.toHaveBeenCalled();
+  });
+
+  test("synchronizes cleared Orders filters with parent navigation and scopes global search to all orders", async () => {
+    const coin = marketplaceOrder();
+    const commerce = {
+      listOrders: vi.fn(async () => ({ orders: [coin], nextCursor: null }))
+    } as unknown as PortalCoinCommerceClient;
+    render(createElement(UserPortalPage, {
+      initialSession: portalWalletSession("session_order_navigation_clear", "order-navigation-clear@example.test"),
+      portalClient: portalClientWithPaymentOrders([], {}, { commerce })
+    }));
+    const nav = await screen.findByRole("navigation", { name: "用户中心导航" });
+    const parent = within(nav).getByRole("button", { name: "订单管理" });
+    fireEvent.click(parent);
+    fireEvent.click(within(nav).getByRole("button", { name: "套餐与服务" }));
+    fireEvent.click(await screen.findByRole("button", { name: "清除筛选" }));
+    expect(parent).toHaveAttribute("aria-current", "page");
+    const panel = screen.getByRole("region", { name: "订单记录" });
+    expect(document.activeElement).toBe(within(panel).getByRole("textbox", { name: "搜索订单" }));
+    expect(await within(panel).findByRole("button", { name: new RegExp(coin.orderRef) })).toBeInTheDocument();
+
+    fireEvent.click(within(nav).getByRole("button", { name: "套餐与服务" }));
+    const globalSearch = screen.getByRole("searchbox", { name: "订单搜索" });
+    fireEvent.change(globalSearch, { target: { value: "商城测试商品" } });
+    fireEvent.submit(globalSearch.closest("form") as HTMLFormElement);
+    expect(parent).toHaveAttribute("aria-current", "page");
+    expect(await within(panel).findByRole("button", { name: new RegExp(coin.orderRef) })).toBeInTheDocument();
+    expect(within(panel).getByRole("textbox", { name: "搜索订单" })).toHaveValue("商城测试商品");
+  });
+
+  test("keeps expanded desktop order navigation scrollable and retains the shared focus treatment", () => {
+    const css = readFileSync(resolve(process.cwd(), "src/styles/portal-static-preserve/user-portal-commerce.css"), "utf8");
+    expect(css).toMatch(/@media \(min-width: 721px\)\s*\{\s*\.portal-v2-shell \.portal-use-nav\s*\{[^}]*min-height:\s*0;[^}]*overflow-y:\s*auto;/s);
+    expect(css).toMatch(/\.portal-v2-shell \.portal-order-subnav\[hidden\]\s*\{\s*display:\s*none;/);
+    expect(css).toMatch(/\.portal-v2-shell \.portal-use-nav-item:focus-visible,[^}]*outline:\s*3px solid var\(--portal-commerce-focus-accent\);/s);
+  });
+
+  test("keeps narrow-screen order navigation a single bottom-nav entry without a hidden disclosure", async () => {
+    const restoreViewport = installMobilePaymentDevice();
+    try {
+      render(createElement(UserPortalPage, {
+        initialSession: portalWalletSession("session_order_navigation_narrow", "order-navigation-narrow@example.test"),
+        portalClient: portalClientWithPaymentOrders([paymentOrder()])
+      }));
+      const nav = await screen.findByRole("navigation", { name: "用户中心导航" });
+      const parent = within(nav).getByRole("button", { name: "订单管理" });
+      fireEvent.click(parent);
+      expect(parent).toHaveAttribute("aria-current", "page");
+      expect(parent).not.toHaveAttribute("aria-expanded");
+      expect(parent).not.toHaveAttribute("aria-controls");
+      expect(within(nav).queryByRole("group", { name: "订单分类" })).toBeNull();
+      expect(nav.querySelector(".portal-order-subnav")).toHaveAttribute("hidden");
+      expect(within(nav).queryByRole("button", { name: "商城消费" })).toBeNull();
+      expect(within(nav).queryByRole("button", { name: "充值订单" })).toBeNull();
+      expect(within(nav).queryByRole("button", { name: "套餐与服务" })).toBeNull();
+      expect(nav.querySelectorAll('[aria-current="page"]')).toHaveLength(1);
+      expect(screen.getByRole("region", { name: "订单记录" })).toBeInTheDocument();
+      const css = readFileSync(resolve(process.cwd(), "src/styles/portal-static-preserve/user-portal-commerce.css"), "utf8");
+      expect(css).toMatch(/@media \(max-width: 720px\)\s*\{\s*\.portal-v2-sidebar \.portal-order-subnav,\s*\.portal-v2-sidebar \.portal-order-nav-chevron\s*\{\s*display:\s*none;/s);
+    } finally {
+      restoreViewport();
+    }
+  });
+
   test("places Orders in navigation and expands legacy payment detail in place", async () => {
     const client = portalClientWithPaymentOrders([paymentOrder()]);
     render(createElement(UserPortalPage, { portalClient: client }));
@@ -3812,7 +3979,7 @@ describe("user portal product surface", () => {
       "概览",
       "用量",
       "商城",
-      "订单",
+      "订单管理",
       "Coins 钱包",
       "推荐奖励",
       "个人中心",
@@ -3896,10 +4063,11 @@ describe("user portal product surface", () => {
     expect(topbar).not.toBeNull();
     openPortalWallet();
 
-    expect(await screen.findAllByRole("heading", { level: 2, name: "钱包总览" })).toHaveLength(1);
+    expect(await screen.findAllByRole("region", { name: "Coins 钱包" })).toHaveLength(1);
+    expect(screen.queryByRole("heading", { name: "钱包总览" })).toBeNull();
     const walletSection = document.querySelector(".portal-commerce-layout--wallet");
     expect(walletSection).not.toBeNull();
-    expect(within(walletSection as HTMLElement).getByRole("heading", {
+    expect(within(walletSection as HTMLElement).getByRole("region", {
       name: "余额"
     })).not.toBeNull();
     expect(within(walletSection as HTMLElement).getByRole("heading", {
@@ -3925,7 +4093,8 @@ describe("user portal product surface", () => {
     const englishNavigation = screen.getByRole("navigation", { name: "User center navigation" });
     expect(within(englishNavigation).queryByRole("button", { name: "Wallet" })).toBeNull();
     fireEvent.click(within(englishNavigation).getByRole("button", { name: "Coins wallet" }));
-    expect(await screen.findAllByRole("heading", { level: 2, name: "Wallet overview" })).toHaveLength(1);
+    expect(await screen.findAllByRole("region", { name: "Coins Wallet" })).toHaveLength(1);
+    expect(screen.queryByRole("heading", { name: "Wallet overview" })).toBeNull();
     const englishWalletSection = document.querySelector(".portal-commerce-layout--wallet");
     expect(englishWalletSection).not.toBeNull();
     expect(within(englishWalletSection as HTMLElement).getByRole("heading", {
@@ -3982,7 +4151,7 @@ describe("user portal product surface", () => {
 
     const portalNav = await enterPortal();
 
-    fireEvent.click(within(portalNav).getByRole("button", { name: "订单" }));
+    fireEvent.click(within(portalNav).getByRole("button", { name: "订单管理" }));
     expect(screen.queryByText("统一查看订单记录")).toBeNull();
     expect(screen.getByRole("region", { name: "订单记录" })).not.toBeNull();
     expect(screen.queryByRole("dialog", { name: "选择套餐" })).toBeNull();
@@ -3999,7 +4168,7 @@ describe("user portal product surface", () => {
     expect(document.querySelector('[data-portal-view="start"]')?.classList.contains("active")).toBe(true);
 
     expect(within(portalNav).queryByRole("button", { name: "订阅" })).toBeNull();
-    expect(within(portalNav).getByRole("button", { name: "订单" })).not.toBeNull();
+    expect(within(portalNav).getByRole("button", { name: "订单管理" })).not.toBeNull();
 
     fireEvent.click(within(portalNav).getByRole("button", { name: "开始使用" }));
     await waitFor(() => expect(screen.getByRole("heading", { name: "欢迎使用" })).not.toBeNull());
@@ -4034,15 +4203,22 @@ describe("user portal product surface", () => {
     await enterPortal();
     openPortalOrders();
 
-    expect(await screen.findByRole("table", { name: "订单列表" })).not.toBeNull();
-    expect(screen.getByText("P-existing_monthly")).not.toBeNull();
+    const orderTable = await screen.findByRole("table", { name: "订单列表" });
+    const paymentView = within(orderTable).getByRole("button", {
+      name: "查看：pay_existing_monthly：基础月付：待付款"
+    });
+    expect(paymentView.closest("tr")).toHaveTextContent("套餐付款");
+    fireEvent.click(paymentView);
+    expect(within(screen.getByRole("region", {
+      name: "套餐付款详情：P-existing_monthly"
+    })).getByText("pay_existing_monthly")).toBeInTheDocument();
     expect(screen.queryByRole("dialog", { name: "选择套餐" })).toBeNull();
     expect(screen.queryByRole("dialog", { name: "选择支付方式" })).toBeNull();
     expect(client.createPaymentCheckout).not.toHaveBeenCalled();
     expect(client.applyForSubscription).not.toHaveBeenCalled();
   });
 
-  test("keeps Orders to one heading, one type filter, and one list", async () => {
+  test("keeps Orders to one heading and list with categories only in navigation", async () => {
     const commerceClient = {
       listOrders: vi.fn(async () => ({ orders: [marketplaceOrder()], nextCursor: null }))
     } as unknown as PortalCoinCommerceClient;
@@ -4072,7 +4248,9 @@ describe("user portal product surface", () => {
     await enterPortal();
     openPortalOrders();
 
-    expect(screen.getByRole("group", { name: "订单类型" })).toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: "订单类型" })).toBeNull();
+    expect(within(screen.getByRole("navigation", { name: "用户中心导航" }))
+      .getByRole("group", { name: "订单分类" })).toBeInTheDocument();
     expect(screen.getAllByRole("table", { name: "订单列表" })).toHaveLength(1);
     const ordersRegion = screen.getByRole("region", { name: "订单记录" });
     expect(within(ordersRegion).queryByRole("heading")).toBeNull();
@@ -4118,16 +4296,19 @@ describe("user portal product surface", () => {
     expect(within(orderTable).getByText("商城测试商品")).toBeInTheDocument();
     expect(within(orderTable).getByText("套餐付款")).toBeInTheDocument();
     expect(within(orderTable).getByText("遗留套餐测试")).toBeInTheDocument();
-    expect(within(orderTable).getByText("服务记录")).toBeInTheDocument();
     expect(within(orderTable).getAllByText("订阅服务测试").length)
       .toBeGreaterThan(0);
 
     const serviceView = within(orderTable).getByRole("button", {
       name: /^查看：.*订阅服务测试/
     });
+    expect(serviceView.closest("tr")).toHaveTextContent("服务记录");
     if (serviceView.getAttribute("aria-expanded") !== "true") {
       fireEvent.click(serviceView);
     }
+    expect(within(screen.getByRole("region", {
+      name: "服务记录详情：O-existing_monthly"
+    })).getByText("subreq_existing_monthly")).toBeInTheDocument();
     expect(within(orderTable).getByText("客户端")).toBeInTheDocument();
   });
 
@@ -4315,7 +4496,9 @@ describe("user portal product surface", () => {
     expect(screen.queryByRole("link", { name: "打开支付页面" })).toBeNull();
 
     const orderTable = screen.getByRole("table", { name: "订单列表" });
-    expect(within(orderTable).getByText("P-monthly_plus")).not.toBeNull();
+    expect(within(screen.getByRole("region", {
+      name: "套餐付款详情：P-monthly_plus"
+    })).getByText("pay_monthly_plus")).toBeInTheDocument();
     expect(within(orderTable).getByRole("button", { name: /^查看：/ }))
       .toHaveAttribute("aria-expanded", "true");
     expect(within(orderTable).queryByRole("button", { name: /^去付款：/ }))
@@ -4341,7 +4524,9 @@ describe("user portal product surface", () => {
     expect(screen.queryByRole("link", { name: "打开支付页面" })).toBeNull();
 
     const orderTable = screen.getByRole("table", { name: "订单列表" });
-    expect(within(orderTable).getByText("P-existing_monthly")).not.toBeNull();
+    expect(within(screen.getByRole("region", {
+      name: "套餐付款详情：P-existing_monthly"
+    })).getByText("pay_existing_monthly")).toBeInTheDocument();
     expect(within(orderTable).getByRole("button", { name: /^查看：/ }))
       .toHaveAttribute("aria-expanded", "true");
     expect(within(orderTable).queryByRole("button", { name: /^去付款：/ }))
@@ -4607,7 +4792,15 @@ describe("user portal product surface", () => {
     expect(screen.getByDisplayValue("https://sub.example.test/import/existing-visible-once")).not.toBeNull();
     openPortalOrders();
     const orderTable = screen.getByRole("table", { name: "订单列表" });
-    expect(within(orderTable).getByText("O-existing_yearly")).not.toBeNull();
+    const yearlyView = within(orderTable).getByRole("button", {
+      name: "查看：subreq_existing_yearly：年付套餐：生效中"
+    });
+    if (yearlyView.getAttribute("aria-expanded") !== "true") {
+      fireEvent.click(yearlyView);
+    }
+    expect(within(screen.getByRole("region", {
+      name: "服务记录详情：O-existing_yearly"
+    })).getByText("subreq_existing_yearly")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /刷新订阅/ })).toBeNull();
     expect(screen.queryByRole("button", { name: "停用订阅" })).toBeNull();
     expect(client.applyForSubscription).not.toHaveBeenCalled();
@@ -4687,8 +4880,26 @@ describe("user portal product surface", () => {
 
     openPortalOrders();
     const orderTable = screen.getByRole("table", { name: "订单列表" });
-    expect(within(orderTable).getByText("pareq_trial_1")).not.toBeNull();
-    expect(within(orderTable).getByText("pareq_monthly_2")).not.toBeNull();
+    const trialView = within(orderTable).getByRole("button", {
+      name: /^查看：pareq_trial_1：.*：待开通$/
+    });
+    expect(trialView.closest("tr")).toHaveTextContent("服务记录");
+    if (trialView.getAttribute("aria-expanded") !== "true") {
+      fireEvent.click(trialView);
+    }
+    expect(within(screen.getByRole("region", {
+      name: "服务记录详情：pareq_trial_1"
+    })).getByText("pareq_trial_1")).toBeInTheDocument();
+    const monthlyView = within(orderTable).getByRole("button", {
+      name: /^查看：pareq_monthly_2：.*：生效中$/
+    });
+    expect(monthlyView.closest("tr")).toHaveTextContent("服务记录");
+    if (monthlyView.getAttribute("aria-expanded") !== "true") {
+      fireEvent.click(monthlyView);
+    }
+    expect(within(screen.getByRole("region", {
+      name: "服务记录详情：pareq_monthly_2"
+    })).getByText("pareq_monthly_2")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "用量" }));
     expect(await screen.findByRole("heading", { name: "流量消耗" })).not.toBeNull();
     expect(screen.getAllByText(/7 天/).length).toBeGreaterThan(0);
@@ -4734,11 +4945,19 @@ describe("user portal product surface", () => {
     render(createElement(UserPortalPage, { portalClient: client }));
 
     await enterPortal();
-    fireEvent.click(screen.getByRole("button", { name: "订单" }));
+    fireEvent.click(screen.getByRole("button", { name: "订单管理" }));
 
     expect(screen.queryByText("暂无完成套餐记录")).toBeNull();
     const orderTable = screen.getByRole("table", { name: "订单列表" });
-    expect(within(orderTable).getByText("O-existing_yearly")).not.toBeNull();
+    const yearlyView = within(orderTable).getByRole("button", {
+      name: "查看：subreq_existing_yearly：年付套餐：生效中"
+    });
+    if (yearlyView.getAttribute("aria-expanded") !== "true") {
+      fireEvent.click(yearlyView);
+    }
+    expect(within(screen.getByRole("region", {
+      name: "服务记录详情：O-existing_yearly"
+    })).getByText("subreq_existing_yearly")).toBeInTheDocument();
     expect(screen.queryByText(/申请年度套餐（已开通）/)).toBeNull();
   });
 

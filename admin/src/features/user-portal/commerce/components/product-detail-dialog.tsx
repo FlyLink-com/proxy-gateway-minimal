@@ -174,6 +174,10 @@ export function ProductDetailDialog({
     >
       <p>{summary}</p>
       <dl>
+        <div className="portal-coins-product-detail__price">
+          <dt>{locale === "zh" ? "目录价格" : "Catalog price"}</dt>
+          <dd>{offer.baseCoinUnits} Coins</dd>
+        </div>
         <div>
           <dt>{locale === "zh" ? "交付" : "Delivery"}</dt>
           <dd>{deliveryText(offer, locale)}</dd>
@@ -183,9 +187,12 @@ export function ProductDetailDialog({
           <dd>{portalCoinTypeListLabel(offer.acceptedCoinTypes, locale)}</dd>
         </div>
       </dl>
-      <ul>
+      <p>{locale === "zh"
+        ? "最终以结算报价为准"
+        : "Final price is shown at checkout"}</p>
+      {notices.length > 0 ? <ul>
         {notices.map((notice) => <li key={notice}>{notice}</li>)}
-      </ul>
+      </ul> : null}
     </CoinsDialogFrame>
   );
 }

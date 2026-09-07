@@ -298,6 +298,144 @@ afterEach(() => {
 });
 
 describe("Portal server-backed Marketplace", () => {
+  test.each(["quote_expired", "quote_stale"] as const)(
+    "%s focuses a new-preview alert without reusing the rejected confirmation",
+    async (code) => {
+      const commerce = commerceClient({
+        previewCheckout: vi.fn(async () => availableQuote),
+        createOrder: vi.fn().mockRejectedValue(new PortalCoinCommerceClientError(code, false))
+      });
+      render(createElement(MarketplacePanel, {
+        commerceClient: commerce,
+        locale: "en",
+        sessionRef: session.sessionRef ?? null,
+        theme: "light"
+      }));
+      const card = (await screen.findByRole("heading", { name: planOffer.title.en }))
+        .closest("article") as HTMLElement;
+      fireEvent.click(within(card).getByRole("button"));
+      const dialog = await screen.findByRole("dialog");
+      fireEvent.click(within(dialog).getByRole("button", { name: "Confirm purchase" }));
+      const alert = await screen.findByRole("alert");
+      expect(alert).toHaveTextContent("Preview again.");
+      expect(screen.queryByRole("dialog")).toBeNull();
+      await waitFor(() => expect(alert).toHaveFocus());
+      expect(commerce.createOrder).toHaveBeenCalledTimes(1);
+      fireEvent.click(within(alert).getByRole("button", { name: "Retry" }));
+      expect(await screen.findByRole("dialog")).toBeInTheDocument();
+      expect(commerce.previewCheckout).toHaveBeenCalledTimes(2);
+      expect(commerce.createOrder).toHaveBeenCalledTimes(1);
+    }
+  );
+
+  test.each([
+    ["deferred_transition_conflict", "zh", "已有服务切换尚未完成，请先查看其处理进度。"],
+    ["deferred_transition_conflict", "en", "A service change is still pending. Check its progress first."],
+    ["wallet_first_deferred_required", "zh", "当前账户需要通过服务切换办理，请刷新商城后查看可用操作。"],
+    ["wallet_first_deferred_required", "en", "This account needs a service change. Refresh the Marketplace to see the available options."],
+    ["offer_unavailable", "zh", "该商品当前不可用。"],
+    ["offer_unavailable", "en", "This product is currently unavailable."]
+  ] as const)(
+    "presents %s consistently in %s at preview and confirmation without a duplicate submission",
+    async (code, locale, expectedText) => {
+      for (const phase of ["preview", "confirm"] as const) {
+        const failure = new PortalCoinCommerceClientError(code, false);
+        const commerce = commerceClient({
+          previewCheckout: phase === "preview"
+            ? vi.fn().mockRejectedValue(failure)
+            : vi.fn(async () => availableQuote),
+          createOrder: vi.fn().mockRejectedValue(failure)
+        });
+        const view = render(createElement(MarketplacePanel, {
+          commerceClient: commerce,
+          locale,
+          sessionRef: session.sessionRef ?? null,
+          theme: "light"
+        }));
+        const card = (await screen.findByRole("heading", {
+          name: planOffer.title[locale]
+        })).closest("article") as HTMLElement;
+        const purchase = within(card).getByRole("button");
+        fireEvent.click(purchase);
+        if (phase === "confirm") {
+          const dialog = await screen.findByRole("dialog");
+          fireEvent.click(within(dialog).getByRole("button", {
+            name: locale === "zh" ? "确认购买" : "Confirm purchase"
+          }));
+        }
+        const alert = await screen.findByRole("alert");
+        expect(alert).toHaveTextContent(expectedText);
+        expect(alert).not.toHaveTextContent(/安全重试|Retry safely|deferred_|offer_unavailable/);
+        await waitFor(() => expect(alert).toHaveFocus());
+        if (phase === "preview") {
+          expect(within(alert).queryByRole("button")).toBeNull();
+          expect(screen.queryByRole("dialog")).toBeNull();
+          expect(commerce.createOrder).not.toHaveBeenCalled();
+        } else {
+          const dialog = screen.getByRole("dialog");
+          const confirm = within(dialog).getByRole("button", {
+            name: locale === "zh" ? "确认购买" : "Confirm purchase"
+          });
+          expect(confirm).toBeDisabled();
+          fireEvent.click(confirm);
+          expect(commerce.createOrder).toHaveBeenCalledTimes(1);
+          fireEvent.click(within(dialog).getByRole("button", {
+            name: locale === "zh" ? "关闭" : "Close"
+          }));
+          await waitFor(() => expect(purchase).toHaveFocus());
+        }
+        expect(commerce.previewCheckout).toHaveBeenCalledTimes(1);
+        view.unmount();
+      }
+    }
+  );
+
+  test("keeps quote-bound purchase terms in the direct confirmation without implementation copy", async () => {
+    const quotedOffer = {
+      ...planOffer,
+      importantNotices: { zh: ["本次套餐须知"], en: ["Terms for this plan"] }
+    };
+    const commerce = commerceClient({
+      previewCheckout: vi.fn(async () => ({ ...availableQuote, offer: quotedOffer }))
+    });
+    await openMarketplace(portalClientWithCommerce(commerce));
+    fireEvent.click(await screen.findByRole("button", {
+      name: "使用 Coins 购买：服务端基础套餐"
+    }));
+    const dialog = await screen.findByRole("dialog", { name: "确认 Coins 购买" });
+    expect(within(dialog).getByText("本次套餐须知")).toBeInTheDocument();
+    expect(within(dialog).queryByText("按订单状态交付")).not.toBeInTheDocument();
+    expect(within(dialog).getByText("30 天 · 每月 100 GB")).toBeInTheDocument();
+    expect(within(dialog).getByText("已购 Coins、奖励 Coins")).toBeInTheDocument();
+    expect(within(dialog).getByText("请确认商品和购买金额。")).toBeInTheDocument();
+    expect(within(dialog).queryByText(/服务端报价|server Quote/)).not.toBeInTheDocument();
+    expect(commerce.createOrder).not.toHaveBeenCalled();
+  });
+
+  test("retains English data-pack purchase terms from the quote, not the catalog", async () => {
+    const quotedOffer = {
+      ...dataPackOffer,
+      importantNotices: { zh: ["本次流量包须知"], en: ["Terms for this data pack"] }
+    };
+    const commerce = commerceClient({
+      previewCheckout: vi.fn(async () => ({ ...availableQuote, offer: quotedOffer }))
+    });
+    render(createElement(MarketplacePanel, {
+      commerceClient: commerce,
+      locale: "en",
+      sessionRef: "portal_session_marketplace",
+      theme: "dark"
+    }));
+    fireEvent.click(await screen.findByRole("button", { name: "Buy with Coins: Server data pack" }));
+    const dialog = await screen.findByRole("dialog", { name: "Confirm Coins purchase" });
+    expect(within(dialog).getByText("50 GB · never expires")).toBeInTheDocument();
+    expect(within(dialog).getByText("Accepted Coins").parentElement).toHaveTextContent("Purchased Coins");
+    expect(within(dialog).getByRole("list", { name: "Purchase terms" })).toHaveTextContent("Terms for this data pack");
+    expect(within(dialog).queryByText(dataPackOffer.importantNotices.en[0])).not.toBeInTheDocument();
+    expect(within(dialog).getByText("Review the product and purchase amount.")).toBeInTheDocument();
+    expect(commerce.createOrder).not.toHaveBeenCalled();
+  });
+
   test("loads the exact authenticated catalog and groups server Offers", async () => {
     const commerce = commerceClient();
     await openMarketplace(portalClientWithCommerce(commerce));
@@ -307,8 +445,14 @@ describe("Portal server-backed Marketplace", () => {
         sessionRef: "portal_session_marketplace"
       });
     });
-    expect(screen.getByRole("heading", { name: "套餐" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "流量包" })).toBeInTheDocument();
+    const plans = screen.getByRole("region", { name: "套餐" });
+    expect(plans).toHaveAttribute("aria-label", "套餐");
+    expect(plans).not.toHaveAttribute("aria-labelledby");
+    expect(within(plans).queryByRole("heading", { level: 2 })).not.toBeInTheDocument();
+    const dataPacks = screen.getByRole("region", { name: "流量包" });
+    expect(dataPacks).toHaveAttribute("aria-label", "流量包");
+    expect(dataPacks).not.toHaveAttribute("aria-labelledby");
+    expect(within(dataPacks).queryByRole("heading", { level: 2 })).not.toBeInTheDocument();
     expect(screen.getByRole("heading", {
       name: "服务端基础套餐"
     })).toBeInTheDocument();
@@ -338,38 +482,31 @@ describe("Portal server-backed Marketplace", () => {
     expect(planCard).not.toBeNull();
     expect(within(planCard as HTMLElement).getByText("服务端套餐说明"))
       .toBeInTheDocument();
-    expect(within(planCard as HTMLElement).getByText("30 天 · 每月 100 GB"))
-      .toBeInTheDocument();
+    expect(within(planCard as HTMLElement).queryByText("30 天 · 每月 100 GB"))
+      .not.toBeInTheDocument();
     expect(within(planCard as HTMLElement).getByText("价格").parentElement)
       .toHaveTextContent("价格42 Coins");
     expect(within(planCard as HTMLElement).queryByText("参考价"))
       .not.toBeInTheDocument();
-    expect(within(planCard as HTMLElement).getByText("按订单状态交付"))
-      .toBeInTheDocument();
-    expect(within(planCard as HTMLElement).getByText("已购 Coins、奖励 Coins"))
-      .toBeInTheDocument();
+    expect(within(planCard as HTMLElement).queryByText("按订单状态交付"))
+      .not.toBeInTheDocument();
+    expect(within(planCard as HTMLElement).queryByText("已购 Coins、奖励 Coins"))
+      .not.toBeInTheDocument();
     expect(planCard).not.toHaveTextContent(
       /paid_coins|bonus_coins|reward_coins|held_coins/
     );
-    expect(within(planCard as HTMLElement).getByText("42 Coins"))
-      .toBeInTheDocument();
-    const zhDetails = within(planCard as HTMLElement).getByRole("button", {
-      name: "查看详情：服务端基础套餐"
-    });
+    expect(within(planCard as HTMLElement).getAllByRole("definition")
+      .filter((definition) => definition.textContent === "42 Coins"))
+      .toHaveLength(1);
     const zhBuy = within(planCard as HTMLElement).getByRole("button", {
       name: "使用 Coins 购买：服务端基础套餐"
     });
-    expect(zhDetails.textContent).toBe("查看详情");
-    expect(zhDetails).toHaveAccessibleName(
-      `${zhDetails.textContent}：服务端基础套餐`
-    );
+    expect(within(planCard as HTMLElement).getAllByRole("button")).toHaveLength(1);
     expect(zhBuy.textContent).toBe("使用 Coins 购买");
     expect(zhBuy).toHaveAccessibleName(
       `${zhBuy.textContent}：服务端基础套餐`
     );
-    expect(screen.getByRole("button", {
-      name: "查看详情：服务端流量包"
-    })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /查看详情/ })).not.toBeInTheDocument();
     expect(screen.getByRole("button", {
       name: "使用 Coins 购买：服务端流量包"
     })).toBeInTheDocument();
@@ -422,7 +559,7 @@ describe("Portal server-backed Marketplace", () => {
     await openMarketplace(createLocalUserPortalClient());
     const unavailableNotice = await screen.findByRole("status");
     expect(unavailableNotice).toHaveTextContent(
-      "当前客户端未提供服务端商城能力"
+      "商城暂时不可用，请稍后再试。"
     );
     expect(unavailableNotice).toHaveAttribute("data-state", "unavailable");
     expect(unavailableNotice).toHaveAttribute("aria-live", "polite");
@@ -438,7 +575,7 @@ describe("Portal server-backed Marketplace", () => {
       listOffers: authList
     })));
     const authAlert = await screen.findByRole("alert");
-    expect(authAlert).toHaveTextContent("商城会话已失效，请重新登录");
+    expect(authAlert).toHaveTextContent("会话已失效，请重新登录");
     expect(authAlert).toHaveAttribute("data-state", "error");
     expect(authAlert).toHaveAttribute("aria-live", "assertive");
     const authMarker = authAlert.querySelector(
@@ -459,7 +596,7 @@ describe("Portal server-backed Marketplace", () => {
     const failingCommerce = commerceClient({ listOffers: failingList });
     await openMarketplace(portalClientWithCommerce(failingCommerce));
     const retryAlert = await screen.findByRole("alert");
-    expect(retryAlert).toHaveTextContent("Coins 购买流程暂时不可用");
+    expect(retryAlert).toHaveTextContent("商城暂时不可用，请稍后重试。");
     fireEvent.click(within(retryAlert).getByRole("button", { name: "重试" }));
     expect(await screen.findByRole("heading", {
       name: "服务端基础套餐"
@@ -467,7 +604,7 @@ describe("Portal server-backed Marketplace", () => {
     expect(failingList).toHaveBeenCalledTimes(2);
   });
 
-  test("opens details and Quote confirmation with one dialog and restores each card origin", async () => {
+  test("opens direct Quote confirmation with one dialog and restores the purchase origin", async () => {
     const commerce = commerceClient({
       previewCheckout: vi.fn(async () => availableQuote)
     });
@@ -475,55 +612,28 @@ describe("Portal server-backed Marketplace", () => {
     const planCard = (await screen.findByRole("heading", {
       name: "服务端基础套餐"
     })).closest("article") as HTMLElement;
-    const details = within(planCard).getByRole("button", {
-      name: "查看详情：服务端基础套餐"
-    });
     const purchase = within(planCard).getByRole("button", {
       name: "使用 Coins 购买：服务端基础套餐"
     });
 
-    fireEvent.click(details);
-    const detailDialog = await screen.findByRole("dialog", {
-      name: "服务端基础套餐"
+    fireEvent.click(purchase);
+    const purchaseDialog = await screen.findByRole("dialog", {
+      name: "确认 Coins 购买"
     });
     const currentTheme = document.querySelector<HTMLElement>(
       ".portal-v2-shell"
     )?.dataset.portalTheme;
-    const dialogTheme = detailDialog.closest<HTMLElement>(
+    const dialogTheme = purchaseDialog.closest<HTMLElement>(
       ".portal-coins-dialog-theme"
     );
     expect(currentTheme).toMatch(/^(light|dark)$/);
-    expect(dialogTheme).toContainElement(detailDialog);
+    expect(dialogTheme).toContainElement(purchaseDialog);
     expect(dialogTheme?.dataset.portalTheme).toBe(currentTheme);
     expect(screen.getAllByRole("dialog")).toHaveLength(1);
     expect(commerce.getOffer).toHaveBeenCalledWith({
       sessionRef: "portal_session_marketplace",
       offerRef: "offer_plan_basic"
     });
-    fireEvent.keyDown(detailDialog, { key: "Escape" });
-    await waitFor(() => expect(details).toHaveFocus());
-
-    fireEvent.click(details);
-    const detailToQuoteDialog = await screen.findByRole("dialog", {
-      name: "服务端基础套餐"
-    });
-    fireEvent.click(within(detailToQuoteDialog).getByRole("button", {
-      name: "预览 Coins 结算"
-    }));
-    const quoteFromDetails = await screen.findByRole("dialog", {
-      name: "确认 Coins 购买"
-    });
-    expect(screen.getAllByRole("dialog")).toHaveLength(1);
-    fireEvent.click(within(quoteFromDetails).getByRole("button", {
-      name: "关闭"
-    }));
-    await waitFor(() => expect(details).toHaveFocus());
-
-    fireEvent.click(purchase);
-    const purchaseDialog = await screen.findByRole("dialog", {
-      name: "确认 Coins 购买"
-    });
-    expect(screen.getAllByRole("dialog")).toHaveLength(1);
     expect(commerce.previewCheckout).toHaveBeenCalledWith({
       sessionRef: "portal_session_marketplace",
       offerRef: "offer_plan_basic"
@@ -532,7 +642,13 @@ describe("Portal server-backed Marketplace", () => {
       .toBeInTheDocument();
     expect(within(purchaseDialog).getByText(/之前: 52/))
       .toBeInTheDocument();
-    fireEvent.click(within(purchaseDialog).getByRole("button", {
+    expect(commerce.createOrder).not.toHaveBeenCalled();
+    fireEvent.keyDown(purchaseDialog, { key: "Escape" });
+    await waitFor(() => expect(purchase).toHaveFocus());
+    fireEvent.click(purchase);
+    const reopenedDialog = await screen.findByRole("dialog", { name: "确认 Coins 购买" });
+    expect(screen.getAllByRole("dialog")).toHaveLength(1);
+    fireEvent.click(within(reopenedDialog).getByRole("button", {
       name: "关闭"
     }));
     await waitFor(() => expect(purchase).toHaveFocus());
@@ -556,7 +672,7 @@ describe("Portal server-backed Marketplace", () => {
 
     const detailLoadingNotice = screen.getByRole("status");
     expect(detailLoadingNotice).toHaveTextContent(
-      "正在加载商品详情"
+      "正在确认商品信息"
     );
     expect(detailLoadingNotice).toHaveAttribute("data-state", "loading");
     expect(detailLoadingNotice.querySelector(
@@ -569,7 +685,7 @@ describe("Portal server-backed Marketplace", () => {
     });
     const quoteLoadingNotice = await screen.findByRole("status");
     expect(quoteLoadingNotice).toHaveTextContent(
-      "正在获取服务端报价"
+      "正在计算购买金额"
     );
     expect(quoteLoadingNotice).toHaveAttribute("data-state", "loading");
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
@@ -582,14 +698,14 @@ describe("Portal server-backed Marketplace", () => {
     });
     const flowErrorNotice = await screen.findByRole("alert");
     expect(flowErrorNotice).toHaveTextContent(
-      "Coins 购买流程暂时不可用"
+      "商城暂时不可用，请稍后重试。"
     );
     expect(flowErrorNotice).toHaveAttribute("data-state", "error");
     expect(flowErrorNotice).toHaveAttribute("aria-live", "assertive");
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
-  test("does not let an older purchase continuation upgrade a newer product detail", async () => {
+  test("does not let an older purchase continuation replace a newer product quote", async () => {
     const oldPlanDetail = deferred<PortalCoinOffer>();
     const currentDataPackDetail = deferred<PortalCoinOffer>();
     const previewCheckout = vi.fn(async () => ({
@@ -614,33 +730,33 @@ describe("Portal server-backed Marketplace", () => {
     const oldPurchase = within(planCard).getByRole("button", {
       name: "使用 Coins 购买：服务端基础套餐"
     });
-    const currentDetails = within(dataPackCard).getByRole("button", {
-      name: "查看详情：服务端流量包"
+    const currentPurchase = within(dataPackCard).getByRole("button", {
+      name: "使用 Coins 购买：服务端流量包"
     });
 
     await act(async () => {
       oldPurchase.click();
-      currentDetails.click();
+      currentPurchase.click();
     });
     await act(async () => {
       currentDataPackDetail.resolve(dataPackOffer);
       await currentDataPackDetail.promise;
     });
-    expect(await screen.findByRole("dialog", {
-      name: "服务端流量包"
-    })).toBeInTheDocument();
+    const currentDialog = await screen.findByRole("dialog", { name: "确认 Coins 购买" });
+    expect(within(currentDialog).getByRole("heading", { name: "服务端流量包" })).toBeInTheDocument();
     await act(async () => {
       oldPlanDetail.resolve(planOffer);
       await oldPlanDetail.promise;
     });
 
-    await waitFor(() => expect(previewCheckout).not.toHaveBeenCalled());
-    expect(screen.getByRole("dialog", {
-      name: "服务端流量包"
-    })).toBeInTheDocument();
-    expect(screen.queryByRole("dialog", {
-      name: "确认 Coins 购买"
-    })).not.toBeInTheDocument();
+    expect(previewCheckout).toHaveBeenCalledTimes(1);
+    expect(previewCheckout).toHaveBeenCalledWith({
+      sessionRef: "portal_session_marketplace",
+      offerRef: dataPackOffer.offerRef
+    });
+    expect(within(currentDialog).getByRole("heading", { name: "服务端流量包" })).toBeInTheDocument();
+    expect(within(currentDialog).queryByRole("heading", { name: "服务端基础套餐" })).not.toBeInTheDocument();
+    expect(commerce.createOrder).not.toHaveBeenCalled();
   });
 
   test("blocks repeated confirmation after a non-retryable create failure", async () => {
@@ -715,9 +831,6 @@ describe("Portal server-backed Marketplace", () => {
       name: "服务端流量包"
     }).closest("article") as HTMLElement;
     expect(within(dataPackCard).getByRole("button", {
-      name: "查看详情：服务端流量包"
-    })).toBeDisabled();
-    expect(within(dataPackCard).getByRole("button", {
       name: "使用 Coins 购买：服务端流量包"
     })).toBeDisabled();
 
@@ -736,7 +849,7 @@ describe("Portal server-backed Marketplace", () => {
     });
   });
 
-  test("moves from details to Quote, explicit confirm, held status, cancel, and GET readback", async () => {
+  test("moves from the purchase action to Quote, explicit confirm, held status, cancel, and GET readback", async () => {
     const commerce = commerceClient({
       previewCheckout: vi.fn(async () => availableQuote),
       createOrder: vi.fn(async () => heldOrder),
@@ -748,13 +861,7 @@ describe("Portal server-backed Marketplace", () => {
       name: "服务端基础套餐"
     })).closest("article") as HTMLElement;
     fireEvent.click(within(planCard).getByRole("button", {
-      name: "查看详情：服务端基础套餐"
-    }));
-    const detailDialog = await screen.findByRole("dialog", {
-      name: "服务端基础套餐"
-    });
-    fireEvent.click(within(detailDialog).getByRole("button", {
-      name: "预览 Coins 结算"
+      name: "使用 Coins 购买：服务端基础套餐"
     }));
     const quoteDialog = await screen.findByRole("dialog", {
       name: "确认 Coins 购买"
@@ -830,6 +937,9 @@ describe("Portal server-backed Marketplace", () => {
     });
     expect(within(reopenedDialog).getByText("Coins 已预留"))
       .toBeInTheDocument();
+    expect(within(reopenedDialog).getByRole("status")).toHaveTextContent(
+      "你有一笔订单尚未完成，已打开该订单供你查看进度。"
+    );
     expect(commerce.getOffer).toHaveBeenCalledTimes(1);
     expect(commerce.previewCheckout).toHaveBeenCalledTimes(1);
     expect(commerce.createOrder).toHaveBeenCalledTimes(1);
@@ -884,12 +994,13 @@ describe("Portal server-backed Marketplace", () => {
     }));
     expect(await within(dialog).findByText("Coins 已预留"))
       .toBeInTheDocument();
-    expect(within(dialog).queryByText("购买和交付已完成"))
+    expect(within(dialog).queryByRole("status")).not.toBeInTheDocument();
+    expect(within(dialog).queryByText("购买完成，服务已开通"))
       .not.toBeInTheDocument();
     fireEvent.click(within(dialog).getByRole("button", {
       name: "刷新订单"
     }));
-    expect(await within(dialog).findByText("购买和交付已完成"))
+    expect(await within(dialog).findByText("购买完成，服务已开通"))
       .toBeInTheDocument();
   });
 
@@ -933,7 +1044,7 @@ describe("Portal server-backed Marketplace", () => {
     fireEvent.click(within(dialog).getByRole("button", {
       name: "刷新订单"
     }));
-    expect(await within(dialog).findByText("购买和交付已完成"))
+    expect(await within(dialog).findByText("购买完成，服务已开通"))
       .toBeInTheDocument();
     await waitFor(() => {
       expect(wallet.getSummary).toHaveBeenCalledTimes(3);
@@ -982,8 +1093,16 @@ describe("Portal server-backed Marketplace", () => {
       name: "User center navigation"
     })).getByRole("button", { name: "Marketplace" }));
 
-    expect(await screen.findByRole("heading", { name: "Plans" }))
-      .toBeInTheDocument();
+    const plans = await screen.findByRole("region", { name: "Plans" });
+    expect(plans).toHaveAttribute("aria-label", "Plans");
+    expect(plans).not.toHaveAttribute("aria-labelledby");
+    expect(within(plans).queryByRole("heading", { level: 2 })).not.toBeInTheDocument();
+    const dataPacks = screen.getByRole("region", { name: "Data packs" });
+    expect(dataPacks).toHaveAttribute("aria-label", "Data packs");
+    expect(dataPacks).not.toHaveAttribute("aria-labelledby");
+    expect(within(dataPacks).queryByRole("heading", { level: 2 })).not.toBeInTheDocument();
+    expect(within(dataPacks).getByRole("heading", { level: 3, name: "Server data pack" })).toBeInTheDocument();
+    expect(within(dataPacks).getByRole("button", { name: "Buy with Coins: Server data pack" })).toBeInTheDocument();
     const englishCard = screen.getByRole("heading", {
       name: "Server basic plan"
     }).closest("article") as HTMLElement;
@@ -991,16 +1110,11 @@ describe("Portal server-backed Marketplace", () => {
       .toBeInTheDocument();
     expect(within(englishCard).getByText("Price").parentElement)
       .toHaveTextContent("Price42 Coins");
-    const englishDetails = within(englishCard).getByRole("button", {
-      name: "Details: Server basic plan"
-    });
     const englishBuy = within(englishCard).getByRole("button", {
       name: "Buy with Coins: Server basic plan"
     });
-    expect(englishDetails.textContent).toBe("Details");
-    expect(englishDetails).toHaveAccessibleName(
-      `${englishDetails.textContent}: Server basic plan`
-    );
+    expect(within(englishCard).getAllByRole("button")).toHaveLength(1);
+    expect(screen.queryByRole("button", { name: /Details/ })).not.toBeInTheDocument();
     expect(englishBuy.textContent).toBe("Buy with Coins");
     expect(englishBuy).toHaveAccessibleName(
       `${englishBuy.textContent}: Server basic plan`
@@ -1073,6 +1187,7 @@ describe("Portal server-backed Marketplace", () => {
     ));
     const commerce = commerceClient({
       getOffer,
+      previewCheckout: vi.fn(async () => ({ ...availableQuote, offer: dataPackOffer })),
       listOffers: vi.fn(async ({ sessionRef }) => (
         sessionRef === "portal_session_first"
           ? [planOffer]
@@ -1089,10 +1204,10 @@ describe("Portal server-backed Marketplace", () => {
       name: "Server basic plan"
     })).closest("article") as HTMLElement;
     fireEvent.click(within(oldCard).getByRole("button", {
-      name: "Details: Server basic plan"
+      name: "Buy with Coins: Server basic plan"
     }));
     expect(await screen.findByRole("status")).toHaveTextContent(
-      "Loading product details"
+      "Checking product information"
     );
 
     view.rerender(createElement(MarketplacePanel, {
@@ -1112,19 +1227,17 @@ describe("Portal server-backed Marketplace", () => {
       oldDetail.resolve(planOffer);
       await oldDetail.promise;
     });
-    expect(screen.queryByRole("dialog", {
-      name: "Server basic plan"
-    })).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(commerce.previewCheckout).not.toHaveBeenCalled();
 
     const currentCard = screen.getByRole("heading", {
       name: "Server data pack"
     }).closest("article") as HTMLElement;
     fireEvent.click(within(currentCard).getByRole("button", {
-      name: "Details: Server data pack"
+      name: "Buy with Coins: Server data pack"
     }));
-    expect(await screen.findByRole("dialog", {
-      name: "Server data pack"
-    })).toBeInTheDocument();
+    const currentDialog = await screen.findByRole("dialog", { name: "Confirm Coins purchase" });
+    expect(within(currentDialog).getByRole("heading", { name: "Server data pack" })).toBeInTheDocument();
     expect(getOffer).toHaveBeenLastCalledWith({
       sessionRef: "portal_session_second",
       offerRef: "offer_data_pack"
@@ -1242,7 +1355,9 @@ describe("Portal server-backed Marketplace", () => {
         name: "Confirm Coins purchase"
       })).not.toBeInTheDocument();
     });
-    expect(screen.getAllByText("42 Coins")).toHaveLength(1);
+    expect(screen.getAllByRole("definition")
+      .filter((definition) => definition.textContent === "42 Coins"))
+      .toHaveLength(1);
 
     const currentCard = (await screen.findByRole("heading", {
       name: "Server basic plan"
@@ -1313,7 +1428,9 @@ describe("Portal server-backed Marketplace", () => {
         name: "Confirm Coins purchase"
       })).not.toBeInTheDocument();
     });
-    expect(screen.getAllByText("42 Coins")).toHaveLength(1);
+    expect(screen.getAllByRole("definition")
+      .filter((definition) => definition.textContent === "42 Coins"))
+      .toHaveLength(1);
 
     const currentCard = (await screen.findByRole("heading", {
       name: "Server basic plan"
@@ -1415,9 +1532,8 @@ describe("Portal server-backed Marketplace", () => {
     expect(css).not.toContain(
       "box-shadow: 0 0 0 3px rgba(32, 213, 232, 0.2)"
     );
-    expect(css).toContain("@media (max-width: 960px)");
     expect(css).toMatch(
-      /@media \(max-width: 960px\)\s*\{\s*\.portal-v2-shell \.portal-marketplace-grid\s*\{\s*grid-template-columns: minmax\(0, 1fr\);\s*\}/
+      /@media \(min-width: 1101px\)\s*\{\s*\.portal-v2-shell \.portal-marketplace-grid\s*\{\s*grid-template-columns: repeat\(3, minmax\(0, 1fr\)\);\s*\}/
     );
     expect(css).toContain("@media (max-width: 720px)");
     expect(css).toContain(`max-height: calc(

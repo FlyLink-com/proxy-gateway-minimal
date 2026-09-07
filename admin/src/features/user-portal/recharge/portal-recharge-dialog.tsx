@@ -1,13 +1,13 @@
 import { AlertTriangle, CheckCircle2, Clock3, Circle, LoaderCircle } from "lucide-react";
+import { useState } from "react";
 
 import { ModalFrame } from "../../../components/modal-frame";
 
-import { formatPortalRechargeAmount } from "./portal-recharge-presentation";
-import type {
-  PortalRechargeModel,
-  PortalRechargeOffersState
-} from "./use-portal-recharge";
-import type { PortalRechargePaymentMethod } from "./portal-recharge-client";
+import { formatPortalRechargeAmount, portalRechargePaymentMethodLabel } from "./portal-recharge-presentation";
+import { canContinuePortalRechargeOrder } from "./portal-recharge-payment-handoff";
+import { PortalRechargeOffers } from "./portal-recharge-offers";
+import type { PortalRechargeModel } from "./use-portal-recharge";
+import type { PortalRechargeOffer } from "./portal-recharge-client";
 
 type RechargeStatusTone = "neutral" | "pending" | "success" | "attention";
 
@@ -35,8 +35,8 @@ function statusMeta(
     entry_ready: {
       title: zh ? "等待付款" : "Waiting for payment",
       description: zh
-        ? "完成付款后，返回页面即可自动确认"
-        : "Complete payment on the payment page; the result will be confirmed automatically when you return.",
+        ? "即将跳转支付页面"
+        : "You will be redirected to the payment page",
       tone: "neutral",
     },
     pending: {
@@ -84,76 +84,20 @@ function statusIcon(tone: RechargeStatusTone) {
   return Circle;
 }
 
-function paymentMethodLabel(paymentMethod: PortalRechargePaymentMethod, zh: boolean) {
-  if (paymentMethod === "alipay") return zh ? "支付宝" : "Alipay";
-  if (paymentMethod === "wechat_pay") return zh ? "微信支付" : "WeChat Pay";
-  return "PayPal";
-}
-
-function RechargeOffersState({
-  locale,
-  state,
-  onRetry
-}: {
-  locale: "zh" | "en";
-  state: PortalRechargeOffersState;
-  onRetry: () => void;
-}) {
-  const zh = locale === "zh";
-  if (state.status === "loading") {
-    return (
-      <div
-        aria-live="polite"
-        className="portal-recharge-state"
-        data-state="loading"
-        role="status"
-      >
-        <LoaderCircle aria-hidden="true" className="portal-recharge-status-card__spinner" />
-        <p>{zh ? "正在加载充值档位…" : "Loading recharge options…"}</p>
-      </div>
-    );
-  }
-  if (state.status === "empty") {
-    return (
-      <div className="portal-recharge-state" data-state="empty" role="status">
-        <p>{zh ? "当前没有可用的充值档位。" : "No recharge options are currently available."}</p>
-      </div>
-    );
-  }
-  if (state.status === "unavailable" || state.status === "error") {
-    const unavailable = state.status === "unavailable";
-    return (
-      <div
-        aria-live={unavailable ? "polite" : "assertive"}
-        className="portal-recharge-state"
-        data-state={state.status}
-        role={unavailable ? "status" : "alert"}
-      >
-        <p>
-          {unavailable
-            ? zh ? "Coins 充值暂不可用。" : "Coins recharge is unavailable."
-            : zh ? "充值档位加载失败。" : "Recharge options could not be loaded."}
-        </p>
-        {state.retryable ? (
-          <button type="button" onClick={onRetry}>
-            {zh ? "重试" : "Retry"}
-          </button>
-        ) : null}
-      </div>
-    );
-  }
-  return null;
-}
-
 export function PortalRechargeDialog({
   locale,
   model,
+  selectedOffer,
 }: {
   locale: "zh" | "en";
   model: PortalRechargeModel;
+  selectedOffer?: PortalRechargeOffer;
 }) {
   const zh = locale === "zh";
   const order = model.activeOrder;
+  const [visibleOrderRef, setVisibleOrderRef] = useState<string | null>(null);
+  const orderRefVisible = Boolean(order && visibleOrderRef === order.orderRef);
+  const canPay = Boolean(order && canContinuePortalRechargeOrder(order));
   const meta = order ? statusMeta(order.status, zh, order.expectedPaidCoinUnits) : null;
   const Icon = meta ? statusIcon(meta.tone) : null;
   const delayed = model.error === "delayed";
@@ -164,13 +108,21 @@ export function PortalRechargeDialog({
       closeDisabled={model.busy}
       closeLabel={zh ? "关闭" : "Close"}
       onClose={model.closeDialog}
-      panelClassName="portal-recharge-dialog"
+      panelClassName={order || (model.busy && selectedOffer)
+        ? "portal-recharge-dialog portal-recharge-dialog--checkout" : "portal-recharge-dialog"}
       title={zh ? "充值 Coins" : "Recharge Coins"}
       titleId="portal-recharge-dialog-title"
     >
       {model.error ? (
         <div className="portal-recharge-state" role="alert">
-          {model.error === "unavailable"
+          {model.error === "create_unknown"
+            ? zh
+              ? "充值订单结果尚未确认。请确认本次订单，不要重新创建或重复支付。"
+              : "The recharge order result is not yet confirmed. Check this attempt; do not create another order or pay again."
+            : model.error === "entry_expired"
+              ? zh ? "支付入口已过期，请更新订单状态后再继续；未创建新的充值订单。"
+                : "The payment entry has expired. Refresh the order status before continuing; no new order was created."
+            : model.error === "unavailable"
             ? zh ? "Coins 充值暂不可用。" : "Coins recharge is unavailable."
             : model.error === "delayed"
               ? zh
@@ -179,8 +131,25 @@ export function PortalRechargeDialog({
               : zh ? "充值请求失败，请安全重试。" : "Recharge request failed. Retry safely."}
         </div>
       ) : null}
-      {order ? (
-        <section className="portal-recharge-order" aria-label={zh ? "充值订单" : "Recharge order"}>
+      {model.unresolvedCreateOfferRef ? (
+        <div className="portal-recharge-state">
+          <button type="button" disabled={model.busy}
+            aria-busy={model.busy ? "true" : undefined}
+            onClick={() => void model.retryCreateOrder?.()}>
+            {model.busy
+              ? zh ? "正在确认本次订单…" : "Checking this attempt…"
+              : zh ? "确认本次充值订单" : "Check this recharge attempt"}
+          </button>
+          <p>{zh ? "可关闭此窗口，稍后返回确认。关闭不会取消已经创建的订单。"
+            : "You can close this window and return to check. Closing does not cancel an order already created."}</p>
+        </div>
+      ) : order ? (
+        <section className="portal-recharge-order portal-recharge-checkout" aria-label={zh ? "充值订单" : "Recharge order"}>
+          <div className="portal-recharge-checkout__summary">
+            <span className="portal-recharge-offer-label">{zh ? "支付金额" : "Payment amount"}</span>
+            <strong className="portal-recharge-checkout__amount">{formatPortalRechargeAmount(order)}</strong>
+            <p className="portal-recharge-checkout__product">{order.expectedPaidCoinUnits} Coins</p>
+          </div>
           <div
             aria-busy={model.busy || pending ? "true" : undefined}
             aria-label={meta?.title}
@@ -200,54 +169,42 @@ export function PortalRechargeDialog({
               </p>
             ) : null}
           </div>
-          <dl>
-            <div><dt>{zh ? "到账" : "Credit"}</dt><dd>{order.expectedPaidCoinUnits} Coins</dd></div>
-            <div><dt>{zh ? "支付金额" : "Payment amount"}</dt><dd>{formatPortalRechargeAmount(order)}</dd></div>
-            <div><dt>{zh ? "订单号" : "Order"}</dt><dd>{order.orderRef}</dd></div>
+          <dl className="portal-recharge-checkout__details">
+            <div><dt>{zh ? "支付方式" : "Payment method"}</dt><dd>{portalRechargePaymentMethodLabel(order.paymentMethod, locale)}</dd></div>
           </dl>
+          <div className="portal-recharge-checkout__reference">
+            <button aria-expanded={orderRefVisible} aria-controls="portal-recharge-order-reference" type="button"
+              onClick={() => setVisibleOrderRef(orderRefVisible ? null : order.orderRef)}>
+              {orderRefVisible ? zh ? "收起订单号" : "Hide order number" : zh ? "查看订单号" : "View order number"}
+            </button>
+            {orderRefVisible ? <p id="portal-recharge-order-reference">{order.orderRef}</p> : null}
+          </div>
+          {canPay ? (
+            <button type="button" disabled={model.busy} aria-busy={model.busy ? "true" : undefined}
+              aria-label={order.paymentMethod === "alipay"
+                ? zh ? "支付宝支付，继续本次充值" : "Pay with Alipay, continue this recharge"
+                : zh ? "继续支付" : "Continue payment"}
+              className={order.paymentMethod === "alipay"
+                ? "portal-recharge-pay-button portal-recharge-pay-button--alipay portal-recharge-checkout__pay"
+                : "portal-recharge-pay-button portal-recharge-checkout__pay"}
+              onClick={() => model.continueOrderPayment(order)}>
+              {order.paymentMethod === "alipay" ? <img alt="" aria-hidden="true" src="/payment-alipay-icon.png" /> : null}
+              {order.paymentMethod === "alipay" ? zh ? "支付宝支付" : "Pay with Alipay"
+                : zh ? "继续支付" : "Continue payment"}
+            </button>
+          ) : null}
         </section>
-      ) : model.offersState.status === "ready" ? (
-        <ul className="portal-recharge-offers" aria-label={zh ? "Coins 充值档位" : "Coins recharge denominations"}>
-          {model.offers.map((offer, index) => {
-            const amount = formatPortalRechargeAmount(offer);
-            const paymentLabel = zh
-              ? `创建订单并支付 ${offer.paidCoinUnits} Coins，${amount}，第 ${index + 1} 个档位`
-              : `Create order and pay for ${offer.paidCoinUnits} Coins, ${amount}, option ${index + 1}`;
-            const creatingOrderLabel = zh
-              ? `正在创建订单：${offer.paidCoinUnits} Coins，${amount}，第 ${index + 1} 个档位`
-              : `Creating order for ${offer.paidCoinUnits} Coins, ${amount}, option ${index + 1}`;
-            return (
-              <li key={offer.offerRef}>
-                <div className="portal-recharge-offer-details">
-                  <strong>{offer.paidCoinUnits} Coins</strong>
-                  <span>{amount}</span>
-                  <div className="portal-recharge-payment-methods" aria-label={zh ? "支付方式" : "Payment methods"}>
-                    {offer.paymentMethods.map((paymentMethod) => (
-                      <span key={paymentMethod}>{paymentMethodLabel(paymentMethod, zh)}</span>
-                    ))}
-                  </div>
-                </div>
-                <button
-                  aria-busy={model.busy ? "true" : undefined}
-                  aria-label={model.busy ? creatingOrderLabel : paymentLabel}
-                  type="button"
-                  disabled={model.busy}
-                  onClick={() => void model.createOrder(offer.offerRef)}
-                >
-                  {model.busy
-                    ? zh ? "正在创建订单…" : "Creating order…"
-                    : zh ? "创建订单并支付" : "Create order and pay"}
-                </button>
-              </li>
-            );
-          })}
-        </ul>
+      ) : model.busy && selectedOffer ? (
+        <section className="portal-recharge-order portal-recharge-checkout" aria-label={zh ? "充值摘要" : "Recharge summary"}>
+          <div className="portal-recharge-checkout__summary">
+            <span className="portal-recharge-offer-label">{zh ? "支付金额" : "Payment amount"}</span>
+            <strong className="portal-recharge-checkout__amount">{formatPortalRechargeAmount(selectedOffer)}</strong>
+            <p className="portal-recharge-checkout__product">{selectedOffer.paidCoinUnits} Coins</p>
+          </div>
+          <p role="status" aria-live="polite">{zh ? "正在创建充值订单…" : "Creating recharge order…"}</p>
+        </section>
       ) : (
-        <RechargeOffersState
-          locale={locale}
-          onRetry={model.retryOffers}
-          state={model.offersState}
-        />
+        <PortalRechargeOffers locale={locale} model={model} />
       )}
     </ModalFrame>
   );

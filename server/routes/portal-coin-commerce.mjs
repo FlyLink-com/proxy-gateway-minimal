@@ -732,7 +732,10 @@ function projectOrder(input) {
   ) {
     throw projectionInvalid();
   }
-  if (value.paymentStatus !== "captured") {
+  if (
+    value.paymentStatus !== "captured"
+    && value.paymentStatus !== "reconciliation_required"
+  ) {
     if (
       fulfillmentValue.status !== "not_requested"
       || fulfillmentValue.safeCode !== null
@@ -740,9 +743,13 @@ function projectOrder(input) {
       throw projectionInvalid();
     }
   } else {
+    // Reconciliation can retain a terminal command/receipt after settlement.
+    // Preserve that store-validated history, but never admit a live command.
+    const allowedStatuses = value.paymentStatus === "reconciliation_required"
+      ? new Set(["not_requested", "delivered", "failed"])
+      : new Set(["pending", "processing", "delivered", "failed"]);
     if (
-      !new Set(["pending", "processing", "delivered", "failed"])
-        .has(fulfillmentValue.status)
+      !allowedStatuses.has(fulfillmentValue.status)
     ) {
       throw projectionInvalid();
     }
@@ -912,12 +919,15 @@ function parseOrderListQuery(req, res, next) {
   }
 }
 
-function createSessionMiddleware(state) {
+function createSessionMiddleware(state, browserSessions) {
   return function requirePortalSession(req, res, next) {
+    let browser;
+    try { browser = browserSessions?.session(req); }
+    catch { sendCommerceError(res, 401, "commerce_session_invalid"); return; }
     const header = readRawHeader(req, "x-portal-session");
     if (
-      header.state !== "present"
-      || !SESSION_REFERENCE.test(header.value)
+      !browser && (header.state !== "present"
+      || !SESSION_REFERENCE.test(header.value))
     ) {
       sendCommerceError(res, 401, "commerce_session_invalid");
       return;
@@ -929,7 +939,7 @@ function createSessionMiddleware(state) {
         sendCommerceError(res, 503, "commerce_unavailable");
         return;
       }
-      projection = auth.requireSession({ sessionRef: header.value });
+      projection = browser ?? auth.requireSession({ sessionRef: header.value });
     } catch {
       sendCommerceError(res, 401, "commerce_session_invalid");
       return;
@@ -941,7 +951,7 @@ function createSessionMiddleware(state) {
         "accountId"
       ]);
       if (
-        session.sessionRef !== header.value
+        session.sessionRef !== (browser?.sessionRef ?? header.value)
         || typeof session.sessionRef !== "string"
         || !SESSION_REFERENCE.test(session.sessionRef)
         || typeof session.accountId !== "string"
@@ -1258,7 +1268,7 @@ function isSelectedCommerceRoute(method, pathname) {
 export function portalCoinCommerceRoutes(state, options = {}) {
   const router = Router({ caseSensitive: true, strict: true });
   const store = state.platform?.coinCommerceStore;
-  const requireSession = createSessionMiddleware(state);
+  const requireSession = createSessionMiddleware(state, options.browserSessions);
   const resolveCommerceModel = createCommerceModelMiddleware(state);
   const requireWalletFirstService = createWalletFirstServiceMiddleware(state);
   const previewRateLimit = createPreviewRateLimiter(

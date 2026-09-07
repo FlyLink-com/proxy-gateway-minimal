@@ -345,6 +345,79 @@ function productionInput(fixture, offer = COIN_COMMERCE_PRODUCTION_OFFERS[0], ov
   };
 }
 
+function createInitialFulfillmentFixture({ nowFn, beforeApply } = {}) {
+  const directory = mkdtempSync(join(tmpdir(), "coin-commerce-initial-clock-"));
+  const controlDbPath = join(directory, "control.sqlite");
+  const controlStore = createSqliteSubscriptionControlStore({
+    dbPath: controlDbPath
+  });
+  const runtimeStore = createSqliteSubscriptionStore({
+    dbPath: join(directory, "runtime.sqlite")
+  });
+  const runtimeCore = createSubscriptionCore({
+    store: runtimeStore,
+    proxyConfig: sampleProxyConfig(),
+    publicSubscriptionBaseUrl: "https://gateway.example.test",
+    nowFn: () => new Date(NOW),
+    tokenFactory,
+    artifactSecretFactory: () => "synthetic_initial_clock_artifact",
+    idFactory: () => "tenant_initial_clock_001",
+    artifactIdFactory: () => "artifact_initial_clock_001"
+  });
+  const accountId = "acct_initial_clock_001";
+  controlStore.createAccount({
+    id: accountId,
+    ownerRef: "owner_initial_clock_001",
+    status: "active",
+    createdAt: NOW,
+    updatedAt: NOW
+  });
+  const issuer = createPortalAccessRequestService({
+    nowFn,
+    controlStore,
+    runtimeCore,
+    autoIssuance: {
+      enabled: true,
+      nodeId: "node_sg",
+      reviewedByRef: "commerce_product_issuer"
+    }
+  });
+  let issuanceCalls = 0;
+  let applyCalls = 0;
+  const accountResourceIssuer = Object.create(issuer);
+  accountResourceIssuer.fulfillCommerceProduct = (input) => {
+    issuanceCalls += 1;
+    return issuer.fulfillCommerceProduct(input);
+  };
+  const fulfillmentControlStore = Object.create(controlStore);
+  fulfillmentControlStore.applyCoinCommerceSubscriptionFulfillment = (input) => {
+    applyCalls += 1;
+    beforeApply?.(input, applyCalls);
+    return controlStore.applyCoinCommerceSubscriptionFulfillment(input);
+  };
+  const service = createCoinCommerceProductionSubscriptionFulfillment({
+    controlStore: fulfillmentControlStore,
+    runtimeCore,
+    accountResourceIssuer,
+    nowFn,
+    accountActivationReader: ACTIVATED_ACCOUNT_READER
+  });
+  return {
+    accountId,
+    controlDbPath,
+    controlStore,
+    runtimeCore,
+    service,
+    get issuanceCalls() { return issuanceCalls; },
+    get applyCalls() { return applyCalls; },
+    close() {
+      controlStore.close();
+      runtimeStore.close();
+      rmSync(directory, { recursive: true, force: true, maxRetries: 3, retryDelay: 50 });
+    }
+  };
+}
+
 test("production subscription fulfillment exposes the exact factory contract for one eligible stable binding", () => {
   const fixture = createFixture();
   try {
@@ -526,6 +599,44 @@ test("production fulfillment rejects accessor-backed, proxied, and over-specifie
   }
 });
 
+test("production fulfillment rejects non-text command and order refs without coercion or issuance", () => {
+  const fixture = createInitialFulfillmentFixture({ nowFn: () => new Date(NOW) });
+  try {
+    const before = fixture.controlStore.getAccountControlSummary(fixture.accountId);
+    const invalidValues = [
+      undefined,
+      null,
+      0,
+      "",
+      "   ",
+      [],
+      Buffer.from("synthetic-not-a-text-ref"),
+      { toString() { throw new Error("private coercion detail"); } }
+    ];
+    for (const field of ["commandRef", "orderRef"]) {
+      for (const value of invalidValues) {
+        assert.throws(
+          () => fixture.service.fulfillmentHandler.execute({
+            ...productionInput(fixture),
+            [field]: value
+          }),
+          (error) => (
+            error.code === "coin_commerce_fulfillment_invalid_input"
+            && !String(error).includes("private coercion detail")
+            && !isCoinCommerceFulfillmentRetryableError(error)
+          ),
+          field
+        );
+      }
+    }
+    assert.equal(fixture.issuanceCalls, 0);
+    assert.equal(fixture.applyCalls, 0);
+    assert.deepEqual(fixture.controlStore.getAccountControlSummary(fixture.accountId), before);
+  } finally {
+    fixture.close();
+  }
+});
+
 test("an expiring but enabled runtime tenant remains eligible to renew its stable binding", () => {
   const fixture = createFixture({
     baseValidUntil: "2026-08-03T00:00:00.000Z"
@@ -696,6 +807,363 @@ test("an account without a prior entitlement can purchase into one stable accoun
     controlStore.close();
     runtimeStore.close();
     rmSync(directory, { recursive: true, force: true, maxRetries: 3, retryDelay: 50 });
+  }
+});
+
+test("initial fulfillment completes when the issuer clock advances by one millisecond", () => {
+  let clock = Date.parse(NOW);
+  const fixture = createInitialFulfillmentFixture({
+    nowFn: () => new Date(clock++)
+  });
+  try {
+    const command = productionInput(fixture);
+    const delivered = fixture.service.fulfillmentHandler.execute(command);
+    assert.equal(delivered.status, "delivered");
+    assert.equal(fixture.issuanceCalls, 1);
+    assert.equal(fixture.applyCalls, 1);
+    const summary = fixture.controlStore.getAccountControlSummary(fixture.accountId);
+    const resources = fixture.controlStore.listPortalAccessRequests({
+      portalUserRef: fixture.accountId
+    });
+    assert.equal(summary.entitlements.length, 1);
+    assert.equal(resources.length, 1);
+    const [resource] = resources;
+    const entitlement = fixture.controlStore.getEntitlement(resource.entitlementRef);
+    assert.equal(resource.status, "delivered");
+    assert.equal(entitlement.validFrom, resource.submittedAt);
+    assert.equal(entitlement.createdAt, resource.submittedAt);
+    assert.equal(entitlement.trafficLimitBytes, 50 * GIB);
+    assert.equal(
+      Date.parse(entitlement.validUntil) - Date.parse(entitlement.validFrom),
+      30 * 24 * 60 * 60 * 1000
+    );
+    assert.equal(
+      summary.auditEvents.filter((event) => event.action === "subscription_fulfillment_applied").length,
+      1
+    );
+    assert.equal(fixture.runtimeCore.getTenant(resource.tenantId).expiresAt, entitlement.validUntil);
+  } finally {
+    fixture.close();
+  }
+});
+
+test("initial fulfillment recovers the same command after clock advance without reissue or added duration", () => {
+  let clock = Date.parse(NOW);
+  const fixture = createInitialFulfillmentFixture({
+    nowFn: () => new Date(clock),
+    beforeApply(_input, attempt) {
+      if (attempt === 1) {
+        const error = new Error("synthetic busy after initial issuance");
+        error.code = "SQLITE_BUSY_RECOVERY";
+        throw error;
+      }
+    }
+  });
+  try {
+    const command = productionInput(fixture);
+    assert.throws(
+      () => fixture.service.fulfillmentHandler.execute(command),
+      (error) => isCoinCommerceFulfillmentRetryableError(error)
+    );
+    const [beforeResource] = fixture.controlStore.listPortalAccessRequests({
+      portalUserRef: fixture.accountId
+    });
+    const beforeEntitlement = fixture.controlStore.getEntitlement(beforeResource.entitlementRef);
+    assert.equal(beforeResource.status, "delivered");
+    assert.equal(beforeEntitlement.validUntil, "2026-08-29T00:00:00.000Z");
+    assert.equal(fixture.controlStore.getAuditEvent(fulfillmentEffectRef(command.commandRef)), null);
+    assert.equal(fixture.issuanceCalls, 1);
+
+    clock += 60_000;
+    const delivered = fixture.service.fulfillmentHandler.execute(command);
+    assert.equal(delivered.status, "delivered");
+    assert.equal(fixture.issuanceCalls, 1);
+    const [resource] = fixture.controlStore.listPortalAccessRequests({
+      portalUserRef: fixture.accountId
+    });
+    const entitlement = fixture.controlStore.getEntitlement(resource.entitlementRef);
+    assert.equal(resource.id, beforeResource.id);
+    assert.equal(resource.tenantId, beforeResource.tenantId);
+    assert.equal(resource.artifactId, beforeResource.artifactId);
+    assert.equal(entitlement.id, beforeEntitlement.id);
+    assert.equal(entitlement.validFrom, beforeEntitlement.validFrom);
+    assert.equal(entitlement.validUntil, beforeEntitlement.validUntil);
+    assert.equal(resource.expiresAt, beforeResource.expiresAt);
+    assert.equal(resource.validUntil, beforeResource.validUntil);
+    assert.equal(fixture.runtimeCore.getTenant(resource.tenantId).expiresAt, beforeEntitlement.validUntil);
+    assert.equal(fixture.controlStore.getAccountControlSummary(fixture.accountId).entitlements.length, 1);
+    assert.equal(fixture.controlStore.listIssuedSubscriptionBindings({ accountId: fixture.accountId }).length, 1);
+    assert.equal(
+      fixture.controlStore.getAccountControlSummary(fixture.accountId).auditEvents
+        .filter((event) => event.action === "subscription_fulfillment_applied").length,
+      1
+    );
+    clock += 60_000;
+    assert.deepEqual(fixture.service.fulfillmentHandler.execute(command), delivered);
+    assert.equal(fixture.issuanceCalls, 1);
+    assert.equal(fixture.controlStore.getEntitlement(entitlement.id).validUntil, beforeEntitlement.validUntil);
+  } finally {
+    fixture.close();
+  }
+});
+
+test("the real coordinator confirms delayed initial issuance once without recapturing Coins", async () => {
+  let clock = NOW;
+  const fixture = createInitialFulfillmentFixture({
+    nowFn: () => new Date(clock),
+    beforeApply(_input, attempt) {
+      if (attempt === 1) {
+        const error = new Error("synthetic busy after initial issuance");
+        error.code = "SQLITE_BUSY_RECOVERY";
+        throw error;
+      }
+    }
+  });
+  let database;
+  let commerceStore;
+  let coordinator;
+  try {
+    database = new Database(fixture.controlDbPath);
+    applyCoinWalletMigrations({
+      database,
+      expectedMigrationId: REQUIRED_COIN_WALLET_MIGRATION_ID,
+      expectedDdlChecksum: COIN_WALLET_MIGRATIONS[0].ddlChecksum,
+      nowFn: () => new Date(clock)
+    });
+    applyCoinCommerceMigrations({
+      database,
+      expectedMigrationId: REQUIRED_COIN_COMMERCE_MIGRATION_ID,
+      expectedDdlChecksum: COIN_COMMERCE_MIGRATIONS[0].ddlChecksum,
+      nowFn: () => new Date(clock)
+    });
+    // Same clock-only adapter as the coordinator restart tests: all SQL,
+    // transactions, state checks and wallet writes use the real SQLite store.
+    const clockDatabase = new Proxy(database, {
+      get(target, property) {
+        if (property === "inTransaction") return target.inTransaction;
+        if (property === "prepare") {
+          return (sql) => {
+            if (/select\s+strftime\('%Y-%m-%dT%H:%M:%fZ',\s*'now'\)/i.test(sql)) {
+              return { pluck: () => ({ get: () => clock }) };
+            }
+            return target.prepare(sql);
+          };
+        }
+        const value = Reflect.get(target, property, target);
+        return typeof value === "function" ? value.bind(target) : value;
+      }
+    });
+    commerceStore = createSqliteCoinCommerceStore({ database: clockDatabase, cancelWindowMs: 0 });
+    commerceStore.walletStore.creditCoins({
+      accountId: fixture.accountId,
+      coinType: "paid_coins",
+      amountUnits: 20,
+      availability: "available",
+      sourceType: "synthetic_seed",
+      sourceRef: "source_initial_clock",
+      sourceDigest: "a".repeat(64),
+      policyRef: null,
+      policyVersion: null,
+      expiresAt: null,
+      operation: {
+        actorScope: "system:initial-clock-test",
+        idempotencyKey: "credit_initial_clock",
+        actorType: "system",
+        actorRef: "initial_clock_test"
+      }
+    });
+    commerceStore.bootstrapPublishedOffers([COIN_COMMERCE_PRODUCTION_OFFERS[0]]);
+    const quote = commerceStore.createCheckoutQuote({
+      accountId: fixture.accountId,
+      offerRef: COIN_COMMERCE_PRODUCTION_OFFERS[0].offerRef
+    });
+    const held = commerceStore.confirmOrder({
+      accountId: fixture.accountId,
+      quoteRef: quote.quoteRef,
+      operation: {
+        actorScope: `portal:${fixture.accountId}`,
+        idempotencyKey: "confirm_initial_clock",
+        actorType: "portal_user",
+        actorRef: fixture.accountId
+      }
+    });
+    const [claimed] = commerceStore.claimDueCaptures({ limit: 1 });
+    assert.equal(claimed.orderRef, held.orderRef);
+    commerceStore.captureClaimedOrder({ orderRef: held.orderRef });
+    const readOrder = () => commerceStore.getOrder({
+      accountId: fixture.accountId,
+      orderRef: held.orderRef
+    });
+    const readReceiptCount = () => database.prepare(`
+      select count(*) as count from platform_coin_commerce_fulfillment_receipts
+    `).get().count;
+    const readHolds = () => database.prepare("select * from platform_coin_holds order by hold_ref").all();
+    const readLedger = () => database.prepare("select * from platform_coin_ledger_entries order by entry_ref").all();
+    const capturedHolds = readHolds();
+    const capturedLedger = readLedger();
+    assert.equal(capturedHolds.length, 1);
+    assert.equal(capturedHolds[0].status, "captured");
+    assert.equal(readOrder().paymentStatus, "captured");
+    assert.equal(readOrder().fulfillment.status, "pending");
+    coordinator = createCoinCommerceCoordinator({
+      store: commerceStore,
+      fulfillmentHandler: fixture.service.fulfillmentHandler,
+      nowFn: () => new Date(clock)
+    });
+
+    const firstPass = await coordinator.runOnce();
+    assert.equal(firstPass.commandsDeferred, 1);
+    assert.equal(firstPass.commandsFailed, 0);
+    assert.equal(readOrder().paymentStatus, "captured");
+    assert.equal(readOrder().fulfillment.status, "processing");
+    assert.equal(readReceiptCount(), 0);
+    const [beforeResource] = fixture.controlStore.listPortalAccessRequests({
+      portalUserRef: fixture.accountId
+    });
+    const beforeEntitlement = fixture.controlStore.getEntitlement(beforeResource.entitlementRef);
+    assert.equal(beforeResource.status, "delivered");
+    assert.equal(beforeEntitlement.validUntil, "2026-08-29T00:00:00.000Z");
+    assert.equal(fixture.issuanceCalls, 1);
+
+    clock = "2026-07-30T00:01:00.000Z";
+    const recoveredPass = await coordinator.runOnce();
+    assert.equal(recoveredPass.commandsDelivered, 1);
+    assert.equal(recoveredPass.commandsFailed, 0);
+    assert.equal(recoveredPass.capturesProcessed, 0);
+    assert.equal(readOrder().paymentStatus, "captured");
+    assert.equal(readOrder().fulfillment.status, "delivered");
+    assert.equal(readReceiptCount(), 1);
+    assert.equal(fixture.issuanceCalls, 1);
+    assert.equal(fixture.controlStore.getEntitlement(beforeEntitlement.id).validUntil, beforeEntitlement.validUntil);
+    assert.equal(fixture.runtimeCore.getTenant(beforeResource.tenantId).expiresAt, beforeEntitlement.validUntil);
+    assert.deepEqual(readHolds(), capturedHolds);
+    assert.deepEqual(readLedger(), capturedLedger);
+    assert.equal(
+      fixture.controlStore.getAccountControlSummary(fixture.accountId).auditEvents
+        .filter((event) => event.action === "subscription_fulfillment_applied").length,
+      1
+    );
+    await coordinator.runOnce();
+    assert.equal(readReceiptCount(), 1);
+    assert.equal(fixture.issuanceCalls, 1);
+    assert.deepEqual(readHolds(), capturedHolds);
+    assert.deepEqual(readLedger(), capturedLedger);
+  } finally {
+    await coordinator?.stop();
+    commerceStore?.close();
+    database?.close();
+    fixture.close();
+  }
+});
+
+test("a different command renews rather than adopting another unconfirmed initial issuance", () => {
+  const fixture = createInitialFulfillmentFixture({
+    nowFn: () => new Date(NOW),
+    beforeApply(_input, attempt) {
+      if (attempt === 1) {
+        const error = new Error("synthetic busy after initial issuance");
+        error.code = "SQLITE_BUSY_RECOVERY";
+        throw error;
+      }
+    }
+  });
+  try {
+    const initialCommand = productionInput(fixture);
+    assert.throws(
+      () => fixture.service.fulfillmentHandler.execute(initialCommand),
+      (error) => isCoinCommerceFulfillmentRetryableError(error)
+    );
+    const [resource] = fixture.controlStore.listPortalAccessRequests({
+      portalUserRef: fixture.accountId
+    });
+    const beforeEntitlement = fixture.controlStore.getEntitlement(resource.entitlementRef);
+    const renewalCommand = productionInput(fixture, COIN_COMMERCE_PRODUCTION_OFFERS[0], {
+      commandRef: "coincmd_initial_clock_renewal",
+      orderRef: "coinord_initial_clock_renewal"
+    });
+    const result = fixture.service.fulfillmentHandler.execute(renewalCommand);
+    assert.equal(result.status, "delivered");
+    const afterEntitlement = fixture.controlStore.getEntitlement(resource.entitlementRef);
+    assert.equal(
+      Date.parse(afterEntitlement.validUntil) - Date.parse(beforeEntitlement.validUntil),
+      30 * 24 * 60 * 60 * 1000
+    );
+    assert.equal(afterEntitlement.validFrom, beforeEntitlement.validFrom);
+    assert.equal(fixture.issuanceCalls, 1);
+    assert.equal(fixture.controlStore.getAccountControlSummary(fixture.accountId).entitlements.length, 1);
+    assert.equal(fixture.controlStore.getAuditEvent(fulfillmentEffectRef(initialCommand.commandRef)), null);
+    const renewalEffect = fixture.controlStore.getAuditEvent(fulfillmentEffectRef(renewalCommand.commandRef));
+    assert.equal(renewalEffect.metadata.commandRef, renewalCommand.commandRef);
+    assert.equal(renewalEffect.metadata.previousValidUntil, beforeEntitlement.validUntil);
+    assert.equal(renewalEffect.metadata.targetValidUntil, afterEntitlement.validUntil);
+    assert.equal(fixture.runtimeCore.getTenant(resource.tenantId).expiresAt, afterEntitlement.validUntil);
+  } finally {
+    fixture.close();
+  }
+});
+
+test("same-command initial issuance drift never falls through to ordinary renewal", async (t) => {
+  for (const drift of ["orderRef", "accessGrantRef", "submittedAt", "purpose"]) {
+    await t.test(drift, () => {
+      const fixture = createInitialFulfillmentFixture({
+        nowFn: () => new Date(NOW),
+        beforeApply(_input, attempt) {
+          if (attempt === 1) {
+            const error = new Error("synthetic busy after initial issuance");
+            error.code = "SQLITE_BUSY_RECOVERY";
+            throw error;
+          }
+        }
+      });
+      try {
+        const command = productionInput(fixture);
+        assert.throws(
+          () => fixture.service.fulfillmentHandler.execute(command),
+          (error) => isCoinCommerceFulfillmentRetryableError(error)
+        );
+        const [resource] = fixture.controlStore.listPortalAccessRequests({
+          portalUserRef: fixture.accountId
+        });
+        if (drift === "orderRef") {
+          command.orderRef = "coinord_initial_clock_wrong_order";
+        } else if (drift === "purpose") {
+          const db = new Database(fixture.controlDbPath);
+          try {
+            assert.equal(db.prepare(`
+              update platform_issuance_requests set purpose = ? where id = ?
+            `).run("synthetic_other_issuance_purpose", resource.id).changes, 1);
+          } finally {
+            db.close();
+          }
+        } else {
+          const mutated = fixture.controlStore.getPortalAccessRequest(resource.id);
+          delete mutated.edgeCredentials;
+          if (drift === "accessGrantRef") {
+            mutated.accessGrantRef = "grant_initial_clock_wrong_grant";
+          } else {
+            mutated.submittedAt = "2026-07-29T23:59:59.999Z";
+          }
+          fixture.controlStore.upsertPortalAccessRequest(mutated);
+        }
+        const beforeSummary = fixture.controlStore.getAccountControlSummary(fixture.accountId);
+        const beforeResource = fixture.controlStore.getPortalAccessRequest(resource.id);
+        const beforeTenant = fixture.runtimeCore.getTenant(resource.tenantId);
+        assert.throws(
+          () => fixture.service.fulfillmentHandler.execute(command),
+          (error) => (
+            isCoinCommerceFulfillmentReconciliationError(error)
+            && !isCoinCommerceFulfillmentRetryableError(error)
+          )
+        );
+        assert.equal(fixture.issuanceCalls, 1);
+        assert.equal(fixture.controlStore.getAuditEvent(fulfillmentEffectRef(command.commandRef)), null);
+        assert.deepEqual(fixture.controlStore.getAccountControlSummary(fixture.accountId), beforeSummary);
+        assert.deepEqual(fixture.controlStore.getPortalAccessRequest(resource.id), beforeResource);
+        assert.deepEqual(fixture.runtimeCore.getTenant(resource.tenantId), beforeTenant);
+      } finally {
+        fixture.close();
+      }
+    });
   }
 });
 

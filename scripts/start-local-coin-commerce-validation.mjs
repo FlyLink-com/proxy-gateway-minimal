@@ -20,6 +20,7 @@ import Database from "better-sqlite3";
 
 import { createApp } from "../server/app.mjs";
 import { createRuntimeState } from "../server/state.mjs";
+import { createLocalCnyRechargeCatalogReadonlyProfile } from "./lib/local-cny-recharge-catalog-readonly.mjs";
 import {
   applyCoinCommerceMigrations,
   COIN_COMMERCE_MIGRATIONS,
@@ -62,6 +63,8 @@ const UI_PASSWORD =
 const UI_PORT = 3457;
 const TASK7_PROFILE = "task7";
 const UI_PROFILE = "ui";
+const CNY_CATALOG_READONLY_PROFILE = "cny-catalog-readonly";
+const CNY_CATALOG_READONLY_UI_PROFILE = "cny-catalog-readonly-ui";
 const UI_SEED_SOURCE_REF = "source_local_ui_validation_paid_coins_v1";
 const UI_SEED_SOURCE_DIGEST = createHash("sha256")
   .update("local-ui-validation-paid-coins-v1", "utf8")
@@ -159,16 +162,16 @@ const UI_OFFERS = Object.freeze([
     version: 1,
     category: "plan",
     title: Object.freeze({
-      zh: "本地合成 50 GB 月卡",
-      en: "Local synthetic 50 GB monthly plan"
+      zh: "50 GB 月度套餐",
+      en: "50 GB monthly plan"
     }),
     summary: Object.freeze({
-      zh: "每月 50 GB，本地合成验证专用",
-      en: "50 GB monthly, local synthetic validation only"
+      zh: "有效期 30 天，每月 50 GB 流量。",
+      en: "50 GB per month, valid for 30 days."
     }),
     importantNotices: Object.freeze({
-      zh: Object.freeze(["仅用于本机 UI 验证"]),
-      en: Object.freeze(["Local UI validation only"])
+      zh: Object.freeze(["套餐有效期为 30 天。"]),
+      en: Object.freeze(["The plan is valid for 30 days."])
     }),
     baseCoinUnits: 20,
     referencePrice: Object.freeze({ currency: "CNY", amountMinor: 2_000 }),
@@ -192,16 +195,16 @@ const UI_OFFERS = Object.freeze([
     version: 1,
     category: "plan",
     title: Object.freeze({
-      zh: "本地合成 100 GB 月卡",
-      en: "Local synthetic 100 GB monthly plan"
+      zh: "100 GB 月度套餐",
+      en: "100 GB monthly plan"
     }),
     summary: Object.freeze({
-      zh: "每月 100 GB，本地合成验证专用",
-      en: "100 GB monthly, local synthetic validation only"
+      zh: "有效期 30 天，每月 100 GB 流量。",
+      en: "100 GB per month, valid for 30 days."
     }),
     importantNotices: Object.freeze({
-      zh: Object.freeze(["仅用于本机 UI 验证"]),
-      en: Object.freeze(["Local UI validation only"])
+      zh: Object.freeze(["套餐有效期为 30 天。"]),
+      en: Object.freeze(["The plan is valid for 30 days."])
     }),
     baseCoinUnits: 30,
     referencePrice: Object.freeze({ currency: "CNY", amountMinor: 3_000 }),
@@ -225,16 +228,16 @@ const UI_OFFERS = Object.freeze([
     version: 1,
     category: "plan",
     title: Object.freeze({
-      zh: "本地合成 200 GB 年卡",
-      en: "Local synthetic 200 GB annual plan"
+      zh: "200 GB 年度套餐",
+      en: "200 GB annual plan"
     }),
     summary: Object.freeze({
-      zh: "每月 200 GB，本地合成验证专用",
-      en: "200 GB monthly, local synthetic validation only"
+      zh: "有效期 365 天，每月 200 GB 流量。",
+      en: "200 GB per month, valid for 365 days."
     }),
     importantNotices: Object.freeze({
-      zh: Object.freeze(["仅用于本机 UI 验证"]),
-      en: Object.freeze(["Local UI validation only"])
+      zh: Object.freeze(["套餐有效期为 365 天。"]),
+      en: Object.freeze(["The plan is valid for 365 days."])
     }),
     baseCoinUnits: 200,
     referencePrice: Object.freeze({ currency: "CNY", amountMinor: 20_000 }),
@@ -258,16 +261,16 @@ const UI_OFFERS = Object.freeze([
     version: 1,
     category: "data_pack",
     title: Object.freeze({
-      zh: "本地合成 100 GB 流量包",
-      en: "Local synthetic 100 GB data pack"
+      zh: "100 GB 流量包",
+      en: "100 GB data pack"
     }),
     summary: Object.freeze({
-      zh: "100 GB 不过期流量，本地合成验证专用",
-      en: "100 GB non-expiring data, local synthetic validation only"
+      zh: "100 GB 流量，不限使用期限。",
+      en: "100 GB of data with no expiry date."
     }),
     importantNotices: Object.freeze({
-      zh: Object.freeze(["仅用于本机 UI 验证"]),
-      en: Object.freeze(["Local UI validation only"])
+      zh: Object.freeze(["流量包没有到期日。"]),
+      en: Object.freeze(["The data pack has no expiry date."])
     }),
     baseCoinUnits: 30,
     referencePrice: Object.freeze({ currency: "CNY", amountMinor: 3_000 }),
@@ -291,16 +294,16 @@ const UI_OFFERS = Object.freeze([
     version: 1,
     category: "data_pack",
     title: Object.freeze({
-      zh: "本地合成 200 GB 流量包",
-      en: "Local synthetic 200 GB data pack"
+      zh: "200 GB 流量包",
+      en: "200 GB data pack"
     }),
     summary: Object.freeze({
-      zh: "200 GB 不过期流量，本地合成验证专用",
-      en: "200 GB non-expiring data, local synthetic validation only"
+      zh: "200 GB 流量，不限使用期限。",
+      en: "200 GB of data with no expiry date."
     }),
     importantNotices: Object.freeze({
-      zh: Object.freeze(["仅用于本机 UI 验证"]),
-      en: Object.freeze(["Local UI validation only"])
+      zh: Object.freeze(["流量包没有到期日。"]),
+      en: Object.freeze(["The data pack has no expiry date."])
     }),
     baseCoinUnits: 50,
     referencePrice: Object.freeze({ currency: "CNY", amountMinor: 5_000 }),
@@ -780,12 +783,14 @@ async function startLocalCoinCommerceValidationInternal(
   payPalSandboxUiOptions = null
 ) {
   const { failureStage } = exactOptions(options);
-  if (![TASK7_PROFILE, UI_PROFILE].includes(profile)) {
+  if (![TASK7_PROFILE, UI_PROFILE, CNY_CATALOG_READONLY_PROFILE, CNY_CATALOG_READONLY_UI_PROFILE].includes(profile)) {
     throw validationFailure();
   }
-  const isUiProfile = profile === UI_PROFILE;
+  const isUiProfile = profile === UI_PROFILE || profile === CNY_CATALOG_READONLY_UI_PROFILE;
+  const readonlyRecharge = [CNY_CATALOG_READONLY_PROFILE, CNY_CATALOG_READONLY_UI_PROFILE].includes(profile)
+    ? createLocalCnyRechargeCatalogReadonlyProfile() : null;
   const livePayPalSandbox = payPalSandboxUiOptions !== null;
-  if (livePayPalSandbox && !isUiProfile) throw validationFailure();
+  if (livePayPalSandbox && (!isUiProfile || readonlyRecharge)) throw validationFailure();
   if (
     beforeRootRemovalHook !== null
     && typeof beforeRootRemovalHook !== "function"
@@ -794,8 +799,8 @@ async function startLocalCoinCommerceValidationInternal(
   }
   const markerNonce = randomText(32);
   const consoleToken = `console_${randomText(32)}`;
-  const fundedSession = `session_${randomText(24)}`;
-  const emptySession = `session_${randomText(24)}`;
+  const fundedSession = `session_${readonlyRecharge ? randomBytes(24).toString("hex") : randomText(24)}`;
+  const emptySession = `session_${readonlyRecharge ? randomBytes(24).toString("hex") : randomText(24)}`;
   const effectNamespace = randomBytes(32).toString("hex");
   const portalHeaders = frozenPortalHeaders(fundedSession, emptySession);
   const effects = new Map();
@@ -943,7 +948,7 @@ async function startLocalCoinCommerceValidationInternal(
       expectedDdlChecksum: COIN_COMMERCE_MIGRATIONS[0].ddlChecksum
     });
     failAt(failureStage, "after_commerce_migration");
-    if (isUiProfile) {
+    if (isUiProfile || readonlyRecharge) {
       const paymentDatabase = new Database(controlDbPath);
       try {
         paymentDatabase.pragma("foreign_keys = on");
@@ -964,7 +969,9 @@ async function startLocalCoinCommerceValidationInternal(
       COINS_WALLET_ENABLED: "true",
       COINS_COMMERCE_ENABLED: "true",
       COINS_COMMERCE_CANCEL_WINDOW_MS: isUiProfile ? "3000" : "1000",
-      ...(isUiProfile
+      ...(readonlyRecharge
+        ? { ...readonlyRecharge.env, ...(isUiProfile ? { USER_PORTAL_ALLOW_PASSWORD_ONLY_SETUP_SESSION: "true" } : {}) }
+        : isUiProfile
         ? {
             USER_PORTAL_ALLOW_PASSWORD_ONLY_SETUP_SESSION: "true",
             PLATFORM_COIN_RECHARGE_ENABLED: "true",
@@ -1019,7 +1026,9 @@ async function startLocalCoinCommerceValidationInternal(
         fulfillmentActivity,
         effectNamespace
       ),
-      ...(isUiProfile
+      ...(readonlyRecharge
+        ? { ...readonlyRecharge.runtimeOptions, paymentNowFn: () => UI_RECHARGE_NOW }
+        : isUiProfile
         ? {
             paypalFetchFn: livePayPalSandbox
               ? payPalSandboxUiOptions.fetchFn
@@ -1040,34 +1049,38 @@ async function startLocalCoinCommerceValidationInternal(
     };
     runtimeState = createRuntimeState(runtimeOptions);
 
-    runtimeState.platform.coinsWalletStore.creditCoins({
-      accountId: isUiProfile ? UI_ACCOUNT_ID : FUNDED_ACCOUNT_ID,
-      coinType: "paid_coins",
-      amountUnits: isUiProfile ? 1_000 : 60,
-      availability: "available",
-      sourceType: "synthetic_seed",
-      sourceRef: isUiProfile
-        ? UI_SEED_SOURCE_REF
-        : "source_local_commerce_funds",
-      sourceDigest: isUiProfile
-        ? UI_SEED_SOURCE_DIGEST
-        : "a".repeat(64),
-      policyRef: null,
-      policyVersion: null,
-      expiresAt: null,
-      operation: {
-        actorScope: isUiProfile
-          ? "system:local-ui-validation"
-          : "system:local-commerce-validation",
-        idempotencyKey: isUiProfile
-          ? UI_SEED_IDEMPOTENCY_KEY
-          : "credit_local_commerce_funds",
-        actorType: "system",
-        actorRef: isUiProfile
-          ? "local_ui_validation_v1"
-          : "local_validation"
-      }
-    });
+    const seedCreditCount = readonlyRecharge ? 5 : 1;
+    for (let index = 0; index < seedCreditCount; index += 1) {
+      const suffix = readonlyRecharge ? `_part_${index + 1}` : "";
+      runtimeState.platform.coinsWalletStore.creditCoins({
+        accountId: isUiProfile ? UI_ACCOUNT_ID : FUNDED_ACCOUNT_ID,
+        coinType: "paid_coins",
+        amountUnits: (isUiProfile ? 1_000 : 60) / seedCreditCount,
+        availability: "available",
+        sourceType: "synthetic_seed",
+        sourceRef: (isUiProfile
+          ? UI_SEED_SOURCE_REF
+          : "source_local_commerce_funds") + suffix,
+        sourceDigest: isUiProfile
+          ? UI_SEED_SOURCE_DIGEST
+          : "a".repeat(64),
+        policyRef: null,
+        policyVersion: null,
+        expiresAt: null,
+        operation: {
+          actorScope: isUiProfile
+            ? "system:local-ui-validation"
+            : "system:local-commerce-validation",
+          idempotencyKey: (isUiProfile
+            ? UI_SEED_IDEMPOTENCY_KEY
+            : "credit_local_commerce_funds") + suffix,
+          actorType: "system",
+          actorRef: isUiProfile
+            ? "local_ui_validation_v1"
+            : "local_validation"
+        }
+      });
+    }
     if (isUiProfile) {
       runtimeState.platform.portalPasswordCredentialService
         .issueInitialPasswordCredential({
@@ -1108,7 +1121,11 @@ async function startLocalCoinCommerceValidationInternal(
     }
     failAt(failureStage, "after_seed");
 
-    server = createServer(createApp(runtimeState));
+    const app = createApp(runtimeState, isUiProfile ? {
+      portalBrowserOrigin: "http://127.0.0.1:5175",
+      allowInsecureLoopbackPortalCookie: true,
+    } : {});
+    server = createServer(readonlyRecharge ? readonlyRecharge.wrapRequestHandler(app) : app);
     server.on("connection", (socket) => {
       sockets.add(socket);
       socket.once("close", () => sockets.delete(socket));
@@ -1153,7 +1170,10 @@ async function startLocalCoinCommerceValidationInternal(
             heldUnits: funds.heldUnits,
             pendingUnits: funds.pendingUnits
           }),
-          ...(isUiProfile ? { seed: UI_SEED_EVIDENCE } : {})
+          ...(isUiProfile ? { seed: readonlyRecharge
+            ? Object.freeze({ coinType: "paid_coins", amountUnits: 1_000, availability: "available", creditCount: seedCreditCount })
+            : UI_SEED_EVIDENCE } : {}),
+          ...(readonlyRecharge ? { rechargeBoundary: readonlyRecharge.inspect() } : {})
         });
       },
       stop: cleanup
@@ -1184,6 +1204,18 @@ export async function startLocalCoinCommerceUiValidation() {
     null,
     UI_PROFILE
   );
+}
+
+// Separate closed entries preserve the existing PayPal UI profile. The first
+// uses the harness's random loopback test listener; the UI entry stays on 3457.
+export async function startLocalCoinCommerceCnyCatalogReadonlyValidation() {
+  if (arguments.length !== 0) throw validationFailure();
+  return startLocalCoinCommerceValidationInternal(undefined, null, CNY_CATALOG_READONLY_PROFILE);
+}
+
+export async function startLocalCoinCommerceCnyCatalogReadonlyUiValidation() {
+  if (arguments.length !== 0) throw validationFailure();
+  return startLocalCoinCommerceValidationInternal(undefined, null, CNY_CATALOG_READONLY_UI_PROFILE);
 }
 
 export async function startLocalPayPalSandboxUiValidation(options) {

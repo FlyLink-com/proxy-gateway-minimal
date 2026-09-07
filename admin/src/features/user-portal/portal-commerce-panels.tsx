@@ -2,15 +2,13 @@ import {
   useCallback,
   useEffect,
   useRef,
-  useState,
-  type MouseEvent
+  useState
 } from "react";
 import { Circle, LoaderCircle } from "lucide-react";
 import {
   CoinsPurchaseDialog,
   isPortalCoinOrderTerminal,
   PortalCoinCommerceClientError,
-  ProductDetailDialog,
   useCoinsPurchaseFlow,
   type PortalCoinCommerceClientErrorCode,
   type PortalCoinCommerceClient,
@@ -19,8 +17,9 @@ import {
   type PortalCoinOffer
 } from "./commerce";
 import type { PortalWalletFirstCommerceClient } from "./commerce";
-import { portalCoinTypeListLabel } from "./portal-commerce-presentation";
+import { MarketplaceOfferCard } from "./marketplace-offer-card";
 import { WalletFirstMarketplacePanel } from "./wallet-first-marketplace-panel";
+import { portalCoinCommerceErrorText as safeCommerceErrorText } from "./commerce/commerce-error-presentation";
 
 export type PortalCommerceLocale = "zh" | "en";
 
@@ -60,17 +59,8 @@ type MarketplaceCatalogState =
     };
 
 type MarketplaceProductIntent = {
-  mode: "detail" | "purchase";
   offerRef: string;
 };
-
-function offerTitle(offer: PortalCoinOffer, locale: PortalCommerceLocale) {
-  return locale === "zh" ? offer.title.zh : offer.title.en;
-}
-
-function offerSummary(offer: PortalCoinOffer, locale: PortalCommerceLocale) {
-  return locale === "zh" ? offer.summary.zh : offer.summary.en;
-}
 
 function MarketplaceNoticeIndicator({
   state
@@ -109,123 +99,6 @@ function safeCommerceFailure(error: unknown): {
   };
 }
 
-function safeCommerceErrorText(
-  errorCode: PortalCoinCommerceClientErrorCode,
-  locale: PortalCommerceLocale
-) {
-  const zh = isChinese(locale);
-  if (errorCode === "commerce_session_invalid") {
-    return zh
-      ? "商城会话已失效，请重新登录。"
-      : "The Marketplace session is no longer valid. Sign in again.";
-  }
-  if (errorCode === "wallet_not_active") {
-    return zh
-      ? "Coins 钱包尚未启用。"
-      : "The Coins wallet is not active.";
-  }
-  if (errorCode === "insufficient_coins") {
-    return zh
-      ? "Coins 余额不足，请查看服务端报价。"
-      : "The Coins balance is insufficient. Review the server Quote.";
-  }
-  if (errorCode === "quote_expired" || errorCode === "quote_stale") {
-    return zh
-      ? "服务端报价已失效，请重新预览。"
-      : "The server Quote is no longer current. Preview again.";
-  }
-  if (errorCode === "reconciliation_required") {
-    return zh
-      ? "订单需要人工核对，尚未完成。"
-      : "The Order needs support review and is not complete.";
-  }
-  return zh
-    ? "Coins 购买流程暂时不可用，请安全重试。"
-    : "The Coins purchase flow is temporarily unavailable. Retry safely.";
-}
-
-function MarketplaceOfferCard({
-  busy,
-  locale,
-  offer,
-  onDetails,
-  onPurchase
-}: {
-  busy: boolean;
-  locale: PortalCommerceLocale;
-  offer: PortalCoinOffer;
-  onDetails: (event: MouseEvent<HTMLButtonElement>) => void;
-  onPurchase: (event: MouseEvent<HTMLButtonElement>) => void;
-}) {
-  const zh = isChinese(locale);
-  const title = offerTitle(offer, locale);
-  const notices = zh
-    ? offer.importantNotices.zh
-    : offer.importantNotices.en;
-  const delivery = offer.delivery.kind === "subscription_plan"
-    ? zh
-      ? `${offer.delivery.durationDays} 天 · 每月 ${offer.delivery.monthlyTrafficGb} GB`
-      : `${offer.delivery.durationDays} days · ${offer.delivery.monthlyTrafficGb} GB monthly`
-    : zh
-      ? `${offer.delivery.trafficGb} GB · 永不过期`
-      : `${offer.delivery.trafficGb} GB · never expires`;
-
-  return (
-    <li className="portal-marketplace-card">
-      <article>
-        <h3>{title}</h3>
-        <p>{offerSummary(offer, locale)}</p>
-        <dl className="portal-marketplace-card__facts">
-          <div>
-            <dt>{zh ? "交付" : "Delivery"}</dt>
-            <dd>{delivery}</dd>
-          </div>
-          <div>
-            <dt>{zh ? "价格" : "Price"}</dt>
-            <dd>{offer.baseCoinUnits} Coins</dd>
-          </div>
-          <div>
-            <dt>{zh ? "接受的 Coins" : "Accepted Coins"}</dt>
-            <dd>{portalCoinTypeListLabel(offer.acceptedCoinTypes, locale)}</dd>
-          </div>
-        </dl>
-        {notices.length > 0 ? (
-          <ul className="portal-marketplace-card__notices">
-            {notices.map((notice) => <li key={notice}>{notice}</li>)}
-          </ul>
-        ) : null}
-        <div className="portal-marketplace-card__actions">
-          <button
-            aria-label={
-              zh
-                ? `查看详情：${title}`
-                : `Details: ${title}`
-            }
-            type="button"
-            disabled={busy}
-            onClick={onDetails}
-          >
-            {zh ? "查看详情" : "Details"}
-          </button>
-          <button
-            aria-label={
-              zh
-                ? `使用 Coins 购买：${title}`
-                : `Buy with Coins: ${title}`
-            }
-            className="portal-marketplace-card__purchase"
-            type="button"
-            disabled={busy}
-            onClick={onPurchase}
-          >
-            {zh ? "使用 Coins 购买" : "Buy with Coins"}
-          </button>
-        </div>
-      </article>
-    </li>
-  );
-}
-
 function LegacyMarketplacePanel({
   commerceClient,
   locale,
@@ -245,6 +118,9 @@ function LegacyMarketplacePanel({
   const [productIntent, setProductIntent] =
     useState<MarketplaceProductIntent | null>(null);
   const [dialogVisible, setDialogVisible] = useState(false);
+  const [resumingExistingOrder, setResumingExistingOrder] = useState(false);
+  const startedProductRef = useRef(false);
+  const flowErrorRef = useRef<HTMLDivElement | null>(null);
   const originFocusRef = useRef<HTMLButtonElement | null>(null);
   const productClientRef = useRef(commerceClient);
   const productSessionRef = useRef(sessionRef);
@@ -265,6 +141,8 @@ function LegacyMarketplacePanel({
     productIntentSequenceRef.current += 1;
     setProductIntent(null);
     setDialogVisible(false);
+    setResumingExistingOrder(false);
+    startedProductRef.current = false;
     originFocusRef.current = null;
   }, [sessionRef]);
 
@@ -283,6 +161,7 @@ function LegacyMarketplacePanel({
     productIntentSequenceRef.current += 1;
     setProductIntent(null);
     setDialogVisible(false);
+    setResumingExistingOrder(false);
     purchaseFlow.reset();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- `purchaseFlow` is destructured into individual property deps above; adding the whole object would re-run on every render (its identity changes per render) without semantic change
   }, [
@@ -344,7 +223,6 @@ function LegacyMarketplacePanel({
 
   const startProduct = useCallback(async (
     offerRef: string,
-    mode: MarketplaceProductIntent["mode"],
     origin?: HTMLButtonElement
   ) => {
     if (!commerceClient || !sessionRef) return;
@@ -359,11 +237,14 @@ function LegacyMarketplacePanel({
       && !isPortalCoinOrderTerminal(purchaseFlow.order)
     ) {
       setProductIntent(null);
+      setResumingExistingOrder(true);
       setDialogVisible(true);
       return;
     }
     purchaseFlow.reset();
-    setProductIntent({ mode, offerRef });
+    startedProductRef.current = true;
+    setResumingExistingOrder(false);
+    setProductIntent({ offerRef });
     setDialogVisible(true);
     await purchaseFlow.openProduct(offerRef);
     if (
@@ -372,17 +253,8 @@ function LegacyMarketplacePanel({
     ) {
       return;
     }
-    if (mode === "purchase") {
-      await purchaseFlow.previewCheckout();
-    }
+    await purchaseFlow.previewCheckout();
   }, [commerceClient, purchaseFlow, sessionRef]);
-
-  const previewFromDetails = useCallback(() => {
-    setProductIntent((current) => (
-      current ? { ...current, mode: "purchase" } : current
-    ));
-    void purchaseFlow.previewCheckout();
-  }, [purchaseFlow]);
 
   const closeCoinsDialog = useCallback(() => {
     productIntentSequenceRef.current += 1;
@@ -390,6 +262,7 @@ function LegacyMarketplacePanel({
       autoOpenedOrderRef.current = purchaseFlow.order.orderRef;
     }
     setDialogVisible(false);
+    setResumingExistingOrder(false);
     setProductIntent(null);
     if (
       !purchaseFlow.order
@@ -401,10 +274,15 @@ function LegacyMarketplacePanel({
 
   const retryProduct = useCallback(() => {
     if (!productIntent) return;
-    void startProduct(productIntent.offerRef, productIntent.mode);
+    void startProduct(productIntent.offerRef);
   }, [productIntent, startProduct]);
 
   const activeOrderRef = purchaseFlow.order?.orderRef ?? null;
+  useEffect(() => {
+    if (productIntent && purchaseFlow.errorCode && !purchaseFlow.quote && !purchaseFlow.order) {
+      flowErrorRef.current?.focus();
+    }
+  }, [productIntent, purchaseFlow.errorCode, purchaseFlow.order, purchaseFlow.quote]);
   const confirmationBlocked = Boolean(
     purchaseFlow.quote
     && !purchaseFlow.order
@@ -419,8 +297,11 @@ function LegacyMarketplacePanel({
       return;
     }
     autoOpenedOrderRef.current = activeOrderRef;
+    if (!startedProductRef.current && purchaseFlow.order && !isPortalCoinOrderTerminal(purchaseFlow.order)) {
+      setResumingExistingOrder(true);
+    }
     setDialogVisible(true);
-  }, [activeOrderRef]);
+  }, [activeOrderRef, purchaseFlow.order, purchaseFlow.quote]);
 
   return (
     <section
@@ -438,8 +319,8 @@ function LegacyMarketplacePanel({
           <MarketplaceNoticeIndicator state="unavailable" />
           <p>
             {zh
-              ? "商城目录暂不可用；当前客户端未提供服务端商城能力。"
-              : "The Marketplace catalog is unavailable because this client has no server Commerce capability."}
+              ? "商城暂时不可用，请稍后再试。"
+              : "The Marketplace is temporarily unavailable. Please try again later."}
           </p>
         </div>
       ) : null}
@@ -488,27 +369,19 @@ function LegacyMarketplacePanel({
       {catalog.status === "ready" && planOffers.length > 0 ? (
         <section
           className="portal-marketplace-group"
-          aria-labelledby="portal-marketplace-plan-heading"
+          aria-label={zh ? "套餐" : "Plans"}
         >
-          <h2 id="portal-marketplace-plan-heading">{zh ? "套餐" : "Plans"}</h2>
           <ul className="portal-marketplace-grid">
             {planOffers.map((offer) => (
               <MarketplaceOfferCard
                 busy={productBusy}
                 key={offer.offerRef}
                 locale={locale}
+                mode="purchase"
                 offer={offer}
-                onDetails={(event) => {
+                onPrimary={(event) => {
                   void startProduct(
                     offer.offerRef,
-                    "detail",
-                    event.currentTarget
-                  );
-                }}
-                onPurchase={(event) => {
-                  void startProduct(
-                    offer.offerRef,
-                    "purchase",
                     event.currentTarget
                   );
                 }}
@@ -520,29 +393,19 @@ function LegacyMarketplacePanel({
       {catalog.status === "ready" && dataPackOffers.length > 0 ? (
         <section
           className="portal-marketplace-group"
-          aria-labelledby="portal-marketplace-data-pack-heading"
+          aria-label={zh ? "流量包" : "Data packs"}
         >
-          <h2 id="portal-marketplace-data-pack-heading">
-            {zh ? "流量包" : "Data packs"}
-          </h2>
           <ul className="portal-marketplace-grid">
             {dataPackOffers.map((offer) => (
               <MarketplaceOfferCard
                 busy={productBusy}
                 key={offer.offerRef}
                 locale={locale}
+                mode="purchase"
                 offer={offer}
-                onDetails={(event) => {
+                onPrimary={(event) => {
                   void startProduct(
                     offer.offerRef,
-                    "detail",
-                    event.currentTarget
-                  );
-                }}
-                onPurchase={(event) => {
-                  void startProduct(
-                    offer.offerRef,
-                    "purchase",
                     event.currentTarget
                   );
                 }}
@@ -562,11 +425,11 @@ function LegacyMarketplacePanel({
           <span>
             {purchaseFlow.phase === "loading_preview"
               ? zh
-                ? "正在获取服务端报价…"
-                : "Loading the server Quote…"
+                ? "正在计算购买金额…"
+                : "Calculating your purchase amount…"
               : zh
-                ? "正在加载商品详情…"
-                : "Loading product details…"}
+                ? "正在确认商品信息…"
+                : "Checking product information…"}
           </span>
         </div>
       ) : null}
@@ -577,7 +440,9 @@ function LegacyMarketplacePanel({
             aria-live="assertive"
             className="portal-marketplace-flow-state"
             data-state="error"
+            ref={flowErrorRef}
             role="alert"
+            tabIndex={-1}
           >
             <MarketplaceNoticeIndicator state="error" />
             <p>{safeCommerceErrorText(purchaseFlow.errorCode, locale)}</p>
@@ -597,32 +462,23 @@ function LegacyMarketplacePanel({
           className="portal-coins-dialog-theme"
           data-portal-theme={theme}
         >
-          {productIntent?.mode === "detail"
-            && purchaseFlow.phase === "detail"
-            && purchaseFlow.offer ? (
-              <ProductDetailDialog
-                locale={locale}
-                offer={purchaseFlow.offer}
-                onPreview={previewFromDetails}
-                onRequestClose={closeCoinsDialog}
-                onRestoreFocus={restoreProductFocus}
-              />
-            ) : purchaseFlow.quote || purchaseFlow.order ? (
-              <CoinsPurchaseDialog
-                cancelling={purchaseFlow.cancelling}
-                confirmDisabled={confirmationBlocked}
-                errorCode={purchaseFlow.errorCode}
-                locale={locale}
-                onCancel={purchaseFlow.cancelPurchase}
-                onConfirm={purchaseFlow.confirmPurchase}
-                onRefresh={purchaseFlow.refreshOrder}
-                onRequestClose={closeCoinsDialog}
-                onRestoreFocus={restoreProductFocus}
-                order={purchaseFlow.order}
-                quote={purchaseFlow.quote}
-                submitting={purchaseFlow.phase === "submitting"}
-              />
-            ) : null}
+          {purchaseFlow.quote || purchaseFlow.order ? (
+            <CoinsPurchaseDialog
+              cancelling={purchaseFlow.cancelling}
+              confirmDisabled={confirmationBlocked}
+              errorCode={purchaseFlow.errorCode}
+              locale={locale}
+              onCancel={purchaseFlow.cancelPurchase}
+              onConfirm={purchaseFlow.confirmPurchase}
+              onRefresh={purchaseFlow.refreshOrder}
+              onRequestClose={closeCoinsDialog}
+              onRestoreFocus={restoreProductFocus}
+              order={purchaseFlow.order}
+              quote={purchaseFlow.quote}
+              resumingExistingOrder={resumingExistingOrder}
+              submitting={purchaseFlow.phase === "submitting"}
+            />
+          ) : null}
         </div>
       ) : null}
     </section>
@@ -718,10 +574,10 @@ function WalletFirstMarketplaceModelGate({
         />
         <p>
           {model.status === "loading"
-            ? (zh ? "正在确认账户的服务结算方式…" : "Confirming the account service-settlement model…")
+            ? (zh ? "正在加载商城…" : "Loading the Marketplace…")
             : model.status === "error"
               ? safeCommerceErrorText(model.errorCode, locale)
-              : (zh ? "商城结算方式不可用。" : "The Marketplace settlement model is unavailable.")}
+              : (zh ? "商城暂时不可用，请稍后再试。" : "The Marketplace is temporarily unavailable. Please try again later.")}
         </p>
         {model.status === "error" && model.retryable ? (
           <button type="button" onClick={() => setRevision((current) => current + 1)}>

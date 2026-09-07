@@ -2,6 +2,7 @@ import {
   parsePortalRechargeTrustedActionOriginsJson,
   type PortalRechargeTrustedActionOriginsByAdapter
 } from "./recharge";
+import { readCookieSession } from "./portal-browser-session";
 import type {
   HttpUserPortalClientOptions,
   PortalAccountEntitlement,
@@ -324,7 +325,7 @@ export function mapRegistrationResult(body: Record<string, unknown>): PortalRegi
   const common: PortalRegistrationResultBase = {
     status: "registered",
     userRef,
-    session: sessionSummary(
+    session: session.transport === "cookie" ? readCookieSession(session) : sessionSummary(
       requiredText(
         (session.userRef ?? session.loginRef ?? userRef) as string | undefined,
         "注册会话无效。"

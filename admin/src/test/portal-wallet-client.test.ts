@@ -232,10 +232,111 @@ async function expectSafeFailure(
 }
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.restoreAllMocks();
 });
 
 describe("Portal Wallet HTTP client", () => {
+  test.each(["summary", "ledger"] as const)("aborts the actual %s fetch after fifteen seconds and releases its timer", async (channel) => {
+    vi.useFakeTimers();
+    let signal: AbortSignal | undefined;
+    let abortCount = 0;
+    const fetchFn = vi.fn<typeof fetch>((_url, init) => new Promise((_resolve, reject) => {
+      signal = init?.signal ?? undefined;
+      signal?.addEventListener("abort", () => {
+        abortCount += 1;
+        reject(new DOMException("The operation was aborted", "AbortError"));
+      }, { once: true });
+    }));
+    const wallet = walletOf(createHttpUserPortalClient({ fetchFn }));
+    const read = channel === "summary"
+      ? wallet.getSummary({ sessionRef: "session_wallet_001" })
+      : wallet.listLedger({ sessionRef: "session_wallet_001", limit: 5 });
+    const failure = expectSafeFailure(read);
+    expect(signal).toBeInstanceOf(AbortSignal);
+    expect(signal!.aborted).toBe(false);
+    await vi.advanceTimersByTimeAsync(14_999);
+    expect(abortCount).toBe(0);
+    await vi.advanceTimersByTimeAsync(1);
+    await failure;
+    expect(signal!.aborted).toBe(true);
+    expect(abortCount).toBe(1);
+    expect(fetchFn).toHaveBeenCalledTimes(1);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  test("keeps the abort deadline active through response-body reading", async () => {
+    vi.useFakeTimers();
+    let signal: AbortSignal | undefined;
+    const fetchFn = vi.fn<typeof fetch>(async (_url, init) => {
+      signal = init?.signal ?? undefined;
+      const response = wireResponse({ wallet: ACTIVE_SUMMARY });
+      vi.spyOn(response, "text").mockImplementation(() => new Promise((_resolve, reject) => {
+        signal?.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")), { once: true });
+      }));
+      return response;
+    });
+    const wallet = walletOf(createHttpUserPortalClient({ fetchFn }));
+    const failure = expectSafeFailure(wallet.getSummary({ sessionRef: "session_wallet_001" }));
+    await Promise.resolve();
+    expect(signal).toBeInstanceOf(AbortSignal);
+    await vi.advanceTimersByTimeAsync(15_000);
+    await failure;
+    expect(signal!.aborted).toBe(true);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  test("successful summary and ledger reads clean deadlines without aborting completed responses", async () => {
+    vi.useFakeTimers();
+    const signals: AbortSignal[] = [];
+    const fetchFn = vi.fn<typeof fetch>(async (url, init) => {
+      signals.push(init?.signal as AbortSignal);
+      return wireResponse(String(url).includes("ledger") ? ledgerBody([]) : { wallet: ACTIVE_SUMMARY });
+    });
+    const wallet = walletOf(createHttpUserPortalClient({ fetchFn }));
+    await wallet.getSummary({ sessionRef: "session_wallet_001" });
+    await wallet.listLedger({ sessionRef: "session_wallet_001", limit: 5 });
+    expect(signals).toHaveLength(2);
+    expect(signals.every((signal) => signal instanceof AbortSignal && !signal.aborted)).toBe(true);
+    expect(signals[0]).not.toBe(signals[1]);
+    expect(vi.getTimerCount()).toBe(0);
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(signals.every((signal) => !signal.aborted)).toBe(true);
+  });
+
+  test("network HTTP body and projection failures all clean the request deadline", async () => {
+    vi.useFakeTimers();
+    const failures: Array<() => Promise<Response>> = [
+      async () => { throw new Error("local network failure"); },
+      async () => wireResponse({ error: { code: "wallet_unavailable", retryable: true } }, 503),
+      async () => wireResponse("not json"),
+      async () => wireResponse({ wallet: { ...ACTIVE_SUMMARY, version: -1 } }),
+    ];
+    for (const failure of failures) {
+      const wallet = walletOf(createHttpUserPortalClient({ fetchFn: vi.fn<typeof fetch>(failure) }));
+      await expect(wallet.getSummary({ sessionRef: "session_wallet_001" })).rejects.toBeInstanceOf(PortalWalletClientError);
+      expect(vi.getTimerCount()).toBe(0);
+    }
+  });
+
+  test("a late injected response cannot turn an already-aborted request into success", async () => {
+    vi.useFakeTimers();
+    let resolveResponse!: (value: Response) => void;
+    let signal: AbortSignal | undefined;
+    const fetchFn = vi.fn<typeof fetch>((_url, init) => {
+      signal = init?.signal ?? undefined;
+      return new Promise((resolvePending) => { resolveResponse = resolvePending; });
+    });
+    const wallet = walletOf(createHttpUserPortalClient({ fetchFn }));
+    const failure = expectSafeFailure(wallet.getSummary({ sessionRef: "session_wallet_001" }));
+    expect(signal).toBeInstanceOf(AbortSignal);
+    await vi.advanceTimersByTimeAsync(15_000);
+    expect(signal!.aborted).toBe(true);
+    resolveResponse(wireResponse({ wallet: ACTIVE_SUMMARY }));
+    await failure;
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
   test("types listLedger cursor fields as an all-or-none pair", () => {
     const typecheckCursorPair = (wallet: PortalWalletClient) => {
       // @ts-expect-error afterOccurredAt requires afterEntryRef.
@@ -275,9 +376,11 @@ describe("Portal Wallet HTTP client", () => {
       "/api/portal/coins/wallet",
       {
         method: "GET",
-        headers: {
+        signal: expect.any(AbortSignal),
+        credentials: "omit", cache: "no-store", redirect: "error",
+        headers: new Headers({
           "X-Portal-Session": "session_wallet_001"
-        }
+        })
       }
     );
   });
@@ -318,14 +421,18 @@ describe("Portal Wallet HTTP client", () => {
         "/api/portal/coins/wallet",
         {
           method: "GET",
-          headers: { "X-Portal-Session": "session_wallet_001" }
+          signal: expect.any(AbortSignal),
+          credentials: "omit", cache: "no-store", redirect: "error",
+          headers: new Headers({ "X-Portal-Session": "session_wallet_001" })
         }
       ],
       [
         "/api/portal/coins/wallet/ledger?limit=2&afterOccurredAt=2026-07-27T12%3A08%3A00.000Z&afterEntryRef=entry_cursor_008",
         {
           method: "GET",
-          headers: { "X-Portal-Session": "session_wallet_001" }
+          signal: expect.any(AbortSignal),
+          credentials: "omit", cache: "no-store", redirect: "error",
+          headers: new Headers({ "X-Portal-Session": "session_wallet_001" })
         }
       ]
     ]);
@@ -356,7 +463,9 @@ describe("Portal Wallet HTTP client", () => {
       "/api/portal/coins/wallet/ledger?limit=1&afterOccurredAt=2026-07-27T12%3A08%3A00.000Z&afterEntryRef=entry-21",
       {
         method: "GET",
-        headers: { "X-Portal-Session": "session_wallet_001" }
+        signal: expect.any(AbortSignal),
+        credentials: "omit", cache: "no-store", redirect: "error",
+        headers: new Headers({ "X-Portal-Session": "session_wallet_001" })
       }
     );
   });

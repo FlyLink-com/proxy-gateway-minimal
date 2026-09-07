@@ -18,6 +18,7 @@ import {
 import {
   validateCoinWalletSchema
 } from "./coin-wallet-migrations.mjs";
+import { canonicalWalletRequestDigest } from "./coin-wallet-domain.mjs";
 import {
   createCoinWalletTransactionParticipant,
   createSqliteCoinWalletStore
@@ -42,6 +43,7 @@ const AUTHORITY_SECRET_LIKE =
   /^(?:https?:|mailto:|bearer[ .:_-]|sk[-_]|eyj[a-z0-9_-]{10,})/i;
 const CANCEL_RECONCILIATION = Symbol("cancel_reconciliation");
 const FULFILLMENT_LEASE_LOST = Symbol("fulfillment_lease_lost");
+const INITIAL_CONFIRMATION_PARTICIPANTS = new WeakMap();
 const FACTORY_FIELDS = new Set([
   "dbPath",
   "database",
@@ -2643,6 +2645,227 @@ export function createSqliteCoinCommerceStore(options = {}) {
     return validateCommandAndReceiptSnapshot(command, order, receipts);
   }
 
+  // Internal, caller-owned transaction participant. It confirms existing facts;
+  // it never calls the wallet capture, fulfillment handler, issuer or renewal.
+  function initialConfirmationAction(action) {
+    assertOpen();
+    if (db.inTransaction !== true) throw commerceError("reconciliation_required");
+    try {
+      return action();
+    } catch (error) {
+      if (["reconciliation_required", "invalid_store_contract"].includes(error?.code)
+        && error?.message === "Coin commerce store operation rejected") {
+        throw commerceError("reconciliation_required");
+      }
+      throw normalizeError(error);
+    }
+  }
+
+  function initialConfirmationRow(where, value) {
+    const exists = db.prepare(`select 1 from sqlite_master
+      where type = 'table' and name = 'platform_coin_commerce_initial_confirmations'`).get();
+    if (!exists) return null;
+    // Only these two fixed lookup forms are used, never caller-provided SQL.
+    return (where === "order"
+      ? db.prepare(`select * from platform_coin_commerce_initial_confirmations where order_ref = ?`)
+      : db.prepare(`select * from platform_coin_commerce_initial_confirmations where confirmation_ref = ?`)
+    ).get(value) ?? null;
+  }
+
+  function initialCaptureProof(order, hold) {
+    const refs = deriveCommerceOperationRefs(order.order_ref);
+    const operation = db.prepare(`select * from platform_coin_operation_receipts
+      where actor_scope = ? and operation_type = 'capture_coin_hold' and idempotency_key = ?`
+    ).get(`commerce:${order.account_id}`, refs.captureOperationRef);
+    if (
+      !operation || !isSafeWalletReference(operation.operation_ref)
+      || operation.wallet_ref !== hold.wallet_ref || operation.status !== "succeeded"
+      || operation.result_ref !== hold.hold_ref || operation.safe_result_code !== "captured"
+      || operation.request_digest !== canonicalWalletRequestDigest("capture_coin_hold", { holdRef: hold.hold_ref })
+      || !Number.isSafeInteger(operation.previous_wallet_version) || operation.previous_wallet_version < 0
+      || !Number.isSafeInteger(operation.resulting_wallet_version)
+      || operation.resulting_wallet_version !== operation.previous_wallet_version + 1
+      || operation.resulting_wallet_version > hold.wallet_version
+      || operation.resulting_wallet_status !== "active"
+      || !isStrictIsoTimestamp(operation.created_at) || !isStrictIsoTimestamp(operation.completed_at)
+      || operation.created_at < order.created_at || operation.completed_at < operation.created_at
+      || operation.completed_at > order.updated_at
+    ) throw commerceError("reconciliation_required");
+    const allocations = db.prepare(`select a.*, l.source_type, l.source_ref
+      from platform_coin_hold_allocations a join platform_coin_lots l on l.lot_ref = a.lot_ref
+      where a.hold_ref = ? order by a.allocation_sequence limit 101`).all(hold.hold_ref);
+    const entries = db.prepare(`select * from platform_coin_ledger_entries
+      where operation_ref = ? or (hold_ref = ? and operation = 'held_to_consumed')
+      order by lot_ref, entry_ref limit 101`).all(operation.operation_ref, hold.hold_ref);
+    if (!allocations.length || allocations.length > 100 || entries.length !== allocations.length
+      || new Set(entries.map((entry) => entry.lot_ref)).size !== allocations.length
+      || entries.some((entry) => {
+        const allocation = allocations.find((row) => row.lot_ref === entry.lot_ref);
+        return !allocation || !isSafeWalletReference(entry.entry_ref)
+          || entry.operation_ref !== operation.operation_ref || entry.operation !== "held_to_consumed"
+          || entry.wallet_ref !== hold.wallet_ref || entry.hold_ref !== hold.hold_ref
+          || entry.order_ref !== order.order_ref || entry.amount_units !== allocation.allocated_units
+          || entry.source_type !== allocation.source_type || entry.source_ref !== allocation.source_ref
+          || entry.actor_type !== "commerce_system" || entry.actor_ref !== "coin_commerce_capture"
+          || entry.previous_wallet_version !== operation.previous_wallet_version
+          || entry.resulting_wallet_version !== operation.resulting_wallet_version
+          || entry.resulting_wallet_status !== operation.resulting_wallet_status
+          || entry.occurred_at !== operation.completed_at;
+      })) throw commerceError("reconciliation_required");
+    return { operation, entries };
+  }
+
+  function validateInitialConfirmation(row, { order, command, payload, receipt }) {
+    if (!row || !COMMERCE_REFERENCE.test(row.confirmation_ref)
+      || row.command_ref !== command.command_ref || row.order_ref !== order.order_ref
+      || row.account_id !== order.account_id || !COMMERCE_REFERENCE.test(row.receipt_ref)
+      || !/^[0-9a-f]{64}$/.test(row.approval_sha256) || !/^[0-9a-f]{64}$/.test(row.inventory_sha256)
+      || !isStrictIsoTimestamp(row.failed_updated_at) || !isStrictIsoTimestamp(row.confirmed_at)
+      || row.failed_updated_at < command.created_at || row.confirmed_at < row.failed_updated_at
+      || row.attempt_count !== command.attempt_count || row.attempt_count < 1
+      || row.lease_generation !== command.lease_generation
+      || typeof row.operator_ref !== "string" || !AUTHORITY_REFERENCE.test(row.operator_ref)
+      || AUTHORITY_SECRET_LIKE.test(row.operator_ref)
+    ) throw commerceError("reconciliation_required");
+    const digest = createHash("sha256").update(command.command_ref).digest("hex");
+    const effectRef = `effect_coin_commerce_${createHash("sha256")
+      .update(`GCCWEBOS:COIN_COMMERCE_SUBSCRIPTION_FULFILLMENT:v1\0${command.command_ref}`).digest("hex")}`;
+    if (row.effect_ref !== effectRef || row.resource_request_ref !== `pareq_commerce_${digest}`
+      || row.entitlement_ref !== `ent_commerce_${digest}`
+      || row.issued_link_ref !== `${row.resource_request_ref}_link_1`
+    ) throw commerceError("reconciliation_required");
+    const effect = db.prepare(`select * from platform_audit_events where id = ?`).get(effectRef);
+    // Audit rows contain scalar SQL values; preserve metadata_json's exact bytes
+    // while canonicalizing the raw row's key order, as the approval inventory does.
+    const effectDigest = effect && createHash("sha256").update(JSON.stringify(
+      Object.fromEntries(Object.keys(effect).sort().map((key) => [key, effect[key]]))
+    )).digest("hex");
+    if (!effect || !/^[0-9a-f]{64}$/.test(row.effect_sha256) || effectDigest !== row.effect_sha256) {
+      throw commerceError("reconciliation_required");
+    }
+    const metadata = effect ? parseJson(effect.metadata_json) : null;
+    const fields = ["version", "commandRef", "orderRef", "accountId", "requestRef", "entitlementRef",
+      "issuedLinkRef", "tenantRef", "artifactRef", "offerVersionRef", "portalPlan", "durationDays",
+      "monthlyTrafficGb", "trafficLimitBytes", "validFrom", "previousValidUntil", "targetValidUntil"];
+    if (!effect || effect.entity_type !== "coin_commerce_subscription_fulfillment"
+      || effect.entity_ref !== row.entitlement_ref || effect.action !== "subscription_fulfillment_applied"
+      || effect.actor_ref !== "coin_commerce_fulfillment" || !isStrictIsoTimestamp(effect.created_at)
+      || effect.created_at > row.confirmed_at || !metadata
+    ) throw commerceError("reconciliation_required");
+    assertExactDataFields(assertPlainObject(metadata), new Set(fields));
+    if (metadata.version !== 1 || metadata.commandRef !== row.command_ref
+      || metadata.orderRef !== row.order_ref || metadata.accountId !== row.account_id
+      || metadata.requestRef !== row.resource_request_ref || metadata.entitlementRef !== row.entitlement_ref
+      || metadata.issuedLinkRef !== row.issued_link_ref || metadata.offerVersionRef !== payload.offerVersionRef
+      || !/^tenantref_[0-9a-f]{16}$/.test(metadata.tenantRef)
+      || !/^artifactref_[0-9a-f]{16}$/.test(metadata.artifactRef)
+      || metadata.portalPlan !== (payload.delivery.durationDays >= 365 ? "yearly" : "monthly")
+      || metadata.durationDays !== payload.delivery.durationDays
+      || metadata.monthlyTrafficGb !== payload.delivery.monthlyTrafficGb
+      || metadata.trafficLimitBytes !== metadata.monthlyTrafficGb * (1024 ** 3)
+      || !isStrictIsoTimestamp(metadata.validFrom) || !isStrictIsoTimestamp(metadata.targetValidUntil)
+      || metadata.previousValidUntil !== metadata.validFrom || effect.created_at < metadata.validFrom
+      || Date.parse(metadata.targetValidUntil) - Date.parse(metadata.validFrom) !== metadata.durationDays * 86_400_000
+    ) throw commerceError("reconciliation_required");
+    if (command.status === "failed") {
+      if (row.failed_updated_at !== command.updated_at || receipt !== null) throw commerceError("reconciliation_required");
+    } else if (!receipt || receipt.receipt_ref !== row.receipt_ref || receipt.effect_ref !== row.effect_ref
+      || receipt.recorded_at !== row.confirmed_at || command.updated_at !== row.confirmed_at
+      || order.updated_at !== row.confirmed_at) throw commerceError("reconciliation_required");
+  }
+
+  function inspectInitialConfirmation({ accountId, orderRef }) {
+    const order = db.prepare(`select * from platform_coin_commerce_orders where order_ref = ? and account_id = ?`).get(orderRef, accountId);
+    const command = db.prepare(`select * from platform_coin_commerce_fulfillment_commands where order_ref = ? and account_id = ?`).get(orderRef, accountId);
+    if (!order || !command) throw commerceError("reconciliation_required");
+    let validated;
+    try {
+      validated = validateCommandAndReceipt(command, order);
+    } catch (error) {
+      if (error?.code === "commerce_infrastructure_error"
+        && error?.message === "Coin commerce store operation rejected") {
+        throw commerceError("reconciliation_required");
+      }
+      throw error;
+    }
+    const { payload, receipt } = validated;
+    if (!order || authorityEnabled || Object.hasOwn(payload, "authority") || payload.delivery.kind !== "subscription_plan"
+      || db.prepare(`select 1 from platform_coin_commerce_orders o
+        left join platform_coin_commerce_fulfillment_commands c on c.order_ref = o.order_ref
+        where o.account_id = ? and o.order_ref <> ?
+          and (o.payment_status in ('held','capture_pending','capture_failed','reconciliation_required') or c.status in ('pending','processing'))
+        limit 1`).get(accountId, orderRef)
+    ) throw commerceError("reconciliation_required");
+    const confirmation = initialConfirmationRow("order", orderRef);
+    const failed = order.payment_status === "reconciliation_required" && command.status === "failed"
+      && command.safe_failure_code === "fulfillment_handler_unavailable" && command.attempt_count > 0;
+    const replay = order.payment_status === "captured" && command.status === "delivered" && confirmation !== null;
+    if ((!failed && !replay) || (failed && order.updated_at !== command.updated_at)) throw commerceError("reconciliation_required");
+    const allocationCount = db.prepare(`select count(*) from platform_coin_hold_allocations where hold_ref = ?`).pluck().get(order.hold_ref);
+    if (allocationCount < 1 || allocationCount > 100) throw commerceError("reconciliation_required");
+    const binding = readOrderHoldInvariant(order);
+    if (!binding.valid || binding.hold.status !== "captured") throw commerceError("reconciliation_required");
+    const ledger = initialCaptureProof(order, binding.hold);
+    const events = db.prepare(`select * from platform_coin_commerce_order_events where order_ref = ? order by occurred_at, event_ref limit 101`).all(orderRef);
+    if (events.length > 100 || !events.some((event) => event.event_type === "fulfillment_failed"
+      && event.safe_code === "fulfillment_handler_unavailable"
+      && event.occurred_at === (failed ? command.updated_at : confirmation.failed_updated_at))) {
+      throw commerceError("reconciliation_required");
+    }
+    const result = { order, command, payload, hold: binding.hold, allocation: binding.allocation, ledger, events, confirmation, receipt };
+    if (confirmation) validateInitialConfirmation(confirmation, result);
+    return result;
+  }
+
+  const initialConfirmationParticipant = Object.freeze({
+    inspect(input) {
+      return initialConfirmationAction(() => {
+        const value = assertPlainObject(input);
+        assertExactDataFields(value, new Set(["accountId", "orderRef"]));
+        return inspectInitialConfirmation({ accountId: normalizeReference(value.accountId), orderRef: normalizeReference(value.orderRef) });
+      });
+    },
+    complete(input) {
+      return initialConfirmationAction(() => {
+        const value = assertPlainObject(input);
+        assertExactDataFields(value, new Set(["confirmationRef"]));
+        const row = initialConfirmationRow("confirmation", normalizeReference(value.confirmationRef));
+        if (!row) throw commerceError("reconciliation_required");
+        const before = inspectInitialConfirmation({ accountId: row.account_id, orderRef: row.order_ref });
+        if (before.confirmation?.confirmation_ref !== row.confirmation_ref) throw commerceError("reconciliation_required");
+        const eventRef = `coinevt_initial_${createHash("sha256").update(row.confirmation_ref).digest("hex")}`;
+        if (before.command.status === "delivered") {
+          const events = before.events.filter((event) => event.event_type === "fulfillment_delivered");
+          if (events.length !== 1 || events[0].event_ref !== eventRef || events[0].safe_code !== null
+            || events[0].actor_type !== "commerce_system" || events[0].actor_ref !== "coin_commerce_initial_confirmation"
+            || events[0].occurred_at !== row.confirmed_at) throw commerceError("reconciliation_required");
+          return { status: "delivered" };
+        }
+        db.prepare(`insert into platform_coin_commerce_fulfillment_receipts
+          (receipt_ref, command_ref, effect_ref, status, safe_code, recorded_at) values (?, ?, ?, 'delivered', null, ?)`
+        ).run(row.receipt_ref, row.command_ref, row.effect_ref, row.confirmed_at);
+        const command = db.prepare(`update platform_coin_commerce_fulfillment_commands
+          set status = 'delivered', lease_token = null, lease_until = null, safe_failure_code = null, updated_at = ?
+          where command_ref = ? and order_ref = ? and account_id = ? and status = 'failed'
+            and safe_failure_code = 'fulfillment_handler_unavailable' and lease_token is null and lease_until is null
+            and updated_at = ? and attempt_count = ? and lease_generation = ?`
+        ).run(row.confirmed_at, row.command_ref, row.order_ref, row.account_id, row.failed_updated_at, row.attempt_count, row.lease_generation);
+        const order = db.prepare(`update platform_coin_commerce_orders set payment_status = 'captured', updated_at = ?
+          where order_ref = ? and account_id = ? and payment_status = 'reconciliation_required' and updated_at = ?`
+        ).run(row.confirmed_at, row.order_ref, row.account_id, before.order.updated_at);
+        if (command.changes !== 1 || order.changes !== 1) throw commerceError("reconciliation_required");
+        appendOrderEvent({ orderRef: row.order_ref, eventRef, eventType: "fulfillment_delivered", actorType: "commerce_system", actorRef: "coin_commerce_initial_confirmation", occurredAt: row.confirmed_at });
+        const after = inspectInitialConfirmation({ accountId: row.account_id, orderRef: row.order_ref });
+        if (after.command.status !== "delivered" || after.events.length !== before.events.length + 1
+          || JSON.stringify(after.ledger) !== JSON.stringify(before.ledger)
+          || before.events.some((event) => !after.events.some((retained) => JSON.stringify(retained) === JSON.stringify(event)))) {
+          throw commerceError("reconciliation_required");
+        }
+        return { status: "delivered" };
+      });
+    }
+  });
+
   function ensureOutbox(order, occurredAt) {
     const refs = deriveCommerceOperationRefs(order.order_ref);
     const payload = commandPayloadForOrder(order);
@@ -3746,5 +3969,14 @@ export function createSqliteCoinCommerceStore(options = {}) {
   if (JSON.stringify(Reflect.ownKeys(store)) !== JSON.stringify(STORE_METHODS)) {
     throw commerceError("commerce_infrastructure_error");
   }
+  INITIAL_CONFIRMATION_PARTICIPANTS.set(store, { database: db, participant: initialConfirmationParticipant });
   return store;
+}
+
+export function createCoinCommerceInitialConfirmationParticipant(input) {
+  const value = assertPlainObject(input);
+  assertExactDataFields(value, new Set(["store", "database"]));
+  const binding = INITIAL_CONFIRMATION_PARTICIPANTS.get(value.store);
+  if (!binding || binding.database !== value.database) throw commerceError("invalid_store_contract");
+  return binding.participant;
 }

@@ -18,6 +18,15 @@ import {
 
 const SETTLEMENT_POLL_INTERVAL_MS = 2_000;
 const SETTLEMENT_POLL_WINDOW_MS = 120_000;
+const CREATE_REQUEST_WAIT_MS = 30_000;
+
+type CreateIntent = {
+  client: PortalRechargeClient;
+  sessionRef: string;
+  sessionGeneration: number;
+  offerRef: string;
+  idempotencyKey: string;
+};
 
 export type PortalRechargeOffersState =
   | { status: "loading" }
@@ -33,7 +42,9 @@ export type PortalRechargeModel = {
   offersState: PortalRechargeOffersState;
   activeOrder: PortalRechargeOrder | null;
   busy: boolean;
-  error: "unavailable" | "failed" | "delayed" | null;
+  error: "unavailable" | "failed" | "delayed" | "create_unknown" | "entry_expired" | null;
+  unresolvedCreateOfferRef?: string | null;
+  retryCreateOrder?: () => Promise<void>;
   openDialog: () => void;
   closeDialog: () => void;
   retryOffers: () => void;
@@ -42,6 +53,31 @@ export type PortalRechargeModel = {
 };
 
 class SettlementDeadlineExceededError extends Error {}
+
+class CreateOutcomeUnknownError extends Error {}
+
+// Abort only bounds the browser wait. It does not prove that the server did not
+// commit; recovery must keep the original create idempotency key.
+function withCreateDeadline<T>(request: Promise<T>, controller: AbortController) {
+  return new Promise<T>((resolve, reject) => {
+    let settled = false;
+    const finish = (complete: () => void) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      controller.signal.removeEventListener("abort", onAbort);
+      complete();
+    };
+    const onAbort = () => finish(() => reject(new CreateOutcomeUnknownError()));
+    const timer = setTimeout(() => controller.abort(), CREATE_REQUEST_WAIT_MS);
+    controller.signal.addEventListener("abort", onAbort, { once: true });
+    if (controller.signal.aborted) onAbort();
+    void request.then(
+      (value) => finish(() => resolve(value)),
+      (caught: unknown) => finish(() => reject(caught)),
+    );
+  });
+}
 
 function settlementRemainingMs(startedAt: number) {
   return Math.max(0, SETTLEMENT_POLL_WINDOW_MS - (Date.now() - startedAt));
@@ -95,13 +131,14 @@ function pollAfterReturn(
   order: PortalRechargeOrder,
   returnOrderRef: string | undefined,
   trackedWithoutReturn: boolean,
+  readOnlyRestoration = false,
 ) {
   if (trackedWithoutReturn) return nonTerminal(order);
   if (order.status === "created") return order.nextAction === null;
   if (returnOrderRef !== order.orderRef) return false;
   return order.status === "pending"
     || order.status === "payment_verified"
-    || (order.status === "entry_ready" && !captureOnReturn(order));
+    || (order.status === "entry_ready" && (readOnlyRestoration || !captureOnReturn(order)));
 }
 
 export function usePortalRecharge({
@@ -112,6 +149,7 @@ export function usePortalRecharge({
   onSessionInvalid,
   onWalletMutation,
   paymentRedirect,
+  readOnlyRestoration = false,
 }: {
   client: PortalRechargeClient | null;
   enabled: boolean;
@@ -120,12 +158,14 @@ export function usePortalRecharge({
   onSessionInvalid: () => void;
   onWalletMutation: () => void;
   paymentRedirect: (url: string) => void;
+  readOnlyRestoration?: boolean;
 }): PortalRechargeModel {
   const [offers, setOffers] = useState<PortalRechargeOffer[]>([]);
   const [activeOrder, setActiveOrder] = useState<PortalRechargeOrder | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<PortalRechargeModel["error"]>(null);
+  const [unresolvedCreateOfferRef, setUnresolvedCreateOfferRef] = useState<string | null>(null);
   const [offersState, setOffersState] = useState<PortalRechargeOffersState>(() => (
     enabled && client && sessionRef
       ? { status: "loading" }
@@ -134,6 +174,8 @@ export function usePortalRecharge({
   const [offersRevision, setOffersRevision] = useState(0);
   const requestRef = useRef(0);
   const operationRef = useRef(0);
+  const createIntentRef = useRef<CreateIntent | null>(null);
+  const createRequestRef = useRef<AbortController | null>(null);
   const creditedRefsRef = useRef(new Set<string>());
   const recoveredCaptureRequestsRef = useRef(
     new Map<string, Promise<PortalRechargeOrder>>(),
@@ -192,18 +234,26 @@ export function usePortalRecharge({
     return request;
   }, []);
 
-  const redirectOrderToPayment = useCallback((
+  const handoffOrder = useCallback((
     order: PortalRechargeOrder,
   ): PortalRechargePaymentRedirectResult => {
-    if (redirectedOrderRefsRef.current.has(order.orderRef)) return "not_applicable";
+    const current = identityRef.current;
+    if (!client || !sessionRef || current.client !== client
+      || current.sessionRef !== sessionRef || current.sessionGeneration !== sessionGeneration) return "blocked";
     const result = handoffPortalRechargeOrderToPayment(
       order,
       callbacksRef.current.paymentRedirect,
     );
     if (result === "blocked") setError("failed");
+    if (result === "expired") setError("entry_expired");
     if (result === "redirected") redirectedOrderRefsRef.current.add(order.orderRef);
     return result;
-  }, []);
+  }, [client, sessionRef, sessionGeneration]);
+
+  const redirectOrderToPayment = useCallback((order: PortalRechargeOrder) => {
+    if (redirectedOrderRefsRef.current.has(order.orderRef)) return "not_applicable";
+    return handoffOrder(order);
+  }, [handoffOrder]);
 
   useEffect(() => {
     const previousOfferIdentity = offerIdentityRef.current;
@@ -216,16 +266,26 @@ export function usePortalRecharge({
     requestRef.current = requestId;
     setOffers([]);
     if (offerIdentityChanged) {
+      if (previousOfferIdentity.client !== client || previousOfferIdentity.sessionRef !== sessionRef
+        || previousOfferIdentity.sessionGeneration !== sessionGeneration) {
+        createIntentRef.current = null;
+        redirectedOrderRefsRef.current.clear();
+      }
       setActiveOrder(null);
       setDialogOpen(false);
-      setError(null);
+      setError(createIntentRef.current ? "create_unknown" : null);
     }
+    // Reloading offers can abort an in-flight create without changing identity.
+    // Its unresolved intent still needs the same recovery UI and original key.
+    setUnresolvedCreateOfferRef(createIntentRef.current?.offerRef ?? null);
+    if (createIntentRef.current) setError("create_unknown");
     operationRef.current += 1;
     creditedRefsRef.current.clear();
     settlementPollStartedAtRef.current.clear();
     trackedSettlementOrderRefsRef.current.clear();
     readbackOnlyOrderRefsRef.current.clear();
     if (!enabled || !client || !sessionRef) {
+      setBusy(false);
       setOffersState({ status: "unavailable", retryable: false });
       return;
     }
@@ -262,7 +322,7 @@ export function usePortalRecharge({
         return;
       }
       if (
-        !captureOnReturn(returnedOrder)
+        readOnlyRestoration || !captureOnReturn(returnedOrder)
       ) return;
       const captureStartedAt = Date.now();
       let capturedOrder: PortalRechargeOrder | null = null;
@@ -341,10 +401,16 @@ export function usePortalRecharge({
     }).finally(() => {
       if (requestRef.current === requestId) setBusy(false);
     });
-    return () => { requestRef.current += 1; };
+    return () => {
+      requestRef.current += 1;
+      operationRef.current += 1;
+      createRequestRef.current?.abort();
+      createRequestRef.current = null;
+    };
   }, [
     applyFailure,
     captureOrderOnce,
+    readOnlyRestoration,
     client,
     enabled,
     offersRevision,
@@ -384,6 +450,7 @@ export function usePortalRecharge({
           activeOrder,
           returnIntent?.orderRef,
           trackedSettlementOrderRefsRef.current.has(activeOrder.orderRef),
+          readOnlyRestoration,
         )
       )
     ) return;
@@ -487,12 +554,32 @@ export function usePortalRecharge({
     client,
     dialogOpen,
     redirectOrderToPayment,
+    readOnlyRestoration,
     sessionGeneration,
     sessionRef,
   ]);
 
   const createOrder = useCallback(async (offerRef: string) => {
-    if (!client || !sessionRef) return;
+    const current = identityRef.current;
+    if (!enabled || !client || !sessionRef || createRequestRef.current
+      || current.client !== client || current.sessionRef !== sessionRef
+      || current.sessionGeneration !== sessionGeneration) return;
+    let intent = createIntentRef.current;
+    if (intent && (intent.client !== client || intent.sessionRef !== sessionRef
+      || intent.sessionGeneration !== sessionGeneration)) intent = null;
+    // A different denomination is a new intent, not recovery of an unknown
+    // result. Resolve the existing intent before offering another create.
+    if (intent && intent.offerRef !== offerRef) {
+      setError("create_unknown");
+      return;
+    }
+    intent ??= {
+      client, sessionRef, sessionGeneration, offerRef,
+      idempotencyKey: createPortalRechargeIdempotencyKey("create"),
+    };
+    createIntentRef.current = intent;
+    const controller = new AbortController();
+    createRequestRef.current = controller;
     const operationId = operationRef.current + 1;
     operationRef.current = operationId;
     const capturedClient = client;
@@ -501,12 +588,15 @@ export function usePortalRecharge({
     setBusy(true);
     setError(null);
     try {
-      const order = await capturedClient.createOrder({
+      const order = await withCreateDeadline(capturedClient.createOrder({
         sessionRef: capturedSessionRef,
         offerRef,
-        idempotencyKey: createPortalRechargeIdempotencyKey("create"),
-      });
+        idempotencyKey: intent.idempotencyKey,
+        signal: controller.signal,
+      }), controller);
       if (!operationIsCurrent(operationId, capturedClient, capturedSessionRef, capturedGeneration)) return;
+      createIntentRef.current = null;
+      setUnresolvedCreateOfferRef(null);
       setActiveOrder(order);
       if (order.status === "created" && order.nextAction === null) {
         trackedSettlementOrderRefsRef.current.add(order.orderRef);
@@ -514,13 +604,21 @@ export function usePortalRecharge({
       redirectOrderToPayment(order);
     } catch (caught) {
       if (!operationIsCurrent(operationId, capturedClient, capturedSessionRef, capturedGeneration)) return;
-      applyFailure(caught);
+      if (caught instanceof PortalRechargeClientError && caught.code === "payment_recharge_session_invalid") {
+        createIntentRef.current = null;
+        setUnresolvedCreateOfferRef(null);
+        applyFailure(caught);
+      } else {
+        setUnresolvedCreateOfferRef(intent.offerRef);
+        setError("create_unknown");
+      }
     } finally {
+      if (createRequestRef.current === controller) createRequestRef.current = null;
       if (operationIsCurrent(operationId, capturedClient, capturedSessionRef, capturedGeneration)) {
         setBusy(false);
       }
     }
-  }, [applyFailure, client, operationIsCurrent, redirectOrderToPayment, sessionGeneration, sessionRef]);
+  }, [applyFailure, client, enabled, operationIsCurrent, redirectOrderToPayment, sessionGeneration, sessionRef]);
 
   return {
     available: Boolean(enabled && client && sessionRef),
@@ -530,6 +628,11 @@ export function usePortalRecharge({
     activeOrder,
     busy,
     error,
+    unresolvedCreateOfferRef,
+    retryCreateOrder: async () => {
+      const intent = createIntentRef.current;
+      if (intent) await createOrder(intent.offerRef);
+    },
     openDialog: () => {
       clearPortalRechargeReturn();
       if (activeOrder) {
@@ -538,7 +641,7 @@ export function usePortalRecharge({
         readbackOnlyOrderRefsRef.current.delete(activeOrder.orderRef);
       }
       setActiveOrder(null);
-      setError(null);
+      setError(createIntentRef.current ? "create_unknown" : null);
       setDialogOpen(true);
     },
     closeDialog: () => {
@@ -559,6 +662,6 @@ export function usePortalRecharge({
       setOffersRevision((revision) => revision + 1);
     },
     createOrder,
-    continueOrderPayment: redirectOrderToPayment,
+    continueOrderPayment: handoffOrder,
   };
 }

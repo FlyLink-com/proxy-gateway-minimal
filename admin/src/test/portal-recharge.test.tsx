@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import "@testing-library/jest-dom/vitest";
-import { afterEach, describe, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import {
   PortalRechargeDialog,
@@ -88,9 +88,15 @@ function rechargeOrder(status: PortalRechargeOrder["status"]): PortalRechargeOrd
   };
 }
 
+beforeEach(() => {
+  // Expiry is now checked at handoff; keep fixtures on an explicit clock.
+  vi.setSystemTime(new Date("2026-08-01T00:00:00.000Z"));
+});
+
 afterEach(() => {
   cleanup();
   window.sessionStorage.clear();
+  vi.useRealTimers();
 });
 
 describe("Portal recharge client", () => {
@@ -473,6 +479,7 @@ function RechargeHarness({
   refreshWallet,
   sessionGeneration = 1,
   sessionRef = "session_recharge_1",
+  readOnlyRestoration = false,
 }: {
   client: PortalRechargeClient;
   enabled?: boolean;
@@ -480,6 +487,7 @@ function RechargeHarness({
   refreshWallet: () => void;
   sessionGeneration?: number;
   sessionRef?: string | null;
+  readOnlyRestoration?: boolean;
 }) {
   const model = usePortalRecharge({
     client,
@@ -489,6 +497,7 @@ function RechargeHarness({
     onSessionInvalid: () => undefined,
     onWalletMutation: refreshWallet,
     paymentRedirect,
+    readOnlyRestoration,
   });
   return (
     <>
@@ -1051,6 +1060,7 @@ describe("Portal recharge interaction", () => {
       sessionRef: "session_recharge_1",
       offerRef: "coins_30",
       idempotencyKey: expect.any(String),
+      signal: expect.any(AbortSignal),
     }));
     expect(paymentRedirect).toHaveBeenCalledWith(
       "https://www.sandbox.paypal.com/checkoutnow?token=safe",
@@ -1067,6 +1077,19 @@ describe("Portal recharge interaction", () => {
     expect(screen.queryByRole("button", { name: "Confirm PayPal payment" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Refresh order" })).toBeNull();
     expect(refreshWallet).not.toHaveBeenCalled();
+  });
+
+  test("cookie reload reads a staged PayPal order without repeating creation or capture", async () => {
+    window.sessionStorage.setItem("gccwebos-portal-recharge-return-v1", JSON.stringify({ version: 1, orderRef: "payment_order_1", captureIdempotencyKey: "portal_capture_readonly_return" }));
+    const order = rechargeOrder("entry_ready");
+    const client: PortalRechargeClient = { listOffers: vi.fn(async () => [OFFER]), listOrders: vi.fn(async () => [order]), getOrder: vi.fn(async () => order), createOrder: vi.fn(async () => order), captureOrder: vi.fn(async () => order) };
+    const redirect = vi.fn();
+    render(createElement(StrictMode, null, createElement(RechargeHarness, {client,readOnlyRestoration:true,paymentRedirect:redirect,refreshWallet:vi.fn()})));
+    await screen.findByRole("dialog", {name:"Recharge Coins"});
+    expect(client.createOrder).not.toHaveBeenCalled();
+    expect(client.captureOrder).not.toHaveBeenCalled();
+    expect(redirect).not.toHaveBeenCalled();
+    expect(client.listOrders).toHaveBeenCalled();
   });
 
   test("resumes the exact returned order and captures it once with the staged idempotency key", async () => {

@@ -43,6 +43,8 @@ export type PortalOrdersFilter =
 
 export type PortalOrdersPanelProps = {
   locale: "zh" | "en";
+  filter?: PortalOrdersFilter;
+  onFilterChange?: (filter: PortalOrdersFilter) => void;
   commerceClient: PortalCoinCommerceClient | null;
   rechargeClient?: PortalRechargeClient | null;
   sessionRef: string | null;
@@ -59,13 +61,6 @@ export type PortalOrdersPanelProps = {
     order: PortalRechargeOrder,
   ) => PortalRechargePaymentRedirectResult;
 };
-
-const FILTERS: Array<{ id: PortalOrdersFilter; zh: string; en: string }> = [
-  { id: "all", zh: "全部", en: "All" },
-  { id: "coins_consumption", zh: "商城消费", en: "Marketplace purchases" },
-  { id: "coin_recharge", zh: "充值订单", en: "Coins recharges" },
-  { id: "plans_services", zh: "套餐与服务", en: "Plans and services" }
-];
 
 type ReadState<T> =
   | { phase: "loading" }
@@ -103,6 +98,15 @@ function formatDateTime(value: string, locale: PortalOrdersPanelProps["locale"])
   return new Intl.DateTimeFormat(locale === "en" ? "en-US" : "zh-CN", {
     dateStyle: "medium",
     timeStyle: "short"
+  }).format(date);
+}
+
+function formatSummaryDate(value: string, locale: PortalOrdersPanelProps["locale"]) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "—";
+  return new Intl.DateTimeFormat(locale === "en" ? "en-GB" : "zh-CN", {
+    year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", hour12: false
   }).format(date);
 }
 
@@ -254,7 +258,7 @@ function legacyPaymentProductLabel(
 
 function productLabel(item: PortalOrderCenterItem, locale: PortalOrdersPanelProps["locale"]) {
   if (item.kind === "coins_consumption") return item.source.offer.title[locale];
-  if (item.kind === "coin_recharge") return `${item.source.expectedPaidCoinUnits} paid Coins`;
+  if (item.kind === "coin_recharge") return `${item.source.expectedPaidCoinUnits} Coins`;
   if (item.kind === "legacy_payment") return legacyPaymentProductLabel(item.source, locale);
   return serviceProductLabel(item.source, locale);
 }
@@ -373,6 +377,8 @@ const EMPTY_COIN_ORDERS: PortalCoinOrder[] = [];
 
 export function PortalOrdersPanel({
   locale,
+  filter = "all",
+  onFilterChange = () => undefined,
   commerceClient,
   rechargeClient = null,
   sessionRef,
@@ -380,7 +386,6 @@ export function PortalOrdersPanel({
   onSessionInvalid,
   legacyPaymentOrders = [],
   serviceOrders = [],
-  selectedServiceOrderRef = null,
   orderSearch = "",
   onOrderSearchChange = () => undefined,
   onOpenServiceOrder = () => undefined,
@@ -388,11 +393,10 @@ export function PortalOrdersPanel({
   onContinueRechargeOrder
 }: PortalOrdersPanelProps) {
   const desktopScrollRegion = useDesktopScrollRegion();
-  const allFilterButtonRef = useRef<HTMLButtonElement | null>(null);
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
   const toolbarMarketplaceButtonRef = useRef<HTMLButtonElement | null>(null);
   const emptyActionButtonRef = useRef<HTMLButtonElement | null>(null);
   const emptyActionFocusedRef = useRef(false);
-  const [filter, setFilter] = useState<PortalOrdersFilter>("all");
   const [statusFilter, setStatusFilter] = useState<"all" | PortalOrderCenterStatus>("all");
   const [sort, setSort] = useState<"newest" | "oldest">("newest");
   const [listState, setListState] = useState<ReadState<PortalCoinOrder[]>>({
@@ -413,7 +417,7 @@ export function PortalOrdersPanel({
   const [selectedRechargeDetailRef, setSelectedRechargeDetailRef] =
     useState<string | null>(null);
   const [selectedServiceDetailRef, setSelectedServiceDetailRef] =
-    useState<string | null>(selectedServiceOrderRef);
+    useState<string | null>(null);
   const initialIdentity = { commerceClient, sessionRef, sessionGeneration };
   const [listIdentity, setListIdentity] = useState<PortalOrdersIdentity>(initialIdentity);
   const [detailIdentity, setDetailIdentity] = useState<PortalOrdersIdentity>(initialIdentity);
@@ -429,7 +433,9 @@ export function PortalOrdersPanel({
   const [rechargeOrders, setRechargeOrders] = useState<PortalRechargeOrder[]>([]);
   const [rechargeFailure, setRechargeFailure] = useState(false);
   const [rechargeLoading, setRechargeLoading] = useState(false);
-  const [rechargeContinuationError, setRechargeContinuationError] = useState(false);
+  const [rechargeContinuationError, setRechargeContinuationError] = useState<
+    Exclude<PortalRechargePaymentRedirectResult, "redirected"> | null
+  >(null);
   const showsCoins = filter === "all" || filter === "coins_consumption";
   const showsRecharge = filter === "all" || filter === "coin_recharge";
 
@@ -453,7 +459,7 @@ export function PortalOrdersPanel({
     setSelectedLegacyDetailRef(null);
     setSelectedRechargeDetailRef(null);
     setSelectedServiceDetailRef(null);
-    setRechargeContinuationError(false);
+    setRechargeContinuationError(null);
     setNextCursor(null);
     setListRetryRequest({ cursor: null, append: false });
     visibleOrderRefsRef.current.clear();
@@ -494,10 +500,6 @@ export function PortalOrdersPanel({
     });
     return () => { rechargeRequestRef.current += 1; };
   }, [rechargeClient, rechargeRevision, sessionGeneration, sessionRef]);
-
-  useLayoutEffect(() => {
-    setSelectedServiceDetailRef(selectedServiceOrderRef);
-  }, [selectedServiceOrderRef]);
 
   const listCurrent = useCallback((current: CurrentInputs, requestId: number) => (
     current.alive
@@ -671,6 +673,13 @@ export function PortalOrdersPanel({
     setDetailState({ phase: "empty", value: null as never });
   }, []);
 
+  useLayoutEffect(() => {
+    invalidateCoinDetail();
+    setSelectedLegacyDetailRef(null);
+    setSelectedRechargeDetailRef(null);
+    setSelectedServiceDetailRef(null);
+  }, [filter, invalidateCoinDetail]);
+
   const toggleCoinDetail = useCallback((orderRef: string) => {
     if (selectedDetailRef === orderRef) {
       invalidateCoinDetail();
@@ -736,10 +745,10 @@ export function PortalOrdersPanel({
     ? copy(locale, "正在加载商城订单…", "Loading Marketplace orders…")
     : copy(locale, "正在加载 Coins 充值订单…", "Loading Coins recharge orders…");
   const clearFilters = () => {
-    setFilter("all");
+    onFilterChange("all");
     setStatusFilter("all");
     onOrderSearchChange("");
-    allFilterButtonRef.current?.focus();
+    searchInputRef.current?.focus();
   };
   useLayoutEffect(() => {
     if (
@@ -798,7 +807,7 @@ export function PortalOrdersPanel({
       const order = item.source;
       return (
         <div className="portal-order-detail-grid">
-          <div><span>{copy(locale, "到账", "Credit")}</span><strong>{order.expectedPaidCoinUnits} paid Coins</strong></div>
+          <div><span>{copy(locale, "到账", "Credit")}</span><strong>{order.expectedPaidCoinUnits} Coins</strong></div>
           <div><span>{copy(locale, "支付金额", "Payment amount")}</span><strong>{amountLabel(item)}</strong></div>
           <div><span>{copy(locale, "支付方式", "Payment method")}</span><strong>{portalRechargePaymentMethodLabel(order.paymentMethod, locale)}</strong></div>
           <div><span>{copy(locale, "状态", "Status")}</span><strong>{itemStatusLabel(item, locale)}</strong></div>
@@ -831,19 +840,6 @@ export function PortalOrdersPanel({
 
   return (
     <section className="portal-orders-panel" aria-label={copy(locale, "订单记录", "Order records")}>
-      <div className="portal-orders-filters" role="group" aria-label={copy(locale, "订单类型", "Order type")}>
-        {FILTERS.map((item) => (
-          <button
-            key={item.id}
-            ref={item.id === "all" ? allFilterButtonRef : undefined}
-            type="button"
-            aria-pressed={filter === item.id}
-            onClick={() => setFilter(item.id)}
-          >
-            {copy(locale, item.zh, item.en)}
-          </button>
-        ))}
-      </div>
       <p
         className="portal-orders-scope-note"
         role="note"
@@ -851,12 +847,26 @@ export function PortalOrdersPanel({
       >
         {copy(
           locale,
-          "订单中心记录订单生命周期；充值订单记录 Coins 入账状态；钱包账变记录已到账或已消费的余额变化。",
-          "Orders track order lifecycles; recharge orders track Coins crediting; Wallet activity records credited or spent balance changes."
+          "查看购买、充值与服务记录；余额变化请前往 Coins 钱包。",
+          "View purchases, recharges and services; find balance changes in your Coins Wallet."
         )}
       </p>
 
       <div className="portal-order-toolbar">
+        {!desktopScrollRegion ? (
+          <label>
+            <span>{copy(locale, "订单类型", "Order type")}</span>
+            <select
+              value={filter}
+              onChange={(event) => onFilterChange(event.target.value as PortalOrdersFilter)}
+            >
+              <option value="all">{copy(locale, "全部", "All")}</option>
+              <option value="coins_consumption">{copy(locale, "商城消费", "Marketplace purchases")}</option>
+              <option value="coin_recharge">{copy(locale, "充值订单", "Coins recharges")}</option>
+              <option value="plans_services">{copy(locale, "套餐与服务", "Plans and services")}</option>
+            </select>
+          </label>
+        ) : null}
         <label className="portal-order-search-control">
           <span>{copy(locale, "搜索订单", "Search orders")}</span>
           <span
@@ -865,6 +875,7 @@ export function PortalOrdersPanel({
           >
             <Search aria-hidden="true" />
             <input
+              ref={searchInputRef}
               className="portal-order-search-input"
               value={orderSearch}
               onChange={(event) => onOrderSearchChange(event.target.value)}
@@ -933,7 +944,11 @@ export function PortalOrdersPanel({
       ) : null}
       {rechargeContinuationError && showsRecharge ? (
         <div className="portal-orders-inline-note" role="alert">
-          {copy(
+          {rechargeContinuationError === "expired" ? copy(
+            locale,
+            "该支付入口已过期，请刷新订单查看状态。未创建新的充值订单。",
+            "This payment entry has expired. Refresh Orders to check its status. No new recharge order was created."
+          ) : copy(
             locale,
             "无法安全继续该笔充值支付，未创建新的充值订单。",
             "Could not safely continue this payment. No new recharge order was created."
@@ -941,22 +956,21 @@ export function PortalOrdersPanel({
         </div>
       ) : null}
       <div
-        aria-label={desktopScrollRegion && !showEmptyState
+        aria-label={!showEmptyState
           ? copy(locale, "可滚动订单表格", "Scrollable orders table")
           : undefined}
         aria-busy={isLoadingOrders ? "true" : undefined}
         className="portal-order-table-wrap"
-        data-empty={useContextualEmptyState ? "true" : undefined}
+        data-empty={showEmptyState ? "true" : undefined}
         data-loading={isLoadingOrders ? "true" : undefined}
-        role={desktopScrollRegion && !showEmptyState ? "region" : undefined}
-        tabIndex={desktopScrollRegion && !showEmptyState ? 0 : undefined}
+        role={!showEmptyState ? "region" : undefined}
+        tabIndex={!showEmptyState ? 0 : undefined}
       >
         <table className="portal-order-table" aria-label={copy(locale, "订单列表", "Orders")}>
           <thead>
             <tr>
-              <th scope="col">{copy(locale, "订单", "Order")}</th>
-              <th scope="col">{copy(locale, "类型", "Type")}</th>
               <th scope="col">{copy(locale, "商品或服务", "Product or service")}</th>
+              <th scope="col">{copy(locale, "类型", "Type")}</th>
               <th scope="col">{copy(locale, "金额", "Amount")}</th>
               <th scope="col">{copy(locale, "状态", "Status")}</th>
               <th scope="col">{copy(locale, "创建时间", "Created")}</th>
@@ -966,13 +980,13 @@ export function PortalOrdersPanel({
           <tbody>
             {showLoadingRow ? (
               <tr>
-                <td colSpan={7} className="portal-order-loading-state">
+                <td colSpan={6} className="portal-order-loading-state">
                   <span>{loadingLabel}</span>
                 </td>
               </tr>
             ) : showEmptyState ? (
               <tr>
-                <td colSpan={7} className="portal-order-empty-state">
+                <td colSpan={6} className="portal-order-empty-state">
                   {desktopScrollRegion ? (
                     <div className="portal-order-empty-content">
                       <strong>
@@ -1075,24 +1089,30 @@ export function PortalOrdersPanel({
               ].join(locale === "zh" ? "：" : ": ");
               return (
                 <Fragment key={item.key}>
-                  <tr className={expanded ? "selected" : undefined}>
-                    <td data-label={copy(locale, "订单", "Order")}>
-                      <span className="portal-order-main-text">{displayOrderRef(item)}</span>
+                  <tr className={`portal-order-summary-row${expanded ? " selected" : ""}`}>
+                    <td data-label={copy(locale, "商品或服务", "Product or service")}>
+                      <strong className="portal-order-summary-text">{productLabel(item, locale)}</strong>
                     </td>
-                    <td data-label={copy(locale, "类型", "Type")}>{itemTypeLabel(item, locale)}</td>
-                    <td data-label={copy(locale, "商品或服务", "Product or service")}>{productLabel(item, locale)}</td>
-                    <td data-label={copy(locale, "金额", "Amount")}>{amountLabel(item)}</td>
+                    <td data-label={copy(locale, "类型", "Type")}>
+                      <span className="portal-order-summary-text">{itemTypeLabel(item, locale)}</span>
+                    </td>
+                    <td data-label={copy(locale, "金额", "Amount")}>
+                      <span className="portal-order-summary-text portal-order-amount">{amountLabel(item)}</span>
+                    </td>
                     <td data-label={copy(locale, "状态", "Status")}>
-                      <span className={`portal-order-status ${item.status}`}>{itemStatusLabel(item, locale)}</span>
+                      <span className={`portal-order-status ${item.status}`}>
+                        {item.kind === "coins_consumption" ? centerStatusLabel(item.status, locale) : itemStatusLabel(item, locale)}
+                      </span>
                     </td>
                     <td data-label={copy(locale, "创建时间", "Created")}>
-                      <time dateTime={item.createdAt}>
-                        {formatDateTime(item.createdAt, locale)}
+                      <time className="portal-order-summary-text" dateTime={item.createdAt}>
+                        {formatSummaryDate(item.createdAt, locale)}
                       </time>
                     </td>
                     <td data-label={copy(locale, "操作", "Actions")}>
                       <div className="portal-order-actions">
                         <button
+                          className="portal-order-view"
                           type="button"
                           onClick={action}
                           aria-controls={expanded ? detailId : undefined}
@@ -1107,7 +1127,7 @@ export function PortalOrdersPanel({
                             aria-label={continuePaymentLabel}
                             onClick={() => {
                               const result = onContinueRechargeOrder(rechargeOrderForContinuation);
-                              setRechargeContinuationError(result !== "redirected");
+                              setRechargeContinuationError(result === "redirected" ? null : result);
                             }}
                           >
                             {copy(locale, "继续支付", "Continue payment")}
@@ -1118,7 +1138,7 @@ export function PortalOrdersPanel({
                   </tr>
                   {expanded ? (
                     <tr className="portal-order-detail-row">
-                      <td colSpan={7}>
+                      <td colSpan={6}>
                         <div
                           aria-label={orderDetailLabel(item, locale)}
                           className="portal-order-detail"
@@ -1126,8 +1146,18 @@ export function PortalOrdersPanel({
                           role="region"
                         >
                           <p className="portal-order-detail__title">
-                            {productLabel(item, locale)} · {displayOrderRef(item)}
+                            {productLabel(item, locale)}
                           </p>
+                          <dl className="portal-order-detail-meta">
+                            <div>
+                              <dt>{copy(locale, "订单号", "Order ID")}</dt>
+                              <dd>{accessibleOrderRef(item)}</dd>
+                            </div>
+                            <div>
+                              <dt>{copy(locale, "订单类型", "Order type")}</dt>
+                              <dd>{itemTypeLabel(item, locale)}</dd>
+                            </div>
+                          </dl>
                           {detailContent(item)}
                         </div>
                       </td>

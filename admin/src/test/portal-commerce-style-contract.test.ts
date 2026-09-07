@@ -3,7 +3,8 @@ import { resolve } from "node:path";
 import { describe, expect, test } from "vitest";
 
 const DESKTOP_MEDIA = "(min-width: 721px)";
-const COMPACT_MARKETPLACE_MEDIA = "(max-width: 960px)";
+const COMPACT_MARKETPLACE_MEDIA = "(max-width: 720px)";
+const WIDE_MARKETPLACE_MEDIA = "(min-width: 1101px)";
 const REDUCED_MOTION_MEDIA = "(prefers-reduced-motion: reduce)";
 const desktopStyles = readFileSync(
   resolve("src/styles/portal-static-preserve/user-portal-desktop.css"),
@@ -63,7 +64,80 @@ function desktopDeclaration(
   return mediaDeclaration(css, DESKTOP_MEDIA, selector, property);
 }
 
+function baseDeclaration(css: string, selector: string, property: string) {
+  const style = document.createElement("style");
+  style.textContent = css;
+  document.head.append(style);
+  try {
+    let value = "";
+    for (const rule of Array.from(style.sheet?.cssRules ?? [])) {
+      if (rule instanceof CSSStyleRule && normalizedSelectors(rule).includes(selector)) {
+        value = rule.style.getPropertyValue(property).trim() || value;
+      }
+    }
+    return value;
+  } finally {
+    style.remove();
+  }
+}
+
 describe("Portal commerce desktop style contract", () => {
+  test("gives every product the same price hierarchy and readable summary", () => {
+    const card = ".portal-v2-shell .portal-marketplace-card";
+    expect(baseDeclaration(commerceStyles, `${card} article`, "background")).toBe("var(--portal-commerce-surface-raised)");
+    expect(baseDeclaration(commerceStyles, ".portal-v2-shell .portal-marketplace-card__amount", "font-size")).toBe("48px");
+    expect(baseDeclaration(commerceStyles, ".portal-v2-shell .portal-marketplace-card__unit", "font-size")).toBe("15px");
+    expect(baseDeclaration(commerceStyles, `${card} > article > p`, "font-weight")).toBe("400");
+    expect(baseDeclaration(commerceStyles, `${card} > article > p`, "line-height")).toBe("1.7");
+    expect(commerceStyles).not.toContain("portal-marketplace-card--subscription");
+    expect(commerceStyles).not.toContain("portal-marketplace-card__facts");
+    expect(commerceStyles).not.toContain("portal-marketplace-card__notices");
+  });
+
+  test("keeps the single purchase CTA full width and accessible for every product", () => {
+    const actions = ".portal-v2-shell .portal-marketplace-card__actions";
+    expect(baseDeclaration(commerceStyles, actions, "display")).toBe("grid");
+    expect(baseDeclaration(commerceStyles, actions, "grid-template-columns")).toBe("minmax(0, 1fr)");
+    expect(baseDeclaration(commerceStyles, actions, "margin-top")).toBe("auto");
+    expect(baseDeclaration(commerceStyles, `${actions} button`, "width")).toBe("100%");
+    expect(baseDeclaration(commerceStyles, `${actions} button`, "min-height")).toBe("48px");
+    expect(baseDeclaration(commerceStyles, `${actions} button`, "white-space")).toBe("normal");
+    expect(baseDeclaration(commerceStyles, `${actions} button.portal-marketplace-card__purchase`, "background")).toBe("var(--portal-commerce-primary)");
+    expect(baseDeclaration(commerceStyles, `${actions} button:disabled`, "background")).toBe("var(--portal-commerce-disabled-surface)");
+    expect(baseDeclaration(commerceStyles, `${actions} button:focus-visible`, "outline")).toBe("3px solid var(--portal-commerce-accent)");
+  });
+
+  test("keeps recharge amounts above full-width actions even on narrow screens", () => {
+    const card = ".portal-v2-shell .portal-recharge-offers li";
+    expect(baseDeclaration(commerceStyles, card, "display")).toBe("grid");
+    expect(baseDeclaration(commerceStyles, card, "grid-template-columns")).toBe("minmax(0, 1fr)");
+    expect(baseDeclaration(commerceStyles, card, "justify-content")).toBe("stretch");
+    const action = ".portal-v2-shell .portal-recharge-offers button";
+    expect(baseDeclaration(commerceStyles, action, "width")).toBe("100%");
+    expect(baseDeclaration(commerceStyles, action, "white-space")).toBe("normal");
+  });
+
+  test("makes recharge alerts and recovery text consume the readable day/night wallet token at every width", () => {
+    expect(baseDeclaration(
+      commerceStyles,
+      ".portal-v2-shell .portal-recharge-dialog > .portal-recharge-state",
+      "color"
+    )).toBe("var(--portal-wallet-text)");
+    for (const [theme, expected] of [["dark", "#f0f6fc"], ["light", "#1f2937"]] as const) {
+      const shell = theme === "light" ? '.portal-v2-shell[data-portal-theme="light"]' : ".portal-v2-shell";
+      expect(baseDeclaration(
+        commerceStyles,
+        `${shell} .portal-commerce-layout--wallet`,
+        "--portal-wallet-text"
+      )).toBe(expected);
+      expect(desktopDeclaration(
+        commerceStyles,
+        `${shell} .modal-backdrop .portal-recharge-dialog`,
+        "--portal-wallet-text"
+      )).toBe(expected);
+    }
+  });
+
   test("keeps the signed-in desktop Header focused on title and global search", () => {
     expect(desktopDeclaration(
       desktopStyles,
@@ -101,202 +175,44 @@ describe("Portal commerce desktop style contract", () => {
     });
   });
 
-  test("composes plan and data-pack groups as balanced desktop columns", () => {
-    expect(desktopDeclaration(
-      commerceStyles,
-      ".portal-v2-shell .portal-commerce-layout--marketplace",
-      "grid-template-columns"
-    )).toBe("repeat(2, minmax(0, 1fr))");
-    expect(desktopDeclaration(
-      commerceStyles,
-      ".portal-v2-shell .portal-commerce-layout--marketplace > .portal-marketplace-state",
-      "grid-column"
-    )).toBe("1 / -1");
-    expect(desktopDeclaration(
-      commerceStyles,
-      ".portal-v2-shell .portal-commerce-layout--marketplace > .portal-marketplace-flow-state",
-      "grid-column"
-    )).toBe("1 / -1");
-    expect(desktopDeclaration(
-      commerceStyles,
-      ".portal-v2-shell .portal-marketplace-group > .portal-marketplace-grid",
-      "grid-template-columns"
-    )).toBe("minmax(0, 1fr)");
-    expect(desktopDeclaration(
-      commerceStyles,
-      ".portal-v2-shell .portal-marketplace-group:only-of-type",
-      "grid-column"
-    )).toBe("1 / -1");
-    expect(desktopDeclaration(
-      commerceStyles,
-      ".portal-v2-shell .portal-marketplace-group:only-of-type > .portal-marketplace-grid",
-      "grid-template-columns"
-    )).toBe("repeat(2, minmax(0, 1fr))");
+  test("gives each category a full row with two tablet and three desktop product columns", () => {
+    expect(desktopDeclaration(commerceStyles, ".portal-v2-shell .portal-commerce-layout--marketplace", "grid-template-columns")).toBe("minmax(0, 1fr)");
+    for (const state of ["portal-marketplace-state", "portal-marketplace-flow-state"]) {
+      expect(desktopDeclaration(commerceStyles, `.portal-v2-shell .portal-commerce-layout--marketplace > .${state}`, "grid-column")).toBe("1 / -1");
+    }
+    expect(baseDeclaration(commerceStyles, ".portal-v2-shell .portal-marketplace-grid", "grid-template-columns")).toBe("repeat(2, minmax(0, 1fr))");
+    expect(mediaDeclaration(commerceStyles, WIDE_MARKETPLACE_MEDIA, ".portal-v2-shell .portal-marketplace-grid", "grid-template-columns")).toBe("repeat(3, minmax(0, 1fr))");
+    expect(commerceStyles).not.toContain(".portal-marketplace-group:only-of-type");
   });
 
-  test("returns Marketplace groups and cards to one column at 960px", () => {
-    [
-      ".portal-v2-shell .portal-commerce-layout--marketplace",
-      ".portal-v2-shell .portal-marketplace-grid",
-      ".portal-v2-shell .portal-marketplace-group:only-of-type > .portal-marketplace-grid"
-    ].forEach((selector) => {
-      expect(mediaDeclaration(
-        commerceStyles,
-        COMPACT_MARKETPLACE_MEDIA,
-        selector,
-        "grid-template-columns"
-      )).toBe("minmax(0, 1fr)");
-    });
+  test("returns Marketplace groups and cards to one column on mobile", () => {
+    expect(mediaDeclaration(commerceStyles, COMPACT_MARKETPLACE_MEDIA, ".portal-v2-shell .portal-marketplace-grid", "grid-template-columns")).toBe("minmax(0, 1fr)");
   });
 
-  test("matches the frozen Product Card surface and three-column fact composition", () => {
-    expect(desktopDeclaration(
-      commerceStyles,
-      ".portal-v2-shell[data-portal-theme=\"light\"] .portal-commerce-layout--marketplace",
-      "--portal-commerce-muted"
-    )).toBe("#334155");
-    expect(desktopDeclaration(
-      commerceStyles,
-      ".portal-v2-shell .portal-marketplace-card__facts dd",
-      "font-weight"
-    )).toBe("700");
-    expect(desktopDeclaration(
-      commerceStyles,
-      ".portal-v2-shell .portal-marketplace-group",
-      "align-self"
-    )).toBe("start");
-    expect(desktopDeclaration(
-      commerceStyles,
-      ".portal-v2-shell .portal-marketplace-group",
-      "align-content"
-    )).toBe("start");
-    expect(desktopDeclaration(
-      commerceStyles,
-      ".portal-v2-shell .portal-marketplace-card article",
-      "background"
-    )).toBe("var(--portal-commerce-surface-raised)");
-    expect(desktopDeclaration(
-      commerceStyles,
-      ".portal-v2-shell .portal-marketplace-card__facts",
-      "grid-template-columns"
-    )).toBe("repeat(3, minmax(0, 1fr))");
-    expect(desktopDeclaration(
-      commerceStyles,
-      ".portal-v2-shell .portal-marketplace-card__facts",
-      "gap"
-    )).toBe("16px");
-    expect(desktopDeclaration(
-      commerceStyles,
-      ".portal-v2-shell .portal-marketplace-card__facts > div",
-      "grid-template-columns"
-    )).toBe("minmax(0, 1fr)");
-    expect(desktopDeclaration(
-      commerceStyles,
-      ".portal-v2-shell .portal-marketplace-card__facts > div",
-      "gap"
-    )).toBe("4px");
-    expect(desktopDeclaration(
-      commerceStyles,
-      ".portal-v2-shell .portal-marketplace-card__facts dd",
-      "text-align"
-    )).toBe("left");
+  test("keeps cards equal-height with no fixed content height or clipped summary", () => {
+    const card = ".portal-v2-shell .portal-marketplace-card";
+    expect(baseDeclaration(commerceStyles, `${card} article`, "height")).toBe("100%");
+    expect(baseDeclaration(commerceStyles, `${card} article`, "display")).toBe("flex");
+    expect(baseDeclaration(commerceStyles, `${card} article`, "flex-direction")).toBe("column");
+    expect(baseDeclaration(commerceStyles, `${card} article`, "padding")).toBe("20px");
+    expect(baseDeclaration(commerceStyles, `${card} > article > p`, "overflow")).toBe("");
+    expect(baseDeclaration(commerceStyles, ".portal-v2-shell .portal-marketplace-card__price dd", "font-variant-numeric")).toBe("tabular-nums");
+    expect(desktopDeclaration(commerceStyles, '.portal-v2-shell[data-portal-theme="light"] .portal-commerce-layout--marketplace', "--portal-commerce-muted")).toBe("#334155");
   });
 
-  test("keeps Product Card notices full-width and actions intrinsic at the trailing edge", () => {
-    expect(desktopDeclaration(
-      commerceStyles,
-      ".portal-v2-shell .portal-marketplace-card__notices",
-      "align-self"
-    )).toBe("stretch");
-    expect(desktopDeclaration(
-      commerceStyles,
-      ".portal-v2-shell .portal-marketplace-card__notices",
-      "background"
-    )).toBe("var(--portal-commerce-attention-bg)");
-    expect(desktopDeclaration(
-      commerceStyles,
-      ".portal-v2-shell .portal-marketplace-card__notices",
-      "border-radius"
-    )).toBe("10px");
-    expect(desktopDeclaration(
-      commerceStyles,
-      ".portal-v2-shell .portal-marketplace-card__notices",
-      "padding"
-    )).toBe("12px");
-    expect(desktopDeclaration(
-      commerceStyles,
-      ".portal-v2-shell .portal-marketplace-card__actions",
-      "display"
-    )).toBe("flex");
-    expect(desktopDeclaration(
-      commerceStyles,
-      ".portal-v2-shell .portal-marketplace-card__actions",
-      "justify-content"
-    )).toBe("flex-end");
-    expect(desktopDeclaration(
-      commerceStyles,
-      ".portal-v2-shell .portal-marketplace-card__actions",
-      "gap"
-    )).toBe("12px");
+  test("reduces card whitespace without shrinking the price or purchase target", () => {
+    const card = ".portal-v2-shell .portal-marketplace-card";
+    const price = ".portal-v2-shell .portal-marketplace-card__price";
+    const actions = ".portal-v2-shell .portal-marketplace-card__actions";
+    expect(baseDeclaration(commerceStyles, `${card} article`, "gap")).toBe("14px");
+    expect(baseDeclaration(commerceStyles, price, "gap")).toBe("6px");
+    expect(baseDeclaration(commerceStyles, price, "padding")).toBe("0");
+    expect(baseDeclaration(commerceStyles, actions, "padding-top")).toBe("4px");
+    expect(baseDeclaration(commerceStyles, ".portal-v2-shell .portal-marketplace-card__amount", "font-size")).toBe("48px");
+    expect(baseDeclaration(commerceStyles, `${actions} button`, "min-height")).toBe("48px");
   });
 
-  test("uses solid Primary and explicit Disabled button surfaces in Product Cards", () => {
-    expect(desktopDeclaration(
-      commerceStyles,
-      ".portal-v2-shell .portal-marketplace-card__actions button",
-      "border-radius"
-    )).toBe("9px");
-    expect(desktopDeclaration(
-      commerceStyles,
-      ".portal-v2-shell .portal-marketplace-card__actions button",
-      "padding"
-    )).toBe("0 18px");
-    expect(desktopDeclaration(
-      commerceStyles,
-      ".portal-v2-shell .portal-marketplace-card__actions button",
-      "font-size"
-    )).toBe("13px");
-    expect(desktopDeclaration(
-      commerceStyles,
-      ".portal-v2-shell .portal-marketplace-card__actions button:not(.portal-marketplace-card__purchase)",
-      "background"
-    )).toBe("var(--portal-commerce-surface-raised)");
-    expect(desktopDeclaration(
-      commerceStyles,
-      ".portal-v2-shell .portal-marketplace-card__actions button:not(.portal-marketplace-card__purchase):hover:not(:disabled)",
-      "background"
-    )).toBe("var(--portal-commerce-subtle)");
-    expect(desktopDeclaration(
-      commerceStyles,
-      ".portal-v2-shell .portal-marketplace-card__actions button.portal-marketplace-card__purchase",
-      "background"
-    )).toBe("var(--portal-commerce-primary)");
-    expect(desktopDeclaration(
-      commerceStyles,
-      ".portal-v2-shell .portal-marketplace-card__actions button.portal-marketplace-card__purchase",
-      "border-color"
-    )).toBe("var(--portal-commerce-primary-border)");
-    expect(desktopDeclaration(
-      commerceStyles,
-      ".portal-v2-shell .portal-marketplace-card__actions button.portal-marketplace-card__purchase",
-      "color"
-    )).toBe("var(--portal-commerce-on-primary)");
-    expect(desktopDeclaration(
-      commerceStyles,
-      ".portal-v2-shell .portal-marketplace-card__actions button:disabled",
-      "background"
-    )).toBe("var(--portal-commerce-disabled-surface)");
-    expect(desktopDeclaration(
-      commerceStyles,
-      ".portal-v2-shell .portal-marketplace-card__actions button:disabled",
-      "color"
-    )).toBe("var(--portal-commerce-disabled-text)");
-    expect(desktopDeclaration(
-      commerceStyles,
-      ".portal-v2-shell .portal-marketplace-card__actions button:disabled",
-      "opacity"
-    )).toBe("1");
-  });
+
 
   test("renders Marketplace Notices as the frozen inline geometry and semantic states", () => {
     expect(desktopDeclaration(
@@ -596,27 +512,106 @@ describe("Portal commerce desktop style contract", () => {
     )).toBe("3px solid var(--portal-orders-focus)");
   });
 
-  test("composes the Wallet overview as four primary cards with secondary status and a rules aside", () => {
+  test("places balance and recharge above activity and the guide in four desktop regions", () => {
+    expect(baseDeclaration(commerceStyles, ".portal-v2-shell .portal-wallet-recharge", "display")).toBe("grid");
+    expect(baseDeclaration(commerceStyles, ".portal-v2-shell .portal-wallet-recharge", "grid-template-columns")).toBe("minmax(0, 1fr)");
+    expect(baseDeclaration(commerceStyles, ".portal-v2-shell .portal-wallet-recharge", "gap")).toBe("18px");
     expect(desktopDeclaration(
       commerceStyles,
       ".portal-v2-shell .portal-wallet-overview-content",
       "grid-template-columns"
-    )).toBe("minmax(0, 1fr) minmax(268px, 0.38fr)");
+    )).toBe("minmax(0, 1.05fr) minmax(0, 1fr)");
     expect(desktopDeclaration(
       commerceStyles,
-      ".portal-v2-shell .portal-wallet-balance-grid",
-      "grid-template-columns"
-    )).toBe("repeat(4, minmax(0, 1fr))");
-    expect(desktopDeclaration(
+      ".portal-v2-shell .portal-wallet-overview-content",
+      "grid-template-areas"
+    )).toBe('"balance recharge" "activity guide"');
+    expect(desktopDeclaration(commerceStyles, ".portal-v2-shell .portal-wallet-overview-content", "gap"))
+      .toBe("16px");
+    for (const [card, area] of [
+      ["balance-card", "balance"], ["recharge", "recharge"],
+      ["recent-activity", "activity"], ["guide", "guide"]
+    ]) {
+      expect(desktopDeclaration(commerceStyles, `.portal-v2-shell .portal-wallet-overview-content > .portal-wallet-${card}`, "grid-area"))
+        .toBe(area);
+    }
+    expect(desktopDeclaration(commerceStyles, ".portal-v2-shell .portal-wallet-overview-content--balance-only", "grid-template-areas"))
+      .toBe('"balance guide" "activity guide"');
+    expect(desktopDeclaration(commerceStyles, ".portal-v2-shell .portal-wallet-balance-grid", "grid-template-columns"))
+      .toBe("repeat(2, minmax(0, 1fr))");
+    expect(desktopDeclaration(commerceStyles, ".portal-v2-shell .portal-wallet-balance-grid > .portal-wallet-balance-grid__spendable", "grid-column"))
+      .toBe("1 / -1");
+    expect(baseDeclaration(
       commerceStyles,
       ".portal-v2-shell .portal-wallet-status-grid",
       "grid-template-columns"
-    )).toBe("repeat(2, minmax(0, 1fr))");
+    )).toBe("minmax(0, 1fr)");
+    expect(desktopDeclaration(commerceStyles, ".portal-v2-shell .portal-wallet-guide ol", "grid-template-columns"))
+      .toBe("minmax(0, 1fr)");
+    expect(baseDeclaration(commerceStyles, ".portal-v2-shell .portal-wallet-recharge .portal-recharge-offers", "grid-template-columns"))
+      .toBe("repeat(3, minmax(0, 1fr))");
+    expect(baseDeclaration(commerceStyles, ".portal-v2-shell .portal-wallet-balance-grid .portal-wallet-balance-grid__spendable dd", "font-size"))
+      .toBe("clamp(36px, 3vw, 52px)");
     expect(desktopDeclaration(
       commerceStyles,
       ".portal-v2-shell .portal-wallet-header",
       "align-items"
     )).toBe("center");
+  });
+
+  test("keeps the four desktop regions compact without changing the checkout modal", () => {
+    const card = ".portal-v2-shell[data-portal-theme] .portal-commerce-layout--wallet .portal-wallet-overview-content > *";
+    expect(desktopDeclaration(commerceStyles, card, "padding")).toBe("18px");
+    expect(desktopDeclaration(commerceStyles, card, "border-radius")).toBe("16px");
+    expect(desktopDeclaration(commerceStyles, ".portal-v2-shell .portal-wallet-overview-content > .portal-wallet-recharge", "gap"))
+      .toBe("12px");
+    expect(desktopDeclaration(commerceStyles, ".portal-v2-shell .portal-wallet-recharge .portal-recharge-offers", "gap"))
+      .toBe("10px");
+    expect(desktopDeclaration(commerceStyles, ".portal-v2-shell .portal-wallet-recharge .portal-recharge-offers li", "padding"))
+      .toBe("12px");
+    expect(desktopDeclaration(commerceStyles, ".portal-v2-shell .portal-wallet-recharge .portal-recharge-offers button", "min-height"))
+      .toBe("36px");
+    expect(desktopDeclaration(commerceStyles, ".portal-v2-shell .portal-wallet-guide ol", "gap"))
+      .toBe("12px");
+    expect(commerceStyles).not.toContain("portal-wallet-funding-row");
+  });
+
+  test("keeps the payment summary compact and Alipay buttons distinct from neutral controls", () => {
+    const paymentIcon = ".portal-v2-shell .portal-recharge-pay-button img";
+    expect(baseDeclaration(commerceStyles, paymentIcon, "background")).toBe("#ffffff");
+    expect(baseDeclaration(commerceStyles, paymentIcon, "padding")).toBe("2px");
+    expect(baseDeclaration(commerceStyles, paymentIcon, "border-radius")).toBe("3px");
+    expect(baseDeclaration(commerceStyles, paymentIcon, "width")).toBe("22px");
+    expect(baseDeclaration(commerceStyles, paymentIcon, "height")).toBe("22px");
+    expect(baseDeclaration(commerceStyles, paymentIcon, "box-sizing")).toBe("border-box");
+    expect(baseDeclaration(commerceStyles, paymentIcon, "object-fit")).toBe("contain");
+    expect(baseDeclaration(commerceStyles, paymentIcon, "filter")).toBe("");
+    expect(baseDeclaration(commerceStyles, ".portal-v2-shell .modal-backdrop .portal-recharge-checkout .portal-recharge-offer-label", "color"))
+      .toBe("var(--portal-wallet-muted)");
+    expect(baseDeclaration(commerceStyles, ".portal-v2-shell .modal-backdrop .portal-recharge-dialog--checkout", "width"))
+      .toBe("min(520px, calc(100vw - 40px))");
+    expect(baseDeclaration(commerceStyles, ".portal-v2-shell .portal-recharge-checkout .portal-recharge-status-card", "grid-template-columns"))
+      .toBe("32px minmax(0, 1fr)");
+    expect(baseDeclaration(commerceStyles, '.portal-v2-shell[data-portal-theme] button.portal-recharge-pay-button--alipay', "background"))
+      .toBe("#0969da");
+    expect(baseDeclaration(commerceStyles, '.portal-v2-shell[data-portal-theme] button.portal-recharge-pay-button--alipay', "color"))
+      .toBe("#ffffff");
+  });
+
+  test("keeps desktop recent activity on one line and scrolls complete values instead of clipping", () => {
+    const table = ".portal-v2-shell .portal-wallet-ledger--overview";
+    expect(desktopDeclaration(commerceStyles, ".portal-v2-shell .portal-wallet-ledger-wrap--overview", "overflow-x"))
+      .toBe("auto");
+    expect(desktopDeclaration(commerceStyles, table, "table-layout")).toBe("auto");
+    for (const cell of ["th", "td", "time"]) {
+      expect(desktopDeclaration(commerceStyles, `${table} ${cell}`, "white-space")).toBe("nowrap");
+    }
+    for (const [index, width] of [[1, "22%"], [2, "22%"], [3, "40%"], [4, "16%"]]) {
+      expect(desktopDeclaration(commerceStyles, `${table} th:nth-child(${index})`, "width")).toBe(width);
+    }
+    expect(desktopDeclaration(commerceStyles, `${table} td`, "overflow-wrap")).toBe("normal");
+    expect(desktopDeclaration(commerceStyles, `${table} td`, "overflow")).not.toBe("hidden");
+    expect(desktopDeclaration(commerceStyles, `${table} td`, "text-overflow")).not.toBe("ellipsis");
   });
 
   test("keeps recent activity compact and scopes recharge colors to the actual Portal modal descendant", () => {
@@ -629,7 +624,7 @@ describe("Portal commerce desktop style contract", () => {
       commerceStyles,
       ".portal-v2-shell .portal-wallet-ledger--overview",
       "min-width"
-    )).toBe("0");
+    )).toBe("520px");
     expect(desktopDeclaration(
       commerceStyles,
       ".portal-v2-shell .portal-wallet-ledger--all tbody tr",
@@ -650,10 +645,54 @@ describe("Portal commerce desktop style contract", () => {
       ".portal-v2-shell .modal-backdrop .portal-recharge-offers strong",
       "color"
     )).toBe("var(--portal-wallet-text)");
-    expect(desktopDeclaration(
+    expect(baseDeclaration(
       commerceStyles,
       ".portal-v2-shell .portal-orders-panel .portal-order-table",
       "min-width"
-    )).toBe("100%");
+    )).toBe("1080px");
+  });
+
+  test("keeps Orders as one compact horizontally scrollable table at every width", () => {
+    const panel = ".portal-v2-shell .portal-orders-panel";
+    const table = `${panel} .portal-order-table`;
+    expect(baseDeclaration(commerceStyles, `${panel} .portal-order-table-wrap`, "overflow-x")).toBe("auto");
+    expect(baseDeclaration(commerceStyles, table, "display")).toBe("table");
+    expect(baseDeclaration(commerceStyles, table, "table-layout")).toBe("fixed");
+    expect(baseDeclaration(commerceStyles, `${table} thead`, "display")).toBe("table-header-group");
+    expect(baseDeclaration(commerceStyles, `${table} tbody`, "display")).toBe("table-row-group");
+    expect(baseDeclaration(commerceStyles, `${table} tr`, "display")).toBe("table-row");
+    expect(baseDeclaration(commerceStyles, `${table} td`, "display")).toBe("table-cell");
+    expect(baseDeclaration(commerceStyles, `${table} td::before`, "content")).toBe("none");
+    expect(baseDeclaration(commerceStyles, `${panel} .portal-order-summary-row > td`, "white-space")).toBe("nowrap");
+    expect(baseDeclaration(commerceStyles, `${panel} .portal-order-summary-row > td`, "height")).toBe("64px");
+    expect(baseDeclaration(commerceStyles, `${panel} .portal-order-summary-text`, "text-overflow")).toBe("ellipsis");
+    expect(baseDeclaration(commerceStyles, `${panel} .portal-order-summary-text`, "overflow")).toBe("hidden");
+    expect(baseDeclaration(commerceStyles, `${panel} .portal-order-actions`, "flex-wrap")).toBe("nowrap");
+    expect(baseDeclaration(commerceStyles, `${panel} .portal-order-actions button`, "white-space")).toBe("nowrap");
+    expect(baseDeclaration(commerceStyles, `${panel} .portal-order-actions button`, "min-height")).toBe("40px");
+  });
+
+  test("lets expanded order details wrap without changing summary-row alignment", () => {
+    const panel = ".portal-v2-shell .portal-orders-panel";
+    expect(baseDeclaration(commerceStyles, `${panel} .portal-order-detail-row > td`, "white-space")).toBe("normal");
+    expect(baseDeclaration(commerceStyles, `${panel} .portal-order-detail-grid strong`, "overflow-wrap")).toBe("anywhere");
+    expect(baseDeclaration(commerceStyles, `${panel} .portal-order-detail-grid`, "grid-template-columns")).toBe("minmax(0, 1fr) minmax(0, 1fr)");
+    expect(baseDeclaration(commerceStyles, `${panel} .portal-order-detail`, "grid-template-columns")).toBe("minmax(0, 1fr)");
+    expect(baseDeclaration(commerceStyles, `${panel} .portal-order-detail__title`, "overflow-wrap")).toBe("anywhere");
+    expect(mediaDeclaration(commerceStyles, "(max-width: 720px)", `${panel} .portal-order-detail-grid`, "grid-template-columns")).toBe("minmax(0, 1fr)");
+    expect(baseDeclaration(commerceStyles, `${panel} .portal-order-detail-meta dd`, "overflow-wrap")).toBe("anywhere");
+    expect(baseDeclaration(commerceStyles, `${panel} .portal-order-detail-meta`, "grid-template-columns")).toBe("minmax(0, 1fr) minmax(0, 1fr)");
+  });
+
+  test("keeps empty content and opened details inside the horizontal scroll viewport", () => {
+    const panel = ".portal-v2-shell .portal-orders-panel";
+    const wrap = `${panel} .portal-order-table-wrap`;
+    expect(baseDeclaration(commerceStyles, wrap, "container-type")).toBe("inline-size");
+    expect(baseDeclaration(commerceStyles, `${wrap}[data-empty="true"]`, "overflow-x")).toBe("hidden");
+    expect(baseDeclaration(commerceStyles, `${wrap}[data-empty="true"] .portal-order-table`, "min-width")).toBe("100%");
+    expect(baseDeclaration(commerceStyles, `${panel} .portal-order-detail`, "position")).toBe("sticky");
+    expect(baseDeclaration(commerceStyles, `${panel} .portal-order-detail`, "left")).toBe("0");
+    expect(baseDeclaration(commerceStyles, `${panel} .portal-order-detail`, "width")).toBe("min(100%, 100cqw)");
+    expect(baseDeclaration(commerceStyles, `${panel} .portal-order-detail`, "box-sizing")).toBe("border-box");
   });
 });

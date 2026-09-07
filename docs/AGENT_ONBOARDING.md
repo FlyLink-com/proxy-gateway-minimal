@@ -1,6 +1,6 @@
 # Agent Onboarding
 
-Last updated: 2026-06-15, America/Los_Angeles.
+Last updated: 2026-09-07, America/Los_Angeles.
 
 ```yaml
 document_metadata:
@@ -8,7 +8,7 @@ document_metadata:
   lifecycle: active
   authority_scope: agent_onboarding
   superseded_by: null
-  last_verified_at: 2026-08-29
+  last_verified_at: 2026-09-07
   production_authority: false
 ```
 
@@ -101,13 +101,33 @@ Classify the task before changing files:
 
 | Tier | Examples | Required process | Validation |
 | --- | --- | --- | --- |
-| C | README, docs index, runbook wording, status records, PR template | Minimal docs change in one PR | `git diff --check origin/master...HEAD` |
+| C | README, docs index, runbook wording, status records, PR template | Minimal docs change in one PR | Existing docs-only checks in `docs/VALIDATION_BASELINE.md`; no app tests by default |
 | B | Server tests, small refactors, Admin UI local changes, repo-only CLI/tooling | Intent, code, tests, and necessary docs in one PR | Relevant targeted tests plus `npm test`; Admin UI also needs `npm run admin:test` and `npm run admin:build` |
-| A | Production, AWS, Vultr, Aliyun, DNS, Nginx, systemd, firewall, schema/migration, auth model, deploy/rollback, live order, tenant/artifact mutation | Read-only inventory, dry-run, exact operator approval, backup, implementation, validation, rollback plan, execution record | Runbook-specific checks only |
+| A | Production, AWS, Vultr, Aliyun, DNS, Nginx, systemd, firewall, schema/migration, auth model, deploy/rollback, live order, tenant/artifact mutation | Read-only inventory, dry-run, exact operator approval, backup and rollback readiness before mutation, implementation, validation, execution record | Runbook-specific checks only |
 
-Short confirmations such as `ok`, `go`, `继续`, `开始`, or `同意` do not
-authorize Risk A mutation. Risk A approval must match the relevant runbook or
-approval packet exactly.
+Short confirmations such as `ok`, `go`, `继续`, `开始`, or `同意` alone do not
+define a new Risk A boundary. Resolve them against the exact scope or packet
+being confirmed and the approval format required by its runbook. Do not reject
+an otherwise valid scope-bound authorization merely because it is concise;
+do not infer new targets, merge/deploy permission, or a second execution from
+an ambiguous continuation request.
+
+## Resume Within The Authorized Boundary
+
+Use `AGENTS.md` and the authorized-progress section of
+`docs/MULTI_AGENT_OPERATING_MODEL.md`: verify the current task boundary and
+retained evidence, then continue the remaining authorized steps. Do not restart
+all CI/Linux validation or ask for the same approval merely because a turn or
+agent changed. Reuse only evidence whose exact inputs, environment constraints,
+coverage, and freshness remain applicable; satisfy the complete required
+baseline, including any changed integration boundary.
+
+Tooling setup repairs stay within their allowed local/validation scope. A
+failed Gate, changed frozen execution packet, consumed one-time approval, or
+unknown side effect is not permission to retry. Stop the affected action under
+`RELEASE_MANIFEST.md`, state the actual gap, and request only the new authority
+or decision needed; independent safe work within existing authority may proceed.
+This is not a new checklist, report, or validation requirement.
 
 ## Workspace Boundaries
 
@@ -143,7 +163,9 @@ Avoid these failure modes:
    checkouts as current source.
 3. Treating "I read `docs/PROJECT_CONTEXT.md`" as permission to touch
    production.
-4. Reporting completion before the required validation command actually ran.
+4. Reporting completion without actual required validation evidence, or
+   rerunning completed phases solely because their verified evidence came from
+   an earlier turn.
 5. Mixing planned, coded, tested, deployed, runtime-validated, merged, and
    archived states.
 6. Adding public Admin exposure or public runtime ports while doing unrelated
@@ -191,6 +213,8 @@ Every PR must make its scope auditable:
 - Agent / Task Routing section is present, even for a single-agent PR.
 - Execution section lists the actual changed files or behavior.
 - Validation section lists commands that were actually run and their results.
+  Distinguish new runs from verified reused evidence; link the existing record
+  and explain its applicability rather than implying a fresh run.
 - Remaining Gates section separates future work from this PR's completed scope.
 - Spec-only, runbook-only, or inventory-only PRs clearly say no runtime mutation
   was performed and name the next approval gate.
@@ -207,3 +231,6 @@ When reporting work, separate:
 If a command was not run, say so. If validation failed because of unrelated
 dirty worktree changes, identify the file or command without reverting those
 changes.
+
+Keep the handoff proportionate: a small task needs the outcome, actual evidence,
+and remaining action, not a fixed multi-agent report or an extra approval stage.

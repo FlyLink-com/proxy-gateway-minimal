@@ -51,7 +51,7 @@ import {
   PORTAL_COIN_ORDER_STORAGE_KEY,
   type PortalCommerceModel
 } from "./commerce";
-import { PortalOrdersPanel } from "./orders/portal-orders-panel";
+import { PortalOrdersPanel, type PortalOrdersFilter } from "./orders/portal-orders-panel";
 import type { PortalServiceOrder } from "./orders/portal-order-center-model";
 import { PortalPersonalCenterPanel } from "./profile/portal-personal-center-panel";
 import {
@@ -64,6 +64,7 @@ import {
   usePortalRecharge
 } from "./recharge";
 import { useDesktopScrollRegion } from "./use-desktop-scroll-region";
+import { broadcastPortalSessionChange, clearPendingPortalLogout, readPendingPortalLogout, readPortalLocation, stagePendingPortalLogout, subscribePortalSessionChange, writePortalLocation } from "./portal-browser-session";
 import {
   PORTAL_PAYMENT_RETURN_SESSION_STORAGE_KEY,
   PORTAL_REGISTRATION_SESSION_STORAGE_KEY
@@ -196,12 +197,18 @@ const navItems: Array<{ id: PortalView; label: string; description: string; icon
   { id: "dashboard", label: "概览", description: "查看账户状态、当前套餐、流量和开始使用。", icon: LayoutGrid },
   { id: "usage", label: "用量", description: "查看流量消耗、套餐额度和用量更新状态。", icon: LineChart },
   { id: "marketplace", label: "商城", description: "浏览平台商品、套餐、流量包和增值项。", icon: ShoppingBag },
-  { id: "orders", label: "订单", description: "查看订单历史、支付状态和付款详情。", icon: ReceiptText },
+  { id: "orders", label: "订单管理", description: "查看订单历史、支付状态和付款详情。", icon: ReceiptText },
   { id: "wallet", label: "Coins 钱包", description: "查看可用余额、分类余额和钱包流水。", icon: WalletCards },
   { id: "referrals", label: "推荐奖励", description: "查看推荐链接、归因绩效和奖励状态。", icon: Gift },
   { id: "profile", label: "个人中心", description: "管理账户信息、身份验证器和通行密钥。", icon: UserCog },
   { id: "settings", label: "设置", description: "管理界面语言和显示主题。", icon: Settings },
   { id: "support", label: "支持", description: "提交订阅、客户端或账户问题并追踪处理编号。", icon: Headphones }
+];
+
+const portalOrderNavigationItems: Array<{ id: Exclude<PortalOrdersFilter, "all">; zh: string; en: string }> = [
+  { id: "coins_consumption", zh: "商城消费", en: "Marketplace purchases" },
+  { id: "coin_recharge", zh: "充值订单", en: "Coins recharges" },
+  { id: "plans_services", zh: "套餐与服务", en: "Plans and services" }
 ];
 
 type PortalNavigationGroup = {
@@ -493,7 +500,11 @@ function localizedPortalViewCopy(view: PortalView, locale: PortalAuthLocale) {
 }
 
 function localizedNavItems(locale: PortalAuthLocale) {
-  return navItems.map((item) => ({ ...item, ...localizedPortalViewCopy(item.id, locale) }));
+  return navItems.map((item) => ({
+    ...item,
+    ...localizedPortalViewCopy(item.id, locale),
+    ...(item.id === "orders" ? { label: uiText(locale, "订单管理", "Order management") } : {})
+  }));
 }
 
 function localizedNavGroups(locale: PortalAuthLocale) {
@@ -1489,8 +1500,17 @@ export function UserPortalPage({
 }) {
   const { locale, setLocale } = usePublicLocalePreference();
   const { theme, setTheme } = usePublicThemePreference();
+  const desktopOrderNavigation = useDesktopScrollRegion();
   const authCopy = portalAuthEntryCopy[locale];
   const [portalSession, setPortalSession] = useState<PortalSession | null>(null);
+  const [sessionPhase, setSessionPhase] = useState<"restoring" | "anonymous" | "authenticated" | "unavailable" | "logging_out" | "logout_failed">(
+    portalClient.restoreSession && readPendingPortalLogout() ? "logout_failed" : portalClient.restoreSession && !initialSession ? "restoring" : "anonymous"
+  );
+  const [bootstrapRevision, setBootstrapRevision] = useState(0);
+  const bootstrapFlightRef = useRef<{ client: UserPortalClient; revision: number; promise: Promise<PortalSession | null> } | null>(null);
+  const bootstrapBlockedRef = useRef(Boolean(portalClient.restoreSession && readPendingPortalLogout()));
+  const logoutContextRef = useRef<string | null>(portalClient.restoreSession ? readPendingPortalLogout() : null);
+  const mountedRef = useRef(true);
   const [commerceModel, setCommerceModel] = useState<PortalCommerceModel | null>(null);
   const sessionGenerationRef = useRef(0);
   const walletFirstSetupIdempotencyKeyRef = useRef<string | null>(null);
@@ -1504,8 +1524,9 @@ export function UserPortalPage({
   const [humanChallenge, setHumanChallenge] = useState(createPendingHumanVerificationChallenge);
   const [humanChallengeReady, setHumanChallengeReady] = useState(false);
   const [humanChallengeLoading, setHumanChallengeLoading] = useState(true);
-  const [activeView, setActiveView] = useState<PortalView>("start");
-  const [personalCenterSubview, setPersonalCenterSubview] = useState<"profile" | "security">("profile");
+  const [activeView, setActiveView] = useState<PortalView>(() => readPortalLocation().view);
+  const [orderCenterFilter, setOrderCenterFilter] = useState<PortalOrdersFilter>(() => readPortalLocation().orderFilter);
+  const [personalCenterSubview, setPersonalCenterSubview] = useState<"profile" | "security">(() => readPortalLocation().profileSubview);
   const [selectedPlanId, setSelectedPlanId] = useState<PortalPlanId>("monthly_basic");
   const [clientTarget, setClientTarget] = useState<PortalClientId>("clash");
   const [paymentChannel, setPaymentChannel] = useState<PortalPaymentChannel>(() => defaultPaymentChannelForCurrentBrowser());
@@ -1565,6 +1586,15 @@ export function UserPortalPage({
 
   const userDisplayName = portalSession?.displayName ?? (accountId.trim() || "Portal User");
   const registrationDate = portalSession?.registeredAt ?? new Date("2026-05-31T00:00:00.000Z").toISOString();
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; sessionGenerationRef.current += 1; };
+  }, []);
+
+  useEffect(() => {
+    if (portalSession) writePortalLocation({ view: activeView, orderFilter: orderCenterFilter, profileSubview: personalCenterSubview });
+  }, [activeView, orderCenterFilter, personalCenterSubview, portalSession]);
 
   useEffect(() => {
     document.title = portalSession ? authCopy.shellDocumentTitle : authCopy.documentTitle;
@@ -1628,11 +1658,11 @@ export function UserPortalPage({
     sessionRef: portalSession?.sessionRef ?? null,
     sessionGeneration,
     loadLedger: activeView === "wallet",
-    onSessionInvalid: logout
+    onSessionInvalid: invalidateSession
   });
   const rechargePaymentRedirect = useCallback((url: string) => {
     try {
-      if (portalSession && readPortalRechargeReturn()) {
+      if (portalSession && portalSession.transport !== "cookie" && readPortalRechargeReturn()) {
         window.sessionStorage.setItem(
           PORTAL_PAYMENT_RETURN_SESSION_STORAGE_KEY,
           JSON.stringify(portalSession)
@@ -1648,9 +1678,10 @@ export function UserPortalPage({
     enabled: activeView === "wallet",
     sessionRef: portalSession?.sessionRef ?? null,
     sessionGeneration,
-    onSessionInvalid: logout,
+    onSessionInvalid: invalidateSession,
     onWalletMutation: walletModel.refreshWallet,
-    paymentRedirect: rechargePaymentRedirect
+    paymentRedirect: rechargePaymentRedirect,
+    readOnlyRestoration: portalSession?.transport === "cookie",
   });
   const authoritativeWalletBalance =
     walletModel.summary.phase === "ready"
@@ -1675,17 +1706,17 @@ export function UserPortalPage({
   }, [portalClient, locale]);
 
   useEffect(() => {
-    void refreshHumanChallenge();
-  }, [refreshHumanChallenge]);
+    if (sessionPhase === "anonymous" && !portalSession && !initialSession) void refreshHumanChallenge();
+  }, [refreshHumanChallenge, sessionPhase, portalSession, initialSession]);
 
   const hydratePortalSession = useCallback((
     session: PortalSession,
-    destination: PortalView = readPortalRechargeReturn() ? "wallet" : "start"
+    destination: PortalView = readPortalRechargeReturn() ? "wallet" : readPortalLocation().view
   ) => {
     const hydrateGeneration = advanceSessionGeneration();
     clearWalletFirstSetupIdempotencyKey();
     setWalletFirstResource(null);
-    const isCurrent = () => hydrateGeneration === sessionGenerationRef.current;
+    const isCurrent = () => mountedRef.current && hydrateGeneration === sessionGenerationRef.current;
     const promise = (async () => {
       let resolvedCommerceModel: PortalCommerceModel = "legacy";
       if (portalClient.commerceModel) {
@@ -1751,6 +1782,7 @@ export function UserPortalPage({
       }
       if (!isCurrent()) return;
       setPortalSession(session);
+      setSessionPhase("authenticated");
       setCommerceModel(resolvedCommerceModel);
       setWalletFirstResource(hydratedWalletFirstResource);
       setSecondFactorChallenge(null);
@@ -1784,6 +1816,7 @@ export function UserPortalPage({
       }
       setHistorySummary(portalState.historySummary ?? subscriptionRequests.flatMap((request) => request.historySummary ?? []));
       setActivePaymentOrderRef(null);
+      setOrderCenterFilter(readPortalLocation().orderFilter);
       setActiveView(destination);
     })();
     return { isCurrent, promise };
@@ -1792,6 +1825,42 @@ export function UserPortalPage({
     clearWalletFirstSetupIdempotencyKey,
     portalClient
   ]);
+
+  useEffect(() => {
+    if (!portalClient.restoreSession) return;
+    // Retire exactly the two obsolete credential handoffs even while a pending
+    // logout blocks bootstrap. Preserve unrelated preferences/recovery intent.
+    try {
+      window.sessionStorage.removeItem(PORTAL_REGISTRATION_SESSION_STORAGE_KEY);
+      window.sessionStorage.removeItem(PORTAL_PAYMENT_RETURN_SESSION_STORAGE_KEY);
+    } catch { /* obsolete credential stores are never read in cookie mode */ }
+  }, [portalClient]);
+
+  useEffect(() => {
+    if (!portalClient.restoreSession || initialSession || bootstrapBlockedRef.current) return;
+    let cancelled = false;
+    const generation = sessionGenerationRef.current;
+    const prior = bootstrapFlightRef.current;
+    const promise = prior?.client === portalClient && prior.revision === bootstrapRevision
+      ? prior.promise : Promise.resolve().then(() => portalClient.restoreSession!());
+    bootstrapFlightRef.current = { client: portalClient, revision: bootstrapRevision, promise };
+    setSessionPhase("restoring");
+    void promise.then(async (session) => {
+      if (cancelled || bootstrapBlockedRef.current || generation !== sessionGenerationRef.current) return;
+      if (!session) { setSessionPhase("anonymous"); return; }
+      const hydration = hydratePortalSession(session);
+      await hydration.promise;
+    }).catch(() => {
+      if (!cancelled && !bootstrapBlockedRef.current && mountedRef.current) setSessionPhase("unavailable");
+    });
+    return () => { cancelled = true; };
+  }, [portalClient, initialSession, bootstrapRevision, hydratePortalSession]);
+
+  useEffect(() => subscribePortalSessionChange(() => {
+    // Another tab changed the shared cookie. Never issue logout against its
+    // new principal and never reuse this tab's cached identity automatically.
+    invalidateSession();
+  }), [portalClient]);
 
   useEffect(() => {
     if (!initialSession || portalSession) return;
@@ -1803,7 +1872,7 @@ export function UserPortalPage({
   }, [initialSession, portalSession, hydratePortalSession, locale]);
 
   useEffect(() => {
-    if (portalSession) return;
+    if (portalClient.restoreSession || portalSession) return;
     const paymentReturnSession = window.sessionStorage.getItem(
       PORTAL_PAYMENT_RETURN_SESSION_STORAGE_KEY
     );
@@ -1836,10 +1905,11 @@ export function UserPortalPage({
     } catch {
       setAuthError(failureMessage);
     }
-  }, [portalSession, hydratePortalSession, locale]);
+  }, [portalClient, portalSession, hydratePortalSession, locale]);
 
   async function submitAuth(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const authGeneration = advanceSessionGeneration();
     setAuthError("");
     setSecondFactorError("");
     setPending(true);
@@ -1853,8 +1923,10 @@ export function UserPortalPage({
         mode: "password",
         accountId,
         password,
+        ...(portalClient.restoreSession ? { rememberMe: rememberAccount } : {}),
         humanVerification
       });
+      if (!mountedRef.current || authGeneration !== sessionGenerationRef.current) return;
       setPassword("");
       if (isSecondFactorChallenge(result)) {
         setSecondFactorChallenge(result);
@@ -1862,6 +1934,10 @@ export function UserPortalPage({
         return;
       }
       const hydration = hydratePortalSession(result);
+      bootstrapBlockedRef.current = false;
+      logoutContextRef.current = null;
+      clearPendingPortalLogout();
+      if (result.transport === "cookie") broadcastPortalSessionChange();
       hydrationIsCurrent = hydration.isCurrent;
       await hydration.promise;
     } catch (requestError) {
@@ -1879,6 +1955,7 @@ export function UserPortalPage({
   async function submitAuthenticatorSecondFactor(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!secondFactorChallenge) return;
+    const authGeneration = advanceSessionGeneration();
     setSecondFactorError("");
     setSecondFactorPending(true);
     let hydrationIsCurrent: (() => boolean) | null = null;
@@ -1888,7 +1965,12 @@ export function UserPortalPage({
         factor: "authenticator",
         totpCode: secondFactorCode
       });
+      if (!mountedRef.current || authGeneration !== sessionGenerationRef.current) return;
+      bootstrapBlockedRef.current = false;
+      logoutContextRef.current = null;
+      clearPendingPortalLogout();
       const hydration = hydratePortalSession(session);
+      if (session.transport === "cookie") broadcastPortalSessionChange();
       hydrationIsCurrent = hydration.isCurrent;
       await hydration.promise;
     } catch (requestError) {
@@ -1905,6 +1987,7 @@ export function UserPortalPage({
   async function submitPasskeySecondFactor(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!secondFactorChallenge) return;
+    const authGeneration = advanceSessionGeneration();
     setSecondFactorError("");
     setSecondFactorPending(true);
     let hydrationIsCurrent: (() => boolean) | null = null;
@@ -1914,7 +1997,12 @@ export function UserPortalPage({
         factor: "passkey",
         passkeyProof
       });
+      if (!mountedRef.current || authGeneration !== sessionGenerationRef.current) return;
+      bootstrapBlockedRef.current = false;
+      logoutContextRef.current = null;
+      clearPendingPortalLogout();
       const hydration = hydratePortalSession(session);
+      if (session.transport === "cookie") broadcastPortalSessionChange();
       hydrationIsCurrent = hydration.isCurrent;
       await hydration.promise;
     } catch (requestError) {
@@ -2110,10 +2198,17 @@ export function UserPortalPage({
 
   function navigatePortalView(view: PortalView) {
     setActivePaymentOrderRef(null);
+    setOrderCenterFilter("all");
     if (view === "profile") {
       setPersonalCenterSubview("profile");
     }
     setActiveView(view);
+  }
+
+  function navigatePortalOrderFilter(filter: PortalOrdersFilter) {
+    setActivePaymentOrderRef(null);
+    setOrderCenterFilter(filter);
+    setActiveView("orders");
   }
 
   async function refreshPaymentOrders(targetOrderRef?: string) {
@@ -2227,7 +2322,7 @@ export function UserPortalPage({
     setAuthenticatorError("");
   }
 
-  function logout() {
+  function clearSessionView() {
     advanceSessionGeneration();
     clearWalletFirstSetupIdempotencyKey();
     try {
@@ -2246,7 +2341,6 @@ export function UserPortalPage({
     setHumanChallenge(createPendingHumanVerificationChallenge());
     setHumanChallengeReady(false);
     setHumanChallengeLoading(true);
-    void refreshHumanChallenge();
     setActiveView("dashboard");
     setPersonalCenterSubview("profile");
     setSelectedPlanId("monthly_basic");
@@ -2286,6 +2380,57 @@ export function UserPortalPage({
     setSupportPending(false);
     setSupportError("");
     setSupportResult(null);
+  }
+
+  function invalidateSession() {
+    bootstrapBlockedRef.current = true;
+    clearSessionView();
+    setSessionPhase("anonymous");
+  }
+
+  async function completeLogout(context: string) {
+    const generation = sessionGenerationRef.current;
+    setSessionPhase("logging_out");
+    try {
+      await portalClient.logout!({ sessionRef: context });
+      if (!mountedRef.current || generation !== sessionGenerationRef.current || logoutContextRef.current !== context) return;
+      logoutContextRef.current = null;
+      clearPendingPortalLogout();
+      setSessionPhase("anonymous");
+      broadcastPortalSessionChange();
+    } catch {
+      if (mountedRef.current && generation === sessionGenerationRef.current && logoutContextRef.current === context) setSessionPhase("logout_failed");
+    }
+  }
+
+  function logout() {
+    const context = portalSession?.transport === "cookie" ? portalSession.sessionRef : null;
+    bootstrapBlockedRef.current = true;
+    clearSessionView();
+    if (context && portalClient.logout) {
+      logoutContextRef.current = context;
+      stagePendingPortalLogout(context);
+      broadcastPortalSessionChange();
+      void completeLogout(context);
+    } else {
+      setSessionPhase("anonymous");
+    }
+  }
+
+  if (!portalSession && ["restoring", "unavailable", "logging_out", "logout_failed"].includes(sessionPhase)) {
+    const failed = sessionPhase === "unavailable" || sessionPhase === "logout_failed";
+    return <main className="portal-login-shell" data-portal-theme={theme}>
+      <section className="portal-login-main" aria-label={uiText(locale, "登录状态", "Sign-in status")}>
+        <div className="portal-login-form-card" role={failed ? "alert" : "status"}>
+          <p>{sessionPhase === "unavailable" ? uiText(locale, "暂时无法恢复登录，请检查网络后重试。", "Sign-in could not be restored. Check your connection and retry.")
+            : sessionPhase === "logout_failed" ? uiText(locale, "注销尚未完成。账户内容已隐藏，请重试以结束服务器会话。", "Sign-out is not complete. Account content is hidden; retry to end the server session.")
+              : sessionPhase === "logging_out" ? uiText(locale, "正在注销…", "Signing out…") : uiText(locale, "正在恢复登录…", "Restoring sign-in…")}</p>
+          {sessionPhase === "unavailable" ? <button type="button" onClick={() => setBootstrapRevision((value) => value + 1)}>{uiText(locale, "重试恢复登录", "Retry sign-in restoration")}</button> : null}
+          {sessionPhase === "logout_failed" ? <button type="button" onClick={() => { if (logoutContextRef.current) void completeLogout(logoutContextRef.current); }}>{uiText(locale, "重试注销", "Retry sign-out")}</button> : null}
+          {sessionPhase === "logout_failed" ? <button type="button" onClick={invalidateSession}>{uiText(locale, "返回账号登录", "Back to account sign in")}</button> : null}
+        </div>
+      </section>
+    </main>;
   }
 
   if (!portalSession && secondFactorChallenge) {
@@ -2420,6 +2565,9 @@ export function UserPortalPage({
             </div>
 
             <form className="portal-login-form" onSubmit={submitAuth}>
+              {logoutContextRef.current ? <p role="alert" className="portal-login-error">{uiText(locale,
+                "上次注销结果尚未确认。不会自动恢复账户，请重新验证身份后登录。",
+                "The previous sign-out is not confirmed. Your account will not be restored automatically; verify your identity to sign in again.")}</p> : null}
               <label htmlFor="portal-account-id">{authCopy.accountId}</label>
               <input
                 id="portal-account-id"
@@ -2577,28 +2725,64 @@ export function UserPortalPage({
                 </span>
                 {group.items.map((item) => {
                   const Icon = item.icon;
+                  const hasOrderCategories = item.id === "orders"
+                    && commerceModel !== "wallet_first_unique_v1";
+                  const hasOrderDisclosure = hasOrderCategories && desktopOrderNavigation;
+                  const orderCategoriesExpanded = hasOrderDisclosure && activeView === "orders";
+                  const current = activeView === item.id
+                    && (!hasOrderDisclosure || orderCenterFilter === "all");
                   return (
-                    <button
-                      key={item.id}
-                      type="button"
-                      aria-label={item.label}
-                      aria-describedby={item.id === "wallet" ? "portal-wallet-nav-balance" : undefined}
-                      aria-current={activeView === item.id ? "page" : undefined}
-                      data-portal-view={item.id}
-                      className={cn("portal-use-nav-item", activeView === item.id && "active")}
-                      onClick={() => navigatePortalView(item.id)}
-                    >
-                      <Icon aria-hidden="true" />
-                      <span>
-                        <strong>{item.label}</strong>
-                        <small>{item.description}</small>
-                      </span>
-                      {item.id === "wallet" ? (
-                        <span className="sr-only" id="portal-wallet-nav-balance">
-                          Coins · {authoritativeWalletBalance ?? "--"}
+                    <Fragment key={item.id}>
+                      <button
+                        type="button"
+                        aria-label={item.label}
+                        aria-describedby={item.id === "wallet" ? "portal-wallet-nav-balance" : undefined}
+                        aria-current={current ? "page" : undefined}
+                        aria-expanded={hasOrderDisclosure ? orderCategoriesExpanded : undefined}
+                        aria-controls={hasOrderDisclosure ? "portal-order-categories" : undefined}
+                        data-portal-view={item.id}
+                        className={cn("portal-use-nav-item", current && "active", hasOrderCategories && "portal-order-nav-parent")}
+                        onClick={() => navigatePortalView(item.id)}
+                      >
+                        <Icon aria-hidden="true" />
+                        <span>
+                          <strong>{item.label}</strong>
+                          <small>{item.description}</small>
                         </span>
+                        {item.id === "wallet" ? (
+                          <span className="sr-only" id="portal-wallet-nav-balance">
+                            Coins · {authoritativeWalletBalance ?? "--"}
+                          </span>
+                        ) : null}
+                        {hasOrderCategories ? <ChevronRight className="portal-order-nav-chevron" aria-hidden="true" /> : null}
+                      </button>
+                      {hasOrderCategories ? (
+                        <div
+                          id="portal-order-categories"
+                          className="portal-order-subnav"
+                          role="group"
+                          aria-label={uiText(locale, "订单分类", "Order categories")}
+                          hidden={!orderCategoriesExpanded}
+                        >
+                          {portalOrderNavigationItems.map((category) => {
+                            const categoryCurrent = orderCategoriesExpanded && orderCenterFilter === category.id;
+                            const label = uiText(locale, category.zh, category.en);
+                            return (
+                              <button
+                                key={category.id}
+                                type="button"
+                                className={cn("portal-use-nav-item portal-order-nav-child", categoryCurrent && "active")}
+                                aria-label={label}
+                                aria-current={categoryCurrent ? "page" : undefined}
+                                onClick={() => navigatePortalOrderFilter(category.id)}
+                              >
+                                <span><strong>{label}</strong></span>
+                              </button>
+                            );
+                          })}
+                        </div>
                       ) : null}
-                    </button>
+                    </Fragment>
                   );
                 })}
               </div>
@@ -2800,6 +2984,8 @@ export function UserPortalPage({
           ) : activeView === "orders" && paymentFlowActive ? renderLegacyPaymentFlow() : null}
           {activeView === "orders" && commerceModel !== "wallet_first_unique_v1" && !paymentFlowActive ? (
             <PortalOrdersPanel
+              filter={orderCenterFilter}
+              onFilterChange={setOrderCenterFilter}
               commerceClient={portalClient.commerce ?? null}
               rechargeClient={portalClient.recharge ?? null}
               legacyPaymentOrders={paymentOrders}
@@ -2807,7 +2993,7 @@ export function UserPortalPage({
               onOpenMarketplace={openMarketplace}
               onOpenServiceOrder={viewOrder}
               onOrderSearchChange={setOrderSearch}
-              onSessionInvalid={logout}
+              onSessionInvalid={invalidateSession}
               onContinueRechargeOrder={rechargeModel.continueOrderPayment}
               orderSearch={orderSearch}
               selectedServiceOrderRef={selectedOrderRef}
