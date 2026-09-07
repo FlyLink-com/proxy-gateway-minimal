@@ -41,6 +41,38 @@ function defaultRef(prefix) {
   return `${prefix}_${randomBytes(12).toString("hex")}`;
 }
 
+const BROWSER_SESSION_PREFIX = "portalbrowser_";
+const BROWSER_CONTEXT_PREFIX = "portalctx_";
+const BROWSER_CONVERSION_MAX_AGE_MS = 60_000;
+const BROWSER_CONVERSION_MAX_ENTRIES = 1024;
+
+function rememberPreference(value) {
+  if (value === undefined) return false;
+  if (typeof value !== "boolean") throw portalAuthError("validation_error", "rememberMe must be a boolean");
+  return value;
+}
+
+function legacySessionReference(value) {
+  const sessionRef = String(value ?? "").trim();
+  if (!sessionRef || sessionRef.startsWith(BROWSER_SESSION_PREFIX) || sessionRef.startsWith(BROWSER_CONTEXT_PREFIX)) {
+    throw portalAuthError("invalid_session", "portal session is invalid");
+  }
+  return sessionRef;
+}
+
+function browserSessionId(cookieValue) {
+  if (typeof cookieValue !== "string" || !/^[A-Za-z0-9_-]{43}$/.test(cookieValue)
+    || Buffer.from(cookieValue, "base64url").length !== 32
+    || Buffer.from(cookieValue, "base64url").toString("base64url") !== cookieValue) {
+    throw portalAuthError("invalid_session", "portal browser session is invalid");
+  }
+  return `${BROWSER_SESSION_PREFIX}${createHash("sha256").update(cookieValue).digest("hex")}`;
+}
+
+function browserSessionContext(sessionId) {
+  return `${BROWSER_CONTEXT_PREFIX}${createHash("sha256").update(`context:${sessionId}`).digest("hex")}`;
+}
+
 const BASE32_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
 const DEFAULT_TOTP_ISSUER = "GlobalCircle";
 
@@ -254,9 +286,20 @@ export function createUserPortalAuthService({
     return isoText(nowFn(), "now");
   }
 
-  function createSession({ accountId, entryId = null, authMethod, issuedAt, expiresAt }) {
+  const browserConversions = new Map();
+
+  function pruneBrowserConversions(checkedAt) {
+    const checkedMs = Date.parse(checkedAt);
+    for (const [key, value] of browserConversions) {
+      const age = checkedMs - Date.parse(value.issuedAt);
+      if (age < 0 || age > BROWSER_CONVERSION_MAX_AGE_MS) browserConversions.delete(key);
+    }
+  }
+
+  function createSession({ accountId, entryId = null, authMethod, issuedAt, expiresAt, rememberMe = false }) {
+    const remembered = rememberPreference(rememberMe);
     const session = controlStore.createPortalSession({
-      id: requiredText(sessionRefFactory(), "sessionRef"),
+      id: legacySessionReference(requiredText(sessionRefFactory(), "sessionRef")),
       accountId,
       entryId,
       authMethod,
@@ -268,8 +311,16 @@ export function createUserPortalAuthService({
       ),
       updatedAt: issuedAt
     });
+    // Only this service's freshly completed authentication may be converted.
+    // This is transient one-use authorization, not session persistence storage.
+    pruneBrowserConversions(issuedAt);
+    while (browserConversions.size >= BROWSER_CONVERSION_MAX_ENTRIES) {
+      browserConversions.delete(browserConversions.keys().next().value);
+    }
+    browserConversions.set(session.sessionRef, { accountId, issuedAt, rememberMe: remembered });
     return {
-      session: safeSessionSummary(session)
+      session: safeSessionSummary(session),
+      rememberMe: remembered
     };
   }
 
@@ -293,6 +344,62 @@ export function createUserPortalAuthService({
       throw portalAuthError("invalid_session", "portal account is not active");
     }
     return { session, account, checkedAt };
+  }
+
+  function publicBrowserSession({ session, account }) {
+    const metadata = account.metadata && typeof account.metadata === "object" ? account.metadata : {};
+    const userRef = normalizeEmailLogin(metadata.loginRef) || "user_account";
+    return {
+      sessionRef: browserSessionContext(session.sessionRef),
+      transport: "cookie",
+      authMethod: session.authMethod,
+      status: "active",
+      issuedAt: session.issuedAt,
+      expiresAt: session.expiresAt,
+      userRef,
+      displayName: userRef
+    };
+  }
+
+  function requireBrowserContext(cookieValue, sessionContext) {
+    const sessionId = browserSessionId(cookieValue);
+    if (typeof sessionContext !== "string" || sessionContext !== browserSessionContext(sessionId)) {
+      throw portalAuthError("invalid_session", "portal browser session is invalid");
+    }
+    return sessionId;
+  }
+
+  function createBrowserSession(input = {}) {
+    const sessionRef = legacySessionReference(input.sessionRef);
+    const remembered = rememberPreference(input.rememberMe);
+    const checkedAt = now();
+    pruneBrowserConversions(checkedAt);
+    const eligible = browserConversions.get(sessionRef);
+    if (!eligible || eligible.rememberMe !== remembered) {
+      throw portalAuthError("invalid_session", "fresh portal session conversion is required");
+    }
+    const source = getActiveSessionContext(sessionRef);
+    if (source.session.issuedAt !== eligible.issuedAt || source.account.id !== eligible.accountId) {
+      throw portalAuthError("invalid_session", "fresh portal session conversion is required");
+    }
+    const previousId = input.previousCookieValue === undefined || input.previousCookieValue === null
+      ? null : browserSessionId(input.previousCookieValue);
+    const cookieValue = randomBytes(32).toString("base64url");
+    const id = browserSessionId(cookieValue);
+    // Consume before attempting persistence. A failed conversion must not turn
+    // a previous login response into a retryable long-lived credential mint.
+    browserConversions.delete(sessionRef);
+    return controlStore.runInTransaction(() => {
+      const current = getActiveSessionContext(sessionRef);
+      const session = controlStore.createPortalSession({
+        id, accountId: current.account.id, entryId: current.session.entryId,
+        authMethod: current.session.authMethod, status: "active", issuedAt: eligible.issuedAt,
+        expiresAt: addSeconds(eligible.issuedAt, remembered ? 604800 : 1800), updatedAt: checkedAt
+      });
+      controlStore.revokePortalSession(sessionRef, { revokedAt: checkedAt, updatedAt: checkedAt });
+      if (previousId) controlStore.revokePortalSession(previousId, { revokedAt: checkedAt, updatedAt: checkedAt });
+      return { cookieValue, session: publicBrowserSession({ session, account: current.account }) };
+    });
   }
 
   function enabledSecondFactors(accountId) {
@@ -493,6 +600,7 @@ export function createUserPortalAuthService({
 
   function verifyTotpAndCreateSession(input) {
     const verifiedAt = now();
+    const rememberMe = rememberPreference(input?.rememberMe);
     const accountId = requiredText(input?.accountId, "accountId");
     const code = requiredText(input?.code, "code");
     const credential = controlStore.getActivePortalTotpCredential(accountId);
@@ -528,13 +636,15 @@ export function createUserPortalAuthService({
         entryId: input?.entryRef || null,
         authMethod: "totp",
         issuedAt: verifiedAt,
-        expiresAt: input?.expiresAt
+        expiresAt: input?.expiresAt,
+        rememberMe
       });
     });
   }
 
   function verifyPasswordAndMaybeChallenge(input) {
     const verifiedAt = now();
+    const rememberMe = rememberPreference(input?.rememberMe);
     if (!passwordCredentialService) {
       throw portalAuthError("validation_error", "password credential service is not configured");
     }
@@ -557,6 +667,7 @@ export function createUserPortalAuthService({
         accountId,
         challengeHash: `portalmfahash_${createHash("sha256").update(`${accountId}|${verifiedAt}|${availableFactors.join(",")}`).digest("hex")}`,
         allowedFactors: availableFactors,
+        rememberMe,
         status: "active",
         expiresAt,
         createdAt: verifiedAt,
@@ -574,7 +685,8 @@ export function createUserPortalAuthService({
       accountId,
       authMethod: "password",
       issuedAt: verifiedAt,
-      expiresAt: input?.expiresAt
+      expiresAt: input?.expiresAt,
+      rememberMe
     });
   }
 
@@ -585,6 +697,10 @@ export function createUserPortalAuthService({
     const challenge = controlStore.getPortalSecondFactorChallenge(challengeRef);
     if (!challenge || challenge.status !== "active") {
       throw portalAuthError("validation_error", "portal second-factor challenge is not active");
+    }
+    const rememberMe = rememberPreference(challenge.rememberMe);
+    if (input?.rememberMe !== undefined && rememberPreference(input.rememberMe) !== rememberMe) {
+      throw portalAuthError("validation_error", "rememberMe must match the password challenge");
     }
     if (new Date(challenge.expiresAt).getTime() <= new Date(verifiedAt).getTime()) {
       throw portalAuthError("validation_error", "portal second-factor challenge is expired");
@@ -639,7 +755,8 @@ export function createUserPortalAuthService({
         accountId: challenge.accountId,
         authMethod: "totp",
         issuedAt: verifiedAt,
-        expiresAt: input?.expiresAt
+        expiresAt: input?.expiresAt,
+        rememberMe
       });
     });
   }
@@ -673,8 +790,30 @@ export function createUserPortalAuthService({
       };
     },
     completeSecondFactor,
+    createBrowserSession,
+    getBrowserSession(input = {}) {
+      return publicBrowserSession(getActiveSessionContext(browserSessionId(input.cookieValue)));
+    },
+    requireBrowserSession(input = {}) {
+      const sessionId = requireBrowserContext(input.cookieValue, input.sessionContext);
+      const { session, account } = getActiveSessionContext(sessionId);
+      return { sessionRef: session.sessionRef, accountId: account.id };
+    },
+    revokeBrowserSession(input = {}) {
+      const sessionId = requireBrowserContext(input.cookieValue, input.sessionContext);
+      const checkedAt = now();
+      controlStore.revokePortalSession(sessionId, { revokedAt: checkedAt, updatedAt: checkedAt });
+      return { loggedOut: true };
+    },
+    revokeSession(input = {}) {
+      const sessionRef = legacySessionReference(input.sessionRef);
+      browserConversions.delete(sessionRef);
+      const checkedAt = now();
+      controlStore.revokePortalSession(sessionRef, { revokedAt: checkedAt, updatedAt: checkedAt });
+      return { loggedOut: true };
+    },
     requireSession(input = {}) {
-      const { session, account } = getActiveSessionContext(input.sessionRef);
+      const { session, account } = getActiveSessionContext(legacySessionReference(input.sessionRef));
       return {
         sessionRef: session.sessionRef,
         accountId: account.id

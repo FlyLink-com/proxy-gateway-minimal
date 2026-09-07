@@ -296,24 +296,27 @@ describe("Portal Coins Commerce HTTP client", () => {
         "/api/portal/catalog/offers",
         {
           method: "GET",
-          headers: { "X-Portal-Session": "session_alpha" }
+          credentials: "omit", cache: "no-store", redirect: "error",
+          headers: new Headers({ "X-Portal-Session": "session_alpha" })
         }
       ],
       [
         "/api/portal/catalog/offers/offer_data_100gb",
         {
           method: "GET",
-          headers: { "X-Portal-Session": "session_alpha" }
+          credentials: "omit", cache: "no-store", redirect: "error",
+          headers: new Headers({ "X-Portal-Session": "session_alpha" })
         }
       ],
       [
         "/api/portal/commerce/checkout-preview",
         {
           method: "POST",
-          headers: {
+          credentials: "omit", cache: "no-store", redirect: "error",
+          headers: new Headers({
             "Content-Type": "application/json",
             "X-Portal-Session": "session_alpha"
-          },
+          }),
           body: "{\"offerRef\":\"offer_monthly_50gb\"}"
         }
       ],
@@ -321,11 +324,12 @@ describe("Portal Coins Commerce HTTP client", () => {
         "/api/portal/commerce/orders",
         {
           method: "POST",
-          headers: {
+          credentials: "omit", cache: "no-store", redirect: "error",
+          headers: new Headers({
             "Content-Type": "application/json",
             "X-Portal-Session": "session_alpha",
             "Idempotency-Key": "checkout-attempt-1"
-          },
+          }),
           body: "{\"quoteRef\":\"quote_monthly_50gb_1\"}"
         }
       ],
@@ -333,18 +337,20 @@ describe("Portal Coins Commerce HTTP client", () => {
         "/api/portal/commerce/orders/order_monthly_50gb_1",
         {
           method: "GET",
-          headers: { "X-Portal-Session": "session_alpha" }
+          credentials: "omit", cache: "no-store", redirect: "error",
+          headers: new Headers({ "X-Portal-Session": "session_alpha" })
         }
       ],
       [
         "/api/portal/commerce/orders/order_monthly_50gb_1/cancel",
         {
           method: "POST",
-          headers: {
+          credentials: "omit", cache: "no-store", redirect: "error",
+          headers: new Headers({
             "Content-Type": "application/json",
             "X-Portal-Session": "session_alpha",
             "Idempotency-Key": "cancel-attempt-1"
-          },
+          }),
           body: "{}"
         }
       ]
@@ -765,14 +771,16 @@ describe("Portal Coins Commerce HTTP client", () => {
         "/api/portal/commerce/orders?limit=25",
         {
           method: "GET",
-          headers: { "X-Portal-Session": "session_alpha" }
+          credentials: "omit", cache: "no-store", redirect: "error",
+          headers: new Headers({ "X-Portal-Session": "session_alpha" })
         }
       ],
       [
         "/api/portal/commerce/orders?limit=10&afterCreatedAt=2026-07-27T12%3A00%3A00.000Z&afterOrderRef=order_page_newest",
         {
           method: "GET",
-          headers: { "X-Portal-Session": "session_alpha" }
+          credentials: "omit", cache: "no-store", redirect: "error",
+          headers: new Headers({ "X-Portal-Session": "session_alpha" })
         }
       ]
     ]);

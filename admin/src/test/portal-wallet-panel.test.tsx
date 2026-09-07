@@ -200,8 +200,8 @@ describe("PortalWalletPanel", () => {
       ledger: { phase: "ready", value: [HELD_ENTRY] }
     }));
 
-    expect(screen.getByRole("heading", { name: "Wallet overview" })).toBeInTheDocument();
-    expect(screen.getByText("Active")).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Coins Wallet" })).toBeInTheDocument();
+    expect(screen.queryByText("Active")).not.toBeInTheDocument();
     expect(screen.getByText("120", { selector: "dd" })).toBeInTheDocument();
     expect(screen.getByText("30", { selector: "dd" })).toBeInTheDocument();
     expect(screen.getByText("5", { selector: "dd" })).toBeInTheDocument();
@@ -254,12 +254,12 @@ describe("PortalWalletPanel", () => {
     );
   });
 
-  test("keeps order reserves and pending rewards outside the four primary balance cards", () => {
+  test("features current balance with four quota breakdowns and a separate pending reward status", () => {
     renderPanel(walletModel());
 
     const primaryBalances = document.querySelector(".portal-wallet-balance-grid");
     expect(primaryBalances).not.toBeNull();
-    expect(within(primaryBalances as HTMLElement).getAllByRole("term")).toHaveLength(4);
+    expect(within(primaryBalances as HTMLElement).getAllByRole("term")).toHaveLength(5);
     expect(within(primaryBalances as HTMLElement).getByText("Spendable balance"))
       .toBeInTheDocument();
     expect(within(primaryBalances as HTMLElement).getByText("Purchased available"))
@@ -268,22 +268,64 @@ describe("PortalWalletPanel", () => {
       .toBeInTheDocument();
     expect(within(primaryBalances as HTMLElement).getByText("Reward available"))
       .toBeInTheDocument();
+    expect(within(primaryBalances as HTMLElement).getByText("Order reserved"))
+      .toBeInTheDocument();
 
     const secondaryBalances = document.querySelector(".portal-wallet-status-grid");
     expect(secondaryBalances).not.toBeNull();
-    expect(within(secondaryBalances as HTMLElement).getByText("Order reserved"))
-      .toBeInTheDocument();
+    expect(within(secondaryBalances as HTMLElement).getAllByRole("term")).toHaveLength(1);
     expect(within(secondaryBalances as HTMLElement).getByText("Pending rewards"))
       .toBeInTheDocument();
   });
 
-  test("offers a manual Wallet summary refresh from the balance section", () => {
+  test("keeps the balance region named without a heading or manual refresh action", () => {
     const refreshWallet = vi.fn();
     renderPanel(walletModel({ refreshWallet }));
 
-    fireEvent.click(screen.getByRole("button", { name: "Refresh Wallet" }));
+    expect(screen.getByRole("region", { name: "Balance" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Balance" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Refresh Wallet" })).not.toBeInTheDocument();
+    expect(refreshWallet).not.toHaveBeenCalled();
+  });
 
-    expect(refreshWallet).toHaveBeenCalledTimes(1);
+  test.each(["zh", "en"] as const)("keeps stale %s balances visible and provides the original retry action", (locale) => {
+    const retrySummary = vi.fn();
+    renderPanel({ ...walletModel(), retrySummary,
+      summaryRefreshError: { phase: "error", retryable: true }
+    }, locale);
+    expect(screen.getByText("155", { selector: "dd" })).toBeVisible();
+    expect(screen.getByRole("alert")).toHaveTextContent(locale === "zh"
+      ? "余额更新失败，当前为上次数据。"
+      : "Balance update failed. Showing the last available data.");
+    fireEvent.click(screen.getByRole("button", { name: locale === "zh" ? "重试余额" : "Retry balance" }));
+    expect(retrySummary).toHaveBeenCalledOnce();
+  });
+
+  test("keeps stale activity visible and does not offer retry for a nonretryable failure", () => {
+    const retryLedger = vi.fn();
+    renderPanel({ ...walletModel(), retryLedger,
+      ledgerRefreshError: { phase: "error", retryable: false }
+    }, "zh");
+    expect(screen.getByRole("alert")).toHaveTextContent("账单更新失败，当前为上次数据。");
+    expect(screen.getByText("Coins 入账")).toBeVisible();
+    expect(screen.queryByRole("button", { name: "重试流水" })).not.toBeInTheDocument();
+    expect(retryLedger).not.toHaveBeenCalled();
+  });
+
+  test("shows stale empty activity with retry and limits the historical-view notice to all activity", () => {
+    const retryLedger = vi.fn();
+    renderPanel({ ...walletModel(), retryLedger,
+      ledger: { phase: "empty", value: [] },
+      ledgerRefreshError: { phase: "unavailable", retryable: true },
+      ledgerAutoRefreshPaused: true
+    }, "zh");
+    expect(screen.getByText("账单更新失败，当前为上次数据。")).toBeVisible();
+    expect(screen.getByText("暂无钱包流水。")).toBeVisible();
+    expect(screen.queryByText("正在查看历史记录")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "查看全部" }));
+    expect(screen.getByText("正在查看历史记录")).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "重试流水" }));
+    expect(retryLedger).toHaveBeenCalledOnce();
   });
 
   test("shows signed Wallet changes in recent activity", () => {
@@ -331,7 +373,7 @@ describe("PortalWalletPanel", () => {
     expect(within(completeTable).getAllByRole("row")).toHaveLength(7);
     expect(screen.getByText("order_wallet_006")).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "Back to Wallet overview" }));
+    fireEvent.click(screen.getByRole("button", { name: "Back to Wallet" }));
     const returnedRecentTable = screen.getByRole("table", {
       name: "Recent Coins Wallet activity"
     });
@@ -339,6 +381,52 @@ describe("PortalWalletPanel", () => {
     expect(screen.queryByText("order_wallet_006")).not.toBeInTheDocument();
     expect(screen.queryByRole("table", { name: "Coins Wallet activity" })).toBeNull();
     expect(loadMoreLedger).not.toHaveBeenCalled();
+  });
+
+  test.each(["settled", "in-flight"] as const)("returning from a %s history page refreshes the first page and resumes updates", async (pageState) => {
+    const cursor = { afterOccurredAt: CREDIT_ENTRY.occurredAt, afterEntryRef: CREDIT_ENTRY.entryRef };
+    const pageTwo = deferred<Awaited<ReturnType<PortalWalletClient["listLedger"]>>>();
+    const freshEntry = { ...CREDIT_ENTRY, entryRef: "entry_fresh_overview", amountUnits: 44, totalDeltaUnits: 44 };
+    const client: PortalWalletClient = {
+      getSummary: vi.fn(async () => ACTIVE_SUMMARY),
+      listLedger: vi.fn()
+        .mockResolvedValueOnce({ entries: [CREDIT_ENTRY], nextCursor: cursor })
+        .mockImplementationOnce(() => pageTwo.promise)
+        .mockResolvedValueOnce({ entries: [freshEntry], nextCursor: null }),
+    };
+    const { modelRef } = renderWalletHarness(client);
+    await waitFor(() => expect(modelRef.current?.nextLedgerCursor).toEqual(cursor));
+    fireEvent.click(screen.getByRole("button", { name: "View all activity" }));
+    expect(client.listLedger).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole("button", { name: "Load more activity" }));
+    expect(client.listLedger).toHaveBeenCalledTimes(2);
+    await waitFor(() => expect(modelRef.current?.ledgerAutoRefreshPaused).toBe(true));
+    if (pageState === "settled") {
+      await act(async () => {
+        pageTwo.resolve({ entries: [HELD_ENTRY], nextCursor: null });
+        await pageTwo.promise;
+      });
+      expect(modelRef.current?.ledger).toEqual({ phase: "ready", value: [CREDIT_ENTRY, HELD_ENTRY] });
+    } else {
+      expect(modelRef.current?.loadingMoreLedger).toBe(true);
+    }
+    expect(screen.getByText("Viewing historical activity")).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "Back to Wallet" }));
+    if (pageState === "in-flight") {
+      expect(client.listLedger).toHaveBeenCalledTimes(2);
+      await act(async () => {
+        pageTwo.resolve({ entries: [HELD_ENTRY], nextCursor: null });
+        await pageTwo.promise;
+      });
+    }
+    await waitFor(() => expect(client.listLedger).toHaveBeenCalledTimes(3));
+    expect(client.listLedger).toHaveBeenLastCalledWith({ sessionRef: "session_wallet_001", limit: 25 });
+    await waitFor(() => expect(modelRef.current?.ledger).toEqual({ phase: "ready", value: [freshEntry] }));
+    expect(modelRef.current?.ledgerAutoRefreshPaused).toBe(false);
+    expect(modelRef.current?.loadingMoreLedger).toBe(false);
+    expect(screen.getByRole("table", { name: "Recent Coins Wallet activity" })).toHaveTextContent("+44");
+    expect(screen.queryByText("Viewing historical activity")).not.toBeInTheDocument();
+    expect(screen.queryByText("Reserved for order")).not.toBeInTheDocument();
   });
 
   test("explains Wallet rules without inventing expiry or payment-provider data", () => {
@@ -458,7 +546,7 @@ describe("PortalWalletPanel", () => {
     }), locale);
 
     expect(screen.getByText(statusLabel, { selector: "strong" })).toBeInTheDocument();
-    expect(screen.getByRole("status")).toHaveTextContent(emptyMessage);
+    expect(screen.getByText(emptyMessage)).toHaveAttribute("role", "status");
   });
 
   test.each<{
@@ -700,7 +788,7 @@ describe("PortalWalletPanel", () => {
   test("keeps the Wallet overview focused on balances, recent activity, and rules while recharge is unavailable", () => {
     renderPanel(walletModel());
 
-    expect(screen.getByRole("heading", { name: "Balance" }))
+    expect(screen.getByRole("region", { name: "Balance" }))
       .toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Recent Wallet activity" }))
       .toBeInTheDocument();
@@ -716,15 +804,15 @@ describe("PortalWalletPanel", () => {
   test.each([
     {
       locale: "en" as const,
-      heading: "Wallet overview",
+      heading: "Coins Wallet",
       button: "Recharge Coins",
     },
     {
       locale: "zh" as const,
-      heading: "钱包总览",
+      heading: "Coins 钱包",
       button: "充值 Coins",
     },
-  ])("keeps the $locale recharge action in the Wallet header and provider-neutral", ({
+  ])("keeps the $locale recharge section inline without creating an order on entry", ({
     locale,
     heading,
     button,
@@ -751,13 +839,13 @@ describe("PortalWalletPanel", () => {
     }));
 
     const wallet = screen.getByRole("region", { name: heading });
-    const header = within(wallet).getByRole("banner");
-    expect(within(header).getByRole("button", { name: button })).toBeInTheDocument();
+    expect(within(wallet).queryByRole("banner")).not.toBeInTheDocument();
+    expect(within(wallet).getByRole("heading", { name: button })).toBeInTheDocument();
     expect(wallet).not.toHaveTextContent(
       /PayPal|Sandbox|USD|adapter|支付宝|Alipay|微信支付|WeChat/i,
     );
-    fireEvent.click(within(header).getByRole("button", { name: button }));
-    expect(openDialog).toHaveBeenCalledTimes(1);
+    expect(openDialog).not.toHaveBeenCalled();
+    expect(rechargeModel.createOrder).not.toHaveBeenCalled();
   });
 });
 

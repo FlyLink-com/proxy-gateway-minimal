@@ -64,6 +64,7 @@ import {
   usePortalRecharge
 } from "./recharge";
 import { useDesktopScrollRegion } from "./use-desktop-scroll-region";
+import { broadcastPortalSessionChange, clearPendingPortalLogout, readPendingPortalLogout, readPortalLocation, stagePendingPortalLogout, subscribePortalSessionChange, writePortalLocation } from "./portal-browser-session";
 import {
   PORTAL_PAYMENT_RETURN_SESSION_STORAGE_KEY,
   PORTAL_REGISTRATION_SESSION_STORAGE_KEY
@@ -1502,6 +1503,14 @@ export function UserPortalPage({
   const desktopOrderNavigation = useDesktopScrollRegion();
   const authCopy = portalAuthEntryCopy[locale];
   const [portalSession, setPortalSession] = useState<PortalSession | null>(null);
+  const [sessionPhase, setSessionPhase] = useState<"restoring" | "anonymous" | "authenticated" | "unavailable" | "logging_out" | "logout_failed">(
+    portalClient.restoreSession && readPendingPortalLogout() ? "logout_failed" : portalClient.restoreSession && !initialSession ? "restoring" : "anonymous"
+  );
+  const [bootstrapRevision, setBootstrapRevision] = useState(0);
+  const bootstrapFlightRef = useRef<{ client: UserPortalClient; revision: number; promise: Promise<PortalSession | null> } | null>(null);
+  const bootstrapBlockedRef = useRef(Boolean(portalClient.restoreSession && readPendingPortalLogout()));
+  const logoutContextRef = useRef<string | null>(portalClient.restoreSession ? readPendingPortalLogout() : null);
+  const mountedRef = useRef(true);
   const [commerceModel, setCommerceModel] = useState<PortalCommerceModel | null>(null);
   const sessionGenerationRef = useRef(0);
   const walletFirstSetupIdempotencyKeyRef = useRef<string | null>(null);
@@ -1515,9 +1524,9 @@ export function UserPortalPage({
   const [humanChallenge, setHumanChallenge] = useState(createPendingHumanVerificationChallenge);
   const [humanChallengeReady, setHumanChallengeReady] = useState(false);
   const [humanChallengeLoading, setHumanChallengeLoading] = useState(true);
-  const [activeView, setActiveView] = useState<PortalView>("start");
-  const [orderCenterFilter, setOrderCenterFilter] = useState<PortalOrdersFilter>("all");
-  const [personalCenterSubview, setPersonalCenterSubview] = useState<"profile" | "security">("profile");
+  const [activeView, setActiveView] = useState<PortalView>(() => readPortalLocation().view);
+  const [orderCenterFilter, setOrderCenterFilter] = useState<PortalOrdersFilter>(() => readPortalLocation().orderFilter);
+  const [personalCenterSubview, setPersonalCenterSubview] = useState<"profile" | "security">(() => readPortalLocation().profileSubview);
   const [selectedPlanId, setSelectedPlanId] = useState<PortalPlanId>("monthly_basic");
   const [clientTarget, setClientTarget] = useState<PortalClientId>("clash");
   const [paymentChannel, setPaymentChannel] = useState<PortalPaymentChannel>(() => defaultPaymentChannelForCurrentBrowser());
@@ -1577,6 +1586,15 @@ export function UserPortalPage({
 
   const userDisplayName = portalSession?.displayName ?? (accountId.trim() || "Portal User");
   const registrationDate = portalSession?.registeredAt ?? new Date("2026-05-31T00:00:00.000Z").toISOString();
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; sessionGenerationRef.current += 1; };
+  }, []);
+
+  useEffect(() => {
+    if (portalSession) writePortalLocation({ view: activeView, orderFilter: orderCenterFilter, profileSubview: personalCenterSubview });
+  }, [activeView, orderCenterFilter, personalCenterSubview, portalSession]);
 
   useEffect(() => {
     document.title = portalSession ? authCopy.shellDocumentTitle : authCopy.documentTitle;
@@ -1640,11 +1658,11 @@ export function UserPortalPage({
     sessionRef: portalSession?.sessionRef ?? null,
     sessionGeneration,
     loadLedger: activeView === "wallet",
-    onSessionInvalid: logout
+    onSessionInvalid: invalidateSession
   });
   const rechargePaymentRedirect = useCallback((url: string) => {
     try {
-      if (portalSession && readPortalRechargeReturn()) {
+      if (portalSession && portalSession.transport !== "cookie" && readPortalRechargeReturn()) {
         window.sessionStorage.setItem(
           PORTAL_PAYMENT_RETURN_SESSION_STORAGE_KEY,
           JSON.stringify(portalSession)
@@ -1660,9 +1678,10 @@ export function UserPortalPage({
     enabled: activeView === "wallet",
     sessionRef: portalSession?.sessionRef ?? null,
     sessionGeneration,
-    onSessionInvalid: logout,
+    onSessionInvalid: invalidateSession,
     onWalletMutation: walletModel.refreshWallet,
-    paymentRedirect: rechargePaymentRedirect
+    paymentRedirect: rechargePaymentRedirect,
+    readOnlyRestoration: portalSession?.transport === "cookie",
   });
   const authoritativeWalletBalance =
     walletModel.summary.phase === "ready"
@@ -1687,17 +1706,17 @@ export function UserPortalPage({
   }, [portalClient, locale]);
 
   useEffect(() => {
-    void refreshHumanChallenge();
-  }, [refreshHumanChallenge]);
+    if (sessionPhase === "anonymous" && !portalSession && !initialSession) void refreshHumanChallenge();
+  }, [refreshHumanChallenge, sessionPhase, portalSession, initialSession]);
 
   const hydratePortalSession = useCallback((
     session: PortalSession,
-    destination: PortalView = readPortalRechargeReturn() ? "wallet" : "start"
+    destination: PortalView = readPortalRechargeReturn() ? "wallet" : readPortalLocation().view
   ) => {
     const hydrateGeneration = advanceSessionGeneration();
     clearWalletFirstSetupIdempotencyKey();
     setWalletFirstResource(null);
-    const isCurrent = () => hydrateGeneration === sessionGenerationRef.current;
+    const isCurrent = () => mountedRef.current && hydrateGeneration === sessionGenerationRef.current;
     const promise = (async () => {
       let resolvedCommerceModel: PortalCommerceModel = "legacy";
       if (portalClient.commerceModel) {
@@ -1763,6 +1782,7 @@ export function UserPortalPage({
       }
       if (!isCurrent()) return;
       setPortalSession(session);
+      setSessionPhase("authenticated");
       setCommerceModel(resolvedCommerceModel);
       setWalletFirstResource(hydratedWalletFirstResource);
       setSecondFactorChallenge(null);
@@ -1796,7 +1816,7 @@ export function UserPortalPage({
       }
       setHistorySummary(portalState.historySummary ?? subscriptionRequests.flatMap((request) => request.historySummary ?? []));
       setActivePaymentOrderRef(null);
-      setOrderCenterFilter("all");
+      setOrderCenterFilter(readPortalLocation().orderFilter);
       setActiveView(destination);
     })();
     return { isCurrent, promise };
@@ -1805,6 +1825,42 @@ export function UserPortalPage({
     clearWalletFirstSetupIdempotencyKey,
     portalClient
   ]);
+
+  useEffect(() => {
+    if (!portalClient.restoreSession) return;
+    // Retire exactly the two obsolete credential handoffs even while a pending
+    // logout blocks bootstrap. Preserve unrelated preferences/recovery intent.
+    try {
+      window.sessionStorage.removeItem(PORTAL_REGISTRATION_SESSION_STORAGE_KEY);
+      window.sessionStorage.removeItem(PORTAL_PAYMENT_RETURN_SESSION_STORAGE_KEY);
+    } catch { /* obsolete credential stores are never read in cookie mode */ }
+  }, [portalClient]);
+
+  useEffect(() => {
+    if (!portalClient.restoreSession || initialSession || bootstrapBlockedRef.current) return;
+    let cancelled = false;
+    const generation = sessionGenerationRef.current;
+    const prior = bootstrapFlightRef.current;
+    const promise = prior?.client === portalClient && prior.revision === bootstrapRevision
+      ? prior.promise : Promise.resolve().then(() => portalClient.restoreSession!());
+    bootstrapFlightRef.current = { client: portalClient, revision: bootstrapRevision, promise };
+    setSessionPhase("restoring");
+    void promise.then(async (session) => {
+      if (cancelled || bootstrapBlockedRef.current || generation !== sessionGenerationRef.current) return;
+      if (!session) { setSessionPhase("anonymous"); return; }
+      const hydration = hydratePortalSession(session);
+      await hydration.promise;
+    }).catch(() => {
+      if (!cancelled && !bootstrapBlockedRef.current && mountedRef.current) setSessionPhase("unavailable");
+    });
+    return () => { cancelled = true; };
+  }, [portalClient, initialSession, bootstrapRevision, hydratePortalSession]);
+
+  useEffect(() => subscribePortalSessionChange(() => {
+    // Another tab changed the shared cookie. Never issue logout against its
+    // new principal and never reuse this tab's cached identity automatically.
+    invalidateSession();
+  }), [portalClient]);
 
   useEffect(() => {
     if (!initialSession || portalSession) return;
@@ -1816,7 +1872,7 @@ export function UserPortalPage({
   }, [initialSession, portalSession, hydratePortalSession, locale]);
 
   useEffect(() => {
-    if (portalSession) return;
+    if (portalClient.restoreSession || portalSession) return;
     const paymentReturnSession = window.sessionStorage.getItem(
       PORTAL_PAYMENT_RETURN_SESSION_STORAGE_KEY
     );
@@ -1849,10 +1905,11 @@ export function UserPortalPage({
     } catch {
       setAuthError(failureMessage);
     }
-  }, [portalSession, hydratePortalSession, locale]);
+  }, [portalClient, portalSession, hydratePortalSession, locale]);
 
   async function submitAuth(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const authGeneration = advanceSessionGeneration();
     setAuthError("");
     setSecondFactorError("");
     setPending(true);
@@ -1866,8 +1923,10 @@ export function UserPortalPage({
         mode: "password",
         accountId,
         password,
+        ...(portalClient.restoreSession ? { rememberMe: rememberAccount } : {}),
         humanVerification
       });
+      if (!mountedRef.current || authGeneration !== sessionGenerationRef.current) return;
       setPassword("");
       if (isSecondFactorChallenge(result)) {
         setSecondFactorChallenge(result);
@@ -1875,6 +1934,10 @@ export function UserPortalPage({
         return;
       }
       const hydration = hydratePortalSession(result);
+      bootstrapBlockedRef.current = false;
+      logoutContextRef.current = null;
+      clearPendingPortalLogout();
+      if (result.transport === "cookie") broadcastPortalSessionChange();
       hydrationIsCurrent = hydration.isCurrent;
       await hydration.promise;
     } catch (requestError) {
@@ -1892,6 +1955,7 @@ export function UserPortalPage({
   async function submitAuthenticatorSecondFactor(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!secondFactorChallenge) return;
+    const authGeneration = advanceSessionGeneration();
     setSecondFactorError("");
     setSecondFactorPending(true);
     let hydrationIsCurrent: (() => boolean) | null = null;
@@ -1901,7 +1965,12 @@ export function UserPortalPage({
         factor: "authenticator",
         totpCode: secondFactorCode
       });
+      if (!mountedRef.current || authGeneration !== sessionGenerationRef.current) return;
+      bootstrapBlockedRef.current = false;
+      logoutContextRef.current = null;
+      clearPendingPortalLogout();
       const hydration = hydratePortalSession(session);
+      if (session.transport === "cookie") broadcastPortalSessionChange();
       hydrationIsCurrent = hydration.isCurrent;
       await hydration.promise;
     } catch (requestError) {
@@ -1918,6 +1987,7 @@ export function UserPortalPage({
   async function submitPasskeySecondFactor(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!secondFactorChallenge) return;
+    const authGeneration = advanceSessionGeneration();
     setSecondFactorError("");
     setSecondFactorPending(true);
     let hydrationIsCurrent: (() => boolean) | null = null;
@@ -1927,7 +1997,12 @@ export function UserPortalPage({
         factor: "passkey",
         passkeyProof
       });
+      if (!mountedRef.current || authGeneration !== sessionGenerationRef.current) return;
+      bootstrapBlockedRef.current = false;
+      logoutContextRef.current = null;
+      clearPendingPortalLogout();
       const hydration = hydratePortalSession(session);
+      if (session.transport === "cookie") broadcastPortalSessionChange();
       hydrationIsCurrent = hydration.isCurrent;
       await hydration.promise;
     } catch (requestError) {
@@ -2247,7 +2322,7 @@ export function UserPortalPage({
     setAuthenticatorError("");
   }
 
-  function logout() {
+  function clearSessionView() {
     advanceSessionGeneration();
     clearWalletFirstSetupIdempotencyKey();
     try {
@@ -2266,7 +2341,6 @@ export function UserPortalPage({
     setHumanChallenge(createPendingHumanVerificationChallenge());
     setHumanChallengeReady(false);
     setHumanChallengeLoading(true);
-    void refreshHumanChallenge();
     setActiveView("dashboard");
     setPersonalCenterSubview("profile");
     setSelectedPlanId("monthly_basic");
@@ -2306,6 +2380,57 @@ export function UserPortalPage({
     setSupportPending(false);
     setSupportError("");
     setSupportResult(null);
+  }
+
+  function invalidateSession() {
+    bootstrapBlockedRef.current = true;
+    clearSessionView();
+    setSessionPhase("anonymous");
+  }
+
+  async function completeLogout(context: string) {
+    const generation = sessionGenerationRef.current;
+    setSessionPhase("logging_out");
+    try {
+      await portalClient.logout!({ sessionRef: context });
+      if (!mountedRef.current || generation !== sessionGenerationRef.current || logoutContextRef.current !== context) return;
+      logoutContextRef.current = null;
+      clearPendingPortalLogout();
+      setSessionPhase("anonymous");
+      broadcastPortalSessionChange();
+    } catch {
+      if (mountedRef.current && generation === sessionGenerationRef.current && logoutContextRef.current === context) setSessionPhase("logout_failed");
+    }
+  }
+
+  function logout() {
+    const context = portalSession?.transport === "cookie" ? portalSession.sessionRef : null;
+    bootstrapBlockedRef.current = true;
+    clearSessionView();
+    if (context && portalClient.logout) {
+      logoutContextRef.current = context;
+      stagePendingPortalLogout(context);
+      broadcastPortalSessionChange();
+      void completeLogout(context);
+    } else {
+      setSessionPhase("anonymous");
+    }
+  }
+
+  if (!portalSession && ["restoring", "unavailable", "logging_out", "logout_failed"].includes(sessionPhase)) {
+    const failed = sessionPhase === "unavailable" || sessionPhase === "logout_failed";
+    return <main className="portal-login-shell" data-portal-theme={theme}>
+      <section className="portal-login-main" aria-label={uiText(locale, "登录状态", "Sign-in status")}>
+        <div className="portal-login-form-card" role={failed ? "alert" : "status"}>
+          <p>{sessionPhase === "unavailable" ? uiText(locale, "暂时无法恢复登录，请检查网络后重试。", "Sign-in could not be restored. Check your connection and retry.")
+            : sessionPhase === "logout_failed" ? uiText(locale, "注销尚未完成。账户内容已隐藏，请重试以结束服务器会话。", "Sign-out is not complete. Account content is hidden; retry to end the server session.")
+              : sessionPhase === "logging_out" ? uiText(locale, "正在注销…", "Signing out…") : uiText(locale, "正在恢复登录…", "Restoring sign-in…")}</p>
+          {sessionPhase === "unavailable" ? <button type="button" onClick={() => setBootstrapRevision((value) => value + 1)}>{uiText(locale, "重试恢复登录", "Retry sign-in restoration")}</button> : null}
+          {sessionPhase === "logout_failed" ? <button type="button" onClick={() => { if (logoutContextRef.current) void completeLogout(logoutContextRef.current); }}>{uiText(locale, "重试注销", "Retry sign-out")}</button> : null}
+          {sessionPhase === "logout_failed" ? <button type="button" onClick={invalidateSession}>{uiText(locale, "返回账号登录", "Back to account sign in")}</button> : null}
+        </div>
+      </section>
+    </main>;
   }
 
   if (!portalSession && secondFactorChallenge) {
@@ -2440,6 +2565,9 @@ export function UserPortalPage({
             </div>
 
             <form className="portal-login-form" onSubmit={submitAuth}>
+              {logoutContextRef.current ? <p role="alert" className="portal-login-error">{uiText(locale,
+                "上次注销结果尚未确认。不会自动恢复账户，请重新验证身份后登录。",
+                "The previous sign-out is not confirmed. Your account will not be restored automatically; verify your identity to sign in again.")}</p> : null}
               <label htmlFor="portal-account-id">{authCopy.accountId}</label>
               <input
                 id="portal-account-id"
@@ -2865,7 +2993,7 @@ export function UserPortalPage({
               onOpenMarketplace={openMarketplace}
               onOpenServiceOrder={viewOrder}
               onOrderSearchChange={setOrderSearch}
-              onSessionInvalid={logout}
+              onSessionInvalid={invalidateSession}
               onContinueRechargeOrder={rechargeModel.continueOrderPayment}
               orderSearch={orderSearch}
               selectedServiceOrderRef={selectedOrderRef}

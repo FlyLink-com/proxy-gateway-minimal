@@ -9,6 +9,7 @@ import {
   type UserPortalClient
 } from "./user-portal-client";
 import { PublicLocaleSwitch, usePublicLocalePreference } from "./public-locale-switch";
+import { broadcastPortalSessionChange } from "./portal-browser-session";
 
 type UserRegistrationPageProps = {
   portalClient: UserPortalClient;
@@ -297,10 +298,13 @@ export function UserRegistrationPage({ portalClient }: UserRegistrationPageProps
           code: emailVerificationCode
         }
       });
-      persistRegistrationSession(nextResult);
+      if (nextResult.session.transport !== "cookie") persistRegistrationSession(nextResult);
       setResult(nextResult);
       setStep("complete");
-      redirectToPortal();
+      if (nextResult.session.transport === "cookie") {
+        broadcastPortalSessionChange();
+        window.location.assign("/portal");
+      } else redirectToPortal();
     } catch (caughtError) {
       setError(errorMessage(caughtError, copy.submitError));
     } finally {

@@ -12,11 +12,13 @@ import type {
   PortalWalletSummary
 } from "./api-contract";
 import type {
+  PortalWalletLedgerPageError,
   PortalWalletReadModel,
   ReadState
 } from "./use-portal-wallet-read-model";
 import {
   PortalRechargeDialog,
+  PortalRechargeOffers,
   type PortalRechargeModel
 } from "../recharge";
 
@@ -48,6 +50,29 @@ function walletStatusLabel(
         closed: "Closed"
       };
   return labels[status];
+}
+
+function WalletRefreshNotice({ locale, error, source, onRetry }: {
+  locale: PortalWalletPanelProps["locale"];
+  error?: PortalWalletLedgerPageError | null;
+  source: "summary" | "ledger";
+  onRetry: () => void;
+}) {
+  if (!error) return null;
+  const zh = locale === "zh";
+  const summary = source === "summary";
+  return (
+    <div className="portal-wallet-state" role={error.phase === "unavailable" ? "status" : "alert"}>
+      <p>{summary
+        ? zh ? "余额更新失败，当前为上次数据。" : "Balance update failed. Showing the last available data."
+        : zh ? "账单更新失败，当前为上次数据。" : "Activity update failed. Showing the last available data."}</p>
+      {error.retryable ? (
+        <button type="button" onClick={onRetry}>
+          {summary ? zh ? "重试余额" : "Retry balance" : zh ? "重试流水" : "Retry activity"}
+        </button>
+      ) : null}
+    </div>
+  );
 }
 
 function SummaryState({
@@ -89,6 +114,7 @@ function SummaryState({
   }
   return (
     <>
+      <WalletRefreshNotice locale={locale} error={model.summaryRefreshError} source="summary" onRetry={model.retrySummary} />
       {state.phase === "empty" ? (
         <p className="portal-wallet-state" role="status">
           {zh
@@ -133,14 +159,15 @@ function WalletSummary({
       label: zh ? "奖励可用" : "Reward available",
       value: summary.balances.rewardCoins,
       featured: false
-    }
-  ] as const;
-  const statusBalances = [
+    },
     {
       id: "held",
       label: zh ? "订单预留" : "Order reserved",
-      value: summary.heldUnits
-    },
+      value: summary.heldUnits,
+      featured: false
+    }
+  ] as const;
+  const statusBalances = [
     {
       id: "pending",
       label: zh ? "待确认奖励" : "Pending rewards",
@@ -149,10 +176,12 @@ function WalletSummary({
   ] as const;
   return (
     <>
-      <p className="portal-wallet-status">
-        {zh ? "钱包状态：" : "Wallet status: "}
-        <strong>{walletStatusLabel(summary.status, locale)}</strong>
-      </p>
+      {summary.status !== "active" ? (
+        <p className="portal-wallet-status" role="status" aria-live="polite">
+          {zh ? "钱包状态：" : "Wallet status: "}
+          <strong>{walletStatusLabel(summary.status, locale)}</strong>
+        </p>
+      ) : null}
       <dl className="portal-wallet-balance-grid">
         {primaryBalances.map((balance) => (
           <div
@@ -316,6 +345,16 @@ function LedgerState({
 }: PortalWalletPanelProps & { view: WalletLedgerView }) {
   const zh = locale === "zh";
   const state: ReadState<PortalWalletLedgerEntry[]> = model.ledger;
+  const retainedStateNotices = (
+    <>
+      <WalletRefreshNotice locale={locale} error={model.ledgerRefreshError} source="ledger" onRetry={model.retryLedger} />
+      {view === "all" && model.ledgerAutoRefreshPaused ? (
+        <p className="portal-wallet-status" role="status">
+          {zh ? "正在查看历史记录" : "Viewing historical activity"}
+        </p>
+      ) : null}
+    </>
+  );
   if (state.phase === "loading") {
     return (
       <div className="portal-wallet-state" role="status" aria-live="polite">
@@ -325,9 +364,12 @@ function LedgerState({
   }
   if (state.phase === "empty") {
     return (
-      <div className="portal-wallet-state" role="status">
-        {zh ? "暂无钱包流水。" : "No Wallet activity yet."}
-      </div>
+      <>
+        {retainedStateNotices}
+        <div className="portal-wallet-state" role="status">
+          {zh ? "暂无钱包流水。" : "No Wallet activity yet."}
+        </div>
+      </>
     );
   }
   if (state.phase === "unavailable" || state.phase === "error") {
@@ -356,6 +398,7 @@ function LedgerState({
   }
   return (
     <>
+      {retainedStateNotices}
       <LedgerTable
         entries={view === "overview"
           ? state.value.slice(0, RECENT_LEDGER_LIMIT)
@@ -415,36 +458,30 @@ export function PortalWalletPanel({
 }: PortalWalletPanelProps) {
   const zh = locale === "zh";
   const [ledgerView, setLedgerView] = useState<WalletLedgerView>("overview");
+  const [selectedOfferRef, setSelectedOfferRef] = useState<string | null>(null);
   const allActivity = ledgerView === "all";
   return (
     <section
       className="portal-commerce-layout portal-commerce-layout--wallet"
-      aria-labelledby="portal-wallet-heading"
+      aria-label={zh ? "Coins 钱包" : "Coins Wallet"}
     >
-      <header className="portal-commerce-layout__header portal-wallet-header">
-        <h2 id="portal-wallet-heading">
-          {allActivity
-            ? zh ? "全部钱包流水" : "All Wallet activity"
-            : zh ? "钱包总览" : "Wallet overview"}
-        </h2>
-        {allActivity ? (
+      {allActivity ? (
+        <header className="portal-commerce-layout__header portal-wallet-header">
+          <h2 id="portal-wallet-heading">
+            {zh ? "全部钱包流水" : "All Wallet activity"}
+          </h2>
           <button
             className="portal-secondary-button compact"
             type="button"
-            onClick={() => setLedgerView("overview")}
+            onClick={() => {
+              setLedgerView("overview");
+              model.retryLedger();
+            }}
           >
-            {zh ? "返回钱包总览" : "Back to Wallet overview"}
+            {zh ? "返回钱包" : "Back to Wallet"}
           </button>
-        ) : rechargeModel?.available ? (
-          <button
-            className="portal-primary-button compact"
-            type="button"
-            onClick={rechargeModel.openDialog}
-          >
-            {zh ? "充值 Coins" : "Recharge Coins"}
-          </button>
-        ) : null}
-      </header>
+        </header>
+      ) : null}
       {allActivity ? (
         <section
           className="portal-commerce-layout__section portal-wallet-all-activity"
@@ -456,52 +493,67 @@ export function PortalWalletPanel({
           <LedgerState locale={locale} model={model} view="all" />
         </section>
       ) : (
-        <div className="portal-wallet-overview-content">
-          <div className="portal-wallet-overview-main">
+        <div className={`portal-wallet-overview-content${rechargeModel?.available ? "" : " portal-wallet-overview-content--balance-only"}`}>
+          <section
+            className="portal-commerce-layout__section portal-wallet-balance-card"
+            aria-label={zh ? "余额" : "Balance"}
+          >
+            <SummaryState locale={locale} model={model} />
+          </section>
+          {rechargeModel?.available ? (
             <section
-              className="portal-commerce-layout__section"
-              aria-labelledby="portal-wallet-balance-heading"
+              className="portal-wallet-recharge"
+              aria-labelledby="portal-wallet-recharge-heading"
             >
-              <div className="portal-wallet-section-heading">
-                <h3 id="portal-wallet-balance-heading">{zh ? "余额" : "Balance"}</h3>
-                <button
-                  aria-busy={model.summary.phase === "loading" || undefined}
-                  className="portal-wallet-view-all"
-                  disabled={model.summary.phase === "loading"}
-                  type="button"
-                  onClick={model.refreshWallet}
-                >
-                  {model.summary.phase === "loading"
-                    ? zh ? "正在刷新…" : "Refreshing…"
-                    : zh ? "刷新钱包" : "Refresh Wallet"}
-                </button>
-              </div>
-              <SummaryState locale={locale} model={model} />
+              <h3 id="portal-wallet-recharge-heading">{zh ? "充值 Coins" : "Recharge Coins"}</h3>
+              {rechargeModel.unresolvedCreateOfferRef ? (
+                <div className="portal-wallet-state" role="status">
+                  <p>{zh ? "有一笔充值订单待确认，请先查看进度。" : "A recharge attempt needs confirmation. Check its progress first."}</p>
+                  <button type="button" disabled={rechargeModel.busy} onClick={rechargeModel.openDialog}>
+                    {zh ? "确认本次充值订单" : "Check this recharge attempt"}
+                  </button>
+                </div>
+              ) : (
+                <PortalRechargeOffers
+                  compact
+                  locale={locale}
+                  model={rechargeModel}
+                  onChoose={(offerRef) => {
+                    setSelectedOfferRef(offerRef);
+                    rechargeModel.openDialog();
+                    void rechargeModel.createOrder(offerRef);
+                  }}
+                />
+              )}
             </section>
-            <section
-              className="portal-commerce-layout__section portal-wallet-recent-activity"
-              aria-labelledby="portal-wallet-ledger-heading"
-            >
-              <div className="portal-wallet-section-heading">
-                <h3 id="portal-wallet-ledger-heading">
-                  {zh ? "近期账变明细" : "Recent Wallet activity"}
-                </h3>
-                <button
-                  className="portal-wallet-view-all"
-                  type="button"
-                  onClick={() => setLedgerView("all")}
-                >
-                  {zh ? "查看全部" : "View all activity"}
-                </button>
-              </div>
-              <LedgerState locale={locale} model={model} view="overview" />
-            </section>
-          </div>
+          ) : null}
+          <section
+            className="portal-commerce-layout__section portal-wallet-recent-activity"
+            aria-labelledby="portal-wallet-ledger-heading"
+          >
+            <div className="portal-wallet-section-heading">
+              <h3 id="portal-wallet-ledger-heading">
+                {zh ? "近期账变明细" : "Recent Wallet activity"}
+              </h3>
+              <button
+                className="portal-wallet-view-all"
+                type="button"
+                onClick={() => setLedgerView("all")}
+              >
+                {zh ? "查看全部" : "View all activity"}
+              </button>
+            </div>
+            <LedgerState locale={locale} model={model} view="overview" />
+          </section>
           <WalletGuide locale={locale} />
         </div>
       )}
       {rechargeModel?.dialogOpen ? (
-        <PortalRechargeDialog locale={locale} model={rechargeModel} />
+        <PortalRechargeDialog
+          locale={locale}
+          model={rechargeModel}
+          selectedOffer={rechargeModel.offers.find(offer => offer.offerRef === selectedOfferRef)}
+        />
       ) : null}
     </section>
   );

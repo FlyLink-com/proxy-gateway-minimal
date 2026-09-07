@@ -48,10 +48,11 @@ describe("Portal current-resource HTTP client", () => {
 
     expect(fetchFn).toHaveBeenCalledWith("/api/portal/resources/current", {
       method: "GET",
-      headers: {
+      credentials: "omit", cache: "no-store", redirect: "error",
+      headers: new Headers({
         "Content-Type": "application/json",
         "X-Portal-Session": "portal_resource_session_001"
-      }
+      })
     });
   });
 
@@ -117,10 +118,11 @@ describe("Portal current-resource HTTP client", () => {
 
     expect(fetchFn).toHaveBeenCalledWith("/api/portal/resources/current/setup", {
       method: "POST",
-      headers: {
+      credentials: "omit", cache: "no-store", redirect: "error",
+      headers: new Headers({
         "Content-Type": "application/json",
         "X-Portal-Session": "portal_resource_session_005"
-      },
+      }),
       body: JSON.stringify({ idempotencyKey: "2e2c88a9-0d2d-4ed8-9f0a-d9730fcf5432" })
     });
   });
@@ -172,10 +174,11 @@ describe("Portal current-resource HTTP client", () => {
 
     expect(fetchFn).toHaveBeenCalledWith("/api/portal/resources/current/setup/ack", {
       method: "POST",
-      headers: {
+      credentials: "omit", cache: "no-store", redirect: "error",
+      headers: new Headers({
         "Content-Type": "application/json",
         "X-Portal-Session": "portal_resource_session_007"
-      },
+      }),
       body: JSON.stringify({ handoffRef: "portal_setup_handoff_002" })
     });
   });

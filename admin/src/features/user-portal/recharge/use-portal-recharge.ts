@@ -131,13 +131,14 @@ function pollAfterReturn(
   order: PortalRechargeOrder,
   returnOrderRef: string | undefined,
   trackedWithoutReturn: boolean,
+  readOnlyRestoration = false,
 ) {
   if (trackedWithoutReturn) return nonTerminal(order);
   if (order.status === "created") return order.nextAction === null;
   if (returnOrderRef !== order.orderRef) return false;
   return order.status === "pending"
     || order.status === "payment_verified"
-    || (order.status === "entry_ready" && !captureOnReturn(order));
+    || (order.status === "entry_ready" && (readOnlyRestoration || !captureOnReturn(order)));
 }
 
 export function usePortalRecharge({
@@ -148,6 +149,7 @@ export function usePortalRecharge({
   onSessionInvalid,
   onWalletMutation,
   paymentRedirect,
+  readOnlyRestoration = false,
 }: {
   client: PortalRechargeClient | null;
   enabled: boolean;
@@ -156,6 +158,7 @@ export function usePortalRecharge({
   onSessionInvalid: () => void;
   onWalletMutation: () => void;
   paymentRedirect: (url: string) => void;
+  readOnlyRestoration?: boolean;
 }): PortalRechargeModel {
   const [offers, setOffers] = useState<PortalRechargeOffer[]>([]);
   const [activeOrder, setActiveOrder] = useState<PortalRechargeOrder | null>(null);
@@ -319,7 +322,7 @@ export function usePortalRecharge({
         return;
       }
       if (
-        !captureOnReturn(returnedOrder)
+        readOnlyRestoration || !captureOnReturn(returnedOrder)
       ) return;
       const captureStartedAt = Date.now();
       let capturedOrder: PortalRechargeOrder | null = null;
@@ -407,6 +410,7 @@ export function usePortalRecharge({
   }, [
     applyFailure,
     captureOrderOnce,
+    readOnlyRestoration,
     client,
     enabled,
     offersRevision,
@@ -446,6 +450,7 @@ export function usePortalRecharge({
           activeOrder,
           returnIntent?.orderRef,
           trackedSettlementOrderRefsRef.current.has(activeOrder.orderRef),
+          readOnlyRestoration,
         )
       )
     ) return;
@@ -549,6 +554,7 @@ export function usePortalRecharge({
     client,
     dialogOpen,
     redirectOrderToPayment,
+    readOnlyRestoration,
     sessionGeneration,
     sessionRef,
   ]);

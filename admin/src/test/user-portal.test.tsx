@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { createElement } from "react";
 import "@testing-library/jest-dom/vitest";
 import { readFileSync } from "node:fs";
@@ -12,6 +12,7 @@ import {
 import { UserRegistrationPage } from "../features/user-portal/user-registration-page";
 import { UserPortalPage } from "../features/user-portal/user-portal-page";
 import { createTotpCode } from "../features/user-portal/totp-preview";
+const COOKIE_CONTEXT = `portalctx_${"a".repeat(64)}`;
 import {
   createHttpUserPortalClient,
   createLocalUserPortalClient,
@@ -59,12 +60,14 @@ import type {
   PortalRechargeOrder
 } from "../features/user-portal/recharge";
 
+beforeEach(() => { vi.stubGlobal("BroadcastChannel", undefined); });
 afterEach(() => {
   cleanup();
   window.localStorage.clear();
   window.sessionStorage.clear();
   window.location.hash = "";
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 function installMobilePaymentDevice() {
@@ -812,6 +815,7 @@ function openPortalStartGuide() {
 }
 
 async function submitPortalLogin(accountId = "user_safe_ref", password = "user-password") {
+  await screen.findByLabelText("电子邮箱");
   fireEvent.change(screen.getByLabelText("电子邮箱"), { target: { value: accountId } });
   fireEvent.change(screen.getByLabelText("密码"), { target: { value: password } });
   fireEvent.change(screen.getByLabelText("防机器人校验"), { target: { value: await waitForRobotAnswer() } });
@@ -1343,7 +1347,10 @@ describe("user portal product surface", () => {
         });
         return new Response(JSON.stringify({
           session: {
-            accountId: "acct_portal_1",
+            sessionRef: COOKIE_CONTEXT,
+            transport: "cookie",
+            userRef: "acct_portal_1",
+            authMethod: "totp",
             issuedAt: "2026-06-03T00:00:00.000Z",
             expiresAt: "2026-06-03T00:30:00.000Z"
           }
@@ -1418,7 +1425,9 @@ describe("user portal product surface", () => {
           }
         },
         session: {
-          sessionRef: "portal_session_registration_1",
+          sessionRef: COOKIE_CONTEXT,
+          transport: "cookie",
+          expiresAt: "2026-07-01T09:30:00.000Z",
           userRef: "local-user@example.test",
           displayName: "local-user@example.test",
           authMethod: "password",
@@ -1481,7 +1490,9 @@ describe("user portal product surface", () => {
         }
       },
       session: {
-        sessionRef: "portal_session_registration_legacy_rollout",
+        sessionRef: COOKIE_CONTEXT,
+        transport: "cookie",
+        expiresAt: "2026-07-01T09:30:00.000Z",
         userRef: "local-user@example.test",
         displayName: "local-user@example.test",
         authMethod: "password",
@@ -1593,7 +1604,9 @@ describe("user portal product surface", () => {
         return new Response(JSON.stringify({
           registration,
           session: {
-            sessionRef: "portal_session_registration_invalid_model",
+            sessionRef: COOKIE_CONTEXT,
+            transport: "cookie",
+            expiresAt: "2026-07-01T09:30:00.000Z",
             userRef: "local-user@example.test",
             displayName: "local-user@example.test",
             authMethod: "password",
@@ -1656,7 +1669,9 @@ describe("user portal product surface", () => {
           }
         },
         session: {
-          sessionRef: "portal_session_normal_commerce_1",
+          sessionRef: COOKIE_CONTEXT,
+          transport: "cookie",
+          expiresAt: "2026-07-01T09:30:00.000Z",
           userRef: "normal-commerce@example.test",
           displayName: "normal-commerce@example.test",
           authMethod: "password",
@@ -1732,7 +1747,9 @@ describe("user portal product surface", () => {
           }
         },
         session: {
-          sessionRef: "portal_session_wallet_first_1",
+          sessionRef: COOKIE_CONTEXT,
+          transport: "cookie",
+          expiresAt: "2026-07-01T09:30:00.000Z",
           userRef: "wallet-first@example.test",
           displayName: "wallet-first@example.test",
           authMethod: "password",
@@ -1936,6 +1953,7 @@ describe("user portal product surface", () => {
       expect(JSON.parse(String(init?.body))).toEqual({
         accountId: "user@example.test",
         password: "secret-passphrase",
+        rememberMe: false,
         humanVerification: {
           challengeRef: "phc_http_1",
           answer: "13"
@@ -1985,7 +2003,8 @@ describe("user portal product surface", () => {
       });
       return new Response(JSON.stringify({
         session: {
-          sessionRef: "portal_session_http_1",
+          sessionRef: COOKIE_CONTEXT,
+          transport: "cookie",
           userRef: "user@example.test",
           displayName: "user@example.test",
           authMethod: "totp",
@@ -2003,7 +2022,7 @@ describe("user portal product surface", () => {
     });
 
     expect(session.status).toBe("authenticated_preview");
-    expect(session.sessionRef).toBe("portal_session_http_1");
+    expect(session.sessionRef).toBe(COOKIE_CONTEXT);
     expect(session.userRef).toBe("user@example.test");
     expect(session.authMode).toBe("authenticator");
     expect(fetchFn).toHaveBeenCalledTimes(1);
@@ -2105,9 +2124,7 @@ describe("user portal product surface", () => {
     const fetchFn = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       expect(String(input)).toBe("/api/portal/access-requests");
       expect(init?.method).toBe("POST");
-      expect(init?.headers).toMatchObject({
-        "X-Portal-Session": "portal_session_http_1"
-      });
+      expect(new Headers(init?.headers).get("X-Portal-Session")).toBe("portal_session_http_1");
       expect(JSON.parse(String(init?.body))).toEqual({
         portalUserRef: "user_safe_ref",
         plan: "trial",
@@ -2150,9 +2167,7 @@ describe("user portal product surface", () => {
     const fetchFn = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       expect(String(input)).toBe("/api/portal/payments/checkout");
       expect(init?.method).toBe("POST");
-      expect(init?.headers).toMatchObject({
-        "X-Portal-Session": "portal_session_http_1"
-      });
+      expect(new Headers(init?.headers).get("X-Portal-Session")).toBe("portal_session_http_1");
       expect(JSON.parse(String(init?.body))).toEqual({
         plan: "monthly_plus",
         clientTarget: "clash",
@@ -2209,9 +2224,7 @@ describe("user portal product surface", () => {
     const fetchFn = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       expect(String(input)).toBe("/api/portal/payments/current?status=paid_access_delivered");
       expect(init?.method).toBe("GET");
-      expect(init?.headers).toMatchObject({
-        "X-Portal-Session": "portal_session_http_1"
-      });
+      expect(new Headers(init?.headers).get("X-Portal-Session")).toBe("portal_session_http_1");
       return new Response(JSON.stringify({
         payments: {
           orders: [
@@ -2276,9 +2289,7 @@ describe("user portal product surface", () => {
   test("http portal client starts and confirms backend authenticator enrollment with a portal session", async () => {
     const fetchFn = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
-      expect(init?.headers).toMatchObject({
-        "X-Portal-Session": "portal_session_http_1"
-      });
+      expect(new Headers(init?.headers).get("X-Portal-Session")).toBe("portal_session_http_1");
       if (url === "/api/portal/security/totp/enrollment") {
         expect(init?.method).toBe("POST");
         expect(JSON.parse(String(init?.body))).toEqual({});
@@ -2783,7 +2794,7 @@ describe("user portal product surface", () => {
 
     expect(await screen.findByRole("navigation", { name: "用户中心导航" }))
       .toBeInTheDocument();
-    expect(await screen.findByRole("heading", { name: "钱包总览" }))
+    expect(await screen.findByRole("region", { name: "Coins 钱包" }))
       .toBeInTheDocument();
     expect(await screen.findByRole("dialog", { name: "充值 Coins" }))
       .toBeInTheDocument();
@@ -2989,6 +3000,7 @@ describe("user portal product surface", () => {
     const fetchFn = vi.fn<typeof fetch>(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       requestUrls.push(url);
+      if (url === "/api/portal/browser-session") return response({ session: null });
       if (url === "/api/portal/human-challenges") {
         return response({
           challenge: {
@@ -3002,7 +3014,9 @@ describe("user portal product surface", () => {
       if (url === "/api/portal/password/session") {
         return response({
           session: {
-            sessionRef: "portal_hydration_wallet_001",
+            sessionRef: COOKIE_CONTEXT,
+            transport: "cookie",
+            expiresAt: "2026-08-14T00:30:00.000Z",
             userRef: "wallet-hydration@example.test",
             displayName: "wallet-hydration@example.test",
             authMethod: "password",
@@ -3025,12 +3039,8 @@ describe("user portal product surface", () => {
         });
       }
       if (url === "/api/portal/resources/current") {
-        expect(init).toMatchObject({
-          method: "GET",
-          headers: {
-            "X-Portal-Session": "portal_hydration_wallet_001"
-          }
-        });
+        expect(init?.method).toBe("GET");
+        expect(new Headers(init?.headers).get("X-Portal-Session-Context")).toBe(COOKIE_CONTEXT);
         return response({
           resource: {
             state: "available",
@@ -3434,6 +3444,7 @@ describe("user portal product surface", () => {
     const fetchFn = vi.fn<typeof fetch>(async (input: RequestInfo | URL) => {
       const url = String(input);
       requestUrls.push(url);
+      if (url === "/api/portal/browser-session") return response({ session: null });
       if (url === "/api/portal/human-challenges") {
         return response({
           challenge: {
@@ -3447,7 +3458,9 @@ describe("user portal product surface", () => {
       if (url === "/api/portal/password/session") {
         return response({
           session: {
-            sessionRef: "portal_hydration_legacy_001",
+            sessionRef: COOKIE_CONTEXT,
+            transport: "cookie",
+            expiresAt: "2026-08-14T00:30:00.000Z",
             userRef: "legacy-hydration@example.test",
             displayName: "legacy-hydration@example.test",
             authMethod: "password",
@@ -3499,6 +3512,7 @@ describe("user portal product surface", () => {
     const fetchFn = vi.fn<typeof fetch>(async (input: RequestInfo | URL) => {
       const url = String(input);
       requestUrls.push(url);
+      if (url === "/api/portal/browser-session") return response({ session: null });
       if (url === "/api/portal/human-challenges") {
         return response({
           challenge: {
@@ -3512,7 +3526,9 @@ describe("user portal product surface", () => {
       if (url === "/api/portal/password/session") {
         return response({
           session: {
-            sessionRef: "portal_hydration_unknown_001",
+            sessionRef: COOKIE_CONTEXT,
+            transport: "cookie",
+            expiresAt: "2026-08-14T00:30:00.000Z",
             userRef: "unknown-hydration@example.test",
             displayName: "unknown-hydration@example.test",
             authMethod: "password",
@@ -4047,10 +4063,11 @@ describe("user portal product surface", () => {
     expect(topbar).not.toBeNull();
     openPortalWallet();
 
-    expect(await screen.findAllByRole("heading", { level: 2, name: "钱包总览" })).toHaveLength(1);
+    expect(await screen.findAllByRole("region", { name: "Coins 钱包" })).toHaveLength(1);
+    expect(screen.queryByRole("heading", { name: "钱包总览" })).toBeNull();
     const walletSection = document.querySelector(".portal-commerce-layout--wallet");
     expect(walletSection).not.toBeNull();
-    expect(within(walletSection as HTMLElement).getByRole("heading", {
+    expect(within(walletSection as HTMLElement).getByRole("region", {
       name: "余额"
     })).not.toBeNull();
     expect(within(walletSection as HTMLElement).getByRole("heading", {
@@ -4076,7 +4093,8 @@ describe("user portal product surface", () => {
     const englishNavigation = screen.getByRole("navigation", { name: "User center navigation" });
     expect(within(englishNavigation).queryByRole("button", { name: "Wallet" })).toBeNull();
     fireEvent.click(within(englishNavigation).getByRole("button", { name: "Coins wallet" }));
-    expect(await screen.findAllByRole("heading", { level: 2, name: "Wallet overview" })).toHaveLength(1);
+    expect(await screen.findAllByRole("region", { name: "Coins Wallet" })).toHaveLength(1);
+    expect(screen.queryByRole("heading", { name: "Wallet overview" })).toBeNull();
     const englishWalletSection = document.querySelector(".portal-commerce-layout--wallet");
     expect(englishWalletSection).not.toBeNull();
     expect(within(englishWalletSection as HTMLElement).getByRole("heading", {

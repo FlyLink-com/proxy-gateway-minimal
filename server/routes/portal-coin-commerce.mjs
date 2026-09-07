@@ -919,12 +919,15 @@ function parseOrderListQuery(req, res, next) {
   }
 }
 
-function createSessionMiddleware(state) {
+function createSessionMiddleware(state, browserSessions) {
   return function requirePortalSession(req, res, next) {
+    let browser;
+    try { browser = browserSessions?.session(req); }
+    catch { sendCommerceError(res, 401, "commerce_session_invalid"); return; }
     const header = readRawHeader(req, "x-portal-session");
     if (
-      header.state !== "present"
-      || !SESSION_REFERENCE.test(header.value)
+      !browser && (header.state !== "present"
+      || !SESSION_REFERENCE.test(header.value))
     ) {
       sendCommerceError(res, 401, "commerce_session_invalid");
       return;
@@ -936,7 +939,7 @@ function createSessionMiddleware(state) {
         sendCommerceError(res, 503, "commerce_unavailable");
         return;
       }
-      projection = auth.requireSession({ sessionRef: header.value });
+      projection = browser ?? auth.requireSession({ sessionRef: header.value });
     } catch {
       sendCommerceError(res, 401, "commerce_session_invalid");
       return;
@@ -948,7 +951,7 @@ function createSessionMiddleware(state) {
         "accountId"
       ]);
       if (
-        session.sessionRef !== header.value
+        session.sessionRef !== (browser?.sessionRef ?? header.value)
         || typeof session.sessionRef !== "string"
         || !SESSION_REFERENCE.test(session.sessionRef)
         || typeof session.accountId !== "string"
@@ -1265,7 +1268,7 @@ function isSelectedCommerceRoute(method, pathname) {
 export function portalCoinCommerceRoutes(state, options = {}) {
   const router = Router({ caseSensitive: true, strict: true });
   const store = state.platform?.coinCommerceStore;
-  const requireSession = createSessionMiddleware(state);
+  const requireSession = createSessionMiddleware(state, options.browserSessions);
   const resolveCommerceModel = createCommerceModelMiddleware(state);
   const requireWalletFirstService = createWalletFirstServiceMiddleware(state);
   const previewRateLimit = createPreviewRateLimiter(

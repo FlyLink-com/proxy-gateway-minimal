@@ -12,6 +12,8 @@ export type {
   PortalRechargeTrustedActionOriginsByAdapter,
 } from "./portal-recharge-client";
 export { PortalRechargeDialog } from "./portal-recharge-dialog";
+export { PortalRechargeOffers } from "./portal-recharge-offers";
+export type { PortalRechargeOffersProps } from "./portal-recharge-offers";
 export {
   clearPortalRechargeReturn,
   PORTAL_RECHARGE_RETURN_STORAGE_KEY,

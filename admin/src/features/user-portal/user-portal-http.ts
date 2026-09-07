@@ -9,8 +9,8 @@ import type {
   PortalUserSecurityState,
   UserPortalClient
 } from "./user-portal-types";
+import { createPortalBrowserFetch, readCookieSession, withPortalAuthLock } from "./portal-browser-session";
 import {
-  authModeFromBackend,
   backendFactor,
   backendHumanVerification,
   createQrDataUri,
@@ -33,7 +33,6 @@ import {
   registrationEmailVerificationProof,
   requiredEmail,
   requiredText,
-  sessionSummary,
   verifiedHuman
 } from "./user-portal-parsers";
 import {
@@ -59,18 +58,46 @@ function endpoint(baseUrl: string, path: string) {
 }
 
 async function jsonRequest(fetchFn: typeof fetch, url: string, init: RequestInit = {}) {
-  const response = await fetchFn(url, {
-    ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...(init.headers ?? {})
+  const path = new URL(url, typeof window === "undefined" ? "http://localhost" : window.location.origin).pathname;
+  const bounded = new Set([
+    "/api/portal/session", "/api/portal/password/session", "/api/portal/password/second-factor",
+    "/api/portal/registration", "/api/portal/browser-session", "/api/portal/browser-session/logout"
+  ]).has(path);
+  const controller = bounded ? new AbortController() : null;
+  const forwardAbort = () => controller?.abort(init.signal?.reason);
+  if (init.signal?.aborted) forwardAbort();
+  else init.signal?.addEventListener("abort", forwardAbort, { once: true });
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const request = async () => {
+    const response = await fetchFn(url, {
+      ...init,
+      signal: controller?.signal ?? init.signal,
+      headers: { "Content-Type": "application/json", ...(init.headers ?? {}) }
+    });
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw portalError(typeof body?.error === "string" ? body.error : "portal request failed");
     }
-  });
-  const body = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw portalError(typeof body?.error === "string" ? body.error : "portal request failed");
+    return body;
+  };
+  try {
+    if (!controller) return await request();
+    // Abort the actual fetch and bound the complete headers/body read. A lost
+    // authentication response is surfaced, never retried automatically.
+    return await Promise.race([
+      request(),
+      new Promise<never>((_resolve, reject) => {
+        timer = setTimeout(() => {
+          const error = new Error("Portal request timed out.");
+          controller.abort(error);
+          reject(error);
+        }, init.method === "GET" ? 15_000 : 30_000);
+      })
+    ]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+    init.signal?.removeEventListener("abort", forwardAbort);
   }
-  return body;
 }
 
 async function noContentRequest(
@@ -143,7 +170,7 @@ export function createHttpUserPortalClient(
   recharge: PortalRechargeClient;
 } {
   const baseUrl = options.baseUrl ?? "";
-  const fetchFn = options.fetchFn ?? fetch;
+  const fetchFn = createPortalBrowserFetch(options.fetchFn ?? fetch);
   const now = options.now ?? (() => new Date());
   const rechargeActionOrigins = rechargeTrustedActionOrigins(options);
 
@@ -153,21 +180,28 @@ export function createHttpUserPortalClient(
     mode: PortalAuthMode,
     humanVerification: PortalHumanVerificationInput
   ): Promise<PortalSession> {
-    const sessionBody = await jsonRequest(fetchFn, endpoint(baseUrl, "/api/portal/session"), {
+    const sessionBody = await withPortalAuthLock(() => jsonRequest(fetchFn, endpoint(baseUrl, "/api/portal/session"), {
       method: "POST",
       body: JSON.stringify({ accountId, code, humanVerification })
-    });
+    }));
     const session = sessionBody.session ?? {};
-    return sessionSummary(
-      requiredText(session.userRef ?? session.loginRef ?? accountId, "用户会话无效。"),
-      mode,
-      session.issuedAt ?? now().toISOString(),
-      String(session.displayName ?? session.userRef ?? session.loginRef ?? accountId),
-      session.sessionRef
-    );
+    return { ...readCookieSession(session), authMode: mode };
   }
 
   return {
+    async restoreSession() {
+      const body = await jsonRequest(fetchFn, endpoint(baseUrl, "/api/portal/browser-session"), { method: "GET" });
+      if (!Object.hasOwn(body, "session")) throw portalError("Portal session is invalid.");
+      return body.session === null ? null : readCookieSession(body.session);
+    },
+    async logout(input) {
+      await withPortalAuthLock(async () => {
+        const body = await jsonRequest(fetchFn, endpoint(baseUrl, "/api/portal/browser-session/logout"), {
+          method: "POST", headers: portalSessionHeaders(input.sessionRef), body: "{}",
+        });
+        if (body.loggedOut !== true) throw portalError("Logout was not confirmed.");
+      });
+    },
     commerce: createPortalCoinCommerceClient({ fetchFn }),
     commerceModel: createPortalCommerceModelClient({ fetchFn }),
     walletFirstCommerce: createPortalWalletFirstCommerceClient({ fetchFn }),
@@ -207,7 +241,7 @@ export function createHttpUserPortalClient(
     async registerTrialAccount(input) {
       const emailVerification = registrationEmailVerificationProof(input.emailVerification);
       const legalAgreement = legalAgreementProof(input.legalAgreement);
-      const body = await jsonRequest(fetchFn, endpoint(baseUrl, "/api/portal/registration"), {
+      const body = await withPortalAuthLock(() => jsonRequest(fetchFn, endpoint(baseUrl, "/api/portal/registration"), {
         method: "POST",
         body: JSON.stringify({
           email: requiredEmail(input.email),
@@ -215,7 +249,8 @@ export function createHttpUserPortalClient(
           legalAgreement,
           emailVerification
         })
-      });
+      }));
+      readCookieSession(body.session);
       return mapRegistrationResult(body);
     },
 
@@ -236,14 +271,15 @@ export function createHttpUserPortalClient(
       }
       if (input.mode === "password") {
         const accountId = requiredText(input.accountId, "请输入电子邮箱。");
-        const body = await jsonRequest(fetchFn, endpoint(baseUrl, "/api/portal/password/session"), {
+        const body = await withPortalAuthLock(() => jsonRequest(fetchFn, endpoint(baseUrl, "/api/portal/password/session"), {
           method: "POST",
           body: JSON.stringify({
             accountId,
             password: requiredText(input.password, "请输入密码。"),
+            rememberMe: input.rememberMe === true,
             humanVerification: backendHumanVerification(input.humanVerification)
           })
-        });
+        }));
         if (body.challenge) {
           const factors = Array.isArray(body.challenge.availableFactors)
             ? body.challenge.availableFactors.map((factor: unknown) => portalFactor(String(factor))).filter(Boolean) as PortalSecondFactorKind[]
@@ -265,13 +301,7 @@ export function createHttpUserPortalClient(
           };
         }
         const session = body.session ?? {};
-        return sessionSummary(
-          requiredText(session.userRef ?? session.loginRef ?? accountId, "用户会话无效。"),
-          authModeFromBackend(session.authMethod, "password"),
-          session.issuedAt ?? now().toISOString(),
-          String(session.displayName ?? session.userRef ?? session.loginRef ?? accountId),
-          session.sessionRef
-        );
+        return readCookieSession(session);
       }
 
       const humanVerification = verifiedHuman(input.humanVerification);
@@ -288,7 +318,7 @@ export function createHttpUserPortalClient(
     },
 
     async completeSecondFactor(input) {
-      const body = await jsonRequest(fetchFn, endpoint(baseUrl, "/api/portal/password/second-factor"), {
+      const body = await withPortalAuthLock(() => jsonRequest(fetchFn, endpoint(baseUrl, "/api/portal/password/second-factor"), {
         method: "POST",
         body: JSON.stringify({
           challengeRef: requiredText(input.challengeRef, "二次验证会话无效。"),
@@ -297,15 +327,9 @@ export function createHttpUserPortalClient(
             ? { code: requiredText(input.totpCode, "请输入身份验证器验证码。") }
             : { passkeyProof: requiredText(input.passkeyProof, "通行密钥验证失败。") })
         })
-      });
+      }));
       const session = body.session ?? {};
-      return sessionSummary(
-        requiredText(session.userRef ?? session.loginRef, "用户会话无效。"),
-        authModeFromBackend(session.authMethod, input.factor === "passkey" ? "passkey" : "authenticator"),
-        session.issuedAt ?? now().toISOString(),
-        String(session.displayName ?? session.userRef ?? session.loginRef),
-        session.sessionRef
-      );
+      return readCookieSession(session);
     },
 
     async fetchCurrentState(input) {

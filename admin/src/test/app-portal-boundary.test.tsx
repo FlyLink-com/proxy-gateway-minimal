@@ -28,11 +28,16 @@ afterEach(() => {
 describe("App portal boundary", () => {
   test("does not construct the preview portal client for the real portal route", async () => {
     window.history.replaceState(null, "", "/portal");
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => new Response(JSON.stringify(
+      String(input) === "/api/portal/browser-session" ? { session: null } : {}
+    )));
 
     render(createElement(App));
 
     expect(await screen.findByRole("heading", { name: "账号登录" })).not.toBeNull();
     expect(localClientCalls).toEqual([]);
+    expect(fetchSpy.mock.calls[0][0]).toBe("/api/portal/browser-session");
+    expect(fetchSpy.mock.calls[0][1]).toMatchObject({ credentials: "same-origin", cache: "no-store", redirect: "error" });
   });
 
   test("constructs the demo portal client only for the explicit preview route", async () => {

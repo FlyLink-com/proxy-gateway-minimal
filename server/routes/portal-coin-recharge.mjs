@@ -130,16 +130,19 @@ function projectOrder(value) {
   return result;
 }
 
-function sessionMiddleware(auth) {
+function sessionMiddleware(auth, browserSessions) {
   return function requireSession(req, res, next) {
+    let browser;
+    try { browser = browserSessions?.session(req); }
+    catch { sendError(res, 401, "payment_recharge_session_invalid"); return; }
     const sessionRef = readRawHeader(req, "x-portal-session");
-    if (sessionRef === null || !SESSION_REFERENCE.test(sessionRef)) {
+    if (!browser && (sessionRef === null || !SESSION_REFERENCE.test(sessionRef))) {
       sendError(res, 401, "payment_recharge_session_invalid");
       return;
     }
     try {
-      const session = exactObject(auth.requireSession({ sessionRef }), ["sessionRef", "accountId"]);
-      if (session.sessionRef !== sessionRef) throw new Error();
+      const session = exactObject(browser ?? auth.requireSession({ sessionRef }), ["sessionRef", "accountId"]);
+      if (session.sessionRef !== (browser?.sessionRef ?? sessionRef)) throw new Error();
       res.locals.paymentRechargeAccountId = safeReference(session.accountId);
       next();
     } catch {
@@ -269,6 +272,7 @@ export function createPortalCoinRechargeRouter({
   auth,
   paymentRechargeProvider,
   nowFn = () => new Date(),
+  browserSessions,
 }) {
   if (!coordinator || !auth || typeof auth.requireSession !== "function") {
     throw new TypeError("Portal recharge dependencies unavailable");
@@ -278,7 +282,7 @@ export function createPortalCoinRechargeRouter({
   }
   const callback = CALLBACKS[paymentRechargeProvider];
   const router = Router({ caseSensitive: true, strict: true });
-  const requireSession = sessionMiddleware(auth);
+  const requireSession = sessionMiddleware(auth, browserSessions);
   const jsonBody = json({ limit: "32kb", strict: true, type: "application/json" });
 
   router.get("/api/portal/coins/recharge/offers", withoutQuery, requireSession, asyncHandler(

@@ -349,19 +349,22 @@ function readRawHeader(req, expectedName) {
     : { state: "missing", value: null };
 }
 
-function createSessionMiddleware(auth) {
+function createSessionMiddleware(auth, browserSessions) {
   return function requirePortalSession(req, res, next) {
+    let browser;
+    try { browser = browserSessions?.session(req); }
+    catch { sendWalletError(res, 401, "wallet_session_invalid"); return; }
     const header = readRawHeader(req, "x-portal-session");
     if (
-      header.state !== "present"
-      || !SESSION_REFERENCE.test(header.value)
+      !browser && (header.state !== "present"
+      || !SESSION_REFERENCE.test(header.value))
     ) {
       sendWalletError(res, 401, "wallet_session_invalid");
       return;
     }
     let projection;
     try {
-      projection = auth.requireSession({ sessionRef: header.value });
+      projection = browser ?? auth.requireSession({ sessionRef: header.value });
     } catch {
       sendWalletError(res, 401, "wallet_session_invalid");
       return;
@@ -372,7 +375,7 @@ function createSessionMiddleware(auth) {
         "accountId"
       ]);
       if (
-        session.sessionRef !== header.value
+        session.sessionRef !== (browser?.sessionRef ?? header.value)
         || !SESSION_REFERENCE.test(session.sessionRef)
       ) {
         throw projectionInvalid();
@@ -455,7 +458,7 @@ function requireWalletProjection(store, accountId) {
   return projectWallet(store.getWalletProjection({ accountId }));
 }
 
-export function createPortalCoinWalletRouter({ store, auth }) {
+export function createPortalCoinWalletRouter({ store, auth, browserSessions }) {
   if (
     !store
     || typeof store.getWalletProjection !== "function"
@@ -466,7 +469,7 @@ export function createPortalCoinWalletRouter({ store, auth }) {
     throw new TypeError("Portal Wallet dependencies unavailable");
   }
   const router = Router({ caseSensitive: true, strict: true });
-  const requireSession = createSessionMiddleware(auth);
+  const requireSession = createSessionMiddleware(auth, browserSessions);
 
   router.get(
     "/api/portal/coins/wallet",
