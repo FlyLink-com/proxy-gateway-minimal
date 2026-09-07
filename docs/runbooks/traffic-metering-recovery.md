@@ -593,3 +593,40 @@ Portal origin 接线；本次只补本节 v2 源码、合成测试和运行说�
 此次解决“正常过期/稳定停用混在同通道就无法准入”的源码缺口，不自动证明
 历史生产集合符合新规则。legacy 身份缺失、有效项缺 cursor 等仍须 fresh
 只读核验；不补造身份、不删除历史记录，也未执行 baseline 或临时采集激活。
+
+### 2026-09-07 18:09–18:13 UTC 部署前复核与最小补充
+
+操作员已要求继续生产更新并允许必要的临时停写。本次尚未停写或部署：现役
+应用为 `control-plane-82707bc15c40-ingress-4d964ebb`，Node 22.23.1 / ABI 127；
+应用 active/running、自动重启数为 0，SGP TUIC sidecar 正常；原主 collector
+仍在定时失败。旧发布的保护收尾已完成，不把旧 attention 状态当作当前阻塞。
+
+通过 SSH stdin 在内存加载精确 `e0bb3a7490faee88d2d9fa2a3f7dc347909a77af`
+helper，仅调用 v2 `inspect` 和 aggregate-only SELECT；没有安装远端源码、
+构造 runtime、调用统计 reader、写 plan 或修改业务数据。SQLite 只读连接仍
+涉及读锁及可能的 WAL/SHM 元数据活动，不声称文件系统绝对零副作用。
+
+- 日本 v2 inspect 返回 `baseline_legacy_binding_unsupported`：13 条已签发
+  历史记录缺 durable，其中 11 条权益期限已过、2 条未过；另有 1 条无 durable
+  对应的游标，其标识存在旧 Portal 记录引用。不能据此自动补造新身份或删历史。
+- SGP v2 inspect 返回 `baseline_binding_invalid`。进一步分类确认日本 81 条、
+  SGP 86 条仅 `account.owner_ref != account.id`，其他账号和 entitlement
+  引用比较均为 0 不匹配。初始账户签发支持独立 ownerRef，因此这是候选过严，
+  不是生产身份损坏。本次只移除该错误等值限制，保留 owner 非空、完整 binding
+  摘要及 prepare 后漂移拒绝，不更改任何生产账户。
+- 生命周期有效、关联完整、有唯一 active link 但没有 cursor 的记录，日本
+  7 条、SGP 9 条。现有合同只更新已存在的游标，不能用本次 owner 修正一并
+  放行新 cursor 初始化；计量起点和不追扣未知历史的政策须单独明确。
+
+新增 active/retained 独立 owner 正测与 owner 漂移负测：RED 为 79 项中
+75 pass / 4 fail / 0 skip；最小修正后 baseline + integration 为
+103 pass / 0 fail / 0 skip；主线程最终五文件定向回归为
+151 pass / 0 fail / 0 skip，strict docs authority 393 blocks 及 diff check 通过。
+既有 Linux CI `34149163996` 对精确旧 head
+`e0bb3a7490faee88d2d9fa2a3f7dc347909a77af` 有效；本次仅补验受影响部分，
+不把旧 CI 说成覆盖新提交。
+
+上述聚合不能相加作为客户数，也不是完整 runtime Identity Gate healthy 证明。
+在 legacy 身份兼容与缺 cursor 的首次计量边界解决前，不能恢复无 scope 主采集，
+也不能把“仅安装代码”报告为计量已恢复。本次没有触发停写、baseline/apply、
+新计费或主服务切换；现役状态保持不变。

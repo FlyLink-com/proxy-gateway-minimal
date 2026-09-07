@@ -417,6 +417,52 @@ function prepareV2(f, overrides = {}) {
     observations: f.observations, expectedInventory: inspection.privateInventory, ...overrides });
 }
 
+for (const [label, index] of [["active", 0], ["retained", 2]]) {
+  test(`v2 accepts a legitimate independent owner for ${label} account`, (t) => {
+    const f = mixedFixture(t);
+    // Initial Portal accounts may have a distinct ownerRef. The Portal user,
+    // issuance and entitlement still refer to the same account primary key.
+    const ownerRef = `private-account-independent-owner-${index}`;
+    f.db.prepare("UPDATE platform_accounts SET owner_ref=? WHERE id=?").run(ownerRef, f.refs[index].accountId);
+    const beforeAccounting = accountingRows(f);
+    const retainedBefore = f.store.getUsageCounterCursor(f.refs[2]);
+    const inspected = inspectV2(f);
+    assert.equal(inspected.ok, true, JSON.stringify(inspected.summary));
+    assert.equal(inspected.privateInventory.entries.length, 2);
+    assert.equal(inspected.privateInventory.retainedBindings.length, 1);
+    assertRedacted(inspected.summary, f);
+    const prepared = prepareV2(f);
+    assert.equal(prepared.ok, true, JSON.stringify(prepared.summary));
+    assert.equal(apply(f, prepared).updatedCursorCount, 2);
+    const args = { dbPath: f.dbPath, plan: prepared.privatePlan, expectedPlanDigest: prepared.summary.planDigest, nowFn };
+    assert.equal(verifyTrafficVlessBaseline(args).ok, true);
+    assert.equal(admitTrafficVlessBaseline(args).ok, true);
+    assert.equal(f.store.getAccount(f.refs[index].accountId).ownerRef, ownerRef);
+    assert.deepEqual(f.store.getUsageCounterCursor(f.refs[2]), retainedBefore);
+    assert.deepEqual(accountingRows(f), beforeAccounting);
+  });
+
+  test(`v2 pins independent ${label} account owner through apply verify and admit`, (t) => {
+    for (const action of ["apply", "verify", "admit"]) {
+      const f = mixedFixture(t);
+      f.db.prepare("UPDATE platform_accounts SET owner_ref=? WHERE id=?").run(`private-account-original-owner-${index}`, f.refs[index].accountId);
+      const prepared = prepareV2(f);
+      assert.equal(prepared.ok, true, JSON.stringify(prepared.summary));
+      if (action !== "apply") assert.equal(apply(f, prepared).ok, true);
+      f.db.prepare("UPDATE platform_accounts SET owner_ref=? WHERE id=?").run(`private-account-changed-owner-${index}`, f.refs[index].accountId);
+      const beforeCursors = tableRows(f, "platform_usage_counter_cursors");
+      const beforeAccounting = accountingRows(f);
+      const args = { dbPath: f.dbPath, plan: prepared.privatePlan, expectedPlanDigest: prepared.summary.planDigest, nowFn };
+      const result = action === "apply" ? applyTrafficVlessBaseline(args) : action === "verify" ? verifyTrafficVlessBaseline(args) : admitTrafficVlessBaseline(args);
+      assert.equal(result.ok, false, action);
+      assert.equal(result.errorCode, "baseline_binding_changed", action);
+      assertRedacted(result, f);
+      assert.deepEqual(tableRows(f, "platform_usage_counter_cursors"), beforeCursors);
+      assert.deepEqual(accountingRows(f), beforeAccounting);
+    }
+  });
+}
+
 test("v2 explicitly retains mixed history while strict v1 remains fail closed and shape compatible", (t) => {
   const clean = fixture(t);
   const v1 = inspectTrafficVlessBaseline({ dbPath: clean.dbPath, channelRefs: CHANNELS, nowFn });
@@ -477,7 +523,7 @@ for (const [label, sql] of [
   ["active missing cursor", "DELETE FROM platform_usage_counter_cursors WHERE edge_credential_ref='private-credential-0'"],
   ["terminal legacy missing durable", "DELETE FROM platform_portal_edge_credentials WHERE request_id='private-request-2'"],
   ["missing account", "UPDATE platform_issuance_requests SET account_id='missing' WHERE id='private-request-2'"],
-  ["wrong account owner", "UPDATE platform_accounts SET owner_ref='other-owner' WHERE id='private-account-2'"],
+  ["empty account owner", "UPDATE platform_accounts SET owner_ref='' WHERE id='private-account-2'"],
   ["wrong portal owner", "UPDATE platform_portal_access_requests SET portal_user_ref='other-owner' WHERE id='private-request-2'"],
   ["wrong entitlement", "UPDATE platform_portal_access_requests SET entitlement_ref='private-entitlement-0' WHERE id='private-request-2'"],
   ["missing material", "UPDATE platform_portal_edge_credentials SET edge_material_digest='' WHERE request_id='private-request-2'"],

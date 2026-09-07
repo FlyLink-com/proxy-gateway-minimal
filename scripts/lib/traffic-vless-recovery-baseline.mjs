@@ -162,7 +162,7 @@ function retainedState(db, databaseIdentityDigest, channels, nowMs) {
     if (db.prepare("SELECT COUNT(*) AS count FROM platform_portal_edge_credentials WHERE edge_credential_ref=?").get(binding.edge_credential_ref).count !== 1n) fail("baseline_binding_ambiguous");
     if (binding.account_id_readback !== binding.account_id || binding.entitlement_account_id !== binding.account_id
       || binding.entitlement_ref !== binding.entitlement_id || binding.portal_user_ref !== binding.account_id
-      || binding.owner_ref !== binding.account_id || ![0n, 1n].includes(binding.edge_lifecycle_mutation)) fail("baseline_binding_invalid");
+      || ![0n, 1n].includes(binding.edge_lifecycle_mutation)) fail("baseline_binding_invalid");
     if (!["active", "suspended", "disabled"].includes(binding.account_status)
       || !["active", "expired", "revoked", "suspended"].includes(binding.entitlement_status)
       || !["issued", "revoked", "cancelled"].includes(binding.request_status)
