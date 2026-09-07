@@ -1,178 +1,236 @@
-# Compact marketplace cards — scoped follow-up QA
-
-final result: passed
-
-- Risk: B; local-only presentation follow-up in `D:/Projects/proxy-gateway-minimal/.worktrees/portal-product-card-polish`, branch `codex/fix-portal-product-cards`, base HEAD `6c37d543a1698192e03c8195dc1730f0eee3b523` plus preserved local changes. No commit, push, new PR or production action.
-- Classification: **local candidate**. Entry/bootstrap/stylesheet/output remain `admin/portal/index.html` -> `admin/src/portal-main.tsx` -> `UserPortalPage` -> `admin/src/portal-static-preserve.css` -> `admin/dist-portal`.
-- Scope: remove the visible category headings Plans and Data packs from both marketplace implementations while retaining translated accessible region names. Actual product titles, summaries, prices, purchase/reserve semantics and deferred-transition controls are unchanged.
-- Shared cards use 20px padding and 14px content gaps; price spacing is 6px with no extra padding, and action top padding is 4px. Price remains 48px; primary button remains at least 48px high.
-- Selected sources: `C:/Users/g/AppData/Local/Temp/codex-clipboard-b8279033-bf4c-4172-abc6-6a72ff7a8a44.png` (2318 x 742) and `C:/Users/g/AppData/Local/Temp/codex-clipboard-44053f50-8ad1-4574-8556-dca42d082b28.png` (2240 x 782). These are enlarged annotated content crops, not a request to change fonts, colors or product names.
-- Chrome desktop evidence: `.codex-artifacts/portal-product-card-polish/compact-cards-desktop.png` (1440 x 769 capture). Three plan cards and two data-pack cards retain their rows, with zero visible category h2 elements. Each card measures 264.992 CSS px high, down from the pre-change 304.992px; all buttons measure 48px. Cards are approximately 355.33px wide in the final desktop viewport.
-- Narrow evidence: `.codex-artifacts/portal-product-card-polish/compact-cards-mobile.png`, captured after a 390 x 844 viewport override. The document has 375px client/scroll width (scrollbar excluded), so no horizontal overflow; cards are 301px wide and 264.992px high, buttons 48px. The existing bottom navigation and long-page scrolling remain. Viewport override was reset afterward.
-- Both reference images and both final screenshots were opened together in one comparison input. Compared the same loaded Chinese/light catalog with dialogs closed, accounting for the reference crop scale. Titles, price hierarchy, normal-weight summaries, blue CTA, borders and radius are retained; requested whitespace and category labels are removed. No clipped card content or actionable visual defect found within this scope. No image assets or dependencies were added. No mobile source was supplied; narrow-screen evidence validates adaptation, not pixel identity.
-- Browser uses the authorized disposable local account at `http://127.0.0.1:5175/`; login and anti-bot check succeeded after refresh. Catalog is loaded, no dialog is open, and no order, recharge, callback or purchase submission was made. Browser is left signed in on the marketplace; both owned loopback services remain running for preview, so cleanup is intentionally not performed.
-- Validation: targeted RED 50 passed / 6 failed -> GREEN 56 passed / 0 failed; later Data packs assertions were added after implementation and passed without a separately claimed RED. Full Admin: **54 files / 799 passed / 0 failed** on Node v22.23.1. TypeScript and Portal build/verifier passed; existing large-bundle warning remains.
-- Known limits: the pre-existing Vite development WebSocket/send-error messages remain in console; this is not a clean-console claim. No new dark-mode, purchase-preview or production verification was performed for this heading/spacing-only follow-up. The prior full-server failure evidence below remains unresolved and was not rerun or waived. This scoped visual pass does not close the broader historical rollout gates.
-- Final closeout: Admin build/verifier, scoped ESLint and `git diff --check` also passed. The existing bundle-size and Git line-ending warnings are retained, not classified as new failures.
-
----
-
-## Historical checkpoint — unified catalog before compact-card follow-up
-
-# Unified marketplace catalog design QA
-
-final result: blocked
-
-## Current scope and verified implementation
-
-- Risk: B; one continuing Portal UI change, no new PR, commit, push or deployment.
-- Worktree: `D:/Projects/proxy-gateway-minimal/.worktrees/portal-product-card-polish`; branch `codex/fix-portal-product-cards`; HEAD `6c37d543a1698192e03c8195dc1730f0eee3b523` plus local changes.
-- Classification: **local candidate**, not production identity.
-- Entry chain remains `admin/portal/index.html` -> `admin/src/portal-main.tsx` -> `UserPortalPage` -> `admin/src/portal-static-preserve.css` -> `admin/dist-portal`.
-- Each category now occupies a full row. Product grid: three columns above 1100px, two at 721–1100px, one at 720px and below.
-- Plans and data packs use one shared title / prominent Coins price / summary / single CTA card. Catalog Details, repeated metadata and notices are removed.
-- Purchase terms, delivered benefits and accepted Coins remain in confirmation, bound to the current `quote.offer`. Purchase and deferred reserve remain distinct actions; this is not an automatic purchase.
-- The five local UI harness products use consumer-facing copy. Exact IDs, versions, amounts, benefits and local safety markers are unchanged. No production catalog was edited.
-
-## Source and visual validation boundary
-
-- Selected source: `C:/Users/g/AppData/Local/Temp/codex-clipboard-aac2023e-d91d-49f5-9e36-023c2d8287d4.png`, 2273 x 766 source pixels, red annotations indicating three equal product slots.
-- Intentional adaptation: keep existing light/dark theme tokens and fonts, preserve real Coins prices and available SKUs; no invented quarterly package, fiat conversion, recommended badge or recurring charge.
-- Browser: user-selected Chrome, `http://127.0.0.1:5175/`.
-- The updated harness required a clean restart. Chrome is now at the local login screen awaiting confirmation for its fresh anti-bot challenge.
-- **No current rendered catalog screenshot or source/implementation comparison yet.** Previous screenshots below are historical and do not prove this iteration.
-- Therefore current browser geometry, focus, primary-preview interaction, mobile/dark appearance and console checks are pending. Code, build and component tests are not substituted for visual evidence.
-- Required fidelity surfaces: typography, spacing, tokens and consumer copy are implemented but await rendered comparison; no new image asset is required or generated.
-
-## Validation recorded so far
-
-- TDD card/CSS: 16 failed / 29 passed before the change -> **45 passed / 0 failed** after it.
-- Purchase integration: **87 passed / 0 failed**, including quote-bound notices and retained async/focus/order safeguards.
-- Final full Admin suite: **54 files, 796 passed / 0 failed**. Two shared legacy text assertions were updated after the old technical message caused seven initial failures; all routing and no-legacy-checkout assertions remain. Four further tests cover the deferred-list style boundary and Chinese/English consumer loading/unavailable copy.
-- TypeScript, Portal build + verifier, Admin build + verifier, targeted lint, and `git diff --check`: passed at this checkpoint. Existing >500 kB bundle warnings remain.
-- Local UI display + harness: **15 total / 14 passed / 0 failed / 1 Windows platform skip / 0 cancelled**.
-- Full server: **4287 total / 4220 passed / 11 failed / 56 skipped / 0 cancelled**, exit 1. Complete log: `.codex-artifacts/portal-product-card-polish/catalog-server-validation.log`. The suite is **not green**; failure causes were not classified or waived.
-- Independent read-only review found P0=0, P1=0 and one P2: shared product styles still used by the existing deferred-transition list. The list now has independent grid/card/title/facts/actions classes scoped under its existing queue. Its time, amount and cancellation behavior remain covered; new boundary tests failed before the fix and passed afterward. Final full Admin, builds, verifiers and scoped lint passed after this correction.
-- Follow-up independent source review confirms that P2 is closed: P0=0, P1=0, open P2=0. This does not replace the still-pending rendered browser comparison.
-- Old Vite stopped before old API; both listeners were zero and old owned p41188 temporary root was absent. New preview listeners are loopback-only. Historical temporary roots were not touched.
-- Root checkout `package.json` and `vercel.json` hashes remain unchanged. No production, real account, order, payment or callback action.
-
-## Remaining gate
-
-- After the user confirms this fresh anti-bot check, complete local login, then compare desktop/mobile screenshots with the selected source and verify purchase-preview -> close without submitting an order.
-- Keep current result blocked until that browser evidence exists.
-
----
-
-## Historical predecessor QA — not evidence for the current unified catalog
-
-# Subscription pricing-card design QA
-
-final result: passed
+# Wallet four-region desktop validation
 
 ## Scope and identity
 
-- Risk: B. One compact Portal UI change, continuing the existing card-polish work. Expected PR count: 1; no PR created or pushed in this iteration.
-- Worktree: `D:/Projects/proxy-gateway-minimal/.worktrees/portal-product-card-polish`.
-- Branch: `codex/fix-portal-product-cards`; base HEAD: `6c37d543a1698192e03c8195dc1730f0eee3b523`, plus the uncommitted UI changes.
-- Classification: **local candidate**, not deployed production identity.
-- Entry: `admin/portal/index.html` -> `admin/src/portal-main.tsx` -> `UserPortalPage` -> `admin/src/portal-static-preserve.css` -> `admin/dist-portal`.
-- No production, payment, pricing, fulfillment, database, deployment or backend changes.
+- Risk: B. Frontend presentation, component tests, and an isolated local validation profile; one intended PR.
+- Worktree: `D:/Projects/proxy-gateway-minimal/.worktrees/portal-wallet-checkout-layout`.
+- Branch: `codex/portal-wallet-checkout-layout`.
+- Base source: `986318c475f5d6ecd932cd1d5aba0d95d11ab4bf`, with uncommitted changes.
+- Classification: local candidate; not production identity or deployment evidence.
+- Candidate chain: `admin/portal/index.html` -> `admin/src/portal-main.tsx` -> `UserPortalPage` -> `admin/src/portal-static-preserve.css` -> `admin/dist-portal`.
+- No production backend, payment callback, schema, environment, or provider changes. The local-only validation launcher adds an explicitly closed recharge-payment boundary.
+- This is the latest Wallet report. The previous marketplace-card QA remains available at `986318c475f5d6ecd932cd1d5aba0d95d11ab4bf:design-qa.md`; its historical result is not superseded by this separate Wallet scope.
 
-## Visual target and comparison
+## Intent and implemented changes
 
-- Source: `C:/Users/g/AppData/Local/Temp/codex-clipboard-79abeee6-3bdb-45d4-b4a7-fb2272654e21.png` (2482 x 960 pixels).
-- User-requested adaptation: retain the current minimal palette, emphasize the package price, render details as body text, and make the purchase CTA prominent. This is not a pixel-for-pixel clone of the dark three-column marketing board.
-- Accepted differences: existing Portal shell and plan/data-pack grouping; real server Coins amounts instead of sample fiat prices; no fabricated recommended badge, discounts, monthly-equivalent prices, auto-renewal promise, feature claims, gradients or decorative artwork. Existing fonts and theme tokens are retained.
-- Browser: Codex in-app browser, `http://127.0.0.1:5175/`, authorized disposable local account. No real account or payment used.
-- Desktop evidence: `.codex-artifacts/portal-product-card-polish/subscription-desktop.png`, 1000 x 1000 image and CSS viewport, DPR 1; Chinese/light, catalog loaded, dialogs closed. First plan card is 320 x 527 CSS pixels.
-- Narrow light evidence: `.codex-artifacts/portal-product-card-polish/subscription-mobile-light.png`, 390 x 844 image and CSS viewport, DPR 1; Chinese/light, detail focus restored.
-- Narrow dark evidence: `.codex-artifacts/portal-product-card-polish/subscription-mobile-dark-en.png`, 390 x 844 image and CSS viewport, DPR 1; English/dark, catalog loaded, dialogs closed. Card width 316px, usable CTA width 266px, CTA height 48px.
-- The source, final desktop screenshot and final English/dark screenshot were opened together in the same comparison input. The complete first card and its text are readable at these dimensions, so an additional focused crop was not required. The supplied board has no mobile viewport; mobile evidence checks the requested adaptive hierarchy rather than claiming mobile source fidelity.
-- Initial 1440px/cropped captures had compositor repetition, blur or incorrect scaling. They are excluded from QA. The final 1000px desktop and 390px screenshots replace that evidence. `subscription-card-desktop.png` is an unsuccessful capture experiment, not accepted evidence.
-- CDP mobile metrics were used at both viewport sizes to obtain DPR 1 despite the host's zoom. This verifies responsive CSS, not native desktop pointer or mobile hardware behavior. No application CSS was changed to compensate for capture problems.
+- Follow the user's corrected four-region layout: upper-left balance, upper-right recharge, lower-left recent ledger, and lower-right explanations.
+- Make spendable balance the primary amount. Show purchased, bonus, reward, and reserved amounts in four secondary cells; retain pending rewards as auxiliary status rather than treating them as spendable balance.
+- Display the six API-provided recharge offers in a compact three-column, two-row grid. No prices, methods, denominations, discounts, or bonus awards are hardcoded by this presentation change.
+- Remove the visible wallet-overview heading; retain a named Wallet region for accessibility.
+- Retain five recent ledger entries, with a working view-all/return path. Keep ledger date and amount cells on one line.
+- Use thin borders, white light-theme surfaces, rounded cards, and existing theme tokens.
+- Omit repeated offer labels only in the compact inline catalog; keep the actual Coins quantity, price, method, and payment action.
+- Present payment amount, Coins, method, compact status, and a collapsed order reference in the checkout dialog. Show the selected offer while creation is pending.
+- Use the existing `admin/public/payment-alipay-icon.png` asset for Alipay offers and orders; other methods retain generic labels.
+- The ready-to-pay description is exactly `即将跳转支付页面`. The Alipay CTA is `支付宝支付`.
+- Preserve the existing protected continuation function and real-order eligibility. Unknown creation recovers the original intent; busy state disables offer submission. No additional automatic create or payment action was added.
+- The earlier checkout-summary work remains separate from the balance-card design. This run's final browser acceptance covers the four-region wallet, not a successful payment or a live waiting-for-payment state.
+- Mobile redesign is out of scope. One-screen acceptance is measured at 1440 x 900, not promised for every viewport, zoom setting, or account state.
 
-## Findings and required fidelity surfaces
+## Source and rendered evidence
 
-No actionable P0/P1/P2 findings in the requested subscription-card scope after the valid comparison.
+- Source visual truth paths (user-provided):
+  - `C:/Users/g/AppData/Local/Temp/codex-clipboard-759d3fe2-c146-4cf0-a65d-7930b8d1d8fc.png` (corrected numbered regions; source 2338 x 1422, conversation display 2048 x 1246).
+  - `C:/Users/g/AppData/Local/Temp/codex-clipboard-cdc06f6a-52a0-47b1-ab76-a4e3ded7a3a2.png` (six recharge offers to bring inline).
+  - `C:/Users/g/AppData/Local/Temp/codex-clipboard-8e75ba48-3210-482b-bf0f-23b6d046019b.png` (offer hierarchy reference only; its decorative styles and bonus awards are not new business requirements).
+- Implementation URL: `http://127.0.0.1:5175/`, in-app browser.
+- Observed title/state: GCC WebOS user center, signed into the authorized disposable local account. No production credentials or customer data were used.
+- Final implementation screenshot: `.local-validation/wallet-four-regions-desktop.png`, 1440 x 900 pixels at a 1440 x 900 CSS viewport.
+- The annotated source and final rendered screenshot were opened together in one comparison input. Comparison is region-relative: the source shows the old layout with numbered placement instructions, whereas the implementation includes application chrome and synthetic data. This is not a pixel-copy claim.
+- Full-view and focused-region comparison checked balance hierarchy, six-offer alignment, ledger rows, explanatory copy, thin borders, and Alipay asset readability. All four regions are clearly visible in the full-resolution capture.
+- Final geometry: document and body height 900; wallet bottom 857.59; upper row height 401.19; lower row height 330.40. Six offers and five ledger rows are visible without vertical scrolling.
+- Experimental clipped captures with incorrect scaling are excluded from final evidence; only the normal browser capture above is authoritative.
+- Login and the local challenge were completed under the user's existing local-preview permission. No recharge creation, payment, or callback was submitted through the final CNY preview.
+- Wallet, ledger, recharge-offer, and recharge-order reads returned HTTP 200; the Alipay asset loaded (304 cache validation). Browser error-console count was zero.
+- Refresh-wallet, view-all ledger, and return-to-wallet interactions were verified. The default wallet state has no dialog open.
 
-1. **Typography:** centered plan title and 48px/750 price numeral establish the reference hierarchy; 15px regular Coins unit is secondary. Details and notices use 14px/400 and 1.7 line height. English titles, amounts, and Coin types wrap without clipping. The existing product font stack is preserved rather than introducing an external font.
-2. **Spacing/layout:** 24px card padding, 18px section gap and radius, separated price/content blocks, and bottom full-width actions. The details control is visually quiet but retains a 44px minimum target. At 390px the primary action remains 48px high and fully inside the card; document scroll width equals client width.
-3. **Colors/tokens:** white surface and existing blue CTA in light theme; existing charcoal surface/cyan CTA in dark theme. Target notices retain all server text but no longer look like an orange warning box. Focus outlines and disabled colors remain theme-aware.
-4. **Image/asset quality:** the selected portion is editable pricing UI, not a raster product illustration. The user explicitly requests simpler colors, so the dark gradient artwork is intentionally not reproduced. No images, hand-drawn SVGs, fake icons or new asset dependencies were introduced. Final evidence is sharp enough to inspect text, borders and controls.
-5. **Copy/content:** catalog titles, amount, duration, traffic allowance, accepted Coins and notices remain server-authoritative. No price conversion or invented period/benefit. Purchase and reserve labels retain their separate meanings. Data-pack markup and style are not given the subscription modifier.
+## Findings and fidelity coverage
 
-## Interaction and technical validation
+- Fonts/typography: the primary balance is prominent and the four secondary quotas remain subordinate; offer quantities and prices remain readable after compacting repeated labels.
+- Spacing/layout rhythm: the four requested regions form two aligned rows. The ledger stays compact and its dates do not wrap.
+- Colors/tokens: existing theme tokens, white card surfaces, and thin borders are retained. No decorative gold/gradient reference styling was introduced.
+- Image quality/assets: the existing Alipay image is displayed at 22 x 22 with white backing for contrast, without modifying or approximating the asset.
+- Copy/content: API amounts and methods are preserved. No bonus claims were copied from the reference. The balance is not presented as an order summary.
+- Final four-region wallet comparison: no unresolved P0, P1, or P2 visual finding. Payment-flow acceptance, narrow-screen redesign, and production readiness are excluded.
 
-- Desktop: Details -> server checkout preview -> Escape; dialog closes and focus returns to the originating Details button.
-- Narrow English/dark: Buy with Coins -> confirmation preview -> Escape; focus returns to the originating purchase button. The final confirmation was never submitted.
-- Orders subsequently showed `No orders yet`; sidebar available Coins remained 1000. No debit, recharge, order creation or callback was exercised.
-- One Portal shell, no horizontal overflow at the tested sizes, no console warning/error entries in this browser session. Existing preview/quote API responses rendered successfully.
-- TDD: new CSS expectations initially 2 failed / 17 passed, then 19 passed. Card expectations initially 8 failed / 30 passed; final valid-contract suite 36 passed after removing two impossible category/delivery fixtures.
-- Full Admin suite: 54 files, **798 passed / 0 failed**, Node v22.23.1.
-- TypeScript, Portal build/verifier, Admin build/verifier, ESLint on the ten changed TS/TSX files, and `git diff --check`: passed. Existing large-bundle warnings remain.
-- Independent bounded review found no blocking component/CSS behavior or accessibility issue; browser QA is recorded separately above.
+## Review and comparison history
 
-## Comparison history and limits
+- The earlier reversed balance/recharge placement was corrected to the user's numbered layout.
+- Static review found a main-balance font-size specificity collision; scoped selectors and a regression contract fix it.
+- A browser comparison found ledger date wrapping. Desktop columns now use 22/22/40/16 proportions with automatic table layout and non-wrapping cells.
+- A subsequent comparison found excess height: wallet bottom was 937.59 before compacting repeated offer labels and is now 857.59 at 1440 x 900.
+- Low Alipay icon contrast on the blue action was corrected using the original asset on a small white backing. The final source/rendered comparison includes this fix.
+- Independent frontend review and local-profile review reported no confirmed P0/P1/P2 issues. These source reviews complement, rather than replace, the final browser comparison.
 
-- One valid final visual comparison; no P0/P1/P2 application fix was needed after it. Earlier screenshot troubleshooting is not counted as a design-QA iteration.
-- Passing means the requested local subscription-card adaptation passed, not that the entire repository, Portal or production release is ready.
-- Full server tests were not rerun for this presentation-only iteration. The preceding phase's recorded 4217 passed / 11 failed / 56 skipped remains unresolved; this result does not reclassify those failures.
-- All local theme/language changes were restored to Chinese/light. Temporary viewport emulation is cleared for handoff; both loopback-only preview services remain running for the user. Stop Vite before the disposable backend when preview ends so its owned temporary data is removed.
-- No remaining P3 refinement is required for the requested scope. Broader marketplace group composition and the existing wallet summary wrapping are separate follow-ups.
+## Closed local catalog validation
 
-## Implementation checklist
+- `scripts/start-local-coin-commerce-cny-catalog-readonly-ui-validation.mjs` is a separate zero-argument local entry using the existing runtime and actual CNY pricebook projection. Existing validation profiles are unchanged.
+- Fixed synthetic local configuration supplies six CNY Alipay offers without inheriting provider credentials. An injected provider transport rejects every outbound call.
+- The outer HTTP boundary permits only the canonical payment catalog/order GET paths and rejects creation, capture, and callback requests before the application handler. This is a read-only recharge-payment boundary, not a claim that login or the entire validation runtime is read-only.
+- Marker-owned disposable data supplies five local wallet credits totaling 1000, allowing realistic balance and ledger layout checks without customer data.
+- Random-loopback integration verified six correct offers, no provider calls, and zero orders before and after a denied create attempt. Its exact temporary root was cleaned.
 
-- [x] Subscription-only presentation, price prominence and body-style details.
-- [x] Full-width, theme-aware primary CTA, keyboard focus and busy state retained.
-- [x] Exact catalog prices, delivery text, notices and separate purchase/reserve handlers protected by tests.
-- [x] Desktop/light and narrow light/dark browser evidence compared against the supplied reference.
-- [x] Local build, tests, lint and verifier results recorded; production untouched.
+## Automated validation
 
----
+- TDD red evidence was captured for four-region structure, single-line ledger dates, compact offer labels, and Alipay contrast; corresponding focused reruns passed after each minimal change.
+- Final frontend suite: 57 files, 898 passed, 0 failed (`.local-validation/admin-test-four-regions.log`).
+- Final Portal build and artifact verifier: passed (`.local-validation/portal-build-four-regions.log`). The bundle-size warning is non-fatal.
+- New closed-profile tests: 7 passed. Related five-file regression: 58 tests, 57 passed, 0 failed, 1 POSIX-only skip.
+- Portal verifier uses empty local recharge-adapter configuration. This is not an approved production-configured artifact.
+- `git diff --check`: passed.
+- Earlier root regression: 4408 tests; 4341 passed, 11 failed, 56 skipped. No baseline comparison was run, so these failures are not classified as confirmed pre-existing. The full root suite was not rerun after the final UI/local-profile changes; full-root-suite success is not claimed.
+- Local detailed test logs are under `.local-validation/`; this directory is not intended for blanket inclusion in a commit.
 
-## Retained predecessor QA (historical; not revalidated by this card iteration)
+## Preview lifecycle and next checks
 
-The following original desktop IA record is preserved from the base commit.
+- The old preview was stopped Vite-first/backend-second; the backend emitted its successful stopped receipt and both listener ports were absent before starting the new profile.
+- The new Vite and owned disposable backend remain running only on `127.0.0.1:5175` and `127.0.0.1:3457` for user inspection. No production services were accessed.
+- Preview cleanup has not been performed because the preview is intentionally retained. When finished, stop Vite first, then the backend; verify both ports close and the harness removes its exact marker-owned temporary root.
+- The temporary viewport override was reset after desktop capture, and the browser was returned to the Wallet overview for handoff.
+- Wallet payment mutation consistency and a valid live checkout waiting state were not exercised by this read-only catalog preview. The earlier generic local stub did not provide acceptance evidence for those states.
+- Next: user review of the four-region desktop proportions. Any merge or deployment remains a separate request and gate.
+- No merge, push, production deployment, or production activation performed.
 
-### Portal desktop IA design QA
+## 2026-09-06 follow-up: copy cleanup and automatic Wallet reads
 
-Status: PASS
+This section supersedes the manual-refresh interaction and earlier validation
+counts above. Classification remains a local candidate, not production. Risk B
+copy/read refresh is implemented; Risk A login persistence is inventory/proposal
+only in `docs/PORTAL_SESSION_PERSISTENCE_PLAN.md` and is not part of this pass.
 
-Scope: signed-in desktop Portal only. The existing production-candidate shell,
-navigation component, wallet model, locale preference, and theme preference are
-reused without a parallel shell or data contract.
+### Implemented behavior
 
-### Visual grounding
+- Removed the visible balance heading, normal active-status line, manual Wallet
+  refresh button, and six duplicate Alipay method pills. Retained the accessible
+  balance region, non-active Wallet warnings, all actual prices and quantities,
+  and six Alipay icon/payment buttons. Multi-method/non-Alipay labels remain.
+- Visible, online Wallet reads refresh about every 30 seconds. Focus, visible,
+  and online transitions share a 5-second throttle. Hidden/offline/away/unmounted
+  states stop new automatic scheduling; existing GETs have a 15-second real
+  AbortController deadline covering headers and body, not immediate view-exit
+  cancellation. No automatic create, payment, capture, or callback is introduced.
+- Refresh retains prior data; refresh failures explicitly label it as old data
+  with retry. Mutation invalidation rejects old responses and queues one
+  single-flight successor. Account generation changes mask prior-account data.
+- History paging pauses ledger replacement but not balance updates. Returning
+  to overview explicitly reloads the first page and resumes ledger refresh on
+  success, including when a history-page read is still in flight.
 
-- Reference: user-provided desktop sidebar crop with first-class Coins Wallet
-  and Settings destinations.
-- Candidate: local synthetic Portal at a 1440 x 769 Chrome viewport, light and
-  dark themes.
-- The reference and candidate were reviewed together. The candidate preserves
-  the existing GCC WebOS shell styling while adopting the requested ownership:
-  Coins Wallet and Settings live in the sidebar, and the Header contains the
-  active page title plus global search.
+### Source and browser comparison
 
-### Checks
+- Latest user source: `C:/Users/g/AppData/Local/Temp/codex-clipboard-575a366c-80c6-461c-93c5-ba88e8e6546b.png`, 2194 x 1350; red marks define removals, not a new visual design.
+- Final rendered capture: `.local-validation/wallet-clean-auto-refresh-desktop.png`, 1440 x 900, same local Portal entry chain and four-region arrangement.
+- Opened the latest source and final capture together in one comparison input.
+  This is region-relative comparison across different source dimensions, not
+  pixel-equivalence. All marked removals and all four regions are visible.
+- Typography: balance remains the primary amount, with four subordinate quotas.
+  Spacing: aligned two-by-two regions, six offers, and five non-wrapping ledger
+  rows; document height 900 and Wallet bottom 795.99 at the tested viewport.
+  Colors: existing white surfaces and thin-border/theme tokens retained.
+  Assets: original Alipay icon retained without approximation or distortion.
+  Copy: redundant text removed while amounts, warnings, and payment actions stay.
+- Final visual comparison: no unresolved P0/P1/P2. Browser title is GCC WebOS
+  user center, one Portal shell, no default dialog, and zero error-console entries.
+- Browser observed automatic summary/ledger GETs returning 200 without manual
+  refresh. Away from Wallet for 64 seconds, no Wallet GETs were observed. In the
+  latest reloaded code, view-all/return re-read the ledger first page with 200.
+- Ordinary reload still returns to login. Source diagnosis confirms normal
+  login is React-memory-only and the remember checkbox is not used by the auth
+  request. This is explicitly unresolved, not masked by a frontend login flag.
+- Used only the authorized disposable local account/challenge. No order was
+  created, no payment performed, and no callback sent in browser acceptance.
 
-- One Portal shell, one sidebar, and one user-center navigation.
-- Coins Wallet is a first-class navigation destination and uses the existing
-  wallet read model.
-- Settings is a first-class navigation destination.
-- Locale and theme controls are present in Settings and absent from the
-  signed-in desktop Header.
-- Wallet balance, service status, ownership copy, and explanatory copy are
-  absent from the signed-in desktop Header.
-- Global search is visible in the Header and submits into the existing Orders
-  view.
-- Chinese/English switching and light/dark switching update the existing shell.
-- No browser console errors were observed during the interaction pass.
+### Final verification and lifecycle
 
-### Intentional non-goals
+- Node 22.23.1: frontend 58 files, 935 passed, 0 failed, 0 skipped; Admin build,
+  Portal build and Portal artifact verifier passed. Bundle-size warnings remain
+  non-fatal. Local verifier adapter configuration remains empty, not a
+  production payment-configured artifact.
+- Independent changed-scope review: 93 tests passed, 0 failed, 0 skipped; no
+  unresolved P0/P1/P2. TDD covered removals, error retention, pagination/return,
+  mutation invalidation, request deadlines, and account/view transition races.
+- Initial root run: 4340 passed, 19 failed, 56 skipped. One new documentation
+  metadata defect was corrected. The owned preview was stopped Vite-first and
+  backend-second; stopped receipt and zero listeners were verified to remove
+  port conflicts. Isolated root rerun: 4348 passed, 11 failed, 56 skipped (4415
+  total). Remaining failures concern release/workflow contracts, path handling,
+  and checkout normalization; no clean-baseline comparison was performed, so
+  confirmed-pre-existing status and full-root success are not claimed.
+- Strict document metadata validates 392 blocks; `git diff --check` passes.
+  Logs are `.local-validation/*wallet-refresh*.log`, not for blanket commit.
+- Owned loopback preview was restarted and retained on 5175/3457. Temporary
+  viewport override is reset for handoff. No production, auth implementation,
+  provider, merge, push, deployment, or real-account mutation took place.
+- Next gate: approve exact login-persistence implementation scope and remembered
+  session lifetime; any production release remains separately gated.
 
-- The full sidebar visual language was not redesigned in this change.
-- Mobile layout was not changed.
-- Login and registration retain their pre-authentication preference controls.
-- No production, payment-provider, schema, wallet-ledger, or runtime behavior
-  was changed.
+## 2026-09-07 follow-up: approved local login persistence
+
+This section supersedes the earlier unresolved reload-login finding and retained
+preview lifecycle. Risk A auth work is implemented locally under
+`docs/PORTAL_SESSION_PERSISTENCE_PLAN.md`; it is not a production release.
+
+- Worktree: `D:/Projects/proxy-gateway-minimal/.worktrees/portal-wallet-checkout-layout`;
+  branch `codex/portal-wallet-checkout-layout`; base HEAD
+  `986318c475f5d6ecd932cd1d5aba0d95d11ab4bf`, with task-owned dirty changes retained.
+- Classification: local candidate / source-only. Chain remains
+  `admin/portal/index.html` -> `admin/src/portal-main.tsx` -> `UserPortalPage` ->
+  `admin/src/portal-static-preserve.css` -> `admin/dist-portal`.
+- Ordinary login retains the existing 30-minute absolute TTL. Remember-me uses
+  the approved seven-day absolute TTL, bound through existing authentication/MFA.
+  The Cookie is HttpOnly and server-validated; credentials are not placed in web
+  storage. No schema/migration or authentication-policy relaxation was needed.
+- TDD covered strict transport, expiry, revocation, stale-account context,
+  malformed Cookie recovery, actual request deadlines, bounded auth locks,
+  logout-pending recovery and old credential-handoff cleanup.
+- Final browser QA exposed a real same-page BroadcastChannel race that an earlier
+  empty-postMessage mock missed. The page received its own login-change event,
+  invalidated hydration and stayed at login despite a successful Cookie. Two
+  realistic asynchronous dispatch tests were red; sharing a same-page channel
+  instance fixed it without removing cross-tab invalidation. Final focused
+  frontend tests: 32 passed, zero failed.
+  A separate final read-only review verified the frozen helper/page hashes,
+  reran those 32 tests with zero failures or skips, and found no new P0/P1 in
+  the shared-channel and logout-recovery changes.
+- Final in-app browser checks on `http://127.0.0.1:5175/`: ordinary login enters
+  Wallet directly, reload keeps the selected Wallet view, one bootstrap restores
+  the same context without extending expiry, and no Portal write is replayed.
+  Browser response TTL was 1800 seconds. Remembered login returned 604800 seconds,
+  produced a persistent local Cookie and restored in a second tab. Explicit
+  logout hid content in both tabs; reload remained logged out; Cookie count zero.
+- Verified HttpOnly and SameSite=Lax via attribute-only browser inspection; no
+  credential was printed. Local Cookie is intentionally non-Secure over opted-in
+  loopback HTTP. Production HTTPS attributes are covered by source tests, not a
+  live production check. No seven-day wall-clock soak is claimed.
+- Wallet DOM and screenshots retained the desktop four-region layout, six Alipay
+  actions and cleaned copy. No payment button was exercised. Wallet summary,
+  ledger, offer and recharge-order reads returned 200. Browser JavaScript errors:
+  zero. No new mobile design or pixel-equivalence claim is made in this auth pass.
+- A separate existing `/api/portal/payments/current` hydration call still returns
+  401: both HEAD and this source have no handler and the existing source-boundary
+  contract excludes the removed legacy payment routes. Hydration catches it; it
+  is not a Cookie failure or a Coins order-source failure. This obsolete frontend
+  call was recorded rather than adding an unapproved payment endpoint.
+- Final frontend: 60 files / 968 passed / 0 failed / 0 skipped. Admin and Portal
+  builds (including TypeScript), Portal verifier and diff check pass. Three new
+  backend session files: 52 passed / 0 failed / 0 skipped. Verifier adapter config
+  is empty/local; chunk-size warnings are non-fatal, not production readiness.
+- Root suite: 4467 total / 4400 passed / 11 failed / 56 skipped. Remaining failures
+  concern release/workflow/source and path-normalization checks. No clean-baseline
+  comparison was performed, so they are not claimed as proven pre-existing. Full
+  root success, merge readiness and production approval are not claimed.
+  The post-broadcast-fix rerun, with both preview listeners stopped, reproduced
+  the same counts and eleven names in
+  `.local-validation/portal-cookie-root-frozen-20260907.log`. Strict document
+  metadata validates 392 blocks and `git diff --check` passes.
+- Browser acceptance ended logged out. Stopped Vite before the disposable backend;
+  successful stopped receipt includes marker-owned root absence verification.
+  Both 5175/3457 listeners are absent and temporary viewport emulation is cleared.
+  The disposable local data is removed and cannot be recovered; no customer data
+  was present. No merge, push, deploy, live payment or production mutation occurred.
+- Next production gate must coordinate the backend Cookie transport, explicit
+  trusted HTTPS origin and frontend artifacts, after validation blockers are
+  resolved. This cannot be deployed as an isolated static refresh.
+
+final result: local browser acceptance passed; full root regression not green;
+production release not authorized

@@ -9,6 +9,7 @@ import type {
 } from "./api-contract";
 
 const SESSION_REFERENCE = /^[a-z][a-z0-9_]{2,95}$/;
+const WALLET_READ_TIMEOUT_MS = 15_000;
 const UTC_TIMESTAMP =
   /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 const WALLET_STATUSES = new Set<PortalWalletStatus>([
@@ -525,8 +526,13 @@ async function request<T>(
   let body: unknown;
   let ok: boolean;
   let status: number;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), WALLET_READ_TIMEOUT_MS);
   try {
-    const response = await fetchFn(url, init);
+    // The deadline covers headers and body, and aborts the real fetch rather
+    // than leaving an orphaned request behind a Promise.race timeout.
+    const response = await fetchFn(url, { ...init, signal: controller.signal });
+    if (controller.signal.aborted) throw requestFailed();
     ok = response.ok;
     status = response.status;
     if (
@@ -538,10 +544,13 @@ async function request<T>(
       throw requestFailed();
     }
     const text = await response.text();
+    if (controller.signal.aborted) throw requestFailed();
     if (typeof text !== "string") throw requestFailed();
     body = JSON.parse(text) as unknown;
   } catch {
     throw requestFailed();
+  } finally {
+    clearTimeout(timeout);
   }
   if (!ok) {
     const legacyError = legacyConsoleAuthError(body, status);

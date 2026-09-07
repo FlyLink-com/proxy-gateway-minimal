@@ -512,27 +512,106 @@ describe("Portal commerce desktop style contract", () => {
     )).toBe("3px solid var(--portal-orders-focus)");
   });
 
-  test("composes the Wallet overview as four primary cards with secondary status and a rules aside", () => {
+  test("places balance and recharge above activity and the guide in four desktop regions", () => {
+    expect(baseDeclaration(commerceStyles, ".portal-v2-shell .portal-wallet-recharge", "display")).toBe("grid");
+    expect(baseDeclaration(commerceStyles, ".portal-v2-shell .portal-wallet-recharge", "grid-template-columns")).toBe("minmax(0, 1fr)");
+    expect(baseDeclaration(commerceStyles, ".portal-v2-shell .portal-wallet-recharge", "gap")).toBe("18px");
     expect(desktopDeclaration(
       commerceStyles,
       ".portal-v2-shell .portal-wallet-overview-content",
       "grid-template-columns"
-    )).toBe("minmax(0, 1fr) minmax(268px, 0.38fr)");
+    )).toBe("minmax(0, 1.05fr) minmax(0, 1fr)");
     expect(desktopDeclaration(
       commerceStyles,
-      ".portal-v2-shell .portal-wallet-balance-grid",
-      "grid-template-columns"
-    )).toBe("repeat(4, minmax(0, 1fr))");
-    expect(desktopDeclaration(
+      ".portal-v2-shell .portal-wallet-overview-content",
+      "grid-template-areas"
+    )).toBe('"balance recharge" "activity guide"');
+    expect(desktopDeclaration(commerceStyles, ".portal-v2-shell .portal-wallet-overview-content", "gap"))
+      .toBe("16px");
+    for (const [card, area] of [
+      ["balance-card", "balance"], ["recharge", "recharge"],
+      ["recent-activity", "activity"], ["guide", "guide"]
+    ]) {
+      expect(desktopDeclaration(commerceStyles, `.portal-v2-shell .portal-wallet-overview-content > .portal-wallet-${card}`, "grid-area"))
+        .toBe(area);
+    }
+    expect(desktopDeclaration(commerceStyles, ".portal-v2-shell .portal-wallet-overview-content--balance-only", "grid-template-areas"))
+      .toBe('"balance guide" "activity guide"');
+    expect(desktopDeclaration(commerceStyles, ".portal-v2-shell .portal-wallet-balance-grid", "grid-template-columns"))
+      .toBe("repeat(2, minmax(0, 1fr))");
+    expect(desktopDeclaration(commerceStyles, ".portal-v2-shell .portal-wallet-balance-grid > .portal-wallet-balance-grid__spendable", "grid-column"))
+      .toBe("1 / -1");
+    expect(baseDeclaration(
       commerceStyles,
       ".portal-v2-shell .portal-wallet-status-grid",
       "grid-template-columns"
-    )).toBe("repeat(2, minmax(0, 1fr))");
+    )).toBe("minmax(0, 1fr)");
+    expect(desktopDeclaration(commerceStyles, ".portal-v2-shell .portal-wallet-guide ol", "grid-template-columns"))
+      .toBe("minmax(0, 1fr)");
+    expect(baseDeclaration(commerceStyles, ".portal-v2-shell .portal-wallet-recharge .portal-recharge-offers", "grid-template-columns"))
+      .toBe("repeat(3, minmax(0, 1fr))");
+    expect(baseDeclaration(commerceStyles, ".portal-v2-shell .portal-wallet-balance-grid .portal-wallet-balance-grid__spendable dd", "font-size"))
+      .toBe("clamp(36px, 3vw, 52px)");
     expect(desktopDeclaration(
       commerceStyles,
       ".portal-v2-shell .portal-wallet-header",
       "align-items"
     )).toBe("center");
+  });
+
+  test("keeps the four desktop regions compact without changing the checkout modal", () => {
+    const card = ".portal-v2-shell[data-portal-theme] .portal-commerce-layout--wallet .portal-wallet-overview-content > *";
+    expect(desktopDeclaration(commerceStyles, card, "padding")).toBe("18px");
+    expect(desktopDeclaration(commerceStyles, card, "border-radius")).toBe("16px");
+    expect(desktopDeclaration(commerceStyles, ".portal-v2-shell .portal-wallet-overview-content > .portal-wallet-recharge", "gap"))
+      .toBe("12px");
+    expect(desktopDeclaration(commerceStyles, ".portal-v2-shell .portal-wallet-recharge .portal-recharge-offers", "gap"))
+      .toBe("10px");
+    expect(desktopDeclaration(commerceStyles, ".portal-v2-shell .portal-wallet-recharge .portal-recharge-offers li", "padding"))
+      .toBe("12px");
+    expect(desktopDeclaration(commerceStyles, ".portal-v2-shell .portal-wallet-recharge .portal-recharge-offers button", "min-height"))
+      .toBe("36px");
+    expect(desktopDeclaration(commerceStyles, ".portal-v2-shell .portal-wallet-guide ol", "gap"))
+      .toBe("12px");
+    expect(commerceStyles).not.toContain("portal-wallet-funding-row");
+  });
+
+  test("keeps the payment summary compact and Alipay buttons distinct from neutral controls", () => {
+    const paymentIcon = ".portal-v2-shell .portal-recharge-pay-button img";
+    expect(baseDeclaration(commerceStyles, paymentIcon, "background")).toBe("#ffffff");
+    expect(baseDeclaration(commerceStyles, paymentIcon, "padding")).toBe("2px");
+    expect(baseDeclaration(commerceStyles, paymentIcon, "border-radius")).toBe("3px");
+    expect(baseDeclaration(commerceStyles, paymentIcon, "width")).toBe("22px");
+    expect(baseDeclaration(commerceStyles, paymentIcon, "height")).toBe("22px");
+    expect(baseDeclaration(commerceStyles, paymentIcon, "box-sizing")).toBe("border-box");
+    expect(baseDeclaration(commerceStyles, paymentIcon, "object-fit")).toBe("contain");
+    expect(baseDeclaration(commerceStyles, paymentIcon, "filter")).toBe("");
+    expect(baseDeclaration(commerceStyles, ".portal-v2-shell .modal-backdrop .portal-recharge-checkout .portal-recharge-offer-label", "color"))
+      .toBe("var(--portal-wallet-muted)");
+    expect(baseDeclaration(commerceStyles, ".portal-v2-shell .modal-backdrop .portal-recharge-dialog--checkout", "width"))
+      .toBe("min(520px, calc(100vw - 40px))");
+    expect(baseDeclaration(commerceStyles, ".portal-v2-shell .portal-recharge-checkout .portal-recharge-status-card", "grid-template-columns"))
+      .toBe("32px minmax(0, 1fr)");
+    expect(baseDeclaration(commerceStyles, '.portal-v2-shell[data-portal-theme] button.portal-recharge-pay-button--alipay', "background"))
+      .toBe("#0969da");
+    expect(baseDeclaration(commerceStyles, '.portal-v2-shell[data-portal-theme] button.portal-recharge-pay-button--alipay', "color"))
+      .toBe("#ffffff");
+  });
+
+  test("keeps desktop recent activity on one line and scrolls complete values instead of clipping", () => {
+    const table = ".portal-v2-shell .portal-wallet-ledger--overview";
+    expect(desktopDeclaration(commerceStyles, ".portal-v2-shell .portal-wallet-ledger-wrap--overview", "overflow-x"))
+      .toBe("auto");
+    expect(desktopDeclaration(commerceStyles, table, "table-layout")).toBe("auto");
+    for (const cell of ["th", "td", "time"]) {
+      expect(desktopDeclaration(commerceStyles, `${table} ${cell}`, "white-space")).toBe("nowrap");
+    }
+    for (const [index, width] of [[1, "22%"], [2, "22%"], [3, "40%"], [4, "16%"]]) {
+      expect(desktopDeclaration(commerceStyles, `${table} th:nth-child(${index})`, "width")).toBe(width);
+    }
+    expect(desktopDeclaration(commerceStyles, `${table} td`, "overflow-wrap")).toBe("normal");
+    expect(desktopDeclaration(commerceStyles, `${table} td`, "overflow")).not.toBe("hidden");
+    expect(desktopDeclaration(commerceStyles, `${table} td`, "text-overflow")).not.toBe("ellipsis");
   });
 
   test("keeps recent activity compact and scopes recharge colors to the actual Portal modal descendant", () => {
@@ -545,7 +624,7 @@ describe("Portal commerce desktop style contract", () => {
       commerceStyles,
       ".portal-v2-shell .portal-wallet-ledger--overview",
       "min-width"
-    )).toBe("0");
+    )).toBe("520px");
     expect(desktopDeclaration(
       commerceStyles,
       ".portal-v2-shell .portal-wallet-ledger--all tbody tr",

@@ -850,11 +850,24 @@ function mapPortalPasskeyCredential(row) {
 
 function mapPortalSecondFactorChallenge(row) {
   if (!row) return null;
+  let payload;
+  try {
+    payload = JSON.parse(row.allowed_factors_json);
+    if (Array.isArray(payload)) payload = { version: 1, allowedFactors: payload, rememberMe: false };
+    if (!payload || typeof payload !== "object"
+      || Object.keys(payload).sort().join(",") !== "allowedFactors,rememberMe,version"
+      || payload.version !== 1 || typeof payload.rememberMe !== "boolean"
+      || !Array.isArray(payload.allowedFactors)
+      || payload.allowedFactors.some((factor) => factor !== "totp" && factor !== "passkey")) throw new Error();
+  } catch {
+    throw platformError("validation_error", "portal second-factor challenge payload is invalid");
+  }
   return {
     id: row.id,
     accountId: row.account_id,
     challengeHash: row.challenge_hash,
-    allowedFactors: parseJsonArray(row.allowed_factors_json),
+    allowedFactors: payload.allowedFactors,
+    rememberMe: payload.rememberMe,
     status: row.status,
     failureCount: row.failure_count,
     expiresAt: row.expires_at,
@@ -6585,11 +6598,18 @@ export function createSqliteSubscriptionControlStore({
   }
 
   function createPortalSecondFactorChallenge(input) {
+    if (input.rememberMe !== undefined && typeof input.rememberMe !== "boolean") {
+      throw platformError("validation_error", "rememberMe must be a boolean");
+    }
+    const factorsJson = jsonArray(input.allowedFactors ?? [], "allowedFactors");
     const record = {
       id: requiredText(input.id, "id"),
       accountId: requiredText(input.accountId, "accountId"),
       challengeHash: requiredText(input.challengeHash, "challengeHash"),
-      allowedFactorsJson: jsonArray(input.allowedFactors ?? [], "allowedFactors"),
+      // Reuse the existing TEXT column; readers still accept historical arrays.
+      allowedFactorsJson: input.rememberMe === undefined ? factorsJson : JSON.stringify({
+        version: 1, allowedFactors: JSON.parse(factorsJson), rememberMe: input.rememberMe
+      }),
       status: requiredText(input.status || "active", "status"),
       failureCount: integer(input.failureCount ?? 0, "failureCount", { min: 0 }),
       expiresAt: isoText(input.expiresAt, "expiresAt"),
@@ -6667,6 +6687,18 @@ export function createSqliteSubscriptionControlStore({
 
   function getPortalSession(id) {
     return mapPortalSession(db.prepare("select * from platform_portal_sessions where id = ?").get(requiredText(id, "id")));
+  }
+
+  function revokePortalSession(id, { revokedAt, updatedAt } = {}) {
+    const sessionId = requiredText(id, "id");
+    // A repeated logout does not alter the first revocation timestamp. Expired
+    // or already-revoked rows cannot be moved back into an active state.
+    db.prepare(`
+      update platform_portal_sessions
+      set status = 'revoked', revoked_at = ?, updated_at = ?
+      where id = ? and status = 'active' and revoked_at is null
+    `).run(isoText(revokedAt, "revokedAt"), isoText(updatedAt, "updatedAt"), sessionId);
+    return getPortalSession(sessionId);
   }
 
   function listPortalSessions({ accountId }) {
@@ -6874,6 +6906,7 @@ export function createSqliteSubscriptionControlStore({
     recordPortalSecondFactorChallengeFailure,
     createPortalSession,
     getPortalSession,
+    revokePortalSession,
     listPortalSessions,
     getAccountControlSummary,
     close

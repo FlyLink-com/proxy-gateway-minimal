@@ -23,6 +23,7 @@ import {
 import { subscriptionRoutes } from "./routes/subscription.mjs";
 import { publicLeadRoutes } from "./routes/public-leads.mjs";
 import { userPortalRoutes } from "./routes/user-portal.mjs";
+import { createPortalBrowserSessionTransport } from "./services/platform/portal-browser-session-transport.mjs";
 import { portalCoinCommerceRoutes } from "./routes/portal-coin-commerce.mjs";
 import { createPortalCoinWalletRouter } from "./routes/portal-coin-wallet.mjs";
 import { createPortalCoinRechargeRouter } from "./routes/portal-coin-recharge.mjs";
@@ -41,6 +42,8 @@ const ADMIN_CAPABILITY_PROTECTED_PATHS = [
   "/api/admin/operations/overview"
 ];
 const USER_PORTAL_PUBLIC_PATHS = [
+  "/api/portal/browser-session",
+  "/api/portal/browser-session/logout",
   "/api/portal/human-challenges",
   "/api/portal/registration",
   "/api/portal/registration/email-verification",
@@ -277,6 +280,14 @@ function portalCoinRechargeRoutesEnabled(state) {
 
 export function createApp(state, options = {}) {
   const app = express();
+  const browserSessions = createPortalBrowserSessionTransport({
+    auth: state.platform?.userPortalAuth,
+    origin: options.portalBrowserOrigin ?? state.platform?.portalBrowserOrigin,
+    allowInsecureLoopback: options.allowInsecureLoopbackPortalCookie === true,
+  });
+  // Must precede the early recharge/wallet/commerce routers. Provider callbacks
+  // are outside /api/portal and retain their own authentication.
+  app.use(browserSessions.middleware);
   const rechargeRoutesEnabled = portalCoinRechargeRoutesEnabled(state);
   if (rechargeRoutesEnabled) {
     app.use(createPortalCoinRechargeRouter({
@@ -287,6 +298,7 @@ export function createApp(state, options = {}) {
         "paymentRechargeProvider"
       ),
       nowFn: options.paymentNowFn,
+      browserSessions,
     }));
   }
   app.use((req, res, next) => {
@@ -308,13 +320,15 @@ export function createApp(state, options = {}) {
   });
   if (portalCoinCommerceRoutesEnabled(state)) {
     app.use(portalCoinCommerceRoutes(state, {
-      nowFn: options.rateLimitNowFn
+      nowFn: options.rateLimitNowFn,
+      browserSessions,
     }));
   }
   if (portalCoinWalletRoutesEnabled(state)) {
     app.use(createPortalCoinWalletRouter({
       store: ownEnumerableDataValue(state.platform, "coinsWalletStore"),
-      auth: ownEnumerableDataValue(state.platform, "userPortalAuth")
+      auth: ownEnumerableDataValue(state.platform, "userPortalAuth"),
+      browserSessions,
     }));
   }
   const protectedPortalCoinConsoleAuth = createAuthMiddleware({
@@ -330,6 +344,8 @@ export function createApp(state, options = {}) {
     next();
   });
   app.use(express.json());
+  // Repeat credential-conflict checking now that legacy request bodies exist.
+  app.use(browserSessions.middleware);
 
   app.get("/api/health", (_req, res) => {
     res.json({ ok: true, ts: Date.now(), authRequired: true });
@@ -396,7 +412,7 @@ export function createApp(state, options = {}) {
   }));
   app.use(publicLeadRoutes(state));
   if (userPortalRoutesEnabled) {
-    app.use(userPortalRoutes(state));
+    app.use(userPortalRoutes(state, { browserSessions }));
   }
   app.get("/api/status", statusRoutes(state));
   if (localProxyControlRoutesEnabled(state)) {

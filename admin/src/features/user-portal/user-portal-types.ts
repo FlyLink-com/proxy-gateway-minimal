@@ -114,6 +114,8 @@ export type PortalHistoryRecord = {
 export type PortalSession = {
   status: "authenticated_preview";
   sessionRef?: string;
+  transport?: "cookie";
+  expiresAt?: string;
   userRef: string;
   displayName: string;
   authMode: PortalAuthMode;
@@ -312,6 +314,7 @@ export type PortalAuthInput = {
   mode: "password";
   accountId: string;
   password: string;
+  rememberMe?: boolean;
   verificationCode?: string;
   humanVerification: PortalHumanVerificationInput;
 };
@@ -528,6 +531,8 @@ export type PortalPasskeyExport = {
 };
 
 export type UserPortalClient = {
+  restoreSession?(): Promise<PortalSession | null>;
+  logout?(input: { sessionRef: string }): Promise<void>;
   commerce?: PortalCoinCommerceClient;
   commerceModel?: PortalCommerceModelClient;
   walletFirstCommerce?: PortalWalletFirstCommerceClient;

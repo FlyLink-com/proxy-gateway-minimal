@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { types as utilTypes } from "node:util";
+import { createPortalBrowserSessionTransport } from "../services/platform/portal-browser-session-transport.mjs";
 import {
   snapshotWalletFirstCurrentResourceProjection
 } from "../services/platform/wallet-first-current-resource-projection.mjs";
@@ -8,6 +9,10 @@ import {
 } from "../services/platform/wallet-first-current-resource-setup-delivery.mjs";
 
 function sendPortalError(res, error) {
+  if (["portal_browser_request_invalid", "portal_browser_unavailable"].includes(error.code)) {
+    res.status(error.status || 503).json({ error: error.code });
+    return;
+  }
   if (error.code === "human_verification_failed") {
     res.status(400).json({ error: "human_verification_failed" });
     return;
@@ -86,6 +91,8 @@ function sendPortalError(res, error) {
 export function userPortalRoutes(state, options = {}) {
   const router = Router();
   const auth = options.userPortalAuth || state.platform?.userPortalAuth;
+  const browserSessions = options.browserSessions || createPortalBrowserSessionTransport({auth});
+  router.use(browserSessions.middleware);
   const accessRequests = options.portalAccessRequests || state.platform?.portalAccessRequests;
   const registrations = options.portalRegistrations || state.platform?.portalRegistrations;
   const registrationEmailVerifications = options.portalRegistrationEmailVerifications
@@ -131,11 +138,15 @@ export function userPortalRoutes(state, options = {}) {
   }
 
   function portalSessionRef(req) {
+    const browser = browserSessions?.session(req);
+    if (browser) return browser.sessionRef;
     return req.get("x-portal-session") || req.body?.sessionRef || req.query?.sessionRef;
   }
 
   function requirePortalSession(req) {
     requireAuthService();
+    const browser = browserSessions?.session(req);
+    if (browser) return browser;
     if (typeof auth.requireSession !== "function") {
       const error = new Error("portal session service is not configured");
       error.code = "validation_error";
@@ -146,6 +157,8 @@ export function userPortalRoutes(state, options = {}) {
 
   function requirePortalHeaderSession(req) {
     requireAuthService();
+    const browser = browserSessions?.session(req);
+    if (browser) return browser;
     if (typeof auth.requireSession !== "function") {
       const error = new Error("portal session service is not configured");
       error.code = "validation_error";
@@ -213,6 +226,23 @@ export function userPortalRoutes(state, options = {}) {
     };
   }
 
+  router.get("/api/portal/browser-session", (req, res) => {
+    try {
+      if (!browserSessions) { res.status(503).json({error:"portal_browser_unavailable"}); return; }
+      browserSessions.bootstrap(req, res);
+    } catch (error) { sendPortalError(res, error); }
+  });
+  router.post("/api/portal/browser-session/logout", (req, res) => {
+    try {
+      if (!browserSessions) { res.status(503).json({error:"portal_browser_unavailable"}); return; }
+      browserSessions.logout(req, res);
+    } catch (error) { sendPortalError(res, error); }
+  });
+
+  function completedSession(req, res, session, rememberMe = false) {
+    return browserSessions ? browserSessions.completeLogin(req, res, session, rememberMe) : session;
+  }
+
   router.post("/api/portal/human-challenges", (req, res) => {
     try {
       if (!humanChallenges) {
@@ -237,10 +267,11 @@ export function userPortalRoutes(state, options = {}) {
       const result = auth.verifyPasswordAndMaybeChallenge({
         accountId: req.body?.accountId,
         plainPassword: req.body?.plainPassword ?? req.body?.password,
+        rememberMe: req.body?.rememberMe ?? false,
         requestContext: requestContext(req)
       });
       if (result.session) {
-        res.json({ session: result.session });
+        res.json({ session: completedSession(req, res, result.session, result.rememberMe === true) });
         return;
       }
       if (result.result?.status === "second_factor_required") {
@@ -263,7 +294,7 @@ export function userPortalRoutes(state, options = {}) {
         code: req.body?.code ?? req.body?.totpCode,
         passkeyProof: req.body?.passkeyProof
       });
-      res.json({ session: result.session });
+      res.json({ session: completedSession(req, res, result.session, result.rememberMe === true) });
     } catch (error) {
       sendPortalError(res, error);
     }
@@ -273,7 +304,7 @@ export function userPortalRoutes(state, options = {}) {
     try {
       requireAuthService();
       res.json(auth.getSecurityState({
-        sessionRef: portalSessionRef(req)
+        sessionRef: requirePortalSession(req).sessionRef
       }));
     } catch (error) {
       sendPortalError(res, error);
@@ -284,7 +315,7 @@ export function userPortalRoutes(state, options = {}) {
     try {
       requireAuthService();
       res.status(201).json(auth.startTotpEnrollment({
-        sessionRef: portalSessionRef(req)
+        sessionRef: requirePortalSession(req).sessionRef
       }));
     } catch (error) {
       sendPortalError(res, error);
@@ -295,7 +326,7 @@ export function userPortalRoutes(state, options = {}) {
     try {
       requireAuthService();
       res.json(auth.confirmTotpEnrollment({
-        sessionRef: portalSessionRef(req),
+        sessionRef: requirePortalSession(req).sessionRef,
         enrollmentRef: req.body?.enrollmentRef,
         code: req.body?.code
       }));
@@ -360,10 +391,13 @@ export function userPortalRoutes(state, options = {}) {
         emailVerification: req.body?.emailVerification,
         requestContext: requestContext(req)
       });
-      res.status(201).json(registrations.submitRegistration({
+      const result = registrations.submitRegistration({
         ...(req.body ?? {}),
         requestContext: requestContext(req)
-      }));
+      });
+      res.status(201).json({ ...result,
+        ...(result.session ? {session:completedSession(req, res, result.session)} : {})
+      });
     } catch (error) {
       sendPortalError(res, error);
     }
@@ -377,7 +411,7 @@ export function userPortalRoutes(state, options = {}) {
         accountId: req.body?.accountId,
         code: req.body?.code
       });
-      res.json({ session: session.session });
+      res.json({ session: completedSession(req, res, session.session) });
     } catch (error) {
       sendPortalError(res, error);
     }
