@@ -9,7 +9,7 @@
 - 不要在根目录或无明确项目上下文时加载过多技能、插件或外部服务；按当前项目和任务需要最小化启用对应能力。
 - 订阅管理项目的固定本地仓库路径是 `D:\Projects\proxy-gateway-minimal`；`C:\Users\g\Projects\订阅管理\proxy-gateway-minimal` 是迁移前旧 checkout，不作为后续默认工作区；不要把 `C:\Users\g\OneDrive\文档\订阅管理` 当作真实代码仓库。
 - 对 `proxy-gateway-minimal` 继续工作前，依次读取 `docs/CURRENT_RELEASE_STATE.md`、`RELEASE_MANIFEST.md`、`docs/PROJECT_CONTEXT.md`，核对 `git status --short --branch`，再读 `docs/README.md` 和任务相关 subsystem README；选择、排序或声明当前工作前必须 fresh 读取原生 Issue/PR，Project #1 仅作导航投影，`project-state` JSON 仅作带日期的兼容/分类依据。
-- 项目发布或收尾前必须运行对应验证命令，并在回复中说明实际通过/失败结果。
+- 项目发布或收尾前必须运行对应验证命令或核验同一验证边界内已完成的有效证据，并在回复中区分本轮运行、复用结果和未完成项。
 
 ## Prompt Framework
 
@@ -35,10 +35,19 @@
 - Runtime identity 是发布影响维度，不是新的 `release_unit`。会改变 Xray/Mihomo runtime principal、protected usage map、material binding 或 collector identity resolution 的 PR/Change Record 必须声明 `identity_impact: true`；生产 Deploy Note 还必须记录 `docs/IDENTITY_LIFECYCLE.md` 定义的 aggregate-only `identity_gate` before/after、retention state 和最终状态。
 - Identity Gate 禁止输出 UUID、credentialRef、controller payload、raw config/env、数据库行或客户数据。只要 `missing`、`stale`、`changed` 或 `missing_material` 非零，就不得声明 identity healthy；stale map 项必须先经过独立只读 retention inventory，不能把 map 当作历史账本直接长期保留或无证据删除。
 - 不允许把“只写设计但没有执行/验证”的 PR 当作完成，除非用户明确批准该 PR 就是 spec-only / runbook-only / inventory-only，并且 PR body 写清楚非目标、未执行事项和下一审批门禁。
-- C 档适用于 docs-only 任务，例如 README、PROJECT_CONTEXT、NETWORK_FORWARDING、DEPLOYMENT_FLOW、STAGING_PROVISIONING、CI_MANUAL_VALIDATION、runbook、状态记录、小型决策同步、错别字或过期状态修正。流程是从 `master` 新建 `docs/<topic>` 分支，直接改文档，运行 `git diff --check origin/master...HEAD`，开 Draft PR，review 后 ready + merge，再本地收尾。C 档不单独写 spec/plan，不跑 `npm test`，除非文档本身很大或涉及命令/测试基线。
+- C 档适用于 docs-only 任务，例如 README、PROJECT_CONTEXT、NETWORK_FORWARDING、DEPLOYMENT_FLOW、STAGING_PROVISIONING、CI_MANUAL_VALIDATION、runbook、状态记录、小型决策同步、错别字或过期状态修正。流程是从 `master` 新建 `docs/<topic>` 分支，直接改文档，执行 `docs/VALIDATION_BASELINE.md` 既有 C 档文档检查（含 `git diff --check origin/master...HEAD`），开 Draft PR，review 后 ready + merge，再本地收尾。C 档不单独写 spec/plan，不跑 `npm test`，除非文档本身很大或涉及命令/测试基线。
 - B 档适用于中低风险代码任务，例如 server 小型 refactor、测试覆盖、HTTP bridge 小修、PowerShell 诊断脚本小修、Admin UI 局部交互、SQLite busy_timeout/lastUsed 策略、非生产 runtime 小行为修正。流程是一个 `fix/<topic>`、`test/<topic>` 或 `refactor/<topic>` PR 内完成简短设计说明、代码、测试和必要文档，不拆 spec PR + implementation PR。后端/server 运行 `git diff --check origin/master...HEAD` 和 `npm test`；Admin UI 运行 `git diff --check origin/master...HEAD`、`npm run admin:test`、`npm run admin:build`、`npm test`；PowerShell/HTTP bridge 小修先跑对应 targeted test，再跑 `npm test`。
 - A 档适用于 AWS、production、节点、Nginx、systemd、security group、ss-server/ss-local、production node config、订阅 token/auth model 高风险变更、SQLite schema/migration、production deploy/rollback、真实公网连通性测试。流程必须包含 spec/runbook、dry-run checklist、read-only inventory、explicit operator approval、runbook-bound validation environment、implementation、validation、promotion decision、production gate、closeout。验证环境可由对应 runbook 选择 staging、clean host，或隔离 immutable candidate/临时 `current` pointer fixture；隔离 fixture 只构成 Source/Merge 证据，不是 Git branch 发布身份，也不替代 Production Gate。
-- A 档必须保留门禁：不得直接动 production；不得把 historical stopped node 当 staging；不得复制 production `.env`、token、SQLite 或 `SS_PASSWORD`；不得公开 Admin UI；不得开放 `3456`、`18180`、`1080` 到公网；不得跳过 backup、endpoint verification 或 rollback plan。
+- A 档必须保留门禁：不得未经对应 Gate 和明确授权修改 production；不得把 historical stopped node 当 staging；不得复制 production `.env`、token、SQLite 或 `SS_PASSWORD`；不得公开 Admin UI；不得开放 `3456`、`18180`、`1080` 到公网；不得跳过 backup、endpoint verification 或 rollback plan，变更前须具备对应备份与回退准备。
 - Agent 交互式访问 Vultr、AWS、Cloudflare、Vercel、DNS 等 provider 时必须遵守 `docs/INFRASTRUCTURE_ACCESS_RULE.md`：禁止持久本地凭证，未知权限按 full access 评估，先完成无凭证本地/网络 precheck，再经 exact Risk A Gate 临时注入；命令必须显式白名单，执行后必须清理并 readback。删除本地副本不等于 provider key 已撤销。
-- GitHub Actions billing/spending-limit blocker 期间按 `docs/CI_MANUAL_VALIDATION.md` 执行。C 档默认只需要 `git diff --check`；B 档本地验证足够时用本地，确需 clean 环境时才按 manual CI；A 档里的 manual CI 不等于 staging，不等于 production approval。
+- GitHub Actions billing/spending-limit blocker 期间按 `docs/CI_MANUAL_VALIDATION.md` 执行。C 档沿用 `docs/VALIDATION_BASELINE.md` 的文档检查，不额外启动 manual CI；B 档本地验证足够时用本地，确需 clean 环境时才按 manual CI；A 档里的 manual CI 不等于 staging，不等于 production approval。
 - closeout 不要用于每个小 PR。只有完成阶段、改变 `docs/PROJECT_CONTEXT.md` 长期事实、合并 A 档生产/运维变更、引入新的长期运行边界，或完成一串相关 B 档工作时才做 closeout。
+
+## Authorized Task Progression
+
+- 风险按实际动作、目标和影响判断，不按 Agent 名称、工具名称或报告类型判断；原有项目补充不必重走全项目流程，但 production/auth/schema 等边界不因此降级。
+- 任务和授权边界明确后，连续完成范围内剩余步骤，不因换轮、交接或工具切换重复索要同一授权；只读诊断不代表获准修复，获准实现也不代表获准合并或部署。
+- 先核对已完成阶段和证据，再补缺口。精确 source/artifact、依赖、验证环境约束及检查范围未变且仍满足对应 Gate 时，复用已核验结果；不因上下文恢复而重跑全部 CI/Linux 验证。发生变化只重验受影响或未覆盖部分；要求 fresh 的目标状态和精确 head 检查仍须满足。
+- 普通工具兼容问题先在已授权的本地或验证环境内定位修复，不自动扩大业务范围或退回全部验证阶段；涉及冻结工具、目标、权限、风险或副作用边界变化时，按对应 Gate 更新授权后再执行。
+- 关键前提失败、越界或执行结果不明时，停止受影响动作并说明事实、剩余步骤和所需决定；可继续已授权且不依赖该未知状态的安全工作。严格遵守单次授权、有效期、`retry false` 和 `RELEASE_MANIFEST.md` 的 Gate 终止规则，不能将续接解释为重试或复用已消费授权。
+- Agent 按独立子任务需要选用，不设置固定人数、串行审查流水线或逐角色报告；复用现有 PR、测试和执行记录。详细续接、证据复用与交接规则见 `docs/MULTI_AGENT_OPERATING_MODEL.md`。
