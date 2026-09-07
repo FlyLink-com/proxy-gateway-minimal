@@ -173,10 +173,11 @@ SGP TUIC sidecar 的 connection state 和持续入账不属于上述 baseline �
 累计记账服务没有新增自动历史补量政策。Hy2/TUIC 仍需各自独立方案与审批，
 不能通过普通 `--collect`、删除游标或手写 SQL 临时代替。
 
-VLESS baseline 只接受所选 channel 的完整 durable binding 与已有 cursor
+默认 v1 VLESS baseline 只接受所选 channel 的完整 durable binding 与已有 cursor
 集合，验证 active account/link/entitlement、issued request、有效期与材料
 指纹。不支持 legacy fallback、新建缺失 cursor、忽略 orphan/inactive 项或
-部分 snapshot；任何此类情况都保持 NO-GO，先完成独立 identity/retention 审查。
+部分 snapshot；任何此类情况都保持 NO-GO。显式 v2 的受保护保留集合见下节，
+不是对未知身份、孤立 cursor 或缺失有效用户读数的通用豁免。
 计划保留旧/新 cursor（包括 epoch）和 binding、目标账本、schema、数据库对象
 身份指纹；数据库身份不使用会随 sidecar 写入变化的 mtime 或整库文件摘要。
 `BEGIN IMMEDIATE` 内全部比较、更新及回读，既有样本/rollup 不变；计数不会
@@ -223,6 +224,49 @@ binary 路径与 SHA-256 来自现场固定执行对象；不能替换成未核�
 游标指纹；uplink/downlink 必须完整成对，缺失用户不能补零。T0 是各条真实
 snapshot 的观察时间，不是稍后的 apply 时间。
 
+### 显式 v2：混合状态的恢复准入
+
+需要保留已过期或稳定停用记录时，request 必须明确使用 `schemaVersion: 2`
+和 `retentionPolicy: "preserve-ineligible"`，其余字段与 v1 相同。外层 plan
+版本、request 版本及 privatePlan 版本/政策必须一致；旧 v1 包不会自动升级，
+也不能仅添加一个忽略错误的开关。scope 文件结构仍为 v1，通过精确 plan 文件
+摘要绑定该 v2 政策。所有例子仍是执行模板，不构成生产授权。
+
+- 有效集合：身份链完整、归属一致、材料存在、唯一 active link、active
+  账号/权益、issued 签发、delivered/issued Portal、期限有效且已有 cursor。
+  每个选定 channel 至少有一个有效项；有效项读数必须完整。
+- 保留集合：身份链同样完整，但已自然过期，或处于明确支持的稳定停用状态。
+  账号 suspended/disabled、权益 expired/revoked/suspended、签发 revoked/cancelled、
+  Portal 稳定 disabled、只有 revoked/rotated/disabled 历史 link 均可以保留。
+  一个 active link 加历史 link 不会使有效项误入保留集合。
+- 继续阻断：legacy issued 缺 durable、有效项缺 cursor、未知/进行中状态、
+  缺失对象、跨账号或权益错配、多个 active link、孤立 cursor。特别是
+  `traffic_supply_resume_pending`、`traffic_supply_resume_rollback_pending`、
+  `traffic_supply_expiry_cleanup_pending` 不会因为 Portal disabled 就自动保留。
+
+未签发的 planned/failed/cancelled 请求若没有 durable、签发 link 或 Portal
+交付/材料/资源关联痕迹，不属于本次 credential 集合；这不是忽略真实计数的
+授权。issued/revoked 或存在交付痕迹却缺 durable 仍拒绝，孤立 cursor 和未知
+来源读数也仍拒绝。v2 在整个 durable 表核验 credential 唯一性，包含非选中
+channel；不依赖数据库唯一索引恰好存在来避免跨通道歧义。
+
+privatePlan 的 `retainedBindings` 记录精确 source/channel/credential、原因、
+身份摘要及既有 cursor 或明确 absent；这些内容仅在受保护文件中保存。
+`bindingDigest` 覆盖全体身份，`retentionDigest` 同时固定保留项的身份、
+关联状态、材料、期限、next_action/event、全部相关 link 和 cursor。
+prepare/apply/verify/admit 及 reader 完成后的校验均绑定同一保留集合；保留项
+激活、增删、材料变化或 cursor 推进都会拒绝，不自动重新分类后继续执行。
+
+所有原始 Xray 读数仍先严格解析。保留项可以在读数中出现或缺席，但出现时
+必须成对、非负、安全整数且不重复；未知额外用户仍拒绝。完整有效集合和
+当前保护摘要通过后，才从交给记账服务的批次中排除精确保留 key。不会对
+保留项重置 cursor、追补样本、创建 cursor、重新激活或删除历史记录。
+保留项的计数低于历史 cursor 不构成有效项的 reset 授权，也不证明历史零用量。
+
+v2 独立状态使用 `coverage: "eligible_bindings_only"`，仅输出保留绑定数和
+实际排除的读数数；`productionRecoveryComplete` 仍为 false。24 小时临时窗口、
+有效 cursor 900 秒新鲜度、当前账期一致、record-only 和独立状态文件边界不变。
+
 ```bash
 "<已核验 Node 绝对路径>" "<candidate>/scripts/traffic-vless-recovery.mjs" prepare --request "<protected>/request.json" --plan "<protected>/plan.json"
 "<已核验 Node 绝对路径>" "<candidate>/scripts/traffic-vless-recovery.mjs" apply --plan "<protected>/plan.json" --expect-sha256 "<prepare 返回的 planFileSha256>"
@@ -268,7 +312,8 @@ source mapping 和 binary 摘要；只构造所选 VLESS collectors。所有 rea
 后、首次入账前再检查 packet digest 和准入，阻断读取过程中发生的 scope/身份/
 账期变化。scoped reader 固定 20 秒 timeout、4 MiB 响应上限；超时或超限拒绝。
 `beforeRecordGuard` 按原计划和当前 durable binding/cursor 校验整个 observation
-批次的完整 keyset。缺失整个用户不能当作 idle；额外用户、重复用户、计数下降、
+批次的完整有效 keyset（v1 是全部绑定，v2 是上述显式有效集合）。缺失整个有效
+用户不能当作 idle；未知额外用户、重复用户、有效项计数下降、
 观察时间回退或未来时间均在首次 record 前整批拒绝，记账调用为零。该前置检查
 不把后续多个用户的普通记账调用变成一个新的跨用户数据库事务。
 当前 cursor 必须不早于 T0、同 epoch 不回退，且不未来、不陈旧超过
@@ -501,12 +546,13 @@ Xray 统计端点、写 plan/intent/receipt、更新游标或操作服务。
 | SGP VLESS | baseline_binding_invalid | 114 | 24 | 0 | 82 | 4 | 13 |
 
 分类重叠，不能相加作为客户数；这些聚合不是 Identity Gate healthy 证明。
-新工具当前只支持完整、唯一、active durable binding 与既有 cursor 对齐的范围，
+该次检查使用的 v1 工具只支持完整、唯一、active durable binding 与既有 cursor 对齐的范围，
 不会把历史记录自动当作可删除垃圾，也不支持静默跳过它们后写基线。该现场尚不
 符合激活前提，必须先有独立的 legacy/retention/identity 只读分类及后续精确处置
 审批；不得为了让工具通过而删除历史样本、批量激活账号或改写订单状态。
 完成分类后若需支持受审查的保留集合，仍需显式契约和实现验证，不能靠手工修改
-privatePlan 摘要绕过。本轮 Production Gate 因上述实际数据前提继续 NO-GO。
+privatePlan 摘要绕过。该次 Production Gate 因上述实际数据前提为 NO-GO；上文 v2
+是后续源码补充，尚未对生产重新 inventory 或执行，不追溯改写该次结论。
 
 本轮源码部署范围已超出第一阶段三个 scripts，最终 manifest 至少应逐项审查
 下列运行时依赖集合，并按真实 import/call chain 补齐已有依赖的兼容性证据：
@@ -526,3 +572,24 @@ Git blob SHA-256、现网 before hash、安装 owner/mode、已有纯函数/数�
 方式、fresh 只读 inventory、两处 Xray 来源/身份、可接受的在线备份路径、
 plan/scope/临时单元的文件摘要、三个生产决策点的精确命令和操作员审批。
 上述未绑定事项不能标为已通过、已执行或生产已恢复。
+
+### 2026-09-07 同一 PR 的混合状态实现补充
+
+已整合 `master` 的 `2e635467a08fb0d60e6f8caaca9258447c621b81`，保留已合并的
+Portal origin 接线；本次只补本节 v2 源码、合成测试和运行说明，没有生产访问。
+旧 head `ab41fce09bd33b6261e3eb45d188fedfa1926f09` 的 Linux CI
+`33968245740` 仍是原提交的有效证据，不宣称其覆盖本次新增实现。
+
+- TDD：baseline 首轮 24 项失败转通过；最终未签发记录/跨通道歧义 5 项
+  失败转通过；command v2 1 项失败转通过；mixed integration 8 项失败转通过。
+- 整合后最终五文件定向验证：147 tests / 147 pass / 0 fail / 0 skip。
+  包含 strict v1、真实 SQLite prepare/apply/verify、两轮采集、保留项不写及
+  读取期间漂移时零入账；不是仅 mock 或状态摘要检查。
+- 完整 Windows `npm test`：4640 tests / 4573 pass / 11 fail / 56 skip，exit 1。
+  该次运行在最后两类边界补充前；随后以最终 147 项覆盖受影响部分。没有将
+  Windows 完整回归称为全绿，精确新 head 的 Linux CI 结果另在 PR 记录。
+- `npm run docs:authority:strict`：393 blocks 通过；`git diff --check` 通过。
+
+此次解决“正常过期/稳定停用混在同通道就无法准入”的源码缺口，不自动证明
+历史生产集合符合新规则。legacy 身份缺失、有效项缺 cursor 等仍须 fresh
+只读核验；不补造身份、不删除历史记录，也未执行 baseline 或临时采集激活。

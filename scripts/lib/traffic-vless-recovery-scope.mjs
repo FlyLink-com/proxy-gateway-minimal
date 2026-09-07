@@ -41,18 +41,21 @@ export function loadTrafficVlessRecoveryScope({ path, env, nowFn = () => new Dat
   }
   const admission = admitTrafficVlessBaseline({ dbPath: request.dbPath, plan: envelope.privatePlan, expectedPlanDigest: envelope.privatePlan.planDigest, nowFn });
   if (!admission.ok) recoveryReject();
+  const retainedObservationKeys = [];
   if (batch !== undefined) {
     // A disappearing whole user is not idle evidence. Validate the complete
     // private binding/counter set again after all reads, before any recording.
     if (!Array.isArray(batch) || batch.length !== channelRefs.length) recoveryReject();
-    const inventory = inspectTrafficVlessBaseline({ dbPath: request.dbPath, channelRefs, nowFn });
+    const inventory = inspectTrafficVlessBaseline({ dbPath: request.dbPath, channelRefs, retentionPolicy: request.retentionPolicy, nowFn });
     if (!inventory.ok) recoveryReject();
-    for (const field of ["bindingDigest", "databaseIdentityDigest", "schemaDigest"]) {
+    for (const field of ["bindingDigest", "databaseIdentityDigest", "schemaDigest", ...(request.schemaVersion === 2 ? ["retentionDigest"] : [])]) {
       if (inventory.privateInventory[field] !== envelope.privatePlan[field]) recoveryReject();
     }
     const key = (entry) => `${entry.sourceRef}\0${entry.channelRef}\0${entry.edgeCredentialRef}`;
     const expected = new Map(inventory.privateInventory.entries.map((entry) => [key(entry), entry.cursor]));
+    const retained = new Set((inventory.privateInventory.retainedBindings || []).map(key));
     const seen = new Set();
+    let eligibleSeen = 0;
     const seenChannels = new Set();
     for (const entry of batch) {
       if (!channelRefs.includes(entry.channelRef) || seenChannels.has(entry.channelRef)
@@ -61,16 +64,20 @@ export function loadTrafficVlessRecoveryScope({ path, env, nowFn = () => new Dat
       for (const observation of entry.collected.observations) {
         const id = key(observation);
         const cursor = expected.get(id);
-        if (!cursor || seen.has(id) || observation.channelRef !== entry.channelRef
+        if ((!cursor && !retained.has(id)) || seen.has(id) || observation.channelRef !== entry.channelRef
           || !Number.isSafeInteger(observation.uploadBytes) || !Number.isSafeInteger(observation.downloadBytes)
           || !Number.isSafeInteger(observation.uploadBytes + observation.downloadBytes)
-          || observation.uploadBytes < cursor.uploadBytes || observation.downloadBytes < cursor.downloadBytes
-          || !Number.isFinite(Date.parse(observation.observedAt)) || Date.parse(observation.observedAt) < Date.parse(cursor.observedAt)
+          || observation.uploadBytes < 0 || observation.downloadBytes < 0
+          || (cursor && (observation.uploadBytes < cursor.uploadBytes || observation.downloadBytes < cursor.downloadBytes
+            || Date.parse(observation.observedAt) < Date.parse(cursor.observedAt)))
+          || !Number.isFinite(Date.parse(observation.observedAt))
           || Date.parse(observation.observedAt) > nowFn().getTime()) recoveryReject();
         seen.add(id);
+        if (cursor) eligibleSeen++;
+        else retainedObservationKeys.push(id);
       }
     }
-    if (seen.size !== expected.size) recoveryReject();
+    if (eligibleSeen !== expected.size) recoveryReject();
   }
   const statusFile = recoveryAbsolutePath(config.statusFile);
   if (basename(statusFile) !== "vless-recovery-status.json" || statusFile === env.EDGE_USAGE_COLLECTOR_STATUS_PATH) recoveryReject();
@@ -78,6 +85,8 @@ export function loadTrafficVlessRecoveryScope({ path, env, nowFn = () => new Dat
   try { if (readRecoveryJson(statusFile).value.type !== "traffic_vless_recovery_status") recoveryReject(); }
   catch (error) { if (error.code !== "ENOENT") throw error; }
   return { collectionScope: Object.freeze({ channelRefs: Object.freeze(channelRefs), protocol: "vless", lifecycleMode: "record-only" }),
+    ...(request.schemaVersion === 2 ? { retentionPolicy: request.retentionPolicy,
+      retainedBindingCount: envelope.privatePlan.retainedBindings.length, retainedObservationKeys: Object.freeze(retainedObservationKeys) } : {}),
     statusFile, baselinePlanDigest: envelope.privatePlan.planDigest, packetSha256: packet.sha256 };
 }
 export function writeTrafficVlessRecoveryStatus(path, value) {

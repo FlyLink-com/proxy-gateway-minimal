@@ -246,6 +246,7 @@ export async function runTrafficUsageCollectOnce({
     }
   }
   const mode = argv.includes("--collect") ? "collect" : "check";
+  let retainedObservationCount = 0;
   let state;
   try {
     state = runtimeStateFactory({
@@ -256,6 +257,16 @@ export async function runTrafficUsageCollectOnce({
         trafficUsageCollectionAdmission: (batch) => {
           const fresh = recoveryScopeLoader({ path: recoveryScopePath, env, nowFn, batch });
           if (fresh.packetSha256 !== recoveryScope.packetSha256) throw new Error("recovery_scope_changed");
+          // Only project after validating the entire source batch and rechecking
+          // the pinned packet. Retained counters never reach the accounting API.
+          if (fresh.retentionPolicy === "preserve-ineligible") {
+            const retained = new Set(fresh.retainedObservationKeys);
+            for (const entry of batch) {
+              entry.collected = { ...entry.collected, observations: entry.collected.observations.filter((observation) =>
+                !retained.has(`${observation.sourceRef}\0${observation.channelRef}\0${observation.edgeCredentialRef}`)) };
+            }
+            retainedObservationCount = retained.size;
+          }
           return true;
         }
       } : {})
@@ -292,11 +303,16 @@ export async function runTrafficUsageCollectOnce({
     unresolvedPolicy: recoveryScope ? "fail_unresolved_bindings" : "tolerate_unresolved_bindings"
   });
   if (recoveryScope) {
+    if (recoveryScope.retentionPolicy === "preserve-ineligible") {
+      summary.retentionPolicy = recoveryScope.retentionPolicy;
+      summary.retainedBindingCount = recoveryScope.retainedBindingCount;
+      summary.retainedObservationCount = retainedObservationCount;
+    }
     try {
       recoveryStatusWriter(recoveryScope.statusFile, {
         type: "traffic_vless_recovery_status", observedAt: nowFn().toISOString(),
         baselinePlanDigest: recoveryScope.baselinePlanDigest, summary,
-        coverage: "selected_channels_only", productionRecoveryComplete: false
+        coverage: recoveryScope.retentionPolicy === "preserve-ineligible" ? "eligible_bindings_only" : "selected_channels_only", productionRecoveryComplete: false
       });
     } catch {
       stderr.write(`${JSON.stringify({ type: "traffic_vless_recovery_status", ok: false, errorCode: "recovery_status_write_failed" })}\n`);

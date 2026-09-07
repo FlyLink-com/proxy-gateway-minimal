@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
 import test from "node:test";
-import { readRecoveryXraySnapshot, runTrafficVlessRecovery } from "../../scripts/traffic-vless-recovery.mjs";
+import { readRecoveryXraySnapshot, runTrafficVlessRecovery, validateVlessRecoveryRequest, readBaselineEnvelope } from "../../scripts/traffic-vless-recovery.mjs";
 
 const channel = "channel-vultr-a-vless-reality-tcp";
 const clock = () => new Date("2026-09-05T10:00:00.000Z");
@@ -75,7 +75,7 @@ test("prepare writes private plan only and apply persists intent before DB mutat
   let inspected = 0;
   const baseline = {
     inspectTrafficVlessBaseline() { inspected++; return { ok: true, privateInventory: { synthetic: true } }; },
-    prepareTrafficVlessBaseline({ observations }) { assert.equal(observations.length, 1); return { ok: true, privatePlan: { planDigest: "a".repeat(64), privateMarker: "never-stdout" }, summary: { ok: true, planDigest: "a".repeat(64) } }; },
+    prepareTrafficVlessBaseline({ observations }) { assert.equal(observations.length, 1); return { ok: true, privatePlan: { version: 1, channelRefs: [channel], planDigest: "a".repeat(64), privateMarker: "never-stdout" }, summary: { ok: true, planDigest: "a".repeat(64) } }; },
     applyTrafficVlessBaseline() { assert.ok(existsSync(`${planFile}.intent.json`)); applied = true; return { ok: true, status: "baseline_applied", planDigest: "a".repeat(64) }; },
     verifyTrafficVlessBaseline() { return { ok: applied, status: applied ? "baseline_applied" : "baseline_not_applied", applied, planDigest: "a".repeat(64) }; }
   };
@@ -91,4 +91,35 @@ test("prepare writes private plan only and apply persists intent before DB mutat
   assert.ok(existsSync(`${planFile}.receipt.json`));
   assert.equal(await runTrafficVlessRecovery({ ...common, argv: ["verify", "--plan", planFile, "--expect-sha256", fileDigest] }), 0);
   assert.doesNotMatch(output, /never-stdout|edgecred_private|db\.sqlite|127\.0\.0\.1/);
+});
+
+test("mixed-state policy requires explicit v2 and is forwarded to both baseline reads", async (t) => {
+  const { root, source } = fixture(t);
+  const request = { schemaVersion: 2, retentionPolicy: "preserve-ineligible", dbPath: join(root, "db.sqlite"), channelRefs: [channel], sources: [source], validForSeconds: 300 };
+  assert.equal(validateVlessRecoveryRequest(request), request);
+  for (const invalid of [{ ...request, schemaVersion: 1 }, { ...request, retentionPolicy: undefined }, { ...request, retentionPolicy: "ignore-errors" }, { ...request, schemaVersion: 3 }]) {
+    assert.throws(() => validateVlessRecoveryRequest(invalid));
+  }
+  const requestFile = join(root, "request.json"), planFile = join(root, "plan.json");
+  writeFileSync(requestFile, JSON.stringify(request), { mode: 0o600 });
+  let inspections = 0, preparations = 0, output = "";
+  const baseline = {
+    inspectTrafficVlessBaseline(options) { inspections++; assert.equal(options.retentionPolicy, request.retentionPolicy); return { ok: true, privateInventory: {} }; },
+    prepareTrafficVlessBaseline(options) { preparations++; assert.equal(options.retentionPolicy, request.retentionPolicy); return { ok: true, privatePlan: { version: 2, retentionPolicy: request.retentionPolicy, channelRefs: [channel], planDigest: "a".repeat(64) }, summary: { ok: true } }; }
+  };
+  assert.equal(await runTrafficVlessRecovery({ argv: ["prepare", "--request", requestFile, "--plan", planFile], baseline, allowWindowsSynthetic: true,
+    stdout: { write: (value) => { output += value; } }, nowFn: clock, commandRunner: () => ({ status: 0, stdout: JSON.stringify(validPayload) }) }), 0);
+  assert.equal(inspections, 1); assert.equal(preparations, 1);
+  const envelope = readBaselineEnvelope(planFile, digest(readFileSync(planFile)));
+  assert.equal(envelope.schemaVersion, 2);
+  for (const changed of [
+    { ...envelope, schemaVersion: 1 },
+    { ...envelope, privatePlan: { ...envelope.privatePlan, version: 1 } },
+    { ...envelope, privatePlan: { ...envelope.privatePlan, retentionPolicy: "strict" } },
+    { ...envelope, request: { ...envelope.request, schemaVersion: 1 } }
+  ]) {
+    writeFileSync(planFile, JSON.stringify(changed), { mode: 0o600 });
+    assert.throws(() => readBaselineEnvelope(planFile, digest(readFileSync(planFile))));
+  }
+  assert.doesNotMatch(output, /db\.sqlite|edgecred_private/);
 });

@@ -389,3 +389,212 @@ test("historical edge lifecycle mutation flags remain bound evidence without blo
   assert.equal(apply(f, prepared).ok, true);
   assert.equal(f.db.prepare("SELECT edge_lifecycle_mutation FROM platform_portal_access_requests WHERE id=?").get(f.refs[0].requestId).edge_lifecycle_mutation, 1);
 });
+
+const RETENTION = "preserve-ineligible";
+function mixedFixture(t) {
+  const f = fixture(t);
+  for (const ref of f.refs) {
+    f.db.prepare("UPDATE platform_accounts SET owner_ref=id WHERE id=?").run(ref.accountId);
+    f.db.prepare("UPDATE platform_portal_access_requests SET portal_user_ref=? WHERE id=?").run(ref.accountId, ref.requestId);
+  }
+  const retained = f.refs[2];
+  f.db.prepare("UPDATE platform_portal_edge_credentials SET edge_channel_ref=? WHERE request_id=?").run(CHANNELS[0], retained.requestId);
+  f.db.prepare("UPDATE platform_portal_access_requests SET edge_channel_ref=? WHERE id=?").run(CHANNELS[0], retained.requestId);
+  f.db.prepare("UPDATE platform_issuance_requests SET node_id=? WHERE id=?").run(CHANNELS[0], retained.requestId);
+  f.db.prepare("UPDATE platform_usage_counter_cursors SET source_ref=?,channel_ref=? WHERE edge_credential_ref=?").run(SOURCE, CHANNELS[0], retained.edgeCredentialRef);
+  retained.sourceRef = SOURCE;
+  retained.channelRef = CHANNELS[0];
+  f.db.prepare("UPDATE platform_entitlements SET status='expired' WHERE id=?").run(retained.entitlementId);
+  return f;
+}
+function inspectV2(f, overrides = {}) {
+  return inspectTrafficVlessBaseline({ dbPath: f.dbPath, channelRefs: CHANNELS, nowFn, retentionPolicy: RETENTION, ...overrides });
+}
+function prepareV2(f, overrides = {}) {
+  const inspection = inspectV2(f);
+  assert.equal(inspection.ok, true, JSON.stringify(inspection.summary));
+  return prepareTrafficVlessBaseline({ dbPath: f.dbPath, channelRefs: CHANNELS, nowFn, retentionPolicy: RETENTION,
+    observations: f.observations, expectedInventory: inspection.privateInventory, ...overrides });
+}
+
+test("v2 explicitly retains mixed history while strict v1 remains fail closed and shape compatible", (t) => {
+  const clean = fixture(t);
+  const v1 = inspectTrafficVlessBaseline({ dbPath: clean.dbPath, channelRefs: CHANNELS, nowFn });
+  assert.equal(v1.privateInventory.version, 1);
+  assert.equal(Object.hasOwn(v1.privateInventory, "retentionPolicy"), false);
+  const f = mixedFixture(t);
+  assert.equal(inspectTrafficVlessBaseline({ dbPath: f.dbPath, channelRefs: CHANNELS, nowFn }).ok, false);
+  const inspection = inspectV2(f);
+  assert.equal(inspection.ok, true, JSON.stringify(inspection.summary));
+  assert.equal(inspection.privateInventory.version, 2);
+  assert.equal(inspection.privateInventory.retentionPolicy, RETENTION);
+  assert.equal(inspection.privateInventory.entries.length, 2);
+  assert.equal(inspection.privateInventory.retainedBindings.length, 1);
+  assert.match(inspection.privateInventory.retentionDigest, /^[a-f0-9]{64}$/);
+  assertRedacted(inspection.summary, f);
+  const retainedBefore = f.store.getUsageCounterCursor(f.refs[2]);
+  const accountingBefore = accountingRows(f);
+  const identitiesBefore = tableRows(f, "platform_portal_edge_credentials");
+  const prepared = prepareV2(f);
+  assert.equal(prepared.ok, true, JSON.stringify(prepared.summary));
+  assert.equal(prepared.privatePlan.version, 2);
+  assert.deepEqual(prepared.privatePlan.retainedBindings, inspection.privateInventory.retainedBindings);
+  assert.equal(apply(f, prepared).updatedCursorCount, 2);
+  assert.equal(apply(f, prepared).updatedCursorCount, 0);
+  assert.deepEqual(f.store.getUsageCounterCursor(f.refs[2]), retainedBefore);
+  assert.deepEqual(accountingRows(f), accountingBefore);
+  assert.deepEqual(tableRows(f, "platform_portal_edge_credentials"), identitiesBefore);
+  const args = { dbPath: f.dbPath, plan: prepared.privatePlan, expectedPlanDigest: prepared.summary.planDigest, nowFn };
+  assert.equal(verifyTrafficVlessBaseline(args).ok, true);
+  assert.equal(admitTrafficVlessBaseline(args).ok, true);
+});
+
+for (const [label, sql] of [
+  ["account suspended", "UPDATE platform_accounts SET status='suspended' WHERE id='private-account-2'"],
+  ["account disabled", "UPDATE platform_accounts SET status='disabled' WHERE id='private-account-2'"],
+  ["entitlement expired", "UPDATE platform_entitlements SET status='expired' WHERE id='private-entitlement-2'"],
+  ["entitlement revoked", "UPDATE platform_entitlements SET status='revoked' WHERE id='private-entitlement-2'"],
+  ["entitlement suspended", "UPDATE platform_entitlements SET status='suspended' WHERE id='private-entitlement-2'"],
+  ["entitlement elapsed", "UPDATE platform_entitlements SET valid_until='2026-09-04T00:00:00.000Z' WHERE id='private-entitlement-2'"],
+  ["portal elapsed", "UPDATE platform_portal_access_requests SET valid_until='2026-09-04T00:00:00.000Z' WHERE id='private-request-2'"],
+  ["request revoked", "UPDATE platform_issuance_requests SET status='revoked' WHERE id='private-request-2'"],
+  ["request cancelled", "UPDATE platform_issuance_requests SET status='cancelled' WHERE id='private-request-2'"],
+  ["link revoked", "UPDATE platform_issued_subscription_links SET status='revoked' WHERE id='link-2'"],
+  ["link rotated", "UPDATE platform_issued_subscription_links SET status='rotated' WHERE id='link-2'"],
+  ["link disabled", "UPDATE platform_issued_subscription_links SET status='disabled' WHERE id='link-2'"],
+  ["portal disabled", "UPDATE platform_portal_access_requests SET status='disabled',next_action='disabled_by_operator' WHERE id='private-request-2'"]
+]) test(`v2 admits known retained ${label} without changing historical cursor`, (t) => {
+  const f = mixedFixture(t);
+  f.db.exec("UPDATE platform_entitlements SET status='active' WHERE id='private-entitlement-2'");
+  f.db.exec(sql);
+  const result = inspectV2(f);
+  assert.equal(result.ok, true, JSON.stringify(result.summary));
+  assert.equal(result.privateInventory.retainedBindings.length, 1);
+  assert.ok(result.privateInventory.retainedBindings[0].reasons.length > 0);
+});
+
+for (const [label, sql] of [
+  ["active missing cursor", "DELETE FROM platform_usage_counter_cursors WHERE edge_credential_ref='private-credential-0'"],
+  ["terminal legacy missing durable", "DELETE FROM platform_portal_edge_credentials WHERE request_id='private-request-2'"],
+  ["missing account", "UPDATE platform_issuance_requests SET account_id='missing' WHERE id='private-request-2'"],
+  ["wrong account owner", "UPDATE platform_accounts SET owner_ref='other-owner' WHERE id='private-account-2'"],
+  ["wrong portal owner", "UPDATE platform_portal_access_requests SET portal_user_ref='other-owner' WHERE id='private-request-2'"],
+  ["wrong entitlement", "UPDATE platform_portal_access_requests SET entitlement_ref='private-entitlement-0' WHERE id='private-request-2'"],
+  ["missing material", "UPDATE platform_portal_edge_credentials SET edge_material_digest='' WHERE request_id='private-request-2'"],
+  ["planned request", "UPDATE platform_issuance_requests SET status='planned' WHERE id='private-request-2'"],
+  ["failed request", "UPDATE platform_issuance_requests SET status='failed' WHERE id='private-request-2'"],
+  ["pending portal", "UPDATE platform_portal_access_requests SET status='approved_pending_delivery' WHERE id='private-request-2'"],
+  ["rejected portal", "UPDATE platform_portal_access_requests SET status='rejected' WHERE id='private-request-2'"],
+  ["resume pending", "UPDATE platform_portal_access_requests SET status='disabled',next_action='traffic_supply_resume_pending' WHERE id='private-request-2'"],
+  ["resume rollback pending", "UPDATE platform_portal_access_requests SET status='disabled',next_action='traffic_supply_resume_rollback_pending' WHERE id='private-request-2'"],
+  ["expiry cleanup pending", "UPDATE platform_portal_access_requests SET status='disabled',next_action='traffic_supply_expiry_cleanup_pending' WHERE id='private-request-2'"],
+  ["multiple active links", "INSERT INTO platform_issued_subscription_links SELECT 'duplicate-link',request_id,tenant_ref,artifact_ref,status,created_at,updated_at FROM platform_issued_subscription_links WHERE id='link-2'"],
+  ["unknown account status", "PRAGMA ignore_check_constraints=ON; UPDATE platform_accounts SET status='unknown' WHERE id='private-account-2'"]
+]) test(`v2 never hides ${label} behind expired retention`, (t) => {
+  const f = mixedFixture(t);
+  f.db.pragma("foreign_keys = OFF");
+  f.db.exec(sql);
+  const before = tableRows(f, "platform_usage_counter_cursors");
+  const result = inspectV2(f);
+  assert.equal(result.ok, false);
+  assert.deepEqual(tableRows(f, "platform_usage_counter_cursors"), before);
+  assertRedacted(result.summary, f);
+});
+
+test("v2 permits absent retained cursor but never creates it or accepts an empty eligible channel", (t) => {
+  const f = mixedFixture(t);
+  f.db.exec("DELETE FROM platform_usage_counter_cursors WHERE edge_credential_ref='private-credential-2'");
+  assert.equal(inspectV2(f).privateInventory?.retainedBindings[0].cursor, null);
+  const prepared = prepareV2(f);
+  assert.equal(apply(f, prepared).ok, true);
+  assert.equal(f.store.getUsageCounterCursor(f.refs[2]), null);
+  f.db.exec("UPDATE platform_entitlements SET status='expired' WHERE id='private-entitlement-1'");
+  assert.equal(inspectV2(f).ok, false);
+});
+
+test("v2 includes inactive link history in identity without excluding an active unique binding", (t) => {
+  const f = mixedFixture(t);
+  const before = inspectV2(f);
+  f.db.exec("INSERT INTO platform_issued_subscription_links SELECT 'old-link',request_id,tenant_ref,artifact_ref,'rotated',created_at,updated_at FROM platform_issued_subscription_links WHERE id='link-0'");
+  const after = inspectV2(f);
+  assert.equal(after.ok, true);
+  assert.equal(after.privateInventory.entries.length, 2);
+  assert.notEqual(after.privateInventory.bindingDigest, before.privateInventory.bindingDigest);
+});
+
+for (const change of ["reactivated", "cursor", "material", "next action", "event", "deleted binding"]) {
+  test(`v2 apply verify and admit reject retained ${change} drift`, (t) => {
+    for (const action of ["apply", "verify", "admit"]) {
+      const f = mixedFixture(t);
+      const prepared = prepareV2(f);
+      if (action !== "apply") assert.equal(apply(f, prepared).ok, true);
+      const sql = {
+        reactivated: "UPDATE platform_entitlements SET status='active' WHERE id='private-entitlement-2'",
+        cursor: "UPDATE platform_usage_counter_cursors SET upload_bytes=upload_bytes+1 WHERE edge_credential_ref='private-credential-2'",
+        material: "UPDATE platform_portal_edge_credentials SET edge_material_digest='changed' WHERE request_id='private-request-2'",
+        "next action": "UPDATE platform_portal_access_requests SET next_action='changed' WHERE id='private-request-2'",
+        event: "UPDATE platform_portal_access_requests SET event_json='{} ' WHERE id='private-request-2'",
+        "deleted binding": "DELETE FROM platform_portal_edge_credentials WHERE request_id='private-request-2'"
+      }[change];
+      f.db.exec(sql);
+      const before = tableRows(f, "platform_usage_counter_cursors");
+      const args = { dbPath: f.dbPath, plan: prepared.privatePlan, expectedPlanDigest: prepared.summary.planDigest, nowFn };
+      const result = action === "apply" ? applyTrafficVlessBaseline(args) : action === "verify" ? verifyTrafficVlessBaseline(args) : admitTrafficVlessBaseline(args);
+      assert.equal(result.ok, false, action);
+      assert.deepEqual(tableRows(f, "platform_usage_counter_cursors"), before);
+    }
+  });
+}
+
+test("v2 accepts optional known retained observations only after strict validation", (t) => {
+  const f = mixedFixture(t);
+  const retained = { ...f.observations[0], edgeCredentialRef: f.refs[2].edgeCredentialRef };
+  const prepared = prepareV2(f, { observations: [...f.observations, retained] });
+  assert.equal(prepared.ok, true, JSON.stringify(prepared.summary));
+  assert.equal(prepared.privatePlan.entries.length, 2);
+  for (const rows of [
+    [...f.observations, retained, retained],
+    [...f.observations, { ...retained, edgeCredentialRef: "unknown" }],
+    [...f.observations, { ...retained, downloadBytes: undefined }],
+    [...f.observations, { ...retained, uploadBytes: -1 }],
+    [...f.observations, { ...retained, observedAt: "2026-09-06T00:00:00.000Z" }],
+    [f.observations[0], retained]
+  ]) assert.equal(prepareV2(f, { observations: rows }).ok, false);
+});
+
+test("v2 rejects policy typo and forged retained plan fields without cursor writes", (t) => {
+  const f = mixedFixture(t);
+  assert.equal(inspectV2(f, { retentionPolicy: "skip-inactive" }).ok, false);
+  const prepared = prepareV2(f);
+  const before = tableRows(f, "platform_usage_counter_cursors");
+  for (const change of [plan => { plan.retentionDigest = "0".repeat(64); }, plan => { plan.retainedBindings = []; }, plan => { plan.retentionPolicy = "skip-inactive"; }]) {
+    const modified = structuredClone(prepared);
+    change(modified.privatePlan);
+    assert.equal(apply(f, modified).ok, false);
+    assert.deepEqual(tableRows(f, "platform_usage_counter_cursors"), before);
+  }
+});
+
+for (const status of ["planned", "failed", "cancelled"]) test(`v2 ignores never-issued ${status} requests without any resource identity`, (t) => {
+  const f = mixedFixture(t);
+  f.db.prepare("INSERT INTO platform_issuance_requests SELECT 'unissued-request',account_id,entitlement_id,approval_ref,?,quantity,node_id,purpose,requested_by_ref,created_at,updated_at,metadata_json FROM platform_issuance_requests WHERE id=?").run(status, f.refs[0].requestId);
+  const result = inspectV2(f);
+  assert.equal(result.ok, true, JSON.stringify(result.summary));
+  assert.equal(result.privateInventory.entries.length, 2);
+  assert.equal(result.privateInventory.retainedBindings.length, 1);
+  // An issued-link history makes missing durable identity unsafe, regardless
+  // of the current request status; do not turn it into a fake retained key.
+  f.db.exec("INSERT INTO platform_issued_subscription_links SELECT 'unissued-history','unissued-request',tenant_ref,artifact_ref,'revoked',created_at,updated_at FROM platform_issued_subscription_links WHERE id='link-0'");
+  assert.equal(inspectV2(f).summary.errorCode, "baseline_legacy_binding_unsupported");
+});
+
+for (const channel of [CHANNELS[1], "channel-sgp-a-tuic"]) test(`v2 rejects credential ambiguity across ${channel} even without the unique index`, (t) => {
+  const f = mixedFixture(t);
+  f.db.exec("DROP INDEX platform_portal_edge_credentials_ref_idx");
+  f.db.prepare("UPDATE platform_portal_edge_credentials SET edge_credential_ref=?,edge_channel_ref=? WHERE request_id=?").run(f.refs[0].edgeCredentialRef, channel, f.refs[1].requestId);
+  f.db.prepare("UPDATE platform_portal_access_requests SET edge_credential_ref=?,edge_channel_ref=? WHERE id=?").run(f.refs[0].edgeCredentialRef, channel, f.refs[1].requestId);
+  f.db.prepare("UPDATE platform_usage_counter_cursors SET edge_credential_ref=?,channel_ref=? WHERE edge_credential_ref=?").run(f.refs[0].edgeCredentialRef, channel, f.refs[1].edgeCredentialRef);
+  const result = inspectV2(f, { channelRefs: channel === CHANNELS[1] ? CHANNELS : [CHANNELS[0]] });
+  assert.equal(result.ok, false);
+  assert.equal(result.summary.errorCode, "baseline_binding_ambiguous");
+});
