@@ -1,6 +1,6 @@
 # Multi-Agent Operating Model
 
-Last updated: 2026-05-27, Asia/Shanghai.
+Last updated: 2026-09-07, America/Los_Angeles.
 
 ```yaml
 document_metadata:
@@ -8,7 +8,7 @@ document_metadata:
   lifecycle: active
   authority_scope: multi_agent_operating_model
   superseded_by: null
-  last_verified_at: 2026-08-29
+  last_verified_at: 2026-09-07
   production_authority: false
 ```
 
@@ -62,6 +62,64 @@ subagents do not touch production unless a Risk A runbook explicitly says so
 subagent output is evidence, not truth, until the lead verifies it
 parallel work is allowed only when file ownership and external state do not conflict
 ```
+
+## Authorized Progress And Evidence Reuse
+
+The operating goal is continuous progress within an explicit task boundary,
+not more mandatory agents, reports, tests, or approvals. Classify the actual
+action, target, and impact: a validation or documentation role does not make a
+production operation Risk C. A small addition to an existing project does not
+require repeating the whole project lifecycle; its actual A/B/C boundary still
+applies. This section grants no execution authority and adds no validation lane.
+
+### Continue The Remaining Work
+
+- On resumption, identify the requested outcome, allowed actions, completed
+  steps with evidence, remaining steps, and any actual blocker. Reuse the
+  existing PR or execution record; no separate continuation report is required.
+- Within a clear, valid authorization, perform the remaining implementation,
+  applicable validation, and closeout steps without asking again for every
+  command. Diagnosis-only permission does not authorize a fix; implementation
+  permission does not implicitly authorize merge or deployment.
+- A new turn, agent handoff, or tool change alone does not restart the task.
+  Short confirmations are interpreted against the specific scope they refer
+  to, subject to the approval format required by the applicable runbook.
+- Tool availability or compatibility problems may be diagnosed and repaired
+  within the authorized local/validation scope. Tools support the task; do not
+  turn a setup failure into a business failure or restart all earlier phases.
+  This does not authorize changing a frozen worker or controller, bypassing an
+  admission check, or moving execution to an unapproved host.
+- Pause the affected action when a required premise fails, scope/target/risk
+  changes, authority is absent or expired, or side effects are uncertain. State
+  what is known, what remains, and the exact new decision needed. Independent,
+  already-authorized safe work may continue; dependent mutation may not.
+- `RELEASE_MANIFEST.md` owns release Gate stop/consumption semantics. A failed
+  Gate requires a corrected successor, with fresh approval when required; a
+  consumed one-time approval cannot authorize a second attempt. Do not replay
+  a dispatched operation after timeout or transport loss. Use authorized
+  readback/recovery, respect `retry false`, and do not relabel uncertainty as
+  a safe pre-execution failure. Backup and rollback readiness precede mutation.
+
+### Reuse Valid Evidence, Recheck The Changed Boundary
+
+- The lead verifies evidence against the exact source/artifact under review,
+  dependency/runtime identity, required environment properties, command scope,
+  and result. Reuse requires all applicable bindings and freshness requirements
+  to remain satisfied; an unsupported memory or summary is not a passing run.
+- Existing CI/Linux validation need not run again merely because the agent or
+  conversation changed. Verify its retained record and continue the next
+  incomplete stage. A changed input requires checks covering that change and
+  its integration effects; a required full baseline or exact-head check cannot
+  be replaced by an unrelated focused pass or results from another commit.
+- Fresh target inventory, expiring approvals, artifact retrievability, and
+  runbook-mandated just-before-execution checks remain fresh checks. Source,
+  merge, artifact, and production evidence stay distinct. A failed execution
+  approval does not erase unrelated valid source evidence, but that evidence
+  cannot reopen the failed Gate.
+- Report new runs, verified reused evidence, and missing evidence separately.
+  Retain exact commands/results and evidence links in the existing PR or
+  execution record; do not generate duplicate role reports or a new evidence
+  store. Follow `docs/VALIDATION_BASELINE.md` for the applicable checks.
 
 ## Historical Heavyweight Specialist Profiles
 
@@ -187,6 +245,13 @@ runtime state.
 
 ## Agent Roles
 
+These roles are optional task capabilities, not a mandatory serial pipeline.
+Use only the independent support the task needs; security, migration, or
+release-evidence specialization can be scoped inside an existing role rather
+than requiring a new agent. Role descriptions or YAML capability declarations
+are policy, not proof of enforced tool permissions. The lead must honor the
+actual tool boundary and cannot delegate authority it does not have.
+
 ### Lead Agent
 
 Responsibilities:
@@ -200,7 +265,7 @@ choose whether work is single-agent, sequential multi-agent, or parallel
 prepare task packets for subagents
 protect source-of-truth files from conflicting edits
 review all subagent outputs
-run final verification commands
+verify the complete required baseline, reusing valid evidence as defined above
 stage, commit, push, or hand off only after verification
 write the final answer to the user
 ```
@@ -536,16 +601,16 @@ Allowed:
 docs-only review
 docs-only edits
 navigation updates
-git diff --check
+existing docs-only checks from docs/VALIDATION_BASELINE.md
 ```
 
-Recommended multi-agent use:
+Optional support for cross-document work:
 
 ```text
-one Architecture Agent for consistency review
-one Documentation Agent for index and handoff updates
-one Security Agent for no-secrets scan
-lead integrates and runs git diff --check
+lead handles a small docs change directly
+use an independent consistency review when it adds value
+combine documentation and sensitive-content checks into the existing review
+lead integrates and verifies the existing docs-only baseline
 ```
 
 ### B-Tier
@@ -560,7 +625,7 @@ agent prototype local changes
 repo-only scripts
 ```
 
-Recommended multi-agent use:
+Optional support, selected for the actual task:
 
 ```text
 Code Agent implements one bounded subsystem
@@ -582,7 +647,7 @@ targeted tests for the touched behavior
 
 Allowed only after explicit operator approval and the relevant runbook gate.
 
-Recommended multi-agent use:
+Optional support within the runbook's required review boundary:
 
 ```text
 Ops Agent performs read-only inventory
@@ -654,7 +719,11 @@ or Local Client follow-up work. If a task should remain lead-owned because it
 touches source-of-truth files, secrets, production gates, or cross-unit
 integration, state that explicitly.
 
-Subagent reports must include:
+Use the existing PR routing block; `None` is valid for unused support or
+follow-up roles. It is not a request to create more agents or follow-up tasks.
+
+Subagent reports should cover applicable facts below; a short review may combine
+them in a few sentences and cite existing evidence instead of creating a file:
 
 ```text
 commands run
@@ -671,13 +740,22 @@ Lead verification must include:
 ```text
 review subagent output
 inspect actual diff
-run required validation commands
+verify required validation through new runs or applicable retained evidence
 check git status
 check for sensitive content when docs or configs changed
 summarize what is known, what is inferred, and what remains open
 ```
 
 Never say work is complete based only on a subagent summary.
+
+Reviews check business invariants as well as code and test results. For wallet,
+payment, or fulfillment work, use the subsystem's current contract: authoritative
+balances must not bypass the ledger/domain transaction; duplicate callbacks
+must have one settlement effect, not necessarily one total ledger row; uncertain
+delivery must be reconciled before any retry that could debit or issue resources
+again. These are review boundaries, not authorization for reconciliation writes
+or new mandatory test suites for unrelated work. Lint and tests remain useful
+but do not prove those invariants on their own.
 
 ## Secret And Sensitive Data Rules
 
@@ -709,7 +787,9 @@ redacted validation result
 
 ## Handoff Format
 
-When one agent hands work back to the lead, use this format:
+When one agent hands work back to the lead, use the following as a checklist,
+not a mandatory standalone report. Combine fields for small tasks and link
+existing evidence:
 
 ```text
 Scope handled:
@@ -759,11 +839,12 @@ For non-trivial work:
 2. Lead fresh-reads native Issue/PR records before selecting or ordering work;
    Project #1 is navigation only.
 3. Lead classifies Risk A / B / C.
-4. Lead identifies independent tracks.
-5. Lead writes explicit task packets.
-6. Subagents analyze or implement within their packets.
+4. Lead identifies remaining work and reusable evidence.
+5. If independent support is useful, lead writes scoped task packets.
+6. Selected subagents analyze or implement within their packets; otherwise
+   lead continues directly.
 7. Lead reviews outputs and integrates changes.
-8. Lead runs required validation.
+8. Lead verifies the required baseline through new runs or valid retained evidence.
 9. Lead updates source-of-truth docs when durable facts changed.
 10. Lead commits and pushes only after verification.
 11. Lead reports result, risks, and validation evidence to the user.
@@ -783,15 +864,13 @@ Before using multi-agent execution for production-adjacent work, decide:
 2. Whether each subagent should work in a separate git worktree for B-tier code.
 3. Which files are permanently lead-owned and never directly edited by
    subagents.
-4. Whether a Security Agent no-secrets scan is mandatory for every PR.
-5. Whether PR descriptions should include a standardized multi-agent evidence
-   section.
 ```
 
-Until those are decided, use the stricter boundary:
+These are task-specific decisions, not prerequisites for every small change.
+Without an explicit delegation boundary:
 
 ```text
-subagents analyze and recommend
+subagents analyze and recommend within their assigned scope
 lead edits source-of-truth files
 lead executes production commands
 lead performs final verification
