@@ -102,7 +102,11 @@ a database merely to roll back application code.
 ## API and configuration contract
 
 - `GET /r/:code`: active-code capture; secure host-only HttpOnly cookie; fixed
-  `/portal/register` redirect. Invalid/expired sources do not prevent registration.
+  `https://gccwebos.com/#new-user` redirect. The company site introduces the
+  new-user benefits and links back to Portal registration; attribution stays in
+  the Portal cookie, never the company-site URL or storage. Invalid/expired
+  sources do not prevent registration. See `PORTAL_REFERRAL_SITE_LANDING_RELEASE.md`
+  for the website-first release order and unchanged attribution boundaries.
 - `GET /api/portal/referral/profile`: own eligibility, stable link path and policy.
   The response also includes `attributionDays` (1..365 or null). The client accepts
   the old three-field response by deriving the window from its policy; new

@@ -6,6 +6,8 @@ import {
   referralError,
 } from "../services/platform/portal-referral-contract.mjs";
 
+const REFERRAL_LANDING_URL = "https://gccwebos.com/#new-user";
+
 export function readReferralCookie(req) {
   const value = req.headers?.cookie;
   if (typeof value !== "string" || value.length > 8192) return null;
@@ -66,7 +68,7 @@ export function createPortalReferralRouter({
         req.headers.purpose === "prefetch" ||
         req.headers["sec-purpose"]?.includes("prefetch")
       ) {
-        res.redirect(303, `${origin}/portal/register`);
+        res.redirect(303, REFERRAL_LANDING_URL);
         return;
       }
       const touch = service.capture(req.params.code);
@@ -75,7 +77,7 @@ export function createPortalReferralRouter({
           "Set-Cookie",
           `${REFERRAL_COOKIE}=${touch.token}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${touch.maxAge}`,
         );
-      res.redirect(303, `${origin}/portal/register`);
+      res.redirect(303, REFERRAL_LANDING_URL);
     } catch {
       res.status(503).json({ error: "referral_unavailable" });
     }
