@@ -6,6 +6,13 @@ import { usageCycleForBinding } from "../../server/services/platform/usage-billi
 
 const SOURCE = "xray_statsquery_user_traffic";
 const CHANNELS = new Set(["channel-vultr-a-vless-reality-tcp", "channel-sgp-a-vless-reality-tcp"]);
+const FULL_METERING_SOURCES = Object.freeze({
+  "channel-vultr-a-vless-reality-tcp": "full_metering_xray_cumulative_v1",
+  "channel-sgp-a-vless-reality-tcp": "full_metering_xray_cumulative_v1",
+  "channel-vultr-a-hy2": "full_metering_hy2_cumulative_v1",
+  "channel-sgp-a-hy2": "full_metering_hy2_cumulative_v1",
+  "channel-vultr-a-tuic": "full_metering_tuic_connections_v1"
+});
 const MAX_AGE_MS = 300000;
 const MAX_CURSOR_AGE_MS = 900000;
 const MAX_ACTIVATION_MS = 86400000;
@@ -48,6 +55,12 @@ function clock(nowFn) {
 }
 function scope(channelRefs) {
   if (!Array.isArray(channelRefs) || channelRefs.length < 1 || channelRefs.length > 2 || new Set(channelRefs).size !== channelRefs.length || channelRefs.some((ref) => !CHANNELS.has(ref))) fail("baseline_scope_invalid");
+  return [...channelRefs].sort();
+}
+function fullMeteringScope(channelRefs) {
+  if (!Array.isArray(channelRefs) || channelRefs.length < 1 || channelRefs.length > 5
+    || new Set(channelRefs).size !== channelRefs.length
+    || channelRefs.some(ref => typeof ref !== "string" || !Object.hasOwn(FULL_METERING_SOURCES, ref))) fail("baseline_scope_invalid");
   return [...channelRefs].sort();
 }
 function safeInteger(value) {
@@ -196,7 +209,7 @@ function verifyLegacyResources(binding, activeLinks) {
   const matches = link => link.tenant_ref === tenant && link.artifact_ref === artifact;
   if (activeLinks.length ? !activeLinks.every(matches) : !binding.links.some(matches)) fail("baseline_binding_invalid");
 }
-function retainedState(db, databaseIdentityDigest, channels, nowMs, initialization) {
+function retainedState(db, databaseIdentityDigest, channels, nowMs, initialization, fullBindings = false) {
   const schema = schemaDigest(db);
   const placeholders = channels.map(() => "?").join(",");
   // A terminal status does not establish the identity of a missing durable
@@ -272,7 +285,9 @@ function retainedState(db, databaseIdentityDigest, channels, nowMs, initializati
     if (byKey.has(key)) fail("baseline_binding_ambiguous");
     byKey.set(key, { binding, reasons: reasons.sort(), cursor: null });
   }
-  const rows = db.prepare(`SELECT * FROM platform_usage_counter_cursors WHERE channel_ref IN (${placeholders}) ORDER BY channel_ref,edge_credential_ref,source_ref`).all(...channels);
+  // The separate full-metering lane establishes a new private checkpoint.
+  // Old counter namespaces and ledger contents are not its identity evidence.
+  const rows = fullBindings ? [] : db.prepare(`SELECT * FROM platform_usage_counter_cursors WHERE channel_ref IN (${placeholders}) ORDER BY channel_ref,edge_credential_ref,source_ref`).all(...channels);
   for (const row of rows) {
     if (row.source_ref !== SOURCE) fail("baseline_source_invalid");
     const item = byKey.get(`${row.channel_ref}\0${row.edge_credential_ref}`);
@@ -281,14 +296,22 @@ function retainedState(db, databaseIdentityDigest, channels, nowMs, initializati
   }
   const entries = [], retainedBindings = [];
   for (const { binding, reasons, cursor } of byKey.values()) {
-    const common = { sourceRef: SOURCE, channelRef: binding.edge_channel_ref, edgeCredentialRef: binding.edge_credential_ref, bindingDigest: digest(binding) };
-    if (reasons.length) retainedBindings.push({ ...common, reasons, cursor });
+    const common = { sourceRef: fullBindings ? FULL_METERING_SOURCES[binding.edge_channel_ref] : SOURCE, channelRef: binding.edge_channel_ref, edgeCredentialRef: binding.edge_credential_ref, bindingDigest: digest(binding),
+      ...(fullBindings ? { materialDigest: binding.edge_material_digest } : {}) };
+    if (reasons.length) retainedBindings.push({ ...common, reasons, ...(fullBindings ? {} : { cursor }) });
     else {
       if (!cursor && !initialization) fail("baseline_cursor_scope_incomplete");
-      entries.push({ ...common, billingBinding: { plan: binding.plan, validFrom: binding.valid_from, validUntil: binding.valid_until }, cursor });
+      entries.push({ ...common, billingBinding: { plan: binding.plan, validFrom: binding.valid_from, validUntil: binding.valid_until },
+        ...(fullBindings ? { accountId: binding.account_id, entitlementId: binding.entitlement_id, requestId: binding.request_id } : { cursor }) });
     }
   }
   if (channels.some((channel) => !entries.some((entry) => entry.channelRef === channel))) fail("baseline_binding_scope_invalid");
+  if (fullBindings) return {
+    version: 1, channelRefs: channels, databaseIdentityDigest, schemaDigest: schema,
+    retentionPolicy: RETENTION_POLICY, initializationPolicy: INITIALIZATION_POLICY,
+    bindingDigest: digest(bindings), retainedBindings, retentionDigest: digest(retainedBindings),
+    opaqueHistory, opaqueHistoryDigest: digest(opaqueHistory), entries
+  };
   const samples = hashRows(db, "platform_usage_samples", channels, "id");
   const rollups = hashRows(db, "platform_usage_rollups", channels, "edge_credential_ref");
   return { version: initialization ? 3 : 2, retentionPolicy: RETENTION_POLICY,
@@ -376,6 +399,50 @@ export function inspectTrafficVlessBaseline({ dbPath, channelRefs, nowFn = () =>
     const privateInventory = openDatabase(dbPath, true, (db, id) => db.transaction(() => state(db, id, channels, now.ms, policy, initialization))());
     return { ok: true, privateInventory, summary: snapshotSummary("inspect", privateInventory) };
   } catch (error) { return { ok: false, privateInventory: null, summary: errorSummary("inspect", error) }; }
+}
+
+// Private in-memory API, for a caller-owned dedicated connection in number
+// mode and an already-open transaction. Do not use an application-shared DB:
+// identity reads temporarily require lossless SQLite integers; ledger writes
+// resume in the caller's original number mode, in the same transaction.
+export function readFullMeteringBindings({ db, databaseIdentityDigest, channelRefs, now } = {}) {
+  let changedIntegerMode = false;
+  try {
+    const channels = fullMeteringScope(channelRefs);
+    const at = clock(() => now);
+    if (typeof databaseIdentityDigest !== "string" || !/^[a-f0-9]{64}$/.test(databaseIdentityDigest)
+      || typeof db?.prepare !== "function" || typeof db?.defaultSafeIntegers !== "function") fail("baseline_database_invalid");
+    if (db.inTransaction !== true) fail("baseline_transaction_required");
+    if (typeof db.prepare("SELECT 1 AS value").get().value !== "number") fail("baseline_connection_mode_invalid");
+    changedIntegerMode = true;
+    db.defaultSafeIntegers(true);
+    return retainedState(db, databaseIdentityDigest, channels, at.ms, INITIALIZATION_POLICY, true);
+  } catch (error) {
+    fail(error?.baselineCode || "baseline_operation_failed");
+  } finally {
+    if (changedIntegerMode) {
+      try { db.defaultSafeIntegers(false); } catch { fail("baseline_operation_failed"); }
+    }
+  }
+}
+
+export function inspectFullMeteringBindings({ dbPath, channelRefs, nowFn = () => new Date() } = {}) {
+  const summary = { type: "full_metering_bindings", action: "inspect", productionAuthorized: false, productionCollectionAuthorized: false };
+  try {
+    const channels = fullMeteringScope(channelRefs), now = clock(nowFn);
+    const privateInventory = openDatabase(dbPath, true, (db, databaseIdentityDigest) => {
+      // This read-only connection is owned and closed solely by this inspector.
+      db.defaultSafeIntegers(false);
+      return db.transaction(() => readFullMeteringBindings({ db, databaseIdentityDigest, channelRefs: channels, now: now.iso }))();
+    });
+    return { ok: true, privateInventory, summary: { ...summary, ok: true, status: "requires_review",
+      channelCount: channels.length, eligibleBindingCount: privateInventory.entries.length,
+      retainedBindingCount: privateInventory.retainedBindings.length, opaqueHistoryCount: privateInventory.opaqueHistory.length,
+      databaseIdentityDigest: privateInventory.databaseIdentityDigest, bindingDigest: privateInventory.bindingDigest,
+      retentionDigest: privateInventory.retentionDigest, opaqueHistoryDigest: privateInventory.opaqueHistoryDigest } };
+  } catch (error) {
+    return { ok: false, privateInventory: null, summary: { ...summary, ok: false, status: "blocked", errorCode: error?.baselineCode || "baseline_operation_failed" } };
+  }
 }
 
 export function prepareTrafficVlessBaseline({ dbPath, channelRefs, observations, expectedInventory, nowFn = () => new Date(), validForSeconds = 300, retentionPolicy: policy, initializationPolicy: initialization } = {}) {
