@@ -15,7 +15,7 @@ validate the new distribution-only boundary, then perform one approved release.
 Expected PR count: 1. Release units: `control-plane-app`, `portal-static`.
 `frontend_surface: portal`; `identity_impact: false`.
 
-## Approved scope and unresolved input
+## Approved distribution scope
 
 The operator requested completion of user-facing referral distribution followed
 by production release on 2026-09-08. This slice makes a stable referral link,
@@ -23,11 +23,13 @@ copy/QR sharing and registration attribution usable without opening the reward
 program. It does not publish a reward rate, start reward settlement, adjust
 balances, or change orders, entitlements or runtime identities.
 
-The registration-attribution window is still a required business input. The
-operator asked for Exa research before choosing it; at this checkpoint the Exa
-search/fetch tools were unavailable. No production number is inferred from test
-fixtures, prior policy examples or an industry-default claim. Research results
-are advice, not permission to set a production value.
+The operator selected a 60-day registration-attribution window after reviewing
+the Exa comparison. This is an explicit business decision, not a value inferred
+from test fixtures or an industry-default claim. A later operator decision
+approved a 20% first-recharge reward, seven-day delay, downward rounding and
+automatic verification/settlement. That added reward activation scope is
+tracked in `PORTAL_REFERRAL_REWARD_RELEASE.md`; it does not turn the earlier
+distribution-only acceptance into evidence that rewards can already be released.
 
 ## Configuration contract
 
@@ -36,7 +38,7 @@ are advice, not permission to set a production value.
   referral schema validation pass.
 - `PLATFORM_PORTAL_REFERRAL_ATTRIBUTION_DAYS` is an explicitly selected integer
   from 1 to 365 for distribution-only mode. Missing or invalid input fails
-  startup admission; there is no production fallback.
+  startup admission; there is no production fallback. The selected value is 60.
 - `PLATFORM_PORTAL_REFERRAL_REWARDS_ENABLED=false` is the default and the only
   allowed production value for this slice. It must prevent recharge reward
   hooks, reconciliation scans and reward confirmation, even if a policy exists.

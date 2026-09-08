@@ -41,6 +41,14 @@ const POLICY = {
   attributionDays: 7,
   confirmationDays: 2,
 };
+// Regression operands for the approved policy; this does not publish a policy.
+const FIRST_RECHARGE_20_PERCENT_POLICY = {
+  ...POLICY,
+  policyRef: "test_first_recharge_20_percent",
+  rateBps: 2000,
+  attributionDays: 60,
+  confirmationDays: 7,
+};
 const confirmation = {
   expectedMigrationId: REFERRAL_MIGRATION_ID,
   expectedDdlChecksum: REFERRAL_DDL_CHECKSUM,
@@ -53,7 +61,7 @@ const op = (key) => ({
 });
 function fixture(
   t,
-  { path = ":memory:", migrate = true, publish = true,
+  { path = ":memory:", migrate = true, publish = true, paidCoinUnits = 100,
     serviceOptions = { rewardsEnabled: true } } = {},
 ) {
   const db = new Database(path);
@@ -115,7 +123,7 @@ function fixture(
       {
         offerRef: "test_offer",
         quoteVersion: 1,
-        paidCoinUnits: 100,
+        paidCoinUnits,
         amountMinor: 300,
         currency: "USD",
         currencyExponent: 2,
@@ -190,7 +198,7 @@ function fixture(
       credited = wallet.creditCoins({
         accountId,
         coinType: "paid_coins",
-        amountUnits: 100,
+        amountUnits: paidCoinUnits,
         availability: "available",
         sourceType: "verified_payment_capture",
         sourceRef: identity.settlementRef,
@@ -599,6 +607,270 @@ test("only first verified payment plus closed durable wallet credit accrues once
     f.service.performance("other_promoter").firstRechargeConversions,
     0,
   );
+});
+
+test("20 percent first recharge floors 103 Coins, waits seven days, and reverses cumulative refunds once per account", (t) => {
+  const f = fixture(t, { publish: false, paidCoinUnits: 103 });
+  f.service.publishPolicy(FIRST_RECHARGE_20_PERCENT_POLICY);
+  const touch = f.bind();
+  assert.equal(touch.maxAge, 60 * 86400);
+  assert.equal(touch.expiresAt, "2026-11-07T00:00:00.000Z");
+  f.bind("customer_2", "other_promoter");
+  const first = f.recharge();
+  f.recharge("customer_2");
+  assert.deepEqual(f.service.accrue("customer"), { status: "pending", replayed: false });
+  assert.deepEqual(f.service.accrue("customer_2"), { status: "pending", replayed: false });
+  assert.equal(f.row().reward_units, 20);
+  assert.equal(f.row().confirmation_at, "2026-09-15T00:00:00.000Z");
+  assert.equal(f.service.performance("promoter").pendingRewardCoins, 20);
+  assert.equal(f.service.performance("promoter").availableRewardCoins, 0);
+  const otherPromoterBefore = f.service.performance("other_promoter");
+  assert.equal(otherPromoterBefore.pendingRewardCoins, 20);
+
+  f.recharge();
+  assert.deepEqual(f.service.accrue("customer"), { status: "pending", replayed: true });
+  assert.equal(f.service.performance("promoter").creditedFirstRechargeCoins, 103);
+  assert.equal(f.service.performance("promoter").firstRechargeConversions, 1);
+  f.setNow("2026-09-14T23:59:59.999Z");
+  assert.throws(() => f.approve(), /referral_not_confirmable/);
+  assert.equal(f.service.performance("promoter").availableRewardCoins, 0);
+  f.setNow("2026-09-15T00:00:00.000Z");
+  f.risks.set("incomplete_20_percent", {
+    accountId: "customer", decisionRef: "incomplete_20_percent",
+    approved: true, refundObservationComplete: false,
+  });
+  assert.throws(() => f.service.confirm("customer", "incomplete_20_percent"), /referral_risk_rejected/);
+  assert.throws(() => f.service.confirm("customer_2", "risk_test"), /referral_risk_rejected/);
+  assert.deepEqual(f.approve(), { status: "available" });
+  assert.deepEqual(f.approve(), { status: "available" });
+  assert.equal(f.service.performance("promoter").availableRewardCoins, 20);
+  assert.equal(f.service.performance("promoter").pendingRewardCoins, 0);
+
+  f.refund(first.orderRef, 23, "partial_20_percent_1");
+  assert.equal(f.row().reversed_units, 4); // 20 - floor((103 - 23) * 20%).
+  f.refund(first.orderRef, 52, "partial_20_percent_2");
+  assert.equal(f.row().reversed_units, 10); // 20 - floor((103 - 52) * 20%).
+  f.refund(first.orderRef, 52, "partial_20_percent_2");
+  f.refund(first.orderRef, 23, "older_20_percent_observation");
+  assert.equal(f.row().refunded_paid_units, 52);
+  assert.equal(f.row().reversed_units, 10);
+  assert.equal(f.service.performance("promoter").availableRewardCoins, 10);
+  assert.deepEqual(f.refund(first.orderRef, 103, "full_20_percent"), { status: "reversed" });
+  assert.deepEqual(f.refund(first.orderRef, 103, "full_20_percent"), { status: "reversed" });
+  assert.equal(f.row().reversed_units, 20);
+  assert.equal(f.service.performance("promoter").availableRewardCoins, 0);
+  assert.equal(f.service.performance("promoter").reversedRewardCoins, 20);
+  assert.deepEqual(f.service.performance("other_promoter"), otherPromoterBefore);
+  assert.equal(f.db.prepare("select coalesce(sum(amount_units),0) units from platform_coin_ledger_entries where lot_ref=? and source_type='portal_referral_reversal'")
+    .get(f.row().reward_lot_ref).units, 20);
+  f.recharge();
+  assert.deepEqual(f.service.accrue("customer"), { status: "reversed", replayed: true });
+  assert.equal(f.db.prepare("select lot_ref from platform_referral_origins where account_id='customer'").get().lot_ref, first.lotRef);
+  assert.equal(f.db.prepare("select count(*) n from platform_coin_lots where source_type='portal_first_recharge_reward'").get().n, 2);
+  assert.equal(f.db.pragma("foreign_key_check").length, 0);
+});
+
+test("spent 20 percent first-recharge rewards require reconciliation without reversing another account's reward", (t) => {
+  const f = fixture(t, { publish: false, paidCoinUnits: 103 });
+  f.service.publishPolicy(FIRST_RECHARGE_20_PERCENT_POLICY);
+  f.bind();
+  f.bind("customer_2", "other_promoter");
+  const first = f.recharge();
+  f.recharge("customer_2");
+  f.service.accrue("customer");
+  f.service.accrue("customer_2");
+  f.setNow("2026-09-15T00:00:00.000Z");
+  f.approve();
+  const lotBefore = f.db.prepare("select * from platform_coin_lots where lot_ref=?").get(f.row().reward_lot_ref);
+  const otherPromoterBefore = f.service.performance("other_promoter");
+  const hold = f.wallet.createCoinHold({
+    walletRef: lotBefore.wallet_ref, purpose: "product_purchase", purposeRef: "purchase_spent_reward",
+    amountUnits: 20, acceptedCoinTypes: ["reward_coins"], expiresAt: "2026-09-16T00:00:00.000Z",
+    operation: op("hold_spent_20_percent"),
+  });
+  f.wallet.captureCoinHold({ holdRef: hold.resultRef, operation: op("capture_spent_20_percent") });
+  assert.deepEqual(f.refund(first.orderRef, 103, "refund_spent_20_percent"), { status: "reconciliation_required" });
+  assert.deepEqual(f.refund(first.orderRef, 103, "refund_spent_20_percent"), { status: "reconciliation_required" });
+  assert.equal(f.row().refunded_paid_units, 103);
+  assert.equal(f.row().reversed_units, 0);
+  assert.equal(f.service.performance("promoter").reconciliationRequired, true);
+  const lotAfter = f.db.prepare("select * from platform_coin_lots where lot_ref=?").get(lotBefore.lot_ref);
+  assert.equal(lotAfter.consumed_units, 20);
+  assert.equal(lotAfter.available_units + lotAfter.pending_units + lotAfter.held_units + lotAfter.reversed_units, 0);
+  assert.equal(f.db.prepare("select count(*) n from platform_coin_ledger_entries where lot_ref=? and source_type='portal_referral_reversal'")
+    .get(lotBefore.lot_ref).n, 0);
+  assert.deepEqual(f.service.performance("other_promoter"), otherPromoterBefore);
+  f.recharge();
+  assert.deepEqual(f.service.accrue("customer"), { status: "reconciliation_required", replayed: true });
+  assert.equal(f.db.pragma("foreign_key_check").length, 0);
+});
+
+test("internal settlement waits exactly 168 hours and releases the verified first-credit reward without external readers", (t) => {
+  const f = fixture(t, { publish: false, paidCoinUnits: 103,
+    serviceOptions: { rewardsEnabled: true,
+      riskReader() { throw new Error("external_risk_reader_must_not_run"); },
+      refundReader() { throw new Error("external_refund_reader_must_not_run"); } } });
+  f.service.publishPolicy(FIRST_RECHARGE_20_PERCENT_POLICY);
+  f.bind();
+  f.recharge();
+  f.service.accrue("customer");
+  f.setNow("2026-09-14T23:59:59.999Z");
+  assert.deepEqual(f.service.settle(), []);
+  assert.equal(f.service.performance("promoter").availableRewardCoins, 0);
+  f.setNow("2026-09-15T00:00:00.000Z");
+  assert.deepEqual(f.service.settle(), ["available"]);
+  assert.equal(f.service.performance("promoter").availableRewardCoins, 20);
+  assert.equal(f.row().risk_approved, 0);
+  assert.equal(f.db.prepare("select count(*) n from platform_referral_events where kind='internal_ledger_confirmed'").get().n, 1);
+  assert.equal(f.db.prepare("select count(*) n from platform_referral_events where kind='risk_approved'").get().n, 0);
+  const before = f.db.serialize();
+  assert.deepEqual(f.service.settle(), []);
+  assert.deepEqual(f.db.serialize(), before);
+  const reopened = f.open();
+  t.after(() => reopened.close());
+  assert.deepEqual(reopened.settle(), []);
+  assert.equal(f.service.performance("promoter").availableRewardCoins, 20);
+});
+
+test("internal settlement advances its bounded cursor past broken payment bindings without mixing accounts", (t) => {
+  const f = fixture(t, { publish: false, paidCoinUnits: 103 });
+  f.service.publishPolicy(FIRST_RECHARGE_20_PERCENT_POLICY);
+  f.bind();
+  f.bind("customer_2", "other_promoter");
+  const first = f.recharge();
+  f.recharge("customer_2");
+  f.service.accrue("customer");
+  f.service.accrue("customer_2");
+  f.setNow("2026-09-15T00:00:00.000Z");
+  f.db.exec("drop trigger platform_payment_orders_quote_immutable");
+  f.db.prepare("update platform_payment_orders set account_id='customer_3' where payment_order_ref=?").run(first.orderRef);
+  assert.deepEqual(f.service.settle({ limit: 1 }), ["settlement_blocked"]);
+  assert.deepEqual(f.service.settle({ limit: 1 }), ["available"]);
+  assert.equal(f.row().status, "pending");
+  assert.equal(f.service.performance("promoter").availableRewardCoins, 0);
+  assert.equal(f.service.performance("other_promoter").availableRewardCoins, 20);
+  assert.deepEqual(f.service.settle({ limit: 1 }), []);
+  assert.deepEqual(f.service.settle({ limit: 1 }), ["settlement_blocked"]);
+  f.db.prepare("update platform_payment_orders set account_id='customer' where payment_order_ref=?").run(first.orderRef);
+  assert.deepEqual(f.service.settle({ limit: 1 }), []);
+  assert.deepEqual(f.service.settle({ limit: 1 }), ["available"]);
+});
+
+test("internal settlement requires recorded refunds to be fully reversed and never releases a fully refunded reward", (t) => {
+  const f = fixture(t, { publish: false, paidCoinUnits: 103 });
+  f.service.publishPolicy(FIRST_RECHARGE_20_PERCENT_POLICY);
+  f.bind();
+  f.bind("customer_2", "other_promoter");
+  const first = f.recharge();
+  const other = f.recharge("customer_2");
+  f.service.accrue("customer");
+  f.service.accrue("customer_2");
+  f.refund(other.orderRef, 103, "internal_full_refund");
+  // Simulate a known cumulative refund whose wallet reversal has not completed.
+  f.db.prepare("update platform_referral_accruals set refunded_paid_units=52 where account_id='customer'").run();
+  f.setNow("2026-09-15T00:00:00.000Z");
+  assert.deepEqual(f.service.settle(), ["settlement_blocked"]);
+  assert.equal(f.service.performance("promoter").availableRewardCoins, 0);
+  f.refund(first.orderRef, 52, "internal_partial_refund");
+  assert.equal(f.row().reversed_units, 10);
+  assert.deepEqual(f.service.settle(), ["available"]);
+  assert.equal(f.service.performance("promoter").availableRewardCoins, 10);
+  assert.equal(f.service.performance("other_promoter").availableRewardCoins, 0);
+  assert.equal(f.service.performance("other_promoter").reversedRewardCoins, 20);
+});
+
+test("internal settlement rejects inactive accounts and inconsistent pending reward balances", (t) => {
+  const f = fixture(t, { publish: false, paidCoinUnits: 103 });
+  f.service.publishPolicy(FIRST_RECHARGE_20_PERCENT_POLICY);
+  f.bind();
+  f.recharge();
+  f.service.accrue("customer");
+  f.setNow("2026-09-15T00:00:00.000Z");
+  f.db.prepare("update platform_accounts set status='disabled' where id='customer'").run();
+  assert.deepEqual(f.service.settle(), ["settlement_blocked"]);
+  f.db.prepare("update platform_accounts set status='active' where id='customer'").run();
+  f.db.prepare("update platform_coin_lots set pending_units=19,available_units=1 where lot_ref=?").run(f.row().reward_lot_ref);
+  assert.deepEqual(f.service.settle(), ["settlement_blocked"]);
+  assert.equal(f.row().status, "pending");
+  assert.equal(f.db.prepare("select count(*) n from platform_referral_events where kind='internal_ledger_confirmed'").get().n, 0);
+});
+
+test("internal settlement preserves its confirmation basis when a held refund later becomes recoverable", (t) => {
+  const f = fixture(t, { publish: false, paidCoinUnits: 103 });
+  f.service.publishPolicy(FIRST_RECHARGE_20_PERCENT_POLICY);
+  f.bind();
+  const first = f.recharge();
+  f.service.accrue("customer");
+  f.setNow("2026-09-15T00:00:00.000Z");
+  assert.deepEqual(f.service.settle(), ["available"]);
+  const lot = f.db.prepare("select * from platform_coin_lots where lot_ref=?").get(f.row().reward_lot_ref);
+  const hold = f.wallet.createCoinHold({ walletRef: lot.wallet_ref, purpose: "product_purchase",
+    purposeRef: "internal_confirmed_purchase", amountUnits: 20, acceptedCoinTypes: ["reward_coins"],
+    expiresAt: "2026-09-16T00:00:00.000Z", operation: op("internal_reward_hold") });
+  assert.deepEqual(f.refund(first.orderRef, 23, "internal_held_refund"), { status: "reconciliation_required" });
+  assert.deepEqual(f.service.settle(), []);
+  f.wallet.releaseCoinHold({ holdRef: hold.resultRef, operation: op("internal_reward_release") });
+  assert.deepEqual(f.service.applyRefund("internal_held_refund"), { status: "available" });
+  assert.equal(f.row().risk_approved, 0);
+  assert.equal(f.service.performance("promoter").availableRewardCoins, 16);
+  assert.equal(f.service.performance("promoter").reversedRewardCoins, 4);
+});
+
+test("internal settlement rolls back wallet confirmation and its event together before a safe retry", (t) => {
+  const f = fixture(t, { publish: false, paidCoinUnits: 103 });
+  f.service.publishPolicy(FIRST_RECHARGE_20_PERCENT_POLICY);
+  f.bind();
+  f.recharge();
+  f.service.accrue("customer");
+  f.setNow("2026-09-15T00:00:00.000Z");
+  f.db.exec("create trigger fail_internal_confirmation before insert on platform_referral_events when new.kind='internal_ledger_confirmed' begin select raise(abort,'injected_internal_failure'); end");
+  const before = f.db.serialize();
+  assert.deepEqual(f.service.settle(), ["settlement_blocked"]);
+  assert.deepEqual(f.db.serialize(), before);
+  assert.equal(f.row().status, "pending");
+  assert.equal(f.service.performance("promoter").pendingRewardCoins, 20);
+  f.db.exec("drop trigger fail_internal_confirmation");
+  assert.deepEqual(f.service.settle(), ["available"]);
+  assert.equal(f.service.performance("promoter").availableRewardCoins, 20);
+  assert.equal(f.db.prepare("select count(*) n from platform_coin_ledger_entries where lot_ref=? and operation='pending_to_available'")
+    .get(f.row().reward_lot_ref).n, 1);
+});
+
+test("internal settlement timer accrues then settles, stays bounded, and cannot write after close or while disabled", (t) => {
+  const callbacks = [];
+  const timer = { unref() {} };
+  t.mock.method(globalThis, "setInterval", (callback) => { callbacks.push(callback); return timer; });
+  const cleared = t.mock.method(globalThis, "clearInterval", () => {});
+  const f = fixture(t, { publish: false, paidCoinUnits: 103 });
+  f.service.publishPolicy(FIRST_RECHARGE_20_PERCENT_POLICY);
+  f.bind();
+  f.recharge("customer", { close: false });
+  f.setNow("2026-09-15T00:00:00.000Z");
+  f.service.start();
+  assert.equal(f.row(), undefined);
+  assert.equal(callbacks.length, 1);
+  f.service.start();
+  assert.equal(callbacks.length, 1);
+  f.service.close();
+  const before = f.db.serialize();
+  callbacks[0]();
+  assert.deepEqual(f.db.serialize(), before);
+  assert.equal(cleared.mock.callCount(), 1);
+  assert.throws(() => f.service.settle(), /referral_unavailable/);
+  const disabled = fixture(t, { publish: false, serviceOptions: { attributionDays: 60 } });
+  assert.deepEqual(disabled.service.settle(), []);
+  disabled.service.start();
+  assert.equal(callbacks.length, 1);
+  const ready = fixture(t, { publish: false, paidCoinUnits: 103 });
+  ready.service.publishPolicy(FIRST_RECHARGE_20_PERCENT_POLICY);
+  ready.bind();
+  ready.recharge();
+  ready.setNow("2026-09-15T00:00:00.000Z");
+  ready.service.start();
+  assert.equal(ready.row().status, "available");
+  assert.equal(ready.service.performance("promoter").availableRewardCoins, 20);
+  assert.throws(() => ready.service.settle({ limit: 0 }), /referral_request_invalid/);
+  assert.throws(() => ready.service.settle({ limit: 1001 }), /referral_request_invalid/);
 });
 
 test("failed event insert rolls back reward wallet, origin and accrual, then scan repairs exactly once", (t) => {

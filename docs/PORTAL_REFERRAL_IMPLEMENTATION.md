@@ -27,17 +27,20 @@ Selection follows wallet credit ledger sequence, including a temporarily
 unclosed first payment, so a later completed order cannot steal first eligibility.
 The reward policy is immutable, versioned and selected at the original credit
 time. Missing policy fails closed without renewing first-recharge eligibility.
-Rewards are pending until observation time and an explicit risk approval pass.
+Rewards are pending until the policy delay and trusted confirmation checks pass.
 Refund observations are provider-neutral trusted internal facts, never Portal
 requests. Cumulative refund targets can only increase; retries cannot double
 reverse. Spent/held rewards require reconciliation under an independently decided
 recovery policy, and are not silently treated as recovered.
 
-No production rate, observation time, attribution window or rounding default is
-invented. A reviewed policy must explicitly publish all reward operands before
-reward use. Distribution-only mode requires its separately explicit attribution
-window and does not require a reward policy. Features default off; runtime
-startup validates schema, never applies it.
+The operator approved the initial 20% rate, seven-day confirmation delay,
+60-day attribution window and `floor` rounding on 2026-09-08. These are reviewed
+business inputs, not startup defaults: an immutable policy must still explicitly
+publish all operands and a future effective time before reward use.
+Distribution-only mode requires its separately explicit attribution window and
+does not require a reward policy. Features default off; runtime startup
+validates schema, never applies it. The internal automatic settlement path and
+its activation boundary are recorded in `PORTAL_REFERRAL_REWARD_RELEASE.md`.
 
 ## Frontend admission and bounded completion
 
@@ -89,7 +92,7 @@ Before distribution-only enabling: fresh exact host/database/schema/static
 identity inventory, an explicitly selected attribution window, backup with
 restore rehearsal, isolated migration dry-run, exact artifact, operator approval,
 route and feature readback. Reward activation additionally requires a reviewed
-published policy, refund/risk fact ownership and reconciliation. The bounded
+published policy, internal ledger verification and recorded-refund reconciliation. The bounded
 distribution release checklist is in `PORTAL_REFERRAL_DISTRIBUTION_RELEASE.md`.
 Rollback disables the feature and
 retains additive referral/ledger history; never delete financial facts or restore
@@ -134,30 +137,51 @@ a database merely to roll back application code.
 
 When rewards are explicitly enabled, the recharge coordinator invokes accrual
 only after payment closure. Failures do not convert successful customer recharge
-into failure. In that mode `start()` scans up to 100
-accounts every 30 seconds, advances past blocked accounts, and retries on wrap or
-restart. Both paths consume the same durable payment/wallet facts idempotently.
+into failure. In that mode `start()` immediately performs accrual reconciliation
+followed by internal settlement, then repeats every 30 seconds. Each pass scans
+up to 100 accounts with its own cursor, advances past blocked accounts, and
+retries on wrap or restart. Both paths consume the same durable payment/wallet
+facts idempotently. `settle({ limit })` also exposes the bounded internal pass
+for controlled service use; it is not a Portal HTTP action.
 
-`portalReferralRiskReader(decisionRef)` must synchronously read a trusted durable
+Automatic settlement rechecks the original first payment and ledger credit,
+locked attribution, active accounts/profile and reward wallet, original policy,
+full confirmation delay, recorded cumulative refunds and matching reward-lot
+balances under one immediate transaction. It releases only the verified pending
+remainder. Wallet confirmation and the `internal_ledger_confirmed` event commit
+or roll back together. The event identifies an internal ledger check, not an
+external refund-coverage assertion, and does not set the legacy `risk_approved`
+flag. Later refund recovery recognizes this durable confirmation event when
+restoring an available reward's state. No provider request is made by settlement.
+
+The existing explicit `confirm` entry's `portalReferralRiskReader(decisionRef)`
+must synchronously read a trusted durable
 risk decision containing matching `accountId`, `decisionRef`, `approved: true`
 and `refundObservationComplete: true`. `confirm` additionally checks the original
-confirmation time and active promoter. No reader means no confirmation.
+confirmation time and active promoter. No reader means no confirmation through
+that explicit entry. The approved internal automatic path performs its own
+ledger checks and does not fabricate this reader's approvals.
 
 `portalReferralRefundReader(observationRef)` must synchronously read a trusted
 verified observation containing matching `observationRef`, `paymentOrderRef`,
 `cumulativeRefundedPaidUnits`, `chargeback` and `verified: true`. These are internal
-service seams, not HTTP actions. A provider adapter must establish the exact
-original-order binding and cumulative Coins basis, own durable ingestion/replay,
-and apply outstanding observations before issuing a complete risk decision.
-The current runtime has no default production reader or approval scheduler;
-provider refund ingestion, risk scheduling, and recovery policy are outstanding
-activation work. Do not enable available reward release without those owners.
+service seams, not HTTP actions. The fact owner must establish the exact
+original-order binding and cumulative Coins basis and own durable ingestion and
+replay. The automatic internal path validates that already recorded refund
+targets have actually been reversed before releasing any remainder. External
+refund ingestion and any recovery of spent rewards remain separate operations;
+the automatic path does not assert externally complete refund coverage.
 
-The operator's subsequent distribution-first production request is bounded in
-`docs/PORTAL_REFERRAL_DISTRIBUTION_RELEASE.md`. It does not approve reward
-activation or choose the attribution window; the requested Exa comparison is
-pending connection of its search tools. Production and signed-in browser
-acceptance are not recorded as completed.
+The earlier distribution-first request is bounded in
+`docs/PORTAL_REFERRAL_DISTRIBUTION_RELEASE.md`. The operator then selected a
+60-day attribution window. Distribution-only Chrome acceptance at source
+`2f03025897f09aee67e3af5e2f3291c8d3294fe1` completed link generation, copying,
+QR decoding, real registration and the promoter's registration count changing
+from zero to one; results and clean local-environment shutdown are recorded in
+Draft PR #722. This does not validate reward-mode production behavior.
+The later approved 20%/seven-day/`floor` automatic settlement and remaining
+activation work are recorded in `PORTAL_REFERRAL_REWARD_RELEASE.md`.
+Production activation has not been performed by these source or browser checks.
 
 The Wallet ledger decoder and consumer labels now support `pending_to_reversed`
 and `available_to_reversed`. Their missing backend read-projection cases are

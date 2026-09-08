@@ -1,4 +1,8 @@
 import { applyPortalReferralMigration, REFERRAL_MIGRATION_ID, REFERRAL_DDL_CHECKSUM } from "../services/platform/portal-referral-migrations.mjs";
+import { recordReferralRegistration } from "../services/platform/portal-referral-contract.mjs";
+import { createPaymentRechargeOfferCatalog } from "../services/platform/payment-recharge-offer-catalog.mjs";
+import { paymentSettlementIdentity } from "../services/platform/payment-recharge-coordinator.mjs";
+import { createSqliteCoinWalletStore } from "../services/platform/coin-wallet-store.mjs";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import {
@@ -7387,4 +7391,146 @@ test("referral distribution validates attribution and rewards configuration inde
       assert.deepEqual(state.platform.portalReferrals.reconcile(),[]);
     } finally {state.close();}
   } finally {removeTempDir(dir);}
+});
+
+test("referral runtime automatically settles mature internal rewards once and stays inert while rewards are disabled", () => {
+  const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-referral-settlement-runtime-"));
+  const controlDbPath = prepareMigratedPaymentControlDatabase(dir);
+  const database = new Database(controlDbPath);
+  const firstRechargeAt = "2026-09-08T00:00:00.000Z";
+  const confirmationAt = "2026-09-15T00:00:00.000Z";
+  const accountId = "acct_referral_runtime_customer";
+  const referrerId = "acct_referral_runtime_promoter";
+  let now = firstRechargeAt;
+  let sequence = 0;
+  let fetchCalls = 0;
+  let state;
+  const refs = (kind) => `referral_runtime_${kind}_${++sequence}`;
+  const open = (rewardsEnabled) => createRuntimeState({
+    rootDir: new URL("../../", import.meta.url),
+    env: runtimeEnv({
+      CONSOLE_TOKEN: "secret", USER_PORTAL_ROUTES_ENABLED: "true", COINS_WALLET_ENABLED: "true",
+      ...xsdRechargeEnv(), PLATFORM_PORTAL_REFERRALS_ENABLED: "true",
+      PLATFORM_PORTAL_REFERRAL_REWARDS_ENABLED: String(rewardsEnabled),
+      PLATFORM_PORTAL_REFERRAL_ATTRIBUTION_DAYS: "60",
+      PLATFORM_PORTAL_BROWSER_ORIGIN: "https://portal.example.test"
+    }),
+    controlDbPath,
+    subscriptionDbPath: join(dir, "subscriptions.sqlite"),
+    userPortalNowFn: () => new Date(now),
+    paymentNowFn: () => now,
+    paymentRefFactory: refs,
+    xsdFetchFn: async () => { fetchCalls += 1; throw new Error("unexpected provider call"); },
+    autoStartHttpProxy: false
+  });
+  const close = () => {
+    const referrals = state.platform.portalReferrals;
+    state.close();
+    state.close();
+    state = null;
+    assert.throws(() => referrals.settle(), /referral_unavailable/);
+  };
+  const snapshot = () => ({
+    accrual: database.prepare("select status,reward_units,risk_approved,confirmation_at from platform_referral_accruals where account_id=?").get(accountId) ?? null,
+    rewards: database.prepare("select count(*) lots,coalesce(sum(pending_units),0) pending,coalesce(sum(available_units),0) available from platform_coin_lots where coin_type='reward_coins'").get(),
+    origins: database.prepare("select count(*) n from platform_referral_origins").get().n,
+    confirmations: database.prepare("select count(*) n from platform_referral_events where kind='internal_ledger_confirmed'").get().n,
+    ledgerRows: database.prepare("select count(*) n from platform_coin_ledger_entries").get().n
+  });
+  try {
+    database.pragma("foreign_keys=ON");
+    applyPortalReferralMigration(database, {
+      expectedMigrationId: REFERRAL_MIGRATION_ID, expectedDdlChecksum: REFERRAL_DDL_CHECKSUM
+    });
+    state = open(false);
+    for (const id of [referrerId, accountId]) {
+      state.platform.controlStore.createAccount({ id, ownerRef: `owner_${id}`, status: "active",
+        createdAt: firstRechargeAt, updatedAt: firstRechargeAt });
+    }
+    state.platform.portalReferrals.publishPolicy({
+      policyRef: "runtime_first_recharge_20_percent", version: 1, effectiveAt: firstRechargeAt,
+      rateBps: 2000, rounding: "floor", attributionDays: 60, confirmationDays: 7
+    });
+    const code = state.platform.portalReferrals.createLink(referrerId).linkPath.split("/").at(-1);
+    const touch = state.platform.portalReferrals.capture(code);
+    database.transaction(() => recordReferralRegistration(database, {
+      accountId, token: touch.token, registeredAt: firstRechargeAt
+    })).immediate();
+
+    // Persist a synthetic verified first recharge through the real payment/wallet stores.
+    const payments = state.platform.paymentStore;
+    const offer = createPaymentRechargeOfferCatalog({ environment: "production", offers: [{
+      offerRef: "runtime_referral_offer", quoteVersion: 1, paidCoinUnits: 103, amountMinor: 100,
+      currency: "CNY", currencyExponent: 2, paymentMethods: ["alipay"], enabled: true
+    }] }).getOffer("runtime_referral_offer");
+    const paymentIdentity = { adapterKey: "xsd_v1", paymentMethod: "alipay", merchantBindingRef: "xsd_production_primary" };
+    const { order } = payments.createOrder({ accountId, offer, idempotencyKey: "runtime_referral_create", ...paymentIdentity });
+    const providerOrderRef = refs("provider_order");
+    payments.recordOperationReceipt({ orderRef: order.orderRef, attemptRef: refs("attempt"),
+      providerRequestRef: refs("request"), receiptType: "create", operationResult: {
+        providerOrderRef, status: "entry_ready", chargeCertainty: "possibly_charged",
+        nextAction: { type: "redirect", url: "https://checkout.example.test/runtime-referral",
+          expiresAt: "2026-12-01T00:00:00.000Z" }, occurredAt: firstRechargeAt
+      } });
+    const accepted = payments.acceptVerifiedPayment({ orderRef: order.orderRef,
+      attemptRef: refs("attempt"), providerRequestRef: refs("request"), receiptType: "callback",
+      ...paymentIdentity, paymentFact: {
+        sourceType: "callback", providerEventRef: refs("event"), eventDedupeKey: refs("dedupe"),
+        eventType: "payment_succeeded", paymentOrderRef: order.orderRef, providerOrderRef,
+        providerCaptureRef: refs("capture"), providerRefundRef: null, amountMinor: 100,
+        currency: "CNY", currencyExponent: 2, merchantScopeDigest: "b".repeat(64),
+        payloadDigest: "c".repeat(64), occurredAt: firstRechargeAt, verificationResult: "verified"
+      } });
+    const context = payments.getSettlementContext({ orderRef: order.orderRef, receiptRef: accepted.receipt.receiptRef });
+    const identity = paymentSettlementIdentity(context, context.receipt);
+    const seedWallet = createSqliteCoinWalletStore({ database, nowFn: () => new Date(firstRechargeAt) });
+    let credit;
+    try {
+      credit = seedWallet.creditCoins({ accountId, coinType: "paid_coins",
+        amountUnits: 103, availability: "available", sourceType: "verified_payment_capture",
+        sourceRef: identity.settlementRef, sourceDigest: identity.settlementDigest,
+        policyRef: null, policyVersion: null, expiresAt: null,
+        operation: { actorScope: "test", actorType: "test", actorRef: "referral_runtime", idempotencyKey: identity.settlementRef }
+      });
+    } finally { seedWallet.close(); }
+    payments.markOrderCredited({ orderRef: order.orderRef, receiptRef: accepted.receipt.receiptRef,
+      walletOperationRef: credit.operationRef, walletLotRef: credit.resultRef });
+    const unaccrued = snapshot();
+    assert.equal(unaccrued.accrual, null);
+    assert.equal(unaccrued.origins, 0);
+    assert.deepEqual(unaccrued.rewards, { lots: 0, pending: 0, available: 0 });
+    close();
+
+    now = confirmationAt;
+    state = open(false);
+    assert.deepEqual(snapshot(), unaccrued);
+    close();
+    now = firstRechargeAt;
+    state = open(true);
+    const pending = snapshot();
+    assert.deepEqual(pending.accrual, { status: "pending", reward_units: 20, risk_approved: 0, confirmation_at: confirmationAt });
+    assert.deepEqual(pending.rewards, { lots: 1, pending: 20, available: 0 });
+    close();
+
+    now = confirmationAt;
+    state = open(false);
+    assert.deepEqual(snapshot(), pending);
+    close();
+    // Runtime construction itself starts the scanner; no reader or settle() call is injected.
+    state = open(true);
+    const available = snapshot();
+    assert.deepEqual(available.accrual, { status: "available", reward_units: 20, risk_approved: 0, confirmation_at: confirmationAt });
+    assert.deepEqual(available.rewards, { lots: 1, pending: 0, available: 20 });
+    assert.equal(available.origins, 1);
+    assert.equal(available.confirmations, 1);
+    close();
+    state = open(true);
+    assert.deepEqual(snapshot(), available);
+    assert.equal(fetchCalls, 0);
+  } finally {
+    state?.close();
+    database.close();
+    removeTempDir(dir);
+  }
+  assert.equal(existsSync(dir), false);
 });

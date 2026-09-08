@@ -20,6 +20,7 @@ const addDays = (date, days) =>
   timestamp(new Date(Date.parse(date) + days * 86400000));
 const sourceRefFor = (account) =>
   `referral_origin_${digest(account).slice(0, 32)}`;
+const internalConfirmationRef = (account) => `internal_confirm_${sourceRefFor(account)}`;
 export function createPortalReferralService({
   database,
   dbPath,
@@ -186,6 +187,82 @@ export function createPortalReferralService({
       })
       .immediate();
   }
+  function readFirstVerifiedRecharge(accountId) {
+    // Wallet versions are per-account monotonically increasing durable credit
+    // sequence. Consider unclosed credits too; never skip one for a later order.
+    const first = db
+      .prepare(
+        `select l.*, e.operation_ref, e.resulting_wallet_version,
+        e.amount_units as credited_units,e.wallet_ref as ledger_wallet_ref,
+        e.source_ref as ledger_source_ref,e.source_type as ledger_source_type from platform_coin_lots l
+    join platform_coin_wallets w on w.wallet_ref=l.wallet_ref
+    join platform_coin_ledger_entries e on e.lot_ref=l.lot_ref and e.operation='credit'
+    where w.account_id=? and l.coin_type='paid_coins' and l.source_type='verified_payment_capture'
+    order by e.resulting_wallet_version asc limit 1`,
+      )
+      .get(accountId);
+    if (!first) return { status: "awaiting_first_recharge" };
+    const order = db
+      .prepare(
+        `select o.*, r.verification_result, r.provider_capture_ref,
+    r.expected_paid_coin_units as receipt_units, r.canonical_state, r.provider_order_ref as receipt_provider_order,
+    r.merchant_scope_digest, r.amount_minor as receipt_amount, r.currency as receipt_currency, r.currency_exponent as receipt_exponent
+    from platform_payment_orders o join platform_payment_receipts r on r.receipt_ref=o.latest_receipt_ref
+    and r.payment_order_ref=o.payment_order_ref where o.wallet_lot_ref=?`,
+      )
+      .get(first.lot_ref);
+    if (!order || order.status !== "credited")
+      return { status: "awaiting_payment_close" };
+    const origin = db
+      .prepare("select * from platform_coin_credit_origins where lot_ref=?")
+      .get(first.lot_ref);
+    if (
+      order.account_id !== accountId ||
+      order.wallet_operation_ref !== first.operation_ref ||
+      origin?.operation_ref !== first.operation_ref ||
+      origin.wallet_ref !== first.wallet_ref ||
+      origin.coin_type !== first.coin_type ||
+      origin.source_type !== first.source_type ||
+      origin.source_ref !== first.source_ref ||
+      origin.credit_origin_ref !== first.credit_origin_ref ||
+      first.credited_units !== first.issued_units ||
+      first.ledger_wallet_ref !== first.wallet_ref ||
+      first.ledger_source_ref !== first.source_ref ||
+      first.ledger_source_type !== first.source_type ||
+      order.verification_result !== "verified" ||
+      order.canonical_state !== "payment_succeeded" ||
+      order.expected_paid_coin_units !== first.issued_units ||
+      order.receipt_units !== first.issued_units ||
+      order.provider_order_ref !== order.receipt_provider_order ||
+      order.amount_minor !== order.receipt_amount ||
+      order.currency !== order.receipt_currency ||
+      order.currency_exponent !== order.receipt_exponent
+    )
+      throw referralError("referral_payment_binding_invalid");
+    const identity = paymentSettlementIdentity(
+      {
+        orderRef: order.payment_order_ref,
+        adapterKey: order.adapter_key,
+        paymentMethod: order.payment_method,
+        merchantBindingRef: order.merchant_binding_ref,
+        amountMinor: order.amount_minor,
+        currency: order.currency,
+        currencyExponent: order.currency_exponent,
+        expectedPaidCoinUnits: order.expected_paid_coin_units,
+      },
+      {
+        merchantScopeDigest: order.merchant_scope_digest,
+        providerOrderRef: order.provider_order_ref,
+        providerCaptureRef: order.provider_capture_ref,
+      },
+    );
+    if (
+      identity.settlementRef !== first.source_ref ||
+      identity.settlementDigest !== origin.source_digest
+    )
+      throw referralError("referral_payment_binding_invalid");
+    return { first, order };
+  }
   function accrue(accountId) {
     requireRef(accountId);
     if (!rewardsEnabled) return { status: "rewards_disabled" };
@@ -197,69 +274,9 @@ export function createPortalReferralService({
           )
           .get(accountId);
         if (existing) return { status: existing.status, replayed: true };
-        // Wallet versions are per-account monotonically increasing durable credit
-        // sequence. Consider unclosed credits too; never skip one for a later order.
-        const first = db
-          .prepare(
-            `select l.*, e.operation_ref, e.resulting_wallet_version from platform_coin_lots l
-        join platform_coin_wallets w on w.wallet_ref=l.wallet_ref
-        join platform_coin_ledger_entries e on e.lot_ref=l.lot_ref and e.operation='credit'
-        where w.account_id=? and l.coin_type='paid_coins' and l.source_type='verified_payment_capture'
-        order by e.resulting_wallet_version asc limit 1`,
-          )
-          .get(accountId);
-        if (!first) return { status: "awaiting_first_recharge" };
-        const order = db
-          .prepare(
-            `select o.*, r.verification_result, r.provider_capture_ref,
-        r.expected_paid_coin_units as receipt_units, r.canonical_state, r.provider_order_ref as receipt_provider_order,
-        r.merchant_scope_digest, r.amount_minor as receipt_amount, r.currency as receipt_currency, r.currency_exponent as receipt_exponent
-        from platform_payment_orders o join platform_payment_receipts r on r.receipt_ref=o.latest_receipt_ref
-        and r.payment_order_ref=o.payment_order_ref where o.wallet_lot_ref=?`,
-          )
-          .get(first.lot_ref);
-        if (!order || order.status !== "credited")
-          return { status: "awaiting_payment_close" };
-        const origin = db
-          .prepare("select * from platform_coin_credit_origins where lot_ref=?")
-          .get(first.lot_ref);
-        if (
-          order.account_id !== accountId ||
-          order.wallet_operation_ref !== first.operation_ref ||
-          origin?.operation_ref !== first.operation_ref ||
-          origin.source_ref !== first.source_ref ||
-          order.verification_result !== "verified" ||
-          order.canonical_state !== "payment_succeeded" ||
-          order.expected_paid_coin_units !== first.issued_units ||
-          order.receipt_units !== first.issued_units ||
-          order.provider_order_ref !== order.receipt_provider_order ||
-          order.amount_minor !== order.receipt_amount ||
-          order.currency !== order.receipt_currency ||
-          order.currency_exponent !== order.receipt_exponent
-        )
-          throw referralError("referral_payment_binding_invalid");
-        const identity = paymentSettlementIdentity(
-          {
-            orderRef: order.payment_order_ref,
-            adapterKey: order.adapter_key,
-            paymentMethod: order.payment_method,
-            merchantBindingRef: order.merchant_binding_ref,
-            amountMinor: order.amount_minor,
-            currency: order.currency,
-            currencyExponent: order.currency_exponent,
-            expectedPaidCoinUnits: order.expected_paid_coin_units,
-          },
-          {
-            merchantScopeDigest: order.merchant_scope_digest,
-            providerOrderRef: order.provider_order_ref,
-            providerCaptureRef: order.provider_capture_ref,
-          },
-        );
-        if (
-          identity.settlementRef !== first.source_ref ||
-          identity.settlementDigest !== origin.source_digest
-        )
-          throw referralError("referral_payment_binding_invalid");
+        const verified = readFirstVerifiedRecharge(accountId);
+        if (verified.status) return verified;
+        const { first, order } = verified;
         const binding = db
           .prepare(
             "select * from platform_referral_bindings where account_id=?",
@@ -346,6 +363,102 @@ export function createPortalReferralService({
       })
       .immediate();
   }
+  function releasePendingReward(row, eventRef, kind, basis = {}) {
+    const amount = row.reward_units - row.reversed_units;
+    if (amount)
+      wallet.confirmCoinCredit({
+        lotRef: row.reward_lot_ref,
+        amountUnits: amount,
+        operation: {
+          actorScope: "portal_referral",
+          actorType: "referral_service",
+          actorRef: "portal_referral",
+          idempotencyKey: `confirm_${sourceRefFor(row.account_id)}`,
+        },
+      });
+    event(eventRef, row.account_id, kind, { amount, ...basis });
+    db.prepare("update platform_referral_accruals set status='available',updated_at=? where account_id=?")
+      .run(now(), row.account_id);
+    return { status: "available" };
+  }
+  function hasInternalConfirmation(accountId) {
+    return Boolean(db.prepare("select 1 from platform_referral_events where event_ref=? and account_id=? and kind='internal_ledger_confirmed'")
+      .get(internalConfirmationRef(accountId), accountId));
+  }
+  function settleAccount(accountId) {
+    return db.transaction(() => {
+      if (closed || !rewardsEnabled) throw referralError("referral_rewards_disabled");
+      const row = db.prepare("select * from platform_referral_accruals where account_id=?").get(accountId);
+      if (!row || row.status !== "pending" || row.confirmation_at > now())
+        throw referralError("referral_not_confirmable");
+      active(accountId);
+      const origin = db.prepare("select * from platform_referral_origins where account_id=?").get(accountId);
+      const verified = readFirstVerifiedRecharge(accountId);
+      if (!origin || verified.status) throw referralError("referral_payment_binding_invalid");
+      const { first, order } = verified;
+      const binding = db.prepare("select * from platform_referral_bindings where account_id=?").get(accountId);
+      if (origin.lot_ref !== first.lot_ref || origin.payment_order_ref !== order.payment_order_ref
+        || origin.paid_units !== first.issued_units || origin.credited_at !== first.created_at
+        || !origin.referrer_id || origin.referrer_id === accountId
+        || binding?.referrer_id !== origin.referrer_id || binding.registered_at > origin.credited_at)
+        throw referralError("referral_payment_binding_invalid");
+      active(origin.referrer_id);
+      if (db.prepare("select status from platform_referral_profiles where account_id=?").get(origin.referrer_id)?.status !== "active")
+        throw referralError("referral_account_ineligible");
+      const policy = policySnapshot(JSON.parse(origin.policy_json));
+      if (JSON.stringify(policyAt(origin.credited_at)) !== JSON.stringify(policy)
+        || row.confirmation_at !== addDays(origin.credited_at, policy.confirmationDays)
+        || row.reward_units !== rewardUnits(origin.paid_units, policy))
+        throw referralError("referral_payment_binding_invalid");
+      units(row.refunded_paid_units, origin.paid_units);
+      units(row.reversed_units, row.reward_units);
+      const expectedReversed = row.reward_units - rewardUnits(origin.paid_units - row.refunded_paid_units, policy);
+      const remaining = row.reward_units - row.reversed_units;
+      if (row.reversed_units !== expectedReversed || remaining <= 0)
+        throw referralError("referral_not_confirmable");
+      const lot = db.prepare("select l.*,w.account_id,w.status as wallet_status from platform_coin_lots l join platform_coin_wallets w using(wallet_ref) where l.lot_ref=?")
+        .get(row.reward_lot_ref);
+      const credit = db.prepare("select * from platform_coin_credit_origins where lot_ref=?").get(row.reward_lot_ref);
+      const sourceDigest = digest(JSON.stringify({ lot: first.lot_ref, policy, amount: row.reward_units }));
+      if (!lot || lot.account_id !== origin.referrer_id || lot.wallet_status !== "active"
+        || lot.coin_type !== "reward_coins" || lot.source_type !== "portal_first_recharge_reward"
+        || lot.source_ref !== sourceRefFor(accountId)
+        || lot.policy_ref !== policy.policyRef || lot.policy_version !== policy.version || lot.expires_at !== null
+        || lot.issued_units !== row.reward_units || lot.pending_units !== remaining
+        || lot.reversed_units !== row.reversed_units || lot.available_units !== 0
+        || lot.held_units !== 0 || lot.consumed_units !== 0 || lot.expired_units !== 0
+        || credit?.wallet_ref !== lot.wallet_ref || credit.coin_type !== lot.coin_type
+        || credit.source_type !== lot.source_type || credit.source_ref !== lot.source_ref
+        || credit.credit_origin_ref !== lot.credit_origin_ref || credit.source_digest !== sourceDigest)
+        throw referralError("referral_wallet_binding_invalid");
+      const creditEntry = db.prepare("select * from platform_coin_ledger_entries where lot_ref=? and operation_ref=? and operation='credit'")
+        .get(lot.lot_ref, credit.operation_ref);
+      if (!creditEntry || creditEntry.wallet_ref !== lot.wallet_ref || creditEntry.amount_units !== row.reward_units
+        || creditEntry.source_type !== lot.source_type || creditEntry.source_ref !== lot.source_ref)
+        throw referralError("referral_wallet_binding_invalid");
+      return releasePendingReward(row, internalConfirmationRef(accountId), "internal_ledger_confirmed", {
+        basis: "verified_first_paid_credit_and_recorded_referral_ledger",
+        paidLotRef: origin.lot_ref, paymentOrderRef: origin.payment_order_ref,
+        policyRef: policy.policyRef, policyVersion: policy.version,
+        refundedPaidUnits: row.refunded_paid_units, reversedRewardUnits: row.reversed_units,
+      });
+    }).immediate();
+  }
+  let settlementCursor = "";
+  function settle({ limit = 100 } = {}) {
+    if (closed) throw referralError();
+    units(limit, 1000);
+    if (!limit) throw referralError("referral_request_invalid");
+    if (!rewardsEnabled) return [];
+    const accounts = db.prepare("select account_id from platform_referral_accruals where status='pending' and confirmation_at<=? and account_id>? order by account_id limit ?")
+      .all(now(), settlementCursor, limit);
+    const statuses = accounts.map(({ account_id }) => {
+      try { return settleAccount(account_id).status; }
+      catch { return "settlement_blocked"; }
+    });
+    settlementCursor = accounts.length === limit ? accounts.at(-1).account_id : "";
+    return statuses;
+  }
   function confirm(accountId, decisionRef) {
     if (!rewardsEnabled) throw referralError("referral_rewards_disabled");
     if (typeof riskReader !== "function")
@@ -381,23 +494,9 @@ export function createPortalReferralService({
             .get(row.referrer_id)?.status !== "active"
         )
           throw referralError("referral_account_ineligible");
-        const amount = row.reward_units - row.reversed_units;
-        if (amount)
-          wallet.confirmCoinCredit({
-            lotRef: row.reward_lot_ref,
-            amountUnits: amount,
-            operation: {
-              actorScope: "portal_referral",
-              actorType: "referral_service",
-              actorRef: "portal_referral",
-              idempotencyKey: `confirm_${sourceRefFor(accountId)}`,
-            },
-          });
-        event(decisionRef, accountId, "risk_approved", { amount });
-        db.prepare(
-          "update platform_referral_accruals set status='available',risk_approved=1,updated_at=? where account_id=?",
-        ).run(now(), accountId);
-        return { status: "available" };
+        const result = releasePendingReward(row, decisionRef, "risk_approved");
+        db.prepare("update platform_referral_accruals set risk_approved=1 where account_id=?").run(accountId);
+        return result;
       })
       .immediate();
   }
@@ -456,7 +555,7 @@ export function createPortalReferralService({
           : target === row.reward_units && row.reward_units > 0
             ? "reversed"
             : row.status === "reconciliation_required"
-              ? row.risk_approved
+              ? row.risk_approved || hasInternalConfirmation(row.account_id)
                 ? "available"
                 : "pending"
               : row.status;
@@ -538,10 +637,16 @@ export function createPortalReferralService({
     // Facts stay in payment/wallet storage until processed. The cursor advances
     // even when one account is blocked, and wraps for durable retry after restart.
     const tick = () => {
+      if (closed || !rewardsEnabled) return;
       try {
         reconcile();
       } catch {
         /* retry on next bounded tick */
+      }
+      try {
+        settle();
+      } catch {
+        /* retry internal ledger settlement on the next bounded tick */
       }
     };
     tick();
@@ -555,6 +660,7 @@ export function createPortalReferralService({
     capture,
     accrue,
     reconcile,
+    settle,
     confirm,
     applyRefund,
     performance,
