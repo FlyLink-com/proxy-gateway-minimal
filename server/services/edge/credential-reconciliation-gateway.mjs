@@ -10,12 +10,13 @@ const ALLOWED_RUNTIMES = new Set([
 const ALLOWED_ACTIVATION_SURFACES = new Set(["explicit-restart"]);
 const RUNTIME_RECEIPT_STATUSES = new Set([
   "applied",
+  "unchanged",
   "failed",
   "pending",
   "rolled_back",
   "drift_detected"
 ]);
-const SUCCESS_RUNTIME_RECEIPT_STATUSES = new Set(["applied", "pending"]);
+const SUCCESS_RUNTIME_RECEIPT_STATUSES = new Set(["applied", "unchanged", "pending"]);
 
 const SENSITIVE_KEYS = new Set([
   "apiKey",
@@ -500,7 +501,7 @@ export function buildCredentialReconciliationApplyPlan({
     ok: SUCCESS_RUNTIME_RECEIPT_STATUSES.has(sanitizedRuntimeReceipt.receipt.status),
     blockers,
     runtimeReceipt: sanitizedRuntimeReceipt.receipt,
-    nextAction: sanitizedRuntimeReceipt.receipt.status === "applied"
+    nextAction: ["applied", "unchanged"].includes(sanitizedRuntimeReceipt.receipt.status)
       ? "validate_runtime_state"
       : sanitizedRuntimeReceipt.receipt.status === "pending"
         ? "complete_data_plane_handoff"
