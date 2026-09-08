@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { copyFileSync, existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -643,4 +644,347 @@ for (const channel of [CHANNELS[1], "channel-sgp-a-tuic"]) test(`v2 rejects cred
   const result = inspectV2(f, { channelRefs: channel === CHANNELS[1] ? CHANNELS : [CHANNELS[0]] });
   assert.equal(result.ok, false);
   assert.equal(result.summary.errorCode, "baseline_binding_ambiguous");
+});
+
+const INITIALIZATION = "verified-legacy-fresh-cursors";
+function inspectV3(f, overrides = {}) {
+  return inspectV2(f, { initializationPolicy: INITIALIZATION, ...overrides });
+}
+function prepareV3(f, overrides = {}) {
+  const inspection = inspectV3(f);
+  assert.equal(inspection.ok, true, JSON.stringify(inspection.summary));
+  return prepareTrafficVlessBaseline({ dbPath: f.dbPath, channelRefs: CHANNELS, nowFn,
+    retentionPolicy: RETENTION, initializationPolicy: INITIALIZATION,
+    observations: f.observations, expectedInventory: inspection.privateInventory, ...overrides });
+}
+function removeCursor(f, index) {
+  f.db.prepare("DELETE FROM platform_usage_counter_cursors WHERE edge_credential_ref=?").run(f.refs[index].edgeCredentialRef);
+}
+function insertPlanCursor(f, entry) {
+  const value = entry.after;
+  f.db.prepare("INSERT INTO platform_usage_counter_cursors (source_ref,channel_ref,edge_credential_ref,upload_bytes,download_bytes,observed_at,epoch,updated_at) VALUES (?,?,?,?,?,?,?,?)")
+    .run(entry.sourceRef, entry.channelRef, entry.edgeCredentialRef, value.uploadBytes, value.downloadBytes, value.observedAt, value.epoch, value.updatedAt);
+}
+function rehashPlan(plan) {
+  function json(value) {
+    if (Array.isArray(value)) return `[${value.map(json).join(",")}]`;
+    if (value && typeof value === "object") return `{${Object.keys(value).sort().map(key => `${JSON.stringify(key)}:${json(value[key])}`).join(",")}}`;
+    return JSON.stringify(value);
+  }
+  const hash = value => createHash("sha256").update(json(value)).digest("hex");
+  plan.beforeCursorDigest = hash(plan.entries.map(({ before, after, ...entry }) => ({ ...entry, cursor: before })));
+  plan.afterCursorDigest = hash(plan.entries.map(({ before, after, ...entry }) => ({ ...entry, cursor: after })));
+  const { planDigest, ...body } = plan;
+  plan.planDigest = hash(body);
+  return plan;
+}
+
+test("v3 initializes only missing eligible cursors at fresh observations with no historical charge", (t) => {
+  const f = mixedFixture(t);
+  removeCursor(f, 0);
+  const beforeCursors = tableRows(f, "platform_usage_counter_cursors");
+  const beforeAccounting = accountingRows(f);
+  const beforeIdentity = tableRows(f, "platform_portal_edge_credentials");
+  assert.equal(inspectV2(f).summary.errorCode, "baseline_cursor_scope_incomplete");
+  const inspected = inspectV3(f);
+  assert.equal(inspected.ok, true, JSON.stringify(inspected.summary));
+  assert.equal(inspected.privateInventory.version, 3);
+  assert.equal(inspected.privateInventory.initializationPolicy, INITIALIZATION);
+  assert.equal(inspected.summary.missingCursorCount, 1);
+  const prepared = prepareV3(f);
+  assert.equal(prepared.ok, true, JSON.stringify(prepared.summary));
+  assert.equal(prepared.privatePlan.version, 3);
+  assert.equal(prepared.privatePlan.initializationPolicy, INITIALIZATION);
+  assert.equal(prepared.summary.initializedCursorCount, 1);
+  const added = prepared.privatePlan.entries.find(entry => entry.edgeCredentialRef === f.refs[0].edgeCredentialRef);
+  assert.equal(added.before, null);
+  assert.equal(added.after.epoch, 0);
+  assert.deepEqual(tableRows(f, "platform_usage_counter_cursors"), beforeCursors);
+  const args = { dbPath: f.dbPath, plan: prepared.privatePlan, expectedPlanDigest: prepared.summary.planDigest, nowFn };
+  assert.equal(verifyTrafficVlessBaseline(args).ok, false);
+  assert.equal(admitTrafficVlessBaseline(args).ok, false);
+  assert.equal(apply(f, prepared).updatedCursorCount, 2);
+  assert.equal(apply(f, prepared).updatedCursorCount, 0);
+  assert.equal(verifyTrafficVlessBaseline(args).ok, true);
+  assert.equal(admitTrafficVlessBaseline(args).ok, true);
+  assert.deepEqual(accountingRows(f), beforeAccounting);
+  assert.deepEqual(tableRows(f, "platform_portal_edge_credentials"), beforeIdentity);
+  const accounting = createTrafficAccountingService({ controlStore: f.store, nowFn: () => LATER });
+  const outcome = accounting.recordUsageObservation({ ...f.observations[0], observedAt: LATER,
+    intervalStartedAt: NOW, intervalEndedAt: LATER, uploadBytes: 50010, downloadBytes: 70020 });
+  assert.equal(outcome.sampleInserted, true);
+  assert.equal(outcome.sample.totalBytes, 30);
+  assert.equal(outcome.sample.intervalStartedAt, NOW);
+  assertRedacted(prepared.summary, f);
+});
+
+test("v3 can initialize every eligible cursor but never creates a missing retained cursor", (t) => {
+  const f = mixedFixture(t);
+  for (const index of [0, 1, 2]) removeCursor(f, index);
+  const prepared = prepareV3(f);
+  assert.equal(prepared.ok, true, JSON.stringify(prepared.summary));
+  assert.equal(prepared.summary.initializedCursorCount, 2);
+  assert.equal(apply(f, prepared).updatedCursorCount, 2);
+  assert.equal(f.store.getUsageCounterCursor(f.refs[2]), null);
+  assert.equal(apply(f, prepared).updatedCursorCount, 0);
+});
+
+test("v3 requires both exact policies and does not add fields to v1 or v2", (t) => {
+  const f = mixedFixture(t);
+  for (const overrides of [
+    { retentionPolicy: undefined }, { initializationPolicy: "create-cursors" },
+    { retentionPolicy: "skip-ineligible" }
+  ]) assert.equal(inspectV3(f, overrides).ok, false);
+  const v2 = inspectV2(f);
+  assert.equal(v2.privateInventory.version, 2);
+  assert.equal(Object.hasOwn(v2.privateInventory, "initializationPolicy"), false);
+  assert.equal(Object.hasOwn(v2.summary, "missingCursorCount"), false);
+});
+
+test("v3 refuses reset claims, stale or absent observations for a new cursor", (t) => {
+  const f = mixedFixture(t);
+  removeCursor(f, 0);
+  const before = tableRows(f, "platform_usage_counter_cursors");
+  for (const observations of [
+    [{ ...f.observations[0], counterResetConfirmed: true }, f.observations[1]],
+    [{ ...f.observations[0], observedAt: OLD }, f.observations[1]],
+    [f.observations[1]],
+    [...f.observations, { ...f.observations[0] }]
+  ]) assert.equal(prepareV3(f, { observations }).ok, false);
+  assert.deepEqual(tableRows(f, "platform_usage_counter_cursors"), before);
+});
+
+test("v3 refuses mixed partial insertion on apply verify and admit without finishing it", (t) => {
+  const f = mixedFixture(t);
+  removeCursor(f, 0);
+  removeCursor(f, 1);
+  const prepared = prepareV3(f);
+  assert.equal(prepared.ok, true, JSON.stringify(prepared.summary));
+  insertPlanCursor(f, prepared.privatePlan.entries[0]);
+  const before = tableRows(f, "platform_usage_counter_cursors");
+  const args = { dbPath: f.dbPath, plan: prepared.privatePlan, expectedPlanDigest: prepared.summary.planDigest, nowFn };
+  for (const action of [applyTrafficVlessBaseline, verifyTrafficVlessBaseline, admitTrafficVlessBaseline]) {
+    assert.equal(action(args).ok, false);
+    assert.deepEqual(tableRows(f, "platform_usage_counter_cursors"), before);
+  }
+});
+
+test("v3 failures roll back both earlier inserts and earlier updates in the same transaction", (t) => {
+  for (const missingIndex of [0, 1]) {
+    const f = mixedFixture(t);
+    removeCursor(f, missingIndex);
+    f.db.exec("CREATE UNIQUE INDEX cursor_upload_unique ON platform_usage_counter_cursors(upload_bytes) WHERE edge_credential_ref IN ('private-credential-0','private-credential-1')");
+    const prepared = prepareV3(f);
+    assert.equal(prepared.ok, true, JSON.stringify(prepared.summary));
+    assert.equal(prepared.privatePlan.entries[0].before === null, missingIndex === 1);
+    const before = tableRows(f, "platform_usage_counter_cursors");
+    assert.equal(apply(f, prepared).ok, false);
+    assert.deepEqual(tableRows(f, "platform_usage_counter_cursors"), before);
+  }
+});
+
+test("v3 strict plan validation rejects forged initialization policy null-before and epoch contracts", (t) => {
+  const f = mixedFixture(t);
+  removeCursor(f, 0);
+  const prepared = prepareV3(f);
+  const before = tableRows(f, "platform_usage_counter_cursors");
+  for (const change of [
+    plan => { delete plan.initializationPolicy; },
+    plan => { plan.initializationPolicy = "unsafe"; },
+    plan => { plan.retentionPolicy = "unsafe"; },
+    plan => { plan.version = 2; delete plan.initializationPolicy; },
+    plan => { plan.entries.find(entry => entry.before === null).after.epoch = 1; },
+    plan => { plan.entries.find(entry => entry.before === null).after.updatedAt = OLD; }
+  ]) {
+    const plan = structuredClone(prepared.privatePlan);
+    change(plan);
+    rehashPlan(plan);
+    assert.equal(applyTrafficVlessBaseline({ dbPath: f.dbPath, plan, expectedPlanDigest: plan.planDigest, nowFn }).ok, false);
+    assert.deepEqual(tableRows(f, "platform_usage_counter_cursors"), before);
+  }
+});
+
+function resourceRef(prefix, value) {
+  return `${prefix}ref_${createHash("sha256").update(String(value)).digest("hex").slice(0, 16)}`;
+}
+function legacyFixture(t, { retained = false, additional = false } = {}) {
+  const f = mixedFixture(t);
+  const index = retained ? 2 : 0;
+  const ref = f.refs[index];
+  f.db.prepare("UPDATE platform_issued_subscription_links SET tenant_ref=?,artifact_ref=? WHERE request_id=?")
+    .run(resourceRef("tenant", `tenant-${index}`), resourceRef("artifact", `artifact-${index}`), ref.requestId);
+  if (additional) f.db.prepare("INSERT INTO platform_portal_edge_credentials SELECT request_id,'channel-sgp-a-tuic',edge_credential_ref||'-additional',edge_material_digest,ordinal+1 FROM platform_portal_edge_credentials WHERE request_id=?").run(ref.requestId);
+  f.db.prepare("DELETE FROM platform_portal_edge_credentials WHERE request_id=? AND edge_channel_ref=?").run(ref.requestId, ref.channelRef);
+  return f;
+}
+function opaqueFixture(t) {
+  const f = mixedFixture(t);
+  removeCursor(f, 2);
+  f.db.prepare("DELETE FROM platform_portal_edge_credentials WHERE request_id=?").run(f.refs[2].requestId);
+  f.db.prepare("UPDATE platform_entitlements SET valid_until='2026-09-04T00:00:00.000Z' WHERE id=?").run(f.refs[2].entitlementId);
+  f.db.prepare("UPDATE platform_portal_access_requests SET status='pending_admin_review',next_action='wait_for_admin_review',entitlement_ref=NULL,edge_channel_ref=NULL,edge_credential_ref=NULL,edge_material_digest=NULL,access_grant_ref=NULL,tenant_id=NULL,artifact_id=NULL WHERE id=?").run(f.refs[2].requestId);
+  return f;
+}
+
+for (const options of [{ retained: false, additional: false }, { retained: false, additional: true }, { retained: true, additional: true }]) {
+  test(`v3 verifies legacy primary without durable writes ${JSON.stringify(options)}`, (t) => {
+    const f = legacyFixture(t, options);
+    if (!options.retained) removeCursor(f, 0);
+    const identities = tableRows(f, "platform_portal_edge_credentials");
+    const accounting = accountingRows(f);
+    assert.equal(inspectV2(f).summary.errorCode, "baseline_legacy_binding_unsupported");
+    const prepared = prepareV3(f);
+    assert.equal(prepared.ok, true, JSON.stringify(prepared.summary));
+    assert.equal(prepared.privatePlan.opaqueHistoryDigest.length, 64);
+    assert.deepEqual(prepared.privatePlan.opaqueHistory, []);
+    assert.equal(apply(f, prepared).ok, true);
+    const args = { dbPath: f.dbPath, plan: prepared.privatePlan, expectedPlanDigest: prepared.summary.planDigest, nowFn };
+    assert.equal(verifyTrafficVlessBaseline(args).ok, true);
+    assert.equal(admitTrafficVlessBaseline(args).ok, true);
+    assert.deepEqual(tableRows(f, "platform_portal_edge_credentials"), identities);
+    assert.deepEqual(accountingRows(f), accounting);
+    if (!options.retained) {
+      const service = createTrafficAccountingService({ controlStore: f.store, nowFn: () => LATER });
+      const outcome = service.recordUsageObservation({ ...f.observations[0], observedAt: LATER,
+        intervalStartedAt: NOW, intervalEndedAt: LATER, uploadBytes: 50010, downloadBytes: 70020 });
+      assert.equal(outcome.sampleInserted, true);
+      assert.equal(outcome.sample.totalBytes, 30);
+    }
+  });
+}
+
+test("v3 permits the exact durable-primary mirror but rejects global resolver ambiguity", (t) => {
+  const normal = mixedFixture(t);
+  assert.equal(inspectV3(normal).ok, true);
+  for (const change of [
+    f => f.db.prepare("UPDATE platform_portal_access_requests SET edge_credential_ref=? WHERE id=?").run(f.refs[0].edgeCredentialRef, f.refs[1].requestId),
+    f => f.db.prepare("UPDATE platform_portal_edge_credentials SET edge_credential_ref=? WHERE request_id=?").run(f.refs[0].edgeCredentialRef, f.refs[1].requestId),
+    f => f.db.prepare("INSERT INTO platform_portal_edge_credentials VALUES (?, 'channel-sgp-a-tuic', ?, 'same-request-different-channel', 0)").run(f.refs[0].requestId, f.refs[0].edgeCredentialRef),
+    f => f.db.prepare("UPDATE platform_portal_access_requests SET edge_channel_ref=? WHERE id=?").run(CHANNELS[1], f.refs[0].requestId),
+    f => f.db.prepare("UPDATE platform_issued_subscription_links SET tenant_ref='wrong-linked-resource' WHERE request_id=?").run(f.refs[0].requestId)
+  ]) {
+    const f = legacyFixture(t);
+    change(f);
+    assert.equal(inspectV3(f).ok, false);
+  }
+  normal.db.prepare("UPDATE platform_portal_access_requests SET edge_material_digest='wrong-mirror-material' WHERE id=?").run(normal.refs[0].requestId);
+  assert.equal(inspectV3(normal).ok, false);
+});
+
+test("v3 binds every additional legacy durable credential even outside the selected channels", (t) => {
+  for (const action of ["apply", "verify", "admit"]) {
+    const f = legacyFixture(t, { additional: true });
+    const prepared = prepareV3(f);
+    if (action !== "apply") assert.equal(apply(f, prepared).ok, true);
+    f.db.prepare("UPDATE platform_portal_edge_credentials SET edge_material_digest='changed-additional-material' WHERE request_id=?").run(f.refs[0].requestId);
+    const before = tableRows(f, "platform_usage_counter_cursors");
+    const args = { dbPath: f.dbPath, plan: prepared.privatePlan, expectedPlanDigest: prepared.summary.planDigest, nowFn };
+    const result = action === "apply" ? applyTrafficVlessBaseline(args) : action === "verify" ? verifyTrafficVlessBaseline(args) : admitTrafficVlessBaseline(args);
+    assert.equal(result.ok, false);
+    assert.deepEqual(tableRows(f, "platform_usage_counter_cursors"), before);
+  }
+});
+
+test("v3 keeps exact expired opaque issuance history without creating any metering identity", (t) => {
+  const f = opaqueFixture(t);
+  const beforeAccounting = accountingRows(f);
+  const beforePrimary = tableRows(f, "platform_portal_access_requests");
+  const inspected = inspectV3(f);
+  assert.equal(inspected.ok, true, JSON.stringify(inspected.summary));
+  assert.equal(inspected.summary.opaqueHistoryCount, 1);
+  assert.equal(inspected.privateInventory.retainedBindings.length, 0);
+  assert.deepEqual(Object.keys(inspected.privateInventory.opaqueHistory[0]).sort(), ["channelRef", "evidenceDigest", "requestRef"]);
+  const prepared = prepareV3(f);
+  assert.equal(prepared.summary.opaqueHistoryCount, 1);
+  assert.equal(prepared.privatePlan.opaqueHistoryDigest, inspected.privateInventory.opaqueHistoryDigest);
+  assert.equal(apply(f, prepared).updatedCursorCount, 2);
+  const args = { dbPath: f.dbPath, plan: prepared.privatePlan, expectedPlanDigest: prepared.summary.planDigest, nowFn };
+  assert.equal(verifyTrafficVlessBaseline(args).ok, true);
+  assert.equal(admitTrafficVlessBaseline(args).ok, true);
+  assert.equal(f.store.getUsageCounterCursor(f.refs[2]), null);
+  assert.deepEqual(accountingRows(f), beforeAccounting);
+  assert.deepEqual(tableRows(f, "platform_portal_access_requests"), beforePrimary);
+  assertRedacted(prepared.summary, f);
+});
+
+for (const [label, sql] of [
+  ["unexpired", "UPDATE platform_entitlements SET valid_until='2027-09-04T00:00:00.000Z' WHERE id='private-entitlement-2'"],
+  ["delivered without material", "UPDATE platform_portal_access_requests SET status='delivered' WHERE id='private-request-2'"],
+  ["primary appeared", "UPDATE platform_portal_access_requests SET edge_credential_ref='new-identity' WHERE id='private-request-2'"],
+  ["pending lifecycle", "UPDATE platform_portal_access_requests SET next_action='traffic_supply_resume_pending' WHERE id='private-request-2'"],
+  ["extra durable", "INSERT INTO platform_portal_edge_credentials VALUES ('private-request-2','channel-sgp-a-tuic','new-durable','new-material',0)"],
+  ["wrong account", "UPDATE platform_portal_access_requests SET portal_user_ref='wrong-account' WHERE id='private-request-2'"],
+  ["link drift", "UPDATE platform_issued_subscription_links SET artifact_ref='changed-artifact' WHERE id='link-2'"]
+]) test(`v3 rejects opaque history ${label} drift before any cursor write`, (t) => {
+  const f = opaqueFixture(t);
+  const prepared = prepareV3(f);
+  assert.equal(prepared.ok, true, JSON.stringify(prepared.summary));
+  f.db.exec(sql);
+  const before = tableRows(f, "platform_usage_counter_cursors");
+  assert.equal(apply(f, prepared).ok, false);
+  assert.deepEqual(tableRows(f, "platform_usage_counter_cursors"), before);
+});
+
+test("v3 never derives observation or orphan cursor keys from opaque history", (t) => {
+  const f = opaqueFixture(t);
+  const prepared = prepareV3(f, { observations: [...f.observations, { ...f.observations[0], edgeCredentialRef: `edgecred_${f.refs[2].requestId}` }] });
+  assert.equal(prepared.ok, false);
+  const valid = prepareV3(f);
+  insertPlanCursor(f, { ...valid.privatePlan.entries[0], edgeCredentialRef: `edgecred_${f.refs[2].requestId}` });
+  assert.equal(inspectV3(f).summary.errorCode, "baseline_binding_missing");
+});
+
+test("v3 opaque evidence remains bound through verify and admit after an applied baseline", (t) => {
+  const f = opaqueFixture(t);
+  const prepared = prepareV3(f);
+  assert.equal(apply(f, prepared).ok, true);
+  f.db.exec("UPDATE platform_issued_subscription_links SET artifact_ref='changed-opaque-history' WHERE id='link-2'");
+  const before = tableRows(f, "platform_usage_counter_cursors");
+  const args = { dbPath: f.dbPath, plan: prepared.privatePlan, expectedPlanDigest: prepared.summary.planDigest, nowFn };
+  for (const action of [verifyTrafficVlessBaseline, admitTrafficVlessBaseline]) {
+    assert.equal(action(args).ok, false);
+    assert.deepEqual(tableRows(f, "platform_usage_counter_cursors"), before);
+  }
+});
+
+test("v3 refuses malformed or fabricated opaque plan collections even with rehashed plans", (t) => {
+  const f = opaqueFixture(t);
+  const prepared = prepareV3(f);
+  const before = tableRows(f, "platform_usage_counter_cursors");
+  for (const change of [
+    plan => { delete plan.opaqueHistory; },
+    plan => { delete plan.opaqueHistoryDigest; },
+    plan => { plan.opaqueHistory[0].edgeCredentialRef = "fabricated-key"; },
+    plan => { plan.opaqueHistory[0].evidenceDigest = "invalid"; },
+    plan => { plan.opaqueHistory[0].channelRef = "unselected"; },
+    plan => { plan.opaqueHistory.push({ ...plan.opaqueHistory[0] }); },
+    plan => { plan.opaqueHistory = []; }
+  ]) {
+    const plan = structuredClone(prepared.privatePlan);
+    change(plan);
+    // Update collection digest too: reject structure/evidence, not merely a
+    // stale envelope hash. For absence cases preserve the missing property.
+    if (Array.isArray(plan.opaqueHistory) && Object.hasOwn(plan, "opaqueHistoryDigest")) {
+      const ordered = plan.opaqueHistory.map(item => Object.fromEntries(Object.entries(item).sort(([a], [b]) => a.localeCompare(b))));
+      plan.opaqueHistoryDigest = createHash("sha256").update(JSON.stringify(ordered)).digest("hex");
+    }
+    rehashPlan(plan);
+    assert.equal(applyTrafficVlessBaseline({ dbPath: f.dbPath, plan, expectedPlanDigest: plan.planDigest, nowFn }).ok, false);
+    assert.deepEqual(tableRows(f, "platform_usage_counter_cursors"), before);
+  }
+});
+
+test("v3 opaque classification rejects incomplete identity evidence and invalid dates", (t) => {
+  for (const sql of [
+    "UPDATE platform_issuance_requests SET status='revoked' WHERE id='private-request-2'",
+    "UPDATE platform_accounts SET owner_ref='' WHERE id='private-account-2'",
+    "UPDATE platform_entitlements SET valid_from='2026-09-04T00:00:00.000Z' WHERE id='private-entitlement-2'",
+    "UPDATE platform_entitlements SET valid_until='2026-09-04' WHERE id='private-entitlement-2'",
+    "DELETE FROM platform_issued_subscription_links WHERE id='link-2'",
+    "INSERT INTO platform_issued_subscription_links SELECT 'ambiguous-link',request_id,tenant_ref,artifact_ref,status,created_at,updated_at FROM platform_issued_subscription_links WHERE id='link-2'"
+  ]) {
+    const f = opaqueFixture(t);
+    f.db.exec(sql);
+    assert.equal(inspectV3(f).ok, false);
+  }
 });

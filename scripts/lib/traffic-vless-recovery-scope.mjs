@@ -46,9 +46,11 @@ export function loadTrafficVlessRecoveryScope({ path, env, nowFn = () => new Dat
     // A disappearing whole user is not idle evidence. Validate the complete
     // private binding/counter set again after all reads, before any recording.
     if (!Array.isArray(batch) || batch.length !== channelRefs.length) recoveryReject();
-    const inventory = inspectTrafficVlessBaseline({ dbPath: request.dbPath, channelRefs, retentionPolicy: request.retentionPolicy, nowFn });
+    const inventory = inspectTrafficVlessBaseline({ dbPath: request.dbPath, channelRefs, retentionPolicy: request.retentionPolicy,
+      initializationPolicy: request.initializationPolicy, nowFn });
     if (!inventory.ok) recoveryReject();
-    for (const field of ["bindingDigest", "databaseIdentityDigest", "schemaDigest", ...(request.schemaVersion === 2 ? ["retentionDigest"] : [])]) {
+    for (const field of ["bindingDigest", "databaseIdentityDigest", "schemaDigest", ...([2, 3].includes(request.schemaVersion) ? ["retentionDigest"] : []),
+      ...(request.schemaVersion === 3 ? ["opaqueHistoryDigest"] : [])]) {
       if (inventory.privateInventory[field] !== envelope.privatePlan[field]) recoveryReject();
     }
     const key = (entry) => `${entry.sourceRef}\0${entry.channelRef}\0${entry.edgeCredentialRef}`;
@@ -85,8 +87,10 @@ export function loadTrafficVlessRecoveryScope({ path, env, nowFn = () => new Dat
   try { if (readRecoveryJson(statusFile).value.type !== "traffic_vless_recovery_status") recoveryReject(); }
   catch (error) { if (error.code !== "ENOENT") throw error; }
   return { collectionScope: Object.freeze({ channelRefs: Object.freeze(channelRefs), protocol: "vless", lifecycleMode: "record-only" }),
-    ...(request.schemaVersion === 2 ? { retentionPolicy: request.retentionPolicy,
+    ...([2, 3].includes(request.schemaVersion) ? { retentionPolicy: request.retentionPolicy,
       retainedBindingCount: envelope.privatePlan.retainedBindings.length, retainedObservationKeys: Object.freeze(retainedObservationKeys) } : {}),
+    ...(request.schemaVersion === 3 ? { initializationPolicy: request.initializationPolicy,
+      retainedHistoryCount: envelope.privatePlan.opaqueHistory.length } : {}),
     statusFile, baselinePlanDigest: envelope.privatePlan.planDigest, packetSha256: packet.sha256 };
 }
 export function writeTrafficVlessRecoveryStatus(path, value) {

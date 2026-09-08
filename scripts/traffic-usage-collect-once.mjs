@@ -307,6 +307,10 @@ export async function runTrafficUsageCollectOnce({
       summary.retentionPolicy = recoveryScope.retentionPolicy;
       summary.retainedBindingCount = recoveryScope.retainedBindingCount;
       summary.retainedObservationCount = retainedObservationCount;
+      if (recoveryScope.initializationPolicy) {
+        summary.initializationPolicy = recoveryScope.initializationPolicy;
+        summary.retainedHistoryCount = recoveryScope.retainedHistoryCount;
+      }
     }
     try {
       recoveryStatusWriter(recoveryScope.statusFile, {

@@ -12,6 +12,7 @@ const MAX_ACTIVATION_MS = 86400000;
 const MAX_ENTRIES = 10000;
 const SAFE_MAX = BigInt(Number.MAX_SAFE_INTEGER);
 const RETENTION_POLICY = "preserve-ineligible";
+const INITIALIZATION_POLICY = "verified-legacy-fresh-cursors";
 const RETAINED_REASONS = new Set(["account_suspended", "account_disabled", "entitlement_expired", "entitlement_revoked", "entitlement_suspended", "entitlement_elapsed", "portal_elapsed", "request_revoked", "request_cancelled", "links_inactive", "portal_disabled"]);
 const PENDING_LIFECYCLE = new Set(["traffic_supply_resume_pending", "traffic_supply_resume_rollback_pending", "traffic_supply_expiry_cleanup_pending"]);
 const TABLES = {
@@ -117,49 +118,134 @@ function retentionPolicy(value) {
   if (value !== undefined && value !== RETENTION_POLICY) fail("baseline_retention_policy_invalid");
   return value;
 }
+function initializationPolicy(value, retention) {
+  if (value !== undefined && (value !== INITIALIZATION_POLICY || retention !== RETENTION_POLICY)) fail("baseline_initialization_policy_invalid");
+  return value;
+}
 function storedCursor(row, nowMs) {
   const cursor = { uploadBytes: storedInteger(row.upload_bytes), downloadBytes: storedInteger(row.download_bytes), observedAt: row.observed_at, epoch: storedInteger(row.epoch), updatedAt: row.updated_at };
   validateBytes(cursor.uploadBytes, cursor.downloadBytes);
   if (isoMs(cursor.observedAt) > nowMs || isoMs(cursor.updatedAt) > nowMs) fail("baseline_cursor_timestamp_invalid");
   return cursor;
 }
-function retainedState(db, databaseIdentityDigest, channels, nowMs) {
+function readBindingLinks(db, binding) {
+  binding.links = db.prepare("SELECT id,request_id,tenant_ref,artifact_ref,status,created_at,updated_at FROM platform_issued_subscription_links WHERE request_id=? ORDER BY id").all(binding.request_id);
+  if (!binding.links.length || binding.links.length > MAX_ENTRIES) fail("baseline_binding_invalid");
+  for (const link of binding.links) {
+    for (const key of ["id", "request_id", "tenant_ref", "artifact_ref"]) text(link[key]);
+    if (link.request_id !== binding.request_id || !["active", "revoked", "rotated", "disabled"].includes(link.status)) fail("baseline_binding_invalid");
+  }
+  const active = binding.links.filter(link => link.status === "active");
+  if (active.length > 1) fail("baseline_binding_ambiguous");
+  return active;
+}
+function emptyIdentity(value) { return value === null || value === ""; }
+function v3Evidence(db, binding) {
+  // These private projections are hashed in memory, never returned as rows or
+  // used to synthesize a credential. Include unselected attached channels too.
+  binding.primaryEvidence = db.prepare("SELECT * FROM platform_portal_access_requests WHERE id=?").get(binding.request_id);
+  binding.requestEvidence = db.prepare("SELECT * FROM platform_issuance_requests WHERE id=?").get(binding.request_id);
+  binding.entitlementEvidence = db.prepare("SELECT * FROM platform_entitlements WHERE id=?").get(binding.entitlement_id);
+  binding.accountEvidence = db.prepare("SELECT * FROM platform_accounts WHERE id=?").get(binding.account_id);
+  binding.requestDurableBindings = db.prepare("SELECT * FROM platform_portal_edge_credentials WHERE request_id=? ORDER BY edge_channel_ref,ordinal,edge_credential_ref").all(binding.request_id);
+  if (!binding.primaryEvidence || !binding.requestEvidence || !binding.entitlementEvidence || !binding.accountEvidence
+    || binding.requestDurableBindings.length > MAX_ENTRIES) fail("baseline_binding_invalid");
+}
+function opaqueExpiredHistory(binding, nowMs) {
+  const primary = binding.primaryEvidence;
+  const emptyFields = ["edge_channel_ref", "edge_credential_ref", "edge_material_digest", "access_grant_ref", "tenant_id", "artifact_id"];
+  if (binding.identity_origin !== "legacy_primary" || primary.status !== "pending_admin_review"
+    || !emptyFields.every(key => emptyIdentity(primary[key]))) return false;
+  for (const key of ["request_id", "account_id", "account_id_readback", "entitlement_id", "portal_user_ref", "owner_ref", "next_action", "plan"]) text(binding[key]);
+  if (binding.request_status !== "issued" || binding.requestDurableBindings.length !== 0
+    || binding.account_id_readback !== binding.account_id || binding.entitlement_account_id !== binding.account_id
+    || binding.portal_user_ref !== binding.account_id
+    || (!emptyIdentity(binding.entitlement_ref) && binding.entitlement_ref !== binding.entitlement_id)
+    || !["active", "suspended", "disabled"].includes(binding.account_status)
+    || !["active", "expired", "revoked", "suspended"].includes(binding.entitlement_status)
+    || ![0n, 1n].includes(binding.edge_lifecycle_mutation) || PENDING_LIFECYCLE.has(binding.next_action)) fail("baseline_binding_invalid");
+  const from = isoMs(binding.valid_from), until = isoMs(binding.valid_until);
+  if (from >= until || from > nowMs || until > nowMs) fail("baseline_binding_invalid");
+  return true;
+}
+function verifyV3Resolver(db, binding) {
+  // Runtime tries durable credentials before the legacy primary, both across
+  // the whole DB. Only an exact same-request/channel/material mirror is one
+  // identity; another request or channel must not win a LIMIT 1 lookup.
+  for (const candidate of [binding, ...binding.requestDurableBindings]) {
+    for (const key of ["request_id", "edge_channel_ref", "edge_credential_ref", "edge_material_digest"]) text(candidate[key]);
+    if (candidate.request_id !== binding.request_id) fail("baseline_binding_invalid");
+    const durable = db.prepare("SELECT request_id,edge_channel_ref,edge_material_digest FROM platform_portal_edge_credentials WHERE edge_credential_ref=?").all(candidate.edge_credential_ref);
+    const primary = db.prepare("SELECT id AS request_id,edge_channel_ref,edge_material_digest FROM platform_portal_access_requests WHERE edge_credential_ref=?").all(candidate.edge_credential_ref);
+    if (durable.length > 1 || primary.length > 1 || durable.length + primary.length === 0
+      || [...durable, ...primary].some(row => row.request_id !== candidate.request_id
+        || row.edge_channel_ref !== candidate.edge_channel_ref || row.edge_material_digest !== candidate.edge_material_digest)) fail("baseline_binding_ambiguous");
+  }
+  if (binding.identity_origin === "legacy_primary") {
+    const primary = binding.primaryEvidence;
+    if (primary.edge_channel_ref !== binding.node_id || primary.edge_channel_ref !== binding.edge_channel_ref
+      || primary.edge_credential_ref !== binding.edge_credential_ref || primary.edge_material_digest !== binding.edge_material_digest) fail("baseline_binding_invalid");
+    for (const key of ["tenant_id", "artifact_id", "access_grant_ref"]) text(primary[key]);
+  }
+}
+function verifyLegacyResources(binding, activeLinks) {
+  if (binding.identity_origin !== "legacy_primary") return;
+  const safeRef = (prefix, value) => `${prefix}ref_${createHash("sha256").update(String(value)).digest("hex").slice(0, 16)}`;
+  const tenant = safeRef("tenant", binding.primaryEvidence.tenant_id);
+  const artifact = safeRef("artifact", binding.primaryEvidence.artifact_id);
+  const matches = link => link.tenant_ref === tenant && link.artifact_ref === artifact;
+  if (activeLinks.length ? !activeLinks.every(matches) : !binding.links.some(matches)) fail("baseline_binding_invalid");
+}
+function retainedState(db, databaseIdentityDigest, channels, nowMs, initialization) {
   const schema = schemaDigest(db);
   const placeholders = channels.map(() => "?").join(",");
   // A terminal status does not establish the identity of a missing durable
   // credential. Do not derive a fallback key or silently drop such history.
-  const legacyCount = db.prepare(`SELECT COUNT(*) AS count FROM platform_issuance_requests r
-    WHERE r.node_id IN (${placeholders})
+  const legacyPredicate = `r.node_id IN (${placeholders})
       AND (r.status NOT IN ('planned','failed','cancelled')
         OR EXISTS (SELECT 1 FROM platform_issued_subscription_links l WHERE l.request_id=r.id)
         OR EXISTS (SELECT 1 FROM platform_portal_access_requests p WHERE p.id=r.id AND
           (p.status IN ('delivered','issued') OR coalesce(p.edge_credential_ref,'')<>''
             OR coalesce(p.edge_material_digest,'')<>'' OR coalesce(p.tenant_id,'')<>''
             OR coalesce(p.artifact_id,'')<>'' OR coalesce(p.access_grant_ref,'')<>'')))
-      AND NOT EXISTS (SELECT 1 FROM platform_portal_edge_credentials c WHERE c.request_id=r.id AND c.edge_channel_ref=r.node_id)`).get(...channels).count;
-  if (legacyCount !== 0n) fail("baseline_legacy_binding_unsupported");
+      AND NOT EXISTS (SELECT 1 FROM platform_portal_edge_credentials c WHERE c.request_id=r.id AND c.edge_channel_ref=r.node_id)`;
+  const legacyCount = db.prepare(`SELECT COUNT(*) AS count FROM platform_issuance_requests r WHERE ${legacyPredicate}`).get(...channels).count;
+  if (legacyCount !== 0n && !initialization) fail("baseline_legacy_binding_unsupported");
+  const credentialSources = initialization ? `(SELECT request_id,edge_channel_ref,edge_credential_ref,edge_material_digest,ordinal,'durable' AS identity_origin FROM platform_portal_edge_credentials
+    UNION ALL SELECT r.id,r.node_id,p.edge_credential_ref,p.edge_material_digest,0,'legacy_primary'
+      FROM platform_issuance_requests r LEFT JOIN platform_portal_access_requests p ON p.id=r.id WHERE ${legacyPredicate})` : "platform_portal_edge_credentials";
   const bindings = db.prepare(`
-    SELECT c.request_id,c.edge_channel_ref,c.edge_credential_ref,c.edge_material_digest,c.ordinal,
+    SELECT c.request_id,c.edge_channel_ref,c.edge_credential_ref,c.edge_material_digest,c.ordinal,${initialization ? "c.identity_origin," : ""}
       p.portal_user_ref,p.status AS portal_status,p.valid_until AS portal_valid_until,p.expires_at AS portal_expires_at,
       p.updated_at AS portal_updated_at,p.entitlement_ref,p.edge_lifecycle_mutation,p.next_action,p.event_json,
       r.account_id,r.entitlement_id,r.status AS request_status,r.updated_at AS request_updated_at,r.node_id,
       e.account_id AS entitlement_account_id,e.status AS entitlement_status,e.plan,e.valid_from,e.valid_until,e.traffic_limit_bytes,e.updated_at AS entitlement_updated_at,
       a.id AS account_id_readback,a.owner_ref,a.status AS account_status,a.updated_at AS account_updated_at
-    FROM platform_portal_edge_credentials c
+    FROM ${credentialSources} c
     LEFT JOIN platform_portal_access_requests p ON p.id=c.request_id
     LEFT JOIN platform_issuance_requests r ON r.id=c.request_id
     LEFT JOIN platform_entitlements e ON e.id=r.entitlement_id
     LEFT JOIN platform_accounts a ON a.id=r.account_id
     WHERE c.edge_channel_ref IN (${placeholders}) ORDER BY c.edge_channel_ref,c.edge_credential_ref,c.request_id,c.ordinal
-  `).all(...channels);
+  `).all(...(initialization ? [...channels, ...channels] : channels));
   if (!bindings.length || bindings.length > MAX_ENTRIES) fail("baseline_binding_scope_invalid");
   const byKey = new Map();
+  const opaqueHistory = [];
   for (const binding of bindings) {
+    if (initialization) {
+      v3Evidence(db, binding);
+      if (opaqueExpiredHistory(binding, nowMs)) {
+        readBindingLinks(db, binding);
+        opaqueHistory.push({ channelRef: binding.edge_channel_ref, requestRef: binding.request_id, evidenceDigest: digest(binding) });
+        continue;
+      }
+      verifyV3Resolver(db, binding);
+    }
     for (const key of ["request_id", "edge_channel_ref", "edge_credential_ref", "edge_material_digest", "account_id", "account_id_readback", "entitlement_id", "portal_user_ref", "owner_ref", "next_action", "plan"]) text(binding[key]);
     // Accounting resolves credentials globally, not by channel. Check the
     // actual rows, including unselected channels, rather than relying on an
     // index whose presence is not part of the legacy schema contract.
-    if (db.prepare("SELECT COUNT(*) AS count FROM platform_portal_edge_credentials WHERE edge_credential_ref=?").get(binding.edge_credential_ref).count !== 1n) fail("baseline_binding_ambiguous");
+    if (!initialization && db.prepare("SELECT COUNT(*) AS count FROM platform_portal_edge_credentials WHERE edge_credential_ref=?").get(binding.edge_credential_ref).count !== 1n) fail("baseline_binding_ambiguous");
     if (binding.account_id_readback !== binding.account_id || binding.entitlement_account_id !== binding.account_id
       || binding.entitlement_ref !== binding.entitlement_id || binding.portal_user_ref !== binding.account_id
       || ![0n, 1n].includes(binding.edge_lifecycle_mutation)) fail("baseline_binding_invalid");
@@ -172,14 +258,8 @@ function retainedState(db, databaseIdentityDigest, channels, nowMs) {
     const until = isoMs(binding.valid_until);
     const portalUntil = isoMs(binding.portal_valid_until || binding.portal_expires_at);
     if (from >= until || from > nowMs) fail("baseline_binding_invalid");
-    binding.links = db.prepare("SELECT id,request_id,tenant_ref,artifact_ref,status,created_at,updated_at FROM platform_issued_subscription_links WHERE request_id=? ORDER BY id").all(binding.request_id);
-    if (!binding.links.length || binding.links.length > MAX_ENTRIES) fail("baseline_binding_invalid");
-    for (const link of binding.links) {
-      for (const key of ["id", "request_id", "tenant_ref", "artifact_ref"]) text(link[key]);
-      if (link.request_id !== binding.request_id || !["active", "revoked", "rotated", "disabled"].includes(link.status)) fail("baseline_binding_invalid");
-    }
-    const activeLinks = binding.links.filter((link) => link.status === "active");
-    if (activeLinks.length > 1) fail("baseline_binding_ambiguous");
+    const activeLinks = readBindingLinks(db, binding);
+    if (initialization) verifyLegacyResources(binding, activeLinks);
     const reasons = [];
     if (binding.account_status !== "active") reasons.push(`account_${binding.account_status}`);
     if (binding.entitlement_status !== "active") reasons.push(`entitlement_${binding.entitlement_status}`);
@@ -204,20 +284,22 @@ function retainedState(db, databaseIdentityDigest, channels, nowMs) {
     const common = { sourceRef: SOURCE, channelRef: binding.edge_channel_ref, edgeCredentialRef: binding.edge_credential_ref, bindingDigest: digest(binding) };
     if (reasons.length) retainedBindings.push({ ...common, reasons, cursor });
     else {
-      if (!cursor) fail("baseline_cursor_scope_incomplete");
+      if (!cursor && !initialization) fail("baseline_cursor_scope_incomplete");
       entries.push({ ...common, billingBinding: { plan: binding.plan, validFrom: binding.valid_from, validUntil: binding.valid_until }, cursor });
     }
   }
   if (channels.some((channel) => !entries.some((entry) => entry.channelRef === channel))) fail("baseline_binding_scope_invalid");
   const samples = hashRows(db, "platform_usage_samples", channels, "id");
   const rollups = hashRows(db, "platform_usage_rollups", channels, "edge_credential_ref");
-  return { version: 2, retentionPolicy: RETENTION_POLICY, retainedBindings, retentionDigest: digest(retainedBindings),
+  return { version: initialization ? 3 : 2, retentionPolicy: RETENTION_POLICY,
+    ...(initialization ? { initializationPolicy: initialization, opaqueHistory, opaqueHistoryDigest: digest(opaqueHistory) } : {}), retainedBindings, retentionDigest: digest(retainedBindings),
     channelRefs: channels, databaseIdentityDigest, schemaDigest: schema, bindingDigest: digest(bindings),
     cursorDigest: digest(entries), accountingDigest: digest({ samples, rollups }),
     sampleCount: samples.count, rollupCount: rollups.count, entries };
 }
-function state(db, databaseIdentityDigest, channels, nowMs, policy) {
-  if (retentionPolicy(policy)) return retainedState(db, databaseIdentityDigest, channels, nowMs);
+function state(db, databaseIdentityDigest, channels, nowMs, policy, initialization) {
+  initializationPolicy(initialization, policy);
+  if (retentionPolicy(policy)) return retainedState(db, databaseIdentityDigest, channels, nowMs, initialization);
   const schema = schemaDigest(db);
   const placeholders = channels.map(() => "?").join(",");
   // Only durable, uniquely resolvable active bindings are supported. Legacy
@@ -279,29 +361,32 @@ function errorSummary(action, error) {
 }
 function snapshotSummary(action, inventory) {
   return publicSummary(action, { status: "requires_review", channelCount: inventory.channelRefs.length, cursorCount: inventory.entries.length, databaseIdentityDigest: inventory.databaseIdentityDigest, bindingDigest: inventory.bindingDigest, cursorDigest: inventory.cursorDigest, accountingDigest: inventory.accountingDigest,
-    ...(inventory.version === 2 ? { eligibleBindingCount: inventory.entries.length, retainedBindingCount: inventory.retainedBindings.length } : {}) });
+    ...(inventory.version >= 2 ? { eligibleBindingCount: inventory.entries.length, retainedBindingCount: inventory.retainedBindings.length } : {}),
+    ...(inventory.version === 3 ? { missingCursorCount: inventory.entries.filter(entry => entry.cursor === null).length, opaqueHistoryCount: inventory.opaqueHistory.length } : {}) });
 }
 
 // privateInventory and privatePlan contain credential references. Callers must
 // keep them in memory or protected files; stdout receives summary only.
-export function inspectTrafficVlessBaseline({ dbPath, channelRefs, nowFn = () => new Date(), retentionPolicy: policy } = {}) {
+export function inspectTrafficVlessBaseline({ dbPath, channelRefs, nowFn = () => new Date(), retentionPolicy: policy, initializationPolicy: initialization } = {}) {
   try {
     const channels = scope(channelRefs);
     const now = clock(nowFn);
     retentionPolicy(policy);
-    const privateInventory = openDatabase(dbPath, true, (db, id) => db.transaction(() => state(db, id, channels, now.ms, policy))());
+    initializationPolicy(initialization, policy);
+    const privateInventory = openDatabase(dbPath, true, (db, id) => db.transaction(() => state(db, id, channels, now.ms, policy, initialization))());
     return { ok: true, privateInventory, summary: snapshotSummary("inspect", privateInventory) };
   } catch (error) { return { ok: false, privateInventory: null, summary: errorSummary("inspect", error) }; }
 }
 
-export function prepareTrafficVlessBaseline({ dbPath, channelRefs, observations, expectedInventory, nowFn = () => new Date(), validForSeconds = 300, retentionPolicy: policy } = {}) {
+export function prepareTrafficVlessBaseline({ dbPath, channelRefs, observations, expectedInventory, nowFn = () => new Date(), validForSeconds = 300, retentionPolicy: policy, initializationPolicy: initialization } = {}) {
   try {
     const channels = scope(channelRefs);
     const now = clock(nowFn);
     if (!Number.isInteger(validForSeconds) || validForSeconds < 1 || validForSeconds > 300) fail("baseline_validity_invalid");
     if (!Array.isArray(observations) || observations.length < 1 || observations.length > MAX_ENTRIES) fail("baseline_observations_invalid");
     retentionPolicy(policy);
-    const current = openDatabase(dbPath, true, (db, id) => db.transaction(() => state(db, id, channels, now.ms, policy))());
+    initializationPolicy(initialization, policy);
+    const current = openDatabase(dbPath, true, (db, id) => db.transaction(() => state(db, id, channels, now.ms, policy, initialization))());
     if (!expectedInventory || digest(current) !== digest(expectedInventory)) fail("baseline_inventory_changed");
     const byKey = new Map();
     for (const observation of observations) {
@@ -324,12 +409,12 @@ export function prepareTrafficVlessBaseline({ dbPath, channelRefs, observations,
     const entries = current.entries.map(({ cursor: before, ...entry }) => {
       const observed = byKey.get(`${entry.channelRef}\0${entry.edgeCredentialRef}`);
       if (!observed) fail("baseline_observation_scope_incomplete");
-      if (isoMs(observed.observedAt) <= isoMs(before.observedAt)) fail("baseline_observation_not_newer");
+      if (before !== null && isoMs(observed.observedAt) <= isoMs(before.observedAt)) fail("baseline_observation_not_newer");
       sameBillingCycle(entry.billingBinding, observed.observedAt, now.iso);
-      const reset = observed.uploadBytes < before.uploadBytes || observed.downloadBytes < before.downloadBytes;
+      const reset = before !== null && (observed.uploadBytes < before.uploadBytes || observed.downloadBytes < before.downloadBytes);
       if (reset !== (observed.counterResetConfirmed === true)) fail("baseline_reset_evidence_required");
       resetCount += Number(reset);
-      const epoch = safeInteger(before.epoch + Number(reset));
+      const epoch = before === null ? 0 : safeInteger(before.epoch + Number(reset));
       return { ...entry, before, after: { uploadBytes: observed.uploadBytes, downloadBytes: observed.downloadBytes, observedAt: observed.observedAt, epoch, updatedAt: now.iso } };
     });
     const earliestObservationMs = Math.min(...entries.map((entry) => isoMs(entry.after.observedAt)));
@@ -344,15 +429,18 @@ export function prepareTrafficVlessBaseline({ dbPath, channelRefs, observations,
       entries
     };
     if (policy) Object.assign(privatePlan, { retentionPolicy: policy, retainedBindings: current.retainedBindings, retentionDigest: current.retentionDigest });
+    if (initialization) Object.assign(privatePlan, { initializationPolicy: initialization, opaqueHistory: current.opaqueHistory, opaqueHistoryDigest: current.opaqueHistoryDigest });
     privatePlan.planDigest = digest(privatePlan);
     return { ok: true, privatePlan, summary: publicSummary("prepare", { status: "requires_review", planDigest: privatePlan.planDigest, plannedCursorCount: entries.length, channelCount: channels.length, resetCount, expiresAt, historicalBytesRecorded: 0,
-      ...(policy ? { eligibleBindingCount: entries.length, retainedBindingCount: current.retainedBindings.length } : {}) }) };
+      ...(policy ? { eligibleBindingCount: entries.length, retainedBindingCount: current.retainedBindings.length } : {}),
+      ...(initialization ? { initializedCursorCount: entries.filter(entry => entry.before === null).length, opaqueHistoryCount: current.opaqueHistory.length } : {}) }) };
   } catch (error) { return { ok: false, privatePlan: null, summary: errorSummary("prepare", error) }; }
 }
 
 function validatePlan(plan, expectedPlanDigest, nowMs, enforceExpiry) {
-  onlyKeys(plan, ["type", "version", "preparedAt", "expiresAt", "channelRefs", "databaseIdentityDigest", "schemaDigest", "bindingDigest", "accountingDigest", "beforeCursorDigest", "afterCursorDigest", "entries", "planDigest", ...(plan?.version === 2 ? ["retentionPolicy", "retainedBindings", "retentionDigest"] : [])]);
-  if (plan.type !== "traffic_vless_baseline_private_plan" || ![1, 2].includes(plan.version) || typeof expectedPlanDigest !== "string" || !/^[a-f0-9]{64}$/.test(expectedPlanDigest)) fail("baseline_plan_invalid");
+  onlyKeys(plan, ["type", "version", "preparedAt", "expiresAt", "channelRefs", "databaseIdentityDigest", "schemaDigest", "bindingDigest", "accountingDigest", "beforeCursorDigest", "afterCursorDigest", "entries", "planDigest", ...(plan?.version >= 2 ? ["retentionPolicy", "retainedBindings", "retentionDigest"] : []), ...(plan?.version === 3 ? ["initializationPolicy", "opaqueHistory", "opaqueHistoryDigest"] : [])]);
+  if (plan.type !== "traffic_vless_baseline_private_plan" || ![1, 2, 3].includes(plan.version) || typeof expectedPlanDigest !== "string" || !/^[a-f0-9]{64}$/.test(expectedPlanDigest)) fail("baseline_plan_invalid");
+  if (plan.version === 3 && plan.initializationPolicy !== INITIALIZATION_POLICY) fail("baseline_initialization_policy_invalid");
   const { planDigest, ...body } = plan;
   if (planDigest !== expectedPlanDigest || digest(body) !== expectedPlanDigest) fail("baseline_plan_digest_mismatch");
   scope(plan.channelRefs);
@@ -360,7 +448,21 @@ function validatePlan(plan, expectedPlanDigest, nowMs, enforceExpiry) {
   const expiryMs = isoMs(plan.expiresAt);
   if (preparedMs > nowMs || expiryMs <= preparedMs || expiryMs - preparedMs > MAX_AGE_MS || (enforceExpiry && nowMs > expiryMs)) fail("baseline_plan_expired");
   if (!Array.isArray(plan.entries) || !plan.entries.length || plan.entries.length > MAX_ENTRIES) fail("baseline_plan_invalid");
-  if (plan.version === 2) {
+  if (plan.version === 3) {
+    if (!Array.isArray(plan.opaqueHistory) || !Array.isArray(plan.retainedBindings)
+      || plan.opaqueHistory.length + plan.entries.length + plan.retainedBindings.length > MAX_ENTRIES
+      || digest(plan.opaqueHistory) !== plan.opaqueHistoryDigest) fail("baseline_opaque_history_invalid");
+    const seen = new Set();
+    for (const item of plan.opaqueHistory) {
+      onlyKeys(item, ["channelRef", "requestRef", "evidenceDigest"]);
+      text(item.requestRef);
+      const key = `${item.channelRef}\0${item.requestRef}`;
+      if (!plan.channelRefs.includes(item.channelRef) || seen.has(key)
+        || typeof item.evidenceDigest !== "string" || !/^[a-f0-9]{64}$/.test(item.evidenceDigest)) fail("baseline_opaque_history_invalid");
+      seen.add(key);
+    }
+  }
+  if (plan.version >= 2) {
     if (plan.retentionPolicy !== RETENTION_POLICY || !Array.isArray(plan.retainedBindings)
       || plan.retainedBindings.length + plan.entries.length > MAX_ENTRIES
       || digest(plan.retainedBindings) !== plan.retentionDigest) fail("baseline_retention_invalid");
@@ -390,16 +492,17 @@ function validatePlan(plan, expectedPlanDigest, nowMs, enforceExpiry) {
     onlyKeys(entry.billingBinding, ["plan", "validFrom", "validUntil"]);
     text(entry.billingBinding.plan);
     if (isoMs(entry.billingBinding.validFrom) >= isoMs(entry.billingBinding.validUntil)) fail("baseline_plan_invalid");
-    for (const cursor of [entry.before, entry.after]) {
+    const initialized = plan.version === 3 && entry.before === null;
+    for (const cursor of initialized ? [entry.after] : [entry.before, entry.after]) {
       onlyKeys(cursor, ["uploadBytes", "downloadBytes", "observedAt", "epoch", "updatedAt"]);
       validateBytes(cursor.uploadBytes, cursor.downloadBytes);
       safeInteger(cursor.epoch);
       isoMs(cursor.observedAt);
       isoMs(cursor.updatedAt);
     }
-    if (isoMs(entry.after.observedAt) <= isoMs(entry.before.observedAt) || isoMs(entry.after.observedAt) > preparedMs || expiryMs - isoMs(entry.after.observedAt) > MAX_AGE_MS || entry.after.updatedAt !== plan.preparedAt) fail("baseline_plan_invalid");
-    const reset = entry.after.uploadBytes < entry.before.uploadBytes || entry.after.downloadBytes < entry.before.downloadBytes;
-    if (entry.after.epoch !== entry.before.epoch + Number(reset)) fail("baseline_plan_invalid");
+    if ((!initialized && isoMs(entry.after.observedAt) <= isoMs(entry.before.observedAt)) || isoMs(entry.after.observedAt) > preparedMs || expiryMs - isoMs(entry.after.observedAt) > MAX_AGE_MS || entry.after.updatedAt !== plan.preparedAt) fail("baseline_plan_invalid");
+    const reset = !initialized && (entry.after.uploadBytes < entry.before.uploadBytes || entry.after.downloadBytes < entry.before.downloadBytes);
+    if (entry.after.epoch !== (initialized ? 0 : entry.before.epoch + Number(reset))) fail("baseline_plan_invalid");
     sameBillingCycle(entry.billingBinding, entry.after.observedAt, plan.preparedAt);
     if (enforceExpiry) sameBillingCycle(entry.billingBinding, entry.after.observedAt, new Date(nowMs).toISOString());
   }
@@ -409,8 +512,11 @@ function compareIdentity(current, plan) {
   for (const key of ["databaseIdentityDigest", "schemaDigest", "bindingDigest"]) {
     if (current[key] !== plan[key]) fail(`baseline_${key === "databaseIdentityDigest" ? "database_identity" : key.replace("Digest", "")}_changed`);
   }
-  if (plan.version === 2 && (current.version !== 2 || current.retentionPolicy !== plan.retentionPolicy
+  if (plan.version >= 2 && (current.version !== plan.version || current.retentionPolicy !== plan.retentionPolicy
     || current.retentionDigest !== plan.retentionDigest || digest(current.retainedBindings) !== digest(plan.retainedBindings))) fail("baseline_retention_changed");
+  if (plan.version === 3 && current.initializationPolicy !== plan.initializationPolicy) fail("baseline_initialization_policy_invalid");
+  if (plan.version === 3 && (current.opaqueHistoryDigest !== plan.opaqueHistoryDigest
+    || digest(current.opaqueHistory) !== digest(plan.opaqueHistory))) fail("baseline_opaque_history_changed");
 }
 function compareState(current, plan) {
   compareIdentity(current, plan);
@@ -429,17 +535,20 @@ export function applyTrafficVlessBaseline({ dbPath, plan, expectedPlanDigest, no
       // must still be valid after that wait, before changing any cursor.
       const transactionNow = clock(nowFn);
       validatePlan(plan, expectedPlanDigest, transactionNow.ms, true);
-      const current = state(db, id, plan.channelRefs, transactionNow.ms, plan.retentionPolicy);
+      const current = state(db, id, plan.channelRefs, transactionNow.ms, plan.retentionPolicy, plan.initializationPolicy);
       const phase = compareState(current, plan);
       if (phase === "after") return { status: "baseline_already_applied", updatedCursorCount: 0 };
       const update = db.prepare(`UPDATE platform_usage_counter_cursors SET upload_bytes=@uploadBytes,download_bytes=@downloadBytes,observed_at=@observedAt,epoch=@epoch,updated_at=@updatedAt WHERE source_ref=@sourceRef AND channel_ref=@channelRef AND edge_credential_ref=@edgeCredentialRef AND upload_bytes=@oldUpload AND download_bytes=@oldDownload AND observed_at=@oldObservedAt AND epoch=@oldEpoch AND updated_at=@oldUpdatedAt`);
+      const insert = plan.version === 3 ? db.prepare(`INSERT INTO platform_usage_counter_cursors (source_ref,channel_ref,edge_credential_ref,upload_bytes,download_bytes,observed_at,epoch,updated_at) VALUES (@sourceRef,@channelRef,@edgeCredentialRef,@uploadBytes,@downloadBytes,@observedAt,@epoch,@updatedAt)`) : null;
       for (const entry of plan.entries) {
-        const result = update.run({ sourceRef: entry.sourceRef, channelRef: entry.channelRef, edgeCredentialRef: entry.edgeCredentialRef, ...entry.after, oldUpload: entry.before.uploadBytes, oldDownload: entry.before.downloadBytes, oldObservedAt: entry.before.observedAt, oldEpoch: entry.before.epoch, oldUpdatedAt: entry.before.updatedAt });
+        const values = { sourceRef: entry.sourceRef, channelRef: entry.channelRef, edgeCredentialRef: entry.edgeCredentialRef, ...entry.after };
+        const result = entry.before === null ? insert.run(values)
+          : update.run({ ...values, oldUpload: entry.before.uploadBytes, oldDownload: entry.before.downloadBytes, oldObservedAt: entry.before.observedAt, oldEpoch: entry.before.epoch, oldUpdatedAt: entry.before.updatedAt });
         if (result.changes !== 1) fail("baseline_cursor_compare_and_swap_failed");
       }
       // Recheck exact bindings, accounting row content and every target before
       // COMMIT, so an unexpected constraint or side effect rolls back all rows.
-      if (compareState(state(db, id, plan.channelRefs, transactionNow.ms, plan.retentionPolicy), plan) !== "after") fail("baseline_verification_failed");
+      if (compareState(state(db, id, plan.channelRefs, transactionNow.ms, plan.retentionPolicy, plan.initializationPolicy), plan) !== "after") fail("baseline_verification_failed");
       validatePlan(plan, expectedPlanDigest, clock(nowFn).ms, true);
       if (identity(dbPath) !== id) fail("baseline_database_identity_changed");
       return { status: "baseline_applied", updatedCursorCount: plan.entries.length };
@@ -454,7 +563,7 @@ export function verifyTrafficVlessBaseline({ dbPath, plan, expectedPlanDigest, n
   try {
     const now = clock(nowFn);
     validatePlan(plan, expectedPlanDigest, now.ms, false);
-    const phase = openDatabase(dbPath, true, (db, id) => db.transaction(() => compareState(state(db, id, plan.channelRefs, now.ms, plan.retentionPolicy), plan))());
+    const phase = openDatabase(dbPath, true, (db, id) => db.transaction(() => compareState(state(db, id, plan.channelRefs, now.ms, plan.retentionPolicy, plan.initializationPolicy), plan))());
     return publicSummary("verify", { ok: phase === "after", status: phase === "after" ? "baseline_verified" : "baseline_not_applied", planDigest: expectedPlanDigest, exactCursorState: phase, mutationAllowed: false });
   } catch (error) { return errorSummary("verify", error); }
 }
@@ -468,13 +577,14 @@ export function admitTrafficVlessBaseline({ dbPath, plan, expectedPlanDigest, no
     validatePlan(plan, expectedPlanDigest, now.ms, false);
     if (now.ms - isoMs(plan.preparedAt) > MAX_ACTIVATION_MS) fail("baseline_activation_window_expired");
     openDatabase(dbPath, true, (db, id) => db.transaction(() => {
-      const current = state(db, id, plan.channelRefs, now.ms, plan.retentionPolicy);
+      const current = state(db, id, plan.channelRefs, now.ms, plan.retentionPolicy, plan.initializationPolicy);
       compareIdentity(current, plan);
       if (current.entries.length !== plan.entries.length) fail("baseline_cursor_scope_incomplete");
       const expectedByKey = new Map(plan.entries.map((entry) => [`${entry.sourceRef}\0${entry.channelRef}\0${entry.edgeCredentialRef}`, entry]));
       for (const entry of current.entries) {
         const expected = expectedByKey.get(`${entry.sourceRef}\0${entry.channelRef}\0${entry.edgeCredentialRef}`);
         if (!expected || entry.bindingDigest !== expected.bindingDigest) fail("baseline_binding_changed");
+        if (entry.cursor === null) fail("baseline_cursor_before_baseline");
         if (isoMs(entry.cursor.observedAt) < isoMs(expected.after.observedAt) || entry.cursor.epoch < expected.after.epoch || (entry.cursor.epoch === expected.after.epoch && (entry.cursor.uploadBytes < expected.after.uploadBytes || entry.cursor.downloadBytes < expected.after.downloadBytes))) fail("baseline_cursor_before_baseline");
         if (now.ms - isoMs(entry.cursor.observedAt) > MAX_CURSOR_AGE_MS) fail("baseline_cursor_stale");
         sameBillingCycle(entry.billingBinding, expected.after.observedAt, entry.cursor.observedAt, now.iso);

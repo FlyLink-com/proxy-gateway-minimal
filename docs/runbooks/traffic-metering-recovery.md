@@ -6,15 +6,15 @@ document_metadata:
   lifecycle: active
   authority_scope: traffic_metering_recovery
   superseded_by: null
-  last_verified_at: 2026-09-05
+  last_verified_at: 2026-09-07
   production_authority: false
 ```
 
-- Risk: A；本次授权仅覆盖本地补丁、隔离验证和恢复方案准备。
+- Risk: A；操作员已批准在同一 PR 补齐旧身份核验兼容及缺失计量起点初始化，按新起点只计算后续流量、不追扣无法归属的历史用量，随后继续生产更新；见文末最新记录。此文档本身不授予生产权限。
 - Process: 只读证据 -> 最小补丁与 TDD -> 隔离验证 -> 精确生产审批包 -> 经批准执行 -> 自然周期验证与收尾。
 - Expected PR count: 1，包含意图、实现、测试和本 runbook；生产门禁另行审批，不拆空的 spec PR。
 - Validation: targeted tests、`npm test`、diff check，以及下述恢复边界的隔离证据。
-- Production/AWS impact: 当前为 none；尚未批准部署、服务操作、采集、计数清零、游标改写、数据库恢复或客户扣量。
+- Production/AWS impact: 目标为已批准的 control-plane-app 更新及定向 VLESS 恢复；需要新备份、精确制品和现场绑定。未授权其他协议清零、身份补造、历史追扣、schema migration 或整库自动恢复；当前实际执行状态以文末带时间记录和生产 receipt 为准。
 - release_unit: `control-plane-app`；2026-09-05 第一阶段启动隔离补丁的 `identity_impact: false` 为历史记录。本轮包含严格 Xray 身份解析、定向 baseline 与 collector scope 准入，声明 `identity_impact: true`；执行前后必须满足 aggregate-only Identity Gate，不以“未修改凭证材料”豁免该门禁。
 
 ## 故障依据和本次范围
@@ -266,6 +266,40 @@ prepare/apply/verify/admit 及 reader 完成后的校验均绑定同一保留集
 v2 独立状态使用 `coverage: "eligible_bindings_only"`，仅输出保留绑定数和
 实际排除的读数数；`productionRecoveryComplete` 仍为 false。24 小时临时窗口、
 有效 cursor 900 秒新鲜度、当前账期一致、record-only 和独立状态文件边界不变。
+
+### 显式 v3：旧 primary 核验与缺失起点初始化
+
+在 v2 的其余 request 字段上使用 `schemaVersion: 3`，并明确同时设置
+`retentionPolicy: "preserve-ineligible"` 与
+`initializationPolicy: "verified-legacy-fresh-cursors"`。外层 envelope、request、
+privatePlan 必须版本和政策一致；v1/v2 不会自动放宽。scope 仍使用原结构，
+由完整 plan 文件摘要绑定 v3 政策。
+
+- 旧身份兼容仅使用现有 Portal primary 的真实 channel、credential、material、
+  entitlement 和资源字段。与 runtime 的 durable-first、primary fallback 解析
+  顺序一致，primary 的 channel 还必须等于签发 request.node_id。核验全库唯一性，
+  仅同 request/channel/material 的精确 durable-primary 镜像可视为同一身份。
+  同请求其他 channel 的 durable 可以存在，但完整纳入证据和歧义校验。
+- 固定账号、权益、签发、Portal、全部相关 links 和附加 durable 证据；旧资源
+  tenant/artifact 按现有 safeIssuedRef 算法与 link 对应，不能直接比较 raw ID。
+  不写身份表，不调用签发、不生成替代 credential。
+- 有效且完整核验的身份若缺 cursor，计划明确 `before: null`；T0 使用完整非清零
+  snapshot 原始读数，新 cursor 为 epoch 0。已有 cursor 保留原 before/epoch。
+  `BEGIN IMMEDIATE` 中混合执行排他 INSERT 和精确 CAS UPDATE，失败整体回滚，
+  不使用 UPSERT。只有整批 all-after 可 no-op，不能修补混合状态后盲目重试。
+- 三类集合分开处理：有效绑定建立新计量边界；完整但已过期/稳定停用的
+  绑定仍按 v2 保留；无 primary 边缘标识的历史记录只可进入独立 `opaqueHistory`。
+  后者须是 issued request、Portal pending_admin_review、权益期限已过、账号/权益
+  引用一致、无待执行生命周期动作、没有 durable 和 primary 材料字段、至少一个
+  完整已知状态 link 且最多一个 active link。此状态不证明资源从未交付。
+- `opaqueHistory` 每项只有 channelRef/requestRef/evidenceDigest，私有保存；集合
+  与摘要必须存在，即使为空。没有 credential key，不进入 retained observation
+  allowlist，不建立 cursor，不从 request 推导统计身份。对应的未知实际统计标识
+  或孤立 cursor 仍阻断整批；不能借此丢弃无法解释的实际读数。
+- prepare/apply/verify/admit 及读数后的校验均固定三类集合和证据。任何相关对象
+  变化都拒绝；只读 verify 不会补造状态。动态采集只写 T0 后新样本，已有账本、
+  非选通道和保留游标不变。独立状态附带 initializationPolicy 和 retainedHistoryCount，
+  不输出记录详情，仍不声称五通道或 quota 生命周期全部恢复。
 
 ```bash
 "<已核验 Node 绝对路径>" "<candidate>/scripts/traffic-vless-recovery.mjs" prepare --request "<protected>/request.json" --plan "<protected>/plan.json"
@@ -630,3 +664,39 @@ helper，仅调用 v2 `inspect` 和 aggregate-only SELECT；没有安装远端�
 在 legacy 身份兼容与缺 cursor 的首次计量边界解决前，不能恢复无 scope 主采集，
 也不能把“仅安装代码”报告为计量已恢复。本次没有触发停写、baseline/apply、
 新计费或主服务切换；现役状态保持不变。
+
+### 2026-09-07 操作员批准的 v3 补充与新只读复核
+
+操作员明确同意同一 PR 的“旧身份核验兼容＋缺失计量起点初始化”，以新起点
+只计算后续流量，不追扣无法归属的历史用量，随后继续生产更新。此前批准的
+必要短暂停写仍有效；新发现的 runtime 配置/来源扩展不能由此推定获准。
+既有历史执行号不重放，也不因上下文恢复重新进行整套 Linux 验证。
+
+v3 的 TDD：缺失 cursor 首轮 86 项中 79 pass / 7 fail 转为全绿；旧 primary
+与 opaque 首轮 100 项中 86 pass / 14 fail 转为全绿。最终 baseline 103/103
+通过，包括 INSERT/UPDATE 双向故障回滚、重算摘要后伪造 opaque 集合拒绝、
+真实 legacy resolver 计量。主线程最终五文件 181 pass / 0 fail / 0 skip，
+包含真实 CLI 和连续两轮 scoped accounting、未知派生历史 key 整批零写入、
+读数期间 opaque/link 或非选附加 durable 漂移拒绝；strict docs 393 blocks
+及 diff check 通过。新完整套件和提交 CI 结果单独在 PR 记录，不冒充已全绿。
+
+2026-09-08 00:31–00:34 UTC（操作员当地仍为 9 月 7 日）的生产只读复核：
+现役仍为 `control-plane-82707bc15c40-ingress-4d964ebb`，app active/running、
+自动重启数 0。通过 stdin 在内存核验新 helper，源码 SHA-256 为
+`1e1ede5e4bec049d0500dfd876abde72f52a34436d0757c93ef60ec558fb1782`；
+未在生产落地新源码或私有计划，也未调用统计 reader 或修改业务数据。
+
+- 日本：31 个有效绑定、86 个完整保留绑定、3 条独立 opaque 历史；8 个有效
+  绑定缺 cursor。10 条完整旧 primary 的资源 safeRef 对应全部成立，3 条 opaque
+  有签发和 active link 痕迹，不能称“从未交付”。
+- SGP：31 个有效绑定、83 个完整保留绑定、0 条 opaque；9 个有效绑定缺 cursor。
+- 两个 v3 inspect 均通过，消除了此前 legacy/cursor 的源码准入阻塞。此处
+  cursorCount 表示待绑定的有效集合大小，不把缺失项误称为已创建游标。
+- 以上是数据库身份与起点前提，不是 runtime Identity Gate healthy，也不是
+  baseline 已执行。统计来源、完整读数与后续计量仍须实证；读不到数据不得补零。
+
+后续使用精确合并 master 的正式 source/dependency 构件，沿用 ingress、stage、
+overlay、bounded dependency 的既有组装合同。11 文件清单是变更依赖审查范围，
+不表示现有 stage 工具支持将它们覆盖到旧 release 后冒充单一新 master。发布
+保持 backend-only，不联动 Portal、支付或 origin 配置；主 collector 在切换前
+隔离，不自动恢复无 scope 入口。这里没有记录已经执行的生产切换。

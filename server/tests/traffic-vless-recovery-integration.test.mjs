@@ -35,7 +35,7 @@ test("post-read inventory remains bound to the approved material when a writer c
   assert.equal(f.allRows("platform_usage_samples").length, 1);
 });
 
-function fixture(t, { mixed = false } = {}) {
+function fixture(t, { mixed = false, initialize = false } = {}) {
   const directory = mkdtempSync(join(tmpdir(), "traffic-vless-integration-"));
   const dbPath = join(directory, "private.sqlite");
   const store = createSqliteSubscriptionControlStore({ dbPath });
@@ -64,12 +64,14 @@ function fixture(t, { mixed = false } = {}) {
     db.prepare("UPDATE platform_entitlements SET valid_until=? WHERE id=?").run("2026-09-01T00:00:00.000Z", refs[3].entitlementId);
     db.prepare("UPDATE platform_accounts SET status='disabled' WHERE id=?").run(refs[4].accountId);
   }
+  if (initialize) db.prepare("DELETE FROM platform_usage_counter_cursors WHERE edge_credential_ref=?").run(refs[1].edgeCredentialRef);
   store.recordUsageSample({ ...refs[0], id: "historical-sample", sampleDigest: "sha256:historical-sample", uploadBytes: 40, downloadBytes: 60, totalBytes: 100 });
   const binary = join(directory, "synthetic-xray.bin");
   const binaryBytes = Buffer.from("synthetic-reader-never-executed");
   writeFileSync(binary, binaryBytes, { mode: 0o700 });
   const request = {
-    schemaVersion: mixed ? 2 : 1, ...(mixed ? { retentionPolicy: "preserve-ineligible" } : {}), dbPath, channelRefs: CHANNELS, validForSeconds: 300,
+    schemaVersion: initialize ? 3 : mixed ? 2 : 1, ...((mixed || initialize) ? { retentionPolicy: "preserve-ineligible" } : {}),
+    ...(initialize ? { initializationPolicy: "verified-legacy-fresh-cursors" } : {}), dbPath, channelRefs: CHANNELS, validForSeconds: 300,
     sources: CHANNELS.map((channelRef, index) => ({ channelRef, xrayBinary: binary, binarySha256: createHash("sha256").update(binaryBytes).digest("hex"), statsServer: `127.0.0.1:${10085 + index}` }))
   };
   const requestFile = join(directory, "request.json");
@@ -100,6 +102,68 @@ async function command(f, action, digest, options = {}) {
   }
   assert.equal(result.productionAuthorized, false);
   return { code, result };
+}
+
+function legacyAndOpaqueFixture(t) {
+  const f = fixture(t, { mixed: true, initialize: true });
+  const legacy = f.refs[0], opaque = f.refs[3];
+  const resource = (prefix, value) => `${prefix}ref_${createHash("sha256").update(value).digest("hex").slice(0, 16)}`;
+  f.db.prepare("UPDATE platform_issued_subscription_links SET tenant_ref=?,artifact_ref=? WHERE request_id=?")
+    .run(resource("tenant", "tenant-0"), resource("artifact", "artifact-0"), legacy.requestId);
+  f.db.prepare("INSERT INTO platform_portal_edge_credentials SELECT request_id,'channel-sgp-a-tuic',edge_credential_ref||'-attached',edge_material_digest,ordinal+1 FROM platform_portal_edge_credentials WHERE request_id=?")
+    .run(legacy.requestId);
+  f.db.prepare("DELETE FROM platform_portal_edge_credentials WHERE request_id=? AND edge_channel_ref=?").run(legacy.requestId, legacy.channelRef);
+  f.db.prepare("DELETE FROM platform_usage_counter_cursors WHERE edge_credential_ref=?").run(legacy.edgeCredentialRef);
+  f.db.prepare("DELETE FROM platform_portal_edge_credentials WHERE request_id=?").run(opaque.requestId);
+  f.db.prepare("DELETE FROM platform_usage_counter_cursors WHERE edge_credential_ref=?").run(opaque.edgeCredentialRef);
+  f.db.prepare("UPDATE platform_portal_access_requests SET status='pending_admin_review',next_action='wait_for_admin_review',entitlement_ref=NULL,edge_channel_ref=NULL,edge_credential_ref=NULL,edge_material_digest=NULL,access_grant_ref=NULL,tenant_id=NULL,artifact_id=NULL WHERE id=?")
+    .run(opaque.requestId);
+  const reader = f.commandRunner;
+  f.commandRunner = (...args) => {
+    const result = reader(...args), body = JSON.parse(result.stdout);
+    body.stat = body.stat.filter(row => !row.name.includes(`>>>${opaque.edgeCredentialRef}>>>`));
+    return { ...result, stdout: JSON.stringify(body) };
+  };
+  return f;
+}
+
+test("v3 real collector resolves legacy primary and preserves opaque history without charging pre-T0 bytes", async (t) => {
+  const f = legacyAndOpaqueFixture(t);
+  const tables = ["platform_accounts", "platform_entitlements", "platform_issuance_requests", "platform_portal_access_requests", "platform_portal_edge_credentials", "platform_issued_subscription_links"];
+  const identities = tables.map(f.allRows), ledger = [f.allRows("platform_usage_samples"), f.allRows("platform_usage_rollups")];
+  const scoped = await scopedFixture(f);
+  assert.deepEqual([f.allRows("platform_usage_samples"), f.allRows("platform_usage_rollups")], ledger);
+  assert.equal(f.store.getUsageCounterCursor(f.refs[0]).epoch, 0);
+  assert.equal(f.store.getUsageCounterCursor(f.refs[3]), null);
+  for (const options of [{}, { now: "2026-09-05T10:32:00.000Z", delta: 2 }]) {
+    const result = await scopedCollect(f, scoped, options);
+    assert.equal(result.code, 0, result.errors + result.output);
+  }
+  const status = JSON.parse(readFileSync(scoped.statusFile, "utf8"));
+  assert.equal(status.summary.retainedHistoryCount, 1);
+  assert.equal(status.summary.retainedBindingCount, 1);
+  assert.equal(status.summary.initializationPolicy, "verified-legacy-fresh-cursors");
+  assert.equal(status.productionRecoveryComplete, false);
+  assert.deepEqual(f.db.prepare("SELECT total_bytes FROM platform_usage_samples WHERE observed_at>?").all(OLD), Array.from({ length: 4 }, () => ({ total_bytes: 30 })));
+  assert.deepEqual(tables.map(f.allRows), identities);
+});
+
+for (const invalid of ["unknown derived history key", "opaque record changed", "unselected attached binding changed"]) {
+  test(`v3 scoped legacy collection rejects ${invalid} before any accounting`, async (t) => {
+    const f = legacyAndOpaqueFixture(t), scoped = await scopedFixture(f);
+    const ledger = [f.allRows("platform_usage_samples"), f.allRows("platform_usage_rollups"), f.allRows("platform_usage_counter_cursors")];
+    const result = await scopedCollect(f, scoped, { transformRows(rows, index) {
+      if (index !== 1) return rows;
+      if (invalid === "unknown derived history key") return [...rows,
+        { name: `user>>>edgecred_${f.refs[3].requestId}>>>traffic>>>uplink`, value: 1 },
+        { name: `user>>>edgecred_${f.refs[3].requestId}>>>traffic>>>downlink`, value: 2 }];
+      if (invalid === "opaque record changed") f.db.prepare("UPDATE platform_issued_subscription_links SET artifact_ref='changed-history' WHERE request_id=?").run(f.refs[3].requestId);
+      else f.db.prepare("UPDATE platform_portal_edge_credentials SET edge_material_digest='changed-attached' WHERE edge_credential_ref=?").run(`${f.refs[0].edgeCredentialRef}-attached`);
+      return rows;
+    } });
+    assert.equal(result.code, 1, result.errors + result.output);
+    assert.deepEqual([f.allRows("platform_usage_samples"), f.allRows("platform_usage_rollups"), f.allRows("platform_usage_counter_cursors")], ledger);
+  });
 }
 
 test("real CLI prepare/apply/verify updates only selected baselines and later accounting charges post-T0 bytes", async (t) => {
@@ -165,6 +229,28 @@ test("v2 mixed baseline and collection preserve retained history and charge only
   assert.deepEqual(["platform_accounts", "platform_entitlements", "platform_issuance_requests", "platform_portal_access_requests", "platform_portal_edge_credentials", "platform_issued_subscription_links"].map(f.allRows), identities);
   // A retained whole user may disappear, while eligible coverage stays complete.
   assert.equal((await scopedCollect(f, scoped, { now: "2026-09-05T10:32:00.000Z", delta: 2 })).code, 0);
+});
+
+test("v3 real CLI initializes a missing cursor and two scoped rounds only record post-boundary bytes", async (t) => {
+  const f = fixture(t, { mixed: true, initialize: true });
+  const beforeIdentity = ["platform_accounts", "platform_entitlements", "platform_issuance_requests", "platform_portal_access_requests", "platform_portal_edge_credentials", "platform_issued_subscription_links"].map(f.allRows);
+  const beforeLedger = [f.allRows("platform_usage_samples"), f.allRows("platform_usage_rollups")];
+  assert.equal(f.store.getUsageCounterCursor(f.refs[1]), null);
+  const scoped = await scopedFixture(f);
+  assert.deepEqual([f.allRows("platform_usage_samples"), f.allRows("platform_usage_rollups")], beforeLedger);
+  assert.equal(f.store.getUsageCounterCursor(f.refs[1]).uploadBytes, 50000);
+  assert.equal(f.store.getUsageCounterCursor(f.refs[1]).epoch, 0);
+  const retainedBefore = f.refs.slice(3).map(ref => f.store.getUsageCounterCursor(ref));
+  assert.equal((await scopedCollect(f, scoped)).code, 0);
+  assert.equal((await scopedCollect(f, scoped, { now: "2026-09-05T10:32:00.000Z", delta: 2 })).code, 0);
+  const samples = f.db.prepare("SELECT total_bytes FROM platform_usage_samples WHERE observed_at>? ORDER BY observed_at,edge_credential_ref").all(OLD);
+  assert.deepEqual(samples, [{total_bytes: 30}, {total_bytes: 30}, {total_bytes: 30}, {total_bytes: 30}]);
+  assert.deepEqual(f.refs.slice(3).map(ref => f.store.getUsageCounterCursor(ref)), retainedBefore);
+  assert.deepEqual(["platform_accounts", "platform_entitlements", "platform_issuance_requests", "platform_portal_access_requests", "platform_portal_edge_credentials", "platform_issued_subscription_links"].map(f.allRows), beforeIdentity);
+  const status = JSON.parse(readFileSync(scoped.statusFile, "utf8"));
+  assert.equal(status.coverage, "eligible_bindings_only");
+  assert.equal(status.productionRecoveryComplete, false);
+  assert.equal(status.summary.retainedBindingCount, 2);
 });
 
 for (const condition of ["retained activated", "retained cursor changed", "retained next action changed", "duplicate retained", "unknown extra", "missing eligible", "incomplete retained"]) {

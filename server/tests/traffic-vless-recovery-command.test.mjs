@@ -123,3 +123,35 @@ test("mixed-state policy requires explicit v2 and is forwarded to both baseline 
   }
   assert.doesNotMatch(output, /db\.sqlite|edgecred_private/);
 });
+
+test("fresh cursor and legacy policy requires explicit v3 and is pinned through the envelope", async (t) => {
+  const { root, source } = fixture(t);
+  const request = { schemaVersion: 3, retentionPolicy: "preserve-ineligible", initializationPolicy: "verified-legacy-fresh-cursors",
+    dbPath: join(root, "db.sqlite"), channelRefs: [channel], sources: [source], validForSeconds: 300 };
+  assert.equal(validateVlessRecoveryRequest(request), request);
+  for (const changed of [{ ...request, schemaVersion: 1 }, { ...request, schemaVersion: 2 },
+    { ...request, initializationPolicy: undefined }, { ...request, initializationPolicy: "reset-all" }, { ...request, retentionPolicy: undefined }]) {
+    assert.throws(() => validateVlessRecoveryRequest(changed));
+  }
+  const requestFile = join(root, "request.json"), planFile = join(root, "plan.json");
+  writeFileSync(requestFile, JSON.stringify(request), { mode: 0o600 });
+  let reads = 0, output = "";
+  const baseline = {
+    inspectTrafficVlessBaseline(options) { reads++; assert.equal(options.initializationPolicy, request.initializationPolicy); return { ok: true, privateInventory: {} }; },
+    prepareTrafficVlessBaseline(options) { reads++; assert.equal(options.initializationPolicy, request.initializationPolicy); return { ok: true,
+      privatePlan: { version: 3, retentionPolicy: request.retentionPolicy, initializationPolicy: request.initializationPolicy,
+        channelRefs: [channel], planDigest: "b".repeat(64) }, summary: { ok: true } }; }
+  };
+  assert.equal(await runTrafficVlessRecovery({ argv: ["prepare", "--request", requestFile, "--plan", planFile], baseline, allowWindowsSynthetic: true,
+    stdout: { write: value => { output += value; } }, nowFn: clock, commandRunner: () => ({ status: 0, stdout: JSON.stringify(validPayload) }) }), 0);
+  assert.equal(reads, 2);
+  const envelope = readBaselineEnvelope(planFile, digest(readFileSync(planFile)));
+  assert.equal(envelope.schemaVersion, 3);
+  for (const changed of [{ ...envelope, schemaVersion: 2 },
+    { ...envelope, privatePlan: { ...envelope.privatePlan, initializationPolicy: undefined } },
+    { ...envelope, privatePlan: { ...envelope.privatePlan, initializationPolicy: "reset-all" } }]) {
+    writeFileSync(planFile, JSON.stringify(changed), { mode: 0o600 });
+    assert.throws(() => readBaselineEnvelope(planFile, digest(readFileSync(planFile))));
+  }
+  assert.doesNotMatch(output, /db\.sqlite|edgecred_private/);
+});

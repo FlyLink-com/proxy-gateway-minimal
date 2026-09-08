@@ -51,9 +51,11 @@ export function readRecoveryXraySnapshot({ source, nowFn = () => new Date(), com
   }));
 }
 function validateRequestVersion(request) {
-  exactKeys(request, ["schemaVersion", "dbPath", "channelRefs", "sources", "validForSeconds", ...(request?.schemaVersion === 2 ? ["retentionPolicy"] : [])]);
-  if (request.schemaVersion !== 1 && request.schemaVersion !== 2) recoveryReject();
-  if (request.schemaVersion === 2 && request.retentionPolicy !== "preserve-ineligible") recoveryReject();
+  exactKeys(request, ["schemaVersion", "dbPath", "channelRefs", "sources", "validForSeconds",
+    ...([2, 3].includes(request?.schemaVersion) ? ["retentionPolicy"] : []), ...(request?.schemaVersion === 3 ? ["initializationPolicy"] : [])]);
+  if (![1, 2, 3].includes(request.schemaVersion)) recoveryReject();
+  if ([2, 3].includes(request.schemaVersion) && request.retentionPolicy !== "preserve-ineligible") recoveryReject();
+  if (request.schemaVersion === 3 && request.initializationPolicy !== "verified-legacy-fresh-cursors") recoveryReject();
 }
 export function validateVlessRecoveryRequest(request) {
   validateRequestVersion(request);
@@ -87,6 +89,7 @@ export function readBaselineEnvelope(planFile, expectedSha256) {
   validateRequestVersion(envelope.request);
   if (envelope.schemaVersion !== envelope.request.schemaVersion || envelope.privatePlan?.version !== envelope.schemaVersion
     || envelope.privatePlan.retentionPolicy !== envelope.request.retentionPolicy
+    || envelope.privatePlan.initializationPolicy !== envelope.request.initializationPolicy
     || envelope.type !== "traffic_vless_baseline_plan" || !/^[a-f0-9]{64}$/.test(envelope.privatePlan?.planDigest)) recoveryReject();
   recoveryAbsolutePath(envelope.request?.dbPath);
   if (JSON.stringify(validateRecoveryChannels(envelope.request.channelRefs)) !== JSON.stringify(validateRecoveryChannels(envelope.privatePlan.channelRefs))) recoveryReject();
@@ -131,11 +134,13 @@ export async function runTrafficVlessRecovery({ argv = process.argv.slice(2), st
     if (action === "prepare") {
       const input = readRecoveryJson(args["--request"]);
       const request = validateVlessRecoveryRequest(input.value);
-      const inspected = baseline.inspectTrafficVlessBaseline({ dbPath: request.dbPath, channelRefs: request.channelRefs, retentionPolicy: request.retentionPolicy, nowFn });
+      const inspected = baseline.inspectTrafficVlessBaseline({ dbPath: request.dbPath, channelRefs: request.channelRefs,
+        retentionPolicy: request.retentionPolicy, initializationPolicy: request.initializationPolicy, nowFn });
       if (!inspected.ok) return output(inspected.summary, 2);
       const observations = request.sources.flatMap((source) => readRecoveryXraySnapshot({ source, nowFn, commandRunner }));
       const prepared = baseline.prepareTrafficVlessBaseline({ dbPath: request.dbPath, channelRefs: request.channelRefs, observations,
-        expectedInventory: inspected.privateInventory, retentionPolicy: request.retentionPolicy, nowFn, validForSeconds: request.validForSeconds });
+        expectedInventory: inspected.privateInventory, retentionPolicy: request.retentionPolicy,
+        initializationPolicy: request.initializationPolicy, nowFn, validForSeconds: request.validForSeconds });
       if (!prepared.ok) return output(prepared.summary, 2);
       const fileDigest = writeRecoveryJson(planFile, { schemaVersion: request.schemaVersion, type: "traffic_vless_baseline_plan", request, requestSha256: input.sha256, privatePlan: prepared.privatePlan });
       return output({ ...prepared.summary, ok: true, status: "plan_prepared", planFileSha256: fileDigest }, 0);
