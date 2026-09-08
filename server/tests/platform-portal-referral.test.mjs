@@ -296,9 +296,9 @@ test("migration requires exact confirmation and parent schemas, detects drift, a
 
 test("stable opaque codes survive independent connections and restart", (t) => {
   const dir = mkdtempSync(join(tmpdir(), "referral-"));
-  t.after(() => rmSync(dir, { recursive: true, force: true }));
   const path = join(dir, "state.sqlite"),
     f = fixture(t, { path });
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
   const a = f.service.createLink("promoter");
   assert.match(a.linkPath, /^\/r\/[A-Za-z0-9_-]{32}$/);
   const other = createPortalReferralService({
@@ -713,9 +713,9 @@ test("disabled promoter cannot confirm and mismatched wallet/payment binding can
 
 test("schema CLI validates and dry-runs an existing database without source mutation", (t) => {
   const dir = mkdtempSync(join(tmpdir(), "referral-cli-"));
-  t.after(() => rmSync(dir, { recursive: true, force: true }));
   const path = join(dir, "state.sqlite"),
     f = fixture(t, { path, migrate: false });
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
   const before = f.db.serialize();
   const run = (mode, extra = []) =>
     runPortalReferralSchemaCli(["--mode", mode, "--db-path", path, ...extra]);
@@ -751,9 +751,9 @@ test("schema CLI validates and dry-runs an existing database without source muta
 
 test("policy CLI requires reviewed canonical digest before publication and exposes no file error details", (t) => {
   const dir = mkdtempSync(join(tmpdir(), "referral-policy-"));
-  t.after(() => rmSync(dir, { recursive: true, force: true }));
   const dbPath = join(dir, "state.sqlite"),
     f = fixture(t, { path: dbPath, publish: false });
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
   const policyPath = join(dir, "policy.json");
   writeFileSync(
     policyPath,
@@ -807,7 +807,6 @@ test("policy CLI requires reviewed canonical digest before publication and expos
 
 test("simultaneous independent writers issue one stable code and one reward", async (t) => {
   const dir = mkdtempSync(join(tmpdir(), "referral-concurrent-"));
-  t.after(() => rmSync(dir, { recursive: true, force: true }));
   const path = join(dir, "state.sqlite"),
     f = fixture(t, { path });
   f.bind();
@@ -818,6 +817,7 @@ test("simultaneous independent writers issue one stable code and one reward", as
   ).href;
   const workers = [];
   t.after(() => Promise.all(workers.map((worker) => worker.terminate())));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
   const results = [];
   const ready = Array.from(
     { length: 2 },

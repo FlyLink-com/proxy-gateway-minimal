@@ -612,43 +612,4 @@ export function MarketplacePanel({
   );
 }
 
-export function ReferralRewardsPanel({ locale }: PanelProps) {
-  const zh = isChinese(locale);
-  const metrics = zh
-    ? ["有效注册", "归因消费", "待确认奖励", "可用奖励"]
-    : ["Attributed registrations", "Attributed spend", "Pending reward", "Available reward"];
-
-  return (
-    <section className="portal-commerce-layout portal-commerce-layout--referral-rewards" aria-labelledby="portal-commerce-referral-heading">
-      <header className="portal-commerce-layout__header">
-        <h2 id="portal-commerce-referral-heading">{zh ? "推广绩效" : "Referral performance"}</h2>
-        <h3>{zh ? "我的推荐链接" : "My referral link"}</h3>
-        <p>
-          {zh
-            ? "每个账户仅拥有一个推荐链接，首次创建链接时会建立推广档案。"
-            : "Each account owns exactly one referral link, and the profile is created on first link creation."}
-        </p>
-      </header>
-      <section className="portal-commerce-layout__section" aria-label={zh ? "推广指标" : "Referral metrics"}>
-        <dl className="portal-commerce-layout__metrics">
-          {metrics.map((metric) => (
-            <div className="portal-commerce-layout__metric" key={metric}>
-              <dt>{metric}</dt>
-              <dd>--</dd>
-            </div>
-          ))}
-        </dl>
-        <button type="button" disabled>
-          {zh ? "生成推荐链接（暂未开放）" : "Create referral link (not available yet)"}
-        </button>
-      </section>
-      <section className="portal-commerce-layout__section" aria-label={zh ? "奖励状态" : "Reward states"}>
-        <p>
-          {zh
-            ? "奖励不会递归产生新的奖励。pending 表示待确认，available 表示可用，held 表示暂时保留，reversed 表示已撤销。"
-            : "Referral rewards do not recursively create new rewards. pending means awaiting confirmation, available means usable, held means temporarily retained, and reversed means cancelled."}
-        </p>
-      </section>
-    </section>
-  );
-}
+export { ReferralRewardsPanel } from "./referrals/portal-referral-panel";

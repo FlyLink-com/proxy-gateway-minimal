@@ -1,9 +1,17 @@
 import assert from "node:assert/strict";
 import { request as httpRequest } from "node:http";
 import test from "node:test";
+import Database from "better-sqlite3";
 
 import { createApp } from "../app.mjs";
 import { createPortalCoinWalletRouter } from "../routes/portal-coin-wallet.mjs";
+import {
+  COIN_WALLET_MIGRATIONS,
+  REQUIRED_COIN_WALLET_MIGRATION_ID,
+  applyCoinWalletMigrations
+} from "../services/platform/coin-wallet-migrations.mjs";
+import { createSqliteCoinWalletStore } from "../services/platform/coin-wallet-store.mjs";
+import { reverseReferralReward } from "../services/platform/portal-referral-wallet.mjs";
 import { listen } from "./helpers/listen.mjs";
 
 const ROOT_DIR = new URL("../../", import.meta.url).pathname;
@@ -306,6 +314,97 @@ test("Wallet summary and all seven ledger categories expose only safe exact DTOs
     await closeServer(server);
   }
 });
+
+for (const { name, confirmedUnits, reversalUnits, expected } of [
+  { name: "pending", confirmedUnits: 0, reversalUnits: 11,
+    expected: { pending_to_reversed: [0, -11, 0, -11] } },
+  { name: "available", confirmedUnits: 25, reversalUnits: 11,
+    expected: { available_to_reversed: [-11, 0, 0, -11] } },
+  { name: "mixed pending and available", confirmedUnits: 20, reversalUnits: 11,
+    expected: {
+      pending_to_reversed: [0, -5, 0, -5],
+      available_to_reversed: [-6, 0, 0, -6]
+    } }
+]) {
+  test(`Wallet ledger reads persisted ${name} referral reward reversals without 503`, async () => {
+    const database = new Database(":memory:");
+    let server;
+    try {
+      database.pragma("foreign_keys = ON");
+      database.exec(`create table platform_accounts (
+        id text primary key, owner_ref text not null, status text not null,
+        created_at text not null, updated_at text not null,
+        metadata_json text not null default '{}'
+      )`);
+      database.prepare(`insert into platform_accounts
+        (id, owner_ref, status, created_at, updated_at) values (?, ?, 'active', ?, ?)`
+      ).run(ACCOUNT_ID, "synthetic-owner", NOW, NOW);
+      applyCoinWalletMigrations({
+        database,
+        expectedMigrationId: REQUIRED_COIN_WALLET_MIGRATION_ID,
+        expectedDdlChecksum: COIN_WALLET_MIGRATIONS[0].ddlChecksum,
+        nowFn: () => new Date(NOW)
+      });
+      const store = createSqliteCoinWalletStore({ database, nowFn: () => new Date(NOW) });
+      const operation = (idempotencyKey) => ({
+        actorScope: `account:${ACCOUNT_ID}`, idempotencyKey,
+        actorType: "system", actorRef: "synthetic-reward-worker"
+      });
+      const sourceRef = "synthetic-referral-reward";
+      const credit = store.creditCoins({
+        accountId: ACCOUNT_ID, coinType: "reward_coins", amountUnits: 25,
+        availability: "pending", sourceType: "portal_first_recharge_reward",
+        sourceRef, sourceDigest: "c".repeat(64),
+        policyRef: "synthetic-reward-policy", policyVersion: 1, expiresAt: null,
+        operation: operation("reward-credit")
+      });
+      if (confirmedUnits) store.confirmCoinCredit({
+        lotRef: credit.resultRef, amountUnits: confirmedUnits,
+        operation: operation("reward-confirm")
+      });
+      const before = store.getWalletProjection({ accountId: ACCOUNT_ID });
+      const occurredAt = "2026-07-27T12:34:57.000Z";
+      assert.equal(database.transaction(() => reverseReferralReward(database, {
+        lotRef: credit.resultRef, sourceRef, amount: reversalUnits,
+        cumulative: reversalUnits, occurredAt
+      })).immediate(), true);
+      const after = store.getWalletProjection({ accountId: ACCOUNT_ID });
+      const persisted = store.listLedgerEntries({ walletRef: before.walletRef, limit: 20 })
+        .filter((entry) => entry.sourceType === "portal_referral_reversal");
+      assert.deepEqual(persisted.map((entry) => entry.operation).sort(), Object.keys(expected).sort());
+      const changesBeforeRead = database.prepare("select total_changes() as count").get().count;
+      const listener = await listen(createApp(createState({ store })));
+      server = listener.server;
+      const response = await fetch(`${listener.baseUrl}/api/portal/coins/wallet/ledger?limit=20`, {
+        headers: portalHeaders()
+      });
+      assert.equal(response.status, 200);
+      const body = await response.json();
+      assert.equal(body.nextCursor, null);
+      const reversals = body.entries.filter((entry) => entry.category.endsWith("_to_reversed"));
+      assert.equal(reversals.length, persisted.length);
+      for (const entry of persisted) {
+        const [availableDeltaUnits, pendingDeltaUnits, heldDeltaUnits, totalDeltaUnits] = expected[entry.operation];
+        assert.deepEqual(reversals.find((item) => item.entryRef === entry.entryRef), {
+          entryRef: entry.entryRef, category: entry.operation, coinType: "reward_coins",
+          amountUnits: entry.amountUnits, availableDeltaUnits, pendingDeltaUnits,
+          heldDeltaUnits, totalDeltaUnits, relatedOrderRef: null, occurredAt
+        });
+      }
+      const sum = (field) => reversals.reduce((total, entry) => total + entry[field], 0);
+      assert.equal(sum("availableDeltaUnits"), after.spendableUnits - before.spendableUnits);
+      assert.equal(sum("pendingDeltaUnits"), after.pendingUnits - before.pendingUnits);
+      assert.equal(sum("heldDeltaUnits"), after.heldUnits - before.heldUnits);
+      assert.equal(sum("totalDeltaUnits"), -reversalUnits);
+      assert.equal(after.spendableUnits + after.pendingUnits + after.heldUnits, 25 - reversalUnits);
+      assert.equal(database.prepare("select total_changes() as count").get().count, changesBeforeRead);
+      assert.deepEqual(store.getWalletProjection({ accountId: ACCOUNT_ID }), after);
+    } finally {
+      if (server) await closeServer(server);
+      database.close();
+    }
+  });
+}
 
 test("ledger cursor is exact, paired, and forwarded only after session-owned Wallet resolution", async () => {
   const { store, calls } = createStore({

@@ -20,6 +20,8 @@ const WALLET_STATUSES = new Set<PortalWalletStatus>([
 ]);
 const LEDGER_CATEGORIES = new Set<PortalWalletLedgerCategory>([
   "credit",
+  "pending_to_reversed",
+  "available_to_reversed",
   "pending_to_available",
   "available_to_held",
   "held_to_available",
@@ -307,6 +309,9 @@ function ledgerEntryProjection(input: unknown): PortalWalletLedgerEntry {
   const heldDeltaUnits = signedSafeInteger(value.heldDeltaUnits);
   let expected: readonly [number, number, number, number];
   switch (category) {
+    case "pending_to_reversed":
+      expected = [0, -amountUnits, 0, -amountUnits];
+      break;
     case "pending_to_available":
       expected = [amountUnits, -amountUnits, 0, 0];
       break;
@@ -321,6 +326,7 @@ function ledgerEntryProjection(input: unknown): PortalWalletLedgerEntry {
       expected = [0, 0, -amountUnits, -amountUnits];
       break;
     case "available_to_expired":
+    case "available_to_reversed":
       expected = [-amountUnits, 0, 0, -amountUnits];
       break;
   }

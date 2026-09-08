@@ -7,6 +7,7 @@ import type {
   PortalWalletFirstCommerceClient
 } from "./commerce";
 import type { PortalWalletClient } from "./wallet";
+import type { PortalReferralClient } from "./referrals/referral-client";
 import type {
   PortalRechargeClient,
   PortalRechargeTrustedActionOriginsByAdapter
@@ -537,6 +538,7 @@ export type UserPortalClient = {
   commerceModel?: PortalCommerceModelClient;
   walletFirstCommerce?: PortalWalletFirstCommerceClient;
   wallet?: PortalWalletClient;
+  referral?: PortalReferralClient;
   recharge?: PortalRechargeClient;
   issueHumanChallenge(input?: PortalHumanChallengeRequestInput): Promise<PortalHumanVerificationChallenge>;
   requestEmailCode(input: PortalEmailCodeRequestInput): Promise<PortalEmailCodeChallenge>;

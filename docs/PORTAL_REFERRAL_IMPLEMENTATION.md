@@ -36,13 +36,36 @@ No production rate, observation time, attribution window or rounding default is
 invented. A reviewed policy must explicitly publish all operands before use.
 Features default off; runtime startup validates schema, never applies it.
 
-## Frontend admission
+## Frontend admission and bounded completion
 
-COMMERCIAL_FEATURE_INTEGRATION_GATE and ACTIVE_FRONTEND_MAP classify Portal as
-ACTIVE_SOURCE_UNBOUND. This change does not alter that rule or attach new UI
-behavior to an unadmitted cohort. Frontend consumption, QR presentation and
-rendered QA remain pending exact Portal identity admission or an explicit change
-to that repository source gate. Backend API shape is prepared for that work.
+On 2026-09-08 the operator explicitly approved a PR #722 source-only exception
+for connecting the existing referral page and local validation. This exception
+does not reclassify ACTIVE_SOURCE_UNBOUND as ACTIVE_PRODUCTION, change the global
+COMMERCIAL_FEATURE_INTEGRATION_GATE, or authorize production activation.
+
+The existing `referrals` navigation and `ReferralRewardsPanel` are retained. The
+panel now consumes profile, stable-link creation and performance APIs through
+the existing browser-session transport. It renders account-owned aggregates,
+copies the same-origin referral link, and generates QR images with the existing
+local QR library. No external QR service, second Portal shell, cash-out action,
+customer list or client-supplied attribution field is added. Missing APIs/policy
+remain unavailable, not fabricated zero performance. Consumer wording does not
+expose backend status codes.
+
+Source boundary: `admin/portal/index.html` -> `admin/src/portal-main.tsx` ->
+`admin/src/features/user-portal/user-portal-page.tsx` -> the existing referral
+panel boundary and `referrals/` implementation ->
+`admin/src/portal-static-preserve.css` /
+`admin/src/styles/portal-static-preserve/user-portal-commerce.css` ->
+`admin/dist-portal`. Release units: `portal-static` and `control-plane-app`
+(Wallet read-projection compatibility only); `frontend_surface: portal`;
+`identity_impact: false`; `deployment_performed: false`.
+
+Account changes invalidate pending reads, link creation, clipboard feedback and
+QR results. Requests are bounded and cancelled on unmount; link creation is
+user-triggered and never automatically retried. Background reads cannot replace
+a newly created link with an older snapshot. The visible online page refreshes
+at bounded intervals and on return; denied/disabled responses do not poll forever.
 
 ## Validation environment and checklist
 
@@ -51,7 +74,8 @@ reapply and rollback on failure; registration atomicity and expired cookies;
 account isolation and CSRF; concurrent stable links; immutable first source;
 duplicate/reordered callbacks; missing policies; confirmation; cumulative refunds;
 crash rollback; and safe aggregate metrics. Run focused tests, npm test, and
-Git diff checks. Frontend source is not modified by the gated backend slice.
+Git diff checks. The original backend slice did not modify frontend source; the
+explicitly approved follow-up validates the client, panel and Portal mounting too.
 
 ## Production gate (not executed)
 
@@ -110,9 +134,34 @@ The current runtime has no default production reader or approval scheduler;
 provider refund ingestion, risk scheduling, and recovery policy are outstanding
 activation work. Do not enable available reward release without those owners.
 
-The existing frontend Wallet ledger decoder also needs admission and support for
-`pending_to_reversed` / `available_to_reversed` before users receive these entries.
-The backend allowlist and wallet ledger preserve their actual reversal meaning.
+The Wallet ledger decoder and consumer labels now support `pending_to_reversed`
+and `available_to_reversed`. Their missing backend read-projection cases are
+also supplied: pending reversal has deltas `(0, -A, 0, -A)` and available reversal
+has `(-A, 0, 0, -A)` in available/pending/held/total order. The read route does not
+mutate balances; recent activity shows a single `-A`, not a double debit.
+
+## Frontend follow-up validation boundary
+
+The follow-up has TDD coverage for client contract parsing, the server's actual
+empty 404 disabled response, same-origin cookie and legacy-session transport,
+link generation/double-clicks, clipboard failure, local QR rendering, account
+switches and late read/write responses. The existing Portal navigation is tested
+with the mounted client, not only an isolated new component. Real temporary
+SQLite Wallet reversal reads reproduce 503 before the projection fix and return
+the exact safe DTO after it without writes.
+
+Windows verification also found four original referral tests attempted directory
+removal before closing SQLite. Cleanup now closes connections and workers first;
+the business assertions and retry policy are unchanged. The targeted referral
+and Wallet router tests pass after this correction. Other Windows full-suite
+platform/path-sensitive failures are not treated as a passing Linux run; the
+exact-head CI evidence is recorded in PR #722.
+
+Portal and Admin builds/verifiers remain required. A default-empty local payment
+configuration is validation-only, not a production release artifact. Interactive
+signed-in browser QA and production activation are not implied by component
+tests or build success. No preview server or production service is left running
+by source validation.
 
 ## Isolated migration and policy commands
 

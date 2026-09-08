@@ -242,6 +242,73 @@
   color: #57606a;
 }
 
+.portal-v2-shell .portal-commerce-layout--referral-rewards .portal-referral-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 24px;
+  color: #8b949e;
+  font-size: 13px;
+}
+
+.portal-v2-shell .portal-commerce-layout--referral-rewards .portal-referral-share {
+  display: flex;
+  gap: 10px;
+  min-width: 0;
+}
+
+.portal-v2-shell .portal-referral-share input {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid #30363d;
+  border-radius: 9px;
+  padding: 10px 12px;
+  color: inherit;
+  background: transparent;
+  font: inherit;
+  font-size: 13px;
+}
+
+.portal-v2-shell .portal-referral-share input:focus-visible {
+  outline: 3px solid var(--portal-commerce-focus-accent);
+  outline-offset: 2px;
+}
+
+.portal-v2-shell .portal-commerce-layout--referral-rewards .portal-referral-primary {
+  justify-self: start;
+  background: #0969da;
+  border-color: #0969da;
+  color: #ffffff;
+}
+
+.portal-v2-shell .portal-commerce-layout--referral-rewards .portal-referral-wallet-link {
+  justify-self: start;
+}
+
+.portal-v2-shell .portal-referral-qr img {
+  display: block;
+  border: 1px solid #d0d7de;
+  border-radius: 10px;
+}
+
+.portal-v2-shell .portal-referral-notice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.portal-v2-shell[data-portal-theme="light"] .portal-commerce-layout--referral-rewards .portal-commerce-layout__section {
+  background: #ffffff;
+}
+
+.portal-v2-shell[data-portal-theme="light"] .portal-referral-share input {
+  border-color: #d0d7de;
+}
+
+.portal-v2-shell[data-portal-theme="light"] .portal-commerce-layout--referral-rewards .portal-referral-summary {
+  color: #57606a;
+}
+
 .portal-v2-shell .portal-commerce-layout--wallet {
   --portal-wallet-border: #30363d;
   --portal-wallet-surface: #161b22;
