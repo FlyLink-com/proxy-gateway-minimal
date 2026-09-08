@@ -1,4 +1,5 @@
 import { spawnSync } from "node:child_process";
+import { parseStrictXrayUserCounters } from "./xray-recovery-counter-parser.mjs";
 
 const SAFE_REF_PATTERN = /^[A-Za-z0-9._:-]{1,128}$/;
 
@@ -67,11 +68,12 @@ function loopbackStatsServer(value) {
   return raw;
 }
 
-function defaultCommandRunner(command, args) {
+function defaultCommandRunner(command, args, recoveryOptions = {}) {
   const result = spawnSync(command, args, {
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
-    windowsHide: true
+    windowsHide: true,
+    ...recoveryOptions
   });
   return {
     exitCode: Number.isInteger(result.status) ? result.status : 1,
@@ -129,7 +131,8 @@ export function createXrayStatsCliUsageSnapshotReader({
   xrayBinary = "xray",
   statsServer = "127.0.0.1:10085",
   commandRunner = defaultCommandRunner,
-  nowFn = () => new Date()
+  nowFn = () => new Date(),
+  strictCounters = false
 } = {}) {
   const safeXrayBinary = requiredText(xrayBinary, "xrayBinary");
   const safeStatsServer = loopbackStatsServer(statsServer);
@@ -139,7 +142,9 @@ export function createXrayStatsCliUsageSnapshotReader({
 
   return async function readXrayStatsUsage({ since } = {}) {
     const args = ["api", "statsquery", `--server=${safeStatsServer}`];
-    const result = commandRunner(safeXrayBinary, args) || {};
+    const result = (strictCounters
+      ? commandRunner(safeXrayBinary, args, { timeout: 20000, maxBuffer: 4 * 1024 * 1024, shell: false })
+      : commandRunner(safeXrayBinary, args)) || {};
     const exitCode = Number.isInteger(result.exitCode) ? result.exitCode : 1;
     if (exitCode !== 0) {
       throw readerError("xray_stats_query_failed", "xray stats query failed");
@@ -147,16 +152,16 @@ export function createXrayStatsCliUsageSnapshotReader({
     const payload = parseStatsPayload(result.stdout);
     const nowValue = typeof nowFn === "function" ? nowFn() : new Date();
     const observedAt = isoText(
-      payload.observedAt || (nowValue instanceof Date ? nowValue.toISOString() : nowValue),
+      (!strictCounters && payload.observedAt) || (nowValue instanceof Date ? nowValue.toISOString() : nowValue),
       "observedAt"
     );
     return {
       sourceRef: "xray_statsquery_user_traffic",
       accountingMode: "cumulative",
       observedAt,
-      intervalStartedAt: isoText(payload.intervalStartedAt || since || observedAt, "intervalStartedAt"),
-      intervalEndedAt: isoText(payload.intervalEndedAt || observedAt, "intervalEndedAt"),
-      entries: entriesFromStats(payload)
+      intervalStartedAt: isoText((!strictCounters && payload.intervalStartedAt) || since || observedAt, "intervalStartedAt"),
+      intervalEndedAt: isoText((!strictCounters && payload.intervalEndedAt) || observedAt, "intervalEndedAt"),
+      entries: strictCounters ? parseStrictXrayUserCounters(payload) : entriesFromStats(payload)
     };
   };
 }

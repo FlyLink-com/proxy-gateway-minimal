@@ -801,3 +801,36 @@ test("traffic usage collect CLI runs when invoked through a symlinked path", () 
   assert.equal(result.status, 0);
   assert.deepEqual(JSON.parse(result.stdout), { ok: true });
 });
+
+test("recovery preflight exits before runtime construction even when evidence is unavailable", async () => {
+  let calls = 0;
+  let output = "";
+  const code = await runTrafficUsageCollectOnce({
+    argv: ["--recovery-preflight"], env: {},
+    stdout: { write(value) { output += value; } }, stderr: { write() {} },
+    runtimeStateFactory() { calls += 1; throw new Error("runtime must not initialize"); }
+  });
+  assert.equal(calls, 0);
+  assert.equal(code, 2);
+  const summary = JSON.parse(output);
+  assert.equal(summary.type, "traffic_usage_recovery_preflight");
+  assert.equal(summary.status, "requires_review");
+  assert.equal(summary.productionCollectionAuthorized, false);
+  assert.equal(summary.errorCode, "recovery_paths_required");
+});
+
+for (const extra of ["--collect", "--check", "--force", "--recovery-preflight"]) {
+  test(`recovery preflight rejects combined ${extra} before any runtime side effect`, async () => {
+    let calls = 0;
+    let output = "";
+    const code = await runTrafficUsageCollectOnce({
+      argv: ["--recovery-preflight", extra], env: {},
+      stdout: { write(value) { output += value; } }, stderr: { write() {} },
+      runtimeStateFactory() { calls += 1; throw new Error("runtime must not initialize"); }
+    });
+    assert.equal(calls, 0);
+    assert.equal(code, 2);
+    assert.equal(JSON.parse(output).errorCode, "recovery_arguments_invalid");
+    assert.equal(JSON.parse(output).productionCollectionAuthorized, false);
+  });
+}
