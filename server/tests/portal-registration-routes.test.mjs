@@ -1,3 +1,7 @@
+import Database from "better-sqlite3";
+import { applyPaymentStoreMigrations } from "../services/platform/payment-store-migrations.mjs";
+import { applyPortalReferralMigration, REFERRAL_MIGRATION_ID, REFERRAL_DDL_CHECKSUM } from "../services/platform/portal-referral-migrations.mjs";
+import { createPortalReferralService } from "../services/platform/portal-referral-service.mjs";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { mkdtempSync, rmSync } from "node:fs";
@@ -135,6 +139,17 @@ function withRegistrationState(fn, options = {}) {
       nowFn: () => new Date(NOW)
     });
   }
+  let referralDatabase = null, referrals = null;
+  if (options.referralsEnabled === true) {
+    applyCoinWalletMigrations({dbPath:controlDbPath,expectedMigrationId:REQUIRED_COIN_WALLET_MIGRATION_ID,
+      expectedDdlChecksum:COIN_WALLET_MIGRATIONS[0].ddlChecksum,nowFn:()=>new Date(NOW)});
+    referralDatabase = new Database(controlDbPath);
+    applyPaymentStoreMigrations({database:referralDatabase,nowFn:()=>NOW});
+    applyPortalReferralMigration(referralDatabase,{expectedMigrationId:REFERRAL_MIGRATION_ID,expectedDdlChecksum:REFERRAL_DDL_CHECKSUM});
+    referrals=createPortalReferralService({database:referralDatabase,nowFn:()=>new Date(NOW)});
+    referrals.publishPolicy({policyRef:'synthetic_referral',version:1,effectiveAt:NOW,rateBps:1000,rounding:'floor',attributionDays:7,confirmationDays:2});
+    store.createAccount({id:'test_promoter',ownerRef:'test_owner',status:'active',createdAt:NOW,updatedAt:NOW,metadata:{}});
+  }
   const humanChallenges = createHumanChallengeService();
   const sentEmails = [];
   const registrationEmailVerifications = createRegistrationEmailVerificationService(sentEmails);
@@ -177,6 +192,7 @@ function withRegistrationState(fn, options = {}) {
     welcomeCoinGrantRefFactory: () => options.welcomeCoinGrantRefFactory?.()
       || `welcome_grant_registration_${accountIndex || 1}`,
     registrationWelcomeCoinsEnabled: options.registrationWelcomeCoinsEnabled,
+    referralsEnabled: options.referralsEnabled,
     ...(options.registrationWelcomeCoinsEnabled === true
       ? {
         registrationWelcomeCoinsCanaryEmailEligibilityReader:
@@ -191,10 +207,12 @@ function withRegistrationState(fn, options = {}) {
     registrationRiskWindowMs: options.registrationRiskWindowMs
   });
   const cleanup = () => {
+    referrals?.close();referralDatabase?.close();
     store.close();
     rmSync(tempDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 50 });
   };
   const result = fn({
+    referrals, referralDatabase,
     store,
     auth,
     accessRequests,
@@ -803,4 +821,31 @@ test("portal registration rate-limits repeated trial registrations from the same
   }, {
     maxRegistrationsPerSourceIp: 1
   });
+});
+
+
+test("registration HTTP binds only its server cookie and rolls back attribution with account on credential failure", async () => {
+  await withRegistrationState(async ({store,auth,accessRequests,registrations,humanChallenges,registrationEmailVerifications,referrals,referralDatabase,passwordCredentialService}) => {
+    const code=referrals.createLink('test_promoter').linkPath.split('/').at(-1);
+    const touch=referrals.capture(code);
+    const {server,baseUrl}=await listen(createApp(baseState({userPortalAuth:auth,portalAccessRequests:accessRequests,
+      portalRegistrations:registrations,portalRegistrationEmailVerifications:registrationEmailVerifications,
+      portalHumanChallenges:humanChallenges,userPortalRoutesEnabled:true})));
+    try {
+      const verification=await issueRegistrationEmailVerification(baseUrl,'referral-user@example.test');
+      const response=await fetch(`${baseUrl}/api/portal/registration`,{method:'POST',headers:{'Content-Type':'application/json',Cookie:`__Host-PortalReferral=${touch.token}`},
+        body:JSON.stringify({email:'referral-user@example.test',password:REGISTRATION_PASSWORD,legalAgreement:LEGAL_AGREEMENT,
+          referrerId:'attacker',referralToken:'C'.repeat(32),emailVerification:{verificationRef:verification.verification.verificationRef,code:REGISTRATION_EMAIL_CODE}})});
+      assert.equal(response.status,201);
+      const binding=referralDatabase.prepare('select * from platform_referral_bindings').get();
+      assert.equal(binding.account_id,'acct_registration_1');assert.equal(binding.referrer_id,'test_promoter');
+      const broken=createPortalRegistrationService({controlStore:store,userPortalAuth:auth,portalAccessRequests:accessRequests,
+        passwordCredentialService:{issueInitialPasswordCredential(){throw new Error('synthetic_credential_failure');}},
+        nowFn:()=>NOW,accountIdFactory:()=> 'failed_account',entitlementIdFactory:()=> 'failed_entitlement',referralsEnabled:true});
+      assert.throws(()=>broken.submitRegistration({email:'rollback@example.test',password:REGISTRATION_PASSWORD,legalAgreement:LEGAL_AGREEMENT},
+        {referralToken:touch.token}),/synthetic_credential_failure/);
+      assert.equal(store.getAccount('failed_account'),null);
+      assert.equal(referralDatabase.prepare('select 1 from platform_referral_bindings where account_id=?').get('failed_account'),undefined);
+    } finally {await new Promise(resolve=>server.close(resolve));}
+  },{referralsEnabled:true});
 });

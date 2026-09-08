@@ -10,6 +10,8 @@ const COIN_TYPES = new Set([
 const WALLET_STATUSES = new Set(["active", "frozen", "closed"]);
 const LEDGER_OPERATIONS = new Set([
   "credit",
+  "pending_to_reversed",
+  "available_to_reversed",
   "pending_to_available",
   "available_to_held",
   "held_to_available",

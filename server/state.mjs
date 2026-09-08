@@ -1,3 +1,4 @@
+import { createPortalReferralService } from './services/platform/portal-referral-service.mjs';
 import { createHash, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -1601,6 +1602,17 @@ export function createRuntimeState(options = {}) {
     ? requestedPaymentProviders[0]
     : null;
   const coinRechargeEnabled = paymentRechargeProvider !== null;
+  const portalReferralsEnabled = envFlag(env.PLATFORM_PORTAL_REFERRALS_ENABLED);
+  if (portalReferralsEnabled) {
+    let originValid = false;
+    try {
+      const value = new URL(env.PLATFORM_PORTAL_BROWSER_ORIGIN);
+      originValid = value.protocol === 'https:' && value.origin === env.PLATFORM_PORTAL_BROWSER_ORIGIN;
+    } catch { /* prerequisite rejection below */ }
+    if (!userPortalRoutesEnabled || !coinsWalletEnabled || !coinRechargeEnabled || !originValid) {
+      throw new Error('referral_prerequisite_missing');
+    }
+  }
   let configuredCoinCommerceStore = null;
   let configuredCoinCommerceWalletStore = null;
   let configuredCoinCommerceCatalog;
@@ -2270,6 +2282,7 @@ export function createRuntimeState(options = {}) {
       allowPasswordOnlySessionForSetup: envFlag(env.USER_PORTAL_ALLOW_PASSWORD_ONLY_SETUP_SESSION)
     })
   ) : null;
+  let portalReferrals = null;
   const platformPortalRegistrations = options.platformPortalRegistrations || (
     userPortalRoutesEnabled ? createPortalRegistrationService({
       controlStore: platformControlStore,
@@ -2278,6 +2291,7 @@ export function createRuntimeState(options = {}) {
       portalAccessRequests: platformPortalAccessRequests,
       nowFn: options.userPortalNowFn,
       registrationWelcomeCoinsEnabled,
+      referralsEnabled: portalReferralsEnabled,
       ...(registrationWelcomeCoinsEnabled
         ? { registrationWelcomeCoinsCanaryEmailEligibilityReader }
         : {})
@@ -2746,7 +2760,12 @@ export function createRuntimeState(options = {}) {
           || ((kind) => `${kind}_${randomUUID()}`)
       });
       ownsPaymentStore = true;
+      if (portalReferralsEnabled) portalReferrals = createPortalReferralService({
+        dbPath: controlDbPath, nowFn: options.userPortalNowFn,
+        riskReader: options.portalReferralRiskReader, refundReader: options.portalReferralRefundReader
+      });
       paymentRechargeCoordinator = createPaymentRechargeCoordinator({
+        ...(portalReferrals ? {onCredited: accountId => portalReferrals.accrue(accountId)} : {}),
         store: paymentStore,
         walletStore: coinsWalletStore,
         offerCatalog: assembled.offerCatalog,
@@ -2756,6 +2775,7 @@ export function createRuntimeState(options = {}) {
           || ((kind) => `${kind}_${randomUUID()}`)
       });
     } catch (error) {
+      try { portalReferrals?.close(); } catch { /* preserve prerequisite failure */ }
       if (walletFirstSetupDeliveryEscrow) {
         try {
           walletFirstSetupDeliveryEscrow.close();
@@ -2782,11 +2802,14 @@ export function createRuntimeState(options = {}) {
     }
   }
 
+  portalReferrals?.start();
+
   function close() {
     if (!coinsCommerceEnabled) {
       if (closed) return;
       closed = true;
       let firstError;
+      try { portalReferrals?.close(); } catch (error) { firstError ||= error; }
       if (ownsPaymentStore && paymentStore) {
         try { paymentStore.close(); } catch (error) { firstError ||= error; }
       }
@@ -2809,6 +2832,7 @@ export function createRuntimeState(options = {}) {
     closed = true;
     closePromise = (async () => {
       let firstError;
+      try { portalReferrals?.close(); } catch (error) { firstError ||= error; }
       if (ownsPaymentStore && paymentStore) {
         try { paymentStore.close(); } catch (error) { firstError ||= error; }
       }
@@ -2904,6 +2928,8 @@ export function createRuntimeState(options = {}) {
       close
     },
     platform: {
+      portalReferralsEnabled,
+      portalReferrals,
       leadQueue: platformLeadQueue,
       accountShell: platformAccountShell,
       accessShell: platformAccessShell,

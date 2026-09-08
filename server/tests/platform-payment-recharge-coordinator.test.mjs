@@ -213,6 +213,7 @@ function createSystem({
   failMarkOnce = false,
   offerEnabled = true,
   walletResponseOverrides = null,
+  onCredited,
 } = {}) {
   const database = createDatabase();
   const captureInputs = [];
@@ -277,6 +278,7 @@ function createSystem({
     }],
   });
   const coordinator = createPaymentRechargeCoordinator({
+    ...(onCredited ? {onCredited} : {}),
     store: paymentStore,
     walletStore: injectedWalletStore,
     offerCatalog,
@@ -1158,4 +1160,24 @@ test("expired orders pause capture before provider and Wallet mutation", async (
   } finally {
     system.close();
   }
+});
+
+
+test("referral observer runs only after durable closure and a reward failure preserves successful recharge", async () => {
+  let observed = 0;
+  const system = createSystem({onCredited(accountId) {
+    assert.equal(accountId, "account_1");
+    assert.equal(system.database.prepare("select status from platform_payment_orders").get().status, "credited");
+    observed += 1;
+    throw new Error("synthetic_referral_failure");
+  }});
+  try {
+    await createRechargeOrder(system.coordinator);
+    await system.coordinator.acceptProviderCallback(CALLBACK_INPUT);
+    assert.equal(observed, 1);
+    assert.equal(system.database.prepare("select count(*) n from platform_coin_lots").get().n, 1);
+    await system.coordinator.acceptProviderCallback(CALLBACK_INPUT);
+    assert.equal(observed, 2);
+    assert.equal(system.database.prepare("select count(*) n from platform_coin_lots").get().n, 1);
+  } finally {system.close();}
 });

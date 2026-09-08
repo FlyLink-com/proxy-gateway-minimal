@@ -177,6 +177,9 @@ export function createPortalRegistrationService(options = {}) {
   if (!controlStore) {
     throw new Error("controlStore is required");
   }
+  if (options.referralsEnabled !== undefined && typeof options.referralsEnabled !== 'boolean') throw new Error('referral_prerequisite_missing');
+  if (options.referralsEnabled && (typeof controlStore.recordPortalReferralRegistration !== 'function'
+    || typeof controlStore.runInTransaction !== 'function')) throw new Error('referral_prerequisite_missing');
   if (!userPortalAuth || typeof userPortalAuth.createPasswordSetupSession !== "function") {
     throw new Error("userPortalAuth with createPasswordSetupSession is required");
   }
@@ -272,7 +275,7 @@ export function createPortalRegistrationService(options = {}) {
     return eligible;
   }
 
-  function submitRegistration(input = {}) {
+  function submitRegistration(input = {}, serverContext = {}) {
     const now = isoNow(nowFn);
     const email = normalizeEmail(input.email);
     const password = normalizePassword(input.password);
@@ -333,6 +336,12 @@ export function createPortalRegistrationService(options = {}) {
           registrationRequestKeyDigest: requestKeyDigest
         }
       });
+
+      if (options.referralsEnabled === true) {
+        controlStore.recordPortalReferralRegistration({
+          accountId, token: serverContext.referralToken, registeredAt: now
+        });
+      }
 
       if (registrationWelcomeCoins) {
         const sourceRef = `portal_registration_welcome_${accountId}`;

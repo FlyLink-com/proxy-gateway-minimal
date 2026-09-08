@@ -1,3 +1,4 @@
+import { recordReferralRegistration } from './portal-referral-contract.mjs';
 import Database from "better-sqlite3";
 import { createHash, randomBytes } from "node:crypto";
 import { mkdirSync } from "node:fs";
@@ -6797,6 +6798,7 @@ export function createSqliteSubscriptionControlStore({
   }
 
   return {
+    recordPortalReferralRegistration(input) { return recordReferralRegistration(db, input); },
     runInTransaction,
     upsertLead,
     getLead,

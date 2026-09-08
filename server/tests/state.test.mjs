@@ -1,3 +1,4 @@
+import { applyPortalReferralMigration, REFERRAL_MIGRATION_ID, REFERRAL_DDL_CHECKSUM } from "../services/platform/portal-referral-migrations.mjs";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import {
@@ -7309,4 +7310,28 @@ test("createRuntimeState wires separate Mihomo TUIC usage sources per channel re
     state?.subscriptions?.close?.();
     rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
   }
+});
+
+
+test("referral runtime requires explicit migration, starts without provider I/O and closes its scanner", () => {
+  const dir=mkdtempSync(join(tmpdir(),"proxy-gateway-referral-runtime-"));
+  const controlDbPath=prepareMigratedPaymentControlDatabase(dir);
+  const env=runtimeEnv({CONSOLE_TOKEN:"secret",USER_PORTAL_ROUTES_ENABLED:"true",COINS_WALLET_ENABLED:"true",
+    ...xsdRechargeEnv(),PLATFORM_PORTAL_REFERRALS_ENABLED:"true",PLATFORM_PORTAL_BROWSER_ORIGIN:"https://portal.example.test"});
+  const options={rootDir:new URL("../../",import.meta.url),env,controlDbPath,subscriptionDbPath:join(dir,"subscriptions.sqlite"),
+    xsdFetchFn:async()=>{throw new Error("provider must not be called during startup");},autoStartHttpProxy:false};
+  let state;
+  try {
+    assert.throws(()=>createRuntimeState(options),error=>error.code==='coin_recharge_prerequisite_missing');
+    const database=new Database(controlDbPath);
+    try {
+      assert.equal(database.prepare("select 1 from sqlite_master where name='platform_referral_profiles'").get(),undefined);
+      applyPortalReferralMigration(database,{expectedMigrationId:REFERRAL_MIGRATION_ID,expectedDdlChecksum:REFERRAL_DDL_CHECKSUM});
+    } finally {database.close();}
+    state=createRuntimeState(options);
+    assert.equal(state.platform.portalReferralsEnabled,true);
+    assert.equal(typeof state.platform.portalReferrals.reconcile,'function');
+    state.close();state.close();
+    assert.throws(()=>state.platform.portalReferrals.start(),/referral_unavailable/);
+  } finally {state?.close();removeTempDir(dir);}
 });
