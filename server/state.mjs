@@ -215,6 +215,31 @@ function coinRechargePrerequisiteError() {
   return error;
 }
 
+function referralPrerequisiteError() {
+  const error = new Error("referral_prerequisite_missing");
+  error.code = "referral_prerequisite_missing";
+  return error;
+}
+
+function referralEnvFlag(value, fallback = false) {
+  const normalized = String(value ?? "").trim().toLowerCase();
+  if (!normalized) return fallback;
+  if (["1", "true", "yes", "on"].includes(normalized)) return true;
+  if (["0", "false", "no", "off"].includes(normalized)) return false;
+  throw referralPrerequisiteError();
+}
+
+function referralAttributionDays(value) {
+  const normalized = String(value ?? "").trim();
+  if (!normalized) return undefined;
+  if (!/^\d+$/.test(normalized)) throw referralPrerequisiteError();
+  const days = Number(normalized);
+  if (!Number.isSafeInteger(days) || days < 1 || days > 365) {
+    throw referralPrerequisiteError();
+  }
+  return days;
+}
+
 function walletFirstRegistrationPrerequisiteError() {
   const error = new Error(
     "Wallet-first Portal registration prerequisites are not satisfied"
@@ -1602,15 +1627,30 @@ export function createRuntimeState(options = {}) {
     ? requestedPaymentProviders[0]
     : null;
   const coinRechargeEnabled = paymentRechargeProvider !== null;
-  const portalReferralsEnabled = envFlag(env.PLATFORM_PORTAL_REFERRALS_ENABLED);
+  const portalReferralsEnabled = referralEnvFlag(env.PLATFORM_PORTAL_REFERRALS_ENABLED);
+  const portalReferralRewardsEnabled = referralEnvFlag(
+    env.PLATFORM_PORTAL_REFERRAL_REWARDS_ENABLED
+  );
+  const portalReferralAttributionDays = referralAttributionDays(
+    env.PLATFORM_PORTAL_REFERRAL_ATTRIBUTION_DAYS
+  );
+  if (portalReferralRewardsEnabled && !portalReferralsEnabled) {
+    throw referralPrerequisiteError();
+  }
   if (portalReferralsEnabled) {
     let originValid = false;
     try {
       const value = new URL(env.PLATFORM_PORTAL_BROWSER_ORIGIN);
       originValid = value.protocol === 'https:' && value.origin === env.PLATFORM_PORTAL_BROWSER_ORIGIN;
     } catch { /* prerequisite rejection below */ }
-    if (!userPortalRoutesEnabled || !coinsWalletEnabled || !coinRechargeEnabled || !originValid) {
-      throw new Error('referral_prerequisite_missing');
+    if (
+      !userPortalRoutesEnabled
+      || !coinsWalletEnabled
+      || !coinRechargeEnabled
+      || !originValid
+      || (!portalReferralRewardsEnabled && portalReferralAttributionDays === undefined)
+    ) {
+      throw referralPrerequisiteError();
     }
   }
   let configuredCoinCommerceStore = null;
@@ -2762,10 +2802,14 @@ export function createRuntimeState(options = {}) {
       ownsPaymentStore = true;
       if (portalReferralsEnabled) portalReferrals = createPortalReferralService({
         dbPath: controlDbPath, nowFn: options.userPortalNowFn,
-        riskReader: options.portalReferralRiskReader, refundReader: options.portalReferralRefundReader
+        riskReader: options.portalReferralRiskReader, refundReader: options.portalReferralRefundReader,
+        attributionDays: portalReferralAttributionDays,
+        rewardsEnabled: portalReferralRewardsEnabled
       });
       paymentRechargeCoordinator = createPaymentRechargeCoordinator({
-        ...(portalReferrals ? {onCredited: accountId => portalReferrals.accrue(accountId)} : {}),
+        ...(portalReferrals && portalReferralRewardsEnabled
+          ? {onCredited: accountId => portalReferrals.accrue(accountId)}
+          : {}),
         store: paymentStore,
         walletStore: coinsWalletStore,
         offerCatalog: assembled.offerCatalog,
@@ -2802,7 +2846,7 @@ export function createRuntimeState(options = {}) {
     }
   }
 
-  portalReferrals?.start();
+  if (portalReferralRewardsEnabled) portalReferrals?.start();
 
   function close() {
     if (!coinsCommerceEnabled) {
@@ -2929,6 +2973,8 @@ export function createRuntimeState(options = {}) {
     },
     platform: {
       portalReferralsEnabled,
+      portalReferralRewardsEnabled,
+      portalReferralAttributionDays: portalReferralAttributionDays ?? null,
       portalReferrals,
       leadQueue: platformLeadQueue,
       accountShell: platformAccountShell,

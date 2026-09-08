@@ -53,7 +53,8 @@ const op = (key) => ({
 });
 function fixture(
   t,
-  { path = ":memory:", migrate = true, publish = true } = {},
+  { path = ":memory:", migrate = true, publish = true,
+    serviceOptions = { rewardsEnabled: true } } = {},
 ) {
   const db = new Database(path);
   db.pragma("foreign_keys=ON");
@@ -101,6 +102,7 @@ function fixture(
       nowFn,
       riskReader: (r) => risks.get(r),
       refundReader: (r) => refunds.get(r),
+      ...serviceOptions,
     });
   if (migrate) {
     applyPortalReferralMigration(db, confirmation);
@@ -272,6 +274,114 @@ function fixture(
   };
 }
 
+test("distribution defaults rewards off and attributes without policy or financial writes", (t) => {
+  const f = fixture(t, { publish: false, serviceOptions: { attributionDays: 3 } });
+  assert.deepEqual(f.service.profile("promoter"), {
+    eligible: true, linkPath: null, attributionDays: 3, policy: null,
+  });
+  const touch = f.bind();
+  assert.equal(touch.expiresAt, "2026-09-11T00:00:00.000Z");
+  assert.equal(touch.maxAge, 3 * 86400);
+  assert.equal(f.service.performance("promoter").registrations, 1);
+  f.recharge();
+  const before = f.db.serialize();
+  assert.deepEqual(f.service.accrue("customer"), { status: "rewards_disabled" });
+  assert.deepEqual(f.service.reconcile(), []);
+  assert.throws(() => f.service.confirm("customer", "risk_test"), /referral_rewards_disabled/);
+  const schedule = t.mock.method(globalThis, "setInterval", () => {
+    throw new Error("disabled_rewards_must_not_schedule");
+  });
+  f.service.start();
+  assert.equal(schedule.mock.callCount(), 0);
+  assert.deepEqual(f.db.serialize(), before);
+  for (const table of ["policies", "origins", "accruals", "events"]) {
+    assert.equal(f.db.prepare(`select count(*) n from platform_referral_${table}`).get().n, 0);
+  }
+  assert.equal(f.db.prepare("select count(*) n from platform_coin_lots where coin_type='reward_coins'").get().n, 0);
+});
+
+test("distribution requires an explicit integer window and a boolean rewards switch", (t) => {
+  const f = fixture(t);
+  for (const attributionDays of [undefined, null, 0, 366, -1, 1.5, "7", NaN, Infinity]) {
+    assert.throws(() => createPortalReferralService({ database: f.db, attributionDays }), /referral_attribution_days_invalid/);
+    if (attributionDays !== undefined) {
+      assert.throws(() => createPortalReferralService({ database: f.db, attributionDays, rewardsEnabled: true }), /referral_attribution_days_invalid/);
+    }
+  }
+  for (const rewardsEnabled of [null, 0, 1, "false", "true", {}]) {
+    assert.throws(() => createPortalReferralService({ database: f.db, attributionDays: 7, rewardsEnabled }), /referral_rewards_configuration_invalid/);
+  }
+  for (const attributionDays of [1, 365]) {
+    const service = createPortalReferralService({ database: f.db, attributionDays });
+    assert.equal(service.profile("promoter").attributionDays, attributionDays);
+    service.close();
+  }
+});
+
+test("distribution uses its explicit window and hides existing reward policy", (t) => {
+  const f = fixture(t, { serviceOptions: { rewardsEnabled: false, attributionDays: 2 } });
+  assert.equal(f.service.createLink("promoter").policy, null);
+  assert.equal(f.service.profile("promoter").attributionDays, 2);
+  assert.equal(f.bind().maxAge, 2 * 86400);
+  f.recharge();
+  const before = f.db.serialize();
+  assert.deepEqual(f.service.accrue("customer"), { status: "rewards_disabled" });
+  assert.deepEqual(f.service.reconcile(), []);
+  f.service.start();
+  assert.deepEqual(f.db.serialize(), before);
+});
+
+test("enabled rewards use only the published policy attribution window", (t) => {
+  const f = fixture(t, { serviceOptions: { rewardsEnabled: true, attributionDays: 2 } });
+  assert.equal(f.service.createLink("promoter").attributionDays, POLICY.attributionDays);
+  assert.deepEqual(f.service.profile("promoter").policy, POLICY);
+  assert.equal(f.bind().maxAge, POLICY.attributionDays * 86400);
+  f.recharge();
+  assert.equal(f.service.accrue("customer").status, "pending");
+});
+
+test("enabling rewards later never backfills a first recharge with no policy at its original time", (t) => {
+  const f = fixture(t, { publish: false, serviceOptions: { attributionDays: 3 } });
+  f.bind();
+  const first = f.recharge();
+  assert.deepEqual(f.service.accrue("customer"), { status: "rewards_disabled" });
+  assert.equal(f.row(), undefined);
+  f.setNow("2026-09-09T00:00:00.000Z");
+  f.service.close();
+  const rewards = createPortalReferralService({ database: f.db, rewardsEnabled: true,
+    nowFn: () => new Date("2026-09-09T00:00:00.000Z") });
+  t.after(() => rewards.close());
+  rewards.publishPolicy({ ...POLICY, effectiveAt: "2026-09-09T00:00:00.000Z" });
+  assert.equal(rewards.accrue("customer").status, "policy_missing");
+  f.recharge();
+  assert.deepEqual(rewards.accrue("customer"), { status: "policy_missing", replayed: true });
+  const origin = f.db.prepare("select lot_ref,policy_json from platform_referral_origins where account_id='customer'").get();
+  assert.equal(origin.lot_ref, first.lotRef);
+  assert.equal(origin.policy_json, null);
+  assert.equal(f.row().reward_units, 0);
+  assert.equal(f.db.prepare("select count(*) n from platform_coin_lots where coin_type='reward_coins'").get().n, 0);
+});
+
+test("disabling new rewards preserves only the existing trusted refund correction contract", (t) => {
+  const f = fixture(t);
+  f.bind();
+  const order = f.recharge();
+  f.service.accrue("customer");
+  f.service.close();
+  const distribution = createPortalReferralService({ database: f.db, attributionDays: 3,
+    nowFn: () => new Date(NOW), refundReader: (ref) => f.refunds.get(ref) });
+  t.after(() => distribution.close());
+  assert.throws(() => distribution.confirm("customer", "risk_test"), /referral_rewards_disabled/);
+  assert.throws(() => distribution.applyRefund("unverified"), /referral_refund_unverified/);
+  f.refunds.set("trusted_refund", { observationRef: "trusted_refund", verified: true,
+    chargeback: false, paymentOrderRef: order.orderRef, cumulativeRefundedPaidUnits: 100 });
+  assert.deepEqual(distribution.applyRefund("trusted_refund"), { status: "reversed" });
+  const before = f.db.serialize();
+  assert.deepEqual(distribution.accrue("customer"), { status: "rewards_disabled" });
+  assert.deepEqual(distribution.reconcile(), []);
+  assert.deepEqual(f.db.serialize(), before);
+});
+
 test("migration requires exact confirmation and parent schemas, detects drift, and replays", (t) => {
   const f = fixture(t, { migrate: false });
   assert.throws(
@@ -304,6 +414,7 @@ test("stable opaque codes survive independent connections and restart", (t) => {
   const other = createPortalReferralService({
     dbPath: path,
     nowFn: () => new Date(NOW),
+    rewardsEnabled: true,
   });
   try {
     assert.equal(other.createLink("promoter").linkPath, a.linkPath);
@@ -826,7 +937,7 @@ test("simultaneous independent writers issue one stable code and one reward", as
         const worker = new Worker(
           `const {parentPort,workerData}=require('node:worker_threads');
       import(workerData.moduleUrl).then(({createPortalReferralService})=>{
-        const service=createPortalReferralService({dbPath:workerData.path,nowFn:()=>new Date(workerData.now)});
+        const service=createPortalReferralService({dbPath:workerData.path,nowFn:()=>new Date(workerData.now),rewardsEnabled:true});
         parentPort.once('message',()=>{try{parentPort.postMessage({link:service.createLink('other_promoter').linkPath,accrual:service.accrue('customer')});}
           finally{service.close();}});parentPort.postMessage('ready');
       }).catch(error=>{throw error});`,

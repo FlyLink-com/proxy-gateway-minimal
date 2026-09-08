@@ -15,6 +15,8 @@ export type PortalReferralProfile = {
   /** A validated same-origin path, never a server-supplied absolute URL. */
   linkPath: string | null;
   policy: PortalReferralPolicy | null;
+  /** Explicit distribution window; null means link attribution is unavailable. */
+  attributionDays: number | null;
 };
 
 export type PortalReferralPerformance = {
@@ -117,13 +119,22 @@ function policyProjection(value: unknown): PortalReferralPolicy | null {
   };
 }
 function profileProjection(input: unknown): PortalReferralProfile {
-  const profile = exactObject(exactObject(input, ["profile"]).profile, ["eligible", "linkPath", "policy"]);
+  const raw = exactObject(input, ["profile"]).profile;
+  const extended = raw !== null && typeof raw === "object" && Object.hasOwn(raw, "attributionDays");
+  const profile = exactObject(raw, extended ? ["eligible", "linkPath", "policy", "attributionDays"] : ["eligible", "linkPath", "policy"]);
   const eligible = bool(profile.eligible);
   const linkPath = profile.linkPath;
   // JS $ also matches before a final newline; exact length closes that ambiguity.
   if (linkPath !== null && (typeof linkPath !== "string" || linkPath.length !== 35 || !LINK_PATH.test(linkPath))) return failed();
   if (!eligible && linkPath !== null) return failed();
-  return { eligible, linkPath, policy: policyProjection(profile.policy) };
+  const policy = policyProjection(profile.policy);
+  // Older reward-enabled servers expose the window only inside their policy.
+  // Never manufacture a distribution window for an unconfigured old server.
+  const attributionDays = extended
+    ? (profile.attributionDays === null ? null : units(profile.attributionDays, 1, 365))
+    : policy?.attributionDays ?? null;
+  if (policy && attributionDays !== policy.attributionDays) return failed();
+  return { eligible, linkPath, policy, attributionDays };
 }
 function performanceProjection(input: unknown): PortalReferralPerformance {
   const performance = exactObject(exactObject(input, ["performance"]).performance, [
@@ -204,7 +215,7 @@ export function createPortalReferralClient(options: { fetchFn?: typeof fetch } =
     getProfile: input => request(input, "profile", profileProjection),
     createLink: input => request(input, "link", body => {
       const profile = profileProjection(body);
-      if (!profile.eligible || profile.linkPath === null || profile.policy === null) return failed();
+      if (!profile.eligible || profile.linkPath === null || profile.attributionDays === null) return failed();
       return profile;
     }),
     getPerformance: input => request(input, "performance", performanceProjection),

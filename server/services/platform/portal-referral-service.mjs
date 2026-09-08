@@ -26,7 +26,16 @@ export function createPortalReferralService({
   nowFn = () => new Date(),
   riskReader,
   refundReader,
+  attributionDays,
+  rewardsEnabled = false,
 } = {}) {
+  if (typeof rewardsEnabled !== "boolean")
+    throw referralError("referral_rewards_configuration_invalid");
+  if (
+    (!rewardsEnabled || attributionDays !== undefined) &&
+    (!Number.isSafeInteger(attributionDays) || attributionDays < 1 || attributionDays > 365)
+  )
+    throw referralError("referral_attribution_days_invalid");
   if (
     (database === undefined) === (dbPath === undefined) ||
     (dbPath !== undefined && !isAbsolute(dbPath))
@@ -122,10 +131,12 @@ export function createPortalReferralService({
         "select code,status from platform_referral_profiles where account_id=?",
       )
       .get(accountId);
+    const policy = rewardsEnabled ? policyAt(now()) : null;
     return {
       eligible: row?.status !== "disabled",
       linkPath: row?.status === "active" ? `/r/${row.code}` : null,
-      policy: policyAt(now()),
+      attributionDays: rewardsEnabled ? policy?.attributionDays ?? null : attributionDays,
+      policy,
     };
   }
   function createLink(accountId) {
@@ -139,7 +150,7 @@ export function createPortalReferralService({
           .get(accountId);
         if (existing?.status === "disabled")
           throw referralError("referral_account_ineligible");
-        if (!policyAt(now()))
+        if (rewardsEnabled && !policyAt(now()))
           throw referralError("referral_policy_unavailable");
         if (!existing)
           db.prepare(
@@ -154,8 +165,8 @@ export function createPortalReferralService({
     return db
       .transaction(() => {
         const at = now(),
-          policy = policyAt(at);
-        if (!policy) return null;
+          windowDays = rewardsEnabled ? policyAt(at)?.attributionDays : attributionDays;
+        if (!windowDays) return null;
         const promoter = db
           .prepare(
             `select p.account_id from platform_referral_profiles p
@@ -164,19 +175,20 @@ export function createPortalReferralService({
           .get(code);
         if (!promoter) return null;
         const token = randomBytes(24).toString("base64url"),
-          expiresAt = addDays(at, policy.attributionDays);
+          expiresAt = addDays(at, windowDays);
         db.prepare("insert into platform_referral_touches values(?,?,?,?)").run(
           digest(token),
           promoter.account_id,
           at,
           expiresAt,
         );
-        return { token, expiresAt, maxAge: policy.attributionDays * 86400 };
+        return { token, expiresAt, maxAge: windowDays * 86400 };
       })
       .immediate();
   }
   function accrue(accountId) {
     requireRef(accountId);
+    if (!rewardsEnabled) return { status: "rewards_disabled" };
     return db
       .transaction(() => {
         const existing = db
@@ -335,6 +347,7 @@ export function createPortalReferralService({
       .immediate();
   }
   function confirm(accountId, decisionRef) {
+    if (!rewardsEnabled) throw referralError("referral_rewards_disabled");
     if (typeof riskReader !== "function")
       throw referralError("referral_risk_unavailable");
     requireRef(accountId);
@@ -495,6 +508,7 @@ export function createPortalReferralService({
   function reconcile({ limit = 100 } = {}) {
     units(limit, 1000);
     if (!limit) throw referralError("referral_request_invalid");
+    if (!rewardsEnabled) return [];
     const accounts = db
       .prepare(
         `select distinct w.account_id from platform_coin_wallets w
@@ -519,6 +533,7 @@ export function createPortalReferralService({
     closed = false;
   function start() {
     if (closed) throw referralError();
+    if (!rewardsEnabled) return;
     if (timer) return;
     // Facts stay in payment/wallet storage until processed. The cursor advances
     // even when one account is blocked, and wraps for durable retry after restart.

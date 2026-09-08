@@ -31,7 +31,7 @@ afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
 describe("Portal referral strict client", () => {
   test.each(["getProfile", "createLink"] as const)("%s consumes the exact profile and fixed route", async method => {
     const { client, fetchFn } = setup({ profile: PROFILE });
-    expect(await client[method]({ sessionRef: SESSION })).toEqual(PROFILE);
+    expect(await client[method]({ sessionRef: SESSION })).toEqual({ ...PROFILE, attributionDays: 30 });
     const [url, init] = fetchFn.mock.calls[0] as unknown as [string, RequestInit];
     expect(url).toBe(`/api/portal/referral/${method === "createLink" ? "link" : "profile"}`);
     expect(init.method).toBe(method === "createLink" ? "POST" : "GET");
@@ -56,7 +56,7 @@ describe("Portal referral strict client", () => {
     for (const sessionRef of [SESSION, CONTEXT]) {
       const fetchFn = vi.fn(async () => response({ profile: PROFILE }));
       const client = createPortalReferralClient({ fetchFn: createPortalBrowserFetch(fetchFn) });
-      expect(await client.getProfile({ sessionRef })).toEqual(PROFILE);
+      expect(await client.getProfile({ sessionRef })).toEqual({ ...PROFILE, attributionDays: 30 });
       const [, init] = fetchFn.mock.calls[0] as unknown as [string, RequestInit];
       expect(new Headers(init.headers).get(sessionRef === CONTEXT ? "X-Portal-Session-Context" : "X-Portal-Session")).toBe(sessionRef);
       expect(init.credentials).toBe(sessionRef === CONTEXT ? "same-origin" : "omit");
@@ -67,7 +67,41 @@ describe("Portal referral strict client", () => {
     { eligible: false, linkPath: null, policy: POLICY },
     { ...PROFILE, policy: { ...POLICY, rounding: "half_up", confirmationDays: 0 } },
   ])("accepts exact legitimate profile states %#", async profile => {
+    expect(await setup({ profile }).client.getProfile({ sessionRef: SESSION })).toEqual({ ...profile, attributionDays: profile.policy?.attributionDays ?? null });
+  });
+  test.each([1, 365])("distribution-only profile permits link creation with explicit %i-day attribution", async attributionDays => {
+    const profile = { ...PROFILE, policy: null, attributionDays };
+    const { client } = setup({ profile });
+    expect(await client.getProfile({ sessionRef: SESSION })).toEqual(profile);
+    expect(await client.createLink({ sessionRef: SESSION })).toEqual(profile);
+  });
+  test.each([
+    { ...PROFILE, attributionDays: 30 },
+    { eligible: true, linkPath: null, policy: null, attributionDays: null },
+    { eligible: false, linkPath: null, policy: null, attributionDays: 30 },
+  ])("accepts exact extended profile state %#", async profile => {
     expect(await setup({ profile }).client.getProfile({ sessionRef: SESSION })).toEqual(profile);
+  });
+  test.each([0, -1, 366, 1.5, "30", false, {}, undefined])("rejects malformed attribution window %#", async attributionDays => {
+    const profile = { ...PROFILE, policy: null, attributionDays };
+    // Undefined is absent on JSON wires; test a missing field plus an unknown key.
+    if (attributionDays === undefined) Object.assign(profile, { unexpectedWindow: 30 });
+    await expect(setup({ profile }).client.getProfile({ sessionRef: SESSION }))
+      .rejects.toMatchObject({ code: "referral_request_failed" });
+  });
+  test.each([
+    { ...PROFILE, attributionDays: null }, { ...PROFILE, attributionDays: 31 },
+    { ...PROFILE, attributionDays: 30, rewardsEnabled: false },
+  ])("rejects inconsistent policy windows and extra authority fields %#", async profile => {
+    await expect(setup({ profile }).client.getProfile({ sessionRef: SESSION }))
+      .rejects.toMatchObject({ code: "referral_request_failed" });
+  });
+  test.each([
+    { ...PROFILE, policy: null },
+    { ...PROFILE, policy: null, attributionDays: null },
+  ])("does not invent an attribution window for a successful link mutation %#", async profile => {
+    await expect(setup({ profile }).client.createLink({ sessionRef: SESSION }))
+      .rejects.toMatchObject({ code: "referral_request_failed" });
   });
   test.each([
     "https://outside.invalid/r/code", "//outside.invalid/r/code", "/r/../admin",

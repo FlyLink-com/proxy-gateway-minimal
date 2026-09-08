@@ -50,7 +50,7 @@ export function runPortalReferralPolicyCli(argv) {
       flags.get("--confirm-policy-digest") !== policyDigest
     )
       throw referralError("referral_policy_confirmation_required");
-    service = createPortalReferralService({ dbPath });
+    service = createPortalReferralService({ dbPath, rewardsEnabled: true });
     service.publishPolicy(policy);
     return { exitCode: 0, output: { ok: true, mode, policy, policyDigest } };
   } catch (error) {

@@ -655,6 +655,7 @@ function referralFixture() {
     profile: {
       eligible: true,
       linkPath: null as string | null,
+      attributionDays: 30,
       policy: {
         policyRef: "policy_navigation_fixture", version: 1,
         effectiveAt: "2026-09-08T00:00:00.000Z", rateBps: 500,
@@ -4229,6 +4230,33 @@ describe("user portal product surface", () => {
     expect(createLink).toHaveBeenCalledExactlyOnceWith(request);
     expect(screen.getByRole("textbox", { name: "我的推荐链接" }))
       .toHaveValue(`${window.location.origin}${created.linkPath}`);
+  });
+
+  test("referral navigation uses the real HTTP client to issue a distribution-only link without inventing rewards", async () => {
+    const fixture = referralFixture();
+    const linkPath = `/r/${"D".repeat(32)}`;
+    const profile = { ...fixture.profile, policy: null, attributionDays: 14 };
+    const fetchFn = vi.fn(async (input: RequestInfo | URL) => new Response(JSON.stringify(
+      String(input).endsWith("/performance") ? { performance: fixture.performance }
+        : { profile: String(input).endsWith("/link") ? { ...profile, linkPath } : profile }
+    ), { status: 200 }));
+    const httpClient = createHttpUserPortalClient({ fetchFn });
+    render(createElement(UserPortalPage, { portalClient: portalClient({
+      authenticate: vi.fn(authenticatedSessionWithRef), referral: httpClient.referral
+    }) }));
+    const portalNav = await enterPortal();
+    fireEvent.click(within(portalNav).getByRole("button", { name: "推荐奖励" }));
+    expect(await screen.findByText("奖励活动暂未开放。")).toBeInTheDocument();
+    const panel = screen.getByRole("region", { name: "推广绩效" });
+    expect(within(panel).getByText("8")).toBeInTheDocument();
+    expect(panel.querySelectorAll("dd")).toHaveLength(1);
+    expect(panel).not.toHaveTextContent(/Coins|首次充值人数|25%/);
+    fireEvent.click(within(panel).getByRole("button", { name: "生成推荐链接" }));
+    expect(await within(panel).findByRole("textbox", { name: "我的推荐链接" })).toHaveValue(`${window.location.origin}${linkPath}`);
+    expect(within(panel).getByRole("button", { name: "复制链接" })).toBeEnabled();
+    expect(fetchFn.mock.calls.map(([url]) => String(url))).toEqual([
+      "/api/portal/referral/profile", "/api/portal/referral/performance", "/api/portal/referral/link"
+    ]);
   });
 
   test("referral navigation treats a disabled backend 404 as unavailable without invented zero metrics", async () => {

@@ -21,7 +21,8 @@ first-party attribution credential identifies the last valid landing before
 registration. Registration locks attribution atomically with account creation;
 invalid, expired and self referrals become permanently unattributed.
 
-Only the first durable verified-payment paid-Coins credit may generate a reward.
+When rewards are explicitly enabled, only the first durable verified-payment
+paid-Coins credit may generate a reward.
 Selection follows wallet credit ledger sequence, including a temporarily
 unclosed first payment, so a later completed order cannot steal first eligibility.
 The reward policy is immutable, versioned and selected at the original credit
@@ -33,8 +34,10 @@ reverse. Spent/held rewards require reconciliation under an independently decide
 recovery policy, and are not silently treated as recovered.
 
 No production rate, observation time, attribution window or rounding default is
-invented. A reviewed policy must explicitly publish all operands before use.
-Features default off; runtime startup validates schema, never applies it.
+invented. A reviewed policy must explicitly publish all reward operands before
+reward use. Distribution-only mode requires its separately explicit attribution
+window and does not require a reward policy. Features default off; runtime
+startup validates schema, never applies it.
 
 ## Frontend admission and bounded completion
 
@@ -48,9 +51,11 @@ panel now consumes profile, stable-link creation and performance APIs through
 the existing browser-session transport. It renders account-owned aggregates,
 copies the same-origin referral link, and generates QR images with the existing
 local QR library. No external QR service, second Portal shell, cash-out action,
-customer list or client-supplied attribution field is added. Missing APIs/policy
-remain unavailable, not fabricated zero performance. Consumer wording does not
-expose backend status codes.
+customer list or client-supplied attribution field is added. Missing APIs remain
+unavailable, not fabricated zero performance. Missing reward policy no longer
+blocks distribution when its explicit window is configured: only actual
+registrations and sharing controls are shown, not unmeasured recharge/reward
+metrics or a reward promise. Consumer wording does not expose backend codes.
 
 Source boundary: `admin/portal/index.html` -> `admin/src/portal-main.tsx` ->
 `admin/src/features/user-portal/user-portal-page.tsx` -> the existing referral
@@ -58,7 +63,8 @@ panel boundary and `referrals/` implementation ->
 `admin/src/portal-static-preserve.css` /
 `admin/src/styles/portal-static-preserve/user-portal-commerce.css` ->
 `admin/dist-portal`. Release units: `portal-static` and `control-plane-app`
-(Wallet read-projection compatibility only); `frontend_surface: portal`;
+(referral service, registration attribution and Wallet read compatibility);
+`frontend_surface: portal`;
 `identity_impact: false`; `deployment_performed: false`.
 
 Account changes invalidate pending reads, link creation, clipboard feedback and
@@ -79,10 +85,13 @@ explicitly approved follow-up validates the client, panel and Portal mounting to
 
 ## Production gate (not executed)
 
-Before enabling: fresh exact host/database/schema/static identity inventory,
-reviewed published policy and refund/risk fact ownership, backup with restore
-rehearsal, isolated migration dry-run, exact artifact, operator approval, canary
-and reconciliation, then feature readback. Rollback disables the feature and
+Before distribution-only enabling: fresh exact host/database/schema/static
+identity inventory, an explicitly selected attribution window, backup with
+restore rehearsal, isolated migration dry-run, exact artifact, operator approval,
+route and feature readback. Reward activation additionally requires a reviewed
+published policy, refund/risk fact ownership and reconciliation. The bounded
+distribution release checklist is in `PORTAL_REFERRAL_DISTRIBUTION_RELEASE.md`.
+Rollback disables the feature and
 retains additive referral/ledger history; never delete financial facts or restore
 a database merely to roll back application code.
 
@@ -92,6 +101,9 @@ a database merely to roll back application code.
 - `GET /r/:code`: active-code capture; secure host-only HttpOnly cookie; fixed
   `/portal/register` redirect. Invalid/expired sources do not prevent registration.
 - `GET /api/portal/referral/profile`: own eligibility, stable link path and policy.
+  The response also includes `attributionDays` (1..365 or null). The client accepts
+  the old three-field response by deriving the window from its policy; new
+  four-field responses must be internally consistent.
 - `POST /api/portal/referral/link`: lazy one-code creation; empty JSON body and
   same Host/Origin required. An existing code is reused.
 - `GET /api/portal/referral/performance`: own aggregate registrations, first
@@ -103,6 +115,12 @@ a database merely to roll back application code.
 - `PLATFORM_PORTAL_REFERRALS_ENABLED` defaults false. Enabling requires Portal,
   Wallet and recharge prerequisites, an exact HTTPS `PLATFORM_PORTAL_BROWSER_ORIGIN`,
   and the applied validated schema. No default rate or production policy is seeded.
+- `PLATFORM_PORTAL_REFERRAL_REWARDS_ENABLED` independently defaults false.
+  Distribution-only mode requires `PLATFORM_PORTAL_REFERRAL_ATTRIBUTION_DAYS`
+  (integer 1..365, no fallback). With rewards off, link creation and capture use
+  that explicit window, `profile.policy` is null, and accrual/confirmation/scans
+  cannot create or release rewards. Runtime does not attach a recharge reward
+  callback. Explicit reward mode uses the policy's attribution window instead.
 - `publishPolicy` accepts exactly `policyRef`, `version`, `effectiveAt`, `rateBps`,
   `rounding` (`floor`/`half_up`), `attributionDays`, `confirmationDays`.
   Policy versions and effective timestamps are immutable; new publication cannot
@@ -114,8 +132,9 @@ a database merely to roll back application code.
 
 ## Internal fact ownership and remaining activation work
 
-The recharge coordinator invokes accrual only after payment closure. Failures do
-not convert successful customer recharge into failure. `start()` scans up to 100
+When rewards are explicitly enabled, the recharge coordinator invokes accrual
+only after payment closure. Failures do not convert successful customer recharge
+into failure. In that mode `start()` scans up to 100
 accounts every 30 seconds, advances past blocked accounts, and retries on wrap or
 restart. Both paths consume the same durable payment/wallet facts idempotently.
 
@@ -133,6 +152,12 @@ and apply outstanding observations before issuing a complete risk decision.
 The current runtime has no default production reader or approval scheduler;
 provider refund ingestion, risk scheduling, and recovery policy are outstanding
 activation work. Do not enable available reward release without those owners.
+
+The operator's subsequent distribution-first production request is bounded in
+`docs/PORTAL_REFERRAL_DISTRIBUTION_RELEASE.md`. It does not approve reward
+activation or choose the attribution window; the requested Exa comparison is
+pending connection of its search tools. Production and signed-in browser
+acceptance are not recorded as completed.
 
 The Wallet ledger decoder and consumer labels now support `pending_to_reversed`
 and `available_to_reversed`. Their missing backend read-projection cases are

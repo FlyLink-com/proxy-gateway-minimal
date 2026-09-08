@@ -7317,7 +7317,8 @@ test("referral runtime requires explicit migration, starts without provider I/O 
   const dir=mkdtempSync(join(tmpdir(),"proxy-gateway-referral-runtime-"));
   const controlDbPath=prepareMigratedPaymentControlDatabase(dir);
   const env=runtimeEnv({CONSOLE_TOKEN:"secret",USER_PORTAL_ROUTES_ENABLED:"true",COINS_WALLET_ENABLED:"true",
-    ...xsdRechargeEnv(),PLATFORM_PORTAL_REFERRALS_ENABLED:"true",PLATFORM_PORTAL_BROWSER_ORIGIN:"https://portal.example.test"});
+    ...xsdRechargeEnv(),PLATFORM_PORTAL_REFERRALS_ENABLED:"true",PLATFORM_PORTAL_REFERRAL_REWARDS_ENABLED:"true",
+    PLATFORM_PORTAL_BROWSER_ORIGIN:"https://portal.example.test"});
   const options={rootDir:new URL("../../",import.meta.url),env,controlDbPath,subscriptionDbPath:join(dir,"subscriptions.sqlite"),
     xsdFetchFn:async()=>{throw new Error("provider must not be called during startup");},autoStartHttpProxy:false};
   let state;
@@ -7330,8 +7331,60 @@ test("referral runtime requires explicit migration, starts without provider I/O 
     } finally {database.close();}
     state=createRuntimeState(options);
     assert.equal(state.platform.portalReferralsEnabled,true);
+    assert.equal(state.platform.portalReferralRewardsEnabled,true);
+    assert.equal(state.platform.portalReferralAttributionDays,null);
     assert.equal(typeof state.platform.portalReferrals.reconcile,'function');
     state.close();state.close();
     assert.throws(()=>state.platform.portalReferrals.start(),/referral_unavailable/);
   } finally {state?.close();removeTempDir(dir);}
+});
+
+test("referral distribution validates attribution and rewards configuration independently", () => {
+  const dir=mkdtempSync(join(tmpdir(),"proxy-gateway-referral-config-"));
+  const baseEnv=runtimeEnv({
+    CONSOLE_TOKEN:"secret",
+    USER_PORTAL_ROUTES_ENABLED:"true",
+    COINS_WALLET_ENABLED:"true",
+    ...xsdRechargeEnv(),
+    PLATFORM_PORTAL_REFERRALS_ENABLED:"true",
+    PLATFORM_PORTAL_BROWSER_ORIGIN:"https://portal.example.test"
+  });
+  const options={
+    rootDir:new URL("../../",import.meta.url),
+    controlDbPath:join(dir,"control.sqlite"),
+    subscriptionDbPath:join(dir,"subscriptions.sqlite"),
+    autoStartHttpProxy:false
+  };
+  try {
+    for (const overrides of [
+      {},
+      {PLATFORM_PORTAL_REFERRALS_ENABLED:"sometimes",PLATFORM_PORTAL_REFERRAL_ATTRIBUTION_DAYS:"30"},
+      {PLATFORM_PORTAL_REFERRAL_REWARDS_ENABLED:"sometimes",PLATFORM_PORTAL_REFERRAL_ATTRIBUTION_DAYS:"30"},
+      {PLATFORM_PORTAL_REFERRAL_ATTRIBUTION_DAYS:"0"},
+      {PLATFORM_PORTAL_REFERRAL_ATTRIBUTION_DAYS:"366"},
+      {PLATFORM_PORTAL_REFERRAL_ATTRIBUTION_DAYS:"30days"},
+      {PLATFORM_PORTAL_REFERRALS_ENABLED:"false",PLATFORM_PORTAL_REFERRAL_REWARDS_ENABLED:"true"}
+    ]) {
+      assert.throws(
+        ()=>createRuntimeState({...options,env:{...baseEnv,...overrides}}),
+        /referral_prerequisite_missing/
+      );
+    }
+
+    const controlDbPath=prepareMigratedPaymentControlDatabase(dir);
+    const database=new Database(controlDbPath);
+    try {
+      applyPortalReferralMigration(database,{expectedMigrationId:REFERRAL_MIGRATION_ID,expectedDdlChecksum:REFERRAL_DDL_CHECKSUM});
+    } finally {database.close();}
+    const state=createRuntimeState({...options,controlDbPath,env:{
+      ...baseEnv,
+      PLATFORM_PORTAL_REFERRAL_ATTRIBUTION_DAYS:"30"
+    }});
+    try {
+      assert.equal(state.platform.portalReferralsEnabled,true);
+      assert.equal(state.platform.portalReferralRewardsEnabled,false);
+      assert.equal(state.platform.portalReferralAttributionDays,30);
+      assert.deepEqual(state.platform.portalReferrals.reconcile(),[]);
+    } finally {state.close();}
+  } finally {removeTempDir(dir);}
 });
