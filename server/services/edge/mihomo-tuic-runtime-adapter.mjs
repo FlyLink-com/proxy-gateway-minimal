@@ -1,3 +1,5 @@
+import { inspectUnchangedUdpConfig } from "./runtime-config-readonly-proof.mjs";
+
 const SAFE_REF_PATTERN = /^[A-Za-z0-9._:-]{1,128}$/;
 
 function isPlainObject(value) {
@@ -173,6 +175,8 @@ export function createMihomoTuicExplicitRestartAdapter({
   listenerName,
   listener,
   resolveCredentialMaterial,
+  readActiveConfig,
+  validateRunningConfig,
   writeCandidateConfig,
   runConfigTest,
   backupActiveConfig,
@@ -210,6 +214,17 @@ export function createMihomoTuicExplicitRestartAdapter({
         return failedReceipt({ serviceName: safeServiceName });
       }
 
+      try {
+        const unchanged = inspectUnchangedUdpConfig({candidateConfig, readActiveConfig, validateRunningConfig, validateService, validateListener, runConfigTest});
+        if (unchanged.status === "failed") return failedReceipt({serviceName:safeServiceName, exitCode:unchanged.exitCode ?? null});
+        if (unchanged.status === "unchanged") return {
+          status:"unchanged", mutation:false, configTest:{exitCode:0, ok:true},
+          service:{name:safeServiceName, active:true, restarted:false},
+          listener:{udp443:true}, appliedAt:now().toISOString()
+        };
+      } catch {
+        return failedReceipt({serviceName:safeServiceName});
+      }
       writeCandidateConfig(candidateConfig);
 
       const configTest = runConfigTest() || {};

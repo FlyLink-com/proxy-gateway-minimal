@@ -12,6 +12,7 @@ import {
 import { basename, dirname, join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { createMihomoTuicExplicitRestartAdapter } from "./mihomo-tuic-runtime-adapter.mjs";
+import { readActiveConfigFile, validateRunningConfigFile } from "./runtime-config-readonly-proof.mjs";
 
 const SAFE_REF_PATTERN = /^[A-Za-z0-9._:-]{1,128}$/;
 
@@ -139,17 +140,20 @@ export function createMihomoTuicHostRuntimeAdapter({
       usageController: listener.usageController
     },
     resolveCredentialMaterial,
+    readActiveConfig() { return readActiveConfigFile(safeActiveConfigPath); },
+    validateRunningConfig() { return validateRunningConfigFile(safeActiveConfigPath, safeServiceName, commandRunner); },
     writeCandidateConfig(content) {
       writeProtectedFile(safeCandidateConfigPath, content);
       return { candidateRef: basename(safeCandidateConfigPath) };
     },
-    runConfigTest() {
+    runConfigTest({ active = false } = {}) {
+      const path = active ? safeActiveConfigPath : safeCandidateConfigPath;
       const result = commandRunner(safeMihomoBinary, [
         "-t",
         "-d",
-        dirname(safeCandidateConfigPath),
+        dirname(path),
         "-f",
-        safeCandidateConfigPath
+        path
       ]) || {};
       return { exitCode: Number.isInteger(result.exitCode) ? result.exitCode : 1 };
     },
@@ -174,14 +178,16 @@ export function createMihomoTuicHostRuntimeAdapter({
       const result = commandRunner("systemctl", ["restart", safeServiceName]) || {};
       return { ok: result.exitCode === 0 };
     },
-    validateService() {
+    validateService({ readOnly = false } = {}) {
       const result = commandRunner("systemctl", ["is-active", "--quiet", safeServiceName]) || {};
+      if (readOnly && ![0, 3].includes(result.exitCode)) throw hostError("active_config_unverified", "service inspection failed");
       return { active: result.exitCode === 0 };
     },
-    validateListener() {
+    validateListener({ readOnly = false } = {}) {
       let result = {};
       for (let attempt = 1; attempt <= listenerValidationAttempts; attempt += 1) {
         result = commandRunner("ss", ["-H", "-lun", "sport", "=", `:${port}`]) || {};
+        if (readOnly && result.exitCode !== 0) throw hostError("active_config_unverified", "listener inspection failed");
         if (result.exitCode === 0 && text(result.stdout).includes(`:${port}`)) {
           return { udp443: true };
         }

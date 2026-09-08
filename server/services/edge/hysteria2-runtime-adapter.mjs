@@ -11,6 +11,7 @@ import {
 } from "node:fs";
 import { basename, join } from "node:path";
 import { spawnSync } from "node:child_process";
+import { inspectUnchangedUdpConfig, readActiveConfigFile, validateRunningConfigFile } from "./runtime-config-readonly-proof.mjs";
 
 const SAFE_REF_PATTERN = /^[A-Za-z0-9._:-]{1,128}$/;
 
@@ -314,6 +315,8 @@ export function createHysteria2ExplicitRestartAdapter({
   serviceName = "hysteria2.service",
   listener = {},
   resolveCredentialMaterial,
+  readActiveConfig,
+  validateRunningConfig,
   writeCandidateConfig,
   runConfigTest,
   backupActiveConfig,
@@ -347,7 +350,20 @@ export function createHysteria2ExplicitRestartAdapter({
         return failedReceipt({ serviceName: safeServiceName });
       }
 
-      writeCandidateConfig(buildHysteria2Config(users, runtimeListener));
+      const candidateConfig = buildHysteria2Config(users, runtimeListener);
+      try {
+        const unchanged = inspectUnchangedUdpConfig({candidateConfig, readActiveConfig, validateRunningConfig, validateService, validateListener, runConfigTest});
+        if (unchanged.status === "failed") return failedReceipt({serviceName:safeServiceName, exitCode:unchanged.exitCode ?? null});
+        if (unchanged.status === "unchanged") return {
+          status:"unchanged", mutation:false,
+          configTest:{exitCode:0, ok:true, ...(unchanged.skipped ? {skipped:true} : {})},
+          service:{name:safeServiceName, active:true, restarted:false},
+          listener:{udp443:true}, appliedAt:now().toISOString()
+        };
+      } catch {
+        return failedReceipt({serviceName:safeServiceName});
+      }
+      writeCandidateConfig(candidateConfig);
       const configTest = runConfigTest() || {};
       const exitCode = Number.isInteger(configTest.exitCode) ? configTest.exitCode : 1;
       const configTestSkipped = configTest.skipped === true;
@@ -435,17 +451,19 @@ export function createHysteria2HostRuntimeAdapter({
       outbound: listener.outbound
     },
     resolveCredentialMaterial,
+    readActiveConfig() { return readActiveConfigFile(safeActiveConfigPath); },
+    validateRunningConfig() { return validateRunningConfigFile(safeActiveConfigPath, safeServiceName, commandRunner); },
     writeCandidateConfig(content) {
       writeProtectedFile(safeCandidateConfigPath, content);
       return { candidateRef: basename(safeCandidateConfigPath) };
     },
-    runConfigTest() {
+    runConfigTest({ active = false } = {}) {
       const helpResult = commandRunner(safeHysteriaBinary, ["server", "--help"]) || {};
       const helpText = `${helpResult.stdout || ""}\n${helpResult.stderr || ""}`;
       if (Number.isInteger(helpResult.exitCode) && helpResult.exitCode === 0 && !helpText.includes("--check")) {
         return { exitCode: 0, skipped: true };
       }
-      const result = commandRunner(safeHysteriaBinary, ["server", "-c", safeCandidateConfigPath, "--check"]) || {};
+      const result = commandRunner(safeHysteriaBinary, ["server", "-c", active ? safeActiveConfigPath : safeCandidateConfigPath, "--check"]) || {};
       return { exitCode: Number.isInteger(result.exitCode) ? result.exitCode : 1 };
     },
     backupActiveConfig() {
@@ -469,14 +487,16 @@ export function createHysteria2HostRuntimeAdapter({
       const result = commandRunner("systemctl", ["restart", safeServiceName]) || {};
       return { ok: result.exitCode === 0 };
     },
-    validateService() {
+    validateService({ readOnly = false } = {}) {
       const result = commandRunner("systemctl", ["is-active", "--quiet", safeServiceName]) || {};
+      if (readOnly && ![0, 3].includes(result.exitCode)) throw hostError("active_config_unverified", "service inspection failed");
       return { active: result.exitCode === 0 };
     },
-    validateListener() {
+    validateListener({ readOnly = false } = {}) {
       let result = {};
       for (let attempt = 1; attempt <= listenerValidationAttempts; attempt += 1) {
         result = commandRunner("ss", ["-H", "-uln", "sport", "=", `:${port}`]) || {};
+        if (readOnly && result.exitCode !== 0) throw hostError("active_config_unverified", "listener inspection failed");
         if (result.exitCode === 0 && text(result.stdout).includes(`:${port}`)) {
           return { udp443: true };
         }
