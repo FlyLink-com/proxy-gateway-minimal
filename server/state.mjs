@@ -1,3 +1,4 @@
+import { createPortalReferralService } from './services/platform/portal-referral-service.mjs';
 import { createHash, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -212,6 +213,31 @@ function coinRechargePrerequisiteError() {
   const error = new Error("Coin recharge runtime prerequisites are not satisfied");
   error.code = "coin_recharge_prerequisite_missing";
   return error;
+}
+
+function referralPrerequisiteError() {
+  const error = new Error("referral_prerequisite_missing");
+  error.code = "referral_prerequisite_missing";
+  return error;
+}
+
+function referralEnvFlag(value, fallback = false) {
+  const normalized = String(value ?? "").trim().toLowerCase();
+  if (!normalized) return fallback;
+  if (["1", "true", "yes", "on"].includes(normalized)) return true;
+  if (["0", "false", "no", "off"].includes(normalized)) return false;
+  throw referralPrerequisiteError();
+}
+
+function referralAttributionDays(value) {
+  const normalized = String(value ?? "").trim();
+  if (!normalized) return undefined;
+  if (!/^\d+$/.test(normalized)) throw referralPrerequisiteError();
+  const days = Number(normalized);
+  if (!Number.isSafeInteger(days) || days < 1 || days > 365) {
+    throw referralPrerequisiteError();
+  }
+  return days;
 }
 
 function walletFirstRegistrationPrerequisiteError() {
@@ -1601,6 +1627,32 @@ export function createRuntimeState(options = {}) {
     ? requestedPaymentProviders[0]
     : null;
   const coinRechargeEnabled = paymentRechargeProvider !== null;
+  const portalReferralsEnabled = referralEnvFlag(env.PLATFORM_PORTAL_REFERRALS_ENABLED);
+  const portalReferralRewardsEnabled = referralEnvFlag(
+    env.PLATFORM_PORTAL_REFERRAL_REWARDS_ENABLED
+  );
+  const portalReferralAttributionDays = referralAttributionDays(
+    env.PLATFORM_PORTAL_REFERRAL_ATTRIBUTION_DAYS
+  );
+  if (portalReferralRewardsEnabled && !portalReferralsEnabled) {
+    throw referralPrerequisiteError();
+  }
+  if (portalReferralsEnabled) {
+    let originValid = false;
+    try {
+      const value = new URL(env.PLATFORM_PORTAL_BROWSER_ORIGIN);
+      originValid = value.protocol === 'https:' && value.origin === env.PLATFORM_PORTAL_BROWSER_ORIGIN;
+    } catch { /* prerequisite rejection below */ }
+    if (
+      !userPortalRoutesEnabled
+      || !coinsWalletEnabled
+      || !coinRechargeEnabled
+      || !originValid
+      || (!portalReferralRewardsEnabled && portalReferralAttributionDays === undefined)
+    ) {
+      throw referralPrerequisiteError();
+    }
+  }
   let configuredCoinCommerceStore = null;
   let configuredCoinCommerceWalletStore = null;
   let configuredCoinCommerceCatalog;
@@ -2270,6 +2322,7 @@ export function createRuntimeState(options = {}) {
       allowPasswordOnlySessionForSetup: envFlag(env.USER_PORTAL_ALLOW_PASSWORD_ONLY_SETUP_SESSION)
     })
   ) : null;
+  let portalReferrals = null;
   const platformPortalRegistrations = options.platformPortalRegistrations || (
     userPortalRoutesEnabled ? createPortalRegistrationService({
       controlStore: platformControlStore,
@@ -2278,6 +2331,7 @@ export function createRuntimeState(options = {}) {
       portalAccessRequests: platformPortalAccessRequests,
       nowFn: options.userPortalNowFn,
       registrationWelcomeCoinsEnabled,
+      referralsEnabled: portalReferralsEnabled,
       ...(registrationWelcomeCoinsEnabled
         ? { registrationWelcomeCoinsCanaryEmailEligibilityReader }
         : {})
@@ -2746,7 +2800,16 @@ export function createRuntimeState(options = {}) {
           || ((kind) => `${kind}_${randomUUID()}`)
       });
       ownsPaymentStore = true;
+      if (portalReferralsEnabled) portalReferrals = createPortalReferralService({
+        dbPath: controlDbPath, nowFn: options.userPortalNowFn,
+        riskReader: options.portalReferralRiskReader, refundReader: options.portalReferralRefundReader,
+        attributionDays: portalReferralAttributionDays,
+        rewardsEnabled: portalReferralRewardsEnabled
+      });
       paymentRechargeCoordinator = createPaymentRechargeCoordinator({
+        ...(portalReferrals && portalReferralRewardsEnabled
+          ? {onCredited: accountId => portalReferrals.accrue(accountId)}
+          : {}),
         store: paymentStore,
         walletStore: coinsWalletStore,
         offerCatalog: assembled.offerCatalog,
@@ -2756,6 +2819,7 @@ export function createRuntimeState(options = {}) {
           || ((kind) => `${kind}_${randomUUID()}`)
       });
     } catch (error) {
+      try { portalReferrals?.close(); } catch { /* preserve prerequisite failure */ }
       if (walletFirstSetupDeliveryEscrow) {
         try {
           walletFirstSetupDeliveryEscrow.close();
@@ -2782,11 +2846,14 @@ export function createRuntimeState(options = {}) {
     }
   }
 
+  if (portalReferralRewardsEnabled) portalReferrals?.start();
+
   function close() {
     if (!coinsCommerceEnabled) {
       if (closed) return;
       closed = true;
       let firstError;
+      try { portalReferrals?.close(); } catch (error) { firstError ||= error; }
       if (ownsPaymentStore && paymentStore) {
         try { paymentStore.close(); } catch (error) { firstError ||= error; }
       }
@@ -2809,6 +2876,7 @@ export function createRuntimeState(options = {}) {
     closed = true;
     closePromise = (async () => {
       let firstError;
+      try { portalReferrals?.close(); } catch (error) { firstError ||= error; }
       if (ownsPaymentStore && paymentStore) {
         try { paymentStore.close(); } catch (error) { firstError ||= error; }
       }
@@ -2904,6 +2972,10 @@ export function createRuntimeState(options = {}) {
       close
     },
     platform: {
+      portalReferralsEnabled,
+      portalReferralRewardsEnabled,
+      portalReferralAttributionDays: portalReferralAttributionDays ?? null,
+      portalReferrals,
       leadQueue: platformLeadQueue,
       accountShell: platformAccountShell,
       accessShell: platformAccessShell,

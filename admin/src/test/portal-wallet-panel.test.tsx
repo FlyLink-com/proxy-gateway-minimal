@@ -351,6 +351,49 @@ describe("PortalWalletPanel", () => {
       .getAllByRole("cell").at(-1)).toHaveTextContent("-3");
   });
 
+  test.each([
+    { locale: "en" as const, pending: "Pending balance reversed", available: "Available balance reversed", all: "View all activity" },
+    { locale: "zh" as const, pending: "待确认余额撤回", available: "可用余额撤回", all: "查看全部" }
+  ])("renders $locale reversal labels and bucket deltas without deducting twice", ({ locale, pending, available, all }) => {
+    const entries: PortalWalletLedgerEntry[] = [
+      {
+        ...CONSUMED_ENTRY,
+        entryRef: "entry_pending_reversed",
+        category: "pending_to_reversed",
+        coinType: "reward_coins",
+        amountUnits: 7,
+        availableDeltaUnits: 0,
+        pendingDeltaUnits: -7,
+        heldDeltaUnits: 0,
+        totalDeltaUnits: -7
+      },
+      {
+        ...EXPIRED_ENTRY,
+        entryRef: "entry_available_reversed",
+        category: "available_to_reversed",
+        coinType: "reward_coins",
+        amountUnits: 11,
+        availableDeltaUnits: -11,
+        pendingDeltaUnits: 0,
+        heldDeltaUnits: 0,
+        totalDeltaUnits: -11
+      }
+    ];
+    renderPanel(walletModel({ ledger: { phase: "ready", value: entries } }), locale);
+    const cells = (label: string) => within(screen.getByText(label).closest("tr") as HTMLElement)
+      .getAllByRole("cell").map(cell => cell.textContent);
+    expect(cells(pending).at(-1)).toBe("-7");
+    expect(cells(available).at(-1)).toBe("-11");
+    expect(screen.queryByText("-14")).not.toBeInTheDocument();
+    expect(screen.queryByText("-22")).not.toBeInTheDocument();
+    expect(screen.getByText("155", { selector: "dd" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: all }));
+    expect(cells(pending).slice(-4)).toEqual(["-7", "0", "-7", "0"]);
+    expect(cells(available).slice(-4)).toEqual(["-11", "-11", "0", "0"]);
+    expect(document.body).not.toHaveTextContent(/pending_to_reversed|available_to_reversed/);
+  });
+
   test("shows only five recent ledger entries until the user opens all activity", () => {
     const loadMoreLedger = vi.fn();
     renderPanel(walletModel({

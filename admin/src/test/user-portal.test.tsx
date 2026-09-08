@@ -650,6 +650,26 @@ async function authenticatedSessionWithRef(input: PortalAuthInput): Promise<Port
   };
 }
 
+function referralFixture() {
+  return {
+    profile: {
+      eligible: true,
+      linkPath: null as string | null,
+      attributionDays: 30,
+      policy: {
+        policyRef: "policy_navigation_fixture", version: 1,
+        effectiveAt: "2026-09-08T00:00:00.000Z", rateBps: 500,
+        rounding: "floor" as const, attributionDays: 30, confirmationDays: 7
+      }
+    },
+    performance: {
+      registrations: 8, firstRechargeConversions: 2, creditedFirstRechargeCoins: 400,
+      pendingRewardCoins: 17, availableRewardCoins: 23, reversedRewardCoins: 3,
+      conversionRate: 0.25, reconciliationRequired: false
+    }
+  };
+}
+
 function portalClientWithPaymentOrders(
   paymentOrders: PortalPaymentOrder[],
   stateOverrides: Partial<Omit<PortalUserState, "userRef">> = {},
@@ -2026,6 +2046,42 @@ describe("user portal product surface", () => {
     expect(session.userRef).toBe("user@example.test");
     expect(session.authMode).toBe("authenticator");
     expect(fetchFn).toHaveBeenCalledTimes(1);
+  });
+
+  test("http portal client exposes referral GET/POST with fixed routes and shared cookie/legacy transport", async () => {
+    const fixture = referralFixture();
+    const profile = { ...fixture.profile, linkPath: `/r/${"A".repeat(32)}` };
+    for (const sessionRef of [COOKIE_CONTEXT, "portal_session_orders_test"]) {
+      const fetchFn = vi.fn(async (input: RequestInfo | URL) => new Response(JSON.stringify(
+        String(input).endsWith("/performance") ? { performance: fixture.performance } : { profile }
+      ), { status: 200, headers: { "Content-Type": "application/json" } }));
+      const client = createHttpUserPortalClient({ fetchFn });
+      expect(await client.referral.getProfile({ sessionRef })).toEqual(profile);
+      expect(await client.referral.getPerformance({ sessionRef })).toEqual(fixture.performance);
+      expect(await client.referral.createLink({ sessionRef })).toEqual(profile);
+      const calls = fetchFn.mock.calls as unknown as Array<[string, RequestInit]>;
+      expect(calls.map(([url, init]) => [url, init.method, init.body])).toEqual([
+        ["/api/portal/referral/profile", "GET", undefined],
+        ["/api/portal/referral/performance", "GET", undefined],
+        ["/api/portal/referral/link", "POST", "{}"]
+      ]);
+      for (const [, init] of calls) {
+        const headers = new Headers(init.headers);
+        expect(init.cache).toBe("no-store");
+        expect(init.redirect).toBe("error");
+        expect(headers.has("Authorization")).toBe(false);
+        if (sessionRef === COOKIE_CONTEXT) {
+          expect(init.credentials).toBe("same-origin");
+          expect(headers.get("X-Portal-Session-Context")).toBe(sessionRef);
+          expect(headers.get("X-Portal-Request")).toBe("browser-v1");
+          expect(headers.has("X-Portal-Session")).toBe(false);
+        } else {
+          expect(init.credentials).toBe("omit");
+          expect(headers.get("X-Portal-Session")).toBe(sessionRef);
+          expect(headers.has("X-Portal-Session-Context")).toBe(false);
+        }
+      }
+    }
   });
 
   test("http portal client preserves every backend order for the order table", async () => {
@@ -4127,23 +4183,99 @@ describe("user portal product surface", () => {
     expect(screen.queryByRole("dialog", { name: "充值 Coins" })).toBeNull();
   });
 
-  test("keeps referral rewards as one-link placeholders without cash-out actions", async () => {
+  test("keeps referral rewards unavailable without a client and exposes no cash-out actions", async () => {
     render(createElement(UserPortalPage, { portalClient: portalClient() }));
 
     const portalNav = await enterPortal();
     fireEvent.click(within(portalNav).getByRole("button", { name: "推荐奖励" }));
 
     expect(await screen.findByRole("heading", { name: "推广绩效" })).not.toBeNull();
-    expect(screen.getAllByText("我的推荐链接")).toHaveLength(1);
-    expect(screen.getByText("有效注册")).not.toBeNull();
-    expect(screen.getByText("归因消费")).not.toBeNull();
-    expect(screen.getByText("待确认奖励")).not.toBeNull();
-    expect(screen.getByText("可用奖励")).not.toBeNull();
-    expect(screen.getAllByText("--")).toHaveLength(4);
-    expect((screen.getByRole("button", { name: "生成推荐链接（暂未开放）" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByText("推荐活动暂未开放。")).not.toBeNull();
+    expect(screen.queryByRole("button", { name: "生成推荐链接" })).toBeNull();
+    expect(screen.queryByRole("textbox", { name: "我的推荐链接" })).toBeNull();
     expect(screen.queryByRole("button", { name: /提现/ })).toBeNull();
     expect(screen.queryByRole("button", { name: /转账/ })).toBeNull();
     expect(screen.queryByRole("button", { name: /Admin/ })).toBeNull();
+  });
+
+  test("referral navigation loads the attached client metrics and enables link creation and copying", async () => {
+    const { profile, performance } = referralFixture();
+    const getProfile = vi.fn(async () => profile);
+    const getPerformance = vi.fn(async () => performance);
+    const created = { ...profile, linkPath: `/r/${"B".repeat(32)}` };
+    const createLink = vi.fn(async () => created);
+    render(createElement(UserPortalPage, { portalClient: portalClient({
+      authenticate: vi.fn(authenticatedSessionWithRef),
+      referral: { getProfile, getPerformance, createLink }
+    }) }));
+    const portalNav = await enterPortal();
+    expect(getProfile).not.toHaveBeenCalled();
+    expect(getPerformance).not.toHaveBeenCalled();
+    fireEvent.click(within(portalNav).getByRole("button", { name: "推荐奖励" }));
+    const metrics = await screen.findByRole("region", { name: "推广指标" });
+    const request = { sessionRef: "portal_session_orders_test", signal: expect.any(AbortSignal) };
+    expect(getProfile).toHaveBeenCalledWith(request);
+    expect(getPerformance).toHaveBeenCalledWith(request);
+    for (const [label, value] of [["有效注册", "8"], ["首次充值人数", "2"], ["待确认奖励", "17 Coins"], ["可用奖励", "23 Coins"]]) {
+      expect(within(metrics).getByText(label).parentElement?.querySelector("dd")?.textContent).toBe(value);
+    }
+    expect(metrics).toHaveTextContent("好友首充合计：400 Coins");
+    expect(metrics).toHaveTextContent("充值转化率：25%");
+    expect(metrics).toHaveTextContent("已撤销奖励：3 Coins");
+    expect(createLink).not.toHaveBeenCalled();
+    const generate = screen.getByRole("button", { name: "生成推荐链接" });
+    expect(generate).toBeEnabled();
+    fireEvent.click(generate);
+    expect(await screen.findByRole("button", { name: "复制链接" })).toBeEnabled();
+    expect(createLink).toHaveBeenCalledExactlyOnceWith(request);
+    expect(screen.getByRole("textbox", { name: "我的推荐链接" }))
+      .toHaveValue(`${window.location.origin}${created.linkPath}`);
+  });
+
+  test("referral navigation uses the real HTTP client to issue a distribution-only link without inventing rewards", async () => {
+    const fixture = referralFixture();
+    const linkPath = `/r/${"D".repeat(32)}`;
+    const profile = { ...fixture.profile, policy: null, attributionDays: 14 };
+    const fetchFn = vi.fn(async (input: RequestInfo | URL) => new Response(JSON.stringify(
+      String(input).endsWith("/performance") ? { performance: fixture.performance }
+        : { profile: String(input).endsWith("/link") ? { ...profile, linkPath } : profile }
+    ), { status: 200 }));
+    const httpClient = createHttpUserPortalClient({ fetchFn });
+    render(createElement(UserPortalPage, { portalClient: portalClient({
+      authenticate: vi.fn(authenticatedSessionWithRef), referral: httpClient.referral
+    }) }));
+    const portalNav = await enterPortal();
+    fireEvent.click(within(portalNav).getByRole("button", { name: "推荐奖励" }));
+    expect(await screen.findByText("奖励活动暂未开放。")).toBeInTheDocument();
+    const panel = screen.getByRole("region", { name: "推广绩效" });
+    expect(within(panel).getByText("8")).toBeInTheDocument();
+    expect(panel.querySelectorAll("dd")).toHaveLength(1);
+    expect(panel).not.toHaveTextContent(/Coins|首次充值人数|25%/);
+    fireEvent.click(within(panel).getByRole("button", { name: "生成推荐链接" }));
+    expect(await within(panel).findByRole("textbox", { name: "我的推荐链接" })).toHaveValue(`${window.location.origin}${linkPath}`);
+    expect(within(panel).getByRole("button", { name: "复制链接" })).toBeEnabled();
+    expect(fetchFn.mock.calls.map(([url]) => String(url))).toEqual([
+      "/api/portal/referral/profile", "/api/portal/referral/performance", "/api/portal/referral/link"
+    ]);
+  });
+
+  test("referral navigation treats a disabled backend 404 as unavailable without invented zero metrics", async () => {
+    const fetchFn = vi.fn(async () => new Response(null, { status: 404 }));
+    const httpClient = createHttpUserPortalClient({ fetchFn });
+    render(createElement(UserPortalPage, { portalClient: portalClient({
+      authenticate: vi.fn(authenticatedSessionWithRef), referral: httpClient.referral
+    }) }));
+    const portalNav = await enterPortal();
+    expect(fetchFn).not.toHaveBeenCalled();
+    fireEvent.click(within(portalNav).getByRole("button", { name: "推荐奖励" }));
+    expect(await screen.findByText("推荐活动暂未开放。")).toBeInTheDocument();
+    const panel = screen.getByRole("region", { name: "推广绩效" });
+    expect(within(panel).queryByRole("region", { name: "推广指标" })).not.toBeInTheDocument();
+    expect(panel.querySelectorAll("dd")).toHaveLength(0);
+    expect(panel).not.toHaveTextContent(/0 Coins|0%/);
+    expect(within(panel).queryByRole("button", { name: "生成推荐链接" })).not.toBeInTheDocument();
+    expect(within(panel).queryByRole("textbox", { name: "我的推荐链接" })).not.toBeInTheDocument();
+    expect(fetchFn.mock.calls).toHaveLength(2);
   });
 
   test("uses user-facing wording instead of internal entitlement language", async () => {

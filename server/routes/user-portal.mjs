@@ -1,3 +1,4 @@
+import { readReferralCookie } from './portal-referral.mjs';
 import { Router } from "express";
 import { types as utilTypes } from "node:util";
 import { createPortalBrowserSessionTransport } from "../services/platform/portal-browser-session-transport.mjs";
@@ -394,7 +395,7 @@ export function userPortalRoutes(state, options = {}) {
       const result = registrations.submitRegistration({
         ...(req.body ?? {}),
         requestContext: requestContext(req)
-      });
+      }, { referralToken: readReferralCookie(req) });
       res.status(201).json({ ...result,
         ...(result.session ? {session:completedSession(req, res, result.session)} : {})
       });

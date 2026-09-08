@@ -10,6 +10,8 @@ const COIN_TYPES = new Set([
 const WALLET_STATUSES = new Set(["active", "frozen", "closed"]);
 const LEDGER_OPERATIONS = new Set([
   "credit",
+  "pending_to_reversed",
+  "available_to_reversed",
   "pending_to_available",
   "available_to_held",
   "held_to_available",
@@ -242,6 +244,10 @@ function ledgerDeltas(category, amountUnits) {
   switch (category) {
     case "credit":
       return [null, null, null, amountUnits];
+    case "pending_to_reversed":
+      return [0, -amountUnits, 0, -amountUnits];
+    case "available_to_reversed":
+      return [-amountUnits, 0, 0, -amountUnits];
     case "pending_to_available":
       return [amountUnits, -amountUnits, 0, 0];
     case "available_to_held":

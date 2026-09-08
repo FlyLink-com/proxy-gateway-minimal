@@ -1,6 +1,6 @@
 # Coins-First Catalog and Referral Decision
 
-Last updated: 2026-08-30, America/Los_Angeles.
+Last updated: 2026-09-08, America/Los_Angeles.
 
 ```yaml
 document_metadata:
@@ -8,7 +8,7 @@ document_metadata:
   lifecycle: active
   authority_scope: coins_first_catalog_referral
   superseded_by: null
-  last_verified_at: 2026-08-30
+  last_verified_at: 2026-09-08
   production_authority: false
 ```
 
@@ -18,8 +18,8 @@ document_metadata:
 > - Production impact: None
 > - Source of truth for: the approved target Coins-first catalog inputs and the
 >   Portal-account referral reward origin, basis, exclusions, and lifecycle
-> - Not a source of truth for: current source availability, numeric reward
->   rate, unresolved discount or price-difference policy, provider state,
+> - Not a source of truth for: current source availability,
+>   unresolved discount or price-difference policy, provider state,
 >   schema state, feature flags, deployment, or production runtime
 > - Execution authority: None
 
@@ -137,6 +137,47 @@ cumulative target against the original first-recharge settlement and reverse
 only the additional difference. A full refund or chargeback reverses the
 remaining reward. Reversal of the first recharge never restores first-recharge
 eligibility for a later recharge.
+
+### Approved initial referral policy (2026-09-08)
+
+The operator subsequently approved these initial reward operands in the project
+conversation, including the waiting-period and rounding clarifications:
+
+| Operand | Approved value |
+| --- | --- |
+| Origin and basis | One reward per referred account, on the first verified external recharge's actual committed `paid_coins` credit only |
+| Rate | 20%, represented as `rateBps: 2000` |
+| Rounding | `floor`; discard the fractional Coin |
+| Registration attribution | 60 days from the last valid referral landing; registration fixes the relationship |
+| Confirmation delay | 7 days from the original paid-Coins credit |
+| Delivery | Automatic internal Coins confirmation after the delay and authoritative internal payment, attribution, account and recorded-refund checks |
+| Asset | Non-expiring, closed-loop `reward_coins`; no cash payment or withdrawal |
+
+For example, a qualifying first credit of 103 paid Coins accrues 20 pending
+reward Coins. A later recharge creates no additional referral reward. Seven
+elapsed days alone do not authorize release: the original credited payment and
+wallet origin must still match, the attribution and accounts must be valid,
+and all internally recorded refund reversals must be consistent. Incomplete or
+ambiguous internal facts leave the reward pending or explicitly unreconciled.
+
+The operator clarified that delivery is entirely internal Coins bookkeeping.
+It does not require external payment to a promoter, a new settlement provider,
+or a provider-wide refund-coverage feed. An internal confirmation records the
+checks it actually performed; it does not assert that an external provider has
+no unreported refund. Trusted refund facts, when recorded, continue through the
+existing cumulative reversal path. Automatic confirmation is the approved
+target, not a claim that it has been deployed.
+
+The exact future `effectiveAt`, immutable policy reference/version and canonical
+policy digest must be bound before activation. Do not backdate a new policy or
+replace an original first recharge that had no applicable policy with a later
+recharge. Changed rates apply through a new policy version; earlier rewards and
+refund calculations retain their original policy.
+
+This decision approves the business operands and automatic-settlement target.
+Actual source readiness, internal ledger validation, schema, backup,
+artifact and production cutover remain separately verified execution facts. See
+`PORTAL_REFERRAL_REWARD_RELEASE.md` for the concrete activation boundary.
 
 The safe Portal performance projection is limited to:
 

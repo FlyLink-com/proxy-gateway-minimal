@@ -199,7 +199,7 @@ const navItems: Array<{ id: PortalView; label: string; description: string; icon
   { id: "marketplace", label: "商城", description: "浏览平台商品、套餐、流量包和增值项。", icon: ShoppingBag },
   { id: "orders", label: "订单管理", description: "查看订单历史、支付状态和付款详情。", icon: ReceiptText },
   { id: "wallet", label: "Coins 钱包", description: "查看可用余额、分类余额和钱包流水。", icon: WalletCards },
-  { id: "referrals", label: "推荐奖励", description: "查看推荐链接、归因绩效和奖励状态。", icon: Gift },
+  { id: "referrals", label: "推荐奖励", description: "查看推荐链接、邀请进度和奖励。", icon: Gift },
   { id: "profile", label: "个人中心", description: "管理账户信息、身份验证器和通行密钥。", icon: UserCog },
   { id: "settings", label: "设置", description: "管理界面语言和显示主题。", icon: Settings },
   { id: "support", label: "支持", description: "提交订阅、客户端或账户问题并追踪处理编号。", icon: Headphones }
@@ -478,7 +478,7 @@ function localizedPortalViewCopy(view: PortalView, locale: PortalAuthLocale) {
     },
     referrals: {
       label: uiText(locale, "推荐奖励", "Referral rewards"),
-      description: uiText(locale, "查看推荐链接、归因绩效和奖励状态。", "Review your referral link, attributed performance, and reward states.")
+      description: uiText(locale, "查看推荐链接、邀请进度和奖励。", "Review your referral link, invitation progress, and rewards.")
     },
     start: {
       label: uiText(locale, "开始使用", "Start using"),
@@ -2929,7 +2929,14 @@ export function UserPortalPage({
               rechargeModel={rechargeModel}
             />
           ) : null}
-          {activeView === "referrals" ? <ReferralRewardsPanel locale={locale} /> : null}
+          {activeView === "referrals" ? <ReferralRewardsPanel
+            locale={locale}
+            referralClient={portalClient.referral ?? null}
+            sessionRef={portalSession.sessionRef ?? null}
+            sessionGeneration={sessionGeneration}
+            onSessionInvalid={invalidateSession}
+            onOpenWallet={() => setActiveView("wallet")}
+          /> : null}
           {activeView === "start" ? (
             <UseGuide
               key={portalSession.sessionRef ?? "portal-session-none"}

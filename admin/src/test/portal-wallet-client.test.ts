@@ -178,6 +178,24 @@ const FORMULA_CASES: Array<{
   }
 ];
 
+function reversalEntry(
+  category: "pending_to_reversed" | "available_to_reversed",
+  amountUnits: number
+): PortalWalletLedgerEntry {
+  return {
+    entryRef: `entry_${category}`,
+    category,
+    coinType: "reward_coins",
+    amountUnits,
+    availableDeltaUnits: category === "available_to_reversed" ? -amountUnits : 0,
+    pendingDeltaUnits: category === "pending_to_reversed" ? -amountUnits : 0,
+    heldDeltaUnits: 0,
+    totalDeltaUnits: -amountUnits,
+    relatedOrderRef: null,
+    occurredAt: "2026-09-08T12:00:00.000Z"
+  };
+}
+
 function clone<T>(value: T): T {
   return structuredClone(value);
 }
@@ -524,6 +542,57 @@ describe("Portal Wallet HTTP client", () => {
         limit: 1
       }));
     }
+  });
+
+  test.each([
+    ["pending_to_reversed", 1],
+    ["available_to_reversed", 1],
+    ["pending_to_reversed", Number.MAX_SAFE_INTEGER],
+    ["available_to_reversed", Number.MAX_SAFE_INTEGER]
+  ] as const)("accepts exact %s deltas at amount %s without double subtraction", async (category, amount) => {
+    const entry = reversalEntry(category, amount);
+    const wallet = walletOf(createHttpUserPortalClient({
+      fetchFn: vi.fn<typeof fetch>(async () => wireResponse(ledgerBody([entry])))
+    }));
+    await expect(wallet.listLedger({ sessionRef: "session_wallet_001", limit: 1 }))
+      .resolves.toEqual(ledgerBody([entry]));
+  });
+
+  test.each(["pending_to_reversed", "available_to_reversed"] as const)(
+    "rejects malformed or double-debit %s projections",
+    async category => {
+      const entry = reversalEntry(category, 7);
+      const invalidEntries = [
+        ...["availableDeltaUnits", "pendingDeltaUnits", "heldDeltaUnits", "totalDeltaUnits"]
+          .flatMap(field => [null, 7, -14, 0.5, "-7", Number.MAX_SAFE_INTEGER + 1]
+            .map(value => ({ ...entry, [field]: value }))),
+        { ...entry, totalDeltaUnits: 0 },
+        { ...entry, [category === "pending_to_reversed" ? "pendingDeltaUnits" : "availableDeltaUnits"]: 0 },
+        { ...entry, availableDeltaUnits: -7, pendingDeltaUnits: -7 },
+        ...[0, -7, 0.5, Number.MAX_SAFE_INTEGER + 1]
+          .map(amountUnits => ({ ...entry, amountUnits })),
+        { ...entry, totalDeltaUnits: -7, internalReversalRef: "private_detail" }
+      ];
+      for (const invalid of invalidEntries) {
+        const wallet = walletOf(createHttpUserPortalClient({
+          fetchFn: vi.fn<typeof fetch>(async () => wireResponse(ledgerBody([invalid])))
+        }));
+        await expectSafeFailure(wallet.listLedger({ sessionRef: "session_wallet_001", limit: 1 }));
+      }
+    }
+  );
+
+  test("accepts both reversal buckets alongside ordinary ledger entries", async () => {
+    const entries = [
+      reversalEntry("pending_to_reversed", 7),
+      reversalEntry("available_to_reversed", 11),
+      ...VALID_LEDGER_ENTRIES
+    ];
+    const wallet = walletOf(createHttpUserPortalClient({
+      fetchFn: vi.fn<typeof fetch>(async () => wireResponse(ledgerBody(entries)))
+    }));
+    await expect(wallet.listLedger({ sessionRef: "session_wallet_001", limit: 25 }))
+      .resolves.toEqual(ledgerBody(entries));
   });
 
   test("enforces descending row keys and the exact final-row cursor relation", async () => {

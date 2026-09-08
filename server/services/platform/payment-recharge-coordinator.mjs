@@ -21,7 +21,7 @@ function fail(code) {
   throw coordinatorError(code);
 }
 
-function plainObject(value, fields, code = "invalid_payment_recharge_request") {
+function plainObject(value, fields, code = "invalid_payment_recharge_request", optionalFields = []) {
   if (
     value === null
     || typeof value !== "object"
@@ -33,6 +33,7 @@ function plainObject(value, fields, code = "invalid_payment_recharge_request") {
   }
   const descriptors = Object.getOwnPropertyDescriptors(value);
   const keys = Reflect.ownKeys(descriptors);
+  fields = [...fields, ...optionalFields.filter(field => Object.hasOwn(descriptors, field))];
   if (
     keys.length !== fields.length
     || keys.some((key) => typeof key !== "string" || !fields.includes(key))
@@ -63,7 +64,7 @@ function canonicalDigest(value) {
   return createHash("sha256").update(JSON.stringify(value), "utf8").digest("hex");
 }
 
-function settlementIdentity(context, receipt) {
+export function paymentSettlementIdentity(context, receipt) {
   const settlementHash = canonicalDigest({
     adapterKey: context.adapterKey,
     merchantScopeDigest: receipt.merchantScopeDigest,
@@ -98,8 +99,15 @@ function assertMethod(value, name) {
 export function createPaymentRechargeCoordinator(options = {}) {
   const input = plainObject(options, [
     "store", "walletStore", "offerCatalog", "adapter", "nowFn", "refFactory",
-  ], "invalid_payment_recharge_coordinator");
-  const { store, walletStore, offerCatalog, adapter, nowFn, refFactory } = input;
+  ], "invalid_payment_recharge_coordinator", ["onCredited"]);
+  const { store, walletStore, offerCatalog, adapter, nowFn, refFactory, onCredited } = input;
+  if (onCredited !== undefined && typeof onCredited !== "function") fail("invalid_payment_recharge_coordinator");
+  async function observeCredit(accountId) {
+    if (!onCredited) return;
+    // The durable paid-Coins credit remains successful if reward processing fails.
+    // A replay or the bounded reconciliation worker recovers from stored facts.
+    try { await onCredited(accountId); } catch { /* referral reconciliation owns retry */ }
+  }
   for (const method of [
     "createOrder", "recordOperationReceipt", "acceptVerifiedPayment",
     "markOrderCredited", "markOrderReconciliationRequired",
@@ -184,10 +192,10 @@ export function createPaymentRechargeCoordinator(options = {}) {
       orderRef: accepted.order.orderRef,
       receiptRef: accepted.receipt.receiptRef,
     });
-    const identity = settlementIdentity(context, context.receipt);
+    const identity = paymentSettlementIdentity(context, context.receipt);
     if (
       context.priorVerifiedReceipt !== null
-      && !sameSettlement(identity, settlementIdentity(context, context.priorVerifiedReceipt))
+      && !sameSettlement(identity, paymentSettlementIdentity(context, context.priorVerifiedReceipt))
     ) {
       requireSettlementReconciliation(context);
     }
@@ -197,8 +205,9 @@ export function createPaymentRechargeCoordinator(options = {}) {
     if (hasWalletOperation) {
       if (
         context.creditedReceipt !== null
-        && sameSettlement(identity, settlementIdentity(context, context.creditedReceipt))
+        && sameSettlement(identity, paymentSettlementIdentity(context, context.creditedReceipt))
       ) {
+        await observeCredit(context.accountId);
         return publicResult(accepted.order, null, { replayed: true });
       }
       if (context.creditedReceipt !== null) {
@@ -249,6 +258,7 @@ export function createPaymentRechargeCoordinator(options = {}) {
     } catch {
       fail("payment_order_close_failed");
     }
+    await observeCredit(context.accountId);
     return publicResult(closed.order, Object.freeze({ ...wallet }));
   }
 

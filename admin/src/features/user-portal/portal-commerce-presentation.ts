@@ -39,6 +39,8 @@ export function portalLedgerCategoryLabel(
   const labels = locale === "zh"
     ? {
         credit: "Coins 入账",
+        pending_to_reversed: "待确认余额撤回",
+        available_to_reversed: "可用余额撤回",
         pending_to_available: "待确认转可用",
         available_to_held: "订单预留",
         held_to_available: "预留释放",
@@ -48,6 +50,8 @@ export function portalLedgerCategoryLabel(
       }
     : {
         credit: "Coins credited",
+        pending_to_reversed: "Pending balance reversed",
+        available_to_reversed: "Available balance reversed",
         pending_to_available: "Pending cleared",
         available_to_held: "Reserved for order",
         held_to_available: "Reservation released",

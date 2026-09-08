@@ -1,3 +1,4 @@
+import { createPortalReferralRouter } from './routes/portal-referral.mjs';
 import { createHash } from "node:crypto";
 import express from "express";
 import { join } from "node:path";
@@ -288,6 +289,18 @@ export function createApp(state, options = {}) {
   // Must precede the early recharge/wallet/commerce routers. Provider callbacks
   // are outside /api/portal and retain their own authentication.
   app.use(browserSessions.middleware);
+  if (state.platform?.portalReferralsEnabled === true) {
+    app.use(createPortalReferralRouter({service:state.platform.portalReferrals,
+      auth:state.platform.userPortalAuth,browserSessions,origin:state.platform.portalBrowserOrigin}));
+  }
+  app.use((req, res, next) => {
+    const path = req.path.toLowerCase();
+    if (state.platform?.portalReferralsEnabled !== true
+      && (path.startsWith('/r/') || path === '/api/portal/referral' || path.startsWith('/api/portal/referral/'))) {
+      res.status(404).end(); return;
+    }
+    next();
+  });
   const rechargeRoutesEnabled = portalCoinRechargeRoutesEnabled(state);
   if (rechargeRoutesEnabled) {
     app.use(createPortalCoinRechargeRouter({
