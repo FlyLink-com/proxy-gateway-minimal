@@ -827,7 +827,7 @@ test("portal registration rate-limits repeated trial registrations from the same
 });
 
 
-test("distribution HTTP landing cookie attributes registration without reward policy or financial writes", async () => {
+test("company-site landing preserves the Portal cookie for later registration without reward policy or financial writes", async () => {
   await withRegistrationState(async ({store,auth,accessRequests,registrations,humanChallenges,registrationEmailVerifications,referrals,referralDatabase}) => {
     const origin = "https://portal.example.test";
     const link = referrals.createLink("test_promoter");
@@ -856,7 +856,7 @@ test("distribution HTTP landing cookie attributes registration without reward po
         request.end();
       });
       assert.equal(landing.status,303);
-      assert.equal(landing.headers.location,`${origin}/portal/register`);
+      assert.equal(landing.headers.location,"https://gccwebos.com/#new-user");
       const [cookie] = landing.headers["set-cookie"];
       assert.match(cookie, /^__Host-PortalReferral=[A-Za-z0-9_-]{32}; Path=\/; HttpOnly; Secure; SameSite=Lax; Max-Age=259200$/);
       const verification = await issueRegistrationEmailVerification(baseUrl,"distribution-user@example.test");

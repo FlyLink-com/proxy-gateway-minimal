@@ -9,6 +9,7 @@ import {
 } from "../routes/portal-referral.mjs";
 import { listen } from "./helpers/listen.mjs";
 const ORIGIN = "https://portal.example.test",
+  LANDING = "https://gccwebos.com/#new-user",
   CODE = "A".repeat(32),
   TOKEN = "B".repeat(32);
 async function fixture(t) {
@@ -88,11 +89,13 @@ async function fixture(t) {
 }
 const SESSION = { "x-portal-session": "portal_session_test" };
 
-test("landing sets opaque host-only secure cookie and always redirects to a fixed registration path", async (t) => {
+test("landing keeps attribution on Portal and redirects only to the fixed company-site welcome section", async (t) => {
   const f = await fixture(t);
   const r = await f.request(`/r/${CODE}?next=https://evil.test`);
   assert.equal(r.status, 303);
-  assert.equal(r.headers.location, `${ORIGIN}/portal/register`);
+  assert.equal(r.headers.location, LANDING);
+  assert.equal(r.text.includes(CODE), false);
+  assert.equal(r.text.includes(TOKEN), false);
   assert.match(
     r.headers["set-cookie"][0],
     /^__Host-PortalReferral=[A-Za-z0-9_-]{32}; Path=\/; HttpOnly; Secure; SameSite=Lax; Max-Age=86400$/,
@@ -101,17 +104,26 @@ test("landing sets opaque host-only secure cookie and always redirects to a fixe
   assert.equal(r.headers["referrer-policy"], "no-referrer");
   const invalid = await f.request("/r/invalid");
   assert.equal(invalid.status, 303);
+  assert.equal(invalid.headers.location, LANDING);
   assert.equal(invalid.headers["set-cookie"], undefined);
-  const head = await f.request(`/r/${CODE}`, { method: "HEAD" });
-  assert.equal(head.headers["set-cookie"], undefined);
-  const prefetch = await f.request(`/r/${CODE}`, {
-    headers: { Purpose: "prefetch" },
-  });
-  assert.equal(prefetch.headers["set-cookie"], undefined);
+  for (const options of [
+    { method: "HEAD" },
+    { headers: { Purpose: "prefetch" } },
+    { headers: { "Sec-Purpose": "prefetch;prerender" } },
+  ]) {
+    const scanner = await f.request(`/r/${CODE}?next=https://evil.test`, options);
+    assert.equal(scanner.status, 303);
+    assert.equal(scanner.headers.location, LANDING);
+    assert.equal(scanner.headers["set-cookie"], undefined);
+    assert.equal(scanner.headers["cache-control"], "no-store");
+    assert.equal(scanner.headers["referrer-policy"], "no-referrer");
+  }
   const wrongHost = await f.request(`/r/${CODE}`, {
     headers: { Host: "attacker.example" },
   });
   assert.equal(wrongHost.status, 503);
+  assert.equal(wrongHost.headers.location, undefined);
+  assert.equal(wrongHost.headers["set-cookie"], undefined);
   assert.equal(f.calls.filter((x) => x[0] === "capture").length, 2);
 });
 
@@ -156,6 +168,7 @@ test("link mutation requires same-origin host and Origin, denies malformed and u
     });
   assert.equal((await post({})).status, 403);
   assert.equal((await post({ Origin: "https://evil.example" })).status, 403);
+  assert.equal((await post({ Origin: new URL(LANDING).origin })).status, 403);
   assert.equal(
     (await post({ Origin: ORIGIN, Host: "evil.example" })).status,
     403,
