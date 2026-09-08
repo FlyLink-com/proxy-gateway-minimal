@@ -196,6 +196,32 @@ test("reconciliation apply uses an injected runtime adapter and returns a redact
   assert.doesNotMatch(JSON.stringify(report), /new_digest|old_digest|rotated_digest|same_digest|expired_digest/i);
 });
 
+test("reconciliation apply accepts a verified unchanged runtime without mutation", () => {
+  const report = buildCredentialReconciliationApplyPlan({
+    desiredState: reconciliationState(),
+    inputPath: "runtime:synthetic-idempotency",
+    executeProductionMutation: true,
+    runtimeAdapter: {
+      applyCredentialReconciliation() {
+        return {
+          status: "unchanged",
+          mutation: false,
+          configTest: { exitCode: 0, ok: true },
+          service: { name: "synthetic-xray.service", active: true, restarted: false },
+          listener: { tcp: true },
+          appliedAt: "2026-09-08T02:00:00.000Z"
+        };
+      }
+    }
+  });
+  assert.equal(report.ok, true);
+  assert.equal(report.mutation, false);
+  assert.equal(report.nextAction, "validate_runtime_state");
+  assert.equal(report.runtimeReceipt.status, "unchanged");
+  assert.equal(report.runtimeReceipt.service.restarted, false);
+  assert.deepEqual(report.blockers, []);
+});
+
 test("reconciliation apply accepts a pending remote data-plane handoff without local mutation", () => {
   const report = buildCredentialReconciliationApplyPlan({
     desiredState: reconciliationState({
