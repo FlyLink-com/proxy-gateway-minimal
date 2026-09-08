@@ -67,7 +67,13 @@ export function runPortalReferralSchemaCli(argv) {
       // this isolated in-memory copy, never on the source database connection.
       const bytes = source.serialize(),
         before = digest(bytes);
-      snapshot = new Database(bytes);
+      // sqlite3_deserialize cannot read WAL-format images. Normalize only this
+      // independent input buffer, retaining the original bytes for source checks.
+      // https://www.sqlite.org/c3ref/deserialize.html
+      const snapshotBytes = Buffer.from(bytes);
+      snapshotBytes[18] = 1;
+      snapshotBytes[19] = 1;
+      snapshot = new Database(snapshotBytes);
       applied = applyPortalReferralMigration(snapshot, {
         expectedMigrationId: REFERRAL_MIGRATION_ID,
         expectedDdlChecksum: REFERRAL_DDL_CHECKSUM,

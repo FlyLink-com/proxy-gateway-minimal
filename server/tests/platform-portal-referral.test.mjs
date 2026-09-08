@@ -2,7 +2,7 @@ import { Worker } from "node:worker_threads";
 import assert from "node:assert/strict";
 import test from "node:test";
 import Database from "better-sqlite3";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -1130,6 +1130,59 @@ test("schema CLI validates and dry-runs an existing database without source muta
     ]).exitCode,
     2,
   );
+});
+
+test("schema CLI dry-run reads committed WAL data and schema without changing the source", (t) => {
+  const dir = mkdtempSync(join(tmpdir(), "referral-cli-wal-"));
+  const path = join(dir, "state.sqlite");
+  const keeper = new Database(path);
+  t.after(() => keeper.close());
+  keeper.pragma("journal_mode=WAL");
+  keeper.pragma("wal_autocheckpoint=0");
+  keeper.pragma("wal_checkpoint(TRUNCATE)");
+  const checkpointedFile = readFileSync(path);
+  // The prerequisite schema and this account commit only to WAL. A preview
+  // that accidentally reads the checkpointed main file cannot migrate it.
+  const f = fixture(t, { path, migrate: false });
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  f.db.pragma("wal_autocheckpoint=0");
+  f.addAccount("wal_committed");
+  assert.deepEqual(readFileSync(path), checkpointedFile);
+  const walBefore = readFileSync(`${path}-wal`);
+  assert.ok(walBefore.length > 32);
+  const viewBefore = f.db.serialize();
+  assert.deepEqual([...viewBefore.subarray(18, 20)], [2, 2]);
+  const schemaBefore = f.db
+    .prepare(
+      "select type, name, tbl_name, sql from sqlite_schema order by type, name",
+    )
+    .all();
+  const accountCount = () =>
+    f.db.prepare("select count(*) n from platform_accounts").get().n;
+  const accountsBefore = accountCount();
+  const dry = runPortalReferralSchemaCli([
+    "--mode",
+    "dry-run",
+    "--db-path",
+    path,
+  ]);
+  assert.equal(dry.exitCode, 0);
+  assert.equal(dry.output.applied, true);
+  assert.equal(dry.output.sourceChanged, false);
+  assert.deepEqual(f.db.serialize(), viewBefore);
+  assert.deepEqual(readFileSync(path), checkpointedFile);
+  assert.deepEqual(readFileSync(`${path}-wal`), walBefore);
+  assert.deepEqual(
+    f.db
+      .prepare(
+        "select type, name, tbl_name, sql from sqlite_schema order by type, name",
+      )
+      .all(),
+    schemaBefore,
+  );
+  assert.equal(accountCount(), accountsBefore);
+  assert.equal(f.db.pragma("journal_mode", { simple: true }), "wal");
+  assert.equal(validatePortalReferralSchema(f.db), false);
 });
 
 test("policy CLI requires reviewed canonical digest before publication and exposes no file error details", (t) => {
