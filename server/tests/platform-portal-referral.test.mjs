@@ -31,6 +31,8 @@ import { runPortalReferralSchemaCli } from "../../scripts/platform-portal-referr
 import { createPortalReferralService } from "../services/platform/portal-referral-service.mjs";
 
 const NOW = "2026-09-08T00:00:00.000Z";
+// createCoinHold compares expiresAt to SQLite wall-clock now, not fixture nowFn.
+const HOLD_EXPIRES_AT = "2099-01-01T00:00:00.000Z";
 // Synthetic fixture operands only; these are not production business defaults.
 const POLICY = {
   policyRef: "test_policy",
@@ -685,7 +687,7 @@ test("spent 20 percent first-recharge rewards require reconciliation without rev
   const otherPromoterBefore = f.service.performance("other_promoter");
   const hold = f.wallet.createCoinHold({
     walletRef: lotBefore.wallet_ref, purpose: "product_purchase", purposeRef: "purchase_spent_reward",
-    amountUnits: 20, acceptedCoinTypes: ["reward_coins"], expiresAt: "2026-09-16T00:00:00.000Z",
+    amountUnits: 20, acceptedCoinTypes: ["reward_coins"], expiresAt: HOLD_EXPIRES_AT,
     operation: op("hold_spent_20_percent"),
   });
   f.wallet.captureCoinHold({ holdRef: hold.resultRef, operation: op("capture_spent_20_percent") });
@@ -806,7 +808,7 @@ test("internal settlement preserves its confirmation basis when a held refund la
   const lot = f.db.prepare("select * from platform_coin_lots where lot_ref=?").get(f.row().reward_lot_ref);
   const hold = f.wallet.createCoinHold({ walletRef: lot.wallet_ref, purpose: "product_purchase",
     purposeRef: "internal_confirmed_purchase", amountUnits: 20, acceptedCoinTypes: ["reward_coins"],
-    expiresAt: "2026-09-16T00:00:00.000Z", operation: op("internal_reward_hold") });
+    expiresAt: HOLD_EXPIRES_AT, operation: op("internal_reward_hold") });
   assert.deepEqual(f.refund(first.orderRef, 23, "internal_held_refund"), { status: "reconciliation_required" });
   assert.deepEqual(f.service.settle(), []);
   f.wallet.releaseCoinHold({ holdRef: hold.resultRef, operation: op("internal_reward_release") });
@@ -1052,7 +1054,7 @@ test("held rewards enter reconciliation and recover after hold release without d
     purposeRef: "purchase_1",
     amountUnits: 12,
     acceptedCoinTypes: ["reward_coins"],
-    expiresAt: "2026-09-11T00:00:00.000Z",
+    expiresAt: HOLD_EXPIRES_AT,
     operation: op("hold"),
   });
   assert.equal(f.refund(order.orderRef, 100).status, "reconciliation_required");
