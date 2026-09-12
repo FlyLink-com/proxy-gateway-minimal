@@ -6,16 +6,16 @@ document_metadata:
   lifecycle: active
   authority_scope: release_traceability
   superseded_by: null
-  last_verified_at: 2026-08-28
+  last_verified_at: 2026-09-12
   production_authority: false
 ```
 
 > Status:
 > - Type: Active source-to-production traceability baseline
 > - Risk: C
-> - Last updated: 2026-08-28, America/Los_Angeles
-> - Source reconciliation cutoff observed on 2026-08-28:
->   `master@2824d01f9523ff39805083744e7b0c4f30bfef50`
+> - Last updated: 2026-09-12, America/Los_Angeles
+> - Source reconciliation cutoff observed on 2026-09-12:
+>   `master@c8cb21d00479db40a288eed4ad7d1a75f819e1b0`
 > - Latest recorded production deployment event: 2026-08-26, deployed source
 >   `b5ca23db58c55f2d73ec59ffa9525f85b92a8a9c`; promotion-09 ended
 >   `promoted_verified` on release `control-plane-b5ca23db-a3-sync-20260825`
@@ -436,19 +436,21 @@ not current-`master` integration evidence.
 PRs #476 and #479 are no longer open. Their status and Gate narrative above are
 historical evidence only and must not be used to sequence current work.
 
-## Source Reconciliation Boundary (2026-08-28)
+## Source Reconciliation Boundary (2026-09-12)
 
-The Git source cutoff observed on 2026-08-28 is
-`master@2824d01f9523ff39805083744e7b0c4f30bfef50`. The latest recorded
+The Git source cutoff observed on 2026-09-12 is
+`master@c8cb21d00479db40a288eed4ad7d1a75f819e1b0`. The latest recorded
 control-plane deployment event used source
 `b5ca23db58c55f2d73ec59ffa9525f85b92a8a9c` in the 2026-08-26 PR #667 Deploy
 Note. These identities are intentionally distinct, and this document performed
 no fresh runtime readback.
 
-The 2026-08-23 GitHub counts remain a dated inventory and are not silently
-treated as current. Current sequencing must be resolved from native live Issues
-and PRs, using Project #1 only as navigation; dated `project-state/*.json`
-records do not replace that live read.
+The 2026-09-12 GitHub inventory in `docs/CURRENT_RELEASE_STATE.md` recorded
+0 open PRs, 16 open Issues, and 69 remote heads. Earlier 2026-08-23 and
+2026-08-28 count sentences remain historical. Current sequencing must still
+be resolved from native live Issues and PRs, using Project #1 only as
+navigation; dated `project-state/*.json` records do not replace that live
+read.
 
 The capability record for deployed source
 `b5ca23db58c55f2d73ec59ffa9525f85b92a8a9c` includes Admin/Operations read

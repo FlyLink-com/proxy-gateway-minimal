@@ -76,8 +76,10 @@ project_status:
 | 部署基础 | #593 是设计/计划 Draft；#594 是 Foundation Draft，inventory 仅为 `inventory_only`，不构成制品发布或生产授权。 |
 | 生产状态 | 当前 live artifact、runtime identity、provider flags、schema 与服务状态未做新鲜盘点；最近记录的生产部署事件仍是 2026-07-20 的 `9982d378…`。 |
 
-以上是源码与仓库治理快照，不是生产健康声明。开放 PR、Issue、Actions 和 provider 状态
-属于可变事实，在审核、合并或生产决策前必须重新读取。
+以上是 2026-08-10 的源码与仓库治理快照，不是生产健康声明，也不是当前打开
+PR/Issue 清单。#592、#593、#594 已不再打开。2026-09-12 的可变 GitHub 计数见
+`docs/CURRENT_RELEASE_STATE.md` 的 Dated GitHub Inventory。开放 PR、Issue、
+Actions 和 provider 状态属于可变事实，在审核、合并或生产决策前必须重新读取。
 
 ### 工程成熟度下一阶段
 

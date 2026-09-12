@@ -6,7 +6,7 @@ document_metadata:
   lifecycle: active
   authority_scope: current_release_state
   superseded_by: null
-  last_verified_at: 2026-08-28
+  last_verified_at: 2026-09-12
   production_authority: false
 ```
 
@@ -14,7 +14,7 @@ document_metadata:
 > - Type: Dated documented release snapshot
 > - Version management baseline: `v3` artifact and runtime-identity foundation
 > - Git source reconciliation cutoff:
->   `master@2824d01f9523ff39805083744e7b0c4f30bfef50`, observed 2026-08-28;
+>   `master@c8cb21d00479db40a288eed4ad7d1a75f819e1b0`, observed 2026-09-12;
 >   this is not a permanent current-head claim
 > - Latest recorded control-plane deployment event: 2026-08-26, deployed source
 >   `b5ca23db58c55f2d73ec59ffa9525f85b92a8a9c`
@@ -71,6 +71,30 @@ This closes the A3 dependency-materialization and production-promotion outcome
 for `control-plane-app`. It does not activate wallet-first, deferred-runtime or
 Account Resource Authority functionality, apply their schema gates, or deploy
 the Portal, Admin, company-site or runtime-config release units.
+
+## Dated GitHub Inventory (2026-09-12)
+
+Read-only GitHub inventory on 2026-09-12. This is a dated mutable snapshot, not
+a live queue and not a production runtime claim. Native Issue and PR records
+remain authoritative for item state. `project-state/*.json` still must not copy
+these counts.
+
+- exact `master`: `c8cb21d00479db40a288eed4ad7d1a75f819e1b0` (merged PR #726)
+- open PRs: none
+- open Issues (16): #437, #438, #439, #522, #523, #524, #527, #551, #557,
+  #558, #559, #560, #597, #598, #673, and #695
+- remote heads: 69
+- Dependabot open alerts: 0
+- secret scanning: disabled
+- code-scanning alert inventory: unavailable; Code Security is not enabled
+- latest exact-`master` Release Artifact run: `34677102430` succeeded
+- recorded `control-plane-app` deployment source remains
+  `b5ca23db58c55f2d73ec59ffa9525f85b92a8a9c` (2026-08-26); this inventory
+  did not read production runtime
+
+Closed since the 2026-08-09 fifteen-issue snapshot: #521, #525, and #561.
+Draft PRs #592 and #594 remain closed unmerged; #593 remains merged
+docs-only. Those earlier item counts are historical context only.
 
 ## Dated Source And A3 Reconciliation (2026-08-23)
 
@@ -181,10 +205,10 @@ The detailed capability/gap matrix is
 2026-08-09—three open Draft PRs, no open non-Draft PR, and fifteen open
 Issues—are retained only as historical context. At the 2026-08-22 inventory,
 PR #592 and #594 are closed unmerged, PR #593 is merged docs-only, Issue #561
-is closed, and there are no open PRs. Those item counts and states are dated
-evidence only. Current sequencing must be resolved from native live Issues and
-PRs, using Project #1 only as navigation; `project-state/*.json` does not own
-the live queue.
+is closed, and there are no open PRs. The 2026-09-12 inventory above replaces
+those item counts as the latest dated GitHub snapshot. Current sequencing must
+still be resolved from native live Issues and PRs, using Project #1 only as
+navigation; `project-state/*.json` does not own the live queue.
 
 Source availability, clean validation, migrations, feature flags, and build
 artifacts do not establish activation of the wallet-first/deferred/Authority
@@ -427,8 +451,8 @@ action remains behind its separate exact Risk A gate and current evidence.
 
 ## Git Source And Recorded Deployment-Source Drift
 
-The Git source cutoff observed on 2026-08-28 is
-`master@2824d01f9523ff39805083744e7b0c4f30bfef50`. The latest recorded
+The Git source cutoff observed on 2026-09-12 is
+`master@c8cb21d00479db40a288eed4ad7d1a75f819e1b0`. The latest recorded
 control-plane deployment event used source
 `b5ca23db58c55f2d73ec59ffa9525f85b92a8a9c` on 2026-08-26. These identities
 are intentionally distinct. This docs-only reconciliation performed no fresh
@@ -462,7 +486,10 @@ lane. Those remain separate Risk A actions.
 - `docs/OPERATIONS_PLANE_SOURCE_REALITY.md`
 - Detailed source-capability cutoff
   `master@02fc63a3f949b748dcccf26ba7d310be82f4b6df`
-- Git source reconciliation cutoff observed 2026-08-28
+- Git source reconciliation cutoff observed 2026-09-12
+  `master@c8cb21d00479db40a288eed4ad7d1a75f819e1b0`
+- Exact-`master` Release Artifact run `34677102430` (source evidence only)
+- Prior Git source reconciliation cutoff observed 2026-08-28
   `master@2824d01f9523ff39805083744e7b0c4f30bfef50`
 - GitHub CI run `32854893874`
 - GitHub CodeQL run `32854893258`
