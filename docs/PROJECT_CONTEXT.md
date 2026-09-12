@@ -1,6 +1,6 @@
 # Project Context
 
-Last updated: 2026-08-28, America/Los_Angeles.
+Last updated: 2026-09-12, America/Los_Angeles.
 
 ```yaml
 document_metadata:
@@ -8,7 +8,7 @@ document_metadata:
   lifecycle: active
   authority_scope: project_context
   superseded_by: null
-  last_verified_at: 2026-08-29
+  last_verified_at: 2026-09-12
   production_authority: false
 ```
 
@@ -16,8 +16,7 @@ document_metadata:
 > - Type: Active current-state handoff
 > - Risk: C
 > - Source reconciliation cutoff:
->   `master@2824d01f9523ff39805083744e7b0c4f30bfef50` (observed immediately before this
->   docs-only change)
+>   `master@c8cb21d00479db40a288eed4ad7d1a75f819e1b0` (observed 2026-09-12)
 > - Latest recorded control-plane deployment-event source:
 >   `b5ca23db58c55f2d73ec59ffa9525f85b92a8a9c` (2026-08-26)
 > - Git-source / recorded-deployment-source state: Drift at these dated
@@ -25,8 +24,9 @@ document_metadata:
 > - Delivery navigation projection:
 >   [GCC WebOS — Delivery Project #1](https://github.com/orgs/gccwebos-com/projects/1)
 > - Source, artifact, production-promotion and delayed public-health evidence
->   for A3 were reconciled on 2026-08-26; unrelated mutable GitHub, provider and
->   production facts retain their separately dated evidence
+>   for A3 were reconciled on 2026-08-26; GitHub Issue/PR counts were refreshed
+>   on 2026-09-12; provider and production runtime facts retain their separately
+>   dated evidence
 > - Production state: Refer to `docs/CURRENT_RELEASE_STATE.md`; this handoff
 >   records the release identity but does not duplicate its runtime evidence
 > - Production impact: None; this Risk C handoff changes no release, runtime,
@@ -122,10 +122,16 @@ Keep these distinctions explicit:
 
 Repository: `gccwebos-com/proxy-gateway-minimal`
 
-The source cutoff inspected immediately before this docs-only reconciliation
-was `master@2824d01f9523ff39805083744e7b0c4f30bfef50`. It is a dated reconciliation boundary, not a
-permanent current-head claim. Resolve the live `master` SHA before every later
-source decision.
+The source cutoff inspected for this docs-only count refresh is
+`master@c8cb21d00479db40a288eed4ad7d1a75f819e1b0`. It is a dated
+reconciliation boundary, not a permanent current-head claim. Resolve the live
+`master` SHA before every later source decision.
+
+The 2026-09-12 GitHub count snapshot is recorded in
+`docs/CURRENT_RELEASE_STATE.md` under Dated GitHub Inventory. That snapshot is
+mutable evidence only: 0 open PRs, 16 open Issues, 69 remote heads, and 0 open
+Dependabot alerts. Native Issue and PR records remain authoritative. This
+handoff still does not keep a live queue.
 
 The latest recorded control-plane deployment event used source
 `b5ca23db58c55f2d73ec59ffa9525f85b92a8a9c` and recorded release
@@ -138,8 +144,9 @@ Use [GCC WebOS — Delivery Project #1](https://github.com/orgs/gccwebos-com/pro
 its mutable projections of Issue/PR, status, lane, risk, validation, and
 production-impact fields. Verify current state, scope, review, and sequencing
 from fresh native Issue/PR and exact-SHA Check records; use fresh GitHub queries
-for counts, branches, and Milestones. Canonical docs and
-`project-state/*.json` intentionally do not copy those mutable facts.
+for counts, branches, and Milestones. `project-state/*.json` still must not copy
+those mutable facts. Canonical docs may retain one dated snapshot, currently the
+2026-09-12 inventory in `docs/CURRENT_RELEASE_STATE.md`.
 
 ## Current Source Capability Boundary
 
@@ -287,17 +294,18 @@ The latest retained security/governance observations remain separately dated:
 - the A3 release-source CI, CodeQL, Release Artifact, Dependency Artifact, and
   production dry-run evidence applies to
   `b5ca23db58c55f2d73ec59ffa9525f85b92a8a9c`, not to the later source cutoff;
-- the 2026-08-22 API readback reported zero open Dependabot alerts, secret
+- the 2026-09-12 API readback reported zero open Dependabot alerts, secret
   scanning disabled, and unavailable code-scanning alert inventory because
-  Code Security was not enabled;
+  Code Security is not enabled;
 - the same dated source inventory found 13 of 40 workflow Action `uses:`
   references full-SHA pinned and 27 mutable tags;
 - rulesets, required reviews, Environment protection, provider settings, and
   deployment settings require fresh live readback before relying on them.
 
-Issues #597 and #598 retain release-lifecycle and supply-chain work. Project
-status is navigation only and cannot upgrade these dated observations or create
-production authority.
+Issues #597 and #598 retain release-lifecycle and supply-chain work. Issues
+#673 and #695 are additional open release-maturity/governance index cards.
+Project status is navigation only and cannot upgrade these dated observations
+or create production authority.
 
 ## Dated Gap Observations — Fresh Read Required
 
@@ -321,8 +329,11 @@ before using one to select work.
    terminal identity readback; current runtime identity still requires a fresh
    read. Build evidence alone does not establish durable Portal/Admin artifacts
    or their production activation records.
-6. Mutable GitHub counts and governance/security settings require a fresh
-   readback when they matter to a decision.
+6. Mutable GitHub counts were refreshed on 2026-09-12 in
+   `docs/CURRENT_RELEASE_STATE.md`. Rulesets beyond the observed `Validate`
+   requirement, Environment protection, provider settings, and production
+   runtime identity still require a fresh readback when they matter to a
+   decision.
 7. A3 dependency materialization and `control-plane-app` promotion completed at
    exact source `b5ca23db...`; promotion-09 ended `promoted_verified`. The old
    XFS-only A3-2 inventory is historical, while schema/feature activation and
