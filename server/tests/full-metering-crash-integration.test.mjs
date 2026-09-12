@@ -67,6 +67,45 @@ const recovery = f => recoverFullMeteringJournal({ directory: f.directory, conte
 const commit = (f, extra = {}) => commitFullMeteringJournal({ directory: f.directory, context, previousCheckpoint: priorCheckpoint,
   nextCheckpoint, samples: batch(), applySamples: f.write, ...extra });
 
+for (const stage of ["pending_durable", "samples_committed", "checkpoint_durable"]) {
+  test(`automatic thirty-day retention and SQLite recovery preserve usage at ${stage}`, async t => {
+    const f = fixture(t, false), beforeRights = rights(f);
+    let now = START, value = 1000, present = true, connectionValue = 1000;
+    const options = { directory: f.directory, context, activationId, nowFn: () => now,
+      readInventory: () => ({ entries: bindings, retainedBindings: [] }), applySamples: f.write,
+      readSources: async () => FULL_METERING_CHANNELS.map((source, index) => ({ ...source, generation, observedAt: now,
+        observations: source.mode === "connections" && !present ? [] : [{ edgeCredentialRef: bindings[index].edgeCredentialRef,
+          uploadBytes: source.mode === "connections" ? connectionValue : value,
+          downloadBytes: source.mode === "connections" ? connectionValue : value,
+          ...(source.mode === "connections" ? { connectionId: "synthetic-retention" } : {}) }] })) };
+    await runFullMeteringCollection({ ...options, mode: "initialize" });
+    now = NEXT; value = connectionValue = 1005;
+    await runFullMeteringCollection({ ...options, mode: "collect" });
+    assertLedger(f, 5, 50);
+    now = LATER; present = false;
+    await runFullMeteringCollection({ ...options, mode: "collect" });
+    const before = readFullMeteringJournal({ directory: f.directory, context });
+    assert.equal(before.sources.at(-1).counterState.connectionHistory.count, 1);
+    now = new Date(Date.parse(LATER) + 30 * 86400000 + 1).toISOString();
+    present = true; connectionValue = 99000;
+    await assert.rejects(runFullMeteringCollection({ ...options, mode: "collect", onStage(value) {
+      if (value === stage) throw new Error("synthetic_retention_interrupt");
+    } }), /synthetic_retention_interrupt/);
+    assert.equal(recovery(f).recovered, true);
+    const after = readFullMeteringJournal({ directory: f.directory, context });
+    assert.equal(after.sequence, before.sequence + 1);
+    assert.equal(after.sources.at(-1).counterState.connectionHistory.count, 0);
+    assert.deepEqual(after.sources.at(-1).counterState.entries[0].usage, before.sources.at(-1).counterState.entries[0].usage);
+    assertLedger(f, 5, 50);
+    assert.equal(recovery(f).recovered, false);
+    assert.equal((await runFullMeteringCollection({ ...options, mode: "collect" })).sampleCount, 0);
+    now = new Date(Date.parse(now) + 60000).toISOString(); value += 3; connectionValue += 3;
+    assert.equal((await runFullMeteringCollection({ ...options, mode: "collect" })).recordedBytes, 30);
+    assertLedger(f, 10, 80);
+    assert.deepEqual(rights(f), beforeRights);
+  });
+}
+
 function crashChild(f, stage) {
   // A separate Node process exits without running a finally/close at an actual
   // journal failpoint. Only an owned disposable SQLite DB and journal are used.

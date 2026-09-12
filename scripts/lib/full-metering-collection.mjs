@@ -70,10 +70,12 @@ export async function runFullMeteringCollection({ directory, context, activation
       }
       const eligibleRefs = entries.map(entry => entry.edgeCredentialRef), retainedRefs = retained.map(entry => entry.edgeCredentialRef);
       const reconciled = prior ? reconcileVerifiedFullMeteringScope({ state: prior.counterState, eligibleRefs, retainedRefs }) : null;
-      if (reconciled?.receipt) transitions.push({ beforeState: prior.counterState, afterState: reconciled.nextState, receipt: reconciled.receipt });
+      // Receipt + digests retain the transition link without embedding two more
+      // full history snapshots in every scope/generation transition checkpoint.
+      if (reconciled?.receipt) transitions.push({ beforePayloadDigest: fullMeteringDigest(prior.counterState), afterPayloadDigest: fullMeteringDigest(reconciled.nextState), receipt: reconciled.receipt });
       const advanced = reconciled && reconciled.nextState.generation !== source.generation
         ? advanceVerifiedFullMeteringGeneration({ state: reconciled.nextState, generation: source.generation, verifiedAt: source.observedAt }) : null;
-      if (advanced?.receipt) transitions.push({ beforeState: reconciled.nextState, afterState: advanced.nextState, receipt: advanced.receipt });
+      if (advanced?.receipt) transitions.push({ beforePayloadDigest: fullMeteringDigest(reconciled.nextState), afterPayloadDigest: fullMeteringDigest(advanced.nextState), receipt: advanced.receipt });
       const outcome = transitionFullMeteringCounters({ state: advanced?.nextState ?? reconciled?.nextState ?? null, ...expected, generation: source.generation,
         eligibleRefs, retainedRefs, minObservedAt: startedAt, observedAt: source.observedAt, now, observations: source.observations });
       for (const delta of outcome.deltas) {

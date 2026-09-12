@@ -5,16 +5,37 @@
 import { createHash, randomUUID } from "node:crypto";
 import { closeSync, existsSync, fsyncSync, lstatSync, mkdirSync, openSync, readFileSync, realpathSync, renameSync, rmdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, isAbsolute, join, resolve } from "node:path";
+import { gzipSync, gunzipSync } from "node:zlib";
 
-const MAX_BYTES = 32 * 1024 * 1024;
+// Storage v2 keeps the logical v1 envelope/digest and replay ordering. Bound
+// compressed storage and decoded data independently; never inflate unbounded data.
+const LEGACY_MAX_BYTES = 32 * 1024 * 1024;
+const MAX_FILE_BYTES = 128 * 1024 * 1024;
+const MAX_DECODED_BYTES = 256 * 1024 * 1024;
+const COMPRESS_AT_BYTES = 1024 * 1024;
+const MAGIC = Buffer.from("GCCFMJ2\n");
 const fail = code => { throw Object.assign(new Error(code), { code }); };
 export function fullMeteringDigest(value) {
-  const canonical = item => Array.isArray(item) ? `[${item.map(canonical).join(",")}]`
-    : item && typeof item === "object" ? `{${Object.keys(item).sort().map(key => `${JSON.stringify(key)}:${canonical(item[key])}`).join(",")}}`
-      : JSON.stringify(item);
-  const serialized = canonical(value);
-  if (!serialized || serialized.length > MAX_BYTES) fail("full_metering_payload_invalid");
-  return createHash("sha256").update(serialized).digest("hex");
+  const hash = createHash("sha256");
+  let bytes = 0;
+  const emit = text => {
+    if (typeof text !== "string") fail("full_metering_payload_invalid");
+    bytes += Buffer.byteLength(text);
+    if (bytes > MAX_DECODED_BYTES) fail("full_metering_payload_invalid");
+    hash.update(text);
+  };
+  const canonical = item => {
+    if (Array.isArray(item)) {
+      emit("["); item.forEach((entry, index) => { if (index) emit(","); canonical(entry); }); emit("]");
+    } else if (item && typeof item === "object") {
+      emit("{"); Object.keys(item).sort().forEach((key, index) => {
+        if (index) emit(","); emit(JSON.stringify(key)); emit(":"); canonical(item[key]);
+      }); emit("}");
+    } else emit(JSON.stringify(item));
+  };
+  canonical(value);
+  if (!bytes) fail("full_metering_payload_invalid");
+  return hash.digest("hex");
 }
 function protectedPath(path, directory = false) {
   if (!isAbsolute(path)) fail("full_metering_path_invalid");
@@ -23,7 +44,7 @@ function protectedPath(path, directory = false) {
   if (info.isSymbolicLink() || (directory ? !info.isDirectory() : !info.isFile())
     || norm(realpathSync(path)) !== norm(resolve(path))) fail("full_metering_path_invalid");
   if (process.platform !== "win32" && ((info.mode & 0o077) !== 0 || info.uid !== process.getuid())) fail("full_metering_permissions_invalid");
-  if (!directory && (info.nlink !== 1 || info.size > MAX_BYTES)) fail("full_metering_file_invalid");
+  if (!directory && (info.nlink !== 1 || info.size > MAX_FILE_BYTES)) fail("full_metering_file_invalid");
 }
 function syncDirectory(directory) {
   // Windows cannot fsync a directory handle; privileged Linux validation must
@@ -41,27 +62,54 @@ function envelope(context, payload) {
   const body = { version: 1, context, payload };
   return { ...body, digest: fullMeteringDigest(body) };
 }
+function encode(context, payload) {
+  const bytes = Buffer.from(JSON.stringify(envelope(context, payload)));
+  if (bytes.length > MAX_DECODED_BYTES) fail("full_metering_payload_invalid");
+  if (bytes.length < COMPRESS_AT_BYTES) return bytes;
+  const header = Buffer.alloc(16);
+  MAGIC.copy(header); header.writeBigUInt64LE(BigInt(bytes.length), 8);
+  const compressed = gzipSync(bytes, { level: 1 });
+  if (compressed.length + header.length > MAX_FILE_BYTES) fail("full_metering_payload_invalid");
+  return Buffer.concat([header, compressed]);
+}
+function decode(bytes) {
+  if (!bytes.subarray(0, MAGIC.length).equals(MAGIC)) {
+    if (bytes.length > LEGACY_MAX_BYTES) fail("full_metering_file_invalid");
+    return bytes.toString("utf8");
+  }
+  if (bytes.length <= 16) fail("full_metering_encoding_invalid");
+  const declared = bytes.readBigUInt64LE(8);
+  if (declared < 1n || declared > BigInt(MAX_DECODED_BYTES)) fail("full_metering_decode_limit");
+  let decoded;
+  try { decoded = gunzipSync(bytes.subarray(16), { maxOutputLength: Number(declared) }); }
+  catch { fail("full_metering_encoding_invalid"); }
+  if (decoded.length !== Number(declared)) fail("full_metering_encoding_invalid");
+  return decoded.toString("utf8");
+}
 function read(directory, name, context) {
   protectedPath(directory, true);
   const path = join(directory, name);
   protectedPath(path);
   let data;
-  try { data = JSON.parse(readFileSync(path, "utf8")); } catch { fail("full_metering_json_invalid"); }
+  const decoded = decode(readFileSync(path));
+  try { data = JSON.parse(decoded); } catch { fail("full_metering_json_invalid"); }
   if (data?.version !== 1 || Object.keys(data).sort().join(",") !== "context,digest,payload,version"
     || data.digest !== fullMeteringDigest({ version: data.version, context: data.context, payload: data.payload })) fail("full_metering_digest_invalid");
   if (fullMeteringDigest(data.context) !== fullMeteringDigest(context)) fail("full_metering_context_changed");
   return data.payload;
 }
-function write(directory, name, context, payload, exclusive = false) {
+function write(directory, name, context, payload, exclusive = false, encoded = null) {
   protectedPath(directory, true);
   const target = join(directory, name);
   if (existsSync(target)) {
     protectedPath(target);
     if (exclusive) fail("full_metering_pending_recovery_required");
   }
+  // Complete bounded serialization before creating a temporary or mutating data.
+  const bytes = encoded ?? encode(context, payload);
   const temporary = join(directory, `.${name}.${randomUUID()}.tmp`);
   const fd = openSync(temporary, "wx", 0o600);
-  try { writeFileSync(fd, JSON.stringify(envelope(context, payload))); fsyncSync(fd); }
+  try { writeFileSync(fd, bytes); fsyncSync(fd); }
   finally { closeSync(fd); }
   renameSync(temporary, target);
   syncDirectory(directory);
@@ -96,11 +144,13 @@ export function commitFullMeteringJournal({ directory, context, previousCheckpoi
   if (existsSync(join(directory, "pending.json"))) fail("full_metering_pending_recovery_required");
   if (fullMeteringDigest(readFullMeteringJournal({ directory, context })) !== fullMeteringDigest(previousCheckpoint)) fail("full_metering_checkpoint_changed");
   const payload = { previousDigest: fullMeteringDigest(previousCheckpoint), nextCheckpoint, samples };
-  write(directory, "pending.json", context, payload, true);
+  const pendingBytes = encode(context, payload);
+  const checkpointBytes = encode(context, nextCheckpoint);
+  write(directory, "pending.json", context, payload, true, pendingBytes);
   onStage("pending_durable");
   applySynchronously(applySamples, samples);
   onStage("samples_committed");
-  write(directory, "checkpoint.json", context, nextCheckpoint);
+  write(directory, "checkpoint.json", context, nextCheckpoint, false, checkpointBytes);
   onStage("checkpoint_durable");
   removePending(directory);
   return { committed: true, sampleCount: samples.length };

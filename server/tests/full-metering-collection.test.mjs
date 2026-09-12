@@ -4,6 +4,7 @@ import { mkdtempSync, rmSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runFullMeteringCollection, FULL_METERING_CHANNELS } from "../../scripts/lib/full-metering-collection.mjs";
+import { readFullMeteringJournal } from "../../scripts/lib/full-metering-journal.mjs";
 const T0 = "2026-09-08T00:00:00.000Z", T1 = "2026-09-08T00:01:00.000Z", T2 = "2026-09-08T00:02:00.000Z";
 const context = { scopeDigest: "a".repeat(64), databaseIdentityDigest: "b".repeat(64) };
 function fixture(t) {
@@ -74,6 +75,11 @@ test("normal newly verified identities start pending while old counters keep con
   f.set(T1, 1005);
   const outcome = await runFullMeteringCollection({ ...f.opts, mode: "collect" });
   assert.equal(outcome.pendingStartCount, 1); assert.equal(outcome.recordedBytes, 50);
+  const checkpoint = readFullMeteringJournal({ directory: f.directory, context });
+  assert.equal(checkpoint.scopeTransitions.length, 1);
+  assert.deepEqual(Object.keys(checkpoint.scopeTransitions[0]).sort(), ["afterPayloadDigest", "beforePayloadDigest", "receipt"]);
+  assert.match(checkpoint.scopeTransitions[0].beforePayloadDigest, /^[a-f0-9]{64}$/);
+  assert.match(checkpoint.scopeTransitions[0].afterPayloadDigest, /^[a-f0-9]{64}$/);
 });
 test("verified runtime generation changes preserve old accounting and never charge new baseline values", async t => {
   const f = fixture(t);
