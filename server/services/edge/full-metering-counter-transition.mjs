@@ -1,4 +1,6 @@
 import { createHash } from "node:crypto";
+import { emptyFullMeteringConnectionHistory, readFullMeteringConnectionHistory, compactFullMeteringConnectionHistory,
+  hasFullMeteringClosedConnection } from "./full-metering-connection-history.mjs";
 
 const REF = /^[A-Za-z0-9._:-]{1,128}$/;
 const HASH = /^[a-f0-9]{64}$/;
@@ -10,6 +12,7 @@ const STATE_FIELDS = ["schemaVersion", "type", "mode", "sourceRef", "channelRef"
   "lastObservedAt", "lastObservationDigest", "entries", "connections", "stateDigest", "eligibleRefs", "retainedRefs",
   "archivedRefs", "retiredEntries", "retiredConnections", "scopeRevision", "previousStateDigest", "lastScopeChange",
   "generationRevision", "generationArchives", "generationStartedAt", "generationAwaitingObservation", "generationUnassignedGap"];
+const V2_STATE_FIELDS = [...STATE_FIELDS, "connectionHistory", "retentionMigration"];
 const boundaryDigest = (generation, verifiedAt) => digest({ type: "verified_generation_boundary", generation, verifiedAt });
 
 function fail(code = "counter_input_invalid") {
@@ -36,7 +39,20 @@ function canonical(value) {
   }
   return JSON.stringify(value);
 }
-const digest = value => createHash("sha256").update(canonical(value)).digest("hex");
+const digest = value => {
+  // Large packed histories must not be expanded into a second whole canonical
+  // state string just to calculate a digest. Keep the original byte order/hash.
+  const hash = createHash("sha256");
+  const visit = item => {
+    if (Array.isArray(item)) {
+      array(item); hash.update("["); item.forEach((entry, index) => { if (index) hash.update(","); visit(entry); }); hash.update("]");
+    } else if (item !== null && typeof item === "object") {
+      const keys = Reflect.ownKeys(item); requireCondition(keys.every(key => typeof key === "string")); object(item, keys);
+      hash.update("{"); keys.sort().forEach((key, index) => { if (index) hash.update(","); hash.update(`${JSON.stringify(key)}:`); visit(item[key]); }); hash.update("}");
+    } else hash.update(JSON.stringify(item));
+  };
+  visit(value); return hash.digest("hex");
+};
 function ref(value) { requireCondition(typeof value === "string" && REF.test(value)); return value; }
 function iso(value) {
   requireCondition(typeof value === "string" && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(value));
@@ -101,7 +117,8 @@ function normalize(request) {
 }
 
 function initialState(n) {
-  return { schemaVersion: 1, type: "full_metering_counter_state", mode: n.scope.mode,
+  return { schemaVersion: n.scope.mode === "connections" ? 2 : 1, type: "full_metering_counter_state", mode: n.scope.mode,
+    ...(n.scope.mode === "connections" ? { connectionHistory: emptyFullMeteringConnectionHistory(), retentionMigration: null } : {}),
     sourceRef: n.scope.sourceRef, channelRef: n.scope.channelRef, generation: n.generation,
     minObservedAt: n.scope.minObservedAt, scopeDigest: n.scopeDigest,
     eligibleRefs: [...n.scope.eligibleRefs], retainedRefs: [...n.scope.retainedRefs],
@@ -118,14 +135,25 @@ function validateState(raw, n = null) {
   // Digest is corruption detection, not an authorization token. The caller must
   // retain the entire state in protected storage and must not turn lost state into null.
   try {
-    object(raw, STATE_FIELDS);
-    requireCondition(raw.schemaVersion === 1 && raw.type === "full_metering_counter_state");
+    const version = raw && typeof raw === "object" ? Object.getOwnPropertyDescriptor(raw, "schemaVersion")?.value : null;
+    object(raw, version === 2 ? V2_STATE_FIELDS : STATE_FIELDS);
+    requireCondition([1, 2].includes(raw.schemaVersion) && raw.type === "full_metering_counter_state");
     requireCondition(["cumulative", "connections"].includes(raw.mode));
+    requireCondition(raw.schemaVersion !== 2 || raw.mode === "connections");
     ref(raw.sourceRef); ref(raw.channelRef); iso(raw.minObservedAt); iso(raw.lastObservedAt);
     requireCondition(raw.minObservedAt <= raw.lastObservedAt);
     for (const field of ["generation", "scopeDigest", "lastObservationDigest", "stateDigest"]) requireCondition(typeof raw[field] === "string" && HASH.test(raw[field]));
     const { stateDigest, ...payload } = raw;
     requireCondition(digest(payload) === stateDigest);
+    const historyBuffer = raw.schemaVersion === 2 ? readFullMeteringConnectionHistory(raw.connectionHistory,
+      { minObservedAt: raw.minObservedAt, lastObservedAt: raw.lastObservedAt }) : null;
+    if (raw.schemaVersion === 2 && raw.retentionMigration !== null) {
+      object(raw.retentionMigration, ["previousSchemaVersion", "previousStateDigest", "convertedAt", "originalArchiveDigests"]);
+      requireCondition(raw.retentionMigration.previousSchemaVersion === 1 && typeof raw.retentionMigration.previousStateDigest === "string" && HASH.test(raw.retentionMigration.previousStateDigest));
+      requireCondition(iso(raw.retentionMigration.convertedAt) >= raw.minObservedAt && raw.retentionMigration.convertedAt <= raw.lastObservedAt);
+      array(raw.retentionMigration.originalArchiveDigests);
+      requireCondition(raw.retentionMigration.originalArchiveDigests.length <= 128 && raw.retentionMigration.originalArchiveDigests.every(value => typeof value === "string" && HASH.test(value)));
+    }
     integer(raw.generationRevision); array(raw.generationArchives);
     requireCondition(raw.generationRevision === raw.generationArchives.length && raw.generationRevision <= 128);
     iso(raw.generationStartedAt);
@@ -133,6 +161,30 @@ function validateState(raw, n = null) {
     requireCondition(typeof raw.generationAwaitingObservation === "boolean");
     const knownGenerations = new Set();
     for (const [index, archive] of raw.generationArchives.entries()) {
+      if (raw.schemaVersion === 2) {
+        // A v2 archive is explicitly a usage summary, NOT a reconstruction of
+        // the old full payload. Original state/archive digests are audit links;
+        // summary contents have their own digest under the protected journal.
+        object(archive, ["version", "generation", "generationRevision", "nextGeneration", "verifiedAt", "lastObservedAt",
+          "entries", "sourceStateDigest", "sourceArchiveDigest", "archiveDigest"]);
+        requireCondition(archive.version === 2 && archive.generationRevision === index);
+        for (const field of ["generation", "nextGeneration", "sourceStateDigest", "archiveDigest"]) requireCondition(typeof archive[field] === "string" && HASH.test(archive[field]));
+        requireCondition(archive.sourceArchiveDigest === null || typeof archive.sourceArchiveDigest === "string" && HASH.test(archive.sourceArchiveDigest));
+        const { archiveDigest, ...summary } = archive;
+        requireCondition(digest(summary) === archiveDigest);
+        requireCondition(!knownGenerations.has(archive.generation)); knownGenerations.add(archive.generation);
+        requireCondition(!knownGenerations.has(archive.nextGeneration));
+        requireCondition(iso(archive.verifiedAt) >= iso(archive.lastObservedAt) && archive.lastObservedAt >= raw.minObservedAt);
+        requireCondition(archive.verifiedAt <= raw.lastObservedAt);
+        if (index > 0) requireCondition(raw.generationArchives[index - 1].nextGeneration === archive.generation
+          && raw.generationArchives[index - 1].verifiedAt <= archive.lastObservedAt);
+        const migrated = raw.retentionMigration?.originalArchiveDigests ?? [];
+        requireCondition(archive.sourceArchiveDigest === (index < migrated.length ? migrated[index] : null));
+        array(archive.entries);
+        requireCondition(canonical(archive.entries.map(entry => entry.edgeCredentialRef)) === canonical(refs(archive.entries.map(entry => entry.edgeCredentialRef))));
+        for (const entry of archive.entries) { object(entry, ["edgeCredentialRef", "usage"]); ref(entry.edgeCredentialRef); object(entry.usage, ["uploadBytes", "downloadBytes"]); bytes(entry.usage); }
+        continue;
+      }
       object(archive, ["snapshot", "nextGeneration", "verifiedAt", "archiveDigest"]);
       object(archive.snapshot, STATE_FIELDS.filter(field => field !== "generationArchives"));
       const { snapshot, nextGeneration, verifiedAt, archiveDigest } = archive;
@@ -151,6 +203,7 @@ function validateState(raw, n = null) {
       const { stateDigest: previousDigest, ...oldPayload } = snapshot;
       requireCondition(digest({ ...oldPayload, generationArchives: raw.generationArchives.slice(0, index) }) === previousDigest);
     }
+    if (raw.schemaVersion === 2 && raw.retentionMigration !== null) requireCondition(raw.retentionMigration.originalArchiveDigests.length <= raw.generationArchives.length);
     if (raw.generationRevision === 0) {
       requireCondition(raw.generationStartedAt === raw.minObservedAt && !raw.generationAwaitingObservation && raw.generationUnassignedGap === null);
     } else {
@@ -158,7 +211,7 @@ function validateState(raw, n = null) {
       requireCondition(last.nextGeneration === raw.generation && last.verifiedAt === raw.generationStartedAt && raw.previousStateDigest !== null);
       object(raw.generationUnassignedGap, ["startedAt", "verifiedAt", "baselineCompletedAt", "unassignedBytes"]);
       const gap = raw.generationUnassignedGap;
-      requireCondition(gap.startedAt === last.snapshot.lastObservedAt && gap.verifiedAt === last.verifiedAt && gap.unassignedBytes === null);
+      requireCondition(gap.startedAt === (raw.schemaVersion === 2 ? last.lastObservedAt : last.snapshot.lastObservedAt) && gap.verifiedAt === last.verifiedAt && gap.unassignedBytes === null);
       if (gap.baselineCompletedAt !== null) requireCondition(iso(gap.baselineCompletedAt) >= gap.verifiedAt && gap.baselineCompletedAt <= raw.lastObservedAt);
       if (raw.generationAwaitingObservation) requireCondition(raw.lastObservedAt === raw.generationStartedAt
         && raw.lastObservationDigest === boundaryDigest(raw.generation, raw.generationStartedAt) && gap.baselineCompletedAt === null);
@@ -200,7 +253,7 @@ function validateState(raw, n = null) {
         object(entry.usage, ["uploadBytes", "downloadBytes"]); bytes(entry.usage);
         object(entry.carryUsage, ["uploadBytes", "downloadBytes"]); bytes(entry.carryUsage);
         const priorGeneration = raw.generationArchives.find(a => a.nextGeneration === entry.generation);
-        const carried = priorGeneration?.snapshot.entries.find(e => e.edgeCredentialRef === entry.edgeCredentialRef)?.usage ?? zero();
+        const carried = (raw.schemaVersion === 2 ? priorGeneration?.entries : priorGeneration?.snapshot.entries)?.find(e => e.edgeCredentialRef === entry.edgeCredentialRef)?.usage ?? zero();
         requireCondition(canonical(entry.carryUsage) === canonical(carried));
         requireCondition(entry.usage.uploadBytes >= entry.carryUsage.uploadBytes && entry.usage.downloadBytes >= entry.carryUsage.downloadBytes);
         requireCondition(canonical(entry.connectionIds) === canonical(refs(entry.connectionIds)));
@@ -216,7 +269,7 @@ function validateState(raw, n = null) {
           }
         } else {
           requireCondition(entry.cursor === null);
-          if (entry.status === "observed") requireCondition(entry.connectionIds.length > 0);
+          if (entry.status === "observed" && raw.schemaVersion === 1) requireCondition(entry.connectionIds.length > 0);
         }
         entries.set(entry.edgeCredentialRef, entry);
       }
@@ -229,6 +282,10 @@ function validateState(raw, n = null) {
         ref(connection.connectionId); ref(connection.edgeCredentialRef); bytes(connection); iso(connection.observedAt);
         requireCondition(entries.has(connection.edgeCredentialRef));
         requireCondition(connection.generation === entries.get(connection.edgeCredentialRef).generation);
+        if (raw.schemaVersion === 2) {
+          requireCondition(connection.closedAt === null);
+          requireCondition(!hasFullMeteringClosedConnection(historyBuffer, connection.generation, connection.connectionId));
+        }
         const key = connectionKey(connection);
         requireCondition(!allConnectionIds.has(key)); allConnectionIds.add(key);
         requireCondition(connection.observedAt >= raw.minObservedAt && connection.observedAt <= raw.lastObservedAt);
@@ -248,6 +305,58 @@ function validateState(raw, n = null) {
   return structuredClone(raw);
 }
 
+function usageArchive(state, nextGeneration, verifiedAt, sourceArchiveDigest = null) {
+  const summary = { version: 2, generation: state.generation, generationRevision: state.generationRevision,
+    nextGeneration, verifiedAt, lastObservedAt: state.lastObservedAt,
+    entries: state.entries.map(entry => ({ edgeCredentialRef: entry.edgeCredentialRef, usage: { ...entry.usage } })),
+    sourceStateDigest: state.stateDigest, sourceArchiveDigest };
+  return { ...summary, archiveDigest: digest(summary) };
+}
+
+function synchronizeConnectionIndexes(state) {
+  for (const [entryField, connectionField] of [["entries", "connections"], ["retiredEntries", "retiredConnections"]]) {
+    const byOwner = new Map(state[entryField].map(entry => [entry.edgeCredentialRef, []]));
+    for (const connection of state[connectionField]) byOwner.get(connection.edgeCredentialRef).push(connection.connectionId);
+    for (const entry of state[entryField]) entry.connectionIds = byOwner.get(entry.edgeCredentialRef).sort(compare);
+  }
+}
+
+function retainConnectionHistory(state, observedAt, additionalClosed = []) {
+  const closed = [...additionalClosed, ...state.connections.filter(connection => connection.closedAt !== null),
+    ...state.retiredConnections.filter(connection => connection.closedAt !== null)];
+  const result = compactFullMeteringConnectionHistory(state.connectionHistory, closed, { minObservedAt: state.minObservedAt, observedAt });
+  state.connectionHistory = result.history;
+  state.connections = state.connections.filter(connection => connection.closedAt === null);
+  state.retiredConnections = state.retiredConnections.filter(connection => connection.closedAt === null);
+  synchronizeConnectionIndexes(state);
+  return result.buffer;
+}
+
+function prepareConnectionRetention(state, observedAt) {
+  if (state.mode !== "connections") return null;
+  let archivedClosed = [];
+  if (state.schemaVersion === 1) {
+    // validateState already verified every legacy archive against its original
+    // full-state digest. The migration is a new state, never an in-place rewrite
+    // of that evidence or a fabricated replacement of the original hashes.
+    const originalArchiveDigests = state.generationArchives.map(archive => archive.archiveDigest);
+    const boundaries = new Map(state.generationArchives.map(archive => [archive.snapshot.generation, archive.verifiedAt]));
+    for (const archive of state.generationArchives) {
+      for (const connection of [...archive.snapshot.connections, ...archive.snapshot.retiredConnections]) {
+        archivedClosed.push({ ...connection, closedAt: connection.closedAt ?? boundaries.get(connection.generation) ?? archive.verifiedAt });
+      }
+    }
+    for (const connection of state.retiredConnections) {
+      if (connection.closedAt === null && connection.generation !== state.generation) connection.closedAt = boundaries.get(connection.generation);
+    }
+    state.retentionMigration = { previousSchemaVersion: 1, previousStateDigest: state.stateDigest, convertedAt: observedAt, originalArchiveDigests };
+    state.connectionHistory = emptyFullMeteringConnectionHistory();
+    state.generationArchives = state.generationArchives.map(archive => usageArchive(archive.snapshot, archive.nextGeneration, archive.verifiedAt, archive.archiveDigest));
+    state.schemaVersion = 2;
+  }
+  return retainConnectionHistory(state, observedAt, archivedClosed);
+}
+
 /**
  * Pure, fail-closed transition over one complete, successful source snapshot.
  * `state: null` is allowed only for genuine first admission; callers own protected
@@ -260,8 +369,9 @@ function validateState(raw, n = null) {
  * `eligibleTotals`/`totals` (accepted usage since baseline, NOT raw traffic totals),
  * actual eligible `counters`, aggregate-only `summary`, and exact-replay `unchanged`.
  * `retiredTotals` holds previously metered archived usage, never a new charge.
- * New connections baseline independently; closed IDs remain tombstones and cannot
- * be reused in this generation. No I/O, resets, lifecycle actions or DB writes.
+ * New connections baseline independently; closed IDs remain compact tombstones
+ * for thirty days. An ID first seen after expiry establishes a zero-charge
+ * baseline, never a charge for its old cumulative bytes. No I/O or DB writes.
  */
 export function transitionFullMeteringCounters(request) {
   const n = normalize(request);
@@ -289,6 +399,7 @@ export function transitionFullMeteringCounters(request) {
     deltaByOwner.set(entry.edgeCredentialRef, accumulated);
   };
   if (!unchanged) {
+    const historyBuffer = prepareConnectionRetention(next, n.observedAt);
     next.previousStateDigest = previous?.stateDigest ?? null;
     if (n.scope.mode === "cumulative") {
       const observations = new Map(n.observations.map(o => [o.edgeCredentialRef, o]));
@@ -306,9 +417,13 @@ export function transitionFullMeteringCounters(request) {
       const entries = new Map(next.entries.map(e => [e.edgeCredentialRef, e]));
       const connections = new Map(next.connections.map(c => [c.connectionId, c]));
       const observations = new Map(n.observations.map(o => [o.connectionId, o]));
+      for (const observation of n.observations) requireCondition(!hasFullMeteringClosedConnection(historyBuffer, n.generation, observation.connectionId), "closed_connection_reappeared");
       for (const archived of next.retiredConnections) {
         const observation = observations.get(archived.connectionId);
-        if (observation && archived.generation === n.generation) requireCondition(observation.edgeCredentialRef === archived.edgeCredentialRef, "connection_identity_changed");
+        if (archived.generation === n.generation) {
+          if (observation) requireCondition(observation.edgeCredentialRef === archived.edgeCredentialRef, "connection_identity_changed");
+          else if (archived.closedAt === null) archived.closedAt = n.observedAt;
+        }
       }
       // Check all prior IDs before excluding retained observations, so changing an
       // observed connection's owner into a retained identity cannot hide drift.
@@ -332,8 +447,10 @@ export function transitionFullMeteringCounters(request) {
         entry.status = "observed";
         connections.set(observation.connectionId, { connectionId: observation.connectionId, edgeCredentialRef: observation.edgeCredentialRef, generation: n.generation, ...cursor(observation, n.observedAt), closedAt: null });
       }
-      requireCondition(connections.size + next.retiredConnections.length <= LIMIT);
       next.connections = [...connections.values()].sort((a, b) => compare(a.connectionId, b.connectionId));
+      if (next.connections.some(connection => connection.closedAt !== null) || next.retiredConnections.some(connection => connection.closedAt !== null)) retainConnectionHistory(next, n.observedAt);
+      else synchronizeConnectionIndexes(next);
+      requireCondition(next.connections.length + next.retiredConnections.length <= LIMIT);
     }
     next.lastObservedAt = n.observedAt;
     next.lastObservationDigest = n.observationDigest;
@@ -355,6 +472,8 @@ export function transitionFullMeteringCounters(request) {
       initializedCount: unchanged ? 0 : next.entries.filter(e => e.status === "observed" && pendingBefore.has(e.edgeCredentialRef)).length,
       retainedObservationCount: n.observations.filter(o => n.retained.has(o.edgeCredentialRef)).length,
       initializedConnectionCount, closedConnectionCount,
+      closedHistoryCount: next.connectionHistory?.count ?? 0,
+      connectionHistoryRetentionDays: next.mode === "connections" ? 30 : null,
       archivedIdentityCount: next.retiredEntries.length,
       activeConnectionCount: next.connections.filter(c => c.closedAt === null).length } };
 }
@@ -407,8 +526,9 @@ export function reconcileVerifiedFullMeteringScope(request) {
  * Advance only after the host driver has verified a new runtime instance, stable
  * known material/ownership and read provenance. This helper performs no host I/O.
  * `verifiedAt` is a trusted pre-read boundary or that verified read's timestamp.
- * Existing active cursors/connections and lifetime usage are preserved in a flat,
- * digest-verifiable archive. Every currently eligible identity starts pending in
+ * Cumulative states preserve their exact flat archives. TUIC v2 preserves usage
+ * summaries with original digest audit links and compact closure fingerprints,
+ * not old connection payloads. Every currently eligible identity starts pending in
  * the new generation; its first real pair is a baseline, never historical debit.
  * Unassigned gap bytes remain explicitly unknown (null). Persist receipt and both
  * states atomically; neither repeated same-generation resets nor old-ID generation
@@ -421,12 +541,21 @@ export function advanceVerifiedFullMeteringGeneration(request) {
   requireCondition(typeof generation === "string" && HASH.test(generation), "counter_generation_transition_invalid");
   iso(verifiedAt);
   requireCondition(verifiedAt >= before.lastObservedAt && generation !== before.generation
-    && !before.generationArchives.some(archive => archive.snapshot.generation === generation)
+    && !before.generationArchives.some(archive => (archive.version === 2 ? archive.generation : archive.snapshot.generation) === generation)
     && before.generationRevision < 128, "counter_generation_transition_invalid");
   const next = structuredClone(before);
-  const { generationArchives: ignored, ...snapshot } = structuredClone(before);
-  const body = { snapshot, nextGeneration: generation, verifiedAt };
-  next.generationArchives.push({ ...body, archiveDigest: digest(body) });
+  if (next.mode === "connections") {
+    prepareConnectionRetention(next, verifiedAt);
+    retainConnectionHistory(next, verifiedAt, [...next.connections, ...next.retiredConnections]
+      .map(connection => ({ ...connection, closedAt: verifiedAt })));
+    next.retiredConnections = [];
+    next.retiredEntries.forEach(entry => { entry.connectionIds = []; });
+    next.generationArchives.push(usageArchive(next, generation, verifiedAt));
+  } else {
+    const { generationArchives: ignored, ...snapshot } = structuredClone(before);
+    const body = { snapshot, nextGeneration: generation, verifiedAt };
+    next.generationArchives.push({ ...body, archiveDigest: digest(body) });
+  }
   next.generationRevision++;
   next.generation = generation;
   next.generationStartedAt = verifiedAt;

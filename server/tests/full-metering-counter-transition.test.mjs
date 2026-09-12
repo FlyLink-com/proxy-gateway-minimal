@@ -188,7 +188,8 @@ test("full metering: TUIC connections each baseline first then independently acc
   assert.equal(second.summary.initializedConnectionCount, 2);
   const third = step(second.nextState, [pair("user-a", 905, 806, "conn-b"), pair("user-b", 8, 10, "conn-c")], { mode: "connections", observedAt: t3, now: t3 });
   assert.deepEqual(third.deltas, [{ edgeCredentialRef: "user-a", uploadBytes: 5, downloadBytes: 6, totalBytes: 11, intervalStartedAt: t2, intervalEndedAt: t3 }, { edgeCredentialRef: "user-b", uploadBytes: 3, downloadBytes: 4, totalBytes: 7, intervalStartedAt: t2, intervalEndedAt: t3 }]);
-  assert.equal(third.nextState.connections.find(c => c.connectionId === "conn-a").closedAt, t3);
+  assert.equal(third.nextState.connections.some(c => c.connectionId === "conn-a"), false);
+  assert.equal(third.nextState.connectionHistory.count, 1);
   assert.equal(third.totals.totalBytes, 48);
 });
 
@@ -199,7 +200,8 @@ test("full metering: TUIC zero active connections close known cursors but do not
   assert.equal(second.nextState.entries[0].status, "observed");
   assert.equal(second.nextState.entries[1].status, "pending_start");
   assert.equal(second.summary.activeConnectionCount, 0);
-  assert.equal(second.nextState.connections[0].closedAt, t2);
+  assert.deepEqual(second.nextState.connections, []);
+  assert.equal(second.nextState.connectionHistory.count, 1);
 });
 
 test("full metering: TUIC duplicate connection IDs reject even across different identities", () => {
@@ -283,7 +285,9 @@ test("full metering: scope reconciliation retains TUIC closed and live connectio
     mode: "connections", eligibleRefs: ["user-b", "user-c"], retainedRefs: ["retained-a", "user-a"]
   });
   assert.equal(after.totals.totalBytes, 3);
-  assert.deepEqual(after.nextState.retiredConnections, changed.nextState.retiredConnections);
+  assert.deepEqual(after.nextState.retiredConnections, []);
+  assert.equal(after.nextState.connectionHistory.count, 1);
+  assert.deepEqual(after.nextState.retiredEntries[0].usage, changed.nextState.retiredEntries[0].usage);
   rejects(() => step(changed.nextState, [pair("user-b", 31, 42, "b1"), pair("user-c", 100, 200, "a1")], {
     mode: "connections", eligibleRefs: ["user-b", "user-c"], retainedRefs: ["retained-a", "user-a"]
   }), "connection_identity_changed");
@@ -469,7 +473,9 @@ test("full metering generation: TUIC old IDs may reappear only after verified ne
   const old = chargedState("connections");
   const changed = advance({ state: old, generation: newGeneration, verifiedAt: t3 }).nextState;
   assert.deepEqual(changed.connections, []);
-  assert.deepEqual(changed.generationArchives[0].snapshot.connections, old.connections);
+  assert.equal(changed.generationArchives[0].version, 2);
+  assert.equal(changed.generationArchives[0].sourceStateDigest, old.stateDigest);
+  assert.equal(changed.connectionHistory.count, old.connections.length);
   const first = step(changed, [pair("user-a", 1, 2, "conn-a")], { mode: "connections", generation: newGeneration, observedAt: t3, now: t3 });
   assert.deepEqual(first.deltas, []); assert.equal(first.totals.totalBytes, 30);
 });
@@ -521,7 +527,9 @@ test("full metering generation: reused new-generation connection IDs can retire 
   const first = step(advanced, [pair("user-b", 1, 2, "conn-a")], { mode: "connections", generation: newGeneration, observedAt: t3, now: t3,
     eligibleRefs: ["user-b"], retainedRefs: ["retained-a", "user-a"] }).nextState;
   const final = reconcile({ state: first, eligibleRefs: [], retainedRefs: ["retained-a", "user-a", "user-b"] }).nextState;
-  assert.equal(final.retiredConnections.length, 2);
-  assert.deepEqual(final.retiredConnections.map(c => c.generation), ["a".repeat(64), newGeneration]);
-  assert.deepEqual(final.retiredConnections.map(c => c.edgeCredentialRef), ["user-a", "user-b"]);
+  assert.equal(final.retiredConnections.length, 1);
+  assert.deepEqual(final.retiredConnections.map(c => c.generation), [newGeneration]);
+  assert.deepEqual(final.retiredConnections.map(c => c.edgeCredentialRef), ["user-b"]);
+  assert.equal(final.connectionHistory.count, 1);
+  assert.deepEqual(final.retiredEntries.map(entry => entry.edgeCredentialRef), ["user-a", "user-b"]);
 });
