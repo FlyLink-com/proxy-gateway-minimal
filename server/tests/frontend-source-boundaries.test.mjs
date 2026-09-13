@@ -183,7 +183,9 @@ void site;
   writeFixtureFile(
     rootDirectory,
     "admin/src/App.tsx",
-    `import preview from "./app/admin-fixture-preview";
+    `import authBoundary from "./pages/admin-auth-boundary";
+import operationsShell from "./pages/admin-operations-shell";
+import preview from "./app/admin-fixture-preview";
 import uiProjection from "./app/admin-ui-projection";
 import panel from "./components/primitives/panel-frame";
 import companySite from "./features/company-site/company-site-page";
@@ -191,7 +193,12 @@ import portalClient from "./features/user-portal/user-portal-client";
 import portalPage from "./features/user-portal/user-portal-page";
 import portalRoute from "./features/user-portal/user-portal-route";
 import usagePage from "./pages/subscription-usage-monitor-page";
+if (import.meta.env.DEV) {
+  void import("./pages/admin-production-baseline-preview");
+}
 void [
+  authBoundary,
+  operationsShell,
   preview,
   uiProjection,
   panel,
@@ -202,6 +209,31 @@ void [
   usagePage
 ];
 export default function App() {}
+`
+  );
+
+  writeFixtureFile(
+    rootDirectory,
+    "admin/src/pages/admin-auth-boundary.tsx",
+    "export default function AdminAuthBoundary() {}\n"
+  );
+  writeFixtureFile(
+    rootDirectory,
+    "admin/src/pages/admin-operations-shell.tsx",
+    `import "./admin-operations-shell.styles.css";
+export default function AdminOperationsShell() {}
+`
+  );
+  writeFixtureFile(
+    rootDirectory,
+    "admin/src/pages/admin-operations-shell.styles.css",
+    ".admin-operations-shell {}\n"
+  );
+  writeFixtureFile(
+    rootDirectory,
+    "admin/src/pages/admin-production-baseline-preview.tsx",
+    `import shell from "./admin-operations-shell";
+export default shell;
 `
   );
 
@@ -597,7 +629,7 @@ test("synthetic current contract passes with exact known debt", (t) => {
   assert.deepEqual(result.knownDebt, {
     adminToPortal: 3,
     adminToSite: 1,
-    fixtureEdges: 5
+    fixtureEdges: 6
   });
   assert.equal(result.productionAuthority, false);
   assert.equal(result.redacted, true);
@@ -619,6 +651,69 @@ test("synthetic unexpected Admin cross-surface edge fails closed", (t) => {
   const result = verifyFrontendSourceBoundaries({ rootDirectory });
   assertIssue(result, "admin_portal_edge_unexpected");
   assert.ok(issueCodes(result).has("app_sensitive_import_unexpected"));
+});
+
+test("synthetic missing App formal admin-auth-boundary import fails closed", (t) => {
+  const rootDirectory = createPassingFixture(t);
+  replaceFixtureText(
+    rootDirectory,
+    "admin/src/App.tsx",
+    'import authBoundary from "./pages/admin-auth-boundary";\n',
+    ""
+  );
+
+  const result = verifyFrontendSourceBoundaries({ rootDirectory });
+  assertIssue(result, "app_sensitive_import_missing");
+});
+
+test("synthetic missing App formal admin-operations-shell import fails closed", (t) => {
+  const rootDirectory = createPassingFixture(t);
+  replaceFixtureText(
+    rootDirectory,
+    "admin/src/App.tsx",
+    'import operationsShell from "./pages/admin-operations-shell";\n',
+    ""
+  );
+
+  const result = verifyFrontendSourceBoundaries({ rootDirectory });
+  assertIssue(result, "app_sensitive_import_missing");
+});
+
+test("synthetic missing App DEV preview import fails closed", (t) => {
+  const rootDirectory = createPassingFixture(t);
+  replaceFixtureText(
+    rootDirectory,
+    "admin/src/App.tsx",
+    'void import("./pages/admin-production-baseline-preview");',
+    ""
+  );
+
+  const result = verifyFrontendSourceBoundaries({ rootDirectory });
+  assertIssue(result, "app_sensitive_import_missing");
+});
+
+test("synthetic undeclared preview edge from formal shell fails closed", (t) => {
+  const rootDirectory = createPassingFixture(t);
+  appendFixtureFile(
+    rootDirectory,
+    "admin/src/pages/admin-operations-shell.tsx",
+    '\nimport preview from "./admin-production-baseline-preview";\nvoid preview;\n'
+  );
+
+  const result = verifyFrontendSourceBoundaries({ rootDirectory });
+  assertIssue(result, "fixture_edge_unexpected");
+});
+
+test("synthetic same-basename tsx and css remain ambiguous", (t) => {
+  const rootDirectory = createPassingFixture(t);
+  writeFixtureFile(
+    rootDirectory,
+    "admin/src/pages/admin-operations-shell.css",
+    ".ambiguous {}\n"
+  );
+
+  const result = verifyFrontendSourceBoundaries({ rootDirectory });
+  assertIssue(result, "ambiguous_local_import_resolution");
 });
 
 test("synthetic absolute /src cross-surface edge fails closed", (t) => {

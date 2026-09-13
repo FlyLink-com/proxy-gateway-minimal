@@ -7,9 +7,17 @@ import test from "node:test";
 import { verifyAdminBuildDirectory } from "../../scripts/verify-admin-build.mjs";
 
 const ADMIN_RUNTIME_MARKERS = [
+  "GCC WebOS",
   "Admin Console",
-  "/api/admin/overview",
-  "/api/admin/platform/subscription-usage-monitor"
+  "/api/admin-auth/session",
+  "/api/admin-auth/login",
+  "/api/admin-auth/totp/verify",
+  "/api/admin-auth/logout",
+  "/api/admin/platform/user-monitor",
+  "/api/admin/platform/accounts",
+  "/api/admin/platform/entitlements",
+  "/api/admin/platform/subscription-usage-monitor",
+  "/api/admin/platform/traffic-collector-status"
 ];
 
 async function writeAdminFixture(directory, javascript) {
@@ -84,7 +92,7 @@ test("admin static build verifier rejects the legacy product identity", async ()
 test("admin static build verifier rejects missing Admin API contracts", async () => {
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "admin-build-"));
   try {
-    await writeAdminFixture(tempDir, "fetch('/api/admin/overview');");
+    await writeAdminFixture(tempDir, "fetch('/api/admin-auth/session');");
 
     await assert.rejects(
       () => verifyAdminBuildDirectory(tempDir),
@@ -94,6 +102,84 @@ test("admin static build verifier rejects missing Admin API contracts", async ()
     await rm(tempDir, { recursive: true, force: true });
   }
 });
+
+test("admin static build verifier accepts the ten-page shell contract without overview", async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "admin-build-"));
+  try {
+    await writeAdminFixture(
+      tempDir,
+      ADMIN_RUNTIME_MARKERS.map((marker) => `fetch('${marker}');`).join(" ")
+    );
+
+    const summary = await verifyAdminBuildDirectory(tempDir);
+    assert.equal(summary.status, "ok");
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+for (const marker of ADMIN_RUNTIME_MARKERS) {
+  test(`admin static build verifier rejects missing runtime marker ${marker}`, async () => {
+    const tempDir = await mkdtemp(path.join(os.tmpdir(), "admin-build-"));
+    try {
+      const remaining = ADMIN_RUNTIME_MARKERS.filter((item) => item !== marker);
+      await writeAdminFixture(
+        tempDir,
+        remaining.map((item) => `fetch('${item}');`).join(" ")
+      );
+
+      await assert.rejects(
+        () => verifyAdminBuildDirectory(tempDir),
+        new RegExp(`admin runtime marker missing: ${marker.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`)
+      );
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  });
+}
+
+test("admin static build verifier rejects old-shell-only overview contract", async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "admin-build-"));
+  try {
+    await writeAdminFixture(
+      tempDir,
+      "Admin Console /api/admin/overview /api/admin/platform/subscription-usage-monitor"
+    );
+
+    await assert.rejects(
+      () => verifyAdminBuildDirectory(tempDir),
+      /admin runtime marker missing/
+    );
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+const LOCAL_ONLY_PAYLOAD_MARKERS = [
+  "本地候选 · 只读监控",
+  "Admin 本地验收",
+  "GCC-104 safe fixture preview",
+  "admin-fixture-preview/v1"
+];
+
+for (const marker of LOCAL_ONLY_PAYLOAD_MARKERS) {
+  test(`admin static build verifier rejects local-only payload marker ${marker}`, async () => {
+    const tempDir = await mkdtemp(path.join(os.tmpdir(), "admin-build-"));
+    try {
+      await writeAdminFixture(
+        tempDir,
+        `${ADMIN_RUNTIME_MARKERS.join(" ")} ${marker}`
+      );
+
+      await assert.rejects(
+        () => verifyAdminBuildDirectory(tempDir),
+        /local-only payload marker/
+      );
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  });
+}
 
 test("admin static build verifier rejects private-key material", async () => {
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "admin-build-"));

@@ -16,6 +16,7 @@ import { systemProxyRoutes } from "./routes/system-proxy.mjs";
 import { networkRoutes } from "./routes/network.mjs";
 import { adminSubscriptionRoutes } from "./routes/admin-subscriptions.mjs";
 import { adminPlatformRoutes } from "./routes/admin-platform.mjs";
+import { adminUserMonitorRoutes } from "./routes/admin-user-monitor.mjs";
 import {
   ADMIN_AUTH_PUBLIC_PATHS,
   adminAuthRoutes,
@@ -281,6 +282,10 @@ function portalCoinRechargeRoutesEnabled(state) {
 
 export function createApp(state, options = {}) {
   const app = express();
+  app.use("/api/admin/platform/user-monitor", (req, res, next) => {
+    res.set("Cache-Control", "no-store");
+    next();
+  });
   const browserSessions = createPortalBrowserSessionTransport({
     auth: state.platform?.userPortalAuth,
     origin: options.portalBrowserOrigin ?? state.platform?.portalBrowserOrigin,
@@ -451,6 +456,7 @@ export function createApp(state, options = {}) {
   ) {
     app.use(adminPlatformRoutes(state));
   }
+  app.use(adminUserMonitorRoutes(state));
   app.use("/sub", createRateLimitMiddleware({
     windowMs: security.subRateLimit?.windowMs,
     max: security.subRateLimit?.max,

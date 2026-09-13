@@ -1,0 +1,81 @@
+.admin-user-monitor {
+  --aum-bg: #fff;
+  --aum-line: #d7e1ea;
+  --aum-muted: #5b6c7b;
+  --aum-text: #173042;
+  --aum-teal: #0c7474;
+  --aum-soft: #e6f3f3;
+  --aum-head: #f4f7fa;
+  --aum-empty: #f2f5f8;
+  --aum-err: #9a3412;
+  color: var(--aum-text);
+  font: 13px/1.45 "Segoe UI", system-ui, sans-serif;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+  max-width: 100%;
+}
+.admin-user-monitor,
+.admin-user-monitor * { box-sizing: border-box; }
+.admin-user-monitor :focus-visible { outline: 2px solid var(--aum-teal); outline-offset: 2px; }
+.admin-user-monitor [aria-busy="true"] { color: var(--aum-muted); }
+.admin-user-monitor .aum-toolbar,
+.admin-user-monitor .aum-actions,
+.admin-user-monitor .aum-range,
+.admin-user-monitor .aum-filters { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px 10px; }
+.admin-user-monitor .aum-range label,
+.admin-user-monitor .aum-filters label { display: flex; flex-direction: column; gap: 4px; color: var(--aum-muted); font-size: 12px; min-width: 9.75rem; }
+.admin-user-monitor button,
+.admin-user-monitor input,
+.admin-user-monitor select { font: inherit; color: inherit; background: var(--aum-bg); border: 1px solid var(--aum-line); border-radius: 8px; min-height: 32px; padding: 4px 10px; }
+.admin-user-monitor button { cursor: pointer; background: var(--aum-head); }
+.admin-user-monitor .aum-range input,
+.admin-user-monitor .aum-filters input,
+.admin-user-monitor .aum-filters select { width: 100%; min-width: 10.5rem; }
+.admin-user-monitor button:disabled,
+.admin-user-monitor input:disabled,
+.admin-user-monitor select:disabled { background: #eef2f5; color: #8b98a4; border-color: #d5dee6; cursor: not-allowed; }
+.admin-user-monitor .aum-primary { background: var(--aum-teal); border-color: #0a5f5f; color: #fff; font-weight: 600; }
+.admin-user-monitor .aum-primary:hover:not(:disabled) { background: #0a6363; }
+.admin-user-monitor .aum-primary:disabled { background: #9bbdbd; border-color: #8aafaf; color: #f3fafa; }
+.admin-user-monitor .aum-selected { background: var(--aum-soft); border-color: var(--aum-teal); color: #0a5f5f; font-weight: 600; }
+.admin-user-monitor .aum-section { background: var(--aum-bg); border: 1px solid var(--aum-line); border-radius: 14px; padding: 18px; }
+.admin-user-monitor .aum-section-head,
+.admin-user-monitor .aum-detail-header { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 0 0 12px; }
+.admin-user-monitor .aum-section-head h2,
+.admin-user-monitor .aum-detail-header strong { margin: 0 auto 0 0; font-size: 15px; font-weight: 650; }
+.admin-user-monitor .aum-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; min-width: 0; }
+.admin-user-monitor .aum-grid > * { min-width: 0; }
+.admin-user-monitor > .aum-grid { grid-template-columns: 1fr; }
+.admin-user-monitor .aum-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(132px, 1fr)); gap: 10px 14px; }
+.admin-user-monitor .aum-stat { min-width: 0; }
+.admin-user-monitor .aum-stat span,
+.admin-user-monitor .aum-stat dt { display: block; color: var(--aum-muted); font-size: 12px; }
+.admin-user-monitor .aum-stat strong,
+.admin-user-monitor .aum-stat dd { display: block; margin: 2px 0 0; font-size: 20px; font-weight: 700; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.admin-user-monitor .aum-status,
+.admin-user-monitor .aum-muted,
+.admin-user-monitor .aum-ledger-note { color: var(--aum-muted); font-size: 12px; }
+.admin-user-monitor .aum-error { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; color: var(--aum-err); background: #fff7ed; border: 1px solid #fdba74; border-radius: 8px; padding: 8px 12px; }
+.admin-user-monitor .aum-empty { color: var(--aum-muted); background: var(--aum-empty); border: 1px dashed var(--aum-line); border-radius: 10px; padding: 18px; text-align: center; }
+.admin-user-monitor .aum-chart,
+.admin-user-monitor .aum-chart svg { display: block; width: 100%; height: 170px; }
+.admin-user-monitor .aum-chart rect { fill: #8ecaca; }
+.admin-user-monitor .aum-chart line { stroke: #c5d0da; }
+.admin-user-monitor .aum-chart path,
+.admin-user-monitor .aum-chart polyline { fill: none; stroke: #3d8a96; stroke-width: 1.5; }
+.admin-user-monitor .aum-chart text { fill: var(--aum-muted); font-size: 11px; }
+.admin-user-monitor .aum-table-wrap { overflow-x: auto; max-width: 100%; min-width: 0; }
+.admin-user-monitor section[aria-label="账户目录"] .aum-table-wrap { max-height: 400px; overflow-y: auto; }
+.admin-user-monitor .aum-table { width: 100%; border-collapse: collapse; }
+.admin-user-monitor .aum-table th,
+.admin-user-monitor .aum-table td { padding: 10px 12px; border-bottom: 1px solid var(--aum-line); text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; vertical-align: middle; }
+.admin-user-monitor .aum-table th { background: var(--aum-head); color: #4e5f6e; font-size: 12px; font-weight: 600; }
+.admin-user-monitor .aum-table tbody tr:hover td { background: #f8fafc; }
+.admin-user-monitor .aum-number,
+.admin-user-monitor .aum-table th.aum-number,
+.admin-user-monitor .aum-table td.aum-number { text-align: right; font-variant-numeric: tabular-nums; }
+.admin-user-monitor .aum-stat .aum-number { text-align: left; }
+.admin-user-monitor .aum-id { font-family: ui-monospace, Consolas, monospace; max-width: 250px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.admin-user-monitor .aum-pill { display: inline-block; padding: 1px 8px; border: 1px solid var(--aum-line); border-radius: 999px; color: var(--aum-muted); font-size: 11px; line-height: 1.65; }
