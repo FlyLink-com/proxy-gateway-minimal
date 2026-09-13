@@ -3,9 +3,24 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 
 const REQUIRED_RUNTIME_MARKERS = [
+  "GCC WebOS",
   "Admin Console",
-  "/api/admin/overview",
-  "/api/admin/platform/subscription-usage-monitor"
+  "/api/admin-auth/session",
+  "/api/admin-auth/login",
+  "/api/admin-auth/totp/verify",
+  "/api/admin-auth/logout",
+  "/api/admin/platform/user-monitor",
+  "/api/admin/platform/accounts",
+  "/api/admin/platform/entitlements",
+  "/api/admin/platform/subscription-usage-monitor",
+  "/api/admin/platform/traffic-collector-status"
+];
+
+const LOCAL_ONLY_PAYLOAD_MARKERS = [
+  "本地候选 · 只读监控",
+  "Admin 本地验收",
+  "GCC-104 safe fixture preview",
+  "admin-fixture-preview/v1"
 ];
 
 const LEGACY_IDENTITY = /GlobalCircle\s+AI/iu;
@@ -105,6 +120,11 @@ export async function verifyAdminBuildDirectory(buildDirectory) {
   for (const marker of REQUIRED_RUNTIME_MARKERS) {
     if (!runtimeContent.includes(marker)) {
       throw new Error(`admin runtime marker missing: ${marker}`);
+    }
+  }
+  for (const marker of LOCAL_ONLY_PAYLOAD_MARKERS) {
+    if (runtimeContent.includes(marker)) {
+      throw new Error(`local-only payload marker found: ${marker}`);
     }
   }
 

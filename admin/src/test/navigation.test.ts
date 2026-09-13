@@ -16,11 +16,35 @@ import {
 } from "../app/navigation";
 import { saveAdminSession } from "../features/subscriptions/admin-session";
 
+const legacyFixture = vi.hoisted(() => ({ enabled: false }));
+
+vi.mock("../app/admin-fixture-preview", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../app/admin-fixture-preview")>();
+  return {
+    ...actual,
+    isAdminFixturePreviewEnabled: (
+      env = { VITE_ADMIN_FIXTURE_PREVIEW: legacyFixture.enabled },
+      hash = window.location.hash,
+    ) => actual.isAdminFixturePreviewEnabled(env, hash),
+  };
+});
+
+async function enableLegacyNavigationFixture() {
+  vi.stubEnv("DEV", true);
+  legacyFixture.enabled = true;
+  vi.stubEnv("VITE_ADMIN_FIXTURE_PREVIEW", "true");
+  vi.stubEnv("VITE_ADMIN_BASELINE_PREVIEW", "false");
+  vi.resetModules();
+  return (await import("../App")).App;
+}
+
 afterEach(() => {
   cleanup();
+  legacyFixture.enabled = false;
   sessionStorage.clear();
   window.location.hash = "";
   vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
 });
 
 describe("admin navigation", () => {
@@ -202,26 +226,44 @@ describe("admin navigation", () => {
     );
   });
 
-  test("gates the admin shell behind API configuration before rendering business pages", () => {
-    const fetcher = vi.fn(async (input: RequestInfo | URL) => dashboardJsonResponse(String(input)));
+  test("gates the admin shell behind cookie authentication before rendering business pages", async () => {
+    vi.stubEnv("DEV", false);
+    const fetcher = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => {
+      return new Response(
+        JSON.stringify({
+          authenticated: false,
+          operatorRef: "acct_test",
+          setupRequired: false,
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    });
     vi.stubGlobal("fetch", fetcher);
 
     render(createElement(App));
 
-    expect(screen.getByRole("heading", { name: "Connect Admin API" })).not.toBeNull();
-    expect(screen.getByText("Operator Console")).not.toBeNull();
-    expect(screen.getByText("Save a console token before opening Overview, User Operations, or Platform Monitoring.")).not.toBeNull();
+    expect(screen.getByRole("heading", { name: "Admin Console" })).not.toBeNull();
+    expect(await screen.findByLabelText("管理员账户")).not.toBeNull();
+    expect(screen.getByLabelText("密码")).not.toBeNull();
     expect(screen.queryByRole("heading", { name: "Operations Overview" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Operations Overview" })).toBeNull();
-    expect(fetcher).not.toHaveBeenCalled();
+    expect(screen.queryByRole("heading", { name: "Connect Admin API" })).toBeNull();
+    expect(screen.queryByLabelText(/console token/i)).toBeNull();
+    expect(screen.queryByText("Connect Admin API")).toBeNull();
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    const [input, init] = fetcher.mock.calls[0] as [RequestInfo | URL, RequestInit | undefined];
+    expect(String(input)).toBe("/api/admin-auth/session");
+    expect((init?.method ?? "GET").toUpperCase()).toBe("GET");
+    expect(init?.credentials).toBe("same-origin");
   });
 
   test("allows the fixture preview route to render Admin pages without a configured API", async () => {
+    const LegacyFixtureApp = await enableLegacyNavigationFixture();
     const fetcher = vi.fn(async (input: RequestInfo | URL) => dashboardJsonResponse(String(input)));
     vi.stubGlobal("fetch", fetcher);
     window.location.hash = "#/fixture-preview";
 
-    render(createElement(App));
+    render(createElement(LegacyFixtureApp));
 
     expect(await screen.findByRole("heading", { name: "Operations Overview" })).not.toBeNull();
     expect(screen.getByLabelText("Admin fixture preview status")).not.toBeNull();
@@ -235,13 +277,14 @@ describe("admin navigation", () => {
   });
 
   test("defaults the admin shell to the operations dashboard", async () => {
+    const LegacyFixtureApp = await enableLegacyNavigationFixture();
     saveAdminSession({
       baseUrl: "http://127.0.0.1:3456",
       consoleToken: "admin_console_ref"
     });
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => dashboardJsonResponse(String(input))));
 
-    render(createElement(App));
+    render(createElement(LegacyFixtureApp));
 
     expect(await screen.findByRole("heading", { name: "Operations Overview" })).not.toBeNull();
     expect(screen.queryByLabelText("Admin navigation")).toBeNull();
@@ -288,6 +331,7 @@ describe("admin navigation", () => {
   });
 
   test("syncs active Admin page navigation to canonical hash routes", async () => {
+    const LegacyFixtureApp = await enableLegacyNavigationFixture();
     saveAdminSession({
       baseUrl: "http://127.0.0.1:3456",
       consoleToken: "admin_console_ref"
@@ -295,7 +339,7 @@ describe("admin navigation", () => {
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => dashboardJsonResponse(String(input))));
     window.location.hash = "#/admin/accounts";
 
-    render(createElement(App));
+    render(createElement(LegacyFixtureApp));
 
     expect(await screen.findByRole("heading", { name: "Accounts & Resources" })).not.toBeNull();
     expect(window.location.hash).toBe("#/admin/accounts");
@@ -307,6 +351,7 @@ describe("admin navigation", () => {
   });
 
   test("routes platform monitoring navigation to the usage and channel monitor page", async () => {
+    const LegacyFixtureApp = await enableLegacyNavigationFixture();
     saveAdminSession({
       baseUrl: "http://127.0.0.1:3456",
       consoleToken: "admin_console_ref"
@@ -314,7 +359,7 @@ describe("admin navigation", () => {
     const fetcher = vi.fn(async () => jsonResponse({}));
     vi.stubGlobal("fetch", fetcher);
 
-    render(createElement(App));
+    render(createElement(LegacyFixtureApp));
 
     fireEvent.click(screen.getByRole("button", { name: "Usage & Channels" }));
 
@@ -357,13 +402,14 @@ describe("admin navigation", () => {
   });
 
   test("keeps retired engineering tools out of the main navigation", async () => {
+    const LegacyFixtureApp = await enableLegacyNavigationFixture();
     saveAdminSession({
       baseUrl: "http://127.0.0.1:3456",
       consoleToken: "admin_console_ref"
     });
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => dashboardJsonResponse(String(input))));
 
-    render(createElement(App));
+    render(createElement(LegacyFixtureApp));
 
     expect(await screen.findByRole("heading", { name: "Operations Overview" })).not.toBeNull();
     const workspaceSidebar = screen.getByLabelText("Workspace sidebar");
@@ -374,6 +420,7 @@ describe("admin navigation", () => {
   });
 
   test("renders user supervision subnavigation before account resource sections", async () => {
+    const LegacyFixtureApp = await enableLegacyNavigationFixture();
     saveAdminSession({
       baseUrl: "http://127.0.0.1:3456",
       consoleToken: "admin_console_ref"
@@ -381,7 +428,7 @@ describe("admin navigation", () => {
     const fetcher = vi.fn(async () => jsonResponse({}));
     vi.stubGlobal("fetch", fetcher);
 
-    render(createElement(App));
+    render(createElement(LegacyFixtureApp));
 
     fireEvent.click(await screen.findByRole("button", { name: "Accounts & Resources" }));
 
@@ -405,13 +452,14 @@ describe("admin navigation", () => {
   });
 
   test("keeps account menu in the top bar without a navigation library utility layer", async () => {
+    const LegacyFixtureApp = await enableLegacyNavigationFixture();
     saveAdminSession({
       baseUrl: "http://127.0.0.1:3456",
       consoleToken: "admin_console_ref"
     });
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => dashboardJsonResponse(String(input))));
 
-    render(createElement(App));
+    render(createElement(LegacyFixtureApp));
 
     expect(await screen.findByRole("heading", { name: "Operations Overview" })).not.toBeNull();
     expect(screen.queryByLabelText("Open navigation library")).toBeNull();

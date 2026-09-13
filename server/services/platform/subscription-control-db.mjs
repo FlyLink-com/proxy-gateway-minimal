@@ -1477,6 +1477,149 @@ export function createSqliteSubscriptionControlStore({
     return rows.map(mapAccount);
   }
 
+  function monitorCount(value) {
+    if (typeof value === "bigint") {
+      if (value < 0n || value > BigInt(Number.MAX_SAFE_INTEGER)) {
+        throw platformError("source_unavailable", "integer overflow");
+      }
+      return Number(value);
+    }
+    if (!Number.isSafeInteger(value) || value < 0) {
+      throw platformError("source_unavailable", "integer overflow");
+    }
+    return value;
+  }
+
+  const USER_MONITOR_REGISTRATION_SOURCE_SQL = `
+    case
+      when json_valid(metadata_json)
+       and json_extract(metadata_json, '$.registrationSource') = 'self_service_portal'
+      then 'self_service_portal'
+      else 'other'
+    end`;
+
+  function listUserMonitorGrowthDays(input = {}) {
+    const from = requiredText(input.from, "from");
+    const to = requiredText(input.to, "to");
+    const rows = db.prepare(`
+      select substr(created_at, 1, 10) || 'T00:00:00.000Z' as day_at,
+             sum(case when ${USER_MONITOR_REGISTRATION_SOURCE_SQL} = 'self_service_portal' then 1 else 0 end) as registered_count,
+             sum(case when ${USER_MONITOR_REGISTRATION_SOURCE_SQL} = 'self_service_portal' then 0 else 1 end) as other_created_count
+        from platform_accounts
+       where created_at >= ? and created_at < ?
+       group by day_at
+       order by day_at
+    `).all(from, to);
+    return rows.map((row) => ({
+      at: row.day_at,
+      registeredCount: monitorCount(row.registered_count),
+      otherCreatedCount: monitorCount(row.other_created_count)
+    }));
+  }
+
+  function listUserMonitorAccountDirectory(input = {}) {
+    const accountId = text(input.accountId) || null;
+    const status = text(input.status) || null;
+    const afterCreatedAt = input.afterCreatedAt == null ? null : requiredText(input.afterCreatedAt, "afterCreatedAt");
+    const afterId = text(input.afterId) || null;
+    const limit = integer(input.limit, "limit", { min: 1 });
+    if ((afterCreatedAt == null) !== (afterId == null)) {
+      throw platformError("validation_error", "cursor is invalid");
+    }
+    const rows = db.prepare(`
+      select id,
+             status,
+             created_at,
+             ${USER_MONITOR_REGISTRATION_SOURCE_SQL} as registration_source
+        from platform_accounts
+       where (? is null or id = ?)
+         and (? is null or status = ?)
+         and (
+           ? is null
+           or created_at < ?
+           or (created_at = ? and id < ?)
+         )
+       order by created_at desc, id desc
+       limit ?
+    `).all(
+      accountId,
+      accountId,
+      status,
+      status,
+      afterCreatedAt,
+      afterCreatedAt,
+      afterCreatedAt,
+      afterId,
+      limit
+    );
+    return rows.map((row) => ({
+      id: row.id,
+      status: row.status,
+      createdAt: row.created_at,
+      registrationSource: row.registration_source
+    }));
+  }
+
+  function summarizeUserMonitorTraffic(input = {}) {
+    const accountId = requiredText(input.accountId, "accountId");
+    const from = requiredText(input.from, "from");
+    const to = requiredText(input.to, "to");
+    const bucket = requiredText(input.bucket, "bucket");
+    if (bucket !== "day" && bucket !== "hour") {
+      throw platformError("validation_error", "bucket is invalid");
+    }
+    const bucketSql = bucket === "hour"
+      ? "substr(observed_at, 1, 13) || ':00:00.000Z'"
+      : "substr(observed_at, 1, 10) || 'T00:00:00.000Z'";
+    return db.transaction(() => {
+      const totals = db.prepare(`
+        select count(*) as sample_count,
+               max(observed_at) as last_observed_at,
+               sum(upload_bytes) as upload_bytes,
+               sum(download_bytes) as download_bytes,
+               sum(total_bytes) as total_bytes
+          from platform_usage_samples
+         where account_id = ? and observed_at >= ? and observed_at < ?
+      `).get(accountId, from, to);
+      const sampleCount = monitorCount(totals?.sample_count ?? 0);
+      if (sampleCount === 0) {
+        return {
+          sampleCount: 0,
+          lastObservedAt: null,
+          uploadBytes: null,
+          downloadBytes: null,
+          totalBytes: null,
+          points: []
+        };
+      }
+      const points = db.prepare(`
+        select ${bucketSql} as bucket_at,
+               count(*) as sample_count,
+               sum(upload_bytes) as upload_bytes,
+               sum(download_bytes) as download_bytes,
+               sum(total_bytes) as total_bytes
+          from platform_usage_samples
+         where account_id = ? and observed_at >= ? and observed_at < ?
+         group by bucket_at
+         order by bucket_at
+      `).all(accountId, from, to);
+      return {
+        sampleCount,
+        lastObservedAt: totals.last_observed_at,
+        uploadBytes: monitorCount(totals.upload_bytes),
+        downloadBytes: monitorCount(totals.download_bytes),
+        totalBytes: monitorCount(totals.total_bytes),
+        points: points.map((row) => ({
+          at: row.bucket_at,
+          sampleCount: monitorCount(row.sample_count),
+          uploadBytes: monitorCount(row.upload_bytes),
+          downloadBytes: monitorCount(row.download_bytes),
+          totalBytes: monitorCount(row.total_bytes)
+        }))
+      };
+    })();
+  }
+
   function normalizePortalRegistrationWelcomeCoinGrantEnqueue(input) {
     exactObject(input, {
       allowed: [
@@ -6807,6 +6950,9 @@ export function createSqliteSubscriptionControlStore({
     createAccount,
     getAccount,
     listAccounts,
+    listUserMonitorGrowthDays,
+    listUserMonitorAccountDirectory,
+    summarizeUserMonitorTraffic,
     getPortalRegistrationWelcomeCoinGrant,
     enqueuePortalRegistrationWelcomeCoinGrant,
     claimNextPortalRegistrationWelcomeCoinGrant,

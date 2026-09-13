@@ -68,6 +68,7 @@ afterEach(() => {
   window.location.hash = "";
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
 });
 
 function installMobilePaymentDevice() {
@@ -885,18 +886,61 @@ describe("user portal route", () => {
   });
 
   test("does not expose the customer portal from the Admin app shell", async () => {
+    vi.stubEnv("DEV", false);
+    vi.stubEnv("VITE_ADMIN_BASELINE_PREVIEW", "false");
+    vi.stubEnv("VITE_ADMIN_FIXTURE_PREVIEW", "false");
+
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) =>
+      new Response(
+        JSON.stringify({
+          authenticated: false,
+          operatorRef: "acct_test",
+          setupRequired: false,
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
     render(createElement(App));
 
-    expect(screen.getByRole("heading", { name: "Connect Admin API" })).not.toBeNull();
-    expect(screen.queryByLabelText("Admin navigation")).toBeNull();
+    await waitFor(() => {
+      expect(screen.getByLabelText("管理员账户")).not.toBeNull();
+      expect(screen.getByRole("heading", { name: "Admin Console" })).not.toBeNull();
+    });
+    expect(screen.queryByLabelText("用户中心导航")).toBeNull();
     expect(screen.queryByRole("heading", { name: "账号登录" })).toBeNull();
+    expect(screen.queryByLabelText("电子邮箱")).toBeNull();
+    expect(screen.queryByRole("button", { name: /portal/i })).toBeNull();
 
-    window.location.hash = "#/portal";
-    window.dispatchEvent(new HashChangeEvent("hashchange"));
+    await act(async () => {
+      window.location.hash = "#/admin/userManagement";
+      window.dispatchEvent(new HashChangeEvent("hashchange"));
+    });
 
-    expect(screen.getByRole("heading", { name: "Connect Admin API" })).not.toBeNull();
-    expect(screen.queryByRole("heading", { name: "账号登录" })).toBeNull();
-    expect(screen.queryByLabelText("Admin navigation")).toBeNull();
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "Admin Console" })).not.toBeNull();
+      expect(screen.getByLabelText("管理员账户")).not.toBeNull();
+    });
+    expect(screen.queryByRole("heading", { name: "客户 Portal" })).toBeNull();
+    expect(screen.queryByLabelText("用户中心导航")).toBeNull();
+
+    expect(fetchMock).toHaveBeenCalled();
+    for (const call of fetchMock.mock.calls) {
+      const input = call[0];
+      const init = call[1] as RequestInit | undefined;
+      const url =
+        typeof input === "string"
+          ? input
+          : input instanceof URL
+            ? input.toString()
+            : String((input as Request).url);
+      expect(url.startsWith("/") || url.startsWith(window.location.origin)).toBe(true);
+      expect(url).toContain("/api/admin-auth/session");
+      expect(url).not.toContain("/api/portal");
+      expect(init?.method ?? "GET").toBe("GET");
+      expect(init?.credentials).toBe("same-origin");
+    }
   });
 
   test("keeps local customer portal preview as a portal-only surface", async () => {

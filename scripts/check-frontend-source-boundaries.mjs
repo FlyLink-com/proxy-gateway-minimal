@@ -142,6 +142,9 @@ const EXPECTED_CSS_IMPORTS = {
 
 const EXPECTED_APP_SENSITIVE_IMPORTS = [
   "./app/admin-fixture-preview",
+  "./pages/admin-auth-boundary",
+  "./pages/admin-operations-shell",
+  "./pages/admin-production-baseline-preview",
   "./features/company-site/company-site-page",
   "./features/user-portal/user-portal-client",
   "./features/user-portal/user-portal-page",
@@ -160,6 +163,7 @@ const EXPECTED_ADMIN_TO_SITE_EDGES = new Set([
 
 const EXPECTED_FIXTURE_EDGES = new Set([
   "admin/src/App.tsx -> admin/src/app/admin-fixture-preview.ts",
+  "admin/src/App.tsx -> admin/src/pages/admin-production-baseline-preview.tsx",
   "admin/src/app/admin-ui-projection.ts -> admin/src/app/admin-fixture-preview.ts",
   "admin/src/components/primitives/panel-frame.tsx -> admin/src/app/admin-fixture-preview.ts",
   "admin/src/features/user-portal/user-portal-local.ts -> admin/src/features/user-portal/totp-preview.ts",
@@ -941,6 +945,9 @@ function checkDirectImportContracts(rootDirectory) {
       .filter((specifier) => (
         specifier.includes("/features/user-portal/")
         || specifier.includes("/features/company-site/")
+        || specifier === "./pages/admin-auth-boundary"
+        || specifier === "./pages/admin-operations-shell"
+        || specifier === "./pages/admin-production-baseline-preview"
         || /(?:fixture|preview)/iu.test(specifier)
       ));
     issues.push(...compareExactSet({

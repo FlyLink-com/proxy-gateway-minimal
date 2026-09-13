@@ -3,6 +3,7 @@ import {
   ADMIN_FIXTURE_PREVIEW_DATA,
   isAdminFixturePreviewEnabled
 } from "./app/admin-fixture-preview";
+import { isAdminProductionBaselinePreviewEnabled } from "./app/admin-production-baseline";
 import {
   formatAdminRouteHash,
   parseAdminRouteHash,
@@ -19,6 +20,8 @@ import {
   createLocalUserPortalClient
 } from "./features/user-portal/user-portal-client";
 import { AdminSetupPage } from "./pages/admin-setup-page";
+import { AdminAuthBoundary } from "./pages/admin-auth-boundary";
+import { AdminOperationsShell } from "./pages/admin-operations-shell";
 import { AdminSearchResultsPage } from "./pages/admin-search-results-page";
 import { DashboardPage } from "./pages/dashboard-page";
 import { PortalRequestsPage } from "./pages/portal-requests-page";
@@ -30,6 +33,13 @@ const UserPortalRoute = lazy(async () => {
   const module = await import("./features/user-portal/user-portal-route");
   return { default: module.UserPortalRoute };
 });
+
+const AdminProductionBaselinePreview = import.meta.env.DEV
+  ? lazy(async () => {
+      const module = await import("./pages/admin-production-baseline-preview");
+      return { default: module.AdminProductionBaselinePreview };
+    })
+  : null;
 
 function routeFromLocation(): AppRoute {
   const normalizedPath = window.location.pathname.replace(/\/+$/, "") || "/";
@@ -48,7 +58,105 @@ function routeFromLocation(): AppRoute {
   return window.location.hash === "#/portal" ? "portal" : "admin";
 }
 
+function AdminBaselineInertFallback() {
+  return <div aria-busy="true" data-admin-baseline-boot="true" />;
+}
+
+function AdminProductionBaselineDevEntry() {
+  const [enabled, setEnabled] = useState(() => isAdminProductionBaselinePreviewEnabled());
+
+  useEffect(() => {
+    function syncEnabled() {
+      setEnabled(isAdminProductionBaselinePreviewEnabled());
+    }
+    syncEnabled();
+    window.addEventListener("hashchange", syncEnabled);
+    window.addEventListener("popstate", syncEnabled);
+    return () => {
+      window.removeEventListener("hashchange", syncEnabled);
+      window.removeEventListener("popstate", syncEnabled);
+    };
+  }, []);
+
+  if (!enabled || !AdminProductionBaselinePreview) {
+    return <AdminApp />;
+  }
+
+  return (
+    <Suspense fallback={<AdminBaselineInertFallback />}>
+      <AdminProductionBaselinePreview />
+    </Suspense>
+  );
+}
+
 export function App() {
+  if (import.meta.env.DEV) {
+    return <AdminProductionBaselineDevEntry />;
+  }
+  return <AdminApp />;
+}
+
+function AdminApp() {
+  const [route, setRoute] = useState<AppRoute>(() => routeFromLocation());
+
+  useEffect(() => {
+    function syncRoute() {
+      setRoute(routeFromLocation());
+    }
+    syncRoute();
+    window.addEventListener("hashchange", syncRoute);
+    window.addEventListener("popstate", syncRoute);
+    return () => {
+      window.removeEventListener("hashchange", syncRoute);
+      window.removeEventListener("popstate", syncRoute);
+    };
+  }, []);
+
+  if (route === "site") {
+    return <CompanySitePage />;
+  }
+
+  if (route === "portalRegister") {
+    return (
+      <Suspense fallback={<PortalRouteFallback />}>
+        <UserPortalRoute mode="register" />
+      </Suspense>
+    );
+  }
+
+  if (route === "portal") {
+    return (
+      <Suspense fallback={<PortalRouteFallback />}>
+        <UserPortalRoute mode="login" />
+      </Suspense>
+    );
+  }
+
+  if (import.meta.env.DEV && route === "portalPreview") {
+    return (
+      <PortalPreviewRoute
+        onBackToAdmin={() => {
+          window.location.hash = "";
+          setRoute("admin");
+        }}
+      />
+    );
+  }
+
+  if (import.meta.env.DEV && isAdminFixturePreviewEnabled()) {
+    return <LegacyAdminApp />;
+  }
+
+  return (
+    <AdminAuthBoundary>
+      {({ onSessionExpired }) => (
+        <AdminOperationsShell onSessionExpired={onSessionExpired} />
+      )}
+    </AdminAuthBoundary>
+  );
+}
+
+function LegacyAdminApp() {
   const initialAdminRoute = parseAdminRouteHash(window.location.hash);
   const [route, setRoute] = useState<AppRoute>(() => routeFromLocation());
   const [activePage, setActivePage] = useState<AdminPage>(initialAdminRoute?.page ?? "dashboard");
