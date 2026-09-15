@@ -152,11 +152,12 @@ promoter. 2026-09-14 workflow and variable readback:
 | Path | What is connected | What is not automatic |
 | --- | --- | --- |
 | `ci.yml` | PR/`master` push validation | No deploy, no host access |
-| `release-artifact.yml` and `control-plane-dependency-artifact.yml` | `master` push builds control-plane, Portal, and Admin artifacts | Artifacts are short-lived build evidence, not a promotion |
+| `release-artifact.yml` | Non-docs `master` pushes (`ci-change-classifier` `run_full != 0`) package control-plane, Portal, and Admin artifacts | Docs-only `master` pushes classify `run_full=0` and skip those package jobs. Short-lived artifacts are build evidence, not a promotion |
+| `control-plane-dependency-artifact.yml` | `master` push and pull_request still run the Linux dependency-artifact job | Short-lived build evidence, not a promotion |
 | `deploy-cloudflare-site.yml` | `master` path pushes run build, verify, and Wrangler dry-run | The deploy job is skipped unless `CLOUDFLARE_SITE_AUTO_DEPLOY` is exactly `true`. Repository variable readback was not `true`. Run `34736294179` for PR #729 completed validate and skipped “Deploy public site” |
 | `production-deploy-dry-run.yml` | Manual `workflow_dispatch` with confirmation text | Dry-run only: no SSH, symlink, systemd, Nginx, DNS, or SQLite mutation |
 | `control-plane-artifact-ingress.yml` / v2 | Manual `workflow_dispatch` plus the `control-plane-artifact-ingress` environment | Not triggered by `master` push; packet delivery is not control-plane promotion |
-| `japan-runtime-config-additive-repair.yml` | Manual dispatch with merged-PR source authorization | Source admission only; does not apply a map or deploy a release |
+| `japan-runtime-config-additive-repair.yml` | Manual `workflow_dispatch`. The merged-PR `approval_pr` contract is reusable source admission only | Not automatic on `master` push. A dispatch that passes preflight can run `execute` on `vultr-japan-production`, stream the frozen artifact over SSH, and succeed only when `productionResult === "applied_validated"`. That execution can apply the map and remains a separate Risk A gate |
 | `control-plane-app` live promotion | Last recorded event is the 2026-08-26 operator-gated A3 promotion | No GitHub workflow auto-promotes Japan control plane on merge |
 | Vercel company-site / Portal / Admin static | Historical staged-candidate / `deployed_unreconciled` or `unknown` evidence | No GitHub workflow in this repository auto-promotes those release units |
 
