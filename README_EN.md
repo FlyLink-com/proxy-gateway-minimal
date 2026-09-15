@@ -34,6 +34,13 @@ current facts in this order:
 6. The subsystem README relevant to the task: read its responsibility and validation boundary before working in that module.
 7. Native GitHub Issue/PR records: freshly read state, scope, risk, done criteria, and review evidence before selecting, ordering, or declaring current work; Project #1 is navigation only.
 
+Dated GitHub counts, expired-artifact evidence, source-alignment drift, and
+partial auto-deploy wiring are recorded in
+[`docs/CURRENT_RELEASE_STATE.md`](docs/CURRENT_RELEASE_STATE.md). Open PRs,
+Issues, Actions, and provider state are mutable and must be re-read before
+merge or production decisions. Draft PRs #592, #593, and #594 are no longer
+open.
+
 `AGENTS.md` defines repository task rules and always applies, but it does not
 replace the current-state reading order above.
 
