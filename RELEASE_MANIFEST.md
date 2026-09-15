@@ -6,19 +6,21 @@ document_metadata:
   lifecycle: active
   authority_scope: release_traceability
   superseded_by: null
-  last_verified_at: 2026-09-12
+  last_verified_at: 2026-09-14
   production_authority: false
 ```
 
 > Status:
 > - Type: Active source-to-production traceability baseline
 > - Risk: C
-> - Last updated: 2026-09-12, America/Los_Angeles
-> - Source reconciliation cutoff observed on 2026-09-12:
->   `master@c8cb21d00479db40a288eed4ad7d1a75f819e1b0`
+> - Last updated: 2026-09-14, America/Los_Angeles
+> - Source reconciliation cutoff observed on 2026-09-14:
+>   `master@3565c54865676ba127b115f7f914a0359e545bf0`
 > - Latest recorded production deployment event: 2026-08-26, deployed source
 >   `b5ca23db58c55f2d73ec59ffa9525f85b92a8a9c`; promotion-09 ended
 >   `promoted_verified` on release `control-plane-b5ca23db-a3-sync-20260825`
+> - 2026-09-14 readback: the deployed-source GitHub Actions artifacts are
+>   expired; current `master` is not that deployment identity
 > - Production authority: None. This file does not deploy, promote, roll back,
 >   mutate runtime state, or replace live inventory and validation.
 
@@ -275,8 +277,8 @@ and UTC creation time, and the manifest contained no downloaded absolute path.
 The latest verified release-artifact proof recorded at the 2026-08-26
 inventory cutoff is Release Artifact run `32854893859` for source
 `b5ca23db58c55f2d73ec59ffa9525f85b92a8a9c`. Its control-plane artifact is
-`proxy-gateway-b5ca23db58c5` (ID `9565756416`, observed expiry
-`2026-09-08T13:42:13Z`); the inner ZIP is 7,563,583 bytes with SHA-256
+`proxy-gateway-b5ca23db58c5` (ID `9565756416`, originally observed expiry
+`2026-09-08T13:42:13Z`; 2026-09-14 API readback `expired: true`); the inner ZIP is 7,563,583 bytes with SHA-256
 `20bf7d56c63e5038497d1c12c53507267f4468516e2e23fe4732710658acb76d`.
 The same workflow also completed the Portal and Admin artifact jobs, but
 neither static release unit was promoted by the A3 event.
@@ -284,7 +286,8 @@ neither static release unit was promoted by the A3 event.
 Control Plane Dependency Artifact run `32854893837` also succeeded for the
 same exact source. Artifact ID `9565754679`, named
 `control-plane-dependency-b5ca23db58c55f2d73ec59ffa9525f85b92a8a9c`, is
-`6460709` bytes and was observed to expire at `2026-09-08T13:42:10Z`.
+`6460709` bytes and was originally observed to expire at
+`2026-09-08T13:42:10Z`; a 2026-09-14 API readback recorded `expired: true`.
 Its inner `node-modules.tar` is 26,664,960 bytes with SHA-256
 `c87e70c8fbae033eb357b103ac2da554b99f6af4a50d02294fe1e615c3c7de5b`.
 Production Deploy Dry Run `32856999391` succeeded for the same commit. These
@@ -436,18 +439,20 @@ not current-`master` integration evidence.
 PRs #476 and #479 are no longer open. Their status and Gate narrative above are
 historical evidence only and must not be used to sequence current work.
 
-## Source Reconciliation Boundary (2026-09-12)
+## Source Reconciliation Boundary (2026-09-14)
 
-The Git source cutoff observed on 2026-09-12 is
-`master@c8cb21d00479db40a288eed4ad7d1a75f819e1b0`. The latest recorded
+The Git source cutoff observed on 2026-09-14 is
+`master@3565c54865676ba127b115f7f914a0359e545bf0`. The latest recorded
 control-plane deployment event used source
 `b5ca23db58c55f2d73ec59ffa9525f85b92a8a9c` in the 2026-08-26 PR #667 Deploy
-Note. These identities are intentionally distinct, and this document performed
-no fresh runtime readback.
+Note. These identities are intentionally distinct: current `master` is 164
+commits ahead of that deployment source, and the deployed-source GitHub
+Actions packets are expired. This document performed no fresh runtime
+readback.
 
-The 2026-09-12 GitHub inventory in `docs/CURRENT_RELEASE_STATE.md` recorded
-0 open PRs, 16 open Issues, and 69 remote heads. Earlier 2026-08-23 and
-2026-08-28 count sentences remain historical. Current sequencing must still
+The 2026-09-14 GitHub inventory in `docs/CURRENT_RELEASE_STATE.md` recorded
+1 open Draft PR, 16 open Issues, and 72 remote heads. The 2026-09-12, 2026-08-23,
+and 2026-08-28 count sentences remain historical. Current sequencing must still
 be resolved from native live Issues and PRs, using Project #1 only as
 navigation; dated `project-state/*.json` records do not replace that live
 read.

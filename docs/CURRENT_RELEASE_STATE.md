@@ -6,7 +6,7 @@ document_metadata:
   lifecycle: active
   authority_scope: current_release_state
   superseded_by: null
-  last_verified_at: 2026-09-12
+  last_verified_at: 2026-09-14
   production_authority: false
 ```
 
@@ -14,7 +14,7 @@ document_metadata:
 > - Type: Dated documented release snapshot
 > - Version management baseline: `v3` artifact and runtime-identity foundation
 > - Git source reconciliation cutoff:
->   `master@c8cb21d00479db40a288eed4ad7d1a75f819e1b0`, observed 2026-09-12;
+>   `master@3565c54865676ba127b115f7f914a0359e545bf0`, observed 2026-09-14;
 >   this is not a permanent current-head claim
 > - Latest recorded control-plane deployment event: 2026-08-26, deployed source
 >   `b5ca23db58c55f2d73ec59ffa9525f85b92a8a9c`
@@ -27,7 +27,10 @@ document_metadata:
 >   2026-08-26 matched the release pointer, service and process working
 >   directory; a later public-only health window returned three HTTP 200
 >   responses
-> - This C-tier reconciliation performed no fresh production or runtime readback
+> - 2026-09-14 C-tier inventory: the deployed-source GitHub Actions artifacts
+>   are expired; Git `master`, canonical docs, Issue alignments, and the
+>   recorded deployment identity are not one current identity. No production
+>   or runtime readback was performed
 > - Execution authority: None
 
 ## A3 Production Closeout (2026-08-26)
@@ -46,7 +49,10 @@ the dependency archive is 26,664,960 bytes with SHA-256
 Production Deploy Dry Run `32856999391` also succeeded for that exact source.
 The Actions artifacts were observed
 unexpired through 2026-09-08; they remain short-lived build evidence even
-though the exact downloaded packets were verified during this deployment.
+though the exact downloaded packets were verified during this deployment. A
+later 2026-09-14 GitHub API readback recorded those same artifacts as
+`expired: true` with `expires_at` `2026-09-08T13:42Z`. That later observation
+does not rewrite the original unexpired window.
 
 The A3 candidate-preparation stage verified the exact staged source, protected
 overlay, bounded dependency materialization, restricted service-native smoke,
@@ -72,10 +78,98 @@ for `control-plane-app`. It does not activate wallet-first, deferred-runtime or
 Account Resource Authority functionality, apply their schema gates, or deploy
 the Portal, Admin, company-site or runtime-config release units.
 
-## Dated GitHub Inventory (2026-09-12)
+## Dated Expiry And Source-Alignment Inventory (2026-09-14)
 
-Read-only GitHub inventory on 2026-09-12. This is a dated mutable snapshot, not
+Read-only C-tier inventory on 2026-09-14, America/Los_Angeles. It records
+expired retrievability and mismatched “current” identities. It does not
+authorize promotion, rollback, schema apply, feature activation, or runtime
+mutation. Native Issue and PR records remain authoritative. Issue #695 remains
+the separate Risk A current-runtime inventory. Draft PR #730 remains a
+separate Issue #522 documentation PR. The dated Operations capability matrix in
+`docs/OPERATIONS_PLANE_SOURCE_REALITY.md` remains a 2026-08-09 historical
+inventory and is not rewritten here.
+
+### Observed identities
+
+| Layer | Identity observed 2026-09-14 | Boundary |
+| --- | --- | --- |
+| Recorded `control-plane-app` deployment | `b5ca23db58c55f2d73ec59ffa9525f85b92a8a9c` (2026-08-26), release `control-plane-b5ca23db-a3-sync-20260825` | Promotion-09 receipt only; current runtime unread |
+| Typical Issue Current Alignment cutoff | `836f23f667879b79e2ab2e825fb98e487cfa2165` (2026-08-30) | 120 commits behind current `master`; not current source capability |
+| Prior canonical Git cutoff | `c8cb21d00479db40a288eed4ad7d1a75f819e1b0` (2026-09-12, PR #726) | Superseded as the latest Git cutoff by this inventory |
+| Current `master` | `3565c54865676ba127b115f7f914a0359e545bf0` (PR #729) | Reviewed source; 164 commits ahead of the recorded deployment |
+| Draft #730 head | `5b3d2c42083f020669bc1c01d42977a73818e5b8` | Unmerged #522 source-boundary docs; not `master` |
+
+### Expired retrievability
+
+GitHub API readback on 2026-09-14 for Release Artifact run `32854893859` and
+Dependency Artifact run `32854893837` recorded:
+
+| Artifact | `expires_at` | `expired` |
+| --- | --- | --- |
+| `proxy-gateway-b5ca23db58c5` | 2026-09-08T13:42:13Z | true |
+| `control-plane-dependency-b5ca23db58c55f2d73ec59ffa9525f85b92a8a9c` | 2026-09-08T13:42:10Z | true |
+| `portal-static-b5ca23db58c5` | 2026-09-08T13:42:29Z | true |
+| `admin-static-b5ca23db58c5` | 2026-09-08T13:42:28Z | true |
+
+Those packets cannot be re-downloaded from GitHub Actions for a later
+promotion or replay. Expiry does not invalidate the PR #667 Deploy Note.
+
+Current-`master` Release Artifact run `34736294252` for
+`3565c54865676ba127b115f7f914a0359e545bf0` still listed unexpired artifacts
+`proxy-gateway-3565c5486567`, `portal-static-3565c5486567`, and
+`admin-static-3565c5486567` with observed `expires_at` 2026-09-27T03:46Z.
+Those are build evidence for undeployed source. They are not the recorded
+production packet and do not authorize a control-plane promotion.
+
+### Alignment mismatches
+
+1. Git `master` is 164 commits ahead of the recorded control-plane deployment.
+   Current runtime identity remains unread (#695).
+2. `docs/PROJECT_CONTEXT.md` at the 2026-09-12 cutoff still listed Admin
+   frontend `/api/admin-auth` login integration as not established. PR #729
+   added `admin-auth-client` and `admin-auth-boundary` source on current
+   `master`. That source does not prove production enablement or complete
+   RBAC (#558).
+3. `docs/COINS_FIRST_COMMERCIAL_DECISION.md` on current `master` still uses
+   the 2026-08-30 catalog/referral snapshot. Current source has a local 3-plan
+   plus 2 data-pack validation catalog and first-recharge Portal metrics.
+   Draft PR #730 is the separate docs repair and is not merged.
+4. The 2026-09-12 GitHub inventory recorded zero open PRs and
+   `master@c8cb21d...`. This inventory observes Draft PR #730 and
+   `master@3565c548...`.
+5. Current-head GitHub artifacts and the expired deployed-source artifacts
+   are different packets. They must not be treated as one release identity.
+6. Portal, Admin, and company-site production identities remain
+   `deployed_unreconciled` or `unknown` and are not bound to current `master`
+   Portal/Admin source.
+
+Until these identities are re-read under their own gates, a later
+`control-plane-app` promotion is not authorized from the expired A3 packet or
+from current `master`.
+
+## Dated GitHub Inventory (2026-09-14)
+
+Read-only GitHub inventory on 2026-09-14. This is a dated mutable snapshot, not
 a live queue and not a production runtime claim. Native Issue and PR records
+remain authoritative for item state. `project-state/*.json` still must not copy
+these counts.
+
+- exact `master`: `3565c54865676ba127b115f7f914a0359e545bf0` (merged PR #729)
+- open PRs: 1 Draft (#730)
+- open Issues (16): #437, #438, #439, #522, #523, #524, #527, #551, #557,
+  #558, #559, #560, #597, #598, #673, and #695
+- remote heads: 72
+- latest exact-`master` Release Artifact run: `34736294252` succeeded
+- recorded `control-plane-app` deployment source remains
+  `b5ca23db58c55f2d73ec59ffa9525f85b92a8a9c` (2026-08-26); this inventory
+  did not read production runtime
+- Dependabot, secret-scanning, and Action-pin counts were not re-queried;
+  retain the 2026-09-12 observations until a later inventory
+
+## Prior Dated GitHub Inventory (2026-09-12)
+
+Read-only GitHub inventory on 2026-09-12. This snapshot is retained as
+historical mutable evidence. Native Issue and PR records
 remain authoritative for item state. `project-state/*.json` still must not copy
 these counts.
 
@@ -205,8 +299,9 @@ The detailed capability/gap matrix is
 2026-08-09—three open Draft PRs, no open non-Draft PR, and fifteen open
 Issues—are retained only as historical context. At the 2026-08-22 inventory,
 PR #592 and #594 are closed unmerged, PR #593 is merged docs-only, Issue #561
-is closed, and there are no open PRs. The 2026-09-12 inventory above replaces
-those item counts as the latest dated GitHub snapshot. Current sequencing must
+is closed, and there are no open PRs. The 2026-09-14 inventory above replaces
+those item counts as the latest dated GitHub snapshot. The 2026-09-12
+inventory is retained as a prior snapshot. Current sequencing must
 still be resolved from native live Issues and PRs, using Project #1 only as
 navigation; `project-state/*.json` does not own the live queue.
 
@@ -451,11 +546,13 @@ action remains behind its separate exact Risk A gate and current evidence.
 
 ## Git Source And Recorded Deployment-Source Drift
 
-The Git source cutoff observed on 2026-09-12 is
-`master@c8cb21d00479db40a288eed4ad7d1a75f819e1b0`. The latest recorded
+The Git source cutoff observed on 2026-09-14 is
+`master@3565c54865676ba127b115f7f914a0359e545bf0`. The latest recorded
 control-plane deployment event used source
 `b5ca23db58c55f2d73ec59ffa9525f85b92a8a9c` on 2026-08-26. These identities
-are intentionally distinct. This docs-only reconciliation performed no fresh
+are intentionally distinct: current `master` is 164 commits ahead of that
+deployment source, and the deployed-source GitHub Actions packets are expired.
+This docs-only reconciliation performed no fresh
 runtime readback and cannot state current runtime alignment. The A3 bounded
 dependency materialization and promotion path is recorded as deployed and
 verified for that `control-plane-app` release. The earlier XFS-only A3-2
@@ -486,9 +583,12 @@ lane. Those remain separate Risk A actions.
 - `docs/OPERATIONS_PLANE_SOURCE_REALITY.md`
 - Detailed source-capability cutoff
   `master@02fc63a3f949b748dcccf26ba7d310be82f4b6df`
-- Git source reconciliation cutoff observed 2026-09-12
+- Git source reconciliation cutoff observed 2026-09-14
+  `master@3565c54865676ba127b115f7f914a0359e545bf0`
+- Exact-`master` Release Artifact run `34736294252` (source evidence only)
+- Prior Git source reconciliation cutoff observed 2026-09-12
   `master@c8cb21d00479db40a288eed4ad7d1a75f819e1b0`
-- Exact-`master` Release Artifact run `34677102430` (source evidence only)
+- Prior exact-`master` Release Artifact run `34677102430` (source evidence only)
 - Prior Git source reconciliation cutoff observed 2026-08-28
   `master@2824d01f9523ff39805083744e7b0c4f30bfef50`
 - GitHub CI run `32854893874`

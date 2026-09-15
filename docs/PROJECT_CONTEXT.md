@@ -1,6 +1,6 @@
 # Project Context
 
-Last updated: 2026-09-12, America/Los_Angeles.
+Last updated: 2026-09-14, America/Los_Angeles.
 
 ```yaml
 document_metadata:
@@ -8,7 +8,7 @@ document_metadata:
   lifecycle: active
   authority_scope: project_context
   superseded_by: null
-  last_verified_at: 2026-09-12
+  last_verified_at: 2026-09-14
   production_authority: false
 ```
 
@@ -16,17 +16,18 @@ document_metadata:
 > - Type: Active current-state handoff
 > - Risk: C
 > - Source reconciliation cutoff:
->   `master@c8cb21d00479db40a288eed4ad7d1a75f819e1b0` (observed 2026-09-12)
+>   `master@3565c54865676ba127b115f7f914a0359e545bf0` (observed 2026-09-14)
 > - Latest recorded control-plane deployment-event source:
 >   `b5ca23db58c55f2d73ec59ffa9525f85b92a8a9c` (2026-08-26)
 > - Git-source / recorded-deployment-source state: Drift at these dated
->   cutoffs; current runtime alignment was not read
+>   cutoffs; deployed-source GitHub artifacts are expired; current runtime
+>   alignment was not read
 > - Delivery navigation projection:
 >   [GCC WebOS — Delivery Project #1](https://github.com/orgs/gccwebos-com/projects/1)
 > - Source, artifact, production-promotion and delayed public-health evidence
->   for A3 were reconciled on 2026-08-26; GitHub Issue/PR counts were refreshed
->   on 2026-09-12; provider and production runtime facts retain their separately
->   dated evidence
+>   for A3 were reconciled on 2026-08-26; expiry and source-alignment facts
+>   were inventoried on 2026-09-14; provider and production runtime facts
+>   retain their separately dated evidence
 > - Production state: Refer to `docs/CURRENT_RELEASE_STATE.md`; this handoff
 >   records the release identity but does not duplicate its runtime evidence
 > - Production impact: None; this Risk C handoff changes no release, runtime,
@@ -123,15 +124,14 @@ Keep these distinctions explicit:
 Repository: `gccwebos-com/proxy-gateway-minimal`
 
 The source cutoff inspected for this docs-only count refresh is
-`master@c8cb21d00479db40a288eed4ad7d1a75f819e1b0`. It is a dated
+`master@3565c54865676ba127b115f7f914a0359e545bf0`. It is a dated
 reconciliation boundary, not a permanent current-head claim. Resolve the live
 `master` SHA before every later source decision.
 
-The 2026-09-12 GitHub count snapshot is recorded in
-`docs/CURRENT_RELEASE_STATE.md` under Dated GitHub Inventory. That snapshot is
-mutable evidence only: 0 open PRs, 16 open Issues, 69 remote heads, and 0 open
-Dependabot alerts. Native Issue and PR records remain authoritative. This
-handoff still does not keep a live queue.
+The 2026-09-14 expiry, source-alignment, and GitHub count snapshot is recorded
+in `docs/CURRENT_RELEASE_STATE.md`. That snapshot is mutable evidence only.
+Native Issue and PR records remain authoritative. This handoff still does not
+keep a live queue.
 
 The latest recorded control-plane deployment event used source
 `b5ca23db58c55f2d73ec59ffa9525f85b92a8a9c` and recorded release
@@ -146,7 +146,7 @@ production-impact fields. Verify current state, scope, review, and sequencing
 from fresh native Issue/PR and exact-SHA Check records; use fresh GitHub queries
 for counts, branches, and Milestones. `project-state/*.json` still must not copy
 those mutable facts. Canonical docs may retain one dated snapshot, currently the
-2026-09-12 inventory in `docs/CURRENT_RELEASE_STATE.md`.
+2026-09-14 inventory in `docs/CURRENT_RELEASE_STATE.md`.
 
 ## Current Source Capability Boundary
 
@@ -157,7 +157,7 @@ a dated source-reality inventory. The A3 row below additionally reflects the
 
 | Domain | Established in source | Still not established by this evidence |
 | --- | --- | --- |
-| Admin / Operations | Admin auth/session foundations, backend read-capability registry, partial protected read routes, safe projections | Full route-wide RBAC, Admin frontend `/api/admin-auth` login integration, production enablement |
+| Admin / Operations | Admin auth/session foundations, backend read-capability registry, partial protected read routes, safe projections, and PR #729 `admin-auth` client/boundary source | Full route-wide RBAC, production enablement, and Admin `Usage & Channels` consumption of the traffic projection |
 | Wallet-first / Coin Ledger extension | Wallet-first model and additive reverse-reference migration | Application of the four wallet-first schemas, wallet-first writes, or wallet-first activation |
 | Wallet-first Recharge / Payment extension | Provider-neutral durable store/coordinator and Portal routes; PayPal sandbox plus XSD/ChaoJiPay source adapters | New wallet-first provider activation, refund/reconciliation operations, or wallet-first production migration |
 | Wallet-first Commerce extension | Offer, Checkout Quote, Commerce Order, Fulfillment Command | Wallet-first/deferred schema or runtime activation and new live fulfillment |
@@ -296,9 +296,10 @@ The latest retained security/governance observations remain separately dated:
   `b5ca23db58c55f2d73ec59ffa9525f85b92a8a9c`, not to the later source cutoff;
 - the 2026-09-12 API readback reported zero open Dependabot alerts, secret
   scanning disabled, and unavailable code-scanning alert inventory because
-  Code Security is not enabled;
-- the same dated source inventory found 13 of 40 workflow Action `uses:`
-  references full-SHA pinned and 27 mutable tags;
+  Code Security is not enabled; the 2026-09-14 inventory did not re-query
+  those counts
+- the same dated 2026-09-12 source inventory found 13 of 40 workflow Action
+  `uses:` references full-SHA pinned and 27 mutable tags;
 - rulesets, required reviews, Environment protection, provider settings, and
   deployment settings require fresh live readback before relying on them.
 
@@ -317,8 +318,10 @@ before using one to select work.
 1. The control-plane identity was verified by promotion-09 on 2026-08-26; Portal,
    Admin, company-site, rendering, and runtime-config identities still require
    their own task-specific read-only inventory before production action.
-2. Admin backend read capabilities are only partially enforced; frontend
-   Admin login integration and the traffic projection consumer remain pending.
+2. Admin backend read capabilities are only partially enforced. PR #729 added
+   Admin `/api/admin-auth` client and boundary source after the 2026-09-12
+   matrix; production enablement, complete RBAC, and the traffic projection
+   consumer remain unproven.
 3. The four wallet-first schemas, wallet-first/deferred runtime, and Account
    Resource Authority are not proven applied or enabled in production. The
    2026-08-26 terminal receipt preserved the prior documented legacy Wallet,
@@ -329,22 +332,23 @@ before using one to select work.
    terminal identity readback; current runtime identity still requires a fresh
    read. Build evidence alone does not establish durable Portal/Admin artifacts
    or their production activation records.
-6. Mutable GitHub counts were refreshed on 2026-09-12 in
-   `docs/CURRENT_RELEASE_STATE.md`. Rulesets beyond the observed `Validate`
-   requirement, Environment protection, provider settings, and production
-   runtime identity still require a fresh readback when they matter to a
-   decision.
+6. Mutable GitHub counts and the expiry/alignment table were refreshed on
+   2026-09-14 in `docs/CURRENT_RELEASE_STATE.md`. Rulesets beyond the observed
+   `Validate` requirement, Environment protection, provider settings, and
+   production runtime identity still require a fresh readback when they matter
+   to a decision.
 7. A3 dependency materialization and `control-plane-app` promotion completed at
    exact source `b5ca23db...`; promotion-09 ended `promoted_verified`. The old
    XFS-only A3-2 inventory is historical, while schema/feature activation and
    other release units remain outside the completed A3 boundary.
-8. The deployed-source GitHub artifacts are temporary through 2026-09-08.
-   Their expiry does not invalidate the recorded deployment evidence, but it
-   prevents a later promotion from downloading that same packet. The terminal
-   receipt recorded a retained rollback release; its current availability
-   requires fresh inventory. Longer recovery windows, rollback retention, SBOM,
-   provenance/signing, and the remaining mutable Action references remain
-   scoped under #597/#598.
+8. A 2026-09-14 GitHub API readback recorded the deployed-source Actions
+   artifacts as expired at 2026-09-08T13:42Z. Expiry does not invalidate the
+   recorded deployment evidence, but it prevents a later promotion from
+   downloading that same packet. Current-`master` artifacts exist as separate
+   undeployed build evidence. The terminal receipt recorded a retained rollback
+   release; its current availability requires fresh inventory. Longer recovery
+   windows, rollback retention, SBOM, provenance/signing, and the remaining
+   mutable Action references remain scoped under #597/#598.
 ## Validation Baseline
 
 Use `docs/VALIDATION_BASELINE.md`.
