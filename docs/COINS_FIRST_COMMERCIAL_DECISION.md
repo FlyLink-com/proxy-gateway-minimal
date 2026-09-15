@@ -1,6 +1,6 @@
 # Coins-First Catalog and Referral Decision
 
-Last updated: 2026-09-08, America/Los_Angeles.
+Last updated: 2026-09-14, America/Los_Angeles.
 
 ```yaml
 document_metadata:
@@ -8,7 +8,7 @@ document_metadata:
   lifecycle: active
   authority_scope: coins_first_catalog_referral
   superseded_by: null
-  last_verified_at: 2026-09-08
+  last_verified_at: 2026-09-14
   production_authority: false
 ```
 
@@ -21,7 +21,13 @@ document_metadata:
 > - Not a source of truth for: current source availability,
 >   unresolved discount or price-difference policy, provider state,
 >   schema state, feature flags, deployment, or production runtime
+> - Dated source-boundary snapshot: `master@3565c54865676ba127b115f7f914a0359e545bf0`
+>   observed 2026-09-14; this is not a live catalog or runtime claim
 > - Execution authority: None
+> - Issue #522 remains open because the explicit unresolved price-transition
+>   inputs below are still unchosen. The original documentation remaining
+>   gate from 2026-08-30 (one decision record, entry-point link, and
+>   supersession notices) is already present on `master`.
 
 ## Authority and Precedence
 
@@ -215,12 +221,40 @@ reported complete.
 
 ## Source and Production Boundary
 
-At the 2026-08-30 source cutoff,
-`master@836f23f667879b79e2ab2e825fb98e487cfa2165` still contains three plan
-Offers with zero discounts, no published data-pack Offers, the historical
-spend-based referral design, and an `Attributed spend` Portal placeholder.
-Those are source drift from this target decision, not proof that this decision
-has been implemented.
+The original 2026-08-30 remaining gate for this Issue is present on current
+`master`: this decision record, the `docs/README.md` entry, and the
+scope-specific supersession notices on the 2026-07-23 promotion design and
+2026-07-26 Portal commerce layout. That documentation gate is not Issue
+completion. Native Issue #522 stays open until the unresolved
+price-transition inputs above are chosen.
+
+The 2026-08-30 source snapshot at
+`master@836f23f667879b79e2ab2e825fb98e487cfa2165` (three plan Offers, zero
+discounts, no published data-pack Offers, spend-based referral design, and an
+`Attributed spend` Portal placeholder) is retained as historical drift
+evidence. It is not the current source snapshot.
+
+At the 2026-09-14 source cutoff
+`master@3565c54865676ba127b115f7f914a0359e545bf0`:
+
+- The local Coin Commerce validation catalog fixture contains three plan
+  Offers and two data-pack Offers whose Coin prices and traffic quantities
+  match this target catalog. Plan `discountBasisPoints` in that fixture remain
+  `0`, so the 5%/10%/20% marketplace benefits are still target inputs rather
+  than published Offer facts.
+- Portal referral source presentation uses first-recharge aggregates
+  (`Attributed registrations`, `First recharges`, credited first-recharge
+  Coins, pending/available/reversed reward Coins). It no longer treats
+  `Attributed spend` as a live metric. Protected referral APIs and default-off
+  flags remain #523/#524 evidence, not production activation.
+- Domain tests can apply a 500-basis-point Coin discount, but that does not
+  publish stacked-discount, Quote-rounding, renewal, or upgrade/downgrade
+  policy. Those operations must still fail closed until an immutable reviewed
+  policy exists.
+
+This dated source readback is not a live catalog, Wallet, provider, or Portal
+static deployment claim. Production catalog identity and reward activation
+remain `RUNTIME_ONLY_UNKNOWN` until a separate Risk A inventory.
 
 Downstream ownership remains separate:
 
