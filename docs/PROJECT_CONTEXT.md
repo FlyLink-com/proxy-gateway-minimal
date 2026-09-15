@@ -20,14 +20,14 @@ document_metadata:
 > - Latest recorded control-plane deployment-event source:
 >   `b5ca23db58c55f2d73ec59ffa9525f85b92a8a9c` (2026-08-26)
 > - Git-source / recorded-deployment-source state: Drift at these dated
->   cutoffs; deployed-source GitHub artifacts are expired; current runtime
->   alignment was not read
+>   cutoffs; deployed-source GitHub artifacts are expired; automatic
+>   deployment wiring is only partial; current runtime alignment was not read
 > - Delivery navigation projection:
 >   [GCC WebOS — Delivery Project #1](https://github.com/orgs/gccwebos-com/projects/1)
 > - Source, artifact, production-promotion and delayed public-health evidence
->   for A3 were reconciled on 2026-08-26; expiry and source-alignment facts
->   were inventoried on 2026-09-14; provider and production runtime facts
->   retain their separately dated evidence
+>   for A3 were reconciled on 2026-08-26; expiry, source-alignment, and
+>   partial auto-deploy wiring were inventoried on 2026-09-14; provider and
+>   production runtime facts retain their separately dated evidence
 > - Production state: Refer to `docs/CURRENT_RELEASE_STATE.md`; this handoff
 >   records the release identity but does not duplicate its runtime evidence
 > - Production impact: None; this Risk C handoff changes no release, runtime,

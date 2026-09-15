@@ -20,7 +20,9 @@ document_metadata:
 >   `b5ca23db58c55f2d73ec59ffa9525f85b92a8a9c`; promotion-09 ended
 >   `promoted_verified` on release `control-plane-b5ca23db-a3-sync-20260825`
 > - 2026-09-14 readback: the deployed-source GitHub Actions artifacts are
->   expired; current `master` is not that deployment identity
+>   expired; current `master` is not that deployment identity; automatic
+>   deployment wiring is only partial (validate/artifact/dry-run, not
+>   production promotion)
 > - Production authority: None. This file does not deploy, promote, roll back,
 >   mutate runtime state, or replace live inventory and validation.
 
