@@ -32,6 +32,11 @@ SQLite restore, service start, DNS changes, or traffic cutover by themselves.
 
 ## Recoverable Runtime Boundary
 
+Certificate-only runtime maintenance has a separate bounded hook and validation
+runbook in [certificates/README.md](certificates/README.md). That source does not
+establish installation on any host or authorize production access; it must not
+be confused with the application deployment/recovery examples below.
+
 Existing subscription refreshes can be restored from:
 
 - Git-tracked application code.
