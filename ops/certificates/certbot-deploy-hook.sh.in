@@ -1,0 +1,6 @@
+#!/bin/sh
+# Render __DOMAIN__ only from the reviewed node allowlist at installation.
+set -eu
+PATH=/usr/sbin:/usr/bin:/sbin:/bin
+export PATH
+exec /usr/bin/python3 -I /usr/local/libexec/gccgw-runtime-certificate-sync.py --domain __DOMAIN__ --apply

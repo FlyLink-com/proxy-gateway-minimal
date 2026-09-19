@@ -1,0 +1,37 @@
+name: Runtime certificate sync
+
+on:
+  pull_request:
+    branches: [master]
+    paths:
+      - ops/certificates/**
+      - .github/workflows/runtime-certificate-sync.yml
+  push:
+    branches: [master]
+    paths:
+      - ops/certificates/**
+      - .github/workflows/runtime-certificate-sync.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: runtime-certificate-sync-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  synthetic-linux:
+    name: Certificate hook synthetic Linux
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Run isolated certificate hook tests
+        run: python3 -m unittest discover -s ops/certificates -p test_runtime_certificate_sync.py -v
+      - name: Check syntax and whitespace
+        run: |
+          python3 -m py_compile ops/certificates/runtime_certificate_sync.py
+          sh -n ops/certificates/certbot-deploy-hook.sh.in
+          git diff --check
