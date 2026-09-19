@@ -13,8 +13,6 @@ import type {
 } from "./user-portal-types";
 import {
   amountMinorForPlan,
-  createLocalHumanVerificationChallenge,
-  createLocalPreviewInitialAccounts,
   createQrDataUri,
   durationDaysForPlan,
   expiresAtFromDays,
@@ -27,7 +25,6 @@ import {
   parsePasskeyProof,
   planLabel,
   portalError,
-  previewPasswordForInitialAccount,
   registrationEmailVerificationProof,
   requiredEmail,
   requiredText,
@@ -37,6 +34,11 @@ import {
   upsertSubscriptionRequest,
   verifiedHuman
 } from "./user-portal-parsers";
+import {
+  createLocalHumanVerificationChallenge,
+  createLocalPreviewInitialAccounts,
+  previewPasswordForInitialAccount
+} from "./user-portal-preview-data";
 import {
   createOtpauthUri,
   formatBase32Secret,

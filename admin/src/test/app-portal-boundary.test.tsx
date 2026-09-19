@@ -4,8 +4,8 @@ import { cleanup, render, screen } from "@testing-library/react";
 
 const localClientCalls = vi.hoisted(() => [] as unknown[]);
 
-vi.mock("../features/user-portal/user-portal-client", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../features/user-portal/user-portal-client")>();
+vi.mock("../features/user-portal/user-portal-preview-client", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../features/user-portal/user-portal-preview-client")>();
   return {
     ...actual,
     createLocalUserPortalClient: vi.fn((options?: unknown) => {
@@ -26,6 +26,17 @@ afterEach(() => {
 });
 
 describe("App portal boundary", () => {
+  test("keeps local construction out of the production facade", async () => {
+    const productionFacade = await import("../features/user-portal/user-portal-client");
+    const previewFacade = await import("../features/user-portal/user-portal-preview-client");
+
+    expect(productionFacade).not.toHaveProperty("createLocalUserPortalClient");
+    expect(productionFacade).not.toHaveProperty("createLocalPreviewInitialAccounts");
+    expect(typeof previewFacade.createLocalUserPortalClient).toBe("function");
+    expect(typeof previewFacade.createLocalPreviewInitialAccounts).toBe("function");
+    expect(previewFacade.createLocalPreviewInitialAccounts(2)).toHaveLength(2);
+  });
+
   test("does not construct the preview portal client for the real portal route", async () => {
     window.history.replaceState(null, "", "/portal");
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => new Response(JSON.stringify(

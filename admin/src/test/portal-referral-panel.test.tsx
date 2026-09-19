@@ -2,10 +2,10 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-libra
 import "@testing-library/jest-dom/vitest";
 import { afterEach, expect, test, vi } from "vitest";
 import { ReferralRewardsPanel } from "../features/user-portal/portal-commerce-panels";
-import { copyText } from "../lib/clipboard";
+import { copyText } from "../shared/public/clipboard";
 import { PortalReferralClientError } from "../features/user-portal/referrals/referral-client";
 
-vi.mock("../lib/clipboard", () => ({ copyText: vi.fn(async () => true) }));
+vi.mock("../shared/public/clipboard", () => ({ copyText: vi.fn(async () => true) }));
 vi.mock("qrcode", () => ({ default: { toDataURL: vi.fn(async () => "data:image/png;base64,cXJjb2Rl") } }));
 const policy = { policyRef: "policy_test", version: 1, effectiveAt: "2026-09-01T00:00:00.000Z", rateBps: 1000, rounding: "floor" as const, attributionDays: 30, confirmationDays: 7 };
 const profile = { eligible: true, linkPath: null as string | null, policy, attributionDays: 30 };

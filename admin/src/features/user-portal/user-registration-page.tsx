@@ -1,6 +1,6 @@
 import { Check, Mail, ShieldCheck } from "lucide-react";
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
-import { errorMessage } from "../../lib/errors";
+import { errorMessage } from "../../shared/public/errors";
 import {
   isPortalWelcomeCoinsRegistration,
   PORTAL_REGISTRATION_SESSION_STORAGE_KEY,

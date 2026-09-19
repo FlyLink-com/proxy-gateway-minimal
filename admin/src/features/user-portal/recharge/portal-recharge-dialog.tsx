@@ -1,7 +1,7 @@
 import { AlertTriangle, CheckCircle2, Clock3, Circle, LoaderCircle } from "lucide-react";
 import { useState } from "react";
 
-import { ModalFrame } from "../../../components/modal-frame";
+import { ModalFrame } from "../../../shared/public/modal-frame";
 
 import { formatPortalRechargeAmount, portalRechargePaymentMethodLabel } from "./portal-recharge-presentation";
 import { canContinuePortalRechargeOrder } from "./portal-recharge-payment-handoff";

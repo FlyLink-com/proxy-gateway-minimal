@@ -15,7 +15,6 @@ import { createTotpCode } from "../features/user-portal/totp-preview";
 const COOKIE_CONTEXT = `portalctx_${"a".repeat(64)}`;
 import {
   createHttpUserPortalClient,
-  createLocalUserPortalClient,
   isPortalWalletFirstRegistration,
   isPortalWelcomeCoinsRegistration,
   PORTAL_REGISTRATION_SESSION_STORAGE_KEY,
@@ -44,6 +43,7 @@ import {
   type PortalUserState,
   type UserPortalClient
 } from "../features/user-portal/user-portal-client";
+import { createLocalUserPortalClient } from "../features/user-portal/user-portal-preview-client";
 import {
   PortalWalletClientError,
   type PortalWalletClient,

@@ -189,7 +189,7 @@ import preview from "./app/admin-fixture-preview";
 import uiProjection from "./app/admin-ui-projection";
 import panel from "./components/primitives/panel-frame";
 import companySite from "./features/company-site/company-site-page";
-import portalClient from "./features/user-portal/user-portal-client";
+import portalClient from "./features/user-portal/user-portal-preview-client";
 import portalPage from "./features/user-portal/user-portal-page";
 import portalRoute from "./features/user-portal/user-portal-route";
 import usagePage from "./pages/subscription-usage-monitor-page";
@@ -272,15 +272,15 @@ export default panel;
   writeFixtureFile(
     rootDirectory,
     "admin/src/features/user-portal/user-portal-client.ts",
-    `import localPortal from "./user-portal-local";
-export default localPortal;
-`
+    "export default {};\n"
   );
   writeFixtureFile(
     rootDirectory,
     "admin/src/features/user-portal/user-portal-local.ts",
     `import preview from "./totp-preview";
-export default preview;
+import previewData from "./user-portal-preview-data";
+void preview;
+export default previewData;
 `
   );
   writeFixtureFile(
@@ -290,13 +290,31 @@ export default preview;
   );
   writeFixtureFile(
     rootDirectory,
+    "admin/src/features/user-portal/user-portal-preview-client.ts",
+    `export { default } from "./user-portal-local";
+export * from "./user-portal-preview-data";
+`
+  );
+  writeFixtureFile(
+    rootDirectory,
+    "admin/src/features/user-portal/user-portal-preview-data.ts",
+    "export default \"preview\";\n"
+  );
+  writeFixtureFile(
+    rootDirectory,
     "admin/src/features/user-portal/user-portal-page.tsx",
-    "export default function UserPortalPage() {}\n"
+    `import { cn } from "../../shared/public/utils";
+void cn;
+export default function UserPortalPage() {}
+`
   );
   writeFixtureFile(
     rootDirectory,
     "admin/src/features/user-portal/user-portal-route.tsx",
-    "export default function UserPortalRoute() {}\n"
+    `import previewClient from "./user-portal-preview-client";
+void previewClient;
+export default function UserPortalRoute() {}
+`
   );
   writeFixtureFile(
     rootDirectory,
@@ -307,6 +325,12 @@ export default preview;
     rootDirectory,
     "admin/src/features/user-portal/recharge/portal-recharge-client.ts",
     "export default {};\n"
+  );
+  writeFixtureFile(
+    rootDirectory,
+    "admin/src/shared/public/utils.ts",
+    `export function cn(...values) { return values.filter(Boolean).join(" "); }
+`
   );
   writeFixtureFile(
     rootDirectory,
@@ -629,7 +653,7 @@ test("synthetic current contract passes with exact known debt", (t) => {
   assert.deepEqual(result.knownDebt, {
     adminToPortal: 3,
     adminToSite: 1,
-    fixtureEdges: 6
+    fixtureEdges: 10
   });
   assert.equal(result.productionAuthority, false);
   assert.equal(result.redacted, true);
@@ -1170,6 +1194,66 @@ test("synthetic Portal to Admin reachability fails closed", (t) => {
 
   const result = verifyFrontendSourceBoundaries({ rootDirectory });
   assertIssue(result, "portal_cross_surface_reachability");
+});
+
+test("synthetic formal Portal reachability to local or preview helpers fails closed", (t) => {
+  const rootDirectory = createPassingFixture(t);
+  appendFixtureFile(
+    rootDirectory,
+    "admin/src/features/user-portal/user-portal-page.tsx",
+    '\nimport preview from "./user-portal-local";\nvoid preview;\n'
+  );
+
+  const result = verifyFrontendSourceBoundaries({ rootDirectory });
+  assert.ok(
+    issueCodes(result).has("portal_preview_reachability"),
+    JSON.stringify(result.issues, null, 2)
+  );
+});
+
+test("synthetic formal Portal facade re-exporting preview client fails closed", (t) => {
+  const rootDirectory = createPassingFixture(t);
+  appendFixtureFile(
+    rootDirectory,
+    "admin/src/features/user-portal/user-portal-client.ts",
+    '\nexport { default as previewClient } from "./user-portal-preview-client";\n'
+  );
+
+  const result = verifyFrontendSourceBoundaries({ rootDirectory });
+  assert.ok(
+    issueCodes(result).has("portal_preview_reachability"),
+    JSON.stringify(result.issues, null, 2)
+  );
+});
+
+test("synthetic shared public reverse dependency fails closed", (t) => {
+  const rootDirectory = createPassingFixture(t);
+  appendFixtureFile(
+    rootDirectory,
+    "admin/src/shared/public/utils.ts",
+    '\nimport portalPage from "../../features/user-portal/user-portal-page";\nvoid portalPage;\n'
+  );
+
+  const result = verifyFrontendSourceBoundaries({ rootDirectory });
+  assert.ok(
+    issueCodes(result).has("shared_public_foreign_reachability"),
+    JSON.stringify(result.issues, null, 2)
+  );
+});
+
+test("synthetic shared public reverse dependency to Admin fails closed", (t) => {
+  const rootDirectory = createPassingFixture(t);
+  appendFixtureFile(
+    rootDirectory,
+    "admin/src/shared/public/utils.ts",
+    '\nimport AdminApp from "../../App";\nvoid AdminApp;\n'
+  );
+
+  const result = verifyFrontendSourceBoundaries({ rootDirectory });
+  assert.ok(
+    issueCodes(result).has("shared_public_foreign_reachability"),
+    JSON.stringify(result.issues, null, 2)
+  );
 });
 
 test("synthetic Site to Portal reachability fails closed", (t) => {

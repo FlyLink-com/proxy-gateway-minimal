@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { copyText } from "../../../lib/clipboard";
+import { copyText } from "../../../shared/public/clipboard";
 import {
   PortalReferralClientError,
   type PortalReferralClient,

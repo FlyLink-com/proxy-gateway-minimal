@@ -3,7 +3,8 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-libra
 import "@testing-library/jest-dom/vitest";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { UserPortalPage } from "../features/user-portal/user-portal-page";
-import { createLocalUserPortalClient, type PortalSession } from "../features/user-portal/user-portal-client";
+import { createLocalUserPortalClient } from "../features/user-portal/user-portal-preview-client";
+import type { PortalSession } from "../features/user-portal/user-portal-client";
 import { PORTAL_PAYMENT_RETURN_SESSION_STORAGE_KEY, PORTAL_REGISTRATION_SESSION_STORAGE_KEY } from "../features/user-portal/user-portal-types";
 
 const session: PortalSession = { status: "authenticated_preview", transport: "cookie", sessionRef: `portalctx_${"a".repeat(64)}`, expiresAt: "2026-09-07T00:30:00.000Z", registeredAt: "2026-09-07T00:00:00.000Z", userRef: "test_account", displayName: "Test Account", authMode: "password", safety: { noAdminApi: true, noPublicAuthActivated: true, noRawPasswordReturned: true } };
