@@ -6,7 +6,7 @@ import {
   PUBLIC_LOCALE_LABELS,
   savePublicLocale,
   type PublicLocale
-} from "../../app/public-locale";
+} from "../../shared/public/public-locale";
 
 const publicLocaleOptions: PublicLocale[] = ["zh", "en"];
 const publicThemeOptions: PublicTheme[] = ["light", "dark"];

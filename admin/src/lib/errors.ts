@@ -1,3 +1,1 @@
-export function errorMessage(error: unknown, fallback: string) {
-  return error instanceof Error ? error.message : fallback;
-}
+export * from "../shared/public/errors";

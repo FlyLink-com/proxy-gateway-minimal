@@ -32,10 +32,10 @@ import {
   Wifi,
   type LucideIcon
 } from "lucide-react";
-import { ModalFrame } from "../../components/modal-frame";
-import { copyText } from "../../lib/clipboard";
-import { errorMessage } from "../../lib/errors";
-import { cn } from "../../lib/utils";
+import { ModalFrame } from "../../shared/public/modal-frame";
+import { copyText } from "../../shared/public/clipboard";
+import { errorMessage } from "../../shared/public/errors";
+import { cn } from "../../shared/public/utils";
 import {
   PublicLocaleSwitch,
   PublicPreferenceSwitch,

@@ -146,13 +146,13 @@ const EXPECTED_APP_SENSITIVE_IMPORTS = [
   "./pages/admin-operations-shell",
   "./pages/admin-production-baseline-preview",
   "./features/company-site/company-site-page",
-  "./features/user-portal/user-portal-client",
+  "./features/user-portal/user-portal-preview-client",
   "./features/user-portal/user-portal-page",
   "./features/user-portal/user-portal-route"
 ];
 
 const EXPECTED_ADMIN_TO_PORTAL_EDGES = new Set([
-  "admin/src/App.tsx -> admin/src/features/user-portal/user-portal-client.ts",
+  "admin/src/App.tsx -> admin/src/features/user-portal/user-portal-preview-client.ts",
   "admin/src/App.tsx -> admin/src/features/user-portal/user-portal-page.tsx",
   "admin/src/App.tsx -> admin/src/features/user-portal/user-portal-route.tsx"
 ]);
@@ -166,24 +166,26 @@ const EXPECTED_FIXTURE_EDGES = new Set([
   "admin/src/App.tsx -> admin/src/pages/admin-production-baseline-preview.tsx",
   "admin/src/app/admin-ui-projection.ts -> admin/src/app/admin-fixture-preview.ts",
   "admin/src/components/primitives/panel-frame.tsx -> admin/src/app/admin-fixture-preview.ts",
+  "admin/src/App.tsx -> admin/src/features/user-portal/user-portal-preview-client.ts",
   "admin/src/features/user-portal/user-portal-local.ts -> admin/src/features/user-portal/totp-preview.ts",
+  "admin/src/features/user-portal/user-portal-local.ts -> admin/src/features/user-portal/user-portal-preview-data.ts",
+  "admin/src/features/user-portal/user-portal-preview-client.ts -> admin/src/features/user-portal/user-portal-preview-data.ts",
+  "admin/src/features/user-portal/user-portal-route.tsx -> admin/src/features/user-portal/user-portal-preview-client.ts",
   "admin/src/pages/subscription-usage-monitor-page.tsx -> admin/src/features/subscriptions/usage-runtime-fixture.ts"
 ]);
 
 const EXPECTED_FIXTURE_EDGES_BY_SURFACE = {
   admin: EXPECTED_FIXTURE_EDGES,
-  portal: new Set([
-    "admin/src/features/user-portal/user-portal-local.ts -> admin/src/features/user-portal/totp-preview.ts"
-  ]),
+  portal: new Set(),
   site: new Set()
 };
 
 const PORTAL_SHARED_FILES = new Set([
-  "admin/src/app/public-locale.ts",
-  "admin/src/components/modal-frame.tsx",
-  "admin/src/lib/clipboard.ts",
-  "admin/src/lib/errors.ts",
-  "admin/src/lib/utils.ts"
+  "admin/src/shared/public/public-locale.ts",
+  "admin/src/shared/public/modal-frame.tsx",
+  "admin/src/shared/public/clipboard.ts",
+  "admin/src/shared/public/errors.ts",
+  "admin/src/shared/public/utils.ts"
 ]);
 
 const EXPECTED_VITE_LOCAL_IMPORTS = {
@@ -847,6 +849,19 @@ function isFixtureOrPreview(file) {
   return /(?:^|[/_.-])(?:fixtures?|previews?)(?:[/_.-]|$)/iu.test(file);
 }
 
+function isPortalPreviewHelper(file) {
+  const normalized = file.toLowerCase();
+  return normalized.includes("/user-portal-local.")
+    || normalized.includes("/user-portal-preview-")
+    || normalized.includes("/totp-preview.")
+    || normalized.includes("/preview-client.")
+    || normalized.includes("/preview-data.");
+}
+
+function isSharedPublicFile(file) {
+  return file.startsWith("admin/src/shared/public/");
+}
+
 function isForbiddenActivePath(file) {
   const normalized = file.toLowerCase();
   return /(?:^|\/)(?:test|tests|__tests__)(?:\/|$)/u.test(normalized)
@@ -1409,8 +1424,23 @@ function checkGraphPolicies(graphs) {
   }
 
   for (const file of graphs.portal.files) {
+    if (isPortalPreviewHelper(file)) {
+      issues.push(issue("portal_preview_reachability", { file }));
+      continue;
+    }
     if (!isAllowedPortalFile(file)) {
       issues.push(issue("portal_cross_surface_reachability", { file }));
+    }
+  }
+
+  for (const graph of Object.values(graphs)) {
+    for (const edge of graph.edges) {
+      if (isSharedPublicFile(edge.from) && !isSharedPublicFile(edge.to)) {
+        issues.push(issue("shared_public_foreign_reachability", {
+          from: edge.from,
+          to: edge.to
+        }));
+      }
     }
   }
 

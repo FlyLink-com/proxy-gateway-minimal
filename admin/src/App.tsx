@@ -16,9 +16,7 @@ import {
 import { ConnectionPanel } from "./features/subscriptions/connection-panel";
 import { CompanySitePage } from "./features/company-site/company-site-page";
 import { UserPortalPage } from "./features/user-portal/user-portal-page";
-import {
-  createLocalUserPortalClient
-} from "./features/user-portal/user-portal-client";
+import { createLocalUserPortalClient } from "./features/user-portal/user-portal-preview-client";
 import { AdminSetupPage } from "./pages/admin-setup-page";
 import { AdminAuthBoundary } from "./pages/admin-auth-boundary";
 import { AdminOperationsShell } from "./pages/admin-operations-shell";
