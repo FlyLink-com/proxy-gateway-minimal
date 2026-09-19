@@ -76,6 +76,7 @@ const EXPECTED_WORKFLOW_ACTIONS = {
     "actions/setup-node",
     "actions/upload-artifact"
   ],
+  "runtime-certificate-sync.yml": ["actions/checkout"],
   "synthetic-performance-baseline.yml": [
     "actions/checkout",
     "actions/setup-node",
@@ -94,7 +95,7 @@ const REVIEWED_ACTION_PINS = {
   "actions/checkout": {
     sha: DEFAULT_CHECKOUT_PIN,
     annotation: "v6",
-    count: 21
+    count: 22
   },
   "actions/download-artifact": {
     sha: "3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c",
@@ -112,9 +113,9 @@ const REVIEWED_ACTION_PINS = {
     count: 6
   }
 };
-const EXPECTED_ACTION_REFERENCE_COUNT = 52;
+const EXPECTED_ACTION_REFERENCE_COUNT = 53;
 const EXPECTED_ACTION_REVISION_COUNTS = {
-  [`actions/checkout@${DEFAULT_CHECKOUT_PIN}`]: 19,
+  [`actions/checkout@${DEFAULT_CHECKOUT_PIN}`]: 20,
   [`actions/checkout@${TRUSTED_GOVERNANCE_CHECKOUT_PIN}`]: 2,
   [`actions/download-artifact@${REVIEWED_ACTION_PINS["actions/download-artifact"].sha}`]: 7,
   [`actions/setup-node@${REVIEWED_ACTION_PINS["actions/setup-node"].sha}`]: 18,
