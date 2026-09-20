@@ -8,6 +8,7 @@ import { canContinuePortalRechargeOrder } from "./portal-recharge-payment-handof
 import { PortalRechargeOffers } from "./portal-recharge-offers";
 import type { PortalRechargeModel } from "./use-portal-recharge";
 import type { PortalRechargeOffer } from "./portal-recharge-client";
+import { portalAssetPath } from "../portal-entry";
 
 type RechargeStatusTone = "neutral" | "pending" | "success" | "attention";
 
@@ -188,7 +189,7 @@ export function PortalRechargeDialog({
                 ? "portal-recharge-pay-button portal-recharge-pay-button--alipay portal-recharge-checkout__pay"
                 : "portal-recharge-pay-button portal-recharge-checkout__pay"}
               onClick={() => model.continueOrderPayment(order)}>
-              {order.paymentMethod === "alipay" ? <img alt="" aria-hidden="true" src="/payment-alipay-icon.png" /> : null}
+              {order.paymentMethod === "alipay" ? <img alt="" aria-hidden="true" src={portalAssetPath("payment-alipay-icon.png")} /> : null}
               {order.paymentMethod === "alipay" ? zh ? "支付宝支付" : "Pay with Alipay"
                 : zh ? "继续支付" : "Continue payment"}
             </button>

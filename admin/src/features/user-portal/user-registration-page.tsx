@@ -10,6 +10,8 @@ import {
 } from "./user-portal-client";
 import { PublicLocaleSwitch, usePublicLocalePreference } from "./public-locale-switch";
 import { broadcastPortalSessionChange } from "./portal-browser-session";
+import { PortalDisplayLinks } from "./portal-display-links";
+import { portalRoutePath } from "./portal-entry";
 
 type UserRegistrationPageProps = {
   portalClient: UserPortalClient;
@@ -158,7 +160,7 @@ const registrationCopy = {
 } as const;
 
 function redirectToPortal() {
-  window.history.pushState(null, "", "/portal");
+  window.history.pushState(null, "", portalRoutePath("login"));
   const event = typeof PopStateEvent === "function"
     ? new PopStateEvent("popstate")
     : new Event("popstate");
@@ -303,7 +305,7 @@ export function UserRegistrationPage({ portalClient }: UserRegistrationPageProps
       setStep("complete");
       if (nextResult.session.transport === "cookie") {
         broadcastPortalSessionChange();
-        window.location.assign("/portal");
+        window.location.assign(portalRoutePath("login"));
       } else redirectToPortal();
     } catch (caughtError) {
       setError(errorMessage(caughtError, copy.submitError));
@@ -343,7 +345,10 @@ export function UserRegistrationPage({ portalClient }: UserRegistrationPageProps
           <p className="portal-registration-support">{copy.support}</p>
         </aside>
         <section className="portal-registration-main" aria-label={copy.pageAria}>
-          <PublicLocaleSwitch ariaLabel={copy.language} locale={locale} onLocaleChange={setLocale} />
+          <div className="portal-registration-display-controls">
+            <PublicLocaleSwitch ariaLabel={copy.language} locale={locale} onLocaleChange={setLocale} />
+            <PortalDisplayLinks locale={locale} />
+          </div>
           {children}
         </section>
       </main>
@@ -365,7 +370,7 @@ export function UserRegistrationPage({ portalClient }: UserRegistrationPageProps
           ? copy.welcomeBonusDescription(welcomeBonus.amountUnits)
           : copy.legacyTrialDescription}</p>
         <div className="portal-registration-success-actions">
-          <a className="portal-auth-submit portal-registration-login-link" href="/portal/">
+          <a className="portal-auth-submit portal-registration-login-link" href={portalRoutePath("login")}>
             {copy.loginLink}
           </a>
           <a className="portal-registration-secondary-link" href="#/site/download">
@@ -557,7 +562,7 @@ export function UserRegistrationPage({ portalClient }: UserRegistrationPageProps
       />
       {error ? <p className="portal-inline-error" role="alert">{error}</p> : null}
       <p className="portal-registration-signin">
-        {copy.existingAccountPrefix} <a href="/portal/">{copy.existingAccountAction} →</a>
+        {copy.existingAccountPrefix} <a href={portalRoutePath("login")}>{copy.existingAccountAction} →</a>
       </p>
     </form>
   );

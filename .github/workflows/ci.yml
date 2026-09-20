@@ -223,6 +223,14 @@ jobs:
         if: steps.changes.outputs.run_full != '0'
         run: npm run admin:portal:verify
 
+      - name: Build Portal desktop app
+        if: steps.changes.outputs.run_full != '0'
+        run: npm run admin:portal:web:build
+
+      - name: Verify Portal desktop build boundary
+        if: steps.changes.outputs.run_full != '0'
+        run: npm run admin:portal:web:verify
+
       - name: Build public site
         if: steps.changes.outputs.run_full != '0'
         run: npm run cloudflare:site:build

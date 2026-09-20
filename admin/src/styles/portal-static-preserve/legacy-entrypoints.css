@@ -3579,3 +3579,41 @@
   min-height: 36px;
   padding: 0 14px;
 }
+
+.portal-display-links {
+  align-items: center;
+  display: inline-flex;
+  gap: 10px;
+  justify-content: flex-end;
+  white-space: nowrap;
+}
+
+.portal-display-links a {
+  color: #667085;
+  font-size: 11px;
+  line-height: 1.4;
+  text-decoration: none;
+}
+
+.portal-display-links a:hover,
+.portal-display-links a:focus-visible {
+  color: #111827;
+  text-decoration: underline;
+}
+
+.portal-login-main > .portal-display-links {
+  align-self: flex-end;
+  margin: 0 2px 8px;
+}
+
+.portal-registration-display-controls {
+  align-items: center;
+  display: flex;
+  gap: 14px;
+  justify-content: flex-end;
+  margin-bottom: 12px;
+}
+
+.portal-v2-topbar-actions > .portal-display-links {
+  margin-right: 2px;
+}
