@@ -1,5 +1,15 @@
 # Mobile current resource overview
 
+```yaml
+document_metadata:
+  doc_type: canonical
+  lifecycle: active
+  authority_scope: mobile_current_resource_overview
+  superseded_by: null
+  last_verified_at: 2026-09-19
+  production_authority: false
+```
+
 Risk: B source-only. Process: intent, endpoint and tests together. Expected PR count: one small backend dependency for the existing independent mobile PR. Production/AWS impact: none. Auth/schema/migration/identity impact: none (`identity_impact: false`).
 
 Release unit: control-plane-app. Issue: None (bounded source integration). Lead: Codex; Luna assisted browser-session route coverage and source review. No merge or production promotion requested by this draft.
