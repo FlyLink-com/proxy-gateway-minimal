@@ -49,6 +49,95 @@ These include Windows line-ending/path assumptions and existing workflow/source-
 
 ## Promotion boundary
 
+### Unified review and authenticated local follow-up — 2026-09-20
+
+- Closed the release-pipeline gap: desktop now has its own build, archive replay,
+  checksum, manifest and upload job. Ordinary CI also builds/verifies this entry.
+  Existing exact workflow inventories were extended for the extra job; no gate
+  or assertion was removed to accommodate it.
+- New artifact-workflow tests were red before the job existed, then passed.
+  Final focused CI/artifact workflow tests: 9 passed. Desktop build/verifier and
+  frontend boundary check passed again after the workflow changes.
+- Final full root suite this round: 5171 total, 5104 passed, 11 failed,
+  56 skipped. The 11 names still match the independently checked baseline above;
+  the extra two tests passed. This is not a green Windows full-suite result.
+- Fresh GitHub CI at the preceding reviewed head
+  `548bd81db4e8657bdd09a818c75de64686ef2744` (run `35530441821`) passed,
+  including the Linux server suite and frontend checks. That run does not cover
+  the new pipeline edits: the new pushed head needs its own check results.
+- With this desktop build and the paired mobile build on the same loopback
+  origin, a user-authorized synthetic login exercised the actual backend auth
+  modules and in-memory database. The browser retained the same persistent
+  HttpOnly session across mobile -> desktop -> mobile, including reloads.
+  Logging out in a second desktop tab invalidated the session and updated the
+  mobile tab; the browser cookie was removed. No cookie values were recorded.
+- The fixture wires actual commerce-model and access-request reads needed by
+  the desktop shell, with no credits/orders and no fulfillment worker. Wallet,
+  referral and payment-provider business acceptance is outside this fixture;
+  its unconfigured endpoint errors are not production findings.
+- A paired mobile selector display mismatch for explicit `/m/` was corrected
+  and checked in the browser. The mobile build was restored to default-off
+  after acceptance. Owned browser/server were closed; ports 4189/4192 are not
+  listening. No user browser session or existing preview service was closed.
+
+Physical iPhone/Safari, real production-account switching, live routing
+inventory and deployment remain unperformed. The prior frontend suite/build
+evidence above is reused only for unchanged application source, not represented
+as a second run or as production acceptance.
+
 Not deployed. Before production activation, inspect the current page-serving configuration, prepare fresh backup/exact route diff/rollback, and bind both reviewed artifact identities. Install and check `/web/` plus static assets before enabling the mobile selector. Preserve API, referral and payment callback routes. Production desktop recharge trust origins must use the already-authorized public configuration; the local default-empty trust binding is only local verification, not a production-ready payment configuration.
 
+The release-artifact workflow packages the legacy `/portal` and desktop `/web/` bundles in separate ZIPs and manifests under the existing `portal-static` release unit; the desktop artifact is identified by its `globalcircle-portal-web-<release>.zip` filename and `portal-web-static-<release>` upload name. Both artifacts remain build evidence until the Risk A static promotion gate passes.
+
 Rollback order: restore the prior mobile-only page artifact first, then roll back desktop routes if necessary. No previous consumed execution package is reusable.
+
+## Page-only release preparation
+
+This is the paired routing plan, not an executable production approval. The older
+`docs/PORTAL_STATIC_PRODUCTION_RELEASE_RUNBOOK.md` permits static-pointer changes
+only and explicitly excludes Nginx edits; it cannot authorize this path addition.
+A fresh routing-specific Risk A packet must bind the actual serving configuration.
+
+| Entry | Candidate owner | Must remain true |
+| --- | --- | --- |
+| `/`, `/portal[/]`, `/m[/]` | Reviewed mobile Vercel build | Root assets remain mobile; normal build defaults to routing off. |
+| `/portal/register[/]` | Same mobile build | Referral query and return hash retained. |
+| `/web` | Page-only redirect to `/web/` | Keep query; no device detection here. |
+| `/web/`, `/web/register[/]` | Verified desktop static artifact | Entry HTML, not a fallback to mobile HTML. |
+| `/web/assets/*` and desktop public files | Same desktop artifact | Missing assets return 404, never an HTML login page. |
+| `/api/*`, `/r/*`, existing payment callbacks | Existing backend routes | No route, upstream, auth or cache-policy changes. |
+
+The approved packet must name the desktop merged source, ZIP/manifest SHA-256,
+public recharge-origin binding hash, mobile merged source, routing-enabled build
+identity, current mobile-only rollback build, effective Nginx configuration hash,
+new backup identity, exact location diff, and acceptance/rollback commands.
+None of these production identities is inferred from local builds or an old
+Deploy Note. Both desktop and mobile remain `release_unit: portal-static` and
+`frontend_surface: portal`; distinguish artifacts by file name/build identity,
+not by adding a release unit or changing the manifest schema.
+
+Execution order after the exact gate is approved:
+
+1. Recheck reviewed heads/checks, artifact retrievability and live page topology;
+   verify the already-authorized public recharge-origin binding. No secrets or
+   production environment/database copies are needed for the frontend build.
+2. Back up the exact current page config and retain the current mobile-only
+   artifact; stage the verified desktop artifact outside the serving path.
+3. Install only desktop page/static locations; configuration-test before reload.
+   Leave the mobile selector off. Verify desktop HTML, registration and every
+   referenced asset's namespace/content hash; mobile remains unchanged.
+4. Bind and promote the mobile build with `VITE_PORTAL_DESKTOP_ENABLED=true`.
+   Verify automatic/manual choice, registration return, no switching on resize,
+   and authenticated cross-surface reads. No purchase/payment is an acceptance
+   action without separate authorization.
+5. Physical iPhone/Safari acceptance: login, portrait/landscape, keyboard close,
+   background/foreground and reload must not require pinch zoom to display the
+   main content. This is not replaced by Chrome device emulation.
+6. On failed activation, restore the previous mobile-only page first. Keep
+   `/web/` working while the selector can still reference it; then restore the
+   exact backed-up desktop locations if needed and verify both restored paths.
+   Do not restart the backend or restore a database for a page-routing rollback.
+
+No DNS, backend release, database/schema, balance, entitlement, subscription
+identity, collector, payment-provider or Admin change belongs to this release.
+Append a concise Deploy Note to both related PRs only after actual acceptance.

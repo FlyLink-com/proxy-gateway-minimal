@@ -74,6 +74,9 @@ const EXPECTED_WORKFLOW_ACTIONS = {
     "actions/upload-artifact",
     "actions/checkout",
     "actions/setup-node",
+    "actions/upload-artifact",
+    "actions/checkout",
+    "actions/setup-node",
     "actions/upload-artifact"
   ],
   "runtime-certificate-sync.yml": ["actions/checkout"],
@@ -95,7 +98,7 @@ const REVIEWED_ACTION_PINS = {
   "actions/checkout": {
     sha: DEFAULT_CHECKOUT_PIN,
     annotation: "v6",
-    count: 22
+    count: 23
   },
   "actions/download-artifact": {
     sha: "3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c",
@@ -105,21 +108,21 @@ const REVIEWED_ACTION_PINS = {
   "actions/setup-node": {
     sha: "249970729cb0ef3589644e2896645e5dc5ba9c38",
     annotation: "v6",
-    count: 18
+    count: 19
   },
   "actions/upload-artifact": {
     sha: "043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",
     annotation: "v7",
-    count: 6
+    count: 7
   }
 };
-const EXPECTED_ACTION_REFERENCE_COUNT = 53;
+const EXPECTED_ACTION_REFERENCE_COUNT = 56;
 const EXPECTED_ACTION_REVISION_COUNTS = {
-  [`actions/checkout@${DEFAULT_CHECKOUT_PIN}`]: 20,
+  [`actions/checkout@${DEFAULT_CHECKOUT_PIN}`]: 21,
   [`actions/checkout@${TRUSTED_GOVERNANCE_CHECKOUT_PIN}`]: 2,
   [`actions/download-artifact@${REVIEWED_ACTION_PINS["actions/download-artifact"].sha}`]: 7,
-  [`actions/setup-node@${REVIEWED_ACTION_PINS["actions/setup-node"].sha}`]: 18,
-  [`actions/upload-artifact@${REVIEWED_ACTION_PINS["actions/upload-artifact"].sha}`]: 6
+  [`actions/setup-node@${REVIEWED_ACTION_PINS["actions/setup-node"].sha}`]: 19,
+  [`actions/upload-artifact@${REVIEWED_ACTION_PINS["actions/upload-artifact"].sha}`]: 7
 };
 // Keep this source-only guard dependency-free: every uncommented `uses` token is
 // reserved for this canonical one-line form and every other spelling fails closed.
@@ -651,7 +654,8 @@ test("Release Artifact skips package jobs only for an exact docs-only result and
 
   const jobs = [
     ["package", "portal-static"],
-    ["portal-static", "admin-static"],
+    ["portal-static", "portal-web-static"],
+    ["portal-web-static", "admin-static"],
     ["admin-static", undefined]
   ];
   for (const [jobName, nextJobName] of jobs) {

@@ -816,7 +816,8 @@ test("package and workflow contracts invoke each explicit profile without weaken
   for (const [jobName, nextJobName, firstWorkMarker] of [
     ["classify", "package", "node scripts/ci-change-classifier.mjs"],
     ["package", "portal-static", "- name: Resolve release label"],
-    ["portal-static", "admin-static", "- name: Install Portal dependencies"],
+    ["portal-static", "portal-web-static", "- name: Install Portal dependencies"],
+    ["portal-web-static", "admin-static", "- name: Install Portal dependencies"],
     ["admin-static", null, "- name: Install Admin dependencies"]
   ]) {
     assertSourcePreflightBefore(
