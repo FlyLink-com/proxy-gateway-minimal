@@ -38,6 +38,30 @@ function createProjection(result, calls) {
   });
 }
 
+test("current overview route passes session ownership to the source and returns correlated usage without caching", async (t) => {
+  const calls = [];
+  const overview = { ...AVAILABLE_RESOURCE, resourceRef: `resource_${"a".repeat(64)}`, usage: {
+    totalBytes: 1000, usedBytes: 25, remainingBytes: 975, collectionStatus: "measured",
+    updatedAt: "2026-08-14T00:00:00.000Z", cycleStartedAt: "2026-08-13T00:00:00.000Z", cycleEndsAt: AVAILABLE_RESOURCE.validUntil
+  } };
+  const projection = createWalletFirstCurrentResourceProjection({
+    controlStore: {
+      readWalletFirstCurrentResourceProjection() { return AVAILABLE_RESOURCE; },
+      readWalletFirstCurrentResourceOverview(input) { calls.push(input); return overview; }
+    }, nowFn: () => "2026-08-14T00:00:00.000Z"
+  });
+  const { server, baseUrl } = await listen(createApp(createState({ projection })));
+  t.after(() => closeServer(server));
+  const path = `${baseUrl}/api/portal/resources/current/overview`;
+  assert.equal((await fetch(path)).status, 401);
+  assert.equal((await fetch(`${path}?accountId=acct_other`, { headers: { "X-Portal-Session": "session_alpha" } })).status, 400);
+  const response = await fetch(path, { headers: { "X-Portal-Session": "session_alpha" } });
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get("cache-control"), "no-store");
+  assert.deepEqual(await response.json(), { resource: overview });
+  assert.deepEqual(calls, [{ accountId: "acct_alpha", now: "2026-08-14T00:00:00.000Z" }]);
+});
+
 function createState({ projection, auth } = {}) {
   return {
     rootDir: resolve(fileURLToPath(new URL("../../", import.meta.url))),

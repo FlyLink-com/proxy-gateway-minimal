@@ -467,6 +467,18 @@ export function userPortalRoutes(state, options = {}) {
     }
   });
 
+  router.get("/api/portal/resources/current/overview", (req, res) => {
+    res.set("Cache-Control", "no-store");
+    try {
+      requireNoQuery(req);
+      const session = requirePortalHeaderSession(req);
+      const projection = snapshotWalletFirstCurrentResourceProjection(currentResourceProjection);
+      res.json({ resource: projection.getCurrentOverview({ accountId: session.accountId }) });
+    } catch (error) {
+      sendPortalError(res, error);
+    }
+  });
+
   router.post("/api/portal/resources/current/setup", (req, res) => {
     try {
       setSetupDeliveryResponseHeaders(res);

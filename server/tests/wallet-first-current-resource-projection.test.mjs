@@ -105,6 +105,34 @@ function createControlStore(result, calls) {
   };
 }
 
+test("current overview scopes one clocked snapshot and preserves pending versus measured zero", () => {
+  const now = "2026-08-14T00:00:00.000Z";
+  const overview = {
+    ...AVAILABLE_RESOURCE,
+    resourceRef: `resource_${"a".repeat(64)}`,
+    usage: { totalBytes: 50 * 1024 ** 3, usedBytes: null, remainingBytes: null, collectionStatus: "pending", updatedAt: null, cycleStartedAt: "2026-08-13T00:00:00.000Z", cycleEndsAt: AVAILABLE_RESOURCE.validUntil }
+  };
+  const calls = [];
+  const service = createWalletFirstCurrentResourceProjection({
+    controlStore: {
+      ...createControlStore(AVAILABLE_RESOURCE, []),
+      readWalletFirstCurrentResourceOverview(input) { calls.push(input); return structuredClone(overview); }
+    },
+    nowFn: () => new Date(now),
+    setupDelivery: createVerifiedSetupDelivery()
+  });
+  assert.equal(service.getCurrentOverview({ accountId: "acct_alpha" }).usage.usedBytes, null);
+  assert.deepEqual(calls, [{ accountId: "acct_alpha", now }]);
+  Object.assign(overview.usage, { usedBytes: 0, remainingBytes: overview.usage.totalBytes, collectionStatus: "measured_zero", updatedAt: now });
+  const measured = service.getCurrentOverview({ accountId: "acct_alpha" });
+  assert.equal(measured.usage.usedBytes, 0);
+  assert.equal(measured.setupAvailable, true);
+  assert.equal(Object.isFrozen(measured.usage), true);
+  overview.usage.remainingBytes = -1;
+  assert.throws(() => service.getCurrentOverview({ accountId: "acct_alpha" }), { code: "wallet_first_current_resource_unavailable" });
+  assert.throws(() => service.getCurrentOverview({ accountId: "acct_alpha", other: true }), { code: "wallet_first_current_resource_unavailable" });
+});
+
 test("wallet-first current-resource projection forwards only the session-owned account and emits the narrow available DTO", () => {
   const calls = [];
   const service = createWalletFirstCurrentResourceProjection({
