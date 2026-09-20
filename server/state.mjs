@@ -2665,6 +2665,7 @@ export function createRuntimeState(options = {}) {
           }
           walletFirstCurrentResourceProjection = createWalletFirstCurrentResourceProjection({
             controlStore: platformControlStore,
+            nowFn: options.userPortalNowFn || (() => new Date()),
             ...(walletFirstCurrentResourceSetupDelivery
               ? {
                 setupDelivery: walletFirstCurrentResourceSetupDelivery

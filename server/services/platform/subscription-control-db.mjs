@@ -3,6 +3,7 @@ import Database from "better-sqlite3";
 import { createHash, randomBytes } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
+import { usageCycleForBinding, summarizeUsageSamples } from "./usage-billing-cycle.mjs";
 import {
   createAccountResourceAuthorityStore
 } from "./account-resource-authority.mjs";
@@ -2710,6 +2711,43 @@ export function createSqliteSubscriptionControlStore({
       }
       throw error;
     }
+  }
+
+  // One read snapshot joins the verified current resource to its own cycle.
+  // The public resourceRef is a correlation key, never an access credential.
+  function readWalletFirstCurrentResourceOverview(input) {
+    exactObject(input, { allowed: ["accountId", "now"], name: "walletFirstCurrentResourceOverview" });
+    const accountId = safeControlRef(input.accountId, "accountId");
+    const now = isoText(input.now, "now");
+    return db.transaction(() => {
+      const resource = readWalletFirstCurrentResourceProjection({ accountId });
+      if (resource.state !== "available") return resource;
+      const { chain, prepared } = walletFirstResourceEffectCurrentPreparedTransition(accountId);
+      const entitlement = getEntitlement(chain.entitlementId);
+      const cycle = usageCycleForBinding(entitlement, now);
+      if (!cycle) throw platformError("validation_error", "current resource cycle is invalid");
+      const samples = listUsageSamples({
+        accountId, entitlementId: chain.entitlementId, requestId: chain.requestId,
+        observedFrom: cycle.startedAt,
+        observedTo: new Date(Math.min(Date.parse(cycle.endedAt), Date.parse(now) + 1)).toISOString()
+      });
+      const summary = summarizeUsageSamples(samples);
+      const totalBytes = entitlement.trafficLimitBytes;
+      const usedBytes = samples.length ? summary.totalBytes : null;
+      const collectionStatus = !samples.length ? "pending"
+        : Date.parse(now) - Date.parse(summary.lastObservedAt) > 300_000 ? "stale"
+          : usedBytes === 0 ? "measured_zero" : "measured";
+      return Object.freeze({
+        ...resource,
+        resourceRef: `resource_${createHash("sha256").update(JSON.stringify([accountId, chain.requestId, prepared.transitionRef])).digest("hex")}`,
+        usage: Object.freeze({
+          totalBytes, usedBytes,
+          remainingBytes: usedBytes === null ? null : Math.max(0, totalBytes - usedBytes),
+          collectionStatus, updatedAt: summary.lastObservedAt,
+          cycleStartedAt: cycle.startedAt, cycleEndsAt: cycle.endedAt
+        })
+      });
+    })();
   }
 
   function getWalletFirstTransitionEffectForDeferredTransition(input) {
@@ -6965,6 +7003,7 @@ export function createSqliteSubscriptionControlStore({
     getWalletFirstAccountForDeferredTransition,
     resolveExactWalletFirstResourceChainForDeferredTransition,
     readWalletFirstCurrentResourceProjection,
+    readWalletFirstCurrentResourceOverview,
     readWalletFirstSetupDeliveryAvailabilityBinding,
     readWalletFirstSetupDeliveryHandoff,
     createWalletFirstSetupDeliveryHandoff,

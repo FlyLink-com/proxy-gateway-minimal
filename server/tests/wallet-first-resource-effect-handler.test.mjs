@@ -376,6 +376,58 @@ test("control-store current-resource reader returns none only for a verified wal
   );
 });
 
+test("current overview reads actual current-cycle samples and distinguishes missing, zero and stale measurements", async (t) => {
+  const fixture = createFixture();
+  t.after(() => fixture.close());
+  const read = (now = INITIAL_NOW) => fixture.controlStore.readWalletFirstCurrentResourceOverview({ accountId: "acct_handler", now });
+  assert.deepEqual(read(), { state: "none" });
+  await fixture.handler.applyDeferredResourceTransition(initialInput());
+  const chain = fixture.handler.resolveCurrentResourceChain({ accountId: "acct_handler" });
+  const pending = read();
+  assert.match(pending.resourceRef, /^resource_[a-f0-9]{64}$/);
+  assert.equal(pending.usage.collectionStatus, "pending");
+  assert.equal(pending.usage.usedBytes, null);
+  assert.equal(pending.usage.remainingBytes, null);
+  const record = (id, bytes, observedAt = INITIAL_NOW, accountId = "acct_handler") => fixture.controlStore.recordUsageSample({
+    id, sourceRef: "source_test", channelRef: "channel_test", edgeCredentialRef: "edge_test",
+    accountId, entitlementId: chain.entitlementId, requestId: chain.requestId,
+    observedAt, intervalStartedAt: observedAt, intervalEndedAt: observedAt,
+    uploadBytes: 0, downloadBytes: bytes, totalBytes: bytes, sampleDigest: id, createdAt: observedAt
+  });
+  record("sample_zero", 0);
+  assert.equal(read().usage.collectionStatus, "measured_zero");
+  assert.equal(read().usage.usedBytes, 0);
+  record("sample_used", 1024);
+  record("sample_previous_period", 4096, "2026-08-12T23:59:59.000Z");
+  record("sample_future", 8192, "2026-08-13T02:00:00.000Z");
+  fixture.controlStore.createAccount({ id: "acct_other", ownerRef: "owner_other", status: "active", createdAt: INITIAL_NOW, updatedAt: INITIAL_NOW });
+  record("sample_other_account", 16384, INITIAL_NOW, "acct_other");
+  const measured = read();
+  assert.equal(measured.resourceRef, pending.resourceRef);
+  assert.equal(measured.usage.usedBytes, 1024);
+  assert.equal(measured.usage.remainingBytes, measured.usage.totalBytes - 1024);
+  assert.equal(measured.usage.collectionStatus, "measured");
+  assert.equal(read("2026-08-13T00:06:00.000Z").usage.collectionStatus, "stale");
+  assert.doesNotMatch(JSON.stringify(measured), /acct_handler|wfxreq_|wfxent_|wfxlink_|edge_test|tenant_|artifact_|subscriptionUrl/);
+});
+
+test("current overview changes its public resource identity after a switch and excludes the previous plan usage", async (t) => {
+  const fixture = createFixture();
+  t.after(() => fixture.close());
+  await fixture.handler.applyDeferredResourceTransition(initialInput());
+  const chain = fixture.handler.resolveCurrentResourceChain({ accountId: "acct_handler" });
+  const before = fixture.controlStore.readWalletFirstCurrentResourceOverview({ accountId: "acct_handler", now: INITIAL_NOW });
+  fixture.controlStore.recordUsageSample({ id: "sample_before_switch", sourceRef: "source_test", channelRef: "channel_test", edgeCredentialRef: "edge_test", accountId: "acct_handler", entitlementId: chain.entitlementId, requestId: chain.requestId, observedAt: INITIAL_NOW, intervalStartedAt: INITIAL_NOW, intervalEndedAt: INITIAL_NOW, uploadBytes: 0, downloadBytes: 10, totalBytes: 10, sampleDigest: "sample_before_switch", createdAt: INITIAL_NOW });
+  fixture.setNow(chain.validUntil);
+  await fixture.handler.applyDeferredResourceTransition(scheduledInput(chain));
+  const after = fixture.controlStore.readWalletFirstCurrentResourceOverview({ accountId: "acct_handler", now: chain.validUntil });
+  assert.notEqual(after.resourceRef, before.resourceRef);
+  assert.equal(after.plan.monthlyTrafficGb, 200);
+  assert.equal(after.usage.collectionStatus, "pending");
+  assert.equal(after.usage.usedBytes, null);
+  assert.equal(after.usage.cycleStartedAt, chain.validUntil);
+});
+
 test("control-store current-resource reader rejects a model mismatch and requires reconciliation for a missing receipt", async (t) => {
   const legacyFixture = createFixture({ commercialModel: "legacy" });
   const receiptFixture = createFixture();

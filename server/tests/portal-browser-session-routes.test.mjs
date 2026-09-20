@@ -19,11 +19,28 @@ import { listen } from "./helpers/listen.mjs";
 const NOW = "2026-09-06T12:00:00.000Z";
 const ORIGIN = "https://portal.example.test";
 const ACCOUNT = "acct_cookie_routes";
+const CURRENT_OVERVIEW = {
+  state: "available",
+  plan: { id: "plan_cookie_routes", durationDays: 30, monthlyTrafficGb: 100 },
+  validUntil: "2026-10-06T12:00:00.000Z",
+  setupAvailable: false,
+  resourceRef: "resource_" + "a".repeat(64),
+  usage: {
+    totalBytes: 1000000,
+    usedBytes: 250000,
+    remainingBytes: 750000,
+    collectionStatus: "measured",
+    updatedAt: NOW,
+    cycleStartedAt: "2026-09-01T00:00:00.000Z",
+    cycleEndsAt: "2026-10-01T00:00:00.000Z"
+  }
+};
 const READ_PATHS = [
   "/api/portal/coins/wallet", "/api/portal/coins/wallet/ledger?limit=25",
   "/api/portal/catalog/offers", "/api/portal/commerce/orders?limit=25",
   "/api/portal/coins/recharge/offers", "/api/portal/coins/recharge/orders",
-  "/api/portal/resources/current", "/api/portal/security/current", "/api/portal/access-requests/current"
+  "/api/portal/resources/current", "/api/portal/resources/current/overview",
+  "/api/portal/security/current", "/api/portal/access-requests/current"
 ];
 const WRITE_PATHS = ["/api/portal/commerce/orders", "/api/portal/coins/recharge/orders", "/api/portal/resources/current/setup", "/api/portal/security/totp/enrollment"];
 const CONTEXT = /^portalctx_[a-f0-9]{64}$/;
@@ -80,7 +97,12 @@ async function harness(t, { isolatedLegacyRouter = false } = {}) {
       listOffers: read("recharge_offers", []), listRechargeOrders: read("recharge_orders", []), getRechargeOrder: read("recharge_order", null),
       createRechargeOrder: forbiddenWrite("recharge_create"), captureRechargeOrder: forbiddenWrite("recharge_capture"), acceptProviderCallback: forbiddenWrite("provider_callback")
     },
-    walletFirstCurrentResourceProjection: createWalletFirstCurrentResourceProjection({ controlStore: { readWalletFirstCurrentResourceProjection: read("resource", { state: "none" }) } })
+    walletFirstCurrentResourceProjection: createWalletFirstCurrentResourceProjection({
+      controlStore: {
+        readWalletFirstCurrentResourceProjection: read("resource", { state: "none" }),
+        readWalletFirstCurrentResourceOverview: read("resource_overview", CURRENT_OVERVIEW)
+      }
+    })
   };
   const state = {
     rootDir: fileURLToPath(new URL("../../", import.meta.url)), consoleToken: "synthetic-console-token",
@@ -169,6 +191,7 @@ test("real password auth restores by bootstrap and reaches all Portal read names
   assert.ok(h.calls.some((call) => call.name === "commerce_orders"));
   assert.ok(h.calls.some((call) => call.name === "recharge_orders"));
   assert.ok(h.calls.some((call) => call.name === "resource"));
+  assert.ok(h.calls.some((call) => call.name === "resource_overview"));
   assert.equal(h.store.listPortalSessions({ accountId: ACCOUNT }).length, count);
   assert.deepEqual(h.mutations, []);
 });
