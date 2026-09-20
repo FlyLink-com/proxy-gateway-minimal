@@ -47,6 +47,7 @@ import { createWalletFirstDeferredTransitionRuntime } from "./services/platform/
 import {
   createWalletFirstCurrentResourceProjection
 } from "./services/platform/wallet-first-current-resource-projection.mjs";
+import { createPortalCurrentResourceService } from "./services/platform/portal-current-resource.mjs";
 import {
   createWalletFirstCurrentResourceSetupDelivery
 } from "./services/platform/wallet-first-current-resource-setup-delivery.mjs";
@@ -2998,6 +2999,14 @@ export function createRuntimeState(options = {}) {
       walletFirstCommerceService,
       walletFirstCurrentResourceProjection,
       walletFirstCurrentResourceSetupDelivery,
+      portalCurrentResourceService: createPortalCurrentResourceService({
+        controlStore: platformControlStore,
+        runtimeCore: subscriptionCore,
+        accessRequests: platformPortalAccessRequests,
+        walletFirstProjection: walletFirstCurrentResourceProjection,
+        walletFirstSetupDelivery: walletFirstCurrentResourceSetupDelivery,
+        nowFn: options.userPortalNowFn
+      }),
       coinRechargeEnabled,
       paymentRechargeProvider,
       paymentStore,
