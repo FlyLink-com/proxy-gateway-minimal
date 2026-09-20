@@ -65,7 +65,6 @@ import {
 } from "./recharge";
 import { useDesktopScrollRegion } from "./use-desktop-scroll-region";
 import { broadcastPortalSessionChange, clearPendingPortalLogout, readPendingPortalLogout, readPortalLocation, stagePendingPortalLogout, subscribePortalSessionChange, writePortalLocation } from "./portal-browser-session";
-import { PortalDisplayLinks } from "./portal-display-links";
 import { portalAssetPath, portalRoutePath } from "./portal-entry";
 import {
   PORTAL_PAYMENT_RETURN_SESSION_STORAGE_KEY,
@@ -2423,7 +2422,6 @@ export function UserPortalPage({
     const failed = sessionPhase === "unavailable" || sessionPhase === "logout_failed";
     return <main className="portal-login-shell" data-portal-theme={theme}>
       <section className="portal-login-main" aria-label={uiText(locale, "登录状态", "Sign-in status")}>
-        <PortalDisplayLinks locale={locale} />
         <div className="portal-login-form-card" role={failed ? "alert" : "status"}>
           <p>{sessionPhase === "unavailable" ? uiText(locale, "暂时无法恢复登录，请检查网络后重试。", "Sign-in could not be restored. Check your connection and retry.")
             : sessionPhase === "logout_failed" ? uiText(locale, "注销尚未完成。账户内容已隐藏，请重试以结束服务器会话。", "Sign-out is not complete. Account content is hidden; retry to end the server session.")
@@ -2468,7 +2466,6 @@ export function UserPortalPage({
             onLocaleChange={setLocale}
             onThemeChange={setTheme}
           />
-          <PortalDisplayLinks locale={locale} />
           <div className="portal-login-form-card portal-login-factor-card">
             <div className="portal-login-icon"><ShieldCheck aria-hidden="true" /></div>
             <div className="portal-login-header">
@@ -2562,7 +2559,6 @@ export function UserPortalPage({
             onLocaleChange={setLocale}
             onThemeChange={setTheme}
           />
-          <PortalDisplayLinks locale={locale} />
           <div className="portal-login-form-card">
             <div className="portal-login-header">
               <h1>{authCopy.loginTitle}</h1>
@@ -2828,7 +2824,6 @@ export function UserPortalPage({
                   <h1>{activeView === "dashboard" ? uiText(locale, "账户概览", "Account overview") : activeViewCopy.label}</h1>
                 </div>
                 <div className="portal-v2-topbar-actions">
-                  <PortalDisplayLinks locale={locale} />
                   <form
                     className="portal-v2-primary-actions portal-v2-global-search-form"
                     onSubmit={(event) => {

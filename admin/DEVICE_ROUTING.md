@@ -13,11 +13,21 @@
 
 Reuse the existing real desktop Portal, not the archived Admin UI. The new `admin:portal:web:build` emits `admin/dist-portal-web` with `/web/` base. Its config composes the existing Portal config, including the recharge trust configuration plugin. The existing Portal/Admin/Site builds keep their entry identities.
 
-`/web/` and `/web/register[/]` are explicit desktop pages. They never run device detection. Compact desktop links return to the neutral mobile-owned entry with `display=mobile|auto`, retaining other query values and hashes. Public desktop images use `/web/`; business requests remain same-origin `/api/portal/*`.
+`/web/` and `/web/register[/]` are explicit desktop pages. They never run device detection. In-app display-mode switches are hidden on login, registration, session-status and signed-in pages. Explicit `/web/`, `/m/` and `display=mobile|auto|desktop` entry handling remains unchanged in the routing layer; hiding the controls does not clear remembered preferences. Public desktop images use `/web/`; business requests remain same-origin `/api/portal/*`.
 
 The paired mobile change chooses once at initial navigation: explicit preference > explicit mobile entry > remembered preference > device default. No resize, zoom, login or keyboard event switches the interface. The mobile activation flag stays off until the desktop route has been installed and checked.
 
 ## Local acceptance — 2026-09-20
+
+### Follow-up: hide display-mode controls (source only)
+
+- Removed only the switch mounts/imports from desktop login, second-factor, session-status, registration and signed-in pages. Automatic routing, URL overrides, stored preferences and API/session behavior are unchanged.
+- TDD: new Chinese/English page-level absence assertions failed first (2 failed, 3 passed), then passed after removing the mounts. Coverage includes anonymous, registration, initial session restoration and signed-in shells.
+- This follow-up: targeted entry/session tests 17 passed; full frontend suite 81 files / 1283 passed; desktop build and 10-file artifact verification passed; frontend boundary check and `git diff --check` passed.
+- React review: controls are not mounted, rather than visually hidden/focusable. No new effects, listeners, requests or dependencies. Language/theme controls remain.
+- Local implementation only: not pushed, merged or deployed. No fresh production account or physical iPhone test; no backend changes or full backend-suite rerun. The older validation records below remain historical evidence, not new results.
+
+### Original routing implementation acceptance
 
 - Targeted new entry/build tests: 6 passed; related Portal tests: 142 passed.
 - Full `npm run admin:test`: 81 files, 1282 passed.

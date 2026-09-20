@@ -10,7 +10,6 @@ import {
 } from "./user-portal-client";
 import { PublicLocaleSwitch, usePublicLocalePreference } from "./public-locale-switch";
 import { broadcastPortalSessionChange } from "./portal-browser-session";
-import { PortalDisplayLinks } from "./portal-display-links";
 import { portalRoutePath } from "./portal-entry";
 
 type UserRegistrationPageProps = {
@@ -347,7 +346,6 @@ export function UserRegistrationPage({ portalClient }: UserRegistrationPageProps
         <section className="portal-registration-main" aria-label={copy.pageAria}>
           <div className="portal-registration-display-controls">
             <PublicLocaleSwitch ariaLabel={copy.language} locale={locale} onLocaleChange={setLocale} />
-            <PortalDisplayLinks locale={locale} />
           </div>
           {children}
         </section>
