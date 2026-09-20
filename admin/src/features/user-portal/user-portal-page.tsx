@@ -65,6 +65,8 @@ import {
 } from "./recharge";
 import { useDesktopScrollRegion } from "./use-desktop-scroll-region";
 import { broadcastPortalSessionChange, clearPendingPortalLogout, readPendingPortalLogout, readPortalLocation, stagePendingPortalLogout, subscribePortalSessionChange, writePortalLocation } from "./portal-browser-session";
+import { PortalDisplayLinks } from "./portal-display-links";
+import { portalAssetPath, portalRoutePath } from "./portal-entry";
 import {
   PORTAL_PAYMENT_RETURN_SESSION_STORAGE_KEY,
   PORTAL_REGISTRATION_SESSION_STORAGE_KEY
@@ -178,10 +180,10 @@ const cashierPaymentChannels: Array<{
   id: Extract<PortalPaymentChannel, "alipay" | "wxpay">;
   labelEn: string;
   labelZh: string;
-  iconSrc: string;
+  iconAsset: string;
 }> = [
-  { id: "alipay", labelZh: "支付宝", labelEn: "Alipay", iconSrc: "/payment-alipay-icon.png" },
-  { id: "wxpay", labelZh: "微信支付", labelEn: "WeChat Pay", iconSrc: "/payment-wechat-pay-icon.svg" }
+  { id: "alipay", labelZh: "支付宝", labelEn: "Alipay", iconAsset: "payment-alipay-icon.png" },
+  { id: "wxpay", labelZh: "微信支付", labelEn: "WeChat Pay", iconAsset: "payment-wechat-pay-icon.svg" }
 ];
 
 const orderStatusTabs: Array<{ id: OrderStatusFilter; label: string }> = [
@@ -2421,6 +2423,7 @@ export function UserPortalPage({
     const failed = sessionPhase === "unavailable" || sessionPhase === "logout_failed";
     return <main className="portal-login-shell" data-portal-theme={theme}>
       <section className="portal-login-main" aria-label={uiText(locale, "登录状态", "Sign-in status")}>
+        <PortalDisplayLinks locale={locale} />
         <div className="portal-login-form-card" role={failed ? "alert" : "status"}>
           <p>{sessionPhase === "unavailable" ? uiText(locale, "暂时无法恢复登录，请检查网络后重试。", "Sign-in could not be restored. Check your connection and retry.")
             : sessionPhase === "logout_failed" ? uiText(locale, "注销尚未完成。账户内容已隐藏，请重试以结束服务器会话。", "Sign-out is not complete. Account content is hidden; retry to end the server session.")
@@ -2465,6 +2468,7 @@ export function UserPortalPage({
             onLocaleChange={setLocale}
             onThemeChange={setTheme}
           />
+          <PortalDisplayLinks locale={locale} />
           <div className="portal-login-form-card portal-login-factor-card">
             <div className="portal-login-icon"><ShieldCheck aria-hidden="true" /></div>
             <div className="portal-login-header">
@@ -2558,6 +2562,7 @@ export function UserPortalPage({
             onLocaleChange={setLocale}
             onThemeChange={setTheme}
           />
+          <PortalDisplayLinks locale={locale} />
           <div className="portal-login-form-card">
             <div className="portal-login-header">
               <h1>{authCopy.loginTitle}</h1>
@@ -2650,7 +2655,7 @@ export function UserPortalPage({
               </button>
               <p className="portal-login-register">
                 <span>{authCopy.noAccount}</span>
-                <a href="/portal/register/">{authCopy.registerAccount}</a>
+                <a href={portalRoutePath("register")}>{authCopy.registerAccount}</a>
               </p>
             </form>
           </div>
@@ -2823,6 +2828,7 @@ export function UserPortalPage({
                   <h1>{activeView === "dashboard" ? uiText(locale, "账户概览", "Account overview") : activeViewCopy.label}</h1>
                 </div>
                 <div className="portal-v2-topbar-actions">
+                  <PortalDisplayLinks locale={locale} />
                   <form
                     className="portal-v2-primary-actions portal-v2-global-search-form"
                     onSubmit={(event) => {
@@ -3961,7 +3967,7 @@ function CashierSelectionDialog({
   const methods = cashierPaymentChannels.map((method) => ({
     id: method.id,
     label: uiText(locale, method.labelZh, method.labelEn),
-    iconSrc: method.iconSrc
+    iconSrc: portalAssetPath(method.iconAsset)
   }));
   const amountLabel = plan.priceLabel.replace(/\s+/g, " ");
 
@@ -4072,7 +4078,7 @@ function PortalPaymentFlow({
     .map((method) => ({
       id: method.id,
       label: uiText(locale, method.labelZh, method.labelEn),
-      iconSrc: method.iconSrc
+      iconSrc: portalAssetPath(method.iconAsset)
     }));
   const [paymentNowMs, setPaymentNowMs] = useState(() => Date.now());
   const [paymentQrDataUrl, setPaymentQrDataUrl] = useState("");
@@ -4635,7 +4641,7 @@ function UseGuide({
       sourceHint: locale === "zh" ? "参考 Remote Subscription / Subscription URL Import 路径" : "Based on Remote Subscription / Subscription URL Import",
       surface: "desktop",
       screenTitle: locale === "zh" ? "订阅 URL 导入" : "Subscription URL Import",
-      imageSrc: "/guide/clash-subscription-import.png",
+      imageSrc: portalAssetPath("guide/clash-subscription-import.png"),
       imageAlt: locale === "zh"
         ? "Clash Verge Rev 订阅页面导入订阅文件链接教程截图"
         : "Clash Verge Rev subscription import screenshot",
@@ -5233,7 +5239,7 @@ function UseGuide({
                   {guideClient === "clash" ? (
                     <figure className="portal-start-guide-screenshot-frame">
                       <img
-                        src="/guide/clash-system-proxy.png"
+                        src={portalAssetPath("guide/clash-system-proxy.png")}
                         alt={uiText(locale, "Clash Verge Rev 设置页面开启系统代理教程截图", "Clash Verge Rev system proxy screenshot")}
                         loading="lazy"
                       />

@@ -78,6 +78,10 @@ const ENTRY_HTML = {
     file: "admin/portal/index.html",
     module: "../src/portal-main.tsx"
   },
+  portalWeb: {
+    file: "admin/portal-web/index.html",
+    module: "../src/portal-main.tsx"
+  },
   site: {
     file: "admin/site/index.html",
     module: "../src/site-main.tsx"
@@ -89,6 +93,8 @@ const EXPECTED_ENTRY_HTML_SHA256 = {
     "35ac077fd177e228dbd9c6e327decaa8cfa1e1e4fb5227b91db6c09e3f1eec11",
   "admin/portal/index.html":
     "2b7ed226e2fb6ccdb23c5f989ec0d1f64b337a4bca92604446538d4c7ad81157",
+  "admin/portal-web/index.html":
+    "76accc4572f87531feb181b00864cbf50d522134b045bcb3999bd5aa1b03ab86",
   "admin/site/index.html":
     "4ddae734ee33480e3d3ead05f0d9fe95f019fe8077424029ef0d4aa2299a8319"
 };
@@ -105,6 +111,7 @@ const EXPECTED_ENTRY_IMPORTS = {
     "./features/user-portal/user-portal-client",
     "./features/user-portal/user-portal-page",
     "./features/user-portal/user-registration-page",
+    "./features/user-portal/portal-entry",
     "./portal-static-preserve.css"
   ],
   "admin/src/site-main.tsx": [
@@ -193,6 +200,9 @@ const EXPECTED_VITE_LOCAL_IMPORTS = {
   "admin/vite.portal.config.ts": [
     "./src/features/user-portal/recharge/portal-recharge-client"
   ],
+  "admin/vite.portal-web.config.ts": [
+    "./vite.portal.config"
+  ],
   "admin/vite.portal.local-api-validation.config.ts": [
     "./vite.portal.config"
   ],
@@ -204,6 +214,8 @@ const EXPECTED_VITE_CONFIG_SHA256 = {
     "0e01c02bc34d25324e9432a36118097c98e6e28c74d9a25baddfab9e3273b5f7",
   "admin/vite.portal.config.ts":
     "07e106c9ae9ab03871c82c6491cfc0bd6dc84e080e3c085295ef30904b61eadd",
+  "admin/vite.portal-web.config.ts":
+    "c5ea089e70a4bf1af9519e3ad2299d283edf4ba152ce58a10b272beebd517a3b",
   "admin/vite.portal.local-api-validation.config.ts":
     "0c09218b5c602590db98fdf8abf4029cae7e191d83f36fd9dff21253099085ca",
   "admin/vite.site.config.ts":
@@ -1231,7 +1243,7 @@ function checkBuildContracts(rootDirectory) {
     }
   }
 
-  for (const directory of ["admin", "admin/portal", "admin/site"]) {
+  for (const directory of ["admin", "admin/portal", "admin/portal-web", "admin/site"]) {
     try {
       for (const name of readdirSync(path.join(rootDirectory, directory))) {
         if (name === ".env" || name.startsWith(".env.")) {
@@ -1267,7 +1279,9 @@ function checkBuildContracts(rootDirectory) {
       "admin:build": "npm run build --prefix admin",
       "admin:verify": "npm run verify:admin-build --prefix admin",
       "admin:portal:build": "npm run build:portal --prefix admin",
+      "admin:portal:web:build": "npm run build:portal:web --prefix admin",
       "admin:portal:verify": "npm run verify:portal-build --prefix admin",
+      "admin:portal:web:verify": "npm run verify:portal:web --prefix admin",
       "admin:site:build": "npm run build:site --prefix admin",
       "admin:site:verify": "npm run verify:site-build --prefix admin",
       "cloudflare:site:build": "npm run admin:site:build",
@@ -1278,9 +1292,11 @@ function checkBuildContracts(rootDirectory) {
     admin: {
       build: "tsc --noEmit && vite build",
       "build:portal": "tsc --noEmit && vite build --config vite.portal.config.ts",
+      "build:portal:web": "tsc --noEmit && vite build --config vite.portal-web.config.ts",
       "build:site": "tsc --noEmit && vite build --config vite.site.config.ts",
       "verify:admin-build": "node ../scripts/verify-admin-build.mjs dist",
       "verify:portal-build": "node ../scripts/verify-portal-build.mjs dist-portal",
+      "verify:portal:web": "node ../scripts/verify-portal-build.mjs dist-portal-web",
       "verify:site-build": "node ../scripts/verify-public-site-build.mjs dist-site"
     }
   };
@@ -1543,6 +1559,7 @@ export function verifyFrontendSourceBoundaries({
     buildOutputs: {
       admin: "admin/dist",
       portal: "admin/dist-portal",
+      portalWeb: "admin/dist-portal-web",
       site: "admin/dist-site"
     },
     publicBuildInputs: EXPECTED_PUBLIC_FILES.size,

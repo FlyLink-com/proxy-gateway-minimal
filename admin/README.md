@@ -59,3 +59,22 @@ these imports. The guard checks the source graph, including re-exports, rather
 than relying on unused demo code being removed by the bundler. This boundary
 work does not redesign pages, change API contracts, or establish an independent
 release pipeline; those remain separate follow-up work.
+
+### Portal desktop entry
+
+The existing Portal build remains the legacy `/portal` source entry and
+continues to write `dist-portal`. The bounded desktop entry is built separately
+with `npm run admin:portal:web:build` and writes `admin/dist-portal-web`; its
+static base is `/web/`, so it is served at `/web/` and `/web/register/` while
+calling the same-origin `/api/portal` endpoints. Verify it with
+`npm run admin:portal:web:verify`.
+
+Desktop display links are intentionally small and local to the `/web` entry:
+`手机版` and `自动选择` point to the mobile root (or
+`/portal/register`) with `display` set while preserving other query parameters
+and the hash. The desktop bundle does not perform device detection or redirect
+itself. Public images are emitted into the desktop artifact and receive the
+`/web/` prefix at runtime; the existing `/portal` asset paths are unchanged.
+
+See [desktop routing acceptance](DEVICE_ROUTING.md) for implementation scope,
+paired mobile behavior, validation results and the remaining promotion gate.
