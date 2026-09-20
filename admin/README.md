@@ -69,11 +69,11 @@ static base is `/web/`, so it is served at `/web/` and `/web/register/` while
 calling the same-origin `/api/portal` endpoints. Verify it with
 `npm run admin:portal:web:verify`.
 
-Desktop display links are intentionally small and local to the `/web` entry:
-`手机版` and `自动选择` point to the mobile root (or
-`/portal/register`) with `display` set while preserving other query parameters
-and the hash. The desktop bundle does not perform device detection or redirect
-itself. Public images are emitted into the desktop artifact and receive the
+In-app desktop/mobile display controls are hidden on login, registration and
+signed-in pages. The routing layer still supports explicit `/web/`, `/m/` and
+`display` query choices, preserving other query parameters and the hash. The
+desktop bundle does not perform device detection or redirect itself. Public
+images are emitted into the desktop artifact and receive the
 `/web/` prefix at runtime; the existing `/portal` asset paths are unchanged.
 
 See [desktop routing acceptance](DEVICE_ROUTING.md) for implementation scope,

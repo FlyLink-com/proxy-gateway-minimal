@@ -1,6 +1,9 @@
 import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, test } from "vitest";
-import { PortalDisplayLinks } from "../features/user-portal/portal-display-links";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { UserPortalPage } from "../features/user-portal/user-portal-page";
+import { UserRegistrationPage } from "../features/user-portal/user-registration-page";
+import { createLocalUserPortalClient } from "../features/user-portal/user-portal-preview-client";
+import type { PortalSession } from "../features/user-portal/user-portal-client";
 import {
   isPortalRegistrationPath,
   isPortalWebPath,
@@ -9,9 +12,13 @@ import {
   portalRoutePath
 } from "../features/user-portal/portal-entry";
 
+beforeEach(() => { vi.stubGlobal("BroadcastChannel", undefined); });
 afterEach(() => {
   cleanup();
+  window.localStorage.clear();
+  window.sessionStorage.clear();
   window.history.replaceState(null, "", "/");
+  vi.unstubAllGlobals();
 });
 
 describe("portal entry boundaries", () => {
@@ -50,19 +57,34 @@ describe("portal entry boundaries", () => {
     );
   });
 
-  test("renders compact switches only inside the explicit desktop entry", () => {
-    window.history.replaceState(null, "", "/web/?source=header#section");
-    render(<PortalDisplayLinks locale="zh" />);
-    expect(screen.getByRole("link", { name: "手机版" }).getAttribute("href")).toBe(
-      "/?source=header&display=mobile#section"
-    );
-    expect(screen.getByRole("link", { name: "自动选择" }).getAttribute("href")).toBe(
-      "/?source=header&display=auto#section"
-    );
+  test.each(["zh", "en"])("hides display switches across desktop login, registration and signed-in shell (%s)", async (locale) => {
+    window.localStorage.setItem("gccwebos-site-locale", locale);
+    const expectNoDisplaySwitch = () => {
+      expect(document.querySelector(".portal-display-links")).toBeNull();
+      expect(screen.queryByRole("navigation", { name: /显示模式|Display mode/ })).toBeNull();
+    };
+    window.history.replaceState(null, "", "/web/");
+    render(<UserPortalPage portalClient={createLocalUserPortalClient()} />);
+    await screen.findByRole("heading", { name: /账号登录|Sign in to GCC WebOS/ });
+    expectNoDisplaySwitch();
 
     cleanup();
-    window.history.replaceState(null, "", "/portal/");
-    render(<PortalDisplayLinks locale="zh" />);
-    expect(screen.queryByRole("link", { name: "手机版" })).toBeNull();
+    window.history.replaceState(null, "", "/web/register/");
+    render(<UserRegistrationPage portalClient={createLocalUserPortalClient()} />);
+    await screen.findByRole("heading", { name: /创建你的账户|Create your account/ });
+    expectNoDisplaySwitch();
+
+    cleanup();
+    const session: PortalSession = {
+      status: "authenticated_preview", transport: "cookie",
+      sessionRef: `portalctx_${"a".repeat(64)}`, userRef: "synthetic_display_test",
+      displayName: "Display test", authMode: "password", registeredAt: "2026-09-20T00:00:00.000Z",
+      safety: { noAdminApi: true, noPublicAuthActivated: true, noRawPasswordReturned: true }
+    };
+    window.history.replaceState(null, "", "/web/#portal=start");
+    render(<UserPortalPage portalClient={{ ...createLocalUserPortalClient(), restoreSession: async () => session }} />);
+    expectNoDisplaySwitch(); // Includes the initial restoring state.
+    await screen.findByRole("navigation", { name: /用户中心导航|User center navigation/ });
+    expectNoDisplaySwitch();
   });
 });
