@@ -2,6 +2,7 @@ import { LoaderCircle } from "lucide-react";
 
 import { formatPortalRechargeAmount, portalRechargePaymentMethodLabel } from "./portal-recharge-presentation";
 import type { PortalRechargeModel, PortalRechargeOffersState } from "./use-portal-recharge";
+import { portalAssetPath } from "../portal-entry";
 
 export type PortalRechargeOffersProps = {
   locale: "zh" | "en";
@@ -86,7 +87,7 @@ export function PortalRechargeOffers({ locale, model, compact = false, onChoose 
               aria-label={model.busy ? creatingOrderLabel : paymentLabel}
               className={alipayOnly ? "portal-recharge-pay-button portal-recharge-pay-button--alipay" : "portal-recharge-pay-button"}
               type="button" disabled={model.busy} onClick={() => void onChoose(offer.offerRef)}>
-              {alipayOnly && !model.busy ? <img alt="" aria-hidden="true" src="/payment-alipay-icon.png" /> : null}
+              {alipayOnly && !model.busy ? <img alt="" aria-hidden="true" src={portalAssetPath("payment-alipay-icon.png")} /> : null}
               {model.busy ? zh ? "正在创建订单…" : "Creating order…"
                 : actionLabel}
             </button>

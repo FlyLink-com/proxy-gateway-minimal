@@ -22,11 +22,8 @@ import {
   PORTAL_COIN_ORDER_STORAGE_KEY,
   PortalCoinCommerceClientError
 } from "../features/user-portal/commerce";
-import {
-  createLocalUserPortalClient,
-  type PortalSession,
-  type UserPortalClient
-} from "../features/user-portal/user-portal-client";
+import { createLocalUserPortalClient } from "../features/user-portal/user-portal-preview-client";
+import type { PortalSession, UserPortalClient } from "../features/user-portal/user-portal-client";
 import { UserPortalPage } from "../features/user-portal/user-portal-page";
 import { MarketplacePanel } from "../features/user-portal/portal-commerce-panels";
 import type {

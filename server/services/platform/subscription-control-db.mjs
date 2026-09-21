@@ -3,6 +3,7 @@ import Database from "better-sqlite3";
 import { createHash, randomBytes } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
+import { usageCycleForBinding, summarizeUsageSamples } from "./usage-billing-cycle.mjs";
 import {
   createAccountResourceAuthorityStore
 } from "./account-resource-authority.mjs";
@@ -2710,6 +2711,209 @@ export function createSqliteSubscriptionControlStore({
       }
       throw error;
     }
+  }
+
+  // One read snapshot joins the verified current resource to its own cycle.
+  // The public resourceRef is a correlation key, never an access credential.
+  function readWalletFirstCurrentResourceOverview(input) {
+    exactObject(input, { allowed: ["accountId", "now"], name: "walletFirstCurrentResourceOverview" });
+    const accountId = safeControlRef(input.accountId, "accountId");
+    const now = isoText(input.now, "now");
+    return db.transaction(() => {
+      const resource = readWalletFirstCurrentResourceProjection({ accountId });
+      if (resource.state !== "available") return resource;
+      const { chain, prepared } = walletFirstResourceEffectCurrentPreparedTransition(accountId);
+      const entitlement = getEntitlement(chain.entitlementId);
+      const cycle = usageCycleForBinding(entitlement, now);
+      if (!cycle) throw platformError("validation_error", "current resource cycle is invalid");
+      const samples = listUsageSamples({
+        accountId, entitlementId: chain.entitlementId, requestId: chain.requestId,
+        observedFrom: cycle.startedAt,
+        observedTo: new Date(Math.min(Date.parse(cycle.endedAt), Date.parse(now) + 1)).toISOString()
+      });
+      const summary = summarizeUsageSamples(samples);
+      const totalBytes = entitlement.trafficLimitBytes;
+      const usedBytes = samples.length ? summary.totalBytes : null;
+      const collectionStatus = !samples.length ? "pending"
+        : Date.parse(now) - Date.parse(summary.lastObservedAt) > 300_000 ? "stale"
+          : usedBytes === 0 ? "measured_zero" : "measured";
+      return Object.freeze({
+        ...resource,
+        resourceRef: `resource_${createHash("sha256").update(JSON.stringify([accountId, chain.requestId, prepared.transitionRef])).digest("hex")}`,
+        usage: Object.freeze({
+          totalBytes, usedBytes,
+          remainingBytes: usedBytes === null ? null : Math.max(0, totalBytes - usedBytes),
+          collectionStatus, updatedAt: summary.lastObservedAt,
+          cycleStartedAt: cycle.startedAt, cycleEndsAt: cycle.endedAt
+        })
+      });
+    })();
+  }
+
+  // Read-only compatibility projection for accounts that still use the
+  // original issued-link/access-request path.  This intentionally shares the
+  // entitlement resolver and usage cycle with the wallet-first projection, but
+  // never enters the deferred-resource tables or performs a write.
+  function readLegacyPortalCurrentResourceBindingRecord(input) {
+    exactObject(input, {
+      allowed: ["accountId", "now"],
+      name: "legacyPortalCurrentResourceBinding"
+    });
+    const accountId = safeControlRef(input.accountId, "accountId");
+    const now = isoText(input.now, "now");
+    const account = getAccount(accountId);
+    if (!account || account.status !== "active") return Object.freeze({ state: "none" });
+
+    const entitlement = resolveAccountServiceEntitlement({ accountId, now });
+    if (!entitlement) {
+      const current = listEntitlements({ accountId, status: "active" })
+        .filter((candidate) => candidate.validFrom <= now && candidate.validUntil > now);
+      return Object.freeze({ state: current.length === 0 ? "none" : "reconciliation_required" });
+    }
+    if (!(entitlement.validFrom <= now && entitlement.validUntil > now)) {
+      return Object.freeze({ state: "none" });
+    }
+
+    const bindings = listIssuedSubscriptionBindings({ accountId }).filter((binding) => (
+      binding.accountId === accountId
+      && binding.entitlementId === entitlement.id
+      && binding.status === "active"
+      && binding.requestStatus === "issued"
+      && binding.entitlementStatus === "active"
+      && binding.plan === entitlement.plan
+      && binding.validFrom === entitlement.validFrom
+      && binding.validUntil === entitlement.validUntil
+      && binding.trafficLimitBytes === entitlement.trafficLimitBytes
+    ));
+    if (bindings.length !== 1) return Object.freeze({ state: "reconciliation_required" });
+    const [binding] = bindings;
+    const request = getPortalAccessRequest(binding.requestId);
+    if (!request
+      || request.id !== binding.requestId
+      || request.portalUserRef !== accountId
+      || request.entitlementRef !== entitlement.id
+      || request.validUntil !== entitlement.validUntil
+      || !["issued", "delivered"].includes(request.status)
+      || !Number.isSafeInteger(request.durationDays)
+      || request.durationDays < 1
+      || !request.tenantId || !request.artifactId
+      || binding.tenantRef !== `tenantref_${sha256(request.tenantId).slice(0, 16)}`
+    ) return Object.freeze({ state: "reconciliation_required" });
+
+    const tenantBindings = listIssuedSubscriptionBindings({ tenantRef: binding.tenantRef });
+    if (tenantBindings.length !== 1
+      || tenantBindings[0].id !== binding.id
+      || tenantBindings[0].accountId !== accountId
+      || tenantBindings[0].entitlementId !== entitlement.id
+      || tenantBindings[0].requestId !== request.id
+    ) return Object.freeze({ state: "reconciliation_required" });
+
+    // Before PR #419, Portal refresh rotated the runtime artifact and updated
+    // the request while the issued link retained its original artifact hash.
+    // Only this mismatch may proceed to a separate read-only runtime proof.
+    // This marker stays outside the public resource DTO.
+    const artifactLineageNeeded = binding.artifactRef === `artifactref_${sha256(request.artifactId).slice(0, 16)}`
+      ? undefined
+      : Object.freeze({
+        tenantId: request.tenantId,
+        currentArtifactId: request.artifactId,
+        issuedArtifactRef: binding.artifactRef
+      });
+
+    const monthlyTrafficGb = Number(entitlement.trafficLimitBytes) / (1024 ** 3);
+    if (!Number.isSafeInteger(entitlement.trafficLimitBytes) || entitlement.trafficLimitBytes < 0) {
+      return Object.freeze({ state: "reconciliation_required" });
+    }
+    const resourceRef = `resource_${createHash("sha256")
+      .update(JSON.stringify([accountId, entitlement.id, binding.requestId, binding.id, request.artifactId]))
+      .digest("hex")}`;
+    return Object.freeze({
+      state: "available",
+      accountId,
+      entitlement,
+      binding,
+      request,
+      resourceRef,
+      ...(artifactLineageNeeded ? { artifactLineageNeeded } : {}),
+      plan: Object.freeze({
+        id: entitlement.plan,
+        durationDays: request.durationDays,
+        monthlyTrafficGb
+      })
+    });
+  }
+
+  function readLegacyPortalCurrentResourceBinding(input) {
+    const record = readLegacyPortalCurrentResourceBindingRecord(input);
+    if (record.state !== "available") return record;
+    return Object.freeze({
+      state: "available",
+      requestRef: record.request.id,
+      resourceRef: record.resourceRef,
+      tenantId: record.request.tenantId,
+      artifactId: record.request.artifactId,
+      ...(record.artifactLineageNeeded ? { artifactLineageNeeded: record.artifactLineageNeeded } : {})
+    });
+  }
+
+  function readLegacyPortalCurrentResource(input) {
+    exactObject(input, {
+      allowed: ["accountId", "now"],
+      name: "legacyPortalCurrentResource"
+    });
+    const accountId = safeControlRef(input.accountId, "accountId");
+    const now = isoText(input.now, "now");
+    const account = getAccount(accountId);
+    const commercialModel = account?.metadata?.commercialModel;
+    const model = commercialModel === WALLET_FIRST_RESOURCE_EFFECT_COMMERCIAL_MODEL
+      ? "wallet_first"
+      : commercialModel === undefined || commercialModel === "legacy_v1"
+        ? "legacy"
+        : null;
+    if (!model) throw platformError("validation_error", "account commercial model is invalid");
+    if (model === "wallet_first") return Object.freeze({ model: "wallet_first" });
+    return db.transaction(() => {
+      const binding = readLegacyPortalCurrentResourceBindingRecord({ accountId, now });
+      if (binding.state === "none" || binding.state === "reconciliation_required") {
+        return Object.freeze({ model: "legacy", resource: binding, requestRef: null });
+      }
+      const { entitlement, request, plan, resourceRef } = binding;
+      const cycle = usageCycleForBinding(entitlement, now);
+      if (!cycle) return Object.freeze({ model: "legacy", resource: { state: "reconciliation_required" }, requestRef: null });
+      const samples = listUsageSamples({
+        accountId, entitlementId: entitlement.id, requestId: request.id,
+        observedFrom: cycle.startedAt,
+        observedTo: new Date(Math.min(Date.parse(cycle.endedAt), Date.parse(now) + 1)).toISOString()
+      });
+      const summary = summarizeUsageSamples(samples);
+      const totalBytes = entitlement.trafficLimitBytes;
+      const usedBytes = samples.length ? summary.totalBytes : null;
+      const collectionStatus = !samples.length ? "pending"
+        : Date.parse(now) - Date.parse(summary.lastObservedAt) > 300_000 ? "stale"
+          : usedBytes === 0 ? "measured_zero" : "measured";
+      const resource = Object.freeze({
+        state: "available",
+        plan,
+        validUntil: entitlement.validUntil,
+        setupAvailable: Boolean(request.subscriptionUrl),
+        resourceRef,
+        usage: Object.freeze({
+          totalBytes,
+          usedBytes,
+          // Zero is the legacy unset/no-enforced-quota sentinel, not proof of
+          // an exhausted or commercially unlimited plan. Preserve measured use.
+          remainingBytes: usedBytes === null || totalBytes === 0 ? null : Math.max(0, totalBytes - usedBytes),
+          collectionStatus,
+          updatedAt: summary.lastObservedAt,
+          cycleStartedAt: cycle.startedAt,
+          cycleEndsAt: cycle.endedAt
+        })
+      });
+      return Object.freeze({
+        model: "legacy", resource, requestRef: request.id,
+        ...(binding.artifactLineageNeeded ? { artifactLineageNeeded: binding.artifactLineageNeeded } : {})
+      });
+    })();
   }
 
   function getWalletFirstTransitionEffectForDeferredTransition(input) {
@@ -6965,6 +7169,9 @@ export function createSqliteSubscriptionControlStore({
     getWalletFirstAccountForDeferredTransition,
     resolveExactWalletFirstResourceChainForDeferredTransition,
     readWalletFirstCurrentResourceProjection,
+    readWalletFirstCurrentResourceOverview,
+    readLegacyPortalCurrentResourceBinding,
+    readLegacyPortalCurrentResource,
     readWalletFirstSetupDeliveryAvailabilityBinding,
     readWalletFirstSetupDeliveryHandoff,
     createWalletFirstSetupDeliveryHandoff,

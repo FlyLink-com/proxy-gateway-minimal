@@ -157,8 +157,32 @@ function snapshotControlStore(value) {
   const code = "wallet_first_current_resource_unavailable";
   const reader = ownCallable(value, "readWalletFirstCurrentResourceProjection", code);
   return Object.freeze({
-    readWalletFirstCurrentResourceProjection: (input) => reader.call(value, input)
+    readWalletFirstCurrentResourceProjection: (input) => reader.call(value, input),
+    readWalletFirstCurrentResourceOverview: (input) => ownCallable(value, "readWalletFirstCurrentResourceOverview", code).call(value, input)
   });
+}
+
+function normalizeOverview(value) {
+  const code = "wallet_first_current_resource_unavailable";
+  if (value?.state !== "available") return normalizeResource(value);
+  const raw = snapshotExactObject(value, ["state", "plan", "validUntil", "setupAvailable", "resourceRef", "usage"], code);
+  const { resourceRef, usage, ...base } = raw;
+  const resource = normalizeResource(base);
+  if (typeof resourceRef !== "string" || !/^resource_[a-f0-9]{64}$/.test(resourceRef)) throw serviceError(code);
+  const u = snapshotExactObject(usage, ["totalBytes", "usedBytes", "remainingBytes", "collectionStatus", "updatedAt", "cycleStartedAt", "cycleEndsAt"], code);
+  normalizeTimestamp(u.cycleStartedAt, code);
+  normalizeTimestamp(u.cycleEndsAt, code);
+  if (u.cycleStartedAt >= u.cycleEndsAt || !Number.isSafeInteger(u.totalBytes) || u.totalBytes < 0) throw serviceError(code);
+  if (u.collectionStatus === "pending") {
+    if (u.usedBytes !== null || u.remainingBytes !== null || u.updatedAt !== null) throw serviceError(code);
+  } else {
+    if (!["measured", "measured_zero", "stale"].includes(u.collectionStatus)
+      || !Number.isSafeInteger(u.usedBytes) || u.usedBytes < 0
+      || u.remainingBytes !== Math.max(0, u.totalBytes - u.usedBytes)
+      || (u.collectionStatus === "measured_zero" && u.usedBytes !== 0)) throw serviceError(code);
+    normalizeTimestamp(u.updatedAt, code);
+  }
+  return Object.freeze({ ...resource, resourceRef, usage: Object.freeze(u) });
 }
 
 function snapshotAllowedObject(value, fields, code) {
@@ -185,11 +209,13 @@ function snapshotAllowedObject(value, fields, code) {
 
 function snapshotProjectionOptions(value) {
   const code = "wallet_first_current_resource_unavailable";
-  const options = snapshotAllowedObject(value, ["controlStore", "setupDelivery"], code);
+  const options = snapshotAllowedObject(value, ["controlStore", "setupDelivery", "nowFn"], code);
   if (!Object.hasOwn(options, "controlStore")) throw serviceError(code);
+  if (options.nowFn !== undefined && typeof options.nowFn !== "function") throw serviceError(code);
   try {
     return Object.freeze({
       controlStore: options.controlStore,
+      nowFn: options.nowFn || (() => new Date()),
       setupDelivery: Object.hasOwn(options, "setupDelivery")
         ? snapshotWalletFirstCurrentResourceSetupDelivery(options.setupDelivery)
         : null
@@ -203,8 +229,10 @@ export function snapshotWalletFirstCurrentResourceProjection(value) {
   const code = "wallet_first_current_resource_unavailable";
   if (!SERVICE_INSTANCES.has(value)) throw serviceError(code);
   const getCurrentResource = ownCallable(value, "getCurrentResource", code);
+  const getCurrentOverview = ownCallable(value, "getCurrentOverview", code);
   return Object.freeze({
-    getCurrentResource: (input) => getCurrentResource.call(value, input)
+    getCurrentResource: (input) => getCurrentResource.call(value, input),
+    getCurrentOverview: (input) => getCurrentOverview.call(value, input)
   });
 }
 
@@ -219,6 +247,21 @@ export function createWalletFirstCurrentResourceProjection(options = {}) {
   const controlStore = snapshotControlStore(values.controlStore);
 
   const service = Object.freeze({
+    getCurrentOverview(input) {
+      const request = snapshotExactObject(input, ["accountId"], code);
+      const accountId = normalizeAccountId(request.accountId, code);
+      try {
+        const clock = values.nowFn();
+        const now = normalizeTimestamp(clock instanceof Date ? clock.toISOString() : clock, code);
+        const resource = normalizeOverview(controlStore.readWalletFirstCurrentResourceOverview({ accountId, now }));
+        if (resource.state !== "available" || !values.setupDelivery) return resource;
+        const setupAvailable = values.setupDelivery.getSetupAvailability({ accountId });
+        if (typeof setupAvailable !== "boolean") throw serviceError(code);
+        return Object.freeze({ ...resource, setupAvailable });
+      } catch {
+        throw serviceError(code);
+      }
+    },
     getCurrentResource(input) {
       const request = snapshotExactObject(input, ["accountId"], code);
       const accountId = normalizeAccountId(request.accountId, code);

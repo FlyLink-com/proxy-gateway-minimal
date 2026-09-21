@@ -1,9 +1,6 @@
 import { useMemo } from "react";
-import {
-  createHttpUserPortalClient,
-  createLocalUserPortalClient,
-  type PortalSession
-} from "./user-portal-client";
+import { createHttpUserPortalClient, type PortalSession } from "./user-portal-client";
+import { createLocalUserPortalClient } from "./user-portal-preview-client";
 import { UserPortalPage } from "./user-portal-page";
 import { UserRegistrationPage } from "./user-registration-page";
 

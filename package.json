@@ -140,6 +140,8 @@
     "admin:verify": "npm run verify:admin-build --prefix admin",
     "admin:portal:build": "npm run build:portal --prefix admin",
     "admin:portal:verify": "npm run verify:portal-build --prefix admin",
+    "admin:portal:web:build": "npm run build:portal:web --prefix admin",
+    "admin:portal:web:verify": "npm run verify:portal:web --prefix admin",
     "admin:site:build": "npm run build:site --prefix admin",
     "admin:site:verify": "npm run verify:site-build --prefix admin",
     "admin:local-proxy:start": "powershell -ExecutionPolicy Bypass -File ops/local-admin-bridge/start-admin-panel-local-proxy.ps1",

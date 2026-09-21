@@ -78,6 +78,10 @@ const ENTRY_HTML = {
     file: "admin/portal/index.html",
     module: "../src/portal-main.tsx"
   },
+  portalWeb: {
+    file: "admin/portal-web/index.html",
+    module: "../src/portal-main.tsx"
+  },
   site: {
     file: "admin/site/index.html",
     module: "../src/site-main.tsx"
@@ -89,6 +93,8 @@ const EXPECTED_ENTRY_HTML_SHA256 = {
     "35ac077fd177e228dbd9c6e327decaa8cfa1e1e4fb5227b91db6c09e3f1eec11",
   "admin/portal/index.html":
     "2b7ed226e2fb6ccdb23c5f989ec0d1f64b337a4bca92604446538d4c7ad81157",
+  "admin/portal-web/index.html":
+    "76accc4572f87531feb181b00864cbf50d522134b045bcb3999bd5aa1b03ab86",
   "admin/site/index.html":
     "4ddae734ee33480e3d3ead05f0d9fe95f019fe8077424029ef0d4aa2299a8319"
 };
@@ -105,6 +111,7 @@ const EXPECTED_ENTRY_IMPORTS = {
     "./features/user-portal/user-portal-client",
     "./features/user-portal/user-portal-page",
     "./features/user-portal/user-registration-page",
+    "./features/user-portal/portal-entry",
     "./portal-static-preserve.css"
   ],
   "admin/src/site-main.tsx": [
@@ -146,13 +153,13 @@ const EXPECTED_APP_SENSITIVE_IMPORTS = [
   "./pages/admin-operations-shell",
   "./pages/admin-production-baseline-preview",
   "./features/company-site/company-site-page",
-  "./features/user-portal/user-portal-client",
+  "./features/user-portal/user-portal-preview-client",
   "./features/user-portal/user-portal-page",
   "./features/user-portal/user-portal-route"
 ];
 
 const EXPECTED_ADMIN_TO_PORTAL_EDGES = new Set([
-  "admin/src/App.tsx -> admin/src/features/user-portal/user-portal-client.ts",
+  "admin/src/App.tsx -> admin/src/features/user-portal/user-portal-preview-client.ts",
   "admin/src/App.tsx -> admin/src/features/user-portal/user-portal-page.tsx",
   "admin/src/App.tsx -> admin/src/features/user-portal/user-portal-route.tsx"
 ]);
@@ -166,30 +173,35 @@ const EXPECTED_FIXTURE_EDGES = new Set([
   "admin/src/App.tsx -> admin/src/pages/admin-production-baseline-preview.tsx",
   "admin/src/app/admin-ui-projection.ts -> admin/src/app/admin-fixture-preview.ts",
   "admin/src/components/primitives/panel-frame.tsx -> admin/src/app/admin-fixture-preview.ts",
+  "admin/src/App.tsx -> admin/src/features/user-portal/user-portal-preview-client.ts",
   "admin/src/features/user-portal/user-portal-local.ts -> admin/src/features/user-portal/totp-preview.ts",
+  "admin/src/features/user-portal/user-portal-local.ts -> admin/src/features/user-portal/user-portal-preview-data.ts",
+  "admin/src/features/user-portal/user-portal-preview-client.ts -> admin/src/features/user-portal/user-portal-preview-data.ts",
+  "admin/src/features/user-portal/user-portal-route.tsx -> admin/src/features/user-portal/user-portal-preview-client.ts",
   "admin/src/pages/subscription-usage-monitor-page.tsx -> admin/src/features/subscriptions/usage-runtime-fixture.ts"
 ]);
 
 const EXPECTED_FIXTURE_EDGES_BY_SURFACE = {
   admin: EXPECTED_FIXTURE_EDGES,
-  portal: new Set([
-    "admin/src/features/user-portal/user-portal-local.ts -> admin/src/features/user-portal/totp-preview.ts"
-  ]),
+  portal: new Set(),
   site: new Set()
 };
 
 const PORTAL_SHARED_FILES = new Set([
-  "admin/src/app/public-locale.ts",
-  "admin/src/components/modal-frame.tsx",
-  "admin/src/lib/clipboard.ts",
-  "admin/src/lib/errors.ts",
-  "admin/src/lib/utils.ts"
+  "admin/src/shared/public/public-locale.ts",
+  "admin/src/shared/public/modal-frame.tsx",
+  "admin/src/shared/public/clipboard.ts",
+  "admin/src/shared/public/errors.ts",
+  "admin/src/shared/public/utils.ts"
 ]);
 
 const EXPECTED_VITE_LOCAL_IMPORTS = {
   "admin/vite.config.ts": [],
   "admin/vite.portal.config.ts": [
     "./src/features/user-portal/recharge/portal-recharge-client"
+  ],
+  "admin/vite.portal-web.config.ts": [
+    "./vite.portal.config"
   ],
   "admin/vite.portal.local-api-validation.config.ts": [
     "./vite.portal.config"
@@ -202,6 +214,8 @@ const EXPECTED_VITE_CONFIG_SHA256 = {
     "0e01c02bc34d25324e9432a36118097c98e6e28c74d9a25baddfab9e3273b5f7",
   "admin/vite.portal.config.ts":
     "07e106c9ae9ab03871c82c6491cfc0bd6dc84e080e3c085295ef30904b61eadd",
+  "admin/vite.portal-web.config.ts":
+    "c5ea089e70a4bf1af9519e3ad2299d283edf4ba152ce58a10b272beebd517a3b",
   "admin/vite.portal.local-api-validation.config.ts":
     "0c09218b5c602590db98fdf8abf4029cae7e191d83f36fd9dff21253099085ca",
   "admin/vite.site.config.ts":
@@ -847,6 +861,19 @@ function isFixtureOrPreview(file) {
   return /(?:^|[/_.-])(?:fixtures?|previews?)(?:[/_.-]|$)/iu.test(file);
 }
 
+function isPortalPreviewHelper(file) {
+  const normalized = file.toLowerCase();
+  return normalized.includes("/user-portal-local.")
+    || normalized.includes("/user-portal-preview-")
+    || normalized.includes("/totp-preview.")
+    || normalized.includes("/preview-client.")
+    || normalized.includes("/preview-data.");
+}
+
+function isSharedPublicFile(file) {
+  return file.startsWith("admin/src/shared/public/");
+}
+
 function isForbiddenActivePath(file) {
   const normalized = file.toLowerCase();
   return /(?:^|\/)(?:test|tests|__tests__)(?:\/|$)/u.test(normalized)
@@ -1216,7 +1243,7 @@ function checkBuildContracts(rootDirectory) {
     }
   }
 
-  for (const directory of ["admin", "admin/portal", "admin/site"]) {
+  for (const directory of ["admin", "admin/portal", "admin/portal-web", "admin/site"]) {
     try {
       for (const name of readdirSync(path.join(rootDirectory, directory))) {
         if (name === ".env" || name.startsWith(".env.")) {
@@ -1252,7 +1279,9 @@ function checkBuildContracts(rootDirectory) {
       "admin:build": "npm run build --prefix admin",
       "admin:verify": "npm run verify:admin-build --prefix admin",
       "admin:portal:build": "npm run build:portal --prefix admin",
+      "admin:portal:web:build": "npm run build:portal:web --prefix admin",
       "admin:portal:verify": "npm run verify:portal-build --prefix admin",
+      "admin:portal:web:verify": "npm run verify:portal:web --prefix admin",
       "admin:site:build": "npm run build:site --prefix admin",
       "admin:site:verify": "npm run verify:site-build --prefix admin",
       "cloudflare:site:build": "npm run admin:site:build",
@@ -1263,9 +1292,11 @@ function checkBuildContracts(rootDirectory) {
     admin: {
       build: "tsc --noEmit && vite build",
       "build:portal": "tsc --noEmit && vite build --config vite.portal.config.ts",
+      "build:portal:web": "tsc --noEmit && vite build --config vite.portal-web.config.ts",
       "build:site": "tsc --noEmit && vite build --config vite.site.config.ts",
       "verify:admin-build": "node ../scripts/verify-admin-build.mjs dist",
       "verify:portal-build": "node ../scripts/verify-portal-build.mjs dist-portal",
+      "verify:portal:web": "node ../scripts/verify-portal-build.mjs dist-portal-web",
       "verify:site-build": "node ../scripts/verify-public-site-build.mjs dist-site"
     }
   };
@@ -1409,8 +1440,23 @@ function checkGraphPolicies(graphs) {
   }
 
   for (const file of graphs.portal.files) {
+    if (isPortalPreviewHelper(file)) {
+      issues.push(issue("portal_preview_reachability", { file }));
+      continue;
+    }
     if (!isAllowedPortalFile(file)) {
       issues.push(issue("portal_cross_surface_reachability", { file }));
+    }
+  }
+
+  for (const graph of Object.values(graphs)) {
+    for (const edge of graph.edges) {
+      if (isSharedPublicFile(edge.from) && !isSharedPublicFile(edge.to)) {
+        issues.push(issue("shared_public_foreign_reachability", {
+          from: edge.from,
+          to: edge.to
+        }));
+      }
     }
   }
 
@@ -1513,6 +1559,7 @@ export function verifyFrontendSourceBoundaries({
     buildOutputs: {
       admin: "admin/dist",
       portal: "admin/dist-portal",
+      portalWeb: "admin/dist-portal-web",
       site: "admin/dist-site"
     },
     publicBuildInputs: EXPECTED_PUBLIC_FILES.size,

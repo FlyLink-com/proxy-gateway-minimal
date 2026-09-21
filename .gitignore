@@ -20,6 +20,7 @@ docs/superpowers/plans/*.tmp
 .vs/
 admin/dist/
 admin/dist-portal/
+admin/dist-portal-web/
 .vercel/
 /.codex-artifacts/
 /.codex-runtime/

@@ -2,6 +2,7 @@ import { readReferralCookie } from './portal-referral.mjs';
 import { Router } from "express";
 import { types as utilTypes } from "node:util";
 import { createPortalBrowserSessionTransport } from "../services/platform/portal-browser-session-transport.mjs";
+import { snapshotPortalCurrentResourceService } from "../services/platform/portal-current-resource.mjs";
 import {
   snapshotWalletFirstCurrentResourceProjection
 } from "../services/platform/wallet-first-current-resource-projection.mjs";
@@ -10,6 +11,10 @@ import {
 } from "../services/platform/wallet-first-current-resource-setup-delivery.mjs";
 
 function sendPortalError(res, error) {
+  if (error.code === "portal_current_resource_unavailable" || error.code === "portal_current_resource_reconciliation_required") {
+    res.status(error.code === "portal_current_resource_unavailable" ? 503 : 409).json({ error: error.code });
+    return;
+  }
   if (["portal_browser_request_invalid", "portal_browser_unavailable"].includes(error.code)) {
     res.status(error.status || 503).json({ error: error.code });
     return;
@@ -104,6 +109,13 @@ export function userPortalRoutes(state, options = {}) {
     || state.platform?.walletFirstCurrentResourceProjection;
   const currentResourceSetupDelivery = options.walletFirstCurrentResourceSetupDelivery
     || state.platform?.walletFirstCurrentResourceSetupDelivery;
+  const currentResourceService = options.portalCurrentResourceService || state.platform?.portalCurrentResourceService;
+  const resourceReader = () => currentResourceService
+    ? snapshotPortalCurrentResourceService(currentResourceService)
+    : snapshotWalletFirstCurrentResourceProjection(currentResourceProjection);
+  const resourceDelivery = () => currentResourceService
+    ? snapshotPortalCurrentResourceService(currentResourceService)
+    : snapshotWalletFirstCurrentResourceSetupDelivery(currentResourceSetupDelivery);
 
   function requestContext(req) {
     return {
@@ -456,12 +468,23 @@ export function userPortalRoutes(state, options = {}) {
     try {
       requireNoQuery(req);
       const session = requirePortalHeaderSession(req);
-      const projection = snapshotWalletFirstCurrentResourceProjection(
-        currentResourceProjection
-      );
+      const projection = resourceReader();
       const resource = projection.getCurrentResource({ accountId: session.accountId });
       res.set("Cache-Control", "no-store");
       res.json({ resource });
+    } catch (error) {
+      sendPortalError(res, error);
+    }
+  });
+
+  router.get("/api/portal/resources/current/overview", (req, res) => {
+    res.set("Cache-Control", "no-store");
+    res.set("Referrer-Policy", "no-referrer");
+    try {
+      requireNoQuery(req);
+      const session = requirePortalHeaderSession(req);
+      const projection = resourceReader();
+      res.json({ resource: projection.getCurrentOverview({ accountId: session.accountId }) });
     } catch (error) {
       sendPortalError(res, error);
     }
@@ -473,9 +496,7 @@ export function userPortalRoutes(state, options = {}) {
       requireNoQuery(req);
       const session = requirePortalHeaderSession(req);
       const body = requireExactBody(req, ["idempotencyKey"]);
-      const delivery = snapshotWalletFirstCurrentResourceSetupDelivery(
-        currentResourceSetupDelivery
-      );
+      const delivery = resourceDelivery();
       const result = delivery.deliverSetup({
         accountId: session.accountId,
         sessionRef: session.sessionRef,
@@ -493,9 +514,7 @@ export function userPortalRoutes(state, options = {}) {
       requireNoQuery(req);
       const session = requirePortalHeaderSession(req);
       const body = requireExactBody(req, ["handoffRef"]);
-      const delivery = snapshotWalletFirstCurrentResourceSetupDelivery(
-        currentResourceSetupDelivery
-      );
+      const delivery = resourceDelivery();
       delivery.acknowledgeSetup({
         accountId: session.accountId,
         sessionRef: session.sessionRef,

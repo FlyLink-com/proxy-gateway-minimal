@@ -32,10 +32,10 @@ import {
   Wifi,
   type LucideIcon
 } from "lucide-react";
-import { ModalFrame } from "../../components/modal-frame";
-import { copyText } from "../../lib/clipboard";
-import { errorMessage } from "../../lib/errors";
-import { cn } from "../../lib/utils";
+import { ModalFrame } from "../../shared/public/modal-frame";
+import { copyText } from "../../shared/public/clipboard";
+import { errorMessage } from "../../shared/public/errors";
+import { cn } from "../../shared/public/utils";
 import {
   PublicLocaleSwitch,
   PublicPreferenceSwitch,
@@ -65,6 +65,7 @@ import {
 } from "./recharge";
 import { useDesktopScrollRegion } from "./use-desktop-scroll-region";
 import { broadcastPortalSessionChange, clearPendingPortalLogout, readPendingPortalLogout, readPortalLocation, stagePendingPortalLogout, subscribePortalSessionChange, writePortalLocation } from "./portal-browser-session";
+import { portalAssetPath, portalRoutePath } from "./portal-entry";
 import {
   PORTAL_PAYMENT_RETURN_SESSION_STORAGE_KEY,
   PORTAL_REGISTRATION_SESSION_STORAGE_KEY
@@ -178,10 +179,10 @@ const cashierPaymentChannels: Array<{
   id: Extract<PortalPaymentChannel, "alipay" | "wxpay">;
   labelEn: string;
   labelZh: string;
-  iconSrc: string;
+  iconAsset: string;
 }> = [
-  { id: "alipay", labelZh: "支付宝", labelEn: "Alipay", iconSrc: "/payment-alipay-icon.png" },
-  { id: "wxpay", labelZh: "微信支付", labelEn: "WeChat Pay", iconSrc: "/payment-wechat-pay-icon.svg" }
+  { id: "alipay", labelZh: "支付宝", labelEn: "Alipay", iconAsset: "payment-alipay-icon.png" },
+  { id: "wxpay", labelZh: "微信支付", labelEn: "WeChat Pay", iconAsset: "payment-wechat-pay-icon.svg" }
 ];
 
 const orderStatusTabs: Array<{ id: OrderStatusFilter; label: string }> = [
@@ -2650,7 +2651,7 @@ export function UserPortalPage({
               </button>
               <p className="portal-login-register">
                 <span>{authCopy.noAccount}</span>
-                <a href="/portal/register/">{authCopy.registerAccount}</a>
+                <a href={portalRoutePath("register")}>{authCopy.registerAccount}</a>
               </p>
             </form>
           </div>
@@ -3961,7 +3962,7 @@ function CashierSelectionDialog({
   const methods = cashierPaymentChannels.map((method) => ({
     id: method.id,
     label: uiText(locale, method.labelZh, method.labelEn),
-    iconSrc: method.iconSrc
+    iconSrc: portalAssetPath(method.iconAsset)
   }));
   const amountLabel = plan.priceLabel.replace(/\s+/g, " ");
 
@@ -4072,7 +4073,7 @@ function PortalPaymentFlow({
     .map((method) => ({
       id: method.id,
       label: uiText(locale, method.labelZh, method.labelEn),
-      iconSrc: method.iconSrc
+      iconSrc: portalAssetPath(method.iconAsset)
     }));
   const [paymentNowMs, setPaymentNowMs] = useState(() => Date.now());
   const [paymentQrDataUrl, setPaymentQrDataUrl] = useState("");
@@ -4635,7 +4636,7 @@ function UseGuide({
       sourceHint: locale === "zh" ? "参考 Remote Subscription / Subscription URL Import 路径" : "Based on Remote Subscription / Subscription URL Import",
       surface: "desktop",
       screenTitle: locale === "zh" ? "订阅 URL 导入" : "Subscription URL Import",
-      imageSrc: "/guide/clash-subscription-import.png",
+      imageSrc: portalAssetPath("guide/clash-subscription-import.png"),
       imageAlt: locale === "zh"
         ? "Clash Verge Rev 订阅页面导入订阅文件链接教程截图"
         : "Clash Verge Rev subscription import screenshot",
@@ -5233,7 +5234,7 @@ function UseGuide({
                   {guideClient === "clash" ? (
                     <figure className="portal-start-guide-screenshot-frame">
                       <img
-                        src="/guide/clash-system-proxy.png"
+                        src={portalAssetPath("guide/clash-system-proxy.png")}
                         alt={uiText(locale, "Clash Verge Rev 设置页面开启系统代理教程截图", "Clash Verge Rev system proxy screenshot")}
                         loading="lazy"
                       />

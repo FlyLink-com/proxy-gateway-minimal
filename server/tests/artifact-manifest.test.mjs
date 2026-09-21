@@ -359,7 +359,7 @@ test("Release Artifact workflow treats dispatch release labels as shell data", (
 
   assert.equal(
     environmentBindings.length,
-    3,
+    4,
     "each artifact job must pass the dispatch input through the environment"
   );
   assert.doesNotMatch(
@@ -369,7 +369,7 @@ test("Release Artifact workflow treats dispatch release labels as shell data", (
   );
   assert.equal(
     (workflow.match(/release="\$RELEASE_INPUT"/g) ?? []).length,
-    3,
+    4,
     "each artifact job must validate the environment value"
   );
 });

@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
 
 import {
-  createHttpUserPortalClient,
-  createLocalUserPortalClient
+  createHttpUserPortalClient
 } from "../features/user-portal/user-portal-client";
+import { createLocalUserPortalClient } from "../features/user-portal/user-portal-preview-client";
 import {
   PortalWalletClientError,
   type PortalWalletClient,
