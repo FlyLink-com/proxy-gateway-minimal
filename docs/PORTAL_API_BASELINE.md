@@ -6,15 +6,15 @@ document_metadata:
   lifecycle: active
   authority_scope: portal_independent_api_baseline
   superseded_by: null
-  last_verified_at: 2026-09-19
+  last_verified_at: 2026-09-20
   production_authority: false
 ```
 
-这是 `docs/portal-independent-plan-20260919` 在
-`3937c0ff909a21aaee901fdcffb25bf81336a122` 的源码/API 只读基线，供未来独立
-Portal 前端消费。它不授权生产部署、认证模型启用、数据库迁移或 provider
+这是 `docs/portal-independent-plan-20260919` 对
+`master@41ea7b4389724812ba938f8df5480c638ab5b546` 的源码/API 只读基线，供独立
+Portal 前端和已落地的 mobile 消费者对照。它不授权生产部署、认证模型启用、数据库迁移或 provider
 操作；也不关闭 #438（Portal lifecycle）或 #527（前端资源隔离）。主 Agent 于
-2026-09-19 复查两 Issue 仍为 open；正文 Current Alignment 日期为 2026-08-30，
+2026-09-20 复查两 Issue 仍为 open；正文 Current Alignment 日期为 2026-08-30，
 属于有日期的记录，不能据此推定当前 production/runtime state。
 
 ## 结论与边界
@@ -83,19 +83,51 @@ MFA challenge 本身另有期限。`sessionExpiresAtFactory` 影响的是转换�
 | `POST /api/portal/security/totp/enrollment` / `.../confirm` | 201 enrollment；confirm 200 | account/auth | profile/security panels；user-portal-routes |
 | `POST /api/portal/access-requests` | 201 `{request}`；会话绑定 accountId | access-request/account | `submitAccessRequest`；user-portal-routes |
 | `GET /api/portal/access-requests/current` | `{items}`，按 submitted/updated time + id 排序 | access-request + embedded usage/quota summary | `fetchCurrentState`、Portal 页面；user-portal-routes |
-| `GET /api/portal/resources/current` | `{resource}`；`no-store`；不接受 query | wallet-first current-resource projection | `fetchCurrentResource`；portal-wallet-first-current-resource-routes |
-| `POST /api/portal/resources/current/setup` | 200 setup delivery | current-resource setup delivery | `createCurrentResourceSetup`；同名 routes test |
-| `POST /api/portal/resources/current/setup/ack` | 204 空响应 | setup delivery acknowledgement | `acknowledgeCurrentResourceSetup`；同名 routes test |
+| `GET /api/portal/resources/current` | `{resource}`；`no-store`；不接受 query | current-resource facade；支持 legacy 与 wallet-first projection | `fetchCurrentResource`；portal-wallet-first-current-resource-routes |
+| `GET /api/portal/resources/current/overview` | `{resource}`；`no-store`、`Referrer-Policy: no-referrer`；不接受 query | current-resource facade；按服务端账户/商业模型读取 legacy 或 wallet-first projection（#737/#738） | [`gccwebos-mobile/src/api/current-resource.mjs`](https://github.com/gccltd/gccwebos-mobile/blob/835b79c32550a38c53f9e662d9055a5f93627972/src/api/current-resource.mjs)；portal-current-resource-composition、portal-wallet-first-current-resource-routes |
+| `POST /api/portal/resources/current/setup` | 200 setup delivery | current-resource facade 的 setup delivery；支持 legacy 与 wallet-first | `createCurrentResourceSetup`；同名 routes test |
+| `POST /api/portal/resources/current/setup/ack` | 204 空响应 | current-resource facade 的 setup acknowledgement；支持 legacy 与 wallet-first | `acknowledgeCurrentResourceSetup`；同名 routes test |
 | `POST /api/portal/access-requests/reveal` / `refresh` / `disable` | 200 `{request}` | access-request/delivery lifecycle | `reveal/refresh/disableSubscription`；user-portal-routes、self-service-subscription-routes |
 | `POST /api/portal/support-requests` | 201 `{request}` | support request | `submitSupportRequest`；portal-support-request-routes |
 
 资源 setup body 必须是恰好 `{idempotencyKey}`；ack body 必须是恰好
-`{handoffRef}`，二者都拒绝 query。`setup` 的重试语义由 server delivery service
-按同一幂等 key 处理；前端应复用同一 key，不要生成“重试即新请求”。
+`{handoffRef}`，二者都拒绝 query。wallet-first `setup` 由现有 delivery service
+按同一幂等 key 恢复；前端应复用同一 key，不要生成“重试即新请求”。legacy
+`setup` 只重读已发放且归属当前账户的交付，不生成新资源、不轮换凭证；其 key
+仍按请求合同校验，不能把它描述为另一套持久化交付幂等账本。legacy ack 只确认
+当前 session/resource 绑定的 UI 导入步骤，不创建商业交付或结算记录。
 `access-requests/current` 的 account 归属以 server session 为准；当前 client
 附带的 `portalUserRef` query 只是兼容输入，不是授权来源，也没有 cursor/limit
-分页合同。usage/quota 目前随 request projection 返回，而不是单独的
-`/api/portal/usage` endpoint。
+分页合同。`resources/current/overview` 是另一个真实存在的当前资源读取接口，
+不是 usage 历史分页接口：它返回服务端当前资源快照中的 usage/quota，不提供
+`/api/portal/usage` 或其他历史 usage 分页路径。
+
+`resources/current/overview` 使用同一 Portal session/account 归属，固定返回
+`{resource}`，响应带 `Cache-Control: no-store` 和 `Referrer-Policy: no-referrer`。
+资源状态为 `none`、`reconciliation_required` 或 `available`；可用资源包含
+`plan`、`validUntil`、`setupAvailable`、不透明的 `resourceRef` 与
+`usage={totalBytes,usedBytes,remainingBytes,collectionStatus,updatedAt,cycleStartedAt,cycleEndsAt}`。
+`collectionStatus` 可为 `pending`、`measured_zero`、`measured` 或 `stale`；
+`pending` 时 `totalBytes` 仍返回当前 quota，但 `usedBytes`、`remainingBytes`、
+`updatedAt` 为 null；`stale` 只表达采集新鲜度，不是计费规则。
+legacy quota 为零时保留 `totalBytes:0` 与 `monthlyTrafficGb:0`，剩余量为 null，
+已测用量仍保留；这是未设置额度的展示边界，不代表无限流量或变更计费/限制规则。
+服务端按账户当前商业模型选择读取路径：legacy 使用既有资源/交付链，
+`wallet_first_unique_v1` 使用 wallet-first current-resource projection；该
+overview DTO 不自行附加 `commerceModel`，模型仍由 `GET /api/portal/commerce/model`
+单独返回。usage 是当前资源、entitlement、request 和 billing cycle 的读快照，
+按存储 delta 汇总并排除未来样本；不得以最新历史 usage 记录或累积计数替代
+该 current snapshot。
+
+认证/请求失败仍走 Portal route 的既有 HTTP 合同：无效 session 为 401
+`{error:"invalid_session"}`；该 GET 只执行 `requireNoQuery`，意外 query 为 400，
+不定义 request body 合同。当前资源不可用为
+503 `{error:"portal_current_resource_unavailable"}` 或
+`{error:"wallet_first_current_resource_unavailable"}`。overview 读到
+`reconciliation_required` 时仍是 200 `{resource:{state:"reconciliation_required"}}`；
+409 `{error:"portal_current_resource_reconciliation_required"}` 主要属于 setup/ack
+在 owned-available、receipt 或 handoff 校验失败时的错误。未知异常为 500
+`{error:"internal_error"}`；独立前端不得把这些错误当成空资源或历史 usage。
 
 ### Coins wallet（余额投影与账本）
 
@@ -177,9 +209,11 @@ unavailable 503、rate limited 429、unknown route 404；client 记录 retryable
   `/api/portal/payments/current`、`/api/portal/payments/checkout` 兼容消费者；在
   本次实际 route inventory 中没有对应 route。它们不得当作当前公共 capability，
   新前端不得据此发请求或推断支付已启用。
-- 本次目标 route 中没有独立 usage endpoint；usage/quota 由 access-request
-  projection 提供。若未来需要独立查询，应先建立版本化 DTO、account 归属、
-  freshness/pagination/error 合同，再实现消费者；这是提案，不是现有能力。
+- 当前已有 `GET /api/portal/resources/current/overview`，可读取带 usage/quota
+  的当前资源快照；它不是独立 usage 历史 endpoint，也没有 usage 历史分页合同。
+  若未来需要历史 usage 查询，仍应另行建立版本化 DTO、account 归属、
+  freshness/pagination/error 合同，再实现消费者；不得把 overview 当作该提案的
+  历史查询替代。
 - 前端必须只显示 server 返回的状态；不得把 login/session 当 durable account
   state，不得把 `paid` 当 subscription state，不得在额度耗尽时把 account 伪装为
   disabled。正常 refresh 的稳定 artifact URL/usage anchor 属于 server lifecycle
