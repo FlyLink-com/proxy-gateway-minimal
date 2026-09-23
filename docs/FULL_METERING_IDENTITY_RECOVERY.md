@@ -10,9 +10,69 @@ document_metadata:
   production_authority: false
 ```
 
-Risk: B for source regression coverage; A for any production recovery.
+Risk: B for source repair and regression coverage; A for any production recovery.
 One work item/PR, related to #437. This record is **not a production repair or
-activation receipt**. No collector implementation or identity check is changed.
+activation receipt**. Collector implementation and identity checks are unchanged.
+
+```yaml
+capability: edge_runtime_binding_authority_recovery
+release_unit: control-plane-app
+production_state: not_deployed
+identity_impact: true
+identity_gate:
+  surface: edge-lifecycle-desired-state
+  state: pending
+```
+
+## Source repair intent
+
+`server/state.mjs` restores lifecycle desired-state orders from two sources:
+persisted Portal access requests and older issued-subscription bindings. The
+legacy recovery function derived credential references for each configured
+channel and accepted a candidate merely because its protected material existed.
+For channel-qualified references it did not require an explicit channel binding.
+The fallback also assigned `issued` status, and merge priority could prefer a
+derived historical reference over an explicit non-derived or disabled primary.
+
+The synthetic runtime-state/SQLite regression reproduces a VLESS-only Portal
+binding being expanded to Hy2/TUIC desired identities by historical materials.
+That violates the metering inspector's binding authority. The observation proves
+a source defect that can produce the observed class of runtime/map mismatch; it
+does not prove that every production missing key originated through this path.
+
+The minimum change is confined to lifecycle recovery:
+
+- If a persisted Portal request exists, use its existing exact credential list
+  (or explicit legacy primary) and lifecycle status. Do not synthesize additional
+  credentials from stored material or override a disabled state.
+- Without a Portal request, preserve historical issued recovery only for the
+  originally issued node, never another channel merely because material remains.
+- Leave material, subscriptions, database bindings, usage checkpoints and the
+  collector's strict checks unchanged. No automatic runtime apply is added.
+
+This prevents reintroducing unsupported runtime entries during subsequent
+lifecycle synchronization. Existing production drift still requires the
+authorized exact runtime comparison/repair below; deploying source alone does
+not remove those entries. The separate subscription-rendering material fallback
+is not changed by this focused runtime repair, nor declared globally reconciled.
+
+Source regression on 2026-09-23:
+
+- New real SQLite/runtime-state suite: before repair, 15 tests with 5 passed and
+  10 failed; after repair and two additional current-state safety cases,
+  17 passed, 0 failed, 0 skipped. The new cases retain two authorized current
+  identities and propose only an unbound third identity for revoke, without
+  mutating runtime, protected material or Portal bindings.
+- Combined new suite, complete `state.test.mjs` and the five metering suites
+  listed below: 299 passed, 0 failed, 0 skipped on Windows Node 24.16.0.
+- `npm run validation:environment:source`, Node syntax check, diff check and
+  document authority check passed.
+- Windows `npm test` before the two additional plan-only tests: 5,207 tests,
+  5,072 passed, 79 failed, 56 skipped. Failures include POSIX-path assumptions
+  and frontend parser/build checks; this is not a passing full-suite result.
+  Exact-commit GitHub Linux validation and the Aliyun affected-suite follow-up
+  are recorded in the PR when completed; the earlier 130-test
+  Linux result alone does not validate this new runtime-state source change.
 
 ## Known fault and remaining distinction
 
@@ -115,7 +175,7 @@ node --test --test-concurrency=1 \
   server/tests/full-metering-collection.test.mjs
 ```
 
-On 2026-09-23:
+Earlier diagnostic-only validation on 2026-09-23 (before the source repair above):
 
 - Windows: 130 passed, 0 failed, 0 skipped; 21 cases are newly added.
 - Existing Aliyun nonproduction Linux host: the same 130 passed, 0 failed,
@@ -133,8 +193,8 @@ On 2026-09-23:
 - The owned Linux validation workspace is retained. Local execution receipt:
   `.codex-artifacts/metering-aliyun-isolation-20260923/proxy-validate.result.json`.
 - Source validation discovers `server/tests/*.test.mjs` automatically; no new
-  test-registration manifest is required. Full project validation has not been
-  rerun for this diagnostic work item.
+  test-registration manifest is required. These 130-test results cover the
+  unchanged collector behavior, not the later runtime-state repair.
 
 ## Minimum remaining production step
 
