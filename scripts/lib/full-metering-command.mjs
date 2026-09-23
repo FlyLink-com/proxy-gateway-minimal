@@ -15,8 +15,13 @@ const fail = code => { throw Object.assign(new Error(code), { code }); };
 const exactKeys = (object, keys) => object && typeof object === "object" && !Array.isArray(object) && Object.keys(object).sort().join(",") === [...keys].sort().join(",");
 const linuxPath = path => typeof path === "string" && /^\/[A-Za-z0-9_./-]+$/.test(path) && !path.split("/").includes("..") && !path.split("/").includes(".");
 export function parseFullMeteringCommand(argv) {
-  if (!Array.isArray(argv) || argv.length !== 5 || !["--preflight", "--initialize", "--collect"].includes(argv[0])
+  if (!Array.isArray(argv) || !["--preflight", "--initialize", "--collect", "--continue-material"].includes(argv[0])
+    || argv.length !== (argv[0] === "--continue-material" ? 9 : 5)
     || argv[1] !== "--config" || !linuxPath(argv[2]) || argv[3] !== "--config-sha256" || !/^[a-f0-9]{64}$/.test(argv[4])) fail("full_metering_command_invalid");
+  if (argv[0] === "--continue-material") {
+    if (argv[5] !== "--material-approval" || !linuxPath(argv[6]) || argv[7] !== "--material-approval-sha256" || !/^[a-f0-9]{64}$/.test(argv[8])) fail("full_metering_command_invalid");
+    return { mode: "continue-material", configPath: argv[2], configSha256: argv[4], materialApprovalPath: argv[6], materialApprovalSha256: argv[8] };
+  }
   return { mode: argv[0].slice(2), configPath: argv[2], configSha256: argv[4] };
 }
 export function validateFullMeteringConfig(config) {
@@ -73,6 +78,13 @@ export async function runFullMeteringCommand(argv) {
   const bytes = protectedBytes(options.configPath, { requireOwner: true });
   if (createHash("sha256").update(bytes).digest("hex") !== options.configSha256) fail("full_metering_config_digest_changed");
   const config = validateFullMeteringConfig(privateJson(bytes));
+  const readApproval = () => {
+    const approvalBytes = protectedBytes(options.materialApprovalPath, { requireOwner: true, maxBytes: 64 * 1024 });
+    if (createHash("sha256").update(approvalBytes).digest("hex") !== options.materialApprovalSha256) fail("full_metering_material_approval_digest_changed");
+    return privateJson(approvalBytes);
+  };
+  const materialApproval = options.mode === "continue-material" ? readApproval() : null;
+  const writesSamples = options.mode === "collect" || options.mode === "continue-material";
   const databaseIdentityDigest = fullMeteringDigest(fileIdentity(config.dbPath));
   const context = { scopeDigest: options.configSha256, databaseIdentityDigest };
   if (options.mode === "initialize") {
@@ -84,14 +96,15 @@ export async function runFullMeteringCommand(argv) {
       if (backupDb.pragma("quick_check", { simple: true }) !== "ok") fail("full_metering_backup_invalid");
     } finally { backupDb.close(); }
   }
-  const db = new Database(config.dbPath, { readonly: options.mode !== "collect", fileMustExist: true, timeout: 5000 });
+  const db = new Database(config.dbPath, { readonly: !writesSamples, fileMustExist: true, timeout: 5000 });
   try {
     db.pragma("trusted_schema = OFF");
-    if (options.mode !== "collect") db.pragma("query_only = ON");
+    if (!writesSamples) db.pragma("query_only = ON");
     else { db.pragma("synchronous = FULL"); if (db.pragma("synchronous", { simple: true }) !== 2) fail("full_metering_database_durability_unproven"); }
     const assertInputs = () => {
       if (fullMeteringDigest(fileIdentity(config.dbPath)) !== databaseIdentityDigest
         || createHash("sha256").update(protectedBytes(options.configPath, { requireOwner: true })).digest("hex") !== options.configSha256) fail("full_metering_input_changed");
+      if (materialApproval) readApproval();
     };
     const readBindings = () => {
       assertInputs();
@@ -127,12 +140,12 @@ export async function runFullMeteringCommand(argv) {
         return response.privateSnapshot;
       } });
     let applySamples;
-    if (options.mode === "collect") {
+    if (writesSamples) {
       const controlStore = createSqliteSubscriptionControlStore({ database: db, initializeSchema: false });
       const writer = createFullMeteringSampleWriter({ database: db, controlStore, readBindings });
       applySamples = samples => { assertInputs(); return writer(samples); };
     }
     return await runFullMeteringCollection({ ...options, directory: config.journalDirectory, context, activationId: config.activationId,
-      readInventory, readSources, applySamples });
+      readInventory, readSources, applySamples, materialApproval });
   } finally { db.close(); }
 }
