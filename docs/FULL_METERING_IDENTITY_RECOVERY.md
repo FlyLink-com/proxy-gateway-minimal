@@ -227,5 +227,11 @@ change entitlements, or enable the retired legacy collector.
 
 Only after the chosen repair is tested and authorized should the existing main
 collector resume. Verify distinct successful natural runs and sample/checkpoint
-progress, then add the production Deploy Note. Until then, this PR remains
-Draft and the production fault is not marked resolved.
+progress, then add the production Deploy Note. PR #742 has since merged at
+`6dc690b111c0e71643da39eede367a3ea697e524`; its source merge is not a production
+recovery receipt. The consumed 2026-09-23 16:31 UTC targeted read additionally
+identified five active protocol identities with changed material in the old
+checkpoint, alongside the four proven unbound runtime entries. See
+[controlled material continuation](FULL_METERING_MATERIAL_CONTINUATION.md) for
+the separate minimal source follow-up and its exact future production boundary.
+The production fault is not marked resolved.

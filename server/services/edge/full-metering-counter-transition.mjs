@@ -13,6 +13,8 @@ const STATE_FIELDS = ["schemaVersion", "type", "mode", "sourceRef", "channelRef"
   "archivedRefs", "retiredEntries", "retiredConnections", "scopeRevision", "previousStateDigest", "lastScopeChange",
   "generationRevision", "generationArchives", "generationStartedAt", "generationAwaitingObservation", "generationUnassignedGap"];
 const V2_STATE_FIELDS = [...STATE_FIELDS, "connectionHistory", "retentionMigration"];
+const MATERIAL_STATE_FIELDS = ["materialBoundaries"];
+const REQUEST_FIELDS = ["state", "mode", "sourceRef", "channelRef", "generation", "eligibleRefs", "retainedRefs", "observedAt", "now", "minObservedAt", "observations"];
 const boundaryDigest = (generation, verifiedAt) => digest({ type: "verified_generation_boundary", generation, verifiedAt });
 
 function fail(code = "counter_input_invalid") {
@@ -88,7 +90,7 @@ function add(target, value) {
 function cursor(observation, observedAt) { return { ...bytes(observation), observedAt }; }
 
 function normalize(request) {
-  object(request, ["state", "mode", "sourceRef", "channelRef", "generation", "eligibleRefs", "retainedRefs", "observedAt", "now", "minObservedAt", "observations"], ["maxAgeMs"]);
+  object(request, REQUEST_FIELDS, ["maxAgeMs"]);
   requireCondition(["cumulative", "connections"].includes(request.mode));
   requireCondition(typeof request.generation === "string" && HASH.test(request.generation));
   const eligibleRefs = refs(request.eligibleRefs, request.state !== null && request.state !== undefined), retainedRefs = refs(request.retainedRefs);
@@ -136,7 +138,7 @@ function validateState(raw, n = null) {
   // retain the entire state in protected storage and must not turn lost state into null.
   try {
     const version = raw && typeof raw === "object" ? Object.getOwnPropertyDescriptor(raw, "schemaVersion")?.value : null;
-    object(raw, version === 2 ? V2_STATE_FIELDS : STATE_FIELDS);
+    object(raw, version === 2 ? V2_STATE_FIELDS : STATE_FIELDS, MATERIAL_STATE_FIELDS);
     requireCondition([1, 2].includes(raw.schemaVersion) && raw.type === "full_metering_counter_state");
     requireCondition(["cumulative", "connections"].includes(raw.mode));
     requireCondition(raw.schemaVersion !== 2 || raw.mode === "connections");
@@ -186,7 +188,7 @@ function validateState(raw, n = null) {
         continue;
       }
       object(archive, ["snapshot", "nextGeneration", "verifiedAt", "archiveDigest"]);
-      object(archive.snapshot, STATE_FIELDS.filter(field => field !== "generationArchives"));
+      object(archive.snapshot, STATE_FIELDS.filter(field => field !== "generationArchives"), MATERIAL_STATE_FIELDS);
       const { snapshot, nextGeneration, verifiedAt, archiveDigest } = archive;
       requireCondition(typeof nextGeneration === "string" && HASH.test(nextGeneration));
       requireCondition(typeof archiveDigest === "string" && HASH.test(archiveDigest));
@@ -238,6 +240,42 @@ function validateState(raw, n = null) {
     }
     for (const field of ["entries", "connections", "retiredEntries", "retiredConnections"]) array(raw[field]);
     requireCondition(raw.entries.length + raw.retiredEntries.length <= LIMIT && raw.connections.length + raw.retiredConnections.length <= LIMIT);
+    const materialCarry = new Map();
+    if (Object.hasOwn(raw, "materialBoundaries")) {
+      array(raw.materialBoundaries);
+      requireCondition(raw.materialBoundaries.length > 0 && raw.materialBoundaries.length <= 128);
+      const materialIdentities = new Set([...raw.eligibleRefs, ...raw.archivedRefs]);
+      const generationCarries = new Map(raw.generationArchives.map(archive => [archive.nextGeneration,
+        new Map((raw.schemaVersion === 2 ? archive.entries : archive.snapshot.entries).map(entry => [entry.edgeCredentialRef, entry.usage]))]));
+      let lastMaterialAt = raw.minObservedAt;
+      for (const boundary of raw.materialBoundaries) {
+        object(boundary, ["generation", "observedAt", "previousStateDigest", "entries", "boundaryDigest"]);
+        requireCondition(knownGenerations.has(boundary.generation));
+        requireCondition(iso(boundary.observedAt) > lastMaterialAt && boundary.observedAt <= raw.lastObservedAt);
+        const generationIndex = raw.generationArchives.findIndex(archive => archive.nextGeneration === boundary.generation);
+        const startedAt = generationIndex < 0 ? raw.minObservedAt : raw.generationArchives[generationIndex].verifiedAt;
+        const following = raw.generationArchives.find(archive => (raw.schemaVersion === 2 ? archive.generation : archive.snapshot.generation) === boundary.generation);
+        requireCondition(boundary.observedAt > startedAt && (!following || boundary.observedAt <= following.verifiedAt));
+        for (const field of ["previousStateDigest", "boundaryDigest"]) requireCondition(typeof boundary[field] === "string" && HASH.test(boundary[field]));
+        const { boundaryDigest: recordedDigest, ...payload } = boundary;
+        requireCondition(digest(payload) === recordedDigest);
+        array(boundary.entries);
+        requireCondition(boundary.entries.length > 0);
+        requireCondition(canonical(boundary.entries.map(entry => entry.edgeCredentialRef)) === canonical(refs(boundary.entries.map(entry => entry.edgeCredentialRef))));
+        for (const entry of boundary.entries) {
+          object(entry, ["edgeCredentialRef", "carryUsage"]);
+          ref(entry.edgeCredentialRef); object(entry.carryUsage, ["uploadBytes", "downloadBytes"]); bytes(entry.carryUsage);
+          requireCondition(materialIdentities.has(entry.edgeCredentialRef));
+          const key = `${boundary.generation}\0${entry.edgeCredentialRef}`;
+          const prior = materialCarry.get(key)
+            ?? generationCarries.get(boundary.generation)?.get(entry.edgeCredentialRef)
+            ?? zero();
+          requireCondition(entry.carryUsage.uploadBytes >= prior.uploadBytes && entry.carryUsage.downloadBytes >= prior.downloadBytes);
+          materialCarry.set(key, entry.carryUsage);
+        }
+        lastMaterialAt = boundary.observedAt;
+      }
+    }
     const allConnectionIds = new Set();
     for (const archived of [false, true]) {
       const selectedEntries = archived ? raw.retiredEntries : raw.entries;
@@ -253,7 +291,8 @@ function validateState(raw, n = null) {
         object(entry.usage, ["uploadBytes", "downloadBytes"]); bytes(entry.usage);
         object(entry.carryUsage, ["uploadBytes", "downloadBytes"]); bytes(entry.carryUsage);
         const priorGeneration = raw.generationArchives.find(a => a.nextGeneration === entry.generation);
-        const carried = (raw.schemaVersion === 2 ? priorGeneration?.entries : priorGeneration?.snapshot.entries)?.find(e => e.edgeCredentialRef === entry.edgeCredentialRef)?.usage ?? zero();
+        const carried = materialCarry.get(`${entry.generation}\0${entry.edgeCredentialRef}`)
+          ?? (raw.schemaVersion === 2 ? priorGeneration?.entries : priorGeneration?.snapshot.entries)?.find(e => e.edgeCredentialRef === entry.edgeCredentialRef)?.usage ?? zero();
         requireCondition(canonical(entry.carryUsage) === canonical(carried));
         requireCondition(entry.usage.uploadBytes >= entry.carryUsage.uploadBytes && entry.usage.downloadBytes >= entry.carryUsage.downloadBytes);
         requireCondition(canonical(entry.connectionIds) === canonical(refs(entry.connectionIds)));
@@ -374,9 +413,51 @@ function prepareConnectionRetention(state, observedAt) {
  * baseline, never a charge for its old cumulative bytes. No I/O or DB writes.
  */
 export function transitionFullMeteringCounters(request) {
+  return transitionCounters(request);
+}
+
+/**
+ * Pure accounting primitive, not material-change authority. The host caller must
+ * verify old/current identity, ownership, material proof and source provenance,
+ * then atomically archive the complete old checkpoint and persist this result.
+ * Selected eligible identities establish a fresh real baseline in the SAME
+ * runtime generation; their already accepted usage moves into explicit carry
+ * evidence. Other identities use the ordinary transition and all safety checks.
+ * A complete connections snapshot may contain no current pair for a selected
+ * identity; absence closes its old connections and never invents a new cursor.
+ * Cumulative mode always requires an actual pair for every selected identity.
+ * No clear/reset, runtime I/O, automatic opt-in or invented generation is allowed.
+ * New optional journal evidence is deliberately unreadable by older validators;
+ * an older helper must never overwrite it during rollback. Gap bytes are unknown.
+ */
+export function transitionVerifiedFullMeteringMaterialCounters(request) {
+  object(request, [...REQUEST_FIELDS, "materialRefs"], ["maxAgeMs"]);
+  const materialRefs = refs(request.materialRefs, false);
+  requireCondition(canonical(materialRefs) === canonical(request.materialRefs), "counter_material_transition_invalid");
+  const { materialRefs: ignored, ...ordinaryRequest } = request;
+  return transitionCounters(ordinaryRequest, materialRefs);
+}
+
+function transitionCounters(request, materialRefs = null) {
   const n = normalize(request);
   const previous = request.state === null ? null : validateState(request.state, n);
   const next = previous ?? initialState(n);
+  const material = new Set(materialRefs ?? []);
+  let materialBoundary = null;
+  if (materialRefs) {
+    requireCondition(previous !== null && n.observedAt > previous.lastObservedAt
+      && !previous.generationAwaitingObservation && (previous.materialBoundaries?.length ?? 0) < 128,
+    "counter_material_transition_invalid");
+    const observedRefs = new Set(n.observations.map(observation => observation.edgeCredentialRef));
+    requireCondition(materialRefs.every(r => n.eligible.has(r)
+      && (n.scope.mode === "connections" || observedRefs.has(r))), "counter_material_transition_invalid");
+    const boundary = { generation: n.generation, observedAt: n.observedAt, previousStateDigest: previous.stateDigest,
+      entries: next.entries.filter(entry => material.has(entry.edgeCredentialRef))
+        .map(entry => ({ edgeCredentialRef: entry.edgeCredentialRef, carryUsage: { ...entry.usage } })) };
+    materialBoundary = { ...boundary, boundaryDigest: digest(boundary) };
+    next.materialBoundaries = [...(next.materialBoundaries ?? []), materialBoundary];
+    for (const entry of next.entries) if (material.has(entry.edgeCredentialRef)) entry.carryUsage = { ...entry.usage };
+  }
   let unchanged = false;
   if (previous) {
     requireCondition(n.observedAt >= previous.lastObservedAt, "observation_out_of_order");
@@ -409,7 +490,7 @@ export function transitionFullMeteringCounters(request) {
           requireCondition(entry.status === "pending_start", "observed_counter_missing");
           continue;
         }
-        if (entry.status === "observed") accumulate(entry, observation, entry.cursor);
+        if (entry.status === "observed" && !material.has(entry.edgeCredentialRef)) accumulate(entry, observation, entry.cursor);
         entry.status = "observed";
         entry.cursor = cursor(observation, n.observedAt);
       }
@@ -438,7 +519,7 @@ export function transitionFullMeteringCounters(request) {
         if (n.retained.has(observation.edgeCredentialRef)) continue;
         const entry = entries.get(observation.edgeCredentialRef);
         const before = connections.get(observation.connectionId);
-        if (before) accumulate(entry, observation, before);
+        if (before) { if (!material.has(entry.edgeCredentialRef)) accumulate(entry, observation, before); }
         else {
           initializedConnectionCount++;
           entry.connectionIds.push(observation.connectionId);
@@ -463,7 +544,11 @@ export function transitionFullMeteringCounters(request) {
   const retiredTotals = zero(); next.retiredEntries.forEach(entry => add(retiredTotals, entry.usage));
   const eligibleTotals = next.entries.map(entry => { add(totals, entry.usage); return { edgeCredentialRef: entry.edgeCredentialRef, status: entry.status, ...withTotal(entry.usage) }; });
   const observedCount = next.entries.filter(e => e.status === "observed").length;
+  if (materialBoundary) validateState(next);
   return { nextState: next, unchanged,
+    ...(materialBoundary ? { receipt: { type: "verified_full_metering_material_transition", materialCount: materialRefs.length,
+      materialBoundaryDigest: materialBoundary.boundaryDigest, beforeStateDigest: materialBoundary.previousStateDigest,
+      afterStateDigest: next.stateDigest, generation: n.generation, observedAt: n.observedAt, unassignedBytes: null } } : {}),
     deltas: [...deltaByOwner.values()].sort((a, b) => compare(a.edgeCredentialRef, b.edgeCredentialRef)).map(withTotal),
     eligibleTotals, totals: withTotal(totals), retiredTotals: withTotal(retiredTotals),
     counters: n.observations.filter(o => n.eligible.has(o.edgeCredentialRef)).map(o => ({ ...o, observedAt: n.observedAt })),
