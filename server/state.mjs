@@ -1222,6 +1222,7 @@ function durableEdgeCredentialOrders({ controlStore, materialStore, nodeId } = {
   if (
     !controlStore
     || typeof controlStore.listIssuedSubscriptionBindings !== "function"
+    || typeof controlStore.getPortalAccessRequest !== "function"
     || !materialStore
     || typeof materialStore.getCredentialMaterialSummary !== "function"
   ) {
@@ -1229,6 +1230,18 @@ function durableEdgeCredentialOrders({ controlStore, materialStore, nodeId } = {
   }
   return controlStore.listIssuedSubscriptionBindings()
     .map((binding) => {
+      // Portal records own their exact channel credentials and lifecycle state.
+      // Their explicit list is supplied separately below; historical material is
+      // not authority to reconstruct a removed channel or resurrect a disabled
+      // primary via a higher-priority derived credential reference.
+      if (controlStore.getPortalAccessRequest(binding.requestId)) {
+        return null;
+      }
+      // Older non-Portal issuances retain their original-node recovery only.
+      // A material record for another channel does not grant that channel.
+      if (nodeId && binding.nodeId !== nodeId) {
+        return null;
+      }
       const credentialRefs = edgeCredentialRefCandidatesForRequestId(binding.requestId, nodeId)
         .filter((credentialRef) => credentialRef && (!nodeId || credentialRef !== edgeCredentialRefForRequestId(binding.requestId) || binding.nodeId === nodeId));
       const materialSummary = credentialRefs
