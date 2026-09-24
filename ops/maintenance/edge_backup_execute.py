@@ -97,12 +97,16 @@ def metadata(info):
         getattr(info, 'st_blocks', 0))))
 
 
-def validate_metadata(value, directory=False):
+def validate_metadata(value, directory=False, directory_binding=None):
     if not isinstance(value, dict) or set(value) != set(META_KEYS) or any(type(value[key]) is not int or value[key] < 0 for key in META_KEYS):
         raise ExecuteError('invalid_metadata')
     mode = value['mode']
     if directory:
-        if not stat.S_ISDIR(mode) or value['uid'] != ROOT_UID or mode & 0o022:
+        if directory_binding is not None and not directory_immutable_equal(value, directory_binding):
+            raise ExecuteError('directory_binding_mismatch')
+        owner_allowed = value['uid'] == ROOT_UID or (
+            directory_binding is not None and mode == (stat.S_IFDIR | 0o700))
+        if not stat.S_ISDIR(mode) or not owner_allowed or mode & 0o022:
             raise ExecuteError('unsafe_directory_metadata')
     elif not stat.S_ISREG(mode) or value['nlink'] != 1:
         raise ExecuteError('unsafe_file_metadata')
@@ -139,7 +143,7 @@ def recognized(path, info, observed):
     return match[1], moment
 
 
-def validate_manifest(document):
+def validate_manifest(document, *, directory_bindings=None):
     if not isinstance(document, dict) or type(document.get('schemaVersion')) is not int or document.get('schemaVersion') != 1 or document.get('type') != 'edge-backup-retention-manifest':
         raise ExecuteError('manifest_schema_invalid')
     if document.get('digest') != canonical_digest(document):
@@ -160,12 +164,24 @@ def validate_manifest(document):
     if not isinstance(rows, list) or len(rows) > MAX_ENTRIES or not isinstance(directories, list) or len(directories) > 7:
         raise ExecuteError('manifest_budget_exceeded')
     expected_dirs = {ROOT} | {ROOT + '/' + item for item in dirs}
+    bindings = None
+    if directory_bindings is not None:
+        if (len(dirs) != 1 or not isinstance(directory_bindings, dict)
+                or set(directory_bindings) != expected_dirs):
+            raise ExecuteError('directory_bindings_invalid')
+        bindings = {}
+        for path, identity in directory_bindings.items():
+            if (not isinstance(identity, dict) or set(identity) != set(IMMUTABLE_DIR_KEYS)
+                    or any(type(identity[key]) is not int or identity[key] < 0 for key in IMMUTABLE_DIR_KEYS)):
+                raise ExecuteError('directory_bindings_invalid')
+            bindings[path] = dict(identity)
     actual_dirs = {}
     for row in directories:
         if not isinstance(row, dict) or row.get('path') not in expected_dirs or row['path'] in actual_dirs:
             raise ExecuteError('directory_scope_invalid')
-        validate_metadata(row.get('identity'), directory=True)
-        actual_dirs[row['path']] = row['identity']
+        validate_metadata(row.get('identity'), directory=True,
+                          directory_binding=None if bindings is None else bindings[row['path']])
+        actual_dirs[row['path']] = dict(row['identity'])
     if set(actual_dirs) != expected_dirs:
         raise ExecuteError('directory_coverage_incomplete')
     last_path = None
@@ -196,7 +212,8 @@ def validate_manifest(document):
     newest = {path for heap in heaps.values() for _, path in heap}
     if any(row['disposition'] == 'candidate' and row['path'] in newest for row in rows):
         raise ExecuteError('candidate_is_latest_protected')
-    return {'scope': scope, 'directories': actual_dirs, 'candidateCount': candidate_count}
+    return {'scope': scope, 'directories': actual_dirs, 'candidateCount': candidate_count,
+            'directoryBindings': bindings}
 
 
 def validate_approval(document, approval, context, current, hostname):
@@ -309,9 +326,41 @@ def verify_named_directory(path, expected):
         os.close(fd)
 
 
+def check_directory_bindings(approval, bindings):
+    """Only approved ROOT/child identities may differ from root ownership.
+
+    Above ROOT, retain root custody with anchored no-follow descriptors. This
+    exception never applies to receipt/quarantine paths or a UID globally.
+    """
+    actual = approval.get('directoryBindings')
+    if canonical_digest({'bindings': actual}) != canonical_digest({'bindings': bindings}):
+        raise ExecuteError('directory_binding_mismatch')
+    if bindings is None:
+        return
+    fd = os.open('/', os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        for part in ('', *PurePosixPath(ROOT).parts[1:-1]):
+            if part:
+                child = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=fd)
+                os.close(fd)
+                fd = child
+            info = os.fstat(fd)
+            if not stat.S_ISDIR(info.st_mode) or info.st_uid != ROOT_UID or info.st_mode & 0o022:
+                raise ExecuteError('unsafe_directory_metadata')
+    finally:
+        os.close(fd)
+    for path, expected in bindings.items():
+        verify_named_directory(path, expected)
+
+
 def execute(document, approval=None, *, observer=None, apply=False, batch_size=1000,
             clock=utcnow, hostname=socket.gethostname):
-    context = validate_manifest(document)
+    bindings = None
+    if isinstance(approval, dict) and 'directoryBindings' in approval:
+        bindings = approval['directoryBindings']
+        if not isinstance(bindings, dict):
+            raise ExecuteError('directory_bindings_invalid')
+    context = validate_manifest(document, directory_bindings=bindings)
     if not apply:
         return {'state': 'dry_run', 'candidateCount': context['candidateCount'],
                 'productionObserverWired': False, 'deletedCount': 0, 'retry': False}
@@ -320,15 +369,22 @@ def execute(document, approval=None, *, observer=None, apply=False, batch_size=1
     rows = validate_approval(document, approval, context, clock(), hostname())
     if not isinstance(observer, ProtectionObserver) or observer.source_digest != approval['observerSourceDigest']:
         raise ExecuteError('production_protection_observer_not_wired')
+    def directory_gate():
+        check_directory_bindings(approval, context['directoryBindings'])
+    directory_gate()
     receipt = Receipt(approval['receiptPath'])  # exclusive claim BEFORE any mutation
     deleted, quarantined = set(), []
     quarantine_fd = None
     expected_dirs = dict(context['directories'])
+    def fresh_scope():
+        directory_gate()
+        fresh_check(document, context['scope'], expected_dirs, deleted, observer)
+        directory_gate()
     try:
         receipt.append({'event': 'started', 'runId': approval['runId'], 'manifestDigest': document['digest'],
                         'sourceDigest': approval['sourceDigest'], 'target': approval['target'],
                         'approvedCount': len(rows), 'retry': False, 'at': clock().isoformat()})
-        fresh_check(document, context['scope'], expected_dirs, deleted, observer)
+        fresh_scope()
         parent = private_directory(QUARANTINE_PARENT)
         try:
             root_fd = retention.open_directory(ROOT)
@@ -347,7 +403,7 @@ def execute(document, approval=None, *, observer=None, apply=False, batch_size=1
         for batch_start in range(0, len(paths), batch_size):
             if not date(approval['notBefore']) <= clock() < date(approval['expiresAt']):
                 raise ExecuteError('approval_expired_during_execution')
-            fresh_check(document, context['scope'], expected_dirs, deleted, observer)
+            fresh_scope()
             for index in range(batch_start, min(len(paths), batch_start + batch_size)):
                 if clock() >= date(approval['expiresAt']):
                     raise ExecuteError('approval_expired_during_execution')
@@ -368,6 +424,7 @@ def execute(document, approval=None, *, observer=None, apply=False, batch_size=1
                         raise ExecuteError('candidate_metadata_changed')
                     check_protection(document, context['scope'], observer)
                     receipt.append({'event': 'move_intent', 'path': path, 'slot': slot, 'metadata': original})
+                    directory_gate()
                     if not date(approval['notBefore']) <= clock() < date(approval['expiresAt']):
                         raise ExecuteError('approval_expired_during_execution')
                     rename_no_replace(source_fd, name, quarantine_fd, slot)
@@ -392,6 +449,7 @@ def execute(document, approval=None, *, observer=None, apply=False, batch_size=1
                     if clock() >= date(approval['expiresAt']):
                         raise ExecuteError('approval_expired_during_execution')
                     check_protection(document, context['scope'], observer)
+                    directory_gate()
                     if metadata(os.stat(slot, dir_fd=quarantine_fd, follow_symlinks=False)) != moved:
                         raise ExecuteError('quarantined_metadata_changed')
                     if not date(approval['notBefore']) <= clock() < date(approval['expiresAt']):
@@ -403,9 +461,9 @@ def execute(document, approval=None, *, observer=None, apply=False, batch_size=1
                     receipt.append({'event': 'deleted', 'path': path, 'slot': slot})
                 finally:
                     os.close(source_fd)
-            fresh_check(document, context['scope'], expected_dirs, deleted, observer)
+            fresh_scope()
             receipt.append({'event': 'batch_verified', 'deletedCount': len(deleted), 'directories': expected_dirs})
-        fresh_check(document, context['scope'], expected_dirs, deleted, observer)
+        fresh_scope()
         state = 'completed'
         receipt.append({'event': 'completed', 'deletedCount': len(deleted), 'at': clock().isoformat(), 'retry': False})
     except Exception as error:

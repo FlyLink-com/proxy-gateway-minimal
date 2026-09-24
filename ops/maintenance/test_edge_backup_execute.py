@@ -6,6 +6,7 @@ import io
 import json
 import os
 from pathlib import Path
+import stat
 import tempfile
 import unittest.mock
 
@@ -57,10 +58,105 @@ class InputTests(unittest.TestCase):
             execute.validate_metadata(info)
 
 
+class DirectoryBindingInputTests(unittest.TestCase):
+    def setUp(self):
+        self.paths = [execute.ROOT, execute.ROOT + '/hysteria2']
+        self.document = {'schemaVersion': 1, 'type': 'edge-backup-retention-manifest',
+            'complete': True, 'blockers': [], 'policy': dict(execute.POLICY),
+            'scope': {'root': execute.ROOT, 'target': 'sgp', 'protocolDirs': ['hysteria2'],
+                      'allowedNames': sorted(execute.retention.ALLOWED_NAMES)},
+            'observedAt': NOW.isoformat(), 'entries': [],
+            'protectionReview': {'complete': True, 'evidenceDigest': 'b' * 64, 'holds': []},
+            'directories': []}
+        for index, path in enumerate(self.paths):
+            info = dict.fromkeys(execute.META_KEYS, 0)
+            info.update(dev=10, ino=index + 1, mode=stat.S_IFDIR | 0o700,
+                        nlink=2, uid=996, gid=987)
+            self.document['directories'].append({'path': path, 'identity': info})
+        self.rehash()
+        self.bindings = {row['path']: {key: row['identity'][key] for key in execute.IMMUTABLE_DIR_KEYS}
+                         for row in self.document['directories']}
+
+    def rehash(self):
+        self.document['digest'] = execute.canonical_digest(self.document)
+
+    def test_no_binding_preserves_default_root_owner_rule(self):
+        with self.assertRaisesRegex(execute.ExecuteError, 'unsafe_directory_metadata'):
+            execute.validate_manifest(self.document)
+
+    def test_exact_service_owned_private_bindings_validate_without_global_uid_allowlist(self):
+        result = execute.validate_manifest(self.document, directory_bindings=self.bindings)
+        self.assertEqual(set(result['directories']), set(self.paths))
+        self.assertEqual(execute.ROOT_UID, 0)
+
+    def test_binding_shape_missing_path_extra_path_and_noninteger_refused(self):
+        cases = [[], {}, {self.paths[0]: self.bindings[self.paths[0]]},
+                 {**self.bindings, '/etc/synthetic': self.bindings[self.paths[0]]}]
+        for key, value in (('uid', True), ('ino', -1), ('mode', '0700')):
+            altered = copy.deepcopy(self.bindings)
+            altered[self.paths[0]][key] = value
+            cases.append(altered)
+        extra = copy.deepcopy(self.bindings)
+        extra[self.paths[0]]['mtimeNs'] = 0
+        cases.append(extra)
+        for bindings in cases:
+            with self.subTest(bindings=bindings):
+                with self.assertRaisesRegex(execute.ExecuteError, 'directory_bindings_invalid'):
+                    execute.validate_manifest(self.document, directory_bindings=bindings)
+
+    def test_each_immutable_identity_field_must_match_manifest(self):
+        for key in execute.IMMUTABLE_DIR_KEYS:
+            with self.subTest(field=key):
+                altered = copy.deepcopy(self.bindings)
+                altered[self.paths[1]][key] += 1
+                with self.assertRaises(execute.ExecuteError):
+                    execute.validate_manifest(self.document, directory_bindings=altered)
+
+    def test_service_owned_mode_must_be_private_even_when_exactly_bound(self):
+        for mode in (stat.S_IFDIR | 0o750, stat.S_IFDIR | 0o770,
+                     stat.S_IFDIR | 0o4700, stat.S_IFREG | 0o700):
+            self.document['directories'][1]['identity']['mode'] = mode
+            self.bindings[self.paths[1]]['mode'] = mode
+            self.rehash()
+            with self.subTest(mode=mode):
+                with self.assertRaisesRegex(execute.ExecuteError, 'unsafe_directory_metadata'):
+                    execute.validate_manifest(self.document, directory_bindings=self.bindings)
+
+    def test_incomplete_manifest_or_multiple_protocols_never_get_exception(self):
+        self.document['complete'] = False
+        self.rehash()
+        with self.assertRaises(execute.ExecuteError):
+            execute.validate_manifest(self.document, directory_bindings=self.bindings)
+        self.document['complete'] = True
+        self.document['scope']['protocolDirs'] = ['hysteria2', 'xray']
+        self.rehash()
+        with self.assertRaisesRegex(execute.ExecuteError, 'directory_bindings_invalid'):
+            execute.validate_manifest(self.document, directory_bindings=self.bindings)
+
+    def test_execute_passes_explicit_bindings_to_validation(self):
+        result = execute.execute(self.document, {'directoryBindings': self.bindings})
+        self.assertEqual(result['state'], 'dry_run')
+        self.assertEqual(result['deletedCount'], 0)
+
+    def test_explicit_null_binding_is_not_missing_approval_field(self):
+        for row in self.document['directories']:
+            row['identity']['uid'] = 0
+        self.rehash()
+        with self.assertRaisesRegex(execute.ExecuteError, 'directory_bindings_invalid'):
+            execute.execute(self.document, {'directoryBindings': None})
+
+    def test_bindings_do_not_substitute_for_explicit_execution_approval(self):
+        with self.assertRaisesRegex(execute.ExecuteError, 'explicit_approval_required'):
+            execute.execute(self.document, {'directoryBindings': self.bindings, 'approved': False},
+                            apply=True, clock=lambda: NOW, hostname=lambda: execute.HOSTS['sgp'])
+
+
 @unittest.skipUnless(os.name == 'posix' and hasattr(os, 'O_NOFOLLOW'), 'Linux directory-fd and renameat2 integration')
 class ExecutorTests(unittest.TestCase):
     def setUp(self):
-        self.temp = tempfile.TemporaryDirectory()
+        # Bound service-owned integration also checks every ancestor above ROOT;
+        # root's private home avoids making /tmp's writable namespace an exception.
+        self.temp = tempfile.TemporaryDirectory(dir=Path.home() if os.getuid() == 0 else None)
         self.addCleanup(self.temp.cleanup)
         self.base = Path(self.temp.name)
         self.root = self.base / 'edge'
@@ -355,6 +451,112 @@ class ExecutorTests(unittest.TestCase):
             os.close(dest_fd)
         self.assertEqual((self.quarantine / 'slot').read_bytes(), b'do not overwrite')
         self.assertTrue(Path(self.candidates[0]).exists())
+
+    def service_owned_directories(self):
+        if os.getuid() != 0:
+            self.skipTest('root required to create exact service-owned Linux fixture')
+        for directory in (self.root, self.protocol):
+            os.chown(directory, 996, 987)
+            os.chmod(directory, 0o700)
+        for row in self.document['entries']:
+            os.chown(row['path'], 996, 987)
+        self.document = manifest.build_manifest(root=str(self.root), protocol_dirs=['hysteria2'],
+            allowed_names=['config.json', 'config.yaml', 'config.yml'], target='sgp', observed_at=NOW,
+            protection_review=self.review)
+        self.assertTrue(self.document['complete'])
+        self.approval['manifestDigest'] = self.document['digest']
+        self.approval['directoryBindings'] = {
+            row['path']: {key: row['identity'][key] for key in execute.IMMUTABLE_DIR_KEYS}
+            for row in self.document['directories']}
+
+    def test_actual_service_owned_0700_exact_bindings_complete(self):
+        self.service_owned_directories()
+        before = {path: execute.metadata(os.lstat(path)) for path in self.protected}
+        result = self.apply(batch_size=1)
+        self.assertEqual(result['state'], 'completed')
+        self.assertEqual(result['deletedCount'], 3)
+        self.assertEqual({path: execute.metadata(os.lstat(path)) for path in before}, before)
+        for directory in (self.root, self.protocol):
+            self.assertEqual((directory.stat().st_uid, directory.stat().st_gid), (996, 987))
+            self.assertEqual(stat.S_IMODE(directory.stat().st_mode), 0o700)
+        self.assertEqual(Path(self.approval['quarantinePath']).stat().st_uid, 0)
+        self.assertEqual(Path(self.approval['receiptPath']).stat().st_uid, 0)
+
+    def test_actual_service_owned_without_bindings_refuses_before_claim(self):
+        self.service_owned_directories()
+        del self.approval['directoryBindings']
+        with self.assertRaisesRegex(execute.ExecuteError, 'unsafe_directory_metadata'):
+            self.apply()
+        self.assertFalse(Path(self.approval['receiptPath']).exists())
+
+    def test_bound_directory_owner_or_mode_drift_refuses_before_move(self):
+        self.service_owned_directories()
+        os.chmod(self.protocol, 0o750)
+        with self.assertRaisesRegex(execute.ExecuteError, 'directory_namespace_changed'):
+            self.apply()
+        self.assertFalse(Path(self.approval['receiptPath']).exists())
+        self.assertTrue(all(Path(path).exists() for path in self.candidates))
+
+    def test_approval_directory_binding_mutation_during_observer_refuses(self):
+        self.service_owned_directories()
+        def mutate_binding(_):
+            self.approval['directoryBindings'][str(self.protocol)]['ino'] += 1
+        self.observer.on_call = mutate_binding
+        result = self.apply()
+        self.assertEqual(result['deletedCount'], 0)
+        self.assertEqual(result['state'], 'stopped_partial_or_unknown')
+        self.assertTrue(all(Path(path).exists() for path in self.candidates))
+
+    def test_service_binding_does_not_relax_receipt_parent(self):
+        self.service_owned_directories()
+        os.chown(self.receipts, 996, 987)
+        with self.assertRaisesRegex(execute.ExecuteError, 'root_private_parent_required'):
+            self.apply()
+        self.assertFalse(Path(self.approval['receiptPath']).exists())
+
+    def test_service_binding_does_not_relax_quarantine_parent(self):
+        self.service_owned_directories()
+        os.chown(self.quarantine, 996, 987)
+        result = self.apply()
+        self.assertEqual(result['deletedCount'], 0)
+        self.assertTrue(all(Path(path).exists() for path in self.candidates))
+
+    def test_directory_binding_never_permits_service_owned_ancestor_above_root(self):
+        self.service_owned_directories()
+        os.chown(self.base, 996, 987)
+        with self.assertRaisesRegex(execute.ExecuteError, 'unsafe_directory_metadata'):
+            self.apply()
+        self.assertFalse(Path(self.approval['receiptPath']).exists())
+
+    def test_bound_directory_owner_changed_by_observer_never_moves(self):
+        self.service_owned_directories()
+        self.observer.on_call = lambda _: os.chown(self.protocol, 997, 987)
+        result = self.apply()
+        self.assertEqual(result['state'], 'stopped_partial_or_unknown')
+        self.assertEqual(result['deletedCount'], 0)
+        self.assertTrue(all(Path(path).exists() for path in self.candidates))
+
+    def test_bound_directory_changed_after_quarantine_never_unlinks(self):
+        self.service_owned_directories()
+        real_move = execute.rename_no_replace
+        def changed(*args):
+            real_move(*args)
+            os.chmod(self.protocol, 0o750)
+        with unittest.mock.patch.object(execute, 'rename_no_replace', changed):
+            result = self.apply()
+        self.assertEqual(result['state'], 'stopped_partial_or_unknown')
+        self.assertEqual(result['deletedCount'], 0)
+        self.assertEqual(result['quarantinedCount'], 1)
+
+    def test_bound_protocol_symlink_is_never_followed(self):
+        self.service_owned_directories()
+        archived = self.root / 'synthetic-archived-protocol'
+        self.protocol.rename(archived)
+        self.protocol.symlink_to(archived, target_is_directory=True)
+        with self.assertRaises(OSError):
+            self.apply()
+        self.assertFalse(Path(self.approval['receiptPath']).exists())
+        self.assertEqual(len(list(archived.iterdir())), 23)
 
 
 if __name__ == '__main__':

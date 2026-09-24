@@ -110,6 +110,19 @@ time window, receipt and quarantine paths. It has no wildcard, recursive-delete,
 age-only apply, auto-renewal or service-control route. An old receipt cannot be
 replayed. A changed candidate list needs a new exact approval.
 
+Directory ownership remains root-only by default. A separate exact approval may
+include `directoryBindings`, a map for **only ROOT and the one selected protocol
+directory**, each containing its manifest-bound `dev`, `ino`, `mode`, `nlink`,
+`uid` and `gid`. Both entries are required and must match the complete manifest.
+This permits a service-owned directory only with exact `0700` permissions; it is
+not a UID-wide exception and never changes directory ownership. Ancestors above
+ROOT must remain root-owned, non-group/world-writable and traversed without
+following links. The bindings and live directory identities are checked again
+around scope scans and before each move/unlink. Receipt and quarantine parents
+remain root-private without exceptions. `validate_manifest(...,
+directory_bindings=...)` supports this source-only compatibility check; neither
+it nor a dry-run grants execution authority.
+
 Before/after each batch it re-reads the whole selected scope and verifies
 metadata against the manifest minus the precisely recorded completed subset.
 Before each move and deletion it refreshes protection evidence. New holds,
