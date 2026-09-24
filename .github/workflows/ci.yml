@@ -191,6 +191,10 @@ jobs:
         if: always()
         run: npm run docs:authority:strict
 
+      - name: Run storage maintenance synthetic tests
+        if: steps.changes.outputs.run_full != '0'
+        run: python3 -B -m unittest discover -s ops/maintenance -p 'test_*.py' -v
+
       - name: Install root dependencies
         if: steps.changes.outputs.run_full != '0'
         run: npm ci

@@ -1,0 +1,11 @@
+# PROPOSED ONLY / NOT INSTALLED. Not an automatically loaded drop-in.
+# Production approval and incident evidence hold review are required.
+# Applying lower limits can delete archived logs; deletion is irreversible.
+[Journal]
+SystemMaxUse=2G
+SystemKeepFree=4G
+SystemMaxFileSize=128M
+RuntimeMaxUse=128M
+RuntimeKeepFree=128M
+MaxRetentionSec=30day
+Compress=yes

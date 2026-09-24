@@ -32,6 +32,10 @@ SQLite restore, service start, DNS changes, or traffic cutover by themselves.
 
 ## Recoverable Runtime Boundary
 
+Metadata-only storage retention planning and inert journald budget templates
+live in [maintenance/README.md](maintenance/README.md). They do not install
+cleanup jobs, authorize deletion, or replace a production maintenance gate.
+
 Certificate-only runtime maintenance has a separate bounded hook and validation
 runbook in [certificates/README.md](certificates/README.md). That source does not
 establish installation on any host or authorize production access; it must not
