@@ -13,9 +13,12 @@ document_metadata:
 ## Intent and scope
 
 This source-only change supplies a metadata-only edge configuration backup
-retention planner, offline tests, and **inert proposed** journald templates.
-It does not delete files, install a timer, rotate logs, open a database, modify
-runtime adapters, restart services, or establish production remediation.
+retention planner, a full-manifest builder, an exact-approval batch execution
+core, offline tests, and **inert proposed** journald templates. The planner and
+manifest builder never delete files. The execution core can delete only via a
+separately bound host wrapper and explicit approval; its CLI is dry-run only.
+Nothing here installs a timer, rotates logs, opens a database, modifies runtime
+adapters or restarts services. Source validation is not production remediation.
 
 Risk: A for the eventual host operation; B for this isolated source core.
 Release units, when separately promoted: `japan-runtime-config` and/or
@@ -69,6 +72,66 @@ An age cutoff does not prove lack of application references. Even a complete
 `candidate-not-approved` result still requires reference/hold review. Archived
 protocol configs can contain credentials: do not open, upload, print or copy
 their contents into Git, CI artifacts or ordinary logs.
+
+## Full manifests and exact batch execution
+
+`edge_backup_manifest.py` supplements, rather than changes, the original
+aggregate/sample planner. It records **every metadata entry** in the explicitly
+selected fixed protocol directory. Two independent passes must agree. A
+fingerprint is an integrity comparison, never a substitute for the full list.
+Unselected directories/root files remain protected outside the stated scope.
+Links, nested directories, read errors, drift or resource caps mark coverage
+incomplete and block candidates. Unknown regular files are individually kept.
+
+Private manifests include exact path, device/inode/mode/link count/owner/size,
+mtime/ctime/block count, retention reason and protected/candidate disposition.
+Keep newest 20 per basename/directory **or** 30 days **or** reviewed holds.
+These eligibility rules do not grant deletion authority. For small hosts use
+streaming metadata acquisition and apply policy locally per protocol; never
+materialize the whole historical backup tree in the edge agent's memory.
+The conservative in-process memory budget is not a measured RSS guarantee.
+
+Required protection review, independently derived and source-bound:
+
+| Protection class | Required evidence / behavior |
+| --- | --- |
+| Active configurations | Exact path and resolved identity; no content reads or changes |
+| Current or failed apply | Explicit reference/hold or proof of no outstanding reference; unknown blocks |
+| Known-good rollback | Exact approved rollback reference; age is irrelevant |
+| Incident / reconciliation hold | Preserve explicit holds; history/map retention is a separate work item |
+| Recent backups / latest N | Protected entries enumerated in full, not hash examples |
+| Outside scope | Release, DB/WAL/SHM, checkpoint/pending and all unselected trees untouched |
+
+`edge_backup_execute.py` accepts only a complete, digest-verified manifest and
+an explicit approved **subset of its candidate paths** (at most 10,000 per
+single-use record, one protocol directory). Approval also binds target/hostname,
+all three source modules, the independent protection-observer implementation,
+time window, receipt and quarantine paths. It has no wildcard, recursive-delete,
+age-only apply, auto-renewal or service-control route. An old receipt cannot be
+replayed. A changed candidate list needs a new exact approval.
+
+Before/after each batch it re-reads the whole selected scope and verifies
+metadata against the manifest minus the precisely recorded completed subset.
+Before each move and deletion it refreshes protection evidence. New holds,
+unknown reference coverage, additions/removals/replacements, unexpected directory
+identity or expiry stop execution. Own completed removals do not falsely look
+like external drift. No automatic retries or cleanup of partial state occur.
+
+Each candidate is atomically moved with `renameat2(RENAME_NOREPLACE)` into a
+root-private same-filesystem quarantine, verified there, then unlinked. An
+uncertain/mismatched move stays recoverable in quarantine; it is never silently
+restored over another file. Each intention/result is fsynced to an exclusive
+receipt. An I/O failure can produce a partial/unknown outcome, not success.
+Successfully unlinked contents are **not recoverable by reverting code**;
+operator approval must explicitly accept disposal or arrange a separate
+approved secure retention copy. No config bodies are exported by this tool.
+This model does not defend against malicious root or root-held writable handles.
+
+The source core deliberately cannot instantiate a production observer from
+JSON or load an arbitrary plugin. The separately reviewed host wrapper must
+derive fresh holds from actual reference sources, not echo a manifest boolean.
+Until that target-specific protection closure and exact production approval
+exist, report **source core validated / production not executed**.
 
 ## Proposed journal budgets, not installed
 
@@ -166,8 +229,10 @@ Production progression remains:
 5. Execute bounded batches only after that gate; read back space, inode,
    protected-file identities, service/collector state, and record results.
 
-No production installer, delete executor, rollback executor, capacity alarm,
-recurring cleanup or exact production candidate list is delivered by this
-source-only slice. Those remain explicit next-stage work, not completed by
-green planner tests. Preserve the already-authorized task scope across turns;
-only new destructive or expanded read boundaries require another approval.
+The batch execution **core** is included; a production-wired protection observer,
+approved exact target manifest and destructive execution receipt are distinct
+deliverables. Do not describe an inert wrapper or synthetic success as an
+installed cleanup policy. No journal installer, release pruner, service repair,
+recurring cleanup or capacity alarm is installed by this PR. Preserve the
+already-authorized task scope across turns; only new destructive or expanded
+read boundaries require another approval.

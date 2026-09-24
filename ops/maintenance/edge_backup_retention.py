@@ -255,7 +255,6 @@ def plan_retention(root, *, allowed_names, keep_latest, keep_days, now, reviewed
                 if reason != 'recognized':
                     continue
                 group, rank = value
-                path = '/'.join(rel)
                 held = '.' in holds or any('/'.join(rel[:i]) in holds for i in range(1, len(rel) + 1))
                 newest = group in heaps and rank >= heaps[group][0]
                 if held or rank[0] >= cutoff or newest:
