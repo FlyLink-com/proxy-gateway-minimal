@@ -7,8 +7,7 @@ import json
 import os
 from pathlib import Path
 import tempfile
-import unittest
-from unittest import mock
+import unittest.mock
 
 import edge_backup_execute as execute
 import edge_backup_manifest as manifest
@@ -38,7 +37,7 @@ class InputTests(unittest.TestCase):
         real_read = Path.read_bytes
         def changed(path):
             return b'changed fixture module' if path.name == 'edge_backup_manifest.py' else real_read(path)
-        with mock.patch.object(Path, 'read_bytes', changed):
+        with unittest.mock.patch.object(Path, 'read_bytes', changed):
             self.assertNotEqual(original, execute.source_digest())
 
     def test_canonical_digest_matches_manifest_encoder(self):
@@ -47,7 +46,7 @@ class InputTests(unittest.TestCase):
 
     def test_cli_apply_is_not_wired_and_cannot_inject_observer(self):
         output = io.StringIO()
-        with mock.patch.object(execute, 'bounded_json', return_value={}), contextlib.redirect_stdout(output):
+        with unittest.mock.patch.object(execute, 'bounded_json', return_value={}), contextlib.redirect_stdout(output):
             self.assertEqual(execute.main(['--manifest', 'fixture.json', '--apply']), 2)
         self.assertEqual(json.loads(output.getvalue())['state'], 'rejected')
 
@@ -75,7 +74,7 @@ class ExecutorTests(unittest.TestCase):
                                     (execute, 'QUARANTINE_PARENT', str(self.quarantine)),
                                     (execute, 'RECEIPT_PARENT', str(self.receipts)),
                                     (execute, 'ROOT_UID', os.getuid()), (execute, 'ROOT_GID', os.getgid())):
-            patch = mock.patch.object(module, name, value)
+            patch = unittest.mock.patch.object(module, name, value)
             patch.start()
             self.addCleanup(patch.stop)
         for days in range(40, 63):
@@ -138,7 +137,7 @@ class ExecutorTests(unittest.TestCase):
             append(receipt, event)
             if event['event'] == 'move_intent':
                 expired[0] = True
-        with mock.patch.object(execute.Receipt, 'append', slow_append):
+        with unittest.mock.patch.object(execute.Receipt, 'append', slow_append):
             result = execute.execute(self.document, self.approval, observer=self.observer,
                 apply=True, clock=lambda: NOW + dt.timedelta(hours=2) if expired[0] else NOW,
                 hostname=lambda: execute.HOSTS['sgp'])
@@ -237,7 +236,7 @@ class ExecutorTests(unittest.TestCase):
             os.write(fd, b'replacement must remain recoverable')
             os.close(fd)
             real(source_fd, name, destination_fd, slot)
-        with mock.patch.object(execute, 'rename_no_replace', race):
+        with unittest.mock.patch.object(execute, 'rename_no_replace', race):
             result = self.apply()
         self.assertEqual(result['state'], 'stopped_partial_or_unknown')
         self.assertEqual(result['deletedCount'], 0)
@@ -255,7 +254,7 @@ class ExecutorTests(unittest.TestCase):
             if count == 2:
                 raise OSError('SECRET PRIVATE PATH must not be printed')
             real(*args)
-        with mock.patch.object(execute, 'rename_no_replace', fail_second):
+        with unittest.mock.patch.object(execute, 'rename_no_replace', fail_second):
             result = self.apply()
         self.assertEqual(count, 2)
         self.assertEqual(result['deletedCount'], 1)
@@ -280,7 +279,7 @@ class ExecutorTests(unittest.TestCase):
             real(*args)
             self.protocol.rename(archived)
             self.protocol.mkdir()
-        with mock.patch.object(execute, 'rename_no_replace', swap_directory):
+        with unittest.mock.patch.object(execute, 'rename_no_replace', swap_directory):
             result = self.apply()
         self.assertEqual(result['deletedCount'], 0)
         self.assertEqual(result['quarantinedCount'], 1)
@@ -291,7 +290,7 @@ class ExecutorTests(unittest.TestCase):
         def expire(*args):
             real(*args)
             current[0] = NOW + dt.timedelta(hours=2)
-        with mock.patch.object(execute, 'rename_no_replace', expire):
+        with unittest.mock.patch.object(execute, 'rename_no_replace', expire):
             result = execute.execute(self.document, self.approval, observer=self.observer, apply=True,
                 clock=lambda: current[0], hostname=lambda: execute.HOSTS['sgp'])
         self.assertLessEqual(result['deletedCount'], 1)
@@ -304,7 +303,7 @@ class ExecutorTests(unittest.TestCase):
             if event['event'] == 'move_intent':
                 raise OSError('fixture write error')
             return real(receipt, event)
-        with mock.patch.object(execute.Receipt, 'append', fail_intent):
+        with unittest.mock.patch.object(execute.Receipt, 'append', fail_intent):
             result = self.apply()
         self.assertEqual(result['deletedCount'], 0)
         self.assertTrue(all(Path(path).exists() for path in self.candidates))
@@ -325,7 +324,7 @@ class ExecutorTests(unittest.TestCase):
         def new_hold(*args):
             real(*args)
             self.observer.review = {**self.review, 'evidenceDigest': 'c' * 64}
-        with mock.patch.object(execute, 'rename_no_replace', new_hold):
+        with unittest.mock.patch.object(execute, 'rename_no_replace', new_hold):
             result = self.apply()
         self.assertEqual(result['deletedCount'], 0)
         self.assertEqual(result['quarantinedCount'], 1)
@@ -340,7 +339,7 @@ class ExecutorTests(unittest.TestCase):
         def move(*args):
             self.assertIn(str(self.protocol), seen)
             real_move(*args)
-        with mock.patch.object(execute, 'verify_named_directory', verify), mock.patch.object(execute, 'rename_no_replace', move):
+        with unittest.mock.patch.object(execute, 'verify_named_directory', verify), unittest.mock.patch.object(execute, 'rename_no_replace', move):
             result = self.apply()
         self.assertEqual(result['state'], 'completed')
 

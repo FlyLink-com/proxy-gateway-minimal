@@ -324,7 +324,6 @@ def execute(document, approval=None, *, observer=None, apply=False, batch_size=1
     deleted, quarantined = set(), []
     quarantine_fd = None
     expected_dirs = dict(context['directories'])
-    state = 'started'
     try:
         receipt.append({'event': 'started', 'runId': approval['runId'], 'manifestDigest': document['digest'],
                         'sourceDigest': approval['sourceDigest'], 'target': approval['target'],
