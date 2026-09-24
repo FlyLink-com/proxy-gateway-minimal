@@ -14,7 +14,6 @@ import {
   realpathSync,
   renameSync,
   rmSync,
-  statSync,
   symlinkSync,
   unlinkSync,
   writeFileSync
