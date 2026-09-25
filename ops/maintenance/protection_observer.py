@@ -25,7 +25,7 @@ def derive_review(observations):
     for name in REQUIRED:
         item = observations[name]
         status = item.get('status')
-        if status in ('unwired', 'unknown'):
+        if status in ('unwired', 'unknown', 'unresolved'):
             digest = evidence_digest({'observations': _public(observations), 'complete': False})
             return {'complete': False, 'holds': [], 'evidenceDigest': digest,
                     'reason': name + '_' + status}

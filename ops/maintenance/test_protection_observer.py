@@ -27,6 +27,16 @@ class ProtectionObserverTests(unittest.TestCase):
         self.assertEqual(review['reason'], 'explicit_review')
         self.assertNotEqual(review['evidenceDigest'], 'b' * 64)
 
+    def test_unresolved_rollback_is_not_an_empty_hold_approval(self):
+        review = observer.derive_review({
+            'current_or_failed_apply': item('empty'),
+            'known_good_rollback': item('unresolved'),
+            'incident_reconciliation': item('unwired'),
+        })
+        self.assertFalse(review['complete'])
+        self.assertEqual(review['holds'], [])
+        self.assertEqual(review['reason'], 'known_good_rollback_unresolved')
+
     def test_unknown_apply_blocks_before_an_unwired_ledger(self):
         review = observer.derive_review({
             'current_or_failed_apply': item('unknown'),
