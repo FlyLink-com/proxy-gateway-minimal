@@ -1,4 +1,3 @@
-import copy
 import datetime as dt
 import stat
 import unittest
@@ -70,7 +69,6 @@ class ReportTests(unittest.TestCase):
     def policy(self):
         import json
         import service_role_report as report_module
-        policy = report_module
 
         error_type = type('GuardError', (ValueError,), {})
 

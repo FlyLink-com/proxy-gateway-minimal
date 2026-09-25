@@ -108,7 +108,6 @@ def evaluate_unit(policy, unit, raw, observed_at, resolve_user=None):
     except policy.GuardError:
         add('ExecStart', 'exec_parse', 'unavailable', 'unit_exec_unknown')
         parsed = False
-        identity = None
     else:
         add('ExecStart', 'exec_parse', 'match', 'exec_parsed')
         parsed = True
