@@ -25,6 +25,8 @@ import sys
 
 import edge_backup_manifest as manifest_module
 import edge_backup_retention as retention
+import protection_observer
+import protection_reader
 
 ROOT = '/var/backups/gccgw-edge'
 QUARANTINE_PARENT = '/var/backups/gccgw-edge-retention-quarantine'
@@ -57,7 +59,15 @@ class ProtectionObserver:
     source_digest = None
 
     def read_protection(self, scope):
-        raise ExecuteError('production_protection_observer_not_wired')
+        try:
+            result = protection_reader.read_cohort(scope=scope)
+        except protection_observer.ObserverError as error:
+            if str(error) == 'protection_scope_not_hy2_cohort':
+                raise ExecuteError('protection_scope_not_hy2_cohort') from None
+            raise ExecuteError('production_protection_observer_not_wired') from None
+        if result.get('disposition') != 'sources_read' or result['review'].get('complete') is not True:
+            raise ExecuteError('production_protection_observer_not_wired')
+        return dict(result['review'])
 
 
 def utcnow():

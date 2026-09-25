@@ -109,8 +109,18 @@ No approved rollback reference is named, so `known_good_rollback` stays
 `unresolved`: an omitted `backupRef`, a last-report, or the absence of an
 open backup file is not that source and cannot become an empty hold list.
 `cohort_retention()` keeps the whole cohort `retained` and the review
-incomplete. This binding does not read a host and does not wire
-`ProtectionObserver.read_protection`.
+incomplete. `protection_reader.read_cohort()` is the reader for that binding.
+A class becomes `empty` or `present` only when its binding names a source and
+the fetched record identifies that same source with a non-placeholder body
+digest. A missing record stays at the absent status. An omitted `backupRef`,
+a last-report, open-file absence, a missing rollback reference, or a missing
+incident ledger cannot become an empty hold list. The default binding names
+no source, so the reader keeps the cohort `retained`.
+`ProtectionObserver.read_protection` calls this reader and still raises
+`production_protection_observer_not_wired` while that review is incomplete.
+The reader does not open a host and does not approve deletion. A later host
+wrapper must not call `derive_review()` with three explicit `empty`
+observations to bypass it.
 
 `edge_backup_execute.py` accepts only a complete, digest-verified manifest and
 an explicit approved **subset of its candidate paths** (at most 10,000 per
