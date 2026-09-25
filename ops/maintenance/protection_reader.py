@@ -89,6 +89,37 @@ def _read_named(binding, record):
     return {'status': 'present', 'holds': list(holds)}
 
 
+UNVERIFIED_SOURCE_KEYS = {'lastreport', 'openfiles', 'incidentholds', 'incidentledger'}
+
+
+def read_saved_receipt(record):
+    """Read one already-saved receipt. Coverage is that receipt alone, never the cohort."""
+    if not isinstance(record, dict):
+        raise observer.ObserverError('protection_record_invalid')
+    if _sensitive(record):
+        raise observer.ObserverError('protection_record_sensitive')
+    for key in record:
+        if _normalized(key) in UNVERIFIED_SOURCE_KEYS:
+            raise observer.ObserverError('unverified_source_not_readable')
+    record_id = _ref(record.get('recordId'))
+    if record_id is None:
+        raise observer.ObserverError('saved_receipt_required')
+    minimal = {'status': record.get('status')}
+    if record.get('backupRef') not in (None, ''):
+        minimal['backupRef'] = record.get('backupRef')
+    if record.get('rollbackRef') not in (None, ''):
+        minimal['rollbackRef'] = record.get('rollbackRef')
+    result = read_runtime_receipts([minimal])
+    if result['review']['complete'] or result['disposition'] != 'retained' or result['deletionApproved']:
+        raise observer.ObserverError('saved_receipt_cannot_close_cohort')
+    result['coverage'] = {
+        'recordId': record_id,
+        'period': 'one_saved_receipt',
+        'cohortClosed': False,
+    }
+    return result
+
+
 def read_runtime_receipts(receipts):
     """Map hysteria2 runtime receipts onto the three classes. Never emit an empty class."""
     if not isinstance(receipts, list) or not receipts:

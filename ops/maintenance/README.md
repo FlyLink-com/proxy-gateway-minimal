@@ -114,6 +114,12 @@ An omitted `backupRef`, a last-report, open-file absence, a missing rollback
 reference, or a missing incident ledger cannot become an empty hold list.
 One receipt is not a complete historical inventory, so this reader keeps the
 cohort `retained` and the review incomplete.
+`read_saved_receipt()` is the future read boundary for one already-saved
+record. It requires a `recordId`, creates a hold only from a present
+`backupRef` or `rollbackRef`, and sets coverage to that receipt alone.
+A missing field stays unresolved. `lastReport`, open-file notes, and incident
+keys are rejected. The incident class stays `unwired` because this record has
+no incident source. The function does not open a host.
 `ProtectionObserver.read_protection` does not fetch receipts. It still raises
 `production_protection_observer_not_wired` while the review is incomplete.
 The reader does not open a host and does not approve deletion. A later host

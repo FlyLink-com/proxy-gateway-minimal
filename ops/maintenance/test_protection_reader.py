@@ -68,6 +68,45 @@ class ProtectionReaderTests(unittest.TestCase):
         self.assertEqual(rolled['observations']['current_or_failed_apply'], 'unresolved')
         self.assertEqual(rolled['readHolds'], ['/var/backups/gccgw-edge/hysteria2/' + ref])
 
+    def test_saved_receipt_covers_only_itself(self):
+        ref = 'config.yaml.2026_06_08T12_00_00_000Z.bak'
+        saved = reader.read_saved_receipt({
+            'recordId': 'edge_apply_receipt_001',
+            'status': 'applied',
+            'backupRef': ref,
+        })
+        self.assertEqual(saved['coverage'], {
+            'recordId': 'edge_apply_receipt_001',
+            'period': 'one_saved_receipt',
+            'cohortClosed': False,
+        })
+        self.assertEqual(saved['disposition'], 'retained')
+        self.assertFalse(saved['deletionApproved'])
+        self.assertFalse(saved['review']['complete'])
+        self.assertEqual(saved['readHolds'], ['/var/backups/gccgw-edge/hysteria2/' + ref])
+        self.assertEqual(saved['observations']['known_good_rollback'], 'unresolved')
+        self.assertEqual(saved['observations']['incident_reconciliation'], 'unwired')
+        missing = reader.read_saved_receipt({
+            'recordId': 'edge_apply_receipt_002',
+            'status': 'failed',
+        })
+        self.assertEqual(missing['readHolds'], [])
+        self.assertEqual(missing['observations']['current_or_failed_apply'], 'unresolved')
+        self.assertEqual(missing['coverage']['recordId'], 'edge_apply_receipt_002')
+
+    def test_saved_receipt_rejects_unsaved_proxies_and_incident_keys(self):
+        with self.assertRaises(observer.ObserverError) as unsaved:
+            reader.read_saved_receipt({'status': 'applied', 'backupRef': 'config.yaml.bak'})
+        self.assertEqual(str(unsaved.exception), 'saved_receipt_required')
+        for extra in ('lastReport', 'openFiles', 'incidentHolds'):
+            with self.assertRaises(observer.ObserverError) as rejected:
+                reader.read_saved_receipt({
+                    'recordId': 'edge_apply_receipt_003',
+                    'status': 'applied',
+                    extra: [],
+                })
+            self.assertEqual(str(rejected.exception), 'unverified_source_not_readable')
+
     def test_runtime_receipt_rejects_sensitive_or_empty_input(self):
         with self.assertRaises(observer.ObserverError) as sensitive:
             reader.read_runtime_receipts([{'status': 'failed', 'password': 'secret-value'}])
