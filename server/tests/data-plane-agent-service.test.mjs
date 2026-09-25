@@ -1026,6 +1026,67 @@ test("requires exact authoritative material completeness for ordinary applied an
   });
 });
 
+test("stores backup basenames from an apply receipt and leaves them absent when omitted", () => {
+  const store = fakeControlStore(new Map([
+    ["channel-sgp-a-hy2", desired({
+      channelRefs: ["channel-sgp-a-hy2"],
+      edgeCredentialRefs: ["edgecred_safe_hy2"],
+      materialDigests: [{
+        channelRef: "channel-sgp-a-hy2",
+        edgeCredentialRef: "edgecred_safe_hy2",
+        digest: "sha256:aaaaaaaaaaaaaaaa"
+      }]
+    })]
+  ]));
+  const service = serviceFor(store);
+  const identity = service.authenticate({ authorization: "Bearer node-agent-token" });
+  const backupRef = "config.yaml.2026_06_08T12_00_00_000Z.bak";
+  service.recordReceipt(identity, receipt({
+    credentialCount: 1,
+    materialDigests: ["sha256:aaaaaaaaaaaaaaaa"],
+    backupRef,
+    rollbackRef: "config.yaml.rollback.bak"
+  }));
+  assert.equal(store.receipts[0].backupRef, backupRef);
+  assert.equal(store.receipts[0].rollbackRef, "config.yaml.rollback.bak");
+  assert.equal(store.receipts[0].status, "applied");
+
+  const omitted = fakeControlStore(new Map([
+    ["channel-sgp-a-hy2", desired({
+      desiredStateRef: "desired_sgp_omitted",
+      generation: "gen_20260610_002",
+      channelRefs: ["channel-sgp-a-hy2"],
+      edgeCredentialRefs: ["edgecred_safe_hy2"],
+      materialDigests: [{
+        channelRef: "channel-sgp-a-hy2",
+        edgeCredentialRef: "edgecred_safe_hy2",
+        digest: "sha256:aaaaaaaaaaaaaaaa"
+      }]
+    })]
+  ]));
+  const omittedService = serviceFor(omitted);
+  omittedService.recordReceipt(
+    omittedService.authenticate({ authorization: "Bearer node-agent-token" }),
+    receipt({
+      generation: "gen_20260610_002",
+      credentialCount: 1,
+      materialDigests: ["sha256:aaaaaaaaaaaaaaaa"]
+    })
+  );
+  assert.equal(Object.hasOwn(omitted.receipts[0], "backupRef"), false);
+  assert.equal(Object.hasOwn(omitted.receipts[0], "rollbackRef"), false);
+
+  assert.throws(
+    () => service.recordReceipt(identity, receipt({
+      credentialCount: 1,
+      materialDigests: ["sha256:aaaaaaaaaaaaaaaa"],
+      backupRef: "backup/config.yaml",
+      appliedAt: "2026-06-10T00:03:00.000Z"
+    })),
+    (error) => error.code === "validation_error"
+  );
+});
+
 test("records per-channel lease heartbeat with latest desired state ref", () => {
   const store = fakeControlStore(new Map([
     ["channel-sgp-a-hy2", desired({ desiredStateRef: "desired_for_lease" })]

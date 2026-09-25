@@ -50,6 +50,21 @@ function safeRef(value, field) {
   return normalized;
 }
 
+function optionalBackupBasename(value, field) {
+  if (value == null) {
+    return "";
+  }
+  const normalized = text(value);
+  if (!normalized) {
+    return "";
+  }
+  if (normalized === "." || normalized === ".." || normalized.includes("/") || normalized.includes("\\")
+      || !/^[A-Za-z0-9._:-]{1,128}$/.test(normalized)) {
+    throw protocolError("validation_error", `${field} is invalid`);
+  }
+  return normalized;
+}
+
 function safeRefs(values, field, { allowEmpty = false } = {}) {
   if (!Array.isArray(values) || (!allowEmpty && values.length === 0)) {
     throw protocolError(
@@ -392,6 +407,8 @@ export function validateDataPlaneApplyReceipt(input = {}, {
   const credentialCount = normalizeNonNegativeInteger(input.credentialCount, "credentialCount");
   const materialDigests = normalizeMaterialDigests(input.materialDigests);
   const scopedTombstone = normalizeScopedTombstone(input.scopedTombstone);
+  const backupRef = optionalBackupBasename(input.backupRef, "backupRef");
+  const rollbackRef = optionalBackupBasename(input.rollbackRef, "rollbackRef");
   return {
     type: APPLY_RECEIPT_TYPE,
     nodeRef,
@@ -404,6 +421,8 @@ export function validateDataPlaneApplyReceipt(input = {}, {
     listenerPresent: normalizeBoolean(input.listenerPresent, "listenerPresent"),
     credentialCount,
     appliedAt: normalizeIso(input.appliedAt, "appliedAt"),
+    ...(backupRef ? { backupRef } : {}),
+    ...(rollbackRef ? { rollbackRef } : {}),
     ...(text(input.reasonCode) ? { reasonCode: safeRef(input.reasonCode, "reasonCode") } : {}),
     materialDigests,
     ...(scopedTombstone ? { scopedTombstone } : {}),

@@ -243,6 +243,117 @@ test("production edge agent applies an empty desired-state without requesting cr
   assert.equal(calls.some((call) => String(call.url).endsWith("/materials")), false);
 });
 
+test("production edge agent posts backup basenames and rejects a path", async () => {
+  const backupRef = "config.yaml.2026_06_08T12_00_00_000Z.bak";
+  const posted = [];
+  const runner = createProductionEdgeAgentRunner({
+    baseUrl: "http://127.0.0.1:3456",
+    token: "node-agent-token",
+    nodeRef: "vultr-sgp-a",
+    channelRefs: ["channel-sgp-a-hy2"],
+    applyEnabled: true,
+    dryRun: false,
+    fetchImpl: async (url, options = {}) => {
+      if (String(url).endsWith("/api/internal/data-plane-agent/desired-state")) {
+        return responseJson(200, {
+          type: "gccgw_data_plane_agent_desired_state_response",
+          nodeRef: "vultr-sgp-a",
+          channelRefs: ["channel-sgp-a-hy2"],
+          desiredStates: [desiredState({
+            desiredStateRef: "desired_state_channel-sgp-a-hy2_backup",
+            generation: "gen_channel_sgp_hy2_backup",
+            edgeCredentialRefs: [],
+            materialDigests: []
+          })],
+          summaries: [],
+          redacted: true
+        });
+      }
+      if (String(url).endsWith("/api/internal/data-plane-agent/receipts")) {
+        posted.push(JSON.parse(options.body));
+        return responseJson(201, {
+          type: "gccgw_data_plane_receipt_response",
+          nodeRef: "vultr-sgp-a",
+          channelRef: "channel-sgp-a-hy2",
+          generation: "gen_channel_sgp_hy2_backup",
+          receiptId: "receipt_backup_001",
+          status: "applied",
+          redacted: true
+        });
+      }
+      throw new Error(`unexpected fetch ${url}`);
+    },
+    nowFn: () => new Date(NOW),
+    runtimeAdapters: {
+      "channel-sgp-a-hy2": {
+        async applyDesiredState() {
+          return {
+            status: "applied",
+            backupRef,
+            runtimeReceipt: { rollbackRef: "config.yaml.rollback.bak" },
+            configTest: true,
+            serviceActive: true,
+            listenerPresent: true,
+            credentialCount: 0,
+            materialDigests: []
+          };
+        }
+      }
+    }
+  });
+
+  const result = await runner.runOnce();
+  assert.equal(result.ok, true);
+  assert.equal(posted.length, 1);
+  assert.equal(posted[0].backupRef, backupRef);
+  assert.equal(posted[0].rollbackRef, "config.yaml.rollback.bak");
+  assert.equal(result.receipts[0].backupRef, undefined);
+
+  const rejected = createProductionEdgeAgentRunner({
+    baseUrl: "http://127.0.0.1:3456",
+    token: "node-agent-token",
+    nodeRef: "vultr-sgp-a",
+    channelRefs: ["channel-sgp-a-hy2"],
+    applyEnabled: true,
+    dryRun: false,
+    fetchImpl: async (url) => {
+      if (String(url).endsWith("/api/internal/data-plane-agent/desired-state")) {
+        return responseJson(200, {
+          type: "gccgw_data_plane_agent_desired_state_response",
+          nodeRef: "vultr-sgp-a",
+          channelRefs: ["channel-sgp-a-hy2"],
+          desiredStates: [desiredState({
+            desiredStateRef: "desired_state_channel-sgp-a-hy2_bad",
+            generation: "gen_channel_sgp_hy2_bad",
+            edgeCredentialRefs: [],
+            materialDigests: []
+          })],
+          summaries: [],
+          redacted: true
+        });
+      }
+      throw new Error("invalid backup ref must not be posted");
+    },
+    nowFn: () => new Date(NOW),
+    runtimeAdapters: {
+      "channel-sgp-a-hy2": {
+        async applyDesiredState() {
+          return {
+            status: "applied",
+            backupRef: "backup/config.yaml",
+            configTest: true,
+            serviceActive: true,
+            listenerPresent: true,
+            credentialCount: 0,
+            materialDigests: []
+          };
+        }
+      }
+    }
+  });
+  await assert.rejects(() => rejected.runOnce(), (error) => error.code === "validation_error");
+});
+
 test("production edge agent dry-run pulls but does not apply or post receipts", async () => {
   const calls = [];
   const runner = createProductionEdgeAgentRunner({

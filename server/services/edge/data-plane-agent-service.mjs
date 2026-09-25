@@ -568,6 +568,8 @@ export function createDataPlaneAgentService({
       configTestOk: receipt.configTest,
       serviceActive: receipt.serviceActive,
       listenerUdp443: receipt.listenerPresent,
+      ...(receipt.backupRef ? { backupRef: receipt.backupRef } : {}),
+      ...(receipt.rollbackRef ? { rollbackRef: receipt.rollbackRef } : {}),
       reasonCode: storeStatus.reasonCode,
       appliedAt: receipt.appliedAt,
       createdAt: now.toISOString()

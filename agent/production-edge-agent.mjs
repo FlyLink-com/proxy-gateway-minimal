@@ -265,6 +265,15 @@ async function applyWithAdapter({ adapter, state, channelRef, revokeCredentialRe
   throw agentError("runtime_adapter_missing", "runtime adapter is missing");
 }
 
+function oneApplyRef(applyResult, field) {
+  const direct = text(applyResult?.[field]);
+  const nested = text(applyResult?.runtimeReceipt?.[field]);
+  if (direct && nested && direct !== nested) {
+    throw agentError("validation_error", `${field} conflict`);
+  }
+  return direct || nested;
+}
+
 function receiptFromApplyResult({ state, channelRef, applyResult = {}, now }) {
   const status = text(applyResult.status) || "failed";
   const scopedTombstone = state.scopedTombstone || null;
@@ -293,6 +302,14 @@ function receiptFromApplyResult({ state, channelRef, applyResult = {}, now }) {
           : materialDigestStrings(state, channelRef)),
     ...(scopedTombstone ? { scopedTombstone } : {})
   };
+  const backupRef = oneApplyRef(applyResult, "backupRef");
+  const rollbackRef = oneApplyRef(applyResult, "rollbackRef");
+  if (backupRef) {
+    receipt.backupRef = backupRef;
+  }
+  if (rollbackRef) {
+    receipt.rollbackRef = rollbackRef;
+  }
   if (text(applyResult.reasonCode)) {
     receipt.reasonCode = text(applyResult.reasonCode);
   }
