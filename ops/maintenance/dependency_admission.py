@@ -75,7 +75,7 @@ def object_reference(target, inode, candidate_paths, candidate_inodes):
 
 
 class CertificateAncestorPolicy:
-    """Only index 2 of the certificate and private-key paths can add one shared UID."""
+    """Only indexes 2 and 3 of the certificate and private-key paths can add one shared UID."""
 
     def __init__(self, owners):
         self.owners = dict(owners)
@@ -84,9 +84,10 @@ class CertificateAncestorPolicy:
     def bind(self, certificate_path, private_key_path):
         found = set()
         for path in (certificate_path, private_key_path):
-            ancestor = path_ancestor(path, 2)
-            if ancestor is not None:
-                found.add(ancestor)
+            for index in (2, 3):
+                ancestor = path_ancestor(path, index)
+                if ancestor is not None:
+                    found.add(ancestor)
         self.certificate_owner_ancestors = found
 
     def allowed_owners(self, ancestor, input_role):
