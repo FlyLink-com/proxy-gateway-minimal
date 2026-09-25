@@ -37,11 +37,44 @@ class ProtectionReaderTests(unittest.TestCase):
         self.assertEqual(result['observations']['known_good_rollback'], 'unresolved')
         self.assertEqual(result['observations']['incident_reconciliation'], 'unwired')
 
-    def test_unnamed_binding_rejects_a_supplied_record(self):
-        records = {'current_or_failed_apply': verified('current_or_failed_apply', 'empty')}
+    def test_receipt_field_cannot_be_declared_empty(self):
+        record = verified('current_or_failed_apply', 'empty')
+        record['sourceId'] = observer.BINDINGS['current_or_failed_apply']['named']
         with self.assertRaises(observer.ObserverError) as failure:
-            reader.read_cohort(records)
-        self.assertEqual(str(failure.exception), 'unnamed_source_cannot_be_read')
+            reader.read_cohort({'current_or_failed_apply': record})
+        self.assertEqual(str(failure.exception), 'receipt_field_cannot_be_empty')
+
+    def test_runtime_receipt_keeps_missing_fields_unresolved(self):
+        failed = reader.read_runtime_receipts([{'status': 'failed', 'mutation': False}])
+        self.assertEqual(failed['disposition'], 'retained')
+        self.assertFalse(failed['deletionApproved'])
+        self.assertFalse(failed['review']['complete'])
+        self.assertEqual(failed['readHolds'], [])
+        self.assertEqual(failed['observations']['current_or_failed_apply'], 'unresolved')
+        self.assertEqual(failed['observations']['known_good_rollback'], 'unresolved')
+        self.assertEqual(failed['observations']['incident_reconciliation'], 'unwired')
+        ref = 'config.yaml.2026_06_08T12_00_00_000Z.bak'
+        applied = reader.read_runtime_receipts([{
+            'status': 'applied', 'mutation': True, 'backupRef': ref,
+        }])
+        self.assertEqual(applied['disposition'], 'retained')
+        self.assertFalse(applied['review']['complete'])
+        self.assertEqual(applied['review']['holds'], [])
+        self.assertEqual(applied['readHolds'], ['/var/backups/gccgw-edge/hysteria2/' + ref])
+        self.assertEqual(applied['observations']['current_or_failed_apply'], 'present')
+        self.assertEqual(applied['observations']['known_good_rollback'], 'unresolved')
+        rolled = reader.read_runtime_receipts([{'status': 'rolled_back', 'mutation': True, 'rollbackRef': ref}])
+        self.assertEqual(rolled['observations']['known_good_rollback'], 'present')
+        self.assertEqual(rolled['observations']['current_or_failed_apply'], 'unresolved')
+        self.assertEqual(rolled['readHolds'], ['/var/backups/gccgw-edge/hysteria2/' + ref])
+
+    def test_runtime_receipt_rejects_sensitive_or_empty_input(self):
+        with self.assertRaises(observer.ObserverError) as sensitive:
+            reader.read_runtime_receipts([{'status': 'failed', 'password': 'secret-value'}])
+        self.assertEqual(str(sensitive.exception), 'protection_record_sensitive')
+        with self.assertRaises(observer.ObserverError) as empty:
+            reader.read_runtime_receipts([])
+        self.assertEqual(str(empty.exception), 'protection_record_invalid')
 
     def test_proxy_and_missing_read_do_not_become_empty(self):
         bindings = named_bindings()

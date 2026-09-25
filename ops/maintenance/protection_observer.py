@@ -53,36 +53,37 @@ def _public(observations):
 
 COHORT = 'singapore-hysteria2-backup'
 
-# named stays None until a reviewed change identifies the object. The absent status is the
-# binding. not_a_source values are proxies that must not be recorded as an empty hold list.
+# named identifies the runtime-receipt field. It is not a fetched record and cannot be empty.
+# The receipt schema has no incident-hold field, so that class stays unnamed and unwired.
 BINDINGS = {
     'current_or_failed_apply': {
-        'named': None,
+        'named': 'hysteria2.runtimeReceipt.backupRef',
         'status': 'unresolved',
+        'empty_allowed': False,
         'not_a_source': ('omitted_backup_ref', 'last_report', 'open_file_absence'),
     },
     'known_good_rollback': {
-        'named': None,
+        'named': 'hysteria2.runtimeReceipt.rollbackRef',
         'status': 'unresolved',
+        'empty_allowed': False,
         'not_a_source': ('missing_approved_reference',),
     },
     'incident_reconciliation': {
         'named': None,
         'status': 'unwired',
+        'empty_allowed': False,
         'not_a_source': ('missing_ledger',),
     },
 }
 
 
 def bound_observations():
-    """Return the named Hy2 binding. No class is empty or present while its source is unnamed."""
+    """Return the unread binding. A source name is not a fetched record."""
     if set(BINDINGS) != set(REQUIRED):
         raise ObserverError('protection_classes_incomplete')
     observations = {}
     for name in REQUIRED:
         binding = BINDINGS[name]
-        if binding['named'] is not None:
-            raise ObserverError('named_source_requires_a_reader')
         status = binding['status']
         if status not in ('unwired', 'unknown', 'unresolved'):
             raise ObserverError('absent_source_cannot_be_empty')
@@ -97,8 +98,6 @@ def proxy_observation(name, proxy):
     binding = BINDINGS[name]
     if proxy not in binding['not_a_source']:
         raise ObserverError('protection_proxy_unknown')
-    if binding['named'] is not None:
-        raise ObserverError('named_source_requires_a_reader')
     return {'status': binding['status'], 'holds': [], 'proxyRejected': proxy}
 
 
@@ -110,7 +109,7 @@ def cohort_retention(observations=None):
         raise ObserverError('protection_classes_incomplete')
     for name in REQUIRED:
         status = observations[name].get('status')
-        if BINDINGS[name]['named'] is None and status in ('empty', 'present'):
+        if status in ('empty', 'present'):
             raise ObserverError('absent_source_cannot_be_empty')
     review = derive_review(observations)
     if review['complete'] or review['holds']:

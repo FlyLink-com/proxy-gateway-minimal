@@ -103,21 +103,19 @@ Required protection review, independently derived and source-bound:
 | Outside scope | Release, DB/WAL/SHM, checkpoint/pending and all unselected trees untouched |
 
 The Singapore Hy2 backup cohort binding lives in `protection_observer.py`.
-No approved rollback reference is named, so `known_good_rollback` stays
-`unresolved`. No incident or reconciliation ledger is named, so
-`incident_reconciliation` stays `unwired`. Historical failed applies stay
-`unresolved`: an omitted `backupRef`, a last-report, or the absence of an
-open backup file is not that source and cannot become an empty hold list.
-`cohort_retention()` keeps the whole cohort `retained` and the review
-incomplete. `protection_reader.read_cohort()` is the reader for that binding.
-A class becomes `empty` or `present` only when its binding names a source and
-the fetched record identifies that same source with a non-placeholder body
-digest. A missing record stays at the absent status. An omitted `backupRef`,
-a last-report, open-file absence, a missing rollback reference, or a missing
-incident ledger cannot become an empty hold list. The default binding names
-no source, so the reader keeps the cohort `retained`.
-`ProtectionObserver.read_protection` calls this reader and still raises
-`production_protection_observer_not_wired` while that review is incomplete.
+`current_or_failed_apply` names `hysteria2.runtimeReceipt.backupRef`.
+`known_good_rollback` names `hysteria2.runtimeReceipt.rollbackRef`.
+The reviewed runtime-receipt schema has no incident-hold field, so
+`incident_reconciliation` stays unnamed and `unwired`.
+`protection_reader.read_runtime_receipts()` reads those fields from receipt
+objects already in memory. A present basename becomes one hold under the
+cohort directory. A missing or blank field stays unresolved or unwired.
+An omitted `backupRef`, a last-report, open-file absence, a missing rollback
+reference, or a missing incident ledger cannot become an empty hold list.
+One receipt is not a complete historical inventory, so this reader keeps the
+cohort `retained` and the review incomplete.
+`ProtectionObserver.read_protection` does not fetch receipts. It still raises
+`production_protection_observer_not_wired` while the review is incomplete.
 The reader does not open a host and does not approve deletion. A later host
 wrapper must not call `derive_review()` with three explicit `empty`
 observations to bypass it.
