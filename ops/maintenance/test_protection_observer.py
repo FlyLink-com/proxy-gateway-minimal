@@ -46,6 +46,39 @@ class ProtectionObserverTests(unittest.TestCase):
         self.assertFalse(review['complete'])
         self.assertEqual(review['reason'], 'current_or_failed_apply_unknown')
 
+    def test_unnamed_hy2_sources_retain_the_cohort(self):
+        retained = observer.cohort_retention()
+        self.assertEqual(retained['cohort'], 'singapore-hysteria2-backup')
+        self.assertEqual(retained['disposition'], 'retained')
+        self.assertEqual(retained['observations'], {
+            'current_or_failed_apply': 'unresolved',
+            'known_good_rollback': 'unresolved',
+            'incident_reconciliation': 'unwired',
+        })
+        self.assertFalse(retained['review']['complete'])
+        self.assertEqual(retained['review']['holds'], [])
+        self.assertEqual(retained['review']['reason'], 'current_or_failed_apply_unresolved')
+
+    def test_backup_ref_last_report_and_open_files_stay_unresolved(self):
+        for proxy in ('omitted_backup_ref', 'last_report', 'open_file_absence'):
+            observation = observer.proxy_observation('current_or_failed_apply', proxy)
+            self.assertEqual(observation['status'], 'unresolved')
+            self.assertEqual(observation['holds'], [])
+            self.assertEqual(observation['proxyRejected'], proxy)
+        self.assertEqual(
+            observer.proxy_observation('known_good_rollback', 'missing_approved_reference')['status'],
+            'unresolved')
+        self.assertEqual(
+            observer.proxy_observation('incident_reconciliation', 'missing_ledger')['status'],
+            'unwired')
+
+    def test_unnamed_source_cannot_be_marked_empty(self):
+        observations = observer.bound_observations()
+        observations['current_or_failed_apply'] = item('empty')
+        with self.assertRaises(observer.ObserverError) as failure:
+            observer.cohort_retention(observations)
+        self.assertEqual(str(failure.exception), 'absent_source_cannot_be_empty')
+
     def test_present_hold_is_kept_once(self):
         review = observer.derive_review({
             'current_or_failed_apply': item('present', ['/var/backups/gccgw-edge/hysteria2/keep.bak']),

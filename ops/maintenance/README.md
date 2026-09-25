@@ -102,6 +102,16 @@ Required protection review, independently derived and source-bound:
 | Recent backups / latest N | Protected entries enumerated in full, not hash examples |
 | Outside scope | Release, DB/WAL/SHM, checkpoint/pending and all unselected trees untouched |
 
+The Singapore Hy2 backup cohort binding lives in `protection_observer.py`.
+No approved rollback reference is named, so `known_good_rollback` stays
+`unresolved`. No incident or reconciliation ledger is named, so
+`incident_reconciliation` stays `unwired`. Historical failed applies stay
+`unresolved`: an omitted `backupRef`, a last-report, or the absence of an
+open backup file is not that source and cannot become an empty hold list.
+`cohort_retention()` keeps the whole cohort `retained` and the review
+incomplete. This binding does not read a host and does not wire
+`ProtectionObserver.read_protection`.
+
 `edge_backup_execute.py` accepts only a complete, digest-verified manifest and
 an explicit approved **subset of its candidate paths** (at most 10,000 per
 single-use record, one protocol directory). Approval also binds target/hostname,
