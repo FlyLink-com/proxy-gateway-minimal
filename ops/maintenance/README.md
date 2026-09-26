@@ -6,7 +6,7 @@ document_metadata:
   lifecycle: active
   authority_scope: storage_maintenance_planning
   superseded_by: null
-  last_verified_at: 2026-09-24
+  last_verified_at: 2026-09-26
   production_authority: false
 ```
 
@@ -91,7 +91,7 @@ streaming metadata acquisition and apply policy locally per protocol; never
 materialize the whole historical backup tree in the edge agent's memory.
 The conservative in-process memory budget is not a measured RSS guarantee.
 
-Required protection review, independently derived and source-bound:
+Default historical protection review, independently derived and source-bound:
 
 | Protection class | Required evidence / behavior |
 | --- | --- |
@@ -125,6 +125,69 @@ no incident source. The function does not open a host.
 The reader does not open a host and does not approve deletion. A later host
 wrapper must not call `derive_review()` with three explicit `empty`
 observations to bypass it.
+
+### Explicit one-time current-dependency disposition
+
+For the operator-selected Singapore `hysteria2` slice, the separate policy
+`current-dependencies-only-v1` does **not** require reconstruction of historical
+backup ownership, rollback responsibility or incident ledgers. This policy
+selection does not itself approve any file deletion. Historical coverage is
+explicitly `not_assessed`; additional holds are `declared_only`, never described
+as an independently verified empty historical source. The default three-class
+reader above stays unchanged and cannot be relabelled complete by this path.
+
+`current_dependency_cleanup.prepare(snapshot, declared_holds=[])` is pure by
+default. It returns full retention-eligible and protected lists from a complete
+metadata snapshot, without constructing a successful dependency review. It
+keeps the newest 20 per basename, everything within 30 days, unknown ordinary
+filenames, and every declared hold. Missing declared holds, incomplete scans,
+links, unsafe metadata or an oversized one-record list stop preparation. An
+empty declared list means only **no extra holds declared for this disposition**.
+Historical 843/20 counts are not hard-coded or treated as current inventory.
+
+Only an explicitly authorized `observe=True` calls the fixed
+`current_dependency_guard.py` Linux reader with the **actual nonempty proposed
+candidate identities**. It checks the pinned producer/configuration paths,
+loaded service roles, allowed non-secret environment path fields and present
+process references. Unknown ownership, source, service role or reference
+coverage stops. It does not open backup bodies, databases, private keys or
+customer records, and does not renew certificates or restart services. Full
+system-process reads occur at initial/final checks; inter-file checks cover
+bound inputs and relevant service cgroups. Exclusive maintenance coordination
+is required; absence of one open file is not proof of no dependencies.
+
+The current source admits a candidate startup entry only when its exact release
+path is also pinned. `candidate-start.mjs` presently has no reviewed pin in this
+guard: that entry returns `candidate_entry_source_unknown`, not success. Before
+production readiness, a scoped fresh read must bind its exact digest to reviewed
+source/import behavior; a guessed digest or an arbitrary new `.mjs` is invalid.
+This does not require deploying #749 or rebuilding historical receipts.
+
+The manifest, approval, observer, preflight and terminal receipts all bind the
+same exact policy object, including the historical coverage limitation. A
+current-only observer cannot serve a historical-policy manifest or vice versa.
+Policy changes during execution stop before the next mutation.
+
+`current_dependency_cleanup.run()` defaults to dry-run. Explicit apply requires
+the entire approved candidate list, matching source/observer digests, directory
+identities, policy, batch size, target, time window, exclusive coordination,
+`irreversibleDisposalAccepted=true` and `retry=false`. A wrapper receipt is
+claimed exclusively **before** the first dependency read; the existing core
+provides its own exact-file receipt and quarantine/unlink checks. No old record
+is replayed. Any failure requires a new decision and record, not automatic retry.
+
+Before/after space and inode observations, protected-file metadata and final
+dependency/service observations are returned in the private terminal receipt.
+On partial/unknown core results, pending quarantine records are **not** a
+confirmed count of recoverable files (unlink may precede an I/O failure).
+Static allowlisted guard diagnostics retain the failing role/field, never raw
+configuration or exception output. Natural metering validation is explicitly
+`not_performed` by this module: separately approved readback must supply that
+production receipt before full operational closeout.
+
+Status: source implementation and synthetic integration are separate from a
+fresh target inventory, exact production approval, installed automation and an
+actual deletion receipt. This PR does not install recurring cleanup.
 
 `edge_backup_execute.py` accepts only a complete, digest-verified manifest and
 an explicit approved **subset of its candidate paths** (at most 10,000 per
@@ -266,10 +329,24 @@ Production progression remains:
 5. Execute bounded batches only after that gate; read back space, inode,
    protected-file identities, service/collector state, and record results.
 
-The batch execution **core** is included; a production-wired protection observer,
-approved exact target manifest and destructive execution receipt are distinct
+The batch execution core and a fixed current-dependency host adapter are
+included; verified production input bindings, an approved exact target manifest
+and a destructive execution receipt are distinct
 deliverables. Do not describe an inert wrapper or synthetic success as an
 installed cleanup policy. No journal installer, release pruner, service repair,
 recurring cleanup or capacity alarm is installed by this PR. Preserve the
 already-authorized task scope across turns; only new destructive or expanded
 read boundaries require another approval.
+
+The service-owned directory-binding and fixed Linux reader integration fixtures
+also require an isolated Linux **root** test context (temporary synthetic files
+only). Without that context their explicit skips are not physical integration
+evidence. On this Windows workspace the source-only command is:
+
+```powershell
+wsl -d Ubuntu-24.04 -u root --exec bash -lc 'cd /mnt/d/Projects/proxy-gateway-minimal && python3 -B -m unittest discover -s ops/maintenance -p "test_*.py"'
+```
+
+Do not interpret this local WSL fixture as authorization to access a production
+host. The retained local records and CI must distinguish source tests, skipped
+tests, production preparation and actual execution.

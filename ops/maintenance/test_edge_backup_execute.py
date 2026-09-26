@@ -14,6 +14,8 @@ import edge_backup_execute as execute
 import edge_backup_manifest as manifest
 
 NOW = dt.datetime(2026, 9, 24, 12, tzinfo=dt.timezone.utc)
+CURRENT_POLICY = {'id': 'current-dependencies-only-v1', 'historicalCoverage': 'not_assessed',
+                  'extraHolds': 'declared_only'}
 
 
 class FixtureObserver(execute.ProtectionObserver):
@@ -151,6 +153,175 @@ class DirectoryBindingInputTests(unittest.TestCase):
                             apply=True, clock=lambda: NOW, hostname=lambda: execute.HOSTS['sgp'])
 
 
+class ProtectionPolicyTests(unittest.TestCase):
+    def setUp(self):
+        DirectoryBindingInputTests.setUp(self)
+        for age in range(40, 63):
+            moment = NOW - dt.timedelta(days=age)
+            path = self.paths[1] + '/config.yaml.' + moment.strftime('%Y_%m_%dT%H_%M_%S_000Z.bak')
+            info = dict.fromkeys(execute.META_KEYS, 0)
+            info.update(dev=10, ino=age, mode=stat.S_IFREG | 0o600, nlink=1, uid=996, gid=987,
+                        mtimeNs=manifest.epoch_ns(moment), ctimeNs=manifest.epoch_ns(moment))
+            self.document['entries'].append({'path': path, 'metadata': info,
+                                             'disposition': 'candidate' if age >= 60 else 'protected'})
+        self.document['entries'].sort(key=lambda item: item['path'])
+        self.document['protectionPolicy'] = dict(CURRENT_POLICY)
+        self.rehash()
+        self.observer = FixtureObserver(self.document['protectionReview'])
+        self.observer.policy_id = CURRENT_POLICY['id']
+        self.approval = {
+            'schemaVersion': 1, 'type': 'edge-backup-retention-approval', 'approved': True,
+            'manifestDigest': self.document['digest'], 'sourceDigest': execute.source_digest(),
+            'observerSourceDigest': self.observer.source_digest,
+            'target': 'sgp', 'hostname': execute.HOSTS['sgp'], 'runId': 'synthetic-policy-001',
+            'notBefore': (NOW - dt.timedelta(minutes=1)).isoformat(),
+            'expiresAt': (NOW + dt.timedelta(hours=1)).isoformat(),
+            'quarantinePath': execute.QUARANTINE_PARENT + '/synthetic-policy-001',
+            'receiptPath': execute.RECEIPT_PARENT + '/synthetic-policy-001.jsonl',
+            'candidatePaths': [self.document['entries'][0]['path']], 'directoryBindings': self.bindings,
+            'protectionPolicy': dict(CURRENT_POLICY), 'irreversibleDisposalAccepted': True, 'retry': False}
+
+    def rehash(self):
+        self.document['digest'] = execute.canonical_digest(self.document)
+
+    def context(self):
+        return execute.validate_manifest(self.document, directory_bindings=self.bindings)
+
+    def validate_approval(self):
+        return execute.validate_approval(self.document, self.approval, self.context(), NOW, execute.HOSTS['sgp'])
+
+    def test_policy_is_reported_in_context_and_dry_run_without_claiming_observer(self):
+        self.assertEqual(self.context()['protectionPolicy'], CURRENT_POLICY)
+        result = execute.execute(self.document, self.approval)
+        self.assertEqual(result['protectionPolicy'], CURRENT_POLICY)
+        self.assertFalse(result['productionObserverWired'])
+        self.assertEqual(result['deletedCount'], 0)
+
+    def test_unknown_null_mixed_or_historically_disguised_policy_is_rejected(self):
+        policies = [None, {}, 'current-dependencies-only-v1', {'id': 'unknown'},
+                    {**CURRENT_POLICY, 'historicalCoverage': 'complete'},
+                    {**CURRENT_POLICY, 'id': 'historical-three-class-v1'},
+                    {**CURRENT_POLICY, 'extra': True}]
+        for policy in policies:
+            with self.subTest(policy=policy):
+                self.document['protectionPolicy'] = policy
+                self.rehash()
+                with self.assertRaisesRegex(execute.ExecuteError, 'invalid_protection_policy'):
+                    self.context()
+
+    def test_current_policy_is_restricted_to_one_sgp_hysteria2_scope(self):
+        for target, dirs in [('jp', ['hysteria2']), ('sgp', ['xray']), ('sgp', ['hysteria2', 'xray'])]:
+            with self.subTest(target=target, dirs=dirs):
+                self.document['scope'].update(target=target, protocolDirs=dirs)
+                self.rehash()
+                with self.assertRaisesRegex(execute.ExecuteError, 'protection_policy_scope_mismatch'):
+                    self.context()
+
+    def test_new_policy_approval_requires_exact_policy_irreversible_acceptance_and_no_retry(self):
+        self.assertEqual(len(self.validate_approval()), 1)
+        baseline = copy.deepcopy(self.approval)
+        for field, values in [('protectionPolicy', [None, {'id': 'historical-three-class-v1'},
+                               {**CURRENT_POLICY, 'extra': True}]),
+                              ('irreversibleDisposalAccepted', [None, False, 1, 'true']),
+                              ('retry', [None, True, 0, 'false'])]:
+            for value in values:
+                with self.subTest(field=field, value=value):
+                    self.approval = copy.deepcopy(baseline)
+                    if value is None:
+                        self.approval.pop(field)
+                    else:
+                        self.approval[field] = value
+                    with self.assertRaisesRegex(execute.ExecuteError, 'approval_protection_policy_mismatch|irreversible_disposal_not_accepted|retry_must_be_false'):
+                        self.validate_approval()
+
+    def test_default_manifest_and_approval_do_not_require_new_fields(self):
+        self.document.pop('protectionPolicy')
+        self.rehash()
+        self.approval['manifestDigest'] = self.document['digest']
+        for field in ('protectionPolicy', 'irreversibleDisposalAccepted', 'retry'):
+            self.approval.pop(field)
+        self.assertEqual(len(self.validate_approval()), 1)
+        self.assertEqual(execute.ProtectionObserver.policy_id, 'historical-three-class-v1')
+
+    def test_observer_policy_must_match_before_any_read_in_both_directions(self):
+        scope = self.document['scope']
+        for document_policy, observer_policy in [(CURRENT_POLICY, 'historical-three-class-v1'),
+                ({'id': 'historical-three-class-v1'}, CURRENT_POLICY['id'])]:
+            with self.subTest(document_policy=document_policy):
+                self.document['protectionPolicy'] = document_policy
+                self.observer.policy_id = observer_policy
+                with self.assertRaisesRegex(execute.ExecuteError, 'observer_policy_mismatch'):
+                    execute.check_protection(self.document, scope, self.observer)
+                self.assertEqual(self.observer.calls, 0)
+        with self.assertRaisesRegex(execute.ExecuteError, 'observer_policy_mismatch'):
+            execute.check_protection(self.document, scope, {'complete': True})
+
+    def test_default_real_observer_is_still_unwired_for_a_complete_manifest(self):
+        self.document.pop('protectionPolicy')
+        self.rehash()
+        with self.assertRaisesRegex(execute.ExecuteError, 'production_protection_observer_not_wired'):
+            execute.check_protection(self.document, self.document['scope'], execute.ProtectionObserver())
+
+    def test_policy_changes_inside_observer_are_rejected_before_accepting_review(self):
+        for change in ('observer', 'manifest'):
+            with self.subTest(change=change):
+                self.document['protectionPolicy'] = dict(CURRENT_POLICY)
+                self.observer.policy_id = CURRENT_POLICY['id']
+                def mutate(_):
+                    if change == 'observer':
+                        self.observer.policy_id = 'historical-three-class-v1'
+                    else:
+                        self.document['protectionPolicy'] = {'id': 'historical-three-class-v1'}
+                self.observer.on_call = mutate
+                with self.assertRaisesRegex(execute.ExecuteError, 'protection_policy_changed|observer_policy_mismatch'):
+                    execute.check_protection(self.document, self.document['scope'], self.observer)
+
+    def test_failed_execution_receipt_and_result_preserve_initial_policy_binding(self):
+        events = []
+        receipt = unittest.mock.Mock()
+        receipt.append.side_effect = lambda event: events.append(copy.deepcopy(event))
+        with unittest.mock.patch.object(execute, 'Receipt', return_value=receipt), \
+             unittest.mock.patch.object(execute, 'check_directory_bindings'), \
+             unittest.mock.patch.object(execute, 'fresh_check', side_effect=execute.ExecuteError('synthetic_scope_incomplete')):
+            result = execute.execute(self.document, self.approval, observer=self.observer,
+                apply=True, clock=lambda: NOW, hostname=lambda: execute.HOSTS['sgp'])
+        self.assertEqual(result['state'], 'stopped_partial_or_unknown')
+        self.assertEqual(result['protectionPolicy'], CURRENT_POLICY)
+        self.assertEqual([event['protectionPolicy'] for event in events], [CURRENT_POLICY, CURRENT_POLICY])
+        self.assertEqual(result['deletedCount'], 0)
+
+    def test_policy_or_approval_changes_after_started_stop_before_filesystem_mutation(self):
+        for change in ('manifest', 'observer', 'approval_policy', 'acceptance', 'retry'):
+            with self.subTest(change=change):
+                self.setUp()
+                events = []
+                receipt = unittest.mock.Mock()
+                def append(event):
+                    events.append(copy.deepcopy(event))
+                    if event['event'] == 'started':
+                        if change == 'manifest':
+                            self.document.pop('protectionPolicy')
+                        elif change == 'observer':
+                            self.observer.policy_id = 'historical-three-class-v1'
+                        elif change == 'approval_policy':
+                            self.approval['protectionPolicy'] = {'id': 'historical-three-class-v1'}
+                        elif change == 'acceptance':
+                            self.approval['irreversibleDisposalAccepted'] = False
+                        else:
+                            self.approval['retry'] = True
+                receipt.append.side_effect = append
+                with unittest.mock.patch.object(execute, 'Receipt', return_value=receipt), \
+                     unittest.mock.patch.object(execute, 'check_directory_bindings'), \
+                     unittest.mock.patch.object(execute, 'private_directory') as filesystem:
+                    result = execute.execute(self.document, self.approval, observer=self.observer,
+                        apply=True, clock=lambda: NOW, hostname=lambda: execute.HOSTS['sgp'])
+                filesystem.assert_not_called()
+                self.assertEqual(result['state'], 'stopped_partial_or_unknown')
+                self.assertEqual(result['deletedCount'], 0)
+                self.assertEqual(result['protectionPolicy'], CURRENT_POLICY)
+                self.assertEqual(events[-1]['protectionPolicy'], CURRENT_POLICY)
+
+
 @unittest.skipUnless(os.name == 'posix' and hasattr(os, 'O_NOFOLLOW'), 'Linux directory-fd and renameat2 integration')
 class ExecutorTests(unittest.TestCase):
     def setUp(self):
@@ -252,6 +423,49 @@ class ExecutorTests(unittest.TestCase):
         self.assertEqual(list(Path(self.approval['quarantinePath']).iterdir()), [])
         self.assertEqual([row['event'] for row in self.events()].count('batch_verified'), 2)
         self.assertGreaterEqual(self.observer.calls, 5)
+
+    def use_current_policy(self):
+        self.document['protectionPolicy'] = dict(CURRENT_POLICY)
+        self.document['digest'] = execute.canonical_digest(self.document)
+        self.approval.update(manifestDigest=self.document['digest'], protectionPolicy=dict(CURRENT_POLICY),
+                             irreversibleDisposalAccepted=True, retry=False)
+        self.observer.policy_id = CURRENT_POLICY['id']
+
+    def test_current_policy_completed_receipts_keep_exact_policy_and_protected_files(self):
+        self.use_current_policy()
+        before = {path: execute.metadata(os.lstat(path)) for path in self.protected}
+        result = self.apply(batch_size=1)
+        self.assertEqual(result['state'], 'completed')
+        self.assertEqual(result['protectionPolicy'], CURRENT_POLICY)
+        self.assertEqual(result['deletedCount'], 3)
+        self.assertEqual({path: execute.metadata(os.lstat(path)) for path in self.protected}, before)
+        terminal = [event for event in self.events() if event['event'] in ('started', 'completed')]
+        self.assertEqual([event['protectionPolicy'] for event in terminal], [CURRENT_POLICY, CURRENT_POLICY])
+
+    def test_current_policy_change_after_quarantine_never_unlinks(self):
+        self.use_current_policy()
+        original = execute.rename_no_replace
+        def change_policy(*args):
+            original(*args)
+            self.document['protectionPolicy'] = {'id': 'historical-three-class-v1'}
+            self.observer.policy_id = 'historical-three-class-v1'
+        with unittest.mock.patch.object(execute, 'rename_no_replace', change_policy):
+            result = self.apply()
+        self.assertEqual(result['state'], 'stopped_partial_or_unknown')
+        self.assertEqual(result['deletedCount'], 0)
+        self.assertEqual(result['quarantinedCount'], 1)
+        self.assertEqual(result['protectionPolicy'], CURRENT_POLICY)
+        self.assertEqual(self.events()[-1]['protectionPolicy'], CURRENT_POLICY)
+
+    def test_current_policy_approval_mutation_inside_observer_never_moves(self):
+        self.use_current_policy()
+        def change_approval(_):
+            self.approval['irreversibleDisposalAccepted'] = False
+        self.observer.on_call = change_approval
+        result = self.apply()
+        self.assertEqual(result['state'], 'stopped_partial_or_unknown')
+        self.assertEqual(result['deletedCount'], 0)
+        self.assertNotIn('move_intent', [event['event'] for event in self.events()])
 
     def test_receipt_consumed_cannot_replay(self):
         self.assertEqual(self.apply()['state'], 'completed')

@@ -17,6 +17,9 @@ manifest = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(manifest)
 NOW = dt.datetime(2026, 9, 24, 12, tzinfo=dt.timezone.utc)
 REVIEW = {'complete': True, 'evidenceDigest': 'a' * 64, 'holds': []}
+HISTORICAL_POLICY = {'id': 'historical-three-class-v1'}
+CURRENT_POLICY = {'id': 'current-dependencies-only-v1',
+                  'historicalCoverage': 'not_assessed', 'extraHolds': 'declared_only'}
 
 
 def filename(moment, basename='config.json'):
@@ -301,18 +304,20 @@ class ManifestTests(unittest.TestCase):
 
 
 class ContractTests(unittest.TestCase):
-    def snapshot(self, count=22):
-        scope = {'root': manifest.PRODUCTION_ROOT, 'protocolDirs': ['xray'],
-                 'allowedNames': ['config.json'], 'target': 'sgp'}
+    def snapshot(self, count=22, *, protocol='xray', target='sgp'):
+        scope = {'root': manifest.PRODUCTION_ROOT, 'protocolDirs': [protocol],
+                 'allowedNames': ['config.json'], 'target': target}
         directory_metadata = dict(zip(manifest.METADATA_KEYS, (1, 1, 0o40700, 2, 0, 0, 4096, 1, 1, 8)))
         directories = [{'path': manifest.PRODUCTION_ROOT, 'identity': directory_metadata},
-                       {'path': manifest.PRODUCTION_ROOT + '/xray', 'identity': {**directory_metadata, 'ino': 2}}]
+                       {'path': manifest.PRODUCTION_ROOT + '/' + protocol,
+                        'identity': {**directory_metadata, 'ino': 2}}]
         rows = []
         for index in range(count):
             moment = NOW - dt.timedelta(days=40, milliseconds=index)
             metadata = dict(zip(manifest.METADATA_KEYS,
                 (1, index + 3, 0o100600, 1, 0, 0, 22, manifest.epoch_ns(moment), 1, 8)))
-            rows.append({'path': manifest.PRODUCTION_ROOT + '/xray/' + filename(moment), 'metadata': metadata})
+            rows.append({'path': manifest.PRODUCTION_ROOT + '/' + protocol + '/' + filename(moment),
+                         'metadata': metadata})
         rows.reverse()
         snapshot = {'schemaVersion': 1, 'type': 'edge-backup-metadata-snapshot', 'mode': 'full',
             'scope': scope, 'observedAt': NOW.isoformat(), 'complete': True, 'directories': directories,
@@ -323,6 +328,113 @@ class ContractTests(unittest.TestCase):
                                    'maxMemoryBytes': manifest.MAX_MEMORY_BYTES, 'maxPayloadBytes': manifest.MAX_BYTES}}
         snapshot['digest'] = manifest.manifest_digest(snapshot)
         return snapshot
+
+    def test_protection_policy_defaults_to_explicit_historical_policy(self):
+        scope = self.snapshot()['scope']
+        for value in (None, HISTORICAL_POLICY):
+            with self.subTest(value=value):
+                normalized = manifest.validate_protection_policy(value, scope)
+                self.assertEqual(normalized, HISTORICAL_POLICY)
+                self.assertIsNot(normalized, HISTORICAL_POLICY)
+        default = manifest.manifest_from_snapshot(self.snapshot(), protection_review=REVIEW)
+        explicit = manifest.manifest_from_snapshot(self.snapshot(), protection_review=REVIEW,
+                                                  protection_policy=HISTORICAL_POLICY)
+        self.assertEqual(default['protectionPolicy'], HISTORICAL_POLICY)
+        self.assertEqual(default, explicit)
+
+    def test_current_protection_policy_is_pure_canonical_and_digest_bound(self):
+        with patch.object(manifest.os, 'open', side_effect=AssertionError('pure function did I/O')):
+            result = manifest.manifest_from_snapshot(self.snapshot(protocol='hysteria2'),
+                protection_review=REVIEW, protection_policy=CURRENT_POLICY)
+        self.assertTrue(result['complete'])
+        self.assertEqual(result['protectionPolicy'], CURRENT_POLICY)
+        self.assertIsNot(result['protectionPolicy'], CURRENT_POLICY)
+        self.assertEqual(result['digest'], manifest.manifest_digest(result))
+        changed = {**result, 'protectionPolicy': HISTORICAL_POLICY}
+        self.assertNotEqual(result['digest'], manifest.manifest_digest(changed))
+        for key in ('historicalCoverage', 'extraHolds'):
+            changed = {**result, 'protectionPolicy': {**CURRENT_POLICY, key: 'changed'}}
+            self.assertNotEqual(result['digest'], manifest.manifest_digest(changed))
+
+    def test_protection_policy_schema_is_exact(self):
+        scope = self.snapshot(protocol='hysteria2')['scope']
+        invalid = (False, 1, 'historical-three-class-v1', [], {},
+            {'id': 'unknown'}, {'id': None}, {'id': []},
+            {**HISTORICAL_POLICY, 'extraHolds': 'declared_only'},
+            {'id': CURRENT_POLICY['id']}, {**CURRENT_POLICY, 'extra': True},
+            {**CURRENT_POLICY, 'historicalCoverage': 'assessed'},
+            {**CURRENT_POLICY, 'historicalCoverage': False},
+            {**CURRENT_POLICY, 'extraHolds': 'all'}, {**CURRENT_POLICY, 'extraHolds': []})
+        for value in invalid:
+            with self.subTest(value=value), self.assertRaisesRegex(
+                    manifest.ManifestError, '^invalid_protection_policy$'):
+                manifest.validate_protection_policy(value, scope)
+
+    def test_current_protection_policy_is_limited_to_sgp_hysteria2(self):
+        scope = self.snapshot(protocol='hysteria2')['scope']
+        for change in ({'target': 'jp'}, {'protocolDirs': ['xray']},
+                       {'protocolDirs': ['hysteria2', 'xray']}):
+            with self.subTest(change=change), self.assertRaisesRegex(
+                    manifest.ManifestError, '^protection_policy_scope_mismatch$'):
+                manifest.validate_protection_policy(CURRENT_POLICY, {**scope, **change})
+        for protocol, target in (('xray', 'sgp'), ('hysteria2', 'jp')):
+            snapshot = self.snapshot(protocol=protocol, target=target)
+            with self.subTest(protocol=protocol, target=target), self.assertRaisesRegex(
+                    manifest.ManifestError, '^protection_policy_scope_mismatch$'):
+                manifest.manifest_from_snapshot(snapshot, protection_review=REVIEW,
+                                                protection_policy=CURRENT_POLICY)
+            self.assertTrue(all('disposition' not in row for row in snapshot['entries']))
+
+    def test_protection_policies_preserve_latest_twenty_thirty_days_and_holds(self):
+        snapshot = self.snapshot(24, protocol='hysteria2')
+        moments = [NOW - dt.timedelta(days=1, milliseconds=index) for index in range(20)]
+        moments += [NOW - dt.timedelta(days=30), NOW - dt.timedelta(days=30, milliseconds=1),
+                    NOW - dt.timedelta(days=40), NOW - dt.timedelta(days=41)]
+        directory = manifest.PRODUCTION_ROOT + '/hysteria2/'
+        for row, moment in zip(snapshot['entries'], moments):
+            row['path'] = directory + filename(moment)
+            row['metadata']['mtimeNs'] = manifest.epoch_ns(moment)
+        snapshot['entries'].sort(key=lambda row: row['path'])
+        snapshot['entriesFingerprint'] = manifest.entries_fingerprint(snapshot['entries'])
+        snapshot['digest'] = manifest.manifest_digest(snapshot)
+        held = directory + filename(moments[-2])
+        results = [manifest.manifest_from_snapshot(json.loads(json.dumps(snapshot)),
+            protection_review={**REVIEW, 'holds': [held]}, protection_policy=policy)
+            for policy in (HISTORICAL_POLICY, CURRENT_POLICY)]
+        historical, current = results
+        self.assertTrue(current['complete'])
+        self.assertEqual(current['policy'], {'keepLatest': 20, 'keepDays': 30, 'mtimeToleranceSeconds': 300})
+        self.assertEqual(current['summary']['candidateCount'], 2)
+        self.assertEqual(current['summary']['protectedCount'], 22)
+        self.assertEqual(current['entries'], historical['entries'])
+        self.assertEqual(current['summary'], historical['summary'])
+        self.assertEqual(current['protectionReview'], historical['protectionReview'])
+        rows = {row['path']: row for row in current['entries']}
+        self.assertEqual(rows[held]['reasons'], ['reviewed_hold'])
+        self.assertEqual(rows[directory + filename(moments[-4])]['reasons'], ['within_30_days'])
+        self.assertEqual(sum('latest_20' in row['reasons'] for row in rows.values()), 20)
+
+    def test_build_rejects_invalid_protection_policy_before_scanning(self):
+        for policy, protocol, reason in (({'id': 'unknown'}, 'hysteria2', 'invalid_protection_policy'),
+                                         (CURRENT_POLICY, 'xray', 'protection_policy_scope_mismatch')):
+            with self.subTest(policy=policy, protocol=protocol), patch.object(
+                    manifest, 'snapshot_metadata', side_effect=AssertionError('unexpected scan')) as scan:
+                with self.assertRaisesRegex(manifest.ManifestError, '^' + reason + '$'):
+                    manifest.build_manifest(root=manifest.PRODUCTION_ROOT, protocol_dirs=[protocol],
+                        allowed_names=['config.json'], target='sgp', observed_at=NOW,
+                        protection_review=REVIEW, protection_policy=policy)
+                scan.assert_not_called()
+
+    def test_build_binds_canonical_protection_policy(self):
+        for policy in (None, HISTORICAL_POLICY, CURRENT_POLICY):
+            with self.subTest(policy=policy), patch.object(manifest, 'snapshot_metadata',
+                    return_value=self.snapshot(protocol='hysteria2')) as scan:
+                result = manifest.build_manifest(root=manifest.PRODUCTION_ROOT, protocol_dirs=['hysteria2'],
+                    allowed_names=['config.json'], target='sgp', observed_at=NOW,
+                    protection_review=REVIEW, protection_policy=policy)
+                scan.assert_called_once()
+                self.assertEqual(result['protectionPolicy'], HISTORICAL_POLICY if policy is None else policy)
+                self.assertEqual(result['digest'], manifest.manifest_digest(result))
 
     def test_pure_manifest_uses_same_entry_list_without_filesystem(self):
         snapshot = self.snapshot()

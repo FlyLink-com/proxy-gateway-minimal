@@ -57,6 +57,7 @@ class ProtectionObserver:
     must not copy the input manifest's review or simply trust a JSON boolean.
     """
     source_digest = None
+    policy_id = 'historical-three-class-v1'
 
     def read_protection(self, scope):
         try:
@@ -138,6 +139,37 @@ def covered_by_hold(path, holds):
     return any(path == hold or path.startswith(hold.rstrip('/') + '/') for hold in holds)
 
 
+def document_protection_policy(document, scope):
+    if document.get('scope') != scope:
+        raise ExecuteError('protection_scope_changed')
+    if 'protectionPolicy' in document and document['protectionPolicy'] is None:
+        raise ExecuteError('invalid_protection_policy')
+    try:
+        return manifest_module.validate_protection_policy(document.get('protectionPolicy'), scope)
+    except manifest_module.ManifestError as error:
+        raise ExecuteError(str(error)) from None
+
+
+def check_observer_policy(document, scope, observer, expected_policy=None):
+    policy = document_protection_policy(document, scope)
+    if expected_policy is not None and policy != expected_policy:
+        raise ExecuteError('protection_policy_changed')
+    if getattr(observer, 'policy_id', None) != policy['id']:
+        raise ExecuteError('observer_policy_mismatch')
+    return policy
+
+
+def check_approval_policy(policy, approval):
+    current_only = policy['id'] == 'current-dependencies-only-v1'
+    if (current_only or 'protectionPolicy' in approval) and approval.get('protectionPolicy') != policy:
+        raise ExecuteError('approval_protection_policy_mismatch')
+    if current_only:
+        if approval.get('irreversibleDisposalAccepted') is not True:
+            raise ExecuteError('irreversible_disposal_not_accepted')
+        if approval.get('retry') is not False:
+            raise ExecuteError('retry_must_be_false')
+
+
 def recognized(path, info, observed):
     match = retention.STAMP.fullmatch(PurePosixPath(path).name)
     if not match:
@@ -167,6 +199,7 @@ def validate_manifest(document, *, directory_bindings=None):
         raise ExecuteError('scope_invalid')
     if names != sorted(retention.ALLOWED_NAMES):
         raise ExecuteError('basename_scope_invalid')
+    protection_policy = document_protection_policy(document, scope)
     validate_review(document.get('protectionReview'))
     observed = date(document.get('observedAt'))
     rows = document.get('entries')
@@ -222,8 +255,9 @@ def validate_manifest(document, *, directory_bindings=None):
     newest = {path for heap in heaps.values() for _, path in heap}
     if any(row['disposition'] == 'candidate' and row['path'] in newest for row in rows):
         raise ExecuteError('candidate_is_latest_protected')
-    return {'scope': scope, 'directories': actual_dirs, 'candidateCount': candidate_count,
-            'directoryBindings': bindings}
+    return {'scope': {**scope, 'protocolDirs': list(dirs), 'allowedNames': list(names)},
+            'directories': actual_dirs, 'candidateCount': candidate_count,
+            'directoryBindings': bindings, 'protectionPolicy': protection_policy}
 
 
 def validate_approval(document, approval, context, current, hostname):
@@ -232,6 +266,10 @@ def validate_approval(document, approval, context, current, hostname):
     target = context['scope']['target']
     if approval.get('manifestDigest') != document['digest'] or approval.get('sourceDigest') != source_digest() or approval.get('target') != target or approval.get('hostname') != HOSTS[target] or hostname != HOSTS[target]:
         raise ExecuteError('approval_binding_mismatch')
+    protection_policy = document_protection_policy(document, context['scope'])
+    if protection_policy != context['protectionPolicy']:
+        raise ExecuteError('protection_policy_changed')
+    check_approval_policy(protection_policy, approval)
     start, end = date(approval.get('notBefore')), date(approval.get('expiresAt'))
     if not start <= current < end or end <= start or date(document['observedAt']) > current:
         raise ExecuteError('approval_expired_or_not_started')
@@ -301,16 +339,20 @@ def directory_immutable_equal(left, right):
     return all(left[key] == right[key] for key in IMMUTABLE_DIR_KEYS)
 
 
-def check_protection(document, scope, observer):
-    review = observer.read_protection(dict(scope))
+def check_protection(document, scope, observer, *, expected_policy=None):
+    policy = check_observer_policy(document, scope, observer, expected_policy)
+    review = observer.read_protection({key: list(value) if isinstance(value, list) else value
+                                      for key, value in scope.items()})
+    check_observer_policy(document, scope, observer, policy)
     validate_review(review)
     if review != document['protectionReview']:
         raise ExecuteError('protection_reference_changed')
     return review
 
 
-def fresh_check(document, scope, expected_dirs, deleted, observer):
-    review = check_protection(document, scope, observer)
+def fresh_check(document, scope, expected_dirs, deleted, observer, *, expected_policy=None):
+    policy = check_observer_policy(document, scope, observer, expected_policy)
+    review = check_protection(document, scope, observer, expected_policy=policy)
     snapshot = manifest_module.snapshot_metadata(scope, mode='fingerprint')
     if snapshot.get('complete') is not True or snapshot.get('blockers') != [] or snapshot.get('scope') != scope:
         raise ExecuteError('fresh_scope_not_complete')
@@ -320,8 +362,12 @@ def fresh_check(document, scope, expected_dirs, deleted, observer):
     expected = manifest_module.entries_fingerprint(row for row in document['entries'] if row['path'] not in deleted)
     if snapshot.get('entriesFingerprint') != expected:
         raise ExecuteError('entry_set_or_metadata_changed')
-    after = observer.read_protection(dict(scope))
-    validate_review(after)
+    try:
+        after = check_protection(document, scope, observer, expected_policy=policy)
+    except ExecuteError as error:
+        if str(error) == 'protection_reference_changed':
+            raise ExecuteError('protection_reference_changed_during_snapshot') from None
+        raise
     if after != review:
         raise ExecuteError('protection_reference_changed_during_snapshot')
 
@@ -371,15 +417,19 @@ def execute(document, approval=None, *, observer=None, apply=False, batch_size=1
         if not isinstance(bindings, dict):
             raise ExecuteError('directory_bindings_invalid')
     context = validate_manifest(document, directory_bindings=bindings)
+    protection_policy = context['protectionPolicy']
     if not apply:
         return {'state': 'dry_run', 'candidateCount': context['candidateCount'],
-                'productionObserverWired': False, 'deletedCount': 0, 'retry': False}
+                'productionObserverWired': False, 'deletedCount': 0, 'retry': False,
+                'protectionPolicy': dict(protection_policy)}
     if type(batch_size) is not int or not 1 <= batch_size <= 10000:
         raise ExecuteError('batch_size_invalid')
     rows = validate_approval(document, approval, context, clock(), hostname())
     if not isinstance(observer, ProtectionObserver) or observer.source_digest != approval['observerSourceDigest']:
         raise ExecuteError('production_protection_observer_not_wired')
     def directory_gate():
+        check_observer_policy(document, context['scope'], observer, protection_policy)
+        check_approval_policy(protection_policy, approval)
         check_directory_bindings(approval, context['directoryBindings'])
     directory_gate()
     receipt = Receipt(approval['receiptPath'])  # exclusive claim BEFORE any mutation
@@ -388,12 +438,14 @@ def execute(document, approval=None, *, observer=None, apply=False, batch_size=1
     expected_dirs = dict(context['directories'])
     def fresh_scope():
         directory_gate()
-        fresh_check(document, context['scope'], expected_dirs, deleted, observer)
+        fresh_check(document, context['scope'], expected_dirs, deleted, observer,
+                    expected_policy=protection_policy)
         directory_gate()
     try:
         receipt.append({'event': 'started', 'runId': approval['runId'], 'manifestDigest': document['digest'],
                         'sourceDigest': approval['sourceDigest'], 'target': approval['target'],
-                        'approvedCount': len(rows), 'retry': False, 'at': clock().isoformat()})
+                        'approvedCount': len(rows), 'retry': False, 'at': clock().isoformat(),
+                        'protectionPolicy': dict(protection_policy)})
         fresh_scope()
         parent = private_directory(QUARANTINE_PARENT)
         try:
@@ -432,7 +484,7 @@ def execute(document, approval=None, *, observer=None, apply=False, batch_size=1
                     validate_metadata(original)
                     if original != rows[path]['metadata']:
                         raise ExecuteError('candidate_metadata_changed')
-                    check_protection(document, context['scope'], observer)
+                    check_protection(document, context['scope'], observer, expected_policy=protection_policy)
                     receipt.append({'event': 'move_intent', 'path': path, 'slot': slot, 'metadata': original})
                     directory_gate()
                     if not date(approval['notBefore']) <= clock() < date(approval['expiresAt']):
@@ -458,7 +510,7 @@ def execute(document, approval=None, *, observer=None, apply=False, batch_size=1
                     receipt.append({'event': 'delete_intent', 'path': path, 'slot': slot})
                     if clock() >= date(approval['expiresAt']):
                         raise ExecuteError('approval_expired_during_execution')
-                    check_protection(document, context['scope'], observer)
+                    check_protection(document, context['scope'], observer, expected_policy=protection_policy)
                     directory_gate()
                     if metadata(os.stat(slot, dir_fd=quarantine_fd, follow_symlinks=False)) != moved:
                         raise ExecuteError('quarantined_metadata_changed')
@@ -475,14 +527,16 @@ def execute(document, approval=None, *, observer=None, apply=False, batch_size=1
             receipt.append({'event': 'batch_verified', 'deletedCount': len(deleted), 'directories': expected_dirs})
         fresh_scope()
         state = 'completed'
-        receipt.append({'event': 'completed', 'deletedCount': len(deleted), 'at': clock().isoformat(), 'retry': False})
+        receipt.append({'event': 'completed', 'deletedCount': len(deleted), 'at': clock().isoformat(),
+                        'retry': False, 'protectionPolicy': dict(protection_policy)})
     except Exception as error:
         state = 'stopped_partial_or_unknown'
         try:
             receipt.append({'event': state, 'errorClass': type(error).__name__,
                             'errorCode': 'execution_refused' if isinstance(error, ExecuteError) else 'io_or_observer_error',
                             'deletedCount': len(deleted), 'quarantined': quarantined,
-                            'retry': False, 'at': clock().isoformat()})
+                            'retry': False, 'at': clock().isoformat(),
+                            'protectionPolicy': dict(protection_policy)})
         except Exception:
             state = 'receipt_write_failed_result_unknown'
     finally:
@@ -490,7 +544,7 @@ def execute(document, approval=None, *, observer=None, apply=False, batch_size=1
             os.close(quarantine_fd)
         receipt.close()
     return {'state': state, 'deletedCount': len(deleted), 'quarantinedCount': len(quarantined),
-            'retry': False, 'automaticRestore': False}
+            'retry': False, 'automaticRestore': False, 'protectionPolicy': dict(protection_policy)}
 
 
 def bounded_json(path, limit):

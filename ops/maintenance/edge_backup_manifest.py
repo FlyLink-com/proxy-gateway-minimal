@@ -111,6 +111,24 @@ def _scope(scope):
 validate_scope = _scope
 
 
+def validate_protection_policy(value, scope):
+    """Normalize the policy; callers use None only for a known absent field."""
+    historical = {'id': 'historical-three-class-v1'}
+    current = {'id': 'current-dependencies-only-v1',
+               'historicalCoverage': 'not_assessed', 'extraHolds': 'declared_only'}
+    if value is None:
+        return historical
+    if not isinstance(value, dict) or any(type(item) is not str for item in value.values()):
+        raise ManifestError('invalid_protection_policy')
+    if value == historical:
+        return historical
+    if value != current:
+        raise ManifestError('invalid_protection_policy')
+    if not isinstance(scope, dict) or scope.get('target') != 'sgp' or scope.get('protocolDirs') != ['hysteria2']:
+        raise ManifestError('protection_policy_scope_mismatch')
+    return current
+
+
 def _budget(max_entries, max_bytes, max_seconds, max_memory_bytes):
     for value, maximum in ((max_entries, MAX_ENTRIES), (max_bytes, MAX_BYTES), (max_memory_bytes, MAX_MEMORY_BYTES)):
         if type(value) is not int or not 1 <= value <= maximum:
@@ -327,17 +345,19 @@ def _recognize(row, allowed, now_ns):
 
 
 def build_manifest(*, root, protocol_dirs, allowed_names, target, observed_at, protection_review,
-                   max_entries=MAX_ENTRIES, max_bytes=MAX_BYTES, max_seconds=MAX_SECONDS,
+                   protection_policy=None, max_entries=MAX_ENTRIES, max_bytes=MAX_BYTES, max_seconds=MAX_SECONDS,
                    max_memory_bytes=MAX_MEMORY_BYTES):
     """Exact private manifest; review is mandatory, including reviewed-empty holds."""
     scope = _scope({'root': root, 'protocolDirs': protocol_dirs, 'allowedNames': allowed_names, 'target': target})
+    protection_policy = validate_protection_policy(protection_policy, scope)
     review = _review(protection_review, scope)  # Before any filesystem access.
     _date(observed_at)
     deadline = time.monotonic() + max_seconds
     snapshot = snapshot_metadata(scope, observed_at=observed_at, max_entries=max_entries,
         max_bytes=max_bytes, max_seconds=max_seconds, max_memory_bytes=max_memory_bytes)
     remaining = max(0.000001, deadline - time.monotonic())
-    return manifest_from_snapshot(snapshot, protection_review=review, max_seconds=remaining)
+    return manifest_from_snapshot(snapshot, protection_review=review,
+                                  protection_policy=protection_policy, max_seconds=remaining)
 
 
 def _validate_snapshot(snapshot):
@@ -400,7 +420,7 @@ def _validate_metadata(metadata):
         raise ManifestError('snapshot_metadata_invalid')
 
 
-def manifest_from_snapshot(snapshot, *, protection_review, max_seconds=MAX_SECONDS):
+def manifest_from_snapshot(snapshot, *, protection_review, protection_policy=None, max_seconds=MAX_SECONDS):
     """Pure, cross-platform policy application to a verified full snapshot.
 
     Mutates the supplied entry dictionaries in place to avoid a second large
@@ -410,6 +430,7 @@ def manifest_from_snapshot(snapshot, *, protection_review, max_seconds=MAX_SECON
     _budget(MAX_ENTRIES, MAX_BYTES, max_seconds, MAX_MEMORY_BYTES)
     deadline = time.monotonic() + max_seconds
     scope, observed_at = _validate_snapshot(snapshot)
+    protection_policy = validate_protection_policy(protection_policy, scope)
     review = _review(protection_review, scope)
     observed = _date(observed_at)
     root = scope['root']
@@ -464,6 +485,7 @@ def manifest_from_snapshot(snapshot, *, protection_review, max_seconds=MAX_SECON
     result = {'schemaVersion': 1, 'type': 'edge-backup-retention-manifest',
               'state': 'candidate-not-approved', 'deletionApproved': False,
               'scope': scope, 'observedAt': observed, 'policy': dict(POLICY),
+              'protectionPolicy': protection_policy,
               'complete': not blockers, 'protectionReview': review,
               'directories': snapshot['directories'], 'entries': rows,
               'entriesFingerprint': snapshot['entriesFingerprint'],

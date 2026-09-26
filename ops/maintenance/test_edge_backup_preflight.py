@@ -1,6 +1,7 @@
 import datetime as dt
 import stat
 import unittest
+from unittest import mock
 
 import edge_backup_execute as execute
 import edge_backup_preflight as preflight
@@ -36,33 +37,103 @@ class PreflightTests(unittest.TestCase):
         self.bindings = {item['path']: {key: item['identity'][key] for key in execute.IMMUTABLE_DIR_KEYS}
                          for item in self.document['directories']}
 
+    def observer(self):
+        observer = mock.Mock(spec=['read_protection', 'policy_id'])
+        observer.policy_id = 'historical-three-class-v1'
+        observer.read_protection.return_value = dict(self.document['protectionReview'])
+        return observer
+
     def test_dry_run_is_not_this_preflight(self):
         dry = execute.execute(self.document, {'directoryBindings': self.bindings})
         self.assertEqual(dry['state'], 'dry_run')
         self.assertFalse(dry['productionObserverWired'])
         self.assertNotIn('serviceReport', dry)
 
-    def test_mismatch_refuses_without_deletion_count(self):
-        refused = row('mismatch', 'script_binding_mismatch')
-        result = preflight.preflight(self.document, [row(), refused], directory_bindings=self.bindings)
-        self.assertEqual(result['state'], 'preflight_refused')
+    def test_mismatch_and_unavailable_refuse_with_or_without_observer(self):
+        for status in ('mismatch', 'unavailable'):
+            for observer in (None, self.observer()):
+                with self.subTest(status=status, observer=observer is not None):
+                    refused = row(status, 'script_binding_mismatch')
+                    result = preflight.preflight(self.document, [row(), refused],
+                                                 observer=observer, directory_bindings=self.bindings)
+                    self.assertEqual(result['state'], 'preflight_refused')
+                    self.assertEqual((result['deletedCount'], result['movedCount']), (0, 0))
+                    self.assertEqual(result['blockingCount'], 1)
+                    self.assertEqual(result['candidateCount'], execute.validate_manifest(
+                        self.document, directory_bindings=self.bindings)['candidateCount'])
+
+    def test_service_match_without_protection_observer_is_incomplete(self):
+        result = preflight.preflight(self.document, [row()], directory_bindings=self.bindings)
+        self.assertEqual(result['state'], 'preflight_incomplete')
+        self.assertFalse(result['productionObserverWired'])
+        self.assertEqual(result['blockingCount'], 0)
         self.assertEqual((result['deletedCount'], result['movedCount']), (0, 0))
-        self.assertEqual(result['candidateCount'], execute.validate_manifest(
-            self.document, directory_bindings=self.bindings)['candidateCount'])
+
+    def test_service_match_requires_successful_existing_protection_check(self):
+        observer = self.observer()
+        result = preflight.preflight(self.document, [row()],
+                                     observer=observer, directory_bindings=self.bindings)
+        self.assertEqual(result['state'], 'preflight_matched')
+        self.assertTrue(result['productionObserverWired'])
+        observer.read_protection.assert_called_once_with(self.document['scope'])
+        self.assertEqual((result['deletedCount'], result['movedCount']), (0, 0))
+
+    def test_only_inapplicable_rules_are_incomplete_with_or_without_observer(self):
+        for observer in (None, self.observer()):
+            with self.subTest(observer=observer is not None):
+                result = preflight.preflight(self.document, [row('not_evaluated', 'rule_not_applicable')],
+                                             observer=observer, directory_bindings=self.bindings)
+                self.assertEqual(result['state'], 'preflight_incomplete')
+                self.assertEqual(result['blockingCount'], 0)
+
+    def test_missing_or_changed_protection_evidence_still_fails_closed(self):
+        for review, reason in (({'complete': False}, 'protection_review_incomplete'),
+                               ({**self.document['protectionReview'], 'evidenceDigest': 'c' * 64},
+                                'protection_reference_changed')):
+            with self.subTest(reason=reason):
+                observer = self.observer()
+                observer.read_protection.return_value = review
+                with self.assertRaisesRegex(execute.ExecuteError, reason):
+                    preflight.preflight(self.document, [row()],
+                                        observer=observer, directory_bindings=self.bindings)
+        observer = self.observer()
+        observer.read_protection.side_effect = execute.ExecuteError('production_protection_observer_not_wired')
+        with self.assertRaisesRegex(execute.ExecuteError, 'production_protection_observer_not_wired'):
+            preflight.preflight(self.document, [row()], observer=observer, directory_bindings=self.bindings)
 
     def test_not_evaluated_is_incomplete_and_inapplicable_is_not_a_failure(self):
         pending = row('not_evaluated', 'read_not_in_this_pass')
         self.assertEqual(preflight.preflight(
-            self.document, [row(), pending], directory_bindings=self.bindings)['state'],
+            self.document, [row(), pending], observer=self.observer(), directory_bindings=self.bindings)['state'],
             'preflight_incomplete')
         skipped = row('not_evaluated', 'rule_not_applicable')
         self.assertEqual(preflight.preflight(
-            self.document, [row(), skipped], directory_bindings=self.bindings)['state'],
+            self.document, [row(), skipped], observer=self.observer(), directory_bindings=self.bindings)['state'],
             'preflight_matched')
 
     def test_invalid_report_never_becomes_ready(self):
         with self.assertRaisesRegex(execute.ExecuteError, 'service_report_invalid'):
             preflight.preflight(self.document, [{'result': 'surprise'}], directory_bindings=self.bindings)
+
+    def test_new_policy_is_reported_and_requires_the_same_observer_policy(self):
+        policy = {'id': 'current-dependencies-only-v1', 'historicalCoverage': 'not_assessed',
+                  'extraHolds': 'declared_only'}
+        self.document['protectionPolicy'] = policy
+        self.document['digest'] = execute.canonical_digest(self.document)
+        observer = self.observer()
+        with self.assertRaisesRegex(execute.ExecuteError, 'observer_policy_mismatch'):
+            preflight.preflight(self.document, [row()], observer=observer, directory_bindings=self.bindings)
+        observer.read_protection.assert_not_called()
+        observer.policy_id = policy['id']
+        result = preflight.preflight(self.document, [row()], observer=observer, directory_bindings=self.bindings)
+        self.assertEqual(result['state'], 'preflight_matched')
+        self.assertEqual(result['protectionPolicy'], policy)
+        self.assertEqual(preflight.preflight(self.document, [row()],
+                         directory_bindings=self.bindings)['state'], 'preflight_incomplete')
+
+    def test_default_policy_is_explicit_in_preflight_output(self):
+        result = preflight.preflight(self.document, [row()], directory_bindings=self.bindings)
+        self.assertEqual(result['protectionPolicy'], {'id': 'historical-three-class-v1'})
 
 
 class ReportTests(unittest.TestCase):
