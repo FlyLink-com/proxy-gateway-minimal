@@ -91,7 +91,6 @@
 import { createHash } from "node:crypto";
 import {
   closeSync,
-  existsSync,
   fstatSync,
   fsyncSync,
   lstatSync,
@@ -249,9 +248,6 @@ function fsAnchorFor(rootAbs) {
 function verifyAncestorChain(rootAbs, expectedUid, { enforceOwnedRoot = false } = {}) {
   const anchor = fsAnchorFor(rootAbs);
   if (anchor === rootAbs) return; // no ancestors to walk
-  const rootWithSep = rootAbs.endsWith(pathSep) || rootAbs === pathSep
-    ? rootAbs
-    : rootAbs + pathSep;
   if (!rootAbs.startsWith(anchor.endsWith(pathSep) ? anchor : anchor + pathSep)
     && rootAbs !== anchor) {
     const err = new Error(

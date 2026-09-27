@@ -139,6 +139,20 @@ export function readFullMeteringJournal({ directory, context }) {
   checkContext(context);
   return read(directory, "checkpoint.json", context);
 }
+export function assertFullMeteringJournalNoPending({ directory }) {
+  protectedPath(directory, true);
+  if (existsSync(join(directory, "pending.json"))) fail("full_metering_pending_recovery_required");
+}
+// Retain the exact logical preimage before a material transition creates a WAL
+// intent. Never overwrite it. This is private audit evidence, not a rollback DB.
+export function archiveFullMeteringMaterialCheckpoint({ directory, context, checkpoint }) {
+  const digest = fullMeteringDigest(checkpoint), name = `material-before-${digest}.json`;
+  if (fullMeteringDigest(readFullMeteringJournal({ directory, context })) !== digest) fail("full_metering_checkpoint_changed");
+  if (existsSync(join(directory, name))) {
+    if (fullMeteringDigest(read(directory, name, context)) !== digest) fail("full_metering_material_archive_changed");
+  } else write(directory, name, context, checkpoint, true);
+  return name;
+}
 export function commitFullMeteringJournal({ directory, context, previousCheckpoint, nextCheckpoint, samples, applySamples, onStage = () => {} }) {
   if (typeof applySamples !== "function" || !Array.isArray(samples)) fail("full_metering_batch_invalid");
   if (existsSync(join(directory, "pending.json"))) fail("full_metering_pending_recovery_required");

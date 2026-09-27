@@ -1,6 +1,6 @@
 # Multi-Agent Operating Model
 
-Last updated: 2026-09-07, America/Los_Angeles.
+Last updated: 2026-09-26, America/Los_Angeles.
 
 ```yaml
 document_metadata:
@@ -8,7 +8,7 @@ document_metadata:
   lifecycle: active
   authority_scope: multi_agent_operating_model
   superseded_by: null
-  last_verified_at: 2026-09-07
+  last_verified_at: 2026-09-26
   production_authority: false
 ```
 
@@ -72,6 +72,21 @@ production operation Risk C. A small addition to an existing project does not
 require repeating the whole project lifecycle; its actual A/B/C boundary still
 applies. This section grants no execution authority and adds no validation lane.
 
+### Bound The Task And Evidence Scope
+
+- Use the existing task packet to state the target, paths, allowed actions,
+  evidence scope, and non-goals. Retain any execution window or evidence budget
+  already required by the authorization or runbook; do not invent new ones.
+  Resolve scope from the original authorization; do not silently expand a
+  bounded check into a complete historical audit or extend an approval window.
+- Identify the minimum missing evidence needed for the next decision and read
+  it only within the authorized scope. If a required boundary remains unclear,
+  stop the dependent action and state the missing decision. Independent,
+  already-authorized work continues within its own valid boundary.
+- Historical records establish their dated observations, not current facts.
+  Their age alone does not release retention or rollback holds; those holds
+  remain subject to the applicable contract and evidence requirements.
+
 ### Continue The Remaining Work
 
 - On resumption, identify the requested outcome, allowed actions, completed
@@ -120,6 +135,43 @@ applies. This section grants no execution authority and adds no validation lane.
   Retain exact commands/results and evidence links in the existing PR or
   execution record; do not generate duplicate role reports or a new evidence
   store. Follow `docs/VALIDATION_BASELINE.md` for the applicable checks.
+
+### Validate The Actual Execution Path
+
+- Bind validation to the exact source or file digest, input identity,
+  dependencies, environment, and allowed actions for every executed layer:
+  core, wrapper, parser, guard, and controller. Core CI does not establish
+  coverage for a new or changed local script outside that tested source.
+- For changed Linux command-output parsers or guards, cover observed output
+  shapes and known failures using real redacted output from authorized local
+  validation or retained evidence. Synthetic fixtures alone do not prove that
+  compatibility. This does not require another production read; obtaining new
+  host evidence retains its existing gate.
+- Failure receipts identify the failed boundary using the existing contract's
+  error-category and phase fields, without raw output, config, credentials, or
+  customer data. If the contract has no such fields, describe that boundary in
+  the existing execution record; do not introduce a universal receipt schema.
+  A rejection stops the affected Gate under `RELEASE_MANIFEST.md`. For a tooling
+  defect, add a failing local reproduction before repairing and testing within
+  authorized scope; a legitimate refusal is not a reason to relax its guard.
+- A local fix does not reopen the Gate or authorize changing a frozen tool.
+  Do not replay an operation, rename an attempt to retry it, bypass a guard, or
+  treat an unknown result as permission to continue. Use the existing successor
+  Gate and approval rules when applicable.
+- Reuse verified evidence whose bindings remain unchanged; validate changed
+  layers and their integration effects. Preserve required full baselines and
+  fresh checks without repeating unrelated completed validation.
+
+### Report Recovery Within Its Proven Boundary
+
+- State service recovery and validation from ordinary business activity with
+  their observed scope and time. Report long-term historical reconciliation
+  and pending retention work separately, with their remaining evidence gaps.
+- Recovery does not prove complete accounting, identity health, or retention
+  clearance. Keep those states pending where required and do not claim that
+  everything is healthy. Unrelated long-term work does not invalidate recovery
+  already verified within its stated boundary; relevant failed checks still
+  block dependent claims and actions under the existing contract and Gate.
 
 ## Historical Heavyweight Specialist Profiles
 
