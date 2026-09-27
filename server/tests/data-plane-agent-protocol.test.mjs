@@ -266,6 +266,29 @@ test("apply receipt validates runtime facts and redacted digest fields", () => {
   assert.equal(result.reasonCode, "runtime_applied");
   assert.deepEqual(result.materialDigests, ["sha256:aaaaaaaaaaaaaaaa"]);
   assert.equal(result.redacted, true);
+  assert.equal(result.backupRef, undefined);
+  assert.equal(result.rollbackRef, undefined);
+});
+
+test("apply receipt keeps safe backup basenames and rejects path or dot refs", () => {
+  const backupRef = "config.yaml.2026_06_08T12_00_00_000Z.bak";
+  const rollbackRef = "config.yaml.rollback.bak";
+  const result = validateDataPlaneApplyReceipt(receipt({ backupRef, rollbackRef }), {
+    expectedNodeRef: "node-sgp-a",
+    allowedChannelRefs: ["channel-sgp-a-hy2"]
+  });
+  assert.equal(result.backupRef, backupRef);
+  assert.equal(result.rollbackRef, rollbackRef);
+
+  for (const invalid of ["../config.yaml", "backup/config.yaml", ".", "..", "backup ref"]) {
+    assert.throws(
+      () => validateDataPlaneApplyReceipt(receipt({ backupRef: invalid }), {
+        expectedNodeRef: "node-sgp-a",
+        allowedChannelRefs: ["channel-sgp-a-hy2"]
+      }),
+      (error) => error.code === "validation_error"
+    );
+  }
 });
 
 test("apply receipt rejects stale generation and raw subscription material", () => {
