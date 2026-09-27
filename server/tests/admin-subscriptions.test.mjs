@@ -13,6 +13,7 @@ import { createTrafficAccountingService } from "../services/platform/traffic-acc
 import { listen } from "./helpers/listen.mjs";
 
 const RAW_TOKEN = "pgsub_route_visible_token";
+const SUBSCRIPTION_WEBSITE = "https://www.gccwebos.com/";
 
 function sampleProxyConfig() {
   return {
@@ -153,7 +154,7 @@ function fakeState(service = fakeService(), subscriptionKey = "service") {
   };
 }
 
-function realSubscriptionContext() {
+function realSubscriptionContext({ nowFn = () => new Date("2026-05-21T00:00:00.000Z") } = {}) {
   const database = new Database(":memory:");
   const repository = createSubscriptionRepository({ database });
   const proxyConfig = sampleProxyConfig();
@@ -161,7 +162,7 @@ function realSubscriptionContext() {
     repository,
     proxyConfig,
     publicSubscriptionBaseUrl: "https://gateway.example.com",
-    nowFn: () => new Date("2026-05-21T00:00:00.000Z"),
+    nowFn,
     tokenFactory: () => ({
       rawToken: RAW_TOKEN,
       tokenHash: hashSubscriptionToken(RAW_TOKEN),
@@ -426,6 +427,7 @@ test("tenant subscription token fetches V2 Clash YAML and disabled tenants are r
 
     const subscription = await fetch(`${baseUrl}/sub/clash.yaml?token=${RAW_TOKEN}`);
     assert.equal(subscription.status, 200);
+    assert.equal(subscription.headers.get("profile-web-page-url"), SUBSCRIPTION_WEBSITE);
     assert.match(subscription.headers.get("content-type"), /application\/x-yaml/);
     assert.equal(
       subscription.headers.get("subscription-userinfo"),
@@ -481,6 +483,7 @@ test("tenant subscription token fetches V2 Clash YAML and disabled tenants are r
 
     const blocked = await fetch(`${baseUrl}/sub/clash.yaml?token=${RAW_TOKEN}`);
     assert.equal(blocked.status, 403);
+    assert.equal(blocked.headers.get("profile-web-page-url"), null);
     assert.deepEqual(await blocked.json(), { error: "Subscription disabled" });
   } finally {
     server.close();
@@ -621,6 +624,79 @@ test("tenant subscription headers include traffic rollup from the control store 
   }
 });
 
+test("successful subscription routes advertise the public website without lifecycle metadata", async () => {
+  const resolved = {
+    ok: true,
+    tenant: { id: "tenant_no_expiry", status: "active" },
+    proxyConfig: sampleProxyConfig()
+  };
+  const service = {
+    ...fakeService(),
+    resolveSubscriptionToken: () => resolved,
+    resolveSubscriptionArtifact: () => resolved
+  };
+  const { server, baseUrl } = await listen(createApp(fakeState(service)));
+  try {
+    for (const path of [
+      `/sub/clash.yaml?token=${RAW_TOKEN}`,
+      "/sub/a/synthetic-artifact.yaml",
+      "/sub/a/synthetic-artifact/profile.yaml",
+      "/sub/a/synthetic-artifact/provider.yaml"
+    ]) {
+      const response = await fetch(`${baseUrl}${path}`, {
+        headers: { host: "untrusted.example.test" }
+      });
+      assert.equal(response.status, 200, path);
+      assert.equal(response.headers.get("profile-web-page-url"), SUBSCRIPTION_WEBSITE, path);
+      assert.equal(response.headers.get("subscription-userinfo"), null, path);
+      assert.equal(response.headers.get("x-subscription-expires-at"), null, path);
+      assert.match(response.headers.get("content-type"), /application\/x-yaml/);
+      assert.doesNotMatch(await response.text(), /profile-web-page-url|www\.gccwebos\.com/);
+    }
+  } finally {
+    server.close();
+  }
+});
+
+test("unauthorized and expired subscriptions do not advertise a website", async () => {
+  let now = new Date("2026-05-21T00:00:00.000Z");
+  const context = realSubscriptionContext({ nowFn: () => now });
+  const { server, baseUrl } = await listen(createApp(fakeState(context.service)));
+  try {
+    for (const path of ["/sub/clash.yaml", "/sub/clash.yaml?token=unknown-test-token"]) {
+      const denied = await fetch(`${baseUrl}${path}`);
+      assert.equal(denied.status, 401);
+      assert.equal(denied.headers.get("profile-web-page-url"), null);
+      await denied.text();
+    }
+    const created = await requestJson(baseUrl, "/api/admin/subscriptions", {
+      method: "POST",
+      body: { displayName: "Customer A", expiresAt: "2026-06-21T00:00:00.000Z" }
+    });
+    assert.equal(created.response.status, 201);
+    const artifact = await requestJson(baseUrl, "/api/admin/subscriptions/tenant_real_1/artifacts", {
+      method: "POST"
+    });
+    assert.equal(artifact.response.status, 201);
+    const artifactPath = new URL(artifact.body.subscriptionUrl).pathname.replace(/\.yaml$/i, "");
+    now = new Date("2026-06-22T00:00:00.000Z");
+    for (const path of [
+      `/sub/clash.yaml?token=${RAW_TOKEN}`,
+      artifactPath,
+      `${artifactPath}/profile.yaml`,
+      `${artifactPath}/provider.yaml`
+    ]) {
+      const expired = await fetch(`${baseUrl}${path}`);
+      assert.equal(expired.status, 403, path);
+      assert.equal(expired.headers.get("profile-web-page-url"), null, path);
+      assert.deepEqual(await expired.json(), { error: "Subscription expired" });
+    }
+  } finally {
+    server.close();
+    context.close();
+  }
+});
+
 test("opaque artifact route refreshes V2 Clash YAML without accepting query-token fallback", async () => {
   const context = realSubscriptionContext();
   const { server, baseUrl } = await listen(createApp(fakeState(context.service)));
@@ -639,6 +715,7 @@ test("opaque artifact route refreshes V2 Clash YAML without accepting query-toke
 
     const subscription = await fetch(`${baseUrl}${artifactPath}`);
     assert.equal(subscription.status, 200);
+    assert.equal(subscription.headers.get("profile-web-page-url"), SUBSCRIPTION_WEBSITE);
     assert.equal(subscription.headers.get("x-subscription-expires-at"), "2026-06-21T00:00:00.000Z");
     const yaml = await subscription.text();
     assert.match(yaml, /^# globalcircle-subscription-status: "active"/);
@@ -657,6 +734,7 @@ test("opaque artifact route refreshes V2 Clash YAML without accepting query-toke
 
     const fallback = await fetch(`${baseUrl}/sub/a/missing-artifact.yaml?token=${RAW_TOKEN}`);
     assert.equal(fallback.status, 404);
+    assert.equal(fallback.headers.get("profile-web-page-url"), null);
     assert.deepEqual(await fallback.json(), { error: "Not found" });
 
     const blank = await fetch(`${baseUrl}/sub/a/.yaml`);
@@ -690,6 +768,7 @@ test("opaque artifact provider-mode routes split profile and provider YAML", asy
     const artifactPath = new URL(artifact.body.subscriptionUrl).pathname.replace(/\.yaml$/i, "");
     const profile = await fetch(`${baseUrl}${artifactPath}/profile.yaml`);
     assert.equal(profile.status, 200);
+    assert.equal(profile.headers.get("profile-web-page-url"), SUBSCRIPTION_WEBSITE);
     assert.match(profile.headers.get("content-type"), /application\/x-yaml/);
     assert.equal(profile.headers.get("x-subscription-expires-at"), "2026-06-21T00:00:00.000Z");
     const profileYaml = await profile.text();
@@ -702,6 +781,7 @@ test("opaque artifact provider-mode routes split profile and provider YAML", asy
 
     const provider = await fetch(`${baseUrl}${artifactPath}/provider.yaml`);
     assert.equal(provider.status, 200);
+    assert.equal(provider.headers.get("profile-web-page-url"), SUBSCRIPTION_WEBSITE);
     assert.match(provider.headers.get("content-type"), /application\/x-yaml/);
     assert.equal(provider.headers.get("x-subscription-expires-at"), "2026-06-21T00:00:00.000Z");
     const providerYaml = await provider.text();
@@ -716,6 +796,7 @@ test("opaque artifact provider-mode routes split profile and provider YAML", asy
 
     const missing = await fetch(`${baseUrl}/sub/a/missing-artifact/provider.yaml?token=${RAW_TOKEN}`);
     assert.equal(missing.status, 404);
+    assert.equal(missing.headers.get("profile-web-page-url"), null);
     assert.deepEqual(await missing.json(), { error: "Not found" });
   } finally {
     server.close();
@@ -754,6 +835,7 @@ test("rotated opaque artifact blocks profile provider and bare routes", async ()
     ]) {
       const blocked = await fetch(`${baseUrl}${path}`);
       assert.equal(blocked.status, 410);
+      assert.equal(blocked.headers.get("profile-web-page-url"), null);
       assert.deepEqual(await blocked.json(), { error: "Subscription artifact rotated" });
     }
 
@@ -761,6 +843,19 @@ test("rotated opaque artifact blocks profile provider and bare routes", async ()
     const replacementProfile = await fetch(`${baseUrl}${replacementPath}/profile.yaml`);
     assert.equal(replacementProfile.status, 200);
     assert.doesNotMatch(await replacementProfile.text(), /pgsub_route_visible|tenant_real_1/);
+
+    const revoked = await requestJson(
+      baseUrl,
+      `/api/admin/subscription-artifacts/${rotated.body.replacement.id}/revoke`,
+      { method: "POST" }
+    );
+    assert.equal(revoked.response.status, 200);
+    for (const path of [replacementPath, `${replacementPath}/profile.yaml`, `${replacementPath}/provider.yaml`]) {
+      const blocked = await fetch(`${baseUrl}${path}`);
+      assert.equal(blocked.status, 410);
+      assert.equal(blocked.headers.get("profile-web-page-url"), null);
+      assert.deepEqual(await blocked.json(), { error: "Subscription artifact revoked" });
+    }
   } finally {
     server.close();
     context.close();

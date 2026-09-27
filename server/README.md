@@ -30,6 +30,17 @@ Run the focused `node --test server/tests/<name>.test.mjs` command for the
 changed boundary, then `npm test` and
 `git diff --check origin/master...HEAD`.
 
+## Subscription website metadata
+
+Successful Clash YAML responses from `routes/subscription.mjs` include
+`Profile-Web-Page-Url: https://www.gccwebos.com/` for compatible clients' website
+entry. This fixed public URL is independent of the request host, subscription
+source and lifecycle metadata. It does not change YAML, credentials, usage or
+expiry; rejected subscription requests do not receive the header. The client
+controls where the entry appears and must refresh the remote subscription to
+receive updated metadata. This source contract does not establish deployment
+or acceptance in every Clash client/version.
+
 ## Release identity
 
 `CONTROL_PLANE_RELEASE_IDENTITY_PATH` is optional at the application boundary.
