@@ -26,6 +26,9 @@ the issue's done criteria are fully satisfied.
 
 ## Risk
 
+<!-- If sequencing matters, add Priority: P0/P1/P2 and a brief reason here.
+Otherwise omit it. Priority does not change Risk or grant approval. -->
+
 - Risk: A / B / C
 - Process:
 - Expected PR count:
@@ -53,7 +56,12 @@ raw config, database rows, or customer data. See docs/IDENTITY_LIFECYCLE.md.
 
 ## Validation
 
-<!-- Check only what applies and replace placeholders with actual results. -->
+<!-- Check only what applies and replace placeholders with actual results.
+Separate new runs, verified reused evidence, and unverified items, with their
+source/time/scope where relevant. Keep Source/Artifact/Release/Deployment/Runtime
+evidence distinct; add task-specific business acceptance only when applicable.
+For an execution packet, core CI alone does not validate changed wrappers,
+parsers, guards or controllers. Use this section, not a second status report. -->
 
 - [ ] `git diff --check origin/master...HEAD`
 - [ ] `npm run project-state:check` (required for `project-state/` or checker changes)
