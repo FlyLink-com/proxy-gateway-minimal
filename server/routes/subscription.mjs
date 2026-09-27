@@ -117,6 +117,7 @@ export function subscriptionRoutes(state, options = {}) {
   function sendSubscriptionYaml(res, lifecycle, yaml) {
     applySubscriptionLifecycleHeaders(res, lifecycle);
     res
+      .set("Profile-Web-Page-Url", "https://www.gccwebos.com/")
       .type("application/x-yaml; charset=utf-8")
       .send(yaml);
   }
