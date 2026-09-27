@@ -1,6 +1,6 @@
 # Documentation Index
 
-Last updated: 2026-08-30, America/Los_Angeles.
+Last updated: 2026-09-23, America/Los_Angeles.
 
 ```yaml
 document_metadata:
@@ -8,7 +8,7 @@ document_metadata:
   lifecycle: active
   authority_scope: documentation_navigation
   superseded_by: null
-  last_verified_at: 2026-08-30
+  last_verified_at: 2026-09-23
   production_authority: false
 ```
 
@@ -77,6 +77,7 @@ release, deployment, runtime, or production authority.
 
 | Document | Purpose | Status | When to read |
 | --- | --- | --- | --- |
+| `docs/OPERATIONS_CAPABILITY_DEPLOYMENT_MAP_2026_09_23.md` | Dated Operations/Admin capability-to-release inventory at the 2026-09-23 Git and Deploy Note cutoffs. | Evidence only; unresolved current runtime and browser acceptance are explicit. | Read before selecting an Operations slice or preparing a new exact production readback. |
 | `docs/OPERATIONS_PLANE_SOURCE_REALITY.md` | Dated source/test capability and gap matrix for Operations and related domains at its exact cutoff. | Historical evidence; no current Issue, sequencing, or production authority. | Read for source archaeology only, then use fresh native Issue/PR records and current source for active work. |
 | `docs/CURRENT_RELEASE_STATE.md` | Compact documented snapshot of each release unit, unresolved production lineage, and master-only capabilities after Version Management Baseline v1. | Active release-state entrypoint; dated repository evidence only, not live inventory or execution authority. | Read first when resuming the project, then verify live before any Risk A action. |
 | `docs/PROJECT_CONTEXT.md` | Compact project model, dated source/production handoff, authority routing, validation baseline, and risk boundaries. | Active context and routing document; not a live queue, blocker inventory, or execution-history archive. | Read when resuming the repo, then resolve current work from fresh native Issue/PR records and use Project #1 only for navigation. |
@@ -103,12 +104,14 @@ Portal, and Admin jobs at that exact commit. Its source artifact is
 `proxy-gateway-02fc63a3f949` and was observed to expire on 2026-08-22. This is
 short-lived build evidence only. Open Draft PRs are excluded from the baseline.
 
-For current capability/gap language, read
-`docs/OPERATIONS_PLANE_SOURCE_REALITY.md`; for release and production
-boundaries, read `docs/CURRENT_RELEASE_STATE.md` and `RELEASE_MANIFEST.md`.
-This Risk C reconciliation did not refresh live production, provider settings,
-repository rulesets, environment protections, or security-alert counts and
-makes no current claim about them.
+For the latest dated Operations capability/release alignment, read
+`docs/OPERATIONS_CAPABILITY_DEPLOYMENT_MAP_2026_09_23.md`; use
+`docs/OPERATIONS_PLANE_SOURCE_REALITY.md` for its older source cutoff. For
+release and production boundaries, read `docs/CURRENT_RELEASE_STATE.md` and
+`RELEASE_MANIFEST.md`.
+The older 2026-08-09 Risk C reconciliation did not refresh live production,
+provider settings, repository rulesets, environment protections, or
+security-alert counts and makes no current claim about them.
 
 ## Goal Documents
 
