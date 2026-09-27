@@ -47,31 +47,6 @@ function isPlainObject(value) {
   );
 }
 
-function exactObject(value, fields, code) {
-  try {
-    if (!isPlainObject(value)) throw runtimeError(code);
-    const expected = new Set(fields);
-    const result = {};
-    const keys = Reflect.ownKeys(value);
-    if (keys.length !== fields.length) throw runtimeError(code);
-    for (const key of keys) {
-      if (typeof key !== "string" || !expected.has(key)) throw runtimeError(code);
-      const descriptor = Object.getOwnPropertyDescriptor(value, key);
-      if (!descriptor || !descriptor.enumerable || !("value" in descriptor)) {
-        throw runtimeError(code);
-      }
-      result[key] = descriptor.value;
-    }
-    for (const field of fields) {
-      if (!Object.hasOwn(result, field)) throw runtimeError(code);
-    }
-    return result;
-  } catch (error) {
-    if (error?.code === code) throw error;
-    throw runtimeError(code);
-  }
-}
-
 function runtimeFactoryOptions(value) {
   const code = "wallet_first_deferred_runtime_invalid";
   try {
