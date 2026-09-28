@@ -171,8 +171,10 @@ so an exhausted pack's retired credential did not appear in the Agent revoke
 action. A unified, exact control-store lookup now covers both legacy and pack
 credential records while leaving the legacy-only lookup unchanged. The runner
 test confirms one pack-only revoke, the other pack's material fetch and an
-accepted scoped receipt. The runtime adapter is synthetic; no physical node,
-protocol listener, or live collector has yet proved traffic is blocked.
+accepted scoped receipt. It also exercises the real Hysteria2 config renderer
+with isolated command callbacks: the candidate configuration contains only the
+remaining pack. The command callbacks do not run a real service, so no physical
+node, protocol listener, or live collector has yet proved traffic is blocked.
 
 An opt-in Portal Commerce GET handoff now binds the request to the validated
 session account and exact order reference. It returns the internal resolver's

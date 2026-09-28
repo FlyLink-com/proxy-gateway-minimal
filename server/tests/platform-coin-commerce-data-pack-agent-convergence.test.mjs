@@ -12,6 +12,7 @@ import {
 import { createTrafficAccountingService } from "../services/platform/traffic-accounting.mjs";
 import { createEdgeCredentialMaterialStore } from "../services/edge/credential-material-store.mjs";
 import { createProductionEdgeAgentRunner } from "../../agent/production-edge-agent.mjs";
+import { createHysteria2ExplicitRestartAdapter } from "../services/edge/hysteria2-runtime-adapter.mjs";
 
 const CHANNEL_REF = "channel_sg_pack";
 const NODE_REF = "node_sg_pack";
@@ -119,6 +120,20 @@ test("exhausting one independent pack changes only its edge credential and Agent
       (error) => error.code === "generation_scope_mismatch");
     assert.equal(receiptFor(after).status, "applied");
     const appliedActions = [];
+    let candidateConfig = "";
+    const agentMaterial = createEdgeCredentialMaterialStore();
+    const runtimeAdapter = createHysteria2ExplicitRestartAdapter({
+      listener: { certificate: "synthetic-cert", privateKey: "synthetic-key" },
+      resolveCredentialMaterial: (ref) => agentMaterial.resolveCredentialMaterial(ref),
+      writeCandidateConfig(content) { candidateConfig = content; },
+      runConfigTest: () => ({ exitCode: 0 }),
+      backupActiveConfig: () => ({ backupRef: "synthetic-backup" }),
+      replaceActiveConfig() {},
+      restartService: () => ({ ok: true }),
+      validateService: () => ({ active: true }),
+      validateListener: () => ({ udp443: true }),
+      now: () => new Date(now)
+    });
     const response = (status, body) => ({
       status, ok: status >= 200 && status < 300, json: async () => body
     });
@@ -127,13 +142,12 @@ test("exhausting one independent pack changes only its edge credential and Agent
       nodeRef: NODE_REF, channelRefs: [CHANNEL_REF],
       edgeCredentialRefs: [first.credentialRef, second.credentialRef],
       applyEnabled: true, dryRun: false, nowFn: () => new Date(now),
-      materialStore: createEdgeCredentialMaterialStore(),
+      materialStore: agentMaterial,
       runtimeAdapters: { [CHANNEL_REF]: {
         runtime: "hysteria2",
         async applyCredentialReconciliation(payload) {
           appliedActions.push(payload.actions);
-          return { status: "applied", configTest: true,
-            serviceActive: true, listenerPresent: true };
+          return runtimeAdapter.applyCredentialReconciliation(payload);
         }
       } },
       fetchImpl: async (url, options = {}) => {
@@ -161,6 +175,8 @@ test("exhausting one independent pack changes only its edge credential and Agent
       { action: "add", credentialRef: second.credentialRef },
       { action: "revoke", credentialRef: first.credentialRef }
     ]]);
+    assert.match(candidateConfig, /synthetic-edgecred_agent_pack_b/);
+    assert.doesNotMatch(candidateConfig, /synthetic-edgecred_agent_pack_a/);
     assert.equal(store.listEdgeApplyReceipts({ channelRef: CHANNEL_REF }).length, 3);
     assert.equal(store.readDataPackResourceUsage({
       accountId: first.accountId, orderRef: first.orderRef,
