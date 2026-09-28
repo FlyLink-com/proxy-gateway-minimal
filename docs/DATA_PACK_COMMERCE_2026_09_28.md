@@ -30,6 +30,11 @@ valid data-pack delivery path. The current order projection contains only
 fulfillment status, not an order-owned subscription handoff. Publishing the
 candidate offers before those gaps are closed would create paid orders with no
 valid resource, so the candidates remain outside the published catalog.
+The offer schema also requires a CNY `referencePrice`. Candidate records use
+the existing one-Coin-to-one-CNY display convention solely to satisfy that
+compatibility field; the requested purchase price is in Coins, and this does
+not authorize an external payment amount or a new recharge rate. Reconfirm
+that display metadata before publication.
 An isolated persistence test additionally confirmed that
 `platform_portal_access_requests.plan` currently admits only `trial`,
 `monthly`, and `yearly`; inserting a data-pack request fails its SQLite
