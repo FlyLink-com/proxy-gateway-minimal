@@ -154,6 +154,17 @@ path does **not** yet prove runtime identity-map convergence, suspend an
 exhausted pack, provide credential rotation or a customer-facing handoff.
 An audit fact alone is not a delivered Commerce receipt. The offer stays
 unpublished.
+
+A further isolated test now takes a synthetic collector observation through
+the real traffic-accounting service, exact pack credential binding, SQLite
+usage store, Agent desired-state read and authenticated Agent receipt writer.
+With two independent packs on one channel, exhausting one changes only that
+pack's credential in the desired state; a stale-generation receipt is refused,
+and the other pack remains present. The test uses synthetic observations and
+receipts: it does not show that a physical edge process applied the change or
+that a running collector produced the observation. Production convergence and
+traffic-supply stop remain separate gates.
+
 The offer schema also requires a CNY `referencePrice`. Candidate records use
 the existing one-Coin-to-one-CNY display convention solely to satisfy that
 compatibility field; the requested purchase price is in Coins, and this does
