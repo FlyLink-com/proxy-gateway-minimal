@@ -7,7 +7,8 @@ import {
   usageCycleForBinding,
   summarizeUsageSamples,
   isLifetimeDataPackBinding,
-  lifetimeDataPackQuotaBytesFor
+  lifetimeDataPackQuotaBytesFor,
+  DATA_PACK_TECHNICAL_VALID_UNTIL
 } from "./usage-billing-cycle.mjs";
 import {
   createAccountResourceAuthorityStore
@@ -1006,6 +1007,21 @@ export function createSqliteSubscriptionControlStore({
       on platform_issued_subscription_links(request_id);
     create index if not exists platform_issued_subscription_links_status_idx
       on platform_issued_subscription_links(status);
+
+    create table if not exists platform_data_pack_resources (
+      order_ref text primary key,
+      account_id text not null references platform_accounts(id) on delete cascade,
+      request_ref text not null unique references platform_issuance_requests(id),
+      entitlement_ref text not null unique references platform_entitlements(id),
+      offer_version_ref text not null,
+      quota_bytes integer not null check (quota_bytes > 0),
+      commercial_never_expires integer not null check (commercial_never_expires = 1),
+      technical_valid_until text not null,
+      created_at text not null
+    );
+
+    create index if not exists platform_data_pack_resources_account_idx
+      on platform_data_pack_resources(account_id, created_at);
 
     create table if not exists platform_quota_counters (
       account_id text not null references platform_accounts(id) on delete cascade,
@@ -5830,6 +5846,87 @@ export function createSqliteSubscriptionControlStore({
     `).all(...params).map(mapUsageSample);
   }
 
+  function mapDataPackResource(row) {
+    if (!row) return null;
+    return Object.freeze({
+      orderRef: row.order_ref,
+      accountId: row.account_id,
+      requestRef: row.request_ref,
+      entitlementRef: row.entitlement_ref,
+      offerVersionRef: row.offer_version_ref,
+      quotaBytes: row.quota_bytes,
+      technicalValidUntil: row.technical_valid_until,
+      commercialNeverExpires: row.commercial_never_expires === 1,
+      createdAt: row.created_at
+    });
+  }
+
+  // Internal fulfillment fact, not an Order payment fact or public material
+  // endpoint. The exact captured Order must be checked by the Commerce store
+  // before a caller uses this binding for a customer handoff.
+  function createDataPackResource(input = {}) {
+    exactObject(input, {
+      allowed: ["orderRef", "accountId", "requestRef", "entitlementRef",
+        "offerVersionRef", "quotaBytes", "technicalValidUntil",
+        "commercialNeverExpires", "createdAt"],
+      name: "dataPackResource"
+    });
+    const record = {
+      orderRef: safeControlRef(input.orderRef, "orderRef"),
+      accountId: safeControlRef(input.accountId, "accountId"),
+      requestRef: safeControlRef(input.requestRef, "requestRef"),
+      entitlementRef: safeControlRef(input.entitlementRef, "entitlementRef"),
+      offerVersionRef: safeControlRef(input.offerVersionRef, "offerVersionRef"),
+      quotaBytes: integer(input.quotaBytes, "quotaBytes", { min: 1 }),
+      technicalValidUntil: isoText(input.technicalValidUntil, "technicalValidUntil"),
+      commercialNeverExpires: input.commercialNeverExpires,
+      createdAt: isoText(input.createdAt, "createdAt")
+    };
+    if (record.commercialNeverExpires !== true
+      || record.technicalValidUntil !== DATA_PACK_TECHNICAL_VALID_UNTIL
+      || lifetimeDataPackQuotaBytesFor({ plan: record.offerVersionRef }) !== record.quotaBytes) {
+      throw platformError("validation_error", "data pack commercial lifetime is invalid");
+    }
+    return db.transaction(() => {
+      const account = getAccount(record.accountId);
+      const request = getIssuanceRequest(record.requestRef);
+      const entitlement = getEntitlement(record.entitlementRef);
+      const activeLinks = db.prepare(`
+        select count(*) as count from platform_issued_subscription_links
+        where request_id = ? and status = 'active'
+      `).get(record.requestRef).count;
+      if (!account || account.status !== "active"
+        || !request || request.accountId !== record.accountId
+        || request.entitlementId !== record.entitlementRef
+        || request.status !== "issued"
+        || request.purpose !== "coin_commerce_data_pack_fulfillment"
+        || !entitlement || entitlement.accountId !== record.accountId
+        || entitlement.status !== "active"
+        || entitlement.plan !== record.offerVersionRef
+        || entitlement.trafficLimitBytes !== record.quotaBytes
+        || entitlement.validUntil !== record.technicalValidUntil
+        || activeLinks !== 1) {
+        throw platformError("reconciliation_required", "data pack issuance is invalid");
+      }
+      db.prepare(`
+        insert or ignore into platform_data_pack_resources (
+          order_ref, account_id, request_ref, entitlement_ref,
+          offer_version_ref, quota_bytes, commercial_never_expires,
+          technical_valid_until, created_at
+        ) values (?, ?, ?, ?, ?, ?, 1, ?, ?)
+      `).run(record.orderRef, record.accountId, record.requestRef,
+        record.entitlementRef, record.offerVersionRef, record.quotaBytes,
+        record.technicalValidUntil, record.createdAt);
+      const stored = mapDataPackResource(db.prepare(`
+        select * from platform_data_pack_resources where order_ref = ?
+      `).get(record.orderRef));
+      if (JSON.stringify(stored) !== JSON.stringify(record)) {
+        throw platformError("reconciliation_required", "data pack order binding drifted");
+      }
+      return stored;
+    }).immediate();
+  }
+
   // This read never resolves an account-wide "current" entitlement. A buyer
   // may own a timed plan and several independent packs at once; only the
   // exact issued request/entitlement pair is eligible for this projection.
@@ -5851,6 +5948,10 @@ export function createSqliteSubscriptionControlStore({
         throw platformError("not_found", "data pack resource not found");
       }
       const quotaBytes = lifetimeDataPackQuotaBytesFor(entitlement);
+      const resource = db.prepare(`
+        select * from platform_data_pack_resources
+        where account_id = ? and request_ref = ? and entitlement_ref = ?
+      `).get(accountId, requestRef, entitlementRef);
       const activeLinks = db.prepare(`
         select count(*) as count from platform_issued_subscription_links
         where request_id = ? and status = 'active'
@@ -5860,6 +5961,10 @@ export function createSqliteSubscriptionControlStore({
         || request.status !== "issued"
         || request.purpose !== "coin_commerce_data_pack_fulfillment"
         || entitlement.status !== "active"
+        || !resource || resource.offer_version_ref !== entitlement.plan
+        || resource.commercial_never_expires !== 1
+        || resource.technical_valid_until !== DATA_PACK_TECHNICAL_VALID_UNTIL
+        || resource.quota_bytes !== quotaBytes
         || quotaBytes === null
         || entitlement.trafficLimitBytes !== quotaBytes
         || entitlement.validFrom > now
@@ -7289,6 +7394,7 @@ export function createSqliteSubscriptionControlStore({
     getUsageCounterCursor,
     listUsageRollupsByRequestId,
     listUsageSamples,
+    createDataPackResource,
     readDataPackResourceUsage,
     upsertQuotaCounter,
     bindDevice,

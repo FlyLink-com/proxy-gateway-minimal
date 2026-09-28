@@ -37,6 +37,10 @@ const LIFETIME_DATA_PACK_GB = new Map([
   ["offerv_pack_500gb_v1", 500]
 ]);
 
+// Runtime tenants still require an ISO expiry. This is a technical horizon,
+// never a customer-facing commercial expiration for a data pack.
+export const DATA_PACK_TECHNICAL_VALID_UNTIL = "9999-12-31T23:59:59.999Z";
+
 export function isLifetimeDataPackBinding(binding) {
   return LIFETIME_DATA_PACK_GB.has(String(binding?.plan || "").trim());
 }

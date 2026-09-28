@@ -55,11 +55,20 @@ showed that an inconsistent sample sharing only a request ID could otherwise
 trigger a false quota suspension. This tightens attribution for existing
 plans as well as future pack resources; it is not evidence that a pack has
 been issued or that runtime suspension has been validated.
-The isolated reader tests use a far-future validity timestamp only to seed
-today's date-required control schema. That fixture is **not** approval to
-represent the customer-facing “never expires” promise with a hidden calendar
-expiry in the final product; the issuance/runtime contract still needs a
-reviewed no-expiry representation and migration rehearsal.
+The product decision for “never expires” is an explicit
+`commercial_never_expires` resource marker plus a far-future technical
+runtime deadline (`9999-12-31T23:59:59.999Z`) because the existing control
+and runtime contracts require an expiry value. The technical deadline is not
+the customer's commercial expiry and must not be displayed as one. It needs
+an operator-maintained renewal path before that technical horizon; exhausting
+the purchased bytes remains the only commercial stop condition. The add-only
+control table records the marker, immutable order/request/entitlement lineage,
+quota, and technical deadline. Its source tests cover idempotent registration,
+conflicting replay rejection, absent-record rejection, separate pack usage,
+and reopening a pre-existing control database without losing an account.
+This source-only table does **not** yet verify a captured Commerce order across
+the database boundary, issue runtime credentials, suspend an exhausted pack,
+or provide a customer handoff. The offer stays unpublished.
 The offer schema also requires a CNY `referencePrice`. Candidate records use
 the existing one-Coin-to-one-CNY display convention solely to satisfy that
 compatibility field; the requested purchase price is in Coins, and this does
@@ -88,7 +97,8 @@ Historical purchases and their accounting must not be rewritten.
    its own request and credential. Every accounting read, rendered usage
    header, and quota action uses that same scope. Exhaustion suspends only the
    purchased pack's traffic supply; it does not revoke the account or a
-   different order's resource.
+   different order's resource. UI never presents the technical deadline as an
+   expiration date; a separate operational renewal maintains that deadline.
 4. The subscription display is an authenticated, no-store, order-owned
    handoff. Order lists expose status and an availability indicator, never a
    raw URL. The order detail may re-fetch the same material after the delivery

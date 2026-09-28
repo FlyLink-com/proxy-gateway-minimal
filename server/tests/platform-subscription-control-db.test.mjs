@@ -61,6 +61,33 @@ test("independent data-pack usage stays scoped to its issued resource across mon
         tenantRef: `tenant_pack_${suffix}`, artifactRef: `artifact_pack_${suffix}`,
         status: "active", createdAt: issuedAt, updatedAt: issuedAt
       });
+      if (purpose === "coin_commerce_data_pack_fulfillment") {
+        assert.throws(() => store.readDataPackResourceUsage({
+          accountId: "acct_pack_reader", requestRef: `pareq_pack_${suffix}`,
+          entitlementRef: `ent_pack_${suffix}`, now
+        }), (error) => error.code === "reconciliation_required");
+        const resource = {
+          orderRef: `coinord_pack_${suffix}`, accountId: "acct_pack_reader",
+          requestRef: `pareq_pack_${suffix}`, entitlementRef: `ent_pack_${suffix}`,
+          offerVersionRef: plan, quotaBytes: gigabytes * gib,
+          technicalValidUntil: "9999-12-31T23:59:59.999Z",
+          commercialNeverExpires: true, createdAt: issuedAt
+        };
+        assert.deepEqual(store.createDataPackResource(resource), resource);
+        assert.deepEqual(store.createDataPackResource(resource), resource);
+        assert.throws(() => store.createDataPackResource({
+          ...resource, orderRef: `coinord_pack_duplicate_${suffix}`
+        }), (error) => error.code === "reconciliation_required");
+        assert.throws(() => store.createDataPackResource({
+          ...resource, quotaBytes: (gigabytes + 1) * gib
+        }), (error) => error.code === "validation_error");
+        assert.throws(() => store.createDataPackResource({
+          ...resource, commercialNeverExpires: false
+        }), (error) => error.code === "validation_error");
+        assert.throws(() => store.createDataPackResource({
+          ...resource, technicalValidUntil: "2030-01-01T00:00:00.000Z"
+        }), (error) => error.code === "validation_error");
+      }
     }
     assert.equal(store.resolveAccountServiceEntitlement({
       accountId: "acct_pack_reader", now
@@ -162,6 +189,42 @@ test("pack-only accounts do not masquerade as the legacy current timed plan", ()
       model: "legacy", resource: { state: "none" }, requestRef: null
     });
   });
+});
+
+test("add-only data-pack resource schema preserves an existing control account on reopen", () => {
+  const tempDir = mkdtempSync(join(tmpdir(), "platform-data-pack-upgrade-"));
+  const dbPath = join(tempDir, "control.sqlite");
+  const now = "2026-09-28T00:00:00.000Z";
+  try {
+    let store = createSqliteSubscriptionControlStore({ dbPath });
+    store.createAccount({
+      id: "acct_before_pack_upgrade", ownerRef: "portal_before_pack_upgrade",
+      status: "active", createdAt: now, updatedAt: now
+    });
+    store.close();
+    const priorSchema = new Database(dbPath);
+    try {
+      priorSchema.exec("drop table platform_data_pack_resources");
+    } finally {
+      priorSchema.close();
+    }
+    store = createSqliteSubscriptionControlStore({ dbPath });
+    try {
+      assert.equal(store.getAccount("acct_before_pack_upgrade")?.id,
+        "acct_before_pack_upgrade");
+      const db = new Database(dbPath, { readonly: true });
+      try {
+        assert.equal(db.prepare("select count(*) as count from platform_data_pack_resources")
+          .get().count, 0);
+      } finally {
+        db.close();
+      }
+    } finally {
+      store.close();
+    }
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 50 });
+  }
 });
 
 function withWelcomeCoinGrantStore(fn) {
