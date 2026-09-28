@@ -55,10 +55,13 @@ The old inferred `edgecred_<request>` alias is excluded for packs: without
 an explicit active credential, traffic accounting returns an unresolved
 binding rather than attributing traffic to a synthetic identity. An isolated
 test connects that exact binding to accounting and obtains a lifetime quota
-decision across a month boundary without affecting a timed plan. The table
-does **not** mint or store protected edge material, apply runtime desired
-state, prove collector convergence, or suspend traffic supply. It is not a
-customer-delivery signal.
+decision across a month boundary without affecting a timed plan. A separate
+source-only issuer checks the captured Commerce claim and issued control
+lineage before and after creating protected edge material, then registers the
+matching digest. An isolated file-backed restart test reuses the same material
+and credential without returning either secret. The table and issuer do
+**not** apply runtime desired state, prove collector convergence, or suspend
+traffic supply. They are not a customer-delivery signal.
 The collector quota decision now filters measured samples by account,
 entitlement **and** request, rather than request alone. A red-before-fix test
 showed that an inconsistent sample sharing only a request ID could otherwise
@@ -130,8 +133,9 @@ account and use `no-store` response headers. The technical date is omitted
 from its customer response.
 This source-only path verifies a captured Commerce order across the database
 boundary and can issue one protected runtime artifact under its exact live
-claim. It does **not** yet mint protected edge material, apply and verify the
-runtime identity map, suspend an exhausted pack, complete the Commerce
+claim. A source-only edge issuer can now mint protected credential material
+under that claim, but the path does **not** yet apply and verify the runtime
+identity map, suspend an exhausted pack, complete the Commerce
 receipt, or provide a customer-facing handoff. An audit
 fact alone is not a delivered Commerce receipt. The offer stays unpublished.
 The offer schema also requires a CNY `referencePrice`. Candidate records use
