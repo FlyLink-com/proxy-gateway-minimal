@@ -63,12 +63,20 @@ the customer's commercial expiry and must not be displayed as one. It needs
 an operator-maintained renewal path before that technical horizon; exhausting
 the purchased bytes remains the only commercial stop condition. The add-only
 control table records the marker, immutable order/request/entitlement lineage,
-quota, and technical deadline. Its source tests cover idempotent registration,
+command, quota, and technical deadline. Its source tests cover idempotent registration,
 conflicting replay rejection, absent-record rejection, separate pack usage,
 and reopening a pre-existing control database without losing an account.
+An internal fulfillment-effect writer now binds that resource to exactly one
+initial issued link and emits a separate data-pack audit fact. A replay after
+credential rotation retains the same effect and quota; changing the command
+or issued link stops for reconciliation. The owner-scoped usage read additionally
+requires the exact order reference, so a second pack on the same account cannot
+be returned for that order. A resource row without its matching immutable
+fulfillment effect is rejected rather than exposed as delivered usage.
 This source-only table does **not** yet verify a captured Commerce order across
 the database boundary, issue runtime credentials, suspend an exhausted pack,
-or provide a customer handoff. The offer stays unpublished.
+or provide a customer handoff. An audit fact alone is not a delivered Commerce
+receipt. The offer stays unpublished.
 The offer schema also requires a CNY `referencePrice`. Candidate records use
 the existing one-Coin-to-one-CNY display convention solely to satisfy that
 compatibility field; the requested purchase price is in Coins, and this does

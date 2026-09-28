@@ -1010,6 +1010,7 @@ export function createSqliteSubscriptionControlStore({
 
     create table if not exists platform_data_pack_resources (
       order_ref text primary key,
+      command_ref text not null unique,
       account_id text not null references platform_accounts(id) on delete cascade,
       request_ref text not null unique references platform_issuance_requests(id),
       entitlement_ref text not null unique references platform_entitlements(id),
@@ -5850,6 +5851,7 @@ export function createSqliteSubscriptionControlStore({
     if (!row) return null;
     return Object.freeze({
       orderRef: row.order_ref,
+      commandRef: row.command_ref,
       accountId: row.account_id,
       requestRef: row.request_ref,
       entitlementRef: row.entitlement_ref,
@@ -5866,13 +5868,14 @@ export function createSqliteSubscriptionControlStore({
   // before a caller uses this binding for a customer handoff.
   function createDataPackResource(input = {}) {
     exactObject(input, {
-      allowed: ["orderRef", "accountId", "requestRef", "entitlementRef",
+      allowed: ["orderRef", "commandRef", "accountId", "requestRef", "entitlementRef",
         "offerVersionRef", "quotaBytes", "technicalValidUntil",
         "commercialNeverExpires", "createdAt"],
       name: "dataPackResource"
     });
     const record = {
       orderRef: safeControlRef(input.orderRef, "orderRef"),
+      commandRef: safeControlRef(input.commandRef, "commandRef"),
       accountId: safeControlRef(input.accountId, "accountId"),
       requestRef: safeControlRef(input.requestRef, "requestRef"),
       entitlementRef: safeControlRef(input.entitlementRef, "entitlementRef"),
@@ -5910,11 +5913,11 @@ export function createSqliteSubscriptionControlStore({
       }
       db.prepare(`
         insert or ignore into platform_data_pack_resources (
-          order_ref, account_id, request_ref, entitlement_ref,
+          order_ref, command_ref, account_id, request_ref, entitlement_ref,
           offer_version_ref, quota_bytes, commercial_never_expires,
           technical_valid_until, created_at
-        ) values (?, ?, ?, ?, ?, ?, 1, ?, ?)
-      `).run(record.orderRef, record.accountId, record.requestRef,
+        ) values (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
+      `).run(record.orderRef, record.commandRef, record.accountId, record.requestRef,
         record.entitlementRef, record.offerVersionRef, record.quotaBytes,
         record.technicalValidUntil, record.createdAt);
       const stored = mapDataPackResource(db.prepare(`
@@ -5927,15 +5930,92 @@ export function createSqliteSubscriptionControlStore({
     }).immediate();
   }
 
+  // Internal fulfillment effect only. A Commerce captured-order claim and a
+  // separately verified runtime handoff are still required before the Order
+  // may be marked delivered or any subscription material may be exposed.
+  function applyCoinCommerceDataPackFulfillment(input = {}) {
+    exactObject(input, {
+      allowed: ["orderRef", "commandRef", "accountId", "requestRef",
+        "entitlementRef", "issuedLinkRef", "offerVersionRef", "quotaBytes",
+        "technicalValidUntil", "commercialNeverExpires", "createdAt"],
+      name: "dataPackFulfillment"
+    });
+    const issuedLinkRef = safeControlRef(input.issuedLinkRef, "issuedLinkRef");
+    const resourceInput = {
+      orderRef: input.orderRef,
+      commandRef: input.commandRef,
+      accountId: input.accountId,
+      requestRef: input.requestRef,
+      entitlementRef: input.entitlementRef,
+      offerVersionRef: input.offerVersionRef,
+      quotaBytes: input.quotaBytes,
+      technicalValidUntil: input.technicalValidUntil,
+      commercialNeverExpires: input.commercialNeverExpires,
+      createdAt: input.createdAt
+    };
+    const effectRef = effectRefForCommand(
+      safeControlRef(resourceInput.commandRef, "commandRef")
+    );
+    return db.transaction(() => {
+      const resource = createDataPackResource(resourceInput);
+      const link = getIssuedLink(issuedLinkRef);
+      const metadata = {
+        version: 1,
+        kind: "data_pack",
+        commandRef: resource.commandRef,
+        orderRef: resource.orderRef,
+        accountId: resource.accountId,
+        requestRef: resource.requestRef,
+        entitlementRef: resource.entitlementRef,
+        issuedLinkRef,
+        offerVersionRef: resource.offerVersionRef,
+        quotaBytes: resource.quotaBytes,
+        commercialNeverExpires: true,
+        technicalValidUntil: resource.technicalValidUntil
+      };
+      const existing = getAuditEvent(effectRef);
+      if (!link || link.requestId !== resource.requestRef
+        || (existing ? !["active", "rotated"].includes(link.status)
+          : link.status !== "active")
+        || (existing && (
+          existing.entityType !== "coin_commerce_data_pack_fulfillment"
+          || existing.entityRef !== resource.entitlementRef
+          || existing.action !== "data_pack_fulfillment_applied"
+          || existing.actorRef !== "coin_commerce_fulfillment"
+          || existing.createdAt !== resource.createdAt
+          || JSON.stringify(existing.metadata) !== JSON.stringify(metadata)
+        ))) {
+        throw platformError("reconciliation_required", "data pack fulfillment drifted");
+      }
+      if (!existing) {
+        recordAuditEvent({
+          id: effectRef,
+          entityType: "coin_commerce_data_pack_fulfillment",
+          entityRef: resource.entitlementRef,
+          action: "data_pack_fulfillment_applied",
+          actorRef: "coin_commerce_fulfillment",
+          createdAt: resource.createdAt,
+          metadata
+        });
+      }
+      return Object.freeze({
+        effectRef, orderRef: resource.orderRef,
+        requestRef: resource.requestRef,
+        entitlementRef: resource.entitlementRef, issuedLinkRef
+      });
+    }).immediate();
+  }
+
   // This read never resolves an account-wide "current" entitlement. A buyer
   // may own a timed plan and several independent packs at once; only the
   // exact issued request/entitlement pair is eligible for this projection.
   function readDataPackResourceUsage(input = {}) {
     exactObject(input, {
-      allowed: ["accountId", "requestRef", "entitlementRef", "now"],
+      allowed: ["accountId", "orderRef", "requestRef", "entitlementRef", "now"],
       name: "dataPackResourceUsage"
     });
     const accountId = safeControlRef(input.accountId, "accountId");
+    const orderRef = safeControlRef(input.orderRef, "orderRef");
     const requestRef = safeControlRef(input.requestRef, "requestRef");
     const entitlementRef = safeControlRef(input.entitlementRef, "entitlementRef");
     const now = isoText(input.now, "now");
@@ -5950,8 +6030,26 @@ export function createSqliteSubscriptionControlStore({
       const quotaBytes = lifetimeDataPackQuotaBytesFor(entitlement);
       const resource = db.prepare(`
         select * from platform_data_pack_resources
-        where account_id = ? and request_ref = ? and entitlement_ref = ?
-      `).get(accountId, requestRef, entitlementRef);
+        where account_id = ? and order_ref = ? and request_ref = ? and entitlement_ref = ?
+      `).get(accountId, orderRef, requestRef, entitlementRef);
+      const effect = resource
+        ? getAuditEvent(effectRefForCommand(resource.command_ref)) : null;
+      const issuedLinkRef = effect?.metadata?.issuedLinkRef;
+      const effectLink = issuedLinkRef ? getIssuedLink(issuedLinkRef) : null;
+      const expectedEffectMetadata = resource && effect ? {
+        version: 1,
+        kind: "data_pack",
+        commandRef: resource.command_ref,
+        orderRef,
+        accountId,
+        requestRef,
+        entitlementRef,
+        issuedLinkRef,
+        offerVersionRef: resource.offer_version_ref,
+        quotaBytes: resource.quota_bytes,
+        commercialNeverExpires: true,
+        technicalValidUntil: resource.technical_valid_until
+      } : null;
       const activeLinks = db.prepare(`
         select count(*) as count from platform_issued_subscription_links
         where request_id = ? and status = 'active'
@@ -5965,6 +6063,15 @@ export function createSqliteSubscriptionControlStore({
         || resource.commercial_never_expires !== 1
         || resource.technical_valid_until !== DATA_PACK_TECHNICAL_VALID_UNTIL
         || resource.quota_bytes !== quotaBytes
+        || !effect
+        || effect.entityType !== "coin_commerce_data_pack_fulfillment"
+        || effect.entityRef !== entitlementRef
+        || effect.action !== "data_pack_fulfillment_applied"
+        || effect.actorRef !== "coin_commerce_fulfillment"
+        || effect.createdAt !== resource.created_at
+        || JSON.stringify(effect.metadata) !== JSON.stringify(expectedEffectMetadata)
+        || !effectLink || effectLink.requestId !== requestRef
+        || !["active", "rotated"].includes(effectLink.status)
         || quotaBytes === null
         || entitlement.trafficLimitBytes !== quotaBytes
         || entitlement.validFrom > now
@@ -5985,6 +6092,7 @@ export function createSqliteSubscriptionControlStore({
       }
       const lastObservedAt = measured.last_observed_at;
       return Object.freeze({
+        orderRef,
         requestRef,
         entitlementRef,
         usage: Object.freeze({
@@ -7395,6 +7503,7 @@ export function createSqliteSubscriptionControlStore({
     listUsageRollupsByRequestId,
     listUsageSamples,
     createDataPackResource,
+    applyCoinCommerceDataPackFulfillment,
     readDataPackResourceUsage,
     upsertQuotaCounter,
     bindDevice,

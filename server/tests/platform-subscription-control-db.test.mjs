@@ -43,6 +43,7 @@ test("independent data-pack usage stays scoped to its issued resource across mon
       ["b", "offerv_pack_200gb_v1", 200, "coin_commerce_data_pack_fulfillment"],
       ["timed", "offerv_plan_30d_100gb_monthly_v1", 100, "coin_commerce_product_fulfillment"]
     ];
+    const packEffects = new Map();
     for (const [suffix, plan, gigabytes, purpose] of resources) {
       store.createEntitlement({
         id: `ent_pack_${suffix}`, accountId: "acct_pack_reader", plan,
@@ -63,11 +64,13 @@ test("independent data-pack usage stays scoped to its issued resource across mon
       });
       if (purpose === "coin_commerce_data_pack_fulfillment") {
         assert.throws(() => store.readDataPackResourceUsage({
-          accountId: "acct_pack_reader", requestRef: `pareq_pack_${suffix}`,
+          accountId: "acct_pack_reader", orderRef: `coinord_pack_${suffix}`,
+          requestRef: `pareq_pack_${suffix}`,
           entitlementRef: `ent_pack_${suffix}`, now
         }), (error) => error.code === "reconciliation_required");
         const resource = {
-          orderRef: `coinord_pack_${suffix}`, accountId: "acct_pack_reader",
+          orderRef: `coinord_pack_${suffix}`, commandRef: `coincmd_pack_${suffix}`,
+          accountId: "acct_pack_reader",
           requestRef: `pareq_pack_${suffix}`, entitlementRef: `ent_pack_${suffix}`,
           offerVersionRef: plan, quotaBytes: gigabytes * gib,
           technicalValidUntil: "9999-12-31T23:59:59.999Z",
@@ -87,6 +90,25 @@ test("independent data-pack usage stays scoped to its issued resource across mon
         assert.throws(() => store.createDataPackResource({
           ...resource, technicalValidUntil: "2030-01-01T00:00:00.000Z"
         }), (error) => error.code === "validation_error");
+        assert.throws(() => store.readDataPackResourceUsage({
+          accountId: "acct_pack_reader", orderRef: resource.orderRef,
+          requestRef: resource.requestRef, entitlementRef: resource.entitlementRef, now
+        }), (error) => error.code === "reconciliation_required");
+        const fulfillment = { ...resource, issuedLinkRef: `link_pack_${suffix}` };
+        const firstEffect = store.applyCoinCommerceDataPackFulfillment(fulfillment);
+        assert.equal(firstEffect.orderRef, resource.orderRef);
+        assert.equal(firstEffect.requestRef, resource.requestRef);
+        assert.equal(firstEffect.entitlementRef, resource.entitlementRef);
+        assert.equal(firstEffect.issuedLinkRef, `link_pack_${suffix}`);
+        assert.deepEqual(store.applyCoinCommerceDataPackFulfillment(fulfillment), firstEffect);
+        assert.equal(store.getAuditEvent(firstEffect.effectRef)?.metadata.kind, "data_pack");
+        packEffects.set(suffix, firstEffect);
+        assert.throws(() => store.applyCoinCommerceDataPackFulfillment({
+          ...fulfillment, commandRef: `coincmd_pack_other_${suffix}`
+        }), (error) => error.code === "reconciliation_required");
+        assert.throws(() => store.applyCoinCommerceDataPackFulfillment({
+          ...fulfillment, issuedLinkRef: "link_pack_timed"
+        }), (error) => error.code === "reconciliation_required");
       }
     }
     assert.equal(store.resolveAccountServiceEntitlement({
@@ -100,7 +122,8 @@ test("independent data-pack usage stays scoped to its issued resource across mon
       assert.equal(binding?.entitlementId, `ent_pack_${suffix}`);
     }
     const read = (suffix, at = now) => store.readDataPackResourceUsage({
-      accountId: "acct_pack_reader", requestRef: `pareq_pack_${suffix}`,
+      accountId: "acct_pack_reader", orderRef: `coinord_pack_${suffix}`,
+      requestRef: `pareq_pack_${suffix}`,
       entitlementRef: `ent_pack_${suffix}`, now: at
     });
     assert.deepEqual(read("a").usage, {
@@ -140,13 +163,25 @@ test("independent data-pack usage stays scoped to its issued resource across mon
       tenantRef: "tenant_pack_a", artifactRef: "artifact_pack_a_rotated",
       status: "active", createdAt: now, updatedAt: now
     });
+    assert.deepEqual(store.applyCoinCommerceDataPackFulfillment({
+      orderRef: "coinord_pack_a", commandRef: "coincmd_pack_a",
+      accountId: "acct_pack_reader", requestRef: "pareq_pack_a",
+      entitlementRef: "ent_pack_a", issuedLinkRef: "link_pack_a",
+      offerVersionRef: "offerv_pack_100gb_v1", quotaBytes: 100 * gib,
+      technicalValidUntil: "9999-12-31T23:59:59.999Z",
+      commercialNeverExpires: true, createdAt: issuedAt
+    }), packEffects.get("a"));
     assert.equal(read("a").usage.usedBytes, 50 * gib);
     assert.throws(() => store.readDataPackResourceUsage({
-      accountId: "acct_other", requestRef: "pareq_pack_a",
+      accountId: "acct_other", orderRef: "coinord_pack_a", requestRef: "pareq_pack_a",
       entitlementRef: "ent_pack_a", now
     }), (error) => error.code === "not_found");
     assert.throws(() => store.readDataPackResourceUsage({
-      accountId: "acct_pack_reader", requestRef: "pareq_pack_b",
+      accountId: "acct_pack_reader", orderRef: "coinord_pack_b", requestRef: "pareq_pack_b",
+      entitlementRef: "ent_pack_a", now
+    }), (error) => error.code === "reconciliation_required");
+    assert.throws(() => store.readDataPackResourceUsage({
+      accountId: "acct_pack_reader", orderRef: "coinord_pack_b", requestRef: "pareq_pack_a",
       entitlementRef: "ent_pack_a", now
     }), (error) => error.code === "reconciliation_required");
     assert.throws(() => read("timed"), (error) => error.code === "reconciliation_required");
