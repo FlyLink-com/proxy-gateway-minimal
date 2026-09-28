@@ -918,6 +918,16 @@ export function createWalletFirstSetupDeliveryEscrow(options = {}) {
   return Object.freeze({
     runtimeEscrow,
     deliveryEscrow,
+    // Not part of the wallet-first branded runtime contract. Used only by
+    // persistent pack material recovery to distinguish an absent pre-capture
+    // record from a corrupt or already-acknowledged record.
+    probeInitialSetupDelivery(value) {
+      assertOpen();
+      const binding = normalizeBinding(value);
+      const summary = bindingSummary(binding, "available");
+      if (!records.has(summary.handoffRef)) return "absent";
+      return summaryForBinding(binding).state;
+    },
     close() {
       if (closed) return;
       closed = true;

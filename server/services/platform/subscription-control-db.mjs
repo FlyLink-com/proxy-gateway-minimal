@@ -1025,6 +1025,21 @@ export function createSqliteSubscriptionControlStore({
     create index if not exists platform_data_pack_resources_account_idx
       on platform_data_pack_resources(account_id, created_at);
 
+    create table if not exists platform_data_pack_artifact_rotations (
+      rotation_ref text primary key,
+      order_ref text not null references platform_data_pack_resources(order_ref),
+      account_id text not null references platform_accounts(id),
+      link_ref text not null references platform_issued_subscription_links(id),
+      old_artifact_ref text not null,
+      replacement_artifact_ref text,
+      attempt integer not null default 1 check (attempt between 1 and 16),
+      status text not null check (status in ('prepared', 'escrowed', 'switched', 'complete')),
+      created_at text not null,
+      updated_at text not null
+    );
+    create unique index if not exists platform_data_pack_rotation_pending_idx
+      on platform_data_pack_artifact_rotations(order_ref) where status != 'complete';
+
     create table if not exists platform_data_pack_edge_credentials (
       request_ref text not null references platform_issuance_requests(id),
       entitlement_ref text not null references platform_entitlements(id),
@@ -6074,6 +6089,148 @@ export function createSqliteSubscriptionControlStore({
     }).immediate();
   }
 
+  function mapDataPackArtifactRotation(row) {
+    return row ? Object.freeze({
+      rotationRef: row.rotation_ref, orderRef: row.order_ref,
+      accountId: row.account_id, linkRef: row.link_ref,
+      oldArtifactRef: row.old_artifact_ref,
+      replacementArtifactRef: row.replacement_artifact_ref,
+      attempt: row.attempt,
+      status: row.status
+    }) : null;
+  }
+
+  // The control DB owns the durable intent. Runtime artifact creation and
+  // protected material capture occur outside this transaction; each stage is
+  // replayable and no stage touches usage or the purchased quota.
+  function beginCoinCommerceDataPackArtifactRotation(input = {}) {
+    exactObject(input, { allowed: ["rotationRef", "orderRef", "accountId", "now"],
+      name: "dataPackArtifactRotation" });
+    const rotationRef = safeControlRef(input.rotationRef, "rotationRef");
+    const orderRef = safeControlRef(input.orderRef, "orderRef");
+    const accountId = safeControlRef(input.accountId, "accountId");
+    const now = isoText(input.now, "now");
+    return db.transaction(() => {
+      const existing = mapDataPackArtifactRotation(db.prepare(`
+        select * from platform_data_pack_artifact_rotations where rotation_ref = ?
+      `).get(rotationRef));
+      if (existing) {
+        if (existing.orderRef !== orderRef || existing.accountId !== accountId) {
+          throw platformError("reconciliation_required", "data pack rotation scope drifted");
+        }
+        return existing;
+      }
+      const resource = db.prepare(`
+        select * from platform_data_pack_resources
+        where order_ref = ? and account_id = ?
+      `).get(orderRef, accountId);
+      if (!resource) throw platformError("reconciliation_required", "data pack rotation scope unavailable");
+      const links = listIssuedSubscriptionBindings({ accountId })
+        .filter((link) => link.requestId === resource.request_ref);
+      if (links.length !== 1 || links[0].entitlementId !== resource.entitlement_ref) {
+        throw platformError("reconciliation_required", "data pack rotation link drifted");
+      }
+      const pending = db.prepare(`
+        select 1 from platform_data_pack_artifact_rotations
+        where order_ref = ? and status != 'complete' limit 1
+      `).get(orderRef);
+      if (pending) throw platformError("reconciliation_required", "data pack rotation already pending");
+      const link = links[0];
+      db.prepare(`
+        insert into platform_data_pack_artifact_rotations
+          (rotation_ref, order_ref, account_id, link_ref, old_artifact_ref,
+           replacement_artifact_ref, status, created_at, updated_at)
+        values (?, ?, ?, ?, ?, null, 'prepared', ?, ?)
+      `).run(rotationRef, orderRef, accountId, link.id, link.artifactRef, now, now);
+      return mapDataPackArtifactRotation(db.prepare(`
+        select * from platform_data_pack_artifact_rotations where rotation_ref = ?
+      `).get(rotationRef));
+    }).immediate();
+  }
+
+  function advanceCoinCommerceDataPackArtifactRotation(input = {}) {
+    exactObject(input, { allowed: ["rotationRef", "orderRef", "accountId", "stage",
+      "replacementArtifactRef", "attempt", "now"], required: ["rotationRef", "orderRef", "accountId",
+      "stage", "now"], name: "dataPackArtifactRotationAdvance" });
+    const rotationRef = safeControlRef(input.rotationRef, "rotationRef");
+    const orderRef = safeControlRef(input.orderRef, "orderRef");
+    const accountId = safeControlRef(input.accountId, "accountId");
+    const stage = input.stage;
+    const now = isoText(input.now, "now");
+    if (!["retry", "escrowed", "switched", "complete"].includes(stage)) {
+      throw platformError("validation_error", "invalid data pack rotation stage");
+    }
+    const replacementRef = input.replacementArtifactRef === undefined ? null
+      : safeControlRef(input.replacementArtifactRef, "replacementArtifactRef");
+    return db.transaction(() => {
+      const current = mapDataPackArtifactRotation(db.prepare(`
+        select * from platform_data_pack_artifact_rotations where rotation_ref = ?
+      `).get(rotationRef));
+      if (!current || current.orderRef !== orderRef || current.accountId !== accountId) {
+        throw platformError("reconciliation_required", "data pack rotation intent unavailable");
+      }
+      if (stage === "retry") {
+        if (current.status !== "prepared" || current.attempt !== input.attempt
+          || current.attempt >= 16) {
+          throw platformError("reconciliation_required", "data pack rotation retry drifted");
+        }
+        db.prepare(`
+          update platform_data_pack_artifact_rotations
+          set attempt = attempt + 1, updated_at = ? where rotation_ref = ?
+        `).run(now, rotationRef);
+        return mapDataPackArtifactRotation(db.prepare(`
+          select * from platform_data_pack_artifact_rotations where rotation_ref = ?
+        `).get(rotationRef));
+      }
+      if (current.status === stage || current.status === "complete") {
+        if (replacementRef && replacementRef !== current.replacementArtifactRef) {
+          throw platformError("reconciliation_required", "data pack rotation replacement drifted");
+        }
+        return current;
+      }
+      if (stage === "escrowed" && current.status === "prepared") {
+        if (!replacementRef || replacementRef === current.oldArtifactRef) {
+          throw platformError("reconciliation_required", "data pack rotation replacement invalid");
+        }
+        db.prepare(`
+          update platform_data_pack_artifact_rotations
+          set replacement_artifact_ref = ?, status = 'escrowed', updated_at = ?
+          where rotation_ref = ?
+        `).run(replacementRef, now, rotationRef);
+      } else if (stage === "switched" && current.status === "escrowed") {
+        const link = getIssuedLink(current.linkRef);
+        if (link?.status !== "active" || link.artifactRef !== current.oldArtifactRef) {
+          throw platformError("reconciliation_required", "data pack rotation link drifted");
+        }
+        const changed = db.prepare(`
+          update platform_issued_subscription_links set artifact_ref = ?, updated_at = ?
+          where id = ? and artifact_ref = ? and status = 'active'
+        `).run(current.replacementArtifactRef, now, current.linkRef, current.oldArtifactRef);
+        if (changed.changes !== 1) {
+          throw platformError("reconciliation_required", "data pack rotation link changed");
+        }
+        db.prepare(`
+          update platform_data_pack_artifact_rotations
+          set status = 'switched', updated_at = ? where rotation_ref = ?
+        `).run(now, rotationRef);
+      } else if (stage === "complete" && current.status === "switched") {
+        const link = getIssuedLink(current.linkRef);
+        if (link?.status !== "active" || link.artifactRef !== current.replacementArtifactRef) {
+          throw platformError("reconciliation_required", "data pack rotation link drifted");
+        }
+        db.prepare(`
+          update platform_data_pack_artifact_rotations
+          set status = 'complete', updated_at = ? where rotation_ref = ?
+        `).run(now, rotationRef);
+      } else {
+        throw platformError("reconciliation_required", "data pack rotation stage drifted");
+      }
+      return mapDataPackArtifactRotation(db.prepare(`
+        select * from platform_data_pack_artifact_rotations where rotation_ref = ?
+      `).get(rotationRef));
+    }).immediate();
+  }
+
   // A pack cannot inherit the legacy edgecred_<request> naming convention:
   // only a credential whose protected material has been separately issued
   // may become a metering identity. This is source-only registration; it does
@@ -7820,6 +7977,8 @@ export function createSqliteSubscriptionControlStore({
     listUsageSamples,
     reserveCoinCommerceDataPackIssuance,
     completeCoinCommerceDataPackIssuance,
+    beginCoinCommerceDataPackArtifactRotation,
+    advanceCoinCommerceDataPackArtifactRotation,
     registerCoinCommerceDataPackEdgeCredential,
     createDataPackResource,
     applyCoinCommerceDataPackFulfillment,

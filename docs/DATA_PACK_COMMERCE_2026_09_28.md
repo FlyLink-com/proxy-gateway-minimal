@@ -193,13 +193,27 @@ does not inspect that input. This is not a production configuration switch:
 the production startup has not supplied an escrow, the published catalog still
 excludes data packs, and pack fulfillment is not selected by its factory.
 
-Credential rotation is still blocked. The existing generic subscription-core
-rotation creates a replacement artifact ID, while pack issuance binds one
-artifact reference and its protected handoff escrow is keyed to the original
-artifact. Calling that generic operation alone would break order-page recovery.
-The pack-specific rotation must coordinate replacement binding, protected URL
-capture, old-token revocation, retry identity and rollback without changing the
-pack's entitlement or lifetime usage. No rotation endpoint is exposed yet.
+The existing generic subscription-core rotation is not used for packs: it
+would invalidate the original artifact before the order-owned protected
+handoff could follow it. A source-only pack rotation service now uses a
+durable control intent keyed by one caller operation reference, captures a
+replacement URL in the existing encrypted escrow, switches the exact active
+issued-link reference, and revokes the old artifact before reporting complete.
+It leaves the edge protocol principal, entitlement and measured lifetime
+usage unchanged. Each attempt uses an order/operation/attempt-derived artifact
+ID, so an absent escrow record after a crash before capture causes only that
+provably owned unbound candidate to be revoked; an unrelated active artifact
+blocks rotation instead. A crash after capture, after the
+link switch, or before the final completion can resume from the same intent.
+Real subscription-Core tests prove old-link rejection and new-link access;
+fault-injection tests prove same-operation replay and no second quota.
+This does not establish a production-safe concurrent-worker lock or a bounded
+recovery worker. Between link switch and old-artifact revocation, an
+interrupted attempt can temporarily leave both artifact URLs active until
+reconciliation. The service remains default-absent without a protected escrow,
+is not exposed as a customer route, and is **not approved for production
+rotation or offer publication**. An isolated host with a real edge process
+and collector is still needed for physical traffic-supply stop proof.
 
 The offer schema also requires a CNY `referencePrice`. Candidate records use
 the existing one-Coin-to-one-CNY display convention solely to satisfy that

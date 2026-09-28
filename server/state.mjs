@@ -18,6 +18,7 @@ import { createPlatformAccountEntitlementShell } from "./services/platform/accou
 import { loadControlPlaneReleaseIdentity } from "./services/platform/control-plane-release-identity.mjs";
 import { createCoinCommerceCoordinator } from "./services/platform/coin-commerce-coordinator.mjs";
 import { createCoinCommerceDataPackOrderDelivery } from "./services/platform/coin-commerce-data-pack-order-delivery.mjs";
+import { createCoinCommerceDataPackArtifactRotation } from "./services/platform/coin-commerce-data-pack-artifact-rotation.mjs";
 import { createSqliteCoinCommerceStore } from "./services/platform/coin-commerce-store.mjs";
 import { createSqliteCoinWalletStore } from "./services/platform/coin-wallet-store.mjs";
 import { createSqlitePaymentStore } from "./services/platform/payment-store.mjs";
@@ -2440,6 +2441,7 @@ export function createRuntimeState(options = {}) {
   let coinCommerceStore = null;
   let coinCommerceCoordinator = null;
   let coinCommerceDataPackOrderDelivery = null;
+  let coinCommerceDataPackArtifactRotation = null;
   let portalRegistrationWelcomeBonusCoordinator = null;
   let walletFirstDeferredTransitionRuntime = null;
   let deferredTransitionStore = null;
@@ -2629,6 +2631,16 @@ export function createRuntimeState(options = {}) {
       if (dataPackEscrowOption.present && dataPackEscrowOption.value !== undefined) {
         callableFromSafeDescriptorChain(dataPackEscrowOption.value, "release");
         coinCommerceDataPackOrderDelivery = createCoinCommerceDataPackOrderDelivery({
+          commerceStore: coinCommerceStore,
+          controlStore: platformControlStore,
+          runtimeCore: subscriptionCore,
+          materialEscrow: dataPackEscrowOption.value,
+          nowFn: subscriptionCoreNowFn
+        });
+        for (const method of ["capture", "probe", "verify"]) {
+          callableFromSafeDescriptorChain(dataPackEscrowOption.value, method);
+        }
+        coinCommerceDataPackArtifactRotation = createCoinCommerceDataPackArtifactRotation({
           commerceStore: coinCommerceStore,
           controlStore: platformControlStore,
           runtimeCore: subscriptionCore,
@@ -3021,6 +3033,7 @@ export function createRuntimeState(options = {}) {
       coinCommerceStore,
       coinCommerceCoordinator,
       coinCommerceDataPackOrderDelivery,
+      coinCommerceDataPackArtifactRotation,
       portalRegistrationWelcomeBonusCoordinator,
       deferredTransitionStore,
       deferredTransitionCoordinator,

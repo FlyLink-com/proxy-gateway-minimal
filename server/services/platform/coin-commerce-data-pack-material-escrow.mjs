@@ -17,6 +17,9 @@ export function createCoinCommerceDataPackMaterialEscrow({ key, filePath } = {})
     verify(input) {
       return backing.runtimeEscrow.verifyInitialSetupDelivery(binding(input));
     },
+    probe(input) {
+      return backing.probeInitialSetupDelivery(binding(input));
+    },
     release(input) {
       const scope = binding(input);
       const summary = backing.deliveryEscrow.getSetupDeliverySummary(scope);

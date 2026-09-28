@@ -347,12 +347,16 @@ test("data-pack order handoff is absent by default and composed only with protec
   try {
     baseline = createRuntimeState(injectedCommerceStateOptions(dir));
     assert.equal(baseline.platform.coinCommerceDataPackOrderDelivery, null);
+    assert.equal(baseline.platform.coinCommerceDataPackArtifactRotation, null);
     baseline.close();
     baseline = null;
     optedIn = createRuntimeState(injectedCommerceStateOptions(dir, {
-      coinCommerceDataPackMaterialEscrow: { release() { return null; } }
+      coinCommerceDataPackMaterialEscrow: {
+        release() { return null; }, capture() {}, probe() { return "absent"; }, verify() {}
+      }
     }));
     assert.equal(typeof optedIn.platform.coinCommerceDataPackOrderDelivery.get, "function");
+    assert.equal(typeof optedIn.platform.coinCommerceDataPackArtifactRotation.rotate, "function");
     assert.throws(() => optedIn.platform.coinCommerceDataPackOrderDelivery.get({
       accountId: "acct_pack", orderRef: "coinord_pack_1"
     }), (error) => error.code === "coin_commerce_data_pack_delivery_unavailable");
