@@ -180,9 +180,24 @@ order-owned URL and scoped usage only when that resolver is explicitly supplied
 to the route state. All handoff responses, including errors, carry no-store;
 cross-account and incomplete delivery both return the same not-found shape.
 Pending usage stays unknown rather than becoming zero. Route tests cover these
-boundaries. This is a source-level HTTP adapter, not production composition:
-the runtime has not yet installed the resolver, and the mobile order-detail UI
-has not yet consumed it.
+boundaries. This is a source-level HTTP adapter, not a production activation:
+the mobile order-detail UI has not yet consumed it.
+
+Runtime-state composition now has an explicit, default-absent protected-escrow
+input for that order resolver. When Coins Commerce is enabled and the caller
+supplies the escrow, the state binds the existing Commerce Store, control
+store and subscription core to the owner-scoped resolver; disabled Commerce
+does not inspect that input. This is not a production configuration switch:
+the production startup has not supplied an escrow, the published catalog still
+excludes data packs, and pack fulfillment is not selected by its factory.
+
+Credential rotation is still blocked. The existing generic subscription-core
+rotation creates a replacement artifact ID, while pack issuance binds one
+artifact reference and its protected handoff escrow is keyed to the original
+artifact. Calling that generic operation alone would break order-page recovery.
+The pack-specific rotation must coordinate replacement binding, protected URL
+capture, old-token revocation, retry identity and rollback without changing the
+pack's entitlement or lifetime usage. No rotation endpoint is exposed yet.
 
 The offer schema also requires a CNY `referencePrice`. Candidate records use
 the existing one-Coin-to-one-CNY display convention solely to satisfy that

@@ -340,6 +340,29 @@ function injectedCommerceStateOptions(directory, {
   };
 }
 
+test("data-pack order handoff is absent by default and composed only with protected escrow", () => {
+  const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-pack-handoff-"));
+  let baseline;
+  let optedIn;
+  try {
+    baseline = createRuntimeState(injectedCommerceStateOptions(dir));
+    assert.equal(baseline.platform.coinCommerceDataPackOrderDelivery, null);
+    baseline.close();
+    baseline = null;
+    optedIn = createRuntimeState(injectedCommerceStateOptions(dir, {
+      coinCommerceDataPackMaterialEscrow: { release() { return null; } }
+    }));
+    assert.equal(typeof optedIn.platform.coinCommerceDataPackOrderDelivery.get, "function");
+    assert.throws(() => optedIn.platform.coinCommerceDataPackOrderDelivery.get({
+      accountId: "acct_pack", orderRef: "coinord_pack_1"
+    }), (error) => error.code === "coin_commerce_data_pack_delivery_unavailable");
+  } finally {
+    baseline?.close();
+    optedIn?.close();
+    removeTempDir(dir);
+  }
+});
+
 test("createRuntimeState exposes expected ports and services", () => {
   const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-state-"));
   let state;
@@ -1166,6 +1189,7 @@ for (const [label, configuredValue] of [
       "coinCommerceFulfillmentHandler",
       "coinCommerceFulfillmentFactory",
       "coinCommerceCoordinator",
+      "coinCommerceDataPackMaterialEscrow",
       "platformUserPortalAuth"
     ]) {
       Object.defineProperty(options, field, {

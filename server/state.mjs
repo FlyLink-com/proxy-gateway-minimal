@@ -17,6 +17,7 @@ import { DEFAULT_ADMIN_ALLOWED_CIDRS, DEFAULT_TRUSTED_PROXY_CIDRS } from "./serv
 import { createPlatformAccountEntitlementShell } from "./services/platform/account-entitlement-shell.mjs";
 import { loadControlPlaneReleaseIdentity } from "./services/platform/control-plane-release-identity.mjs";
 import { createCoinCommerceCoordinator } from "./services/platform/coin-commerce-coordinator.mjs";
+import { createCoinCommerceDataPackOrderDelivery } from "./services/platform/coin-commerce-data-pack-order-delivery.mjs";
 import { createSqliteCoinCommerceStore } from "./services/platform/coin-commerce-store.mjs";
 import { createSqliteCoinWalletStore } from "./services/platform/coin-wallet-store.mjs";
 import { createSqlitePaymentStore } from "./services/platform/payment-store.mjs";
@@ -2438,6 +2439,7 @@ export function createRuntimeState(options = {}) {
   );
   let coinCommerceStore = null;
   let coinCommerceCoordinator = null;
+  let coinCommerceDataPackOrderDelivery = null;
   let portalRegistrationWelcomeBonusCoordinator = null;
   let walletFirstDeferredTransitionRuntime = null;
   let deferredTransitionStore = null;
@@ -2623,6 +2625,17 @@ export function createRuntimeState(options = {}) {
         store: coinCommerceStore,
         fulfillmentHandler: configuredCoinCommerceFulfillmentHandler
       });
+      const dataPackEscrowOption = ownDataOption(options, "coinCommerceDataPackMaterialEscrow");
+      if (dataPackEscrowOption.present && dataPackEscrowOption.value !== undefined) {
+        callableFromSafeDescriptorChain(dataPackEscrowOption.value, "release");
+        coinCommerceDataPackOrderDelivery = createCoinCommerceDataPackOrderDelivery({
+          commerceStore: coinCommerceStore,
+          controlStore: platformControlStore,
+          runtimeCore: subscriptionCore,
+          materialEscrow: dataPackEscrowOption.value,
+          nowFn: subscriptionCoreNowFn
+        });
+      }
       if (registrationWelcomeCoinsWorkerEnabled) {
         try {
           portalRegistrationWelcomeBonusCoordinator =
@@ -3007,6 +3020,7 @@ export function createRuntimeState(options = {}) {
       walletFirstSetupDeliveryEnabled,
       coinCommerceStore,
       coinCommerceCoordinator,
+      coinCommerceDataPackOrderDelivery,
       portalRegistrationWelcomeBonusCoordinator,
       deferredTransitionStore,
       deferredTransitionCoordinator,
