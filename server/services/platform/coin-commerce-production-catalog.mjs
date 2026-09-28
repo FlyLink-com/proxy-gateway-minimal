@@ -53,6 +53,51 @@ function planOffer({
   });
 }
 
+function dataPackCandidate({ trafficGb, baseCoinUnits }) {
+  return normalizeCoinCommerceOffer({
+    offerRef: `offer_pack_${trafficGb}gb`,
+    offerVersionRef: `offerv_pack_${trafficGb}gb_v1`,
+    version: 1,
+    category: "data_pack",
+    title: {
+      zh: `${trafficGb} GB 流量包`,
+      en: `${trafficGb} GB data pack`
+    },
+    summary: {
+      zh: "一次性流量额度，用完即止，不按月重置",
+      en: "One-time allowance until exhausted; no monthly reset"
+    },
+    importantNotices: {
+      zh: ["独立订阅，不与其他套餐或流量包混用", "刷新或重置订阅不会恢复已用流量"],
+      en: ["Separate subscription; no shared allowance", "Refreshing a subscription never restores consumed data"]
+    },
+    baseCoinUnits,
+    // Compatibility display metadata only. Coins are the purchase currency.
+    referencePrice: {
+      currency: "CNY",
+      amountMinor: baseCoinUnits * 100
+    },
+    acceptedCoinTypes: ACCEPTED_COIN_TYPES,
+    delivery: {
+      kind: "data_pack",
+      durationDays: null,
+      monthlyTrafficGb: null,
+      trafficGb,
+      neverExpires: true,
+      discountBasisPoints: null
+    }
+  });
+}
+
+// Do not publish these until independent issuance, lifetime quota enforcement,
+// order-owned handoff, and recovery are validated together. Catalog visibility
+// without executable fulfillment would allow paid orders with no resource.
+export const COIN_COMMERCE_DATA_PACK_CANDIDATES = Object.freeze([
+  dataPackCandidate({ trafficGb: 100, baseCoinUnits: 30 }),
+  dataPackCandidate({ trafficGb: 200, baseCoinUnits: 50 }),
+  dataPackCandidate({ trafficGb: 500, baseCoinUnits: 100 })
+]);
+
 export const COIN_COMMERCE_PRODUCTION_PUBLISHED_OFFERS = Object.freeze([
   planOffer({
     offerRef: "offer_plan_30d_50gb_monthly",

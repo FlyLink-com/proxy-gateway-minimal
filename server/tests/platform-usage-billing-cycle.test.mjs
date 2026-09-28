@@ -95,6 +95,30 @@ test("annual entitlements reset quota at monthly anniversaries", () => {
   }
 });
 
+test("versioned data packs retain one lifetime quota across monthly anniversaries", () => {
+  for (const plan of [
+    "offerv_pack_100gb_v1",
+    "offerv_pack_200gb_v1",
+    "offerv_pack_500gb_v1"
+  ]) {
+    const binding = {
+      plan,
+      validFrom: "2026-01-31T00:00:00.000Z",
+      validUntil: "9999-12-31T23:59:59.999Z"
+    };
+    assert.deepEqual(usageCycleForBinding(binding, "2026-03-01T00:00:00.000Z"), {
+      startedAt: binding.validFrom,
+      endedAt: binding.validUntil,
+      cadence: "lifetime"
+    });
+    assert.deepEqual(usageCycleFiltersForBinding(binding, "2026-09-01T00:00:00.000Z"), {
+      observedFrom: binding.validFrom,
+      observedTo: binding.validUntil
+    });
+    assert.equal(isQuotaRolloverManagedBinding(binding), false);
+  }
+});
+
 test("default-off deployment preserves existing monthly anniversary handling for unknown plans", () => {
   assert.deepEqual(usageCycleForBinding({
     plan: "future_plan_not_reviewed",

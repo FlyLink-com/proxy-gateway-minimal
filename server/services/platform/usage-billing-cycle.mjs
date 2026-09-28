@@ -29,6 +29,13 @@ const ROLLOVER_MANAGED_PLANS = new Set([
   "offerv_plan_30d_100gb_monthly_v1",
   "offerv_plan_365d_200gb_monthly_v1"
 ]);
+// These immutable offer versions consume one quota for the entire resource
+// lifetime. A page refresh or calendar boundary must never replenish them.
+const LIFETIME_DATA_PACKS = new Set([
+  "offerv_pack_100gb_v1",
+  "offerv_pack_200gb_v1",
+  "offerv_pack_500gb_v1"
+]);
 
 export function isQuotaRolloverManagedBinding(binding) {
   return ROLLOVER_MANAGED_PLANS.has(String(binding?.plan || "").trim());
@@ -67,6 +74,19 @@ export function monthlyUsageCycleFor({ validFrom, validUntil, at } = {}) {
 }
 
 export function usageCycleForBinding(binding, at) {
+  if (LIFETIME_DATA_PACKS.has(String(binding?.plan || "").trim())) {
+    const startedAt = dateFromIso(binding?.validFrom);
+    const endedAt = dateFromIso(binding?.validUntil);
+    const observedAt = dateFromIso(at);
+    if (!startedAt || !endedAt || !observedAt || endedAt <= startedAt) {
+      return null;
+    }
+    return {
+      startedAt: startedAt.toISOString(),
+      endedAt: endedAt.toISOString(),
+      cadence: "lifetime"
+    };
+  }
   if (FIXED_30_DAY_PLANS.has(String(binding?.plan || "").trim())) {
     const anchor = dateFromIso(binding?.validFrom);
     const entitlementEnd = dateFromIso(binding?.validUntil);
