@@ -195,6 +195,29 @@ test("a crash after capture reuses the protected candidate rather than minting t
   } finally { f.close(); }
 });
 
+test("a failed control-link switch retains the old order handoff until replay", () => {
+  const f = fixture();
+  try {
+    const input = { accountId: ORDER.accountId, orderRef: ORDER.orderRef,
+      rotationRef: "packrot_before_switch" };
+    const oldUrl = f.delivery().get({ accountId: ORDER.accountId,
+      orderRef: ORDER.orderRef }).subscriptionUrl;
+    const controlStore = { ...f.controlStore,
+      advanceCoinCommerceDataPackArtifactRotation(value) {
+        if (value.stage === "switched") throw new Error("injected switch failure");
+        return f.controlStore.advanceCoinCommerceDataPackArtifactRotation(value);
+      } };
+    assert.throws(() => f.rotation({ controlStore }).rotate(input),
+      (error) => error.code === "coin_commerce_data_pack_rotation_reconciliation_required");
+    assert.equal(f.delivery().get({ accountId: ORDER.accountId,
+      orderRef: ORDER.orderRef }).subscriptionUrl, oldUrl);
+    f.reopen();
+    assert.equal(f.rotation().rotate(input).status, "complete");
+    assert.equal(f.artifacts.length, 2);
+    assert.equal(f.artifacts[0].status, "revoked");
+  } finally { f.close(); }
+});
+
 test("a pending rotation blocks a different operation and cannot be replayed for another order", () => {
   const f = fixture();
   try {
