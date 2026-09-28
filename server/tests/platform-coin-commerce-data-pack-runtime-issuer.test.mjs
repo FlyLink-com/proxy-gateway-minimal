@@ -12,6 +12,7 @@ import { hashSubscriptionToken } from "../services/subscriptions/tokens.mjs";
 
 const NOW = "2026-09-28T00:00:00.000Z";
 const UNTIL = "9999-12-31T23:59:59.999Z";
+const LEASE = { leaseGeneration: 1, leaseToken: "a".repeat(64) };
 const BASE = {
   commandRef: "coincmd_pack_runtime_a",
   orderRef: "coinord_pack_runtime_a",
@@ -47,11 +48,31 @@ function fixture() {
   const escrowPath = join(directory, "pack-material.json");
   const key = Buffer.alloc(32, 7);
   let materialEscrow = createCoinCommerceDataPackMaterialEscrow({ key, filePath: escrowPath });
-  const issuer = () => createCoinCommerceDataPackRuntimeIssuer({
-    controlStore, runtimeCore, materialEscrow, nodeId: "node_sg", nowFn: () => new Date(NOW)
-  });
+  const commerceStore = {
+    verifyCapturedFulfillmentClaim(claim) {
+      if (claim.leaseGeneration !== LEASE.leaseGeneration || claim.leaseToken !== LEASE.leaseToken) {
+        const error = new Error("lease lost");
+        error.code = "commerce_fulfillment_lease_lost";
+        throw error;
+      }
+      const trafficGb = claim.orderRef.endsWith("_b") ? 200 : 100;
+      return {
+        commandRef: claim.commandRef, orderRef: claim.orderRef,
+        accountId: claim.accountId,
+        offerVersionRef: `offerv_pack_${trafficGb}gb_v1`,
+        delivery: { kind: "data_pack", neverExpires: true, trafficGb }
+      };
+    }
+  };
+  const issuer = () => {
+    const inner = createCoinCommerceDataPackRuntimeIssuer({
+      commerceStore, controlStore, runtimeCore, materialEscrow,
+      nodeId: "node_sg", nowFn: () => new Date(NOW)
+    });
+    return { issue: (input) => inner.issue(input, LEASE), markerFor: inner.markerFor };
+  };
   return {
-    controlStore, runtimeCore, tenants, artifacts, escrowPath, key, issuer,
+    commerceStore, controlStore, runtimeCore, tenants, artifacts, escrowPath, key, issuer,
     counts: () => ({ tenantCreates, artifactCreates }),
     releaseMaterial(input) {
       return materialEscrow.release(input);
@@ -135,10 +156,10 @@ test("data-pack runtime issuer accepts the real Core note and year-9999 tenant c
     });
     const materialEscrow = createCoinCommerceDataPackMaterialEscrow({ key: Buffer.alloc(32, 9), filePath: join(directory, "material.json") });
     try {
-      const issuer = createCoinCommerceDataPackRuntimeIssuer({ controlStore: f.controlStore, runtimeCore: core, materialEscrow, nodeId: "vultr-singapore", nowFn: () => new Date(NOW) });
-      const first = issuer.issue(BASE);
+      const issuer = createCoinCommerceDataPackRuntimeIssuer({ commerceStore: f.commerceStore, controlStore: f.controlStore, runtimeCore: core, materialEscrow, nodeId: "vultr-singapore", nowFn: () => new Date(NOW) });
+      const first = issuer.issue(BASE, LEASE);
       assert.equal(first.status, "issued");
-      assert.deepEqual(issuer.issue(BASE), first);
+      assert.deepEqual(issuer.issue(BASE, LEASE), first);
       assert.equal(core.getTenant("tenant_pack_real_1").expiresAt, UNTIL);
     } finally { materialEscrow.close(); }
   } finally {
@@ -161,18 +182,18 @@ test("data-pack runtime issuance completes a saved artifact after control finali
       return f.controlStore.completeCoinCommerceDataPackIssuance(input);
     };
     const issuer = createCoinCommerceDataPackRuntimeIssuer({
-      controlStore: guardedControl, runtimeCore: f.runtimeCore,
+      commerceStore: f.commerceStore, controlStore: guardedControl, runtimeCore: f.runtimeCore,
       materialEscrow: {
         capture: (input) => f.captureMaterial(input),
         verify: (input) => f.verifyMaterial(input)
       },
       nodeId: "node_sg", nowFn: () => new Date(NOW)
     });
-    assert.throws(() => issuer.issue(BASE), /synthetic control interruption/);
+    assert.throws(() => issuer.issue(BASE, LEASE), /synthetic control interruption/);
     assert.equal(f.controlStore.getIssuanceRequest(
       f.controlStore.reserveCoinCommerceDataPackIssuance({ ...BASE, nodeId: "node_sg", now: NOW }).requestRef
     ).status, "planned");
-    const completed = issuer.issue(BASE);
+    const completed = issuer.issue(BASE, LEASE);
     assert.equal(completed.status, "issued");
     assert.deepEqual(f.counts(), { tenantCreates: 1, artifactCreates: 1 });
   } finally { f.close(); }
@@ -211,5 +232,15 @@ test("data-pack runtime issuer rejects extra material and accessor inputs before
     assert.throws(() => issuer.issue(withGetter),
       (error) => error.code === "coin_commerce_data_pack_reconciliation_required");
     assert.deepEqual(f.counts(), { tenantCreates: 0, artifactCreates: 0 });
+  } finally { f.close(); }
+});
+
+test("data-pack runtime issuer refuses a missing captured-order verifier", () => {
+  const f = fixture();
+  try {
+    assert.throws(() => createCoinCommerceDataPackRuntimeIssuer({
+      controlStore: f.controlStore, runtimeCore: f.runtimeCore,
+      materialEscrow: { capture() {}, verify() {} }, nodeId: "node_sg"
+    }), (error) => error.code === "coin_commerce_data_pack_reconciliation_required");
   } finally { f.close(); }
 });

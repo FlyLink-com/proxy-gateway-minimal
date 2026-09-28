@@ -101,7 +101,12 @@ exists but its protected URL was not durably captured, issuance stops for
 reconciliation rather than generating another credential. The escrow remains
 available for order-detail retrieval, but its release method is internal and
 must only be called after an authenticated order-owner check. This runtime
-stage is **not yet wired to the captured-order handler** and does not create
+stage now requires a live, exact Commerce fulfillment lease and verifies the
+captured order and wallet hold before reservation and again before control
+finalization. An isolated test runs a real captured pack order through the
+Commerce claim and pack issuer, rejecting a wrong or expired claim without
+minting another tenant. The issuer is **not yet wired into the production
+fulfillment coordinator** and does not create
 edge credentials, prove live collector identity, mark a Commerce receipt
 delivered, or publish the candidate offers. Its single-writer file lock must
 be included in the eventual service composition and restart rehearsal.
@@ -113,10 +118,11 @@ request and runtime drift cannot release it. This resolver is not exposed as
 an HTTP route yet; the eventual route must pass the authenticated session
 account and use `no-store` response headers. The technical date is omitted
 from its customer response.
-This source-only table does **not** yet verify a captured Commerce order across
-the database boundary, issue runtime credentials, suspend an exhausted pack,
-or provide a customer handoff. An audit fact alone is not a delivered Commerce
-receipt. The offer stays unpublished.
+This source-only path verifies a captured Commerce order across the database
+boundary and can issue one protected runtime artifact under its exact live
+claim. It does **not** yet bind an edge credential, suspend an exhausted pack,
+complete the Commerce receipt, or provide a customer-facing handoff. An audit
+fact alone is not a delivered Commerce receipt. The offer stays unpublished.
 The offer schema also requires a CNY `referencePrice`. Candidate records use
 the existing one-Coin-to-one-CNY display convention solely to satisfy that
 compatibility field; the requested purchase price is in Coins, and this does

@@ -244,6 +244,9 @@ function fakeCoinCommerceStore(overrides = {}) {
     getDeliveredOrderBinding() {
       return null;
     },
+    verifyCapturedFulfillmentClaim() {
+      return null;
+    },
     listOrders() {
       return { orders: [], nextCursor: null };
     },
@@ -2604,7 +2607,7 @@ test("createRuntimeState exposes one injected Commerce Store wallet and never cl
   let state;
 
   try {
-    assert.equal(Reflect.ownKeys(store).length, 20);
+    assert.equal(Reflect.ownKeys(store).length, 21);
     state = createRuntimeState(injectedCommerceStateOptions(dir, { store }));
     assert.equal(state.platform.coinsCommerceEnabled, true);
     assert.equal(state.platform.coinCommerceStore, store);

@@ -101,6 +101,7 @@ const COIN_COMMERCE_STORE_FIELDS = Object.freeze([
   "cancelOrder",
   "getOrder",
   "getDeliveredOrderBinding",
+  "verifyCapturedFulfillmentClaim",
   "listOrders",
   "claimDueCaptures",
   "captureClaimedOrder",

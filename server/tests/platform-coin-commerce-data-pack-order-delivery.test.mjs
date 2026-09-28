@@ -10,6 +10,7 @@ import { createCoinCommerceDataPackOrderDelivery } from "../services/platform/co
 
 const NOW = "2026-09-28T00:00:00.000Z";
 const UNTIL = "9999-12-31T23:59:59.999Z";
+const LEASE = { leaseGeneration: 1, leaseToken: "b".repeat(64) };
 const INPUT = {
   commandRef: "coincmd_pack_delivery",
   orderRef: "coinord_pack_delivery",
@@ -41,8 +42,12 @@ test("only a delivered owner-scoped order can re-fetch its own protected pack su
   try {
     controlStore.createAccount({ id: INPUT.accountId, ownerRef: "portal_pack_delivery", status: "active", createdAt: NOW, updatedAt: NOW });
     const issued = createCoinCommerceDataPackRuntimeIssuer({
+      commerceStore: { verifyCapturedFulfillmentClaim: ({ commandRef, orderRef, accountId }) => ({
+        commandRef, orderRef, accountId, offerVersionRef: INPUT.offerVersionRef,
+        delivery: { kind: "data_pack", neverExpires: true, trafficGb: 100 }
+      }) },
       controlStore, runtimeCore, materialEscrow: escrow, nodeId: "node_sg", nowFn: () => new Date(NOW)
-    }).issue(INPUT);
+    }).issue(INPUT, LEASE);
     controlStore.applyCoinCommerceDataPackFulfillment({
       ...INPUT, requestRef: issued.requestRef, entitlementRef: issued.entitlementRef,
       issuedLinkRef: issued.issuedLinkRef, technicalValidUntil: UNTIL,

@@ -69,6 +69,7 @@ const STORE_METHODS = [
   "cancelOrder",
   "getOrder",
   "getDeliveredOrderBinding",
+  "verifyCapturedFulfillmentClaim",
   "listOrders",
   "claimDueCaptures",
   "captureClaimedOrder",
@@ -2231,6 +2232,50 @@ export function createSqliteCoinCommerceStore(options = {}) {
     });
   }
 
+  // Internal pre-mutation check for a worker holding the exact live Commerce
+  // lease. It never captures funds or extends a lease, and its return value
+  // contains neither wallet allocations nor the lease token.
+  function verifyCapturedFulfillmentClaim(claimInput) {
+    return execute(() => {
+      const value = assertPlainObject(claimInput);
+      assertExactDataFields(value, new Set([
+        "commandRef", "orderRef", "accountId", "leaseGeneration", "leaseToken"
+      ]));
+      const commandRef = normalizeReference(value.commandRef);
+      const orderRef = normalizeReference(value.orderRef);
+      const accountId = normalizeReference(value.accountId);
+      if (!Number.isSafeInteger(value.leaseGeneration) || value.leaseGeneration < 1
+        || typeof value.leaseToken !== "string"
+        || !/^[0-9a-f]{64}$/.test(value.leaseToken)) {
+        throw commerceError("commerce_fulfillment_lease_lost");
+      }
+      const command = db.prepare(`
+        select * from platform_coin_commerce_fulfillment_commands
+        where command_ref = ?
+      `).get(commandRef);
+      if (!command) throw commerceError("commerce_fulfillment_lease_lost");
+      const { order, payload } = validateCommandAndReceipt(command);
+      const observedAt = readDatabaseUtc(db);
+      if (order.order_ref !== orderRef || order.account_id !== accountId
+        || order.payment_status !== "captured"
+        || command.status !== "processing"
+        || command.lease_generation !== value.leaseGeneration
+        || command.lease_token !== value.leaseToken
+        || command.lease_until <= observedAt) {
+        throw commerceError("commerce_fulfillment_lease_lost");
+      }
+      const hold = readOrderHoldInvariant(order);
+      if (!hold.valid || hold.hold.status !== "captured") {
+        throw commerceError("reconciliation_required");
+      }
+      return Object.freeze({
+        commandRef, orderRef, accountId,
+        offerVersionRef: payload.offerVersionRef,
+        delivery: payload.delivery
+      });
+    });
+  }
+
   function getDeliveredOrderBinding(getInput) {
     return execute(() => {
       const value = assertPlainObject(getInput);
@@ -4044,6 +4089,7 @@ export function createSqliteCoinCommerceStore(options = {}) {
     cancelOrder,
     getOrder,
     getDeliveredOrderBinding,
+    verifyCapturedFulfillmentClaim,
     listOrders,
     claimDueCaptures,
     captureClaimedOrder,

@@ -5,6 +5,7 @@ const TECHNICAL_VALID_UNTIL = "9999-12-31T23:59:59.999Z";
 const REF = /^[a-z][a-z0-9_]{2,95}$/;
 const NODE_REF = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/;
 const COMMAND_FIELDS = ["commandRef", "orderRef", "accountId", "offerVersionRef", "quotaBytes"];
+const GIB = 1024 ** 3;
 
 function fail() {
   const error = new Error("Data-pack runtime issuance requires reconciliation");
@@ -32,6 +33,19 @@ function exactCommand(value) {
   return command;
 }
 
+function exactLease(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)
+    || utilTypes.isProxy(value) || Object.getPrototypeOf(value) !== Object.prototype
+    || Reflect.ownKeys(value).length !== 2) throw fail();
+  const generation = Object.getOwnPropertyDescriptor(value, "leaseGeneration");
+  const token = Object.getOwnPropertyDescriptor(value, "leaseToken");
+  if (!generation?.enumerable || !Object.hasOwn(generation, "value")
+    || !Number.isSafeInteger(generation.value) || generation.value < 1
+    || !token?.enumerable || !Object.hasOwn(token, "value")
+    || typeof token.value !== "string" || !/^[0-9a-f]{64}$/.test(token.value)) throw fail();
+  return { leaseGeneration: generation.value, leaseToken: token.value };
+}
+
 function runtimeRef(prefix, id) {
   if (typeof id !== "string" || !/^[A-Za-z0-9_-]{3,128}$/.test(id)) throw fail();
   return `${prefix}ref_${createHash("sha256").update(id).digest("hex").slice(0, 16)}`;
@@ -43,13 +57,16 @@ export function coinCommerceDataPackRuntimeMarker(orderRef) {
   return `coin_data_pack_${createHash("sha256").update(ref(orderRef)).digest("hex").slice(0, 24)}`;
 }
 
-// Source-only runtime stage. The Commerce fulfillment handler must supply an
-// already verified captured command; this is not a public purchase API. It
+// Source-only runtime stage. The Commerce fulfillment handler must supply its
+// exact live claim, which is checked against captured payment before writes;
+// this is not a public purchase API. It
 // does not create edge credentials, mark an order delivered or publish packs.
 export function createCoinCommerceDataPackRuntimeIssuer({
-  controlStore, runtimeCore, materialEscrow, nodeId, nowFn = () => new Date()
+  commerceStore, controlStore, runtimeCore, materialEscrow, nodeId,
+  nowFn = () => new Date()
 } = {}) {
-  if (!controlStore?.reserveCoinCommerceDataPackIssuance
+  if (typeof commerceStore?.verifyCapturedFulfillmentClaim !== "function"
+    || !controlStore?.reserveCoinCommerceDataPackIssuance
     || !controlStore?.completeCoinCommerceDataPackIssuance
     || !runtimeCore?.listTenants || !runtimeCore?.createTenant
     || !runtimeCore?.listSubscriptionArtifacts
@@ -58,12 +75,26 @@ export function createCoinCommerceDataPackRuntimeIssuer({
     || typeof nowFn !== "function") throw fail();
   if (typeof nodeId !== "string" || !NODE_REF.test(nodeId)) throw fail();
 
-  function issue(input = {}) {
+  function issue(input = {}, leaseInput) {
     const command = exactCommand(input);
+    const lease = exactLease(leaseInput);
     const commandRef = ref(command.commandRef);
     const orderRef = ref(command.orderRef);
     const accountId = ref(command.accountId);
     const offerVersionRef = ref(command.offerVersionRef);
+    const verifyCapture = () => {
+      const claimed = commerceStore.verifyCapturedFulfillmentClaim({
+        commandRef, orderRef, accountId, ...lease
+      });
+      if (claimed?.commandRef !== commandRef || claimed?.orderRef !== orderRef
+        || claimed?.accountId !== accountId
+        || claimed?.offerVersionRef !== offerVersionRef
+        || claimed?.delivery?.kind !== "data_pack"
+        || claimed.delivery.neverExpires !== true
+        || !Number.isSafeInteger(claimed.delivery.trafficGb)
+        || claimed.delivery.trafficGb * GIB !== command.quotaBytes) throw fail();
+    };
+    verifyCapture();
     const now = new Date(nowFn()).toISOString();
     if (now >= TECHNICAL_VALID_UNTIL) throw fail();
     const reservation = controlStore.reserveCoinCommerceDataPackIssuance({
@@ -125,6 +156,10 @@ export function createCoinCommerceDataPackRuntimeIssuer({
       if (link?.tenantRef !== tenantRef || link?.artifactRef !== artifactRef
         || link?.requestId !== reservation.requestRef || link?.status !== "active") throw fail();
     }
+    // A worker may lose its Commerce lease while constructing runtime
+    // material. Keep the partially issued resource for the next exact worker
+    // rather than finalizing control state under a stale claim.
+    verifyCapture();
     const completed = controlStore.completeCoinCommerceDataPackIssuance({
       commandRef, orderRef, accountId, requestRef: reservation.requestRef,
       entitlementRef: reservation.entitlementRef, nodeId,
