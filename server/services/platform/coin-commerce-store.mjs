@@ -32,6 +32,7 @@ import {
 import {
   validateAccountResourceAuthorityCommerceSchema
 } from "./account-resource-authority-commerce-migrations.mjs";
+import { DATA_PACK_TECHNICAL_VALID_UNTIL } from "./usage-billing-cycle.mjs";
 
 const BUSY_TIMEOUT_MS = 2_000;
 const DEFAULT_CANCEL_WINDOW_MS = 3_000;
@@ -2252,6 +2253,41 @@ export function createSqliteCoinCommerceStore(options = {}) {
         select * from platform_audit_events where id = ?
       `).get(receipt.effect_ref);
       const metadata = effect ? parseJson(effect.metadata_json) : null;
+      if (payload.delivery.kind === "data_pack") {
+        const expectedFields = new Set([
+          "version", "kind", "commandRef", "orderRef", "accountId",
+          "requestRef", "entitlementRef", "issuedLinkRef", "offerVersionRef",
+          "quotaBytes", "commercialNeverExpires", "technicalValidUntil"
+        ]);
+        if (
+          !effect
+          || effect.entity_type !== "coin_commerce_data_pack_fulfillment"
+          || effect.action !== "data_pack_fulfillment_applied"
+          || effect.actor_ref !== "coin_commerce_fulfillment"
+          || !isStrictIsoTimestamp(effect.created_at)
+          || effect.created_at > receipt.recorded_at
+          || !metadata || typeof metadata !== "object" || Array.isArray(metadata)
+          || Reflect.ownKeys(metadata).length !== expectedFields.size
+          || !Reflect.ownKeys(metadata).every((field) => expectedFields.has(field))
+          || metadata.version !== 1 || metadata.kind !== "data_pack"
+          || metadata.commandRef !== command.command_ref
+          || metadata.orderRef !== orderRef || metadata.accountId !== accountId
+          || metadata.offerVersionRef !== payload.offerVersionRef
+          || !COMMERCE_REFERENCE.test(metadata.requestRef)
+          || !COMMERCE_REFERENCE.test(metadata.entitlementRef)
+          || !COMMERCE_REFERENCE.test(metadata.issuedLinkRef)
+          || effect.entity_ref !== metadata.entitlementRef
+          || metadata.quotaBytes !== payload.delivery.trafficGb * (1024 ** 3)
+          || metadata.commercialNeverExpires !== true
+          || metadata.technicalValidUntil !== DATA_PACK_TECHNICAL_VALID_UNTIL
+        ) throw commerceError("reconciliation_required");
+        return Object.freeze({
+          kind: "data_pack", orderRef,
+          offerVersionRef: payload.offerVersionRef,
+          requestRef: metadata.requestRef,
+          entitlementRef: metadata.entitlementRef
+        });
+      }
       if (
         !effect
         || effect.entity_type !== "coin_commerce_subscription_fulfillment"

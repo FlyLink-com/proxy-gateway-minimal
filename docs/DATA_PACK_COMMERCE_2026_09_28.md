@@ -73,6 +73,11 @@ or issued link stops for reconciliation. The owner-scoped usage read additionall
 requires the exact order reference, so a second pack on the same account cannot
 be returned for that order. A resource row without its matching immutable
 fulfillment effect is rejected rather than exposed as delivered usage.
+The Commerce delivered-order reader now recognizes an independent pack only
+when the captured order has a delivered command, immutable receipt, and an
+exact matching pack effect; it returns safe order/request/entitlement references
+and never subscription material. A missing or drifted effect is reconciliation,
+not a delivered customer handoff.
 This source-only table does **not** yet verify a captured Commerce order across
 the database boundary, issue runtime credentials, suspend an exhausted pack,
 or provide a customer handoff. An audit fact alone is not a delivered Commerce

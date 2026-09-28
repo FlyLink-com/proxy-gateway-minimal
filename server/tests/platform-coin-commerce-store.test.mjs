@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -19,6 +20,7 @@ import {
   createSqliteCoinCommerceStore
 } from "../services/platform/coin-commerce-store.mjs";
 import {
+  COIN_COMMERCE_DATA_PACK_CANDIDATES,
   COIN_COMMERCE_PRODUCTION_OFFERS
 } from "../services/platform/coin-commerce-production-catalog.mjs";
 
@@ -2722,6 +2724,77 @@ test("outbox leases fence stale workers, complete atomically, and fail only once
       }),
       "commerce_fulfillment_lease_lost"
     );
+  } finally {
+    state.close();
+  }
+});
+
+test("a delivered data pack exposes only its owned order binding after receipt and exact effect", () => {
+  const state = fixture();
+  try {
+    state.database.exec(`
+      create table platform_audit_events (
+        id text primary key, entity_type text not null, entity_ref text not null,
+        action text not null, actor_ref text not null, created_at text not null,
+        metadata_json text not null
+      )
+    `);
+    credit(state.store, {
+      coinType: "paid_coins", amountUnits: 30, suffix: "pack_purchase"
+    });
+    const pack = COIN_COMMERCE_DATA_PACK_CANDIDATES[0];
+    state.store.publishOfferVersion(pack);
+    const quote = state.store.createCheckoutQuote({
+      accountId: "acct_synthetic_1", offerRef: pack.offerRef
+    });
+    const order = confirm(state, quote, "confirm_pack");
+    state.clock.value = order.cancelUntil;
+    state.store.claimDueCaptures({ limit: 1 });
+    state.store.captureClaimedOrder({ orderRef: order.orderRef });
+    assert.equal(state.store.getDeliveredOrderBinding({
+      accountId: "acct_synthetic_1", orderRef: order.orderRef
+    }), null);
+    const claim = state.store.claimNextFulfillmentCommand({ leaseMs: 1000 });
+    const effectRef = `effect_coin_commerce_${createHash("sha256")
+      .update(`GCCWEBOS:COIN_COMMERCE_SUBSCRIPTION_FULFILLMENT:v1\0${claim.commandRef}`)
+      .digest("hex")}`;
+    state.store.completeFulfillmentCommand({
+      commandRef: claim.commandRef, leaseGeneration: claim.leaseGeneration,
+      leaseToken: claim.leaseToken, effectRef, status: "delivered"
+    });
+    expectCode(() => state.store.getDeliveredOrderBinding({
+      accountId: "acct_synthetic_1", orderRef: order.orderRef
+    }), "reconciliation_required");
+    const metadata = {
+      version: 1, kind: "data_pack", commandRef: claim.commandRef,
+      orderRef: order.orderRef, accountId: "acct_synthetic_1",
+      requestRef: "pareq_pack_order", entitlementRef: "ent_pack_order",
+      issuedLinkRef: "link_pack_order", offerVersionRef: pack.offerVersionRef,
+      quotaBytes: 100 * (1024 ** 3), commercialNeverExpires: true,
+      technicalValidUntil: "9999-12-31T23:59:59.999Z"
+    };
+    state.database.prepare(`
+      insert into platform_audit_events
+        (id, entity_type, entity_ref, action, actor_ref, created_at, metadata_json)
+      values (?, ?, ?, ?, ?, ?, ?)
+    `).run(effectRef, "coin_commerce_data_pack_fulfillment", "ent_pack_order",
+      "data_pack_fulfillment_applied", "coin_commerce_fulfillment",
+      state.clock.value, JSON.stringify(metadata));
+    const read = () => state.store.getDeliveredOrderBinding({
+      accountId: "acct_synthetic_1", orderRef: order.orderRef
+    });
+    assert.deepEqual(read(), {
+      kind: "data_pack", orderRef: order.orderRef,
+      offerVersionRef: pack.offerVersionRef,
+      requestRef: "pareq_pack_order", entitlementRef: "ent_pack_order"
+    });
+    expectCode(() => state.store.getDeliveredOrderBinding({
+      accountId: "acct_other", orderRef: order.orderRef
+    }), "commerce_not_found");
+    state.database.prepare(`
+      update platform_audit_events set metadata_json = ? where id = ?
+    `).run(JSON.stringify({ ...metadata, quotaBytes: 200 * (1024 ** 3) }), effectRef);
+    expectCode(read, "reconciliation_required");
   } finally {
     state.close();
   }
