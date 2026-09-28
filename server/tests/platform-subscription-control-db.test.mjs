@@ -157,7 +157,7 @@ test("a data pack has no inferred edge identity and resolves only its explicit i
     assert.equal(binding?.requestId, reserved.requestRef);
     assert.equal(binding?.entitlementId, reserved.entitlementRef);
     assert.equal(binding?.nodeId, claim.nodeId);
-    assert.equal(store.getLatestEdgeDesiredStateForChannel(claim.nodeId), null);
+    assert.deepEqual(store.getLatestEdgeDesiredStateForChannel(claim.nodeId)?.edgeCredentialRefs, []);
     assert.equal(store.getPortalEdgeCredentialChannelRef(credential.edgeCredentialRef), null);
     const accounting = createTrafficAccountingService({
       controlStore: store, nowFn: () => "2026-10-28T00:00:00.000Z"

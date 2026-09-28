@@ -3,10 +3,12 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+import Database from "better-sqlite3";
 import { createSqliteSubscriptionControlStore } from "../services/platform/subscription-control-db.mjs";
 import { createFileBackedEdgeCredentialMaterialStore } from "../services/edge/credential-material-store.mjs";
 import { createOrderEdgeCredentialIssuer } from "../services/edge/order-credential-issuer.mjs";
 import { createCoinCommerceDataPackEdgeIssuer } from "../services/platform/coin-commerce-data-pack-edge-issuer.mjs";
+import { createReadOnlyMaterialHandoffControlStore } from "../services/edge/material-handoff-readonly-control-store.mjs";
 
 const NOW = "2026-09-28T00:00:00.000Z";
 const LEASE = { leaseGeneration: 1, leaseToken: "a".repeat(64) };
@@ -83,7 +85,53 @@ test("a captured pack claim issues one protected edge credential and replays aft
     assert.equal(controlStore.findIssuedSubscriptionBindingByEdgeCredentialRef(
       first.edgeCredentialRef
     )?.requestId, reserved.requestRef);
-    assert.equal(controlStore.getLatestEdgeDesiredStateForChannel(claim.nodeId), null);
+    assert.deepEqual(controlStore.getLatestEdgeDesiredStateForChannel(claim.nodeId)?.edgeCredentialRefs, []);
+    controlStore.applyCoinCommerceDataPackFulfillment({
+      orderRef: claim.orderRef, commandRef: claim.commandRef,
+      accountId: claim.accountId, requestRef: reserved.requestRef,
+      entitlementRef: reserved.entitlementRef,
+      issuedLinkRef: `${reserved.requestRef}_link_1`,
+      offerVersionRef: claim.offerVersionRef, quotaBytes: claim.quotaBytes,
+      technicalValidUntil: "9999-12-31T23:59:59.999Z",
+      commercialNeverExpires: true, createdAt: NOW
+    });
+    const active = controlStore.getLatestEdgeDesiredStateForChannel(claim.nodeId);
+    assert.deepEqual(active.edgeCredentialRefs, [first.edgeCredentialRef]);
+    assert.deepEqual(active.materialDigests, [{
+      channelRef: claim.nodeId, edgeCredentialRef: first.edgeCredentialRef,
+      digest: materialStore.getCredentialMaterialSummary(first.edgeCredentialRef).materialDigest
+    }]);
+    const mirror = createReadOnlyMaterialHandoffControlStore({ dbPath: join(directory, "control.sqlite") });
+    try {
+      assert.deepEqual(mirror.getLatestEdgeDesiredStateForChannel(claim.nodeId), active);
+      controlStore.recordUsageSample({
+        id: "usage_pack_edge_exhausted", sourceRef: "source_pack_edge",
+        channelRef: claim.nodeId, edgeCredentialRef: first.edgeCredentialRef,
+        accountId: claim.accountId, entitlementId: reserved.entitlementRef,
+        requestId: reserved.requestRef, observedAt: NOW,
+        intervalStartedAt: NOW, intervalEndedAt: NOW,
+        uploadBytes: claim.quotaBytes, downloadBytes: 0,
+        sampleDigest: "sample_pack_edge_exhausted", createdAt: NOW
+      });
+      const exhausted = controlStore.getLatestEdgeDesiredStateForChannel(claim.nodeId);
+      assert.deepEqual(exhausted.edgeCredentialRefs, []);
+      assert.notEqual(exhausted.generation, active.generation);
+      assert.deepEqual(mirror.getLatestEdgeDesiredStateForChannel(claim.nodeId), exhausted);
+      const raw = new Database(join(directory, "control.sqlite"));
+      try {
+        raw.prepare(`
+          update platform_audit_events set metadata_json = '{}'
+           where entity_type = 'coin_commerce_data_pack_fulfillment'
+        `).run();
+      } finally {
+        raw.close();
+      }
+      assert.throws(() => controlStore.getLatestEdgeDesiredStateForChannel(claim.nodeId),
+        (error) => error.code === "data_pack_edge_desired_state_reconciliation_required");
+      assert.throws(() => mirror.getLatestEdgeDesiredStateForChannel(claim.nodeId));
+    } finally {
+      mirror.close();
+    }
   } finally {
     controlStore.close();
     rmSync(directory, { recursive: true, force: true, maxRetries: 3 });

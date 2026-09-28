@@ -13,6 +13,7 @@ import {
 import {
   createAccountResourceAuthorityStore
 } from "./account-resource-authority.mjs";
+import { readDataPackDesiredStateRows } from "../edge/data-pack-desired-state-rows.mjs";
 
 const UNSAFE_FIELD_PARTS = [
   "email",
@@ -6770,7 +6771,7 @@ export function createSqliteSubscriptionControlStore({
     assertNoUnsafeFields(filters);
     const safeChannelRef = requiredText(channelRef, "channelRef");
     const nodeRef = requiredText(filters.nodeRef || safeChannelRef, "nodeRef");
-    const rows = db.prepare(`
+    const portalRows = db.prepare(`
       select
         r.id as request_id,
         r.status as request_status,
@@ -6786,11 +6787,13 @@ export function createSqliteSubscriptionControlStore({
       where c.edge_channel_ref = ?
       order by c.edge_credential_ref asc, r.updated_at asc, r.id asc
     `).all(safeChannelRef);
+    const nowMs = Date.now();
+    const pack = readDataPackDesiredStateRows(db, safeChannelRef, nowMs);
+    const rows = [...portalRows, ...pack.rows];
     if (rows.length === 0) {
       return null;
     }
-    const nowMs = Date.now();
-    const activeRows = rows
+    const activeRows = [...portalRows
       .map((row) => ({
         ...row,
         validUntilMs: Date.parse(row.valid_until)
@@ -6803,7 +6806,11 @@ export function createSqliteSubscriptionControlStore({
         )
       ))
       .filter((row) => row.edge_credential_ref && row.edge_material_digest)
-      .filter((row) => row.valid_until && !Number.isNaN(row.validUntilMs) && row.validUntilMs > nowMs);
+      .filter((row) => row.valid_until && !Number.isNaN(row.validUntilMs) && row.validUntilMs > nowMs),
+      ...pack.activeRows];
+    if (new Set(activeRows.map((row) => row.edge_credential_ref)).size !== activeRows.length) {
+      throw platformError("reconciliation_required", "edge desired state credential collision");
+    }
     const edgeCredentialRefs = [...new Set(activeRows.map((row) => row.edge_credential_ref))].sort((a, b) => a.localeCompare(b));
     const materialDigests = activeRows
       .map((row) => ({

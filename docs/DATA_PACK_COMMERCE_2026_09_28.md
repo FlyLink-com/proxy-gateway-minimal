@@ -60,8 +60,17 @@ source-only issuer checks the captured Commerce claim and issued control
 lineage before and after creating protected edge material, then registers the
 matching digest. An isolated file-backed restart test reuses the same material
 and credential without returning either secret. The table and issuer do
-**not** apply runtime desired state, prove collector convergence, or suspend
-traffic supply. They are not a customer-delivery signal.
+not themselves prove collector convergence or suspend traffic supply. The
+Commerce coordinator now passes the exact live claim lease only to a
+data-pack handler; existing timed-plan handler inputs stay unchanged. A
+shared control/read-only projection includes a registered pack credential in
+edge desired state only after its immutable resource and fulfillment effect
+exist and its lifetime measured usage is below quota. Before that effect it
+projects no pack credential, and at quota it projects removal of only that
+credential. The two projections match in an isolated test. The fulfillment
+handler still needs to request and confirm edge application; a changed
+desired-state projection alone is **not** actual traffic-supply suspension
+or a customer-delivery signal.
 The collector quota decision now filters measured samples by account,
 entitlement **and** request, rather than request alone. A red-before-fix test
 showed that an inconsistent sample sharing only a request ID could otherwise
