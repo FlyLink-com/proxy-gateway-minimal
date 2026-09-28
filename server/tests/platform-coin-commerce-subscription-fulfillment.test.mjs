@@ -7,6 +7,7 @@ import { join } from "node:path";
 import test from "node:test";
 
 import {
+  COIN_COMMERCE_DATA_PACK_CANDIDATES,
   COIN_COMMERCE_PRODUCTION_OFFERS
 } from "../services/platform/coin-commerce-production-catalog.mjs";
 import {
@@ -3376,6 +3377,18 @@ test("every published Offer version must have an exact fulfillment-history snaps
   } finally {
     fixture.close();
   }
+});
+
+test("an unimplemented data pack cannot enter the published fulfillment catalog", () => {
+  const dataPack = COIN_COMMERCE_DATA_PACK_CANDIDATES[0];
+  assert.throws(
+    () => createCoinCommerceProductionSubscriptionFulfillment({
+      accountActivationReader: ACTIVATED_ACCOUNT_READER,
+      publishedCatalog: [dataPack],
+      fulfillmentCatalog: [dataPack]
+    }),
+    (error) => error?.code === "coin_commerce_fulfillment_catalog_invalid"
+  );
 });
 
 test("offer version and delivery mismatches fail closed before subscription effects", async (t) => {

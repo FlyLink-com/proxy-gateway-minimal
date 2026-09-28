@@ -410,6 +410,12 @@ export function createCoinCommerceProductionSubscriptionFulfillment({
     publishedCatalogSnapshot
     && fulfillmentCatalogSnapshot
     && publishedCatalogSnapshot.every((publishedOffer) => {
+      // Only timed plans have an implemented production issuance path here.
+      // A data-pack definition alone must never make a paid order purchasable.
+      if (
+        publishedOffer.category !== "plan"
+        || publishedOffer.delivery.kind !== "subscription_plan"
+      ) return false;
       const historicalOffer = fulfillmentCatalogSnapshot.find(
         (candidate) => (
           candidate.offerVersionRef === publishedOffer.offerVersionRef

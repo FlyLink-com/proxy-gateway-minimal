@@ -30,6 +30,8 @@ valid data-pack delivery path. The current order projection contains only
 fulfillment status, not an order-owned subscription handoff. Publishing the
 candidate offers before those gaps are closed would create paid orders with no
 valid resource, so the candidates remain outside the published catalog.
+The timed-plan production fulfillment constructor also rejects a published
+data-pack offer until a separate, verified pack fulfillment path exists.
 The offer schema also requires a CNY `referencePrice`. Candidate records use
 the existing one-Coin-to-one-CNY display convention solely to satisfy that
 compatibility field; the requested purchase price is in Coins, and this does
