@@ -62,6 +62,9 @@ test("independent data-pack usage stays scoped to its issued resource across mon
         status: "active", createdAt: issuedAt, updatedAt: issuedAt
       });
     }
+    assert.equal(store.resolveAccountServiceEntitlement({
+      accountId: "acct_pack_reader", now
+    })?.id, "ent_pack_timed");
     const read = (suffix, at = now) => store.readDataPackResourceUsage({
       accountId: "acct_pack_reader", requestRef: `pareq_pack_${suffix}`,
       entitlementRef: `ent_pack_${suffix}`, now: at
@@ -86,6 +89,9 @@ test("independent data-pack usage stays scoped to its issued resource across mon
       });
     }
     assert.equal(read("a").usage.usedBytes, 50 * gib);
+    assert.equal(store.resolveAccountServiceEntitlement({
+      accountId: "acct_pack_reader", now
+    })?.id, "ent_pack_timed");
     assert.equal(read("a").usage.remainingBytes, 50 * gib);
     assert.equal(read("a").usage.exhausted, false);
     assert.equal(read("b").usage.usedBytes, 200 * gib);

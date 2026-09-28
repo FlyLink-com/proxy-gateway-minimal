@@ -6,6 +6,7 @@ import { dirname } from "node:path";
 import {
   usageCycleForBinding,
   summarizeUsageSamples,
+  isLifetimeDataPackBinding,
   lifetimeDataPackQuotaBytesFor
 } from "./usage-billing-cycle.mjs";
 import {
@@ -2771,7 +2772,8 @@ export function createSqliteSubscriptionControlStore({
     const entitlement = resolveAccountServiceEntitlement({ accountId, now });
     if (!entitlement) {
       const current = listEntitlements({ accountId, status: "active" })
-        .filter((candidate) => candidate.validFrom <= now && candidate.validUntil > now);
+        .filter((candidate) => !isLifetimeDataPackBinding(candidate)
+          && candidate.validFrom <= now && candidate.validUntil > now);
       return Object.freeze({ state: current.length === 0 ? "none" : "reconciliation_required" });
     }
     if (!(entitlement.validFrom <= now && entitlement.validUntil > now)) {
@@ -5034,11 +5036,15 @@ export function createSqliteSubscriptionControlStore({
         ) {
           return null;
         }
-        boundEntitlements.push(entitlement);
+        if (!isLifetimeDataPackBinding(entitlement)) {
+          boundEntitlements.push(entitlement);
+        }
       }
       return selectServiceEntitlement(boundEntitlements);
     }
-    return selectServiceEntitlement(entitlements);
+    return selectServiceEntitlement(entitlements.filter(
+      (entitlement) => !isLifetimeDataPackBinding(entitlement)
+    ));
   }
 
   function updateEntitlementTrafficLimit(id, { trafficLimitBytes, updatedAt }) {

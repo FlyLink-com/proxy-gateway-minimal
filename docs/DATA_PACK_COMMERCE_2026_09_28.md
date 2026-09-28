@@ -43,6 +43,12 @@ also holds a timed plan or another pack. It preserves a `pending` result when
 no sample exists, counts usage across month boundaries and link rotation, and
 rejects ambiguous active bindings. This does **not** issue a pack, prove that
 the live collector can resolve its credential, or enforce exhaustion yet.
+The legacy account-current resolver now excludes only the three recognized
+pack offer versions from its single timed-resource selection. It still checks
+each binding's stored lineage; the separate pack projection checks its own
+quota and owner. Thus adding a pack will not by itself make an existing timed
+plan disappear from the homepage. Wallet-first authority remains a separate
+binding and is not reassigned by this change.
 The offer schema also requires a CNY `referencePrice`. Candidate records use
 the existing one-Coin-to-one-CNY display convention solely to satisfy that
 compatibility field; the requested purchase price is in Coins, and this does
