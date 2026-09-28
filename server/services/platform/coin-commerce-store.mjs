@@ -67,6 +67,7 @@ const STORE_METHODS = [
   "confirmOrder",
   "cancelOrder",
   "getOrder",
+  "getDeliveredOrderBinding",
   "listOrders",
   "claimDueCaptures",
   "captureClaimedOrder",
@@ -2229,6 +2230,56 @@ export function createSqliteCoinCommerceStore(options = {}) {
     });
   }
 
+  function getDeliveredOrderBinding(getInput) {
+    return execute(() => {
+      const value = assertPlainObject(getInput);
+      assertExactDataFields(value, new Set(["accountId", "orderRef"]));
+      const accountId = normalizeReference(value.accountId);
+      const orderRef = normalizeReference(value.orderRef);
+      const order = findOrder(orderRef, accountId);
+      if (!order) throw commerceError("commerce_not_found");
+      const projection = projectOrderRow(order);
+      if (
+        projection.paymentStatus !== "captured"
+        || projection.fulfillment.status !== "delivered"
+      ) return null;
+      const command = db.prepare(`
+        select * from platform_coin_commerce_fulfillment_commands
+        where order_ref = ? and account_id = ?
+      `).get(orderRef, accountId);
+      const { receipt, payload } = validateCommandAndReceipt(command, order);
+      const effect = receipt && db.prepare(`
+        select * from platform_audit_events where id = ?
+      `).get(receipt.effect_ref);
+      const metadata = effect ? parseJson(effect.metadata_json) : null;
+      if (
+        !effect
+        || effect.entity_type !== "coin_commerce_subscription_fulfillment"
+        || effect.action !== "subscription_fulfillment_applied"
+        || effect.actor_ref !== "coin_commerce_fulfillment"
+        || !metadata
+        || metadata.version !== 1
+        || metadata.commandRef !== command.command_ref
+        || metadata.orderRef !== orderRef
+        || metadata.accountId !== accountId
+        || metadata.offerVersionRef !== payload.offerVersionRef
+        || typeof metadata.requestRef !== "string"
+        || !COMMERCE_REFERENCE.test(metadata.requestRef)
+        || typeof metadata.entitlementRef !== "string"
+        || !COMMERCE_REFERENCE.test(metadata.entitlementRef)
+        || typeof metadata.issuedLinkRef !== "string"
+        || !COMMERCE_REFERENCE.test(metadata.issuedLinkRef)
+        || effect.entity_ref !== metadata.entitlementRef
+      ) throw commerceError("reconciliation_required");
+      return Object.freeze({
+        orderRef,
+        offerVersionRef: payload.offerVersionRef,
+        requestRef: metadata.requestRef,
+        entitlementRef: metadata.entitlementRef
+      });
+    });
+  }
+
   function normalizeLimit(value) {
     if (!Number.isSafeInteger(value) || value < 1 || value > 100) {
       throw commerceError("invalid_pagination");
@@ -3956,6 +4007,7 @@ export function createSqliteCoinCommerceStore(options = {}) {
     confirmOrder,
     cancelOrder,
     getOrder,
+    getDeliveredOrderBinding,
     listOrders,
     claimDueCaptures,
     captureClaimedOrder,

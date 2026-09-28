@@ -32,6 +32,11 @@ candidate offers before those gaps are closed would create paid orders with no
 valid resource, so the candidates remain outside the published catalog.
 The timed-plan production fulfillment constructor also rejects a published
 data-pack offer until a separate, verified pack fulfillment path exists.
+The Commerce store now has an owner-scoped delivered-order binding lookup for
+existing timed-plan deliveries. It returns only opaque request and entitlement
+references after checking the delivery receipt and fulfillment audit. This is
+the foundation for order-page recovery, not a data-pack issuance path or a
+subscription-material API; neither is exposed by this change.
 The offer schema also requires a CNY `referencePrice`. Candidate records use
 the existing one-Coin-to-one-CNY display convention solely to satisfy that
 compatibility field; the requested purchase price is in Coins, and this does

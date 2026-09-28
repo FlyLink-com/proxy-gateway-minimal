@@ -434,6 +434,7 @@ test("factory enforces exact ownership, schemas, connection settings, and surfac
       "confirmOrder",
       "cancelOrder",
       "getOrder",
+      "getDeliveredOrderBinding",
       "listOrders",
       "claimDueCaptures",
       "captureClaimedOrder",
