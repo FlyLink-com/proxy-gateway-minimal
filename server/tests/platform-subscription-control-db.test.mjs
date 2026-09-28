@@ -133,6 +133,37 @@ test("independent data-pack usage stays scoped to its issued resource across mon
   });
 });
 
+test("pack-only accounts do not masquerade as the legacy current timed plan", () => {
+  withStore((store) => {
+    const now = "2026-10-02T00:00:00.000Z";
+    store.createAccount({
+      id: "acct_pack_only", ownerRef: "portal_pack_only", status: "active",
+      createdAt: now, updatedAt: now
+    });
+    store.createEntitlement({
+      id: "ent_pack_only", accountId: "acct_pack_only",
+      plan: "offerv_pack_100gb_v1", status: "active",
+      validFrom: now, validUntil: "9999-12-31T23:59:59.999Z",
+      trafficLimitBytes: 100 * 1024 ** 3, createdAt: now, updatedAt: now
+    });
+    store.createIssuanceRequest({
+      id: "pareq_pack_only", accountId: "acct_pack_only", entitlementId: "ent_pack_only",
+      approvalRef: "approval_pack_only", status: "issued", quantity: 1,
+      nodeId: "channel-aliyun-a-tuic", purpose: "coin_commerce_data_pack_fulfillment",
+      requestedByRef: "commerce_pack_issuer", createdAt: now, updatedAt: now
+    });
+    store.linkIssuedSubscription({
+      id: "link_pack_only", requestId: "pareq_pack_only",
+      tenantRef: "tenant_pack_only", artifactRef: "artifact_pack_only",
+      status: "active", createdAt: now, updatedAt: now
+    });
+    assert.equal(store.resolveAccountServiceEntitlement({ accountId: "acct_pack_only", now }), null);
+    assert.deepEqual(store.readLegacyPortalCurrentResource({ accountId: "acct_pack_only", now }), {
+      model: "legacy", resource: { state: "none" }, requestRef: null
+    });
+  });
+});
+
 function withWelcomeCoinGrantStore(fn) {
   const database = new Database(":memory:");
   let store;

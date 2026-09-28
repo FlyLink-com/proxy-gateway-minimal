@@ -55,6 +55,11 @@ showed that an inconsistent sample sharing only a request ID could otherwise
 trigger a false quota suspension. This tightens attribution for existing
 plans as well as future pack resources; it is not evidence that a pack has
 been issued or that runtime suspension has been validated.
+The isolated reader tests use a far-future validity timestamp only to seed
+today's date-required control schema. That fixture is **not** approval to
+represent the customer-facing “never expires” promise with a hidden calendar
+expiry in the final product; the issuance/runtime contract still needs a
+reviewed no-expiry representation and migration rehearsal.
 The offer schema also requires a CNY `referencePrice`. Candidate records use
 the existing one-Coin-to-one-CNY display convention solely to satisfy that
 compatibility field; the requested purchase price is in Coins, and this does
