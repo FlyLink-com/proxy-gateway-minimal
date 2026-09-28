@@ -65,6 +65,13 @@ test("independent data-pack usage stays scoped to its issued resource across mon
     assert.equal(store.resolveAccountServiceEntitlement({
       accountId: "acct_pack_reader", now
     })?.id, "ent_pack_timed");
+    for (const suffix of ["a", "b"]) {
+      const binding = store.findIssuedSubscriptionBindingByEdgeCredentialRef(
+        `edgecred_pareq_pack_${suffix}`
+      );
+      assert.equal(binding?.requestId, `pareq_pack_${suffix}`);
+      assert.equal(binding?.entitlementId, `ent_pack_${suffix}`);
+    }
     const read = (suffix, at = now) => store.readDataPackResourceUsage({
       accountId: "acct_pack_reader", requestRef: `pareq_pack_${suffix}`,
       entitlementRef: `ent_pack_${suffix}`, now: at

@@ -49,6 +49,12 @@ each binding's stored lineage; the separate pack projection checks its own
 quota and owner. Thus adding a pack will not by itself make an existing timed
 plan disappear from the homepage. Wallet-first authority remains a separate
 binding and is not reassigned by this change.
+The collector quota decision now filters measured samples by account,
+entitlement **and** request, rather than request alone. A red-before-fix test
+showed that an inconsistent sample sharing only a request ID could otherwise
+trigger a false quota suspension. This tightens attribution for existing
+plans as well as future pack resources; it is not evidence that a pack has
+been issued or that runtime suspension has been validated.
 The offer schema also requires a CNY `referencePrice`. Candidate records use
 the existing one-Coin-to-one-CNY display convention solely to satisfy that
 compatibility field; the requested purchase price is in Coins, and this does
