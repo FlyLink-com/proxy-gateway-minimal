@@ -145,9 +145,11 @@ boundary and can issue one protected runtime artifact under its exact live
 claim. A source-only edge issuer can mint protected credential material under
 that claim. A separate source-only fulfillment handler now composes those
 issuers with the immutable pack effect and requires the exact desired-state
-application receipt before reporting delivery to Commerce. Its first tests use
-synthetic issuers and receipts, not a real edge apply or cross-database crash
-recovery. It is **not wired into the production fulfillment factory**. The
+application receipt before reporting delivery to Commerce. Tests cover a
+replayed immutable effect in the real control SQLite store and notifier, but
+use synthetic Commerce claims, issuers and edge receipts; they do not prove
+a real edge apply or cross-database crash recovery. It is **not wired into
+the production fulfillment factory**. The
 path does **not** yet prove runtime identity-map convergence, suspend an
 exhausted pack, provide credential rotation or a customer-facing handoff.
 An audit fact alone is not a delivered Commerce receipt. The offer stays

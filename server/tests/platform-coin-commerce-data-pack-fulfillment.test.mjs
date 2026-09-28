@@ -1,5 +1,10 @@
 import assert from "node:assert/strict";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
+import { createSqliteSubscriptionControlStore } from "../services/platform/subscription-control-db.mjs";
+import { createDataPlaneDesiredStateNotifier } from "../services/edge/data-plane-desired-state-notifier.mjs";
 import {
   createCoinCommerceDataPackFulfillmentHandler
 } from "../services/platform/coin-commerce-data-pack-fulfillment.mjs";
@@ -188,4 +193,86 @@ test("lost Commerce claim cannot start another pack fulfillment", () => {
   const handler = createCoinCommerceDataPackFulfillmentHandler(state.dependencies);
   assert.throws(() => handler.execute(COMMAND), isCoinCommerceFulfillmentRetryableError);
   assert.deepEqual(state.calls, ["verify"]);
+});
+
+test("a durable control store replays one pack effect after the edge receipt arrives", () => {
+  const directory = mkdtempSync(join(tmpdir(), "pack-fulfillment-"));
+  const controlStore = createSqliteSubscriptionControlStore({
+    dbPath: join(directory, "control.sqlite")
+  });
+  const now = new Date().toISOString();
+  let tenantCreations = 0;
+  try {
+    controlStore.createAccount({
+      id: COMMAND.accountId, ownerRef: "owner_pack_delivery", status: "active",
+      createdAt: now, updatedAt: now
+    });
+    const commerceStore = {
+      verifyCapturedFulfillmentClaim() {
+        return {
+          commandRef: COMMAND.commandRef, orderRef: COMMAND.orderRef,
+          accountId: COMMAND.accountId, offerVersionRef: COMMAND.offerVersionRef,
+          delivery: COMMAND.delivery
+        };
+      }
+    };
+    const runtimeIssuer = {
+      issue(input) {
+        const reserved = controlStore.reserveCoinCommerceDataPackIssuance({
+          ...input, nodeId: CHANNEL_REF, now
+        });
+        if (reserved.status === "planned") tenantCreations += 1;
+        return {
+          ...controlStore.completeCoinCommerceDataPackIssuance({
+            commandRef: input.commandRef, orderRef: input.orderRef,
+            accountId: input.accountId, requestRef: reserved.requestRef,
+            entitlementRef: reserved.entitlementRef, nodeId: CHANNEL_REF,
+            tenantRef: "tenantref_pack_delivery",
+            artifactRef: "artifactref_pack_delivery", now
+          }),
+          orderRef: input.orderRef
+        };
+      }
+    };
+    const edgeIssuer = {
+      issue(input) {
+        return controlStore.registerCoinCommerceDataPackEdgeCredential({
+          requestRef: input.requestRef, entitlementRef: input.entitlementRef,
+          edgeChannelRef: CHANNEL_REF, edgeCredentialRef: CREDENTIAL_REF,
+          edgeMaterialDigest: MATERIAL_DIGEST, now
+        });
+      }
+    };
+    const desiredStateNotifier = createDataPlaneDesiredStateNotifier({
+      controlStore,
+      servers: [{ name: CHANNEL_REF, physicalNodeRef: "node_sg_pack",
+        runtimeAdapter: "remote-data-plane-handoff" }],
+      nowFn: () => now
+    });
+    const handler = createCoinCommerceDataPackFulfillmentHandler({
+      commerceStore, controlStore, runtimeIssuer, edgeIssuer, desiredStateNotifier
+    });
+    assert.throws(() => handler.execute(COMMAND), isCoinCommerceFulfillmentRetryableError);
+    assert.equal(tenantCreations, 1);
+    const desired = controlStore.getLatestEdgeDesiredStateForChannel(CHANNEL_REF, {
+      nodeRef: "node_sg_pack"
+    });
+    assert.deepEqual(desired.edgeCredentialRefs, [CREDENTIAL_REF]);
+    controlStore.recordEdgeApplyReceipt({
+      id: "receipt_pack_delivery", channelRef: CHANNEL_REF,
+      desiredStateRef: desired.desiredStateRef, status: "applied",
+      configTestOk: true, serviceActive: true, listenerUdp443: true,
+      appliedAt: now, createdAt: now
+    });
+    const delivered = handler.execute(COMMAND);
+    assert.equal(delivered.status, "delivered");
+    assert.equal(tenantCreations, 1);
+    assert.deepEqual(handler.execute(COMMAND), delivered);
+    assert.equal(tenantCreations, 1);
+    assert.equal(controlStore.getAuditEvent(delivered.effectRef)?.action,
+      "data_pack_fulfillment_applied");
+  } finally {
+    controlStore.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
 });
