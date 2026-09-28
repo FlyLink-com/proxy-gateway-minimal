@@ -142,11 +142,16 @@ account and use `no-store` response headers. The technical date is omitted
 from its customer response.
 This source-only path verifies a captured Commerce order across the database
 boundary and can issue one protected runtime artifact under its exact live
-claim. A source-only edge issuer can now mint protected credential material
-under that claim, but the path does **not** yet apply and verify the runtime
-identity map, suspend an exhausted pack, complete the Commerce
-receipt, or provide a customer-facing handoff. An audit
-fact alone is not a delivered Commerce receipt. The offer stays unpublished.
+claim. A source-only edge issuer can mint protected credential material under
+that claim. A separate source-only fulfillment handler now composes those
+issuers with the immutable pack effect and requires the exact desired-state
+application receipt before reporting delivery to Commerce. Its first tests use
+synthetic issuers and receipts, not a real edge apply or cross-database crash
+recovery. It is **not wired into the production fulfillment factory**. The
+path does **not** yet prove runtime identity-map convergence, suspend an
+exhausted pack, provide credential rotation or a customer-facing handoff.
+An audit fact alone is not a delivered Commerce receipt. The offer stays
+unpublished.
 The offer schema also requires a CNY `referencePrice`. Candidate records use
 the existing one-Coin-to-one-CNY display convention solely to satisfy that
 compatibility field; the requested purchase price is in Coins, and this does
