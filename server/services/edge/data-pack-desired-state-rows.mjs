@@ -34,11 +34,14 @@ export function readDataPackDesiredStateRows(db, channelRef, nowMs) {
       select c.request_ref, c.entitlement_ref, c.edge_channel_ref,
              c.edge_credential_ref, c.edge_material_digest,
              c.status as credential_status, c.updated_at,
-             r.account_id, r.status as request_status, r.purpose,
+             r.account_id, r.entitlement_id as request_entitlement_id,
+             r.status as request_status, r.purpose,
              r.node_id, r.metadata_json as request_metadata_json,
+             e.account_id as entitlement_account_id,
              e.status as entitlement_status, e.plan, e.valid_from,
              e.valid_until, e.traffic_limit_bytes,
              a.status as account_status,
+             p.account_id as resource_account_id,
              p.order_ref, p.command_ref, p.offer_version_ref,
              p.quota_bytes, p.commercial_never_expires,
              p.technical_valid_until, p.created_at as resource_created_at
@@ -65,6 +68,8 @@ export function readDataPackDesiredStateRows(db, channelRef, nowMs) {
       rows.push(row);
       if (candidate.credential_status !== "active") continue;
       if (!candidate.account_id || !candidate.entitlement_status
+        || candidate.request_entitlement_id !== candidate.entitlement_ref
+        || candidate.entitlement_account_id !== candidate.account_id
         || candidate.request_status !== "issued"
         || candidate.purpose !== "coin_commerce_data_pack_fulfillment"
         || candidate.node_id !== channelRef
@@ -74,6 +79,7 @@ export function readDataPackDesiredStateRows(db, channelRef, nowMs) {
       if (!candidate.order_ref) continue;
       const requestMetadata = metadata(candidate.request_metadata_json);
       if (requestMetadata.kind !== "data_pack"
+        || candidate.resource_account_id !== candidate.account_id
         || requestMetadata.commandRef !== candidate.command_ref
         || requestMetadata.orderRef !== candidate.order_ref
         || requestMetadata.offerVersionRef !== candidate.offer_version_ref
