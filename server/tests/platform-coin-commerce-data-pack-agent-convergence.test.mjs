@@ -10,6 +10,8 @@ import {
   createDataPlaneAgentService, hashDataPlaneAgentToken
 } from "../services/edge/data-plane-agent-service.mjs";
 import { createTrafficAccountingService } from "../services/platform/traffic-accounting.mjs";
+import { createEdgeCredentialMaterialStore } from "../services/edge/credential-material-store.mjs";
+import { createProductionEdgeAgentRunner } from "../../agent/production-edge-agent.mjs";
 
 const CHANNEL_REF = "channel_sg_pack";
 const NODE_REF = "node_sg_pack";
@@ -49,7 +51,7 @@ function seedPack(store, { suffix, trafficGb, now }) {
     entitlementRef: reserved.entitlementRef, credentialRef, materialDigest, quotaBytes };
 }
 
-test("exhausting one independent pack changes only its edge credential and Agent receipt", () => {
+test("exhausting one independent pack changes only its edge credential and Agent receipt", async () => {
   const directory = mkdtempSync(join(tmpdir(), "pack-agent-convergence-"));
   const store = createSqliteSubscriptionControlStore({
     dbPath: join(directory, "control.sqlite")
@@ -62,10 +64,19 @@ test("exhausting one independent pack changes only its edge credential and Agent
     });
     const first = seedPack(store, { suffix: "a", trafficGb: 100, now });
     const second = seedPack(store, { suffix: "b", trafficGb: 200, now });
+    const protectedMaterial = createEdgeCredentialMaterialStore();
+    for (const pack of [first, second]) {
+      protectedMaterial.putCredentialMaterial({
+        credentialRef: pack.credentialRef, materialDigest: pack.materialDigest,
+        material: { uuid: "11111111-1111-4111-8111-111111111111",
+          password: `synthetic-${pack.credentialRef}` }
+      });
+    }
     const service = createDataPlaneAgentService({
       controlStore: store,
       nodes: [{ nodeRef: NODE_REF, channelRefs: [CHANNEL_REF],
         tokenSha256: hashDataPlaneAgentToken("synthetic-pack-agent-token") }],
+      credentialMaterialStore: protectedMaterial,
       nowFn: () => new Date(now)
     });
     const identity = service.authenticate({
@@ -107,7 +118,50 @@ test("exhausting one independent pack changes only its edge credential and Agent
     assert.throws(() => receiptFor(before),
       (error) => error.code === "generation_scope_mismatch");
     assert.equal(receiptFor(after).status, "applied");
-    assert.equal(store.listEdgeApplyReceipts({ channelRef: CHANNEL_REF }).length, 2);
+    const appliedActions = [];
+    const response = (status, body) => ({
+      status, ok: status >= 200 && status < 300, json: async () => body
+    });
+    const runner = createProductionEdgeAgentRunner({
+      baseUrl: "http://127.0.0.1:3456", token: "synthetic-pack-agent-token",
+      nodeRef: NODE_REF, channelRefs: [CHANNEL_REF],
+      edgeCredentialRefs: [first.credentialRef, second.credentialRef],
+      applyEnabled: true, dryRun: false, nowFn: () => new Date(now),
+      materialStore: createEdgeCredentialMaterialStore(),
+      runtimeAdapters: { [CHANNEL_REF]: {
+        runtime: "hysteria2",
+        async applyCredentialReconciliation(payload) {
+          appliedActions.push(payload.actions);
+          return { status: "applied", configTest: true,
+            serviceActive: true, listenerPresent: true };
+        }
+      } },
+      fetchImpl: async (url, options = {}) => {
+        const target = new URL(url);
+        const agent = service.authenticate({ authorization: options.headers.Authorization });
+        if (target.pathname.endsWith("/desired-state")) {
+          return response(200, service.getDesiredState(agent, {
+            edgeCredentialRefs: target.searchParams.get("edgeCredentialRefs") || [],
+            agentVersion: options.headers["X-GCCGW-Agent-Version"],
+            capabilities: options.headers["X-GCCGW-Agent-Capabilities"].split(",")
+          }));
+        }
+        if (target.pathname.endsWith("/materials")) {
+          return response(200, service.getCredentialMaterials(agent, JSON.parse(options.body)));
+        }
+        if (target.pathname.endsWith("/receipts")) {
+          return response(201, service.recordReceipt(agent, JSON.parse(options.body)));
+        }
+        assert.fail("unexpected Agent request");
+      }
+    });
+    const agentResult = await runner.runOnce();
+    assert.equal(agentResult.receiptCount, 1);
+    assert.deepEqual(appliedActions, [[
+      { action: "add", credentialRef: second.credentialRef },
+      { action: "revoke", credentialRef: first.credentialRef }
+    ]]);
+    assert.equal(store.listEdgeApplyReceipts({ channelRef: CHANNEL_REF }).length, 3);
     assert.equal(store.readDataPackResourceUsage({
       accountId: first.accountId, orderRef: first.orderRef,
       requestRef: first.requestRef, entitlementRef: first.entitlementRef, now

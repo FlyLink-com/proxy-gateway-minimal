@@ -165,6 +165,15 @@ receipts: it does not show that a physical edge process applied the change or
 that a running collector produced the observation. Production convergence and
 traffic-supply stop remain separate gates.
 
+Extending the isolated check through the production Agent runner exposed a
+missing lookup: scoped tombstones recognized only legacy Portal credentials,
+so an exhausted pack's retired credential did not appear in the Agent revoke
+action. A unified, exact control-store lookup now covers both legacy and pack
+credential records while leaving the legacy-only lookup unchanged. The runner
+test confirms one pack-only revoke, the other pack's material fetch and an
+accepted scoped receipt. The runtime adapter is synthetic; no physical node,
+protocol listener, or live collector has yet proved traffic is blocked.
+
 An opt-in Portal Commerce GET handoff now binds the request to the validated
 session account and exact order reference. It returns the internal resolver's
 order-owned URL and scoped usage only when that resolver is explicitly supplied

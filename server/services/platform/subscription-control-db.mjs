@@ -7105,6 +7105,31 @@ export function createSqliteSubscriptionControlStore({
     return matches.length === 1 ? matches[0].edge_channel_ref : null;
   }
 
+  // The Agent scopes tombstones across legacy and pack principals. Keep the
+  // legacy-only lookup above intact for callers that explicitly require it.
+  function getEdgeCredentialChannelRef(edgeCredentialRef) {
+    const safeRef = requiredText(edgeCredentialRef, "edgeCredentialRef");
+    const rows = db.prepare(`
+      select edge_channel_ref from platform_portal_edge_credentials
+      where edge_credential_ref = ?
+      union all
+      select edge_channel_ref from platform_data_pack_edge_credentials
+      where edge_credential_ref = ?
+    `).all(safeRef, safeRef);
+    return rows.length === 1 ? rows[0].edge_channel_ref : null;
+  }
+
+  function getEdgeCredentialChannelRefByScopeDigest(scopeCredentialDigest) {
+    const safeDigest = requiredText(scopeCredentialDigest, "scopeCredentialDigest");
+    if (!/^sha256:[a-f0-9]{64}$/.test(safeDigest)) return null;
+    const rows = db.prepare(`
+      select edge_channel_ref, edge_credential_ref from platform_portal_edge_credentials
+      union all
+      select edge_channel_ref, edge_credential_ref from platform_data_pack_edge_credentials
+    `).all().filter((row) => portalEdgeCredentialScopeDigest(row.edge_credential_ref) === safeDigest);
+    return rows.length === 1 ? rows[0].edge_channel_ref : null;
+  }
+
   function attachPortalEdgeCredentials(record) {
     if (!record) {
       return null;
@@ -7819,6 +7844,8 @@ export function createSqliteSubscriptionControlStore({
     acquireEdgeAgentLease,
     getPortalEdgeCredentialChannelRef,
     getPortalEdgeCredentialChannelRefByScopeDigest,
+    getEdgeCredentialChannelRef,
+    getEdgeCredentialChannelRefByScopeDigest,
     upsertPortalAccessRequest,
     getPortalAccessRequest,
     listPortalAccessRequests,
