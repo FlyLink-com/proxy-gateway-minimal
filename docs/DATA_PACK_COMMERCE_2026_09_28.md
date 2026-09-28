@@ -105,6 +105,14 @@ stage is **not yet wired to the captured-order handler** and does not create
 edge credentials, prove live collector identity, mark a Commerce receipt
 delivered, or publish the candidate offers. Its single-writer file lock must
 be included in the eventual service composition and restart rehearsal.
+An internal order-detail resolver now requires the delivered Commerce receipt,
+the exact owner-scoped pack effect and active binding, the matching runtime
+tenant/artifact, and the encrypted material record before returning a link.
+The first isolated test proves that an unpaid/undelivered or wrong-owner
+request and runtime drift cannot release it. This resolver is not exposed as
+an HTTP route yet; the eventual route must pass the authenticated session
+account and use `no-store` response headers. The technical date is omitted
+from its customer response.
 This source-only table does **not** yet verify a captured Commerce order across
 the database boundary, issue runtime credentials, suspend an exhausted pack,
 or provide a customer handoff. An audit fact alone is not a delivered Commerce

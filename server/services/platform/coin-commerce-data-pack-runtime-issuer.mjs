@@ -37,7 +37,7 @@ function runtimeRef(prefix, id) {
   return `${prefix}ref_${createHash("sha256").update(id).digest("hex").slice(0, 16)}`;
 }
 
-function markerFor(orderRef) {
+export function coinCommerceDataPackRuntimeMarker(orderRef) {
   // Core rejects long hex strings in notes as potential secrets. This is a
   // non-secret lookup marker; collisions still fail closed on multiple hits.
   return `coin_data_pack_${createHash("sha256").update(ref(orderRef)).digest("hex").slice(0, 24)}`;
@@ -70,7 +70,7 @@ export function createCoinCommerceDataPackRuntimeIssuer({
       commandRef, orderRef, accountId, offerVersionRef,
       quotaBytes: command.quotaBytes, nodeId, now
     });
-    const marker = markerFor(orderRef);
+    const marker = coinCommerceDataPackRuntimeMarker(orderRef);
     let matches = runtimeCore.listTenants().filter((candidate) => candidate.note === marker);
     if (matches.length > 1 || (reservation.status === "issued" && matches.length !== 1)) {
       throw fail();
@@ -137,5 +137,5 @@ export function createCoinCommerceDataPackRuntimeIssuer({
     });
   }
 
-  return Object.freeze({ issue, markerFor });
+  return Object.freeze({ issue, markerFor: coinCommerceDataPackRuntimeMarker });
 }
