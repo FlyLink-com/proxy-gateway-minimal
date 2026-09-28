@@ -102,6 +102,41 @@ function sendCommerceError(res, status, code) {
   });
 }
 
+function preventSubscriptionCaching(_req, res, next) {
+  res.set("Cache-Control", "private, no-store, max-age=0");
+  res.set("Pragma", "no-cache");
+  res.set("Referrer-Policy", "no-referrer");
+  res.set("X-Robots-Tag", "noindex");
+  next();
+}
+
+function projectDataPackDelivery(value, orderRef) {
+  const delivery = snapshotExactObject(value, ["orderRef", "subscriptionUrl", "usage"]);
+  const usage = snapshotExactObject(delivery.usage, [
+    "totalBytes", "usedBytes", "remainingBytes", "collectionStatus", "updatedAt", "exhausted"
+  ]);
+  let subscriptionUrl;
+  try { subscriptionUrl = new URL(delivery.subscriptionUrl); }
+  catch { throw projectionInvalid(); }
+  if (delivery.orderRef !== orderRef || typeof delivery.subscriptionUrl !== "string"
+    || subscriptionUrl.protocol !== "https:" || !subscriptionUrl.hostname
+    || subscriptionUrl.username || subscriptionUrl.password || subscriptionUrl.hash
+    || !Number.isSafeInteger(usage.totalBytes) || usage.totalBytes <= 0
+    || !["pending", "stale", "measured", "measured_zero"].includes(usage.collectionStatus)) {
+    throw projectionInvalid();
+  }
+  if (usage.collectionStatus === "pending") {
+    if (usage.usedBytes !== null || usage.remainingBytes !== null
+      || usage.updatedAt !== null || usage.exhausted !== null) throw projectionInvalid();
+  } else if (!Number.isSafeInteger(usage.usedBytes) || usage.usedBytes < 0
+    || usage.remainingBytes !== Math.max(0, usage.totalBytes - usage.usedBytes)
+    || usage.exhausted !== (usage.usedBytes >= usage.totalBytes)
+    || (usage.collectionStatus === "measured_zero" && usage.usedBytes !== 0)
+    || typeof usage.updatedAt !== "string"
+    || !Number.isFinite(Date.parse(usage.updatedAt))) throw projectionInvalid();
+  return { orderRef, subscriptionUrl: delivery.subscriptionUrl, usage };
+}
+
 function ownErrorCode(error) {
   try {
     if (
@@ -1242,6 +1277,8 @@ function isSelectedCommerceRoute(method, pathname) {
       || pathname === "/api/portal/commerce/orders"
       || /^\/api\/portal\/commerce\/orders\/[a-z][a-z0-9_]{2,95}$/
         .test(pathname)
+      || /^\/api\/portal\/commerce\/orders\/[a-z][a-z0-9_]{2,95}\/subscription$/
+        .test(pathname)
       || pathname === "/api/portal/commerce/deferred/offers"
       || /^\/api\/portal\/commerce\/deferred\/offers\/[a-z][a-z0-9_]{2,95}$/
         .test(pathname)
@@ -1268,6 +1305,7 @@ function isSelectedCommerceRoute(method, pathname) {
 export function portalCoinCommerceRoutes(state, options = {}) {
   const router = Router({ caseSensitive: true, strict: true });
   const store = state.platform?.coinCommerceStore;
+  const dataPackDelivery = ownDataValue(state.platform, "coinCommerceDataPackOrderDelivery");
   const requireSession = createSessionMiddleware(state, options.browserSessions);
   const resolveCommerceModel = createCommerceModelMiddleware(state);
   const requireWalletFirstService = createWalletFirstServiceMiddleware(state);
@@ -1450,6 +1488,27 @@ export function portalCoinCommerceRoutes(state, options = {}) {
       }
     }
   );
+
+  if (typeof ownDataValue(dataPackDelivery, "get") === "function") {
+    router.get(
+      "/api/portal/commerce/orders/:orderRef/subscription",
+      preventSubscriptionCaching,
+      requireNoQuery,
+      requireSession,
+      (req, res) => {
+        try {
+          const delivery = projectDataPackDelivery(dataPackDelivery.get({
+            accountId: res.locals.portalCommerceSession.accountId,
+            orderRef: req.params.orderRef
+          }), req.params.orderRef);
+          res.json(delivery);
+        } catch {
+          // Other accounts and missing/incomplete delivery are indistinguishable.
+          sendCommerceError(res, 404, "commerce_not_found");
+        }
+      }
+    );
+  }
 
   router.get(
     "/api/portal/commerce/model",

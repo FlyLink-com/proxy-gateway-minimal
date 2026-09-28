@@ -650,6 +650,92 @@ test("the seven exact Portal Commerce routes return safe DTOs and session-owned 
   }
 });
 
+test("pack subscription handoff requires the owner session and never caches material", async () => {
+  const calls = [];
+  const state = createState();
+  state.platform.coinCommerceDataPackOrderDelivery = {
+    get(input) {
+      calls.push(input);
+      if (input.accountId !== "acct_alpha") {
+        throw routeError("coin_commerce_data_pack_delivery_unavailable", "private order");
+      }
+      return {
+        orderRef: input.orderRef,
+        subscriptionUrl: "https://example.invalid/synthetic-pack",
+        usage: { totalBytes: 100 * 1024 ** 3, usedBytes: 0,
+          remainingBytes: 100 * 1024 ** 3, collectionStatus: "measured_zero",
+          updatedAt: "2026-09-28T00:00:00.000Z", exhausted: false }
+      };
+    }
+  };
+  const { server, baseUrl } = await listen(createApp(state));
+  const path = "/api/portal/commerce/orders/coinord_pack_delivery/subscription";
+  try {
+    const anonymous = await fetch(`${baseUrl}${path}`);
+    assert.equal(anonymous.status, 401);
+    assert.match(anonymous.headers.get("cache-control"), /no-store/);
+    assert.equal(calls.length, 0);
+
+    const owned = await fetch(`${baseUrl}${path}`, { headers: portalHeaders() });
+    assert.equal(owned.status, 200);
+    assert.match(owned.headers.get("cache-control"), /no-store/);
+    assert.equal(owned.headers.get("referrer-policy"), "no-referrer");
+    assert.deepEqual(await owned.json(), {
+      orderRef: "coinord_pack_delivery",
+      subscriptionUrl: "https://example.invalid/synthetic-pack",
+      usage: { totalBytes: 100 * 1024 ** 3, usedBytes: 0,
+        remainingBytes: 100 * 1024 ** 3, collectionStatus: "measured_zero",
+        updatedAt: "2026-09-28T00:00:00.000Z", exhausted: false }
+    });
+    assert.deepEqual(calls, [{ accountId: "acct_alpha",
+      orderRef: "coinord_pack_delivery" }]);
+
+    const otherAccount = await fetch(`${baseUrl}${path}`, {
+      headers: portalHeaders("session_beta")
+    });
+    assert.equal(otherAccount.status, 404);
+    assert.match(otherAccount.headers.get("cache-control"), /no-store/);
+    assert.deepEqual(calls[1], { accountId: "acct_beta",
+      orderRef: "coinord_pack_delivery" });
+
+    const withQuery = await fetch(`${baseUrl}${path}?leak=1`, {
+      headers: portalHeaders()
+    });
+    assert.equal(withQuery.status, 400);
+    assert.match(withQuery.headers.get("cache-control"), /no-store/);
+    assert.equal(calls.length, 2);
+  } finally {
+    await closeServer(server);
+  }
+});
+
+test("pack handoff preserves unknown usage and closes malformed delivery", async () => {
+  const state = createState();
+  let result = {
+    orderRef: "coinord_pack_delivery",
+    subscriptionUrl: "https://example.invalid/synthetic-pack",
+    usage: { totalBytes: 100 * 1024 ** 3, usedBytes: null,
+      remainingBytes: null, collectionStatus: "pending", updatedAt: null, exhausted: null }
+  };
+  state.platform.coinCommerceDataPackOrderDelivery = { get: () => result };
+  const { server, baseUrl } = await listen(createApp(state));
+  const path = "/api/portal/commerce/orders/coinord_pack_delivery/subscription";
+  try {
+    const pending = await fetch(`${baseUrl}${path}`, { headers: portalHeaders() });
+    assert.equal(pending.status, 200);
+    assert.equal((await pending.json()).usage.remainingBytes, null);
+    result = { ...result, subscriptionUrl: "https://" };
+    const malformed = await fetch(`${baseUrl}${path}`, { headers: portalHeaders() });
+    assert.equal(malformed.status, 404);
+    assert.match(malformed.headers.get("cache-control"), /no-store/);
+    assert.deepEqual(await malformed.json(), {
+      error: { code: "commerce_not_found", retryable: false }
+    });
+  } finally {
+    await closeServer(server);
+  }
+});
+
 test("Commerce routes stay unmounted unless the flag and required runtime services are present", async (t) => {
   let serviceGetterReads = 0;
   const cases = [

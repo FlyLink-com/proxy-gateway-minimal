@@ -165,6 +165,16 @@ receipts: it does not show that a physical edge process applied the change or
 that a running collector produced the observation. Production convergence and
 traffic-supply stop remain separate gates.
 
+An opt-in Portal Commerce GET handoff now binds the request to the validated
+session account and exact order reference. It returns the internal resolver's
+order-owned URL and scoped usage only when that resolver is explicitly supplied
+to the route state. All handoff responses, including errors, carry no-store;
+cross-account and incomplete delivery both return the same not-found shape.
+Pending usage stays unknown rather than becoming zero. Route tests cover these
+boundaries. This is a source-level HTTP adapter, not production composition:
+the runtime has not yet installed the resolver, and the mobile order-detail UI
+has not yet consumed it.
+
 The offer schema also requires a CNY `referencePrice`. Candidate records use
 the existing one-Coin-to-one-CNY display convention solely to satisfy that
 compatibility field; the requested purchase price is in Coins, and this does
