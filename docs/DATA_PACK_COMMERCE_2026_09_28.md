@@ -78,6 +78,18 @@ when the captured order has a delivered command, immutable receipt, and an
 exact matching pack effect; it returns safe order/request/entitlement references
 and never subscription material. A missing or drifted effect is reconciliation,
 not a delivered customer handoff.
+The control store can now reserve one entitlement and issuance request per
+order in a single transaction. Its replay keeps the original timestamp and
+quota, rejects command or offer drift, and permits a timed plan and another
+pack to coexist. A separate atomic finalizer binds the first runtime tenant
+and artifact references to that reservation, with exact replay and no raw
+material in its result. The control-only restart test reopens the database
+between reservation and finalization, then replays after another reopen
+without creating a second entitlement or issued link. These internal methods
+do not themselves prove that the Commerce order was captured or that the
+runtime identity and edge credentials were created; a verified issuer and
+cross-store recovery remain
+required before any pack can be sold.
 This source-only table does **not** yet verify a captured Commerce order across
 the database boundary, issue runtime credentials, suspend an exhausted pack,
 or provide a customer handoff. An audit fact alone is not a delivered Commerce

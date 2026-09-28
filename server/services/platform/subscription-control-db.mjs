@@ -5863,6 +5863,162 @@ export function createSqliteSubscriptionControlStore({
     });
   }
 
+  // Reservation follows a captured Commerce claim. It persists safe control
+  // references only; runtime identity and handoff material are not created.
+  // The order determines both IDs, so replay cannot allocate another quota.
+  function reserveCoinCommerceDataPackIssuance(input = {}) {
+    exactObject(input, {
+      allowed: ["commandRef", "orderRef", "accountId", "offerVersionRef",
+        "quotaBytes", "nodeId", "now"],
+      name: "dataPackIssuanceReservation"
+    });
+    const commandRef = safeControlRef(input.commandRef, "commandRef");
+    const orderRef = safeControlRef(input.orderRef, "orderRef");
+    const accountId = safeControlRef(input.accountId, "accountId");
+    const offerVersionRef = safeControlRef(input.offerVersionRef, "offerVersionRef");
+    const nodeId = safeControlRef(input.nodeId, "nodeId");
+    const now = isoText(input.now, "now");
+    const quotaBytes = lifetimeDataPackQuotaBytesFor({ plan: offerVersionRef });
+    if (quotaBytes === null || input.quotaBytes !== quotaBytes
+      || now >= DATA_PACK_TECHNICAL_VALID_UNTIL) {
+      throw platformError("validation_error", "data pack issuance terms are invalid");
+    }
+    const digest = sha256(orderRef);
+    const requestRef = `pareq_pack_${digest}`;
+    const entitlementRef = `ent_pack_${digest}`;
+    const approvalRef = `approval_pack_${digest}`;
+    const metadata = {
+      version: 1, kind: "data_pack", commandRef, orderRef,
+      offerVersionRef, quotaBytes, nodeId, commercialNeverExpires: true,
+      technicalValidUntil: DATA_PACK_TECHNICAL_VALID_UNTIL
+    };
+    return db.transaction(() => {
+      const account = getAccount(accountId);
+      if (!account || account.status !== "active") {
+        throw platformError("not_found", "data pack account not available");
+      }
+      let entitlement = getEntitlement(entitlementRef);
+      let request = getIssuanceRequest(requestRef);
+      if (entitlement || request) {
+        if (!entitlement || !request
+          || entitlement.accountId !== accountId
+          || entitlement.plan !== offerVersionRef
+          || entitlement.status !== "active"
+          || entitlement.validFrom !== request.createdAt
+          || entitlement.validUntil !== DATA_PACK_TECHNICAL_VALID_UNTIL
+          || entitlement.maxArtifacts !== 1 || entitlement.maxDevices !== 1
+          || entitlement.trafficLimitBytes !== quotaBytes
+          || request.accountId !== accountId
+          || request.entitlementId !== entitlementRef
+          || request.approvalRef !== approvalRef
+          || !["planned", "issued"].includes(request.status)
+          || request.quantity !== 1 || request.nodeId !== nodeId
+          || request.purpose !== "coin_commerce_data_pack_fulfillment"
+          || request.requestedByRef !== "coin_commerce_fulfillment"
+          || JSON.stringify(request.metadata) !== JSON.stringify(metadata)) {
+          throw platformError("reconciliation_required", "data pack issuance reservation drifted");
+        }
+      } else {
+        entitlement = createEntitlement({
+          id: entitlementRef, accountId, plan: offerVersionRef,
+          status: "active", validFrom: now,
+          validUntil: DATA_PACK_TECHNICAL_VALID_UNTIL,
+          maxArtifacts: 1, maxDevices: 1, trafficLimitBytes: quotaBytes,
+          createdAt: now, updatedAt: now
+        });
+        request = createIssuanceRequest({
+          id: requestRef, accountId, entitlementId: entitlementRef,
+          approvalRef, status: "planned", quantity: 1, nodeId,
+          purpose: "coin_commerce_data_pack_fulfillment",
+          requestedByRef: "coin_commerce_fulfillment",
+          createdAt: now, updatedAt: now, metadata
+        });
+      }
+      return Object.freeze({
+        commandRef, orderRef, requestRef, entitlementRef,
+        status: request.status, reservedAt: request.createdAt
+      });
+    }).immediate();
+  }
+
+  // Finalize the control half after the runtime tenant, artifact and their
+  // material bindings have been independently verified by the issuer. A
+  // partial control write rolls back; replay cannot swap runtime identity.
+  function completeCoinCommerceDataPackIssuance(input = {}) {
+    exactObject(input, {
+      allowed: ["commandRef", "orderRef", "accountId", "requestRef",
+        "entitlementRef", "nodeId", "tenantRef", "artifactRef", "now"],
+      name: "dataPackIssuanceFinalization"
+    });
+    const commandRef = safeControlRef(input.commandRef, "commandRef");
+    const orderRef = safeControlRef(input.orderRef, "orderRef");
+    const accountId = safeControlRef(input.accountId, "accountId");
+    const requestRef = safeControlRef(input.requestRef, "requestRef");
+    const entitlementRef = safeControlRef(input.entitlementRef, "entitlementRef");
+    const nodeId = safeControlRef(input.nodeId, "nodeId");
+    const tenantRef = safeControlRef(input.tenantRef, "tenantRef");
+    const artifactRef = safeControlRef(input.artifactRef, "artifactRef");
+    const now = isoText(input.now, "now");
+    const digest = sha256(orderRef);
+    const issuedLinkRef = `${requestRef}_link_1`;
+    return db.transaction(() => {
+      const request = getIssuanceRequest(requestRef);
+      const entitlement = getEntitlement(entitlementRef);
+      const existingLink = getIssuedLink(issuedLinkRef);
+      const expectedMetadata = request && entitlement ? {
+        version: 1, kind: "data_pack", commandRef, orderRef,
+        offerVersionRef: entitlement.plan,
+        quotaBytes: entitlement.trafficLimitBytes,
+        nodeId, commercialNeverExpires: true,
+        technicalValidUntil: DATA_PACK_TECHNICAL_VALID_UNTIL
+      } : null;
+      if (requestRef !== `pareq_pack_${digest}`
+        || entitlementRef !== `ent_pack_${digest}`
+        || !request || !entitlement
+        || request.accountId !== accountId
+        || request.entitlementId !== entitlementRef
+        || request.approvalRef !== `approval_pack_${digest}`
+        || request.purpose !== "coin_commerce_data_pack_fulfillment"
+        || request.requestedByRef !== "coin_commerce_fulfillment"
+        || request.quantity !== 1
+        || request.nodeId !== nodeId
+        || JSON.stringify(request.metadata) !== JSON.stringify(expectedMetadata)
+        || entitlement.accountId !== accountId
+        || entitlement.status !== "active"
+        || entitlement.validFrom !== request.createdAt
+        || entitlement.validUntil !== DATA_PACK_TECHNICAL_VALID_UNTIL
+        || lifetimeDataPackQuotaBytesFor(entitlement) !== entitlement.trafficLimitBytes
+        || entitlement.maxArtifacts !== 1 || entitlement.maxDevices !== 1
+        || now < request.createdAt
+        || !["planned", "issued"].includes(request.status)) {
+        throw platformError("reconciliation_required", "data pack issuance state drifted");
+      }
+      if (request.status === "planned") {
+        if (existingLink || db.prepare(`
+          select 1 from platform_issued_subscription_links where request_id = ? limit 1
+        `).get(requestRef)) {
+          throw platformError("reconciliation_required", "data pack issuance link drifted");
+        }
+        linkIssuedSubscription({
+          id: issuedLinkRef, requestId: requestRef,
+          tenantRef, artifactRef, status: "active",
+          createdAt: now, updatedAt: now
+        });
+        setIssuanceRequestStatus(requestRef, { status: "issued", updatedAt: now });
+      } else if (!existingLink
+        || existingLink.requestId !== requestRef
+        || existingLink.tenantRef !== tenantRef
+        || existingLink.artifactRef !== artifactRef
+        || !["active", "rotated"].includes(existingLink.status)) {
+        throw platformError("reconciliation_required", "data pack issued link drifted");
+      }
+      return Object.freeze({
+        commandRef, orderRef, requestRef, entitlementRef,
+        issuedLinkRef, status: "issued"
+      });
+    }).immediate();
+  }
+
   // Internal fulfillment fact, not an Order payment fact or public material
   // endpoint. The exact captured Order must be checked by the Commerce store
   // before a caller uses this binding for a customer handoff.
@@ -7502,6 +7658,8 @@ export function createSqliteSubscriptionControlStore({
     getUsageCounterCursor,
     listUsageRollupsByRequestId,
     listUsageSamples,
+    reserveCoinCommerceDataPackIssuance,
+    completeCoinCommerceDataPackIssuance,
     createDataPackResource,
     applyCoinCommerceDataPackFulfillment,
     readDataPackResourceUsage,

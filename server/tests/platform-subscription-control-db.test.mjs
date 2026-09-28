@@ -29,6 +29,131 @@ function withStore(fn) {
   }
 }
 
+test("data-pack issuance reservation is order-owned, atomic, and replay-safe beside a timed plan", () => {
+  withStore((store) => {
+    const now = "2026-09-28T00:00:00.000Z";
+    store.createAccount({
+      id: "acct_pack_buyer", ownerRef: "portal_pack_buyer", status: "active",
+      createdAt: now, updatedAt: now
+    });
+    store.createEntitlement({
+      id: "ent_pack_buyer_timed", accountId: "acct_pack_buyer",
+      plan: "offerv_plan_30d_100gb_monthly_v1", status: "active",
+      validFrom: now, validUntil: "2026-10-28T00:00:00.000Z",
+      maxArtifacts: 1, maxDevices: 1, trafficLimitBytes: 100 * 1024 ** 3,
+      createdAt: now, updatedAt: now
+    });
+    const base = {
+      commandRef: "coincmd_pack_reserve_a", orderRef: "coinord_pack_reserve_a",
+      accountId: "acct_pack_buyer", offerVersionRef: "offerv_pack_100gb_v1",
+      quotaBytes: 100 * 1024 ** 3, nodeId: "channel_sg_pack", now
+    };
+    const first = store.reserveCoinCommerceDataPackIssuance(base);
+    assert.equal(first.orderRef, base.orderRef);
+    assert.equal(first.commandRef, base.commandRef);
+    assert.equal(first.status, "planned");
+    assert.equal(store.getEntitlement(first.entitlementRef)?.trafficLimitBytes, base.quotaBytes);
+    assert.equal(store.getEntitlement(first.entitlementRef)?.validUntil,
+      "9999-12-31T23:59:59.999Z");
+    assert.equal(store.getIssuanceRequest(first.requestRef)?.purpose,
+      "coin_commerce_data_pack_fulfillment");
+    assert.deepEqual(store.reserveCoinCommerceDataPackIssuance({
+      ...base, now: "2026-09-29T00:00:00.000Z"
+    }), first);
+    assert.throws(() => store.reserveCoinCommerceDataPackIssuance({
+      ...base, commandRef: "coincmd_pack_reserve_other"
+    }), (error) => error.code === "reconciliation_required");
+    assert.throws(() => store.reserveCoinCommerceDataPackIssuance({
+      ...base, quotaBytes: 200 * 1024 ** 3
+    }), (error) => error.code === "validation_error");
+    const second = store.reserveCoinCommerceDataPackIssuance({
+      ...base, commandRef: "coincmd_pack_reserve_b",
+      orderRef: "coinord_pack_reserve_b", offerVersionRef: "offerv_pack_200gb_v1",
+      quotaBytes: 200 * 1024 ** 3
+    });
+    assert.notEqual(first.requestRef, second.requestRef);
+    assert.notEqual(first.entitlementRef, second.entitlementRef);
+    const finalization = {
+      commandRef: base.commandRef, orderRef: base.orderRef,
+      accountId: base.accountId, requestRef: first.requestRef,
+      entitlementRef: first.entitlementRef, nodeId: base.nodeId,
+      tenantRef: "tenantref_pack_reserved_a",
+      artifactRef: "artifactref_pack_reserved_a", now
+    };
+    const issued = store.completeCoinCommerceDataPackIssuance(finalization);
+    assert.equal(issued.status, "issued");
+    assert.equal(store.getIssuanceRequest(first.requestRef)?.status, "issued");
+    assert.equal(store.getIssuedLink(issued.issuedLinkRef)?.requestId, first.requestRef);
+    assert.deepEqual(store.completeCoinCommerceDataPackIssuance({
+      ...finalization, now: "2026-09-29T00:00:00.000Z"
+    }), issued);
+    assert.throws(() => store.completeCoinCommerceDataPackIssuance({
+      ...finalization, artifactRef: "artifactref_pack_wrong"
+    }), (error) => error.code === "reconciliation_required");
+    const effect = store.applyCoinCommerceDataPackFulfillment({
+      orderRef: base.orderRef, commandRef: base.commandRef,
+      accountId: base.accountId, requestRef: first.requestRef,
+      entitlementRef: first.entitlementRef,
+      issuedLinkRef: issued.issuedLinkRef,
+      offerVersionRef: base.offerVersionRef, quotaBytes: base.quotaBytes,
+      technicalValidUntil: "9999-12-31T23:59:59.999Z",
+      commercialNeverExpires: true, createdAt: now
+    });
+    assert.equal(effect.orderRef, base.orderRef);
+    assert.deepEqual(store.readDataPackResourceUsage({
+      accountId: base.accountId, orderRef: base.orderRef,
+      requestRef: first.requestRef, entitlementRef: first.entitlementRef, now
+    }).usage, {
+      totalBytes: base.quotaBytes, usedBytes: null, remainingBytes: null,
+      collectionStatus: "pending", updatedAt: null, exhausted: null
+    });
+    assert.equal(store.getEntitlement("ent_pack_buyer_timed")?.trafficLimitBytes,
+      100 * 1024 ** 3);
+  });
+});
+
+test("data-pack control issuance resumes after store restart without a second entitlement", () => {
+  const directory = mkdtempSync(join(tmpdir(), "data-pack-issuance-restart-"));
+  const dbPath = join(directory, "control.sqlite");
+  const now = "2026-09-28T00:00:00.000Z";
+  const reserve = {
+    commandRef: "coincmd_pack_restart", orderRef: "coinord_pack_restart",
+    accountId: "acct_pack_restart", offerVersionRef: "offerv_pack_500gb_v1",
+    quotaBytes: 500 * 1024 ** 3, nodeId: "channel_sg_pack", now
+  };
+  let store;
+  try {
+    store = createSqliteSubscriptionControlStore({ dbPath });
+    store.createAccount({
+      id: reserve.accountId, ownerRef: "portal_pack_restart", status: "active",
+      createdAt: now, updatedAt: now
+    });
+    const planned = store.reserveCoinCommerceDataPackIssuance(reserve);
+    store.close();
+    store = createSqliteSubscriptionControlStore({ dbPath });
+    assert.deepEqual(store.reserveCoinCommerceDataPackIssuance({
+      ...reserve, now: "2026-09-29T00:00:00.000Z"
+    }), planned);
+    const finalization = {
+      commandRef: reserve.commandRef, orderRef: reserve.orderRef,
+      accountId: reserve.accountId, requestRef: planned.requestRef,
+      entitlementRef: planned.entitlementRef, nodeId: reserve.nodeId,
+      tenantRef: "tenantref_pack_restart", artifactRef: "artifactref_pack_restart", now
+    };
+    const issued = store.completeCoinCommerceDataPackIssuance(finalization);
+    store.close();
+    store = createSqliteSubscriptionControlStore({ dbPath });
+    assert.deepEqual(store.completeCoinCommerceDataPackIssuance({
+      ...finalization, now: "2026-09-30T00:00:00.000Z"
+    }), issued);
+    assert.equal(store.getAccountControlSummary(reserve.accountId).entitlements.length, 1);
+    assert.equal(store.listIssuedSubscriptionBindings({ accountId: reserve.accountId }).length, 1);
+  } finally {
+    store?.close();
+    rmSync(directory, { recursive: true, force: true, maxRetries: 3, retryDelay: 50 });
+  }
+});
+
 test("independent data-pack usage stays scoped to its issued resource across months and link rotation", () => {
   withStore((store) => {
     const issuedAt = "2026-09-01T00:00:00.000Z";
