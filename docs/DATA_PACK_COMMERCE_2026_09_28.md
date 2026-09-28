@@ -1,5 +1,15 @@
 # Independent data-pack commerce — implementation boundary
 
+```yaml
+document_metadata:
+  doc_type: operational
+  lifecycle: active
+  authority_scope: data_pack_commerce_implementation_boundary
+  superseded_by: null
+  last_verified_at: 2026-09-28
+  production_authority: false
+```
+
 Status: source implementation in progress; **not published or deployed**.
 
 ## Intent and current source gap
