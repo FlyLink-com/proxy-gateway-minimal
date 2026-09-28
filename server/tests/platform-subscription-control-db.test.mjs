@@ -8,6 +8,7 @@ import Database from "better-sqlite3";
 import {
   createSqliteSubscriptionControlStore
 } from "../services/platform/subscription-control-db.mjs";
+import { createTrafficAccountingService } from "../services/platform/traffic-accounting.mjs";
 
 function scopeCredentialDigest(edgeCredentialRef) {
   return `sha256:${createHash("sha256")
@@ -109,6 +110,81 @@ test("data-pack issuance reservation is order-owned, atomic, and replay-safe bes
     });
     assert.equal(store.getEntitlement("ent_pack_buyer_timed")?.trafficLimitBytes,
       100 * 1024 ** 3);
+  });
+});
+
+test("a data pack has no inferred edge identity and resolves only its explicit issued credential", () => {
+  withStore((store) => {
+    const now = "2026-09-28T00:00:00.000Z";
+    store.createAccount({
+      id: "acct_pack_edge", ownerRef: "portal_pack_edge", status: "active",
+      createdAt: now, updatedAt: now
+    });
+    const claim = {
+      commandRef: "coincmd_pack_edge", orderRef: "coinord_pack_edge",
+      accountId: "acct_pack_edge", offerVersionRef: "offerv_pack_100gb_v1",
+      quotaBytes: 100 * 1024 ** 3, nodeId: "channel_sg_pack", now
+    };
+    const reserved = store.reserveCoinCommerceDataPackIssuance(claim);
+    store.completeCoinCommerceDataPackIssuance({
+      commandRef: claim.commandRef, orderRef: claim.orderRef,
+      accountId: claim.accountId, requestRef: reserved.requestRef,
+      entitlementRef: reserved.entitlementRef, nodeId: claim.nodeId,
+      tenantRef: "tenantref_pack_edge", artifactRef: "artifactref_pack_edge", now
+    });
+    assert.equal(store.findIssuedSubscriptionBindingByEdgeCredentialRef(
+      `edgecred_${reserved.requestRef}`
+    ), null);
+    assert.equal(store.findIssuedSubscriptionBindingByEdgeCredentialRef(
+      `edgecred_${reserved.requestRef}_${claim.nodeId}`
+    ), null);
+    const credential = {
+      requestRef: reserved.requestRef, entitlementRef: reserved.entitlementRef,
+      edgeChannelRef: claim.nodeId, edgeCredentialRef: "edgecred_pack_explicit_1",
+      edgeMaterialDigest: `sha256:${"a".repeat(64)}`, now
+    };
+    const registered = store.registerCoinCommerceDataPackEdgeCredential(credential);
+    assert.deepEqual(registered, {
+      requestRef: credential.requestRef, entitlementRef: credential.entitlementRef,
+      edgeChannelRef: credential.edgeChannelRef,
+      edgeCredentialRef: credential.edgeCredentialRef, status: "active"
+    });
+    assert.deepEqual(store.registerCoinCommerceDataPackEdgeCredential(credential), registered);
+    const binding = store.findIssuedSubscriptionBindingByEdgeCredentialRef(
+      credential.edgeCredentialRef
+    );
+    assert.equal(binding?.accountId, claim.accountId);
+    assert.equal(binding?.requestId, reserved.requestRef);
+    assert.equal(binding?.entitlementId, reserved.entitlementRef);
+    assert.equal(binding?.nodeId, claim.nodeId);
+    assert.equal(store.getLatestEdgeDesiredStateForChannel(claim.nodeId), null);
+    assert.equal(store.getPortalEdgeCredentialChannelRef(credential.edgeCredentialRef), null);
+    const accounting = createTrafficAccountingService({
+      controlStore: store, nowFn: () => "2026-10-28T00:00:00.000Z"
+    });
+    const observation = (sourceRef, observedAt, intervalStartedAt) => ({
+      sourceRef, channelRef: claim.nodeId,
+      edgeCredentialRef: credential.edgeCredentialRef,
+      observedAt, intervalStartedAt, intervalEndedAt: observedAt,
+      uploadBytes: 50 * 1024 ** 3, downloadBytes: 0
+    });
+    const first = accounting.recordUsageObservation(observation(
+      "source_pack_sep", "2026-09-29T00:00:00.000Z", now
+    ));
+    assert.equal(first.status, "within_quota");
+    const second = accounting.recordUsageObservation(observation(
+      "source_pack_oct", "2026-10-28T00:00:00.000Z", "2026-10-27T00:00:00.000Z"
+    ));
+    assert.equal(second.status, "over_quota_disable_required");
+    assert.equal(second.quota.usedBytes, claim.quotaBytes);
+    assert.equal(second.trafficSupply.scope, "order_resource");
+    assert.equal(second.execution.directRuntimeMutationAllowed, false);
+    assert.throws(() => store.registerCoinCommerceDataPackEdgeCredential({
+      ...credential, edgeMaterialDigest: `sha256:${"b".repeat(64)}`
+    }), (error) => error.code === "reconciliation_required");
+    assert.throws(() => store.registerCoinCommerceDataPackEdgeCredential({
+      ...credential, edgeCredentialRef: "edgecred_pack_second_1"
+    }), (error) => error.code === "reconciliation_required");
   });
 });
 
@@ -240,11 +316,9 @@ test("independent data-pack usage stays scoped to its issued resource across mon
       accountId: "acct_pack_reader", now
     })?.id, "ent_pack_timed");
     for (const suffix of ["a", "b"]) {
-      const binding = store.findIssuedSubscriptionBindingByEdgeCredentialRef(
+      assert.equal(store.findIssuedSubscriptionBindingByEdgeCredentialRef(
         `edgecred_pareq_pack_${suffix}`
-      );
-      assert.equal(binding?.requestId, `pareq_pack_${suffix}`);
-      assert.equal(binding?.entitlementId, `ent_pack_${suffix}`);
+      ), null);
     }
     const read = (suffix, at = now) => store.readDataPackResourceUsage({
       accountId: "acct_pack_reader", orderRef: `coinord_pack_${suffix}`,
@@ -364,6 +438,7 @@ test("add-only data-pack resource schema preserves an existing control account o
     store.close();
     const priorSchema = new Database(dbPath);
     try {
+      priorSchema.exec("drop table platform_data_pack_edge_credentials");
       priorSchema.exec("drop table platform_data_pack_resources");
     } finally {
       priorSchema.close();
@@ -375,6 +450,8 @@ test("add-only data-pack resource schema preserves an existing control account o
       const db = new Database(dbPath, { readonly: true });
       try {
         assert.equal(db.prepare("select count(*) as count from platform_data_pack_resources")
+          .get().count, 0);
+        assert.equal(db.prepare("select count(*) as count from platform_data_pack_edge_credentials")
           .get().count, 0);
       } finally {
         db.close();

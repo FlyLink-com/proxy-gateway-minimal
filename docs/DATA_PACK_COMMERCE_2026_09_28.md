@@ -49,6 +49,16 @@ each binding's stored lineage; the separate pack projection checks its own
 quota and owner. Thus adding a pack will not by itself make an existing timed
 plan disappear from the homepage. Wallet-first authority remains a separate
 binding and is not reassigned by this change.
+An add-only pack edge-credential table now records an explicit, replay-safe
+request/entitlement/channel/material-digest binding after control issuance.
+The old inferred `edgecred_<request>` alias is excluded for packs: without
+an explicit active credential, traffic accounting returns an unresolved
+binding rather than attributing traffic to a synthetic identity. An isolated
+test connects that exact binding to accounting and obtains a lifetime quota
+decision across a month boundary without affecting a timed plan. The table
+does **not** mint or store protected edge material, apply runtime desired
+state, prove collector convergence, or suspend traffic supply. It is not a
+customer-delivery signal.
 The collector quota decision now filters measured samples by account,
 entitlement **and** request, rather than request alone. A red-before-fix test
 showed that an inconsistent sample sharing only a request ID could otherwise
@@ -120,8 +130,9 @@ account and use `no-store` response headers. The technical date is omitted
 from its customer response.
 This source-only path verifies a captured Commerce order across the database
 boundary and can issue one protected runtime artifact under its exact live
-claim. It does **not** yet bind an edge credential, suspend an exhausted pack,
-complete the Commerce receipt, or provide a customer-facing handoff. An audit
+claim. It does **not** yet mint protected edge material, apply and verify the
+runtime identity map, suspend an exhausted pack, complete the Commerce
+receipt, or provide a customer-facing handoff. An audit
 fact alone is not a delivered Commerce receipt. The offer stays unpublished.
 The offer schema also requires a CNY `referencePrice`. Candidate records use
 the existing one-Coin-to-one-CNY display convention solely to satisfy that

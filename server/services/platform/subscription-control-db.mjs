@@ -1024,6 +1024,20 @@ export function createSqliteSubscriptionControlStore({
     create index if not exists platform_data_pack_resources_account_idx
       on platform_data_pack_resources(account_id, created_at);
 
+    create table if not exists platform_data_pack_edge_credentials (
+      request_ref text not null references platform_issuance_requests(id),
+      entitlement_ref text not null references platform_entitlements(id),
+      edge_channel_ref text not null,
+      edge_credential_ref text not null unique,
+      edge_material_digest text not null,
+      status text not null check (status in ('active', 'rotated', 'disabled')),
+      created_at text not null,
+      updated_at text not null,
+      primary key (request_ref, edge_credential_ref)
+    );
+    create unique index if not exists platform_data_pack_edge_active_request_idx
+      on platform_data_pack_edge_credentials(request_ref) where status = 'active';
+
     create table if not exists platform_quota_counters (
       account_id text not null references platform_accounts(id) on delete cascade,
       entitlement_id text not null references platform_entitlements(id) on delete cascade,
@@ -5606,6 +5620,34 @@ export function createSqliteSubscriptionControlStore({
 
   function findIssuedSubscriptionBindingByEdgeCredentialRef(edgeCredentialRef) {
     const safeEdgeCredentialRef = requiredText(edgeCredentialRef, "edgeCredentialRef");
+    const packRows = db.prepare(`
+      select
+        l.id as link_id, l.request_id, l.tenant_ref, l.artifact_ref,
+        l.status as link_status, l.created_at as link_created_at,
+        l.updated_at as link_updated_at, r.account_id, r.entitlement_id,
+        r.status as request_status, c.edge_channel_ref as node_id,
+        e.plan, e.status as entitlement_status, e.valid_from, e.valid_until,
+        e.traffic_limit_bytes, c.edge_credential_ref,
+        c.edge_material_digest, null as portal_user_ref
+      from platform_data_pack_edge_credentials c
+      join platform_issuance_requests r on r.id = c.request_ref
+      join platform_entitlements e on e.id = r.entitlement_id
+      join platform_issued_subscription_links l on l.request_id = r.id
+      where c.edge_credential_ref = ? and c.status = 'active'
+        and c.entitlement_ref = e.id
+        and r.purpose = 'coin_commerce_data_pack_fulfillment'
+        and r.status = 'issued' and e.status = 'active' and l.status = 'active'
+      limit 2
+    `).all(safeEdgeCredentialRef);
+    if (packRows.length > 1 || (packRows.length === 1 && (
+      packRows[0].node_id !== getIssuanceRequest(packRows[0].request_id)?.nodeId
+      || lifetimeDataPackQuotaBytesFor(packRows[0]) !== packRows[0].traffic_limit_bytes
+      || packRows[0].valid_until !== DATA_PACK_TECHNICAL_VALID_UNTIL
+      || !/^sha256:[a-f0-9]{64}$/.test(packRows[0].edge_material_digest)
+    ))) {
+      throw platformError("reconciliation_required", "data pack edge binding drifted");
+    }
+    const packBinding = mapUsageBinding(packRows[0]);
     const durableCredential = mapUsageBinding(db.prepare(`
       select
         l.id as link_id,
@@ -5634,10 +5676,14 @@ export function createSqliteSubscriptionControlStore({
       where l.status = 'active'
         and r.status = 'issued'
         and e.status = 'active'
+        and r.purpose <> 'coin_commerce_data_pack_fulfillment'
         and c.edge_credential_ref = ?
       order by l.created_at desc, c.ordinal asc, l.id desc
       limit 1
     `).get(safeEdgeCredentialRef));
+    if (durableCredential && packBinding) {
+      throw platformError("reconciliation_required", "edge credential lineage is ambiguous");
+    }
     if (durableCredential) {
       return durableCredential;
     }
@@ -5669,10 +5715,14 @@ export function createSqliteSubscriptionControlStore({
       where l.status = 'active'
         and r.status = 'issued'
         and e.status = 'active'
+        and r.purpose <> 'coin_commerce_data_pack_fulfillment'
         and coalesce(p.edge_credential_ref, 'edgecred_' || r.id) = ?
       order by l.created_at desc, l.id desc
       limit 1
     `).get(safeEdgeCredentialRef));
+    if (direct && packBinding) {
+      throw platformError("reconciliation_required", "edge credential lineage is ambiguous");
+    }
     if (direct) {
       return direct;
     }
@@ -5704,6 +5754,7 @@ export function createSqliteSubscriptionControlStore({
       where l.status = 'active'
         and r.status = 'issued'
         and e.status = 'active'
+        and r.purpose <> 'coin_commerce_data_pack_fulfillment'
       order by l.created_at desc, l.id desc
     `).all();
 
@@ -5730,13 +5781,16 @@ export function createSqliteSubscriptionControlStore({
       if (explicitCredentials.length > 0 && !onlyLegacyDirectCredential && !explicitChannelRefs.has(channelRef)) {
         continue;
       }
+      if (packBinding) {
+        throw platformError("reconciliation_required", "edge credential lineage is ambiguous");
+      }
       return mapUsageBinding({
         ...row,
         node_id: channelRef,
         edge_credential_ref: safeEdgeCredentialRef
       });
     }
-    return null;
+    return packBinding;
   }
 
   function findUsageBindingByTenantRef(tenantRef) {
@@ -6016,6 +6070,80 @@ export function createSqliteSubscriptionControlStore({
         commandRef, orderRef, requestRef, entitlementRef,
         issuedLinkRef, status: "issued"
       });
+    }).immediate();
+  }
+
+  // A pack cannot inherit the legacy edgecred_<request> naming convention:
+  // only a credential whose protected material has been separately issued
+  // may become a metering identity. This is source-only registration; it does
+  // not apply a desired runtime state or assert collector convergence.
+  function registerCoinCommerceDataPackEdgeCredential(input = {}) {
+    exactObject(input, {
+      allowed: ["requestRef", "entitlementRef", "edgeChannelRef",
+        "edgeCredentialRef", "edgeMaterialDigest", "now"],
+      name: "dataPackEdgeCredential"
+    });
+    const requestRef = safeControlRef(input.requestRef, "requestRef");
+    const entitlementRef = safeControlRef(input.entitlementRef, "entitlementRef");
+    const edgeChannelRef = safeControlRef(input.edgeChannelRef, "edgeChannelRef");
+    const edgeCredentialRef = safeControlRef(input.edgeCredentialRef, "edgeCredentialRef");
+    const edgeMaterialDigest = requiredText(input.edgeMaterialDigest, "edgeMaterialDigest");
+    const now = isoText(input.now, "now");
+    if (!/^sha256:[a-f0-9]{64}$/.test(edgeMaterialDigest)) {
+      throw platformError("validation_error", "data pack material digest is invalid");
+    }
+    return db.transaction(() => {
+      const request = getIssuanceRequest(requestRef);
+      const entitlement = getEntitlement(entitlementRef);
+      const activeLinks = db.prepare(`
+        select count(*) as count from platform_issued_subscription_links
+        where request_id = ? and status = 'active'
+      `).get(requestRef).count;
+      if (!request || !entitlement
+        || request.entitlementId !== entitlementRef
+        || request.purpose !== "coin_commerce_data_pack_fulfillment"
+        || request.status !== "issued"
+        || request.nodeId !== edgeChannelRef
+        || request.accountId !== entitlement.accountId
+        || request.metadata?.kind !== "data_pack"
+        || entitlement.status !== "active"
+        || lifetimeDataPackQuotaBytesFor(entitlement) !== entitlement.trafficLimitBytes
+        || entitlement.validUntil !== DATA_PACK_TECHNICAL_VALID_UNTIL
+        || activeLinks !== 1) {
+        throw platformError("reconciliation_required", "data pack edge lineage is not issued");
+      }
+      const portalCollision = db.prepare(`
+        select 1 from platform_portal_edge_credentials
+        where edge_credential_ref = ? limit 1
+      `).get(edgeCredentialRef);
+      const existing = db.prepare(`
+        select * from platform_data_pack_edge_credentials
+        where edge_credential_ref = ?
+      `).get(edgeCredentialRef);
+      const active = db.prepare(`
+        select * from platform_data_pack_edge_credentials
+        where request_ref = ? and status = 'active'
+      `).get(requestRef);
+      if (portalCollision || (existing && (
+        existing.request_ref !== requestRef
+        || existing.entitlement_ref !== entitlementRef
+        || existing.edge_channel_ref !== edgeChannelRef
+        || existing.edge_material_digest !== edgeMaterialDigest
+        || existing.status !== "active"
+      )) || (active && active.edge_credential_ref !== edgeCredentialRef)) {
+        throw platformError("reconciliation_required", "data pack edge credential drifted");
+      }
+      if (!existing) {
+        db.prepare(`
+          insert into platform_data_pack_edge_credentials
+            (request_ref, entitlement_ref, edge_channel_ref, edge_credential_ref,
+             edge_material_digest, status, created_at, updated_at)
+          values (?, ?, ?, ?, ?, 'active', ?, ?)
+        `).run(requestRef, entitlementRef, edgeChannelRef, edgeCredentialRef,
+          edgeMaterialDigest, now, now);
+      }
+      return Object.freeze({ requestRef, entitlementRef, edgeChannelRef,
+        edgeCredentialRef, status: "active" });
     }).immediate();
   }
 
@@ -7660,6 +7788,7 @@ export function createSqliteSubscriptionControlStore({
     listUsageSamples,
     reserveCoinCommerceDataPackIssuance,
     completeCoinCommerceDataPackIssuance,
+    registerCoinCommerceDataPackEdgeCredential,
     createDataPackResource,
     applyCoinCommerceDataPackFulfillment,
     readDataPackResourceUsage,
