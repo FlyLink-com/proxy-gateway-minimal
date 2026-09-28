@@ -29,6 +29,97 @@ function withStore(fn) {
   }
 }
 
+test("independent data-pack usage stays scoped to its issued resource across months and link rotation", () => {
+  withStore((store) => {
+    const issuedAt = "2026-09-01T00:00:00.000Z";
+    const now = "2026-10-02T00:00:00.000Z";
+    const gib = 1024 ** 3;
+    store.createAccount({
+      id: "acct_pack_reader", ownerRef: "portal_pack_reader", status: "active",
+      createdAt: issuedAt, updatedAt: issuedAt
+    });
+    const resources = [
+      ["a", "offerv_pack_100gb_v1", 100, "coin_commerce_data_pack_fulfillment"],
+      ["b", "offerv_pack_200gb_v1", 200, "coin_commerce_data_pack_fulfillment"],
+      ["timed", "offerv_plan_30d_100gb_monthly_v1", 100, "coin_commerce_product_fulfillment"]
+    ];
+    for (const [suffix, plan, gigabytes, purpose] of resources) {
+      store.createEntitlement({
+        id: `ent_pack_${suffix}`, accountId: "acct_pack_reader", plan,
+        status: "active", validFrom: issuedAt, validUntil: "9999-12-31T23:59:59.999Z",
+        trafficLimitBytes: gigabytes * gib, createdAt: issuedAt, updatedAt: issuedAt
+      });
+      store.createIssuanceRequest({
+        id: `pareq_pack_${suffix}`, accountId: "acct_pack_reader",
+        entitlementId: `ent_pack_${suffix}`, approvalRef: `approval_pack_${suffix}`,
+        status: "issued", quantity: 1, nodeId: "channel-aliyun-a-tuic",
+        purpose, requestedByRef: "commerce_pack_issuer",
+        createdAt: issuedAt, updatedAt: issuedAt
+      });
+      store.linkIssuedSubscription({
+        id: `link_pack_${suffix}`, requestId: `pareq_pack_${suffix}`,
+        tenantRef: `tenant_pack_${suffix}`, artifactRef: `artifact_pack_${suffix}`,
+        status: "active", createdAt: issuedAt, updatedAt: issuedAt
+      });
+    }
+    const read = (suffix, at = now) => store.readDataPackResourceUsage({
+      accountId: "acct_pack_reader", requestRef: `pareq_pack_${suffix}`,
+      entitlementRef: `ent_pack_${suffix}`, now: at
+    });
+    assert.deepEqual(read("a").usage, {
+      totalBytes: 100 * gib, usedBytes: null, remainingBytes: null,
+      collectionStatus: "pending", updatedAt: null, exhausted: null
+    });
+    for (const [suffix, usedGb, observedAt] of [
+      ["a", 50, "2026-09-02T00:00:00.000Z"],
+      ["b", 200, "2026-10-01T23:59:00.000Z"],
+      ["timed", 90, "2026-10-01T23:59:00.000Z"]
+    ]) {
+      store.recordUsageSample({
+        id: `sample_pack_${suffix}`, sourceRef: `source_pack_${suffix}`,
+        channelRef: "channel-aliyun-a-tuic", edgeCredentialRef: `edgecred_pack_${suffix}`,
+        accountId: "acct_pack_reader", entitlementId: `ent_pack_${suffix}`,
+        requestId: `pareq_pack_${suffix}`, observedAt,
+        intervalStartedAt: issuedAt, intervalEndedAt: observedAt,
+        uploadBytes: usedGb * gib, downloadBytes: 0,
+        sampleDigest: `digest_pack_${suffix}`, createdAt: observedAt
+      });
+    }
+    assert.equal(read("a").usage.usedBytes, 50 * gib);
+    assert.equal(read("a").usage.remainingBytes, 50 * gib);
+    assert.equal(read("a").usage.exhausted, false);
+    assert.equal(read("b").usage.usedBytes, 200 * gib);
+    assert.equal(read("b").usage.remainingBytes, 0);
+    assert.equal(read("b").usage.exhausted, true);
+    assert.equal(read("a", "2026-10-03T00:00:00.000Z").usage.usedBytes, 50 * gib);
+    store.setIssuedLinkStatus("link_pack_a", {
+      status: "rotated", updatedAt: now
+    });
+    store.linkIssuedSubscription({
+      id: "link_pack_a_rotated", requestId: "pareq_pack_a",
+      tenantRef: "tenant_pack_a", artifactRef: "artifact_pack_a_rotated",
+      status: "active", createdAt: now, updatedAt: now
+    });
+    assert.equal(read("a").usage.usedBytes, 50 * gib);
+    assert.throws(() => store.readDataPackResourceUsage({
+      accountId: "acct_other", requestRef: "pareq_pack_a",
+      entitlementRef: "ent_pack_a", now
+    }), (error) => error.code === "not_found");
+    assert.throws(() => store.readDataPackResourceUsage({
+      accountId: "acct_pack_reader", requestRef: "pareq_pack_b",
+      entitlementRef: "ent_pack_a", now
+    }), (error) => error.code === "reconciliation_required");
+    assert.throws(() => read("timed"), (error) => error.code === "reconciliation_required");
+    assert.doesNotMatch(JSON.stringify(read("a")), /token|subscriptionUrl|credential|artifact/i);
+    store.linkIssuedSubscription({
+      id: "link_pack_a_ambiguous", requestId: "pareq_pack_a",
+      tenantRef: "tenant_pack_a_other", artifactRef: "artifact_pack_a_other",
+      status: "active", createdAt: now, updatedAt: now
+    });
+    assert.throws(() => read("a"), (error) => error.code === "reconciliation_required");
+  });
+});
+
 function withWelcomeCoinGrantStore(fn) {
   const database = new Database(":memory:");
   let store;

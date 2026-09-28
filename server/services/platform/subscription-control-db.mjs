@@ -3,7 +3,11 @@ import Database from "better-sqlite3";
 import { createHash, randomBytes } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
-import { usageCycleForBinding, summarizeUsageSamples } from "./usage-billing-cycle.mjs";
+import {
+  usageCycleForBinding,
+  summarizeUsageSamples,
+  lifetimeDataPackQuotaBytesFor
+} from "./usage-billing-cycle.mjs";
 import {
   createAccountResourceAuthorityStore
 } from "./account-resource-authority.mjs";
@@ -5820,6 +5824,72 @@ export function createSqliteSubscriptionControlStore({
     `).all(...params).map(mapUsageSample);
   }
 
+  // This read never resolves an account-wide "current" entitlement. A buyer
+  // may own a timed plan and several independent packs at once; only the
+  // exact issued request/entitlement pair is eligible for this projection.
+  function readDataPackResourceUsage(input = {}) {
+    exactObject(input, {
+      allowed: ["accountId", "requestRef", "entitlementRef", "now"],
+      name: "dataPackResourceUsage"
+    });
+    const accountId = safeControlRef(input.accountId, "accountId");
+    const requestRef = safeControlRef(input.requestRef, "requestRef");
+    const entitlementRef = safeControlRef(input.entitlementRef, "entitlementRef");
+    const now = isoText(input.now, "now");
+    return db.transaction(() => {
+      const account = getAccount(accountId);
+      const request = getIssuanceRequest(requestRef);
+      const entitlement = getEntitlement(entitlementRef);
+      if (!account || !request || !entitlement
+        || request.accountId !== accountId || entitlement.accountId !== accountId) {
+        throw platformError("not_found", "data pack resource not found");
+      }
+      const quotaBytes = lifetimeDataPackQuotaBytesFor(entitlement);
+      const activeLinks = db.prepare(`
+        select count(*) as count from platform_issued_subscription_links
+        where request_id = ? and status = 'active'
+      `).get(requestRef).count;
+      if (account.status !== "active"
+        || request.entitlementId !== entitlementRef
+        || request.status !== "issued"
+        || request.purpose !== "coin_commerce_data_pack_fulfillment"
+        || entitlement.status !== "active"
+        || quotaBytes === null
+        || entitlement.trafficLimitBytes !== quotaBytes
+        || entitlement.validFrom > now
+        || entitlement.validUntil <= now
+        || activeLinks !== 1) {
+        throw platformError("reconciliation_required", "data pack resource binding is invalid");
+      }
+      const measured = db.prepare(`
+        select count(*) as sample_count, sum(total_bytes) as used_bytes,
+               max(observed_at) as last_observed_at
+          from platform_usage_samples
+         where account_id = ? and entitlement_id = ? and request_id = ?
+           and observed_at >= ? and observed_at <= ?
+      `).get(accountId, entitlementRef, requestRef, entitlement.validFrom, now);
+      const usedBytes = measured.sample_count === 0 ? null : measured.used_bytes;
+      if (usedBytes !== null && (!Number.isSafeInteger(usedBytes) || usedBytes < 0)) {
+        throw platformError("reconciliation_required", "data pack usage is invalid");
+      }
+      const lastObservedAt = measured.last_observed_at;
+      return Object.freeze({
+        requestRef,
+        entitlementRef,
+        usage: Object.freeze({
+          totalBytes: quotaBytes,
+          usedBytes,
+          remainingBytes: usedBytes === null ? null : Math.max(0, quotaBytes - usedBytes),
+          collectionStatus: usedBytes === null ? "pending"
+            : Date.parse(now) - Date.parse(lastObservedAt) > 300_000 ? "stale"
+              : usedBytes === 0 ? "measured_zero" : "measured",
+          updatedAt: lastObservedAt,
+          exhausted: usedBytes === null ? null : usedBytes >= quotaBytes
+        })
+      });
+    })();
+  }
+
   function usageSampleRecord(input) {
     const uploadBytes = integer(input.uploadBytes ?? 0, "uploadBytes", { min: 0 });
     const downloadBytes = integer(input.downloadBytes ?? 0, "downloadBytes", { min: 0 });
@@ -7213,6 +7283,7 @@ export function createSqliteSubscriptionControlStore({
     getUsageCounterCursor,
     listUsageRollupsByRequestId,
     listUsageSamples,
+    readDataPackResourceUsage,
     upsertQuotaCounter,
     bindDevice,
     getDeviceBinding,

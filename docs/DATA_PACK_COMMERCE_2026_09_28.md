@@ -37,6 +37,12 @@ existing timed-plan deliveries. It returns only opaque request and entitlement
 references after checking the delivery receipt and fulfillment audit. This is
 the foundation for order-page recovery, not a data-pack issuance path or a
 subscription-material API; neither is exposed by this change.
+A second read-only control-store projection now sums measured samples only for
+the exact pack issuance request and entitlement, even when the same account
+also holds a timed plan or another pack. It preserves a `pending` result when
+no sample exists, counts usage across month boundaries and link rotation, and
+rejects ambiguous active bindings. This does **not** issue a pack, prove that
+the live collector can resolve its credential, or enforce exhaustion yet.
 The offer schema also requires a CNY `referencePrice`. Candidate records use
 the existing one-Coin-to-one-CNY display convention solely to satisfy that
 compatibility field; the requested purchase price is in Coins, and this does
