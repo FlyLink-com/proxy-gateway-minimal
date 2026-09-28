@@ -90,6 +90,21 @@ do not themselves prove that the Commerce order was captured or that the
 runtime identity and edge credentials were created; a verified issuer and
 cross-store recovery remain
 required before any pack can be sold.
+The next source slice provides a pack-only runtime issuer and a separate
+encrypted material escrow. An isolated real-Core test now confirms that the
+technical year-9999 date and a non-secret order marker are accepted by the
+runtime; two orders on one account create separate tenants and artifacts.
+Replay after protected-material store restart reuses the exact original
+identity, and interruption after material capture but before control
+finalization can resume without minting another artifact. If the artifact
+exists but its protected URL was not durably captured, issuance stops for
+reconciliation rather than generating another credential. The escrow remains
+available for order-detail retrieval, but its release method is internal and
+must only be called after an authenticated order-owner check. This runtime
+stage is **not yet wired to the captured-order handler** and does not create
+edge credentials, prove live collector identity, mark a Commerce receipt
+delivered, or publish the candidate offers. Its single-writer file lock must
+be included in the eventual service composition and restart rehearsal.
 This source-only table does **not** yet verify a captured Commerce order across
 the database boundary, issue runtime credentials, suspend an exhausted pack,
 or provide a customer handoff. An audit fact alone is not a delivered Commerce
