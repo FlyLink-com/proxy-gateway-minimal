@@ -333,6 +333,17 @@ test("credential reset waits for the exact edge receipt before rotating the subs
       "material_committed");
     const activeDigest = materialStore.getCredentialMaterialSummary(pack.oldRef).materialDigest;
     assert.equal(activeDigest, stagedDigest);
+    const pendingOnly = createCoinCommerceDataPackCredentialReset({
+      ...dependencies, materialStore,
+      desiredStateNotifier: { notifyOrderLifecycle() {
+        return { notificationCount: 1, notifications: [{ channelRef: CHANNEL,
+          status: "pending" }] };
+      } }
+    });
+    assert.throws(() => pendingOnly.rotate(input));
+    assert.equal(artifactCalls, 0);
+    assert.equal(store.beginCoinCommerceDataPackCredentialReset({ ...input, now }).status,
+      "material_committed");
     const desired = store.getLatestEdgeDesiredStateForChannel(CHANNEL, {
       nodeRef: "node_pack_reset"
     });

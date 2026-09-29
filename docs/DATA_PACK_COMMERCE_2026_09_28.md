@@ -482,6 +482,13 @@ that the collector converged. Those remain open Risk A gates; the existing
 preparation receipt is bound to an earlier source commit and must not be used
 as a physical execution authorization for this new slice.
 
+The reset coordinator's notification result alone is not an apply receipt:
+the control-store transition to `edge_applied` independently requires an
+applied notification and receipt for the current desired state, generation,
+and new material digest. A focused pending-notification regression test keeps
+the artifact link unchanged until that gate passes. This is source evidence,
+not a physical edge-process acceptance result.
+
 The package must emit aggregate-only receipts: pinned source/artifact hashes,
 namespace and port checks, credential count, per-resource pass/fail and byte
 counts, restart and listener readback, recovery result, and cleanup readback.
