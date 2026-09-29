@@ -5651,7 +5651,7 @@ export function createSqliteSubscriptionControlStore({
       join platform_issuance_requests r on r.id = c.request_ref
       join platform_entitlements e on e.id = r.entitlement_id
       join platform_issued_subscription_links l on l.request_id = r.id
-      where c.edge_credential_ref = ? and c.status = 'active'
+      where c.edge_credential_ref = ? and c.status in ('active', 'rotated')
         and c.entitlement_ref = e.id
         and r.purpose = 'coin_commerce_data_pack_fulfillment'
         and r.status = 'issued' and e.status = 'active' and l.status = 'active'
@@ -6374,6 +6374,102 @@ export function createSqliteSubscriptionControlStore({
       }
       return Object.freeze({ requestRef, entitlementRef, edgeChannelRef,
         edgeCredentialRef, status: "active" });
+    }).immediate();
+  }
+
+  // Source-only identity transition. The rotated principal leaves desired
+  // runtime state, but its binding stays resolvable for delayed observations
+  // until a separate retention review. This does not issue protected material,
+  // apply an edge config, or assert that the old connection has been closed.
+  function rotateCoinCommerceDataPackEdgeCredential(input = {}) {
+    exactObject(input, {
+      allowed: ["requestRef", "entitlementRef", "edgeChannelRef",
+        "oldEdgeCredentialRef", "newEdgeCredentialRef", "newEdgeMaterialDigest", "now"],
+      name: "dataPackEdgeCredentialRotation"
+    });
+    const requestRef = safeControlRef(input.requestRef, "requestRef");
+    const entitlementRef = safeControlRef(input.entitlementRef, "entitlementRef");
+    const edgeChannelRef = safeControlRef(input.edgeChannelRef, "edgeChannelRef");
+    const oldRef = safeControlRef(input.oldEdgeCredentialRef, "oldEdgeCredentialRef");
+    const newRef = safeControlRef(input.newEdgeCredentialRef, "newEdgeCredentialRef");
+    const digest = requiredText(input.newEdgeMaterialDigest, "newEdgeMaterialDigest");
+    const now = isoText(input.now, "now");
+    if (oldRef === newRef || !/^sha256:[a-f0-9]{64}$/.test(digest)) {
+      throw platformError("validation_error", "data pack replacement material is invalid");
+    }
+    return db.transaction(() => {
+      const request = getIssuanceRequest(requestRef);
+      const entitlement = getEntitlement(entitlementRef);
+      const old = db.prepare(`
+        select * from platform_data_pack_edge_credentials
+        where request_ref = ? and edge_credential_ref = ?
+      `).get(requestRef, oldRef);
+      const replacement = db.prepare(`
+        select * from platform_data_pack_edge_credentials
+        where edge_credential_ref = ?
+      `).get(newRef);
+      const active = db.prepare(`
+        select * from platform_data_pack_edge_credentials
+        where request_ref = ? and status = 'active'
+      `).get(requestRef);
+      const portalCollision = db.prepare(`
+        select 1 from platform_portal_edge_credentials
+        where edge_credential_ref = ? limit 1
+      `).get(newRef);
+      const activeLinks = db.prepare(`
+        select count(*) as count from platform_issued_subscription_links
+        where request_id = ? and status = 'active'
+      `).get(requestRef).count;
+      if (!request || !entitlement || !old || portalCollision
+        || request.entitlementId !== entitlementRef
+        || request.accountId !== entitlement.accountId
+        || request.purpose !== "coin_commerce_data_pack_fulfillment"
+        || request.status !== "issued" || request.nodeId !== edgeChannelRef
+        || request.metadata?.kind !== "data_pack"
+        || entitlement.status !== "active"
+        || entitlement.validUntil !== DATA_PACK_TECHNICAL_VALID_UNTIL
+        || lifetimeDataPackQuotaBytesFor(entitlement) !== entitlement.trafficLimitBytes
+        || old.entitlement_ref !== entitlementRef
+        || old.edge_channel_ref !== edgeChannelRef
+        || activeLinks !== 1
+        || (replacement && (replacement.request_ref !== requestRef
+          || replacement.entitlement_ref !== entitlementRef
+          || replacement.edge_channel_ref !== edgeChannelRef
+          || replacement.edge_material_digest !== digest
+          || replacement.status !== "active"))) {
+        throw platformError("reconciliation_required", "data pack edge rotation lineage drifted");
+      }
+      if (old.status === "rotated" && replacement && active?.edge_credential_ref === newRef) {
+        return Object.freeze({ requestRef, entitlementRef, edgeChannelRef,
+          edgeCredentialRef: newRef, status: "active" });
+      }
+      if (old.status !== "active" || replacement || active?.edge_credential_ref !== oldRef) {
+        throw platformError("reconciliation_required", "data pack edge rotation state drifted");
+      }
+      // A completed order effect is required; registration alone is not a
+      // customer resource and cannot authorize a new runtime principal.
+      const resource = db.prepare(`
+        select account_id, order_ref from platform_data_pack_resources
+        where request_ref = ? and entitlement_ref = ?
+      `).get(requestRef, entitlementRef);
+      if (!resource || resource.account_id !== request.accountId) {
+        throw platformError("reconciliation_required", "data pack resource is absent");
+      }
+      readDataPackResourceUsage({ accountId: request.accountId,
+        orderRef: resource.order_ref, requestRef, entitlementRef, now });
+      db.prepare(`
+        update platform_data_pack_edge_credentials
+        set status = 'rotated', updated_at = ?
+        where request_ref = ? and edge_credential_ref = ? and status = 'active'
+      `).run(now, requestRef, oldRef);
+      db.prepare(`
+        insert into platform_data_pack_edge_credentials
+          (request_ref, entitlement_ref, edge_channel_ref, edge_credential_ref,
+           edge_material_digest, status, created_at, updated_at)
+        values (?, ?, ?, ?, ?, 'active', ?, ?)
+      `).run(requestRef, entitlementRef, edgeChannelRef, newRef, digest, now, now);
+      return Object.freeze({ requestRef, entitlementRef, edgeChannelRef,
+        edgeCredentialRef: newRef, status: "active" });
     }).immediate();
   }
 
@@ -8055,6 +8151,7 @@ export function createSqliteSubscriptionControlStore({
     listPendingCoinCommerceDataPackArtifactRotations,
     advanceCoinCommerceDataPackArtifactRotation,
     registerCoinCommerceDataPackEdgeCredential,
+    rotateCoinCommerceDataPackEdgeCredential,
     createDataPackResource,
     applyCoinCommerceDataPackFulfillment,
     readDataPackResourceUsage,

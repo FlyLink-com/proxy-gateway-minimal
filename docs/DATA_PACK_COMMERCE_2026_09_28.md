@@ -455,9 +455,20 @@ There is a source/acceptance mismatch at step (5): the currently implemented
 `coin-commerce-data-pack-artifact-rotation.mjs` rotates the subscription
 artifact and delivery URL but intentionally preserves the edge principal and
 usage. Therefore it cannot make an already imported Hysteria edge credential
-fail. The physical driver must not claim this property as passing. The choice
-between URL-only reset and edge-credential invalidation must be resolved in
-the product contract before the full rotation gate can be executed.
+fail. The physical driver must not claim this property as passing until the
+edge-credential invalidation path is implemented and validated.
+
+The operator subsequently confirmed that reset must also invalidate the old
+imported edge connection and issue new edge material. A source-only control
+store primitive now makes an exact old-to-new pack principal transition,
+preserving the same request, entitlement, and lifetime usage. The old
+principal leaves desired runtime state but remains resolvable for delayed
+collector observations until a separate retention decision. This primitive
+does not issue protected replacement material, coordinate the artifact and
+edge transitions, apply the edge configuration, terminate an existing
+connection, or prove physical revocation. Those remain open Risk A gates;
+the existing preparation receipt is bound to the earlier source commit and
+must not be used as a physical execution authorization for this new slice.
 
 The package must emit aggregate-only receipts: pinned source/artifact hashes,
 namespace and port checks, credential count, per-resource pass/fail and byte
