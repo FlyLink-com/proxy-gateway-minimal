@@ -736,6 +736,50 @@ test("pack handoff preserves unknown usage and closes malformed delivery", async
   }
 });
 
+test("pack rotation route is owner-only, no-store and returns no material", async () => {
+  const state = createState();
+  const rotated = [];
+  state.platform.coinCommerceDataPackOrderDelivery = {
+    get({ accountId }) {
+      if (accountId !== "acct_alpha") throw new Error("private order");
+      return { orderRef: "coinord_pack_delivery",
+        subscriptionUrl: "https://example.invalid/synthetic-pack",
+        usage: { totalBytes: 100 * 1024 ** 3, usedBytes: 0,
+          remainingBytes: 100 * 1024 ** 3, collectionStatus: "measured_zero",
+          updatedAt: "2026-09-28T00:00:00.000Z", exhausted: false } };
+    }
+  };
+  state.platform.coinCommerceDataPackArtifactRotation = {
+    rotate(input) { rotated.push(input); return { status: "complete", orderRef: input.orderRef }; }
+  };
+  const { server, baseUrl } = await listen(createApp(state));
+  const path = "/api/portal/commerce/orders/coinord_pack_delivery/subscription/rotate";
+  const body = JSON.stringify({ rotationRef: "packrot_portal_once" });
+  const headers = { ...portalHeaders(), "Content-Type": "application/json" };
+  try {
+    const anonymous = await fetch(`${baseUrl}${path}`, { method: "POST", body,
+      headers: { "Content-Type": "application/json" } });
+    assert.equal(anonymous.status, 401);
+    assert.match(anonymous.headers.get("cache-control"), /no-store/);
+    const other = await fetch(`${baseUrl}${path}`, { method: "POST", body,
+      headers: { ...headers, ...portalHeaders("session_beta") } });
+    assert.equal(other.status, 404);
+    assert.deepEqual(rotated, []);
+    const accepted = await fetch(`${baseUrl}${path}`, { method: "POST", body, headers });
+    assert.equal(accepted.status, 200);
+    assert.match(accepted.headers.get("cache-control"), /no-store/);
+    assert.deepEqual(await accepted.json(), {
+      orderRef: "coinord_pack_delivery", status: "complete"
+    });
+    assert.deepEqual(rotated, [{ accountId: "acct_alpha",
+      orderRef: "coinord_pack_delivery", rotationRef: "packrot_portal_once" }]);
+    const malformed = await fetch(`${baseUrl}${path}`, { method: "POST",
+      body: JSON.stringify({ rotationRef: "invalid-ref" }), headers });
+    assert.equal(malformed.status, 400);
+    assert.equal(rotated.length, 1);
+  } finally { await closeServer(server); }
+});
+
 test("Commerce routes stay unmounted unless the flag and required runtime services are present", async (t) => {
   let serviceGetterReads = 0;
   const cases = [

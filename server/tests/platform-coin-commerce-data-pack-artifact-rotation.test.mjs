@@ -76,8 +76,8 @@ function fixture() {
   });
   const rotation = (overrides = {}) => createCoinCommerceDataPackArtifactRotation({
     commerceStore, controlStore, runtimeCore, materialEscrow: escrow,
-    ...overrides,
-    nowFn: () => new Date(NOW)
+    nowFn: () => new Date(NOW),
+    ...overrides
   });
   return {
     controlStore, artifacts, runtimeCore, issued, delivery, rotation,
@@ -230,6 +230,78 @@ test("a pending rotation blocks a different operation and cannot be replayed for
       (error) => error.code === "coin_commerce_data_pack_rotation_reconciliation_required");
     assert.equal(f.artifacts.length, 1);
     assert.equal(f.rotation().rotate(input).status, "complete");
+  } finally { f.close(); }
+});
+
+test("an active durable rotation lease excludes a concurrent worker", () => {
+  const f = fixture();
+  try {
+    const input = { accountId: ORDER.accountId, orderRef: ORDER.orderRef,
+      rotationRef: "packrot_lease_active" };
+    f.controlStore.beginCoinCommerceDataPackArtifactRotation({ ...input, now: NOW });
+    f.controlStore.claimCoinCommerceDataPackArtifactRotation({ ...input,
+      leaseRef: "packrotlease_worker_a", now: NOW });
+    assert.throws(() => f.rotation().rotate(input),
+      (error) => error.code === "coin_commerce_data_pack_rotation_reconciliation_required");
+    assert.equal(f.artifacts.length, 1);
+    f.controlStore.releaseCoinCommerceDataPackArtifactRotation({ ...input,
+      leaseRef: "packrotlease_worker_a" });
+    assert.equal(f.rotation().rotate(input).status, "complete");
+  } finally { f.close(); }
+});
+
+test("an expired durable lease can be taken over to reconcile after worker death", () => {
+  const f = fixture();
+  try {
+    const input = { accountId: ORDER.accountId, orderRef: ORDER.orderRef,
+      rotationRef: "packrot_lease_expired" };
+    f.controlStore.beginCoinCommerceDataPackArtifactRotation({ ...input, now: NOW });
+    f.controlStore.claimCoinCommerceDataPackArtifactRotation({ ...input,
+      leaseRef: "packrotlease_dead_worker", now: NOW });
+    const afterLease = "2026-09-28T00:06:00.000Z";
+    assert.equal(f.rotation({ nowFn: () => new Date(afterLease) }).rotate(input).status, "complete");
+    assert.equal(f.artifacts.length, 2);
+    assert.equal(f.artifacts[0].status, "revoked");
+  } finally { f.close(); }
+});
+
+test("an expired worker cannot advance or release a takeover lease", () => {
+  const f = fixture();
+  try {
+    const input = { accountId: ORDER.accountId, orderRef: ORDER.orderRef,
+      rotationRef: "packrot_lease_fenced" };
+    const later = "2026-09-28T00:06:00.000Z";
+    f.controlStore.beginCoinCommerceDataPackArtifactRotation({ ...input, now: NOW });
+    f.controlStore.claimCoinCommerceDataPackArtifactRotation({ ...input,
+      leaseRef: "packrotlease_old_worker", now: NOW });
+    f.controlStore.claimCoinCommerceDataPackArtifactRotation({ ...input,
+      leaseRef: "packrotlease_new_worker", now: later });
+    assert.throws(() => f.controlStore.advanceCoinCommerceDataPackArtifactRotation({
+      ...input, leaseRef: "packrotlease_old_worker", stage: "retry", attempt: 1, now: later
+    }), (error) => error.code === "reconciliation_required");
+    assert.throws(() => f.controlStore.releaseCoinCommerceDataPackArtifactRotation({
+      ...input, leaseRef: "packrotlease_old_worker"
+    }), (error) => error.code === "reconciliation_required");
+    const active = f.controlStore.beginCoinCommerceDataPackArtifactRotation({ ...input, now: later });
+    assert.equal(active.leaseRef, "packrotlease_new_worker");
+  } finally { f.close(); }
+});
+
+test("bounded recovery resumes only eligible pending rotations", () => {
+  const f = fixture();
+  try {
+    const input = { accountId: ORDER.accountId, orderRef: ORDER.orderRef,
+      rotationRef: "packrot_recover_batch" };
+    f.failRevoke(true);
+    assert.throws(() => f.rotation().rotate(input),
+      (error) => error.code === "coin_commerce_data_pack_rotation_reconciliation_required");
+    f.failRevoke(false);
+    const result = f.rotation().reconcilePending({ limit: 1 });
+    assert.deepEqual(result, { inspected: 1, completed: 1, failed: 0 });
+    assert.equal(f.artifacts.length, 2);
+    assert.equal(f.artifacts[0].status, "revoked");
+    assert.deepEqual(f.rotation().reconcilePending({ limit: 1 }),
+      { inspected: 0, completed: 0, failed: 0 });
   } finally { f.close(); }
 });
 

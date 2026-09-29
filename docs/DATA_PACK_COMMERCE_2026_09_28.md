@@ -150,8 +150,9 @@ replayed immutable effect in the real control SQLite store and notifier, but
 use synthetic Commerce claims, issuers and edge receipts; they do not prove
 a real edge apply or cross-database crash recovery. It is **not wired into
 the production fulfillment factory**. The
-path does **not** yet prove runtime identity-map convergence, suspend an
-exhausted pack, provide credential rotation or a customer-facing handoff.
+handler slice did **not** prove runtime identity-map convergence, suspend an
+exhausted pack, or provide credential rotation or a customer-facing handoff;
+later source-only slices below address parts of those gaps.
 An audit fact alone is not a delivered Commerce receipt. The offer stays
 unpublished.
 
@@ -207,13 +208,27 @@ blocks rotation instead. A crash after capture, after the
 link switch, or before the final completion can resume from the same intent.
 Real subscription-Core tests prove old-link rejection and new-link access;
 fault-injection tests prove same-operation replay and no second quota.
-This does not establish a production-safe concurrent-worker lock or a bounded
-recovery worker. Between link switch and old-artifact revocation, an
+At that initial slice there was no concurrent-worker exclusion or bounded
+recovery entrypoint. Between link switch and old-artifact revocation, an
 interrupted attempt can temporarily leave both artifact URLs active until
-reconciliation. The service remains default-absent without a protected escrow,
-is not exposed as a customer route, and is **not approved for production
-rotation or offer publication**. An isolated host with a real edge process
-and collector is still needed for physical traffic-supply stop proof.
+reconciliation. An isolated host with a real edge process and collector is
+still needed for physical traffic-supply stop proof.
+
+A later source-only slice adds a five-minute SQLite rotation lease with an
+operation-specific owner. An active lease rejects another worker; an expired
+lease may be taken over against the same durable intent, and stale owners
+cannot advance a control stage or release the replacement lease. A bounded
+`reconcilePending({ limit })` call selects at most 20 eligible intents and
+returns aggregate completion counts. An opt-in, session-owned POST order route
+now invokes pack rotation only after the protected order-delivery resolver
+accepts the same account and order; the response contains no subscription URL
+and carries no-store/no-referrer headers. The URL remains available through
+the authenticated order handoff. Neither the recovery call nor the route is
+wired into the production startup, because the protected escrow is absent
+there. A blocking runtime side effect that outlives the lease, automated
+recovery scheduling, schema migration rehearsal, and real edge/collector
+convergence remain open gates; this source slice is **not publication or
+production-rotation approval**.
 
 The offer schema also requires a CNY `referencePrice`. Candidate records use
 the existing one-Coin-to-one-CNY display convention solely to satisfy that

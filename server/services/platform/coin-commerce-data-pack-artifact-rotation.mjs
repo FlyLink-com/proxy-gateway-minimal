@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { types as utilTypes } from "node:util";
 import { coinCommerceDataPackRuntimeMarker } from "./coin-commerce-data-pack-runtime-issuer.mjs";
 
@@ -49,6 +49,9 @@ export function createCoinCommerceDataPackArtifactRotation({
   if (!commerceStore?.getDeliveredOrderBinding
     || !controlStore?.readDataPackResourceUsage
     || !controlStore?.beginCoinCommerceDataPackArtifactRotation
+    || !controlStore?.claimCoinCommerceDataPackArtifactRotation
+    || !controlStore?.releaseCoinCommerceDataPackArtifactRotation
+    || !controlStore?.listPendingCoinCommerceDataPackArtifactRotations
     || !controlStore?.advanceCoinCommerceDataPackArtifactRotation
     || !controlStore?.getIssuedLink || !controlStore?.getIssuanceRequest
     || !runtimeCore?.listTenants || !runtimeCore?.listSubscriptionArtifacts
@@ -58,11 +61,14 @@ export function createCoinCommerceDataPackArtifactRotation({
 
   function rotate(input) {
     const { accountId, orderRef, rotationRef } = exactRequest(input);
+    const leaseRef = `packrotlease_${randomBytes(16).toString("hex")}`;
+    let claimed = false;
     try {
       const order = commerceStore.getDeliveredOrderBinding({ accountId, orderRef });
       if (order?.kind !== "data_pack" || order.orderRef !== orderRef
         || !REF.test(order.requestRef) || !REF.test(order.entitlementRef)) throw unavailable();
-      const now = new Date(nowFn()).toISOString();
+      const timestamp = () => new Date(nowFn()).toISOString();
+      const now = timestamp();
       // This validates the resource and account ownership but does not write
       // a counter or synthesize any usage for the interval before rotation.
       controlStore.readDataPackResourceUsage({ accountId, orderRef,
@@ -70,6 +76,10 @@ export function createCoinCommerceDataPackArtifactRotation({
       let intent = controlStore.beginCoinCommerceDataPackArtifactRotation({
         accountId, orderRef, rotationRef, now
       });
+      intent = controlStore.claimCoinCommerceDataPackArtifactRotation({
+        accountId, orderRef, rotationRef, leaseRef, now
+      });
+      claimed = true;
       const link = controlStore.getIssuedLink(intent.linkRef);
       if (link?.requestId !== order.requestRef || link.status !== "active"
         || link.tenantRef == null
@@ -109,7 +119,8 @@ export function createCoinCommerceDataPackArtifactRotation({
           const candidate = candidates[0];
           if (candidate?.status === "revoked") {
             intent = controlStore.advanceCoinCommerceDataPackArtifactRotation({
-              accountId, orderRef, rotationRef, stage: "retry", attempt: intent.attempt, now
+              accountId, orderRef, rotationRef, stage: "retry", attempt: intent.attempt,
+              now: timestamp(), leaseRef
             });
             continue;
           }
@@ -122,7 +133,8 @@ export function createCoinCommerceDataPackArtifactRotation({
               const revoked = runtimeCore.revokeSubscriptionArtifact(candidate.id);
               if (revoked?.status !== "revoked") throw unavailable();
               intent = controlStore.advanceCoinCommerceDataPackArtifactRotation({
-                accountId, orderRef, rotationRef, stage: "retry", attempt: intent.attempt, now
+                accountId, orderRef, rotationRef, stage: "retry", attempt: intent.attempt,
+                now: timestamp(), leaseRef
               });
               continue;
             }
@@ -141,7 +153,7 @@ export function createCoinCommerceDataPackArtifactRotation({
         materialEscrow.verify(scope(replacement));
         intent = controlStore.advanceCoinCommerceDataPackArtifactRotation({
           accountId, orderRef, rotationRef, stage: "escrowed",
-          replacementArtifactRef: runtimeRef(replacement.id), now
+          replacementArtifactRef: runtimeRef(replacement.id), now: timestamp(), leaseRef
         });
       }
       const replacement = list().filter((artifact) =>
@@ -151,7 +163,7 @@ export function createCoinCommerceDataPackArtifactRotation({
       materialEscrow.verify(scope(replacement[0]));
       if (intent.status === "escrowed") {
         intent = controlStore.advanceCoinCommerceDataPackArtifactRotation({
-          accountId, orderRef, rotationRef, stage: "switched", now
+          accountId, orderRef, rotationRef, stage: "switched", now: timestamp(), leaseRef
         });
       }
       if (intent.status === "switched") {
@@ -160,7 +172,7 @@ export function createCoinCommerceDataPackArtifactRotation({
           if (revoked?.status !== "revoked") throw unavailable();
         } else if (old[0].status !== "revoked") throw unavailable();
         intent = controlStore.advanceCoinCommerceDataPackArtifactRotation({
-          accountId, orderRef, rotationRef, stage: "complete", now
+          accountId, orderRef, rotationRef, stage: "complete", now: timestamp(), leaseRef
         });
       }
       const finalArtifacts = list();
@@ -174,8 +186,36 @@ export function createCoinCommerceDataPackArtifactRotation({
         artifactRef: intent.replacementArtifactRef });
     } catch {
       throw unavailable();
+    } finally {
+      if (claimed) {
+        try {
+          controlStore.releaseCoinCommerceDataPackArtifactRotation({
+            accountId, orderRef, rotationRef, leaseRef
+          });
+        } catch {
+          throw unavailable();
+        }
+      }
     }
   }
 
-  return Object.freeze({ rotate });
+  function reconcilePending({ limit = 10 } = {}) {
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 20) throw unavailable();
+    const pending = controlStore.listPendingCoinCommerceDataPackArtifactRotations({
+      limit, now: new Date(nowFn()).toISOString()
+    });
+    let completed = 0;
+    let failed = 0;
+    for (const input of pending) {
+      try {
+        rotate(input);
+        completed += 1;
+      } catch {
+        failed += 1;
+      }
+    }
+    return Object.freeze({ inspected: pending.length, completed, failed });
+  }
+
+  return Object.freeze({ rotate, reconcilePending });
 }

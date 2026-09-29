@@ -1034,6 +1034,8 @@ export function createSqliteSubscriptionControlStore({
       replacement_artifact_ref text,
       attempt integer not null default 1 check (attempt between 1 and 16),
       status text not null check (status in ('prepared', 'escrowed', 'switched', 'complete')),
+      lease_ref text,
+      lease_until text,
       created_at text not null,
       updated_at text not null
     );
@@ -6096,8 +6098,74 @@ export function createSqliteSubscriptionControlStore({
       oldArtifactRef: row.old_artifact_ref,
       replacementArtifactRef: row.replacement_artifact_ref,
       attempt: row.attempt,
-      status: row.status
+      status: row.status,
+      leaseRef: row.lease_ref,
+      leaseUntil: row.lease_until
     }) : null;
+  }
+
+  // A short durable lease excludes a second process while runtime and escrow
+  // effects occur outside SQLite. An interrupted worker may be taken over only
+  // after expiry, using the same replayable intent and deterministic artifact.
+  function claimCoinCommerceDataPackArtifactRotation(input = {}) {
+    exactObject(input, { allowed: ["rotationRef", "orderRef", "accountId", "leaseRef", "now"],
+      required: ["rotationRef", "orderRef", "accountId", "leaseRef", "now"],
+      name: "dataPackArtifactRotationClaim" });
+    const rotationRef = safeControlRef(input.rotationRef, "rotationRef");
+    const orderRef = safeControlRef(input.orderRef, "orderRef");
+    const accountId = safeControlRef(input.accountId, "accountId");
+    const leaseRef = safeControlRef(input.leaseRef, "leaseRef");
+    const now = isoText(input.now, "now");
+    const leaseUntil = new Date(Date.parse(now) + 5 * 60_000).toISOString();
+    return db.transaction(() => {
+      const changed = db.prepare(`
+        update platform_data_pack_artifact_rotations
+        set lease_ref = ?, lease_until = ?, updated_at = ?
+        where rotation_ref = ? and order_ref = ? and account_id = ?
+          and (lease_ref is null or lease_until <= ?)
+      `).run(leaseRef, leaseUntil, now, rotationRef, orderRef, accountId, now);
+      if (changed.changes !== 1) {
+        throw platformError("reconciliation_required", "data pack rotation lease held");
+      }
+      return mapDataPackArtifactRotation(db.prepare(`
+        select * from platform_data_pack_artifact_rotations where rotation_ref = ?
+      `).get(rotationRef));
+    }).immediate();
+  }
+
+  function releaseCoinCommerceDataPackArtifactRotation(input = {}) {
+    exactObject(input, { allowed: ["rotationRef", "orderRef", "accountId", "leaseRef"],
+      required: ["rotationRef", "orderRef", "accountId", "leaseRef"],
+      name: "dataPackArtifactRotationRelease" });
+    const rotationRef = safeControlRef(input.rotationRef, "rotationRef");
+    const orderRef = safeControlRef(input.orderRef, "orderRef");
+    const accountId = safeControlRef(input.accountId, "accountId");
+    const leaseRef = safeControlRef(input.leaseRef, "leaseRef");
+    const changed = db.prepare(`
+      update platform_data_pack_artifact_rotations
+      set lease_ref = null, lease_until = null
+      where rotation_ref = ? and order_ref = ? and account_id = ? and lease_ref = ?
+    `).run(rotationRef, orderRef, accountId, leaseRef);
+    if (changed.changes !== 1) {
+      throw platformError("reconciliation_required", "data pack rotation lease changed");
+    }
+  }
+
+  function listPendingCoinCommerceDataPackArtifactRotations(input = {}) {
+    exactObject(input, { allowed: ["limit", "now"], required: ["limit", "now"],
+      name: "dataPackArtifactRotationPending" });
+    if (!Number.isSafeInteger(input.limit) || input.limit < 1 || input.limit > 20) {
+      throw platformError("validation_error", "invalid data pack rotation recovery limit");
+    }
+    const now = isoText(input.now, "now");
+    return Object.freeze(db.prepare(`
+      select account_id, order_ref, rotation_ref
+      from platform_data_pack_artifact_rotations
+      where status != 'complete' and (lease_ref is null or lease_until <= ?)
+      order by created_at, rotation_ref limit ?
+    `).all(now, input.limit).map((row) => Object.freeze({
+      accountId: row.account_id, orderRef: row.order_ref, rotationRef: row.rotation_ref
+    })));
   }
 
   // The control DB owns the durable intent. Runtime artifact creation and
@@ -6149,12 +6217,13 @@ export function createSqliteSubscriptionControlStore({
   }
 
   function advanceCoinCommerceDataPackArtifactRotation(input = {}) {
-    exactObject(input, { allowed: ["rotationRef", "orderRef", "accountId", "stage",
+    exactObject(input, { allowed: ["rotationRef", "orderRef", "accountId", "leaseRef", "stage",
       "replacementArtifactRef", "attempt", "now"], required: ["rotationRef", "orderRef", "accountId",
-      "stage", "now"], name: "dataPackArtifactRotationAdvance" });
+      "leaseRef", "stage", "now"], name: "dataPackArtifactRotationAdvance" });
     const rotationRef = safeControlRef(input.rotationRef, "rotationRef");
     const orderRef = safeControlRef(input.orderRef, "orderRef");
     const accountId = safeControlRef(input.accountId, "accountId");
+    const leaseRef = safeControlRef(input.leaseRef, "leaseRef");
     const stage = input.stage;
     const now = isoText(input.now, "now");
     if (!["retry", "escrowed", "switched", "complete"].includes(stage)) {
@@ -6168,6 +6237,9 @@ export function createSqliteSubscriptionControlStore({
       `).get(rotationRef));
       if (!current || current.orderRef !== orderRef || current.accountId !== accountId) {
         throw platformError("reconciliation_required", "data pack rotation intent unavailable");
+      }
+      if (current.leaseRef !== leaseRef || current.leaseUntil <= now) {
+        throw platformError("reconciliation_required", "data pack rotation lease expired or changed");
       }
       if (stage === "retry") {
         if (current.status !== "prepared" || current.attempt !== input.attempt
@@ -7978,6 +8050,9 @@ export function createSqliteSubscriptionControlStore({
     reserveCoinCommerceDataPackIssuance,
     completeCoinCommerceDataPackIssuance,
     beginCoinCommerceDataPackArtifactRotation,
+    claimCoinCommerceDataPackArtifactRotation,
+    releaseCoinCommerceDataPackArtifactRotation,
+    listPendingCoinCommerceDataPackArtifactRotations,
     advanceCoinCommerceDataPackArtifactRotation,
     registerCoinCommerceDataPackEdgeCredential,
     createDataPackResource,

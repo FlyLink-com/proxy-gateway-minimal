@@ -1293,6 +1293,8 @@ function isSelectedCommerceRoute(method, pathname) {
       || pathname === "/api/portal/commerce/orders"
       || /^\/api\/portal\/commerce\/orders\/[a-z][a-z0-9_]{2,95}\/cancel$/
         .test(pathname)
+      || /^\/api\/portal\/commerce\/orders\/[a-z][a-z0-9_]{2,95}\/subscription\/rotate$/
+        .test(pathname)
       || pathname === "/api/portal/commerce/deferred/checkout-preview"
       || pathname === "/api/portal/commerce/deferred/transitions"
       || /^\/api\/portal\/commerce\/deferred\/transitions\/[a-z][a-z0-9_]{2,95}\/cancel$/
@@ -1306,6 +1308,7 @@ export function portalCoinCommerceRoutes(state, options = {}) {
   const router = Router({ caseSensitive: true, strict: true });
   const store = state.platform?.coinCommerceStore;
   const dataPackDelivery = ownDataValue(state.platform, "coinCommerceDataPackOrderDelivery");
+  const dataPackRotation = ownDataValue(state.platform, "coinCommerceDataPackArtifactRotation");
   const requireSession = createSessionMiddleware(state, options.browserSessions);
   const resolveCommerceModel = createCommerceModelMiddleware(state);
   const requireWalletFirstService = createWalletFirstServiceMiddleware(state);
@@ -1505,6 +1508,43 @@ export function portalCoinCommerceRoutes(state, options = {}) {
         } catch {
           // Other accounts and missing/incomplete delivery are indistinguishable.
           sendCommerceError(res, 404, "commerce_not_found");
+        }
+      }
+    );
+  }
+
+  if (typeof ownDataValue(dataPackDelivery, "get") === "function"
+    && typeof ownDataValue(dataPackRotation, "rotate") === "function") {
+    router.post(
+      "/api/portal/commerce/orders/:orderRef/subscription/rotate",
+      preventSubscriptionCaching,
+      requireNoQuery,
+      requireSession,
+      requireJsonContentType,
+      parseStrictJson,
+      exactBody(["rotationRef"]),
+      (req, res) => {
+        const { rotationRef } = res.locals.portalCommerceBody;
+        if (typeof rotationRef !== "string" || !COMMERCE_REFERENCE.test(rotationRef)) {
+          sendCommerceError(res, 400, "commerce_request_invalid");
+          return;
+        }
+        const input = { accountId: res.locals.portalCommerceSession.accountId,
+          orderRef: req.params.orderRef, rotationRef };
+        try {
+          projectDataPackDelivery(dataPackDelivery.get(input), req.params.orderRef);
+        } catch {
+          sendCommerceError(res, 404, "commerce_not_found");
+          return;
+        }
+        try {
+          const result = dataPackRotation.rotate(input);
+          if (result?.status !== "complete" || result.orderRef !== req.params.orderRef) {
+            throw new Error("Incomplete data-pack rotation");
+          }
+          res.json({ orderRef: req.params.orderRef, status: "complete" });
+        } catch {
+          sendCommerceError(res, 503, "commerce_unavailable");
         }
       }
     );
