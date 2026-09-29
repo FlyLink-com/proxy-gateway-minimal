@@ -293,6 +293,11 @@ runtime, and can accommodate a private, bounded protocol test without
 changing existing services. A historical host name or receipt is not access
 authority. If its identity or isolation cannot be verified, stop rather than
 falling back to a historical production/candidate node.
+The 2026-09-23 preflight reported production-shaped paths present and
+`ready: false`; a later test-only script treated them as retained synthetic
+state. That historical exception is not accepted for a live protocol test.
+Fresh inventory must classify those paths and prove the new test cannot
+attach to or modify them before an execution gate is proposed.
 
 Only after that inventory, a separate execution gate may bind the exact PR
 head, verified Node and Hysteria2 binary digests, workspace, port/namespace
