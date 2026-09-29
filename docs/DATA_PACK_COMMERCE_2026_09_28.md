@@ -460,13 +460,13 @@ edge-credential invalidation path is implemented and validated.
 
 The operator subsequently confirmed that reset must also invalidate the old
 imported edge connection and issue new edge material. A source-only control
-store primitive now makes an exact old-to-new pack principal transition,
-preserving the same request, entitlement, and lifetime usage. The old
-principal leaves desired runtime state but remains resolvable for delayed
-collector observations until a separate retention decision. This primitive
-does not issue protected replacement material, coordinate the artifact and
-edge transitions, apply the edge configuration, terminate an existing
-connection, or prove physical revocation. Those remain open Risk A gates;
+store primitive now replaces the material digest on the same pack metering
+principal, preserving its request, entitlement, and lifetime usage. The
+existing credential issuer can stage new password/UUID material for that
+stable principal, so collector identity does not need to change. The
+primitive does not issue protected replacement material, coordinate the
+artifact and edge transitions, apply the edge configuration, terminate an
+existing connection, or prove physical revocation. Those remain open Risk A gates;
 the existing preparation receipt is bound to the earlier source commit and
 must not be used as a physical execution authorization for this new slice.
 
