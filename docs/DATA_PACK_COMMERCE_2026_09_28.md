@@ -321,6 +321,24 @@ their listeners are gone; the long-lived host's run workspace and redacted
 receipt are retained for a separately approved cleanup decision. A failed or
 partial run is not retried under a consumed gate.
 
+The operator-approved single-use Aliyun read-only admission check ran on
+2026-09-29 05:51 UTC against the pinned nonproduction validation-host identity.
+The local script SHA-256 was
+`268be6364f93e138bf93fb7894574bf987120165a203d2a110365f2e9a387f19`;
+it was delivered over stdin through strict pinned-host-key SSH, with no
+remote file upload. The x86_64 host identity matched, the existing candidate
+service was active and unchanged, free space and inodes were sufficient, and
+the two proposed loopback test ports were unoccupied at the observation time.
+The historical candidate pointer still matched. The read also found a
+root-owned legacy state directory whose purpose cannot be established from
+metadata alone. The check returned `readyForLiveProtocol: false` with
+`production_shaped_paths_need_classification` and stopped. No configuration,
+database, or log content was opened; no file was explicitly written, service
+changed, or protocol/collector process started. The prior test-only exception
+for retained synthetic paths is not silently carried into physical testing.
+Any provenance/reference inspection or physical execution needs a new,
+separately bounded decision.
+
 The physical acceptance record must distinguish actual edge apply and
 collector observations from injected samples. It must show independent pack
 usage, exhaustion blocking only that pack, another pack and timed plan still
