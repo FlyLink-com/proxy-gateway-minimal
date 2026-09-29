@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -8,6 +9,9 @@ import { createCoinCommerceDataPackRuntimeIssuer } from "../services/platform/co
 import { createCoinCommerceDataPackMaterialEscrow } from "../services/platform/coin-commerce-data-pack-material-escrow.mjs";
 import { createCoinCommerceDataPackOrderDelivery } from "../services/platform/coin-commerce-data-pack-order-delivery.mjs";
 import { createCoinCommerceDataPackArtifactRotation } from "../services/platform/coin-commerce-data-pack-artifact-rotation.mjs";
+import { createCoinCommerceDataPackCredentialReset } from "../services/platform/coin-commerce-data-pack-credential-reset.mjs";
+import { createFileBackedEdgeCredentialMaterialStore } from "../services/edge/credential-material-store.mjs";
+import { createDataPlaneDesiredStateNotifier } from "../services/edge/data-plane-desired-state-notifier.mjs";
 import { createSubscriptionCore } from "../services/subscriptions/core.mjs";
 import { createSqliteSubscriptionStore } from "../services/subscriptions/repository.mjs";
 import { hashSubscriptionToken } from "../services/subscriptions/tokens.mjs";
@@ -80,7 +84,8 @@ function fixture() {
     ...overrides
   });
   return {
-    controlStore, artifacts, runtimeCore, issued, delivery, rotation,
+    controlStore, commerceStore, materialPath: join(directory, "edge-material.json"),
+    artifacts, runtimeCore, issued, delivery, rotation,
     failRevoke: (value) => { failRevoke = value; },
     reopen() {
       escrow.close();
@@ -119,6 +124,72 @@ test("pack artifact rotation preserves quota and allows order re-fetch after res
     const after = f.delivery().get({ accountId: ORDER.accountId, orderRef: ORDER.orderRef });
     assert.notEqual(after.subscriptionUrl, before.subscriptionUrl);
     assert.deepEqual(after.usage, before.usage);
+  } finally { f.close(); }
+});
+
+test("receipt-gated credential reset uses the real artifact rotation and preserves pack usage", () => {
+  const f = fixture();
+  try {
+    const materialStore = createFileBackedEdgeCredentialMaterialStore({
+      filePath: f.materialPath
+    });
+    const credentialRef = "edgecred_pack_rotate_real_reset";
+    const material = { uuid: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      password: "synthetic-original-pack-password" };
+    const oldDigest = `sha256:${createHash("sha256")
+      .update(material.uuid).update("\0").update(material.password).digest("hex")}`;
+    materialStore.putCredentialMaterial({ credentialRef, materialDigest: oldDigest, material });
+    f.controlStore.registerCoinCommerceDataPackEdgeCredential({
+      requestRef: f.issued.requestRef, entitlementRef: f.issued.entitlementRef,
+      edgeChannelRef: "node_sg", edgeCredentialRef: credentialRef,
+      edgeMaterialDigest: oldDigest, now: NOW
+    });
+    f.controlStore.recordUsageSample({
+      id: "sample_pack_real_reset", sourceRef: "source_pack_real_reset",
+      channelRef: "node_sg", edgeCredentialRef: credentialRef,
+      accountId: ORDER.accountId, entitlementId: f.issued.entitlementRef,
+      requestId: f.issued.requestRef, observedAt: NOW,
+      intervalStartedAt: NOW, intervalEndedAt: NOW,
+      uploadBytes: 12 * 1024 ** 3, downloadBytes: 0,
+      sampleDigest: "digest_pack_real_reset", createdAt: NOW
+    });
+    const notifier = createDataPlaneDesiredStateNotifier({
+      controlStore: f.controlStore,
+      servers: [{ name: "node_sg", physicalNodeRef: "node_sg",
+        runtimeAdapter: "remote-data-plane-handoff" }],
+      nowFn: () => new Date(NOW)
+    });
+    const reset = createCoinCommerceDataPackCredentialReset({
+      commerceStore: f.commerceStore, controlStore: f.controlStore,
+      materialStore, desiredStateNotifier: notifier,
+      artifactRotation: f.rotation(), nowFn: () => new Date(NOW)
+    });
+    const input = { accountId: ORDER.accountId, orderRef: ORDER.orderRef,
+      rotationRef: "packrot_real_service_reset" };
+    const before = f.delivery().get({ accountId: ORDER.accountId, orderRef: ORDER.orderRef });
+    assert.throws(() => reset.rotate(input),
+      (error) => error.code === "coin_commerce_data_pack_reset_reconciliation_required");
+    assert.equal(f.artifacts.length, 1);
+    assert.equal(f.delivery().get({ accountId: ORDER.accountId,
+      orderRef: ORDER.orderRef }).subscriptionUrl, before.subscriptionUrl);
+    const desired = f.controlStore.getLatestEdgeDesiredStateForChannel("node_sg");
+    assert.equal(desired.materialDigests.find((item) =>
+      item.edgeCredentialRef === credentialRef)?.digest,
+      materialStore.getCredentialMaterialSummary(credentialRef).materialDigest);
+    f.controlStore.recordEdgeApplyReceipt({
+      id: "receipt_pack_real_service_reset", channelRef: "node_sg",
+      desiredStateRef: desired.desiredStateRef, status: "applied",
+      configTestOk: true, serviceActive: true, listenerUdp443: true,
+      appliedAt: NOW, createdAt: NOW
+    });
+    assert.equal(reset.rotate(input).status, "complete");
+    assert.equal(f.artifacts.length, 2);
+    assert.equal(f.artifacts[0].status, "revoked");
+    const after = f.delivery().get({ accountId: ORDER.accountId, orderRef: ORDER.orderRef });
+    assert.notEqual(after.subscriptionUrl, before.subscriptionUrl);
+    assert.deepEqual(after.usage, before.usage);
+    assert.equal(reset.rotate(input).status, "complete");
+    assert.equal(f.artifacts.length, 2);
   } finally { f.close(); }
 });
 
