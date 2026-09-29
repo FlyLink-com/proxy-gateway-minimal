@@ -37,6 +37,44 @@ import type {
 
 afterEach(cleanup);
 
+test("delivered data-pack order exposes on-demand delivery and drops it when closed", async () => {
+  const packOrder: PortalCoinOrder = {
+    ...ORDER,
+    orderRef: "order_data_100gb_1",
+    offer: {
+      ...ORDER.offer,
+      offerRef: "offer_data_100gb",
+      offerVersionRef: "offerversion_data_100gb_1",
+      category: "data_pack",
+      delivery: {
+        kind: "data_pack", durationDays: null, monthlyTrafficGb: null,
+        trafficGb: 100, neverExpires: true, discountBasisPoints: null
+      }
+    }
+  };
+  const getDataPackDelivery = vi.fn().mockResolvedValue({
+    orderRef: packOrder.orderRef,
+    subscriptionUrl: "https://subscriptions.example.test/s/test-secret-not-for-log",
+    usage: { totalBytes: 1_000, usedBytes: 0, remainingBytes: 1_000,
+      collectionStatus: "measured_zero", updatedAt: "2026-09-28T00:00:00.000Z",
+      exhausted: false }
+  });
+  const commerceClient = {
+    listOrders: vi.fn().mockResolvedValue({ orders: [packOrder], nextCursor: null }),
+    getOrder: vi.fn().mockResolvedValue(packOrder), getDataPackDelivery
+  } as unknown as PortalCoinCommerceClient;
+  render(<PortalOrdersPanel locale="zh" commerceClient={commerceClient}
+    sessionRef="session_alpha" sessionGeneration={1} onSessionInvalid={vi.fn()} />);
+  const detail = await screen.findByRole("button", { name: /order_data_100gb_1/ });
+  fireEvent.click(detail);
+  await screen.findByRole("button", { name: "获取订阅" });
+  expect(getDataPackDelivery).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("button", { name: "获取订阅" }));
+  await screen.findByRole("button", { name: "复制订阅" });
+  fireEvent.click(detail);
+  expect(screen.queryByRole("button", { name: "复制订阅" })).toBeNull();
+});
+
 const ORDER: PortalCoinOrder = {
   orderRef: "order_consumption_001",
   offer: {

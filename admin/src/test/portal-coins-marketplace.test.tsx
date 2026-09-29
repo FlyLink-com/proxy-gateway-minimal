@@ -234,6 +234,8 @@ function commerceClient(
     previewCheckout: vi.fn(),
     createOrder: vi.fn(),
     getOrder: vi.fn(),
+    getDataPackDelivery: vi.fn(),
+    rotateDataPackDelivery: vi.fn(),
     cancelOrder: vi.fn(),
     ...overrides
   };

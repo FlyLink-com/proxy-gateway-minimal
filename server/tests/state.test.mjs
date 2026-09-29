@@ -367,6 +367,49 @@ test("data-pack order handoff is absent by default and composed only with protec
   }
 });
 
+test("data-pack fulfillment composes only after the live Commerce store and protected escrow exist", () => {
+  const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-pack-composition-"));
+  const store = fakeCoinCommerceStore();
+  const materialEscrow = {
+    release() { return null; }, capture() {}, probe() { return "absent"; }, verify() {}
+  };
+  let factoryCalls = 0;
+  let state;
+  try {
+    state = createRuntimeState(injectedCommerceStateOptions(dir, {
+      store,
+      coinCommerceDataPackMaterialEscrow: materialEscrow,
+      coinCommerceDataPackFulfillmentFactory({ commerceStore, materialEscrow: providedEscrow }) {
+        factoryCalls += 1;
+        assert.equal(commerceStore, store);
+        assert.equal(providedEscrow, materialEscrow);
+        return coinCommerceFulfillmentHandler();
+      }
+    }));
+    assert.equal(factoryCalls, 1);
+    assert.ok(state.platform.coinCommerceCoordinator);
+  } finally {
+    state?.close();
+    removeTempDir(dir);
+  }
+});
+
+test("data-pack fulfillment factory without protected escrow fails before coordinator creation", () => {
+  const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-pack-no-escrow-"));
+  let factoryCalls = 0;
+  try {
+    assert.throws(() => createRuntimeState(injectedCommerceStateOptions(dir, {
+      coinCommerceDataPackFulfillmentFactory() {
+        factoryCalls += 1;
+        return coinCommerceFulfillmentHandler();
+      }
+    })), (error) => error?.code === "coin_commerce_prerequisite_missing");
+    assert.equal(factoryCalls, 0);
+  } finally {
+    removeTempDir(dir);
+  }
+});
+
 test("createRuntimeState exposes expected ports and services", () => {
   const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-state-"));
   let state;

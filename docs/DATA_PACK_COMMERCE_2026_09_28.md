@@ -6,7 +6,7 @@ document_metadata:
   lifecycle: active
   authority_scope: data_pack_commerce_implementation_boundary
   superseded_by: null
-  last_verified_at: 2026-09-28
+  last_verified_at: 2026-09-29
   production_authority: false
 ```
 
@@ -229,6 +229,18 @@ there. A blocking runtime side effect that outlives the lease, automated
 recovery scheduling, schema migration rehearsal, and real edge/collector
 convergence remain open gates; this source slice is **not publication or
 production-rotation approval**.
+
+The desktop Portal order detail now has an on-demand client for the
+authenticated order handoff, scoped usage refresh, copy, and explicit
+same-operation subscription-artifact rotation. The URL is not present in
+order lists or retained after closing the detail. Browser tests and a
+desktop build validate this source path; the separate mobile UI still needs
+its own integration. A default-absent runtime-state factory now composes
+the pack handler only after the Commerce store and protected escrow are
+available, dispatching packs separately from timed plans. The production
+entry explicitly does not accept this factory, does not supply an escrow,
+and continues to publish timed plans only. Thus the source composition is
+not a live purchase path or release approval.
 
 The offer schema also requires a CNY `referencePrice`. Candidate records use
 the existing one-Coin-to-one-CNY display convention solely to satisfy that

@@ -248,6 +248,14 @@ test("production entry does not read overridden Commerce options while default-o
       throw new Error("default-off Commerce catalog getter was read");
     }
   });
+  let packFactoryGetterReads = 0;
+  Object.defineProperty(runtimeOptions, "coinCommerceDataPackFulfillmentFactory", {
+    enumerable: true,
+    get() {
+      packFactoryGetterReads += 1;
+      throw new Error("default-off pack factory getter was read");
+    }
+  });
   let handle;
 
   try {
@@ -256,6 +264,7 @@ test("production entry does not read overridden Commerce options while default-o
       logger: false
     });
     assert.equal(catalogGetterReads, 0);
+    assert.equal(packFactoryGetterReads, 0);
     assert.equal(handle.state.platform.coinsCommerceEnabled, false);
     assert.equal(handle.state.platform.coinsCommerceAuthorityEnabled, false);
   } finally {
@@ -359,14 +368,24 @@ test("production entry starts with the authoritative catalog and production fulf
   const paths = prepareRuntime(directory);
   const consolePort = await reservePort();
   let handle;
+  const runtimeOptions = productionRuntimeOptions(paths, consolePort);
+  let packFactoryGetterReads = 0;
+  Object.defineProperty(runtimeOptions, "coinCommerceDataPackFulfillmentFactory", {
+    enumerable: true,
+    get() {
+      packFactoryGetterReads += 1;
+      throw new Error("production pack factory override was read");
+    }
+  });
 
   try {
     handle = await startProductionProxyGateway({
-      runtimeOptions: productionRuntimeOptions(paths, consolePort),
+      runtimeOptions,
       logger: false
     });
     assert.equal(handle.server.listening, true);
     assert.equal(handle.state.platform.coinsCommerceEnabled, true);
+    assert.equal(packFactoryGetterReads, 0);
 
     const database = new Database(paths.controlDbPath, {
       readonly: true,

@@ -14,6 +14,7 @@ import {
   type PortalCoinCommerceClient,
   type PortalCoinOrder
 } from "../commerce";
+import { PortalDataPackSubscription } from "../commerce/components/portal-data-pack-subscription";
 import {
   canContinuePortalRechargeOrder,
   PortalRechargeClientError,
@@ -800,6 +801,20 @@ export function PortalOrdersPanel({
             <div><span>{copy(locale, "履约", "Fulfillment")}</span><strong>{fulfillmentLabel(order.fulfillment.status, locale)}</strong></div>
             <div><span>{copy(locale, "Coins 分配", "Coins allocation")}</span><strong>{allocationLabel(order.allocation, locale)}</strong></div>
           </div>
+          {order.offer.category === "data_pack"
+            && order.paymentStatus === "captured"
+            && order.fulfillment.status === "delivered"
+            && commerceClient && sessionRef ? (
+              <PortalDataPackSubscription
+                key={`${order.orderRef}:${sessionGeneration}:${sessionRef}`}
+                commerceClient={commerceClient}
+                sessionRef={sessionRef}
+                sessionGeneration={sessionGeneration}
+                orderRef={order.orderRef}
+                locale={locale}
+                onSessionInvalid={onSessionInvalid}
+              />
+            ) : null}
         </>
       );
     }

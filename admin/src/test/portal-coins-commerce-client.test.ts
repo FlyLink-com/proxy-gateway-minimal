@@ -35,6 +35,10 @@ type CommerceSurface = {
     orderRef: string;
     idempotencyKey: string;
   }): Promise<unknown>;
+  getDataPackDelivery(input: { sessionRef: string; orderRef: string }): Promise<unknown>;
+  rotateDataPackDelivery(input: {
+    sessionRef: string; orderRef: string; rotationRef: string;
+  }): Promise<unknown>;
 };
 
 const PLAN_OFFER = {
@@ -239,6 +243,65 @@ afterEach(() => {
 });
 
 describe("Portal Coins Commerce HTTP client", () => {
+  test("retrieves and rotates only an authenticated, no-store order-owned data-pack subscription", async () => {
+    const delivery = {
+      orderRef: "order_data_100gb_1",
+      subscriptionUrl: "https://subscriptions.example.test/s/opaque-test-token",
+      usage: {
+        totalBytes: 100_000, usedBytes: 25_000, remainingBytes: 75_000,
+        collectionStatus: "measured", updatedAt: "2026-09-28T00:00:00.000Z", exhausted: false
+      }
+    };
+    const responses = [delivery, { orderRef: delivery.orderRef, status: "complete" }];
+    const fetchFn = vi.fn<typeof fetch>(async () => wireResponse(responses.shift()));
+    const commerce = commerceOf(createHttpUserPortalClient({ fetchFn }));
+    await expect(commerce.getDataPackDelivery({
+      sessionRef: "session_alpha", orderRef: delivery.orderRef
+    })).resolves.toEqual(delivery);
+    await expect(commerce.rotateDataPackDelivery({
+      sessionRef: "session_alpha", orderRef: delivery.orderRef,
+      rotationRef: "rotation_data_100gb_1"
+    })).resolves.toEqual({ orderRef: delivery.orderRef, status: "complete" });
+    expect(fetchFn.mock.calls[0]?.[0]).toBe(
+      "/api/portal/commerce/orders/order_data_100gb_1/subscription"
+    );
+    expect(fetchFn.mock.calls[1]?.[0]).toBe(
+      "/api/portal/commerce/orders/order_data_100gb_1/subscription/rotate"
+    );
+    for (const [, init] of fetchFn.mock.calls) {
+      expect(init).toMatchObject({ credentials: "omit", cache: "no-store", redirect: "error" });
+      expect(new Headers(init?.headers).get("X-Portal-Session")).toBe("session_alpha");
+    }
+    expect(fetchFn.mock.calls[1]?.[1]?.body).toBe(
+      '{"rotationRef":"rotation_data_100gb_1"}'
+    );
+  });
+
+  test("rejects mismatched, insecure, or fabricated data-pack delivery without exposing a link", async () => {
+    const base = {
+      orderRef: "order_data_100gb_1",
+      subscriptionUrl: "https://subscriptions.example.test/s/opaque-test-token",
+      usage: {
+        totalBytes: 1_000, usedBytes: 100, remainingBytes: 900,
+        collectionStatus: "measured", updatedAt: "2026-09-28T00:00:00.000Z", exhausted: false
+      }
+    };
+    for (const body of [
+      { ...base, orderRef: "order_other_1" },
+      { ...base, subscriptionUrl: "http://subscriptions.example.test/s/token" },
+      { ...base, subscriptionUrl: "https://user@subscriptions.example.test/s/token" },
+      { ...base, usage: { ...base.usage, remainingBytes: 1_000 } },
+      { ...base, usage: { ...base.usage, collectionStatus: "pending" } }
+    ]) {
+      const commerce = commerceOf(createHttpUserPortalClient({
+        fetchFn: vi.fn<typeof fetch>(async () => wireResponse(body))
+      }));
+      await expectSafeFailure(commerce.getDataPackDelivery({
+        sessionRef: "session_alpha", orderRef: base.orderRef
+      }));
+    }
+  });
+
   test("is an HTTP-only capability and is absent from the local client", () => {
     const httpClient = createHttpUserPortalClient({
       fetchFn: vi.fn<typeof fetch>()

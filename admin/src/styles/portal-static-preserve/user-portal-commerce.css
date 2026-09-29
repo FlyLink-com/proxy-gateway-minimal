@@ -2550,6 +2550,33 @@
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
 }
 
+.portal-v2-shell .portal-data-pack-subscription {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid var(--portal-orders-border);
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--portal-orders-surface) 78%, transparent);
+  color: var(--portal-orders-text);
+}
+
+.portal-v2-shell .portal-data-pack-subscription p {
+  margin: 0;
+}
+
+.portal-v2-shell .portal-data-pack-subscription__actions,
+.portal-v2-shell .portal-data-pack-subscription__confirm {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.portal-v2-shell .portal-data-pack-subscription__url {
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
 .portal-v2-shell .portal-orders-panel .portal-order-detail-meta {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);

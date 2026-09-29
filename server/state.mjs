@@ -19,6 +19,7 @@ import { loadControlPlaneReleaseIdentity } from "./services/platform/control-pla
 import { createCoinCommerceCoordinator } from "./services/platform/coin-commerce-coordinator.mjs";
 import { createCoinCommerceDataPackOrderDelivery } from "./services/platform/coin-commerce-data-pack-order-delivery.mjs";
 import { createCoinCommerceDataPackArtifactRotation } from "./services/platform/coin-commerce-data-pack-artifact-rotation.mjs";
+import { composeCoinCommerceDataPackFulfillment } from "./services/platform/coin-commerce-data-pack-production-binding.mjs";
 import { createSqliteCoinCommerceStore } from "./services/platform/coin-commerce-store.mjs";
 import { createSqliteCoinWalletStore } from "./services/platform/coin-wallet-store.mjs";
 import { createSqlitePaymentStore } from "./services/platform/payment-store.mjs";
@@ -1676,6 +1677,7 @@ export function createRuntimeState(options = {}) {
   let configuredCoinCommerceCatalog;
   let configuredCoinCommerceFulfillmentHandler = null;
   let configuredCoinCommerceFulfillmentFactory = null;
+  let configuredCoinCommerceDataPackFulfillmentFactory = null;
   let configuredCoinCommerceAccountActivationReader;
   let configuredCoinCommerceStorefrontEligibilityReader;
   let configuredCoinCommercePurchaseEligibilityReader;
@@ -1724,6 +1726,11 @@ export function createRuntimeState(options = {}) {
           canaryAccountHashes:
             env.COINS_COMMERCE_CANARY_ACCOUNT_HASHES
         });
+    }
+    const dataPackFactoryOption = ownDataOption(options, "coinCommerceDataPackFulfillmentFactory");
+    if (dataPackFactoryOption.present && dataPackFactoryOption.value !== undefined) {
+      configuredCoinCommerceDataPackFulfillmentFactory =
+        exactCoinCommerceFulfillmentFactory(dataPackFactoryOption.value);
     }
     configuredCoinCommerceCancelWindowMs = coinCommerceCancelWindowMs(
       env.COINS_COMMERCE_CANCEL_WINDOW_MS
@@ -2618,6 +2625,28 @@ export function createRuntimeState(options = {}) {
         throw coinCommercePrerequisiteError();
       }
       coinsWalletStore = exactStore.walletStore;
+      const dataPackEscrowOption = ownDataOption(options, "coinCommerceDataPackMaterialEscrow");
+      if (configuredCoinCommerceDataPackFulfillmentFactory) {
+        if (!dataPackEscrowOption.present || dataPackEscrowOption.value === undefined) {
+          throw coinCommercePrerequisiteError();
+        }
+        const dataPackHandler = exactCoinCommerceFulfillmentHandlerValue(
+          configuredCoinCommerceDataPackFulfillmentFactory({
+            commerceStore: coinCommerceStore,
+            controlStore: platformControlStore,
+            runtimeCore: subscriptionCore,
+            materialEscrow: dataPackEscrowOption.value,
+            edgeMaterialStore: edgeCredentialMaterialStore,
+            edgeCredentialIssuer,
+            desiredStateNotifier: edgeDesiredStateNotifier,
+            nowFn: subscriptionCoreNowFn
+          })
+        );
+        configuredCoinCommerceFulfillmentHandler = composeCoinCommerceDataPackFulfillment({
+          planHandler: configuredCoinCommerceFulfillmentHandler,
+          dataPackHandler
+        });
+      }
       if (configuredCoinCommerceCatalog !== undefined) {
         coinCommerceStore.bootstrapPublishedOffers(
           configuredCoinCommerceCatalog
@@ -2627,7 +2656,6 @@ export function createRuntimeState(options = {}) {
         store: coinCommerceStore,
         fulfillmentHandler: configuredCoinCommerceFulfillmentHandler
       });
-      const dataPackEscrowOption = ownDataOption(options, "coinCommerceDataPackMaterialEscrow");
       if (dataPackEscrowOption.present && dataPackEscrowOption.value !== undefined) {
         callableFromSafeDescriptorChain(dataPackEscrowOption.value, "release");
         coinCommerceDataPackOrderDelivery = createCoinCommerceDataPackOrderDelivery({
