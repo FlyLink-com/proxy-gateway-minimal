@@ -19,6 +19,7 @@ import { loadControlPlaneReleaseIdentity } from "./services/platform/control-pla
 import { createCoinCommerceCoordinator } from "./services/platform/coin-commerce-coordinator.mjs";
 import { createCoinCommerceDataPackOrderDelivery } from "./services/platform/coin-commerce-data-pack-order-delivery.mjs";
 import { createCoinCommerceDataPackArtifactRotation } from "./services/platform/coin-commerce-data-pack-artifact-rotation.mjs";
+import { createCoinCommerceDataPackCredentialReset } from "./services/platform/coin-commerce-data-pack-credential-reset.mjs";
 import { createCoinCommerceDataPackRotationCoordinator } from "./services/platform/coin-commerce-data-pack-rotation-coordinator.mjs";
 import { createCoinCommerceDataPackMaterialEscrow } from "./services/platform/coin-commerce-data-pack-material-escrow.mjs";
 import {
@@ -2483,8 +2484,7 @@ export function createRuntimeState(options = {}) {
   let coinCommerceCoordinator = null;
   let coinCommerceDataPackOrderDelivery = null;
   let coinCommerceDataPackArtifactRotation = null;
-  // No customer reset is wired until protected material, desired-state apply
-  // and the matching edge receipt are reconciled as one durable operation.
+  // Only the opt-in pack runtime composes the durable, receipt-gated reset.
   let coinCommerceDataPackCredentialReset = null;
   let coinCommerceDataPackRotationCoordinator = null;
   let ownedCoinCommerceDataPackMaterialEscrow = null;
@@ -2734,8 +2734,18 @@ export function createRuntimeState(options = {}) {
           materialEscrow: dataPackMaterialEscrow,
           nowFn: subscriptionCoreNowFn
         });
+        if (dataPackRuntimeEnabled) {
+          coinCommerceDataPackCredentialReset = createCoinCommerceDataPackCredentialReset({
+            commerceStore: coinCommerceStore,
+            controlStore: platformControlStore,
+            materialStore: edgeCredentialMaterialStore,
+            desiredStateNotifier: edgeDesiredStateNotifier,
+            artifactRotation: coinCommerceDataPackArtifactRotation,
+            nowFn: subscriptionCoreNowFn
+          });
+        }
         coinCommerceDataPackRotationCoordinator = createCoinCommerceDataPackRotationCoordinator({
-          rotation: coinCommerceDataPackArtifactRotation
+          rotation: coinCommerceDataPackCredentialReset || coinCommerceDataPackArtifactRotation
         });
       }
       if (registrationWelcomeCoinsWorkerEnabled) {

@@ -1056,6 +1056,27 @@ export function createSqliteSubscriptionControlStore({
     create unique index if not exists platform_data_pack_edge_active_request_idx
       on platform_data_pack_edge_credentials(request_ref) where status = 'active';
 
+    create table if not exists platform_data_pack_credential_resets (
+      rotation_ref text primary key,
+      order_ref text not null references platform_data_pack_resources(order_ref),
+      account_id text not null references platform_accounts(id),
+      request_ref text not null references platform_issuance_requests(id),
+      entitlement_ref text not null references platform_entitlements(id),
+      edge_channel_ref text not null,
+      edge_credential_ref text not null,
+      old_edge_material_digest text not null,
+      new_edge_material_digest text,
+      status text not null check (status in
+        ('prepared', 'staged', 'control_switched', 'material_committed',
+         'edge_applied', 'complete')),
+      lease_ref text,
+      lease_until text,
+      created_at text not null,
+      updated_at text not null
+    );
+    create unique index if not exists platform_data_pack_credential_reset_pending_idx
+      on platform_data_pack_credential_resets(order_ref) where status != 'complete';
+
     create table if not exists platform_quota_counters (
       account_id text not null references platform_accounts(id) on delete cascade,
       entitlement_id text not null references platform_entitlements(id) on delete cascade,
@@ -6188,6 +6209,15 @@ export function createSqliteSubscriptionControlStore({
         }
         return existing;
       }
+      const pendingCredentialReset = db.prepare(`
+        select rotation_ref, status from platform_data_pack_credential_resets
+        where order_ref = ? and status != 'complete' limit 1
+      `).get(orderRef);
+      if (pendingCredentialReset
+        && (pendingCredentialReset.rotation_ref !== rotationRef
+          || pendingCredentialReset.status !== "edge_applied")) {
+        throw platformError("reconciliation_required", "data pack credential reset is pending");
+      }
       const resource = db.prepare(`
         select * from platform_data_pack_resources
         where order_ref = ? and account_id = ?
@@ -6300,6 +6330,268 @@ export function createSqliteSubscriptionControlStore({
       return mapDataPackArtifactRotation(db.prepare(`
         select * from platform_data_pack_artifact_rotations where rotation_ref = ?
       `).get(rotationRef));
+    }).immediate();
+  }
+
+  function mapDataPackCredentialReset(row) {
+    return row ? Object.freeze({
+      rotationRef: row.rotation_ref, orderRef: row.order_ref,
+      accountId: row.account_id, requestRef: row.request_ref,
+      entitlementRef: row.entitlement_ref,
+      edgeChannelRef: row.edge_channel_ref,
+      edgeCredentialRef: row.edge_credential_ref,
+      oldEdgeMaterialDigest: row.old_edge_material_digest,
+      newEdgeMaterialDigest: row.new_edge_material_digest,
+      status: row.status, leaseRef: row.lease_ref, leaseUntil: row.lease_until
+    }) : null;
+  }
+
+  function readDataPackCredentialReset(rotationRef) {
+    return mapDataPackCredentialReset(db.prepare(`
+      select * from platform_data_pack_credential_resets where rotation_ref = ?
+    `).get(rotationRef));
+  }
+
+  // One order-owned intent spans protected staging, the control digest CAS,
+  // edge apply and artifact rotation. It never stores material or usage rows.
+  function beginCoinCommerceDataPackCredentialReset(input = {}) {
+    exactObject(input, { allowed: ["rotationRef", "orderRef", "accountId", "now"],
+      required: ["rotationRef", "orderRef", "accountId", "now"],
+      name: "dataPackCredentialReset" });
+    const rotationRef = safeControlRef(input.rotationRef, "rotationRef");
+    const orderRef = safeControlRef(input.orderRef, "orderRef");
+    const accountId = safeControlRef(input.accountId, "accountId");
+    const now = isoText(input.now, "now");
+    return db.transaction(() => {
+      const existing = readDataPackCredentialReset(rotationRef);
+      if (existing) {
+        if (existing.orderRef !== orderRef || existing.accountId !== accountId) {
+          throw platformError("reconciliation_required", "data pack reset scope drifted");
+        }
+        return existing;
+      }
+      if (db.prepare(`
+        select 1 from platform_data_pack_credential_resets
+        where order_ref = ? and status != 'complete' limit 1
+      `).get(orderRef)) {
+        throw platformError("reconciliation_required", "data pack reset already pending");
+      }
+      const resource = db.prepare(`
+        select * from platform_data_pack_resources
+        where order_ref = ? and account_id = ?
+      `).get(orderRef, accountId);
+      if (!resource) throw platformError("reconciliation_required", "data pack reset resource absent");
+      readDataPackResourceUsage({ accountId, orderRef,
+        requestRef: resource.request_ref, entitlementRef: resource.entitlement_ref, now });
+      const credentials = db.prepare(`
+        select * from platform_data_pack_edge_credentials
+        where request_ref = ? and status = 'active'
+      `).all(resource.request_ref);
+      if (credentials.length !== 1
+        || credentials[0].entitlement_ref !== resource.entitlement_ref
+        || !/^sha256:[a-f0-9]{64}$/.test(credentials[0].edge_material_digest)) {
+        throw platformError("reconciliation_required", "data pack reset credential drifted");
+      }
+      const pendingArtifact = db.prepare(`
+        select rotation_ref from platform_data_pack_artifact_rotations
+        where order_ref = ? and status != 'complete'
+      `).get(orderRef);
+      if (pendingArtifact && pendingArtifact.rotation_ref !== rotationRef) {
+        throw platformError("reconciliation_required", "another artifact rotation is pending");
+      }
+      db.prepare(`
+        insert into platform_data_pack_credential_resets
+          (rotation_ref, order_ref, account_id, request_ref, entitlement_ref,
+           edge_channel_ref, edge_credential_ref, old_edge_material_digest,
+           status, created_at, updated_at)
+        values (?, ?, ?, ?, ?, ?, ?, ?, 'prepared', ?, ?)
+      `).run(rotationRef, orderRef, accountId, resource.request_ref,
+        resource.entitlement_ref, credentials[0].edge_channel_ref,
+        credentials[0].edge_credential_ref, credentials[0].edge_material_digest,
+        now, now);
+      return readDataPackCredentialReset(rotationRef);
+    }).immediate();
+  }
+
+  function claimCoinCommerceDataPackCredentialReset(input = {}) {
+    exactObject(input, { allowed: ["rotationRef", "orderRef", "accountId", "leaseRef", "now"],
+      required: ["rotationRef", "orderRef", "accountId", "leaseRef", "now"],
+      name: "dataPackCredentialResetClaim" });
+    const rotationRef = safeControlRef(input.rotationRef, "rotationRef");
+    const orderRef = safeControlRef(input.orderRef, "orderRef");
+    const accountId = safeControlRef(input.accountId, "accountId");
+    const leaseRef = safeControlRef(input.leaseRef, "leaseRef");
+    const now = isoText(input.now, "now");
+    const leaseUntil = new Date(Date.parse(now) + 5 * 60_000).toISOString();
+    return db.transaction(() => {
+      const changed = db.prepare(`
+        update platform_data_pack_credential_resets
+        set lease_ref = ?, lease_until = ?, updated_at = ?
+        where rotation_ref = ? and order_ref = ? and account_id = ?
+          and (lease_ref is null or lease_until <= ?)
+      `).run(leaseRef, leaseUntil, now, rotationRef, orderRef, accountId, now);
+      if (changed.changes !== 1) {
+        throw platformError("reconciliation_required", "data pack reset lease held");
+      }
+      return readDataPackCredentialReset(rotationRef);
+    }).immediate();
+  }
+
+  function releaseCoinCommerceDataPackCredentialReset(input = {}) {
+    exactObject(input, { allowed: ["rotationRef", "orderRef", "accountId", "leaseRef"],
+      required: ["rotationRef", "orderRef", "accountId", "leaseRef"],
+      name: "dataPackCredentialResetRelease" });
+    const rotationRef = safeControlRef(input.rotationRef, "rotationRef");
+    const orderRef = safeControlRef(input.orderRef, "orderRef");
+    const accountId = safeControlRef(input.accountId, "accountId");
+    const leaseRef = safeControlRef(input.leaseRef, "leaseRef");
+    const changed = db.prepare(`
+      update platform_data_pack_credential_resets
+      set lease_ref = null, lease_until = null
+      where rotation_ref = ? and order_ref = ? and account_id = ? and lease_ref = ?
+    `).run(rotationRef, orderRef, accountId, leaseRef);
+    if (changed.changes !== 1) {
+      throw platformError("reconciliation_required", "data pack reset lease changed");
+    }
+  }
+
+  function listPendingCoinCommerceDataPackCredentialResets(input = {}) {
+    exactObject(input, { allowed: ["limit", "now"], required: ["limit", "now"],
+      name: "dataPackCredentialResetPending" });
+    if (!Number.isSafeInteger(input.limit) || input.limit < 1 || input.limit > 20) {
+      throw platformError("validation_error", "invalid data pack reset recovery limit");
+    }
+    const now = isoText(input.now, "now");
+    return Object.freeze(db.prepare(`
+      select account_id, order_ref, rotation_ref
+      from platform_data_pack_credential_resets
+      where status != 'complete' and (lease_ref is null or lease_until <= ?)
+      order by created_at, rotation_ref limit ?
+    `).all(now, input.limit).map((row) => Object.freeze({
+      accountId: row.account_id, orderRef: row.order_ref, rotationRef: row.rotation_ref
+    })));
+  }
+
+  function advanceCoinCommerceDataPackCredentialReset(input = {}) {
+    exactObject(input, { allowed: ["rotationRef", "orderRef", "accountId", "leaseRef",
+      "stage", "newEdgeMaterialDigest", "now"],
+      required: ["rotationRef", "orderRef", "accountId", "leaseRef", "stage", "now"],
+      name: "dataPackCredentialResetAdvance" });
+    const rotationRef = safeControlRef(input.rotationRef, "rotationRef");
+    const orderRef = safeControlRef(input.orderRef, "orderRef");
+    const accountId = safeControlRef(input.accountId, "accountId");
+    const leaseRef = safeControlRef(input.leaseRef, "leaseRef");
+    const stage = input.stage;
+    const now = isoText(input.now, "now");
+    if (!["staged", "control_switched", "material_committed",
+      "edge_applied", "complete"].includes(stage)) {
+      throw platformError("validation_error", "invalid data pack reset stage");
+    }
+    return db.transaction(() => {
+      const current = readDataPackCredentialReset(rotationRef);
+      if (!current || current.orderRef !== orderRef || current.accountId !== accountId
+        || current.leaseRef !== leaseRef || current.leaseUntil <= now) {
+        throw platformError("reconciliation_required", "data pack reset lease or scope changed");
+      }
+      if (current.status === stage) {
+        if (input.newEdgeMaterialDigest !== undefined
+          && input.newEdgeMaterialDigest !== current.newEdgeMaterialDigest) {
+          throw platformError("reconciliation_required", "data pack reset material changed");
+        }
+        return current;
+      }
+      if (stage === "staged" && current.status === "prepared") {
+        const digest = requiredText(input.newEdgeMaterialDigest, "newEdgeMaterialDigest");
+        if (!/^sha256:[a-f0-9]{64}$/.test(digest)
+          || digest === current.oldEdgeMaterialDigest) {
+          throw platformError("validation_error", "data pack reset candidate invalid");
+        }
+        db.prepare(`
+          update platform_data_pack_credential_resets
+          set new_edge_material_digest = ?, status = 'staged', updated_at = ?
+          where rotation_ref = ?
+        `).run(digest, now, rotationRef);
+      } else if (stage === "control_switched" && current.status === "staged") {
+        rotateCoinCommerceDataPackEdgeCredential({ requestRef: current.requestRef,
+          entitlementRef: current.entitlementRef, edgeChannelRef: current.edgeChannelRef,
+          edgeCredentialRef: current.edgeCredentialRef,
+          oldEdgeMaterialDigest: current.oldEdgeMaterialDigest,
+          newEdgeMaterialDigest: current.newEdgeMaterialDigest, now });
+        db.prepare(`
+          update platform_data_pack_credential_resets
+          set status = 'control_switched', updated_at = ? where rotation_ref = ?
+        `).run(now, rotationRef);
+      } else if (stage === "material_committed" && current.status === "control_switched") {
+        const active = db.prepare(`
+          select edge_material_digest from platform_data_pack_edge_credentials
+          where request_ref = ? and edge_credential_ref = ? and status = 'active'
+        `).get(current.requestRef, current.edgeCredentialRef);
+        if (active?.edge_material_digest !== current.newEdgeMaterialDigest) {
+          throw platformError("reconciliation_required", "data pack reset control material drifted");
+        }
+        // The caller must first verify the protected file's active summary.
+        db.prepare(`
+          update platform_data_pack_credential_resets
+          set status = 'material_committed', updated_at = ? where rotation_ref = ?
+        `).run(now, rotationRef);
+      } else if (stage === "edge_applied" && current.status === "material_committed") {
+        const resourceUsage = readDataPackResourceUsage({ accountId, orderRef,
+          requestRef: current.requestRef, entitlementRef: current.entitlementRef, now });
+        const notifications = db.prepare(`
+          select n.node_ref, n.desired_state_ref, n.generation
+          from platform_edge_desired_state_notifications n
+          join platform_edge_apply_receipts r
+            on r.channel_ref = n.channel_ref
+           and r.desired_state_ref = n.desired_state_ref
+          where n.channel_ref = ? and n.reason = ? and n.status = 'applied'
+            and n.created_at >= ? and r.status = 'applied'
+            and r.config_test_ok = 1 and r.service_active = 1
+            and r.listener_udp443 = 1 and r.applied_at is not null
+          order by n.created_at desc limit 20
+        `).all(current.edgeChannelRef, "coin_commerce_data_pack_credential_reset",
+          db.prepare(`select created_at from platform_data_pack_credential_resets
+            where rotation_ref = ?`).get(rotationRef).created_at);
+        const applied = notifications.some((notification) => {
+          const desired = getLatestEdgeDesiredStateForChannel(current.edgeChannelRef, {
+            nodeRef: notification.node_ref
+          });
+          const credentialPresent = desired?.edgeCredentialRefs.includes(current.edgeCredentialRef);
+          const materialPresent = desired?.materialDigests.some((item) => (
+            item.edgeCredentialRef === current.edgeCredentialRef
+            && item.channelRef === current.edgeChannelRef
+            && item.digest === current.newEdgeMaterialDigest
+          ));
+          return desired?.desiredStateRef === notification.desired_state_ref
+            && desired.generation === notification.generation
+            && (resourceUsage.usage.exhausted === true
+              ? !credentialPresent && !desired.materialDigests.some((item) => (
+                item.edgeCredentialRef === current.edgeCredentialRef
+              ))
+              : credentialPresent && materialPresent);
+        });
+        if (!applied) throw platformError("reconciliation_required", "data pack reset edge not applied");
+        db.prepare(`
+          update platform_data_pack_credential_resets
+          set status = 'edge_applied', updated_at = ? where rotation_ref = ?
+        `).run(now, rotationRef);
+      } else if (stage === "complete" && current.status === "edge_applied") {
+        const artifact = db.prepare(`
+          select * from platform_data_pack_artifact_rotations
+          where rotation_ref = ? and order_ref = ? and account_id = ? and status = 'complete'
+        `).get(rotationRef, orderRef, accountId);
+        const link = artifact ? getIssuedLink(artifact.link_ref) : null;
+        if (!artifact || link?.status !== "active"
+          || link.artifactRef !== artifact.replacement_artifact_ref) {
+          throw platformError("reconciliation_required", "data pack reset artifact not complete");
+        }
+        db.prepare(`
+          update platform_data_pack_credential_resets
+          set status = 'complete', updated_at = ? where rotation_ref = ?
+        `).run(now, rotationRef);
+      } else {
+        throw platformError("reconciliation_required", "data pack reset stage drifted");
+      }
+      return readDataPackCredentialReset(rotationRef);
     }).immediate();
   }
 
@@ -8128,6 +8420,11 @@ export function createSqliteSubscriptionControlStore({
     releaseCoinCommerceDataPackArtifactRotation,
     listPendingCoinCommerceDataPackArtifactRotations,
     advanceCoinCommerceDataPackArtifactRotation,
+    beginCoinCommerceDataPackCredentialReset,
+    claimCoinCommerceDataPackCredentialReset,
+    releaseCoinCommerceDataPackCredentialReset,
+    listPendingCoinCommerceDataPackCredentialResets,
+    advanceCoinCommerceDataPackCredentialReset,
     registerCoinCommerceDataPackEdgeCredential,
     rotateCoinCommerceDataPackEdgeCredential,
     createDataPackResource,

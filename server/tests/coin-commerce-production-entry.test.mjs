@@ -469,6 +469,7 @@ test("production entry composes a protected pack handler without publishing pack
     assert.equal(handle.state.platform.coinCommerceDataPackRuntimeEnabled, true);
     assert.equal(typeof handle.state.platform.coinCommerceDataPackOrderDelivery.get, "function");
     assert.equal(typeof handle.state.platform.coinCommerceDataPackArtifactRotation.rotate, "function");
+    assert.equal(typeof handle.state.platform.coinCommerceDataPackCredentialReset.rotate, "function");
     assert.equal(typeof handle.state.platform.coinCommerceDataPackRotationCoordinator.start, "function");
     // Startup must not create customer material before a captured pack order exists.
     assert.equal(existsSync(runtimeOptions.env.COINS_COMMERCE_DATA_PACK_ESCROW_PATH), false);
