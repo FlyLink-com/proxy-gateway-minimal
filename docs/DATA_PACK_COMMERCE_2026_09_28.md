@@ -272,6 +272,46 @@ Historical purchases and their accounting must not be rewritten.
 
 ## Validation and promotion gates
 
+### Isolated-host candidate and execution boundary (2026-09-28)
+
+The local WSL Ubuntu 24.04 instance is a **candidate**, not an accepted
+staging or production lane. Read-only preflight found x86_64 Linux with
+systemd and unused loopback UDP capacity. Linux Node and the Hysteria2
+runtime are absent. The existing convergence test stubs service restart,
+config test, and listener checks; its green result is source evidence, not
+physical traffic-supply-stop evidence. The data-pack fulfillment constructor
+and rotation route are also not wired into production startup, so installing
+a protocol binary alone cannot establish purchase-to-delivery E2E.
+
+Before any host setup, bind a separate exact Risk A validation gate to this
+WSL instance and a fresh preflight. The proposed setup uses only a verified
+Node 22.23.1 Linux x64 archive and Hysteria2 2.9.3 Linux amd64 binary in a
+new task-specific temporary directory. It must not use apt, systemd units,
+public listeners, provider access, production environment files, customer
+records, existing control databases, or real subscriptions. Tests use
+synthetic accounts, credentials, orders, and SQLite files; runtime traffic
+and stats endpoints stay on loopback, with non-privileged ports checked free
+immediately before use. Record exact binary digests, temporary path, ports,
+process IDs, and teardown commands in the gate before starting a process.
+
+Dry-run order: verify the source commit and clean checkout; validate public
+binary digests and all target paths; inspect port ownership; prepare synthetic
+certificates and data under the task directory; run configuration validation;
+then start the isolated runtime and collector. Stop if any identity mapping,
+protected reference, process ownership, listener scope, or cleanup target is
+ambiguous. Teardown must stop only processes started by this run, confirm
+their loopback listeners are gone, and remove only the validated temporary
+directory. A failed or partial run is not retried under a consumed gate.
+
+The physical acceptance record must distinguish actual edge apply and
+collector observations from injected samples. It must show independent pack
+usage, exhaustion blocking only that pack, another pack and timed plan still
+working, rotation without quota reset, and recovery after process failure.
+Separately, the source must wire authenticated purchase/receipt/fulfillment,
+no-store order handoff, and bounded recovery before the complete
+purchase-to-delivery scenario can be claimed. Until then, #753 stays Draft
+and the three offers stay unpublished.
+
 - Isolated tests: three price/size snapshots, idempotent payment and partial
   fulfillment recovery, two simultaneous packs plus a timed plan, no monthly
   quota reset, exhausted-pack-only suspension, credential refresh/rotation
