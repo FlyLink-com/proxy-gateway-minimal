@@ -36,6 +36,7 @@ function fixture() {
   let receipt = null;
   let leaseValid = true;
   let effectCreatedAt = null;
+  let desiredDigest = MATERIAL_DIGEST;
   let requestCreatedAt = "2026-09-28T00:00:00.000Z";
   const dependencies = {
     commerceStore: {
@@ -76,7 +77,8 @@ function fixture() {
           status: "active", requestRef: REQUEST_REF,
           entitlementRef: ENTITLEMENT_REF,
           edgeChannelRef: CHANNEL_REF,
-          edgeCredentialRef: CREDENTIAL_REF
+          edgeCredentialRef: CREDENTIAL_REF,
+          edgeMaterialDigest: MATERIAL_DIGEST
         };
       }
     },
@@ -111,7 +113,7 @@ function fixture() {
           desiredStateRef: DESIRED_REF, generation: "gen_pack_delivery",
           edgeCredentialRefs: [CREDENTIAL_REF],
           materialDigests: [{ channelRef: CHANNEL_REF,
-            edgeCredentialRef: CREDENTIAL_REF, digest: MATERIAL_DIGEST }]
+            edgeCredentialRef: CREDENTIAL_REF, digest: desiredDigest }]
         };
       },
       listEdgeApplyReceipts({ channelRef }) {
@@ -147,6 +149,7 @@ function fixture() {
       };
     },
     setRequestCreatedAt(value) { requestCreatedAt = value; },
+    setDesiredDigest(value) { desiredDigest = value; },
     loseLease() { leaseValid = false; }
   };
 }
@@ -162,6 +165,14 @@ test("captured pack effect remains pending until matching edge application, then
   assert.deepEqual(state.calls.slice(7), [
     "verify", "runtime", "edge", "effect", "notify", "desired", "receipts", "verify"
   ]);
+});
+
+test("an applied receipt for a different edge material digest cannot deliver the pack", () => {
+  const state = fixture();
+  state.applyReceipt();
+  state.setDesiredDigest(`sha256:${"c".repeat(64)}`);
+  assert.throws(() => createCoinCommerceDataPackFulfillmentHandler(state.dependencies)
+    .execute(COMMAND), isCoinCommerceFulfillmentReconciliationError);
 });
 
 test("wallet-first authority does not replace the independent pack resource", () => {

@@ -736,6 +736,30 @@ test("pack handoff preserves unknown usage and closes malformed delivery", async
   }
 });
 
+test("artifact-only pack rotation cannot claim a completed credential reset", async () => {
+  const state = createState();
+  let invoked = 0;
+  state.platform.coinCommerceDataPackArtifactRotation = {
+    rotate() { invoked += 1; return { status: "complete", orderRef: "coinord_pack_delivery" }; }
+  };
+  state.platform.coinCommerceDataPackOrderDelivery = {
+    get() { return { orderRef: "coinord_pack_delivery",
+      subscriptionUrl: "https://example.invalid/synthetic-pack",
+      usage: { totalBytes: 100 * 1024 ** 3, usedBytes: 0,
+        remainingBytes: 100 * 1024 ** 3, collectionStatus: "measured_zero",
+        updatedAt: "2026-09-28T00:00:00.000Z", exhausted: false } }; }
+  };
+  const { server, baseUrl } = await listen(createApp(state));
+  try {
+    const response = await fetch(`${baseUrl}/api/portal/commerce/orders/coinord_pack_delivery/subscription/rotate`, {
+      method: "POST", headers: { ...portalHeaders(), "Content-Type": "application/json" },
+      body: JSON.stringify({ rotationRef: "packrot_portal_once" })
+    });
+    assert.notEqual(response.status, 200);
+    assert.equal(invoked, 0);
+  } finally { await closeServer(server); }
+});
+
 test("pack rotation route is owner-only, no-store and returns no material", async () => {
   const state = createState();
   const rotated = [];
@@ -749,7 +773,7 @@ test("pack rotation route is owner-only, no-store and returns no material", asyn
           updatedAt: "2026-09-28T00:00:00.000Z", exhausted: false } };
     }
   };
-  state.platform.coinCommerceDataPackArtifactRotation = {
+  state.platform.coinCommerceDataPackCredentialReset = {
     rotate(input) { rotated.push(input); return { status: "complete", orderRef: input.orderRef }; }
   };
   const { server, baseUrl } = await listen(createApp(state));

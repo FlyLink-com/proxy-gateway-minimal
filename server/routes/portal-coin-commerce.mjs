@@ -1308,7 +1308,9 @@ export function portalCoinCommerceRoutes(state, options = {}) {
   const router = Router({ caseSensitive: true, strict: true });
   const store = state.platform?.coinCommerceStore;
   const dataPackDelivery = ownDataValue(state.platform, "coinCommerceDataPackOrderDelivery");
-  const dataPackRotation = ownDataValue(state.platform, "coinCommerceDataPackArtifactRotation");
+  // An artifact-only rotation cannot attest that an imported edge credential
+  // has stopped working. Expose this route only for a complete reset service.
+  const dataPackRotation = ownDataValue(state.platform, "coinCommerceDataPackCredentialReset");
   const requireSession = createSessionMiddleware(state, options.browserSessions);
   const resolveCommerceModel = createCommerceModelMiddleware(state);
   const requireWalletFirstService = createWalletFirstServiceMiddleware(state);

@@ -2483,6 +2483,9 @@ export function createRuntimeState(options = {}) {
   let coinCommerceCoordinator = null;
   let coinCommerceDataPackOrderDelivery = null;
   let coinCommerceDataPackArtifactRotation = null;
+  // No customer reset is wired until protected material, desired-state apply
+  // and the matching edge receipt are reconciled as one durable operation.
+  let coinCommerceDataPackCredentialReset = null;
   let coinCommerceDataPackRotationCoordinator = null;
   let ownedCoinCommerceDataPackMaterialEscrow = null;
   let portalRegistrationWelcomeBonusCoordinator = null;
@@ -3145,6 +3148,7 @@ export function createRuntimeState(options = {}) {
       coinCommerceCoordinator,
       coinCommerceDataPackOrderDelivery,
       coinCommerceDataPackArtifactRotation,
+      coinCommerceDataPackCredentialReset,
       coinCommerceDataPackRotationCoordinator,
       portalRegistrationWelcomeBonusCoordinator,
       deferredTransitionStore,

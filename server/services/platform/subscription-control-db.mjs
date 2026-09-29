@@ -6373,7 +6373,7 @@ export function createSqliteSubscriptionControlStore({
           edgeMaterialDigest, now, now);
       }
       return Object.freeze({ requestRef, entitlementRef, edgeChannelRef,
-        edgeCredentialRef, status: "active" });
+        edgeCredentialRef, edgeMaterialDigest, status: "active" });
     }).immediate();
   }
 

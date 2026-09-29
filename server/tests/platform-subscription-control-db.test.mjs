@@ -147,7 +147,8 @@ test("a data pack has no inferred edge identity and resolves only its explicit i
     assert.deepEqual(registered, {
       requestRef: credential.requestRef, entitlementRef: credential.entitlementRef,
       edgeChannelRef: credential.edgeChannelRef,
-      edgeCredentialRef: credential.edgeCredentialRef, status: "active"
+      edgeCredentialRef: credential.edgeCredentialRef,
+      edgeMaterialDigest: credential.edgeMaterialDigest, status: "active"
     });
     assert.deepEqual(store.registerCoinCommerceDataPackEdgeCredential(credential), registered);
     const binding = store.findIssuedSubscriptionBindingByEdgeCredentialRef(

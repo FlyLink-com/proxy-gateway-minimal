@@ -348,6 +348,7 @@ test("data-pack order handoff is absent by default and composed only with protec
     baseline = createRuntimeState(injectedCommerceStateOptions(dir));
     assert.equal(baseline.platform.coinCommerceDataPackOrderDelivery, null);
     assert.equal(baseline.platform.coinCommerceDataPackArtifactRotation, null);
+    assert.equal(baseline.platform.coinCommerceDataPackCredentialReset, null);
     assert.equal(baseline.platform.coinCommerceDataPackRotationCoordinator, null);
     baseline.close();
     baseline = null;
@@ -358,6 +359,7 @@ test("data-pack order handoff is absent by default and composed only with protec
     }));
     assert.equal(typeof optedIn.platform.coinCommerceDataPackOrderDelivery.get, "function");
     assert.equal(typeof optedIn.platform.coinCommerceDataPackArtifactRotation.rotate, "function");
+    assert.equal(optedIn.platform.coinCommerceDataPackCredentialReset, null);
     assert.equal(typeof optedIn.platform.coinCommerceDataPackRotationCoordinator.start, "function");
     optedIn.platform.coinCommerceDataPackRotationCoordinator.start();
     assert.deepEqual(optedIn.platform.coinCommerceDataPackRotationCoordinator.getStatus(), {

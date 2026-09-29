@@ -146,7 +146,8 @@ export function createCoinCommerceDataPackFulfillmentHandler({
     if (edge?.status !== "active" || edge.requestRef !== issued.requestRef
       || edge.entitlementRef !== issued.entitlementRef
       || typeof edge.edgeChannelRef !== "string"
-      || typeof edge.edgeCredentialRef !== "string") reconcile();
+      || typeof edge.edgeCredentialRef !== "string"
+      || !/^sha256:[a-f0-9]{64}$/.test(edge.edgeMaterialDigest)) reconcile();
     let request;
     try { request = controlStore.getIssuanceRequest(issued.requestRef); }
     catch (error) { classify(error); }
@@ -201,7 +202,7 @@ export function createCoinCommerceDataPackFulfillmentHandler({
       || !desired.materialDigests?.some((item) => (
         item.edgeCredentialRef === edge.edgeCredentialRef
         && item.channelRef === edge.edgeChannelRef
-        && /^sha256:[a-f0-9]{64}$/.test(item.digest)
+        && item.digest === edge.edgeMaterialDigest
       ))) reconcile();
     if (notification.status !== "applied" || !Array.isArray(receipts)
       || !receipts.some((receipt) => (
