@@ -428,6 +428,14 @@ package must reject any occupied test port before spawning a process. No apt,
 systemd, host service, provider API, firewall, DNS, production configuration,
 real credential, customer record, or existing SQLite file is in scope.
 
+`scripts/data-pack-wsl-artifact-prep.sh` is a preparation-only first slice of
+this package. It requires the exact #753 worktree and commit, exports that
+commit (not uncommitted work) to a private `/tmp` directory, verifies both
+public binaries against their vendor release digests, and records aggregate
+hashes. `--self-check` performs no download. Neither mode starts a protocol
+process or constitutes the physical acceptance run. A separate bounded driver,
+cleanup readback, and exact one-time execution approval remain required.
+
 Physical acceptance is a sequence of observable boundaries, not one green
 process exit: (1) independently authenticate two synthetic pack credentials
 and one timed-plan credential through the real Hysteria process; (2) generate
@@ -442,6 +450,14 @@ pass, while its used bytes remain unchanged; (6) interrupt a run-owned process
 and verify bounded recovery and no duplicate usage or entitlement. Merely
 removing a credential from a generated config or kicking an online session
 does not prove traffic-supply stop.
+
+There is a source/acceptance mismatch at step (5): the currently implemented
+`coin-commerce-data-pack-artifact-rotation.mjs` rotates the subscription
+artifact and delivery URL but intentionally preserves the edge principal and
+usage. Therefore it cannot make an already imported Hysteria edge credential
+fail. The physical driver must not claim this property as passing. The choice
+between URL-only reset and edge-credential invalidation must be resolved in
+the product contract before the full rotation gate can be executed.
 
 The package must emit aggregate-only receipts: pinned source/artifact hashes,
 namespace and port checks, credential count, per-resource pass/fail and byte
