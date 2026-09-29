@@ -87,6 +87,30 @@ test("local xray rejects duplicate JSON keys before reading counters",async()=>{
   await assert.rejects(readFullMeteringLocalSource(options));assert(!state.calls.some(c=>c[0]==="/opt/synthetic/runtime"));
 });
 
+test("local source preserves a fixed stage when service metadata command fails",async()=>{
+  const {options}=fixture("xray"),run=options.commandRunner;
+  options.commandRunner=(command,args)=>command.endsWith("systemctl")?{exitCode:1,stderr:"synthetic-secret"}:run(command,args);
+  await assert.rejects(readFullMeteringLocalSource(options),error=>error.code==="full_metering_local_service_metadata_command_failed"&&!error.message.includes("synthetic-secret"));
+});
+
+test("local Xray classifies a failed statistics command without exposing stderr",async()=>{
+  const {options}=fixture("xray"),run=options.commandRunner;
+  options.commandRunner=(command,args)=>command==="/opt/synthetic/runtime"?{exitCode:1,stderr:"synthetic-secret"}:run(command,args);
+  await assert.rejects(readFullMeteringLocalSource(options),error=>error.code==="full_metering_local_statistics_query_command_failed"&&!error.message.includes("synthetic-secret"));
+});
+
+test("local Xray classifies malformed statistics output separately from command failure",async()=>{
+  const {options}=fixture("xray"),run=options.commandRunner;
+  options.commandRunner=(command,args)=>command==="/opt/synthetic/runtime"?{exitCode:0,stdout:"not-json"}:run(command,args);
+  await assert.rejects(readFullMeteringLocalSource(options),error=>error.code==="full_metering_local_statistics_payload_invalid"&&!error.message.includes("not-json"));
+});
+
+test("local HTTP statistics source classifies transport failure without exposing its message",async()=>{
+  const {options}=fixture("hy2");
+  options.fetchFn=async()=>{throw new Error("synthetic-secret-network-detail");};
+  await assert.rejects(readFullMeteringLocalSource(options),error=>error.code==="full_metering_local_statistics_transport_failed"&&!error.message.includes("synthetic-secret"));
+});
+
 for(const kind of ["hy2","tuic"]){
   test(`local ${kind} rejects duplicate endpoint keys`,async()=>{
     const {state,options}=fixture(kind),line=kind==="hy2"?'  listen: "127.0.0.1:12345"':'external-controller: "127.0.0.1:12345"';
