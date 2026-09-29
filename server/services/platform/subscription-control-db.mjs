@@ -5991,7 +5991,7 @@ export function createSqliteSubscriptionControlStore({
           throw platformError("reconciliation_required", "data pack issuance reservation drifted");
         }
       } else {
-        entitlement = createEntitlement({
+        createEntitlement({
           id: entitlementRef, accountId, plan: offerVersionRef,
           status: "active", validFrom: now,
           validUntil: DATA_PACK_TECHNICAL_VALID_UNTIL,
