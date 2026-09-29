@@ -339,6 +339,27 @@ for retained synthetic paths is not silently carried into physical testing.
 Any provenance/reference inspection or physical execution needs a new,
 separately bounded decision.
 
+The approved follow-up used two new single-use scripts on 2026-09-29 UTC.
+The directory/process-reference script SHA-256 was
+`c7a379ef52a84a415ebd6b942abe658365b396e7fe5225bacbf66ebcda0ec31d`.
+It saw two direct directories and one direct file, all root-owned and last
+modified around 2026-09-02. The three named units did not declare a reference
+to the state root, but the process-FD scan lacked permission for 113 of 115
+processes. Thus zero observed references is **not** a complete negative proof,
+and neither entry metadata nor historical comments establish the directory's
+origin. No file body, config, database, or log was read.
+
+The separate empty-namespace dry-run script SHA-256 was
+`03eb4a6c44db5cab6f5152f00291f84c1e727a5b53f18e7a16b3c7278696984c`.
+It attempted an unprivileged user/mount/network namespace with a private
+mount-propagation check and temporary state-root mask, but the child exited
+with code 1 before returning structured proof. Error output was present but
+not retained, so its exact cause is unknown; do not label it a permission
+failure. The existing candidate service, host mount table, and state-root
+metadata were unchanged on readback. No protocol or collector was started.
+Both attempts are consumed, not retryable. Aliyun physical validation remains
+`NO-GO` until a new, separately bounded isolation approach is established.
+
 The physical acceptance record must distinguish actual edge apply and
 collector observations from injected samples. It must show independent pack
 usage, exhaustion blocking only that pack, another pack and timed plan still
