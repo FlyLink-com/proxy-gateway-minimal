@@ -28,7 +28,7 @@ fi
 EXPECTED_COMMIT=$1
 [[ $(uname -s) == Linux && $(uname -m) == x86_64 ]] || die 'requires Linux x86_64'
 [[ $(id -u) != 0 ]] || die 'must run as an unprivileged user'
-for tool in curl sha256sum python3 git mktemp tar; do
+for tool in curl sha256sum python3 git mktemp tar realpath; do
   command -v "$tool" >/dev/null || die "missing required tool: $tool"
 done
 [[ $PWD == /mnt/c/Users/g/.codex/worktrees/data-pack-commerce/proxy-gateway-minimal ]] \
@@ -46,10 +46,16 @@ COMMITTED_SCRIPT_SHA256=$(git --git-dir="$GIT_DIR" show \
 
 RUN_DIR=$(mktemp -d /tmp/gccgw-data-pack-wsl.XXXXXXXX) || die 'could not create private run directory'
 [[ $RUN_DIR =~ ^/tmp/gccgw-data-pack-wsl\.[A-Za-z0-9]{8}$ ]] || die 'unsafe run directory'
+[[ ! -L $RUN_DIR && $(realpath -e -- "$RUN_DIR") == "$RUN_DIR" ]] \
+  || die 'run directory is not a direct private /tmp directory'
 success=0
 cleanup_on_failure() {
-  if [[ $success == 0 && $RUN_DIR =~ ^/tmp/gccgw-data-pack-wsl\.[A-Za-z0-9]{8}$ ]]; then
-    rm -rf -- "$RUN_DIR"
+  if [[ $success == 0 && -d $RUN_DIR && ! -L $RUN_DIR
+    && $RUN_DIR =~ ^/tmp/gccgw-data-pack-wsl\.[A-Za-z0-9]{8}$ ]]; then
+    local resolved
+    resolved=$(realpath -e -- "$RUN_DIR") || return
+    [[ $resolved == "$RUN_DIR" ]] || return
+    rm -rf -- "$resolved"
   fi
 }
 trap cleanup_on_failure EXIT

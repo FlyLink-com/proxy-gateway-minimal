@@ -444,6 +444,7 @@ test("add-only data-pack resource schema preserves an existing control account o
     store.close();
     const priorSchema = new Database(dbPath);
     try {
+      priorSchema.exec("drop table platform_data_pack_credential_resets");
       priorSchema.exec("drop table platform_data_pack_edge_credentials");
       priorSchema.exec("drop table platform_data_pack_resources");
     } finally {
@@ -458,6 +459,8 @@ test("add-only data-pack resource schema preserves an existing control account o
         assert.equal(db.prepare("select count(*) as count from platform_data_pack_resources")
           .get().count, 0);
         assert.equal(db.prepare("select count(*) as count from platform_data_pack_edge_credentials")
+          .get().count, 0);
+        assert.equal(db.prepare("select count(*) as count from platform_data_pack_credential_resets")
           .get().count, 0);
       } finally {
         db.close();
@@ -485,6 +488,7 @@ test("pack schema upgrade and backup restore preserve legacy access rows and con
     store = null;
     const before = new Database(dbPath);
     try {
+      before.exec("drop table platform_data_pack_credential_resets");
       before.exec("drop table platform_data_pack_artifact_rotations");
       before.exec("drop table platform_data_pack_edge_credentials");
       before.exec("drop table platform_data_pack_resources");
@@ -510,6 +514,8 @@ test("pack schema upgrade and backup restore preserve legacy access rows and con
         where id = ?`).get("pareq_before_pack_rehearsal")?.plan, "monthly");
       assert.equal(upgraded.prepare(`select count(*) as count from platform_data_pack_resources`)
         .get().count, 0);
+      assert.equal(upgraded.prepare(`select count(*) as count from platform_data_pack_credential_resets`)
+        .get().count, 0);
       assert.equal(upgraded.pragma("foreign_key_check").length, 0);
       assert.equal(upgraded.pragma("integrity_check", { simple: true }), "ok");
       assert.throws(() => upgraded.prepare(`insert into platform_portal_access_requests
@@ -532,6 +538,8 @@ test("pack schema upgrade and backup restore preserve legacy access rows and con
         where id = ?`).get("pareq_before_pack_rehearsal")?.plan, "monthly");
       assert.equal(restored.prepare(`select name from sqlite_master
         where type = 'table' and name = 'platform_data_pack_resources'`).get(), undefined);
+      assert.equal(restored.prepare(`select name from sqlite_master
+        where type = 'table' and name = 'platform_data_pack_credential_resets'`).get(), undefined);
       assert.equal(restored.pragma("foreign_key_check").length, 0);
       assert.equal(restored.pragma("integrity_check", { simple: true }), "ok");
     } finally {
