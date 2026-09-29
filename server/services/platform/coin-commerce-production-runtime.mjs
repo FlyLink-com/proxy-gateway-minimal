@@ -15,9 +15,10 @@ const START_OPTION_FIELDS = new Set([
 const FIXED_RUNTIME_OPTION_FIELDS = new Set([
   "coinCommerceCatalog",
   "coinCommerceFulfillmentFactory",
-  // Pack composition is not exposed by the production entry until its
-  // migration, protected escrow, edge and recovery gates have passed.
-  "coinCommerceDataPackFulfillmentFactory"
+  // Caller-provided pack objects are ignored. Only the explicit, default-off
+  // runtime flag can assemble the protected pack path in state.
+  "coinCommerceDataPackFulfillmentFactory",
+  "coinCommerceDataPackMaterialEscrow"
 ]);
 
 function invalidProductionRuntime() {

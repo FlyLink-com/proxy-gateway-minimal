@@ -246,9 +246,13 @@ desktop build validate this source path; the separate mobile UI still needs
 its own integration. A default-absent runtime-state factory now composes
 the pack handler only after the Commerce store and protected escrow are
 available, dispatching packs separately from timed plans. The production
-entry explicitly does not accept this factory, does not supply an escrow,
-and continues to publish timed plans only. Thus the source composition is
-not a live purchase path or release approval.
+entry ignores caller-supplied pack factories and escrow objects. A new
+default-off source path composes the protected pack handler only when
+`COINS_COMMERCE_DATA_PACK_RUNTIME_ENABLED` is explicitly set and a distinct
+absolute escrow path, valid protected key, configured pack node, edge
+lifecycle and Agent route are present. Missing or colliding prerequisites
+fail before the listener opens. The catalog still publishes timed plans only;
+this source composition is not a live pack purchase path or release approval.
 
 The offer schema also requires a CNY `referencePrice`. Candidate records use
 the existing one-Coin-to-one-CNY display convention solely to satisfy that
@@ -317,9 +321,10 @@ privilege boundary, or suitability for a live protocol process. The local WSL
 Ubuntu 24.04 instance remains a fallback candidate, not an accepted staging
 or production lane. The existing convergence test stubs service restart,
 config test, and listener checks; its green result is source evidence, not
-physical traffic-supply-stop evidence. The data-pack fulfillment constructor
-and rotation route are also not wired into production startup, so installing
-a protocol binary alone cannot establish purchase-to-delivery E2E.
+physical traffic-supply-stop evidence. The default-off source startup
+composition does not publish pack offers or prove that a real edge and
+collector can deliver purchase-to-delivery E2E. Installing a protocol binary
+alone cannot establish that outcome.
 
 Before Aliyun access, complete the no-credential local/network precheck and
 bind a fresh, exact Risk A **read-only inventory** to the intended instance

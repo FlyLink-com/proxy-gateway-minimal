@@ -20,7 +20,11 @@ import { createCoinCommerceCoordinator } from "./services/platform/coin-commerce
 import { createCoinCommerceDataPackOrderDelivery } from "./services/platform/coin-commerce-data-pack-order-delivery.mjs";
 import { createCoinCommerceDataPackArtifactRotation } from "./services/platform/coin-commerce-data-pack-artifact-rotation.mjs";
 import { createCoinCommerceDataPackRotationCoordinator } from "./services/platform/coin-commerce-data-pack-rotation-coordinator.mjs";
-import { composeCoinCommerceDataPackFulfillment } from "./services/platform/coin-commerce-data-pack-production-binding.mjs";
+import { createCoinCommerceDataPackMaterialEscrow } from "./services/platform/coin-commerce-data-pack-material-escrow.mjs";
+import {
+  composeCoinCommerceDataPackFulfillment,
+  createCoinCommerceDataPackProductionFulfillment
+} from "./services/platform/coin-commerce-data-pack-production-binding.mjs";
 import { createSqliteCoinCommerceStore } from "./services/platform/coin-commerce-store.mjs";
 import { createSqliteCoinWalletStore } from "./services/platform/coin-wallet-store.mjs";
 import { createSqlitePaymentStore } from "./services/platform/payment-store.mjs";
@@ -1547,6 +1551,7 @@ export function createRuntimeState(options = {}) {
   const adminAuthorizationEnabled = envFlag(env.ADMIN_AUTHORIZATION_ENABLED);
   const coinsWalletEnabled = envFlag(env.COINS_WALLET_ENABLED);
   const coinsCommerceEnabled = envFlag(env.COINS_COMMERCE_ENABLED);
+  const dataPackRuntimeEnabled = envFlag(env.COINS_COMMERCE_DATA_PACK_RUNTIME_ENABLED);
   const coinsCommerceAuthorityEnabled = envFlag(
     env.COINS_COMMERCE_ACCOUNT_RESOURCE_AUTHORITY_ENABLED
   );
@@ -1729,6 +1734,9 @@ export function createRuntimeState(options = {}) {
         });
     }
     const dataPackFactoryOption = ownDataOption(options, "coinCommerceDataPackFulfillmentFactory");
+    if (dataPackRuntimeEnabled && dataPackFactoryOption.present) {
+      throw coinCommercePrerequisiteError();
+    }
     if (dataPackFactoryOption.present && dataPackFactoryOption.value !== undefined) {
       configuredCoinCommerceDataPackFulfillmentFactory =
         exactCoinCommerceFulfillmentFactory(dataPackFactoryOption.value);
@@ -1832,6 +1840,31 @@ export function createRuntimeState(options = {}) {
   const trustedProxyCidrs = parseCsv(env.TRUSTED_PROXY_CIDRS, DEFAULT_TRUSTED_PROXY_CIDRS);
   const dataPlaneAgentAllowedCidrs = parseCsv(env.EDGE_DATA_PLANE_AGENT_ALLOWED_CIDRS, DEFAULT_ADMIN_ALLOWED_CIDRS);
   const dataPlaneAgentRoutesEnabled = envFlag(env.EDGE_DATA_PLANE_AGENT_ROUTES_ENABLED);
+  const dataPackNodeId = dataPackRuntimeEnabled
+    ? optionalEnvText(env.COINS_COMMERCE_DATA_PACK_NODE_ID)
+    : "";
+  const dataPackEscrowKey = dataPackRuntimeEnabled
+    ? optionalEnvText(env.COINS_COMMERCE_DATA_PACK_ESCROW_KEY)
+    : "";
+  const dataPackEscrowPath = dataPackRuntimeEnabled
+    ? optionalEnvText(env.COINS_COMMERCE_DATA_PACK_ESCROW_PATH)
+    : "";
+  const dataPackReservedPaths = dataPackRuntimeEnabled ? [
+    controlDbPath,
+    subscriptionDbPath,
+    proxyConfigPath,
+    optionalEnvText(env.EDGE_CREDENTIAL_MATERIAL_PATH || env.USER_PORTAL_EDGE_MATERIAL_PATH)
+  ].filter(Boolean) : [];
+  if (dataPackRuntimeEnabled && (
+    !coinsCommerceEnabled || !userPortalRoutesEnabled || !edgeLifecycleEnabled
+    || !dataPlaneAgentRoutesEnabled || !dataPackNodeId
+    || !edgeChannelRefs.includes(dataPackNodeId)
+    || !dataPackEscrowKey || !dataPackEscrowPath
+    || !isAbsolute(dataPackEscrowPath)
+    || dataPackReservedPaths.some((path) => resolve(path) === resolve(dataPackEscrowPath))
+  )) {
+    throw coinCommercePrerequisiteError();
+  }
   const tempLinkTtlMinutes = Number.parseInt(env.SUBSCRIPTION_TEMP_LINK_TTL_MINUTES, 10) || 24 * 60;
   const portalRefreshCooldownMs = envNonNegativeInteger(env.USER_PORTAL_REFRESH_COOLDOWN_MS, 300000);
   const ownsSubscriptionStore = !options.subscriptionStore && !options.subscriptionRepository && !options.subscriptionCore && !options.subscriptionService;
@@ -2451,6 +2484,7 @@ export function createRuntimeState(options = {}) {
   let coinCommerceDataPackOrderDelivery = null;
   let coinCommerceDataPackArtifactRotation = null;
   let coinCommerceDataPackRotationCoordinator = null;
+  let ownedCoinCommerceDataPackMaterialEscrow = null;
   let portalRegistrationWelcomeBonusCoordinator = null;
   let walletFirstDeferredTransitionRuntime = null;
   let deferredTransitionStore = null;
@@ -2628,16 +2662,36 @@ export function createRuntimeState(options = {}) {
       }
       coinsWalletStore = exactStore.walletStore;
       const dataPackEscrowOption = ownDataOption(options, "coinCommerceDataPackMaterialEscrow");
-      if (configuredCoinCommerceDataPackFulfillmentFactory) {
-        if (!dataPackEscrowOption.present || dataPackEscrowOption.value === undefined) {
+      if (dataPackRuntimeEnabled) {
+        if (dataPackEscrowOption.present
+          || !edgeCredentialMaterialStore || !edgeCredentialIssuer) {
+          throw coinCommercePrerequisiteError();
+        }
+        try {
+          ownedCoinCommerceDataPackMaterialEscrow = createCoinCommerceDataPackMaterialEscrow({
+            key: dataPackEscrowKey,
+            filePath: dataPackEscrowPath
+          });
+        } catch {
+          throw coinCommercePrerequisiteError();
+        }
+      }
+      const dataPackMaterialEscrow = ownedCoinCommerceDataPackMaterialEscrow
+        || dataPackEscrowOption.value;
+      const dataPackFulfillmentFactory = dataPackRuntimeEnabled
+        ? createCoinCommerceDataPackProductionFulfillment
+        : configuredCoinCommerceDataPackFulfillmentFactory;
+      if (dataPackFulfillmentFactory) {
+        if (!dataPackMaterialEscrow) {
           throw coinCommercePrerequisiteError();
         }
         const dataPackHandler = exactCoinCommerceFulfillmentHandlerValue(
-          configuredCoinCommerceDataPackFulfillmentFactory({
+          dataPackFulfillmentFactory({
             commerceStore: coinCommerceStore,
             controlStore: platformControlStore,
             runtimeCore: subscriptionCore,
-            materialEscrow: dataPackEscrowOption.value,
+            materialEscrow: dataPackMaterialEscrow,
+            nodeId: dataPackNodeId,
             edgeMaterialStore: edgeCredentialMaterialStore,
             edgeCredentialIssuer,
             desiredStateNotifier: edgeDesiredStateNotifier,
@@ -2658,23 +2712,23 @@ export function createRuntimeState(options = {}) {
         store: coinCommerceStore,
         fulfillmentHandler: configuredCoinCommerceFulfillmentHandler
       });
-      if (dataPackEscrowOption.present && dataPackEscrowOption.value !== undefined) {
-        callableFromSafeDescriptorChain(dataPackEscrowOption.value, "release");
+      if (dataPackMaterialEscrow) {
+        callableFromSafeDescriptorChain(dataPackMaterialEscrow, "release");
         coinCommerceDataPackOrderDelivery = createCoinCommerceDataPackOrderDelivery({
           commerceStore: coinCommerceStore,
           controlStore: platformControlStore,
           runtimeCore: subscriptionCore,
-          materialEscrow: dataPackEscrowOption.value,
+          materialEscrow: dataPackMaterialEscrow,
           nowFn: subscriptionCoreNowFn
         });
         for (const method of ["capture", "probe", "verify"]) {
-          callableFromSafeDescriptorChain(dataPackEscrowOption.value, method);
+          callableFromSafeDescriptorChain(dataPackMaterialEscrow, method);
         }
         coinCommerceDataPackArtifactRotation = createCoinCommerceDataPackArtifactRotation({
           commerceStore: coinCommerceStore,
           controlStore: platformControlStore,
           runtimeCore: subscriptionCore,
-          materialEscrow: dataPackEscrowOption.value,
+          materialEscrow: dataPackMaterialEscrow,
           nowFn: subscriptionCoreNowFn
         });
         coinCommerceDataPackRotationCoordinator = createCoinCommerceDataPackRotationCoordinator({
@@ -2777,6 +2831,11 @@ export function createRuntimeState(options = {}) {
         }
       }
     } catch (error) {
+      if (ownedCoinCommerceDataPackMaterialEscrow) {
+        try { ownedCoinCommerceDataPackMaterialEscrow.close(); }
+        catch { /* preserve composition failure */ }
+        ownedCoinCommerceDataPackMaterialEscrow = null;
+      }
       if (ownsCoinCommerceStore && coinCommerceStore) {
         try {
           coinCommerceStore.close();
@@ -2902,6 +2961,11 @@ export function createRuntimeState(options = {}) {
           // Preserve the final recharge state-composition failure.
         }
       }
+      if (ownedCoinCommerceDataPackMaterialEscrow) {
+        try { ownedCoinCommerceDataPackMaterialEscrow.close(); }
+        catch { /* preserve the recharge state-composition failure */ }
+        ownedCoinCommerceDataPackMaterialEscrow = null;
+      }
       if (ownsPaymentStore && paymentStore) {
         try { paymentStore.close(); } catch { /* preserve prerequisite failure */ }
       }
@@ -2992,10 +3056,12 @@ export function createRuntimeState(options = {}) {
           firstError ||= error;
         }
       }
+      let packRotationStopped = true;
       if (coinCommerceDataPackRotationCoordinator) {
         try {
           await coinCommerceDataPackRotationCoordinator.stop();
         } catch (error) {
+          packRotationStopped = false;
           firstError ||= error;
         }
       }
@@ -3005,6 +3071,10 @@ export function createRuntimeState(options = {}) {
         coordinatorStopped = true;
       } catch (error) {
         firstError ||= error;
+      }
+      if (packRotationStopped && coordinatorStopped && ownedCoinCommerceDataPackMaterialEscrow) {
+        try { ownedCoinCommerceDataPackMaterialEscrow.close(); }
+        catch (error) { firstError ||= error; }
       }
       if (coordinatorStopped && ownsCoinCommerceStore) {
         try {
@@ -3065,6 +3135,7 @@ export function createRuntimeState(options = {}) {
       coinsWalletStore,
       coinsCommerceEnabled,
       coinsCommerceAuthorityEnabled,
+      coinCommerceDataPackRuntimeEnabled: dataPackRuntimeEnabled,
       walletFirstRegistrationEnabled,
       walletFirstDeferredRuntimeEnabled,
       registrationWelcomeCoinsEnabled,
