@@ -10,6 +10,7 @@ NODE_SHA256=9749e988f437343b7fa832c69ded82a312e41a03116d766797ac14f6f9eee578
 HY_VERSION=2.9.3
 HY_ASSET=hysteria-linux-amd64
 HY_SHA256=66dbdb0608f25f3057b433afe975a9fc1af2ca8e512479e294988b3ef363d6c1
+HY_HASHES_SHA256=7df8b471145b20bb98fde254da29b61557093dd82f9ada0a01d47670f94633ee
 # This is the Git administrative directory of the dedicated #753 worktree,
 # translated from its Windows .git pointer for WSL. A moved worktree fails shut.
 GIT_DIR=/mnt/d/Projects/proxy-gateway-minimal/.git/worktrees/proxy-gateway-minimal3
@@ -17,7 +18,8 @@ GIT_DIR=/mnt/d/Projects/proxy-gateway-minimal/.git/worktrees/proxy-gateway-minim
 die() { printf 'data-pack WSL preparation stopped: %s\n' "$1" >&2; exit 1; }
 if [[ ${1:-} == --self-check ]]; then
   [[ $# == 1 ]] || die 'self-check takes no other arguments'
-  [[ $NODE_SHA256 =~ ^[0-9a-f]{64}$ && $HY_SHA256 =~ ^[0-9a-f]{64}$ ]] || die 'invalid artifact digest'
+  [[ $NODE_SHA256 =~ ^[0-9a-f]{64}$ && $HY_SHA256 =~ ^[0-9a-f]{64}$
+    && $HY_HASHES_SHA256 =~ ^[0-9a-f]{64}$ ]] || die 'invalid artifact digest'
   [[ $NODE_ARCHIVE == "node-v${NODE_VERSION}-linux-x64.tar.xz" ]] || die 'Node archive mismatch'
   [[ $HY_ASSET == hysteria-linux-amd64 ]] || die 'Hysteria asset mismatch'
   printf 'self_check=passed; physical_execution=not_started\n'
@@ -79,16 +81,18 @@ if len(matches) != 1 or matches[0][0] != expected:
 PY
 
 curl -fLSs --retry 0 --connect-timeout 10 --max-time 90 \
-  'https://api.github.com/repos/HyNetworks/hysteria/releases/tags/app%2Fv2.9.3' \
-  -o "$RUN_DIR/hysteria-release.json" || die 'Hysteria release metadata download failed'
-python3 - "$RUN_DIR/hysteria-release.json" "$HY_ASSET" "$HY_SHA256" <<'PY' \
-  || die 'Hysteria vendor release digest mismatch'
-import json, sys
-metadata, name, expected = sys.argv[1:]
-with open(metadata, encoding='utf-8') as source:
-    release = json.load(source)
-matches = [asset for asset in release.get('assets', []) if asset.get('name') == name]
-if len(matches) != 1 or matches[0].get('digest') != f'sha256:{expected}':
+  "https://github.com/HyNetworks/hysteria/releases/download/app/v${HY_VERSION}/hashes.txt" \
+  -o "$RUN_DIR/hysteria-hashes.txt" || die 'Hysteria hash manifest download failed'
+printf '%s  %s\n' "$HY_HASHES_SHA256" "$RUN_DIR/hysteria-hashes.txt" \
+  | sha256sum --check --status || die 'Hysteria hash manifest digest mismatch'
+python3 - "$RUN_DIR/hysteria-hashes.txt" "$HY_ASSET" "$HY_SHA256" <<'PY' \
+  || die 'Hysteria vendor artifact digest mismatch'
+import sys
+manifest, name, expected = sys.argv[1:]
+with open(manifest, encoding='utf-8') as source:
+    matches = [line.split() for line in source if line.strip()
+               and line.split()[-1] == f'build/{name}']
+if len(matches) != 1 or matches[0][0] != expected:
     raise SystemExit(1)
 PY
 
@@ -104,10 +108,10 @@ printf '%s  %s\n' "$HY_SHA256" "$RUN_DIR/$HY_ASSET" | sha256sum --check --status
   || die 'Hysteria artifact digest mismatch'
 [[ $(git --git-dir="$GIT_DIR" rev-parse HEAD) == "$EXPECTED_COMMIT" ]] \
   || die 'source commit changed during preparation'
-python3 - "$RUN_DIR" "$EXPECTED_COMMIT" "$SCRIPT_SHA256" "$NODE_SHA256" "$HY_SHA256" <<'PY'
+python3 - "$RUN_DIR" "$EXPECTED_COMMIT" "$SCRIPT_SHA256" "$NODE_SHA256" "$HY_SHA256" "$HY_HASHES_SHA256" <<'PY'
 import json, os, sys
 from datetime import datetime, timezone
-directory, commit, script, node, hysteria = sys.argv[1:]
+directory, commit, script, node, hysteria, hysteria_manifest = sys.argv[1:]
 record = {
     'state': 'prepared_not_executed',
     'prepared_at': datetime.now(timezone.utc).isoformat(),
@@ -115,6 +119,7 @@ record = {
     'prep_script_sha256': script,
     'node_artifact_sha256': node,
     'hysteria_artifact_sha256': hysteria,
+    'hysteria_manifest_sha256': hysteria_manifest,
     'physical_processes_started': 0,
 }
 with open(os.path.join(directory, 'receipt.json'), 'x', encoding='utf-8') as output:

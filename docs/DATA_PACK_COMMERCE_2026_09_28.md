@@ -435,6 +435,14 @@ public binaries against their vendor release digests, and records aggregate
 hashes. `--self-check` performs no download. Neither mode starts a protocol
 process or constitutes the physical acceptance run. A separate bounded driver,
 cleanup readback, and exact one-time execution approval remain required.
+An `ed231be6` preparation attempt stopped before binary download when the
+unauthenticated GitHub release API returned HTTP 403; it started no protocol
+process. A subsequent source change uses the official release `hashes.txt`
+instead: the manifest's own pinned digest is independently published on the
+[GitHub release asset list](https://github.com/HyNetworks/hysteria/releases/expanded_assets/app%2Fv2.9.3),
+and its single `build/hysteria-linux-amd64` entry must equal the separately
+pinned artifact digest. The failed attempt is consumed, not a retry or a
+physical acceptance receipt.
 
 Physical acceptance is a sequence of observable boundaries, not one green
 process exit: (1) independently authenticate two synthetic pack credentials
