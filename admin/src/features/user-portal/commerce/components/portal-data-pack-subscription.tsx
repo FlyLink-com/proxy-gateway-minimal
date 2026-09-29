@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 
 import { PortalCoinCommerceClientError } from "../commerce-client";
 import type { PortalCoinCommerceClient, PortalCoinDataPackSubscription } from "../api-contract";
@@ -40,9 +40,13 @@ export function PortalDataPackSubscription({
   const pendingRotationRef = useRef<string | null>(null);
   const generation = useRef(0);
 
-  useEffect(() => {
+  // Fence the initial identity before the freshly mounted action can be used.
+  // A passive effect could run after a quick click and strand `busy` when its
+  // generation changed while the already-resolved delivery was settling.
+  useLayoutEffect(() => {
     generation.current += 1;
     setDelivery(null);
+    setBusy(false);
     setMessage("");
     setShowLink(false);
     setConfirmReset(false);

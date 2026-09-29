@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import "@testing-library/jest-dom/vitest";
 import { afterEach, describe, expect, test, vi } from "vitest";
 
@@ -18,6 +18,28 @@ const delivery = {
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
 describe("Portal data-pack order delivery", () => {
+  test("a session change fences an in-flight delivery and permits the new session", async () => {
+    let resolveOld!: (value: typeof delivery) => void;
+    const oldRequest = new Promise<typeof delivery>((resolve) => { resolveOld = resolve; });
+    const getDataPackDelivery = vi.fn()
+      .mockImplementationOnce(() => oldRequest)
+      .mockResolvedValueOnce(delivery);
+    const client = { getDataPackDelivery } as unknown as PortalCoinCommerceClient;
+    const props = { commerceClient: client, sessionGeneration: 1,
+      orderRef: delivery.orderRef, locale: "zh" as const, onSessionInvalid: vi.fn() };
+    const view = render(<PortalDataPackSubscription {...props} sessionRef="session_alpha" />);
+    fireEvent.click(screen.getByRole("button", { name: "获取订阅" }));
+    expect(screen.getByRole("button", { name: "获取订阅" })).toBeDisabled();
+    view.rerender(<PortalDataPackSubscription {...props} sessionRef="session_beta" />);
+    expect(screen.getByRole("button", { name: "获取订阅" })).toBeEnabled();
+    await act(async () => { resolveOld(delivery); });
+    expect(screen.queryByRole("button", { name: "复制订阅" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "获取订阅" }));
+    await screen.findByRole("button", { name: "复制订阅" });
+    expect(getDataPackDelivery.mock.calls.map(([request]) => request.sessionRef))
+      .toEqual(["session_alpha", "session_beta"]);
+  });
+
   test("retrieves only on demand, supports refresh and copy, and forgets material when closed", async () => {
     const getDataPackDelivery = vi.fn().mockResolvedValue(delivery);
     const writeText = vi.fn().mockResolvedValue(undefined);

@@ -71,6 +71,7 @@ test("delivered data-pack order exposes on-demand delivery and drops it when clo
   expect(getDataPackDelivery).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole("button", { name: "获取订阅" }));
   await screen.findByRole("button", { name: "复制订阅" });
+  expect(getDataPackDelivery).toHaveBeenCalledTimes(1);
   fireEvent.click(detail);
   expect(screen.queryByRole("button", { name: "复制订阅" })).toBeNull();
 });
