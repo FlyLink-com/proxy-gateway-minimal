@@ -105,6 +105,25 @@ test("local Xray classifies malformed statistics output separately from command 
   await assert.rejects(readFullMeteringLocalSource(options),error=>error.code==="full_metering_local_statistics_payload_invalid"&&!error.message.includes("not-json"));
 });
 
+test("local Xray reads protobuf omitted zero values while retaining runtime identity checks",async()=>{
+  const {options,state}=fixture("xray"),run=options.commandRunner;
+  options.commandRunner=(command,args)=>command==="/opt/synthetic/runtime"?{exitCode:0,stdout:JSON.stringify({stat:[
+    {name:`user>>>${REF}>>>traffic>>>uplink`},{name:`user>>>${REF}>>>traffic>>>downlink`}
+  ]})}:run(command,args);
+  const result=await readFullMeteringLocalSource(options);
+  assert.deepEqual(result.observations,[{edgeCredentialRef:REF,uploadBytes:0,downloadBytes:0}]);
+  assert.equal(result.runtimeUsers.length,1);
+  assert.equal(state.calls.filter(call=>call[0].endsWith("systemctl")).length,2);
+});
+
+test("local Xray omitted zeros do not turn a missing direction into a valid observation",async()=>{
+  const {options}=fixture("xray"),run=options.commandRunner;
+  options.commandRunner=(command,args)=>command==="/opt/synthetic/runtime"?{exitCode:0,stdout:JSON.stringify({stat:[
+    {name:`user>>>${REF}>>>traffic>>>uplink`}
+  ]})}:run(command,args);
+  await assert.rejects(readFullMeteringLocalSource(options),error=>error.code==="full_metering_local_statistics_counter_invalid");
+});
+
 test("local HTTP statistics source classifies transport failure without exposing its message",async()=>{
   const {options}=fixture("hy2");
   options.fetchFn=async()=>{throw new Error("synthetic-secret-network-detail");};
