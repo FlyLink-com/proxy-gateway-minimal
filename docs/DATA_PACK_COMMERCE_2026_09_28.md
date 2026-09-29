@@ -401,6 +401,60 @@ metadata were unchanged on readback. No protocol or collector was started.
 Both attempts are consumed, not retryable. Aliyun physical validation remains
 `NO-GO` until a new, separately bounded isolation approach is established.
 
+### Local WSL physical-acceptance candidate (not executed)
+
+On 2026-09-29 the operator selected the local WSL alternative instead of
+continuing to use the Aliyun host. This selects an environment; it is not an
+execution approval. Read-only admission found Ubuntu 24.04 on x86_64, an
+unprivileged account, and available `unshare`, `ip`, `curl`, `sha256sum`, and
+`openssl` commands. A disposable user/mount/network namespace dry-run
+successfully brought up its private `lo` interface and showed only
+`127.0.0.1/8` and `::1/128`. No Hysteria or collector was started, and no
+public binary was downloaded. The old Aliyun state is neither mounted nor
+reused as validation data.
+
+The proposed single-use execution package must bind the then-current exact
+source commit, a new `/tmp/gccgw-data-pack-wsl.*` workspace, and verified
+public Linux x64 artifacts before physical execution. Candidate artifacts are
+Node 22.23.1 (`node-v22.23.1-linux-x64.tar.xz`, SHA-256
+`9749e988f437343b7fa832c69ded82a312e41a03116d766797ac14f6f9eee578`)
+and Hysteria2 2.9.3 (`hysteria-linux-amd64`, SHA-256
+`66dbdb0608f25f3057b433afe975a9fc1af2ca8e512479e294988b3ef363d6c1`).
+Reverify these values against the vendors' official release manifests in the
+execution package. Fetch and verify outside the private network namespace;
+inside it, bind the test UDP server, Traffic Stats HTTP listener, three local
+client inbounds, and synthetic echo target to private loopback only. The
+package must reject any occupied test port before spawning a process. No apt,
+systemd, host service, provider API, firewall, DNS, production configuration,
+real credential, customer record, or existing SQLite file is in scope.
+
+Physical acceptance is a sequence of observable boundaries, not one green
+process exit: (1) independently authenticate two synthetic pack credentials
+and one timed-plan credential through the real Hysteria process; (2) generate
+bounded loopback traffic for each and use the repository's Hysteria collector
+with `clear=1` to record per-credential deltas into a new synthetic control
+database, with no cross-resource attribution; (3) exhaust one pack and apply
+the new desired state through the actual edge adapter; (4) after server
+restart, require a new connection using the exhausted pack's old credential
+to fail while the other pack and timed plan still pass; (5) rotate a separate
+pack credential, require the old credential to fail and the replacement to
+pass, while its used bytes remain unchanged; (6) interrupt a run-owned process
+and verify bounded recovery and no duplicate usage or entitlement. Merely
+removing a credential from a generated config or kicking an online session
+does not prove traffic-supply stop.
+
+The package must emit aggregate-only receipts: pinned source/artifact hashes,
+namespace and port checks, credential count, per-resource pass/fail and byte
+counts, restart and listener readback, recovery result, and cleanup readback.
+It must never print client passwords, subscription URLs, raw config, full
+Traffic Stats payloads, or synthetic SQLite rows. A failed prerequisite stops
+the run; no automatic retry. Finalization terminates only PIDs spawned by
+this package and verifies every test listener is gone. The disposable run
+directory may be removed only after its redacted receipt is retained and its
+absolute path is confirmed to be under the named `/tmp` prefix. Source and
+mobile browser fixture checks remain separate evidence: neither substitutes
+for this physical acceptance or production migration/rollback gates.
+
 The physical acceptance record must distinguish actual edge apply and
 collector observations from injected samples. It must show independent pack
 usage, exhaustion blocking only that pack, another pack and timed plan still
