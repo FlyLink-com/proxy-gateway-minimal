@@ -13,7 +13,7 @@ const SOURCE_FAILURES = new Map([
   ["recovery_counters_invalid","statistics_counter_invalid"],
   ["validation_error","statistics_response_invalid"],
   ["full_metering_source_timeout","statistics_timeout"],
-  ["full_metering_source_request_failed","statistics_transport_failed"],
+  ["full_metering_source_request_failed","statistics_response_invalid"],
   ["full_metering_source_http_failed","statistics_http_failed"],
   ["full_metering_source_unauthorized","statistics_authorization_failed"],
   ["full_metering_source_forbidden","statistics_authorization_failed"],
@@ -193,6 +193,7 @@ export async function readFullMeteringLocalSource({kind,runtimeUnit,configPath,c
           try { return await fetchFn(...args); } catch { transportFailed=true; throw new Error("statistics_transport_failed"); }
         }})();
       } catch(error) {
+        if(error?.code==="full_metering_source_timeout")fail("statistics_timeout");
         if(transportFailed)fail("statistics_transport_failed");
         if(typeof error?.code==="string"&&error.code.startsWith("full_metering_local_"))throw error;
         fail(SOURCE_FAILURES.get(error?.code)||"statistics_response_invalid");

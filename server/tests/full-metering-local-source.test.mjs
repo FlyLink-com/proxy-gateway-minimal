@@ -112,6 +112,28 @@ test("local HTTP statistics source classifies transport failure without exposing
 });
 
 for(const kind of ["hy2","tuic"]){
+  for(const [label,body] of [["malformed JSON","synthetic-private-not-json"],["invalid UTF8",Buffer.from([0xff])],["duplicate keys",'{"synthetic-private-key":1,"synthetic-private-key":2}']]){
+    test(`local ${kind} classifies HTTP 200 ${label} as invalid response, not transport`,async()=>{
+      const {options}=fixture(kind);
+      options.fetchFn=async()=>new Response(body,{status:200,headers:{"content-type":"application/json"}});
+      await assert.rejects(readFullMeteringLocalSource(options),error=>
+        error.code==="full_metering_local_statistics_response_invalid"&&!error.message.includes("synthetic-private"));
+    });
+  }
+  test(`local ${kind} preserves HTTP timeout when AbortSignal rejects fetch`,async t=>{
+    const {options}=fixture(kind);
+    t.mock.timers.enable({apis:["setTimeout"]});
+    options.fetchFn=(_url,request)=>new Promise((_resolve,reject)=>{
+      request.signal.addEventListener("abort",()=>reject(new Error("synthetic-secret-abort-detail")),{once:true});
+    });
+    const checking=assert.rejects(readFullMeteringLocalSource(options),error=>
+      error.code==="full_metering_local_statistics_timeout"&&!error.message.includes("synthetic-secret"));
+    t.mock.timers.tick(10_000);
+    await checking;
+  });
+}
+
+for(const kind of ["hy2","tuic"]){
   test(`local ${kind} rejects duplicate endpoint keys`,async()=>{
     const {state,options}=fixture(kind),line=kind==="hy2"?'  listen: "127.0.0.1:12345"':'external-controller: "127.0.0.1:12345"';
     state.config=state.config.replace(line,`${line}\n${line}`);
