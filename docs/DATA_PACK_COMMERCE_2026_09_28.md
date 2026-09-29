@@ -510,6 +510,14 @@ no-store order handoff, and bounded recovery before the complete
 purchase-to-delivery scenario can be claimed. Until then, #753 stays Draft
 and the three offers stay unpublished.
 
+The next source slice provides the complete driver/scenario/transport package
+in [DATA_PACK_WSL_ACCEPTANCE.md](DATA_PACK_WSL_ACCEPTANCE.md). It verifies real
+adapter/collector/control/reset composition using injected transport fixtures
+in source tests; a native transport can run only under the exact one-use WSL
+gate and same-source Linux dependency artifact. No physical execution receipt
+exists yet. Its scope remains Hysteria enforcement and metering of synthetic
+resources, not authenticated purchase-to-delivery E2E or production readiness.
+
 - Isolated tests: three price/size snapshots, idempotent payment and partial
   fulfillment recovery, two simultaneous packs plus a timed plan, no monthly
   quota reset, exhausted-pack-only suspension, credential refresh/rotation

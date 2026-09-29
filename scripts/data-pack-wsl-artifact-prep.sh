@@ -62,8 +62,27 @@ cleanup_on_failure() {
 }
 trap cleanup_on_failure EXIT
 mkdir "$RUN_DIR/source"
-git --git-dir="$GIT_DIR" archive --format=tar "$EXPECTED_COMMIT" \
-  | tar -xf - -C "$RUN_DIR/source" || die 'source export failed'
+git --git-dir="$GIT_DIR" archive --format=tar "$EXPECTED_COMMIT" > "$RUN_DIR/source.tar" \
+  || die 'source archive creation failed'
+tar -xf "$RUN_DIR/source.tar" -C "$RUN_DIR/source" || die 'source export failed'
+python3 - "$RUN_DIR" "$EXPECTED_COMMIT" <<'PY' || die 'complete source manifest creation failed'
+import hashlib, json, os, sys, tarfile
+directory, commit = sys.argv[1:]
+entries, seen = [], set()
+with tarfile.open(os.path.join(directory, 'source.tar'), 'r:') as archive:
+    for member in archive:
+        path = member.name.rstrip('/')
+        if (not path or path.startswith('/') or '\\' in path or path in seen
+                or any(part in ['', '.', '..'] for part in path.split('/'))): raise SystemExit(1)
+        seen.add(path)
+        if member.isdir(): entries.append({'path': path, 'type': 'directory'})
+        elif member.isfile():
+            entries.append({'path': path, 'type': 'file', 'executable': bool(member.mode & 0o100),
+                'sha256': hashlib.sha256(archive.extractfile(member).read()).hexdigest()})
+        else: raise SystemExit(1)
+with open(os.path.join(directory, 'source-tree.json'), 'x', encoding='utf-8') as output:
+    json.dump({'schemaVersion': 1, 'sourceCommit': commit, 'entries': entries}, output, sort_keys=True)
+PY
 [[ $(sha256sum "$RUN_DIR/source/scripts/data-pack-wsl-artifact-prep.sh" | cut -d ' ' -f 1) \
   == "$SCRIPT_SHA256" ]] || die 'exported source differs from pinned script'
 
