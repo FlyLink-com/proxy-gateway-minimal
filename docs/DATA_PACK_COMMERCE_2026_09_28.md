@@ -266,6 +266,16 @@ plan constraint, and restores the pre-upgrade snapshot. This proves only the
 local source schema/backup path; it is not a production migration, live backup,
 or rollback authorization.
 
+A separate synthetic two-database recovery test captures a 100 GB pack order
+with paid Coins in Commerce SQLite, creates its pack effect in a distinct
+control SQLite, and simulates loss of the Commerce completion write. After
+closing and reopening both databases at lease expiry, the same command and
+effect complete with one resource creation, unchanged debit-ledger count, and
+one delivery receipt. This is source-level crash-boundary evidence, not a
+physical edge-process or production recovery rehearsal. The matching mobile
+Orders handoff is proposed separately in `gccltd/gccwebos-mobile#13`; that
+Draft PR is not a deployed customer entry.
+
 Issue #522 describes an older shared-allowance preference (monthly quota
 first). The 2026-09-28 product instruction supersedes that preference for
 these three new offers: **independent subscription per purchased pack**.
