@@ -459,16 +459,20 @@ fail. The physical driver must not claim this property as passing until the
 edge-credential invalidation path is implemented and validated.
 
 The operator subsequently confirmed that reset must also invalidate the old
-imported edge connection and issue new edge material. A source-only control
-store primitive now replaces the material digest on the same pack metering
-principal, preserving its request, entitlement, and lifetime usage. The
-existing credential issuer can stage new password/UUID material for that
-stable principal, so collector identity does not need to change. The
-primitive does not issue protected replacement material, coordinate the
-artifact and edge transitions, apply the edge configuration, terminate an
-existing connection, or prove physical revocation. Those remain open Risk A gates;
-the existing preparation receipt is bound to the earlier source commit and
-must not be used as a physical execution authorization for this new slice.
+imported edge connection and issue new edge material. Source implementation at
+`1e2c1dea5463acebef7b636a309452e5336908cc` has a durable, lease-fenced
+reset intent: it stages new password/UUID material in the protected file,
+switches the control digest on the same metering principal, commits that same
+material, requires an exact desired-state apply receipt, and only then runs
+the existing subscription artifact/link rotation. Its recovery path replays
+the same candidate without resetting the pack's measured usage. A synthetic
+adapter test excludes the old password from the replacement Hysteria config;
+an isolated source integration test covers the real artifact rotation service
+and order re-fetch. These tests do not prove that a physical protocol process
+applied the config, that an already imported old connection is rejected, or
+that the collector converged. Those remain open Risk A gates; the existing
+preparation receipt is bound to an earlier source commit and must not be used
+as a physical execution authorization for this new slice.
 
 The package must emit aggregate-only receipts: pinned source/artifact hashes,
 namespace and port checks, credential count, per-resource pass/fail and byte
