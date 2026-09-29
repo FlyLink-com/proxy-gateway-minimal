@@ -19,6 +19,7 @@ import { loadControlPlaneReleaseIdentity } from "./services/platform/control-pla
 import { createCoinCommerceCoordinator } from "./services/platform/coin-commerce-coordinator.mjs";
 import { createCoinCommerceDataPackOrderDelivery } from "./services/platform/coin-commerce-data-pack-order-delivery.mjs";
 import { createCoinCommerceDataPackArtifactRotation } from "./services/platform/coin-commerce-data-pack-artifact-rotation.mjs";
+import { createCoinCommerceDataPackRotationCoordinator } from "./services/platform/coin-commerce-data-pack-rotation-coordinator.mjs";
 import { composeCoinCommerceDataPackFulfillment } from "./services/platform/coin-commerce-data-pack-production-binding.mjs";
 import { createSqliteCoinCommerceStore } from "./services/platform/coin-commerce-store.mjs";
 import { createSqliteCoinWalletStore } from "./services/platform/coin-wallet-store.mjs";
@@ -2449,6 +2450,7 @@ export function createRuntimeState(options = {}) {
   let coinCommerceCoordinator = null;
   let coinCommerceDataPackOrderDelivery = null;
   let coinCommerceDataPackArtifactRotation = null;
+  let coinCommerceDataPackRotationCoordinator = null;
   let portalRegistrationWelcomeBonusCoordinator = null;
   let walletFirstDeferredTransitionRuntime = null;
   let deferredTransitionStore = null;
@@ -2674,6 +2676,9 @@ export function createRuntimeState(options = {}) {
           runtimeCore: subscriptionCore,
           materialEscrow: dataPackEscrowOption.value,
           nowFn: subscriptionCoreNowFn
+        });
+        coinCommerceDataPackRotationCoordinator = createCoinCommerceDataPackRotationCoordinator({
+          rotation: coinCommerceDataPackArtifactRotation
         });
       }
       if (registrationWelcomeCoinsWorkerEnabled) {
@@ -2987,6 +2992,13 @@ export function createRuntimeState(options = {}) {
           firstError ||= error;
         }
       }
+      if (coinCommerceDataPackRotationCoordinator) {
+        try {
+          await coinCommerceDataPackRotationCoordinator.stop();
+        } catch (error) {
+          firstError ||= error;
+        }
+      }
       let coordinatorStopped = false;
       try {
         await coinCommerceCoordinator.stop();
@@ -3062,6 +3074,7 @@ export function createRuntimeState(options = {}) {
       coinCommerceCoordinator,
       coinCommerceDataPackOrderDelivery,
       coinCommerceDataPackArtifactRotation,
+      coinCommerceDataPackRotationCoordinator,
       portalRegistrationWelcomeBonusCoordinator,
       deferredTransitionStore,
       deferredTransitionCoordinator,

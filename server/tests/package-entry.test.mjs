@@ -460,11 +460,74 @@ test("startProxyGateway does not inspect a Commerce coordinator while the gate i
       throw new Error("disabled coordinator getter must stay untouched");
     }
   });
+  Object.defineProperty(platform, "coinCommerceDataPackRotationCoordinator", {
+    enumerable: true,
+    get() {
+      throw new Error("disabled pack recovery getter must stay untouched");
+    }
+  });
   const state = fakeState({ platform });
   const handle = await startProxyGateway({ state, logger: false });
 
   await handle.stop();
 
+  assert.equal(state.closeCount, 1);
+});
+
+test("startProxyGateway starts optional pack recovery after Commerce and stops it before Commerce", async () => {
+  const events = [];
+  const state = fakeState({ platform: {
+    coinsCommerceEnabled: true,
+    coinCommerceCoordinator: {
+      start() { events.push("commerce-start"); },
+      stop() { events.push("commerce-stop"); }
+    },
+    coinCommerceDataPackRotationCoordinator: {
+      start() { events.push("pack-recovery-start"); },
+      stop() { events.push("pack-recovery-stop"); }
+    }
+  } });
+  const handle = await startProxyGateway({ state, logger: false });
+  await handle.stop();
+  assert.deepEqual(events, [
+    "commerce-start", "pack-recovery-start", "pack-recovery-stop", "commerce-stop"
+  ]);
+});
+
+test("pack recovery startup failure stops Commerce and closes state", async () => {
+  const events = [];
+  const failure = new Error("synthetic recovery store failure");
+  const state = fakeState({ platform: {
+    coinsCommerceEnabled: true,
+    coinCommerceCoordinator: {
+      start() { events.push("commerce-start"); },
+      stop() { events.push("commerce-stop"); }
+    },
+    coinCommerceDataPackRotationCoordinator: {
+      start() { events.push("pack-recovery-start"); throw failure; },
+      stop() { events.push("pack-recovery-stop"); }
+    }
+  } });
+  await assert.rejects(startProxyGateway({ state, logger: false }),
+    (error) => error === failure);
+  assert.deepEqual(events, [
+    "commerce-start", "pack-recovery-start", "pack-recovery-stop", "commerce-stop"
+  ]);
+  assert.equal(state.closeCount, 1);
+});
+
+test("enabled pack recovery rejects an accessor without reading it", async () => {
+  let getterReads = 0;
+  const platform = { coinsCommerceEnabled: true,
+    coinCommerceCoordinator: { start() {}, stop() {} } };
+  Object.defineProperty(platform, "coinCommerceDataPackRotationCoordinator", {
+    enumerable: true,
+    get() { getterReads += 1; throw new Error("unexpected getter"); }
+  });
+  const state = fakeState({ platform });
+  await assert.rejects(startProxyGateway({ state, logger: false }),
+    (error) => error?.code === "coin_commerce_prerequisite_missing");
+  assert.equal(getterReads, 0);
   assert.equal(state.closeCount, 1);
 });
 

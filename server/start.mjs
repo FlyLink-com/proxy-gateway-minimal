@@ -92,6 +92,25 @@ function snapshotCommerceCoordinator(state) {
   });
 }
 
+function snapshotDataPackRotationCoordinator(state) {
+  const platform = state?.platform;
+  let enabled = false;
+  if (platform?.coinsCommerceEnabled === true) {
+    const descriptor = Object.getOwnPropertyDescriptor(
+      platform, "coinCommerceDataPackRotationCoordinator"
+    );
+    if (descriptor && !("value" in descriptor)) {
+      throw coordinatorContractError();
+    }
+    enabled = descriptor?.value != null;
+  }
+  return snapshotCoordinator(platform, {
+    enabled,
+    field: "coinCommerceDataPackRotationCoordinator",
+    errorFactory: coordinatorContractError
+  });
+}
+
 function snapshotWelcomeBonusCoordinator(state) {
   const platform = state?.platform;
   return snapshotCoordinator(platform, {
@@ -113,6 +132,7 @@ function snapshotDeferredTransitionCoordinator(state) {
 function snapshotRuntimeCoordinators(state) {
   return [
     snapshotCommerceCoordinator(state),
+    snapshotDataPackRotationCoordinator(state),
     snapshotWelcomeBonusCoordinator(state),
     snapshotDeferredTransitionCoordinator(state)
   ].filter(Boolean);

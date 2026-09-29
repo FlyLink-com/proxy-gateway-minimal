@@ -219,14 +219,22 @@ operation-specific owner. An active lease rejects another worker; an expired
 lease may be taken over against the same durable intent, and stale owners
 cannot advance a control stage or release the replacement lease. A bounded
 `reconcilePending({ limit })` call selects at most 20 eligible intents and
-returns aggregate completion counts. An opt-in, session-owned POST order route
+returns aggregate completion counts. A default-absent coordinator now runs a
+bounded pass at service startup and every 60 seconds only when the protected
+escrow has been explicitly supplied to runtime state. Startup query failure
+stops startup; later query failure leaves durable intents for the next pass.
+The coordinator stops before the Commerce store closes. Source tests cover
+startup/stop ordering, failed-start cleanup, retry after a periodic failure,
+and real control-store composition with no pending intents. This does not
+prove cross-database purchase recovery, a physical edge apply, or production
+activation. An opt-in, session-owned POST order route
 now invokes pack rotation only after the protected order-delivery resolver
 accepts the same account and order; the response contains no subscription URL
 and carries no-store/no-referrer headers. The URL remains available through
 the authenticated order handoff. Neither the recovery call nor the route is
 wired into the production startup, because the protected escrow is absent
-there. A blocking runtime side effect that outlives the lease, automated
-recovery scheduling, schema migration rehearsal, and real edge/collector
+there. A blocking runtime side effect that outlives the lease, schema
+migration rehearsal, and real edge/collector
 convergence remain open gates; this source slice is **not publication or
 production-rotation approval**.
 
