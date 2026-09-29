@@ -274,34 +274,47 @@ Historical purchases and their accounting must not be rewritten.
 
 ### Isolated-host candidate and execution boundary (2026-09-28)
 
-The local WSL Ubuntu 24.04 instance is a **candidate**, not an accepted
-staging or production lane. Read-only preflight found x86_64 Linux with
-systemd and unused loopback UDP capacity. Linux Node and the Hysteria2
-runtime are absent. The existing convergence test stubs service restart,
+The operator prefers the existing Aliyun **nonproduction validation host**
+for Linux acceptance. A 2026-09-23 receipt records synthetic Linux tests on
+that host, but does not prove its current role, availability, free capacity,
+privilege boundary, or suitability for a live protocol process. The local WSL
+Ubuntu 24.04 instance remains a fallback candidate, not an accepted staging
+or production lane. The existing convergence test stubs service restart,
 config test, and listener checks; its green result is source evidence, not
 physical traffic-supply-stop evidence. The data-pack fulfillment constructor
 and rotation route are also not wired into production startup, so installing
 a protocol binary alone cannot establish purchase-to-delivery E2E.
 
-Before any host setup, bind a separate exact Risk A validation gate to this
-WSL instance and a fresh preflight. The proposed setup uses only a verified
-Node 22.23.1 Linux x64 archive and Hysteria2 2.9.3 Linux amd64 binary in a
-new task-specific temporary directory. It must not use apt, systemd units,
-public listeners, provider access, production environment files, customer
-records, existing control databases, or real subscriptions. Tests use
-synthetic accounts, credentials, orders, and SQLite files; runtime traffic
-and stats endpoints stay on loopback, with non-privileged ports checked free
-immediately before use. Record exact binary digests, temporary path, ports,
-process IDs, and teardown commands in the gate before starting a process.
+Before Aliyun access, complete the no-credential local/network precheck and
+bind a fresh, exact Risk A **read-only inventory** to the intended instance
+and an allowlist of metadata-only commands. Confirm that it is still the
+nonproduction validation host, has no production material or conflicting
+runtime, and can accommodate a private, bounded protocol test without
+changing existing services. A historical host name or receipt is not access
+authority. If its identity or isolation cannot be verified, stop rather than
+falling back to a historical production/candidate node.
+
+Only after that inventory, a separate execution gate may bind the exact PR
+head, verified Node and Hysteria2 binary digests, workspace, port/namespace
+scope, commands, output boundary, stop conditions, and rollback. No apt,
+systemd unit, provider, firewall, DNS, public listener, production environment
+file, customer record, existing control database, or real subscription may be
+used. Tests use synthetic accounts, credentials, orders, certificates, and
+SQLite files. Protocol traffic and stats endpoints remain private to the
+isolated namespace or loopback; port ownership is checked immediately before
+use. The prior manual-CI setup and its retained workspace are not reused as
+this run's writable workspace.
 
 Dry-run order: verify the source commit and clean checkout; validate public
-binary digests and all target paths; inspect port ownership; prepare synthetic
-certificates and data under the task directory; run configuration validation;
-then start the isolated runtime and collector. Stop if any identity mapping,
-protected reference, process ownership, listener scope, or cleanup target is
-ambiguous. Teardown must stop only processes started by this run, confirm
-their loopback listeners are gone, and remove only the validated temporary
-directory. A failed or partial run is not retried under a consumed gate.
+binary digests and exact paths; inspect host role, capacity, process/service
+state and port ownership without reading configuration or customer data;
+prepare a new named run workspace; validate synthetic configuration; then
+start only the isolated runtime and collector. Stop if identity mapping,
+protected reference, process ownership, listener scope, or rollback target is
+ambiguous. Rollback stops only processes started by this run and confirms
+their listeners are gone; the long-lived host's run workspace and redacted
+receipt are retained for a separately approved cleanup decision. A failed or
+partial run is not retried under a consumed gate.
 
 The physical acceptance record must distinguish actual edge apply and
 collector observations from injected samples. It must show independent pack
