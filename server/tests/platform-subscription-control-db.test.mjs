@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { copyFileSync, existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -466,6 +466,79 @@ test("add-only data-pack resource schema preserves an existing control account o
     }
   } finally {
     rmSync(tempDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 50 });
+  }
+});
+
+test("pack schema upgrade and backup restore preserve legacy access rows and constraints", () => {
+  const directory = mkdtempSync(join(tmpdir(), "platform-pack-schema-rehearsal-"));
+  const dbPath = join(directory, "control.sqlite");
+  const backupPath = join(directory, "before-pack.sqlite");
+  const now = "2026-09-28T00:00:00.000Z";
+  let store;
+  try {
+    store = createSqliteSubscriptionControlStore({ dbPath });
+    store.createAccount({ id: "acct_before_pack_rehearsal",
+      ownerRef: "portal_before_pack_rehearsal", status: "active",
+      createdAt: now, updatedAt: now });
+    store.close();
+    store = null;
+    const before = new Database(dbPath);
+    try {
+      before.exec("drop table platform_data_pack_artifact_rotations");
+      before.exec("drop table platform_data_pack_edge_credentials");
+      before.exec("drop table platform_data_pack_resources");
+      before.prepare(`insert into platform_portal_access_requests
+        (id, portal_user_ref, plan, client_target, duration_days, quantity,
+         status, next_action, prior_trial_state, submitted_at, updated_at)
+        values (?, ?, 'monthly', 'clash', 30, 1,
+                'pending_admin_review', 'await_review', 'none', ?, ?)`)
+        .run("pareq_before_pack_rehearsal", "portal_before_pack_rehearsal", now, now);
+      assert.equal(before.pragma("foreign_key_check").length, 0);
+    } finally {
+      before.close();
+    }
+    copyFileSync(dbPath, backupPath);
+
+    store = createSqliteSubscriptionControlStore({ dbPath });
+    assert.equal(store.getAccount("acct_before_pack_rehearsal")?.status, "active");
+    store.close();
+    store = null;
+    const upgraded = new Database(dbPath);
+    try {
+      assert.equal(upgraded.prepare(`select plan from platform_portal_access_requests
+        where id = ?`).get("pareq_before_pack_rehearsal")?.plan, "monthly");
+      assert.equal(upgraded.prepare(`select count(*) as count from platform_data_pack_resources`)
+        .get().count, 0);
+      assert.equal(upgraded.pragma("foreign_key_check").length, 0);
+      assert.equal(upgraded.pragma("integrity_check", { simple: true }), "ok");
+      assert.throws(() => upgraded.prepare(`insert into platform_portal_access_requests
+        (id, portal_user_ref, plan, client_target, duration_days, quantity,
+         status, next_action, prior_trial_state, submitted_at, updated_at)
+        values (?, ?, 'data_pack', 'clash', 30, 1,
+                'pending_admin_review', 'await_review', 'none', ?, ?)`)
+        .run("pareq_invalid_pack_plan", "portal_before_pack_rehearsal", now, now),
+      /CHECK constraint failed/);
+    } finally {
+      upgraded.close();
+    }
+
+    // Rehearse restoring only this disposable pre-upgrade snapshot. The live
+    // rollback gate must bind its own backup, process state, and exact version.
+    copyFileSync(backupPath, dbPath);
+    const restored = new Database(dbPath, { readonly: true });
+    try {
+      assert.equal(restored.prepare(`select plan from platform_portal_access_requests
+        where id = ?`).get("pareq_before_pack_rehearsal")?.plan, "monthly");
+      assert.equal(restored.prepare(`select name from sqlite_master
+        where type = 'table' and name = 'platform_data_pack_resources'`).get(), undefined);
+      assert.equal(restored.pragma("foreign_key_check").length, 0);
+      assert.equal(restored.pragma("integrity_check", { simple: true }), "ok");
+    } finally {
+      restored.close();
+    }
+  } finally {
+    store?.close();
+    rmSync(directory, { recursive: true, force: true, maxRetries: 3, retryDelay: 50 });
   }
 });
 

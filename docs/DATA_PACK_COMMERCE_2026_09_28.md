@@ -233,8 +233,8 @@ accepts the same account and order; the response contains no subscription URL
 and carries no-store/no-referrer headers. The URL remains available through
 the authenticated order handoff. Neither the recovery call nor the route is
 wired into the production startup, because the protected escrow is absent
-there. A blocking runtime side effect that outlives the lease, schema
-migration rehearsal, and real edge/collector
+there. A blocking runtime side effect that outlives the lease, production-like
+schema/rollback rehearsal, and real edge/collector
 convergence remain open gates; this source slice is **not publication or
 production-rotation approval**.
 
@@ -258,7 +258,13 @@ that display metadata before publication.
 An isolated persistence test additionally confirmed that
 `platform_portal_access_requests.plan` currently admits only `trial`,
 `monthly`, and `yearly`; inserting a data-pack request fails its SQLite
-constraint. This is a real schema/migration boundary, not a UI omission.
+constraint. Packs use separate order-owned control tables rather than a
+legacy access-request plan. A disposable SQLite upgrade/restore rehearsal now
+checks a pre-pack snapshot with an existing account and monthly access row,
+reopens it with the additive pack tables, preserves foreign keys and the old
+plan constraint, and restores the pre-upgrade snapshot. This proves only the
+local source schema/backup path; it is not a production migration, live backup,
+or rollback authorization.
 
 Issue #522 describes an older shared-allowance preference (monthly quota
 first). The 2026-09-28 product instruction supersedes that preference for
@@ -394,9 +400,10 @@ and the three offers stay unpublished.
   quota reset, exhausted-pack-only suspension, credential refresh/rotation
   without quota reset, account isolation, and order-detail recovery after
   remount or browser refresh.
-- Schema migration rehearsal: preserve all existing access requests, indexes,
-  foreign keys, and constraint behavior while admitting the separate pack
-  resource type. The current timed-plan rows must not be rewritten as packs.
+- Schema gate: repeat the additive upgrade/restore with the exact release
+  artifact and a production-like snapshot; inventory existing access requests,
+  indexes, foreign keys, and constraints before any live migration. The current
+  timed-plan rows must not be rewritten as packs.
 - Runtime-like validation: issue and render each pack on an isolated host,
   import the rendered subscription, meter traffic to exhaustion, verify the
   other resources remain available, and rehearse recovery and rollback.
