@@ -1,6 +1,7 @@
 import { recordReferralRegistration } from './portal-referral-contract.mjs';
 import Database from "better-sqlite3";
 import { createHash, randomBytes } from "node:crypto";
+import { types as utilTypes } from "node:util";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import {
@@ -14,6 +15,7 @@ import {
   createAccountResourceAuthorityStore
 } from "./account-resource-authority.mjs";
 import { readDataPackDesiredStateRows } from "../edge/data-pack-desired-state-rows.mjs";
+import { assertNoDuplicateObjectKeys } from "../deployment/strict-json-scan.mjs";
 
 const UNSAFE_FIELD_PARTS = [
   "email",
@@ -6352,6 +6354,235 @@ export function createSqliteSubscriptionControlStore({
     `).get(rotationRef));
   }
 
+  // The collector owns journal admission. These APIs bind its private receipt
+  // to a revalidated, order-owned reset; no material, counters or schema change.
+  function meteringResetInvalid() {
+    return platformError("reconciliation_required", "data pack metering reset proof is invalid");
+  }
+
+  function meteringResetObject(value, fields) {
+    if (!value || typeof value !== "object" || Array.isArray(value) || utilTypes.isProxy(value)
+      || ![Object.prototype, null].includes(Object.getPrototypeOf(value))) throw meteringResetInvalid();
+    const keys = Reflect.ownKeys(value);
+    if (keys.length !== fields.length || keys.some((key) => !fields.includes(key)
+      || !Object.hasOwn(Object.getOwnPropertyDescriptor(value, key), "value")
+      || !Object.getOwnPropertyDescriptor(value, key).enumerable)) throw meteringResetInvalid();
+  }
+
+  function meteringResetTime(value) {
+    if (typeof value !== "string" || !Number.isFinite(Date.parse(value))
+      || new Date(value).toISOString() !== value) throw meteringResetInvalid();
+    return value;
+  }
+
+  function meteringResetCanonical(value) {
+    if (value && typeof value === "object") {
+      return `{${Object.keys(value).sort().map((key) =>
+        `${JSON.stringify(key)}:${meteringResetCanonical(value[key])}`).join(",")}}`;
+    }
+    return JSON.stringify(value);
+  }
+
+  function validateMeteringResetProof(proof) {
+    const refs = ["rotationRef", "orderRef", "accountId", "requestRef", "entitlementRef",
+      "edgeChannelRef", "edgeCredentialRef"];
+    meteringResetObject(proof, ["version", ...refs, "oldEdgeMaterialDigest",
+      "newEdgeMaterialDigest", "billingBinding", "quotaBytes", "exhausted"]);
+    meteringResetObject(proof.billingBinding, ["plan", "validFrom", "validUntil"]);
+    if (proof.version !== 1 || refs.some((field) => typeof proof[field] !== "string"
+      || safeControlRef(proof[field], field) !== proof[field])
+      || typeof proof.billingBinding.plan !== "string"
+      || safeControlRef(proof.billingBinding.plan, "plan") !== proof.billingBinding.plan
+      || ![proof.oldEdgeMaterialDigest, proof.newEdgeMaterialDigest].every((value) =>
+        typeof value === "string" && /^sha256:[a-f0-9]{64}$/.test(value))
+      || proof.oldEdgeMaterialDigest === proof.newEdgeMaterialDigest
+      || !Number.isSafeInteger(proof.quotaBytes) || proof.quotaBytes <= 0
+      || typeof proof.exhausted !== "boolean") throw meteringResetInvalid();
+    if (meteringResetTime(proof.billingBinding.validFrom)
+      >= meteringResetTime(proof.billingBinding.validUntil)) throw meteringResetInvalid();
+  }
+
+  function validateMeteringResetContinuation(continuation, proof, now) {
+    meteringResetObject(continuation, ["version", "activationId", "context", "previousSequence",
+      "sequence", "previousCheckpointDigest", "identityDigest", "proofDigest", "archiveName", "completedAt"]);
+    meteringResetObject(continuation.context, ["databaseIdentityDigest", "scopeDigest"]);
+    if (continuation.version !== 1 || typeof continuation.activationId !== "string"
+      || !SAFE_AUTHORITY_REF_PATTERN.test(continuation.activationId)
+      || !Number.isSafeInteger(continuation.previousSequence) || continuation.previousSequence < 0
+      || !Number.isSafeInteger(continuation.sequence)
+      || continuation.sequence !== continuation.previousSequence + 1
+      || ![continuation.previousCheckpointDigest, continuation.identityDigest, continuation.proofDigest,
+        continuation.context.databaseIdentityDigest, continuation.context.scopeDigest].every((value) =>
+        typeof value === "string" && /^[a-f0-9]{64}$/.test(value))
+      || continuation.proofDigest !== sha256(meteringResetCanonical(proof))
+      || continuation.archiveName !== `material-before-${continuation.previousCheckpointDigest}.json`
+      || meteringResetTime(continuation.completedAt) > now) throw meteringResetInvalid();
+  }
+
+  function meteringResetReceiptRef(rotationRef) {
+    return `pack_metering_reset_${sha256(`GCCWEBOS:DATA_PACK_METERING_RESET_RECEIPT:v1\0${rotationRef}`)}`;
+  }
+
+  function assertDataPackResetEdgeApplied(current, now, resourceUsage) {
+    const createdAt = db.prepare(`select created_at from platform_data_pack_credential_resets
+      where rotation_ref = ?`).get(current.rotationRef)?.created_at;
+    if (!createdAt || meteringResetTime(createdAt) > now) throw meteringResetInvalid();
+    const notifications = db.prepare(`
+      select n.node_ref, n.desired_state_ref, n.generation
+      from platform_edge_desired_state_notifications n
+      join platform_edge_apply_receipts r
+        on r.channel_ref = n.channel_ref and r.desired_state_ref = n.desired_state_ref
+      where n.channel_ref = ? and n.reason = ? and n.status = 'applied'
+        and n.created_at >= ? and n.created_at <= ? and r.status = 'applied'
+        and r.config_test_ok = 1 and r.service_active = 1 and r.listener_udp443 = 1
+        and r.applied_at >= ? and r.applied_at <= ?
+      order by n.created_at desc, n.rowid desc limit 20
+    `).all(current.edgeChannelRef, "coin_commerce_data_pack_credential_reset", createdAt, now, createdAt, now);
+    if (!notifications.some((notification) => {
+      const desired = getLatestEdgeDesiredStateForChannel(current.edgeChannelRef, { nodeRef: notification.node_ref });
+      const credentialPresent = desired?.edgeCredentialRefs.includes(current.edgeCredentialRef);
+      const materialPresent = desired?.materialDigests.some((item) => (
+        item.edgeCredentialRef === current.edgeCredentialRef && item.channelRef === current.edgeChannelRef
+        && item.digest === current.newEdgeMaterialDigest));
+      return desired?.desiredStateRef === notification.desired_state_ref
+        && desired.generation === notification.generation
+        && (resourceUsage.usage.exhausted === true
+          ? !credentialPresent && !desired.materialDigests.some((item) => item.edgeCredentialRef === current.edgeCredentialRef)
+          : credentialPresent && materialPresent);
+    })) throw platformError("reconciliation_required", "data pack reset edge not applied");
+  }
+
+  function currentMeteringResetProof(current, now, { allowComplete = false, acknowledgedProof = null } = {}) {
+    if (!current || !(current.status === "edge_applied" || allowComplete && current.status === "complete")) {
+      throw meteringResetInvalid();
+    }
+    const resourceUsage = readDataPackResourceUsage({ accountId: current.accountId, orderRef: current.orderRef,
+      requestRef: current.requestRef, entitlementRef: current.entitlementRef, now });
+    const request = getIssuanceRequest(current.requestRef), entitlement = getEntitlement(current.entitlementRef);
+    const resource = db.prepare("select * from platform_data_pack_resources where order_ref=?").get(current.orderRef);
+    const orderDigest = sha256(current.orderRef);
+    const expectedMetadata = { version: 1, kind: "data_pack", commandRef: resource.command_ref,
+      orderRef: current.orderRef, offerVersionRef: entitlement.plan, quotaBytes: resourceUsage.usage.totalBytes,
+      nodeId: current.edgeChannelRef, commercialNeverExpires: true, technicalValidUntil: DATA_PACK_TECHNICAL_VALID_UNTIL };
+    try {
+      assertNoDuplicateObjectKeys(db.prepare("select metadata_json from platform_issuance_requests where id=?")
+        .get(current.requestRef).metadata_json);
+    } catch { throw meteringResetInvalid(); }
+    if (current.requestRef !== `pareq_pack_${orderDigest}` || current.entitlementRef !== `ent_pack_${orderDigest}`
+      || request.approvalRef !== `approval_pack_${orderDigest}` || request.quantity !== 1
+      || request.requestedByRef !== "coin_commerce_fulfillment" || entitlement.maxArtifacts !== 1
+      || entitlement.maxDevices !== 1 || entitlement.validFrom !== request.createdAt
+      || meteringResetCanonical(request.metadata) !== meteringResetCanonical(expectedMetadata)) throw meteringResetInvalid();
+    const credentials = db.prepare(`select * from platform_data_pack_edge_credentials
+      where request_ref = ? limit 2`).all(current.requestRef);
+    const credential = credentials[0];
+    if (credentials.length !== 1 || credential.status !== "active"
+      || credential.entitlement_ref !== current.entitlementRef
+      || credential.edge_credential_ref !== current.edgeCredentialRef
+      || credential.edge_channel_ref !== current.edgeChannelRef || request.nodeId !== current.edgeChannelRef
+      || credential.edge_material_digest !== current.newEdgeMaterialDigest) throw meteringResetInvalid();
+    if (db.prepare("select count(*) as count from platform_data_pack_edge_credentials where edge_credential_ref=?")
+      .get(current.edgeCredentialRef).count !== 1
+      || db.prepare("select 1 from platform_portal_edge_credentials where edge_credential_ref=? or request_id=? limit 1")
+        .get(current.edgeCredentialRef, current.requestRef)
+      || db.prepare("select 1 from platform_portal_access_requests where edge_credential_ref=? or id=? limit 1")
+        .get(current.edgeCredentialRef, current.requestRef)) throw meteringResetInvalid();
+    // Once the boundary was durably acknowledged, later quota exhaustion is
+    // normal forward progress. Its newly empty desired state belongs to quota
+    // convergence, not a second material continuation. Other apply drift still
+    // fails; a new receipt never receives this narrow historical-proof allowance.
+    if (!(acknowledgedProof?.exhausted === false && resourceUsage.usage.exhausted === true)) {
+      assertDataPackResetEdgeApplied(current, now, resourceUsage);
+    }
+    const proof = { version: 1, rotationRef: current.rotationRef, orderRef: current.orderRef,
+      accountId: current.accountId, requestRef: current.requestRef, entitlementRef: current.entitlementRef,
+      edgeChannelRef: current.edgeChannelRef, edgeCredentialRef: current.edgeCredentialRef,
+      oldEdgeMaterialDigest: current.oldEdgeMaterialDigest, newEdgeMaterialDigest: current.newEdgeMaterialDigest,
+      billingBinding: Object.freeze({ plan: entitlement.plan, validFrom: entitlement.validFrom, validUntil: entitlement.validUntil }),
+      quotaBytes: resourceUsage.usage.totalBytes, exhausted: resourceUsage.usage.exhausted === true };
+    validateMeteringResetProof(proof);
+    return Object.freeze(proof);
+  }
+
+  function readCoinCommerceDataPackMeteringResetProofs(input = {}) {
+    meteringResetObject(input, ["now"]);
+    const now = meteringResetTime(input.now);
+    return db.transaction(() => {
+      const rows = db.prepare(`select * from platform_data_pack_credential_resets
+        where status = 'edge_applied' order by created_at, rotation_ref limit 33`).all();
+      if (rows.length > 32) throw meteringResetInvalid();
+      return Object.freeze(rows.map((row) => {
+        const current = mapDataPackCredentialReset(row);
+        const receipt = getCoinCommerceDataPackMeteringResetReceipt({ rotationRef: current.rotationRef,
+          orderRef: current.orderRef, accountId: current.accountId, now });
+        return receipt?.proof || currentMeteringResetProof(current, now);
+      }));
+    })();
+  }
+
+  function getCoinCommerceDataPackMeteringResetReceipt(input = {}) {
+    meteringResetObject(input, ["rotationRef", "orderRef", "accountId", "now"]);
+    const now = meteringResetTime(input.now);
+    for (const field of ["rotationRef", "orderRef", "accountId"]) {
+      if (typeof input[field] !== "string" || safeControlRef(input[field], field) !== input[field]) throw meteringResetInvalid();
+    }
+    return db.transaction(() => {
+      const current = readDataPackCredentialReset(input.rotationRef);
+      if (!current || current.accountId !== input.accountId || current.orderRef !== input.orderRef) throw meteringResetInvalid();
+      const receipt = getAuditEvent(meteringResetReceiptRef(input.rotationRef));
+      if (!receipt) return null;
+      try {
+        assertNoDuplicateObjectKeys(db.prepare("select metadata_json from platform_audit_events where id = ?")
+          .get(receipt.id).metadata_json);
+      } catch { throw meteringResetInvalid(); }
+      meteringResetObject(receipt.metadata, ["version", "proof", "continuation"]);
+      const { proof, continuation } = receipt.metadata;
+      validateMeteringResetProof(proof);
+      validateMeteringResetContinuation(continuation, proof, now);
+      const createdAt = db.prepare(`select created_at from platform_data_pack_credential_resets
+        where rotation_ref = ?`).get(current.rotationRef).created_at;
+      if (receipt.entityType !== "coin_commerce_data_pack_metering_reset"
+        || receipt.entityRef !== current.rotationRef || receipt.action !== "data_pack_metering_reset_completed"
+        || receipt.actorRef !== "full_metering_collector" || receipt.createdAt !== continuation.completedAt
+        || receipt.metadata.version !== 1 || continuation.completedAt < createdAt) {
+        throw meteringResetInvalid();
+      }
+      const currentProof = currentMeteringResetProof(current, now, { allowComplete: true, acknowledgedProof: proof });
+      const comparable = !proof.exhausted && currentProof.exhausted
+        ? { ...currentProof, exhausted: false } : currentProof;
+      if (meteringResetCanonical(proof) !== meteringResetCanonical(comparable)) throw meteringResetInvalid();
+      return Object.freeze({ version: 1, proof: Object.freeze({ ...proof, billingBinding: Object.freeze(proof.billingBinding) }),
+        continuation: Object.freeze({ ...continuation, context: Object.freeze(continuation.context) }) });
+    })();
+  }
+
+  function recordCoinCommerceDataPackMeteringResetReceipt(input = {}) {
+    meteringResetObject(input, ["proof", "continuation", "now"]);
+    const now = meteringResetTime(input.now), { proof, continuation } = input;
+    validateMeteringResetProof(proof);
+    validateMeteringResetContinuation(continuation, proof, now);
+    return db.transaction(() => {
+      const scope = { rotationRef: proof.rotationRef, orderRef: proof.orderRef, accountId: proof.accountId, now };
+      const existing = getCoinCommerceDataPackMeteringResetReceipt(scope);
+      const metadata = { version: 1, proof, continuation };
+      if (existing) {
+        if (meteringResetCanonical(existing) !== meteringResetCanonical(metadata)) throw meteringResetInvalid();
+        return existing;
+      }
+      const current = readDataPackCredentialReset(proof.rotationRef);
+      if (meteringResetCanonical(proof) !== meteringResetCanonical(currentMeteringResetProof(current, now))) throw meteringResetInvalid();
+      // The generic audit input filter rejects any field named "credential".
+      // This exact private shape contains only validated references and digests,
+      // never credential material; do not relax that generic audit API.
+      db.prepare(`insert into platform_audit_events
+        (id, entity_type, entity_ref, action, actor_ref, created_at, metadata_json)
+        values (?, ?, ?, ?, ?, ?, ?)`).run(meteringResetReceiptRef(proof.rotationRef),
+        "coin_commerce_data_pack_metering_reset", proof.rotationRef, "data_pack_metering_reset_completed",
+        "full_metering_collector", continuation.completedAt, JSON.stringify(metadata));
+      return getCoinCommerceDataPackMeteringResetReceipt(scope);
+    }).immediate();
+  }
+
   // One order-owned intent spans protected staging, the control digest CAS,
   // edge apply and artifact rotation. It never stores material or usage rows.
   function beginCoinCommerceDataPackCredentialReset(input = {}) {
@@ -6498,6 +6729,9 @@ export function createSqliteSubscriptionControlStore({
           && input.newEdgeMaterialDigest !== current.newEdgeMaterialDigest) {
           throw platformError("reconciliation_required", "data pack reset material changed");
         }
+        if (stage === "complete" && !getCoinCommerceDataPackMeteringResetReceipt({ rotationRef, orderRef, accountId, now })) {
+          throw meteringResetInvalid();
+        }
         return current;
       }
       if (stage === "staged" && current.status === "prepared") {
@@ -6537,44 +6771,13 @@ export function createSqliteSubscriptionControlStore({
       } else if (stage === "edge_applied" && current.status === "material_committed") {
         const resourceUsage = readDataPackResourceUsage({ accountId, orderRef,
           requestRef: current.requestRef, entitlementRef: current.entitlementRef, now });
-        const notifications = db.prepare(`
-          select n.node_ref, n.desired_state_ref, n.generation
-          from platform_edge_desired_state_notifications n
-          join platform_edge_apply_receipts r
-            on r.channel_ref = n.channel_ref
-           and r.desired_state_ref = n.desired_state_ref
-          where n.channel_ref = ? and n.reason = ? and n.status = 'applied'
-            and n.created_at >= ? and r.status = 'applied'
-            and r.config_test_ok = 1 and r.service_active = 1
-            and r.listener_udp443 = 1 and r.applied_at is not null
-          order by n.created_at desc limit 20
-        `).all(current.edgeChannelRef, "coin_commerce_data_pack_credential_reset",
-          db.prepare(`select created_at from platform_data_pack_credential_resets
-            where rotation_ref = ?`).get(rotationRef).created_at);
-        const applied = notifications.some((notification) => {
-          const desired = getLatestEdgeDesiredStateForChannel(current.edgeChannelRef, {
-            nodeRef: notification.node_ref
-          });
-          const credentialPresent = desired?.edgeCredentialRefs.includes(current.edgeCredentialRef);
-          const materialPresent = desired?.materialDigests.some((item) => (
-            item.edgeCredentialRef === current.edgeCredentialRef
-            && item.channelRef === current.edgeChannelRef
-            && item.digest === current.newEdgeMaterialDigest
-          ));
-          return desired?.desiredStateRef === notification.desired_state_ref
-            && desired.generation === notification.generation
-            && (resourceUsage.usage.exhausted === true
-              ? !credentialPresent && !desired.materialDigests.some((item) => (
-                item.edgeCredentialRef === current.edgeCredentialRef
-              ))
-              : credentialPresent && materialPresent);
-        });
-        if (!applied) throw platformError("reconciliation_required", "data pack reset edge not applied");
+        assertDataPackResetEdgeApplied(current, now, resourceUsage);
         db.prepare(`
           update platform_data_pack_credential_resets
           set status = 'edge_applied', updated_at = ? where rotation_ref = ?
         `).run(now, rotationRef);
       } else if (stage === "complete" && current.status === "edge_applied") {
+        if (!getCoinCommerceDataPackMeteringResetReceipt({ rotationRef, orderRef, accountId, now })) throw meteringResetInvalid();
         const artifact = db.prepare(`
           select * from platform_data_pack_artifact_rotations
           where rotation_ref = ? and order_ref = ? and account_id = ? and status = 'complete'
@@ -8308,6 +8511,7 @@ export function createSqliteSubscriptionControlStore({
       ? db.prepare(`
           select * from platform_audit_events
           where entity_ref in (${entityRefs.map(() => "?").join(",")})
+            and entity_type != 'coin_commerce_data_pack_metering_reset'
           order by created_at asc, id asc
         `).all(...entityRefs).map(mapAuditEvent)
       : [];
@@ -8425,6 +8629,9 @@ export function createSqliteSubscriptionControlStore({
     releaseCoinCommerceDataPackCredentialReset,
     listPendingCoinCommerceDataPackCredentialResets,
     advanceCoinCommerceDataPackCredentialReset,
+    readCoinCommerceDataPackMeteringResetProofs,
+    recordCoinCommerceDataPackMeteringResetReceipt,
+    getCoinCommerceDataPackMeteringResetReceipt,
     registerCoinCommerceDataPackEdgeCredential,
     rotateCoinCommerceDataPackEdgeCredential,
     createDataPackResource,

@@ -83,3 +83,24 @@ test('rejects arbitrary nested physical result instead of copying material into 
     physicalResult: { ok: true, credential: 'must-not-appear' } }),
     error => error.code === 'wsl_acceptance_receipt_invalid');
 });
+test('receipt preserves the explicit reset-ack boundary without claiming five-source journal acceptance', () => {
+  const resource = { quotaBytes: 100, seededBaselineBytes: 0, collectorObservedBytes: 5, physicallyCollectedBytes: 0, usedBytes: 5 };
+  const result = { ok: true, evidenceMode: 'synthetic_transport',
+    acceptanceScope: { syntheticControlResources: true, authenticatedPurchaseToDelivery: false,
+      realSubscriptionArtifactRotation: true, realControlAccountingAndReset: true, actualProtocolProcess: false,
+      fullMeteringMaterialContinuation: false, meteringResetReceiptValidated: true },
+    credentialCount: 3, applyCount: 3,
+    resources: { packA: resource, packB: resource, timedPlan: resource },
+    exhaustion: { crossedByCollectorDelta: true, newConnections: { packA: false, packB: true, timedPlan: true } },
+    rotation: { usedBytesBefore: 5, usedBytesAfter: 5, meteringIdentityPreserved: true,
+      oldCredentialAllowed: false, newCredentialAllowed: true, oldArtifactRevoked: true },
+    recovery: { interrupted: true, recovered: true, usageUnchanged: true, resourceCountUnchanged: true } };
+  const receipt = acceptanceReceipt({ gate: gate(), outcome: 'passed', physicalResult: result });
+  assert.equal(receipt.physicalResult.acceptanceScope.fullMeteringMaterialContinuation, false);
+  assert.equal(receipt.physicalResult.acceptanceScope.meteringResetReceiptValidated, true);
+  for (const patch of [{ fullMeteringMaterialContinuation: true }, { meteringResetReceiptValidated: false }]) {
+    const wrong = structuredClone(result); Object.assign(wrong.acceptanceScope, patch);
+    assert.throws(() => acceptanceReceipt({ gate: gate(), outcome: 'passed', physicalResult: wrong }),
+      error => error.code === 'wsl_acceptance_receipt_invalid');
+  }
+});

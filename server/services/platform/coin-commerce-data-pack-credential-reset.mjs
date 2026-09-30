@@ -42,7 +42,8 @@ export function createCoinCommerceDataPackCredentialReset({
     [commerceStore, ["getDeliveredOrderBinding"]],
     [controlStore, ["readDataPackResourceUsage", "beginCoinCommerceDataPackCredentialReset",
       "claimCoinCommerceDataPackCredentialReset", "advanceCoinCommerceDataPackCredentialReset",
-      "releaseCoinCommerceDataPackCredentialReset", "listPendingCoinCommerceDataPackCredentialResets"]],
+      "releaseCoinCommerceDataPackCredentialReset", "listPendingCoinCommerceDataPackCredentialResets",
+      "getCoinCommerceDataPackMeteringResetReceipt"]],
     [materialStore, ["getCredentialMaterialSummary", "getStagedCredentialMaterialRotation",
       "stageCredentialMaterialRotation", "commitCredentialMaterialRotation"]],
     [desiredStateNotifier, ["notifyOrderLifecycle"]],
@@ -68,6 +69,7 @@ export function createCoinCommerceDataPackCredentialReset({
       if (intent.requestRef !== order.requestRef
         || intent.entitlementRef !== order.entitlementRef) throw unavailable();
       if (intent.status === "complete") {
+        if (!controlStore.getCoinCommerceDataPackMeteringResetReceipt({ ...scope, now: now() })) throw unavailable();
         return Object.freeze({ status: "complete", orderRef, rotationRef });
       }
       intent = controlStore.claimCoinCommerceDataPackCredentialReset({
@@ -123,6 +125,9 @@ export function createCoinCommerceDataPackCredentialReset({
           stage: "edge_applied", now: now() });
       }
       if (intent.status === "edge_applied") {
+        // The asynchronous external collector owns journal continuation. Keep
+        // this durable intent pending until its exact receipt is readable.
+        if (!controlStore.getCoinCommerceDataPackMeteringResetReceipt({ ...scope, now: now() })) throw unavailable();
         const artifact = artifactRotation.rotate(scope);
         if (artifact?.status !== "complete" || artifact.orderRef !== orderRef) throw unavailable();
         intent = controlStore.advanceCoinCommerceDataPackCredentialReset({ ...scope, leaseRef,

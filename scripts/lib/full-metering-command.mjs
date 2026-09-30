@@ -15,7 +15,7 @@ const fail = code => { throw Object.assign(new Error(code), { code }); };
 const exactKeys = (object, keys) => object && typeof object === "object" && !Array.isArray(object) && Object.keys(object).sort().join(",") === [...keys].sort().join(",");
 const linuxPath = path => typeof path === "string" && /^\/[A-Za-z0-9_./-]+$/.test(path) && !path.split("/").includes("..") && !path.split("/").includes(".");
 export function parseFullMeteringCommand(argv) {
-  if (!Array.isArray(argv) || !["--preflight", "--initialize", "--collect", "--continue-material"].includes(argv[0])
+  if (!Array.isArray(argv) || !["--preflight", "--initialize", "--collect", "--continue-material", "--collect-pack-resets"].includes(argv[0])
     || argv.length !== (argv[0] === "--continue-material" ? 9 : 5)
     || argv[1] !== "--config" || !linuxPath(argv[2]) || argv[3] !== "--config-sha256" || !/^[a-f0-9]{64}$/.test(argv[4])) fail("full_metering_command_invalid");
   if (argv[0] === "--continue-material") {
@@ -84,7 +84,7 @@ export async function runFullMeteringCommand(argv) {
     return privateJson(approvalBytes);
   };
   const materialApproval = options.mode === "continue-material" ? readApproval() : null;
-  const writesSamples = options.mode === "collect" || options.mode === "continue-material";
+  const writesSamples = ["collect", "continue-material", "collect-pack-resets"].includes(options.mode);
   const databaseIdentityDigest = fullMeteringDigest(fileIdentity(config.dbPath));
   const context = { scopeDigest: options.configSha256, databaseIdentityDigest };
   if (options.mode === "initialize") {
@@ -139,13 +139,14 @@ export async function runFullMeteringCommand(argv) {
         if (!response?.ok || !response.privateSnapshot) fail("full_metering_remote_source_failed");
         return response.privateSnapshot;
       } });
-    let applySamples;
+    let applySamples, dataPackResetStore;
     if (writesSamples) {
       const controlStore = createSqliteSubscriptionControlStore({ database: db, initializeSchema: false });
+      if (options.mode === "collect-pack-resets") dataPackResetStore = controlStore;
       const writer = createFullMeteringSampleWriter({ database: db, controlStore, readBindings });
       applySamples = samples => { assertInputs(); return writer(samples); };
     }
     return await runFullMeteringCollection({ ...options, directory: config.journalDirectory, context, activationId: config.activationId,
-      readInventory, readSources, applySamples, materialApproval });
+      readInventory, readSources, applySamples, materialApproval, dataPackResetStore });
   } finally { db.close(); }
 }

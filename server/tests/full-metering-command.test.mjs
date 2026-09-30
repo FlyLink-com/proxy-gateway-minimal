@@ -21,6 +21,13 @@ test("command requires exact mode, protected config and digest without implicit 
   assert.deepEqual(parseFullMeteringCommand(input), { mode: "preflight", configPath: "/private/config.json", configSha256: "a".repeat(64) });
   for (const argv of [[], input.slice(0, 3), [...input, "--collect"], ["--collect", ...input.slice(1), "--retry"], ["--initialize", "--config", "relative", "--config-sha256", "a".repeat(64)]]) assert.throws(() => parseFullMeteringCommand(argv), /command_invalid/);
 });
+test("product reset collection is an explicit owned-store mode and accepts no caller proof payload", () => {
+  const input = ["--collect-pack-resets", "--config", "/private/config.json", "--config-sha256", "a".repeat(64)];
+  assert.deepEqual(parseFullMeteringCommand(input), { mode: "collect-pack-resets", configPath: "/private/config.json", configSha256: "a".repeat(64) });
+  for (const suffix of [["--material-approval", "/private/proof.json"], ["--reset-proof", "caller-value"], ["--continue-material"]]) {
+    assert.throws(() => parseFullMeteringCommand([...input, ...suffix]), /command_invalid/);
+  }
+});
 test("config forbids missing backup, undeclared fields and remote command interpolation", () => {
   const config = { version: 1, activationId: "full-test", dbPath: "/private/db.sqlite", journalDirectory: "/private/journal", materialPath: "/private/material.json", sources: [],
     backup: { path: "/private/snapshot.sqlite", sha256: "c".repeat(64) },

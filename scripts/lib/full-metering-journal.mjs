@@ -153,6 +153,13 @@ export function archiveFullMeteringMaterialCheckpoint({ directory, context, chec
   } else write(directory, name, context, checkpoint, true);
   return name;
 }
+export function readFullMeteringMaterialCheckpointArchive({ directory, context, digest }) {
+  checkContext(context);
+  if (typeof digest !== "string" || !/^[a-f0-9]{64}$/.test(digest)) fail("full_metering_material_archive_changed");
+  const checkpoint = read(directory, `material-before-${digest}.json`, context);
+  if (fullMeteringDigest(checkpoint) !== digest) fail("full_metering_material_archive_changed");
+  return checkpoint;
+}
 export function commitFullMeteringJournal({ directory, context, previousCheckpoint, nextCheckpoint, samples, applySamples, onStage = () => {} }) {
   if (typeof applySamples !== "function" || !Array.isArray(samples)) fail("full_metering_batch_invalid");
   if (existsSync(join(directory, "pending.json"))) fail("full_metering_pending_recovery_required");

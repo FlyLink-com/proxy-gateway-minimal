@@ -9,6 +9,7 @@ import { createHysteria2ExplicitRestartAdapter } from "../services/edge/hysteria
 import { createFileBackedEdgeCredentialMaterialStore } from "../services/edge/credential-material-store.mjs";
 import { createDataPlaneDesiredStateNotifier } from "../services/edge/data-plane-desired-state-notifier.mjs";
 import { createCoinCommerceDataPackCredentialReset } from "../services/platform/coin-commerce-data-pack-credential-reset.mjs";
+import { syntheticMeteringContinuation } from "./platform-coin-commerce-data-pack-metering-reset.fixture.mjs";
 
 const CHANNEL = "channel_pack_rotation_test";
 const UNTIL = "9999-12-31T23:59:59.999Z";
@@ -372,6 +373,14 @@ test("credential reset waits for the exact edge receipt before rotating the subs
       configTestOk: true, serviceActive: true, listenerUdp443: true,
       appliedAt: now, createdAt: now
     });
+    assert.deepEqual(reset.reconcilePending({ limit: 1 }),
+      { inspected: 1, completed: 0, failed: 1 });
+    assert.equal(artifactCalls, 0);
+    assert.equal(store.beginCoinCommerceDataPackCredentialReset({ ...input, now }).status,
+      "edge_applied");
+    const proof = store.readCoinCommerceDataPackMeteringResetProofs({ now })[0];
+    store.recordCoinCommerceDataPackMeteringResetReceipt({ proof,
+      continuation: syntheticMeteringContinuation(proof, { completedAt: now }), now });
     assert.deepEqual(reset.reconcilePending({ limit: 1 }),
       { inspected: 1, completed: 0, failed: 1 });
     assert.equal(artifactCalls, 1);

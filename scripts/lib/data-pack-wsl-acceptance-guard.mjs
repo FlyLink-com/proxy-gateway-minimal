@@ -57,7 +57,8 @@ function physicalReceipt(value) {
   const resourceKeys = ['quotaBytes', 'seededBaselineBytes', 'collectorObservedBytes',
     'physicallyCollectedBytes', 'usedBytes'];
   const scopeKeys = ['syntheticControlResources', 'authenticatedPurchaseToDelivery',
-    'realSubscriptionArtifactRotation', 'realControlAccountingAndReset', 'actualProtocolProcess'];
+    'realSubscriptionArtifactRotation', 'realControlAccountingAndReset', 'actualProtocolProcess',
+    'fullMeteringMaterialContinuation', 'meteringResetReceiptValidated'];
   const rotationKeys = ['usedBytesBefore', 'usedBytesAfter', 'meteringIdentityPreserved',
     'oldCredentialAllowed', 'newCredentialAllowed', 'oldArtifactRevoked'];
   if (!exactKeys(value, ['ok', 'evidenceMode', 'acceptanceScope', 'credentialCount',
@@ -65,6 +66,8 @@ function physicalReceipt(value) {
     || value.ok !== true || !['physical_process', 'synthetic_transport'].includes(value.evidenceMode)
     || !bools(value.acceptanceScope, scopeKeys)
     || value.acceptanceScope.authenticatedPurchaseToDelivery !== false
+    || value.acceptanceScope.fullMeteringMaterialContinuation !== false
+    || value.acceptanceScope.meteringResetReceiptValidated !== true
     || value.acceptanceScope.actualProtocolProcess !== (value.evidenceMode === 'physical_process')
     || value.credentialCount !== 3 || !integer(value.applyCount)
     || !exactKeys(value.resources, ['packA', 'packB', 'timedPlan'])

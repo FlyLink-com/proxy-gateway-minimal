@@ -148,3 +148,23 @@ The full Windows source suite was run but remains non-green on workflow/
 POSIX source-fixture assertions outside this slice. Source environment preflight
 also reports its npm executable detection blocker. Neither is a Linux or
 physical acceptance pass; exact new-head Linux CI remains required.
+
+## Reset-to-collector bridge prerequisite (2026-09-30)
+
+The product reset now waits at `edge_applied` for an exact durable full-metering
+receipt before rotating its delivery artifact. The single-channel clear-mode
+scenario requires a caller-owned `meteringResetContinuation` provider;
+physical-process mode rejects `synthetic_provider`. The current physical entry
+has not wired a real provider and will stop at `metering_resume_required`.
+Do not reuse its older frozen execution gate or treat injected provider tests
+as proof of the five-source journal collector. Its truthful aggregate scope
+retains `fullMeteringMaterialContinuation: false` and separately reports whether
+the control receipt was validated. The updated receipt whitelist preserves
+these fields without accepting arbitrary nested data.
+
+The source bridge itself is tested through the real five-source reader, journal
+and sample writer with synthetic daemon snapshots, including reset recovery and
+exhausted retained identity handling. This closes a source integration gap only.
+Before physical execution, rebind the updated source/dependencies and complete
+the isolated non-clearing protocol/collector composition. Production, mobile
+device and all-three-protocol enforcement acceptance remain separate.

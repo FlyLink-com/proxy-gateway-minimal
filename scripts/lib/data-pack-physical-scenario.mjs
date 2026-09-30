@@ -41,6 +41,15 @@ function equalStrings(left, right) {
     && [...left].sort().join("\0") === [...right].sort().join("\0");
 }
 
+function sameMeteringProof(left, right) {
+  if (!left || !right || Object.keys(left).length !== Object.keys(right).length) return false;
+  return Object.keys(left).every((field) => field === "billingBinding"
+    ? left.billingBinding?.plan === right.billingBinding?.plan
+      && left.billingBinding?.validFrom === right.billingBinding?.validFrom
+      && left.billingBinding?.validUntil === right.billingBinding?.validUntil
+    : left[field] === right[field]);
+}
+
 function freshMaterial() {
   const material = { uuid: randomUUID(), password: randomBytes(32).toString("base64") };
   return { material, materialDigest: `sha256:${createHash("sha256")
@@ -82,8 +91,13 @@ function seedTimedPlan(store, now) {
  * return real clear=1 Traffic Stats only in physical_process mode. Unit-test
  * transports MUST declare synthetic_transport; their bytes are never physical.
  * The only synthetic usage is the explicitly reported near-quota baseline.
+ * The caller separately owns meteringResetContinuation.continueReset, including
+ * its real journal admission and receipt. Synthetic receipt providers are only
+ * allowed with synthetic_transport. This custom-channel, clear-mode scenario
+ * never constitutes five-source full-metering continuation acceptance itself.
  */
-export async function runDataPackPhysicalScenario({ runDir, transport, nowFn = () => new Date() } = {}) {
+export async function runDataPackPhysicalScenario({ runDir, transport, meteringResetContinuation,
+  nowFn = () => new Date() } = {}) {
   if (!["physical_process", "synthetic_transport"].includes(transport?.evidenceMode)
     || ["applyState", "probeCredential", "transferCredential", "readStats", "recover"]
       .some((name) => typeof transport[name] !== "function")
@@ -289,6 +303,31 @@ export async function runDataPackPhysicalScenario({ runDir, transport, nowFn = (
       fail("artifact_rotated_before_apply");
     }
     await apply("coin_commerce_data_pack_credential_reset", [b.credentialRef, timed.credentialRef]);
+    let meteringPending = false;
+    try { reset.rotate(resetInput); }
+    catch (error) { meteringPending = error.code === "coin_commerce_data_pack_reset_reconciliation_required"; }
+    const appliedIntent = store.beginCoinCommerceDataPackCredentialReset({ ...resetInput, now: now() });
+    if (!meteringPending || appliedIntent.status !== "edge_applied") fail("reset_pending_gate_mismatch");
+    if (delivery.get({ accountId: ACCOUNT, orderRef: b.orderRef }).subscriptionUrl !== beforeHandoff.subscriptionUrl) {
+      fail("artifact_rotated_before_metering");
+    }
+    if (!meteringResetContinuation
+      || transport.evidenceMode === "physical_process" && meteringResetContinuation.evidenceMode !== "full_metering_journal") {
+      fail("metering_resume_required");
+    }
+    if (!["full_metering_journal", "synthetic_provider"].includes(meteringResetContinuation.evidenceMode)
+      || typeof meteringResetContinuation.continueReset !== "function") fail("metering_resume_provider_invalid");
+    const proofs = store.readCoinCommerceDataPackMeteringResetProofs({ now: now() });
+    const proof = proofs.find((item) => item.rotationRef === resetInput.rotationRef);
+    if (proofs.length !== 1 || !proof) fail("metering_resume_proof_invalid");
+    try {
+      await meteringResetContinuation.continueReset({ controlStore: store,
+        resetScope: Object.freeze({ ...resetInput }), proof, nowFn: now });
+    } catch { fail("metering_resume_failed"); }
+    let meteringReceipt;
+    try { meteringReceipt = store.getCoinCommerceDataPackMeteringResetReceipt({ ...resetInput, now: now() }); }
+    catch { fail("metering_resume_receipt_invalid"); }
+    if (!meteringReceipt || !sameMeteringProof(proof, meteringReceipt.proof)) fail("metering_resume_receipt_invalid");
     const completion = reset.rotate(resetInput);
     if (completion.status !== "complete") fail("reset_incomplete");
     b.material = materialStore.resolveCredentialMaterial(b.credentialRef);
@@ -330,7 +369,8 @@ export async function runDataPackPhysicalScenario({ runDir, transport, nowFn = (
     return Object.freeze({ ok: true, evidenceMode: transport.evidenceMode,
       acceptanceScope: { syntheticControlResources: true, authenticatedPurchaseToDelivery: false,
         realSubscriptionArtifactRotation: true, realControlAccountingAndReset: true,
-        actualProtocolProcess: physical }, credentialCount: 3, applyCount,
+        actualProtocolProcess: physical, fullMeteringMaterialContinuation: false,
+        meteringResetReceiptValidated: true }, credentialCount: 3, applyCount,
       resources: Object.fromEntries(Object.entries(resources).map(([label, resource]) => [label, {
         quotaBytes: resource.quotaBytes ?? 500 * GIB, seededBaselineBytes: resource.seededBaselineBytes,
         collectorObservedBytes: resource.collectorObservedBytes,

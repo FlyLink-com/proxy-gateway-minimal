@@ -655,3 +655,120 @@ tests. The older source-bound WSL fixture is not current acceptance evidence.
 
 No production product, schema, service, wallet, or customer data is changed by
 this source-only record.
+
+### 2026-09-30 product reset-to-collector bridge (source only)
+
+Risk: A release envelope / B source core. Existing #753 is reused;
+`identity_impact: true`, `production_state: not_deployed`. This supersedes the
+earlier source gap for automatic product-reset continuation, not the missing
+physical, mobile or production acceptance receipts.
+
+The synchronous backend reset and asynchronous five-source collector are
+separate processes. The existing `edge_applied` reset status is the durable
+request; no new schema or in-process async callback is introduced. Reset waits
+there, without rotating its final subscription artifact, until an exact private
+metering receipt is present. Both the service and direct DB completion gate
+enforce this condition. The existing pending worker subsequently completes the
+same operation; HTTP continues to report reconciliation while it is pending.
+
+The external collector has an explicit opt-in mode:
+
+```text
+--collect-pack-resets --config <existing-private-config-path> --config-sha256 <sha256>
+```
+
+The CLI instantiates its owned control store and trusted source driver. It does
+not accept a reset proof or approval payload from the caller. The config shape,
+activation and journal context are unchanged. Ordinary `--collect` and the
+operator-bound `--continue-material` remain strict and unchanged in authority.
+Enabling this mode in a production timer is a later approved deployment action;
+source implementation alone does not change any installed timer.
+
+Each admission rechecks a completed edge apply, exact account/order/request/
+entitlement/channel/credential lineage, current protected material and runtime
+provenance, pack quota and billing period. At most 32 exact pending resets are
+handled together; an overflow is refused, not truncated. An authorized pack
+reset never authorizes another timed or pack identity change. First observations
+after an active reset establish a zero-debit material boundary, preserving
+previous accounting; unrelated identities continue to record measured deltas.
+A previously unobserved pack receives its normal zero-debit first baseline.
+An exhausted pack remains retained, with no fabricated eligible identity or
+new allowance, while its private archived identity evidence follows the reset.
+
+Before committing, the journal lock protects a fresh inventory/proof check and
+an immutable private checkpoint preimage. The existing write-ahead intent
+persists exact reset proofs and continuation records with the next checkpoint.
+Only after journal commit does the collector write the deterministic control
+audit receipt. Matching replay is idempotent; mismatched metadata is rejected.
+If journal commit succeeds but audit writing fails, a retry validates the
+protected preimage, context, sequence, persisted current identity and proof,
+then repairs only the receipt without a second observation or baseline.
+Pending-intent recovery reuses exact sample IDs and preserves the existing
+collision-checked writer. Missing or altered evidence stops recovery.
+
+The private journal retains at most 128 reset continuation records, matching
+the bounded material-boundary discipline. Exceeding the limit stops new reset
+admission rather than deleting evidence. A separately verified archival or
+activation-maintenance policy is needed before reaching that bound; none is
+implicitly authorized here. Raw proofs remain private and are excluded from
+account-summary audit output, including reference-name collision cases.
+
+After a durable acknowledgment, later natural quota exhaustion may only change
+the proof's `exhausted` state from false to true. Completion retains the original
+boundary proof and rechecks stable lineage/material/quota; it does not demand a
+second reset apply against the subsequently empty quota-stop desired state.
+The reverse transition is rejected. New receipts always require the current
+exact applied proof.
+
+The older single-channel, clear-mode Hysteria scenario now requires an explicit
+continuation provider and a real control receipt before finishing reset. It
+cannot generate a receipt itself, and physical-process mode refuses a synthetic
+provider. The source-bound physical driver currently supplies no real provider
+and stops at `metering_resume_required`; it has not been executed. Its aggregate
+receipt explicitly states `fullMeteringMaterialContinuation: false`. Synthetic
+provider tests are compatibility tests, not physical or five-source acceptance.
+
+Validation for this slice is recorded with the final pushed source below and in
+#753. The reset pipeline currently passes 18 cases using
+real control, protected material, desired state, binding reader, source driver,
+journal and writer, with daemon snapshots/apply and artifact issuance explicitly
+synthetic. It covers simultaneous resets, exhausted retained reset, three WAL
+interruption stages, audit loss, damaged archives/identity evidence, ordinary
+collection refusal, unrelated material changes, precommit drift and incremental
+collection while the artifact worker is still pending. No physical protocol,
+production database or customer account was used.
+
+Validation performed for the reset bridge:
+
+- Final focused pack/full-metering/physical-contract/WSL-guard regression:
+  558 tests, 558 passed, 0 failed, 0 skipped. This includes 18 pipeline cases;
+  test subsets overlap and must not be added to that total.
+- The independently written pipeline initially had 5 failures before this
+  bridge existed. The control receipt, physical-provider and aggregate receipt
+  guard changes also have recorded failing-before-fix tests. Additional cases
+  that passed on their first run are not labeled RED evidence.
+- One independent read-only Security Review fallback confirmed one P2: using
+  the earlier collection timestamp to validate a later journal continuation
+  could fail after checkpoint commit. An advancing-clock regression failed
+  against the old implementation and now passes; receipt validation takes its
+  timestamp after durable commit. The original finding is retained, not
+  reported as a no-findings review. Dedicated review tooling was unavailable;
+  this is not a vendor Security Review invocation or a whole-PR audit.
+- Windows full-suite observation: 5,555 tests, 5,487 passed, 9 failed, 59 skipped.
+  It started before the last clock/guard cases were added. The final focused
+  regression above covers those changes, but this full run is not a final-head
+  green result. A separate read-only targeted run reproduced all nine failures:
+  seven disappeared with in-memory LF normalization of unchanged source inputs;
+  the other two compare POSIX path assumptions against Windows paths. No files
+  were rewritten for this diagnostic, and the runtime-closure failures concern
+  CRLF-sensitive source markers rather than missing new reset modules. Exact
+  new-head Linux CI remains required before source promotion.
+- Document authority and strict-file checks passed (413 metadata blocks);
+  whitespace checks passed. Local source-environment preflight still reports
+  `required_tool_missing` for npm executable detection; this is recorded, not
+  relabeled a ready environment or used to justify a production action.
+
+Current state: source bridge implemented and synthetically verified;
+production not executed, offers unpublished, #753 still Draft. A final pushed
+source identity and exact-head CI status are recorded in #753. The previous
+physical execution records are not reusable for these changed source files.

@@ -10,6 +10,7 @@ import { createCoinCommerceDataPackMaterialEscrow } from "../services/platform/c
 import { createCoinCommerceDataPackOrderDelivery } from "../services/platform/coin-commerce-data-pack-order-delivery.mjs";
 import { createCoinCommerceDataPackArtifactRotation } from "../services/platform/coin-commerce-data-pack-artifact-rotation.mjs";
 import { createCoinCommerceDataPackCredentialReset } from "../services/platform/coin-commerce-data-pack-credential-reset.mjs";
+import { syntheticMeteringContinuation } from "./platform-coin-commerce-data-pack-metering-reset.fixture.mjs";
 import { createFileBackedEdgeCredentialMaterialStore } from "../services/edge/credential-material-store.mjs";
 import { createDataPlaneDesiredStateNotifier } from "../services/edge/data-plane-desired-state-notifier.mjs";
 import { createSubscriptionCore } from "../services/subscriptions/core.mjs";
@@ -182,6 +183,12 @@ test("receipt-gated credential reset uses the real artifact rotation and preserv
       configTestOk: true, serviceActive: true, listenerUdp443: true,
       appliedAt: NOW, createdAt: NOW
     });
+    assert.throws(() => reset.rotate(input),
+      { code: "coin_commerce_data_pack_reset_reconciliation_required" });
+    assert.equal(f.artifacts.length, 1);
+    const [proof] = f.controlStore.readCoinCommerceDataPackMeteringResetProofs({ now: NOW });
+    f.controlStore.recordCoinCommerceDataPackMeteringResetReceipt({ proof,
+      continuation: syntheticMeteringContinuation(proof, { completedAt: NOW }), now: NOW });
     assert.equal(reset.rotate(input).status, "complete");
     assert.equal(f.artifacts.length, 2);
     assert.equal(f.artifacts[0].status, "revoked");
