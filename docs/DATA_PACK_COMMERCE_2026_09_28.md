@@ -641,9 +641,15 @@ Validation of this source slice:
   vendor-product invocation. File hashes were unchanged throughout review.
 
 #754 was separately merged as `2a166a7d7f5bcf8ba0b7e1dc7ef2a9a804533adf`.
-Its parser/reader source must be integrated without replacing its independently
-recorded recovery state. A follow-up normal branch merge and affected regression
-readback will bind the combined source; this does not authorize a deployment.
+The pack correction is `5312cad2`; the normal integration merge is
+`30a14576c270bf874ba7a5e3bc112a02e51d4845`. No source paths conflicted.
+The combined Xray CLI/local-reader/source-driver/pack/HTTP/upgrade/runtime-state
+regressions passed 337 tests, 0 failed, 0 skipped. Source preflight, both document
+authority checks (now 413 metadata blocks) and `git diff --check origin/master...HEAD`
+passed on this integrated source. The full Windows result above is from before
+this integration; it is not relabeled as a final-head full-suite pass. New Linux
+CI must bind the eventual pushed head. #754's independent production recovery
+state was not replaced or rerun, and this integration authorizes no deployment.
 No physical protocol process or production operation is run by these synthetic
 tests. The older source-bound WSL fixture is not current acceptance evidence.
 
