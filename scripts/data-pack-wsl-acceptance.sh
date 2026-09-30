@@ -135,7 +135,7 @@ RUN_ID=$(stat -c '%d:%i' -- "$RUN_DIR")
 timeout --signal=TERM --kill-after=15s 180s env -i \
   PATH=/usr/sbin:/usr/bin:/sbin:/bin LANG=C TZ=UTC GCCGW_PARENT_NS="$PARENT_NS" GCCGW_PARENT_RUN_ID="$RUN_ID" \
   unshare --user --map-root-user --mount --net --pid --fork --mount-proc \
-  bash -c 'set -Eeuo pipefail; mount --make-rprivate /; exec 3<"$1"; mount -t tmpfs -o size=256m,mode=1777 tmpfs /tmp; mkdir "$1"; mount --no-canonicalize --bind /proc/self/fd/3 "$1"; exec 3<&-; mount -t tmpfs -o size=1m,mode=000 tmpfs /mnt; mount -t tmpfs -o size=1m,mode=000 tmpfs /home; mount -t tmpfs -o size=1m,mode=000 tmpfs /root; mount -t sysfs -o ro,nosuid,nodev,noexec sysfs /sys; ip link set lo up; cd "$1/source"; exec "$1/node/bin/node" "$1/source/scripts/data-pack-wsl-acceptance.mjs" --execute "$1" "$1/approved-gate.json" "$2" "$3"' \
+  bash -c 'set -Eeuo pipefail; mount --make-rprivate /; exec 3<"$1"; mount -t tmpfs -o size=256m,mode=0755 tmpfs /tmp; mkdir "$1"; mount --no-canonicalize --bind /proc/self/fd/3 "$1"; exec 3<&-; mount -t tmpfs -o size=1m,mode=000 tmpfs /mnt; mount -t tmpfs -o size=1m,mode=000 tmpfs /home; mount -t tmpfs -o size=1m,mode=000 tmpfs /root; mount -t sysfs -o ro,nosuid,nodev,noexec sysfs /sys; ip link set lo up; cd "$1/source"; exec "$1/node/bin/node" "$1/source/scripts/data-pack-wsl-acceptance.mjs" --execute "$1" "$1/approved-gate.json" "$2" "$3"' \
   acceptance-child "$RUN_DIR" "$SOURCE_COMMIT" "$GATE_SHA" >"$RUN_DIR/physical-private.log" 2>&1 \
   || die 'isolated physical acceptance failed or timed out'
 stage=receipt

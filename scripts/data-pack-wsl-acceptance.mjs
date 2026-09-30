@@ -4,9 +4,10 @@ import { createHash } from 'node:crypto';
 import { lstatSync, readFileSync, readlinkSync, realpathSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { acceptanceReceipt, PACKAGE_FILES, validateDataPackNamespace,
+import { acceptanceFailure, acceptanceReceipt, PACKAGE_FILES, validateDataPackNamespace,
   validateDataPackWslGate, validateDataPackPhysicalAcceptanceResult } from './lib/data-pack-wsl-acceptance-guard.mjs';
 import { verifyDataPackSourceTree } from './lib/data-pack-wsl-source-tree.mjs';
+import { createDataPackDependencyAclChecker } from './lib/data-pack-wsl-dependency-acl.mjs';
 
 const NODE_SHA = '9749e988f437343b7fa832c69ded82a312e41a03116d766797ac14f6f9eee578';
 const HY_SHA = '66dbdb0608f25f3057b433afe975a9fc1af2ca8e512479e294988b3ef363d6c1';
@@ -75,22 +76,12 @@ function namespaceReadback(runDir) {
     defaultRoutes: routeCount([]) + routeCount(['-6']), hostMountsAccessible: !masked });
   return true;
 }
-function noAclOrCapabilities(path) {
-  // WSL need not install getfacl/libcap tooling. Read the same kernel xattrs
-  // directly; unsupported inspection or traversal error is a blocking result.
-  if (!path.startsWith('/tmp/gccgw-data-pack-wsl.')) return false;
-  const script = `import os, sys\ncount=0\ntry:\n for directory, dirs, files in os.walk(sys.argv[1], followlinks=False):\n  for path in [directory]+[os.path.join(directory,name) for name in files+dirs]:\n   count+=1\n   if count>100000: raise ValueError()\n   attributes=os.listxattr(path,follow_symlinks=False)\n   if any(key in attributes for key in ['system.posix_acl_access','system.posix_acl_default','security.capability']): raise ValueError()\n print('verified')\nexcept Exception:\n sys.exit(1)\n`;
-  const result = spawnSync('/usr/bin/python3', ['-I', '-S', '-c', script, path], {
-    env: {}, shell: false, timeout: 10000, maxBuffer: 1024, encoding: 'utf8'
-  });
-  return result.status === 0 && result.stdout.trim() === 'verified';
-}
-
 if (process.argv[2] === '--self-check' && process.argv.length === 3) {
   process.stdout.write('entry_self_check=passed; physical_execution=not_started\n');
 } else {
   const [mode, runDir, gatePath, expectedCommit, approvedGateSha256] = process.argv.slice(2);
   let gate, transport, result = null, namespaceVerified = false, cleanupVerified = false;
+  let stage = 'admission', primaryFailure = null, cleanupFailure = null;
   let outcome = 'failed';
   try {
     if (!['--admit', '--execute'].includes(mode) || process.argv.length !== 7) stop();
@@ -98,9 +89,11 @@ if (process.argv[2] === '--self-check' && process.argv.length === 3) {
     if (mode === '--admit') {
       process.stdout.write('admission=passed; physical_execution=not_started\n');
     } else {
+      stage = 'namespace';
       namespaceVerified = namespaceReadback(runDir);
       // Consume the exact Linux CI artifact inside the masked, private network
       // namespace. No npm lifecycle code or native addon runs on the WSL host.
+      stage = 'dependency_prepare';
       const { prepareDependencyArtifactTree } = await import('./control-plane-dependency-artifact-lib.mjs');
       const prepared = prepareDependencyArtifactTree({
         manifestBytes: readFileSync(join(runDir, 'dependency-artifact.json')),
@@ -113,22 +106,29 @@ if (process.argv[2] === '--self-check' && process.argv.length === 3) {
         destinationRoot: join(runDir, 'dependencies'),
         runtime: { nodePath: process.execPath,
           npmPath: join(runDir, 'node/bin/npm'), npmVersion: '10.9.8',
-          checkAclCapabilities: noAclOrCapabilities }
+          checkAclCapabilities: createDataPackDependencyAclChecker(runDir) }
       });
+      stage = 'dependency_move';
       renameSync(prepared.extracted.nodeModulesRoot, join(runDir, 'source/node_modules'));
       prepared.extracted.cleanup();
+      stage = 'transport_import';
       const { createDataPackHysteriaTransport } = await import('./lib/data-pack-hysteria-transport.mjs');
       const { runDataPackPhysicalScenario } = await import('./lib/data-pack-physical-scenario.mjs');
       transport = createDataPackHysteriaTransport({ runDir,
         binaryPath: join(runDir, 'hysteria-linux-amd64'),
         certificatePath: join(runDir, 'loopback.crt'), privateKeyPath: join(runDir, 'loopback.key'),
         parentNetworkNamespace: JSON.parse(process.env.GCCGW_PARENT_NS).net });
+      stage = 'transport_start';
       await transport.start();
-      result = await runDataPackPhysicalScenario({ runDir, transport, meteringMode: 'full_metering_journal' });
-      validateDataPackPhysicalAcceptanceResult(result);
+      stage = 'scenario';
+      const candidateResult = await runDataPackPhysicalScenario({ runDir, transport, meteringMode: 'full_metering_journal' });
+      stage = 'result_validation';
+      validateDataPackPhysicalAcceptanceResult(candidateResult);
+      result = candidateResult;
       outcome = 'passed';
     }
-  } catch {
+  } catch (error) {
+    primaryFailure = acceptanceFailure(stage, error);
     process.exitCode = 1;
     process.stderr.write('data-pack WSL acceptance stopped; no raw error output\n');
   } finally {
@@ -137,10 +137,14 @@ if (process.argv[2] === '--self-check' && process.argv.length === 3) {
         const cleanup = transport ? await transport.close() : null;
         cleanupVerified = cleanup?.processesStopped === true && cleanup?.listenersClear === true;
       } catch { cleanupVerified = false; }
+      if (transport && !cleanupVerified) {
+        cleanupFailure = acceptanceFailure(stage, { code: 'wsl_acceptance_cleanup_unverified' });
+      }
       if (!cleanupVerified) { outcome = 'failed'; process.exitCode = 1; }
       writeFileSync(join(runDir, 'physical-receipt.json'), JSON.stringify(acceptanceReceipt({
-        gate, outcome, namespaceVerified, physicalResult: result,
-        cleanupVerified, errorCategory: outcome === 'passed' ? null : 'acceptance_stopped'
+        gate, outcome, stage, namespaceVerified, physicalResult: result,
+        cleanupVerified, primaryFailure, cleanupFailure,
+        errorCategory: outcome === 'passed' ? null : 'acceptance_stopped'
       }), null, 2) + '\n', { flag: 'wx', mode: 0o600 });
     }
   }

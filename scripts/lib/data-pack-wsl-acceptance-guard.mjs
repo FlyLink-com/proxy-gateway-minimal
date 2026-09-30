@@ -5,6 +5,7 @@ export const PACKAGE_FILES = Object.freeze([
   'scripts/data-pack-wsl-acceptance.sh',
   'scripts/data-pack-wsl-acceptance.mjs',
   'scripts/lib/data-pack-wsl-acceptance-guard.mjs',
+  'scripts/lib/data-pack-wsl-dependency-acl.mjs',
   'scripts/lib/data-pack-wsl-source-tree.mjs',
   'scripts/lib/data-pack-physical-scenario.mjs',
   'scripts/lib/data-pack-full-metering-session.mjs',
@@ -14,6 +15,61 @@ export const PACKAGE_FILES = Object.freeze([
   'scripts/control-plane-welcome-coins-native-contract.mjs',
   'package-lock.json'
 ]);
+export const ACCEPTANCE_STAGES = Object.freeze(['admission', 'namespace',
+  'dependency_prepare', 'dependency_move', 'transport_import', 'transport_start',
+  'scenario', 'result_validation']);
+// Exact enums only: neither a dependency_ prefix nor an Error message is safe
+// diagnostic evidence. Keep this list independent of the process-running library.
+const DEPENDENCY_ERRORS = Object.freeze([
+  'dependency_acl_or_capability_invalid', 'dependency_archive_cleanup_failed',
+  'dependency_archive_extract_failed', 'dependency_archive_invalid',
+  'dependency_archive_member_invalid', 'dependency_archive_mismatch',
+  'dependency_archive_missing', 'dependency_artifact_invalid', 'dependency_cli_invalid',
+  'dependency_file_changed', 'dependency_file_unreadable', 'dependency_lock_mismatch',
+  'dependency_native_custody_invalid', 'dependency_native_custody_mismatch',
+  'dependency_package_mismatch', 'dependency_path_invalid', 'dependency_provenance_invalid',
+  'dependency_release_mismatch', 'dependency_runtime_invalid', 'dependency_runtime_mismatch',
+  'dependency_smoke_identity_invalid', 'dependency_smoke_invalid',
+  'dependency_smoke_snapshot_invalid', 'dependency_source_mismatch',
+  'dependency_storage_budget_unavailable', 'dependency_tree_invalid',
+  'dependency_tree_mismatch', 'dependency_tree_too_large'
+]);
+const ERROR_CATEGORIES = Object.freeze({
+  wsl_acceptance_input_invalid: 'admission_invalid',
+  wsl_acceptance_gate_invalid: 'admission_invalid',
+  wsl_source_tree_invalid: 'source_tree_invalid',
+  wsl_acceptance_namespace_invalid: 'namespace_invalid',
+  wsl_acceptance_receipt_invalid: 'result_invalid',
+  wsl_acceptance_cleanup_unverified: 'cleanup_unverified',
+  native_module_validation_failed: 'dependency_native_module_invalid',
+  unsupported_platform: 'dependency_platform_unsupported'
+});
+function diagnosticField(value, key) {
+  try { return value?.[key]; } catch { return undefined; }
+}
+function diagnosticStage(stage) {
+  return ACCEPTANCE_STAGES.includes(stage) ? stage : 'unknown';
+}
+function knownError(value) {
+  if (typeof value !== 'string') return null;
+  if (DEPENDENCY_ERRORS.includes(value)) return value;
+  return Object.hasOwn(ERROR_CATEGORIES, value) ? ERROR_CATEGORIES[value] : null;
+}
+function diagnosticCategory(value) {
+  return DEPENDENCY_ERRORS.includes(value) || Object.values(ERROR_CATEGORIES).includes(value)
+    ? value : 'acceptance_stopped';
+}
+export function acceptanceFailure(stage, error) {
+  return { stage: diagnosticStage(stage),
+    errorCategory: knownError(diagnosticField(error, 'condition'))
+      || knownError(diagnosticField(error, 'code')) || 'acceptance_stopped' };
+}
+function failureReceipt(value) {
+  return value === null ? null : {
+    stage: diagnosticStage(diagnosticField(value, 'stage')),
+    errorCategory: diagnosticCategory(diagnosticField(value, 'errorCategory'))
+  };
+}
 const KEYS = ['kind', 'sourceCommit', 'createdAt', 'expiresAt', 'singleUse',
   'maxRunSeconds', 'maxTransferBytes', 'nodeSha256', 'hysteriaSha256',
   'dependencySha256', 'dependencyManifestSha256',
@@ -112,19 +168,29 @@ export function validateDataPackPhysicalAcceptanceResult(value) {
   }
   return result;
 }
-export function acceptanceReceipt({ gate, outcome, namespaceVerified = false,
-  physicalResult = null, cleanupVerified = false, errorCategory = null }) {
+export function acceptanceReceipt(input) {
+  const { gate, outcome, namespaceVerified = false, physicalResult = null,
+    cleanupVerified = false, errorCategory = null, primaryFailure = null,
+    cleanupFailure = null } = input;
+  const hasStage = Object.hasOwn(input, 'stage');
+  const stage = hasStage ? diagnosticStage(input.stage) : null;
+  const primary = failureReceipt(primaryFailure), cleanup = failureReceipt(cleanupFailure);
+  const passed = outcome === 'passed' && (!hasStage || stage === 'result_validation')
+    && primary === null && cleanup === null && errorCategory === null;
   // The physical driver owns a separately redacted aggregate receipt. Never
   // copy arbitrary errors, commands, config, environment, or SQLite records.
   return {
     kind: 'data-pack-wsl-physical-receipt-v1',
     sourceCommit: gate.sourceCommit, finishedAt: new Date().toISOString(),
     scope: 'synthetic-hysteria-enforcement-and-metering',
-    outcome: outcome === 'passed' ? 'passed' : 'failed',
+    outcome: passed ? 'passed' : 'failed',
+    stage,
     namespaceVerified: namespaceVerified === true,
     cleanupVerified: cleanupVerified === true,
     purchaseE2eVerified: false, productionChanged: false,
     physicalResult: physicalReceipt(physicalResult),
-    errorCategory: errorCategory === null ? null : 'acceptance_stopped'
+    errorCategory: primary?.errorCategory || cleanup?.errorCategory
+      || (passed ? null : diagnosticCategory(errorCategory)),
+    primaryFailure: primary, cleanupFailure: cleanup
   };
 }

@@ -80,6 +80,104 @@ test('receipt is aggregate-only and does not claim purchase or production accept
   assert.ok(!JSON.stringify(receipt).includes('must-not-appear'));
 });
 
+const stages = ['admission', 'namespace', 'dependency_prepare', 'dependency_move',
+  'transport_import', 'transport_start', 'scenario', 'result_validation'];
+
+test('diagnostic stages are a closed immutable vocabulary', () => {
+  assert.deepEqual(guard.ACCEPTANCE_STAGES, stages);
+  assert.equal(Object.isFrozen(guard.ACCEPTANCE_STAGES), true);
+  for (const stage of stages) {
+    assert.deepEqual(guard.acceptanceFailure(stage, new Error('must-not-appear')), {
+      stage, errorCategory: 'acceptance_stopped'
+    });
+  }
+});
+
+test('gate binds the isolated dependency ACL implementation', () => {
+  assert.ok(PACKAGE_FILES.includes('scripts/lib/data-pack-wsl-dependency-acl.mjs'));
+});
+
+test('failure diagnostics retain only explicitly known dependency and guard categories', () => {
+  const cases = [
+    ['dependency_prepare', { condition: 'dependency_archive_invalid' }, 'dependency_archive_invalid'],
+    ['dependency_prepare', { condition: 'dependency_acl_or_capability_invalid' }, 'dependency_acl_or_capability_invalid'],
+    ['dependency_prepare', { condition: 'dependency_storage_budget_unavailable' }, 'dependency_storage_budget_unavailable'],
+    ['dependency_move', { condition: 'dependency_archive_cleanup_failed' }, 'dependency_archive_cleanup_failed'],
+    ['dependency_prepare', { condition: 'native_module_validation_failed' }, 'dependency_native_module_invalid'],
+    ['dependency_prepare', { condition: 'unsupported_platform' }, 'dependency_platform_unsupported'],
+    ['admission', { code: 'wsl_acceptance_gate_invalid' }, 'admission_invalid'],
+    ['admission', { code: 'wsl_source_tree_invalid' }, 'source_tree_invalid'],
+    ['namespace', { code: 'wsl_acceptance_namespace_invalid' }, 'namespace_invalid'],
+    ['result_validation', { code: 'wsl_acceptance_receipt_invalid' }, 'result_invalid'],
+    ['scenario', { code: 'wsl_acceptance_cleanup_unverified' }, 'cleanup_unverified']
+  ];
+  for (const [stage, error, category] of cases) {
+    const failure = guard.acceptanceFailure(stage, { ...error,
+      message: 'must-not-appear', stack: 'must-not-appear', path: 'must-not-appear' });
+    assert.deepEqual(failure, { stage, errorCategory: category });
+  }
+});
+
+test('unknown errors and stages cannot inject free text or impersonate enum prefixes', () => {
+  const errors = [null, undefined, 'must-not-appear', new Error('dependency_archive_invalid'),
+    { condition: 'dependency_must-not-appear' }, { code: 'must-not-appear' },
+    { code: '__proto__' }, { code: 'toString' }, { message: 'must-not-appear' },
+    { condition: { toString() { throw new Error('must-not-appear'); } } },
+    { get condition() { throw new Error('must-not-appear'); } }];
+  for (const error of errors) {
+    assert.deepEqual(guard.acceptanceFailure('must-not-appear', error), {
+      stage: 'unknown', errorCategory: 'acceptance_stopped'
+    });
+  }
+});
+
+test('explicit unknown or unfinished stages cannot claim a passed receipt', () => {
+  for (const stage of [undefined, null, '', 'unknown', 'must-not-appear', {}, ...stages.slice(0, -1)]) {
+    const receipt = acceptanceReceipt({ gate: gate(), outcome: 'passed', stage,
+      namespaceVerified: true, cleanupVerified: true, physicalResult: hybridResult() });
+    assert.equal(receipt.stage, stages.includes(stage) ? stage : 'unknown');
+    assert.equal(receipt.outcome, 'failed');
+    assert.equal(receipt.errorCategory, 'acceptance_stopped');
+    assert.ok(!JSON.stringify(receipt).includes('must-not-appear'));
+  }
+  const receipt = acceptanceReceipt({ gate: gate(), outcome: 'passed', stage: 'result_validation',
+    namespaceVerified: true, cleanupVerified: true, physicalResult: hybridResult() });
+  assert.equal(receipt.outcome, 'passed');
+  assert.equal(receipt.stage, 'result_validation');
+  assert.equal(receipt.errorCategory, null);
+  assert.equal(receipt.primaryFailure, null);
+  assert.equal(receipt.cleanupFailure, null);
+  assert.equal(acceptanceReceipt({ gate: gate(), outcome: 'passed' }).outcome, 'passed');
+});
+
+test('primary and cleanup failures stay separate and cannot be overwritten by success', () => {
+  const primaryFailure = { stage: 'dependency_prepare', errorCategory: 'dependency_archive_invalid' };
+  const cleanupFailure = { stage: 'dependency_move', errorCategory: 'dependency_archive_cleanup_failed' };
+  const receipt = acceptanceReceipt({ gate: gate(), outcome: 'passed', stage: 'result_validation',
+    primaryFailure, cleanupFailure, errorCategory: 'must-not-appear' });
+  assert.equal(receipt.outcome, 'failed');
+  assert.equal(receipt.errorCategory, primaryFailure.errorCategory);
+  assert.deepEqual(receipt.primaryFailure, primaryFailure);
+  assert.deepEqual(receipt.cleanupFailure, cleanupFailure);
+  primaryFailure.errorCategory = 'must-not-appear';
+  cleanupFailure.stage = 'must-not-appear';
+  assert.ok(!JSON.stringify(receipt).includes('must-not-appear'));
+});
+
+test('cleanup-only failure and untrusted failure records are independently redacted', () => {
+  const receipt = acceptanceReceipt({ gate: gate(), outcome: 'passed', stage: 'result_validation',
+    cleanupFailure: { stage: 'transport_start', errorCategory: 'must-not-appear',
+      message: 'must-not-appear', condition: 'must-not-appear' } });
+  assert.equal(receipt.outcome, 'failed');
+  assert.equal(receipt.primaryFailure, null);
+  assert.deepEqual(receipt.cleanupFailure, { stage: 'transport_start', errorCategory: 'acceptance_stopped' });
+  assert.equal(receipt.errorCategory, 'acceptance_stopped');
+  const failed = acceptanceReceipt({ gate: gate(), outcome: 'failed', stage: 'must-not-appear',
+    primaryFailure: { stage: 'must-not-appear', errorCategory: 'dependency_must-not-appear' } });
+  assert.deepEqual(failed.primaryFailure, { stage: 'unknown', errorCategory: 'acceptance_stopped' });
+  assert.ok(!JSON.stringify([receipt, failed]).includes('must-not-appear'));
+});
+
 test('rejects arbitrary nested physical result instead of copying material into receipt', () => {
   assert.throws(() => acceptanceReceipt({ gate: gate(), outcome: 'passed',
     physicalResult: { ok: true, credential: 'must-not-appear' } }),
@@ -169,7 +267,7 @@ test('physical entry requires actual protocol, full journal, stop, rotation and 
 test('WSL entry wires full journal mode and independently validates the result', () => {
   const source = readFileSync(new URL('../../scripts/data-pack-wsl-acceptance.mjs', import.meta.url), 'utf8');
   assert.match(source, /runDataPackPhysicalScenario\(\{\s*runDir,\s*transport,\s*meteringMode:\s*['"]full_metering_journal['"]\s*\}\)/);
-  assert.match(source, /validateDataPackPhysicalAcceptanceResult\(result\)/);
+  assert.match(source, /validateDataPackPhysicalAcceptanceResult\(candidateResult\);\s*result = candidateResult;/);
   assert.ok(PACKAGE_FILES.includes('scripts/lib/data-pack-full-metering-session.mjs'));
   assert.ok(PACKAGE_FILES.includes('scripts/lib/full-metering-local-source.mjs'));
 });
