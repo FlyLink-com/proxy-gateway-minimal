@@ -772,3 +772,76 @@ Current state: source bridge implemented and synthetically verified;
 production not executed, offers unpublished, #753 still Draft. A final pushed
 source identity and exact-head CI status are recorded in #753. The previous
 physical execution records are not reusable for these changed source files.
+
+### 2026-09-30 non-clearing isolated transport/journal entry (source only)
+
+Risk: A isolated execution envelope / B source composition. Reuse #753;
+`identity_impact: true`, `production_state: not_deployed`. No production action,
+offer publication or physical protocol execution is performed by this slice.
+
+The source WSL entry now selects the real full-metering journal composition.
+The owned Hy2 transport parses its loaded config, verifies stable process and
+file identities on both sides of non-clearing `/traffic`, and supplies real
+runtime material fingerprints to the unchanged strict source driver. The
+generation tracks process lifetime separately from the configuration digest.
+Invalid response shape, material, mapping or provenance remains blocking.
+
+The fixture uses one shared synthetic control SQLite connection, the real
+binding reader/driver/journal/writer and exactly three selected Hy2 resources.
+Four explicitly synthetic quiet timed resources complete the five-source
+contract; complete request and credential scope is frozen across all channels.
+The same journal owns initialization, exhaustion, reset material continuation
+and restart recovery. Warm-ups precede zero-debit baselines. No clearing reader
+or caller-invented metering receipt is used in this mode. The earlier clear
+scenario remains a compatibility test only.
+
+The aggregate result marks the actual transport's one physical source and four
+synthetic sources; unit transports report zero physical and five synthetic.
+`allFiveSourcesPhysicallyObserved` remains false. The WSL entry checks full
+continuation, one-pack blocking, old/new credential behavior, unchanged reset
+usage and successful recovery before accepting the result. Same-source tree
+binding remains mandatory and includes the new session/config projection.
+
+Validation performed this turn:
+
+- Transport RED: 2 failed tests before `readMeteringSnapshot` existed. The
+  affected transport and loaded-config suites then passed 93 / 93.
+- Session/scenario RED: 18 pass / 4 fail before this composition. Its final
+  42-case session/scenario/reset-pipeline subset passed, without real daemons.
+- Entry/receipt RED: 0 pass / 3 fail before wiring full mode and its whitelist.
+  The final 48-case entry/session/scenario subset passed.
+- Combined data-pack/full-metering/recovery regression: 614 total, 611 passed,
+  0 failed, 3 skipped Windows-to-Linux shell fixtures. Counts above overlap;
+  they are not additive, and skipped cases are not physical success evidence.
+- The explicit WSL cleanup-only fixtures separately passed 5 / 5 with no
+  skips, including copy/write failures and evidence retention. They did not
+  start a protocol server or collector. The full Windows `npm test` run
+  observed 5,568 total, 5,500 pass, 9 fail, 59 skip. The nine are the same
+  unchanged-input CRLF/workflow and Windows/POSIX path assertions recorded
+  above; this full suite remains non-green and is not Linux evidence.
+- One independent read-only Security Review fallback found no confirmed
+  findings in this slice. Its 141-case subset passed with no skips, and 10/10
+  reviewed source/test file hashes were unchanged during review. Dedicated
+  product tooling was unavailable; this is not a vendor review or whole-PR
+  historical review.
+- Both document-authority checks passed (413 metadata blocks), as did
+  whitespace checks. The independent reviewer did not review later
+  evidence-only document edits as runtime source changes.
+- Fresh prior-head CI for `0b400e7d66cba7ed31b3d19b3a879204c3868ec3`
+  completed green (run 36728199352). It is valid for the previous source slice,
+  not the newly changed files. Final new-head Linux CI and dependency artifact
+  must be read back separately after push.
+
+Mobile #13 remains a separate Draft. Its existing browser backend fixture has
+real loopback auth but does not compose pack Commerce, reset and collector.
+The HTTP synthetic acceptance fixture is not an actual mobile/browser login.
+The minimal missing browser composition is now identified; no real mobile
+acceptance is claimed. An entity iPhone/Safari result remains separate from a
+narrow desktop-browser viewport.
+
+Current state: test-entry source gap closed; new physical WSL run not executed.
+Freeze a reviewed final source, exact same-source Linux dependencies and a
+fresh one-use isolated authorization before starting protocol processes.
+Do not reuse earlier consumed or expired records. Three offers remain
+unpublished and #753 remains Draft; migration/backup/rollback readiness and
+production promotion are not implied by source or CI success.

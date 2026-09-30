@@ -1,6 +1,8 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { existsSync, lstatSync } from "node:fs";
 import { isAbsolute, join } from "node:path";
+import Database from "better-sqlite3";
+import { createDataPackFullMeteringSession } from "./data-pack-full-metering-session.mjs";
 import { createSqliteSubscriptionControlStore } from "../../server/services/platform/subscription-control-db.mjs";
 import { createSqliteSubscriptionStore } from "../../server/services/subscriptions/repository.mjs";
 import { createSubscriptionCore } from "../../server/services/subscriptions/core.mjs";
@@ -15,7 +17,7 @@ import { createTrafficAccountingService } from "../../server/services/platform/t
 import { createDataPlaneDesiredStateNotifier } from "../../server/services/edge/data-plane-desired-state-notifier.mjs";
 import { createDataPlaneAgentService, hashDataPlaneAgentToken } from "../../server/services/edge/data-plane-agent-service.mjs";
 
-const CHANNEL = "channel_wsl_data_pack";
+const CHANNEL = "channel-vultr-a-hy2";
 const NODE = "node_wsl_data_pack";
 const ACCOUNT = "acct_wsl_data_pack";
 const OWNER = "owner_wsl_data_pack";
@@ -70,7 +72,7 @@ function seedTimedPlan(store, now) {
   store.linkIssuedSubscription({ id: "link_wsl_timed", requestId: resource.requestRef,
     tenantRef: "tenantref_wsl_timed", artifactRef: "artifactref_wsl_timed",
     status: "active", createdAt: now, updatedAt: now });
-  store.upsertPortalAccessRequest({ id: resource.requestRef, portalUserRef: OWNER,
+  store.upsertPortalAccessRequest({ id: resource.requestRef, portalUserRef: ACCOUNT,
     plan: "monthly", clientTarget: "clash", durationDays: 30, quantity: 1,
     status: "delivered", nextAction: "user_can_use_access", noteProvided: false,
     priorTrialState: "not_applicable", submittedAt: now, updatedAt: now,
@@ -88,18 +90,23 @@ function seedTimedPlan(store, now) {
  * applyState must use the real runtime adapter and return the exact generation,
  * desiredStateRef, digest set, credential count and positive restart/readback.
  * probe/transfer must create fresh authenticated connections; readStats must
- * return real clear=1 Traffic Stats only in physical_process mode. Unit-test
+ * return real clear=1 Traffic Stats in legacy mode. Full journal mode instead
+ * exclusively uses readMeteringSnapshot and never clears counters. Unit-test
  * transports MUST declare synthetic_transport; their bytes are never physical.
  * The only synthetic usage is the explicitly reported near-quota baseline.
  * The caller separately owns meteringResetContinuation.continueReset, including
  * its real journal admission and receipt. Synthetic receipt providers are only
- * allowed with synthetic_transport. This custom-channel, clear-mode scenario
- * never constitutes five-source full-metering continuation acceptance itself.
+ * allowed with synthetic_transport. Legacy clear mode never constitutes
+ * full-metering continuation acceptance. Full mode uses one owned Hy2 source
+ * plus four explicitly synthetic sources, not five physical protocol daemons.
  */
 export async function runDataPackPhysicalScenario({ runDir, transport, meteringResetContinuation,
-  nowFn = () => new Date() } = {}) {
+  meteringMode = "legacy_clear", nowFn = () => new Date() } = {}) {
+  const fullMetering = meteringMode === "full_metering_journal";
+  if (!["legacy_clear", "full_metering_journal"].includes(meteringMode)
+    || fullMetering && meteringResetContinuation !== undefined) fail("metering_mode_invalid");
   if (!["physical_process", "synthetic_transport"].includes(transport?.evidenceMode)
-    || ["applyState", "probeCredential", "transferCredential", "readStats", "recover"]
+    || ["applyState", "probeCredential", "transferCredential", fullMetering ? "readMeteringSnapshot" : "readStats", "recover"]
       .some((name) => typeof transport[name] !== "function")
     || typeof nowFn !== "function") fail("transport_contract_invalid");
   if (typeof runDir !== "string" || !isAbsolute(runDir)) fail("scenario_workspace_invalid");
@@ -116,8 +123,12 @@ export async function runDataPackPhysicalScenario({ runDir, transport, meteringR
   let store;
   let runtimeStore;
   let escrow;
+  let database;
+  let meteringSession;
   try {
-    store = createSqliteSubscriptionControlStore({ dbPath: join(runDir, FILES[0]) });
+    if (fullMetering) database = new Database(join(runDir, FILES[0]));
+    store = createSqliteSubscriptionControlStore(fullMetering ? { database }
+      : { dbPath: join(runDir, FILES[0]) });
     runtimeStore = createSqliteSubscriptionStore({ dbPath: join(runDir, FILES[1]) });
     const materialStore = createFileBackedEdgeCredentialMaterialStore({ filePath: join(runDir, FILES[2]) });
     escrow = createCoinCommerceDataPackMaterialEscrow({ key: randomBytes(32), filePath: join(runDir, FILES[3]) });
@@ -171,6 +182,11 @@ export async function runDataPackPhysicalScenario({ runDir, transport, meteringR
     const allRefs = Object.values(resources).map((item) => item.credentialRef);
     for (const resource of Object.values(resources)) materialStore.putCredentialMaterial({
       credentialRef: resource.credentialRef, materialDigest: resource.materialDigest, material: resource.material });
+    if (fullMetering) {
+      meteringSession = createDataPackFullMeteringSession({ database, controlStore: store, materialStore,
+        transport, runDir, accountId: ACCOUNT, ownerRef: OWNER, nowFn: now });
+      meteringResetContinuation = meteringSession;
+    }
 
     const notifier = createDataPlaneDesiredStateNotifier({ controlStore: store,
       servers: [{ name: CHANNEL, physicalNodeRef: NODE, runtimeAdapter: "remote-data-plane-handoff" }], nowFn: now });
@@ -180,7 +196,7 @@ export async function runDataPackPhysicalScenario({ runDir, transport, meteringR
       nowFn: () => new Date(now()) });
     const identity = agent.authenticate({ authorization: `Bearer ${agentToken}` });
     const accounting = createTrafficAccountingService({ controlStore: store, nowFn: now });
-    const collector = createHysteria2UsageCollector({ channelRef: CHANNEL, nowFn: now,
+    const collector = fullMetering ? null : createHysteria2UsageCollector({ channelRef: CHANNEL, nowFn: now,
       trafficReader: async (input) => {
         const raw = await transport.readStats(input);
         const map = raw?.traffic || raw?.stats || raw;
@@ -194,6 +210,24 @@ export async function runDataPackPhysicalScenario({ runDir, transport, meteringR
       // milliseconds without manufacturing future observations (desired state
       // correctly excludes usage observed after its current wall clock).
       await new Promise((resolve) => setTimeout(resolve, 2));
+      if (fullMetering) {
+        const previous = new Set(store.listUsageSamples().map(sample => sample.id));
+        await meteringSession.collect();
+        const samples = store.listUsageSamples().filter(sample => !previous.has(sample.id));
+        if (requireEmpty && samples.length) fail("recovery_duplicate_usage");
+        const growth = new Map(expectedRefs.map(ref => [ref, 0]));
+        for (const sample of samples) {
+          const target = Object.values(resources).find(item => item.credentialRef === sample.edgeCredentialRef);
+          if (!target || !growth.has(sample.edgeCredentialRef)) fail("collector_scope_mismatch");
+          if (sample.requestId !== target.requestRef || sample.entitlementId !== target.entitlementRef
+            || sample.accountId !== ACCOUNT || sample.channelRef !== CHANNEL) fail("collector_binding_mismatch");
+          const bytes = sample.uploadBytes + sample.downloadBytes;
+          growth.set(sample.edgeCredentialRef, growth.get(sample.edgeCredentialRef) + bytes);
+          target.collectorObservedBytes += bytes;
+        }
+        if (requireGrowth && [...growth.values()].some(bytes => bytes <= 0)) fail("collector_no_growth");
+        return growth;
+      }
       const collected = await collector.collect({ since: lastCapture });
       lastCapture = now();
       requireTrue(collected.ok, "collector_invalid_stats");
@@ -252,6 +286,12 @@ export async function runDataPackPhysicalScenario({ runDir, transport, meteringR
       if (result?.transferredBytes !== bytes) fail("traffic_transfer_mismatch");
     }
     await apply("physical_acceptance_initial", allRefs);
+    if (fullMetering) {
+      // Native Hy2 omits never-used users. Establish actual observations with
+      // bounded warm-up, then baseline them; never fabricate zero counters.
+      for (const [slot, resource] of Object.values(resources).entries()) await probe(resource, slot, true);
+      await meteringSession.initialize();
+    }
     await collect(allRefs, { requireEmpty: true });
     for (const [slot, resource] of Object.values(resources).entries()) {
       await probe(resource, slot, true);
@@ -311,6 +351,14 @@ export async function runDataPackPhysicalScenario({ runDir, transport, meteringR
     if (delivery.get({ accountId: ACCOUNT, orderRef: b.orderRef }).subscriptionUrl !== beforeHandoff.subscriptionUrl) {
       fail("artifact_rotated_before_metering");
     }
+    if (fullMetering) {
+      let refused = false;
+      try { await meteringSession.collect(); }
+      catch (error) { refused = error.code === "full_metering_binding_changed"; }
+      if (!refused) fail("unapproved_material_collect_accepted");
+      await probe(b, 1, true, materialStore.resolveCredentialMaterial(b.credentialRef));
+      await probe(timed, 2, true);
+    }
     if (!meteringResetContinuation
       || transport.evidenceMode === "physical_process" && meteringResetContinuation.evidenceMode !== "full_metering_journal") {
       fail("metering_resume_required");
@@ -354,6 +402,10 @@ export async function runDataPackPhysicalScenario({ runDir, transport, meteringR
     const recovered = await transport.recover();
     if (recovered?.interrupted !== true || recovered.recovered !== true
       || recovered.serviceActive !== true || recovered.listenerPresent !== true) fail("recovery_failed");
+    if (fullMetering) {
+      await probe(b, 1, true);
+      await probe(timed, 2, true);
+    }
     await collect([b.credentialRef, timed.credentialRef], { requireEmpty: true });
     const usageUnchanged = beforeRecovery.every((bytes, i) => bytes === usage(Object.values(resources)[i]))
       && sampleCount === store.listUsageSamples().length;
@@ -369,8 +421,10 @@ export async function runDataPackPhysicalScenario({ runDir, transport, meteringR
     return Object.freeze({ ok: true, evidenceMode: transport.evidenceMode,
       acceptanceScope: { syntheticControlResources: true, authenticatedPurchaseToDelivery: false,
         realSubscriptionArtifactRotation: true, realControlAccountingAndReset: true,
-        actualProtocolProcess: physical, fullMeteringMaterialContinuation: false,
-        meteringResetReceiptValidated: true }, credentialCount: 3, applyCount,
+        actualProtocolProcess: physical, fullMeteringMaterialContinuation: fullMetering,
+        meteringResetReceiptValidated: true,
+        ...(fullMetering ? { allFiveSourcesPhysicallyObserved: false } : {}) }, credentialCount: 3, applyCount,
+      ...(fullMetering ? { metering: { physicalSourceCount: physical ? 1 : 0, syntheticSourceCount: physical ? 4 : 5 } } : {}),
       resources: Object.fromEntries(Object.entries(resources).map(([label, resource]) => [label, {
         quotaBytes: resource.quotaBytes ?? 500 * GIB, seededBaselineBytes: resource.seededBaselineBytes,
         collectorObservedBytes: resource.collectorObservedBytes,
@@ -391,5 +445,7 @@ export async function runDataPackPhysicalScenario({ runDir, transport, meteringR
     escrow?.close();
     runtimeStore?.close();
     store?.close();
+    meteringSession?.close();
+    database?.close();
   }
 }

@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { readFileSync } from 'node:fs';
+import * as guard from '../../scripts/lib/data-pack-wsl-acceptance-guard.mjs';
 import {
   validateDataPackWslGate, validateDataPackNamespace,
   acceptanceReceipt, PACKAGE_FILES, TEST_PORTS
@@ -103,4 +105,71 @@ test('receipt preserves the explicit reset-ack boundary without claiming five-so
     assert.throws(() => acceptanceReceipt({ gate: gate(), outcome: 'passed', physicalResult: wrong }),
       error => error.code === 'wsl_acceptance_receipt_invalid');
   }
+});
+
+function hybridResult({ physical = true } = {}) {
+  const resource = { quotaBytes: 100, seededBaselineBytes: 0, collectorObservedBytes: 5,
+    physicallyCollectedBytes: physical ? 5 : 0, usedBytes: 5 };
+  return { ok: true, evidenceMode: physical ? 'physical_process' : 'synthetic_transport',
+    acceptanceScope: { syntheticControlResources: true, authenticatedPurchaseToDelivery: false,
+      realSubscriptionArtifactRotation: true, realControlAccountingAndReset: true,
+      actualProtocolProcess: physical, fullMeteringMaterialContinuation: true,
+      meteringResetReceiptValidated: true, allFiveSourcesPhysicallyObserved: false },
+    metering: { physicalSourceCount: physical ? 1 : 0, syntheticSourceCount: physical ? 4 : 5 },
+    credentialCount: 3, applyCount: 3,
+    resources: { packA: resource, packB: resource, timedPlan: resource },
+    exhaustion: { crossedByCollectorDelta: true, newConnections: { packA: false, packB: true, timedPlan: true } },
+    rotation: { usedBytesBefore: 5, usedBytesAfter: 5, meteringIdentityPreserved: true,
+      oldCredentialAllowed: false, newCredentialAllowed: true, oldArtifactRevoked: true },
+    recovery: { interrupted: true, recovered: true, usageUnchanged: true, resourceCountUnchanged: true } };
+}
+
+test('hybrid receipt distinguishes one physical Hy2 source from four synthetic sources', () => {
+  for (const physical of [true, false]) {
+    const result = hybridResult({ physical });
+    const receipt = acceptanceReceipt({ gate: gate(), outcome: 'passed', physicalResult: result });
+    assert.deepEqual(receipt.physicalResult, result);
+    assert.equal(receipt.purchaseE2eVerified, false);
+    assert.equal(receipt.physicalResult.acceptanceScope.allFiveSourcesPhysicallyObserved, false);
+    for (const mutate of [
+      value => { value.metering.physicalSourceCount = 5; },
+      value => { value.metering.syntheticSourceCount = 0; },
+      value => { value.acceptanceScope.allFiveSourcesPhysicallyObserved = true; },
+      value => { value.metering.raw = 'must-not-appear'; },
+      value => { delete value.metering; },
+      value => { value.acceptanceScope.fullMeteringMaterialContinuation = false; }
+    ]) {
+      const wrong = structuredClone(result); mutate(wrong);
+      assert.throws(() => acceptanceReceipt({ gate: gate(), outcome: 'passed', physicalResult: wrong }),
+        error => error.code === 'wsl_acceptance_receipt_invalid');
+    }
+  }
+});
+
+test('physical entry requires actual protocol, full journal, stop, rotation and recovery invariants', () => {
+  assert.equal(typeof guard.validateDataPackPhysicalAcceptanceResult, 'function');
+  const result = hybridResult();
+  assert.deepEqual(guard.validateDataPackPhysicalAcceptanceResult(result), result);
+  for (const mutate of [
+    value => Object.assign(value, hybridResult({ physical: false })),
+    value => { value.acceptanceScope.realControlAccountingAndReset = false; },
+    value => { value.exhaustion.newConnections.packA = true; },
+    value => { value.exhaustion.newConnections.packB = false; },
+    value => { value.rotation.oldCredentialAllowed = true; },
+    value => { value.rotation.newCredentialAllowed = false; },
+    value => { value.rotation.usedBytesAfter += 1; },
+    value => { value.recovery.usageUnchanged = false; }
+  ]) {
+    const wrong = structuredClone(result); mutate(wrong);
+    assert.throws(() => guard.validateDataPackPhysicalAcceptanceResult(wrong),
+      error => error.code === 'wsl_acceptance_receipt_invalid');
+  }
+});
+
+test('WSL entry wires full journal mode and independently validates the result', () => {
+  const source = readFileSync(new URL('../../scripts/data-pack-wsl-acceptance.mjs', import.meta.url), 'utf8');
+  assert.match(source, /runDataPackPhysicalScenario\(\{\s*runDir,\s*transport,\s*meteringMode:\s*['"]full_metering_journal['"]\s*\}\)/);
+  assert.match(source, /validateDataPackPhysicalAcceptanceResult\(result\)/);
+  assert.ok(PACKAGE_FILES.includes('scripts/lib/data-pack-full-metering-session.mjs'));
+  assert.ok(PACKAGE_FILES.includes('scripts/lib/full-metering-local-source.mjs'));
 });

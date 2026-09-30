@@ -189,6 +189,50 @@ test("cleanup escalates only an owned identity and verifies absence of every tes
   await assert.rejects(f.transport.close(), { code: "listener_cleanup_unverified" });
 });
 
+test("metering snapshot is non-clearing and proves loaded config, runtime identity and real counters", async (t) => {
+  const requests = [];
+  const f = fixture(t, { async requestBytes(input) {
+    requests.push(input);
+    return { statusCode: 200, headers: { "content-type": "application/json" },
+      body: Buffer.from('{"edgecred_pack_a":{"tx":100,"rx":200}}') };
+  } });
+  await f.transport.start(); await f.transport.applyState(f.state());
+  const input = { credentialRefByRuntimeUser: { edgecred_pack_a: "edgecred_pack_a" },
+    nowFn: () => new Date("2026-09-30T00:00:00.000Z") };
+  const first = await f.transport.readMeteringSnapshot(input);
+  const second = await f.transport.readMeteringSnapshot(input);
+  assert.deepEqual(first, second);
+  assert.deepEqual(first.observations, [{ edgeCredentialRef: "edgecred_pack_a", uploadBytes: 100, downloadBytes: 200 }]);
+  assert.match(first.generation, /^[a-f0-9]{64}$/);
+  assert.equal(first.configDigest, createHash("sha256").update(readFileSync(join(f.runDir, "transport", "active.yaml"))).digest("hex"));
+  assert.deepEqual(first.runtimeUsers, [{ runtimeUser: "edgecred_pack_a", materialFingerprint:
+    createHash("sha256").update(JSON.stringify(["hy2", credential().material.password])).digest("hex") }]);
+  assert.equal(first.observedAt, "2026-09-30T00:00:00.000Z");
+  assert.deepEqual(requests.map(({ path }) => path), ["/traffic", "/traffic"]);
+  await f.transport.recover();
+  const recovered = await f.transport.readMeteringSnapshot(input);
+  assert.notEqual(recovered.generation, first.generation);
+  assert.equal(recovered.configDigest, first.configDigest);
+});
+
+test("metering snapshot refuses duplicate JSON, unknown users and loaded-config drift", async (t) => {
+  let body = '{"edgecred_pack_a":{"tx":100,"rx":200}}';
+  const f = fixture(t, { async requestBytes() {
+    return { statusCode: 200, headers: { "content-type": "application/json" }, body: Buffer.from(body) };
+  } });
+  await f.transport.start(); await f.transport.applyState(f.state());
+  const input = { credentialRefByRuntimeUser: { edgecred_pack_a: "edgecred_pack_a" } };
+  for (const bad of ['{"edgecred_pack_a":{"tx":1,"tx":2,"rx":0}}',
+    '{"unmapped":{"tx":0,"rx":0}}', '{"edgecred_pack_a":{"tx":null,"rx":0}}']) {
+    body = bad;
+    await assert.rejects(f.transport.readMeteringSnapshot(input), { code: "metering_snapshot_failed" });
+  }
+  body = '{"edgecred_pack_a":{"tx":100,"rx":200}}';
+  const active = join(f.runDir, "transport", "active.yaml");
+  writeFileSync(active, readFileSync(active, "utf8") + "# changed\n");
+  await assert.rejects(f.transport.readMeteringSnapshot(input), { code: "metering_snapshot_failed" });
+});
+
 test("constructor rejects external URLs, commands and caller environment without doing work", () => {
   for (const option of [{ env: { HTTPS_PROXY: "http://example.com" } }, { command: "sh" },
     { statsUrl: "https://example.com" }, { serverUrl: "127.0.0.2:25443" }]) {

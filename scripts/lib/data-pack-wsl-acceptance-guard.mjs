@@ -7,7 +7,9 @@ export const PACKAGE_FILES = Object.freeze([
   'scripts/lib/data-pack-wsl-acceptance-guard.mjs',
   'scripts/lib/data-pack-wsl-source-tree.mjs',
   'scripts/lib/data-pack-physical-scenario.mjs',
+  'scripts/lib/data-pack-full-metering-session.mjs',
   'scripts/lib/data-pack-hysteria-transport.mjs',
+  'scripts/lib/full-metering-local-source.mjs',
   'scripts/control-plane-dependency-artifact-lib.mjs',
   'scripts/control-plane-welcome-coins-native-contract.mjs',
   'package-lock.json'
@@ -56,17 +58,23 @@ function physicalReceipt(value) {
   const integer = item => Number.isSafeInteger(item) && item >= 0;
   const resourceKeys = ['quotaBytes', 'seededBaselineBytes', 'collectorObservedBytes',
     'physicallyCollectedBytes', 'usedBytes'];
+  const fullMetering = value?.acceptanceScope?.fullMeteringMaterialContinuation === true;
   const scopeKeys = ['syntheticControlResources', 'authenticatedPurchaseToDelivery',
     'realSubscriptionArtifactRotation', 'realControlAccountingAndReset', 'actualProtocolProcess',
-    'fullMeteringMaterialContinuation', 'meteringResetReceiptValidated'];
+    'fullMeteringMaterialContinuation', 'meteringResetReceiptValidated',
+    ...(fullMetering ? ['allFiveSourcesPhysicallyObserved'] : [])];
   const rotationKeys = ['usedBytesBefore', 'usedBytesAfter', 'meteringIdentityPreserved',
     'oldCredentialAllowed', 'newCredentialAllowed', 'oldArtifactRevoked'];
   if (!exactKeys(value, ['ok', 'evidenceMode', 'acceptanceScope', 'credentialCount',
-    'applyCount', 'resources', 'exhaustion', 'rotation', 'recovery'])
+    'applyCount', 'resources', 'exhaustion', 'rotation', 'recovery', ...(fullMetering ? ['metering'] : [])])
     || value.ok !== true || !['physical_process', 'synthetic_transport'].includes(value.evidenceMode)
     || !bools(value.acceptanceScope, scopeKeys)
     || value.acceptanceScope.authenticatedPurchaseToDelivery !== false
-    || value.acceptanceScope.fullMeteringMaterialContinuation !== false
+    || !fullMetering && value.acceptanceScope.fullMeteringMaterialContinuation !== false
+    || fullMetering && (value.acceptanceScope.allFiveSourcesPhysicallyObserved !== false
+      || !exactKeys(value.metering, ['physicalSourceCount', 'syntheticSourceCount'])
+      || value.metering.physicalSourceCount !== (value.evidenceMode === 'physical_process' ? 1 : 0)
+      || value.metering.syntheticSourceCount !== (value.evidenceMode === 'physical_process' ? 4 : 5))
     || value.acceptanceScope.meteringResetReceiptValidated !== true
     || value.acceptanceScope.actualProtocolProcess !== (value.evidenceMode === 'physical_process')
     || value.credentialCount !== 3 || !integer(value.applyCount)
@@ -83,6 +91,26 @@ function physicalReceipt(value) {
     fail('wsl_acceptance_receipt_invalid');
   }
   return structuredClone(value);
+}
+export function validateDataPackPhysicalAcceptanceResult(value) {
+  const result = physicalReceipt(value);
+  if (!result || result.evidenceMode !== 'physical_process'
+    || result.acceptanceScope.syntheticControlResources !== true
+    || result.acceptanceScope.realSubscriptionArtifactRotation !== true
+    || result.acceptanceScope.realControlAccountingAndReset !== true
+    || result.acceptanceScope.fullMeteringMaterialContinuation !== true
+    || result.exhaustion.newConnections.packA !== false
+    || result.exhaustion.newConnections.packB !== true
+    || result.exhaustion.newConnections.timedPlan !== true
+    || result.rotation.usedBytesBefore !== result.rotation.usedBytesAfter
+    || result.rotation.meteringIdentityPreserved !== true
+    || result.rotation.oldCredentialAllowed !== false
+    || result.rotation.newCredentialAllowed !== true
+    || result.rotation.oldArtifactRevoked !== true
+    || Object.values(result.recovery).some(item => item !== true)) {
+    fail('wsl_acceptance_receipt_invalid');
+  }
+  return result;
 }
 export function acceptanceReceipt({ gate, outcome, namespaceVerified = false,
   physicalResult = null, cleanupVerified = false, errorCategory = null }) {

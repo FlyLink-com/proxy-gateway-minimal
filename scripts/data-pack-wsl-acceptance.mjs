@@ -5,7 +5,7 @@ import { lstatSync, readFileSync, readlinkSync, realpathSync, renameSync, writeF
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { acceptanceReceipt, PACKAGE_FILES, validateDataPackNamespace,
-  validateDataPackWslGate } from './lib/data-pack-wsl-acceptance-guard.mjs';
+  validateDataPackWslGate, validateDataPackPhysicalAcceptanceResult } from './lib/data-pack-wsl-acceptance-guard.mjs';
 import { verifyDataPackSourceTree } from './lib/data-pack-wsl-source-tree.mjs';
 
 const NODE_SHA = '9749e988f437343b7fa832c69ded82a312e41a03116d766797ac14f6f9eee578';
@@ -124,8 +124,8 @@ if (process.argv[2] === '--self-check' && process.argv.length === 3) {
         certificatePath: join(runDir, 'loopback.crt'), privateKeyPath: join(runDir, 'loopback.key'),
         parentNetworkNamespace: JSON.parse(process.env.GCCGW_PARENT_NS).net });
       await transport.start();
-      result = await runDataPackPhysicalScenario({ runDir, transport });
-      if (result.ok !== true || result.acceptanceScope?.actualProtocolProcess !== true) stop();
+      result = await runDataPackPhysicalScenario({ runDir, transport, meteringMode: 'full_metering_journal' });
+      validateDataPackPhysicalAcceptanceResult(result);
       outcome = 'passed';
     }
   } catch {

@@ -8,6 +8,8 @@ import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { createServer, request } from "node:http";
 import { createHysteria2ExplicitRestartAdapter } from "../../server/services/edge/hysteria2-runtime-adapter.mjs";
+import { createFullMeteringHy2SnapshotReader } from "../../server/services/edge/full-metering-source-readers.mjs";
+import { inspectFullMeteringRuntimeConfig } from "./full-metering-local-source.mjs";
 
 // Vendor digest is also pinned independently by the preparation-only script.
 const HYSTERIA_SHA256 = "66dbdb0608f25f3057b433afe975a9fc1af2ca8e512479e294988b3ef363d6c1";
@@ -137,7 +139,7 @@ function requestBytes({ port, path, bytes, timeoutMs }) {
       headers: { Connection: "close" }, maxHeaderSize: 1024 }, (res) => {
       const chunks = []; let count = 0;
       res.on("data", (chunk) => { count += chunk.length; if (count > bytes) req.destroy(new Error("response_limit")); else chunks.push(chunk); });
-      res.on("error", reject); res.on("end", () => accept({ statusCode: res.statusCode, body: Buffer.concat(chunks) }));
+      res.on("error", reject); res.on("end", () => accept({ statusCode: res.statusCode, headers: res.headers, body: Buffer.concat(chunks) }));
     });
     const timer = setTimeout(() => req.destroy(new Error("request_timeout")), timeoutMs);
     req.on("close", () => clearTimeout(timer)); req.on("error", reject); req.end();
@@ -246,7 +248,15 @@ export function createDataPackHysteriaTransport(options = {}, dependencies = {})
   }
   function startServer(filePath) {
     unoccupied([PORTS.server, PORTS.stats]);
+    const loadedIdentity = directPath(runDir, filePath);
+    const loadedDigest = createHash("sha256").update(protectedRead(runDir, filePath, 65536)).digest("hex");
     const record = launch("server", filePath);
+    record.configPath = filePath;
+    record.configIdentity = loadedIdentity;
+    record.configDigest = loadedDigest;
+    if (!sameFile(loadedIdentity, directPath(runDir, filePath))) {
+      stop(record); fail("server_config_changed");
+    }
     if (!poll(() => listenerPresent(record, [PORTS.server, PORTS.stats]), Date.now() + 2500)) {
       stop(record); fail("server_listener_unverified");
     }
@@ -353,6 +363,46 @@ export function createDataPackHysteriaTransport(options = {}, dependencies = {})
           || !exactKeys(stat, ["tx", "rx"]) || !Number.isSafeInteger(stat.tx) || stat.tx < 0 || !Number.isSafeInteger(stat.rx) || stat.rx < 0)) fail("stats_read_failed");
         return map;
       } catch { fail("stats_read_failed"); }
+    },
+    async readMeteringSnapshot(input = {}) {
+      ready();
+      if (!exactKeys(input, ["credentialRefByRuntimeUser", "nowFn"])) fail("metering_snapshot_failed");
+      try {
+        const capture = () => {
+          if (!listenerPresent(server, [PORTS.server, PORTS.stats]) || server.configPath !== activePath) fail("metering_snapshot_failed");
+          const currentIdentity = directPath(runDir, activePath);
+          const configBytes = protectedRead(runDir, activePath, 65536);
+          const configDigest = createHash("sha256").update(configBytes).digest("hex");
+          if (!sameFile(server.configIdentity, currentIdentity) || configDigest !== server.configDigest) fail("metering_snapshot_failed");
+          return { processToken: server.token, fileIdentity: currentIdentity,
+            configDigest, configText: configBytes.toString("utf8") };
+        };
+        const before = capture();
+        const config = inspectFullMeteringRuntimeConfig({ kind: "hy2", configText: before.configText });
+        if (config.statsAuthority !== `127.0.0.1:${PORTS.stats}`) fail("metering_snapshot_failed");
+        // Let the completed loopback transfer reach Traffic Stats. Never clear
+        // a counter or invent observations for users absent from its response.
+        await new Promise((accept) => setTimeout(accept, 100));
+        const read = createFullMeteringHy2SnapshotReader({
+          url: `http://127.0.0.1:${PORTS.stats}/traffic`,
+          credentialRefByRuntimeUser: input.credentialRefByRuntimeUser,
+          nowFn: input.nowFn ?? (() => new Date()), timeoutMs: 2000,
+          maxResponseBytes: DATA_PACK_TRANSPORT_LIMITS.maxStatsBytes,
+          fetchFn: async (url) => {
+            if (url !== `http://127.0.0.1:${PORTS.stats}/traffic`) fail("metering_snapshot_failed");
+            const response = await runtime.requestBytes({ port: PORTS.stats, path: "/traffic",
+              bytes: DATA_PACK_TRANSPORT_LIMITS.maxStatsBytes, timeoutMs: 2000 });
+            return new Response(response.body, { status: response.statusCode,
+              headers: { "content-type": response.headers?.["content-type"] ?? "" } });
+          }
+        });
+        const snapshot = await read();
+        const after = capture();
+        if (before.processToken !== after.processToken || before.configDigest !== after.configDigest
+          || !sameFile(before.fileIdentity, after.fileIdentity)) fail("metering_snapshot_failed");
+        return { generation: createHash("sha256").update(JSON.stringify(["owned_hy2_process", before.processToken])).digest("hex"),
+          configDigest: config.configDigest, runtimeUsers: config.runtimeUsers, ...snapshot };
+      } catch { fail("metering_snapshot_failed"); }
     },
     async recover() {
       ready(); if (!alive(server)) fail("recovery_precondition_failed");
