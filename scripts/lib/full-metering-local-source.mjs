@@ -8,6 +8,22 @@ const UNITS = {xray:"xray-vless-reality.service",hy2:"hysteria2.service",tuic:"m
 const LIMIT = 4 * 1024 * 1024;
 const REF = /^[A-Za-z0-9._:-]{1,128}$/;
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
+const SOURCE_FAILURES = new Map([
+  ["xray_stats_query_failed","statistics_query_failed"],
+  ["recovery_counters_invalid","statistics_counter_invalid"],
+  ["validation_error","statistics_response_invalid"],
+  ["full_metering_source_timeout","statistics_timeout"],
+  ["full_metering_source_request_failed","statistics_response_invalid"],
+  ["full_metering_source_http_failed","statistics_http_failed"],
+  ["full_metering_source_unauthorized","statistics_authorization_failed"],
+  ["full_metering_source_forbidden","statistics_authorization_failed"],
+  ["full_metering_source_identity_unknown","statistics_identity_unknown"],
+  ["full_metering_source_identity_ambiguous","statistics_identity_ambiguous"],
+  ["full_metering_source_counter_invalid","statistics_counter_invalid"],
+  ["full_metering_source_response_too_large","statistics_response_invalid"],
+  ["full_metering_source_response_invalid","statistics_response_invalid"],
+  ["full_metering_source_config_invalid","statistics_source_config_invalid"],
+]);
 const sha = value => createHash("sha256").update(value).digest("hex");
 function fail(code) { throw Object.assign(new Error(`full_metering_local_${code}`), {code:`full_metering_local_${code}`}); }
 function require(value, code) { if (!value) fail(code); }
@@ -102,52 +118,92 @@ function parseConfig(kind, source) {
 
 /** Native Linux read only. Returns private identity evidence; never logs/configures/clears. */
 export async function readFullMeteringLocalSource({kind,runtimeUnit,configPath,credentialRefByRuntimeUser,commandRunner=nativeRunner,nowFn=()=>new Date(),fetchFn=globalThis.fetch} = {}) {
-  try{
-    require(Object.hasOwn(UNITS,kind)&&runtimeUnit===UNITS[kind],"unit_invalid");path(configPath);require(typeof commandRunner==="function","runner_invalid");
-    const run=(command,args)=>{
-      const result=commandRunner(command,args,{timeout:20_000,maxBuffer:LIMIT,shell:false});require(result?.exitCode===0,"read_failed");
-      const output=String(result.stdout || "");require(Buffer.byteLength(output)<=LIMIT,"read_bound");return output;
+  try {
+    require(Object.hasOwn(UNITS,kind)&&runtimeUnit===UNITS[kind],"unit_invalid");
+    path(configPath);
+    require(typeof commandRunner==="function","runner_invalid");
+
+    const run=(command,args,stage)=>{
+      let result;
+      try { result=commandRunner(command,args,{timeout:20_000,maxBuffer:LIMIT,shell:false}); }
+      catch { fail(`${stage}_command_failed`); }
+      require(result?.exitCode===0,`${stage}_command_failed`);
+      const output=String(result.stdout || "");
+      require(Buffer.byteLength(output)<=LIMIT,`${stage}_output_invalid`);
+      return output;
     };
-    const read=target=>run("/usr/bin/cat",["--",target]);
+    const read=(target,stage)=>run("/usr/bin/cat",["--",target],stage);
     const fileStat=()=>{
-      const raw=run("/usr/bin/stat",["-c","%f|%s|%y|%z|%d|%i","--",configPath]).trim(),parts=raw.split("|");
+      const raw=run("/usr/bin/stat",["-c","%f|%s|%y|%z|%d|%i","--",configPath],"config_metadata").trim(),parts=raw.split("|");
       require(parts.length===6 && /^[a-f0-9]+$/i.test(parts[0]) && (parseInt(parts[0],16)&0xf000)===0x8000 && /^\d+$/.test(parts[1]) && Number(parts[1])<=LIMIT,"config_file_invalid");
       return {raw,size:Number(parts[1]),mtime:timestamp(parts[2]),ctime:timestamp(parts[3])};
     };
     const capture=()=>{
-      const raw=run("/usr/bin/systemctl",["show",runtimeUnit,"--timestamp=us+utc","--property=ActiveState","--property=SubState","--property=MainPID","--property=NRestarts","--property=ExecMainStartTimestamp"]);
-      const fields={};for(const line of raw.trim().split("\n")){const i=line.indexOf("="),key=line.slice(0,i);require(i>0&&!Object.hasOwn(fields,key)&&["ActiveState","SubState","MainPID","NRestarts","ExecMainStartTimestamp"].includes(key),"service_invalid");fields[key]=line.slice(i+1).trim();}
+      const raw=run("/usr/bin/systemctl",["show",runtimeUnit,"--timestamp=us+utc","--property=ActiveState","--property=SubState","--property=MainPID","--property=NRestarts","--property=ExecMainStartTimestamp"],"service_metadata");
+      const fields={};
+      for(const line of raw.trim().split("\n")){
+        const i=line.indexOf("="),key=line.slice(0,i);
+        require(i>0&&!Object.hasOwn(fields,key)&&["ActiveState","SubState","MainPID","NRestarts","ExecMainStartTimestamp"].includes(key),"service_invalid");
+        fields[key]=line.slice(i+1).trim();
+      }
       require(fields.ActiveState==="active"&&fields.SubState==="running"&&/^[1-9][0-9]*$/.test(fields.MainPID||"")&&/^\d+$/.test(fields.NRestarts||""),"service_invalid");
       const pid=fields.MainPID,started=timestamp(fields.ExecMainStartTimestamp,true);
-      const boot=read("/proc/sys/kernel/random/boot_id").trim();require(UUID.test(boot),"boot_invalid");
-      const processStat=read(`/proc/${pid}/stat`);const close=processStat.lastIndexOf(") ");require(close>0,"process_invalid");
+      const boot=read("/proc/sys/kernel/random/boot_id","boot_metadata").trim();require(UUID.test(boot),"boot_invalid");
+      const processStat=read(`/proc/${pid}/stat`,"process_metadata"),close=processStat.lastIndexOf(") ");require(close>0,"process_invalid");
       const ticks=processStat.slice(close+2).trim().split(/\s+/)[19];require(/^[1-9][0-9]*$/.test(ticks||""),"process_invalid");
-      const args=read(`/proc/${pid}/cmdline`).split("\0").filter(Boolean),paths=[];
+      const args=read(`/proc/${pid}/cmdline`,"process_arguments").split("\0").filter(Boolean),paths=[];
       for(let i=1;i<args.length;i++){if(["-c","-config","--config","-f"].includes(args[i]))paths.push(args[++i]);else if(/^(--config|-config)=/.test(args[i]))paths.push(args[i].slice(args[i].indexOf("=")+1));}
       require(paths.length===1&&paths[0]===configPath,"config_origin_invalid");
-      const binary=path(run("/usr/bin/readlink",["--",`/proc/${pid}/exe`]).trim());
-      const digest=run("/usr/bin/sha256sum",["--",binary]).trim();require(digest.endsWith("  "+binary)&&/^[a-f0-9]{64}  /.test(digest),"binary_invalid");const binaryHash=digest.slice(0,64);
-      const before=fileStat(),config=read(configPath),after=fileStat();require(before.raw===after.raw&&Buffer.byteLength(config)===after.size,"config_changed");
+      const binary=path(run("/usr/bin/readlink",["--",`/proc/${pid}/exe`],"binary_path").trim());
+      const digest=run("/usr/bin/sha256sum",["--",binary],"binary_digest").trim();require(digest.endsWith("  "+binary)&&/^[a-f0-9]{64}  /.test(digest),"binary_invalid");const binaryHash=digest.slice(0,64);
+      const before=fileStat(),config=read(configPath,"config_read"),after=fileStat();require(before.raw===after.raw&&Buffer.byteLength(config)===after.size,"config_changed");
       require(started>=after.mtime&&started>=after.ctime,"config_not_loaded");
       return {pid,ticks,binary,config,configDigest:sha(config),fileIdentity:after.raw,generation:sha(JSON.stringify([boot,pid,ticks,binaryHash])),serviceIdentity:raw};
     };
     const ownsSocket=(snapshot,endpoint)=>{
-      const rows=run("/usr/bin/ss",["-H","-lntp"]).trim().split("\n").filter(Boolean).filter(line=>line.trim().split(/\s+/)[3]===endpoint.authority);
-      require(rows.length===1,"socket_invalid");const pids=[...rows[0].matchAll(/pid=(\d+)(?=,|\))/g)].map(match=>match[1]);require(pids.length>0&&pids.every(pid=>pid===snapshot.pid),"socket_owner_invalid");
+      const rows=run("/usr/bin/ss",["-H","-lntp"],"listener_snapshot").trim().split("\n").filter(Boolean).filter(line=>line.trim().split(/\s+/)[3]===endpoint.authority);
+      require(rows.length===1,"socket_invalid");
+      const pids=[...rows[0].matchAll(/pid=(\d+)(?=,|\))/g)].map(match=>match[1]);
+      require(pids.length>0&&pids.every(pid=>pid===snapshot.pid),"socket_owner_invalid");
     };
-    const before=capture(),config=parseConfig(kind,before.config);ownsSocket(before,config.endpoint);
+
+    const before=capture(),config=parseConfig(kind,before.config);
+    ownsSocket(before,config.endpoint);
     const supplied=credentialRefByRuntimeUser instanceof Map?credentialRefByRuntimeUser:new Map(Object.entries(credentialRefByRuntimeUser||{})),mapping=new Map(),refs=new Set();
     for(const user of config.runtimeUsers){const ref=supplied.get(user.runtimeUser);require(typeof ref==="string"&&REF.test(ref)&&!refs.has(ref),"identity_mapping_invalid");mapping.set(user.runtimeUser,ref);refs.add(ref);}
+
     let snapshot,observations;
     if(kind==="xray"){
-      snapshot=await createXrayStatsCliUsageSnapshotReader({xrayBinary:before.binary,statsServer:config.endpoint.authority,strictCounters:true,nowFn,commandRunner:(command,args)=>{const stdout=run(command,args);assertNoDuplicateObjectKeys(stdout);return {exitCode:0,stdout};}})();
+      try {
+        snapshot=await createXrayStatsCliUsageSnapshotReader({xrayBinary:before.binary,statsServer:config.endpoint.authority,strictCounters:true,nowFn,commandRunner:(command,args)=>{
+          const stdout=run(command,args,"statistics_query");
+          try { assertNoDuplicateObjectKeys(stdout); } catch { fail("statistics_payload_invalid"); }
+          return {exitCode:0,stdout};
+        }})();
+      } catch(error) {
+        if(typeof error?.code==="string"&&error.code.startsWith("full_metering_local_"))throw error;
+        fail(SOURCE_FAILURES.get(error?.code)||"statistics_response_invalid");
+      }
       observations=snapshot.entries.map(value=>{require(mapping.has(value.edgeCredentialRef),"identity_unknown");return {...value,edgeCredentialRef:mapping.get(value.edgeCredentialRef)};});
     }else{
       const reader=kind==="hy2"?createFullMeteringHy2SnapshotReader:createFullMeteringTuicConnectionSnapshotReader;
-      snapshot=await reader({url:`http://${config.endpoint.authority}${kind==="hy2"?"/traffic":"/connections"}`,secret:config.secret,credentialRefByRuntimeUser:mapping,nowFn,fetchFn})();
+      let transportFailed=false;
+      try {
+        snapshot=await reader({url:`http://${config.endpoint.authority}${kind==="hy2"?"/traffic":"/connections"}`,secret:config.secret,credentialRefByRuntimeUser:mapping,nowFn,fetchFn:async(...args)=>{
+          try { return await fetchFn(...args); } catch { transportFailed=true; throw new Error("statistics_transport_failed"); }
+        }})();
+      } catch(error) {
+        if(error?.code==="full_metering_source_timeout")fail("statistics_timeout");
+        if(transportFailed)fail("statistics_transport_failed");
+        if(typeof error?.code==="string"&&error.code.startsWith("full_metering_local_"))throw error;
+        fail(SOURCE_FAILURES.get(error?.code)||"statistics_response_invalid");
+      }
       observations=kind==="hy2"?snapshot.observations:snapshot.connections;
     }
-    const after=capture();require(before.generation===after.generation&&before.configDigest===after.configDigest&&before.fileIdentity===after.fileIdentity&&before.serviceIdentity===after.serviceIdentity,"identity_changed");ownsSocket(after,config.endpoint);
+
+    const after=capture();
+    require(before.generation===after.generation&&before.configDigest===after.configDigest&&before.fileIdentity===after.fileIdentity&&before.serviceIdentity===after.serviceIdentity,"identity_changed");
+    ownsSocket(after,config.endpoint);
     return {generation:before.generation,observedAt:snapshot.observedAt,observations,runtimeUsers:config.runtimeUsers,configDigest:before.configDigest};
-  }catch(error){if(typeof error?.code==="string"&&error.code.startsWith("full_metering_local_"))throw error;fail("read_failed");}
+  }catch(error){if(typeof error?.code==="string"&&error.code.startsWith("full_metering_local_"))throw error;fail("unexpected_read_failure");}
 }

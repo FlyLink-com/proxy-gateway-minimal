@@ -32,3 +32,14 @@ export function parseStrictXrayUserCounters(payload) {
   }
   return [...entries.values()].sort((a, b) => a.edgeCredentialRef.localeCompare(b.edgeCredentialRef));
 }
+
+// Only the Xray statsquery CLI protobuf serializer can omit a scalar zero.
+// Preserve missing rows/directions as missing and leave the generic parser strict.
+export function parseXrayStatsCliProtobufUserCounters(payload) {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload) || !Array.isArray(payload.stat)) invalid();
+  const stat = payload.stat.map(row => {
+    if (!row || typeof row !== "object" || Array.isArray(row) || !Object.hasOwn(row, "name")) invalid();
+    return Object.hasOwn(row, "value") ? row : { ...row, value: 0 };
+  });
+  return parseStrictXrayUserCounters({ ...payload, stat });
+}

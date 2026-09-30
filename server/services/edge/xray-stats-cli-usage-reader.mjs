@@ -1,5 +1,6 @@
 import { spawnSync } from "node:child_process";
-import { parseStrictXrayUserCounters } from "./xray-recovery-counter-parser.mjs";
+import { parseXrayStatsCliProtobufUserCounters } from "./xray-recovery-counter-parser.mjs";
+import { assertNoDuplicateObjectKeys } from "../deployment/strict-json-scan.mjs";
 
 const SAFE_REF_PATTERN = /^[A-Za-z0-9._:-]{1,128}$/;
 
@@ -82,9 +83,11 @@ function defaultCommandRunner(command, args, recoveryOptions = {}) {
   };
 }
 
-function parseStatsPayload(stdout) {
+function parseStatsPayload(stdout, strictCounters) {
   try {
-    const payload = JSON.parse(requiredText(stdout, "stats output"));
+    const output = requiredText(stdout, "stats output");
+    if (strictCounters) assertNoDuplicateObjectKeys(output);
+    const payload = JSON.parse(output);
     if (!isPlainObject(payload)) {
       throw readerError("validation_error", "stats output must be an object");
     }
@@ -149,7 +152,7 @@ export function createXrayStatsCliUsageSnapshotReader({
     if (exitCode !== 0) {
       throw readerError("xray_stats_query_failed", "xray stats query failed");
     }
-    const payload = parseStatsPayload(result.stdout);
+    const payload = parseStatsPayload(result.stdout, strictCounters);
     const nowValue = typeof nowFn === "function" ? nowFn() : new Date();
     const observedAt = isoText(
       (!strictCounters && payload.observedAt) || (nowValue instanceof Date ? nowValue.toISOString() : nowValue),
@@ -161,7 +164,7 @@ export function createXrayStatsCliUsageSnapshotReader({
       observedAt,
       intervalStartedAt: isoText((!strictCounters && payload.intervalStartedAt) || since || observedAt, "intervalStartedAt"),
       intervalEndedAt: isoText((!strictCounters && payload.intervalEndedAt) || observedAt, "intervalEndedAt"),
-      entries: strictCounters ? parseStrictXrayUserCounters(payload) : entriesFromStats(payload)
+      entries: strictCounters ? parseXrayStatsCliProtobufUserCounters(payload) : entriesFromStats(payload)
     };
   };
 }
