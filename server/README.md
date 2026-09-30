@@ -51,6 +51,22 @@ if the path or file is invalid or linked, if it changes while being read, or,
 on POSIX, if it is group- or other-writable. The identity is never added to the
 public `/api/health` response.
 
+## Xray CLI statistics format
+
+The strict `xray api statsquery` reader has a CLI-protobuf-specific adapter:
+an existing named statistics row that omits `value` means the protobuf scalar
+default zero. The generic `parseStrictXrayUserCounters` contract is unchanged.
+Missing rows, directions, identities or root `stat` are not invented; null,
+invalid values, duplicate JSON keys/directions and unsafe sums still fail.
+Empty statistics mean no observations, not zero usage for every configured user.
+
+Both the recovery local-source reader and the `collectionScope` collector in
+`state.mjs` consume this strict CLI boundary. Updating a recovery overlay does
+not prove the sustained production collector uses the corrected source. The
+Hy2/TUIC HTTP readers and legacy direct strict-parser recovery command are not
+changed. Source tests are not production Xray-version or restoration evidence;
+see [the dated source validation record](../docs/production-incident-records/2026-09-29-xray-cli-zero-compatibility-source.md).
+
 ## Boundary
 
 This workspace does not own frontend builds, provider configuration, host
