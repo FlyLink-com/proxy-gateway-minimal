@@ -386,6 +386,136 @@ All candidate production CLIs remain disabled and the execution package remains
 unfrozen. Fresh remote-source/dependency binding, final host installation,
 current input/backup bindings and exact production authorization remain open.
 
+## 2026-09-30 installer and precise read preparation
+
+The operator approved continuing the remaining preparation, not production
+switching. Exact head `b62a158e39410d6dcec06f62a6a155dacfbbf7fb` was freshly
+observed with seven successful checks and one governance snapshot skip;
+repository-wide Linux Validate run `36681314787` passed. Those checks do not
+cover the separately held local recovery scripts.
+
+A local-only immutable installer candidate now separates file installation
+from runtime admission. Windows and existing WSL Node22.23.1 each passed all
+twelve tests; the lead independently ran both. Tests install/read back all
+forty-four fixture files, reject existing/escaping/linked targets, preserve
+partial-copy failure evidence and reject non-loadable synthetic native bytes.
+No successful production dependency receipt is emitted from these tests.
+An additional-field regression was first observed red, then the installer
+rejected extra Node fields and retained the independently observed executable
+path in its receipt. This implementation test does not cover production input.
+The earlier actual Linux native smoke is retained as separate evidence; its
+old fixture directories are absent, and this continuation did not download or
+rebuild dependencies. Successful actual native import through the new installer
+remains pending, as do final fixed production paths and authority.
+
+The Japan dependency-reader preparation passed nine Windows tests with one
+explicit POSIX symlink skip and ten WSL tests with no skips. It reads only the
+fixed old collector release's selected three-package runtime file set and the
+executing Node identity; it never imports native code or opens SQLite. The full
+selected file list, not the entire node_modules tree, is bounded and checked
+twice. Missing roles, links, changed files/sets and incomplete scans are rejected.
+This is preparation for the next exact read, not a new production observation.
+An independent Windows repetition subsequently reported eight passes, one
+`dependency_changed` failure on the happy-path fixture, and one POSIX skip;
+its WSL repetition passed all ten. The failure is retained as an unresolved
+local validation discrepancy, not replaced by the lead's earlier green run or
+presented as evidence of a production failure.
+
+The SGP reader binder now derives exactly six source roles from the reader path
+inside the hash-bound historical collector config. It only reads source bytes
+and metadata, never runs that reader or reads statistics. Known Git-source
+closures and mixed-import compatibility are checked before classification.
+Author and independent reviewer each observed 25 Windows passes / four POSIX
+skips and 29 WSL passes / zero skips. These are isolated local tests, not fresh
+SGP source observations.
+
+The new one-shot controller's author and independent reviewer each ran 35
+Windows and 35 WSL tests, all passing with no skips. It rejects unpinned sources,
+overrides, reused records,
+unexpected receipts and transport failures. Synthetic Node execution also
+checks Japan-first composition and skips SGP import after Japan failure.
+The lead's syntax-only self-test reports `unfrozen=true`, `sshInvoked=false`;
+there are zero new execution records. These tests do not validate the missing
+host-key-write constraints identified by independent review.
+
+Local transport precheck confirmed the `vul1` alias, available tools and an
+existing known-host entry without a network connection. Execution will override
+the alias's `accept-new` default with strict existing-host-key checking. No
+private key contents were printed or copied. All seventeen frozen05 source
+hashes were rechecked unchanged; no consumed execution record was replayed.
+
+Independent Bugbot-compatible fallback review completed with one open P2:
+the outer fixed SSH argv has strict host-key checking but does not explicitly
+disable `UpdateHostKeys` and `CheckHostIP`. Inherited SSH behavior can therefore
+write known_hosts, violating the new read package's no-host-key-update boundary.
+The reviewer reproduced the missing constraints without invoking SSH. No other
+concrete P1/P2 was reported. This local-tool finding is not a newly observed
+production metering fault. Per the selected review workflow, the finding was
+not fixed without the operator's next instruction. Source pins remain null;
+neither the read package nor recovery06 was frozen or executed. Latest inputs,
+new backups/rollback, successful installed native-runtime admission and exact
+production approval still remain outstanding. This continuation did not change
+production, and these evidence updates are local pending submission.
+
+## 2026-09-30 tool-only correction continuation
+
+The operator authorized continuing non-project tool corrections within the
+existing incident scope without separate confirmations for each compatibility
+issue. This does not authorize a production read, install or recovery switch.
+No business source, protocol behavior, identity, accounting or migration was
+changed. Exact PR head `b62a158e39410d6dcec06f62a6a155dacfbbf7fb` remains Draft
+with seven successful checks and one governance snapshot skip at this readback.
+The previous source CI is reused; it does not cover local private tools.
+
+The SSH transport regression first failed on both missing outer options and
+the inner `CheckHostIP` constraint. The fixed argument lists now explicitly
+disable host-key and IP additions while retaining strict existing-key checking.
+No SSH config or known_hosts file was modified. Controller Windows/WSL each
+passed 36 tests. SGP binding passed 25 Windows tests / four platform skips and
+29 WSL tests / zero skips.
+
+The Japan reader's earlier Windows discrepancy was deterministically reproduced
+with unrelated sibling-directory creation during a read. Before the fix, the
+final regression fixture produced 13 passes / one failure / four skips on
+Windows and 17 passes / one failure / zero skips on WSL. The minimal fix limits
+ancestor comparisons to dev/ino/mode/uid/gid; selected directories and files
+still use complete metadata signatures, membership checks and content hashes.
+After the fix, Windows passed 14 tests / four platform skips; WSL passed all
+18 tests. WSL covers actual open-file ancestor replacement, directory-link
+replacement, mode changes and the original symlink test skipped on Windows.
+Windows also checks changed dev/ino through local injected metadata. The lead
+repeated the final Windows suite successfully. Earlier failures remain in the
+historical record rather than being relabelled as passes.
+
+Unchanged installer evidence (12 Windows and 12 WSL tests) and prior same-Xray
+source/isolated-composition evidence are reused. No full-project inventory or
+source validation was restarted. A new independent, read-only review is limited
+to these tool corrections and their exact source bindings. Production reading,
+successful installed native-runtime admission, final recovery06 installation,
+fresh configuration/new backup/rollback bindings and recovery authorization
+remain separate outstanding work.
+
+The independent Bugbot-compatible fallback review completed with no actual
+P1/P2 remaining in the scoped tool correction. It independently ran 36 Windows
+controller tests, 39 Windows JP+SGP passes / eight platform skips, and 47 WSL
+JP+SGP passes / zero skips. Final six code/test hashes stayed unchanged and
+the production execution-record count remained zero.
+
+Read package `jp-reader-dependency-binding-20260930-01` is now locally frozen,
+awaiting exact operator approval. Its FROZEN manifest SHA-256 is
+`4eddaf04edc8cc40a5ba553a8f909cedb82c23b7ea886bb59777ca58d4499dc6`;
+controller SHA-256 is
+`c57dbfcfbc29dd78c0a4efdb6f66985dbcec61b0a07a546357e9c09f8534a93d`;
+streamed-program SHA-256 is
+`348790b3ea071b5e7473b4f605343d61fbe4b7bbd01cfe0c5980907c2fd61d98`.
+All seven bound files were rehashed successfully. Source pins now being set
+does not mean execution approval. The proposed read is Japan Node/selected
+dependency source metadata plus hash-bound SGP six-file reader provenance;
+it does not open databases, statistics, checkpoints, logs or env, install files,
+alter services or change accounting. Latest start is 2026-09-30 15:55 UTC,
+expiry 16:00 UTC (08:55/09:00 America/Los_Angeles). No production connection
+occurred. The larger recovery06 mutation package remains unfrozen/unexecuted.
+
 ## Agent / Task Routing
 
 Lead agent: incident source integration and final verification.
