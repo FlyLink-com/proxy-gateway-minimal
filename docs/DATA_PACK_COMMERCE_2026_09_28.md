@@ -6,7 +6,7 @@ document_metadata:
   lifecycle: active
   authority_scope: data_pack_commerce_implementation_boundary
   superseded_by: null
-  last_verified_at: 2026-09-29
+  last_verified_at: 2026-09-30
   production_authority: false
 ```
 
@@ -534,6 +534,118 @@ resources, not authenticated purchase-to-delivery E2E or production readiness.
   artifact, migration/back-up and rollback plan; operator approval; staged
   verification; then publication and receipt. Source tests and a Vercel
   preview are not production authorization.
+
+### 2026-09-30 authenticated HTTP and upgrade acceptance; collector blocker
+
+This continuation keeps production and all three offers unchanged. New tests
+use only disposable synthetic SQLite files and a loopback HTTP listener; no
+production credentials, database, SSH connection, or protocol process is used.
+
+- The HTTP acceptance fixture composes the real application, persisted Portal
+  session checker, Commerce coordinator/stores, production pack fulfillment
+  binding, subscription Core, protected escrow/material stores and owner-only
+  handoff resolver. All three price/size offers are exercised. Repeated purchase
+  requests and application/database restart do not add a second debit, tenant,
+  artifact or delivery. A deliberate second purchase creates a distinct pack.
+  Missing edge application keeps handoff unavailable; recovery after restart
+  completes it once. Owner isolation, missing authentication, no-store and
+  no-referrer responses, and pending/null usage are asserted. The edge apply
+  receipt is explicitly simulated. Sessions are created through the real auth
+  service, not a password/MFA login UI; this is not physical/mobile acceptance.
+- The upgrade fixture preserves existing timed entitlement/access/link, usage
+  samples/rollups, Coins ledger and all non-pack schema/data through additive
+  initialization and reopening. It exercises captured pack fulfillment and
+  post-write replay. Restoring a pre-write snapshot into a separate throwaway
+  file demonstrably loses the later Coins/order/usage facts: such a snapshot
+  must not overwrite a database after new business writes. This is a test of
+  the rollback boundary, not an implemented production restore guard or proof
+  that an old application binary supports the new schema.
+- The initial acceptance **reproduced a release-blocking collector incompatibility**:
+  `readFullMeteringBindings` accepts one valid timed binding, then rejects the
+  same synthetic inventory with `baseline_binding_invalid` after a valid
+  independently issued pack is added. The pack's normal control resolver can
+  resolve its credential. The full-metering reader instead treats its issued
+  request as a legacy Portal fallback; `v3Evidence` requires a Portal access
+  row that independent packs intentionally do not have. That first test was
+  explicitly a known-failure characterization; its passing status did not
+  establish successful pack metering or permission to publish products.
+
+The follow-up below corrects the real full-metering identity path. The separately
+prepared Hysteria physical scenario does not exercise this full-metering
+entrypoint and cannot substitute for its tests. Final publication also requires
+preserving the separately restored production reader fixes and new accounting
+state; no recovery release is replaced in this continuation.
+
+Validation for that initial slice: the new HTTP and upgrade acceptance
+files together with the existing control DB, cross-DB recovery and full-metering
+binding-inspector tests passed **62 / 62, 0 failed, 0 skipped**. One of these is
+the explicitly named known-failure characterization above. The same-head Linux
+CI for `bdb5e4d811ac8a85e256ac7743ccc7150bc7d1b5` is reused for unchanged business
+source; this is not a new full-suite or physical acceptance run. Independent
+Security Review found no confirmed security issue in the three new test/fixture
+files. That review did not cover this status paragraph, the entire historical
+PR, concurrency/physical protocol behavior, or production upgrade/rollback.
+Those were pre-fix observations, not final validation of the correction below.
+
+### 2026-09-30 full-metering pack-binding correction
+
+Risk: A release envelope / B source core. `identity_impact: true`;
+`production_state: not_deployed`. The operator authorized this correction within
+#753 and the separate source merge of #754. It does not authorize #753 merge,
+product publication, checkpoint continuation, or production changes.
+
+The upgrade regression now requires the actual five-source binding reader to
+return both the existing timed resource and the independent issued pack with
+their exact owner/request/entitlement, without writes. Before this correction,
+the three upgrade tests produced 2 pass / 1 fail (`baseline_binding_invalid`).
+
+The correction uses a dedicated read-only control-side pack proof. It checks
+order-derived issuance lineage, immutable fulfillment evidence, exact quota and
+technical period, the current issued link and credential, and cross-domain
+credential uniqueness. It neither opens a Commerce database nor fabricates a
+Portal access row. Runtime material is still independently checked by the
+existing source driver. Legacy baseline and timed-resource checks remain strict.
+
+Exhausted packs must remain attributable as retained bindings rather than active
+runtime requirements. A source with no active bindings is accepted only when a
+fully verified retained pack proves the source membership; genuinely unbound
+sources retain the existing refusal. A never-issued reservation may be omitted
+only with exact control lineage and proof that no runtime/delivery/usage facts
+exist. Partially issued or inconsistent objects must not be silently skipped.
+
+New pack membership follows the existing pending-start transition: first
+observations establish a no-debit baseline, and only subsequent measured deltas
+are charged. Material rotation is different: ordinary collection still refuses
+changed material, and the separately approved continuation mechanism remains
+required. This correction does not implement automatic post-reset continuation
+or establish physical traffic stop.
+
+Validation of this source slice:
+
+- The combined binding/pipeline/upgrade/HTTP/inspector/writer/driver/lifecycle/
+  continuation/convergence suite passed 133 tests, 0 failed, 0 skipped. The
+  implementer's overlapping legacy-baseline regression set passed 186 / 186;
+  these counts are not additive. The pipeline's three cases also fail against
+  the exact old reader through read-only in-memory loading; this is a historical
+  RED comparison, not a claim that those tests first ran before implementation.
+- Source environment preflight was ready. Document authority and strict-file
+  checks passed (412 metadata blocks), as did whitespace checks.
+- Full Windows `npm test` ran: 5,439 tests, 5,371 pass, 9 fail, 59 skip. Failures
+  are outside this slice in workflow/source-fixture, project-contract CRLF and
+  POSIX-path assertions. This is not a green full-suite result; the final pushed
+  head needs its own Linux CI readback, not reuse of the older head's CI.
+- One independent read-only Security Review fallback found no confirmed issue
+  in the nine frozen changed files and necessary caller relationships. It ran
+  50 new acceptance tests and 140 overlapping legacy/continuation tests, all
+  passing. Dedicated Security Review tooling was unavailable; this was not a
+  vendor-product invocation. File hashes were unchanged throughout review.
+
+#754 was separately merged as `2a166a7d7f5bcf8ba0b7e1dc7ef2a9a804533adf`.
+Its parser/reader source must be integrated without replacing its independently
+recorded recovery state. A follow-up normal branch merge and affected regression
+readback will bind the combined source; this does not authorize a deployment.
+No physical protocol process or production operation is run by these synthetic
+tests. The older source-bound WSL fixture is not current acceptance evidence.
 
 No production product, schema, service, wallet, or customer data is changed by
 this source-only record.

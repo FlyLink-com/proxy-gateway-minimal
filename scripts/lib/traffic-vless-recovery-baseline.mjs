@@ -3,6 +3,7 @@ import { lstatSync, realpathSync, statSync } from "node:fs";
 import { isAbsolute, resolve } from "node:path";
 import Database from "better-sqlite3";
 import { usageCycleForBinding } from "../../server/services/platform/usage-billing-cycle.mjs";
+import { readFullMeteringDataPackBindings } from "./full-metering-data-pack-bindings.mjs";
 
 const SOURCE = "xray_statsquery_user_traffic";
 const CHANNELS = new Set(["channel-vultr-a-vless-reality-tcp", "channel-sgp-a-vless-reality-tcp"]);
@@ -211,6 +212,10 @@ function verifyLegacyResources(binding, activeLinks) {
 }
 function retainedState(db, databaseIdentityDigest, channels, nowMs, initialization, fullBindings = false) {
   const schema = schemaDigest(db);
+  const packs = fullBindings ? readFullMeteringDataPackBindings({ db, channels, nowMs, sources: FULL_METERING_SOURCES }) : null;
+  const packExclusion = packs?.requestRefs.length
+    ? ` AND r.id NOT IN (${packs.requestRefs.map(() => "?").join(",")})` : "";
+  const legacyParams = [...channels, ...(packs?.requestRefs ?? [])];
   const placeholders = channels.map(() => "?").join(",");
   // A terminal status does not establish the identity of a missing durable
   // credential. Do not derive a fallback key or silently drop such history.
@@ -221,8 +226,8 @@ function retainedState(db, databaseIdentityDigest, channels, nowMs, initializati
           (p.status IN ('delivered','issued') OR coalesce(p.edge_credential_ref,'')<>''
             OR coalesce(p.edge_material_digest,'')<>'' OR coalesce(p.tenant_id,'')<>''
             OR coalesce(p.artifact_id,'')<>'' OR coalesce(p.access_grant_ref,'')<>'')))
-      AND NOT EXISTS (SELECT 1 FROM platform_portal_edge_credentials c WHERE c.request_id=r.id AND c.edge_channel_ref=r.node_id)`;
-  const legacyCount = db.prepare(`SELECT COUNT(*) AS count FROM platform_issuance_requests r WHERE ${legacyPredicate}`).get(...channels).count;
+      AND NOT EXISTS (SELECT 1 FROM platform_portal_edge_credentials c WHERE c.request_id=r.id AND c.edge_channel_ref=r.node_id)${packExclusion}`;
+  const legacyCount = db.prepare(`SELECT COUNT(*) AS count FROM platform_issuance_requests r WHERE ${legacyPredicate}`).get(...legacyParams).count;
   if (legacyCount !== 0n && !initialization) fail("baseline_legacy_binding_unsupported");
   const credentialSources = initialization ? `(SELECT request_id,edge_channel_ref,edge_credential_ref,edge_material_digest,ordinal,'durable' AS identity_origin FROM platform_portal_edge_credentials
     UNION ALL SELECT r.id,r.node_id,p.edge_credential_ref,p.edge_material_digest,0,'legacy_primary'
@@ -240,11 +245,14 @@ function retainedState(db, databaseIdentityDigest, channels, nowMs, initializati
     LEFT JOIN platform_entitlements e ON e.id=r.entitlement_id
     LEFT JOIN platform_accounts a ON a.id=r.account_id
     WHERE c.edge_channel_ref IN (${placeholders}) ORDER BY c.edge_channel_ref,c.edge_credential_ref,c.request_id,c.ordinal
-  `).all(...(initialization ? [...channels, ...channels] : channels));
-  if (!bindings.length || bindings.length > MAX_ENTRIES) fail("baseline_binding_scope_invalid");
+  `).all(...(initialization ? [...legacyParams, ...channels] : channels));
+  if ((!bindings.length && !packs?.requestRefs.length)
+    || bindings.length + (packs?.requestRefs.length ?? 0) > MAX_ENTRIES) fail("baseline_binding_scope_invalid");
   const byKey = new Map();
   const opaqueHistory = [];
   for (const binding of bindings) {
+    if (packs?.hasSchema && db.prepare("SELECT 1 FROM platform_data_pack_edge_credentials WHERE edge_credential_ref=? LIMIT 1")
+      .get(binding.edge_credential_ref)) fail("baseline_binding_ambiguous");
     if (initialization) {
       v3Evidence(db, binding);
       if (opaqueExpiredHistory(binding, nowMs)) {
@@ -305,11 +313,13 @@ function retainedState(db, databaseIdentityDigest, channels, nowMs, initializati
         ...(fullBindings ? { accountId: binding.account_id, entitlementId: binding.entitlement_id, requestId: binding.request_id } : { cursor }) });
     }
   }
-  if (channels.some((channel) => !entries.some((entry) => entry.channelRef === channel))) fail("baseline_binding_scope_invalid");
+  if (packs) { entries.push(...packs.entries); retainedBindings.push(...packs.retainedBindings); }
+  if (channels.some((channel) => !entries.some((entry) => entry.channelRef === channel)
+    && !packs?.retainedBindings.some((entry) => entry.channelRef === channel))) fail("baseline_binding_scope_invalid");
   if (fullBindings) return {
-    version: 1, channelRefs: channels, databaseIdentityDigest, schemaDigest: schema,
+    version: 1, channelRefs: channels, databaseIdentityDigest, schemaDigest: packs.hasSchema ? digest({ schema, packs: packs.schema }) : schema,
     retentionPolicy: RETENTION_POLICY, initializationPolicy: INITIALIZATION_POLICY,
-    bindingDigest: digest(bindings), retainedBindings, retentionDigest: digest(retainedBindings),
+    bindingDigest: packs.requestRefs.length ? digest({ bindings, packs: packs.evidence }) : digest(bindings), retainedBindings, retentionDigest: digest(retainedBindings),
     opaqueHistory, opaqueHistoryDigest: digest(opaqueHistory), entries
   };
   const samples = hashRows(db, "platform_usage_samples", channels, "id");
