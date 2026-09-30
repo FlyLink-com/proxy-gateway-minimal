@@ -321,6 +321,71 @@ Production metering restoration is not claimed. Completion still requires the
 approved exact new recovery execution, continuous natural collection, and
 reconciled accounting only after the new zero-debit baseline.
 
+## 2026-09-30 operator-approved P2 correction and packet preparation
+
+The operator explicitly approved correcting the reported P2 and continuing
+local packet preparation, excluding production switching. No SSH, production
+read, upload, service operation or accounting mutation occurred in this step.
+
+The fixed native safety check verifies final ownership before setting journal
+quiescence and known-state flags. TDD on both Windows and WSL first recorded
+five safety cases: three passed and two failed for second-check false/throw.
+After the minimal order correction, affected safety plus disabled-CLI tests
+passed six of six on each platform, with no skips. The lead independently
+repeated these tests. Initial rejection never sends stop; second-check failure
+leaves `complete=false`, `stateUnknown=true`, and journal unverified; normal
+success is unchanged.
+
+The mechanical builder and its corresponding safety output changed, not the
+consumed05 files. All seventeen05 hashes, the other eleven native stage files
+and both support files remain unchanged. The lead verified all stage/support
+hashes and the refreshed top-level template binding without running the full
+builder. Corrected safety SHA-256:
+`1aa01b3ef7ef62188b8f0412c46a18c7aa9ade9183466988df007a7b3fd03833`.
+Native derivation manifest SHA-256:
+`d128460c0fd234e1a2f03b59f8830a90d04b21da84ffe980193676c5d6d872f6`.
+
+A separate offline payload assembler now verifies the exact twenty source
+files, fourteen private stage/support modules and an explicitly pinned complete
+runtime dependency file list before copying into a marked disposable local
+fixture. Existing output is refused, input hashes and closed output sets are
+checked, and a partial write cannot create a successful manifest. Twelve tests
+pass on Windows and WSL, including a forty-four-file assembly using actual
+source/native modules but seven explicitly synthetic, non-loadable dependency
+files. The input manifest is not installed as a host-verified dependency
+receipt. This is an offline assembler, not a finished production installer or
+proof of production Node/native-module compatibility.
+
+One independent Bugbot-compatible fallback reviewer closed the original P2,
+found no new issue within the local-only payload scope, and independently ran
+the six safety and twelve payload cases on both Windows and WSL. Its exact
+positive test filter excluded the builder; reviewed code hashes were unchanged.
+No dedicated Bugbot product invocation or production-ready review is claimed.
+
+A separate SGP six-file source-binding preparation module also passed local
+tests: Windows twenty passed with three explicit POSIX/symlink skips; WSL
+twenty-three passed with zero skips. The lead independently repeated both.
+Actual six-file current899 and old01d4 Git bytes were tested in synthetic
+configuration/directory fixtures, without importing their runtime readers.
+Parent-directory escape regression cases were corrected during implementation;
+unlisted imports, missing roles, changed hashes, hardlinks, symlinks and metadata
+drift fail closed. This module only permits OS-temporary fixtures and its CLI
+always rejects; it has no production transport, deadline or execution authority.
+Its source SHA-256 is
+`ae2224a25925a83c58e554fa81d80c39bc3695a8673a69db9496bece039fd239`.
+This module received lead implementation review/tests, not the separate
+Bugbot-compatible P2/payload review above. Actual SGP path/version remains
+unknown and no remote diagnosis was performed.
+
+The previous exact-head CI for `89812974d9a3fedfece15fb3c80ff0ee80f87ff0`
+was freshly confirmed with seven successes and one governance snapshot skip.
+This continuation only updates repository evidence; local private recovery
+preparation scripts are not claimed to be covered by repository CI. Prior
+same-Xray physical and ten-case composition evidence are reused unchanged.
+All candidate production CLIs remain disabled and the execution package remains
+unfrozen. Fresh remote-source/dependency binding, final host installation,
+current input/backup bindings and exact production authorization remain open.
+
 ## Agent / Task Routing
 
 Lead agent: incident source integration and final verification.
