@@ -241,22 +241,23 @@ function validateState(raw, n = null) {
     for (const field of ["entries", "connections", "retiredEntries", "retiredConnections"]) array(raw[field]);
     requireCondition(raw.entries.length + raw.retiredEntries.length <= LIMIT && raw.connections.length + raw.retiredConnections.length <= LIMIT);
     const materialCarry = new Map();
-    if (Object.hasOwn(raw, "materialBoundaries")) {
-      array(raw.materialBoundaries);
-      requireCondition(raw.materialBoundaries.length > 0 && raw.materialBoundaries.length <= 128);
-      const materialIdentities = new Set([...raw.eligibleRefs, ...raw.archivedRefs]);
-      const generationCarries = new Map(raw.generationArchives.map(archive => [archive.nextGeneration,
-        new Map((raw.schemaVersion === 2 ? archive.entries : archive.snapshot.entries).map(entry => [entry.edgeCredentialRef, entry.usage]))]));
-      let lastMaterialAt = raw.minObservedAt;
-      for (const boundary of raw.materialBoundaries) {
+    const generationCarries = new Map(raw.generationArchives.map(archive => [archive.nextGeneration,
+      new Map((raw.schemaVersion === 2 ? archive.entries : archive.snapshot.entries).map(entry => [entry.edgeCredentialRef, entry.usage]))]));
+    const eligibleOrArchived = new Set([...raw.eligibleRefs, ...raw.archivedRefs]);
+    const acceptBoundaries = (field) => {
+      if (!Object.hasOwn(raw, field)) return [];
+      array(raw[field]);
+      requireCondition(raw[field].length > 0 && raw[field].length <= 128);
+      let lastAt = raw.minObservedAt;
+      for (const boundary of raw[field]) {
         object(boundary, ["generation", "observedAt", "previousStateDigest", "entries", "boundaryDigest"]);
         requireCondition(knownGenerations.has(boundary.generation));
-        requireCondition(iso(boundary.observedAt) > lastMaterialAt && boundary.observedAt <= raw.lastObservedAt);
+        requireCondition(iso(boundary.observedAt) > lastAt && boundary.observedAt <= raw.lastObservedAt);
         const generationIndex = raw.generationArchives.findIndex(archive => archive.nextGeneration === boundary.generation);
         const startedAt = generationIndex < 0 ? raw.minObservedAt : raw.generationArchives[generationIndex].verifiedAt;
         const following = raw.generationArchives.find(archive => (raw.schemaVersion === 2 ? archive.generation : archive.snapshot.generation) === boundary.generation);
         requireCondition(boundary.observedAt > startedAt && (!following || boundary.observedAt <= following.verifiedAt));
-        for (const field of ["previousStateDigest", "boundaryDigest"]) requireCondition(typeof boundary[field] === "string" && HASH.test(boundary[field]));
+        for (const digestField of ["previousStateDigest", "boundaryDigest"]) requireCondition(typeof boundary[digestField] === "string" && HASH.test(boundary[digestField]));
         const { boundaryDigest: recordedDigest, ...payload } = boundary;
         requireCondition(digest(payload) === recordedDigest);
         array(boundary.entries);
@@ -265,44 +266,20 @@ function validateState(raw, n = null) {
         for (const entry of boundary.entries) {
           object(entry, ["edgeCredentialRef", "carryUsage"]);
           ref(entry.edgeCredentialRef); object(entry.carryUsage, ["uploadBytes", "downloadBytes"]); bytes(entry.carryUsage);
-          requireCondition(materialIdentities.has(entry.edgeCredentialRef));
-          const key = `${boundary.generation}\0${entry.edgeCredentialRef}`;
-          const prior = materialCarry.get(key)
-            ?? generationCarries.get(boundary.generation)?.get(entry.edgeCredentialRef)
-            ?? zero();
-          requireCondition(entry.carryUsage.uploadBytes >= prior.uploadBytes && entry.carryUsage.downloadBytes >= prior.downloadBytes);
-          materialCarry.set(key, entry.carryUsage);
+          requireCondition(eligibleOrArchived.has(entry.edgeCredentialRef));
         }
-        lastMaterialAt = boundary.observedAt;
+        lastAt = boundary.observedAt;
       }
-    }
-    if (Object.hasOwn(raw, "billingWindowBoundaries")) {
-      array(raw.billingWindowBoundaries);
-      requireCondition(raw.billingWindowBoundaries.length > 0 && raw.billingWindowBoundaries.length <= 128);
-      const billingIdentities = new Set([...raw.eligibleRefs, ...raw.archivedRefs]);
-      const generationCarries = new Map(raw.generationArchives.map(archive => [archive.nextGeneration,
-        new Map((raw.schemaVersion === 2 ? archive.entries : archive.snapshot.entries).map(entry => [entry.edgeCredentialRef, entry.usage]))]));
-      let lastBillingAt = raw.minObservedAt;
-      for (const boundary of raw.billingWindowBoundaries) {
-        object(boundary, ["generation", "observedAt", "previousStateDigest", "entries", "boundaryDigest"]);
-        requireCondition(knownGenerations.has(boundary.generation));
-        requireCondition(iso(boundary.observedAt) > lastBillingAt && boundary.observedAt <= raw.lastObservedAt);
-        for (const field of ["previousStateDigest", "boundaryDigest"]) requireCondition(typeof boundary[field] === "string" && HASH.test(boundary[field]));
-        const { boundaryDigest: recordedDigest, ...payload } = boundary;
-        requireCondition(digest(payload) === recordedDigest);
-        array(boundary.entries);
-        requireCondition(boundary.entries.length > 0);
-        requireCondition(canonical(boundary.entries.map(entry => entry.edgeCredentialRef)) === canonical(refs(boundary.entries.map(entry => entry.edgeCredentialRef))));
-        for (const entry of boundary.entries) {
-          object(entry, ["edgeCredentialRef", "carryUsage"]);
-          ref(entry.edgeCredentialRef); object(entry.carryUsage, ["uploadBytes", "downloadBytes"]); bytes(entry.carryUsage);
-          requireCondition(billingIdentities.has(entry.edgeCredentialRef));
-          const key = `${boundary.generation}\0${entry.edgeCredentialRef}`;
-          const prior = materialCarry.get(key) ?? generationCarries.get(boundary.generation)?.get(entry.edgeCredentialRef) ?? zero();
-          requireCondition(entry.carryUsage.uploadBytes >= prior.uploadBytes && entry.carryUsage.downloadBytes >= prior.downloadBytes);
-          materialCarry.set(key, entry.carryUsage);
-        }
-        lastBillingAt = boundary.observedAt;
+      return raw[field];
+    };
+    const orderedBoundaries = [...acceptBoundaries("materialBoundaries"), ...acceptBoundaries("billingWindowBoundaries")]
+      .sort((left, right) => compare(left.observedAt, right.observedAt));
+    for (const boundary of orderedBoundaries) {
+      for (const entry of boundary.entries) {
+        const key = `${boundary.generation}\0${entry.edgeCredentialRef}`;
+        const prior = materialCarry.get(key) ?? generationCarries.get(boundary.generation)?.get(entry.edgeCredentialRef) ?? zero();
+        requireCondition(entry.carryUsage.uploadBytes >= prior.uploadBytes && entry.carryUsage.downloadBytes >= prior.downloadBytes);
+        materialCarry.set(key, entry.carryUsage);
       }
     }
     const allConnectionIds = new Set();
