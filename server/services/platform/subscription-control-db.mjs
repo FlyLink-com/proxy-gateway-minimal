@@ -6317,8 +6317,8 @@ export function createSqliteSubscriptionControlStore({
         config_test_ok = excluded.config_test_ok,
         service_active = excluded.service_active,
         listener_udp443 = excluded.listener_udp443,
-        backup_ref = excluded.backup_ref,
-        rollback_ref = excluded.rollback_ref,
+        backup_ref = coalesce(excluded.backup_ref, platform_edge_apply_receipts.backup_ref),
+        rollback_ref = coalesce(excluded.rollback_ref, platform_edge_apply_receipts.rollback_ref),
         applied_at = excluded.applied_at,
         created_at = excluded.created_at
     `), record);

@@ -938,11 +938,6 @@ test("[iteration 5] CLI surfaces absolute SINK_ROOT into the observer", async ()
     const sinkDir = join(directory, "nested");
     mkdirSync(sinkDir);
     const filePath = join(sinkDir, "diagnostics.jsonl");
-    const env = {
-      A3_PHYSICAL_DIAGNOSTICS: "1",
-      A3_PHYSICAL_DIAGNOSTICS_FILE: filePath,
-      A3_PHYSICAL_DIAGNOSTICS_SINK_ROOT: directory
-    };
 
     // Inject a fake collector via NODE_OPTIONS / module override is not
     // possible here because runA3PhysicalValidationCli uses an

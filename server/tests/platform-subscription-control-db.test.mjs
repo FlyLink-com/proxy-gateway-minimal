@@ -564,7 +564,41 @@ test("subscription control store records redacted edge apply receipts", () => {
     });
     assert.equal(receipts.length, 1);
     assert.equal(receipts[0].desiredStateRef, "desired_state_orders_001");
+    assert.equal(receipts[0].backupRef, "backup_aliyun_001");
+    assert.equal(receipts[0].rollbackRef, null);
     assert.doesNotMatch(JSON.stringify(receipts), /password|rawConfig|subscriptionUrl|uuid|token/i);
+
+    const repeated = store.recordEdgeApplyReceipt({
+      id: "edge_receipt_001",
+      channelRef: "channel-aliyun-a-tuic",
+      desiredStateRef: "desired_state_orders_001",
+      status: "applied",
+      actionCounts: { add: 0, revoke: 0, rotate: 0, unchanged: 2 },
+      configTestOk: true,
+      serviceActive: true,
+      listenerUdp443: true,
+      appliedAt: now,
+      createdAt: now
+    });
+    assert.equal(repeated.backupRef, "backup_aliyun_001");
+    assert.equal(repeated.rollbackRef, null);
+
+    const replaced = store.recordEdgeApplyReceipt({
+      id: "edge_receipt_001",
+      channelRef: "channel-aliyun-a-tuic",
+      desiredStateRef: "desired_state_orders_001",
+      status: "applied",
+      actionCounts: { add: 0, revoke: 0, rotate: 0, unchanged: 0 },
+      configTestOk: true,
+      serviceActive: true,
+      listenerUdp443: true,
+      backupRef: "backup_aliyun_002",
+      rollbackRef: "rollback_aliyun_002",
+      appliedAt: now,
+      createdAt: now
+    });
+    assert.equal(replaced.backupRef, "backup_aliyun_002");
+    assert.equal(replaced.rollbackRef, "rollback_aliyun_002");
   });
 });
 
