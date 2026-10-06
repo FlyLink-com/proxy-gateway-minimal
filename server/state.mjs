@@ -2333,7 +2333,8 @@ export function createRuntimeState(options = {}) {
       totpVerifier: platformPortalTotpVerifier,
       totpSecretProtector: platformPortalTotpSecretProtector,
       passwordCredentialService: platformPortalPasswordCredentialService,
-      allowPasswordOnlySessionForSetup: envFlag(env.USER_PORTAL_ALLOW_PASSWORD_ONLY_SETUP_SESSION)
+      allowPasswordOnlySessionForSetup: envFlag(env.USER_PORTAL_ALLOW_PASSWORD_ONLY_SETUP_SESSION),
+      nativeSessionsEnabled: envFlag(env.PLATFORM_PORTAL_NATIVE_SESSION_ENABLED)
     })
   ) : null;
   let portalReferrals = null;

@@ -1,4 +1,5 @@
 import { recordReferralRegistration } from './portal-referral-contract.mjs';
+import { createNativeSessionStore } from './native-session-store.mjs';
 import Database from "better-sqlite3";
 import { createHash, randomBytes } from "node:crypto";
 import { mkdirSync } from "node:fs";
@@ -911,6 +912,7 @@ export function createSqliteSubscriptionControlStore({
   const db = database ?? (initializeSchema
     ? new Database(dbPath)
     : new Database(dbPath, { fileMustExist: true }));
+  const nativeSessions = createNativeSessionStore({ database: db });
   db.pragma("busy_timeout = 2000");
   db.pragma("foreign_keys = ON");
   if (initializeSchema) db.pragma("journal_mode = WAL");
@@ -7041,12 +7043,17 @@ export function createSqliteSubscriptionControlStore({
     const sessionId = requiredText(id, "id");
     // A repeated logout does not alter the first revocation timestamp. Expired
     // or already-revoked rows cannot be moved back into an active state.
-    db.prepare(`
-      update platform_portal_sessions
-      set status = 'revoked', revoked_at = ?, updated_at = ?
-      where id = ? and status = 'active' and revoked_at is null
-    `).run(isoText(revokedAt, "revokedAt"), isoText(updatedAt, "updatedAt"), sessionId);
-    return getPortalSession(sessionId);
+    return db.transaction(() => {
+      const at = isoText(revokedAt, "revokedAt");
+      db.prepare(`
+        update platform_portal_sessions
+        set status = 'revoked', revoked_at = ?, updated_at = ?
+        where id = ? and status = 'active' and revoked_at is null
+      `).run(at, isoText(updatedAt, "updatedAt"), sessionId);
+      // An expired access row must still revoke its longer-lived native family.
+      nativeSessions.revokeAccessIfPresent({ sessionRef: sessionId, at });
+      return getPortalSession(sessionId);
+    })();
   }
 
   function listPortalSessions({ accountId }) {
@@ -7145,6 +7152,7 @@ export function createSqliteSubscriptionControlStore({
   }
 
   return {
+    nativeSessions,
     recordPortalReferralRegistration(input) { return recordReferralRegistration(db, input); },
     runInTransaction,
     upsertLead,

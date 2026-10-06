@@ -1,4 +1,5 @@
 import { createHash, randomBytes } from "node:crypto";
+import { NATIVE_SESSION_MAX_SECONDS } from "./native-session-store.mjs";
 
 function portalAuthError(code, message) {
   const error = new Error(message);
@@ -268,6 +269,7 @@ export function createUserPortalAuthService({
   totpSecretProtector = null,
   passwordCredentialService,
   allowPasswordOnlySessionForSetup = false,
+  nativeSessionsEnabled = false,
   totpMaxFailures = 5,
   totpLockSeconds = 900,
   secondFactorMaxFailures = 5
@@ -296,7 +298,18 @@ export function createUserPortalAuthService({
     }
   }
 
-  function createSession({ accountId, entryId = null, authMethod, issuedAt, expiresAt, rememberMe = false }) {
+  function nativeCredentialBinding(accountId) {
+    if (nativeSessionsEnabled !== true || !controlStore.nativeSessions) return null;
+    try { controlStore.nativeSessions.requireReady(); return controlStore.nativeSessions.credentialBinding(accountId); }
+    catch { return null; } // An unavailable native extension cannot break legacy short login.
+  }
+  function nativeChallengeHash(accountId, createdAt, allowedFactors, binding) {
+    return `portalnative_mfa_v1_${createHash("sha256").update(JSON.stringify([accountId, createdAt, allowedFactors, binding])).digest("hex")}`;
+  }
+  function createSession({ accountId, entryId = null, authMethod, issuedAt, expiresAt, rememberMe = false, nativeBinding = null }) {
+    if (nativeBinding && nativeCredentialBinding(accountId) !== nativeBinding) {
+      throw portalAuthError("invalid_login", "authentication credential changed");
+    }
     const remembered = rememberPreference(rememberMe);
     const session = controlStore.createPortalSession({
       id: legacySessionReference(requiredText(sessionRefFactory(), "sessionRef")),
@@ -317,7 +330,7 @@ export function createUserPortalAuthService({
     while (browserConversions.size >= BROWSER_CONVERSION_MAX_ENTRIES) {
       browserConversions.delete(browserConversions.keys().next().value);
     }
-    browserConversions.set(session.sessionRef, { accountId, issuedAt, rememberMe: remembered });
+    browserConversions.set(session.sessionRef, { accountId, issuedAt, rememberMe: remembered, nativeBinding });
     return {
       session: safeSessionSummary(session),
       rememberMe: remembered
@@ -399,6 +412,71 @@ export function createUserPortalAuthService({
       controlStore.revokePortalSession(sessionRef, { revokedAt: checkedAt, updatedAt: checkedAt });
       if (previousId) controlStore.revokePortalSession(previousId, { revokedAt: checkedAt, updatedAt: checkedAt });
       return { cookieValue, session: publicBrowserSession({ session, account: current.account }) };
+    });
+  }
+
+  function nativeOperation(action) {
+    if (nativeSessionsEnabled !== true) throw portalAuthError("not_found", "native sessions are unavailable");
+    try {
+      if (!controlStore.nativeSessions) throw portalAuthError("native_session_unavailable", "native sessions are unavailable");
+      controlStore.nativeSessions.requireReady();
+      return action(controlStore.nativeSessions);
+    } catch (error) {
+      if (["validation_error", "invalid_session", "invalid_refresh_grant", "native_session_unavailable"].includes(error?.code)) throw error;
+      throw portalAuthError("native_session_unavailable", "native sessions are unavailable");
+    }
+  }
+  function refreshDigest(value) {
+    if (typeof value !== "string" || !/^pnr1_[A-Za-z0-9_-]{43}$/.test(value)
+      || Buffer.from(value.slice(5), "base64url").toString("base64url") !== value.slice(5)) {
+      throw portalAuthError("validation_error", "native refresh credential is invalid");
+    }
+    return createHash("sha256").update(value).digest("hex");
+  }
+  function exchangeNativeSession(input = {}) {
+    return nativeOperation(store => {
+      const sessionRef = legacySessionReference(input.sessionRef);
+      const checkedAt = now();
+      pruneBrowserConversions(checkedAt);
+      const eligible = browserConversions.get(sessionRef);
+      const { session, account } = getActiveSessionContext(sessionRef);
+      if (!eligible?.nativeBinding || eligible.accountId !== account.id || eligible.issuedAt !== session.issuedAt
+        || store.credentialBinding(account.id) !== eligible.nativeBinding) {
+        throw portalAuthError("invalid_session", "fresh password authentication is required");
+      }
+      const refreshToken = `pnr1_${randomBytes(32).toString("base64url")}`;
+      const expiresAt = addSeconds(eligible.issuedAt, NATIVE_SESSION_MAX_SECONDS);
+      browserConversions.delete(sessionRef);
+      store.create({ tokenHash: refreshDigest(refreshToken), familyId: `native_${randomBytes(16).toString("hex")}`,
+        generation: 0, accountId: account.id, accessSessionRef: sessionRef, credentialBinding: eligible.nativeBinding,
+        authIssuedAt: eligible.issuedAt, expiresAt, createdAt: checkedAt });
+      return { session: safeSessionSummary(session), refreshGrant: { refreshToken, issuedAt: eligible.issuedAt, expiresAt } };
+    });
+  }
+  function refreshNativeSession(input = {}) {
+    return nativeOperation(store => {
+      const tokenHash = refreshDigest(input.refreshToken);
+      const checkedAt = now();
+      const refreshToken = `pnr1_${randomBytes(32).toString("base64url")}`;
+      const rotated = store.rotate({ tokenHash, nextTokenHash: refreshDigest(refreshToken), at: checkedAt,
+        createAccess(row) {
+          const previous = controlStore.getPortalSession(row.access_session_ref);
+          // Deliberately bypass createSession: renewal is not fresh authentication.
+          return safeSessionSummary(controlStore.createPortalSession({
+            id: legacySessionReference(requiredText(sessionRefFactory(), "sessionRef")), accountId: row.account_id,
+            entryId: previous.entryId, authMethod: previous.authMethod, status: "active", issuedAt: checkedAt,
+            expiresAt: new Date(Math.min(Date.parse(checkedAt) + 1_800_000, Date.parse(row.expires_at))).toISOString(),
+            updatedAt: checkedAt,
+          }));
+        } });
+      if (!rotated) throw portalAuthError("invalid_refresh_grant", "native refresh credential is invalid");
+      return { session: rotated.session, refreshGrant: { refreshToken, issuedAt: rotated.issuedAt, expiresAt: rotated.expiresAt } };
+    });
+  }
+  function logoutNativeSession(input = {}) {
+    return nativeOperation(store => {
+      store.logout({ tokenHash: refreshDigest(input.refreshToken), at: now() });
+      return { loggedOut: true };
     });
   }
 
@@ -653,11 +731,15 @@ export function createUserPortalAuthService({
       throw portalAuthError("invalid_login", "invalid_login");
     }
     const accountId = account.id;
+    const nativeBinding = nativeCredentialBinding(accountId);
     passwordCredentialService.verifyPasswordCredential({
       accountId,
       plainPassword: requiredText(input?.plainPassword, "plainPassword"),
       requestContext: input?.requestContext
     });
+    if (nativeBinding && nativeCredentialBinding(accountId) !== nativeBinding) {
+      throw portalAuthError("invalid_login", "authentication credential changed");
+    }
 
     const availableFactors = enabledSecondFactors(accountId);
     if (availableFactors.length > 0) {
@@ -665,7 +747,8 @@ export function createUserPortalAuthService({
       const challenge = controlStore.createPortalSecondFactorChallenge({
         id: requiredText(input?.challengeRef || secondFactorChallengeRefFactory(), "challengeRef"),
         accountId,
-        challengeHash: `portalmfahash_${createHash("sha256").update(`${accountId}|${verifiedAt}|${availableFactors.join(",")}`).digest("hex")}`,
+        challengeHash: nativeBinding ? nativeChallengeHash(accountId, verifiedAt, availableFactors, nativeBinding)
+          : `portalmfahash_${createHash("sha256").update(`${accountId}|${verifiedAt}|${availableFactors.join(",")}`).digest("hex")}`,
         allowedFactors: availableFactors,
         rememberMe,
         status: "active",
@@ -686,7 +769,8 @@ export function createUserPortalAuthService({
       authMethod: "password",
       issuedAt: verifiedAt,
       expiresAt: input?.expiresAt,
-      rememberMe
+      rememberMe,
+      nativeBinding
     });
   }
 
@@ -704,6 +788,14 @@ export function createUserPortalAuthService({
     }
     if (new Date(challenge.expiresAt).getTime() <= new Date(verifiedAt).getTime()) {
       throw portalAuthError("validation_error", "portal second-factor challenge is expired");
+    }
+    let nativeBinding = null;
+    if (challenge.challengeHash.startsWith("portalnative_mfa_")) {
+      nativeBinding = nativeCredentialBinding(challenge.accountId);
+      if (!nativeBinding || !/^portalnative_mfa_v1_[0-9a-f]{64}$/.test(challenge.challengeHash)
+        || challenge.challengeHash !== nativeChallengeHash(challenge.accountId, challenge.createdAt, challenge.allowedFactors, nativeBinding)) {
+        throw portalAuthError("validation_error", "MFA authentication is no longer valid");
+      }
     }
     if (!challenge.allowedFactors.includes(factor)) {
       throw portalAuthError("validation_error", "portal second-factor method is not available");
@@ -743,6 +835,10 @@ export function createUserPortalAuthService({
     }
 
     return controlStore.runInTransaction(() => {
+      if (nativeBinding && (controlStore.getPortalSecondFactorChallenge(challenge.id)?.status !== "active"
+        || nativeCredentialBinding(challenge.accountId) !== nativeBinding)) {
+        throw portalAuthError("validation_error", "MFA authentication is no longer valid");
+      }
       controlStore.markPortalTotpVerified(credential.id, {
         verifiedAt,
         updatedAt: verifiedAt
@@ -756,12 +852,17 @@ export function createUserPortalAuthService({
         authMethod: "totp",
         issuedAt: verifiedAt,
         expiresAt: input?.expiresAt,
-        rememberMe
+        rememberMe,
+        nativeBinding
       });
     });
   }
 
   return {
+    nativeSessionsEnabled: nativeSessionsEnabled === true,
+    exchangeNativeSession,
+    refreshNativeSession,
+    logoutNativeSession,
     issueDynamicEntry,
     enrollTotpCredential,
     verifyTotpAndCreateSession,
