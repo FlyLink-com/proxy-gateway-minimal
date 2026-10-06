@@ -145,8 +145,8 @@ export function assertFullMeteringJournalNoPending({ directory }) {
 }
 // Retain the exact logical preimage before a material transition creates a WAL
 // intent. Never overwrite it. This is private audit evidence, not a rollback DB.
-export function archiveFullMeteringMaterialCheckpoint({ directory, context, checkpoint }) {
-  const digest = fullMeteringDigest(checkpoint), name = `material-before-${digest}.json`;
+export function archiveFullMeteringMaterialCheckpoint({ directory, context, checkpoint, namePrefix = "material-before" }) {
+  const digest = fullMeteringDigest(checkpoint), name = `${namePrefix}-${digest}.json`;
   if (fullMeteringDigest(readFullMeteringJournal({ directory, context })) !== digest) fail("full_metering_checkpoint_changed");
   if (existsSync(join(directory, name))) {
     if (fullMeteringDigest(read(directory, name, context)) !== digest) fail("full_metering_material_archive_changed");

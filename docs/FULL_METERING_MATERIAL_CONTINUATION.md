@@ -35,6 +35,8 @@ does not repeat that production read or remove those runtime entries.
 
 Only a proven material difference with otherwise identical ownership, channel,
 source, request, entitlement and complete billing binding may be accepted.
+A later billing end with unchanged material is not a material continuation;
+that admission is `docs/FULL_METERING_BILLING_WINDOW_CONTINUATION.md`.
 Historical totals, original activation, retained identities and checkpoints are
 preserved. Missing intervals are unknown (`null`), never zero or a historical
 debit. No database schema, Coins, order, entitlement, map-retention policy,

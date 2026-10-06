@@ -13,7 +13,7 @@ const STATE_FIELDS = ["schemaVersion", "type", "mode", "sourceRef", "channelRef"
   "archivedRefs", "retiredEntries", "retiredConnections", "scopeRevision", "previousStateDigest", "lastScopeChange",
   "generationRevision", "generationArchives", "generationStartedAt", "generationAwaitingObservation", "generationUnassignedGap"];
 const V2_STATE_FIELDS = [...STATE_FIELDS, "connectionHistory", "retentionMigration"];
-const MATERIAL_STATE_FIELDS = ["materialBoundaries"];
+const MATERIAL_STATE_FIELDS = ["materialBoundaries", "billingWindowBoundaries"];
 const REQUEST_FIELDS = ["state", "mode", "sourceRef", "channelRef", "generation", "eligibleRefs", "retainedRefs", "observedAt", "now", "minObservedAt", "observations"];
 const boundaryDigest = (generation, verifiedAt) => digest({ type: "verified_generation_boundary", generation, verifiedAt });
 
@@ -276,6 +276,35 @@ function validateState(raw, n = null) {
         lastMaterialAt = boundary.observedAt;
       }
     }
+    if (Object.hasOwn(raw, "billingWindowBoundaries")) {
+      array(raw.billingWindowBoundaries);
+      requireCondition(raw.billingWindowBoundaries.length > 0 && raw.billingWindowBoundaries.length <= 128);
+      const billingIdentities = new Set([...raw.eligibleRefs, ...raw.archivedRefs]);
+      const generationCarries = new Map(raw.generationArchives.map(archive => [archive.nextGeneration,
+        new Map((raw.schemaVersion === 2 ? archive.entries : archive.snapshot.entries).map(entry => [entry.edgeCredentialRef, entry.usage]))]));
+      let lastBillingAt = raw.minObservedAt;
+      for (const boundary of raw.billingWindowBoundaries) {
+        object(boundary, ["generation", "observedAt", "previousStateDigest", "entries", "boundaryDigest"]);
+        requireCondition(knownGenerations.has(boundary.generation));
+        requireCondition(iso(boundary.observedAt) > lastBillingAt && boundary.observedAt <= raw.lastObservedAt);
+        for (const field of ["previousStateDigest", "boundaryDigest"]) requireCondition(typeof boundary[field] === "string" && HASH.test(boundary[field]));
+        const { boundaryDigest: recordedDigest, ...payload } = boundary;
+        requireCondition(digest(payload) === recordedDigest);
+        array(boundary.entries);
+        requireCondition(boundary.entries.length > 0);
+        requireCondition(canonical(boundary.entries.map(entry => entry.edgeCredentialRef)) === canonical(refs(boundary.entries.map(entry => entry.edgeCredentialRef))));
+        for (const entry of boundary.entries) {
+          object(entry, ["edgeCredentialRef", "carryUsage"]);
+          ref(entry.edgeCredentialRef); object(entry.carryUsage, ["uploadBytes", "downloadBytes"]); bytes(entry.carryUsage);
+          requireCondition(billingIdentities.has(entry.edgeCredentialRef));
+          const key = `${boundary.generation}\0${entry.edgeCredentialRef}`;
+          const prior = materialCarry.get(key) ?? generationCarries.get(boundary.generation)?.get(entry.edgeCredentialRef) ?? zero();
+          requireCondition(entry.carryUsage.uploadBytes >= prior.uploadBytes && entry.carryUsage.downloadBytes >= prior.downloadBytes);
+          materialCarry.set(key, entry.carryUsage);
+        }
+        lastBillingAt = boundary.observedAt;
+      }
+    }
     const allConnectionIds = new Set();
     for (const archived of [false, true]) {
       const selectedEntries = archived ? raw.retiredEntries : raw.entries;
@@ -435,27 +464,38 @@ export function transitionVerifiedFullMeteringMaterialCounters(request) {
   const materialRefs = refs(request.materialRefs, false);
   requireCondition(canonical(materialRefs) === canonical(request.materialRefs), "counter_material_transition_invalid");
   const { materialRefs: ignored, ...ordinaryRequest } = request;
-  return transitionCounters(ordinaryRequest, materialRefs);
+  return transitionCounters(ordinaryRequest, materialRefs, "material");
+}
+export function transitionVerifiedFullMeteringBillingWindowCounters(request) {
+  object(request, [...REQUEST_FIELDS, "billingWindowRefs"], ["maxAgeMs"]);
+  const billingWindowRefs = refs(request.billingWindowRefs, false);
+  requireCondition(canonical(billingWindowRefs) === canonical(request.billingWindowRefs), "counter_billing_window_transition_invalid");
+  const { billingWindowRefs: ignored, ...ordinaryRequest } = request;
+  return transitionCounters(ordinaryRequest, billingWindowRefs, "billing-window");
 }
 
-function transitionCounters(request, materialRefs = null) {
+function transitionCounters(request, materialRefs = null, boundaryKind = "material") {
   const n = normalize(request);
   const previous = request.state === null ? null : validateState(request.state, n);
   const next = previous ?? initialState(n);
   const material = new Set(materialRefs ?? []);
+  const billingWindow = boundaryKind === "billing-window";
+  const boundaryField = billingWindow ? "billingWindowBoundaries" : "materialBoundaries";
+  const boundaryError = billingWindow ? "counter_billing_window_transition_invalid" : "counter_material_transition_invalid";
   let materialBoundary = null;
   if (materialRefs) {
+    requireCondition(boundaryKind === "material" || billingWindow, boundaryError);
     requireCondition(previous !== null && n.observedAt > previous.lastObservedAt
-      && !previous.generationAwaitingObservation && (previous.materialBoundaries?.length ?? 0) < 128,
-    "counter_material_transition_invalid");
+      && !previous.generationAwaitingObservation && (previous[boundaryField]?.length ?? 0) < 128,
+    boundaryError);
     const observedRefs = new Set(n.observations.map(observation => observation.edgeCredentialRef));
     requireCondition(materialRefs.every(r => n.eligible.has(r)
-      && (n.scope.mode === "connections" || observedRefs.has(r))), "counter_material_transition_invalid");
+      && (n.scope.mode === "connections" || observedRefs.has(r))), boundaryError);
     const boundary = { generation: n.generation, observedAt: n.observedAt, previousStateDigest: previous.stateDigest,
       entries: next.entries.filter(entry => material.has(entry.edgeCredentialRef))
         .map(entry => ({ edgeCredentialRef: entry.edgeCredentialRef, carryUsage: { ...entry.usage } })) };
     materialBoundary = { ...boundary, boundaryDigest: digest(boundary) };
-    next.materialBoundaries = [...(next.materialBoundaries ?? []), materialBoundary];
+    next[boundaryField] = [...(next[boundaryField] ?? []), materialBoundary];
     for (const entry of next.entries) if (material.has(entry.edgeCredentialRef)) entry.carryUsage = { ...entry.usage };
   }
   let unchanged = false;
@@ -546,9 +586,13 @@ function transitionCounters(request, materialRefs = null) {
   const observedCount = next.entries.filter(e => e.status === "observed").length;
   if (materialBoundary) validateState(next);
   return { nextState: next, unchanged,
-    ...(materialBoundary ? { receipt: { type: "verified_full_metering_material_transition", materialCount: materialRefs.length,
-      materialBoundaryDigest: materialBoundary.boundaryDigest, beforeStateDigest: materialBoundary.previousStateDigest,
-      afterStateDigest: next.stateDigest, generation: n.generation, observedAt: n.observedAt, unassignedBytes: null } } : {}),
+    ...(materialBoundary ? { receipt: billingWindow
+      ? { type: "verified_full_metering_billing_window_transition", billingWindowCount: materialRefs.length,
+        billingWindowBoundaryDigest: materialBoundary.boundaryDigest, beforeStateDigest: materialBoundary.previousStateDigest,
+        afterStateDigest: next.stateDigest, generation: n.generation, observedAt: n.observedAt, unassignedBytes: null }
+      : { type: "verified_full_metering_material_transition", materialCount: materialRefs.length,
+        materialBoundaryDigest: materialBoundary.boundaryDigest, beforeStateDigest: materialBoundary.previousStateDigest,
+        afterStateDigest: next.stateDigest, generation: n.generation, observedAt: n.observedAt, unassignedBytes: null } } : {}),
     deltas: [...deltaByOwner.values()].sort((a, b) => compare(a.edgeCredentialRef, b.edgeCredentialRef)).map(withTotal),
     eligibleTotals, totals: withTotal(totals), retiredTotals: withTotal(retiredTotals),
     counters: n.observations.filter(o => n.eligible.has(o.edgeCredentialRef)).map(o => ({ ...o, observedAt: n.observedAt })),
