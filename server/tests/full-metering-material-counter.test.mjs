@@ -5,6 +5,7 @@ import * as counters from "../services/edge/full-metering-counter-transition.mjs
 
 const transition = counters.transitionFullMeteringCounters;
 const material = request => counters.transitionVerifiedFullMeteringMaterialCounters(request);
+const billingWindow = request => counters.transitionVerifiedFullMeteringBillingWindowCounters(request);
 const times = Array.from({ length: 7 }, (_, i) => `2026-09-24T06:00:${String(i * 10).padStart(2, "0")}.000Z`);
 times[6] = "2026-09-24T06:01:00.000Z";
 const pair = (edgeCredentialRef, uploadBytes, downloadBytes, connectionId) => ({
@@ -31,6 +32,18 @@ function rehash(state) {
   const { stateDigest: ignored, ...payload } = state;
   return { ...payload, stateDigest: digest(payload) };
 }
+
+test("material counters: a later material boundary still validates an earlier billing-window carry", () => {
+  const state = baseline();
+  const billed = billingWindow({ ...request(state, [pair("user-a", 1, 2), pair("user-b", 310, 420)], 3), billingWindowRefs: ["user-a"] });
+  const grown = transition(request(billed.nextState, [pair("user-a", 4, 7), pair("user-b", 318, 428)], 4));
+  const rotated = material({ ...request(grown.nextState, [pair("user-a", 9, 9), pair("user-b", 320, 430)], 5), materialRefs: ["user-a"] });
+  assert.equal(rotated.receipt.type, "verified_full_metering_material_transition");
+  assert.equal(rotated.nextState.billingWindowBoundaries.length, 1);
+  assert.equal(rotated.nextState.materialBoundaries.length, 1);
+  assert.ok(rotated.nextState.billingWindowBoundaries[0].observedAt < rotated.nextState.materialBoundaries[0].observedAt);
+  assert.deepEqual(rotated.nextState.entries[0].usage, grown.nextState.entries[0].usage);
+});
 
 test("material counters: explicit export preserves usage and generation while baselining only selected cumulative identities", () => {
   const state = baseline();
