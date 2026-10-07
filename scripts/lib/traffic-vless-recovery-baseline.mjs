@@ -281,6 +281,13 @@ function retainedState(db, databaseIdentityDigest, channels, nowMs, initializati
     if (binding.request_status !== "issued") reasons.push(`request_${binding.request_status}`);
     if (activeLinks.length === 0) reasons.push("links_inactive");
     if (binding.portal_status === "disabled") reasons.push("portal_disabled");
+    // Full collection must match Portal's current desired-state authority: a
+    // nonempty durable list replaces the legacy primary fallback. Keep its
+    // verified history, but never require (or synthesize) the removed channel.
+    // The separately approved legacy VLESS v3 recovery policy is unchanged.
+    if (fullBindings && binding.identity_origin === "legacy_primary" && binding.requestDurableBindings.length > 0) {
+      reasons.push("portal_durable_scope_supersedes_primary");
+    }
     const key = `${binding.edge_channel_ref}\0${binding.edge_credential_ref}`;
     if (byKey.has(key)) fail("baseline_binding_ambiguous");
     byKey.set(key, { binding, reasons: reasons.sort(), cursor: null });

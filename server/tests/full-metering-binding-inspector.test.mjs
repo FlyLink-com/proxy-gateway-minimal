@@ -169,6 +169,35 @@ test("full inspector reuses exact legacy resource verification, retained identit
   assert.equal(inspect(f).summary.errorCode, "baseline_binding_invalid");
 });
 
+for (const durableChannel of [CHANNELS[1], "channel-sgp-a-tuic"]) {
+  test(`full inspector retains a legacy primary superseded by durable scope ${durableChannel}`, t => {
+    const f = fixture(t), primary = f.add(CHANNELS[0], { legacy: true });
+    f.db.prepare("INSERT INTO platform_portal_edge_credentials VALUES (?,?,?,?,?)")
+      .run(primary.requestId, durableChannel, "private-durable-secondary", "sha256:private-secondary-material", 0);
+    const before = rows(f), result = inspect(f);
+    assert.equal(result.ok, true, JSON.stringify(result.summary));
+    assert.equal(result.privateInventory.entries.some(entry => entry.edgeCredentialRef === primary.edgeCredentialRef), false);
+    const retained = result.privateInventory.retainedBindings.find(entry => entry.edgeCredentialRef === primary.edgeCredentialRef);
+    assert.deepEqual(retained.reasons, ["portal_durable_scope_supersedes_primary"]);
+    assert.equal(retained.materialDigest, "sha256:private-material-5");
+    assert.equal(result.privateInventory.entries.some(entry => entry.edgeCredentialRef === "private-durable-secondary"), durableChannel === CHANNELS[1]);
+    assertSafe(result.summary);
+    assert.deepEqual(rows(f), before);
+
+    // Retention never bypasses ownership, resource or whole-DB resolver proof.
+    f.db.prepare("UPDATE platform_issued_subscription_links SET tenant_ref='wrong-resource' WHERE request_id=?").run(primary.requestId);
+    assert.equal(inspect(f).summary.errorCode, "baseline_binding_invalid");
+  });
+}
+
+test("full inspector keeps primary durable mirrors eligible and unambiguous", t => {
+  const f = fixture(t), primary = f.refs[0], before = rows(f), result = inspect(f);
+  assert.equal(result.ok, true);
+  assert.equal(result.privateInventory.entries.filter(entry => entry.edgeCredentialRef === primary.edgeCredentialRef).length, 1);
+  assert.equal(result.privateInventory.retainedBindings.length, 0);
+  assert.deepEqual(rows(f), before);
+});
+
 for (const [label, sql] of [
   ["missing material", "UPDATE platform_portal_edge_credentials SET edge_material_digest='' WHERE request_id='private-request-0'"],
   ["account mismatch", "UPDATE platform_portal_access_requests SET portal_user_ref='wrong-account' WHERE id='private-request-0'"],

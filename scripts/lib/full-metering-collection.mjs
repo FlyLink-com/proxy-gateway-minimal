@@ -17,7 +17,10 @@ function inventoryProjection(inventory) {
   if (!Array.isArray(inventory?.entries) || !Array.isArray(inventory?.retainedBindings)) fail("full_metering_binding_invalid");
   const seen = new Set();
   const entries = inventory.entries.map(entry => fullMeteringBindingIdentity(entry));
-  const retained = inventory.retainedBindings.map(entry => ({ channelRef: entry.channelRef, edgeCredentialRef: entry.edgeCredentialRef, materialDigest: entry.materialDigest }));
+  const retained = inventory.retainedBindings.map(entry => ({ channelRef: entry.channelRef, edgeCredentialRef: entry.edgeCredentialRef, materialDigest: entry.materialDigest,
+    // Bind the driver's new runtime exclusion across the entire source read,
+    // even if an already-retained identity only changes its retention reason.
+    runtimeAbsenceRequired: entry.reasons?.includes("portal_durable_scope_supersedes_primary") === true }));
   for (const entry of [...entries, ...retained]) {
     if (!FULL_METERING_CHANNELS.some(source => source.channelRef === entry.channelRef) || seen.has(key(entry))) fail("full_metering_binding_invalid");
     seen.add(key(entry));

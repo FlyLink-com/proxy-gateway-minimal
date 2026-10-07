@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -65,6 +65,22 @@ function fixture(t) {
     runtime.push(identity);
     return identity;
   }
+  function addDurableChannel(identity, channelRef) {
+    const n = sequence++;
+    const record = { credentialRef: `synthetic-credential-${n}`,
+      material: { uuid: `${String(n + 1).padStart(8, "0")}-1111-4111-8111-111111111111`, password: `synthetic-password-${n}` } };
+    record.materialDigest = materialDigest(record.material);
+    // Model a durable list replacing the old primary's scope, without issuing a
+    // second account/request or changing the retained primary's historical row.
+    db.prepare(`INSERT INTO platform_portal_edge_credentials
+      (request_id,edge_channel_ref,edge_credential_ref,edge_material_digest,ordinal) VALUES (?,?,?,?,0)`)
+      .run(identity.requestId, channelRef, record.credentialRef, record.materialDigest);
+    const current = { accountId: identity.accountId, entitlementId: identity.entitlementId,
+      requestId: identity.requestId, channelRef, record };
+    records.push(record);
+    runtime.push(current);
+    return current;
+  }
   CHANNELS.forEach(channel => add(channel));
   const readInventory = () => {
     const result = inspectFullMeteringBindings({ dbPath, channelRefs: CHANNELS, nowFn: () => now });
@@ -126,9 +142,10 @@ function fixture(t) {
       return result;
     } };
   const run = (mode, extra = {}) => runFullMeteringCollection({ ...options, mode, ...extra });
-  return { db, add, records, runtime, samples, calls, readInventory, readSources, run,
+  return { db, add, addDurableChannel, records, runtime, samples, calls, readInventory, readSources, run,
     checkpoint: () => readFullMeteringJournal({ directory: journalDirectory, context }),
     hasPending: () => existsSync(join(journalDirectory, "pending.json")),
+    pendingBytes: () => readFileSync(join(journalDirectory, "pending.json")),
     ledger: () => db.prepare("SELECT COUNT(*) AS count, COALESCE(SUM(total_bytes), 0) AS bytes FROM platform_usage_samples").get(),
     set: (time, value) => { now = time; bytes = value; } };
 }
@@ -225,6 +242,199 @@ test("synthetic legacy primary binding remains compatible with existing checkpoi
   assert.equal(next.recordedBytes, 70);
   assert.equal(f.checkpoint().sequence, 2);
   assert.equal(f.checkpoint().startedAt, baseline.startedAt);
+});
+
+test("synthetic durable scope supersedes a legacy primary without losing accepted history or charging the new channel's first counters", async t => {
+  const f = fixture(t);
+  const legacy = f.add(CHANNELS[0], { legacy: true });
+  await f.run("initialize");
+  f.set("2026-09-08T06:01:00.000Z", 105);
+  assert.equal((await f.run("collect")).recordedBytes, 60);
+  const before = f.checkpoint();
+  const oldIdentity = before.sources.find(source => source.channelRef === legacy.channelRef)
+    .identities.find(identity => identity.edgeCredentialRef === legacy.record.credentialRef);
+  const oldCounter = before.sources.find(source => source.channelRef === legacy.channelRef)
+    .counterState.entries.find(entry => entry.edgeCredentialRef === legacy.record.credentialRef);
+  const oldSamples = f.db.prepare("SELECT * FROM platform_usage_samples WHERE edge_credential_ref=? ORDER BY id")
+    .all(legacy.record.credentialRef);
+  const oldRollup = f.db.prepare("SELECT * FROM platform_usage_rollups WHERE edge_credential_ref=?")
+    .get(legacy.record.credentialRef);
+  assert.equal(oldSamples.length, 1);
+  assert.equal(oldSamples[0].total_bytes, 10);
+
+  const current = f.addDurableChannel(legacy, CHANNELS[2]);
+  f.runtime.splice(f.runtime.indexOf(legacy), 1);
+  const controlRows = () => ["platform_accounts", "platform_entitlements", "platform_issuance_requests",
+    "platform_issued_subscription_links", "platform_portal_access_requests", "platform_portal_edge_credentials"]
+    .map(table => f.db.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all());
+  const beforeControl = controlRows();
+  const inventory = f.readInventory();
+  assert.equal(inventory.entries.some(entry => entry.edgeCredentialRef === legacy.record.credentialRef), false);
+  const retained = inventory.retainedBindings.find(entry => entry.edgeCredentialRef === legacy.record.credentialRef);
+  assert.deepEqual(retained.reasons, ["portal_durable_scope_supersedes_primary"]);
+  const replacement = inventory.entries.find(entry => entry.edgeCredentialRef === current.record.credentialRef);
+  assert.equal(replacement.accountId, legacy.accountId);
+  assert.equal(replacement.entitlementId, legacy.entitlementId);
+  assert.equal(replacement.requestId, legacy.requestId);
+
+  f.set("2026-09-08T06:02:00.000Z", 110);
+  const transitioned = await f.run("collect");
+  assert.equal(transitioned.eligibleCount, 6);
+  assert.equal(transitioned.recordedBytes, 50); // Only the five unaffected identities.
+  assert.equal(transitioned.historicalDebits, false);
+  assert.equal([...f.samples.values()].some(sample => sample.record.edgeCredentialRef === current.record.credentialRef), false);
+  const after = f.checkpoint();
+  const retiredSource = after.sources.find(source => source.channelRef === legacy.channelRef);
+  assert.deepEqual(retiredSource.identities.find(identity => identity.edgeCredentialRef === legacy.record.credentialRef), oldIdentity);
+  assert.ok(retiredSource.counterState.retainedRefs.includes(legacy.record.credentialRef));
+  assert.deepEqual(retiredSource.counterState.retiredEntries.find(entry => entry.edgeCredentialRef === legacy.record.credentialRef), oldCounter);
+  assert.equal(after.startedAt, before.startedAt);
+  assert.equal(after.sequence, before.sequence + 1);
+  assert.deepEqual(f.db.prepare("SELECT * FROM platform_usage_samples WHERE edge_credential_ref=? ORDER BY id")
+    .all(legacy.record.credentialRef), oldSamples);
+  assert.deepEqual(f.db.prepare("SELECT * FROM platform_usage_rollups WHERE edge_credential_ref=?")
+    .get(legacy.record.credentialRef), oldRollup);
+
+  f.set("2026-09-08T06:03:00.000Z", 115);
+  assert.equal((await f.run("collect")).recordedBytes, 60);
+  const newSamples = [...f.samples.values()].filter(sample => sample.record.edgeCredentialRef === current.record.credentialRef);
+  assert.equal(newSamples.length, 1);
+  assert.equal(newSamples[0].record.totalBytes, 10);
+  assert.equal(newSamples[0].record.accountId, legacy.accountId);
+  assert.equal(newSamples[0].record.entitlementId, legacy.entitlementId);
+  assert.equal(newSamples[0].record.requestId, legacy.requestId);
+  assert.deepEqual(f.ledger(), { count: 17, bytes: 170 });
+  assert.deepEqual(controlRows(), beforeControl);
+  assert.equal(f.hasPending(), false);
+});
+
+test("synthetic superseded primary still loaded refuses collection without checkpoint, ledger or partial-write changes", async t => {
+  const f = fixture(t);
+  const legacy = f.add(CHANNELS[0], { legacy: true });
+  await f.run("initialize");
+  f.set("2026-09-08T06:01:00.000Z", 105);
+  await f.run("collect");
+  f.addDurableChannel(legacy, CHANNELS[2]);
+  const beforeCheckpoint = f.checkpoint();
+  const beforeRows = f.db.prepare("SELECT * FROM platform_usage_samples ORDER BY id").all();
+  const beforeRollups = f.db.prepare("SELECT * FROM platform_usage_rollups ORDER BY edge_credential_ref").all();
+  const beforeSamples = [...f.samples];
+  f.set("2026-09-08T06:02:00.000Z", 110);
+  assert.equal(f.hasPending(), false);
+  await assert.rejects(f.run("collect"), { code: "full_metering_superseded_identity_running" });
+  assert.deepEqual(f.checkpoint(), beforeCheckpoint);
+  assert.deepEqual(f.db.prepare("SELECT * FROM platform_usage_samples ORDER BY id").all(), beforeRows);
+  assert.deepEqual(f.db.prepare("SELECT * FROM platform_usage_rollups ORDER BY edge_credential_ref").all(), beforeRollups);
+  assert.deepEqual([...f.samples], beforeSamples);
+  assert.equal(f.hasPending(), false);
+});
+
+test("synthetic genuine legacy primary without durable credentials remains required in runtime", async t => {
+  const f = fixture(t);
+  const legacy = f.add(CHANNELS[0], { legacy: true });
+  await f.run("initialize");
+  const before = f.checkpoint();
+  f.runtime.splice(f.runtime.indexOf(legacy), 1);
+  const inventory = f.readInventory();
+  assert.ok(inventory.entries.some(entry => entry.edgeCredentialRef === legacy.record.credentialRef));
+  assert.equal(inventory.retainedBindings.some(entry => entry.edgeCredentialRef === legacy.record.credentialRef), false);
+  f.set("2026-09-08T06:01:00.000Z", 105);
+  await assert.rejects(f.run("collect"), { code: "full_metering_runtime_identity_missing" });
+  assert.deepEqual(f.checkpoint(), before);
+  assert.deepEqual(f.ledger(), { count: 0, bytes: 0 });
+  assert.equal(f.hasPending(), false);
+});
+
+test("synthetic superseded history absent from the checkpoint is not silently admitted", async t => {
+  const f = fixture(t);
+  await f.run("initialize");
+  f.set("2026-09-08T06:01:00.000Z", 105);
+  await f.run("collect");
+  const before = f.checkpoint();
+  const beforeLedger = f.ledger();
+  const legacy = f.add(CHANNELS[0], { legacy: true });
+  f.addDurableChannel(legacy, CHANNELS[2]);
+  f.runtime.splice(f.runtime.indexOf(legacy), 1);
+  f.set("2026-09-08T06:02:00.000Z", 110);
+  await assert.rejects(f.run("collect"), { code: "counter_scope_reconciliation_invalid" });
+  assert.deepEqual(f.checkpoint(), before);
+  assert.deepEqual(f.ledger(), beforeLedger);
+  assert.equal(f.hasPending(), false);
+});
+
+test("synthetic removing the durable list does not reactivate an archived legacy identity", async t => {
+  const f = fixture(t);
+  const legacy = f.add(CHANNELS[0], { legacy: true });
+  await f.run("initialize");
+  f.set("2026-09-08T06:01:00.000Z", 105);
+  await f.run("collect");
+  const current = f.addDurableChannel(legacy, CHANNELS[2]);
+  f.runtime.splice(f.runtime.indexOf(legacy), 1);
+  f.set("2026-09-08T06:02:00.000Z", 110);
+  await f.run("collect");
+  const before = f.checkpoint();
+  const beforeLedger = f.ledger();
+  f.db.prepare("DELETE FROM platform_portal_edge_credentials WHERE request_id=?").run(legacy.requestId);
+  f.runtime.splice(f.runtime.indexOf(current), 1);
+  f.runtime.push(legacy);
+  f.set("2026-09-08T06:03:00.000Z", 115);
+  assert.ok(f.readInventory().entries.some(entry => entry.edgeCredentialRef === legacy.record.credentialRef));
+  await assert.rejects(f.run("collect"), { code: "counter_scope_reconciliation_invalid" });
+  assert.deepEqual(f.checkpoint(), before);
+  assert.deepEqual(f.ledger(), beforeLedger);
+  assert.equal(f.hasPending(), false);
+});
+
+test("synthetic pending samples for a now-superseded primary stay blocked without partial replay or deleting evidence", async t => {
+  const f = fixture(t);
+  const legacy = f.add(CHANNELS[0], { legacy: true });
+  await f.run("initialize");
+  f.set("2026-09-08T06:01:00.000Z", 105);
+  await assert.rejects(f.run("collect", { onStage(stage) {
+    if (stage === "pending_durable") throw new Error("synthetic-before-legacy-samples-commit");
+  } }), /synthetic-before-legacy-samples-commit/);
+  assert.equal(f.hasPending(), true);
+  assert.deepEqual(f.ledger(), { count: 0, bytes: 0 });
+  const beforeCheckpoint = f.checkpoint();
+  const beforePending = f.pendingBytes();
+  const beforeRollups = f.db.prepare("SELECT * FROM platform_usage_rollups ORDER BY edge_credential_ref").all();
+  f.addDurableChannel(legacy, CHANNELS[2]);
+  f.runtime.splice(f.runtime.indexOf(legacy), 1);
+  f.set("2026-09-08T06:02:00.000Z", 110);
+
+  // Recovery runs before the new collection. The old pending sample cannot be
+  // silently billed against an identity that is no longer currently eligible.
+  await assert.rejects(f.run("collect"), { code: "full_metering_binding_changed" });
+  assert.equal(f.hasPending(), true);
+  assert.deepEqual(f.pendingBytes(), beforePending);
+  assert.deepEqual(f.checkpoint(), beforeCheckpoint);
+  assert.deepEqual(f.ledger(), { count: 0, bytes: 0 });
+  assert.deepEqual(f.db.prepare("SELECT * FROM platform_usage_rollups ORDER BY edge_credential_ref").all(), beforeRollups);
+  assert.equal(f.samples.size, 0);
+});
+
+test("synthetic retained legacy supersession after source reads is rejected before checkpoint or accounting writes", async t => {
+  const f = fixture(t);
+  const legacy = f.add(CHANNELS[0], { expired: true, legacy: true });
+  await f.run("initialize");
+  const beforeCheckpoint = f.checkpoint();
+  const beforeRollups = f.db.prepare("SELECT * FROM platform_usage_rollups ORDER BY edge_credential_ref").all();
+  f.set("2026-09-08T06:01:00.000Z", 105);
+  let reads = 0;
+  await assert.rejects(f.run("collect", { readSources: async inventory => {
+    const sources = await f.readSources(inventory);
+    reads += 1;
+    // This channel is outside the five-source scope, so the current retained
+    // identity keeps the same channel/ref/material but changes authorization.
+    f.addDurableChannel(legacy, "channel-sgp-a-tuic");
+    return sources;
+  } }), { code: "full_metering_binding_changed" });
+  assert.equal(reads, 1);
+  assert.deepEqual(f.checkpoint(), beforeCheckpoint);
+  assert.deepEqual(f.ledger(), { count: 0, bytes: 0 });
+  assert.deepEqual(f.db.prepare("SELECT * FROM platform_usage_rollups ORDER BY edge_credential_ref").all(), beforeRollups);
+  assert.equal(f.samples.size, 0);
+  assert.equal(f.hasPending(), false);
 });
 
 test("synthetic old checkpoint without pending intent survives an unmapped runtime failure without partial debit or reset", async t => {

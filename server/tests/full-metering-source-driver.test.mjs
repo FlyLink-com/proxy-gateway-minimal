@@ -74,3 +74,20 @@ test("fingerprints expose no raw credential and have identical worker encoding",
   assert.equal(fullMeteringRuntimeFingerprint("tuic", material), createHash("sha256").update(JSON.stringify(["tuic", material.uuid, material.password])).digest("hex"));
   assert.equal(fullMeteringRuntimeFingerprint("hy2", material), createHash("sha256").update(JSON.stringify(["hy2", material.password])).digest("hex"));
 });
+
+for (const index of [0, 2, 4]) {
+  for (const stillRunning of [false, true]) {
+    test(`driver requires superseded ${index} primary absent from runtime: present=${stillRunning}`, async () => {
+      const f = fixture();
+      const retired = { ...f.entries[index], reasons: ["portal_durable_scope_supersedes_primary"] };
+      const driver = createFullMeteringSourceDriver({ sources: f.sources, readMaterial: () => ({ records: f.records }), readSource: async source => {
+        const result = await f.readSource(source);
+        if (!stillRunning && source.channelRef === retired.channelRef) result.runtimeUsers = [];
+        return result;
+      } });
+      const inventory = { entries: f.entries.filter(entry => entry !== f.entries[index]), retainedBindings: [retired] };
+      if (stillRunning) await assert.rejects(driver(inventory), { code: "full_metering_superseded_identity_running" });
+      else assert.equal((await driver(inventory)).length, 5);
+    });
+  }
+}
