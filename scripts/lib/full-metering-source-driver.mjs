@@ -36,6 +36,8 @@ export function createFullMeteringSourceDriver({ sources, readMaterial, readSour
     for (const source of fixed) {
       const eligible = inventory.entries.filter(entry => entry.channelRef === source.channelRef);
       const retained = inventory.retainedBindings.filter(entry => entry.channelRef === source.channelRef);
+      const superseded = new Set(retained.filter(entry => entry.reasons?.includes("portal_durable_scope_supersedes_primary"))
+        .map(entry => entry.edgeCredentialRef));
       const credentialRefByRuntimeUser = Object.create(null), fingerprints = new Map();
       for (const entry of [...eligible, ...retained]) {
         const record = material.get(entry.edgeCredentialRef);
@@ -59,6 +61,9 @@ export function createFullMeteringSourceDriver({ sources, readMaterial, readSour
         if (!runtime || typeof runtime.runtimeUser !== "string" || seen.has(runtime.runtimeUser)
           || !Object.hasOwn(credentialRefByRuntimeUser, runtime.runtimeUser)
           || runtime.materialFingerprint !== fingerprints.get(runtime.runtimeUser)) fail("full_metering_runtime_identity_changed");
+        // Historical retention is not permission to leave a removed channel
+        // running without billing. Reconcile runtime separately; never ignore it.
+        if (superseded.has(credentialRefByRuntimeUser[runtime.runtimeUser])) fail("full_metering_superseded_identity_running");
         seen.add(runtime.runtimeUser); covered.add(credentialRefByRuntimeUser[runtime.runtimeUser]);
       }
       if (eligible.some(entry => !covered.has(entry.edgeCredentialRef))) fail("full_metering_runtime_identity_missing");
