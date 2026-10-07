@@ -1,5 +1,6 @@
 import { fullMeteringDigest } from "./full-metering-journal.mjs";
 import { usageCycleForBinding } from "../../server/services/platform/usage-billing-cycle.mjs";
+import { fullMeteringChannels, FULL_METERING_SCOPE, LOCAL_METERING_SCOPE } from "./full-metering-scope.mjs";
 
 const fail = code => { throw Object.assign(new Error(code), { code }); };
 const REF = /^[A-Za-z0-9._:-]{1,128}$/;
@@ -47,12 +48,19 @@ function validate(sample) {
   catch { fail("full_metering_sample_invalid"); }
   if (fullMeteringDigest(expected) !== fullMeteringDigest(sample)) fail("full_metering_sample_invalid");
 }
-export function createFullMeteringSampleWriter({ database, controlStore, readBindings }) {
+export function createFullMeteringSampleWriter({ database, controlStore, readBindings, meteringScope = FULL_METERING_SCOPE, activationId }) {
+  const channels = fullMeteringChannels(meteringScope);
   if (!database || !controlStore || typeof readBindings !== "function") fail("full_metering_writer_invalid");
+  if ((meteringScope === LOCAL_METERING_SCOPE || activationId !== undefined) && (typeof activationId !== "string" || !REF.test(activationId))) fail("full_metering_writer_invalid");
   return function applySamples(samples) {
     if (!Array.isArray(samples) || samples.length > 10000) fail("full_metering_batch_invalid");
     const seen = new Set();
-    samples.forEach(sample => { validate(sample); if (seen.has(sample.record.id)) fail("full_metering_sample_invalid"); seen.add(sample.record.id); });
+    samples.forEach(sample => {
+      validate(sample);
+      if (!channels.some(source => source.channelRef === sample.record.channelRef && source.sourceRef === sample.record.sourceRef)
+        || (activationId !== undefined && sample.activationId !== activationId)) fail("full_metering_sample_scope_invalid");
+      if (seen.has(sample.record.id)) fail("full_metering_sample_invalid"); seen.add(sample.record.id);
+    });
     return database.transaction(() => {
       let inventory;
       const known = new Map();
@@ -66,6 +74,7 @@ export function createFullMeteringSampleWriter({ database, controlStore, readBin
         if (!inventory) {
           inventory = readBindings();
           for (const entry of inventory.entries) {
+            if (!channels.some(source => source.channelRef === entry.channelRef && source.sourceRef === entry.sourceRef)) fail("full_metering_binding_changed");
             const key = `${entry.channelRef}\0${entry.edgeCredentialRef}`;
             if (known.has(key)) fail("full_metering_binding_changed");
             known.set(key, fullMeteringBindingIdentity(entry));

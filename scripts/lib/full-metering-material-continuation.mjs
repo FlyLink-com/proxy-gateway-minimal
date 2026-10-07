@@ -2,6 +2,7 @@
 // This module has no host I/O. The CLI owns approval custody and source provenance.
 import { fullMeteringDigest } from "./full-metering-journal.mjs";
 import { fullMeteringBindingIdentity } from "./full-metering-sample-writer.mjs";
+import { validateFullMeteringContext, assertFullMeteringCheckpointScope } from "./full-metering-scope.mjs";
 
 const HASH = /^[a-f0-9]{64}$/, REF = /^[A-Za-z0-9._:-]{1,128}$/;
 const fail = code => { throw Object.assign(new Error(code), { code }); };
@@ -24,9 +25,8 @@ function sameStableIdentity(before, after) {
 }
 function validateApproval(approval) {
   exact(approval, ["version", "activationId", "context", "previousSequence", "previousCheckpointDigest", "notBefore", "expiresAt", "changes"]);
-  exact(approval.context, ["databaseIdentityDigest", "scopeDigest"]);
+  try { validateFullMeteringContext(approval.context); } catch { need(false); }
   need(approval.version === 1 && typeof approval.activationId === "string" && REF.test(approval.activationId)
-    && Object.values(approval.context).every(value => typeof value === "string" && HASH.test(value))
     && Number.isSafeInteger(approval.previousSequence) && approval.previousSequence >= 0
     && typeof approval.previousCheckpointDigest === "string" && HASH.test(approval.previousCheckpointDigest));
   need(iso(approval.notBefore) < iso(approval.expiresAt)
@@ -58,6 +58,7 @@ export function materialContinuationHistory(checkpoint) {
     need(fullMeteringDigest(record.approval) === record.approvalDigest
       && record.approval.previousCheckpointDigest === record.previousCheckpointDigest
       && record.approval.activationId === checkpoint.activationId
+      && (record.approval.context.meteringScope ?? null) === (checkpoint.meteringScope ?? null)
       && record.approval.changes.length === record.identityCount
       && record.approval.notBefore <= iso(record.completedAt) && record.completedAt < record.approval.expiresAt,
     "full_metering_material_history_invalid");
@@ -69,6 +70,7 @@ export function materialContinuationHistory(checkpoint) {
 export function admitFullMeteringMaterialContinuation({ approval, checkpoint, context, activationId, identities, now }) {
   const changes = validateApproval(approval);
   need(approval.activationId === activationId && fullMeteringDigest(approval.context) === fullMeteringDigest(context));
+  assertFullMeteringCheckpointScope(checkpoint, validateFullMeteringContext(context));
   need(iso(approval.notBefore) <= iso(now) && now < iso(approval.expiresAt)
     && Date.parse(approval.expiresAt) - Date.parse(approval.notBefore) <= 86400000, "full_metering_material_approval_expired");
   need(checkpoint && Number.isSafeInteger(approval.previousSequence) && approval.previousSequence >= 0

@@ -12,6 +12,7 @@ import { readFullMeteringLocalSource } from "../../scripts/lib/full-metering-loc
 import { FULL_METERING_CHANNELS, runFullMeteringCollection } from "../../scripts/lib/full-metering-collection.mjs";
 import { readFullMeteringJournal } from "../../scripts/lib/full-metering-journal.mjs";
 import { createFullMeteringSampleWriter } from "../../scripts/lib/full-metering-sample-writer.mjs";
+import { FULL_METERING_SCOPE, LOCAL_METERING_SCOPE, fullMeteringChannels } from "../../scripts/lib/full-metering-scope.mjs";
 
 // Entirely synthetic: real SQLite binding inspection and production reader/parser
 // composition, but every process and network operation is injected. This is not
@@ -25,7 +26,8 @@ const sha = value => createHash("sha256").update(value).digest("hex");
 const resourceRef = (prefix, value) => `${prefix}ref_${sha(value).slice(0, 16)}`;
 const materialDigest = material => `sha256:${sha(`${material.uuid}\0${material.password}`)}`;
 
-function fixture(t) {
+function fixture(t, meteringScope = FULL_METERING_SCOPE) {
+  const selected = fullMeteringChannels(meteringScope).map(source => source.channelRef);
   const directory = mkdtempSync(join(tmpdir(), "full-metering-identity-integration-"));
   const dbPath = join(directory, "synthetic.sqlite");
   const store = createSqliteSubscriptionControlStore({ dbPath });
@@ -83,11 +85,12 @@ function fixture(t) {
   }
   CHANNELS.forEach(channel => add(channel));
   const readInventory = () => {
-    const result = inspectFullMeteringBindings({ dbPath, channelRefs: CHANNELS, nowFn: () => now });
+    const result = inspectFullMeteringBindings({ dbPath, channelRefs: selected, nowFn: () => now });
     assert.equal(result.ok, true, `synthetic inventory failure: ${result.summary.errorCode}`);
     return result.privateInventory;
   };
-  const readSources = createFullMeteringSourceDriver({ sources, readMaterial: () => ({ records }), readSource: async source => {
+  const readSources = createFullMeteringSourceDriver({ sources: sources.filter(source => selected.includes(source.channelRef)), meteringScope, readMaterial: () => ({ records }), readSource: async source => {
+    calls.push({ channelRef: source.channelRef, operation: "source" });
     const identities = runtime.filter(identity => identity.channelRef === source.channelRef);
     const user = record => source.kind === "tuic" ? record.material.uuid : record.credentialRef;
     const endpoint = "127.0.0.1:12345", binary = "/opt/synthetic/runtime";
@@ -130,12 +133,13 @@ function fixture(t) {
       }
     });
   } });
-  const context = { scopeDigest: "c".repeat(64), databaseIdentityDigest: "d".repeat(64) };
+  const context = { scopeDigest: "c".repeat(64), databaseIdentityDigest: "d".repeat(64),
+    ...(meteringScope === LOCAL_METERING_SCOPE ? { meteringScope } : {}) };
   const journalDirectory = join(directory, "journal");
   const sampleStore = createSqliteSubscriptionControlStore({ database: db, initializeSchema: false });
-  const writeSamples = createFullMeteringSampleWriter({ database: db, controlStore: sampleStore,
-    readBindings: () => readFullMeteringBindings({ db, databaseIdentityDigest: context.databaseIdentityDigest, channelRefs: CHANNELS, now }) });
-  const options = { directory: journalDirectory, context, activationId: "synthetic-lifecycle",
+  const writeSamples = createFullMeteringSampleWriter({ database: db, controlStore: sampleStore, meteringScope, activationId: "synthetic-lifecycle",
+    readBindings: () => readFullMeteringBindings({ db, databaseIdentityDigest: context.databaseIdentityDigest, channelRefs: selected, now }) });
+  const options = { directory: journalDirectory, context, activationId: "synthetic-lifecycle", meteringScope,
     readInventory, readSources, nowFn: () => now, applySamples: batch => {
       const result = writeSamples(batch);
       for (const sample of batch) samples.set(sample.record.id, sample);
@@ -161,6 +165,39 @@ test("synthetic SQLite to five real source adapters: active identities collect w
   assert.equal(collected.recordedBytes, 50);
   assert.equal(f.samples.size, 5);
 });
+
+for (const stage of ["pending_durable", "samples_committed", "checkpoint_durable"]) {
+  test(`local-three SQLite/source-parser pipeline retains SGP data and recovers once at ${stage}`, async t => {
+    const f = fixture(t, LOCAL_METERING_SCOPE);
+    const protectedTables = ["sqlite_schema", "platform_accounts", "platform_entitlements", "platform_issuance_requests", "platform_portal_access_requests", "platform_portal_edge_credentials", "platform_usage_counter_cursors"];
+    const snapshot = () => protectedTables.map(table => f.db.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all());
+    const before = snapshot();
+    // Existing remote history is preserved even while no remote source is read.
+    const remote = f.runtime.find(row => row.channelRef === CHANNELS[1]);
+    const historical = { id: "synthetic-old-sgp-sample", sourceRef: "old-source", channelRef: remote.channelRef,
+      edgeCredentialRef: remote.record.credentialRef, accountId: remote.accountId, entitlementId: remote.entitlementId, requestId: remote.requestId,
+      sampleDigest: "sha256:synthetic-old-sgp-sample", observedAt: T0, intervalStartedAt: OLD, intervalEndedAt: T0,
+      uploadBytes: 10, downloadBytes: 20, totalBytes: 30, createdAt: T0 };
+    const store = createSqliteSubscriptionControlStore({ database: f.db, initializeSchema: false });
+    store.recordUsageSample(historical);
+    const remoteSample = store.getUsageSampleByDigest(historical.sampleDigest), remoteRollup = store.getUsageRollupByEdgeCredentialRef(remote.record.credentialRef);
+    const initialized = await f.run("initialize");
+    assert.equal(initialized.channelCount, 3); assert.equal(initialized.recordedBytes, 0);
+    assert.equal(initialized.deferredSources.usage, "unknown");
+    f.set("2026-09-08T06:01:00.000Z", 105);
+    await assert.rejects(f.run("collect", { onStage: point => { if (point === stage) throw new Error("synthetic_scope_crash"); } }), /synthetic_scope_crash/);
+    assert.equal(f.hasPending(), true);
+    await f.run("collect"); await f.run("collect");
+    assert.equal(f.hasPending(), false); assert.deepEqual(f.ledger(), { count: 4, bytes: 60 });
+    f.set("2026-09-08T06:02:00.000Z", 107);
+    assert.equal((await f.run("collect")).recordedBytes, 12);
+    assert.deepEqual(f.ledger(), { count: 7, bytes: 72 });
+    assert.deepEqual(store.getUsageSampleByDigest(historical.sampleDigest), remoteSample);
+    assert.deepEqual(store.getUsageRollupByEdgeCredentialRef(remote.record.credentialRef), remoteRollup);
+    assert.deepEqual(snapshot(), before);
+    assert.equal(f.calls.filter(call => call.operation === "source").every(call => !call.channelRef.startsWith("channel-sgp-")), true);
+  });
+}
 
 for (const [kind, index] of [["xray", 0], ["hy2", 2], ["tuic", 4]]) {
   test(`synthetic ${kind}: retained identity without material reproduces the production error before its counter read`, async t => {
