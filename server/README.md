@@ -69,6 +69,14 @@ see [the dated source validation record](../docs/production-incident-records/202
 
 ## Boundary
 
+The standalone full-metering collector retains its default five-source scope.
+An explicitly approved `local-three-v1` activation can collect the original
+three local channel references while reporting deferred SGP coverage as
+paused/unknown. It requires a new journal and preserves existing identity and
+history checks; it neither starts services nor changes billing rights. See
+[the full metering runbook](../docs/FULL_METERING_RECOVERY_RUNBOOK.md#explicit-local-three-source-scope-source-only-2026-10-07)
+for config, pending-recovery, validation and production boundaries.
+
 This workspace does not own frontend builds, provider configuration, host
 provisioning, or production deployment. The presence of runtime adapters or
 mutation-capable services in source does not authorize their use; production,

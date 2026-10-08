@@ -3,18 +3,16 @@ import { fullMeteringBindingIdentity, makeFullMeteringSample } from "./full-mete
 import { fullMeteringDigest, initializeFullMeteringJournal, readFullMeteringJournal, recoverFullMeteringJournal, commitFullMeteringJournal, withFullMeteringJournalLock, assertFullMeteringJournalNoPending, archiveFullMeteringMaterialCheckpoint } from "./full-metering-journal.mjs";
 import { admitFullMeteringMaterialContinuation, materialContinuationHistory } from "./full-metering-material-continuation.mjs";
 import { admitFullMeteringBillingWindowContinuation, billingWindowContinuationHistory } from "./full-metering-billing-window-continuation.mjs";
+import { FULL_METERING_SCOPE, LOCAL_METERING_SCOPE, fullMeteringChannels, assertFullMeteringContextScope, assertFullMeteringCheckpointScope } from "./full-metering-scope.mjs";
 
-export const FULL_METERING_CHANNELS = Object.freeze([
-  { channelRef: "channel-vultr-a-vless-reality-tcp", sourceRef: "full_metering_xray_cumulative_v1", mode: "cumulative" },
-  { channelRef: "channel-sgp-a-vless-reality-tcp", sourceRef: "full_metering_xray_cumulative_v1", mode: "cumulative" },
-  { channelRef: "channel-vultr-a-hy2", sourceRef: "full_metering_hy2_cumulative_v1", mode: "cumulative" },
-  { channelRef: "channel-sgp-a-hy2", sourceRef: "full_metering_hy2_cumulative_v1", mode: "cumulative" },
-  { channelRef: "channel-vultr-a-tuic", sourceRef: "full_metering_tuic_connections_v1", mode: "connections" }
-].map(Object.freeze));
+export { FULL_METERING_CHANNELS } from "./full-metering-scope.mjs";
 const fail = code => { throw Object.assign(new Error(code), { code }); };
 const key = entry => `${entry.channelRef}\0${entry.edgeCredentialRef}`;
-function inventoryProjection(inventory) {
+function inventoryProjection(inventory, channels) {
   if (!Array.isArray(inventory?.entries) || !Array.isArray(inventory?.retainedBindings)) fail("full_metering_binding_invalid");
+  if (Object.hasOwn(inventory, "channelRefs") && (!Array.isArray(inventory.channelRefs)
+    || inventory.channelRefs.length !== channels.length || new Set(inventory.channelRefs).size !== channels.length
+    || inventory.channelRefs.some(ref => !channels.some(source => source.channelRef === ref)))) fail("full_metering_binding_invalid");
   const seen = new Set();
   const entries = inventory.entries.map(entry => fullMeteringBindingIdentity(entry));
   const retained = inventory.retainedBindings.map(entry => ({ channelRef: entry.channelRef, edgeCredentialRef: entry.edgeCredentialRef, materialDigest: entry.materialDigest,
@@ -22,17 +20,17 @@ function inventoryProjection(inventory) {
     // even if an already-retained identity only changes its retention reason.
     runtimeAbsenceRequired: entry.reasons?.includes("portal_durable_scope_supersedes_primary") === true }));
   for (const entry of [...entries, ...retained]) {
-    if (!FULL_METERING_CHANNELS.some(source => source.channelRef === entry.channelRef) || seen.has(key(entry))) fail("full_metering_binding_invalid");
+    if (!channels.some(source => source.channelRef === entry.channelRef) || seen.has(key(entry))) fail("full_metering_binding_invalid");
     seen.add(key(entry));
   }
   const sort = (a, b) => key(a).localeCompare(key(b));
   return { entries: entries.sort(sort), retained: retained.sort(sort) };
 }
-function verifySources(sources) {
-  if (!Array.isArray(sources) || sources.length !== FULL_METERING_CHANNELS.length) fail("full_metering_source_scope_invalid");
+function verifySources(sources, channels) {
+  if (!Array.isArray(sources) || sources.length !== channels.length) fail("full_metering_source_scope_invalid");
   const seen = new Set();
   for (const source of sources) {
-    const expected = FULL_METERING_CHANNELS.find(item => item.channelRef === source.channelRef);
+    const expected = channels.find(item => item.channelRef === source.channelRef);
     if (!expected || seen.has(source.channelRef) || source.sourceRef !== expected.sourceRef || source.mode !== expected.mode) fail("full_metering_source_scope_invalid");
     seen.add(source.channelRef);
   }
@@ -41,7 +39,14 @@ function verifySources(sources) {
 // ownership, runtime/config/material identity and generation before AND after a
 // non-clearing fetch. Public/caller-supplied counter batches are never accepted
 // by the production CLI. Tests inject disposable snapshots through this API.
-export async function runFullMeteringCollection({ directory, context, activationId, mode, materialApproval = null, billingWindowApproval = null, nowFn = () => new Date().toISOString(), readInventory, readSources, applySamples, onStage }) {
+export async function runFullMeteringCollection({ directory, context, activationId, mode, meteringScope = FULL_METERING_SCOPE, materialApproval = null, billingWindowApproval = null, nowFn = () => new Date().toISOString(), readInventory, readSources, applySamples, onStage }) {
+  const selectedChannels = fullMeteringChannels(meteringScope);
+  assertFullMeteringContextScope(context, meteringScope);
+  const validateCheckpoint = checkpoint => {
+    assertFullMeteringCheckpointScope(checkpoint, meteringScope);
+    if (checkpoint.version !== 1 || checkpoint.activationId !== activationId || !Number.isSafeInteger(checkpoint.sequence)
+      || checkpoint.sequence < 0) fail("full_metering_checkpoint_invalid");
+  };
   if (!["preflight", "initialize", "collect", "continue-material", "continue-billing-window"].includes(mode) || !/^[A-Za-z0-9._:-]{1,128}$/.test(activationId)
     || typeof readInventory !== "function" || typeof readSources !== "function") fail("full_metering_collection_invalid");
   const materialContinuation = mode === "continue-material", billingContinuation = mode === "continue-billing-window";
@@ -51,26 +56,25 @@ export async function runFullMeteringCollection({ directory, context, activation
   const run = async () => {
     // Never replay an unrelated pending batch while admitting a new operation.
     if (continuation) assertFullMeteringJournalNoPending({ directory });
-    if (mode === "collect") recoverFullMeteringJournal({ directory, context, applySamples });
+    if (mode === "collect") recoverFullMeteringJournal({ directory, context, applySamples, validateCheckpoint });
     const previous = mode === "collect" || continuation ? readFullMeteringJournal({ directory, context }) : null;
-    if (previous && (previous.version !== 1 || previous.activationId !== activationId || !Number.isSafeInteger(previous.sequence)
-      || previous.sequence < 0 || previous.sources?.length !== 5)) fail("full_metering_checkpoint_invalid");
+    if (previous) validateCheckpoint(previous);
     const admissionValue = nowFn();
     const admittedAt = admissionValue instanceof Date ? admissionValue.toISOString() : admissionValue;
     const before = readInventory();
-    const identities = inventoryProjection(before);
+    const identities = inventoryProjection(before, selectedChannels);
     const history = materialContinuationHistory(previous);
     const billingHistory = billingWindowContinuationHistory(previous);
     const admission = materialContinuation ? admitFullMeteringMaterialContinuation({ approval: materialApproval, checkpoint: previous, context, activationId, identities, now: admittedAt }) : null;
     const billingAdmission = billingContinuation ? admitFullMeteringBillingWindowContinuation({ approval: billingWindowApproval, checkpoint: previous, context, activationId, identities, now: admittedAt }) : null;
     const sources = await readSources(before);
-    verifySources(sources);
-    if (fullMeteringDigest(identities) !== fullMeteringDigest(inventoryProjection(readInventory()))) fail("full_metering_binding_changed");
+    verifySources(sources, selectedChannels);
+    if (fullMeteringDigest(identities) !== fullMeteringDigest(inventoryProjection(readInventory(), selectedChannels))) fail("full_metering_binding_changed");
     const nowValue = nowFn(), now = nowValue instanceof Date ? nowValue.toISOString() : nowValue;
     const startedAt = previous?.startedAt ?? admittedAt;
     const samples = [], nextSources = [], transitions = [], channels = [];
     let cycleBoundaryUnassignedBytes = 0;
-    for (const expected of FULL_METERING_CHANNELS) {
+    for (const expected of selectedChannels) {
       const source = sources.find(item => item.channelRef === expected.channelRef);
       const entries = identities.entries.filter(entry => entry.channelRef === source.channelRef);
       const retained = identities.retained.filter(entry => entry.channelRef === source.channelRef);
@@ -121,19 +125,25 @@ export async function runFullMeteringCollection({ directory, context, activation
       pendingStartCount: channels.reduce((n, channel) => n + channel.pendingCount, 0), sampleCount: samples.length,
       recordedBytes: samples.reduce((n, sample) => n + sample.record.totalBytes, 0), cycleBoundaryUnassignedBytes, channels,
       historicalDebits: false, identitiesIssued: false, entitlementsChanged: false, sgpTuicSidecarChanged: false };
+    if (meteringScope === LOCAL_METERING_SCOPE) {
+      summary.meteringScope = meteringScope;
+      // Coverage is not a healthy verdict for deferred sources, nor zero usage.
+      summary.deferredSources = { status: "paused", usage: "unknown", channelCount: 2, sidecar: "not_enabled_by_this_collector" };
+    }
     if (admission) summary.materialContinuation = { identityCount: admission.changes.size, unassignedBytes: null };
     if (billingAdmission) summary.billingWindowContinuation = { identityCount: billingAdmission.changes.size, unassignedBytes: null };
     if (!Number.isSafeInteger(summary.recordedBytes)) fail("full_metering_counter_invalid");
     if (mode === "preflight") return summary;
     const nextCheckpoint = { version: 1, activationId, startedAt, sequence: (previous?.sequence ?? -1) + 1,
       sources: nextSources, scopeTransitions: transitions, lastSummary: summary };
+    if (meteringScope === LOCAL_METERING_SCOPE) nextCheckpoint.meteringScope = meteringScope;
     if (!Number.isSafeInteger(nextCheckpoint.sequence)) fail("full_metering_checkpoint_invalid");
     if (history.length) nextCheckpoint.materialContinuations = history;
     if (billingHistory.length) nextCheckpoint.billingWindowContinuations = billingHistory;
     if (admission || billingAdmission) {
       // Zero-delta affected refs do not reach the sample writer. Recheck their
       // complete authority immediately before creating durable state as well.
-      if (fullMeteringDigest(identities) !== fullMeteringDigest(inventoryProjection(readInventory()))) fail("full_metering_binding_changed");
+      if (fullMeteringDigest(identities) !== fullMeteringDigest(inventoryProjection(readInventory(), selectedChannels))) fail("full_metering_binding_changed");
       const commitTime = nowFn(), completedAt = commitTime instanceof Date ? commitTime.toISOString() : commitTime;
       if (admission) {
         admitFullMeteringMaterialContinuation({ approval: materialApproval, checkpoint: previous, context, activationId, identities, now: completedAt });
