@@ -641,6 +641,29 @@ function subscriptionResetErrorMessage(error: unknown, locale: PortalAuthLocale)
   return uiText(locale, "未能确认重置结果，请检查网络后重试同一次操作；页面暂保留原链接，不代表该链接仍然有效。", "The reset result could not be confirmed. Check your connection and retry this operation. The displayed previous link may no longer be valid.");
 }
 
+function subscriptionOwnerMatches(ownerRef: string, orderOwnerRef: string, sessionUserRef: string) {
+  return Boolean(ownerRef) && (ownerRef === orderOwnerRef || ownerRef === sessionUserRef);
+}
+
+function subscriptionResetResultAccepted(
+  reset: PortalSubscriptionRequest,
+  order: PortalOrderRow,
+  sessionUserRef: string
+) {
+  return Boolean(reset.subscriptionUrl)
+    && reset.requestRef === order.requestRef
+    && reset.event?.type === "subscription_link_reset"
+    && subscriptionOwnerMatches(reset.userRef, order.request.userRef, sessionUserRef);
+}
+
+function subscriptionRereadErrorMessage(locale: PortalAuthLocale) {
+  return uiText(
+    locale,
+    "订阅链接暂时无法重新获取。页面仍显示最近一次已确认的链接；这不是重置失败，也不会再次重置。",
+    "The subscription link could not be read again. This page still shows the last confirmed link. This is not a reset failure, and it will not reset again."
+  );
+}
+
 function NoTranslateText({
   children,
   className
@@ -1594,6 +1617,20 @@ export function UserPortalPage({
   const clearWalletFirstSetupIdempotencyKey = useCallback(() => {
     walletFirstSetupIdempotencyKeyRef.current = null;
   }, []);
+  const subscriptionReadGenerationRef = useRef(0);
+  const linkOpDepthRef = useRef(0);
+  const beginLinkOp = useCallback(() => {
+    linkOpDepthRef.current += 1;
+    setPending(true);
+  }, []);
+  const endLinkOp = useCallback((applyPending: boolean) => {
+    linkOpDepthRef.current = Math.max(0, linkOpDepthRef.current - 1);
+    if (applyPending && linkOpDepthRef.current === 0) setPending(false);
+  }, []);
+  const currentSubscriptionReadGeneration = useCallback(
+    () => subscriptionReadGenerationRef.current,
+    []
+  );
 
   const advanceSessionGeneration = useCallback(() => {
     const nextGeneration = sessionGenerationRef.current + 1;
@@ -2108,9 +2145,10 @@ export function UserPortalPage({
       return null;
     }
     if (!portalSession) return null;
+    const readGeneration = subscriptionReadGenerationRef.current;
     setActionError("");
     setCopiedOrderRef(null);
-    setPending(true);
+    beginLinkOp();
     try {
       if (selectedOrder?.status === "active") {
         let revealed: PortalSubscriptionRequest;
@@ -2123,6 +2161,7 @@ export function UserPortalPage({
             requestRef: selectedOrder.requestRef
           });
         }
+        if (readGeneration !== subscriptionReadGenerationRef.current) return null;
         if (!revealed.subscriptionUrl) {
           throw new Error(uiText(locale, "订阅链接正在生成，请稍后再试。", "Your connection link is being prepared. Try again shortly."));
         }
@@ -2130,6 +2169,7 @@ export function UserPortalPage({
           durationDays: selectedOrder.durationDays,
           quantity: selectedOrder.quantity
         });
+        if (readGeneration !== subscriptionReadGenerationRef.current) return null;
         setOrderRows((rows) => upsertOrderRow(rows, nextOrder));
         setSelectedOrderRef(nextOrder.requestRef);
         setHistorySummary(revealed.historySummary ?? historySummary);
@@ -2155,6 +2195,7 @@ export function UserPortalPage({
           requestRef: result.requestRef
         });
       }
+      if (readGeneration !== subscriptionReadGenerationRef.current) return null;
       const order = subscriptionRequestToOrder(result, { durationDays, quantity });
       setOrderRows((rows) => upsertOrderRow(rows, order));
       setSelectedOrderRef(order.requestRef);
@@ -2166,45 +2207,78 @@ export function UserPortalPage({
       }
       return result.subscriptionUrl;
     } catch (requestError) {
+      if (readGeneration !== subscriptionReadGenerationRef.current) return null;
       setActionError(portalUiErrorMessage(requestError, "生成订阅链接失败。", locale));
       return null;
     } finally {
-      setPending(false);
+      endLinkOp(true);
     }
-  }, [commerceModel, currentEntitlement, historySummary, locale, portalClient, portalSession, selectedOrder, selectedPlanId]);
+  }, [beginLinkOp, commerceModel, currentEntitlement, endLinkOp, historySummary, locale, portalClient, portalSession, selectedOrder, selectedPlanId]);
 
   async function resetSubscriptionLink(idempotencyKey: string, requestRef: string): Promise<string> {
-    if (!portalSession || selectedOrder?.status !== "active" || selectedOrder.requestRef !== requestRef
+    const order = selectedOrder;
+    if (!portalSession || !order || order.status !== "active" || order.requestRef !== requestRef
       || commerceModel === "wallet_first_unique_v1") {
       throw new Error("subscription_link_reset_state_changed");
     }
     const resetSessionGeneration = sessionGenerationRef.current;
     const isCurrent = () => mountedRef.current && resetSessionGeneration === sessionGenerationRef.current;
-    setPending(true);
+    beginLinkOp();
     setActionError("");
     setCopiedOrderRef(null);
     try {
       const reset = await portalClient.resetSubscriptionLink({
         userRef: portalSession.userRef,
         sessionRef: portalSession.sessionRef,
-        requestRef: selectedOrder.requestRef,
+        requestRef: order.requestRef,
         idempotencyKey
       });
       if (!isCurrent()) throw new Error("subscription_link_reset_state_changed");
-      if (!reset.subscriptionUrl || reset.requestRef !== selectedOrder.requestRef
-        || reset.userRef !== portalSession.userRef || reset.event?.type !== "subscription_link_reset") {
+      const subscriptionUrl = reset.subscriptionUrl;
+      if (!subscriptionUrl || !subscriptionResetResultAccepted(reset, order, portalSession.userRef)) {
         throw new Error("subscription_link_reset_reconciliation_required");
       }
+      subscriptionReadGenerationRef.current += 1;
       const nextOrder = subscriptionRequestToOrder(reset, {
-        durationDays: selectedOrder.durationDays,
-        quantity: selectedOrder.quantity
+        durationDays: order.durationDays,
+        quantity: order.quantity
       });
       setOrderRows((rows) => upsertOrderRow(rows, nextOrder));
       setHistorySummary(reset.historySummary ?? historySummary);
-      return reset.subscriptionUrl;
+      return subscriptionUrl;
     } finally {
-      if (isCurrent()) setPending(false);
+      endLinkOp(isCurrent());
     }
+  }
+
+  async function rereadSubscriptionLink(): Promise<string | null> {
+    const order = selectedOrder;
+    if (!portalSession || !order || order.status !== "active") {
+      throw new Error("subscription_link_reread_unavailable");
+    }
+    const readGeneration = subscriptionReadGenerationRef.current;
+    const revealed = await portalClient.revealSubscription({
+      userRef: portalSession.userRef,
+      sessionRef: portalSession.sessionRef,
+      requestRef: order.requestRef
+    });
+    if (!mountedRef.current || readGeneration !== subscriptionReadGenerationRef.current) return null;
+    const subscriptionUrl = revealed.subscriptionUrl;
+    if (
+      !subscriptionUrl
+      || revealed.requestRef !== order.requestRef
+      || !subscriptionOwnerMatches(revealed.userRef, order.request.userRef, portalSession.userRef)
+    ) {
+      throw new Error("subscription_link_reread_unavailable");
+    }
+    const nextOrder = subscriptionRequestToOrder(revealed, {
+      durationDays: order.durationDays,
+      quantity: order.quantity
+    });
+    if (!mountedRef.current || readGeneration !== subscriptionReadGenerationRef.current) return null;
+    setOrderRows((rows) => upsertOrderRow(rows, nextOrder));
+    setHistorySummary(revealed.historySummary ?? historySummary);
+    return subscriptionUrl;
   }
 
   function viewOrder(order: PortalOrderRow) {
@@ -3000,6 +3074,8 @@ export function UserPortalPage({
               openMarketplace={openMarketplace}
               revealOrCreateSubscriptionLink={revealOrCreateSubscriptionLink}
               resetSubscriptionLink={resetSubscriptionLink}
+              rereadSubscriptionLink={rereadSubscriptionLink}
+              currentSubscriptionReadGeneration={currentSubscriptionReadGeneration}
             />
           ) : null}
           {activeView === "support" ? (
@@ -4406,7 +4482,9 @@ function UseGuide({
   setActiveView,
   openMarketplace,
   revealOrCreateSubscriptionLink,
-  resetSubscriptionLink
+  resetSubscriptionLink,
+  rereadSubscriptionLink,
+  currentSubscriptionReadGeneration
 }: {
   actionError: string;
   copiedOrderRef: string | null;
@@ -4426,6 +4504,8 @@ function UseGuide({
     clientTarget: PortalClientId,
   ) => Promise<string | null>;
   resetSubscriptionLink: (idempotencyKey: string, requestRef: string) => Promise<string>;
+  rereadSubscriptionLink: () => Promise<string | null>;
+  currentSubscriptionReadGeneration: () => number;
 }) {
   const desktopViewport = useDesktopScrollRegion();
   type GuidePlatformId = "ios" | "android" | "harmony" | "macos" | "windows" | "linux";
@@ -4446,6 +4526,8 @@ function UseGuide({
   const [resetPending, setResetPending] = useState(false);
   const [resetError, setResetError] = useState("");
   const resetInFlightRef = useRef(false);
+  const [rereadPending, setRereadPending] = useState(false);
+  const [rereadError, setRereadError] = useState("");
 
   function openResetDialog() {
     if (pending || resetInFlightRef.current || !selectedOrder?.requestRef) return;
@@ -4481,6 +4563,7 @@ function UseGuide({
       resetRecovery.clear(scope, resetDialogKey);
       setVisibleSubscriptionUrl(link);
       setLocalLinkCopied(false);
+      setRereadError("");
       setResetDialogKey(null);
       resetScopeRef.current = null;
       setResetRecoveryWarning(false);
@@ -4491,6 +4574,25 @@ function UseGuide({
       setResetPending(false);
     }
   }
+
+  async function rereadVisibleSubscription() {
+    if (pending || rereadPending) return;
+    const readGeneration = currentSubscriptionReadGeneration();
+    setRereadPending(true);
+    setRereadError("");
+    try {
+      const link = await rereadSubscriptionLink();
+      if (!link || readGeneration !== currentSubscriptionReadGeneration()) return;
+      setVisibleSubscriptionUrl(link);
+      setLocalLinkCopied(false);
+    } catch {
+      if (readGeneration !== currentSubscriptionReadGeneration()) return;
+      setRereadError(subscriptionRereadErrorMessage(locale));
+    } finally {
+      setRereadPending(false);
+    }
+  }
+
   const guidePlatformOptions: Array<{ id: GuidePlatformId; title: string; detail: string; icon: ComponentType<SVGProps<SVGSVGElement>> }> = [
     {
       id: "ios",
@@ -4688,13 +4790,15 @@ function UseGuide({
       return;
     }
     autoRevealKeyRef.current = revealKey;
+    const readGeneration = currentSubscriptionReadGeneration();
     void revealOrCreateSubscriptionLink(selectedGuideClientTarget).then((link) => {
-      if (!link) return;
+      if (!link || readGeneration !== currentSubscriptionReadGeneration()) return;
       setVisibleSubscriptionUrl(link);
       setLocalLinkCopied(false);
     });
   }, [
     activeGuideStep?.action,
+    currentSubscriptionReadGeneration,
     pending,
     revealOrCreateSubscriptionLink,
     selectedGuideClientTarget,
@@ -5152,8 +5256,9 @@ function UseGuide({
                           openResetDialog();
                           return;
                         }
+                        const readGeneration = currentSubscriptionReadGeneration();
                         const link = await revealOrCreateSubscriptionLink(selectedGuide.clientTarget);
-                        if (link) {
+                        if (link && readGeneration === currentSubscriptionReadGeneration()) {
                           setVisibleSubscriptionUrl(link);
                           setLocalLinkCopied(false);
                         }
@@ -5164,6 +5269,17 @@ function UseGuide({
                         ? uiText(locale, "重置订阅", "Reset subscription")
                         : uiText(locale, "生成订阅链接", "Generate link")}
                     </button>
+                    {visibleSubscriptionUrl ? (
+                      <button
+                        className="portal-secondary-button compact"
+                        type="button"
+                        disabled={pending || rereadPending}
+                        aria-busy={rereadPending}
+                        onClick={() => void rereadVisibleSubscription()}
+                      >
+                        {uiText(locale, "重新获取", "Read again")}
+                      </button>
+                    ) : null}
                     <button
                       className="portal-primary-button compact"
                       type="button"
@@ -5192,6 +5308,7 @@ function UseGuide({
                   ) : null}
                   {actionError ? <div className="alert alert-error">{actionError}</div> : null}
                   {resetError && !resetDialogKey ? <div className="alert alert-error" role="alert">{resetError}</div> : null}
+                  {rereadError ? <div className="alert alert-error" role="alert">{rereadError}</div> : null}
                 </div>
               ) : null}
               {activeGuideStep.action === "import" ? (

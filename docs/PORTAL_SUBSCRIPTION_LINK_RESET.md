@@ -98,6 +98,17 @@ dialog or reloading in the same browser tab without issuing another rotation.
 Unavailable browser storage is reported explicitly; in that case keep the page
 open to retain its in-memory retry key.
 
+The public browser session label is the signed-in email. The loaded access-record
+owner is the account id, so those two values are not the same identifier. A
+completed reset is applied on the current page when the response has a visible
+URL, the same request, a `subscription_link_reset` event, and an owner that
+matches the loaded record or the session label. The previous link is replaced
+immediately. A slower read that started earlier cannot write over that result.
+The read-only `重新获取` action calls order reveal and never calls reset. Its
+failure stays distinct from an unconfirmed reset and keeps the last confirmed
+link. This display sync does not change authorization, idempotency, cooldown,
+resource inheritance, or the reset route.
+
 This slice supports the existing legacy Portal access-request delivery path.
 Wallet-first current-resource delivery and the independent data-pack draft retain
 their own authorization paths; this endpoint must not bypass those model gates.
@@ -257,6 +268,8 @@ usage charging and third-party pool changes are out of scope.
   not real protocol processes or production traffic.
 - `admin/src/test/user-portal.test.tsx`: confirmation/cancellation, double click,
   uncertain retry, updated delivery and truthful reissue/reset messaging.
+  Synthetic fixtures also cover session-label versus record-owner display,
+  stale reads, and read-only reread failure.
 
 Run the source validation environment check, full `npm test`, Admin tests/build,
 Portal web build/verifier, frontend boundary check, documentation authority check
