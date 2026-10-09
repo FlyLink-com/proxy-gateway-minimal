@@ -52,8 +52,11 @@ export function checkPortalSubscriptionLinkResetSchema(database) {
     const columns = database.prepare(`pragma table_info(${TABLE})`).all().map(column => column.name);
     if (columns.length !== COLUMNS.length || COLUMNS.some(column => !columns.includes(column))) throw fail();
     const indexes = database.prepare(`pragma index_list(${TABLE})`).all();
-    if (!indexes.some(index => index.name === "portal_link_reset_pending_request_idx" && index.unique === 1 && index.partial === 1)
-      || !indexes.some(index => index.name === "portal_link_reset_replacement_idx" && index.unique === 1)) throw fail();
+    // Read-only metering inspectors use SafeIntegers. Accept the exact SQLite
+    // flag in either mode without changing the caller's connection policy.
+    const enabled = value => value === 1 || value === 1n;
+    if (!indexes.some(index => index.name === "portal_link_reset_pending_request_idx" && enabled(index.unique) && enabled(index.partial))
+      || !indexes.some(index => index.name === "portal_link_reset_replacement_idx" && enabled(index.unique))) throw fail();
     const pendingColumns = database.prepare("pragma index_info(portal_link_reset_pending_request_idx)").all().map(column => column.name);
     const replacementColumns = database.prepare("pragma index_info(portal_link_reset_replacement_idx)").all().map(column => column.name);
     const predicate = database.prepare("select sql from sqlite_master where type = 'index' and name = 'portal_link_reset_pending_request_idx'").get()?.sql;

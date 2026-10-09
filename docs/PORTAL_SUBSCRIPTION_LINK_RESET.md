@@ -17,8 +17,12 @@ document_metadata:
 - Risk: A (download credentials and an explicit control-database schema addition).
 - Expected PR count: one implementation PR, separate from third-party YAML distribution.
 - Release units: `control-plane-app`, `portal-static`; frontend_surface: `portal`.
-- identity_impact: false. Runtime principals, material bindings, protected usage maps,
-  collector configuration and edge credentials are not changed by this operation.
+- identity_impact: true. The collector's legacy-primary resource resolution now
+  recognizes strictly completed reset chains. Runtime principals, material
+  bindings, protected usage maps and edge credentials remain unchanged.
+- The independent collector is part of the `control-plane-app` release scope;
+  its exact source closure and target must be recorded separately from the app.
+  Production Identity Gate before/after and retention evidence remain pending.
 - Source-only status: the implementation and synthetic tests do not approve a
   production migration, enablement, real-account reset, merge or deployment.
 
@@ -71,6 +75,20 @@ original issued binding is retained. Renewal and fulfillment recovery recognize
 the current artifact only through a completed, owner/request/tenant-bound reset
 chain from that original binding; prepared or broken chains are not evidence.
 
+The full-metering inspector uses the same completed-chain proof for a legacy
+primary binding, including a retained primary superseded by durable credentials.
+Exact original-artifact matches still work without the opt-in reset schema.
+Mismatches without a valid chain fail closed; tenant, owner, request, material and
+uniqueness checks are not relaxed. The separately approved legacy VLESS recovery
+plan retains its exact-reference contract. Schema metadata accepts exact SQLite
+flags in both numeric modes without changing the caller's SafeIntegers policy.
+
+The stable full-metering identity excludes the download artifact. A link reset
+alone must continue ordinary collection without rebuilding a checkpoint, starting
+a zero baseline, changing entitlement/usage or retrospectively charging traffic.
+This compatibility fix is not a diagnosis or repair of an existing production
+`full_metering_binding_changed` failure.
+
 ## Cross-database recovery
 
 The dedicated `platform_portal_subscription_link_resets` journal holds a prepared
@@ -107,25 +125,43 @@ These commands are documentation, not permission to execute on production.
 
 Before production execution:
 
-1. Bind the exact reviewed source/artifacts, active backend and Portal targets,
-   active schema and private database paths using limited read-only inventory.
+1. Bind the exact reviewed source/artifacts, active backend, independent collector
+   and Portal targets, active schema and private database paths using limited
+   read-only inventory. Bind the collector's actual runtime dependency closure;
+   an application upgrade alone does not update an independently installed reader.
 2. Validate the explicit schema operation, old-schema/default-off behavior, reset,
    renewal, recovery and feature-off rollback in an owned synthetic environment.
 3. Back up the two affected databases consistently and verify restoration offline.
    Bind short write coordination if needed; do not copy production data locally.
-4. Obtain approval for the exact schema/backend/Portal promotion and verification.
-5. Install the additive schema before enabling the backend feature. Enable the
-   Portal only when its endpoint is available; do not show an active control ahead
-   of the backend. Verify a specifically approved test account: cancel, reset,
-   old artifact variants rejected, new render usable, resources/usage unchanged,
-   reveal and subsequent renewal intact. No unapproved customer resets.
+4. Obtain approval for the exact collector/schema/backend/Portal promotion and
+   verification. This does not authorize an unrelated metering restart or recovery.
+5. Install and verify the compatible independent collector first, including
+   old-schema behavior. Install the additive schema, then the backend with the
+   feature initially off. Enable the backend feature before the Portal control.
+   Verify a specifically approved test account: cancel, reset, old artifact
+   variants rejected, new render usable, resources/usage unchanged, reveal and
+   subsequent renewal intact. Verify unchanged stable identity, aggregate
+   retention state and continuous natural metering. No unapproved customer resets.
 6. Append a Deploy Note with exact source, release units, target, backup and
-   observed validation. Do not infer deployment from source tests or Vercel build.
+   observed validation, aggregate Identity Gate before/after and retention state.
+   Do not infer deployment from source tests or Vercel build.
+
+For the previously inventoried #759 collector closure, the minimal compatible
+overlay replaces `scripts/lib/traffic-vless-recovery-baseline.mjs` and adds
+`server/services/platform/portal-subscription-link-reset-store.mjs`. The latter
+imports only `node:crypto`; no new package or native ABI is required. The recorded
+41-file closure becomes 42 files if all other files are unchanged. Rebind the
+actual final hashes and test imports plus synthetic collection from the isolated
+closure before promotion; do not substitute a Windows SQLite native module into
+the Linux deployment. These counts describe the recorded source baseline, not a
+fresh production inventory or an approved executable artifact.
 
 ## Rollback and stop conditions
 
 Prefer disabling new resets and hiding the Portal action while retaining the
-compatible delivery reader and renewal-chain support. Retain the additive journal
+compatible delivery reader, renewal-chain support and independent collector.
+After a completed reset, reverting to the old collector is not a safe feature-off
+rollback. Retain the additive journal
 and artifact revocation history. Never roll back only one database, restore an old
 URL as active, or replay usage/payments to undo a completed reset. A pre-migration
 database restore is permissible only before any subsequent business mutations and
@@ -159,6 +195,11 @@ usage charging and third-party pool changes are out of scope.
   delivery/render/reveal integration (not a live proxy connectivity test).
 - `platform-coin-commerce-subscription-fulfillment.test.mjs`: renewal and retry
   after multiple completed rotations without changing original issued bindings.
+- `full-metering-subscription-link-reset.test.mjs`: actual reset and read-only
+  inspector, ordinary collector/sample-writer continuity across two resets for
+  durable, legacy-primary and retained-primary bindings; invalid chains fail
+  before statistics, checkpoint or accounting changes. Sources are synthetic,
+  not real protocol processes or production traffic.
 - `admin/src/test/user-portal.test.tsx`: confirmation/cancellation, double click,
   uncertain retry, updated delivery and truthful reissue/reset messaging.
 
@@ -212,3 +253,26 @@ acceptance. The first fixture run correctly excluded a usage sample preceding
 the paid billing cycle; its synthetic initial-fulfillment time was corrected
 before the passing run. No product code or production state changed in this
 supplemental validation.
+
+## Collector compatibility regression, 2026-10-09
+
+The real synthetic reset plus read-only inspector reproduced
+`baseline_binding_invalid` for legacy-primary and retained-primary bindings before
+the fix (18 passed, 2 failed). The inspector now accepts only verified completed
+reset lineage in the full-metering lane; the old VLESS recovery contract is not
+relaxed. The schema check also handles exact `1n` flags from SafeIntegers readers.
+
+After the fix, `node --test server/tests/full-metering-subscription-link-reset.test.mjs`
+passed 22/22, including two actual resets followed by ordinary collector/sample
+writer calls, invalid-lineage stop conditions, unchanged old VLESS behavior and
+unchanged caller integer mode. A separate run of reset-store, durable recovery,
+feature-off and Commerce fulfillment tests passed 111/111. The affected 12-file
+collector/reset regression run passed 195/195; these runs overlap and must not be
+added into a unique-test total. Documentation authority validation covered 416
+documents; diff checks passed.
+
+These are local synthetic source results. This increment has not completed
+independent review, final-source Linux validation, isolated deployment-closure
+validation or production promotion. No production timer, checkpoint, database or
+accounting state was changed by these tests, and production metering recovery is
+not established by them.
