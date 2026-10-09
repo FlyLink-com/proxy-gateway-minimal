@@ -557,15 +557,12 @@ export function userPortalRoutes(state, options = {}) {
   });
 
   router.post("/api/portal/access-requests/refresh", (req, res) => {
+    setSetupDeliveryResponseHeaders(res);
     try {
-      if (!accessRequests || typeof accessRequests.refreshSubscription !== "function") {
-        const error = new Error("portal order lifecycle service is not configured");
-        error.code = "validation_error";
-        throw error;
-      }
-      res.json({
-        request: accessRequests.refreshSubscription(sessionScopedBody(req))
-      });
+      requirePortalSession(req);
+      // Legacy refresh rotates runtime material without a metering handoff.
+      // Do not invoke it or silently reset a link without explicit consent.
+      res.status(410).json({ error: "subscription_refresh_retired" });
     } catch (error) {
       sendPortalError(res, error);
     }

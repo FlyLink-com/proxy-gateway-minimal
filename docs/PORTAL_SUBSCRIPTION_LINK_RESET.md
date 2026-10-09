@@ -31,6 +31,61 @@ preserves the download artifact. The new `resetSubscriptionLink` operation rotat
 the **download artifact** and updates the existing order's delivery URL. They are
 not interchangeable operations.
 
+### Legacy refresh retirement (source-only, 2026-10-09)
+
+The public `POST /api/portal/access-requests/refresh` route is retired. After
+the existing Portal session/CSRF checks, it returns HTTP 410 with only
+`{"error":"subscription_refresh_retired"}`. It does not read an order, call
+`refreshSubscription`, rotate runtime credentials, change material, advance a
+checkpoint or invoke another lifecycle method. Missing order/service, caller
+flags, another owner's reference and a reset-shaped body cannot opt back in.
+Anonymous/invalid sessions still fail authentication; console auth is not a
+Portal session. Malformed JSON and early denials remain non-cacheable and do
+not expose parser details. There is no redirect, retry hint or automatic
+fallback to reset-link: consent and a new idempotency key cannot be invented.
+
+Old desktop/mobile/HTTP clients using refresh must migrate to the separately
+confirmed reset-link flow. Existing downloads, order reveal, disable, renewal
+and the new reset route are not removed. The separate mobile repository is not
+changed by this patch. An old client can receive an unsupported-action error;
+it must not claim that credentials or links changed.
+
+This is an HTTP entry-point containment fix, **not automatic metering repair**.
+The internal credential rotation service remains for existing domain tests and
+future controlled lifecycle integration. Current repository call-site inventory
+found its only non-test `refreshSubscription` caller in this HTTP route, now
+removed. Future internal callers, operator scripts or direct material changes
+are not prevented by HTTP retirement. Legitimate material rotation still needs
+an independently verified metering handoff; ordinary collection must continue
+to reject unexplained material changes. Two changed entries per protocol do not
+prove the same users or operation caused previous incidents.
+
+#### Validation / production checklist
+
+- Risk A envelope, minimal backend source patch; `release_unit: control-plane-app`,
+  `identity_impact: false` for retirement itself. No frontend, schema, collector,
+  runtime material, identity-map or accounting modifications. Existing #764
+  identity-impact gates remain applicable when deploying that separate change.
+- Synthetic tests: valid header/cookie sessions, missing/invalid session, console
+  bearer, CSRF, force flags, absent service, path variants and malformed JSON;
+  all denials execute zero lifecycle calls. Existing reset-to-collection and
+  cross-database reset tests must remain passing. No production test credentials.
+- Before promotion, bind the exact current `server/app.mjs` and
+  `server/routes/user-portal.mjs` plus intended backend composition, preserve
+  fresh rollback references, validate an isolated candidate and obtain approval
+  for the bounded app restart. Do not reuse the previous #764 artifact hash after
+  adding these files or deploy whole master over the mixed production release.
+- Verify retired response with an authorized session and no service effects;
+  check healthy existing download/reveal and independent reset acceptance.
+  Observe natural metering only after its separately approved recovery. This
+  patch cannot turn failed/inactive collection into a recovery receipt.
+- Rollback must retain retirement (forward-correct the guard or an explicitly
+  approved equivalent restriction). Blindly reverting to the old route reopens
+  the known rotation path. Never restore a database/checkpoint to roll back this
+  stateless route patch, resurrect reset links or charge unknown historical use.
+
+Source implementation and synthetic validation are not a production Deploy Note.
+
 The Portal confirmation explains that the old subscription link stops working,
 the user must import the new link, and the plan, expiry and used traffic are
 unchanged. Cancellation makes no reset request. A downloaded client configuration

@@ -103,6 +103,60 @@ function assertPrivateResponse(response) {
   assert.equal(response.text.includes("synthetic-private-internal-detail"), false);
 }
 
+test("retired refresh rejects every authenticated legacy request without any lifecycle call", async t => {
+  let mutations = 0;
+  const forbidden = () => { mutations += 1; throw failure("unexpected_rotation"); };
+  const { request } = await harness(t, { service: {
+    refreshSubscription: forbidden, resetSubscriptionLink: forbidden,
+    revealSubscription: forbidden, disableSubscription: forbidden
+  } });
+  for (const options of [
+    {}, { browser: true }, { session: "synthetic_other_session" },
+    { body: { ...BODY, force: true, allowRotation: true, portalUserRef: "acct_route_owner" } },
+    { path: "/api/portal/access-requests/refresh?force=true" },
+    { body: {} }
+  ]) {
+    const response = await request({ path: "/api/portal/access-requests/refresh", ...options });
+    assert.equal(response.status, 410);
+    assert.deepEqual(response.body, { error: "subscription_refresh_retired" });
+    assertPrivateResponse(response);
+    assert.equal(response.headers.get("location"), null);
+    assert.equal(response.headers.get("retry-after"), null);
+  }
+  assert.equal(mutations, 0);
+});
+
+test("retired refresh keeps authentication CSRF and parse failures non-cacheable", async t => {
+  let mutations = 0;
+  const { request } = await harness(t, { service: {
+    refreshSubscription() { mutations += 1; }
+  } });
+  for (const [options, allowed] of [
+    [{ session: null }, [401]],
+    [{ path: "/api/portal/access-requests/refresh/" }, [401, 410]],
+    [{ path: "/API/PORTAL/ACCESS-REQUESTS/REFRESH" }, [401, 410]],
+    [{ session: "invalid" }, [401]],
+    [{ session: null, headers: { Authorization: "Bearer synthetic-route-console-token" } }, [401]],
+    [{ browser: true, headers: { Origin: "https://other.example.test" } }, [401, 403]],
+    [{ browser: true, headers: { "Sec-Fetch-Site": "cross-site" } }, [401, 403]],
+    [{ body: '{"requestRef":' }, [400]]
+  ]) {
+    const response = await request({ path: "/api/portal/access-requests/refresh", ...options });
+    assert.ok(allowed.includes(response.status));
+    assertPrivateResponse(response);
+    assert.deepEqual(Object.keys(response.body), ["error"]);
+  }
+  assert.equal(mutations, 0);
+});
+
+test("retired refresh is closed even if the rotation service is absent", async t => {
+  const { request } = await harness(t, { service: {} });
+  const response = await request({ path: "/api/portal/access-requests/refresh" });
+  assert.equal(response.status, 410);
+  assert.deepEqual(response.body, { error: "subscription_refresh_retired" });
+  assertPrivateResponse(response);
+});
+
 test("link reset route returns the new delivery and scopes ownership from the header session", async t => {
   const { request, calls } = await harness(t);
   const response = await request();
