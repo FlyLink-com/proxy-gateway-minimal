@@ -32,6 +32,7 @@ import {
   type PortalPasskeyBinding,
   type PortalPasskeyExport,
   type PortalRefreshSubscriptionInput,
+  type PortalResetSubscriptionLinkInput,
   type PortalRevealSubscriptionInput,
   type PortalRegistrationEmailVerificationChallenge,
   type PortalRegistrationInput,
@@ -390,7 +391,7 @@ function portalClient(overrides: Partial<UserPortalClient> = {}): UserPortalClie
       nextAction: "copy_subscription_url",
       updatedAt: "2026-05-31T00:00:00.000Z",
       event: {
-        type: "old_link_invalidated",
+        type: "delivery_generation_reissued",
         occurredAt: "2026-05-31T00:00:00.000Z"
       },
       historySummary: [
@@ -408,6 +409,12 @@ function portalClient(overrides: Partial<UserPortalClient> = {}): UserPortalClie
         noPublicAdmin: true,
         noRawCustomerDataReturned: true
       }
+    })),
+    resetSubscriptionLink: vi.fn(async (input: PortalResetSubscriptionLinkInput): Promise<PortalSubscriptionRequest> => activeSubscriptionRequest({
+      requestRef: input.requestRef,
+      userRef: input.userRef,
+      subscriptionUrl: "https://sub.example.test/import/reset-visible-once",
+      event: { type: "subscription_link_reset", occurredAt: "2026-05-31T00:00:00.000Z" }
     })),
     disableSubscription: vi.fn(async (input: { userRef: string; requestRef: string }): Promise<PortalSubscriptionRequest> => ({
       status: "subscription_disabled",
@@ -2261,6 +2268,71 @@ describe("user portal product surface", () => {
     expect(request.requestRef).toBe("pareq_trial_session_1");
     expect(request.lifecycle).toBe("active");
     expect(fetchFn).toHaveBeenCalledTimes(1);
+  });
+
+  test("http subscription reset sends only a confirmed session-owned idempotent mutation", async () => {
+    const fetchFn = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => new Response(JSON.stringify({
+      request: {
+        id: "request_reset_synthetic",
+        portalUserRef: "user_safe_ref",
+        status: "delivered",
+        plan: "monthly",
+        clientTarget: "clash",
+        expiresAt: "2026-06-30T00:00:00.000Z",
+        subscriptionUrl: "https://sub.example.test/import/reset-visible-once",
+        event: { type: "subscription_link_reset", occurredAt: "2026-05-31T00:00:00.000Z" }
+      }
+    }), { status: 200, headers: { "Content-Type": "application/json" } }));
+    const client = createHttpUserPortalClient({ fetchFn });
+    const result = await client.resetSubscriptionLink({
+      userRef: "user_safe_ref",
+      sessionRef: "portal_session_http_1",
+      requestRef: "request_reset_synthetic",
+      idempotencyKey: "synthetic-reset-operation-1"
+    });
+    expect(fetchFn).toHaveBeenCalledTimes(1);
+    const [endpoint, init] = fetchFn.mock.calls[0];
+    expect(endpoint).toBe("/api/portal/access-requests/reset-link");
+    expect(init?.method).toBe("POST");
+    expect(init?.cache).toBe("no-store");
+    expect(new Headers(init?.headers).get("X-Portal-Session")).toBe("portal_session_http_1");
+    expect(JSON.parse(String(init?.body))).toEqual({
+      requestRef: "request_reset_synthetic",
+      idempotencyKey: "synthetic-reset-operation-1",
+      confirmed: true
+    });
+    expect(result.event?.type).toBe("subscription_link_reset");
+    expect(result.subscriptionUrl).toBe("https://sub.example.test/import/reset-visible-once");
+    expect(result.expiresAt).toBe("2026-06-30T00:00:00.000Z");
+  });
+
+  test("http subscription reset does not automatically retry failed or unknown outcomes", async () => {
+    const fetchFn = vi.fn(async () => new Response(JSON.stringify({ error: "subscription_link_reset_reconciliation_required" }), {
+      status: 503, headers: { "Content-Type": "application/json" }
+    }));
+    const client = createHttpUserPortalClient({ fetchFn });
+    await expect(client.resetSubscriptionLink({
+      userRef: "user_safe_ref", sessionRef: "portal_session_http_1", requestRef: "request_reset_synthetic", idempotencyKey: "synthetic-reset-operation-1"
+    })).rejects.toThrow("subscription_link_reset_reconciliation_required");
+    expect(fetchFn).toHaveBeenCalledTimes(1);
+  });
+
+  test("http subscription reset bounds a lost response without automatically retrying", async () => {
+    vi.useFakeTimers();
+    try {
+      const fetchFn = vi.fn((_input: RequestInfo | URL, _init?: RequestInit) => new Promise<Response>(() => {}));
+      const client = createHttpUserPortalClient({ fetchFn });
+      const pending = client.resetSubscriptionLink({
+        userRef: "user_safe_ref", sessionRef: "portal_session_http_1", requestRef: "request_reset_synthetic", idempotencyKey: "synthetic-reset-operation-1"
+      });
+      const assertion = expect(pending).rejects.toThrow("Portal request timed out.");
+      await vi.advanceTimersByTimeAsync(30_000);
+      await assertion;
+      expect(fetchFn).toHaveBeenCalledTimes(1);
+      expect(fetchFn.mock.calls[0][1]?.signal?.aborted).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   test("http portal client creates a session-scoped payment checkout for paid plans", async () => {
@@ -5341,6 +5413,218 @@ describe("user portal product surface", () => {
     expect(screen.getByText("安全设置")).not.toBeNull();
   });
 
+  test("subscription reset requires confirmation and cancellation sends no mutation", async () => {
+    const client = portalClientWithActiveSubscription();
+    render(createElement(UserPortalPage, { portalClient: client }));
+    await enterPortal();
+    openPortalSubscriptions();
+    await screen.findByDisplayValue("https://sub.example.test/import/existing-visible-once");
+
+    fireEvent.click(screen.getByRole("button", { name: "重置订阅" }));
+    const dialog = screen.getByRole("dialog", { name: "重置订阅链接" });
+    expect(within(dialog).getByText(/重置后旧订阅链接将失效/)).not.toBeNull();
+    expect(within(dialog).getByText(/套餐、到期时间与已用流量不变/)).not.toBeNull();
+    expect(within(dialog).getByText(/已下载配置不会仅因链接重置被远程删除/)).not.toBeNull();
+    expect(client.resetSubscriptionLink).not.toHaveBeenCalled();
+    fireEvent.click(within(dialog).getByRole("button", { name: "取消" }));
+    expect(screen.queryByRole("dialog", { name: "重置订阅链接" })).toBeNull();
+    expect(client.resetSubscriptionLink).not.toHaveBeenCalled();
+    expect(Object.keys(window.sessionStorage).filter((key) => key.startsWith("portal-subscription-reset-v1:"))).toHaveLength(0);
+    expect(client.refreshSubscription).not.toHaveBeenCalled();
+    expect(screen.getByDisplayValue("https://sub.example.test/import/existing-visible-once")).not.toBeNull();
+  });
+
+  test("subscription reset blocks duplicate submits and replaces the link only after success", async () => {
+    const deferred = deferredValue<PortalSubscriptionRequest>();
+    const resetSubscriptionLink = vi.fn(() => deferred.promise);
+    const client = portalClientWithActiveSubscription({}, { resetSubscriptionLink });
+    render(createElement(UserPortalPage, { portalClient: client }));
+    await enterPortal();
+    openPortalSubscriptions();
+    await screen.findByDisplayValue("https://sub.example.test/import/existing-visible-once");
+    fireEvent.click(screen.getByRole("button", { name: "重置订阅" }));
+    const dialog = screen.getByRole("dialog", { name: "重置订阅链接" });
+    const confirm = within(dialog).getByRole("button", { name: "确认重置" });
+    fireEvent.click(confirm);
+    fireEvent.click(confirm);
+    expect(resetSubscriptionLink).toHaveBeenCalledTimes(1);
+    expect(within(dialog).getByRole("button", { name: "取消" })).toBeDisabled();
+    expect(screen.getByDisplayValue("https://sub.example.test/import/existing-visible-once")).not.toBeNull();
+    await act(async () => deferred.resolve(activeSubscriptionRequest({
+      subscriptionUrl: "https://sub.example.test/import/reset-visible-once",
+      event: { type: "subscription_link_reset", occurredAt: "2026-05-31T00:00:00.000Z" }
+    })));
+    await screen.findByDisplayValue("https://sub.example.test/import/reset-visible-once");
+    expect(screen.queryByRole("dialog", { name: "重置订阅链接" })).toBeNull();
+    expect(screen.getByText(/旧链接已于/)).not.toBeNull();
+    expect(client.refreshSubscription).not.toHaveBeenCalled();
+    expect(client.applyForSubscription).not.toHaveBeenCalled();
+    openPortalOrders();
+    expect(screen.getByRole("table")).not.toBeNull();
+    openPortalSubscriptions();
+    await screen.findByDisplayValue("https://sub.example.test/import/reset-visible-once");
+  });
+
+  test("subscription reset preserves the old display on failure and reuses its idempotency key", async () => {
+    const resetSubscriptionLink = vi.fn()
+      .mockRejectedValueOnce(new Error("响应结果未确认，请重试同一次重置。"))
+      .mockResolvedValueOnce(activeSubscriptionRequest({
+        subscriptionUrl: "https://sub.example.test/import/reset-visible-once",
+        event: { type: "subscription_link_reset", occurredAt: "2026-05-31T00:00:00.000Z" }
+      }));
+    const client = portalClientWithActiveSubscription({}, { resetSubscriptionLink });
+    render(createElement(UserPortalPage, { portalClient: client }));
+    await enterPortal();
+    openPortalSubscriptions();
+    await screen.findByDisplayValue("https://sub.example.test/import/existing-visible-once");
+    fireEvent.click(screen.getByRole("button", { name: "重置订阅" }));
+    fireEvent.click(screen.getByRole("button", { name: "确认重置" }));
+    await waitFor(() => expect(within(screen.getByRole("dialog")).getByRole("alert")).toHaveTextContent("未能确认重置结果"));
+    expect(screen.getByDisplayValue("https://sub.example.test/import/existing-visible-once")).not.toBeNull();
+    expect(screen.queryByText(/旧链接已于/)).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "确认重置" }));
+    await screen.findByDisplayValue("https://sub.example.test/import/reset-visible-once");
+    expect(resetSubscriptionLink).toHaveBeenCalledTimes(2);
+    expect(resetSubscriptionLink.mock.calls[0][0].idempotencyKey).toBeTruthy();
+    expect(resetSubscriptionLink.mock.calls[1][0].idempotencyKey).toBe(resetSubscriptionLink.mock.calls[0][0].idempotencyKey);
+  });
+
+  test("subscription reset resumes the submitted operation after closing and reopening the dialog", async () => {
+    const resetSubscriptionLink = vi.fn()
+      .mockRejectedValueOnce(new Error("subscription_link_reset_reconciliation_required"))
+      .mockResolvedValueOnce(activeSubscriptionRequest({
+        subscriptionUrl: "https://sub.example.test/import/reset-visible-once",
+        event: { type: "subscription_link_reset", occurredAt: "2026-05-31T00:00:00.000Z" }
+      }));
+    const client = portalClientWithActiveSubscription({}, { resetSubscriptionLink });
+    render(createElement(UserPortalPage, { portalClient: client }));
+    await enterPortal();
+    openPortalSubscriptions();
+    await screen.findByDisplayValue("https://sub.example.test/import/existing-visible-once");
+    fireEvent.click(screen.getByRole("button", { name: "重置订阅" }));
+    expect(Object.keys(window.sessionStorage).filter((key) => key.startsWith("portal-subscription-reset-v1:"))).toHaveLength(0);
+    fireEvent.click(screen.getByRole("button", { name: "确认重置" }));
+    await waitFor(() => expect(within(screen.getByRole("dialog")).getByRole("alert")).toHaveTextContent("重置结果待确认"));
+    const storageKeys = Object.keys(window.sessionStorage).filter((key) => key.startsWith("portal-subscription-reset-v1:"));
+    expect(storageKeys).toHaveLength(1);
+    expect(window.sessionStorage.getItem(storageKeys[0])).toBe(resetSubscriptionLink.mock.calls[0][0].idempotencyKey);
+    fireEvent.click(screen.getByRole("button", { name: "取消" }));
+    fireEvent.click(screen.getByRole("button", { name: "重置订阅" }));
+    fireEvent.click(screen.getByRole("button", { name: "确认重置" }));
+    await screen.findByDisplayValue("https://sub.example.test/import/reset-visible-once");
+    expect(resetSubscriptionLink.mock.calls[1][0].idempotencyKey).toBe(resetSubscriptionLink.mock.calls[0][0].idempotencyKey);
+    expect(window.sessionStorage.getItem(storageKeys[0])).toBeNull();
+  });
+
+  test("subscription reset recovers its noncredential operation key after page remount", async () => {
+    const resetSubscriptionLink = vi.fn()
+      .mockRejectedValueOnce(new Error("Failed to fetch"))
+      .mockResolvedValueOnce(activeSubscriptionRequest({
+        subscriptionUrl: "https://sub.example.test/import/reset-visible-once",
+        event: { type: "subscription_link_reset", occurredAt: "2026-05-31T00:00:00.000Z" }
+      }));
+    const client = portalClientWithActiveSubscription({}, { resetSubscriptionLink });
+    const firstPage = render(createElement(UserPortalPage, { portalClient: client }));
+    await enterPortal();
+    openPortalSubscriptions();
+    await screen.findByDisplayValue("https://sub.example.test/import/existing-visible-once");
+    fireEvent.click(screen.getByRole("button", { name: "重置订阅" }));
+    fireEvent.click(screen.getByRole("button", { name: "确认重置" }));
+    await waitFor(() => expect(within(screen.getByRole("dialog")).getByRole("alert")).toHaveTextContent("未能确认重置结果"));
+    firstPage.unmount();
+    render(createElement(UserPortalPage, { portalClient: client }));
+    await enterPortal();
+    openPortalSubscriptions();
+    await screen.findByDisplayValue("https://sub.example.test/import/existing-visible-once");
+    fireEvent.click(screen.getByRole("button", { name: "重置订阅" }));
+    fireEvent.click(screen.getByRole("button", { name: "确认重置" }));
+    await screen.findByDisplayValue("https://sub.example.test/import/reset-visible-once");
+    expect(resetSubscriptionLink.mock.calls[1][0].idempotencyKey).toBe(resetSubscriptionLink.mock.calls[0][0].idempotencyKey);
+  });
+
+  test("subscription reset warns when recovery storage is unavailable and keeps an in-memory retry", async () => {
+    const resetSubscriptionLink = vi.fn()
+      .mockRejectedValueOnce(new Error("Failed to fetch"))
+      .mockResolvedValueOnce(activeSubscriptionRequest({
+        subscriptionUrl: "https://sub.example.test/import/reset-visible-once",
+        event: { type: "subscription_link_reset", occurredAt: "2026-05-31T00:00:00.000Z" }
+      }));
+    const client = portalClientWithActiveSubscription({}, { resetSubscriptionLink });
+    render(createElement(UserPortalPage, { portalClient: client }));
+    await enterPortal();
+    openPortalSubscriptions();
+    await screen.findByDisplayValue("https://sub.example.test/import/existing-visible-once");
+    const originalSetItem = Storage.prototype.setItem;
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(function (this: Storage, key, value) {
+      if (key.startsWith("portal-subscription-reset-v1:")) throw new Error("storage unavailable");
+      return originalSetItem.call(this, key, value);
+    });
+    fireEvent.click(screen.getByRole("button", { name: "重置订阅" }));
+    fireEvent.click(screen.getByRole("button", { name: "确认重置" }));
+    await waitFor(() => expect(within(screen.getByRole("dialog")).getByRole("alert")).toHaveTextContent("未能确认重置结果"));
+    expect(within(screen.getByRole("dialog")).getByText(/无法跨刷新恢复/)).not.toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "取消" }));
+    fireEvent.click(screen.getByRole("button", { name: "重置订阅" }));
+    fireEvent.click(screen.getByRole("button", { name: "确认重置" }));
+    await screen.findByDisplayValue("https://sub.example.test/import/reset-visible-once");
+    expect(resetSubscriptionLink.mock.calls[1][0].idempotencyKey).toBe(resetSubscriptionLink.mock.calls[0][0].idempotencyKey);
+  });
+
+  test("credential reissue events do not claim the subscription URL was invalidated", async () => {
+    const client = portalClientWithActiveSubscription({
+      event: { type: "delivery_generation_reissued", occurredAt: "2026-05-31T00:00:00.000Z" }
+    });
+    render(createElement(UserPortalPage, { portalClient: client }));
+    await enterPortal();
+    openPortalOrders();
+    expect(screen.queryByText(/旧链接已于/)).toBeNull();
+    openPortalSubscriptions();
+    await screen.findByDisplayValue("https://sub.example.test/import/existing-visible-once");
+    expect(screen.queryByText(/旧链接已于/)).toBeNull();
+  });
+
+  test("subscription reset rejects incomplete success instead of replacing the displayed link", async () => {
+    const client = portalClientWithActiveSubscription({}, {
+      resetSubscriptionLink: vi.fn(async () => activeSubscriptionRequest({
+        subscriptionUrl: "https://sub.example.test/import/unconfirmed-visible-once",
+        event: { type: "delivery_generation_reissued", occurredAt: "2026-05-31T00:00:00.000Z" }
+      }))
+    });
+    render(createElement(UserPortalPage, { portalClient: client }));
+    await enterPortal();
+    openPortalSubscriptions();
+    await screen.findByDisplayValue("https://sub.example.test/import/existing-visible-once");
+    fireEvent.click(screen.getByRole("button", { name: "重置订阅" }));
+    fireEvent.click(screen.getByRole("button", { name: "确认重置" }));
+    await waitFor(() => expect(within(screen.getByRole("dialog")).getByRole("alert")).toHaveTextContent("重置结果待确认"));
+    expect(screen.getByDisplayValue("https://sub.example.test/import/existing-visible-once")).not.toBeNull();
+    expect(screen.queryByDisplayValue("https://sub.example.test/import/unconfirmed-visible-once")).toBeNull();
+    expect(screen.queryByText(/旧链接已于/)).toBeNull();
+  });
+
+  test("local subscription reset preserves resources and makes reveal return the same completed operation", async () => {
+    const client = createLocalUserPortalClient({
+      now: () => new Date("2026-05-31T00:00:00.000Z"),
+      demoSubscriptionUrl: "https://sub.example.test/import/local-visible-once"
+    });
+    const original = await client.applyForSubscription({
+      userRef: "user_safe_ref", planId: "yearly", clientTarget: "karing", durationDays: 365, quantity: 2
+    });
+    const input = { userRef: original.userRef, requestRef: original.requestRef, idempotencyKey: "synthetic-reset-operation-1" };
+    const reset = await client.resetSubscriptionLink(input);
+    const retry = await client.resetSubscriptionLink(input);
+    const revealed = await client.revealSubscription(input);
+    expect(reset.subscriptionUrl).not.toBe(original.subscriptionUrl);
+    expect(retry).toEqual(reset);
+    expect(revealed.subscriptionUrl).toBe(reset.subscriptionUrl);
+    for (const key of ["requestRef", "userRef", "planId", "clientTarget", "durationDays", "quantity", "expiresAt", "usage"] as const) {
+      expect(reset[key]).toEqual(original[key]);
+    }
+    const state = await client.fetchCurrentState({ userRef: original.userRef });
+    expect(state.subscriptionRequest?.subscriptionUrl).toBe(reset.subscriptionUrl);
+    expect(reset.event?.type).toBe("subscription_link_reset");
+  });
+
   test("local preview client preserves server-owned package facts when refreshing", async () => {
     const client = createLocalUserPortalClient({
       now: () => new Date("2026-05-31T00:00:00.000Z"),
@@ -5362,6 +5646,7 @@ describe("user portal product surface", () => {
     expect(refreshed.planId).toBe("yearly");
     expect(refreshed.expiresAt).toBe(applied.expiresAt);
     expect(refreshed.clientTarget).toBe("karing");
+    expect(refreshed.event?.type).toBe("delivery_generation_reissued");
   });
 
   test("renders usage guide, support form, and personal center without payment or dashboard language", async () => {
@@ -5422,17 +5707,19 @@ describe("user portal product surface", () => {
     expect(screen.getByText("复制你的订阅链接")).not.toBeNull();
     expect(screen.getByText("点击生成并复制。这个链接只放进客户端，不要发给别人。")).not.toBeNull();
     await waitFor(() => expect(screen.getByDisplayValue("https://sub.example.test/import/existing-visible-once")).not.toBeNull());
-    fireEvent.click(screen.getByRole("button", { name: "刷新链接" }));
-    await waitFor(() => expect(client.refreshSubscription).toHaveBeenCalledWith(expect.objectContaining({
+    fireEvent.click(screen.getByRole("button", { name: "重置订阅" }));
+    expect(client.resetSubscriptionLink).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "确认重置" }));
+    await waitFor(() => expect(client.resetSubscriptionLink).toHaveBeenCalledWith(expect.objectContaining({
       userRef: "user_safe_ref",
       requestRef: "subreq_existing_monthly",
-      clientTarget: "clash"
+      idempotencyKey: expect.any(String)
     })));
-    await waitFor(() => expect(screen.getByDisplayValue("https://sub.example.test/import/refreshed-visible-once")).not.toBeNull());
+    await waitFor(() => expect(screen.getByDisplayValue("https://sub.example.test/import/reset-visible-once")).not.toBeNull());
     expect(screen.queryByRole("button", { name: "先查看导入教程" })).toBeNull();
     expect(writeText).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "复制链接" }));
-    await waitFor(() => expect(writeText).toHaveBeenCalledWith("https://sub.example.test/import/refreshed-visible-once"));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith("https://sub.example.test/import/reset-visible-once"));
     expect(screen.queryByRole("button", { name: "上一步" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "我已复制，下一步" }));
     expect(screen.getByText("STEP 3 / 5")).not.toBeNull();
