@@ -27,6 +27,7 @@ import { publicLeadRoutes } from "./routes/public-leads.mjs";
 import { userPortalRoutes } from "./routes/user-portal.mjs";
 import { createPortalBrowserSessionTransport } from "./services/platform/portal-browser-session-transport.mjs";
 import { portalCoinCommerceRoutes } from "./routes/portal-coin-commerce.mjs";
+import { portalPublicCatalogRoutes } from "./routes/portal-public-catalog.mjs";
 import { createPortalCoinWalletRouter } from "./routes/portal-coin-wallet.mjs";
 import { createPortalCoinRechargeRouter } from "./routes/portal-coin-recharge.mjs";
 import { dataPlaneAgentRoutes } from "./routes/data-plane-agent.mjs";
@@ -351,7 +352,15 @@ export function createApp(state, options = {}) {
     }
     next();
   });
+  const security = state.security || {};
+  const clientIpResolver = options.clientIpResolver || ((req) => resolveClientIp(req, {
+    trustedProxyCidrs: security.trustedProxyCidrs
+  }));
   if (portalCoinCommerceRoutesEnabled(state)) {
+    app.use(portalPublicCatalogRoutes(state, {
+      nowFn: options.rateLimitNowFn,
+      resolveClientIpFn: clientIpResolver
+    }));
     app.use(portalCoinCommerceRoutes(state, {
       nowFn: options.rateLimitNowFn,
       browserSessions,
@@ -393,7 +402,6 @@ export function createApp(state, options = {}) {
     res.json({ ok: true, ts: Date.now(), authRequired: true });
   });
   app.use(express.static(join(state.rootDir, "public")));
-  const security = state.security || {};
   const userPortalRoutesEnabled = Boolean(
     state.platform?.userPortalRoutesEnabled
     && (
@@ -423,9 +431,6 @@ export function createApp(state, options = {}) {
         : []
     )
   ];
-  const clientIpResolver = options.clientIpResolver || ((req) => resolveClientIp(req, {
-    trustedProxyCidrs: security.trustedProxyCidrs
-  }));
   app.use("/api/admin", createAdminAllowlistMiddleware({
     allowedCidrs: security.adminAllowedCidrs,
     resolveClientIpFn: clientIpResolver

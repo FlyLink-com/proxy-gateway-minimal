@@ -62,6 +62,7 @@ const STORE_METHODS = [
   "publishOfferVersion",
   "retireOfferVersion",
   "listPublishedOffers",
+  "listPublishedCatalogOffers",
   "getPublishedOffer",
   "createCheckoutQuote",
   "confirmOrder",
@@ -989,6 +990,19 @@ export function createSqliteCoinCommerceStore(options = {}) {
         offerRef: normalizeReference(value.offerRef),
         offerVersionRef: normalizeReference(value.offerVersionRef)
       });
+    });
+  }
+
+  function listPublishedCatalogOffers(listInput) {
+    return execute(() => {
+      if (listInput !== undefined) {
+        throw commerceError("invalid_store_contract");
+      }
+      return db.prepare(`
+        select * from platform_coin_commerce_offer_versions
+         where status = 'published'
+         order by category, base_coin_units, published_at desc, offer_ref
+      `).all().map(offerFromRow);
     });
   }
 
@@ -3951,6 +3965,7 @@ export function createSqliteCoinCommerceStore(options = {}) {
     publishOfferVersion,
     retireOfferVersion,
     listPublishedOffers,
+    listPublishedCatalogOffers,
     getPublishedOffer,
     createCheckoutQuote,
     confirmOrder,

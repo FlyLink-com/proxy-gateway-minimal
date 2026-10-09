@@ -226,6 +226,9 @@ function fakeCoinCommerceStore(overrides = {}) {
     listPublishedOffers() {
       return [];
     },
+    listPublishedCatalogOffers() {
+      return [];
+    },
     getPublishedOffer() {
       return null;
     },
@@ -2601,7 +2604,7 @@ test("createRuntimeState exposes one injected Commerce Store wallet and never cl
   let state;
 
   try {
-    assert.equal(Reflect.ownKeys(store).length, 19);
+    assert.equal(Reflect.ownKeys(store).length, 20);
     state = createRuntimeState(injectedCommerceStateOptions(dir, { store }));
     assert.equal(state.platform.coinsCommerceEnabled, true);
     assert.equal(state.platform.coinCommerceStore, store);

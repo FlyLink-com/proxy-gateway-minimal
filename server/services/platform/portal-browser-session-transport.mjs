@@ -6,6 +6,7 @@ const PUBLIC = new Set([
   'POST /api/portal/registration', 'POST /api/portal/registration/email-verification',
   'POST /api/portal/entry/enroll', 'GET /api/portal/browser-session',
   'POST /api/portal/browser-session/logout',
+  'GET /api/portal/public/catalog',
 ]);
 // These paths can start fresh authentication without an existing session.
 // Logout is intentionally excluded: it must never treat a malformed credential

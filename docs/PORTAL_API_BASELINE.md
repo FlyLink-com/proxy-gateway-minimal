@@ -6,7 +6,7 @@ document_metadata:
   lifecycle: active
   authority_scope: portal_independent_api_baseline
   superseded_by: null
-  last_verified_at: 2026-09-20
+  last_verified_at: 2026-10-09
   production_authority: false
 ```
 
@@ -167,6 +167,60 @@ not-found、insufficient coins、wallet inactive、idempotency required/reused�
 rate-limited 和 unavailable。其 browser transport protection exception 可能是
 `{error:string}`。订单分页仅 legacy orders 明确有 cursor；deferred transitions
 当前 route 返回数组，没有对外 cursor 参数。
+
+### 公开套餐目录（无会话）
+
+权威 route：[portal-public-catalog.mjs](../server/routes/portal-public-catalog.mjs)。
+`GET /api/portal/catalog/offers` 与 `GET /api/portal/commerce/model` 仍要求 Portal
+会话；本端点不替代它们，也不改变旧客户端对 CommerceJson 的严格字段集。
+
+`GET /api/portal/public/catalog` 只接受 GET，不读取 cookie、CSRF 或会话，也不接受
+query。非 GET 为 405 `{error:{code:"public_catalog_method_not_allowed",retryable:false}}`，
+带 `Allow: GET`。带 query 为 400 `public_catalog_request_invalid`。
+
+成功响应：
+
+```json
+{
+  "schemaVersion": "portal-public-catalog/v1",
+  "tiers": [
+    {
+      "tierRef": "offer_plan_30d_50gb_monthly",
+      "displayName": { "zh": "50 GB 月度套餐", "en": "50 GB monthly plan" },
+      "traffic": { "gigabytes": 50, "period": "month" },
+      "validity": { "durationDays": 30, "neverExpires": false },
+      "listPrice": { "coinUnits": 20, "currency": "CNY", "amountMinor": 2000 }
+    }
+  ]
+}
+```
+
+- `tierRef` 是已发布档位的公开标识，取值等于目录 `offerRef`。
+- `displayName` 只取目录标题的 `zh` / `en`。
+- `traffic.period` 为 `month`（套餐的每月流量）或 `pack`（流量包总量）。流量包的
+  `validity.durationDays` 为 null，`neverExpires` 为 true。
+- `listPrice.coinUnits` 是目录标价 `baseCoinUnits`。`listPrice.amountMinor` 是兼容
+  展示标价 `referencePrice`（CNY 分）。两者都不应用 offer 上的
+  `delivery.discountBasisPoints`。
+- 已发布目录没有按账户保存的成交价。账户折价只出现在报价路径的
+  `discountReader({accountId, offer, occurredAt})`，账户可见性只出现在
+  `storefrontEligibilityReader`。本端点不接收 accountId，也不调用这两个读取器。
+  因此即使将来存在账户级定价或资格过滤，这里仍只返回全部已发布档位的标价，
+  不返回该账户的折后价或可见性。
+- 响应不含余额、资格、欢迎金币、推荐、`offerVersionRef`、履约引用、quote/order
+  或其他 CommerceJson 字段。目录为空时仍是 200，`tiers` 为 `[]`。读取失败为 503
+  `public_catalog_unavailable`，不回显内部错误。
+- 成功响应带 `Cache-Control: public, max-age=60` 和强 ETag。`If-None-Match` 按弱比较
+  命中时返回 304，且仍带同样的缓存头。进程内内存缓存 TTL 为 60 秒，按应用实例
+  共享，不按账户或 IP 分片。失败响应为 `Cache-Control: no-store`。
+- 限流键使用应用的 `resolveClientIp`（含已配置的 trusted proxy）。每个 IP 每 60 秒
+  10 次，超限 429 `public_catalog_rate_limited` 并带 `Retry-After`。未配置为可信
+  代理的对端所附带的 `X-Forwarded-For` 不参与分桶。无法解析的 IP 为 503。
+
+本文只记录源码合同。`ops/nginx/proxy-gateway-public.conf` 与
+`ops/edge-node/nginx/proxy-gateway-public.conf` 的公网 `location /` 仍对除此以外的
+路径返回 404，本端点尚未列入入口放行。是否对公网入口放行属于后续 Risk A Gate，
+本文不授权 Nginx、DNS、部署或运行时变更。
 
 ### Coins recharge（充值订单，不等同 commerce order）
 
