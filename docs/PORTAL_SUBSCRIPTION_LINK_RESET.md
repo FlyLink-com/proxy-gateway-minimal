@@ -145,6 +145,10 @@ usage charging and third-party pool changes are out of scope.
   immutable resources, narrow delivery updates and completed-chain evidence.
 - `portal-subscription-link-reset-durable.test.mjs`: real two-file SQLite process
   interruption and cross-connection write locking.
+- `portal-subscription-link-reset-feature-off.test.mjs`: a separate Node process
+  reopens the committed synthetic databases with reset disabled, keeps the new
+  URL usable and the old URL revoked, and verifies order reveal plus prior
+  fulfillment recovery, subsequent renewal and idempotent replay.
 - `portal-subscription-link-reset-service.test.mjs`: resources and nonzero usage
   retained, uncertain completion retry, owner/confirmation checks and no migration.
 - `portal-subscription-link-reset-state.test.mjs`: default-off and explicit
@@ -182,3 +186,29 @@ and independent review separately; this document alone does not assert they pass
   This is a recorded full-suite failure, not a waiver or a green CI claim.
 - Independent review, exact-head hosted CI, signed-in browser/device acceptance,
   production schema installation and deployment are not completed by this record.
+
+## Supplemental feature-off rollback validation, 2026-10-09
+
+`node --test server/tests/portal-subscription-link-reset-feature-off.test.mjs`
+passed one new isolated regression after the #763 lockfile integration. It uses
+two temporary synthetic SQLite files and an actual second Node process, not a
+same-process service replacement. The parent completes synthetic fulfillment and
+link reset, closes both databases, and the child reopens the committed state with
+`subscriptionLinkResetEnabled: false`.
+
+The child confirms all six old artifact URL forms remain HTTP 410, all six new
+forms render HTTP 200, order reveal retains the new URL, and new/repeated reset
+requests return non-cacheable 503. The original completed fulfillment command is
+recoverable without an extra extension. A distinct synthetic renewal extends the
+same resource exactly once; replay does not extend it again. The reset journal,
+original issued-binding reference, account, nonzero usage samples/rollup and the
+two-artifact active/rotated state are retained. The child emits aggregate test
+results only; requests use loopback, never the synthetic node addresses.
+
+This verifies disabling new resets while retaining compatible reader and renewal
+code. It does not validate restoring an older application binary, reversing the
+schema, production backup restoration, real payment capture or client-device
+acceptance. The first fixture run correctly excluded a usage sample preceding
+the paid billing cycle; its synthetic initial-fulfillment time was corrected
+before the passing run. No product code or production state changed in this
+supplemental validation.
