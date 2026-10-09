@@ -1,9 +1,11 @@
+import { proxyDisplayName, validateProxyDisplayNames } from "./proxy-display-name.mjs";
+
 function yamlQuote(value) {
   return JSON.stringify(String(value ?? ""));
 }
 
 function clashName(server, index) {
-  return server.name || `proxy-${index + 1}`;
+  return proxyDisplayName(server, index);
 }
 
 function text(value) {
@@ -284,9 +286,9 @@ function clashProxy(server, index) {
 }
 
 function clashServers(proxyConfig) {
-  return (proxyConfig.servers || [])
-    .filter((server) => server.host && server.port)
-    .map(clashProxy);
+  const servers = (proxyConfig.servers || []).filter((server) => server.host && server.port);
+  validateProxyDisplayNames(servers);
+  return servers.map(clashProxy);
 }
 
 function isActiveProviderServer(server) {
@@ -303,10 +305,11 @@ function isActiveProviderServer(server) {
 }
 
 function clashProviderServers(proxyConfig) {
-  return (proxyConfig.servers || [])
+  const servers = (proxyConfig.servers || [])
     .filter((server) => isActiveProviderServer(server))
-    .filter((server) => server.host && server.port)
-    .map(clashProxy);
+    .filter((server) => server.host && server.port);
+  validateProxyDisplayNames(servers);
+  return servers.map(clashProxy);
 }
 
 function requireProviderUrl(value) {
