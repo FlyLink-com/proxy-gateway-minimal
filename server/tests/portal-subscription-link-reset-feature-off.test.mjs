@@ -46,6 +46,14 @@ function assertOwnedDirectory(directory) {
   assert.equal(resolve(directory), realpathSync(directory));
 }
 
+function featureOffChildEnvironment() {
+  // Keep the environment allowlisted, but preserve the effective temporary
+  // root so the child's unchanged exact-directory guard sees the same scope.
+  const temporaryRoot = tmpdir();
+  return { NODE_ENV: "test", TMPDIR: temporaryRoot, TMP: temporaryRoot, TEMP: temporaryRoot,
+    ...(process.env.SystemRoot ? { SystemRoot: process.env.SystemRoot } : {}) };
+}
+
 function open(directory) {
   assertOwnedDirectory(directory);
   const controlDb = new Database(join(directory, "control.sqlite"));
@@ -229,7 +237,7 @@ if (process.argv[2] === "--synthetic-feature-off-child") {
     } finally { f.close(); }
     const child = spawnSync(process.execPath, [TEST_FILE, "--synthetic-feature-off-child", directory,
       String(process.pid), receiptHash, stateHash], {
-      env: { NODE_ENV: "test", ...(process.env.SystemRoot ? { SystemRoot: process.env.SystemRoot } : {}) },
+      env: featureOffChildEnvironment(),
       encoding: "utf8", timeout: 20_000, maxBuffer: 1024 * 1024
     });
     assert.equal(child.error, undefined);
@@ -237,5 +245,20 @@ if (process.argv[2] === "--synthetic-feature-off-child") {
     assert.deepEqual(JSON.parse(child.stdout), { status: "passed", distinctProcess: true, featureDisabled: true,
       oldFormsRejected: 6, newFormsRendered: 6, unchangedResetRows: 1, artifactCount: 2, usageBytes: 4096,
       priorFulfillmentRecovered: true, renewalAndReplayValidated: true });
+  });
+
+  test("feature-off recovery preserves an explicitly restricted temporary root across both processes", t => {
+    const childEnv = featureOffChildEnvironment();
+    for (const variable of ["TMPDIR", "TMP", "TEMP"]) assert.equal(childEnv[variable], tmpdir());
+    const restrictedRoot = mkdtempSync(join(tmpdir(), "portal-reset-feature-off-tmp-"));
+    t.after(() => { assertOwnedDirectory(restrictedRoot); rmSync(restrictedRoot, { recursive: true, force: true }); });
+    const child = spawnSync(process.execPath, ["--test", "--test-name-pattern=^feature-off rollback in a new process", TEST_FILE], {
+      env: { NODE_ENV: "test", TMPDIR: restrictedRoot, TMP: restrictedRoot, TEMP: restrictedRoot,
+        ...(process.env.SystemRoot ? { SystemRoot: process.env.SystemRoot } : {}) },
+      encoding: "utf8", timeout: 30_000, maxBuffer: 1024 * 1024
+    });
+    assert.equal(child.error, undefined);
+    assert.equal(child.status, 0, child.stderr || child.stdout);
+    assert.match(child.stdout, /\bpass 1\b/, "the selected recovery test must actually execute");
   });
 }
