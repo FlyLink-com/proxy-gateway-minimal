@@ -69,6 +69,10 @@ see [the dated source validation record](../docs/production-incident-records/202
 
 ## Boundary
 
+Optional output labels are documented in
+[Subscription display names](../docs/SUBSCRIPTION_DISPLAY_NAMES.md). They never
+replace internal node/channel names or credential-material lookup keys.
+
 The standalone full-metering collector retains its default five-source scope.
 An explicitly approved `local-three-v1` activation can collect the original
 three local channel references while reporting deferred SGP coverage as

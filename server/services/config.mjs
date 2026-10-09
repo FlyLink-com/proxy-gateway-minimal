@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { validateProxyDisplayNames } from "./proxy-display-name.mjs";
 
 function pathFrom(input) {
   return input instanceof URL ? fileURLToPath(input) : input;
@@ -122,6 +123,7 @@ export function validateProxyConfig(config) {
   }
 
   config.servers.forEach(validateProxyServer);
+  validateProxyDisplayNames(config.servers);
   return config;
 }
 
