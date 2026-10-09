@@ -60,6 +60,18 @@ execution record. These findings are not a perpetual assertion about live state.
   Runtime material fingerprints must agree with existing protected material and
   the strict DB binding inspector. Unknown/partial/duplicate inputs fail the
   whole batch before any accounting write.
+- The TUIC reader accepts an explicit `connections: null` as an empty active
+  connection list, as emitted by Mihomo's idle native snapshot. It does not
+  accept a missing field, an invalid list/row, or failed HTTP/JSON validation.
+  Envelope `uploadTotal`/`downloadTotal` are never user usage observations;
+  they can remain nonzero while idle. This preserves first-observation baselines,
+  prior accounting and unknown closed-connection tails, not a zero-usage claim.
+  Upstream contract: [Mihomo v1.19.27 snapshot](https://github.com/MetaCubeX/mihomo/blob/v1.19.27/tunnel/statistic/manager.go#L79-L89)
+  and [connections route](https://github.com/MetaCubeX/mihomo/blob/v1.19.27/hub/route/connections.go#L23-L27).
+  Source regression coverage composes the real reader, source driver, journal
+  and sample recorder with synthetic inputs; it is not live protocol or
+  production acceptance. A corrected artifact still needs its own promotion
+  decision before resuming a failed production activation.
 - First missing counters remain `pending_start`; first real paired readings
   establish a baseline without billing their nonzero accumulated values.
   TUIC tracks each connection separately, so a closed connection does not hide
