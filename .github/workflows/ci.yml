@@ -2,6 +2,7 @@ name: CI
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
     branches:
       - master
   push:
@@ -19,7 +20,7 @@ concurrency:
 jobs:
   governance-evidence:
     name: Governance evidence
-    if: github.event_name != 'workflow_dispatch'
+    if: github.event_name != 'workflow_dispatch' && (github.event_name != 'pull_request' || github.event.pull_request.draft == false)
     runs-on: ubuntu-latest
 
     steps:
@@ -82,8 +83,11 @@ jobs:
       - name: Validate current governance snapshot
         run: node scripts/check-gate-governance.mjs --snapshot
 
-  validate:
-    name: Validate
+  source-checks:
+    name: Source checks
+    outputs:
+      run_full: ${{ steps.changes.outputs.run_full }}
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-24.04
 
     steps:
@@ -207,38 +211,151 @@ jobs:
         if: steps.changes.outputs.run_full != '0'
         run: npm run admin:test
 
-      - name: Build admin app
+      - name: Check certificate hooks before final builds
         if: steps.changes.outputs.run_full != '0'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m unittest discover -s ops/certificates -p test_runtime_certificate_sync.py -v
+          python3 -m py_compile ops/certificates/runtime_certificate_sync.py
+          sh -n ops/certificates/certbot-deploy-hook.sh.in
+
+  foundation-inventory:
+    name: Foundation inventory
+    if: github.event_name == 'pull_request' && github.event.pull_request.draft == false
+    uses: ./.github/workflows/control-plane-foundation-toolchain-inventory.yml
+
+  checks-passed:
+    name: Prerequisite checks
+    needs: [governance-evidence, governance-snapshot, source-checks, foundation-inventory]
+    if: always() && (github.event_name != 'pull_request' || github.event.pull_request.draft == false)
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Require every applicable prerequisite to succeed
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          SOURCE_RESULT: ${{ needs.source-checks.result }}
+          GOVERNANCE_RESULT: ${{ needs.governance-evidence.result }}
+          SNAPSHOT_RESULT: ${{ needs.governance-snapshot.result }}
+          FOUNDATION_RESULT: ${{ needs.foundation-inventory.result }}
+        run: |
+          set -euo pipefail
+          test "$SOURCE_RESULT" = success
+          case "$EVENT_NAME" in
+            pull_request)
+              test "$GOVERNANCE_RESULT" = success
+              test "$SNAPSHOT_RESULT" = skipped
+              test "$FOUNDATION_RESULT" = success
+              ;;
+            push)
+              test "$GOVERNANCE_RESULT" = success
+              test "$SNAPSHOT_RESULT" = skipped
+              test "$FOUNDATION_RESULT" = skipped
+              ;;
+            workflow_dispatch)
+              test "$GOVERNANCE_RESULT" = skipped
+              test "$SNAPSHOT_RESULT" = success
+              test "$FOUNDATION_RESULT" = skipped
+              ;;
+            *) exit 1 ;;
+          esac
+
+  build-assets:
+    name: Build and verify assets
+    needs: [checks-passed, source-checks]
+    if: (github.event_name != 'pull_request' || github.event.pull_request.draft == false) && !cancelled() && needs.checks-passed.result == 'success' && needs.source-checks.result == 'success'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+
+      - name: Setup Node
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            admin/package-lock.json
+
+      - name: Preflight build validation environment
+        if: needs.source-checks.outputs.run_full != '0'
+        run: npm run validation:environment:source
+
+      - name: Install root dependencies
+        if: needs.source-checks.outputs.run_full != '0'
+        run: npm ci
+
+      - name: Install admin dependencies
+        if: needs.source-checks.outputs.run_full != '0'
+        run: npm ci --prefix admin
+
+      - name: Build admin app
+        if: needs.source-checks.outputs.run_full != '0'
         run: npm run admin:build
 
       - name: Verify admin build boundary
-        if: steps.changes.outputs.run_full != '0'
+        if: needs.source-checks.outputs.run_full != '0'
         run: npm run admin:verify
 
       - name: Build Portal app
-        if: steps.changes.outputs.run_full != '0'
+        if: needs.source-checks.outputs.run_full != '0'
         run: npm run admin:portal:build
 
       - name: Verify Portal build boundary
-        if: steps.changes.outputs.run_full != '0'
+        if: needs.source-checks.outputs.run_full != '0'
         run: npm run admin:portal:verify
 
       - name: Build Portal desktop app
-        if: steps.changes.outputs.run_full != '0'
+        if: needs.source-checks.outputs.run_full != '0'
         run: npm run admin:portal:web:build
 
       - name: Verify Portal desktop build boundary
-        if: steps.changes.outputs.run_full != '0'
+        if: needs.source-checks.outputs.run_full != '0'
         run: npm run admin:portal:web:verify
 
       - name: Build public site
-        if: steps.changes.outputs.run_full != '0'
+        if: needs.source-checks.outputs.run_full != '0'
         run: npm run cloudflare:site:build
 
       - name: Verify public site boundary
-        if: steps.changes.outputs.run_full != '0'
+        if: needs.source-checks.outputs.run_full != '0'
         run: npm run cloudflare:site:verify
 
       - name: Cloudflare public site dry run
-        if: steps.changes.outputs.run_full != '0'
+        if: needs.source-checks.outputs.run_full != '0'
         run: npm run cloudflare:site:dry-run
+
+  dependency-artifact:
+    name: Dependency artifact
+    needs: checks-passed
+    if: github.event_name == 'pull_request' && github.event.pull_request.draft == false && !cancelled() && needs.checks-passed.result == 'success'
+    uses: ./.github/workflows/control-plane-dependency-artifact.yml
+
+  validate:
+    name: Validate
+    needs: [checks-passed, build-assets, dependency-artifact]
+    if: always() && (github.event_name != 'pull_request' || github.event.pull_request.draft == false)
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Require checks and final builds to succeed
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          CHECKS_RESULT: ${{ needs.checks-passed.result }}
+          ASSETS_RESULT: ${{ needs.build-assets.result }}
+          DEPENDENCY_RESULT: ${{ needs.dependency-artifact.result }}
+        run: |
+          set -euo pipefail
+          test "$CHECKS_RESULT" = success
+          test "$ASSETS_RESULT" = success
+          case "$EVENT_NAME" in
+            pull_request) test "$DEPENDENCY_RESULT" = success ;;
+            push|workflow_dispatch) test "$DEPENDENCY_RESULT" = skipped ;;
+            *) exit 1 ;;
+          esac
