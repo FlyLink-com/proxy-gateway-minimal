@@ -49,6 +49,7 @@ import {
 export function createLocalUserPortalClient(options: LocalUserPortalClientOptions = {}): UserPortalClient {
   const now = options.now ?? (() => new Date());
   const states = new Map<string, PortalUserState>();
+  const subscriptionResetOperations = new Map<string, PortalSubscriptionRequest>();
   const previewPassword = requiredText(options.previewPassword ?? "user-password", "预览密码无效。");
   const initialAccounts = new Map(
     (options.initialAccounts ?? createLocalPreviewInitialAccounts()).map((account, index) => [
@@ -686,14 +687,14 @@ export function createLocalUserPortalClient(options: LocalUserPortalClientOption
         throw portalError("当前订单尚未开通，无法刷新。");
       }
 
-      const subscriptionUrl = options.demoSubscriptionUrl?.trim();
+      const subscriptionUrl = current.subscriptionUrl ?? options.demoSubscriptionUrl?.trim();
       if (!subscriptionUrl) {
         throw portalError("当前订单尚未开通，无法刷新。");
       }
 
       const refreshedAt = now().toISOString();
       const event: PortalSubscriptionEvent = {
-        type: "old_link_invalidated",
+        type: "delivery_generation_reissued",
         occurredAt: refreshedAt
       };
       const historySummary: PortalHistoryRecord[] = [
@@ -737,6 +738,33 @@ export function createLocalUserPortalClient(options: LocalUserPortalClientOption
         updatedAt: refreshedAt
       });
       return refreshed;
+    },
+
+    async resetSubscriptionLink(input) {
+      const userRef = requiredText(input.userRef, "用户会话无效。");
+      const requestRef = requiredText(input.requestRef, "申请记录无效。");
+      const idempotencyKey = requiredText(input.idempotencyKey, "重置请求无效。");
+      const operationKey = `${userRef}|${requestRef}|${idempotencyKey}`;
+      const completed = subscriptionResetOperations.get(operationKey);
+      if (completed) return completed;
+      const existing = currentState(userRef);
+      const current = subscriptionRequestsFromState(existing).find((request) => request.requestRef === requestRef);
+      if (!current || current.lifecycle !== "active" || !current.subscriptionUrl) {
+        throw portalError("当前订单尚未开通，无法重置订阅链接。");
+      }
+      const subscriptionUrl = new URL(current.subscriptionUrl);
+      subscriptionUrl.searchParams.set("preview-reset", stableRef("reset", operationKey));
+      const updatedAt = now().toISOString();
+      const result: PortalSubscriptionRequest = {
+        ...current,
+        subscriptionUrl: subscriptionUrl.toString(),
+        updatedAt,
+        event: { type: "subscription_link_reset", occurredAt: updatedAt }
+      };
+      const subscriptionRequests = upsertSubscriptionRequest(subscriptionRequestsFromState(existing), result);
+      setState(userRef, { ...existing, subscriptionRequest: result, subscriptionRequests, updatedAt });
+      subscriptionResetOperations.set(operationKey, result);
+      return result;
     },
 
     async disableSubscription(input) {

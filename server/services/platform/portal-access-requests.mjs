@@ -23,6 +23,7 @@ const CLIENT_TARGETS = new Set(["clash", "karing"]);
 const SAFE_SUMMARY_EVENT_TYPES = new Set([
   "delivery_generation_reissued",
   "old_link_invalidated",
+  "subscription_link_reset",
   "subscription_disabled",
   "subscription_expired",
   "traffic_supply_suspended",
@@ -602,6 +603,8 @@ export function createPortalAccessRequestService(options = {}) {
   const edgeCredentialIssuer = options.edgeCredentialIssuer;
   const edgeDesiredStateNotifier = options.edgeDesiredStateNotifier;
   const refreshCooldownMs = limitNumber(options.refreshCooldownMs) || 0;
+  const subscriptionLinkResetEnabled = options.subscriptionLinkResetEnabled === true;
+  const subscriptionLinkResetCooldownMs = limitNumber(options.subscriptionLinkResetCooldownMs) || 300000;
   const autoIssuance = {
     enabled: options.autoIssuance?.enabled === true,
     nodeId: String(options.autoIssuance?.nodeId || "").trim(),
@@ -1085,7 +1088,7 @@ export function createPortalAccessRequestService(options = {}) {
     if (refreshCooldownMs <= 0) {
       return;
     }
-    if (!["delivery_generation_reissued", "old_link_invalidated"].includes(request.event?.type)) {
+    if (!["delivery_generation_reissued", "old_link_invalidated", "subscription_link_reset"].includes(request.event?.type)) {
       return;
     }
     const lastReissuedAt = new Date(request.event.occurredAt || 0).getTime();
@@ -2354,6 +2357,62 @@ export function createPortalAccessRequestService(options = {}) {
           noProductionMutation: true
         }
       };
+    },
+
+    resetSubscriptionLink(input = {}) {
+      // This operation rotates only the download artifact, never tenant tokens,
+      // edge material, usage bindings or commercial resources.
+      if (input.confirmed !== true || typeof input.idempotencyKey !== "string"
+        || input.idempotencyKey !== input.idempotencyKey.trim()
+        || !/^[A-Za-z0-9][A-Za-z0-9_-]{15,127}$/.test(input.idempotencyKey)
+        || typeof input.requestRef !== "string"
+        || input.requestRef !== input.requestRef.trim()
+        || !/^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$/.test(input.requestRef)) {
+        throw platformError("validation_error", "Invalid subscription link reset request");
+      }
+      const request = getOwnedDeliveredRecord(input);
+      if (!subscriptionLinkResetEnabled || typeof controlStore?.getPortalSubscriptionLinkResetStore !== "function"
+        || typeof runtimeCore?.prepareSubscriptionArtifactRotation !== "function"
+        || typeof runtimeCore?.commitPreparedSubscriptionArtifactRotation !== "function") {
+        throw platformError("subscription_link_reset_unavailable", "Subscription link reset is unavailable");
+      }
+      let store;
+      try { store = controlStore.getPortalSubscriptionLinkResetStore({ nowFn }); }
+      catch { throw platformError("subscription_link_reset_unavailable", "Subscription link reset is unavailable"); }
+      const scope = { requestRef: request.id, ownerRef: request.portalUserRef };
+      const operationKeyDigest = createHash("sha256").update(JSON.stringify([
+        "portal-subscription-link-reset-v1", scope.ownerRef, scope.requestRef, input.idempotencyKey
+      ])).digest("hex");
+      const key = { ...scope, operationKeyDigest };
+      let completionAttempted = false;
+      try {
+        let operation = store.get(key);
+        if (!operation) {
+          if (store.getPending(scope)) {
+            throw platformError("subscription_link_reset_conflict", "A subscription link reset is pending");
+          }
+          const completedAt = store.getLatestCompletedAt(scope);
+          const remainingMs = Date.parse(completedAt) + subscriptionLinkResetCooldownMs - Date.parse(isoNow(nowFn));
+          if (Number.isFinite(remainingMs) && remainingMs > 0) {
+            const error = platformError("subscription_link_reset_rate_limited", "Subscription link reset is rate limited");
+            error.retryAfterSeconds = Math.ceil(remainingMs / 1000);
+            throw error;
+          }
+          const plan = runtimeCore.prepareSubscriptionArtifactRotation(request.artifactId, { tenantId: request.tenantId });
+          // The fixed new URL is durable before the old artifact can be revoked.
+          // prepare also rechecks cooldown and ownership under its write lock.
+          operation = store.prepare({ ...key, plan, cooldownMs: subscriptionLinkResetCooldownMs });
+        }
+        completionAttempted = true;
+        store.complete({ ...key, commitRuntime: plan => runtimeCore.commitPreparedSubscriptionArtifactRotation(plan) });
+        return summarizeVisibleOnce(getRecord(request.id));
+      } catch (error) {
+        if (["not_found", "validation_error", "subscription_link_reset_conflict", "subscription_link_reset_state_changed",
+          "subscription_link_reset_rate_limited", "subscription_link_reset_unavailable"].includes(error.code)) throw error;
+        // No raw storage error or new URL is allowed into a public error.
+        throw platformError(completionAttempted ? "subscription_link_reset_reconciliation_required" : "subscription_link_reset_unavailable",
+          "Subscription link reset could not be confirmed");
+      }
     },
 
     refreshSubscription(input = {}) {
