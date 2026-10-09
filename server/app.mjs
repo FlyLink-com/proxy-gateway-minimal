@@ -285,12 +285,13 @@ function portalCoinRechargeRoutesEnabled(state) {
 
 export function createApp(state, options = {}) {
   const app = express();
-  // This sensitive route can be rejected before its handler by cookie/CSRF or
-  // JSON parsing middleware. Those failures must not lose its privacy headers.
-  const isSubscriptionLinkReset = req => req.path.toLowerCase().replace(/\/$/, "")
-    === PORTAL_SUBSCRIPTION_LINK_RESET_PATH;
+  // These sensitive routes can be rejected before their handlers by cookie/CSRF
+  // or JSON parsing middleware. Those failures retain their privacy headers.
+  const isSubscriptionLinkMutation = req => [
+    PORTAL_SUBSCRIPTION_LINK_RESET_PATH, "/api/portal/access-requests/refresh"
+  ].includes(req.path.toLowerCase().replace(/\/$/, ""));
   app.use((req, res, next) => {
-    if (isSubscriptionLinkReset(req)) {
+    if (isSubscriptionLinkMutation(req)) {
       res.set("Cache-Control", "no-store");
       res.set("Referrer-Policy", "no-referrer");
     }
@@ -377,7 +378,7 @@ export function createApp(state, options = {}) {
   });
   app.use(express.json());
   app.use((error, req, res, next) => {
-    if (!isSubscriptionLinkReset(req)) return next(error);
+    if (!isSubscriptionLinkMutation(req)) return next(error);
     // Do not return parser errors (which may contain submitted credentials or
     // server paths) through Express' default development error renderer.
     const status = error?.type === "entity.too.large" ? 413
