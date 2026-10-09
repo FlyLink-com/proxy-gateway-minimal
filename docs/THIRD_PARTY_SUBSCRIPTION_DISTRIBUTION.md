@@ -1,5 +1,15 @@
 # 第三方 YAML 订阅分发：分阶段工作边界
 
+```yaml
+document_metadata:
+  doc_type: operational
+  lifecycle: active
+  authority_scope: third_party_subscription_distribution_plan
+  superseded_by: null
+  last_verified_at: 2026-10-09
+  production_authority: false
+```
+
 状态：**Draft / 阶段提案，未实现、未导入、未部署**。本记录用于在一个独立
 PR 中承接第一阶段实现，不是已完成的 spec-only 交付，也不申请合并。
 
