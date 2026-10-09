@@ -79,6 +79,14 @@ function sendPortalError(res, error) {
     res.status(401).json({ error: "invalid_session" });
     return;
   }
+  if (error.code === "invalid_refresh_grant") {
+    res.status(401).json({ error: "invalid_refresh_grant" });
+    return;
+  }
+  if (error.code === "native_session_unavailable") {
+    res.status(503).json({ error: "native_session_unavailable" });
+    return;
+  }
   if (error.code === "invalid_login") {
     res.status(401).json({ error: "invalid_login" });
     return;
@@ -254,6 +262,36 @@ export function userPortalRoutes(state, options = {}) {
 
   function completedSession(req, res, session, rememberMe = false) {
     return browserSessions ? browserSessions.completeLogin(req, res, session, rememberMe) : session;
+  }
+
+  function nativeInput(req, exchange) {
+    const reject = () => { throw Object.assign(new Error("Native request rejected"), { code: "validation_error" }); };
+    if (String(req.originalUrl || req.url || "").includes("?") || !req.is("application/json")
+      || !req.body || Array.isArray(req.body) || typeof req.body !== "object") reject();
+    const headers = new Map();
+    for (let i = 0; i < req.rawHeaders.length; i += 2) {
+      const name = req.rawHeaders[i].toLowerCase();
+      if (!["cookie", "authorization", "x-portal-request", "x-portal-session-context", "x-portal-session"].includes(name)) continue;
+      if (headers.has(name)) reject();
+      headers.set(name, req.rawHeaders[i + 1]);
+    }
+    for (const name of ["cookie", "authorization", "x-portal-request", "x-portal-session-context"]) if (headers.has(name)) reject();
+    if (exchange) {
+      if (Object.keys(req.body).length || !headers.has("x-portal-session")) reject();
+      return { sessionRef: headers.get("x-portal-session") };
+    }
+    if (headers.has("x-portal-session") || Object.keys(req.body).length !== 1 || !Object.hasOwn(req.body, "refreshToken")) reject();
+    return { refreshToken: req.body.refreshToken };
+  }
+  for (const [suffix, method] of [["", "exchangeNativeSession"], ["/refresh", "refreshNativeSession"], ["/logout", "logoutNativeSession"]]) {
+    router.post(`/api/portal/native-session${suffix}`, (req, res) => {
+      res.set("Cache-Control", "no-store");
+      res.set("Referrer-Policy", "no-referrer");
+      try {
+        if (auth?.nativeSessionsEnabled !== true) { res.status(404).json({ error: "not_found" }); return; }
+        res.json(auth[method](nativeInput(req, suffix === "")));
+      } catch (error) { sendPortalError(res, error); }
+    });
   }
 
   router.post("/api/portal/human-challenges", (req, res) => {
