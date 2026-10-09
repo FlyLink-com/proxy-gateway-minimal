@@ -39,6 +39,35 @@ not supersede the dated observation below.
 - No current hosted pass is inferred for a later head from either a historical
   success or a successful local check.
 
+## Existing CI-policy PRs — verified 2026-10-09 07:50 UTC
+
+The related CI settings have already been submitted in these PRs. Fresh native
+PR and branch reads found all four **open / Draft / unmerged**; submission is
+not the same as the changes being present on the tracked main branch.
+
+| Repository / tracked branch | Observed branch SHA | Existing policy PR / exact head |
+| --- | --- | --- |
+| proxy-gateway-minimal / master | `521bb535d0d385d533734b020cf96a533f6ed729` | [#766](https://github.com/gccwebos-com/proxy-gateway-minimal/pull/766), `143d03e00d5d58b7c2432405ea8d42dbffe242bd` |
+| gccltd/gccwebos-mobile / master | `091ee6e82bb768333dcc23eaaf725c1fd07ba243` | [#14](https://github.com/gccltd/gccwebos-mobile/pull/14), `1363cd00c053e3d6cabc9b9905c0013865d7c14d` |
+| gccltd/gccwebos-site / master | `6f667f0f93543d012ad74157a8212fa69ed164a8` | [#26](https://github.com/gccltd/gccwebos-site/pull/26), `ad3ddba51d7034136ddf79ef668d5d89f12ba0fc` |
+| gccwebos-com/gccwebos-android / main | `5e9014d168b39e34ee069fff6ffbc360d57d661a` | [#27](https://github.com/gccwebos-com/gccwebos-android/pull/27), `8387cd4300c38e5be552b6a0b3f496e96ce138dd` |
+
+Android already had PR #27, created 2026-10-08T18:12:34Z. Its two-workflow
+change removes duplicate M0 push builds, excludes documentation-only M0 changes,
+narrows native paths, adds Gradle caching and reduces artifact retention/report
+uploads. It does **not** add a `pull_request.draft` guard or `ready_for_review`
+trigger, and its Gradle build commands/order are unchanged. Its successful
+hosted runs below actually executed; they do not demonstrate a Draft skip.
+
+Use the existing Android #27 for any separately authorized remaining delta;
+preserve its push/path/cache/retention changes rather than replacing its files
+with a main-based candidate. Do not create a duplicate policy PR. An
+unpublished candidate from a later
+attempt does not mean the repository lacks an existing CI PR. This inventory
+made no Android commit, retry, merge, workflow dispatch or settings change.
+Re-read exact heads before implementation or integration; this dated table is
+not merge authority or proof that any of these policies has reached main.
+
 ## Pending manual master check — November 2026
 
 Status: `not_run`. No run ID, execution date or exact source SHA exists yet.
@@ -175,6 +204,24 @@ read; their Ready-path hosted validation has not been established here.
 These are actual skipped Actions jobs, not successful compilations. They do not
 cover separate provider preview integrations. Next: retain the Draft boundary;
 record any later authorized Ready/master validation separately.
+
+### Existing Android #27 — executed hosted runs, 2026-10-08
+
+Repository: `gccwebos-com/gccwebos-android`. Exact PR head:
+`8387cd4300c38e5be552b6a0b3f496e96ce138dd`. Event: `pull_request`.
+These were read back on 2026-10-09; they are earlier runs, not a new execution.
+
+| Workflow and evidence | UTC interval on 2026-10-08 | Observed result |
+| --- | --- | --- |
+| [Android M0 build 37822504083](https://github.com/gccwebos-com/gccwebos-android/actions/runs/37822504083) | 18:12:38Z–18:52:43Z | completed / success; validate has 14 recorded steps including build/emulator execution; branch-specific copy-boundary-compile skipped |
+| [Native VPN isolated build 37822504008](https://github.com/gccwebos-com/gccwebos-android/actions/runs/37822504008) | 18:12:38Z–19:17:02Z | completed / success; native-lab has 18 recorded steps including native build and Android execution |
+
+Each successful job also skipped its full-report upload step under the PR
+retention policy. Step counts are not test counts and do not mean every step
+ran. This success validates that exact historical source; it does not close the
+missing Draft/Ready guard or check-before-assemble ordering work. Next: retain
+#27 as the existing PR, with any further changes separately authorized and
+validated; no run was restarted by this read-only reconciliation.
 
 ## Append format and retention
 
