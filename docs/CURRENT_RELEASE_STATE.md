@@ -6,32 +6,105 @@ document_metadata:
   lifecycle: active
   authority_scope: current_release_state
   superseded_by: null
-  last_verified_at: 2026-09-14
+  last_verified_at: 2026-10-09
   production_authority: false
 ```
 
 > Status:
-> - Type: Dated documented release snapshot
-> - Version management baseline: `v3` artifact and runtime-identity foundation
-> - Git source reconciliation cutoff:
->   `master@3565c54865676ba127b115f7f914a0359e545bf0`, observed 2026-09-14;
->   this is not a permanent current-head claim
-> - Latest recorded control-plane deployment event: 2026-08-26, deployed source
->   `b5ca23db58c55f2d73ec59ffa9525f85b92a8a9c`
-> - Recorded deployed release identity:
->   `control-plane-b5ca23db-a3-sync-20260825`
-> - Exact deployed-source build evidence: Release Artifact run `32854893859`,
->   Dependency Artifact run `32854893837`, and Production Deploy Dry Run
->   `32856999391`
-> - Recorded control-plane terminal observation: promotion-09 readback on
->   2026-08-26 matched the release pointer, service and process working
->   directory; a later public-only health window returned three HTTP 200
->   responses
-> - 2026-09-14 C-tier inventory: the deployed-source GitHub Actions artifacts
->   are expired; Git `master`, canonical docs, Issue alignments, and the
->   recorded deployment identity are not one current identity. No production
->   or runtime readback was performed
+> - Type: Dated documented source, validation and deployment snapshot
+> - Git source cutoff: `master@521bb535d0d385d533734b020cf96a533f6ed729`,
+>   observed 2026-10-09 UTC; not a permanent current-head claim
+> - Latest deployment records read: BWH control/ingress/DNS, standalone
+>   collector, and subscription-rendering receipts linked below
+> - Source, build, deployment and runtime identities are distinct; the BWH
+>   application is a documented composition, not the current whole `master`
+> - This reconciliation read GitHub records only. No provider, host, account,
+>   database or live runtime readback was performed
 > - Execution authority: None
+
+## Source And Deployment Reconciliation (2026-10-09)
+
+Risk: C. Process: docs-only reconciliation of existing native PR/Issue records.
+Expected PR count: 1. Validation: document-authority checks and diff checks.
+Production/AWS impact: none. This section supersedes older top-level "latest"
+claims only for the evidence read here; dated historical records remain intact.
+
+### Merged source and validation
+
+[PR #763](https://github.com/gccwebos-com/proxy-gateway-minimal/pull/763)
+merged as `521bb535d0d385d533734b020cf96a533f6ed729` at
+2026-10-09T07:11:34Z. Its only changes are two lockfiles: proxy-addr 2.0.8,
+source-map-js 1.2.2, and brace-expansion 1.1.21 / 5.0.12.
+Exact-merge [CI 37897623213](https://github.com/gccwebos-com/proxy-gateway-minimal/actions/runs/37897623213),
+[Dependency Artifact 37897623191](https://github.com/gccwebos-com/proxy-gateway-minimal/actions/runs/37897623191),
+[Release Artifact 37897623177](https://github.com/gccwebos-com/proxy-gateway-minimal/actions/runs/37897623177)
+and [Cloudflare Site 37897623237](https://github.com/gccwebos-com/proxy-gateway-minimal/actions/runs/37897623237)
+completed successfully: nine checks succeeded and two were skipped.
+The skips were `Governance snapshot` and `Deploy public site`.
+
+The PR records 5387 server tests and 1283 Admin tests passing, plus four frontend
+build/verify pairs. These are reused exact-source CI results, not tests rerun by
+this docs change. Builds include legacy Portal and desktop Portal artifacts;
+they do not establish deployment. The eight disclosed baseline Admin lint
+errors are outside that CI acceptance. Dependabot alert closure, deployed
+dependency versions and current production vulnerability exposure were not
+verified. No deployment of #763 is established by this evidence.
+
+### Recorded production composition, not fresh runtime proof
+
+| Boundary | Dated record | What the evidence does and does not establish |
+| --- | --- | --- |
+| Control-plane business source | [#752 BWH activation](https://github.com/gccwebos-com/proxy-gateway-minimal/pull/752#issuecomment-6067109165), 2026-10-08, source `2dea45fcbac1e330c76678b49124e0fcb1f630ac` | BWH control activated; JP was recorded frozen. Later attachments below do not turn this into a whole-master deployment. |
+| Current Portal/Admin/Sub public ingress and DNS | [#752 ingress](https://github.com/gccwebos-com/proxy-gateway-minimal/pull/752#issuecomment-6073584759) and [DNS cutover](https://github.com/gccwebos-com/proxy-gateway-minimal/pull/752#issuecomment-6074115920), 2026-10-09 | BWH entry and DNS checks passed; existing Portal/Admin static artifacts were retained. Company apex/www stayed on the existing Vercel site. This did not publish new frontend source or complete business acceptance. |
+| Standalone local-three collector | [#759 Deploy Note](https://github.com/gccwebos-com/proxy-gateway-minimal/pull/759#issuecomment-6073183837), 2026-10-09, source `548378d35134dea74a42ae5892079c0c1c4cde49` | Independent collector install and idle natural-cycle recovery validated; no positive-user-traffic accounting proof. SGP remained paused/unknown; retained identity mapping remained degraded. |
+| Subscription rendering | [#761 Deploy Note](https://github.com/gccwebos-com/proxy-gateway-minimal/pull/761#issuecomment-6075402400), 2026-10-09T06:06:18Z–06:08:55Z | Four-file overlay `40c7cc2390923a8c5904f349962ea1a85cdab6b6` on #752 business source and #760 renderer `47e4a3e9b321fe99595c77e1adaff9831d5faaa1`; terminal `applied_validated`. Flags and expiry notice deployed, but authenticated refresh/device acceptance and runtime traffic cutoff are not proven. |
+
+The last row records derived release
+`control-plane-2dea45fcbac1-render-40c7cc239092` and archive
+`subscription-rendering-40c7cc239092.tar`, SHA-256
+`1201b87da991fd7f352262d8b0aaf8e1777c106cd897a41daa8edfa46a8632d8`.
+The original release remains a protected dependency for environment,
+configuration and installed packages, not a cleanup candidate. The prior
+[Japan #752 promotion](https://github.com/gccwebos-com/proxy-gateway-minimal/pull/752#issuecomment-5856310002)
+on 2026-09-27 and the A3 history below remain valid dated events.
+
+Current runtime health/identity was not re-read. The DNS receipt also records a
+JP SSH host-key mismatch that stopped that verification; no bypass or later JP
+readback is inferred here. Real-account login/subscription acceptance, positive
+usage, payment reconciliation, boot enablement, SGP recovery and full migration
+closeout are not established by this inventory. Earlier static artifact and
+provider-setting snapshots must not be used as current production identities.
+
+### Native task state and client dependencies
+
+Fresh PR reads on 2026-10-09, 07:25–07:27 UTC, found these four open Drafts.
+This is a dated inventory, not a new execution queue or permission to resume
+feature work.
+
+| PR | Observed head | Boundary still open |
+| --- | --- | --- |
+| [#753 independent data packs](https://github.com/gccwebos-com/proxy-gateway-minimal/pull/753) | `1efddbe4ef3e6b8b19c8615608d4bbd129bcde47` | Unmerged implementation; physical acceptance and production gates remain. Paired [mobile #13](https://github.com/gccltd/gccwebos-mobile/pull/13) is also open Draft. |
+| [#755 native session renewal](https://github.com/gccwebos-com/proxy-gateway-minimal/pull/755) | `0cc44b00bec5652ed77e17446f26b93e8ca533a5` | Unmerged, default-off backend/auth/schema contract. Paired [Android #26](https://github.com/gccwebos-com/gccwebos-android/pull/26) is also open Draft; no production renewal activation. |
+| [#762 third-party YAML distribution](https://github.com/gccwebos-com/proxy-gateway-minimal/pull/762) | `cf18b63f90f506614f769f732ae696c74ad83d41` | Stage document only; first-stage implementation and acceptance are not complete. |
+| [#764 subscription download-link reset](https://github.com/gccwebos-com/proxy-gateway-minimal/pull/764) | `58da6e4e733d279fe92718d55cec81e2bddd4635` | Unmerged, default-off implementation; review, acceptance and separately approved schema/production gates remain. |
+
+[PR #730](https://github.com/gccwebos-com/proxy-gateway-minimal/pull/730)
+is now merged, [Issue #695](https://github.com/gccwebos-com/proxy-gateway-minimal/issues/695)
+is closed, and [PR #744](https://github.com/gccwebos-com/proxy-gateway-minimal/pull/744)
+is closed **unmerged**, with maintenance tracked by open
+[Issue #745](https://github.com/gccwebos-com/proxy-gateway-minimal/issues/745).
+Closure alone is not source completion or runtime proof. Native Issue/PR records
+own current status; Project #1 and `project-state/*.json` remain navigation and
+dated compatibility inputs. No issue, feature gate or historical task is closed
+by this docs PR.
+
+## Historical Evidence Boundaries
+
+Dated evidence sections below retain their 2026-07 through 2026-09 cutoffs.
+Their "current", "latest", counts, open-task and non-activation statements
+refer to those observations, not to 2026-10-09. Stable state labels and source
+authorization contracts remain active. Use the reconciliation above and fresh
+native records for later decisions; do not rewrite old receipts.
 
 ## A3 Production Closeout (2026-08-26)
 
@@ -372,7 +445,7 @@ The exact-source build proof used by the recorded 2026-08-26 deployment is
 Release Artifact run `32854893859` plus Dependency Artifact run `32854893837`
 for `b5ca23db58c55f2d73ec59ffa9525f85b92a8a9c`.
 
-## Latest Recorded Production Deployment
+## Historical Recorded Production Deployments (Through 2026-08-26)
 
 ### Deploy Note: A3 Production Sync Promotion (2026-08-26)
 
@@ -524,7 +597,7 @@ This prior deployment event is retained as dated historical evidence.
 **Risk Classification:** A-tier
 **Rollback Plan:** Recorded as verified during the execution
 
-## Documented Production Snapshot
+## Historical Documented Production Snapshot (2026-08-26)
 
 The 2026-08-26 Risk A promotion binds `control-plane-app` to the identity below.
 Other release units retain their separate documented state and were not
@@ -566,7 +639,7 @@ access, authorize workflow dispatch, read connection material, apply a map,
 deploy a release, mutate runtime state, or prove production success. Each such
 action remains behind its separate exact Risk A gate and current evidence.
 
-## Git Source And Recorded Deployment-Source Drift
+## Historical Git Source And Deployment-Source Drift (2026-09-14)
 
 The Git source cutoff observed on 2026-09-14 is
 `master@3565c54865676ba127b115f7f914a0359e545bf0`. The latest recorded
