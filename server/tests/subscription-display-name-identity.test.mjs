@@ -14,13 +14,23 @@ const TENANT_ID = "tenant_display_name_fixture";
 const TOKEN = "pgsub_display_name_fixture_only";
 const ARTIFACT = "display_name_artifact_fixture_only";
 const NOW = "2026-10-09T00:00:00.000Z";
+const FLAG_ALIASES = new Map([
+  ["channel-fixture-jp-vless", "🇺🇸 US-专线优化-vless"],
+  ["channel-fixture-jp-tuic", "🇺🇸 US-专线优化-tuic"],
+  ["channel-fixture-jp-hy2", "🇺🇸 US-专线优化-hy2"],
+  ["channel-fixture-sgp-vless", "🇸🇬 SGP-vless"],
+  ["channel-fixture-sgp-tuic", "🇸🇬 SGP-tuic"],
+  ["channel-fixture-sgp-hy2", "🇸🇬 SGP-hy2"]
+]);
 
-function fixtureConfig() {
+function fixtureConfig(flagged = false) {
   return {
     servers: ["jp", "sgp"].flatMap((region, regionIndex) => ["vless", "tuic", "hy2"].map((label, index) => ({
       id: `fixture_${region}_${label}`,
       name: `channel-fixture-${region}-${label}`,
-      ...(region === "jp" ? { subscriptionDisplayName: `US-专线优化-${label}` } : {}),
+      ...(flagged
+        ? { subscriptionDisplayName: FLAG_ALIASES.get(`channel-fixture-${region}-${label}`) }
+        : region === "jp" ? { subscriptionDisplayName: `US-专线优化-${label}` } : {}),
       protocol: label === "hy2" ? "hysteria2" : label,
       credentialMode: "per-order",
       subscriptionBundleRef: "display-name-fixture-bundle",
@@ -47,14 +57,19 @@ function materialFor(index) {
   };
 }
 
-for (const access of ["token", "artifact"]) {
-  test(`display aliases preserve internal identity through per-order ${access} resolution and rendering`, () => {
+for (const { access, flagged } of ["token", "artifact"].flatMap(access => [
+  { access, flagged: false }, { access, flagged: true }
+])) {
+  test(`display ${flagged ? "flag " : ""}aliases preserve internal identity through per-order ${access} resolution and rendering`, () => {
     const database = new Database(":memory:");
     const store = createSubscriptionRepository({ database });
     try {
-      const proxyConfig = fixtureConfig();
+      const proxyConfig = fixtureConfig(flagged);
       const originalConfig = structuredClone(proxyConfig);
       const internalNames = proxyConfig.servers.map((server) => server.name);
+      if (flagged) {
+        assert.deepEqual(proxyConfig.servers.map(server => server.subscriptionDisplayName), [...FLAG_ALIASES.values()]);
+      }
       const materials = new Map(internalNames.map((name, index) => [name, materialFor(index)]));
       const resolverCalls = [];
       const gateCalls = [];

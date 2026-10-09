@@ -658,7 +658,7 @@ test("successful subscription routes advertise the public website without lifecy
   }
 });
 
-test("unauthorized and expired subscriptions do not advertise a website", async () => {
+test("unauthorized subscriptions are rejected and authenticated expiry returns only a public renewal notice", async () => {
   let now = new Date("2026-05-21T00:00:00.000Z");
   const context = realSubscriptionContext({ nowFn: () => now });
   const { server, baseUrl } = await listen(createApp(fakeState(context.service)));
@@ -687,9 +687,12 @@ test("unauthorized and expired subscriptions do not advertise a website", async 
       `${artifactPath}/provider.yaml`
     ]) {
       const expired = await fetch(`${baseUrl}${path}`);
-      assert.equal(expired.status, 403, path);
-      assert.equal(expired.headers.get("profile-web-page-url"), null, path);
-      assert.deepEqual(await expired.json(), { error: "Subscription expired" });
+      assert.equal(expired.status, 200, path);
+      assert.equal(expired.headers.get("profile-web-page-url"), "https://portal.gccwebos.com", path);
+      assert.equal(expired.headers.get("x-subscription-status"), "expired", path);
+      const notice = await expired.text();
+      assert.match(notice, /当前订阅已过期/);
+      assert.doesNotMatch(notice, /shared-secret|other-secret|server:|password:/);
     }
   } finally {
     server.close();

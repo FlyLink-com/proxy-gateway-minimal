@@ -262,7 +262,9 @@ export function createSubscriptionCore({
       return { ok: false, status: 403, error: "Subscription disabled" };
     }
     if (status === "expired") {
-      return { ok: false, status: 403, error: "Subscription expired" };
+      // Access remains denied. Only authenticated, non-revoked links reach here;
+      // the YAML transport may replace stale client nodes with a public notice.
+      return { ok: false, status: 403, error: "Subscription expired", denialReason: "subscription_expired" };
     }
 
     const scopedProxyConfig = applyTenantCredentialMaterial(
