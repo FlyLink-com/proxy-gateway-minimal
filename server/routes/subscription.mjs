@@ -14,6 +14,10 @@ import {
   summarizeUsageSamples,
   usageCycleFiltersForBinding
 } from "../services/platform/usage-billing-cycle.mjs";
+import {
+  generateSubscriptionExpiryNotice,
+  SUBSCRIPTION_RENEWAL_URL
+} from "../services/subscription-expiry-notice.mjs";
 
 function safeRef(prefix, value) {
   return `${prefix}ref_${createHash("sha256").update(String(value)).digest("hex").slice(0, 16)}`;
@@ -122,14 +126,28 @@ export function subscriptionRoutes(state, options = {}) {
       .send(yaml);
   }
 
-  async function resolveArtifact(req, res) {
+  function sendResolutionFailure(res, resolved, { providerOnly = false } = {}) {
+    if (resolved.status === 403 && resolved.denialReason === "subscription_expired") {
+      res
+        .set("Cache-Control", "no-cache, no-store, must-revalidate")
+        .set("Pragma", "no-cache")
+        .set("Profile-Web-Page-Url", SUBSCRIPTION_RENEWAL_URL)
+        .set("X-Subscription-Status", "expired")
+        .type("application/x-yaml; charset=utf-8")
+        .send(generateSubscriptionExpiryNotice({ providerOnly }));
+      return;
+    }
+    res.status(resolved.status).json({ error: resolved.error });
+  }
+
+  async function resolveArtifact(req, res, options) {
     const resolved = await resolver.resolveArtifact({
       artifact: req.params.artifact,
       ip: resolveClientIpFn(req),
       userAgent: req.get("user-agent") || ""
     });
     if (!resolved.ok) {
-      res.status(resolved.status).json({ error: resolved.error });
+      sendResolutionFailure(res, resolved, options);
       return null;
     }
     return resolved;
@@ -155,7 +173,7 @@ export function subscriptionRoutes(state, options = {}) {
   });
 
   router.get("/sub/a/:artifact/provider.yaml", async (req, res) => {
-    const resolved = await resolveArtifact(req, res);
+    const resolved = await resolveArtifact(req, res, { providerOnly: true });
     if (!resolved) {
       return;
     }
@@ -192,7 +210,7 @@ export function subscriptionRoutes(state, options = {}) {
 
     const result = await resolver.resolveToken(token);
     if (!result.ok) {
-      res.status(result.status).json({ error: result.error });
+      sendResolutionFailure(res, result);
       return;
     }
 
