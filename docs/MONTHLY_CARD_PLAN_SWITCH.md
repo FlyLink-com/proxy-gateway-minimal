@@ -414,7 +414,7 @@ Test environment, before anyone asks for a production gate:
 * [ ] Flag-off purchase, checkout-preview, and marketplace match the current UI and responses.
 * [ ] Temporary-database apply, validate, idempotent re-apply, and rollback of an empty scheduled set succeed.
 * [ ] Charge examples in the table above match the policy tests, including the 1 ms yearly boundary and the credit-exceeds-price refusal.
-* [ ] In-place upgrade preserves used bytes. `upgrade_restart` cycle-window test still reports a 30-day maximum.
+* [ ] In-place upgrade preserves used bytes. `upgrade_restart` is refused with `plan_switch_cycle_misaligned` when the usage-window start would move (cycle-guard test).
 * [ ] Cancel inside 3 seconds, snapshot drift, due-switch application, and replay are green on a temporary database.
 * [ ] Portal state, card labels, disabled reasons, and confirm copy are green in the admin tests.
 
