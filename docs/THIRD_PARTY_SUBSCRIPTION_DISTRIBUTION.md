@@ -76,7 +76,7 @@ PR 中承接第一阶段实现，不是已完成的 spec-only 交付，也不申
 - 地区/国家与动态刷新（Ethan：「订阅还是按照地区和国家来，订阅动态刷新，到期不再下发」）：第三方订阅
   仍按地区和国家组织；订阅动态刷新；到期不再下发。
 - 面板不需要（Ethan：「面板我觉得不需要其实」）：Ethan 先提出过一个导入面板的设想（展示节点名称、地区、
-  延迟、是否机房 IP、速度，以及分配到哪个订阅档位 Go/Plus/Year，并将第三方订阅配置拆成可直接渲染的
+  延迟、是否机房 IP、速度，以及分配到哪个订阅档位（Ethan 当时称 Go/Plus/Year，后改为采用仓库当前名称，见下文），并将第三方订阅配置拆成可直接渲染的
   配置表、存本地或云端数据库、通过代理 agent 自动拉取），之后又说不需要面板。该设想不是决定；
   其中真正保留的两项需求与范围划分见下文“范围与两项需求”。
 - 已作废（Ethan：「100人作废」）：~~「节点池每100人用一组三方订阅」~~ 该规则已作废，不再是决定，
@@ -93,26 +93,27 @@ PR 中承接第一阶段实现，不是已完成的 spec-only 交付，也不申
 
 保留的两项真实需求（取代先前待答项“后台导入表单需要哪些字段”）：
 
-1. **按订阅档位分配**：导入的第三方订阅可以被分配给某个订阅档位。档位对应当前的 20 / 30 / 200 币套餐。
-   已在仓库核实的对应关系（只读检索，`server/services/platform/coin-commerce-production-catalog.mjs` 中
-   `baseCoinUnits`，以及 `server/services/platform/subscription-control-db.mjs` 中 offer 到对外 plan id 的映射）：
-   20 币对应 `offerv_plan_30d_50gb_monthly_v1`（50 GB 月度套餐，对外 plan id `monthly_30d_50gb`）；
-   30 币对应 `offerv_plan_30d_100gb_monthly_v1`（100 GB 月度套餐，`monthly_30d_100gb`）；
-   200 币对应 `offerv_plan_365d_200gb_monthly_v1`（200 GB 年度套餐，`yearly_365d_200gb`）。
-   名称核对（2026-10-10 只读检索 `server/`、`docs/`、`admin/src/`、`admin/portal*`、`admin/site`、`admin/public`，
-   排除 `docs/superpowers/` 与 `docs/archive/` 的历史计划，并含中文标签“月卡/年卡/档位/月付/年度”）：
-   - **“Go”未找到**：检索未发现任何套餐/档位标签叫 Go（只有“Go to Marketplace/前往商城”之类按钮文案，以及与套餐无关的 Go 语言版本记录）。
-   - **“档位”一词**在 `admin/src` 中只出现在 Coins 充值档位（`portal-recharge-offers.tsx`，充值面额），不是订阅档位；“月卡/年卡”在 `server/` 与 `admin/` 的非测试代码中未找到（`docs/` 在排除历史计划后也未找到）。
-   - **“Plus”只作为门户 plan id 的一部分存在**：门户前端（`admin/src/features/user-portal/user-portal-page.tsx`、
-     `user-portal-parsers.ts`、`user-portal-types.ts`）的套餐 id 为 `trial` / `monthly_basic` / `monthly_plus` /
-     `yearly`（`PortalPlanId` 还含 `monthly`）。用户可见标签：`monthly_basic` = “基础月付”（20 元 / 月，50 GB / 月；英文
-     “Basic monthly”）、`monthly_plus` = “标准月付”（30 元 / 月，100 GB / 月；英文页面为 “Monthly member”，管理端英文为
-     “Standard Monthly”）、`yearly` = “年度套餐”（200 元 / 年，200 GB / 月）。用户可见标签里没有字面的 “Plus”；年度套餐的英文标签是 “Yearly plan”，不是 “Year”。
-   - 因此“Go / Plus / Year”是 Ethan 的叫法，**不是仓库中的已核实标签**。按金额与流量，Plus 最接近 `monthly_plus`
-     （30 币 / 100 GB），Year 最接近 `yearly`（200 币 / 200 GB），Go 最接近 `monthly_basic`（20 币 / 50 GB）；这是
-     按数字做的推断，**未核实**，实现时以 plan id 为准，并请 Ethan 确认。
-   - 币数与金额的对应：`coin-commerce-production-catalog.mjs` 的 `baseCoinUnits` 为 20 / 30 / 200，门户前端价格标签为
-     20 元 / 30 元 / 200 元；本文只陈述这两组数字各自存在，不另作换算断言。
+1. **按订阅档位分配**：导入的第三方订阅可以被分配给某个订阅档位。档位名称采用仓库当前的名称
+   （Ethan，2026-10-10，私聊，针对“仓库里没有 Go，实际套餐是 monthly_basic 基础月付 20 元、monthly_plus 标准月付
+   30 元、yearly 年度套餐 200 元”的说明：「那就按照目前的名称，」——这句话**被截断**，后半句没有收到，因此“采用当前名称、
+   不再使用 Go / Plus / Year”是对其意思的**解读**，不是完整引文；如与 Ethan 本意不符再改）。分配档位即：
+   - `monthly_basic`（基础月付，20 元 / 月，50 GB / 月；英文 “Basic monthly”）；
+   - `monthly_plus`（标准月付，30 元 / 月，100 GB / 月；英文页面 “Monthly member”，管理端 “Standard Monthly”）；
+   - `yearly`（年度套餐，200 元 / 年，200 GB / 月；英文 “Yearly plan”）。
+   以上取自门户前端（`admin/src/features/user-portal/user-portal-page.tsx`、`user-portal-parsers.ts`、
+   `user-portal-types.ts`，`PortalPlanId` 还含 `trial` 与 `monthly`；`trial` 已下线，不作为分配档位）。
+   “Go / Plus / Year”曾是 Ethan 的叫法，不再使用；2026-10-10 只读检索 `server/`、`docs/`（排除 `docs/superpowers/` 与
+   `docs/archive/` 的历史计划）、`admin/` 未发现任何叫 Go 的套餐标签。
+   与币套餐的对应（仓库已核实的数字）：`server/services/platform/coin-commerce-production-catalog.mjs` 的
+   `baseCoinUnits` 为 20 / 30 / 200，对应商城 offer：
+   20 币 `offerv_plan_30d_50gb_monthly_v1`（50 GB 月度套餐，对外 plan id `monthly_30d_50gb`）；
+   30 币 `offerv_plan_30d_100gb_monthly_v1`（100 GB 月度套餐，`monthly_30d_100gb`）；
+   200 币 `offerv_plan_365d_200gb_monthly_v1`（200 GB 年度套餐，`yearly_365d_200gb`）
+   （offer 到对外 plan id 的映射见 `server/services/platform/subscription-control-db.mjs`）。
+   因此档位与币套餐按价格和流量一一对应：`monthly_basic` ↔ 20 币 / 50 GB，`monthly_plus` ↔ 30 币 / 100 GB，
+   `yearly` ↔ 200 币 / 200 GB。**说明**：这一对应是按两边的价格与流量数字对上得出的；我没有逐条追踪代码把门户
+   plan id `monthly_basic` 等直接连到具体 offer，实现时以代码中的实际映射核对。
+   “档位”一词在 `admin/src` 中只出现在 Coins 充值档位（`portal-recharge-offers.tsx`，充值面额），与订阅档位无关。
 2. **拆分后的配置直接参与渲染分发**：第三方订阅被拆分出的节点配置直接进入本站渲染与分发（与上文
    “渲染进本站节点集合”一致），不经另一套并行的输出路径。
 
@@ -121,7 +122,7 @@ PR 中承接第一阶段实现，不是已完成的 spec-only 交付，也不申
 提议的最简字段（Lingxi 自行选择，**提议，非 Ethan 决定**）：
 
 - 后台导入表单：来源名称/备注；订阅链接 URL（敏感：加密存储，导入后不回显，不进日志）；
-  地区/国家（能从节点解析出则自动，否则手填）；分配档位（20 / 30 / 200 币套餐，可多选）；启用开关。
+  地区/国家（能从节点解析出则自动，否则手填）；分配档位（`monthly_basic` / `monthly_plus` / `yearly`，即 20 / 30 / 200 币套餐，可多选）；启用开关。
 - 分配（可开放）：对已导入的来源或节点选择分配到哪些档位。
 - 观测（可开放，只读）：来源列表、节点数量、最近一次刷新时间与结果、各档位当前下发的节点数；
   不显示订阅链接或凭证。
