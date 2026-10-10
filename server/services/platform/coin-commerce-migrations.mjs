@@ -1170,8 +1170,30 @@ function commerceNamespaceObjects(database) {
   ));
 }
 
+const planSwitchNamespaceExclusions = [];
+
+export function registerPlanSwitchNamespaceExclusion(predicate) {
+  if (typeof predicate !== "function") {
+    throw commerceMigrationError("commerce_invalid_migration_contract");
+  }
+  if (!planSwitchNamespaceExclusions.includes(predicate)) {
+    planSwitchNamespaceExclusions.push(predicate);
+  }
+}
+
+function planSwitchNamespaceRowIsExcluded(row) {
+  return planSwitchNamespaceExclusions.some((predicate) => {
+    try {
+      return predicate(row) === true;
+    } catch {
+      return false;
+    }
+  });
+}
+
 function commerceNamespaceIsExact(database, extensionPresent = false) {
   const actual = commerceNamespaceObjects(database)
+    .filter((row) => !planSwitchNamespaceRowIsExcluded(row))
     .map(({ type, name }) => `${type}:${name}`);
   const expected = extensionPresent
     ? new Set([...EXPECTED_NAMESPACE_OBJECTS,

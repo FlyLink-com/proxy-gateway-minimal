@@ -15,6 +15,9 @@ import {
 import {
   validateCoinCommerceSchema
 } from "./coin-commerce-migrations.mjs";
+// Registers the exact plan-switch DDL exclusion before commerce schema
+// validation. Absent plan-switch objects do not change that validation.
+import "./coin-commerce-plan-switch-migrations.mjs";
 import {
   validateCoinWalletSchema
 } from "./coin-wallet-migrations.mjs";

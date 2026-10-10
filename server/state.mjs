@@ -19,6 +19,7 @@ import { loadControlPlaneReleaseIdentity } from "./services/platform/control-pla
 import { createCoinCommerceCoordinator } from "./services/platform/coin-commerce-coordinator.mjs";
 import { createSqliteCoinCommerceStore } from "./services/platform/coin-commerce-store.mjs";
 import { assertPlanSwitchStartupFlags } from "./services/platform/coin-commerce-plan-switch-policy.mjs";
+import { validatePlanSwitchSchema } from "./services/platform/coin-commerce-plan-switch-migrations.mjs";
 import { createSqliteCoinWalletStore } from "./services/platform/coin-wallet-store.mjs";
 import { createSqlitePaymentStore } from "./services/platform/payment-store.mjs";
 import { createPaymentRechargeCoordinator } from "./services/platform/payment-recharge-coordinator.mjs";
@@ -621,6 +622,12 @@ function registrationWelcomeCoinsSchemaError() {
     "Portal registration welcome Coins schema is not ready"
   );
   error.code = "registration_welcome_coins_schema_not_ready";
+  return error;
+}
+
+function planSwitchSchemaError() {
+  const error = new Error("Plan switch schema is not ready");
+  error.code = "plan_switch_schema_not_ready";
   return error;
 }
 
@@ -1839,6 +1846,30 @@ export function createRuntimeState(options = {}) {
   );
   const ownsControlStore = !options.platformControlStore;
   const platformControlStore = options.platformControlStore || createSqliteSubscriptionControlStore({ dbPath: controlDbPath });
+  if (coinsCommercePlanSwitchEnabled) {
+    let planSwitchSchemaReady = false;
+    try {
+      planSwitchSchemaReady = validatePlanSwitchSchema({
+        dbPath: controlDbPath
+      }).ok === true;
+    } catch {
+      planSwitchSchemaReady = false;
+    }
+    if (!planSwitchSchemaReady) {
+      for (const [owned, store] of [
+        [ownsControlStore, platformControlStore],
+        [ownsSubscriptionStore, subscriptionStore]
+      ]) {
+        if (!owned) continue;
+        try {
+          store.close();
+        } catch {
+          // Preserve the fail-closed plan-switch schema error.
+        }
+      }
+      throw planSwitchSchemaError();
+    }
+  }
   if (portalSubscriptionLinkResetEnabled) {
     try {
       // Readiness check only: schema installation requires an explicit migration.

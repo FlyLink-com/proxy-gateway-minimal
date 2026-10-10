@@ -59,22 +59,25 @@ test("plan switch stays off unless COINS_COMMERCE_PLAN_SWITCH_ENABLED is set", a
   }
 });
 
-test("plan switch flag is visible when set without the authority flag", async () => {
+test("plan switch flag without a valid schema refuses startup", async () => {
   const dir = mkdtempSync(join(tmpdir(), "plan-switch-flag-on-"));
   let state;
   try {
-    state = createRuntimeState({
-      rootDir: new URL("../../", import.meta.url),
-      env: runtimeEnv({
-        CONSOLE_TOKEN: "secret",
-        COINS_COMMERCE_PLAN_SWITCH_ENABLED: "true"
-      }),
-      subscriptionDbPath: join(dir, "subscriptions.sqlite"),
-      controlDbPath: join(dir, "control.sqlite"),
-      autoStartHttpProxy: false
-    });
-    assert.equal(state.platform.coinsCommercePlanSwitchEnabled, true);
-    assert.equal(state.platform.coinsCommerceEnabled, false);
+    assert.throws(
+      () => {
+        state = createRuntimeState({
+          rootDir: new URL("../../", import.meta.url),
+          env: runtimeEnv({
+            CONSOLE_TOKEN: "secret",
+            COINS_COMMERCE_PLAN_SWITCH_ENABLED: "true"
+          }),
+          subscriptionDbPath: join(dir, "subscriptions.sqlite"),
+          controlDbPath: join(dir, "control.sqlite"),
+          autoStartHttpProxy: false
+        });
+      },
+      (error) => error?.code === PLAN_SWITCH_ERROR.SCHEMA_NOT_READY
+    );
   } finally {
     await state?.subscriptions?.close?.();
     removeTempDir(dir);
