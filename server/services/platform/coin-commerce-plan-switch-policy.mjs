@@ -29,6 +29,7 @@ export const PLAN_SWITCH_ERROR = Object.freeze({
   APPLICATION_PENDING: "plan_switch_application_pending",
   ALREADY_SCHEDULED: "plan_switch_already_scheduled",
   UPGRADE_WINDOW_CLOSED: "plan_switch_upgrade_window_closed",
+  PRECHECK_UNAVAILABLE: "plan_switch_precheck_unavailable",
   INVALID_INPUT: "plan_switch_invalid_input",
   OFFER_UNAVAILABLE: "offer_unavailable"
 });
@@ -42,7 +43,8 @@ export const PLAN_SWITCH_CONFLICT_CODES = Object.freeze([
   PLAN_SWITCH_ERROR.STATE_CHANGED,
   PLAN_SWITCH_ERROR.APPLICATION_PENDING,
   PLAN_SWITCH_ERROR.ALREADY_SCHEDULED,
-  PLAN_SWITCH_ERROR.UPGRADE_WINDOW_CLOSED
+  PLAN_SWITCH_ERROR.UPGRADE_WINDOW_CLOSED,
+  PLAN_SWITCH_ERROR.PRECHECK_UNAVAILABLE
 ]);
 
 export const PLAN_SWITCH_TIERS = Object.freeze([

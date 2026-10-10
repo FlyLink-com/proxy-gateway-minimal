@@ -20,6 +20,10 @@ import { createCoinCommerceCoordinator } from "./services/platform/coin-commerce
 import { createSqliteCoinCommerceStore } from "./services/platform/coin-commerce-store.mjs";
 import { assertPlanSwitchStartupFlags } from "./services/platform/coin-commerce-plan-switch-policy.mjs";
 import { validatePlanSwitchSchema } from "./services/platform/coin-commerce-plan-switch-migrations.mjs";
+import {
+  applyDueScheduledPlanSwitches,
+  createPlanSwitchReader
+} from "./services/platform/coin-commerce-plan-switch-runtime.mjs";
 import { createSqliteCoinWalletStore } from "./services/platform/coin-wallet-store.mjs";
 import { createSqlitePaymentStore } from "./services/platform/payment-store.mjs";
 import { createPaymentRechargeCoordinator } from "./services/platform/payment-recharge-coordinator.mjs";
@@ -1721,6 +1725,11 @@ export function createRuntimeState(options = {}) {
     if (coinsCommerceAuthorityEnabled && hasFulfillmentHandler) {
       throw coinCommercePrerequisiteError();
     }
+    // An injected handler cannot record a downgrade or mark a due switch
+    // applied. Fail closed instead of charging a switch the handler ignores.
+    if (coinsCommercePlanSwitchEnabled && hasFulfillmentHandler) {
+      throw coinCommercePrerequisiteError();
+    }
     if (hasFulfillmentHandler) {
       configuredCoinCommerceFulfillmentHandler =
         exactCoinCommerceFulfillmentHandlerValue(
@@ -1755,6 +1764,9 @@ export function createRuntimeState(options = {}) {
       }
     } else {
       if (coinsCommerceAuthorityEnabled) {
+        throw coinCommercePrerequisiteError();
+      }
+      if (coinsCommercePlanSwitchEnabled) {
         throw coinCommercePrerequisiteError();
       }
       if (configuredCoinCommerceFulfillmentFactory) {
@@ -2632,6 +2644,9 @@ export function createRuntimeState(options = {}) {
                 configuredCoinCommerceAccountActivationReader,
               ...(coinsCommerceAuthorityEnabled
                 ? { authorityEnabled: true }
+                : {}),
+              ...(coinsCommercePlanSwitchEnabled
+                ? { planSwitchEnabled: true }
                 : {})
             })
           );
@@ -2658,6 +2673,20 @@ export function createRuntimeState(options = {}) {
             ? {
               purchaseEligibilityReader:
                 configuredCoinCommercePurchaseEligibilityReader
+            }
+            : {}),
+          ...(coinsCommercePlanSwitchEnabled
+            ? {
+              planSwitchEnabled: true,
+              planSwitchReader: createPlanSwitchReader({
+                controlStore: platformControlStore,
+                authorityEnabled: coinsCommerceAuthorityEnabled
+              }),
+              planSwitchApplyDue: (nowIso) => applyDueScheduledPlanSwitches({
+                controlStore: platformControlStore,
+                execute: configuredCoinCommerceFulfillmentHandler.execute,
+                nowIso
+              })
             }
             : {})
         });
