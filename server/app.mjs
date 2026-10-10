@@ -17,6 +17,7 @@ import { networkRoutes } from "./routes/network.mjs";
 import { adminSubscriptionRoutes } from "./routes/admin-subscriptions.mjs";
 import { adminPlatformRoutes } from "./routes/admin-platform.mjs";
 import { adminUserMonitorRoutes } from "./routes/admin-user-monitor.mjs";
+import { adminThirdPartySubscriptionRoutes } from "./routes/admin-third-party-subscriptions.mjs";
 import {
   ADMIN_AUTH_PUBLIC_PATHS,
   adminAuthRoutes,
@@ -458,6 +459,7 @@ export function createApp(state, options = {}) {
     app.use(adminPlatformRoutes(state));
   }
   app.use(adminUserMonitorRoutes(state));
+  app.use(adminThirdPartySubscriptionRoutes(state));
   app.use("/sub", createRateLimitMiddleware({
     windowMs: security.subRateLimit?.windowMs,
     max: security.subRateLimit?.max,

@@ -220,7 +220,9 @@ function clashProxy(server, index) {
     port: requirePort(server.port),
     qualityClass: metadataToken(server.qualityClass || server.quality || server.channelQuality),
     channelRole: metadataToken(server.channelRole || server.role),
-    autoEligible: optionalBoolField(server, "autoEligible", "auto-eligible") !== false
+    autoEligible: optionalBoolField(server, "autoEligible", "auto-eligible") !== false,
+    thirdParty: server.thirdParty === true,
+    countryCode: text(server.countryCode || server.country).toUpperCase()
   };
 
   if (protocol === "ss") {
@@ -474,6 +476,80 @@ function autoGroupServers(servers) {
   return servers.filter((server) => server.autoEligible !== false);
 }
 
+function isThirdPartyProxy(server) {
+  return server.thirdParty === true;
+}
+
+function ownGroupServers(servers) {
+  return servers.filter((server) => !isThirdPartyProxy(server));
+}
+
+function thirdPartyCountryGroupEntries(servers) {
+  const grouped = new Map();
+  for (const server of servers) {
+    if (!isThirdPartyProxy(server)) continue;
+    const country = text(server.countryCode).toUpperCase() || "OTHER";
+    const key = /^[A-Z]{2}$/.test(country) || country === "OTHER" ? country : "OTHER";
+    if (!grouped.has(key)) grouped.set(key, []);
+    grouped.get(key).push(server);
+  }
+  const keys = [...grouped.keys()].sort((left, right) => {
+    if (left === "OTHER") return 1;
+    if (right === "OTHER") return -1;
+    return left.localeCompare(right);
+  });
+  return keys.map((country) => ({
+    name: `3P-${country}`,
+    servers: grouped.get(country)
+  }));
+}
+
+function pushOwnProxyGroups(lines, ownServers) {
+  if (ownServers.length === 0) return;
+  pushProxyGroup(lines, { name: "AUTO", type: "url-test", servers: autoGroupServers(ownServers) });
+  pushProxyGroup(lines, {
+    name: "WEAK-NETWORK",
+    type: "url-test",
+    servers: qualityGroupServers(ownServers, ["weak-network", "long-haul", "high-loss"]),
+    tolerance: 50
+  });
+  pushProxyGroup(lines, {
+    name: "STABLE",
+    type: "fallback",
+    servers: qualityGroupServers(ownServers, ["stable"])
+  });
+  pushProxyGroup(lines, { name: "FALLBACK", type: "fallback", servers: ownServers });
+}
+
+function pushThirdPartyCountryGroups(lines, countryGroups) {
+  for (const group of countryGroups) {
+    pushProxyGroup(lines, { name: group.name, type: "url-test", servers: group.servers });
+  }
+}
+
+function pushGlobalSelectProxies(lines, servers, ownServers, countryGroups, { inline = false } = {}) {
+  if (ownServers.length > 0) {
+    // The inline Mihomo template historically lists AUTO unconditionally when
+    // servers exist; keep that byte-for-byte for non-third-party output.
+    if (inline || autoGroupServers(ownServers).length > 0) {
+      lines.push("      - AUTO");
+    }
+    if (qualityGroupServers(ownServers, ["stable"]).length > 0) {
+      lines.push("      - STABLE");
+    }
+    if (qualityGroupServers(ownServers, ["weak-network", "long-haul", "high-loss"]).length > 0) {
+      lines.push("      - WEAK-NETWORK");
+    }
+    lines.push("      - FALLBACK");
+  }
+  for (const group of countryGroups) {
+    lines.push(`      - ${group.name}`);
+  }
+  for (const server of servers) {
+    lines.push(`      - ${yamlQuote(server.name)}`);
+  }
+}
+
 function pushProxy(lines, server) {
   lines.push(
     `  - name: ${yamlQuote(server.name)}`,
@@ -556,7 +632,14 @@ export function generateClashProxyProvider(proxyConfig, options = {}) {
   return yamlWithLifecycle(lines, options);
 }
 
+function proxyConfigHasThirdParty(proxyConfig) {
+  return (proxyConfig?.servers || []).some((server) => server.thirdParty === true);
+}
+
 export function generateClashProviderSubscription(proxyConfig, options = {}) {
+  if (proxyConfigHasThirdParty(proxyConfig)) {
+    return generateClashSubscription(proxyConfig, options);
+  }
   const provider = providerOptions(options);
   const lines = [
     "mixed-port: 7897",
@@ -617,31 +700,20 @@ function mihomoCoreHeader() {
 }
 
 function pushInlineGlobalGroup(lines, servers) {
+  const ownServers = ownGroupServers(servers);
+  const countryGroups = thirdPartyCountryGroupEntries(servers);
   lines.push(
     "  - name: GLOBAL",
     "    type: select",
     "    proxies:"
   );
-
-  if (servers.length > 0) {
-    lines.push("      - AUTO");
-    if (qualityGroupServers(servers, ["stable"]).length > 0) {
-      lines.push("      - STABLE");
-    }
-    if (qualityGroupServers(servers, ["weak-network", "long-haul", "high-loss"]).length > 0) {
-      lines.push("      - WEAK-NETWORK");
-    }
-    lines.push("      - FALLBACK");
-  }
-
-  for (const server of servers) {
-    lines.push(`      - ${yamlQuote(server.name)}`);
-  }
-
+  pushGlobalSelectProxies(lines, servers, ownServers, countryGroups, { inline: true });
 }
 
 export function generateMihomoRenderTemplate(proxyConfig, options = {}) {
   const servers = clashServers(proxyConfig);
+  const ownServers = ownGroupServers(servers);
+  const countryGroups = thirdPartyCountryGroupEntries(servers);
   const lines = [
     ...mihomoCoreHeader(),
     ...nodeDomainProtectionDnsLines(servers),
@@ -653,23 +725,8 @@ export function generateMihomoRenderTemplate(proxyConfig, options = {}) {
   }
 
   lines.push("proxy-groups:");
-
-  if (servers.length > 0) {
-    pushProxyGroup(lines, { name: "AUTO", type: "url-test", servers: autoGroupServers(servers) });
-    pushProxyGroup(lines, {
-      name: "WEAK-NETWORK",
-      type: "url-test",
-      servers: qualityGroupServers(servers, ["weak-network", "long-haul", "high-loss"]),
-      tolerance: 50
-    });
-    pushProxyGroup(lines, {
-      name: "STABLE",
-      type: "fallback",
-      servers: qualityGroupServers(servers, ["stable"])
-    });
-    pushProxyGroup(lines, { name: "FALLBACK", type: "fallback", servers });
-  }
-
+  pushOwnProxyGroups(lines, ownServers);
+  pushThirdPartyCountryGroups(lines, countryGroups);
   pushInlineGlobalGroup(lines, servers);
 
   lines.push(
@@ -683,6 +740,9 @@ export function generateMihomoRenderTemplate(proxyConfig, options = {}) {
 }
 
 export function generateMihomoProviderTemplate(proxyConfig, options = {}) {
+  if (proxyConfigHasThirdParty(proxyConfig)) {
+    return generateMihomoRenderTemplate(proxyConfig, options);
+  }
   const provider = providerOptions(options);
   const lines = [
     ...mihomoCoreHeader(),
@@ -728,6 +788,8 @@ export function generateMihomoProviderTemplate(proxyConfig, options = {}) {
 
 export function generateClashSubscription(proxyConfig, options = {}) {
   const servers = clashServers(proxyConfig);
+  const ownServers = ownGroupServers(servers);
+  const countryGroups = thirdPartyCountryGroupEntries(servers);
   const lines = [
     "mixed-port: 7897",
     "allow-lan: false",
@@ -741,45 +803,15 @@ export function generateClashSubscription(proxyConfig, options = {}) {
   }
 
   lines.push("proxy-groups:");
-
-  if (servers.length > 0) {
-    pushProxyGroup(lines, { name: "AUTO", type: "url-test", servers: autoGroupServers(servers) });
-    pushProxyGroup(lines, {
-      name: "WEAK-NETWORK",
-      type: "url-test",
-      servers: qualityGroupServers(servers, ["weak-network", "long-haul", "high-loss"]),
-      tolerance: 50
-    });
-    pushProxyGroup(lines, {
-      name: "STABLE",
-      type: "fallback",
-      servers: qualityGroupServers(servers, ["stable"])
-    });
-    pushProxyGroup(lines, { name: "FALLBACK", type: "fallback", servers });
-  }
+  pushOwnProxyGroups(lines, ownServers);
+  pushThirdPartyCountryGroups(lines, countryGroups);
 
   lines.push(
     "  - name: GLOBAL",
     "    type: select",
     "    proxies:"
   );
-
-  if (servers.length > 0) {
-    if (autoGroupServers(servers).length > 0) {
-      lines.push("      - AUTO");
-    }
-    if (qualityGroupServers(servers, ["stable"]).length > 0) {
-      lines.push("      - STABLE");
-    }
-    if (qualityGroupServers(servers, ["weak-network", "long-haul", "high-loss"]).length > 0) {
-      lines.push("      - WEAK-NETWORK");
-    }
-    lines.push("      - FALLBACK");
-  }
-
-  for (const server of servers) {
-    lines.push(`      - ${yamlQuote(server.name)}`);
-  }
+  pushGlobalSelectProxies(lines, servers, ownServers, countryGroups);
 
   lines.push(
     "rules:",

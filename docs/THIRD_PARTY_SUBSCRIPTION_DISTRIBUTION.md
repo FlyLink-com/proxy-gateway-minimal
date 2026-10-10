@@ -6,18 +6,16 @@ document_metadata:
   lifecycle: active
   authority_scope: third_party_subscription_distribution_plan
   superseded_by: null
-  last_verified_at: 2026-10-09
+  last_verified_at: 2026-10-10
   production_authority: false
 ```
 
-状态：**Draft / 阶段提案，未实现、未导入、未部署**。本记录用于在一个独立
-PR 中承接第一阶段实现，不是已完成的 spec-only 交付，也不申请合并。
+状态：**Draft / 第一阶段首轮源码已落地（feature flag default-off），未导入真实来源、未部署、不申请合并**。本记录仍是独立 Draft PR 的权威边界，不是已完成交付。
 
-- Risk: A 功能与生产授权边界；本次仅新增文档，按 C 档验证。
-- Process: 先固定阶段与未决事项，再逐项实现及隔离验收；发布另经精确授权。
-- Expected PR count: 先一个 Draft PR 承接第一阶段；后续按独立验收边界切片，
-  不预先制造多篇 spec/plan 或固定数量的 PR。
-- Validation: 当前仅 `git diff --check origin/master...HEAD`；功能验收尚未执行。
+- Risk: A 功能与生产授权边界（新 SQLite schema + 订阅输出）；本次为 B 档源码核心，Draft、source-only。
+- Process: 按已确定默认做法实现后台导入/分配/观测、渲染合并与手动刷新；调度器留作后续。
+- Expected PR count: 保持这一个 Draft PR 承接第一阶段首轮；后续按独立验收边界切片。
+- Validation: 本轮已跑 targeted `node --test server/tests/third-party-subscription-*.test.mjs`（24 pass）、`npm run docs:authority:strict`、`git diff --check origin/master...HEAD`、`npm run validation:environment:source`（source ready）与 `npm test`（5408 tests / 5341 pass / 11 fail / 56 skipped）。11 个失败项均不在本功能测试文件内，见实现状态。
 - Production/AWS impact: 无；不访问生产、第三方真实订阅或云平台。
 - capability: `third-party-subscription-distribution`
 - release_unit: `subscription-rendering`（后续后端接线需同时明确
@@ -203,8 +201,8 @@ PR 中承接第一阶段实现，不是已完成的 spec-only 交付，也不申
 所列文件即含该取值）：遗留引用存在于代码/文档中，未核实是否已无用；它们不是现行
 用户模型，#762 不需要处理。
 
-目前没有待 Ethan 决定的事项。#762 保持仅文档（docs-only）、Draft，不请求合并；在 Ethan 明确说
-“开始实现”之前不写代码。
+目前没有待 Ethan 决定的事项。#762 保持 Draft，不请求合并。第一阶段首轮源码见下文
+“实现状态（第一阶段首轮）”；生产接线仍须独立 Risk A Gate。
 
 ## 第一阶段：受限 YAML 到认证分发
 
@@ -277,5 +275,100 @@ PR 中承接第一阶段实现，不是已完成的 spec-only 交付，也不申
   分步切换与接口验收；失败回退本次节点快照/代码，不恢复旧账务数据库。
 - [ ] 实际发布后追加 Deploy Note；没有执行则明确记为 `not_deployed`。
 
-当前完成：阶段与边界文档。当前未完成：以上实现与功能验收全部未完成。
+## 实现状态（第一阶段首轮）
+
+本轮是 Draft、source-only、feature flag default-off。生产代码不自动 apply schema；
+schema 缺失或密钥未配置时功能报告 `third_party_unavailable`，渲染跳过第三方节点。
+
+存在的源码：
+
+- `server/services/platform/third-party-subscription-migrations.mjs`
+- `server/services/platform/third-party-subscription-store.mjs`
+- `server/services/platform/third-party-subscription-fetch.mjs`
+- `server/services/platform/third-party-subscription-tier.mjs`
+- `server/services/platform/third-party-subscription-render.mjs`
+- `server/routes/admin-third-party-subscriptions.mjs`
+- `scripts/platform-third-party-subscription-schema.mjs`
+- `server/tests/third-party-subscription-*.test.mjs`
+- 接线：`server/state.mjs`、`server/app.mjs`、`server/routes/subscription.mjs`、
+  `server/services/clash-subscription.mjs`
+- npm script：`platform:third-party-subscription:schema`
+- env 占位：`.env.example` 与 `ops/edge-node/templates/env.example`
+
+环境变量（全部可选；未设置时功能关闭）：
+
+- `THIRD_PARTY_SUBSCRIPTION_ENABLED`（默认 false）
+- `THIRD_PARTY_SUBSCRIPTION_DB_PATH`（独立 SQLite，不写入 control DB）
+- `THIRD_PARTY_SUBSCRIPTION_SECRET_KEY`（32-byte，格式与 `USER_PORTAL_TOTP_SECRET_KEY` 相同，AES-256-GCM `v2:aes-256-gcm:` 信封；独立密钥）
+
+Admin 接口（console token；JSON；错误体仅 `{error: code}`；从不回显 URL）：
+
+- `POST /api/admin/third-party-subscriptions/sources`
+- `PATCH /api/admin/third-party-subscriptions/sources/:id`
+- `GET /api/admin/third-party-subscriptions/sources`
+- `GET /api/admin/third-party-subscriptions/summary`
+- `POST /api/admin/third-party-subscriptions/sources/:id/refresh`
+
+档位映射（纯函数，由 `binding.trafficLimitBytes` 推导，假设
+`trafficLimitBytes = monthlyTrafficGb * 1024**3`）：50 GiB → `monthly_basic`，
+100 GiB → `monthly_plus`，200 GiB → `yearly`。试用、缺失 binding、其他流量值或
+tenant status 非 `active` → 不下发第三方节点。过期路径仍走既有
+`sendResolutionFailure` 到期提示。
+
+本轮简单选择：
+
+- 输入是订阅分享链接（ss/vless/hysteria2|hy2/tuic），明文或 base64 行列表；
+  不做 YAML 解析、不加依赖。这与 Ethan「节点格式为订阅链接形式」一致；原第一阶段
+  文案中的 Clash YAML 文件导入仍是后续切片。
+- 节点名标记前缀：`[3P] <COUNTRY> <n> | <origin>`；国家分组名：`3P-<CC>`，
+  类型 `url-test`，写入 GLOBAL。
+- 第三方节点 `autoEligible: false`、无 quality class，并从 AUTO/STABLE/FALLBACK
+  排除；自营这四组在无第三方节点时输出与改前一致（含 inline Mihomo 模板历史上无条件列出 AUTO 的行为）。
+- 存在第三方节点时，provider 模式的 profile（`generateClashProviderSubscription` /
+  `generateMihomoProviderTemplate`）改走与 inline 订阅相同的分组，避免 `use: provider`
+  把第三方节点送进 AUTO/FALLBACK。
+- 上游 share link 的 `insecure` / `skip-cert-verify` 不拷贝为 `skipCertVerify: true`。
+- 刷新失败或解析出 0 个有效节点时保留上次成功节点，只记短错误码；未见节点标
+  `active=0`，不硬删。
+- 无 systemd timer / 进程内调度；仅手动 refresh 与可注入 fetch 的纯函数。
+  固定间隔刷新（默认 6 小时）留作后续。
+
+已知限制：
+
+- DNS rebinding：解析后到连接前 DNS 可能变化；本轮检查字面地址与当时解析结果
+  （含 CGNAT、组播/保留段与十六进制 IPv4-mapped IPv6），不在此轮做 pin / happy-eyeballs 级防护。
+- 无批量删除、无 Admin 前端、无真实上游抓取、无生产 schema apply。
+- 已下载到客户端的第三方凭证不能由本站渲染吊销。
+
+本轮测试核实（合成夹具，无真实第三方 URL）：
+
+- targeted：`node --test server/tests/third-party-subscription-*.test.mjs` → 24 pass / 0 fail。
+- `npm run docs:authority:strict` → 通过。
+- `git diff --check origin/master...HEAD` → 通过。
+- `npm run validation:environment:source` → `state: ready`（Windows；NODE_PATH/proxy 为既有 warningKeys）。
+- `npm test` → 5408 tests，5341 pass，11 fail，56 skipped。本功能 24 个测试均在全量中通过。11 个失败项在未含本改动的基线（`c11f2291`，同一 Windows 机器、同一 node_modules）上以相同的文件/数量复现（artifact-manifest 2、control-plane-release-identity 1、welcome-coins-native-synthetic-runner 1、welcome-coins-runtime-closure 2、project-drift-report 1、project-export 1、project-state-check 1、validation-environment-preflight 2），属 Windows 环境类既有失败（CRLF 工作流文本、反斜杠路径等），不在 `third-party-subscription-*.test.mjs`：`artifact-manifest.test.mjs`、`control-plane-release-identity.test.mjs`、`control-plane-welcome-coins-native-synthetic-runner.test.mjs`、`control-plane-welcome-coins-runtime-closure.test.mjs`、`project-drift-report.test.mjs`、`project-export.test.mjs`、`project-state-check.test.mjs`、`validation-environment-preflight.test.mjs`。未改这些文件。
+
+覆盖：schema 临时库 validate/apply 与缺失 fail-closed；加密 round-trip 与拒绝无前缀/损坏信封；admin 无 token 为 401；导入拒绝 non-https / 私网 / 非法档位；PATCH 分配与观测/刷新响应不含 URL；ss/vless/hy2/tuic 解析与 unsupported/malformed 计数；base64 与明文；地区识别；fetch 对私网、重定向到私网、超限、超时失败；keep-last-good 与 inactive 标记；档位映射 fail-closed；flag-off YAML 与现有输出一致；flag-on 仅为对应档位增加带标记节点和国家分组；四条 YAML 入口一致；过期用户拿不到第三方节点。
+
+## 手工验证清单
+
+隔离 candidate 上由人执行（合成来源；不要对真实第三方 URL 或生产库操作）：
+
+1. 未设置 `THIRD_PARTY_SUBSCRIPTION_ENABLED` 时，现有订阅 YAML 与开启前一致。
+2. 用 schema CLI 对**空的新文件路径** apply（`--confirm-migration-id` /
+   `--confirm-ddl-checksum`）；不要对生产/control DB apply。
+3. 设置 `THIRD_PARTY_SUBSCRIPTION_ENABLED=true`、独立
+   `THIRD_PARTY_SUBSCRIPTION_DB_PATH`、独立 `THIRD_PARTY_SUBSCRIPTION_SECRET_KEY`。
+4. 用 admin token `POST /sources` 导入合成 https URL（例如 `https://example.invalid/...`，
+   或测试里注入的 fake HTTPS fetch）；确认响应无 URL。
+5. `PATCH` 分配 `monthly_basic` / `monthly_plus` / `yearly`；`GET /sources` 与
+   `GET /summary` 无 URL/凭证/host/password。
+6. `POST /sources/:id/refresh`（注入或本地 fake HTTPS）后，分别用 50/100/200 GB
+   档位与过期用户拉取 `/sub/clash.yaml`（及 artifact/profile/provider）：仅对应档位
+   看到 `[3P]` 节点和 `3P-<CC>` 分组；过期用户仍是到期提示。
+7. 日志与 API 响应不含订阅 URL。
+8. 回退：去掉 `THIRD_PARTY_SUBSCRIPTION_ENABLED` 后输出回到自营 YAML。
+
+当前完成：阶段与边界文档，以及第一阶段首轮 source-only 实现（default-off）。
+当前未完成：调度器、YAML 文件导入、Admin 前端、真实上游、生产 schema/发布。
 不得据此标为 Ready、请求合并、承诺真实节点可用或宣布生产功能上线。

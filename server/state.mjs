@@ -55,6 +55,7 @@ import {
   createWalletFirstSetupDeliveryEscrow
 } from "./services/platform/wallet-first-setup-delivery-escrow.mjs";
 import { createPortalTotpSecretProtector, createPortalTotpVerifier } from "./services/platform/portal-totp-verifier.mjs";
+import { createSqliteThirdPartySubscriptionStore } from "./services/platform/third-party-subscription-store.mjs";
 import { createUserPortalAuthService } from "./services/platform/user-portal-auth.mjs";
 import { createPortalAccountAdminAuthService } from "./services/platform/admin-auth.mjs";
 import { createHysteria2UsageCollector } from "./services/edge/hysteria2-usage-collector.mjs";
@@ -669,6 +670,18 @@ function createOptionalPortalTotpSecretProtector(value) {
     return createPortalTotpSecretProtector({ key });
   } catch (error) {
     throw runtimeValidationError(`USER_PORTAL_TOTP_SECRET_KEY ${error.message}`);
+  }
+}
+
+function createOptionalThirdPartySecretProtector(value) {
+  const key = optionalEnvText(value);
+  if (!key) {
+    return null;
+  }
+  try {
+    return createPortalTotpSecretProtector({ key });
+  } catch (error) {
+    throw runtimeValidationError(`THIRD_PARTY_SUBSCRIPTION_SECRET_KEY ${error.message}`);
   }
 }
 
@@ -2861,6 +2874,37 @@ export function createRuntimeState(options = {}) {
     }
   }
 
+  const thirdPartySubscriptionsEnabled = envFlag(env.THIRD_PARTY_SUBSCRIPTION_ENABLED);
+  const thirdPartySecretProtector = options.thirdPartySecretProtector
+    || createOptionalThirdPartySecretProtector(env.THIRD_PARTY_SUBSCRIPTION_SECRET_KEY);
+  let thirdPartyStore = options.thirdPartySubscriptionStore || null;
+  if (
+    !thirdPartyStore
+    && thirdPartySubscriptionsEnabled
+    && thirdPartySecretProtector
+  ) {
+    const thirdPartyDbPath = optionalEnvText(env.THIRD_PARTY_SUBSCRIPTION_DB_PATH);
+    if (thirdPartyDbPath) {
+      thirdPartyStore = createSqliteThirdPartySubscriptionStore({
+        dbPath: thirdPartyDbPath,
+        secretProtector: thirdPartySecretProtector,
+        fetchFn: options.thirdPartyFetchFn,
+        resolveFn: options.thirdPartyResolveFn,
+        nowFn: options.nowFn
+      });
+    }
+  }
+  const thirdPartySubscriptions = options.thirdPartySubscriptions || {
+    enabled: thirdPartySubscriptionsEnabled,
+    available: Boolean(
+      thirdPartySubscriptionsEnabled
+      && thirdPartySecretProtector
+      && thirdPartyStore?.available
+    ),
+    store: thirdPartyStore?.available ? thirdPartyStore : null,
+    secretProtector: thirdPartySecretProtector
+  };
+
   if (portalReferralRewardsEnabled) portalReferrals?.start();
 
   function close() {
@@ -2872,6 +2916,7 @@ export function createRuntimeState(options = {}) {
       if (ownsPaymentStore && paymentStore) {
         try { paymentStore.close(); } catch (error) { firstError ||= error; }
       }
+      try { thirdPartyStore?.close?.(); } catch (error) { firstError ||= error; }
       for (const [owned, store] of [
         [ownsCoinsWalletStore, coinsWalletStore],
         [ownsControlStore, platformControlStore],
@@ -2946,6 +2991,7 @@ export function createRuntimeState(options = {}) {
           firstError ||= error;
         }
       }
+      try { thirdPartyStore?.close?.(); } catch (error) { firstError ||= error; }
       for (const [owned, store] of [
         [ownsControlStore, platformControlStore],
         [ownsSubscriptionStore, subscriptionStore]
@@ -2977,6 +3023,7 @@ export function createRuntimeState(options = {}) {
       scope: "local_operator_console"
     },
     services: { ssLocal, httpProxy },
+    thirdPartySubscriptions,
     subscriptions: {
       store: subscriptionStore,
       core: subscriptionCore,
