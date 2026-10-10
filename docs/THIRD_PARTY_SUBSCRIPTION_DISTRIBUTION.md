@@ -76,7 +76,7 @@ PR 中承接第一阶段实现，不是已完成的 spec-only 交付，也不申
      与对外 plan id（`monthly_30d_50gb`、`monthly_30d_100gb`、`yearly_365d_200gb`）：
      `server/services/platform/coin-commerce-production-subscription-fulfillment.mjs`、
      `server/services/platform/subscription-control-db.mjs`。
-   - 仓库中“月卡”字样仅见于商城产品标题、测试和归档计划，没有名为“月卡”的后端字段。
+   - 在 `server/` 与 `docs/` 中检索，“月卡”字样仅见于商城产品标题、测试和归档计划，没有名为“月卡”的后端字段。
    需要 Ethan 或维护者确认：是否以 `portalPlan = monthly` 为准、50 GB 与 100 GB 两档
    是否都算月卡、7 天试用和年卡是否不下发。
 
