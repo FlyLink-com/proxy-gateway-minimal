@@ -52,6 +52,9 @@ PR 中承接第一阶段实现，不是已完成的 spec-only 交付，也不申
 - 第三方节点池按固定周期轮换、定期更换。Ethan 只说了「定期」，**轮换周期长度
   尚未决定**。本文先前出现的“每日更新/每日节点轮换/每日轮换”只是先前假设，
   不是决定，待 Ethan 确认周期后再改写；在此之前不得按“每日”实现或承诺。
+- 已决定（Ethan，2026-10-10：「三方节点只给月卡订阅用户」）：第三方节点只分发给
+  月卡订阅用户，其他用户（含非月卡订阅）不下发。此项解决“谁能拿到第三方节点”；
+  “月卡”在后端如何识别、到期或未续期后的处理仍是待回答问题（见第 4、5 项）。
 
 待 Ethan 回答：
 
@@ -59,9 +62,26 @@ PR 中承接第一阶段实现，不是已完成的 spec-only 交付，也不申
 2. 到期控制边界：到期或轮换后，旧配置是否必须立即失效？（若必须，需要上游
    按用户吊销能力或另一个受控接入方案，见上文第 3 项。）
 3. 轮换周期多久（每日只是先前假设，尚未确定）。
+4. 月卡到期或未续期后，该用户已有的第三方配置怎么处理（立即停止下发并返回既有
+   过期提示、保留到下次轮换，还是其他）？这与第 2 项到期控制边界相关，**尚未决定**。
+5. 后端如何识别“月卡”订阅用户（以哪个字段或产品标记），**尚未决定**。以下仅为
+   只读检索到的现有表示，不是结论：
+   - 门户套餐 `plan` 取值为 `trial` / `monthly` / `yearly`：`docs/COMMERCIAL_MODEL_V1.md`、
+     `server/services/platform/portal-access-requests.mjs`。
+   - 商城产品中的月卡（30 天，50 GB 或 100 GB 每月重置）对应 offer 版本
+     `offerv_plan_30d_50gb_monthly_v1`、`offerv_plan_30d_100gb_monthly_v1`，年卡为
+     `offerv_plan_365d_200gb_monthly_v1`：`docs/COINS_FIRST_COMMERCIAL_DECISION.md`、
+     `server/services/platform/coin-commerce-production-catalog.mjs`。
+   - offer 到 `portalPlan` 的映射（时长为 365 天记为 `yearly`，其余记为 `monthly`）
+     与对外 plan id（`monthly_30d_50gb`、`monthly_30d_100gb`、`yearly_365d_200gb`）：
+     `server/services/platform/coin-commerce-production-subscription-fulfillment.mjs`、
+     `server/services/platform/subscription-control-db.mjs`。
+   - 仓库中“月卡”字样仅见于商城产品标题、测试和归档计划，没有名为“月卡”的后端字段。
+   需要 Ethan 或维护者确认：是否以 `portalPlan = monthly` 为准、50 GB 与 100 GB 两档
+   是否都算月卡、7 天试用和年卡是否不下发。
 
-在以上三点得到回答之前，#762 保持仅文档（docs-only），不写代码；保持 Draft，
-不请求合并。
+在以上待回答问题（第 1–5 项）得到回答之前，#762 保持仅文档（docs-only），不写
+代码；保持 Draft，不请求合并。
 
 ## 第一阶段：受限 YAML 到认证分发
 
