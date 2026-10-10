@@ -129,6 +129,10 @@ inference, so the code verifies instead of assuming:
   the HTTP response is 409 with the specific code above (never silently proceeds,
   never falls back to the old behaviour for that account except the plain
   same-plan renewal path).
+* A missing `platform_account_resource_authorities` table counts as 0 rows.
+  Any other count-query error, an unreadable commerce mode, or a timestamp that
+  is not canonical ISO fails closed with `plan_switch_precheck_unavailable`
+  (HTTP 409). That result is not treated as zero rows.
 * Pre-launch checklist item (Ethan): before go-live, approve a read-only check on
   BWH of the flag value and `select count(*) from platform_account_resource_authorities`.
   Expected: flag unset/false, count 0.
@@ -240,9 +244,13 @@ traffic-accounting.mjs): used bytes are windowed by the `validFrom`-anchored cyc
 Upgrades keep `validFrom`, so the current cycle and its used bytes are unchanged
 and only the cap changes (override test: exhaust 50 GB, upgrade, remaining =
 100 GB - used). Known residual: for `upgrade_restart` the cycle rule changes from
-fixed 30-day windows to calendar-month anniversaries of the same anchor; near
-a boundary this can shift the window start by at most 2 days. A test pins the
-size of this shift; Ethan to accept or reject.
+fixed 30-day windows to calendar-month anniversaries of the same anchor.
+`usageCycleForBinding` was measured for anchors on day-of-month 1 through 31,
+across 12 months, and for 0 through 400 elapsed days. The largest window-start
+delta is 30 days. Example: anchor 2024-01-01 and 30 elapsed days; the fixed
+window starts 2024-01-31 and the monthly window starts 2024-01-01. The cycle
+functions are unchanged. A test pins this 30-day bound. The earlier "at most
+2 days" figure is not the bound. Ethan to accept or reject.
 Not in scope here (open point): an account suspended for over-quota stays
 suspended after an upgrade until the next cycle because the resume rule
 requires a newer cycle start (`portal-access-requests.mjs` ~1400-1420).
@@ -264,18 +272,20 @@ requires a newer cycle start (`portal-access-requests.mjs` ~1400-1420).
   changed plan/`valid_until`/scheduled switch and gets `plan_switch_state_changed`
   at confirm, or a reconciliation error if it already passed confirm (only
   possible through a race inside one command's lifetime).
-* Minimum remaining time for an upgrade quote: 60 minutes, to avoid a quote
-  that expires before fulfillment; below that, use renewal.
+* Minimum remaining time for an upgrade quote: 60 minutes. Below that the
+  upgrade is refused with `plan_switch_upgrade_window_closed`. The same plan
+  remains a renewal. A different-plan request stays a different-plan request.
 
 ## Rollback
 
 * Runtime rollback: set `COINS_COMMERCE_PLAN_SWITCH_ENABLED` false and restart
-  (flag is read at startup). New quotes revert to the old same-plan-only guard.
-  Already applied upgrades remain valid (entitlement rows are normal). Scheduled
-  downgrades are paid: before turning the flag off the operator must run the
-  read-only listing of `scheduled` rows and either wait for them to apply (the
-  due-applier keeps running while the schema is present) or apply them manually
-  under a Gate. Do not drop the tables while any `scheduled` row exists.
+  (the flag is read at startup). New quotes revert to the old same-plan-only
+  guard. Already applied upgrades remain valid (entitlement rows are normal).
+  The due applier runs only while the flag is on and the schema validates.
+  Before turning the flag off, list `scheduled` rows and leave the flag on
+  until those rows apply, or apply them under a separate Gate. A flag-off
+  process does not apply them. Do not drop the tables while any `scheduled`
+  row exists.
 * Schema rollback (additive only): `drop table platform_scheduled_plan_switches;
   drop table platform_coin_commerce_plan_switch_quotes;` only after exporting
   both tables and confirming zero `scheduled` rows. No existing table changed,
@@ -287,10 +297,15 @@ requires a newer cycle start (`portal-access-requests.mjs` ~1400-1420).
 New module `server/services/platform/coin-commerce-plan-switch-migrations.mjs`
 and CLI `scripts/platform-coin-commerce-plan-switch-schema.mjs`
 (`npm run platform:coin-commerce:plan-switch:schema`), mirroring
-`platform-account-resource-authority-schema.mjs`: `--dry-run`, `--apply`,
-`--validate`; additive `create table if not exists`-equivalent with
-validation functions (`validatePlanSwitchSchema`). Nothing is applied by this
-PR to any database.
+`platform-account-resource-authority-schema.mjs`. The CLI takes
+`--mode validate|dry-run|apply|rollback` and an absolute `--db-path`. Dry-run
+also accepts an absolute `--temp-root`. Apply and rollback require
+`--confirm-migration-id` and `--confirm-ddl-checksum`. Exit codes: 0 success,
+2 contract rejected, 3 schema rejected, 4 infrastructure failure. Rollback
+removes the migration ledger row only after the two documented DROP statements,
+and it refuses with `plan_switch_rollback_rows_present` while any
+`status='scheduled'` row exists. `validatePlanSwitchSchema` checks the additive
+tables. Nothing is applied by this work to any database.
 
 ## Portal API and UI
 
@@ -299,16 +314,26 @@ PR to any database.
   `{ offerRef, action: 'current_renew'|'upgrade'|'downgrade'|'unavailable',
   chargeUnits, creditUnits, effectiveAt, reasonCode }` plus
   `{ current: { offerRef, validUntil }, pendingSwitch: { toOfferRef, effectiveAt } | null }`.
-  `checkout-preview` response gains an optional `planSwitch` object
-  (`kind`, `creditUnits`, `effectiveAt`, `cancelsPendingDowngrade`).
+  `checkout-preview` and the confirmed order gain an optional `planSwitch`
+  object (`kind`, `creditUnits`, `chargeUnits`, `effectiveAt`,
+  `cancelsPendingDowngrade`). `chargeUnits` is the pre-discount switch charge,
+  so the portal can require `amountUnits` to equal the discounted charge.
+  The object is omitted when the flag is off and on ordinary purchases.
 * UI (`admin/src/features/user-portal`): `MarketplacePanel` receives the state;
-  every plan card shows the current plan + expiry date, a button label by action:
-  renew "续费 / Renew", upgrade "升级，补差价 N Coins / Upgrade, pay N Coins",
-  downgrade "期末降级 / Downgrade at period end (effective <date>)". Instead
-  of the generic "该商品当前不可用。" the new codes have specific copy, e.g.
-  "你当前的套餐有效期至 <日期>。该操作暂不支持，请在到期后切换。" The inline
-  confirm text must state: "升级立即生效，不退款；降级在当前周期结束后生效，已支付不退款；
-  续费或升级会取消待生效的降级". Flag off or endpoint 404: current UI unchanged.
+  every plan card shows the current plan and expiry date, and a button label
+  by action: renew "续费 / Renew", upgrade "升级，补差价 N Coins / Upgrade, pay N Coins"
+  (N is pre-discount `chargeUnits`), downgrade
+  "期末降级（<date> 生效） / Downgrade at period end (effective <date>)".
+  An unsupported card is disabled with "暂不可切换 / Plan change unavailable".
+  When `reasonCode` is set, the card uses that code's zh/en pair. When
+  `reasonCode` is null, the sentence is
+  "你当前的套餐有效期至 <日期>。该操作暂不支持，请在到期后切换。" /
+  "Your current plan runs until <date>. This change is not available. Switch after it ends."
+  The confirm dialog keeps "请确认商品和购买金额。 / Review the product and purchase amount."
+  and, only when `quote.planSwitch` is present, adds
+  "升级立即生效，不退款；降级在当前周期结束后生效，已支付不退款；续费或升级会取消待生效的降级。" /
+  "An upgrade takes effect immediately and is not refunded. A downgrade takes effect after the current period and the amount already paid is not refunded. Renewing or upgrading cancels a pending downgrade."
+  Flag off, or a 404 from the state endpoint: current UI unchanged.
 
 ## Test plan (source level)
 
@@ -322,9 +347,77 @@ effect, chain resolver old-vs-new. Existing `purchaseEligibilityReader` tests
 unchanged and passing with the flag off. Admin tests for cards and copy.
 Full suite is compared with the Windows baseline on clean `master`.
 
+## Implementation deviations
+
+These are the behaviors shipped in this branch. Money arithmetic in the charge
+table above is unchanged.
+
+1. An upgrade with less than 60 minutes remaining is `plan_switch_upgrade_window_closed`. It is not rewritten into a renewal. Same-plan renewal stays available.
+2. A second downgrade while one is `scheduled` is `plan_switch_already_scheduled`.
+3. In-place upgrade with stacked remaining time follows `floor((P_new - P_old) * R / D)` exactly. At 70 days the basic-to-plus charge is 23 Coins, above the 10 Coin list difference. It is not capped. The portal allows `amountUnits` above the catalog base only when `planSwitch` is present and `amountUnits` is at most `planSwitch.chargeUnits`. The deferred-checkout projection still rejects an amount above the catalog base.
+4. `creditUnits` for `upgrade_inplace` is the uncharged part of the price difference before the 1 Coin minimum. When the floor is 0, credit is the full difference and the charge is 1. Yearly `creditUnits` is `ceil(P_old * R / D_old)`. `chargeUnits` is before the discount reader. `listPriceUnits` is the target catalog price. `paid_units` stored for a downgrade is the captured order amount, after discount.
+5. `plan_switch_invalid_input` rejects malformed policy input. It is not an HTTP commerce code.
+6. The schema CLI uses `--mode validate|dry-run|apply|rollback` plus the confirm flags above. The earlier bare `--dry-run` / `--apply` / `--validate` names are those modes.
+7. `entitlement_id` is not a SQL foreign key. `cancels_switch_ref` is not a SQL foreign key. A BEFORE INSERT trigger requires a non-null `cancels_switch_ref` to match a `scheduled` row of the same account. `quote_ref`, `account_id`, and `switch_ref` are foreign keys with ON DELETE RESTRICT.
+8. Rollback runs the two documented DROP statements, then deletes this migration's ledger row. Applied and superseded rows do not block rollback. A `scheduled` row does.
+9. Extra CHECK constraints tighten the documented columns: renewal iff `from` equals `to`; downgrade iff `effective_at` is set; scheduled-row status shape; `from <> to` on scheduled rows.
+10. The startup schema check runs only when the flag is on, after the control store opens. The authority-flag combination still throws `plan_switch_requires_legacy_commerce` before any database file is created.
+11. `inspectCoinCommerceSchema` treats `platform_coin_commerce_*` objects as commerce-owned. The plan-switch quote table is excluded only when its stored SQL matches this migration exactly. Any other extra object in that prefix still fails commerce validation. Absent objects leave the check unchanged.
+12. `plan_switch_precheck_unavailable` covers an authority-count query error other than a missing table, an unreadable commerce mode, a non-canonical timestamp, and an internally invalid scheduled-switch read. A missing table is 0 rows.
+13. `upgrade_restart` can move the usage-cycle window start by 30 days. The cycle module is unchanged. See Billing-cycle / quota safety.
+14. Effect-chain start detection ignores the candidate itself. A mixed chain applies an `upgrade_inplace` before a later strictly increasing effect that shares `previousValidUntil`, when that in-place effect is the earliest such candidate. Ambiguous order resolves to null. Chains with no `switchKind` keep the previous resolver. Old effects are not rewritten with `switchKind: null`. Renewal effects do not carry `switchKind`.
+15. The applier refuses `upgrade_restart` when the computed `validUntil` is not strictly after the stored `validUntil`.
+16. With the flag on, an injected fulfillment handler or an injected commerce store fails startup with `coinCommercePrerequisiteError`. Production uses the factory.
+17. With the flag on, an ordinary or unmanaged purchase still charges the catalog list price through `applyCoinDiscount`.
+18. Downgrade fulfillment records the scheduled row and returns before runtime binding resolution. The live entitlement must still match the quote snapshot. `payment_status` must be `captured`.
+19. When plan-switch evaluation is not ok, the purchase-eligibility reader returns false. It does not fall through to the legacy same-plan reader.
+20. The optional `planSwitch` object includes `chargeUnits`. The state endpoint's `chargeUnits` are the pre-discount policy charge. The quote button uses that number; the dialog charges `amountUnits` after discount.
+21. The due applier is attached inside `recoverNonTerminalOrders` only when the flag is on. Flag off does not query the plan-switch tables and does not apply due rows. See Rollback.
+
 ## Manual verification
 
-See the PR body checklists: "must run in a test environment" and "pre-launch only".
+### Must run in a test environment
+
+Use a temporary SQLite file. Do not point these commands at a shared or production database.
+
+* Flag off: a same-plan quote charges the catalog price and has no `planSwitch` key. A different live plan is `offer_unavailable`. `GET /api/portal/commerce/plan-switch/state` is not registered (404). The marketplace renders the existing buy buttons when the client has no state method or the state request returns 404.
+* Flag on, schema applied to the temporary file with `npm run platform:coin-commerce:plan-switch:schema -- --mode apply --db-path <absolute-temp-path> --confirm-migration-id <id> --confirm-ddl-checksum <checksum>`:
+  * Basic to plus with 15 days left charges 5 Coins before discount (`upgrade_inplace`), keeps `validFrom`, and keeps used bytes.
+  * Basic to yearly restarts `validUntil` at fulfillment time plus 365 days and keeps `validFrom`.
+  * Plus to basic inserts one `scheduled` row, leaves the live plan unchanged, and delivers the order without a long-lived pending command.
+  * Cancel inside the 3-second window leaves no scheduled row.
+  * Confirm after the entitlement drifts returns `plan_switch_state_changed` and does not supersede a pending downgrade.
+  * After `effective_at`, quotes return `plan_switch_application_pending` until `applyDueScheduledPlanSwitches` runs; the following tick applies the downgrade on the expired-plan path.
+  * Authority flag on, commerce mode `wallet_first_unique_v1`, and an authority row each fail closed with their own 409 code.
+  * The state endpoint lists `current_renew`, `upgrade`, and `downgrade` with the charges above. The confirm dialog shows the immediate-upgrade, period-end downgrade, and cancel-pending sentences.
+* `npm run platform:coin-commerce:plan-switch:schema -- --mode validate --db-path <absolute-temp-path>` passes after apply and fails closed on a database without the tables.
+
+### Only before go-live
+
+Do not run this section from the implementation worktree. It needs Ethan and a separate Risk A production gate.
+
+* Ethan approves a read-only BWH check of `COINS_COMMERCE_ACCOUNT_RESOURCE_AUTHORITY_ENABLED` (expected unset or false) and `select count(*) from platform_account_resource_authorities` (expected 0). A missing table is 0. A query error stops the launch.
+* Schema apply uses the CLI confirm flags against the intended database only after that check. The flag stays off until the gate approves `COINS_COMMERCE_PLAN_SWITCH_ENABLED=true`.
+* Startup must refuse when that flag and `COINS_COMMERCE_ACCOUNT_RESOURCE_AUTHORITY_ENABLED` are both true.
+* Before any later flag-off rollback, list `status='scheduled'` rows and let them apply while the flag is still on.
+
+## Pre-launch checklist
+
+Test environment, before anyone asks for a production gate:
+
+* [ ] Flag-off purchase, checkout-preview, and marketplace match the current UI and responses.
+* [ ] Temporary-database apply, validate, idempotent re-apply, and rollback of an empty scheduled set succeed.
+* [ ] Charge examples in the table above match the policy tests, including the 1 ms yearly boundary and the credit-exceeds-price refusal.
+* [ ] In-place upgrade preserves used bytes. `upgrade_restart` cycle-window test still reports a 30-day maximum.
+* [ ] Cancel inside 3 seconds, snapshot drift, due-switch application, and replay are green on a temporary database.
+* [ ] Portal state, card labels, disabled reasons, and confirm copy are green in the admin tests.
+
+Only before go-live:
+
+* [ ] Ethan has approved the read-only BWH check: `COINS_COMMERCE_ACCOUNT_RESOURCE_AUTHORITY_ENABLED` unset or false, and `select count(*) from platform_account_resource_authorities` returns 0.
+* [ ] A separate Risk A production gate names the database, the migration id, and the DDL checksum before any schema apply.
+* [ ] The plan-switch flag and the authority flag are not both enabled.
+* [ ] Operators have the flag-off procedure: wait for zero `scheduled` rows before disabling the flag, and do not drop the tables while a `scheduled` row exists.
 
 ## Open points for Ethan
 
@@ -333,3 +426,5 @@ See the PR body checklists: "must run in a test environment" and "pre-launch onl
 2. Yearly upgrade uses term restart (see Expiry handling choice).
 3. Over-quota-suspended accounts are not auto-resumed after an upgrade.
 4. Up to one coordinator tick of expired service when a downgrade applies.
+5. Accept or reject the measured 30-day `upgrade_restart` usage-window shift.
+   The cycle functions were not changed.

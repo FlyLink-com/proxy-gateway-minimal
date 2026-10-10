@@ -92,6 +92,9 @@ describe("plan switch commerce client", () => {
     const client = createPortalCoinCommerceClient({
       fetchFn: vi.fn(async () => new Response("missing", { status: 404 }))
     });
+    if (typeof client.readPlanSwitchState !== "function") {
+      throw new Error("readPlanSwitchState is missing");
+    }
     await expect(client.readPlanSwitchState({
       sessionRef: "session_alpha"
     })).resolves.toBeNull();
