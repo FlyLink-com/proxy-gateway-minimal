@@ -1,8 +1,7 @@
 import { proxyDisplayName } from "../proxy-display-name.mjs";
 import {
   findUsageBindingForTenant,
-  resolveThirdPartyPlanId,
-  trafficLimitBytesFromBinding
+  resolveThirdPartyPlanId
 } from "./third-party-subscription-tier.mjs";
 
 export const THIRD_PARTY_NAME_MARKER = "[3P]";
@@ -82,7 +81,8 @@ export function applyThirdPartyProxyConfig(state, result) {
   }
   const binding = findUsageBindingForTenant(state.platform?.controlStore, tenant?.id);
   const planId = resolveThirdPartyPlanId({
-    trafficLimitBytes: trafficLimitBytesFromBinding(binding),
+    plan: binding?.plan,
+    trafficLimitBytes: binding?.trafficLimitBytes,
     tenantStatus: tenant?.status
   });
   if (!planId) return original;

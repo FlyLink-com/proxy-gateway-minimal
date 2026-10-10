@@ -4,7 +4,11 @@ import Database from "better-sqlite3";
 import express from "express";
 import { generateClashSubscription } from "../services/clash-subscription.mjs";
 import { applyThirdPartyProxyConfig } from "../services/platform/third-party-subscription-render.mjs";
-import { resolveThirdPartyPlanId } from "../services/platform/third-party-subscription-tier.mjs";
+import {
+  THIRD_PARTY_OFFER_PLAN_MAP,
+  findUsageBindingForTenant,
+  resolveThirdPartyPlanId
+} from "../services/platform/third-party-subscription-tier.mjs";
 import { createPortalTotpSecretProtector } from "../services/platform/portal-totp-verifier.mjs";
 import {
   REQUIRED_THIRD_PARTY_SUBSCRIPTION_DDL_CHECKSUM,
@@ -20,6 +24,9 @@ import { generateSubscriptionExpiryNotice } from "../services/subscription-expir
 import { listen } from "./helpers/listen.mjs";
 
 const GIB = 1024 ** 3;
+const OFFER_50 = "offerv_plan_30d_50gb_monthly_v1";
+const OFFER_100 = "offerv_plan_30d_100gb_monthly_v1";
+const OFFER_200 = "offerv_plan_365d_200gb_monthly_v1";
 const SECRET_KEY = "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff";
 const SOURCE_URL = "https://example.invalid/third-party-source-secret-path";
 const TOKEN = "pgsub_third_party_synthetic_only";
@@ -59,14 +66,88 @@ function proxyGroupBlock(yaml, name) {
   return yaml.slice(start, next === -1 ? yaml.length : next);
 }
 
-test("tier resolution maps 50/100/200 GiB and fails closed otherwise", () => {
-  assert.equal(resolveThirdPartyPlanId({ trafficLimitBytes: 50 * GIB, tenantStatus: "active" }), "monthly_basic");
-  assert.equal(resolveThirdPartyPlanId({ trafficLimitBytes: 100 * GIB, tenantStatus: "active" }), "monthly_plus");
-  assert.equal(resolveThirdPartyPlanId({ trafficLimitBytes: 200 * GIB, tenantStatus: "active" }), "yearly");
-  assert.equal(resolveThirdPartyPlanId({ trafficLimitBytes: 5 * GIB, tenantStatus: "active" }), null);
-  assert.equal(resolveThirdPartyPlanId({ trafficLimitBytes: 50 * GIB, tenantStatus: "disabled" }), null);
-  assert.equal(resolveThirdPartyPlanId({ trafficLimitBytes: 50 * GIB }), "monthly_basic");
+test("tier resolution follows the offer version ref and fails closed otherwise", () => {
+  // WALLET_FIRST_RESOURCE_EFFECT_SUPPORTED_OFFERS is not exported from
+  // subscription-control-db.mjs, so this test does not assert key equality
+  // against that private map. The keys below are the duplicated source of truth.
+  assert.deepEqual(Object.keys(THIRD_PARTY_OFFER_PLAN_MAP), [OFFER_50, OFFER_100, OFFER_200]);
+  const expectedPlanId = {
+    [OFFER_50]: "monthly_basic",
+    [OFFER_100]: "monthly_plus",
+    [OFFER_200]: "yearly"
+  };
+  for (const [ref, offer] of Object.entries(THIRD_PARTY_OFFER_PLAN_MAP)) {
+    const bytes = offer.monthlyTrafficGb * GIB;
+    assert.equal(offer.planId, expectedPlanId[ref]);
+    assert.equal(resolveThirdPartyPlanId({
+      plan: ref,
+      trafficLimitBytes: bytes,
+      tenantStatus: "active"
+    }), offer.planId);
+    assert.equal(resolveThirdPartyPlanId({
+      plan: ref,
+      trafficLimitBytes: bytes + 1,
+      tenantStatus: "active"
+    }), null);
+    assert.equal(resolveThirdPartyPlanId({
+      plan: ref,
+      trafficLimitBytes: bytes - 1,
+      tenantStatus: "active"
+    }), null);
+    assert.equal(resolveThirdPartyPlanId({
+      offerVersionRef: ref,
+      trafficLimitBytes: bytes,
+      tenantStatus: "active"
+    }), offer.planId);
+    assert.equal(resolveThirdPartyPlanId({
+      plan: ref,
+      tenantStatus: "active"
+    }), offer.planId);
+    assert.equal(resolveThirdPartyPlanId({
+      plan: ref,
+      trafficLimitBytes: bytes,
+      tenantStatus: "disabled"
+    }), null);
+    assert.equal(resolveThirdPartyPlanId({
+      plan: ref,
+      trafficLimitBytes: bytes,
+      tenantStatus: "expired"
+    }), null);
+  }
+  for (const plan of ["monthly", "yearly", "trial", "pilot"]) {
+    assert.equal(resolveThirdPartyPlanId({
+      plan,
+      trafficLimitBytes: 50 * GIB,
+      tenantStatus: "active"
+    }), null);
+  }
+  for (const plan of ["monthly_30d_50gb", "monthly_30d_100gb", "yearly_365d_200gb", "offerv_unknown"]) {
+    assert.equal(resolveThirdPartyPlanId({
+      plan,
+      trafficLimitBytes: 50 * GIB,
+      tenantStatus: "active"
+    }), null);
+  }
+  assert.equal(resolveThirdPartyPlanId({
+    plan: OFFER_50,
+    trafficLimitBytes: 0,
+    tenantStatus: "active"
+  }), null);
+  assert.equal(resolveThirdPartyPlanId({ trafficLimitBytes: 50 * GIB, tenantStatus: "active" }), null);
   assert.equal(resolveThirdPartyPlanId({}), null);
+  assert.equal(resolveThirdPartyPlanId({ tenantStatus: "active" }), null);
+});
+
+test("binding lookup returns a plan even when trafficLimitBytes is absent", () => {
+  const binding = findUsageBindingForTenant({
+    findUsageBindingByTenantRef: () => ({ plan: OFFER_50, trafficLimitBytes: null })
+  }, "tenant_basic");
+  assert.equal(binding.plan, OFFER_50);
+  assert.equal(findUsageBindingForTenant({
+    findUsageBindingByTenantRef: () => {
+      throw new Error("control db down");
+    }
+  }, "tenant_basic"), null);
 });
 
 test("flag-off merge is identity and YAML is byte-identical to current output", () => {
@@ -131,7 +212,7 @@ test("flag-on adds marked third-party nodes and per-country groups for the match
     thirdPartySubscriptions: feature,
     platform: {
       controlStore: {
-        findUsageBindingByTenantRef: () => ({ trafficLimitBytes: 100 * GIB })
+        findUsageBindingByTenantRef: () => ({ plan: OFFER_100, trafficLimitBytes: 100 * GIB })
       }
     }
   };
@@ -146,7 +227,7 @@ test("flag-on adds marked third-party nodes and per-country groups for the match
     thirdPartySubscriptions: feature,
     platform: {
       controlStore: {
-        findUsageBindingByTenantRef: () => ({ trafficLimitBytes: 50 * GIB })
+        findUsageBindingByTenantRef: () => ({ plan: OFFER_50, trafficLimitBytes: 50 * GIB })
       }
     }
   };
@@ -176,14 +257,20 @@ test("flag-on adds marked third-party nodes and per-country groups for the match
   assert.doesNotMatch(yaml, /example\.invalid|third-party-source-secret-path/);
 });
 
-test("unknown traffic, inactive tenant and missing binding receive no third-party nodes", async () => {
+test("legacy plans, mismatched traffic, inactive tenant and missing binding receive no third-party nodes", async () => {
   const feature = await seededFeature();
   const original = sampleOwnConfig();
   const baseline = generateClashSubscription(original);
   const cases = [
-    { tenant: { id: "t1", status: "active" }, binding: { trafficLimitBytes: 5 * GIB } },
-    { tenant: { id: "t2", status: "disabled" }, binding: { trafficLimitBytes: 50 * GIB } },
-    { tenant: { id: "t3", status: "active" }, binding: null }
+    { tenant: { id: "t1", status: "active" }, binding: { plan: OFFER_50, trafficLimitBytes: 5 * GIB } },
+    { tenant: { id: "t2", status: "disabled" }, binding: { plan: OFFER_50, trafficLimitBytes: 50 * GIB } },
+    { tenant: { id: "t3", status: "active" }, binding: null },
+    { tenant: { id: "t4", status: "active" }, binding: { plan: "monthly", trafficLimitBytes: 50 * GIB } },
+    { tenant: { id: "t5", status: "active" }, binding: { plan: "yearly", trafficLimitBytes: 200 * GIB } },
+    { tenant: { id: "t6", status: "active" }, binding: { plan: "trial", trafficLimitBytes: 50 * GIB } },
+    { tenant: { id: "t7", status: "active" }, binding: { plan: "pilot" } },
+    { tenant: { id: "t8", status: "active" }, binding: { plan: "offerv_unknown", trafficLimitBytes: 50 * GIB } },
+    { tenant: { id: "t9", status: "active" }, binding: { plan: OFFER_200, trafficLimitBytes: 50 * GIB } }
   ];
   for (const item of cases) {
     const yaml = generateClashSubscription(applyThirdPartyProxyConfig({
@@ -219,7 +306,7 @@ test("flag-off HTTP YAML stays identical and flag-on adds 3P nodes on all four e
   core.createTenant({ displayName: "Synthetic active", expiresAt: "2026-12-01T00:00:00.000Z" });
   core.createSubscriptionArtifact("tenant_active_fixture");
   const controlStore = {
-    findUsageBindingByTenantRef: () => ({ trafficLimitBytes: 50 * GIB })
+    findUsageBindingByTenantRef: () => ({ plan: OFFER_50, trafficLimitBytes: 50 * GIB })
   };
   const offApp = express();
   offApp.use(subscriptionRoutes({
@@ -275,7 +362,7 @@ test("third-party display names stay unique against owned node names", async () 
     thirdPartySubscriptions: feature,
     platform: {
       controlStore: {
-        findUsageBindingByTenantRef: () => ({ trafficLimitBytes: 50 * GIB })
+        findUsageBindingByTenantRef: () => ({ plan: OFFER_50, trafficLimitBytes: 50 * GIB })
       }
     }
   }, { proxyConfig: original, tenant: { id: "t", status: "active" } }));
@@ -311,7 +398,7 @@ test("expired subscriber YAML is the expiry notice and contains no third-party n
     thirdPartySubscriptions: feature,
     platform: {
       controlStore: {
-        findUsageBindingByTenantRef: () => ({ trafficLimitBytes: 50 * GIB })
+        findUsageBindingByTenantRef: () => ({ plan: OFFER_50, trafficLimitBytes: 50 * GIB })
       }
     }
   }));
@@ -328,4 +415,10 @@ test("expired subscriber YAML is the expiry notice and contains no third-party n
   assert.match(yaml, /当前订阅已过期/);
   assert.doesNotMatch(yaml, /\[3P\]|3P-HK|synthetic-password/);
   assert.equal(yaml, generateSubscriptionExpiryNotice());
+});
+
+test("tier resolution ignores inherited object keys as plan refs", () => {
+  for (const plan of ["__proto__", "constructor", "toString", "hasOwnProperty"]) {
+    assert.equal(resolveThirdPartyPlanId({ plan, tenantStatus: "active" }), null, plan);
+  }
 });
