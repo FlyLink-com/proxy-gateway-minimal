@@ -300,6 +300,91 @@ describe("Portal Coins dialogs", () => {
     expect(onRequestClose).toHaveBeenCalledTimes(1);
   });
 
+  test.each([
+    [
+      "zh",
+      "请确认商品和购买金额。",
+      "升级立即生效，不退款；降级在当前周期结束后生效，已支付不退款；续费或升级会取消待生效的降级。"
+    ],
+    [
+      "en",
+      "Review the product and purchase amount.",
+      "An upgrade takes effect immediately and is not refunded. A downgrade takes effect after the current period and the amount already paid is not refunded. Renewing or upgrading cancels a pending downgrade."
+    ]
+  ] as const)("a plan-switch quote states the switch rules in %s and keeps the review line", (locale, review, rules) => {
+    const quote: PortalCoinQuote = {
+      ...insufficientQuote,
+      purchaseAvailability: "available",
+      shortfallUnits: 0,
+      amountUnits: 5,
+      allocation: [{ coinType: "paid_coins", amountUnits: 5 }],
+      balances: {
+        before: { ...insufficientQuote.balances.before, paidCoins: 100 },
+        after: {
+          ...insufficientQuote.balances.after,
+          paidCoins: 95,
+          heldCoins: 5
+        }
+      },
+      planSwitch: {
+        kind: "upgrade_inplace",
+        creditUnits: 5,
+        chargeUnits: 5,
+        effectiveAt: null,
+        cancelsPendingDowngrade: false
+      }
+    };
+    render(createElement(CoinsPurchaseDialog, {
+      locale,
+      quote,
+      order: null,
+      submitting: false,
+      cancelling: false,
+      errorCode: null,
+      onConfirm: vi.fn(),
+      onCancel: vi.fn(),
+      onRefresh: vi.fn(),
+      onRequestClose: vi.fn()
+    }));
+    const dialog = screen.getByRole("dialog");
+    expect(dialog).toHaveTextContent(review);
+    expect(dialog).toHaveTextContent(rules);
+  });
+
+  test("a quote without a plan switch omits the switch rules", () => {
+    render(createElement(CoinsPurchaseDialog, {
+      locale: "en",
+      quote: {
+        ...insufficientQuote,
+        purchaseAvailability: "available",
+        shortfallUnits: 0,
+        allocation: [{ coinType: "paid_coins", amountUnits: 15 }],
+        balances: {
+          before: { ...insufficientQuote.balances.before, paidCoins: 20 },
+          after: {
+            ...insufficientQuote.balances.after,
+            paidCoins: 5,
+            heldCoins: 15
+          }
+        }
+      },
+      order: null,
+      submitting: false,
+      cancelling: false,
+      errorCode: null,
+      onConfirm: vi.fn(),
+      onCancel: vi.fn(),
+      onRefresh: vi.fn(),
+      onRequestClose: vi.fn()
+    }));
+    expect(screen.getByRole("dialog")).not.toHaveTextContent(
+      "An upgrade takes effect immediately"
+    );
+    expect(screen.getByRole("dialog")).toHaveTextContent(
+      "Review the product and purchase amount."
+    );
+  });
+
   test("submitting Order marks the dialog busy and locks Close and Escape", () => {
     const onRequestClose = vi.fn();
     render(createElement(CoinsPurchaseDialog, {

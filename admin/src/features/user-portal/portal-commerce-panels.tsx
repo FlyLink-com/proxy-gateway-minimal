@@ -14,8 +14,10 @@ import {
   type PortalCoinCommerceClient,
   type PortalCommerceModel,
   type PortalCommerceModelClient,
-  type PortalCoinOffer
+  type PortalCoinOffer,
+  type PortalPlanSwitchState
 } from "./commerce";
+import { formatPortalDateTime } from "./portal-commerce-presentation";
 import type { PortalWalletFirstCommerceClient } from "./commerce";
 import { MarketplaceOfferCard } from "./marketplace-offer-card";
 import { WalletFirstMarketplacePanel } from "./wallet-first-marketplace-panel";
@@ -115,6 +117,7 @@ function LegacyMarketplacePanel({
       ? { status: "loading", offers: [] }
       : { status: "unavailable", offers: [] }
   ));
+  const [planSwitchState, setPlanSwitchState] = useState<PortalPlanSwitchState | null>(null);
   const [productIntent, setProductIntent] =
     useState<MarketplaceProductIntent | null>(null);
   const [dialogVisible, setDialogVisible] = useState(false);
@@ -211,8 +214,54 @@ function LegacyMarketplacePanel({
     };
   }, [commerceClient, refreshRevision, sessionRef]);
 
+  useEffect(() => {
+    if (
+      !commerceClient
+      || !sessionRef
+      || typeof commerceClient.readPlanSwitchState !== "function"
+    ) {
+      setPlanSwitchState(null);
+      return undefined;
+    }
+    let cancelled = false;
+    void commerceClient.readPlanSwitchState({ sessionRef }).then((next) => {
+      if (!cancelled) setPlanSwitchState(next);
+    }).catch(() => {
+      if (!cancelled) setPlanSwitchState(null);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [commerceClient, refreshRevision, sessionRef]);
+
   const planOffers = catalog.offers.filter((offer) => offer.category === "plan");
   const dataPackOffers = catalog.offers.filter((offer) => offer.category === "data_pack");
+  const planSwitchBlocking = Boolean(planSwitchState?.offers.some((item) => (
+    typeof item.reasonCode === "string" && item.reasonCode.startsWith("plan_switch_")
+  )));
+  const showPlanSwitch = Boolean(planSwitchState?.current) || planSwitchBlocking;
+  function planActionFor(offer: PortalCoinOffer) {
+    if (!showPlanSwitch || !planSwitchState) return undefined;
+    const entry = planSwitchState.offers.find((item) => item.offerRef === offer.offerRef);
+    if (!entry) return undefined;
+    const currentOffer = planSwitchState.current
+      ? catalog.offers.find((item) => item.offerRef === planSwitchState.current?.offerRef)
+      : null;
+    return {
+      action: entry.action,
+      chargeUnits: entry.chargeUnits,
+      effectiveAt: entry.effectiveAt,
+      reasonCode: entry.reasonCode,
+      currentTitle: currentOffer
+        ? currentOffer.title[locale]
+        : planSwitchState.current?.offerRef ?? null,
+      currentValidUntil: planSwitchState.current?.validUntil ?? null
+    };
+  }
+  const pendingSwitch = showPlanSwitch ? planSwitchState?.pendingSwitch ?? null : null;
+  const pendingOffer = pendingSwitch
+    ? catalog.offers.find((item) => item.offerRef === pendingSwitch.toOfferRef)
+    : null;
   const productBusy = purchaseFlow.phase === "loading_detail"
     || purchaseFlow.phase === "loading_preview"
     || purchaseFlow.phase === "submitting";
@@ -371,6 +420,13 @@ function LegacyMarketplacePanel({
           className="portal-marketplace-group"
           aria-label={zh ? "套餐" : "Plans"}
         >
+          {pendingSwitch ? (
+            <p className="portal-marketplace-plan-switch" role="status">
+              {zh
+                ? `待生效降级：${pendingOffer?.title.zh ?? pendingSwitch.toOfferRef}，${formatPortalDateTime(pendingSwitch.effectiveAt, locale)} 生效。续费或升级会取消该降级。`
+                : `Pending downgrade: ${pendingOffer?.title.en ?? pendingSwitch.toOfferRef}, effective ${formatPortalDateTime(pendingSwitch.effectiveAt, locale)}. Renewing or upgrading cancels it.`}
+            </p>
+          ) : null}
           <ul className="portal-marketplace-grid">
             {planOffers.map((offer) => (
               <MarketplaceOfferCard
@@ -379,6 +435,7 @@ function LegacyMarketplacePanel({
                 locale={locale}
                 mode="purchase"
                 offer={offer}
+                planAction={planActionFor(offer)}
                 onPrimary={(event) => {
                   void startProduct(
                     offer.offerRef,

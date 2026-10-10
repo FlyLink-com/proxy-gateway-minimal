@@ -222,6 +222,107 @@ export function evaluatePlanSwitchRequest({
   });
 }
 
+export function describePlanSwitchPortalState({
+  offers,
+  authorityFlagEnabled,
+  commerceMode,
+  authorityRowCount,
+  nowIso,
+  entitlement,
+  scheduledSwitch
+}) {
+  if (!Array.isArray(offers) || typeof authorityFlagEnabled !== "boolean") {
+    return null;
+  }
+  const planOffers = [];
+  for (const offer of offers) {
+    if (
+      !offer
+      || typeof offer.offerRef !== "string"
+      || typeof offer.offerVersionRef !== "string"
+    ) {
+      return null;
+    }
+    if (planSwitchTierForOfferVersionRef(offer.offerVersionRef)) {
+      planOffers.push({
+        offerRef: offer.offerRef,
+        offerVersionRef: offer.offerVersionRef
+      });
+    }
+  }
+  const scheduled = scheduledSwitch?.ok === true ? scheduledSwitch.row : null;
+  let pendingSwitch = null;
+  if (scheduled && typeof scheduled.to_offer_version_ref === "string") {
+    const target = planSwitchTierForOfferVersionRef(scheduled.to_offer_version_ref);
+    if (target && typeof scheduled.effective_at === "string") {
+      pendingSwitch = {
+        toOfferRef: target.offerRef,
+        effectiveAt: scheduled.effective_at
+      };
+    }
+  }
+  const nowMs = isoMs(nowIso);
+  const untilMs = entitlement ? isoMs(entitlement.validUntil) : null;
+  const live = entitlement && nowMs !== null && untilMs !== null && untilMs > nowMs
+    ? entitlement
+    : null;
+  const currentTier = live
+    ? planSwitchTierForOfferVersionRef(live.plan)
+    : null;
+  const current = currentTier
+    ? { offerRef: currentTier.offerRef, validUntil: live.validUntil }
+    : null;
+  const described = [];
+  for (const offer of planOffers) {
+    const decision = evaluatePlanSwitchRequest({
+      requestedOfferVersionRef: offer.offerVersionRef,
+      authorityFlagEnabled,
+      commerceMode,
+      authorityRowCount,
+      nowIso,
+      entitlement: entitlement ?? null,
+      scheduledSwitch: scheduledSwitch ?? { ok: true, row: null }
+    });
+    if (!decision || decision.ok !== true) {
+      described.push({
+        offerRef: offer.offerRef,
+        action: "unavailable",
+        chargeUnits: null,
+        creditUnits: null,
+        effectiveAt: null,
+        reasonCode: typeof decision?.code === "string"
+          ? decision.code
+          : PLAN_SWITCH_ERROR.PRECHECK_UNAVAILABLE
+      });
+      continue;
+    }
+    if (decision.ordinary) {
+      described.push({
+        offerRef: offer.offerRef,
+        action: "unavailable",
+        chargeUnits: null,
+        creditUnits: null,
+        effectiveAt: null,
+        reasonCode: null
+      });
+      continue;
+    }
+    described.push({
+      offerRef: offer.offerRef,
+      action: decision.kind === "renewal"
+        ? "current_renew"
+        : decision.kind === "downgrade_scheduled"
+          ? "downgrade"
+          : "upgrade",
+      chargeUnits: decision.chargeUnits,
+      creditUnits: decision.creditUnits,
+      effectiveAt: decision.effectiveAt,
+      reasonCode: null
+    });
+  }
+  return { current, pendingSwitch, offers: described };
+}
+
 export function planSwitchQuoteMatchesDecision(row, decision) {
   if (!row || !decision || decision.ok !== true || decision.ordinary) return false;
   return row.kind === decision.kind

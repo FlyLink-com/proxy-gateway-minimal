@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import Database from "better-sqlite3";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 
 import {
   COIN_COMMERCE_PRODUCTION_OFFERS
@@ -23,6 +24,8 @@ import {
 import {
   createCoinCommerceProductionSubscriptionFulfillment
 } from "../services/platform/coin-commerce-production-subscription-fulfillment.mjs";
+import { createRuntimeState } from "../state.mjs";
+import { buildSourceValidationTestEnvironment } from "../../scripts/source-validation-test-runner.mjs";
 import {
   PLAN_SWITCH_ERROR,
   computeSwitchCharge
@@ -50,6 +53,7 @@ import { createSubscriptionCore } from "../services/subscriptions/core.mjs";
 import { createSqliteSubscriptionStore } from "../services/subscriptions/repository.mjs";
 import { hashSubscriptionToken } from "../services/subscriptions/tokens.mjs";
 
+const REPOSITORY_ROOT = resolve(fileURLToPath(new URL("../../", import.meta.url)));
 const DAY_MS = 86_400_000;
 const CLOCK = "2026-08-01T00:00:00.000Z";
 const VALID_FROM = "2026-07-17T00:00:00.000Z";
@@ -380,6 +384,7 @@ test("monthly card plan switch server integration", { concurrency: false }, asyn
       );
       const renewal = harness.quote(BASIC.offerRef);
       assert.equal(renewal.amountUnits, BASIC.baseCoinUnits);
+      assert.equal(Object.hasOwn(renewal, "planSwitch"), false);
       assert.equal(harness.database.prepare(`
         select count(*) from platform_coin_commerce_plan_switch_quotes
       `).pluck().get(), 0);
@@ -463,7 +468,14 @@ test("monthly card plan switch server integration", { concurrency: false }, asyn
       assert.equal(expected.chargeUnits, 5);
       const quote = harness.quote(PLUS.offerRef);
       assert.equal(quote.amountUnits, expected.chargeUnits);
-      harness.confirm(quote, "confirm_upgrade");
+      assert.equal(quote.planSwitch.kind, "upgrade_inplace");
+      assert.equal(quote.planSwitch.chargeUnits, 5);
+      assert.equal(quote.planSwitch.creditUnits, 5);
+      assert.equal(quote.planSwitch.effectiveAt, null);
+      assert.equal(quote.planSwitch.cancelsPendingDowngrade, false);
+      const upgradeOrder = harness.confirm(quote, "confirm_upgrade");
+      assert.equal(upgradeOrder.planSwitch.kind, "upgrade_inplace");
+      assert.equal(upgradeOrder.planSwitch.chargeUnits, 5);
       const summary = await harness.deliver();
       assert.equal(summary.commandsDelivered, 1, JSON.stringify(summary));
       const after = harness.entitlement();
@@ -546,6 +558,7 @@ test("monthly card plan switch server integration", { concurrency: false }, asyn
   await t.test("cancel inside the window leaves no scheduled downgrade", () => {
     const harness = openHarness();
     try {
+      const before = harness.entitlement();
       const quote = harness.quote(BASIC.offerRef);
       assert.equal(quote.amountUnits, BASIC.baseCoinUnits);
       const order = harness.confirm(quote, "confirm_downgrade_cancel");
@@ -561,7 +574,17 @@ test("monthly card plan switch server integration", { concurrency: false }, asyn
       });
       assert.equal(cancelled.paymentStatus, "cancelled");
       assert.equal(harness.scheduledRows().length, 0);
-      assert.equal(harness.entitlement().plan, PLUS.offerVersionRef);
+      const after = harness.entitlement();
+      assert.equal(after.plan, PLUS.offerVersionRef);
+      assert.equal(after.validFrom, before.validFrom);
+      assert.equal(after.validUntil, before.validUntil);
+      assert.equal(after.trafficLimitBytes, before.trafficLimitBytes);
+      assert.equal(harness.database.prepare(`
+        select count(*) from platform_coin_commerce_fulfillment_commands
+      `).pluck().get(), 0);
+      assert.equal(harness.database.prepare(`
+        select count(*) from platform_scheduled_plan_switches
+      `).pluck().get(), 0);
     } finally {
       harness.close();
     }
@@ -643,6 +666,11 @@ test("monthly card plan switch server integration", { concurrency: false }, asyn
       });
       assert.equal(replay.status, "delivered");
       assert.equal(harness.entitlement().validUntil, appliedUntil);
+      const again = await harness.coordinator.runOnce();
+      assert.equal(again.commandsDelivered, 0, JSON.stringify(again));
+      assert.equal(harness.scheduledRows()[0].status, "applied");
+      assert.equal(harness.entitlement().validUntil, appliedUntil);
+      assert.equal(harness.entitlement().plan, BASIC.offerVersionRef);
     } finally {
       harness.close();
     }
@@ -823,5 +851,269 @@ test("upgrade_restart cycle window can shift by 30 days", () => {
     }
   }
   assert.equal(maxDelta, 30);
+});
+
+function stateRuntimeEnv(overrides = {}) {
+  return {
+    ...buildSourceValidationTestEnvironment({}, { repositoryRoot: REPOSITORY_ROOT }),
+    ...overrides
+  };
+}
+
+test("coordinator tick applies a due switch through state.mjs planSwitchApplyDue", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "plan-switch-state-due-"));
+  const controlDbPath = join(directory, "control.sqlite");
+  const subscriptionDbPath = join(directory, "subscriptions.sqlite");
+  const proxyConfigPath = join(directory, "proxy-servers.json");
+  writeFileSync(proxyConfigPath, JSON.stringify({
+    servers: [{
+      id: "node_sg",
+      name: "vultr-singapore",
+      region: "Singapore",
+      host: "203.0.113.10",
+      port: 18388,
+      method: "aes-256-gcm",
+      password: "synthetic-shared-secret"
+    }],
+    pingHosts: [],
+    nginx: {}
+  }));
+  const seed = createRuntimeState({
+    rootDir: new URL("../../", import.meta.url),
+    env: stateRuntimeEnv({ CONSOLE_TOKEN: "secret" }),
+    controlDbPath,
+    subscriptionDbPath,
+    proxyConfigPath,
+    autoStartHttpProxy: false
+  });
+  await seed.close();
+  const nowFn = () => new Date("2026-08-01T00:00:00.000Z");
+  applyCoinWalletMigrations({
+    dbPath: controlDbPath,
+    expectedMigrationId: REQUIRED_COIN_WALLET_MIGRATION_ID,
+    expectedDdlChecksum: COIN_WALLET_MIGRATIONS[0].ddlChecksum,
+    nowFn
+  });
+  applyCoinCommerceMigrations({
+    dbPath: controlDbPath,
+    expectedMigrationId: REQUIRED_COIN_COMMERCE_MIGRATION_ID,
+    expectedDdlChecksum: COIN_COMMERCE_MIGRATIONS[0].ddlChecksum,
+    nowFn
+  });
+  applyPlanSwitchMigrations({
+    dbPath: controlDbPath,
+    expectedMigrationId: REQUIRED_PLAN_SWITCH_MIGRATION_ID,
+    expectedDdlChecksum: PLAN_SWITCH_MIGRATIONS[0].ddlChecksum,
+    nowFn
+  });
+
+  const accountId = "acct_state_due_switch";
+  const entitlementRef = "ent_state_due_switch";
+  const requestRef = "pareq_state_due_switch";
+  let state;
+  let capturedExecute;
+  try {
+    state = createRuntimeState({
+      rootDir: new URL("../../", import.meta.url),
+      env: stateRuntimeEnv({
+        CONSOLE_TOKEN: "secret",
+        USER_PORTAL_ROUTES_ENABLED: "true",
+        COINS_WALLET_ENABLED: "true",
+        COINS_COMMERCE_ENABLED: "true",
+        COINS_COMMERCE_PLAN_SWITCH_ENABLED: "true",
+        COINS_COMMERCE_AUDIENCE: "all_active"
+      }),
+      controlDbPath,
+      subscriptionDbPath,
+      proxyConfigPath,
+      coinCommerceCatalog: COIN_COMMERCE_PRODUCTION_OFFERS,
+      coinCommerceFulfillmentFactory(input) {
+        const binding = createCoinCommerceProductionSubscriptionFulfillment(input);
+        capturedExecute = binding.fulfillmentHandler.execute.bind(
+          binding.fulfillmentHandler
+        );
+        return binding;
+      },
+      autoStartHttpProxy: false
+    });
+    assert.equal(state.platform.coinsCommercePlanSwitchEnabled, true);
+    const controlStore = state.platform.controlStore;
+    const store = state.platform.coinCommerceStore;
+    const coordinator = state.platform.coinCommerceCoordinator;
+    const validUntil = new Date(Date.now() + 25_000).toISOString();
+    const validFrom = new Date(Date.parse(validUntil) - 30 * DAY_MS).toISOString();
+    const stamped = new Date().toISOString();
+    controlStore.createAccount({
+      id: accountId,
+      ownerRef: "owner_state_due_switch",
+      status: "active",
+      createdAt: stamped,
+      updatedAt: stamped
+    });
+    controlStore.createEntitlement({
+      id: entitlementRef,
+      accountId,
+      plan: PLUS.offerVersionRef,
+      status: "active",
+      validFrom,
+      validUntil,
+      maxArtifacts: 1,
+      maxDevices: 2,
+      trafficLimitBytes: 100 * GIB,
+      createdAt: stamped,
+      updatedAt: stamped
+    });
+    controlStore.createIssuanceRequest({
+      id: requestRef,
+      accountId,
+      entitlementId: entitlementRef,
+      approvalRef: "approval_state_due_switch",
+      status: "issued",
+      quantity: 1,
+      nodeId: "channel-vultr-a-tuic",
+      purpose: "portal_access_request",
+      requestedByRef: "operator_state_due_switch",
+      createdAt: stamped,
+      updatedAt: stamped
+    });
+    const createdTenant = state.subscriptions.core.createTenant({
+      displayName: "State Due Switch",
+      nodeId: "vultr-singapore",
+      expiresAt: validUntil,
+      note: ""
+    });
+    const tenantId = createdTenant.tenant.id;
+    const createdArtifact = state.subscriptions.core.createSubscriptionArtifact(tenantId);
+    const artifactId = createdArtifact.artifact.id;
+    controlStore.linkIssuedSubscription({
+      id: "link_state_due_switch",
+      requestId: requestRef,
+      tenantRef: safeIssuedRef("tenant", tenantId),
+      artifactRef: safeIssuedRef("artifact", artifactId),
+      status: "active",
+      createdAt: stamped,
+      updatedAt: stamped
+    });
+    controlStore.upsertPortalAccessRequest({
+      id: requestRef,
+      portalUserRef: accountId,
+      plan: "monthly",
+      clientTarget: "clash",
+      durationDays: 30,
+      quantity: 1,
+      status: "delivered",
+      nextAction: "user_can_use_access",
+      noteProvided: false,
+      priorTrialState: "not_applicable",
+      submittedAt: validFrom,
+      updatedAt: stamped,
+      reviewedAt: stamped,
+      reviewedByRef: "operator_state_due_switch",
+      expiresAt: validUntil,
+      validUntil,
+      entitlementRef,
+      accessGrantRef: "grant_state_due_switch",
+      tenantId,
+      artifactId,
+      edgeChannelRef: "channel-vultr-a-tuic",
+      edgeCredentialRef: "edgecred_state_due_switch",
+      edgeMaterialDigest: "sha256:synthetic_state_due_switch"
+    });
+    store.walletStore.creditCoins({
+      accountId,
+      coinType: "paid_coins",
+      amountUnits: 500,
+      availability: "available",
+      sourceType: "synthetic_seed",
+      sourceRef: "source_state_due_switch",
+      sourceDigest: "b".repeat(64),
+      policyRef: null,
+      policyVersion: null,
+      expiresAt: null,
+      operation: {
+        actorScope: "system:plan-switch-test",
+        idempotencyKey: "credit_state_due_switch",
+        actorType: "system",
+        actorRef: "plan_switch_test"
+      }
+    });
+    const quote = store.createCheckoutQuote({
+      accountId,
+      offerRef: BASIC.offerRef
+    });
+    assert.equal(quote.amountUnits, BASIC.baseCoinUnits);
+    const order = store.confirmOrder({
+      accountId,
+      quoteRef: quote.quoteRef,
+      operation: {
+        actorScope: `portal:${accountId}`,
+        idempotencyKey: "confirm_state_due_switch",
+        actorType: "portal_user",
+        actorRef: accountId
+      }
+    });
+    sleepMs(4_500);
+    const delivered = await coordinator.runOnce();
+    assert.equal(delivered.commandsDelivered, 1, JSON.stringify(delivered));
+    assert.equal(controlStore.getEntitlement(entitlementRef).plan, PLUS.offerVersionRef);
+    assert.equal(
+      controlStore.readScheduledPlanSwitch({ switchRef: order.orderRef }).status,
+      "scheduled"
+    );
+    const waitMs = Date.parse(validUntil) - Date.now() + 1_500;
+    if (waitMs > 0) sleepMs(waitMs);
+    assert.throws(
+      () => store.createCheckoutQuote({ accountId, offerRef: BASIC.offerRef }),
+      (error) => error?.code === PLAN_SWITCH_ERROR.APPLICATION_PENDING
+    );
+    assert.equal(
+      controlStore.readScheduledPlanSwitch({ switchRef: order.orderRef }).status,
+      "scheduled"
+    );
+    const applied = await coordinator.runOnce();
+    assert.equal(applied.commandsDelivered, 0, JSON.stringify(applied));
+    const entitlement = controlStore.getEntitlement(entitlementRef);
+    assert.equal(entitlement.plan, BASIC.offerVersionRef);
+    assert.equal(entitlement.trafficLimitBytes, 50 * GIB);
+    assert.ok(Date.parse(entitlement.validFrom) >= Date.parse(validUntil));
+    assert.equal(
+      entitlement.validUntil,
+      new Date(Date.parse(entitlement.validFrom) + 30 * DAY_MS).toISOString()
+    );
+    assert.equal(
+      state.subscriptions.core.getTenant(tenantId).expiresAt,
+      entitlement.validUntil
+    );
+    assert.equal(
+      controlStore.readScheduledPlanSwitch({ switchRef: order.orderRef }).status,
+      "applied"
+    );
+    const replay = capturedExecute({
+      commandRef: planSwitchDueCommandRef(order.orderRef),
+      orderRef: order.orderRef,
+      accountId,
+      offerVersionRef: BASIC.offerVersionRef,
+      delivery: { ...BASIC.delivery }
+    });
+    assert.equal(replay.status, "delivered");
+    const again = await coordinator.runOnce();
+    assert.equal(again.commandsDelivered, 0, JSON.stringify(again));
+    const settled = controlStore.getEntitlement(entitlementRef);
+    assert.equal(settled.plan, BASIC.offerVersionRef);
+    assert.equal(settled.validFrom, entitlement.validFrom);
+    assert.equal(settled.validUntil, entitlement.validUntil);
+    assert.equal(
+      controlStore.readScheduledPlanSwitch({ switchRef: order.orderRef }).status,
+      "applied"
+    );
+    const renewal = store.createCheckoutQuote({
+      accountId,
+      offerRef: BASIC.offerRef
+    });
+    assert.equal(renewal.amountUnits, BASIC.baseCoinUnits);
+  } finally {
+    await Promise.resolve(state?.close());
+    removeTempDir(directory);
+  }
 });
 

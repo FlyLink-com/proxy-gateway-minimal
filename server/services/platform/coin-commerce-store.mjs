@@ -15,7 +15,10 @@ import {
 import {
   validateCoinCommerceSchema
 } from "./coin-commerce-migrations.mjs";
-import { PLAN_SWITCH_ERROR } from "./coin-commerce-plan-switch-policy.mjs";
+import {
+  PLAN_SWITCH_ERROR,
+  PLAN_SWITCH_KINDS
+} from "./coin-commerce-plan-switch-policy.mjs";
 import {
   discountedPlanSwitchAmount,
   insertPlanSwitchQuote,
@@ -1246,6 +1249,15 @@ export function createSqliteCoinCommerceStore(options = {}) {
         throw commerceError("commerce_infrastructure_error");
       }
     }
+    const planSwitch = planSwitchDecision && !planSwitchDecision.ordinary
+      ? {
+        kind: planSwitchDecision.kind,
+        creditUnits: planSwitchDecision.creditUnits,
+        chargeUnits: planSwitchDecision.chargeUnits,
+        effectiveAt: planSwitchDecision.effectiveAt,
+        cancelsPendingDowngrade: planSwitchDecision.cancelsSwitchRef !== null
+      }
+      : null;
     return {
       quoteRef,
       offer: request.offer,
@@ -1255,7 +1267,8 @@ export function createSqliteCoinCommerceStore(options = {}) {
       shortfallUnits,
       allocation,
       balances: { before, after },
-      expiresAt
+      expiresAt,
+      ...(planSwitch ? { planSwitch } : {})
     };
   });
 
@@ -1508,6 +1521,41 @@ export function createSqliteCoinCommerceStore(options = {}) {
     `).get(...parameters) ?? null;
   }
 
+  function planSwitchAttachment(quoteRef) {
+    if (!planSwitchEnabled) return null;
+    let row;
+    try {
+      row = readPlanSwitchQuoteByRef(db, quoteRef);
+    } catch {
+      throw commerceError("commerce_infrastructure_error");
+    }
+    if (!row) return null;
+    if (
+      !PLAN_SWITCH_KINDS.includes(row.kind)
+      || !Number.isSafeInteger(row.credit_units)
+      || row.credit_units < 0
+      || !Number.isSafeInteger(row.charge_units)
+      || row.charge_units < 1
+      || (
+        row.effective_at !== null
+        && typeof row.effective_at !== "string"
+      )
+      || (
+        row.cancels_switch_ref !== null
+        && typeof row.cancels_switch_ref !== "string"
+      )
+    ) {
+      throw commerceError("commerce_infrastructure_error");
+    }
+    return {
+      kind: row.kind,
+      creditUnits: row.credit_units,
+      chargeUnits: row.charge_units,
+      effectiveAt: row.effective_at,
+      cancelsPendingDowngrade: row.cancels_switch_ref !== null
+    };
+  }
+
   function projectOrderValues(row, fulfillment) {
     if (
       !row
@@ -1543,6 +1591,7 @@ export function createSqliteCoinCommerceStore(options = {}) {
         throw commerceError("commerce_infrastructure_error");
       }
     }
+    const planSwitch = planSwitchAttachment(row.quote_ref);
     return {
       orderRef: row.order_ref,
       offer: offerSnapshot,
@@ -1552,7 +1601,8 @@ export function createSqliteCoinCommerceStore(options = {}) {
       cancelUntil: row.cancel_until,
       fulfillment,
       createdAt: row.created_at,
-      updatedAt: row.updated_at
+      updatedAt: row.updated_at,
+      ...(planSwitch ? { planSwitch } : {})
     };
   }
 
