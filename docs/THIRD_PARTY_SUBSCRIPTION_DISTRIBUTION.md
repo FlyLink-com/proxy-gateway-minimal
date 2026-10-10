@@ -306,7 +306,7 @@ schema 缺失或密钥未配置时功能报告 `third_party_unavailable`，渲�
 - `THIRD_PARTY_SUBSCRIPTION_ENABLED`（默认 false。刷新脚本同样读取：不是 true 则退出码 0、status `disabled`，不打开数据库、不访问网络）
 - `THIRD_PARTY_SUBSCRIPTION_DB_PATH`（独立 SQLite，不写入 control DB；刷新脚本要求绝对路径）
 - `THIRD_PARTY_SUBSCRIPTION_SECRET_KEY`（32-byte，格式与 `USER_PORTAL_TOTP_SECRET_KEY` 相同，解析与 `server/state.mjs` 的 `createOptionalThirdPartySecretProtector` 相同，AES-256-GCM `v2:aes-256-gcm:` 信封；独立密钥）
-- `THIRD_PARTY_SUBSCRIPTION_REFRESH_MIN_INTERVAL_SECONDS`（仅刷新脚本；默认 21600，即 6 小时。`last_refresh_at` 落在该窗口内的来源跳过，避免误跑两次打上游。失败刷新不更新 `last_refresh_at`）
+- `THIRD_PARTY_SUBSCRIPTION_REFRESH_MIN_INTERVAL_SECONDS`（仅刷新脚本；默认 18000，即 5 小时，刻意低于 6 小时的 timer 间隔，避免 timer 稍早触发时被误跳过。`last_refresh_at` 落在该窗口内的来源跳过，避免误跑两次打上游。失败刷新不更新 `last_refresh_at`）
 
 Admin 接口（console token；JSON；错误体仅 `{error: code}`；从不回显 URL）：
 
@@ -330,7 +330,7 @@ binding 带有 `trafficLimitBytes` 时，必须等于该 offer 的 `GB * 1024**3
 `yearly_365d_200gb`）不是 `entitlement.plan`，不能用来放行。旧路径和手工发放只存
 `monthly` / `yearly` / `trial` / `pilot`，没有流量档位，无法区分 `monthly_basic` 与
 `monthly_plus`。这些值、未知 ref、缺失 binding、tenant 非 `active` 一律不下发第三方节点。
-因此 legacy 的 `monthly` / `yearly` 权益在后续另有决定之前收不到第三方节点。过期路径仍走既有
+因此 legacy 的 `monthly` / `yearly` 权益在后续另有决定之前收不到第三方节点。legacy `monthly` / `yearly` / `trial` / `pilot` 权益默认不下发第三方节点（Projects Manager 决定：更安全的默认值；仅当 Ethan 说明它们对应哪个档位时再重新评估）。过期路径仍走既有
 `sendResolutionFailure` 到期提示。控制库那份 offer 表没有导出，本轮没有做“映射键等于控制库键”的跨模块断言。
 
 本轮简单选择：
@@ -355,7 +355,7 @@ binding 带有 `trafficLimitBytes` 时，必须等于该 offer 的 `GB * 1024**3
   退出码：`0` disabled / planned / completed；`20` blocked（缺路径、路径不是绝对路径、密钥缺失或无效、
   schema 不存在、store 不可用）；`30` 至少一个来源失败；`64` 参数不合法或最小间隔不是非负安全整数；
   `70` internal_error。告警是 stderr 一行 `third_party_refresh_failed count=N` 加上退出码 30，不写 URL。
-  最小间隔默认 21600 秒。systemd 单元
+  最小间隔默认 18000 秒（5 小时；timer 仍为 6 小时）。systemd 单元
   `ops/systemd/gccgw-platform-third-party-subscription-refresh.service`（oneshot，`ExecStart` 带 `--apply`，
   加固和 `EnvironmentFile`、`ReadWritePaths` 与 lead-retention 单元同一套候选路径）和同名 `.timer`。
   timer 初值 `OnUnitActiveSec=6h`、`OnBootSec=15min`、`RandomizedDelaySec=10m`、`Persistent=true`。

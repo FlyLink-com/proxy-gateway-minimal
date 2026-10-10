@@ -23,7 +23,7 @@
 // same set as envFlag in server/state.mjs). Otherwise the process exits 0
 // with status disabled and does not open the database or the network.
 //
-// THIRD_PARTY_SUBSCRIPTION_REFRESH_MIN_INTERVAL_SECONDS defaults to 21600
+// THIRD_PARTY_SUBSCRIPTION_REFRESH_MIN_INTERVAL_SECONDS defaults to 18000 (5 hours; deliberately below the 6h timer interval so a slightly early timer run is not skipped)
 // (6 hours). A source whose last successful refresh (last_refresh_at) is
 // newer than that interval is skipped, so an accidental second run does not
 // fetch again. Failed attempts do not update last_refresh_at.
@@ -34,7 +34,7 @@ import { fileURLToPath } from "node:url";
 import { createPortalTotpSecretProtector } from "../server/services/platform/portal-totp-verifier.mjs";
 import { createSqliteThirdPartySubscriptionStore } from "../server/services/platform/third-party-subscription-store.mjs";
 
-export const DEFAULT_REFRESH_MIN_INTERVAL_SECONDS = 21600;
+export const DEFAULT_REFRESH_MIN_INTERVAL_SECONDS = 18000;
 
 const SOURCE_ID_PATTERN = /^tpsrc_[0-9a-f]{32}$/;
 const SAFE_CODE_PATTERN = /^[a-z0-9_]{1,64}$/;
