@@ -10,12 +10,12 @@ document_metadata:
   production_authority: false
 ```
 
-状态：**Draft / 第一阶段首轮源码已落地（feature flag default-off），未导入真实来源、未部署、不申请合并**。本记录仍是独立 Draft PR 的权威边界，不是已完成交付。
+状态：**Draft / 第一阶段源码已落地（feature flag default-off；刷新调度器只有未安装的单元文件），未导入真实来源、未部署、不申请合并**。本记录仍是独立 Draft PR 的权威边界，不是已完成交付。
 
 - Risk: A 功能与生产授权边界（新 SQLite schema + 订阅输出）；本次为 B 档源码核心，Draft、source-only。
-- Process: 按已确定默认做法实现后台导入/分配/观测、渲染合并与手动刷新；调度器留作后续。
-- Expected PR count: 保持这一个 Draft PR 承接第一阶段首轮；后续按独立验收边界切片。
-- Validation: 本轮已跑 targeted `node --test server/tests/third-party-subscription-*.test.mjs`（24 pass）、`npm run docs:authority:strict`、`git diff --check origin/master...HEAD`、`npm run validation:environment:source`（source ready）与 `npm test`（5408 tests / 5341 pass / 11 fail / 56 skipped）。11 个失败项均不在本功能测试文件内，见实现状态。
+- Process: 按已确定默认做法实现后台导入/分配/观测、渲染合并、手动刷新，以及未安装的 systemd 定时刷新文件。
+- Expected PR count: 保持这一个 Draft PR 承接第一阶段；后续按独立验收边界切片。
+- Validation: 第二轮 targeted、全量 `npm test` 与文档门禁见下文“实现状态”。全量：5417 tests / 5350 pass / 11 fail / 56 skipped；11 个失败项与未含本改动的基线 `c11f2291` 上的失败相同（Windows 环境类）。
 - Production/AWS impact: 无；不访问生产、第三方真实订阅或云平台。
 - capability: `third-party-subscription-distribution`
 - release_unit: `subscription-rendering`（后续后端接线需同时明确
@@ -142,8 +142,9 @@ document_metadata:
   `payment-store.mjs`，并有成套迁移文件（如 `coin-commerce-migrations.mjs`、`coin-wallet-migrations.mjs`）。
 - **定时/后台任务：有，但没有通用调度框架。** `dependencies` 中没有 cron/队列类库。已找到的两种方式：
   (1) systemd 定时器：`ops/systemd/gccgw-platform-lead-retention.timer`（`OnCalendar=hourly`）触发一次性服务
-  `gccgw-platform-lead-retention.service`，执行 `scripts/platform-lead-retention.mjs`（`ops/systemd/` 下只有这一对
-  定时器/服务，另有 `proxy-gateway-console.service`、`proxy-gateway-ss.service`）；
+  `gccgw-platform-lead-retention.service`，执行 `scripts/platform-lead-retention.mjs`（2026-10-10 检索时
+  `ops/systemd/` 下这一对定时器/服务之外还有 `proxy-gateway-console.service`、`proxy-gateway-ss.service`；
+  第三方订阅刷新的 service/timer 是其后追加的未安装文件，见实现状态）；
   (2) 进程内定时器：`server/services/platform/portal-referral-service.mjs` 在启用奖励时用 `setInterval`（30 秒）
   处理持久化事实，并 `unref()`。
 - **静态加密存储敏感值：有先例，没有通用的密钥管理模块。** 已找到 `node:crypto` 的 AES-256-GCM 用法：
@@ -183,7 +184,9 @@ document_metadata:
 
 资格识别（已回答，非待答项）：按 `plan` ∈ {`monthly`, `yearly`}，或对外 plan id
 `monthly_30d_50gb`、`monthly_30d_100gb`、`yearly_365d_200gb` 识别；50 GB、100 GB 两档月卡与年卡均已
-回答为包含。以下为只读检索到的现有表示（供实现时核对）：
+回答为包含。实现不按这两个词或对外 plan id 直接放行，见下文“档位映射”：付费履约写入的是
+offerVersionRef；只存 `monthly` / `yearly` / `trial` / `pilot` 的旧权益当前不下发第三方节点。
+以下为只读检索到的现有表示（供实现时核对）：
 - 门户套餐 `plan` 取值为 `trial` / `monthly` / `yearly`：`docs/COMMERCIAL_MODEL_V1.md`、
   `server/services/platform/portal-access-requests.mjs`。
 - 商城产品中的月卡（30 天，50 GB 或 100 GB 每月重置）对应 offer 版本
@@ -289,17 +292,21 @@ schema 缺失或密钥未配置时功能报告 `third_party_unavailable`，渲�
 - `server/services/platform/third-party-subscription-render.mjs`
 - `server/routes/admin-third-party-subscriptions.mjs`
 - `scripts/platform-third-party-subscription-schema.mjs`
+- `scripts/platform-third-party-subscription-refresh.mjs`
+- `ops/systemd/gccgw-platform-third-party-subscription-refresh.service`
+- `ops/systemd/gccgw-platform-third-party-subscription-refresh.timer`
 - `server/tests/third-party-subscription-*.test.mjs`
 - 接线：`server/state.mjs`、`server/app.mjs`、`server/routes/subscription.mjs`、
   `server/services/clash-subscription.mjs`
-- npm script：`platform:third-party-subscription:schema`
-- env 占位：`.env.example` 与 `ops/edge-node/templates/env.example`
+- npm script：`platform:third-party-subscription:schema`、`platform:third-party-subscription:refresh`
+- env 占位：`.env.example` 与 `ops/edge-node/templates/env.example`（仍是前三个变量；最小间隔有代码默认值，本轮不改示例文件）
 
-环境变量（全部可选；未设置时功能关闭）：
+环境变量（功能开关默认关闭；最小间隔只给刷新脚本，未设置时用默认）：
 
-- `THIRD_PARTY_SUBSCRIPTION_ENABLED`（默认 false）
-- `THIRD_PARTY_SUBSCRIPTION_DB_PATH`（独立 SQLite，不写入 control DB）
-- `THIRD_PARTY_SUBSCRIPTION_SECRET_KEY`（32-byte，格式与 `USER_PORTAL_TOTP_SECRET_KEY` 相同，AES-256-GCM `v2:aes-256-gcm:` 信封；独立密钥）
+- `THIRD_PARTY_SUBSCRIPTION_ENABLED`（默认 false。刷新脚本同样读取：不是 true 则退出码 0、status `disabled`，不打开数据库、不访问网络）
+- `THIRD_PARTY_SUBSCRIPTION_DB_PATH`（独立 SQLite，不写入 control DB；刷新脚本要求绝对路径）
+- `THIRD_PARTY_SUBSCRIPTION_SECRET_KEY`（32-byte，格式与 `USER_PORTAL_TOTP_SECRET_KEY` 相同，解析与 `server/state.mjs` 的 `createOptionalThirdPartySecretProtector` 相同，AES-256-GCM `v2:aes-256-gcm:` 信封；独立密钥）
+- `THIRD_PARTY_SUBSCRIPTION_REFRESH_MIN_INTERVAL_SECONDS`（仅刷新脚本；默认 21600，即 6 小时。`last_refresh_at` 落在该窗口内的来源跳过，避免误跑两次打上游。失败刷新不更新 `last_refresh_at`）
 
 Admin 接口（console token；JSON；错误体仅 `{error: code}`；从不回显 URL）：
 
@@ -309,11 +316,22 @@ Admin 接口（console token；JSON；错误体仅 `{error: code}`；从不回�
 - `GET /api/admin/third-party-subscriptions/summary`
 - `POST /api/admin/third-party-subscriptions/sources/:id/refresh`
 
-档位映射（纯函数，由 `binding.trafficLimitBytes` 推导，假设
-`trafficLimitBytes = monthlyTrafficGb * 1024**3`）：50 GiB → `monthly_basic`，
-100 GiB → `monthly_plus`，200 GiB → `yearly`。试用、缺失 binding、其他流量值或
-tenant status 非 `active` → 不下发第三方节点。过期路径仍走既有
-`sendResolutionFailure` 到期提示。
+档位映射（纯函数，由 usage binding 的 `plan` 决定。付费履约把
+`platform_entitlements.plan` 写成 `product.offerVersionRef`，见
+`fulfillCommerceProduct`。冻结映射与 `subscription-control-db.mjs` 里未导出的
+`WALLET_FIRST_RESOURCE_EFFECT_SUPPORTED_OFFERS` 对齐；tier 模块复制这三行，不导入该私有常量）：
+
+- `offerv_plan_30d_50gb_monthly_v1` → `monthly_basic`（50 GB，交叉校验 `50 * 1024**3` 字节）
+- `offerv_plan_30d_100gb_monthly_v1` → `monthly_plus`（100 GB，`100 * 1024**3`）
+- `offerv_plan_365d_200gb_monthly_v1` → `yearly`（200 GB，`200 * 1024**3`）
+
+binding 带有 `trafficLimitBytes` 时，必须等于该 offer 的 `GB * 1024**3`；不一致则 fail closed。
+未带该字段时只认 offer ref。对外 plan id（`monthly_30d_50gb`、`monthly_30d_100gb`、
+`yearly_365d_200gb`）不是 `entitlement.plan`，不能用来放行。旧路径和手工发放只存
+`monthly` / `yearly` / `trial` / `pilot`，没有流量档位，无法区分 `monthly_basic` 与
+`monthly_plus`。这些值、未知 ref、缺失 binding、tenant 非 `active` 一律不下发第三方节点。
+因此 legacy 的 `monthly` / `yearly` 权益在后续另有决定之前收不到第三方节点。过期路径仍走既有
+`sendResolutionFailure` 到期提示。控制库那份 offer 表没有导出，本轮没有做“映射键等于控制库键”的跨模块断言。
 
 本轮简单选择：
 
@@ -330,8 +348,18 @@ tenant status 非 `active` → 不下发第三方节点。过期路径仍走既�
 - 上游 share link 的 `insecure` / `skip-cert-verify` 不拷贝为 `skipCertVerify: true`。
 - 刷新失败或解析出 0 个有效节点时保留上次成功节点，只记短错误码；未见节点标
   `active=0`，不硬删。
-- 无 systemd timer / 进程内调度；仅手动 refresh 与可注入 fetch 的纯函数。
-  固定间隔刷新（默认 6 小时）留作后续。
+- 刷新调度以文件存在，未安装、未 enable，也没有进程内定时器。脚本
+  `scripts/platform-third-party-subscription-refresh.mjs`：不带参数是 dry-run，只统计将刷新的启用来源，
+  不访问网络、不改来源行；`--apply` 才按来源顺序刷新，每个来源单独 try/catch。
+  启用开关不是 true 时退出码 0，stdout 一行 JSON，`status` 为 `disabled`，不打开数据库、不访问网络。
+  退出码：`0` disabled / planned / completed；`20` blocked（缺路径、路径不是绝对路径、密钥缺失或无效、
+  schema 不存在、store 不可用）；`30` 至少一个来源失败；`64` 参数不合法或最小间隔不是非负安全整数；
+  `70` internal_error。告警是 stderr 一行 `third_party_refresh_failed count=N` 加上退出码 30，不写 URL。
+  最小间隔默认 21600 秒。systemd 单元
+  `ops/systemd/gccgw-platform-third-party-subscription-refresh.service`（oneshot，`ExecStart` 带 `--apply`，
+  加固和 `EnvironmentFile`、`ReadWritePaths` 与 lead-retention 单元同一套候选路径）和同名 `.timer`。
+  timer 初值 `OnUnitActiveSec=6h`、`OnBootSec=15min`、`RandomizedDelaySec=10m`、`Persistent=true`。
+  6 小时是初值；改间隔用 drop-in override，不改仓库单元。本轮没有 systemctl enable 或 start，没有把单元装到任何主机。
 
 已知限制：
 
@@ -342,33 +370,100 @@ tenant status 非 `active` → 不下发第三方节点。过期路径仍走既�
 
 本轮测试核实（合成夹具，无真实第三方 URL）：
 
-- targeted：`node --test server/tests/third-party-subscription-*.test.mjs` → 24 pass / 0 fail。
-- `npm run docs:authority:strict` → 通过。
-- `git diff --check origin/master...HEAD` → 通过。
-- `npm run validation:environment:source` → `state: ready`（Windows；NODE_PATH/proxy 为既有 warningKeys）。
-- `npm test` → 5408 tests，5341 pass，11 fail，56 skipped。本功能 24 个测试均在全量中通过。11 个失败项在未含本改动的基线（`c11f2291`，同一 Windows 机器、同一 node_modules）上以相同的文件/数量复现（artifact-manifest 2、control-plane-release-identity 1、welcome-coins-native-synthetic-runner 1、welcome-coins-runtime-closure 2、project-drift-report 1、project-export 1、project-state-check 1、validation-environment-preflight 2），属 Windows 环境类既有失败（CRLF 工作流文本、反斜杠路径等），不在 `third-party-subscription-*.test.mjs`：`artifact-manifest.test.mjs`、`control-plane-release-identity.test.mjs`、`control-plane-welcome-coins-native-synthetic-runner.test.mjs`、`control-plane-welcome-coins-runtime-closure.test.mjs`、`project-drift-report.test.mjs`、`project-export.test.mjs`、`project-state-check.test.mjs`、`validation-environment-preflight.test.mjs`。未改这些文件。
+- 第二轮 targeted：`node --test server/tests/third-party-subscription-*.test.mjs` → 33 pass / 0 fail。
+- `npm run docs:authority:strict` → 通过（416 个 document metadata block）。
+- `git diff --check` 与 `git diff --cached --check` → 通过。Windows autocrlf 只提示 LF 将在 Git 下次触及这些文件时换成 CRLF，没有 whitespace error。
+- `npm run validation:environment:source` → `state: ready`（Windows；warningKeys 为既有的 ALL_PROXY、HTTPS_PROXY、HTTP_PROXY、NODE_PATH）。
+- 全量 `npm test`（第二轮，本工作区）：5417 tests / 5350 pass / 11 fail / 56 skipped。11 个失败项在未含本改动的基线（`c11f2291`，同一 Windows 机器、同一 node_modules）上以相同的文件/数量复现（artifact-manifest 2、control-plane-release-identity 1、welcome-coins-native-synthetic-runner 1、welcome-coins-runtime-closure 2、project-drift-report 1、project-export 1、project-state-check 1、validation-environment-preflight 2），属 Windows 环境类既有失败，不在 `third-party-subscription-*.test.mjs`。未改这些文件。
 
-覆盖：schema 临时库 validate/apply 与缺失 fail-closed；加密 round-trip 与拒绝无前缀/损坏信封；admin 无 token 为 401；导入拒绝 non-https / 私网 / 非法档位；PATCH 分配与观测/刷新响应不含 URL；ss/vless/hy2/tuic 解析与 unsupported/malformed 计数；base64 与明文；地区识别；fetch 对私网、重定向到私网、超限、超时失败；keep-last-good 与 inactive 标记；档位映射 fail-closed；flag-off YAML 与现有输出一致；flag-on 仅为对应档位增加带标记节点和国家分组；四条 YAML 入口一致；过期用户拿不到第三方节点。
+覆盖：schema 临时库 validate/apply 与缺失 fail-closed；加密 round-trip 与拒绝无前缀/损坏信封；admin 无 token 为 401；导入拒绝 non-https / 私网 / 非法档位；PATCH 分配与观测/刷新响应不含 URL；ss/vless/hy2/tuic 解析与 unsupported/malformed 计数；base64 与明文；地区识别；fetch 对私网、重定向到私网、超限、超时失败；keep-last-good 与 inactive 标记；档位按 offerVersionRef 映射，三档 offer、流量交叉校验不一致、legacy `monthly` / `yearly` / `trial` / `pilot`、未知 ref、缺失 binding、非 active 均 fail closed；flag-off YAML 与现有输出一致；flag-on 仅为对应档位增加带标记节点和国家分组；四条 YAML 入口一致；过期用户拿不到第三方节点；刷新脚本在 flag 关闭时不打开库也不访问网络，dry-run 不抓取不改来源行，成功路径，单来源失败保留 last-good 且退出码 30、stderr 告警不含 URL，最小间隔跳过，JSON 不含合成 URL 或口令；systemd 单元含必需键且 ExecStart 指向该脚本。
 
-## 手工验证清单
+## 必须在测试环境走一遍
 
-隔离 candidate 上由人执行（合成来源；不要对真实第三方 URL 或生产库操作）：
+只在隔离的 candidate 或测试环境做。只用合成来源。不要对真实第三方 URL、生产库或 control DB 操作。
 
-1. 未设置 `THIRD_PARTY_SUBSCRIPTION_ENABLED` 时，现有订阅 YAML 与开启前一致。
-2. 用 schema CLI 对**空的新文件路径** apply（`--confirm-migration-id` /
-   `--confirm-ddl-checksum`）；不要对生产/control DB apply。
-3. 设置 `THIRD_PARTY_SUBSCRIPTION_ENABLED=true`、独立
-   `THIRD_PARTY_SUBSCRIPTION_DB_PATH`、独立 `THIRD_PARTY_SUBSCRIPTION_SECRET_KEY`。
-4. 用 admin token `POST /sources` 导入合成 https URL（例如 `https://example.invalid/...`，
-   或测试里注入的 fake HTTPS fetch）；确认响应无 URL。
-5. `PATCH` 分配 `monthly_basic` / `monthly_plus` / `yearly`；`GET /sources` 与
-   `GET /summary` 无 URL/凭证/host/password。
-6. `POST /sources/:id/refresh`（注入或本地 fake HTTPS）后，分别用 50/100/200 GB
-   档位与过期用户拉取 `/sub/clash.yaml`（及 artifact/profile/provider）：仅对应档位
-   看到 `[3P]` 节点和 `3P-<CC>` 分组；过期用户仍是到期提示。
-7. 日志与 API 响应不含订阅 URL。
-8. 回退：去掉 `THIRD_PARTY_SUBSCRIPTION_ENABLED` 后输出回到自营 YAML。
+1. 不设置 `THIRD_PARTY_SUBSCRIPTION_ENABLED`，拉取一份现有订阅 YAML。
+   预期: 与开启该功能前的输出一致。
+2. 用 schema CLI 对一个空的新 DB 文件路径执行 apply，并带上 `--confirm-migration-id` 与 `--confirm-ddl-checksum`。
+   预期: 该文件 schema ready；它不是生产库，也不是 control DB。
+3. 在该测试进程设置 `THIRD_PARTY_SUBSCRIPTION_ENABLED=true`。
+   预期: 只有该测试进程读到开启。
+4. 把 `THIRD_PARTY_SUBSCRIPTION_DB_PATH` 指向上一步的新文件。
+   预期: 路径不是 control DB，也不是生产订阅库。
+5. 设置独立的 `THIRD_PARTY_SUBSCRIPTION_SECRET_KEY`（32 字节，格式与 `USER_PORTAL_TOTP_SECRET_KEY` 相同）。
+   预期: 密钥只留在该测试环境，不进入 Git、日志或响应。
+6. 用 admin token `POST /api/admin/third-party-subscriptions/sources` 导入一条合成 https URL（例如 `https://example.invalid/...`，或测试注入的 fake HTTPS）。
+   预期: 请求成功，响应体不含该 URL。
+7. `PATCH /api/admin/third-party-subscriptions/sources/:id`，把该来源的 tiers 设为 `monthly_basic`、`monthly_plus`、`yearly`。
+   预期: 响应 tiers 为这三档，且不含 URL。
+8. `GET /api/admin/third-party-subscriptions/sources`。
+   预期: 响应不含订阅 URL、节点凭证、host 或 password。
+9. `GET /api/admin/third-party-subscriptions/summary`。
+   预期: 响应不含订阅 URL、节点凭证、host 或 password。
+10. 对这条合成或本地 fake HTTPS 来源调用 `POST /api/admin/third-party-subscriptions/sources/:id/refresh`。
+    预期: 状态为 ready，活动节点数大于 0，响应不含 URL。
+11. 用 active 权益 `plan=offerv_plan_30d_50gb_monthly_v1` 且 `trafficLimitBytes` 为 `50 * 1024**3` 的用户拉取 `/sub/clash.yaml`。
+    预期: YAML 含分配给 `monthly_basic` 的节点。
+12. 用 active 权益 `plan=offerv_plan_30d_100gb_monthly_v1` 且 `trafficLimitBytes` 为 `100 * 1024**3` 的用户拉取 `/sub/clash.yaml`。
+    预期: YAML 含分配给 `monthly_plus` 的节点。
+13. 用 active 权益 `plan=offerv_plan_365d_200gb_monthly_v1` 且 `trafficLimitBytes` 为 `200 * 1024**3` 的用户拉取 `/sub/clash.yaml`。
+    预期: YAML 含分配给 `yearly` 的节点。
+14. 用已过期用户拉取 `/sub/clash.yaml`。
+    预期: 仍是既有到期提示，没有第三方节点。
+15. 用 `plan` 为 `monthly` 的 legacy 用户拉取 `/sub/clash.yaml`。
+    预期: 没有第三方节点。
+16. 用 `plan` 为 `yearly` 的 legacy 用户拉取 `/sub/clash.yaml`。
+    预期: 没有第三方节点。
+17. 用 `plan` 为 `trial` 的用户拉取 `/sub/clash.yaml`。
+    预期: 没有第三方节点。
+18. 用 `plan` 为 `pilot` 的用户拉取 `/sub/clash.yaml`。
+    预期: 没有第三方节点。
+19. 打开步骤 11 的 YAML，核对第三方节点名和分组名。
+    预期: 节点名带 `[3P]`，国家分组名为 `3P-<CC>`，自营节点名称不变。
+20. 让同一次来源的下一次 refresh 失败（断开 fake 源，或让它返回空内容）。
+    预期: 上次成功的节点仍在，订阅不变成空的第三方列表。
+21. 对测试库执行 `node scripts/platform-third-party-subscription-refresh.mjs`，不带 `--apply`。
+    预期: 退出码 0；stdout 只有一行 JSON，`status` 为 `planned`；不访问网络；来源行不被刷新改写。
+22. 对同一测试库执行 `node scripts/platform-third-party-subscription-refresh.mjs --apply`。
+    预期: 已超过最小间隔的启用来源被刷新；若有来源失败，退出码为 30，stderr 为 `third_party_refresh_failed count=N`。
+23. 检查步骤 21、步骤 22 的 stdout 和 stderr，以及该测试进程的服务日志。
+    预期: 都不含订阅 URL 或节点凭证。
+24. 取消 `THIRD_PARTY_SUBSCRIPTION_ENABLED` 后再拉一次订阅。
+    预期: 输出回到自营 YAML，没有第三方节点。
 
-当前完成：阶段与边界文档，以及第一阶段首轮 source-only 实现（default-off）。
-当前未完成：调度器、YAML 文件导入、Admin 前端、真实上游、生产 schema/发布。
+## 上线前才能做
+
+本节各项都还没有做。它们是 Risk A 生产步骤，需要另一次明确批准。现在不要执行。
+
+1. 取得覆盖本次生产变更的 Risk A Gate 书面批准。
+   预期: 批准写明 schema、密钥、systemd 与 flag 的范围。
+2. 备份 control DB 和将要写入的第三方 DB，并写下回退步骤。
+   预期: 备份位置和回退命令有记录，备份不进入 Git。
+3. 用 schema CLI 对生产绑定的第三方 DB 文件执行 apply，并带上 `--confirm-migration-id` 与 `--confirm-ddl-checksum`。
+   预期: 该文件 schema ready，且没有对 control DB 执行 apply。
+4. 生成 `THIRD_PARTY_SUBSCRIPTION_SECRET_KEY`，只写入受保护的环境文件。
+   预期: 密钥不在仓库、PR、日志或文档里。
+5. 安装并 enable `gccgw-platform-third-party-subscription-refresh.service` 和同名 timer。
+   预期: timer 处于 enabled；以后改间隔用 drop-in，不改仓库里的单元文件。
+6. 在生产环境把 `THIRD_PARTY_SUBSCRIPTION_ENABLED` 设为 true。
+   预期: 只有 Gate 批准后的目标进程读到开启。
+7. 导入真实第三方来源。
+   预期: 响应和日志都不含订阅 URL。
+8. 人工值守第一次真实刷新。
+   预期: 刷新成功，或失败时保留 last-good，并且 stderr 告警看得见。
+9. 用真实 `offerv_plan_30d_50gb_monthly_v1` 用户拉取订阅。
+   预期: 能看到分配给 `monthly_basic` 的第三方节点。
+10. 用真实 `offerv_plan_30d_100gb_monthly_v1` 用户拉取订阅。
+    预期: 能看到分配给 `monthly_plus` 的第三方节点。
+11. 用真实 `offerv_plan_365d_200gb_monthly_v1` 用户拉取订阅。
+    预期: 能看到分配给 `yearly` 的第三方节点。
+12. 在相关 PR 追加 Deploy Note，字段为 `deployed_at`、`release_unit`、`source_commit`、`artifact_or_release`、`target`、`backup`、`validation`。
+    预期: 这些字段都有值；`release_unit` 用 `AGENTS.md` 里的固定值，并与实际部署单元一致。
+13. 做一次回退演练：关掉 `THIRD_PARTY_SUBSCRIPTION_ENABLED`。
+    预期: 订阅输出回到自营 YAML。
+14. 决定 legacy `monthly` / `yearly` 权益是否以及如何获得第三方节点。
+    预期: 有书面决定之前，这两类权益继续不下发第三方节点。
+
+当前完成：阶段与边界文档，第一阶段 source-only 实现（default-off），以及未安装的刷新脚本和 systemd 单元文件。
+当前未完成：YAML 文件导入、Admin 前端、真实上游、生产 schema、密钥安装、systemd 安装与 enable、flag 开启、发布。
 不得据此标为 Ready、请求合并、承诺真实节点可用或宣布生产功能上线。

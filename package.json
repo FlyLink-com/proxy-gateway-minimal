@@ -97,6 +97,7 @@
     "platform:wallet-first-resource-effect-runtime-claims:schema": "node scripts/platform-wallet-first-resource-effect-runtime-claims-schema.mjs",
     "platform:wallet-first-setup-delivery-handoffs:schema": "node scripts/platform-wallet-first-setup-delivery-handoffs-schema.mjs",
     "platform:third-party-subscription:schema": "node scripts/platform-third-party-subscription-schema.mjs",
+    "platform:third-party-subscription:refresh": "node scripts/platform-third-party-subscription-refresh.mjs",
     "platform:coin-commerce:local-validation": "node scripts/start-local-coin-commerce-validation.mjs",
     "platform:coin-commerce:local-ui-validation": "node scripts/start-local-coin-commerce-ui-validation.mjs",
     "frontend:boundaries:check": "node scripts/check-frontend-source-boundaries.mjs",

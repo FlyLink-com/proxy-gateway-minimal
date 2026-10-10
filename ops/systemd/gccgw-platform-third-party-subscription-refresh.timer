@@ -1,0 +1,21 @@
+# Source-only timer. This file is not installed or enabled.
+# 6h (OnUnitActiveSec) is the initial interval, not a fixed production choice.
+# Change it with a drop-in override instead of editing this unit. Example:
+#   /etc/systemd/system/gccgw-platform-third-party-subscription-refresh.timer.d/interval.conf
+#   [Timer]
+#   OnUnitActiveSec=12h
+# Reload the daemon after adding the drop-in. Do not enable this timer
+# as part of the current source change.
+[Unit]
+Description=Refresh GCCGW third-party subscription sources
+
+[Timer]
+OnUnitActiveSec=6h
+OnBootSec=15min
+RandomizedDelaySec=10m
+Persistent=true
+AccuracySec=1us
+Unit=gccgw-platform-third-party-subscription-refresh.service
+
+[Install]
+WantedBy=timers.target
