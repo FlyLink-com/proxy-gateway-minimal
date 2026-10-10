@@ -99,8 +99,20 @@ PR 中承接第一阶段实现，不是已完成的 spec-only 交付，也不申
    20 币对应 `offerv_plan_30d_50gb_monthly_v1`（50 GB 月度套餐，对外 plan id `monthly_30d_50gb`）；
    30 币对应 `offerv_plan_30d_100gb_monthly_v1`（100 GB 月度套餐，`monthly_30d_100gb`）；
    200 币对应 `offerv_plan_365d_200gb_monthly_v1`（200 GB 年度套餐，`yearly_365d_200gb`）。
-   “Go / Plus / Year”这些名称是 Ethan 的叫法；在上述文件及对套餐相关文档的检索中**未找到**与这三个名称
-   对应的字段，因此本文不把名称映射写成已核实，实现时以 plan id 为准。
+   名称核对（2026-10-10 只读检索 `server/`、`docs/`、`admin/src/`、`admin/portal*`、`admin/site`、`admin/public`，
+   排除 `docs/superpowers/` 与 `docs/archive/` 的历史计划，并含中文标签“月卡/年卡/档位/月付/年度”）：
+   - **“Go”未找到**：检索未发现任何套餐/档位标签叫 Go（只有“Go to Marketplace/前往商城”之类按钮文案，以及与套餐无关的 Go 语言版本记录）。
+   - **“档位”一词**在 `admin/src` 中只出现在 Coins 充值档位（`portal-recharge-offers.tsx`，充值面额），不是订阅档位；“月卡/年卡”在 `server/` 与 `admin/` 的非测试代码中未找到（`docs/` 在排除历史计划后也未找到）。
+   - **“Plus”只作为门户 plan id 的一部分存在**：门户前端（`admin/src/features/user-portal/user-portal-page.tsx`、
+     `user-portal-parsers.ts`、`user-portal-types.ts`）的套餐 id 为 `trial` / `monthly_basic` / `monthly_plus` /
+     `yearly`（`PortalPlanId` 还含 `monthly`）。用户可见标签：`monthly_basic` = “基础月付”（20 元 / 月，50 GB / 月；英文
+     “Basic monthly”）、`monthly_plus` = “标准月付”（30 元 / 月，100 GB / 月；英文页面为 “Monthly member”，管理端英文为
+     “Standard Monthly”）、`yearly` = “年度套餐”（200 元 / 年，200 GB / 月）。用户可见标签里没有字面的 “Plus”；年度套餐的英文标签是 “Yearly plan”，不是 “Year”。
+   - 因此“Go / Plus / Year”是 Ethan 的叫法，**不是仓库中的已核实标签**。按金额与流量，Plus 最接近 `monthly_plus`
+     （30 币 / 100 GB），Year 最接近 `yearly`（200 币 / 200 GB），Go 最接近 `monthly_basic`（20 币 / 50 GB）；这是
+     按数字做的推断，**未核实**，实现时以 plan id 为准，并请 Ethan 确认。
+   - 币数与金额的对应：`coin-commerce-production-catalog.mjs` 的 `baseCoinUnits` 为 20 / 30 / 200，门户前端价格标签为
+     20 元 / 30 元 / 200 元；本文只陈述这两组数字各自存在，不另作换算断言。
 2. **拆分后的配置直接参与渲染分发**：第三方订阅被拆分出的节点配置直接进入本站渲染与分发（与上文
    “渲染进本站节点集合”一致），不经另一套并行的输出路径。
 
@@ -116,8 +128,30 @@ PR 中承接第一阶段实现，不是已完成的 spec-only 交付，也不申
 
 ### 可行性判断（判断，不是实现；除下列已检索的文件外未对照代码核实）
 
-本节只基于上文已核对的套餐目录与 plan id 映射文件；**没有**核对现有后端是否已有数据库表、定时任务或
-加密存储的基础设施，以下均为判断。
+以下“已核实”仅指 2026-10-10 在本分支代码与 `package.json` 中的只读检索结果；“判断”为 Lingxi 的意见，未做原型或运行验证。
+
+已核实（后端已有的基础设施）：
+
+- **数据库层：有。** `package.json` 的 `dependencies` 为 `better-sqlite3`、`dotenv`、`express`、`express-rate-limit`、
+  `node-fetch`、`socks`、`socks-proxy-agent`；没有其他数据库驱动或 ORM。多个服务直接使用 `better-sqlite3`（SQLite），
+  例如 `server/services/subscriptions/repository.mjs`（订阅仓库，`journal_mode = WAL`）、
+  `server/services/platform/subscription-control-db.mjs`、`coin-wallet-store.mjs`、`coin-commerce-store.mjs`、
+  `payment-store.mjs`，并有成套迁移文件（如 `coin-commerce-migrations.mjs`、`coin-wallet-migrations.mjs`）。
+- **定时/后台任务：有，但没有通用调度框架。** `dependencies` 中没有 cron/队列类库。已找到的两种方式：
+  (1) systemd 定时器：`ops/systemd/gccgw-platform-lead-retention.timer`（`OnCalendar=hourly`）触发一次性服务
+  `gccgw-platform-lead-retention.service`，执行 `scripts/platform-lead-retention.mjs`（`ops/systemd/` 下只有这一对
+  定时器/服务，另有 `proxy-gateway-console.service`、`proxy-gateway-ss.service`）；
+  (2) 进程内定时器：`server/services/platform/portal-referral-service.mjs` 在启用奖励时用 `setInterval`（30 秒）
+  处理持久化事实，并 `unref()`。
+- **静态加密存储敏感值：有先例，没有通用的密钥管理模块。** 已找到 `node:crypto` 的 AES-256-GCM 用法：
+  `server/services/platform/portal-totp-verifier.mjs`（带 `v2:aes-256-gcm:` 前缀的受保护密文，密钥来自配置，见
+  `server/state.mjs` 中 `USER_PORTAL_TOTP_SECRET_KEY`）和 `server/services/platform/wallet-first-setup-delivery-escrow.mjs`
+  （`v1:aes-256-gcm:` 信封）；密码使用 scrypt（`portal-password-credentials.mjs`）。检索未发现 KMS、sops 或通用的
+  “加密存储任意密钥”的服务。这些是各自功能的实现，**未核实**它们能否直接复用于第三方订阅 URL。
+- **未核实：** 现有代码里是否已有抓取第三方订阅 URL 的任务（未检索）；SQLite 在多实例、定时刷新并发写入下是否合适
+  （未评估）；生产环境实际如何部署、保存密钥。
+
+判断（基于以上，未做原型）：
 
 - 存放位置：云端服务端数据库是合适的位置。到期停止下发和动态刷新都发生在服务端；本地存储不适合。
 - 定时抓取：由服务端定时任务拉取第三方订阅 URL，并拆成逐节点的行，判断为可行。
