@@ -18,6 +18,7 @@ import { createPlatformAccountEntitlementShell } from "./services/platform/accou
 import { loadControlPlaneReleaseIdentity } from "./services/platform/control-plane-release-identity.mjs";
 import { createCoinCommerceCoordinator } from "./services/platform/coin-commerce-coordinator.mjs";
 import { createSqliteCoinCommerceStore } from "./services/platform/coin-commerce-store.mjs";
+import { assertPlanSwitchStartupFlags } from "./services/platform/coin-commerce-plan-switch-policy.mjs";
 import { createSqliteCoinWalletStore } from "./services/platform/coin-wallet-store.mjs";
 import { createSqlitePaymentStore } from "./services/platform/payment-store.mjs";
 import { createPaymentRechargeCoordinator } from "./services/platform/payment-recharge-coordinator.mjs";
@@ -1544,6 +1545,15 @@ export function createRuntimeState(options = {}) {
   const coinsCommerceAuthorityEnabled = envFlag(
     env.COINS_COMMERCE_ACCOUNT_RESOURCE_AUTHORITY_ENABLED
   );
+  const coinsCommercePlanSwitchEnabled = envFlag(
+    env.COINS_COMMERCE_PLAN_SWITCH_ENABLED
+  );
+  // Unset or false leaves every existing path unchanged. Both flags on is a
+  // hard startup refusal: plan switch supports legacy commerce only.
+  assertPlanSwitchStartupFlags({
+    planSwitchEnabled: coinsCommercePlanSwitchEnabled,
+    authorityEnabled: coinsCommerceAuthorityEnabled
+  });
   if (envFlag(env.USER_PORTAL_WALLET_FIRST_MODEL_ENABLED)) {
     throw walletFirstModelDeprecatedError();
   }
@@ -3016,6 +3026,7 @@ export function createRuntimeState(options = {}) {
       coinsWalletStore,
       coinsCommerceEnabled,
       coinsCommerceAuthorityEnabled,
+      coinsCommercePlanSwitchEnabled,
       walletFirstRegistrationEnabled,
       walletFirstDeferredRuntimeEnabled,
       registrationWelcomeCoinsEnabled,
