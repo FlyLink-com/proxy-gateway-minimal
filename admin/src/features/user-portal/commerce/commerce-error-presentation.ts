@@ -30,6 +30,7 @@ const errorLabels = {
   plan_switch_credit_exceeds_price: ["未使用时长的抵扣已超过目标套餐价格，无法切换。", "The unused-time credit exceeds the target plan price, so this change is unavailable."],
   plan_switch_precheck_unavailable: ["暂时无法确认是否可以切换套餐，请稍后再查看。", "Plan changes cannot be confirmed right now. Check again shortly."],
   plan_switch_state_changed: ["套餐状态已变化，请重新预览后再确认。", "The plan changed. Preview again before confirming."],
+  plan_switch_cycle_misaligned: ["暂时不能升级到年度套餐：升级会改变已用流量的统计周期。你可以在当前套餐到期后购买年度套餐。", "The annual plan upgrade is unavailable right now because it would change the usage cycle and used traffic. You can buy the annual plan after the current period ends."],
   plan_switch_upgrade_window_closed: ["剩余有效期不足，暂时不能升级。请在到期后续费或重新购买。", "Too little time remains to upgrade. Renew or buy again after the current period ends."],
   quote_expired: ["报价已过期，请重新预览。", "The quote expired. Preview again."],
   quote_stale: ["报价已更新，请重新预览。", "The quote changed. Preview again."],

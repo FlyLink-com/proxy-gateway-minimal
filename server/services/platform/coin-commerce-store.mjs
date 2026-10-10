@@ -110,6 +110,7 @@ const KNOWN_CODES = new Set([
   "plan_switch_application_pending",
   "plan_switch_already_scheduled",
   "plan_switch_upgrade_window_closed",
+  "plan_switch_cycle_misaligned",
   "plan_switch_precheck_unavailable",
   "quote_expired",
   "quote_stale",

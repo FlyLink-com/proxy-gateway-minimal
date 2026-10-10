@@ -243,14 +243,20 @@ Verified in the audit (usage-billing-cycle.mjs + listUsageSamples +
 traffic-accounting.mjs): used bytes are windowed by the `validFrom`-anchored cycle.
 Upgrades keep `validFrom`, so the current cycle and its used bytes are unchanged
 and only the cap changes (override test: exhaust 50 GB, upgrade, remaining =
-100 GB - used). Known residual: for `upgrade_restart` the cycle rule changes from
+100 GB - used). Known residual, now guarded: for `upgrade_restart` the cycle rule changes from
 fixed 30-day windows to calendar-month anniversaries of the same anchor.
 `usageCycleForBinding` was measured for anchors on day-of-month 1 through 31,
-across 12 months, and for 0 through 400 elapsed days. The largest window-start
-delta is 30 days. Example: anchor 2024-01-01 and 30 elapsed days; the fixed
-window starts 2024-01-31 and the monthly window starts 2024-01-01. The cycle
-functions are unchanged. A test pins this 30-day bound. The earlier "at most
-2 days" figure is not the bound. Ethan to accept or reject.
+across 12 months and 0 through 400 elapsed days: the yearly window can start up
+to 29 days LATER than the current fixed window (free quota reset, e.g. anchor
+2024-01-31, at 2024-02-29: fixed start 01-31, monthly start 02-29) and up to 30
+days EARLIER (used bytes counted again, risking an instant over-quota). Plan A
+forbids any reset, so `evaluatePlanSwitchRequest` FAILS CLOSED with
+`plan_switch_cycle_misaligned` (HTTP 409) for `upgrade_restart` unless both
+cycle rules select the same window start at the quote instant (always true in the
+first cycle). `usage-billing-cycle.mjs` is unchanged. Unit tests:
+`coin-commerce-plan-switch-cycle-guard.test.mjs`. Consequence: later-cycle
+upgrades to yearly can be refused until the windows realign or the current term
+ends; in-place monthly upgrades are never affected.
 Not in scope here (open point): an account suspended for over-quota stays
 suspended after an upgrade until the next cycle because the resume rule
 requires a newer cycle start (`portal-access-requests.mjs` ~1400-1420).
@@ -364,7 +370,7 @@ table above is unchanged.
 10. The startup schema check runs only when the flag is on, after the control store opens. The authority-flag combination still throws `plan_switch_requires_legacy_commerce` before any database file is created.
 11. `inspectCoinCommerceSchema` treats `platform_coin_commerce_*` objects as commerce-owned. The plan-switch quote table is excluded only when its stored SQL matches this migration exactly. Any other extra object in that prefix still fails commerce validation. Absent objects leave the check unchanged.
 12. `plan_switch_precheck_unavailable` covers an authority-count query error other than a missing table, an unreadable commerce mode, a non-canonical timestamp, and an internally invalid scheduled-switch read. A missing table is 0 rows.
-13. `upgrade_restart` can move the usage-cycle window start by 30 days. The cycle module is unchanged. See Billing-cycle / quota safety.
+13. `upgrade_restart` can move the usage-cycle window start (29 days later / 30 days earlier). Resolved by a fail-closed guard (`plan_switch_cycle_misaligned`); the cycle module is unchanged. See Billing-cycle / quota safety.
 14. Effect-chain start detection ignores the candidate itself. A mixed chain applies an `upgrade_inplace` before a later strictly increasing effect that shares `previousValidUntil`, when that in-place effect is the earliest such candidate. Ambiguous order resolves to null. Chains with no `switchKind` keep the previous resolver. Old effects are not rewritten with `switchKind: null`. Renewal effects do not carry `switchKind`.
 15. The applier refuses `upgrade_restart` when the computed `validUntil` is not strictly after the stored `validUntil`.
 16. With the flag on, an injected fulfillment handler or an injected commerce store fails startup with `coinCommercePrerequisiteError`. Production uses the factory.
@@ -426,5 +432,7 @@ Only before go-live:
 2. Yearly upgrade uses term restart (see Expiry handling choice).
 3. Over-quota-suspended accounts are not auto-resumed after an upgrade.
 4. Up to one coordinator tick of expired service when a downgrade applies.
-5. Accept or reject the measured 30-day `upgrade_restart` usage-window shift.
-   The cycle functions were not changed.
+5. Yearly term-restart upgrades are refused (plan_switch_cycle_misaligned) when the
+   usage-window start would move; accept this limitation or ask for a cycle-module change (separate Risk A work).
+6. The due-downgrade applier runs only while the flag is on and the schema validates;
+   operators must let scheduled rows apply before turning the flag off.

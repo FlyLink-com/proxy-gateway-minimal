@@ -33,6 +33,7 @@ const knownErrors: Record<PortalCoinCommerceClientErrorCode, boolean> = {
   plan_switch_precheck_unavailable: false,
   plan_switch_state_changed: false,
   plan_switch_upgrade_window_closed: false,
+  plan_switch_cycle_misaligned: false,
   quote_expired: false,
   quote_stale: false,
   reconciliation_required: false,

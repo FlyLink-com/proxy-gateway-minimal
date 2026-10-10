@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 
 import { applyCoinDiscount } from "./coin-commerce-domain.mjs";
+import { usageCycleForBinding } from "./usage-billing-cycle.mjs";
 import {
   COIN_COMMERCE_PRODUCTION_FULFILLMENT_OFFER_VERSIONS
 } from "./coin-commerce-production-catalog.mjs";
@@ -197,7 +198,35 @@ export function evaluatePlanSwitchRequest({
     pendingCreditUnits
   });
   if (!charge.ok) return charge;
-  const effectiveAt = classified.effectiveAtMs === null
+  if (classified.kind === "upgrade_restart") {
+    // Yearly plans use calendar-month cycle anniversaries while 30-day plans use
+    // fixed 30-day windows from the same validFrom anchor. Switching rules can
+    // move the window start (up to ~29 days later = free quota reset, or up to
+    // ~30 days earlier = used bytes counted twice). Fail closed unless both
+    // rules select the same window start right now.
+    const targetTier = planSwitchTierForOfferVersionRef(classified.toOfferVersionRef);
+    const restartValidUntilMs = targetTier
+      ? nowMs + targetTier.durationDays * 86_400_000
+      : null;
+    const currentCycle = usageCycleForBinding({
+      plan: classified.fromOfferVersionRef,
+      validFrom: snapshotValidFrom,
+      validUntil: snapshotValidUntil
+    }, nowIso);
+    const restartCycle = restartValidUntilMs === null
+      ? null
+      : usageCycleForBinding({
+        plan: classified.toOfferVersionRef,
+        validFrom: snapshotValidFrom,
+        validUntil: new Date(restartValidUntilMs).toISOString()
+      }, nowIso);
+    if (!currentCycle || !restartCycle) {
+      return frozenFailure(PLAN_SWITCH_ERROR.PRECHECK_UNAVAILABLE);
+    }
+    if (currentCycle.startedAt !== restartCycle.startedAt) {
+      return frozenFailure(PLAN_SWITCH_ERROR.CYCLE_MISALIGNED);
+    }
+  }  const effectiveAt = classified.effectiveAtMs === null
     ? null
     : new Date(classified.effectiveAtMs).toISOString();
   if (classified.kind === "downgrade_scheduled" && effectiveAt !== snapshotValidUntil) {

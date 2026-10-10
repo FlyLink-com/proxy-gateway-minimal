@@ -177,6 +177,7 @@ export type PortalCoinCommerceErrorCode =
   | "plan_switch_precheck_unavailable"
   | "plan_switch_state_changed"
   | "plan_switch_upgrade_window_closed"
+  | "plan_switch_cycle_misaligned"
   | "quote_expired"
   | "quote_stale"
   | "reconciliation_required"
