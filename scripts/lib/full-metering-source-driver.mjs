@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { FULL_METERING_CHANNELS } from "./full-metering-collection.mjs";
+import { fullMeteringChannels, FULL_METERING_SCOPE } from "./full-metering-scope.mjs";
 import { fullMeteringDigest } from "./full-metering-journal.mjs";
 
 const fail = code => { throw Object.assign(new Error(code), { code }); };
@@ -9,9 +9,10 @@ export function fullMeteringRuntimeFingerprint(kind, material) {
   if (!["xray", "hy2", "tuic"].includes(kind) || !material || [material.uuid, material.password].some(value => typeof value !== "string" || !value || value.trim() !== value || value.length > 1024)) fail("full_metering_material_invalid");
   return createHash("sha256").update(JSON.stringify([kind, kind === "hy2" ? material.password : material.uuid, ...(kind === "tuic" ? [material.password] : [])])).digest("hex");
 }
-export function createFullMeteringSourceDriver({ sources, readMaterial, readSource }) {
-  if (!Array.isArray(sources) || sources.length !== 5 || typeof readMaterial !== "function" || typeof readSource !== "function") fail("full_metering_driver_invalid");
-  const fixed = FULL_METERING_CHANNELS.map(expected => {
+export function validateFullMeteringSources(sources, meteringScope = FULL_METERING_SCOPE) {
+  const channels = fullMeteringChannels(meteringScope);
+  if (!Array.isArray(sources) || sources.length !== channels.length) fail("full_metering_source_scope_invalid");
+  return channels.map(expected => {
     const matches = sources.filter(source => source.channelRef === expected.channelRef);
     if (matches.length !== 1) fail("full_metering_source_scope_invalid");
     const source = matches[0];
@@ -23,7 +24,13 @@ export function createFullMeteringSourceDriver({ sources, readMaterial, readSour
       || typeof source.configPath !== "string" || !/^\/[A-Za-z0-9_./-]+$/.test(source.configPath) || source.configPath.includes("..")) fail("full_metering_source_scope_invalid");
     return { ...source, ...expected };
   });
+}
+export function createFullMeteringSourceDriver({ sources, meteringScope = FULL_METERING_SCOPE, readMaterial, readSource }) {
+  if (typeof readMaterial !== "function" || typeof readSource !== "function") fail("full_metering_driver_invalid");
+  const fixed = validateFullMeteringSources(sources, meteringScope);
   return async function readFullMeteringSources(inventory) {
+    if (!Array.isArray(inventory?.entries) || !Array.isArray(inventory?.retainedBindings)
+      || [...inventory.entries, ...inventory.retainedBindings].some(entry => !fixed.some(source => source.channelRef === entry.channelRef))) fail("full_metering_binding_invalid");
     const materialPayload = readMaterial();
     const records = Array.isArray(materialPayload) ? materialPayload : materialPayload?.records;
     if (!Array.isArray(records) || records.length > 100000) fail("full_metering_material_invalid");
@@ -36,6 +43,8 @@ export function createFullMeteringSourceDriver({ sources, readMaterial, readSour
     for (const source of fixed) {
       const eligible = inventory.entries.filter(entry => entry.channelRef === source.channelRef);
       const retained = inventory.retainedBindings.filter(entry => entry.channelRef === source.channelRef);
+      const superseded = new Set(retained.filter(entry => entry.reasons?.includes("portal_durable_scope_supersedes_primary"))
+        .map(entry => entry.edgeCredentialRef));
       const credentialRefByRuntimeUser = Object.create(null), fingerprints = new Map();
       for (const entry of [...eligible, ...retained]) {
         const record = material.get(entry.edgeCredentialRef);
@@ -59,6 +68,9 @@ export function createFullMeteringSourceDriver({ sources, readMaterial, readSour
         if (!runtime || typeof runtime.runtimeUser !== "string" || seen.has(runtime.runtimeUser)
           || !Object.hasOwn(credentialRefByRuntimeUser, runtime.runtimeUser)
           || runtime.materialFingerprint !== fingerprints.get(runtime.runtimeUser)) fail("full_metering_runtime_identity_changed");
+        // Historical retention is not permission to leave a removed channel
+        // running without billing. Reconcile runtime separately; never ignore it.
+        if (superseded.has(credentialRefByRuntimeUser[runtime.runtimeUser])) fail("full_metering_superseded_identity_running");
         seen.add(runtime.runtimeUser); covered.add(credentialRefByRuntimeUser[runtime.runtimeUser]);
       }
       if (eligible.some(entry => !covered.has(entry.edgeCredentialRef))) fail("full_metering_runtime_identity_missing");

@@ -1,4 +1,5 @@
 import { recordReferralRegistration } from './portal-referral-contract.mjs';
+import { createPortalSubscriptionLinkResetStore, verifyPortalSubscriptionLinkResetLineage } from "./portal-subscription-link-reset-store.mjs";
 import Database from "better-sqlite3";
 import { createHash, randomBytes } from "node:crypto";
 import { types as utilTypes } from "node:util";
@@ -4968,7 +4969,9 @@ export function createSqliteSubscriptionControlStore({
       binding.accountId !== accountId
       || binding.entitlementId !== entitlement.id
       || binding.tenantRef !== `tenantref_${sha256(accessRequest.tenantId).slice(0, 16)}`
-      || binding.artifactRef !== `artifactref_${sha256(accessRequest.artifactId).slice(0, 16)}`
+      || (binding.artifactRef !== `artifactref_${sha256(accessRequest.artifactId).slice(0, 16)}`
+        && !verifyPortalSubscriptionLinkResetLineage(db, { requestRef: accessRequest.id, ownerRef: accountId,
+          tenantId: accessRequest.tenantId, originalArtifactRef: binding.artifactRef, currentArtifactId: accessRequest.artifactId }))
     ) {
       return null;
     }
@@ -5323,7 +5326,9 @@ export function createSqliteSubscriptionControlStore({
         || binding.tenantRef !== record.tenantRef
         || binding.artifactRef !== record.artifactRef
         || record.tenantRef !== `tenantref_${sha256(accessRequest.tenantId).slice(0, 16)}`
-        || record.artifactRef !== `artifactref_${sha256(accessRequest.artifactId).slice(0, 16)}`
+        || (record.artifactRef !== `artifactref_${sha256(accessRequest.artifactId).slice(0, 16)}`
+          && !verifyPortalSubscriptionLinkResetLineage(db, { requestRef: accessRequest.id, ownerRef: record.accountId,
+            tenantId: accessRequest.tenantId, originalArtifactRef: record.artifactRef, currentArtifactId: accessRequest.artifactId }))
       ) {
         failDrift();
       }
@@ -8550,6 +8555,12 @@ export function createSqliteSubscriptionControlStore({
 
   return {
     recordPortalReferralRegistration(input) { return recordReferralRegistration(db, input); },
+    getPortalSubscriptionLinkResetStore(options = {}) {
+      return createPortalSubscriptionLinkResetStore({ database: db, nowFn: options.nowFn });
+    },
+    verifyPortalSubscriptionLinkResetLineage(input) {
+      return verifyPortalSubscriptionLinkResetLineage(db, input);
+    },
     runInTransaction,
     upsertLead,
     getLead,

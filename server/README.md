@@ -41,6 +41,11 @@ controls where the entry appears and must refresh the remote subscription to
 receive updated metadata. This source contract does not establish deployment
 or acceptance in every Clash client/version.
 
+Authenticated expired YAML subscriptions return a credential-free, reject-only
+notice and a fixed Portal website header; unknown/disabled/revoked/rotated links
+remain errors. This does not re-enable an expired subscription or push an update
+to a client's cached configuration. See [expiry notice and flag contract](../docs/SUBSCRIPTION_EXPIRY_NOTICE.md).
+
 ## Release identity
 
 `CONTROL_PLANE_RELEASE_IDENTITY_PATH` is optional at the application boundary.
@@ -68,6 +73,18 @@ changed. Source tests are not production Xray-version or restoration evidence;
 see [the dated source validation record](../docs/production-incident-records/2026-09-29-xray-cli-zero-compatibility-source.md).
 
 ## Boundary
+
+Optional output labels are documented in
+[Subscription display names](../docs/SUBSCRIPTION_DISPLAY_NAMES.md). They never
+replace internal node/channel names or credential-material lookup keys.
+
+The standalone full-metering collector retains its default five-source scope.
+An explicitly approved `local-three-v1` activation can collect the original
+three local channel references while reporting deferred SGP coverage as
+paused/unknown. It requires a new journal and preserves existing identity and
+history checks; it neither starts services nor changes billing rights. See
+[the full metering runbook](../docs/FULL_METERING_RECOVERY_RUNBOOK.md#explicit-local-three-source-scope-source-only-2026-10-07)
+for config, pending-recovery, validation and production boundaries.
 
 This workspace does not own frontend builds, provider configuration, host
 provisioning, or production deployment. The presence of runtime adapters or

@@ -98,9 +98,14 @@ function connectionUser(connection) {
   return identities[0];
 }
 function tuicSnapshot(payload, map) {
-  if (!object(payload) || !Array.isArray(payload.connections)) fail("response_invalid");
+  if (!object(payload)
+    || (payload.connections !== null && !Array.isArray(payload.connections))) fail("response_invalid");
+  // Mihomo's native Snapshot serializes its nil tracker slice as explicit null
+  // when idle. This means no active observations, not zero lifetime usage.
+  // Do not coalesce missing fields or use envelope totals as user counters.
+  const activeConnections = payload.connections === null ? [] : payload.connections;
   const seen = new Set();
-  const connections = payload.connections.map((connection) => {
+  const connections = activeConnections.map((connection) => {
     if (!object(connection) || typeof connection.id !== "string" || !SAFE_CONNECTION_ID.test(connection.id)) fail("response_invalid");
     if (seen.has(connection.id)) fail("connection_duplicate");
     seen.add(connection.id);

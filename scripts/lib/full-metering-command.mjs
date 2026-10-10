@@ -6,30 +6,45 @@ import Database from "better-sqlite3";
 import { assertNoDuplicateObjectKeys } from "../../server/services/deployment/strict-json-scan.mjs";
 import { createSqliteSubscriptionControlStore } from "../../server/services/platform/subscription-control-db.mjs";
 import { readFullMeteringBindings } from "./traffic-vless-recovery-baseline.mjs";
-import { FULL_METERING_CHANNELS, runFullMeteringCollection } from "./full-metering-collection.mjs";
+import { runFullMeteringCollection } from "./full-metering-collection.mjs";
+import { FULL_METERING_SCOPE, LOCAL_METERING_SCOPE, fullMeteringChannels } from "./full-metering-scope.mjs";
 import { fullMeteringDigest } from "./full-metering-journal.mjs";
 import { createFullMeteringSampleWriter } from "./full-metering-sample-writer.mjs";
-import { createFullMeteringSourceDriver } from "./full-metering-source-driver.mjs";
+import { createFullMeteringSourceDriver, validateFullMeteringSources } from "./full-metering-source-driver.mjs";
 
 const fail = code => { throw Object.assign(new Error(code), { code }); };
 const exactKeys = (object, keys) => object && typeof object === "object" && !Array.isArray(object) && Object.keys(object).sort().join(",") === [...keys].sort().join(",");
 const linuxPath = path => typeof path === "string" && /^\/[A-Za-z0-9_./-]+$/.test(path) && !path.split("/").includes("..") && !path.split("/").includes(".");
 export function parseFullMeteringCommand(argv) {
-  if (!Array.isArray(argv) || !["--preflight", "--initialize", "--collect", "--continue-material", "--collect-pack-resets"].includes(argv[0])
-    || argv.length !== (argv[0] === "--continue-material" ? 9 : 5)
+  const continuation = argv?.[0] === "--continue-material" ? "material"
+    : argv?.[0] === "--continue-billing-window" ? "billing-window" : null;
+  if (!Array.isArray(argv) || !["--preflight", "--initialize", "--collect", "--continue-material", "--continue-billing-window", "--collect-pack-resets"].includes(argv[0])
+    || argv.length !== (continuation ? 9 : 5)
     || argv[1] !== "--config" || !linuxPath(argv[2]) || argv[3] !== "--config-sha256" || !/^[a-f0-9]{64}$/.test(argv[4])) fail("full_metering_command_invalid");
-  if (argv[0] === "--continue-material") {
+  if (continuation === "material") {
     if (argv[5] !== "--material-approval" || !linuxPath(argv[6]) || argv[7] !== "--material-approval-sha256" || !/^[a-f0-9]{64}$/.test(argv[8])) fail("full_metering_command_invalid");
     return { mode: "continue-material", configPath: argv[2], configSha256: argv[4], materialApprovalPath: argv[6], materialApprovalSha256: argv[8] };
+  }
+  if (continuation === "billing-window") {
+    if (argv[5] !== "--billing-window-approval" || !linuxPath(argv[6]) || argv[7] !== "--billing-window-approval-sha256" || !/^[a-f0-9]{64}$/.test(argv[8])) fail("full_metering_command_invalid");
+    return { mode: "continue-billing-window", configPath: argv[2], configSha256: argv[4], billingWindowApprovalPath: argv[6], billingWindowApprovalSha256: argv[8] };
   }
   return { mode: argv[0].slice(2), configPath: argv[2], configSha256: argv[4] };
 }
 export function validateFullMeteringConfig(config) {
-  if (!exactKeys(config, ["version", "activationId", "dbPath", "journalDirectory", "materialPath", "sources", "backup", "sgp"])
+  const explicit = config && Object.hasOwn(config, "meteringScope");
+  const meteringScope = explicit ? config.meteringScope : FULL_METERING_SCOPE;
+  fullMeteringChannels(meteringScope);
+  // An explicit undefined is invalid too; only an absent field is legacy mode.
+  if (explicit && ![FULL_METERING_SCOPE, LOCAL_METERING_SCOPE].includes(meteringScope)) fail("full_metering_scope_invalid");
+  if (!exactKeys(config, ["version", "activationId", "dbPath", "journalDirectory", "materialPath", "sources", "backup", "sgp", ...(explicit ? ["meteringScope"] : [])])
     || config.version !== 1 || !/^[A-Za-z0-9._:-]{1,128}$/.test(config.activationId)
     || ![config.dbPath, config.journalDirectory, config.materialPath].every(linuxPath) || !Array.isArray(config.sources)
-    || !exactKeys(config.backup, ["path", "sha256"]) || !linuxPath(config.backup.path) || !/^[a-f0-9]{64}$/.test(config.backup.sha256)
-    || !exactKeys(config.sgp, ["target", "identityFile", "knownHostsFile", "readerScript"])
+    || !exactKeys(config.backup, ["path", "sha256"]) || !linuxPath(config.backup.path) || !/^[a-f0-9]{64}$/.test(config.backup.sha256)) fail("full_metering_config_invalid");
+  if (meteringScope === LOCAL_METERING_SCOPE) {
+    if (!exactKeys(config.sgp, ["status", "usage"]) || config.sgp.status !== "paused" || config.sgp.usage !== "unknown") fail("full_metering_config_invalid");
+    validateFullMeteringSources(config.sources, meteringScope);
+  } else if (!exactKeys(config.sgp, ["target", "identityFile", "knownHostsFile", "readerScript"])
     || !/^[A-Za-z0-9][A-Za-z0-9._@:-]{0,253}$/.test(config.sgp.target)
     || ![config.sgp.identityFile, config.sgp.knownHostsFile, config.sgp.readerScript].every(linuxPath)) fail("full_metering_config_invalid");
   return config;
@@ -78,15 +93,22 @@ export async function runFullMeteringCommand(argv) {
   const bytes = protectedBytes(options.configPath, { requireOwner: true });
   if (createHash("sha256").update(bytes).digest("hex") !== options.configSha256) fail("full_metering_config_digest_changed");
   const config = validateFullMeteringConfig(privateJson(bytes));
-  const readApproval = () => {
-    const approvalBytes = protectedBytes(options.materialApprovalPath, { requireOwner: true, maxBytes: 64 * 1024 });
-    if (createHash("sha256").update(approvalBytes).digest("hex") !== options.materialApprovalSha256) fail("full_metering_material_approval_digest_changed");
+  const meteringScope = config.meteringScope ?? FULL_METERING_SCOPE;
+  const channels = fullMeteringChannels(meteringScope);
+  // Validate the complete exact scope before opening a database or considering
+  // a pending intent. Local mode never resolves or reads an SGP SSH path.
+  validateFullMeteringSources(config.sources, meteringScope);
+  const readApproval = path => sha => {
+    const approvalBytes = protectedBytes(path, { requireOwner: true, maxBytes: 64 * 1024 });
+    if (createHash("sha256").update(approvalBytes).digest("hex") !== sha) fail(options.mode === "continue-billing-window" ? "full_metering_billing_window_approval_digest_changed" : "full_metering_material_approval_digest_changed");
     return privateJson(approvalBytes);
   };
-  const materialApproval = options.mode === "continue-material" ? readApproval() : null;
-  const writesSamples = ["collect", "continue-material", "collect-pack-resets"].includes(options.mode);
+  const materialApproval = options.mode === "continue-material" ? readApproval(options.materialApprovalPath)(options.materialApprovalSha256) : null;
+  const billingWindowApproval = options.mode === "continue-billing-window" ? readApproval(options.billingWindowApprovalPath)(options.billingWindowApprovalSha256) : null;
+  const writesSamples = ["collect", "continue-material", "continue-billing-window", "collect-pack-resets"].includes(options.mode);
   const databaseIdentityDigest = fullMeteringDigest(fileIdentity(config.dbPath));
-  const context = { scopeDigest: options.configSha256, databaseIdentityDigest };
+  const context = { scopeDigest: options.configSha256, databaseIdentityDigest,
+    ...(meteringScope === LOCAL_METERING_SCOPE ? { meteringScope } : {}) };
   if (options.mode === "initialize") {
     const backup = protectedBytes(config.backup.path, { maxBytes: 1024 * 1024 * 1024 });
     if (config.backup.path === config.dbPath || createHash("sha256").update(backup).digest("hex") !== config.backup.sha256) fail("full_metering_backup_invalid");
@@ -104,15 +126,16 @@ export async function runFullMeteringCommand(argv) {
     const assertInputs = () => {
       if (fullMeteringDigest(fileIdentity(config.dbPath)) !== databaseIdentityDigest
         || createHash("sha256").update(protectedBytes(options.configPath, { requireOwner: true })).digest("hex") !== options.configSha256) fail("full_metering_input_changed");
-      if (materialApproval) readApproval();
+      if (materialApproval) readApproval(options.materialApprovalPath)(options.materialApprovalSha256);
+      if (billingWindowApproval) readApproval(options.billingWindowApprovalPath)(options.billingWindowApprovalSha256);
     };
     const readBindings = () => {
       assertInputs();
-      return readFullMeteringBindings({ db, databaseIdentityDigest, channelRefs: FULL_METERING_CHANNELS.map(source => source.channelRef), now: new Date() });
+      return readFullMeteringBindings({ db, databaseIdentityDigest, channelRefs: channels.map(source => source.channelRef), now: new Date() });
     };
     const readInventory = () => db.transaction(readBindings)();
     const { readFullMeteringLocalSource } = await import("./full-metering-local-source.mjs");
-    const readSources = createFullMeteringSourceDriver({ sources: config.sources,
+    const readSources = createFullMeteringSourceDriver({ sources: config.sources, meteringScope,
       readMaterial: () => privateJson(protectedBytes(config.materialPath)),
       readSource: async source => {
         const request = { kind: source.kind, runtimeUnit: source.runtimeUnit, configPath: source.configPath, credentialRefByRuntimeUser: source.credentialRefByRuntimeUser };
@@ -143,10 +166,10 @@ export async function runFullMeteringCommand(argv) {
     if (writesSamples) {
       const controlStore = createSqliteSubscriptionControlStore({ database: db, initializeSchema: false });
       if (options.mode === "collect-pack-resets") dataPackResetStore = controlStore;
-      const writer = createFullMeteringSampleWriter({ database: db, controlStore, readBindings });
+      const writer = createFullMeteringSampleWriter({ database: db, controlStore, readBindings, meteringScope, activationId: config.activationId });
       applySamples = samples => { assertInputs(); return writer(samples); };
     }
-    return await runFullMeteringCollection({ ...options, directory: config.journalDirectory, context, activationId: config.activationId,
-      readInventory, readSources, applySamples, materialApproval, dataPackResetStore });
+    return await runFullMeteringCollection({ ...options, directory: config.journalDirectory, context, activationId: config.activationId, meteringScope,
+      readInventory, readSources, applySamples, materialApproval, billingWindowApproval, dataPackResetStore });
   } finally { db.close(); }
 }

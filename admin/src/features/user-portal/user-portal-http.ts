@@ -62,7 +62,8 @@ async function jsonRequest(fetchFn: typeof fetch, url: string, init: RequestInit
   const path = new URL(url, typeof window === "undefined" ? "http://localhost" : window.location.origin).pathname;
   const bounded = new Set([
     "/api/portal/session", "/api/portal/password/session", "/api/portal/password/second-factor",
-    "/api/portal/registration", "/api/portal/browser-session", "/api/portal/browser-session/logout"
+    "/api/portal/registration", "/api/portal/browser-session", "/api/portal/browser-session/logout",
+    "/api/portal/access-requests/reset-link"
   ]).has(path);
   const controller = bounded ? new AbortController() : null;
   const forwardAbort = () => controller?.abort(init.signal?.reason);
@@ -563,6 +564,20 @@ export function createHttpUserPortalClient(
           portalUserRef: requiredText(input.userRef, "用户会话无效。"),
           requestRef: requiredText(input.requestRef, "申请记录无效。"),
           clientTarget: input.clientTarget
+        })
+      });
+      return mapAccessRequest(body.request ?? {});
+    },
+
+    async resetSubscriptionLink(input) {
+      const body = await jsonRequest(fetchFn, endpoint(baseUrl, "/api/portal/access-requests/reset-link"), {
+        method: "POST",
+        cache: "no-store",
+        headers: portalSessionHeaders(input.sessionRef),
+        body: JSON.stringify({
+          requestRef: requiredText(input.requestRef, "申请记录无效。"),
+          idempotencyKey: requiredText(input.idempotencyKey, "重置请求无效。"),
+          confirmed: true
         })
       });
       return mapAccessRequest(body.request ?? {});

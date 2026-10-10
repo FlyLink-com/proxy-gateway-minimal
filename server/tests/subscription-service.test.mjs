@@ -727,7 +727,8 @@ test("resolveSubscriptionToken rejects expired token", async () => {
     assert.deepEqual(await context.service.resolveSubscriptionToken(RAW_TOKEN), {
       ok: false,
       status: 403,
-      error: "Subscription expired"
+      error: "Subscription expired",
+      denialReason: "subscription_expired"
     });
   });
 });
@@ -1109,7 +1110,8 @@ test("service keeps tenant expiry and disabled behavior for opaque artifacts", a
     assert.deepEqual(context.service.resolveSubscriptionArtifact("opaque_device_secret"), {
       ok: false,
       status: 403,
-      error: "Subscription expired"
+      error: "Subscription expired",
+      denialReason: "subscription_expired"
     });
   });
 

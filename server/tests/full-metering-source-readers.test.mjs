@@ -118,6 +118,40 @@ test("TUIC accepts empty connection array and consistent runtime identity aliase
   assert.equal((await f.read()).connections.length, 1);
 });
 
+for (const totals of [0, 123456789]) {
+  test(`TUIC accepts native idle null without turning envelope totals ${totals} into observations`, async () => {
+    const payload = { uploadTotal: totals, downloadTotal: totals, connections: null, memory: 1000000 };
+    assert.deepEqual(await fixture("tuic", { fetchFn: async () => json(payload) }).read(), {
+      observedAt: NOW, connections: []
+    });
+  });
+}
+
+for (const connections of [undefined, false, 0, "", "null", {}]) {
+  test(`TUIC idle compatibility still rejects missing or invalid list ${JSON.stringify(connections)}`, async () => {
+    const payload = { uploadTotal: 0, downloadTotal: 0, connections, memory: 1000000 };
+    await assert.rejects(fixture("tuic", { fetchFn: async () => json(payload) }).read,
+      (error) => safeError(error, "full_metering_source_response_invalid"));
+  });
+}
+
+test("TUIC null cannot hide another connections field or bypass HTTP validation", async () => {
+  const sources = [
+    '{"connections":[null],"connections":null}',
+    '{"connections":null,"connecti\\u006fns":[null]}'
+  ];
+  for (const source of sources) {
+    await assert.rejects(fixture("tuic", { fetchFn: async () => new Response(source, {
+      headers: { "Content-Type": "application/json" }
+    }) }).read, safeError);
+  }
+  for (const response of [
+    json({ connections: null }, { status: 401 }),
+    json({ connections: null }, { status: 500 }),
+    new Response('{"connections":null}', { headers: { "Content-Type": "text/plain" } })
+  ]) await assert.rejects(fixture("tuic", { fetchFn: async () => response }).read, safeError);
+});
+
 for (const status of [301, 401, 403, 500]) {
   test(`HTTP ${status} returns safe fixed error without reading error body`, async () => {
     let read = false;

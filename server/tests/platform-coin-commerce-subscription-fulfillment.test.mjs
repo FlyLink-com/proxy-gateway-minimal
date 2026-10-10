@@ -48,11 +48,28 @@ import {
 import {
   hashSubscriptionToken
 } from "../services/subscriptions/tokens.mjs";
+import { ensurePortalSubscriptionLinkResetSchema } from "../services/platform/portal-subscription-link-reset-store.mjs";
 
 const NOW = "2026-07-30T00:00:00.000Z";
 const CURRENT_VALID_UNTIL = "2026-09-01T00:00:00.000Z";
 const GIB = 1024 ** 3;
 const ACTIVATED_ACCOUNT_READER = () => true;
+
+function resetFixtureLink(fixture, index) {
+  const schemaDb = new Database(fixture.controlDbPath);
+  try { ensurePortalSubscriptionLinkResetSchema(schemaDb); } finally { schemaDb.close(); }
+  const core = createSubscriptionCore({ store: fixture.runtimeStore, proxyConfig: sampleProxyConfig(),
+    publicSubscriptionBaseUrl: "https://gateway.example.test", nowFn: () => new Date(NOW),
+    artifactIdFactory: () => `artifact_link_reset_${index}`, artifactSecretFactory: () => `synthetic_link_reset_material_${index}` });
+  const request = fixture.controlStore.getPortalAccessRequest(fixture.requestRef);
+  const plan = core.prepareSubscriptionArtifactRotation(request.artifactId, { tenantId: fixture.tenantId });
+  const operation = { operationKeyDigest: createHash("sha256").update(`synthetic-reset-${index}`).digest("hex"),
+    requestRef: fixture.requestRef, ownerRef: fixture.accountId };
+  const store = fixture.controlStore.getPortalSubscriptionLinkResetStore({ nowFn: () => new Date(NOW) });
+  store.prepare({ ...operation, plan, cooldownMs: 0 });
+  store.complete({ ...operation, commitRuntime: value => core.commitPreparedSubscriptionArtifactRotation(value) });
+  return plan;
+}
 
 function sampleProxyConfig() {
   return {
@@ -418,6 +435,35 @@ function createInitialFulfillmentFixture({ nowFn, beforeApply } = {}) {
     }
   };
 }
+
+test("repeated subscription link resets preserve renewal eligibility and fulfillment recovery", () => {
+  const fixture = createFixture();
+  try {
+    const bindingBefore = fixture.controlStore.findUsageBindingByTenantRef(fixture.issuedTenantRef);
+    resetFixtureLink(fixture, 1);
+    const second = resetFixtureLink(fixture, 2);
+    const service = createCoinCommerceProductionSubscriptionFulfillment({ controlStore: fixture.controlStore,
+      runtimeCore: fixture.runtimeCore, accountActivationReader: ACTIVATED_ACCOUNT_READER, nowFn: () => new Date(NOW) });
+    const eligibilityInput = { accountId: fixture.accountId, offerVersionRef: COIN_COMMERCE_PRODUCTION_OFFERS[0].offerVersionRef };
+    assert.equal(service.purchaseEligibilityReader(eligibilityInput), true);
+    const command = productionInput(fixture);
+    const first = service.fulfillmentHandler.execute(command);
+    assert.equal(first.status, "delivered");
+    assert.equal(fixture.controlStore.getPortalAccessRequest(fixture.requestRef).artifactId, second.replacementArtifactId);
+    const third = resetFixtureLink(fixture, 3);
+    assert.deepEqual(service.fulfillmentHandler.execute(command), first);
+    assert.equal(service.purchaseEligibilityReader(eligibilityInput), true);
+    const renewed = service.fulfillmentHandler.execute(productionInput(fixture, COIN_COMMERCE_PRODUCTION_OFFERS[0], {
+      commandRef: "coincmd_reset_renewal", orderRef: "coinord_reset_renewal" }));
+    assert.equal(renewed.status, "delivered");
+    const request = fixture.controlStore.getPortalAccessRequest(fixture.requestRef);
+    const bindingAfter = fixture.controlStore.findUsageBindingByTenantRef(fixture.issuedTenantRef);
+    assert.equal(request.artifactId, third.replacementArtifactId);
+    assert.equal(bindingAfter.artifactRef, bindingBefore.artifactRef);
+    assert.equal(bindingAfter.tenantRef, bindingBefore.tenantRef);
+    assert.equal(request.validUntil, "2026-10-31T00:00:00.000Z");
+  } finally { fixture.close(); }
+});
 
 test("production subscription fulfillment exposes the exact factory contract for one eligible stable binding", () => {
   const fixture = createFixture();

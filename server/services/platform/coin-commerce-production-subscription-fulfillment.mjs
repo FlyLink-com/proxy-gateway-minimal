@@ -347,7 +347,9 @@ function resolveEligibleSubscriptionBinding({
     || binding.entitlementId !== accessRequest.entitlementRef
     || (authority && binding.id !== authority.issuedLinkId)
     || binding.tenantRef !== safeIssuedRef("tenant", accessRequest.tenantId)
-    || binding.artifactRef !== safeIssuedRef("artifact", accessRequest.artifactId)
+    || (binding.artifactRef !== safeIssuedRef("artifact", accessRequest.artifactId)
+      && controlStore.verifyPortalSubscriptionLinkResetLineage?.({ requestRef: accessRequest.id, ownerRef: accountId,
+        tenantId: accessRequest.tenantId, originalArtifactRef: binding.artifactRef, currentArtifactId: accessRequest.artifactId }) !== true)
   ) {
     return null;
   }

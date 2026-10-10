@@ -14,6 +14,14 @@ function subscriptionCore(state) {
   return state.subscriptions?.core || state.subscriptions?.service;
 }
 
+function denied(result) {
+  return {
+    ok: false, status: result.status, error: result.error,
+    ...(result.status === 403 && result.denialReason === "subscription_expired"
+      ? { denialReason: "subscription_expired" } : {})
+  };
+}
+
 export function bearerToken(authorization) {
   const match = /^Bearer\s+(.+)$/i.exec(String(authorization || ""));
   return match ? match[1] : "";
@@ -50,7 +58,7 @@ export function createSubscriptionRouteResolver(state) {
     }
 
     if (!result.ok) {
-      return { ok: false, status: result.status, error: result.error };
+      return denied(result);
     }
 
     return { ok: true, rawArtifact, result, proxyConfig: result.proxyConfig };
@@ -70,7 +78,7 @@ export function createSubscriptionRouteResolver(state) {
     }
 
     if (!result.ok) {
-      return { ok: false, status: result.status, error: result.error };
+      return denied(result);
     }
 
     return { ok: true, result, proxyConfig: result.proxyConfig };

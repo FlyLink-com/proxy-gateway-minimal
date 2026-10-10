@@ -6,6 +6,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { closeSync, existsSync, fsyncSync, lstatSync, mkdirSync, openSync, readFileSync, realpathSync, renameSync, rmdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { gzipSync, gunzipSync } from "node:zlib";
+import { validateFullMeteringContext, LOCAL_METERING_SCOPE, assertFullMeteringCheckpointScope } from "./full-metering-scope.mjs";
 
 // Storage v2 keeps the logical v1 envelope/digest and replay ordering. Bound
 // compressed storage and decoded data independently; never inflate unbounded data.
@@ -54,8 +55,12 @@ function syncDirectory(directory) {
   try { fsyncSync(fd); } finally { closeSync(fd); }
 }
 function checkContext(context) {
-  if (!context || Object.keys(context).sort().join(",") !== "databaseIdentityDigest,scopeDigest"
-    || Object.values(context).some(value => !/^[a-f0-9]{64}$/.test(value))) fail("full_metering_context_invalid");
+  validateFullMeteringContext(context);
+}
+function checkScopedCheckpoint(context, checkpoint) {
+  // Legacy journal primitives remain payload-generic. Explicit local scope is
+  // never allowed to bypass its checkpoint binding through direct recovery.
+  if (context.meteringScope === LOCAL_METERING_SCOPE) assertFullMeteringCheckpointScope(checkpoint, LOCAL_METERING_SCOPE);
 }
 function envelope(context, payload) {
   checkContext(context);
@@ -126,6 +131,7 @@ function applySynchronously(applySamples, samples) {
 }
 export function initializeFullMeteringJournal({ directory, context, checkpoint }) {
   checkContext(context);
+  checkScopedCheckpoint(context, checkpoint);
   if (!isAbsolute(directory)) fail("full_metering_path_invalid");
   // Parent is an existing operator-owned directory; never recursively create
   // paths or overwrite an old/missing checkpoint under an existing activation.
@@ -137,7 +143,9 @@ export function initializeFullMeteringJournal({ directory, context, checkpoint }
 }
 export function readFullMeteringJournal({ directory, context }) {
   checkContext(context);
-  return read(directory, "checkpoint.json", context);
+  const checkpoint = read(directory, "checkpoint.json", context);
+  checkScopedCheckpoint(context, checkpoint);
+  return checkpoint;
 }
 export function assertFullMeteringJournalNoPending({ directory }) {
   protectedPath(directory, true);
@@ -145,8 +153,8 @@ export function assertFullMeteringJournalNoPending({ directory }) {
 }
 // Retain the exact logical preimage before a material transition creates a WAL
 // intent. Never overwrite it. This is private audit evidence, not a rollback DB.
-export function archiveFullMeteringMaterialCheckpoint({ directory, context, checkpoint }) {
-  const digest = fullMeteringDigest(checkpoint), name = `material-before-${digest}.json`;
+export function archiveFullMeteringMaterialCheckpoint({ directory, context, checkpoint, namePrefix = "material-before" }) {
+  const digest = fullMeteringDigest(checkpoint), name = `${namePrefix}-${digest}.json`;
   if (fullMeteringDigest(readFullMeteringJournal({ directory, context })) !== digest) fail("full_metering_checkpoint_changed");
   if (existsSync(join(directory, name))) {
     if (fullMeteringDigest(read(directory, name, context)) !== digest) fail("full_metering_material_archive_changed");
@@ -161,6 +169,9 @@ export function readFullMeteringMaterialCheckpointArchive({ directory, context, 
   return checkpoint;
 }
 export function commitFullMeteringJournal({ directory, context, previousCheckpoint, nextCheckpoint, samples, applySamples, onStage = () => {} }) {
+  checkContext(context);
+  checkScopedCheckpoint(context, previousCheckpoint);
+  checkScopedCheckpoint(context, nextCheckpoint);
   if (typeof applySamples !== "function" || !Array.isArray(samples)) fail("full_metering_batch_invalid");
   if (existsSync(join(directory, "pending.json"))) fail("full_metering_pending_recovery_required");
   if (fullMeteringDigest(readFullMeteringJournal({ directory, context })) !== fullMeteringDigest(previousCheckpoint)) fail("full_metering_checkpoint_changed");
@@ -176,14 +187,17 @@ export function commitFullMeteringJournal({ directory, context, previousCheckpoi
   removePending(directory);
   return { committed: true, sampleCount: samples.length };
 }
-export function recoverFullMeteringJournal({ directory, context, applySamples }) {
+export function recoverFullMeteringJournal({ directory, context, applySamples, validateCheckpoint = () => {} }) {
   const checkpoint = readFullMeteringJournal({ directory, context });
+  validateCheckpoint(checkpoint);
   if (!existsSync(join(directory, "pending.json"))) return { recovered: false };
   const pending = read(directory, "pending.json", context);
   if (!pending || Object.keys(pending).sort().join(",") !== "nextCheckpoint,previousDigest,samples"
     || !Array.isArray(pending.samples) || !/^[a-f0-9]{64}$/.test(pending.previousDigest)) fail("full_metering_intent_invalid");
   const current = fullMeteringDigest(checkpoint);
   if (current !== pending.previousDigest && current !== fullMeteringDigest(pending.nextCheckpoint)) fail("full_metering_checkpoint_changed");
+  checkScopedCheckpoint(context, pending.nextCheckpoint);
+  validateCheckpoint(pending.nextCheckpoint);
   // Replaying the SAME identifiers is safe both before and after DB COMMIT.
   // A collision or partial prior DB transaction must fail in applySamples.
   applySynchronously(applySamples, pending.samples);

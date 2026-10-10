@@ -176,7 +176,7 @@ function executionEnvelope(overrides = {}) {
     type: "control_plane_welcome_coins_activation_execution_envelope",
     scope: "welcome-coins-activation-transaction",
     approvalDigestSha256: APPROVAL_DIGEST_SHA256,
-    expiresAt: "2026-09-30T18:00:00.000Z",
+    expiresAt: "2027-10-06T18:00:00.000Z",
     retry: false,
     serviceUnit: SERVICE_UNIT,
     expectedRelease: "release-2026-08-30",

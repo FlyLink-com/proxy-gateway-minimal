@@ -263,7 +263,9 @@ export function createSubscriptionCore({
       return { ok: false, status: 403, error: "Subscription disabled" };
     }
     if (status === "expired") {
-      return { ok: false, status: 403, error: "Subscription expired" };
+      // Access remains denied. Only authenticated, non-revoked links reach here;
+      // the YAML transport may replace stale client nodes with a public notice.
+      return { ok: false, status: 403, error: "Subscription expired", denialReason: "subscription_expired" };
     }
 
     const scopedProxyConfig = applyTenantCredentialMaterial(
@@ -549,6 +551,55 @@ export function createSubscriptionCore({
     };
   }
 
+  function prepareSubscriptionArtifactRotation(id, { tenantId } = {}) {
+    const tenant = subscriptionStore.getTenant(requiredText(tenantId, "tenantId"));
+    const now = isoNow(nowFn);
+    if (!tenant || tenant.status !== "active" || !Number.isFinite(Date.parse(tenant.expiresAt))
+      || Date.parse(tenant.expiresAt) <= Date.parse(now)) {
+      throw serviceError("Subscription link reset is unavailable", "subscription_link_reset_conflict");
+    }
+    const artifacts = subscriptionStore.listArtifactsByTenant(tenant.id);
+    const live = artifacts.filter(artifact => ["active", "suspicious"].includes(artifact.status));
+    if (live.length !== 1 || live[0].id !== id) {
+      throw serviceError("Subscription link reset is unavailable", "subscription_link_reset_conflict");
+    }
+    const rawArtifact = normalizeArtifactSecret(artifactSecretFactory());
+    if (!/^[A-Za-z0-9_-]{16,192}$/.test(rawArtifact)) throw validationError("Invalid generated artifact material");
+    return { previousArtifactId: id, tenantId: tenant.id, replacementArtifactId: artifactIdFactory(),
+      subscriptionUrl: makeArtifactUrl(rawArtifact), preparedAt: now };
+  }
+
+  function commitPreparedSubscriptionArtifactRotation(plan) {
+    if (!plan || typeof plan !== "object" || Array.isArray(plan)
+      || Object.keys(plan).some(key => !["previousArtifactId", "tenantId", "replacementArtifactId", "subscriptionUrl", "preparedAt"].includes(key))) {
+      throw validationError("Invalid subscription link reset plan");
+    }
+    for (const key of ["previousArtifactId", "tenantId", "replacementArtifactId"]) {
+      if (typeof plan[key] !== "string" || !/^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$/.test(plan[key])) {
+        throw validationError("Invalid subscription link reset reference");
+      }
+    }
+    const now = isoNow(nowFn);
+    if (typeof plan.preparedAt !== "string" || !Number.isFinite(Date.parse(plan.preparedAt))
+      || new Date(plan.preparedAt).toISOString() !== plan.preparedAt || plan.preparedAt > now) {
+      throw validationError("Invalid subscription link reset timestamp");
+    }
+    const prefix = `${normalizedPublicSubscriptionBaseUrl.replace(/\/+$/, "")}/sub/a/`;
+    if (typeof plan.subscriptionUrl !== "string" || !plan.subscriptionUrl.startsWith(prefix) || !plan.subscriptionUrl.endsWith(".yaml")) {
+      throw validationError("Invalid subscription link reset destination");
+    }
+    const rawArtifact = plan.subscriptionUrl.slice(prefix.length, -5);
+    if (!/^[A-Za-z0-9_-]{16,192}$/.test(rawArtifact) || makeArtifactUrl(rawArtifact) !== plan.subscriptionUrl) {
+      throw validationError("Invalid subscription link reset destination");
+    }
+    if (typeof subscriptionStore.commitPreparedArtifactRotation !== "function") {
+      throw serviceError("Subscription link reset storage is unavailable", "subscription_link_reset_unavailable");
+    }
+    const result = subscriptionStore.commitPreparedArtifactRotation({ ...plan,
+      artifactHash: hashSubscriptionToken(rawArtifact), artifactPrefix: artifactPrefix(rawArtifact), now });
+    return { ...result, subscriptionUrl: plan.subscriptionUrl };
+  }
+
   function resolveSubscriptionToken(rawToken) {
     const tokenHash = hashSubscriptionToken(rawToken);
     const tenantAuth = subscriptionStore.findTenantByTokenHash(tokenHash);
@@ -677,6 +728,8 @@ export function createSubscriptionCore({
     listSubscriptionArtifacts,
     revokeSubscriptionArtifact,
     rotateSubscriptionArtifact,
+    prepareSubscriptionArtifactRotation,
+    commitPreparedSubscriptionArtifactRotation,
     resolveSubscriptionToken,
     resolveSubscriptionArtifact,
     bindTenantCredentialMaterial,
