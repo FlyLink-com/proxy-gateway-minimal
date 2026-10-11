@@ -324,6 +324,7 @@ function openHarness({
     entitlementRef,
     clock,
     database,
+    runtimeDbPath,
     controlStore,
     runtimeCore,
     store,
@@ -385,6 +386,46 @@ function expectCommerceCode(action, code) {
     assert.equal(error?.code, code);
     return true;
   });
+}
+
+function confirmHealthyPeerRenewal(h) {
+  const accountId = "acct_plan_switch_peer", entitlementId = "ent_plan_switch_peer";
+  const requestId = "pareq_plan_switch_peer", tenantId = "tenant_plan_switch_peer";
+  const artifactId = "artifact_plan_switch_peer";
+  const timestamps = { createdAt: h.clock.value, updatedAt: h.clock.value };
+  h.controlStore.createAccount({ id: accountId, ownerRef: "owner_plan_switch_peer", status: "active", ...timestamps });
+  h.controlStore.createEntitlement({ id: entitlementId, accountId, plan: BASIC.offerVersionRef, status: "active",
+    validFrom: VALID_FROM, validUntil: VALID_UNTIL, maxArtifacts: 1, maxDevices: 2,
+    trafficLimitBytes: 50 * GIB, ...timestamps });
+  h.controlStore.createIssuanceRequest({ id: requestId, accountId, entitlementId,
+    approvalRef: "approval_plan_switch_peer", status: "issued", quantity: 1,
+    nodeId: "channel-vultr-a-tuic", purpose: "portal_access_request", requestedByRef: "operator_plan_switch", ...timestamps });
+  h.controlStore.linkIssuedSubscription({ id: "link_plan_switch_peer", requestId,
+    tenantRef: safeIssuedRef("tenant", tenantId), artifactRef: safeIssuedRef("artifact", artifactId), status: "active", ...timestamps });
+  const runtimeStore = createSqliteSubscriptionStore({ dbPath: h.runtimeDbPath });
+  try {
+    const runtime = createSubscriptionCore({ store: runtimeStore, proxyConfig: sampleProxyConfig(),
+      publicSubscriptionBaseUrl: "https://gateway.example.test", nowFn: () => new Date(h.clock.value),
+      tokenFactory: () => ({ rawToken: "pgsub_synthetic_peer_token", tokenHash: hashSubscriptionToken("pgsub_synthetic_peer_token"), tokenPrefix: "pgsub_synthetic" }),
+      artifactSecretFactory: () => "synthetic_peer_artifact", idFactory: () => tenantId, artifactIdFactory: () => artifactId });
+    runtime.createTenant({ displayName: "Synthetic Peer", nodeId: "vultr-singapore", expiresAt: VALID_UNTIL, note: "" });
+    runtime.createSubscriptionArtifact(tenantId);
+  } finally { runtimeStore.close(); }
+  h.controlStore.upsertPortalAccessRequest({ id: requestId, portalUserRef: accountId, plan: "monthly", clientTarget: "clash",
+    durationDays: 30, quantity: 1, status: "delivered", nextAction: "user_can_use_access", noteProvided: false,
+    priorTrialState: "not_applicable", submittedAt: VALID_FROM, updatedAt: h.clock.value, reviewedAt: h.clock.value,
+    reviewedByRef: "operator_plan_switch", expiresAt: VALID_UNTIL, validUntil: VALID_UNTIL, entitlementRef: entitlementId,
+    accessGrantRef: "grant_plan_switch_peer", tenantId, artifactId, edgeChannelRef: "channel-vultr-a-tuic",
+    edgeCredentialRef: "edgecred_plan_switch_peer", edgeMaterialDigest: "sha256:synthetic_plan_switch_peer" });
+  h.store.walletStore.creditCoins({ accountId, coinType: "paid_coins", amountUnits: 500, availability: "available",
+    sourceType: "synthetic_seed", sourceRef: "source_plan_switch_peer", sourceDigest: "b".repeat(64), policyRef: null,
+    policyVersion: null, expiresAt: null, operation: { actorScope: "system:plan-switch-test", idempotencyKey: "peer_seed",
+      actorType: "system", actorRef: "plan_switch_test" } });
+  const quote = h.store.createCheckoutQuote({ accountId, offerRef: BASIC.offerRef });
+  const operation = { actorScope: `portal:${accountId}`, idempotencyKey: "peer_renewal", actorType: "portal_user", actorRef: accountId };
+  const order = h.store.confirmOrder({ accountId, quoteRef: quote.quoteRef, operation });
+  return { accountId, entitlementId, tenantId, quote, order,
+    replay: () => h.store.confirmOrder({ accountId, quoteRef: quote.quoteRef, operation }) };
 }
 
 test("confirmed pending-credit renewal wins when its cancel window crosses the due boundary", async () => {
@@ -626,6 +667,107 @@ test("annual upgrade crossing its normal cancel window releases the uncaptured h
     assert.equal(h.database.prepare("select payment_status from platform_coin_commerce_orders").pluck().get(), "cancelled");
   } finally { h.close(); }
 });
+
+test("annual confirmed upgrade still captures when the cancel window crosses the one-hour quote cutoff", async () => {
+  const h = openHarness({ plan: BASIC.offerVersionRef, trafficGb: 50 });
+  try {
+    h.clock.value = new Date(Date.parse(VALID_UNTIL) - 3_602_000).toISOString();
+    const quote = h.quote(YEARLY.offerRef);
+    const order = h.confirm(quote, "annual_confirmed_quote_cutoff");
+    const result = await h.deliver();
+    assert.equal(result.commandsDelivered, 1);
+    assert.equal(h.store.getOrder({ accountId: h.accountId, orderRef: order.orderRef }).paymentStatus, "captured");
+    assert.equal(h.entitlement().plan, YEARLY.offerVersionRef);
+    assert.equal(h.database.prepare("select amount_units from platform_coin_holds where status = 'captured'").pluck().get(), quote.amountUnits);
+    const expectedUntil = new Date(Date.parse(h.clock.value) + 365 * DAY_MS).toISOString();
+    assert.equal(h.entitlement().validUntil, expectedUntil);
+    assert.equal(h.entitlement().validFrom, VALID_FROM);
+    assert.equal(h.runtimeCore.getTenant("tenant_plan_switch").expiresAt, expectedUntil);
+    const ledger = h.database.prepare("select * from platform_coin_ledger_entries order by entry_ref").all();
+    await h.coordinator.runOnce();
+    assert.equal(h.confirm(quote, "annual_confirmed_quote_cutoff").paymentStatus, "captured");
+    assert.deepEqual(h.database.prepare("select * from platform_coin_ledger_entries order by entry_ref").all(), ledger);
+    assert.equal(h.entitlement().validUntil, expectedUntil);
+  } finally { await h.coordinator.stop(); h.close(); }
+});
+
+test("annual confirmed upgrade keeps the frozen charge after a longer sub-hour capture delay", async () => {
+  const h = openHarness({ plan: BASIC.offerVersionRef, trafficGb: 50 });
+  try {
+    h.clock.value = new Date(Date.parse(VALID_UNTIL) - 3_602_000).toISOString();
+    const quote = h.quote(YEARLY.offerRef);
+    const order = h.confirm(quote, "annual_delayed_capture");
+    const before = h.entitlement();
+    h.clock.value = new Date(Date.parse(VALID_UNTIL) - 60_000).toISOString();
+    const result = await h.coordinator.runOnce();
+    assert.equal(result.commandsDelivered, 1);
+    assert.equal(h.store.getOrder({ accountId: h.accountId, orderRef: order.orderRef }).paymentStatus, "captured");
+    assert.equal(h.database.prepare("select amount_units from platform_coin_holds where status = 'captured'").pluck().get(), quote.amountUnits);
+    assert.equal(h.entitlement().validFrom, before.validFrom);
+    assert.equal(h.entitlement().validUntil, new Date(Date.parse(h.clock.value) + 365 * DAY_MS).toISOString());
+    const ledger = h.database.prepare("select * from platform_coin_ledger_entries order by entry_ref").all();
+    await h.coordinator.runOnce();
+    assert.equal(h.confirm(quote, "annual_delayed_capture").paymentStatus, "captured");
+    assert.deepEqual(h.database.prepare("select * from platform_coin_ledger_entries order by entry_ref").all(), ledger);
+  } finally { await h.coordinator.stop(); h.close(); }
+});
+
+for (const status of ["suspended", "disabled"]) {
+  test(`annual ${status} account releases once while another account in the same batch delivers`, async () => {
+    const h = openHarness({ plan: BASIC.offerVersionRef, trafficGb: 50 });
+    try {
+      const peer = confirmHealthyPeerRenewal(h);
+      const quote = h.quote(YEARLY.offerRef);
+      const annual = h.confirm(quote, `annual_${status}_account`);
+      h.database.prepare("update platform_accounts set status = ? where id = ?").run(status, h.accountId);
+      const result = await h.deliver();
+      assert.equal(result.commandsDelivered, 1);
+      assert.equal(h.database.prepare("select payment_status from platform_coin_commerce_orders where order_ref = ?").pluck().get(annual.orderRef), "cancelled");
+      assert.equal(h.database.prepare(`select h.status from platform_coin_holds h join platform_coin_commerce_orders o
+        on o.hold_ref = h.hold_ref where o.order_ref = ?`).pluck().get(annual.orderRef), "released");
+      assert.equal(h.store.getOrder({ accountId: peer.accountId, orderRef: peer.order.orderRef }).paymentStatus, "captured");
+      assert.equal(h.runtimeCore.getTenant(peer.tenantId).expiresAt, new Date(Date.parse(VALID_UNTIL) + 30 * DAY_MS).toISOString());
+      assert.equal(h.entitlement().plan, BASIC.offerVersionRef);
+      assert.equal(h.entitlement().validUntil, VALID_UNTIL);
+      assert.equal(h.database.prepare("select count(*) from platform_coin_commerce_fulfillment_commands where order_ref = ?").pluck().get(annual.orderRef), 0);
+      const ledger = h.database.prepare("select * from platform_coin_ledger_entries order by entry_ref").all();
+      await h.coordinator.runOnce();
+      await h.coordinator.runOnce();
+      assert.equal(peer.replay().paymentStatus, "captured");
+      assert.equal(h.confirm(quote, `annual_${status}_account`).paymentStatus, "cancelled");
+      assert.deepEqual(h.database.prepare("select * from platform_coin_ledger_entries order by entry_ref").all(), ledger);
+      assert.equal(h.database.prepare("select count(*) from platform_coin_commerce_order_events where order_ref = ? and event_type = 'order_cancelled'").pluck().get(annual.orderRef), 1);
+    } finally { await h.coordinator.stop(); h.close(); }
+  });
+}
+
+for (const drift of ["expired", "entitlement_snapshot", "ownership", "scheduled_switch"]) {
+  test(`annual capture regression still rejects ${drift} after confirmation`, async () => {
+    const h = openHarness({ plan: drift === "scheduled_switch" ? PLUS.offerVersionRef : BASIC.offerVersionRef });
+    try {
+      if (drift === "scheduled_switch") { h.confirm(h.quote(BASIC.offerRef), "prepare_downgrade"); await h.deliver(); }
+      h.clock.value = new Date(Date.parse(VALID_UNTIL) - 3_602_000).toISOString();
+      const quote = h.quote(YEARLY.offerRef);
+      const annual = h.confirm(quote, `annual_guard_${drift}`);
+      if (drift === "expired") h.clock.value = VALID_UNTIL;
+      if (drift === "entitlement_snapshot") h.database.prepare("update platform_entitlements set valid_until = ? where id = ?")
+        .run(new Date(Date.parse(VALID_UNTIL) + DAY_MS).toISOString(), h.entitlementRef);
+      if (drift === "ownership") {
+        h.controlStore.createAccount({ id: "acct_different_owner", ownerRef: "owner_other", status: "active", createdAt: CLOCK, updatedAt: CLOCK });
+        h.database.prepare("update platform_entitlements set account_id = 'acct_different_owner' where id = ?").run(h.entitlementRef);
+      }
+      // Use a permitted lifecycle transition, not an update rejected by the schema guard.
+      if (drift === "scheduled_switch") h.database.prepare("update platform_scheduled_plan_switches set status = 'applying' where account_id = ?").run(h.accountId);
+      const result = await h.deliver();
+      assert.equal(result.commandsDelivered, 0);
+      assert.equal(h.database.prepare("select payment_status from platform_coin_commerce_orders where order_ref = ?").pluck().get(annual.orderRef), "cancelled");
+      assert.equal(h.database.prepare(`select h.status from platform_coin_holds h join platform_coin_commerce_orders o
+        on o.hold_ref = h.hold_ref where o.order_ref = ?`).pluck().get(annual.orderRef), "released");
+      assert.equal(h.database.prepare("select count(*) from platform_coin_commerce_fulfillment_commands where order_ref = ?").pluck().get(annual.orderRef), 0);
+      assert.notEqual(h.entitlement().plan, YEARLY.offerVersionRef);
+    } finally { await h.coordinator.stop(); h.close(); }
+  });
+}
 
 test("annual participant has no standalone or pre-capture effect capability", () => {
   const h = openHarness({ plan: BASIC.offerVersionRef, trafficGb: 50 });

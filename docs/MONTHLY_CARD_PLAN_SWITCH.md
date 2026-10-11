@@ -208,6 +208,14 @@ pending, undelivered) orders; paid downgrade orders are delivered immediately
    records the safe reason. A safe yearly upgrade atomically commits Coins capture,
    outbox and control entitlement/audit effect on the same SQLite connection and
    timestamp, with no runtime or external I/O. Confirmed prices are not reprorated.
+   Capture does not reapply the 60-minute quote window: a confirmed order may
+   cross that boundary during the cancellation interval or coordinator delay.
+   The entitlement must still be unexpired and match the confirmed snapshot,
+   and ownership, pending-credit and cycle checks use the actual capture time.
+   If the account is missing or inactive, reject that uncaptured order and
+   release its hold through the existing transaction; other due orders in the
+   batch must continue. Unexpected database errors still fail closed rather
+   than being treated as an inactive account.
 5. Fulfillment (`execute` in `coin-commerce-production-subscription-fulfillment.mjs`
    + `applyCoinCommerceSubscriptionFulfillment`), by `kind`:
    * `renewal`: existing behaviour; additionally, in the same DB transaction,
