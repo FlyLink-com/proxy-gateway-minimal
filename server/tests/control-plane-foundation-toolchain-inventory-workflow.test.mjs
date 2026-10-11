@@ -13,7 +13,7 @@ const WORKFLOW_PATH = resolve(
 const CHECKOUT_PIN = "d23441a48e516b6c34aea4fa41551a30e30af803";
 const FOUNDATION_TOOLCHAIN_CONTAINER_IMAGE =
   "docker.io/library/node:22.23.1-bookworm@sha256:175215a1f306ed5df592434b99cc2019f70624373fe49cb659240a618a846aed";
-const EXPECTED_WORKFLOW_SHA256 = "f1ebd301b19f3a93606ed7cfb352895441ebc594dca4b67e90fb6c4ad553fa59";
+const EXPECTED_WORKFLOW_SHA256 = "ccaa2b05296b67949398454fcc9e7290681776cfd944a8cf774fbf358b62dd18";
 
 function sha256Hex(value) {
   return createHash("sha256").update(value).digest("hex");
@@ -60,14 +60,14 @@ function assertInventoryWorkflowSemantics(rawWorkflow, { onAccepted = () => {} }
   assert.notEqual(concurrencyOffset, -1);
   const onBlock = workflow.slice(onOffset + 1, permissionsOffset);
   const permissionsBlock = workflow.slice(permissionsOffset + 1, concurrencyOffset);
-  assert.deepEqual(directKeys(onBlock, 2), ["pull_request"]);
-  assert.deepEqual(directKeys(onBlock, 4), ["branches"]);
+  assert.deepEqual(directKeys(onBlock, 2), ["workflow_call"]);
+  assert.deepEqual(directKeys(onBlock, 4), []);
   assert.deepEqual(directKeys(permissionsBlock, 2), ["contents"]);
   assert.match(workflow, /^name: Control Plane Foundation Toolchain Inventory$/m);
-  assert.match(workflow, /^on:\n  pull_request:\n    branches:\n      - master$/m);
+  assert.match(workflow, /^on:\n  workflow_call:$/m);
   assert.doesNotMatch(
     workflow,
-    /^\s*(?:"(?:push|workflow_dispatch|schedule|pull_request_target|workflow_call)"|'(?:push|workflow_dispatch|schedule|pull_request_target|workflow_call)'|push|workflow_dispatch|schedule|pull_request_target|workflow_call):/m
+    /^\s*(?:"(?:push|workflow_dispatch|schedule|pull_request_target|pull_request)"|'(?:push|workflow_dispatch|schedule|pull_request_target|pull_request)'|push|workflow_dispatch|schedule|pull_request_target|pull_request):/m
   );
   assert.match(workflow, /^permissions:\n  contents: read$/m);
   assert.equal((workflow.match(/^  contents: read$/gm) ?? []).length, 1);
@@ -78,11 +78,13 @@ function assertInventoryWorkflowSemantics(rawWorkflow, { onAccepted = () => {} }
   const job = jobs[0].source;
   assert.deepEqual(directKeys(job, 4), [
     "name",
+    "if",
     "runs-on",
     "timeout-minutes",
     "container",
     "steps"
   ]);
+  assert.match(job, /^    if: github\.event_name == 'pull_request' && github\.event\.pull_request\.draft == false$/m);
   assert.match(job, /^    runs-on: ubuntu-24\.04$/m);
   assert.match(job, /^    timeout-minutes: 10$/m);
   assert.match(
@@ -95,7 +97,7 @@ function assertInventoryWorkflowSemantics(rawWorkflow, { onAccepted = () => {} }
   assert.notEqual(stepsOffset, -1);
   const containerBlock = job.slice(containerOffset + 1, stepsOffset);
   assert.deepEqual(directKeys(containerBlock, 6), ["image"]);
-  assert.doesNotMatch(job, /^    (?:permissions|environment|env|services|defaults|uses|if|continue-on-error):/m);
+  assert.doesNotMatch(job, /^    (?:permissions|environment|env|services|defaults|uses|continue-on-error):/m);
 
   const steps = splitNamedBlocks(job, /^      - name: ([^\r\n]+)$/gm);
   assert.equal((job.match(/^      - /gm) ?? []).length, 3);
@@ -168,7 +170,7 @@ test("inventory topology faults fail before eligibility", () => {
   const workflow = readFileSync(WORKFLOW_PATH, "utf8").replace(/\r\n/g, "\n");
   const faults = [
     workflow.replace("on:", "\"on\":"),
-    workflow.replace("  pull_request:", "  workflow_dispatch:\n  pull_request:"),
+    workflow.replace("  workflow_call:", "  workflow_dispatch:\n  workflow_call:"),
     workflow.replace("jobs:\n  toolchain-inventory:", "jobs:\n  _unlisted:\n    runs-on: self-hosted\n  toolchain-inventory:"),
     workflow.replace("    runs-on: ubuntu-24.04", "    runs-on: self-hosted"),
     workflow.replace("  contents: read", "  contents: read\n  pull-requests: write"),
@@ -187,7 +189,7 @@ test("inventory topology faults fail before eligibility", () => {
       "      - name: Emit non-authoritative inventory evidence",
       "      - run: node hidden-command.mjs\n\n      - name: Emit non-authoritative inventory evidence"
     ),
-    workflow.replace("  pull_request:", "  repository_dispatch:\n  pull_request:"),
+    workflow.replace("  workflow_call:", "  repository_dispatch:\n  workflow_call:"),
     workflow.replace(
       "    container:\n      image:",
       "    container:\n      options: --privileged\n      image:"

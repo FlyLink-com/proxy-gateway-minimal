@@ -1,9 +1,7 @@
 name: Control Plane Foundation Toolchain Inventory
 
 on:
-  pull_request:
-    branches:
-      - master
+  workflow_call:
 
 permissions:
   contents: read
@@ -15,6 +13,7 @@ concurrency:
 jobs:
   toolchain-inventory:
     name: Foundation v2 closure inventory only
+    if: github.event_name == 'pull_request' && github.event.pull_request.draft == false
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     container:
