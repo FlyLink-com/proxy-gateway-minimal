@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, createHmac, randomBytes } from "node:crypto";
 import { isIP } from "node:net";
 
 import { normalizeCoinCommerceOffer } from "../services/platform/coin-commerce-domain.mjs";
@@ -11,7 +11,8 @@ const CACHE_TTL_MS = 60_000;
 const CACHE_MAX_AGE_SECONDS = 60;
 const RATE_WINDOW_MS = 60_000;
 const RATE_WINDOW_MAX = 10;
-const RATE_BUCKET_CAPACITY = 1_024;
+const RATE_COUNTER_ROWS = 4;
+const RATE_COUNTER_WIDTH = 4_096;
 const OFFER_FIELDS = [
   "offerRef",
   "offerVersionRef",
@@ -170,8 +171,41 @@ function readClock(nowFn) {
   return now;
 }
 
+function rateIdentity(ip) {
+  if (typeof ip !== "string") return null;
+  const family = isIP(ip);
+  if (family === 4) return `v4:${ip}`;
+  if (family !== 6) return null;
+  // URL's IPv6 parser canonicalizes case, compression and embedded IPv4.
+  // Zone-qualified addresses are deliberately rejected, not truncated.
+  let normalized;
+  try {
+    normalized = new URL(`http://[${ip}]/`).hostname.slice(1, -1);
+  } catch {
+    return null;
+  }
+  const [left, right] = normalized.split("::");
+  const first = left ? left.split(":") : [];
+  const last = right ? right.split(":") : [];
+  const words = right === undefined ? first : [
+    ...first, ...Array(8 - first.length - last.length).fill("0"), ...last
+  ];
+  const values = words.map(word => Number.parseInt(word, 16));
+  if (values.slice(0, 5).every(word => word === 0) && values[5] === 0xffff) {
+    return `v4:${values[6] >>> 8}.${values[6] & 255}.${values[7] >>> 8}.${values[7] & 255}`;
+  }
+  return `v6:${values.slice(0, 4).map(word => word.toString(16).padStart(4, "0")).join(":")}/64`;
+}
+
 function createRateLimiter(nowFn, resolveClientIpFn) {
-  const buckets = new Map();
+  // A keyed count-min structure has fixed 16 KiB counter storage and no
+  // client-admission/eviction boundary. Collisions can only over-count: they
+  // may reject an unrelated source early, never clear a hot source's quota.
+  // The key is process-local and cannot be chosen by an HTTP caller.
+  const counters = new Uint8Array(RATE_COUNTER_ROWS * RATE_COUNTER_WIDTH);
+  const key = randomBytes(32);
+  let window = -1;
+  let lastNow = -1;
   return function allow(req, res) {
     let now;
     try {
@@ -187,33 +221,28 @@ function createRateLimiter(nowFn, resolveClientIpFn) {
       sendError(res, 503, "public_catalog_unavailable", true);
       return false;
     }
-    if (typeof clientIp !== "string" || isIP(clientIp) === 0) {
+    const identity = rateIdentity(clientIp);
+    if (!identity || now < lastNow) {
       sendError(res, 503, "public_catalog_unavailable", true);
       return false;
     }
-    for (const [key, bucket] of buckets) {
-      if (bucket.resetAt <= now) buckets.delete(key);
+    lastNow = now;
+    const nextWindow = Math.floor(now / RATE_WINDOW_MS);
+    if (nextWindow > window) {
+      counters.fill(0);
+      window = nextWindow;
     }
-    const existing = buckets.get(clientIp);
-    if (existing) {
-      if (existing.count >= RATE_WINDOW_MAX) {
-        const retryAfter = Math.max(
-          1,
-          Math.ceil((existing.resetAt - now) / 1_000)
-        );
-        res.set("Retry-After", String(retryAfter));
-        sendError(res, 429, "public_catalog_rate_limited", true);
-        return false;
-      }
-      existing.count += 1;
-      return true;
-    }
-    if (buckets.size >= RATE_BUCKET_CAPACITY) {
-      res.set("Retry-After", String(Math.ceil(RATE_WINDOW_MS / 1_000)));
+    const digest = createHmac("sha256", key).update(identity).digest();
+    const slots = Array.from({ length: RATE_COUNTER_ROWS }, (_, row) => (
+      row * RATE_COUNTER_WIDTH + digest.readUInt16BE(row * 2) % RATE_COUNTER_WIDTH
+    ));
+    if (Math.min(...slots.map(slot => counters[slot])) >= RATE_WINDOW_MAX) {
+      res.set("Retry-After", String(Math.max(1,
+        Math.ceil(((window + 1) * RATE_WINDOW_MS - now) / 1_000))));
       sendError(res, 429, "public_catalog_rate_limited", true);
       return false;
     }
-    buckets.set(clientIp, { count: 1, resetAt: now + RATE_WINDOW_MS });
+    for (const slot of slots) counters[slot] = Math.min(RATE_WINDOW_MAX, counters[slot] + 1);
     return true;
   };
 }

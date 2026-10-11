@@ -6,7 +6,7 @@ document_metadata:
   lifecycle: active
   authority_scope: portal_independent_api_baseline
   superseded_by: null
-  last_verified_at: 2026-10-09
+  last_verified_at: 2026-10-11
   production_authority: false
 ```
 
@@ -174,9 +174,13 @@ rate-limited 和 unavailable。其 browser transport protection exception 可能
 `GET /api/portal/catalog/offers` 与 `GET /api/portal/commerce/model` 仍要求 Portal
 会话；本端点不替代它们，也不改变旧客户端对 CommerceJson 的严格字段集。
 
-`GET /api/portal/public/catalog` 只接受 GET，不读取 cookie、CSRF 或会话，也不接受
-query。非 GET 为 405 `{error:{code:"public_catalog_method_not_allowed",retryable:false}}`，
-带 `Allow: GET`。带 query 为 400 `public_catalog_request_invalid`。
+`GET /api/portal/public/catalog` 不读取 cookie、CSRF 或会话，也不接受 query。
+仅原始 pathname 精确相等的 GET 在浏览器 Cookie 解析之前通过；普通、失效、格式错误、
+重复 Cookie 不改变该公开数据，不读取会话、不发送 `Set-Cookie`。大小写、尾斜线、编码
+别名及其他方法不获得此例外；其既有浏览器保护仍有效（可先返回 401/403）。到达公开
+dispatcher 的非 GET 为 405 `{error:{code:"public_catalog_method_not_allowed",retryable:false}}`，
+带 `Allow: GET`。精确 pathname GET 带 query（含空 `?`）为 400
+`public_catalog_request_invalid`，不因 Cookie 改成会话错误。
 
 成功响应：
 
@@ -213,9 +217,24 @@ query。非 GET 为 405 `{error:{code:"public_catalog_method_not_allowed",retrya
 - 成功响应带 `Cache-Control: public, max-age=60` 和强 ETag。`If-None-Match` 按弱比较
   命中时返回 304，且仍带同样的缓存头。进程内内存缓存 TTL 为 60 秒，按应用实例
   共享，不按账户或 IP 分片。失败响应为 `Cache-Control: no-store`。
-- 限流键使用应用的 `resolveClientIp`（含已配置的 trusted proxy）。每个 IP 每 60 秒
-  10 次，超限 429 `public_catalog_rate_limited` 并带 `Retry-After`。未配置为可信
-  代理的对端所附带的 `X-Forwarded-For` 不参与分桶。无法解析的 IP 为 503。
+- 限流键使用应用的 `resolveClientIp`（含已配置的 trusted proxy）：IPv4 按地址；
+  IPv4-mapped IPv6 与对应 IPv4 合并；其余 IPv6 经正规化按 `/64` 合并。大小写、
+  压缩格式及嵌入 IPv4 的 IPv6 写法不会产生额外额度；无效/带 zone 的地址为 503。
+- 每个来源在 Unix 时间对齐的固定 60 秒窗口最多接受 10 次，超限 429
+  `public_catalog_rate_limited`；`Retry-After` 是到下一窗口的秒数。此处不是滚动窗口，
+  边界两侧可出现合计 20 次短时突发。时钟回拨到最后已处理请求之前时返回 503，不
+  清空计数；缓存自身的 60 秒 TTL 独立于限流窗口。304 和 query 的 400 仍计入额度。
+- 每实例使用随机密钥 HMAC-SHA256 和 4 行 × 4096 个 Uint8 饱和计数器，计数区固定
+  16 KiB，不保存来源地址或扩展 IP 表。四槽最小值是保守计数；哈希碰撞可能提前拒绝
+  其他来源，但不会少记已接受次数。新来源不驱逐旧计数，也不再有 1024 来源后全部
+  新访客被拒绝的表容量门槛。这不是零误拒绝或抗任意分布式洪泛保证。
+- 计数是进程内的；实例/进程之间不共享，重启会重置。生产仍需按实际拓扑设置边缘
+  洪泛保护及容量，并禁止直连后端绕过边缘。没有新增监控、Cookie 或外部限流依赖。
+- `TRUSTED_PROXY_CIDRS` 保持默认空值。未显式可信的对端发送的 `X-Forwarded-For`
+  不参与分桶；可信对端的转发链含非法地址时为 503。若本机 Nginx 反代却未配置该项，
+  访客会共享代理地址额度。放行前必须实查并仅配置确切代理来源，验证两个真实来源
+  互不影响、伪造 XFF 不能换桶；不能改成信任任意来源。该 resolver 也服务 Admin
+  allowlist，宽泛信任会扩大安全边界，因此本 PR 不修改默认值或生产配置。
 
 本文只记录源码合同。`ops/nginx/proxy-gateway-public.conf` 与
 `ops/edge-node/nginx/proxy-gateway-public.conf` 的公网 `location /` 仍对除此以外的
