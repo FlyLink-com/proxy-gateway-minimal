@@ -11,6 +11,21 @@ import {
 } from "../services/platform/wallet-first-current-resource-setup-delivery.mjs";
 
 function sendPortalError(res, error) {
+  if (["subscription_link_reset_conflict", "subscription_link_reset_state_changed"].includes(error.code)) {
+    res.status(409).json({ error: error.code });
+    return;
+  }
+  if (["subscription_link_reset_unavailable", "subscription_link_reset_reconciliation_required"].includes(error.code)) {
+    res.status(503).json({ error: error.code });
+    return;
+  }
+  if (error.code === "subscription_link_reset_rate_limited") {
+    if (Number.isSafeInteger(error.retryAfterSeconds) && error.retryAfterSeconds >= 1 && error.retryAfterSeconds <= 86400) {
+      res.set("Retry-After", String(error.retryAfterSeconds));
+    }
+    res.status(429).json({ error: error.code });
+    return;
+  }
   if (error.code === "portal_current_resource_unavailable" || error.code === "portal_current_resource_reconciliation_required") {
     res.status(error.code === "portal_current_resource_unavailable" ? 503 : 409).json({ error: error.code });
     return;
@@ -542,17 +557,50 @@ export function userPortalRoutes(state, options = {}) {
   });
 
   router.post("/api/portal/access-requests/refresh", (req, res) => {
+    setSetupDeliveryResponseHeaders(res);
     try {
-      if (!accessRequests || typeof accessRequests.refreshSubscription !== "function") {
-        const error = new Error("portal order lifecycle service is not configured");
+      requirePortalSession(req);
+      // Legacy refresh rotates runtime material without a metering handoff.
+      // Do not invoke it or silently reset a link without explicit consent.
+      res.status(410).json({ error: "subscription_refresh_retired" });
+    } catch (error) {
+      sendPortalError(res, error);
+    }
+  });
+
+  router.post("/api/portal/access-requests/reset-link", async (req, res) => {
+    setSetupDeliveryResponseHeaders(res);
+    try {
+      requireNoQuery(req);
+      const session = requirePortalHeaderSession(req);
+      const body = requireExactBody(req, ["requestRef", "idempotencyKey", "confirmed"]);
+      if (
+        body.confirmed !== true
+        || typeof body.requestRef !== "string"
+        || body.requestRef !== body.requestRef.trim()
+        || !/^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$/.test(body.requestRef)
+        || typeof body.idempotencyKey !== "string"
+        || body.idempotencyKey !== body.idempotencyKey.trim()
+        || !/^[A-Za-z0-9][A-Za-z0-9_-]{15,127}$/.test(body.idempotencyKey)
+      ) {
+        const error = new Error("subscription link reset requires exact confirmed input");
         error.code = "validation_error";
         throw error;
       }
-      res.json({
-        request: accessRequests.refreshSubscription(sessionScopedBody(req))
+      if (typeof accessRequests?.resetSubscriptionLink !== "function") {
+        const error = new Error("portal subscription link reset service is unavailable");
+        error.code = "subscription_link_reset_unavailable";
+        throw error;
+      }
+      const request = await accessRequests.resetSubscriptionLink({
+        portalUserRef: session.accountId,
+        requestRef: body.requestRef,
+        idempotencyKey: body.idempotencyKey,
+        confirmed: true
       });
+      res.json({ request });
     } catch (error) {
-      sendPortalError(res, error);
+      sendPortalError(res, error && typeof error === "object" ? error : {});
     }
   });
 
