@@ -1822,12 +1822,29 @@ export function createRuntimeState(options = {}) {
   const dataPlaneAgentRoutesEnabled = envFlag(env.EDGE_DATA_PLANE_AGENT_ROUTES_ENABLED);
   const tempLinkTtlMinutes = Number.parseInt(env.SUBSCRIPTION_TEMP_LINK_TTL_MINUTES, 10) || 24 * 60;
   const portalRefreshCooldownMs = envNonNegativeInteger(env.USER_PORTAL_REFRESH_COOLDOWN_MS, 300000);
+  const portalSubscriptionLinkResetEnabled = envFlag(env.USER_PORTAL_SUBSCRIPTION_LINK_RESET_ENABLED);
   const ownsSubscriptionStore = !options.subscriptionStore && !options.subscriptionRepository && !options.subscriptionCore && !options.subscriptionService;
   const subscriptionStore = options.subscriptionStore || options.subscriptionRepository || (
     ownsSubscriptionStore ? createSqliteSubscriptionStore({ dbPath: subscriptionDbPath }) : null
   );
   const ownsControlStore = !options.platformControlStore;
   const platformControlStore = options.platformControlStore || createSqliteSubscriptionControlStore({ dbPath: controlDbPath });
+  if (portalSubscriptionLinkResetEnabled) {
+    try {
+      // Readiness check only: schema installation requires an explicit migration.
+      if (typeof platformControlStore.getPortalSubscriptionLinkResetStore !== "function") {
+        throw new Error("Subscription link reset storage is unavailable");
+      }
+      platformControlStore.getPortalSubscriptionLinkResetStore({ nowFn: options.userPortalNowFn });
+    } catch {
+      for (const [owned, store] of [[ownsControlStore, platformControlStore], [ownsSubscriptionStore, subscriptionStore]]) {
+        if (owned) { try { store?.close(); } catch { /* Preserve the prerequisite error. */ } }
+      }
+      throw Object.assign(new Error("Subscription link reset requires its prepared schema"), {
+        code: "subscription_link_reset_schema_unavailable"
+      });
+    }
+  }
   let registrationWelcomeCoinsWorkerEnabled = false;
   let registrationWelcomeCoinsSchemaReady = false;
   if (coinsWalletEnabled && coinsCommerceEnabled) {
@@ -2242,6 +2259,7 @@ export function createRuntimeState(options = {}) {
     edgeLifecycleService,
     edgeDesiredStateNotifier,
     refreshCooldownMs: portalRefreshCooldownMs,
+    subscriptionLinkResetEnabled: portalSubscriptionLinkResetEnabled,
     autoIssuance: {
       enabled: autoIssuanceEnabled,
       nodeId: optionalEnvText(env.USER_PORTAL_AUTO_ISSUANCE_NODE_ID),

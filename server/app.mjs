@@ -43,6 +43,7 @@ const ADMIN_CAPABILITY_PROTECTED_PATHS = [
   "/api/admin/overview",
   "/api/admin/operations/overview"
 ];
+const PORTAL_SUBSCRIPTION_LINK_RESET_PATH = "/api/portal/access-requests/reset-link";
 const USER_PORTAL_PUBLIC_PATHS = [
   "/api/portal/browser-session",
   "/api/portal/browser-session/logout",
@@ -61,6 +62,7 @@ const USER_PORTAL_PUBLIC_PATHS = [
   "/api/portal/resources/current/setup/ack",
   "/api/portal/access-requests/reveal",
   "/api/portal/access-requests/refresh",
+  PORTAL_SUBSCRIPTION_LINK_RESET_PATH,
   "/api/portal/access-requests/disable",
   "/api/portal/security/current",
   "/api/portal/security/totp/enrollment",
@@ -283,6 +285,18 @@ function portalCoinRechargeRoutesEnabled(state) {
 
 export function createApp(state, options = {}) {
   const app = express();
+  // These sensitive routes can be rejected before their handlers by cookie/CSRF
+  // or JSON parsing middleware. Those failures retain their privacy headers.
+  const isSubscriptionLinkMutation = req => [
+    PORTAL_SUBSCRIPTION_LINK_RESET_PATH, "/api/portal/access-requests/refresh"
+  ].includes(req.path.toLowerCase().replace(/\/$/, ""));
+  app.use((req, res, next) => {
+    if (isSubscriptionLinkMutation(req)) {
+      res.set("Cache-Control", "no-store");
+      res.set("Referrer-Policy", "no-referrer");
+    }
+    next();
+  });
   app.use("/api/admin/platform/user-monitor", (req, res, next) => {
     res.set("Cache-Control", "no-store");
     next();
@@ -363,6 +377,15 @@ export function createApp(state, options = {}) {
     next();
   });
   app.use(express.json());
+  app.use((error, req, res, next) => {
+    if (!isSubscriptionLinkMutation(req)) return next(error);
+    // Do not return parser errors (which may contain submitted credentials or
+    // server paths) through Express' default development error renderer.
+    const status = error?.type === "entity.too.large" ? 413
+      : ["entity.parse.failed", "request.size.invalid", "request.aborted",
+        "encoding.unsupported", "charset.unsupported"].includes(error?.type) ? 400 : 500;
+    res.status(status).json({ error: status === 500 ? "internal_error" : "validation_error" });
+  });
   // Repeat credential-conflict checking now that legacy request bodies exist.
   app.use(browserSessions.middleware);
 

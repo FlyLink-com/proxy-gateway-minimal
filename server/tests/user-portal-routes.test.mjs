@@ -110,7 +110,8 @@ async function issueHumanChallenge(baseUrl, scope = "portal_login") {
   return body.challenge;
 }
 
-test("portal refresh route maps subscription cooldown to 429", async () => {
+test("portal refresh retirement never calls the old cooldown or rotation service", async () => {
+  let refreshCalls = 0;
   const cooldownError = new Error("subscription refresh is rate limited");
   cooldownError.code = "subscription_refresh_rate_limited";
   const { server, baseUrl } = await listen(createApp(baseState({
@@ -120,6 +121,7 @@ test("portal refresh route maps subscription cooldown to 429", async () => {
     },
     portalAccessRequests: {
       refreshSubscription() {
+        refreshCalls += 1;
         throw cooldownError;
       }
     }
@@ -134,8 +136,9 @@ test("portal refresh route maps subscription cooldown to 429", async () => {
       body: JSON.stringify({ requestRef: "pareq_route_1" })
     });
 
-    assert.equal(response.status, 429);
-    assert.deepEqual(await response.json(), { error: "subscription_refresh_rate_limited" });
+    assert.equal(response.status, 410);
+    assert.deepEqual(await response.json(), { error: "subscription_refresh_retired" });
+    assert.equal(refreshCalls, 0);
   } finally {
     server.close();
   }
