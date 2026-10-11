@@ -410,6 +410,15 @@ This replaces the pre-review candidate checksum, not an applied production ledge
   responses after session changes, newer refreshes or unmount are ignored.
   A failed read does not retain an obsolete successful-plan projection or
   invent new entitlement. Checkout still requests a fresh server quote.
+* A mounted Marketplace invalidates the projection when the server's pending
+  downgrade deadline is reached and reads the state again. An unchanged overdue
+  reply or failed refresh can retry at 10-second intervals, at most six automatic
+  reads for the same deadline and scope. Later visibility/focus events may retry
+  after the same cooldown without resetting that automatic budget. A different
+  server deadline establishes a new budget. Long deadlines are split at the
+  browser timer limit. Unmount, client changes and session changes dispose the
+  old timer/listeners and fence late responses. Only a non-overdue server reply
+  is displayed as current; the timer never performs a local entitlement change.
 
 ## Test plan (source level)
 
@@ -445,7 +454,7 @@ table above is unchanged.
 8. Schema rollback runs the two documented DROP statements, then deletes this migration's ledger row. Applied and superseded rows do not block schema rollback. A `scheduled` or `applying` row does. The legacy `scheduledRows` inspection count includes both unfinished statuses. Existing upgrade audit effects survive; an old application artifact is not made compatible by this operation (see Rollback).
 9. Extra CHECK constraints tighten the documented columns: renewal iff `from` equals `to`; downgrade iff `effective_at` is set; scheduled-row status shape; `from <> to` on scheduled rows.
 10. The startup schema check runs only when the flag is on, after the control store opens. The authority-flag combination still throws `plan_switch_requires_legacy_commerce` before any database file is created.
-11. `inspectCoinCommerceSchema` treats `platform_coin_commerce_*` objects as commerce-owned. The plan-switch quote table is excluded only when its stored SQL matches this migration exactly. Any other extra object in that prefix still fails commerce validation. Absent objects leave the check unchanged.
+11. `inspectCoinCommerceSchema` treats `platform_coin_commerce_*` objects as commerce-owned. Plan-switch objects are excluded only when their stored SQL matches this migration exactly. The base Commerce module imports the pure schema contract directly, so a standalone Commerce CLI process does not depend on a consumer first importing the plan migration. Any other extra object in that prefix still fails commerce validation. Absent objects leave the base check unchanged; the dedicated plan validator remains responsible for the complete extension and migration ledger. The contract is a required runtime dependency in a partial-source deployment, not an optional test helper.
 12. `plan_switch_precheck_unavailable` covers an authority-count query error other than a missing table, an unreadable commerce mode, a non-canonical timestamp, and an internally invalid scheduled-switch read. A missing table is 0 rows.
 13. `upgrade_restart` can move the usage-cycle window start (29 days later / 30 days earlier). Resolved by a fail-closed guard (`plan_switch_cycle_misaligned`); the cycle module is unchanged. See Billing-cycle / quota safety.
 14. Effect-chain start detection ignores the candidate itself. A mixed chain applies an `upgrade_inplace` before a later strictly increasing effect that shares `previousValidUntil`, when that in-place effect is the earliest such candidate. Ambiguous order resolves to null. Chains with no `switchKind` keep the previous resolver. Old effects are not rewritten with `switchKind: null`. Renewal effects do not carry `switchKind`.
@@ -472,6 +481,21 @@ process RSS or SQLite temporary storage. A production-copy rehearsal must still
 bind its private temporary directory, free space, inode and process-memory
 budgets independently; a V8 heap limit alone is not a total-memory limit. This
 implementation does not change the migration ID, DDL checksum or rollback rules.
+
+The plan dry-run also compares `PRAGMA data_version` on the same read-only
+connection, before the first source hash and after the final schema/hash checks.
+This detects another connection's committed WAL-only DML even when the main
+database file and schema are unchanged. A changed source rejects the dry-run;
+the implementation does not checkpoint the source or delete its sidecars.
+This is a check of the observed dry-run interval, not a write lock or a guarantee
+that the source cannot change after the check. Production application still
+requires its own writer control and fresh target binding.
+
+Focused regressions run the base CLI in independent processes before and after
+valid plan migration, reject altered tables/triggers and unknown Commerce
+objects, and inject real second-connection commits after source backup (WAL-only,
+checkpoint/TRUNCATE, and an initially absent WAL). These use synthetic databases;
+they do not substitute for a production migration or paired-database backup.
 
 * Flag off: a same-plan quote charges the catalog price and has no `planSwitch` key. A different live plan is `offer_unavailable`. `GET /api/portal/commerce/plan-switch/state` is not registered: the isolated router returns 404, while the full application falls through to its protected 401 response. The marketplace catches the state-read failure and retains its existing catalog buttons without logging out; do not report the full-app response as a verified 404.
 * Flag on, schema applied to the temporary file with `npm run platform:coin-commerce:plan-switch:schema -- --mode apply --db-path <absolute-temp-path> --confirm-migration-id <id> --confirm-ddl-checksum <checksum>`:

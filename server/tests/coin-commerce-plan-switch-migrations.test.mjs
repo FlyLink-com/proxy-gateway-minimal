@@ -144,17 +144,29 @@ test("dry-run source digest matches SHA-256 at empty, short, exact-block and tai
       for (let index = 0; index < bytes.length; index += 1) bytes[index] = index % 251;
       fs.writeFileSync(dbPath, bytes);
       const expected = crypto.createHash("sha256").update(bytes).digest("hex");
-      await withObservedFileHash(dbPath, {}, async (observed) => {
-        // Arbitrary boundary bytes are intentionally not a commerce SQLite DB.
-        // The first source hash must complete before the schema admission fails.
-        await assert.rejects(dryRunPlanSwitchMigrations({ dbPath, tempRoot: directory }));
-        assert.deepEqual(observed.digests, [expected]);
-        assert.equal(observed.bytes, size);
-        assert.ok(observed.requests.length >= 1);
-        assert.ok(observed.requests.every((length) => length > 0 && length <= 65536));
-        assert.deepEqual(observed.closed, observed.descriptors);
-        assert.equal(observed.descriptors.length, 1);
-      });
+      const { default: Database } = await import("better-sqlite3");
+      const originalPragma = Database.prototype.pragma;
+      Database.prototype.pragma = function pragma(source, ...args) {
+        if (typeof source === "string" && source.trim().toLowerCase() === "data_version") {
+          return [{ data_version: 1 }];
+        }
+        return originalPragma.call(this, source, ...args);
+      };
+      try {
+        await withObservedFileHash(dbPath, {}, async (observed) => {
+          // Arbitrary boundary bytes are intentionally not a commerce SQLite DB.
+          // The first source hash must complete before the schema admission fails.
+          await assert.rejects(dryRunPlanSwitchMigrations({ dbPath, tempRoot: directory }));
+          assert.deepEqual(observed.digests, [expected]);
+          assert.equal(observed.bytes, size);
+          assert.ok(observed.requests.length >= 1);
+          assert.ok(observed.requests.every((length) => length > 0 && length <= 65536));
+          assert.deepEqual(observed.closed, observed.descriptors);
+          assert.equal(observed.descriptors.length, 1);
+        });
+      } finally {
+        Database.prototype.pragma = originalPragma;
+      }
     }
   });
 });

@@ -284,6 +284,23 @@ function switchClient(overrides: Partial<PortalCoinCommerceClient> = {}) {
   });
 }
 
+function usePendingSwitchClock(beforeDue = 1000) {
+  vi.useFakeTimers({
+    toFake: ["Date", "setTimeout", "clearTimeout", "setInterval", "clearInterval"]
+  });
+  vi.setSystemTime(Date.parse(switchExpiry) - beforeDue);
+}
+
+async function settleSwitchRead() {
+  await act(async () => {
+    for (let step = 0; step < 8; step += 1) await Promise.resolve();
+  });
+}
+
+async function advanceSwitchClock(milliseconds: number) {
+  await act(async () => { await vi.advanceTimersByTimeAsync(milliseconds); });
+}
+
 async function confirmSwitch(offer = switchPlus) {
   const card = (await screen.findByRole("heading", { name: offer.title.en })).closest("article")!;
   fireEvent.click(within(card).getByRole("button"));
@@ -374,6 +391,7 @@ async function loginAndOpenMarketplace(client: UserPortalClient) {
 
 afterEach(() => {
   cleanup();
+  vi.useRealTimers();
   window.localStorage.clear();
   window.sessionStorage.clear();
   vi.restoreAllMocks();
@@ -633,6 +651,200 @@ describe("Portal server-backed Marketplace", () => {
     expect(screen.queryByText(/Pending downgrade:|Current plan:/)).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Buy with Coins: Plus monthly" })).toBeInTheDocument();
     expect(commerce.createOrder).toHaveBeenCalledTimes(1);
+  });
+
+  test("re-reads plan state when a mounted pending downgrade reaches effectiveAt", async () => {
+    const dueAt = new Date(switchExpiry).getTime();
+    const laterValidUntil = "2026-11-26T08:00:00.000Z";
+    vi.useFakeTimers({
+      toFake: ["Date", "setTimeout", "clearTimeout", "setInterval", "clearInterval"]
+    });
+    vi.setSystemTime(dueAt - 1000);
+    const readPlanSwitchState = vi.fn()
+      .mockResolvedValueOnce(switchState(switchPlus, true))
+      .mockResolvedValue(switchState(switchBasic, false, laterValidUntil));
+    const commerce = switchClient({ readPlanSwitchState });
+    render(createElement(MarketplacePanel, {
+      commerceClient: commerce, locale: "en", sessionRef: session.sessionRef!, theme: "light"
+    }));
+    await act(async () => {
+      for (let step = 0; step < 8; step += 1) await Promise.resolve();
+    });
+    expect(screen.getByText(/Pending downgrade: Basic monthly/)).toBeInTheDocument();
+    expect(readPlanSwitchState).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000);
+      for (let step = 0; step < 8; step += 1) await Promise.resolve();
+    });
+    expect(readPlanSwitchState).toHaveBeenCalledTimes(2);
+    expect(screen.getAllByText(/Current plan: Basic monthly/)).toHaveLength(2);
+    expect(screen.queryByText(/Pending downgrade:/)).not.toBeInTheDocument();
+    expect(commerce.createOrder).not.toHaveBeenCalled();
+    expect(commerce.listOffers).toHaveBeenCalledTimes(1);
+  });
+
+  test("bounds overdue automatic reads and does not restart the budget on focus", async () => {
+    usePendingSwitchClock();
+    vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
+    const readPlanSwitchState = vi.fn(async () => switchState(switchPlus, true));
+    const commerce = switchClient({ readPlanSwitchState });
+    render(createElement(MarketplacePanel, {
+      commerceClient: commerce, locale: "en", sessionRef: session.sessionRef!, theme: "light"
+    }));
+    await settleSwitchRead();
+    await advanceSwitchClock(1000);
+    expect(readPlanSwitchState).toHaveBeenCalledTimes(2);
+    expect(screen.queryByText(/Pending downgrade:|Current plan:/)).not.toBeInTheDocument();
+    await advanceSwitchClock(50_000);
+    expect(readPlanSwitchState).toHaveBeenCalledTimes(7);
+    await advanceSwitchClock(3_600_000);
+    expect(readPlanSwitchState).toHaveBeenCalledTimes(7);
+    act(() => {
+      window.dispatchEvent(new Event("focus"));
+      window.dispatchEvent(new Event("focus"));
+    });
+    await settleSwitchRead();
+    expect(readPlanSwitchState).toHaveBeenCalledTimes(8);
+    await advanceSwitchClock(60_000);
+    expect(readPlanSwitchState).toHaveBeenCalledTimes(8);
+    expect(commerce.createOrder).not.toHaveBeenCalled();
+  });
+
+  test("retries a due read failure after cooldown and coalesces in-flight focus events", async () => {
+    usePendingSwitchClock();
+    vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
+    const laterRead = deferred<PortalPlanSwitchState>();
+    const readPlanSwitchState = vi.fn()
+      .mockResolvedValueOnce(switchState(switchPlus, true))
+      .mockRejectedValueOnce(new Error("synthetic_unavailable"))
+      .mockImplementationOnce(() => laterRead.promise)
+      .mockResolvedValue(switchState(switchBasic));
+    const commerce = switchClient({ readPlanSwitchState });
+    render(createElement(MarketplacePanel, {
+      commerceClient: commerce, locale: "en", sessionRef: session.sessionRef!, theme: "light"
+    }));
+    await settleSwitchRead();
+    await advanceSwitchClock(1000);
+    expect(readPlanSwitchState).toHaveBeenCalledTimes(2);
+    expect(screen.queryByText(/Pending downgrade:|Current plan:/)).not.toBeInTheDocument();
+    await advanceSwitchClock(9999);
+    act(() => window.dispatchEvent(new Event("focus")));
+    expect(readPlanSwitchState).toHaveBeenCalledTimes(2);
+    await advanceSwitchClock(1);
+    expect(readPlanSwitchState).toHaveBeenCalledTimes(3);
+    act(() => {
+      window.dispatchEvent(new Event("focus"));
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    expect(readPlanSwitchState).toHaveBeenCalledTimes(3);
+    await act(async () => laterRead.resolve(switchState(switchBasic)));
+    expect(screen.getAllByText(/Current plan: Basic monthly/)).toHaveLength(2);
+    await advanceSwitchClock(60_000);
+    expect(readPlanSwitchState).toHaveBeenCalledTimes(3);
+    expect(commerce.createOrder).not.toHaveBeenCalled();
+  });
+
+  test("catches up on visible return after the clock crosses due time without a timer callback", async () => {
+    usePendingSwitchClock();
+    let visibility: DocumentVisibilityState = "hidden";
+    vi.spyOn(document, "visibilityState", "get").mockImplementation(() => visibility);
+    const readPlanSwitchState = vi.fn()
+      .mockResolvedValueOnce(switchState(switchPlus, true))
+      .mockResolvedValue(switchState(switchBasic));
+    const commerce = switchClient({ readPlanSwitchState });
+    const view = render(createElement(MarketplacePanel, {
+      commerceClient: commerce, locale: "en", sessionRef: session.sessionRef!, theme: "light"
+    }));
+    await settleSwitchRead();
+    vi.setSystemTime(Date.parse(switchExpiry) + 1000);
+    act(() => {
+      document.dispatchEvent(new Event("visibilitychange"));
+      window.dispatchEvent(new Event("focus"));
+    });
+    expect(readPlanSwitchState).toHaveBeenCalledTimes(1);
+    visibility = "visible";
+    act(() => document.dispatchEvent(new Event("visibilitychange")));
+    await settleSwitchRead();
+    expect(readPlanSwitchState).toHaveBeenCalledTimes(2);
+    expect(screen.getAllByText(/Current plan: Basic monthly/)).toHaveLength(2);
+    view.unmount();
+    act(() => window.dispatchEvent(new Event("focus")));
+    await advanceSwitchClock(60_000);
+    expect(readPlanSwitchState).toHaveBeenCalledTimes(2);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  test.each(["generation", "session", "client"] as const)(
+    "%s replacement fences a due response and its retry timer",
+    async (replacement) => {
+      usePendingSwitchClock();
+      const oldRead = deferred<PortalPlanSwitchState>();
+      const readPlanSwitchState = vi.fn()
+        .mockResolvedValueOnce(switchState(switchPlus, true))
+        .mockImplementationOnce(() => oldRead.promise)
+        .mockResolvedValue(switchState(switchBasic));
+      const commerce = switchClient({ readPlanSwitchState });
+      const props = {
+        commerceClient: commerce, locale: "en" as const, sessionRef: session.sessionRef!,
+        sessionGeneration: 1, theme: "light" as const
+      };
+      const view = render(createElement(MarketplacePanel, props));
+      await settleSwitchRead();
+      await advanceSwitchClock(1000);
+      expect(readPlanSwitchState).toHaveBeenCalledTimes(2);
+      const nextClient = replacement === "client" ? switchClient() : commerce;
+      view.rerender(createElement(MarketplacePanel, {
+        ...props, commerceClient: nextClient,
+        sessionRef: replacement === "session" ? "synthetic_new_session" : props.sessionRef,
+        sessionGeneration: replacement === "generation" ? 2 : 1
+      }));
+      await settleSwitchRead();
+      await act(async () => oldRead.resolve(switchState(switchPlus, true)));
+      expect(screen.queryByText(/Pending downgrade:/)).not.toBeInTheDocument();
+      expect(screen.getAllByText(/Current plan: Basic monthly/)).toHaveLength(2);
+      await advanceSwitchClock(60_000);
+      expect(readPlanSwitchState).toHaveBeenCalledTimes(replacement === "client" ? 2 : 3);
+      if (replacement === "client") expect(nextClient.readPlanSwitchState).toHaveBeenCalledTimes(1);
+    }
+  );
+
+  test("unmount clears a pending deadline and its visibility listeners", async () => {
+    usePendingSwitchClock();
+    const commerce = switchClient({
+      readPlanSwitchState: vi.fn(async () => switchState(switchPlus, true))
+    });
+    const view = render(createElement(MarketplacePanel, {
+      commerceClient: commerce, locale: "en", sessionRef: session.sessionRef!, theme: "light"
+    }));
+    await settleSwitchRead();
+    view.unmount();
+    await advanceSwitchClock(61_000);
+    act(() => {
+      document.dispatchEvent(new Event("visibilitychange"));
+      window.dispatchEvent(new Event("focus"));
+    });
+    expect(commerce.readPlanSwitchState).toHaveBeenCalledTimes(1);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  test("chunks a pending deadline beyond the signed 32-bit timeout without early reads", async () => {
+    const maxTimeout = 2_147_483_647;
+    usePendingSwitchClock(maxTimeout + 5000);
+    const readPlanSwitchState = vi.fn()
+      .mockResolvedValueOnce(switchState(switchPlus, true))
+      .mockResolvedValue(switchState(switchBasic));
+    const commerce = switchClient({ readPlanSwitchState });
+    render(createElement(MarketplacePanel, {
+      commerceClient: commerce, locale: "en", sessionRef: session.sessionRef!, theme: "light"
+    }));
+    await settleSwitchRead();
+    await advanceSwitchClock(maxTimeout);
+    expect(readPlanSwitchState).toHaveBeenCalledTimes(1);
+    await advanceSwitchClock(4999);
+    expect(readPlanSwitchState).toHaveBeenCalledTimes(1);
+    await advanceSwitchClock(1);
+    expect(readPlanSwitchState).toHaveBeenCalledTimes(2);
+    expect(screen.getAllByText(/Current plan: Basic monthly/)).toHaveLength(2);
   });
 
   test.each(["quote_expired", "quote_stale"] as const)(

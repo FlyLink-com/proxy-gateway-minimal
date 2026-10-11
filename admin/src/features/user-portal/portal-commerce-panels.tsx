@@ -264,13 +264,73 @@ function LegacyMarketplacePanel({
       return undefined;
     }
     let cancelled = false;
-    void commerceClient.readPlanSwitchState({ sessionRef }).then((next) => {
-      if (!cancelled) setPlanSwitchResult(next ? { scope: planSwitchScope, value: next } : null);
-    }).catch(() => {
-      if (!cancelled) setPlanSwitchResult(null);
-    });
+    let reading = false;
+    let timer: number | undefined;
+    let pendingAt: number | null = null;
+    let retryAt = 0;
+    let automaticReads = 0;
+    const readState = commerceClient.readPlanSwitchState.bind(commerceClient);
+    const clearTimer = () => {
+      if (timer !== undefined) window.clearTimeout(timer);
+      timer = undefined;
+    };
+    function schedule() {
+      clearTimer();
+      if (cancelled || reading || pendingAt === null || automaticReads >= 6) return;
+      const wakeAt = Math.max(pendingAt, retryAt);
+      // Browser timers overflow above a signed 32-bit delay. Long schedules
+      // checkpoint without an early request or an assumed entitlement change.
+      timer = window.setTimeout(() => {
+        timer = undefined;
+        if (Date.now() < wakeAt) schedule();
+        else void read(true);
+      }, Math.min(2_147_483_647, Math.max(1, wakeAt - Date.now())));
+    }
+    async function read(automatic = false) {
+      if (cancelled || reading) return;
+      reading = true;
+      if (automatic) automaticReads += 1;
+      clearTimer();
+      setPlanSwitchResult(null);
+      try {
+        const next = await readState({ sessionRef: sessionRef! });
+        if (cancelled) return;
+        const parsed = next?.pendingSwitch
+          ? Date.parse(next.pendingSwitch.effectiveAt)
+          : Number.NaN;
+        const nextPendingAt = Number.isFinite(parsed) ? parsed : null;
+        // Only a different server deadline earns a new automatic-read budget.
+        // Focus events, errors and unchanged overdue replies cannot restart it.
+        if (nextPendingAt !== pendingAt) automaticReads = 0;
+        pendingAt = nextPendingAt;
+        const overdue = pendingAt !== null && pendingAt <= Date.now();
+        retryAt = overdue ? Date.now() + 10_000 : 0;
+        setPlanSwitchResult(next && !overdue ? { scope: planSwitchScope, value: next } : null);
+      } catch {
+        if (!cancelled) {
+          setPlanSwitchResult(null);
+          retryAt = Date.now() + 10_000;
+        }
+      } finally {
+        reading = false;
+        schedule();
+      }
+    }
+    function onVisible() {
+      if (document.visibilityState !== "visible" || pendingAt === null) return;
+      if (Date.now() < Math.max(pendingAt, retryAt)) return;
+      // After six automatic attempts, a later visible/focus event can still
+      // recover, with the same cooldown and in-flight guard, but no new loop.
+      void read();
+    }
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", onVisible);
+    void read();
     return () => {
       cancelled = true;
+      clearTimer();
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", onVisible);
     };
   }, [planSwitchScope]);
 
