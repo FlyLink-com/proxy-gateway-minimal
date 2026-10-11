@@ -115,6 +115,10 @@ response, updating orders/history, or returning a link; stale errors are ignored
 Synthetic regressions cover logout and session invalidation followed by another
 login, with late success, malformed response, and rejection. A prior account's
 response cannot populate the new account's subscription or order view.
+Link-operation pending counts belong to the same session generation. A session
+transition clears the retiring session's count; its late `finally` cannot settle
+or unlock another session's work. Synthetic tests exercise both completion orders
+between an old reset and the new session's link read, including old-reset failure.
 
 This slice supports the existing legacy Portal access-request delivery path.
 Wallet-first current-resource delivery and the independent data-pack draft retain

@@ -5510,6 +5510,94 @@ describe("user portal product surface", () => {
     await screen.findByDisplayValue("https://sub.example.test/import/reset-visible-once");
   });
 
+  test.each([
+    ["current first", "success"],
+    ["current first", "rejection"],
+    ["old first", "success"],
+    ["old first", "rejection"]
+  ] as const)("subscription pending belongs to its session when %s finishes and the old reset is %s", async (completionOrder, oldOutcome) => {
+    const oldSession = portalWalletSession("session_reset_old", "reset-old@example.test");
+    const currentSession = portalWalletSession("session_reset_new", "reset-new@example.test");
+    const oldReset = deferredValue<PortalSubscriptionRequest>();
+    const currentRead = deferredValue<PortalSubscriptionRequest>();
+    const oldWallet = deferredValue<PortalWalletSummary>();
+    const stateTemplate = portalClientWithActiveSubscription();
+    const client = portalClientWithActiveSubscription({}, {
+      authenticate: vi.fn().mockResolvedValueOnce(oldSession).mockResolvedValueOnce(currentSession),
+      fetchCurrentState: vi.fn(async (input) => ({
+        ...await stateTemplate.fetchCurrentState(input),
+        subscriptionRequest: activeSubscriptionRequest({
+          userRef: input.userRef,
+          requestRef: input.userRef === oldSession.userRef ? "subreq_reset_old" : "subreq_reset_new",
+          subscriptionUrl: input.userRef === oldSession.userRef ? SYNTHETIC_OLD_SUBSCRIPTION_URL : undefined
+        })
+      })),
+      resetSubscriptionLink: vi.fn(() => oldReset.promise),
+      revealSubscription: vi.fn(() => currentRead.promise),
+      wallet: {
+        getSummary: vi.fn(({ sessionRef }) => sessionRef === oldSession.sessionRef
+          ? oldWallet.promise : Promise.resolve(portalWalletSummary(333))),
+        listLedger: vi.fn(async () => ({ entries: [], nextCursor: null }))
+      }
+    });
+    render(createElement(UserPortalPage, { portalClient: client }));
+    await enterPortal();
+    openPortalSubscriptions();
+    await screen.findByDisplayValue(SYNTHETIC_OLD_SUBSCRIPTION_URL);
+    fireEvent.click(screen.getByRole("button", { name: "重置订阅" }));
+    fireEvent.click(screen.getByRole("button", { name: "确认重置" }));
+    expect(client.resetSubscriptionLink).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      oldWallet.reject(new PortalWalletClientError("wallet_session_invalid", false));
+      await Promise.allSettled([oldWallet.promise]);
+    });
+    await screen.findByRole("heading", { name: "账号登录" });
+    await enterPortal();
+    await screen.findByText("Coins · 333");
+    openPortalSubscriptions();
+    await waitFor(() => expect(client.revealSubscription).toHaveBeenCalledExactlyOnceWith({
+      userRef: currentSession.userRef,
+      sessionRef: currentSession.sessionRef,
+      requestRef: "subreq_reset_new"
+    }));
+    expect(screen.getByRole("button", { name: "生成订阅链接" })).toBeDisabled();
+
+    const finishOld = () => act(async () => {
+      if (oldOutcome === "rejection") oldReset.reject(new Error("synthetic_old_reset_failed"));
+      else oldReset.resolve({
+        ...completedSyntheticReset("https://sub.example.test/import/old-session-reset", oldSession.userRef),
+        requestRef: "subreq_reset_old"
+      });
+      await Promise.allSettled([oldReset.promise]);
+    });
+    const finishCurrent = () => act(async () => {
+      currentRead.resolve({
+        ...completedSyntheticReset(SYNTHETIC_NEW_SUBSCRIPTION_URL, currentSession.userRef),
+        requestRef: "subreq_reset_new"
+      });
+      await currentRead.promise;
+    });
+
+    if (completionOrder === "old first") {
+      await finishOld();
+      expect(screen.getByRole("button", { name: "生成订阅链接" })).toBeDisabled();
+      expect(screen.getByRole("button", { name: "复制链接" })).toBeDisabled();
+      await finishCurrent();
+    } else {
+      await finishCurrent();
+      expect(screen.getByRole("button", { name: "重新获取" })).toBeEnabled();
+      await finishOld();
+    }
+    await screen.findByDisplayValue(SYNTHETIC_NEW_SUBSCRIPTION_URL);
+    expect(screen.queryByRole("dialog", { name: "重置订阅链接" })).toBeNull();
+    expect(screen.getByRole("button", { name: "重新获取" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "重置订阅" })).toBeEnabled();
+    expect(screen.queryByDisplayValue("https://sub.example.test/import/old-session-reset")).toBeNull();
+    expect(client.resetSubscriptionLink).toHaveBeenCalledTimes(1);
+    expect(client.revealSubscription).toHaveBeenCalledTimes(1);
+    expect(client.refreshSubscription).not.toHaveBeenCalled();
+  });
+
   test("subscription reset preserves the old display on failure and reuses its idempotency key", async () => {
     const resetSubscriptionLink = vi.fn()
       .mockRejectedValueOnce(new Error("响应结果未确认，请重试同一次重置。"))

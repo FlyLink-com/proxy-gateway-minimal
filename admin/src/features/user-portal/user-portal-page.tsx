@@ -1620,12 +1620,15 @@ export function UserPortalPage({
   const subscriptionReadGenerationRef = useRef(0);
   const linkOpDepthRef = useRef(0);
   const beginLinkOp = useCallback(() => {
+    const generation = sessionGenerationRef.current;
     linkOpDepthRef.current += 1;
     setPending(true);
+    return generation;
   }, []);
-  const endLinkOp = useCallback((applyPending: boolean) => {
+  const endLinkOp = useCallback((generation: number) => {
+    if (!mountedRef.current || generation !== sessionGenerationRef.current) return;
     linkOpDepthRef.current = Math.max(0, linkOpDepthRef.current - 1);
-    if (applyPending && linkOpDepthRef.current === 0) setPending(false);
+    if (linkOpDepthRef.current === 0) setPending(false);
   }, []);
   const currentSubscriptionReadGeneration = useCallback(
     () => subscriptionReadGenerationRef.current,
@@ -1637,6 +1640,8 @@ export function UserPortalPage({
     sessionGenerationRef.current = nextGeneration;
     // Every session transition also retires subscription reads and their callers.
     subscriptionReadGenerationRef.current += 1;
+    if (linkOpDepthRef.current > 0) setPending(false);
+    linkOpDepthRef.current = 0;
     setSessionGeneration(nextGeneration);
     return nextGeneration;
   }, []);
@@ -2150,7 +2155,7 @@ export function UserPortalPage({
     const readGeneration = subscriptionReadGenerationRef.current;
     setActionError("");
     setCopiedOrderRef(null);
-    beginLinkOp();
+    const linkOpGeneration = beginLinkOp();
     try {
       if (selectedOrder?.status === "active") {
         let revealed: PortalSubscriptionRequest;
@@ -2213,7 +2218,7 @@ export function UserPortalPage({
       setActionError(portalUiErrorMessage(requestError, "生成订阅链接失败。", locale));
       return null;
     } finally {
-      endLinkOp(true);
+      endLinkOp(linkOpGeneration);
     }
   }, [beginLinkOp, commerceModel, currentEntitlement, endLinkOp, historySummary, locale, portalClient, portalSession, selectedOrder, selectedPlanId]);
 
@@ -2225,7 +2230,7 @@ export function UserPortalPage({
     }
     const resetSessionGeneration = sessionGenerationRef.current;
     const isCurrent = () => mountedRef.current && resetSessionGeneration === sessionGenerationRef.current;
-    beginLinkOp();
+    const linkOpGeneration = beginLinkOp();
     setActionError("");
     setCopiedOrderRef(null);
     try {
@@ -2249,7 +2254,7 @@ export function UserPortalPage({
       setHistorySummary(reset.historySummary ?? historySummary);
       return subscriptionUrl;
     } finally {
-      endLinkOp(isCurrent());
+      endLinkOp(linkOpGeneration);
     }
   }
 
