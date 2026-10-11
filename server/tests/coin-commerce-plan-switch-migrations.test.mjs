@@ -318,6 +318,12 @@ test("quote rows are immutable and a second scheduled switch is rejected", () =>
         (error) => String(error?.message).includes("plan_switch_status_transition_denied")
       );
       database.prepare(`
+        update platform_scheduled_plan_switches set status = 'applying' where switch_ref = ?
+      `).run(first.orderRef);
+      assert.throws(() => insertScheduled(database, {
+        switchRef: second.orderRef, accountId: first.accountId
+      }), /unique|constraint/i);
+      database.prepare(`
         update platform_scheduled_plan_switches
            set status = 'applied', resolved_at = ?
          where switch_ref = ?
@@ -387,11 +393,15 @@ test("rollback text matches the design doc and refuses an open scheduled row", a
     );
     const open = new Database(dbPath);
     open.pragma("foreign_keys = ON");
+    open.prepare("update platform_scheduled_plan_switches set status = 'applying' where switch_ref = ?").run(order.orderRef);
+    assert.equal(validatePlanSwitchSchema({ dbPath }).counts.scheduledRows, 1);
+    assert.throws(() => rollbackPlanSwitchMigrations(applyInput(dbPath)),
+      (error) => error?.code === "plan_switch_rollback_rows_present");
     open.prepare(`
       update platform_scheduled_plan_switches
-         set status = 'superseded', resolved_at = ?, superseded_by_order_ref = ?
+         set status = 'applied', resolved_at = ?
        where switch_ref = ?
-    `).run(LATER, "order_replacement", order.orderRef);
+    `).run(LATER, order.orderRef);
     open.close();
     const removed = rollbackPlanSwitchMigrations(applyInput(dbPath));
     assert.equal(removed.schemaState, "pending");

@@ -137,7 +137,7 @@ const MIGRATION_STATEMENTS = Object.freeze([
         and paid_units between 1 and ${SAFE_INTEGER_MAX}
       ),
       status text not null check (
-        status in ('scheduled', 'applied', 'superseded')
+        status in ('scheduled', 'applying', 'applied', 'superseded')
       ),
       created_at text not null check (length(trim(created_at)) > 0),
       resolved_at text,
@@ -145,7 +145,7 @@ const MIGRATION_STATEMENTS = Object.freeze([
       check (from_offer_version_ref <> to_offer_version_ref),
       check (
         (
-          status = 'scheduled'
+          status in ('scheduled', 'applying')
           and resolved_at is null
           and superseded_by_order_ref is null
         )
@@ -168,7 +168,7 @@ const MIGRATION_STATEMENTS = Object.freeze([
   `
     create unique index platform_scheduled_plan_switches_one_scheduled_uidx
       on platform_scheduled_plan_switches(account_id)
-      where status = 'scheduled'
+      where status in ('scheduled', 'applying')
   `,
   `
     create trigger platform_scheduled_plan_switches_insert_guard
@@ -184,8 +184,8 @@ const MIGRATION_STATEMENTS = Object.freeze([
     create trigger platform_scheduled_plan_switches_status_transition
     before update on platform_scheduled_plan_switches
     when not (
-      old.status = 'scheduled'
-      and new.status in ('applied', 'superseded')
+      ((old.status = 'scheduled' and new.status in ('applying', 'superseded'))
+       or (old.status = 'applying' and new.status = 'applied'))
       and new.switch_ref = old.switch_ref
       and new.account_id = old.account_id
       and new.entitlement_id = old.entitlement_id
@@ -194,11 +194,12 @@ const MIGRATION_STATEMENTS = Object.freeze([
       and new.effective_at = old.effective_at
       and new.paid_units = old.paid_units
       and new.created_at = old.created_at
-      and new.resolved_at is not null
-      and length(trim(new.resolved_at)) > 0
+      and ((new.status = 'applying' and new.resolved_at is null)
+           or (new.status <> 'applying' and new.resolved_at is not null
+               and length(trim(new.resolved_at)) > 0))
       and (
         (
-          new.status = 'applied'
+          new.status in ('applying', 'applied')
           and new.superseded_by_order_ref is null
         )
         or (
@@ -469,7 +470,7 @@ function scheduledRowCount(database) {
     return 0;
   }
   return database.prepare(
-    `select count(*) from ${PLAN_SWITCH_SCHEDULED_TABLE} where status = 'scheduled'`
+    `select count(*) from ${PLAN_SWITCH_SCHEDULED_TABLE} where status in ('scheduled', 'applying')`
   ).pluck().get();
 }
 

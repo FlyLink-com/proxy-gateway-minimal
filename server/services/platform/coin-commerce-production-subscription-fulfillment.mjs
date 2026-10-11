@@ -467,7 +467,8 @@ export function createCoinCommerceProductionSubscriptionFulfillment({
         "readPlanSwitchAccountFacts",
         "readPlanSwitchQuoteForOrderRef",
         "readScheduledPlanSwitch",
-        "deliverPlanSwitchDowngrade"
+        "deliverPlanSwitchDowngrade",
+        "completeScheduledPlanSwitch"
       ].some((method) => typeof controlStore?.[method] !== "function")
     )
   ) {
@@ -685,7 +686,7 @@ export function createCoinCommerceProductionSubscriptionFulfillment({
       || row.accountId !== command.accountId
       || row.toOfferVersionRef !== offer.offerVersionRef
       || command.commandRef !== planSwitchDueCommandRef(row.switchRef)
-      || (row.status !== "scheduled" && row.status !== "applied")
+      || !["scheduled", "applying", "applied"].includes(row.status)
     ) {
       throw createCoinCommerceFulfillmentReconciliationError();
     }
@@ -812,6 +813,11 @@ export function createCoinCommerceProductionSubscriptionFulfillment({
       || canonicalTimestamp(quote.snapshot_valid_until) === null
     ) {
       throw createCoinCommerceFulfillmentReconciliationError();
+    }
+    // A plain renewal is additive, not an optimistic replacement of the old
+    // expiry. Preserve the pre-feature command-ref-idempotent renewal path.
+    if (quote.kind === "renewal" && quote.cancels_switch_ref === null) {
+      return { planSwitch: null };
     }
     return {
       planSwitch: {
@@ -1080,6 +1086,16 @@ export function createCoinCommerceProductionSubscriptionFulfillment({
       throw createCoinCommerceFulfillmentRetryableError();
     }
 
+    if (attachedPlanSwitch?.kind === "apply_due") {
+      try {
+        const row = controlStore.readScheduledPlanSwitch({ switchRef: command.orderRef });
+        if (row?.status !== "applied" && !controlStore.completeScheduledPlanSwitch({
+          switchRef: command.orderRef, accountId: command.accountId, now
+        })) throw createCoinCommerceFulfillmentRetryableError();
+      } catch {
+        throw createCoinCommerceFulfillmentRetryableError();
+      }
+    }
     return Object.freeze({
       status: "delivered",
       effectRef: effect.effectRef

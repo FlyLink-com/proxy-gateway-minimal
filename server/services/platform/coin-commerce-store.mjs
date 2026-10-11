@@ -28,6 +28,7 @@ import {
 // Registers the exact plan-switch DDL exclusion before commerce schema
 // validation. Absent plan-switch objects do not change that validation.
 import "./coin-commerce-plan-switch-migrations.mjs";
+import { createPlanSwitchCaptureParticipant } from "./coin-commerce-plan-switch-capture.mjs";
 import {
   validateCoinWalletSchema
 } from "./coin-wallet-migrations.mjs";
@@ -711,6 +712,19 @@ export function createSqliteCoinCommerceStore(options = {}) {
       throw commerceError(PLAN_SWITCH_ERROR.PRECHECK_UNAVAILABLE);
     }
     if (!decision || decision.ok !== true) rejectPlanSwitch(decision);
+    // Ordinary same-plan renewals may accumulate. Anything consuming a
+    // snapshot/credit must serialize with all nonterminal plan deliveries.
+    const additive = decision.ordinary || (decision.kind === "renewal" && !decision.cancelsSwitchRef);
+    const conflict = db.prepare(`
+      select 1 from platform_coin_commerce_orders o
+      left join platform_coin_commerce_plan_switch_quotes q on q.quote_ref = o.quote_ref
+      left join platform_coin_commerce_fulfillment_commands f on f.order_ref = o.order_ref
+      where o.account_id = ? and (
+        o.payment_status in ('held', 'capture_pending', 'capture_failed', 'reconciliation_required')
+        or (o.payment_status = 'captured' and (f.command_ref is null or f.status <> 'delivered')))
+      and (? = 0 or (q.kind <> 'renewal' or q.cancels_switch_ref is not null)) limit 1
+    `).get(accountId, additive ? 1 : 0);
+    if (conflict) throw commerceError("offer_unavailable");
     return decision;
   }
 
@@ -2598,6 +2612,7 @@ export function createSqliteCoinCommerceStore(options = {}) {
     });
   }
 
+  const planSwitchCapture = planSwitchEnabled ? createPlanSwitchCaptureParticipant(db) : null;
   const claimCapturesTransaction = db.transaction((limit) => {
     const occurredAt = readDatabaseUtc(db);
     const rows = db.prepare(`
@@ -2609,6 +2624,17 @@ export function createSqliteCoinCommerceStore(options = {}) {
     `).all(occurredAt, limit);
     const claimed = [];
     for (const row of rows) {
+      const annual = planSwitchCapture?.inspect(row.order_ref, occurredAt);
+      if (annual && !annual.ok) {
+        const order = findOrder(row.order_ref);
+        if (!releaseForRecovery(order, occurredAt)) throw commerceError("commerce_infrastructure_error");
+        const cancelled = db.prepare(`update platform_coin_commerce_orders set payment_status = 'cancelled', updated_at = ?
+          where order_ref = ? and payment_status = 'held'`).run(occurredAt, row.order_ref);
+        if (cancelled.changes !== 1) throw commerceError("commerce_infrastructure_error");
+        appendOrderEvent({ orderRef: row.order_ref, eventType: "order_cancelled",
+          actorType: "commerce_system", actorRef: annual.reason, occurredAt });
+        continue;
+      }
       const updated = db.prepare(`
         update platform_coin_commerce_orders
            set payment_status = 'capture_pending', updated_at = ?
@@ -2624,6 +2650,9 @@ export function createSqliteCoinCommerceStore(options = {}) {
         actorRef: "coin_commerce_capture",
         occurredAt
       });
+      // Annual control effect, Coins capture and outbox commit together with
+      // the same clock instant. No runtime I/O is permitted in this transaction.
+      if (annual) captureOrderBody(row.order_ref, { occurredAtOverride: occurredAt });
       claimed.push({ orderRef: row.order_ref });
     }
     return claimed;
@@ -3254,8 +3283,8 @@ export function createSqliteCoinCommerceStore(options = {}) {
     return projected;
   }
 
-  function captureOrderBody(orderRef, { recovery = false } = {}) {
-    const occurredAt = readDatabaseUtc(db);
+  function captureOrderBody(orderRef, { recovery = false, occurredAtOverride } = {}) {
+    const occurredAt = occurredAtOverride ?? readDatabaseUtc(db);
     const order = findOrder(orderRef);
     if (!order) throw commerceError("commerce_not_found");
     if (order.payment_status === "reconciliation_required") {
@@ -3370,6 +3399,9 @@ export function createSqliteCoinCommerceStore(options = {}) {
     }
     const capturedOrder = findOrder(order.order_ref);
     ensureOutbox(capturedOrder, occurredAt);
+    if (planSwitchCapture?.inspect(order.order_ref, occurredAt)) {
+      planSwitchCapture.apply(order.order_ref, occurredAt);
+    }
     appendOrderEvent({
       orderRef: order.order_ref,
       eventType: "payment_captured",

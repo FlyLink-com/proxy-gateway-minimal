@@ -14,6 +14,7 @@ import {
   deliverScheduledPlanDowngrade,
   listDueScheduledPlanSwitchRows,
   markScheduledPlanSwitchApplied,
+  markScheduledPlanSwitchApplying,
   readOpenScheduledPlanSwitch,
   readPlanSwitchQuoteForOrder,
   readScheduledPlanSwitchByRef,
@@ -5222,6 +5223,15 @@ export function createSqliteSubscriptionControlStore({
     }));
   }
 
+  function completeScheduledPlanSwitch(input = {}) {
+    assertNoUnsafeFields(input);
+    return markScheduledPlanSwitchApplied(db, {
+      switchRef: safeControlRef(input.switchRef, "switchRef"),
+      accountId: safeControlRef(input.accountId, "accountId"),
+      resolvedAt: isoText(input.now, "now")
+    });
+  }
+
   function applyCoinCommerceSubscriptionFulfillment(input) {
     assertNoUnsafeFields(input);
     let authority = null;
@@ -5678,10 +5688,9 @@ export function createSqliteSubscriptionControlStore({
         }
       }
       if (record.planSwitch?.kind === "apply_due") {
-        if (!markScheduledPlanSwitchApplied(db, {
+        if (!markScheduledPlanSwitchApplying(db, {
           switchRef: record.planSwitch.switchRef,
-          accountId: record.accountId,
-          resolvedAt: record.now
+          accountId: record.accountId
         })) {
           failDrift();
         }
@@ -7475,6 +7484,7 @@ export function createSqliteSubscriptionControlStore({
     readScheduledPlanSwitch,
     deliverPlanSwitchDowngrade,
     listDueScheduledPlanSwitches,
+    completeScheduledPlanSwitch,
     applyCoinCommerceSubscriptionFulfillment,
     createIssuanceRequest,
     getIssuanceRequest,

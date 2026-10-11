@@ -82,7 +82,7 @@ export function readOpenScheduledPlanSwitch(database, accountId) {
     select switch_ref, account_id, entitlement_id, from_offer_version_ref,
            to_offer_version_ref, effective_at, paid_units, status
       from ${SCHEDULED_TABLE}
-     where account_id = ? and status = 'scheduled'
+     where account_id = ? and status in ('scheduled', 'applying')
      order by switch_ref asc
   `).all(accountId);
   if (rows.length > 1) return { ok: false };
@@ -160,6 +160,7 @@ export function evaluatePlanSwitchRequest({
     return frozenFailure(PLAN_SWITCH_ERROR.PRECHECK_UNAVAILABLE);
   }
   const scheduled = scheduledSwitch?.row ?? null;
+  if (scheduled?.status === "applying") return frozenFailure(PLAN_SWITCH_ERROR.APPLICATION_PENDING);
   let currentOfferVersionRef = null;
   let validUntilMs = null;
   let snapshotValidFrom = null;
@@ -470,15 +471,22 @@ export function markScheduledPlanSwitchApplied(database, {
            resolved_at = ?
      where switch_ref = ?
        and account_id = ?
-       and status = 'scheduled'
+       and status = 'applying'
   `).run(resolvedAt, switchRef, accountId).changes === 1;
+}
+
+export function markScheduledPlanSwitchApplying(database, { switchRef, accountId }) {
+  return database.prepare(`
+    update ${SCHEDULED_TABLE} set status = 'applying'
+     where switch_ref = ? and account_id = ? and status = 'scheduled'
+  `).run(switchRef, accountId).changes === 1;
 }
 
 export function listDueScheduledPlanSwitchRows(database, nowIso) {
   return database.prepare(`
     select switch_ref, account_id, to_offer_version_ref, effective_at
       from ${SCHEDULED_TABLE}
-     where status = 'scheduled' and effective_at <= ?
+     where status in ('scheduled', 'applying') and effective_at <= ?
      order by effective_at asc, switch_ref asc
   `).all(nowIso);
 }
@@ -536,7 +544,7 @@ export function applyDueScheduledPlanSwitches({
       });
       if (result?.status === "delivered") applied += 1;
     } catch {
-      // The row stays scheduled. The next tick retries it.
+      // Both scheduled and control-committed/applying rows remain durable work.
     }
   }
   return Object.freeze({ applied });
