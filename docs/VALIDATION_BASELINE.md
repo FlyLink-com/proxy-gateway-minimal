@@ -256,6 +256,11 @@ Source checks run exact-source custody validation, diff/document checks, and
 the applicable server, Admin, and synthetic certificate-hook tests. The
 certificate commands also remain in their independent path-filtered workflow,
 but their failure in the full Source checks lane now blocks final builds.
+The synthetic expired-certificate fixture uses explicit, ordered historical
+dates with its temporary test CA, so it does not depend on version-specific
+acceptance of negative OpenSSL `-days`. The tests check that its validity
+interval is ordered and already expired, distinguish it from a still-valid
+short-lived certificate, and retain the runtime's seven-day validity check.
 Prerequisite checks require every
 applicable upstream result to be `success`; only the deliberately inapplicable
 manual snapshot may be `skipped` on a PR. Final build jobs use `needs`, so a
