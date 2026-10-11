@@ -1,6 +1,6 @@
 # Validation Baseline
 
-Last updated: 2026-09-02, America/Los_Angeles.
+Last updated: 2026-10-09, UTC.
 
 ```yaml
 document_metadata:
@@ -8,7 +8,7 @@ document_metadata:
   lifecycle: active
   authority_scope: validation_baseline
   superseded_by: null
-  last_verified_at: 2026-09-02
+  last_verified_at: 2026-10-09
   production_authority: false
 ```
 
@@ -114,7 +114,8 @@ Node module ABI. A version/ABI mismatch is a validation-setup failure, not a
 source-test regression, and must not be hidden by rebuilding the reviewed
 artifact in place.
 
-The hosted `Validate` job rolls within the supported Node 22 release line; it
+The hosted Source checks and asset build jobs under `Validate` roll within
+the supported Node 22 release line; this
 does not make one patch release a repository-wide source-test requirement.
 Exact Node patch pins remain valid for reproducible dependency artifacts,
 Foundation toolchains, and comparable performance runs. A broader
@@ -181,14 +182,126 @@ scope-wide strict-files check that the hosted CI docs-only lane runs.
 Do not run app tests by default for C-tier docs-only work unless the doc change
 updates command contracts, generated examples, or validation tooling.
 
+#### Draft and Ready pull requests
+
+The ordinary pull-request entrypoints (`CI` and `Runtime certificate sync`)
+do not allocate validation/build jobs while the PR is Draft. They subscribe
+to `opened`, `synchronize`, `reopened`, `ready_for_review`, and
+`converted_to_draft`; the job-level draft guard keeps Ready PR updates eligible
+and lets an event returning a PR to Draft cancel older runs in the same
+concurrency group. `Control Plane Dependency Artifact` and
+`Control Plane Foundation Toolchain Inventory` are called by the same CI run
+for Ready PRs, with their own defensive draft guards. Existing branch/path
+filters still apply. GitHub can retain
+a workflow record containing skipped jobs; this is not a claim of zero event
+records or of passed tests. Do not dispatch or rerun CI just to validate a Draft.
+
+The existing `Validate` required-check name is unchanged and has no path filter.
+A Draft skip is not Source or Merge Gate evidence, even when GitHub renders it
+as successful. Before integration, require the real completed `Validate` run
+from the Ready transition or a later Ready-state update for the exact current
+head. Missing, queued, skipped, or failed evidence must not be relabeled passed.
+See GitHub's [required-check behavior](https://docs.github.com/en/pull-requests/how-tos/merge-and-close-pull-requests/troubleshooting-required-status-checks).
+
+Exception pending separate review: `Governance Trusted Advisory` retains its
+existing `pull_request_target` trigger and can still use a hosted runner for a
+Draft. It checks trusted base code and candidate ledger blobs, not only event
+metadata. Its own workflow is an immutable trust-root input; changing even its
+draft condition causes the existing base validator to reject that transition.
+This change does not rotate that trust root, weaken its check, or change default
+CodeQL, Dependabot, Code Quality, repository settings, or security permissions.
+Such service-managed checks are not controlled by these ordinary workflow files.
+
+Master-push, release/artifact, and explicitly authorized manual lanes retain
+their existing behavior and approval boundaries. This policy is prospective:
+older PR branches must include the reviewed workflow change before their
+ordinary workflows inherit it; it does not cancel already completed evidence.
+
+#### Local build entrypoints
+
+Before changing a PR to Ready, prefer the checkout's existing local commands on
+the appropriate Windows, macOS, or Linux environment. Use a clean checkout,
+`npm ci` and `npm ci --prefix admin` under the same supported Node runtime as
+the tests. Never copy `node_modules` between operating systems or Node ABIs.
+The source preflight is `npm run validation:environment:source`; select the
+risk/surface commands below rather than running unrelated build lanes.
+
+- Admin: `npm run admin:test`, `npm run admin:build`, `npm run admin:verify`
+- Portal: `npm run admin:portal:build`, `npm run admin:portal:verify`
+- Desktop Portal: `npm run admin:portal:web:build`,
+  `npm run admin:portal:web:verify`
+- Legacy public-site validation, only when its retained surface is touched:
+  `npm run cloudflare:site:build`, `npm run cloudflare:site:verify`
+- Server/shared source: `npm test`
+
+Linux-specific dependency artifacts and privileged synthetic custody checks
+still require their exact preflight profile above; ordinary Windows/macOS
+builds do not replace them. No local runner is registered or presumed by this
+policy, and no hosted build is removed. Local results must record the exact
+source and actual command outcomes; they do not create GitHub required-check
+results or imply release or production approval.
+
+#### Checks before final builds
+
+The ordinary PR DAG is:
+
+```text
+Source checks + Governance evidence + Foundation inventory
+  -> Prerequisite checks
+  -> Build and verify assets + Dependency artifact
+  -> Validate
+```
+
+Source checks run exact-source custody validation, diff/document checks, and
+the applicable server, Admin, and synthetic certificate-hook tests. The
+certificate commands also remain in their independent path-filtered workflow,
+but their failure in the full Source checks lane now blocks final builds.
+The synthetic expired-certificate fixture uses explicit, ordered historical
+dates with its temporary test CA, so it does not depend on version-specific
+acceptance of negative OpenSSL `-days`. The tests check that its validity
+interval is ordered and already expired, distinguish it from a still-valid
+short-lived certificate, and retain the runtime's seven-day validity check.
+Prerequisite checks require every
+applicable upstream result to be `success`; only the deliberately inapplicable
+manual snapshot may be `skipped` on a PR. Final build jobs use `needs`, so a
+failed prerequisite prevents final artifact compilation. Their conditions
+explicitly combine `!cancelled()` with successful prerequisite results, so an
+expected skipped ancestor cannot suppress an otherwise eligible build through
+GitHub's implicit `success()` behavior. Native compilation
+needed to execute a synthetic test or install a native test dependency remains
+part of that test's prerequisites; it is not a final release build.
+
+The final `Validate` job uses `always()` with a Draft guard, then rejects a
+failed, cancelled, missing, or unexpectedly skipped prerequisite/build result.
+It is the sole stable required name. A successful Source checks job alone is
+not the required result. Build-boundary checks and artifact/runtime smoke tests
+must stay after the build whose output they validate.
+
+Dependency and Foundation calls use same-checkout reusable workflows, retain
+read-only permissions and caller PR source identity, and do not use
+`workflow_run`, new credentials, or a different runner type. The dependency
+workflow's master-push and manual entrypoints retain their existing artifact
+behavior; the PR DAG does not replace the independent Artifact or Production
+Gate. Push/manual CI still validates its applicable governance lane before
+asset builds; the PR-only Foundation and dependency calls are expected skips
+there, while dependency artifacts keep their existing standalone entrypoint.
+
+This ordering covers the project-owned ordinary checks in this DAG. The
+trusted advisory exception above and service-managed checks such as CodeQL or
+Code Quality are not silently imported into it. Their result still needs
+separate review where applicable; this is not an all-services global barrier.
+
 #### Hosted CI lane classification
 
-The stable `Validate` check uses the docs-only lane only when every changed
+The pipeline feeding the stable `Validate` check uses the docs-only lane only
+when every changed
 path is a root `*.md`, `docs/**/*.md`, `ops/**/*.md`, or
-`.github/**/*.md` file. Its diff-check and document-authority steps use
+`.github/**/*.md` file. The Source checks diff-check and document-authority steps use
 `always()` and run `git diff --check` plus
 `npm run docs:authority:strict`; the docs-only lane then skips dependency
-installation, tests, and builds. The authority check validates declared
+installation, app tests, and asset builds in that lane. The separately called
+dependency-artifact verification retains its existing PR coverage.
+The authority check validates declared
 metadata fields and rejects duplicate active canonical `authority_scope`
 values without creating a new required context or approval gate.
 

@@ -1,6 +1,6 @@
 # Project Context
 
-Last updated: 2026-09-14, America/Los_Angeles.
+Last updated: 2026-10-11 UTC.
 
 ```yaml
 document_metadata:
@@ -8,7 +8,7 @@ document_metadata:
   lifecycle: active
   authority_scope: project_context
   superseded_by: null
-  last_verified_at: 2026-09-14
+  last_verified_at: 2026-10-11
   production_authority: false
 ```
 
@@ -16,18 +16,14 @@ document_metadata:
 > - Type: Active current-state handoff
 > - Risk: C
 > - Source reconciliation cutoff:
->   `master@3565c54865676ba127b115f7f914a0359e545bf0` (observed 2026-09-14)
-> - Latest recorded control-plane deployment-event source:
->   `b5ca23db58c55f2d73ec59ffa9525f85b92a8a9c` (2026-08-26)
-> - Git-source / recorded-deployment-source state: Drift at these dated
->   cutoffs; deployed-source GitHub artifacts are expired; automatic
->   deployment wiring is only partial; current runtime alignment was not read
+>   `master@483f535ee6d90fe222b866591ade19a7776b1d47` (observed 2026-10-11 UTC)
+> - Source/production boundary: #764 reset/collector and preserved #767 guard
+>   are recorded BWH overlays; #769 is desktop Portal only. None establishes
+>   a whole-master backend deployment. Current runtime alignment was not read
 > - Delivery navigation projection:
 >   [GCC WebOS — Delivery Project #1](https://github.com/orgs/gccwebos-com/projects/1)
-> - Source, artifact, production-promotion and delayed public-health evidence
->   for A3 were reconciled on 2026-08-26; expiry, source-alignment, and
->   partial auto-deploy wiring were inventoried on 2026-09-14; provider and
->   production runtime facts retain their separately dated evidence
+> - Earlier A3, expiry, source-capability and provider observations retain
+>   their original dates; new PR reads do not refresh their runtime evidence
 > - Production state: Refer to `docs/CURRENT_RELEASE_STATE.md`; this handoff
 >   records the release identity but does not duplicate its runtime evidence
 > - Production impact: None; this Risk C handoff changes no release, runtime,
@@ -123,32 +119,37 @@ Keep these distinctions explicit:
 
 Repository: `gccwebos-com/proxy-gateway-minimal`
 
-The source cutoff inspected for this docs-only count refresh is
-`master@3565c54865676ba127b115f7f914a0359e545bf0`. It is a dated
-reconciliation boundary, not a permanent current-head claim. Resolve the live
-`master` SHA before every later source decision.
+The source cutoff inspected for this docs-only alignment is
+`master@483f535ee6d90fe222b866591ade19a7776b1d47`. Resolve the live `master`
+SHA before a later source decision. The
+[2026-10-11 reconciliation](CURRENT_RELEASE_STATE.md#source-and-deployment-reconciliation-2026-10-11)
+records exact-source validation, dated deployment composition, open Drafts and
+remaining unknowns. Native Issue/PR records remain authoritative; this handoff
+does not keep a live queue or reactivate paused implementation work.
 
-The 2026-09-14 expiry, source-alignment, and GitHub count snapshot is recorded
-in `docs/CURRENT_RELEASE_STATE.md`. That snapshot is mutable evidence only.
-Native Issue and PR records remain authoritative. This handoff still does not
-keep a live queue.
+The account panel belongs to this repository's User Portal and `/api/portal`
+control-plane domain. `admin/README.md` maps its legacy and desktop builds;
+the protected Admin console is a separate frontend surface. Mobile and Android
+consume the backend contract and require their own source, client and release
+acceptance. The dated 2026-10-09 linked records paired data-pack backend #753
+with mobile #13, and native-session backend #755 with Android #26; all four
+were Draft at that cutoff. Client repositories were not refreshed by this
+2026-10-11 minimal-repository closeout.
+Company-site publication is separate: the recorded BWH cutover retained the
+existing company apex/www site and did not deploy a new site build.
 
-The latest recorded control-plane deployment event used source
-`b5ca23db58c55f2d73ec59ffa9525f85b92a8a9c` and recorded release
-`control-plane-b5ca23db-a3-sync-20260825`, with A3 terminal state
-`promoted_verified` on 2026-08-26. The Git cutoff is later, so the Git source
-and recorded-deployment-source identities are explicitly distinct. This does
-not establish current runtime alignment or a Portal/Admin static deployment.
-
-Use [GCC WebOS — Delivery Project #1](https://github.com/orgs/gccwebos-com/projects/1) only to navigate
-its mutable projections of Issue/PR, status, lane, risk, validation, and
-production-impact fields. Verify current state, scope, review, and sequencing
-from fresh native Issue/PR and exact-SHA Check records; use fresh GitHub queries
-for counts, branches, and Milestones. `project-state/*.json` still must not copy
-those mutable facts. Canonical docs may retain one dated snapshot, currently the
-2026-09-14 inventory in `docs/CURRENT_RELEASE_STATE.md`.
+Use [GCC WebOS — Delivery Project #1](https://github.com/orgs/gccwebos-com/projects/1)
+only to navigate mutable Issue/PR, status, lane and risk projections. Resolve
+scope, sequencing and completion from fresh native records and exact-SHA checks.
+`project-state/*.json` remains dated compatibility input, not a parallel task
+list. Cross-repository feature completion cannot be inferred from one merge or
+one frontend build.
 
 ## Current Source Capability Boundary
+
+The matrix and non-activation observations in this section retain their
+2026-09-14 reconciliation cutoff; they are not a new 2026-10-11 domain audit.
+Use the linked fresh snapshot above for recent PR and deployment state.
 
 The detailed source/test matrix is
 `docs/OPERATIONS_PLANE_SOURCE_REALITY.md`. Its Operations capability matrix is
@@ -244,25 +245,25 @@ Source -> Artifact -> Release -> Deployment -> Runtime State
 `master` is reviewed source, not a production-version claim. Artifact Manifest
 v1 covers `control-plane-app`, `portal-static`, and `admin-static`.
 
-The [PR #667 Deploy Note](https://github.com/gccwebos-com/proxy-gateway-minimal/pull/667#issuecomment-5426440067)
-binds the latest recorded control-plane deployment to source
-`b5ca23db58c55f2d73ec59ffa9525f85b92a8a9c` and release
-`control-plane-b5ca23db-a3-sync-20260825`. Promotion-09 verified the pointer,
-service/process CWD, snapshot/custody and health before ending
-`promoted_verified`. This does not establish a Portal or Admin static
-deployment.
+The latest read BWH receipts add #764 reset/collector, retained #767 containment
+and #769 desktop Portal to the earlier composition. Exact source, artifact/check
+links, Deploy Notes and acceptance limits are indexed in
+`docs/CURRENT_RELEASE_STATE.md`. #763's backend dependency deployment is still
+unproven in that mixed app; the newer master-built desktop artifact is a
+separate release unit. #768 real-account display confirmation remains open.
+The 2026-08-26 A3 receipt remains historical evidence for its original target.
 
-The exact deployed-source build evidence is Release Artifact run `32854893859`
-plus Dependency Artifact run `32854893837`; Production Deploy Dry Run
-`32856999391` also succeeded. The GitHub artifacts remain temporary even though
-the exact packets were verified during this deployment.
-
-See `RELEASE_MANIFEST.md` for the stable contract.
+See `RELEASE_MANIFEST.md` for the stable contract. No current artifact retention,
+live service identity or production health is inferred from this docs read.
 
 ## Production Boundary
 
 The only compact production snapshot is
-`docs/CURRENT_RELEASE_STATE.md`. It distinguishes:
+`docs/CURRENT_RELEASE_STATE.md`. Its 2026-10-11 section indexes later BWH
+deployment records and their incomplete business/client acceptance. No live
+runtime, host, provider or customer-account reads were performed here.
+
+The following older observations retain their own historical cutoffs:
 
 - the 2026-08-26 `control-plane-app` deployment at source
   `b5ca23db58c55f2d73ec59ffa9525f85b92a8a9c`, whose bounded materialization,
@@ -303,12 +304,16 @@ The latest retained security/governance observations remain separately dated:
 - rulesets, required reviews, Environment protection, provider settings, and
   deployment settings require fresh live readback before relying on them.
 
-Issues #597 and #598 retain release-lifecycle and supply-chain work. Issues
-#673 and #695 are additional open release-maturity/governance index cards.
+Issues #597 and #598 retain release-lifecycle and supply-chain work. Issue #673
+remains a release-maturity/governance index card. Issue #695 was observed closed
+on 2026-10-09; closure is not current runtime proof.
 Project status is navigation only and cannot upgrade these dated observations
 or create production authority.
 
 ## Dated Gap Observations — Fresh Read Required
+
+The list below retains the 2026-09-14 handoff cutoff. Later BWH source and
+deployment receipts are indexed above; this is not the current task queue.
 
 The following observations were retained at this handoff's stated evidence
 cutoffs. They are not a live backlog or current completion claim; reconcile the
