@@ -401,6 +401,15 @@ This replaces the pre-review candidate checksum, not an applied production ledge
   "升级立即生效，不退款；降级在当前周期结束后生效，已支付不退款；续费或升级会取消待生效的降级。" /
   "An upgrade takes effect immediately and is not refunded. A downgrade takes effect after the current period and the amount already paid is not refunded. Renewing or upgrading cancels a pending downgrade."
   Flag off, or a 404 from the state endpoint: current UI unchanged.
+* After a plan order is both `captured` and `delivered`, the mounted
+  Marketplace re-reads plan state once for that order in the current session.
+  Capture with pending delivery, cancellation, and failed fulfillment do not
+  indicate a completed plan change. The refresh updates current-plan labels,
+  expiry and pending-downgrade notices without route navigation or a page reload.
+  Reads are bound to the client, session generation and refresh scope; stale
+  responses after session changes, newer refreshes or unmount are ignored.
+  A failed read does not retain an obsolete successful-plan projection or
+  invent new entitlement. Checkout still requests a fresh server quote.
 
 ## Test plan (source level)
 

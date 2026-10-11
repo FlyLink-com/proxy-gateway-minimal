@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState
 } from "react";
@@ -112,12 +113,27 @@ function LegacyMarketplacePanel({
   const zh = isChinese(locale);
   const generationRef = useRef(0);
   const [refreshRevision, setRefreshRevision] = useState(0);
+  const [planSwitchRevision, setPlanSwitchRevision] = useState(0);
+  const planSwitchScope = useMemo(() => ({
+    commerceClient, refreshRevision, planSwitchRevision, sessionGeneration, sessionRef
+  }), [commerceClient, refreshRevision, planSwitchRevision, sessionGeneration, sessionRef]);
   const [catalog, setCatalog] = useState<MarketplaceCatalogState>(() => (
     commerceClient && sessionRef
       ? { status: "loading", offers: [] }
       : { status: "unavailable", offers: [] }
   ));
-  const [planSwitchState, setPlanSwitchState] = useState<PortalPlanSwitchState | null>(null);
+  const [planSwitchResult, setPlanSwitchResult] = useState<{
+    scope: typeof planSwitchScope;
+    value: PortalPlanSwitchState;
+  } | null>(null);
+  const planSwitchState = planSwitchResult?.scope === planSwitchScope
+    ? planSwitchResult.value
+    : null;
+  const deliveredPlanRef = useRef<{
+    sessionGeneration: number;
+    sessionRef: string | null;
+    orderRef: string | null;
+  }>({ sessionGeneration, sessionRef, orderRef: null });
   const [productIntent, setProductIntent] =
     useState<MarketplaceProductIntent | null>(null);
   const [dialogVisible, setDialogVisible] = useState(false);
@@ -137,6 +153,29 @@ function LegacyMarketplacePanel({
     sessionGeneration,
     sessionRef
   });
+
+  useEffect(() => {
+    const previous = deliveredPlanRef.current;
+    if (previous.sessionRef !== sessionRef || previous.sessionGeneration !== sessionGeneration) {
+      deliveredPlanRef.current = { sessionGeneration, sessionRef, orderRef: null };
+      // The purchase hook clears the previous session's order in its effect.
+      // Do not interpret that render's old order as this session's delivery.
+      return;
+    }
+    const order = purchaseFlow.order;
+    if (
+      !sessionRef
+      || !order
+      || order.offer.category !== "plan"
+      || order.paymentStatus !== "captured"
+      || order.fulfillment.status !== "delivered"
+      || previous.orderRef === order.orderRef
+    ) return;
+    deliveredPlanRef.current = { sessionGeneration, sessionRef, orderRef: order.orderRef };
+    // Capture can precede delivery: wallet settlement alone is not an
+    // entitlement change. Refresh once the server confirms actual delivery.
+    setPlanSwitchRevision((revision) => revision + 1);
+  }, [purchaseFlow.order, sessionGeneration, sessionRef]);
 
   useEffect(() => {
     if (productSessionRef.current === sessionRef) return;
@@ -215,24 +254,25 @@ function LegacyMarketplacePanel({
   }, [commerceClient, refreshRevision, sessionRef]);
 
   useEffect(() => {
+    const { commerceClient, sessionRef } = planSwitchScope;
     if (
       !commerceClient
       || !sessionRef
       || typeof commerceClient.readPlanSwitchState !== "function"
     ) {
-      setPlanSwitchState(null);
+      setPlanSwitchResult(null);
       return undefined;
     }
     let cancelled = false;
     void commerceClient.readPlanSwitchState({ sessionRef }).then((next) => {
-      if (!cancelled) setPlanSwitchState(next);
+      if (!cancelled) setPlanSwitchResult(next ? { scope: planSwitchScope, value: next } : null);
     }).catch(() => {
-      if (!cancelled) setPlanSwitchState(null);
+      if (!cancelled) setPlanSwitchResult(null);
     });
     return () => {
       cancelled = true;
     };
-  }, [commerceClient, refreshRevision, sessionRef]);
+  }, [planSwitchScope]);
 
   const planOffers = catalog.offers.filter((offer) => offer.category === "plan");
   const dataPackOffers = catalog.offers.filter((offer) => offer.category === "data_pack");
