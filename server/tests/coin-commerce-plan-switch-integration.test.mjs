@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
+import { execFileSync } from "node:child_process";
 import Database from "better-sqlite3";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -385,6 +386,181 @@ function expectCommerceCode(action, code) {
     return true;
   });
 }
+
+test("confirmed pending-credit renewal wins when its cancel window crosses the due boundary", async () => {
+  const h = openHarness();
+  try {
+    h.confirm(h.quote(BASIC.offerRef), "boundary_schedule");
+    await h.deliver();
+    h.clock.value = new Date(Date.parse(VALID_UNTIL) - 2000).toISOString();
+    const quote = h.quote(PLUS.offerRef);
+    assert.equal(quote.amountUnits, 10);
+    const renewal = h.confirm(quote, "boundary_renewal");
+    assert.equal(renewal.paymentStatus, "held");
+    await h.deliver();
+    assert.equal(h.store.getOrder({ accountId: h.accountId, orderRef: renewal.orderRef }).paymentStatus, "captured");
+    assert.equal(h.scheduledRows()[0].status, "superseded");
+    assert.equal(h.entitlement().plan, PLUS.offerVersionRef);
+    const target = new Date(Date.parse(h.clock.value) + 30 * DAY_MS).toISOString();
+    assert.equal(h.entitlement().validUntil, target);
+    assert.equal(h.runtimeCore.getTenant("tenant_plan_switch").expiresAt, target);
+    assert.deepEqual(h.database.prepare("select status from platform_coin_commerce_fulfillment_commands order by created_at").all(),
+      [{ status: "delivered" }, { status: "delivered" }]);
+    assert.deepEqual(h.database.prepare("select status, amount_units from platform_coin_holds order by created_at").all(),
+      [{ status: "captured", amount_units: 20 }, { status: "captured", amount_units: 10 }]);
+    await h.coordinator.runOnce();
+    assert.equal(h.entitlement().validUntil, target);
+    assert.equal(h.confirm(quote, "boundary_renewal").paymentStatus, "captured");
+    assert.equal(h.database.prepare("select count(*) from platform_coin_holds").pluck().get(), 2);
+  } finally { h.close(); }
+});
+
+test("unconfirmed credit quotes do not block the due downgrade", async () => {
+  const h = openHarness();
+  try {
+    h.confirm(h.quote(BASIC.offerRef), "quote_only_schedule");
+    await h.deliver();
+    h.clock.value = new Date(Date.parse(VALID_UNTIL) - 2000).toISOString();
+    const quote = h.quote(PLUS.offerRef);
+    h.clock.value = VALID_UNTIL;
+    await h.coordinator.runOnce();
+    assert.equal(h.scheduledRows()[0].status, "applied");
+    assert.equal(h.entitlement().plan, BASIC.offerVersionRef);
+    assert.throws(() => h.confirm(quote, "too_late_consumer"));
+    assert.equal(h.database.prepare("select count(*) from platform_coin_holds").pluck().get(), 1);
+  } finally { h.close(); }
+});
+
+test("cancelled credit renewal releases due reservation during the crossing cancel window", async () => {
+  const h = openHarness();
+  try {
+    h.confirm(h.quote(BASIC.offerRef), "cancel_schedule");
+    await h.deliver();
+    h.clock.value = new Date(Date.parse(VALID_UNTIL) - 2000).toISOString();
+    const renewal = h.confirm(h.quote(PLUS.offerRef), "cancel_consumer");
+    h.clock.value = VALID_UNTIL;
+    await h.coordinator.runOnce();
+    assert.equal(h.scheduledRows()[0].status, "scheduled");
+    expectCommerceCode(() => h.fulfillment.fulfillmentHandler.execute({
+      commandRef: planSwitchDueCommandRef(h.scheduledRows()[0].switch_ref),
+      orderRef: h.scheduledRows()[0].switch_ref, accountId: h.accountId,
+      offerVersionRef: BASIC.offerVersionRef, delivery: { ...BASIC.delivery }
+    }), "coin_commerce_fulfillment_retryable");
+    const cancel = { accountId: h.accountId, orderRef: renewal.orderRef, operation: {
+      actorScope: `portal:${h.accountId}`, idempotencyKey: "cancel_credit_consumer",
+      actorType: "portal_user", actorRef: h.accountId
+    } };
+    assert.equal(h.store.cancelOrder(cancel).paymentStatus, "cancelled");
+    assert.equal(h.store.cancelOrder(cancel).paymentStatus, "cancelled");
+    await h.coordinator.runOnce();
+    assert.equal(h.scheduledRows()[0].status, "applied");
+    assert.equal(h.entitlement().plan, BASIC.offerVersionRef);
+    assert.deepEqual(h.database.prepare("select status, amount_units from platform_coin_holds order by created_at").all(),
+      [{ status: "captured", amount_units: 20 }, { status: "released", amount_units: 10 }]);
+  } finally { h.close(); }
+});
+
+test("expired credit hold blocks due until recovery durably releases it", async () => {
+  const h = openHarness();
+  try {
+    h.confirm(h.quote(BASIC.offerRef), "expired_schedule");
+    await h.deliver();
+    h.clock.value = new Date(Date.parse(VALID_UNTIL) - 2000).toISOString();
+    const renewal = h.confirm(h.quote(PLUS.offerRef), "expired_consumer");
+    h.clock.value = h.database.prepare(`select h.expires_at from platform_coin_holds h
+      join platform_coin_commerce_orders o on o.hold_ref = h.hold_ref where o.order_ref = ?`).pluck().get(renewal.orderRef);
+    assert.equal(applyDueScheduledPlanSwitches({ controlStore: h.controlStore,
+      execute: h.fulfillment.fulfillmentHandler.execute, nowIso: h.clock.value }).applied, 0);
+    assert.equal(h.scheduledRows()[0].status, "scheduled");
+    h.store.recoverNonTerminalOrders({ limit: 20 });
+    assert.equal(h.database.prepare(`select h.status from platform_coin_holds h
+      join platform_coin_commerce_orders o on o.hold_ref = h.hold_ref where o.order_ref = ?`).pluck().get(renewal.orderRef), "released");
+    await h.coordinator.runOnce();
+    assert.equal(h.scheduledRows()[0].status, "applied");
+    assert.equal(h.entitlement().plan, BASIC.offerVersionRef);
+    assert.equal(h.database.prepare("select sum(amount_units) from platform_coin_holds where status = 'captured'").pluck().get(), 20);
+  } finally { h.close(); }
+});
+
+test("credit reservation survives capture failure and a captured delivery restart", async () => {
+  const h = openHarness();
+  try {
+    h.confirm(h.quote(BASIC.offerRef), "restart_schedule");
+    await h.deliver();
+    h.clock.value = new Date(Date.parse(VALID_UNTIL) - 2000).toISOString();
+    const renewal = h.confirm(h.quote(PLUS.offerRef), "restart_consumer");
+    h.clock.value = new Date(Date.parse(VALID_UNTIL) + 2000).toISOString();
+    h.store.claimDueCaptures({ limit: 10 });
+    h.database.exec(`create trigger synthetic_credit_capture_failure before insert on platform_coin_commerce_order_events
+      when new.event_type = 'payment_captured'
+      begin select raise(abort, 'synthetic capture failure'); end;`);
+    assert.throws(() => h.store.captureClaimedOrder({ orderRef: renewal.orderRef }));
+    assert.equal(h.store.getOrder({ accountId: h.accountId, orderRef: renewal.orderRef }).paymentStatus, "capture_pending");
+    const restarted = h.reopenFulfillment();
+    try {
+      const due = () => applyDueScheduledPlanSwitches({ controlStore: restarted.controlStore,
+        execute: restarted.fulfillmentHandler.execute, nowIso: h.clock.value });
+      assert.equal(due().applied, 0);
+      assert.equal(h.scheduledRows()[0].status, "scheduled");
+      h.database.exec("drop trigger synthetic_credit_capture_failure");
+      h.store.captureClaimedOrder({ orderRef: renewal.orderRef });
+      assert.equal(h.store.getOrder({ accountId: h.accountId, orderRef: renewal.orderRef }).paymentStatus, "captured");
+      // Captured but not yet delivered must remain reserved across processes.
+      assert.equal(due().applied, 0);
+      assert.equal(h.scheduledRows()[0].status, "scheduled");
+      assert.equal(restarted.fulfillmentHandler.execute(latestCommand(h)).status, "delivered");
+    } finally { restarted.close(); }
+    await h.coordinator.runOnce();
+    const target = h.entitlement().validUntil;
+    assert.equal(h.scheduledRows()[0].status, "superseded");
+    assert.equal(h.entitlement().plan, PLUS.offerVersionRef);
+    assert.equal(h.database.prepare("select sum(amount_units) from platform_coin_holds where status = 'captured'").pluck().get(), 30);
+    await h.coordinator.runOnce();
+    assert.equal(h.entitlement().validUntil, target);
+  } finally { h.close(); }
+});
+
+test("a separate process cannot apply a stale due candidate over confirmed credit", async () => {
+  const h = openHarness();
+  try {
+    h.confirm(h.quote(BASIC.offerRef), "process_schedule");
+    await h.deliver();
+    // A worker's earlier candidate list does not reserve the right to apply.
+    const [candidate] = h.controlStore.listDueScheduledPlanSwitches({ now: VALID_UNTIL });
+    h.clock.value = new Date(Date.parse(VALID_UNTIL) - 2000).toISOString();
+    h.confirm(h.quote(PLUS.offerRef), "process_consumer");
+    const record = {
+      commandRef: planSwitchDueCommandRef(candidate.switchRef), orderRef: candidate.switchRef,
+      accountId: h.accountId, requestRef: "pareq_plan_switch", entitlementRef: h.entitlementRef,
+      issuedLinkRef: "link_plan_switch", tenantRef: safeIssuedRef("tenant", "tenant_plan_switch"),
+      artifactRef: safeIssuedRef("artifact", "artifact_plan_switch"), offerVersionRef: BASIC.offerVersionRef,
+      portalPlan: "monthly", durationDays: 30, monthlyTrafficGb: 50,
+      initialIssuance: false, requireExistingEffect: false, recoveryOnly: false,
+      planSwitch: { kind: "apply_due", cancelsSwitchRef: null, switchRef: candidate.switchRef,
+        expectedPlan: PLUS.offerVersionRef, expectedValidFrom: VALID_FROM, expectedValidUntil: VALID_UNTIL },
+      now: VALID_UNTIL
+    };
+    const program = `
+      import Database from 'better-sqlite3';
+      import { createSqliteSubscriptionControlStore } from './server/services/platform/subscription-control-db.mjs';
+      const database = new Database(process.argv[1], { timeout: 50 });
+      const store = createSqliteSubscriptionControlStore({ database, initializeSchema: false });
+      try { store.applyCoinCommerceSubscriptionFulfillment(JSON.parse(process.argv[2])); process.stdout.write('applied'); }
+      catch (error) { process.stdout.write(error.code ?? 'unknown'); }
+      finally { database.close(); }
+    `;
+    const runDueWorker = () => execFileSync(process.execPath, ["--input-type=module", "-e", program,
+      h.database.name, JSON.stringify(record)], { cwd: REPOSITORY_ROOT, encoding: "utf8", timeout: 10_000 }).trim();
+    h.database.transaction(() => {
+      assert.equal(runDueWorker(), "SQLITE_BUSY");
+    }).immediate();
+    assert.equal(runDueWorker(), "coin_commerce_subscription_fulfillment_pending");
+    assert.equal(h.scheduledRows()[0].status, "scheduled");
+    assert.equal(h.entitlement().plan, PLUS.offerVersionRef);
+    await h.deliver();
+    assert.equal(h.scheduledRows()[0].status, "superseded");
+  } finally { h.close(); }
+});
 
 test("due downgrade retains durable retry after control commit and runtime failure", async () => {
   const h = openHarness();

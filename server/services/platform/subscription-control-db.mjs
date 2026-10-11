@@ -5606,6 +5606,33 @@ export function createSqliteSubscriptionControlStore({
         ) {
           failDrift();
         }
+        if (record.planSwitch.kind === "apply_due") {
+          // Confirmation reserves a scheduled switch's credit before its
+          // cancellation window ends. Check under this same BEGIN IMMEDIATE
+          // lock, not in the earlier due-list snapshot: another worker may
+          // have confirmed/captured a consumer since that snapshot was read.
+          // A released, correctly bound hold is the only proof that a confirmed
+          // consumer no longer owns the credit. Expiry alone is not a release,
+          // and captured/reconciliation work must retain its recovery path.
+          const reservedCredit = db.prepare(`
+            select 1
+              from platform_coin_commerce_plan_switch_quotes q
+              join platform_coin_commerce_orders o on o.quote_ref = q.quote_ref
+              left join platform_coin_holds h on h.hold_ref = o.hold_ref
+              left join platform_coin_wallets w on w.wallet_ref = h.wallet_ref
+             where q.cancels_switch_ref = ?
+               and (h.hold_ref is null or w.account_id is null or h.status <> 'released'
+                 or w.account_id <> o.account_id or h.amount_units <> o.amount_units
+                 or h.purpose <> 'product_purchase' or h.purpose_ref <> o.order_ref)
+             limit 1
+          `).get(record.planSwitch.switchRef);
+          if (reservedCredit) {
+            throw platformError(
+              "coin_commerce_subscription_fulfillment_pending",
+              "Confirmed plan switch credit must settle before due application"
+            );
+          }
+        }
         if (record.planSwitch.kind === "upgrade_inplace") {
           validFrom = previousValidFrom;
           targetValidUntil = storedValidUntil;

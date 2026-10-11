@@ -22,6 +22,12 @@ import { createApp } from "../server/app.mjs";
 import { createRuntimeState } from "../server/state.mjs";
 import { createLocalCnyRechargeCatalogReadonlyProfile } from "./lib/local-cny-recharge-catalog-readonly.mjs";
 import {
+  applyLocalPlanSwitchSchema,
+  localPlanSwitchRuntimeOptions,
+  PLAN_SWITCH_UI_PROXY_CONFIG,
+  seedLocalPlanSwitchUi
+} from "./lib/local-plan-switch-ui-profile.mjs";
+import {
   applyCoinCommerceMigrations,
   COIN_COMMERCE_MIGRATIONS,
   REQUIRED_COIN_COMMERCE_MIGRATION_ID
@@ -63,6 +69,7 @@ const UI_PASSWORD =
 const UI_PORT = 3457;
 const TASK7_PROFILE = "task7";
 const UI_PROFILE = "ui";
+const PLAN_SWITCH_UI_PROFILE = "plan-switch-ui";
 const CNY_CATALOG_READONLY_PROFILE = "cny-catalog-readonly";
 const CNY_CATALOG_READONLY_UI_PROFILE = "cny-catalog-readonly-ui";
 const UI_SEED_SOURCE_REF = "source_local_ui_validation_paid_coins_v1";
@@ -783,10 +790,11 @@ async function startLocalCoinCommerceValidationInternal(
   payPalSandboxUiOptions = null
 ) {
   const { failureStage } = exactOptions(options);
-  if (![TASK7_PROFILE, UI_PROFILE, CNY_CATALOG_READONLY_PROFILE, CNY_CATALOG_READONLY_UI_PROFILE].includes(profile)) {
+  if (![TASK7_PROFILE, UI_PROFILE, CNY_CATALOG_READONLY_PROFILE, CNY_CATALOG_READONLY_UI_PROFILE, PLAN_SWITCH_UI_PROFILE].includes(profile)) {
     throw validationFailure();
   }
-  const isUiProfile = profile === UI_PROFILE || profile === CNY_CATALOG_READONLY_UI_PROFILE;
+  const isPlanSwitchUi = profile === PLAN_SWITCH_UI_PROFILE;
+  const isUiProfile = profile === UI_PROFILE || profile === CNY_CATALOG_READONLY_UI_PROFILE || isPlanSwitchUi;
   const readonlyRecharge = [CNY_CATALOG_READONLY_PROFILE, CNY_CATALOG_READONLY_UI_PROFILE].includes(profile)
     ? createLocalCnyRechargeCatalogReadonlyProfile() : null;
   const livePayPalSandbox = payPalSandboxUiOptions !== null;
@@ -814,6 +822,7 @@ async function startLocalCoinCommerceValidationInternal(
   let subscriptionStore = null;
   let server = null;
   let cleanupPromise = null;
+  let inspectPlanSwitch = null;
 
   const canonicalTemp = resolve(tmpdir());
   const ownedTempRoot = resolve(mkdtempSync(
@@ -898,7 +907,9 @@ async function startLocalCoinCommerceValidationInternal(
   }
 
   try {
-    writeFileSync(proxyConfigPath, "{\"servers\":[],\"pingHosts\":[],\"nginx\":{}}\n", {
+    writeFileSync(proxyConfigPath, isPlanSwitchUi
+      ? `${JSON.stringify(PLAN_SWITCH_UI_PROXY_CONFIG)}\n`
+      : "{\"servers\":[],\"pingHosts\":[],\"nginx\":{}}\n", {
       encoding: "utf8",
       flag: "wx",
       mode: 0o600
@@ -948,6 +959,7 @@ async function startLocalCoinCommerceValidationInternal(
       expectedDdlChecksum: COIN_COMMERCE_MIGRATIONS[0].ddlChecksum
     });
     failAt(failureStage, "after_commerce_migration");
+    if (isPlanSwitchUi) applyLocalPlanSwitchSchema(controlDbPath);
     if (isUiProfile || readonlyRecharge) {
       const paymentDatabase = new Database(controlDbPath);
       try {
@@ -968,6 +980,10 @@ async function startLocalCoinCommerceValidationInternal(
       USER_PORTAL_ROUTES_ENABLED: "true",
       COINS_WALLET_ENABLED: "true",
       COINS_COMMERCE_ENABLED: "true",
+      ...(isPlanSwitchUi ? {
+        COINS_COMMERCE_PLAN_SWITCH_ENABLED: "true",
+        COINS_COMMERCE_AUDIENCE: "all_active"
+      } : {}),
       COINS_COMMERCE_CANCEL_WINDOW_MS: isUiProfile ? "3000" : "1000",
       ...(readonlyRecharge
         ? { ...readonlyRecharge.env, ...(isUiProfile ? { USER_PORTAL_ALLOW_PASSWORD_ONLY_SETUP_SESSION: "true" } : {}) }
@@ -1020,12 +1036,14 @@ async function startLocalCoinCommerceValidationInternal(
       proxyConfigPath,
       autoStartHttpProxy: false,
       subscriptionStore,
-      subscriptionCore: DISABLED_SUBSCRIPTION_CORE,
-      coinCommerceFulfillmentHandler: createFulfillmentHandler(
-        effects,
-        fulfillmentActivity,
-        effectNamespace
-      ),
+      ...(isPlanSwitchUi ? localPlanSwitchRuntimeOptions() : {
+        subscriptionCore: DISABLED_SUBSCRIPTION_CORE,
+        coinCommerceFulfillmentHandler: createFulfillmentHandler(
+          effects,
+          fulfillmentActivity,
+          effectNamespace
+        )
+      }),
       ...(readonlyRecharge
         ? { ...readonlyRecharge.runtimeOptions, paymentNowFn: () => UI_RECHARGE_NOW }
         : isUiProfile
@@ -1091,8 +1109,12 @@ async function startLocalCoinCommerceValidationInternal(
           approvalRef: "local_ui_validation_v1",
           mustRotate: true
         });
-      for (const offer of UI_OFFERS) {
-        runtimeState.platform.coinCommerceStore.publishOfferVersion(offer);
+      if (isPlanSwitchUi) {
+        inspectPlanSwitch = seedLocalPlanSwitchUi(runtimeState, UI_ACCOUNT_ID);
+      } else {
+        for (const offer of UI_OFFERS) {
+          runtimeState.platform.coinCommerceStore.publishOfferVersion(offer);
+        }
       }
     } else {
       runtimeState.platform.coinCommerceStore.publishOfferVersion({
@@ -1164,6 +1186,7 @@ async function startLocalCoinCommerceValidationInternal(
         return Object.freeze({
           effectCount: effects.size,
           fulfillmentInFlight: fulfillmentActivity.inFlight,
+          ...(inspectPlanSwitch ? { planSwitch: inspectPlanSwitch() } : {}),
           funds: Object.freeze({
             status: funds.status,
             spendableUnits: funds.spendableUnits,
@@ -1204,6 +1227,11 @@ export async function startLocalCoinCommerceUiValidation() {
     null,
     UI_PROFILE
   );
+}
+
+export async function startLocalCoinCommercePlanSwitchUiValidation() {
+  if (arguments.length !== 0) throw validationFailure();
+  return startLocalCoinCommerceValidationInternal(undefined, null, PLAN_SWITCH_UI_PROFILE);
 }
 
 // Separate closed entries preserve the existing PayPal UI profile. The first

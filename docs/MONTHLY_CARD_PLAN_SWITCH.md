@@ -289,26 +289,68 @@ requires a newer cycle start (`portal-access-requests.mjs` ~1400-1420).
   changed plan/`valid_until`/scheduled switch and gets `plan_switch_state_changed`
   at confirm, or a reconciliation error if it already passed confirm (only
   possible through a race inside one command's lifetime).
+* A confirmed order consuming a scheduled downgrade's credit reserves that
+  credit before its cancellation window ends. Due application re-reads
+  quote/order/hold/wallet ownership inside the same `BEGIN IMMEDIATE` transaction
+  as the entitlement change; an earlier due-list snapshot is not authority to
+  apply. Until the consuming hold is correctly bound and durably `released`,
+  due application returns the existing retryable pending result without changing
+  entitlement, expiry or audit history. Quotes without a confirmed order do not
+  reserve credit. Normal cancellation or expired-hold recovery releases it;
+  expiry alone is not release, so a later tick may be needed. Captured or
+  reconciliation-pending consumers keep their delivery/recovery path rather
+  than losing the credit to a timer. Successful renewal supersedes the scheduled
+  downgrade atomically; unresolved accounting still requires reconciliation,
+  not an automatic refund or a promise of automatic recovery from every fault.
 * Minimum remaining time for an upgrade quote: 60 minutes. Below that the
   upgrade is refused with `plan_switch_upgrade_window_closed`. The same plan
   remains a renewal. A different-plan request stays a different-plan request.
 
 ## Rollback
 
-* Runtime rollback: set `COINS_COMMERCE_PLAN_SWITCH_ENABLED` false and restart
-  (the flag is read at startup). New quotes revert to the old same-plan-only
-  guard. Already applied upgrades remain valid (entitlement rows are normal).
+* Feature rollback on compatible code: keep this implementation (or an explicitly
+  validated compatible artifact), set `COINS_COMMERCE_PLAN_SWITCH_ENABLED` false
+  and restart (the flag is read at startup). New quotes use the same-plan-only
+  guard. Already applied upgrades remain valid only because the compatible
+  audit reader and effect-chain resolver remain installed; normal entitlement
+  rows alone do not establish old-code compatibility.
   The due applier runs only while the flag is on and the schema validates.
   Before turning the flag off, list `scheduled` and `applying` rows and leave the flag on
   until runtime delivery completes, or finish them under a separate Gate. A flag-off
   process does not apply them. Do not drop the tables while either unfinished
   status exists. Also drain held/capture-pending/undelivered plan-switch orders
-  before disabling the feature or reverting its code.
+  before disabling the feature or changing its code. This drain includes
+  confirmed renewals consuming pending-downgrade credit, not just orders whose
+  target plan differs. Do not interpret flag-off as cancelling or refunding paid
+  work. New plan-switch sales must be quiesced while the finite backlog drains.
 * Schema rollback (additive only): `drop table platform_scheduled_plan_switches;
   drop table platform_coin_commerce_plan_switch_quotes;` only after exporting
-  both tables and confirming zero `scheduled` and `applying` rows. No existing table changed,
-  so no data migration back. Not applied anywhere by this PR.
-* Code rollback: revert the PR; with the flag off the old paths are unchanged.
+  both tables, draining the orders above and confirming zero `scheduled` and
+  `applying` rows. Use the bound schema CLI rather than ad-hoc DROP commands.
+  This removes the additive schema, **not** the upgrade effects already appended
+  to the existing `platform_audit_events` table. Keep audit, wallet ledger,
+  order and entitlement history unchanged. A successful schema rollback is not
+  a code-rollback compatibility certificate. Not applied anywhere by this PR.
+* Code rollback: **do not directly revert this PR or start the pre-feature
+  artifact once any `upgrade_inplace` or `upgrade_restart` audit effect exists.**
+  The pre-feature reader rejects the additional `switchKind` metadata, and its
+  chain rules reject equal-expiry in-place effects; an ordinary later renewal
+  can then fail reconciliation. Draining work, setting the flag off or dropping
+  the two additive tables does not remove this incompatibility. Retain the new
+  audit metadata parser and mixed/equal-expiry effect-chain support in any
+  rollback artifact. Before promotion, bind that exact artifact and verify it
+  on a protected database copy containing applied switch history, with ordinary
+  renewal and idempotent retry succeeding and history preserved. If this cannot
+  be proven, keep compatible code with the feature disabled; do not erase or
+  rewrite audit facts or restore a stale database to make old code accept it.
+
+The source regression `coin-commerce-plan-switch-rollback-compatibility.test.mjs`
+performs paid in-place and yearly-restart upgrades on synthetic SQLite files,
+then reopens current compatible control/runtime stores with the flag off, both
+with the additive schema retained and after its rollback. It verifies ordinary
+renewal, runtime expiry, idempotent replay and preservation of prior audit and
+ledger rows. This certifies the current compatible code path only, not a complete
+old-release deployment, a chosen rollback artifact or a production-copy rehearsal.
 
 ## Migration
 
@@ -323,7 +365,9 @@ also accepts an absolute `--temp-root`. Apply and rollback require
 removes the migration ledger row only after the two documented DROP statements,
 and it refuses with `plan_switch_rollback_rows_present` while any
 `status in ('scheduled', 'applying')` row exists. `validatePlanSwitchSchema` checks the additive
-tables. Synthetic temporary databases alone have been migrated during tests;
+tables. The schema CLI does not certify a target application artifact or replace
+the held/undelivered-order drain and audit-compatibility checks above.
+Synthetic temporary databases alone have been migrated during tests;
 no production database has been modified.
 
 Current source migration: `20261010_001_coin_commerce_plan_switch`.
@@ -368,7 +412,14 @@ window, concurrent quote vs confirm. Fulfillment: in-place upgrade keeps
 downgrade row, due application, supersede on renewal/upgrade, replay of every
 effect, chain resolver old-vs-new. Existing `purchaseEligibilityReader` tests
 unchanged and passing with the flag off. Admin tests for cards and copy.
-Full suite is compared with the Windows baseline on clean `master`.
+Pending-credit regressions include confirm at `effective_at - 2 seconds`, a
+normal coordinator tick after the cancellation window, cancel/release, quote
+without confirmation, expired-hold recovery, capture failure, restart after
+capture and an independent-process SQLite lock with a stale due-list snapshot.
+The rollback compatibility suite covers delivered monthly/yearly upgrade history
+followed by flag-off renewal/retry with retained and removed additive schema.
+Full-suite results must be compared with clean `master` under the same runtime;
+source tests are not a production-copy rollback or live billing acceptance.
 
 ## Implementation deviations
 
@@ -382,7 +433,7 @@ table above is unchanged.
 5. `plan_switch_invalid_input` rejects malformed policy input. It is not an HTTP commerce code.
 6. The schema CLI uses `--mode validate|dry-run|apply|rollback` plus the confirm flags above. The earlier bare `--dry-run` / `--apply` / `--validate` names are those modes.
 7. `entitlement_id` is not a SQL foreign key. `cancels_switch_ref` is not a SQL foreign key. A BEFORE INSERT trigger requires a non-null `cancels_switch_ref` to match a `scheduled` row of the same account. `quote_ref`, `account_id`, and `switch_ref` are foreign keys with ON DELETE RESTRICT.
-8. Rollback runs the two documented DROP statements, then deletes this migration's ledger row. Applied and superseded rows do not block rollback. A `scheduled` or `applying` row does. The legacy `scheduledRows` inspection count includes both unfinished statuses.
+8. Schema rollback runs the two documented DROP statements, then deletes this migration's ledger row. Applied and superseded rows do not block schema rollback. A `scheduled` or `applying` row does. The legacy `scheduledRows` inspection count includes both unfinished statuses. Existing upgrade audit effects survive; an old application artifact is not made compatible by this operation (see Rollback).
 9. Extra CHECK constraints tighten the documented columns: renewal iff `from` equals `to`; downgrade iff `effective_at` is set; scheduled-row status shape; `from <> to` on scheduled rows.
 10. The startup schema check runs only when the flag is on, after the control store opens. The authority-flag combination still throws `plan_switch_requires_legacy_commerce` before any database file is created.
 11. `inspectCoinCommerceSchema` treats `platform_coin_commerce_*` objects as commerce-owned. The plan-switch quote table is excluded only when its stored SQL matches this migration exactly. Any other extra object in that prefix still fails commerce validation. Absent objects leave the check unchanged.
@@ -398,6 +449,7 @@ table above is unchanged.
 21. The due applier is attached inside `recoverNonTerminalOrders` only when the flag is on. Flag off does not query the plan-switch tables and does not apply due rows. See Rollback.
 22. Plain same-plan renewals without pending credit retain additive command-ref-idempotent delivery, including two separately paid pending renewals. Snapshot-dependent switches and pending-credit consumers serialize against unfinished plan orders before another hold, preventing double use of the credit.
 23. The unpublished plan-switch migration now includes `applying`, so its DDL checksum changes. Bind the final checksum before any apply; do not reuse a previous preview checksum or rewrite an already-applied ledger. The original wallet/commerce migrations are unchanged. Production remains unmodified/default-off.
+24. Due application respects confirmed consumers of the scheduled credit under its write lock. A correctly owned released hold clears the reservation; merely reaching hold expiry or reading an older due list does not. No new schema, charge formula or ledger rewrite is introduced by this check.
 
 ## Manual verification
 
@@ -405,7 +457,7 @@ table above is unchanged.
 
 Use a temporary SQLite file. Do not point these commands at a shared or production database.
 
-* Flag off: a same-plan quote charges the catalog price and has no `planSwitch` key. A different live plan is `offer_unavailable`. `GET /api/portal/commerce/plan-switch/state` is not registered (404). The marketplace renders the existing buy buttons when the client has no state method or the state request returns 404.
+* Flag off: a same-plan quote charges the catalog price and has no `planSwitch` key. A different live plan is `offer_unavailable`. `GET /api/portal/commerce/plan-switch/state` is not registered: the isolated router returns 404, while the full application falls through to its protected 401 response. The marketplace catches the state-read failure and retains its existing catalog buttons without logging out; do not report the full-app response as a verified 404.
 * Flag on, schema applied to the temporary file with `npm run platform:coin-commerce:plan-switch:schema -- --mode apply --db-path <absolute-temp-path> --confirm-migration-id <id> --confirm-ddl-checksum <checksum>`:
   * Basic to plus with 15 days left charges 5 Coins before discount (`upgrade_inplace`), keeps `validFrom`, and keeps used bytes.
   * Basic to yearly restarts `validUntil` at fulfillment time plus 365 days and keeps `validFrom`.
@@ -416,15 +468,23 @@ Use a temporary SQLite file. Do not point these commands at a shared or producti
   * Authority flag on, commerce mode `wallet_first_unique_v1`, and an authority row each fail closed with their own 409 code.
   * The state endpoint lists `current_renew`, `upgrade`, and `downgrade` with the charges above. The confirm dialog shows the immediate-upgrade, period-end downgrade, and cancel-pending sentences.
 * `npm run platform:coin-commerce:plan-switch:schema -- --mode validate --db-path <absolute-temp-path>` passes after apply and fails closed on a database without the tables.
+* After a delivered in-place upgrade and, separately, a delivered yearly restart,
+  drain all plan-switch orders. Reopen the compatible code with the flag off;
+  ordinary same-plan renewal must deliver once and preserve existing audit and
+  wallet ledger history. Repeat after additive schema rollback. Do not substitute
+  pre-feature code for the compatibility reader or mark an untested old artifact
+  as a valid rollback target.
 
 ### Only before go-live
+
+For browser source acceptance, use the closed [local plan-switch UI profile](../scripts/lib/local-plan-switch-ui-profile.README.md). It starts the real app, fulfillment factory and runtime core with marker-owned synthetic SQLite data; it does not certify browser interactions by itself or provide production/physical protocol evidence.
 
 Do not run this section from the implementation worktree. It needs Ethan and a separate Risk A production gate.
 
 * Ethan approves a read-only BWH check of `COINS_COMMERCE_ACCOUNT_RESOURCE_AUTHORITY_ENABLED` (expected unset or false) and `select count(*) from platform_account_resource_authorities` (expected 0). A missing table is 0. A query error stops the launch.
 * Schema apply uses the CLI confirm flags against the intended database only after that check. The flag stays off until the gate approves `COINS_COMMERCE_PLAN_SWITCH_ENABLED=true`.
 * Startup must refuse when that flag and `COINS_COMMERCE_ACCOUNT_RESOURCE_AUTHORITY_ENABLED` are both true.
-* Before any later flag-off rollback, list `status in ('scheduled', 'applying')` rows and finish their runtime delivery while the flag is still on.
+* Before any later flag-off rollback, list `status in ('scheduled', 'applying')` rows and finish their runtime delivery while the flag is still on; also drain held/capture-pending/undelivered switch and pending-credit orders. Bind the retained compatibility code. Any different rollback artifact requires its own applied-history rehearsal before use.
 
 ## Pre-launch checklist
 
@@ -436,13 +496,17 @@ Test environment, before anyone asks for a production gate:
 * [ ] In-place upgrade preserves used bytes. `upgrade_restart` is refused with `plan_switch_cycle_misaligned` when the usage-window start would move (cycle-guard test).
 * [ ] Cancel inside 3 seconds, snapshot drift, due-switch application, and replay are green on a temporary database.
 * [ ] Portal state, card labels, disabled reasons, and confirm copy are green in the admin tests.
+* [ ] Delivered in-place and yearly-restart history survives compatible flag-off
+  renewal and retry, with and without additive schema rollback; this is not
+  described as a direct revert to the pre-feature artifact.
 
 Only before go-live:
 
 * [ ] Ethan has approved the read-only BWH check: `COINS_COMMERCE_ACCOUNT_RESOURCE_AUTHORITY_ENABLED` unset or false, and `select count(*) from platform_account_resource_authorities` returns 0.
 * [ ] A separate Risk A production gate names the database, the migration id, and the DDL checksum before any schema apply.
 * [ ] The plan-switch flag and the authority flag are not both enabled.
-* [ ] Operators have the flag-off procedure: wait for zero `scheduled` and `applying` rows before disabling the flag, and do not drop the tables while either exists.
+* [ ] Operators have the flag-off procedure: quiesce new switch sales, drain held/capture-pending/undelivered switch and pending-credit orders, wait for zero `scheduled` and `applying` rows, and retain compatible audit/chain readers. Do not drop the tables while unfinished work exists.
+* [ ] A code rollback names an exact compatible artifact and passes an applied-history database-copy rehearsal. Direct pre-feature code revert after upgrade effects is prohibited; schema rollback alone cannot satisfy this check.
 
 ## Open points for Ethan
 
