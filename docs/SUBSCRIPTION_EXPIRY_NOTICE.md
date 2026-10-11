@@ -13,7 +13,19 @@ document_metadata:
 Risk: A access-response envelope / B source implementation. One PR. Release unit:
 `subscription-rendering` hosted by `control-plane-app`. Identity impact: false;
 no principal, material, map, collector or schema change. This document does not
-grant merge/deployment authority. Production state for this change: not_deployed.
+grant merge/deployment authority.
+
+## Recorded deployment update — 2026-10-09
+
+The [PR #761 Deploy Note](https://github.com/gccwebos-com/proxy-gateway-minimal/pull/761#issuecomment-6075402400)
+records this change as deployed on BWH at 2026-10-09T06:06:18Z–06:08:55Z,
+terminal `applied_validated`. The four-file overlay is merged source
+`40c7cc2390923a8c5904f349962ea1a85cdab6b6`, composed with unchanged #752
+business source and #760 rendering source; this was not a whole-master update.
+The receipt records six flagged display aliases and a controlled backend
+restart. Authenticated user refresh, GUI/device acceptance and runtime traffic
+cutoff remain unproven. This docs update performed no new runtime readback or
+deployment; future execution still requires its own exact gate.
 
 ## Intent and allowed behavior
 

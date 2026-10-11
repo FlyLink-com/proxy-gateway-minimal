@@ -1,6 +1,6 @@
 # Documentation Index
 
-Last updated: 2026-09-23, America/Los_Angeles.
+Last updated: 2026-10-11 UTC.
 
 ```yaml
 document_metadata:
@@ -8,7 +8,7 @@ document_metadata:
   lifecycle: active
   authority_scope: documentation_navigation
   superseded_by: null
-  last_verified_at: 2026-09-23
+  last_verified_at: 2026-10-11
   production_authority: false
 ```
 
@@ -203,6 +203,7 @@ security-alert counts and makes no current claim about them.
 | `docs/COMMERCIAL_FEATURE_INTEGRATION_GATE.md` | Admission gate for source-only Admin/Portal commercial integration and the separate Risk A production handoff. | Active source-integration contract; no schema, auth, deployment, provider, runtime, or production authority. | Read before attaching commercial behavior to an Admin or Portal entry, route, stylesheet, build, or artifact. |
 | `docs/RESOURCE_PACKAGE_CLI.md` | CLI-first controlled-open and resource package model for turning operator-provided lead/account/entitlement/access facts into an operator-safe delivery package. | Active repository tooling contract; no execution authority. | Read before using natural-language/agent-assisted registration, subscription delivery preparation, or resource-package audit flows. |
 | `docs/VALIDATION_BASELINE.md` | Current validation command matrix and PR completion gate by risk tier and touched surface. | Active validation entrypoint; not historical pass-count archive and not deploy approval. | Read before choosing which checks to run for a PR. |
+| [`docs/CI_STATUS_LOG.md`](CI_STATUS_LOG.md) | Dated CI availability, exact-source hosted/local results and safe append-only run summaries. | Evidence index; no workflow, budget, execution or production authority. | Read for current reported CI blockers and the pending November 2026 latest-master manual check. |
 | `docs/CI_MANUAL_VALIDATION.md` | Manual CI validation host workflow; target direction is local Linux manual CI, with historical Aliyun manual CI facts retained until the transition is validated. | Active runbook, not staging or deploy approval. | Read before using a manual validation host for repo-level CI evidence. |
 | `docs/CLOUDFLARE_PUBLIC_SITE_CI.md` | Repository-only Cloudflare public static site CI boundary, pinned Wrangler dry-run command, and non-goals for keeping backend/control-plane/API/runtime work off Cloudflare. | Active CI boundary; no deploy, DNS, Cloudflare account, secret, or production authority. | Read before changing `wrangler.public-site.jsonc`, `admin/dist-site` public-site builds, GitHub public-site CI, or Cloudflare static-site deploy preparation. |
 

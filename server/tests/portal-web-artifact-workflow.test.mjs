@@ -55,5 +55,5 @@ test("CI builds and verifies the Portal desktop bundle", () => {
   const build = workflow.indexOf("run: npm run admin:portal:web:build");
   const verify = workflow.indexOf("run: npm run admin:portal:web:verify");
   assert.ok(build >= 0 && verify > build);
-  assert.match(workflow.slice(build - 120, verify + 120), /if: steps\.changes\.outputs\.run_full != '0'/g);
+  assert.match(workflow.slice(build - 120, verify + 120), /if: needs\.source-checks\.outputs\.run_full != '0'/g);
 });
