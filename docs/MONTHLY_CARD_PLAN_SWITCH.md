@@ -466,6 +466,13 @@ table above is unchanged.
 
 Use a temporary SQLite file. Do not point these commands at a shared or production database.
 
+The schema dry-run hashes its input in fixed 64 KiB blocks and closes the file
+descriptor on success or failure. This bounds the hashing buffer, not the total
+process RSS or SQLite temporary storage. A production-copy rehearsal must still
+bind its private temporary directory, free space, inode and process-memory
+budgets independently; a V8 heap limit alone is not a total-memory limit. This
+implementation does not change the migration ID, DDL checksum or rollback rules.
+
 * Flag off: a same-plan quote charges the catalog price and has no `planSwitch` key. A different live plan is `offer_unavailable`. `GET /api/portal/commerce/plan-switch/state` is not registered: the isolated router returns 404, while the full application falls through to its protected 401 response. The marketplace catches the state-read failure and retains its existing catalog buttons without logging out; do not report the full-app response as a verified 404.
 * Flag on, schema applied to the temporary file with `npm run platform:coin-commerce:plan-switch:schema -- --mode apply --db-path <absolute-temp-path> --confirm-migration-id <id> --confirm-ddl-checksum <checksum>`:
   * Basic to plus with 15 days left charges 5 Coins before discount (`upgrade_inplace`), keeps `validFrom`, and keeps used bytes.

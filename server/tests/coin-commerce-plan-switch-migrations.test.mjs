@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import crypto from "node:crypto";
+import fs, { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -74,6 +76,134 @@ function createCommerceDatabase(dbPath) {
     nowFn: () => new Date(APPLIED_AT)
   });
 }
+
+// Observe the public dry-run path without exporting its private hash helper.
+// These tests are sequential; builtin bindings are restored before returning.
+async function withObservedFileHash(dbPath, options, action) {
+  const original = {
+    openSync: fs.openSync, readSync: fs.readSync, closeSync: fs.closeSync,
+    readFileSync: fs.readFileSync, createHash: crypto.createHash
+  };
+  const observed = { descriptors: [], closed: [], requests: [], bytes: 0, digests: [] };
+  let readCalls = 0;
+  try {
+    fs.openSync = (path, ...args) => {
+      const descriptor = original.openSync(path, ...args);
+      if (path === dbPath) observed.descriptors.push(descriptor);
+      return descriptor;
+    };
+    fs.readSync = (descriptor, buffer, offset, length, position) => {
+      if (observed.descriptors.includes(descriptor)) {
+        readCalls += 1;
+        observed.requests.push(length);
+        if (readCalls === options.failReadAt) throw options.error;
+        const count = original.readSync(descriptor, buffer, offset,
+          Math.min(length, options.shortReadBytes ?? length), position);
+        observed.bytes += count;
+        return count;
+      }
+      return original.readSync(descriptor, buffer, offset, length, position);
+    };
+    fs.closeSync = (descriptor) => {
+      const result = original.closeSync(descriptor);
+      if (observed.descriptors.includes(descriptor)) observed.closed.push(descriptor);
+      return result;
+    };
+    fs.readFileSync = (path, ...args) => {
+      assert.notEqual(path, dbPath, "source digest must not buffer the whole database");
+      return original.readFileSync(path, ...args);
+    };
+    crypto.createHash = (...args) => {
+      const hash = original.createHash(...args);
+      const digest = hash.digest.bind(hash);
+      hash.digest = (...digestArgs) => {
+        if (options.failDigest) throw options.error;
+        const result = digest(...digestArgs);
+        observed.digests.push(result);
+        return result;
+      };
+      return hash;
+    };
+    syncBuiltinESMExports();
+    return await action(observed);
+  } finally {
+    fs.openSync = original.openSync;
+    fs.readSync = original.readSync;
+    fs.closeSync = original.closeSync;
+    fs.readFileSync = original.readFileSync;
+    crypto.createHash = original.createHash;
+    syncBuiltinESMExports();
+  }
+}
+
+test("dry-run source digest matches SHA-256 at empty, short, exact-block and tail boundaries", async () => {
+  await withTempDirectoryAsync(async (directory) => {
+    for (const size of [0, 1, 65535, 65536, 65537, 2 * 65536 + 17]) {
+      const dbPath = join(directory, `synthetic-bytes-${size}.sqlite`);
+      const bytes = Buffer.alloc(size);
+      for (let index = 0; index < bytes.length; index += 1) bytes[index] = index % 251;
+      fs.writeFileSync(dbPath, bytes);
+      const expected = crypto.createHash("sha256").update(bytes).digest("hex");
+      await withObservedFileHash(dbPath, {}, async (observed) => {
+        // Arbitrary boundary bytes are intentionally not a commerce SQLite DB.
+        // The first source hash must complete before the schema admission fails.
+        await assert.rejects(dryRunPlanSwitchMigrations({ dbPath, tempRoot: directory }));
+        assert.deepEqual(observed.digests, [expected]);
+        assert.equal(observed.bytes, size);
+        assert.ok(observed.requests.length >= 1);
+        assert.ok(observed.requests.every((length) => length > 0 && length <= 65536));
+        assert.deepEqual(observed.closed, observed.descriptors);
+        assert.equal(observed.descriptors.length, 1);
+      });
+    }
+  });
+});
+
+test("dry-run hashes an unchanged real SQLite source twice and handles short reads", async () => {
+  await withTempDirectoryAsync(async (directory) => {
+    const dbPath = join(directory, "control.sqlite");
+    createCommerceDatabase(dbPath);
+    const source = new Database(dbPath);
+    source.exec("create table synthetic_hash_tail (payload blob)");
+    source.prepare("insert into synthetic_hash_tail values (?)").run(Buffer.alloc(2 * 65536 + 17, 0x73));
+    source.close();
+    const before = readFileSync(dbPath);
+    const expected = crypto.createHash("sha256").update(before).digest("hex");
+    await withObservedFileHash(dbPath, { shortReadBytes: 997 }, async (observed) => {
+      const result = await dryRunPlanSwitchMigrations({ dbPath, tempRoot: directory });
+      assert.equal(result.ok, true);
+      assert.equal(result.sourceChanged, false);
+      assert.deepEqual(observed.digests, [expected, expected]);
+      assert.equal(observed.bytes, 2 * before.length);
+      assert.ok(observed.requests.every((length) => length <= 65536));
+      assert.deepEqual(observed.closed, observed.descriptors);
+      assert.equal(observed.descriptors.length, 2);
+    });
+    assert.deepEqual(readFileSync(dbPath), before);
+    assert.equal(validatePlanSwitchSchema({ dbPath }).schemaState, "pending");
+  });
+});
+
+test("dry-run closes the digest file descriptor after read or digest failure", async () => {
+  await withTempDirectoryAsync(async (directory) => {
+    const dbPath = join(directory, "control.sqlite");
+    createCommerceDatabase(dbPath);
+    const expected = readFileSync(dbPath);
+    for (const fault of [{ failReadAt: 2 }, { failDigest: true }]) {
+      const error = Object.assign(new Error("synthetic file hash failure"), { code: "EIO" });
+      await withObservedFileHash(dbPath, { ...fault, error }, async (observed) => {
+        await assert.rejects(dryRunPlanSwitchMigrations({ dbPath, tempRoot: directory }),
+          (caught) => caught === error);
+        assert.equal(observed.descriptors.length, 1);
+        assert.deepEqual(observed.closed, observed.descriptors);
+        assert.throws(() => fs.fstatSync(observed.descriptors[0]),
+          (caught) => caught?.code === "EBADF");
+      });
+      assert.deepEqual(fs.readdirSync(directory), ["control.sqlite"]);
+      assert.deepEqual(readFileSync(dbPath), expected);
+    }
+  });
+});
 
 function applyInput(dbPath, database) {
   return {

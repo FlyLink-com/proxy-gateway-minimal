@@ -1,9 +1,11 @@
 import { createHash } from "node:crypto";
 import {
+  closeSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
-  readFileSync,
+  openSync,
+  readSync,
   rmSync
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -750,7 +752,18 @@ export function rollbackPlanSwitchMigrations({
 }
 
 function sha256File(filePath) {
-  return createHash("sha256").update(readFileSync(filePath)).digest("hex");
+  const hash = createHash("sha256");
+  const buffer = Buffer.alloc(64 * 1024);
+  const descriptor = openSync(filePath, "r");
+  try {
+    let count;
+    while ((count = readSync(descriptor, buffer, 0, buffer.length, null)) > 0) {
+      hash.update(buffer.subarray(0, count));
+    }
+    return hash.digest("hex");
+  } finally {
+    closeSync(descriptor);
+  }
 }
 
 function safeRemoveOwnedDirectory(directory, root) {
