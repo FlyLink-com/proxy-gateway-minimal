@@ -6,23 +6,84 @@ document_metadata:
   lifecycle: active
   authority_scope: current_release_state
   superseded_by: null
-  last_verified_at: 2026-10-09
+  last_verified_at: 2026-10-11
   production_authority: false
 ```
 
 > Status:
 > - Type: Dated documented source, validation and deployment snapshot
-> - Git source cutoff: `master@521bb535d0d385d533734b020cf96a533f6ed729`,
->   observed 2026-10-09 UTC; not a permanent current-head claim
-> - Latest deployment records read: BWH control/ingress/DNS, standalone
->   collector, and subscription-rendering receipts linked below
+> - Git source cutoff: `master@483f535ee6d90fe222b866591ade19a7776b1d47`,
+>   observed 2026-10-11 UTC; not a permanent current-head claim
+> - Latest deployment records read: #764 reset/collector, preserved #767
+>   containment and #769 desktop Portal, layered on the earlier BWH composition
 > - Source, build, deployment and runtime identities are distinct; the BWH
 >   application is a documented composition, not the current whole `master`
 > - This reconciliation read GitHub records only. No provider, host, account,
 >   database or live runtime readback was performed
 > - Execution authority: None
 
+## Source And Deployment Reconciliation (2026-10-11)
+
+Risk: C. Process: update the existing #765 documentation PR from native GitHub
+records. Validation: document-authority and diff checks. Production/AWS impact:
+none. This dated section supersedes the earlier snapshot's top-level task and
+release status, without rewriting historical receipts or refreshing runtime
+health. Exact-head source validation for this docs change belongs in #765.
+
+### Later merged source and recorded deployment
+
+| Boundary | Source and dated receipt | Established result and remaining limit |
+| --- | --- | --- |
+| Legacy refresh containment | [#767 deployment](https://github.com/gccwebos-com/proxy-gateway-minimal/pull/767#issuecomment-6078816763), source `76715107c79ebbd7f853363348e8cc26a5679cdf`, 2026-10-09 | App/route containment and three Nginx refresh guards deployed. The later [metering receipt](https://github.com/gccwebos-com/proxy-gateway-minimal/pull/767#issuecomment-6079130990) records zero-debit continuation followed by positive natural accounting; not a reconstruction of unknown historical intervals. |
+| Reset backend, schema and independent collector | [#764 Deploy Note](https://github.com/gccwebos-com/proxy-gateway-minimal/pull/764#issuecomment-6079787973), source `fa492bd93c090e721da5ba3996c63a004ea03035`, 2026-10-09T11:11:23Z | Mixed app `control-plane-2dea45fcbac1-reset-fa492bd93c09-guard767`, additive reset journal and `collector-reset-fa492bd93c09` deployed; #752/#760/#761 base and #767 guard retained. No whole-master or dependency upgrade. Two natural observations passed with matching new sample/rollup increments and preserved history. |
+| Desktop Portal immediate reset display | [#769 Deploy Note](https://github.com/gccwebos-com/proxy-gateway-minimal/pull/769#issuecomment-6106025567), source `483f535ee6d90fe222b866591ade19a7776b1d47`, 2026-10-11T05:54:12Z | Only desktop `/web/` static references updated to `pr769-483f535ee6d9`; ten public files passed exact size/MIME/hash checks. No backend, mobile, Admin or company-site deployment; no new real-account reset or accounting certification. |
+
+The #769 artifact is `globalcircle-portal-web-pr769-483f535ee6d9.zip`, SHA-256
+`df04ee0f34e5d8676b3633b687c621cb25f3e87b433e3172412af26be9f13ce9`.
+Its receipt retains the prior static release and Nginx backup, verifies recharge
+configuration unchanged, and records unchanged backend/protocol process
+identity plus successful natural collector status. Those are observations at
+that deployment cutoff, not a live read by this documentation task.
+
+#764's [user closeout](https://github.com/gccwebos-com/proxy-gateway-minimal/pull/764#issuecomment-6079900988)
+confirmed the functional stage while reporting the immediate-display defect.
+#769 fixes that source/UI behavior; [Issue #768](https://github.com/gccwebos-com/proxy-gateway-minimal/issues/768)
+remains open for real-account browser confirmation. The original reset scope
+does not remotely erase already downloaded configs or revoke independent legacy
+tenant-token URLs. Do not widen the user's brief functional confirmation into
+a receipt for every acceptance item.
+
+#764's aggregate identity gate retains `stale: 89 / 76 / 88`,
+`retention_state: pending`, `state: degraded`; no global identity-healthy claim.
+SGP recovery and boot-autostart policy remain separate. #769 did not re-read
+the databases, checkpoints or identity maps. #763's backend dependency patches
+still have no deployment proof in these mixed-app receipts; the newer desktop
+artifact built from master is a different release unit. No global security or
+Dependabot-closure conclusion follows from that frontend deployment.
+
+### Open source work at this observation
+
+A native PR read on 2026-10-11 found eight open Drafts: #753, #755, #762,
+#765, #766, #770, #771 and #772. This is a dated snapshot, not a second task
+queue. #765 is documentation closeout; #766's CI-source acceptance is being
+completed separately. Neither is a deployment of the remaining features.
+
+The third-party YAML implementation [#771](https://github.com/gccwebos-com/proxy-gateway-minimal/pull/771)
+targets #762's branch, not master. Public catalog #770 and monthly plan switch
+#772 also remain unmerged. Data-pack #753 and native-session #755 retain their
+own integration, client, migration and production boundaries. Re-read their
+heads/reviews/checks before any later integration; historical passing results
+or this list are not final-head merge evidence.
+
+[CI status and run log](CI_STATUS_LOG.md) distinguishes the confirmed Actions
+budget startup failure, local validation and the operator-approved temporary
+PR-only merge exception. No hosted rerun was started by this documentation
+work. No production action or new authority is granted here.
+
 ## Source And Deployment Reconciliation (2026-10-09)
+
+Historical snapshot; the 2026-10-11 section above supersedes its then-current
+PR/deployment status. The original evidence and limits below remain dated.
 
 Risk: C. Process: docs-only reconciliation of existing native PR/Issue records.
 Expected PR count: 1. Validation: document-authority checks and diff checks.

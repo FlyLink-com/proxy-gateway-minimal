@@ -6,7 +6,7 @@ document_metadata:
   lifecycle: active
   authority_scope: ci_status_and_run_log
   superseded_by: null
-  last_verified_at: 2026-10-09
+  last_verified_at: 2026-10-11
   production_authority: false
 ```
 
@@ -20,7 +20,40 @@ host procedures, and [Current Release State](CURRENT_RELEASE_STATE.md) for
 source/deployment evidence. Older quota statements in historical runbooks do
 not supersede the dated observation below.
 
-## Current availability — 2026-10-09 UTC
+## Latest availability update — 2026-10-11 UTC
+
+The [#766 trusted advisory job](https://github.com/gccwebos-com/proxy-gateway-minimal/actions/runs/37900688626/job/113722277048)
+annotation was successfully read this time: "The job was not started because an
+Actions budget is preventing further use." This establishes the platform's
+startup-blocker classification for that job, without inspecting billing details
+or rewriting the earlier observation that could not access annotations. No
+paid upgrade, budget change, workflow dispatch or retry was performed.
+
+The operator authorized conditional per-PR merging during quota exhaustion,
+after the applicable source validation and independent review. This is not a
+waiver of tests, security review, production gates or final-head checks. It does
+not authorize blanket bypass or a fabricated successful check. Each executed
+exception must record its exact PR/head and restore the original ruleset.
+
+[#769's receipt](https://github.com/gccwebos-com/proxy-gateway-minimal/pull/769#issuecomment-6106025567)
+records that bounded process for reviewed head
+`8044182f13810a97f0855143085dccec8cc5f233`, merge
+`483f535ee6d90fe222b866591ade19a7776b1d47` (identical trees): Portal 145/145,
+Admin 82 files / 1314 tests, relevant builds/boundary/docs checks, and independent
+Security Review. Backend full-suite rerun was out of that unchanged-backend
+boundary; historical Windows baseline failures were not declared passed.
+The temporary PR-only exception was removed immediately after merge; the
+active strict `Validate` rule was preserved and its canonical before/after
+policy hashes matched. This document does not extend that exception.
+
+At this update, #765 and #766 are still Draft and their final-head acceptance
+is in progress. The later #765/#766 PR receipts, rather than a self-referential
+docs commit, must record the final validation/review/merge result. Hosted
+Ready-event and artifact-upload behavior not actually run remains unverified;
+local source/matrix tests must not be called a hosted pass. The November manual
+latest-master check below remains `not_run`.
+
+## Historical availability — 2026-10-09 UTC
 
 - The operator confirmed that this month's GitHub Actions CI allowance is
   exhausted. This is an **operator-reported cause**, not an independently

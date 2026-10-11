@@ -1,6 +1,6 @@
 # Project Context
 
-Last updated: 2026-10-09 UTC.
+Last updated: 2026-10-11 UTC.
 
 ```yaml
 document_metadata:
@@ -8,7 +8,7 @@ document_metadata:
   lifecycle: active
   authority_scope: project_context
   superseded_by: null
-  last_verified_at: 2026-10-09
+  last_verified_at: 2026-10-11
   production_authority: false
 ```
 
@@ -16,10 +16,10 @@ document_metadata:
 > - Type: Active current-state handoff
 > - Risk: C
 > - Source reconciliation cutoff:
->   `master@521bb535d0d385d533734b020cf96a533f6ed729` (observed 2026-10-09 UTC)
-> - Source/production boundary: #763 security lockfiles are merged and CI
->   validated; recorded BWH deployment is a separate #752/#759/#760/#761
->   composition. Current runtime alignment was not read
+>   `master@483f535ee6d90fe222b866591ade19a7776b1d47` (observed 2026-10-11 UTC)
+> - Source/production boundary: #764 reset/collector and preserved #767 guard
+>   are recorded BWH overlays; #769 is desktop Portal only. None establishes
+>   a whole-master backend deployment. Current runtime alignment was not read
 > - Delivery navigation projection:
 >   [GCC WebOS — Delivery Project #1](https://github.com/orgs/gccwebos-com/projects/1)
 > - Earlier A3, expiry, source-capability and provider observations retain
@@ -120,9 +120,9 @@ Keep these distinctions explicit:
 Repository: `gccwebos-com/proxy-gateway-minimal`
 
 The source cutoff inspected for this docs-only alignment is
-`master@521bb535d0d385d533734b020cf96a533f6ed729`. Resolve the live `master`
+`master@483f535ee6d90fe222b866591ade19a7776b1d47`. Resolve the live `master`
 SHA before a later source decision. The
-[2026-10-09 reconciliation](CURRENT_RELEASE_STATE.md#source-and-deployment-reconciliation-2026-10-09)
+[2026-10-11 reconciliation](CURRENT_RELEASE_STATE.md#source-and-deployment-reconciliation-2026-10-11)
 records exact-source validation, dated deployment composition, open Drafts and
 remaining unknowns. Native Issue/PR records remain authoritative; this handoff
 does not keep a live queue or reactivate paused implementation work.
@@ -131,8 +131,10 @@ The account panel belongs to this repository's User Portal and `/api/portal`
 control-plane domain. `admin/README.md` maps its legacy and desktop builds;
 the protected Admin console is a separate frontend surface. Mobile and Android
 consume the backend contract and require their own source, client and release
-acceptance. The fresh linked records pair data-pack backend #753 with mobile
-#13, and native-session backend #755 with Android #26; all four remain Draft.
+acceptance. The dated 2026-10-09 linked records paired data-pack backend #753
+with mobile #13, and native-session backend #755 with Android #26; all four
+were Draft at that cutoff. Client repositories were not refreshed by this
+2026-10-11 minimal-repository closeout.
 Company-site publication is separate: the recorded BWH cutover retained the
 existing company apex/www site and did not deploy a new site build.
 
@@ -146,7 +148,7 @@ one frontend build.
 ## Current Source Capability Boundary
 
 The matrix and non-activation observations in this section retain their
-2026-09-14 reconciliation cutoff; they are not a new 2026-10-09 domain audit.
+2026-09-14 reconciliation cutoff; they are not a new 2026-10-11 domain audit.
 Use the linked fresh snapshot above for recent PR and deployment state.
 
 The detailed source/test matrix is
@@ -243,12 +245,13 @@ Source -> Artifact -> Release -> Deployment -> Runtime State
 `master` is reviewed source, not a production-version claim. Artifact Manifest
 v1 covers `control-plane-app`, `portal-static`, and `admin-static`.
 
-The latest read BWH receipts bind the #752 business base, #759 standalone
-collector and #760/#761 rendering composition separately. Exact source,
-artifact/check links, Deploy Notes and acceptance limits are indexed in
-`docs/CURRENT_RELEASE_STATE.md`. #763's successful build is not evidence that
-its dependency patches are running in that composition. The 2026-08-26 A3
-receipt remains historical deployment evidence for its original target/source.
+The latest read BWH receipts add #764 reset/collector, retained #767 containment
+and #769 desktop Portal to the earlier composition. Exact source, artifact/check
+links, Deploy Notes and acceptance limits are indexed in
+`docs/CURRENT_RELEASE_STATE.md`. #763's backend dependency deployment is still
+unproven in that mixed app; the newer master-built desktop artifact is a
+separate release unit. #768 real-account display confirmation remains open.
+The 2026-08-26 A3 receipt remains historical evidence for its original target.
 
 See `RELEASE_MANIFEST.md` for the stable contract. No current artifact retention,
 live service identity or production health is inferred from this docs read.
@@ -256,7 +259,7 @@ live service identity or production health is inferred from this docs read.
 ## Production Boundary
 
 The only compact production snapshot is
-`docs/CURRENT_RELEASE_STATE.md`. Its 2026-10-09 section indexes later BWH
+`docs/CURRENT_RELEASE_STATE.md`. Its 2026-10-11 section indexes later BWH
 deployment records and their incomplete business/client acceptance. No live
 runtime, host, provider or customer-account reads were performed here.
 

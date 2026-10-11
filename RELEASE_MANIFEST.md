@@ -6,20 +6,20 @@ document_metadata:
   lifecycle: active
   authority_scope: release_traceability
   superseded_by: null
-  last_verified_at: 2026-10-09
+  last_verified_at: 2026-10-11
   production_authority: false
 ```
 
 > Status:
 > - Type: Active source-to-production traceability baseline
 > - Risk: C
-> - Last updated: 2026-10-09 UTC
-> - Source reconciliation cutoff: `master@521bb535d0d385d533734b020cf96a533f6ed729`
-> - Latest read deployment records describe BWH business source #752,
->   standalone collector #759 and rendering composition #760/#761, plus
->   current-domain ingress/DNS cutover; they are not a whole-master deployment
+> - Last updated: 2026-10-11 UTC
+> - Source reconciliation cutoff: `master@483f535ee6d90fe222b866591ade19a7776b1d47`
+> - Latest read deployment records add #764 reset/collector, preserved #767
+>   containment and #769 desktop Portal to the earlier BWH composition;
+>   they are not a whole-master backend deployment
 > - Dated source/check/task/deployment evidence and remaining unknowns:
->   [2026-10-09 reconciliation](docs/CURRENT_RELEASE_STATE.md#source-and-deployment-reconciliation-2026-10-09)
+>   [2026-10-11 reconciliation](docs/CURRENT_RELEASE_STATE.md#source-and-deployment-reconciliation-2026-10-11)
 > - No live runtime or provider readback was performed by this docs change
 > - Production authority: None. This file does not deploy, promote, roll back,
 >   mutate runtime state, or replace live inventory and validation.

@@ -1,6 +1,6 @@
 # Documentation Index
 
-Last updated: 2026-10-09 UTC.
+Last updated: 2026-10-11 UTC.
 
 ```yaml
 document_metadata:
@@ -8,7 +8,7 @@ document_metadata:
   lifecycle: active
   authority_scope: documentation_navigation
   superseded_by: null
-  last_verified_at: 2026-10-09
+  last_verified_at: 2026-10-11
   production_authority: false
 ```
 
