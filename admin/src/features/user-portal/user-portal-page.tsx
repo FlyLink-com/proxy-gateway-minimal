@@ -1635,6 +1635,8 @@ export function UserPortalPage({
   const advanceSessionGeneration = useCallback(() => {
     const nextGeneration = sessionGenerationRef.current + 1;
     sessionGenerationRef.current = nextGeneration;
+    // Every session transition also retires subscription reads and their callers.
+    subscriptionReadGenerationRef.current += 1;
     setSessionGeneration(nextGeneration);
     return nextGeneration;
   }, []);
@@ -2257,12 +2259,22 @@ export function UserPortalPage({
       throw new Error("subscription_link_reread_unavailable");
     }
     const readGeneration = subscriptionReadGenerationRef.current;
-    const revealed = await portalClient.revealSubscription({
-      userRef: portalSession.userRef,
-      sessionRef: portalSession.sessionRef,
-      requestRef: order.requestRef
-    });
-    if (!mountedRef.current || readGeneration !== subscriptionReadGenerationRef.current) return null;
+    const readSessionGeneration = sessionGenerationRef.current;
+    const isCurrent = () => mountedRef.current
+      && readSessionGeneration === sessionGenerationRef.current
+      && readGeneration === subscriptionReadGenerationRef.current;
+    let revealed: PortalSubscriptionRequest;
+    try {
+      revealed = await portalClient.revealSubscription({
+        userRef: portalSession.userRef,
+        sessionRef: portalSession.sessionRef,
+        requestRef: order.requestRef
+      });
+    } catch (requestError) {
+      if (!isCurrent()) return null;
+      throw requestError;
+    }
+    if (!isCurrent()) return null;
     const subscriptionUrl = revealed.subscriptionUrl;
     if (
       !subscriptionUrl
@@ -2275,7 +2287,7 @@ export function UserPortalPage({
       durationDays: order.durationDays,
       quantity: order.quantity
     });
-    if (!mountedRef.current || readGeneration !== subscriptionReadGenerationRef.current) return null;
+    if (!isCurrent()) return null;
     setOrderRows((rows) => upsertOrderRow(rows, nextOrder));
     setHistorySummary(revealed.historySummary ?? historySummary);
     return subscriptionUrl;

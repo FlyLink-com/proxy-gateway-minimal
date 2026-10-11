@@ -5753,6 +5753,107 @@ describe("user portal product surface", () => {
     expect(resetSubscriptionLink).toHaveBeenCalledTimes(1);
   });
 
+  test.each([
+    ["logout", "success"],
+    ["logout", "malformed"],
+    ["logout", "rejection"],
+    ["session invalidation", "success"],
+    ["session invalidation", "malformed"],
+    ["session invalidation", "rejection"]
+  ] as const)("a subscription reread cannot cross %s into a new login after %s", async (transition, outcome) => {
+    const oldSession = portalWalletSession("session_reread_old", "reread-old@example.test");
+    const currentSession = portalWalletSession("session_reread_new", "reread-new@example.test");
+    const oldRead = deferredValue<PortalSubscriptionRequest>();
+    const oldWallet = deferredValue<PortalWalletSummary>();
+    const oldRequest = activeSubscriptionRequest({
+      userRef: oldSession.userRef,
+      requestRef: "subreq_reread_old",
+      subscriptionUrl: "https://sub.example.test/import/reread-old",
+      historySummary: [{
+        recordRef: "history_reread_old",
+        label: "Synthetic old account history",
+        status: "已开通",
+        occurredAt: "2026-05-31T00:00:00.000Z"
+      }]
+    });
+    const currentRequest = activeSubscriptionRequest({
+      userRef: currentSession.userRef,
+      requestRef: "subreq_reread_new",
+      subscriptionUrl: "https://sub.example.test/import/reread-new",
+      historySummary: [{
+        recordRef: "history_reread_new",
+        label: "Synthetic current account history",
+        status: "已开通",
+        occurredAt: "2026-05-31T00:00:00.000Z"
+      }]
+    });
+    const stateTemplate = portalClientWithActiveSubscription();
+    const client = portalClient({
+      authenticate: vi.fn().mockResolvedValueOnce(oldSession).mockResolvedValueOnce(currentSession),
+      fetchCurrentState: vi.fn(async (input) => {
+        const request = input.userRef === oldSession.userRef ? oldRequest : currentRequest;
+        return {
+          ...await stateTemplate.fetchCurrentState(input),
+          subscriptionRequest: request,
+          historySummary: request.historySummary
+        };
+      }),
+      revealSubscription: vi.fn(() => oldRead.promise),
+      wallet: {
+        getSummary: vi.fn(({ sessionRef }) => sessionRef === oldSession.sessionRef
+          ? oldWallet.promise : Promise.resolve(portalWalletSummary(333))),
+        listLedger: vi.fn(async () => ({ entries: [], nextCursor: null }))
+      }
+    });
+    render(createElement(UserPortalPage, { portalClient: client }));
+    await enterPortal();
+    openPortalSubscriptions();
+    await screen.findByDisplayValue(oldRequest.subscriptionUrl!);
+    fireEvent.click(screen.getByRole("button", { name: "重新获取" }));
+    expect(client.revealSubscription).toHaveBeenCalledExactlyOnceWith({
+      userRef: oldSession.userRef,
+      sessionRef: oldSession.sessionRef,
+      requestRef: oldRequest.requestRef
+    });
+
+    if (transition === "logout") {
+      fireEvent.click(screen.getByRole("button", { name: "退出登录" }));
+    } else {
+      await act(async () => {
+        oldWallet.reject(new PortalWalletClientError("wallet_session_invalid", false));
+        await Promise.allSettled([oldWallet.promise]);
+      });
+    }
+    await screen.findByRole("heading", { name: "账号登录" });
+    await enterPortal();
+    await screen.findByText("Coins · 333");
+    openPortalSubscriptions();
+    await screen.findByDisplayValue(currentRequest.subscriptionUrl!);
+    expect(screen.queryByDisplayValue(oldRequest.subscriptionUrl!)).toBeNull();
+
+    await act(async () => {
+      if (outcome === "rejection") oldRead.reject(new Error("synthetic_old_read_failed"));
+      else oldRead.resolve(outcome === "malformed" ? { ...oldRequest, subscriptionUrl: undefined } : oldRequest);
+      await Promise.allSettled([oldRead.promise]);
+    });
+
+    expect(screen.getByRole("navigation", { name: "用户中心导航" })).toBeInTheDocument();
+    expect(screen.getByDisplayValue(currentRequest.subscriptionUrl!)).toBeInTheDocument();
+    expect(screen.queryByDisplayValue(oldRequest.subscriptionUrl!)).toBeNull();
+    expect(screen.queryByText(/订阅链接暂时无法重新获取/)).toBeNull();
+    openPortalOrders();
+    const orderTable = await screen.findByRole("table", { name: "订单列表" });
+    expect(within(orderTable).queryByText("Synthetic old account history")).toBeNull();
+    expect(within(orderTable).queryByRole("button", { name: /subreq_reread_old/ })).toBeNull();
+    expect(within(orderTable).getAllByText("Synthetic current account history").length).toBeGreaterThan(0);
+    openPortalSubscriptions();
+    await screen.findByDisplayValue(currentRequest.subscriptionUrl!);
+    expect(screen.queryByDisplayValue(oldRequest.subscriptionUrl!)).toBeNull();
+    expect(client.revealSubscription).toHaveBeenCalledTimes(1);
+    expect(client.resetSubscriptionLink).not.toHaveBeenCalled();
+    expect(client.refreshSubscription).not.toHaveBeenCalled();
+  });
+
   test("a failed subscription reread stays distinct from an unconfirmed reset", async () => {
     const revealSubscription = vi.fn(async () => {
       throw new Error("synthetic_read_failed");

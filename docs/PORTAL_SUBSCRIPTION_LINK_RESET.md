@@ -109,6 +109,13 @@ failure stays distinct from an unconfirmed reset and keeps the last confirmed
 link. This display sync does not change authorization, idempotency, cooldown,
 resource inheritance, or the reset route.
 
+All session transitions invalidate outstanding subscription reads. A read-only
+reread also captures the session generation and verifies it before accepting a
+response, updating orders/history, or returning a link; stale errors are ignored.
+Synthetic regressions cover logout and session invalidation followed by another
+login, with late success, malformed response, and rejection. A prior account's
+response cannot populate the new account's subscription or order view.
+
 This slice supports the existing legacy Portal access-request delivery path.
 Wallet-first current-resource delivery and the independent data-pack draft retain
 their own authorization paths; this endpoint must not bypass those model gates.
