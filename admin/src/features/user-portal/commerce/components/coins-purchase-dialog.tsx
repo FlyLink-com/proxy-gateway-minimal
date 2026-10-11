@@ -81,6 +81,15 @@ function QuoteFacts({
           {notices.map((notice, index) => <li key={`${index}:${notice}`}>{notice}</li>)}
         </ul>
       ) : null}
+      {quote.planSwitch ? (
+        <p>
+          {localized(
+            locale,
+            "升级立即生效，不退款；降级在当前周期结束后生效，已支付不退款；续费或升级会取消待生效的降级。",
+            "An upgrade takes effect immediately and is not refunded. A downgrade takes effect after the current period and the amount already paid is not refunded. Renewing or upgrading cancels a pending downgrade."
+          )}
+        </p>
+      ) : null}
       <dl>
         <div>
           <dt>{localized(locale, "接受的 Coins", "Accepted Coins")}</dt>

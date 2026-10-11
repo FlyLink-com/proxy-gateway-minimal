@@ -1170,8 +1170,11 @@ function commerceNamespaceObjects(database) {
   ));
 }
 
+import { planSwitchCommerceNamespaceRowIsExact } from "./coin-commerce-plan-switch-schema-contract.mjs";
+
 function commerceNamespaceIsExact(database, extensionPresent = false) {
   const actual = commerceNamespaceObjects(database)
+    .filter((row) => !planSwitchCommerceNamespaceRowIsExact(row))
     .map(({ type, name }) => `${type}:${name}`);
   const expected = extensionPresent
     ? new Set([...EXPECTED_NAMESPACE_OBJECTS,

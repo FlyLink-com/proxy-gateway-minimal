@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState
 } from "react";
@@ -14,8 +15,10 @@ import {
   type PortalCoinCommerceClient,
   type PortalCommerceModel,
   type PortalCommerceModelClient,
-  type PortalCoinOffer
+  type PortalCoinOffer,
+  type PortalPlanSwitchState
 } from "./commerce";
+import { formatPortalDateTime } from "./portal-commerce-presentation";
 import type { PortalWalletFirstCommerceClient } from "./commerce";
 import { MarketplaceOfferCard } from "./marketplace-offer-card";
 import { WalletFirstMarketplacePanel } from "./wallet-first-marketplace-panel";
@@ -110,11 +113,27 @@ function LegacyMarketplacePanel({
   const zh = isChinese(locale);
   const generationRef = useRef(0);
   const [refreshRevision, setRefreshRevision] = useState(0);
+  const [planSwitchRevision, setPlanSwitchRevision] = useState(0);
+  const planSwitchScope = useMemo(() => ({
+    commerceClient, refreshRevision, planSwitchRevision, sessionGeneration, sessionRef
+  }), [commerceClient, refreshRevision, planSwitchRevision, sessionGeneration, sessionRef]);
   const [catalog, setCatalog] = useState<MarketplaceCatalogState>(() => (
     commerceClient && sessionRef
       ? { status: "loading", offers: [] }
       : { status: "unavailable", offers: [] }
   ));
+  const [planSwitchResult, setPlanSwitchResult] = useState<{
+    scope: typeof planSwitchScope;
+    value: PortalPlanSwitchState;
+  } | null>(null);
+  const planSwitchState = planSwitchResult?.scope === planSwitchScope
+    ? planSwitchResult.value
+    : null;
+  const deliveredPlanRef = useRef<{
+    sessionGeneration: number;
+    sessionRef: string | null;
+    orderRef: string | null;
+  }>({ sessionGeneration, sessionRef, orderRef: null });
   const [productIntent, setProductIntent] =
     useState<MarketplaceProductIntent | null>(null);
   const [dialogVisible, setDialogVisible] = useState(false);
@@ -134,6 +153,29 @@ function LegacyMarketplacePanel({
     sessionGeneration,
     sessionRef
   });
+
+  useEffect(() => {
+    const previous = deliveredPlanRef.current;
+    if (previous.sessionRef !== sessionRef || previous.sessionGeneration !== sessionGeneration) {
+      deliveredPlanRef.current = { sessionGeneration, sessionRef, orderRef: null };
+      // The purchase hook clears the previous session's order in its effect.
+      // Do not interpret that render's old order as this session's delivery.
+      return;
+    }
+    const order = purchaseFlow.order;
+    if (
+      !sessionRef
+      || !order
+      || order.offer.category !== "plan"
+      || order.paymentStatus !== "captured"
+      || order.fulfillment.status !== "delivered"
+      || previous.orderRef === order.orderRef
+    ) return;
+    deliveredPlanRef.current = { sessionGeneration, sessionRef, orderRef: order.orderRef };
+    // Capture can precede delivery: wallet settlement alone is not an
+    // entitlement change. Refresh once the server confirms actual delivery.
+    setPlanSwitchRevision((revision) => revision + 1);
+  }, [purchaseFlow.order, sessionGeneration, sessionRef]);
 
   useEffect(() => {
     if (productSessionRef.current === sessionRef) return;
@@ -211,8 +253,115 @@ function LegacyMarketplacePanel({
     };
   }, [commerceClient, refreshRevision, sessionRef]);
 
+  useEffect(() => {
+    const { commerceClient, sessionRef } = planSwitchScope;
+    if (
+      !commerceClient
+      || !sessionRef
+      || typeof commerceClient.readPlanSwitchState !== "function"
+    ) {
+      setPlanSwitchResult(null);
+      return undefined;
+    }
+    let cancelled = false;
+    let reading = false;
+    let timer: number | undefined;
+    let pendingAt: number | null = null;
+    let retryAt = 0;
+    let automaticReads = 0;
+    const readState = commerceClient.readPlanSwitchState.bind(commerceClient);
+    const clearTimer = () => {
+      if (timer !== undefined) window.clearTimeout(timer);
+      timer = undefined;
+    };
+    function schedule() {
+      clearTimer();
+      if (cancelled || reading || pendingAt === null || automaticReads >= 6) return;
+      const wakeAt = Math.max(pendingAt, retryAt);
+      // Browser timers overflow above a signed 32-bit delay. Long schedules
+      // checkpoint without an early request or an assumed entitlement change.
+      timer = window.setTimeout(() => {
+        timer = undefined;
+        if (Date.now() < wakeAt) schedule();
+        else void read(true);
+      }, Math.min(2_147_483_647, Math.max(1, wakeAt - Date.now())));
+    }
+    async function read(automatic = false) {
+      if (cancelled || reading) return;
+      reading = true;
+      if (automatic) automaticReads += 1;
+      clearTimer();
+      setPlanSwitchResult(null);
+      try {
+        const next = await readState({ sessionRef: sessionRef! });
+        if (cancelled) return;
+        const parsed = next?.pendingSwitch
+          ? Date.parse(next.pendingSwitch.effectiveAt)
+          : Number.NaN;
+        const nextPendingAt = Number.isFinite(parsed) ? parsed : null;
+        // Only a different server deadline earns a new automatic-read budget.
+        // Focus events, errors and unchanged overdue replies cannot restart it.
+        if (nextPendingAt !== pendingAt) automaticReads = 0;
+        pendingAt = nextPendingAt;
+        const overdue = pendingAt !== null && pendingAt <= Date.now();
+        retryAt = overdue ? Date.now() + 10_000 : 0;
+        setPlanSwitchResult(next && !overdue ? { scope: planSwitchScope, value: next } : null);
+      } catch {
+        if (!cancelled) {
+          setPlanSwitchResult(null);
+          retryAt = Date.now() + 10_000;
+        }
+      } finally {
+        reading = false;
+        schedule();
+      }
+    }
+    function onVisible() {
+      if (document.visibilityState !== "visible" || pendingAt === null) return;
+      if (Date.now() < Math.max(pendingAt, retryAt)) return;
+      // After six automatic attempts, a later visible/focus event can still
+      // recover, with the same cooldown and in-flight guard, but no new loop.
+      void read();
+    }
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", onVisible);
+    void read();
+    return () => {
+      cancelled = true;
+      clearTimer();
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", onVisible);
+    };
+  }, [planSwitchScope]);
+
   const planOffers = catalog.offers.filter((offer) => offer.category === "plan");
   const dataPackOffers = catalog.offers.filter((offer) => offer.category === "data_pack");
+  const planSwitchBlocking = Boolean(planSwitchState?.offers.some((item) => (
+    typeof item.reasonCode === "string" && item.reasonCode.startsWith("plan_switch_")
+  )));
+  const showPlanSwitch = Boolean(planSwitchState?.current) || planSwitchBlocking;
+  function planActionFor(offer: PortalCoinOffer) {
+    if (!showPlanSwitch || !planSwitchState) return undefined;
+    const entry = planSwitchState.offers.find((item) => item.offerRef === offer.offerRef);
+    if (!entry) return undefined;
+    const currentOffer = planSwitchState.current
+      ? catalog.offers.find((item) => item.offerRef === planSwitchState.current?.offerRef)
+      : null;
+    return {
+      action: entry.action,
+      chargeUnits: entry.chargeUnits,
+      effectiveAt: entry.effectiveAt,
+      reasonCode: entry.reasonCode,
+      currentTitle: currentOffer
+        ? currentOffer.title[locale]
+        : planSwitchState.current?.offerRef ?? null,
+      currentValidUntil: planSwitchState.current?.validUntil ?? null
+    };
+  }
+  const pendingSwitch = showPlanSwitch ? planSwitchState?.pendingSwitch ?? null : null;
+  const pendingOffer = pendingSwitch
+    ? catalog.offers.find((item) => item.offerRef === pendingSwitch.toOfferRef)
+    : null;
   const productBusy = purchaseFlow.phase === "loading_detail"
     || purchaseFlow.phase === "loading_preview"
     || purchaseFlow.phase === "submitting";
@@ -371,6 +520,13 @@ function LegacyMarketplacePanel({
           className="portal-marketplace-group"
           aria-label={zh ? "套餐" : "Plans"}
         >
+          {pendingSwitch ? (
+            <p className="portal-marketplace-plan-switch" role="status">
+              {zh
+                ? `待生效降级：${pendingOffer?.title.zh ?? pendingSwitch.toOfferRef}，${formatPortalDateTime(pendingSwitch.effectiveAt, locale)} 生效。续费或升级会取消该降级。`
+                : `Pending downgrade: ${pendingOffer?.title.en ?? pendingSwitch.toOfferRef}, effective ${formatPortalDateTime(pendingSwitch.effectiveAt, locale)}. Renewing or upgrading cancels it.`}
+            </p>
+          ) : null}
           <ul className="portal-marketplace-grid">
             {planOffers.map((offer) => (
               <MarketplaceOfferCard
@@ -379,6 +535,7 @@ function LegacyMarketplacePanel({
                 locale={locale}
                 mode="purchase"
                 offer={offer}
+                planAction={planActionFor(offer)}
                 onPrimary={(event) => {
                   void startProduct(
                     offer.offerRef,

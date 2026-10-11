@@ -16,6 +16,20 @@ import {
   validateCoinCommerceSchema
 } from "./coin-commerce-migrations.mjs";
 import {
+  PLAN_SWITCH_ERROR,
+  PLAN_SWITCH_KINDS
+} from "./coin-commerce-plan-switch-policy.mjs";
+import {
+  discountedPlanSwitchAmount,
+  insertPlanSwitchQuote,
+  planSwitchQuoteMatchesDecision,
+  readPlanSwitchQuoteByRef
+} from "./coin-commerce-plan-switch-runtime.mjs";
+// Registers the exact plan-switch DDL exclusion before commerce schema
+// validation. Absent plan-switch objects do not change that validation.
+import "./coin-commerce-plan-switch-migrations.mjs";
+import { createPlanSwitchCaptureParticipant } from "./coin-commerce-plan-switch-capture.mjs";
+import {
   validateCoinWalletSchema
 } from "./coin-wallet-migrations.mjs";
 import { canonicalWalletRequestDigest } from "./coin-wallet-domain.mjs";
@@ -53,6 +67,9 @@ const FACTORY_FIELDS = new Set([
   "storefrontEligibilityReader",
   "purchaseEligibilityReader",
   "authorityEnabled",
+  "planSwitchEnabled",
+  "planSwitchReader",
+  "planSwitchApplyDue",
   "cancelWindowMs",
   "quoteTtlMs"
 ]);
@@ -86,6 +103,16 @@ const KNOWN_CODES = new Set([
   "account_resource_authority_commerce_schema_not_ready",
   "commerce_not_found",
   "offer_unavailable",
+  "plan_switch_authority_mode_unsupported",
+  "plan_switch_commerce_model_unsupported",
+  "plan_switch_authority_row_present",
+  "plan_switch_credit_exceeds_price",
+  "plan_switch_state_changed",
+  "plan_switch_application_pending",
+  "plan_switch_already_scheduled",
+  "plan_switch_upgrade_window_closed",
+  "plan_switch_cycle_misaligned",
+  "plan_switch_precheck_unavailable",
   "quote_expired",
   "quote_stale",
   "insufficient_coins",
@@ -377,6 +404,9 @@ export function createSqliteCoinCommerceStore(options = {}) {
     purchaseEligibilityReader = () => true,
     storefrontEligibilityReader = purchaseEligibilityReader,
     authorityEnabled = false,
+    planSwitchEnabled = false,
+    planSwitchReader,
+    planSwitchApplyDue,
     cancelWindowMs = DEFAULT_CANCEL_WINDOW_MS,
     quoteTtlMs = DEFAULT_QUOTE_TTL_MS
   } = input;
@@ -391,6 +421,11 @@ export function createSqliteCoinCommerceStore(options = {}) {
     || typeof storefrontEligibilityReader !== "function"
     || typeof purchaseEligibilityReader !== "function"
     || typeof authorityEnabled !== "boolean"
+    || typeof planSwitchEnabled !== "boolean"
+    || (planSwitchEnabled && typeof planSwitchReader !== "function")
+    || (!planSwitchEnabled && planSwitchReader !== undefined)
+    || (!planSwitchEnabled && planSwitchApplyDue !== undefined)
+    || (planSwitchApplyDue !== undefined && typeof planSwitchApplyDue !== "function")
   ) {
     throw commerceError("invalid_store_contract");
   }
@@ -656,6 +691,41 @@ export function createSqliteCoinCommerceStore(options = {}) {
     if (!isPurchaseEligible(accountId, offerVersionRef)) {
       throw commerceError("offer_unavailable");
     }
+  }
+
+  function rejectPlanSwitch(decision) {
+    const code = decision?.code;
+    if (code === PLAN_SWITCH_ERROR.OFFER_UNAVAILABLE) {
+      throw commerceError("offer_unavailable");
+    }
+    if (typeof code === "string" && KNOWN_CODES.has(code)) {
+      throw commerceError(code);
+    }
+    throw commerceError("commerce_infrastructure_error");
+  }
+
+  function decidePlanSwitch(accountId, offerVersionRef, nowIso) {
+    let decision;
+    try {
+      decision = planSwitchReader({ accountId, offerVersionRef, nowIso });
+    } catch {
+      throw commerceError(PLAN_SWITCH_ERROR.PRECHECK_UNAVAILABLE);
+    }
+    if (!decision || decision.ok !== true) rejectPlanSwitch(decision);
+    // Ordinary same-plan renewals may accumulate. Anything consuming a
+    // snapshot/credit must serialize with all nonterminal plan deliveries.
+    const additive = decision.ordinary || (decision.kind === "renewal" && !decision.cancelsSwitchRef);
+    const conflict = db.prepare(`
+      select 1 from platform_coin_commerce_orders o
+      left join platform_coin_commerce_plan_switch_quotes q on q.quote_ref = o.quote_ref
+      left join platform_coin_commerce_fulfillment_commands f on f.order_ref = o.order_ref
+      where o.account_id = ? and (
+        o.payment_status in ('held', 'capture_pending', 'capture_failed', 'reconciliation_required')
+        or (o.payment_status = 'captured' and (f.command_ref is null or f.status <> 'delivered')))
+      and (? = 0 or (q.kind <> 'renewal' or q.cancels_switch_ref is not null)) limit 1
+    `).get(accountId, additive ? 1 : 0);
+    if (conflict) throw commerceError("offer_unavailable");
+    return decision;
   }
 
   function normalizedAuthorityRef(value) {
@@ -1047,14 +1117,61 @@ export function createSqliteCoinCommerceStore(options = {}) {
     ) {
       throw commerceError("offer_unavailable");
     }
-    requirePurchaseEligibility(
-      request.accountId,
-      request.offer.offerVersionRef
-    );
-    const occurredAt = readDatabaseUtc(db);
+    let occurredAt;
+    let amountUnits = request.amountUnits;
+    let planSwitchDecision = null;
+    if (request.planSwitchPricing) {
+      occurredAt = readDatabaseUtc(db);
+      planSwitchDecision = decidePlanSwitch(
+        request.accountId,
+        request.offer.offerVersionRef,
+        occurredAt
+      );
+      if (planSwitchDecision.ordinary) {
+        requirePurchaseEligibility(
+          request.accountId,
+          request.offer.offerVersionRef
+        );
+        try {
+          amountUnits = applyCoinDiscount({
+            baseCoinUnits: request.offer.baseCoinUnits,
+            discountBasisPoints: request.discountBasisPoints
+          });
+        } catch {
+          throw commerceError("commerce_infrastructure_error");
+        }
+        if (!Number.isSafeInteger(amountUnits) || amountUnits < 1) {
+          throw commerceError("commerce_infrastructure_error");
+        }
+      } else {
+        // The injected reader returns true for a valid switch and still
+        // enforces activation. Conflict checks stay inside that helper.
+        requirePurchaseEligibility(
+          request.accountId,
+          request.offer.offerVersionRef
+        );
+        try {
+          amountUnits = discountedPlanSwitchAmount(
+            planSwitchDecision,
+            request.discountBasisPoints
+          );
+        } catch {
+          throw commerceError("commerce_infrastructure_error");
+        }
+        if (!Number.isSafeInteger(amountUnits) || amountUnits < 1) {
+          throw commerceError("commerce_infrastructure_error");
+        }
+      }
+    } else {
+      requirePurchaseEligibility(
+        request.accountId,
+        request.offer.offerVersionRef
+      );
+      occurredAt = readDatabaseUtc(db);
+    }
     const preview = walletParticipant.previewCoinHoldInTransaction({
       accountId: request.accountId,
-      amountUnits: request.amountUnits,
+      amountUnits,
       acceptedCoinTypes: request.offer.acceptedCoinTypes
     });
     const before = balanceProjection(preview.walletProjection);
@@ -1064,7 +1181,7 @@ export function createSqliteCoinCommerceStore(options = {}) {
     let after;
     if (preview.sufficient) {
       allocation = preview.allocation;
-      after = afterHoldBalance(before, allocation, request.amountUnits);
+      after = afterHoldBalance(before, allocation, amountUnits);
       purchaseAvailability = "available";
       shortfallUnits = 0;
     } else {
@@ -1075,7 +1192,7 @@ export function createSqliteCoinCommerceStore(options = {}) {
       for (const coinType of request.offer.acceptedCoinTypes) {
         acceptedUnits += preview.walletProjection.totals[coinType];
       }
-      shortfallUnits = request.amountUnits - acceptedUnits;
+      shortfallUnits = amountUnits - acceptedUnits;
       if (!Number.isSafeInteger(shortfallUnits) || shortfallUnits < 1) {
         throw commerceError("commerce_infrastructure_error");
       }
@@ -1095,7 +1212,7 @@ export function createSqliteCoinCommerceStore(options = {}) {
       request.accountId,
       request.offer.offerVersionRef,
       preview.walletProjection.version,
-      request.amountUnits,
+      amountUnits,
       request.discountBasisPoints,
       purchaseAvailability,
       shortfallUnits,
@@ -1125,16 +1242,48 @@ export function createSqliteCoinCommerceStore(options = {}) {
         throw commerceError("commerce_infrastructure_error");
       }
     }
+    if (planSwitchDecision && !planSwitchDecision.ordinary) {
+      const inserted = insertPlanSwitchQuote(db, {
+        quoteRef,
+        accountId: request.accountId,
+        entitlementId: planSwitchDecision.entitlementId,
+        kind: planSwitchDecision.kind,
+        fromOfferVersionRef: planSwitchDecision.fromOfferVersionRef,
+        toOfferVersionRef: planSwitchDecision.toOfferVersionRef,
+        snapshotValidFrom: planSwitchDecision.snapshotValidFrom,
+        snapshotValidUntil: planSwitchDecision.snapshotValidUntil,
+        listPriceUnits: planSwitchDecision.listPriceUnits,
+        creditUnits: planSwitchDecision.creditUnits,
+        pendingCreditUnits: planSwitchDecision.pendingCreditUnits,
+        chargeUnits: planSwitchDecision.chargeUnits,
+        cancelsSwitchRef: planSwitchDecision.cancelsSwitchRef,
+        effectiveAt: planSwitchDecision.effectiveAt,
+        createdAt: occurredAt
+      });
+      if (inserted.changes !== 1) {
+        throw commerceError("commerce_infrastructure_error");
+      }
+    }
+    const planSwitch = planSwitchDecision && !planSwitchDecision.ordinary
+      ? {
+        kind: planSwitchDecision.kind,
+        creditUnits: planSwitchDecision.creditUnits,
+        chargeUnits: planSwitchDecision.chargeUnits,
+        effectiveAt: planSwitchDecision.effectiveAt,
+        cancelsPendingDowngrade: planSwitchDecision.cancelsSwitchRef !== null
+      }
+      : null;
     return {
       quoteRef,
       offer: request.offer,
-      amountUnits: request.amountUnits,
+      amountUnits,
       appliedDiscountBasisPoints: request.discountBasisPoints,
       purchaseAvailability,
       shortfallUnits,
       allocation,
       balances: { before, after },
-      expiresAt
+      expiresAt,
+      ...(planSwitch ? { planSwitch } : {})
     };
   });
 
@@ -1167,6 +1316,15 @@ export function createSqliteCoinCommerceStore(options = {}) {
         || discountBasisPoints > 10_000
       ) {
         throw commerceError("commerce_infrastructure_error");
+      }
+      if (planSwitchEnabled) {
+        return createQuoteTransaction.immediate({
+          accountId: normalized.accountId,
+          offer,
+          amountUnits: null,
+          discountBasisPoints,
+          planSwitchPricing: true
+        });
       }
       let amountUnits;
       try {
@@ -1378,6 +1536,41 @@ export function createSqliteCoinCommerceStore(options = {}) {
     `).get(...parameters) ?? null;
   }
 
+  function planSwitchAttachment(quoteRef) {
+    if (!planSwitchEnabled) return null;
+    let row;
+    try {
+      row = readPlanSwitchQuoteByRef(db, quoteRef);
+    } catch {
+      throw commerceError("commerce_infrastructure_error");
+    }
+    if (!row) return null;
+    if (
+      !PLAN_SWITCH_KINDS.includes(row.kind)
+      || !Number.isSafeInteger(row.credit_units)
+      || row.credit_units < 0
+      || !Number.isSafeInteger(row.charge_units)
+      || row.charge_units < 1
+      || (
+        row.effective_at !== null
+        && typeof row.effective_at !== "string"
+      )
+      || (
+        row.cancels_switch_ref !== null
+        && typeof row.cancels_switch_ref !== "string"
+      )
+    ) {
+      throw commerceError("commerce_infrastructure_error");
+    }
+    return {
+      kind: row.kind,
+      creditUnits: row.credit_units,
+      chargeUnits: row.charge_units,
+      effectiveAt: row.effective_at,
+      cancelsPendingDowngrade: row.cancels_switch_ref !== null
+    };
+  }
+
   function projectOrderValues(row, fulfillment) {
     if (
       !row
@@ -1413,6 +1606,7 @@ export function createSqliteCoinCommerceStore(options = {}) {
         throw commerceError("commerce_infrastructure_error");
       }
     }
+    const planSwitch = planSwitchAttachment(row.quote_ref);
     return {
       orderRef: row.order_ref,
       offer: offerSnapshot,
@@ -1422,7 +1616,8 @@ export function createSqliteCoinCommerceStore(options = {}) {
       cancelUntil: row.cancel_until,
       fulfillment,
       createdAt: row.created_at,
-      updatedAt: row.updated_at
+      updatedAt: row.updated_at,
+      ...(planSwitch ? { planSwitch } : {})
     };
   }
 
@@ -1909,10 +2104,28 @@ export function createSqliteCoinCommerceStore(options = {}) {
       throw commerceError("commerce_infrastructure_error");
     }
     const offer = offerFromRow(findOfferVersion(row.offer_version_ref));
+    let baseCoinUnits = offer.baseCoinUnits;
+    if (planSwitchEnabled) {
+      let switchQuote;
+      try {
+        switchQuote = readPlanSwitchQuoteByRef(db, row.quote_ref);
+      } catch {
+        throw commerceError("commerce_infrastructure_error");
+      }
+      if (switchQuote) {
+        if (
+          !Number.isSafeInteger(switchQuote.charge_units)
+          || switchQuote.charge_units < 1
+        ) {
+          throw commerceError("commerce_infrastructure_error");
+        }
+        baseCoinUnits = switchQuote.charge_units;
+      }
+    }
     let expectedAmountUnits;
     try {
       expectedAmountUnits = applyCoinDiscount({
-        baseCoinUnits: offer.baseCoinUnits,
+        baseCoinUnits,
         discountBasisPoints: row.applied_discount_basis_points
       });
     } catch {
@@ -1962,10 +2175,41 @@ export function createSqliteCoinCommerceStore(options = {}) {
     } else if (expectedAuthority) {
       throw commerceError("quote_stale");
     }
-    requirePurchaseEligibility(
-      request.accountId,
-      quote.offer.offerVersionRef
-    );
+    if (!planSwitchEnabled) {
+      requirePurchaseEligibility(
+        request.accountId,
+        quote.offer.offerVersionRef
+      );
+    } else {
+      let switchQuote;
+      try {
+        switchQuote = readPlanSwitchQuoteByRef(db, quote.quote_ref);
+      } catch {
+        throw commerceError("commerce_infrastructure_error");
+      }
+      if (!switchQuote) {
+        requirePurchaseEligibility(
+          request.accountId,
+          quote.offer.offerVersionRef
+        );
+      } else {
+        const decision = decidePlanSwitch(
+          request.accountId,
+          quote.offer.offerVersionRef,
+          occurredAt
+        );
+        if (
+          decision.ordinary
+          || !planSwitchQuoteMatchesDecision(switchQuote, decision)
+        ) {
+          throw commerceError(PLAN_SWITCH_ERROR.STATE_CHANGED);
+        }
+        requirePurchaseEligibility(
+          request.accountId,
+          quote.offer.offerVersionRef
+        );
+      }
+    }
     if (
       authorityEnabled
       && !resolveCurrentAuthority(request.accountId, expectedAuthority)
@@ -2368,6 +2612,7 @@ export function createSqliteCoinCommerceStore(options = {}) {
     });
   }
 
+  const planSwitchCapture = planSwitchEnabled ? createPlanSwitchCaptureParticipant(db) : null;
   const claimCapturesTransaction = db.transaction((limit) => {
     const occurredAt = readDatabaseUtc(db);
     const rows = db.prepare(`
@@ -2379,6 +2624,17 @@ export function createSqliteCoinCommerceStore(options = {}) {
     `).all(occurredAt, limit);
     const claimed = [];
     for (const row of rows) {
+      const annual = planSwitchCapture?.inspect(row.order_ref, occurredAt);
+      if (annual && !annual.ok) {
+        const order = findOrder(row.order_ref);
+        if (!releaseForRecovery(order, occurredAt)) throw commerceError("commerce_infrastructure_error");
+        const cancelled = db.prepare(`update platform_coin_commerce_orders set payment_status = 'cancelled', updated_at = ?
+          where order_ref = ? and payment_status = 'held'`).run(occurredAt, row.order_ref);
+        if (cancelled.changes !== 1) throw commerceError("commerce_infrastructure_error");
+        appendOrderEvent({ orderRef: row.order_ref, eventType: "order_cancelled",
+          actorType: "commerce_system", actorRef: annual.reason, occurredAt });
+        continue;
+      }
       const updated = db.prepare(`
         update platform_coin_commerce_orders
            set payment_status = 'capture_pending', updated_at = ?
@@ -2394,6 +2650,9 @@ export function createSqliteCoinCommerceStore(options = {}) {
         actorRef: "coin_commerce_capture",
         occurredAt
       });
+      // Annual control effect, Coins capture and outbox commit together with
+      // the same clock instant. No runtime I/O is permitted in this transaction.
+      if (annual) captureOrderBody(row.order_ref, { occurredAtOverride: occurredAt });
       claimed.push({ orderRef: row.order_ref });
     }
     return claimed;
@@ -3024,8 +3283,8 @@ export function createSqliteCoinCommerceStore(options = {}) {
     return projected;
   }
 
-  function captureOrderBody(orderRef, { recovery = false } = {}) {
-    const occurredAt = readDatabaseUtc(db);
+  function captureOrderBody(orderRef, { recovery = false, occurredAtOverride } = {}) {
+    const occurredAt = occurredAtOverride ?? readDatabaseUtc(db);
     const order = findOrder(orderRef);
     if (!order) throw commerceError("commerce_not_found");
     if (order.payment_status === "reconciliation_required") {
@@ -3140,6 +3399,9 @@ export function createSqliteCoinCommerceStore(options = {}) {
     }
     const capturedOrder = findOrder(order.order_ref);
     ensureOutbox(capturedOrder, occurredAt);
+    if (planSwitchCapture?.inspect(order.order_ref, occurredAt)) {
+      planSwitchCapture.apply(order.order_ref, occurredAt);
+    }
     appendOrderEvent({
       orderRef: order.order_ref,
       eventType: "payment_captured",
@@ -3447,6 +3709,21 @@ export function createSqliteCoinCommerceStore(options = {}) {
       const value = assertPlainObject(recoverInput);
       const fields = new Set(["limit"]);
       assertExactDataFields(value, fields);
+      if (planSwitchEnabled && planSwitchApplyDue) {
+        try {
+          planSwitchApplyDue(readDatabaseUtc(db));
+        } catch (error) {
+          if (
+            typeof error?.code === "string"
+            && (
+              error.code.startsWith("SQLITE_BUSY")
+              || error.code.startsWith("SQLITE_LOCKED")
+            )
+          ) {
+            throw error;
+          }
+        }
+      }
       const recovered = recoverTransaction.immediate({
         limit: normalizeLimit(value.limit),
         auditCursor: recoveryAuditCursor,

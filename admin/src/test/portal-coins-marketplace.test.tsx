@@ -26,6 +26,8 @@ import { createLocalUserPortalClient } from "../features/user-portal/user-portal
 import type { PortalSession, UserPortalClient } from "../features/user-portal/user-portal-client";
 import { UserPortalPage } from "../features/user-portal/user-portal-page";
 import { MarketplacePanel } from "../features/user-portal/portal-commerce-panels";
+import { formatPortalDateTime } from "../features/user-portal/portal-commerce-presentation";
+import type { PortalPlanSwitchState } from "../features/user-portal/commerce/api-contract";
 import type {
   PortalWalletClient,
   PortalWalletSummary
@@ -208,6 +210,106 @@ function deferred<T>() {
   };
 }
 
+const switchBasic: PortalCoinOffer = {
+  ...planOffer,
+  offerRef: "offer_switch_basic",
+  offerVersionRef: "offer_version_switch_basic",
+  title: { zh: "基础月卡", en: "Basic monthly" },
+  baseCoinUnits: 20,
+  delivery: { ...planOffer.delivery, monthlyTrafficGb: 50 }
+};
+const switchPlus: PortalCoinOffer = {
+  ...planOffer,
+  offerRef: "offer_switch_plus",
+  offerVersionRef: "offer_version_switch_plus",
+  title: { zh: "进阶月卡", en: "Plus monthly" },
+  baseCoinUnits: 30
+};
+const switchExpiry = "2026-10-27T08:00:00.000Z";
+
+function switchState(
+  current = switchBasic,
+  pending = false,
+  validUntil = switchExpiry
+): PortalPlanSwitchState {
+  return {
+    current: { offerRef: current.offerRef, validUntil },
+    pendingSwitch: pending
+      ? { toOfferRef: switchBasic.offerRef, effectiveAt: switchExpiry }
+      : null,
+    offers: [switchBasic, switchPlus].map((offer) => ({
+      offerRef: offer.offerRef,
+      action: offer.offerRef === current.offerRef ? "current_renew"
+        : offer === switchPlus ? "upgrade" : "downgrade",
+      chargeUnits: offer === current ? (pending ? 10 : offer.baseCoinUnits)
+        : offer === switchPlus ? 5 : 20,
+      creditUnits: pending && offer === current ? 20 : 0,
+      effectiveAt: offer === switchBasic && current === switchPlus ? switchExpiry : null,
+      reasonCode: null
+    }))
+  };
+}
+
+function switchQuote(offer = switchPlus, amount = 5): PortalCoinQuote {
+  return {
+    ...availableQuote,
+    offer,
+    amountUnits: amount,
+    allocation: [{ coinType: "paid_coins", amountUnits: amount }],
+    planSwitch: {
+      kind: offer === switchBasic ? "downgrade_scheduled" : amount === 10 ? "renewal" : "upgrade_inplace",
+      creditUnits: amount === 10 ? 20 : 0,
+      chargeUnits: amount,
+      effectiveAt: offer === switchBasic ? switchExpiry : null,
+      cancelsPendingDowngrade: amount === 10
+    }
+  };
+}
+
+function switchOrder(quote = switchQuote(), orderRef = "order_switch_upgrade"): PortalCoinOrder {
+  return {
+    ...heldOrder, orderRef, offer: quote.offer, amountUnits: quote.amountUnits,
+    allocation: quote.allocation, planSwitch: quote.planSwitch
+  };
+}
+
+function switchClient(overrides: Partial<PortalCoinCommerceClient> = {}) {
+  return commerceClient({
+    listOffers: vi.fn(async () => [switchBasic, switchPlus]),
+    getOffer: vi.fn(async ({ offerRef }) => offerRef === switchBasic.offerRef ? switchBasic : switchPlus),
+    readPlanSwitchState: vi.fn(async () => switchState()),
+    previewCheckout: vi.fn(async () => switchQuote()),
+    createOrder: vi.fn(async () => switchOrder()),
+    ...overrides
+  });
+}
+
+function usePendingSwitchClock(beforeDue = 1000) {
+  vi.useFakeTimers({
+    toFake: ["Date", "setTimeout", "clearTimeout", "setInterval", "clearInterval"]
+  });
+  vi.setSystemTime(Date.parse(switchExpiry) - beforeDue);
+}
+
+async function settleSwitchRead() {
+  await act(async () => {
+    for (let step = 0; step < 8; step += 1) await Promise.resolve();
+  });
+}
+
+async function advanceSwitchClock(milliseconds: number) {
+  await act(async () => { await vi.advanceTimersByTimeAsync(milliseconds); });
+}
+
+async function confirmSwitch(offer = switchPlus) {
+  const card = (await screen.findByRole("heading", { name: offer.title.en })).closest("article")!;
+  fireEvent.click(within(card).getByRole("button"));
+  const dialog = await screen.findByRole("dialog");
+  fireEvent.click(within(dialog).getByRole("button", { name: "Confirm purchase" }));
+  await within(dialog).findByRole("button", { name: "Refresh Order" });
+  return dialog;
+}
+
 function cssRuleBlock(css: string, selector: string) {
   const escapedSelector = selector.replace(
     /[.*+?^${}()|[\]\\]/g,
@@ -289,12 +391,462 @@ async function loginAndOpenMarketplace(client: UserPortalClient) {
 
 afterEach(() => {
   cleanup();
+  vi.useRealTimers();
   window.localStorage.clear();
   window.sessionStorage.clear();
   vi.restoreAllMocks();
 });
 
 describe("Portal server-backed Marketplace", () => {
+  test("refreshes plan state on delayed fulfillment, not capture alone, without leaving Marketplace", async () => {
+    const held = switchOrder();
+    const pending: PortalCoinOrder = {
+      ...held, paymentStatus: "captured", fulfillment: { status: "pending", safeCode: null }
+    };
+    const delivered: PortalCoinOrder = {
+      ...pending, fulfillment: { status: "delivered", safeCode: null }
+    };
+    const readPlanSwitchState = vi.fn()
+      .mockResolvedValueOnce(switchState())
+      .mockResolvedValue(switchState(switchPlus));
+    const commerce = switchClient({
+      readPlanSwitchState,
+      getOrder: vi.fn().mockResolvedValueOnce(pending).mockResolvedValue(delivered)
+    });
+    render(createElement(MarketplacePanel, {
+      commerceClient: commerce, locale: "en", sessionRef: session.sessionRef!, theme: "light"
+    }));
+    await screen.findByRole("button", { name: "Upgrade, pay 5 Coins: Plus monthly" });
+    const dialog = await confirmSwitch();
+    await act(async () => fireEvent.click(within(dialog).getByRole("button", { name: "Refresh Order" })));
+    expect(readPlanSwitchState).toHaveBeenCalledTimes(1);
+    await act(async () => fireEvent.click(within(dialog).getByRole("button", { name: "Refresh Order" })));
+    await waitFor(() => expect(readPlanSwitchState).toHaveBeenCalledTimes(2));
+    // Repeated terminal GETs must not invalidate the same completed order again.
+    await act(async () => fireEvent.click(within(dialog).getByRole("button", { name: "Refresh Order" })));
+    await act(async () => fireEvent.click(within(dialog).getByRole("button", { name: "Refresh Order" })));
+    expect(readPlanSwitchState).toHaveBeenCalledTimes(2);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Close" }));
+    expect(await screen.findByRole("button", { name: "Renew: Plus monthly" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Downgrade at period end.*Basic monthly/ })).toBeInTheDocument();
+    expect(commerce.createOrder).toHaveBeenCalledTimes(1);
+  });
+
+  test("refreshes the pending downgrade banner and removes it after credited renewal in place", async () => {
+    const downgradeQuote = switchQuote(switchBasic, 20);
+    const renewalQuote = switchQuote(switchPlus, 10);
+    const downgrade = switchOrder(downgradeQuote, "order_switch_downgrade");
+    const renewal = switchOrder(renewalQuote, "order_switch_renewal");
+    const renewedUntil = "2026-11-26T08:00:00.000Z";
+    const readPlanSwitchState = vi.fn()
+      .mockResolvedValueOnce(switchState(switchPlus))
+      .mockResolvedValueOnce(switchState(switchPlus, true))
+      .mockResolvedValue(switchState(switchPlus, false, renewedUntil));
+    const commerce = switchClient({
+      readPlanSwitchState,
+      previewCheckout: vi.fn().mockResolvedValueOnce(downgradeQuote).mockResolvedValue(renewalQuote),
+      createOrder: vi.fn().mockResolvedValueOnce(downgrade).mockResolvedValue(renewal),
+      getOrder: vi.fn(async ({ orderRef }): Promise<PortalCoinOrder> => ({
+        ...(orderRef === downgrade.orderRef ? downgrade : renewal),
+        paymentStatus: "captured", fulfillment: { status: "delivered", safeCode: null }
+      }))
+    });
+    render(createElement(MarketplacePanel, {
+      commerceClient: commerce, locale: "en", sessionRef: session.sessionRef!, theme: "light"
+    }));
+    await screen.findByRole("button", { name: /Downgrade at period end.*Basic monthly/ });
+    const firstDialog = await confirmSwitch(switchBasic);
+    await act(async () => fireEvent.click(within(firstDialog).getByRole("button", { name: "Refresh Order" })));
+    await waitFor(() => expect(readPlanSwitchState).toHaveBeenCalledTimes(2));
+    fireEvent.click(within(firstDialog).getByRole("button", { name: "Close" }));
+    expect(await screen.findByText(/Pending downgrade: Basic monthly/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Renew: Plus monthly" })).toBeInTheDocument();
+
+    const plusCard = screen.getByRole("heading", { name: switchPlus.title.en }).closest("article")!;
+    fireEvent.click(within(plusCard).getByRole("button"));
+    const secondDialog = await screen.findByRole("dialog");
+    expect(within(secondDialog).getByText("Order amount").parentElement).toHaveTextContent("10 Coins");
+    fireEvent.click(within(secondDialog).getByRole("button", { name: "Confirm purchase" }));
+    await within(secondDialog).findByRole("button", { name: "Refresh Order" });
+    await act(async () => fireEvent.click(within(secondDialog).getByRole("button", { name: "Refresh Order" })));
+    await waitFor(() => expect(readPlanSwitchState).toHaveBeenCalledTimes(3));
+    fireEvent.click(within(secondDialog).getByRole("button", { name: "Close" }));
+    expect(screen.queryByText(/Pending downgrade:/)).not.toBeInTheDocument();
+    expect(screen.getAllByText(/Current plan: Plus monthly/)).toHaveLength(2);
+    expect(plusCard).toHaveTextContent(formatPortalDateTime(renewedUntil, "en"));
+    expect(plusCard).not.toHaveTextContent(formatPortalDateTime(switchExpiry, "en"));
+    expect(commerce.createOrder).toHaveBeenCalledTimes(2);
+  });
+
+  test.each(["cancelled", "capture_failed", "delivery_failed"] as const)(
+    "%s does not refresh plan state as if fulfillment succeeded",
+    async (outcome) => {
+      const held = switchOrder();
+      const finalOrder: PortalCoinOrder = outcome === "delivery_failed"
+        ? { ...held, paymentStatus: "captured", fulfillment: { status: "failed", safeCode: "fulfillment_handler_failed" } }
+        : { ...held, paymentStatus: outcome };
+      const readPlanSwitchState = vi.fn(async () => switchState());
+      const commerce = switchClient({
+        readPlanSwitchState,
+        cancelOrder: vi.fn(async () => finalOrder),
+        getOrder: vi.fn(async () => finalOrder)
+      });
+      render(createElement(MarketplacePanel, {
+        commerceClient: commerce, locale: "en", sessionRef: session.sessionRef!, theme: "light"
+      }));
+      const dialog = await confirmSwitch();
+      await act(async () => fireEvent.click(within(dialog).getByRole("button", {
+        name: outcome === "cancelled" ? "Cancel Order" : "Refresh Order"
+      })));
+      expect(commerce.getOrder).toHaveBeenCalledTimes(1);
+      expect(readPlanSwitchState).toHaveBeenCalledTimes(1);
+      fireEvent.click(within(dialog).getByRole("button", { name: "Close" }));
+      expect(screen.getByRole("button", { name: "Upgrade, pay 5 Coins: Plus monthly" })).toBeInTheDocument();
+    }
+  );
+
+  test("a newer fulfilled snapshot wins over an older in-flight initial plan read", async () => {
+    const oldState = deferred<PortalPlanSwitchState>();
+    const readPlanSwitchState = vi.fn()
+      .mockImplementationOnce(() => oldState.promise)
+      .mockResolvedValue(switchState(switchPlus));
+    const commerce = switchClient({
+      readPlanSwitchState,
+      getOrder: vi.fn(async (): Promise<PortalCoinOrder> => ({ ...switchOrder(), paymentStatus: "captured", fulfillment: { status: "delivered", safeCode: null } }))
+    });
+    render(createElement(MarketplacePanel, {
+      commerceClient: commerce, locale: "en", sessionRef: session.sessionRef!, theme: "light"
+    }));
+    const dialog = await confirmSwitch();
+    await act(async () => fireEvent.click(within(dialog).getByRole("button", { name: "Refresh Order" })));
+    await waitFor(() => expect(readPlanSwitchState).toHaveBeenCalledTimes(2));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Close" }));
+    expect(await screen.findByRole("button", { name: "Renew: Plus monthly" })).toBeInTheDocument();
+    await act(async () => oldState.resolve(switchState()));
+    expect(screen.getByRole("button", { name: "Renew: Plus monthly" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Upgrade, pay 5 Coins: Plus monthly" })).not.toBeInTheDocument();
+  });
+
+  test("session generation fences old plan refreshes and permits the new session's completed order", async () => {
+    const oldRefresh = deferred<PortalPlanSwitchState>();
+    const newSessionState = deferred<PortalPlanSwitchState>();
+    const readPlanSwitchState = vi.fn()
+      .mockResolvedValueOnce(switchState())
+      .mockImplementationOnce(() => oldRefresh.promise)
+      .mockImplementationOnce(() => newSessionState.promise)
+      .mockResolvedValue(switchState(switchPlus));
+    const commerce = switchClient({
+      readPlanSwitchState,
+      getOrder: vi.fn(async (): Promise<PortalCoinOrder> => ({ ...switchOrder(), paymentStatus: "captured", fulfillment: { status: "delivered", safeCode: null } }))
+    });
+    const props = { commerceClient: commerce, locale: "en" as const, sessionRef: session.sessionRef!, theme: "light" as const };
+    const view = render(createElement(MarketplacePanel, { ...props, sessionGeneration: 1 }));
+    const dialog = await confirmSwitch();
+    await act(async () => fireEvent.click(within(dialog).getByRole("button", { name: "Refresh Order" })));
+    await waitFor(() => expect(readPlanSwitchState).toHaveBeenCalledTimes(2));
+    view.rerender(createElement(MarketplacePanel, { ...props, sessionGeneration: 2 }));
+    await waitFor(() => expect(readPlanSwitchState).toHaveBeenCalledTimes(3));
+    expect(screen.queryByText(/Current plan:/)).not.toBeInTheDocument();
+    await act(async () => newSessionState.resolve(switchState()));
+    await act(async () => oldRefresh.resolve(switchState(switchPlus, true)));
+    expect(screen.queryByText(/Pending downgrade:/)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Upgrade, pay 5 Coins: Plus monthly" })).toBeInTheDocument();
+    // Deliberately reuse the synthetic order ref: de-duplication is session-scoped.
+    const newDialog = await confirmSwitch();
+    await act(async () => fireEvent.click(within(newDialog).getByRole("button", { name: "Refresh Order" })));
+    await waitFor(() => expect(readPlanSwitchState).toHaveBeenCalledTimes(4));
+    fireEvent.click(within(newDialog).getByRole("button", { name: "Close" }));
+    expect(await screen.findByRole("button", { name: "Renew: Plus monthly" })).toBeInTheDocument();
+  });
+
+  test("unmounting fences a pending plan read from a later Marketplace mount", async () => {
+    const oldState = deferred<PortalPlanSwitchState>();
+    const oldClient = switchClient({ readPlanSwitchState: vi.fn(() => oldState.promise) });
+    const first = render(createElement(MarketplacePanel, {
+      commerceClient: oldClient, locale: "en", sessionRef: session.sessionRef!, theme: "light"
+    }));
+    await waitFor(() => expect(oldClient.readPlanSwitchState).toHaveBeenCalledTimes(1));
+    first.unmount();
+    const newClient = switchClient();
+    render(createElement(MarketplacePanel, {
+      commerceClient: newClient, locale: "en", sessionRef: session.sessionRef!, theme: "light"
+    }));
+    await screen.findByRole("button", { name: "Upgrade, pay 5 Coins: Plus monthly" });
+    await act(async () => oldState.resolve(switchState(switchPlus, true)));
+    expect(screen.queryByText(/Pending downgrade:/)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Upgrade, pay 5 Coins: Plus monthly" })).toBeInTheDocument();
+    expect(newClient.readPlanSwitchState).toHaveBeenCalledTimes(1);
+  });
+
+  test("a changed session ref ignores an old pending delivery without refreshing the new session", async () => {
+    const oldDelivery = deferred<PortalCoinOrder>();
+    const readPlanSwitchState = vi.fn(async () => switchState());
+    const commerce = switchClient({
+      readPlanSwitchState,
+      getOrder: vi.fn(() => oldDelivery.promise)
+    });
+    const props = { commerceClient: commerce, locale: "en" as const, theme: "light" as const };
+    const view = render(createElement(MarketplacePanel, {
+      ...props, sessionRef: "portal_switch_first"
+    }));
+    const dialog = await confirmSwitch();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Refresh Order" }));
+    await waitFor(() => expect(commerce.getOrder).toHaveBeenCalledTimes(1));
+    view.rerender(createElement(MarketplacePanel, {
+      ...props, sessionRef: "portal_switch_second"
+    }));
+    await waitFor(() => expect(readPlanSwitchState).toHaveBeenCalledTimes(2));
+    expect(readPlanSwitchState).toHaveBeenLastCalledWith({ sessionRef: "portal_switch_second" });
+    await act(async () => oldDelivery.resolve({
+      ...switchOrder(), paymentStatus: "captured", fulfillment: { status: "delivered", safeCode: null }
+    }));
+    expect(readPlanSwitchState).toHaveBeenCalledTimes(2);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Upgrade, pay 5 Coins: Plus monthly" })).toBeInTheDocument();
+    expect(screen.queryByText(/Pending downgrade:/)).not.toBeInTheDocument();
+  });
+
+  test("background fulfillment refreshes plan state after the user closes the pending modal", async () => {
+    const readPlanSwitchState = vi.fn()
+      .mockResolvedValueOnce(switchState())
+      .mockResolvedValue(switchState(switchPlus));
+    const commerce = switchClient({
+      readPlanSwitchState,
+      getOrder: vi.fn(async (): Promise<PortalCoinOrder> => ({
+        ...switchOrder(), paymentStatus: "captured", fulfillment: { status: "delivered", safeCode: null }
+      }))
+    });
+    render(createElement(MarketplacePanel, {
+      commerceClient: commerce, locale: "en", sessionRef: session.sessionRef!, theme: "light"
+    }));
+    const dialog = await confirmSwitch();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Close" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    await waitFor(() => expect(readPlanSwitchState).toHaveBeenCalledTimes(2), { timeout: 3500 });
+    expect(await screen.findByRole("button", { name: "Renew: Plus monthly" })).toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(commerce.createOrder).toHaveBeenCalledTimes(1);
+    expect(commerce.getOrder).toHaveBeenCalledTimes(1);
+  });
+
+  test("failed post-fulfillment plan read clears stale plan labels instead of inventing success", async () => {
+    const quote = switchQuote(switchPlus, 10);
+    const readPlanSwitchState = vi.fn()
+      .mockResolvedValueOnce(switchState(switchPlus, true))
+      .mockRejectedValue(new PortalCoinCommerceClientError("commerce_unavailable", true));
+    const commerce = switchClient({
+      readPlanSwitchState,
+      previewCheckout: vi.fn(async () => quote),
+      createOrder: vi.fn(async () => switchOrder(quote)),
+      getOrder: vi.fn(async (): Promise<PortalCoinOrder> => ({ ...switchOrder(quote), paymentStatus: "captured", fulfillment: { status: "delivered", safeCode: null } }))
+    });
+    render(createElement(MarketplacePanel, {
+      commerceClient: commerce, locale: "en", sessionRef: session.sessionRef!, theme: "light"
+    }));
+    await screen.findByText(/Pending downgrade:/);
+    const dialog = await confirmSwitch();
+    await act(async () => fireEvent.click(within(dialog).getByRole("button", { name: "Refresh Order" })));
+    await waitFor(() => expect(readPlanSwitchState).toHaveBeenCalledTimes(2));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Close" }));
+    expect(screen.queryByText(/Pending downgrade:|Current plan:/)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Buy with Coins: Plus monthly" })).toBeInTheDocument();
+    expect(commerce.createOrder).toHaveBeenCalledTimes(1);
+  });
+
+  test("re-reads plan state when a mounted pending downgrade reaches effectiveAt", async () => {
+    const dueAt = new Date(switchExpiry).getTime();
+    const laterValidUntil = "2026-11-26T08:00:00.000Z";
+    vi.useFakeTimers({
+      toFake: ["Date", "setTimeout", "clearTimeout", "setInterval", "clearInterval"]
+    });
+    vi.setSystemTime(dueAt - 1000);
+    const readPlanSwitchState = vi.fn()
+      .mockResolvedValueOnce(switchState(switchPlus, true))
+      .mockResolvedValue(switchState(switchBasic, false, laterValidUntil));
+    const commerce = switchClient({ readPlanSwitchState });
+    render(createElement(MarketplacePanel, {
+      commerceClient: commerce, locale: "en", sessionRef: session.sessionRef!, theme: "light"
+    }));
+    await act(async () => {
+      for (let step = 0; step < 8; step += 1) await Promise.resolve();
+    });
+    expect(screen.getByText(/Pending downgrade: Basic monthly/)).toBeInTheDocument();
+    expect(readPlanSwitchState).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000);
+      for (let step = 0; step < 8; step += 1) await Promise.resolve();
+    });
+    expect(readPlanSwitchState).toHaveBeenCalledTimes(2);
+    expect(screen.getAllByText(/Current plan: Basic monthly/)).toHaveLength(2);
+    expect(screen.queryByText(/Pending downgrade:/)).not.toBeInTheDocument();
+    expect(commerce.createOrder).not.toHaveBeenCalled();
+    expect(commerce.listOffers).toHaveBeenCalledTimes(1);
+  });
+
+  test("bounds overdue automatic reads and does not restart the budget on focus", async () => {
+    usePendingSwitchClock();
+    vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
+    const readPlanSwitchState = vi.fn(async () => switchState(switchPlus, true));
+    const commerce = switchClient({ readPlanSwitchState });
+    render(createElement(MarketplacePanel, {
+      commerceClient: commerce, locale: "en", sessionRef: session.sessionRef!, theme: "light"
+    }));
+    await settleSwitchRead();
+    await advanceSwitchClock(1000);
+    expect(readPlanSwitchState).toHaveBeenCalledTimes(2);
+    expect(screen.queryByText(/Pending downgrade:|Current plan:/)).not.toBeInTheDocument();
+    await advanceSwitchClock(50_000);
+    expect(readPlanSwitchState).toHaveBeenCalledTimes(7);
+    await advanceSwitchClock(3_600_000);
+    expect(readPlanSwitchState).toHaveBeenCalledTimes(7);
+    act(() => {
+      window.dispatchEvent(new Event("focus"));
+      window.dispatchEvent(new Event("focus"));
+    });
+    await settleSwitchRead();
+    expect(readPlanSwitchState).toHaveBeenCalledTimes(8);
+    await advanceSwitchClock(60_000);
+    expect(readPlanSwitchState).toHaveBeenCalledTimes(8);
+    expect(commerce.createOrder).not.toHaveBeenCalled();
+  });
+
+  test("retries a due read failure after cooldown and coalesces in-flight focus events", async () => {
+    usePendingSwitchClock();
+    vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
+    const laterRead = deferred<PortalPlanSwitchState>();
+    const readPlanSwitchState = vi.fn()
+      .mockResolvedValueOnce(switchState(switchPlus, true))
+      .mockRejectedValueOnce(new Error("synthetic_unavailable"))
+      .mockImplementationOnce(() => laterRead.promise)
+      .mockResolvedValue(switchState(switchBasic));
+    const commerce = switchClient({ readPlanSwitchState });
+    render(createElement(MarketplacePanel, {
+      commerceClient: commerce, locale: "en", sessionRef: session.sessionRef!, theme: "light"
+    }));
+    await settleSwitchRead();
+    await advanceSwitchClock(1000);
+    expect(readPlanSwitchState).toHaveBeenCalledTimes(2);
+    expect(screen.queryByText(/Pending downgrade:|Current plan:/)).not.toBeInTheDocument();
+    await advanceSwitchClock(9999);
+    act(() => window.dispatchEvent(new Event("focus")));
+    expect(readPlanSwitchState).toHaveBeenCalledTimes(2);
+    await advanceSwitchClock(1);
+    expect(readPlanSwitchState).toHaveBeenCalledTimes(3);
+    act(() => {
+      window.dispatchEvent(new Event("focus"));
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    expect(readPlanSwitchState).toHaveBeenCalledTimes(3);
+    await act(async () => laterRead.resolve(switchState(switchBasic)));
+    expect(screen.getAllByText(/Current plan: Basic monthly/)).toHaveLength(2);
+    await advanceSwitchClock(60_000);
+    expect(readPlanSwitchState).toHaveBeenCalledTimes(3);
+    expect(commerce.createOrder).not.toHaveBeenCalled();
+  });
+
+  test("catches up on visible return after the clock crosses due time without a timer callback", async () => {
+    usePendingSwitchClock();
+    let visibility: DocumentVisibilityState = "hidden";
+    vi.spyOn(document, "visibilityState", "get").mockImplementation(() => visibility);
+    const readPlanSwitchState = vi.fn()
+      .mockResolvedValueOnce(switchState(switchPlus, true))
+      .mockResolvedValue(switchState(switchBasic));
+    const commerce = switchClient({ readPlanSwitchState });
+    const view = render(createElement(MarketplacePanel, {
+      commerceClient: commerce, locale: "en", sessionRef: session.sessionRef!, theme: "light"
+    }));
+    await settleSwitchRead();
+    vi.setSystemTime(Date.parse(switchExpiry) + 1000);
+    act(() => {
+      document.dispatchEvent(new Event("visibilitychange"));
+      window.dispatchEvent(new Event("focus"));
+    });
+    expect(readPlanSwitchState).toHaveBeenCalledTimes(1);
+    visibility = "visible";
+    act(() => document.dispatchEvent(new Event("visibilitychange")));
+    await settleSwitchRead();
+    expect(readPlanSwitchState).toHaveBeenCalledTimes(2);
+    expect(screen.getAllByText(/Current plan: Basic monthly/)).toHaveLength(2);
+    view.unmount();
+    act(() => window.dispatchEvent(new Event("focus")));
+    await advanceSwitchClock(60_000);
+    expect(readPlanSwitchState).toHaveBeenCalledTimes(2);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  test.each(["generation", "session", "client"] as const)(
+    "%s replacement fences a due response and its retry timer",
+    async (replacement) => {
+      usePendingSwitchClock();
+      const oldRead = deferred<PortalPlanSwitchState>();
+      const readPlanSwitchState = vi.fn()
+        .mockResolvedValueOnce(switchState(switchPlus, true))
+        .mockImplementationOnce(() => oldRead.promise)
+        .mockResolvedValue(switchState(switchBasic));
+      const commerce = switchClient({ readPlanSwitchState });
+      const props = {
+        commerceClient: commerce, locale: "en" as const, sessionRef: session.sessionRef!,
+        sessionGeneration: 1, theme: "light" as const
+      };
+      const view = render(createElement(MarketplacePanel, props));
+      await settleSwitchRead();
+      await advanceSwitchClock(1000);
+      expect(readPlanSwitchState).toHaveBeenCalledTimes(2);
+      const nextClient = replacement === "client" ? switchClient() : commerce;
+      view.rerender(createElement(MarketplacePanel, {
+        ...props, commerceClient: nextClient,
+        sessionRef: replacement === "session" ? "synthetic_new_session" : props.sessionRef,
+        sessionGeneration: replacement === "generation" ? 2 : 1
+      }));
+      await settleSwitchRead();
+      await act(async () => oldRead.resolve(switchState(switchPlus, true)));
+      expect(screen.queryByText(/Pending downgrade:/)).not.toBeInTheDocument();
+      expect(screen.getAllByText(/Current plan: Basic monthly/)).toHaveLength(2);
+      await advanceSwitchClock(60_000);
+      expect(readPlanSwitchState).toHaveBeenCalledTimes(replacement === "client" ? 2 : 3);
+      if (replacement === "client") expect(nextClient.readPlanSwitchState).toHaveBeenCalledTimes(1);
+    }
+  );
+
+  test("unmount clears a pending deadline and its visibility listeners", async () => {
+    usePendingSwitchClock();
+    const commerce = switchClient({
+      readPlanSwitchState: vi.fn(async () => switchState(switchPlus, true))
+    });
+    const view = render(createElement(MarketplacePanel, {
+      commerceClient: commerce, locale: "en", sessionRef: session.sessionRef!, theme: "light"
+    }));
+    await settleSwitchRead();
+    view.unmount();
+    await advanceSwitchClock(61_000);
+    act(() => {
+      document.dispatchEvent(new Event("visibilitychange"));
+      window.dispatchEvent(new Event("focus"));
+    });
+    expect(commerce.readPlanSwitchState).toHaveBeenCalledTimes(1);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  test("chunks a pending deadline beyond the signed 32-bit timeout without early reads", async () => {
+    const maxTimeout = 2_147_483_647;
+    usePendingSwitchClock(maxTimeout + 5000);
+    const readPlanSwitchState = vi.fn()
+      .mockResolvedValueOnce(switchState(switchPlus, true))
+      .mockResolvedValue(switchState(switchBasic));
+    const commerce = switchClient({ readPlanSwitchState });
+    render(createElement(MarketplacePanel, {
+      commerceClient: commerce, locale: "en", sessionRef: session.sessionRef!, theme: "light"
+    }));
+    await settleSwitchRead();
+    await advanceSwitchClock(maxTimeout);
+    expect(readPlanSwitchState).toHaveBeenCalledTimes(1);
+    await advanceSwitchClock(4999);
+    expect(readPlanSwitchState).toHaveBeenCalledTimes(1);
+    await advanceSwitchClock(1);
+    expect(readPlanSwitchState).toHaveBeenCalledTimes(2);
+    expect(screen.getAllByText(/Current plan: Basic monthly/)).toHaveLength(2);
+  });
+
   test.each(["quote_expired", "quote_stale"] as const)(
     "%s focuses a new-preview alert without reusing the rejected confirmation",
     async (code) => {

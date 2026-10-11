@@ -16,6 +16,12 @@ import {
   isCoinCommerceFulfillmentReconciliationError,
   isCoinCommerceFulfillmentRetryableError
 } from "./coin-commerce-fulfillment-retry.mjs";
+import { planSwitchTierForOfferVersionRef } from "./coin-commerce-plan-switch-policy.mjs";
+import {
+  evaluatePlanSwitchRequest,
+  isPlanSwitchDueCommandRef,
+  planSwitchDueCommandRef
+} from "./coin-commerce-plan-switch-runtime.mjs";
 
 const DELIVERY_FIELDS = Object.freeze([
   "kind",
@@ -402,6 +408,7 @@ export function createCoinCommerceProductionSubscriptionFulfillment({
   fulfillmentCatalog =
     COIN_COMMERCE_PRODUCTION_FULFILLMENT_OFFER_VERSIONS,
   authorityEnabled = false,
+  planSwitchEnabled = false,
   nowFn = () => new Date()
 } = {}) {
   const publishedCatalogSnapshot = snapshotProductionCatalog(publishedCatalog);
@@ -449,6 +456,25 @@ export function createCoinCommerceProductionSubscriptionFulfillment({
     throw safeFulfillmentError(
       "coin_commerce_fulfillment_authority_invalid",
       "Coin Commerce fulfillment Authority binding is invalid"
+    );
+  }
+  if (
+    typeof planSwitchEnabled !== "boolean"
+    || (planSwitchEnabled && authorityEnabled)
+    || (
+      planSwitchEnabled
+      && [
+        "readPlanSwitchAccountFacts",
+        "readPlanSwitchQuoteForOrderRef",
+        "readScheduledPlanSwitch",
+        "deliverPlanSwitchDowngrade",
+        "completeScheduledPlanSwitch"
+      ].some((method) => typeof controlStore?.[method] !== "function")
+    )
+  ) {
+    throw safeFulfillmentError(
+      "coin_commerce_fulfillment_plan_switch_invalid",
+      "Coin Commerce fulfillment plan switch binding is invalid"
     );
   }
 
@@ -529,7 +555,7 @@ export function createCoinCommerceProductionSubscriptionFulfillment({
     }
   }
 
-  function purchaseEligibilityReader(input = {}) {
+  function legacyPurchaseEligibilityReader(input = {}) {
     const snapshot = exactPlainDataSnapshot(input, [
       "accountId",
       "offerVersionRef"
@@ -584,6 +610,227 @@ export function createCoinCommerceProductionSubscriptionFulfillment({
     }
   }
 
+  function purchaseEligibilityReader(input = {}) {
+    if (!planSwitchEnabled) return legacyPurchaseEligibilityReader(input);
+    const snapshot = exactPlainDataSnapshot(input, [
+      "accountId",
+      "offerVersionRef"
+    ]);
+    if (!snapshot) return false;
+    if (!planSwitchTierForOfferVersionRef(snapshot.offerVersionRef)) {
+      return legacyPurchaseEligibilityReader(input);
+    }
+    if (!isAccountActivated(snapshot.accountId)) return false;
+    try {
+      const now = new Date(nowFn()).toISOString();
+      const facts = controlStore.readPlanSwitchAccountFacts({
+        accountId: snapshot.accountId,
+        now
+      });
+      if (!facts) return false;
+      const decision = evaluatePlanSwitchRequest({
+        requestedOfferVersionRef: snapshot.offerVersionRef,
+        authorityFlagEnabled: authorityEnabled,
+        commerceMode: facts.commerceMode,
+        authorityRowCount: facts.authorityRowCount,
+        nowIso: now,
+        entitlement: facts.entitlement,
+        scheduledSwitch: facts.scheduledSwitch
+      });
+      if (decision?.ok !== true) return false;
+      if (decision.ordinary) return legacyPurchaseEligibilityReader(input);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  function mapPlanSwitchDependency(error) {
+    if (isTemporaryDependencyError(error)) {
+      throw createCoinCommerceFulfillmentRetryableError();
+    }
+    const code = safeErrorCode(error);
+    if (
+      code === "validation_error"
+      || code === "not_found"
+      || code === "coin_commerce_subscription_fulfillment_drift"
+      || String(error?.message || "").includes("no such table")
+    ) {
+      throw createCoinCommerceFulfillmentReconciliationError();
+    }
+    throw createCoinCommerceFulfillmentRetryableError();
+  }
+
+  function planSwitchSnapshot(kind, cancelsSwitchRef, switchRef, entitlement) {
+    return {
+      kind,
+      cancelsSwitchRef,
+      switchRef,
+      expectedPlan: entitlement.plan,
+      expectedValidFrom: entitlement.validFrom,
+      expectedValidUntil: entitlement.validUntil
+    };
+  }
+
+  function resolveDuePlanSwitch(command, offer, now) {
+    let row;
+    try {
+      row = controlStore.readScheduledPlanSwitch({
+        switchRef: command.orderRef
+      });
+    } catch (error) {
+      mapPlanSwitchDependency(error);
+    }
+    if (
+      !row
+      || row.accountId !== command.accountId
+      || row.toOfferVersionRef !== offer.offerVersionRef
+      || command.commandRef !== planSwitchDueCommandRef(row.switchRef)
+      || !["scheduled", "applying", "applied"].includes(row.status)
+    ) {
+      throw createCoinCommerceFulfillmentReconciliationError();
+    }
+    let facts;
+    try {
+      facts = controlStore.readPlanSwitchAccountFacts({
+        accountId: command.accountId,
+        now
+      });
+    } catch (error) {
+      mapPlanSwitchDependency(error);
+    }
+    const entitlement = facts?.entitlement;
+    if (
+      !entitlement
+      || canonicalTimestamp(entitlement.validFrom) === null
+      || canonicalTimestamp(entitlement.validUntil) === null
+    ) {
+      throw createCoinCommerceFulfillmentReconciliationError();
+    }
+    if (row.status === "scheduled") {
+      const effectiveMs = Date.parse(row.effectiveAt);
+      const nowMs = Date.parse(now);
+      if (!Number.isSafeInteger(effectiveMs) || !Number.isSafeInteger(nowMs)) {
+        throw createCoinCommerceFulfillmentReconciliationError();
+      }
+      if (effectiveMs > nowMs) {
+        throw createCoinCommerceFulfillmentRetryableError();
+      }
+      if (
+        entitlement.id !== row.entitlementId
+        || entitlement.plan !== row.fromOfferVersionRef
+        || entitlement.validUntil !== row.effectiveAt
+      ) {
+        throw createCoinCommerceFulfillmentReconciliationError();
+      }
+    }
+    return planSwitchSnapshot(
+      "apply_due",
+      null,
+      row.switchRef,
+      entitlement
+    );
+  }
+
+  function deliverScheduledDowngrade(command, offer, quote, now) {
+    if (
+      quote.account_id !== command.accountId
+      || quote.order_account_id !== command.accountId
+      || quote.to_offer_version_ref !== offer.offerVersionRef
+      || quote.order_payment_status !== "captured"
+      || quote.effective_at !== quote.snapshot_valid_until
+      || !Number.isSafeInteger(quote.order_amount_units)
+      || quote.order_amount_units < 1
+    ) {
+      throw createCoinCommerceFulfillmentReconciliationError();
+    }
+    let facts;
+    try {
+      facts = controlStore.readPlanSwitchAccountFacts({
+        accountId: command.accountId,
+        now
+      });
+    } catch (error) {
+      mapPlanSwitchDependency(error);
+    }
+    const entitlement = facts?.entitlement;
+    if (
+      !entitlement
+      || entitlement.id !== quote.entitlement_id
+      || entitlement.plan !== quote.from_offer_version_ref
+      || entitlement.validFrom !== quote.snapshot_valid_from
+      || entitlement.validUntil !== quote.snapshot_valid_until
+    ) {
+      throw createCoinCommerceFulfillmentReconciliationError();
+    }
+    let delivered;
+    try {
+      delivered = controlStore.deliverPlanSwitchDowngrade({
+        switchRef: command.orderRef,
+        accountId: command.accountId,
+        entitlementId: quote.entitlement_id,
+        fromOfferVersionRef: quote.from_offer_version_ref,
+        toOfferVersionRef: quote.to_offer_version_ref,
+        effectiveAt: quote.effective_at,
+        paidUnits: quote.order_amount_units,
+        createdAt: quote.created_at
+      });
+    } catch (error) {
+      mapPlanSwitchDependency(error);
+    }
+    if (delivered?.ok !== true || !hasText(delivered.effectRef)) {
+      throw createCoinCommerceFulfillmentReconciliationError();
+    }
+    return delivered.effectRef;
+  }
+
+  function resolvePlanSwitchFulfillment(command, offer, now) {
+    if (isPlanSwitchDueCommandRef(command.commandRef)) {
+      return { planSwitch: resolveDuePlanSwitch(command, offer, now) };
+    }
+    let quote;
+    try {
+      quote = controlStore.readPlanSwitchQuoteForOrderRef({
+        orderRef: command.orderRef
+      });
+    } catch (error) {
+      mapPlanSwitchDependency(error);
+    }
+    if (!quote) return { planSwitch: null };
+    if (quote.kind === "downgrade_scheduled") {
+      return {
+        deliveredEffectRef: deliverScheduledDowngrade(command, offer, quote, now)
+      };
+    }
+    if (!["renewal", "upgrade_inplace", "upgrade_restart"].includes(quote.kind)) {
+      throw createCoinCommerceFulfillmentReconciliationError();
+    }
+    if (
+      quote.account_id !== command.accountId
+      || quote.to_offer_version_ref !== offer.offerVersionRef
+      || !hasText(quote.from_offer_version_ref)
+      || canonicalTimestamp(quote.snapshot_valid_from) === null
+      || canonicalTimestamp(quote.snapshot_valid_until) === null
+    ) {
+      throw createCoinCommerceFulfillmentReconciliationError();
+    }
+    // A plain renewal is additive, not an optimistic replacement of the old
+    // expiry. Preserve the pre-feature command-ref-idempotent renewal path.
+    if (quote.kind === "renewal" && quote.cancels_switch_ref === null) {
+      return { planSwitch: null };
+    }
+    return {
+      planSwitch: {
+        kind: quote.kind,
+        cancelsSwitchRef: quote.cancels_switch_ref ?? null,
+        switchRef: null,
+        expectedPlan: quote.from_offer_version_ref,
+        expectedValidFrom: quote.snapshot_valid_from,
+        expectedValidUntil: quote.snapshot_valid_until
+      }
+    };
+  }
+
   function execute(input = {}) {
     const command = exactPlainDataSnapshot(input, [
       "commandRef",
@@ -618,6 +865,17 @@ export function createCoinCommerceProductionSubscriptionFulfillment({
         "coin_commerce_fulfillment_unavailable",
         "Coin Commerce subscription fulfillment is unavailable"
       );
+    }
+    let attachedPlanSwitch = null;
+    if (planSwitchEnabled) {
+      const resolution = resolvePlanSwitchFulfillment(command, offer, now);
+      if (resolution.deliveredEffectRef) {
+        return Object.freeze({
+          status: "delivered",
+          effectRef: resolution.deliveredEffectRef
+        });
+      }
+      attachedPlanSwitch = resolution.planSwitch;
     }
     const portalPlan = offer.delivery.durationDays === 365 ? "yearly" : "monthly";
     const authority = authorityEnabled
@@ -717,13 +975,15 @@ export function createCoinCommerceProductionSubscriptionFulfillment({
         candidate.offerVersionRef === resolved.entitlement.plan
       )
     );
-    const requireExistingEffect = authorityEnabled
-      ? resolved.entitlement.plan !== offer.offerVersionRef
-      : Boolean(
-        currentOffer
-        && currentOffer.offerVersionRef !== offer.offerVersionRef
-        && canonicalTimestamp(resolved.entitlement.validUntil) > now
-      );
+    const requireExistingEffect = attachedPlanSwitch
+      ? false
+      : authorityEnabled
+        ? resolved.entitlement.plan !== offer.offerVersionRef
+        : Boolean(
+          currentOffer
+          && currentOffer.offerVersionRef !== offer.offerVersionRef
+          && canonicalTimestamp(resolved.entitlement.validUntil) > now
+        );
     let effect;
     try {
       effect = controlStore.applyCoinCommerceSubscriptionFulfillment({
@@ -745,6 +1005,7 @@ export function createCoinCommerceProductionSubscriptionFulfillment({
         requireExistingEffect,
         recoveryOnly: resolved.runtimeReady !== true,
         ...(authority ? { authority } : {}),
+        ...(attachedPlanSwitch ? { planSwitch: attachedPlanSwitch } : {}),
         now
       });
     } catch (error) {
@@ -825,6 +1086,16 @@ export function createCoinCommerceProductionSubscriptionFulfillment({
       throw createCoinCommerceFulfillmentRetryableError();
     }
 
+    if (attachedPlanSwitch?.kind === "apply_due") {
+      try {
+        const row = controlStore.readScheduledPlanSwitch({ switchRef: command.orderRef });
+        if (row?.status !== "applied" && !controlStore.completeScheduledPlanSwitch({
+          switchRef: command.orderRef, accountId: command.accountId, now
+        })) throw createCoinCommerceFulfillmentRetryableError();
+      } catch {
+        throw createCoinCommerceFulfillmentRetryableError();
+      }
+    }
     return Object.freeze({
       status: "delivered",
       effectRef: effect.effectRef
