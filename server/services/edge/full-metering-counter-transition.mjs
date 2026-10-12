@@ -13,7 +13,7 @@ const STATE_FIELDS = ["schemaVersion", "type", "mode", "sourceRef", "channelRef"
   "archivedRefs", "retiredEntries", "retiredConnections", "scopeRevision", "previousStateDigest", "lastScopeChange",
   "generationRevision", "generationArchives", "generationStartedAt", "generationAwaitingObservation", "generationUnassignedGap"];
 const V2_STATE_FIELDS = [...STATE_FIELDS, "connectionHistory", "retentionMigration"];
-const MATERIAL_STATE_FIELDS = ["materialBoundaries", "billingWindowBoundaries"];
+const MATERIAL_STATE_FIELDS = ["materialBoundaries", "billingWindowBoundaries", "planSwitchBoundaries"];
 const REQUEST_FIELDS = ["state", "mode", "sourceRef", "channelRef", "generation", "eligibleRefs", "retainedRefs", "observedAt", "now", "minObservedAt", "observations"];
 const boundaryDigest = (generation, verifiedAt) => digest({ type: "verified_generation_boundary", generation, verifiedAt });
 
@@ -272,7 +272,7 @@ function validateState(raw, n = null) {
       }
       return raw[field];
     };
-    const orderedBoundaries = [...acceptBoundaries("materialBoundaries"), ...acceptBoundaries("billingWindowBoundaries")]
+    const orderedBoundaries = MATERIAL_STATE_FIELDS.flatMap(acceptBoundaries)
       .sort((left, right) => compare(left.observedAt, right.observedAt));
     for (const boundary of orderedBoundaries) {
       for (const entry of boundary.entries) {
@@ -451,17 +451,33 @@ export function transitionVerifiedFullMeteringBillingWindowCounters(request) {
   return transitionCounters(ordinaryRequest, billingWindowRefs, "billing-window");
 }
 
+// This primitive is not plan-switch authority. The caller must first prove an
+// applied commercial plan-only transition with unchanged ownership and material.
+// It keeps accepted usage and records an unknown interval, never a historical
+// debit. Its distinct evidence must survive later ordinary/material/window reads;
+// older strict validators reject this new field rather than silently dropping it.
+// A plan change cannot legitimize decreasing same-generation runtime counters.
+export function transitionVerifiedFullMeteringPlanSwitchCounters(request) {
+  object(request, [...REQUEST_FIELDS, "planSwitchRefs"], ["maxAgeMs"]);
+  const planSwitchRefs = refs(request.planSwitchRefs, false);
+  requireCondition(canonical(planSwitchRefs) === canonical(request.planSwitchRefs), "counter_plan_switch_transition_invalid");
+  const { planSwitchRefs: ignored, ...ordinaryRequest } = request;
+  return transitionCounters(ordinaryRequest, planSwitchRefs, "plan-switch");
+}
+
 function transitionCounters(request, materialRefs = null, boundaryKind = "material") {
   const n = normalize(request);
   const previous = request.state === null ? null : validateState(request.state, n);
   const next = previous ?? initialState(n);
   const material = new Set(materialRefs ?? []);
   const billingWindow = boundaryKind === "billing-window";
-  const boundaryField = billingWindow ? "billingWindowBoundaries" : "materialBoundaries";
-  const boundaryError = billingWindow ? "counter_billing_window_transition_invalid" : "counter_material_transition_invalid";
+  const planSwitch = boundaryKind === "plan-switch";
+  const boundaryField = planSwitch ? "planSwitchBoundaries" : billingWindow ? "billingWindowBoundaries" : "materialBoundaries";
+  const boundaryError = planSwitch ? "counter_plan_switch_transition_invalid"
+    : billingWindow ? "counter_billing_window_transition_invalid" : "counter_material_transition_invalid";
   let materialBoundary = null;
   if (materialRefs) {
-    requireCondition(boundaryKind === "material" || billingWindow, boundaryError);
+    requireCondition(boundaryKind === "material" || billingWindow || planSwitch, boundaryError);
     requireCondition(previous !== null && n.observedAt > previous.lastObservedAt
       && !previous.generationAwaitingObservation && (previous[boundaryField]?.length ?? 0) < 128,
     boundaryError);
@@ -486,8 +502,11 @@ function transitionCounters(request, materialRefs = null, boundaryKind = "materi
   const pendingBefore = new Set(next.entries.filter(e => e.status === "pending_start").map(e => e.edgeCredentialRef));
   const deltaByOwner = new Map();
   let initializedConnectionCount = 0, closedConnectionCount = 0;
-  const accumulate = (entry, observation, before) => {
+  const requireMonotonic = (observation, before) => {
     requireCondition(observation.uploadBytes >= before.uploadBytes && observation.downloadBytes >= before.downloadBytes, "counter_decreased");
+  };
+  const accumulate = (entry, observation, before) => {
+    requireMonotonic(observation, before);
     const delta = { uploadBytes: observation.uploadBytes - before.uploadBytes, downloadBytes: observation.downloadBytes - before.downloadBytes };
     add(entry.usage, delta);
     if (delta.uploadBytes === 0 && delta.downloadBytes === 0) return;
@@ -507,7 +526,10 @@ function transitionCounters(request, materialRefs = null, boundaryKind = "materi
           requireCondition(entry.status === "pending_start", "observed_counter_missing");
           continue;
         }
-        if (entry.status === "observed" && !material.has(entry.edgeCredentialRef)) accumulate(entry, observation, entry.cursor);
+        if (entry.status === "observed") {
+          if (!material.has(entry.edgeCredentialRef)) accumulate(entry, observation, entry.cursor);
+          else if (planSwitch) requireMonotonic(observation, entry.cursor);
+        }
         entry.status = "observed";
         entry.cursor = cursor(observation, n.observedAt);
       }
@@ -536,7 +558,10 @@ function transitionCounters(request, materialRefs = null, boundaryKind = "materi
         if (n.retained.has(observation.edgeCredentialRef)) continue;
         const entry = entries.get(observation.edgeCredentialRef);
         const before = connections.get(observation.connectionId);
-        if (before) { if (!material.has(entry.edgeCredentialRef)) accumulate(entry, observation, before); }
+        if (before) {
+          if (!material.has(entry.edgeCredentialRef)) accumulate(entry, observation, before);
+          else if (planSwitch) requireMonotonic(observation, before);
+        }
         else {
           initializedConnectionCount++;
           entry.connectionIds.push(observation.connectionId);
@@ -563,8 +588,11 @@ function transitionCounters(request, materialRefs = null, boundaryKind = "materi
   const observedCount = next.entries.filter(e => e.status === "observed").length;
   if (materialBoundary) validateState(next);
   return { nextState: next, unchanged,
-    ...(materialBoundary ? { receipt: billingWindow
-      ? { type: "verified_full_metering_billing_window_transition", billingWindowCount: materialRefs.length,
+    ...(materialBoundary ? { receipt: planSwitch
+      ? { type: "verified_full_metering_plan_switch_transition", planSwitchCount: materialRefs.length,
+        planSwitchBoundaryDigest: materialBoundary.boundaryDigest, beforeStateDigest: materialBoundary.previousStateDigest,
+        afterStateDigest: next.stateDigest, generation: n.generation, observedAt: n.observedAt, unassignedBytes: null }
+      : billingWindow ? { type: "verified_full_metering_billing_window_transition", billingWindowCount: materialRefs.length,
         billingWindowBoundaryDigest: materialBoundary.boundaryDigest, beforeStateDigest: materialBoundary.previousStateDigest,
         afterStateDigest: next.stateDigest, generation: n.generation, observedAt: n.observedAt, unassignedBytes: null }
       : { type: "verified_full_metering_material_transition", materialCount: materialRefs.length,

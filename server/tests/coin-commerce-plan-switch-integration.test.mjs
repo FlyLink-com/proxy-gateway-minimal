@@ -54,6 +54,11 @@ import { createSubscriptionCore } from "../services/subscriptions/core.mjs";
 import { createSqliteSubscriptionStore } from "../services/subscriptions/repository.mjs";
 import { hashSubscriptionToken } from "../services/subscriptions/tokens.mjs";
 import { createPlanSwitchCaptureParticipant } from "../services/platform/coin-commerce-plan-switch-capture.mjs";
+import { readFullMeteringPlanSwitchProof } from "../../scripts/lib/full-metering-plan-switch-proof.mjs";
+import { readFullMeteringBindings } from "../../scripts/lib/traffic-vless-recovery-baseline.mjs";
+import { runFullMeteringCollection } from "../../scripts/lib/full-metering-collection.mjs";
+import { LOCAL_METERING_SCOPE, fullMeteringChannels } from "../../scripts/lib/full-metering-scope.mjs";
+import { createFullMeteringSampleWriter } from "../../scripts/lib/full-metering-sample-writer.mjs";
 
 const REPOSITORY_ROOT = resolve(fileURLToPath(new URL("../../", import.meta.url)));
 const DAY_MS = 86_400_000;
@@ -385,6 +390,63 @@ function expectCommerceCode(action, code) {
   assert.throws(action, (error) => {
     assert.equal(error?.code, code);
     return true;
+  });
+}
+
+for (const kind of ["upgrade_inplace", "upgrade_restart", "renewal", "downgrade_scheduled"]) {
+  test(`real commerce ${kind} evidence resumes the three-channel collector without a historical debit`, async () => {
+    const h = openHarness({ plan: kind.startsWith("upgrade") ? BASIC.offerVersionRef : PLUS.offerVersionRef,
+      trafficGb: kind.startsWith("upgrade") ? 50 : 100 });
+    const directory = mkdtempSync(join(tmpdir(), "commerce-metering-e2e-"));
+    try {
+      const channels = fullMeteringChannels(LOCAL_METERING_SCOPE);
+      const request = h.controlStore.getPortalAccessRequest("pareq_plan_switch");
+      h.controlStore.upsertPortalAccessRequest({ ...request, edgeCredentials: channels.map((channel, i) => ({
+        edgeChannelRef: channel.channelRef, edgeCredentialRef: `edgecred_plan_switch_${i}`, edgeMaterialDigest: `sha256:synthetic_plan_${i}`
+      })) });
+      const databaseIdentityDigest = "d".repeat(64), context = { databaseIdentityDigest, scopeDigest: "e".repeat(64), meteringScope: LOCAL_METERING_SCOPE };
+      const activationId = "synthetic-commerce-plan-switch";
+      const readBindings = () => readFullMeteringBindings({ db: h.database, databaseIdentityDigest,
+        channelRefs: channels.map(channel => channel.channelRef), now: h.clock.value });
+      const readInventory = () => h.database.transaction(readBindings)();
+      let value = 1000;
+      const options = { directory: join(directory, "journal"), context, activationId, meteringScope: LOCAL_METERING_SCOPE,
+        nowFn: () => h.clock.value, readInventory,
+        readSources: async inventory => channels.map(channel => ({ ...channel, generation: "f".repeat(64), observedAt: h.clock.value,
+          observations: inventory.entries.filter(entry => entry.channelRef === channel.channelRef).map(entry => ({
+            edgeCredentialRef: entry.edgeCredentialRef, uploadBytes: value, downloadBytes: value,
+            ...(channel.mode === "connections" ? { connectionId: `connection-${entry.edgeCredentialRef}` } : {})
+          })) })),
+        readPlanSwitchProof: input => h.database.transaction(() => readFullMeteringPlanSwitchProof({ ...input, db: h.database }))(),
+        applySamples: createFullMeteringSampleWriter({ database: h.database,
+          controlStore: createSqliteSubscriptionControlStore({ database: h.database, initializeSchema: false }),
+          readBindings, meteringScope: LOCAL_METERING_SCOPE, activationId }) };
+      h.clock.value = new Date(Date.parse(CLOCK) - 2000).toISOString();
+      await runFullMeteringCollection({ ...options, mode: "initialize" });
+      h.clock.value = new Date(Date.parse(CLOCK) - 1000).toISOString(); value += 3;
+      assert.equal((await runFullMeteringCollection({ ...options, mode: "collect" })).recordedBytes, 18);
+      h.clock.value = CLOCK;
+      const target = kind === "upgrade_restart" ? YEARLY : kind === "downgrade_scheduled" ? BASIC : PLUS;
+      const quote = h.quote(target.offerRef), order = h.confirm(quote, `metering_${kind}`);
+      await h.deliver();
+      if (kind === "downgrade_scheduled") {
+        assert.equal(h.scheduledRows()[0].status, "scheduled");
+        h.clock.value = VALID_UNTIL;
+        await h.coordinator.runOnce();
+        assert.equal(h.scheduledRows()[0].status, "applied");
+      }
+      assert.equal(h.store.getOrder({ accountId: h.accountId, orderRef: order.orderRef }).paymentStatus, "captured");
+      value += 9000;
+      const result = await runFullMeteringCollection({ ...options, mode: "collect" });
+      assert.equal(result.recordedBytes, 0); assert.equal(result.planSwitchContinuation.identityCount, 3);
+      assert.equal(result.planSwitchContinuation.unassignedBytes, null);
+      assert.equal(h.database.prepare("select sum(total_bytes) from platform_usage_samples").pluck().get(), 18);
+      const coins = h.database.prepare("select count(*) from platform_coin_holds").pluck().get();
+      h.clock.value = new Date(Date.parse(h.clock.value) + 1000).toISOString(); value += 3;
+      assert.equal((await runFullMeteringCollection({ ...options, mode: "collect" })).recordedBytes, 18);
+      assert.equal(h.database.prepare("select sum(total_bytes) from platform_usage_samples").pluck().get(), 36);
+      assert.equal(h.database.prepare("select count(*) from platform_coin_holds").pluck().get(), coins);
+    } finally { h.close(); removeTempDir(directory); }
   });
 }
 
