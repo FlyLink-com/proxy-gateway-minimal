@@ -17,8 +17,9 @@ Release unit: `control-plane-app` (collector component).
 `identity_gate.state: pending` and `production_state: not_deployed`.
 The 2026-10-12 BWH execution is the Deploy Note below:
 `production_state: deployed` for that local-three collector recovery only,
-and `identity_gate.state` remains `pending` because aggregate before/after
-counts were not recorded. Production/AWS impact of the original source slice:
+and `identity_gate.state` is `degraded` because stale retained bindings remain
+after the recorded 2026-10-12 aggregate read; before counts were not captured.
+Production/AWS impact of the original source slice:
 none. This document does not authorize SSH, host login, database/config/credential
 reads, further collector or timer changes, cleanup, merge, or another deployment.
 
@@ -273,7 +274,8 @@ candidate and the new config/digest only. Keep the old lane disabled. Do not
 start a catch-up burst.
 
 Expected receipt: exactly one writer; old unit still inactive; new timer not
-yet enabled until Step 8; identity_gate still pending.
+yet enabled until Step 8; identity_gate state is `degraded` because stale
+retained bindings remain and before counts were not captured.
 
 Stop: both old and new writers enabled; old `--collect` still referenced; SGP
 expansion; protocol restart.
@@ -403,15 +405,17 @@ The old journal stays read-only. Old activation
 ```yaml
 identity_impact: true
 identity_gate:
-  surface: bwh-local-three
-  state: pending
+  surface: bwh-local-three   # japan-vless / japan-hy2 / japan-tuic
+  before: not_captured
+  after:
+    japan-vless: {runtime_count: 32, mapped_count: 32, missing: 0, stale: 89, changed: 0, missing_material: 0}
+    japan-hy2:   {runtime_count: 32, mapped_count: 32, missing: 0, stale: 76, changed: 0, missing_material: 0}
+    japan-tuic:  {runtime_count: 32, mapped_count: 32, missing: 0, stale: 88, changed: 0, missing_material: 0}
   retention_state: pending
+  state: degraded
 ```
 
-`runtime_count`, `mapped_count`, `missing`, `stale`, `changed`, and
-`missing_material` were not recorded before or after this run. A later
-aggregate gate still has to follow `docs/IDENTITY_LIFECYCLE.md`. Stale map
-items stay subject to a separate read-only retention inventory.
+Aggregate-only Identity Gate read on 2026-10-12 against a fresh read-only online snapshot of the control DB (sha256 a3deacdcda4afc90f316aaf655f87965cf36875867a626f191e1d9d83d70e89e, taken 2026-10-12 05:48 PT / 12:48 UTC, PRAGMA quick_check ok, sha unchanged after, no -wal/-shm), not the production DB; checker scripts/identity-gate-check.mjs from PR #777 (tip 4c787e37da1eefb04546c4344b09db6060b91374, merged as b610aac7d741cd64986f26cfb5d983e818e37e1e), script sha256 9653b2fff7449af3cb73cf1ca2ab2411838cef221252c09a939de7b230375319; both equalities held on all three surfaces; before counts were not captured before the recovery and cannot be reconstructed; state is degraded only because stale retained bindings remain resolvable per docs/IDENTITY_LIFECYCLE.md; stale entries are NOT deletion candidates, and any retirement needs a separate read-only retention inventory and separate Risk A approval; the former Hy2/TUIC missing keys from 2026-09-23 are 0 in this read.
 
 **Risk Classification:** the host action was Risk A. This note is the record
 of that completed run.
