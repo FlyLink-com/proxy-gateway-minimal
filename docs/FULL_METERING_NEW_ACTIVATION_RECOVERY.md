@@ -50,7 +50,9 @@ from the frozen 49-file collector archive:
 
 Probe process bounds: 30s wall time, 256 MiB RSS, 32 MiB plain / 128 MiB
 checkpoint / 256 MiB decoded payload, 10 000 identities, 5s systemctl and
-SQLite timeouts. Recovery process bounds: 60s, 512 MiB RSS.
+SQLite timeouts. Recovery process bounds: 60s, 512 MiB RSS. Initialize hashes
+the SQLite backup in reused 1 MiB chunks and does not retain a backup-sized
+buffer, so that RSS bound is not spent on the backup itself.
 
 ## Non-goals
 
@@ -234,6 +236,31 @@ Stop: any sample or recorded byte; old journal mutation; existing new
 directory; pending/lock on the old journal; dual activation. Do not delete a
 partial new directory. A leftover empty directory is a stop, not an automatic
 retry.
+
+Post-write failure: if initialize returns `status=blocked` after
+`checkpoint.json` already exists — for example
+`errorCode=full_metering_recovery_memory_limit` from the final bound check —
+do not delete the new journal and do not retry initialize. The final RSS check
+runs only after the new checkpoint has been written. Run this read-only
+verification, then Ethan decides acceptance:
+
+- `readFullMeteringJournal` with the new context succeeds. That context is the
+  new config digest, the current database identity, and meteringScope
+  `local-three-v1`.
+- `activationId` is the new activation, `sequence` is 0, and `meteringScope`
+  is `local-three-v1`.
+- `lastSummary.sampleCount` is 0, `lastSummary.recordedBytes` is 0, and
+  `lastSummary.historicalDebits` is false.
+- Checkpoint identities match the current read-only inventory: the same set of
+  `channelRef`, `edgeCredentialRef`, `materialDigest`, and billing binding, with
+  no extra archived identity. Do not copy raw account, order, or credential
+  values into the acceptance note.
+- The new journal directory mode is `0700` and `checkpoint.json` mode is `0600`.
+- The new journal has no `.tmp` file, no `pending.json`, and no `writer.lock`.
+- SQLite sample and rollup totals equal the pre-initialize totals.
+- The old journal tree digest is unchanged.
+
+Acceptance is Ethan's decision on that receipt. It is not a second initialize.
 
 ### Step 7 — Point the sole collector at the new config
 

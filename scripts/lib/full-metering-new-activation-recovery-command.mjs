@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { closeSync, constants, fstatSync, lstatSync, openSync, readFileSync, realpathSync } from "node:fs";
+import { closeSync, constants, fstatSync, lstatSync, openSync, readFileSync, readSync, realpathSync } from "node:fs";
 import { isAbsolute, resolve } from "node:path";
 import Database from "better-sqlite3";
 import { assertNoDuplicateObjectKeys } from "../../server/services/deployment/strict-json-scan.mjs";
@@ -23,6 +23,11 @@ function fileIdentity(path) {
   return { path, dev: String(info.dev), ino: String(info.ino) };
 }
 
+const SHA_CHUNK_BYTES = 1024 * 1024;
+const BACKUP_MAX_BYTES = 1024 * 1024 * 1024;
+const boundKeys = ["dev", "ino", "size", "mtimeNs", "ctimeNs"];
+const sameBound = (row, before) => boundKeys.every(key => row[key] === before[key]);
+
 function protectedBytes(path, { maxBytes = 8 * 1024 * 1024, requireOwner = false } = {}) {
   fileIdentity(path);
   const before = lstatSync(path, { bigint: true });
@@ -33,8 +38,35 @@ function protectedBytes(path, { maxBytes = 8 * 1024 * 1024, requireOwner = false
     const opened = fstatSync(fd, { bigint: true });
     const bytes = readFileSync(fd);
     const after = fstatSync(fd, { bigint: true }), named = lstatSync(path, { bigint: true });
-    if (![opened, after, named].every(row => ["dev", "ino", "size", "mtimeNs", "ctimeNs"].every(key => row[key] === before[key]))) fail("full_metering_file_changed");
+    if (![opened, after, named].every(row => sameBound(row, before))) fail("full_metering_file_changed");
     return bytes;
+  } finally { closeSync(fd); }
+}
+
+// Windows stat mode always includes group/other bits, so the POSIX 0o077 gate
+// is applied on Linux, where this command is allowed to open the backup.
+export function protectedSha256(path, { maxBytes = BACKUP_MAX_BYTES, onBound = null } = {}) {
+  fileIdentity(path);
+  const before = lstatSync(path, { bigint: true });
+  if ((process.platform !== "win32" && (before.mode & 0o077n) !== 0n) || before.size > BigInt(maxBytes)) fail("full_metering_permissions_invalid");
+  const fd = openSync(path, constants.O_RDONLY | (Number.isSafeInteger(constants.O_NOFOLLOW) ? constants.O_NOFOLLOW : 0));
+  try {
+    const opened = fstatSync(fd, { bigint: true });
+    if (!sameBound(opened, before)) fail("full_metering_file_changed");
+    if (typeof onBound === "function") onBound(path);
+    const hash = createHash("sha256");
+    const chunk = Buffer.allocUnsafe(SHA_CHUNK_BYTES);
+    let remaining = opened.size;
+    while (remaining > 0n) {
+      const want = remaining > BigInt(chunk.length) ? chunk.length : Number(remaining);
+      const count = readSync(fd, chunk, 0, want, null);
+      if (count <= 0) fail("full_metering_file_changed");
+      hash.update(chunk.subarray(0, count));
+      remaining -= BigInt(count);
+    }
+    const after = fstatSync(fd, { bigint: true }), named = lstatSync(path, { bigint: true });
+    if (![opened, after, named].every(row => sameBound(row, before))) fail("full_metering_file_changed");
+    return hash.digest("hex");
   } finally { closeSync(fd); }
 }
 
@@ -58,8 +90,7 @@ export async function runFullMeteringNewActivationRecoveryCommand(argv) {
   if ((config.meteringScope ?? null) !== LOCAL_METERING_SCOPE || config.activationId !== request.newActivationId) fail("full_metering_config_invalid");
   validateFullMeteringSources(config.sources, LOCAL_METERING_SCOPE);
   if (options.mode === "initialize") {
-    const backup = protectedBytes(config.backup.path, { maxBytes: 1024 * 1024 * 1024 });
-    if (config.backup.path === config.dbPath || createHash("sha256").update(backup).digest("hex") !== config.backup.sha256) fail("full_metering_backup_invalid");
+    if (config.backup.path === config.dbPath || protectedSha256(config.backup.path) !== config.backup.sha256) fail("full_metering_backup_invalid");
     const backupDb = new Database(config.backup.path, { readonly: true, fileMustExist: true });
     try {
       backupDb.pragma("query_only = ON");
