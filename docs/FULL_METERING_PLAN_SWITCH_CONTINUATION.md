@@ -70,6 +70,25 @@ identities keep ordinary increments. A genuine source-generation change uses
 the existing generation-boundary mechanism. A same-generation counter decrease
 cannot be explained by changing a plan and remains an error.
 
+An expiry collection may have moved an identity into retention before the
+commerce coordinator applies a paid downgrade or a previously confirmed
+quote-backed renewal. Ordinary scope reconciliation still rejects every
+retained-to-eligible change. Only identities admitted by the same commercial
+proof above may use the separate atomic reactivation transition. Its exact
+reactivation set must match the desired retained-to-eligible set, and each
+identity must have an archived counter entry; an arbitrary retained ref is not
+enough. Unproven peers stop the batch rather than joining that transition.
+
+The transition restores accepted usage without charging the absent interval,
+while unchanged active identities keep ordinary deltas. Exact retired entries
+and connection snapshots are retained in `planSwitchReactivations`. Same-process
+counter decreases, changed connection ownership and reappearance of a closed
+connection still fail. A real, independently verified generation boundary may
+precede reactivation; no generation is synthesized to explain missing history.
+The intermediate scope is never returned or written without its actual source
+observation and final state validation. Both reactivation and ordinary plan
+boundary histories have a 128-record hard limit and fail closed when full.
+
 The private journal archives the exact old checkpoint as
 `plan-switch-before-<digest>.json`, then records proof digests in
 `planSwitchContinuations` and a dedicated counter boundary. Public summaries
@@ -95,12 +114,19 @@ implied. Relevant tests:
 - `full-metering-plan-switch-counter.test.mjs`: cumulative and connection
   boundaries, carry usage, missing/decreasing observations, ordinary follow-up,
   retention and generation compatibility.
+- `full-metering-plan-switch-reactivation-counter.test.mjs`: exact archived
+  restoration, same-generation monotonicity, closed connection and ownership
+  guards, partial restoration, repeated expiry, genuine generation advances,
+  simultaneous scope changes, malformed evidence and history capacity.
 - `full-metering-plan-switch-continuation.test.mjs`: three affected identities
   alongside an unchanged account, no historical debit for the changed bindings,
-  inventory/proof drift, journal concurrency and each durable failure boundary.
+  inventory/proof drift, journal concurrency and each durable failure boundary,
+  including expiry-retained reactivation and its pending-journal recovery.
 - `coin-commerce-plan-switch-integration.test.mjs`: actual migrations and
   commerce coordinator through the real binding inspector and proof reader to
-  three-source collection and SQLite accounting for all four supported paths.
+  three-source collection and SQLite accounting for all four supported paths;
+  both orderings of expiry collection versus applied downgrade, a delayed
+  confirmed renewal, and refusal when its durable fulfillment audit is absent.
 
 Run affected metering and plan-switch regressions, the server baseline from
 `VALIDATION_BASELINE.md`, diff checks and an independent review. Store exact
@@ -130,8 +156,9 @@ long-lived runbook. Windows success does not replace Linux runtime validation.
    declaring recovery. Record a Deploy Note with exact artifact and backup.
 
 Rollback before any new journal write may restore the old collector pointer.
-After a plan boundary is committed, an old counter validator rejects the new
-evidence. Pause the collector and retain the ledger/journal; do not overwrite
+After a plan boundary or reactivation is committed, an old counter validator
+rejects the new evidence (including `planSwitchReactivations`). Pause the
+collector and retain the ledger/journal; do not overwrite
 them with the backup or claim an old binary can safely continue. Resolve via a
 compatible forward fix or separately approved recovery, never a historical
 usage rollback.

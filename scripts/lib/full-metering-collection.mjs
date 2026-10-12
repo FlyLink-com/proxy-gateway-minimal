@@ -1,4 +1,4 @@
-import { transitionFullMeteringCounters, transitionVerifiedFullMeteringMaterialCounters, transitionVerifiedFullMeteringBillingWindowCounters, transitionVerifiedFullMeteringPlanSwitchCounters, reconcileVerifiedFullMeteringScope, advanceVerifiedFullMeteringGeneration } from "../../server/services/edge/full-metering-counter-transition.mjs";
+import { transitionFullMeteringCounters, transitionVerifiedFullMeteringMaterialCounters, transitionVerifiedFullMeteringBillingWindowCounters, transitionVerifiedFullMeteringPlanSwitchCounters, transitionVerifiedFullMeteringPlanSwitchReactivationCounters, reconcileVerifiedFullMeteringScope, advanceVerifiedFullMeteringGeneration } from "../../server/services/edge/full-metering-counter-transition.mjs";
 import { fullMeteringBindingIdentity, makeFullMeteringSample } from "./full-metering-sample-writer.mjs";
 import { fullMeteringDigest, initializeFullMeteringJournal, readFullMeteringJournal, recoverFullMeteringJournal, commitFullMeteringJournal, withFullMeteringJournalLock, assertFullMeteringJournalNoPending, archiveFullMeteringMaterialCheckpoint } from "./full-metering-journal.mjs";
 import { admitFullMeteringMaterialContinuation, materialContinuationHistory } from "./full-metering-material-continuation.mjs";
@@ -92,25 +92,39 @@ export async function runFullMeteringCollection({ directory, context, activation
         }
       }
       const eligibleRefs = entries.map(entry => entry.edgeCredentialRef), retainedRefs = retained.map(entry => entry.edgeCredentialRef);
-      const reconciled = prior ? reconcileVerifiedFullMeteringScope({ state: prior.counterState, eligibleRefs, retainedRefs }) : null;
-      // Receipt + digests retain the transition link without embedding two more
-      // full history snapshots in every scope/generation transition checkpoint.
-      if (reconciled?.receipt) transitions.push({ beforePayloadDigest: fullMeteringDigest(prior.counterState), afterPayloadDigest: fullMeteringDigest(reconciled.nextState), receipt: reconciled.receipt });
-      const advanced = reconciled && reconciled.nextState.generation !== source.generation
-        ? advanceVerifiedFullMeteringGeneration({ state: reconciled.nextState, generation: source.generation, verifiedAt: source.observedAt }) : null;
-      if (advanced?.receipt) transitions.push({ beforePayloadDigest: fullMeteringDigest(reconciled.nextState), afterPayloadDigest: fullMeteringDigest(advanced.nextState), receipt: advanced.receipt });
       const materialRefs = entries.filter(entry => admission?.changes.has(key(entry))).map(entry => entry.edgeCredentialRef).sort();
       const billingWindowRefs = entries.filter(entry => billingAdmission?.changes.has(key(entry))).map(entry => entry.edgeCredentialRef).sort();
       const planSwitchRefs = entries.filter(entry => planAdmission?.changes.has(key(entry))).map(entry => entry.edgeCredentialRef).sort();
-      const counterRequest = { state: advanced?.nextState ?? reconciled?.nextState ?? null, ...expected, generation: source.generation,
-        eligibleRefs, retainedRefs, minObservedAt: startedAt, observedAt: source.observedAt, now, observations: source.observations };
-      const outcome = materialRefs.length && !advanced
-        ? transitionVerifiedFullMeteringMaterialCounters({ ...counterRequest, materialRefs })
-        : billingWindowRefs.length && !advanced
-          ? transitionVerifiedFullMeteringBillingWindowCounters({ ...counterRequest, billingWindowRefs })
-          : planSwitchRefs.length && !advanced
-            ? transitionVerifiedFullMeteringPlanSwitchCounters({ ...counterRequest, planSwitchRefs })
-          : transitionFullMeteringCounters(counterRequest);
+      const reactivationRefs = planSwitchRefs.filter(ref => prior?.counterState.retainedRefs.includes(ref));
+      const counterInput = { ...expected, generation: source.generation, eligibleRefs, retainedRefs,
+        minObservedAt: startedAt, observedAt: source.observedAt, now, observations: source.observations };
+      let counterRequest, outcome;
+      if (reactivationRefs.length) {
+        // Ordinary scope reconciliation deliberately forbids retained -> active.
+        // Only commerce-proven identities can take this atomic reactivation path.
+        // A real generation boundary is still verified by the owned source driver;
+        // never synthesize one to bypass archived counters or their history.
+        const advanced = prior.counterState.generation !== source.generation
+          ? advanceVerifiedFullMeteringGeneration({ state: prior.counterState, generation: source.generation, verifiedAt: source.observedAt }) : null;
+        if (advanced?.receipt) transitions.push({ beforePayloadDigest: fullMeteringDigest(prior.counterState), afterPayloadDigest: fullMeteringDigest(advanced.nextState), receipt: advanced.receipt });
+        counterRequest = { state: advanced?.nextState ?? prior.counterState, ...counterInput };
+        outcome = transitionVerifiedFullMeteringPlanSwitchReactivationCounters({ ...counterRequest, reactivationRefs, planSwitchRefs });
+      } else {
+        const reconciled = prior ? reconcileVerifiedFullMeteringScope({ state: prior.counterState, eligibleRefs, retainedRefs }) : null;
+        // Receipt + digests retain the transition without duplicating full states.
+        if (reconciled?.receipt) transitions.push({ beforePayloadDigest: fullMeteringDigest(prior.counterState), afterPayloadDigest: fullMeteringDigest(reconciled.nextState), receipt: reconciled.receipt });
+        const advanced = reconciled && reconciled.nextState.generation !== source.generation
+          ? advanceVerifiedFullMeteringGeneration({ state: reconciled.nextState, generation: source.generation, verifiedAt: source.observedAt }) : null;
+        if (advanced?.receipt) transitions.push({ beforePayloadDigest: fullMeteringDigest(reconciled.nextState), afterPayloadDigest: fullMeteringDigest(advanced.nextState), receipt: advanced.receipt });
+        counterRequest = { state: advanced?.nextState ?? reconciled?.nextState ?? null, ...counterInput };
+        outcome = materialRefs.length && !advanced
+          ? transitionVerifiedFullMeteringMaterialCounters({ ...counterRequest, materialRefs })
+          : billingWindowRefs.length && !advanced
+            ? transitionVerifiedFullMeteringBillingWindowCounters({ ...counterRequest, billingWindowRefs })
+            : planSwitchRefs.length && !advanced
+              ? transitionVerifiedFullMeteringPlanSwitchCounters({ ...counterRequest, planSwitchRefs })
+              : transitionFullMeteringCounters(counterRequest);
+      }
       if (outcome.receipt) transitions.push({ beforePayloadDigest: fullMeteringDigest(counterRequest.state), afterPayloadDigest: fullMeteringDigest(outcome.nextState), receipt: outcome.receipt });
       for (const delta of outcome.deltas) {
         try { samples.push(makeFullMeteringSample({ binding: entries.find(entry => entry.edgeCredentialRef === delta.edgeCredentialRef), activationId, generation: source.generation, delta })); }
