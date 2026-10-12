@@ -7,6 +7,8 @@ import { normalizeCredentialMaterialRecord } from "../server/services/edge/crede
 import { readActiveConfigFile } from "../server/services/edge/runtime-config-readonly-proof.mjs";
 
 const REF = /^[A-Za-z0-9._:-]{1,160}$/;
+// Same credentialRef alphabet the Hysteria2 adapter writes as a userpass username.
+const HY2_REF = /^[A-Za-z0-9._:-]{1,128}$/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const SURFACE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const MAX_PRINCIPALS = 5000;
@@ -251,7 +253,7 @@ function parseXrayPrincipals(text) {
   return { ok: true, principals, materialKeyByPrincipal };
 }
 
-function parseMihomoPrincipals(text) {
+function yamlLines(text) {
   if (typeof text !== "string" || text.includes("\0") || text.includes("\t")) {
     return { ok: false, code: "input_invalid" };
   }
@@ -263,6 +265,43 @@ function parseMihomoPrincipals(text) {
     }
     if (/^\s*(?:- )?[A-Za-z0-9._-]+\s+:/.test(line)) return { ok: false, code: "input_invalid" };
   }
+  return { ok: true, lines };
+}
+
+function sectionField(lines, name, indent) {
+  const prefix = `${" ".repeat(indent)}${name}:`;
+  const matches = lines.filter((line) => line.startsWith(prefix) && line[indent + name.length] === ":");
+  if (matches.length !== 1) return { ok: false, code: "input_invalid" };
+  return { ok: true, raw: matches[0].slice(prefix.length).trim() };
+}
+
+function indentedSection(lines, name, indent) {
+  const prefix = `${" ".repeat(indent)}${name}:`;
+  const starts = [];
+  for (let index = 0; index < lines.length; index += 1) {
+    if (lines[index].startsWith(prefix) && lines[index][indent + name.length] === ":") starts.push(index);
+  }
+  if (starts.length !== 1) return { ok: false, code: "input_invalid" };
+  const header = lines[starts[0]].slice(prefix.length).trim();
+  const value = !header || header.startsWith("#") ? "" : header;
+  if (value === "{}") return { ok: true, value, lines: [] };
+  if (value !== "") return { ok: false, code: "input_invalid" };
+  const body = [];
+  for (let index = starts[0] + 1; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (!line.trim() || line.startsWith(" ".repeat(indent + 1))) {
+      body.push(line);
+      continue;
+    }
+    break;
+  }
+  return { ok: true, value, lines: body };
+}
+
+function parseMihomoPrincipals(text) {
+  const document = yamlLines(text);
+  if (!document.ok) return document;
+  const lines = document.lines;
   const start = lines.findIndex((line) => line.startsWith("listeners:"));
   if (start < 0 || !/^listeners:/.test(lines[start])) return { ok: false, code: "input_invalid" };
   const header = lines[start].slice("listeners:".length).trim();
@@ -325,6 +364,47 @@ function parseMihomoPrincipals(text) {
   return { ok: true, principals, materialKeyByPrincipal: new Map(principals.map((principal) => [principal, principal])) };
 }
 
+// Userpass usernames are the usage-map keys and the credential refs. Protected
+// material matches only when that ref's password is the rendered secret.
+function parseHy2Principals(text) {
+  const document = yamlLines(text);
+  if (!document.ok) return document;
+  for (const line of document.lines) {
+    if (!line.trim() || line.trimStart().startsWith("#")) continue;
+    const quoted = /^( *)("(?:[^"\\]|\\.)*"|'(?:[^']|'')*')\s*:/.exec(line);
+    if (!quoted) continue;
+    const user = parseScalar(quoted[2]);
+    if (quoted[1].length !== 4 || !HY2_REF.test(user ?? "")) {
+      return { ok: false, code: "input_invalid" };
+    }
+  }
+  const auth = indentedSection(document.lines, "auth", 0);
+  if (!auth.ok || auth.value === "{}") return { ok: false, code: "input_invalid" };
+  const typeField = sectionField(auth.lines, "type", 2);
+  if (!typeField.ok || parseScalar(typeField.raw) !== "userpass") {
+    return { ok: false, code: "input_invalid" };
+  }
+  const userpass = indentedSection(auth.lines, "userpass", 2);
+  if (!userpass.ok) return userpass;
+  const principals = [];
+  const passwordByPrincipal = new Map();
+  for (const line of userpass.lines) {
+    if (!line.trim() || line.trimStart().startsWith("#")) continue;
+    const match = USER_LINE.exec(line);
+    if (!match || match[1].length !== 4) return { ok: false, code: "input_invalid" };
+    const user = parseScalar(match[2]);
+    const secret = parseScalar(match[3]);
+    if (!HY2_REF.test(user ?? "") || !usableSecret(secret)) {
+      return { ok: false, code: "input_invalid" };
+    }
+    if (passwordByPrincipal.has(user)) return { ok: false, code: "duplicate_principals" };
+    passwordByPrincipal.set(user, secret);
+    principals.push(user);
+  }
+  if (principals.length > MAX_PRINCIPALS) return { ok: false, code: "input_invalid" };
+  return { ok: true, principals, passwordByPrincipal };
+}
+
 function parseIdentityMap(text, kind) {
   const parsed = parseJsonDocument(text);
   if (!parsed.ok) return parsed;
@@ -353,6 +433,7 @@ function parseMaterialIndex(text) {
   if (!Array.isArray(records)) return { ok: false, code: "input_invalid" };
   if (records.length > MAX_PRINCIPALS) return { ok: false, code: "input_invalid" };
   const byUuid = new Map();
+  const byCredentialRef = new Map();
   const seenRefs = new Set();
   for (const record of records) {
     let normalized;
@@ -368,12 +449,33 @@ function parseMaterialIndex(text) {
     }
     seenRefs.add(normalized.credentialRef);
     byUuid.set(uuid, normalized.credentialRef);
+    byCredentialRef.set(normalized.credentialRef, {
+      credentialRef: normalized.credentialRef,
+      password: normalized.material.password
+    });
   }
-  return { ok: true, byUuid };
+  return { ok: true, byUuid, byCredentialRef };
+}
+
+function parseRuntime(kind, runtimeText) {
+  if (kind === "xray") return parseXrayPrincipals(runtimeText);
+  if (kind === "mihomo") return parseMihomoPrincipals(runtimeText);
+  if (kind === "hy2") return parseHy2Principals(runtimeText);
+  return { ok: false, code: "input_invalid" };
+}
+
+function materialReferenceFor(kind, runtime, material, principal) {
+  if (kind === "hy2") {
+    const record = material.byCredentialRef.get(principal);
+    if (!record || record.password !== runtime.passwordByPrincipal.get(principal)) return undefined;
+    return record.credentialRef;
+  }
+  const materialKey = runtime.materialKeyByPrincipal.get(principal);
+  return materialKey ? material.byUuid.get(materialKey) : undefined;
 }
 
 function observe(kind, runtimeText, mapText, materialText) {
-  const runtime = kind === "xray" ? parseXrayPrincipals(runtimeText) : parseMihomoPrincipals(runtimeText);
+  const runtime = parseRuntime(kind, runtimeText);
   if (!runtime.ok) return runtime;
   const map = parseIdentityMap(mapText, kind);
   if (!map.ok) return map;
@@ -381,8 +483,7 @@ function observe(kind, runtimeText, mapText, materialText) {
   if (!material.ok) return material;
   const materialRefs = [];
   for (const principal of runtime.principals) {
-    const materialKey = runtime.materialKeyByPrincipal.get(principal);
-    const reference = materialKey ? material.byUuid.get(materialKey) : undefined;
+    const reference = materialReferenceFor(kind, runtime, material, principal);
     if (reference) materialRefs.push({ principal, reference });
   }
   return computeIdentityGate({
@@ -447,7 +548,7 @@ export function runIdentityGateCli({
     stdout.write(`${JSON.stringify(present(surface, gate))}\n`);
     return gate.state === "blocked" ? 1 : 0;
   };
-  if (!surface || (kind !== "xray" && kind !== "mihomo") || !runtimePath || !mapPath || !materialPath) {
+  if (!surface || (kind !== "xray" && kind !== "mihomo" && kind !== "hy2") || !runtimePath || !mapPath || !materialPath) {
     return finish(blocked("input_invalid"));
   }
   const runtime = readRequired(runtimePath);

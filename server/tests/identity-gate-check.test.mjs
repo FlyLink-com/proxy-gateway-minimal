@@ -37,14 +37,18 @@ function run(args) {
   });
 }
 
-function gateArgs(kind, runtime, map, material) {
+function gateArgs(kind, runtime, map, material, surface = "japan-tuic") {
   return [
-    "--surface", "japan-tuic",
+    "--surface", surface,
     "--runtime-kind", kind,
     "--runtime-config", fixture(runtime),
     "--identity-map", fixture(map),
     "--material", fixture(material)
   ];
+}
+
+function hy2Args(runtime, map, material) {
+  return gateArgs("hy2", runtime, map, material, "sgp-hy2");
 }
 
 function readGate(result) {
@@ -127,6 +131,116 @@ test("runtime principal without protected material is missing_material", () => {
   assert.equal(gate.missing_material, 1);
   assert.equal(gate.map_total, 2);
   assert.deepEqual(gate.equalities, { runtime_eq: true, map_eq: true });
+});
+
+test("healthy hy2 userpass snapshot is verified and ignores comments", () => {
+  const result = run(hy2Args("hy2-healthy.yaml", "map-healthy.json", "material-healthy.json"));
+  const gate = readGate(result);
+  assert.equal(result.status, 0);
+  assert.equal(result.stdout.includes("hy2-healthy.yaml"), false);
+  assert.equal(result.stdout.includes("userpass"), false);
+  assert.equal(result.stdout.includes("edgecred_"), false);
+  assert.deepEqual(gate, {
+    surface: "sgp-hy2",
+    runtime_count: 2,
+    mapped_count: 2,
+    missing: 0,
+    stale: 0,
+    changed: 0,
+    missing_material: 0,
+    map_total: 2,
+    equalities: { runtime_eq: true, map_eq: true },
+    state: "verified"
+  });
+});
+
+test("hy2 runtime principal absent from the map is missing", () => {
+  const gate = readGate(run(hy2Args("hy2-missing.yaml", "map-healthy.json", "material-three.json")));
+  assert.equal(gate.state, "degraded");
+  assert.equal(gate.runtime_count, 3);
+  assert.equal(gate.mapped_count, 2);
+  assert.equal(gate.missing, 1);
+  assert.equal(gate.stale, 0);
+  assert.equal(gate.changed, 0);
+  assert.equal(gate.missing_material, 0);
+  assert.equal(gate.map_total, 2);
+  assert.deepEqual(gate.equalities, { runtime_eq: true, map_eq: true });
+});
+
+test("hy2 map principal absent from runtime is stale", () => {
+  const gate = readGate(run(hy2Args("hy2-healthy.yaml", "map-stale.json", "material-healthy.json")));
+  assert.equal(gate.state, "degraded");
+  assert.equal(gate.runtime_count, 2);
+  assert.equal(gate.mapped_count, 2);
+  assert.equal(gate.missing, 0);
+  assert.equal(gate.stale, 1);
+  assert.equal(gate.changed, 0);
+  assert.equal(gate.missing_material, 0);
+  assert.equal(gate.map_total, 3);
+});
+
+test("hy2 mapped reference that differs from protected material is changed", () => {
+  const gate = readGate(run(hy2Args("hy2-healthy.yaml", "map-changed.json", "material-healthy.json")));
+  assert.equal(gate.state, "degraded");
+  assert.equal(gate.runtime_count, 2);
+  assert.equal(gate.mapped_count, 2);
+  assert.equal(gate.missing, 0);
+  assert.equal(gate.stale, 0);
+  assert.equal(gate.changed, 1);
+  assert.equal(gate.missing_material, 0);
+  assert.equal(gate.map_total, 2);
+});
+
+test("hy2 runtime principal without protected material is missing_material", () => {
+  const gate = readGate(run(hy2Args("hy2-healthy.yaml", "map-healthy.json", "material-partial.json")));
+  assert.equal(gate.state, "degraded");
+  assert.equal(gate.runtime_count, 2);
+  assert.equal(gate.mapped_count, 2);
+  assert.equal(gate.missing, 0);
+  assert.equal(gate.stale, 0);
+  assert.equal(gate.changed, 0);
+  assert.equal(gate.missing_material, 1);
+  assert.equal(gate.map_total, 2);
+});
+
+test("hy2 password that does not match the credential ref is missing_material", () => {
+  const gate = readGate(run(hy2Args("hy2-password-mismatch.yaml", "map-healthy.json", "material-healthy.json")));
+  assert.equal(gate.state, "degraded");
+  assert.equal(gate.missing, 0);
+  assert.equal(gate.stale, 0);
+  assert.equal(gate.changed, 0);
+  assert.equal(gate.missing_material, 1);
+  assert.equal(gate.mapped_count, 2);
+});
+
+test("invalid hy2 config is blocked and does not leak config text", () => {
+  const result = run(hy2Args("hy2-invalid.yaml", "map-healthy.json", "material-healthy.json"));
+  const gate = readGate(result);
+  assert.equal(result.status, 1);
+  assert.equal(gate.state, "blocked");
+  assert.equal(gate.code, "input_invalid");
+  assert.equal(gate.runtime_count, 0);
+  assert.equal(result.stdout.includes("hy2-invalid.yaml"), false);
+  assert.equal(result.stdout.includes("userpass"), false);
+  assert.deepEqual(gate.equalities, { runtime_eq: false, map_eq: false });
+});
+
+test("hy2 empty userpass map has no runtime principals", () => {
+  const gate = readGate(run(hy2Args("hy2-empty.yaml", "map-stale.json", "material-healthy.json")));
+  assert.equal(gate.state, "degraded");
+  assert.equal(gate.runtime_count, 0);
+  assert.equal(gate.mapped_count, 0);
+  assert.equal(gate.missing, 0);
+  assert.equal(gate.stale, 3);
+  assert.equal(gate.changed, 0);
+  assert.equal(gate.missing_material, 0);
+  assert.equal(gate.map_total, 3);
+});
+
+test("duplicate hy2 userpass usernames are blocked", () => {
+  const gate = readGate(run(hy2Args("hy2-duplicate.yaml", "map-healthy.json", "material-healthy.json")));
+  assert.equal(gate.state, "blocked");
+  assert.equal(gate.code, "duplicate_principals");
 });
 
 test("healthy mihomo snapshot ignores comment-only uuids", () => {
