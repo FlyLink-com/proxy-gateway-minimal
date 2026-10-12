@@ -1,0 +1,16 @@
+# managed-by: gccgw-edge-credential-reconciliation
+listen: ":443"
+tls:
+  cert: "/etc/hysteria/server.crt"
+  key: "/etc/hysteria/server.key"
+auth:
+  type: userpass
+  userpass:
+    # edgecred_stale_004: "synthetic-canary-7f3a9c"
+    edgecred_alpha_001: "synthetic-password-alpha"
+    edgecred_beta_002: "synthetic-password-beta"
+trafficStats:
+  listen: "127.0.0.1:26080"
+  secret: "synthetic-canary-7f3a9c"
+congestion:
+  type: "bbr"
