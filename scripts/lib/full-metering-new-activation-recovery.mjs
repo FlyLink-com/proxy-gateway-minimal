@@ -186,7 +186,7 @@ function precheck(input, startedAtMs) {
   const inventory = readInventory();
   const classified = classify({ checkpoint, inventory, channels: fullMeteringChannels(LOCAL_METERING_SCOPE) });
   need(classified.counts.otherChanged === 0 && classified.counts.missing === 0
-    && classified.counts.retainedMatched === 0 && classified.counts.retained === 0, "full_metering_identity_unresolved");
+    && classified.counts.retainedMatched === 0, "full_metering_identity_unresolved");
   const nowValue = nowFn();
   const now = nowValue instanceof Date ? nowValue.toISOString() : nowValue;
   let admitted = 0;

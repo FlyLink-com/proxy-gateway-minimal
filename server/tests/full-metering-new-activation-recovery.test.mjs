@@ -264,6 +264,32 @@ test("dual activation and live old writer are rejected before any new journal wr
   assert.equal(existsSync(f.newDirectory), false); assert.deepEqual(tree(f.oldDirectory), oldBytes); assert.deepEqual(f.summary(), before);
 });
 
+test("unmatched retained bindings do not block precheck", async t => {
+  const f = fixture(t); await f.seed();
+  f.now = resumed; f.value = 6000;
+  const retained = { channelRef: channels[0].channelRef, edgeCredentialRef: "synthetic-retained-unmatched", materialDigest: `sha256:${"e".repeat(64)}` };
+  const oldBytes = tree(f.oldDirectory);
+  const checked = await f.recovery("precheck", {
+    readInventory: () => ({ entries: structuredClone(f.bindings), retainedBindings: [retained] })
+  });
+  assert.equal(checked.status, "precheck_passed");
+  assert.equal(checked.unchanged, 6); assert.equal(checked.billingChanged, 0); assert.equal(checked.sampleCount, 0);
+  assert.equal(existsSync(f.newDirectory), false); assert.deepEqual(tree(f.oldDirectory), oldBytes);
+});
+
+test("retained binding matching an old identity stays unresolved", async t => {
+  const f = fixture(t); await f.seed();
+  f.now = resumed; f.value = 6000;
+  const matched = structuredClone(f.bindings[0]);
+  const entries = f.bindings.filter(entry => entry.channelRef !== matched.channelRef || entry.edgeCredentialRef !== matched.edgeCredentialRef);
+  const before = f.summary(), oldBytes = tree(f.oldDirectory);
+  await assert.rejects(f.recovery("precheck", {
+    readInventory: () => ({ entries: structuredClone(entries), retainedBindings: [matched] })
+  }), error => error.code === "full_metering_identity_unresolved");
+  assert.equal(existsSync(f.newDirectory), false);
+  assert.deepEqual(tree(f.oldDirectory), oldBytes); assert.deepEqual(f.summary(), before);
+});
+
 test("foreign activation samples remain distinct; this is not cross-lane deduplication", t => {
   const f = fixture(t);
   const input = { binding: f.bindings[0], generation, delta: { uploadBytes: 3, downloadBytes: 7, totalBytes: 10, intervalStartedAt: resumed, intervalEndedAt: next } };

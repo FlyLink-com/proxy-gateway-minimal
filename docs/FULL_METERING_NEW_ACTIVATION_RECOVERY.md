@@ -45,7 +45,7 @@ from the frozen 49-file collector archive:
 | Path | SHA-256 |
 | --- | --- |
 | `scripts/traffic-full-metering-proof-readonly.mjs` | `39842f92e358ab19f90023ff5a220bfa8d05de36cd158dcc69c67f0827829827` |
-| `scripts/lib/full-metering-new-activation-recovery.mjs` | `098ba4f4ad0dbeb037dd0db3643359da9407b622094a1df96460691fbf8736e7` |
+| `scripts/lib/full-metering-new-activation-recovery.mjs` | `028cfc1a47e0e5002775473f873b780964bd57d3f8d6b0fd8664b270d0945f04` |
 | `scripts/traffic-full-metering-new-activation-recover.mjs` | `906765b3f7b0f4be4518a4ee6e3f81da97d14ccb59645b583bd68cb89f9447b8` |
 
 Probe process bounds: 30s wall time, 256 MiB RSS, 32 MiB plain / 128 MiB
@@ -146,7 +146,7 @@ The recovery CLI is this PR's source. It is not the frozen 49-file collector.
 Transfer it separately and bind SHA-256
 `906765b3f7b0f4be4518a4ee6e3f81da97d14ccb59645b583bd68cb89f9447b8`
 for `scripts/traffic-full-metering-new-activation-recover.mjs` and
-`098ba4f4ad0dbeb037dd0db3643359da9407b622094a1df96460691fbf8736e7`
+`028cfc1a47e0e5002775473f873b780964bd57d3f8d6b0fd8664b270d0945f04`
 for `scripts/lib/full-metering-new-activation-recovery.mjs`.
 
 Prepare a private request JSON that names the old journal, old activation, old
@@ -176,7 +176,12 @@ recordedBytes=0
 ```
 
 Unchanged identities need no proof. Billing-only changes must be admitted.
-The new journal path must still be absent.
+The new journal path must still be absent. A non-zero global retained-binding
+count does not block precheck. Only `retainedMatched` must be 0: a retained
+binding whose key (`channelRef` + `edgeCredentialRef`) and `materialDigest`
+match an old checkpoint identity still fails
+`full_metering_identity_unresolved`. Retained bindings that do not match any
+old identity are allowed. `missing` and `otherChanged` must still be 0.
 
 Stop: `full_metering_old_writer_active`, `full_metering_old_writer_lock`,
 `full_metering_pending_recovery_required`, `full_metering_activation_reused`,
