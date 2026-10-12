@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { appendFileSync, chmodSync, closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync, writeSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import Database from "better-sqlite3";
@@ -16,7 +17,7 @@ import {
   parseFullMeteringNewActivationRecoveryCommand, validateFullMeteringNewActivationRecoveryRequest,
   runFullMeteringNewActivationRecovery
 } from "../../scripts/lib/full-metering-new-activation-recovery.mjs";
-import { runFullMeteringNewActivationRecoveryCommand } from "../../scripts/lib/full-metering-new-activation-recovery-command.mjs";
+import { protectedSha256, runFullMeteringNewActivationRecoveryCommand } from "../../scripts/lib/full-metering-new-activation-recovery-command.mjs";
 
 const [BASIC, PLUS] = PLAN_SWITCH_TIERS;
 const channels = fullMeteringChannels(LOCAL_METERING_SCOPE);
@@ -158,9 +159,42 @@ if (process.platform !== "linux") {
 
 test("recovery bounds reject overrun time and memory", () => {
   assert.equal(NEW_ACTIVATION_RECOVERY_LIMITS.maxDurationMs, 60_000);
+  assert.equal(NEW_ACTIVATION_RECOVERY_LIMITS.maxRssBytes, 512 * 1024 * 1024);
   assert.doesNotThrow(() => assertNewActivationRecoveryBounds(Date.now() - 10, { rss: 1024 }));
   assert.throws(() => assertNewActivationRecoveryBounds(Date.now() - NEW_ACTIVATION_RECOVERY_LIMITS.maxDurationMs - 1, { rss: 1024 }), /time_limit/);
   assert.throws(() => assertNewActivationRecoveryBounds(Date.now(), { rss: NEW_ACTIVATION_RECOVERY_LIMITS.maxRssBytes + 1 }), /memory_limit/);
+});
+
+test("backup sha256 is chunked and does not keep a file-sized buffer", t => {
+  const dir = mkdtempSync(join(tmpdir(), "recovery-backup-sha-"));
+  t.after(() => rmSync(dir, { recursive: true, force: true, maxRetries: 3, retryDelay: 50 }));
+  const file = join(dir, "backup.bin");
+  const piece = Buffer.alloc(1024 * 1024, 0x5a);
+  const written = openSync(file, "w", 0o600);
+  try { for (let index = 0; index < 64; index += 1) writeSync(written, piece); }
+  finally { closeSync(written); }
+  if (process.platform !== "win32") chmodSync(file, 0o600);
+  const size = 64 * 1024 * 1024;
+  const before = process.memoryUsage().arrayBuffers;
+  const actual = protectedSha256(file);
+  const increase = process.memoryUsage().arrayBuffers - before;
+  assert.equal(actual, createHash("sha256").update(readFileSync(file)).digest("hex"));
+  assert.ok(increase < size / 8, `arrayBuffers increased by ${increase}, file is ${size}`);
+  symlinkSync(file, join(dir, "backup-link.bin"));
+  assert.throws(() => protectedSha256(join(dir, "backup-link.bin")), error => error.code === "full_metering_file_invalid");
+  const small = join(dir, "small.bin");
+  writeFileSync(small, Buffer.from("stable-backup"));
+  if (process.platform !== "win32") chmodSync(small, 0o600);
+  assert.throws(() => protectedSha256(small, {
+    onBound(target) { appendFileSync(target, Buffer.from("mutated")); }
+  }), error => error.code === "full_metering_file_changed");
+  // Windows stat mode cannot clear group/other bits, so the 0o644 rejection runs on Linux.
+  if (process.platform !== "win32") {
+    const loose = join(dir, "loose.bin");
+    writeFileSync(loose, Buffer.from("loose"));
+    chmodSync(loose, 0o644);
+    assert.throws(() => protectedSha256(loose), error => error.code === "full_metering_permissions_invalid");
+  }
 });
 
 test("changed and unchanged identities skip paused bytes and keep historical 120 plus 84 new", async t => {
