@@ -54,6 +54,12 @@ import { createSubscriptionCore } from "../services/subscriptions/core.mjs";
 import { createSqliteSubscriptionStore } from "../services/subscriptions/repository.mjs";
 import { hashSubscriptionToken } from "../services/subscriptions/tokens.mjs";
 import { createPlanSwitchCaptureParticipant } from "../services/platform/coin-commerce-plan-switch-capture.mjs";
+import { readFullMeteringPlanSwitchProof } from "../../scripts/lib/full-metering-plan-switch-proof.mjs";
+import { readFullMeteringBindings } from "../../scripts/lib/traffic-vless-recovery-baseline.mjs";
+import { runFullMeteringCollection } from "../../scripts/lib/full-metering-collection.mjs";
+import { LOCAL_METERING_SCOPE, fullMeteringChannels } from "../../scripts/lib/full-metering-scope.mjs";
+import { createFullMeteringSampleWriter } from "../../scripts/lib/full-metering-sample-writer.mjs";
+import { readFullMeteringJournal } from "../../scripts/lib/full-metering-journal.mjs";
 
 const REPOSITORY_ROOT = resolve(fileURLToPath(new URL("../../", import.meta.url)));
 const DAY_MS = 86_400_000;
@@ -385,6 +391,234 @@ function expectCommerceCode(action, code) {
   assert.throws(action, (error) => {
     assert.equal(error?.code, code);
     return true;
+  });
+}
+
+for (const kind of ["upgrade_inplace", "upgrade_restart", "renewal", "downgrade_scheduled"]) {
+  test(`real commerce ${kind} evidence resumes the three-channel collector without a historical debit`, async () => {
+    const h = openHarness({ plan: kind.startsWith("upgrade") ? BASIC.offerVersionRef : PLUS.offerVersionRef,
+      trafficGb: kind.startsWith("upgrade") ? 50 : 100 });
+    const directory = mkdtempSync(join(tmpdir(), "commerce-metering-e2e-"));
+    try {
+      const channels = fullMeteringChannels(LOCAL_METERING_SCOPE);
+      const request = h.controlStore.getPortalAccessRequest("pareq_plan_switch");
+      h.controlStore.upsertPortalAccessRequest({ ...request, edgeCredentials: channels.map((channel, i) => ({
+        edgeChannelRef: channel.channelRef, edgeCredentialRef: `edgecred_plan_switch_${i}`, edgeMaterialDigest: `sha256:synthetic_plan_${i}`
+      })) });
+      const databaseIdentityDigest = "d".repeat(64), context = { databaseIdentityDigest, scopeDigest: "e".repeat(64), meteringScope: LOCAL_METERING_SCOPE };
+      const activationId = "synthetic-commerce-plan-switch";
+      const readBindings = () => readFullMeteringBindings({ db: h.database, databaseIdentityDigest,
+        channelRefs: channels.map(channel => channel.channelRef), now: h.clock.value });
+      const readInventory = () => h.database.transaction(readBindings)();
+      let value = 1000;
+      const options = { directory: join(directory, "journal"), context, activationId, meteringScope: LOCAL_METERING_SCOPE,
+        nowFn: () => h.clock.value, readInventory,
+        readSources: async inventory => channels.map(channel => ({ ...channel, generation: "f".repeat(64), observedAt: h.clock.value,
+          observations: inventory.entries.filter(entry => entry.channelRef === channel.channelRef).map(entry => ({
+            edgeCredentialRef: entry.edgeCredentialRef, uploadBytes: value, downloadBytes: value,
+            ...(channel.mode === "connections" ? { connectionId: `connection-${entry.edgeCredentialRef}` } : {})
+          })) })),
+        readPlanSwitchProof: input => h.database.transaction(() => readFullMeteringPlanSwitchProof({ ...input, db: h.database }))(),
+        applySamples: createFullMeteringSampleWriter({ database: h.database,
+          controlStore: createSqliteSubscriptionControlStore({ database: h.database, initializeSchema: false }),
+          readBindings, meteringScope: LOCAL_METERING_SCOPE, activationId }) };
+      h.clock.value = new Date(Date.parse(CLOCK) - 2000).toISOString();
+      await runFullMeteringCollection({ ...options, mode: "initialize" });
+      h.clock.value = new Date(Date.parse(CLOCK) - 1000).toISOString(); value += 3;
+      assert.equal((await runFullMeteringCollection({ ...options, mode: "collect" })).recordedBytes, 18);
+      h.clock.value = CLOCK;
+      const target = kind === "upgrade_restart" ? YEARLY : kind === "downgrade_scheduled" ? BASIC : PLUS;
+      const quote = h.quote(target.offerRef), order = h.confirm(quote, `metering_${kind}`);
+      await h.deliver();
+      if (kind === "downgrade_scheduled") {
+        assert.equal(h.scheduledRows()[0].status, "scheduled");
+        h.clock.value = VALID_UNTIL;
+        await h.coordinator.runOnce();
+        assert.equal(h.scheduledRows()[0].status, "applied");
+      }
+      assert.equal(h.store.getOrder({ accountId: h.accountId, orderRef: order.orderRef }).paymentStatus, "captured");
+      value += 9000;
+      const result = await runFullMeteringCollection({ ...options, mode: "collect" });
+      assert.equal(result.recordedBytes, 0); assert.equal(result.planSwitchContinuation.identityCount, 3);
+      assert.equal(result.planSwitchContinuation.unassignedBytes, null);
+      assert.equal(h.database.prepare("select sum(total_bytes) from platform_usage_samples").pluck().get(), 18);
+      const coins = h.database.prepare("select count(*) from platform_coin_holds").pluck().get();
+      h.clock.value = new Date(Date.parse(h.clock.value) + 1000).toISOString(); value += 3;
+      assert.equal((await runFullMeteringCollection({ ...options, mode: "collect" })).recordedBytes, 18);
+      assert.equal(h.database.prepare("select sum(total_bytes) from platform_usage_samples").pluck().get(), 36);
+      assert.equal(h.database.prepare("select count(*) from platform_coin_holds").pluck().get(), coins);
+    } finally { h.close(); removeTempDir(directory); }
+  });
+}
+
+// Real commerce/SQLite state with synthetic, non-clearing runtime observations.
+// The peer remains eligible while the paid subscription crosses expiry; this
+// catches a retained identity blocking the shared collector or debiting its gap.
+function openExpiryMeteringFixture(h) {
+  const directory = mkdtempSync(join(tmpdir(), "commerce-metering-expiry-"));
+  const channels = fullMeteringChannels(LOCAL_METERING_SCOPE);
+  const request = h.controlStore.getPortalAccessRequest("pareq_plan_switch");
+  const credentials = prefix => channels.map((channel, i) => ({
+    edgeChannelRef: channel.channelRef, edgeCredentialRef: `edgecred_${prefix}_${i}`,
+    edgeMaterialDigest: `sha256:synthetic_${prefix}_${i}`
+  }));
+  h.controlStore.upsertPortalAccessRequest({ ...request, edgeCredentials: credentials("plan_switch") });
+  const peerAccount = "acct_metering_expiry_peer", peerEntitlement = "ent_metering_expiry_peer";
+  const peerRequest = "pareq_metering_expiry_peer", peerUntil = "2026-10-16T00:00:00.000Z";
+  const timestamps = { createdAt: CLOCK, updatedAt: CLOCK };
+  h.controlStore.createAccount({ id: peerAccount, ownerRef: "owner_metering_expiry_peer", status: "active", ...timestamps });
+  // Yearly-cycle anchoring keeps this peer's cycle unchanged across August 16.
+  h.controlStore.createEntitlement({ id: peerEntitlement, accountId: peerAccount, plan: YEARLY.offerVersionRef,
+    status: "active", validFrom: VALID_FROM, validUntil: peerUntil, trafficLimitBytes: 200 * GIB, ...timestamps });
+  h.controlStore.createIssuanceRequest({ id: peerRequest, accountId: peerAccount, entitlementId: peerEntitlement,
+    approvalRef: "approval_metering_expiry_peer", status: "issued", quantity: 1, nodeId: channels[2].channelRef,
+    purpose: "portal_access_request", requestedByRef: "operator_metering_expiry_peer", ...timestamps });
+  h.controlStore.linkIssuedSubscription({ id: "link_metering_expiry_peer", requestId: peerRequest,
+    tenantRef: safeIssuedRef("tenant", "tenant_metering_expiry_peer"),
+    artifactRef: safeIssuedRef("artifact", "artifact_metering_expiry_peer"), status: "active", ...timestamps });
+  h.controlStore.upsertPortalAccessRequest({ ...request, id: peerRequest, portalUserRef: peerAccount,
+    plan: "yearly", durationDays: 365, entitlementRef: peerEntitlement, tenantId: "tenant_metering_expiry_peer",
+    artifactId: "artifact_metering_expiry_peer", accessGrantRef: "grant_metering_expiry_peer",
+    expiresAt: peerUntil, validUntil: peerUntil, edgeChannelRef: channels[2].channelRef,
+    edgeCredentialRef: "edgecred_metering_expiry_peer_2", edgeMaterialDigest: "sha256:synthetic_metering_expiry_peer_2",
+    edgeCredentials: credentials("metering_expiry_peer") });
+  const databaseIdentityDigest = "d".repeat(64);
+  const context = { databaseIdentityDigest, scopeDigest: "e".repeat(64), meteringScope: LOCAL_METERING_SCOPE };
+  const activationId = "synthetic-commerce-expiry";
+  const readBindings = () => readFullMeteringBindings({ db: h.database, databaseIdentityDigest,
+    channelRefs: channels.map(channel => channel.channelRef), now: h.clock.value });
+  const readInventory = () => h.database.transaction(readBindings)();
+  const values = { subject: 1000, peer: 1000 }, proofs = [];
+  const options = { directory: join(directory, "journal"), context, activationId, meteringScope: LOCAL_METERING_SCOPE,
+    nowFn: () => h.clock.value, readInventory,
+    readSources: async inventory => channels.map(channel => ({ ...channel, generation: "f".repeat(64), observedAt: h.clock.value,
+      observations: [...inventory.entries, ...inventory.retainedBindings]
+        .filter(entry => entry.channelRef === channel.channelRef).map(entry => {
+        // A complete source snapshot still includes retained identities. Keep
+        // this synthetic connection continuously observable; a closed ID must
+        // not be reused merely to make a reactivation fixture pass.
+        const value = entry.edgeCredentialRef.startsWith("edgecred_plan_switch_") ? values.subject : values.peer;
+        return { edgeCredentialRef: entry.edgeCredentialRef, uploadBytes: value, downloadBytes: value,
+          ...(channel.mode === "connections" ? { connectionId: `connection-${entry.edgeCredentialRef}` } : {}) };
+      }) })),
+    readPlanSwitchProof: input => h.database.transaction(() => {
+      const result = readFullMeteringPlanSwitchProof({ ...input, db: h.database });
+      proofs.push(result.ok); return result;
+    })(),
+    applySamples: createFullMeteringSampleWriter({ database: h.database,
+      controlStore: createSqliteSubscriptionControlStore({ database: h.database, initializeSchema: false }),
+      readBindings, meteringScope: LOCAL_METERING_SCOPE, activationId }) };
+  return { values, proofs, readInventory, peerAccount,
+    run: mode => runFullMeteringCollection({ ...options, mode }),
+    checkpoint: () => readFullMeteringJournal({ directory: options.directory, context }),
+    rows: () => h.database.prepare("select * from platform_usage_samples order by id").all(),
+    total: accountId => h.database.prepare("select coalesce(sum(total_bytes),0) from platform_usage_samples where account_id=?").pluck().get(accountId),
+    close: () => removeTempDir(directory) };
+}
+
+for (const retentionFirst of [false, true]) {
+  test(`real commerce due downgrade resumes with expiry poll ${retentionFirst ? "before" : "after"} apply and keeps peer accounting`, async () => {
+    const h = openHarness(), meter = openExpiryMeteringFixture(h);
+    try {
+      h.clock.value = new Date(Date.parse(CLOCK) - 2000).toISOString(); await meter.run("initialize");
+      h.clock.value = new Date(Date.parse(CLOCK) - 1000).toISOString();
+      meter.values.subject += 3; meter.values.peer += 3;
+      assert.equal((await meter.run("collect")).recordedBytes, 36);
+      h.clock.value = CLOCK;
+      const order = h.confirm(h.quote(BASIC.offerRef), `expiry_due_${retentionFirst}`);
+      assert.equal((await h.deliver()).commandsDelivered, 1);
+      assert.equal(h.scheduledRows()[0].status, "scheduled");
+      h.clock.value = new Date(Date.parse(VALID_UNTIL) - 1000).toISOString();
+      meter.values.subject += 3; meter.values.peer += 3;
+      assert.equal((await meter.run("collect")).recordedBytes, 36);
+      assert.equal(meter.total(h.accountId), 36);
+      h.clock.value = VALID_UNTIL;
+      if (retentionFirst) {
+        const expired = await meter.run("collect");
+        assert.equal(expired.eligibleCount, 3);
+        assert.equal(meter.readInventory().retainedBindings.length, 3);
+        assert.ok(meter.checkpoint().sources.every(source => source.counterState.retiredEntries.length === 1));
+      }
+      h.clock.value = new Date(Date.parse(VALID_UNTIL) + 1000).toISOString();
+      await h.coordinator.runOnce();
+      assert.equal(h.scheduledRows()[0].status, "applied");
+      assert.equal(h.store.getOrder({ accountId: h.accountId, orderRef: order.orderRef }).paymentStatus, "captured");
+      const oldRows = meter.rows(), peerBefore = meter.total(meter.peerAccount);
+      meter.values.subject += 9000; meter.values.peer += 3;
+      const result = await meter.run("collect");
+      assert.ok(meter.proofs.length >= 3 && meter.proofs.every(Boolean));
+      assert.equal(result.eligibleCount, 6);
+      assert.equal(meter.readInventory().retainedBindings.length, 0);
+      assert.equal(result.planSwitchContinuation.identityCount, 3);
+      assert.equal(result.planSwitchContinuation.unassignedBytes, null);
+      assert.equal(result.recordedBytes, 18);
+      assert.equal(meter.total(h.accountId), 36);
+      assert.equal(meter.total(meter.peerAccount), peerBefore + 18);
+      const resumedById = new Map(meter.rows().map(row => [row.id, row]));
+      for (const old of oldRows) assert.deepEqual(resumedById.get(old.id), old);
+      for (const source of meter.checkpoint().sources) {
+        const subject = source.counterState.entries.find(entry => entry.edgeCredentialRef.startsWith("edgecred_plan_switch_"));
+        assert.deepEqual(subject.usage, { uploadBytes: 6, downloadBytes: 6 });
+      }
+      h.clock.value = new Date(Date.parse(h.clock.value) + 1000).toISOString();
+      meter.values.subject += 3; meter.values.peer += 3;
+      assert.equal((await meter.run("collect")).recordedBytes, 36);
+      assert.equal(meter.total(h.accountId), 54);
+      const settledRows = meter.rows();
+      h.clock.value = new Date(Date.parse(h.clock.value) + 1000).toISOString();
+      assert.equal((await meter.run("collect")).recordedBytes, 0);
+      assert.deepEqual(meter.rows(), settledRows);
+      assert.equal(h.database.prepare("select count(*) from platform_coin_holds").pluck().get(), 1);
+    } finally { h.close(); meter.close(); }
+  });
+}
+
+for (const removeProof of [false, true]) {
+  test(`real commerce expired same-identity renewal ${removeProof ? "cannot reactivate without durable evidence" : "reactivates without debiting the expired interval"}`, async () => {
+    const h = openHarness(), meter = openExpiryMeteringFixture(h);
+    try {
+      h.clock.value = new Date(Date.parse(VALID_UNTIL) - 2000).toISOString(); await meter.run("initialize");
+      h.clock.value = new Date(Date.parse(VALID_UNTIL) - 1000).toISOString();
+      meter.values.subject += 3; meter.values.peer += 3;
+      assert.equal((await meter.run("collect")).recordedBytes, 36);
+      // A pre-expiry paid renewal has a frozen plan-switch quote. Delivery may
+      // legitimately happen after the expiry poll; a new post-expiry quote
+      // without that provenance remains outside automatic continuation.
+      h.confirm(h.quote(PLUS.offerRef), `expired_renewal_${removeProof}`);
+      h.clock.value = VALID_UNTIL; await meter.run("collect");
+      assert.equal(meter.readInventory().retainedBindings.length, 3);
+      const retainedCheckpoint = meter.checkpoint(), oldRows = meter.rows();
+      h.clock.value = new Date(Date.parse(VALID_UNTIL) + 1000).toISOString();
+      assert.equal((await h.deliver()).commandsDelivered, 1);
+      assert.equal(meter.readInventory().entries.length, 6);
+      if (removeProof) h.database.prepare(`delete from platform_audit_events
+        where entity_ref=? and action='subscription_fulfillment_applied'`).run(h.entitlementRef);
+      meter.values.subject += 9000; meter.values.peer += 3;
+      if (removeProof) {
+        await assert.rejects(meter.run("collect"), error => error.code === "full_metering_plan_switch_unproven");
+        assert.deepEqual(meter.proofs, [false]);
+        assert.deepEqual(meter.checkpoint(), retainedCheckpoint);
+        assert.deepEqual(meter.rows(), oldRows);
+      } else {
+        const resumed = await meter.run("collect");
+        assert.equal(resumed.eligibleCount, 6);
+        assert.equal(meter.readInventory().retainedBindings.length, 0);
+        assert.equal(resumed.planSwitchContinuation.identityCount, 3);
+        assert.ok(meter.proofs.length >= 3 && meter.proofs.every(Boolean));
+        assert.equal(resumed.recordedBytes, 18);
+        assert.equal(meter.total(h.accountId), 18);
+        const resumedById = new Map(meter.rows().map(row => [row.id, row]));
+        for (const old of oldRows) assert.deepEqual(resumedById.get(old.id), old);
+        h.clock.value = new Date(Date.parse(h.clock.value) + 1000).toISOString();
+        meter.values.subject += 3; meter.values.peer += 3;
+        assert.equal((await meter.run("collect")).recordedBytes, 36);
+        assert.equal(meter.total(h.accountId), 36);
+        const settledRows = meter.rows();
+        h.clock.value = new Date(Date.parse(h.clock.value) + 1000).toISOString();
+        assert.equal((await meter.run("collect")).recordedBytes, 0);
+        assert.deepEqual(meter.rows(), settledRows);
+      }
+    } finally { h.close(); meter.close(); }
   });
 }
 

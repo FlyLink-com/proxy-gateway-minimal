@@ -13,7 +13,8 @@ const STATE_FIELDS = ["schemaVersion", "type", "mode", "sourceRef", "channelRef"
   "archivedRefs", "retiredEntries", "retiredConnections", "scopeRevision", "previousStateDigest", "lastScopeChange",
   "generationRevision", "generationArchives", "generationStartedAt", "generationAwaitingObservation", "generationUnassignedGap"];
 const V2_STATE_FIELDS = [...STATE_FIELDS, "connectionHistory", "retentionMigration"];
-const MATERIAL_STATE_FIELDS = ["materialBoundaries", "billingWindowBoundaries"];
+const MATERIAL_STATE_FIELDS = ["materialBoundaries", "billingWindowBoundaries", "planSwitchBoundaries"];
+const CONTINUATION_STATE_FIELDS = [...MATERIAL_STATE_FIELDS, "planSwitchReactivations"];
 const REQUEST_FIELDS = ["state", "mode", "sourceRef", "channelRef", "generation", "eligibleRefs", "retainedRefs", "observedAt", "now", "minObservedAt", "observations"];
 const boundaryDigest = (generation, verifiedAt) => digest({ type: "verified_generation_boundary", generation, verifiedAt });
 
@@ -138,7 +139,7 @@ function validateState(raw, n = null) {
   // retain the entire state in protected storage and must not turn lost state into null.
   try {
     const version = raw && typeof raw === "object" ? Object.getOwnPropertyDescriptor(raw, "schemaVersion")?.value : null;
-    object(raw, version === 2 ? V2_STATE_FIELDS : STATE_FIELDS, MATERIAL_STATE_FIELDS);
+    object(raw, version === 2 ? V2_STATE_FIELDS : STATE_FIELDS, CONTINUATION_STATE_FIELDS);
     requireCondition([1, 2].includes(raw.schemaVersion) && raw.type === "full_metering_counter_state");
     requireCondition(["cumulative", "connections"].includes(raw.mode));
     requireCondition(raw.schemaVersion !== 2 || raw.mode === "connections");
@@ -188,7 +189,7 @@ function validateState(raw, n = null) {
         continue;
       }
       object(archive, ["snapshot", "nextGeneration", "verifiedAt", "archiveDigest"]);
-      object(archive.snapshot, STATE_FIELDS.filter(field => field !== "generationArchives"), MATERIAL_STATE_FIELDS);
+      object(archive.snapshot, STATE_FIELDS.filter(field => field !== "generationArchives"), CONTINUATION_STATE_FIELDS);
       const { snapshot, nextGeneration, verifiedAt, archiveDigest } = archive;
       requireCondition(typeof nextGeneration === "string" && HASH.test(nextGeneration));
       requireCondition(typeof archiveDigest === "string" && HASH.test(archiveDigest));
@@ -272,7 +273,59 @@ function validateState(raw, n = null) {
       }
       return raw[field];
     };
-    const orderedBoundaries = [...acceptBoundaries("materialBoundaries"), ...acceptBoundaries("billingWindowBoundaries")]
+    const reactivations = raw.planSwitchReactivations ?? [];
+    array(reactivations); requireCondition(reactivations.length <= 128);
+    let lastReactivatedAt = null;
+    for (const boundary of reactivations) {
+      object(boundary, ["version", "generation", "observedAt", "previousStateDigest", "entries", "boundaryDigest"]);
+      requireCondition(boundary.version === 1 && knownGenerations.has(boundary.generation));
+      iso(boundary.observedAt);
+      requireCondition(boundary.observedAt <= raw.lastObservedAt && (lastReactivatedAt === null || boundary.observedAt > lastReactivatedAt));
+      const start = raw.generationArchives.find(archive => archive.nextGeneration === boundary.generation)?.verifiedAt ?? raw.minObservedAt;
+      const following = raw.generationArchives.find(archive => (raw.schemaVersion === 2 ? archive.generation : archive.snapshot.generation) === boundary.generation);
+      requireCondition(boundary.observedAt >= start && (!following || boundary.observedAt <= following.verifiedAt));
+      for (const field of ["previousStateDigest", "boundaryDigest"]) requireCondition(typeof boundary[field] === "string" && HASH.test(boundary[field]));
+      const { boundaryDigest: recorded, ...payload } = boundary;
+      requireCondition(digest(payload) === recorded);
+      array(boundary.entries); requireCondition(boundary.entries.length > 0);
+      requireCondition(canonical(boundary.entries.map(entry => entry.edgeCredentialRef)) === canonical(refs(boundary.entries.map(entry => entry.edgeCredentialRef))));
+      for (const entry of boundary.entries) {
+        object(entry, ["edgeCredentialRef", "carryUsage", "retiredEntry", "retiredConnections"]);
+        ref(entry.edgeCredentialRef); requireCondition(eligibleOrArchived.has(entry.edgeCredentialRef));
+        object(entry.carryUsage, ["uploadBytes", "downloadBytes"]); bytes(entry.carryUsage);
+        const saved = entry.retiredEntry;
+        object(saved, ["edgeCredentialRef", "status", "generation", "cursor", "usage", "carryUsage", "connectionIds"]);
+        requireCondition(saved.edgeCredentialRef === entry.edgeCredentialRef && knownGenerations.has(saved.generation));
+        requireCondition(["pending_start", "observed"].includes(saved.status));
+        for (const field of ["usage", "carryUsage"]) { object(saved[field], ["uploadBytes", "downloadBytes"]); bytes(saved[field]); }
+        requireCondition(canonical(saved.usage) === canonical(entry.carryUsage)
+          && saved.usage.uploadBytes >= saved.carryUsage.uploadBytes && saved.usage.downloadBytes >= saved.carryUsage.downloadBytes);
+        requireCondition(canonical(saved.connectionIds) === canonical(refs(saved.connectionIds)));
+        if (saved.status === "pending_start") requireCondition(saved.cursor === null && saved.connectionIds.length === 0
+          && canonical(saved.usage) === canonical(saved.carryUsage));
+        if (raw.mode === "cumulative") {
+          requireCondition(saved.connectionIds.length === 0);
+          if (saved.status === "observed") {
+            object(saved.cursor, ["uploadBytes", "downloadBytes", "observedAt"]); bytes(saved.cursor);
+            requireCondition(iso(saved.cursor.observedAt) >= raw.minObservedAt && saved.cursor.observedAt <= boundary.observedAt);
+            requireCondition(saved.usage.uploadBytes - saved.carryUsage.uploadBytes <= saved.cursor.uploadBytes
+              && saved.usage.downloadBytes - saved.carryUsage.downloadBytes <= saved.cursor.downloadBytes);
+          }
+        } else requireCondition(saved.cursor === null);
+        array(entry.retiredConnections);
+        const ids = [];
+        for (const connection of entry.retiredConnections) {
+          object(connection, ["connectionId", "edgeCredentialRef", "generation", "uploadBytes", "downloadBytes", "observedAt", "closedAt"]);
+          ref(connection.connectionId); bytes(connection); ids.push(connection.connectionId);
+          requireCondition(connection.edgeCredentialRef === entry.edgeCredentialRef && connection.generation === saved.generation);
+          requireCondition(iso(connection.observedAt) >= raw.minObservedAt && connection.observedAt <= boundary.observedAt);
+          if (connection.closedAt !== null) requireCondition(iso(connection.closedAt) > connection.observedAt && connection.closedAt <= boundary.observedAt);
+        }
+        requireCondition(canonical(ids) === canonical(saved.connectionIds));
+      }
+      lastReactivatedAt = boundary.observedAt;
+    }
+    const orderedBoundaries = [...MATERIAL_STATE_FIELDS.flatMap(acceptBoundaries), ...reactivations]
       .sort((left, right) => compare(left.observedAt, right.observedAt));
     for (const boundary of orderedBoundaries) {
       for (const entry of boundary.entries) {
@@ -451,19 +504,100 @@ export function transitionVerifiedFullMeteringBillingWindowCounters(request) {
   return transitionCounters(ordinaryRequest, billingWindowRefs, "billing-window");
 }
 
-function transitionCounters(request, materialRefs = null, boundaryKind = "material") {
+// This primitive is not plan-switch authority. The caller must first prove an
+// applied commercial plan-only transition with unchanged ownership and material.
+// It keeps accepted usage and records an unknown interval, never a historical
+// debit. Its distinct evidence must survive later ordinary/material/window reads;
+// older strict validators reject this new field rather than silently dropping it.
+// A plan change cannot legitimize decreasing same-generation runtime counters.
+export function transitionVerifiedFullMeteringPlanSwitchCounters(request) {
+  object(request, [...REQUEST_FIELDS, "planSwitchRefs"], ["maxAgeMs"]);
+  const planSwitchRefs = refs(request.planSwitchRefs, false);
+  requireCondition(canonical(planSwitchRefs) === canonical(request.planSwitchRefs), "counter_plan_switch_transition_invalid");
+  const { planSwitchRefs: ignored, ...ordinaryRequest } = request;
+  return transitionCounters(ordinaryRequest, planSwitchRefs, "plan-switch");
+}
+
+// The caller owns the commercial proof. This separate atomic primitive never
+// broadens ordinary scope reconciliation: only exactly selected, archived refs
+// may leave retention. No staged state is returned before its real observation
+// and final state validation. A generation change must already be independently
+// verified with advanceVerifiedFullMeteringGeneration; it is never inferred here.
+export function transitionVerifiedFullMeteringPlanSwitchReactivationCounters(request) {
+  object(request, [...REQUEST_FIELDS, "planSwitchRefs", "reactivationRefs"], ["maxAgeMs"]);
+  const planSwitchRefs = refs(request.planSwitchRefs, false), reactivationRefs = refs(request.reactivationRefs, false);
+  requireCondition(canonical(planSwitchRefs) === canonical(request.planSwitchRefs)
+    && canonical(reactivationRefs) === canonical(request.reactivationRefs)
+    && reactivationRefs.every(value => planSwitchRefs.includes(value)), "counter_plan_switch_reactivation_invalid");
+  const { planSwitchRefs: ignored, reactivationRefs: ignoredReactivation, ...ordinaryRequest } = request;
+  return transitionCounters(ordinaryRequest, planSwitchRefs, "plan-switch", reactivationRefs);
+}
+
+function stagePlanSwitchReactivation(before, n, reactivationRefs) {
+  const allowed = value => requireCondition(value, "counter_plan_switch_reactivation_invalid");
+  allowed(before !== null && (before.planSwitchReactivations?.length ?? 0) < 128);
+  allowed(before.mode === n.scope.mode && before.sourceRef === n.scope.sourceRef && before.channelRef === n.scope.channelRef
+    && before.minObservedAt === n.scope.minObservedAt && before.generation === n.generation);
+  allowed(n.observedAt > before.lastObservedAt || before.generationAwaitingObservation && n.observedAt === before.lastObservedAt);
+  const restored = new Set(reactivationRefs);
+  const actual = n.scope.eligibleRefs.filter(value => before.retainedRefs.includes(value));
+  allowed(canonical(actual) === canonical(reactivationRefs));
+  allowed(reactivationRefs.every(value => before.archivedRefs.includes(value)));
+  allowed(before.retainedRefs.every(value => restored.has(value) || n.retained.has(value)));
+  allowed(before.eligibleRefs.every(value => n.eligible.has(value) || n.retained.has(value)));
+  allowed(n.scope.retainedRefs.every(value => before.retainedRefs.includes(value) || before.eligibleRefs.includes(value)));
+  const addedRefs = n.scope.eligibleRefs.filter(value => !before.eligibleRefs.includes(value));
+  const retiredRefs = before.eligibleRefs.filter(value => n.retained.has(value));
+  const retired = new Set(retiredRefs), next = structuredClone(before);
+  const entries = before.retiredEntries.filter(entry => restored.has(entry.edgeCredentialRef)).map(entry => ({
+    edgeCredentialRef: entry.edgeCredentialRef, carryUsage: { ...entry.usage }, retiredEntry: structuredClone(entry),
+    retiredConnections: structuredClone(before.retiredConnections.filter(connection => connection.edgeCredentialRef === entry.edgeCredentialRef))
+  }));
+  allowed(entries.length === reactivationRefs.length);
+  const boundary = { version: 1, generation: n.generation, observedAt: n.observedAt, previousStateDigest: before.stateDigest, entries };
+  next.planSwitchReactivations = [...(before.planSwitchReactivations ?? []), { ...boundary, boundaryDigest: digest(boundary) }];
+  next.retiredEntries = [...next.retiredEntries.filter(entry => !restored.has(entry.edgeCredentialRef)),
+    ...next.entries.filter(entry => retired.has(entry.edgeCredentialRef))].sort((a, b) => compare(a.edgeCredentialRef, b.edgeCredentialRef));
+  next.retiredConnections = [...next.retiredConnections.filter(connection => !restored.has(connection.edgeCredentialRef)),
+    ...next.connections.filter(connection => retired.has(connection.edgeCredentialRef))].sort((a, b) => compare(connectionKey(a), connectionKey(b)));
+  next.entries = next.entries.filter(entry => !retired.has(entry.edgeCredentialRef));
+  next.connections = next.connections.filter(connection => !retired.has(connection.edgeCredentialRef));
+  for (const saved of entries) {
+    const entry = structuredClone(saved.retiredEntry);
+    if (entry.generation !== n.generation) {
+      entry.generation = n.generation; entry.status = "pending_start"; entry.cursor = null; entry.connectionIds = [];
+    } else next.connections.push(...structuredClone(saved.retiredConnections));
+    entry.carryUsage = { ...entry.usage };
+    next.entries.push(entry);
+  }
+  next.entries.push(...addedRefs.filter(value => !restored.has(value)).map(edgeCredentialRef => ({ edgeCredentialRef,
+    status: "pending_start", generation: n.generation, cursor: null, usage: zero(), carryUsage: zero(), connectionIds: [] })));
+  next.entries.sort((a, b) => compare(a.edgeCredentialRef, b.edgeCredentialRef));
+  next.connections.sort((a, b) => compare(connectionKey(a), connectionKey(b)));
+  next.eligibleRefs = [...n.scope.eligibleRefs]; next.retainedRefs = [...n.scope.retainedRefs];
+  next.archivedRefs = next.retiredEntries.map(entry => entry.edgeCredentialRef);
+  next.scopeDigest = n.scopeDigest; next.scopeRevision = sum(before.scopeRevision, 1);
+  next.previousStateDigest = before.stateDigest;
+  next.lastScopeChange = { revision: next.scopeRevision, previousStateDigest: before.stateDigest,
+    fromScopeDigest: before.scopeDigest, toScopeDigest: n.scopeDigest, addedRefs, retiredRefs };
+  return next;
+}
+
+function transitionCounters(request, materialRefs = null, boundaryKind = "material", reactivationRefs = null) {
   const n = normalize(request);
-  const previous = request.state === null ? null : validateState(request.state, n);
-  const next = previous ?? initialState(n);
+  const previous = request.state === null ? null : validateState(request.state, reactivationRefs ? null : n);
+  const next = reactivationRefs ? stagePlanSwitchReactivation(previous, n, reactivationRefs) : previous ?? initialState(n);
   const material = new Set(materialRefs ?? []);
   const billingWindow = boundaryKind === "billing-window";
-  const boundaryField = billingWindow ? "billingWindowBoundaries" : "materialBoundaries";
-  const boundaryError = billingWindow ? "counter_billing_window_transition_invalid" : "counter_material_transition_invalid";
+  const planSwitch = boundaryKind === "plan-switch";
+  const boundaryField = planSwitch ? "planSwitchBoundaries" : billingWindow ? "billingWindowBoundaries" : "materialBoundaries";
+  const boundaryError = planSwitch ? "counter_plan_switch_transition_invalid"
+    : billingWindow ? "counter_billing_window_transition_invalid" : "counter_material_transition_invalid";
   let materialBoundary = null;
   if (materialRefs) {
-    requireCondition(boundaryKind === "material" || billingWindow, boundaryError);
-    requireCondition(previous !== null && n.observedAt > previous.lastObservedAt
-      && !previous.generationAwaitingObservation && (previous[boundaryField]?.length ?? 0) < 128,
+    requireCondition(boundaryKind === "material" || billingWindow || planSwitch, boundaryError);
+    requireCondition(previous !== null && (n.observedAt > previous.lastObservedAt || reactivationRefs && previous.generationAwaitingObservation)
+      && (!previous.generationAwaitingObservation || reactivationRefs) && (previous[boundaryField]?.length ?? 0) < 128,
     boundaryError);
     const observedRefs = new Set(n.observations.map(observation => observation.edgeCredentialRef));
     requireCondition(materialRefs.every(r => n.eligible.has(r)
@@ -471,8 +605,13 @@ function transitionCounters(request, materialRefs = null, boundaryKind = "materi
     const boundary = { generation: n.generation, observedAt: n.observedAt, previousStateDigest: previous.stateDigest,
       entries: next.entries.filter(entry => material.has(entry.edgeCredentialRef))
         .map(entry => ({ edgeCredentialRef: entry.edgeCredentialRef, carryUsage: { ...entry.usage } })) };
-    materialBoundary = { ...boundary, boundaryDigest: digest(boundary) };
-    next[boundaryField] = [...(next[boundaryField] ?? []), materialBoundary];
+    // A just-verified generation already baselines all active entries. Restored
+    // retained usage is carried by its distinct reactivation evidence at that
+    // same boundary; do not fabricate an ordinary plan boundary before a read.
+    if (!previous.generationAwaitingObservation) {
+      materialBoundary = { ...boundary, boundaryDigest: digest(boundary) };
+      next[boundaryField] = [...(next[boundaryField] ?? []), materialBoundary];
+    }
     for (const entry of next.entries) if (material.has(entry.edgeCredentialRef)) entry.carryUsage = { ...entry.usage };
   }
   let unchanged = false;
@@ -486,8 +625,11 @@ function transitionCounters(request, materialRefs = null, boundaryKind = "materi
   const pendingBefore = new Set(next.entries.filter(e => e.status === "pending_start").map(e => e.edgeCredentialRef));
   const deltaByOwner = new Map();
   let initializedConnectionCount = 0, closedConnectionCount = 0;
-  const accumulate = (entry, observation, before) => {
+  const requireMonotonic = (observation, before) => {
     requireCondition(observation.uploadBytes >= before.uploadBytes && observation.downloadBytes >= before.downloadBytes, "counter_decreased");
+  };
+  const accumulate = (entry, observation, before) => {
+    requireMonotonic(observation, before);
     const delta = { uploadBytes: observation.uploadBytes - before.uploadBytes, downloadBytes: observation.downloadBytes - before.downloadBytes };
     add(entry.usage, delta);
     if (delta.uploadBytes === 0 && delta.downloadBytes === 0) return;
@@ -507,7 +649,10 @@ function transitionCounters(request, materialRefs = null, boundaryKind = "materi
           requireCondition(entry.status === "pending_start", "observed_counter_missing");
           continue;
         }
-        if (entry.status === "observed" && !material.has(entry.edgeCredentialRef)) accumulate(entry, observation, entry.cursor);
+        if (entry.status === "observed") {
+          if (!material.has(entry.edgeCredentialRef)) accumulate(entry, observation, entry.cursor);
+          else if (planSwitch) requireMonotonic(observation, entry.cursor);
+        }
         entry.status = "observed";
         entry.cursor = cursor(observation, n.observedAt);
       }
@@ -536,7 +681,10 @@ function transitionCounters(request, materialRefs = null, boundaryKind = "materi
         if (n.retained.has(observation.edgeCredentialRef)) continue;
         const entry = entries.get(observation.edgeCredentialRef);
         const before = connections.get(observation.connectionId);
-        if (before) { if (!material.has(entry.edgeCredentialRef)) accumulate(entry, observation, before); }
+        if (before) {
+          if (!material.has(entry.edgeCredentialRef)) accumulate(entry, observation, before);
+          else if (planSwitch) requireMonotonic(observation, before);
+        }
         else {
           initializedConnectionCount++;
           entry.connectionIds.push(observation.connectionId);
@@ -561,10 +709,18 @@ function transitionCounters(request, materialRefs = null, boundaryKind = "materi
   const retiredTotals = zero(); next.retiredEntries.forEach(entry => add(retiredTotals, entry.usage));
   const eligibleTotals = next.entries.map(entry => { add(totals, entry.usage); return { edgeCredentialRef: entry.edgeCredentialRef, status: entry.status, ...withTotal(entry.usage) }; });
   const observedCount = next.entries.filter(e => e.status === "observed").length;
-  if (materialBoundary) validateState(next);
+  if (materialBoundary || reactivationRefs) validateState(next);
   return { nextState: next, unchanged,
-    ...(materialBoundary ? { receipt: billingWindow
-      ? { type: "verified_full_metering_billing_window_transition", billingWindowCount: materialRefs.length,
+    ...(reactivationRefs ? { receipt: { type: "verified_full_metering_plan_switch_reactivation",
+      reactivationCount: reactivationRefs.length, planSwitchCount: materialRefs.length,
+      reactivationBoundaryDigest: next.planSwitchReactivations.at(-1).boundaryDigest,
+      beforeStateDigest: previous.stateDigest, afterStateDigest: next.stateDigest,
+      generation: n.generation, observedAt: n.observedAt, unassignedBytes: null } }
+      : materialBoundary ? { receipt: planSwitch
+      ? { type: "verified_full_metering_plan_switch_transition", planSwitchCount: materialRefs.length,
+        planSwitchBoundaryDigest: materialBoundary.boundaryDigest, beforeStateDigest: materialBoundary.previousStateDigest,
+        afterStateDigest: next.stateDigest, generation: n.generation, observedAt: n.observedAt, unassignedBytes: null }
+      : billingWindow ? { type: "verified_full_metering_billing_window_transition", billingWindowCount: materialRefs.length,
         billingWindowBoundaryDigest: materialBoundary.boundaryDigest, beforeStateDigest: materialBoundary.previousStateDigest,
         afterStateDigest: next.stateDigest, generation: n.generation, observedAt: n.observedAt, unassignedBytes: null }
       : { type: "verified_full_metering_material_transition", materialCount: materialRefs.length,
