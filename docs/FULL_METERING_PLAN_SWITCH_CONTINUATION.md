@@ -147,7 +147,10 @@ long-lived runbook. Windows success does not replace Linux runtime validation.
    necessary. This source path alone does not suppress their ordinary deltas;
    do not resume a long-stopped timer and call its catch-up historical-free.
    Do not fake a process generation, delete checkpoints or use `--initialize`
-   to erase the old journal.
+   to erase the old journal. The approved candidate is a new activation and a
+   new absent journal at current counters. The stepwise operator document is
+   `docs/FULL_METERING_NEW_ACTIVATION_RECOVERY.md`. That document does not
+   authorize production execution.
 5. After exact approval, install the verified collector separately from the
    business app, then follow the approved recovery order. No protocol restart,
    identity issuance, rights mutation or SGP scope expansion is implied.
