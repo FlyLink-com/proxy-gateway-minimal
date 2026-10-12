@@ -34,10 +34,19 @@ command, expected receipt and stop condition. There is no all-in-one executor.
 
 | Path | Role |
 | --- | --- |
-| `scripts/traffic-full-metering-proof-readonly.mjs` | Single-purpose aggregate commercial-proof probe. `main()` is Linux/root/Node 22.23.1 only. Tests import `analyze` / `decodeCheckpoint` only. |
+| `scripts/traffic-full-metering-proof-readonly.mjs` | Single-purpose aggregate commercial-proof probe. `main()` is Linux/root/Node 22.23.1 only. Tests import `analyze`, `decodeCheckpoint` and `candidateWorkingDirectoryMatchesApp` only. |
 | `scripts/lib/full-metering-new-activation-recovery.mjs` | Precheck plus new-journal initialize. Old journal is read-only. |
 | `scripts/traffic-full-metering-new-activation-recover.mjs` | One-step CLI: `--precheck` or `--initialize-new-journal`. Never `--collect`. |
 | `scripts/traffic-full-metering-collect.mjs` | Existing collector. Later natural `--collect` against the **new** config only. |
+
+Pinned file SHA-256, exact bytes of this source slice. These pins are separate
+from the frozen 49-file collector archive:
+
+| Path | SHA-256 |
+| --- | --- |
+| `scripts/traffic-full-metering-proof-readonly.mjs` | `39842f92e358ab19f90023ff5a220bfa8d05de36cd158dcc69c67f0827829827` |
+| `scripts/lib/full-metering-new-activation-recovery.mjs` | `098ba4f4ad0dbeb037dd0db3643359da9407b622094a1df96460691fbf8736e7` |
+| `scripts/traffic-full-metering-new-activation-recover.mjs` | `906765b3f7b0f4be4518a4ee6e3f81da97d14ccb59645b583bd68cb89f9447b8` |
 
 Probe process bounds: 30s wall time, 256 MiB RSS, 32 MiB plain / 128 MiB
 checkpoint / 256 MiB decoded payload, 10 000 identities, 5s systemctl and
@@ -87,8 +96,14 @@ Stop: extra file, hash drift, overwrite, or any pointer/service mutation.
 ### Step 3 — Read-only commercial proof probe
 
 The probe is this PR's source. It is not one of the frozen 49 collector files.
-Transfer it as a separate root-private file and bind its SHA-256 independently.
+Transfer it as a separate root-private file and bind SHA-256
+`39842f92e358ab19f90023ff5a220bfa8d05de36cd158dcc69c67f0827829827`.
 Do not add it to the 49-file candidate directory.
+
+`proxy-gateway-candidate.service` `WorkingDirectory` may be the pinned release
+directory, or `/opt/proxy-gateway-minimal-candidate/current` when that symlink
+resolves to the same release. `/proc/<MainPID>/cwd` must still resolve to that
+release. Any other working directory stops as `app_changed`.
 
 Command, on the target host only after a new exact Risk A approval:
 
@@ -127,8 +142,12 @@ raw identifiers in the receipt; RSS or time limit; recoveryReady true.
 
 ### Step 4 — Recovery precheck against the old journal
 
-The recovery CLI is this PR's source and needs its own later artifact pin. It
-is not the frozen 49-file collector. Transfer it separately.
+The recovery CLI is this PR's source. It is not the frozen 49-file collector.
+Transfer it separately and bind SHA-256
+`906765b3f7b0f4be4518a4ee6e3f81da97d14ccb59645b583bd68cb89f9447b8`
+for `scripts/traffic-full-metering-new-activation-recover.mjs` and
+`098ba4f4ad0dbeb037dd0db3643359da9407b622094a1df96460691fbf8736e7`
+for `scripts/lib/full-metering-new-activation-recovery.mjs`.
 
 Prepare a private request JSON that names the old journal, old activation, old
 context, new activation, new config path/digest, `oldWriterStopped: true`,

@@ -4,7 +4,8 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { gzipSync } from 'node:zlib';
 import Database from 'better-sqlite3';
-import { FILES, decodeCheckpoint, analyze, PROBE_LIMITS, assertProbeBounds } from '../../scripts/traffic-full-metering-proof-readonly.mjs';
+import { readFileSync } from 'node:fs';
+import { FILES, decodeCheckpoint, analyze, PROBE_LIMITS, assertProbeBounds, candidateWorkingDirectoryMatchesApp } from '../../scripts/traffic-full-metering-proof-readonly.mjs';
 import { fullMeteringDigest as digest } from '../../scripts/lib/full-metering-journal.mjs';
 import { fullMeteringBindingIdentity as identity } from '../../scripts/lib/full-metering-sample-writer.mjs';
 import { admitFullMeteringPlanSwitches as admit, planSwitchContinuationHistory as history } from '../../scripts/lib/full-metering-plan-switch-continuation.mjs';
@@ -56,6 +57,22 @@ test('exact 49 path/hash/byte pins remain frozen and match collector source blob
     assert.equal(data.length,bytes);
     assert.equal(hash(data),sha256);
   }
+});
+const APP='/opt/proxy-gateway-minimal-candidate/releases/control-plane-pr772-63dd535428a2-mixed-reset764-guard767';
+const CURRENT='/opt/proxy-gateway-minimal-candidate/current';
+test('candidate working directory accepts the current symlink only when it resolves to APP',()=>{
+  assert.equal(candidateWorkingDirectoryMatchesApp(CURRENT,APP,CURRENT,path=>{assert.equal(path,CURRENT);return APP;}),true);
+});
+test('candidate working directory rejects the current symlink when it resolves elsewhere',()=>{
+  assert.equal(candidateWorkingDirectoryMatchesApp(CURRENT,APP,CURRENT,()=>'/opt/proxy-gateway-minimal-candidate/releases/other'),false);
+});
+test('candidate working directory rejects an arbitrary path even if that path would resolve to APP',()=>{
+  assert.equal(candidateWorkingDirectoryMatchesApp('/tmp/not-the-candidate',APP,CURRENT,()=>{throw new Error('realpath_not_allowed');}),false);
+});
+test('candidate working directory accepts the APP path without resolving a symlink',()=>{
+  assert.equal(candidateWorkingDirectoryMatchesApp(APP,APP,CURRENT,()=>{throw new Error('realpath_not_allowed');}),true);
+  const source=readFileSync(new URL('../../scripts/traffic-full-metering-proof-readonly.mjs',import.meta.url),'utf8');
+  assert.match(source,/candidateWorkingDirectoryMatchesApp\(row\.WorkingDirectory,APP,BASE\+'\/current',fs\.realpathSync\)&&fs\.realpathSync\('\/proc\/'\+row\.MainPID\+'\/cwd'\)===APP/);
 });
 test('probe bounds reject overrun time and memory without reading production inputs',()=>{
   assert.equal(PROBE_LIMITS.maxDurationMs,30000);

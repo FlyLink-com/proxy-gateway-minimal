@@ -97,6 +97,10 @@ function verifyClosure(){
   const expected=new Set(FILES.map(([p])=>ROOT+'/'+p));for(const p of directories)for(const name of fs.readdirSync(p))need(directories.has(p+'/'+name)||expected.has(p+'/'+name),'candidate_extra_file');
   return FILES.map(([p,h,size])=>{const v=read(ROOT+'/'+p,0,false,size);need(v.sha===h&&v.data.length===size,'candidate_changed');return v.signature;});
 }
+// Accept the release directory or the production current symlink only when that link resolves to it.
+export function candidateWorkingDirectoryMatchesApp(workingDirectory,app,currentLink,realpathSync){
+  return workingDirectory===app||(workingDirectory===currentLink&&realpathSync(workingDirectory)===app);
+}
 function services(){
   need(fs.realpathSync(BASE+'/current')===APP,'app_changed');meta(OLD,0,false,true);
   const snapshot=[];for(const unit of ['proxy-gateway-candidate.service','gccgw-full-metering-collect.service','gccgw-full-metering-collect.timer']){
@@ -105,7 +109,7 @@ function services(){
     need(!r.error&&r.status===0&&r.stderr==='','service_read_failed');const row={};
     for(const line of r.stdout.trimEnd().split('\n')){const at=line.indexOf('='),key=line.slice(0,at);need(at>0&&fields.includes(key)&&!Object.hasOwn(row,key),'service_shape_invalid');row[key]=line.slice(at+1);}
     need(fields.every(k=>Object.hasOwn(row,k))&&row.LoadState==='loaded'&&row.Job==='','service_changed');
-    if(unit==='proxy-gateway-candidate.service')need(row.ActiveState==='active'&&row.SubState==='running'&&/^[1-9]\d*$/.test(row.MainPID)&&row.ControlPID==='0'&&row.WorkingDirectory===APP&&fs.realpathSync('/proc/'+row.MainPID+'/cwd')===APP,'app_changed');
+    if(unit==='proxy-gateway-candidate.service')need(row.ActiveState==='active'&&row.SubState==='running'&&/^[1-9]\d*$/.test(row.MainPID)&&row.ControlPID==='0'&&candidateWorkingDirectoryMatchesApp(row.WorkingDirectory,APP,BASE+'/current',fs.realpathSync)&&fs.realpathSync('/proc/'+row.MainPID+'/cwd')===APP,'app_changed');
     else if(unit.endsWith('.timer'))need(row.ActiveState==='inactive'&&row.SubState==='dead','collector_not_quiet');
     else need(['failed','inactive'].includes(row.ActiveState)&&row.MainPID==='0'&&row.ControlPID==='0'&&row.WorkingDirectory===OLD&&row.ExecStart.includes(OLD+'/scripts/traffic-full-metering-collect.mjs --collect --config '+CONFIG+' --config-sha256 '+CONFIG_SHA+' ;'),'collector_changed');
     snapshot.push(row);
