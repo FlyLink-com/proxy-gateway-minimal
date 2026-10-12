@@ -1,7 +1,8 @@
 #!/usr/bin/env node
-import { realpathSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { lstatSync, realpathSync } from "node:fs";
 import { resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { assertNoDuplicateObjectKeys } from "../server/services/deployment/strict-json-scan.mjs";
 import { normalizeCredentialMaterialRecord } from "../server/services/edge/credential-material-store.mjs";
 import { readActiveConfigFile } from "../server/services/edge/runtime-config-readonly-proof.mjs";
@@ -13,6 +14,13 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const SURFACE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const MAX_PRINCIPALS = 5000;
 const USER_LINE = /^( *)("(?:[^"\\]|\\.)*"|'(?:[^']|'')*'|[A-Za-z0-9._:-]+):\s*(.+)$/;
+// --runtime-kind selects the local collector channel for that runtime file.
+// SGP channels are a different surface and are not read by this option.
+const CHANNEL_BY_KIND = Object.freeze({
+  xray: "channel-vultr-a-vless-reality-tcp",
+  hy2: "channel-vultr-a-hy2",
+  mihomo: "channel-vultr-a-tuic"
+});
 
 function blocked(code) {
   return {
@@ -332,6 +340,7 @@ function parseMihomoPrincipals(text) {
   }
 
   const principals = [];
+  const passwordByPrincipal = new Map();
   const seen = new Set();
   for (const group of groups) {
     const typeLine = group.find((line) => line.startsWith("    type:"));
@@ -357,11 +366,17 @@ function parseMihomoPrincipals(text) {
       if (!UUID.test(principal) || !usableSecret(secret)) return { ok: false, code: "input_invalid" };
       if (seen.has(principal)) return { ok: false, code: "duplicate_principals" };
       seen.add(principal);
+      passwordByPrincipal.set(principal, secret);
       principals.push(principal);
     }
   }
   if (principals.length > MAX_PRINCIPALS) return { ok: false, code: "input_invalid" };
-  return { ok: true, principals, materialKeyByPrincipal: new Map(principals.map((principal) => [principal, principal])) };
+  return {
+    ok: true,
+    principals,
+    materialKeyByPrincipal: new Map(principals.map((principal) => [principal, principal])),
+    passwordByPrincipal
+  };
 }
 
 // Userpass usernames are the usage-map keys and the credential refs. Protected
@@ -451,7 +466,9 @@ function parseMaterialIndex(text) {
     byUuid.set(uuid, normalized.credentialRef);
     byCredentialRef.set(normalized.credentialRef, {
       credentialRef: normalized.credentialRef,
-      password: normalized.material.password
+      password: normalized.material.password,
+      uuid,
+      materialDigest: normalized.materialDigest
     });
   }
   return { ok: true, byUuid, byCredentialRef };
@@ -472,6 +489,134 @@ function materialReferenceFor(kind, runtime, material, principal) {
   }
   const materialKey = runtime.materialKeyByPrincipal.get(principal);
   return materialKey ? material.byUuid.get(materialKey) : undefined;
+}
+
+// File mode does not compare TUIC passwords. The collector does: its runtime
+// fingerprint for tuic is uuid + password. DB mode uses that same check.
+function protectedReference(kind, runtime, material, principal) {
+  const reference = materialReferenceFor(kind, runtime, material, principal);
+  if (reference === undefined || kind !== "mihomo") return reference;
+  const record = material.byCredentialRef.get(reference);
+  if (!record || record.password !== runtime.passwordByPrincipal?.get(principal)) return undefined;
+  return reference;
+}
+
+// Resolver map matches createFullMeteringSourceDriver. Eligible bindings are
+// the active map. Retained bindings stay in that map when protected material
+// still resolves them, so a retained principal absent from the runtime config
+// is stale (IDENTITY_LIFECYCLE stale_pending_retention). A retained binding
+// with no material record is not a resolver entry and is not stale. A
+// materialDigest disagreement on a shared principal is changed: the collector
+// rejects that split as full_metering_material_binding_changed. TUIC
+// principals are material UUIDs, so an eligible TUIC binding with no material
+// record cannot be keyed and stays out of the map.
+function projectResolverMap(kind, inventory, material) {
+  if (!Array.isArray(inventory?.entries) || !Array.isArray(inventory?.retainedBindings)) {
+    return { ok: false, code: "db_invalid" };
+  }
+  const channel = CHANNEL_BY_KIND[kind];
+  const eligible = inventory.entries.filter((entry) => entry?.channelRef === channel);
+  const retained = inventory.retainedBindings.filter((entry) => entry?.channelRef === channel);
+  const retainedRefs = new Set(retained.map((entry) => entry.edgeCredentialRef));
+  const entries = [];
+  const seen = new Set();
+  const digestMismatch = new Set();
+  for (const entry of [...eligible, ...retained]) {
+    const credentialRef = entry?.edgeCredentialRef;
+    if (!safeToken(credentialRef)) return { ok: false, code: "db_invalid" };
+    const record = material.byCredentialRef.get(credentialRef);
+    const isRetained = retainedRefs.has(credentialRef);
+    if (!record) {
+      if (isRetained || kind === "mihomo") continue;
+      if (seen.has(credentialRef)) return { ok: false, code: "duplicate_principals" };
+      seen.add(credentialRef);
+      entries.push({ principal: credentialRef, reference: credentialRef });
+      continue;
+    }
+    const principal = kind === "mihomo" ? record.uuid : credentialRef;
+    const validPrincipal = kind === "mihomo" ? UUID.test(principal) : safeToken(principal);
+    if (!validPrincipal) return { ok: false, code: "db_invalid" };
+    if (seen.has(principal)) return { ok: false, code: "duplicate_principals" };
+    seen.add(principal);
+    if (record.materialDigest !== entry.materialDigest) digestMismatch.add(principal);
+    entries.push({ principal, reference: credentialRef });
+  }
+  return { ok: true, entries, digestMismatch };
+}
+
+function sqliteReadOnlyUri(filePath) {
+  const url = pathToFileURL(resolve(filePath));
+  url.searchParams.set("mode", "ro");
+  url.searchParams.set("immutable", "1");
+  return url.href;
+}
+
+function databaseIdentityDigest(stat) {
+  return createHash("sha256")
+    .update(String(stat.dev))
+    .update("\0")
+    .update(String(stat.ino))
+    .update("\0")
+    .update(String(stat.size))
+    .digest("hex");
+}
+
+async function readResolverInventory(dbPath, kind) {
+  if (typeof dbPath !== "string" || dbPath.length === 0 || dbPath.includes("\0")) {
+    return { ok: false, code: "input_invalid" };
+  }
+  let stat;
+  try {
+    stat = lstatSync(dbPath);
+  } catch {
+    return { ok: false, code: "input_unreadable" };
+  }
+  if (!stat.isFile() || stat.isSymbolicLink()) return { ok: false, code: "input_unreadable" };
+  // better-sqlite3 honors file: URIs only when this is set before the native
+  // addon loads. The immutable query keeps the open from creating WAL/SHM.
+  process.env.SQLITE_USE_URI = "1";
+  let db;
+  try {
+    const { default: Database } = await import("better-sqlite3");
+    const { readFullMeteringBindings } = await import("./lib/traffic-vless-recovery-baseline.mjs");
+    db = new Database(sqliteReadOnlyUri(dbPath), { readonly: true, fileMustExist: true });
+    db.pragma("trusted_schema = OFF");
+    db.pragma("query_only = ON");
+    const inventory = db.transaction(() => readFullMeteringBindings({
+      db,
+      databaseIdentityDigest: databaseIdentityDigest(stat),
+      channelRefs: [CHANNEL_BY_KIND[kind]],
+      now: new Date()
+    }))();
+    return { ok: true, inventory };
+  } catch {
+    return { ok: false, code: "db_invalid" };
+  } finally {
+    if (db?.open) db.close();
+  }
+}
+
+function observeDatabase(kind, runtimeText, inventory, materialText) {
+  const runtime = parseRuntime(kind, runtimeText);
+  if (!runtime.ok) return runtime;
+  const material = parseMaterialIndex(materialText);
+  if (!material.ok) return material;
+  const projected = projectResolverMap(kind, inventory, material);
+  if (!projected.ok) return projected;
+  const materialRefs = [];
+  for (const principal of runtime.principals) {
+    let reference = protectedReference(kind, runtime, material, principal);
+    if (!reference) continue;
+    // Keep the disagreement inside the aggregate comparison. The sentinel is a
+    // fixed token, never a credential ref, and it is not part of the output.
+    if (projected.digestMismatch.has(principal)) reference = "digest-mismatch";
+    materialRefs.push({ principal, reference });
+  }
+  return computeIdentityGate({
+    runtimePrincipals: runtime.principals,
+    mapEntries: projected.entries,
+    materialRefs
+  });
 }
 
 function observe(kind, runtimeText, mapText, materialText) {
@@ -532,7 +677,7 @@ function present(surface, gate) {
   return output;
 }
 
-export function runIdentityGateCli({
+export async function runIdentityGateCli({
   argv = process.argv.slice(2),
   stdout = process.stdout
 } = {}) {
@@ -543,22 +688,35 @@ export function runIdentityGateCli({
   const kind = argValue(argv, "--runtime-kind");
   const runtimePath = argValue(argv, "--runtime-config");
   const mapPath = argValue(argv, "--identity-map");
+  const dbPath = argValue(argv, "--db");
   const materialPath = argValue(argv, "--material");
   const finish = (gate) => {
     stdout.write(`${JSON.stringify(present(surface, gate))}\n`);
     return gate.state === "blocked" ? 1 : 0;
   };
-  if (!surface || (kind !== "xray" && kind !== "mihomo" && kind !== "hy2") || !runtimePath || !mapPath || !materialPath) {
-    return finish(blocked("input_invalid"));
+  try {
+    const useDb = dbPath.length > 0;
+    const useMap = mapPath.length > 0;
+    if (!surface || !Object.hasOwn(CHANNEL_BY_KIND, kind) || !runtimePath || !materialPath || useDb === useMap) {
+      return finish(blocked("input_invalid"));
+    }
+    const runtime = readRequired(runtimePath);
+    if (!runtime.ok) return finish(blocked(runtime.code));
+    const material = readRequired(materialPath);
+    if (!material.ok) return finish(blocked(material.code));
+    if (useDb) {
+      const inventory = await readResolverInventory(dbPath, kind);
+      if (!inventory.ok) return finish(blocked(inventory.code));
+      const gate = observeDatabase(kind, runtime.text, inventory.inventory, material.text);
+      return finish(gate.ok === false ? blocked(gate.code) : gate);
+    }
+    const map = readRequired(mapPath);
+    if (!map.ok) return finish(blocked(map.code));
+    const gate = observe(kind, runtime.text, map.text, material.text);
+    return finish(gate.ok === false ? blocked(gate.code) : gate);
+  } catch {
+    return finish(blocked("db_invalid"));
   }
-  const runtime = readRequired(runtimePath);
-  if (!runtime.ok) return finish(blocked(runtime.code));
-  const map = readRequired(mapPath);
-  if (!map.ok) return finish(blocked(map.code));
-  const material = readRequired(materialPath);
-  if (!material.ok) return finish(blocked(material.code));
-  const gate = observe(kind, runtime.text, map.text, material.text);
-  return finish(gate.ok === false ? blocked(gate.code) : gate);
 }
 
 function isDirectInvocation() {
@@ -571,5 +729,9 @@ function isDirectInvocation() {
 }
 
 if (isDirectInvocation()) {
-  process.exitCode = runIdentityGateCli();
+  runIdentityGateCli().then((code) => {
+    process.exitCode = code;
+  }).catch(() => {
+    process.exitCode = 1;
+  });
 }

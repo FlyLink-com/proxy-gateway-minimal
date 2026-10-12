@@ -1,9 +1,13 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
-import { readFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join, resolve } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
+import Database from "better-sqlite3";
+import { createSqliteSubscriptionControlStore } from "../services/platform/subscription-control-db.mjs";
 import { computeIdentityGate } from "../../scripts/identity-gate-check.mjs";
 
 const TEST_DIRECTORY = dirname(fileURLToPath(import.meta.url));
@@ -305,6 +309,413 @@ test("duplicate runtime principals are blocked", () => {
   const gate = readGate(run(gateArgs("xray", "xray-duplicate.json", "map-healthy.json", "material-healthy.json")));
   assert.equal(gate.state, "blocked");
   assert.equal(gate.code, "duplicate_principals");
+});
+
+const DB_OLD = "2020-01-01T00:00:00.000Z";
+const DB_UNTIL = "2099-01-01T00:00:00.000Z";
+const DB_KINDS = ["xray", "hy2", "mihomo"];
+const DB_SURFACE = { xray: "japan-vless", hy2: "japan-hy2", mihomo: "japan-tuic" };
+const DB_CHANNEL = {
+  xray: "channel-vultr-a-vless-reality-tcp",
+  hy2: "channel-vultr-a-hy2",
+  mihomo: "channel-vultr-a-tuic"
+};
+const DB_HEALTHY = { xray: "xray-healthy.json", hy2: "hy2-healthy.yaml", mihomo: "mihomo-healthy.yaml" };
+const PEOPLE = {
+  alpha: {
+    ref: "edgecred_alpha_001",
+    uuid: "11111111-1111-4111-8111-111111111111",
+    password: "synthetic-password-alpha",
+    digest: "sha256:alpha"
+  },
+  beta: {
+    ref: "edgecred_beta_002",
+    uuid: "22222222-2222-4222-8222-222222222222",
+    password: "synthetic-password-beta",
+    digest: "sha256:beta"
+  },
+  gamma: {
+    ref: "edgecred_gamma_003",
+    uuid: "33333333-3333-4333-8333-333333333333",
+    password: "synthetic-password-gamma",
+    digest: "sha256:gamma"
+  },
+  stale: {
+    ref: "edgecred_stale_004",
+    uuid: "44444444-4444-4444-8444-444444444444",
+    password: "synthetic-password-alpha",
+    digest: "sha256:stale"
+  }
+};
+
+function dbRow(kind, person, { retained = false, digest = person.digest } = {}) {
+  return { kind, ref: person.ref, digest, retained };
+}
+
+function createControlDatabase(t, rows) {
+  const directory = mkdtempSync(join(tmpdir(), "identity-gate-db-"));
+  const dbPath = join(directory, "subscription-control.sqlite");
+  const db = new Database(dbPath);
+  const store = createSqliteSubscriptionControlStore({ dbPath, database: db });
+  let closed = false;
+  const close = () => {
+    if (closed) return;
+    closed = true;
+    if (db.open) {
+      db.pragma("wal_checkpoint(TRUNCATE)");
+      db.close();
+    }
+  };
+  t.after(() => {
+    close();
+    rmSync(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
+  });
+  rows.forEach((row, index) => {
+    const suffix = String(index);
+    const accountId = `acct-${suffix}`;
+    const entitlementId = `ent-${suffix}`;
+    const requestId = `req-${suffix}`;
+    const channelRef = DB_CHANNEL[row.kind];
+    store.createAccount({
+      id: accountId, ownerRef: `owner-${suffix}`, status: "active", createdAt: DB_OLD, updatedAt: DB_OLD
+    });
+    store.createEntitlement({
+      id: entitlementId, accountId, plan: "yearly", status: "active",
+      validFrom: DB_OLD, validUntil: DB_UNTIL, trafficLimitBytes: 1000, createdAt: DB_OLD, updatedAt: DB_OLD
+    });
+    store.createIssuanceRequest({
+      id: requestId, accountId, entitlementId, approvalRef: `approval-${suffix}`, status: "issued",
+      quantity: 1, nodeId: channelRef, purpose: "portal_auto_issuance", requestedByRef: "test-issuer",
+      createdAt: DB_OLD, updatedAt: DB_OLD
+    });
+    store.linkIssuedSubscription({
+      id: `link-${suffix}`, requestId, tenantRef: `tenant-${suffix}`, artifactRef: `artifact-${suffix}`,
+      status: "active", createdAt: DB_OLD, updatedAt: DB_OLD
+    });
+    store.upsertPortalAccessRequest({
+      id: requestId, portalUserRef: accountId, plan: "yearly", clientTarget: "clash", durationDays: 365,
+      quantity: 1, status: row.retained ? "disabled" : "delivered", nextAction: "user_can_use_access",
+      noteProvided: false, priorTrialState: "not_applicable", submittedAt: DB_OLD, updatedAt: DB_OLD,
+      validUntil: DB_UNTIL, entitlementRef: entitlementId, accessGrantRef: `grant-${suffix}`,
+      tenantId: `tenant-${suffix}`, artifactId: `artifact-${suffix}`, edgeChannelRef: channelRef,
+      edgeCredentialRef: row.ref, edgeMaterialDigest: row.digest
+    });
+  });
+  close();
+  for (const suffix of ["-wal", "-shm"]) {
+    const sidecar = `${dbPath}${suffix}`;
+    if (existsSync(sidecar)) rmSync(sidecar);
+  }
+  return { directory, dbPath };
+}
+
+function dbArgs(kind, runtimePath, dbPath, materialPath) {
+  return [
+    "--surface", DB_SURFACE[kind],
+    "--runtime-kind", kind,
+    "--runtime-config", runtimePath,
+    "--db", dbPath,
+    "--material", materialPath
+  ];
+}
+
+function writeMaterial(directory, people) {
+  const path = join(directory, "material.json");
+  const records = people.map((person) => ({
+    credentialRef: person.ref,
+    materialDigest: person.digest,
+    material: { uuid: person.uuid, password: person.password }
+  }));
+  writeFileSync(path, `${JSON.stringify({ version: 1, records })}\n`);
+  return path;
+}
+
+function writeMihomo(directory, people) {
+  const lines = [
+    "external-controller: \"127.0.0.1:9090\"",
+    "listeners:",
+    "  - name: \"synthetic-listener\"",
+    "    type: tuic",
+    "    port: 443",
+    "    users:"
+  ];
+  for (const person of people) lines.push(`      "${person.uuid}": "${person.password}"`);
+  const path = join(directory, "mihomo.yaml");
+  writeFileSync(path, `${lines.join("\n")}\n`);
+  return path;
+}
+
+function fileStamp(path) {
+  const stat = statSync(path, { bigint: true });
+  return {
+    sha256: createHash("sha256").update(readFileSync(path)).digest("hex"),
+    size: stat.size.toString(),
+    mtimeNs: stat.mtimeNs.toString()
+  };
+}
+
+function expectDbGate(result, expected) {
+  const gate = readGate(result);
+  assert.equal(result.status, expected.state === "blocked" ? 1 : 0);
+  assert.deepEqual(gate, expected);
+  return gate;
+}
+
+for (const kind of DB_KINDS) {
+  test(`${kind} database binding snapshot is verified`, (t) => {
+    const built = createControlDatabase(t, [dbRow(kind, PEOPLE.alpha), dbRow(kind, PEOPLE.beta)]);
+    const result = run(dbArgs(kind, fixture(DB_HEALTHY[kind]), built.dbPath, fixture("material-healthy.json")));
+    expectDbGate(result, {
+      surface: DB_SURFACE[kind],
+      runtime_count: 2,
+      mapped_count: 2,
+      missing: 0,
+      stale: 0,
+      changed: 0,
+      missing_material: 0,
+      map_total: 2,
+      equalities: { runtime_eq: true, map_eq: true },
+      state: "verified"
+    });
+  });
+
+  test(`${kind} runtime principal absent from database bindings is missing`, (t) => {
+    const built = createControlDatabase(t, [dbRow(kind, PEOPLE.alpha), dbRow(kind, PEOPLE.beta)]);
+    const runtime = kind === "mihomo"
+      ? writeMihomo(built.directory, [PEOPLE.alpha, PEOPLE.beta, PEOPLE.gamma])
+      : fixture(kind === "xray" ? "xray-missing.json" : "hy2-missing.yaml");
+    const result = run(dbArgs(kind, runtime, built.dbPath, fixture("material-three.json")));
+    expectDbGate(result, {
+      surface: DB_SURFACE[kind],
+      runtime_count: 3,
+      mapped_count: 2,
+      missing: 1,
+      stale: 0,
+      changed: 0,
+      missing_material: 0,
+      map_total: 2,
+      equalities: { runtime_eq: true, map_eq: true },
+      state: "degraded"
+    });
+  });
+
+  test(`${kind} retained binding resolved by material and absent from runtime is stale`, (t) => {
+    const built = createControlDatabase(t, [
+      dbRow(kind, PEOPLE.alpha),
+      dbRow(kind, PEOPLE.beta),
+      dbRow(kind, PEOPLE.stale, { retained: true })
+    ]);
+    const material = writeMaterial(built.directory, [PEOPLE.alpha, PEOPLE.beta, PEOPLE.stale]);
+    const result = run(dbArgs(kind, fixture(DB_HEALTHY[kind]), built.dbPath, material));
+    expectDbGate(result, {
+      surface: DB_SURFACE[kind],
+      runtime_count: 2,
+      mapped_count: 2,
+      missing: 0,
+      stale: 1,
+      changed: 0,
+      missing_material: 0,
+      map_total: 3,
+      equalities: { runtime_eq: true, map_eq: true },
+      state: "degraded"
+    });
+  });
+
+  test(`${kind} database material digest disagreement is changed`, (t) => {
+    const built = createControlDatabase(t, [
+      dbRow(kind, PEOPLE.alpha, { digest: "sha256:other" }),
+      dbRow(kind, PEOPLE.beta)
+    ]);
+    const result = run(dbArgs(kind, fixture(DB_HEALTHY[kind]), built.dbPath, fixture("material-healthy.json")));
+    assert.equal(result.stdout.includes("sha256:"), false);
+    expectDbGate(result, {
+      surface: DB_SURFACE[kind],
+      runtime_count: 2,
+      mapped_count: 2,
+      missing: 0,
+      stale: 0,
+      changed: 1,
+      missing_material: 0,
+      map_total: 2,
+      equalities: { runtime_eq: true, map_eq: true },
+      state: "degraded"
+    });
+  });
+
+  test(`${kind} database runtime principal without protected material is missing_material`, (t) => {
+    const built = createControlDatabase(t, [dbRow(kind, PEOPLE.alpha), dbRow(kind, PEOPLE.beta)]);
+    const runtime = kind === "mihomo"
+      ? writeMihomo(built.directory, [
+        PEOPLE.alpha,
+        { ...PEOPLE.beta, password: "synthetic-password-gamma" }
+      ])
+      : fixture(DB_HEALTHY[kind]);
+    const material = kind === "mihomo" ? fixture("material-healthy.json") : fixture("material-partial.json");
+    const result = run(dbArgs(kind, runtime, built.dbPath, material));
+    expectDbGate(result, {
+      surface: DB_SURFACE[kind],
+      runtime_count: 2,
+      mapped_count: kind === "mihomo" ? 2 : 2,
+      missing: kind === "mihomo" ? 0 : 0,
+      stale: 0,
+      changed: 0,
+      missing_material: kind === "mihomo" ? 1 : 1,
+      map_total: 2,
+      equalities: { runtime_eq: true, map_eq: true },
+      state: "degraded"
+    });
+  });
+}
+
+test("xray and hy2 missing material keeps the database principal mapped", (t) => {
+  for (const kind of ["xray", "hy2"]) {
+    const built = createControlDatabase(t, [dbRow(kind, PEOPLE.alpha), dbRow(kind, PEOPLE.beta)]);
+    const gate = readGate(run(dbArgs(kind, fixture(DB_HEALTHY[kind]), built.dbPath, fixture("material-partial.json"))));
+    assert.equal(gate.missing, 0);
+    assert.equal(gate.mapped_count, 2);
+    assert.equal(gate.missing_material, 1);
+  }
+});
+
+test("retained database binding without material is not a stale resolver entry", (t) => {
+  const built = createControlDatabase(t, [
+    dbRow("xray", PEOPLE.alpha),
+    dbRow("xray", PEOPLE.beta),
+    dbRow("xray", PEOPLE.stale, { retained: true })
+  ]);
+  const result = run(dbArgs("xray", fixture("xray-healthy.json"), built.dbPath, fixture("material-healthy.json")));
+  expectDbGate(result, {
+    surface: "japan-vless",
+    runtime_count: 2,
+    mapped_count: 2,
+    missing: 0,
+    stale: 0,
+    changed: 0,
+    missing_material: 0,
+    map_total: 2,
+    equalities: { runtime_eq: true, map_eq: true },
+    state: "verified"
+  });
+});
+
+test("equality failure for principals stored in the database is blocked", (t) => {
+  const built = createControlDatabase(t, [dbRow("xray", PEOPLE.alpha), dbRow("xray", PEOPLE.beta)]);
+  const verified = expectDbGate(
+    run(dbArgs("xray", fixture("xray-healthy.json"), built.dbPath, fixture("material-healthy.json"))),
+    {
+      surface: "japan-vless",
+      runtime_count: 2,
+      mapped_count: 2,
+      missing: 0,
+      stale: 0,
+      changed: 0,
+      missing_material: 0,
+      map_total: 2,
+      equalities: { runtime_eq: true, map_eq: true },
+      state: "verified"
+    }
+  );
+  const failed = computeIdentityGate({
+    runtimePrincipals: { entries: [PEOPLE.alpha.ref, PEOPLE.beta.ref], runtime_count: verified.runtime_count + 1 },
+    mapEntries: [PEOPLE.alpha, PEOPLE.beta].map((person) => ({ principal: person.ref, reference: person.ref })),
+    materialRefs: [PEOPLE.alpha, PEOPLE.beta].map((person) => ({ principal: person.ref, reference: person.ref }))
+  });
+  assert.equal(failed.state, "blocked");
+  assert.equal(failed.code, "equality_failed");
+  assert.equal(failed.equalities.runtime_eq, false);
+  assert.equal(JSON.stringify(failed).includes(PEOPLE.alpha.ref), false);
+});
+
+test("invalid database is blocked with a fixed code and no payload", (t) => {
+  const directory = mkdtempSync(join(tmpdir(), "identity-gate-db-"));
+  const dbPath = join(directory, "not-a-database.sqlite");
+  writeFileSync(dbPath, "not-a-database");
+  t.after(() => rmSync(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 }));
+  const result = run(dbArgs("xray", fixture("xray-healthy.json"), dbPath, fixture("material-healthy.json")));
+  const gate = readGate(result);
+  assert.equal(result.status, 1);
+  assert.equal(gate.state, "blocked");
+  assert.equal(gate.code, "db_invalid");
+  assert.equal(gate.runtime_count, 0);
+  assert.deepEqual(gate.equalities, { runtime_eq: false, map_eq: false });
+  assert.equal(result.stdout.includes("not-a-database"), false);
+  assert.equal(result.stdout.includes(dbPath), false);
+  assert.equal(result.stdout.includes(directory), false);
+});
+
+test("missing database is blocked without the path", () => {
+  const missing = join(tmpdir(), "does-not-exist-identity-gate.sqlite");
+  const result = run(dbArgs("hy2", fixture("hy2-healthy.yaml"), missing, fixture("material-healthy.json")));
+  const gate = readGate(result);
+  assert.equal(result.status, 1);
+  assert.equal(gate.state, "blocked");
+  assert.equal(gate.code, "input_unreadable");
+  assert.equal(result.stdout.includes(missing), false);
+  assert.equal(result.stdout.includes("does-not-exist-identity-gate"), false);
+});
+
+test("database and identity map together are blocked", () => {
+  const gate = readGate(run([
+    "--surface", "japan-vless",
+    "--runtime-kind", "xray",
+    "--runtime-config", fixture("xray-healthy.json"),
+    "--identity-map", fixture("map-healthy.json"),
+    "--db", fixture("map-healthy.json"),
+    "--material", fixture("material-healthy.json")
+  ]));
+  assert.equal(gate.state, "blocked");
+  assert.equal(gate.code, "input_invalid");
+});
+
+test("omitting both database and identity map is blocked", () => {
+  const gate = readGate(run([
+    "--surface", "japan-tuic",
+    "--runtime-kind", "mihomo",
+    "--runtime-config", fixture("mihomo-healthy.yaml"),
+    "--material", fixture("material-healthy.json")
+  ]));
+  assert.equal(gate.state, "blocked");
+  assert.equal(gate.code, "input_invalid");
+});
+
+test("readonly database open does not change bytes or create wal or shm", (t) => {
+  const built = createControlDatabase(t, [dbRow("mihomo", PEOPLE.alpha), dbRow("mihomo", PEOPLE.beta)]);
+  assert.equal(existsSync(`${built.dbPath}-wal`), false);
+  assert.equal(existsSync(`${built.dbPath}-shm`), false);
+  const before = fileStamp(built.dbPath);
+  const result = run(dbArgs("mihomo", fixture("mihomo-healthy.yaml"), built.dbPath, fixture("material-healthy.json")));
+  expectDbGate(result, {
+    surface: "japan-tuic",
+    runtime_count: 2,
+    mapped_count: 2,
+    missing: 0,
+    stale: 0,
+    changed: 0,
+    missing_material: 0,
+    map_total: 2,
+    equalities: { runtime_eq: true, map_eq: true },
+    state: "verified"
+  });
+  assert.deepEqual(fileStamp(built.dbPath), before);
+  assert.equal(existsSync(`${built.dbPath}-wal`), false);
+  assert.equal(existsSync(`${built.dbPath}-shm`), false);
+});
+
+test("database gate output does not leak principals, paths, or sqlite errors", (t) => {
+  const built = createControlDatabase(t, [
+    dbRow("hy2", PEOPLE.alpha),
+    dbRow("hy2", PEOPLE.beta),
+    dbRow("hy2", PEOPLE.stale, { retained: true })
+  ]);
+  const material = writeMaterial(built.directory, [PEOPLE.alpha, PEOPLE.beta, PEOPLE.stale]);
+  const result = run(dbArgs("hy2", fixture("hy2-healthy.yaml"), built.dbPath, material));
+  const gate = readGate(result);
+  assert.equal(gate.state, "degraded");
+  assert.equal(gate.stale, 1);
+  assert.equal(result.stdout.includes(built.dbPath), false);
+  assert.equal(result.stdout.includes(built.directory), false);
+  assert.equal(result.stdout.includes(material), false);
+  assert.equal(/baseline_|SQLITE|sha256:|materialDigest|edgeCredential|credentialRef/i.test(result.stdout), false);
 });
 
 test("checker source has no write, spawn, or network APIs", () => {
