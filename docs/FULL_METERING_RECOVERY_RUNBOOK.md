@@ -12,6 +12,10 @@ document_metadata:
 
 Risk: A envelope / B source core. One implementation PR; no separate spec PR.
 Related work: traffic-accounting Epic #437. This does not close that Epic.
+Pause-interval zero-charge recovery (new activation + new journal) is
+`docs/FULL_METERING_NEW_ACTIVATION_RECOVERY.md`. This runbook remains the
+collector recovery contract; that document does not replace it or authorize
+production.
 Release units: `control-plane-app`, `japan-runtime-config`, `sgp-runtime-config`.
 `identity_impact: true`; production identity gate remains pending until live
 readback. No frontend, payment, wallet, order, schema or entitlement mutation.
