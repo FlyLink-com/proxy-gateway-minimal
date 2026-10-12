@@ -13,10 +13,14 @@ document_metadata:
 Risk: A envelope / B source core. One implementation PR; no separate spec PR.
 Expected PR count: 1. Refs #437; does not close that Epic.
 Release unit: `control-plane-app` (collector component).
-`identity_impact: true`; `identity_gate.state: pending`;
-`production_state: not_deployed`. Production/AWS impact of this source slice:
+`identity_impact: true`. The source slice was authored as
+`identity_gate.state: pending` and `production_state: not_deployed`.
+The 2026-10-12 BWH execution is the Deploy Note below:
+`production_state: deployed` for that local-three collector recovery only,
+and `identity_gate.state` remains `pending` because aggregate before/after
+counts were not recorded. Production/AWS impact of the original source slice:
 none. This document does not authorize SSH, host login, database/config/credential
-reads, collector install, timer start, merge, or deployment.
+reads, further collector or timer changes, cleanup, merge, or another deployment.
 
 ## Approved intent
 
@@ -297,7 +301,9 @@ checkpoint into the paused interval, and never clear counters.
 
 ## Remaining production gates
 
-This source PR does not close them:
+The source PR did not close them. The Deploy Note below closes item 6 for the
+2026-10-12 BWH run only. Items 1–5 stay open. Item 5 was not satisfied, so
+Step 8's recovered claim remains unmade.
 
 1. Fresh live inventory of BWH collector/timer/config/journal/DB identity.
 2. Exact Risk A approval for Step 3, then separately for Step 6 and Step 7.
@@ -306,4 +312,121 @@ This source PR does not close them:
 4. Linux fsync/SQLite/CLI validation of this new recovery CLI on the target
    runtime.
 5. Production Identity Gate before/after with retention state.
-6. Deploy Note after actual completion.
+6. Deploy Note for the 2026-10-12 BWH run: recorded below.
+
+## Deploy Note: BWH full-metering new-activation recovery (2026-10-12)
+
+Times are Pacific Time (PDT, UTC-7). This records the BWH local-three collector
+recovery that already ran. It grants no further host action. Aggregate identity
+counts were not taken, so the gate stays `pending` and this note does not call
+identity healthy. Epic #437 and Issue #763 stay open. SGP and the other deferred
+sources stay paused.
+
+**Deployment Metadata:**
+
+- **deployed_at**: 2026-10-12T03:28:07-07:00 (new timer enabled)
+- **release_unit**: control-plane-app (collector component)
+- **source_commit**: `a13495cd802de484e7948891e4aa064dc0e5ecb1` (PR #774 merge).
+  The BWH recovery tools are those bytes. PR #775 merge
+  `e4a8d08daf7c0860ce00d878b32f160c2d70ec48` (2026-10-12 3:30 AM PT) streams the
+  backup digest and records the post-write-failure procedure; that merge was
+  not the tool copy used on this BWH run.
+- **artifact_or_release**: reused 49-file collector archive SHA-256
+  `b68e7d6ecf62535a2f0dd92ed8c68190dadcab9f7d0689858eec148e8ddba8bf` at
+  `/opt/gccwebos-runtime/collector-plan-e834185cca07` (plan source
+  `e834185cca073455d8ac314cdf908ec8fc4c5e8d`). Probe SHA-256
+  `39842f92e358ab19f90023ff5a220bfa8d05de36cd158dcc69c67f0827829827`.
+  Recovery CLI SHA-256
+  `906765b3f7b0f4be4518a4ee6e3f81da97d14ccb59645b583bd68cb89f9447b8`.
+  Recovery lib SHA-256
+  `028cfc1a47e0e5002775473f873b780964bd57d3f8d6b0fd8664b270d0945f04`.
+  Recovery command module SHA-256 prefix `5ff14a17`.
+- **target**: BWH `gccgw-full-metering-collect` for metering scope
+  `local-three-v1`. Drop-in
+  `gccgw-full-metering-collect.service.d/20-new-activation-20261012.conf`
+  points `WorkingDirectory` and `ExecStart` at `collector-plan-e834185cca07`
+  and the new config. OnFailure `gccgw-full-metering-collect-stop.service`
+  stays in place. No IP, config body, or credential is recorded here.
+- **backup**: online SQLite backup at 2026-10-12 2:22 AM PT, about 386 MiB,
+  SHA-256 prefix `f50f306e`, `quick_check` ok. Samples 483,835, rollups 180,
+  cursors 68. Journal, config, and unit backups kept under root-private
+  `/root/recovery-20261012/`. No database restore.
+
+**Cause and decision:**
+
+PR #772 (`63dd535428a2c58e2f39f02af3ec2b673cd50b7e`) changed plan bindings.
+The collector stopped on `full_metering_binding_changed`, and OnFailure
+`gccgw-full-metering-collect-stop.service` stopped the timer at
+2026-10-11 2:11:03 PM PT. Ethan decided the paused interval is not billed.
+Recovery starts from a new zero-sample activation and a new absent journal.
+The old journal stays read-only. Old activation
+`bwh-local-three-20261009-01`, old sequence 6879, old config SHA-256
+`682ced6e0c8e9c685f814f5a67b707e884953bcbd23689cace0def7af02d5b41`.
+
+**Validation Results recorded at execution time:**
+
+- Step 3 read-only probe ok. Aggregate admission: eligible 96, billingChanged
+  3 admitted, newEligible 3.
+- Step 4 and step 5b precheck returned `precheck_passed`.
+- New config SHA-256 prefix `80a6cbac` at
+  `/opt/proxy-gateway-minimal-candidate/full-metering-bwh-local-20261012/config.json`.
+  Bound request is `request-v2.json`, SHA-256 prefix `dc1672dc`. The earlier
+  `request.json` is void. Old journal digest prefix `04aa0673` stayed unchanged
+  through the run.
+- Step 6 initialize at 2026-10-12 2:25:48 AM PT created activation
+  `bwh-local-three-20261012-01`. The process returned blocked
+  `full_metering_recovery_memory_limit` (exit 2) at the final RSS bound check
+  after `checkpoint.json` (120,800 B, sequence 0) was atomically written.
+  The host tool read the whole backup into one Buffer. PR #775 fixes that
+  path; this run did not use those bytes.
+- Read-only acceptance passed and Ethan accepted it: new-context read;
+  activation, sequence 0, and scope `local-three-v1`; zero samples and zero
+  recorded bytes; checkpoint identities matched the read-only inventory;
+  directory mode `0700` and `checkpoint.json` mode `0600`; no `.tmp`,
+  `pending.json`, or `writer.lock`; SQLite totals unchanged from the
+  pre-initialize totals; old journal digest unchanged. No account, order, or
+  credential value is copied here.
+- Step 7 kept the previous unit files as backups. Manual sequence 1 wrote 13
+  samples and 1,292,893,590 B. The timer was enabled at 2026-10-12 3:28:07 AM
+  PT. Natural sequence 2 wrote 9 samples and 67,370,899 B. Natural sequence 3
+  wrote 7 samples and 16,460,236 B. Pause-interval debit is absent.
+- Root-private files left on BWH: `/root/recovery-20261012/` (database backup
+  with full business data, journal/config/unit backups, void `request.json`,
+  `request-v2.json`, `units-pre7`), `/root/step4-recovery-a13495cd/` (recovery
+  tools from the #774 bytes), read-only old journal
+  `full-metering-bwh-local-20261009/`, old collector directory
+  `collector-reset-fa492bd93c09`, and earlier staging/probe directories.
+  Cleanup of those private directories is a separate approval.
+
+**Identity gate:**
+
+```yaml
+identity_impact: true
+identity_gate:
+  surface: bwh-local-three
+  state: pending
+  retention_state: pending
+```
+
+`runtime_count`, `mapped_count`, `missing`, `stale`, `changed`, and
+`missing_material` were not recorded before or after this run. A later
+aggregate gate still has to follow `docs/IDENTITY_LIFECYCLE.md`. Stale map
+items stay subject to a separate read-only retention inventory.
+
+**Risk Classification:** the host action was Risk A. This note is the record
+of that completed run.
+**Rollback Boundary:** the new checkpoint and new samples already exist, so
+rollback is forward-only: stop this collector, keep the ledger and both
+journals, and do not restore the database or resume the old checkpoint into
+the paused interval. No restore was performed.
+
+**Follow-ups:**
+
+- Separate approval before deleting the BWH private recovery directories or
+  backups.
+- The BWH recovery tool copy predates PR #775.
+- Production identity gate record, aggregate only, per
+  `docs/IDENTITY_LIFECYCLE.md`.
+- Issue #763 redeploy waits on a read-only look at `unknown_extra_member`.
+- Keep observing later natural cycles.
+- SGP and the other deferred sources remain paused.
