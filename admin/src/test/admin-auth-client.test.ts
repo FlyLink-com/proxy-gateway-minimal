@@ -31,7 +31,7 @@ describe("createAdminAuthClient", () => {
     const setItem = vi.spyOn(Storage.prototype, "setItem");
     const fetcher = vi.fn<typeof fetch>();
     fetcher
-      .mockResolvedValueOnce(jsonResponse(200, { authenticated: false, mode: "portalAccount", operatorRef: "acct_op1", setupRequired: false }))
+      .mockResolvedValueOnce(jsonResponse(200, { authenticated: false, mode: "portalAccount" }))
       .mockResolvedValueOnce(
         jsonResponse(202, {
           challenge: {
@@ -62,10 +62,9 @@ describe("createAdminAuthClient", () => {
 
     await expect(client.session(signal)).resolves.toEqual({
       authenticated: false,
-      operatorRef: "acct_op1",
       setupRequired: false,
     });
-    await expect(client.login({ operatorRef: "acct_op1", password: "secret-pass" }, signal)).resolves.toEqual({
+    await expect(client.login({ password: "secret-pass" }, signal)).resolves.toEqual({
       challengeRef: "admin_totp_challenge_1",
       expiresAt: FUTURE,
     });
@@ -80,7 +79,7 @@ describe("createAdminAuthClient", () => {
 
     expect(fetcher.mock.calls[1]?.[0]).toBe("/api/admin-auth/login");
     expect(loginInit.method).toBe("POST");
-    expect(JSON.parse(String(loginInit.body))).toEqual({ operatorRef: "acct_op1", bootstrapToken: "secret-pass" });
+    expect(JSON.parse(String(loginInit.body))).toEqual({ bootstrapToken: "secret-pass" });
 
     expect(fetcher.mock.calls[2]?.[0]).toBe("/api/admin-auth/totp/verify");
     expect(JSON.parse(String(verifyInit.body))).toEqual({ challengeRef: "admin_totp_challenge_1", code: "123456" });
@@ -133,12 +132,10 @@ describe("createAdminAuthClient", () => {
     await expect(client.session(signal)).resolves.toEqual({ authenticated: true, expiresAt: FUTURE });
     await expect(client.session(signal)).resolves.toEqual({
       authenticated: false,
-      operatorRef: "acct_op1",
       setupRequired: true,
     });
     await expect(client.session(signal)).resolves.toEqual({
       authenticated: false,
-      operatorRef: null,
       setupRequired: false,
     });
   });

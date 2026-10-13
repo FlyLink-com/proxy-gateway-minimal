@@ -1,9 +1,13 @@
+import { isIP } from "node:net";
 import { Router } from "express";
-import { rateLimit } from "express-rate-limit";
+import { ipKeyGenerator, rateLimit } from "express-rate-limit";
+import { normalizeIpAddress, resolveClientIp } from "../services/ip-address.mjs";
 import { createAdminPrincipal } from "../services/platform/admin-auth.mjs";
 
 const ADMIN_AUTH_ATTEMPT_WINDOW_MS = 60_000;
 const ADMIN_AUTH_ATTEMPT_MAX = 10;
+const ADMIN_AUTH_IPV6_SUBNET = 56;
+const ADMIN_AUTH_SOURCE_IP = Symbol("adminAuthSourceIp");
 
 function sendAdminAuthError(res, error) {
   if (error.code === "invalid_admin_login") {
@@ -26,7 +30,22 @@ function sendAdminAuthError(res, error) {
 }
 
 function sourceIpSafeRef(req) {
-  return req.ip ? `ip:${req.ip}` : null;
+  return `ip:${req[ADMIN_AUTH_SOURCE_IP]}`;
+}
+
+function normalizeAdminSourceIp(value) {
+  const ip = typeof value === "string" ? normalizeIpAddress(value) : "";
+  if (!isIP(ip)) return "";
+  if (isIP(ip) !== 6) return ip;
+
+  // URL parsing is local: canonicalize legal IPv6 spellings before recognizing
+  // mapped IPv4. ipKeyGenerator only recognizes mapped dotted-decimal notation.
+  const canonical = new URL(`http://[${ip}]/`).hostname.slice(1, -1);
+  const mapped = /^::ffff:([0-9a-f]+):([0-9a-f]+)$/.exec(canonical);
+  if (!mapped) return canonical;
+  const high = Number.parseInt(mapped[1], 16);
+  const low = Number.parseInt(mapped[2], 16);
+  return [high >>> 8, high & 255, low >>> 8, low & 255].join(".");
 }
 
 export const ADMIN_AUTH_PUBLIC_PATHS = [
@@ -41,30 +60,55 @@ export const ADMIN_AUTH_PUBLIC_PATHS = [
 export function adminAuthRoutes(state, options = {}) {
   const router = Router();
   const auth = options.adminAuth || state.platform?.adminAuth;
-  const loginAttemptRateLimit = rateLimit({
+  const resolveClientIpFn = options.resolveClientIpFn || resolveClientIp;
+  const requireSourceIp = (req, res, next) => {
+    let sourceIp;
+    try {
+      sourceIp = normalizeAdminSourceIp(resolveClientIpFn(req));
+    } catch {
+      sourceIp = "";
+    }
+    if (!isIP(sourceIp)) {
+      res.status(403).json({ error: "forbidden" });
+      return;
+    }
+    req[ADMIN_AUTH_SOURCE_IP] = sourceIp;
+    next();
+  };
+  const requirePrivateSetup = (_req, res, next) => {
+    if (state.platform?.adminPublicLoginEnabled === true) {
+      res.status(404).json({ error: "not_found" });
+      return;
+    }
+    next();
+  };
+  const createAttemptRateLimit = () => rateLimit({
     windowMs: ADMIN_AUTH_ATTEMPT_WINDOW_MS,
     limit: ADMIN_AUTH_ATTEMPT_MAX,
     standardHeaders: "draft-7",
     legacyHeaders: false,
+    // Only the validated application resolver establishes the source address.
+    // Express trust-proxy settings and untrusted XFF never select this key.
+    keyGenerator: (req) => ipKeyGenerator(req[ADMIN_AUTH_SOURCE_IP], ADMIN_AUTH_IPV6_SUBNET),
     message: { error: "Too Many Requests" }
   });
-  const totpAttemptRateLimit = rateLimit({
-    windowMs: ADMIN_AUTH_ATTEMPT_WINDOW_MS,
-    limit: ADMIN_AUTH_ATTEMPT_MAX,
-    standardHeaders: "draft-7",
-    legacyHeaders: false,
-    message: { error: "Too Many Requests" }
-  });
+  const loginAttemptRateLimit = createAttemptRateLimit();
+  const totpAttemptRateLimit = createAttemptRateLimit();
+  const bootstrapAttemptRateLimit = createAttemptRateLimit();
+  const enrollmentAttemptRateLimit = createAttemptRateLimit();
 
   router.get("/api/admin-auth/session", (req, res) => {
     try {
-      res.json(auth.sessionStatus({ cookieHeader: req.get("cookie") }));
+      const status = auth.sessionStatus({ cookieHeader: req.get("cookie") });
+      res.json(state.platform?.adminPublicLoginEnabled === true && status?.authenticated !== true
+        ? { authenticated: false, mode: "portalAccount" }
+        : status);
     } catch (error) {
       sendAdminAuthError(res, error);
     }
   });
 
-  router.post("/api/admin-auth/bootstrap/start", (req, res) => {
+  router.post("/api/admin-auth/bootstrap/start", requirePrivateSetup, requireSourceIp, bootstrapAttemptRateLimit, (req, res) => {
     try {
       res.status(201).json(auth.startBootstrap({
         bootstrapToken: req.body?.bootstrapToken
@@ -74,7 +118,7 @@ export function adminAuthRoutes(state, options = {}) {
     }
   });
 
-  router.post("/api/admin-auth/totp/enrollment/confirm", (req, res) => {
+  router.post("/api/admin-auth/totp/enrollment/confirm", requirePrivateSetup, requireSourceIp, enrollmentAttemptRateLimit, (req, res) => {
     try {
       const result = auth.confirmTotpEnrollment({
         enrollmentRef: req.body?.enrollmentRef,
@@ -88,7 +132,7 @@ export function adminAuthRoutes(state, options = {}) {
     }
   });
 
-  router.post("/api/admin-auth/login", loginAttemptRateLimit, (req, res) => {
+  router.post("/api/admin-auth/login", requireSourceIp, loginAttemptRateLimit, (req, res) => {
     try {
       const result = auth.login({
         operatorRef: req.body?.operatorRef,
@@ -100,7 +144,7 @@ export function adminAuthRoutes(state, options = {}) {
     }
   });
 
-  router.post("/api/admin-auth/totp/verify", totpAttemptRateLimit, (req, res) => {
+  router.post("/api/admin-auth/totp/verify", requireSourceIp, totpAttemptRateLimit, (req, res) => {
     try {
       const result = auth.verifyTotp({
         challengeRef: req.body?.challengeRef,

@@ -56,7 +56,7 @@ function rejectingAdminAuth() {
   };
 }
 
-test("admin-auth session exposes the configured portal admin and gates admin APIs by session cookie", async () => {
+test("admin-auth session omits the configured portal admin and gates admin APIs by session cookie", async () => {
   const state = baseState({
     platform: {
       adminAuthRoutesEnabled: true,
@@ -64,7 +64,6 @@ test("admin-auth session exposes the configured portal admin and gates admin API
         sessionStatus: () => ({
           authenticated: false,
           mode: "portalAccount",
-          operatorRef: ADMIN_ACCOUNT_ID,
           setupRequired: false
         }),
         authenticateCookie: ({ cookieHeader }) => (
@@ -87,7 +86,6 @@ test("admin-auth session exposes the configured portal admin and gates admin API
     assert.deepEqual(await status.json(), {
       authenticated: false,
       mode: "portalAccount",
-      operatorRef: ADMIN_ACCOUNT_ID,
       setupRequired: false
     });
 
@@ -229,7 +227,6 @@ test("portal-account admin auth permits only portal_user_20260604_001 with passw
       assert.deepEqual(await status.json(), {
         authenticated: false,
         mode: "portalAccount",
-        operatorRef: ADMIN_ACCOUNT_ID,
         setupRequired: false
       });
 
@@ -243,7 +240,7 @@ test("portal-account admin auth permits only portal_user_20260604_001 with passw
       const login = await fetch(`${baseUrl}/api/admin-auth/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ operatorRef: ADMIN_ACCOUNT_ID, bootstrapToken: "synthetic-portal-password" })
+        body: JSON.stringify({ bootstrapToken: "synthetic-portal-password" })
       });
       assert.equal(login.status, 202);
       const loginBody = await login.json();

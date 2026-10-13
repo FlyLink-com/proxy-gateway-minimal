@@ -264,7 +264,11 @@ test("raw import parser failures stay fixed and lookalikes stay outside", async 
       token: null,
       body: "{"
     });
-    assert.notEqual(lookalikeMalformed.response.headers.get("cache-control"), "no-store");
+    // Outside the third-party parser contract, but still within the common
+    // Admin no-store/redacted parser boundary.
+    assert.equal(lookalikeMalformed.response.headers.get("cache-control"), "no-store");
+    assert.equal(lookalikeMalformed.response.status, 400);
+    assert.equal(lookalikeMalformed.raw, "{\"error\":\"validation_error\"}");
     assert.equal(lookalikeMalformed.raw.includes("\"invalid_input\""), false);
     assert.equal(lookalikeMalformed.raw.includes("\"input_too_large\""), false);
 
@@ -275,7 +279,7 @@ test("raw import parser failures stay fixed and lookalikes stay outside", async 
     });
     assert.equal(lookalikePrefix.response.status, 401);
     assert.deepEqual(lookalikePrefix.body, { error: "Unauthorized" });
-    assert.notEqual(lookalikePrefix.response.headers.get("cache-control"), "no-store");
+    assert.equal(lookalikePrefix.response.headers.get("cache-control"), "no-store");
 
     assertNoImportBodySecret(captured.text());
     assert.equal(rowCount(database), 0);

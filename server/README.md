@@ -30,6 +30,12 @@ Run the focused `node --test server/tests/<name>.test.mjs` command for the
 changed boundary, then `npm test` and
 `git diff --check origin/master...HEAD`.
 
+## Admin login
+
+For the default-private boundary and explicitly approved public cookie-auth
+ingress, see [Admin public login hardening](../docs/ADMIN_PUBLIC_LOGIN_HARDENING.md).
+Source availability does not open a production endpoint.
+
 ## Subscription website metadata
 
 Successful Clash YAML responses from `routes/subscription.mjs` include

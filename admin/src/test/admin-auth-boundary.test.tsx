@@ -19,7 +19,7 @@ function deferred<T>() {
 
 function mockClient(overrides: Partial<AdminAuthClient> = {}): AdminAuthClient {
   return {
-    session: vi.fn(async () => ({ authenticated: false as const, operatorRef: "acct_op", setupRequired: false })),
+    session: vi.fn(async () => ({ authenticated: false as const, setupRequired: false })),
     login: vi.fn(async () => ({ challengeRef: "admin_totp_challenge_1", expiresAt: FUTURE })),
     verify: vi.fn(async () => undefined),
     logout: vi.fn(async () => undefined),
@@ -57,8 +57,9 @@ describe("AdminAuthBoundary", () => {
     const child = renderBoundary(client);
     expect(child).not.toHaveBeenCalled();
     expect(screen.getByRole("heading", { name: "Admin Console" })).toBeTruthy();
-    pending.resolve({ authenticated: false, operatorRef: "acct_op", setupRequired: false });
-    await waitFor(() => expect(screen.getByLabelText("管理员账户")).toBeTruthy());
+    pending.resolve({ authenticated: false, setupRequired: false });
+    await waitFor(() => expect(screen.getByLabelText("密码")).toBeTruthy());
+    expect(screen.queryByLabelText("管理员账户")).toBeNull();
     expect(child).not.toHaveBeenCalled();
     expect(sessionStorage.length).toBe(0);
     expect(localStorage.length).toBe(0);
@@ -67,15 +68,15 @@ describe("AdminAuthBoundary", () => {
   it("walks unauth login challenge verify then fresh session before ready", async () => {
     const session = vi
       .fn()
-      .mockResolvedValueOnce({ authenticated: false, operatorRef: "acct_op", setupRequired: false })
+      .mockResolvedValueOnce({ authenticated: false, setupRequired: false })
       .mockResolvedValue({ authenticated: true, expiresAt: FUTURE });
     const client = mockClient({ session, verify: vi.fn(async () => undefined) });
     const child = renderBoundary(client);
     await waitFor(() => expect(screen.getByLabelText("密码")).toBeTruthy());
-    fireEvent.change(screen.getByLabelText("管理员账户"), { target: { value: "acct_op" } });
     fireEvent.change(screen.getByLabelText("密码"), { target: { value: "secret-pass" } });
     fireEvent.click(screen.getByRole("button", { name: "登录" }));
     await waitFor(() => expect(screen.getByLabelText("动态验证码")).toBeTruthy());
+    expect(client.login).toHaveBeenCalledWith({ password: "secret-pass" }, expect.any(AbortSignal));
     fireEvent.change(screen.getByLabelText("动态验证码"), { target: { value: "123456" } });
     fireEvent.click(screen.getByRole("button", { name: "验证并登录" }));
     await waitFor(() => expect(screen.getByRole("button", { name: "退出登录" })).toBeTruthy());
@@ -85,10 +86,10 @@ describe("AdminAuthBoundary", () => {
 
   it("blocks login when setup is required", async () => {
     const client = mockClient({
-      session: vi.fn(async () => ({ authenticated: false as const, operatorRef: "acct_op", setupRequired: true }))
+      session: vi.fn(async () => ({ authenticated: false as const, setupRequired: true }))
     });
     const child = renderBoundary(client);
-    await waitFor(() => expect(screen.getByText("管理员尚未完成安全设置，请联系维护人员。")).toBeTruthy());
+    await waitFor(() => expect(screen.getByText("管理员安全设置尚未完成，公网入口不支持初始化，请联系维护人员通过受限渠道完成。")).toBeTruthy());
     expect(screen.queryByLabelText("密码")).toBeNull();
     expect(child).not.toHaveBeenCalled();
   });
@@ -211,7 +212,6 @@ describe("AdminAuthBoundary", () => {
     const challengeExpiresAt = new Date(Date.now() + 5_000).toISOString();
     const session = vi.fn(async () => ({
       authenticated: false as const,
-      operatorRef: "acct_op",
       setupRequired: false
     }));
     const verify = vi.fn(async () => {
@@ -230,7 +230,6 @@ describe("AdminAuthBoundary", () => {
       await Promise.resolve();
     });
     expect(screen.getByLabelText("密码")).toBeTruthy();
-    fireEvent.change(screen.getByLabelText("管理员账户"), { target: { value: "acct_op" } });
     fireEvent.change(screen.getByLabelText("密码"), { target: { value: "secret-pass" } });
     fireEvent.click(screen.getByRole("button", { name: "登录" }));
     await act(async () => {
@@ -275,7 +274,6 @@ describe("AdminAuthBoundary", () => {
     });
     await waitFor(() => expect(screen.getByRole("button", { name: "登录" })).toBeTruthy());
     expect(screen.queryByText("业务面板")).toBeNull();
-    fireEvent.change(screen.getByLabelText("管理员账户"), { target: { value: "acct_op" } });
     fireEvent.change(screen.getByLabelText("密码"), { target: { value: "secret-pass" } });
     fireEvent.click(screen.getByRole("button", { name: "登录" }));
     await waitFor(() => expect(screen.getByLabelText("动态验证码")).toBeTruthy());
@@ -301,7 +299,7 @@ describe("AdminAuthBoundary", () => {
   it("keeps an unexpired challenge after invalid TOTP session error then reaches ready on retry", async () => {
     const session = vi
       .fn()
-      .mockResolvedValueOnce({ authenticated: false, operatorRef: "acct_op", setupRequired: false })
+      .mockResolvedValueOnce({ authenticated: false, setupRequired: false })
       .mockResolvedValue({ authenticated: true, expiresAt: FUTURE });
     const verify = vi
       .fn()
@@ -310,7 +308,6 @@ describe("AdminAuthBoundary", () => {
     const client = mockClient({ session, verify });
     const child = renderBoundary(client);
     await waitFor(() => expect(screen.getByLabelText("密码")).toBeTruthy());
-    fireEvent.change(screen.getByLabelText("管理员账户"), { target: { value: "acct_op" } });
     fireEvent.change(screen.getByLabelText("密码"), { target: { value: "secret-pass" } });
     fireEvent.click(screen.getByRole("button", { name: "登录" }));
     await waitFor(() => expect(screen.getByLabelText("动态验证码")).toBeTruthy());

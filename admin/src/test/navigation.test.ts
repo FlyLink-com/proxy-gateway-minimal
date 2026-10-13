@@ -243,8 +243,8 @@ describe("admin navigation", () => {
     render(createElement(App));
 
     expect(screen.getByRole("heading", { name: "Admin Console" })).not.toBeNull();
-    expect(await screen.findByLabelText("管理员账户")).not.toBeNull();
-    expect(screen.getByLabelText("密码")).not.toBeNull();
+    expect(await screen.findByLabelText("密码")).not.toBeNull();
+    expect(screen.queryByLabelText("管理员账户")).toBeNull();
     expect(screen.queryByRole("heading", { name: "Operations Overview" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Operations Overview" })).toBeNull();
     expect(screen.queryByRole("heading", { name: "Connect Admin API" })).toBeNull();

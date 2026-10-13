@@ -1,4 +1,5 @@
 import { createPortalReferralService } from './services/platform/portal-referral-service.mjs';
+import { validateAdminPublicLogin } from "./middleware/admin-public-login.mjs";
 import { createHash, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -1563,6 +1564,9 @@ export function createRuntimeState(options = {}) {
   });
   const userPortalRoutesEnabled = envFlag(env.USER_PORTAL_ROUTES_ENABLED);
   const adminAuthRoutesEnabled = envFlag(env.ADMIN_AUTH_ROUTES_ENABLED || env.ADMIN_PROTECTED_ROUTE_AUTH_ENABLED);
+  const adminPublicLoginEnabled = envFlag(env.ADMIN_PUBLIC_LOGIN_ENABLED);
+  const adminBrowserOrigin = env.ADMIN_BROWSER_ORIGIN || undefined;
+  validateAdminPublicLogin({ enabled: adminPublicLoginEnabled, authEnabled: adminAuthRoutesEnabled, origin: adminBrowserOrigin });
   const adminAuthorizationEnabled = envFlag(env.ADMIN_AUTHORIZATION_ENABLED);
   const coinsWalletEnabled = envFlag(env.COINS_WALLET_ENABLED);
   const coinsCommerceEnabled = envFlag(env.COINS_COMMERCE_ENABLED);
@@ -3161,6 +3165,8 @@ export function createRuntimeState(options = {}) {
       paymentStore,
       paymentRechargeCoordinator,
       adminAuthRoutesEnabled,
+      adminPublicLoginEnabled,
+      adminBrowserOrigin,
       adminAuthorizationEnabled,
       adminAuth: platformAdminAuth,
       userPortalRoutesEnabled,
