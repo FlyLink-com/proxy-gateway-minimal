@@ -56,6 +56,71 @@ function deferred<T>() {
 }
 
 describe("authenticated third-party Admin workspace", () => {
+  test("no sources keeps the complete empty card and import without implying a saved source", async () => {
+    const client = fakeClient();
+    client.listSources.mockResolvedValue([]);
+    render(<ThirdPartyAdminWorkspace client={client} />);
+    await screen.findByRole("heading", { name: "暂无来源" });
+    expect(screen.getByRole("region", { name: "第三方节点列表" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "原始名称" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "对外显示名称" })).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "搜索节点" })).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "导入" })).toHaveLength(1);
+    expect(screen.getByRole("button", { name: "导入" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "保存节点列表" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "启用节点列表" })).toBeDisabled();
+    expect(screen.queryByText("已保存 · 未启用")).not.toBeInTheDocument();
+    expect(screen.queryByText(/本地预览|演示节点/)).not.toBeInTheDocument();
+    expect(screen.getAllByRole("row")).toHaveLength(1);
+    fireEvent.click(screen.getByRole("button", { name: "保存节点列表" }));
+    fireEvent.click(screen.getByRole("button", { name: "启用节点列表" }));
+    expect(client.listNodes).not.toHaveBeenCalled();
+    expect(client.saveNodes).not.toHaveBeenCalled();
+    expect(client.enableSource).not.toHaveBeenCalled();
+    expect(client.importYaml).not.toHaveBeenCalled();
+  });
+
+  test("loading keeps the card but cannot present confirmed-empty or saved state", async () => {
+    const client = fakeClient();
+    const pending = deferred<ThirdPartySource[]>();
+    client.listSources.mockReturnValue(pending.promise);
+    render(<ThirdPartyAdminWorkspace client={client} />);
+    expect(screen.getByRole("heading", { name: "正在读取节点" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "保存节点列表" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "启用节点列表" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "导入" })).toBeDisabled();
+    expect(screen.queryByRole("heading", { name: "暂无来源" })).not.toBeInTheDocument();
+    expect(screen.queryByText("已保存 · 未启用")).not.toBeInTheDocument();
+    await act(async () => pending.resolve([]));
+    expect(screen.getByRole("heading", { name: "暂无来源" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "导入" })).toBeEnabled();
+  });
+
+  test("remote-only sources retain the empty editor without fetching remote nodes", async () => {
+    const client = fakeClient();
+    client.listSources.mockResolvedValue([{ ...SOURCE, sourceKind: "remote" }]);
+    render(<ThirdPartyAdminWorkspace client={client} />);
+    await screen.findByRole("heading", { name: "暂无可编辑来源" });
+    expect(screen.getByRole("button", { name: "保存节点列表" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "启用节点列表" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "导入" })).toBeEnabled();
+    expect(client.listNodes).not.toHaveBeenCalled();
+  });
+
+  test("a failed initial read is not presented as an empty or saved source", async () => {
+    const client = fakeClient();
+    client.listSources.mockRejectedValue(new ThirdPartyAdminError("network"));
+    render(<ThirdPartyAdminWorkspace client={client} />);
+    await screen.findByRole("heading", { name: "节点列表暂不可用" });
+    expect(screen.getByRole("alert")).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "暂无来源" })).not.toBeInTheDocument();
+    expect(screen.queryByText("已保存 · 未启用")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "保存节点列表" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "启用节点列表" })).toBeDisabled();
+    expect(client.saveNodes).not.toHaveBeenCalled();
+    expect(client.enableSource).not.toHaveBeenCalled();
+  });
+
   test("initial read never writes and exposes enable only for a saved disabled source", async () => {
     const { client } = await mount();
     expect(client.listSources).toHaveBeenCalledTimes(1);
@@ -185,7 +250,9 @@ describe("authenticated third-party Admin workspace", () => {
     await screen.findByText(code === "session" ? "Admin 登录已失效，请重新登录。" : "当前账户没有此操作的 Admin 权限。");
     expect(screen.queryByText("原始日本")).not.toBeInTheDocument();
     expect(screen.queryByText("原始美国")).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "保存节点列表" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "保存节点列表" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "启用节点列表" })).toBeDisabled();
+    expect(screen.queryByText("已保存 · 未启用")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "导入" })).toBeDisabled();
     expect(screen.getByRole("combobox", { name: "第三方来源" })).toBeDisabled();
     expect(onSessionExpired).toHaveBeenCalledTimes(code === "session" ? 1 : 0);
@@ -275,9 +342,13 @@ describe("authenticated third-party Admin workspace", () => {
     expect(client.listNodes).not.toHaveBeenCalled();
   });
 
-  test("file import remains disabled until independently reviewed and enabled", async () => {
+  test.each([false, true])("file import immediately displays the returned nodes and stays disabled (initially empty: %s)", async (initiallyEmpty) => {
     const client = fakeClient();
-    await mount(client);
+    if (initiallyEmpty) {
+      client.listSources.mockResolvedValue([]);
+      render(<ThirdPartyAdminWorkspace client={client} />);
+      await screen.findByRole("heading", { name: "暂无来源" });
+    } else await mount(client);
     client.listNodes.mockResolvedValue({ ...SNAPSHOT, sourceId: NEXT_SOURCE_ID, revision: NEXT_REVISION });
     fireEvent.click(screen.getByRole("button", { name: "导入" }));
     const dialog = screen.getByRole("dialog", { name: "导入第三方节点" });
@@ -292,6 +363,12 @@ describe("authenticated third-party Admin workspace", () => {
     expect(client.enableSource).not.toHaveBeenCalled();
     expect(client.importYaml).toHaveBeenCalledTimes(1);
     expect(screen.getByText("已保存 · 未启用")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "编辑 原始日本" })).toBeEnabled();
+    expect(screen.getByRole("combobox", { name: "第三方来源" })).toHaveValue(NEXT_SOURCE_ID);
+    expect(screen.queryByRole("heading", { name: "暂无来源" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "导入第三方节点" })).not.toBeInTheDocument();
+    expect(client.listSources).toHaveBeenCalledTimes(1);
+    expect(client.saveNodes).not.toHaveBeenCalled();
   });
 
   test("uncertain import does not retry automatically and locks another import until refresh", async () => {

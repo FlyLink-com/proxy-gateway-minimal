@@ -15,6 +15,9 @@ export type ThirdPartyNodePersistence = {
   onEnable: () => void;
   onDirtyChange?: (dirty: boolean) => void;
   importAction: ReactNode;
+  // No confirmed source snapshot: show the editor shell without claiming a
+  // saved list or allowing a write. Import availability belongs to the owner.
+  placeholder?: { title: string; description: string };
 };
 
 export function ThirdPartyNodeNamesPage({ initialNodes, persistence }: { initialNodes: readonly ThirdPartyNode[]; persistence?: ThirdPartyNodePersistence }) {
@@ -46,12 +49,12 @@ export function ThirdPartyNodeNamesPage({ initialNodes, persistence }: { initial
   const editorHidden = Boolean(selected && !filtered.some((node) => node.id === selectedId));
   const listSaved = savedNodes === nodes;
   const listEnabled = persistence ? persistence.enabled : enabledNodes === nodes;
-  const writesBlocked = Boolean(persistence?.busy || persistence?.enabled);
+  const writesBlocked = Boolean(persistence?.placeholder || persistence?.busy || persistence?.enabled);
   const actionBlocked = Boolean(writesBlocked || deleteId || dirty || validation.error);
   const unsaved = !listSaved || Boolean(dirty || validation.error || deleteId);
   const onDirtyChange = persistence?.onDirtyChange;
   useEffect(() => { onDirtyChange?.(unsaved); }, [onDirtyChange, unsaved]);
-  const saveState = persistence
+  const saveState = persistence?.placeholder ? "未就绪" : persistence
     ? listEnabled ? "已启用 · 后台" : unsaved ? "未保存 · 草稿" : "已保存 · 未启用"
     : listEnabled ? "已启用 · 本地预览" : listSaved ? "已保存 · 本地" : "未保存 · 本地";
 
@@ -189,7 +192,7 @@ export function ThirdPartyNodeNamesPage({ initialNodes, persistence }: { initial
               </tr>;
             })}</tbody>
           </table>
-          {filtered.length === 0 ? <div className="tp-names-empty"><Globe2 size={26} aria-hidden="true" /><h3>{nodes.length ? "没有匹配的节点" : persistence ? "暂无节点" : "暂无演示节点"}</h3><p>{nodes.length ? "尝试更换搜索词或协议筛选。" : persistence ? "此来源没有保留的节点，空列表不能启用。" : "此预览不读取后台节点。"}</p></div> : null}
+          {filtered.length === 0 ? <div className="tp-names-empty"><Globe2 size={26} aria-hidden="true" /><h3>{persistence?.placeholder?.title ?? (nodes.length ? "没有匹配的节点" : persistence ? "暂无节点" : "暂无演示节点")}</h3><p>{persistence?.placeholder?.description ?? (nodes.length ? "尝试更换搜索词或协议筛选。" : persistence ? "此来源没有保留的节点，空列表不能启用。" : "此预览不读取后台节点。")}</p></div> : null}
         </div>
         <footer className="tp-names-list-foot"><ShieldCheck size={14} aria-hidden="true" /><span>{persistence ? listEnabled ? "来源已启用，请先停用后再编辑；不修改节点凭证或历史用量。" : "修改需保存列表后生效；启用需单独操作，不修改节点凭证或历史用量。" : "本地预览 · 合成数据 · 未连接后台 · 刷新后恢复"}</span><span className="tp-names-feedback" role="status">{message}</span></footer>
       </section>
