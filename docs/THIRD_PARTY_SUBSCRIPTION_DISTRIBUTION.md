@@ -405,6 +405,65 @@ Grok CLI 生成实现补丁，Codex 负责范围决策、独立核对、补丁�
 - 独立只读核对发现并修正了字段丢失和 HTTP parser 错误暴露问题；这不是专用
   Security Review 工具结果。真实客户端、Linux 隔离、最新 master 集成和生产均未在本轮完成。
 
+## 2026-10-13 UTC 主干集成与客户端边界验收（未发布）
+
+本节更新上一个同日源码检查点的剩余项，不覆盖或改写其历史结果。
+合入主干 `b610aac7` 的提交为 `4c7dae29`；本次业务源码与测试检查点为 `402b5a41`。
+实现仍由 Grok CLI 提供补丁，Codex 核对和应用；新增测试由 Codex 独立编写。
+
+- 唯一文本冲突在 `express.json()` 后的两段错误中间件；分别保留第三方导入与
+  Portal 链接重置的错误脱敏及隐私头，不合并或改变认证规则。
+- 锁文件同时保留主干 `proxy-addr@2.0.8` 与 `yaml@2.9.1`；没有回退主干依赖修复。
+- 实际客户端复现后收紧参数：SS-2022 密钥必须是对应长度的规范 base64，AES 支持逐段
+  校验的密钥链；Reality 公钥必须为规范的 32 字节无填充 base64url；ALPN 每项最多
+  255 字节（保留 ASCII 限制），依据 RFC 7301 §3.1，不以 `-t` 未报错冒充握手可用。
+- 国家组名避让所有现有代理与保留组名；仅在混合第三方输出时避免引用不存在的 AUTO。
+  不重命名自营代理，不让第三方进入自营 AUTO / STABLE / WEAK-NETWORK / FALLBACK。
+  无第三方的两种输出由逐字节基准测试确认未变。
+- 真实重置接口与三组内存 SQLite 组合验收：旧 artifact 的六种路径全部 410 且不读取
+  第三方材料；新链接保持同租户、同档位、原有用量与 YAML；幂等重试不重复签发。
+  独立 legacy tenant-token 按原合同保留，不把 artifact 重置称为吊销所有认证方式。
+
+分项证据索引：
+
+| 功能边界 | 可重复的源码验证 |
+| --- | --- |
+| 32 项客户端参数校验 | `server/tests/third-party-subscription-client-boundary.test.mjs` |
+| 6 项组名与引用完整性 | `server/tests/third-party-subscription-group-integrity.test.mjs` |
+| 2 项重置后授权与交付 | `server/tests/third-party-subscription-link-reset-integration.test.mjs` |
+| 原有导入、加密、权限、到期和 HTTP 错误 | `third-party-subscription-*.test.mjs`、`subscription-expiry-notice.test.mjs`、`portal-subscription-link*.test.mjs` |
+
+真实客户端仅使用官方 Mihomo `v1.19.32` Linux compatible 构件，下载压缩包 SHA-256
+`ba3ce607747a07f948fc35780e108a4a7c7f552a38b9bd4d115f313ebcb89c20` 已与发布元数据核对。
+在本机 WSL 独立 user/network namespace、无外网的环境运行 `-t`，没有启动代理服务。
+输入均为文档地址和合成材料，经真实 parser → 加密 store → renderer 产生：
+
+- 修前 SS-2022 短密钥、Reality 短公钥均被内核拒绝；修后在导入阶段拒绝，不写入节点。
+- 修前重名组与悬空 AUTO 均被内核拒绝；修后正常 Clash、Mihomo、重名避让、无 AUTO
+  四份输出均加载成功，退出码 0。
+- 内核仍报告既有 `global-client-fingerprint` 已废弃的提示；这次没有扩大为共享模板
+  改版。配置加载通过不代表 TLS 握手、上游线路或所有客户端版本可用。
+
+源码验证绑定 `402b5a41`，主干对照为 `b610aac7`，均为本轮实际执行：
+
+| 环境与命令 | 主干对照 | 候选 | 对照结果 |
+| --- | --- | --- | --- |
+| Windows Node 24.16.0，`npm test` | 5739 / 5669 pass / 13 fail / 57 skip | 5837 / 5767 pass / 13 fail / 57 skip | 13 个失败位置一致 |
+| WSL Node 22.23.1、npm 10.9.8，干净 archive + `npm ci` + 无外网 namespace，`npm test` | 5728 / 5668 pass / 53 fail / 7 skip | 5826 / 5766 pass / 53 fail / 7 skip | 53 个失败测试名称一致，无新增 |
+| 两环境针对性 server tests（上述四类加 `clash-subscription.test.mjs`） | 不重复旧单元边界 | 各 165 / 165 | 无跳过或失败 |
+
+Linux archive 全量并未全绿；失败含既有源码／工作树断言及需要其他权限环境的
+`evidence_directory_invalid`、`recovery_boundary_invalid` 等，未将同数量自动等同于
+同失败，已逐项比较名称。此项不是 HP CI-equivalent 或 privileged/staging 验收。
+为保存完整失败证据，Linux 主干和候选各补跑一次日志留存，结果与各自初次一致；
+没有因此重复访问生产。后续文档提交不改变已验证业务源或测试。最终 head 绑定见 #771 回执。
+本轮 `docs:authority:check`、`docs:authority:strict`（421 metadata）及 diff 检查通过。
+
+生产和真实上游均未访问。
+仍待：最终精确 head 的独立安全审查、真实升降档与第三方档位切换的组合验收，以及
+另行批准的迁移、密钥、构件、备份与回退发布门禁。专用 Security Review 当前不可用，
+普通独立只读核对不冒称其通过。URL 刷新、批量维护及 UI 不因本节被启用。
+
 ## 历史实现与验收记录（2026-10-10）
 
 以下为 `0f4faebd` 的历史实现与候选操作记录，保留作为证据，不作为当前执行指令。
@@ -603,7 +662,8 @@ binding 带有 `trafficLimitBytes` 时，必须等于该 offer 的 `GB * 1024**3
 
 当前完成：#771 的受限 inline YAML 导入、加密存储、鉴权渲染和本地合成验收；
 URL 导入及所有远程刷新入口已关闭。以 2026-10-13 源码切片记录为准。
-当前未完成：最新 master 集成、专用安全审查、客户端与 Linux 隔离验收；
+已完成本次主干集成与合成客户端配置加载验收；以本节前的同日集成记录及 #771 回执为准。
+当前未完成：专用安全审查、升降档与第三方分发组合验收及真实上游验收；
 生产 schema、密钥安装、任务启用与部署均未执行。动态刷新和批量维护属于后续切片。
 本轮未访问真实来源或生产；文档和本地源码测试不替代发布门禁。
 
