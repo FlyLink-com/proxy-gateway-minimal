@@ -109,7 +109,8 @@ export function ThirdPartyAdminWorkspace({ client: suppliedClient, onSessionExpi
   function save(nodes: readonly ThirdPartyNode[]) {
     if (!snapshot || snapshot.enabled || stale || denied || busyRef.current) return;
     void run((signal) => client.saveNodes(snapshot.sourceId, {
-      revision: snapshot.revision, nodes: nodes.map(({ id, customName }) => ({ id, customName }))
+      revision: snapshot.revision, nodes: nodes.map(({ id, customName, customCountryCode }) => ({ id, customName,
+        ...(customCountryCode === undefined ? {} : { customCountryCode }) }))
     }, signal), (view) => { receive(view); setNotice("节点列表已保存，尚未启用分发。"); }, true);
   }
 
@@ -137,7 +138,9 @@ export function ThirdPartyAdminWorkspace({ client: suppliedClient, onSessionExpi
     } else if (action === "disable") {
       void run(async (signal) => {
         await client.disableSource(snapshot.sourceId, signal);
-        return client.listNodes(snapshot.sourceId, signal);
+        const view = await client.listNodes(snapshot.sourceId, signal);
+        if (view.enabled) throw new ThirdPartyAdminError("source_enabled");
+        return view;
       }, (view) => { receive(view); setNotice("来源已停用，可以编辑。已下载的第三方配置不会被远程撤销。"); }, true);
     }
   }
@@ -161,7 +164,6 @@ export function ThirdPartyAdminWorkspace({ client: suppliedClient, onSessionExpi
         void run((signal) => client.listNodes(id, signal), receive);
       }}><option value="" disabled>选择来源</option>{sources.map((source) => <option key={source.id} value={source.id} disabled={source.sourceKind !== "inline-yaml"}>{source.name}{source.sourceKind !== "inline-yaml" ? " · 暂不支持编辑" : source.enabled ? " · 已启用" : " · 停用"}</option>)}</select></label>
       <button type="button" disabled={busy || denied} onClick={() => dirty ? setConfirm("reload") : void readAll(snapshot?.sourceId)}>重新读取</button>
-      {snapshot?.enabled ? <button type="button" disabled={busy || stale || denied} onClick={() => setConfirm("disable")}>停用后编辑</button> : null}
     </div>
     {error ? <p className="tp-admin-error" role="alert">{error}</p> : null}
     {stale ? <p role="alert">结果未确认或版本已变化。修改入口已锁定，请先重新读取；不会自动重试写入。</p> : null}
@@ -170,8 +172,10 @@ export function ThirdPartyAdminWorkspace({ client: suppliedClient, onSessionExpi
     <ThirdPartyNodeNamesPage key={snapshot ? `${snapshot.sourceId}:${snapshot.revision}:${editorEpoch}` : "no-source"} initialNodes={snapshot?.items.map((node) => ({ ...node, sourceName: currentSource?.name ?? "" })) ?? []} persistence={{
       enabled: snapshot?.enabled ?? false, busy: busy || stale || denied, placeholder,
       onSave: save, onEnable: () => { if (snapshot) setConfirm("enable"); }, onDirtyChange: setDirty, importAction,
+      onDisable: () => { if (snapshot?.enabled && !busyRef.current && !dirty && !stale && !denied) setConfirm("disable"); },
     }} />
     {confirm ? <div className="tp-import"><ModalFrame title={confirm === "enable" ? "确认启用分发" : confirm === "disable" ? "确认停用来源" : "放弃未保存修改？"} titleId={`${modalId}-confirm`} panelClassName="tp-import-modal" closeLabel="取消操作" onClose={() => setConfirm(null)}>
+      {confirm === "disable" ? <p>将停用整个来源「{currentSource?.name ?? "当前来源"}」，共 {snapshot?.items.length ?? 0} 个节点；不是只停用某一行。停用后可编辑或删除，保存后需手动重新启用剩余节点。</p> : null}
       <p>{confirm === "enable" ? "将把已保存的节点提供给来源所分配套餐的有效订阅用户。请确认你有权分发这些配置。" : confirm === "disable" ? "后续订阅不再下发此来源。已下载配置及第三方凭证不会因此失效。" : "重新读取将丢弃当前未保存的改名和删除草稿，不会写入后台。"}</p>
       <button type="button" onClick={() => setConfirm(null)}>取消</button><button type="button" onClick={executeConfirmed}>确认{confirm === "enable" ? "启用" : confirm === "disable" ? "停用" : "重新读取"}</button>
     </ModalFrame></div> : null}

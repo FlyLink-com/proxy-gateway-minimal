@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { inspectThirdPartySubscriptionSchema } from "./third-party-subscription-migrations.mjs";
 import { decorateThirdPartyServers, safeThirdPartyDisplayLabel } from "./third-party-subscription-render.mjs";
+import { applyThirdPartyCountryFlag, isThirdPartyCountryCode } from "./third-party-node-country.mjs";
 
 const PROTECTED_PREFIX = "v2:aes-256-gcm:";
 const UNSAFE = /[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u202a-\u202e\u2060-\u206f]/u;
@@ -20,10 +21,16 @@ function failure(code) {
   return error;
 }
 
-function objectWithKeys(value, keys) {
+function objectWithKeys(value, keys, optionalKeys = []) {
   if (!value || typeof value !== "object" || Array.isArray(value)
-    || Object.keys(value).length !== keys.length
+    || Object.keys(value).some(key => !keys.includes(key) && !optionalKeys.includes(key))
     || !keys.every((key) => Object.hasOwn(value, key))) throw failure("invalid_input");
+}
+
+function normalizedCountry(value) {
+  if (value === null) return null;
+  if (!isThirdPartyCountryCode(value)) throw failure("invalid_input");
+  return value;
 }
 
 function normalizedAlias(value) {
@@ -143,8 +150,14 @@ export function createThirdPartyNodeManagement({ database, secretProtector, nowF
     const items = active.map((row, index) => {
       const config = configs[index];
       const customName = Object.hasOwn(config, "adminDisplayName") ? normalizedAlias(config.adminDisplayName) : null;
+      const hasCountry = Object.hasOwn(config, "adminCountryCode");
+      if (hasCountry && !isThirdPartyCountryCode(config.adminCountryCode)) throw failure("protected_value_invalid");
+      const customCountryCode = hasCountry ? config.adminCountryCode : null;
       const defaultName = defaults[index].subscriptionDisplayName;
-      const displayName = customName ?? defaultName;
+      const displayName = hasCountry
+        ? safeThirdPartyDisplayLabel(applyThirdPartyCountryFlag(customName ?? defaultName, customCountryCode))
+        : customName ?? defaultName;
+      if (!displayName || RESERVED.has(displayName.toUpperCase())) throw failure("invalid_node_name");
       const key = displayName.toLowerCase();
       if (used.has(key)) throw failure("duplicate_node_name");
       used.add(key);
@@ -155,6 +168,7 @@ export function createThirdPartyNodeManagement({ database, secretProtector, nowF
         customName,
         displayName,
         countryCode: row.country_code,
+        ...(hasCountry ? { customCountryCode } : {}),
         protocol: row.protocol
       };
     });
@@ -189,9 +203,12 @@ export function createThirdPartyNodeManagement({ database, secretProtector, nowF
     if (!Array.isArray(input.nodes) || input.nodes.length > 256) throw failure("invalid_input");
     const retained = new Map();
     for (const node of input.nodes) {
-      objectWithKeys(node, ["id", "customName"]);
+      objectWithKeys(node, ["id", "customName"], ["customCountryCode"]);
       if (typeof node.id !== "string" || !node.id || node.id.length > 128 || retained.has(node.id)) throw failure("invalid_input");
-      retained.set(node.id, normalizedAlias(node.customName));
+      retained.set(node.id, {
+        alias: normalizedAlias(node.customName),
+        ...(Object.hasOwn(node, "customCountryCode") ? { country: normalizedCountry(node.customCountryCode) } : {})
+      });
     }
     return database.transaction(() => {
       const snapshot = readSnapshot(sourceId);
@@ -205,9 +222,14 @@ export function createThirdPartyNodeManagement({ database, secretProtector, nowF
         if (row.active !== 1) return row;
         const config = configOf(row);
         if (!retained.has(row.id)) return { ...row, active: 0 };
-        const alias = retained.get(row.id);
+        const retainedNode = retained.get(row.id);
+        const alias = retainedNode.alias;
         if (alias === null) delete config.adminDisplayName;
         else config.adminDisplayName = alias;
+        if (Object.hasOwn(retainedNode, "country")) {
+          if (retainedNode.country === null) delete config.adminCountryCode;
+          else config.adminCountryCode = retainedNode.country;
+        }
         return { ...row, protected_config: protect(config) };
       }) };
       projection(candidate);

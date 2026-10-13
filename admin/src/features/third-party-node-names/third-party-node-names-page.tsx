@@ -3,16 +3,19 @@ import { useEffect, useId, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { renderedNodeName, validateNodeName } from "./node-name-model";
 import type { ThirdPartyNode } from "./node-name-model";
+import { isNodeCountryCode, NODE_COUNTRY_OPTIONS } from "./node-country-model";
 import { ThirdPartyImportEntry } from "./third-party-import-entry";
 import "./third-party-node-names.css";
 
 const COUNTRIES: Record<string, string> = { JP: "日本", SG: "新加坡", US: "美国", DE: "德国", GB: "英国", HK: "香港" };
+const countryOptions = NODE_COUNTRY_OPTIONS.map(({ value, label }) => <option key={value} value={value}>{label}</option>);
 
 export type ThirdPartyNodePersistence = {
   enabled: boolean;
   busy: boolean;
   onSave: (nodes: readonly ThirdPartyNode[]) => void;
   onEnable: () => void;
+  onDisable?: () => void;
   onDirtyChange?: (dirty: boolean) => void;
   importAction: ReactNode;
   // No confirmed source snapshot: show the editor shell without claiming a
@@ -45,7 +48,7 @@ export function ThirdPartyNodeNamesPage({ initialNodes, persistence }: { initial
     : false;
   const query = search.trim().toLowerCase();
   const filtered = nodes.filter((node) => (!protocol || node.protocol === protocol)
-    && [node.originalName, renderedNodeName(node), node.sourceName, node.countryCode, COUNTRIES[node.countryCode] ?? ""].some((part) => part.toLowerCase().includes(query)));
+    && [node.originalName, renderedNodeName(node), node.sourceName, node.customCountryCode ?? node.countryCode, COUNTRIES[node.customCountryCode ?? node.countryCode] ?? ""].some((part) => part.toLowerCase().includes(query)));
   const editorHidden = Boolean(selected && !filtered.some((node) => node.id === selectedId));
   const listSaved = savedNodes === nodes;
   const listEnabled = persistence ? persistence.enabled : enabledNodes === nodes;
@@ -72,6 +75,11 @@ export function ThirdPartyNodeNamesPage({ initialNodes, persistence }: { initial
     setMessage("已启用（本地预览），不会发布或改变真实订阅；刷新后恢复。");
   }
 
+  function requestDisable() {
+    if (!persistence?.enabled || persistence.busy || persistence.placeholder || unsaved) return;
+    persistence.onDisable?.();
+  }
+
   function updateFilter(nextSearch: string, nextProtocol: string) {
     setSearch(nextSearch);
     setProtocol(nextProtocol);
@@ -94,6 +102,18 @@ export function ThirdPartyNodeNamesPage({ initialNodes, persistence }: { initial
     setDraft(value);
     setSelectionError("");
     setMessage("");
+  }
+
+  function updateCountry(nodeId: string, country: string) {
+    if (writesBlocked || deleteId || dirty || validation.error || (country !== "" && !isNodeCountryCode(country))) return;
+    const next = nodes.map((node) => node.id === nodeId ? { ...node, customCountryCode: country || null } : node);
+    const target = next.find((node) => node.id === nodeId);
+    if (!target) return;
+    const result = validateNodeName(next, nodeId, target.customName ?? "");
+    if (result.error) { setSelectionError(result.error); return; }
+    setNodes(next);
+    setSelectionError("");
+    setMessage(persistence ? "国旗已加入待保存草稿，请保存节点列表；后台尚未改变。" : "国旗已更新本地预览，尚未保存到后台。");
   }
 
   function finishEditing() {
@@ -149,13 +169,17 @@ export function ThirdPartyNodeNamesPage({ initialNodes, persistence }: { initial
           <div className="tp-names-toolbar-actions" role="group" aria-label="节点列表操作">
             {persistence ? persistence.importAction : <ThirdPartyImportEntry disabled={Boolean(deleteId)} />}
             <button type="button" aria-label="保存节点列表" title={persistence ? "保存完整节点列表到后台，不自动启用" : "保存本地快照，不写入后台"} disabled={actionBlocked || listSaved || (!persistence && !nodes.length)} onClick={saveList}><Save size={15} aria-hidden="true" />保存</button>
-            <button type="button" className="tp-names-primary" aria-label="启用节点列表" aria-pressed={listEnabled} title={persistence ? "启用后台已保存的节点列表" : "仅启用本地预览，不发布真实订阅"} disabled={actionBlocked || !nodes.length || !listSaved || listEnabled} onClick={enableList}><Power size={15} aria-hidden="true" />{listEnabled ? "已启用" : "启用"}</button>
+            {persistence?.enabled && persistence.onDisable ? <button type="button" className="tp-names-danger-soft" aria-label="停用来源" title="确认停用整个来源后，才能编辑或删除节点" disabled={persistence.busy || Boolean(persistence.placeholder) || unsaved} onClick={requestDisable}><Power size={15} aria-hidden="true" />停用来源</button>
+              : <button type="button" className="tp-names-primary" aria-label="启用节点列表" aria-pressed={listEnabled} title={persistence ? "启用后台已保存的节点列表" : "仅启用本地预览，不发布真实订阅"} disabled={actionBlocked || !nodes.length || !listSaved || listEnabled} onClick={enableList}><Power size={15} aria-hidden="true" />{listEnabled ? "已启用" : "启用"}</button>}
           </div>
         </div>
+        {persistence && !persistence.placeholder ? <p className="tp-names-maintenance-hint">{listEnabled
+          ? "来源已启用，节点暂不可编辑或删除。请先停用来源，再删除并保存，最后按需重新启用。停用会暂停整个来源的后续订阅分发。"
+          : "点击节点行右侧的垃圾桶图标并确认删除，再点击上方“保存”才会生效；保存不会自动启用来源。"}</p> : null}
         {selectionError ? <p className="tp-names-selection-error" role="alert">{selectionError}</p> : null}
         {editorHidden ? <div className="tp-names-hidden-editor" role="alert"><span>正在编辑的节点被筛选隐藏，修改已保留。</span><button type="button" onClick={() => updateFilter("", "")}>返回编辑行</button></div> : null}
         <div className="tp-names-table-scroll" tabIndex={0} role="region" aria-label="节点列表，可横向滚动">
-          <table><thead><tr><th scope="col">原始名称</th><th scope="col">对外显示名称</th><th scope="col">协议</th><th scope="col">操作</th></tr></thead>
+          <table><thead><tr><th scope="col">原始名称</th><th scope="col">对外显示名称</th><th scope="col">国家/地区</th><th scope="col">协议</th><th scope="col">操作</th></tr></thead>
             <tbody>{filtered.map((node) => {
               const editing = node.id === selectedId;
               return <tr key={node.id} className={editing ? "tp-names-selected" : ""}>
@@ -173,6 +197,7 @@ export function ThirdPartyNodeNamesPage({ initialNodes, persistence }: { initial
                   <span id={`${fieldId}-hint`} className="tp-names-sr-only">留空并应用后恢复默认名称，最多 128 个字符，部分符号计为两个字符。Enter 应用到草稿，Escape 取消。</span>
                   {validation.error ? <p id={`${fieldId}-error`} className="tp-names-error" role="alert">{validation.error}</p> : null}
                 </form> : <span className="tp-names-rendered">{renderedNodeName(node)}</span>}</td>
+                <td><select className="tp-names-country" aria-label={`国家/地区 ${node.originalName}`} title="仅调整显示国旗，不改变真实节点地区；需保存后生效" value={node.customCountryCode ?? ""} disabled={writesBlocked || Boolean(deleteId) || dirty || Boolean(validation.error)} onChange={(event) => updateCountry(node.id, event.target.value)}><option value="">保留原名称</option><option value="OTHER">不显示国旗</option>{countryOptions}</select></td>
                 <td><span className="tp-names-protocol">{node.protocol}</span></td>
                 <td><div className={`tp-names-actions-slot${deleteId === node.id ? " is-confirming" : ""}`}><div className="tp-names-row-actions">
                   <button type="button" className="tp-names-edit" hidden={editing} disabled={writesBlocked || Boolean(deleteId)} aria-label={`编辑 ${node.originalName}`} ref={(element) => { if (element) editButtons.current.set(node.id, element); else editButtons.current.delete(node.id); }} onClick={() => selectNode(node)}><Pencil size={14} aria-hidden="true" />编辑</button>

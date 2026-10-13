@@ -130,10 +130,10 @@ describe('third-party node names local preview', () => {
     expect(screen.queryByLabelText('客户端名称预览')).toBeNull();
     expect(container.querySelector('.tp-names-summary')).toBeNull();
     expect(container.querySelector('.tp-names-notice')).toBeNull();
-    expect(screen.getAllByRole('columnheader').map((item) => item.textContent)).toEqual(['原始名称', '对外显示名称', '协议', '操作']);
+    expect(screen.getAllByRole('columnheader').map((item) => item.textContent)).toEqual(['原始名称', '对外显示名称', '国家/地区', '协议', '操作']);
     for (const node of nodes) {
       const row = within(nodeRow(node.originalName));
-      expect(row.getAllByRole('cell')).toHaveLength(4);
+      expect(row.getAllByRole('cell')).toHaveLength(5);
       expect(row.queryByText(node.sourceName)).toBeNull();
       expect(row.queryByText(node.countryCode)).toBeNull();
       expect(row.queryByText('默认名称')).toBeNull();

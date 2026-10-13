@@ -98,6 +98,32 @@ function saveBody(result) {
   return { revision: result.body.revision, nodes: result.body.items.map(({ id, customName }) => ({ id, customName })) };
 }
 
+test("country override HTTP contract remains authenticated, uncached and whitelist-only", async (t) => {
+  const f = await fixture(t);
+  let listed = await f.request(f.nodesPath);
+  const request = saveBody(listed); request.nodes[0].customCountryCode = "SG";
+  const denied = await f.request(f.nodesPath, { method: "PUT", body: request, token: null });
+  assert.equal(denied.response.status, 401); noStore(denied);
+  const saved = await f.request(f.nodesPath, { method: "PUT", body: request });
+  assert.equal(saved.response.status, 200); noStore(saved);
+  assert.equal(saved.body.items[0].customCountryCode, "SG");
+  assert.deepEqual(Object.keys(saved.body.items[0]).sort(), ["countryCode", "customCountryCode", "customName", "defaultName", "displayName", "id", "originalName", "protocol"]);
+  assert.equal(saved.body.items[0].countryCode, listed.body.items[0].countryCode);
+  listed = saved;
+  for (const country of ["ZZ", "sg", 3, {}, []]) {
+    const body = saveBody(listed); body.nodes[0].customCountryCode = country;
+    const bad = await f.request(f.nodesPath, { method: "PUT", body });
+    assert.equal(bad.response.status, 400); assert.deepEqual(bad.body, { error: "invalid_input" }); noStore(bad);
+  }
+  const poisoned = saveBody(listed); poisoned.nodes[0].adminCountryCode = "US";
+  assert.equal((await f.request(f.nodesPath, { method: "PUT", body: poisoned })).response.status, 400);
+  const unchanged = await f.request(f.nodesPath, { method: "PUT", body: saveBody(listed) });
+  assert.equal(unchanged.body.items[0].customCountryCode, "SG");
+  const reset = saveBody(unchanged); reset.nodes[0].customCountryCode = null;
+  publicNodes(await f.request(f.nodesPath, { method: "PUT", body: reset }));
+  assert.equal(f.network.calls, 0);
+});
+
 test("node admin read/save/enable require real application auth and stay uncached", async (t) => {
   const f = await fixture(t);
   for (const token of [null, "wrong-token"]) {

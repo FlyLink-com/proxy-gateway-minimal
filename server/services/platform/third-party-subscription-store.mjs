@@ -367,6 +367,8 @@ function protocolServerFromStoredNode(config, row) {
   // upstream name, protocol material, identity or accounting attribution.
   delete server.adminDisplayName;
   if (Object.hasOwn(config, "adminDisplayName")) server.thirdPartyDisplayAlias = config.adminDisplayName;
+  delete server.adminCountryCode;
+  if (Object.hasOwn(config, "adminCountryCode")) server.thirdPartyCountryOverride = config.adminCountryCode;
   if (legacyDedupFingerprint) delete server.fingerprint;
   return server;
 }

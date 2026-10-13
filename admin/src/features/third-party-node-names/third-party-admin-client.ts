@@ -1,4 +1,6 @@
 import type { ThirdPartyNode } from "./node-name-model";
+import { withNodeCountryFlag } from "./node-country-model";
+import countryCodes from "./third-party-country-codes.json";
 
 const ROOT = "/api/admin/third-party-subscriptions";
 const SOURCE_ID = /^tpsrc_[0-9a-f]{32}$/;
@@ -9,6 +11,7 @@ const UNSAFE_NAME = /[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u202a-\u202e\u2060
 const RESERVED = new Set(["DIRECT", "REJECT", "REJECT-DROP", "PASS", "COMPATIBLE", "GLOBAL", "AUTO", "STABLE", "WEAK-NETWORK", "FALLBACK"]);
 const TIERS = new Set(["monthly_basic", "monthly_plus", "yearly"]);
 const SOURCE_KINDS = new Set(["inline-yaml", "remote", "unknown"]);
+const COUNTRY_OVERRIDES = new Set<string>([...countryCodes, "OTHER"]);
 const PROTOCOLS = { vless: "VLESS", hysteria2: "Hy2", tuic: "TUIC", ss: "SS" } as const;
 const MAX_NODES = 256;
 const MAX_YAML_BYTES = 64 * 1024;
@@ -45,7 +48,7 @@ export class ThirdPartyAdminError extends Error {
 
 export type ThirdPartySource = { id: string; name: string; enabled: boolean; tiers: string[]; sourceKind: string };
 export type ThirdPartyNodeSnapshot = { sourceId: string; revision: string; enabled: boolean; items: ThirdPartyNode[] };
-export type ThirdPartyNodeSave = { revision: string; nodes: Array<{ id: string; customName: string | null }> };
+export type ThirdPartyNodeSave = { revision: string; nodes: Array<{ id: string; customName: string | null; customCountryCode?: string | null }> };
 export type ThirdPartyYamlImport = { name: string; yamlContent: string; tiers: string[] };
 export interface ThirdPartyAdminClient {
   listSources(signal?: AbortSignal): Promise<ThirdPartySource[]>;
@@ -61,8 +64,8 @@ function object(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) fail();
   return value as Record<string, unknown>;
 }
-function exactKeys(value: Record<string, unknown>, keys: string[]) {
-  if (Object.keys(value).length !== keys.length || keys.some((key) => !Object.hasOwn(value, key))) fail();
+function exactKeys(value: Record<string, unknown>, keys: string[], optional: string[] = []) {
+  if (keys.some((key) => !Object.hasOwn(value, key)) || Object.keys(value).some((key) => !keys.includes(key) && !optional.includes(key))) fail();
 }
 function validUnicode(value: string) {
   for (let index = 0; index < value.length; index += 1) {
@@ -84,6 +87,10 @@ function id(value: unknown, pattern: RegExp): string {
 }
 function boolean(value: unknown): boolean {
   if (typeof value !== "boolean") fail();
+  return value;
+}
+function countryOverride(value: unknown): string {
+  if (typeof value !== "string" || !COUNTRY_OVERRIDES.has(value)) fail();
   return value;
 }
 function tiers(value: unknown, code: ThirdPartyAdminErrorCode = "invalid"): string[] {
@@ -112,6 +119,7 @@ function parseSnapshot(value: unknown, sourceId: string): ThirdPartyNodeSnapshot
     return {
       id: nodeId, sourceName: "", originalName: name(node.originalName), defaultName: name(node.defaultName),
       customName: node.customName === null ? null : name(node.customName), countryCode: node.countryCode,
+      ...(Object.hasOwn(node, "customCountryCode") ? { customCountryCode: countryOverride(node.customCountryCode) } : {}),
       protocol: PROTOCOLS[node.protocol as keyof typeof PROTOCOLS]
     };
   });
@@ -188,7 +196,10 @@ export function createThirdPartyAdminClient({ fetcher = fetch }: { fetcher?: typ
       const names = new Set<string>();
       const nodes = body.nodes.map((value) => {
         const node = object(value);
-        exactKeys(node, ["id", "customName"]);
+        exactKeys(node, ["id", "customName"], ["customCountryCode"]);
+        const customCountryCode = Object.hasOwn(node, "customCountryCode") && node.customCountryCode !== undefined
+          ? node.customCountryCode === null ? null : countryOverride(node.customCountryCode)
+          : undefined;
         const nodeId = id(node.id, NODE_ID);
         if (ids.has(nodeId)) fail();
         ids.add(nodeId);
@@ -198,11 +209,14 @@ export function createThirdPartyAdminClient({ fetcher = fetch }: { fetcher?: typ
         if (customName !== null) {
           name(customName, "invalid_node_name");
           if (RESERVED.has(customName.toUpperCase())) fail("invalid_node_name");
-          const lower = customName.toLowerCase();
+          const lower = withNodeCountryFlag(customName, customCountryCode).toLowerCase();
           if (names.has(lower)) fail("duplicate_node_name");
           names.add(lower);
         }
-        return { id: nodeId, customName };
+        return {
+          id: nodeId, customName,
+          ...(customCountryCode === undefined ? {} : { customCountryCode })
+        };
       });
       return parseSnapshot(await request(`/sources/${sourceId}/nodes`, "PUT", { revision, nodes }, signal), sourceId);
     },

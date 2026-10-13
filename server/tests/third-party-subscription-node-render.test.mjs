@@ -19,6 +19,49 @@ const node = (alias) => ({
   protocol: "ss", method: "aes-256-gcm", password: "synthetic-only"
 });
 
+test("explicit country overrides replace leading flags for aliases and default names only", () => {
+  for (const alias of ["🇯🇵 🇺🇸 Tokyo", undefined]) {
+    const input = { ...node(alias), name: "🇯🇵 🇺🇸 Tokyo", displayName: "🇯🇵 🇺🇸 Tokyo", thirdPartyCountryOverride: "SG" };
+    const result = decorateThirdPartyServers([input])[0];
+    assert.equal(result.countryCode, "JP");
+    assert.equal(result.subscriptionDisplayName, alias ? "🇸🇬 Tokyo" : "🇸🇬 [3P] JP 1 | Tokyo");
+    assert.equal(result.name, input.name);
+    const without = decorateThirdPartyServers([{ ...input, thirdPartyCountryOverride: "OTHER" }])[0];
+    assert.equal(without.subscriptionDisplayName, alias ? "Tokyo" : "[3P] JP 1 | Tokyo");
+    const legacy = { ...input }; delete legacy.thirdPartyCountryOverride;
+    assert.equal(decorateThirdPartyServers([legacy])[0].subscriptionDisplayName,
+      alias ? alias : "[3P] JP 1 | 🇯🇵 🇺🇸 Tokyo");
+  }
+});
+
+test("flagged long aliases stay well formed and uniquely suffixed within 128 UTF16 units", () => {
+  const alias = `x${"😀".repeat(63)}y`;
+  const nodes = Array.from({ length: 3 }, () => ({ ...node(alias), thirdPartyCountryOverride: "US" }));
+  const result = decorateThirdPartyServers(nodes);
+  assert.equal(new Set(result.map(item => item.subscriptionDisplayName)).size, 3);
+  assert.equal(result[1].subscriptionDisplayName.endsWith("~2"), true);
+  assert.equal(result[2].subscriptionDisplayName.endsWith("~3"), true);
+  for (const item of result) {
+    assert.ok(item.subscriptionDisplayName.startsWith("🇺🇸 "));
+    assert.ok(item.subscriptionDisplayName.length <= 128 && item.subscriptionDisplayName.isWellFormed());
+  }
+  validateProxyDisplayNames(result);
+  const rendered = parse(generateClashSubscription({ servers: result, pingHosts: [], nginx: {} }));
+  assert.deepEqual(rendered.proxies.map(proxy => proxy.name), result.map(item => item.subscriptionDisplayName));
+  assert.deepEqual(rendered["proxy-groups"].find(group => group.name === "3P-JP").proxies, result.map(item => item.subscriptionDisplayName));
+});
+
+test("flagged aliases remove truncation whitespace before collision checks and final rendering", () => {
+  const nodes = [`${"x".repeat(122)} y`, "x".repeat(122)].map(alias => ({ ...node(alias), thirdPartyCountryOverride: "US" }));
+  const result = decorateThirdPartyServers(nodes);
+  assert.equal(result[0].subscriptionDisplayName, `🇺🇸 ${"x".repeat(122)}`);
+  assert.ok(result[1].subscriptionDisplayName.endsWith("~2"));
+  for (const item of result) assert.equal(item.subscriptionDisplayName, item.subscriptionDisplayName.trim());
+  validateProxyDisplayNames(result);
+  const rendered = parse(generateClashSubscription({ servers: result, pingHosts: [], nginx: {} }));
+  assert.deepEqual(rendered.proxies.map(proxy => proxy.name), result.map(item => item.subscriptionDisplayName));
+});
+
 test("managed alias changes only the subscription label, not upstream identity or credentials", () => {
   const input = node("日本-精选 01");
   const result = decorateThirdPartyServers([input])[0];

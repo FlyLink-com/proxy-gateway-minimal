@@ -45,6 +45,144 @@ function rejects(code, action) {
   assert.throws(action, (error) => error.code === code && error.message === code);
 }
 
+test("country override is encrypted, survives reopening and leaves identity material untouched", (t) => {
+  const { database, secretProtector, store, source } = fixture(t);
+  const before = snapshot(database);
+  const view = store.listSourceNodes(source.id);
+  const input = inputOf(view);
+  input.nodes[0].customCountryCode = "SG";
+  input.nodes[0].customName = "🇯🇵🇺🇸 专线";
+  store.saveSourceNodes(source.id, input);
+  const reopened = createSqliteThirdPartySubscriptionStore({ database, secretProtector, nowFn: at });
+  const saved = reopened.listSourceNodes(source.id);
+  assert.equal(saved.items[0].customCountryCode, "SG");
+  assert.equal(saved.items[0].countryCode, view.items[0].countryCode);
+  assert.equal(saved.items[0].customName, "🇯🇵🇺🇸 专线");
+  assert.equal(saved.items[0].displayName, "🇸🇬 专线");
+  assert.equal(saved.items[0].defaultName, view.items[0].defaultName);
+  const old = before.nodes.find(row => row.id === saved.items[0].id);
+  const row = database.prepare("select * from platform_third_party_nodes where id = ?").get(old.id);
+  for (const key of Object.keys(old).filter(key => key !== "protected_config")) assert.deepEqual(row[key], old[key]);
+  const config = JSON.parse(secretProtector.unprotect(row.protected_config));
+  assert.equal(config.adminCountryCode, "SG");
+  delete config.adminCountryCode;
+  delete config.adminDisplayName;
+  assert.deepEqual(config, JSON.parse(secretProtector.unprotect(old.protected_config)));
+  reopened.enableSourceNodes(source.id, { revision: saved.revision });
+  const active = reopened.listActiveServersForPlan("monthly_basic").find(item => item.id === old.id);
+  assert.equal(active.thirdPartyCountryOverride, "SG");
+  assert.equal(Object.hasOwn(active, "adminCountryCode"), false);
+});
+
+test("legacy country omission preserves override, explicit null restores original projection", (t) => {
+  const { management, source } = fixture(t);
+  const original = management.listSourceNodes(source.id);
+  const change = inputOf(original); change.nodes[0].customCountryCode = "OTHER";
+  let view = management.saveSourceNodes(source.id, change);
+  assert.equal(view.items[0].customCountryCode, "OTHER");
+  assert.equal(view.items[0].defaultName, original.items[0].defaultName);
+  view = management.saveSourceNodes(source.id, inputOf(view));
+  assert.equal(view.items[0].customCountryCode, "OTHER");
+  const reset = inputOf(view); reset.nodes[0].customCountryCode = null;
+  view = management.saveSourceNodes(source.id, reset);
+  assert.equal(Object.hasOwn(view.items[0], "customCountryCode"), false);
+  assert.deepEqual(view.items, original.items);
+});
+
+for (const value of ["", "sg", "ZZ", "UK", "USA", " US", "US\n", 3, {}, [], true]) {
+  test(`invalid country override rejected atomically: ${JSON.stringify(value)}`, (t) => {
+    const { database, management, source } = fixture(t);
+    const before = snapshot(database);
+    const input = inputOf(management.listSourceNodes(source.id));
+    input.nodes[0].customCountryCode = value;
+    rejects("invalid_input", () => management.saveSourceNodes(source.id, input));
+    assert.deepEqual(snapshot(database), before);
+  });
+}
+
+test("country override cannot bypass enabled source, revision or transaction rollback protections", (t) => {
+  const { database, management, source, store } = fixture(t);
+  const original = management.listSourceNodes(source.id);
+  const input = inputOf(original); input.nodes[0].customCountryCode = "SG";
+  const saved = management.saveSourceNodes(source.id, input);
+  rejects("revision_conflict", () => management.saveSourceNodes(source.id, input));
+  management.enableSourceNodes(source.id, { revision: saved.revision });
+  const enabled = inputOf(management.listSourceNodes(source.id)); enabled.nodes[0].customCountryCode = "US";
+  rejects("source_enabled", () => management.saveSourceNodes(source.id, enabled));
+  store.patchSource(source.id, { enabled: false });
+  const attempt = inputOf(management.listSourceNodes(source.id)); attempt.nodes.forEach(node => { node.customCountryCode = "JP"; });
+  const before = snapshot(database);
+  database.exec(`create trigger synthetic_country_abort before update of protected_config on platform_third_party_nodes
+    when old.id = '${attempt.nodes[1].id}' begin select raise(abort, 'synthetic-private-error'); end`);
+  rejects("third_party_unavailable", () => management.saveSourceNodes(source.id, attempt));
+  assert.deepEqual(snapshot(database), before);
+});
+
+test("country choice persists across an actual SQLite close and reopen", (t) => {
+  const directory = mkdtempSync(join(tmpdir(), "third-party-country-persistence-"));
+  const path = join(directory, "synthetic.sqlite");
+  let database = new Database(path);
+  t.after(() => { if (database.open) database.close(); rmSync(directory, { recursive: true, force: true }); });
+  applyThirdPartySubscriptionMigrations({ database,
+    expectedMigrationId: REQUIRED_THIRD_PARTY_SUBSCRIPTION_MIGRATION_ID,
+    expectedDdlChecksum: REQUIRED_THIRD_PARTY_SUBSCRIPTION_DDL_CHECKSUM, nowFn: at });
+  const secretProtector = createPortalTotpSecretProtector({ key: Buffer.alloc(32, 19) });
+  const options = { database, secretProtector, nowFn: at };
+  let store = createSqliteThirdPartySubscriptionStore(options);
+  const source = store.createInlineSource({ name: "Synthetic", yamlContent: yaml, tiers: ["monthly_basic"] });
+  const view = store.listSourceNodes(source.id);
+  const input = inputOf(view); input.nodes[0].customCountryCode = "GB";
+  const saved = store.saveSourceNodes(source.id, input);
+  database.close();
+  database = new Database(path);
+  store = createSqliteThirdPartySubscriptionStore({ ...options, database });
+  assert.deepEqual(store.listSourceNodes(source.id), saved);
+  store.enableSourceNodes(source.id, { revision: saved.revision });
+  const active = store.listActiveServersForPlan("monthly_basic").find(node => node.id === view.items[0].id);
+  assert.equal(active.thirdPartyCountryOverride, "GB");
+  assert.equal(Object.hasOwn(active, "adminCountryCode"), false);
+});
+
+test("country flag substitution cannot create same-source duplicate aliases", (t) => {
+  const { database, management, source } = fixture(t);
+  const input = inputOf(management.listSourceNodes(source.id));
+  input.nodes[0] = { ...input.nodes[0], customName: "🇯🇵 Node", customCountryCode: "SG" };
+  input.nodes[1] = { ...input.nodes[1], customName: "🇺🇸 node", customCountryCode: "SG" };
+  const before = snapshot(database);
+  rejects("duplicate_node_name", () => management.saveSourceNodes(source.id, input));
+  assert.deepEqual(snapshot(database), before);
+});
+
+test("flagged aliases that collide only after truncation whitespace trimming are rejected atomically", (t) => {
+  const { database, management, source } = fixture(t);
+  const input = inputOf(management.listSourceNodes(source.id));
+  input.nodes[0] = { ...input.nodes[0], customName: `${"x".repeat(122)} y`, customCountryCode: "US" };
+  input.nodes[1] = { ...input.nodes[1], customName: "x".repeat(122), customCountryCode: "US" };
+  const before = snapshot(database);
+  rejects("duplicate_node_name", () => management.saveSourceNodes(source.id, input));
+  assert.deepEqual(snapshot(database), before);
+});
+
+test("same raw alias with different explicit country flags is allowed", (t) => {
+  const { management, source } = fixture(t);
+  const input = inputOf(management.listSourceNodes(source.id));
+  input.nodes[0] = { ...input.nodes[0], customName: "Node", customCountryCode: "JP" };
+  input.nodes[1] = { ...input.nodes[1], customName: "Node", customCountryCode: "US" };
+  const saved = management.saveSourceNodes(source.id, input);
+  assert.deepEqual(saved.items.slice(0, 2).map(item => item.displayName), ["🇯🇵 Node", "🇺🇸 Node"]);
+});
+
+for (const alias of ["🇯🇵 🇺🇸", "🇯🇵 DIRECT", "🇸🇬 reject", "🇸🇬 Auto"]) {
+  test(`OTHER override cannot expose empty or reserved alias: ${alias}`, (t) => {
+    const { management, source, database } = fixture(t);
+    const before = snapshot(database);
+    const input = inputOf(management.listSourceNodes(source.id));
+    input.nodes[0] = { ...input.nodes[0], customName: alias, customCountryCode: "OTHER" };
+    rejects("invalid_node_name", () => management.saveSourceNodes(source.id, input));
+    assert.deepEqual(snapshot(database), before);
+  });
+}
+
 test("node management returns only explicit public fields and deterministic defaults", (t) => {
   const { management, source } = fixture(t);
   const view = management.listSourceNodes(source.id);

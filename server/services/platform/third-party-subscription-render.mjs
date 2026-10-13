@@ -1,4 +1,5 @@
 import { proxyDisplayName } from "../proxy-display-name.mjs";
+import { applyThirdPartyCountryFlag, isThirdPartyCountryCode } from "./third-party-node-country.mjs";
 import {
   findUsageBindingForTenant,
   resolveThirdPartyPlanId
@@ -21,7 +22,9 @@ function text(value) {
 function truncateLabel(value, limit) {
   const truncated = value.slice(0, limit);
   // Preserve well-formed Unicode when the UTF-16 bound falls inside an emoji.
-  return /[\ud800-\udbff]$/.test(truncated) ? truncated.slice(0, -1) : truncated;
+  // Truncation can expose trailing whitespace: normalize before name deduping,
+  // matching the final proxyDisplayName boundary rather than trimming later.
+  return (/[\ud800-\udbff]$/.test(truncated) ? truncated.slice(0, -1) : truncated).trimEnd();
 }
 
 // A display projection only: keep encrypted upstream names and fingerprints intact.
@@ -44,11 +47,13 @@ function safeManagedAlias(value) {
   return RESERVED_NAMES.has(alias.toUpperCase()) ? "" : alias;
 }
 
-function assignDisplayName({ countryCode, index, originalName, managedAlias, used }) {
+function assignDisplayName({ countryCode, countryOverride, index, originalName, managedAlias, used }) {
   const country = text(countryCode).toUpperCase() || "OTHER";
   const prefix = `${THIRD_PARTY_NAME_MARKER} ${country} ${index}`;
   const original = sanitizeOriginalName(originalName);
-  let base = safeManagedAlias(managedAlias) || (original ? `${prefix} | ${original}` : prefix);
+  const defaultBase = original ? `${prefix} | ${original}` : prefix;
+  let base = safeManagedAlias(managedAlias) || defaultBase;
+  if (countryOverride) base = applyThirdPartyCountryFlag(base, countryOverride) || applyThirdPartyCountryFlag(defaultBase, countryOverride);
   base = truncateLabel(base.replace(CONTROL_CHAR_PATTERN, "").trim(), 128);
   if (!base) base = prefix;
   let name = base;
@@ -69,11 +74,13 @@ export function decorateThirdPartyServers(nodes, existingServers = []) {
   const counters = new Map();
   const decorated = [];
   for (const node of nodes || []) {
+    const countryOverride = isThirdPartyCountryCode(node.thirdPartyCountryOverride) ? node.thirdPartyCountryOverride : null;
     const country = text(node.countryCode || node.region).toUpperCase() || "OTHER";
     const next = (counters.get(country) || 0) + 1;
     counters.set(country, next);
     const subscriptionDisplayName = assignDisplayName({
       countryCode: country,
+      countryOverride,
       index: next,
       originalName: node.displayName || node.name,
       managedAlias: node.thirdPartyDisplayAlias,

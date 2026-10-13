@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { isThirdPartyCountryCode } from "../services/platform/third-party-node-country.mjs";
 
 const SOURCE_ID_PATTERN = /^tpsrc_[0-9a-f]{32}$/;
 const NODE_ID_PATTERN = /^tpnode_[0-9a-f]{32}$/;
@@ -8,7 +9,7 @@ const PREVIEW_KEYS = new Set(["yamlContent", "regionOverride"]);
 const PATCH_KEYS = new Set(["name", "tiers", "enabled"]);
 const SAVE_NODES_KEYS = new Set(["revision", "nodes"]);
 const ENABLE_NODES_KEYS = new Set(["revision"]);
-const NODE_KEYS = new Set(["id", "customName"]);
+const NODE_KEYS = new Set(["id", "customName", "customCountryCode"]);
 const MAX_INLINE_YAML_BYTES = 64 * 1024;
 const MAX_SOURCE_NODES = 256;
 const PUBLIC_ERROR_CODES = new Set([
@@ -98,6 +99,7 @@ function validNodeList(value) {
     return body && assertKnownKeys(body, NODE_KEYS)
       && typeof body.id === "string" && NODE_ID_PATTERN.test(body.id)
       && Object.hasOwn(body, "customName")
+      && (!Object.hasOwn(body, "customCountryCode") || body.customCountryCode === null || isThirdPartyCountryCode(body.customCountryCode))
       && (body.customName === null || typeof body.customName === "string");
   });
 }
