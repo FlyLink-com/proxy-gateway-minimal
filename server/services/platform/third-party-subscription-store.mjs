@@ -5,10 +5,7 @@ import Database from "better-sqlite3";
 import {
   inspectThirdPartySubscriptionSchema
 } from "./third-party-subscription-migrations.mjs";
-import {
-  fetchAndSplitSubscription,
-  parseHttpsUrl
-} from "./third-party-subscription-fetch.mjs";
+import { parseThirdPartyYaml } from "./third-party-subscription-yaml.mjs";
 
 export const THIRD_PARTY_PLAN_IDS = Object.freeze([
   "monthly_basic",
@@ -18,6 +15,13 @@ export const THIRD_PARTY_PLAN_IDS = Object.freeze([
 export const THIRD_PARTY_PROTECTED_PREFIX = "v2:aes-256-gcm:";
 
 const PLAN_ID_SET = new Set(THIRD_PARTY_PLAN_IDS);
+const MAX_INLINE_YAML_BYTES = 64 * 1024;
+const MAX_INLINE_NODES = 1024;
+const INLINE_PROTOCOLS = new Set(["ss", "vless", "hysteria2", "tuic"]);
+const INLINE_INPUT_KEYS = new Set(["name", "yamlContent", "regionOverride", "tiers", "enabled"]);
+const PREVIEW_INPUT_KEYS = new Set(["yamlContent", "regionOverride"]);
+const DEDUP_KEY_PATTERN = /^[a-f0-9]{64}$/;
+const COUNTRY_PATTERN = /^[A-Z]{2}$/;
 
 function storeError(code) {
   const error = new Error(code);
@@ -103,6 +107,241 @@ function unprotectRequired(protector, wrapped) {
   return plain;
 }
 
+function inlineDescriptorJson() {
+  return JSON.stringify({ version: 1, kind: "inline-yaml" });
+}
+
+function classifyDescriptor(plain) {
+  if (typeof plain !== "string") return "unknown";
+  const trimmed = plain.trim();
+  if (trimmed.startsWith("https://") || trimmed.startsWith("http://")) return "remote";
+  try {
+    const parsed = JSON.parse(trimmed);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return "unknown";
+    const keys = Object.keys(parsed);
+    if (keys.length === 2 && parsed.version === 1 && parsed.kind === "inline-yaml") {
+      return "inline-yaml";
+    }
+  } catch {
+    return "unknown";
+  }
+  return "unknown";
+}
+
+function assertExactOwnKeys(value, allowed) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw storeError("invalid_input");
+  for (const key of Object.keys(value)) {
+    if (!allowed.has(key)) throw storeError("invalid_input");
+  }
+}
+
+function assertInlineYaml(value) {
+  if (typeof value !== "string" || value.length === 0) throw storeError("invalid_yaml");
+  if (Buffer.byteLength(value, "utf8") > MAX_INLINE_YAML_BYTES) throw storeError("invalid_yaml");
+}
+
+function parseYamlOrThrow(yamlContent, regionOverride) {
+  let parsed;
+  try {
+    parsed = parseThirdPartyYaml(yamlContent, { regionOverride });
+  } catch (error) {
+    const code = error?.code === "parse_no_valid_nodes" ? "parse_no_valid_nodes" : "invalid_yaml";
+    throw storeError(code);
+  }
+  if (!parsed || parsed.encoding !== "yaml" || !Array.isArray(parsed.nodes)) {
+    throw storeError("invalid_yaml");
+  }
+  if (parsed.nodes.length > MAX_INLINE_NODES) throw storeError("invalid_yaml");
+  if (parsed.nodes.length === 0) throw storeError("parse_no_valid_nodes");
+  return parsed;
+}
+
+function dedupKeyOf(node) {
+  const key = text(node?.dedupKey).toLowerCase();
+  if (!DEDUP_KEY_PATTERN.test(key)) throw storeError("invalid_node");
+  return key;
+}
+
+function copyLabel(value, max, { required = false } = {}) {
+  if (value === undefined || value === null || value === "") {
+    if (required) throw storeError("invalid_node");
+    return undefined;
+  }
+  if (typeof value !== "string") throw storeError("invalid_node");
+  const trimmed = value.trim();
+  if (!trimmed || trimmed.length > max || /[\u0000-\u001f\u007f]/.test(trimmed)) {
+    throw storeError("invalid_node");
+  }
+  return trimmed;
+}
+
+function optionalLabel(value, max) {
+  if (value === undefined || value === null || value === "") return undefined;
+  return copyLabel(value, max, { required: true });
+}
+
+function copySecret(value, max) {
+  if (typeof value !== "string" || value.length < 1 || value.length > max || value.includes("\u0000")) {
+    throw storeError("invalid_node");
+  }
+  return value;
+}
+
+function optionalSecret(value, max) {
+  if (value === undefined || value === null || value === "") return undefined;
+  return copySecret(value, max);
+}
+
+function optionalBool(value) {
+  if (value === undefined) return undefined;
+  if (typeof value !== "boolean") throw storeError("invalid_node");
+  return value;
+}
+
+function optionalStringList(value) {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value) || value.length > 8) throw storeError("invalid_node");
+  return value.map((item) => copyLabel(item, 256, { required: true }));
+}
+
+function copyHost(value) {
+  if (typeof value !== "string") throw storeError("invalid_node");
+  const host = value.trim();
+  if (!host || host.length > 255 || /[\s\u0000-\u001f\u007f]/.test(host) || host.includes("://")) {
+    throw storeError("invalid_node");
+  }
+  return host;
+}
+
+function copyPort(value) {
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 1 || value > 65535) {
+    throw storeError("invalid_node");
+  }
+  return value;
+}
+
+function normalizeCountry(value) {
+  if (typeof value !== "string") throw storeError("invalid_node");
+  const country = value.trim().toUpperCase();
+  if (country === "OTHER" || COUNTRY_PATTERN.test(country)) return country;
+  throw storeError("invalid_node");
+}
+
+function assignField(target, key, value) {
+  if (value !== undefined) target[key] = value;
+}
+
+function copyCertPin(node) {
+  if (node.fingerprint === undefined || node.fingerprint === null || node.fingerprint === "") return undefined;
+  if (typeof node.fingerprint !== "string") throw storeError("invalid_node");
+  return copyLabel(node.fingerprint, 128, { required: true });
+}
+
+function copyReality(value) {
+  if (value === undefined) return undefined;
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw storeError("invalid_node");
+  const publicKey = optionalLabel(value.publicKey, 256);
+  const shortId = optionalLabel(value.shortId, 64);
+  if (!publicKey && !shortId) return undefined;
+  return {
+    ...(publicKey ? { publicKey } : {}),
+    ...(shortId ? { shortId } : {})
+  };
+}
+
+function normalizeImportedNode(node) {
+  if (!node || typeof node !== "object" || Array.isArray(node)) throw storeError("invalid_node");
+  const protocol = text(node.protocol).toLowerCase();
+  if (!INLINE_PROTOCOLS.has(protocol)) throw storeError("invalid_node");
+  const dedupKey = dedupKeyOf(node);
+  const name = copyLabel(node.name, 128, { required: true });
+  const displayName = copyLabel(node.displayName, 128, { required: true });
+  const countryCode = normalizeCountry(node.countryCode);
+  const region = normalizeCountry(node.region);
+  const config = {
+    protocol,
+    host: copyHost(node.host),
+    port: copyPort(node.port),
+    name,
+    displayName,
+    countryCode,
+    region,
+    dedupKey
+  };
+  assignField(config, "fingerprint", copyCertPin(node));
+  if (protocol === "ss") {
+    const method = optionalLabel(node.method, 64) || optionalLabel(node.cipher, 64);
+    if (!method) throw storeError("invalid_node");
+    config.method = method;
+    config.cipher = optionalLabel(node.cipher, 64) || method;
+    config.password = copySecret(node.password, 4096);
+  } else if (protocol === "vless") {
+    config.uuid = copyLabel(node.uuid, 128, { required: true });
+    assignField(config, "udp", optionalBool(node.udp));
+    assignField(config, "network", optionalLabel(node.network, 32));
+    assignField(config, "flow", optionalLabel(node.flow, 64));
+    assignField(config, "serverName", optionalLabel(node.serverName, 255));
+    assignField(config, "packetEncoding", optionalLabel(node.packetEncoding, 64));
+    assignField(config, "clientFingerprint", optionalLabel(node.clientFingerprint, 64));
+    assignField(config, "tls", optionalBool(node.tls));
+    assignField(config, "realityOpts", copyReality(node.realityOpts));
+  } else if (protocol === "hysteria2") {
+    config.password = copySecret(node.password, 4096);
+    assignField(config, "sni", optionalLabel(node.sni, 255));
+    assignField(config, "obfs", optionalLabel(node.obfs, 64));
+    assignField(config, "obfsPassword", optionalSecret(node.obfsPassword, 4096));
+    assignField(config, "alpn", optionalStringList(node.alpn));
+  } else {
+    config.uuid = copyLabel(node.uuid, 128, { required: true });
+    config.password = copySecret(node.password, 4096);
+    assignField(config, "sni", optionalLabel(node.sni, 255));
+    assignField(config, "alpn", optionalStringList(node.alpn));
+    assignField(config, "congestionController", optionalLabel(node.congestionController, 64));
+    assignField(config, "udpRelayMode", optionalLabel(node.udpRelayMode, 64));
+  }
+  return { dedupKey, displayName, countryCode, region, protocol, config };
+}
+
+function normalizeImportedNodes(nodes) {
+  const normalized = [];
+  const seen = new Set();
+  for (const node of nodes) {
+    const imported = normalizeImportedNode(node);
+    if (seen.has(imported.dedupKey)) throw storeError("invalid_node");
+    seen.add(imported.dedupKey);
+    normalized.push(imported);
+  }
+  return normalized;
+}
+
+function normalizedRegionOrNull(value) {
+  const normalized = normalizeRegionOverride(value);
+  return normalized === undefined ? null : normalized;
+}
+
+function readInlineDocument(yamlContent, regionOverride) {
+  const region = normalizedRegionOrNull(regionOverride);
+  assertInlineYaml(yamlContent);
+  const parsed = parseYamlOrThrow(yamlContent, region);
+  return { region, parsed, nodes: normalizeImportedNodes(parsed.nodes) };
+}
+
+function publicParseSummary(nodes, parsed) {
+  const byProtocol = { ss: 0, vless: 0, hysteria2: 0, tuic: 0 };
+  const byCountry = {};
+  for (const node of nodes) {
+    byProtocol[node.protocol] += 1;
+    byCountry[node.countryCode] = (byCountry[node.countryCode] || 0) + 1;
+  }
+  const counts = {};
+  const sourceCounts = parsed.counts && typeof parsed.counts === "object" ? parsed.counts : {};
+  for (const key of ["valid", "unsupported", "malformed", "skippedBlank"]) {
+    const value = sourceCounts[key];
+    if (Number.isInteger(value) && value >= 0 && value <= MAX_INLINE_NODES) counts[key] = value;
+  }
+  return { encoding: "yaml", counts, byProtocol, byCountry };
+}
+
 function protocolServerFromStoredNode(config, row) {
   const server = {
     ...config,
@@ -116,16 +355,16 @@ function protocolServerFromStoredNode(config, row) {
     autoEligible: false,
     qualityClass: ""
   };
-  // The fingerprint column is the internal dedup key. A legacy protected
-  // config stored that same key on fingerprint; it is not a certificate pin.
+  // Legacy rows stored the internal dedup key on fingerprint and have no own
+  // dedupKey. New inline pins keep dedupKey and may equal that key.
+  const legacyDedupFingerprint = !Object.hasOwn(config, "dedupKey")
+    && server.fingerprint === row.fingerprint;
   delete server.dedupKey;
-  if (server.fingerprint === row.fingerprint) {
-    delete server.fingerprint;
-  }
+  if (legacyDedupFingerprint) delete server.fingerprint;
   return server;
 }
 
-function publicSource(row, tiers, nodeStats) {
+function publicSource(row, tiers, nodeStats, sourceKind = "unknown") {
   return {
     id: row.id,
     name: row.name,
@@ -137,7 +376,8 @@ function publicSource(row, tiers, nodeStats) {
     lastErrorCode: row.last_error_code,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
-    nodes: nodeStats
+    nodes: nodeStats,
+    sourceKind
   };
 }
 
@@ -159,8 +399,8 @@ function nodeStatsFromRows(rows) {
 export function createSqliteThirdPartySubscriptionStore(options = {}) {
   const secretProtector = options.secretProtector;
   const nowFn = options.nowFn || (() => new Date());
-  const fetchFn = options.fetchFn;
-  const resolveFn = options.resolveFn;
+  // Phase one ignores options.fetchFn and options.resolveFn. No option re-enables
+  // remote import or refresh, including values passed by production state.
   const ownsDatabase = !options.database;
   let database = options.database || null;
 
@@ -234,11 +474,6 @@ export function createSqliteThirdPartySubscriptionStore(options = {}) {
        set name = ?, region_override = ?, enabled = ?, updated_at = ?
      where id = ?
   `);
-  const markFailureStmt = database.prepare(`
-    update platform_third_party_sources
-       set status = 'error', last_error_code = ?, updated_at = ?
-     where id = ?
-  `);
   const markReadyStmt = database.prepare(`
     update platform_third_party_sources
        set status = 'ready', last_refresh_at = ?, last_error_code = null, updated_at = ?
@@ -293,37 +528,56 @@ export function createSqliteThirdPartySubscriptionStore(options = {}) {
   function sourceProjection(row) {
     const tiers = selectTiers.all(row.id).map((item) => item.plan_id);
     const nodes = nodeStatsFromRows(selectNodes.all(row.id));
-    return publicSource(row, tiers, nodes);
+    let sourceKind = "unknown";
+    try {
+      sourceKind = classifyDescriptor(unprotectRequired(secretProtector, row.protected_url));
+    } catch {
+      sourceKind = "unknown";
+    }
+    return publicSource(row, tiers, nodes, sourceKind);
   }
 
-  function createSource({ name, subscriptionUrl, regionOverride, tiers, enabled } = {}) {
-    const normalizedName = normalizeName(name);
-    const url = parseHttpsUrl(subscriptionUrl).toString();
-    const protectedUrl = protectRequired(secretProtector, url);
-    const normalizedTiers = normalizeTiers(tiers);
-    const normalizedEnabled = asBoolean(enabled, true);
-    const normalizedRegion = normalizeRegionOverride(regionOverride);
-    const region = normalizedRegion === undefined ? null : normalizedRegion;
+  function createSource() {
+    // Remote URL import is disabled. Do not parse, resolve, protect, or write.
+    throw storeError("remote_import_disabled");
+  }
+
+  function createInlineSource(input = {}) {
+    assertExactOwnKeys(input, INLINE_INPUT_KEYS);
+    const normalizedName = normalizeName(input.name);
+    const normalizedTiers = normalizeTiers(input.tiers);
+    // Omitted enabled stays disabled. enabled true is an explicit publication
+    // request from the caller; import does not publish on its own.
+    const normalizedEnabled = asBoolean(input.enabled, false);
+    const { region, nodes } = readInlineDocument(input.yamlContent, input.regionOverride);
     const id = newId("tpsrc_");
     const at = nowIso(nowFn);
     const tx = database.transaction(() => {
       insertSource.run(
         id,
         normalizedName,
-        protectedUrl,
+        protectRequired(secretProtector, inlineDescriptorJson()),
         region,
         normalizedEnabled ? 1 : 0,
         at,
         at
       );
       for (const planId of normalizedTiers) insertTier.run(id, planId);
+      replaceSourceNodes(id, nodes, at);
     });
     tx();
     return sourceProjection(requireSource(id));
   }
 
+  function previewInlineYaml(input = {}) {
+    assertExactOwnKeys(input, PREVIEW_INPUT_KEYS);
+    const { parsed, nodes } = readInlineDocument(input.yamlContent, input.regionOverride);
+    return publicParseSummary(nodes, parsed);
+  }
+
   function patchSource(id, patch = {}) {
     const row = requireSource(id);
+    if (Object.hasOwn(patch, "regionOverride")) throw storeError("invalid_input");
     const nextName = patch.name === undefined ? row.name : normalizeName(patch.name);
     const nextEnabled = patch.enabled === undefined ? row.enabled === 1 : asBoolean(patch.enabled, row.enabled === 1);
     const nextRegion = patch.regionOverride === undefined
@@ -364,12 +618,15 @@ export function createSqliteThirdPartySubscriptionStore(options = {}) {
   }
 
   function replaceSourceNodes(sourceId, nodes, at) {
-    const fingerprints = nodes.map((node) => node.fingerprint);
-    const fingerprintJson = JSON.stringify(fingerprints);
+    // SQL column name remains fingerprint. The value is the in-memory dedupKey.
+    const dedupKeys = nodes.map((node) => dedupKeyOf(node));
+    const fingerprintJson = JSON.stringify(dedupKeys);
     const tx = database.transaction(() => {
-      for (const node of nodes) {
+      for (let index = 0; index < nodes.length; index += 1) {
+        const node = nodes[index];
+        const dedupKey = dedupKeys[index];
         const protectedConfig = protectRequired(secretProtector, JSON.stringify(node.config));
-        const existing = selectNodeByFingerprint.get(sourceId, node.fingerprint);
+        const existing = selectNodeByFingerprint.get(sourceId, dedupKey);
         if (existing) {
           updateNode.run(
             node.displayName,
@@ -384,7 +641,7 @@ export function createSqliteThirdPartySubscriptionStore(options = {}) {
           insertNode.run(
             newId("tpnode_"),
             sourceId,
-            node.fingerprint,
+            dedupKey,
             node.displayName,
             node.countryCode,
             node.region,
@@ -402,70 +659,10 @@ export function createSqliteThirdPartySubscriptionStore(options = {}) {
 
   async function refreshSource(id) {
     const row = requireSource(id);
-    let url;
-    try {
-      url = unprotectRequired(secretProtector, row.protected_url);
-    } catch (error) {
-      const code = typeof error?.code === "string" ? error.code : "protected_value_invalid";
-      markFailureStmt.run(code, nowIso(nowFn), id);
-      return {
-        id,
-        ok: false,
-        status: "error",
-        lastErrorCode: code,
-        counts: { valid: 0, unsupported: 0, malformed: 0, active: 0 }
-      };
-    }
-    let parsed;
-    try {
-      parsed = await fetchAndSplitSubscription(url, {
-        fetchFn,
-        resolveFn,
-        regionOverride: row.region_override
-      });
-    } catch (error) {
-      const code = typeof error?.code === "string" ? error.code : "fetch_failed";
-      markFailureStmt.run(code, nowIso(nowFn), id);
-      return {
-        id,
-        ok: false,
-        status: "error",
-        lastErrorCode: code,
-        counts: { valid: 0, unsupported: 0, malformed: 0, active: 0 }
-      };
-    }
-    if (!parsed.nodes.length) {
-      const code = "parse_no_valid_nodes";
-      markFailureStmt.run(code, nowIso(nowFn), id);
-      return {
-        id,
-        ok: false,
-        status: "error",
-        lastErrorCode: code,
-        counts: parsed.counts
-      };
-    }
-    const at = nowIso(nowFn);
-    replaceSourceNodes(id, parsed.nodes.map((node) => ({
-      fingerprint: node.dedupKey,
-      displayName: node.displayName,
-      countryCode: node.countryCode,
-      region: node.region,
-      protocol: node.protocol,
-      config: node
-    })), at);
-    const projection = sourceProjection(requireSource(id));
-    return {
-      id,
-      ok: true,
-      status: projection.status,
-      lastErrorCode: null,
-      counts: {
-        ...parsed.counts,
-        active: projection.nodes.active,
-        total: projection.nodes.total
-      }
-    };
+    void row;
+    // Stop before descriptor decrypt, DNS, and fetch. Status and last-good nodes
+    // stay unchanged. An inline descriptor is never a fetch URL.
+    throw storeError("remote_refresh_disabled");
   }
 
   function listActiveServersForPlan(planId) {
@@ -489,6 +686,8 @@ export function createSqliteThirdPartySubscriptionStore(options = {}) {
     available: true,
     close,
     createSource,
+    createInlineSource,
+    previewInlineYaml,
     patchSource,
     listSources,
     getSummary,
@@ -506,6 +705,8 @@ function createUnavailableStore(extra = {}) {
     available: false,
     close: extra.close || (() => {}),
     createSource: unavailable,
+    createInlineSource: unavailable,
+    previewInlineYaml: unavailable,
     patchSource: unavailable,
     listSources: unavailable,
     getSummary: unavailable,

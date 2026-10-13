@@ -24,6 +24,15 @@ const SECRET_KEY = "00112233445566778899aabbccddeeff00112233445566778899aabbccdd
 const SOURCE_URL = "https://example.invalid/third-party-source-secret-path";
 const FAIL_URL = "https://example.invalid/third-party-source-secret-path-fail";
 const SS_HK = "ss://YWVzLTI1Ni1nY206c3ludGhldGljLXBhc3N3b3Jk@203.0.113.10:8388#HK";
+const INLINE_YAML = [
+  "proxies:",
+  "  - name: HK",
+  "    type: ss",
+  "    server: 203.0.113.10",
+  "    port: 8388",
+  "    cipher: aes-256-gcm",
+  "    password: synthetic-password"
+].join("\n");
 const STARTED_AT = "2026-10-10T00:00:00.000Z";
 const MATERIAL_MARKERS = [
   SOURCE_URL,
@@ -80,20 +89,74 @@ function openStore(dbPath, { fetchFn, nowFn } = {}) {
   return createSqliteThirdPartySubscriptionStore({
     dbPath,
     secretProtector: createPortalTotpSecretProtector({ key: SECRET_KEY }),
-    fetchFn,
-    resolveFn: async () => ["203.0.113.8"],
+    fetchFn: fetchFn || (async () => {
+      throw new Error("network");
+    }),
+    resolveFn: async () => {
+      throw new Error("dns");
+    },
     nowFn: nowFn || (() => new Date(STARTED_AT))
   });
 }
 
-function seedSources(dbPath, sources, options) {
-  const store = openStore(dbPath, options);
+function seedInline(dbPath, sources) {
+  const store = openStore(dbPath);
   try {
     assert.equal(store.available, true);
-    return sources.map((source) => store.createSource(source));
+    return sources.map((source) => store.createInlineSource({
+      yamlContent: INLINE_YAML,
+      ...source
+    }));
   } finally {
     store.close();
   }
+}
+
+function insertLegacyRemote(dbPath, {
+  id = `tpsrc_${"11".repeat(16)}`,
+  url = SOURCE_URL,
+  enabled = 1,
+  planId = "yearly",
+  lastRefreshAt = null
+} = {}) {
+  const database = new Database(dbPath);
+  const protector = createPortalTotpSecretProtector({ key: SECRET_KEY });
+  const at = STARTED_AT;
+  const dedupKey = "22".repeat(32);
+  database.prepare(`
+    insert into platform_third_party_sources (
+      id, name, protected_url, region_override, enabled, status,
+      last_refresh_at, last_error_code, created_at, updated_at
+    ) values (?, 'legacy-remote', ?, null, ?, 'ready', ?, null, ?, ?)
+  `).run(id, protector.protect(url), enabled, lastRefreshAt, at, at);
+  database.prepare(
+    "insert into platform_third_party_source_tiers (source_id, plan_id) values (?, ?)"
+  ).run(id, planId);
+  database.prepare(`
+    insert into platform_third_party_nodes (
+      id, source_id, fingerprint, display_name, country_code, region,
+      protocol, protected_config, last_seen_at, active
+    ) values (?, ?, ?, 'HK', 'HK', 'HK', 'ss', ?, ?, 1)
+  `).run(
+    `tpnode_${"33".repeat(16)}`,
+    id,
+    dedupKey,
+    protector.protect(JSON.stringify({
+      protocol: "ss",
+      host: "203.0.113.10",
+      port: 8388,
+      cipher: "aes-256-gcm",
+      password: "synthetic-password",
+      name: "HK",
+      displayName: "HK",
+      countryCode: "HK",
+      region: "HK",
+      dedupKey
+    })),
+    at
+  );
+  database.close();
+  return id;
 }
 
 function enabledEnv(dbPath, extra = {}) {
@@ -276,7 +339,7 @@ test("missing schema or secret fails closed without fetching", async () => {
 
     let opened = 0;
     const missingKey = await runThirdPartySubscriptionRefresh({
-      args: ["--apply"],
+      args: [],
       env: {
         THIRD_PARTY_SUBSCRIPTION_ENABLED: "true",
         THIRD_PARTY_SUBSCRIPTION_DB_PATH: dbPath,
@@ -297,7 +360,7 @@ test("missing schema or secret fails closed without fetching", async () => {
     assert.equal(fetched, 0);
 
     const badKey = await runThirdPartySubscriptionRefresh({
-      args: ["--apply"],
+      args: [],
       env: enabledEnv(dbPath, { THIRD_PARTY_SUBSCRIPTION_SECRET_KEY: "not-a-key" }),
       openStore: () => {
         opened += 1;
@@ -307,7 +370,28 @@ test("missing schema or secret fails closed without fetching", async () => {
     assert.equal(badKey.exitCode, 20);
     assert.equal(parseLine(badKey).reason, "invalid_secret_key");
     assert.equal(opened, 0);
-    assertNoMaterial(`${absent.stdout}${missingKey.stdout}${badKey.stdout}`);
+
+    const blockedApply = await runThirdPartySubscriptionRefresh({
+      args: ["--apply"],
+      env: {
+        THIRD_PARTY_SUBSCRIPTION_ENABLED: "true",
+        THIRD_PARTY_SUBSCRIPTION_DB_PATH: dbPath,
+        THIRD_PARTY_SUBSCRIPTION_SECRET_KEY: ""
+      },
+      openStore: () => {
+        opened += 1;
+        throw new Error("db");
+      },
+      fetchFn: async () => {
+        fetched += 1;
+        return textResponse(SS_HK);
+      }
+    });
+    assert.equal(blockedApply.exitCode, 20);
+    assert.equal(parseLine(blockedApply).reason, "remote_refresh_disabled");
+    assert.equal(opened, 0);
+    assert.equal(fetched, 0);
+    assertNoMaterial(`${absent.stdout}${missingKey.stdout}${badKey.stdout}${blockedApply.stdout}`);
   });
 });
 
@@ -315,10 +399,15 @@ test("dry-run counts due sources and does not fetch or change rows", async () =>
   await withTempDirAsync(async (directory) => {
     const dbPath = join(directory, "third-party.sqlite");
     applySchema(dbPath);
-    seedSources(dbPath, [
-      { name: "synthetic-on", subscriptionUrl: SOURCE_URL, tiers: ["monthly_basic"], enabled: true },
-      { name: "synthetic-off", subscriptionUrl: FAIL_URL, tiers: ["yearly"], enabled: false }
+    const [inline] = seedInline(dbPath, [
+      { name: "synthetic-on", tiers: ["monthly_basic"], enabled: true },
+      { name: "synthetic-off", tiers: ["yearly"], enabled: false }
     ]);
+    const legacyId = insertLegacyRemote(dbPath);
+    const database = new Database(dbPath);
+    database.prepare("update platform_third_party_sources set last_refresh_at = null where id = ?")
+      .run(inline.id);
+    database.close();
     const before = sourceSnapshot(dbPath);
     let fetched = 0;
     const result = await runThirdPartySubscriptionRefresh({
@@ -340,13 +429,14 @@ test("dry-run counts due sources and does not fetch or change rows", async () =>
     assert.equal(body.status, "planned");
     assert.equal(body.mode, "dry-run");
     assert.equal(body.reason, "dry_run");
-    assert.equal(body.sources.total, 2);
+    assert.equal(body.sources.total, 3);
     assert.equal(body.sources.due, 1);
     assert.equal(body.sources.refreshed, 0);
     assert.equal(body.sources.failed, 0);
     assert.equal(body.sources.skipped, 0);
-    assert.equal(body.items.length, 1);
-    assert.equal(body.items[0].status, "would_refresh");
+    assert.equal(body.items.find((item) => item.id === inline.id).status, "skipped_inline");
+    assert.equal(body.items.find((item) => item.id === legacyId).status, "would_refresh");
+    assert.equal(body.items.some((item) => item.id === inline.id && item.status === "would_refresh"), false);
     assert.equal(fetched, 0);
     assert.deepEqual(sourceSnapshot(dbPath), before);
     assertNoMaterial(result.stdout);
@@ -356,157 +446,131 @@ test("dry-run counts due sources and does not fetch or change rows", async () =>
     const spawnedBody = JSON.parse(spawned.stdout);
     assert.equal(spawnedBody.status, "planned");
     assert.equal(spawnedBody.sources.due, 1);
+    assert.equal(spawnedBody.items.find((item) => item.id === inline.id).status, "skipped_inline");
     assert.equal(spawned.stderr, "");
     assert.deepEqual(sourceSnapshot(dbPath), before);
     assertNoMaterial(`${spawned.stdout}${spawned.stderr}`);
   });
 });
 
-test("apply refreshes an enabled source and the JSON line has no url or credential", async () => {
+test("apply is blocked before store or secret access and does not change rows", async () => {
   await withTempDirAsync(async (directory) => {
     const dbPath = join(directory, "third-party.sqlite");
     applySchema(dbPath);
-    const [created] = seedSources(dbPath, [
-      { name: "synthetic-on", subscriptionUrl: SOURCE_URL, tiers: ["monthly_basic"] }
+    const [inline] = seedInline(dbPath, [
+      { name: "synthetic-on", tiers: ["monthly_basic"], enabled: true }
     ]);
+    insertLegacyRemote(dbPath, { lastRefreshAt: "2026-10-09T00:00:00.000Z" });
+    const before = sourceSnapshot(dbPath);
+    const secretReads = [];
+    const env = new Proxy({
+      THIRD_PARTY_SUBSCRIPTION_ENABLED: "true",
+      THIRD_PARTY_SUBSCRIPTION_DB_PATH: dbPath,
+      THIRD_PARTY_SUBSCRIPTION_SECRET_KEY: SECRET_KEY,
+      THIRD_PARTY_SUBSCRIPTION_REFRESH_MIN_INTERVAL_SECONDS: "0"
+    }, {
+      get(target, prop, receiver) {
+        if (prop === "THIRD_PARTY_SUBSCRIPTION_SECRET_KEY" || prop === "THIRD_PARTY_SUBSCRIPTION_DB_PATH") {
+          secretReads.push(String(prop));
+        }
+        return Reflect.get(target, prop, receiver);
+      }
+    });
+    let opened = 0;
     let fetched = 0;
     const result = await runThirdPartySubscriptionRefresh({
       args: ["--apply"],
-      env: enabledEnv(dbPath),
+      env,
       nowFn: () => new Date(STARTED_AT),
       fetchFn: async () => {
         fetched += 1;
-        return textResponse(SS_HK);
-      },
-      resolveFn: async () => ["203.0.113.8"]
-    });
-    assert.equal(fetched, 1);
-    assert.equal(result.exitCode, 0);
-    assert.equal(result.stderr, "");
-    const body = parseLine(result);
-    assert.equal(body.status, "completed");
-    assert.equal(body.sources.total, 1);
-    assert.equal(body.sources.refreshed, 1);
-    assert.equal(body.sources.failed, 0);
-    assert.deepEqual(body.items, [{ id: created.id, status: "refreshed" }]);
-    assertNoMaterial(`${result.stdout}${result.stderr}`);
-    const after = sourceSnapshot(dbPath);
-    assert.equal(after.sources[0].status, "ready");
-    assert.equal(after.sources[0].last_refresh_at, STARTED_AT);
-    assert.equal(after.nodes.length, 1);
-    assert.equal(after.nodes[0].active, 1);
-    assert.equal(after.nodes[0].country_code, "HK");
-  });
-});
-
-test("a failed source keeps last-good nodes, exits non-zero, and alerts without a url", async () => {
-  await withTempDirAsync(async (directory) => {
-    const dbPath = join(directory, "third-party.sqlite");
-    applySchema(dbPath);
-    const created = seedSources(dbPath, [
-      { name: "synthetic-keep", subscriptionUrl: SOURCE_URL, tiers: ["monthly_plus"] },
-      { name: "synthetic-fail", subscriptionUrl: FAIL_URL, tiers: ["yearly"] }
-    ]);
-    const first = await runThirdPartySubscriptionRefresh({
-      args: ["--apply"],
-      env: enabledEnv(dbPath, { THIRD_PARTY_SUBSCRIPTION_REFRESH_MIN_INTERVAL_SECONDS: "0" }),
-      nowFn: () => new Date(STARTED_AT),
-      fetchFn: async () => textResponse(SS_HK),
-      resolveFn: async () => ["203.0.113.8"]
-    });
-    assert.equal(first.exitCode, 0);
-    assert.equal(sourceSnapshot(dbPath).nodes.length, 2);
-
-    let fetched = 0;
-    const second = await runThirdPartySubscriptionRefresh({
-      args: ["--apply"],
-      env: enabledEnv(dbPath, { THIRD_PARTY_SUBSCRIPTION_REFRESH_MIN_INTERVAL_SECONDS: "0" }),
-      nowFn: () => new Date("2026-10-10T06:00:00.000Z"),
-      fetchFn: async (url) => {
-        fetched += 1;
-        if (String(url).includes("secret-path-fail")) {
-          throw new Error("upstream down");
-        }
-        return textResponse(SS_HK);
-      },
-      resolveFn: async () => ["203.0.113.8"]
-    });
-    assert.equal(fetched, 2);
-    assert.equal(second.exitCode, 30);
-    assert.equal(second.stderr, "third_party_refresh_failed count=1\n");
-    const body = parseLine(second);
-    assert.equal(body.status, "refresh_failed");
-    assert.equal(body.reason, "source_refresh_failed");
-    assert.equal(body.sources.refreshed, 1);
-    assert.equal(body.sources.failed, 1);
-    const failedItem = body.items.find((item) => item.id === created[1].id);
-    const keptItem = body.items.find((item) => item.id === created[0].id);
-    assert.equal(failedItem.status, "fetch_failed");
-    assert.equal(keptItem.status, "refreshed");
-    assertNoMaterial(`${second.stdout}${second.stderr}`);
-    const nodes = sourceSnapshot(dbPath).nodes;
-    assert.equal(nodes.length, 2);
-    assert.equal(nodes.every((node) => node.active === 1), true);
-  });
-});
-
-test("min interval skips a source refreshed inside the window", async () => {
-  await withTempDirAsync(async (directory) => {
-    const dbPath = join(directory, "third-party.sqlite");
-    applySchema(dbPath);
-    seedSources(dbPath, [
-      { name: "synthetic-on", subscriptionUrl: SOURCE_URL, tiers: ["yearly"] }
-    ]);
-    const first = await runThirdPartySubscriptionRefresh({
-      args: ["--apply"],
-      env: enabledEnv(dbPath),
-      nowFn: () => new Date(STARTED_AT),
-      fetchFn: async () => textResponse(SS_HK),
-      resolveFn: async () => ["203.0.113.8"]
-    });
-    assert.equal(first.exitCode, 0);
-    const before = sourceSnapshot(dbPath);
-
-    let fetched = 0;
-    const skipped = await runThirdPartySubscriptionRefresh({
-      args: ["--apply"],
-      env: enabledEnv(dbPath),
-      nowFn: () => new Date("2026-10-10T01:00:00.000Z"),
-      fetchFn: async () => {
-        fetched += 1;
-        throw new Error("should not fetch");
+        throw new Error("network");
       },
       resolveFn: async () => {
         fetched += 1;
-        return ["203.0.113.8"];
+        throw new Error("dns");
+      },
+      openStore: () => {
+        opened += 1;
+        throw new Error("store");
       }
     });
     assert.equal(fetched, 0);
-    assert.equal(skipped.exitCode, 0);
-    assert.equal(skipped.stderr, "");
-    const body = parseLine(skipped);
-    assert.equal(body.status, "completed");
-    assert.equal(body.sources.due, 0);
-    assert.equal(body.sources.refreshed, 0);
-    assert.equal(body.sources.skipped, 1);
-    assert.equal(body.items[0].status, "skipped_min_interval");
+    assert.equal(opened, 0);
+    assert.deepEqual(secretReads, []);
+    assert.equal(result.exitCode, 20);
+    assert.equal(result.stderr, "");
+    const body = parseLine(result);
+    assert.equal(body.status, "blocked");
+    assert.equal(body.mode, "apply");
+    assert.equal(body.reason, "remote_refresh_disabled");
+    assert.equal(body.sources.total, 0);
+    assertNoMaterial(`${result.stdout}${result.stderr}`);
     assert.deepEqual(sourceSnapshot(dbPath), before);
-    assertNoMaterial(skipped.stdout);
+    const spawned = runCli(["--apply"], enabledEnv(dbPath));
+    assert.equal(spawned.status, 20);
+    assert.equal(JSON.parse(spawned.stdout).reason, "remote_refresh_disabled");
+    assert.deepEqual(sourceSnapshot(dbPath), before);
+    assert.equal(inline.enabled, true);
+  });
+});
+
+test("min interval dry-run still classifies remote rows and apply stays blocked", async () => {
+  await withTempDirAsync(async (directory) => {
+    const dbPath = join(directory, "third-party.sqlite");
+    applySchema(dbPath);
+    const legacyId = insertLegacyRemote(dbPath, { lastRefreshAt: STARTED_AT, enabled: 1 });
+    const before = sourceSnapshot(dbPath);
+    let fetched = 0;
+    const fetchFn = async () => {
+      fetched += 1;
+      throw new Error("network");
+    };
+    const resolveFn = async () => {
+      fetched += 1;
+      throw new Error("dns");
+    };
+    const skipped = await runThirdPartySubscriptionRefresh({
+      args: [],
+      env: enabledEnv(dbPath),
+      nowFn: () => new Date("2026-10-10T01:00:00.000Z"),
+      fetchFn,
+      resolveFn
+    });
+    assert.equal(skipped.exitCode, 0);
+    const skippedBody = parseLine(skipped);
+    assert.equal(skippedBody.sources.due, 0);
+    assert.equal(skippedBody.sources.skipped, 1);
+    assert.equal(skippedBody.items[0].id, legacyId);
+    assert.equal(skippedBody.items[0].status, "skipped_min_interval");
+    assert.equal(fetched, 0);
+    assert.deepEqual(sourceSnapshot(dbPath), before);
 
     const due = await runThirdPartySubscriptionRefresh({
+      args: [],
+      env: enabledEnv(dbPath),
+      nowFn: () => new Date("2026-10-10T06:00:00.000Z"),
+      fetchFn,
+      resolveFn
+    });
+    assert.equal(due.exitCode, 0);
+    assert.equal(parseLine(due).sources.due, 1);
+    assert.equal(parseLine(due).items[0].status, "would_refresh");
+    assert.equal(fetched, 0);
+    assert.deepEqual(sourceSnapshot(dbPath), before);
+
+    const apply = await runThirdPartySubscriptionRefresh({
       args: ["--apply"],
       env: enabledEnv(dbPath),
       nowFn: () => new Date("2026-10-10T06:00:00.000Z"),
-      fetchFn: async () => {
-        fetched += 1;
-        return textResponse(SS_HK);
-      },
-      resolveFn: async () => ["203.0.113.8"]
+      fetchFn,
+      resolveFn
     });
-    assert.equal(fetched, 1);
-    assert.equal(due.exitCode, 0);
-    assert.equal(parseLine(due).sources.refreshed, 1);
-    assert.equal(sourceSnapshot(dbPath).sources[0].last_refresh_at, "2026-10-10T06:00:00.000Z");
+    assert.equal(apply.exitCode, 20);
+    assert.equal(parseLine(apply).reason, "remote_refresh_disabled");
+    assert.equal(fetched, 0);
+    assert.deepEqual(sourceSnapshot(dbPath), before);
+    assertNoMaterial(`${skipped.stdout}${due.stdout}${apply.stdout}`);
   });
 });
 

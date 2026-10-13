@@ -1,19 +1,25 @@
 #!/usr/bin/env node
 
-// Refresh enabled third-party subscription sources.
+// Phase-one third-party subscription refresh gate.
 //
 //   node scripts/platform-third-party-subscription-refresh.mjs
 //   node scripts/platform-third-party-subscription-refresh.mjs --apply
 //
-// Without --apply this is a dry run: it lists how many enabled sources would
-// be refreshed and does not fetch. --apply is required to mutate.
+// Without --apply this is a dry run. It reads local source summaries and does
+// not fetch. Inline YAML sources are reported as skipped_inline and are not
+// due. A stored remote row may be described as would_refresh or
+// skipped_min_interval; that is only a local summary.
+//
+// --apply does not refresh. With the feature flag enabled it returns
+// blocked/remote_refresh_disabled before the database path, the secret, and
+// the store are read, and before DNS or fetch. No environment flag bypasses
+// this. Last-good rows stay untouched because the database is not opened.
 //
 // Exit codes follow scripts/platform-lead-retention.mjs:
-//   0  disabled, planned (dry-run), or completed (apply, no source failures)
-//   20 blocked: missing or invalid db path, missing or invalid secret,
-//      schema absent, or store unavailable. No fetch.
-//   30 refresh_failed: one or more sources failed. Last-good nodes are kept.
-//      stderr is one line: third_party_refresh_failed count=N
+//   0  disabled, or planned (dry-run)
+//   20 blocked: dry-run missing or invalid db path, missing or invalid secret,
+//      schema absent, or store unavailable; or --apply remote_refresh_disabled
+//      while the feature flag is enabled. No fetch.
 //   64 invalid_command_contract: arguments are not exactly [] or ["--apply"],
 //      or THIRD_PARTY_SUBSCRIPTION_REFRESH_MIN_INTERVAL_SECONDS is set and is
 //      not a safe non-negative integer
@@ -21,12 +27,12 @@
 //
 // THIRD_PARTY_SUBSCRIPTION_ENABLED must be a truthy env flag (1/true/yes/on,
 // same set as envFlag in server/state.mjs). Otherwise the process exits 0
-// with status disabled and does not open the database or the network.
+// with status disabled and does not open the database, read the secret, or
+// use the network.
 //
-// THIRD_PARTY_SUBSCRIPTION_REFRESH_MIN_INTERVAL_SECONDS defaults to 18000 (5 hours; deliberately below the 6h timer interval so a slightly early timer run is not skipped)
-// (6 hours). A source whose last successful refresh (last_refresh_at) is
-// newer than that interval is skipped, so an accidental second run does not
-// fetch again. Failed attempts do not update last_refresh_at.
+// Dry-run still honors THIRD_PARTY_SUBSCRIPTION_REFRESH_MIN_INTERVAL_SECONDS
+// (default 18000, 5 hours) for non-inline rows. The systemd unit stays
+// uninstalled; --apply from that unit hits this gate.
 
 import { isAbsolute, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -37,7 +43,6 @@ import { createSqliteThirdPartySubscriptionStore } from "../server/services/plat
 export const DEFAULT_REFRESH_MIN_INTERVAL_SECONDS = 18000;
 
 const SOURCE_ID_PATTERN = /^tpsrc_[0-9a-f]{32}$/;
-const SAFE_CODE_PATTERN = /^[a-z0-9_]{1,64}$/;
 const TRUTHY_FLAGS = new Set(["1", "true", "yes", "on"]);
 
 function enabledFlag(value) {
@@ -60,11 +65,6 @@ export function parseMinIntervalSeconds(value) {
   const parsed = Number(text);
   if (!Number.isSafeInteger(parsed)) return null;
   return parsed;
-}
-
-function shortCode(value, fallback) {
-  const code = String(value || "");
-  return SAFE_CODE_PATTERN.test(code) ? code : fallback;
 }
 
 function sourceId(value) {
@@ -163,6 +163,14 @@ export async function runThirdPartySubscriptionRefresh({
       reason: "invalid_min_interval"
     });
   }
+  if (parsed.apply) {
+    return commandResult({
+      exitCode: 20,
+      status: "blocked",
+      mode,
+      reason: "remote_refresh_disabled"
+    });
+  }
   const dbPath = String(env.THIRD_PARTY_SUBSCRIPTION_DB_PATH || "").trim();
   const secretKey = String(env.THIRD_PARTY_SUBSCRIPTION_SECRET_KEY || "").trim();
   if (!dbPath) {
@@ -242,77 +250,34 @@ export async function runThirdPartySubscriptionRefresh({
     const enabledSources = sources.filter((source) => source.enabled === true);
     const skippedIds = new Set();
     for (const source of enabledSources) {
+      if (source.sourceKind === "inline-yaml") continue;
       if (refreshedWithinInterval(source.lastRefreshAt, now, minIntervalSeconds)) {
         skippedIds.add(source.id);
       }
     }
-    const dueSources = enabledSources.filter((source) => !skippedIds.has(source.id));
-    if (!parsed.apply) {
-      return commandResult({
-        exitCode: 0,
-        status: "planned",
-        mode,
-        reason: "dry_run",
-        sources: {
-          total: sources.length,
-          due: dueSources.length,
-          refreshed: 0,
-          failed: 0,
-          skipped: skippedIds.size
-        },
-        items: enabledSources.map((source) => ({
-          id: sourceId(source.id),
-          status: skippedIds.has(source.id) ? "skipped_min_interval" : "would_refresh"
-        }))
-      });
-    }
-
-    let refreshed = 0;
-    let failed = 0;
-    const items = [];
-    for (const source of enabledSources) {
-      const id = sourceId(source.id);
-      if (skippedIds.has(source.id)) {
-        items.push({ id, status: "skipped_min_interval" });
-        continue;
-      }
-      if (id === "redacted") {
-        failed += 1;
-        items.push({ id, status: "invalid_source_id" });
-        continue;
-      }
-      try {
-        const outcome = await store.refreshSource(source.id);
-        if (outcome?.ok === true) {
-          refreshed += 1;
-          items.push({ id, status: "refreshed" });
-        } else {
-          failed += 1;
-          items.push({
-            id,
-            status: shortCode(outcome?.lastErrorCode, "refresh_failed")
-          });
-        }
-      } catch {
-        failed += 1;
-        items.push({ id, status: "refresh_failed" });
-      }
-    }
-    const stderr = failed > 0 ? `third_party_refresh_failed count=${failed}\n` : "";
+    const dueSources = enabledSources.filter((source) =>
+      source.sourceKind !== "inline-yaml" && !skippedIds.has(source.id)
+    );
     return commandResult({
-      exitCode: failed > 0 ? 30 : 0,
-      status: failed > 0 ? "refresh_failed" : "completed",
+      exitCode: 0,
+      status: "planned",
       mode,
-      reason: failed > 0 ? "source_refresh_failed" : "ok",
+      reason: "dry_run",
       sources: {
         total: sources.length,
         due: dueSources.length,
-        refreshed,
-        failed,
+        refreshed: 0,
+        failed: 0,
         skipped: skippedIds.size
       },
-      items,
-      stderr
+      items: enabledSources.map((source) => ({
+        id: sourceId(source.id),
+        status: source.sourceKind === "inline-yaml"
+          ? "skipped_inline"
+          : skippedIds.has(source.id)
+            ? "skipped_min_interval"
+            : "would_refresh"
+      }))
     });
   } catch {
     return commandResult({

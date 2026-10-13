@@ -6,19 +6,19 @@ document_metadata:
   lifecycle: active
   authority_scope: third_party_subscription_distribution_plan
   superseded_by: null
-  last_verified_at: 2026-10-12
+  last_verified_at: 2026-10-13
   production_authority: false
 ```
 
-状态：**Draft / #771 已有部分源码接线，受限 YAML 输入仍未完成，未部署**。
+状态：**Draft / #771 正在验收受限 inline YAML 输入到订阅输出的源码闭环，未部署**。
 本记录为 #762 的阶段边界；实现见 #771，不把文档或部分源码当作完成交付。
 2026-10-12 核对仅含本地源码与原生 PR，未访问真实来源或生产。
 
-- Risk: A 功能与生产授权边界；本次仅更新文档，按 C 档验证。
+- Risk: A 功能与生产授权边界 / B 源码核心；2026-10-13 仅进行源码实施与合成测试。
 - Process: 保留既有决策，对齐源码差距，逐项实现及隔离验收；发布另经精确授权。
 - Expected PR count: 复用 #762 文档与 #771 实现，不新增平行方案 PR；后续按独立验收边界切片。
-- Validation: 本轮文档检查为 `docs:authority:check`、`docs:authority:strict` 和 diff 检查；
-  #771 既有测试记录不等于本轮重验或生产验收。
+- Validation: focused server tests、`npm test`、文档检查和 diff 检查；具体证据见下方日期记录。
+  既有测试和本地合成结果均不等于生产验收。
 - Production/AWS impact: 无；不访问生产、第三方真实订阅或云平台。
 - capability: `third-party-subscription-distribution`
 - release_unit: `subscription-rendering`（#771 已有后端接线，实际发布还需明确
@@ -352,6 +352,59 @@ offerVersionRef；只存 `monthly` / `yearly` / `trial` / `pilot` 的旧权益�
 以本节区分已修正项；此步不能代表整个一期完成。没有访问生产、真实来源或客户数据，
 PR 继续 Draft，`production_state: not_deployed`。
 
+## 2026-10-13 UTC inline YAML 源码切片（未发布）
+
+本节优先于下面历史 URL 导入、刷新脚本操作记录；历史步骤不是当前执行指令。
+Grok CLI 生成实现补丁，Codex 负责范围决策、独立核对、补丁集成及本地验收。
+本轮没有读取真实第三方来源，没有安装服务或应用生产迁移。
+
+当前源码合同：
+
+- Admin 现有认证边界不变；`POST /api/admin/third-party-subscriptions/sources`
+  接受 `name`、`yamlContent`、`tiers`、可选 `regionOverride` 和 `enabled`。
+  不接受远程 URL，二者混用或未知字段拒绝。默认导入为 disabled；显式启用才参与分发。
+- `POST /api/admin/third-party-subscriptions/sources/preview` 只返回节点数、协议和国家计数，
+  不写数据库，不返回配置、host 或凭证。列表、分配和观测仍不暴露材料。
+- 地区在 create/preview 时设置；首阶段 PATCH `regionOverride` 明确拒绝，避免返回成功却未改变节点。
+  名称、档位和启用状态的 PATCH 保留；地区变更或清空均验证源、节点和渲染零变化。
+- 使用固定版本 `yaml@2.9.1` 解析受限子集：输入上限 64 KiB、256 个节点、
+  AST 深度 8、总节点数 4096。拒绝重复键、别名、锚点、显式标签、合并键、
+  原型键、多文档、远程 providers 和脚本；不继承上游规则、DNS 或本机监听设置。
+- 首阶段仅支持 SS、TCP VLESS、Hysteria2、TUIC 的明确字段子集。未知传输参数、
+  TLS 校验绕过、无法原样渲染的参数必须显式拒绝，不静默裁剪后发布。
+- 先完整校验，再在同一 SQLite 事务写来源、档位及加密节点；任何加密或写入失败整体回滚。
+  复用既有 schema，不修改迁移 ID 或校验和。敏感节点配置仅加密存储。
+- 所有 URL 导入和刷新入口硬关闭：store、Admin 手动 refresh 和 CLI `--apply`
+  都不能触发 DNS 或网络抓取。CLI dry-run 仅观察旧来源元数据；`would_refresh`
+  只是历史来源的到期分类，不表示本阶段允许执行。systemd 文件不得安装或启用。
+- `active` / `expiring` 的合格档位可获取第三方节点；到期后四条订阅入口返回既有
+  无凭证提示，并停止读取第三方节点。续期后原链接可重新分发。客户端缓存的上游凭证不因此吊销。
+- 不改变自营节点、collector、身份映射、流量计量或账务；没有新增外网探测。
+
+范围外及后续门禁：
+
+- URL 安全抓取（包括 DNS pinning 和完整超时边界）、动态刷新、批量维护和前端操作仍待后续切片。
+- 需要同步最新 master、完成精确 head 的独立安全审查和客户端配置验收，才能请求 Ready/merge。
+- 专用 Security Review 工具当前不可用；普通独立只读审查不能冒充该工具已通过。
+- 生产仍需绑定正式构件、独立 DB/密钥、迁移备份回退、明确批准和实际验收；本节不授予执行权限。
+
+本轮验收（同一 Windows 工作区，仅合成 SQLite 与 loopback HTTP）：
+
+- `node --test server/tests/third-party-subscription-*.test.mjs server/tests/subscription-expiry-notice.test.mjs`
+  → **62 / 62**。覆盖解析限制、全批拒绝与回滚、默认不发布、真实 HTTP 错误脱敏、
+  四路 `T-1ms / T / T+1ms` 到期边界和续期，以及凭证字段 round-trip。
+- 审查修正采用 red/green：参数及长度 3 项先失败，HTTP 脱敏 1 项先失败，
+  secret 首尾空白及证书 pin 2 项、地区 PATCH 1 项先失败；应用对应修正后均通过。
+  VLESS 的显式 false 保留；SS `udp` 首阶段明确拒绝；secret 首尾空白拒绝而非 trim；
+  真正的 Hy2 pin 即便等于内部去重键也保留，仅清理旧格式误存的内部指纹。
+- 最终 `npm test` → **5442 tests / 5375 pass / 11 fail / 56 skipped**。
+  同环境改动前基线为 5418 / 5351 / 11 / 56；11 个失败的文件和位置逐项一致，新增失败 0。
+  失败位于既有 artifact、release identity、welcome-coins、project-state 和环境路径测试；
+  不能将此表述为全量测试全绿，亦不能当作同步 master 后的测试结果。
+- `docs:authority:check`、`docs:authority:strict`（416 个 metadata block）与 diff 检查通过。
+- 独立只读核对发现并修正了字段丢失和 HTTP parser 错误暴露问题；这不是专用
+  Security Review 工具结果。真实客户端、Linux 隔离、最新 master 集成和生产均未在本轮完成。
+
 ## 历史实现与验收记录（2026-10-10）
 
 以下为 `0f4faebd` 的历史实现与候选操作记录，保留作为证据，不作为当前执行指令。
@@ -548,8 +601,10 @@ binding 带有 `trafficLimitBytes` 时，必须等于该 offer 的 `GB * 1024**3
 
 ## 当前阶段状态
 
-当前完成：阶段边界，以及 #771 的部分导入、存储、鉴权渲染和刷新源码接线。
-当前未完成：上述首阶段缺口及闭环验收；生产 schema、密钥安装、任务启用与部署均未执行。
-本轮仅更新此文档，不访问真实来源、不测试外网、不改代码或生产；文档检查不能替代功能验收。
+当前完成：#771 的受限 inline YAML 导入、加密存储、鉴权渲染和本地合成验收；
+URL 导入及所有远程刷新入口已关闭。以 2026-10-13 源码切片记录为准。
+当前未完成：最新 master 集成、专用安全审查、客户端与 Linux 隔离验收；
+生产 schema、密钥安装、任务启用与部署均未执行。动态刷新和批量维护属于后续切片。
+本轮未访问真实来源或生产；文档和本地源码测试不替代发布门禁。
 
 不得据此标为 Ready、请求合并、承诺真实节点可用或宣布生产功能上线。

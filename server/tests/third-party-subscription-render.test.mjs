@@ -28,11 +28,54 @@ const OFFER_50 = "offerv_plan_30d_50gb_monthly_v1";
 const OFFER_100 = "offerv_plan_30d_100gb_monthly_v1";
 const OFFER_200 = "offerv_plan_365d_200gb_monthly_v1";
 const SECRET_KEY = "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff";
-const SOURCE_URL = "https://example.invalid/third-party-source-secret-path";
 const TOKEN = "pgsub_third_party_synthetic_only";
 const ARTIFACT = "third_party_artifact_synthetic_only";
-const SS_HK = "ss://YWVzLTI1Ni1nY206c3ludGhldGljLXBhc3N3b3Jk@203.0.113.10:8388#HK";
-const SS_JP = "ss://YWVzLTI1Ni1nY206c3ludGhldGljLXBhc3N3b3Jk@203.0.113.11:8388#JP";
+const SS_YAML = [
+  "proxies:",
+  "  - name: HK",
+  "    type: ss",
+  "    server: 203.0.113.10",
+  "    port: 8388",
+  "    cipher: aes-256-gcm",
+  "    password: synthetic-password",
+  "  - name: JP",
+  "    type: ss",
+  "    server: 203.0.113.11",
+  "    port: 8388",
+  "    cipher: aes-256-gcm",
+  "    password: synthetic-password"
+].join("\n");
+const HY2_YAML = [
+  "proxies:",
+  "  - name: SG",
+  "    type: hysteria2",
+  "    server: 203.0.113.12",
+  "    port: 443",
+  "    password: synthetic-hy2",
+  "    sni: hy2.example.test"
+].join("\n");
+const VLESS_BOOL_YAML = [
+  "proxies:",
+  "  - name: 日本",
+  "    type: vless",
+  "    server: 203.0.113.21",
+  "    port: 443",
+  "    uuid: 11111111-1111-4111-8111-111111111111",
+  "    udp: true",
+  "    tls: true",
+  "  - name: 大阪",
+  "    type: vless",
+  "    server: 203.0.113.22",
+  "    port: 443",
+  "    uuid: 22222222-2222-4222-8222-222222222222",
+  "    udp: false",
+  "    tls: false",
+  "  - name: 京都",
+  "    type: vless",
+  "    server: 203.0.113.23",
+  "    port: 443",
+  "    uuid: 33333333-3333-4333-8333-333333333333"
+].join("\n");
 
 function sampleOwnConfig() {
   return {
@@ -64,6 +107,15 @@ function proxyGroupBlock(yaml, name) {
   assert.notEqual(start, -1, `expected proxy group ${name}`);
   const next = yaml.indexOf("\n  - name: ", start + marker.length);
   return yaml.slice(start, next === -1 ? yaml.length : next);
+}
+
+function proxyBlockByServer(yaml, host) {
+  const marker = `server: "${host}"`;
+  const at = yaml.indexOf(marker);
+  assert.notEqual(at, -1, host);
+  const start = yaml.lastIndexOf("\n  - name:", at);
+  const next = yaml.indexOf("\n  - name:", at + marker.length);
+  return yaml.slice(start === -1 ? 0 : start, next === -1 ? yaml.length : next);
 }
 
 test("tier resolution follows the offer version ref and fails closed otherwise", () => {
@@ -183,7 +235,7 @@ test("flag-off merge is identity and YAML is byte-identical to current output", 
   assert.equal(generateClashSubscription(merged), generateClashSubscription(original));
 });
 
-function appliedStore(fetchBody) {
+function appliedStore() {
   const database = new Database(":memory:");
   applyThirdPartySubscriptionMigrations({
     database,
@@ -192,39 +244,115 @@ function appliedStore(fetchBody) {
     nowFn: () => new Date("2026-10-10T00:00:00.000Z")
   });
   const secretProtector = createPortalTotpSecretProtector({ key: SECRET_KEY });
+  const network = { calls: 0 };
   const store = createSqliteThirdPartySubscriptionStore({
     database,
     secretProtector,
-    fetchFn: async () => ({
-      status: 200,
-      headers: new Headers(),
-      body: new ReadableStream({
-        start(controller) {
-          controller.enqueue(Buffer.from(fetchBody));
-          controller.close();
-        }
-      })
-    }),
-    resolveFn: async () => ["203.0.113.8"],
+    fetchFn: async () => {
+      network.calls += 1;
+      throw new Error("network");
+    },
+    resolveFn: async () => {
+      network.calls += 1;
+      throw new Error("dns");
+    },
     nowFn: () => new Date("2026-10-10T00:00:00.000Z")
   });
-  return { database, store, secretProtector };
+  return { database, store, secretProtector, network };
 }
 
 async function seededFeature() {
-  const { store } = appliedStore([SS_HK, SS_JP].join("\n"));
-  const source = store.createSource({
+  const { store, network } = appliedStore();
+  // enabled true is the caller's explicit publication request.
+  // Omitting it leaves the source disabled and the rendered output unchanged.
+  const source = store.createInlineSource({
     name: "synthetic-source",
-    subscriptionUrl: SOURCE_URL,
-    tiers: ["monthly_basic"]
+    yamlContent: SS_YAML,
+    tiers: ["monthly_basic"],
+    enabled: true
   });
-  await store.refreshSource(source.id);
+  assert.equal(source.enabled, true);
+  assert.equal(source.sourceKind, "inline-yaml");
+  assert.equal(network.calls, 0);
   return {
     enabled: true,
     available: true,
     store
   };
 }
+
+test("inline import stays disabled until an explicit enable changes rendered output", () => {
+  const { store, network } = appliedStore();
+  const source = store.createInlineSource({
+    name: "synthetic-source",
+    yamlContent: SS_YAML,
+    tiers: ["monthly_basic"]
+  });
+  assert.equal(source.enabled, false);
+  const original = sampleOwnConfig();
+  const baseline = generateClashSubscription(original);
+  const state = {
+    thirdPartySubscriptions: { enabled: true, available: true, store },
+    platform: {
+      controlStore: {
+        findUsageBindingByTenantRef: () => ({ plan: OFFER_50, trafficLimitBytes: 50 * GIB })
+      }
+    }
+  };
+  const render = (proxyConfig) => generateClashSubscription(applyThirdPartyProxyConfig(state, {
+    proxyConfig,
+    tenant: { id: "tenant_basic", status: "active" }
+  }));
+  assert.equal(render(original), baseline);
+  const published = store.patchSource(source.id, { enabled: true });
+  assert.equal(published.enabled, true);
+  const yaml = render(original);
+  assert.match(yaml, /\[3P\] HK 1 \| HK/);
+  assert.match(yaml, /\[3P\] JP 1 \| JP/);
+  assert.notEqual(yaml, baseline);
+  assert.equal(network.calls, 0);
+});
+
+test("vless explicit udp and tls booleans survive import and render", () => {
+  const { store } = appliedStore();
+  const source = store.createInlineSource({
+    name: "synthetic-vless-flags",
+    yamlContent: VLESS_BOOL_YAML,
+    tiers: ["monthly_basic"]
+  });
+  store.patchSource(source.id, { enabled: true });
+  const byHost = new Map(store.listActiveServersForPlan("monthly_basic").map((node) => [node.host, node]));
+  assert.equal(byHost.get("203.0.113.21").udp, true);
+  assert.equal(byHost.get("203.0.113.21").tls, true);
+  assert.equal(byHost.get("203.0.113.22").udp, false);
+  assert.equal(byHost.get("203.0.113.22").tls, false);
+  assert.equal(Object.hasOwn(byHost.get("203.0.113.23"), "udp"), false);
+  assert.equal(Object.hasOwn(byHost.get("203.0.113.23"), "tls"), false);
+  const yaml = generateClashSubscription(applyThirdPartyProxyConfig({
+    thirdPartySubscriptions: { enabled: true, available: true, store },
+    platform: {
+      controlStore: {
+        findUsageBindingByTenantRef: () => ({ plan: OFFER_50, trafficLimitBytes: 50 * GIB })
+      }
+    }
+  }, {
+    proxyConfig: sampleOwnConfig(),
+    tenant: { id: "tenant_basic", status: "active" }
+  }));
+  const on = proxyBlockByServer(yaml, "203.0.113.21");
+  const off = proxyBlockByServer(yaml, "203.0.113.22");
+  const bare = proxyBlockByServer(yaml, "203.0.113.23");
+  assert.match(on, /udp: true/);
+  assert.match(on, /tls: true/);
+  assert.equal(on.includes("udp: false"), false);
+  assert.equal(on.includes("tls: false"), false);
+  assert.match(off, /udp: false/);
+  assert.match(off, /tls: false/);
+  assert.equal(off.includes("udp: true"), false);
+  assert.equal(off.includes("tls: true"), false);
+  assert.match(bare, /udp: false/);
+  assert.equal(bare.includes("tls:"), false);
+});
 
 test("flag-on adds marked third-party nodes and per-country groups for the matching tier only", async () => {
   const feature = await seededFeature();
@@ -393,8 +521,14 @@ test("third-party display names stay unique against owned node names", async () 
   assert.equal(names.filter((name) => name.startsWith("[3P] HK 1")).length, 2);
 });
 
-test("expired subscriber YAML is the expiry notice and contains no third-party nodes", async (t) => {
+test("four YAML routes stop third-party delivery exactly at expiry and resume after renewal", async (t) => {
   const feature = await seededFeature();
+  let thirdPartyReads = 0;
+  const listActive = feature.store.listActiveServersForPlan;
+  feature.store.listActiveServersForPlan = (...args) => {
+    thirdPartyReads += 1;
+    return listActive(...args);
+  };
   const database = new Database(":memory:");
   const store = createSubscriptionRepository({ database });
   let now = new Date("2026-10-09T00:00:00.000Z");
@@ -430,13 +564,41 @@ test("expired subscriber YAML is the expiry notice and contains no third-party n
     server.close();
     database.close();
   });
-  now = new Date("2026-10-09T00:01:00.000Z");
-  const response = await fetch(`${baseUrl}/sub/clash.yaml?token=${TOKEN}`);
-  assert.equal(response.status, 200);
-  const yaml = await response.text();
-  assert.match(yaml, /当前订阅已过期/);
-  assert.doesNotMatch(yaml, /\[3P\]|3P-HK|synthetic-password/);
-  assert.equal(yaml, generateSubscriptionExpiryNotice());
+  const paths = [
+    `/sub/clash.yaml?token=${TOKEN}`,
+    `/sub/a/${ARTIFACT}`,
+    `/sub/a/${ARTIFACT}/profile.yaml`,
+    `/sub/a/${ARTIFACT}/provider.yaml`
+  ];
+  now = new Date("2026-10-09T00:00:59.999Z");
+  for (const path of paths) {
+    const response = await fetch(baseUrl + path);
+    assert.equal(response.status, 200);
+    assert.match(await response.text(), /\[3P\] HK 1/);
+  }
+  const readsBeforeExpiry = thirdPartyReads;
+  assert.ok(readsBeforeExpiry >= paths.length);
+  for (const at of ["2026-10-09T00:01:00.000Z", "2026-10-09T00:01:00.001Z"]) {
+    now = new Date(at);
+    for (const path of paths) {
+      const response = await fetch(baseUrl + path);
+      assert.equal(response.status, 200);
+      assert.match(response.headers.get("cache-control"), /no-store/);
+      assert.equal(response.headers.get("x-subscription-status"), "expired");
+      const yaml = await response.text();
+      assert.doesNotMatch(yaml, /\[3P\]|3P-HK|synthetic-password|password:|uuid:|server:/);
+      assert.equal(yaml, generateSubscriptionExpiryNotice({ providerOnly: path.endsWith("/provider.yaml") }));
+    }
+  }
+  assert.equal(thirdPartyReads, readsBeforeExpiry, "expired routes must not read third-party credentials");
+  core.renewTenant("tenant_expiry_fixture", { expiresAt: "2026-11-09T00:00:00.000Z" });
+  for (const path of paths) {
+    const response = await fetch(baseUrl + path);
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get("x-subscription-status"), null);
+    assert.match(await response.text(), /\[3P\] HK 1/);
+  }
+  assert.ok(thirdPartyReads > readsBeforeExpiry);
 });
 
 test("tier resolution ignores inherited object keys as plan refs", () => {
@@ -477,29 +639,28 @@ test("expiring subscribers receive third-party nodes and closed statuses do not"
   assert.equal(missing, baseline);
 });
 
-test("hy2 dedup key stays internal from parse through store to render", async () => {
-  const hy2Link = "hysteria2://synthetic-hy2@203.0.113.12:443?sni=hy2.example.test#SG";
-  const { database, store, secretProtector } = appliedStore(hy2Link);
-  const source = store.createSource({
+test("hy2 dedup key stays internal from inline import through store to render", async () => {
+  const { database, store, secretProtector, network } = appliedStore();
+  const source = store.createInlineSource({
     name: "synthetic-hy2-source",
-    subscriptionUrl: SOURCE_URL,
-    tiers: ["monthly_basic"]
+    yamlContent: HY2_YAML,
+    tiers: ["monthly_basic"],
+    enabled: true
   });
-  const first = await store.refreshSource(source.id);
-  const afterFirst = database.prepare(
-    "select id, fingerprint from platform_third_party_nodes where source_id = ?"
-  ).all(source.id);
-  const second = await store.refreshSource(source.id);
   const afterSecond = database.prepare(
     "select id, fingerprint, protected_config, active from platform_third_party_nodes where source_id = ?"
   ).all(source.id);
-  assert.equal(first.ok, true);
-  assert.equal(second.ok, true);
-  assert.equal(afterFirst.length, 1);
   assert.equal(afterSecond.length, 1);
   assert.equal(afterSecond[0].active, 1);
-  assert.equal(afterSecond[0].id, afterFirst[0].id);
-  assert.equal(afterSecond[0].fingerprint, afterFirst[0].fingerprint);
+  const beforeRefresh = afterSecond.map((row) => ({ ...row }));
+  await assert.rejects(
+    () => store.refreshSource(source.id),
+    (error) => error?.code === "remote_refresh_disabled"
+  );
+  assert.deepEqual(database.prepare(
+    "select id, fingerprint, protected_config, active from platform_third_party_nodes where source_id = ?"
+  ).all(source.id), beforeRefresh);
+  assert.equal(network.calls, 0);
   const dedup = afterSecond[0].fingerprint;
   const stored = JSON.parse(secretProtector.unprotect(afterSecond[0].protected_config));
   assert.equal(stored.dedupKey, dedup);

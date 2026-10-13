@@ -282,6 +282,55 @@ function portalCoinRechargeRoutesEnabled(state) {
   ]) && hasCallableSafeDescriptorChain(auth, ["requireSession"]);
 }
 
+function isThirdPartySubscriptionNamespace(req) {
+  const pathname = req && typeof req.path === "string" ? req.path : "";
+  return /^\/api\/admin\/third-party-subscriptions(?:\/|$)/i.test(pathname);
+}
+
+function thirdPartySubscriptionBodyParserStatus(error) {
+  if (!error || (typeof error !== "object" && typeof error !== "function")) {
+    return 0;
+  }
+  const type = error.type;
+  if (type === "entity.too.large") return 413;
+  if (
+    type === "entity.parse.failed"
+    || type === "entity.verify.failed"
+    || type === "encoding.unsupported"
+    || type === "charset.unsupported"
+    || type === "request.aborted"
+    || type === "request.size.invalid"
+    || type === "stream.encoding.set"
+  ) {
+    return 400;
+  }
+  return 0;
+}
+
+function setThirdPartySubscriptionNoStore(req, res, next) {
+  if (isThirdPartySubscriptionNamespace(req)) {
+    res.set("Cache-Control", "no-store");
+  }
+  next();
+}
+
+function handleThirdPartySubscriptionBodyParserError(error, req, res, next) {
+  const status = isThirdPartySubscriptionNamespace(req)
+    ? thirdPartySubscriptionBodyParserStatus(error)
+    : 0;
+  if (status !== 400 && status !== 413) {
+    next(error);
+    return;
+  }
+  if (res.headersSent) {
+    return;
+  }
+  res.set("Cache-Control", "no-store");
+  res.status(status).json({
+    error: status === 413 ? "input_too_large" : "invalid_input"
+  });
+}
+
 export function createApp(state, options = {}) {
   const app = express();
   app.use("/api/admin/platform/user-monitor", (req, res, next) => {
@@ -363,7 +412,10 @@ export function createApp(state, options = {}) {
     }
     next();
   });
+  // Parser runs before the third-party router; keep failures fixed and uncached.
+  app.use(setThirdPartySubscriptionNoStore);
   app.use(express.json());
+  app.use(handleThirdPartySubscriptionBodyParserError);
   // Repeat credential-conflict checking now that legacy request bodies exist.
   app.use(browserSessions.middleware);
 
