@@ -301,28 +301,38 @@ stop only this collector, retain ledger and both journals, and forward-correct.
 Never restore a historical database over newer writes, never resume the old
 checkpoint into the paused interval, and never clear counters.
 
-## Remaining production gates
+## Execution closeout and remaining evidence
 
-The source PR did not close them. The Deploy Note below closes item 6 for the
-2026-10-12 BWH run only. Items 1–5 stay open. Item 5 was not satisfied, so
-Step 8's recovered claim remains unmade.
+The source PR originally left production gates open. The later
+[merged Deploy Note (#776)](https://github.com/FlyLink-com/proxy-gateway-minimal/pull/776)
+records execution, backup, the accepted post-write failure and two natural
+collections. The subsequent aggregate identity read is recorded below.
+This closes the **recorded local-three operational recovery**, not global
+identity health or every historical approval/validation evidence gap.
 
-1. Fresh live inventory of BWH collector/timer/config/journal/DB identity.
-2. Exact Risk A approval for Step 3, then separately for Step 6 and Step 7.
-3. Artifact Gate for this recovery CLI and probe, separate from the reused
-   PR #773 49-file collector archive.
-4. Linux fsync/SQLite/CLI validation of this new recovery CLI on the target
-   runtime.
-5. Production Identity Gate before/after with retention state.
-6. Deploy Note for the 2026-10-12 BWH run: recorded below.
+| Boundary | Recorded outcome / remaining limit |
+| --- | --- |
+| Source and artifact | #773 collector and #774 recovery-tool identities are recorded below. #775's later command-module fix was not the host tool used. Do not silently relabel the deployed bytes. |
+| Production precheck and backups | The execution note records the commercial proof, successful prechecks, fresh online backup and old-journal preservation. Retain original operator approvals and receipts; this docs closeout does not invent or renew them. |
+| Initialization and sole-writer cutover | A new checkpoint was written, the final RSS check failed, and the resulting state was accepted after read-only validation. Cutover and new samples followed. Do not initialize again or resume the old lane. |
+| Natural accounting | Two successful natural collections with positive increments are recorded. This is evidence at that execution cutoff, not continuous monitoring or a fresh host read by this documentation task. |
+| Identity lifecycle | After counts are recorded; before counts were not captured and cannot be reconstructed. State remains `degraded`, retention `pending`; no full before/after or globally healthy claim. |
+| Documentation | #776 records deployment; this note reconciles the later aggregate results and separates persistent follow-ups from completed recovery steps. |
+
+Any new recovery still requires fresh exact approvals and the runbook-bound
+Linux/artifact/backup checks. Missing historical documentation is not a reason
+to replay completed production actions. Source validation and a successful
+host command must not be retroactively described as a separately completed
+pre-production CLI rehearsal without its receipt.
 
 ## Deploy Note: BWH full-metering new-activation recovery (2026-10-12)
 
 Times are Pacific Time (PDT, UTC-7). This records the BWH local-three collector
-recovery that already ran. It grants no further host action. Aggregate identity
-counts were not taken, so the gate stays `pending` and this note does not call
-identity healthy. Epic #437 and Issue #763 stay open. SGP and the other deferred
-sources stay paused.
+recovery that already ran. It grants no further host action. Identity counts
+were not captured before the recovery; a later after-only aggregate read is
+recorded below. The gate is `degraded`, retention remains `pending`, and this
+note does not call identity healthy. Epic #437 and separate #763 deployment
+work remain open. SGP and the other deferred sources stay paused.
 
 **Deployment Metadata:**
 
@@ -428,9 +438,13 @@ the paused interval. No restore was performed.
 
 - Separate approval before deleting the BWH private recovery directories or
   backups.
-- The BWH recovery tool copy predates PR #775.
-- Production identity gate record, aggregate only, per
-  `docs/IDENTITY_LIFECYCLE.md`.
+- The BWH one-off recovery tool copy predates PR #775. Use the corrected source
+  if a future approved recovery needs that tool; do not rerun initialization
+  or replace the already-running collector merely to update this historical copy.
+- Retention inventory for the 89/76/88 stale mappings remains separate under
+  the metering work tracked by #437. The aggregate after-read is recorded;
+  missing before counts remain an explicit evidence gap, not a fabricated task
+  result. No stale mapping is authorized for deletion by this note.
 - Issue #763 redeploy waits on a read-only look at `unknown_extra_member`.
 - Keep observing later natural cycles.
 - SGP and the other deferred sources remain paused.

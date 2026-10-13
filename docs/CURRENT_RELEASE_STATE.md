@@ -6,7 +6,7 @@ document_metadata:
   lifecycle: active
   authority_scope: current_release_state
   superseded_by: null
-  last_verified_at: 2026-10-11
+  last_verified_at: 2026-10-12
   production_authority: false
 ```
 
@@ -21,6 +21,32 @@ document_metadata:
 > - This reconciliation read GitHub records only. No provider, host, account,
 >   database or live runtime readback was performed
 > - Execution authority: None
+
+## Scoped Metering Closeout (2026-10-12)
+
+Risk C documentation reconciliation from native #773–#778 PR records; no host
+access, source deployment, new accounting or cleanup. This scoped update
+supersedes the earlier metering status only; the other dated release facts
+below are not refreshed or promoted by it.
+
+- #773 is merged as `e834185cca073455d8ac314cdf908ec8fc4c5e8d`; its frozen
+  49-file collector is installed on BWH according to
+  [the #776 Deploy Note](https://github.com/FlyLink-com/proxy-gateway-minimal/pull/776).
+- #774 recovery tools established a new local-three activation. The accepted
+  zero-sample baseline preserved the old journal and accepted database usage;
+  two positive natural collections followed timer enablement at
+  `2026-10-12T10:28:07Z`. This is recorded operational recovery, not a live
+  health check or permission to rerun initialization.
+- #775's streaming-backup-hash fix is merged but was not the recovery command
+  module used on that run. #777's aggregate checker is merged; the later
+  after-read reports 32 runtime / 32 mapped per protocol, no missing/changed/
+  missing-material identities, and stale 89 / 76 / 88. Before counts were not
+  captured. Identity remains `degraded`, retention `pending`.
+- [Recovery record and residual boundaries](FULL_METERING_NEW_ACTIVATION_RECOVERY.md#execution-closeout-and-remaining-evidence)
+  retain the post-write failure, forward-only rollback, private backup and
+  retention holds. #437, deferred SGP recovery and separate #763 dependency
+  promotion are not closed. Do not treat the dated top-level snapshot or
+  #773's original `not_deployed` body as the later execution state.
 
 ## Source And Deployment Reconciliation (2026-10-11)
 
