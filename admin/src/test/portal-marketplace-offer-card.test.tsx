@@ -158,4 +158,58 @@ describe("Shared marketplace offer-card presentation", () => {
     fireEvent.click(primary);
     expect(onPrimary).not.toHaveBeenCalled();
   });
+
+  test("plan switch labels keep the catalog price and name the action", () => {
+    const offer = offerFor("plan", 30);
+    render(<ul>
+      <MarketplaceOfferCard
+        busy={false}
+        locale="zh"
+        mode="purchase"
+        offer={offer}
+        onPrimary={vi.fn()}
+        planAction={{
+          action: "upgrade",
+          chargeUnits: 5,
+          currentTitle: "50 GB 月度套餐",
+          currentValidUntil: "2026-08-16T00:00:00.000Z",
+          effectiveAt: null,
+          reasonCode: null
+        }}
+      />
+    </ul>);
+    const card = screen.getByRole("article");
+    const price = within(card).getByText("价格").closest("dl");
+    expect(price?.textContent).toContain("30");
+    expect(price?.textContent).toContain("Coins");
+    expect(within(card).getByRole("button", { name: /升级，补差价 5 Coins/ })).toBeEnabled();
+    expect(within(card).getByText(/当前套餐：50 GB 月度套餐/)).toBeInTheDocument();
+  });
+
+  test("an unsupported plan change is disabled with the specific reason", () => {
+    const offer = offerFor("plan", 200);
+    render(<ul>
+      <MarketplaceOfferCard
+        busy={false}
+        locale="en"
+        mode="purchase"
+        offer={offer}
+        onPrimary={vi.fn()}
+        planAction={{
+          action: "unavailable",
+          chargeUnits: null,
+          currentTitle: "50 GB monthly plan",
+          currentValidUntil: "2026-08-16T00:00:00.000Z",
+          effectiveAt: null,
+          reasonCode: "plan_switch_upgrade_window_closed"
+        }}
+      />
+    </ul>);
+    const card = screen.getByRole("article");
+    const button = within(card).getByRole("button");
+    expect(button).toBeDisabled();
+    expect(button).toHaveTextContent("Plan change unavailable");
+    expect(within(card).getByText(/Too little time remains to upgrade/)).toBeInTheDocument();
+    expect(within(card).queryByText("This product is currently unavailable.")).toBeNull();
+  });
 });

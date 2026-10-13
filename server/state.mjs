@@ -18,6 +18,12 @@ import { createPlatformAccountEntitlementShell } from "./services/platform/accou
 import { loadControlPlaneReleaseIdentity } from "./services/platform/control-plane-release-identity.mjs";
 import { createCoinCommerceCoordinator } from "./services/platform/coin-commerce-coordinator.mjs";
 import { createSqliteCoinCommerceStore } from "./services/platform/coin-commerce-store.mjs";
+import { assertPlanSwitchStartupFlags } from "./services/platform/coin-commerce-plan-switch-policy.mjs";
+import { validatePlanSwitchSchema } from "./services/platform/coin-commerce-plan-switch-migrations.mjs";
+import {
+  applyDueScheduledPlanSwitches,
+  createPlanSwitchReader
+} from "./services/platform/coin-commerce-plan-switch-runtime.mjs";
 import { createSqliteCoinWalletStore } from "./services/platform/coin-wallet-store.mjs";
 import { createSqlitePaymentStore } from "./services/platform/payment-store.mjs";
 import { createPaymentRechargeCoordinator } from "./services/platform/payment-recharge-coordinator.mjs";
@@ -621,6 +627,12 @@ function registrationWelcomeCoinsSchemaError() {
     "Portal registration welcome Coins schema is not ready"
   );
   error.code = "registration_welcome_coins_schema_not_ready";
+  return error;
+}
+
+function planSwitchSchemaError() {
+  const error = new Error("Plan switch schema is not ready");
+  error.code = "plan_switch_schema_not_ready";
   return error;
 }
 
@@ -1557,6 +1569,15 @@ export function createRuntimeState(options = {}) {
   const coinsCommerceAuthorityEnabled = envFlag(
     env.COINS_COMMERCE_ACCOUNT_RESOURCE_AUTHORITY_ENABLED
   );
+  const coinsCommercePlanSwitchEnabled = envFlag(
+    env.COINS_COMMERCE_PLAN_SWITCH_ENABLED
+  );
+  // Unset or false leaves every existing path unchanged. Both flags on is a
+  // hard startup refusal: plan switch supports legacy commerce only.
+  assertPlanSwitchStartupFlags({
+    planSwitchEnabled: coinsCommercePlanSwitchEnabled,
+    authorityEnabled: coinsCommerceAuthorityEnabled
+  });
   if (envFlag(env.USER_PORTAL_WALLET_FIRST_MODEL_ENABLED)) {
     throw walletFirstModelDeprecatedError();
   }
@@ -1717,6 +1738,11 @@ export function createRuntimeState(options = {}) {
     if (coinsCommerceAuthorityEnabled && hasFulfillmentHandler) {
       throw coinCommercePrerequisiteError();
     }
+    // An injected handler cannot record a downgrade or mark a due switch
+    // applied. Fail closed instead of charging a switch the handler ignores.
+    if (coinsCommercePlanSwitchEnabled && hasFulfillmentHandler) {
+      throw coinCommercePrerequisiteError();
+    }
     if (hasFulfillmentHandler) {
       configuredCoinCommerceFulfillmentHandler =
         exactCoinCommerceFulfillmentHandlerValue(
@@ -1751,6 +1777,9 @@ export function createRuntimeState(options = {}) {
       }
     } else {
       if (coinsCommerceAuthorityEnabled) {
+        throw coinCommercePrerequisiteError();
+      }
+      if (coinsCommercePlanSwitchEnabled) {
         throw coinCommercePrerequisiteError();
       }
       if (configuredCoinCommerceFulfillmentFactory) {
@@ -1835,12 +1864,53 @@ export function createRuntimeState(options = {}) {
   const dataPlaneAgentRoutesEnabled = envFlag(env.EDGE_DATA_PLANE_AGENT_ROUTES_ENABLED);
   const tempLinkTtlMinutes = Number.parseInt(env.SUBSCRIPTION_TEMP_LINK_TTL_MINUTES, 10) || 24 * 60;
   const portalRefreshCooldownMs = envNonNegativeInteger(env.USER_PORTAL_REFRESH_COOLDOWN_MS, 300000);
+  const portalSubscriptionLinkResetEnabled = envFlag(env.USER_PORTAL_SUBSCRIPTION_LINK_RESET_ENABLED);
   const ownsSubscriptionStore = !options.subscriptionStore && !options.subscriptionRepository && !options.subscriptionCore && !options.subscriptionService;
   const subscriptionStore = options.subscriptionStore || options.subscriptionRepository || (
     ownsSubscriptionStore ? createSqliteSubscriptionStore({ dbPath: subscriptionDbPath }) : null
   );
   const ownsControlStore = !options.platformControlStore;
   const platformControlStore = options.platformControlStore || createSqliteSubscriptionControlStore({ dbPath: controlDbPath });
+  if (coinsCommercePlanSwitchEnabled) {
+    let planSwitchSchemaReady = false;
+    try {
+      planSwitchSchemaReady = validatePlanSwitchSchema({
+        dbPath: controlDbPath
+      }).ok === true;
+    } catch {
+      planSwitchSchemaReady = false;
+    }
+    if (!planSwitchSchemaReady) {
+      for (const [owned, store] of [
+        [ownsControlStore, platformControlStore],
+        [ownsSubscriptionStore, subscriptionStore]
+      ]) {
+        if (!owned) continue;
+        try {
+          store.close();
+        } catch {
+          // Preserve the fail-closed plan-switch schema error.
+        }
+      }
+      throw planSwitchSchemaError();
+    }
+  }
+  if (portalSubscriptionLinkResetEnabled) {
+    try {
+      // Readiness check only: schema installation requires an explicit migration.
+      if (typeof platformControlStore.getPortalSubscriptionLinkResetStore !== "function") {
+        throw new Error("Subscription link reset storage is unavailable");
+      }
+      platformControlStore.getPortalSubscriptionLinkResetStore({ nowFn: options.userPortalNowFn });
+    } catch {
+      for (const [owned, store] of [[ownsControlStore, platformControlStore], [ownsSubscriptionStore, subscriptionStore]]) {
+        if (owned) { try { store?.close(); } catch { /* Preserve the prerequisite error. */ } }
+      }
+      throw Object.assign(new Error("Subscription link reset requires its prepared schema"), {
+        code: "subscription_link_reset_schema_unavailable"
+      });
+    }
+  }
   let registrationWelcomeCoinsWorkerEnabled = false;
   let registrationWelcomeCoinsSchemaReady = false;
   if (coinsWalletEnabled && coinsCommerceEnabled) {
@@ -2255,6 +2325,7 @@ export function createRuntimeState(options = {}) {
     edgeLifecycleService,
     edgeDesiredStateNotifier,
     refreshCooldownMs: portalRefreshCooldownMs,
+    subscriptionLinkResetEnabled: portalSubscriptionLinkResetEnabled,
     autoIssuance: {
       enabled: autoIssuanceEnabled,
       nodeId: optionalEnvText(env.USER_PORTAL_AUTO_ISSUANCE_NODE_ID),
@@ -2586,6 +2657,9 @@ export function createRuntimeState(options = {}) {
                 configuredCoinCommerceAccountActivationReader,
               ...(coinsCommerceAuthorityEnabled
                 ? { authorityEnabled: true }
+                : {}),
+              ...(coinsCommercePlanSwitchEnabled
+                ? { planSwitchEnabled: true }
                 : {})
             })
           );
@@ -2612,6 +2686,20 @@ export function createRuntimeState(options = {}) {
             ? {
               purchaseEligibilityReader:
                 configuredCoinCommercePurchaseEligibilityReader
+            }
+            : {}),
+          ...(coinsCommercePlanSwitchEnabled
+            ? {
+              planSwitchEnabled: true,
+              planSwitchReader: createPlanSwitchReader({
+                controlStore: platformControlStore,
+                authorityEnabled: coinsCommerceAuthorityEnabled
+              }),
+              planSwitchApplyDue: (nowIso) => applyDueScheduledPlanSwitches({
+                controlStore: platformControlStore,
+                execute: configuredCoinCommerceFulfillmentHandler.execute,
+                nowIso
+              })
             }
             : {})
         });
@@ -3045,6 +3133,7 @@ export function createRuntimeState(options = {}) {
       coinsWalletStore,
       coinsCommerceEnabled,
       coinsCommerceAuthorityEnabled,
+      coinsCommercePlanSwitchEnabled,
       walletFirstRegistrationEnabled,
       walletFirstDeferredRuntimeEnabled,
       registrationWelcomeCoinsEnabled,

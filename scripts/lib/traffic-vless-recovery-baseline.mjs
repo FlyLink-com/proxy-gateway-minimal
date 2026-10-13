@@ -3,6 +3,7 @@ import { lstatSync, realpathSync, statSync } from "node:fs";
 import { isAbsolute, resolve } from "node:path";
 import Database from "better-sqlite3";
 import { usageCycleForBinding } from "../../server/services/platform/usage-billing-cycle.mjs";
+import { verifyPortalSubscriptionLinkResetLineage } from "../../server/services/platform/portal-subscription-link-reset-store.mjs";
 
 const SOURCE = "xray_statsquery_user_traffic";
 const CHANNELS = new Set(["channel-vultr-a-vless-reality-tcp", "channel-sgp-a-vless-reality-tcp"]);
@@ -201,12 +202,20 @@ function verifyV3Resolver(db, binding) {
     for (const key of ["tenant_id", "artifact_id", "access_grant_ref"]) text(primary[key]);
   }
 }
-function verifyLegacyResources(binding, activeLinks) {
+function verifyLegacyResources(db, binding, activeLinks, allowCompletedReset = false) {
   if (binding.identity_origin !== "legacy_primary") return;
   const safeRef = (prefix, value) => `${prefix}ref_${createHash("sha256").update(String(value)).digest("hex").slice(0, 16)}`;
   const tenant = safeRef("tenant", binding.primaryEvidence.tenant_id);
   const artifact = safeRef("artifact", binding.primaryEvidence.artifact_id);
-  const matches = link => link.tenant_ref === tenant && link.artifact_ref === artifact;
+  // Only full collection accepts an explicitly completed reset chain. Keep
+  // the original issuance reference, tenant and all resolver checks intact;
+  // legacy VLESS recovery plans retain their exact-reference contract.
+  const matches = link => link.tenant_ref === tenant && (link.artifact_ref === artifact
+    || (allowCompletedReset && verifyPortalSubscriptionLinkResetLineage(db, {
+      requestRef: binding.request_id, ownerRef: binding.portal_user_ref,
+      tenantId: binding.primaryEvidence.tenant_id, originalArtifactRef: link.artifact_ref,
+      currentArtifactId: binding.primaryEvidence.artifact_id
+    })));
   if (activeLinks.length ? !activeLinks.every(matches) : !binding.links.some(matches)) fail("baseline_binding_invalid");
 }
 function retainedState(db, databaseIdentityDigest, channels, nowMs, initialization, fullBindings = false) {
@@ -272,7 +281,7 @@ function retainedState(db, databaseIdentityDigest, channels, nowMs, initializati
     const portalUntil = isoMs(binding.portal_valid_until || binding.portal_expires_at);
     if (from >= until || from > nowMs) fail("baseline_binding_invalid");
     const activeLinks = readBindingLinks(db, binding);
-    if (initialization) verifyLegacyResources(binding, activeLinks);
+    if (initialization) verifyLegacyResources(db, binding, activeLinks, fullBindings);
     const reasons = [];
     if (binding.account_status !== "active") reasons.push(`account_${binding.account_status}`);
     if (binding.entitlement_status !== "active") reasons.push(`entitlement_${binding.entitlement_status}`);

@@ -141,8 +141,8 @@ test("portal route ignores legacy self-service injection and creates an order re
       headers: portalSessionHeaders(),
       body: JSON.stringify({ portalUserRef: "acct_route_1", requestRef: "pss_route_1", clientTarget: "karing" })
     });
-    assert.equal(refreshed.status, 404);
-    assert.equal((await refreshed.json()).error, "not_found");
+    assert.equal(refreshed.status, 410);
+    assert.equal((await refreshed.json()).error, "subscription_refresh_retired");
 
     const disabled = await fetch(`${baseUrl}/api/portal/access-requests/disable`, {
       method: "POST",

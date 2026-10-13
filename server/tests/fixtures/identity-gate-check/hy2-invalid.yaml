@@ -1,0 +1,5 @@
+auth:
+  type: userpass
+  userpass:
+    edgecred_alpha_001: "synthetic-password-alpha"
+    <<: *synthetic-canary-7f3a9c

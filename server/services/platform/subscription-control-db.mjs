@@ -1,4 +1,5 @@
 import { recordReferralRegistration } from './portal-referral-contract.mjs';
+import { createPortalSubscriptionLinkResetStore, verifyPortalSubscriptionLinkResetLineage } from "./portal-subscription-link-reset-store.mjs";
 import Database from "better-sqlite3";
 import { createHash, randomBytes } from "node:crypto";
 import { mkdirSync } from "node:fs";
@@ -7,6 +8,18 @@ import { usageCycleForBinding, summarizeUsageSamples } from "./usage-billing-cyc
 import {
   createAccountResourceAuthorityStore
 } from "./account-resource-authority.mjs";
+import {
+  commerceModeFromMetadata,
+  countAccountAuthorityRows,
+  deliverScheduledPlanDowngrade,
+  listDueScheduledPlanSwitchRows,
+  markScheduledPlanSwitchApplied,
+  markScheduledPlanSwitchApplying,
+  readOpenScheduledPlanSwitch,
+  readPlanSwitchQuoteForOrder,
+  readScheduledPlanSwitchByRef,
+  supersedeScheduledPlanSwitch
+} from "./coin-commerce-plan-switch-runtime.mjs";
 
 const UNSAFE_FIELD_PARTS = [
   "email",
@@ -4784,6 +4797,22 @@ export function createSqliteSubscriptionControlStore({
     && Object.keys(value).sort().join("\0") === [...expectedKeys].sort().join("\0")
   );
 
+  function coinCommerceFulfillmentMetadataShape(metadata) {
+    if (sameKeys(metadata, coinCommerceFulfillmentMetadataKeys)) {
+      return { switchKind: null };
+    }
+    if (
+      sameKeys(metadata, [...coinCommerceFulfillmentMetadataKeys, "switchKind"])
+      && (
+        metadata.switchKind === "upgrade_inplace"
+        || metadata.switchKind === "upgrade_restart"
+      )
+    ) {
+      return { switchKind: metadata.switchKind };
+    }
+    return null;
+  }
+
   const effectRefForCommand = (commandRef) => `effect_coin_commerce_${sha256(
     `GCCWEBOS:COIN_COMMERCE_SUBSCRIPTION_FULFILLMENT:v1\0${commandRef}`
   )}`;
@@ -4796,7 +4825,7 @@ export function createSqliteSubscriptionControlStore({
       || candidate.entityRef !== entitlementRef
       || candidate.action !== "subscription_fulfillment_applied"
       || candidate.actorRef !== "coin_commerce_fulfillment"
-      || !sameKeys(metadata, coinCommerceFulfillmentMetadataKeys)
+      || !coinCommerceFulfillmentMetadataShape(metadata)
       || metadata.version !== 1
       || metadata.accountId !== accountId
       || metadata.entitlementRef !== entitlementRef
@@ -4838,9 +4867,14 @@ export function createSqliteSubscriptionControlStore({
     } catch {
       return null;
     }
+    const switchKind = coinCommerceFulfillmentMetadataShape(metadata)?.switchKind;
     if (
       candidate.id !== effectRefForCommand(metadata.commandRef)
-      || previousValidUntil >= targetValidUntil
+      || previousValidUntil > targetValidUntil
+      || (
+        previousValidUntil === targetValidUntil
+        && switchKind !== "upgrade_inplace"
+      )
       || validFrom >= targetValidUntil
     ) {
       return null;
@@ -4890,7 +4924,9 @@ export function createSqliteSubscriptionControlStore({
       binding.accountId !== accountId
       || binding.entitlementId !== entitlement.id
       || binding.tenantRef !== `tenantref_${sha256(accessRequest.tenantId).slice(0, 16)}`
-      || binding.artifactRef !== `artifactref_${sha256(accessRequest.artifactId).slice(0, 16)}`
+      || (binding.artifactRef !== `artifactref_${sha256(accessRequest.artifactId).slice(0, 16)}`
+        && !verifyPortalSubscriptionLinkResetLineage(db, { requestRef: accessRequest.id, ownerRef: accountId,
+          tenantId: accessRequest.tenantId, originalArtifactRef: binding.artifactRef, currentArtifactId: accessRequest.artifactId }))
     ) {
       return null;
     }
@@ -4921,31 +4957,80 @@ export function createSqliteSubscriptionControlStore({
       effects.push(effect);
     }
     const starts = effects.filter((candidate) => (
-      !effects.some((other) => other.targetValidUntil === candidate.previousValidUntil)
+      !effects.some((other) => (
+        other.id !== candidate.id
+        && other.targetValidUntil === candidate.previousValidUntil
+      ))
     ));
     if (starts.length !== 1) return null;
     let terminalEffect = starts[0];
     const visited = new Set([terminalEffect.id]);
-    while (true) {
-      const nextEffects = effects.filter(
-        (candidate) => candidate.previousValidUntil === terminalEffect.targetValidUntil
-      );
-      if (nextEffects.length === 0) break;
-      if (nextEffects.length !== 1) return null;
-      const [nextEffect] = nextEffects;
-      if (
-        visited.has(nextEffect.id)
-        || nextEffect.targetValidUntil <= terminalEffect.targetValidUntil
-        || (
-          nextEffect.offerVersionRef === terminalEffect.offerVersionRef
-            ? nextEffect.validFrom !== terminalEffect.validFrom
-            : nextEffect.validFrom !== nextEffect.createdAt
-        )
-      ) {
-        return null;
+    const chainHasSwitch = effects.some((effect) => (
+      effect.switchKind === "upgrade_inplace"
+      || effect.switchKind === "upgrade_restart"
+    ));
+    if (!chainHasSwitch) {
+      while (true) {
+        const nextEffects = effects.filter(
+          (candidate) => candidate.previousValidUntil === terminalEffect.targetValidUntil
+        );
+        if (nextEffects.length === 0) break;
+        if (nextEffects.length !== 1) return null;
+        const [nextEffect] = nextEffects;
+        if (
+          visited.has(nextEffect.id)
+          || nextEffect.targetValidUntil <= terminalEffect.targetValidUntil
+          || (
+            nextEffect.offerVersionRef === terminalEffect.offerVersionRef
+              ? nextEffect.validFrom !== terminalEffect.validFrom
+              : nextEffect.validFrom !== nextEffect.createdAt
+          )
+        ) {
+          return null;
+        }
+        visited.add(nextEffect.id);
+        terminalEffect = nextEffect;
       }
-      visited.add(nextEffect.id);
-      terminalEffect = nextEffect;
+    } else {
+      while (visited.size < effects.length) {
+        const candidates = effects
+          .filter((candidate) => (
+            !visited.has(candidate.id)
+            && candidate.previousValidUntil === terminalEffect.targetValidUntil
+          ))
+          .sort((left, right) => (
+            left.createdAt.localeCompare(right.createdAt)
+            || left.id.localeCompare(right.id)
+          ));
+        if (candidates.length === 0) return null;
+        const inplace = candidates.filter((candidate) => (
+          candidate.switchKind === "upgrade_inplace"
+          && candidate.targetValidUntil === terminalEffect.targetValidUntil
+          && candidate.validFrom === terminalEffect.validFrom
+        ));
+        const others = candidates.filter((candidate) => !inplace.includes(candidate));
+        let nextEffect;
+        if (inplace.length > 0 && candidates[0].id === inplace[0].id) {
+          nextEffect = inplace[0];
+        } else if (inplace.length === 0 && others.length === 1) {
+          nextEffect = others[0];
+          if (nextEffect.targetValidUntil <= terminalEffect.targetValidUntil) return null;
+          if (
+            nextEffect.switchKind === "upgrade_inplace"
+            || nextEffect.switchKind === "upgrade_restart"
+          ) {
+            if (nextEffect.validFrom !== terminalEffect.validFrom) return null;
+          } else if (nextEffect.offerVersionRef === terminalEffect.offerVersionRef) {
+            if (nextEffect.validFrom !== terminalEffect.validFrom) return null;
+          } else if (nextEffect.validFrom !== nextEffect.createdAt) {
+            return null;
+          }
+        } else {
+          return null;
+        }
+        visited.add(nextEffect.id);
+        terminalEffect = nextEffect;
+      }
     }
     if (
       visited.size !== effects.length
@@ -5054,6 +5139,99 @@ export function createSqliteSubscriptionControlStore({
     return getEntitlement(id);
   }
 
+  function readPlanSwitchAccountFacts(input = {}) {
+    assertNoUnsafeFields(input);
+    const accountId = requiredText(input.accountId, "accountId");
+    const now = isoText(input.now, "now");
+    const account = getAccount(accountId);
+    if (!account || account.status !== "active") return null;
+    let scheduledSwitch;
+    try {
+      scheduledSwitch = readOpenScheduledPlanSwitch(db, accountId);
+    } catch (error) {
+      if (String(error?.message || "").includes("no such table")) {
+        scheduledSwitch = { ok: true, row: null };
+      } else {
+        throw error;
+      }
+    }
+    return {
+      commerceMode: commerceModeFromMetadata(account.metadata),
+      authorityRowCount: countAccountAuthorityRows(db, accountId),
+      entitlement: resolveAccountServiceEntitlement({ accountId, now }),
+      scheduledSwitch
+    };
+  }
+
+  function readPlanSwitchQuoteForOrderRef(input = {}) {
+    assertNoUnsafeFields(input);
+    return readPlanSwitchQuoteForOrder(
+      db,
+      safeControlRef(input.orderRef, "orderRef")
+    );
+  }
+
+  function readScheduledPlanSwitch(input = {}) {
+    assertNoUnsafeFields(input);
+    const row = readScheduledPlanSwitchByRef(
+      db,
+      safeControlRef(input.switchRef, "switchRef")
+    );
+    if (!row) return null;
+    return {
+      switchRef: row.switch_ref,
+      accountId: row.account_id,
+      entitlementId: row.entitlement_id,
+      fromOfferVersionRef: row.from_offer_version_ref,
+      toOfferVersionRef: row.to_offer_version_ref,
+      effectiveAt: row.effective_at,
+      paidUnits: row.paid_units,
+      status: row.status,
+      createdAt: row.created_at
+    };
+  }
+
+  function deliverPlanSwitchDowngrade(input = {}) {
+    assertNoUnsafeFields(input);
+    const row = {
+      switchRef: safeControlRef(input.switchRef, "switchRef"),
+      accountId: safeControlRef(input.accountId, "accountId"),
+      entitlementId: safeControlRef(input.entitlementId, "entitlementId"),
+      fromOfferVersionRef: safeControlRef(
+        input.fromOfferVersionRef,
+        "fromOfferVersionRef"
+      ),
+      toOfferVersionRef: safeControlRef(
+        input.toOfferVersionRef,
+        "toOfferVersionRef"
+      ),
+      effectiveAt: isoText(input.effectiveAt, "effectiveAt"),
+      paidUnits: integer(input.paidUnits, "paidUnits", { min: 1 }),
+      createdAt: isoText(input.createdAt, "createdAt")
+    };
+    return db.transaction(() => deliverScheduledPlanDowngrade(db, row)).immediate();
+  }
+
+  function listDueScheduledPlanSwitches(input = {}) {
+    assertNoUnsafeFields(input);
+    const now = isoText(input.now, "now");
+    return listDueScheduledPlanSwitchRows(db, now).map((row) => ({
+      switchRef: row.switch_ref,
+      accountId: row.account_id,
+      toOfferVersionRef: row.to_offer_version_ref,
+      effectiveAt: row.effective_at
+    }));
+  }
+
+  function completeScheduledPlanSwitch(input = {}) {
+    assertNoUnsafeFields(input);
+    return markScheduledPlanSwitchApplied(db, {
+      switchRef: safeControlRef(input.switchRef, "switchRef"),
+      accountId: safeControlRef(input.accountId, "accountId"),
+      resolvedAt: isoText(input.now, "now")
+    });
+  }
+
   function applyCoinCommerceSubscriptionFulfillment(input) {
     assertNoUnsafeFields(input);
     let authority = null;
@@ -5095,6 +5273,59 @@ export function createSqliteSubscriptionControlStore({
     const fulfillmentResourceRef = authority
       ? safeAuthorityRef
       : safeControlRef;
+    let planSwitch = null;
+    if (input.planSwitch !== undefined) {
+      const fields = [
+        "kind",
+        "cancelsSwitchRef",
+        "switchRef",
+        "expectedPlan",
+        "expectedValidFrom",
+        "expectedValidUntil"
+      ];
+      if (!sameKeys(input.planSwitch, fields)) {
+        throw platformError("validation_error", "planSwitch must be an exact snapshot");
+      }
+      const kind = input.planSwitch.kind;
+      if (![
+        "renewal",
+        "upgrade_inplace",
+        "upgrade_restart",
+        "apply_due"
+      ].includes(kind)) {
+        throw platformError("validation_error", "planSwitch.kind is invalid");
+      }
+      const optionalRef = (value, field) => {
+        if (value === null) return null;
+        return safeControlRef(value, field);
+      };
+      planSwitch = {
+        kind,
+        cancelsSwitchRef: optionalRef(
+          input.planSwitch.cancelsSwitchRef,
+          "cancelsSwitchRef"
+        ),
+        switchRef: optionalRef(input.planSwitch.switchRef, "switchRef"),
+        expectedPlan: safeControlRef(input.planSwitch.expectedPlan, "expectedPlan"),
+        expectedValidFrom: isoText(
+          input.planSwitch.expectedValidFrom,
+          "expectedValidFrom"
+        ),
+        expectedValidUntil: isoText(
+          input.planSwitch.expectedValidUntil,
+          "expectedValidUntil"
+        )
+      };
+      if (kind === "apply_due" && !planSwitch.switchRef) {
+        throw platformError("validation_error", "planSwitch.switchRef is required");
+      }
+      if (kind !== "apply_due" && planSwitch.switchRef) {
+        throw platformError("validation_error", "planSwitch.switchRef is not allowed");
+      }
+      if (kind === "apply_due" && planSwitch.cancelsSwitchRef) {
+        throw platformError("validation_error", "planSwitch.cancelsSwitchRef is not allowed");
+      }
+    }
     const record = {
       commandRef: safeControlRef(input.commandRef, "commandRef"),
       orderRef: safeControlRef(input.orderRef, "orderRef"),
@@ -5118,6 +5349,7 @@ export function createSqliteSubscriptionControlStore({
       requireExistingEffect: input.requireExistingEffect === true,
       recoveryOnly: input.recoveryOnly === true,
       authority,
+      planSwitch,
       now: isoText(input.now, "now")
     };
     if (
@@ -5241,7 +5473,9 @@ export function createSqliteSubscriptionControlStore({
         || binding.tenantRef !== record.tenantRef
         || binding.artifactRef !== record.artifactRef
         || record.tenantRef !== `tenantref_${sha256(accessRequest.tenantId).slice(0, 16)}`
-        || record.artifactRef !== `artifactref_${sha256(accessRequest.artifactId).slice(0, 16)}`
+        || (record.artifactRef !== `artifactref_${sha256(accessRequest.artifactId).slice(0, 16)}`
+          && !verifyPortalSubscriptionLinkResetLineage(db, { requestRef: accessRequest.id, ownerRef: record.accountId,
+            tenantId: accessRequest.tenantId, originalArtifactRef: record.artifactRef, currentArtifactId: accessRequest.artifactId }))
       ) {
         failDrift();
       }
@@ -5266,7 +5500,7 @@ export function createSqliteSubscriptionControlStore({
       if (audit) {
         const metadata = audit.metadata;
         if (
-          !sameKeys(metadata, coinCommerceFulfillmentMetadataKeys)
+          !coinCommerceFulfillmentMetadataShape(metadata)
           || Object.entries(identityMetadata).some(([key, value]) => metadata[key] !== value)
         ) {
           failDrift();
@@ -5346,13 +5580,13 @@ export function createSqliteSubscriptionControlStore({
       ) {
         failDrift();
       }
-      const validFrom = entitlement.plan === record.offerVersionRef
+      let validFrom = entitlement.plan === record.offerVersionRef
         ? previousValidFrom
         : record.now;
       const previousValidUntil = record.initialIssuance
         ? initialIssuedAt
         : storedValidUntil;
-      const targetMs = record.initialIssuance
+      let targetMs = record.initialIssuance
         ? Date.parse(storedValidUntil)
         : Math.max(Date.parse(record.now), Date.parse(storedValidUntil)) + durationMs;
       if (
@@ -5361,12 +5595,65 @@ export function createSqliteSubscriptionControlStore({
       ) {
         throw platformError("validation_error", "durationDays is outside the safe Date range");
       }
-      const targetValidUntil = new Date(targetMs).toISOString();
+      let targetValidUntil = new Date(targetMs).toISOString();
+      let switchKind = null;
+      if (record.planSwitch) {
+        if (
+          record.initialIssuance
+          || entitlement.plan !== record.planSwitch.expectedPlan
+          || previousValidFrom !== record.planSwitch.expectedValidFrom
+          || storedValidUntil !== record.planSwitch.expectedValidUntil
+        ) {
+          failDrift();
+        }
+        if (record.planSwitch.kind === "apply_due") {
+          // Confirmation reserves a scheduled switch's credit before its
+          // cancellation window ends. Check under this same BEGIN IMMEDIATE
+          // lock, not in the earlier due-list snapshot: another worker may
+          // have confirmed/captured a consumer since that snapshot was read.
+          // A released, correctly bound hold is the only proof that a confirmed
+          // consumer no longer owns the credit. Expiry alone is not a release,
+          // and captured/reconciliation work must retain its recovery path.
+          const reservedCredit = db.prepare(`
+            select 1
+              from platform_coin_commerce_plan_switch_quotes q
+              join platform_coin_commerce_orders o on o.quote_ref = q.quote_ref
+              left join platform_coin_holds h on h.hold_ref = o.hold_ref
+              left join platform_coin_wallets w on w.wallet_ref = h.wallet_ref
+             where q.cancels_switch_ref = ?
+               and (h.hold_ref is null or w.account_id is null or h.status <> 'released'
+                 or w.account_id <> o.account_id or h.amount_units <> o.amount_units
+                 or h.purpose <> 'product_purchase' or h.purpose_ref <> o.order_ref)
+             limit 1
+          `).get(record.planSwitch.switchRef);
+          if (reservedCredit) {
+            throw platformError(
+              "coin_commerce_subscription_fulfillment_pending",
+              "Confirmed plan switch credit must settle before due application"
+            );
+          }
+        }
+        if (record.planSwitch.kind === "upgrade_inplace") {
+          validFrom = previousValidFrom;
+          targetValidUntil = storedValidUntil;
+          switchKind = "upgrade_inplace";
+        } else if (record.planSwitch.kind === "upgrade_restart") {
+          validFrom = previousValidFrom;
+          targetMs = Date.parse(record.now) + durationMs;
+          if (!Number.isSafeInteger(targetMs) || Math.abs(targetMs) > 8.64e15) {
+            throw platformError("validation_error", "durationDays is outside the safe Date range");
+          }
+          targetValidUntil = new Date(targetMs).toISOString();
+          if (targetValidUntil <= storedValidUntil) failDrift();
+          switchKind = "upgrade_restart";
+        }
+      }
       const metadata = {
         ...identityMetadata,
         validFrom,
         previousValidUntil,
-        targetValidUntil
+        targetValidUntil,
+        ...(switchKind ? { switchKind } : {})
       };
 
       const entitlementUpdate = db.prepare(`
@@ -5417,6 +5704,24 @@ export function createSqliteSubscriptionControlStore({
         accessRequest.validUntil
       );
       if (requestUpdate.changes !== 1) failDrift();
+      if (record.planSwitch?.cancelsSwitchRef) {
+        if (!supersedeScheduledPlanSwitch(db, {
+          switchRef: record.planSwitch.cancelsSwitchRef,
+          accountId: record.accountId,
+          supersededByOrderRef: record.orderRef,
+          resolvedAt: record.now
+        })) {
+          failDrift();
+        }
+      }
+      if (record.planSwitch?.kind === "apply_due") {
+        if (!markScheduledPlanSwitchApplying(db, {
+          switchRef: record.planSwitch.switchRef,
+          accountId: record.accountId
+        })) {
+          failDrift();
+        }
+      }
 
       recordAuditEvent({
         id: effectRef,
@@ -7146,6 +7451,12 @@ export function createSqliteSubscriptionControlStore({
 
   return {
     recordPortalReferralRegistration(input) { return recordReferralRegistration(db, input); },
+    getPortalSubscriptionLinkResetStore(options = {}) {
+      return createPortalSubscriptionLinkResetStore({ database: db, nowFn: options.nowFn });
+    },
+    verifyPortalSubscriptionLinkResetLineage(input) {
+      return verifyPortalSubscriptionLinkResetLineage(db, input);
+    },
     runInTransaction,
     upsertLead,
     getLead,
@@ -7195,6 +7506,12 @@ export function createSqliteSubscriptionControlStore({
     resolveCommerceAuthority,
     resolveAccountServiceEntitlement,
     updateEntitlementTrafficLimit,
+    readPlanSwitchAccountFacts,
+    readPlanSwitchQuoteForOrderRef,
+    readScheduledPlanSwitch,
+    deliverPlanSwitchDowngrade,
+    listDueScheduledPlanSwitches,
+    completeScheduledPlanSwitch,
     applyCoinCommerceSubscriptionFulfillment,
     createIssuanceRequest,
     getIssuanceRequest,

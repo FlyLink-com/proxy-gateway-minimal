@@ -1,8 +1,10 @@
 """Isolated certificate transaction tests; no production access or real credentials."""
 import os
 from pathlib import Path
+import ssl
 import subprocess
 import tempfile
+import time
 import unittest
 from unittest import mock
 
@@ -364,10 +366,24 @@ class OpenSSLTests(Fixture, unittest.TestCase):
             openssl("req", "-new", "-newkey", "rsa:2048", "-nodes", "-keyout", f"{csr}.key",
                     "-out", f"{csr}.csr", "-subj", f"/CN={domain}", "-addext", f"subjectAltName=DNS:{domain}")
         for label, days, csr, ca in (("new", "30", "leaf", "ca"), ("old", "15", "leaf", "ca"),
-                                     ("short", "2", "leaf", "ca"), ("expired", "-1", "leaf", "ca"),
+                                     ("short", "2", "leaf", "ca"),
                                      ("wrong", "30", "wrong", "ca"), ("untrusted", "30", "leaf", "untrusted")):
             openssl("x509", "-req", "-in", f"{csr}.csr", "-CA", f"{ca}.crt", "-CAkey", f"{ca}.key",
                     "-set_serial", str(1 + len(label)), "-days", days, "-copy_extensions", "copy", "-out", f"{label}-leaf.crt")
+
+        # Negative -days creates an inverted validity interval on older OpenSSL
+        # and is rejected by newer releases. Sign a genuinely expired leaf with
+        # explicit, ordered dates using the isolated test CA instead.
+        (cls.crypto / "index.txt").write_text("", encoding="ascii")
+        (cls.crypto / "serial").write_text("1000\n", encoding="ascii")
+        (cls.crypto / "expired.cnf").write_text(
+            "[ca]\ndefault_ca = fixture\n[fixture]\n"
+            "database = index.txt\nserial = serial\nnew_certs_dir = .\n"
+            "default_md = sha256\npolicy = fixture_policy\ncopy_extensions = copy\n"
+            "[fixture_policy]\ncommonName = supplied\n", encoding="ascii")
+        openssl("ca", "-batch", "-config", "expired.cnf", "-in", "leaf.csr",
+                "-cert", "ca.crt", "-keyfile", "ca.key", "-startdate", "20000101000000Z",
+                "-enddate", "20000102000000Z", "-notext", "-out", "expired-leaf.crt")
 
     def setUp(self):
         super().setUp()
@@ -408,9 +424,25 @@ class OpenSSLTests(Fixture, unittest.TestCase):
         self.assertEqual(self.runner.restarts, [])
         self.assert_old()
 
+    def test_expired_fixture_has_ordered_past_validity(self):
+        result = subprocess.run(
+            [sync.OPENSSL, "x509", "-in", str(self.crypto / "expired-leaf.crt"),
+             "-noout", "-startdate", "-enddate"],
+            capture_output=True, text=True, timeout=20, check=True)
+        dates = dict(line.split("=", 1) for line in result.stdout.splitlines())
+        not_before = ssl.cert_time_to_seconds(dates["notBefore"])
+        not_after = ssl.cert_time_to_seconds(dates["notAfter"])
+        self.assertLess(not_before, not_after)
+        self.assertLess(not_after, time.time())
+
     def test_actual_expired_and_short_certificates_are_rejected(self):
         for label in ("expired", "short"):
             with self.subTest(label=label):
+                current = subprocess.run(
+                    [sync.OPENSSL, "x509", "-in", str(self.crypto / f"{label}-leaf.crt"),
+                     "-noout", "-checkend", "0"],
+                    capture_output=True, timeout=20, check=False)
+                self.assertEqual(current.returncode, 1 if label == "expired" else 0)
                 self.set_source(label)
                 with self.assertRaises(sync.SyncError):
                     self.run_sync()

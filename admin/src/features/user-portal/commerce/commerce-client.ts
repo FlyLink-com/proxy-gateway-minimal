@@ -13,6 +13,8 @@ import type {
   PortalCoinOrder,
   PortalCoinOrderPage,
   PortalCoinQuote,
+  PortalPlanSwitchQuote,
+  PortalPlanSwitchState,
   PortalCoinType,
   PortalWalletFirstCommerceClient
 } from "./api-contract";
@@ -86,6 +88,16 @@ const COMMERCE_ERROR_CODES = new Set<PortalCoinCommerceErrorCode>([
   "idempotency_key_reused",
   "insufficient_coins",
   "offer_unavailable",
+  "plan_switch_already_scheduled",
+  "plan_switch_application_pending",
+  "plan_switch_authority_mode_unsupported",
+  "plan_switch_authority_row_present",
+  "plan_switch_commerce_model_unsupported",
+  "plan_switch_credit_exceeds_price",
+  "plan_switch_precheck_unavailable",
+  "plan_switch_state_changed",
+  "plan_switch_upgrade_window_closed",
+  "plan_switch_cycle_misaligned",
   "quote_expired",
   "quote_stale",
   "reconciliation_required",
@@ -434,27 +446,86 @@ function balanceProjection(input: unknown): PortalCoinBalance {
   };
 }
 
-function quoteProjection(input: unknown): PortalCoinQuote {
+const PLAN_SWITCH_KINDS = new Set([
+  "renewal",
+  "upgrade_inplace",
+  "upgrade_restart",
+  "downgrade_scheduled"
+]);
+const QUOTE_FIELDS = [
+  "quoteRef",
+  "offer",
+  "amountUnits",
+  "appliedDiscountBasisPoints",
+  "purchaseAvailability",
+  "shortfallUnits",
+  "allocation",
+  "balances",
+  "expiresAt"
+];
+const ORDER_FIELDS = [
+  "orderRef",
+  "offer",
+  "amountUnits",
+  "allocation",
+  "paymentStatus",
+  "cancelUntil",
+  "fulfillment",
+  "createdAt",
+  "updatedAt"
+];
+
+function hasOwnKey(input: unknown, key: string) {
+  return Boolean(
+    input
+    && typeof input === "object"
+    && Object.hasOwn(input, key)
+  );
+}
+
+function planSwitchProjection(input: unknown): PortalPlanSwitchQuote {
   const value = exactObject(input, [
-    "quoteRef",
-    "offer",
-    "amountUnits",
-    "appliedDiscountBasisPoints",
-    "purchaseAvailability",
-    "shortfallUnits",
-    "allocation",
-    "balances",
-    "expiresAt"
+    "kind",
+    "creditUnits",
+    "chargeUnits",
+    "effectiveAt",
+    "cancelsPendingDowngrade"
   ]);
+  if (
+    !PLAN_SWITCH_KINDS.has(value.kind as string)
+    || typeof value.cancelsPendingDowngrade !== "boolean"
+  ) {
+    return invalidProjection();
+  }
+  return {
+    kind: value.kind as PortalPlanSwitchQuote["kind"],
+    creditUnits: nonNegativeSafeInteger(value.creditUnits),
+    chargeUnits: positiveSafeInteger(value.chargeUnits),
+    effectiveAt: value.effectiveAt === null
+      ? null
+      : utcTimestamp(value.effectiveAt),
+    cancelsPendingDowngrade: value.cancelsPendingDowngrade
+  };
+}
+
+function quoteProjection(input: unknown): PortalCoinQuote {
+  const withPlanSwitch = hasOwnKey(input, "planSwitch");
+  const value = exactObject(
+    input,
+    withPlanSwitch ? [...QUOTE_FIELDS, "planSwitch"] : QUOTE_FIELDS
+  );
   const offer = offerProjection(value.offer);
   const amountUnits = positiveSafeInteger(value.amountUnits);
   const appliedDiscountBasisPoints = nonNegativeSafeInteger(
     value.appliedDiscountBasisPoints
   );
   if (appliedDiscountBasisPoints > 10_000) return invalidProjection();
+  const planSwitch = withPlanSwitch
+    ? planSwitchProjection(value.planSwitch)
+    : null;
   if (
     amountUnits !== applyCoinDiscount(
-      offer.baseCoinUnits,
+      planSwitch ? planSwitch.chargeUnits : offer.baseCoinUnits,
       appliedDiscountBasisPoints
     )
   ) {
@@ -529,7 +600,8 @@ function quoteProjection(input: unknown): PortalCoinQuote {
     shortfallUnits,
     allocation,
     balances: { before, after },
-    expiresAt: utcTimestamp(value.expiresAt)
+    expiresAt: utcTimestamp(value.expiresAt),
+    ...(planSwitch ? { planSwitch } : {})
   };
 }
 
@@ -591,23 +663,24 @@ function fulfillmentProjection(
 }
 
 function orderProjection(input: unknown): PortalCoinOrder {
-  const value = exactObject(input, [
-    "orderRef",
-    "offer",
-    "amountUnits",
-    "allocation",
-    "paymentStatus",
-    "cancelUntil",
-    "fulfillment",
-    "createdAt",
-    "updatedAt"
-  ]);
+  const withPlanSwitch = hasOwnKey(input, "planSwitch");
+  const value = exactObject(
+    input,
+    withPlanSwitch ? [...ORDER_FIELDS, "planSwitch"] : ORDER_FIELDS
+  );
   if (!PAYMENT_STATUSES.has(value.paymentStatus as string)) {
     return invalidProjection();
   }
   const offer = offerProjection(value.offer);
   const amountUnits = positiveSafeInteger(value.amountUnits);
-  if (amountUnits > offer.baseCoinUnits) return invalidProjection();
+  const planSwitch = withPlanSwitch
+    ? planSwitchProjection(value.planSwitch)
+    : null;
+  if (planSwitch) {
+    if (amountUnits > planSwitch.chargeUnits) return invalidProjection();
+  } else if (amountUnits > offer.baseCoinUnits) {
+    return invalidProjection();
+  }
   const createdAt = utcTimestamp(value.createdAt);
   const cancelUntil = utcTimestamp(value.cancelUntil);
   const updatedAt = utcTimestamp(value.updatedAt);
@@ -634,7 +707,8 @@ function orderProjection(input: unknown): PortalCoinOrder {
       value.paymentStatus as PortalCoinOrder["paymentStatus"]
     ),
     createdAt,
-    updatedAt
+    updatedAt,
+    ...(planSwitch ? { planSwitch } : {})
   };
 }
 
@@ -649,6 +723,81 @@ function offerWrapper(input: unknown) {
 
 function quoteWrapper(input: unknown) {
   return quoteProjection(exactObject(input, ["quote"]).quote);
+}
+
+function planSwitchStateProjection(input: unknown): PortalPlanSwitchState {
+  const value = exactObject(input, ["current", "pendingSwitch", "offers"]);
+  const current = value.current === null
+    ? null
+    : (() => {
+      const currentValue = exactObject(value.current, ["offerRef", "validUntil"]);
+      return {
+        offerRef: commerceReference(currentValue.offerRef),
+        validUntil: utcTimestamp(currentValue.validUntil)
+      };
+    })();
+  const pendingSwitch = value.pendingSwitch === null
+    ? null
+    : (() => {
+      const pending = exactObject(value.pendingSwitch, ["toOfferRef", "effectiveAt"]);
+      return {
+        toOfferRef: commerceReference(pending.toOfferRef),
+        effectiveAt: utcTimestamp(pending.effectiveAt)
+      };
+    })();
+  const offers = exactArray(value.offers).map((entry) => {
+    const item = exactObject(entry, [
+      "offerRef",
+      "action",
+      "chargeUnits",
+      "creditUnits",
+      "effectiveAt",
+      "reasonCode"
+    ]);
+    if (![
+      "current_renew",
+      "upgrade",
+      "downgrade",
+      "unavailable"
+    ].includes(item.action as string)) {
+      return invalidProjection();
+    }
+    const action = item.action as PortalPlanSwitchState["offers"][number]["action"];
+    const reasonCode = item.reasonCode === null
+      ? null
+      : COMMERCE_ERROR_CODES.has(item.reasonCode as PortalCoinCommerceErrorCode)
+        ? item.reasonCode as PortalCoinCommerceErrorCode
+        : invalidProjection();
+    const chargeUnits = item.chargeUnits === null
+      ? null
+      : positiveSafeInteger(item.chargeUnits);
+    const creditUnits = item.creditUnits === null
+      ? null
+      : nonNegativeSafeInteger(item.creditUnits);
+    const effectiveAt = item.effectiveAt === null
+      ? null
+      : utcTimestamp(item.effectiveAt);
+    if (action === "unavailable") {
+      if (chargeUnits !== null || creditUnits !== null || effectiveAt !== null) {
+        return invalidProjection();
+      }
+    } else if (chargeUnits === null || creditUnits === null || reasonCode !== null) {
+      return invalidProjection();
+    }
+    if (action === "downgrade" && effectiveAt === null) return invalidProjection();
+    if (action !== "downgrade" && action !== "unavailable" && effectiveAt !== null) {
+      return invalidProjection();
+    }
+    return {
+      offerRef: commerceReference(item.offerRef),
+      action,
+      chargeUnits,
+      creditUnits,
+      effectiveAt,
+      reasonCode
+    };
+  });
+  return { current, pendingSwitch, offers };
 }
 
 function orderWrapper(input: unknown) {
@@ -1097,6 +1246,48 @@ export function createPortalCoinCommerceClient(
           return quote;
         }
       );
+    },
+
+    async readPlanSwitchState(input) {
+      const value = exactInput(input, ["sessionRef"]);
+      const sessionRef = sessionReference(value.sessionRef);
+      let response: Response;
+      try {
+        response = await fetchFn(
+          "/api/portal/commerce/plan-switch/state",
+          getInit(sessionRef)
+        );
+      } catch {
+        throw requestFailed();
+      }
+      if (response.status === 404) return null;
+      let body: unknown;
+      try {
+        const text = await response.text();
+        if (typeof text !== "string") throw requestFailed();
+        body = JSON.parse(text) as unknown;
+      } catch (error) {
+        if (error instanceof PortalCoinCommerceClientError) throw error;
+        throw requestFailed();
+      }
+      if (response.status !== 200) {
+        try {
+          throw structuredCommerceError(body);
+        } catch (error) {
+          if (
+            error instanceof PortalCoinCommerceClientError
+            && error.code !== "commerce_request_failed"
+          ) {
+            throw error;
+          }
+          throw requestFailed();
+        }
+      }
+      try {
+        return planSwitchStateProjection(body);
+      } catch {
+        throw requestFailed();
+      }
     },
 
     async createOrder(input) {

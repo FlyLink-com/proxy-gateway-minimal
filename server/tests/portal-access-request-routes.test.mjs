@@ -470,7 +470,7 @@ test("admin route updates portal access request traffic limits without returning
   }
 });
 
-test("enabled portal route refreshes and disables a delivered order lifecycle", async () => {
+test("enabled portal route retires refresh but still reveals and disables a delivered order", async () => {
   const { portalAccessRequests, calls } = lifecycleRequestService();
   const { server, baseUrl } = await listen(createApp(fakeState({
     userPortalRoutesEnabled: true,
@@ -503,15 +503,10 @@ test("enabled portal route refreshes and disables a delivered order lifecycle", 
         clientTarget: "karing"
       })
     });
-    assert.equal(refreshed.status, 200);
+    assert.equal(refreshed.status, 410);
     const refreshedBody = await refreshed.json();
-    assert.equal(refreshedBody.request.status, "delivered");
-    assert.equal(refreshedBody.request.clientTarget, "karing");
-    assert.equal(refreshedBody.request.expiresAt, "2026-06-07T00:00:00.000Z");
-    assert.equal(refreshedBody.request.subscriptionUrl, "https://sub.example.test/import/original-visible-once");
-    assert.equal(refreshedBody.request.event.type, "delivery_generation_reissued");
-    assert.equal(JSON.stringify(refreshedBody).includes("tenant_route_1"), false);
-    assert.equal(JSON.stringify(refreshedBody).includes("artifact_route_1"), false);
+    assert.deepEqual(refreshedBody, { error: "subscription_refresh_retired" });
+    assert.deepEqual(calls, []);
 
     const disabled = await fetch(`${baseUrl}/api/portal/access-requests/disable`, {
       method: "POST",

@@ -39,7 +39,7 @@ export type PortalInitialAccount = {
   requireSecuritySetup: boolean;
 };
 export type PortalSubscriptionEvent = {
-  type: "old_link_invalidated";
+  type: "old_link_invalidated" | "delivery_generation_reissued" | "subscription_link_reset";
   occurredAt: string;
 };
 
@@ -337,6 +337,13 @@ export type PortalRefreshSubscriptionInput = {
   clientTarget: PortalClientId;
 };
 
+export type PortalResetSubscriptionLinkInput = {
+  userRef: string;
+  sessionRef?: string;
+  requestRef: string;
+  idempotencyKey: string;
+};
+
 export type PortalRevealSubscriptionInput = {
   userRef: string;
   sessionRef?: string;
@@ -574,6 +581,7 @@ export type UserPortalClient = {
   submitSupportRequest(input: PortalSupportRequestInput): Promise<PortalSupportRequest>;
   revealSubscription(input: PortalRevealSubscriptionInput): Promise<PortalSubscriptionRequest>;
   refreshSubscription(input: PortalRefreshSubscriptionInput): Promise<PortalSubscriptionRequest>;
+  resetSubscriptionLink(input: PortalResetSubscriptionLinkInput): Promise<PortalSubscriptionRequest>;
   disableSubscription(input: PortalDisableSubscriptionInput): Promise<PortalSubscriptionRequest>;
 };
 

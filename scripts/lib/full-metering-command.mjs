@@ -11,6 +11,7 @@ import { FULL_METERING_SCOPE, LOCAL_METERING_SCOPE, fullMeteringChannels } from 
 import { fullMeteringDigest } from "./full-metering-journal.mjs";
 import { createFullMeteringSampleWriter } from "./full-metering-sample-writer.mjs";
 import { createFullMeteringSourceDriver, validateFullMeteringSources } from "./full-metering-source-driver.mjs";
+import { readFullMeteringPlanSwitchProof } from "./full-metering-plan-switch-proof.mjs";
 
 const fail = code => { throw Object.assign(new Error(code), { code }); };
 const exactKeys = (object, keys) => object && typeof object === "object" && !Array.isArray(object) && Object.keys(object).sort().join(",") === [...keys].sort().join(",");
@@ -134,6 +135,12 @@ export async function runFullMeteringCommand(argv) {
       return readFullMeteringBindings({ db, databaseIdentityDigest, channelRefs: channels.map(source => source.channelRef), now: new Date() });
     };
     const readInventory = () => db.transaction(readBindings)();
+    // Authoritative local commerce evidence only. No CLI/HTTP proof payload,
+    // alternate database, schema bootstrap or business mutation is accepted.
+    const readPlanSwitchProof = input => db.transaction(() => {
+      assertInputs();
+      return readFullMeteringPlanSwitchProof({ ...input, db });
+    })();
     const { readFullMeteringLocalSource } = await import("./full-metering-local-source.mjs");
     const readSources = createFullMeteringSourceDriver({ sources: config.sources, meteringScope,
       readMaterial: () => privateJson(protectedBytes(config.materialPath)),
@@ -169,6 +176,6 @@ export async function runFullMeteringCommand(argv) {
       applySamples = samples => { assertInputs(); return writer(samples); };
     }
     return await runFullMeteringCollection({ ...options, directory: config.journalDirectory, context, activationId: config.activationId, meteringScope,
-      readInventory, readSources, applySamples, materialApproval, billingWindowApproval });
+      readInventory, readSources, readPlanSwitchProof, applySamples, materialApproval, billingWindowApproval });
   } finally { db.close(); }
 }

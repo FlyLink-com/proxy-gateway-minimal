@@ -16,6 +16,8 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
+// All fixed-port UI profiles share this worker; the full runner uses four workers.
+import "./helpers/plan-switch-ui-validation-cases.mjs";
 
 const ROOT = resolve(fileURLToPath(new URL("../../", import.meta.url)));
 const UI_SCRIPT = resolve(

@@ -462,6 +462,37 @@ export function createSqliteSubscriptionStore({ dbPath, database } = {}) {
     return rotateArtifactTransaction(id, input);
   }
 
+  // Portal link reset has a durable plan in the control database. Only this
+  // exact plan may be replayed; the legacy Admin rotation API is separate.
+  function commitPreparedArtifactRotation(input) {
+    const conflict = () => Object.assign(new Error("Subscription link reset conflicts with runtime state"), {
+      code: "subscription_link_reset_conflict"
+    });
+    return db.transaction(() => {
+      const current = db.prepare("select * from subscription_artifacts where id = ?").get(input.previousArtifactId);
+      const tenant = db.prepare("select * from subscription_tenants where id = ?").get(input.tenantId);
+      if (!current || current.tenant_id !== input.tenantId || !tenant || tenant.status !== "active"
+        || !Number.isFinite(Date.parse(tenant.expires_at)) || Date.parse(tenant.expires_at) <= Date.parse(input.now)
+        || input.replacementArtifactId === input.previousArtifactId || current.artifact_hash === input.artifactHash) throw conflict();
+      const replacement = db.prepare("select * from subscription_artifacts where id = ?").get(input.replacementArtifactId);
+      const live = db.prepare("select id from subscription_artifacts where tenant_id = ? and status in ('active', 'suspicious')").all(input.tenantId);
+      if (current.status === "rotated") {
+        if (!replacement || replacement.tenant_id !== input.tenantId || replacement.status !== "active"
+          || replacement.artifact_hash !== input.artifactHash || replacement.artifact_prefix !== input.artifactPrefix
+          || live.length !== 1 || live[0].id !== replacement.id) throw conflict();
+        return { previous: mapArtifact(current), replacement: mapArtifact(replacement) };
+      }
+      if (!["active", "suspicious"].includes(current.status) || replacement
+        || live.length !== 1 || live[0].id !== current.id) throw conflict();
+      const updated = db.prepare("update subscription_artifacts set status = 'rotated', rotated_at = ?, updated_at = ? where id = ? and status = ?")
+        .run(input.now, input.now, current.id, current.status);
+      if (updated.changes !== 1) throw conflict();
+      const created = createArtifact({ id: input.replacementArtifactId, tenantId: input.tenantId,
+        artifactHash: input.artifactHash, artifactPrefix: input.artifactPrefix, status: "active", now: input.now });
+      return { previous: mapArtifact(db.prepare("select * from subscription_artifacts where id = ?").get(current.id)), replacement: created };
+    }).immediate();
+  }
+
   function close() {
     if (ownsDatabase) {
       db.close();
@@ -487,6 +518,7 @@ export function createSqliteSubscriptionStore({ dbPath, database } = {}) {
     markArtifactRefreshed,
     revokeArtifact,
     rotateArtifact,
+    commitPreparedArtifactRotation,
     close
   };
 }

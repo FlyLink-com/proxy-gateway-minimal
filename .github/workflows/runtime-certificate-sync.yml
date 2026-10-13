@@ -2,6 +2,7 @@ name: Runtime certificate sync
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
     branches: [master]
     paths:
       - ops/certificates/**
@@ -22,6 +23,7 @@ concurrency:
 jobs:
   synthetic-linux:
     name: Certificate hook synthetic Linux
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
