@@ -293,6 +293,7 @@ function normalizeImportedNode(node) {
     assignField(config, "obfs", optionalLabel(node.obfs, 64));
     assignField(config, "obfsPassword", optionalSecret(node.obfsPassword, 4096));
     assignField(config, "alpn", optionalStringList(node.alpn));
+    assignField(config, "bbrProfile", optionalLabel(node.bbrProfile, 32));
   } else {
     config.uuid = copyLabel(node.uuid, 128, { required: true });
     config.password = copySecret(node.password, 4096);

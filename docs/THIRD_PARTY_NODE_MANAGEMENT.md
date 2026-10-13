@@ -54,6 +54,19 @@ inline YAML 导入、加密存储、套餐档位分配及受保护订阅渲染�
 `subscriptionUrl` 仍返回 `remote_import_disabled`，远程刷新仍关闭；本切片没有
 HTTPS 抓取、DNS 外连、每日轮换或可用性探测。
 
+### Hy2 BBR 配置兼容修正（源码，待发布）
+
+Hy2 节点可选的 `bbr-profile` 仅接受 `standard`、`conservative`、`aggressive`，
+依据 [Mihomo Hy2 字段说明](https://wiki.metacubex.one/en/config/proxies/hysteria2/)。
+导入后映射为内部 `bbrProfile`，随节点配置加密保存，重新读取后仍按原值渲染为
+`bbr-profile`；未提供时不注入默认值。非法值拒绝整份导入，同一节点出现冲突值
+不静默覆盖。本修正不增加协议、不放宽未知字段、远程 provider 或证书校验限制，
+不修改数据库结构、已有来源或自营计量身份。
+
+Admin 按固定错误码提供中文提示，不显示后台原文或 YAML 内容。导入、保存等
+写操作失败后的重新读取保护保持不变；不得仅因收到 400 就假定没有写入并自动重试。
+本节只记录源码合同，需后端与 Admin 静态资源分别完成发布及验收后才在线生效。
+
 ## 保存、删除与启用
 
 1. 正式页面导入时显式发送 `enabled:false`，保持未发布；读取完整节点清单及 `revision`。
