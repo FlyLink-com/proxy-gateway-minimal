@@ -99,6 +99,32 @@ startup prerequisites. Build validation is not browser or production evidence.
 
 ## Status
 
-Source implementation/validation is in progress on the dedicated hardening
-branch. Production ingress remains unchanged by this work. #771's earlier
-backend migration/cutover receipts remain valid and are not being repeated.
+Source validation completed on 2026-10-13 for implementation commit
+`01fbedb96067d16f03d09742915ae320edf41e68`:
+
+- Windows Node24.16.0 full server baseline: 5934 total, 5877 pass, zero fail,
+  57 existing platform skips; focused authentication boundary: 49/49 pass.
+- Local WSL Node22.23.1, clean source archive and fresh lockfile-based `npm ci`:
+  207/207 focused auth/state/third-party tests pass. This is additional local
+  Linux validation, not a complete hosted-CI run or production staging.
+- Admin baseline: 94 files /1573 pass; TypeScript/Vite build and 13-file safety
+  check pass. Local browser visual inspection shows the password-only first
+  step, without the internal account field; it used a synthetic anonymous
+  response, not a real administrator login.
+- Independent safety-oriented source review found one malformed-cookie P2;
+  a red-to-green repair and incremental independent review closed it. No open
+  P1/P2 findings in that scope. The dedicated Security Review tool was not
+  available; this is ordinary independent review, not that tool's result.
+- Hosted CI run 38391176252 has a current budget-blocking annotation and no
+  started validation steps; it is not recorded as a pass. No ruleset bypass,
+  merge or production mutation was performed in this source phase.
+
+The first full run caught a missing metadata block and the old assertion that
+Admin lookalike paths were not no-store. Both were corrected to the new common
+Admin response contract and the final full baseline was rerun successfully.
+Later evidence-only documentation changes do not change the tested source.
+
+Production ingress remains unchanged by this work. #771's earlier backend
+migration/cutover receipts remain valid and are not being repeated. Paired
+artifact preparation, exact production delta review and real operator login
+acceptance remain separate, uncompleted steps.
