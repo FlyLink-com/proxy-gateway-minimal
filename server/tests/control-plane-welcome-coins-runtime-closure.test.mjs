@@ -21,7 +21,8 @@ const FORBIDDEN_PRE_IMPORT_SPECIFIERS = Object.freeze([
 ]);
 
 function source(relativePath) {
-  return readFileSync(resolve(REPOSITORY_ROOT, relativePath), "utf8");
+  // Source markers must work with both LF and CRLF checkouts.
+  return readFileSync(resolve(REPOSITORY_ROOT, relativePath), "utf8").replace(/\r\n/gu, "\n");
 }
 
 function sourceSection(text, startMarker, endMarker) {

@@ -100,7 +100,7 @@ test("project-state reviewed digests accept checkout-only CRLF conversion", () =
     );
     writeFileSync(
       join(rootDir, "project-state", filename),
-      text.replace(/\n/gu, "\r\n")
+      text.replace(/\r?\n/gu, "\r\n")
     );
   }
 

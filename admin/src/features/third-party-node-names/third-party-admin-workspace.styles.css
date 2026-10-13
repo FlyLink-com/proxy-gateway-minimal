@@ -1,0 +1,11 @@
+.tp-admin-workspace { min-width: 0; color: #17243a; }
+.tp-admin-boundary { color: #64748b; font-size: 13px; line-height: 1.7; }
+.tp-admin-source-toolbar { display: flex; align-items: end; flex-wrap: wrap; gap: 12px; margin-bottom: 16px; }
+.tp-admin-source-toolbar label { display: grid; gap: 6px; font-size: 13px; }
+.tp-admin-source-toolbar select { min-width: 220px; max-width: 100%; }
+.tp-admin-source-toolbar button, .tp-admin-workspace .tp-import button { min-height: 36px; border: 1px solid #d8e2ef; border-radius: 8px; padding: 7px 12px; background: #f7faff; color: #31558a; }
+.tp-admin-workspace button:disabled { opacity: .5; cursor: not-allowed; }
+.tp-admin-error { color: #b42318; }
+.tp-admin-workspace .tp-admin-tier { display: flex; flex-direction: row; align-items: center; gap: 8px; }
+.tp-admin-workspace .tp-admin-tier input { width: auto; }
+.tp-admin-workspace .tp-import-modal > button + button { margin-left: 8px; }

@@ -17,6 +17,7 @@ import { networkRoutes } from "./routes/network.mjs";
 import { adminSubscriptionRoutes } from "./routes/admin-subscriptions.mjs";
 import { adminPlatformRoutes } from "./routes/admin-platform.mjs";
 import { adminUserMonitorRoutes } from "./routes/admin-user-monitor.mjs";
+import { adminThirdPartySubscriptionRoutes } from "./routes/admin-third-party-subscriptions.mjs";
 import {
   ADMIN_AUTH_PUBLIC_PATHS,
   adminAuthRoutes,
@@ -283,6 +284,63 @@ function portalCoinRechargeRoutesEnabled(state) {
   ]) && hasCallableSafeDescriptorChain(auth, ["requireSession"]);
 }
 
+function isThirdPartySubscriptionNamespace(req) {
+  const pathname = req && typeof req.path === "string" ? req.path : "";
+  return /^\/api\/admin\/third-party-subscriptions(?:\/|$)/i.test(pathname);
+}
+
+function isThirdPartyNodeListSave(req) {
+  if (req.method !== "PUT") return false;
+  // Match Express' case-insensitive path segments and optional trailing slash,
+  // but retain the handler's exact lowercase source-id validation.
+  const match = /^\/api\/admin\/third-party-subscriptions\/sources\/([^/]+)\/nodes\/?$/i.exec(req.path);
+  return Boolean(match && /^tpsrc_[0-9a-f]{32}$/.test(match[1]));
+}
+
+function thirdPartySubscriptionBodyParserStatus(error) {
+  if (!error || (typeof error !== "object" && typeof error !== "function")) {
+    return 0;
+  }
+  const type = error.type;
+  if (type === "entity.too.large") return 413;
+  if (
+    type === "entity.parse.failed"
+    || type === "entity.verify.failed"
+    || type === "encoding.unsupported"
+    || type === "charset.unsupported"
+    || type === "request.aborted"
+    || type === "request.size.invalid"
+    || type === "stream.encoding.set"
+  ) {
+    return 400;
+  }
+  return 0;
+}
+
+function setThirdPartySubscriptionNoStore(req, res, next) {
+  if (isThirdPartySubscriptionNamespace(req)) {
+    res.set("Cache-Control", "no-store");
+  }
+  next();
+}
+
+function handleThirdPartySubscriptionBodyParserError(error, req, res, next) {
+  const status = isThirdPartySubscriptionNamespace(req)
+    ? thirdPartySubscriptionBodyParserStatus(error)
+    : 0;
+  if (status !== 400 && status !== 413) {
+    next(error);
+    return;
+  }
+  if (res.headersSent) {
+    return;
+  }
+  res.set("Cache-Control", "no-store");
+  res.status(status).json({
+    error: status === 413 ? "input_too_large" : "invalid_input"
+  });
+}
+
 export function createApp(state, options = {}) {
   const app = express();
   // These sensitive routes can be rejected before their handlers by cookie/CSRF
@@ -376,7 +434,17 @@ export function createApp(state, options = {}) {
     }
     next();
   });
-  app.use(express.json());
+  // Parser runs before the third-party router; keep failures fixed and uncached.
+  app.use(setThirdPartySubscriptionNoStore);
+  const defaultJsonParser = express.json();
+  // A full list of 256 names, each 128 UTF-16 units, can exceed 100KiB
+  // (including JSON Unicode escapes). All other routes retain the old limit.
+  const nodeListJsonParser = express.json({ limit: "256kb" });
+  app.use((req, res, next) => {
+    const parser = isThirdPartyNodeListSave(req) ? nodeListJsonParser : defaultJsonParser;
+    parser(req, res, next);
+  });
+  app.use(handleThirdPartySubscriptionBodyParserError);
   app.use((error, req, res, next) => {
     if (!isSubscriptionLinkMutation(req)) return next(error);
     // Do not return parser errors (which may contain submitted credentials or
@@ -481,6 +549,7 @@ export function createApp(state, options = {}) {
     app.use(adminPlatformRoutes(state));
   }
   app.use(adminUserMonitorRoutes(state));
+  app.use(adminThirdPartySubscriptionRoutes(state));
   app.use("/sub", createRateLimitMiddleware({
     windowMs: security.subRateLimit?.windowMs,
     max: security.subRateLimit?.max,

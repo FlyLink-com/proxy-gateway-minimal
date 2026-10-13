@@ -245,7 +245,7 @@ test("Release Artifact workflow packages verified Portal output with its own ide
   assert.match(portalJob, /npm run admin:portal:build/);
   assert.match(portalJob, /npm run admin:portal:verify/);
   assert.match(portalJob, /unzip -q "\$artifact" -d "\$extracted"/);
-  assert.match(portalJob, /node scripts\/static-artifact-tree-verifier\.mjs\s+\\\n\s+--expected admin\/dist-portal\s+\\\n\s+--actual "\$extracted"/u);
+  assert.match(portalJob, /node scripts\/static-artifact-tree-verifier\.mjs\s+\\\r?\n\s+--expected admin\/dist-portal\s+\\\r?\n\s+--actual "\$extracted"/u);
   assert.match(portalJob, /node scripts\/verify-portal-build\.mjs "\$extracted"/);
   assert.match(portalJob, /globalcircle-portal-\$\{\{ steps\.release\.outputs\.release \}\}\.zip/);
   assert.match(portalJob, /--release-unit portal-static/);
@@ -337,7 +337,7 @@ test("Release Artifact workflow packages verified Admin output with the shared m
   assert.match(adminJob, /npm run admin:build/);
   assert.match(adminJob, /npm run admin:verify/);
   assert.match(adminJob, /unzip -q "\$artifact" -d "\$extracted"/);
-  assert.match(adminJob, /node scripts\/static-artifact-tree-verifier\.mjs\s+\\\n\s+--expected admin\/dist\s+\\\n\s+--actual "\$extracted"/u);
+  assert.match(adminJob, /node scripts\/static-artifact-tree-verifier\.mjs\s+\\\r?\n\s+--expected admin\/dist\s+\\\r?\n\s+--actual "\$extracted"/u);
   assert.match(adminJob, /node scripts\/verify-admin-build\.mjs "\$extracted"/);
   assert.match(adminJob, /globalcircle-admin-\$\{\{ steps\.release\.outputs\.release \}\}\.zip/);
   assert.match(adminJob, /--release-unit admin-static/);

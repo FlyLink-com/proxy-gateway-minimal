@@ -97,6 +97,8 @@
     "platform:wallet-first-deferred-checkout:schema": "node scripts/platform-wallet-first-deferred-checkout-schema.mjs",
     "platform:wallet-first-resource-effect-runtime-claims:schema": "node scripts/platform-wallet-first-resource-effect-runtime-claims-schema.mjs",
     "platform:wallet-first-setup-delivery-handoffs:schema": "node scripts/platform-wallet-first-setup-delivery-handoffs-schema.mjs",
+    "platform:third-party-subscription:schema": "node scripts/platform-third-party-subscription-schema.mjs",
+    "platform:third-party-subscription:refresh": "node scripts/platform-third-party-subscription-refresh.mjs",
     "platform:coin-commerce:local-validation": "node scripts/start-local-coin-commerce-validation.mjs",
     "platform:coin-commerce:local-ui-validation": "node scripts/start-local-coin-commerce-ui-validation.mjs",
     "frontend:boundaries:check": "node scripts/check-frontend-source-boundaries.mjs",
@@ -137,6 +139,7 @@
     "pack:dry-run": "npm pack --dry-run",
     "daemon": "node daemon.mjs",
     "admin:dev": "npm run dev --prefix admin",
+    "admin:node-names:preview": "npm run dev:node-names-preview --prefix admin",
     "admin:build": "npm run build --prefix admin",
     "admin:verify": "npm run verify:admin-build --prefix admin",
     "admin:portal:build": "npm run build:portal --prefix admin",
@@ -164,6 +167,7 @@
     "express-rate-limit": "8.5.2",
     "node-fetch": "^3.3.2",
     "socks": "^2.8.9",
-    "socks-proxy-agent": "^10.0.0"
+    "socks-proxy-agent": "^10.0.0",
+    "yaml": "2.9.1"
   }
 }

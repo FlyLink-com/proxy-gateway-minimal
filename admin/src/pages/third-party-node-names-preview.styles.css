@@ -1,0 +1,14 @@
+.tp-preview-shell { display: flex; min-height: 100vh; background: #f6f8fc; color: #17243a; font-family: Inter, "Segoe UI", "Microsoft YaHei", sans-serif; }
+.tp-preview-sidebar { width: 230px; flex: 0 0 230px; background: #fff; border-right: 1px solid #e1e7ef; padding: 28px 18px; display: flex; flex-direction: column; box-sizing: border-box; }
+.tp-preview-brand { display: flex; align-items: center; gap: 12px; margin-bottom: 44px; color: #235bd7; }
+.tp-preview-brand strong { font-size: 17px; color: #17243a; }
+.tp-preview-brand small { display: block; font-size: 9px; letter-spacing: 2px; color: #748297; margin-top: 4px; }
+.tp-preview-nav-label { color: #748297; font-size: 12px; margin: 0 12px 12px; }
+.tp-preview-sidebar nav a { display: flex; align-items: center; gap: 10px; padding: 13px 12px; border-radius: 9px; background: #eaf1ff; color: #245cd9; font-weight: 600; font-size: 14px; text-decoration: none; }
+.tp-preview-sidebar nav a:focus-visible { outline: 2px solid #245cd9; outline-offset: 3px; }
+.tp-preview-boundary { display: flex; gap: 9px; color: #6c7a90; margin-top: auto; padding: 30px 12px 0; font-size: 12px; }
+.tp-preview-boundary p { margin: 0; }
+.tp-preview-boundary small { display: block; line-height: 1.8; margin-top: 7px; }
+.tp-preview-main { flex: 1; min-width: 0; padding: 32px; }
+@media (max-width: 1100px) { .tp-preview-sidebar { width: 195px; flex-basis: 195px; padding-inline: 12px; } .tp-preview-main { padding: 24px; } }
+@media (max-width: 760px) { .tp-preview-shell { display: block; } .tp-preview-sidebar { width: auto; padding: 16px 20px; flex-direction: row; align-items: center; justify-content: space-between; gap: 10px; border-right: 0; border-bottom: 1px solid #e1e7ef; } .tp-preview-brand { margin: 0; } .tp-preview-sidebar nav a { padding: 10px; font-size: 12px; } .tp-preview-brand strong { font-size: 14px; } .tp-preview-nav-label, .tp-preview-boundary { display: none; } .tp-preview-main { padding: 18px 12px; } }

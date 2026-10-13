@@ -1,0 +1,26 @@
+.tp-import { min-width: 0; }
+.tp-import-actions { display: flex; justify-content: flex-end; }
+.tp-import .modal-backdrop { position: fixed; inset: 0; display: grid; place-items: center; z-index: 100; padding: 20px; background: rgb(15 23 42 / 36%); }
+.tp-import .modal-panel.tp-import-modal { width: min(100%, 520px); max-height: calc(100dvh - 40px); overflow-y: auto; margin: 0; padding: 22px; border: 1px solid #dce4ef; border-radius: 14px; background: #fff; color: #17243a; box-shadow: 0 24px 80px rgb(15 23 42 / 22%); }
+.tp-import-modal .modal-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 18px; }
+.tp-import-modal .modal-header h3 { margin: 0; font-size: 18px; font-weight: 650; color: #17243a; }
+.tp-import .tp-import-modal .modal-header h3:focus { outline: none; }
+.tp-import .tp-import-modal .modal-header button { min-height: 36px; padding: 6px 9px; color: #64748b; }
+.tp-import-tabs { display: flex; padding: 4px; gap: 4px; border: 1px solid #e1e7ef; border-radius: 8px; background: #f3f6fb; margin-bottom: 16px; }
+.tp-import .tp-import-tabs button { flex: 1; border-color: transparent; background: transparent; color: #68778d; min-height: 38px; }
+.tp-import .tp-import-tabs button[aria-selected="true"] { border-color: #dfe6f0; background: #fff; color: #2b64c7; box-shadow: 0 1px 3px rgb(15 23 42 / 5%); }
+.tp-import-hint { margin: 0 0 12px; color: #64748b; font-size: 12px; line-height: 1.5; }
+.tp-import-fields { display: flex; flex-direction: column; gap: 14px; }
+.tp-import-fields label { display: flex; min-width: 0; flex-direction: column; gap: 6px; font-size: 12px; font-weight: 500; }
+.tp-import-fields > button { align-self: flex-end; }
+.tp-import-fields input { min-width: 0; width: 100%; }
+.tp-import input[type="file"] { font-size: 12px; padding: 8px; }
+.tp-import input::file-selector-button { border: 0; border-radius: 4px; padding: 5px 8px; margin-right: 8px; background: #e9eff9; color: #31558a; cursor: pointer; }
+.tp-import-error, .tp-import-result { margin: 10px 0 0; font-size: 12px; line-height: 1.5; }
+.tp-import-error { color: #b42318; }
+.tp-import-result { color: #315b9f; }
+@media (max-width: 560px) {
+  .tp-import-actions { justify-content: flex-start; }
+  .tp-import .modal-backdrop { padding: 12px; }
+  .tp-import .modal-panel.tp-import-modal { max-height: calc(100dvh - 24px); padding: 18px; }
+}
