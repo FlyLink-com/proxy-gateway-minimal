@@ -49,6 +49,18 @@ function rereadWithDiscard() {
   if (confirm) fireEvent.click(within(confirm).getByRole("button", { name: "确认重新读取" }));
 }
 
+function submitSyntheticImport() {
+  fireEvent.click(screen.getByRole("button", { name: "导入" }));
+  const dialog = screen.getByRole("dialog", { name: "导入第三方节点" });
+  fireEvent.change(within(dialog).getByRole("textbox", { name: "来源名称" }), { target: { value: "新导入来源" } });
+  const file = new File(["proxies: []"], "synthetic.yaml", { type: "text/yaml" });
+  Object.defineProperty(file, "text", { value: async () => "proxies: []" });
+  fireEvent.change(within(dialog).getByLabelText("YAML 文件"), { target: { files: [file] } });
+  fireEvent.click(within(dialog).getByRole("checkbox", { name: "基础月卡" }));
+  fireEvent.click(within(dialog).getByRole("button", { name: "导入并保持停用" }));
+  return dialog;
+}
+
 function deferred<T>() {
   let resolve!: (value: T) => void;
   const promise = new Promise<T>((done) => { resolve = done; });
@@ -371,23 +383,60 @@ describe("authenticated third-party Admin workspace", () => {
     expect(client.saveNodes).not.toHaveBeenCalled();
   });
 
-  test("uncertain import does not retry automatically and locks another import until refresh", async () => {
+  test.each([
+    ["network", "请求未确认，请检查连接并重新读取状态。"],
+    ["invalid_yaml", "YAML 无法导入，请检查格式、节点协议和字段是否受支持；不会显示原始配置。"],
+    ["invalid_tiers", "适用套餐无效，请重新读取后检查套餐选择。"],
+    ["not_found", "来源不存在或已被删除，请重新读取来源列表。"],
+    ["rate_limited", "请求过于频繁，请稍后手动重新读取；不会自动重试。"],
+    ["remote_import_disabled", "HTTPS YAML 导入尚未开放，请先下载获准分发的 YAML 文件，再使用文件导入。"],
+    ["unsupported_source_kind", "此来源类型暂不支持此操作，请选择文件导入的来源。"],
+    ["protected_value_invalid", "来源的受保护数据无法读取，请联系管理员核查；不会显示原始配置。"],
+  ] as const)("%s import failure shows safe guidance and stays locked until explicit refresh", async (code, copy) => {
     const client = fakeClient();
-    client.importYaml.mockRejectedValue(new ThirdPartyAdminError("network"));
+    const error = new ThirdPartyAdminError(code);
+    error.message = "synthetic-private-backend-detail";
+    client.importYaml.mockRejectedValue(error);
     await mount(client);
-    fireEvent.click(screen.getByRole("button", { name: "导入" }));
-    const dialog = screen.getByRole("dialog", { name: "导入第三方节点" });
-    fireEvent.change(within(dialog).getByRole("textbox", { name: "来源名称" }), { target: { value: "新导入来源" } });
-    const file = new File(["proxies: []"], "synthetic.yaml", { type: "text/yaml" });
-    Object.defineProperty(file, "text", { value: async () => "proxies: []" });
-    fireEvent.change(within(dialog).getByLabelText("YAML 文件"), { target: { files: [file] } });
-    fireEvent.click(within(dialog).getByRole("checkbox", { name: "基础月卡" }));
-    fireEvent.click(within(dialog).getByRole("button", { name: "导入并保持停用" }));
+    const dialog = submitSyntheticImport();
     await screen.findByText(/结果未确认或版本已变化/);
+    expect(screen.getByText(copy)).toHaveAttribute("role", "alert");
+    expect(screen.queryByText(error.message)).not.toBeInTheDocument();
     expect(client.importYaml).toHaveBeenCalledTimes(1);
     expect(within(dialog).getByRole("button", { name: "导入并保持停用" })).toBeDisabled();
     fireEvent.click(within(dialog).getByRole("button", { name: "关闭导入" }));
     expect(screen.getByRole("button", { name: "导入" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "编辑 原始日本" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "保存节点列表" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "启用节点列表" })).toBeDisabled();
+    expect(client.listSources).toHaveBeenCalledTimes(1);
+    rereadWithDiscard();
+    await waitFor(() => expect(screen.getByRole("button", { name: "导入" })).toBeEnabled());
+    expect(client.listSources).toHaveBeenCalledTimes(2);
+    expect(client.importYaml).toHaveBeenCalledTimes(1);
+    expect(client.enableSource).not.toHaveBeenCalled();
+  });
+
+  test("successful import followed by unreadable nodes stays locked without repeating the import", async () => {
+    const client = fakeClient();
+    await mount(client);
+    client.listNodes.mockRejectedValueOnce(new ThirdPartyAdminError("protected_value_invalid"));
+    const dialog = submitSyntheticImport();
+    await screen.findByText(/结果未确认或版本已变化/);
+    expect(screen.getByText("来源的受保护数据无法读取，请联系管理员核查；不会显示原始配置。")).toHaveAttribute("role", "alert");
+    expect(client.importYaml).toHaveBeenCalledTimes(1);
+    expect(client.listNodes).toHaveBeenLastCalledWith(NEXT_SOURCE_ID, expect.any(AbortSignal));
+    expect(screen.queryByText("来源已导入并保持停用，请核对节点后启用。")).not.toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: "导入并保持停用" })).toBeDisabled();
+    fireEvent.click(within(dialog).getByRole("button", { name: "关闭导入" }));
+    expect(screen.getByRole("button", { name: "导入" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "启用节点列表" })).toBeDisabled();
+    client.listSources.mockResolvedValue([{ ...SOURCE, id: NEXT_SOURCE_ID, name: "新导入来源" }]);
+    client.listNodes.mockResolvedValue({ ...SNAPSHOT, sourceId: NEXT_SOURCE_ID });
+    rereadWithDiscard();
+    await waitFor(() => expect(screen.getByRole("combobox", { name: "第三方来源" })).toHaveValue(NEXT_SOURCE_ID));
+    expect(screen.getByRole("button", { name: "导入" })).toBeEnabled();
+    expect(client.importYaml).toHaveBeenCalledTimes(1);
     expect(client.enableSource).not.toHaveBeenCalled();
   });
 });

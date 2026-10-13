@@ -504,6 +504,46 @@ test("inline import validation, explicit enable, preview and refresh leak no mat
   }
 });
 
+test("admin mixed-protocol import preserves Hy2 BBR and stays disabled without exposing material", async () => {
+  const { state, database, network } = featureState();
+  const { server, baseUrl } = await listen(createApp(state));
+  const yamlContent = JSON.stringify({ proxies: [
+    { name: "US VLESS", type: "vless", server: "192.0.2.21", port: 443,
+      uuid: "11111111-1111-4111-8111-111111111111", tls: true, servername: "vless.example.test" },
+    { name: "SG Hy2", type: "hysteria2", server: "192.0.2.22", port: 443,
+      password: "synthetic-password", sni: "hy2.example.test", "bbr-profile": "aggressive" },
+    { name: "JP TUIC", type: "tuic", server: "192.0.2.23", port: 443,
+      uuid: "22222222-2222-4222-8222-222222222222", password: "synthetic-password", sni: "tuic.example.test" }
+  ] });
+  try {
+    const created = await requestJson(baseUrl, "/api/admin/third-party-subscriptions/sources", {
+      method: "POST",
+      body: { name: "synthetic-mixed", yamlContent, tiers: ["monthly_basic"], enabled: false }
+    });
+    assert.equal(created.response.status, 201);
+    assert.equal(created.body.enabled, false);
+    assertNoStore(created.response);
+    assertNoSecret(created.raw);
+    const nodes = await requestJson(baseUrl,
+      `/api/admin/third-party-subscriptions/sources/${created.body.id}/nodes`);
+    assert.equal(nodes.response.status, 200);
+    assert.equal(nodes.body.enabled, false);
+    assert.equal(nodes.body.items.length, 3);
+    assert.deepEqual(nodes.body.items.map((node) => node.protocol).sort(), ["hysteria2", "tuic", "vless"]);
+    assertNoStore(nodes.response);
+    assertNoSecret(nodes.raw);
+    for (const forbidden of ["192.0.2.", "example.test", "uuid", "password", "bbrProfile", "protected_config"]) {
+      assert.equal(`${created.raw}${nodes.raw}`.includes(forbidden), false);
+    }
+    assert.equal(rowCount(database), 1);
+    assert.deepEqual(state.thirdPartySubscriptions.store.listActiveServersForPlan("monthly_basic"), []);
+    assert.equal(network.calls, 0);
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+    database.close();
+  }
+});
+
 test("protector failure is allowlisted and leaves no source", async () => {
   const database = appliedDatabase();
   const base = createPortalTotpSecretProtector({ key: SECRET_KEY });

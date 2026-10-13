@@ -67,6 +67,7 @@ const CLIENT_FINGERPRINTS = new Set([
 ]);
 const TUIC_CONGESTION = new Set(["bbr", "cubic", "new_reno"]);
 const TUIC_UDP_RELAY = new Set(["native", "quic"]);
+const HY2_BBR_PROFILES = new Set(["standard", "conservative", "aggressive"]);
 const NAME_STRIP = /[\u0000-\u001F\u007F-\u009F\u061C\u200E\u200F\u202A-\u202E\u2066-\u2069]/g;
 const CONTROL_CHARS = /[\u0000-\u001F\u007F-\u009F]/;
 const DECIMAL_PORT = /^[+]?(?:0|[1-9][0-9]*)$/;
@@ -99,6 +100,7 @@ const PROTOCOL_KEYS = new Map([
     "alpn",
     "obfs",
     "obfs-password",
+    "bbr-profile",
     "fingerprint",
     "skip-cert-verify"
   )],
@@ -421,6 +423,11 @@ function readProtocolFields(type, fields, itemIndex) {
     };
     if (fields.has("sni")) protocolFields.sni = readServer(fields.get("sni"), itemIndex);
     if (fields.has("alpn")) protocolFields.alpn = readAlpn(fields.get("alpn"), itemIndex);
+    if (fields.has("bbr-profile")) {
+      const bbrProfile = readBoundedString(fields.get("bbr-profile"), itemIndex, 32);
+      if (!HY2_BBR_PROFILES.has(bbrProfile)) throw fail("yaml_proxy_invalid", itemIndex);
+      protocolFields.bbrProfile = bbrProfile;
+    }
     if (fields.has("obfs") || fields.has("obfs-password")) {
       if (!fields.has("obfs") || !fields.has("obfs-password")) throw fail("yaml_proxy_invalid", itemIndex);
       const obfs = readBoundedString(fields.get("obfs"), itemIndex, 256);

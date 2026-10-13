@@ -4,17 +4,24 @@ import { ThirdPartyNodeNamesPage } from "./third-party-node-names-page";
 import { ThirdPartyAdminImport } from "./third-party-admin-import";
 import type { ThirdPartyImportInput } from "./third-party-admin-import";
 import { createThirdPartyAdminClient, ThirdPartyAdminError } from "./third-party-admin-client";
-import type { ThirdPartyAdminClient, ThirdPartySource, ThirdPartyNodeSnapshot } from "./third-party-admin-client";
+import type { ThirdPartyAdminClient, ThirdPartyAdminErrorCode, ThirdPartySource, ThirdPartyNodeSnapshot } from "./third-party-admin-client";
 import type { ThirdPartyNode } from "./node-name-model";
 import "./third-party-admin-workspace.styles.css";
 
-const ERROR_COPY: Record<string, string> = {
+const ERROR_COPY: Record<ThirdPartyAdminErrorCode, string> = {
   session: "Admin 登录已失效，请重新登录。", permission: "当前账户没有此操作的 Admin 权限。",
   unavailable: "第三方节点管理尚未启用或服务暂不可用。", network: "请求未确认，请检查连接并重新读取状态。",
   invalid: "请求或响应不符合接口要求，请重新读取后检查输入。",
+  not_found: "来源不存在或已被删除，请重新读取来源列表。",
+  rate_limited: "请求过于频繁，请稍后手动重新读取；不会自动重试。",
   revision_conflict: "来源已被其他操作更新。请重新读取，核对后再修改；不会覆盖最新版本。",
   source_enabled: "来源当前已启用，请重新读取并先停用来源。", empty_source: "空来源不可启用，请先导入节点。",
   invalid_node_name: "节点名称不符合要求，请检查长度和保留名称。", duplicate_node_name: "存在重复的节点名称。",
+  invalid_yaml: "YAML 无法导入，请检查格式、节点协议和字段是否受支持；不会显示原始配置。",
+  invalid_tiers: "适用套餐无效，请重新读取后检查套餐选择。",
+  remote_import_disabled: "HTTPS YAML 导入尚未开放，请先下载获准分发的 YAML 文件，再使用文件导入。",
+  unsupported_source_kind: "此来源类型暂不支持此操作，请选择文件导入的来源。",
+  protected_value_invalid: "来源的受保护数据无法读取，请联系管理员核查；不会显示原始配置。",
 };
 
 export function ThirdPartyAdminWorkspace({ client: suppliedClient, onSessionExpired }: {
