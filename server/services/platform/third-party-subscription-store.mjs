@@ -103,6 +103,28 @@ function unprotectRequired(protector, wrapped) {
   return plain;
 }
 
+function protocolServerFromStoredNode(config, row) {
+  const server = {
+    ...config,
+    id: row.id,
+    sourceId: row.source_id,
+    name: row.display_name,
+    countryCode: row.country_code,
+    region: row.region,
+    protocol: row.protocol,
+    thirdParty: true,
+    autoEligible: false,
+    qualityClass: ""
+  };
+  // The fingerprint column is the internal dedup key. A legacy protected
+  // config stored that same key on fingerprint; it is not a certificate pin.
+  delete server.dedupKey;
+  if (server.fingerprint === row.fingerprint) {
+    delete server.fingerprint;
+  }
+  return server;
+}
+
 function publicSource(row, tiers, nodeStats) {
   return {
     id: row.id,
@@ -425,7 +447,7 @@ export function createSqliteThirdPartySubscriptionStore(options = {}) {
     }
     const at = nowIso(nowFn);
     replaceSourceNodes(id, parsed.nodes.map((node) => ({
-      fingerprint: node.fingerprint,
+      fingerprint: node.dedupKey,
       displayName: node.displayName,
       countryCode: node.countryCode,
       region: node.region,
@@ -458,19 +480,7 @@ export function createSqliteThirdPartySubscriptionStore(options = {}) {
         continue;
       }
       if (!config || typeof config !== "object") continue;
-      servers.push({
-        ...config,
-        id: row.id,
-        sourceId: row.source_id,
-        fingerprint: row.fingerprint,
-        name: row.display_name,
-        countryCode: row.country_code,
-        region: row.region,
-        protocol: row.protocol,
-        thirdParty: true,
-        autoEligible: false,
-        qualityClass: ""
-      });
+      servers.push(protocolServerFromStoredNode(config, row));
     }
     return servers;
   }

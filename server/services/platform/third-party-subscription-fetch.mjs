@@ -489,13 +489,14 @@ export function parseSubscriptionNodes(raw, { regionOverride = null } = {}) {
       continue;
     }
     const countryCode = detectCountryCode(node.name, regionOverride);
-    const fingerprint = fingerprintNode(node);
-    if (seen.has(fingerprint)) continue;
-    seen.add(fingerprint);
+    // dedupKey is internal identity and must not occupy protocol fingerprint.
+    const dedupKey = fingerprintNode(node);
+    if (seen.has(dedupKey)) continue;
+    seen.add(dedupKey);
     counts.valid += 1;
     nodes.push({
       ...node,
-      fingerprint,
+      dedupKey,
       countryCode,
       region: countryCode,
       displayName: node.name

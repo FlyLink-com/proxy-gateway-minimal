@@ -329,6 +329,29 @@ offerVersionRef；只存 `monthly` / `yearly` / `trial` / `pilot` 的旧权益�
   分步切换与接口验收；失败回退本次节点快照/代码，不恢复旧账务数据库。
 - [ ] 实际发布后追加 Deploy Note；没有执行则明确记为 `not_deployed`。
 
+## 2026-10-13 UTC 源码修正第一步（未发布）
+
+本步由 Grok CLI 生成补丁，Codex 负责边界决策、补丁集成与实际验证。
+只完成两个局部缺陷：有效 `expiring` 与 `active` 均可下发；内部去重字段改为
+`dedupKey`，数据库 `fingerprint` 列仍仅作去重，不能注入 Hy2 协议指纹。
+旧密文中等于该列值的内部 `fingerprint` 会在输出时剥离，不同值的协议指纹保留。
+无 schema/checksum 修改，不改自营 renderer 或生产身份。
+
+本轮实际验证（Windows，Node 24.16.0；源基线 `0f4faebd` 加最新 #762 文档）：
+
+- 先仅加入回归检查，21 项中 4 项失败；应用修正后 21/21 通过。
+- 第三方订阅全部 targeted tests：36/36 通过。
+- 全量 `npm test`：5420 tests / 5353 pass / 11 fail / 56 skipped。
+  修改前同机基线为 5418 / 5351 / 11 / 56；按失败测试文件与位置逐项比较，差异为 0。
+  未把现有 Windows 路径/行尾等失败记为全量通过。
+- `docs:authority:check`、`docs:authority:strict`：416 metadata blocks 通过；diff 检查通过。
+- 独立只读差异复核未发现本步阻断；这不是专用 Security Review 的完成证明。
+
+仍待：受限 YAML 与 inline Admin 导入、一期 URL 抓取关闭、真实到期时钟 HTTP 边界、
+最新 master 集成、最终独立审查及实际客户端验收。上述原源码缺口表是修正前快照，
+以本节区分已修正项；此步不能代表整个一期完成。没有访问生产、真实来源或客户数据，
+PR 继续 Draft，`production_state: not_deployed`。
+
 ## 历史实现与验收记录（2026-10-10）
 
 以下为 `0f4faebd` 的历史实现与候选操作记录，保留作为证据，不作为当前执行指令。

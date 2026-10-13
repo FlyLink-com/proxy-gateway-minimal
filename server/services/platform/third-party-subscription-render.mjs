@@ -76,14 +76,16 @@ export function applyThirdPartyProxyConfig(state, result) {
     return original;
   }
   const tenant = result?.tenant;
-  if (text(tenant?.status).toLowerCase() !== "active") {
+  // The rendered HTTP path requires a known deliverable status.
+  const tenantStatus = text(tenant?.status).toLowerCase();
+  if (tenantStatus !== "active" && tenantStatus !== "expiring") {
     return original;
   }
   const binding = findUsageBindingForTenant(state.platform?.controlStore, tenant?.id);
   const planId = resolveThirdPartyPlanId({
     plan: binding?.plan,
     trafficLimitBytes: binding?.trafficLimitBytes,
-    tenantStatus: tenant?.status
+    tenantStatus
   });
   if (!planId) return original;
   let nodes;

@@ -136,6 +136,27 @@ test("tier resolution follows the offer version ref and fails closed otherwise",
   assert.equal(resolveThirdPartyPlanId({ trafficLimitBytes: 50 * GIB, tenantStatus: "active" }), null);
   assert.equal(resolveThirdPartyPlanId({}), null);
   assert.equal(resolveThirdPartyPlanId({ tenantStatus: "active" }), null);
+  assert.equal(resolveThirdPartyPlanId({
+    plan: OFFER_50,
+    trafficLimitBytes: 50 * GIB,
+    tenantStatus: "expiring"
+  }), "monthly_basic");
+  assert.equal(resolveThirdPartyPlanId({
+    plan: OFFER_50,
+    trafficLimitBytes: 50 * GIB,
+    lifecycleStatus: "expiring"
+  }), "monthly_basic");
+  assert.equal(resolveThirdPartyPlanId({
+    plan: OFFER_50,
+    trafficLimitBytes: 50 * GIB
+  }), "monthly_basic");
+  for (const status of ["disabled", "expired", "revoked", "unknown"]) {
+    assert.equal(resolveThirdPartyPlanId({
+      plan: OFFER_50,
+      trafficLimitBytes: 50 * GIB,
+      tenantStatus: status
+    }), null, status);
+  }
 });
 
 test("binding lookup returns a plan even when trafficLimitBytes is absent", () => {
@@ -170,9 +191,10 @@ function appliedStore(fetchBody) {
     expectedDdlChecksum: REQUIRED_THIRD_PARTY_SUBSCRIPTION_DDL_CHECKSUM,
     nowFn: () => new Date("2026-10-10T00:00:00.000Z")
   });
+  const secretProtector = createPortalTotpSecretProtector({ key: SECRET_KEY });
   const store = createSqliteThirdPartySubscriptionStore({
     database,
-    secretProtector: createPortalTotpSecretProtector({ key: SECRET_KEY }),
+    secretProtector,
     fetchFn: async () => ({
       status: 200,
       headers: new Headers(),
@@ -186,7 +208,7 @@ function appliedStore(fetchBody) {
     resolveFn: async () => ["203.0.113.8"],
     nowFn: () => new Date("2026-10-10T00:00:00.000Z")
   });
-  return { database, store };
+  return { database, store, secretProtector };
 }
 
 async function seededFeature() {
@@ -421,4 +443,113 @@ test("tier resolution ignores inherited object keys as plan refs", () => {
   for (const plan of ["__proto__", "constructor", "toString", "hasOwnProperty"]) {
     assert.equal(resolveThirdPartyPlanId({ plan, tenantStatus: "active" }), null, plan);
   }
+});
+
+test("expiring subscribers receive third-party nodes and closed statuses do not", async () => {
+  const feature = await seededFeature();
+  const original = sampleOwnConfig();
+  const baseline = generateClashSubscription(original);
+  const state = {
+    thirdPartySubscriptions: feature,
+    platform: {
+      controlStore: {
+        findUsageBindingByTenantRef: () => ({ plan: OFFER_50, trafficLimitBytes: 50 * GIB })
+      }
+    }
+  };
+  const expiring = generateClashSubscription(applyThirdPartyProxyConfig(state, {
+    proxyConfig: original,
+    tenant: { id: "tenant_expiring", status: "expiring" }
+  }));
+  assert.match(expiring, /\[3P\] HK 1/);
+  assert.match(expiring, /\[3P\] JP 1/);
+  for (const status of ["expired", "disabled", "revoked", "unknown", ""]) {
+    const yaml = generateClashSubscription(applyThirdPartyProxyConfig(state, {
+      proxyConfig: original,
+      tenant: { id: "tenant_closed", status }
+    }));
+    assert.equal(yaml, baseline, status || "blank");
+  }
+  const missing = generateClashSubscription(applyThirdPartyProxyConfig(state, {
+    proxyConfig: original,
+    tenant: { id: "tenant_missing" }
+  }));
+  assert.equal(missing, baseline);
+});
+
+test("hy2 dedup key stays internal from parse through store to render", async () => {
+  const hy2Link = "hysteria2://synthetic-hy2@203.0.113.12:443?sni=hy2.example.test#SG";
+  const { database, store, secretProtector } = appliedStore(hy2Link);
+  const source = store.createSource({
+    name: "synthetic-hy2-source",
+    subscriptionUrl: SOURCE_URL,
+    tiers: ["monthly_basic"]
+  });
+  const first = await store.refreshSource(source.id);
+  const afterFirst = database.prepare(
+    "select id, fingerprint from platform_third_party_nodes where source_id = ?"
+  ).all(source.id);
+  const second = await store.refreshSource(source.id);
+  const afterSecond = database.prepare(
+    "select id, fingerprint, protected_config, active from platform_third_party_nodes where source_id = ?"
+  ).all(source.id);
+  assert.equal(first.ok, true);
+  assert.equal(second.ok, true);
+  assert.equal(afterFirst.length, 1);
+  assert.equal(afterSecond.length, 1);
+  assert.equal(afterSecond[0].active, 1);
+  assert.equal(afterSecond[0].id, afterFirst[0].id);
+  assert.equal(afterSecond[0].fingerprint, afterFirst[0].fingerprint);
+  const dedup = afterSecond[0].fingerprint;
+  const stored = JSON.parse(secretProtector.unprotect(afterSecond[0].protected_config));
+  assert.equal(stored.dedupKey, dedup);
+  assert.equal(Object.hasOwn(stored, "fingerprint"), false);
+
+  const state = {
+    thirdPartySubscriptions: { enabled: true, available: true, store },
+    platform: {
+      controlStore: {
+        findUsageBindingByTenantRef: () => ({ plan: OFFER_50, trafficLimitBytes: 50 * GIB })
+      }
+    }
+  };
+  const renderYaml = (tenantStatus) => generateClashSubscription(applyThirdPartyProxyConfig(state, {
+    proxyConfig: sampleOwnConfig(),
+    tenant: { id: "tenant_hy2", status: tenantStatus }
+  }));
+  const freshYaml = renderYaml("active");
+  assert.match(freshYaml, /type: hysteria2/);
+  assert.match(freshYaml, /\[3P\] SG 1/);
+  assert.doesNotMatch(freshYaml, /fingerprint:/);
+  assert.equal(freshYaml.includes(dedup), false);
+  const delivered = store.listActiveServersForPlan("monthly_basic");
+  assert.equal(delivered.length, 1);
+  assert.equal(delivered[0].id, afterSecond[0].id);
+  assert.equal(Object.hasOwn(delivered[0], "fingerprint"), false);
+  assert.equal(Object.hasOwn(delivered[0], "dedupKey"), false);
+
+  const legacy = { ...stored, fingerprint: dedup };
+  delete legacy.dedupKey;
+  database.prepare("update platform_third_party_nodes set protected_config = ? where id = ?")
+    .run(secretProtector.protect(JSON.stringify(legacy)), afterSecond[0].id);
+  const legacyYaml = renderYaml("expiring");
+  assert.match(legacyYaml, /type: hysteria2/);
+  assert.match(legacyYaml, /\[3P\] SG 1/);
+  assert.doesNotMatch(legacyYaml, /fingerprint:/);
+  assert.equal(legacyYaml.includes(dedup), false);
+  const legacyDelivered = store.listActiveServersForPlan("monthly_basic");
+  assert.equal(legacyDelivered[0].id, afterSecond[0].id);
+  assert.equal(Object.hasOwn(legacyDelivered[0], "fingerprint"), false);
+
+  const pinned = { ...stored, fingerprint: "synthetic-cert-pin" };
+  delete pinned.dedupKey;
+  database.prepare("update platform_third_party_nodes set protected_config = ? where id = ?")
+    .run(secretProtector.protect(JSON.stringify(pinned)), afterSecond[0].id);
+  const pinnedYaml = renderYaml("active");
+  assert.match(pinnedYaml, /fingerprint: "synthetic-cert-pin"/);
+  assert.equal(pinnedYaml.includes(dedup), false);
+  const pinnedDelivered = store.listActiveServersForPlan("monthly_basic");
+  assert.equal(pinnedDelivered[0].id, afterSecond[0].id);
+  assert.equal(pinnedDelivered[0].fingerprint, "synthetic-cert-pin");
+  assert.equal(Object.hasOwn(pinnedDelivered[0], "dedupKey"), false);
 });

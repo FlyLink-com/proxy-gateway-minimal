@@ -60,8 +60,10 @@ export function resolveThirdPartyPlanId({
   tenantStatus,
   lifecycleStatus
 } = {}) {
+  // Omitted status stays compatible with existing helper callers.
+  // A present status must be active or expiring.
   const status = text(tenantStatus || lifecycleStatus);
-  if (status && status !== "active") return null;
+  if (status && status !== "active" && status !== "expiring") return null;
   const ref = planRef(plan ?? offerVersionRef);
   const offer = Object.hasOwn(THIRD_PARTY_OFFER_PLAN_MAP, ref)
     ? THIRD_PARTY_OFFER_PLAN_MAP[ref]

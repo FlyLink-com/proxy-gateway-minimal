@@ -50,6 +50,9 @@ test("share-link parsers accept ss/vless/hy2/tuic and count unsupported or malfo
   assert.equal(parsed.counts.malformed, 1);
   const hy2Alias = parseSubscriptionNodes(HY2_LINK.replace("hysteria2://", "hy2://"));
   assert.equal(hy2Alias.nodes[0].protocol, "hysteria2");
+  assert.equal(hy2Alias.nodes[0].dedupKey, parsed.nodes[2].dedupKey);
+  assert.equal(Object.hasOwn(parsed.nodes[2], "fingerprint"), false);
+  assert.equal(parsed.nodes[2].dedupKey.length, 64);
   assert.deepEqual(parsed.nodes.map((node) => node.protocol), ["ss", "vless", "hysteria2", "tuic"]);
   assert.equal(parsed.nodes[0].countryCode, "HK");
   assert.equal(parsed.nodes[1].countryCode, "JP");
@@ -65,7 +68,8 @@ test("base64 subscription bodies decode to the same node set as plain text", () 
   const fromPlain = parseSubscriptionNodes(plain);
   const fromBase64 = parseSubscriptionNodes(encoded);
   assert.equal(fromBase64.encoding, "base64");
-  assert.deepEqual(fromBase64.nodes.map((node) => node.fingerprint), fromPlain.nodes.map((node) => node.fingerprint));
+  assert.deepEqual(fromBase64.nodes.map((node) => node.dedupKey), fromPlain.nodes.map((node) => node.dedupKey));
+  assert.equal(fromPlain.nodes.every((node) => node.fingerprint !== node.dedupKey), true);
 });
 
 test("region detection uses flag/zh/en tokens and source override wins", () => {
