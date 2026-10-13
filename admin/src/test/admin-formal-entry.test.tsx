@@ -94,7 +94,7 @@ describe("admin formal entry", () => {
     });
     expect(screen.queryByRole("navigation")).toBeNull();
     expect(screen.queryByRole("heading", { name: /GCC WebOS · Admin Console/ })).toBeNull();
-    expect(screen.queryByLabelText("管理员账户")).toBeNull();
+    expect(screen.queryByLabelText("密码")).toBeNull();
     expect(fetchPaths(fetchMock).every((p) => p === AUTH_SESSION_PATH)).toBe(true);
     expectLegacyKeyUnread(getItemSpy);
 
@@ -108,7 +108,7 @@ describe("admin formal entry", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByLabelText("管理员账户")).toBeTruthy();
+      expect(screen.getByLabelText("密码")).toBeTruthy();
     });
     expect(screen.queryByRole("navigation", { name: "Admin 导航" })).toBeNull();
     expect(fetchPaths(fetchMock).every((p) => p === AUTH_SESSION_PATH)).toBe(true);
@@ -133,7 +133,7 @@ describe("admin formal entry", () => {
     render(<App />);
 
     await waitFor(() => {
-      expect(screen.getByLabelText("管理员账户")).toBeTruthy();
+      expect(screen.getByLabelText("密码")).toBeTruthy();
     });
     expect(screen.queryByRole("navigation", { name: "Admin 导航" })).toBeNull();
     expect(fetchPaths(fetchMock).filter((p) => p !== AUTH_SESSION_PATH)).toEqual([]);
@@ -202,7 +202,7 @@ describe("admin formal entry", () => {
     App = await importApp();
     render(<App />);
     await waitFor(() => {
-      expect(screen.getByLabelText("管理员账户")).toBeTruthy();
+      expect(screen.getByLabelText("密码")).toBeTruthy();
     });
     expect(screen.queryByText("GlobalCircle AI - Operator Console")).toBeNull();
     expect(screen.queryByText(/Connect Admin API/i)).toBeNull();

@@ -5,7 +5,6 @@ import { AdminAuthError, type AdminAuthChallenge, type AdminAuthClient } from ".
 
 const sessionFalse = {
   authenticated: false as const,
-  operatorRef: "acct_op",
   setupRequired: false,
 };
 const sessionTrue = {
@@ -75,9 +74,8 @@ describe("admin auth feedback", () => {
       logout: vi.fn(async () => undefined),
     }));
     await waitFor(() => {
-      expect(screen.getByLabelText("管理员账户")).toBeTruthy();
+      expect(screen.getByLabelText("密码")).toBeTruthy();
     });
-    fireEvent.change(screen.getByLabelText("管理员账户"), { target: { value: "acct_op" } });
     fireEvent.change(screen.getByLabelText("密码"), { target: { value: "secret" } });
     fireEvent.click(screen.getByRole("button", { name: "登录" }));
     await waitFor(() => {

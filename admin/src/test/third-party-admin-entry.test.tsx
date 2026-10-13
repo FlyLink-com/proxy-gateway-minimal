@@ -29,7 +29,7 @@ describe('formal third-party Admin route authentication boundary', () => {
     });
     vi.stubGlobal('fetch', fetchMock);
     render(<App />);
-    expect(await screen.findByLabelText('管理员账户')).toBeTruthy();
+    expect(await screen.findByLabelText('密码')).toBeTruthy();
     expect(screen.queryByRole('button', { name: '第三方节点' })).toBeNull();
     expect(fetchMock).toHaveBeenCalledOnce();
     expect(fetchMock.mock.calls.every(([input]) => !requestPath(input).includes('third-party-subscriptions'))).toBe(true);
@@ -48,7 +48,7 @@ describe('formal third-party Admin route authentication boundary', () => {
     vi.stubGlobal('fetch', fetchMock);
     render(<App />);
     await waitFor(() => expect(fetchMock.mock.calls.some(([input]) => requestPath(input).includes('third-party-subscriptions'))).toBe(true));
-    expect(await screen.findByLabelText('管理员账户')).toBeTruthy();
+    expect(await screen.findByLabelText('密码')).toBeTruthy();
     expect(screen.queryByRole('button', { name: '第三方节点' })).toBeNull();
     expect(fetchMock.mock.calls.map(([input]) => requestPath(input))).toEqual([
       '/api/admin-auth/session', '/api/admin/third-party-subscriptions/sources',

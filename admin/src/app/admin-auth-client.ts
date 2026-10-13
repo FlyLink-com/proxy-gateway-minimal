@@ -19,7 +19,6 @@ export class AdminAuthError extends Error {
 export type AdminAuthStatus =
   | {
       authenticated: false;
-      operatorRef: string | null;
       setupRequired: boolean;
     }
   | {
@@ -35,7 +34,7 @@ export type AdminAuthChallenge = {
 export type AdminAuthClient = {
   session(signal: AbortSignal): Promise<AdminAuthStatus>;
   login(
-    input: { operatorRef: string; password: string },
+    input: { operatorRef?: string; password: string },
     signal: AbortSignal,
   ): Promise<AdminAuthChallenge>;
   verify(
@@ -112,13 +111,6 @@ function parseUnauthenticated(body: Record<string, unknown>): AdminAuthStatus {
 
   if (hasMode) {
     if (body.mode !== "portalAccount") fail("invalid");
-    if (!isSafeRef(body.operatorRef)) fail("invalid");
-    if (typeof body.setupRequired !== "boolean") fail("invalid");
-    return {
-      authenticated: false,
-      operatorRef: body.operatorRef,
-      setupRequired: body.setupRequired,
-    };
   }
 
   if (hasOperator && !isSafeRef(body.operatorRef) && body.operatorRef !== null) {
@@ -128,7 +120,8 @@ function parseUnauthenticated(body: Record<string, unknown>): AdminAuthStatus {
 
   return {
     authenticated: false,
-    operatorRef: hasOperator && isSafeRef(body.operatorRef) ? body.operatorRef : null,
+    // Older restricted servers may send operatorRef; never expose it to the
+    // login UI. Public login status intentionally omits setup details too.
     setupRequired: hasSetup ? Boolean(body.setupRequired) : false,
   };
 }
@@ -193,7 +186,7 @@ export function createAdminAuthClient(options?: {
     },
 
     async login(input, signal) {
-      if (!isSafeRef(input.operatorRef)) fail("invalid");
+      if (input.operatorRef !== undefined && !isSafeRef(input.operatorRef)) fail("invalid");
       if (typeof input.password !== "string") fail("invalid");
       if (input.password.length < 1 || input.password.length > 4096) fail("invalid");
       const response = await requestJson(fetcher, "/api/admin-auth/login", {

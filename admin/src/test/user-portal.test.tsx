@@ -957,7 +957,7 @@ describe("user portal route", () => {
     render(createElement(App));
 
     await waitFor(() => {
-      expect(screen.getByLabelText("管理员账户")).not.toBeNull();
+      expect(screen.getByLabelText("密码")).not.toBeNull();
       expect(screen.getByRole("heading", { name: "Admin Console" })).not.toBeNull();
     });
     expect(screen.queryByLabelText("用户中心导航")).toBeNull();
@@ -972,7 +972,7 @@ describe("user portal route", () => {
 
     await waitFor(() => {
       expect(screen.getByRole("heading", { name: "Admin Console" })).not.toBeNull();
-      expect(screen.getByLabelText("管理员账户")).not.toBeNull();
+      expect(screen.getByLabelText("密码")).not.toBeNull();
     });
     expect(screen.queryByRole("heading", { name: "客户 Portal" })).toBeNull();
     expect(screen.queryByLabelText("用户中心导航")).toBeNull();

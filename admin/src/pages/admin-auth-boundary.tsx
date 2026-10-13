@@ -64,7 +64,6 @@ export function AdminAuthBoundary({
   const client = clientRef.current;
 
   const [view, setView] = useState<View>("session");
-  const [operatorRef, setOperatorRef] = useState("");
   const [password, setPassword] = useState("");
   const [code, setCode] = useState("");
   const [challengeRef, setChallengeRef] = useState<string | null>(null);
@@ -176,9 +175,6 @@ export function AdminAuthBoundary({
         return;
       }
       setSessionExpiresAt(null);
-      if (status.operatorRef) {
-        setOperatorRef(status.operatorRef);
-      }
       if (status.setupRequired) {
         resetSecrets();
         setView("setup");
@@ -242,7 +238,7 @@ export function AdminAuthBoundary({
       const req = beginRequest();
       try {
         const challenge = await client.login(
-          { operatorRef, password: capturedPassword },
+          { password: capturedPassword },
           req.signal
         );
         if (!isCurrent(req.generation, req.signal)) {
@@ -268,7 +264,7 @@ export function AdminAuthBoundary({
         clearBusyIfGeneration(req.generation);
       }
     },
-    [beginRequest, clearBusyIfGeneration, client, isCurrent, operatorRef, password]
+    [beginRequest, clearBusyIfGeneration, client, isCurrent, password]
   );
 
   const submitVerify = useCallback(
@@ -401,7 +397,7 @@ export function AdminAuthBoundary({
           <p>GCC WebOS</p>
           {view === "setup" ? (
             <>
-              <p>管理员尚未完成安全设置，请联系维护人员。</p>
+              <p>管理员安全设置尚未完成，公网入口不支持初始化，请联系维护人员通过受限渠道完成。</p>
               {renderError}
               <div className="admin-auth-actions">
                 <button type="button" onClick={() => void loadSession()} disabled={loading}>
@@ -423,17 +419,6 @@ export function AdminAuthBoundary({
           ) : null}
           {view === "login" ? (
             <form onSubmit={(event) => void submitLogin(event)}>
-              <div className="admin-auth-field">
-                <label htmlFor="admin-auth-operator">管理员账户</label>
-                <input
-                  id="admin-auth-operator"
-                  name="username"
-                  autoComplete="username"
-                  value={operatorRef}
-                  onChange={(event) => setOperatorRef(event.target.value)}
-                  disabled={loading}
-                />
-              </div>
               <div className="admin-auth-field">
                 <label htmlFor="admin-auth-password">密码</label>
                 <input

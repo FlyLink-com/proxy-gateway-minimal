@@ -4,6 +4,7 @@ import express from "express";
 import { join } from "node:path";
 import { types as utilTypes } from "node:util";
 import { createAdminAllowlistMiddleware } from "./middleware/admin-allowlist.mjs";
+import { createAdminBrowserBoundary, handleAdminBodyParserError, validateAdminPublicLogin } from "./middleware/admin-public-login.mjs";
 import { createAuthMiddleware } from "./middleware/auth.mjs";
 import { createRateLimitMiddleware } from "./middleware/rate-limit.mjs";
 import {
@@ -343,6 +344,15 @@ function handleThirdPartySubscriptionBodyParserError(error, req, res, next) {
 
 export function createApp(state, options = {}) {
   const app = express();
+  const adminPublicLoginEnabled = state.platform?.adminPublicLoginEnabled === true;
+  validateAdminPublicLogin({
+    enabled: adminPublicLoginEnabled,
+    authEnabled: Boolean(state.platform?.adminAuthRoutesEnabled && state.platform?.adminAuth),
+    origin: state.platform?.adminBrowserOrigin
+  });
+  app.use(["/api/admin", "/api/admin-auth"], createAdminBrowserBoundary({
+    publicEnabled: adminPublicLoginEnabled, origin: state.platform?.adminBrowserOrigin
+  }));
   // These sensitive routes can be rejected before their handlers by cookie/CSRF
   // or JSON parsing middleware. Those failures retain their privacy headers.
   const isSubscriptionLinkMutation = req => [
@@ -445,6 +455,7 @@ export function createApp(state, options = {}) {
     parser(req, res, next);
   });
   app.use(handleThirdPartySubscriptionBodyParserError);
+  app.use(handleAdminBodyParserError);
   app.use((error, req, res, next) => {
     if (!isSubscriptionLinkMutation(req)) return next(error);
     // Do not return parser errors (which may contain submitted credentials or
@@ -494,16 +505,20 @@ export function createApp(state, options = {}) {
   const clientIpResolver = options.clientIpResolver || ((req) => resolveClientIp(req, {
     trustedProxyCidrs: security.trustedProxyCidrs
   }));
-  app.use("/api/admin", createAdminAllowlistMiddleware({
-    allowedCidrs: security.adminAllowedCidrs,
-    resolveClientIpFn: clientIpResolver
-  }));
-  if (adminAuthRoutesEnabled) {
-    app.use("/api/admin-auth", createAdminAllowlistMiddleware({
+  if (!adminPublicLoginEnabled) {
+    app.use("/api/admin", createAdminAllowlistMiddleware({
       allowedCidrs: security.adminAllowedCidrs,
       resolveClientIpFn: clientIpResolver
     }));
-    app.use(adminAuthRoutes(state));
+  }
+  if (adminAuthRoutesEnabled) {
+    if (!adminPublicLoginEnabled) {
+      app.use("/api/admin-auth", createAdminAllowlistMiddleware({
+        allowedCidrs: security.adminAllowedCidrs,
+        resolveClientIpFn: clientIpResolver
+      }));
+    }
+    app.use(adminAuthRoutes(state, { resolveClientIpFn: clientIpResolver }));
     app.use("/api/admin", createAdminSessionGatewayMiddleware({
       adminAuth: state.platform.adminAuth,
       consoleToken: state.consoleToken,
