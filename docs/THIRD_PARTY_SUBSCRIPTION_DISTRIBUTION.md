@@ -569,7 +569,11 @@ binding 带有 `trafficLimitBytes` 时，必须等于该 offer 的 `GB * 1024**3
 
 覆盖：schema 临时库 validate/apply 与缺失 fail-closed；加密 round-trip 与拒绝无前缀/损坏信封；admin 无 token 为 401；导入拒绝 non-https / 私网 / 非法档位；PATCH 分配与观测/刷新响应不含 URL；ss/vless/hy2/tuic 解析与 unsupported/malformed 计数；base64 与明文；地区识别；fetch 对私网、重定向到私网、超限、超时失败；keep-last-good 与 inactive 标记；档位按 offerVersionRef 映射，三档 offer、流量交叉校验不一致、legacy `monthly` / `yearly` / `trial` / `pilot`、未知 ref、缺失 binding、非 active 均 fail closed；flag-off YAML 与现有输出一致；flag-on 仅为对应档位增加带标记节点和国家分组；四条 YAML 入口一致；过期用户拿不到第三方节点；刷新脚本在 flag 关闭时不打开库也不访问网络，dry-run 不抓取不改来源行，成功路径，单来源失败保留 last-good 且退出码 30、stderr 告警不含 URL，最小间隔跳过，JSON 不含合成 URL 或口令；systemd 单元含必需键且 ExecStart 指向该脚本。
 
-## 必须在测试环境走一遍
+## 历史测试清单（2026-10-10，非当前执行指令）
+
+以下旧清单保留历史记录，不得用于当前一期执行。远程 URL 导入及刷新已经硬关闭，
+当前验证见 2026-10-13 源码记录与 `THIRD_PARTY_NODE_MANAGEMENT.md`；
+当前发布准备见 `THIRD_PARTY_ADMIN_RELEASE.md`。
 
 只在隔离的 candidate 或测试环境做。只用合成来源。不要对真实第三方 URL、生产库或 control DB 操作。
 
@@ -622,7 +626,10 @@ binding 带有 `trafficLimitBytes` 时，必须等于该 offer 的 `GB * 1024**3
 24. 取消 `THIRD_PARTY_SUBSCRIPTION_ENABLED` 后再拉一次订阅。
     预期: 输出回到自营 YAML，没有第三方节点。
 
-## 上线前才能做
+## 历史上线清单（2026-10-10，已被一期边界取代）
+
+以下不是当前发布指令。尤其不得按第5项安装或启用刷新 service/timer；
+不得以本节授权真实来源导入、远程抓取或恢复历史任务。
 
 本节各项都还没有做。它们是 Risk A 生产步骤，需要另一次明确批准。现在不要执行。
 
@@ -663,8 +670,20 @@ binding 带有 `trafficLimitBytes` 时，必须等于该 offer 的 `GB * 1024**3
 当前完成：#771 的受限 inline YAML 导入、加密存储、鉴权渲染和本地合成验收；
 URL 导入及所有远程刷新入口已关闭。以 2026-10-13 源码切片记录为准。
 已完成本次主干集成与合成客户端配置加载验收；以本节前的同日集成记录及 #771 回执为准。
-当前未完成：专用安全审查、升降档与第三方分发组合验收及真实上游验收；
-生产 schema、密钥安装、任务启用与部署均未执行。动态刷新和批量维护属于后续切片。
+同日后续已完成 Admin 会话接线与真实升降档到第三方档位的合成组合验收，
+独立源码复核已修正并复验显示名称合同问题；专用 Security Review 工具不可用，
+不能将普通独立复核描述为该专用工具通过。真实上游验收仍未执行。
+生产 schema、密钥安装与部署均未执行。刷新任务明确不在本期发布范围。
+动态刷新和批量维护属于后续切片。
 本轮未访问真实来源或生产；文档和本地源码测试不替代发布门禁。
 
 不得据此标为 Ready、请求合并、承诺真实节点可用或宣布生产功能上线。
+
+### 2026-10-13 后续节点管理源码切片
+
+后续用户要求已落实为节点详情、加密显示名、逻辑删除保存、完整 revision 及显式
+启用的后端源码；复用现有 schema/鉴权，未部署。接口和删除/停用/启用边界见
+[第三方节点管理后端](THIRD_PARTY_NODE_MANAGEMENT.md)。正式 Admin 现已接通同源会话
+接口，独立预览仍使用合成数据；HTTPS 导入和远程刷新保持关闭。
+发布准备见 [第三方 Admin 一期发布边界](THIRD_PARTY_ADMIN_RELEASE.md)。
+本节不代表合并、构件发布或生产门禁已完成。

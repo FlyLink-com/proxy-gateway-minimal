@@ -18,31 +18,53 @@ function text(value) {
   return String(value ?? "").trim();
 }
 
-function sanitizeOriginalName(value) {
-  return text(value).replace(CONTROL_CHAR_PATTERN, "").slice(0, 96);
+function truncateLabel(value, limit) {
+  const truncated = value.slice(0, limit);
+  // Preserve well-formed Unicode when the UTF-16 bound falls inside an emoji.
+  return /[\ud800-\udbff]$/.test(truncated) ? truncated.slice(0, -1) : truncated;
 }
 
-function assignDisplayName({ countryCode, index, originalName, used }) {
+// A display projection only: keep encrypted upstream names and fingerprints intact.
+// With the Unicode flag, this strips lone surrogates without stripping emoji pairs.
+export function safeThirdPartyDisplayLabel(value, limit = 128) {
+  return truncateLabel(text(value)
+    .replace(CONTROL_CHAR_PATTERN, "")
+    .replace(/[\ud800-\udfff]/gu, "")
+    .trim(), limit);
+}
+
+function sanitizeOriginalName(value) {
+  return safeThirdPartyDisplayLabel(value, 96);
+}
+
+function safeManagedAlias(value) {
+  if (typeof value !== "string" || value.length > 128 || /[\ud800-\udfff]/u.test(value) ||
+      /[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u202a-\u202e\u2060-\u206f]/u.test(value)) return "";
+  const alias = value.trim();
+  return RESERVED_NAMES.has(alias.toUpperCase()) ? "" : alias;
+}
+
+function assignDisplayName({ countryCode, index, originalName, managedAlias, used }) {
   const country = text(countryCode).toUpperCase() || "OTHER";
   const prefix = `${THIRD_PARTY_NAME_MARKER} ${country} ${index}`;
   const original = sanitizeOriginalName(originalName);
-  let base = original ? `${prefix} | ${original}` : prefix;
-  base = base.replace(CONTROL_CHAR_PATTERN, "").trim().slice(0, 128);
+  let base = safeManagedAlias(managedAlias) || (original ? `${prefix} | ${original}` : prefix);
+  base = truncateLabel(base.replace(CONTROL_CHAR_PATTERN, "").trim(), 128);
   if (!base) base = prefix;
   let name = base;
   let suffix = 2;
-  while (!name || used.has(name) || RESERVED_NAMES.has(name)) {
+  while (!name || used.has(name.toUpperCase()) || RESERVED_NAMES.has(name.toUpperCase())) {
     const extra = `~${suffix}`;
-    name = `${base.slice(0, Math.max(1, 128 - extra.length))}${extra}`;
+    name = `${truncateLabel(base, Math.max(1, 128 - extra.length))}${extra}`;
     suffix += 1;
   }
-  used.add(name);
+  used.add(name.toUpperCase());
   return name;
 }
 
 export function decorateThirdPartyServers(nodes, existingServers = []) {
   const used = new Set(
-    (existingServers || []).map((server, index) => proxyDisplayName(server, index))
+    (existingServers || []).map((server, index) => proxyDisplayName(server, index).toUpperCase())
   );
   const counters = new Map();
   const decorated = [];
@@ -54,6 +76,7 @@ export function decorateThirdPartyServers(nodes, existingServers = []) {
       countryCode: country,
       index: next,
       originalName: node.displayName || node.name,
+      managedAlias: node.thirdPartyDisplayAlias,
       used
     });
     decorated.push({

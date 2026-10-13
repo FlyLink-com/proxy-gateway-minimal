@@ -139,6 +139,7 @@
     "pack:dry-run": "npm pack --dry-run",
     "daemon": "node daemon.mjs",
     "admin:dev": "npm run dev --prefix admin",
+    "admin:node-names:preview": "npm run dev:node-names-preview --prefix admin",
     "admin:build": "npm run build --prefix admin",
     "admin:verify": "npm run verify:admin-build --prefix admin",
     "admin:portal:build": "npm run build:portal --prefix admin",

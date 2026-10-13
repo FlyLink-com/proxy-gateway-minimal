@@ -289,6 +289,14 @@ function isThirdPartySubscriptionNamespace(req) {
   return /^\/api\/admin\/third-party-subscriptions(?:\/|$)/i.test(pathname);
 }
 
+function isThirdPartyNodeListSave(req) {
+  if (req.method !== "PUT") return false;
+  // Match Express' case-insensitive path segments and optional trailing slash,
+  // but retain the handler's exact lowercase source-id validation.
+  const match = /^\/api\/admin\/third-party-subscriptions\/sources\/([^/]+)\/nodes\/?$/i.exec(req.path);
+  return Boolean(match && /^tpsrc_[0-9a-f]{32}$/.test(match[1]));
+}
+
 function thirdPartySubscriptionBodyParserStatus(error) {
   if (!error || (typeof error !== "object" && typeof error !== "function")) {
     return 0;
@@ -428,7 +436,14 @@ export function createApp(state, options = {}) {
   });
   // Parser runs before the third-party router; keep failures fixed and uncached.
   app.use(setThirdPartySubscriptionNoStore);
-  app.use(express.json());
+  const defaultJsonParser = express.json();
+  // A full list of 256 names, each 128 UTF-16 units, can exceed 100KiB
+  // (including JSON Unicode escapes). All other routes retain the old limit.
+  const nodeListJsonParser = express.json({ limit: "256kb" });
+  app.use((req, res, next) => {
+    const parser = isThirdPartyNodeListSave(req) ? nodeListJsonParser : defaultJsonParser;
+    parser(req, res, next);
+  });
   app.use(handleThirdPartySubscriptionBodyParserError);
   app.use((error, req, res, next) => {
     if (!isSubscriptionLinkMutation(req)) return next(error);

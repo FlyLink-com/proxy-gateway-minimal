@@ -6,6 +6,8 @@ import {
   inspectThirdPartySubscriptionSchema
 } from "./third-party-subscription-migrations.mjs";
 import { parseThirdPartyYaml } from "./third-party-subscription-yaml.mjs";
+import { createThirdPartyNodeManagement } from "./third-party-subscription-node-management.mjs";
+import { safeThirdPartyDisplayLabel } from "./third-party-subscription-render.mjs";
 
 export const THIRD_PARTY_PLAN_IDS = Object.freeze([
   "monthly_basic",
@@ -360,6 +362,10 @@ function protocolServerFromStoredNode(config, row) {
   const legacyDedupFingerprint = !Object.hasOwn(config, "dedupKey")
     && server.fingerprint === row.fingerprint;
   delete server.dedupKey;
+  // This encrypted administrative label affects rendering only, never the
+  // upstream name, protocol material, identity or accounting attribution.
+  delete server.adminDisplayName;
+  if (Object.hasOwn(config, "adminDisplayName")) server.thirdPartyDisplayAlias = config.adminDisplayName;
   if (legacyDedupFingerprint) delete server.fingerprint;
   return server;
 }
@@ -367,7 +373,7 @@ function protocolServerFromStoredNode(config, row) {
 function publicSource(row, tiers, nodeStats, sourceKind = "unknown") {
   return {
     id: row.id,
-    name: row.name,
+    name: safeThirdPartyDisplayLabel(row.name) || "未命名来源",
     enabled: row.enabled === 1,
     tiers,
     regionOverride: row.region_override,
@@ -682,8 +688,10 @@ export function createSqliteThirdPartySubscriptionStore(options = {}) {
     return servers;
   }
 
+  const nodeManagement = createThirdPartyNodeManagement({ database, secretProtector, nowFn });
   return {
     available: true,
+    ...nodeManagement,
     close,
     createSource,
     createInlineSource,
@@ -711,6 +719,9 @@ function createUnavailableStore(extra = {}) {
     listSources: unavailable,
     getSummary: unavailable,
     refreshSource: unavailable,
+    listSourceNodes: unavailable,
+    saveSourceNodes: unavailable,
+    enableSourceNodes: unavailable,
     listActiveServersForPlan: () => [],
     inspect: extra.inspect || (() => ({ ok: false, schemaState: "blocked" }))
   };
