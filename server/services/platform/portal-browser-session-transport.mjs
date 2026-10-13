@@ -130,7 +130,12 @@ export function createPortalBrowserSessionTransport({auth, origin, allowInsecure
     return requests.get(req);
   }
   function middleware(req, res, next) {
-    const {pathname} = target(req);
+    const {raw, pathname} = target(req);
+    // This one credential-independent read must not inspect ambient browser
+    // cookies, even when stale or malformed. Match the raw pathname exactly;
+    // aliases and other methods retain all existing browser checks. The public
+    // dispatcher separately rejects any query with 400.
+    if (req.method === 'GET' && raw.split('?', 1)[0] === '/api/portal/public/catalog') return next();
     if (pathname !== '/api/portal' && !pathname.startsWith('/api/portal/')) return next();
     try {
       const input = inspect(req);

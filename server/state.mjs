@@ -102,6 +102,7 @@ const COIN_COMMERCE_STORE_FIELDS = Object.freeze([
   "publishOfferVersion",
   "retireOfferVersion",
   "listPublishedOffers",
+  "listPublishedCatalogOffers",
   "getPublishedOffer",
   "createCheckoutQuote",
   "confirmOrder",

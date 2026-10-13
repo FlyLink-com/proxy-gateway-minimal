@@ -429,6 +429,7 @@ test("factory enforces exact ownership, schemas, connection settings, and surfac
       "publishOfferVersion",
       "retireOfferVersion",
       "listPublishedOffers",
+      "listPublishedCatalogOffers",
       "getPublishedOffer",
       "createCheckoutQuote",
       "confirmOrder",
