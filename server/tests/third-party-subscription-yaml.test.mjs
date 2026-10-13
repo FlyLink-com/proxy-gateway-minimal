@@ -216,6 +216,9 @@ test("accepts documented cipher fingerprint congestion and relay allowlists", ()
     "2022-blake3-aes-256-gcm",
     "2022-blake3-chacha20-poly1305"
   ]) {
+    const password = cipher.startsWith("2022-")
+      ? Buffer.alloc(cipher === "2022-blake3-aes-128-gcm" ? 16 : 32, 7).toString("base64")
+      : "short";
     const parsed = parseThirdPartyYaml(yamlLines([
       "proxies:",
       "  - name: HK",
@@ -223,10 +226,10 @@ test("accepts documented cipher fingerprint congestion and relay allowlists", ()
       "    server: 203.0.113.30",
       "    port: 1",
       `    cipher: ${cipher}`,
-      "    password: short"
+      `    password: ${password}`
     ]));
     assert.equal(parsed.nodes[0].cipher, cipher);
-    assert.equal(parsed.nodes[0].password, "short");
+    assert.equal(parsed.nodes[0].password, password);
   }
   for (const clientFingerprint of ["chrome", "firefox", "safari", "ios", "android", "edge", "random", "randomized"]) {
     const parsed = parseThirdPartyYaml(yamlLines([

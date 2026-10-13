@@ -71,7 +71,6 @@ const NAME_STRIP = /[\u0000-\u001F\u007F-\u009F\u061C\u200E\u200F\u202A-\u202E\u
 const CONTROL_CHARS = /[\u0000-\u001F\u007F-\u009F]/;
 const DECIMAL_PORT = /^[+]?(?:0|[1-9][0-9]*)$/;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const PUBLIC_KEY_PATTERN = /^[A-Za-z0-9+/_=-]{16,256}$/;
 const SHORT_ID_PATTERN = /^[0-9a-fA-F]{2,16}$/;
 const CERT_HEX_PATTERN = /^[0-9a-fA-F]{64}$/;
 const CERT_COLON_PATTERN = /^[0-9a-fA-F]{2}(?::[0-9a-fA-F]{2}){31}$/;
@@ -282,7 +281,7 @@ function readAlpn(node, itemIndex) {
     throw fail("yaml_proxy_invalid", itemIndex);
   }
   return node.items.map((item) => {
-    const value = readBoundedString(item, itemIndex, 256);
+    const value = readBoundedString(item, itemIndex, 255);
     if (!/^[\x21-\x7E]+$/.test(value)) throw fail("yaml_proxy_invalid", itemIndex);
     return value;
   });
@@ -320,12 +319,20 @@ function rejectEnabledBypass(fields, key, itemIndex) {
   if (readBool(fields.get(key), itemIndex) === true) throw fail("yaml_proxy_invalid", itemIndex);
 }
 
+function readRealityPublicKey(node, itemIndex) {
+  const publicKey = readBoundedString(node, itemIndex, 256);
+  if (!/^[A-Za-z0-9_-]{43}$/.test(publicKey)) throw fail("yaml_proxy_invalid", itemIndex);
+  const decoded = Buffer.from(publicKey, "base64url");
+  if (decoded.length !== 32 || decoded.toString("base64url") !== publicKey) {
+    throw fail("yaml_proxy_invalid", itemIndex);
+  }
+  return publicKey;
+}
+
 function readReality(node, itemIndex) {
   const fields = readEntries(node, itemIndex);
   assertAllowedKeys(fields, new Set(["public-key", "short-id"]), itemIndex);
-  const publicKey = readBoundedString(fields.get("public-key"), itemIndex, 256);
-  if (!PUBLIC_KEY_PATTERN.test(publicKey)) throw fail("yaml_proxy_invalid", itemIndex);
-  const realityOpts = { publicKey };
+  const realityOpts = { publicKey: readRealityPublicKey(fields.get("public-key"), itemIndex) };
   if (fields.has("short-id")) {
     const shortId = readBoundedString(fields.get("short-id"), itemIndex, 256);
     if (!SHORT_ID_PATTERN.test(shortId) || shortId.length % 2 !== 0) {
@@ -336,13 +343,37 @@ function readReality(node, itemIndex) {
   return realityOpts;
 }
 
+function isCanonicalPaddedBase64(part, keyBytes) {
+  if (part.length < 1) return false;
+  const decoded = Buffer.from(part, "base64");
+  return decoded.length === keyBytes && decoded.toString("base64") === part;
+}
+
+function readSsPassword(cipher, node, itemIndex) {
+  const password = readSecret(node, itemIndex);
+  if (
+    cipher !== "2022-blake3-aes-128-gcm"
+    && cipher !== "2022-blake3-aes-256-gcm"
+    && cipher !== "2022-blake3-chacha20-poly1305"
+  ) {
+    return password;
+  }
+  const keyBytes = cipher === "2022-blake3-aes-128-gcm" ? 16 : 32;
+  // ChaCha20-Poly1305 takes one key. AES-128/256 may use a colon-separated chain.
+  const parts = cipher === "2022-blake3-chacha20-poly1305" ? [password] : password.split(":");
+  for (const part of parts) {
+    if (!isCanonicalPaddedBase64(part, keyBytes)) throw fail("yaml_proxy_invalid", itemIndex);
+  }
+  return password;
+}
+
 function readProtocolFields(type, fields, itemIndex) {
   if (type === "ss") {
     const cipher = readBoundedString(fields.get("cipher"), itemIndex, 256);
     if (!SS_CIPHERS.has(cipher)) throw fail("yaml_proxy_invalid", itemIndex);
     return {
       cipher,
-      password: readSecret(fields.get("password"), itemIndex)
+      password: readSsPassword(cipher, fields.get("password"), itemIndex)
     };
   }
 

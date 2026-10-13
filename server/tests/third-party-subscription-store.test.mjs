@@ -181,7 +181,7 @@ test("accepts parser-sized protocol secrets and alpn entries", () => {
   const { store, secretProtector, database } = createStore();
   const password513 = "p".repeat(513);
   const password4096 = "q".repeat(4096);
-  const alpn256 = "a".repeat(256);
+  const alpn255 = "a".repeat(255);
   const created = store.createInlineSource({
     name: "synthetic-limits",
     yamlContent: [
@@ -204,7 +204,7 @@ test("accepts parser-sized protocol secrets and alpn entries", () => {
       "    port: 443",
       "    password: synthetic-hy2",
       "    alpn:",
-      `      - ${alpn256}`
+      `      - ${alpn255}`
     ].join("\n"),
     tiers: ["monthly_basic"]
   });
@@ -213,7 +213,7 @@ test("accepts parser-sized protocol secrets and alpn entries", () => {
   ).all(created.id).map((row) => JSON.parse(secretProtector.unprotect(row.protected_config)));
   assert.equal(configs.some((config) => config.password === password513), true);
   assert.equal(configs.some((config) => config.password === password4096), true);
-  assert.deepEqual(configs.find((config) => config.protocol === "hysteria2").alpn, [alpn256]);
+  assert.deepEqual(configs.find((config) => config.protocol === "hysteria2").alpn, [alpn255]);
   assert.throws(() => store.createInlineSource({
     name: "synthetic-secret-over",
     yamlContent: [
@@ -237,7 +237,7 @@ test("accepts parser-sized protocol secrets and alpn entries", () => {
       "    port: 443",
       "    password: synthetic-hy2",
       "    alpn:",
-      `      - ${"b".repeat(257)}`
+      `      - ${"b".repeat(256)}`
     ].join("\n"),
     tiers: ["monthly_basic"]
   }), (error) => error.code === "invalid_yaml");

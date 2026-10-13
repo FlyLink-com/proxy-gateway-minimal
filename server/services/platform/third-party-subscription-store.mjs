@@ -201,7 +201,7 @@ function optionalBool(value) {
 function optionalStringList(value) {
   if (value === undefined) return undefined;
   if (!Array.isArray(value) || value.length > 8) throw storeError("invalid_node");
-  return value.map((item) => copyLabel(item, 256, { required: true }));
+  return value.map((item) => copyLabel(item, 255, { required: true }));
 }
 
 function copyHost(value) {

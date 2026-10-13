@@ -498,10 +498,28 @@ function thirdPartyCountryGroupEntries(servers) {
     if (right === "OTHER") return -1;
     return left.localeCompare(right);
   });
-  return keys.map((country) => ({
-    name: `3P-${country}`,
-    servers: grouped.get(country)
-  }));
+  const occupied = new Set([
+    ...servers.map((server) => server.name),
+    "GLOBAL",
+    "AUTO",
+    "WEAK-NETWORK",
+    "STABLE",
+    "FALLBACK"
+  ]);
+  return keys.map((country) => {
+    const preferred = `3P-${country}`;
+    let name = preferred;
+    let suffix = 2;
+    while (occupied.has(name)) {
+      name = `${preferred}-${suffix}`;
+      suffix += 1;
+    }
+    occupied.add(name);
+    return {
+      name,
+      servers: grouped.get(country)
+    };
+  });
 }
 
 function pushOwnProxyGroups(lines, ownServers) {
@@ -531,7 +549,7 @@ function pushGlobalSelectProxies(lines, servers, ownServers, countryGroups, { in
   if (ownServers.length > 0) {
     // The inline Mihomo template historically lists AUTO unconditionally when
     // servers exist; keep that byte-for-byte for non-third-party output.
-    if (inline || autoGroupServers(ownServers).length > 0) {
+    if ((inline && countryGroups.length === 0) || autoGroupServers(ownServers).length > 0) {
       lines.push("      - AUTO");
     }
     if (qualityGroupServers(ownServers, ["stable"]).length > 0) {
