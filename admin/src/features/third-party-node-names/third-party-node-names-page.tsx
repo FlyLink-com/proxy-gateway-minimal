@@ -1,4 +1,4 @@
-import { Check, Globe2, Pencil, Power, RotateCcw, Save, Search, ShieldCheck, Trash2, X } from "lucide-react";
+import { Check, Globe2, Pause, Pencil, Play, Power, RotateCcw, Save, Search, ShieldCheck, Trash2, X } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { renderedNodeName, validateNodeName } from "./node-name-model";
@@ -16,6 +16,8 @@ export type ThirdPartyNodePersistence = {
   onSave: (nodes: readonly ThirdPartyNode[]) => void;
   onEnable: () => void;
   onDisable?: () => void;
+  onSetNodeEnabled?: (nodeId: string, enabled: boolean) => void;
+  onDeleteNode?: (nodeId: string) => void;
   onDirtyChange?: (dirty: boolean) => void;
   importAction: ReactNode;
   // No confirmed source snapshot: show the editor shell without claiming a
@@ -54,7 +56,10 @@ export function ThirdPartyNodeNamesPage({ initialNodes, persistence }: { initial
   const listEnabled = persistence ? persistence.enabled : enabledNodes === nodes;
   const writesBlocked = Boolean(persistence?.placeholder || persistence?.busy || persistence?.enabled);
   const actionBlocked = Boolean(writesBlocked || deleteId || dirty || validation.error);
-  const unsaved = !listSaved || Boolean(dirty || validation.error || deleteId);
+  // Direct deletion has its own confirmation, not an unsaved bulk-list edit.
+  const unsaved = !listSaved || Boolean(dirty || validation.error || (deleteId && !persistence?.onDeleteNode));
+  const lifecycleBlocked = Boolean(persistence?.placeholder || persistence?.busy || !listSaved || dirty || validation.error || selectedId);
+  const directLifecycle = Boolean(persistence?.onSetNodeEnabled);
   const onDirtyChange = persistence?.onDirtyChange;
   useEffect(() => { onDirtyChange?.(unsaved); }, [onDirtyChange, unsaved]);
   const saveState = persistence?.placeholder ? "未就绪" : persistence
@@ -141,6 +146,12 @@ export function ThirdPartyNodeNamesPage({ initialNodes, persistence }: { initial
   }
 
   function confirmDelete() {
+    if (persistence?.onDeleteNode) {
+      if (lifecycleBlocked || !deleteTarget || deleteTarget.enabled !== false) return;
+      setDeleteId("");
+      persistence.onDeleteNode(deleteTarget.id);
+      return;
+    }
     if (writesBlocked || !deleteTarget) return;
     setNodes((current) => current.filter((node) => node.id !== deleteId));
     if (selectedId === deleteId) {
@@ -169,11 +180,13 @@ export function ThirdPartyNodeNamesPage({ initialNodes, persistence }: { initial
           <div className="tp-names-toolbar-actions" role="group" aria-label="节点列表操作">
             {persistence ? persistence.importAction : <ThirdPartyImportEntry disabled={Boolean(deleteId)} />}
             <button type="button" aria-label="保存节点列表" title={persistence ? "保存完整节点列表到后台，不自动启用" : "保存本地快照，不写入后台"} disabled={actionBlocked || listSaved || (!persistence && !nodes.length)} onClick={saveList}><Save size={15} aria-hidden="true" />保存</button>
-            {persistence?.enabled && persistence.onDisable ? <button type="button" className="tp-names-danger-soft" aria-label="停用来源" title="确认停用整个来源后，才能编辑或删除节点" disabled={persistence.busy || Boolean(persistence.placeholder) || unsaved} onClick={requestDisable}><Power size={15} aria-hidden="true" />停用来源</button>
+            {persistence?.enabled && persistence.onDisable ? <button type="button" className="tp-names-danger-soft" aria-label="停用来源" title="暂停整个来源的分发；单节点停用请使用行内按钮" disabled={persistence.busy || Boolean(persistence.placeholder) || unsaved || Boolean(deleteId)} onClick={requestDisable}><Power size={15} aria-hidden="true" />停用来源</button>
               : <button type="button" className="tp-names-primary" aria-label="启用节点列表" aria-pressed={listEnabled} title={persistence ? "启用后台已保存的节点列表" : "仅启用本地预览，不发布真实订阅"} disabled={actionBlocked || !nodes.length || !listSaved || listEnabled} onClick={enableList}><Power size={15} aria-hidden="true" />{listEnabled ? "已启用" : "启用"}</button>}
           </div>
         </div>
-        {persistence && !persistence.placeholder ? <p className="tp-names-maintenance-hint">{listEnabled
+        {persistence && !persistence.placeholder ? <p className="tp-names-maintenance-hint">{directLifecycle
+          ? "行内暂停/播放图标只停用或启用该节点，确认后立即生效；停用后可用垃圾桶删除，无需停用整个来源。名称和国旗修改仍需暂停来源后保存。已缓存的第三方凭证不会被撤销。"
+          : listEnabled
           ? "来源已启用，节点暂不可编辑或删除。请先停用来源，再删除并保存，最后按需重新启用。停用会暂停整个来源的后续订阅分发。"
           : "点击节点行右侧的垃圾桶图标并确认删除，再点击上方“保存”才会生效；保存不会自动启用来源。"}</p> : null}
         {selectionError ? <p className="tp-names-selection-error" role="alert">{selectionError}</p> : null}
@@ -182,6 +195,8 @@ export function ThirdPartyNodeNamesPage({ initialNodes, persistence }: { initial
           <table><thead><tr><th scope="col">原始名称</th><th scope="col">对外显示名称</th><th scope="col">国家/地区</th><th scope="col">协议</th><th scope="col">操作</th></tr></thead>
             <tbody>{filtered.map((node) => {
               const editing = node.id === selectedId;
+              const nodeEnabled = node.enabled !== false;
+              const deleteBlocked = persistence?.onDeleteNode ? lifecycleBlocked || nodeEnabled : writesBlocked;
               return <tr key={node.id} className={editing ? "tp-names-selected" : ""}>
                 <td><strong>{node.originalName}</strong></td>
                 <td>{editing ? <form id={`${fieldId}-form`} onSubmit={(event) => { event.preventDefault(); apply(); }}>
@@ -198,7 +213,7 @@ export function ThirdPartyNodeNamesPage({ initialNodes, persistence }: { initial
                   {validation.error ? <p id={`${fieldId}-error`} className="tp-names-error" role="alert">{validation.error}</p> : null}
                 </form> : <span className="tp-names-rendered">{renderedNodeName(node)}</span>}</td>
                 <td><select className="tp-names-country" aria-label={`国家/地区 ${node.originalName}`} title="仅调整显示国旗，不改变真实节点地区；需保存后生效" value={node.customCountryCode ?? ""} disabled={writesBlocked || Boolean(deleteId) || dirty || Boolean(validation.error)} onChange={(event) => updateCountry(node.id, event.target.value)}><option value="">保留原名称</option><option value="OTHER">不显示国旗</option>{countryOptions}</select></td>
-                <td><span className="tp-names-protocol">{node.protocol}</span></td>
+                <td><span className="tp-names-protocol">{node.protocol}</span>{directLifecycle ? <span className={`tp-names-node-state${nodeEnabled ? "" : " is-disabled"}`}>{nodeEnabled ? listEnabled ? "分发中" : "待分发" : "已停用"}</span> : null}</td>
                 <td><div className={`tp-names-actions-slot${deleteId === node.id ? " is-confirming" : ""}`}><div className="tp-names-row-actions">
                   <button type="button" className="tp-names-edit" hidden={editing} disabled={writesBlocked || Boolean(deleteId)} aria-label={`编辑 ${node.originalName}`} ref={(element) => { if (element) editButtons.current.set(node.id, element); else editButtons.current.delete(node.id); }} onClick={() => selectNode(node)}><Pencil size={14} aria-hidden="true" />编辑</button>
                   {editing ? <>
@@ -206,11 +221,12 @@ export function ThirdPartyNodeNamesPage({ initialNodes, persistence }: { initial
                     <button type="button" aria-label="恢复默认名称" title="恢复默认名称" onClick={() => updateDraft("")} disabled={writesBlocked || Boolean(deleteId) || !draft}><RotateCcw size={14} aria-hidden="true" />恢复</button>
                     <button type="button" aria-label="取消修改" disabled={writesBlocked || Boolean(deleteId)} onClick={() => { finishEditing(); setMessage(""); }}><X size={14} aria-hidden="true" />取消</button>
                   </> : null}
-                  <button type="button" className="tp-names-delete" aria-label={`删除 ${node.originalName}`} title="删除节点" aria-expanded={deleteId === node.id} disabled={writesBlocked || Boolean(deleteId)} ref={(element) => { if (element) deleteButtons.current.set(node.id, element); else deleteButtons.current.delete(node.id); }} onClick={() => { if (writesBlocked) return; setDeleteId(node.id); setMessage(""); }}><Trash2 size={15} aria-hidden="true" /></button>
+                  {persistence?.onSetNodeEnabled ? <button type="button" className={`tp-names-node-toggle ${nodeEnabled ? "tp-names-danger-soft" : "tp-names-cancel-soft"}`} aria-label={`${nodeEnabled ? "停用" : "启用"}节点 ${node.originalName}`} title={nodeEnabled ? "暂停此节点：仅停止此节点的后续分发" : "启用此节点：来源启用时参与分发"} disabled={lifecycleBlocked || Boolean(deleteId)} onClick={() => { if (!lifecycleBlocked && !deleteId) persistence.onSetNodeEnabled?.(node.id, !nodeEnabled); }}>{nodeEnabled ? <Pause size={16} aria-hidden="true" /> : <Play size={16} aria-hidden="true" />}</button> : null}
+                  <button type="button" className="tp-names-delete" aria-label={`删除 ${node.originalName}`} title={persistence?.onDeleteNode && nodeEnabled ? "请先停用此节点，再删除" : "删除节点"} aria-expanded={deleteId === node.id} disabled={deleteBlocked || Boolean(deleteId)} ref={(element) => { if (element) deleteButtons.current.set(node.id, element); else deleteButtons.current.delete(node.id); }} onClick={() => { if (deleteBlocked) return; setDeleteId(node.id); setMessage(""); }}><Trash2 size={15} aria-hidden="true" /></button>
                 </div>
                   {deleteId === node.id ? <section className="tp-names-delete-reveal" aria-label="删除节点确认" onKeyDown={(event) => { if (event.key === "Escape") { event.preventDefault(); cancelDelete(); } }}>
-                    <span className="tp-names-sr-only">删除 {renderedNodeName(node)}（{node.originalName}）。{persistence ? "仅从待保存草稿移除；保存节点列表后才会停止后续订阅分发，不撤销客户端已缓存的凭证。" : "仅从本地预览移除，刷新页面可恢复，不会删除后台节点。"}{editing && dirty ? "该节点尚未保存的名称修改也会被丢弃。" : ""}</span>
-                    <button type="button" className="tp-names-danger-soft" aria-label="确认删除" disabled={writesBlocked} onClick={confirmDelete}><Trash2 size={14} aria-hidden="true" />删除</button>
+                    <span className="tp-names-sr-only">删除 {renderedNodeName(node)}（{node.originalName}）。{persistence?.onDeleteNode ? "确认后立即从后台移除此已停用节点；其他节点不变，不撤销客户端已缓存的凭证。" : persistence ? "仅从待保存草稿移除；保存节点列表后才会停止后续订阅分发，不撤销客户端已缓存的凭证。" : "仅从本地预览移除，刷新页面可恢复，不会删除后台节点。"}{editing && dirty ? "该节点尚未保存的名称修改也会被丢弃。" : ""}</span>
+                    <button type="button" className="tp-names-danger-soft" aria-label="确认删除" disabled={deleteBlocked} onClick={confirmDelete}><Trash2 size={14} aria-hidden="true" />删除</button>
                     <button type="button" className="tp-names-cancel-soft" aria-label="取消删除" onClick={cancelDelete} autoFocus><X size={14} aria-hidden="true" />取消</button>
                   </section> : null}
                 </div></td>
@@ -219,7 +235,7 @@ export function ThirdPartyNodeNamesPage({ initialNodes, persistence }: { initial
           </table>
           {filtered.length === 0 ? <div className="tp-names-empty"><Globe2 size={26} aria-hidden="true" /><h3>{persistence?.placeholder?.title ?? (nodes.length ? "没有匹配的节点" : persistence ? "暂无节点" : "暂无演示节点")}</h3><p>{persistence?.placeholder?.description ?? (nodes.length ? "尝试更换搜索词或协议筛选。" : persistence ? "此来源没有保留的节点，空列表不能启用。" : "此预览不读取后台节点。")}</p></div> : null}
         </div>
-        <footer className="tp-names-list-foot"><ShieldCheck size={14} aria-hidden="true" /><span>{persistence ? listEnabled ? "来源已启用，请先停用后再编辑；不修改节点凭证或历史用量。" : "修改需保存列表后生效；启用需单独操作，不修改节点凭证或历史用量。" : "本地预览 · 合成数据 · 未连接后台 · 刷新后恢复"}</span><span className="tp-names-feedback" role="status">{message}</span></footer>
+        <footer className="tp-names-list-foot"><ShieldCheck size={14} aria-hidden="true" /><span>{directLifecycle ? "节点停用与删除只影响后续订阅分发；不修改上游凭证或历史用量。" : persistence ? listEnabled ? "来源已启用，请先停用后再编辑；不修改节点凭证或历史用量。" : "修改需保存列表后生效；启用需单独操作，不修改节点凭证或历史用量。" : "本地预览 · 合成数据 · 未连接后台 · 刷新后恢复"}</span><span className="tp-names-feedback" role="status">{message}</span></footer>
       </section>
     </div>
   );

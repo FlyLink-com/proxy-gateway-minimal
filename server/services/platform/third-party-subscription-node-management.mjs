@@ -11,7 +11,7 @@ const RESERVED = new Set([
 ]);
 const CODES = new Set([
   "not_found", "invalid_input", "invalid_node_name", "duplicate_node_name",
-  "revision_conflict", "source_enabled", "empty_source", "third_party_unavailable",
+  "revision_conflict", "source_enabled", "node_enabled", "empty_source", "third_party_unavailable",
   "protected_value_invalid", "unsupported_source_kind"
 ]);
 
@@ -134,18 +134,34 @@ export function createThirdPartyNodeManagement({ database, secretProtector, nowF
     try { config = JSON.parse(unprotect(row.protected_config)); } catch { throw failure("protected_value_invalid"); }
     if (!config || typeof config !== "object" || Array.isArray(config)
       || typeof (config.name || config.displayName) !== "string") throw failure("protected_value_invalid");
+    if (Object.hasOwn(config, "adminDisabled") && typeof config.adminDisabled !== "boolean") {
+      throw failure("protected_value_invalid");
+    }
     return config;
   }
 
   function projection(snapshot) {
     const active = snapshot.nodes.filter((row) => row.active === 1);
     const configs = active.map(configOf);
+    const configById = new Map(active.map((row, index) => [row.id, configs[index]]));
+    // Single-node deletion retains a paused tombstone's numbering slot without
+    // restoring the node or rewriting any surviving node's configuration.
+    const namingRows = snapshot.nodes.filter((row) => {
+      if (row.active === 1) return true;
+      try {
+        const config = configOf(row);
+        if (config.adminDisabled !== true) return false;
+        configById.set(row.id, config);
+        return true;
+      } catch { return false; }
+    });
     // Pass only default-name inputs, never the admin alias or credential fields.
-    const defaults = decorateThirdPartyServers(active.map((row, index) => ({
+    const defaults = decorateThirdPartyServers(namingRows.map((row) => ({
       countryCode: row.country_code,
-      name: configs[index].name,
-      displayName: configs[index].displayName
+      name: configById.get(row.id).name,
+      displayName: configById.get(row.id).displayName
     })));
+    const defaultById = new Map(namingRows.map((row, index) => [row.id, defaults[index].subscriptionDisplayName]));
     const used = new Set();
     const items = active.map((row, index) => {
       const config = configs[index];
@@ -153,7 +169,7 @@ export function createThirdPartyNodeManagement({ database, secretProtector, nowF
       const hasCountry = Object.hasOwn(config, "adminCountryCode");
       if (hasCountry && !isThirdPartyCountryCode(config.adminCountryCode)) throw failure("protected_value_invalid");
       const customCountryCode = hasCountry ? config.adminCountryCode : null;
-      const defaultName = defaults[index].subscriptionDisplayName;
+      const defaultName = defaultById.get(row.id);
       const displayName = hasCountry
         ? safeThirdPartyDisplayLabel(applyThirdPartyCountryFlag(customName ?? defaultName, customCountryCode))
         : customName ?? defaultName;
@@ -163,6 +179,7 @@ export function createThirdPartyNodeManagement({ database, secretProtector, nowF
       used.add(key);
       return {
         id: row.id,
+        enabled: config.adminDisabled !== true,
         originalName: safeThirdPartyDisplayLabel(config.name || config.displayName) || "未命名节点",
         defaultName,
         customName,
@@ -257,5 +274,54 @@ export function createThirdPartyNodeManagement({ database, secretProtector, nowF
     }).immediate();
   });
 
-  return { listSourceNodes, saveSourceNodes, enableSourceNodes };
+  function currentNode(snapshot, nodeId, revision) {
+    if (revisionOf(snapshot) !== revision) throw failure("revision_conflict");
+    const row = snapshot.nodes.find(node => node.id === nodeId && node.active === 1);
+    if (!row) throw failure("not_found");
+    return row;
+  }
+
+  const setSourceNodeEnabled = guarded((sourceId, nodeId, input) => {
+    validateSourceId(sourceId);
+    validateSourceId(nodeId);
+    objectWithKeys(input, ["revision", "enabled"]);
+    validateRevision(input.revision);
+    if (typeof input.enabled !== "boolean") throw failure("invalid_input");
+    return database.transaction(() => {
+      const snapshot = readSnapshot(sourceId);
+      const row = currentNode(snapshot, nodeId, input.revision);
+      const view = projection(snapshot);
+      const config = configOf(row);
+      if ((config.adminDisabled !== true) === input.enabled) return view;
+      config.adminDisabled = !input.enabled;
+      const protectedConfig = protect(config);
+      const candidate = { ...snapshot, nodes: snapshot.nodes.map(node => node.id === nodeId
+        ? { ...node, protected_config: protectedConfig } : node) };
+      projection(candidate);
+      updateConfig.run(protectedConfig, sourceId, nodeId);
+      updateSourceTime.run(timestamp(), sourceId);
+      return projection(readSnapshot(sourceId));
+    }).immediate();
+  });
+
+  const deleteSourceNode = guarded((sourceId, nodeId, input) => {
+    validateSourceId(sourceId);
+    validateSourceId(nodeId);
+    objectWithKeys(input, ["revision"]);
+    validateRevision(input.revision);
+    return database.transaction(() => {
+      const snapshot = readSnapshot(sourceId);
+      const row = currentNode(snapshot, nodeId, input.revision);
+      projection(snapshot);
+      if (configOf(row).adminDisabled !== true) throw failure("node_enabled");
+      const candidate = { ...snapshot, nodes: snapshot.nodes.map(node => node.id === nodeId
+        ? { ...node, active: 0 } : node) };
+      projection(candidate);
+      deactivateNode.run(sourceId, nodeId);
+      updateSourceTime.run(timestamp(), sourceId);
+      return projection(readSnapshot(sourceId));
+    }).immediate();
+  });
+
+  return { listSourceNodes, saveSourceNodes, enableSourceNodes, setSourceNodeEnabled, deleteSourceNode };
 }

@@ -45,6 +45,190 @@ function rejects(code, action) {
   assert.throws(action, (error) => error.code === code && error.message === code);
 }
 
+for (const sourceEnabled of [false, true]) {
+  test(`single-node pause/resume preserves source and all other rows (source enabled ${sourceEnabled})`, (t) => {
+    const { database, secretProtector, source, store } = fixture(t);
+    let view = store.listSourceNodes(source.id);
+    const named = inputOf(view);
+    named.nodes[0] = { ...named.nodes[0], customName: "Target alias", customCountryCode: "SG" };
+    store.saveSourceNodes(source.id, named);
+    store.patchSource(source.id, { enabled: sourceEnabled });
+    view = store.listSourceNodes(source.id);
+    assert.ok(view.items.every(node => node.enabled === true));
+    const target = view.items[0];
+    const before = snapshot(database);
+    const paused = store.setSourceNodeEnabled(source.id, target.id, { revision: view.revision, enabled: false });
+    assert.equal(paused.enabled, sourceEnabled);
+    assert.equal(paused.items.length, view.items.length);
+    assert.deepEqual(paused.items, view.items.map(node => node.id === target.id ? { ...node, enabled: false } : node));
+    assert.notEqual(paused.revision, view.revision);
+    const after = snapshot(database);
+    assert.deepEqual(after.nodes.filter(node => node.id !== target.id), before.nodes.filter(node => node.id !== target.id));
+    const old = before.nodes.find(node => node.id === target.id);
+    const current = after.nodes.find(node => node.id === target.id);
+    assert.deepEqual({ ...current, protected_config: old.protected_config }, old);
+    const config = JSON.parse(secretProtector.unprotect(current.protected_config));
+    assert.equal(config.adminDisabled, true);
+    delete config.adminDisabled;
+    assert.deepEqual(config, JSON.parse(secretProtector.unprotect(old.protected_config)));
+    assert.equal(store.listActiveServersForPlan("monthly_basic").length, sourceEnabled ? 2 : 0);
+    assert.ok(store.listActiveServersForPlan("monthly_basic").every(node => node.id !== target.id && !Object.hasOwn(node, "adminDisabled")));
+    assert.deepEqual(store.setSourceNodeEnabled(source.id, target.id, { revision: paused.revision, enabled: false }), paused);
+    assert.deepEqual(snapshot(database), after, "idempotent operation does not rewrite ciphertext");
+    rejects("revision_conflict", () => store.setSourceNodeEnabled(source.id, target.id, { revision: view.revision, enabled: false }));
+    const resumed = store.setSourceNodeEnabled(source.id, target.id, { revision: paused.revision, enabled: true });
+    assert.deepEqual(resumed.items, view.items);
+    assert.equal(resumed.enabled, sourceEnabled);
+    assert.equal(store.listActiveServersForPlan("monthly_basic").length, sourceEnabled ? 3 : 0);
+    assert.ok(store.listActiveServersForPlan("monthly_basic").every(node => !Object.hasOwn(node, "adminDisabled")));
+  });
+}
+
+test("legacy full-list saves and source enable preserve paused node state", (t) => {
+  const { source, store } = fixture(t);
+  let view = store.listSourceNodes(source.id);
+  const target = view.items[0];
+  view = store.setSourceNodeEnabled(source.id, target.id, { revision: view.revision, enabled: false });
+  view = store.saveSourceNodes(source.id, inputOf(view));
+  assert.equal(view.items[0].enabled, false);
+  view = store.enableSourceNodes(source.id, { revision: view.revision });
+  assert.equal(view.items[0].enabled, false);
+  assert.equal(store.listActiveServersForPlan("monthly_basic").length, 2);
+});
+
+test("single-node deletion requires pause, preserves every other row and cannot restore deleted rows", (t) => {
+  const { database, source, store } = fixture(t);
+  store.patchSource(source.id, { enabled: true });
+  let view = store.listSourceNodes(source.id);
+  const target = view.items[0];
+  const before = snapshot(database);
+  rejects("node_enabled", () => store.deleteSourceNode(source.id, target.id, { revision: view.revision }));
+  assert.deepEqual(snapshot(database), before);
+  view = store.setSourceNodeEnabled(source.id, target.id, { revision: view.revision, enabled: false });
+  const paused = snapshot(database);
+  const deleted = store.deleteSourceNode(source.id, target.id, { revision: view.revision });
+  assert.equal(deleted.enabled, true);
+  assert.deepEqual(deleted.items, view.items.filter(node => node.id !== target.id));
+  assert.notEqual(deleted.revision, view.revision);
+  const after = snapshot(database);
+  assert.deepEqual(after.nodes, paused.nodes.map(node => node.id === target.id ? { ...node, active: 0 } : node));
+  for (const action of [
+    () => store.setSourceNodeEnabled(source.id, target.id, { revision: deleted.revision, enabled: true }),
+    () => store.deleteSourceNode(source.id, target.id, { revision: deleted.revision })
+  ]) rejects("not_found", action);
+  assert.deepEqual(snapshot(database), after);
+});
+
+test("deleting the final paused node leaves enabled source intact with empty rendering", (t) => {
+  const { database, source, store } = fixture(t);
+  store.patchSource(source.id, { enabled: true });
+  let view = store.listSourceNodes(source.id);
+  for (const node of [...view.items]) {
+    view = store.setSourceNodeEnabled(source.id, node.id, { revision: view.revision, enabled: false });
+    view = store.deleteSourceNode(source.id, node.id, { revision: view.revision });
+  }
+  assert.equal(view.enabled, true);
+  assert.deepEqual(view.items, []);
+  assert.deepEqual(store.listActiveServersForPlan("monthly_basic"), []);
+  assert.equal(database.prepare("select count(*) as n from platform_third_party_nodes").get().n, 3);
+});
+
+test("single-node operations reject wrong source and stale revision without writes", (t) => {
+  const { database, source, store } = fixture(t);
+  const other = store.createInlineSource({ name: "Other", yamlContent: yaml, tiers: ["yearly"] });
+  const view = store.listSourceNodes(source.id);
+  const wrongId = store.listSourceNodes(other.id).items[0].id;
+  const before = snapshot(database);
+  for (const action of [
+    () => store.setSourceNodeEnabled(source.id, wrongId, { revision: view.revision, enabled: false }),
+    () => store.deleteSourceNode(source.id, wrongId, { revision: view.revision })
+  ]) rejects("not_found", action);
+  assert.deepEqual(snapshot(database), before);
+  const target = view.items[0].id;
+  store.setSourceNodeEnabled(source.id, target, { revision: view.revision, enabled: false });
+  const paused = snapshot(database);
+  rejects("revision_conflict", () => store.deleteSourceNode(source.id, target, { revision: view.revision }));
+  assert.deepEqual(snapshot(database), paused);
+});
+
+for (const invalid of [null, 0, 1, "true", "false", [], {}]) {
+  test(`stored invalid adminDisabled fails closed: ${JSON.stringify(invalid)}`, (t) => {
+    const { database, secretProtector, source, store } = fixture(t);
+    store.patchSource(source.id, { enabled: true });
+    const view = store.listSourceNodes(source.id);
+    const target = view.items[0].id;
+    const row = database.prepare("select protected_config from platform_third_party_nodes where id = ?").get(target);
+    const config = JSON.parse(secretProtector.unprotect(row.protected_config));
+    config.adminDisabled = invalid;
+    database.prepare("update platform_third_party_nodes set protected_config = ? where id = ?").run(secretProtector.protect(JSON.stringify(config)), target);
+    rejects("protected_value_invalid", () => store.listSourceNodes(source.id));
+    assert.equal(store.listActiveServersForPlan("monthly_basic").length, 2);
+    assert.ok(store.listActiveServersForPlan("monthly_basic").every(node => node.id !== target));
+  });
+}
+
+test("single-node operations validate exact bodies and strict boolean without writes", (t) => {
+  const { database, source, store } = fixture(t);
+  const view = store.listSourceNodes(source.id);
+  const id = view.items[0].id;
+  const before = snapshot(database);
+  for (const input of [null, [], {}, { revision: view.revision }, { revision: view.revision, enabled: null },
+    { revision: view.revision, enabled: "false" }, { revision: view.revision, enabled: false, active: 0 }]) {
+    rejects("invalid_input", () => store.setSourceNodeEnabled(source.id, id, input));
+  }
+  for (const input of [null, [], {}, { revision: "bad" }, { revision: view.revision, enabled: false }]) {
+    rejects("invalid_input", () => store.deleteSourceNode(source.id, id, input));
+  }
+  assert.deepEqual(snapshot(database), before);
+});
+
+for (const operation of ["pause", "delete"]) {
+  test(`single-node ${operation} rolls back when source timestamp update fails`, (t) => {
+    const { database, source, store } = fixture(t);
+    let view = store.listSourceNodes(source.id);
+    const target = view.items[0].id;
+    if (operation === "delete") view = store.setSourceNodeEnabled(source.id, target, { revision: view.revision, enabled: false });
+    const before = snapshot(database);
+    database.exec("create trigger synthetic_single_abort before update on platform_third_party_sources begin select raise(abort, 'synthetic-private-error'); end");
+    rejects("third_party_unavailable", () => operation === "pause"
+      ? store.setSourceNodeEnabled(source.id, target, { revision: view.revision, enabled: false })
+      : store.deleteSourceNode(source.id, target, { revision: view.revision }));
+    assert.deepEqual(snapshot(database), before);
+  });
+}
+
+test("single-node mutation rejects invalid protected state and protector failure without writes", (t) => {
+  const { database, secretProtector, source, store } = fixture(t);
+  const view = store.listSourceNodes(source.id);
+  const target = view.items[0].id;
+  const row = database.prepare("select protected_config from platform_third_party_nodes where id = ?").get(target);
+  const before = snapshot(database);
+  const invalidConfig = createThirdPartyNodeManagement({ database, nowFn: at, secretProtector: {
+    protect: secretProtector.protect,
+    unprotect(value) {
+      if (value !== row.protected_config) return secretProtector.unprotect(value);
+      return JSON.stringify({ ...JSON.parse(secretProtector.unprotect(value)), adminDisabled: "false" });
+    }
+  } });
+  rejects("protected_value_invalid", () => invalidConfig.setSourceNodeEnabled(source.id, target, { revision: view.revision, enabled: true }));
+  rejects("protected_value_invalid", () => invalidConfig.deleteSourceNode(source.id, target, { revision: view.revision }));
+  const brokenProtector = createThirdPartyNodeManagement({ database, nowFn: at, secretProtector: {
+    unprotect: secretProtector.unprotect,
+    protect() { throw new Error("synthetic-private-error"); }
+  } });
+  rejects("protected_value_invalid", () => brokenProtector.setSourceNodeEnabled(source.id, target, { revision: view.revision, enabled: false }));
+  assert.deepEqual(snapshot(database), before);
+});
+
+test("unavailable store exposes both single-node methods without schema writes", (t) => {
+  const database = new Database(":memory:");
+  t.after(() => database.close());
+  const store = createSqliteThirdPartySubscriptionStore({ database });
+  rejects("third_party_unavailable", () => store.setSourceNodeEnabled("unknown", "unknown", { revision: "0".repeat(64), enabled: false }));
+  rejects("third_party_unavailable", () => store.deleteSourceNode("unknown", "unknown", { revision: "0".repeat(64) }));
+  assert.equal(database.prepare("select count(*) as n from sqlite_master").get().n, 0);
+});
+
 test("country override is encrypted, survives reopening and leaves identity material untouched", (t) => {
   const { database, secretProtector, store, source } = fixture(t);
   const before = snapshot(database);
@@ -191,7 +375,7 @@ test("node management returns only explicit public fields and deterministic defa
   assert.equal(view.enabled, false);
   assert.equal(view.items.length, 3);
   for (const item of view.items) {
-    assert.deepEqual(Object.keys(item).sort(), ["countryCode", "customName", "defaultName", "displayName", "id", "originalName", "protocol"]);
+    assert.deepEqual(Object.keys(item).sort(), ["countryCode", "customName", "defaultName", "displayName", "enabled", "id", "originalName", "protocol"]);
     assert.equal(item.customName, null);
     assert.equal(item.displayName, item.defaultName);
     assert.match(item.defaultName, /^\[3P\] (JP|US) [12] \| /);

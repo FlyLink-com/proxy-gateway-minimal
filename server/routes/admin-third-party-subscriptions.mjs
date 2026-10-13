@@ -9,6 +9,7 @@ const PREVIEW_KEYS = new Set(["yamlContent", "regionOverride"]);
 const PATCH_KEYS = new Set(["name", "tiers", "enabled"]);
 const SAVE_NODES_KEYS = new Set(["revision", "nodes"]);
 const ENABLE_NODES_KEYS = new Set(["revision"]);
+const PATCH_NODE_KEYS = new Set(["revision", "enabled"]);
 const NODE_KEYS = new Set(["id", "customName", "customCountryCode"]);
 const MAX_INLINE_YAML_BYTES = 64 * 1024;
 const MAX_SOURCE_NODES = 256;
@@ -24,6 +25,7 @@ const PUBLIC_ERROR_CODES = new Set([
   "duplicate_node_name",
   "revision_conflict",
   "source_enabled",
+  "node_enabled",
   "empty_source",
   "unsupported_source_kind",
   "parse_no_valid_nodes",
@@ -84,7 +86,7 @@ function yamlByteLength(value) {
 
 function statusForCode(code) {
   if (code === "not_found") return 404;
-  if (code === "revision_conflict" || code === "source_enabled") return 409;
+  if (code === "revision_conflict" || code === "source_enabled" || code === "node_enabled") return 409;
   if (code === "third_party_unavailable") return 503;
   return 400;
 }
@@ -236,6 +238,31 @@ export function adminThirdPartySubscriptionRoutes(state) {
       sendStoreError(res, error, "third_party_unavailable");
     }
   });
+
+  for (const method of ["patch", "delete"]) {
+    router[method]("/api/admin/third-party-subscriptions/sources/:id/nodes/:nodeId", (req, res) => {
+      try {
+        const id = String(req.params.id || "");
+        const nodeId = String(req.params.nodeId || "");
+        if (!SOURCE_ID_PATTERN.test(id) || !NODE_ID_PATTERN.test(nodeId)) {
+          sendError(res, 404, "not_found");
+          return;
+        }
+        const body = objectBody(req.body);
+        const allowed = method === "patch" ? PATCH_NODE_KEYS : ENABLE_NODES_KEYS;
+        if (!body || !assertKnownKeys(body, allowed) || !validRevision(body.revision)
+          || (method === "patch" && typeof body.enabled !== "boolean")) {
+          sendError(res, 400, "invalid_input");
+          return;
+        }
+        res.json(method === "patch"
+          ? req.thirdPartyStore.setSourceNodeEnabled(id, nodeId, body)
+          : req.thirdPartyStore.deleteSourceNode(id, nodeId, body));
+      } catch (error) {
+        sendStoreError(res, error, "third_party_unavailable");
+      }
+    });
+  }
 
   router.post("/api/admin/third-party-subscriptions/sources/:id/enable", (req, res) => {
     try {

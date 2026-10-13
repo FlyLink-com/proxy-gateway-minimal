@@ -8,6 +8,8 @@ export type ThirdPartyNode = {
   customName: string | null;
   countryCode: string;
   customCountryCode?: string | null;
+  // Older snapshots omit this field; omitted means enabled, never deleted.
+  enabled?: boolean;
   protocol: "VLESS" | "Hy2" | "TUIC" | "SS";
 };
 

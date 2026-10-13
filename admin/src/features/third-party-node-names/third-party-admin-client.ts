@@ -26,6 +26,7 @@ const MESSAGES = {
   rate_limited: "Too many requests. Try again later.",
   revision_conflict: "The source changed. Reload it before saving.",
   source_enabled: "Disable the source before editing it.",
+  node_enabled: "Disable this node before deleting it.",
   empty_source: "An empty source cannot be enabled.",
   invalid_node_name: "The node name is invalid.",
   duplicate_node_name: "Node names must be unique.",
@@ -56,8 +57,11 @@ export interface ThirdPartyAdminClient {
   saveNodes(sourceId: string, input: ThirdPartyNodeSave, signal?: AbortSignal): Promise<ThirdPartyNodeSnapshot>;
   enableSource(sourceId: string, revision: string, signal?: AbortSignal): Promise<ThirdPartyNodeSnapshot>;
   disableSource(sourceId: string, signal?: AbortSignal): Promise<ThirdPartySource>;
+  setNodeEnabled?(sourceId: string, nodeId: string, revision: string, enabled: boolean, signal?: AbortSignal): Promise<ThirdPartyNodeSnapshot>;
+  deleteNode?(sourceId: string, nodeId: string, revision: string, signal?: AbortSignal): Promise<ThirdPartyNodeSnapshot>;
   importYaml(input: ThirdPartyYamlImport, signal?: AbortSignal): Promise<ThirdPartySource>;
 }
+type NodeMutationClient = Required<Pick<ThirdPartyAdminClient, "setNodeEnabled" | "deleteNode">>;
 
 function fail(code: ThirdPartyAdminErrorCode = "invalid"): never { throw new ThirdPartyAdminError(code); }
 function object(value: unknown): Record<string, unknown> {
@@ -119,6 +123,7 @@ function parseSnapshot(value: unknown, sourceId: string): ThirdPartyNodeSnapshot
     return {
       id: nodeId, sourceName: "", originalName: name(node.originalName), defaultName: name(node.defaultName),
       customName: node.customName === null ? null : name(node.customName), countryCode: node.countryCode,
+      enabled: Object.hasOwn(node, "enabled") ? boolean(node.enabled) : true,
       ...(Object.hasOwn(node, "customCountryCode") ? { customCountryCode: countryOverride(node.customCountryCode) } : {}),
       protocol: PROTOCOLS[node.protocol as keyof typeof PROTOCOLS]
     };
@@ -136,13 +141,13 @@ function statusError(status: number, payload?: unknown): never {
   if (status === 429) fail("rate_limited");
   if (status >= 500) fail("unavailable");
   const error = payload && typeof payload === "object" && !Array.isArray(payload) ? (payload as Record<string, unknown>).error : null;
-  if (status === 409 && (error === "revision_conflict" || error === "source_enabled")) fail(error);
+  if (status === 409 && (error === "revision_conflict" || error === "source_enabled" || error === "node_enabled")) fail(error);
   const allowed = new Set(["empty_source", "invalid_node_name", "duplicate_node_name", "invalid_yaml", "invalid_tiers", "remote_import_disabled", "unsupported_source_kind", "protected_value_invalid"]);
   if (status === 400 && typeof error === "string" && allowed.has(error)) fail(error as ThirdPartyAdminErrorCode);
   fail();
 }
 
-export function createThirdPartyAdminClient({ fetcher = fetch }: { fetcher?: typeof fetch } = {}): ThirdPartyAdminClient {
+export function createThirdPartyAdminClient({ fetcher = fetch }: { fetcher?: typeof fetch } = {}): ThirdPartyAdminClient & NodeMutationClient {
   async function request(path: string, method: string, body?: unknown, signal?: AbortSignal): Promise<unknown> {
     if (signal?.aborted) throwAborted();
     let response: Response;
@@ -225,6 +230,18 @@ export function createThirdPartyAdminClient({ fetcher = fetch }: { fetcher?: typ
       id(revision, REVISION);
       const snapshot = parseSnapshot(await request(`/sources/${sourceId}/enable`, "POST", { revision }, signal), sourceId);
       if (!snapshot.enabled || snapshot.items.length === 0) fail();
+      return snapshot;
+    },
+    async setNodeEnabled(sourceId, nodeId, revision, enabled, signal) {
+      id(sourceId, SOURCE_ID); id(nodeId, NODE_ID); id(revision, REVISION); boolean(enabled);
+      const snapshot = parseSnapshot(await request(`/sources/${sourceId}/nodes/${nodeId}`, "PATCH", { revision, enabled }, signal), sourceId);
+      if (snapshot.items.find((node) => node.id === nodeId)?.enabled !== enabled) fail();
+      return snapshot;
+    },
+    async deleteNode(sourceId, nodeId, revision, signal) {
+      id(sourceId, SOURCE_ID); id(nodeId, NODE_ID); id(revision, REVISION);
+      const snapshot = parseSnapshot(await request(`/sources/${sourceId}/nodes/${nodeId}`, "DELETE", { revision }, signal), sourceId);
+      if (snapshot.items.some((node) => node.id === nodeId)) fail();
       return snapshot;
     },
     async disableSource(sourceId, signal) {

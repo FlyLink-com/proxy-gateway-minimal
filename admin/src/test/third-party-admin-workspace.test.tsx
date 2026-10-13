@@ -14,8 +14,8 @@ const NEXT_REVISION = "b".repeat(64);
 const SAVED_REVISION = "c".repeat(64);
 const SOURCE: ThirdPartySource = { id: SOURCE_ID, name: "合成来源", enabled: false, tiers: ["monthly_basic"], sourceKind: "inline-yaml" };
 const NODES: ThirdPartyNodeSnapshot["items"] = [
-  { id: NODE_ID, sourceName: "", originalName: "原始日本", defaultName: "[3P] JP 1 | 原始日本", customName: null, countryCode: "JP", protocol: "VLESS" },
-  { id: SECOND_NODE_ID, sourceName: "", originalName: "原始美国", defaultName: "[3P] US 1 | 原始美国", customName: null, countryCode: "US", protocol: "Hy2" }
+  { id: NODE_ID, sourceName: "", originalName: "原始日本", defaultName: "[3P] JP 1 | 原始日本", customName: null, countryCode: "JP", protocol: "VLESS", enabled: true },
+  { id: SECOND_NODE_ID, sourceName: "", originalName: "原始美国", defaultName: "[3P] US 1 | 原始美国", customName: null, countryCode: "US", protocol: "Hy2", enabled: true }
 ];
 const SNAPSHOT: ThirdPartyNodeSnapshot = { sourceId: SOURCE_ID, revision: REVISION, enabled: false, items: NODES };
 
@@ -28,6 +28,10 @@ function fakeClient(enabled = false) {
     saveNodes: vi.fn<ThirdPartyAdminClient["saveNodes"]>().mockResolvedValue({ ...SNAPSHOT, revision: NEXT_REVISION }),
     enableSource: vi.fn<ThirdPartyAdminClient["enableSource"]>().mockResolvedValue({ ...SNAPSHOT, revision: NEXT_REVISION, enabled: true }),
     disableSource: vi.fn<ThirdPartyAdminClient["disableSource"]>().mockResolvedValue(SOURCE),
+    setNodeEnabled: vi.fn<NonNullable<ThirdPartyAdminClient["setNodeEnabled"]>>().mockImplementation(async (_source, nodeId, _revision, nodeEnabled) => ({
+      ...SNAPSHOT, enabled, revision: NEXT_REVISION, items: NODES.map((node) => node.id === nodeId ? { ...node, enabled: nodeEnabled } : node)
+    })),
+    deleteNode: vi.fn<NonNullable<ThirdPartyAdminClient["deleteNode"]>>().mockResolvedValue({ ...SNAPSHOT, enabled, revision: SAVED_REVISION, items: [NODES[1]] }),
     importYaml: vi.fn<ThirdPartyAdminClient["importYaml"]>().mockResolvedValue({ ...SOURCE, id: NEXT_SOURCE_ID, name: "新导入来源" })
   };
 }
@@ -66,6 +70,21 @@ function deferred<T>() {
   let resolve!: (value: T) => void;
   const promise = new Promise<T>((done) => { resolve = done; });
   return { promise, resolve };
+}
+
+function nodeSwitch(originalName = "原始日本") {
+  return screen.getByRole("button", { name: new RegExp(`^[停启]用节点 ${originalName}$`) });
+}
+
+function confirmNodeState(enabled = false) {
+  fireEvent.click(nodeSwitch());
+  const label = enabled ? "确认启用节点" : "确认停用节点";
+  fireEvent.click(within(screen.getByRole("dialog", { name: label })).getByRole("button", { name: label }));
+}
+
+function requestNodeDeletion() {
+  fireEvent.click(screen.getByRole("button", { name: "删除 原始日本" }));
+  fireEvent.click(screen.getByRole("button", { name: "确认删除" }));
 }
 
 describe("authenticated third-party Admin workspace", () => {
@@ -162,7 +181,7 @@ describe("authenticated third-party Admin workspace", () => {
     expect(screen.getByRole("button", { name: "删除 原始日本" })).toBeDisabled();
   });
 
-  test("enabled sources are read-only until a confirmed disable and fresh node read", async () => {
+  test("enabled sources retain the confirmed whole-source maintenance option for editing names and flags", async () => {
     const client = fakeClient(true);
     await mount(client);
     const actions = within(screen.getByRole("group", { name: "节点列表操作" }));
@@ -195,30 +214,29 @@ describe("authenticated third-party Admin workspace", () => {
     expect(client.saveNodes).not.toHaveBeenCalled();
   });
 
-  test("disable, delete draft, save and explicit re-enable use each fresh revision", async () => {
+  test("whole-source disable, name save and explicit re-enable use each fresh revision", async () => {
     const client = fakeClient(true);
     await mount(client);
     client.listNodes.mockResolvedValue({ ...SNAPSHOT, revision: NEXT_REVISION });
-    const retained = [NODES[1]];
+    const retained = [{ ...NODES[0], customName: "自定义日本" }, NODES[1]];
     client.saveNodes.mockResolvedValue({ ...SNAPSHOT, revision: SAVED_REVISION, items: retained });
     client.enableSource.mockResolvedValue({ ...SNAPSHOT, revision: SAVED_REVISION, items: retained, enabled: true });
 
     fireEvent.click(screen.getByRole("button", { name: "停用来源" }));
     fireEvent.click(screen.getByRole("button", { name: "确认停用" }));
-    await waitFor(() => expect(screen.getByRole("button", { name: "删除 原始日本" })).toBeEnabled());
+    await waitFor(() => expect(screen.getByRole("button", { name: "编辑 原始日本" })).toBeEnabled());
     expect(client.disableSource).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole("button", { name: "停用来源" })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "删除 原始日本" }));
-    fireEvent.click(screen.getByRole("button", { name: "确认删除" }));
+    editAlias();
     expect(client.saveNodes).not.toHaveBeenCalled();
     expect(client.enableSource).not.toHaveBeenCalled();
     expect(screen.getByRole("button", { name: "启用节点列表" })).toBeDisabled();
-    expect(screen.queryByRole("button", { name: "编辑 原始日本" })).not.toBeInTheDocument();
+    expect(screen.getByText("自定义日本")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "编辑 原始美国" })).toBeEnabled();
 
     fireEvent.click(screen.getByRole("button", { name: "保存节点列表" }));
     await waitFor(() => expect(client.saveNodes).toHaveBeenCalledWith(SOURCE_ID, {
-      revision: NEXT_REVISION, nodes: [{ id: SECOND_NODE_ID, customName: null }]
+      revision: NEXT_REVISION, nodes: [{ id: NODE_ID, customName: "自定义日本" }, { id: SECOND_NODE_ID, customName: null }]
     }, expect.any(AbortSignal)));
     await waitFor(() => expect(screen.getByRole("button", { name: "启用节点列表" })).toBeEnabled());
     expect(client.enableSource).not.toHaveBeenCalled();
@@ -227,7 +245,7 @@ describe("authenticated third-party Admin workspace", () => {
     fireEvent.click(screen.getByRole("button", { name: "确认启用" }));
     await waitFor(() => expect(client.enableSource).toHaveBeenCalledWith(SOURCE_ID, SAVED_REVISION, expect.any(AbortSignal)));
     await screen.findByText("已启用 · 后台");
-    expect(screen.queryByRole("button", { name: "编辑 原始日本" })).not.toBeInTheDocument();
+    expect(screen.getByText("自定义日本")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "删除 原始美国" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "停用来源" })).toBeEnabled();
   });
@@ -254,7 +272,7 @@ describe("authenticated third-party Admin workspace", () => {
     expect(screen.getByRole("button", { name: "删除 原始日本" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "停用来源" })).toBeDisabled();
     await act(async () => readback.resolve({ ...SNAPSHOT, revision: NEXT_REVISION }));
-    expect(screen.getByRole("button", { name: "删除 原始日本" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "编辑 原始日本" })).toBeEnabled();
     expect(client.disableSource).toHaveBeenCalledTimes(1);
     expect(client.saveNodes).not.toHaveBeenCalled();
     expect(client.enableSource).not.toHaveBeenCalled();
@@ -370,16 +388,235 @@ describe("authenticated third-party Admin workspace", () => {
     expect(client.enableSource).not.toHaveBeenCalled();
   });
 
-  test("deletion affects only the complete saved retained list, not an immediate endpoint", async () => {
+  test("an enabled source can disable and delete one node while its sibling remains enabled", async () => {
+    const { client } = await mount(fakeClient(true));
+    expect(nodeSwitch()).toHaveAccessibleName("停用节点 原始日本");
+    expect(screen.getByRole("button", { name: "删除 原始日本" })).toBeDisabled();
+    fireEvent.click(nodeSwitch());
+    const dialog = screen.getByRole("dialog", { name: "确认停用节点" });
+    expect(dialog).toHaveTextContent(NODES[0].defaultName);
+    expect(client.setNodeEnabled).not.toHaveBeenCalled();
+    fireEvent.click(within(dialog).getByRole("button", { name: "取消" }));
+    expect(nodeSwitch()).toHaveAccessibleName("停用节点 原始日本");
+    expect(client.setNodeEnabled).not.toHaveBeenCalled();
+    confirmNodeState();
+    await waitFor(() => expect(nodeSwitch()).toHaveAccessibleName("启用节点 原始日本"));
+    expect(client.setNodeEnabled).toHaveBeenCalledExactlyOnceWith(SOURCE_ID, NODE_ID, REVISION, false, expect.any(AbortSignal));
+    expect(nodeSwitch("原始美国")).toHaveAccessibleName("停用节点 原始美国");
+    expect(screen.getByRole("button", { name: "停用来源" })).toBeEnabled();
+    requestNodeDeletion();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByRole("button", { name: "编辑 原始日本" })).not.toBeInTheDocument());
+    expect(client.deleteNode).toHaveBeenCalledExactlyOnceWith(SOURCE_ID, NODE_ID, NEXT_REVISION, expect.any(AbortSignal));
+    expect(nodeSwitch("原始美国")).toHaveAccessibleName("停用节点 原始美国");
+    expect(screen.getByRole("button", { name: "停用来源" })).toBeEnabled();
+    expect(client.disableSource).not.toHaveBeenCalled();
+    expect(client.saveNodes).not.toHaveBeenCalled();
+    expect(client.enableSource).not.toHaveBeenCalled();
+  });
+
+  test.each([false, true])("a disabled node can be restored independently with source enabled=%s", async (enabled) => {
+    const client = fakeClient(enabled);
+    client.listNodes.mockResolvedValue({ ...SNAPSHOT, enabled, items: [{ ...NODES[0], enabled: false }, NODES[1]] });
+    await mount(client);
+    confirmNodeState(true);
+    await waitFor(() => expect(nodeSwitch()).toHaveAccessibleName("停用节点 原始日本"));
+    expect(client.setNodeEnabled).toHaveBeenCalledExactlyOnceWith(SOURCE_ID, NODE_ID, REVISION, true, expect.any(AbortSignal));
+    expect(nodeSwitch("原始美国")).toHaveAccessibleName("停用节点 原始美国");
+    expect(client.disableSource).not.toHaveBeenCalled();
+    expect(client.enableSource).not.toHaveBeenCalled();
+  });
+
+  test("an enabled node cannot be deleted even when the source is disabled", async () => {
     const { client } = await mount();
     fireEvent.click(screen.getByRole("button", { name: "删除 原始日本" }));
-    fireEvent.click(screen.getByRole("button", { name: "确认删除" }));
-    expect(screen.queryByRole("button", { name: "编辑 原始日本" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "确认删除" })).not.toBeInTheDocument();
+    expect(client.deleteNode).not.toHaveBeenCalled();
+  });
+
+  test("cancelling an individual deletion has no write", async () => {
+    const client = fakeClient(true);
+    client.listNodes.mockResolvedValue({ ...SNAPSHOT, enabled: true, items: [{ ...NODES[0], enabled: false }, NODES[1]] });
+    await mount(client);
+    fireEvent.click(screen.getByRole("button", { name: "删除 原始日本" }));
+    fireEvent.click(screen.getByRole("button", { name: "取消删除" }));
+    expect(client.deleteNode).not.toHaveBeenCalled();
+    expect(client.setNodeEnabled).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "编辑 原始日本" })).toBeInTheDocument();
+  });
+
+  test.each(["name", "country"] as const)("unsaved %s edits block all immediate node mutations", async (field) => {
+    const client = fakeClient();
+    client.listNodes.mockResolvedValue({ ...SNAPSHOT, items: [{ ...NODES[0], enabled: false }, NODES[1]] });
+    await mount(client);
+    if (field === "name") editAlias();
+    else fireEvent.change(screen.getByRole("combobox", { name: "国家/地区 原始日本" }), { target: { value: "US" } });
+    expect(nodeSwitch()).toBeDisabled();
+    expect(screen.getByRole("button", { name: "删除 原始日本" })).toBeDisabled();
+    expect(client.setNodeEnabled).not.toHaveBeenCalled();
+    expect(client.deleteNode).not.toHaveBeenCalled();
+  });
+
+  test.each(["network", "revision_conflict", "node_enabled"] as const)("%s single-node failure locks writes without retry", async (code) => {
+    const client = fakeClient(true);
+    client.setNodeEnabled.mockRejectedValue(new ThirdPartyAdminError(code));
+    await mount(client);
+    confirmNodeState();
+    await screen.findByText(/结果未确认或版本已变化/);
+    expect(nodeSwitch()).toHaveAccessibleName("停用节点 原始日本");
+    expect(nodeSwitch()).toBeDisabled();
+    expect(nodeSwitch("原始美国")).toBeDisabled();
+    expect(client.setNodeEnabled).toHaveBeenCalledTimes(1);
+    expect(client.disableSource).not.toHaveBeenCalled();
+    if (code === "node_enabled") expect(screen.getByText("该节点仍已启用，请重新读取并先停用该节点，再删除。")).toBeInTheDocument();
+  });
+
+  test.each(["session", "permission"] as const)("%s single-node failure clears private rows", async (code) => {
+    const client = fakeClient(true);
+    const expired = vi.fn();
+    client.setNodeEnabled.mockRejectedValue(new ThirdPartyAdminError(code));
+    await mount(client, expired);
+    confirmNodeState();
+    await waitFor(() => expect(screen.queryByRole("button", { name: "编辑 原始日本" })).not.toBeInTheDocument());
+    expect(screen.queryByRole("button", { name: /^[停启]用节点 原始/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "导入" })).toBeDisabled();
+    expect(expired).toHaveBeenCalledTimes(code === "session" ? 1 : 0);
+    expect(client.setNodeEnabled).toHaveBeenCalledTimes(1);
+  });
+
+  test.each(["network", "revision_conflict", "node_enabled", "session", "permission"] as const)("%s deletion failure never drops the row optimistically or retries", async (code) => {
+    const client = fakeClient(true);
+    const expired = vi.fn();
+    client.listNodes.mockResolvedValue({ ...SNAPSHOT, enabled: true, items: [{ ...NODES[0], enabled: false }, NODES[1]] });
+    client.deleteNode.mockRejectedValue(new ThirdPartyAdminError(code));
+    await mount(client, expired);
+    requestNodeDeletion();
+    await screen.findByText(/结果未确认或版本已变化/);
+    if (code === "session" || code === "permission") {
+      expect(screen.queryByRole("button", { name: "编辑 原始日本" })).not.toBeInTheDocument();
+      expect(expired).toHaveBeenCalledTimes(code === "session" ? 1 : 0);
+    } else {
+      expect(screen.getByRole("button", { name: "编辑 原始日本" })).toBeInTheDocument();
+      expect(nodeSwitch()).toHaveAccessibleName("启用节点 原始日本");
+      expect(nodeSwitch()).toBeDisabled();
+    }
+    expect(client.deleteNode).toHaveBeenCalledTimes(1);
+    expect(client.disableSource).not.toHaveBeenCalled();
     expect(client.saveNodes).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("button", { name: "保存节点列表" }));
-    await waitFor(() => expect(client.saveNodes).toHaveBeenCalledWith(SOURCE_ID, {
-      revision: REVISION, nodes: [{ id: SECOND_NODE_ID, customName: null }]
-    }, expect.any(AbortSignal)));
+  });
+
+  test("pending deletion retains the target and blocks duplicate and sibling actions", async () => {
+    const client = fakeClient(true);
+    const pending = deferred<ThirdPartyNodeSnapshot>();
+    client.listNodes.mockResolvedValue({ ...SNAPSHOT, enabled: true, items: [{ ...NODES[0], enabled: false }, NODES[1]] });
+    client.deleteNode.mockReturnValue(pending.promise);
+    await mount(client);
+    fireEvent.click(screen.getByRole("button", { name: "删除 原始日本" }));
+    const button = screen.getByRole("button", { name: "确认删除" });
+    fireEvent.click(button); fireEvent.click(button);
+    expect(client.deleteNode).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("button", { name: "编辑 原始日本" })).toBeInTheDocument();
+    expect(nodeSwitch("原始美国")).toBeDisabled();
+    expect(screen.getByRole("button", { name: "停用来源" })).toBeDisabled();
+    await act(async () => pending.resolve({ ...SNAPSHOT, enabled: true, revision: NEXT_REVISION, items: [NODES[1]] }));
+    expect(screen.queryByRole("button", { name: "编辑 原始日本" })).not.toBeInTheDocument();
+    expect(nodeSwitch("原始美国")).toBeEnabled();
+  });
+
+  test("reloading while node confirmation is open prevents an old confirmation from writing", async () => {
+    const { client } = await mount(fakeClient(true));
+    fireEvent.click(nodeSwitch());
+    const confirm = within(screen.getByRole("dialog", { name: "确认停用节点" })).getByRole("button", { name: "确认停用节点" });
+    // A programmatic reload simulates a stale confirmation despite modal focus containment.
+    fireEvent.click(screen.getByRole("button", { name: "重新读取" }));
+    await waitFor(() => expect(client.listNodes).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(screen.getByRole("button", { name: "重新读取" })).toBeEnabled());
+    expect(screen.queryByRole("dialog", { name: "确认停用节点" })).not.toBeInTheDocument();
+    fireEvent.click(confirm);
+    expect(client.setNodeEnabled).not.toHaveBeenCalled();
+  });
+
+  test.each(["source", "revision", "target", "sibling", "name", "order", "missing"] as const)("%s mismatch in a node mutation readback locks the unchanged view", async (mismatch) => {
+    const client = fakeClient(true);
+    const view: ThirdPartyNodeSnapshot = { ...SNAPSHOT, enabled: true, revision: NEXT_REVISION, items: [{ ...NODES[0], enabled: false }, { ...NODES[1] }] };
+    if (mismatch === "source") view.enabled = false;
+    if (mismatch === "revision") view.revision = REVISION;
+    if (mismatch === "target") view.items[0].enabled = true;
+    if (mismatch === "sibling") view.items[1].enabled = false;
+    if (mismatch === "name") view.items[0].customName = "未请求的改名";
+    if (mismatch === "order") view.items.reverse();
+    if (mismatch === "missing") view.items.pop();
+    client.setNodeEnabled.mockResolvedValue(view);
+    await mount(client);
+    confirmNodeState();
+    await screen.findByText(/结果未确认或版本已变化/);
+    expect(nodeSwitch()).toHaveAccessibleName("停用节点 原始日本");
+    expect(nodeSwitch("原始美国")).toHaveAccessibleName("停用节点 原始美国");
+    expect(nodeSwitch()).toBeDisabled();
+    expect(client.setNodeEnabled).toHaveBeenCalledTimes(1);
+  });
+
+  test.each(["target", "sibling", "source"] as const)("deletion rejects a %s mismatch and keeps the prior rows visible", async (mismatch) => {
+    const client = fakeClient(true);
+    const items = [{ ...NODES[0], enabled: false }, NODES[1]];
+    client.listNodes.mockResolvedValue({ ...SNAPSHOT, enabled: true, items });
+    client.deleteNode.mockResolvedValue({ ...SNAPSHOT, enabled: mismatch !== "source", revision: NEXT_REVISION,
+      items: mismatch === "target" ? items : [{ ...NODES[1], enabled: mismatch !== "sibling" }] });
+    await mount(client);
+    requestNodeDeletion();
+    await screen.findByText(/结果未确认或版本已变化/);
+    expect(screen.getByRole("button", { name: "编辑 原始日本" })).toBeInTheDocument();
+    expect(nodeSwitch()).toBeDisabled();
+    expect(client.deleteNode).toHaveBeenCalledTimes(1);
+  });
+
+  test("pending node mutation blocks duplicate clicks and other writes until verified completion", async () => {
+    const client = fakeClient(true);
+    const pending = deferred<ThirdPartyNodeSnapshot>();
+    client.setNodeEnabled.mockReturnValue(pending.promise);
+    await mount(client);
+    fireEvent.click(nodeSwitch());
+    const button = within(screen.getByRole("dialog", { name: "确认停用节点" })).getByRole("button", { name: "确认停用节点" });
+    fireEvent.click(button); fireEvent.click(button);
+    expect(client.setNodeEnabled).toHaveBeenCalledTimes(1);
+    expect(nodeSwitch()).toHaveAccessibleName("停用节点 原始日本");
+    expect(nodeSwitch()).toBeDisabled();
+    expect(screen.getByRole("button", { name: "停用来源" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "重新读取" })).toBeDisabled();
+    await act(async () => pending.resolve({ ...SNAPSHOT, enabled: true, revision: NEXT_REVISION, items: [{ ...NODES[0], enabled: false }, NODES[1]] }));
+    expect(nodeSwitch()).toHaveAccessibleName("启用节点 原始日本");
+    expect(nodeSwitch("原始美国")).toHaveAccessibleName("停用节点 原始美国");
+  });
+
+  test("node mutation timeout aborts the request and rejects late success", async () => {
+    const client = fakeClient(true);
+    const pending = deferred<ThirdPartyNodeSnapshot>();
+    client.setNodeEnabled.mockReturnValue(pending.promise);
+    await mount(client);
+    vi.useFakeTimers();
+    confirmNodeState();
+    const signal = client.setNodeEnabled.mock.calls[0][4]!;
+    await act(async () => vi.advanceTimersByTimeAsync(15000));
+    expect(signal.aborted).toBe(true);
+    expect(nodeSwitch()).toBeDisabled();
+    await act(async () => pending.resolve({ ...SNAPSHOT, enabled: true, revision: NEXT_REVISION, items: [{ ...NODES[0], enabled: false }, NODES[1]] }));
+    expect(nodeSwitch()).toHaveAccessibleName("停用节点 原始日本");
+    expect(nodeSwitch()).toBeDisabled();
+    expect(client.setNodeEnabled).toHaveBeenCalledTimes(1);
+  });
+
+  test("unmount aborts a pending node mutation and ignores late readback", async () => {
+    const client = fakeClient(true);
+    const pending = deferred<ThirdPartyNodeSnapshot>();
+    client.setNodeEnabled.mockReturnValue(pending.promise);
+    const rendered = await mount(client);
+    confirmNodeState();
+    const signal = client.setNodeEnabled.mock.calls[0][4]!;
+    rendered.unmount();
+    expect(signal.aborted).toBe(true);
+    await act(async () => pending.resolve({ ...SNAPSHOT, enabled: true, revision: NEXT_REVISION, items: [{ ...NODES[0], enabled: false }, NODES[1]] }));
+    expect(screen.queryByRole("button", { name: /^[停启]用节点 原始/ })).not.toBeInTheDocument();
+    expect(client.setNodeEnabled).toHaveBeenCalledTimes(1);
   });
 
   test.each(["revision_conflict", "network"] as const)("%s save failure locks writes until explicit reload and never automatically retries", async (code) => {
