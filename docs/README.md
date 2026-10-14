@@ -1,6 +1,6 @@
 # Documentation Index
 
-Last updated: 2026-09-23, America/Los_Angeles.
+Last updated: 2026-10-11 UTC.
 
 ```yaml
 document_metadata:
@@ -8,7 +8,7 @@ document_metadata:
   lifecycle: active
   authority_scope: documentation_navigation
   superseded_by: null
-  last_verified_at: 2026-09-23
+  last_verified_at: 2026-10-11
   production_authority: false
 ```
 
@@ -169,6 +169,7 @@ security-alert counts and makes no current claim about them.
 | `docs/FUTURE_ACCOUNT_WALLET_FIRST_MODEL.md` | Source-only contract for the separately deferred future `wallet_first_unique_v1` model and its resource-transition reservations. It does not define the registration welcome-Coins promotion. | Active Risk A source-only contract; no production schema apply, feature activation, payment, Coins write, Commerce order, fulfillment, runtime mutation, or historical-account migration authority. | Read before changing the future wallet-first commercial model, per-account resource queueing, deferred reservations, or their activation gate. |
 | `docs/WALLET_FIRST_SETUP_DELIVERY_BOUNDARY.md` | Source-only boundary for wallet-first setup delivery through an explicit authenticated Portal-session `POST`. | Default-off; material stays out of the control DB and documentation, except for the short-lived no-store `POST` response or user-initiated OS clipboard copy. Production escrow key/path configuration, schema apply, deployment, and activation remain future Risk A work. | Read before proposing wallet-first setup delivery, escrow custody, an activation request, or a related schema change. |
 | `docs/COMMERCIAL_MODEL_V1.md` | Commercial Model v1 for primary entitlement packages plus the separate target closed-loop Coins layer and its recharge, product-order, wallet, and fulfillment boundaries. | Active commercial-model baseline; target Coins wording is not current backend or production availability and grants no pricing, provider, runtime, schema, credential, or refund authority. | Read before changing packages, entitlement semantics, Coins domains, quota behavior, renewal, cancellation, recharge, product-order, or fulfillment wording. |
+| `docs/MONTHLY_CARD_PLAN_SWITCH.md` | Design and implementation contract for monthly-card renew / upgrade / scheduled-downgrade (plan A): charge math, state model, legacy-model production precheck, default-off flag, additive schema and rollback. | Active Risk A source design; default-off; no schema apply, flag activation, deploy, or production authority. | Read before changing plan-switch eligibility, switch pricing, scheduled downgrades, or the Portal plan cards. |
 | `docs/COINS_FIRST_COMMERCIAL_DECISION.md` | Current target decision for the Coins-first catalog and Portal-account referral reward, including the first-verified-external-recharge origin and explicit unresolved price-transition inputs. | Active Risk C product-decision authority; no source implementation, provider, schema, Wallet mutation, fulfillment, deployment, or production authority. | Read before implementing or reviewing catalog values, recharge tiers, referral metrics, referral accrual/reversal, discount policy, renewal pricing, or upgrade/downgrade behavior. |
 | `docs/PORTAL_REFERRAL_REWARD_RELEASE.md` | Approved 20% first-recharge reward, seven-day delay, floor rounding and 60-day attribution; automatic verification/settlement implementation and activation gates. | Operational checklist; not production authority or proof that upstream refund verification and automatic release are available. | Read before enabling reward accrual/confirmation, integrating refund facts or changing the automatic settlement worker. |
 | `docs/BILLING_RECHARGE_CONTRACT.md` | Boundary between the legacy traffic-topup compatibility helper and the durable provider-neutral Recharge/Payment store, coordinator, Portal routes, `paid_coins` settlement, and separate product hold/capture flow now present in source. | Active source/test/migration contract; no production DB apply, provider activation, refund/reconciliation execution, Wallet runtime, or fulfillment authority. | Read before changing either legacy top-up behavior or durable Recharge/Payment, Wallet settlement, product-order, reversal, or fulfillment flows. |
@@ -203,6 +204,7 @@ security-alert counts and makes no current claim about them.
 | `docs/COMMERCIAL_FEATURE_INTEGRATION_GATE.md` | Admission gate for source-only Admin/Portal commercial integration and the separate Risk A production handoff. | Active source-integration contract; no schema, auth, deployment, provider, runtime, or production authority. | Read before attaching commercial behavior to an Admin or Portal entry, route, stylesheet, build, or artifact. |
 | `docs/RESOURCE_PACKAGE_CLI.md` | CLI-first controlled-open and resource package model for turning operator-provided lead/account/entitlement/access facts into an operator-safe delivery package. | Active repository tooling contract; no execution authority. | Read before using natural-language/agent-assisted registration, subscription delivery preparation, or resource-package audit flows. |
 | `docs/VALIDATION_BASELINE.md` | Current validation command matrix and PR completion gate by risk tier and touched surface. | Active validation entrypoint; not historical pass-count archive and not deploy approval. | Read before choosing which checks to run for a PR. |
+| [`docs/CI_STATUS_LOG.md`](CI_STATUS_LOG.md) | Dated CI availability, exact-source hosted/local results and safe append-only run summaries. | Evidence index; no workflow, budget, execution or production authority. | Read for current reported CI blockers and the pending November 2026 latest-master manual check. |
 | `docs/CI_MANUAL_VALIDATION.md` | Manual CI validation host workflow; target direction is local Linux manual CI, with historical Aliyun manual CI facts retained until the transition is validated. | Active runbook, not staging or deploy approval. | Read before using a manual validation host for repo-level CI evidence. |
 | `docs/CLOUDFLARE_PUBLIC_SITE_CI.md` | Repository-only Cloudflare public static site CI boundary, pinned Wrangler dry-run command, and non-goals for keeping backend/control-plane/API/runtime work off Cloudflare. | Active CI boundary; no deploy, DNS, Cloudflare account, secret, or production authority. | Read before changing `wrangler.public-site.jsonc`, `admin/dist-site` public-site builds, GitHub public-site CI, or Cloudflare static-site deploy preparation. |
 

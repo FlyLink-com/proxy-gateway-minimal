@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { isAbsolute, join, resolve } from "node:path";
+import { isAbsolute, join, relative, resolve } from "node:path";
 import test from "node:test";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -150,8 +150,16 @@ test("source profile follows engines without requiring one Node patch or privile
 });
 
 test("source tool discovery respects platform PATH casing and Windows executable suffixes without launching tools", (t) => {
-  const root = mkdtempSync(join(tmpdir(), "validation-tool-path-"));
+  // A relative directory is valid in either PATH format and avoids interpreting
+  // a Windows drive colon as the Linux PATH separator.
+  const fixtureParent = process.platform === "win32" ? process.cwd() : tmpdir();
+  const root = mkdtempSync(join(fixtureParent, "validation-tool-path-"));
   t.after(() => rmSync(root, { recursive: true, force: true }));
+  const relativeDirectory = relative(process.cwd(), root);
+  assert.notEqual(relativeDirectory, "");
+  assert.equal(isAbsolute(relativeDirectory), false);
+  assert.equal(relativeDirectory.includes(":"), false);
+  assert.equal(resolve(relativeDirectory), root);
   const posixGit = join(root, "git");
   const windowsGit = join(root, "git.EXE");
   writeFileSync(posixGit, "fixture\n", { mode: 0o755 });
@@ -160,7 +168,7 @@ test("source tool discovery respects platform PATH casing and Windows executable
   chmodSync(windowsGit, 0o755);
 
   assert.equal(isExecutableOnPath("git", {
-    environment: { PATH: root },
+    environment: { PATH: relativeDirectory },
     platform: "linux"
   }), true);
   assert.equal(isExecutableOnPath("git", {
@@ -168,9 +176,27 @@ test("source tool discovery respects platform PATH casing and Windows executable
     platform: "win32"
   }), true);
   assert.equal(isExecutableOnPath("../git", {
-    environment: { PATH: root },
+    environment: { PATH: relativeDirectory },
     platform: "linux"
   }), false);
+  assert.equal(isExecutableOnPath("missing-tool", {
+    environment: { PATH: relativeDirectory },
+    platform: "linux"
+  }), false);
+  mkdirSync(join(root, "directory-tool"));
+  assert.equal(isExecutableOnPath("directory-tool", {
+    environment: { PATH: relativeDirectory },
+    platform: "linux"
+  }), false);
+  // Windows does not implement POSIX execute permission bits. Exercise actual
+  // X_OK denial on native POSIX hosts instead of pretending chmod has that effect.
+  if (process.platform !== "win32") {
+    chmodSync(posixGit, 0o644);
+    assert.equal(isExecutableOnPath("git", {
+      environment: { PATH: relativeDirectory },
+      platform: "linux"
+    }), false);
+  }
 });
 
 test("Windows source environment replaces ambient command settings and admits only a discovered Git directory", (t) => {
@@ -647,11 +673,11 @@ test("source test environment removes host injection and binds the tracked synth
   assert.equal(environment.GIT_TERMINAL_PROMPT, "0");
   assert.equal(
     environment.SUBSCRIPTION_PROXY_CONFIG_PATH,
-    `/reviewed/source/${SOURCE_VALIDATION_PROXY_CONFIG_RELATIVE_PATH}`
+    resolve("/reviewed/source", SOURCE_VALIDATION_PROXY_CONFIG_RELATIVE_PATH)
   );
   assert.equal(
     environment.DOTENV_CONFIG_PATH,
-    `/reviewed/source/${SOURCE_VALIDATION_EMPTY_ENV_RELATIVE_PATH}`
+    resolve("/reviewed/source", SOURCE_VALIDATION_EMPTY_ENV_RELATIVE_PATH)
   );
   assert.equal(environment.GIT_CONFIG_GLOBAL, environment.DOTENV_CONFIG_PATH);
   assert.equal(environment.SGP_TUIC_HOST, "sgp.example.test");

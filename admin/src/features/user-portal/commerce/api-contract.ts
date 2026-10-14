@@ -67,6 +67,20 @@ export type PortalCoinBalance = {
   heldCoins: number;
 };
 
+export type PortalPlanSwitchKind =
+  | "renewal"
+  | "upgrade_inplace"
+  | "upgrade_restart"
+  | "downgrade_scheduled";
+
+export type PortalPlanSwitchQuote = {
+  kind: PortalPlanSwitchKind;
+  creditUnits: number;
+  chargeUnits: number;
+  effectiveAt: string | null;
+  cancelsPendingDowngrade: boolean;
+};
+
 export type PortalCoinQuote = {
   quoteRef: string;
   offer: PortalCoinOffer;
@@ -80,6 +94,7 @@ export type PortalCoinQuote = {
     after: PortalCoinBalance;
   };
   expiresAt: string;
+  planSwitch?: PortalPlanSwitchQuote;
 };
 
 export type PortalCoinPaymentStatus =
@@ -116,6 +131,7 @@ export type PortalCoinOrder = {
   fulfillment: PortalCoinFulfillment;
   createdAt: string;
   updatedAt: string;
+  planSwitch?: PortalPlanSwitchQuote;
 };
 
 export type PortalCoinOrderPage = {
@@ -166,6 +182,16 @@ export type PortalCoinCommerceErrorCode =
   | "idempotency_key_reused"
   | "insufficient_coins"
   | "offer_unavailable"
+  | "plan_switch_already_scheduled"
+  | "plan_switch_application_pending"
+  | "plan_switch_authority_mode_unsupported"
+  | "plan_switch_authority_row_present"
+  | "plan_switch_commerce_model_unsupported"
+  | "plan_switch_credit_exceeds_price"
+  | "plan_switch_precheck_unavailable"
+  | "plan_switch_state_changed"
+  | "plan_switch_upgrade_window_closed"
+  | "plan_switch_cycle_misaligned"
   | "quote_expired"
   | "quote_stale"
   | "reconciliation_required"
@@ -190,6 +216,9 @@ export type PortalCoinCommerceClient = {
     sessionRef: string;
     offerRef: string;
   }): Promise<PortalCoinQuote>;
+  readPlanSwitchState?(input: {
+    sessionRef: string;
+  }): Promise<PortalPlanSwitchState | null>;
   createOrder(input: {
     sessionRef: string;
     quoteRef: string;
@@ -221,6 +250,33 @@ export type PortalCoinCommerceClient = {
  * commercial model that processes its Coins.
  */
 export type PortalCommerceModel = "legacy" | "wallet_first_unique_v1";
+
+export type PortalPlanSwitchAction =
+  | "current_renew"
+  | "upgrade"
+  | "downgrade"
+  | "unavailable";
+
+export type PortalPlanSwitchOfferState = {
+  offerRef: string;
+  action: PortalPlanSwitchAction;
+  chargeUnits: number | null;
+  creditUnits: number | null;
+  effectiveAt: string | null;
+  reasonCode: PortalCoinCommerceErrorCode | null;
+};
+
+export type PortalPlanSwitchState = {
+  current: {
+    offerRef: string;
+    validUntil: string;
+  } | null;
+  pendingSwitch: {
+    toOfferRef: string;
+    effectiveAt: string;
+  } | null;
+  offers: PortalPlanSwitchOfferState[];
+};
 
 export type PortalCommerceModelClient = {
   getCommerceModel(input: {

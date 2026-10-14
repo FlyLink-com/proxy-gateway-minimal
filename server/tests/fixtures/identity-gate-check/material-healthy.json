@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "records": [
+    {
+      "credentialRef": "edgecred_alpha_001",
+      "materialDigest": "sha256:alpha",
+      "material": {
+        "uuid": "11111111-1111-4111-8111-111111111111",
+        "password": "synthetic-password-alpha"
+      }
+    },
+    {
+      "credentialRef": "edgecred_beta_002",
+      "materialDigest": "sha256:beta",
+      "material": {
+        "uuid": "22222222-2222-4222-8222-222222222222",
+        "password": "synthetic-password-beta"
+      }
+    }
+  ]
+}

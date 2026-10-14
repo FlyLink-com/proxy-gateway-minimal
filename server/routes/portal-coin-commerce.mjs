@@ -5,6 +5,8 @@ import {
   applyCoinDiscount,
   normalizeCoinCommerceOffer
 } from "../services/platform/coin-commerce-domain.mjs";
+import { PLAN_SWITCH_CONFLICT_CODES } from "../services/platform/coin-commerce-plan-switch-policy.mjs";
+import { describePlanSwitchPortalState } from "../services/platform/coin-commerce-plan-switch-runtime.mjs";
 import {
   PORTAL_COMMERCE_MODE_LEGACY,
   PORTAL_COMMERCE_MODE_WALLET_FIRST,
@@ -84,6 +86,37 @@ const STORE_ERROR_RESPONSES = new Map([
   ["wallet_not_active", [423, "wallet_not_active"]],
   ["reconciliation_required", [423, "reconciliation_required"]]
 ]);
+for (const code of PLAN_SWITCH_CONFLICT_CODES) {
+  STORE_ERROR_RESPONSES.set(code, [409, code]);
+}
+const PLAN_SWITCH_QUOTE_KINDS = new Set([
+  "renewal",
+  "upgrade_inplace",
+  "upgrade_restart",
+  "downgrade_scheduled"
+]);
+const QUOTE_FIELDS = [
+  "quoteRef",
+  "offer",
+  "amountUnits",
+  "appliedDiscountBasisPoints",
+  "purchaseAvailability",
+  "shortfallUnits",
+  "allocation",
+  "balances",
+  "expiresAt"
+];
+const ORDER_FIELDS = [
+  "orderRef",
+  "offer",
+  "amountUnits",
+  "allocation",
+  "paymentStatus",
+  "cancelUntil",
+  "fulfillment",
+  "createdAt",
+  "updatedAt"
+];
 
 function projectionInvalid() {
   return new Error("invalid Portal Commerce projection");
@@ -510,18 +543,42 @@ function normalizeBalance(value) {
   };
 }
 
-function projectQuote(input) {
+function projectPlanSwitch(input) {
   const value = snapshotExactObject(input, [
-    "quoteRef",
-    "offer",
-    "amountUnits",
-    "appliedDiscountBasisPoints",
-    "purchaseAvailability",
-    "shortfallUnits",
-    "allocation",
-    "balances",
-    "expiresAt"
+    "kind",
+    "creditUnits",
+    "chargeUnits",
+    "effectiveAt",
+    "cancelsPendingDowngrade"
   ]);
+  if (
+    !PLAN_SWITCH_QUOTE_KINDS.has(value.kind)
+    || typeof value.cancelsPendingDowngrade !== "boolean"
+  ) {
+    throw projectionInvalid();
+  }
+  const effectiveAt = value.effectiveAt === null
+    ? null
+    : requireUtcTimestamp(value.effectiveAt);
+  return {
+    kind: value.kind,
+    creditUnits: requireNonNegativeSafeInteger(value.creditUnits),
+    chargeUnits: requirePositiveSafeInteger(value.chargeUnits),
+    effectiveAt,
+    cancelsPendingDowngrade: value.cancelsPendingDowngrade
+  };
+}
+
+function projectQuote(input) {
+  const withPlanSwitch = Boolean(
+    input
+    && typeof input === "object"
+    && Object.hasOwn(input, "planSwitch")
+  );
+  const value = snapshotExactObject(
+    input,
+    withPlanSwitch ? [...QUOTE_FIELDS, "planSwitch"] : QUOTE_FIELDS
+  );
   if (
     typeof value.quoteRef !== "string"
     || !COMMERCE_REFERENCE.test(value.quoteRef)
@@ -534,10 +591,15 @@ function projectQuote(input) {
     value.appliedDiscountBasisPoints
   );
   if (appliedDiscountBasisPoints > 10_000) throw projectionInvalid();
+  const planSwitch = withPlanSwitch
+    ? projectPlanSwitch(value.planSwitch)
+    : null;
   let expectedAmount;
   try {
     expectedAmount = applyCoinDiscount({
-      baseCoinUnits: offer.normalized.baseCoinUnits,
+      baseCoinUnits: planSwitch
+        ? planSwitch.chargeUnits
+        : offer.normalized.baseCoinUnits,
       discountBasisPoints: appliedDiscountBasisPoints
     });
   } catch {
@@ -622,7 +684,8 @@ function projectQuote(input) {
     shortfallUnits,
     allocation,
     balances: { before, after },
-    expiresAt: requireUtcTimestamp(value.expiresAt)
+    expiresAt: requireUtcTimestamp(value.expiresAt),
+    ...(planSwitch ? { planSwitch } : {})
   };
 }
 
@@ -727,17 +790,18 @@ function projectDeferredTransitionList(input) {
 }
 
 function projectOrder(input) {
-  const value = snapshotExactObject(input, [
-    "orderRef",
-    "offer",
-    "amountUnits",
-    "allocation",
-    "paymentStatus",
-    "cancelUntil",
-    "fulfillment",
-    "createdAt",
-    "updatedAt"
-  ]);
+  const withPlanSwitch = Boolean(
+    input
+    && typeof input === "object"
+    && Object.hasOwn(input, "planSwitch")
+  );
+  const value = snapshotExactObject(
+    input,
+    withPlanSwitch ? [...ORDER_FIELDS, "planSwitch"] : ORDER_FIELDS
+  );
+  const planSwitch = withPlanSwitch
+    ? projectPlanSwitch(value.planSwitch)
+    : null;
   if (
     typeof value.orderRef !== "string"
     || !COMMERCE_REFERENCE.test(value.orderRef)
@@ -817,7 +881,8 @@ function projectOrder(input) {
       safeCode: fulfillmentValue.safeCode
     },
     createdAt,
-    updatedAt
+    updatedAt,
+    ...(planSwitch ? { planSwitch } : {})
   };
 }
 
@@ -1267,7 +1332,14 @@ function rawPathname(req) {
   return queryIndex === -1 ? target : target.slice(0, queryIndex);
 }
 
-function isSelectedCommerceRoute(method, pathname) {
+function isSelectedCommerceRoute(method, pathname, planSwitchEnabled) {
+  if (
+    planSwitchEnabled
+    && method === "GET"
+    && pathname === "/api/portal/commerce/plan-switch/state"
+  ) {
+    return true;
+  }
   if (method === "GET") {
     return (
       pathname === "/api/portal/catalog/offers"
@@ -1311,6 +1383,10 @@ export function portalCoinCommerceRoutes(state, options = {}) {
   // An artifact-only rotation cannot attest that an imported edge credential
   // has stopped working. Expose this route only for a complete reset service.
   const dataPackRotation = ownDataValue(state.platform, "coinCommerceDataPackCredentialReset");
+  const planSwitchEnabled = ownBooleanFeatureFlag(
+    state.platform,
+    "coinsCommercePlanSwitchEnabled"
+  ) === true;
   const requireSession = createSessionMiddleware(state, options.browserSessions);
   const resolveCommerceModel = createCommerceModelMiddleware(state);
   const requireWalletFirstService = createWalletFirstServiceMiddleware(state);
@@ -1391,6 +1467,59 @@ export function portalCoinCommerceRoutes(state, options = {}) {
       }
     }
   );
+
+  if (planSwitchEnabled) {
+    router.get(
+      "/api/portal/commerce/plan-switch/state",
+      requireNoQuery,
+      requireSession,
+      resolveCommerceModel,
+      requireLegacyCommerceModel,
+      (_req, res) => {
+        try {
+          const accountId = res.locals.portalCommerceSession.accountId;
+          const controlStore = ownDataValue(state.platform, "controlStore");
+          if (
+            !controlStore
+            || typeof controlStore.readPlanSwitchAccountFacts !== "function"
+          ) {
+            sendCommerceError(res, 409, "plan_switch_precheck_unavailable");
+            return;
+          }
+          const nowIso = new Date(
+            (options.nowFn || Date.now)()
+          ).toISOString();
+          const facts = controlStore.readPlanSwitchAccountFacts({
+            accountId,
+            now: nowIso
+          });
+          if (!facts) {
+            sendCommerceError(res, 409, "plan_switch_precheck_unavailable");
+            return;
+          }
+          const described = describePlanSwitchPortalState({
+            offers: store.listPublishedOffers({ accountId }),
+            authorityFlagEnabled: ownBooleanFeatureFlag(
+              state.platform,
+              "coinsCommerceAuthorityEnabled"
+            ) === true,
+            commerceMode: facts.commerceMode,
+            authorityRowCount: facts.authorityRowCount,
+            nowIso,
+            entitlement: facts.entitlement,
+            scheduledSwitch: facts.scheduledSwitch
+          });
+          if (!described) {
+            sendCommerceError(res, 503, "commerce_unavailable");
+            return;
+          }
+          res.json(described);
+        } catch (error) {
+          sendStoreError(res, error);
+        }
+      }
+    );
+  }
 
   router.get(
     "/api/portal/commerce/orders",
@@ -1744,7 +1873,7 @@ export function portalCoinCommerceRoutes(state, options = {}) {
   );
 
   return function portalCoinCommerceDispatcher(req, res, next) {
-    if (!isSelectedCommerceRoute(req.method, rawPathname(req))) {
+    if (!isSelectedCommerceRoute(req.method, rawPathname(req), planSwitchEnabled)) {
       next();
       return;
     }

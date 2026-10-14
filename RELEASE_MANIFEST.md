@@ -6,23 +6,21 @@ document_metadata:
   lifecycle: active
   authority_scope: release_traceability
   superseded_by: null
-  last_verified_at: 2026-09-14
+  last_verified_at: 2026-10-11
   production_authority: false
 ```
 
 > Status:
 > - Type: Active source-to-production traceability baseline
 > - Risk: C
-> - Last updated: 2026-09-14, America/Los_Angeles
-> - Source reconciliation cutoff observed on 2026-09-14:
->   `master@3565c54865676ba127b115f7f914a0359e545bf0`
-> - Latest recorded production deployment event: 2026-08-26, deployed source
->   `b5ca23db58c55f2d73ec59ffa9525f85b92a8a9c`; promotion-09 ended
->   `promoted_verified` on release `control-plane-b5ca23db-a3-sync-20260825`
-> - 2026-09-14 readback: the deployed-source GitHub Actions artifacts are
->   expired; current `master` is not that deployment identity; automatic
->   deployment wiring is only partial (validate/artifact/dry-run, not
->   production promotion)
+> - Last updated: 2026-10-11 UTC
+> - Source reconciliation cutoff: `master@483f535ee6d90fe222b866591ade19a7776b1d47`
+> - Latest read deployment records add #764 reset/collector, preserved #767
+>   containment and #769 desktop Portal to the earlier BWH composition;
+>   they are not a whole-master backend deployment
+> - Dated source/check/task/deployment evidence and remaining unknowns:
+>   [2026-10-11 reconciliation](docs/CURRENT_RELEASE_STATE.md#source-and-deployment-reconciliation-2026-10-11)
+> - No live runtime or provider readback was performed by this docs change
 > - Production authority: None. This file does not deploy, promote, roll back,
 >   mutate runtime state, or replace live inventory and validation.
 
@@ -89,7 +87,7 @@ deployment must remain disabled or require independently enforced approval.
 
 ## Recorded Control-Plane Deployment (2026-08-26)
 
-The deployment record reviewed at this document cutoff is the
+The deployment record reviewed at the historical 2026-08-26 cutoff is the
 [PR #667 Deploy Note](https://github.com/gccwebos-com/proxy-gateway-minimal/pull/667#issuecomment-5426440067):
 
 - deployed at `2026-08-26T13:53:47.576Z`;
@@ -151,7 +149,7 @@ Use only these values:
 
 | Release unit | Boundary |
 | --- | --- |
-| `control-plane-app` | Japan control-plane Node application |
+| `control-plane-app` | Control-plane Node application; exact target is bound by its Deploy Note |
 | `company-site-static` | Public GCC WebOS company website |
 | `portal-static` | Customer User Portal |
 | `admin-static` | Protected Admin console |
@@ -489,9 +487,10 @@ only the bounded Japan `control-plane-app` release, materialization, snapshot,
 service and health boundaries recorded above. Issues #597 and #598 retain the
 durable release and supply-chain closure.
 
-The only control-plane deployment recorded by this manifest is
-`control-plane-b5ca23db-a3-sync-20260825`, based on the linked Deploy Note. A
-source-only PR may say that
+At this historical 2026-09-14 cutoff, the linked control-plane deployment
+was `control-plane-b5ca23db-a3-sync-20260825`. Later Japan and BWH records are
+indexed in `docs/CURRENT_RELEASE_STATE.md`; this history is not the current
+production identity. A source-only PR may say that
 deployment is not applicable; that statement is not a Deploy Note and must not
 be backfilled as production evidence.
 

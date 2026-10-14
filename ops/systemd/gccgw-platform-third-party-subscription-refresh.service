@@ -1,0 +1,27 @@
+# Source-only oneshot. This unit is not installed or enabled.
+# ExecStart mutates only when THIRD_PARTY_SUBSCRIPTION_ENABLED is true.
+# Put THIRD_PARTY_SUBSCRIPTION_DB_PATH under ReadWritePaths. That directory
+# matches the lead-retention unit. WAL sidecars are created beside the DB file.
+[Unit]
+Description=GCCGW platform third-party subscription refresh
+After=local-fs.target
+
+[Service]
+Type=oneshot
+User=proxy-gateway
+Group=proxy-gateway
+UMask=0077
+WorkingDirectory=/opt/proxy-gateway-minimal-candidate/current
+EnvironmentFile=/opt/proxy-gateway-minimal-candidate/.env
+ExecStart=/usr/bin/node scripts/platform-third-party-subscription-refresh.mjs --apply
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+LockPersonality=true
+RestrictSUIDSGID=true
+ReadWritePaths=/opt/proxy-gateway-minimal-candidate/state

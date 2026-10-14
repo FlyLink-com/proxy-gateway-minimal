@@ -741,6 +741,51 @@ function portalClientWithActiveSubscription(
   });
 }
 
+const SYNTHETIC_SESSION_LABEL = "synthetic-user@example.test";
+const SYNTHETIC_ORDER_OWNER = "acct_synthetic_owner";
+const SYNTHETIC_OLD_SUBSCRIPTION_URL = "https://sub.example.test/import/existing-visible-once";
+const SYNTHETIC_NEW_SUBSCRIPTION_URL = "https://sub.example.test/import/reset-visible-once";
+
+function syntheticPublicBrowserSession(): PortalSession {
+  return {
+    status: "authenticated_preview",
+    sessionRef: "portal_session_synthetic_label",
+    userRef: SYNTHETIC_SESSION_LABEL,
+    displayName: SYNTHETIC_SESSION_LABEL,
+    authMode: "email",
+    registeredAt: "2026-05-31T00:00:00.000Z",
+    safety: {
+      noAdminApi: true,
+      noPublicAuthActivated: true,
+      noRawPasswordReturned: true
+    }
+  };
+}
+
+function portalClientWithPublicSessionLabel(
+  requestOverrides: Partial<PortalSubscriptionRequest> = {},
+  clientOverrides: Partial<UserPortalClient> = {}
+): UserPortalClient {
+  return portalClientWithActiveSubscription(
+    { userRef: SYNTHETIC_ORDER_OWNER, ...requestOverrides },
+    {
+      authenticate: vi.fn(async () => syntheticPublicBrowserSession()),
+      ...clientOverrides
+    }
+  );
+}
+
+function completedSyntheticReset(
+  subscriptionUrl = SYNTHETIC_NEW_SUBSCRIPTION_URL,
+  userRef = SYNTHETIC_ORDER_OWNER
+): PortalSubscriptionRequest {
+  return activeSubscriptionRequest({
+    userRef,
+    subscriptionUrl,
+    event: { type: "subscription_link_reset", occurredAt: "2026-05-31T00:00:00.000Z" }
+  });
+}
+
 function validHumanVerification() {
   return {
     challengeId: "local-math-v1:4+6",
@@ -912,7 +957,7 @@ describe("user portal route", () => {
     render(createElement(App));
 
     await waitFor(() => {
-      expect(screen.getByLabelText("管理员账户")).not.toBeNull();
+      expect(screen.getByLabelText("密码")).not.toBeNull();
       expect(screen.getByRole("heading", { name: "Admin Console" })).not.toBeNull();
     });
     expect(screen.queryByLabelText("用户中心导航")).toBeNull();
@@ -927,7 +972,7 @@ describe("user portal route", () => {
 
     await waitFor(() => {
       expect(screen.getByRole("heading", { name: "Admin Console" })).not.toBeNull();
-      expect(screen.getByLabelText("管理员账户")).not.toBeNull();
+      expect(screen.getByLabelText("密码")).not.toBeNull();
     });
     expect(screen.queryByRole("heading", { name: "客户 Portal" })).toBeNull();
     expect(screen.queryByLabelText("用户中心导航")).toBeNull();
@@ -5465,6 +5510,94 @@ describe("user portal product surface", () => {
     await screen.findByDisplayValue("https://sub.example.test/import/reset-visible-once");
   });
 
+  test.each([
+    ["current first", "success"],
+    ["current first", "rejection"],
+    ["old first", "success"],
+    ["old first", "rejection"]
+  ] as const)("subscription pending belongs to its session when %s finishes and the old reset is %s", async (completionOrder, oldOutcome) => {
+    const oldSession = portalWalletSession("session_reset_old", "reset-old@example.test");
+    const currentSession = portalWalletSession("session_reset_new", "reset-new@example.test");
+    const oldReset = deferredValue<PortalSubscriptionRequest>();
+    const currentRead = deferredValue<PortalSubscriptionRequest>();
+    const oldWallet = deferredValue<PortalWalletSummary>();
+    const stateTemplate = portalClientWithActiveSubscription();
+    const client = portalClientWithActiveSubscription({}, {
+      authenticate: vi.fn().mockResolvedValueOnce(oldSession).mockResolvedValueOnce(currentSession),
+      fetchCurrentState: vi.fn(async (input) => ({
+        ...await stateTemplate.fetchCurrentState(input),
+        subscriptionRequest: activeSubscriptionRequest({
+          userRef: input.userRef,
+          requestRef: input.userRef === oldSession.userRef ? "subreq_reset_old" : "subreq_reset_new",
+          subscriptionUrl: input.userRef === oldSession.userRef ? SYNTHETIC_OLD_SUBSCRIPTION_URL : undefined
+        })
+      })),
+      resetSubscriptionLink: vi.fn(() => oldReset.promise),
+      revealSubscription: vi.fn(() => currentRead.promise),
+      wallet: {
+        getSummary: vi.fn(({ sessionRef }) => sessionRef === oldSession.sessionRef
+          ? oldWallet.promise : Promise.resolve(portalWalletSummary(333))),
+        listLedger: vi.fn(async () => ({ entries: [], nextCursor: null }))
+      }
+    });
+    render(createElement(UserPortalPage, { portalClient: client }));
+    await enterPortal();
+    openPortalSubscriptions();
+    await screen.findByDisplayValue(SYNTHETIC_OLD_SUBSCRIPTION_URL);
+    fireEvent.click(screen.getByRole("button", { name: "重置订阅" }));
+    fireEvent.click(screen.getByRole("button", { name: "确认重置" }));
+    expect(client.resetSubscriptionLink).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      oldWallet.reject(new PortalWalletClientError("wallet_session_invalid", false));
+      await Promise.allSettled([oldWallet.promise]);
+    });
+    await screen.findByRole("heading", { name: "账号登录" });
+    await enterPortal();
+    await screen.findByText("Coins · 333");
+    openPortalSubscriptions();
+    await waitFor(() => expect(client.revealSubscription).toHaveBeenCalledExactlyOnceWith({
+      userRef: currentSession.userRef,
+      sessionRef: currentSession.sessionRef,
+      requestRef: "subreq_reset_new"
+    }));
+    expect(screen.getByRole("button", { name: "生成订阅链接" })).toBeDisabled();
+
+    const finishOld = () => act(async () => {
+      if (oldOutcome === "rejection") oldReset.reject(new Error("synthetic_old_reset_failed"));
+      else oldReset.resolve({
+        ...completedSyntheticReset("https://sub.example.test/import/old-session-reset", oldSession.userRef),
+        requestRef: "subreq_reset_old"
+      });
+      await Promise.allSettled([oldReset.promise]);
+    });
+    const finishCurrent = () => act(async () => {
+      currentRead.resolve({
+        ...completedSyntheticReset(SYNTHETIC_NEW_SUBSCRIPTION_URL, currentSession.userRef),
+        requestRef: "subreq_reset_new"
+      });
+      await currentRead.promise;
+    });
+
+    if (completionOrder === "old first") {
+      await finishOld();
+      expect(screen.getByRole("button", { name: "生成订阅链接" })).toBeDisabled();
+      expect(screen.getByRole("button", { name: "复制链接" })).toBeDisabled();
+      await finishCurrent();
+    } else {
+      await finishCurrent();
+      expect(screen.getByRole("button", { name: "重新获取" })).toBeEnabled();
+      await finishOld();
+    }
+    await screen.findByDisplayValue(SYNTHETIC_NEW_SUBSCRIPTION_URL);
+    expect(screen.queryByRole("dialog", { name: "重置订阅链接" })).toBeNull();
+    expect(screen.getByRole("button", { name: "重新获取" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "重置订阅" })).toBeEnabled();
+    expect(screen.queryByDisplayValue("https://sub.example.test/import/old-session-reset")).toBeNull();
+    expect(client.resetSubscriptionLink).toHaveBeenCalledTimes(1);
+    expect(client.revealSubscription).toHaveBeenCalledTimes(1);
+    expect(client.refreshSubscription).not.toHaveBeenCalled();
+  });
+
   test("subscription reset preserves the old display on failure and reuses its idempotency key", async () => {
     const resetSubscriptionLink = vi.fn()
       .mockRejectedValueOnce(new Error("响应结果未确认，请重试同一次重置。"))
@@ -5600,6 +5733,262 @@ describe("user portal product surface", () => {
     expect(screen.getByDisplayValue("https://sub.example.test/import/existing-visible-once")).not.toBeNull();
     expect(screen.queryByDisplayValue("https://sub.example.test/import/unconfirmed-visible-once")).toBeNull();
     expect(screen.queryByText(/旧链接已于/)).toBeNull();
+  });
+
+  test("subscription reset shows the replacement immediately when the session label differs from the record owner", async () => {
+    const resetSubscriptionLink = vi.fn(async () => completedSyntheticReset());
+    const client = portalClientWithPublicSessionLabel({}, { resetSubscriptionLink });
+    const writeText = vi.fn(async () => undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText }
+    });
+    render(createElement(UserPortalPage, { portalClient: client }));
+    await enterPortal();
+    openPortalSubscriptions();
+    await screen.findByDisplayValue(SYNTHETIC_OLD_SUBSCRIPTION_URL);
+
+    fireEvent.click(screen.getByRole("button", { name: "重置订阅" }));
+    expect(resetSubscriptionLink).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "确认重置" }));
+
+    await screen.findByDisplayValue(SYNTHETIC_NEW_SUBSCRIPTION_URL);
+    expect(screen.queryByDisplayValue(SYNTHETIC_OLD_SUBSCRIPTION_URL)).toBeNull();
+    expect(screen.queryByRole("dialog", { name: "重置订阅链接" })).toBeNull();
+    expect(screen.queryByText(/重置结果待确认/)).toBeNull();
+    expect(screen.getByText(/旧链接已于/)).not.toBeNull();
+    expect(resetSubscriptionLink).toHaveBeenCalledTimes(1);
+    expect(resetSubscriptionLink).toHaveBeenCalledWith(expect.objectContaining({
+      userRef: SYNTHETIC_SESSION_LABEL,
+      requestRef: "subreq_existing_monthly",
+      idempotencyKey: expect.any(String)
+    }));
+    expect(client.revealSubscription).not.toHaveBeenCalled();
+    expect(client.refreshSubscription).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "复制链接" }));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith(SYNTHETIC_NEW_SUBSCRIPTION_URL));
+    expect(writeText).not.toHaveBeenCalledWith(SYNTHETIC_OLD_SUBSCRIPTION_URL);
+
+    fireEvent.click(screen.getByRole("button", { name: "我已复制，下一步" }));
+    expect(screen.getByText("导入订阅链接")).not.toBeNull();
+    expect(screen.queryByDisplayValue(SYNTHETIC_OLD_SUBSCRIPTION_URL)).toBeNull();
+    expect(screen.queryByText(SYNTHETIC_OLD_SUBSCRIPTION_URL)).toBeNull();
+
+    openPortalOrders();
+    expect(screen.queryByText(SYNTHETIC_OLD_SUBSCRIPTION_URL)).toBeNull();
+    expect(screen.queryByText(SYNTHETIC_NEW_SUBSCRIPTION_URL)).toBeNull();
+    openPortalSubscriptions();
+    await screen.findByDisplayValue(SYNTHETIC_NEW_SUBSCRIPTION_URL);
+    expect(screen.queryByDisplayValue(SYNTHETIC_OLD_SUBSCRIPTION_URL)).toBeNull();
+    expect(resetSubscriptionLink).toHaveBeenCalledTimes(1);
+
+    vi.mocked(client.revealSubscription).mockResolvedValue(activeSubscriptionRequest({
+      userRef: SYNTHETIC_ORDER_OWNER,
+      subscriptionUrl: SYNTHETIC_NEW_SUBSCRIPTION_URL,
+      event: { type: "subscription_link_reset", occurredAt: "2026-05-31T00:00:00.000Z" }
+    }));
+    fireEvent.click(screen.getByRole("button", { name: "重新获取" }));
+    await waitFor(() => expect(client.revealSubscription).toHaveBeenCalledTimes(1));
+    expect(client.revealSubscription).toHaveBeenCalledWith(expect.objectContaining({
+      userRef: SYNTHETIC_SESSION_LABEL,
+      requestRef: "subreq_existing_monthly"
+    }));
+    expect(screen.getByDisplayValue(SYNTHETIC_NEW_SUBSCRIPTION_URL)).not.toBeNull();
+    expect(screen.queryByDisplayValue(SYNTHETIC_OLD_SUBSCRIPTION_URL)).toBeNull();
+    expect(resetSubscriptionLink).toHaveBeenCalledTimes(1);
+    expect(client.refreshSubscription).not.toHaveBeenCalled();
+  });
+
+  test("a slow subscription read cannot overwrite the link confirmed by reset", async () => {
+    const revealDeferred = deferredValue<PortalSubscriptionRequest>();
+    const revealSubscription = vi.fn(() => revealDeferred.promise);
+    const resetSubscriptionLink = vi.fn(async () => completedSyntheticReset());
+    const client = portalClientWithPublicSessionLabel({}, { revealSubscription, resetSubscriptionLink });
+    render(createElement(UserPortalPage, { portalClient: client }));
+    await enterPortal();
+    openPortalSubscriptions();
+    await screen.findByDisplayValue(SYNTHETIC_OLD_SUBSCRIPTION_URL);
+    expect(revealSubscription).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "重新获取" }));
+    expect(revealSubscription).toHaveBeenCalledTimes(1);
+    expect(revealSubscription).toHaveBeenCalledWith(expect.objectContaining({
+      userRef: SYNTHETIC_SESSION_LABEL,
+      requestRef: "subreq_existing_monthly"
+    }));
+    expect(resetSubscriptionLink).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "重置订阅" }));
+    fireEvent.click(screen.getByRole("button", { name: "确认重置" }));
+    await screen.findByDisplayValue(SYNTHETIC_NEW_SUBSCRIPTION_URL);
+
+    await act(async () => {
+      revealDeferred.resolve(activeSubscriptionRequest({
+        userRef: SYNTHETIC_ORDER_OWNER,
+        subscriptionUrl: SYNTHETIC_OLD_SUBSCRIPTION_URL
+      }));
+      await Promise.resolve();
+    });
+    expect(screen.getByDisplayValue(SYNTHETIC_NEW_SUBSCRIPTION_URL)).not.toBeNull();
+    expect(screen.queryByDisplayValue(SYNTHETIC_OLD_SUBSCRIPTION_URL)).toBeNull();
+    expect(resetSubscriptionLink).toHaveBeenCalledTimes(1);
+
+    openPortalOrders();
+    openPortalSubscriptions();
+    await screen.findByDisplayValue(SYNTHETIC_NEW_SUBSCRIPTION_URL);
+    expect(screen.queryByDisplayValue(SYNTHETIC_OLD_SUBSCRIPTION_URL)).toBeNull();
+    expect(revealSubscription).toHaveBeenCalledTimes(1);
+    expect(resetSubscriptionLink).toHaveBeenCalledTimes(1);
+  });
+
+  test.each([
+    ["logout", "success"],
+    ["logout", "malformed"],
+    ["logout", "rejection"],
+    ["session invalidation", "success"],
+    ["session invalidation", "malformed"],
+    ["session invalidation", "rejection"]
+  ] as const)("a subscription reread cannot cross %s into a new login after %s", async (transition, outcome) => {
+    const oldSession = portalWalletSession("session_reread_old", "reread-old@example.test");
+    const currentSession = portalWalletSession("session_reread_new", "reread-new@example.test");
+    const oldRead = deferredValue<PortalSubscriptionRequest>();
+    const oldWallet = deferredValue<PortalWalletSummary>();
+    const oldRequest = activeSubscriptionRequest({
+      userRef: oldSession.userRef,
+      requestRef: "subreq_reread_old",
+      subscriptionUrl: "https://sub.example.test/import/reread-old",
+      historySummary: [{
+        recordRef: "history_reread_old",
+        label: "Synthetic old account history",
+        status: "已开通",
+        occurredAt: "2026-05-31T00:00:00.000Z"
+      }]
+    });
+    const currentRequest = activeSubscriptionRequest({
+      userRef: currentSession.userRef,
+      requestRef: "subreq_reread_new",
+      subscriptionUrl: "https://sub.example.test/import/reread-new",
+      historySummary: [{
+        recordRef: "history_reread_new",
+        label: "Synthetic current account history",
+        status: "已开通",
+        occurredAt: "2026-05-31T00:00:00.000Z"
+      }]
+    });
+    const stateTemplate = portalClientWithActiveSubscription();
+    const client = portalClient({
+      authenticate: vi.fn().mockResolvedValueOnce(oldSession).mockResolvedValueOnce(currentSession),
+      fetchCurrentState: vi.fn(async (input) => {
+        const request = input.userRef === oldSession.userRef ? oldRequest : currentRequest;
+        return {
+          ...await stateTemplate.fetchCurrentState(input),
+          subscriptionRequest: request,
+          historySummary: request.historySummary
+        };
+      }),
+      revealSubscription: vi.fn(() => oldRead.promise),
+      wallet: {
+        getSummary: vi.fn(({ sessionRef }) => sessionRef === oldSession.sessionRef
+          ? oldWallet.promise : Promise.resolve(portalWalletSummary(333))),
+        listLedger: vi.fn(async () => ({ entries: [], nextCursor: null }))
+      }
+    });
+    render(createElement(UserPortalPage, { portalClient: client }));
+    await enterPortal();
+    openPortalSubscriptions();
+    await screen.findByDisplayValue(oldRequest.subscriptionUrl!);
+    fireEvent.click(screen.getByRole("button", { name: "重新获取" }));
+    expect(client.revealSubscription).toHaveBeenCalledExactlyOnceWith({
+      userRef: oldSession.userRef,
+      sessionRef: oldSession.sessionRef,
+      requestRef: oldRequest.requestRef
+    });
+
+    if (transition === "logout") {
+      fireEvent.click(screen.getByRole("button", { name: "退出登录" }));
+    } else {
+      await act(async () => {
+        oldWallet.reject(new PortalWalletClientError("wallet_session_invalid", false));
+        await Promise.allSettled([oldWallet.promise]);
+      });
+    }
+    await screen.findByRole("heading", { name: "账号登录" });
+    await enterPortal();
+    await screen.findByText("Coins · 333");
+    openPortalSubscriptions();
+    await screen.findByDisplayValue(currentRequest.subscriptionUrl!);
+    expect(screen.queryByDisplayValue(oldRequest.subscriptionUrl!)).toBeNull();
+
+    await act(async () => {
+      if (outcome === "rejection") oldRead.reject(new Error("synthetic_old_read_failed"));
+      else oldRead.resolve(outcome === "malformed" ? { ...oldRequest, subscriptionUrl: undefined } : oldRequest);
+      await Promise.allSettled([oldRead.promise]);
+    });
+
+    expect(screen.getByRole("navigation", { name: "用户中心导航" })).toBeInTheDocument();
+    expect(screen.getByDisplayValue(currentRequest.subscriptionUrl!)).toBeInTheDocument();
+    expect(screen.queryByDisplayValue(oldRequest.subscriptionUrl!)).toBeNull();
+    expect(screen.queryByText(/订阅链接暂时无法重新获取/)).toBeNull();
+    openPortalOrders();
+    const orderTable = await screen.findByRole("table", { name: "订单列表" });
+    expect(within(orderTable).queryByText("Synthetic old account history")).toBeNull();
+    expect(within(orderTable).queryByRole("button", { name: /subreq_reread_old/ })).toBeNull();
+    expect(within(orderTable).getAllByText("Synthetic current account history").length).toBeGreaterThan(0);
+    openPortalSubscriptions();
+    await screen.findByDisplayValue(currentRequest.subscriptionUrl!);
+    expect(screen.queryByDisplayValue(oldRequest.subscriptionUrl!)).toBeNull();
+    expect(client.revealSubscription).toHaveBeenCalledTimes(1);
+    expect(client.resetSubscriptionLink).not.toHaveBeenCalled();
+    expect(client.refreshSubscription).not.toHaveBeenCalled();
+  });
+
+  test("a failed subscription reread stays distinct from an unconfirmed reset", async () => {
+    const revealSubscription = vi.fn(async () => {
+      throw new Error("synthetic_read_failed");
+    });
+    const resetSubscriptionLink = vi.fn(async () => completedSyntheticReset());
+    const client = portalClientWithPublicSessionLabel({}, { revealSubscription, resetSubscriptionLink });
+    render(createElement(UserPortalPage, { portalClient: client }));
+    await enterPortal();
+    openPortalSubscriptions();
+    await screen.findByDisplayValue(SYNTHETIC_OLD_SUBSCRIPTION_URL);
+    fireEvent.click(screen.getByRole("button", { name: "重置订阅" }));
+    fireEvent.click(screen.getByRole("button", { name: "确认重置" }));
+    await screen.findByDisplayValue(SYNTHETIC_NEW_SUBSCRIPTION_URL);
+
+    fireEvent.click(screen.getByRole("button", { name: "重新获取" }));
+    const rereadAlert = await screen.findByRole("alert");
+    expect(rereadAlert).toHaveTextContent("订阅链接暂时无法重新获取");
+    expect(rereadAlert).toHaveTextContent("不会再次重置");
+    expect(rereadAlert.textContent ?? "").not.toContain("重置结果待确认");
+    expect(rereadAlert.textContent ?? "").not.toContain("未能确认重置结果");
+    expect(screen.getByDisplayValue(SYNTHETIC_NEW_SUBSCRIPTION_URL)).not.toBeNull();
+    expect(resetSubscriptionLink).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByRole("button", { name: "重新获取" }));
+    await waitFor(() => expect(revealSubscription).toHaveBeenCalledTimes(2));
+    expect(resetSubscriptionLink).toHaveBeenCalledTimes(1);
+    expect(screen.getByDisplayValue(SYNTHETIC_NEW_SUBSCRIPTION_URL)).not.toBeNull();
+    expect(client.refreshSubscription).not.toHaveBeenCalled();
+  });
+
+  test("subscription reset keeps the displayed link when the response owner matches neither record nor session", async () => {
+    const resetSubscriptionLink = vi.fn(async () => completedSyntheticReset(
+      "https://sub.example.test/import/unconfirmed-visible-once",
+      "acct_other_synthetic"
+    ));
+    const client = portalClientWithPublicSessionLabel({}, { resetSubscriptionLink });
+    render(createElement(UserPortalPage, { portalClient: client }));
+    await enterPortal();
+    openPortalSubscriptions();
+    await screen.findByDisplayValue(SYNTHETIC_OLD_SUBSCRIPTION_URL);
+    fireEvent.click(screen.getByRole("button", { name: "重置订阅" }));
+    fireEvent.click(screen.getByRole("button", { name: "确认重置" }));
+    await waitFor(() => expect(within(screen.getByRole("dialog")).getByRole("alert")).toHaveTextContent("重置结果待确认"));
+    expect(screen.getByDisplayValue(SYNTHETIC_OLD_SUBSCRIPTION_URL)).not.toBeNull();
+    expect(screen.queryByDisplayValue("https://sub.example.test/import/unconfirmed-visible-once")).toBeNull();
+    expect(resetSubscriptionLink).toHaveBeenCalledTimes(1);
+    expect(client.revealSubscription).not.toHaveBeenCalled();
   });
 
   test("local subscription reset preserves resources and makes reveal return the same completed operation", async () => {

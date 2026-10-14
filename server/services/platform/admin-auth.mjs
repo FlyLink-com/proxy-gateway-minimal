@@ -53,7 +53,16 @@ function parseCookies(cookieHeader) {
   for (const part of String(cookieHeader || "").split(";")) {
     const separator = part.indexOf("=");
     if (separator <= 0) continue;
-    cookies.set(part.slice(0, separator).trim(), decodeURIComponent(part.slice(separator + 1).trim()));
+    const name = part.slice(0, separator).trim();
+    // Ambiguous or malformed Cookie headers are unauthenticated, not parser
+    // exceptions that can reach Express' default HTML error handler.
+    if (cookies.has(name)) return new Map();
+    try {
+      cookies.set(name, decodeURIComponent(part.slice(separator + 1).trim()));
+    } catch (error) {
+      if (!(error instanceof URIError)) throw error;
+      return new Map();
+    }
   }
   return cookies;
 }
@@ -480,7 +489,9 @@ export function createPortalAccountAdminAuthService(options = {}) {
 
   function login(input = {}) {
     const checkedAt = now();
-    if (input.operatorRef !== accountId) {
+    // The bound account is selected on the server. Older restricted clients
+    // may still send its reference, but an explicit mismatch must fail closed.
+    if (input.operatorRef !== undefined && input.operatorRef !== accountId) {
       throw authError("invalid_admin_login");
     }
     verifyPassword(input.bootstrapToken);
@@ -542,7 +553,6 @@ export function createPortalAccountAdminAuthService(options = {}) {
       return {
         authenticated: false,
         mode: "portalAccount",
-        operatorRef: accountId,
         setupRequired: !getActiveTotpCredential()
       };
     }

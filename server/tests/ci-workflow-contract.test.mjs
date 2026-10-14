@@ -13,6 +13,8 @@ const EXPECTED_WORKFLOW_ACTIONS = {
     "actions/checkout",
     "actions/setup-node",
     "actions/checkout",
+    "actions/setup-node",
+    "actions/checkout",
     "actions/setup-node"
   ],
   "control-plane-artifact-ingress-v2.yml": [
@@ -98,7 +100,7 @@ const REVIEWED_ACTION_PINS = {
   "actions/checkout": {
     sha: DEFAULT_CHECKOUT_PIN,
     annotation: "v6",
-    count: 23
+    count: 24
   },
   "actions/download-artifact": {
     sha: "3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c",
@@ -108,7 +110,7 @@ const REVIEWED_ACTION_PINS = {
   "actions/setup-node": {
     sha: "249970729cb0ef3589644e2896645e5dc5ba9c38",
     annotation: "v6",
-    count: 19
+    count: 20
   },
   "actions/upload-artifact": {
     sha: "043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",
@@ -116,12 +118,12 @@ const REVIEWED_ACTION_PINS = {
     count: 7
   }
 };
-const EXPECTED_ACTION_REFERENCE_COUNT = 56;
+const EXPECTED_ACTION_REFERENCE_COUNT = 58;
 const EXPECTED_ACTION_REVISION_COUNTS = {
-  [`actions/checkout@${DEFAULT_CHECKOUT_PIN}`]: 21,
+  [`actions/checkout@${DEFAULT_CHECKOUT_PIN}`]: 22,
   [`actions/checkout@${TRUSTED_GOVERNANCE_CHECKOUT_PIN}`]: 2,
   [`actions/download-artifact@${REVIEWED_ACTION_PINS["actions/download-artifact"].sha}`]: 7,
-  [`actions/setup-node@${REVIEWED_ACTION_PINS["actions/setup-node"].sha}`]: 19,
+  [`actions/setup-node@${REVIEWED_ACTION_PINS["actions/setup-node"].sha}`]: 20,
   [`actions/upload-artifact@${REVIEWED_ACTION_PINS["actions/upload-artifact"].sha}`]: 7
 };
 // Keep this source-only guard dependency-free: every uncommented `uses` token is
@@ -186,6 +188,7 @@ function jobBlock(workflow, jobName, nextJobName) {
   const end = nextJobName ? workflow.indexOf(`  ${nextJobName}:`, start + 1) : -1;
   return workflow.slice(start, end >= 0 ? end : undefined);
 }
+
 
 function reviewedPinForWorkflowPosition({ action, referenceIndex, workflowFile }) {
   const reviewed = REVIEWED_ACTION_PINS[action];
@@ -266,6 +269,12 @@ function inspectWorkflowActionInventory(
 
     const reference = parsed[1];
     const annotation = parsed[2] ?? null;
+    // Same-checkout reusable workflows are reviewed job calls, not third-party
+    // Actions. Keep this exception exact and job-level; the DAG contract tests
+    // bind their callers, permissions, conditions, and failure propagation.
+    if (workflowFile === "ci.yml" && /^    uses: \.\/\.github\/workflows\/(?:control-plane-dependency-artifact|control-plane-foundation-toolchain-inventory)\.yml$/u.test(line)) {
+      continue;
+    }
     const separator = reference.lastIndexOf("@");
     if (separator <= 0 || separator === reference.length - 1) {
       violations.push(`${location} unpinned Action reference: ${reference}`);
@@ -517,9 +526,10 @@ test("all workflow Action references use the reviewed full commit inventory", ()
   );
 });
 
-test("CI keeps one stable Validate job, always checks the exact diff, and skips heavy validation only for docs-only", () => {
+test("CI retains stable Validate, exact diff checks, and docs-only routing across test/build jobs", () => {
   const workflow = readRepositoryFile(".github/workflows/ci.yml");
-  const validate = jobBlock(workflow, "validate");
+  const validate = jobBlock(workflow, "source-checks", "foundation-inventory");
+  const builds = jobBlock(workflow, "build-assets", "dependency-artifact");
 
   assert.equal((workflow.match(/^    name: Validate$/gm) ?? []).length, 1);
   assert.match(validate, /node scripts\/ci-change-classifier\.mjs/);
@@ -540,10 +550,12 @@ test("CI keeps one stable Validate job, always checks the exact diff, and skips 
     "Cloudflare public site dry run"
   ];
   for (const stepName of heavyStepNames) {
-    const stepStart = validate.indexOf(`- name: ${stepName}`);
+    const owner = stepName.startsWith("Install") || stepName.startsWith("Run") ? validate : builds;
+    const stepStart = owner.indexOf(`- name: ${stepName}`);
     assert.ok(stepStart >= 0, `missing ${stepName}`);
-    const step = validate.slice(stepStart, validate.indexOf("\n      - name:", stepStart + 1));
-    assert.match(step, /if: steps\.changes\.outputs\.run_full != '0'/, stepName);
+    const end = owner.indexOf("\n      - name:", stepStart + 1);
+    const step = owner.slice(stepStart, end < 0 ? undefined : end);
+    assert.match(step, /if: (?:steps\.changes|needs\.source-checks)\.outputs\.run_full != '0'/, stepName);
   }
 
   const diffStepStart = validate.indexOf("- name: Check diff");
@@ -570,7 +582,7 @@ test("CI keeps one stable Validate job, always checks the exact diff, and skips 
 test("CI separates read-only governance evidence from manual snapshot validation", () => {
   const workflow = readRepositoryFile(".github/workflows/ci.yml");
   const governance = jobBlock(workflow, "governance-evidence", "governance-snapshot");
-  const snapshot = jobBlock(workflow, "governance-snapshot", "validate");
+  const snapshot = jobBlock(workflow, "governance-snapshot", "source-checks");
 
   assert.equal((workflow.match(/^    name: Governance evidence$/gm) ?? []).length, 1);
   assert.equal((workflow.match(/^    name: Governance snapshot$/gm) ?? []).length, 1);

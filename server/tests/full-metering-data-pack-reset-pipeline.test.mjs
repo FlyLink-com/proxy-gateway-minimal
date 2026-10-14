@@ -84,9 +84,9 @@ function fixture(t) {
       runtimeAdapter: "remote-data-plane-handoff" })), nowFn: now });
   const artifactRotation = { rotate(input) {
     artifactCalls += 1;
-    let intent = base.control.beginCoinCommerceDataPackArtifactRotation({ ...input, now: now() });
+    base.control.beginCoinCommerceDataPackArtifactRotation({ ...input, now: now() });
     const leaseRef = "packrotlease_pipeline_artifact";
-    intent = base.control.claimCoinCommerceDataPackArtifactRotation({ ...input, leaseRef, now: now() });
+    let intent = base.control.claimCoinCommerceDataPackArtifactRotation({ ...input, leaseRef, now: now() });
     try {
       if (intent.status === "prepared") intent = base.control.advanceCoinCommerceDataPackArtifactRotation({
         ...input, leaseRef, stage: "escrowed", replacementArtifactRef: `artifact_${input.rotationRef}`, now: now() });

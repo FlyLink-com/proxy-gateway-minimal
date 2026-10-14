@@ -1,9 +1,12 @@
 name: Control Plane Dependency Artifact
 
 on:
-  pull_request:
-    branches:
-      - master
+  workflow_call:
+    inputs:
+      release:
+        description: Dependency artifact release label
+        required: false
+        type: string
   push:
     branches:
       - master
@@ -24,6 +27,7 @@ concurrency:
 jobs:
   build:
     name: Build and verify Linux dependency artifact
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:

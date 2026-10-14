@@ -263,9 +263,9 @@ test("credential reset waits for the exact edge receipt before rotating the subs
     const artifactRotation = {
       rotate(input) {
         artifactCalls += 1;
-        let intent = store.beginCoinCommerceDataPackArtifactRotation({ ...input, now });
+        store.beginCoinCommerceDataPackArtifactRotation({ ...input, now });
         const leaseRef = "packrotlease_artifact_flow";
-        intent = store.claimCoinCommerceDataPackArtifactRotation({ ...input, leaseRef, now });
+        let intent = store.claimCoinCommerceDataPackArtifactRotation({ ...input, leaseRef, now });
         try {
           if (intent.status === "prepared") intent = store.advanceCoinCommerceDataPackArtifactRotation({
             ...input, leaseRef, stage: "escrowed",

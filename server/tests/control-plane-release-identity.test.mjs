@@ -10,7 +10,7 @@ import fs, {
 } from "node:fs";
 import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
-import { join, relative } from "node:path";
+import { isAbsolute, join, relative, resolve } from "node:path";
 import test from "node:test";
 
 import {
@@ -39,8 +39,8 @@ function fixtureValue(overrides = {}) {
   };
 }
 
-function withDirectory(name, run) {
-  const directory = mkdtempSync(join(tmpdir(), `gccgw-release-identity-${name}-`));
+function withDirectory(name, run, parentDirectory = tmpdir()) {
+  const directory = mkdtempSync(join(parentDirectory, `gccgw-release-identity-${name}-`));
   try {
     return run(directory);
   } finally {
@@ -90,6 +90,8 @@ test("release identity contract rejects noncanonical and semantically invalid va
   );
 });
 
+// On Windows keep this fixture on cwd's volume: relative() returns an absolute
+// path when the system temp directory is on a different drive.
 test("configured release identity fails closed for unsafe paths and bytes", () => withDirectory("unsafe", (directory) => {
   const canonicalPath = join(directory, "canonical.json");
   const bytes = serializeControlPlaneReleaseIdentity(fixtureValue());
@@ -101,8 +103,12 @@ test("configured release identity fails closed for unsafe paths and bytes", () =
     chmodSync(canonicalPath, 0o600);
   }
 
+  const relativePath = relative(process.cwd(), canonicalPath);
+  assert.notEqual(relativePath, "");
+  assert.equal(isAbsolute(relativePath), false, "unsafe fixture must exercise a relative path");
+  assert.equal(resolve(relativePath), canonicalPath, "relative fixture must point to the valid file");
   assert.throws(
-    () => loadControlPlaneReleaseIdentity({ path: relative(process.cwd(), canonicalPath) }),
+    () => loadControlPlaneReleaseIdentity({ path: relativePath }),
     invalidIdentity
   );
   assert.throws(
@@ -149,7 +155,7 @@ test("configured release identity fails closed for unsafe paths and bytes", () =
     writeFileSync(canonicalPath, unsafe, { mode: 0o600 });
     assert.throws(() => loadControlPlaneReleaseIdentity({ path: canonicalPath }), invalidIdentity);
   }
-}));
+}, process.platform === "win32" ? process.cwd() : tmpdir()));
 
 test(
   "release identity descriptor reads stay bounded if the file grows after metadata validation",

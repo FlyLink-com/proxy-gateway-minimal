@@ -1,0 +1,10 @@
+listen: ":443"
+auth:
+  type: userpass
+  userpass:
+    edgecred_alpha_001: "synthetic-password-alpha"
+    edgecred_beta_002: "synthetic-password-beta"
+    edgecred_gamma_003: "synthetic-password-gamma"
+trafficStats:
+  listen: "127.0.0.1:26080"
+  secret: "synthetic-canary-7f3a9c"

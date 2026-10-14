@@ -2,10 +2,11 @@ import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
 import {
-  startLocalCoinCommerceUiValidation
+  startLocalCoinCommerceUiValidation,
+  startLocalCoinCommercePlanSwitchUiValidation
 } from "./start-local-coin-commerce-validation.mjs";
 
-function safeRecord(status) {
+function safeRecord(status, planSwitch = false) {
   if (status === "ready") {
     return {
       type: "coin_commerce_local_ui_validation",
@@ -14,8 +15,9 @@ function safeRecord(status) {
       loopback: true,
       port: 3457,
       temporary: true,
-      offerCount: 5,
-      spendableUnits: 1_000
+      offerCount: planSwitch ? 3 : 5,
+      spendableUnits: 1_000,
+      ...(planSwitch ? { planSwitch: true } : {})
     };
   }
   return {
@@ -26,8 +28,9 @@ function safeRecord(status) {
 }
 
 async function runCli() {
-  if (process.argv.length !== 2) {
-    throw new Error("local UI validation accepts no arguments");
+  const planSwitch = process.argv.length === 3 && process.argv[2] === "--profile=plan-switch";
+  if (process.argv.length !== 2 && !planSwitch) {
+    throw new Error("local UI validation accepts only the fixed plan-switch profile");
   }
   let handle = null;
   let stopPromise = null;
@@ -39,8 +42,10 @@ async function runCli() {
   process.once("SIGINT", onSignal);
   process.once("SIGTERM", onSignal);
   try {
-    handle = await startLocalCoinCommerceUiValidation();
-    process.stdout.write(`${JSON.stringify(safeRecord("ready"))}\n`);
+    handle = await (planSwitch
+      ? startLocalCoinCommercePlanSwitchUiValidation()
+      : startLocalCoinCommerceUiValidation());
+    process.stdout.write(`${JSON.stringify(safeRecord("ready", planSwitch))}\n`);
     await signalReceived;
     stopPromise = handle.stop();
     await stopPromise;

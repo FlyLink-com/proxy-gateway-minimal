@@ -18,6 +18,7 @@ import {
   generateSubscriptionExpiryNotice,
   SUBSCRIPTION_RENEWAL_URL
 } from "../services/subscription-expiry-notice.mjs";
+import { applyThirdPartyProxyConfig } from "../services/platform/third-party-subscription-render.mjs";
 
 function safeRef(prefix, value) {
   return `${prefix}ref_${createHash("sha256").update(String(value)).digest("hex").slice(0, 16)}`;
@@ -165,10 +166,11 @@ export function subscriptionRoutes(state, options = {}) {
       host: req.get("host")
     })}/sub/a/${encodeURIComponent(resolved.rawArtifact)}/provider.yaml`;
     const lifecycle = subscriptionLifecycle(resolved.result);
+    const proxyConfig = applyThirdPartyProxyConfig(state, resolved.result);
     sendSubscriptionYaml(
       res,
       lifecycle,
-      generateClashProviderSubscription(resolved.result.proxyConfig, { providerUrl, lifecycle })
+      generateClashProviderSubscription(proxyConfig, { providerUrl, lifecycle })
     );
   });
 
@@ -179,10 +181,11 @@ export function subscriptionRoutes(state, options = {}) {
     }
 
     const lifecycle = subscriptionLifecycle(resolved.result);
+    const proxyConfig = applyThirdPartyProxyConfig(state, resolved.result);
     sendSubscriptionYaml(
       res,
       lifecycle,
-      generateClashProxyProvider(resolved.result.proxyConfig, { lifecycle })
+      generateClashProxyProvider(proxyConfig, { lifecycle })
     );
   });
 
@@ -193,10 +196,11 @@ export function subscriptionRoutes(state, options = {}) {
     }
 
     const lifecycle = subscriptionLifecycle(resolved.result);
+    const proxyConfig = applyThirdPartyProxyConfig(state, resolved.result);
     sendSubscriptionYaml(
       res,
       lifecycle,
-      generateClashSubscription(resolved.result.proxyConfig, { lifecycle })
+      generateClashSubscription(proxyConfig, { lifecycle })
     );
   });
 
@@ -215,10 +219,11 @@ export function subscriptionRoutes(state, options = {}) {
     }
 
     const lifecycle = subscriptionLifecycle(result.result);
+    const proxyConfig = applyThirdPartyProxyConfig(state, result.result);
     sendSubscriptionYaml(
       res,
       lifecycle,
-      generateClashSubscription(result.result.proxyConfig, { lifecycle })
+      generateClashSubscription(proxyConfig, { lifecycle })
     );
   });
 

@@ -58,7 +58,8 @@ const BOUNDED_NATIVE_ENVIRONMENT = Object.freeze({
 
 function requiredSource(path, label) {
   assert.equal(existsSync(path), true, label + " source must exist");
-  return readFileSync(path, "utf8");
+  // These assertions inspect source structure, not checkout-specific line endings.
+  return readFileSync(path, "utf8").replace(/\r\n/gu, "\n");
 }
 
 function readExactStream(stream, size, label) {
@@ -410,7 +411,7 @@ test("required CI binds the privileged gate to the exact same-repository source 
     REQUIRED_CI_WORKFLOW_PATH,
     "required CI workflow"
   );
-  const validateStart = workflow.indexOf("\n  validate:");
+  const validateStart = workflow.indexOf("\n  source-checks:");
   const setupStart = workflow.indexOf("- name: Setup Node", validateStart);
   const gateStart = workflow.indexOf(
     "- name: Run privileged Welcome Coins custody synthetic gate",
@@ -424,7 +425,8 @@ test("required CI binds the privileged gate to the exact same-repository source 
 
   for (const requiredValue of [
     "permissions:\n  contents: read",
-    "validate:\n    name: Validate\n    runs-on: ubuntu-24.04",
+    "source-checks:\n    name: Source checks",
+    "if: github.event_name != 'pull_request' || github.event.pull_request.draft == false\n    runs-on: ubuntu-24.04",
     "ref: ${{ github.event.pull_request.head.sha || github.sha }}",
     "persist-credentials: false",
     "PULL_REQUEST_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}",
