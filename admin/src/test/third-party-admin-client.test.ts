@@ -39,6 +39,35 @@ describe("third-party Admin client", () => {
     expect(init.body).toBeUndefined();
   });
 
+  test.each([0, 27, Number.MAX_SAFE_INTEGER])("projects retained node count %s from active without retaining source stats", async (nodeCount) => {
+    const { client } = setup({ items: [{ ...SOURCE, nodes: { active: nodeCount, total: nodeCount, byCountry: { JP: nodeCount }, extra: "must-not-leak" } }] });
+    const listed = await client.listSources();
+    expect(listed).toEqual([{ ...SOURCE, nodeCount }]);
+    expect(listed[0]).not.toHaveProperty("nodes");
+  });
+
+  test.each([{}, { nodes: {} }, { nodes: { total: 27 } }])("missing retained count remains unknown rather than zero %#", async (extra) => {
+    const { client } = setup({ items: [{ ...SOURCE, ...extra }] });
+    const listed = await client.listSources();
+    expect(listed).toEqual([SOURCE]);
+    expect(listed[0]).not.toHaveProperty("nodeCount");
+  });
+
+  test.each([
+    { nodes: null }, { nodes: [] }, { nodes: "must-not-leak" },
+    ...[-1, 1.5, Number.MAX_SAFE_INTEGER + 1, "27", false, null, {}, []].map((active) => ({ nodes: { active } }))
+  ])("rejects malformed retained counts with a sanitized error %#", async (extra) => {
+    await safeError(setup({ items: [{ ...SOURCE, ...extra }] }).client.listSources(), "invalid");
+  });
+
+  test("import and disable source readbacks project retained counts through the same safe parser", async () => {
+    const source = { ...SOURCE, nodes: { total: 30, active: 27 } };
+    const imported = await setup(source, 201).client.importYaml({ name: SOURCE.name, yamlContent: YAML, tiers: SOURCE.tiers });
+    const disabled = await setup(source).client.disableSource(SOURCE_ID);
+    expect(imported).toEqual({ ...SOURCE, nodeCount: 27 });
+    expect(disabled).toEqual({ ...SOURCE, nodeCount: 27 });
+  });
+
   test.each([["vless", "VLESS"], ["hysteria2", "Hy2"], ["tuic", "TUIC"], ["ss", "SS"]])("maps %s nodes and discards raw material", async (protocol, expected) => {
     const { client } = setup({ ...SNAPSHOT, secret: "must-not-leak", items: [{ ...NODE, protocol, host: "must-not-leak", password: "must-not-leak", protectedConfig: "must-not-leak" }] });
     expect(await client.listNodes(SOURCE_ID, signal)).toEqual({ sourceId: SOURCE_ID, revision: REVISION, enabled: false, items: [{ id: NODE_ID, sourceName: "", originalName: NODE.originalName, defaultName: NODE.defaultName, customName: null, countryCode: "JP", protocol: expected, enabled: true }] });

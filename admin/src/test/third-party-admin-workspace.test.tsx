@@ -72,22 +72,49 @@ function deferred<T>() {
   return { promise, resolve };
 }
 
-function nodeSwitch(originalName = "原始日本") {
-  return screen.getByRole("button", { name: new RegExp(`^[停启]用节点 ${originalName}$`) });
+function selectNode(originalName = "原始日本") {
+  const checkbox = screen.getByRole("checkbox", { name: `选择 ${originalName}` });
+  if (!(checkbox as HTMLInputElement).checked) fireEvent.click(checkbox);
+}
+
+function nodeSwitch(enabled = false) {
+  return screen.getByRole("button", { name: enabled ? "启用选中节点" : "暂停选中节点" });
+}
+
+function expectNodeState(originalName: string, enabled: boolean, sourceEnabled = true) {
+  const row = screen.getByRole("checkbox", { name: `选择 ${originalName}` }).closest("tr")!;
+  expect(within(row).getByText(enabled ? sourceEnabled ? "分发中" : "待分发" : "已停用")).toBeInTheDocument();
 }
 
 function confirmNodeState(enabled = false) {
-  fireEvent.click(nodeSwitch());
-  const label = enabled ? "确认启用节点" : "确认停用节点";
+  selectNode();
+  fireEvent.click(nodeSwitch(enabled));
+  const label = enabled ? "确认启用节点" : "确认暂停节点";
   fireEvent.click(within(screen.getByRole("dialog", { name: label })).getByRole("button", { name: label }));
 }
 
 function requestNodeDeletion() {
-  fireEvent.click(screen.getByRole("button", { name: "删除 原始日本" }));
-  fireEvent.click(screen.getByRole("button", { name: "确认删除" }));
+  selectNode();
+  fireEvent.click(screen.getByRole("button", { name: "删除选中节点" }));
+  fireEvent.click(screen.getByRole("button", { name: "确认批量删除" }));
 }
 
 describe("authenticated third-party Admin workspace", () => {
+  test("node lifecycle actions are consolidated into selection-scoped toolbar controls", async () => {
+    const { client } = await mount(fakeClient(true));
+    expect(screen.queryByRole("button", { name: "停用节点 原始日本" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "删除 原始日本" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "暂停选中节点" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "启用选中节点" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "删除选中节点" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("checkbox", { name: "选择 原始日本" }));
+    expect(screen.getByRole("button", { name: "暂停选中节点" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "启用选中节点" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "删除选中节点" })).toBeEnabled();
+    expect(client.setNodeEnabled).not.toHaveBeenCalled();
+    expect(client.deleteNode).not.toHaveBeenCalled();
+  });
+
   test("no sources keeps the complete empty card and import without implying a saved source", async () => {
     const client = fakeClient();
     client.listSources.mockResolvedValue([]);
@@ -101,7 +128,7 @@ describe("authenticated third-party Admin workspace", () => {
     expect(screen.getByRole("button", { name: "导入" })).toBeEnabled();
     expect(screen.getByRole("button", { name: "保存节点列表" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "启用节点列表" })).toBeDisabled();
-    expect(screen.queryByRole("button", { name: "停用来源" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "暂停来源" })).not.toBeInTheDocument();
     expect(screen.queryByText("已保存 · 未启用")).not.toBeInTheDocument();
     expect(screen.queryByText(/本地预览|演示节点/)).not.toBeInTheDocument();
     expect(screen.getAllByRole("row")).toHaveLength(1);
@@ -162,7 +189,7 @@ describe("authenticated third-party Admin workspace", () => {
     expect(client.enableSource).not.toHaveBeenCalled();
     expect(screen.getByRole("button", { name: "保存节点列表" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "启用节点列表" })).toBeEnabled();
-    expect(screen.queryByRole("button", { name: "停用来源" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "暂停来源" })).not.toBeInTheDocument();
   });
 
   test("enabling requires explicit confirmation and the current source revision", async () => {
@@ -178,7 +205,7 @@ describe("authenticated third-party Admin workspace", () => {
     await waitFor(() => expect(client.enableSource).toHaveBeenCalledWith(SOURCE_ID, REVISION, expect.any(AbortSignal)));
     await screen.findByText("已启用 · 后台");
     expect(screen.getByRole("button", { name: "编辑 原始日本" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "删除 原始日本" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "删除选中节点" })).toBeDisabled();
   });
 
   test("enabled sources retain the confirmed whole-source maintenance option for editing names and flags", async () => {
@@ -187,16 +214,17 @@ describe("authenticated third-party Admin workspace", () => {
     const actions = within(screen.getByRole("group", { name: "节点列表操作" }));
     expect(actions.getByRole("button", { name: "导入" })).toBeInTheDocument();
     expect(actions.getByRole("button", { name: "保存节点列表" })).toBeDisabled();
-    expect(actions.getByRole("button", { name: "停用来源" })).toBeEnabled();
-    expect(screen.getAllByRole("button", { name: "停用来源" })).toHaveLength(1);
+    expect(screen.getByRole("button", { name: "暂停来源" })).toBeEnabled();
+    expect(actions.queryByRole("button", { name: "暂停来源" })).not.toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "暂停来源" })).toHaveLength(1);
     expect(screen.queryByRole("button", { name: "启用节点列表" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "停用后编辑" })).not.toBeInTheDocument();
     expect(screen.getByText("已启用 · 后台")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "编辑 原始日本" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "删除 原始美国" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "删除选中节点" })).toBeDisabled();
     expect(screen.getByRole("combobox", { name: "国家/地区 原始日本" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "保存节点列表" })).toBeDisabled();
-    fireEvent.click(actions.getByRole("button", { name: "停用来源" }));
+    fireEvent.click(screen.getByRole("button", { name: "暂停来源" }));
     expect(client.disableSource).not.toHaveBeenCalled();
     const dialog = screen.getByRole("dialog", { name: "确认停用来源" });
     expect(dialog).toHaveTextContent("已下载配置及第三方凭证不会因此失效");
@@ -204,8 +232,8 @@ describe("authenticated third-party Admin workspace", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: "取消" }));
     expect(client.disableSource).not.toHaveBeenCalled();
     expect(client.listNodes).toHaveBeenCalledTimes(1);
-    expect(screen.getByRole("button", { name: "删除 原始日本" })).toBeDisabled();
-    fireEvent.click(actions.getByRole("button", { name: "停用来源" }));
+    expect(screen.getByRole("button", { name: "删除选中节点" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "暂停来源" }));
     client.listNodes.mockResolvedValue(SNAPSHOT);
     fireEvent.click(screen.getByRole("button", { name: "确认停用" }));
     await waitFor(() => expect(client.disableSource).toHaveBeenCalledWith(SOURCE_ID, expect.any(AbortSignal)));
@@ -222,11 +250,11 @@ describe("authenticated third-party Admin workspace", () => {
     client.saveNodes.mockResolvedValue({ ...SNAPSHOT, revision: SAVED_REVISION, items: retained });
     client.enableSource.mockResolvedValue({ ...SNAPSHOT, revision: SAVED_REVISION, items: retained, enabled: true });
 
-    fireEvent.click(screen.getByRole("button", { name: "停用来源" }));
+    fireEvent.click(screen.getByRole("button", { name: "暂停来源" }));
     fireEvent.click(screen.getByRole("button", { name: "确认停用" }));
     await waitFor(() => expect(screen.getByRole("button", { name: "编辑 原始日本" })).toBeEnabled());
     expect(client.disableSource).toHaveBeenCalledTimes(1);
-    expect(screen.queryByRole("button", { name: "停用来源" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "暂停来源" })).not.toBeInTheDocument();
     editAlias();
     expect(client.saveNodes).not.toHaveBeenCalled();
     expect(client.enableSource).not.toHaveBeenCalled();
@@ -246,8 +274,8 @@ describe("authenticated third-party Admin workspace", () => {
     await waitFor(() => expect(client.enableSource).toHaveBeenCalledWith(SOURCE_ID, SAVED_REVISION, expect.any(AbortSignal)));
     await screen.findByText("已启用 · 后台");
     expect(screen.getByText("自定义日本")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "删除 原始美国" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "停用来源" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "删除选中节点" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "暂停来源" })).toBeEnabled();
   });
 
   test("pending disable and its readback block repeated submissions and edits", async () => {
@@ -257,20 +285,20 @@ describe("authenticated third-party Admin workspace", () => {
     client.disableSource.mockReturnValue(mutation.promise);
     await mount(client);
     client.listNodes.mockReturnValue(readback.promise);
-    fireEvent.click(screen.getByRole("button", { name: "停用来源" }));
+    fireEvent.click(screen.getByRole("button", { name: "暂停来源" }));
     const confirm = screen.getByRole("button", { name: "确认停用" });
     fireEvent.click(confirm);
     fireEvent.click(confirm);
-    fireEvent.click(screen.getByRole("button", { name: "停用来源" }));
+    fireEvent.click(screen.getByRole("button", { name: "暂停来源" }));
     expect(client.disableSource).toHaveBeenCalledTimes(1);
-    expect(screen.getByRole("button", { name: "停用来源" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "暂停来源" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "重新读取" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "导入" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "删除 原始日本" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "删除选中节点" })).toBeDisabled();
     await act(async () => mutation.resolve(SOURCE));
     expect(client.listNodes).toHaveBeenCalledTimes(2);
-    expect(screen.getByRole("button", { name: "删除 原始日本" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "停用来源" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "删除选中节点" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "暂停来源" })).toBeDisabled();
     await act(async () => readback.resolve({ ...SNAPSHOT, revision: NEXT_REVISION }));
     expect(screen.getByRole("button", { name: "编辑 原始日本" })).toBeEnabled();
     expect(client.disableSource).toHaveBeenCalledTimes(1);
@@ -283,14 +311,14 @@ describe("authenticated third-party Admin workspace", () => {
     await mount(client);
     if (phase === "disable") client.disableSource.mockRejectedValue(new ThirdPartyAdminError("network"));
     else client.listNodes.mockRejectedValue(new ThirdPartyAdminError("network"));
-    fireEvent.click(screen.getByRole("button", { name: "停用来源" }));
+    fireEvent.click(screen.getByRole("button", { name: "暂停来源" }));
     fireEvent.click(screen.getByRole("button", { name: "确认停用" }));
     await screen.findByText(/结果未确认或版本已变化/);
     expect(client.disableSource).toHaveBeenCalledTimes(1);
     expect(client.listNodes).toHaveBeenCalledTimes(phase === "disable" ? 1 : 2);
-    expect(screen.getByRole("button", { name: "停用来源" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "暂停来源" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "保存节点列表" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "删除 原始日本" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "删除选中节点" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "编辑 原始日本" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "重新读取" })).toBeEnabled();
     expect(screen.queryByText(/来源已停用，可以编辑/)).not.toBeInTheDocument();
@@ -301,13 +329,13 @@ describe("authenticated third-party Admin workspace", () => {
   test("a still-enabled disable readback keeps nodes locked and does not claim disable success", async () => {
     const client = fakeClient(true);
     await mount(client);
-    fireEvent.click(screen.getByRole("button", { name: "停用来源" }));
+    fireEvent.click(screen.getByRole("button", { name: "暂停来源" }));
     fireEvent.click(screen.getByRole("button", { name: "确认停用" }));
     await waitFor(() => expect(client.listNodes).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(screen.getByRole("button", { name: "重新读取" })).toBeEnabled());
     expect(screen.getByText("已启用 · 后台")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "编辑 原始日本" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "删除 原始日本" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "删除选中节点" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "保存节点列表" })).toBeDisabled();
     expect(screen.queryByText(/来源已停用，可以编辑/)).not.toBeInTheDocument();
     expect(client.saveNodes).not.toHaveBeenCalled();
@@ -319,7 +347,8 @@ describe("authenticated third-party Admin workspace", () => {
     client.listNodes.mockResolvedValue({ ...SNAPSHOT, enabled: true, items: [] });
     render(<ThirdPartyAdminWorkspace client={client} />);
     await screen.findByText("已启用 · 后台");
-    expect(within(screen.getByRole("group", { name: "节点列表操作" })).getByRole("button", { name: "停用来源" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "暂停来源" })).toBeEnabled();
+    expect(within(screen.getByRole("group", { name: "节点列表操作" })).queryByRole("button", { name: "暂停来源" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "启用节点列表" })).not.toBeInTheDocument();
     expect(client.disableSource).not.toHaveBeenCalled();
   });
@@ -390,26 +419,27 @@ describe("authenticated third-party Admin workspace", () => {
 
   test("an enabled source can disable and delete one node while its sibling remains enabled", async () => {
     const { client } = await mount(fakeClient(true));
-    expect(nodeSwitch()).toHaveAccessibleName("停用节点 原始日本");
-    expect(screen.getByRole("button", { name: "删除 原始日本" })).toBeDisabled();
+    expectNodeState("原始日本", true);
+    expect(screen.getByRole("button", { name: "删除选中节点" })).toBeDisabled();
+    selectNode();
     fireEvent.click(nodeSwitch());
-    const dialog = screen.getByRole("dialog", { name: "确认停用节点" });
+    const dialog = screen.getByRole("dialog", { name: "确认暂停节点" });
     expect(dialog).toHaveTextContent(NODES[0].defaultName);
     expect(client.setNodeEnabled).not.toHaveBeenCalled();
     fireEvent.click(within(dialog).getByRole("button", { name: "取消" }));
-    expect(nodeSwitch()).toHaveAccessibleName("停用节点 原始日本");
+    expectNodeState("原始日本", true);
     expect(client.setNodeEnabled).not.toHaveBeenCalled();
     confirmNodeState();
-    await waitFor(() => expect(nodeSwitch()).toHaveAccessibleName("启用节点 原始日本"));
+    await waitFor(() => expectNodeState("原始日本", false));
     expect(client.setNodeEnabled).toHaveBeenCalledExactlyOnceWith(SOURCE_ID, NODE_ID, REVISION, false, expect.any(AbortSignal));
-    expect(nodeSwitch("原始美国")).toHaveAccessibleName("停用节点 原始美国");
-    expect(screen.getByRole("button", { name: "停用来源" })).toBeEnabled();
+    expectNodeState("原始美国", true);
+    expect(screen.getByRole("button", { name: "暂停来源" })).toBeEnabled();
     requestNodeDeletion();
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     await waitFor(() => expect(screen.queryByRole("button", { name: "编辑 原始日本" })).not.toBeInTheDocument());
     expect(client.deleteNode).toHaveBeenCalledExactlyOnceWith(SOURCE_ID, NODE_ID, NEXT_REVISION, expect.any(AbortSignal));
-    expect(nodeSwitch("原始美国")).toHaveAccessibleName("停用节点 原始美国");
-    expect(screen.getByRole("button", { name: "停用来源" })).toBeEnabled();
+    expectNodeState("原始美国", true);
+    expect(screen.getByRole("button", { name: "暂停来源" })).toBeEnabled();
     expect(client.disableSource).not.toHaveBeenCalled();
     expect(client.saveNodes).not.toHaveBeenCalled();
     expect(client.enableSource).not.toHaveBeenCalled();
@@ -420,17 +450,24 @@ describe("authenticated third-party Admin workspace", () => {
     client.listNodes.mockResolvedValue({ ...SNAPSHOT, enabled, items: [{ ...NODES[0], enabled: false }, NODES[1]] });
     await mount(client);
     confirmNodeState(true);
-    await waitFor(() => expect(nodeSwitch()).toHaveAccessibleName("停用节点 原始日本"));
+    await waitFor(() => expectNodeState("原始日本", true, enabled));
     expect(client.setNodeEnabled).toHaveBeenCalledExactlyOnceWith(SOURCE_ID, NODE_ID, REVISION, true, expect.any(AbortSignal));
-    expect(nodeSwitch("原始美国")).toHaveAccessibleName("停用节点 原始美国");
+    expectNodeState("原始美国", true, enabled);
     expect(client.disableSource).not.toHaveBeenCalled();
     expect(client.enableSource).not.toHaveBeenCalled();
   });
 
-  test("an enabled node cannot be deleted even when the source is disabled", async () => {
+  test("an enabled selection requires explicit confirmation before pause and deletion", async () => {
     const { client } = await mount();
-    fireEvent.click(screen.getByRole("button", { name: "删除 原始日本" }));
-    expect(screen.queryByRole("button", { name: "确认删除" })).not.toBeInTheDocument();
+    selectNode();
+    fireEvent.click(screen.getByRole("button", { name: "删除选中节点" }));
+    const dialog = screen.getByRole("dialog", { name: "确认批量删除节点" });
+    expect(dialog).toHaveTextContent("1 个仍启用");
+    expect(dialog).toHaveTextContent("先暂停再删除");
+    expect(client.setNodeEnabled).not.toHaveBeenCalled();
+    expect(client.deleteNode).not.toHaveBeenCalled();
+    fireEvent.click(within(dialog).getByRole("button", { name: "取消" }));
+    expect(client.setNodeEnabled).not.toHaveBeenCalled();
     expect(client.deleteNode).not.toHaveBeenCalled();
   });
 
@@ -438,8 +475,9 @@ describe("authenticated third-party Admin workspace", () => {
     const client = fakeClient(true);
     client.listNodes.mockResolvedValue({ ...SNAPSHOT, enabled: true, items: [{ ...NODES[0], enabled: false }, NODES[1]] });
     await mount(client);
-    fireEvent.click(screen.getByRole("button", { name: "删除 原始日本" }));
-    fireEvent.click(screen.getByRole("button", { name: "取消删除" }));
+    selectNode();
+    fireEvent.click(screen.getByRole("button", { name: "删除选中节点" }));
+    fireEvent.click(within(screen.getByRole("dialog", { name: "确认批量删除节点" })).getByRole("button", { name: "取消" }));
     expect(client.deleteNode).not.toHaveBeenCalled();
     expect(client.setNodeEnabled).not.toHaveBeenCalled();
     expect(screen.getByRole("button", { name: "编辑 原始日本" })).toBeInTheDocument();
@@ -449,10 +487,12 @@ describe("authenticated third-party Admin workspace", () => {
     const client = fakeClient();
     client.listNodes.mockResolvedValue({ ...SNAPSHOT, items: [{ ...NODES[0], enabled: false }, NODES[1]] });
     await mount(client);
+    selectNode();
     if (field === "name") editAlias();
     else fireEvent.change(screen.getByRole("combobox", { name: "国家/地区 原始日本" }), { target: { value: "US" } });
     expect(nodeSwitch()).toBeDisabled();
-    expect(screen.getByRole("button", { name: "删除 原始日本" })).toBeDisabled();
+    expect(nodeSwitch(true)).toBeDisabled();
+    expect(screen.getByRole("button", { name: "删除选中节点" })).toBeDisabled();
     expect(client.setNodeEnabled).not.toHaveBeenCalled();
     expect(client.deleteNode).not.toHaveBeenCalled();
   });
@@ -463,9 +503,10 @@ describe("authenticated third-party Admin workspace", () => {
     await mount(client);
     confirmNodeState();
     await screen.findByText(/结果未确认或版本已变化/);
-    expect(nodeSwitch()).toHaveAccessibleName("停用节点 原始日本");
+    expectNodeState("原始日本", true);
     expect(nodeSwitch()).toBeDisabled();
-    expect(nodeSwitch("原始美国")).toBeDisabled();
+    expect(nodeSwitch(true)).toBeDisabled();
+    expect(screen.getByRole("checkbox", { name: "选择 原始美国" })).toBeDisabled();
     expect(client.setNodeEnabled).toHaveBeenCalledTimes(1);
     expect(client.disableSource).not.toHaveBeenCalled();
     if (code === "node_enabled") expect(screen.getByText("该节点仍已启用，请重新读取并先停用该节点，再删除。")).toBeInTheDocument();
@@ -478,7 +519,7 @@ describe("authenticated third-party Admin workspace", () => {
     await mount(client, expired);
     confirmNodeState();
     await waitFor(() => expect(screen.queryByRole("button", { name: "编辑 原始日本" })).not.toBeInTheDocument());
-    expect(screen.queryByRole("button", { name: /^[停启]用节点 原始/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("checkbox", { name: /^选择 原始/ })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "导入" })).toBeDisabled();
     expect(expired).toHaveBeenCalledTimes(code === "session" ? 1 : 0);
     expect(client.setNodeEnabled).toHaveBeenCalledTimes(1);
@@ -497,8 +538,9 @@ describe("authenticated third-party Admin workspace", () => {
       expect(expired).toHaveBeenCalledTimes(code === "session" ? 1 : 0);
     } else {
       expect(screen.getByRole("button", { name: "编辑 原始日本" })).toBeInTheDocument();
-      expect(nodeSwitch()).toHaveAccessibleName("启用节点 原始日本");
+      expectNodeState("原始日本", false);
       expect(nodeSwitch()).toBeDisabled();
+      expect(nodeSwitch(true)).toBeDisabled();
     }
     expect(client.deleteNode).toHaveBeenCalledTimes(1);
     expect(client.disableSource).not.toHaveBeenCalled();
@@ -511,27 +553,31 @@ describe("authenticated third-party Admin workspace", () => {
     client.listNodes.mockResolvedValue({ ...SNAPSHOT, enabled: true, items: [{ ...NODES[0], enabled: false }, NODES[1]] });
     client.deleteNode.mockReturnValue(pending.promise);
     await mount(client);
-    fireEvent.click(screen.getByRole("button", { name: "删除 原始日本" }));
-    const button = screen.getByRole("button", { name: "确认删除" });
+    selectNode();
+    fireEvent.click(screen.getByRole("button", { name: "删除选中节点" }));
+    const button = screen.getByRole("button", { name: "确认批量删除" });
     fireEvent.click(button); fireEvent.click(button);
     expect(client.deleteNode).toHaveBeenCalledTimes(1);
     expect(screen.getByRole("button", { name: "编辑 原始日本" })).toBeInTheDocument();
-    expect(nodeSwitch("原始美国")).toBeDisabled();
-    expect(screen.getByRole("button", { name: "停用来源" })).toBeDisabled();
+    expect(nodeSwitch()).toBeDisabled();
+    expect(screen.getByRole("checkbox", { name: "选择 原始美国" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "暂停来源" })).toBeDisabled();
     await act(async () => pending.resolve({ ...SNAPSHOT, enabled: true, revision: NEXT_REVISION, items: [NODES[1]] }));
     expect(screen.queryByRole("button", { name: "编辑 原始日本" })).not.toBeInTheDocument();
-    expect(nodeSwitch("原始美国")).toBeEnabled();
+    selectNode("原始美国");
+    expect(nodeSwitch()).toBeEnabled();
   });
 
   test("reloading while node confirmation is open prevents an old confirmation from writing", async () => {
     const { client } = await mount(fakeClient(true));
+    selectNode();
     fireEvent.click(nodeSwitch());
-    const confirm = within(screen.getByRole("dialog", { name: "确认停用节点" })).getByRole("button", { name: "确认停用节点" });
+    const confirm = within(screen.getByRole("dialog", { name: "确认暂停节点" })).getByRole("button", { name: "确认暂停节点" });
     // A programmatic reload simulates a stale confirmation despite modal focus containment.
     fireEvent.click(screen.getByRole("button", { name: "重新读取" }));
     await waitFor(() => expect(client.listNodes).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(screen.getByRole("button", { name: "重新读取" })).toBeEnabled());
-    expect(screen.queryByRole("dialog", { name: "确认停用节点" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "确认暂停节点" })).not.toBeInTheDocument();
     fireEvent.click(confirm);
     expect(client.setNodeEnabled).not.toHaveBeenCalled();
   });
@@ -550,8 +596,8 @@ describe("authenticated third-party Admin workspace", () => {
     await mount(client);
     confirmNodeState();
     await screen.findByText(/结果未确认或版本已变化/);
-    expect(nodeSwitch()).toHaveAccessibleName("停用节点 原始日本");
-    expect(nodeSwitch("原始美国")).toHaveAccessibleName("停用节点 原始美国");
+    expectNodeState("原始日本", true);
+    expectNodeState("原始美国", true);
     expect(nodeSwitch()).toBeDisabled();
     expect(client.setNodeEnabled).toHaveBeenCalledTimes(1);
   });
@@ -575,17 +621,18 @@ describe("authenticated third-party Admin workspace", () => {
     const pending = deferred<ThirdPartyNodeSnapshot>();
     client.setNodeEnabled.mockReturnValue(pending.promise);
     await mount(client);
+    selectNode();
     fireEvent.click(nodeSwitch());
-    const button = within(screen.getByRole("dialog", { name: "确认停用节点" })).getByRole("button", { name: "确认停用节点" });
+    const button = within(screen.getByRole("dialog", { name: "确认暂停节点" })).getByRole("button", { name: "确认暂停节点" });
     fireEvent.click(button); fireEvent.click(button);
     expect(client.setNodeEnabled).toHaveBeenCalledTimes(1);
-    expect(nodeSwitch()).toHaveAccessibleName("停用节点 原始日本");
+    expectNodeState("原始日本", true);
     expect(nodeSwitch()).toBeDisabled();
-    expect(screen.getByRole("button", { name: "停用来源" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "暂停来源" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "重新读取" })).toBeDisabled();
     await act(async () => pending.resolve({ ...SNAPSHOT, enabled: true, revision: NEXT_REVISION, items: [{ ...NODES[0], enabled: false }, NODES[1]] }));
-    expect(nodeSwitch()).toHaveAccessibleName("启用节点 原始日本");
-    expect(nodeSwitch("原始美国")).toHaveAccessibleName("停用节点 原始美国");
+    expectNodeState("原始日本", false);
+    expectNodeState("原始美国", true);
   });
 
   test("node mutation timeout aborts the request and rejects late success", async () => {
@@ -600,7 +647,7 @@ describe("authenticated third-party Admin workspace", () => {
     expect(signal.aborted).toBe(true);
     expect(nodeSwitch()).toBeDisabled();
     await act(async () => pending.resolve({ ...SNAPSHOT, enabled: true, revision: NEXT_REVISION, items: [{ ...NODES[0], enabled: false }, NODES[1]] }));
-    expect(nodeSwitch()).toHaveAccessibleName("停用节点 原始日本");
+    expectNodeState("原始日本", true);
     expect(nodeSwitch()).toBeDisabled();
     expect(client.setNodeEnabled).toHaveBeenCalledTimes(1);
   });
@@ -615,7 +662,7 @@ describe("authenticated third-party Admin workspace", () => {
     rendered.unmount();
     expect(signal.aborted).toBe(true);
     await act(async () => pending.resolve({ ...SNAPSHOT, enabled: true, revision: NEXT_REVISION, items: [{ ...NODES[0], enabled: false }, NODES[1]] }));
-    expect(screen.queryByRole("button", { name: /^[停启]用节点 原始/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("checkbox", { name: /^选择 原始/ })).not.toBeInTheDocument();
     expect(client.setNodeEnabled).toHaveBeenCalledTimes(1);
   });
 

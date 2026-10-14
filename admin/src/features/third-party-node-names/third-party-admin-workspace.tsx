@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { Pause, Play } from "lucide-react";
 import { ModalFrame } from "../../shared/public/modal-frame";
 import { ThirdPartyNodeNamesPage } from "./third-party-node-names-page";
 import { ThirdPartyAdminImport } from "./third-party-admin-import";
@@ -46,9 +47,9 @@ function sourceLabel(source: ThirdPartySource, sources: readonly ThirdPartySourc
   return sameName.length > 1 ? `${source.name} · 来源 ${sameName.findIndex((item) => item.id === source.id) + 1}` : source.name;
 }
 
-function pausedSelection(view: ThirdPartyNodeSnapshot, nodeIds: readonly string[]) {
+function deletableSelection(view: ThirdPartyNodeSnapshot, nodeIds: readonly string[], canPause: boolean) {
   return nodeIds.length > 0 && new Set(nodeIds).size === nodeIds.length
-    && nodeIds.every((id) => view.items.some((node) => node.id === id && node.enabled === false));
+    && nodeIds.every((id) => view.items.some((node) => node.id === id && (node.enabled === false || canPause)));
 }
 
 export function ThirdPartyAdminWorkspace({ client: suppliedClient, onSessionExpired }: {
@@ -65,7 +66,7 @@ export function ThirdPartyAdminWorkspace({ client: suppliedClient, onSessionExpi
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [confirm, setConfirm] = useState<"enable" | "disable" | "reload" | null>(null);
-  const [nodeConfirm, setNodeConfirm] = useState<{ snapshot: ThirdPartyNodeSnapshot; nodeId: string; enabled: boolean } | null>(null);
+  const [nodeConfirm, setNodeConfirm] = useState<{ snapshot: ThirdPartyNodeSnapshot; nodeIds: readonly string[]; enabled: boolean } | null>(null);
   const [bulkConfirm, setBulkConfirm] = useState<{ snapshot: ThirdPartyNodeSnapshot; nodeIds: readonly string[]; sourceLabel: string } | null>(null);
   const busyRef = useRef(false);
   const requestRef = useRef<AbortController | null>(null);
@@ -119,7 +120,10 @@ export function ThirdPartyAdminWorkspace({ client: suppliedClient, onSessionExpi
     setSources(listed);
     const editable = listed.filter((source) => source.sourceKind === "inline-yaml");
     const selectedId = preferredId ?? readThirdPartySourceSelection();
-    const target = editable.find((source) => source.id === selectedId) ?? editable[0];
+    // Preserve an explicit/remembered empty source. Only an unselected first
+    // visit prefers a source known to contain retained (not necessarily enabled) nodes.
+    const target = editable.find((source) => source.id === selectedId)
+      ?? editable.find((source) => (source.nodeCount ?? 0) > 0) ?? editable[0];
     return { listed, view: target ? await client.listNodes(target.id, signal) : null };
   }, ({ listed, view }) => {
     setSources(listed); setSnapshot(view); setDirty(false); setEditorEpoch((epoch) => epoch + 1);
@@ -137,7 +141,7 @@ export function ThirdPartyAdminWorkspace({ client: suppliedClient, onSessionExpi
   const receive = (view: ThirdPartyNodeSnapshot) => {
     setSnapshot(view); setDirty(false); setEditorEpoch((epoch) => epoch + 1);
     rememberThirdPartySourceSelection(view.sourceId);
-    setSources((current) => current.map((source) => source.id === view.sourceId ? { ...source, enabled: view.enabled } : source));
+    setSources((current) => current.map((source) => source.id === view.sourceId ? { ...source, enabled: view.enabled, nodeCount: view.items.length } : source));
   };
 
   function save(nodes: readonly ThirdPartyNode[]) {
@@ -152,37 +156,43 @@ export function ThirdPartyAdminWorkspace({ client: suppliedClient, onSessionExpi
     return snapshot && currentSource?.sourceKind === "inline-yaml" && !dirty && !stale && !denied && !busyRef.current && mounted.current;
   }
 
-  function requestNodeEnabled(nodeId: string, enabled: boolean) {
-    if (!rowActionAllowed() || !snapshot || !client.setNodeEnabled || typeof enabled !== "boolean") return;
-    const node = snapshot.items.find((item) => item.id === nodeId);
-    if (!node || (node.enabled ?? true) === enabled) return;
-    setNodeConfirm({ snapshot, nodeId, enabled });
+  function requestNodesEnabled(nodeIds: readonly string[], enabled: boolean) {
+    if (!rowActionAllowed() || !snapshot || !client.setNodeEnabled || typeof enabled !== "boolean"
+      || !deletableSelection(snapshot, nodeIds, true)) return;
+    const targets = nodeIds.filter((id) => (snapshot.items.find((node) => node.id === id)!.enabled ?? true) !== enabled);
+    if (!targets.length) return;
+    setNodeConfirm({ snapshot, nodeIds: targets, enabled });
   }
 
   function executeNodeEnabled() {
     const action = nodeConfirm;
     setNodeConfirm(null);
     if (!action || !rowActionAllowed() || !snapshot || snapshot !== action.snapshot || !client.setNodeEnabled) return;
-    const node = snapshot.items.find((item) => item.id === action.nodeId);
-    if (!node || (node.enabled ?? true) === action.enabled) return;
+    if (!deletableSelection(action.snapshot, action.nodeIds, true)) return;
     const setNodeEnabled = client.setNodeEnabled.bind(client);
-    void run(async (signal) => verifyNodeMutation(snapshot,
-      await setNodeEnabled(snapshot.sourceId, node.id, snapshot.revision, action.enabled, signal), node.id, action.enabled),
-    (view) => { receive(view); setNotice(action.enabled ? "该节点已启用。来源保持原状态，其他节点不受影响。" : "该节点已停用，可以删除。来源保持原状态，其他节点不受影响。"); }, true);
-  }
-
-  function deleteNode(nodeId: string) {
-    if (!rowActionAllowed() || !snapshot || !client.deleteNode) return;
-    const node = snapshot.items.find((item) => item.id === nodeId);
-    if (!node || node.enabled !== false) return;
-    const removeNode = client.deleteNode.bind(client);
-    void run(async (signal) => verifyNodeMutation(snapshot,
-      await removeNode(snapshot.sourceId, node.id, snapshot.revision, signal), node.id),
-    (view) => { receive(view); setNotice("该节点已删除。来源保持原状态，其他节点不受影响。"); }, true);
+    const verb = action.enabled ? "启用" : "暂停";
+    let confirmed = 0;
+    void run(async (signal) => {
+      let view = action.snapshot;
+      for (const nodeId of action.nodeIds) {
+        if (signal.aborted || !mounted.current) throw new DOMException("Request cancelled", "AbortError");
+        const result = await setNodeEnabled(view.sourceId, nodeId, view.revision, action.enabled, signal);
+        if (signal.aborted || !mounted.current) throw new DOMException("Request cancelled", "AbortError");
+        view = verifyNodeMutation(view, result, nodeId, action.enabled);
+        confirmed += 1;
+        receive(view);
+      }
+      return view;
+    }, () => {
+      setNotice(`已确认${verb} ${confirmed}/${action.nodeIds.length} 个节点。来源保持原状态，其他节点不受影响。`);
+    }, true, () => {
+      setNotice(`已确认${verb} ${confirmed}/${action.nodeIds.length} 个节点；其余结果未确认，请重新读取。不会自动重试。`);
+    });
   }
 
   function requestDeleteNodes(nodeIds: readonly string[]) {
-    if (!rowActionAllowed() || !snapshot || !currentSource || !client.deleteNode || !pausedSelection(snapshot, nodeIds)) return;
+    if (!rowActionAllowed() || !snapshot || !currentSource || !client.deleteNode
+      || !deletableSelection(snapshot, nodeIds, !!client.setNodeEnabled)) return;
     setBulkConfirm({ snapshot, nodeIds: [...nodeIds], sourceLabel: sourceLabel(currentSource, sources) });
   }
 
@@ -190,9 +200,11 @@ export function ThirdPartyAdminWorkspace({ client: suppliedClient, onSessionExpi
     const action = bulkConfirm;
     setBulkConfirm(null);
     if (!action || !rowActionAllowed() || snapshot !== action.snapshot || !client.deleteNode
-      || !pausedSelection(action.snapshot, action.nodeIds)) return;
+      || !deletableSelection(action.snapshot, action.nodeIds, !!client.setNodeEnabled)) return;
     const removeNode = client.deleteNode.bind(client);
+    const pauseNode = client.setNodeEnabled?.bind(client);
     let confirmed = 0;
+    const pausedNotDeleted = new Set<string>();
     void run(async (signal) => {
       let view = action.snapshot;
       const checkActive = () => {
@@ -200,10 +212,22 @@ export function ThirdPartyAdminWorkspace({ client: suppliedClient, onSessionExpi
       };
       for (const nodeId of action.nodeIds) {
         checkActive();
+        const node = view.items.find((item) => item.id === nodeId);
+        if (!node) throw new ThirdPartyAdminError("invalid");
+        if (node.enabled !== false) {
+          if (!pauseNode) throw new ThirdPartyAdminError("node_enabled");
+          const paused = await pauseNode(view.sourceId, nodeId, view.revision, false, signal);
+          checkActive();
+          view = verifyNodeMutation(view, paused, nodeId, false);
+          pausedNotDeleted.add(nodeId);
+          receive(view);
+        }
+        checkActive();
         const result = await removeNode(view.sourceId, nodeId, view.revision, signal);
         checkActive();
         view = verifyNodeMutation(view, result, nodeId);
         confirmed += 1;
+        pausedNotDeleted.delete(nodeId);
         // Publish only individually confirmed results. A later failure must
         // retain this progress, but never resurrect it after an auth denial.
         receive(view);
@@ -212,7 +236,7 @@ export function ThirdPartyAdminWorkspace({ client: suppliedClient, onSessionExpi
     }, () => {
       setNotice(`已确认删除 ${confirmed}/${action.nodeIds.length} 个节点。来源保持原状态，其他节点不受影响。`);
     }, true, () => {
-      setNotice(`已确认删除 ${confirmed}/${action.nodeIds.length} 个节点；其余 ${action.nodeIds.length - confirmed} 个结果未确认，请重新读取。不会自动重试。`);
+      setNotice(`已确认删除 ${confirmed}/${action.nodeIds.length} 个节点；已确认暂停但未确认删除 ${pausedNotDeleted.size} 个；其余 ${action.nodeIds.length - confirmed} 个删除结果未确认，请重新读取。不会自动重试。`);
     });
   }
 
@@ -257,41 +281,55 @@ export function ThirdPartyAdminWorkspace({ client: suppliedClient, onSessionExpi
         description: "请先导入获准分发的 YAML 文件。来源就绪后才能保存或启用节点列表。",
       };
   return <div className="tp-admin-workspace" aria-busy={busy}>
-    <p className="tp-admin-boundary">仅限已登录 Admin。单节点启停和删除确认后立即保存；删除前须先停用该节点。改名和国旗调整仍需停用来源并保存，不改变自营计量。</p>
+    <p className="tp-admin-boundary">仅限已登录 Admin。勾选单个或多个节点后，统一使用功能栏启用、暂停或删除。来源分发总开关不改变各节点开关；改名和国旗调整需暂停来源并保存，不改变自营计量。</p>
     <div className="tp-admin-source-toolbar">
       <label>来源<select aria-label="第三方来源" disabled={busy || dirty || stale || denied || !sources.length} value={snapshot?.sourceId ?? ""} onChange={(event) => {
         const id = event.target.value;
         if (busyRef.current || dirty || stale || denied || !sources.some((source) => source.id === id && source.sourceKind === "inline-yaml")) return;
         setSnapshot(null);
         void run((signal) => client.listNodes(id, signal), receive);
-      }}><option value="" disabled>选择来源</option>{sources.map((source) => <option key={source.id} value={source.id} disabled={source.sourceKind !== "inline-yaml"}>{sourceLabel(source, sources)}{source.sourceKind !== "inline-yaml" ? " · 暂不支持编辑" : source.enabled ? " · 已启用" : " · 停用"}</option>)}</select></label>
+      }}><option value="" disabled>选择来源</option>{sources.map((source) => {
+        const count = source.id === snapshot?.sourceId ? snapshot.items.length : source.nodeCount;
+        return <option key={source.id} value={source.id} disabled={source.sourceKind !== "inline-yaml"}>{sourceLabel(source, sources)}{count === undefined ? "" : ` · ${count} 个节点`}{source.sourceKind !== "inline-yaml" ? " · 暂不支持编辑" : source.enabled ? " · 已启用" : " · 已暂停"}</option>;
+      })}</select></label>
       <button type="button" disabled={busy || denied} onClick={() => dirty ? setConfirm("reload") : void readAll(snapshot?.sourceId)}>重新读取</button>
+      <button type="button" aria-label={snapshot?.enabled ? "暂停来源" : "启用节点列表"}
+        disabled={!snapshot || busy || dirty || stale || denied || (!snapshot.enabled && !snapshot.items.length)}
+        onClick={() => { if (rowActionAllowed()) setConfirm(snapshot?.enabled ? "disable" : "enable"); }}>
+        {snapshot?.enabled ? <Pause size={16} aria-hidden="true" /> : <Play size={16} aria-hidden="true" />}
+        来源分发：{!snapshot ? "未就绪" : snapshot.enabled ? "已启用 · 暂停来源" : "已暂停 · 启用来源"}
+      </button>
     </div>
     {error ? <p className="tp-admin-error" role="alert">{error}</p> : null}
     {stale ? <p role="alert">结果未确认或版本已变化。修改入口已锁定，请先重新读取；不会自动重试写入。</p> : null}
     {dirty ? <p>有未保存的节点修改，请先保存或重新读取。来源切换及导入暂不可用。</p> : null}
     {notice ? <p role="status">{notice}</p> : null}
-    {snapshot && !snapshot.items.length && currentSource ? <p>当前来源「{sourceLabel(currentSource, sources)}」暂无节点。可切换其他来源，或导入新的 YAML 来源。</p> : null}
+    {snapshot && !snapshot.items.length && currentSource ? <p>当前来源「{sourceLabel(currentSource, sources)}」暂无节点。{sources.some((source) => source.id !== snapshot.sourceId && source.sourceKind === "inline-yaml" && (source.nodeCount ?? 0) > 0)
+      ? `另有 ${sources.filter((source) => source.id !== snapshot.sourceId && source.sourceKind === "inline-yaml" && (source.nodeCount ?? 0) > 0).length} 个来源含节点，请在来源菜单切换。` : "可切换其他来源，或导入新的 YAML 来源。"}</p> : null}
     <ThirdPartyNodeNamesPage key={snapshot ? `${snapshot.sourceId}:${snapshot.revision}:${editorEpoch}` : "no-source"} initialNodes={snapshot?.items.map((node) => ({ ...node, sourceName: currentSource?.name ?? "" })) ?? []} persistence={{
       enabled: snapshot?.enabled ?? false, busy: busy || stale || denied, placeholder,
       onSave: save, onEnable: () => { if (snapshot) setConfirm("enable"); }, onDirtyChange: setDirty, importAction,
       onDisable: () => { if (snapshot?.enabled && !busyRef.current && !dirty && !stale && !denied) setConfirm("disable"); },
-      onSetNodeEnabled: client.setNodeEnabled ? requestNodeEnabled : undefined,
-      onDeleteNode: client.deleteNode ? deleteNode : undefined,
+      selectionActionsOnly: true,
+      onSetNodesEnabled: client.setNodeEnabled ? requestNodesEnabled : undefined,
       onDeleteNodes: client.deleteNode ? requestDeleteNodes : undefined,
+      bulkPauseBeforeDelete: !!client.setNodeEnabled,
     }} />
     {confirm ? <div className="tp-import"><ModalFrame title={confirm === "enable" ? "确认启用分发" : confirm === "disable" ? "确认停用来源" : "放弃未保存修改？"} titleId={`${modalId}-confirm`} panelClassName="tp-import-modal" closeLabel="取消操作" onClose={() => setConfirm(null)}>
       {confirm === "disable" ? <p>将停用整个来源「{currentSource?.name ?? "当前来源"}」，共 {snapshot?.items.length ?? 0} 个节点。可用于整组维护；改名和国旗调整保存后需手动重新启用来源。</p> : null}
       <p>{confirm === "enable" ? "将把已保存且单独启用的节点提供给来源所分配套餐的有效订阅用户。请确认你有权分发这些配置。" : confirm === "disable" ? "后续订阅不再下发此来源。已下载配置及第三方凭证不会因此失效。" : "重新读取将丢弃当前未保存的改名和国旗草稿，不会写入后台。"}</p>
       <button type="button" onClick={() => setConfirm(null)}>取消</button><button type="button" onClick={executeConfirmed}>确认{confirm === "enable" ? "启用" : confirm === "disable" ? "停用" : "重新读取"}</button>
     </ModalFrame></div> : null}
-    {nodeConfirm ? <div className="tp-import"><ModalFrame title={nodeConfirm.enabled ? "确认启用节点" : "确认停用节点"} titleId={`${modalId}-node-confirm`} panelClassName="tp-import-modal" closeLabel="取消操作" onClose={() => setNodeConfirm(null)}>
-      <p>将{nodeConfirm.enabled ? "启用" : "停用"}节点「{renderedNodeName(nodeConfirm.snapshot.items.find((node) => node.id === nodeConfirm.nodeId)!)}」。确认后立即保存，来源开关和其他节点保持不变。</p>
+    {nodeConfirm ? <div className="tp-import"><ModalFrame title={nodeConfirm.enabled ? "确认启用节点" : "确认暂停节点"} titleId={`${modalId}-node-confirm`} panelClassName="tp-import-modal" closeLabel="取消操作" onClose={() => setNodeConfirm(null)}>
+      <p>将{nodeConfirm.enabled ? "启用" : "暂停"}以下 {nodeConfirm.nodeIds.length} 个选中节点，逐项确认后立即保存；已处于目标状态的节点不重复修改。来源开关和其他节点保持不变。</p>
+      <ul style={{ maxHeight: "16rem", overflowY: "auto" }}>{nodeConfirm.nodeIds.map((id) => <li key={id}>{renderedNodeName(nodeConfirm.snapshot.items.find((node) => node.id === id)!)}</li>)}</ul>
       <p>{nodeConfirm.enabled ? "仅当来源已启用且订阅套餐符合条件时，该节点才会参与后续分发。" : "后续订阅不再下发该节点。已下载的配置及第三方凭证不会因此失效。"}</p>
-      <button type="button" onClick={() => setNodeConfirm(null)}>取消</button><button type="button" onClick={executeNodeEnabled}>{nodeConfirm.enabled ? "确认启用节点" : "确认停用节点"}</button>
+      <p>任何失败或状态变化都会停止剩余操作，不自动重试；暂停只影响后续订阅下发。</p>
+      <button type="button" onClick={() => setNodeConfirm(null)}>取消</button><button type="button" onClick={executeNodeEnabled}>{nodeConfirm.enabled ? "确认启用节点" : "确认暂停节点"}</button>
     </ModalFrame></div> : null}
     {bulkConfirm ? <div className="tp-import"><ModalFrame title="确认批量删除节点" titleId={`${modalId}-bulk-confirm`} panelClassName="tp-import-modal" closeLabel="取消操作" onClose={() => setBulkConfirm(null)}>
-      <p>将从来源「{bulkConfirm.sourceLabel}」删除以下 {bulkConfirm.nodeIds.length} 个已暂停节点。此操作不可撤销，不会自动暂停任何节点。</p>
+      <p>将从来源「{bulkConfirm.sourceLabel}」删除以下 {bulkConfirm.nodeIds.length} 个节点。此操作不可撤销。</p>
+      <p>其中 {bulkConfirm.snapshot.items.filter((node) => bulkConfirm.nodeIds.includes(node.id) && node.enabled !== false).length} 个仍启用，确认后将先暂停再删除；已暂停的直接删除。不会暂停整个来源。</p>
       <ul style={{ maxHeight: "16rem", overflowY: "auto" }}>{bulkConfirm.nodeIds.map((id) => <li key={id}>{renderedNodeName(bulkConfirm.snapshot.items.find((node) => node.id === id)!)}</li>)}</ul>
       <p>逐项确认后立即保存。任何失败或状态变化都会停止剩余操作，来源开关和其他节点保持不变。</p>
       <button type="button" disabled={busy} onClick={() => setBulkConfirm(null)}>取消</button><button type="button" disabled={busy} onClick={executeDeleteNodes}>确认批量删除</button>

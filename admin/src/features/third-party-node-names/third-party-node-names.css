@@ -14,7 +14,7 @@
 .tp-names-toolbar-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .tp-names-bulk-selection { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 0 20px 12px; color: #526176; font-size: 12px; }
 .tp-names-bulk-warning { color: #a13642; }
-.tp-names .tp-names-bulk-delete { width: 44px; padding-inline: 0; }
+.tp-names .tp-names-bulk-delete, .tp-names .tp-names-selection-action { width: 44px; padding-inline: 0; }
 .tp-names-maintenance-hint { margin: 0 20px 16px; padding: 10px 12px; border-radius: 8px; background: #f0f5ff; color: #31558a; font-size: 12px; overflow-wrap: anywhere; }
 .tp-names-filters { display: flex; flex: 1 1 360px; align-items: center; gap: 10px; min-width: 0; }
 .tp-names-search { flex: 1; min-width: 0; position: relative; }

@@ -47,15 +47,26 @@ beforeEach(() => sessionStorage.clear());
 afterEach(() => { cleanup(); vi.useRealTimers(); vi.restoreAllMocks(); sessionStorage.clear(); });
 async function mount(client = fixture()) {
   const mounted = render(<ThirdPartyAdminWorkspace client={client} />);
-  await screen.findByRole("button", { name: "删除 合成甲" });
+  await screen.findByRole("checkbox", { name: "选择 合成甲" });
   return { client, ...mounted };
 }
+function nodeRow(name: string) { return within(screen.getByRole("checkbox", { name: `选择 ${name}` }).closest("tr")!); }
 function requestBulk() { fireEvent.click(screen.getByRole("button", { name: "test request bulk" })); }
 function confirmBulk() {
   const dialog = screen.getByRole("dialog", { name: "确认批量删除节点" });
   fireEvent.click(within(dialog).getByRole("button", { name: "确认批量删除" }));
 }
 function deferred<T>() { let resolve!: (v: T) => void; const promise = new Promise<T>((done) => { resolve = done; }); return { promise, resolve }; }
+
+test("formal workspace exposes row selection and status without individual lifecycle or delete buttons", async () => {
+  const { client } = await mount();
+  expect(screen.getByRole("checkbox", { name: "选择 合成甲" })).toBeEnabled();
+  expect(screen.getByRole("checkbox", { name: "选择 合成乙" })).toBeEnabled();
+  expect(nodeRow("合成甲").getByText("已停用")).toBeInTheDocument();
+  expect(screen.queryAllByRole("button", { name: /^(删除 |启用节点 |停用节点 )/ })).toHaveLength(0);
+  expect(client.setNodeEnabled).not.toHaveBeenCalled();
+  expect(client.deleteNode).not.toHaveBeenCalled();
+});
 
 test("refresh restores selected valid source and distinguishes duplicate names", async () => {
   const client = fixture();
@@ -68,11 +79,11 @@ test("refresh restores selected valid source and distinguishes duplicate names",
   const names = within(select).getAllByRole("option").slice(1).map((option) => option.textContent);
   expect(new Set(names).size).toBe(2);
   fireEvent.change(select, { target: { value: NEW } });
-  await screen.findByRole("button", { name: "删除 合成甲" });
+  await screen.findByRole("checkbox", { name: "选择 合成甲" });
   expect(JSON.parse(sessionStorage.getItem(KEY)!)).toEqual({ version: 1, sourceId: NEW });
   page.unmount();
   render(<ThirdPartyAdminWorkspace client={client} />);
-  await screen.findByRole("button", { name: "删除 合成甲" });
+  await screen.findByRole("checkbox", { name: "选择 合成甲" });
   expect(screen.getByRole("combobox", { name: "第三方来源" })).toHaveValue(NEW);
 });
 
@@ -110,10 +121,10 @@ test("bulk delete confirms exact count then serially uses fresh revisions and no
   expect(client.deleteNode.mock.calls.map(([id, node, revision]) => [id, node, revision])).toEqual([[NEW, A, R1], [NEW, B, R2]]);
   expect(client.setNodeEnabled).not.toHaveBeenCalled();
   expect(client.disableSource).not.toHaveBeenCalled();
-  expect(screen.queryByRole("button", { name: "删除 合成甲" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("checkbox", { name: "选择 合成甲" })).not.toBeInTheDocument();
 });
 
-test("cancel, foreign IDs, duplicates, and enabled selection issue no delete", async () => {
+test("cancel, foreign IDs, duplicates, and missing pause capability issue no delete", async () => {
   const { client } = await mount();
   requestBulk();
   fireEvent.click(within(screen.getByRole("dialog", { name: "确认批量删除节点" })).getByRole("button", { name: "取消" }));
@@ -123,10 +134,114 @@ test("cancel, foreign IDs, duplicates, and enabled selection issue no delete", a
   expect(client.deleteNode).not.toHaveBeenCalled();
   cleanup();
   client.listNodes.mockResolvedValue(snapshot(NEW, NODES.map((node, index) => ({ ...node, enabled: index === 0 }))));
-  await mount(client);
+  render(<ThirdPartyAdminWorkspace client={{ ...client, setNodeEnabled: undefined }} />);
+  await screen.findByRole("checkbox", { name: "选择 合成甲" });
   requestBulk();
   expect(screen.queryByRole("dialog", { name: "确认批量删除节点" })).not.toBeInTheDocument();
   expect(client.deleteNode).not.toHaveBeenCalled();
+});
+
+test("mixed selection explicitly confirms pause then delete with the latest revision, preserving unselected nodes", async () => {
+  const client = fixture();
+  const other = { ...NODES[0], id: `tpnode_${"c".repeat(32)}`, originalName: "未选节点", defaultName: "未选节点", enabled: true };
+  const initial = snapshot(NEW, [{ ...NODES[0], enabled: true }, NODES[1], other]);
+  const paused = { ...initial, revision: R2, items: [NODES[0], NODES[1], other] };
+  client.listNodes.mockResolvedValue(initial);
+  client.setNodeEnabled.mockResolvedValue(paused);
+  client.deleteNode.mockResolvedValueOnce(snapshot(NEW, [NODES[1], other], R3))
+    .mockResolvedValueOnce(snapshot(NEW, [other], "d".repeat(64)));
+  await mount(client);
+  fireEvent.click(screen.getByRole("checkbox", { name: "选择 合成甲" }));
+  fireEvent.click(screen.getByRole("checkbox", { name: "选择 合成乙" }));
+  fireEvent.click(screen.getByRole("button", { name: "删除选中节点" }));
+  expect(within(screen.getByRole("dialog", { name: "确认批量删除节点" })).getByText(/其中 1 个仍启用.*先暂停/)).toBeInTheDocument();
+  expect(client.setNodeEnabled).not.toHaveBeenCalled();
+  confirmBulk();
+  await screen.findByText(/已确认删除 2\/2 个节点/);
+  expect(client.setNodeEnabled).toHaveBeenCalledExactlyOnceWith(NEW, A, R1, false, expect.any(AbortSignal));
+  expect(client.deleteNode.mock.calls.map(([id, node, revision]) => [id, node, revision])).toEqual([[NEW, A, R2], [NEW, B, R3]]);
+  expect(client.disableSource).not.toHaveBeenCalled();
+  expect(screen.getByRole("checkbox", { name: "选择 未选节点" })).toBeEnabled();
+  expect(nodeRow("未选节点").getByText("分发中")).toBeInTheDocument();
+});
+
+test("delete failure after a confirmed pause reports both facts and stops the batch", async () => {
+  const client = fixture();
+  client.listNodes.mockResolvedValue(snapshot(NEW, NODES.map((node) => ({ ...node, enabled: true }))));
+  client.setNodeEnabled.mockResolvedValue(snapshot(NEW, [NODES[0], { ...NODES[1], enabled: true }], R2));
+  client.deleteNode.mockRejectedValueOnce(new ThirdPartyAdminError("network"));
+  await mount(client); requestBulk(); confirmBulk();
+  await screen.findByText(/已确认删除 0\/2 个节点.*已确认暂停但未确认删除 1 个/);
+  expect(client.setNodeEnabled).toHaveBeenCalledTimes(1);
+  expect(client.deleteNode).toHaveBeenCalledTimes(1);
+  expect(screen.getByRole("checkbox", { name: "选择 合成甲" })).toBeDisabled();
+  expect(screen.getByRole("checkbox", { name: "选择 合成乙" })).toBeDisabled();
+  expect(nodeRow("合成甲").getByText("已停用")).toBeInTheDocument();
+  expect(nodeRow("合成乙").getByText("分发中")).toBeInTheDocument();
+});
+
+test("failed or broader pause never proceeds to deletion", async () => {
+  const client = fixture();
+  client.listNodes.mockResolvedValue(snapshot(NEW, NODES.map((node) => ({ ...node, enabled: true }))));
+  client.setNodeEnabled.mockResolvedValue(snapshot(NEW, NODES, R2)); // pauses an unrequested second node too
+  await mount(client); requestBulk(); confirmBulk();
+  await screen.findByText(/已确认删除 0\/2 个节点.*未确认/);
+  expect(client.deleteNode).not.toHaveBeenCalled();
+  expect(client.setNodeEnabled).toHaveBeenCalledTimes(1);
+});
+
+test.each(["session", "permission"] as const)("%s rejection during pause clears data without any delete", async (code) => {
+  const client = fixture();
+  client.listNodes.mockResolvedValue(snapshot(NEW, NODES.map((node) => ({ ...node, enabled: true }))));
+  client.setNodeEnabled.mockRejectedValue(new ThirdPartyAdminError(code));
+  await mount(client); requestBulk(); confirmBulk();
+  await screen.findByText(code === "session" ? "Admin 登录已失效，请重新登录。" : "当前账户没有此操作的 Admin 权限。");
+  expect(client.deleteNode).not.toHaveBeenCalled();
+  expect(client.setNodeEnabled).toHaveBeenCalledTimes(1);
+  expect(screen.queryByText(/已确认删除/)).not.toBeInTheDocument();
+  expect(screen.queryByRole("checkbox", { name: "选择 合成甲" })).not.toBeInTheDocument();
+  expect(sessionStorage.getItem(KEY)).toBeNull();
+});
+
+test("a timed out pause never launches a delete on a late successful response", async () => {
+  const client = fixture();
+  client.listNodes.mockResolvedValue(snapshot(NEW, NODES.map((node) => ({ ...node, enabled: true }))));
+  const pending = deferred<ThirdPartyNodeSnapshot>();
+  client.setNodeEnabled.mockReturnValue(pending.promise);
+  await mount(client); requestBulk(); vi.useFakeTimers(); confirmBulk();
+  await act(async () => { await vi.advanceTimersByTimeAsync(15000); });
+  expect(screen.getByText(/已确认删除 0\/2 个节点.*未确认/)).toBeInTheDocument();
+  await act(async () => pending.resolve(snapshot(NEW, [NODES[0], { ...NODES[1], enabled: true }], R2)));
+  expect(client.deleteNode).not.toHaveBeenCalled();
+  expect(client.setNodeEnabled).toHaveBeenCalledTimes(1);
+  expect(screen.getByRole("checkbox", { name: "选择 合成甲" })).toBeDisabled();
+  expect(nodeRow("合成甲").getByText("分发中")).toBeInTheDocument();
+});
+
+test("cancelling a mixed selection confirmation issues neither pause nor delete", async () => {
+  const client = fixture();
+  client.listNodes.mockResolvedValue(snapshot(NEW, NODES.map((node) => ({ ...node, enabled: true }))));
+  await mount(client); requestBulk();
+  fireEvent.click(within(screen.getByRole("dialog", { name: "确认批量删除节点" })).getByRole("button", { name: "取消" }));
+  expect(client.setNodeEnabled).not.toHaveBeenCalled();
+  expect(client.deleteNode).not.toHaveBeenCalled();
+});
+
+test("first visit chooses known nonempty source, but a remembered empty source remains selected", async () => {
+  const client = fixture();
+  client.listSources.mockResolvedValue([{ ...source(OLD), nodeCount: 0 }, { ...source(NEW), nodeCount: 2 }]);
+  client.listNodes.mockImplementation(async (id) => snapshot(id, id === OLD ? [] : NODES));
+  const page = await mount(client);
+  expect(screen.getByRole("combobox", { name: "第三方来源" })).toHaveValue(NEW);
+  expect(screen.getByRole("option", { name: /来源 1.*0 个节点/ })).toBeInTheDocument();
+  expect(screen.getByRole("option", { name: /来源 2.*2 个节点/ })).toBeInTheDocument();
+  fireEvent.change(screen.getByRole("combobox", { name: "第三方来源" }), { target: { value: OLD } });
+  await screen.findByText(/当前来源.*暂无节点/);
+  page.unmount();
+  render(<ThirdPartyAdminWorkspace client={client} />);
+  await screen.findByRole("heading", { name: "暂无节点" });
+  expect(screen.getByRole("combobox", { name: "第三方来源" })).toHaveValue(OLD);
+  expect(screen.getByText(/另有 1 个来源含节点/)).toBeInTheDocument();
 });
 
 test("partial conflict retains first deletion and locks writes without reporting total success", async () => {
@@ -135,8 +250,8 @@ test("partial conflict retains first deletion and locks writes without reporting
   requestBulk(); confirmBulk();
   await screen.findByText(/已确认删除 1\/2 个节点.*未确认/);
   expect(client.deleteNode).toHaveBeenCalledTimes(2);
-  expect(screen.queryByRole("button", { name: "删除 合成甲" })).not.toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "删除 合成乙" })).toBeDisabled();
+  expect(screen.queryByRole("checkbox", { name: "选择 合成甲" })).not.toBeInTheDocument();
+  expect(screen.getByRole("checkbox", { name: "选择 合成乙" })).toBeDisabled();
   expect(screen.queryByText(/已确认删除 2\/2/)).not.toBeInTheDocument();
 });
 
@@ -154,8 +269,8 @@ test("timeout after first success stops, preserves progress, ignores late second
   expect(screen.getByText(/已确认删除 1\/3 个节点.*未确认/)).toBeInTheDocument();
   expect(client.deleteNode.mock.calls[1][3]?.aborted).toBe(true);
   await act(async () => pending.resolve(snapshot(NEW, [third], R3)));
-  expect(screen.getByRole("button", { name: "删除 合成乙" })).toBeDisabled();
-  expect(screen.getByRole("button", { name: "删除 合成丙" })).toBeDisabled();
+  expect(screen.getByRole("checkbox", { name: "选择 合成乙" })).toBeDisabled();
+  expect(screen.getByRole("checkbox", { name: "选择 合成丙" })).toBeDisabled();
   expect(client.deleteNode).toHaveBeenCalledTimes(2);
 });
 
@@ -166,7 +281,7 @@ test.each(["session", "permission"] as const)("%s rejection after first deletion
   await screen.findByText(code === "session" ? "Admin 登录已失效，请重新登录。" : "当前账户没有此操作的 Admin 权限。");
   expect(sessionStorage.getItem(KEY)).toBeNull();
   expect(screen.queryByText(/已确认删除/)).not.toBeInTheDocument();
-  expect(screen.queryByRole("button", { name: "删除 合成乙" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("checkbox", { name: "选择 合成乙" })).not.toBeInTheDocument();
 });
 
 test("pending confirmation is invalidated by a source reload; unmount stops later requests", async () => {
@@ -219,8 +334,8 @@ test("a broader mutation response stops the batch before confirming any deletion
   requestBulk(); confirmBulk();
   await screen.findByText(/已确认删除 0\/2 个节点.*未确认/);
   expect(client.deleteNode).toHaveBeenCalledTimes(1);
-  expect(screen.getByRole("button", { name: "删除 合成甲" })).toBeDisabled();
-  expect(screen.getByRole("button", { name: "删除 合成乙" })).toBeDisabled();
+  expect(screen.getByRole("checkbox", { name: "选择 合成甲" })).toBeDisabled();
+  expect(screen.getByRole("checkbox", { name: "选择 合成乙" })).toBeDisabled();
 });
 
 test("stored remote sources are never used for an inline read and failed switches are not remembered", async () => {
@@ -243,7 +358,7 @@ test("StrictMode initialization restores only a confirmed source and performs no
   const client = fixture();
   client.listSources.mockResolvedValue([source(OLD), source(NEW)]);
   render(<StrictMode><ThirdPartyAdminWorkspace client={client} /></StrictMode>);
-  await screen.findByRole("button", { name: "删除 合成甲" });
+  await screen.findByRole("checkbox", { name: "选择 合成甲" });
   expect(client.listNodes).toHaveBeenCalledTimes(1);
   expect(client.listNodes).toHaveBeenCalledWith(NEW, expect.any(AbortSignal));
   expect(client.deleteNode).not.toHaveBeenCalled();

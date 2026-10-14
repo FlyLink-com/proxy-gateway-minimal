@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ThirdPartyNode } from '../features/third-party-node-names/node-name-model';
-import { ThirdPartyNodeNamesPage } from '../features/third-party-node-names/third-party-node-names-page';
+import { ThirdPartyNodeNamesPage, type ThirdPartyNodePersistence } from '../features/third-party-node-names/third-party-node-names-page';
 
 const originalSendBeacon = Object.getOwnPropertyDescriptor(navigator, 'sendBeacon');
 
@@ -201,5 +201,46 @@ describe('third-party node local list toolbar', () => {
     for (const spy of [fetchSpy, xhrSpy, socketSpy, eventSourceSpy, beaconSpy, indexedDbOpenSpy, ...storageSpies]) {
       expect(spy).not.toHaveBeenCalled();
     }
+  });
+});
+
+describe('third-party source toolbar state', () => {
+  function controls(overrides: Partial<ThirdPartyNodePersistence> = {}): ThirdPartyNodePersistence {
+    return { enabled: true, busy: false, onSave: vi.fn(), onEnable: vi.fn(), onDisable: vi.fn(), importAction: null, ...overrides };
+  }
+
+  it('shows a pause action for an enabled source and waits for the owner to confirm state', () => {
+    const persistence = controls();
+    render(<ThirdPartyNodeNamesPage initialNodes={fixture()} persistence={persistence} />);
+    const pause = screen.getByRole('button', { name: '暂停来源' });
+    expect(pause.textContent).toBe('暂停来源');
+    expect(pause.querySelector('svg.lucide-pause')).toBeTruthy();
+    expect(screen.getByText('已启用 · 后台')).toBeTruthy();
+    fireEvent.click(pause);
+    expect(persistence.onDisable).toHaveBeenCalledExactlyOnceWith();
+    expect(persistence.onEnable).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: '暂停来源' })).toBeTruthy();
+  });
+
+  it('shows a play action for a paused source without optimistic enablement', () => {
+    const persistence = controls({ enabled: false });
+    render(<ThirdPartyNodeNamesPage initialNodes={fixture()} persistence={persistence} />);
+    expect(enableButton().textContent).toBe('启用来源');
+    expect(enableButton().querySelector('svg.lucide-play')).toBeTruthy();
+    fireEvent.click(enableButton());
+    expect(persistence.onEnable).toHaveBeenCalledExactlyOnceWith();
+    expect(persistence.onDisable).not.toHaveBeenCalled();
+    expect(screen.queryByRole('button', { name: '暂停来源' })).toBeNull();
+  });
+
+  it('keeps pause available for an empty enabled source but blocks it while busy', () => {
+    const persistence = controls();
+    const view = render(<ThirdPartyNodeNamesPage initialNodes={[]} persistence={persistence} />);
+    expect((screen.getByRole('button', { name: '暂停来源' }) as HTMLButtonElement).disabled).toBe(false);
+    view.rerender(<ThirdPartyNodeNamesPage initialNodes={[]} persistence={{ ...persistence, busy: true }} />);
+    const pause = screen.getByRole('button', { name: '暂停来源' }) as HTMLButtonElement;
+    expect(pause.disabled).toBe(true);
+    fireEvent.click(pause);
+    expect(persistence.onDisable).not.toHaveBeenCalled();
   });
 });
