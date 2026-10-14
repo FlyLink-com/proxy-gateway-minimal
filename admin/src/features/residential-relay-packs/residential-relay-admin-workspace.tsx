@@ -5,6 +5,7 @@ import {
   type ResidentialRelayAdminClient, type ResidentialRelayAdminErrorCode,
   type ResidentialRelaySku, type ResidentialRelaySnapshot
 } from "./residential-relay-admin-client";
+import { ResidentialRelayCouponsPanel, ResidentialRelayDiscountPanel } from "./residential-relay-pricing-panels";
 import "./residential-relay-admin-workspace.styles.css";
 
 const ERROR_COPY: Record<ResidentialRelayAdminErrorCode, string> = {
@@ -23,7 +24,17 @@ const ERROR_COPY: Record<ResidentialRelayAdminErrorCode, string> = {
   invalid_duration: "时长必须是正整数天数。",
   invalid_quota: "额度必须是正整数字节。",
   invalid_buyer_protocol: "买家凭证协议只能是 VLESS 或 Hy2。",
-  upstream_limit: "此 SKU 上游数已达上限。"
+  upstream_limit: "此 SKU 上游数已达上限。",
+  sku_price_unset: "请先设置价格，再启用或报价此 SKU。",
+  invalid_discount: "折扣设置无效（百分比 0–100%，固定 Coins 为正整数，结束时间需晚于开始时间）。",
+  invalid_coupon: "优惠码设置无效。",
+  duplicate_coupon_code: "优惠码已存在。",
+  coupon_enabled: "请先停用优惠码，再编辑或删除。",
+  coupon_not_found: "优惠码不存在。",
+  coupon_inactive: "优惠码已停用或不在有效期内。",
+  coupon_not_applicable: "优惠码不适用于此 SKU。",
+  coupon_exhausted: "优惠码总次数已用完。",
+  coupon_user_limit: "此用户已达优惠码使用上限。"
 };
 
 const GiB = 1024 ** 3;
@@ -68,7 +79,7 @@ export function ResidentialRelayAdminWorkspace({ client: supplied, onSessionExpi
           buyerProtocol: next.sku.buyerProtocol ?? "vless",
           durationDays: String(next.sku.durationDays ?? 30),
           quotaGb: String((next.sku.quotaBytes ?? GiB) / GiB),
-          baseCoinUnits: String(next.sku.baseCoinUnits ?? 30)
+          baseCoinUnits: next.sku.baseCoinUnits === null ? "" : String(next.sku.baseCoinUnits)
         });
         setSelected([]);
       } else {
@@ -89,8 +100,8 @@ export function ResidentialRelayAdminWorkspace({ client: supplied, onSessionExpi
     try {
       const durationDays = Number(form.durationDays);
       const quotaGb = Number(form.quotaGb);
-      const baseCoinUnits = Number(form.baseCoinUnits);
-      if (!Number.isSafeInteger(durationDays) || !Number.isSafeInteger(quotaGb) || !Number.isSafeInteger(baseCoinUnits)) {
+      const baseCoinUnits = form.baseCoinUnits.trim() === "" ? null : Number(form.baseCoinUnits);
+      if (!Number.isSafeInteger(durationDays) || !Number.isSafeInteger(quotaGb) || (baseCoinUnits !== null && !Number.isSafeInteger(baseCoinUnits))) {
         setError(ERROR_COPY.invalid); return;
       }
       const next = await client.saveSku({
@@ -167,8 +178,14 @@ export function ResidentialRelayAdminWorkspace({ client: supplied, onSessionExpi
         {selectedSku ? <p className="resi-admin-meta">
           额度 {formatQuota(selectedSku.quotaBytes)} · 上游 {selectedSku.enabledUpstreamCount}/{selectedSku.upstreamCount} 已启用
           {selectedSku.purchasable ? " · 当前可售" : " · 当前不可售"}
+          {selectedSku.displayPrice ? (selectedSku.displayPrice.discountActive
+            ? <> · 原价 <s>{selectedSku.displayPrice.listPrice}</s> → 折后 <strong>{selectedSku.displayPrice.discountedPrice}</strong> Coins</>
+            : <> · 价格 {selectedSku.displayPrice.listPrice} Coins</>) : " · 未定价"}
         </p> : null}
       </section>
+
+      {snapshot ? <ResidentialRelayDiscountPanel busy={busy} client={client} snapshot={snapshot} onError={report}
+        onChange={async (next) => { setSnapshot(next); setSkus(await client.listSkus()); }} setBusy={setBusy} /> : null}
 
       <section className="resi-admin-panel" aria-label="上游线路">
         <h3>上游住宅线路</h3>
@@ -221,6 +238,8 @@ export function ResidentialRelayAdminWorkspace({ client: supplied, onSessionExpi
           </table>
         )}
       </section>
+
+      <ResidentialRelayCouponsPanel busy={busy} client={client} skus={skus} onError={report} setBusy={setBusy} />
     </div>
   );
 }

@@ -13,6 +13,7 @@ import {
   assertResidentialRelaySkuInput, isResidentialRelaySkuSizeCode, residentialRelaySkuPublicView
 } from "./residential-relay-pack-product.mjs";
 import { buildResidentialPool } from "../edge/residential-relay-pool.mjs";
+import { assertPriceAdjustment, computeResidentialPrice, isWithinWindow } from "./residential-relay-pricing.mjs";
 
 const PROTECTED_PREFIX = "v2:aes-256-gcm:";
 const SKU_ID = /^rrsku_[0-9a-f]{32}$/;
@@ -25,7 +26,9 @@ const MAX_BATCH = 256;
 export const RESIDENTIAL_RELAY_STORE_CODES = new Set([
   "invalid_input", "invalid_sku_size", "invalid_buyer_protocol", "invalid_duration", "invalid_quota", "invalid_price",
   "invalid_enabled", "invalid_yaml", "parse_no_valid_nodes", "upstream_limit", "revision_conflict", "not_found",
-  "upstream_enabled", "sku_not_ready", "no_enabled_upstream", "protected_value_invalid", "residential_relay_unavailable"
+  "upstream_enabled", "sku_not_ready", "no_enabled_upstream", "protected_value_invalid", "residential_relay_unavailable",
+  "invalid_discount", "invalid_coupon", "duplicate_coupon_code", "coupon_enabled", "coupon_not_found", "coupon_inactive",
+  "coupon_not_applicable", "coupon_exhausted", "coupon_user_limit", "sku_price_unset", "order_already_priced", "invalid_account"
 ]);
 
 function failure(code) {
@@ -53,7 +56,10 @@ function unavailableStore(extra = {}) {
   return {
     available: false, listSkus: unavailable, getSku: unavailable, saveSku: unavailable, setSkuEnabled: unavailable,
     previewUpstreams: unavailable, importUpstreams: unavailable, listUpstreams: unavailable,
-    setUpstreamsEnabled: unavailable, deleteUpstreams: unavailable, resolveRelayPool: unavailable, close() {}, ...extra
+    setUpstreamsEnabled: unavailable, deleteUpstreams: unavailable, resolveRelayPool: unavailable,
+    setSkuDiscount: unavailable, clearSkuDiscount: unavailable, listCoupons: unavailable, createCoupon: unavailable,
+    updateCoupon: unavailable, setCouponsEnabled: unavailable, deleteCoupons: unavailable, quote: unavailable,
+    recordOrderPrice: unavailable, close() {}, ...extra
   };
 }
 
@@ -101,7 +107,32 @@ export function createSqliteResidentialRelayPackStore(options = {}) {
     reviveUpstream: database.prepare(`update platform_residential_relay_upstreams
       set display_name = ?, country_code = ?, protocol = ?, protected_config = ?, enabled = 0, active = 1, updated_at = ? where id = ?`),
     setUpstreamEnabled: database.prepare("update platform_residential_relay_upstreams set enabled = ?, updated_at = ? where sku_id = ? and id = ? and active = 1"),
-    deactivateUpstream: database.prepare("update platform_residential_relay_upstreams set active = 0, updated_at = ? where sku_id = ? and id = ? and active = 1 and enabled = 0")
+    deactivateUpstream: database.prepare("update platform_residential_relay_upstreams set active = 0, updated_at = ? where sku_id = ? and id = ? and active = 1 and enabled = 0"),
+    discount: database.prepare("select * from platform_residential_relay_discounts where sku_id = ?"),
+    upsertDiscount: database.prepare(`insert into platform_residential_relay_discounts (sku_id, kind, value, starts_at, ends_at, enabled, updated_at)
+      values (?, ?, ?, ?, ?, ?, ?) on conflict(sku_id) do update set kind = excluded.kind, value = excluded.value,
+      starts_at = excluded.starts_at, ends_at = excluded.ends_at, enabled = excluded.enabled, updated_at = excluded.updated_at`),
+    deleteDiscount: database.prepare("delete from platform_residential_relay_discounts where sku_id = ?"),
+    coupons: database.prepare("select * from platform_residential_relay_coupons where active = 1 order by created_at asc, id asc"),
+    couponById: database.prepare("select * from platform_residential_relay_coupons where id = ? and active = 1"),
+    couponByCode: database.prepare("select * from platform_residential_relay_coupons where code = ? and active = 1"),
+    couponCodeTaken: database.prepare("select id from platform_residential_relay_coupons where code = ?"),
+    couponSkus: database.prepare("select sku_id from platform_residential_relay_coupon_skus where coupon_id = ? order by sku_id"),
+    insertCoupon: database.prepare(`insert into platform_residential_relay_coupons
+      (id, code, kind, value, all_skus, starts_at, ends_at, total_limit, per_user_limit, stackable, enabled, active, redemption_count, created_at, updated_at)
+      values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 1, 0, ?, ?)`),
+    updateCoupon: database.prepare(`update platform_residential_relay_coupons set kind = ?, value = ?, all_skus = ?, starts_at = ?, ends_at = ?,
+      total_limit = ?, per_user_limit = ?, stackable = ?, updated_at = ? where id = ? and active = 1`),
+    clearCouponSkus: database.prepare("delete from platform_residential_relay_coupon_skus where coupon_id = ?"),
+    insertCouponSku: database.prepare("insert into platform_residential_relay_coupon_skus (coupon_id, sku_id) values (?, ?)"),
+    setCouponEnabled: database.prepare("update platform_residential_relay_coupons set enabled = ?, updated_at = ? where id = ? and active = 1"),
+    deactivateCoupon: database.prepare("update platform_residential_relay_coupons set active = 0, updated_at = ? where id = ? and active = 1 and enabled = 0"),
+    userRedemptions: database.prepare("select count(*) as n from platform_residential_relay_coupon_redemptions where coupon_id = ? and account_ref = ?"),
+    insertRedemption: database.prepare("insert into platform_residential_relay_coupon_redemptions (order_ref, coupon_id, account_ref, redeemed_at) values (?, ?, ?, ?)"),
+    bumpRedemption: database.prepare("update platform_residential_relay_coupons set redemption_count = redemption_count + 1 where id = ?"),
+    orderPrice: database.prepare("select * from platform_residential_relay_order_prices where order_ref = ?"),
+    insertOrderPrice: database.prepare(`insert into platform_residential_relay_order_prices
+      (order_ref, account_ref, sku_id, coupon_id, list_price, final_price, breakdown, created_at) values (?, ?, ?, ?, ?, ?, ?, ?)`)
   };
 
   const now = () => {
@@ -122,12 +153,24 @@ export function createSqliteResidentialRelayPackStore(options = {}) {
     return new Map(q.upstreamCounts.all().map(row => [row.sku_id, { total: Number(row.total) || 0, enabled: Number(row.enabled) || 0 }]));
   }
 
+  function discountOf(skuId) {
+    const row = q.discount.get(skuId);
+    return row ? { kind: row.kind, value: row.value, startsAt: row.starts_at, endsAt: row.ends_at, enabled: row.enabled === 1 } : null;
+  }
+
   function skuView(row, countMap = counts()) {
     const c = countMap.get(row.id) || { total: 0, enabled: 0 };
+    const discount = discountOf(row.id);
+    let displayPrice = null;
+    if (Number.isSafeInteger(row.base_coin_units)) {
+      const quote = computeResidentialPrice({ listPrice: row.base_coin_units, discount, now: now() });
+      displayPrice = { listPrice: quote.listPrice, discountedPrice: quote.priceAfterDiscount, discountActive: Boolean(quote.discount) };
+    }
     return residentialRelaySkuPublicView({
       id: row.id, sizeCode: row.size_code, buyerProtocol: row.buyer_protocol, quotaBytes: row.quota_bytes,
       durationDays: row.duration_days, baseCoinUnits: row.base_coin_units, enabled: row.enabled === 1,
-      upstreamCount: c.total, enabledUpstreamCount: c.enabled
+      upstreamCount: c.total, enabledUpstreamCount: c.enabled,
+      discount: discount ? { ...discount, active: discount.enabled && isWithinWindow(discount, now()) } : null, displayPrice
     });
   }
 
@@ -206,6 +249,7 @@ export function createSqliteResidentialRelayPackStore(options = {}) {
       }
       checkRevision(existing, input.revision);
       if (values.enabled && (counts().get(existing.id)?.enabled ?? 0) < 1) throw failure("no_enabled_upstream");
+      if (values.enabled && values.baseCoinUnits === null) throw failure("sku_price_unset");
       q.updateSku.run(values.buyerProtocol, values.quotaBytes, values.durationDays, values.baseCoinUnits, values.enabled ? 1 : 0, at, existing.id);
       return upstreamSnapshot(q.skuById.get(existing.id));
     }).immediate();
@@ -218,6 +262,7 @@ export function createSqliteResidentialRelayPackStore(options = {}) {
       const row = requireSku(id);
       checkRevision(row, input.revision);
       if (input.enabled && (counts().get(row.id)?.enabled ?? 0) < 1) throw failure("no_enabled_upstream");
+      if (input.enabled && row.base_coin_units === null) throw failure("sku_price_unset");
       q.setSkuEnabled.run(input.enabled ? 1 : 0, now(), row.id);
       return upstreamSnapshot(q.skuById.get(row.id));
     }).immediate();
@@ -305,8 +350,209 @@ export function createSqliteResidentialRelayPackStore(options = {}) {
     return { sku: skuView(row), pool: buildResidentialPool({ importedNodes: nodes, requireCountry: null }) };
   });
 
+
+  // ---- Discounts (one per SKU) ----
+  const setSkuDiscount = guarded((id, input) => {
+    exactKeys(input, ["revision", "kind", "value"], ["startsAt", "endsAt", "enabled"]);
+    const adjustment = assertPriceAdjustment(input, "invalid_discount");
+    if (input.enabled !== undefined && typeof input.enabled !== "boolean") throw failure("invalid_discount");
+    return database.transaction(() => {
+      const row = requireSku(id);
+      checkRevision(row, input.revision);
+      const at = now();
+      q.upsertDiscount.run(row.id, adjustment.kind, adjustment.value, adjustment.startsAt, adjustment.endsAt, input.enabled === false ? 0 : 1, at);
+      q.touchSku.run(at, row.id);
+      return upstreamSnapshot(q.skuById.get(row.id));
+    }).immediate();
+  });
+
+  const clearSkuDiscount = guarded((id, input) => {
+    exactKeys(input, ["revision"]);
+    return database.transaction(() => {
+      const row = requireSku(id);
+      checkRevision(row, input.revision);
+      const at = now();
+      q.deleteDiscount.run(row.id);
+      q.touchSku.run(at, row.id);
+      return upstreamSnapshot(q.skuById.get(row.id));
+    }).immediate();
+  });
+
+  // ---- Coupons ----
+  const CODE = /^[A-Z0-9][A-Z0-9_-]{2,31}$/;
+  const COUPON_ID = /^rrcpn_[0-9a-f]{32}$/;
+
+  function couponView(row) {
+    return {
+      id: row.id, code: row.code, kind: row.kind, value: row.value, allSkus: row.all_skus === 1,
+      skuIds: q.couponSkus.all(row.id).map(item => item.sku_id), startsAt: row.starts_at, endsAt: row.ends_at,
+      totalLimit: row.total_limit, perUserLimit: row.per_user_limit, stackable: row.stackable === 1,
+      enabled: row.enabled === 1, redemptionCount: row.redemption_count
+    };
+  }
+
+  function couponsSnapshot() {
+    const rows = q.coupons.all();
+    const revision = createHash("sha256").update(JSON.stringify(rows.map(row => [row.id, row.updated_at, row.enabled, row.redemption_count]))).digest("hex");
+    return { revision, items: rows.map(couponView) };
+  }
+
+  function checkCouponsRevision(revision) {
+    if (typeof revision !== "string" || !REVISION.test(revision)) throw failure("invalid_input");
+    if (couponsSnapshot().revision !== revision) throw failure("revision_conflict");
+  }
+
+  function couponFields(input) {
+    const adjustment = assertPriceAdjustment(input, "invalid_coupon");
+    const limit = value => {
+      if (value === null || value === undefined) return null;
+      if (!Number.isSafeInteger(value) || value <= 0) throw failure("invalid_coupon");
+      return value;
+    };
+    if (input.stackable !== undefined && typeof input.stackable !== "boolean") throw failure("invalid_coupon");
+    if (input.allSkus !== undefined && typeof input.allSkus !== "boolean") throw failure("invalid_coupon");
+    const skuIds = input.skuIds ?? [];
+    if (!Array.isArray(skuIds) || skuIds.length > 8 || skuIds.some(item => typeof item !== "string" || !SKU_ID.test(item))
+      || new Set(skuIds).size !== skuIds.length) throw failure("invalid_coupon");
+    if (input.allSkus !== true && skuIds.length === 0) throw failure("invalid_coupon");
+    for (const skuId of skuIds) if (!q.skuById.get(skuId)) throw failure("invalid_coupon");
+    return { ...adjustment, allSkus: input.allSkus === true, skuIds: input.allSkus === true ? [] : skuIds,
+      totalLimit: limit(input.totalLimit), perUserLimit: limit(input.perUserLimit), stackable: input.stackable !== false };
+  }
+
+  const listCoupons = guarded(() => couponsSnapshot());
+
+  const createCoupon = guarded(input => {
+    exactKeys(input, ["revision", "code", "kind", "value"], ["allSkus", "skuIds", "startsAt", "endsAt", "totalLimit", "perUserLimit", "stackable"]);
+    const code = typeof input.code === "string" ? input.code.trim().toUpperCase() : "";
+    if (!CODE.test(code)) throw failure("invalid_coupon");
+    return database.transaction(() => {
+      checkCouponsRevision(input.revision);
+      const fields = couponFields(input);
+      if (q.couponCodeTaken.get(code)) throw failure("duplicate_coupon_code");
+      const id = newId("rrcpn_"), at = now();
+      q.insertCoupon.run(id, code, fields.kind, fields.value, fields.allSkus ? 1 : 0, fields.startsAt, fields.endsAt,
+        fields.totalLimit, fields.perUserLimit, fields.stackable ? 1 : 0, at, at);
+      for (const skuId of fields.skuIds) q.insertCouponSku.run(id, skuId);
+      return couponsSnapshot();
+    }).immediate();
+  });
+
+  const updateCoupon = guarded((couponId, input) => {
+    if (typeof couponId !== "string" || !COUPON_ID.test(couponId)) throw failure("invalid_input");
+    exactKeys(input, ["revision", "kind", "value"], ["allSkus", "skuIds", "startsAt", "endsAt", "totalLimit", "perUserLimit", "stackable"]);
+    return database.transaction(() => {
+      checkCouponsRevision(input.revision);
+      const row = q.couponById.get(couponId);
+      if (!row) throw failure("coupon_not_found");
+      if (row.enabled === 1) throw failure("coupon_enabled");
+      const fields = couponFields(input);
+      const at = now();
+      q.updateCoupon.run(fields.kind, fields.value, fields.allSkus ? 1 : 0, fields.startsAt, fields.endsAt,
+        fields.totalLimit, fields.perUserLimit, fields.stackable ? 1 : 0, at, couponId);
+      q.clearCouponSkus.run(couponId);
+      for (const skuId of fields.skuIds) q.insertCouponSku.run(couponId, skuId);
+      return couponsSnapshot();
+    }).immediate();
+  });
+
+  const setCouponsEnabled = guarded(input => {
+    exactKeys(input, ["revision", "couponIds", "enabled"]);
+    if (typeof input.enabled !== "boolean") throw failure("invalid_enabled");
+    const ids = idList(input.couponIds, COUPON_ID);
+    return database.transaction(() => {
+      checkCouponsRevision(input.revision);
+      if (ids.some(item => !q.couponById.get(item))) throw failure("coupon_not_found");
+      const at = now();
+      for (const item of ids) q.setCouponEnabled.run(input.enabled ? 1 : 0, at, item);
+      return couponsSnapshot();
+    }).immediate();
+  });
+
+  // Pause before delete. Redemption history and recorded order prices are kept.
+  const deleteCoupons = guarded(input => {
+    exactKeys(input, ["revision", "couponIds"]);
+    const ids = idList(input.couponIds, COUPON_ID);
+    return database.transaction(() => {
+      checkCouponsRevision(input.revision);
+      const rows = ids.map(item => q.couponById.get(item));
+      if (rows.some(row => !row)) throw failure("coupon_not_found");
+      if (rows.some(row => row.enabled === 1)) throw failure("coupon_enabled");
+      const at = now();
+      for (const item of ids) q.deactivateCoupon.run(at, item);
+      return couponsSnapshot();
+    }).immediate();
+  });
+
+  // ---- Pricing / quote ----
+  const ACCOUNT_REF = /^[A-Za-z0-9._:-]{1,128}$/;
+
+  function resolveCoupon(code, skuRow, accountRef, at) {
+    if (code === undefined || code === null || code === "") return null;
+    const normalized = typeof code === "string" ? code.trim().toUpperCase() : "";
+    if (!CODE.test(normalized)) throw failure("coupon_not_found");
+    const row = q.couponByCode.get(normalized);
+    if (!row) throw failure("coupon_not_found");
+    if (row.enabled !== 1 || !isWithinWindow({ startsAt: row.starts_at, endsAt: row.ends_at }, at)) throw failure("coupon_inactive");
+    if (row.all_skus !== 1 && !q.couponSkus.all(row.id).some(item => item.sku_id === skuRow.id)) throw failure("coupon_not_applicable");
+    if (row.total_limit !== null && row.redemption_count >= row.total_limit) throw failure("coupon_exhausted");
+    if (accountRef && row.per_user_limit !== null && q.userRedemptions.get(row.id, accountRef).n >= row.per_user_limit) throw failure("coupon_user_limit");
+    return row;
+  }
+
+  function priceFor(skuId, couponCode, accountRef) {
+    const skuRow = requireSku(skuId);
+    if (accountRef !== undefined && accountRef !== null && !ACCOUNT_REF.test(accountRef)) throw failure("invalid_account");
+    if (skuRow.base_coin_units === null) throw failure("sku_price_unset");
+    const at = now();
+    const coupon = resolveCoupon(couponCode, skuRow, accountRef, at);
+    const breakdown = computeResidentialPrice({
+      listPrice: skuRow.base_coin_units, discount: discountOf(skuRow.id),
+      coupon: coupon ? { code: coupon.code, kind: coupon.kind, value: coupon.value, stackable: coupon.stackable === 1 } : null, now: at
+    });
+    return { skuRow, coupon, breakdown: { skuId: skuRow.id, sizeCode: skuRow.size_code, purchasable: isPurchasableRow(skuRow), quotedAt: at, ...breakdown } };
+  }
+
+  function isPurchasableRow(skuRow) { return skuView(skuRow).purchasable; }
+
+  // Read-only quote: SKU + optional coupon (+ optional account for per-user limits).
+  const quote = guarded(input => {
+    exactKeys(input, ["skuId"], ["couponCode", "accountRef"]);
+    return priceFor(input.skuId, input.couponCode, input.accountRef).breakdown;
+  });
+
+  // For the #753 order flow: atomically recompute, redeem the coupon and record
+  // the priced breakdown on the order. Idempotent per orderRef (same inputs
+  // return the recorded row; different inputs fail). Fulfillment is not wired.
+  const recordOrderPrice = guarded(input => {
+    exactKeys(input, ["orderRef", "accountRef", "skuId"], ["couponCode"]);
+    if (typeof input.orderRef !== "string" || !ACCOUNT_REF.test(input.orderRef)) throw failure("invalid_input");
+    if (typeof input.accountRef !== "string" || !ACCOUNT_REF.test(input.accountRef)) throw failure("invalid_account");
+    return database.transaction(() => {
+      const existing = q.orderPrice.get(input.orderRef);
+      if (existing) {
+        const recorded = JSON.parse(existing.breakdown);
+        const sameCoupon = (recorded.coupon?.code ?? null) === (input.couponCode ? String(input.couponCode).trim().toUpperCase() : null);
+        if (existing.account_ref !== input.accountRef || existing.sku_id !== input.skuId || !sameCoupon) throw failure("order_already_priced");
+        return recorded;
+      }
+      const { skuRow, coupon, breakdown } = priceFor(input.skuId, input.couponCode, input.accountRef);
+      if (!breakdown.purchasable) throw failure("sku_not_ready");
+      const at = now();
+      const couponUsed = coupon && breakdown.coupon?.applied ? coupon : null;
+      if (couponUsed) {
+        q.insertRedemption.run(input.orderRef, couponUsed.id, input.accountRef, at);
+        q.bumpRedemption.run(couponUsed.id);
+      }
+      const recorded = { ...breakdown, orderRef: input.orderRef };
+      q.insertOrderPrice.run(input.orderRef, input.accountRef, skuRow.id, couponUsed?.id ?? null, breakdown.listPrice, breakdown.finalPrice, JSON.stringify(recorded), at);
+      return recorded;
+    }).immediate();
+  });
+
   return { available: true, listSkus, getSku, saveSku, setSkuEnabled, previewUpstreams, importUpstreams,
-    listUpstreams, setUpstreamsEnabled, deleteUpstreams, resolveRelayPool, close };
+    listUpstreams, setUpstreamsEnabled, deleteUpstreams, resolveRelayPool, setSkuDiscount, clearSkuDiscount,
+    listCoupons, createCoupon, updateCoupon, setCouponsEnabled, deleteCoupons, quote, recordOrderPrice, close };
 }
 
 export { isResidentialRelaySkuSizeCode };

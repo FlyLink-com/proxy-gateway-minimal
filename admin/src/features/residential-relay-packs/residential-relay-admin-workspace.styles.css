@@ -22,3 +22,6 @@
 .resi-admin-meta { margin: 0; color: #9aa3b5; font-size: 0.86rem; }
 .resi-admin-table { width: 100%; border-collapse: collapse; }
 .resi-admin-table th, .resi-admin-table td { padding: 0.45rem 0.35rem; border-bottom: 1px solid #243049; text-align: left; font-size: 0.9rem; }
+.resi-admin-check { display: flex !important; align-items: center; gap: 0.4rem; }
+.resi-admin-check input { width: auto !important; }
+.resi-admin-skus { display: flex; flex-wrap: wrap; gap: 0.75rem; border: 1px solid #243049; border-radius: 0.5rem; padding: 0.5rem 0.75rem; }

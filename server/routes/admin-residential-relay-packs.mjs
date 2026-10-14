@@ -12,7 +12,9 @@ function sendError(res, status, code) {
 
 function statusFor(code) {
   if (code === "not_found") return 404;
-  if (code === "revision_conflict" || code === "upstream_enabled" || code === "no_enabled_upstream") return 409;
+  if (code === "not_found" || code === "coupon_not_found") return 404;
+  if (["revision_conflict", "upstream_enabled", "no_enabled_upstream", "coupon_enabled", "duplicate_coupon_code",
+    "order_already_priced", "coupon_exhausted", "coupon_user_limit", "sku_price_unset", "sku_not_ready"].includes(code)) return 409;
   if (code === "residential_relay_unavailable") return 503;
   if (code === "admin_permission_required") return 403;
   return 400;
@@ -137,6 +139,72 @@ export function adminResidentialRelayPackRoutes(state) {
       const input = body(req.body);
       if (!input) { sendError(res, 400, "invalid_input"); return; }
       res.json(req.residentialRelayStore.deleteUpstreams(req.params.id, pick(input, ["revision", "upstreamIds"])));
+    } catch (error) { sendStoreError(res, error, "invalid_input"); }
+  });
+
+  router.put("/api/admin/residential-relay-packs/skus/:id/discount", (req, res) => {
+    if (!SKU_ID.test(req.params.id)) { sendError(res, 400, "invalid_input"); return; }
+    try {
+      const input = body(req.body);
+      if (!input) { sendError(res, 400, "invalid_input"); return; }
+      res.json(req.residentialRelayStore.setSkuDiscount(req.params.id,
+        pick(input, ["revision", "kind", "value", "startsAt", "endsAt", "enabled"])));
+    } catch (error) { sendStoreError(res, error, "invalid_discount"); }
+  });
+
+  router.post("/api/admin/residential-relay-packs/skus/:id/discount/clear", (req, res) => {
+    if (!SKU_ID.test(req.params.id)) { sendError(res, 400, "invalid_input"); return; }
+    try {
+      const input = body(req.body);
+      if (!input) { sendError(res, 400, "invalid_input"); return; }
+      res.json(req.residentialRelayStore.clearSkuDiscount(req.params.id, pick(input, ["revision"])));
+    } catch (error) { sendStoreError(res, error, "invalid_input"); }
+  });
+
+  const COUPON_FIELDS = ["revision", "code", "kind", "value", "allSkus", "skuIds", "startsAt", "endsAt", "totalLimit", "perUserLimit", "stackable"];
+  router.get("/api/admin/residential-relay-packs/coupons", (req, res) => {
+    try { res.json(req.residentialRelayStore.listCoupons()); }
+    catch (error) { sendStoreError(res, error, "residential_relay_unavailable"); }
+  });
+  router.post("/api/admin/residential-relay-packs/coupons", (req, res) => {
+    try {
+      const input = body(req.body);
+      if (!input) { sendError(res, 400, "invalid_input"); return; }
+      res.status(201).json(req.residentialRelayStore.createCoupon(pick(input, COUPON_FIELDS)));
+    } catch (error) { sendStoreError(res, error, "invalid_coupon"); }
+  });
+  router.put("/api/admin/residential-relay-packs/coupons/:couponId", (req, res) => {
+    if (!/^rrcpn_[0-9a-f]{32}$/.test(req.params.couponId)) { sendError(res, 400, "invalid_input"); return; }
+    try {
+      const input = body(req.body);
+      if (!input) { sendError(res, 400, "invalid_input"); return; }
+      res.json(req.residentialRelayStore.updateCoupon(req.params.couponId, pick(input, COUPON_FIELDS.filter(key => key !== "code"))));
+    } catch (error) { sendStoreError(res, error, "invalid_coupon"); }
+  });
+  for (const [action, enabled] of [["enable", true], ["pause", false]]) {
+    router.post(`/api/admin/residential-relay-packs/coupons/${action}`, (req, res) => {
+      try {
+        const input = body(req.body);
+        if (!input) { sendError(res, 400, "invalid_input"); return; }
+        res.json(req.residentialRelayStore.setCouponsEnabled({ ...pick(input, ["revision", "couponIds"]), enabled }));
+      } catch (error) { sendStoreError(res, error, "invalid_input"); }
+    });
+  }
+  router.post("/api/admin/residential-relay-packs/coupons/delete", (req, res) => {
+    try {
+      const input = body(req.body);
+      if (!input) { sendError(res, 400, "invalid_input"); return; }
+      res.json(req.residentialRelayStore.deleteCoupons(pick(input, ["revision", "couponIds"])));
+    } catch (error) { sendStoreError(res, error, "invalid_input"); }
+  });
+
+  // Purchase quote preview: SKU + optional coupon (+ optional account) -> breakdown.
+  // Read-only; does not redeem. The order flow uses store.recordOrderPrice.
+  router.post("/api/admin/residential-relay-packs/quote", (req, res) => {
+    try {
+      const input = body(req.body);
+      if (!input) { sendError(res, 400, "invalid_input"); return; }
+      res.json(req.residentialRelayStore.quote(pick(input, ["skuId", "couponCode", "accountRef"])));
     } catch (error) { sendStoreError(res, error, "invalid_input"); }
   });
 

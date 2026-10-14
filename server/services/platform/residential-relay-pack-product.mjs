@@ -74,6 +74,8 @@ export function residentialRelaySkuPublicView(sku) {
     enabledUpstreamCount: sku.enabledUpstreamCount ?? 0,
     upstreamCount: sku.upstreamCount ?? 0,
     purchasable: isResidentialRelaySkuPurchasable(sku),
+    discount: sku.discount ?? null,
+    displayPrice: sku.displayPrice ?? null,
     terms: RESIDENTIAL_RELAY_PACK_TERMS
   };
 }
@@ -83,7 +85,9 @@ export function assertResidentialRelaySkuInput(input = {}) {
   if (!isResidentialRelayBuyerProtocol(input.buyerProtocol)) throw fail("invalid_buyer_protocol");
   if (!Number.isSafeInteger(input.durationDays) || input.durationDays <= 0 || input.durationDays > 3660) throw fail("invalid_duration");
   if (!Number.isSafeInteger(input.quotaBytes) || input.quotaBytes <= 0) throw fail("invalid_quota");
-  if (!Number.isSafeInteger(input.baseCoinUnits) || input.baseCoinUnits <= 0) throw fail("invalid_price");
+  // null = no price yet (e.g. seeded 1TB); such a SKU cannot be enabled or sold.
+  if (input.baseCoinUnits !== null && (!Number.isSafeInteger(input.baseCoinUnits) || input.baseCoinUnits <= 0)) throw fail("invalid_price");
+  if (input.baseCoinUnits === null && input.enabled === true) throw fail("invalid_price");
   if (input.enabled !== undefined && typeof input.enabled !== "boolean") throw fail("invalid_enabled");
   return {
     sizeCode: input.sizeCode,
