@@ -26,14 +26,11 @@ const ERROR_COPY: Record<ResidentialRelayAdminErrorCode, string> = {
   invalid_buyer_protocol: "买家凭证协议只能是 VLESS 或 Hy2。",
   upstream_limit: "此 SKU 上游数已达上限。",
   sku_price_unset: "请先设置价格，再启用或报价此 SKU。",
-  invalid_coupon: "优惠码设置无效。",
-  duplicate_coupon_code: "优惠码已存在。",
-  coupon_enabled: "请先停用优惠码，再编辑或删除。",
-  coupon_not_found: "优惠码不存在。",
-  coupon_inactive: "优惠码已停用或不在有效期内。",
-  coupon_not_applicable: "优惠码不适用于此 SKU。",
-  coupon_exhausted: "优惠码总次数已用完。",
-  coupon_user_limit: "此用户已达优惠码使用上限。"
+  invalid_coupon: "兑换码设置无效：比例最多 20%，固定 Coins 不超过适用流量包原价的 20%，过期时间需晚于现在，数量 1–500。",
+  coupon_not_found: "兑换码不存在。",
+  coupon_inactive: "兑换码已作废、已消耗或已过期。",
+  coupon_not_applicable: "兑换码不适用于此 SKU。",
+  coupon_not_voidable: "只能作废尚未兑换的兑换码。"
 };
 
 const GiB = 1024 ** 3;

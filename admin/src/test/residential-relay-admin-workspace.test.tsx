@@ -1,5 +1,6 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { couponsToCsv } from "../features/residential-relay-packs/residential-relay-pricing-panels";
 import { ResidentialRelayAdminWorkspace } from "../features/residential-relay-packs/residential-relay-admin-workspace";
 import type { ResidentialRelayAdminClient, ResidentialRelaySku, ResidentialRelaySnapshot } from "../features/residential-relay-packs/residential-relay-admin-client";
 import { ResidentialRelayAdminError } from "../features/residential-relay-packs/residential-relay-admin-client";
@@ -11,6 +12,11 @@ const UP_A = `rrup_${"1".repeat(32)}`;
 const UP_B = `rrup_${"2".repeat(32)}`;
 const CPN = `rrcpn_${"c".repeat(32)}`;
 const REV = (n: number) => String(n).repeat(64).slice(0, 64);
+
+const COUPON = { id: CPN, code: "ABCD-EFGH-JKMN", batchId: "rrbat_1", kind: "percent" as const, value: 1500, allSkus: true, skus: [],
+  status: "consumed" as const, issuedAt: "2026-10-01T00:00:00.000Z", issuedBy: "op_alice", expiresAt: "2026-12-01T00:00:00.000Z",
+  voidedAt: null, voidedBy: null, redeemedBy: "acct_a", redeemedAt: "2026-10-02T00:00:00.000Z", consumedBy: "acct_a",
+  consumedOrderRef: "order_77", consumedAmount: 5, consumedAt: "2026-10-03T00:00:00.000Z" };
 
 function sku(patch: Partial<ResidentialRelaySku> = {}): ResidentialRelaySku {
   return { configured: true, id: SKU_ID, sizeCode: "100G", buyerProtocol: "vless", quotaBytes: 100 * GiB,
@@ -36,14 +42,11 @@ function client(overrides: Partial<ResidentialRelayAdminClient> = {}): Residenti
       [{ id: UP_A, displayName: "US 1", countryCode: "US", protocol: "ss", enabled: enabled && ids.includes(UP_A) },
         { id: UP_B, displayName: "US 2", countryCode: "US", protocol: "ss", enabled: enabled && ids.includes(UP_B) }], 2)),
     deleteUpstreams: vi.fn(async () => snap({}, [], 3)),
-    listCoupons: vi.fn(async () => ({ revision: REV(5), items: [] })),
-    createCoupon: vi.fn(async (_rev, input) => ({ revision: REV(6), items: [{ id: CPN, code: input.code, kind: input.kind, value: input.value,
-      allSkus: input.allSkus, skuIds: input.skuIds, startsAt: null, endsAt: null, totalLimit: input.totalLimit ?? null,
-      perUserLimit: input.perUserLimit ?? null, enabled: false, redemptionCount: 0 }] })),
-    setCouponsEnabled: vi.fn(async () => ({ revision: REV(7), items: [] })),
-    deleteCoupons: vi.fn(async () => ({ revision: REV(8), items: [] })),
+    listCoupons: vi.fn(async () => ({ asOf: "2026-10-14T00:00:00.000Z", items: [COUPON] })),
+    generateCoupons: vi.fn(async () => ({ asOf: "2026-10-14T00:00:00.000Z", items: [{ ...COUPON, code: "NEWC-ODE2-3456" }] })),
+    voidCoupons: vi.fn(async () => undefined),
     quote: vi.fn(async () => ({ skuId: SKU_ID, sizeCode: "100G", purchasable: true, listPrice: 30,
-      finalPrice: 25, coupon: { code: "SAVE5", kind: "fixed", value: 5, applied: true } })),
+      deduction: 5, finalPrice: 25, coupon: { code: "SAVE-5555-5555", kind: "fixed", value: 5, applied: true, capped: false } })),
     ...overrides
   } as ResidentialRelayAdminClient;
 }
@@ -88,28 +91,42 @@ describe("ResidentialRelayAdminWorkspace", () => {
     render(<ResidentialRelayAdminWorkspace client={client()} />);
     await screen.findByText("US 1");
     expect(screen.queryByRole("region", { name: "SKU 折扣" })).toBeNull();
-    expect(screen.queryByText(/叠加|折扣/)).toBeNull();
+    expect(screen.queryByText(/叠加|保存折扣|剩余次数|每用户/)).toBeNull();
   });
 
-  it("creates a coupon with limits, then quotes list -> coupon with it", async () => {
+  it("generates redeem codes in a batch, shows audit columns, filters and quotes", async () => {
     const c = client();
     render(<ResidentialRelayAdminWorkspace client={c} />);
     await screen.findByText("US 1");
-    const coupons = screen.getByRole("region", { name: "优惠码" });
-    fireEvent.change(within(coupons).getByLabelText("优惠码"), { target: { value: "save5" } });
-    fireEvent.change(within(coupons).getByLabelText("类型"), { target: { value: "fixed" } });
-    fireEvent.change(within(coupons).getByLabelText("减免（Coins）"), { target: { value: "5" } });
-    fireEvent.change(within(coupons).getByLabelText("总次数上限（可选）"), { target: { value: "100" } });
-    fireEvent.change(within(coupons).getByLabelText("每用户上限（可选）"), { target: { value: "1" } });
-    fireEvent.click(within(coupons).getByRole("button", { name: "创建优惠码（默认停用）" }));
-    await waitFor(() => expect(c.createCoupon).toHaveBeenCalledWith(REV(5), { code: "SAVE5", kind: "fixed", value: 5, allSkus: true,
-      skuIds: [], startsAt: null, endsAt: null, totalLimit: 100, perUserLimit: 1 }));
-    expect(await within(coupons).findByText("SAVE5")).toBeTruthy();
-    fireEvent.change(within(coupons).getByLabelText("SKU"), { target: { value: SKU_ID } });
-    fireEvent.change(within(coupons).getByLabelText("优惠码（可选）"), { target: { value: "save5" } });
-    fireEvent.click(within(coupons).getByRole("button", { name: "计算报价" }));
-    await waitFor(() => expect(c.quote).toHaveBeenCalledWith(SKU_ID, "SAVE5"));
-    expect((await within(coupons).findByLabelText("报价结果")).textContent).toContain("25");
+    const panel = screen.getByRole("region", { name: "兑换码" });
+    const table = await within(panel).findByRole("table", { name: "兑换码列表" });
+    for (const head of ["签发时间", "折扣比例", "抵扣金额", "生成账户", "兑换账户", "消耗账户", "过期时间", "状态"]) {
+      expect(within(table).getByRole("columnheader", { name: head })).toBeTruthy();
+    }
+    expect(within(table).getByText("15%")).toBeTruthy();
+    expect(within(table).getByText("5 Coins")).toBeTruthy();
+    expect(within(table).getByText("op_alice")).toBeTruthy();
+    expect(within(table).getByText(/order_77/)).toBeTruthy();
+    fireEvent.change(within(panel).getByLabelText("状态"), { target: { value: "voided" } });
+    expect(within(panel).getByText("暂无兑换码。")).toBeTruthy();
+    fireEvent.change(within(panel).getByLabelText("状态"), { target: { value: "" } });
+    expect((within(panel).getByRole("button", { name: /作废所选/ }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.change(within(panel).getByLabelText("数量"), { target: { value: "20" } });
+    fireEvent.change(within(panel).getByLabelText("比例（%，≤20）"), { target: { value: "15" } });
+    fireEvent.change(within(panel).getByLabelText("过期时间"), { target: { value: "2026-12-01T00:00" } });
+    fireEvent.click(within(panel).getByRole("button", { name: "生成兑换码" }));
+    await waitFor(() => expect(c.generateCoupons).toHaveBeenCalledWith(expect.objectContaining({ count: 20, kind: "percent", value: 1500, allSkus: true })));
+    expect(await within(panel).findByLabelText("新生成的兑换码")).toBeTruthy();
+    fireEvent.change(within(panel).getByLabelText("SKU"), { target: { value: SKU_ID } });
+    fireEvent.click(within(panel).getByRole("button", { name: "计算报价" }));
+    expect((await within(panel).findByLabelText("报价结果")).textContent).toContain("25");
+  });
+
+  it("exports CSV with formula-safe quoting", () => {
+    const csv = couponsToCsv([{ ...COUPON, issuedBy: "=cmd()" }]);
+    expect(csv.split("\r\n")[0]).toContain("issued_at,percent,deduction_coins,issued_by");
+    expect(csv).toContain(`"'=cmd()"`);
+    expect(csv).toContain(`"order_77"`);
   });
 
   it("shows a fixed message when enabling a SKU without enabled upstreams", async () => {

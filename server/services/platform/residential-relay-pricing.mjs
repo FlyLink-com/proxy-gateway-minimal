@@ -1,7 +1,15 @@
 // Server-side price computation for residential relay pack SKUs.
 // Order: list price -> coupon (coupons are the only promotion mechanism).
-// The coupon amount rounds to whole Coins (half up) and the result clamps at >= 0. The full breakdown is meant to be
-// recorded on the order. Locked terms (no refunds / rollover / renewals) are
+// The coupon amount rounds to whole Coins (half up), is capped so the deduction
+// never exceeds 20% of the list price (floor), and the result clamps at >= 0.
+
+export const RESIDENTIAL_COUPON_MAX_BPS = 2_000; // 20%
+
+export function maxCouponDeduction(listPrice) {
+  return Math.floor((listPrice * RESIDENTIAL_COUPON_MAX_BPS) / 10_000);
+}
+
+// The full breakdown is meant to be recorded on the order. Locked terms (no refunds / rollover / renewals) are
 // unaffected by pricing.
 
 function fail(code) {
@@ -25,7 +33,7 @@ export function isWithinWindow({ startsAt, endsAt }, now) {
 export function assertPriceAdjustment(input, code = "invalid_coupon") {
   if (!input || typeof input !== "object") throw fail(code);
   if (input.kind === "percent") {
-    if (!Number.isSafeInteger(input.value) || input.value <= 0 || input.value > 10_000) throw fail(code);
+    if (!Number.isSafeInteger(input.value) || input.value <= 0 || input.value > RESIDENTIAL_COUPON_MAX_BPS) throw fail(code);
   } else if (input.kind === "fixed") {
     if (!Number.isSafeInteger(input.value) || input.value <= 0) throw fail(code);
   } else throw fail(code);
@@ -47,11 +55,17 @@ export function applyAdjustment(price, adjustment) {
 // coupon: normalized adjustment ({ code, kind, value }) or null.
 export function computeResidentialPrice({ listPrice, coupon = null }) {
   if (!Number.isSafeInteger(listPrice) || listPrice <= 0) throw fail("sku_price_unset");
-  const finalPrice = coupon ? applyAdjustment(listPrice, coupon) : listPrice;
+  if (!coupon) return { currency: "coins", listPrice, coupon: null, deduction: 0, finalPrice: listPrice };
+  if (coupon.kind === "percent" && (!Number.isSafeInteger(coupon.value) || coupon.value <= 0 || coupon.value > RESIDENTIAL_COUPON_MAX_BPS)) {
+    throw fail("invalid_coupon");
+  }
+  const raw = listPrice - applyAdjustment(listPrice, coupon);
+  const deduction = Math.min(raw, maxCouponDeduction(listPrice));
   return {
     currency: "coins",
     listPrice,
-    coupon: coupon ? { code: coupon.code ?? null, kind: coupon.kind, value: coupon.value, applied: true } : null,
-    finalPrice
+    coupon: { code: coupon.code ?? null, kind: coupon.kind, value: coupon.value, applied: true, capped: deduction < raw },
+    deduction,
+    finalPrice: Math.max(0, listPrice - deduction)
   };
 }

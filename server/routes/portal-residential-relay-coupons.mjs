@@ -1,9 +1,16 @@
-import { Router } from "express";
+import express, { Router } from "express";
+import { createHash } from "node:crypto";
+import { resolveClientIp } from "../services/ip-address.mjs";
 
 // Buyer-side, owner-only coupon listing. The account is taken exclusively from
 // the authenticated Portal session; no query/body account selector exists.
 const SESSION_REFERENCE = /^[a-z][a-z0-9_]{2,95}$/;
 const PATH = "/api/portal/residential-relay-packs/coupons";
+const REDEEM_PATH = `${PATH}/redeem`;
+// In-memory burst limit in front of the store's persistent failure budget.
+const BURST_WINDOW_MS = 60_000;
+const BURST_MAX_PER_ACCOUNT = 10;
+const BURST_MAX_PER_CLIENT = 30;
 
 function sendError(res, status, code) {
   res.set("Cache-Control", "no-store");
@@ -27,27 +34,83 @@ function storeOf(state) {
   return feature.store;
 }
 
-export function portalResidentialRelayCouponRoutes(state, { browserSessions } = {}) {
+function createBurstLimiter(nowFn) {
+  const buckets = new Map();
+  return (key, max) => {
+    const now = nowFn();
+    for (const [k, bucket] of buckets) if (bucket.resetAt <= now) buckets.delete(k);
+    const bucket = buckets.get(key) ?? { count: 0, resetAt: now + BURST_WINDOW_MS };
+    bucket.count += 1;
+    buckets.set(key, bucket);
+    return bucket.count <= max;
+  };
+}
+
+function resolveSession(req, res, state, browserSessions) {
+  const auth = state?.platform?.userPortalAuth;
+  let session;
+  try {
+    const browser = browserSessions?.session?.(req) ?? null;
+    if (browser) session = browser;
+    else {
+      const header = sessionHeader(req);
+      if (!header || !SESSION_REFERENCE.test(header)) { sendError(res, 401, "invalid_session"); return null; }
+      session = auth.requireSession({ sessionRef: header });
+      if (!session || session.sessionRef !== header) throw new Error("session mismatch");
+    }
+  } catch { sendError(res, 401, "invalid_session"); return null; }
+  const accountRef = session?.accountId;
+  if (typeof accountRef !== "string" || !accountRef) { sendError(res, 401, "invalid_session"); return null; }
+  return accountRef;
+}
+
+export function portalResidentialRelayCouponRoutes(state, { browserSessions, clientIpResolver, nowFn = () => Date.now() } = {}) {
   const router = Router();
-  router.get(PATH, (req, res) => {
+  const allow = createBurstLimiter(nowFn);
+  const clientIp = clientIpResolver || (req => resolveClientIp(req));
+  const ready = (res) => {
     res.set("Cache-Control", "no-store");
     const store = storeOf(state);
-    const auth = state?.platform?.userPortalAuth;
-    if (!store || typeof auth?.requireSession !== "function") { sendError(res, 503, "residential_relay_unavailable"); return; }
+    if (!store || typeof state?.platform?.userPortalAuth?.requireSession !== "function") {
+      sendError(res, 503, "residential_relay_unavailable");
+      return null;
+    }
+    return store;
+  };
+  router.post(REDEEM_PATH, express.json({ limit: "2kb" }), (req, res) => {
+    const store = ready(res);
+    if (!store) return;
     if (Object.keys(req.query || {}).length > 0) { sendError(res, 400, "invalid_input"); return; }
-    let session;
+    const accountRef = resolveSession(req, res, state, browserSessions);
+    if (!accountRef) return;
+    // The client key is a hash of the resolved IP; raw IPs are not stored.
+    const clientKey = createHash("sha256").update(`rr-client:${clientIp(req) || "unknown"}`).digest("hex").slice(0, 16);
+    if (!allow(`a:${accountRef}`, BURST_MAX_PER_ACCOUNT) || !allow(`c:${clientKey}`, BURST_MAX_PER_CLIENT)) {
+      res.set("Retry-After", "60");
+      sendError(res, 429, "redeem_rate_limited");
+      return;
+    }
+    const input = req.body && typeof req.body === "object" && !Array.isArray(req.body) ? req.body : null;
+    const keys = input ? Object.keys(input) : [];
+    if (!input || keys.length !== 1 || keys[0] !== "code" || typeof input.code !== "string") {
+      sendError(res, 400, "redeem_failed");
+      return;
+    }
     try {
-      const browser = browserSessions?.session?.(req) ?? null;
-      if (browser) session = browser;
-      else {
-        const header = sessionHeader(req);
-        if (!header || !SESSION_REFERENCE.test(header)) { sendError(res, 401, "invalid_session"); return; }
-        session = auth.requireSession({ sessionRef: header });
-        if (!session || session.sessionRef !== header) throw new Error("session mismatch");
-      }
-    } catch { sendError(res, 401, "invalid_session"); return; }
-    const accountRef = session?.accountId;
-    if (typeof accountRef !== "string" || !accountRef) { sendError(res, 401, "invalid_session"); return; }
+      res.json(store.redeemCoupon({ accountRef, clientKey, code: input.code }));
+    } catch (error) {
+      if (error?.code === "redeem_rate_limited") { res.set("Retry-After", "900"); sendError(res, 429, "redeem_rate_limited"); return; }
+      if (error?.code === "redeem_failed") { sendError(res, 400, "redeem_failed"); return; }
+      if (error?.code === "invalid_account") { sendError(res, 401, "invalid_session"); return; }
+      sendError(res, 503, "residential_relay_unavailable");
+    }
+  });
+  router.get(PATH, (req, res) => {
+    const store = ready(res);
+    if (!store) return;
+    if (Object.keys(req.query || {}).length > 0) { sendError(res, 400, "invalid_input"); return; }
+    const accountRef = resolveSession(req, res, state, browserSessions);
+    if (!accountRef) return;
     try {
       res.json(store.listAccountCoupons({ accountRef }));
     } catch (error) {

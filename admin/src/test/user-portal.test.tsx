@@ -929,7 +929,7 @@ describe("user portal route", () => {
     expect(await screen.findByRole("heading", {
       name: "先选择适合你的套餐"
     })).not.toBeNull();
-    await waitFor(() => expect(document.title).toBe("GCC WebOS - 用户中心"));
+    await waitFor(() => expect(document.title).toBe("飞连VPN - 用户中心"));
     expect(screen.getByRole("navigation", { name: "用户中心导航" })).not.toBeNull();
     expect(screen.getByRole("button", { name: "开始使用" })).not.toBeNull();
     expect(screen.getByRole("button", { name: "订单管理" })).not.toBeNull();
@@ -2943,6 +2943,7 @@ describe("user portal product surface", () => {
       "推荐奖励",
       "个人中心",
       "我的优惠券",
+      "兑换码兑换",
       "设置",
       "支持"
     ]);
@@ -4202,6 +4203,7 @@ describe("user portal product surface", () => {
       "推荐奖励",
       "个人中心",
       "我的优惠券",
+      "兑换码兑换",
       "设置",
       "支持"
     ]);

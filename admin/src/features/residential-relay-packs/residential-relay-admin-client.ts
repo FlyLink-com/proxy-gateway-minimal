@@ -24,14 +24,11 @@ const MESSAGES = {
   invalid_buyer_protocol: "Buyer protocol must be VLESS or Hy2.",
   upstream_limit: "This SKU already has the maximum number of upstreams.",
   sku_price_unset: "Set a price before enabling or quoting this SKU.",
-  invalid_coupon: "The coupon is invalid.",
-  duplicate_coupon_code: "That coupon code already exists.",
-  coupon_enabled: "Pause this coupon before editing or deleting it.",
-  coupon_not_found: "Coupon not found.",
-  coupon_inactive: "Coupon is paused or outside its validity window.",
-  coupon_not_applicable: "Coupon does not apply to this SKU.",
-  coupon_exhausted: "Coupon has reached its total use limit.",
-  coupon_user_limit: "Coupon per-user limit reached."
+  invalid_coupon: "The code definition is invalid.",
+  coupon_not_found: "Code not found.",
+  coupon_inactive: "Code is voided, consumed or expired.",
+  coupon_not_applicable: "Code does not apply to this SKU.",
+  coupon_not_voidable: "Only unredeemed codes can be voided."
 } as const;
 
 export type ResidentialRelayAdminErrorCode = keyof typeof MESSAGES;
@@ -44,19 +41,21 @@ export class ResidentialRelayAdminError extends Error {
   }
 }
 
-export type ResidentialRelayAdjustment = { kind: "percent" | "fixed"; value: number; startsAt: string | null; endsAt: string | null };
-export type ResidentialRelayCoupon = ResidentialRelayAdjustment & {
-  id: string; code: string; allSkus: boolean; skuIds: string[]; totalLimit: number | null; perUserLimit: number | null;
-  enabled: boolean; redemptionCount: number;
+export type ResidentialRelayCouponStatus = "issued" | "redeemed" | "consumed" | "voided" | "expired";
+export type ResidentialRelayCoupon = {
+  id: string; code: string; batchId: string; kind: "percent" | "fixed"; value: number; allSkus: boolean;
+  skus: Array<{ skuId: string; sizeCode: string }>; status: ResidentialRelayCouponStatus;
+  issuedAt: string; issuedBy: string; expiresAt: string; voidedAt: string | null; voidedBy: string | null;
+  redeemedBy: string | null; redeemedAt: string | null; consumedBy: string | null; consumedOrderRef: string | null;
+  consumedAmount: number | null; consumedAt: string | null;
 };
-export type ResidentialRelayCoupons = { revision: string; items: ResidentialRelayCoupon[] };
-export type ResidentialRelayCouponInput = Omit<ResidentialRelayAdjustment, "startsAt" | "endsAt"> & {
-  code: string; allSkus: boolean; skuIds: string[]; startsAt?: string | null; endsAt?: string | null;
-  totalLimit?: number | null; perUserLimit?: number | null;
+export type ResidentialRelayCoupons = { asOf: string; items: ResidentialRelayCoupon[] };
+export type ResidentialRelayCouponGenerate = {
+  count: number; kind: "percent" | "fixed"; value: number; allSkus: boolean; skuIds: string[]; expiresAt: string;
 };
 export type ResidentialRelayQuote = {
-  skuId: string; sizeCode: string; purchasable: boolean; listPrice: number; finalPrice: number;
-  coupon: { code: string | null; kind: string; value: number; applied: boolean } | null;
+  skuId: string; sizeCode: string; purchasable: boolean; listPrice: number; deduction: number; finalPrice: number;
+  coupon: { code: string | null; kind: string; value: number; applied: boolean; capped: boolean } | null;
 };
 export type ResidentialRelaySku = {
   configured: boolean; id: string | null; sizeCode: string; buyerProtocol: string | null;
@@ -113,26 +112,27 @@ function sku(value: unknown, requireId = false): ResidentialRelaySku {
   };
 }
 
-function optionalTime(value: unknown): string | null {
-  if (value === null || value === undefined) return null;
-  if (typeof value !== "string" || Number.isNaN(Date.parse(value))) fail();
-  return value;
-}
-function adjustment(value: Record<string, unknown>): ResidentialRelayAdjustment {
-  if (value.kind !== "percent" && value.kind !== "fixed") fail();
-  return { kind: value.kind, value: int(value.value), startsAt: optionalTime(value.startsAt), endsAt: optionalTime(value.endsAt) };
-}
 const COUPON_ID = /^rrcpn_[0-9a-f]{32}$/;
+const STATUSES = new Set(["issued", "redeemed", "consumed", "voided", "expired"]);
+const str = (v: unknown) => (typeof v === "string" ? v : fail());
+const strOrNull = (v: unknown) => (v === null || v === undefined ? null : str(v));
 function coupons(value: unknown): ResidentialRelayCoupons {
   const row = object(value);
-  if (typeof row.revision !== "string" || !REVISION.test(row.revision) || !Array.isArray(row.items)) fail();
-  return { revision: row.revision, items: row.items.map((item) => {
+  if (typeof row.asOf !== "string" || !Array.isArray(row.items)) fail();
+  return { asOf: row.asOf, items: row.items.map((item) => {
     const c = object(item);
-    if (typeof c.id !== "string" || !COUPON_ID.test(c.id) || typeof c.code !== "string" || !Array.isArray(c.skuIds)) fail();
-    const limit = (v: unknown) => v === null || v === undefined ? null : int(v);
-    return { ...adjustment(c), id: c.id, code: c.code, allSkus: bool(c.allSkus), skuIds: c.skuIds.map(String),
-      totalLimit: limit(c.totalLimit), perUserLimit: limit(c.perUserLimit),
-      enabled: bool(c.enabled), redemptionCount: Number(c.redemptionCount) || 0 };
+    if (typeof c.id !== "string" || !COUPON_ID.test(c.id) || typeof c.code !== "string" || !Array.isArray(c.skus)) fail();
+    if ((c.kind !== "percent" && c.kind !== "fixed") || !STATUSES.has(String(c.status))) fail();
+    return {
+      id: c.id, code: c.code, batchId: str(c.batchId), kind: c.kind, value: int(c.value), allSkus: bool(c.allSkus),
+      skus: c.skus.map((sku) => { const s = object(sku); return { skuId: str(s.skuId), sizeCode: str(s.sizeCode) }; }),
+      status: c.status as ResidentialRelayCouponStatus, issuedAt: str(c.issuedAt), issuedBy: str(c.issuedBy),
+      expiresAt: str(c.expiresAt), voidedAt: strOrNull(c.voidedAt), voidedBy: strOrNull(c.voidedBy),
+      redeemedBy: strOrNull(c.redeemedBy), redeemedAt: strOrNull(c.redeemedAt), consumedBy: strOrNull(c.consumedBy),
+      consumedOrderRef: strOrNull(c.consumedOrderRef),
+      consumedAmount: c.consumedAmount === null || c.consumedAmount === undefined ? null : Number(c.consumedAmount),
+      consumedAt: strOrNull(c.consumedAt),
+    };
   }) };
 }
 
@@ -198,17 +198,13 @@ export function createResidentialRelayAdminClient() {
       }, signal));
     },
     async listCoupons(signal?: AbortSignal) { return coupons(await request("/coupons", {}, signal)); },
-    async createCoupon(revision: string, input: ResidentialRelayCouponInput, signal?: AbortSignal) {
-      if (!REVISION.test(revision)) fail();
-      return coupons(await request("/coupons", { method: "POST", body: JSON.stringify({ revision, ...input }) }, signal));
+    async generateCoupons(input: ResidentialRelayCouponGenerate, signal?: AbortSignal) {
+      const out = object(await request("/coupons/generate", { method: "POST", body: JSON.stringify(input) }, signal));
+      return coupons({ asOf: new Date().toISOString(), items: out.items });
     },
-    async setCouponsEnabled(revision: string, couponIds: string[], enabled: boolean, signal?: AbortSignal) {
-      if (!REVISION.test(revision) || !couponIds.every((item) => COUPON_ID.test(item))) fail();
-      return coupons(await request(`/coupons/${enabled ? "enable" : "pause"}`, { method: "POST", body: JSON.stringify({ revision, couponIds }) }, signal));
-    },
-    async deleteCoupons(revision: string, couponIds: string[], signal?: AbortSignal) {
-      if (!REVISION.test(revision) || !couponIds.every((item) => COUPON_ID.test(item))) fail();
-      return coupons(await request("/coupons/delete", { method: "POST", body: JSON.stringify({ revision, couponIds }) }, signal));
+    async voidCoupons(couponIds: string[], signal?: AbortSignal) {
+      if (!couponIds.every((item) => COUPON_ID.test(item))) fail();
+      object(await request("/coupons/void", { method: "POST", body: JSON.stringify({ couponIds }) }, signal));
     },
     async quote(skuId: string, couponCode?: string, signal?: AbortSignal) {
       if (!SKU_ID.test(skuId)) fail();

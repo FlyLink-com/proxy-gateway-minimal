@@ -12,6 +12,7 @@ import {
   Eye,
   ExternalLink,
   Gift,
+  KeyRound,
   TicketPercent,
   Headphones,
   History,
@@ -49,6 +50,7 @@ import {
   ReferralRewardsPanel
 } from "./portal-commerce-panels";
 import { PortalCouponsPanel } from "./coupons/portal-coupons-panel";
+import { PortalRedeemPanel } from "./coupons/portal-redeem-panel";
 import {
   PORTAL_COIN_ORDER_STORAGE_KEY,
   type PortalCommerceModel
@@ -106,6 +108,7 @@ type PortalView =
   | "referrals"
   | "profile"
   | "coupons"
+  | "redeem"
   | "settings"
   | "support";
 
@@ -197,6 +200,12 @@ const orderStatusTabs: Array<{ id: OrderStatusFilter; label: string }> = [
   { id: "expired", label: "已过期" }
 ];
 
+// Portal shell brand (Ethan 2026-10-14): Chinese UI 飞连VPN, English FlinkVPN.
+// Scope: signed-in shell header + tab title only.
+function portalShellBrand(locale: PortalAuthLocale) {
+  return locale === "zh" ? "飞连VPN" : "FlinkVPN";
+}
+
 const navItems: Array<{ id: PortalView; label: string; description: string; icon: LucideIcon }> = [
   { id: "start", label: "开始使用", description: "下载客户端，并按步骤导入订阅。", icon: Wifi },
   { id: "dashboard", label: "概览", description: "查看账户状态、当前套餐、流量和开始使用。", icon: LayoutGrid },
@@ -207,6 +216,7 @@ const navItems: Array<{ id: PortalView; label: string; description: string; icon
   { id: "referrals", label: "推荐奖励", description: "查看推荐链接、邀请进度和奖励。", icon: Gift },
   { id: "profile", label: "个人中心", description: "管理账户信息、身份验证器和通行密钥。", icon: UserCog },
   { id: "coupons", label: "我的优惠券", description: "查看可用、已使用和已过期的住宅流量包优惠券。", icon: TicketPercent },
+  { id: "redeem", label: "兑换码兑换", description: "输入兑换码，领取住宅流量包优惠券。", icon: KeyRound },
   { id: "settings", label: "设置", description: "管理界面语言和显示主题。", icon: Settings },
   { id: "support", label: "支持", description: "提交订阅、客户端或账户问题并追踪处理编号。", icon: Headphones }
 ];
@@ -241,7 +251,7 @@ const portalNavigationGroups: PortalNavigationGroup[] = [
     id: "account",
     zh: "账户",
     en: "Account",
-    itemIds: ["profile", "coupons", "settings"]
+    itemIds: ["profile", "coupons", "redeem", "settings"]
   },
   {
     id: "help",
@@ -273,7 +283,7 @@ const supportCategories: Array<{ id: PortalSupportCategory; label: string }> = [
 const portalAuthEntryCopy = {
   en: {
     documentTitle: "GCC WebOS - Account sign in",
-    shellDocumentTitle: "GCC WebOS - Account center",
+    shellDocumentTitle: "FlinkVPN - Account center",
     language: "Language",
     theme: "Theme",
     preferences: "Display preferences",
@@ -311,7 +321,7 @@ const portalAuthEntryCopy = {
   },
   zh: {
     documentTitle: "GCC WebOS - 账号登录",
-    shellDocumentTitle: "GCC WebOS - 用户中心",
+    shellDocumentTitle: "飞连VPN - 用户中心",
     language: "语言",
     theme: "主题",
     preferences: "显示偏好",
@@ -485,6 +495,10 @@ function localizedPortalViewCopy(view: PortalView, locale: PortalAuthLocale) {
     coupons: {
       label: uiText(locale, "我的优惠券", "My coupons"),
       description: uiText(locale, "查看可用、已使用和已过期的住宅流量包优惠券。", "Review available, used and expired residential pack coupons.")
+    },
+    redeem: {
+      label: uiText(locale, "兑换码兑换", "Redeem code"),
+      description: uiText(locale, "输入兑换码，领取住宅流量包优惠券。", "Enter a code to claim a residential pack coupon.")
     },
     referrals: {
       label: uiText(locale, "推荐奖励", "Referral rewards"),
@@ -2849,7 +2863,7 @@ export function UserPortalPage({
               <ShieldCheck aria-hidden="true" />
             </span>
             <div>
-              <strong>GCC WebOS</strong>
+              <strong>{portalShellBrand(locale)}</strong>
               <small>{uiText(locale, "用户中心", "User center")}</small>
             </div>
           </div>
@@ -2956,11 +2970,11 @@ export function UserPortalPage({
           {!paymentFlowActive ? (
             <>
               <header className="portal-use-topbar portal-v2-topbar">
-                <div className="portal-v2-mobile-brand" aria-label="GCC WebOS">
+                <div className="portal-v2-mobile-brand" aria-label={portalShellBrand(locale)}>
                   <span className="portal-v2-logo">
                     <ShieldCheck aria-hidden="true" />
                   </span>
-                  <strong>GCC WebOS</strong>
+                  <strong>{portalShellBrand(locale)}</strong>
                 </div>
                 <div className="portal-v2-page-title">
                   <h1>{activeView === "dashboard" ? uiText(locale, "账户概览", "Account overview") : activeViewCopy.label}</h1>
@@ -3078,6 +3092,15 @@ export function UserPortalPage({
             sessionRef={portalSession.sessionRef ?? null}
             sessionGeneration={sessionGeneration}
             onSessionInvalid={invalidateSession}
+            accountKey={portalSession.userRef ?? null}
+          /> : null}
+          {activeView === "redeem" ? <PortalRedeemPanel
+            locale={locale}
+            couponClient={portalClient.coupons ?? null}
+            sessionRef={portalSession.sessionRef ?? null}
+            onSessionInvalid={invalidateSession}
+            onOpenCoupons={() => setActiveView("coupons")}
+            accountKey={portalSession.userRef ?? null}
           /> : null}
           {activeView === "referrals" ? <ReferralRewardsPanel
             locale={locale}

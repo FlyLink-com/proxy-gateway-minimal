@@ -7,6 +7,7 @@ import {
   type PortalCouponStatus,
 } from "./coupon-client";
 import { COUPON_COPY } from "./coupon-copy";
+import { CouponFirstVisitHint } from "./coupon-first-visit-hint";
 import "./portal-coupons.styles.css";
 
 type Props = {
@@ -15,7 +16,7 @@ type Props = {
   sessionRef?: string | null;
   sessionGeneration?: number;
   onSessionInvalid?: () => void;
-  onOpenMarketplace?: () => void;
+  accountKey?: string | null;
 };
 
 const t = (locale: Props["locale"], zh: string, en: string) => (locale === "zh" ? zh : en);
@@ -38,20 +39,7 @@ function benefit(locale: Props["locale"], coupon: PortalCoupon) {
 }
 
 function validity(locale: Props["locale"], coupon: PortalCoupon) {
-  if (coupon.startsAt && coupon.endsAt) return `${formatDate(coupon.startsAt)} – ${formatDate(coupon.endsAt)}`;
-  if (coupon.endsAt) return t(locale, `至 ${formatDate(coupon.endsAt)}`, `Until ${formatDate(coupon.endsAt)}`);
-  if (coupon.startsAt) return t(locale, `${formatDate(coupon.startsAt)} 起`, `From ${formatDate(coupon.startsAt)}`);
-  return t(locale, "长期有效", "No end date");
-}
-
-function badge(locale: Props["locale"], coupon: PortalCoupon) {
-  switch (coupon.reason) {
-    case "upcoming": return t(locale, "未开始", "Not started");
-    case "ended": return t(locale, "已结束", "Ended");
-    case "paused": return t(locale, "已停用", "Paused");
-    case "exhausted": return t(locale, "已领完", "Fully redeemed");
-    default: return coupon.status === "used" ? t(locale, "已使用", "Used") : null;
-  }
+  return t(locale, `至 ${formatDate(coupon.expiresAt)}`, `Until ${formatDate(coupon.expiresAt)}`);
 }
 
 function CouponCard({ locale, coupon }: { locale: Props["locale"]; coupon: PortalCoupon }) {
@@ -65,13 +53,12 @@ function CouponCard({ locale, coupon }: { locale: Props["locale"]; coupon: Porta
     if (timer.current) clearTimeout(timer.current);
     timer.current = setTimeout(() => setCopied(false), 1800);
   }, [coupon.code]);
-  const tag = badge(locale, coupon);
   const inactive = coupon.status !== "available";
   return (
     <article className="pc-card" data-status={coupon.status} aria-label={coupon.code}>
       <div className="pc-card-head">
         <strong className="pc-benefit">{benefit(locale, coupon)}</strong>
-        {tag ? <span className="pc-badge">{tag}</span> : null}
+        {coupon.status !== "available" ? <span className="pc-badge">{tx(locale, COUPON_COPY.tabs[coupon.status])}</span> : null}
       </div>
       <div className="pc-code-row">
         <span className="pc-label">{t(locale, "券码", "Code")}</span>
@@ -89,14 +76,16 @@ function CouponCard({ locale, coupon }: { locale: Props["locale"]; coupon: Porta
             {!coupon.allSkus ? coupon.skus.map(sku => <span key={sku.skuId} className="pc-chip">{sku.sizeCode}</span>) : null}
           </dd></div>
         <div><dt>{t(locale, "有效期", "Valid")}</dt><dd>{validity(locale, coupon)}</dd></div>
-        <div><dt>{t(locale, "剩余次数", "Uses left")}</dt>
-          <dd>{inactive ? "—" : coupon.remainingUses === null ? t(locale, "不限", "Unlimited") : t(locale, `${coupon.remainingUses} 次`, String(coupon.remainingUses))}</dd></div>
+        {coupon.status === "used" ? <>
+          <div><dt>{t(locale, "订单", "Order")}</dt><dd className="pc-mono">{coupon.consumedOrderRef}</dd></div>
+          <div><dt>{t(locale, "抵扣", "Saved")}</dt><dd>{coupon.consumedAmount} Coins</dd></div>
+        </> : null}
       </dl>
     </article>
   );
 }
 
-export function PortalCouponsPanel({ locale, couponClient, sessionRef, sessionGeneration, onSessionInvalid }: Props) {
+export function PortalCouponsPanel({ locale, couponClient, sessionRef, sessionGeneration, onSessionInvalid, accountKey }: Props) {
   const [tab, setTab] = useState<PortalCouponStatus>("available");
   const [items, setItems] = useState<PortalCoupon[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -129,10 +118,10 @@ export function PortalCouponsPanel({ locale, couponClient, sessionRef, sessionGe
       <div className="pc-sky" aria-hidden="true"><div className="pc-stars" /><div className="pc-glow" /></div>
       <div className="pc-inner">
         <header className="pc-header">
-          <h2 id="pc-title" className="pc-visually-hidden">{tx(locale, COUPON_COPY.title)}</h2>
-          <p>{tx(locale, COUPON_COPY.lead)}</p>
+          <h2 id="pc-title" className="pc-visually-hidden">{tx(locale, COUPON_COPY.couponsTitle)}</h2>
         </header>
-        <div className="pc-tabs" role="tablist" aria-label={tx(locale, COUPON_COPY.title)}>
+        <CouponFirstVisitHint locale={locale} accountKey={accountKey} />
+        <div className="pc-tabs" role="tablist" aria-label={tx(locale, COUPON_COPY.couponsTitle)}>
           {tabs.map(id => (
             <button key={id} type="button" role="tab" id={`pc-tab-${id}`} aria-selected={tab === id}
               aria-controls="pc-tabpanel" className="pc-tab" onClick={() => setTab(id)}>
@@ -146,16 +135,6 @@ export function PortalCouponsPanel({ locale, couponClient, sessionRef, sessionGe
             : items === null ? <p className="pc-empty">{t(locale, "加载中…", "Loading…")}</p>
               : shown.length === 0 ? <p className="pc-empty">{tx(locale, COUPON_COPY.empty[tab])}</p>
                 : shown.map(coupon => <CouponCard key={coupon.code} locale={locale} coupon={coupon} />)}
-        </div>
-        <div className="pc-notes">
-          <section>
-            <h3>{tx(locale, COUPON_COPY.howTo.title)}</h3>
-            <ol>{COUPON_COPY.howTo.steps.map(([zh, en]) => <li key={en}>{t(locale, zh, en)}</li>)}</ol>
-          </section>
-          <section>
-            <h3>{tx(locale, COUPON_COPY.rules.title)}</h3>
-            <ul>{COUPON_COPY.rules.items.map(([zh, en]) => <li key={en}>{t(locale, zh, en)}</li>)}</ul>
-          </section>
         </div>
       </div>
     </section>

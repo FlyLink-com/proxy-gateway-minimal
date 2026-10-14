@@ -13,7 +13,7 @@ import {
   assertResidentialRelaySkuInput, isResidentialRelaySkuSizeCode, residentialRelaySkuPublicView
 } from "./residential-relay-pack-product.mjs";
 import { buildResidentialPool } from "../edge/residential-relay-pool.mjs";
-import { assertPriceAdjustment, computeResidentialPrice, isWithinWindow } from "./residential-relay-pricing.mjs";
+import { assertPriceAdjustment, computeResidentialPrice, maxCouponDeduction } from "./residential-relay-pricing.mjs";
 
 const PROTECTED_PREFIX = "v2:aes-256-gcm:";
 const SKU_ID = /^rrsku_[0-9a-f]{32}$/;
@@ -27,8 +27,8 @@ export const RESIDENTIAL_RELAY_STORE_CODES = new Set([
   "invalid_input", "invalid_sku_size", "invalid_buyer_protocol", "invalid_duration", "invalid_quota", "invalid_price",
   "invalid_enabled", "invalid_yaml", "parse_no_valid_nodes", "upstream_limit", "revision_conflict", "not_found",
   "upstream_enabled", "sku_not_ready", "no_enabled_upstream", "protected_value_invalid", "residential_relay_unavailable",
-  "invalid_coupon", "duplicate_coupon_code", "coupon_enabled", "coupon_not_found", "coupon_inactive",
-  "coupon_not_applicable", "coupon_exhausted", "coupon_user_limit", "sku_price_unset", "order_already_priced", "invalid_account"
+  "invalid_coupon", "coupon_not_found", "coupon_inactive", "coupon_not_applicable", "coupon_not_voidable",
+  "redeem_failed", "redeem_rate_limited", "sku_price_unset", "order_already_priced", "invalid_account"
 ]);
 
 function failure(code) {
@@ -57,8 +57,8 @@ function unavailableStore(extra = {}) {
     available: false, listSkus: unavailable, getSku: unavailable, saveSku: unavailable, setSkuEnabled: unavailable,
     previewUpstreams: unavailable, importUpstreams: unavailable, listUpstreams: unavailable,
     setUpstreamsEnabled: unavailable, deleteUpstreams: unavailable, resolveRelayPool: unavailable,
-    listCoupons: unavailable, createCoupon: unavailable,
-    updateCoupon: unavailable, setCouponsEnabled: unavailable, deleteCoupons: unavailable, quote: unavailable, grantCoupon: unavailable, listAccountCoupons: unavailable,
+    listCoupons: unavailable, generateCoupons: unavailable, voidCoupons: unavailable, quote: unavailable,
+    redeemCoupon: unavailable, listAccountCoupons: unavailable,
     recordOrderPrice: unavailable, close() {}, ...extra
   };
 }
@@ -108,27 +108,28 @@ export function createSqliteResidentialRelayPackStore(options = {}) {
       set display_name = ?, country_code = ?, protocol = ?, protected_config = ?, enabled = 0, active = 1, updated_at = ? where id = ?`),
     setUpstreamEnabled: database.prepare("update platform_residential_relay_upstreams set enabled = ?, updated_at = ? where sku_id = ? and id = ? and active = 1"),
     deactivateUpstream: database.prepare("update platform_residential_relay_upstreams set active = 0, updated_at = ? where sku_id = ? and id = ? and active = 1 and enabled = 0"),
-    coupons: database.prepare("select * from platform_residential_relay_coupons where active = 1 order by created_at asc, id asc"),
-    couponById: database.prepare("select * from platform_residential_relay_coupons where id = ? and active = 1"),
-    couponByCode: database.prepare("select * from platform_residential_relay_coupons where code = ? and active = 1"),
-    couponCodeTaken: database.prepare("select id from platform_residential_relay_coupons where code = ?"),
+    coupons: database.prepare("select * from platform_residential_relay_coupons order by issued_at desc, id asc limit 5000"),
+    couponById: database.prepare("select * from platform_residential_relay_coupons where id = ?"),
+    couponByCode: database.prepare("select * from platform_residential_relay_coupons where code = ?"),
     couponSkus: database.prepare("select sku_id from platform_residential_relay_coupon_skus where coupon_id = ? order by sku_id"),
     insertCoupon: database.prepare(`insert into platform_residential_relay_coupons
-      (id, code, kind, value, all_skus, starts_at, ends_at, total_limit, per_user_limit, enabled, active, redemption_count, created_at, updated_at)
-      values (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 1, 0, ?, ?)`),
-    updateCoupon: database.prepare(`update platform_residential_relay_coupons set kind = ?, value = ?, all_skus = ?, starts_at = ?, ends_at = ?,
-      total_limit = ?, per_user_limit = ?, updated_at = ? where id = ? and active = 1`),
-    clearCouponSkus: database.prepare("delete from platform_residential_relay_coupon_skus where coupon_id = ?"),
+      (id, code, batch_id, kind, value, all_skus, expires_at, issued_at, issued_by) values (?, ?, ?, ?, ?, ?, ?, ?, ?)`),
     insertCouponSku: database.prepare("insert into platform_residential_relay_coupon_skus (coupon_id, sku_id) values (?, ?)"),
-    setCouponEnabled: database.prepare("update platform_residential_relay_coupons set enabled = ?, updated_at = ? where id = ? and active = 1"),
-    deactivateCoupon: database.prepare("update platform_residential_relay_coupons set active = 0, updated_at = ? where id = ? and active = 1 and enabled = 0"),
-    userRedemptions: database.prepare("select count(*) as n from platform_residential_relay_coupon_redemptions where coupon_id = ? and account_ref = ?"),
-    insertRedemption: database.prepare("insert into platform_residential_relay_coupon_redemptions (order_ref, coupon_id, account_ref, redeemed_at) values (?, ?, ?, ?)"),
-    insertGrant: database.prepare("insert or ignore into platform_residential_relay_coupon_grants (coupon_id, account_ref, granted_at) values (?, ?, ?)"),
-    accountCoupons: database.prepare(`select c.*, g.granted_at as granted_at from platform_residential_relay_coupon_grants g
-      join platform_residential_relay_coupons c on c.id = g.coupon_id where g.account_ref = ? and c.active = 1
-      order by g.granted_at desc, c.id asc`),
-    bumpRedemption: database.prepare("update platform_residential_relay_coupons set redemption_count = redemption_count + 1 where id = ?"),
+    voidCoupon: database.prepare(`update platform_residential_relay_coupons set voided_at = ?, voided_by = ?
+      where id = ? and voided_at is null and redeemed_at is null`),
+    redeemCoupon: database.prepare(`update platform_residential_relay_coupons set redeemed_by = ?, redeemed_at = ?
+      where id = ? and voided_at is null and redeemed_at is null and expires_at > ?`),
+    consumeCoupon: database.prepare(`update platform_residential_relay_coupons
+      set consumed_by = ?, consumed_order_ref = ?, consumed_amount = ?, consumed_at = ?
+      where id = ? and redeemed_by = ? and consumed_at is null and voided_at is null and expires_at > ?`),
+    accountCoupons: database.prepare(`select * from platform_residential_relay_coupons where redeemed_by = ?
+      order by redeemed_at desc, id asc`),
+    insertAttempt: database.prepare(`insert into platform_residential_relay_redeem_attempts
+      (account_ref, client_key, input_hash, outcome, attempted_at) values (?, ?, ?, ?, ?)`),
+    accountFailures: database.prepare(`select count(*) as n from platform_residential_relay_redeem_attempts
+      where account_ref = ? and outcome != 'redeemed' and attempted_at > ?`),
+    clientFailures: database.prepare(`select count(*) as n from platform_residential_relay_redeem_attempts
+      where client_key = ? and outcome != 'redeemed' and attempted_at > ?`),
     orderPrice: database.prepare("select * from platform_residential_relay_order_prices where order_ref = ?"),
     insertOrderPrice: database.prepare(`insert into platform_residential_relay_order_prices
       (order_ref, account_ref, sku_id, coupon_id, list_price, final_price, breakdown, created_at) values (?, ?, ?, ?, ?, ?, ?, ?)`)
@@ -338,151 +339,212 @@ export function createSqliteResidentialRelayPackStore(options = {}) {
   });
 
 
-  // ---- Coupons ----
-  const CODE = /^[A-Z0-9][A-Z0-9_-]{2,31}$/;
+  // ---- Coupons: one redeem code per coupon ----
+  // Codes avoid ambiguous characters (0/O, 1/I/L) and are case-insensitive;
+  // hyphens and spaces are ignored on input. Stored normalized (12 chars).
+  const CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+  const CODE_LENGTH = 12;
+  const CODE = new RegExp(`^[${CODE_ALPHABET}]{${CODE_LENGTH}}$`);
   const COUPON_ID = /^rrcpn_[0-9a-f]{32}$/;
+  const ACTOR = /^[A-Za-z0-9._:@-]{1,128}$/;
+  const ACCOUNT_REF = /^[A-Za-z0-9._:-]{1,128}$/;
+  const MAX_GENERATE = 500;
+  const REDEEM_WINDOW_MS = 15 * 60 * 1000;
+  const REDEEM_MAX_ACCOUNT_FAILURES = 5;
+  const REDEEM_MAX_CLIENT_FAILURES = 20;
 
-  function couponView(row) {
+  function normalizeCode(value) {
+    if (typeof value !== "string" || value.length > 64) return null;
+    const normalized = value.replace(/[\s-]/g, "").toUpperCase();
+    return CODE.test(normalized) ? normalized : null;
+  }
+  function displayCode(code) { return `${code.slice(0, 4)}-${code.slice(4, 8)}-${code.slice(8)}`; }
+  function newCode() {
+    let out = "";
+    while (out.length < CODE_LENGTH) {
+      for (const byte of randomBytes(16)) {
+        if (byte < 248 && out.length < CODE_LENGTH) out += CODE_ALPHABET[byte % CODE_ALPHABET.length];
+      }
+    }
+    return out;
+  }
+  // Short, non-reversible fingerprint of a redeem input (never the raw text).
+  function inputHash(value) {
+    const text = typeof value === "string" ? value.slice(0, 64).replace(/[\s-]/g, "").toUpperCase() : "";
+    return createHash("sha256").update(`rr-redeem:${text}`, "utf8").digest("hex").slice(0, 12);
+  }
+
+  function couponStatus(row, at) {
+    if (row.consumed_at) return "consumed";
+    if (row.voided_at) return "voided";
+    if (Date.parse(row.expires_at) <= Date.parse(at)) return "expired";
+    return row.redeemed_at ? "redeemed" : "issued";
+  }
+
+  function couponSkuList(row, skuMap) {
+    const ids = row.all_skus === 1 ? [...skuMap.keys()] : q.couponSkus.all(row.id).map(item => item.sku_id);
+    return ids.map(id => skuMap.get(id)).filter(Boolean)
+      .map(sku => ({ skuId: sku.id, sizeCode: sku.size_code, durationDays: sku.duration_days }));
+  }
+
+  function adminCouponView(row, at, skuMap) {
     return {
-      id: row.id, code: row.code, kind: row.kind, value: row.value, allSkus: row.all_skus === 1,
-      skuIds: q.couponSkus.all(row.id).map(item => item.sku_id), startsAt: row.starts_at, endsAt: row.ends_at,
-      totalLimit: row.total_limit, perUserLimit: row.per_user_limit,
-      enabled: row.enabled === 1, redemptionCount: row.redemption_count
+      id: row.id, code: displayCode(row.code), batchId: row.batch_id, kind: row.kind, value: row.value,
+      allSkus: row.all_skus === 1, skus: couponSkuList(row, skuMap), status: couponStatus(row, at),
+      issuedAt: row.issued_at, issuedBy: row.issued_by, expiresAt: row.expires_at,
+      voidedAt: row.voided_at, voidedBy: row.voided_by,
+      redeemedBy: row.redeemed_by, redeemedAt: row.redeemed_at,
+      consumedBy: row.consumed_by, consumedOrderRef: row.consumed_order_ref,
+      consumedAmount: row.consumed_amount, consumedAt: row.consumed_at
     };
   }
+  const skuMapNow = () => new Map(q.skus.all().map(row => [row.id, row]));
 
-  function couponsSnapshot() {
-    const rows = q.coupons.all();
-    const revision = createHash("sha256").update(JSON.stringify(rows.map(row => [row.id, row.updated_at, row.enabled, row.redemption_count]))).digest("hex");
-    return { revision, items: rows.map(couponView) };
-  }
+  const listCoupons = guarded(() => {
+    const at = now();
+    const skuMap = skuMapNow();
+    return { asOf: at, items: q.coupons.all().map(row => adminCouponView(row, at, skuMap)) };
+  });
 
-  function checkCouponsRevision(revision) {
-    if (typeof revision !== "string" || !REVISION.test(revision)) throw failure("invalid_input");
-    if (couponsSnapshot().revision !== revision) throw failure("revision_conflict");
-  }
-
-  function couponFields(input) {
-    const adjustment = assertPriceAdjustment(input, "invalid_coupon");
-    const limit = value => {
-      if (value === null || value === undefined) return null;
-      if (!Number.isSafeInteger(value) || value <= 0) throw failure("invalid_coupon");
-      return value;
-    };
+  // Admin generates 1..500 single-use codes sharing one definition.
+  const generateCoupons = guarded(input => {
+    exactKeys(input, ["count", "kind", "value", "expiresAt", "issuedBy"], ["allSkus", "skuIds"]);
+    if (!Number.isSafeInteger(input.count) || input.count < 1 || input.count > MAX_GENERATE) throw failure("invalid_coupon");
+    if (typeof input.issuedBy !== "string" || !ACTOR.test(input.issuedBy)) throw failure("invalid_input");
+    const adjustment = assertPriceAdjustment({ kind: input.kind, value: input.value }, "invalid_coupon");
     if (input.allSkus !== undefined && typeof input.allSkus !== "boolean") throw failure("invalid_coupon");
-    const skuIds = input.skuIds ?? [];
-    if (!Array.isArray(skuIds) || skuIds.length > 8 || skuIds.some(item => typeof item !== "string" || !SKU_ID.test(item))
-      || new Set(skuIds).size !== skuIds.length) throw failure("invalid_coupon");
-    if (input.allSkus !== true && skuIds.length === 0) throw failure("invalid_coupon");
-    for (const skuId of skuIds) if (!q.skuById.get(skuId)) throw failure("invalid_coupon");
-    return { ...adjustment, allSkus: input.allSkus === true, skuIds: input.allSkus === true ? [] : skuIds,
-      totalLimit: limit(input.totalLimit), perUserLimit: limit(input.perUserLimit) };
+    const allSkus = input.allSkus === true;
+    const skuIds = allSkus ? [] : (input.skuIds ?? []);
+    if (!Array.isArray(skuIds) || skuIds.some(item => typeof item !== "string" || !SKU_ID.test(item))
+      || new Set(skuIds).size !== skuIds.length || (!allSkus && skuIds.length === 0)) throw failure("invalid_coupon");
+    const at = now();
+    const expires = typeof input.expiresAt === "string" ? Date.parse(input.expiresAt) : NaN;
+    if (!Number.isFinite(expires) || expires <= Date.parse(at)) throw failure("invalid_coupon");
+    const expiresAt = new Date(expires).toISOString();
+    return database.transaction(() => {
+      const skuRows = allSkus ? q.skus.all() : skuIds.map(id => q.skuById.get(id));
+      if (skuRows.some(row => !row)) throw failure("invalid_coupon");
+      // Fixed Coins may never deduct more than 20% of any applicable priced pack.
+      if (adjustment.kind === "fixed") {
+        const prices = skuRows.map(row => row.base_coin_units).filter(Number.isSafeInteger);
+        if (prices.length === 0 || prices.some(price => adjustment.value > maxCouponDeduction(price))) throw failure("invalid_coupon");
+      }
+      const batchId = newId("rrbat_");
+      const ids = [];
+      for (let i = 0; i < input.count; i += 1) {
+        const id = newId("rrcpn_");
+        let code = newCode();
+        while (q.couponByCode.get(code)) code = newCode();
+        q.insertCoupon.run(id, code, batchId, adjustment.kind, adjustment.value, allSkus ? 1 : 0, expiresAt, at, input.issuedBy);
+        for (const skuId of skuIds) q.insertCouponSku.run(id, skuId);
+        ids.push(id);
+      }
+      const skuMap = skuMapNow();
+      return { batchId, items: ids.map(id => adminCouponView(q.couponById.get(id), at, skuMap)) };
+    }).immediate();
+  });
+
+  // Void is only possible before redemption.
+  const voidCoupons = guarded(input => {
+    exactKeys(input, ["couponIds", "voidedBy"]);
+    const ids = idList(input.couponIds, COUPON_ID);
+    if (typeof input.voidedBy !== "string" || !ACTOR.test(input.voidedBy)) throw failure("invalid_input");
+    return database.transaction(() => {
+      const rows = ids.map(id => q.couponById.get(id));
+      if (rows.some(row => !row)) throw failure("coupon_not_found");
+      if (rows.some(row => row.voided_at || row.redeemed_at)) throw failure("coupon_not_voidable");
+      const at = now();
+      for (const id of ids) if (q.voidCoupon.run(at, input.voidedBy, id).changes !== 1) throw failure("coupon_not_voidable");
+      return { voided: ids.length };
+    }).immediate();
+  });
+
+  // Binds a code to the caller's account. Exactly-once: the conditional update
+  // only succeeds while unredeemed, unvoided and unexpired. Every attempt is
+  // logged with a 12-hex fingerprint only. Failures (unknown, used, voided,
+  // expired, malformed) share one generic error. Per-account and per-client
+  // failure budgets lock out brute force for a rolling window.
+  const redeemCoupon = guarded(input => {
+    exactKeys(input, ["accountRef", "clientKey", "code"]);
+    if (typeof input.accountRef !== "string" || !ACCOUNT_REF.test(input.accountRef)) throw failure("invalid_account");
+    const clientKey = typeof input.clientKey === "string" && input.clientKey ? input.clientKey.slice(0, 128) : "unknown";
+    const at = now();
+    const since = new Date(Date.parse(at) - REDEEM_WINDOW_MS).toISOString();
+    const hash = inputHash(input.code);
+    const result = database.transaction(() => {
+      if (q.accountFailures.get(input.accountRef, since).n >= REDEEM_MAX_ACCOUNT_FAILURES
+        || q.clientFailures.get(clientKey, since).n >= REDEEM_MAX_CLIENT_FAILURES) {
+        q.insertAttempt.run(input.accountRef, clientKey, hash, "rate_limited", at);
+        return { error: "redeem_rate_limited" };
+      }
+      const code = normalizeCode(input.code);
+      const row = code ? q.couponByCode.get(code) : null;
+      if (!row || q.redeemCoupon.run(input.accountRef, at, row.id, at).changes !== 1) {
+        q.insertAttempt.run(input.accountRef, clientKey, hash, "failed", at);
+        return { error: "redeem_failed" };
+      }
+      q.insertAttempt.run(input.accountRef, clientKey, hash, "redeemed", at);
+      return { row: q.couponById.get(row.id) };
+    }).immediate();
+    if (result.error) throw failure(result.error);
+    return { coupon: accountCouponView(result.row, at, skuMapNow()) };
+  });
+
+  function accountCouponView(row, at, skuMap) {
+    const status = couponStatus(row, at);
+    return {
+      code: displayCode(row.code), kind: row.kind, value: row.value, allSkus: row.all_skus === 1,
+      skus: couponSkuList(row, skuMap), expiresAt: row.expires_at, redeemedAt: row.redeemed_at,
+      status: status === "consumed" ? "used" : status === "expired" ? "expired" : "available",
+      consumedAt: row.consumed_at, consumedOrderRef: row.consumed_order_ref, consumedAmount: row.consumed_amount
+    };
   }
 
-  const listCoupons = guarded(() => couponsSnapshot());
-
-  const createCoupon = guarded(input => {
-    exactKeys(input, ["revision", "code", "kind", "value"], ["allSkus", "skuIds", "startsAt", "endsAt", "totalLimit", "perUserLimit"]);
-    const code = typeof input.code === "string" ? input.code.trim().toUpperCase() : "";
-    if (!CODE.test(code)) throw failure("invalid_coupon");
-    return database.transaction(() => {
-      checkCouponsRevision(input.revision);
-      const fields = couponFields(input);
-      if (q.couponCodeTaken.get(code)) throw failure("duplicate_coupon_code");
-      const id = newId("rrcpn_"), at = now();
-      q.insertCoupon.run(id, code, fields.kind, fields.value, fields.allSkus ? 1 : 0, fields.startsAt, fields.endsAt,
-        fields.totalLimit, fields.perUserLimit, at, at);
-      for (const skuId of fields.skuIds) q.insertCouponSku.run(id, skuId);
-      return couponsSnapshot();
-    }).immediate();
-  });
-
-  const updateCoupon = guarded((couponId, input) => {
-    if (typeof couponId !== "string" || !COUPON_ID.test(couponId)) throw failure("invalid_input");
-    exactKeys(input, ["revision", "kind", "value"], ["allSkus", "skuIds", "startsAt", "endsAt", "totalLimit", "perUserLimit"]);
-    return database.transaction(() => {
-      checkCouponsRevision(input.revision);
-      const row = q.couponById.get(couponId);
-      if (!row) throw failure("coupon_not_found");
-      if (row.enabled === 1) throw failure("coupon_enabled");
-      const fields = couponFields(input);
-      const at = now();
-      q.updateCoupon.run(fields.kind, fields.value, fields.allSkus ? 1 : 0, fields.startsAt, fields.endsAt,
-        fields.totalLimit, fields.perUserLimit, at, couponId);
-      q.clearCouponSkus.run(couponId);
-      for (const skuId of fields.skuIds) q.insertCouponSku.run(couponId, skuId);
-      return couponsSnapshot();
-    }).immediate();
-  });
-
-  const setCouponsEnabled = guarded(input => {
-    exactKeys(input, ["revision", "couponIds", "enabled"]);
-    if (typeof input.enabled !== "boolean") throw failure("invalid_enabled");
-    const ids = idList(input.couponIds, COUPON_ID);
-    return database.transaction(() => {
-      checkCouponsRevision(input.revision);
-      if (ids.some(item => !q.couponById.get(item))) throw failure("coupon_not_found");
-      const at = now();
-      for (const item of ids) q.setCouponEnabled.run(input.enabled ? 1 : 0, at, item);
-      return couponsSnapshot();
-    }).immediate();
-  });
-
-  // Pause before delete. Redemption history and recorded order prices are kept.
-  const deleteCoupons = guarded(input => {
-    exactKeys(input, ["revision", "couponIds"]);
-    const ids = idList(input.couponIds, COUPON_ID);
-    return database.transaction(() => {
-      checkCouponsRevision(input.revision);
-      const rows = ids.map(item => q.couponById.get(item));
-      if (rows.some(row => !row)) throw failure("coupon_not_found");
-      if (rows.some(row => row.enabled === 1)) throw failure("coupon_enabled");
-      const at = now();
-      for (const item of ids) q.deactivateCoupon.run(at, item);
-      return couponsSnapshot();
-    }).immediate();
+  // Owner-only listing: the account ref always comes from the caller's session.
+  const listAccountCoupons = guarded(input => {
+    exactKeys(input, ["accountRef"]);
+    if (typeof input.accountRef !== "string" || !ACCOUNT_REF.test(input.accountRef)) throw failure("invalid_account");
+    const at = now();
+    const skuMap = skuMapNow();
+    return { asOf: at, items: q.accountCoupons.all(input.accountRef).map(row => accountCouponView(row, at, skuMap)) };
   });
 
   // ---- Pricing / quote ----
-  const ACCOUNT_REF = /^[A-Za-z0-9._:-]{1,128}$/;
-
+  // With an accountRef the coupon must be redeemed by that account; without one
+  // (admin preview) it only has to be live. Unknown and foreign codes look alike.
   function resolveCoupon(code, skuRow, accountRef, at) {
     if (code === undefined || code === null || code === "") return null;
-    const normalized = typeof code === "string" ? code.trim().toUpperCase() : "";
-    if (!CODE.test(normalized)) throw failure("coupon_not_found");
-    const row = q.couponByCode.get(normalized);
-    if (!row) throw failure("coupon_not_found");
-    if (row.enabled !== 1 || !isWithinWindow({ startsAt: row.starts_at, endsAt: row.ends_at }, at)) throw failure("coupon_inactive");
+    const normalized = normalizeCode(code);
+    const row = normalized ? q.couponByCode.get(normalized) : null;
+    if (!row || (accountRef && row.redeemed_by !== accountRef)) throw failure("coupon_not_found");
+    const status = couponStatus(row, at);
+    if (accountRef ? status !== "redeemed" : status !== "redeemed" && status !== "issued") throw failure("coupon_inactive");
     if (row.all_skus !== 1 && !q.couponSkus.all(row.id).some(item => item.sku_id === skuRow.id)) throw failure("coupon_not_applicable");
-    if (row.total_limit !== null && row.redemption_count >= row.total_limit) throw failure("coupon_exhausted");
-    if (accountRef && row.per_user_limit !== null && q.userRedemptions.get(row.id, accountRef).n >= row.per_user_limit) throw failure("coupon_user_limit");
     return row;
   }
 
   function priceFor(skuId, couponCode, accountRef) {
     const skuRow = requireSku(skuId);
-    if (accountRef !== undefined && accountRef !== null && !ACCOUNT_REF.test(accountRef)) throw failure("invalid_account");
+    if (accountRef !== undefined && accountRef !== null && (typeof accountRef !== "string" || !ACCOUNT_REF.test(accountRef))) throw failure("invalid_account");
     if (skuRow.base_coin_units === null) throw failure("sku_price_unset");
     const at = now();
     const coupon = resolveCoupon(couponCode, skuRow, accountRef, at);
     const breakdown = computeResidentialPrice({
       listPrice: skuRow.base_coin_units,
-      coupon: coupon ? { code: coupon.code, kind: coupon.kind, value: coupon.value } : null
+      coupon: coupon ? { code: displayCode(coupon.code), kind: coupon.kind, value: coupon.value } : null
     });
-    return { skuRow, coupon, breakdown: { skuId: skuRow.id, sizeCode: skuRow.size_code, purchasable: isPurchasableRow(skuRow), quotedAt: at, ...breakdown } };
+    return { skuRow, coupon, at, breakdown: { skuId: skuRow.id, sizeCode: skuRow.size_code, purchasable: skuView(skuRow).purchasable, quotedAt: at, ...breakdown } };
   }
 
-  function isPurchasableRow(skuRow) { return skuView(skuRow).purchasable; }
-
-  // Read-only quote: SKU + optional coupon (+ optional account for per-user limits).
   const quote = guarded(input => {
     exactKeys(input, ["skuId"], ["couponCode", "accountRef"]);
     return priceFor(input.skuId, input.couponCode, input.accountRef).breakdown;
   });
 
-  // For the #753 order flow: atomically recompute, redeem the coupon and record
-  // the priced breakdown on the order. Idempotent per orderRef (same inputs
-  // return the recorded row; different inputs fail). Fulfillment is not wired.
+  // Order flow hook (#753): recompute and consume the coupon atomically with the
+  // recorded price. The consume update is conditional (unconsumed, owned, live)
+  // and coupon_id is unique on order prices, so concurrent orders cannot both
+  // spend one coupon. Idempotent per orderRef. Fulfillment is not wired.
   const recordOrderPrice = guarded(input => {
     exactKeys(input, ["orderRef", "accountRef", "skuId"], ["couponCode"]);
     if (typeof input.orderRef !== "string" || !ACCOUNT_REF.test(input.orderRef)) throw failure("invalid_input");
@@ -491,75 +553,25 @@ export function createSqliteResidentialRelayPackStore(options = {}) {
       const existing = q.orderPrice.get(input.orderRef);
       if (existing) {
         const recorded = JSON.parse(existing.breakdown);
-        const sameCoupon = (recorded.coupon?.code ?? null) === (input.couponCode ? String(input.couponCode).trim().toUpperCase() : null);
+        const wanted = input.couponCode ? normalizeCode(input.couponCode) : null;
+        const sameCoupon = (recorded.coupon?.code ? recorded.coupon.code.replace(/-/g, "") : null) === wanted;
         if (existing.account_ref !== input.accountRef || existing.sku_id !== input.skuId || !sameCoupon) throw failure("order_already_priced");
         return recorded;
       }
-      const { skuRow, coupon, breakdown } = priceFor(input.skuId, input.couponCode, input.accountRef);
+      const { skuRow, coupon, at, breakdown } = priceFor(input.skuId, input.couponCode, input.accountRef);
       if (!breakdown.purchasable) throw failure("sku_not_ready");
-      const at = now();
-      const couponUsed = coupon && breakdown.coupon?.applied ? coupon : null;
-      if (couponUsed) {
-        q.insertRedemption.run(input.orderRef, couponUsed.id, input.accountRef, at);
-        q.bumpRedemption.run(couponUsed.id);
+      if (coupon && q.consumeCoupon.run(input.accountRef, input.orderRef, breakdown.deduction, at, coupon.id, input.accountRef, at).changes !== 1) {
+        throw failure("coupon_inactive");
       }
       const recorded = { ...breakdown, orderRef: input.orderRef };
-      q.insertOrderPrice.run(input.orderRef, input.accountRef, skuRow.id, couponUsed?.id ?? null, breakdown.listPrice, breakdown.finalPrice, JSON.stringify(recorded), at);
+      q.insertOrderPrice.run(input.orderRef, input.accountRef, skuRow.id, coupon?.id ?? null, breakdown.listPrice, breakdown.finalPrice, JSON.stringify(recorded), at);
       return recorded;
     }).immediate();
   });
 
-  // ---- Account-owned coupons (buyer side) ----
-  // Grants an existing coupon to accounts. Idempotent per (coupon, account).
-  const grantCoupon = guarded(input => {
-    exactKeys(input, ["couponId", "accountRefs"]);
-    if (typeof input.couponId !== "string" || !COUPON_ID.test(input.couponId)) throw failure("invalid_input");
-    if (!Array.isArray(input.accountRefs) || input.accountRefs.length < 1 || input.accountRefs.length > 500
-      || input.accountRefs.some(item => typeof item !== "string" || !ACCOUNT_REF.test(item))) throw failure("invalid_account");
-    return database.transaction(() => {
-      if (!q.couponById.get(input.couponId)) throw failure("coupon_not_found");
-      const at = now();
-      let granted = 0;
-      for (const ref of new Set(input.accountRefs)) granted += q.insertGrant.run(input.couponId, ref, at).changes;
-      return { couponId: input.couponId, granted };
-    }).immediate();
-  });
-
-  // Owner-only listing: the account ref always comes from the caller's session.
-  // Status: used (account redeemed it and no uses remain) > expired (ended, paused or
-  // globally exhausted) > available (incl. not-yet-started, flagged upcoming).
-  const listAccountCoupons = guarded(input => {
-    exactKeys(input, ["accountRef"]);
-    if (typeof input.accountRef !== "string" || !ACCOUNT_REF.test(input.accountRef)) throw failure("invalid_account");
-    const at = now();
-    const atMs = Date.parse(at);
-    const skuMap = new Map(q.skus.all().map(row => [row.id, row]));
-    const items = q.accountCoupons.all(input.accountRef).map(row => {
-      const usedCount = q.userRedemptions.get(row.id, input.accountRef).n;
-      const userLeft = row.per_user_limit === null ? null : Math.max(0, row.per_user_limit - usedCount);
-      const totalLeft = row.total_limit === null ? null : Math.max(0, row.total_limit - row.redemption_count);
-      const remainingUses = userLeft === null ? totalLeft : totalLeft === null ? userLeft : Math.min(userLeft, totalLeft);
-      const ended = row.ends_at !== null && Date.parse(row.ends_at) <= atMs;
-      const upcoming = row.starts_at !== null && Date.parse(row.starts_at) > atMs;
-      let status = "available";
-      let reason = upcoming ? "upcoming" : null;
-      if (usedCount > 0 && remainingUses === 0) { status = "used"; reason = null; }
-      else if (ended) { status = "expired"; reason = "ended"; }
-      else if (row.enabled !== 1) { status = "expired"; reason = "paused"; }
-      else if (totalLeft === 0) { status = "expired"; reason = "exhausted"; }
-      const skuIds = row.all_skus === 1 ? [...skuMap.keys()] : q.couponSkus.all(row.id).map(item => item.sku_id);
-      const skus = skuIds.map(id => skuMap.get(id)).filter(Boolean)
-        .map(sku => ({ skuId: sku.id, sizeCode: sku.size_code, durationDays: sku.duration_days }));
-      return { code: row.code, kind: row.kind, value: row.value, allSkus: row.all_skus === 1, skus,
-        startsAt: row.starts_at, endsAt: row.ends_at, remainingUses, usedCount,
-        status, reason, grantedAt: row.granted_at };
-    });
-    return { asOf: at, items };
-  });
-
-  return { available: true, grantCoupon, listAccountCoupons, listSkus, getSku, saveSku, setSkuEnabled, previewUpstreams, importUpstreams,
+  return { available: true, listSkus, getSku, saveSku, setSkuEnabled, previewUpstreams, importUpstreams,
     listUpstreams, setUpstreamsEnabled, deleteUpstreams, resolveRelayPool,
-    listCoupons, createCoupon, updateCoupon, setCouponsEnabled, deleteCoupons, quote, recordOrderPrice, close };
+    listCoupons, generateCoupons, voidCoupons, redeemCoupon, listAccountCoupons, quote, recordOrderPrice, close };
 }
 
 export { isResidentialRelaySkuSizeCode };

@@ -428,7 +428,12 @@ export function createApp(state, options = {}) {
     }));
   }
   if (state.residentialRelayPack?.enabled) {
-    app.use(portalResidentialRelayCouponRoutes(state, { browserSessions }));
+    app.use(portalResidentialRelayCouponRoutes(state, {
+      browserSessions,
+      nowFn: options.rateLimitNowFn,
+      clientIpResolver: options.clientIpResolver
+        || ((req) => resolveClientIp(req, { trustedProxyCidrs: state.security?.trustedProxyCidrs }))
+    }));
   }
   if (portalCoinWalletRoutesEnabled(state)) {
     app.use(createPortalCoinWalletRouter({

@@ -1,4 +1,4 @@
-import type { PortalCouponClient, PortalCouponList } from "./coupons/coupon-client";
+import { PortalCouponClientError, type PortalCouponClient, type PortalCouponList } from "./coupons/coupon-client";
 import type {
   PortalHumanVerificationChallenge,
   PortalInitialAccount
@@ -54,19 +54,35 @@ const ALL = [SKUS.g100, SKUS.g200, SKUS.g500, SKUS.t1];
 export const LOCAL_PREVIEW_COUPONS: PortalCouponList = {
   asOf: "2026-10-14T16:00:00.000Z",
   items: [
-    { code: "WELCOME10", kind: "percent", value: 1000, allSkus: true, skus: ALL, startsAt: null, endsAt: "2026-11-30T15:59:59.000Z",
-      remainingUses: 1, usedCount: 0, status: "available", reason: null, grantedAt: "2026-10-10T02:00:00.000Z" },
-    { code: "BIGPACK20", kind: "fixed", value: 20, allSkus: false, skus: [SKUS.g500, SKUS.t1], startsAt: "2026-10-01T00:00:00.000Z",
-      endsAt: "2026-12-31T15:59:59.000Z", remainingUses: 2, usedCount: 0, status: "available", reason: null, grantedAt: "2026-10-12T02:00:00.000Z" },
-    { code: "WINTER15", kind: "percent", value: 1500, allSkus: false, skus: [SKUS.g100, SKUS.g200], startsAt: "2026-12-01T00:00:00.000Z",
-      endsAt: null, remainingUses: null, usedCount: 0, status: "available", reason: "upcoming", grantedAt: "2026-10-13T02:00:00.000Z" },
-    { code: "FIRST5", kind: "fixed", value: 5, allSkus: false, skus: [SKUS.g100], startsAt: null, endsAt: null,
-      remainingUses: 0, usedCount: 1, status: "used", reason: null, grantedAt: "2026-09-20T02:00:00.000Z" },
-    { code: "SUMMER25", kind: "percent", value: 2500, allSkus: true, skus: ALL, startsAt: "2026-07-01T00:00:00.000Z",
-      endsAt: "2026-08-31T15:59:59.000Z", remainingUses: 1, usedCount: 0, status: "expired", reason: "ended", grantedAt: "2026-07-01T02:00:00.000Z" },
+    { code: "WK7M-Q4RT-9HZC", kind: "percent", value: 1000, allSkus: true, skus: ALL, expiresAt: "2026-11-30T15:59:59.000Z",
+      redeemedAt: "2026-10-10T02:00:00.000Z", status: "available", consumedAt: null, consumedOrderRef: null, consumedAmount: null },
+    { code: "B8NP-3XVE-K2DA", kind: "fixed", value: 20, allSkus: false, skus: [SKUS.g500], expiresAt: "2026-12-31T15:59:59.000Z",
+      redeemedAt: "2026-10-12T02:00:00.000Z", status: "available", consumedAt: null, consumedOrderRef: null, consumedAmount: null },
+    { code: "F5HU-7GTY-MW3S", kind: "percent", value: 2000, allSkus: false, skus: [SKUS.g100, SKUS.g200], expiresAt: "2027-01-31T15:59:59.000Z",
+      redeemedAt: "2026-10-13T02:00:00.000Z", status: "available", consumedAt: null, consumedOrderRef: null, consumedAmount: null },
+    { code: "R6DJ-2PKN-ZX8Q", kind: "fixed", value: 5, allSkus: false, skus: [SKUS.g100], expiresAt: "2026-12-01T00:00:00.000Z",
+      redeemedAt: "2026-09-20T02:00:00.000Z", status: "used", consumedAt: "2026-09-21T03:10:00.000Z", consumedOrderRef: "ord_preview_0921", consumedAmount: 5 },
+    { code: "S9TC-4VAH-E7GM", kind: "percent", value: 1500, allSkus: true, skus: ALL, expiresAt: "2026-08-31T15:59:59.000Z",
+      redeemedAt: "2026-07-01T02:00:00.000Z", status: "expired", consumedAt: null, consumedOrderRef: null, consumedAmount: null },
   ],
 };
 
+// Preview-only redeem: "PREV-IEW2-CODE" (any case/spacing) succeeds once; anything else fails generically.
 export function createLocalPreviewCouponClient(): PortalCouponClient {
-  return { async listCoupons() { return structuredClone(LOCAL_PREVIEW_COUPONS); } };
+  const state = structuredClone(LOCAL_PREVIEW_COUPONS);
+  let redeemed = false;
+  return {
+    async listCoupons() { return structuredClone(state); },
+    async redeemCoupon({ code }) {
+      if (redeemed || code.toUpperCase().replace(/[\s-]/g, "") !== "PREVIEW2CODE") {
+        throw new PortalCouponClientError("redeem_failed");
+      }
+      redeemed = true;
+      const coupon = { code: "PREV-IEW2-CODE", kind: "percent" as const, value: 500, allSkus: true, skus: ALL,
+        expiresAt: "2026-12-31T15:59:59.000Z", redeemedAt: new Date().toISOString(), status: "available" as const,
+        consumedAt: null, consumedOrderRef: null, consumedAmount: null };
+      state.items.unshift(coupon);
+      return structuredClone(coupon);
+    },
+  };
 }

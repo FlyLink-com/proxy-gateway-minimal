@@ -6,8 +6,7 @@ export const RESIDENTIAL_RELAY_SKUS_TABLE = "platform_residential_relay_skus";
 export const RESIDENTIAL_RELAY_UPSTREAMS_TABLE = "platform_residential_relay_upstreams";
 export const RESIDENTIAL_RELAY_COUPONS_TABLE = "platform_residential_relay_coupons";
 export const RESIDENTIAL_RELAY_COUPON_SKUS_TABLE = "platform_residential_relay_coupon_skus";
-export const RESIDENTIAL_RELAY_COUPON_GRANTS_TABLE = "platform_residential_relay_coupon_grants";
-export const RESIDENTIAL_RELAY_REDEMPTIONS_TABLE = "platform_residential_relay_coupon_redemptions";
+export const RESIDENTIAL_RELAY_REDEEM_ATTEMPTS_TABLE = "platform_residential_relay_redeem_attempts";
 export const RESIDENTIAL_RELAY_ORDER_PRICES_TABLE = "platform_residential_relay_order_prices";
 
 // Seeded display defaults (Ethan 2026-10-14). Admin can edit; 1TB has no price
@@ -56,50 +55,55 @@ const STATEMENTS = Object.freeze([
   `create table ${RESIDENTIAL_RELAY_COUPONS_TABLE} (
      id text primary key,
      code text not null unique,
+     batch_id text not null,
      kind text not null check (kind in ('percent', 'fixed')),
      value integer not null check (value > 0),
      all_skus integer not null default 0 check (all_skus in (0, 1)),
-     starts_at text,
-     ends_at text,
-     total_limit integer check (total_limit is null or total_limit > 0),
-     per_user_limit integer check (per_user_limit is null or per_user_limit > 0),
-     enabled integer not null default 0 check (enabled in (0, 1)),
-     active integer not null default 1 check (active in (0, 1)),
-     redemption_count integer not null default 0 check (redemption_count >= 0),
-     created_at text not null,
-     updated_at text not null
+     expires_at text not null,
+     issued_at text not null,
+     issued_by text not null,
+     voided_at text,
+     voided_by text,
+     redeemed_by text,
+     redeemed_at text,
+     consumed_by text,
+     consumed_order_ref text unique,
+     consumed_amount integer check (consumed_amount is null or consumed_amount >= 0),
+     consumed_at text,
+     check (voided_at is null or redeemed_at is null),
+     check ((redeemed_by is null) = (redeemed_at is null)),
+     check (consumed_at is null or (redeemed_at is not null and consumed_by = redeemed_by
+       and consumed_order_ref is not null and consumed_amount is not null))
    )`,
+  `create index platform_residential_relay_coupons_redeemed_idx
+     on ${RESIDENTIAL_RELAY_COUPONS_TABLE}(redeemed_by)`,
   `create table ${RESIDENTIAL_RELAY_COUPON_SKUS_TABLE} (
      coupon_id text not null references ${RESIDENTIAL_RELAY_COUPONS_TABLE}(id),
      sku_id text not null references ${RESIDENTIAL_RELAY_SKUS_TABLE}(id),
      primary key (coupon_id, sku_id)
    )`,
-  `create table ${RESIDENTIAL_RELAY_REDEMPTIONS_TABLE} (
-     order_ref text primary key,
-     coupon_id text not null references ${RESIDENTIAL_RELAY_COUPONS_TABLE}(id),
-     account_ref text not null,
-     redeemed_at text not null
-   )`,
-  `create index platform_residential_relay_redemptions_user_idx
-     on ${RESIDENTIAL_RELAY_REDEMPTIONS_TABLE}(coupon_id, account_ref)`,
   `create table ${RESIDENTIAL_RELAY_ORDER_PRICES_TABLE} (
      order_ref text primary key,
      account_ref text not null,
      sku_id text not null references ${RESIDENTIAL_RELAY_SKUS_TABLE}(id),
-     coupon_id text references ${RESIDENTIAL_RELAY_COUPONS_TABLE}(id),
+     coupon_id text unique references ${RESIDENTIAL_RELAY_COUPONS_TABLE}(id),
      list_price integer not null,
      final_price integer not null check (final_price >= 0),
      breakdown text not null,
      created_at text not null
    )`,
-  `create table ${RESIDENTIAL_RELAY_COUPON_GRANTS_TABLE} (
-     coupon_id text not null references ${RESIDENTIAL_RELAY_COUPONS_TABLE}(id),
+  `create table ${RESIDENTIAL_RELAY_REDEEM_ATTEMPTS_TABLE} (
+     id integer primary key autoincrement,
      account_ref text not null,
-     granted_at text not null,
-     primary key (coupon_id, account_ref)
+     client_key text not null,
+     input_hash text not null,
+     outcome text not null check (outcome in ('redeemed', 'failed', 'rate_limited')),
+     attempted_at text not null
    )`,
-  `create index platform_residential_relay_coupon_grants_account_idx
-     on ${RESIDENTIAL_RELAY_COUPON_GRANTS_TABLE}(account_ref)`
+  `create index platform_residential_relay_redeem_attempts_account_idx
+     on ${RESIDENTIAL_RELAY_REDEEM_ATTEMPTS_TABLE}(account_ref, attempted_at)`,
+  `create index platform_residential_relay_redeem_attempts_client_idx
+     on ${RESIDENTIAL_RELAY_REDEEM_ATTEMPTS_TABLE}(client_key, attempted_at)`
 ]);
 
 const normalize = sql => String(sql).replace(/\s+/g, " ").trim().toLowerCase();
@@ -112,12 +116,12 @@ const OWNED = [
   ["table", RESIDENTIAL_RELAY_UPSTREAMS_TABLE, 2],
   ["index", "platform_residential_relay_upstreams_sku_idx", 3],
   ["table", RESIDENTIAL_RELAY_COUPONS_TABLE, 4],
-  ["table", RESIDENTIAL_RELAY_COUPON_SKUS_TABLE, 5],
-  ["table", RESIDENTIAL_RELAY_REDEMPTIONS_TABLE, 6],
-  ["index", "platform_residential_relay_redemptions_user_idx", 7],
-  ["table", RESIDENTIAL_RELAY_ORDER_PRICES_TABLE, 8],
-  ["table", RESIDENTIAL_RELAY_COUPON_GRANTS_TABLE, 9],
-  ["index", "platform_residential_relay_coupon_grants_account_idx", 10]
+  ["index", "platform_residential_relay_coupons_redeemed_idx", 5],
+  ["table", RESIDENTIAL_RELAY_COUPON_SKUS_TABLE, 6],
+  ["table", RESIDENTIAL_RELAY_ORDER_PRICES_TABLE, 7],
+  ["table", RESIDENTIAL_RELAY_REDEEM_ATTEMPTS_TABLE, 8],
+  ["index", "platform_residential_relay_redeem_attempts_account_idx", 9],
+  ["index", "platform_residential_relay_redeem_attempts_client_idx", 10]
 ];
 
 function fail(code) {

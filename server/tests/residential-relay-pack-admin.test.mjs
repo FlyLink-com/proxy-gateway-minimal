@@ -125,49 +125,6 @@ function sellable(store, sizeCode = "100G") {
   return store.setSkuEnabled(snap.sku.id, { revision: snap.revision, enabled: true });
 }
 
-test("coupons: create, list -> coupon pricing, per-user and total limits, idempotent order price record", () => {
-  const { store } = storeFixture();
-  let sku100 = sellable(store, "100G");
-  const sku200 = seeded(store, "200G");
-  let coupons = store.listCoupons();
-  coupons = store.createCoupon({ revision: coupons.revision, code: "welcome10", kind: "percent", value: 1000,
-    skuIds: [sku100.sku.id], totalLimit: 2, perUserLimit: 1 });
-  const welcome = coupons.items[0];
-  assert.deepEqual([welcome.code, welcome.enabled, welcome.redemptionCount, "stackable" in welcome], ["WELCOME10", false, 0, false]);
-  assert.throws(() => store.createCoupon({ revision: coupons.revision, code: "WELCOME10", kind: "fixed", value: 1, allSkus: true }), { code: "duplicate_coupon_code" });
-  assert.throws(() => store.quote({ skuId: sku100.sku.id, couponCode: "welcome10" }), { code: "coupon_inactive" });
-  coupons = store.setCouponsEnabled({ revision: coupons.revision, couponIds: [welcome.id], enabled: true });
-  // 30 list -> 10% off = 3 -> 27
-  const q = store.quote({ skuId: sku100.sku.id, couponCode: "WELCOME10", accountRef: "acct_a" });
-  assert.deepEqual([q.listPrice, q.finalPrice, q.coupon.applied], [30, 27, true]);
-  assert.ok(!Object.keys(q).some(key => /discount|stack/i.test(key)));
-  assert.throws(() => store.quote({ skuId: sku200.sku.id, couponCode: "WELCOME10" }), { code: "coupon_not_applicable" });
-  const recorded = store.recordOrderPrice({ orderRef: "order_1", accountRef: "acct_a", skuId: sku100.sku.id, couponCode: "WELCOME10" });
-  assert.equal(recorded.finalPrice, 27);
-  assert.deepEqual(store.recordOrderPrice({ orderRef: "order_1", accountRef: "acct_a", skuId: sku100.sku.id, couponCode: "welcome10" }), recorded);
-  assert.throws(() => store.recordOrderPrice({ orderRef: "order_1", accountRef: "acct_b", skuId: sku100.sku.id }), { code: "order_already_priced" });
-  assert.throws(() => store.recordOrderPrice({ orderRef: "order_2", accountRef: "acct_a", skuId: sku100.sku.id, couponCode: "WELCOME10" }), { code: "coupon_user_limit" });
-  store.recordOrderPrice({ orderRef: "order_3", accountRef: "acct_b", skuId: sku100.sku.id, couponCode: "WELCOME10" });
-  assert.throws(() => store.quote({ skuId: sku100.sku.id, couponCode: "WELCOME10", accountRef: "acct_c" }), { code: "coupon_exhausted" });
-  coupons = store.listCoupons();
-  assert.equal(coupons.items[0].redemptionCount, 2);
-  // Fixed coupon on list price; the removed stacking toggle is rejected.
-  assert.throws(() => store.createCoupon({ revision: coupons.revision, code: "FLAT8", kind: "fixed", value: 8, allSkus: true, stackable: false }), { code: "invalid_input" });
-  coupons = store.createCoupon({ revision: coupons.revision, code: "FLAT8", kind: "fixed", value: 8, allSkus: true });
-  const flat = coupons.items.find(item => item.code === "FLAT8");
-  coupons = store.setCouponsEnabled({ revision: coupons.revision, couponIds: [flat.id], enabled: true });
-  const nq = store.quote({ skuId: sku100.sku.id, couponCode: "flat8" });
-  assert.deepEqual([nq.finalPrice, nq.coupon.applied], [22, true]);
-  // Order without coupon records the list price and does not redeem anything.
-  assert.equal(store.recordOrderPrice({ orderRef: "order_4", accountRef: "acct_d", skuId: sku100.sku.id }).finalPrice, 30);
-  // Delete requires pause first.
-  assert.throws(() => store.deleteCoupons({ revision: coupons.revision, couponIds: [flat.id] }), { code: "coupon_enabled" });
-  coupons = store.setCouponsEnabled({ revision: coupons.revision, couponIds: [flat.id, welcome.id], enabled: false });
-  coupons = store.deleteCoupons({ revision: coupons.revision, couponIds: [flat.id, welcome.id] });
-  assert.equal(coupons.items.length, 0);
-  assert.throws(() => store.createCoupon({ revision: coupons.revision, code: "WELCOME10", kind: "fixed", value: 1, allSkus: true }), { code: "duplicate_coupon_code" });
-});
-
 async function http(t, { enabled = true } = {}) {
   const { database, store } = storeFixture();
   const state = {
@@ -219,12 +176,11 @@ test("admin HTTP: list, save SKU, import, batch enable/pause/delete, enable SKU"
   res = await request(`/skus/${id}/enabled`, { method: "PATCH", body: { revision: res.body.revision, enabled: true } });
   assert.equal(res.body.sku.purchasable, true);
   assert.equal((await request("/skus/not-an-id")).status, 400);
-  let coupons = (await request("/coupons")).body;
-  res = await request("/coupons", { method: "POST", body: { revision: coupons.revision, code: "HTTP5", kind: "fixed", value: 5, allSkus: true } });
+  res = await request("/coupons/generate", { method: "POST", body: { count: 1, kind: "fixed", value: 5, allSkus: true, expiresAt: "2026-12-01T00:00:00.000Z" } });
   assert.equal(res.status, 201);
-  res = await request("/coupons/enable", { method: "POST", body: { revision: res.body.revision, couponIds: [res.body.items[0].id] } });
-  res = await request("/quote", { method: "POST", body: { skuId: id, couponCode: "http5" } });
-  assert.deepEqual([res.status, res.body.listPrice, res.body.finalPrice], [200, 30, 25]);
+  assert.equal(res.body.items[0].issuedBy, "console_token");
+  res = await request("/quote", { method: "POST", body: { skuId: id, couponCode: res.body.items[0].code.toLowerCase() } });
+  assert.deepEqual([res.status, res.body.listPrice, res.body.deduction, res.body.finalPrice], [200, 30, 5, 25]);
   res = await request("/quote", { method: "POST", body: { skuId: id, couponCode: "NOPE1" } });
   assert.deepEqual([res.status, res.body.error], [404, "coupon_not_found"]);
 });
