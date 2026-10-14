@@ -24,7 +24,6 @@ const MESSAGES = {
   invalid_buyer_protocol: "Buyer protocol must be VLESS or Hy2.",
   upstream_limit: "This SKU already has the maximum number of upstreams.",
   sku_price_unset: "Set a price before enabling or quoting this SKU.",
-  invalid_discount: "The discount is invalid.",
   invalid_coupon: "The coupon is invalid.",
   duplicate_coupon_code: "That coupon code already exists.",
   coupon_enabled: "Pause this coupon before editing or deleting it.",
@@ -46,27 +45,23 @@ export class ResidentialRelayAdminError extends Error {
 }
 
 export type ResidentialRelayAdjustment = { kind: "percent" | "fixed"; value: number; startsAt: string | null; endsAt: string | null };
-export type ResidentialRelayDiscount = ResidentialRelayAdjustment & { enabled: boolean; active: boolean };
-export type ResidentialRelayDisplayPrice = { listPrice: number; discountedPrice: number; discountActive: boolean };
 export type ResidentialRelayCoupon = ResidentialRelayAdjustment & {
   id: string; code: string; allSkus: boolean; skuIds: string[]; totalLimit: number | null; perUserLimit: number | null;
-  stackable: boolean; enabled: boolean; redemptionCount: number;
+  enabled: boolean; redemptionCount: number;
 };
 export type ResidentialRelayCoupons = { revision: string; items: ResidentialRelayCoupon[] };
 export type ResidentialRelayCouponInput = Omit<ResidentialRelayAdjustment, "startsAt" | "endsAt"> & {
   code: string; allSkus: boolean; skuIds: string[]; startsAt?: string | null; endsAt?: string | null;
-  totalLimit?: number | null; perUserLimit?: number | null; stackable: boolean;
+  totalLimit?: number | null; perUserLimit?: number | null;
 };
 export type ResidentialRelayQuote = {
-  skuId: string; sizeCode: string; purchasable: boolean; listPrice: number; priceAfterDiscount: number; finalPrice: number;
-  stacked: boolean; discount: { kind: string; value: number; applied: boolean } | null;
-  coupon: { code: string | null; kind: string; value: number; stackable: boolean; applied: boolean } | null;
+  skuId: string; sizeCode: string; purchasable: boolean; listPrice: number; finalPrice: number;
+  coupon: { code: string | null; kind: string; value: number; applied: boolean } | null;
 };
 export type ResidentialRelaySku = {
   configured: boolean; id: string | null; sizeCode: string; buyerProtocol: string | null;
   quotaBytes: number; durationDays: number | null; baseCoinUnits: number | null; enabled: boolean;
   upstreamCount: number; enabledUpstreamCount: number; purchasable: boolean;
-  discount: ResidentialRelayDiscount | null; displayPrice: ResidentialRelayDisplayPrice | null;
   terms: { refunds: false; unusedByteRollover: false; renewals: false; autoRenew: false; gracePeriod: false };
 };
 export type ResidentialRelayUpstream = { id: string; displayName: string; countryCode: string; protocol: string; enabled: boolean };
@@ -114,7 +109,6 @@ function sku(value: unknown, requireId = false): ResidentialRelaySku {
     baseCoinUnits: row.baseCoinUnits === null || row.baseCoinUnits === undefined ? null : int(row.baseCoinUnits, "invalid_price"),
     enabled: bool(row.enabled), upstreamCount: Number(row.upstreamCount) || 0,
     enabledUpstreamCount: Number(row.enabledUpstreamCount) || 0, purchasable: bool(row.purchasable),
-    discount: discount(row.discount), displayPrice: displayPrice(row.displayPrice),
     terms: { refunds: false, unusedByteRollover: false, renewals: false, autoRenew: false, gracePeriod: false }
   };
 }
@@ -128,17 +122,6 @@ function adjustment(value: Record<string, unknown>): ResidentialRelayAdjustment 
   if (value.kind !== "percent" && value.kind !== "fixed") fail();
   return { kind: value.kind, value: int(value.value), startsAt: optionalTime(value.startsAt), endsAt: optionalTime(value.endsAt) };
 }
-function discount(value: unknown): ResidentialRelayDiscount | null {
-  if (value === null || value === undefined) return null;
-  const row = object(value);
-  return { ...adjustment(row), enabled: bool(row.enabled), active: bool(row.active) };
-}
-function displayPrice(value: unknown): ResidentialRelayDisplayPrice | null {
-  if (value === null || value === undefined) return null;
-  const row = object(value);
-  if (!Number.isSafeInteger(row.listPrice) || !Number.isSafeInteger(row.discountedPrice)) fail();
-  return { listPrice: row.listPrice as number, discountedPrice: row.discountedPrice as number, discountActive: bool(row.discountActive) };
-}
 const COUPON_ID = /^rrcpn_[0-9a-f]{32}$/;
 function coupons(value: unknown): ResidentialRelayCoupons {
   const row = object(value);
@@ -148,7 +131,7 @@ function coupons(value: unknown): ResidentialRelayCoupons {
     if (typeof c.id !== "string" || !COUPON_ID.test(c.id) || typeof c.code !== "string" || !Array.isArray(c.skuIds)) fail();
     const limit = (v: unknown) => v === null || v === undefined ? null : int(v);
     return { ...adjustment(c), id: c.id, code: c.code, allSkus: bool(c.allSkus), skuIds: c.skuIds.map(String),
-      totalLimit: limit(c.totalLimit), perUserLimit: limit(c.perUserLimit), stackable: bool(c.stackable),
+      totalLimit: limit(c.totalLimit), perUserLimit: limit(c.perUserLimit),
       enabled: bool(c.enabled), redemptionCount: Number(c.redemptionCount) || 0 };
   }) };
 }
@@ -213,14 +196,6 @@ export function createResidentialRelayAdminClient() {
       return snapshot(await request(`/skus/${id}/upstreams/${enabled ? "enable" : "pause"}`, {
         method: "POST", body: JSON.stringify({ revision, upstreamIds })
       }, signal));
-    },
-    async setDiscount(id: string, revision: string, input: ResidentialRelayAdjustment, signal?: AbortSignal) {
-      if (!SKU_ID.test(id) || !REVISION.test(revision)) fail();
-      return snapshot(await request(`/skus/${id}/discount`, { method: "PUT", body: JSON.stringify({ revision, ...input }) }, signal));
-    },
-    async clearDiscount(id: string, revision: string, signal?: AbortSignal) {
-      if (!SKU_ID.test(id) || !REVISION.test(revision)) fail();
-      return snapshot(await request(`/skus/${id}/discount/clear`, { method: "POST", body: JSON.stringify({ revision }) }, signal));
     },
     async listCoupons(signal?: AbortSignal) { return coupons(await request("/coupons", {}, signal)); },
     async createCoupon(revision: string, input: ResidentialRelayCouponInput, signal?: AbortSignal) {

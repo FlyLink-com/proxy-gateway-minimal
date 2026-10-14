@@ -4,9 +4,9 @@ export const REQUIRED_RESIDENTIAL_RELAY_PACK_MIGRATION_ID = "20261014_002_reside
 export const RESIDENTIAL_RELAY_MIGRATIONS_TABLE = "platform_residential_relay_schema_migrations";
 export const RESIDENTIAL_RELAY_SKUS_TABLE = "platform_residential_relay_skus";
 export const RESIDENTIAL_RELAY_UPSTREAMS_TABLE = "platform_residential_relay_upstreams";
-export const RESIDENTIAL_RELAY_DISCOUNTS_TABLE = "platform_residential_relay_discounts";
 export const RESIDENTIAL_RELAY_COUPONS_TABLE = "platform_residential_relay_coupons";
 export const RESIDENTIAL_RELAY_COUPON_SKUS_TABLE = "platform_residential_relay_coupon_skus";
+export const RESIDENTIAL_RELAY_COUPON_GRANTS_TABLE = "platform_residential_relay_coupon_grants";
 export const RESIDENTIAL_RELAY_REDEMPTIONS_TABLE = "platform_residential_relay_coupon_redemptions";
 export const RESIDENTIAL_RELAY_ORDER_PRICES_TABLE = "platform_residential_relay_order_prices";
 
@@ -53,15 +53,6 @@ const STATEMENTS = Object.freeze([
    )`,
   `create index platform_residential_relay_upstreams_sku_idx
      on ${RESIDENTIAL_RELAY_UPSTREAMS_TABLE}(sku_id, active, enabled)`,
-  `create table ${RESIDENTIAL_RELAY_DISCOUNTS_TABLE} (
-     sku_id text primary key references ${RESIDENTIAL_RELAY_SKUS_TABLE}(id),
-     kind text not null check (kind in ('percent', 'fixed')),
-     value integer not null check (value > 0),
-     starts_at text,
-     ends_at text,
-     enabled integer not null default 1 check (enabled in (0, 1)),
-     updated_at text not null
-   )`,
   `create table ${RESIDENTIAL_RELAY_COUPONS_TABLE} (
      id text primary key,
      code text not null unique,
@@ -72,7 +63,6 @@ const STATEMENTS = Object.freeze([
      ends_at text,
      total_limit integer check (total_limit is null or total_limit > 0),
      per_user_limit integer check (per_user_limit is null or per_user_limit > 0),
-     stackable integer not null default 1 check (stackable in (0, 1)),
      enabled integer not null default 0 check (enabled in (0, 1)),
      active integer not null default 1 check (active in (0, 1)),
      redemption_count integer not null default 0 check (redemption_count >= 0),
@@ -101,7 +91,15 @@ const STATEMENTS = Object.freeze([
      final_price integer not null check (final_price >= 0),
      breakdown text not null,
      created_at text not null
-   )`
+   )`,
+  `create table ${RESIDENTIAL_RELAY_COUPON_GRANTS_TABLE} (
+     coupon_id text not null references ${RESIDENTIAL_RELAY_COUPONS_TABLE}(id),
+     account_ref text not null,
+     granted_at text not null,
+     primary key (coupon_id, account_ref)
+   )`,
+  `create index platform_residential_relay_coupon_grants_account_idx
+     on ${RESIDENTIAL_RELAY_COUPON_GRANTS_TABLE}(account_ref)`
 ]);
 
 const normalize = sql => String(sql).replace(/\s+/g, " ").trim().toLowerCase();
@@ -113,12 +111,13 @@ const OWNED = [
   ["table", RESIDENTIAL_RELAY_SKUS_TABLE, 1],
   ["table", RESIDENTIAL_RELAY_UPSTREAMS_TABLE, 2],
   ["index", "platform_residential_relay_upstreams_sku_idx", 3],
-  ["table", RESIDENTIAL_RELAY_DISCOUNTS_TABLE, 4],
-  ["table", RESIDENTIAL_RELAY_COUPONS_TABLE, 5],
-  ["table", RESIDENTIAL_RELAY_COUPON_SKUS_TABLE, 6],
-  ["table", RESIDENTIAL_RELAY_REDEMPTIONS_TABLE, 7],
-  ["index", "platform_residential_relay_redemptions_user_idx", 8],
-  ["table", RESIDENTIAL_RELAY_ORDER_PRICES_TABLE, 9]
+  ["table", RESIDENTIAL_RELAY_COUPONS_TABLE, 4],
+  ["table", RESIDENTIAL_RELAY_COUPON_SKUS_TABLE, 5],
+  ["table", RESIDENTIAL_RELAY_REDEMPTIONS_TABLE, 6],
+  ["index", "platform_residential_relay_redemptions_user_idx", 7],
+  ["table", RESIDENTIAL_RELAY_ORDER_PRICES_TABLE, 8],
+  ["table", RESIDENTIAL_RELAY_COUPON_GRANTS_TABLE, 9],
+  ["index", "platform_residential_relay_coupon_grants_account_idx", 10]
 ];
 
 function fail(code) {

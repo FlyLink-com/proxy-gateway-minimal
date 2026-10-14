@@ -74,8 +74,6 @@ export function residentialRelaySkuPublicView(sku) {
     enabledUpstreamCount: sku.enabledUpstreamCount ?? 0,
     upstreamCount: sku.upstreamCount ?? 0,
     purchasable: isResidentialRelaySkuPurchasable(sku),
-    discount: sku.discount ?? null,
-    displayPrice: sku.displayPrice ?? null,
     terms: RESIDENTIAL_RELAY_PACK_TERMS
   };
 }

@@ -60,8 +60,7 @@ test("migration seeds four disabled SKUs with Ethan's default prices; 1TB has no
     ["100G", true, 30, 30, "vless", false, false], ["200G", true, 50, 30, "vless", false, false],
     ["500G", true, 120, 30, "vless", false, false], ["1TB", true, null, 30, "vless", false, false]]);
   assert.deepEqual(listed.map(s => s.quotaBytes), [100 * GB, 200 * GB, 500 * GB, 1024 * GB]);
-  assert.equal(listed[3].displayPrice, null);
-  assert.deepEqual(listed[0].displayPrice, { listPrice: 30, discountedPrice: 30, discountActive: false });
+  for (const sku of listed) assert.ok(!("discount" in sku) && !("displayPrice" in sku), "no per-pack discount surface");
   assert.deepEqual(listed[0].terms, { refunds: false, unusedByteRollover: false, renewals: false, autoRenew: false, gracePeriod: false });
   const snap = seeded(store);
   assert.throws(() => store.setSkuEnabled(snap.sku.id, { revision: snap.revision, enabled: true }), { code: "no_enabled_upstream" });
@@ -126,46 +125,25 @@ function sellable(store, sizeCode = "100G") {
   return store.setSkuEnabled(snap.sku.id, { revision: snap.revision, enabled: true });
 }
 
-test("SKU discount shows original and discounted price only inside its window", () => {
-  let clock = new Date("2026-10-14T00:00:00.000Z");
-  const database = migrated();
-  const store = createSqliteResidentialRelayPackStore({ database, secretProtector: createPortalTotpSecretProtector({ key: KEY }), nowFn: () => clock });
-  let snap = sellable(store, "500G");
-  snap = store.setSkuDiscount(snap.sku.id, { revision: snap.revision, kind: "percent", value: 2500,
-    startsAt: "2026-10-15T00:00:00.000Z", endsAt: "2026-10-20T00:00:00.000Z" });
-  assert.deepEqual(snap.sku.displayPrice, { listPrice: 120, discountedPrice: 120, discountActive: false });
-  clock = new Date("2026-10-16T00:00:00.000Z");
-  assert.deepEqual(store.getSku(snap.sku.id).sku.displayPrice, { listPrice: 120, discountedPrice: 90, discountActive: true });
-  assert.equal(store.quote({ skuId: snap.sku.id }).finalPrice, 90);
-  clock = new Date("2026-10-20T00:00:00.000Z");
-  assert.equal(store.quote({ skuId: snap.sku.id }).finalPrice, 120);
-  snap = store.getSku(snap.sku.id);
-  assert.throws(() => store.setSkuDiscount(snap.sku.id, { revision: snap.revision, kind: "percent", value: 10001 }), { code: "invalid_discount" });
-  assert.throws(() => store.setSkuDiscount(snap.sku.id, { revision: snap.revision, kind: "fixed", value: 5,
-    startsAt: "2026-10-20T00:00:00.000Z", endsAt: "2026-10-19T00:00:00.000Z" }), { code: "invalid_discount" });
-  snap = store.clearSkuDiscount(snap.sku.id, { revision: snap.revision });
-  assert.equal(snap.sku.discount, null);
-});
-
-test("coupons: create, stack with discount, per-user and total limits, idempotent order price record", () => {
+test("coupons: create, list -> coupon pricing, per-user and total limits, idempotent order price record", () => {
   const { store } = storeFixture();
   let sku100 = sellable(store, "100G");
   const sku200 = seeded(store, "200G");
-  sku100 = store.setSkuDiscount(sku100.sku.id, { revision: sku100.revision, kind: "fixed", value: 5 });
   let coupons = store.listCoupons();
   coupons = store.createCoupon({ revision: coupons.revision, code: "welcome10", kind: "percent", value: 1000,
     skuIds: [sku100.sku.id], totalLimit: 2, perUserLimit: 1 });
   const welcome = coupons.items[0];
-  assert.deepEqual([welcome.code, welcome.enabled, welcome.stackable, welcome.redemptionCount], ["WELCOME10", false, true, 0]);
+  assert.deepEqual([welcome.code, welcome.enabled, welcome.redemptionCount, "stackable" in welcome], ["WELCOME10", false, 0, false]);
   assert.throws(() => store.createCoupon({ revision: coupons.revision, code: "WELCOME10", kind: "fixed", value: 1, allSkus: true }), { code: "duplicate_coupon_code" });
   assert.throws(() => store.quote({ skuId: sku100.sku.id, couponCode: "welcome10" }), { code: "coupon_inactive" });
   coupons = store.setCouponsEnabled({ revision: coupons.revision, couponIds: [welcome.id], enabled: true });
-  // 30 list -> 25 after fixed 5 -> 10% off = 2.5 -> half up 3 -> 22
+  // 30 list -> 10% off = 3 -> 27
   const q = store.quote({ skuId: sku100.sku.id, couponCode: "WELCOME10", accountRef: "acct_a" });
-  assert.deepEqual([q.listPrice, q.priceAfterDiscount, q.finalPrice, q.stacked, q.coupon.applied], [30, 25, 22, true, true]);
+  assert.deepEqual([q.listPrice, q.finalPrice, q.coupon.applied], [30, 27, true]);
+  assert.ok(!Object.keys(q).some(key => /discount|stack/i.test(key)));
   assert.throws(() => store.quote({ skuId: sku200.sku.id, couponCode: "WELCOME10" }), { code: "coupon_not_applicable" });
   const recorded = store.recordOrderPrice({ orderRef: "order_1", accountRef: "acct_a", skuId: sku100.sku.id, couponCode: "WELCOME10" });
-  assert.equal(recorded.finalPrice, 22);
+  assert.equal(recorded.finalPrice, 27);
   assert.deepEqual(store.recordOrderPrice({ orderRef: "order_1", accountRef: "acct_a", skuId: sku100.sku.id, couponCode: "welcome10" }), recorded);
   assert.throws(() => store.recordOrderPrice({ orderRef: "order_1", accountRef: "acct_b", skuId: sku100.sku.id }), { code: "order_already_priced" });
   assert.throws(() => store.recordOrderPrice({ orderRef: "order_2", accountRef: "acct_a", skuId: sku100.sku.id, couponCode: "WELCOME10" }), { code: "coupon_user_limit" });
@@ -173,14 +151,15 @@ test("coupons: create, stack with discount, per-user and total limits, idempoten
   assert.throws(() => store.quote({ skuId: sku100.sku.id, couponCode: "WELCOME10", accountRef: "acct_c" }), { code: "coupon_exhausted" });
   coupons = store.listCoupons();
   assert.equal(coupons.items[0].redemptionCount, 2);
-  // Non-stackable coupon: buyer gets the lower of discount-only and coupon-only.
-  coupons = store.createCoupon({ revision: coupons.revision, code: "FLAT8", kind: "fixed", value: 8, allSkus: true, stackable: false });
+  // Fixed coupon on list price; the removed stacking toggle is rejected.
+  assert.throws(() => store.createCoupon({ revision: coupons.revision, code: "FLAT8", kind: "fixed", value: 8, allSkus: true, stackable: false }), { code: "invalid_input" });
+  coupons = store.createCoupon({ revision: coupons.revision, code: "FLAT8", kind: "fixed", value: 8, allSkus: true });
   const flat = coupons.items.find(item => item.code === "FLAT8");
   coupons = store.setCouponsEnabled({ revision: coupons.revision, couponIds: [flat.id], enabled: true });
   const nq = store.quote({ skuId: sku100.sku.id, couponCode: "flat8" });
-  assert.deepEqual([nq.finalPrice, nq.stacked, nq.coupon.applied, nq.discount.applied], [22, false, true, false]);
-  // Order without coupon records the discounted price and does not redeem anything.
-  assert.equal(store.recordOrderPrice({ orderRef: "order_4", accountRef: "acct_d", skuId: sku100.sku.id }).finalPrice, 25);
+  assert.deepEqual([nq.finalPrice, nq.coupon.applied], [22, true]);
+  // Order without coupon records the list price and does not redeem anything.
+  assert.equal(store.recordOrderPrice({ orderRef: "order_4", accountRef: "acct_d", skuId: sku100.sku.id }).finalPrice, 30);
   // Delete requires pause first.
   assert.throws(() => store.deleteCoupons({ revision: coupons.revision, couponIds: [flat.id] }), { code: "coupon_enabled" });
   coupons = store.setCouponsEnabled({ revision: coupons.revision, couponIds: [flat.id, welcome.id], enabled: false });

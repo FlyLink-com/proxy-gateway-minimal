@@ -1,6 +1,6 @@
 // Server-side price computation for residential relay pack SKUs.
-// Order: list price -> active SKU discount -> coupon. Each stage rounds to
-// integer Coins (half up) and clamps at >= 0. The full breakdown is meant to be
+// Order: list price -> coupon (coupons are the only promotion mechanism).
+// The coupon amount rounds to whole Coins (half up) and the result clamps at >= 0. The full breakdown is meant to be
 // recorded on the order. Locked terms (no refunds / rollover / renewals) are
 // unaffected by pricing.
 
@@ -22,7 +22,7 @@ export function isWithinWindow({ startsAt, endsAt }, now) {
   return (start === null || at >= start) && (end === null || at < end);
 }
 
-export function assertPriceAdjustment(input, code = "invalid_discount") {
+export function assertPriceAdjustment(input, code = "invalid_coupon") {
   if (!input || typeof input !== "object") throw fail(code);
   if (input.kind === "percent") {
     if (!Number.isSafeInteger(input.value) || input.value <= 0 || input.value > 10_000) throw fail(code);
@@ -44,36 +44,14 @@ export function applyAdjustment(price, adjustment) {
   return Math.max(0, price - off);
 }
 
-// discount / coupon: normalized adjustments or null. coupon.stackable decides
-// whether the coupon applies on top of the discount. When not stackable, the
-// buyer gets the lower of (discount only, coupon only on list price).
-export function computeResidentialPrice({ listPrice, discount = null, coupon = null, now }) {
+// coupon: normalized adjustment ({ code, kind, value }) or null.
+export function computeResidentialPrice({ listPrice, coupon = null }) {
   if (!Number.isSafeInteger(listPrice) || listPrice <= 0) throw fail("sku_price_unset");
-  const activeDiscount = discount && discount.enabled !== false && isWithinWindow(discount, now) ? discount : null;
-  const afterDiscount = activeDiscount ? applyAdjustment(listPrice, activeDiscount) : listPrice;
-  let finalPrice = afterDiscount;
-  let couponApplied = false, discountApplied = Boolean(activeDiscount), stacked = false;
-  if (coupon) {
-    if (coupon.stackable !== false || !activeDiscount) {
-      finalPrice = applyAdjustment(afterDiscount, coupon);
-      couponApplied = true;
-      stacked = Boolean(activeDiscount);
-    } else {
-      const couponOnly = applyAdjustment(listPrice, coupon);
-      if (couponOnly < afterDiscount) {
-        finalPrice = couponOnly;
-        couponApplied = true;
-        discountApplied = false;
-      }
-    }
-  }
+  const finalPrice = coupon ? applyAdjustment(listPrice, coupon) : listPrice;
   return {
     currency: "coins",
     listPrice,
-    discount: activeDiscount ? { kind: activeDiscount.kind, value: activeDiscount.value, applied: discountApplied } : null,
-    priceAfterDiscount: afterDiscount,
-    coupon: coupon ? { code: coupon.code ?? null, kind: coupon.kind, value: coupon.value, stackable: coupon.stackable !== false, applied: couponApplied } : null,
-    stacked,
-    finalPrice: Math.max(0, Math.round(finalPrice))
+    coupon: coupon ? { code: coupon.code ?? null, kind: coupon.kind, value: coupon.value, applied: true } : null,
+    finalPrice
   };
 }

@@ -12,6 +12,7 @@ import {
   Eye,
   ExternalLink,
   Gift,
+  TicketPercent,
   Headphones,
   History,
   LayoutGrid,
@@ -47,6 +48,7 @@ import {
   MarketplacePanel,
   ReferralRewardsPanel
 } from "./portal-commerce-panels";
+import { PortalCouponsPanel } from "./coupons/portal-coupons-panel";
 import {
   PORTAL_COIN_ORDER_STORAGE_KEY,
   type PortalCommerceModel
@@ -103,6 +105,7 @@ type PortalView =
   | "wallet"
   | "referrals"
   | "profile"
+  | "coupons"
   | "settings"
   | "support";
 
@@ -203,6 +206,7 @@ const navItems: Array<{ id: PortalView; label: string; description: string; icon
   { id: "wallet", label: "Coins 钱包", description: "查看可用余额、分类余额和钱包流水。", icon: WalletCards },
   { id: "referrals", label: "推荐奖励", description: "查看推荐链接、邀请进度和奖励。", icon: Gift },
   { id: "profile", label: "个人中心", description: "管理账户信息、身份验证器和通行密钥。", icon: UserCog },
+  { id: "coupons", label: "我的优惠券", description: "查看可用、已使用和已过期的住宅流量包优惠券。", icon: TicketPercent },
   { id: "settings", label: "设置", description: "管理界面语言和显示主题。", icon: Settings },
   { id: "support", label: "支持", description: "提交订阅、客户端或账户问题并追踪处理编号。", icon: Headphones }
 ];
@@ -237,7 +241,7 @@ const portalNavigationGroups: PortalNavigationGroup[] = [
     id: "account",
     zh: "账户",
     en: "Account",
-    itemIds: ["profile", "settings"]
+    itemIds: ["profile", "coupons", "settings"]
   },
   {
     id: "help",
@@ -477,6 +481,10 @@ function localizedPortalViewCopy(view: PortalView, locale: PortalAuthLocale) {
     wallet: {
       label: uiText(locale, "Coins 钱包", "Coins wallet"),
       description: uiText(locale, "查看可用余额、分类余额和钱包流水。", "Review spendable balance, balance categories, and Wallet activity.")
+    },
+    coupons: {
+      label: uiText(locale, "我的优惠券", "My coupons"),
+      description: uiText(locale, "查看可用、已使用和已过期的住宅流量包优惠券。", "Review available, used and expired residential pack coupons.")
     },
     referrals: {
       label: uiText(locale, "推荐奖励", "Referral rewards"),
@@ -3064,6 +3072,13 @@ export function UserPortalPage({
               rechargeModel={rechargeModel}
             />
           ) : null}
+          {activeView === "coupons" ? <PortalCouponsPanel
+            locale={locale}
+            couponClient={portalClient.coupons ?? null}
+            sessionRef={portalSession.sessionRef ?? null}
+            sessionGeneration={sessionGeneration}
+            onSessionInvalid={invalidateSession}
+          /> : null}
           {activeView === "referrals" ? <ReferralRewardsPanel
             locale={locale}
             referralClient={portalClient.referral ?? null}

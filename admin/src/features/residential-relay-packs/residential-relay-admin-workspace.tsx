@@ -5,7 +5,7 @@ import {
   type ResidentialRelayAdminClient, type ResidentialRelayAdminErrorCode,
   type ResidentialRelaySku, type ResidentialRelaySnapshot
 } from "./residential-relay-admin-client";
-import { ResidentialRelayCouponsPanel, ResidentialRelayDiscountPanel } from "./residential-relay-pricing-panels";
+import { ResidentialRelayCouponsPanel } from "./residential-relay-pricing-panels";
 import "./residential-relay-admin-workspace.styles.css";
 
 const ERROR_COPY: Record<ResidentialRelayAdminErrorCode, string> = {
@@ -26,7 +26,6 @@ const ERROR_COPY: Record<ResidentialRelayAdminErrorCode, string> = {
   invalid_buyer_protocol: "买家凭证协议只能是 VLESS 或 Hy2。",
   upstream_limit: "此 SKU 上游数已达上限。",
   sku_price_unset: "请先设置价格，再启用或报价此 SKU。",
-  invalid_discount: "折扣设置无效（百分比 0–100%，固定 Coins 为正整数，结束时间需晚于开始时间）。",
   invalid_coupon: "优惠码设置无效。",
   duplicate_coupon_code: "优惠码已存在。",
   coupon_enabled: "请先停用优惠码，再编辑或删除。",
@@ -178,14 +177,9 @@ export function ResidentialRelayAdminWorkspace({ client: supplied, onSessionExpi
         {selectedSku ? <p className="resi-admin-meta">
           额度 {formatQuota(selectedSku.quotaBytes)} · 上游 {selectedSku.enabledUpstreamCount}/{selectedSku.upstreamCount} 已启用
           {selectedSku.purchasable ? " · 当前可售" : " · 当前不可售"}
-          {selectedSku.displayPrice ? (selectedSku.displayPrice.discountActive
-            ? <> · 原价 <s>{selectedSku.displayPrice.listPrice}</s> → 折后 <strong>{selectedSku.displayPrice.discountedPrice}</strong> Coins</>
-            : <> · 价格 {selectedSku.displayPrice.listPrice} Coins</>) : " · 未定价"}
+          {selectedSku.baseCoinUnits !== null ? <> · 价格 {selectedSku.baseCoinUnits} Coins</> : " · 未定价"}
         </p> : null}
       </section>
-
-      {snapshot ? <ResidentialRelayDiscountPanel busy={busy} client={client} snapshot={snapshot} onError={report}
-        onChange={async (next) => { setSnapshot(next); setSkus(await client.listSkus()); }} setBusy={setBusy} /> : null}
 
       <section className="resi-admin-panel" aria-label="上游线路">
         <h3>上游住宅线路</h3>

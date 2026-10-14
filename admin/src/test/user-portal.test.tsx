@@ -2942,6 +2942,7 @@ describe("user portal product surface", () => {
       "Coins 钱包",
       "推荐奖励",
       "个人中心",
+      "我的优惠券",
       "设置",
       "支持"
     ]);
@@ -4200,6 +4201,7 @@ describe("user portal product surface", () => {
       "Coins 钱包",
       "推荐奖励",
       "个人中心",
+      "我的优惠券",
       "设置",
       "支持"
     ]);

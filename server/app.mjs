@@ -20,6 +20,7 @@ import { adminPlatformRoutes } from "./routes/admin-platform.mjs";
 import { adminUserMonitorRoutes } from "./routes/admin-user-monitor.mjs";
 import { adminThirdPartySubscriptionRoutes } from "./routes/admin-third-party-subscriptions.mjs";
 import { adminResidentialRelayPackRoutes } from "./routes/admin-residential-relay-packs.mjs";
+import { portalResidentialRelayCouponRoutes } from "./routes/portal-residential-relay-coupons.mjs";
 import {
   ADMIN_AUTH_PUBLIC_PATHS,
   adminAuthRoutes,
@@ -425,6 +426,9 @@ export function createApp(state, options = {}) {
       nowFn: options.rateLimitNowFn,
       browserSessions,
     }));
+  }
+  if (state.residentialRelayPack?.enabled) {
+    app.use(portalResidentialRelayCouponRoutes(state, { browserSessions }));
   }
   if (portalCoinWalletRoutesEnabled(state)) {
     app.use(createPortalCoinWalletRouter({

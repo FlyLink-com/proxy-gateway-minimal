@@ -142,26 +142,7 @@ export function adminResidentialRelayPackRoutes(state) {
     } catch (error) { sendStoreError(res, error, "invalid_input"); }
   });
 
-  router.put("/api/admin/residential-relay-packs/skus/:id/discount", (req, res) => {
-    if (!SKU_ID.test(req.params.id)) { sendError(res, 400, "invalid_input"); return; }
-    try {
-      const input = body(req.body);
-      if (!input) { sendError(res, 400, "invalid_input"); return; }
-      res.json(req.residentialRelayStore.setSkuDiscount(req.params.id,
-        pick(input, ["revision", "kind", "value", "startsAt", "endsAt", "enabled"])));
-    } catch (error) { sendStoreError(res, error, "invalid_discount"); }
-  });
-
-  router.post("/api/admin/residential-relay-packs/skus/:id/discount/clear", (req, res) => {
-    if (!SKU_ID.test(req.params.id)) { sendError(res, 400, "invalid_input"); return; }
-    try {
-      const input = body(req.body);
-      if (!input) { sendError(res, 400, "invalid_input"); return; }
-      res.json(req.residentialRelayStore.clearSkuDiscount(req.params.id, pick(input, ["revision"])));
-    } catch (error) { sendStoreError(res, error, "invalid_input"); }
-  });
-
-  const COUPON_FIELDS = ["revision", "code", "kind", "value", "allSkus", "skuIds", "startsAt", "endsAt", "totalLimit", "perUserLimit", "stackable"];
+  const COUPON_FIELDS = ["revision", "code", "kind", "value", "allSkus", "skuIds", "startsAt", "endsAt", "totalLimit", "perUserLimit"];
   router.get("/api/admin/residential-relay-packs/coupons", (req, res) => {
     try { res.json(req.residentialRelayStore.listCoupons()); }
     catch (error) { sendStoreError(res, error, "residential_relay_unavailable"); }
@@ -190,6 +171,14 @@ export function adminResidentialRelayPackRoutes(state) {
       } catch (error) { sendStoreError(res, error, "invalid_input"); }
     });
   }
+  router.post("/api/admin/residential-relay-packs/coupons/:couponId/grants", (req, res) => {
+    if (!/^rrcpn_[0-9a-f]{32}$/.test(req.params.couponId)) { sendError(res, 400, "invalid_input"); return; }
+    try {
+      const input = body(req.body);
+      if (!input) { sendError(res, 400, "invalid_input"); return; }
+      res.json(req.residentialRelayStore.grantCoupon({ couponId: req.params.couponId, accountRefs: input.accountRefs }));
+    } catch (error) { sendStoreError(res, error, "invalid_input"); }
+  });
   router.post("/api/admin/residential-relay-packs/coupons/delete", (req, res) => {
     try {
       const input = body(req.body);

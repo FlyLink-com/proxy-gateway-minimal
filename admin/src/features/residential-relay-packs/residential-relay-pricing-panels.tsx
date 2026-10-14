@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Pause, Play, Trash2 } from "lucide-react";
 import type {
-  ResidentialRelayAdminClient, ResidentialRelayCoupons, ResidentialRelayQuote, ResidentialRelaySku, ResidentialRelaySnapshot
+  ResidentialRelayAdminClient, ResidentialRelayCoupons, ResidentialRelayQuote, ResidentialRelaySku
 } from "./residential-relay-admin-client";
 
 type Common = { busy: boolean; client: ResidentialRelayAdminClient; onError: (err: unknown) => void; setBusy: (value: boolean) => void };
@@ -21,70 +21,12 @@ function describe(kind: string, value: number) {
   return kind === "percent" ? `${value / 100}%` : `${value} Coins`;
 }
 
-export function ResidentialRelayDiscountPanel({ snapshot, onChange, ...common }: Common & {
-  snapshot: ResidentialRelaySnapshot; onChange: (next: ResidentialRelaySnapshot) => Promise<void>;
-}) {
-  const { busy, client, onError, setBusy } = common;
-  const current = snapshot.sku.discount;
-  const [kind, setKind] = useState<"percent" | "fixed">(current?.kind ?? "percent");
-  const [value, setValue] = useState(current ? String(current.kind === "percent" ? current.value / 100 : current.value) : "");
-  const [startsAt, setStartsAt] = useState(current?.startsAt ? current.startsAt.slice(0, 16) : "");
-  const [endsAt, setEndsAt] = useState(current?.endsAt ? current.endsAt.slice(0, 16) : "");
-
-  async function run(action: () => Promise<ResidentialRelaySnapshot>) {
-    setBusy(true);
-    try { await onChange(await action()); } catch (err) { onError(err); } finally { setBusy(false); }
-  }
-
-  const price = snapshot.sku.displayPrice;
-  return (
-    <section className="resi-admin-panel" aria-label="SKU 折扣">
-      <h3>折扣</h3>
-      <p className="resi-admin-meta">
-        {price ? (price.discountActive
-          ? <>原价 <s>{price.listPrice}</s> Coins → 折后 <strong>{price.discountedPrice}</strong> Coins</>
-          : <>原价 {price.listPrice} Coins{current ? "（折扣未生效）" : ""}</>) : "未定价，无法显示折扣价。"}
-        {current ? ` · 当前：${describe(current.kind, current.value)}${current.startsAt ? `，自 ${current.startsAt}` : ""}${current.endsAt ? `，至 ${current.endsAt}` : ""}` : ""}
-      </p>
-      <div className="resi-admin-grid">
-        <label>折扣类型
-          <select value={kind} disabled={busy} onChange={(event) => setKind(event.target.value as "percent" | "fixed")}>
-            <option value="percent">百分比</option>
-            <option value="fixed">固定 Coins</option>
-          </select>
-        </label>
-        <label>{kind === "percent" ? "折扣（%）" : "减免（Coins）"}
-          <input inputMode="decimal" value={value} disabled={busy} onChange={(event) => setValue(event.target.value)} />
-        </label>
-        <label>开始时间（可选）
-          <input type="datetime-local" value={startsAt} disabled={busy} onChange={(event) => setStartsAt(event.target.value)} />
-        </label>
-        <label>结束时间（可选）
-          <input type="datetime-local" value={endsAt} disabled={busy} onChange={(event) => setEndsAt(event.target.value)} />
-        </label>
-      </div>
-      <div className="resi-admin-actions">
-        <button type="button" disabled={busy || !value.trim()} onClick={() => void run(() => {
-          const start = isoOrNull(startsAt), end = isoOrNull(endsAt);
-          return client.setDiscount(snapshot.sku.id, snapshot.revision, {
-            kind, value: adjustmentValue(kind, value),
-            startsAt: start === "invalid" ? "invalid" : start, endsAt: end === "invalid" ? "invalid" : end
-          });
-        })}>保存折扣</button>
-        <button type="button" disabled={busy || !current} onClick={() => void run(() => client.clearDiscount(snapshot.sku.id, snapshot.revision))}>
-          清除折扣
-        </button>
-      </div>
-    </section>
-  );
-}
-
 export function ResidentialRelayCouponsPanel({ skus, ...common }: Common & { skus: ResidentialRelaySku[] }) {
   const { busy, client, onError, setBusy } = common;
   const [state, setState] = useState<ResidentialRelayCoupons | null>(null);
   const [selected, setSelected] = useState<string[]>([]);
   const [form, setForm] = useState({ code: "", kind: "percent", value: "", allSkus: true, skuIds: [] as string[],
-    startsAt: "", endsAt: "", totalLimit: "", perUserLimit: "", stackable: true });
+    startsAt: "", endsAt: "", totalLimit: "", perUserLimit: "" });
   const [quoteSku, setQuoteSku] = useState("");
   const [quoteCode, setQuoteCode] = useState("");
   const [quote, setQuote] = useState<ResidentialRelayQuote | null>(null);
@@ -106,7 +48,7 @@ export function ResidentialRelayCouponsPanel({ skus, ...common }: Common & { sku
   return (
     <section className="resi-admin-panel" aria-label="优惠码">
       <h3>优惠码</h3>
-      <p className="resi-admin-note">计价顺序：原价 → 生效中的 SKU 折扣 → 优惠码；每步四舍五入为整数 Coins，最低 0。不可叠加的优惠码按“仅折扣”与“仅优惠码”中更低的价格计。</p>
+      <p className="resi-admin-note">计价：原价 → 优惠码（唯一的促销方式），四舍五入为整数 Coins，最低 0。</p>
       <div className="resi-admin-grid">
         <label>优惠码<input value={form.code} disabled={busy} onChange={(e) => setForm((f) => ({ ...f, code: e.target.value.toUpperCase() }))} /></label>
         <label>类型
@@ -114,15 +56,13 @@ export function ResidentialRelayCouponsPanel({ skus, ...common }: Common & { sku
             <option value="percent">百分比</option><option value="fixed">固定 Coins</option>
           </select>
         </label>
-        <label>{form.kind === "percent" ? "折扣（%）" : "减免（Coins）"}
+        <label>{form.kind === "percent" ? "减免比例（%）" : "减免（Coins）"}
           <input inputMode="decimal" value={form.value} disabled={busy} onChange={(e) => setForm((f) => ({ ...f, value: e.target.value }))} />
         </label>
         <label>开始时间（可选）<input type="datetime-local" value={form.startsAt} disabled={busy} onChange={(e) => setForm((f) => ({ ...f, startsAt: e.target.value }))} /></label>
         <label>结束时间（可选）<input type="datetime-local" value={form.endsAt} disabled={busy} onChange={(e) => setForm((f) => ({ ...f, endsAt: e.target.value }))} /></label>
         <label>总次数上限（可选）<input inputMode="numeric" value={form.totalLimit} disabled={busy} onChange={(e) => setForm((f) => ({ ...f, totalLimit: e.target.value }))} /></label>
         <label>每用户上限（可选）<input inputMode="numeric" value={form.perUserLimit} disabled={busy} onChange={(e) => setForm((f) => ({ ...f, perUserLimit: e.target.value }))} /></label>
-        <label className="resi-admin-check"><input type="checkbox" checked={form.stackable} disabled={busy}
-          onChange={(e) => setForm((f) => ({ ...f, stackable: e.target.checked }))} />可与 SKU 折扣叠加</label>
         <label className="resi-admin-check"><input type="checkbox" checked={form.allSkus} disabled={busy}
           onChange={(e) => setForm((f) => ({ ...f, allSkus: e.target.checked }))} />适用全部 SKU</label>
       </div>
@@ -140,7 +80,7 @@ export function ResidentialRelayCouponsPanel({ skus, ...common }: Common & { sku
             code: form.code.trim(), kind: form.kind as "percent" | "fixed", value: adjustmentValue(form.kind, form.value),
             allSkus: form.allSkus, skuIds: form.allSkus ? [] : form.skuIds,
             startsAt: start === "invalid" ? "invalid" : start, endsAt: end === "invalid" ? "invalid" : end,
-            totalLimit: limit(form.totalLimit), perUserLimit: limit(form.perUserLimit), stackable: form.stackable
+            totalLimit: limit(form.totalLimit), perUserLimit: limit(form.perUserLimit)
           });
         })}>创建优惠码（默认停用）</button>
         <button type="button" disabled={busy || selected.length === 0} onClick={() => void mutate((r) => client.setCouponsEnabled(r, selected, true))}>
@@ -156,7 +96,7 @@ export function ResidentialRelayCouponsPanel({ skus, ...common }: Common & { sku
             <th scope="col"><input aria-label="全选优惠码" type="checkbox" checked={selected.length === state.items.length}
               onChange={(e) => setSelected(e.target.checked ? state.items.map((c) => c.id) : [])} /></th>
             <th scope="col">代码</th><th scope="col">优惠</th><th scope="col">适用</th><th scope="col">有效期</th>
-            <th scope="col">已用 / 上限</th><th scope="col">每用户</th><th scope="col">叠加</th><th scope="col">状态</th>
+            <th scope="col">已用 / 上限</th><th scope="col">每用户</th><th scope="col">状态</th>
           </tr></thead>
           <tbody>{state.items.map((c) => (
             <tr key={c.id}>
@@ -166,7 +106,7 @@ export function ResidentialRelayCouponsPanel({ skus, ...common }: Common & { sku
               <td>{c.allSkus ? "全部" : c.skuIds.map(sizeOf).join(", ")}</td>
               <td>{c.startsAt ?? "不限"} – {c.endsAt ?? "不限"}</td>
               <td>{c.redemptionCount} / {c.totalLimit ?? "不限"}</td><td>{c.perUserLimit ?? "不限"}</td>
-              <td>{c.stackable ? "可叠加" : "不叠加"}</td><td>{c.enabled ? "已启用" : "已停用"}</td>
+              <td>{c.enabled ? "已启用" : "已停用"}</td>
             </tr>
           ))}</tbody>
         </table>
@@ -188,7 +128,7 @@ export function ResidentialRelayCouponsPanel({ skus, ...common }: Common & { sku
         })()}>计算报价</button>
       </div>
       {quote ? <p className="resi-admin-meta" aria-label="报价结果">
-        原价 {quote.listPrice} → 折扣后 {quote.priceAfterDiscount}
+        原价 {quote.listPrice}
         {quote.coupon ? ` → 优惠码 ${quote.coupon.code}${quote.coupon.applied ? "" : "（未采用）"}` : ""} → 应付 <strong>{quote.finalPrice}</strong> Coins
         {quote.purchasable ? "" : "（此 SKU 当前不可售）"}
       </p> : null}

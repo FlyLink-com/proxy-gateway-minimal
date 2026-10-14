@@ -36,6 +36,7 @@ import {
 } from "./user-portal-parsers";
 import {
   createLocalHumanVerificationChallenge,
+  createLocalPreviewCouponClient,
   createLocalPreviewInitialAccounts,
   previewPasswordForInitialAccount
 } from "./user-portal-preview-data";
@@ -234,6 +235,7 @@ export function createLocalUserPortalClient(options: LocalUserPortalClientOption
   }
 
   return {
+    coupons: createLocalPreviewCouponClient(),
     async issueHumanChallenge() {
       return createLocalHumanVerificationChallenge();
     },
