@@ -171,7 +171,7 @@ export function AdminOperationsShell({
           <PageHeader
             ariaLabel="Operator console title"
             description={isPreview ? "服务观测与资源只读诊断。" : "服务观测、资源诊断与授权订阅管理。"}
-            title={preview?.title ?? "GCC WebOS · Admin Console"}
+            title={preview?.title ?? "FlinkVPN · Admin Console"}
           />
         </div>
         {preview?.banner}

@@ -40,6 +40,7 @@ export function PortalRedeemPanel({ locale, couponClient, sessionRef, onSessionI
       if (error instanceof PortalCouponClientError && error.code === "invalid_session") { onSessionInvalid?.(); return; }
       const message = error instanceof PortalCouponClientError && error.code === "redeem_failed" ? tx(locale, r.invalid)
         : error instanceof PortalCouponClientError && error.code === "redeem_rate_limited" ? tx(locale, r.limited)
+        : error instanceof PortalCouponClientError && error.code === "redeem_daily_limit" ? tx(locale, r.daily)
           : tx(locale, r.failed);
       setResult({ ok: false, message });
     } finally {
@@ -68,7 +69,7 @@ export function PortalRedeemPanel({ locale, couponClient, sessionRef, onSessionI
             {result?.ok === false ? <p className="pc-redeem-error" role="alert">{result.message}</p> : null}
             {result?.ok ? (
               <div className="pc-redeem-success">
-                <p>{tx(locale, r.success)} <code className="pc-code">{result.coupon.code}</code></p>
+                <p>{tx(locale, r.success)} <code className="pc-code">{result.coupon.ref}</code></p>
                 {onOpenCoupons ? <button type="button" className="pc-tab" onClick={onOpenCoupons}>{tx(locale, r.view)}</button> : null}
               </div>
             ) : null}

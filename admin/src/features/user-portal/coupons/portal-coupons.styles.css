@@ -114,3 +114,23 @@
 .pc-redeem-error { margin: 0; color: #fecaca; font-size: 14px; }
 .pc-redeem-success { display: grid; gap: 10px; justify-items: start; }
 .pc-redeem-success p { margin: 0; color: #d1fae5; font-size: 14px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.pc-sku-row { display: flex; flex-wrap: wrap; gap: 10px; }
+.pc-sku { display: grid; gap: 2px; min-width: 120px; padding: 10px 14px; border-radius: 12px; cursor: pointer; font: inherit; text-align: left;
+  color: #eef0ff; background: rgba(8,10,40,.55); border: 1px solid rgba(165,180,252,.3); }
+.pc-sku span { font-size: 12px; color: #a9acdf; }
+.pc-sku[aria-checked="true"] { border-color: #c4b5fd; box-shadow: 0 0 0 2px rgba(167,139,250,.35); }
+.pc-checkout { display: grid; gap: 14px; max-width: 560px; }
+.pc-price { margin: 0; display: grid; gap: 8px; padding: 14px 16px; border-radius: 14px; background: rgba(8,10,40,.55); border: 1px solid rgba(165,180,252,.25); }
+.pc-price div { display: flex; justify-content: space-between; gap: 12px; font-size: 14px; color: #c7c9f3; }
+.pc-price dt small { color: #a9acdf; }
+.pc-price dd { margin: 0; color: #eef0ff; font-variant-numeric: tabular-nums; }
+.pc-price-total { padding-top: 8px; border-top: 1px solid rgba(165,180,252,.2); font-weight: 700; }
+.pc-price-total dd { font-size: 18px; color: #fff; }
+.pc-options { margin: 0; padding: 0; border: 0; display: grid; gap: 8px; }
+.pc-options legend { font-size: 13px; color: #a9acdf; margin-bottom: 6px; }
+.pc-option { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 12px; cursor: pointer;
+  background: rgba(8,10,40,.45); border: 1px solid rgba(165,180,252,.2); color: #eef0ff; }
+.pc-option[data-checked="true"] { border-color: #c4b5fd; background: rgba(76,29,149,.35); }
+.pc-option-main { display: grid; gap: 2px; flex: 1; min-width: 0; }
+.pc-option-main small { font-size: 12px; color: #a9acdf; }
+.pc-option-save { font-variant-numeric: tabular-nums; color: #d1fae5; }

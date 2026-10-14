@@ -7,8 +7,8 @@ test("list -> coupon, half-up whole Coins, deduction capped at 20% of list price
   assert.equal(applyAdjustment(30, { kind: "percent", value: 1500 }), 25); // 4.5 off -> 5
   assert.equal(applyAdjustment(30, { kind: "percent", value: 1499 }), 26);
   assert.deepEqual([maxCouponDeduction(30), maxCouponDeduction(33), maxCouponDeduction(4)], [6, 6, 0]);
-  const r = computeResidentialPrice({ listPrice: 120, coupon: { code: "X", kind: "fixed", value: 10 } });
-  assert.deepEqual(r, { currency: "coins", listPrice: 120, coupon: { code: "X", kind: "fixed", value: 10, applied: true, capped: false }, deduction: 10, finalPrice: 110 });
+  const r = computeResidentialPrice({ listPrice: 120, coupon: { id: "rrcpn_x", ref: "RC-X", kind: "fixed", value: 10 } });
+  assert.deepEqual(r, { currency: "coins", listPrice: 120, coupon: { id: "rrcpn_x", ref: "RC-X", kind: "fixed", value: 10, applied: true, capped: false }, deduction: 10, finalPrice: 110 });
   assert.deepEqual(computeResidentialPrice({ listPrice: 50 }), { currency: "coins", listPrice: 50, coupon: null, deduction: 0, finalPrice: 50 });
   // 20% of 33 = 6.6 -> half-up 7 exceeds 20%; capped to 6.
   const pct = computeResidentialPrice({ listPrice: 33, coupon: { kind: "percent", value: 2000 } });

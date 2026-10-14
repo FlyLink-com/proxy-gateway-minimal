@@ -28,7 +28,7 @@ export const RESIDENTIAL_RELAY_STORE_CODES = new Set([
   "invalid_enabled", "invalid_yaml", "parse_no_valid_nodes", "upstream_limit", "revision_conflict", "not_found",
   "upstream_enabled", "sku_not_ready", "no_enabled_upstream", "protected_value_invalid", "residential_relay_unavailable",
   "invalid_coupon", "coupon_not_found", "coupon_inactive", "coupon_not_applicable", "coupon_not_voidable",
-  "redeem_failed", "redeem_rate_limited", "sku_price_unset", "order_already_priced", "invalid_account"
+  "redeem_failed", "redeem_rate_limited", "redeem_daily_limit", "invalid_issuer", "invalid_recipient", "sku_price_unset", "order_already_priced", "invalid_account"
 ]);
 
 function failure(code) {
@@ -58,7 +58,7 @@ function unavailableStore(extra = {}) {
     previewUpstreams: unavailable, importUpstreams: unavailable, listUpstreams: unavailable,
     setUpstreamsEnabled: unavailable, deleteUpstreams: unavailable, resolveRelayPool: unavailable,
     listCoupons: unavailable, generateCoupons: unavailable, voidCoupons: unavailable, quote: unavailable,
-    redeemCoupon: unavailable, listAccountCoupons: unavailable,
+    redeemCoupon: unavailable, listAccountCoupons: unavailable, checkoutQuote: unavailable,
     recordOrderPrice: unavailable, close() {}, ...extra
   };
 }
@@ -113,23 +113,27 @@ export function createSqliteResidentialRelayPackStore(options = {}) {
     couponByCode: database.prepare("select * from platform_residential_relay_coupons where code = ?"),
     couponSkus: database.prepare("select sku_id from platform_residential_relay_coupon_skus where coupon_id = ? order by sku_id"),
     insertCoupon: database.prepare(`insert into platform_residential_relay_coupons
-      (id, code, batch_id, kind, value, all_skus, expires_at, issued_at, issued_by) values (?, ?, ?, ?, ?, ?, ?, ?, ?)`),
+      (id, code, batch_id, kind, value, all_skus, expires_at, issued_at, issued_by, issuer, recipient_ref)
+      values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
     insertCouponSku: database.prepare("insert into platform_residential_relay_coupon_skus (coupon_id, sku_id) values (?, ?)"),
     voidCoupon: database.prepare(`update platform_residential_relay_coupons set voided_at = ?, voided_by = ?
       where id = ? and voided_at is null and redeemed_at is null`),
-    redeemCoupon: database.prepare(`update platform_residential_relay_coupons set redeemed_by = ?, redeemed_at = ?
-      where id = ? and voided_at is null and redeemed_at is null and expires_at > ?`),
+    redeemCoupon: database.prepare(`update platform_residential_relay_coupons set redeemed_by = ?, redeemed_at = ?, usable_until = ?
+      where id = ? and voided_at is null and redeemed_at is null and expires_at > ?
+        and (recipient_ref is null or recipient_ref = ?)`),
     consumeCoupon: database.prepare(`update platform_residential_relay_coupons
       set consumed_by = ?, consumed_order_ref = ?, consumed_amount = ?, consumed_at = ?
-      where id = ? and redeemed_by = ? and consumed_at is null and voided_at is null and expires_at > ?`),
+      where id = ? and redeemed_by = ? and consumed_at is null and voided_at is null and usable_until > ?`),
     accountCoupons: database.prepare(`select * from platform_residential_relay_coupons where redeemed_by = ?
       order by redeemed_at desc, id asc`),
     insertAttempt: database.prepare(`insert into platform_residential_relay_redeem_attempts
       (account_ref, client_key, input_hash, outcome, attempted_at) values (?, ?, ?, ?, ?)`),
     accountFailures: database.prepare(`select count(*) as n from platform_residential_relay_redeem_attempts
-      where account_ref = ? and outcome != 'redeemed' and attempted_at > ?`),
+      where account_ref = ? and outcome in ('failed', 'rate_limited') and attempted_at > ?`),
     clientFailures: database.prepare(`select count(*) as n from platform_residential_relay_redeem_attempts
-      where client_key = ? and outcome != 'redeemed' and attempted_at > ?`),
+      where client_key = ? and outcome in ('failed', 'rate_limited') and attempted_at > ?`),
+    accountRedeemsSince: database.prepare(`select count(*) as n from platform_residential_relay_redeem_attempts
+      where account_ref = ? and outcome = 'redeemed' and attempted_at >= ?`),
     orderPrice: database.prepare("select * from platform_residential_relay_order_prices where order_ref = ?"),
     insertOrderPrice: database.prepare(`insert into platform_residential_relay_order_prices
       (order_ref, account_ref, sku_id, coupon_id, list_price, final_price, breakdown, created_at) values (?, ?, ?, ?, ?, ?, ?, ?)`)
@@ -342,6 +346,8 @@ export function createSqliteResidentialRelayPackStore(options = {}) {
   // ---- Coupons: one redeem code per coupon ----
   // Codes avoid ambiguous characters (0/O, 1/I/L) and are case-insensitive;
   // hyphens and spaces are ignored on input. Stored normalized (12 chars).
+  // A code is shown to admins until it is redeemed; after that only a masked
+  // tail is shown, and buyers only ever see the coupon ref (RC-XXXXXXXX).
   const CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
   const CODE_LENGTH = 12;
   const CODE = new RegExp(`^[${CODE_ALPHABET}]{${CODE_LENGTH}}$`);
@@ -349,9 +355,32 @@ export function createSqliteResidentialRelayPackStore(options = {}) {
   const ACTOR = /^[A-Za-z0-9._:@-]{1,128}$/;
   const ACCOUNT_REF = /^[A-Za-z0-9._:-]{1,128}$/;
   const MAX_GENERATE = 500;
+  const DAY_MS = 24 * 60 * 60 * 1000;
+  const COUPON_VALIDITY_DAYS = 30;
   const REDEEM_WINDOW_MS = 15 * 60 * 1000;
   const REDEEM_MAX_ACCOUNT_FAILURES = 5;
   const REDEEM_MAX_CLIENT_FAILURES = 20;
+  const redeemDailyLimit = Number.isSafeInteger(options.redeemDailyLimit) && options.redeemDailyLimit >= 1 ? options.redeemDailyLimit : 1;
+  const redeemDayTimeZone = typeof options.redeemDayTimeZone === "string" && options.redeemDayTimeZone ? options.redeemDayTimeZone : "America/Los_Angeles";
+  // Issuers must be valid, active admins. Fail closed when nothing is wired.
+  const isActiveIssuer = typeof options.isActiveIssuer === "function" ? options.isActiveIssuer : () => false;
+  const issuerActive = ref => { try { return isActiveIssuer(ref) === true; } catch { return false; } };
+  const dayParts = new Intl.DateTimeFormat("en-US", { timeZone: redeemDayTimeZone, hourCycle: "h23",
+    year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" });
+
+  function zoneOffsetMs(ms) {
+    const p = Object.fromEntries(dayParts.formatToParts(new Date(ms)).map(item => [item.type, item.value]));
+    return Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour, +p.minute, +p.second) - Math.floor(ms / 1000) * 1000;
+  }
+  // Start of the calendar day (in redeemDayTimeZone) containing `iso`, as ISO.
+  function dayStart(iso) {
+    const ms = Date.parse(iso);
+    const p = Object.fromEntries(dayParts.formatToParts(new Date(ms)).map(item => [item.type, item.value]));
+    const localMidnight = Date.UTC(+p.year, +p.month - 1, +p.day);
+    const guess = localMidnight - zoneOffsetMs(ms);
+    return new Date(localMidnight - zoneOffsetMs(guess)).toISOString();
+  }
+  const plusDays = (iso, days) => new Date(Date.parse(iso) + days * DAY_MS).toISOString();
 
   function normalizeCode(value) {
     if (typeof value !== "string" || value.length > 64) return null;
@@ -359,6 +388,8 @@ export function createSqliteResidentialRelayPackStore(options = {}) {
     return CODE.test(normalized) ? normalized : null;
   }
   function displayCode(code) { return `${code.slice(0, 4)}-${code.slice(4, 8)}-${code.slice(8)}`; }
+  function maskedCode(code) { return `••••-••••-${code.slice(8)}`; }
+  function couponRef(id) { return `RC-${id.slice("rrcpn_".length, "rrcpn_".length + 8).toUpperCase()}`; }
   function newCode() {
     let out = "";
     while (out.length < CODE_LENGTH) {
@@ -374,24 +405,30 @@ export function createSqliteResidentialRelayPackStore(options = {}) {
     return createHash("sha256").update(`rr-redeem:${text}`, "utf8").digest("hex").slice(0, 12);
   }
 
+  // Unredeemed codes expire COUPON_VALIDITY_DAYS after issuance; a redeemed
+  // coupon is usable for COUPON_VALIDITY_DAYS from redemption.
   function couponStatus(row, at) {
     if (row.consumed_at) return "consumed";
     if (row.voided_at) return "voided";
-    if (Date.parse(row.expires_at) <= Date.parse(at)) return "expired";
+    const until = row.redeemed_at ? row.usable_until : row.expires_at;
+    if (Date.parse(until) <= Date.parse(at)) return "expired";
     return row.redeemed_at ? "redeemed" : "issued";
   }
 
+  function couponSkuIds(row) { return q.couponSkus.all(row.id).map(item => item.sku_id); }
   function couponSkuList(row, skuMap) {
-    const ids = row.all_skus === 1 ? [...skuMap.keys()] : q.couponSkus.all(row.id).map(item => item.sku_id);
+    const ids = row.all_skus === 1 ? [...skuMap.keys()] : couponSkuIds(row);
     return ids.map(id => skuMap.get(id)).filter(Boolean)
       .map(sku => ({ skuId: sku.id, sizeCode: sku.size_code, durationDays: sku.duration_days }));
   }
 
   function adminCouponView(row, at, skuMap) {
     return {
-      id: row.id, code: displayCode(row.code), batchId: row.batch_id, kind: row.kind, value: row.value,
+      id: row.id, ref: couponRef(row.id), code: row.redeemed_at ? maskedCode(row.code) : displayCode(row.code),
+      codeMasked: Boolean(row.redeemed_at), batchId: row.batch_id, kind: row.kind, value: row.value,
       allSkus: row.all_skus === 1, skus: couponSkuList(row, skuMap), status: couponStatus(row, at),
-      issuedAt: row.issued_at, issuedBy: row.issued_by, expiresAt: row.expires_at,
+      issuedAt: row.issued_at, issuedBy: row.issued_by, issuer: row.issuer, recipientRef: row.recipient_ref,
+      expiresAt: row.expires_at, usableUntil: row.usable_until,
       voidedAt: row.voided_at, voidedBy: row.voided_by,
       redeemedBy: row.redeemed_by, redeemedAt: row.redeemed_at,
       consumedBy: row.consumed_by, consumedOrderRef: row.consumed_order_ref,
@@ -406,11 +443,17 @@ export function createSqliteResidentialRelayPackStore(options = {}) {
     return { asOf: at, items: q.coupons.all().map(row => adminCouponView(row, at, skuMap)) };
   });
 
-  // Admin generates 1..500 single-use codes sharing one definition.
+  // Admin generates 1..500 single-use codes sharing one definition. The code
+  // expiry is fixed (issuance + 30 days); issuer defaults to the generating
+  // admin and must be an active admin; recipient optionally targets one account.
   const generateCoupons = guarded(input => {
-    exactKeys(input, ["count", "kind", "value", "expiresAt", "issuedBy"], ["allSkus", "skuIds"]);
+    exactKeys(input, ["count", "kind", "value", "issuedBy"], ["allSkus", "skuIds", "issuer", "recipientRef"]);
     if (!Number.isSafeInteger(input.count) || input.count < 1 || input.count > MAX_GENERATE) throw failure("invalid_coupon");
     if (typeof input.issuedBy !== "string" || !ACTOR.test(input.issuedBy)) throw failure("invalid_input");
+    const issuer = input.issuer === undefined || input.issuer === null || input.issuer === "" ? input.issuedBy : input.issuer;
+    if (typeof issuer !== "string" || !ACTOR.test(issuer) || !issuerActive(issuer)) throw failure("invalid_issuer");
+    const recipientRef = input.recipientRef === undefined || input.recipientRef === null || input.recipientRef === "" ? null : input.recipientRef;
+    if (recipientRef !== null && (typeof recipientRef !== "string" || !ACCOUNT_REF.test(recipientRef))) throw failure("invalid_recipient");
     const adjustment = assertPriceAdjustment({ kind: input.kind, value: input.value }, "invalid_coupon");
     if (input.allSkus !== undefined && typeof input.allSkus !== "boolean") throw failure("invalid_coupon");
     const allSkus = input.allSkus === true;
@@ -418,9 +461,7 @@ export function createSqliteResidentialRelayPackStore(options = {}) {
     if (!Array.isArray(skuIds) || skuIds.some(item => typeof item !== "string" || !SKU_ID.test(item))
       || new Set(skuIds).size !== skuIds.length || (!allSkus && skuIds.length === 0)) throw failure("invalid_coupon");
     const at = now();
-    const expires = typeof input.expiresAt === "string" ? Date.parse(input.expiresAt) : NaN;
-    if (!Number.isFinite(expires) || expires <= Date.parse(at)) throw failure("invalid_coupon");
-    const expiresAt = new Date(expires).toISOString();
+    const expiresAt = plusDays(at, COUPON_VALIDITY_DAYS);
     return database.transaction(() => {
       const skuRows = allSkus ? q.skus.all() : skuIds.map(id => q.skuById.get(id));
       if (skuRows.some(row => !row)) throw failure("invalid_coupon");
@@ -435,7 +476,7 @@ export function createSqliteResidentialRelayPackStore(options = {}) {
         const id = newId("rrcpn_");
         let code = newCode();
         while (q.couponByCode.get(code)) code = newCode();
-        q.insertCoupon.run(id, code, batchId, adjustment.kind, adjustment.value, allSkus ? 1 : 0, expiresAt, at, input.issuedBy);
+        q.insertCoupon.run(id, code, batchId, adjustment.kind, adjustment.value, allSkus ? 1 : 0, expiresAt, at, input.issuedBy, issuer, recipientRef);
         for (const skuId of skuIds) q.insertCouponSku.run(id, skuId);
         ids.push(id);
       }
@@ -460,10 +501,12 @@ export function createSqliteResidentialRelayPackStore(options = {}) {
   });
 
   // Binds a code to the caller's account. Exactly-once: the conditional update
-  // only succeeds while unredeemed, unvoided and unexpired. Every attempt is
+  // only succeeds while unredeemed, unvoided, unexpired and (if targeted) for
+  // its recipient; the issuer must still be an active admin. Every attempt is
   // logged with a 12-hex fingerprint only. Failures (unknown, used, voided,
-  // expired, malformed) share one generic error. Per-account and per-client
-  // failure budgets lock out brute force for a rolling window.
+  // expired, foreign, inactive issuer, malformed) share one generic error.
+  // Failure budgets lock out brute force for a rolling window, and an account
+  // may redeem at most redeemDailyLimit codes per calendar day.
   const redeemCoupon = guarded(input => {
     exactKeys(input, ["accountRef", "clientKey", "code"]);
     if (typeof input.accountRef !== "string" || !ACCOUNT_REF.test(input.accountRef)) throw failure("invalid_account");
@@ -477,9 +520,14 @@ export function createSqliteResidentialRelayPackStore(options = {}) {
         q.insertAttempt.run(input.accountRef, clientKey, hash, "rate_limited", at);
         return { error: "redeem_rate_limited" };
       }
+      if (q.accountRedeemsSince.get(input.accountRef, dayStart(at)).n >= redeemDailyLimit) {
+        q.insertAttempt.run(input.accountRef, clientKey, hash, "daily_limited", at);
+        return { error: "redeem_daily_limit" };
+      }
       const code = normalizeCode(input.code);
       const row = code ? q.couponByCode.get(code) : null;
-      if (!row || q.redeemCoupon.run(input.accountRef, at, row.id, at).changes !== 1) {
+      if (!row || !issuerActive(row.issuer)
+        || q.redeemCoupon.run(input.accountRef, at, plusDays(at, COUPON_VALIDITY_DAYS), row.id, at, input.accountRef).changes !== 1) {
         q.insertAttempt.run(input.accountRef, clientKey, hash, "failed", at);
         return { error: "redeem_failed" };
       }
@@ -493,8 +541,8 @@ export function createSqliteResidentialRelayPackStore(options = {}) {
   function accountCouponView(row, at, skuMap) {
     const status = couponStatus(row, at);
     return {
-      code: displayCode(row.code), kind: row.kind, value: row.value, allSkus: row.all_skus === 1,
-      skus: couponSkuList(row, skuMap), expiresAt: row.expires_at, redeemedAt: row.redeemed_at,
+      id: row.id, ref: couponRef(row.id), kind: row.kind, value: row.value, allSkus: row.all_skus === 1,
+      skus: couponSkuList(row, skuMap), usableUntil: row.usable_until, redeemedAt: row.redeemed_at,
       status: status === "consumed" ? "used" : status === "expired" ? "expired" : "available",
       consumedAt: row.consumed_at, consumedOrderRef: row.consumed_order_ref, consumedAmount: row.consumed_amount
     };
@@ -510,68 +558,113 @@ export function createSqliteResidentialRelayPackStore(options = {}) {
   });
 
   // ---- Pricing / quote ----
-  // With an accountRef the coupon must be redeemed by that account; without one
-  // (admin preview) it only has to be live. Unknown and foreign codes look alike.
-  function resolveCoupon(code, skuRow, accountRef, at) {
-    if (code === undefined || code === null || code === "") return null;
-    const normalized = normalizeCode(code);
-    const row = normalized ? q.couponByCode.get(normalized) : null;
-    if (!row || (accountRef && row.redeemed_by !== accountRef)) throw failure("coupon_not_found");
-    const status = couponStatus(row, at);
-    if (accountRef ? status !== "redeemed" : status !== "redeemed" && status !== "issued") throw failure("coupon_inactive");
-    if (row.all_skus !== 1 && !q.couponSkus.all(row.id).some(item => item.sku_id === skuRow.id)) throw failure("coupon_not_applicable");
-    return row;
+  const applies = (row, skuRow) => row.all_skus === 1 || couponSkuIds(row).includes(skuRow.id);
+  const priceWith = (skuRow, row) => computeResidentialPrice({
+    listPrice: skuRow.base_coin_units,
+    coupon: row ? { id: row.id, ref: couponRef(row.id), kind: row.kind, value: row.value } : null
+  });
+  // The account's redeemed, live, applicable coupons for one SKU, best first:
+  // largest allowed deduction, then soonest to lapse, then id.
+  function eligibleCoupons(accountRef, skuRow, at) {
+    return q.accountCoupons.all(accountRef)
+      .filter(row => couponStatus(row, at) === "redeemed" && issuerActive(row.issuer) && applies(row, skuRow))
+      .map(row => ({ row, price: priceWith(skuRow, row) }))
+      .sort((a, b) => b.price.deduction - a.price.deduction
+        || Date.parse(a.row.usable_until) - Date.parse(b.row.usable_until) || (a.row.id < b.row.id ? -1 : 1));
   }
 
-  function priceFor(skuId, couponCode, accountRef) {
+  function requirePricedSku(skuId) {
     const skuRow = requireSku(skuId);
-    if (accountRef !== undefined && accountRef !== null && (typeof accountRef !== "string" || !ACCOUNT_REF.test(accountRef))) throw failure("invalid_account");
     if (skuRow.base_coin_units === null) throw failure("sku_price_unset");
-    const at = now();
-    const coupon = resolveCoupon(couponCode, skuRow, accountRef, at);
-    const breakdown = computeResidentialPrice({
-      listPrice: skuRow.base_coin_units,
-      coupon: coupon ? { code: displayCode(coupon.code), kind: coupon.kind, value: coupon.value } : null
-    });
-    return { skuRow, coupon, at, breakdown: { skuId: skuRow.id, sizeCode: skuRow.size_code, purchasable: skuView(skuRow).purchasable, quotedAt: at, ...breakdown } };
+    return skuRow;
+  }
+  function assertAccount(accountRef) {
+    if (typeof accountRef !== "string" || !ACCOUNT_REF.test(accountRef)) throw failure("invalid_account");
+  }
+  const breakdownOf = (skuRow, at, price) => ({ skuId: skuRow.id, sizeCode: skuRow.size_code, purchasable: skuView(skuRow).purchasable, quotedAt: at, ...price });
+
+  // Buyer selection: couponId undefined -> best eligible coupon (auto);
+  // null -> no coupon; an id -> that coupon, which must be eligible.
+  function selectCoupon(accountRef, skuRow, couponId, at) {
+    const eligible = eligibleCoupons(accountRef, skuRow, at);
+    if (couponId === undefined) return { eligible, chosen: eligible[0]?.row ?? null, mode: "auto" };
+    if (couponId === null) return { eligible, chosen: null, mode: "none" };
+    if (typeof couponId !== "string" || !COUPON_ID.test(couponId)) throw failure("coupon_not_found");
+    const hit = eligible.find(item => item.row.id === couponId);
+    if (!hit) throw failure("coupon_inactive");
+    return { eligible, chosen: hit.row, mode: "manual" };
   }
 
+  // Admin preview: price a SKU with any live (issued or redeemed) code.
   const quote = guarded(input => {
-    exactKeys(input, ["skuId"], ["couponCode", "accountRef"]);
-    return priceFor(input.skuId, input.couponCode, input.accountRef).breakdown;
+    exactKeys(input, ["skuId"], ["couponCode"]);
+    const skuRow = requirePricedSku(input.skuId);
+    const at = now();
+    let row = null;
+    if (input.couponCode !== undefined && input.couponCode !== null && input.couponCode !== "") {
+      const normalized = normalizeCode(input.couponCode);
+      row = normalized ? q.couponByCode.get(normalized) : null;
+      if (!row) throw failure("coupon_not_found");
+      const status = couponStatus(row, at);
+      if (status !== "redeemed" && status !== "issued") throw failure("coupon_inactive");
+      if (!applies(row, skuRow)) throw failure("coupon_not_applicable");
+    }
+    return breakdownOf(skuRow, at, priceWith(skuRow, row));
   });
 
-  // Order flow hook (#753): recompute and consume the coupon atomically with the
-  // recorded price. The consume update is conditional (unconsumed, owned, live)
-  // and coupon_id is unique on order prices, so concurrent orders cannot both
-  // spend one coupon. Idempotent per orderRef. Fulfillment is not wired.
+  // Buyer checkout quote: auto-applies the best coupon unless the buyer picked
+  // another one or none, and lists every eligible option with its price.
+  const checkoutQuote = guarded(input => {
+    exactKeys(input, ["accountRef", "skuId"], ["couponId"]);
+    assertAccount(input.accountRef);
+    const skuRow = requirePricedSku(input.skuId);
+    const at = now();
+    const { eligible, chosen, mode } = selectCoupon(input.accountRef, skuRow, input.couponId, at);
+    const bestId = eligible[0]?.row.id ?? null;
+    return {
+      ...breakdownOf(skuRow, at, priceWith(skuRow, chosen)),
+      selection: mode,
+      options: eligible.map(({ row, price }) => ({
+        id: row.id, ref: couponRef(row.id), kind: row.kind, value: row.value, usableUntil: row.usable_until,
+        deduction: price.deduction, finalPrice: price.finalPrice, capped: price.coupon.capped, best: row.id === bestId
+      }))
+    };
+  });
+
+  // Order flow hook (#753): price with the same selection rules and consume
+  // the chosen coupon atomically with the recorded price. The consume update
+  // is conditional (unconsumed, owned, live) and coupon_id is unique on order
+  // prices, so concurrent orders cannot both spend one coupon. Idempotent per
+  // orderRef. Charging and fulfillment are not wired.
   const recordOrderPrice = guarded(input => {
-    exactKeys(input, ["orderRef", "accountRef", "skuId"], ["couponCode"]);
+    exactKeys(input, ["orderRef", "accountRef", "skuId"], ["couponId"]);
     if (typeof input.orderRef !== "string" || !ACCOUNT_REF.test(input.orderRef)) throw failure("invalid_input");
-    if (typeof input.accountRef !== "string" || !ACCOUNT_REF.test(input.accountRef)) throw failure("invalid_account");
+    assertAccount(input.accountRef);
     return database.transaction(() => {
       const existing = q.orderPrice.get(input.orderRef);
       if (existing) {
         const recorded = JSON.parse(existing.breakdown);
-        const wanted = input.couponCode ? normalizeCode(input.couponCode) : null;
-        const sameCoupon = (recorded.coupon?.code ? recorded.coupon.code.replace(/-/g, "") : null) === wanted;
+        const sameCoupon = input.couponId === undefined || (recorded.coupon?.id ?? null) === input.couponId;
         if (existing.account_ref !== input.accountRef || existing.sku_id !== input.skuId || !sameCoupon) throw failure("order_already_priced");
         return recorded;
       }
-      const { skuRow, coupon, at, breakdown } = priceFor(input.skuId, input.couponCode, input.accountRef);
+      const skuRow = requirePricedSku(input.skuId);
+      const at = now();
+      const { chosen } = selectCoupon(input.accountRef, skuRow, input.couponId, at);
+      const breakdown = breakdownOf(skuRow, at, priceWith(skuRow, chosen));
       if (!breakdown.purchasable) throw failure("sku_not_ready");
-      if (coupon && q.consumeCoupon.run(input.accountRef, input.orderRef, breakdown.deduction, at, coupon.id, input.accountRef, at).changes !== 1) {
+      if (chosen && q.consumeCoupon.run(input.accountRef, input.orderRef, breakdown.deduction, at, chosen.id, input.accountRef, at).changes !== 1) {
         throw failure("coupon_inactive");
       }
       const recorded = { ...breakdown, orderRef: input.orderRef };
-      q.insertOrderPrice.run(input.orderRef, input.accountRef, skuRow.id, coupon?.id ?? null, breakdown.listPrice, breakdown.finalPrice, JSON.stringify(recorded), at);
+      q.insertOrderPrice.run(input.orderRef, input.accountRef, skuRow.id, chosen?.id ?? null, breakdown.listPrice, breakdown.finalPrice, JSON.stringify(recorded), at);
       return recorded;
     }).immediate();
   });
 
   return { available: true, listSkus, getSku, saveSku, setSkuEnabled, previewUpstreams, importUpstreams,
     listUpstreams, setUpstreamsEnabled, deleteUpstreams, resolveRelayPool,
-    listCoupons, generateCoupons, voidCoupons, redeemCoupon, listAccountCoupons, quote, recordOrderPrice, close };
+    listCoupons, generateCoupons, voidCoupons, redeemCoupon, listAccountCoupons, quote, checkoutQuote, recordOrderPrice, close };
 }
 
 export { isResidentialRelaySkuSizeCode };

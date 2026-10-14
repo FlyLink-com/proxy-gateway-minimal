@@ -65,7 +65,7 @@ describe("portal entry boundaries", () => {
     };
     window.history.replaceState(null, "", "/web/");
     render(<UserPortalPage portalClient={createLocalUserPortalClient()} />);
-    await screen.findByRole("heading", { name: /账号登录|Sign in to GCC WebOS/ });
+    await screen.findByRole("heading", { name: /账号登录|Sign in to FlinkVPN/ });
     expectNoDisplaySwitch();
 
     cleanup();

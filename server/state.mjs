@@ -3138,7 +3138,18 @@ export function createRuntimeState(options = {}) {
       residentialRelayStore = createSqliteResidentialRelayPackStore({
         dbPath: residentialRelayDbPath,
         secretProtector: residentialRelaySecretProtector,
-        nowFn: options.nowFn
+        nowFn: options.nowFn,
+        // Coupon issuers: the admin portal account (when admin auth is on) and
+        // any refs in RESIDENTIAL_RELAY_COUPON_ISSUER_REFS. A ref that is also a
+        // portal account must still be active.
+        isActiveIssuer: ref => {
+          const allowed = new Set([adminAuthPortalAccountId, ...(optionalEnvText(env.RESIDENTIAL_RELAY_COUPON_ISSUER_REFS) || "")
+            .split(",").map(item => item.trim())].filter(Boolean));
+          if (!allowed.has(ref)) return false;
+          const account = typeof platformControlStore?.getAccount === "function" ? platformControlStore.getAccount(ref) : null;
+          return !account || account.status === "active";
+        },
+        redeemDailyLimit: Number.parseInt(optionalEnvText(env.RESIDENTIAL_RELAY_COUPON_DAILY_REDEEM_LIMIT) || "1", 10)
       });
     }
   }

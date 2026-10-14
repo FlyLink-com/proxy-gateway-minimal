@@ -113,7 +113,7 @@ test("portal static build verifier accepts the Portal commerce shell with protec
   }
 });
 
-test("active Portal metadata uses the current GCC WebOS identity", async () => {
+test("active Portal metadata uses the current FlinkVPN identity", async () => {
   const source = await readFile(
     new URL("../../admin/portal/index.html", import.meta.url),
     "utf8"
@@ -121,7 +121,7 @@ test("active Portal metadata uses the current GCC WebOS identity", async () => {
 
   assert.doesNotMatch(source, /GlobalCircle\s+AI/iu);
   assert.ok(source.includes(
-    "GCC WebOS customer portal for subscription orders, support, and account security."
+    "FlinkVPN (飞连VPN) customer portal for subscription orders, support, and account security."
   ));
 });
 

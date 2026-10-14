@@ -32,7 +32,8 @@ function migrated() {
 
 function storeFixture() {
   const database = migrated();
-  const store = createSqliteResidentialRelayPackStore({ database, secretProtector: createPortalTotpSecretProtector({ key: KEY }), nowFn: now });
+  const store = createSqliteResidentialRelayPackStore({ database, secretProtector: createPortalTotpSecretProtector({ key: KEY }), nowFn: now,
+    isActiveIssuer: ref => ref === "console_token" });
   return { database, store };
 }
 
@@ -176,7 +177,7 @@ test("admin HTTP: list, save SKU, import, batch enable/pause/delete, enable SKU"
   res = await request(`/skus/${id}/enabled`, { method: "PATCH", body: { revision: res.body.revision, enabled: true } });
   assert.equal(res.body.sku.purchasable, true);
   assert.equal((await request("/skus/not-an-id")).status, 400);
-  res = await request("/coupons/generate", { method: "POST", body: { count: 1, kind: "fixed", value: 5, allSkus: true, expiresAt: "2026-12-01T00:00:00.000Z" } });
+  res = await request("/coupons/generate", { method: "POST", body: { count: 1, kind: "fixed", value: 5, allSkus: true } });
   assert.equal(res.status, 201);
   assert.equal(res.body.items[0].issuedBy, "console_token");
   res = await request("/quote", { method: "POST", body: { skuId: id, couponCode: res.body.items[0].code.toLowerCase() } });

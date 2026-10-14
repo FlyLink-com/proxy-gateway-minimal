@@ -13,8 +13,9 @@ const UP_B = `rrup_${"2".repeat(32)}`;
 const CPN = `rrcpn_${"c".repeat(32)}`;
 const REV = (n: number) => String(n).repeat(64).slice(0, 64);
 
-const COUPON = { id: CPN, code: "ABCD-EFGH-JKMN", batchId: "rrbat_1", kind: "percent" as const, value: 1500, allSkus: true, skus: [],
-  status: "consumed" as const, issuedAt: "2026-10-01T00:00:00.000Z", issuedBy: "op_alice", expiresAt: "2026-12-01T00:00:00.000Z",
+const COUPON = { id: CPN, ref: "RC-11111111", code: "••••-••••-JKMN", codeMasked: true, batchId: "rrbat_1", kind: "percent" as const, value: 1500, allSkus: true, skus: [],
+  status: "consumed" as const, issuedAt: "2026-10-01T00:00:00.000Z", issuedBy: "op_alice", issuer: "op_bob", recipientRef: "acct_a",
+  expiresAt: "2026-10-31T00:00:00.000Z", usableUntil: "2026-11-01T00:00:00.000Z",
   voidedAt: null, voidedBy: null, redeemedBy: "acct_a", redeemedAt: "2026-10-02T00:00:00.000Z", consumedBy: "acct_a",
   consumedOrderRef: "order_77", consumedAmount: 5, consumedAt: "2026-10-03T00:00:00.000Z" };
 
@@ -42,11 +43,11 @@ function client(overrides: Partial<ResidentialRelayAdminClient> = {}): Residenti
       [{ id: UP_A, displayName: "US 1", countryCode: "US", protocol: "ss", enabled: enabled && ids.includes(UP_A) },
         { id: UP_B, displayName: "US 2", countryCode: "US", protocol: "ss", enabled: enabled && ids.includes(UP_B) }], 2)),
     deleteUpstreams: vi.fn(async () => snap({}, [], 3)),
-    listCoupons: vi.fn(async () => ({ asOf: "2026-10-14T00:00:00.000Z", items: [COUPON] })),
-    generateCoupons: vi.fn(async () => ({ asOf: "2026-10-14T00:00:00.000Z", items: [{ ...COUPON, code: "NEWC-ODE2-3456" }] })),
+    listCoupons: vi.fn(async () => ({ asOf: "2026-10-14T00:00:00.000Z", actor: "op_alice", items: [COUPON] })),
+    generateCoupons: vi.fn(async () => ({ asOf: "2026-10-14T00:00:00.000Z", actor: "op_alice", items: [{ ...COUPON, code: "NEWC-ODE2-3456", codeMasked: false }] })),
     voidCoupons: vi.fn(async () => undefined),
     quote: vi.fn(async () => ({ skuId: SKU_ID, sizeCode: "100G", purchasable: true, listPrice: 30,
-      deduction: 5, finalPrice: 25, coupon: { code: "SAVE-5555-5555", kind: "fixed", value: 5, applied: true, capped: false } })),
+      deduction: 5, finalPrice: 25, coupon: { id: CPN, ref: "RC-11111111", kind: "fixed", value: 5, applied: true, capped: false } })),
     ...overrides
   } as ResidentialRelayAdminClient;
 }
@@ -100,12 +101,16 @@ describe("ResidentialRelayAdminWorkspace", () => {
     await screen.findByText("US 1");
     const panel = screen.getByRole("region", { name: "兑换码" });
     const table = await within(panel).findByRole("table", { name: "兑换码列表" });
-    for (const head of ["签发时间", "折扣比例", "抵扣金额", "生成账户", "兑换账户", "消耗账户", "过期时间", "状态"]) {
+    for (const head of ["签发时间", "折扣比例", "抵扣金额", "生成账户", "发放人", "领取人", "兑换账户", "消耗账户", "过期时间", "状态"]) {
       expect(within(table).getByRole("columnheader", { name: head })).toBeTruthy();
     }
     expect(within(table).getByText("15%")).toBeTruthy();
     expect(within(table).getByText("5 Coins")).toBeTruthy();
     expect(within(table).getByText("op_alice")).toBeTruthy();
+    expect(within(table).getByText("op_bob")).toBeTruthy();
+    expect(within(table).getByText("RC-11111111")).toBeTruthy();
+    expect((within(panel).getByLabelText("发放人") as HTMLInputElement).value).toBe("op_alice");
+    expect((within(panel).getByLabelText("有效期") as HTMLInputElement).readOnly).toBe(true);
     expect(within(table).getByText(/order_77/)).toBeTruthy();
     fireEvent.change(within(panel).getByLabelText("状态"), { target: { value: "voided" } });
     expect(within(panel).getByText("暂无兑换码。")).toBeTruthy();
@@ -113,9 +118,10 @@ describe("ResidentialRelayAdminWorkspace", () => {
     expect((within(panel).getByRole("button", { name: /作废所选/ }) as HTMLButtonElement).disabled).toBe(true);
     fireEvent.change(within(panel).getByLabelText("数量"), { target: { value: "20" } });
     fireEvent.change(within(panel).getByLabelText("比例（%，≤20）"), { target: { value: "15" } });
-    fireEvent.change(within(panel).getByLabelText("过期时间"), { target: { value: "2026-12-01T00:00" } });
+    fireEvent.change(within(panel).getByLabelText("发放人"), { target: { value: "op_carol" } });
+    fireEvent.change(within(panel).getByLabelText("领取人（可选）"), { target: { value: "acct_z" } });
     fireEvent.click(within(panel).getByRole("button", { name: "生成兑换码" }));
-    await waitFor(() => expect(c.generateCoupons).toHaveBeenCalledWith(expect.objectContaining({ count: 20, kind: "percent", value: 1500, allSkus: true })));
+    await waitFor(() => expect(c.generateCoupons).toHaveBeenCalledWith(expect.objectContaining({ count: 20, kind: "percent", value: 1500, allSkus: true, issuer: "op_carol", recipientRef: "acct_z" })));
     expect(await within(panel).findByLabelText("新生成的兑换码")).toBeTruthy();
     fireEvent.change(within(panel).getByLabelText("SKU"), { target: { value: SKU_ID } });
     fireEvent.click(within(panel).getByRole("button", { name: "计算报价" }));
@@ -124,7 +130,7 @@ describe("ResidentialRelayAdminWorkspace", () => {
 
   it("exports CSV with formula-safe quoting", () => {
     const csv = couponsToCsv([{ ...COUPON, issuedBy: "=cmd()" }]);
-    expect(csv.split("\r\n")[0]).toContain("issued_at,percent,deduction_coins,issued_by");
+    expect(csv.split("\r\n")[0]).toContain("issued_at,percent,deduction_coins,issued_by,issuer,recipient");
     expect(csv).toContain(`"'=cmd()"`);
     expect(csv).toContain(`"order_77"`);
   });

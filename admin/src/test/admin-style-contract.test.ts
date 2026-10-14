@@ -555,7 +555,7 @@ describe("admin style token contract", () => {
     expect(styles).toMatch(/@media \(max-width: 520px\) \{[\s\S]*\.company-site-info-hero-grid\s*\{[\s\S]*grid-template-columns: minmax\(0, 1fr\);/m);
     expect(styles).toMatch(/@media \(max-width: 520px\) \{[\s\S]*\.company-site-info-cards,[\s\S]*\.company-site-info-section-list\s*\{[\s\S]*grid-template-columns: minmax\(0, 1fr\);/m);
 
-    expect(faviconSvg).toContain("GCC WebOS secure access");
+    expect(faviconSvg).toContain("FlinkVPN secure access");
     expect(faviconSvg).toContain("<circle cx=\"32\" cy=\"32\"");
     expect(faviconSvg).not.toContain("M18 22h15");
   });

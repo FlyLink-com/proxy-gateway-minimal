@@ -29,6 +29,7 @@ import {
   Settings,
   ShieldCheck,
   ShoppingBag,
+  ShoppingCart,
   UserCog,
   WalletCards,
   Wifi,
@@ -51,6 +52,7 @@ import {
 } from "./portal-commerce-panels";
 import { PortalCouponsPanel } from "./coupons/portal-coupons-panel";
 import { PortalRedeemPanel } from "./coupons/portal-redeem-panel";
+import { PortalCheckoutPanel } from "./coupons/portal-checkout-panel";
 import {
   PORTAL_COIN_ORDER_STORAGE_KEY,
   type PortalCommerceModel
@@ -103,6 +105,7 @@ type PortalView =
   | "dashboard"
   | "usage"
   | "marketplace"
+  | "checkout"
   | "orders"
   | "wallet"
   | "referrals"
@@ -211,6 +214,7 @@ const navItems: Array<{ id: PortalView; label: string; description: string; icon
   { id: "dashboard", label: "概览", description: "查看账户状态、当前套餐、流量和开始使用。", icon: LayoutGrid },
   { id: "usage", label: "用量", description: "查看流量消耗、套餐额度和用量更新状态。", icon: LineChart },
   { id: "marketplace", label: "商城", description: "浏览平台商品、套餐、流量包和增值项。", icon: ShoppingBag },
+  { id: "checkout", label: "住宅流量包", description: "选择住宅流量包，自动使用最省的优惠券。", icon: ShoppingCart },
   { id: "orders", label: "订单管理", description: "查看订单历史、支付状态和付款详情。", icon: ReceiptText },
   { id: "wallet", label: "Coins 钱包", description: "查看可用余额、分类余额和钱包流水。", icon: WalletCards },
   { id: "referrals", label: "推荐奖励", description: "查看推荐链接、邀请进度和奖励。", icon: Gift },
@@ -245,7 +249,7 @@ const portalNavigationGroups: PortalNavigationGroup[] = [
     id: "assets",
     zh: "资产与权益",
     en: "Assets and benefits",
-    itemIds: ["marketplace", "orders", "wallet", "referrals"]
+    itemIds: ["marketplace", "checkout", "orders", "wallet", "referrals"]
   },
   {
     id: "account",
@@ -282,7 +286,8 @@ const supportCategories: Array<{ id: PortalSupportCategory; label: string }> = [
 
 const portalAuthEntryCopy = {
   en: {
-    documentTitle: "GCC WebOS - Account sign in",
+    documentTitle: "FlinkVPN - Account sign in",
+    brand: "FlinkVPN",
     shellDocumentTitle: "FlinkVPN - Account center",
     language: "Language",
     theme: "Theme",
@@ -298,10 +303,10 @@ const portalAuthEntryCopy = {
     usePasskey: "Use passkey",
     returnToLogin: "Back to account sign in",
     loginAria: "User sign in",
-    loginTitle: "Sign in to GCC WebOS",
+    loginTitle: "Sign in to FlinkVPN",
     loginDescription: "Welcome back. Enter your credentials to continue.",
     welcomeTitle: "Welcome back",
-    welcomeDescription: "GCC WebOS keeps your connection private and reliable.",
+    welcomeDescription: "FlinkVPN keeps your connection private and reliable.",
     trustItems: ["No activity logs", "Encrypted account access", "Plan managed in your account"],
     accountId: "Email",
     accountPlaceholder: "you@example.com",
@@ -320,7 +325,8 @@ const portalAuthEntryCopy = {
     registerAccount: "Create your account"
   },
   zh: {
-    documentTitle: "GCC WebOS - 账号登录",
+    documentTitle: "飞连VPN - 账号登录",
+    brand: "飞连VPN",
     shellDocumentTitle: "飞连VPN - 用户中心",
     language: "语言",
     theme: "主题",
@@ -339,7 +345,7 @@ const portalAuthEntryCopy = {
     loginTitle: "账号登录",
     loginDescription: "使用账户密码登录，进入用户中心管理套餐、订单和客户端。",
     welcomeTitle: "欢迎回来",
-    welcomeDescription: "GCC WebOS 会保护你的连接，并保持订阅访问稳定。",
+    welcomeDescription: "飞连VPN 会保护你的连接，并保持订阅访问稳定。",
     trustItems: ["不记录活动日志", "账户访问已加密", "订阅只在账户内管理"],
     accountId: "电子邮箱",
     accountPlaceholder: "you@example.com",
@@ -483,6 +489,10 @@ function localizedPortalViewCopy(view: PortalView, locale: PortalAuthLocale) {
     marketplace: {
       label: uiText(locale, "商城", "Marketplace"),
       description: uiText(locale, "浏览套餐和流量包，使用 Coins 完成购买。", "Browse plans and data packs, then purchase with Coins.")
+    },
+    checkout: {
+      label: uiText(locale, "住宅流量包", "Residential packs"),
+      description: uiText(locale, "选择住宅流量包，自动使用最省的优惠券。", "Pick a residential pack; your best coupon is applied automatically.")
     },
     orders: {
       label: uiText(locale, "订单", "Orders"),
@@ -2598,7 +2608,7 @@ export function UserPortalPage({
         <aside className="portal-login-side" aria-hidden="true">
           <div className="portal-login-brand">
             <span className="portal-login-logo"><ShieldCheck aria-hidden="true" /></span>
-            <strong>GCC WebOS</strong>
+            <strong>{authCopy.brand}</strong>
           </div>
           <div className="portal-login-side-copy">
             <h2>{authCopy.welcomeTitle}</h2>
@@ -2691,7 +2701,7 @@ export function UserPortalPage({
         <aside className="portal-login-side" aria-hidden="true">
           <div className="portal-login-brand">
             <span className="portal-login-logo"><ShieldCheck aria-hidden="true" /></span>
-            <strong>GCC WebOS</strong>
+            <strong>{authCopy.brand}</strong>
           </div>
           <div className="portal-login-side-copy">
             <h2>{authCopy.welcomeTitle}</h2>
@@ -3086,6 +3096,12 @@ export function UserPortalPage({
               rechargeModel={rechargeModel}
             />
           ) : null}
+          {activeView === "checkout" ? <PortalCheckoutPanel
+            locale={locale}
+            couponClient={portalClient.coupons ?? null}
+            sessionRef={portalSession.sessionRef ?? null}
+            onSessionInvalid={invalidateSession}
+          /> : null}
           {activeView === "coupons" ? <PortalCouponsPanel
             locale={locale}
             couponClient={portalClient.coupons ?? null}

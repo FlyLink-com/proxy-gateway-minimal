@@ -1,5 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { copyText } from "../../../shared/public/clipboard";
+import { useEffect, useMemo, useState } from "react";
 import {
   PortalCouponClientError,
   type PortalCoupon,
@@ -39,35 +38,21 @@ function benefit(locale: Props["locale"], coupon: PortalCoupon) {
 }
 
 function validity(locale: Props["locale"], coupon: PortalCoupon) {
-  return t(locale, `至 ${formatDate(coupon.expiresAt)}`, `Until ${formatDate(coupon.expiresAt)}`);
+  return t(locale, `可用至 ${formatDate(coupon.usableUntil)}`, `Usable until ${formatDate(coupon.usableUntil)}`);
 }
 
+// The redeem code is never shown after redemption; the card shows the coupon
+// ref and value only, and checkout applies coupons automatically.
 function CouponCard({ locale, coupon }: { locale: Props["locale"]; coupon: PortalCoupon }) {
-  const [copied, setCopied] = useState(false);
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
-  const copy = useCallback(async () => {
-    let ok = false;
-    try { ok = await copyText(coupon.code); } catch { ok = false; }
-    setCopied(ok);
-    if (timer.current) clearTimeout(timer.current);
-    timer.current = setTimeout(() => setCopied(false), 1800);
-  }, [coupon.code]);
-  const inactive = coupon.status !== "available";
   return (
-    <article className="pc-card" data-status={coupon.status} aria-label={coupon.code}>
+    <article className="pc-card" data-status={coupon.status} aria-label={coupon.ref}>
       <div className="pc-card-head">
         <strong className="pc-benefit">{benefit(locale, coupon)}</strong>
         {coupon.status !== "available" ? <span className="pc-badge">{tx(locale, COUPON_COPY.tabs[coupon.status])}</span> : null}
       </div>
       <div className="pc-code-row">
-        <span className="pc-label">{t(locale, "券码", "Code")}</span>
-        <code className="pc-code">{coupon.code}</code>
-        {!inactive ? (
-          <button type="button" className="pc-copy" onClick={copy} aria-live="polite">
-            {copied ? t(locale, "已复制", "Copied") : t(locale, "复制券码", "Copy code")}
-          </button>
-        ) : null}
+        <span className="pc-label">{t(locale, "券号", "Coupon")}</span>
+        <code className="pc-code">{coupon.ref}</code>
       </div>
       <dl className="pc-meta">
         <div><dt>{t(locale, "适用流量包", "Applies to")}</dt>
@@ -134,7 +119,7 @@ export function PortalCouponsPanel({ locale, couponClient, sessionRef, sessionGe
           {error ? <p className="pc-empty" role="alert">{error}</p>
             : items === null ? <p className="pc-empty">{t(locale, "加载中…", "Loading…")}</p>
               : shown.length === 0 ? <p className="pc-empty">{tx(locale, COUPON_COPY.empty[tab])}</p>
-                : shown.map(coupon => <CouponCard key={coupon.code} locale={locale} coupon={coupon} />)}
+                : shown.map(coupon => <CouponCard key={coupon.id} locale={locale} coupon={coupon} />)}
         </div>
       </div>
     </section>

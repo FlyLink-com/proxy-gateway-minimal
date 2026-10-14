@@ -116,7 +116,7 @@ describe("AdminOperationsShell", () => {
   it("renders formal baseline nav plus protected third-party entry, brand, default dashboard, and no DEV banner", () => {
     render(<AdminOperationsShell />);
 
-    expect(screen.getByRole("heading", { name: "GCC WebOS · Admin Console" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "FlinkVPN · Admin Console" })).toBeTruthy();
     expect(screen.getByRole("navigation", { name: "Admin 导航" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "运营总览" })).toBeTruthy();
     expect(screen.queryByLabelText("本地对比导航")).toBeNull();

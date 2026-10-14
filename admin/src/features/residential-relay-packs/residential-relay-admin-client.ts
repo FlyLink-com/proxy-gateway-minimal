@@ -43,19 +43,21 @@ export class ResidentialRelayAdminError extends Error {
 
 export type ResidentialRelayCouponStatus = "issued" | "redeemed" | "consumed" | "voided" | "expired";
 export type ResidentialRelayCoupon = {
-  id: string; code: string; batchId: string; kind: "percent" | "fixed"; value: number; allSkus: boolean;
+  id: string; ref: string; code: string; codeMasked: boolean; batchId: string; kind: "percent" | "fixed"; value: number; allSkus: boolean;
   skus: Array<{ skuId: string; sizeCode: string }>; status: ResidentialRelayCouponStatus;
-  issuedAt: string; issuedBy: string; expiresAt: string; voidedAt: string | null; voidedBy: string | null;
+  issuedAt: string; issuedBy: string; issuer: string; recipientRef: string | null;
+  expiresAt: string; usableUntil: string | null; voidedAt: string | null; voidedBy: string | null;
   redeemedBy: string | null; redeemedAt: string | null; consumedBy: string | null; consumedOrderRef: string | null;
   consumedAmount: number | null; consumedAt: string | null;
 };
-export type ResidentialRelayCoupons = { asOf: string; items: ResidentialRelayCoupon[] };
+export type ResidentialRelayCoupons = { asOf: string; actor: string | null; items: ResidentialRelayCoupon[] };
 export type ResidentialRelayCouponGenerate = {
-  count: number; kind: "percent" | "fixed"; value: number; allSkus: boolean; skuIds: string[]; expiresAt: string;
+  count: number; kind: "percent" | "fixed"; value: number; allSkus: boolean; skuIds: string[];
+  issuer?: string; recipientRef?: string;
 };
 export type ResidentialRelayQuote = {
   skuId: string; sizeCode: string; purchasable: boolean; listPrice: number; deduction: number; finalPrice: number;
-  coupon: { code: string | null; kind: string; value: number; applied: boolean; capped: boolean } | null;
+  coupon: { id: string | null; ref: string | null; kind: string; value: number; applied: boolean; capped: boolean } | null;
 };
 export type ResidentialRelaySku = {
   configured: boolean; id: string | null; sizeCode: string; buyerProtocol: string | null;
@@ -119,15 +121,16 @@ const strOrNull = (v: unknown) => (v === null || v === undefined ? null : str(v)
 function coupons(value: unknown): ResidentialRelayCoupons {
   const row = object(value);
   if (typeof row.asOf !== "string" || !Array.isArray(row.items)) fail();
-  return { asOf: row.asOf, items: row.items.map((item) => {
+  return { asOf: row.asOf, actor: typeof row.actor === "string" ? row.actor : null, items: row.items.map((item) => {
     const c = object(item);
     if (typeof c.id !== "string" || !COUPON_ID.test(c.id) || typeof c.code !== "string" || !Array.isArray(c.skus)) fail();
     if ((c.kind !== "percent" && c.kind !== "fixed") || !STATUSES.has(String(c.status))) fail();
     return {
-      id: c.id, code: c.code, batchId: str(c.batchId), kind: c.kind, value: int(c.value), allSkus: bool(c.allSkus),
+      id: c.id, ref: typeof c.ref === "string" ? c.ref : c.id, code: c.code, codeMasked: c.codeMasked === true, batchId: str(c.batchId), kind: c.kind, value: int(c.value), allSkus: bool(c.allSkus),
       skus: c.skus.map((sku) => { const s = object(sku); return { skuId: str(s.skuId), sizeCode: str(s.sizeCode) }; }),
       status: c.status as ResidentialRelayCouponStatus, issuedAt: str(c.issuedAt), issuedBy: str(c.issuedBy),
-      expiresAt: str(c.expiresAt), voidedAt: strOrNull(c.voidedAt), voidedBy: strOrNull(c.voidedBy),
+      issuer: typeof c.issuer === "string" ? c.issuer : str(c.issuedBy), recipientRef: strOrNull(c.recipientRef),
+      expiresAt: str(c.expiresAt), usableUntil: strOrNull(c.usableUntil), voidedAt: strOrNull(c.voidedAt), voidedBy: strOrNull(c.voidedBy),
       redeemedBy: strOrNull(c.redeemedBy), redeemedAt: strOrNull(c.redeemedAt), consumedBy: strOrNull(c.consumedBy),
       consumedOrderRef: strOrNull(c.consumedOrderRef),
       consumedAmount: c.consumedAmount === null || c.consumedAmount === undefined ? null : Number(c.consumedAmount),

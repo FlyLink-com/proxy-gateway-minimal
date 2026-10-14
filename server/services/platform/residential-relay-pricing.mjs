@@ -52,7 +52,8 @@ export function applyAdjustment(price, adjustment) {
   return Math.max(0, price - off);
 }
 
-// coupon: normalized adjustment ({ code, kind, value }) or null.
+// coupon: normalized adjustment ({ id, ref, kind, value }) or null. Redeem
+// codes never enter a price breakdown.
 export function computeResidentialPrice({ listPrice, coupon = null }) {
   if (!Number.isSafeInteger(listPrice) || listPrice <= 0) throw fail("sku_price_unset");
   if (!coupon) return { currency: "coins", listPrice, coupon: null, deduction: 0, finalPrice: listPrice };
@@ -64,7 +65,7 @@ export function computeResidentialPrice({ listPrice, coupon = null }) {
   return {
     currency: "coins",
     listPrice,
-    coupon: { code: coupon.code ?? null, kind: coupon.kind, value: coupon.value, applied: true, capped: deduction < raw },
+    coupon: { id: coupon.id ?? null, ref: coupon.ref ?? null, kind: coupon.kind, value: coupon.value, applied: true, capped: deduction < raw },
     deduction,
     finalPrice: Math.max(0, listPrice - deduction)
   };

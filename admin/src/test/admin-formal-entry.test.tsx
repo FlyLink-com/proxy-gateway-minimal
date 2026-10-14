@@ -93,7 +93,7 @@ describe("admin formal entry", () => {
       expect(fetchPaths(fetchMock).some((p) => p === AUTH_SESSION_PATH)).toBe(true);
     });
     expect(screen.queryByRole("navigation")).toBeNull();
-    expect(screen.queryByRole("heading", { name: /GCC WebOS · Admin Console/ })).toBeNull();
+    expect(screen.queryByRole("heading", { name: /FlinkVPN · Admin Console/ })).toBeNull();
     expect(screen.queryByLabelText("密码")).toBeNull();
     expect(fetchPaths(fetchMock).every((p) => p === AUTH_SESSION_PATH)).toBe(true);
     expectLegacyKeyUnread(getItemSpy);
@@ -160,7 +160,7 @@ describe("admin formal entry", () => {
     await waitFor(() => {
       expect(screen.getByRole("navigation", { name: "Admin 导航" })).toBeTruthy();
     });
-    expect(screen.getByText("GCC WebOS · Admin Console")).toBeTruthy();
+    expect(screen.getByText("FlinkVPN · Admin Console")).toBeTruthy();
     const nav = screen.getByRole("navigation", { name: "Admin 导航" });
     expect(nav.querySelectorAll("button").length).toBe(12);
     expect(screen.getByRole("button", { name: "住宅流量包" })).toBeTruthy();

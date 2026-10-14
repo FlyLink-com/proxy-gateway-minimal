@@ -90,11 +90,11 @@ const ENTRY_HTML = {
 
 const EXPECTED_ENTRY_HTML_SHA256 = {
   "admin/index.html":
-    "35ac077fd177e228dbd9c6e327decaa8cfa1e1e4fb5227b91db6c09e3f1eec11",
+    "028dd9e426ede71670a310df4ffc305869f2a81104a046a7d67e60e63b490636",
   "admin/portal/index.html":
-    "2b7ed226e2fb6ccdb23c5f989ec0d1f64b337a4bca92604446538d4c7ad81157",
+    "b66eb00f31a12af0c262475803e22c655d1b5ac01533eae7a4d55fcf56bfc483",
   "admin/portal-web/index.html":
-    "76accc4572f87531feb181b00864cbf50d522134b045bcb3999bd5aa1b03ab86",
+    "fa21782e135e6a1849d6d647f19bdebe1f5966253c442a177d4a3a06968b475e",
   "admin/site/index.html":
     "4ddae734ee33480e3d3ead05f0d9fe95f019fe8077424029ef0d4aa2299a8319"
 };

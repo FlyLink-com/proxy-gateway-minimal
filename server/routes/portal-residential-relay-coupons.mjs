@@ -7,6 +7,10 @@ import { resolveClientIp } from "../services/ip-address.mjs";
 const SESSION_REFERENCE = /^[a-z][a-z0-9_]{2,95}$/;
 const PATH = "/api/portal/residential-relay-packs/coupons";
 const REDEEM_PATH = `${PATH}/redeem`;
+const SKUS_PATH = "/api/portal/residential-relay-packs/skus";
+const QUOTE_PATH = "/api/portal/residential-relay-packs/checkout/quote";
+const SKU_ID = /^rrsku_[0-9a-f]{32}$/;
+const COUPON_ID = /^rrcpn_[0-9a-f]{32}$/;
 // In-memory burst limit in front of the store's persistent failure budget.
 const BURST_WINDOW_MS = 60_000;
 const BURST_MAX_PER_ACCOUNT = 10;
@@ -100,8 +104,46 @@ export function portalResidentialRelayCouponRoutes(state, { browserSessions, cli
       res.json(store.redeemCoupon({ accountRef, clientKey, code: input.code }));
     } catch (error) {
       if (error?.code === "redeem_rate_limited") { res.set("Retry-After", "900"); sendError(res, 429, "redeem_rate_limited"); return; }
+      if (error?.code === "redeem_daily_limit") { sendError(res, 429, "redeem_daily_limit"); return; }
       if (error?.code === "redeem_failed") { sendError(res, 400, "redeem_failed"); return; }
       if (error?.code === "invalid_account") { sendError(res, 401, "invalid_session"); return; }
+      sendError(res, 503, "residential_relay_unavailable");
+    }
+  });
+  // Buyer catalogue: purchasable SKUs only, without upstream details.
+  router.get(SKUS_PATH, (req, res) => {
+    const store = ready(res);
+    if (!store) return;
+    if (Object.keys(req.query || {}).length > 0) { sendError(res, 400, "invalid_input"); return; }
+    if (!resolveSession(req, res, state, browserSessions)) return;
+    try {
+      const items = store.listSkus().filter(sku => sku.purchasable).map(sku => ({
+        id: sku.id, sizeCode: sku.sizeCode, quotaBytes: sku.quotaBytes, durationDays: sku.durationDays, listPrice: sku.baseCoinUnits }));
+      res.json({ items });
+    } catch { sendError(res, 503, "residential_relay_unavailable"); }
+  });
+  // Checkout quote: the server auto-applies the buyer's best eligible coupon;
+  // couponId null opts out, an id switches. Never returns redeem codes.
+  router.post(QUOTE_PATH, express.json({ limit: "2kb" }), (req, res) => {
+    const store = ready(res);
+    if (!store || typeof store.checkoutQuote !== "function") { if (store) sendError(res, 503, "residential_relay_unavailable"); return; }
+    if (Object.keys(req.query || {}).length > 0) { sendError(res, 400, "invalid_input"); return; }
+    const accountRef = resolveSession(req, res, state, browserSessions);
+    if (!accountRef) return;
+    const input = req.body && typeof req.body === "object" && !Array.isArray(req.body) ? req.body : null;
+    const keys = input ? Object.keys(input) : [];
+    if (!input || keys.some(key => key !== "skuId" && key !== "couponId") || typeof input.skuId !== "string" || !SKU_ID.test(input.skuId)
+      || (input.couponId !== undefined && input.couponId !== null && (typeof input.couponId !== "string" || !COUPON_ID.test(input.couponId)))) {
+      sendError(res, 400, "invalid_input");
+      return;
+    }
+    try {
+      res.json(store.checkoutQuote({ accountRef, skuId: input.skuId, ...("couponId" in input ? { couponId: input.couponId } : {}) }));
+    } catch (error) {
+      const code = error?.code;
+      if (code === "invalid_account") { sendError(res, 401, "invalid_session"); return; }
+      if (code === "not_found") { sendError(res, 404, "not_found"); return; }
+      if (["coupon_inactive", "coupon_not_found", "sku_price_unset"].includes(code)) { sendError(res, 409, code === "sku_price_unset" ? code : "coupon_inactive"); return; }
       sendError(res, 503, "residential_relay_unavailable");
     }
   });

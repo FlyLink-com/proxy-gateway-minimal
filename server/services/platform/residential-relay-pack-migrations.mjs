@@ -62,16 +62,21 @@ const STATEMENTS = Object.freeze([
      expires_at text not null,
      issued_at text not null,
      issued_by text not null,
+     issuer text not null,
+     recipient_ref text,
      voided_at text,
      voided_by text,
      redeemed_by text,
      redeemed_at text,
+     usable_until text,
      consumed_by text,
      consumed_order_ref text unique,
      consumed_amount integer check (consumed_amount is null or consumed_amount >= 0),
      consumed_at text,
      check (voided_at is null or redeemed_at is null),
      check ((redeemed_by is null) = (redeemed_at is null)),
+     check ((redeemed_at is null) = (usable_until is null)),
+     check (recipient_ref is null or redeemed_by is null or redeemed_by = recipient_ref),
      check (consumed_at is null or (redeemed_at is not null and consumed_by = redeemed_by
        and consumed_order_ref is not null and consumed_amount is not null))
    )`,
@@ -97,7 +102,7 @@ const STATEMENTS = Object.freeze([
      account_ref text not null,
      client_key text not null,
      input_hash text not null,
-     outcome text not null check (outcome in ('redeemed', 'failed', 'rate_limited')),
+     outcome text not null check (outcome in ('redeemed', 'failed', 'rate_limited', 'daily_limited')),
      attempted_at text not null
    )`,
   `create index platform_residential_relay_redeem_attempts_account_idx

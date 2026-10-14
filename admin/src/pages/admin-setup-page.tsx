@@ -14,9 +14,9 @@ export function AdminSetupPage({
     <main className="admin-setup-shell">
       <section className="admin-setup-card" aria-labelledby="admin-setup-heading">
         <div className="admin-setup-brand">
-          <div className="brand-mark">GC</div>
+          <div className="brand-mark">FL</div>
           <div>
-            <strong>GCC WebOS</strong>
+            <strong>FlinkVPN</strong>
             <span>Operator Console</span>
           </div>
         </div>

@@ -146,7 +146,8 @@ export function adminResidentialRelayPackRoutes(state) {
   // The acting admin is recorded from the authenticated principal.
   const actorOf = req => req.adminPrincipal?.operatorRef || "console_token";
   router.get("/api/admin/residential-relay-packs/coupons", (req, res) => {
-    try { res.json(req.residentialRelayStore.listCoupons()); }
+    // `actor` lets the generate form default the issuer to the signed-in admin.
+    try { res.json({ ...req.residentialRelayStore.listCoupons(), actor: actorOf(req) }); }
     catch (error) { sendStoreError(res, error, "residential_relay_unavailable"); }
   });
   router.post("/api/admin/residential-relay-packs/coupons/generate", (req, res) => {
@@ -154,7 +155,7 @@ export function adminResidentialRelayPackRoutes(state) {
       const input = body(req.body);
       if (!input) { sendError(res, 400, "invalid_input"); return; }
       res.status(201).json(req.residentialRelayStore.generateCoupons({
-        ...pick(input, ["count", "kind", "value", "allSkus", "skuIds", "expiresAt"]), issuedBy: actorOf(req) }));
+        ...pick(input, ["count", "kind", "value", "allSkus", "skuIds", "issuer", "recipientRef"]), issuedBy: actorOf(req) }));
     } catch (error) { sendStoreError(res, error, "invalid_coupon"); }
   });
   router.post("/api/admin/residential-relay-packs/coupons/void", (req, res) => {
@@ -165,13 +166,13 @@ export function adminResidentialRelayPackRoutes(state) {
     } catch (error) { sendStoreError(res, error, "invalid_input"); }
   });
 
-  // Purchase quote preview: SKU + optional coupon (+ optional account) -> breakdown.
+  // Purchase quote preview: SKU + optional code -> breakdown.
   // Read-only; does not redeem. The order flow uses store.recordOrderPrice.
   router.post("/api/admin/residential-relay-packs/quote", (req, res) => {
     try {
       const input = body(req.body);
       if (!input) { sendError(res, 400, "invalid_input"); return; }
-      res.json(req.residentialRelayStore.quote(pick(input, ["skuId", "couponCode", "accountRef"])));
+      res.json(req.residentialRelayStore.quote(pick(input, ["skuId", "couponCode"])));
     } catch (error) { sendStoreError(res, error, "invalid_input"); }
   });
 

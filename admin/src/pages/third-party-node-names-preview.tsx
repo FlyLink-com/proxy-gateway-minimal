@@ -17,7 +17,7 @@ export function ThirdPartyNodeNamesPreview() {
   return (
     <div className="tp-preview-shell">
       <aside className="tp-preview-sidebar">
-        <div className="tp-preview-brand"><Network aria-hidden="true" /><strong>GCC WebOS <small>ADMIN CONSOLE</small></strong></div>
+        <div className="tp-preview-brand"><Network aria-hidden="true" /><strong>FlinkVPN <small>ADMIN CONSOLE</small></strong></div>
         <p className="tp-preview-nav-label">订阅管理</p>
         <nav aria-label="本地命名预览导航">
           <a href="#/third-party-node-names-preview" aria-current="page"><PanelLeft size={18} aria-hidden="true" />第三方节点命名</a>
