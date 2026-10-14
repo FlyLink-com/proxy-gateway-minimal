@@ -180,6 +180,58 @@ test("delete failure after a confirmed pause reports both facts and stops the ba
   expect(nodeRow("合成乙").getByText("分发中")).toBeInTheDocument();
 });
 
+test("mixed bulk delete grants a separate deadline to pause and every delete when total work exceeds 15 seconds", async () => {
+  const client = fixture();
+  client.listNodes.mockResolvedValue(snapshot(NEW, [{ ...NODES[0], enabled: true }, NODES[1]]));
+  client.setNodeEnabled.mockImplementationOnce(async () => {
+    await new Promise<void>((resolve) => window.setTimeout(resolve, 6000));
+    return snapshot(NEW, NODES, R2);
+  });
+  client.deleteNode.mockImplementationOnce(async () => {
+    await new Promise<void>((resolve) => window.setTimeout(resolve, 6000));
+    return snapshot(NEW, [NODES[1]], R3);
+  }).mockImplementationOnce(async () => {
+    await new Promise<void>((resolve) => window.setTimeout(resolve, 6000));
+    return snapshot(NEW, [], "d".repeat(64));
+  });
+  await mount(client); requestBulk(); vi.useFakeTimers(); confirmBulk();
+  await act(async () => { await vi.advanceTimersByTimeAsync(6000); });
+  expect(client.setNodeEnabled).toHaveBeenCalledTimes(1);
+  expect(client.deleteNode).toHaveBeenCalledTimes(1);
+  await act(async () => { await vi.advanceTimersByTimeAsync(6000); });
+  expect(client.deleteNode).toHaveBeenCalledTimes(2);
+  await act(async () => { await vi.advanceTimersByTimeAsync(6000); });
+  expect(screen.getByText(/已确认删除 2\/2 个节点/)).toBeInTheDocument();
+  expect(client.deleteNode.mock.calls.map(([sourceId, id, rev]) => [sourceId, id, rev])).toEqual([[NEW, A, R2], [NEW, B, R3]]);
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  expect(client.disableSource).not.toHaveBeenCalled();
+});
+
+test("a delete after a confirmed pause retains its full deadline then aborts without accepting late deletion or starting the next node", async () => {
+  const client = fixture();
+  client.listNodes.mockResolvedValue(snapshot(NEW, [{ ...NODES[0], enabled: true }, NODES[1]]));
+  client.setNodeEnabled.mockImplementationOnce(async () => {
+    await new Promise<void>((resolve) => window.setTimeout(resolve, 8000));
+    return snapshot(NEW, NODES, R2);
+  });
+  const pending = deferred<ThirdPartyNodeSnapshot>();
+  client.deleteNode.mockReturnValueOnce(pending.promise);
+  await mount(client); requestBulk(); vi.useFakeTimers(); confirmBulk();
+  await act(async () => { await vi.advanceTimersByTimeAsync(8000); });
+  expect(client.deleteNode).toHaveBeenCalledTimes(1);
+  await act(async () => { await vi.advanceTimersByTimeAsync(14999); });
+  expect(client.deleteNode.mock.calls[0][3]?.aborted).toBe(false);
+  expect(screen.queryByText(/已确认删除 0\/2 个节点.*已确认暂停但未确认删除 1 个/)).not.toBeInTheDocument();
+  await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+  expect(client.deleteNode.mock.calls[0][3]?.aborted).toBe(true);
+  expect(screen.getByText(/已确认删除 0\/2 个节点.*已确认暂停但未确认删除 1 个/)).toBeInTheDocument();
+  await act(async () => pending.resolve(snapshot(NEW, [NODES[1]], R3)));
+  expect(client.deleteNode).toHaveBeenCalledTimes(1);
+  expect(client.setNodeEnabled).toHaveBeenCalledTimes(1);
+  expect(nodeRow("合成甲").getByText("已停用")).toBeInTheDocument();
+  expect(screen.getByRole("checkbox", { name: "选择 合成乙" })).toBeDisabled();
+});
+
 test("failed or broader pause never proceeds to deletion", async () => {
   const client = fixture();
   client.listNodes.mockResolvedValue(snapshot(NEW, NODES.map((node) => ({ ...node, enabled: true }))));

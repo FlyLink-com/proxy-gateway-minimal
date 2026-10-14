@@ -69,6 +69,53 @@ test.each([true, false])("mixed selection skips already matching nodes for enabl
   expect(screen.getByRole("button", { name: "启用节点列表" })).toBeEnabled(); // source remains paused
 });
 
+test.each([true, false])("each selected lifecycle request gets its own deadline when the total exceeds 15 seconds: enabled=%s", async (enabled) => {
+  const { client } = await mount(fixture([!enabled, !enabled, !enabled]));
+  const apply = client.setNodeEnabled.getMockImplementation()!;
+  client.setNodeEnabled.mockImplementation(async (...args) => {
+    await new Promise<void>((resolve) => window.setTimeout(resolve, 6000));
+    return apply(...args);
+  });
+  select(1, 2, 3); request(enabled); vi.useFakeTimers(); confirm(enabled);
+  await act(async () => { await vi.advanceTimersByTimeAsync(6000); });
+  expect(client.setNodeEnabled).toHaveBeenCalledTimes(2);
+  await act(async () => { await vi.advanceTimersByTimeAsync(6000); });
+  expect(client.setNodeEnabled).toHaveBeenCalledTimes(3);
+  await act(async () => { await vi.advanceTimersByTimeAsync(6000); });
+  expect(screen.getByText(enabled ? /已确认启用 3\/3 个节点/ : /已确认暂停 3\/3 个节点/)).toBeInTheDocument();
+  expect(client.setNodeEnabled.mock.calls.map(([source, node, rev, value]) => [source, node, rev, value])).toEqual([
+    [SOURCE, ids[0], revision(1), enabled], [SOURCE, ids[1], revision(2), enabled], [SOURCE, ids[2], revision(3), enabled]
+  ]);
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  expect(client.enableSource).not.toHaveBeenCalled();
+  expect(client.disableSource).not.toHaveBeenCalled();
+});
+
+test("a later lifecycle request has 15 seconds of its own before abort, preserving confirmed progress and ignoring its late reply", async () => {
+  const { client, snapshot } = await mount();
+  const first = { ...snapshot(), revision: revision(2), items: snapshot().items.map((node, index) => index === 0 ? { ...node, enabled: false } : node) };
+  const second = { ...first, revision: revision(3), items: first.items.map((node, index) => index === 1 ? { ...node, enabled: false } : node) };
+  const pending = deferred<ThirdPartyNodeSnapshot>();
+  client.setNodeEnabled.mockImplementationOnce(async () => {
+    await new Promise<void>((resolve) => window.setTimeout(resolve, 8000));
+    return first;
+  }).mockReturnValueOnce(pending.promise);
+  select(1, 2, 3); request(); vi.useFakeTimers(); confirm();
+  await act(async () => { await vi.advanceTimersByTimeAsync(8000); });
+  expect(client.setNodeEnabled).toHaveBeenCalledTimes(2);
+  await act(async () => { await vi.advanceTimersByTimeAsync(14999); });
+  expect(client.setNodeEnabled.mock.calls[1][4]?.aborted).toBe(false);
+  expect(screen.queryByText(/已确认暂停 1\/3 个节点.*未确认/)).not.toBeInTheDocument();
+  await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+  expect(client.setNodeEnabled.mock.calls[1][4]?.aborted).toBe(true);
+  expect(screen.getByText(/已确认暂停 1\/3 个节点.*未确认/)).toBeInTheDocument();
+  await act(async () => pending.resolve(second));
+  expect(client.setNodeEnabled).toHaveBeenCalledTimes(2);
+  expect(within(screen.getByRole("checkbox", { name: "选择 合成1" }).closest("tr")!).getByText("已停用")).toBeInTheDocument();
+  expect(within(screen.getByRole("checkbox", { name: "选择 合成2" }).closest("tr")!).getByText("分发中")).toBeInTheDocument();
+  expect(screen.getByRole("checkbox", { name: "选择 合成3" })).toBeDisabled();
+});
+
 test("cancel and a read while confirmation is open never write", async () => {
   const { client } = await mount(); select(1); request();
   fireEvent.click(within(screen.getByRole("dialog", { name: "确认暂停节点" })).getByRole("button", { name: "取消" }));

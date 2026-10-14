@@ -75,19 +75,26 @@ export function ThirdPartyAdminWorkspace({ client: suppliedClient, onSessionExpi
   const currentSource = sources.find((source) => source.id === snapshot?.sourceId);
   const modalId = useId();
 
-  const run = useCallback(async <T,>(operation: (signal: AbortSignal) => Promise<T>, success: (value: T) => void, mutation = false,
+  const run = useCallback(async <T,>(operation: (signal: AbortSignal, beginRequest: () => void) => Promise<T>, success: (value: T) => void, mutation = false,
     failure?: () => void) => {
     if (busyRef.current || !mounted.current) return false;
     busyRef.current = true;
     setBusy(true); setError(""); setNotice(""); setNodeConfirm(null); setBulkConfirm(null);
     const controller = new AbortController(); requestRef.current = controller;
     const requestId = ++generation.current;
-    const timeout = window.setTimeout(() => controller.abort(), 15000);
+    let timeout = window.setTimeout(() => controller.abort(), 15000);
     const isCurrent = () => mounted.current && generation.current === requestId;
+    // Serial batches get the same bounded deadline for each HTTP request, not
+    // one deadline shared by every selected node. An aborted batch stays stopped.
+    const beginRequest = () => {
+      if (!isCurrent() || controller.signal.aborted) throw new DOMException("Request cancelled", "AbortError");
+      window.clearTimeout(timeout);
+      timeout = window.setTimeout(() => controller.abort(), 15000);
+    };
     let abortListener: () => void = () => {};
     try {
       // A late or non-cooperative transport must not publish success after timeout.
-      const result = await Promise.race([operation(controller.signal), new Promise<never>((_resolve, reject) => {
+      const result = await Promise.race([operation(controller.signal, beginRequest), new Promise<never>((_resolve, reject) => {
         abortListener = () => reject(new DOMException("Request cancelled", "AbortError"));
         controller.signal.addEventListener("abort", abortListener, { once: true });
         if (controller.signal.aborted) abortListener();
@@ -172,10 +179,11 @@ export function ThirdPartyAdminWorkspace({ client: suppliedClient, onSessionExpi
     const setNodeEnabled = client.setNodeEnabled.bind(client);
     const verb = action.enabled ? "启用" : "暂停";
     let confirmed = 0;
-    void run(async (signal) => {
+    void run(async (signal, beginRequest) => {
       let view = action.snapshot;
       for (const nodeId of action.nodeIds) {
         if (signal.aborted || !mounted.current) throw new DOMException("Request cancelled", "AbortError");
+        beginRequest();
         const result = await setNodeEnabled(view.sourceId, nodeId, view.revision, action.enabled, signal);
         if (signal.aborted || !mounted.current) throw new DOMException("Request cancelled", "AbortError");
         view = verifyNodeMutation(view, result, nodeId, action.enabled);
@@ -205,7 +213,7 @@ export function ThirdPartyAdminWorkspace({ client: suppliedClient, onSessionExpi
     const pauseNode = client.setNodeEnabled?.bind(client);
     let confirmed = 0;
     const pausedNotDeleted = new Set<string>();
-    void run(async (signal) => {
+    void run(async (signal, beginRequest) => {
       let view = action.snapshot;
       const checkActive = () => {
         if (signal.aborted || !mounted.current) throw new DOMException("Request cancelled", "AbortError");
@@ -216,6 +224,7 @@ export function ThirdPartyAdminWorkspace({ client: suppliedClient, onSessionExpi
         if (!node) throw new ThirdPartyAdminError("invalid");
         if (node.enabled !== false) {
           if (!pauseNode) throw new ThirdPartyAdminError("node_enabled");
+          beginRequest();
           const paused = await pauseNode(view.sourceId, nodeId, view.revision, false, signal);
           checkActive();
           view = verifyNodeMutation(view, paused, nodeId, false);
@@ -223,6 +232,7 @@ export function ThirdPartyAdminWorkspace({ client: suppliedClient, onSessionExpi
           receive(view);
         }
         checkActive();
+        beginRequest();
         const result = await removeNode(view.sourceId, nodeId, view.revision, signal);
         checkActive();
         view = verifyNodeMutation(view, result, nodeId);
