@@ -10,3 +10,48 @@
 .tp-admin-workspace .tp-admin-tier { display: flex; flex-direction: row; align-items: center; gap: 8px; }
 .tp-admin-workspace .tp-admin-tier input { width: auto; }
 .tp-admin-workspace .tp-import-modal > button + button { margin-left: 8px; }
+/* Polish (frontend only): aligned source toolbar, legible table, calmer states. */
+.tp-admin-boundary { margin: 0 0 14px; max-width: 72ch; }
+.tp-admin-source-toolbar { align-items: flex-end; gap: 10px; }
+.tp-admin-source-toolbar label { color: #475569; font-weight: 500; }
+.tp-admin-source-toolbar select { min-height: 40px; width: min(480px, 100%); padding: 8px 32px 8px 12px; border: 1px solid #d9e1eb; border-radius: 8px;
+  background-color: #fff; color: #17243a; font: inherit; font-size: 13px; text-overflow: ellipsis; white-space: nowrap; overflow: hidden; }
+.tp-admin-source-toolbar select:disabled { background-color: #f4f6fa; color: #8492a6; }
+.tp-admin-source-toolbar button { min-height: 40px; padding: 8px 14px; background: #fff; font-size: 13px; }
+.tp-admin-source-toolbar button:hover:not(:disabled) { background: #edf4ff; }
+.tp-admin-workspace :is(button, select):focus-visible { outline: 2px solid #5089f5; outline-offset: 2px; }
+.tp-admin-workspace > p[role="alert"]:not(.tp-admin-error), .tp-admin-workspace > p[role="status"], .tp-admin-workspace > p:not([class]) {
+  margin: 0 0 12px; padding: 10px 12px; border-radius: 8px; background: #f0f5ff; color: #31558a; font-size: 13px; }
+.tp-admin-workspace > p[role="alert"]:not(.tp-admin-error) { background: #fff6e5; color: #8a5a00; }
+.tp-admin-error { margin: 0 0 12px; padding: 10px 12px; border-radius: 8px; background: #fff1f0; }
+/* The page already has a section title; keep the inner heading secondary. */
+.tp-admin-workspace .tp-names-heading { margin-bottom: 14px; }
+.tp-admin-workspace .tp-names h1 { font-size: 20px; letter-spacing: -.2px; }
+/* Import trigger matches the other 44px toolbar controls. */
+.tp-names .tp-import-actions button { min-height: 44px; padding: 8px 12px; border-radius: 7px; border-color: #dce3ed; background: #fff; color: #526176; font-size: 12px; }
+.tp-names .tp-import-actions button:hover:not(:disabled) { background: #edf4ff; color: #245bd4; }
+/* Disabled icon actions read as neutral, not as warnings. */
+.tp-names .tp-names-toolbar-actions button:disabled { color: #94a3b8; background: #f6f8fb; border-color: #e3e8ef; }
+.tp-names-toolbar-actions { align-items: center; }
+.tp-names-bulk-selection { min-height: 32px; }
+.tp-names .tp-names-bulk-selection button { min-height: 32px; padding: 4px 12px; }
+.tp-names .tp-names-bulk-selection button:disabled { background: transparent; border-color: transparent; color: #94a3b8; }
+/* Contrast: secondary text >= 4.5:1 on its background. */
+.tp-names th { color: #526176; font-weight: 600; }
+.tp-names-save-state, .tp-names-list-foot { color: #5b6b80; }
+.tp-names-node-state { font-size: 11px; }
+.tp-names td { color: #17243a; }
+.tp-names-clamp { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; }
+.tp-names-detected { display: inline-flex; align-items: center; justify-content: center; gap: 4px; width: 58px; margin-right: 6px; vertical-align: middle; padding: 1px 4px; border-radius: 5px;
+  background: #f1f5fb; color: #34445a; font-size: 11px; line-height: 18px; white-space: nowrap;
+  font-family: "Noto Color Emoji", "Apple Color Emoji", "Segoe UI Emoji", inherit; }
+.tp-names td:has(> .tp-names-detected) { white-space: nowrap; }
+.tp-names td > .tp-names-detected + .tp-names-country { width: calc(100% - 64px); vertical-align: middle; }
+/* Loading: animate the placeholder icon while the workspace is busy. */
+.tp-admin-workspace[aria-busy="true"] .tp-names-empty svg { animation: tp-busy-spin 1.2s linear infinite; }
+@keyframes tp-busy-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .tp-admin-workspace[aria-busy="true"] .tp-names-empty svg { animation: none; } }
+/* Give the country column room for the detected chip plus the override select. */
+.tp-names .tp-names-bulk-table th:nth-child(3) { width: 24%; }
+.tp-names .tp-names-bulk-table th:nth-child(4) { width: 23%; }
+.tp-names .tp-names-bulk-table th:last-child { width: 19%; }

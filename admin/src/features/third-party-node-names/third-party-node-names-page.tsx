@@ -3,7 +3,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { renderedNodeName, validateNodeName } from "./node-name-model";
 import type { ThirdPartyNode } from "./node-name-model";
-import { isNodeCountryCode, NODE_COUNTRY_OPTIONS } from "./node-country-model";
+import { countryFlag, isNodeCountryCode, NODE_COUNTRY_OPTIONS } from "./node-country-model";
 import { ThirdPartyImportEntry } from "./third-party-import-entry";
 import "./third-party-node-names.css";
 
@@ -262,7 +262,7 @@ export function ThirdPartyNodeNamesPage({ initialNodes, persistence }: { initial
               const deleteBlocked = persistence?.onDeleteNode ? lifecycleBlocked || nodeEnabled : writesBlocked;
               return <tr key={node.id} className={editing ? "tp-names-selected" : ""}>
                 {bulkSelection ? <td className="tp-names-bulk-cell"><label className="tp-names-check-target"><input type="checkbox" aria-label={`选择 ${node.originalName}`} checked={checkedIds.has(node.id)} disabled={bulkSelectionBlocked} onChange={(event) => checkNode(node.id, event.target.checked)} /></label></td> : null}
-                <td><strong>{node.originalName}</strong></td>
+                <td><strong className="tp-names-clamp" title={node.originalName}>{node.originalName}</strong></td>
                 <td>{editing ? <form id={`${fieldId}-form`} onSubmit={(event) => { event.preventDefault(); apply(); }}>
                   <label className="tp-names-sr-only" htmlFor={fieldId}>对外显示名称</label>
                   <input id={fieldId} value={draft} disabled={writesBlocked || Boolean(deleteId)} onChange={(event) => updateDraft(event.target.value)} onKeyDown={(event) => {
@@ -275,8 +275,8 @@ export function ThirdPartyNodeNamesPage({ initialNodes, persistence }: { initial
                   }} aria-invalid={Boolean(validation.error)} aria-describedby={`${fieldId}-hint${validation.error ? ` ${fieldId}-error` : ""}`} placeholder={node.defaultName} autoComplete="off" spellCheck={false} autoFocus />
                   <span id={`${fieldId}-hint`} className="tp-names-sr-only">留空并应用后恢复默认名称，最多 128 个字符，部分符号计为两个字符。Enter 应用到草稿，Escape 取消。</span>
                   {validation.error ? <p id={`${fieldId}-error`} className="tp-names-error" role="alert">{validation.error}</p> : null}
-                </form> : <span className="tp-names-rendered">{renderedNodeName(node)}</span>}</td>
-                <td><select className="tp-names-country" aria-label={`国家/地区 ${node.originalName}`} title="仅调整显示国旗，不改变真实节点地区；需保存后生效" value={node.customCountryCode ?? ""} disabled={writesBlocked || Boolean(deleteId) || dirty || Boolean(validation.error)} onChange={(event) => updateCountry(node.id, event.target.value)}><option value="">保留原名称</option><option value="OTHER">不显示国旗</option>{countryOptions}</select></td>
+                </form> : <span className="tp-names-rendered tp-names-clamp" title={renderedNodeName(node)}>{renderedNodeName(node)}</span>}</td>
+                <td><span className="tp-names-detected" title="来源识别的国家/地区（只读）">{countryFlag(node.countryCode) || "🌐"} {node.countryCode === "OTHER" ? "其他" : node.countryCode}</span><select className="tp-names-country" aria-label={`国家/地区 ${node.originalName}`} title="仅调整显示国旗，不改变真实节点地区；需保存后生效" value={node.customCountryCode ?? ""} disabled={writesBlocked || Boolean(deleteId) || dirty || Boolean(validation.error)} onChange={(event) => updateCountry(node.id, event.target.value)}><option value="">保留原名称</option><option value="OTHER">不显示国旗</option>{countryOptions}</select></td>
                 <td><span className="tp-names-protocol">{node.protocol}</span>{directLifecycle || selectionActionsOnly ? <span className={`tp-names-node-state${nodeEnabled ? "" : " is-disabled"}`} aria-label={`节点状态 ${node.originalName}`}>{nodeEnabled ? listEnabled ? "分发中" : "待分发" : "已停用"}</span> : null}</td>
                 <td><div className={`tp-names-actions-slot${deleteId === node.id ? " is-confirming" : ""}`}><div className="tp-names-row-actions">
                   <button type="button" className="tp-names-edit" hidden={editing} disabled={writesBlocked || Boolean(deleteId)} aria-label={`编辑 ${node.originalName}`} ref={(element) => { if (element) editButtons.current.set(node.id, element); else editButtons.current.delete(node.id); }} onClick={() => selectNode(node)}><Pencil size={14} aria-hidden="true" />编辑</button>
