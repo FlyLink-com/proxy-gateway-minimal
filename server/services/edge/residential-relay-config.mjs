@@ -55,13 +55,36 @@ function xrayOutbound(entry) {
   return { ...base, settings: { servers: [server] } };
 }
 
-// Xray relay with a VLESS inbound for residential users (dedicated UUIDs).
-export function buildResidentialXrayRelayConfig({ pool, users, inbound, apiPort = 10085, balancerStrategy = "random" }) {
-  assertPoolSupportedBy(pool, "xray");
-  const refs = checkUsers(users, "uuid");
+function normalizeGroups(groups, field, target) {
+  if (!Array.isArray(groups) || groups.length === 0) throw fail("residential_relay_groups_empty");
+  const seenTags = new Set(), seenRefs = new Set(), seenSecrets = new Set(), seenGroups = new Set();
+  return groups.map((group) => {
+    if (!/^[a-z0-9-]{1,32}$/.test(group?.groupId || "") || seenGroups.has(group.groupId)) throw fail("residential_relay_group_invalid");
+    seenGroups.add(group.groupId);
+    assertPoolSupportedBy(group.pool, target);
+    if (!group.pool.length) throw fail("residential_pool_empty");
+    for (const entry of group.pool) {
+      if (seenTags.has(entry.tag)) throw fail("residential_pool_tag_duplicate");
+      seenTags.add(entry.tag);
+    }
+    const refs = checkUsers(group.users, field);
+    for (const user of group.users) {
+      if (seenRefs.has(user.edgeCredentialRef) || seenSecrets.has(user[field])) throw fail("residential_relay_user_duplicate");
+      seenRefs.add(user.edgeCredentialRef); seenSecrets.add(user[field]);
+    }
+    return { groupId: group.groupId, balancerTag: `${RESIDENTIAL_BALANCER_TAG}-${group.groupId}`, refs, users: group.users, pool: group.pool };
+  });
+}
+
+// Xray relay with a VLESS inbound. Each group (one per SKU) binds only its own
+// buyers to its own bound upstream outbounds.
+export function buildResidentialXrayRelayConfig({ groups, inbound, apiPort = 10085, balancerStrategy = "random" }) {
+  const normalized = normalizeGroups(groups, "uuid", "xray");
   checkPort(inbound?.port, "residential_relay_inbound_invalid");
   checkPort(apiPort, "residential_relay_api_port_invalid");
   if (!["random", "roundRobin"].includes(balancerStrategy)) throw fail("residential_relay_balancer_invalid");
+  const allRefs = normalized.flatMap(group => group.refs);
+  const allUsers = normalized.flatMap(group => group.users);
   return {
     log: { loglevel: "warning", access: "none" },
     api: { tag: "api", services: ["StatsService"] },
@@ -74,24 +97,23 @@ export function buildResidentialXrayRelayConfig({ pool, users, inbound, apiPort 
       { tag: "api-in", listen: "127.0.0.1", port: apiPort, protocol: "dokodemo-door", settings: { address: "127.0.0.1" } },
       {
         tag: "resi-in", listen: inbound.listen || "0.0.0.0", port: inbound.port, protocol: "vless",
-        settings: { clients: users.map(user => ({ id: user.uuid, email: user.edgeCredentialRef, level: 0 })), decryption: "none" },
+        settings: { clients: allUsers.map(user => ({ id: user.uuid, email: user.edgeCredentialRef, level: 0 })), decryption: "none" },
         streamSettings: inbound.streamSettings || { network: "tcp" },
         sniffing: { enabled: true, destOverride: ["http", "tls", "quic"], routeOnly: true }
       }
     ],
     outbounds: [
       { tag: RESIDENTIAL_DEFAULT_TAG, protocol: "freedom" },
-      ...pool.map(xrayOutbound),
+      ...normalized.flatMap(group => group.pool.map(xrayOutbound)),
       { tag: RESIDENTIAL_BLOCK_TAG, protocol: "blackhole" }
     ],
     routing: {
       domainStrategy: "AsIs",
-      balancers: [{ tag: RESIDENTIAL_BALANCER_TAG, selector: pool.map(entry => entry.tag), strategy: { type: balancerStrategy } }],
+      balancers: normalized.map(group => ({ tag: group.balancerTag, selector: group.pool.map(entry => entry.tag), strategy: { type: balancerStrategy } })),
       rules: [
         { type: "field", inboundTag: ["api-in"], outboundTag: "api" },
-        { type: "field", user: refs, ip: ["geoip:private"], outboundTag: RESIDENTIAL_BLOCK_TAG },
-        { type: "field", user: refs, balancerTag: RESIDENTIAL_BALANCER_TAG },
-        // Anything else arriving on the residential inbound must not leak to direct.
+        { type: "field", user: allRefs, ip: ["geoip:private"], outboundTag: RESIDENTIAL_BLOCK_TAG },
+        ...normalized.map(group => ({ type: "field", user: group.refs, balancerTag: group.balancerTag })),
         { type: "field", inboundTag: ["resi-in"], outboundTag: RESIDENTIAL_BLOCK_TAG }
       ]
     }
@@ -114,36 +136,35 @@ function singBoxOutbound(entry) {
   }
 }
 
-// sing-box relay with a Hysteria2 inbound for residential users (dedicated
-// passwords). Hysteria2's own server cannot route per user, so the Hy2 side of
-// this product runs on sing-box, whose route rules match `auth_user`.
-// Stats via experimental.v2ray_api require a sing-box build with `with_v2ray_api`.
-export function buildResidentialSingBoxHy2RelayConfig({ pool, users, inbound, apiPort = 10086 }) {
-  assertPoolSupportedBy(pool, "sing-box");
-  const refs = checkUsers(users, "password");
+// sing-box relay with a Hysteria2 inbound (Hysteria2's own server cannot route
+// per user). Each group binds only its own buyers to its own upstreams.
+export function buildResidentialSingBoxHy2RelayConfig({ groups, inbound, apiPort = 10086 }) {
+  const normalized = normalizeGroups(groups, "password", "sing-box");
   checkPort(inbound?.port, "residential_relay_inbound_invalid");
   checkPort(apiPort, "residential_relay_api_port_invalid");
   if (!inbound.tls || typeof inbound.tls !== "object") throw fail("residential_relay_inbound_invalid");
-  const poolTags = pool.map(entry => entry.tag);
+  const allRefs = normalized.flatMap(group => group.refs);
+  const allUsers = normalized.flatMap(group => group.users);
+  const poolTags = normalized.flatMap(group => group.pool.map(entry => entry.tag));
   return {
     log: { level: "warn" },
     inbounds: [{ type: "hysteria2", tag: "resi-in", listen: inbound.listen || "::", listen_port: inbound.port,
-      users: users.map(user => ({ name: user.edgeCredentialRef, password: user.password })), tls: inbound.tls }],
+      users: allUsers.map(user => ({ name: user.edgeCredentialRef, password: user.password })), tls: inbound.tls }],
     outbounds: [
       { type: "direct", tag: RESIDENTIAL_DEFAULT_TAG },
-      ...pool.map(singBoxOutbound),
-      { type: "urltest", tag: RESIDENTIAL_BALANCER_TAG, outbounds: poolTags },
+      ...normalized.flatMap(group => group.pool.map(singBoxOutbound)),
+      ...normalized.map(group => ({ type: "urltest", tag: group.balancerTag, outbounds: group.pool.map(entry => entry.tag) })),
       { type: "block", tag: RESIDENTIAL_BLOCK_TAG }
     ],
     route: {
       rules: [
-        { auth_user: refs, ip_is_private: true, outbound: RESIDENTIAL_BLOCK_TAG },
-        { auth_user: refs, outbound: RESIDENTIAL_BALANCER_TAG },
+        { auth_user: allRefs, ip_is_private: true, outbound: RESIDENTIAL_BLOCK_TAG },
+        ...normalized.map(group => ({ auth_user: group.refs, outbound: group.balancerTag })),
         { inbound: ["resi-in"], outbound: RESIDENTIAL_BLOCK_TAG }
       ],
       final: RESIDENTIAL_DEFAULT_TAG
     },
-    experimental: { v2ray_api: { listen: `127.0.0.1:${apiPort}`, stats: { enabled: true, users: refs, outbounds: poolTags } } }
+    experimental: { v2ray_api: { listen: `127.0.0.1:${apiPort}`, stats: { enabled: true, users: allRefs, outbounds: poolTags } } }
   };
 }
 

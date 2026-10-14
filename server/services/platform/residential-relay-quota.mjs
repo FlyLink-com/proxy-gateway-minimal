@@ -1,12 +1,5 @@
-// Monthly (30-day) recurring quota for the residential relay pack.
-// Unlike #753 lifetime packs, usage resets at each period boundary measured
-// from the order's activation anchor. Used bytes are never restored inside a
-// period (credential reset/refresh keeps the period usage).
-import { RESIDENTIAL_RELAY_PERIOD_DAYS } from "./residential-relay-pack-product.mjs";
-
-const DAY_MS = 86_400_000;
-const PERIOD_MS = RESIDENTIAL_RELAY_PERIOD_DAYS * DAY_MS;
-
+// One-shot residential relay quota. Locked: no renewals, no unused-byte rollover,
+// no refunds. Credential disables when the period ends or the quota is hit.
 function fail(code) {
   const error = new Error(code);
   error.code = code;
@@ -19,11 +12,15 @@ function ms(value, code) {
   return t;
 }
 
-export function residentialPeriod({ anchorAt, now }) {
-  const anchor = ms(anchorAt, "residential_quota_anchor_invalid"), at = ms(now, "residential_quota_time_invalid");
+const DAY_MS = 86_400_000;
+
+export function residentialPeriod({ anchorAt, now, durationDays }) {
+  if (!Number.isSafeInteger(durationDays) || durationDays <= 0) throw fail("residential_quota_duration_invalid");
+  const anchor = ms(anchorAt, "residential_quota_anchor_invalid");
+  const at = ms(now, "residential_quota_time_invalid");
   if (at < anchor) throw fail("residential_quota_time_invalid");
-  const index = Math.floor((at - anchor) / PERIOD_MS);
-  return { index, startAt: new Date(anchor + index * PERIOD_MS).toISOString(), endAt: new Date(anchor + (index + 1) * PERIOD_MS).toISOString() };
+  const endAt = new Date(anchor + durationDays * DAY_MS).toISOString();
+  return { index: 0, startAt: new Date(anchor).toISOString(), endAt, ended: at >= Date.parse(endAt) };
 }
 
 function counter(value) {
@@ -31,37 +28,30 @@ function counter(value) {
   return value;
 }
 
-// state: { periodIndex, usedBytes, lastCounter, runtimeGeneration } (null for first sample)
-// sample: { at, counterBytes (up+down cumulative from relay), runtimeGeneration }
-// A runtime generation change (relay restart) means the cumulative counter
-// restarted at 0, so the full new value is the delta.
-// Bytes in a sample spanning a period boundary are attributed to the sample's
-// period (sampling interval is minutes; documented approximation).
-export function accumulateResidentialUsage({ state, sample, anchorAt }) {
+// state: { usedBytes, lastCounter, runtimeGeneration } (null for first sample)
+// sample: { at, counterBytes, runtimeGeneration }
+export function accumulateResidentialUsage({ state, sample }) {
   const value = counter(sample?.counterBytes);
-  const period = residentialPeriod({ anchorAt, now: sample.at });
-  if (!state) return { periodIndex: period.index, usedBytes: 0, lastCounter: value, runtimeGeneration: sample.runtimeGeneration };
-  if (period.index < state.periodIndex) throw fail("residential_quota_time_regressed");
+  if (!state) return { usedBytes: 0, lastCounter: value, runtimeGeneration: sample.runtimeGeneration };
   const sameRuntime = sample.runtimeGeneration === state.runtimeGeneration;
   if (sameRuntime && value < state.lastCounter) throw fail("residential_quota_counter_regressed");
   const delta = sameRuntime ? value - state.lastCounter : value;
-  const carried = period.index === state.periodIndex ? state.usedBytes : 0;
-  return { periodIndex: period.index, usedBytes: carried + delta, lastCounter: value, runtimeGeneration: sample.runtimeGeneration };
+  return { usedBytes: state.usedBytes + delta, lastCounter: value, runtimeGeneration: sample.runtimeGeneration };
 }
 
-// paidThroughAt: end of the last paid period. Renewal policy is a TODO for
-// Ethan; until decided, an unpaid period simply disables the credential.
-export function evaluateResidentialQuota({ anchorAt, now, quotaBytes, state, paidThroughAt }) {
+export function evaluateResidentialQuota({ anchorAt, now, quotaBytes, durationDays, state }) {
   if (!Number.isSafeInteger(quotaBytes) || quotaBytes <= 0) throw fail("residential_quota_invalid");
-  const period = residentialPeriod({ anchorAt, now });
-  const used = state && state.periodIndex === period.index ? state.usedBytes : 0;
-  const paid = ms(paidThroughAt, "residential_quota_paid_through_invalid") > ms(now, "residential_quota_time_invalid");
+  const period = residentialPeriod({ anchorAt, now, durationDays });
+  if (period.ended) {
+    return { period, usedBytes: state?.usedBytes ?? 0, remainingBytes: 0, enabled: false, reason: "period_ended" };
+  }
+  const used = state?.usedBytes ?? 0;
+  if (!Number.isSafeInteger(used) || used < 0) throw fail("residential_quota_counter_invalid");
   const remainingBytes = Math.max(0, quotaBytes - used);
-  const reason = !paid ? "period_unpaid" : remainingBytes === 0 ? "quota_exhausted" : null;
+  const reason = remainingBytes === 0 ? "quota_exhausted" : null;
   return { period, usedBytes: used, remainingBytes, enabled: reason === null, reason };
 }
 
-// Parse `xray api statsquery` JSON or sing-box v2ray_api equivalent.
 export function parseRelayStats(payload) {
   const list = Array.isArray(payload?.stat) ? payload.stat : null;
   if (!list) throw fail("residential_stats_invalid");
@@ -80,7 +70,6 @@ export function parseRelayStats(payload) {
   return { users, outbounds };
 }
 
-// Compare our per-tag outbound counters with the upstream residential panel.
 export function reconcileResidentialOutbounds({ outbounds, upstreamBytesByTag, toleranceBasisPoints = 500 }) {
   const rows = [];
   for (const [tag, upstream] of Object.entries(upstreamBytesByTag)) {

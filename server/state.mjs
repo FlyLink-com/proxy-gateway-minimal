@@ -28,6 +28,7 @@ import {
   createCoinCommerceDataPackProductionFulfillment
 } from "./services/platform/coin-commerce-data-pack-production-binding.mjs";
 import { assertResidentialRelayPackStartup } from "./services/platform/residential-relay-pack-product.mjs";
+import { createSqliteResidentialRelayPackStore } from "./services/platform/residential-relay-pack-store.mjs";
 import { createSqliteCoinCommerceStore } from "./services/platform/coin-commerce-store.mjs";
 import { assertPlanSwitchStartupFlags } from "./services/platform/coin-commerce-plan-switch-policy.mjs";
 import { validatePlanSwitchSchema } from "./services/platform/coin-commerce-plan-switch-migrations.mjs";
@@ -1583,10 +1584,9 @@ export function createRuntimeState(options = {}) {
   const coinsWalletEnabled = envFlag(env.COINS_WALLET_ENABLED);
   const coinsCommerceEnabled = envFlag(env.COINS_COMMERCE_ENABLED);
   const dataPackRuntimeEnabled = envFlag(env.COINS_COMMERCE_DATA_PACK_RUNTIME_ENABLED);
-  // Default off. Fails closed while price/renewal/refund are undecided.
+  // Default off. Admin SKU management + sellability live behind this flag.
   const residentialRelayPackEnabled = assertResidentialRelayPackStartup({
-    enabled: envFlag(env.COINS_COMMERCE_RESIDENTIAL_RELAY_PACK_ENABLED),
-    dataPackRuntimeEnabled
+    enabled: envFlag(env.COINS_COMMERCE_RESIDENTIAL_RELAY_PACK_ENABLED)
   }).enabled;
   const coinsCommerceAuthorityEnabled = envFlag(
     env.COINS_COMMERCE_ACCOUNT_RESOURCE_AUTHORITY_ENABLED
@@ -3129,6 +3129,30 @@ export function createRuntimeState(options = {}) {
       });
     }
   }
+  const residentialRelaySecretProtector = options.residentialRelaySecretProtector
+    || createOptionalThirdPartySecretProtector(env.RESIDENTIAL_RELAY_PACK_SECRET_KEY);
+  let residentialRelayStore = options.residentialRelayPackStore || null;
+  if (!residentialRelayStore && residentialRelayPackEnabled && residentialRelaySecretProtector) {
+    const residentialRelayDbPath = optionalEnvText(env.RESIDENTIAL_RELAY_PACK_DB_PATH);
+    if (residentialRelayDbPath) {
+      residentialRelayStore = createSqliteResidentialRelayPackStore({
+        dbPath: residentialRelayDbPath,
+        secretProtector: residentialRelaySecretProtector,
+        nowFn: options.nowFn
+      });
+    }
+  }
+  const residentialRelayPack = options.residentialRelayPack || {
+    enabled: residentialRelayPackEnabled,
+    available: Boolean(
+      residentialRelayPackEnabled
+      && residentialRelaySecretProtector
+      && residentialRelayStore?.available
+    ),
+    store: residentialRelayStore?.available ? residentialRelayStore : null,
+    secretProtector: residentialRelaySecretProtector
+  };
+
   const thirdPartySubscriptions = options.thirdPartySubscriptions || {
     enabled: thirdPartySubscriptionsEnabled,
     available: Boolean(
@@ -3152,6 +3176,7 @@ export function createRuntimeState(options = {}) {
         try { paymentStore.close(); } catch (error) { firstError ||= error; }
       }
       try { thirdPartyStore?.close?.(); } catch (error) { firstError ||= error; }
+      try { residentialRelayStore?.close?.(); } catch (error) { firstError ||= error; }
       for (const [owned, store] of [
         [ownsCoinsWalletStore, coinsWalletStore],
         [ownsControlStore, platformControlStore],
@@ -3240,6 +3265,7 @@ export function createRuntimeState(options = {}) {
         }
       }
       try { thirdPartyStore?.close?.(); } catch (error) { firstError ||= error; }
+      try { residentialRelayStore?.close?.(); } catch (error) { firstError ||= error; }
       for (const [owned, store] of [
         [ownsControlStore, platformControlStore],
         [ownsSubscriptionStore, subscriptionStore]
@@ -3272,6 +3298,7 @@ export function createRuntimeState(options = {}) {
     },
     services: { ssLocal, httpProxy },
     thirdPartySubscriptions,
+    residentialRelayPack,
     subscriptions: {
       store: subscriptionStore,
       core: subscriptionCore,
@@ -3295,6 +3322,7 @@ export function createRuntimeState(options = {}) {
       coinsCommerceAuthorityEnabled,
       coinCommerceDataPackRuntimeEnabled: dataPackRuntimeEnabled,
       coinCommerceResidentialRelayPackEnabled: residentialRelayPackEnabled,
+      residentialRelayPack,
       coinsCommercePlanSwitchEnabled,
       walletFirstRegistrationEnabled,
       walletFirstDeferredRuntimeEnabled,

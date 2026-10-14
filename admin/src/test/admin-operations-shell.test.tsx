@@ -84,6 +84,14 @@ vi.mock("../features/third-party-node-names/third-party-admin-workspace", () => 
   )
 }));
 
+vi.mock("../features/residential-relay-packs/residential-relay-admin-workspace", () => ({
+  ResidentialRelayAdminWorkspace: ({ onSessionExpired }: { onSessionExpired?: () => void }) => (
+    <div data-testid="residential-relay-admin-workspace">
+      <button type="button" onClick={onSessionExpired}>住宅包会话失效</button>
+    </div>
+  )
+}));
+
 import { AdminOperationsShell } from "../pages/admin-operations-shell";
 import { AdminProductionBaselinePreview } from "../pages/admin-production-baseline-preview";
 
@@ -116,7 +124,8 @@ describe("AdminOperationsShell", () => {
     expect(screen.queryByText("GlobalCircle AI - Operator Console")).toBeNull();
     expect(screen.getByTestId("monitor-page-id").textContent).toBe("dashboard");
     expect(screen.getByRole("button", { name: "第三方节点" })).toBeTruthy();
-    expect(screen.getAllByRole("button").filter((el) => el.classList.contains("nav-item")).length).toBe(11);
+    expect(screen.getByRole("button", { name: "住宅流量包" })).toBeTruthy();
+    expect(screen.getAllByRole("button").filter((el) => el.classList.contains("nav-item")).length).toBe(12);
   });
 
   it("opens the formal third-party route and forwards session expiration without mounting read-only workspaces", async () => {
@@ -138,10 +147,11 @@ describe("AdminOperationsShell", () => {
     expect(await screen.findByTestId("third-party-admin-workspace")).toBeTruthy();
   });
 
-  it.each(["#/admin/thirdPartyNodes", "#/admin-baseline/thirdPartyNodes"])("does not expose third-party writes in the ten-page preview at %s", async (hash) => {
+  it.each(["#/admin/thirdPartyNodes", "#/admin-baseline/thirdPartyNodes", "#/admin/residentialRelayPacks", "#/admin-baseline/residentialRelayPacks"])("does not expose third-party or residential writes in the ten-page preview at %s", async (hash) => {
     window.location.hash = hash;
     render(<AdminProductionBaselinePreview />);
     expect(screen.queryByRole("button", { name: "第三方节点" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "住宅流量包" })).toBeNull();
     expect(screen.getAllByRole("button").filter((el) => el.classList.contains("nav-item")).length).toBe(10);
     expect(screen.getByTestId("monitor-page-id").textContent).toBe("dashboard");
     expect(screen.queryByTestId("third-party-admin-workspace")).toBeNull();
@@ -304,3 +314,13 @@ describe("AdminOperationsShell", () => {
     expect(onSessionExpired).not.toHaveBeenCalled();
   });
 });
+
+  it("opens the residential relay pack workspace from the formal nav", async () => {
+    const onSessionExpired = vi.fn();
+    render(<AdminOperationsShell onSessionExpired={onSessionExpired} />);
+    fireEvent.click(screen.getByRole("button", { name: "住宅流量包" }));
+    expect(window.location.hash).toBe("#/admin/residentialRelayPacks");
+    expect(await screen.findByTestId("residential-relay-admin-workspace")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "住宅包会话失效" }));
+    expect(onSessionExpired).toHaveBeenCalledTimes(1);
+  });

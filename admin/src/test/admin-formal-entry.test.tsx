@@ -162,7 +162,8 @@ describe("admin formal entry", () => {
     });
     expect(screen.getByText("GCC WebOS · Admin Console")).toBeTruthy();
     const nav = screen.getByRole("navigation", { name: "Admin 导航" });
-    expect(nav.querySelectorAll("button").length).toBe(11);
+    expect(nav.querySelectorAll("button").length).toBe(12);
+    expect(screen.getByRole("button", { name: "住宅流量包" })).toBeTruthy();
     expect(nav.querySelectorAll("a").length).toBe(0);
     expect(fetchPaths(fetchMock).filter((p) => p !== AUTH_SESSION_PATH)).toEqual([]);
     expectLegacyKeyUnread(getItemSpy);

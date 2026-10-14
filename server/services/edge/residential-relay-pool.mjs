@@ -67,7 +67,7 @@ export function buildResidentialPool({ importedNodes = [], staticEntries = [], r
   const pool = all.map(normalizeResidentialPoolEntry);
   const tags = new Set(pool.map(entry => entry.tag));
   if (tags.size !== pool.length) throw fail("residential_pool_tag_duplicate");
-  if (tags.has("resi-us-pool")) throw fail("residential_pool_tag_reserved");
+  if ([...tags].some(tag => tag === "resi-us-pool" || tag.startsWith("resi-us-pool-"))) throw fail("residential_pool_tag_reserved");
   return Object.freeze(pool.map(entry => Object.freeze(entry)));
 }
 

@@ -1,34 +1,31 @@
-// US clean-residential relay traffic pack (monthly recurring quota).
-//
-// Deliberately NOT a CoinCommerce offer and NOT a #753 lifetime data pack:
-// #753 packs are `neverExpires: true` lifetime allowances. This product resets
-// every 30-day period and routes only through a dedicated residential pool, so
-// it gets its own product kind and must never be merged into the published
-// catalog until price, renewal and refund semantics are decided.
+// US clean-residential relay traffic pack.
+// Locked product rules (Ethan 2026-10-14):
+// - No refunds.
+// - No unused-byte rollover.
+// - No renewals: one-shot purchase; credential disables when the period ends or
+//   the quota is hit. No auto-renew, no grace period.
+// Period length, quota and price are admin-configurable per SKU.
+// Deliberately NOT a CoinCommerce offer and NOT a #753 lifetime data pack.
 
 export const RESIDENTIAL_RELAY_PACK_KIND = "residential_relay_pack";
-export const RESIDENTIAL_RELAY_PERIOD_DAYS = 30;
 export const RESIDENTIAL_RELAY_GIB = 1024 ** 3;
+export const RESIDENTIAL_RELAY_BUYER_PROTOCOLS = Object.freeze(["vless", "hysteria2"]);
+export const RESIDENTIAL_RELAY_SKU_SIZE_CODES = Object.freeze(["100G", "200G", "500G", "1TB"]);
 
-export const RESIDENTIAL_RELAY_PACK_CANDIDATE = Object.freeze({
-  productRef: "product_residential_us_100gb_monthly",
-  productVersionRef: "productv_residential_us_100gb_monthly_v0",
-  kind: RESIDENTIAL_RELAY_PACK_KIND,
-  published: false,
-  title: Object.freeze({ zh: "美国纯净住宅流量包（100 GB/月）", en: "US clean residential traffic (100 GB / month)" }),
-  audience: "social_media_operators",
-  exitRegion: "US",
-  relayLine: "CN2",
-  periodDays: RESIDENTIAL_RELAY_PERIOD_DAYS,
-  periodQuotaBytes: 100 * RESIDENTIAL_RELAY_GIB,
-  // TODO(Ethan, pricing): unpublished placeholder. null blocks any purchase path.
-  baseCoinUnits: null,
-  // TODO(Ethan, renewal): auto-renew vs manual renew; behaviour when a renewal
-  // payment fails; whether unused bytes roll over (current code: no rollover).
-  renewal: Object.freeze({ decided: false, rollover: false }),
-  // TODO(Ethan, refund): refund/cancel rules for a partially used period and for
-  // upstream residential pool outages. No refund path is implemented.
-  refund: Object.freeze({ decided: false })
+export const RESIDENTIAL_RELAY_SKU_SIZE_DEFAULTS = Object.freeze({
+  "100G": Object.freeze({ sizeCode: "100G", defaultQuotaBytes: 100 * RESIDENTIAL_RELAY_GIB, titleZh: "100 GB", titleEn: "100 GB" }),
+  "200G": Object.freeze({ sizeCode: "200G", defaultQuotaBytes: 200 * RESIDENTIAL_RELAY_GIB, titleZh: "200 GB", titleEn: "200 GB" }),
+  "500G": Object.freeze({ sizeCode: "500G", defaultQuotaBytes: 500 * RESIDENTIAL_RELAY_GIB, titleZh: "500 GB", titleEn: "500 GB" }),
+  "1TB": Object.freeze({ sizeCode: "1TB", defaultQuotaBytes: 1024 * RESIDENTIAL_RELAY_GIB, titleZh: "1 TB", titleEn: "1 TB" })
+});
+
+// Locked commercial terms. Do not re-open without an Ethan decision.
+export const RESIDENTIAL_RELAY_PACK_TERMS = Object.freeze({
+  refunds: false,
+  unusedByteRollover: false,
+  renewals: false,
+  autoRenew: false,
+  gracePeriod: false
 });
 
 function fail(code) {
@@ -37,18 +34,63 @@ function fail(code) {
   return error;
 }
 
-// Startup gate. Default off. While the pricing/renewal/refund decisions are
-// open and order fulfillment is not wired, turning the flag on fails closed
-// instead of exposing a sellable-but-unfulfillable product.
-export function assertResidentialRelayPackStartup({ enabled, dataPackRuntimeEnabled, product = RESIDENTIAL_RELAY_PACK_CANDIDATE } = {}) {
+export function isResidentialRelaySkuSizeCode(value) {
+  return RESIDENTIAL_RELAY_SKU_SIZE_CODES.includes(value);
+}
+
+export function isResidentialRelayBuyerProtocol(value) {
+  return RESIDENTIAL_RELAY_BUYER_PROTOCOLS.includes(value);
+}
+
+// A SKU is sellable only when every commercial field is set and at least one
+// enabled upstream is bound. Terms are locked: no renewals / refunds / rollover.
+export function isResidentialRelaySkuPurchasable(sku) {
+  if (!sku || sku.enabled !== true) return false;
+  if (!isResidentialRelaySkuSizeCode(sku.sizeCode)) return false;
+  if (!isResidentialRelayBuyerProtocol(sku.buyerProtocol)) return false;
+  if (!Number.isSafeInteger(sku.baseCoinUnits) || sku.baseCoinUnits <= 0) return false;
+  if (!Number.isSafeInteger(sku.durationDays) || sku.durationDays <= 0 || sku.durationDays > 3660) return false;
+  if (!Number.isSafeInteger(sku.quotaBytes) || sku.quotaBytes <= 0) return false;
+  if (!Number.isSafeInteger(sku.enabledUpstreamCount) || sku.enabledUpstreamCount < 1) return false;
+  return true;
+}
+
+// Startup gate. Default off. Turning the flag on only requires the schema and
+// secret for the admin store; selling still goes through isResidentialRelaySkuPurchasable.
+export function assertResidentialRelayPackStartup({ enabled } = {}) {
   if (enabled !== true) return { enabled: false };
-  if (dataPackRuntimeEnabled !== true) throw fail("residential_relay_pack_requires_data_pack_runtime");
-  if (!Number.isSafeInteger(product.baseCoinUnits) || product.baseCoinUnits <= 0) throw fail("residential_relay_pack_price_undecided");
-  if (product.renewal?.decided !== true || product.refund?.decided !== true) throw fail("residential_relay_pack_terms_undecided");
   return { enabled: true };
 }
 
-export function isResidentialRelayPackPurchasable(product = RESIDENTIAL_RELAY_PACK_CANDIDATE) {
-  return product.published === true && Number.isSafeInteger(product.baseCoinUnits) && product.baseCoinUnits > 0
-    && product.renewal?.decided === true && product.refund?.decided === true;
+export function residentialRelaySkuPublicView(sku) {
+  return {
+    id: sku.id,
+    sizeCode: sku.sizeCode,
+    buyerProtocol: sku.buyerProtocol,
+    quotaBytes: sku.quotaBytes,
+    durationDays: sku.durationDays,
+    baseCoinUnits: sku.baseCoinUnits,
+    enabled: sku.enabled === true,
+    enabledUpstreamCount: sku.enabledUpstreamCount ?? 0,
+    upstreamCount: sku.upstreamCount ?? 0,
+    purchasable: isResidentialRelaySkuPurchasable(sku),
+    terms: RESIDENTIAL_RELAY_PACK_TERMS
+  };
+}
+
+export function assertResidentialRelaySkuInput(input = {}) {
+  if (!isResidentialRelaySkuSizeCode(input.sizeCode)) throw fail("invalid_sku_size");
+  if (!isResidentialRelayBuyerProtocol(input.buyerProtocol)) throw fail("invalid_buyer_protocol");
+  if (!Number.isSafeInteger(input.durationDays) || input.durationDays <= 0 || input.durationDays > 3660) throw fail("invalid_duration");
+  if (!Number.isSafeInteger(input.quotaBytes) || input.quotaBytes <= 0) throw fail("invalid_quota");
+  if (!Number.isSafeInteger(input.baseCoinUnits) || input.baseCoinUnits <= 0) throw fail("invalid_price");
+  if (input.enabled !== undefined && typeof input.enabled !== "boolean") throw fail("invalid_enabled");
+  return {
+    sizeCode: input.sizeCode,
+    buyerProtocol: input.buyerProtocol,
+    durationDays: input.durationDays,
+    quotaBytes: input.quotaBytes,
+    baseCoinUnits: input.baseCoinUnits,
+    enabled: input.enabled === true
+  };
 }
