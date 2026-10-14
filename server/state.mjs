@@ -27,6 +27,7 @@ import {
   composeCoinCommerceDataPackFulfillment,
   createCoinCommerceDataPackProductionFulfillment
 } from "./services/platform/coin-commerce-data-pack-production-binding.mjs";
+import { assertResidentialRelayPackStartup } from "./services/platform/residential-relay-pack-product.mjs";
 import { createSqliteCoinCommerceStore } from "./services/platform/coin-commerce-store.mjs";
 import { assertPlanSwitchStartupFlags } from "./services/platform/coin-commerce-plan-switch-policy.mjs";
 import { validatePlanSwitchSchema } from "./services/platform/coin-commerce-plan-switch-migrations.mjs";
@@ -1582,6 +1583,11 @@ export function createRuntimeState(options = {}) {
   const coinsWalletEnabled = envFlag(env.COINS_WALLET_ENABLED);
   const coinsCommerceEnabled = envFlag(env.COINS_COMMERCE_ENABLED);
   const dataPackRuntimeEnabled = envFlag(env.COINS_COMMERCE_DATA_PACK_RUNTIME_ENABLED);
+  // Default off. Fails closed while price/renewal/refund are undecided.
+  const residentialRelayPackEnabled = assertResidentialRelayPackStartup({
+    enabled: envFlag(env.COINS_COMMERCE_RESIDENTIAL_RELAY_PACK_ENABLED),
+    dataPackRuntimeEnabled
+  }).enabled;
   const coinsCommerceAuthorityEnabled = envFlag(
     env.COINS_COMMERCE_ACCOUNT_RESOURCE_AUTHORITY_ENABLED
   );
@@ -3288,6 +3294,7 @@ export function createRuntimeState(options = {}) {
       coinsCommerceEnabled,
       coinsCommerceAuthorityEnabled,
       coinCommerceDataPackRuntimeEnabled: dataPackRuntimeEnabled,
+      coinCommerceResidentialRelayPackEnabled: residentialRelayPackEnabled,
       coinsCommercePlanSwitchEnabled,
       walletFirstRegistrationEnabled,
       walletFirstDeferredRuntimeEnabled,
