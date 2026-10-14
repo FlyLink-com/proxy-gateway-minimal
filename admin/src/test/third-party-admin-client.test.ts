@@ -41,7 +41,61 @@ describe("third-party Admin client", () => {
 
   test.each([["vless", "VLESS"], ["hysteria2", "Hy2"], ["tuic", "TUIC"], ["ss", "SS"]])("maps %s nodes and discards raw material", async (protocol, expected) => {
     const { client } = setup({ ...SNAPSHOT, secret: "must-not-leak", items: [{ ...NODE, protocol, host: "must-not-leak", password: "must-not-leak", protectedConfig: "must-not-leak" }] });
-    expect(await client.listNodes(SOURCE_ID, signal)).toEqual({ sourceId: SOURCE_ID, revision: REVISION, enabled: false, items: [{ id: NODE_ID, sourceName: "", originalName: NODE.originalName, defaultName: NODE.defaultName, customName: null, countryCode: "JP", protocol: expected }] });
+    expect(await client.listNodes(SOURCE_ID, signal)).toEqual({ sourceId: SOURCE_ID, revision: REVISION, enabled: false, items: [{ id: NODE_ID, sourceName: "", originalName: NODE.originalName, defaultName: NODE.defaultName, customName: null, countryCode: "JP", protocol: expected, enabled: true }] });
+  });
+
+  test.each([true, false])("preserves explicit node enabled=%s while legacy nodes default to enabled", async (enabled) => {
+    const { client } = setup({ ...SNAPSHOT, items: [{ ...NODE, enabled }] });
+    expect((await client.listNodes(SOURCE_ID)).items[0].enabled).toBe(enabled);
+    expect((await setup(SNAPSHOT).client.listNodes(SOURCE_ID)).items[0].enabled).toBe(true);
+  });
+
+  test.each([null, 0, 1, "false", {}, []])("rejects invalid node enabled value %#", async (enabled) => {
+    await safeError(setup({ ...SNAPSHOT, items: [{ ...NODE, enabled }] }).client.listNodes(SOURCE_ID), "invalid");
+  });
+
+  test.each([true, false])("single-node enabled=%s sends only revision and boolean on the node endpoint", async (enabled) => {
+    const { client, fetcher } = setup({ ...SNAPSHOT, enabled: true, items: [{ ...NODE, enabled }] });
+    const view = await client.setNodeEnabled(SOURCE_ID, NODE_ID, REVISION, enabled, signal);
+    expect(view.enabled).toBe(true);
+    expect(view.items[0].enabled).toBe(enabled);
+    expect(fetcher).toHaveBeenCalledExactlyOnceWith(`${ROOT}/sources/${SOURCE_ID}/nodes/${NODE_ID}`, expect.objectContaining({
+      method: "PATCH", body: JSON.stringify({ revision: REVISION, enabled }), signal,
+      credentials: "same-origin", mode: "same-origin", cache: "no-store", redirect: "error"
+    }));
+  });
+
+  test("single-node deletion sends only revision and returns the complete fresh snapshot", async () => {
+    const { client, fetcher } = setup({ ...SNAPSHOT, enabled: true, items: [] });
+    expect((await client.deleteNode(SOURCE_ID, NODE_ID, REVISION, signal)).items).toEqual([]);
+    expect(fetcher).toHaveBeenCalledExactlyOnceWith(`${ROOT}/sources/${SOURCE_ID}/nodes/${NODE_ID}`, expect.objectContaining({
+      method: "DELETE", body: JSON.stringify({ revision: REVISION }), signal,
+      credentials: "same-origin", mode: "same-origin", cache: "no-store", redirect: "error"
+    }));
+  });
+
+  test("single-node writes reject malformed identifiers, revision and non-booleans before fetch", async () => {
+    const { client, fetcher } = setup(SNAPSHOT);
+    for (const [sourceId, nodeId, revision] of [["../source", NODE_ID, REVISION], [SOURCE_ID, "../node", REVISION], [SOURCE_ID, NODE_ID, "bad"]]) {
+      await safeError(client.setNodeEnabled(sourceId, nodeId, revision, false), "invalid");
+      await safeError(client.deleteNode(sourceId, nodeId, revision), "invalid");
+    }
+    for (const enabled of [null, undefined, "false", 0, {}, []]) {
+      await safeError(client.setNodeEnabled(SOURCE_ID, NODE_ID, REVISION, enabled as boolean), "invalid");
+    }
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
+  test.each(["setNodeEnabled", "deleteNode"] as const)("%s rejects a contradictory response about the target", async (method) => {
+    const { client } = setup({ ...SNAPSHOT, items: [{ ...NODE, enabled: true }] });
+    await safeError(method === "setNodeEnabled"
+      ? client.setNodeEnabled(SOURCE_ID, NODE_ID, REVISION, false)
+      : client.deleteNode(SOURCE_ID, NODE_ID, REVISION), "invalid");
+  });
+
+  test("node_enabled conflicts explain that the individual node must be disabled first", async () => {
+    const { client } = setup({ error: "node_enabled", detail: "must-not-leak" }, 409);
+    await safeError(client.deleteNode(SOURCE_ID, NODE_ID, REVISION), "node_enabled");
   });
 
   test("accepts the backend OTHER country code and preserves its default display name", async () => {
@@ -61,6 +115,56 @@ describe("third-party Admin client", () => {
     const nodes = [{ id: NODE_ID, customName: "🇯🇵 日本" }];
     await client.saveNodes(SOURCE_ID, { revision: REVISION, nodes }, signal);
     expect(fetcher).toHaveBeenCalledWith(`${ROOT}/sources/${SOURCE_ID}/nodes`, expect.objectContaining({ method: "PUT", body: JSON.stringify({ revision: REVISION, nodes }), signal }));
+  });
+
+  test.each(["US", "SG", "HK", "OTHER"])("preserves a valid %s country override without replacing the imported country", async (customCountryCode) => {
+    const { client } = setup({ ...SNAPSHOT, items: [{ ...NODE, customCountryCode, password: "must-not-leak" }] });
+    const view = await client.listNodes(SOURCE_ID, signal);
+    expect(view.items[0]).toMatchObject({ countryCode: "JP", customCountryCode });
+    expect(view.items[0]).not.toHaveProperty("password");
+  });
+
+  test("legacy snapshots and save requests omit the country override rather than clearing it", async () => {
+    const { client, fetcher } = setup(SNAPSHOT);
+    const view = await client.listNodes(SOURCE_ID, signal);
+    expect(view.items[0]).not.toHaveProperty("customCountryCode");
+    fetcher.mockResolvedValue(response(SNAPSHOT));
+    await client.saveNodes(SOURCE_ID, { revision: REVISION, nodes: [{ id: NODE_ID, customName: null }] }, signal);
+    const payload = JSON.parse(fetcher.mock.calls[1][1]!.body as string);
+    expect(payload.nodes[0]).toEqual({ id: NODE_ID, customName: null });
+    expect(payload.nodes[0]).not.toHaveProperty("customCountryCode");
+  });
+
+  test.each(["US", "SG", "OTHER", null])("save preserves the explicit country override value %#", async (customCountryCode) => {
+    const { client, fetcher } = setup({ ...SNAPSHOT, items: [{ ...NODE, ...(customCountryCode === null ? {} : { customCountryCode }) }] });
+    const nodes = [{ id: NODE_ID, customName: null, customCountryCode }];
+    await client.saveNodes(SOURCE_ID, { revision: REVISION, nodes }, signal);
+    expect(fetcher).toHaveBeenCalledWith(`${ROOT}/sources/${SOURCE_ID}/nodes`, expect.objectContaining({ method: "PUT", body: JSON.stringify({ revision: REVISION, nodes }), signal }));
+  });
+
+  test("an undefined country override is omitted from outgoing data", async () => {
+    const { client, fetcher } = setup(SNAPSHOT);
+    await client.saveNodes(SOURCE_ID, { revision: REVISION, nodes: [{ id: NODE_ID, customName: null, customCountryCode: undefined }] });
+    expect(JSON.parse(fetcher.mock.calls[0][1]!.body as string)).toEqual({ revision: REVISION, nodes: [{ id: NODE_ID, customName: null }] });
+  });
+
+  test.each(["us", "ZZ", "US ", " USA", "USA", "", "GLOBAL", "🇺🇸", "must-not-leak", 7, false, {}, []])("rejects invalid requested country override %# without a fetch", async (customCountryCode) => {
+    const { client, fetcher } = setup(SNAPSHOT);
+    await safeError(client.saveNodes(SOURCE_ID, {
+      revision: REVISION, nodes: [{ id: NODE_ID, customName: null, customCountryCode }]
+    } as unknown as Parameters<typeof client.saveNodes>[1]), "invalid");
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
+  test.each(["us", "ZZ", "US ", "USA", "", "GLOBAL", "🇺🇸", "must-not-leak", null, 7, false, {}, []])("rejects invalid returned country override %# with a sanitized error", async (customCountryCode) => {
+    await safeError(setup({ ...SNAPSHOT, items: [{ ...NODE, customCountryCode }] }).client.listNodes(SOURCE_ID), "invalid");
+  });
+
+  test("supporting a country override does not permit arbitrary node write fields", async () => {
+    const { client, fetcher } = setup(SNAPSHOT);
+    await safeError(client.saveNodes(SOURCE_ID, { revision: REVISION, nodes: [{ id: NODE_ID, customName: null, customCountryCode: "US", enabled: true }] } as unknown as Parameters<typeof client.saveNodes>[1]), "invalid");
+    await safeError(client.saveNodes(SOURCE_ID, { revision: REVISION, nodes: [{ id: NODE_ID, customCountryCode: "US" }] } as unknown as Parameters<typeof client.saveNodes>[1]), "invalid");
+    expect(fetcher).not.toHaveBeenCalled();
   });
 
   test("empty saved lists represent explicit logical deletion and are allowed", async () => {
@@ -88,7 +192,7 @@ describe("third-party Admin client", () => {
     await safeError(client.listSources(), code as string);
   });
 
-  test.each(["revision_conflict", "source_enabled"])("preserves fixed %s conflicts", async (code) => {
+  test.each(["revision_conflict", "source_enabled", "node_enabled"])("preserves fixed %s conflicts", async (code) => {
     const { client } = setup({ error: code, details: "must-not-leak" }, 409);
     await safeError(client.listSources(), code);
   });
@@ -213,6 +317,26 @@ describe("third-party Admin client", () => {
     await safeError(client.saveNodes(SOURCE_ID, { revision: REVISION, nodes: [
       { id: NODE_ID, customName: "Example" },
       { id: `tpnode_${"d".repeat(32)}`, customName: "example" }
+    ] }), "duplicate_node_name");
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
+  test("equal aliases with explicit different country flags are distinct final display names", async () => {
+    const { client, fetcher } = setup(SNAPSHOT);
+    const nodes = [
+      { id: NODE_ID, customName: "共同线路", customCountryCode: "US" },
+      { id: `tpnode_${"d".repeat(32)}`, customName: "共同线路", customCountryCode: "SG" }
+    ];
+    await client.saveNodes(SOURCE_ID, { revision: REVISION, nodes });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(fetcher.mock.calls[0][1]!.body).toBe(JSON.stringify({ revision: REVISION, nodes }));
+  });
+
+  test("country replacement cannot conceal a duplicate final display name", async () => {
+    const { client, fetcher } = setup(SNAPSHOT);
+    await safeError(client.saveNodes(SOURCE_ID, { revision: REVISION, nodes: [
+      { id: NODE_ID, customName: "🇯🇵 共同线路", customCountryCode: "US" },
+      { id: `tpnode_${"d".repeat(32)}`, customName: "🇸🇬 共同线路", customCountryCode: "US" }
     ] }), "duplicate_node_name");
     expect(fetcher).not.toHaveBeenCalled();
   });

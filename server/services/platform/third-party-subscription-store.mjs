@@ -7,7 +7,12 @@ import {
 } from "./third-party-subscription-migrations.mjs";
 import { parseThirdPartyYaml } from "./third-party-subscription-yaml.mjs";
 import { createThirdPartyNodeManagement } from "./third-party-subscription-node-management.mjs";
-import { safeThirdPartyDisplayLabel } from "./third-party-subscription-render.mjs";
+import {
+  safeThirdPartyDisplayLabel,
+  thirdPartyDisplayNameBase,
+  THIRD_PARTY_NAME_INDEX,
+  THIRD_PARTY_NAME_RESERVATIONS
+} from "./third-party-subscription-render.mjs";
 
 export const THIRD_PARTY_PLAN_IDS = Object.freeze([
   "monthly_basic",
@@ -367,6 +372,11 @@ function protocolServerFromStoredNode(config, row) {
   // upstream name, protocol material, identity or accounting attribution.
   delete server.adminDisplayName;
   if (Object.hasOwn(config, "adminDisplayName")) server.thirdPartyDisplayAlias = config.adminDisplayName;
+  delete server.adminCountryCode;
+  if (Object.hasOwn(config, "adminCountryCode")) server.thirdPartyCountryOverride = config.adminCountryCode;
+  delete server.adminDisabled;
+  delete server.thirdPartyNameIndex;
+  delete server.thirdPartyNameReservations;
   if (legacyDedupFingerprint) delete server.fingerprint;
   return server;
 }
@@ -508,14 +518,13 @@ export function createSqliteThirdPartySubscriptionStore(options = {}) {
   `);
   const listActiveForPlan = database.prepare(`
     select n.id, n.source_id, n.fingerprint, n.display_name, n.country_code,
-           n.region, n.protocol, n.protected_config
+           n.region, n.protocol, n.protected_config, n.active
       from platform_third_party_nodes n
       join platform_third_party_sources s on s.id = n.source_id
       join platform_third_party_source_tiers t on t.source_id = n.source_id
-     where n.active = 1
-       and s.enabled = 1
+     where s.enabled = 1
        and t.plan_id = ?
-     order by n.country_code asc, n.fingerprint asc
+     order by n.country_code asc, n.fingerprint asc, n.id asc
   `);
   const countActiveByPlan = database.prepare(`
     select t.plan_id as plan_id, count(*) as active_nodes
@@ -676,6 +685,8 @@ export function createSqliteThirdPartySubscriptionStore(options = {}) {
     if (!PLAN_ID_SET.has(planId)) return [];
     const rows = listActiveForPlan.all(planId);
     const servers = [];
+    const nameCounters = new Map();
+    let nameReservations = [];
     for (const row of rows) {
       let config;
       try {
@@ -683,8 +694,29 @@ export function createSqliteThirdPartySubscriptionStore(options = {}) {
       } catch {
         continue;
       }
-      if (!config || typeof config !== "object") continue;
-      servers.push(protocolServerFromStoredNode(config, row));
+      if (!config || typeof config !== "object" || Array.isArray(config)) continue;
+      // Paused nodes, including single-node deletion tombstones, retain their
+      // display-number slot. Older bulk deletions keep their existing behavior.
+      if (row.active !== 1 && config.adminDisabled !== true) continue;
+      const index = (nameCounters.get(row.country_code) || 0) + 1;
+      nameCounters.set(row.country_code, index);
+      if (config.adminDisabled === true) {
+        nameReservations.push(thirdPartyDisplayNameBase({
+          countryCode: row.country_code,
+          countryOverride: config.adminCountryCode,
+          index,
+          originalName: config.displayName || row.display_name,
+          managedAlias: config.adminDisplayName
+        }));
+      }
+      if (row.active !== 1 || (Object.hasOwn(config, "adminDisabled") && config.adminDisabled !== false)) continue;
+      const server = protocolServerFromStoredNode(config, row);
+      server[THIRD_PARTY_NAME_INDEX] = index;
+      if (nameReservations.length > 0) {
+        server[THIRD_PARTY_NAME_RESERVATIONS] = nameReservations;
+        nameReservations = [];
+      }
+      servers.push(server);
     }
     return servers;
   }
@@ -723,6 +755,8 @@ function createUnavailableStore(extra = {}) {
     listSourceNodes: unavailable,
     saveSourceNodes: unavailable,
     enableSourceNodes: unavailable,
+    setSourceNodeEnabled: unavailable,
+    deleteSourceNode: unavailable,
     listActiveServersForPlan: () => [],
     inspect: extra.inspect || (() => ({ ok: false, schemaState: "blocked" }))
   };

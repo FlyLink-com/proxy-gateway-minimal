@@ -1,10 +1,14 @@
 import { proxyDisplayName } from "../proxy-display-name.mjs";
+import { applyThirdPartyCountryFlag, isThirdPartyCountryCode } from "./third-party-node-country.mjs";
 import {
   findUsageBindingForTenant,
   resolveThirdPartyPlanId
 } from "./third-party-subscription-tier.mjs";
 
 export const THIRD_PARTY_NAME_MARKER = "[3P]";
+// Store-owned metadata cannot be forged by JSON/YAML node configuration.
+export const THIRD_PARTY_NAME_INDEX = Symbol("thirdPartyNameIndex");
+export const THIRD_PARTY_NAME_RESERVATIONS = Symbol("thirdPartyNameReservations");
 
 const RESERVED_NAMES = new Set([
   "DIRECT", "REJECT", "REJECT-DROP", "PASS", "COMPATIBLE",
@@ -21,7 +25,9 @@ function text(value) {
 function truncateLabel(value, limit) {
   const truncated = value.slice(0, limit);
   // Preserve well-formed Unicode when the UTF-16 bound falls inside an emoji.
-  return /[\ud800-\udbff]$/.test(truncated) ? truncated.slice(0, -1) : truncated;
+  // Truncation can expose trailing whitespace: normalize before name deduping,
+  // matching the final proxyDisplayName boundary rather than trimming later.
+  return (/[\ud800-\udbff]$/.test(truncated) ? truncated.slice(0, -1) : truncated).trimEnd();
 }
 
 // A display projection only: keep encrypted upstream names and fingerprints intact.
@@ -44,13 +50,18 @@ function safeManagedAlias(value) {
   return RESERVED_NAMES.has(alias.toUpperCase()) ? "" : alias;
 }
 
-function assignDisplayName({ countryCode, index, originalName, managedAlias, used }) {
+export function thirdPartyDisplayNameBase({ countryCode, countryOverride, index, originalName, managedAlias }) {
   const country = text(countryCode).toUpperCase() || "OTHER";
   const prefix = `${THIRD_PARTY_NAME_MARKER} ${country} ${index}`;
   const original = sanitizeOriginalName(originalName);
-  let base = safeManagedAlias(managedAlias) || (original ? `${prefix} | ${original}` : prefix);
+  const defaultBase = original ? `${prefix} | ${original}` : prefix;
+  let base = safeManagedAlias(managedAlias) || defaultBase;
+  if (isThirdPartyCountryCode(countryOverride)) base = applyThirdPartyCountryFlag(base, countryOverride) || applyThirdPartyCountryFlag(defaultBase, countryOverride);
   base = truncateLabel(base.replace(CONTROL_CHAR_PATTERN, "").trim(), 128);
-  if (!base) base = prefix;
+  return base || prefix;
+}
+
+function reserveDisplayName(base, used) {
   let name = base;
   let suffix = 2;
   while (!name || used.has(name.toUpperCase()) || RESERVED_NAMES.has(name.toUpperCase())) {
@@ -62,6 +73,10 @@ function assignDisplayName({ countryCode, index, originalName, managedAlias, use
   return name;
 }
 
+function assignDisplayName({ used, ...inputs }) {
+  return reserveDisplayName(thirdPartyDisplayNameBase(inputs), used);
+}
+
 export function decorateThirdPartyServers(nodes, existingServers = []) {
   const used = new Set(
     (existingServers || []).map((server, index) => proxyDisplayName(server, index).toUpperCase())
@@ -69,18 +84,37 @@ export function decorateThirdPartyServers(nodes, existingServers = []) {
   const counters = new Map();
   const decorated = [];
   for (const node of nodes || []) {
+    const {
+      [THIRD_PARTY_NAME_INDEX]: storedIndex,
+      [THIRD_PARTY_NAME_RESERVATIONS]: reservations,
+      thirdPartyNameIndex: _untrustedIndex,
+      thirdPartyNameReservations: _untrustedReservations,
+      ...server
+    } = node;
+    // Reserve only safe display bases from earlier paused/deleted rows. No
+    // upstream material is required, and source order preserves collision suffixes.
+    if (Array.isArray(reservations)) {
+      for (const base of reservations) {
+        if (typeof base === "string" && base && safeThirdPartyDisplayLabel(base) === base) {
+          reserveDisplayName(base, used);
+        }
+      }
+    }
+    const countryOverride = isThirdPartyCountryCode(node.thirdPartyCountryOverride) ? node.thirdPartyCountryOverride : null;
     const country = text(node.countryCode || node.region).toUpperCase() || "OTHER";
-    const next = (counters.get(country) || 0) + 1;
+    const sequential = (counters.get(country) || 0) + 1;
+    const next = Number.isSafeInteger(storedIndex) && storedIndex >= sequential ? storedIndex : sequential;
     counters.set(country, next);
     const subscriptionDisplayName = assignDisplayName({
       countryCode: country,
+      countryOverride,
       index: next,
       originalName: node.displayName || node.name,
       managedAlias: node.thirdPartyDisplayAlias,
       used
     });
     decorated.push({
-      ...node,
+      ...server,
       thirdParty: true,
       autoEligible: false,
       qualityClass: "",

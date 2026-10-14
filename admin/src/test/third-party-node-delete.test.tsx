@@ -64,7 +64,7 @@ describe('third-party node local deletion', () => {
     const confirmation = within(confirmationRegion);
     const row = screen.getByRole('row', { name: new RegExp(nodes[1].originalName) });
     expect(confirmationRegion.closest('tr')).toBe(row);
-    expect(within(row).getAllByRole('cell')[3].contains(confirmationRegion)).toBe(true);
+    expect(within(row).getAllByRole('cell')[4].contains(confirmationRegion)).toBe(true);
     expect(confirmation.getByRole('button', { name: '确认删除' }).textContent).toBe('删除');
     expect(confirmation.getByRole('button', { name: '取消删除' }).textContent).toBe('取消');
     expect(confirmation.queryByRole('heading')).toBeNull();

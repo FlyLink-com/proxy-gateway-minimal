@@ -30,6 +30,7 @@
     "server/middleware",
     "server/routes",
     "server/services",
+    "shared/third-party-country-codes.json",
     "agent",
     "ops",
     "public",

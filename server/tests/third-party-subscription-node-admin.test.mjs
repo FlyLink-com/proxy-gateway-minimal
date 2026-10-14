@@ -89,7 +89,7 @@ function publicNodes(result) {
   assert.deepEqual(Object.keys(result.body).sort(), ["enabled", "items", "revision", "sourceId"]);
   assert.match(result.body.revision, /^[0-9a-f]{64}$/);
   for (const node of result.body.items) {
-    assert.deepEqual(Object.keys(node).sort(), ["countryCode", "customName", "defaultName", "displayName", "id", "originalName", "protocol"]);
+    assert.deepEqual(Object.keys(node).sort(), ["countryCode", "customName", "defaultName", "displayName", "enabled", "id", "originalName", "protocol"]);
     assert.match(node.id, /^tpnode_[0-9a-f]{32}$/);
   }
 }
@@ -97,6 +97,140 @@ function publicNodes(result) {
 function saveBody(result) {
   return { revision: result.body.revision, nodes: result.body.items.map(({ id, customName }) => ({ id, customName })) };
 }
+
+test("single-node HTTP pause, resume and delete work while source is enabled with exact revisions", async (t) => {
+  const f = await fixture(t);
+  f.store.patchSource(f.source.id, { enabled: true });
+  let listed = await f.request(f.nodesPath);
+  const target = listed.body.items[0];
+  const path = `${f.nodesPath}/${target.id}`;
+  const rejected = await f.request(path, { method: "DELETE", body: { revision: listed.body.revision } });
+  assert.equal(rejected.response.status, 409); assert.deepEqual(rejected.body, { error: "node_enabled" }); noStore(rejected);
+  const oldRevision = listed.body.revision;
+  for (const enabled of [false, true, false]) {
+    listed = await f.request(path, { method: "PATCH", body: { revision: listed.body.revision, enabled } });
+    publicNodes(listed);
+    assert.equal(listed.body.enabled, true);
+    assert.equal(listed.body.items.find(node => node.id === target.id).enabled, enabled);
+    assert.equal(f.store.listActiveServersForPlan("monthly_basic").length, enabled ? 2 : 1);
+  }
+  const stale = await f.request(path, { method: "DELETE", body: { revision: oldRevision } });
+  assert.equal(stale.response.status, 409); assert.deepEqual(stale.body, { error: "revision_conflict" }); noStore(stale);
+  const deleted = await f.request(path, { method: "DELETE", body: { revision: listed.body.revision } });
+  publicNodes(deleted);
+  assert.equal(deleted.body.enabled, true);
+  assert.deepEqual(deleted.body.items, listed.body.items.filter(node => node.id !== target.id));
+  const restored = await f.request(path, { method: "PATCH", body: { revision: deleted.body.revision, enabled: true } });
+  assert.equal(restored.response.status, 404); assert.deepEqual(restored.body, { error: "not_found" }); noStore(restored);
+  assert.equal(f.network.calls, 0);
+});
+
+test("single-node mutations share existing authentication, CIDR, feature and role gates", async (t) => {
+  for (const setup of [
+    { options: {}, token: null, status: 401 },
+    { options: {}, token: "wrong-token", status: 401 },
+    { options: { cidrs: ["192.0.2.5/32"] }, status: 403 },
+    { options: { enabled: false }, status: 503 },
+    { options: {}, invalidRole: true, status: 403 }
+  ]) {
+    const f = await fixture(t, setup.options);
+    if (setup.invalidRole) f.state.platform = { adminAuthRoutesEnabled: true, adminAuth: {} };
+    const view = f.store.listSourceNodes(f.source.id);
+    for (const method of ["PATCH", "DELETE"]) {
+      const result = await f.request(`${f.nodesPath}/${view.items[0].id}`, { method, token: setup.token,
+        body: { revision: view.revision, ...(method === "PATCH" ? { enabled: false } : {}) } });
+      assert.equal(result.response.status, setup.status); noStore(result);
+    }
+    assert.deepEqual(f.store.listSourceNodes(f.source.id), view);
+  }
+});
+
+test("single-node routes strictly validate bodies and both identifiers before dispatch", async (t) => {
+  const f = await fixture(t);
+  const view = f.store.listSourceNodes(f.source.id);
+  const path = `${f.nodesPath}/${view.items[0].id}`;
+  let writes = 0;
+  f.state.thirdPartySubscriptions.store = {
+    setSourceNodeEnabled() { writes += 1; }, deleteSourceNode() { writes += 1; }
+  };
+  for (const [method, bodies] of [
+    ["PATCH", [null, [], {}, { revision: REVISION }, { revision: REVISION, enabled: "false" },
+      { revision: REVISION, enabled: null }, { revision: REVISION, enabled: 0 },
+      { revision: "bad", enabled: false }, { revision: REVISION, enabled: false, nodes: [] }]],
+    ["DELETE", [null, [], {}, { revision: "bad" }, { revision: REVISION, enabled: false }, { revision: REVISION, nodeId: view.items[0].id }]]
+  ]) {
+    for (const body of bodies) {
+      const result = await f.request(path, { method, body });
+      assert.equal(result.response.status, 400); assert.deepEqual(result.body, { error: "invalid_input" }); noStore(result);
+    }
+    for (const badPath of [`${f.nodesPath}/bad`, `/sources/bad/nodes/${view.items[0].id}`]) {
+      const result = await f.request(badPath, { method, body: { revision: REVISION, ...(method === "PATCH" ? { enabled: false } : {}) } });
+      assert.equal(result.response.status, 404); assert.deepEqual(result.body, { error: "not_found" }); noStore(result);
+    }
+    const malformed = await f.request(path, { method, raw: true, body: `{"revision":${PRIVATE_MARKER}}` });
+    assert.equal(malformed.response.status, 400); noStore(malformed);
+  }
+  assert.equal(writes, 0);
+});
+
+test("single-node routes cannot mutate another source and reject one concurrent stale editor", async (t) => {
+  const f = await fixture(t);
+  const other = f.store.createInlineSource({ name: "Other", yamlContent: YAML, tiers: ["yearly"] });
+  const view = f.store.listSourceNodes(f.source.id);
+  const wrongId = f.store.listSourceNodes(other.id).items[0].id;
+  for (const method of ["PATCH", "DELETE"]) {
+    const result = await f.request(`${f.nodesPath}/${wrongId}`, { method,
+      body: { revision: view.revision, ...(method === "PATCH" ? { enabled: false } : {}) } });
+    assert.equal(result.response.status, 404); assert.deepEqual(result.body, { error: "not_found" }); noStore(result);
+  }
+  const results = await Promise.all(view.items.map(node => f.request(`${f.nodesPath}/${node.id}`, {
+    method: "PATCH", body: { revision: view.revision, enabled: false }
+  })));
+  assert.deepEqual(results.map(result => result.response.status).sort(), [200, 409]);
+  for (const result of results) noStore(result);
+});
+
+test("single-node route store failures expose only fixed public codes", async (t) => {
+  const f = await fixture(t);
+  const view = f.store.listSourceNodes(f.source.id);
+  for (const [code, status] of [["protected_value_invalid", 400], ["node_enabled", 409], [PRIVATE_MARKER, 503]]) {
+    const fail = () => { throw Object.assign(new Error(PRIVATE_MARKER), { code }); };
+    f.state.thirdPartySubscriptions.store = { setSourceNodeEnabled: fail, deleteSourceNode: fail };
+    for (const method of ["PATCH", "DELETE"]) {
+      const result = await f.request(`${f.nodesPath}/${view.items[0].id}`, { method,
+        body: { revision: view.revision, ...(method === "PATCH" ? { enabled: false } : {}) } });
+      assert.equal(result.response.status, status);
+      assert.deepEqual(result.body, { error: code === PRIVATE_MARKER ? "third_party_unavailable" : code });
+      noStore(result);
+    }
+  }
+});
+
+test("country override HTTP contract remains authenticated, uncached and whitelist-only", async (t) => {
+  const f = await fixture(t);
+  let listed = await f.request(f.nodesPath);
+  const request = saveBody(listed); request.nodes[0].customCountryCode = "SG";
+  const denied = await f.request(f.nodesPath, { method: "PUT", body: request, token: null });
+  assert.equal(denied.response.status, 401); noStore(denied);
+  const saved = await f.request(f.nodesPath, { method: "PUT", body: request });
+  assert.equal(saved.response.status, 200); noStore(saved);
+  assert.equal(saved.body.items[0].customCountryCode, "SG");
+  assert.deepEqual(Object.keys(saved.body.items[0]).sort(), ["countryCode", "customCountryCode", "customName", "defaultName", "displayName", "enabled", "id", "originalName", "protocol"]);
+  assert.equal(saved.body.items[0].countryCode, listed.body.items[0].countryCode);
+  listed = saved;
+  for (const country of ["ZZ", "sg", 3, {}, []]) {
+    const body = saveBody(listed); body.nodes[0].customCountryCode = country;
+    const bad = await f.request(f.nodesPath, { method: "PUT", body });
+    assert.equal(bad.response.status, 400); assert.deepEqual(bad.body, { error: "invalid_input" }); noStore(bad);
+  }
+  const poisoned = saveBody(listed); poisoned.nodes[0].adminCountryCode = "US";
+  assert.equal((await f.request(f.nodesPath, { method: "PUT", body: poisoned })).response.status, 400);
+  const unchanged = await f.request(f.nodesPath, { method: "PUT", body: saveBody(listed) });
+  assert.equal(unchanged.body.items[0].customCountryCode, "SG");
+  const reset = saveBody(unchanged); reset.nodes[0].customCountryCode = null;
+  publicNodes(await f.request(f.nodesPath, { method: "PUT", body: reset }));
+  assert.equal(f.network.calls, 0);
+});
 
 test("node admin read/save/enable require real application auth and stay uncached", async (t) => {
   const f = await fixture(t);

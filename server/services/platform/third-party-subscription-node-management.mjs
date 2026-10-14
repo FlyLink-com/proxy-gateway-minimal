@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { inspectThirdPartySubscriptionSchema } from "./third-party-subscription-migrations.mjs";
 import { decorateThirdPartyServers, safeThirdPartyDisplayLabel } from "./third-party-subscription-render.mjs";
+import { applyThirdPartyCountryFlag, isThirdPartyCountryCode } from "./third-party-node-country.mjs";
 
 const PROTECTED_PREFIX = "v2:aes-256-gcm:";
 const UNSAFE = /[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u202a-\u202e\u2060-\u206f]/u;
@@ -10,7 +11,7 @@ const RESERVED = new Set([
 ]);
 const CODES = new Set([
   "not_found", "invalid_input", "invalid_node_name", "duplicate_node_name",
-  "revision_conflict", "source_enabled", "empty_source", "third_party_unavailable",
+  "revision_conflict", "source_enabled", "node_enabled", "empty_source", "third_party_unavailable",
   "protected_value_invalid", "unsupported_source_kind"
 ]);
 
@@ -20,10 +21,16 @@ function failure(code) {
   return error;
 }
 
-function objectWithKeys(value, keys) {
+function objectWithKeys(value, keys, optionalKeys = []) {
   if (!value || typeof value !== "object" || Array.isArray(value)
-    || Object.keys(value).length !== keys.length
+    || Object.keys(value).some(key => !keys.includes(key) && !optionalKeys.includes(key))
     || !keys.every((key) => Object.hasOwn(value, key))) throw failure("invalid_input");
+}
+
+function normalizedCountry(value) {
+  if (value === null) return null;
+  if (!isThirdPartyCountryCode(value)) throw failure("invalid_input");
+  return value;
 }
 
 function normalizedAlias(value) {
@@ -127,34 +134,58 @@ export function createThirdPartyNodeManagement({ database, secretProtector, nowF
     try { config = JSON.parse(unprotect(row.protected_config)); } catch { throw failure("protected_value_invalid"); }
     if (!config || typeof config !== "object" || Array.isArray(config)
       || typeof (config.name || config.displayName) !== "string") throw failure("protected_value_invalid");
+    if (Object.hasOwn(config, "adminDisabled") && typeof config.adminDisabled !== "boolean") {
+      throw failure("protected_value_invalid");
+    }
     return config;
   }
 
   function projection(snapshot) {
     const active = snapshot.nodes.filter((row) => row.active === 1);
     const configs = active.map(configOf);
+    const configById = new Map(active.map((row, index) => [row.id, configs[index]]));
+    // Single-node deletion retains a paused tombstone's numbering slot without
+    // restoring the node or rewriting any surviving node's configuration.
+    const namingRows = snapshot.nodes.filter((row) => {
+      if (row.active === 1) return true;
+      try {
+        const config = configOf(row);
+        if (config.adminDisabled !== true) return false;
+        configById.set(row.id, config);
+        return true;
+      } catch { return false; }
+    });
     // Pass only default-name inputs, never the admin alias or credential fields.
-    const defaults = decorateThirdPartyServers(active.map((row, index) => ({
+    const defaults = decorateThirdPartyServers(namingRows.map((row) => ({
       countryCode: row.country_code,
-      name: configs[index].name,
-      displayName: configs[index].displayName
+      name: configById.get(row.id).name,
+      displayName: configById.get(row.id).displayName
     })));
+    const defaultById = new Map(namingRows.map((row, index) => [row.id, defaults[index].subscriptionDisplayName]));
     const used = new Set();
     const items = active.map((row, index) => {
       const config = configs[index];
       const customName = Object.hasOwn(config, "adminDisplayName") ? normalizedAlias(config.adminDisplayName) : null;
-      const defaultName = defaults[index].subscriptionDisplayName;
-      const displayName = customName ?? defaultName;
+      const hasCountry = Object.hasOwn(config, "adminCountryCode");
+      if (hasCountry && !isThirdPartyCountryCode(config.adminCountryCode)) throw failure("protected_value_invalid");
+      const customCountryCode = hasCountry ? config.adminCountryCode : null;
+      const defaultName = defaultById.get(row.id);
+      const displayName = hasCountry
+        ? safeThirdPartyDisplayLabel(applyThirdPartyCountryFlag(customName ?? defaultName, customCountryCode))
+        : customName ?? defaultName;
+      if (!displayName || RESERVED.has(displayName.toUpperCase())) throw failure("invalid_node_name");
       const key = displayName.toLowerCase();
       if (used.has(key)) throw failure("duplicate_node_name");
       used.add(key);
       return {
         id: row.id,
+        enabled: config.adminDisabled !== true,
         originalName: safeThirdPartyDisplayLabel(config.name || config.displayName) || "未命名节点",
         defaultName,
         customName,
         displayName,
         countryCode: row.country_code,
+        ...(hasCountry ? { customCountryCode } : {}),
         protocol: row.protocol
       };
     });
@@ -189,9 +220,12 @@ export function createThirdPartyNodeManagement({ database, secretProtector, nowF
     if (!Array.isArray(input.nodes) || input.nodes.length > 256) throw failure("invalid_input");
     const retained = new Map();
     for (const node of input.nodes) {
-      objectWithKeys(node, ["id", "customName"]);
+      objectWithKeys(node, ["id", "customName"], ["customCountryCode"]);
       if (typeof node.id !== "string" || !node.id || node.id.length > 128 || retained.has(node.id)) throw failure("invalid_input");
-      retained.set(node.id, normalizedAlias(node.customName));
+      retained.set(node.id, {
+        alias: normalizedAlias(node.customName),
+        ...(Object.hasOwn(node, "customCountryCode") ? { country: normalizedCountry(node.customCountryCode) } : {})
+      });
     }
     return database.transaction(() => {
       const snapshot = readSnapshot(sourceId);
@@ -205,9 +239,14 @@ export function createThirdPartyNodeManagement({ database, secretProtector, nowF
         if (row.active !== 1) return row;
         const config = configOf(row);
         if (!retained.has(row.id)) return { ...row, active: 0 };
-        const alias = retained.get(row.id);
+        const retainedNode = retained.get(row.id);
+        const alias = retainedNode.alias;
         if (alias === null) delete config.adminDisplayName;
         else config.adminDisplayName = alias;
+        if (Object.hasOwn(retainedNode, "country")) {
+          if (retainedNode.country === null) delete config.adminCountryCode;
+          else config.adminCountryCode = retainedNode.country;
+        }
         return { ...row, protected_config: protect(config) };
       }) };
       projection(candidate);
@@ -235,5 +274,54 @@ export function createThirdPartyNodeManagement({ database, secretProtector, nowF
     }).immediate();
   });
 
-  return { listSourceNodes, saveSourceNodes, enableSourceNodes };
+  function currentNode(snapshot, nodeId, revision) {
+    if (revisionOf(snapshot) !== revision) throw failure("revision_conflict");
+    const row = snapshot.nodes.find(node => node.id === nodeId && node.active === 1);
+    if (!row) throw failure("not_found");
+    return row;
+  }
+
+  const setSourceNodeEnabled = guarded((sourceId, nodeId, input) => {
+    validateSourceId(sourceId);
+    validateSourceId(nodeId);
+    objectWithKeys(input, ["revision", "enabled"]);
+    validateRevision(input.revision);
+    if (typeof input.enabled !== "boolean") throw failure("invalid_input");
+    return database.transaction(() => {
+      const snapshot = readSnapshot(sourceId);
+      const row = currentNode(snapshot, nodeId, input.revision);
+      const view = projection(snapshot);
+      const config = configOf(row);
+      if ((config.adminDisabled !== true) === input.enabled) return view;
+      config.adminDisabled = !input.enabled;
+      const protectedConfig = protect(config);
+      const candidate = { ...snapshot, nodes: snapshot.nodes.map(node => node.id === nodeId
+        ? { ...node, protected_config: protectedConfig } : node) };
+      projection(candidate);
+      updateConfig.run(protectedConfig, sourceId, nodeId);
+      updateSourceTime.run(timestamp(), sourceId);
+      return projection(readSnapshot(sourceId));
+    }).immediate();
+  });
+
+  const deleteSourceNode = guarded((sourceId, nodeId, input) => {
+    validateSourceId(sourceId);
+    validateSourceId(nodeId);
+    objectWithKeys(input, ["revision"]);
+    validateRevision(input.revision);
+    return database.transaction(() => {
+      const snapshot = readSnapshot(sourceId);
+      const row = currentNode(snapshot, nodeId, input.revision);
+      projection(snapshot);
+      if (configOf(row).adminDisabled !== true) throw failure("node_enabled");
+      const candidate = { ...snapshot, nodes: snapshot.nodes.map(node => node.id === nodeId
+        ? { ...node, active: 0 } : node) };
+      projection(candidate);
+      deactivateNode.run(sourceId, nodeId);
+      updateSourceTime.run(timestamp(), sourceId);
+      return projection(readSnapshot(sourceId));
+    }).immediate();
+  });
+
+  return { listSourceNodes, saveSourceNodes, enableSourceNodes, setSourceNodeEnabled, deleteSourceNode };
 }
