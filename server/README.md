@@ -53,8 +53,9 @@ remain errors. This does not re-enable an expired subscription or push an update
 to a client's cached configuration. See [expiry notice and flag contract](../docs/SUBSCRIPTION_EXPIRY_NOTICE.md).
 
 Legacy monthly/yearly third-party distribution additionally requires verified
-current entitlement evidence and exact supported quotas; missing or revoked
-bindings never imply eligibility. See [legacy subscription eligibility](../docs/THIRD_PARTY_LEGACY_SUBSCRIPTION_ELIGIBILITY.md)
+current entitlement evidence and an exact supported quota, including the
+approved legacy numeric-zero tier mapping (not an unlimited-traffic grant).
+Missing or revoked bindings never imply eligibility. See [legacy subscription eligibility](../docs/THIRD_PARTY_LEGACY_SUBSCRIPTION_ELIGIBILITY.md)
 for source behavior, tests and the separate production boundary.
 
 ## Release identity
