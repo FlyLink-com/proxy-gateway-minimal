@@ -90,6 +90,44 @@ describe('third-party node confirmed-server bulk selection', () => {
     expect(controls.onDeleteNodes).toHaveBeenCalledExactlyOnceWith(['bulk-a', 'bulk-b']);
   });
 
+  it('allows selected enabled nodes only when the owner explicitly supports confirmed pause-before-delete', () => {
+    const controls = persistence({ bulkPauseBeforeDelete: true });
+    render(<ThirdPartyNodeNamesPage initialNodes={NODES} persistence={controls} />);
+    expect(remove().disabled).toBe(true);
+    fireEvent.click(checkbox('选择 节点甲'));
+    fireEvent.click(checkbox('选择 节点丙'));
+    expect(remove().disabled).toBe(false);
+    expect(remove().title).toContain('确认后先暂停');
+    expect(screen.getByText(/选中节点中有 1 个仍启用.*确认后先暂停.*未选中节点不变/)).toBeTruthy();
+    fireEvent.click(remove());
+    expect(controls.onDeleteNodes).toHaveBeenCalledExactlyOnceWith(['bulk-a', 'bulk-c']);
+    expect(Object.isFrozen(vi.mocked(controls.onDeleteNodes).mock.calls[0][0])).toBe(true);
+    expect(controls.onSetNodeEnabled).not.toHaveBeenCalled();
+    expect(controls.onDeleteNode).not.toHaveBeenCalled();
+    expect(screen.getAllByRole('row')).toHaveLength(4);
+  });
+
+  it.each(['busy', 'placeholder', 'editing', 'invalid', 'unsaved', 'single-delete'])('pause-before-delete cannot bypass the %s guard', reason => {
+    const controls = persistence({ enabled: false, bulkPauseBeforeDelete: true });
+    const view = render(<ThirdPartyNodeNamesPage initialNodes={NODES} persistence={controls} />);
+    fireEvent.click(checkbox('选择 节点丙'));
+    if (reason === 'busy' || reason === 'placeholder') {
+      view.rerender(<ThirdPartyNodeNamesPage initialNodes={NODES} persistence={{ ...controls,
+        ...(reason === 'busy' ? { busy: true } : { placeholder: { title: '未就绪', description: '合成状态' } }) }} />);
+    } else if (reason === 'single-delete') {
+      fireEvent.click(screen.getByRole('button', { name: '删除 节点甲' }));
+    } else {
+      fireEvent.click(screen.getByRole('button', { name: '编辑 节点乙' }));
+      if (reason !== 'editing') fireEvent.change(screen.getByRole('textbox', { name: '对外显示名称' }), { target: { value: reason === 'invalid' ? '默认甲' : '未保存名称' } });
+      if (reason === 'unsaved') fireEvent.click(screen.getByRole('button', { name: '应用到待保存列表' }));
+    }
+    expect(remove().disabled).toBe(true);
+    expect(checkAll().disabled).toBe(true);
+    fireEvent.click(remove());
+    expect(controls.onDeleteNodes).not.toHaveBeenCalled();
+    expect(controls.onSetNodeEnabled).not.toHaveBeenCalled();
+  });
+
   it.each([true, false])('allows only paused-node deletion whether source enabled=%s', enabled => {
     const controls = persistence({ enabled });
     render(<ThirdPartyNodeNamesPage initialNodes={NODES.slice(0, 2)} persistence={controls} />);
@@ -160,5 +198,150 @@ describe('third-party node confirmed-server bulk selection', () => {
     fireEvent.change(screen.getByRole('textbox', { name: '搜索节点' }), { target: { value: '不存在' } });
     expect(checkAll().disabled).toBe(true);
     expect(remove().disabled).toBe(true);
+  });
+});
+
+describe('third-party selected-node lifecycle toolbar', () => {
+  const enable = () => screen.getByRole('button', { name: '启用选中节点' }) as HTMLButtonElement;
+  const pause = () => screen.getByRole('button', { name: '暂停选中节点' }) as HTMLButtonElement;
+  function controls(overrides: Partial<ThirdPartyNodePersistence> = {}) {
+    return persistence({ selectionActionsOnly: true, bulkPauseBeforeDelete: true, onDisable: vi.fn(), onSetNodesEnabled: vi.fn(), ...overrides });
+  }
+
+  it('merges lifecycle actions into three icon controls and removes row/source actions', () => {
+    render(<ThirdPartyNodeNamesPage initialNodes={NODES} persistence={controls()} />);
+    const toolbar = screen.getByRole('group', { name: '节点列表操作' });
+    expect(within(toolbar).getByRole('button', { name: '启用选中节点' })).toBe(enable());
+    expect(enable().querySelector('svg.lucide-play')).toBeTruthy();
+    expect(pause().querySelector('svg.lucide-pause')).toBeTruthy();
+    expect(remove().querySelector('svg.lucide-trash2')).toBeTruthy();
+    expect(enable().classList.contains('tp-names-cancel-soft')).toBe(true);
+    expect(pause().classList.contains('tp-names-danger-soft')).toBe(true);
+    for (const action of [enable(), pause(), remove()]) {
+      expect(action.disabled).toBe(true);
+      expect(action.textContent).toBe('');
+      expect(action.title).not.toBe('');
+    }
+    expect(screen.queryByRole('button', { name: '暂停来源' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '启用节点列表' })).toBeNull();
+    for (const node of NODES) {
+      expect(screen.queryByRole('button', { name: `删除 ${node.originalName}` })).toBeNull();
+      expect(screen.queryByRole('button', { name: `停用节点 ${node.originalName}` })).toBeNull();
+      expect(screen.queryByRole('button', { name: `启用节点 ${node.originalName}` })).toBeNull();
+      expect(screen.getByRole('button', { name: `编辑 ${node.originalName}` })).toBeTruthy();
+      expect(screen.getByRole('combobox', { name: `国家/地区 ${node.originalName}` })).toBeTruthy();
+    }
+    expect(screen.queryByRole('region', { name: '删除节点确认' })).toBeNull();
+  });
+
+  it('supports one selected paused node without calling source or row callbacks', () => {
+    const owner = controls();
+    render(<ThirdPartyNodeNamesPage initialNodes={NODES} persistence={owner} />);
+    fireEvent.click(checkbox('选择 节点甲'));
+    expect(enable().disabled).toBe(false);
+    expect(pause().disabled).toBe(true);
+    fireEvent.click(enable());
+    expect(owner.onSetNodesEnabled).toHaveBeenCalledExactlyOnceWith(['bulk-a'], true);
+    expect(Object.isFrozen(vi.mocked(owner.onSetNodesEnabled!).mock.calls[0][0])).toBe(true);
+    expect(owner.onSetNodeEnabled).not.toHaveBeenCalled();
+    expect(owner.onEnable).not.toHaveBeenCalled();
+    expect(owner.onDisable).not.toHaveBeenCalled();
+    expect(owner.onDeleteNode).not.toHaveBeenCalled();
+    expect(screen.getAllByRole('row')).toHaveLength(4);
+  });
+
+  it('pauses one selected enabled node and disables actions again after cancelling selection', () => {
+    const owner = controls();
+    render(<ThirdPartyNodeNamesPage initialNodes={NODES} persistence={owner} />);
+    fireEvent.click(checkbox('选择 节点丙'));
+    expect(enable().disabled).toBe(true);
+    expect(pause().disabled).toBe(false);
+    fireEvent.click(pause());
+    expect(owner.onSetNodesEnabled).toHaveBeenCalledExactlyOnceWith(['bulk-c'], false);
+    expect(screen.getByLabelText('节点状态 节点丙').textContent).toBe('分发中');
+    fireEvent.click(screen.getByRole('button', { name: '取消选择' }));
+    for (const action of [enable(), pause(), remove()]) { expect(action.disabled).toBe(true); fireEvent.click(action); }
+    expect(owner.onSetNodesEnabled).toHaveBeenCalledTimes(1);
+    expect(owner.onDeleteNodes).not.toHaveBeenCalled();
+  });
+
+  it.each([true, false])('acts only on selected nodes needing the requested change while source enabled=%s', enabled => {
+    const owner = controls({ enabled });
+    render(<ThirdPartyNodeNamesPage initialNodes={NODES} persistence={owner} />);
+    fireEvent.click(checkAll());
+    expect(enable().disabled).toBe(false);
+    expect(pause().disabled).toBe(false);
+    fireEvent.click(enable());
+    expect(owner.onSetNodesEnabled).toHaveBeenNthCalledWith(1, ['bulk-a', 'bulk-b'], true);
+    fireEvent.click(pause());
+    expect(owner.onSetNodesEnabled).toHaveBeenNthCalledWith(2, ['bulk-c'], false);
+    fireEvent.click(remove());
+    expect(owner.onDeleteNodes).toHaveBeenCalledExactlyOnceWith(['bulk-a', 'bulk-b', 'bulk-c']);
+    expect(owner.onSetNodeEnabled).not.toHaveBeenCalled();
+    expect(owner.onEnable).not.toHaveBeenCalled();
+    expect(owner.onDisable).not.toHaveBeenCalled();
+    expect(owner.onDeleteNode).not.toHaveBeenCalled();
+    expect(NODES.map(node => node.enabled)).toEqual([false, false, true]);
+  });
+
+  it('does not carry selected targets across filtering or revision remounts', () => {
+    const owner = controls();
+    const view = render(<ThirdPartyNodeNamesPage key="one" initialNodes={NODES} persistence={owner} />);
+    fireEvent.click(checkAll());
+    fireEvent.change(screen.getByRole('combobox', { name: '协议筛选' }), { target: { value: 'Hy2' } });
+    expect(enable().disabled).toBe(true);
+    expect(pause().disabled).toBe(true);
+    fireEvent.click(checkAll());
+    fireEvent.click(enable());
+    expect(owner.onSetNodesEnabled).toHaveBeenCalledExactlyOnceWith(['bulk-b'], true);
+    view.rerender(<ThirdPartyNodeNamesPage key="two" initialNodes={NODES} persistence={owner} />);
+    expect(enable().disabled).toBe(true);
+    expect(pause().disabled).toBe(true);
+    expect(remove().disabled).toBe(true);
+  });
+
+  it.each(['busy', 'placeholder', 'editing', 'invalid', 'unsaved'])('blocks all selection actions in %s state', reason => {
+    const owner = controls({ enabled: false });
+    const view = render(<ThirdPartyNodeNamesPage initialNodes={NODES} persistence={owner} />);
+    fireEvent.click(checkAll());
+    if (reason === 'busy' || reason === 'placeholder') {
+      view.rerender(<ThirdPartyNodeNamesPage initialNodes={NODES} persistence={{ ...owner,
+        ...(reason === 'busy' ? { busy: true } : { placeholder: { title: '未就绪', description: '合成状态' } }) }} />);
+    } else {
+      fireEvent.click(screen.getByRole('button', { name: '编辑 节点乙' }));
+      if (reason !== 'editing') fireEvent.change(screen.getByRole('textbox', { name: '对外显示名称' }), { target: { value: reason === 'invalid' ? '默认甲' : '未保存名称' } });
+      if (reason === 'unsaved') fireEvent.click(screen.getByRole('button', { name: '应用到待保存列表' }));
+    }
+    for (const action of [enable(), pause(), remove()]) { expect(action.disabled).toBe(true); fireEvent.click(action); }
+    expect(owner.onSetNodesEnabled).not.toHaveBeenCalled();
+    expect(owner.onDeleteNodes).not.toHaveBeenCalled();
+    expect(owner.onSetNodeEnabled).not.toHaveBeenCalled();
+    expect(owner.onEnable).not.toHaveBeenCalled();
+    expect(owner.onDisable).not.toHaveBeenCalled();
+  });
+
+  it('disables missing capabilities rather than falling back to source or row operations', () => {
+    const owner = controls({ onSetNodesEnabled: undefined });
+    render(<ThirdPartyNodeNamesPage initialNodes={NODES} persistence={owner} />);
+    fireEvent.click(checkAll());
+    expect(enable().disabled).toBe(true);
+    expect(pause().disabled).toBe(true);
+    expect(remove().disabled).toBe(false);
+    fireEvent.click(enable());
+    fireEvent.click(pause());
+    expect(owner.onSetNodeEnabled).not.toHaveBeenCalled();
+    expect(owner.onEnable).not.toHaveBeenCalled();
+    expect(owner.onDisable).not.toHaveBeenCalled();
+  });
+
+  it('supports selection with lifecycle-only capability and keeps delete disabled', () => {
+    const owner = controls({ onDeleteNodes: undefined });
+    render(<ThirdPartyNodeNamesPage initialNodes={NODES} persistence={owner} />);
+    fireEvent.click(checkAll());
+    expect(enable().disabled).toBe(false);
+    expect(pause().disabled).toBe(false);
+    expect(remove().disabled).toBe(true);
+    fireEvent.click(remove());
+    expect(owner.onDeleteNode).not.toHaveBeenCalled();
   });
 });

@@ -47,7 +47,11 @@ export class ThirdPartyAdminError extends Error {
   }
 }
 
-export type ThirdPartySource = { id: string; name: string; enabled: boolean; tiers: string[]; sourceKind: string };
+export type ThirdPartySource = {
+  id: string; name: string; enabled: boolean; tiers: string[]; sourceKind: string;
+  // Retained nodes, including individually paused nodes; absent means unknown.
+  nodeCount?: number;
+};
 export type ThirdPartyNodeSnapshot = { sourceId: string; revision: string; enabled: boolean; items: ThirdPartyNode[] };
 export type ThirdPartyNodeSave = { revision: string; nodes: Array<{ id: string; customName: string | null; customCountryCode?: string | null }> };
 export type ThirdPartyYamlImport = { name: string; yamlContent: string; tiers: string[] };
@@ -105,7 +109,18 @@ function tiers(value: unknown, code: ThirdPartyAdminErrorCode = "invalid"): stri
 function parseSource(value: unknown): ThirdPartySource {
   const source = object(value);
   if (typeof source.sourceKind !== "string" || !SOURCE_KINDS.has(source.sourceKind)) fail();
-  return { id: id(source.id, SOURCE_ID), name: name(source.name), enabled: boolean(source.enabled), tiers: tiers(source.tiers), sourceKind: source.sourceKind };
+  let nodeCount: number | undefined;
+  if (Object.hasOwn(source, "nodes")) {
+    const stats = object(source.nodes);
+    if (Object.hasOwn(stats, "active")) {
+      if (typeof stats.active !== "number" || !Number.isSafeInteger(stats.active) || stats.active < 0) fail();
+      nodeCount = stats.active;
+    }
+  }
+  return {
+    id: id(source.id, SOURCE_ID), name: name(source.name), enabled: boolean(source.enabled), tiers: tiers(source.tiers), sourceKind: source.sourceKind,
+    ...(nodeCount === undefined ? {} : { nodeCount })
+  };
 }
 function parseSnapshot(value: unknown, sourceId: string): ThirdPartyNodeSnapshot {
   const snapshot = object(value);
