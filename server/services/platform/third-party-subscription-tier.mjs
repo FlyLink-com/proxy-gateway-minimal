@@ -116,12 +116,15 @@ export function resolveThirdPartyPlanIdForTenant(controlStore, tenant, { at = ne
     const offerPlan = resolveThirdPartyPlanId({ ...binding, tenantStatus });
     if (offerPlan) return offerPlan;
     // Do not coerce null/strings or approximate custom quotas into paid tiers.
+    // Approved legacy numeric-zero compatibility selects a distribution tier
+    // only after bound ownership/history evidence. It does not grant unlimited
+    // traffic, rewrite the stored quota, or apply to formal offers/other plans.
     if (!Number.isSafeInteger(binding.trafficLimitBytes)) return null;
     if (binding.plan === "monthly") {
-      if (binding.trafficLimitBytes === 50 * GIB) return "monthly_basic";
+      if (binding.trafficLimitBytes === 0 || binding.trafficLimitBytes === 50 * GIB) return "monthly_basic";
       if (binding.trafficLimitBytes === 100 * GIB) return "monthly_plus";
     }
-    if (binding.plan === "yearly" && binding.trafficLimitBytes === 200 * GIB) return "yearly";
+    if (binding.plan === "yearly" && (binding.trafficLimitBytes === 0 || binding.trafficLimitBytes === 200 * GIB)) return "yearly";
     return null;
   } catch {
     // An unreadable store is not evidence that a tenant has no binding.

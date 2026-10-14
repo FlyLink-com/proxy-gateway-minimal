@@ -153,24 +153,34 @@ async function assertOwnedOnly(f) {
   }
 }
 
-for (const [plan, gib, tier] of [["monthly", 50, "monthly_basic"], ["monthly", 100, "monthly_plus"], ["yearly", 200, "yearly"]]) {
+for (const [plan, gib, tier] of [["monthly", 0, "monthly_basic"], ["yearly", 0, "yearly"], ["monthly", 50, "monthly_basic"], ["monthly", 100, "monthly_plus"], ["yearly", 200, "yearly"]]) {
   for (const tenantRef of [TENANT, SAFE_TENANT]) {
     test(`legacy HTTP four routes resolve ${plan}/${gib} GiB from ${tenantRef === TENANT ? "raw" : "hashed"} evidence without financial writes`, async t => {
       const f = await fixture(t, { plan, trafficLimitBytes: gib * GIB, tenantRef });
+      f.controlDb.prepare("insert into platform_quota_counters (account_id, entitlement_id, metric, period, amount, updated_at) values (?, ?, ?, ?, ?, ?)")
+        .run("account_synthetic", "entitlement_synthetic", "traffic_bytes", "synthetic_existing_period", 123456, FROM);
       const controlChanges = changes(f.controlDb);
       const thirdPartyChanges = changes(f.thirdPartyDb);
+      const entitlementBefore = f.controlDb.prepare("select plan, traffic_limit_bytes, valid_from, valid_until, status from platform_entitlements").get();
+      const tenantBefore = f.runtimeDb.prepare("select id, status, expires_at, node_id, credential_mode, token_hash from subscription_tenants").get();
       f.controlDb.pragma("query_only = ON");
       f.thirdPartyDb.pragma("query_only = ON");
       await assertTier(f, tier);
       assert.equal(changes(f.controlDb), controlChanges, "no entitlement, billing, usage or identity writes");
       assert.equal(changes(f.thirdPartyDb), thirdPartyChanges, "no imported source/node writes");
+      assert.deepEqual(f.controlDb.prepare("select plan, traffic_limit_bytes, valid_from, valid_until, status from platform_entitlements").get(), entitlementBefore,
+        "compatibility never rewrites quota, plan, entitlement status or validity");
+      assert.deepEqual(f.runtimeDb.prepare("select id, status, expires_at, node_id, credential_mode, token_hash from subscription_tenants").get(), tenantBefore,
+        "normal download bookkeeping cannot renew, reactivate or rotate the runtime subscription");
+      assert.equal(f.controlDb.prepare("select amount from platform_quota_counters where entitlement_id = ?").get("entitlement_synthetic").amount, 123456,
+        "existing usage is not reset when zero configured quota gains distribution compatibility");
     });
   }
 }
 
-test("legacy HTTP expiry emits credential-free notice without reading third-party nodes; exact renewal resumes", async t => {
+test("legacy zero-quota HTTP expiry emits credential-free notice without reading third-party nodes; exact renewal resumes", async t => {
   const expiry = "2026-10-14T12:01:00.000Z";
-  const f = await fixture(t, { validUntil: expiry });
+  const f = await fixture(t, { validUntil: expiry, trafficLimitBytes: 0 });
   await assertTier(f, "monthly_basic");
   const before = { ...f.reads };
   f.setNow(expiry);
@@ -189,8 +199,8 @@ test("legacy HTTP expiry emits credential-free notice without reading third-part
   await assertTier(f, "monthly_basic");
 });
 
-test("legacy HTTP reset rejects rotated artifact paths and superseded tenant token without fallback", async t => {
-  const f = await fixture(t);
+test("legacy zero-quota HTTP reset rejects rotated artifact paths and superseded tenant token without fallback", async t => {
+  const f = await fixture(t, { trafficLimitBytes: 0 });
   await assertTier(f, "monthly_basic");
   const oldPaths = f.paths();
   const oldArtifact = f.core.listSubscriptionArtifacts(TENANT)[0];
@@ -216,13 +226,13 @@ test("legacy HTTP reset rejects rotated artifact paths and superseded tenant tok
   assert.deepEqual(f.reads, beforeRevoked);
 });
 
-test("legacy HTTP truly unbound tenants stay owned-only rather than infer tier from name or expiry", async t => {
-  const f = await fixture(t, { bind: false });
+test("legacy zero-quota HTTP truly unbound tenants stay owned-only rather than infer tier from name or expiry", async t => {
+  const f = await fixture(t, { bind: false, trafficLimitBytes: 0 });
   await assertOwnedOnly(f);
   assert.equal(f.reads.upstreamNodes, 0);
 });
 
-for (const [plan, trafficLimitBytes] of [["monthly", 0], ["monthly", 200 * GIB], ["yearly", 50 * GIB], ["trial", 50 * GIB], ["pilot", 50 * GIB], ["data_pack_100gb", 100 * GIB]]) {
+for (const [plan, trafficLimitBytes] of [["monthly", 1], ["monthly", 200 * GIB], ["yearly", 50 * GIB], ["trial", 0], ["trial", 50 * GIB], ["pilot", 0], ["pilot", 50 * GIB], ["data_pack_100gb", 0], ["data_pack_100gb", 100 * GIB]]) {
   test(`legacy HTTP unsupported ${plan}/${trafficLimitBytes} cannot gain a third-party tier`, async t => {
     const f = await fixture(t, { plan, trafficLimitBytes });
     await assertOwnedOnly(f);
@@ -230,17 +240,30 @@ for (const [plan, trafficLimitBytes] of [["monthly", 0], ["monthly", 200 * GIB],
   });
 }
 
-for (const history of ["orphan", "revoked", "query-error"]) {
-  test(`legacy HTTP ${history} control evidence preserves owned output and refuses third-party fallback`, async t => {
-    const f = await fixture(t);
+for (const history of ["orphan", "revoked", "rotated", "query-error", "account-disabled", "account-suspended", "entitlement-expired", "entitlement-revoked", "not-started", "request-failed", "owner-mismatch"]) {
+  test(`legacy zero-quota HTTP ${history} control evidence preserves owned output and refuses third-party fallback`, async t => {
+    const f = await fixture(t, { trafficLimitBytes: 0 });
     await assertTier(f, "monthly_basic");
     if (history === "orphan") {
       f.controlDb.pragma("foreign_keys = OFF");
       f.controlDb.prepare("delete from platform_entitlements").run();
-    } else if (history === "revoked") {
-      f.controlDb.prepare("update platform_issued_subscription_links set status = 'revoked'").run();
-    } else {
+    } else if (history === "revoked" || history === "rotated") {
+      f.controlDb.prepare("update platform_issued_subscription_links set status = ?").run(history);
+    } else if (history === "query-error") {
       f.controlDb.exec("drop table platform_issued_subscription_links");
+    } else if (history.startsWith("account-")) {
+      f.controlDb.prepare("update platform_accounts set status = ?").run(history.slice("account-".length));
+    } else if (history === "entitlement-expired") {
+      f.controlDb.prepare("update platform_entitlements set valid_until = ?").run(NOW);
+    } else if (history === "entitlement-revoked") {
+      f.controlDb.prepare("update platform_entitlements set status = 'revoked'").run();
+    } else if (history === "not-started") {
+      f.controlDb.prepare("update platform_entitlements set valid_from = ?").run(UNTIL);
+    } else if (history === "request-failed") {
+      f.controlDb.prepare("update platform_issuance_requests set status = 'failed'").run();
+    } else if (history === "owner-mismatch") {
+      f.controlStore.createAccount({ id: "account_other_synthetic", ownerRef: "other_synthetic_owner", status: "active", createdAt: FROM, updatedAt: FROM });
+      f.controlDb.prepare("update platform_entitlements set account_id = ?").run("account_other_synthetic");
     }
     const before = f.reads.upstreamNodes;
     await assertOwnedOnly(f);
@@ -248,24 +271,32 @@ for (const history of ["orphan", "revoked", "query-error"]) {
   });
 }
 
-test("legacy HTTP source pause and individual node pause are reflected immediately without upstream fetch", async t => {
-  const f = await fixture(t);
-  await assertTier(f, "monthly_basic");
-  const source = f.sources[0];
-  f.thirdPartyStore.patchSource(source.id, { enabled: false });
-  await assertOwnedOnly(f);
-  f.thirdPartyStore.patchSource(source.id, { enabled: true });
-  await assertTier(f, "monthly_basic");
-  let view = f.thirdPartyStore.listSourceNodes(source.id);
-  const node = view.items[0];
-  view = f.thirdPartyStore.setSourceNodeEnabled(source.id, node.id, { revision: view.revision, enabled: false });
-  await assertOwnedOnly(f);
-  f.thirdPartyStore.setSourceNodeEnabled(source.id, node.id, { revision: view.revision, enabled: true });
-  await assertTier(f, "monthly_basic");
-});
+for (const [plan, tier] of [["monthly", "monthly_basic"], ["yearly", "yearly"]]) {
+  test(`legacy zero-quota HTTP ${plan} global, source and individual node pause take effect without upstream fetch`, async t => {
+    const f = await fixture(t, { plan, trafficLimitBytes: 0 });
+    await assertTier(f, tier);
+    f.state.thirdPartySubscriptions.enabled = false;
+    const beforeGlobalPause = { ...f.reads };
+    await assertOwnedOnly(f);
+    assert.deepEqual(f.reads, beforeGlobalPause, "global disable short-circuits eligibility and source reads");
+    f.state.thirdPartySubscriptions.enabled = true;
+    await assertTier(f, tier);
+    const source = f.sources[TIERS.indexOf(tier)];
+    f.thirdPartyStore.patchSource(source.id, { enabled: false });
+    await assertOwnedOnly(f);
+    f.thirdPartyStore.patchSource(source.id, { enabled: true });
+    await assertTier(f, tier);
+    let view = f.thirdPartyStore.listSourceNodes(source.id);
+    const node = view.items[0];
+    view = f.thirdPartyStore.setSourceNodeEnabled(source.id, node.id, { revision: view.revision, enabled: false });
+    await assertOwnedOnly(f);
+    f.thirdPartyStore.setSourceNodeEnabled(source.id, node.id, { revision: view.revision, enabled: true });
+    await assertTier(f, tier);
+  });
+}
 
-test("legacy HTTP disabled tenant cannot query third-party material", async t => {
-  const f = await fixture(t);
+test("legacy zero-quota HTTP disabled tenant cannot query third-party material", async t => {
+  const f = await fixture(t, { trafficLimitBytes: 0 });
   f.core.disableTenant(TENANT);
   for (const path of f.paths()) {
     const { response, body } = await f.get(path);
