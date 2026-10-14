@@ -15,8 +15,8 @@ const GIB = 1024 ** 3;
 // (fulfillCommerceProduct in portal-access-requests.mjs). Public plan ids
 // (monthly_30d_50gb / monthly_30d_100gb / yearly_365d_200gb) are a different
 // namespace and are not accepted here.
-// Legacy and manual entitlements store only monthly / yearly / trial / pilot,
-// which cannot distinguish monthly_basic from monthly_plus, so they fail closed.
+// Legacy monthly/yearly entitlements are handled separately below, only after
+// current ownership/history checks and with an exact stored traffic limit.
 export const THIRD_PARTY_OFFER_PLAN_MAP = Object.freeze({
   offerv_plan_30d_50gb_monthly_v1: Object.freeze({
     planId: "monthly_basic",
@@ -92,4 +92,39 @@ export function findUsageBindingForTenant(controlStore, tenantId) {
     }
   }
   return null;
+}
+
+// Never infer a legacy tier from a tenant name, expiry duration or a missing
+// usage binding. Subscription core must authenticate the link before this is
+// called; the history-aware reader separately validates current entitlement.
+export function resolveThirdPartyPlanIdForTenant(controlStore, tenant, { at = new Date().toISOString() } = {}) {
+  const tenantStatus = text(tenant?.status);
+  if (!["active", "expiring"].includes(tenantStatus)
+    || typeof tenant?.id !== "string" || !tenant.id.trim() || tenant.id.length > 512) return null;
+  if (typeof controlStore?.getThirdPartySubscriptionEligibilityByTenantRefs !== "function") {
+    // Compatibility for existing non-SQLite adapters: no new legacy admission.
+    const binding = findUsageBindingForTenant(controlStore, tenant.id);
+    return resolveThirdPartyPlanId({ ...binding, tenantStatus });
+  }
+  try {
+    const id = tenant.id.trim();
+    const evidence = controlStore.getThirdPartySubscriptionEligibilityByTenantRefs(
+      [id, safeRef("tenant", id)], { at }
+    );
+    if (evidence?.state !== "bound" || !evidence.binding) return null;
+    const binding = evidence.binding;
+    const offerPlan = resolveThirdPartyPlanId({ ...binding, tenantStatus });
+    if (offerPlan) return offerPlan;
+    // Do not coerce null/strings or approximate custom quotas into paid tiers.
+    if (!Number.isSafeInteger(binding.trafficLimitBytes)) return null;
+    if (binding.plan === "monthly") {
+      if (binding.trafficLimitBytes === 50 * GIB) return "monthly_basic";
+      if (binding.trafficLimitBytes === 100 * GIB) return "monthly_plus";
+    }
+    if (binding.plan === "yearly" && binding.trafficLimitBytes === 200 * GIB) return "yearly";
+    return null;
+  } catch {
+    // An unreadable store is not evidence that a tenant has no binding.
+    return null;
+  }
 }

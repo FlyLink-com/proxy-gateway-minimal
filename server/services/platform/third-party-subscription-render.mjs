@@ -1,9 +1,6 @@
 import { proxyDisplayName } from "../proxy-display-name.mjs";
 import { applyThirdPartyCountryFlag, isThirdPartyCountryCode } from "./third-party-node-country.mjs";
-import {
-  findUsageBindingForTenant,
-  resolveThirdPartyPlanId
-} from "./third-party-subscription-tier.mjs";
+import { resolveThirdPartyPlanIdForTenant } from "./third-party-subscription-tier.mjs";
 
 export const THIRD_PARTY_NAME_MARKER = "[3P]";
 // Store-owned metadata cannot be forged by JSON/YAML node configuration.
@@ -138,12 +135,15 @@ export function applyThirdPartyProxyConfig(state, result) {
   if (tenantStatus !== "active" && tenantStatus !== "expiring") {
     return original;
   }
-  const binding = findUsageBindingForTenant(state.platform?.controlStore, tenant?.id);
-  const planId = resolveThirdPartyPlanId({
-    plan: binding?.plan,
-    trafficLimitBytes: binding?.trafficLimitBytes,
-    tenantStatus
-  });
+  let planId;
+  try {
+    const now = typeof state.platform?.usageNowFn === "function"
+      ? state.platform.usageNowFn() : new Date();
+    const at = (now instanceof Date ? now : new Date(now)).toISOString();
+    planId = resolveThirdPartyPlanIdForTenant(state.platform?.controlStore, tenant, { at });
+  } catch {
+    return original;
+  }
   if (!planId) return original;
   let nodes;
   try {

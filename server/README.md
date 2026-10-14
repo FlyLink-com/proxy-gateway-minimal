@@ -52,6 +52,11 @@ notice and a fixed Portal website header; unknown/disabled/revoked/rotated links
 remain errors. This does not re-enable an expired subscription or push an update
 to a client's cached configuration. See [expiry notice and flag contract](../docs/SUBSCRIPTION_EXPIRY_NOTICE.md).
 
+Legacy monthly/yearly third-party distribution additionally requires verified
+current entitlement evidence and exact supported quotas; missing or revoked
+bindings never imply eligibility. See [legacy subscription eligibility](../docs/THIRD_PARTY_LEGACY_SUBSCRIPTION_ELIGIBILITY.md)
+for source behavior, tests and the separate production boundary.
+
 ## Release identity
 
 `CONTROL_PLANE_RELEASE_IDENTITY_PATH` is optional at the application boundary.
