@@ -18,6 +18,7 @@ export type ThirdPartyNodePersistence = {
   onDisable?: () => void;
   onSetNodeEnabled?: (nodeId: string, enabled: boolean) => void;
   onDeleteNode?: (nodeId: string) => void;
+  onDeleteNodes?: (nodeIds: readonly string[]) => void;
   onDirtyChange?: (dirty: boolean) => void;
   importAction: ReactNode;
   // No confirmed source snapshot: show the editor shell without claiming a
@@ -34,6 +35,7 @@ export function ThirdPartyNodeNamesPage({ initialNodes, persistence }: { initial
   const [selectionError, setSelectionError] = useState("");
   const [message, setMessage] = useState("");
   const [deleteId, setDeleteId] = useState("");
+  const [checkedIds, setCheckedIds] = useState<ReadonlySet<string>>(() => new Set());
   // The owner remounts with the server revision after a successful save. In local
   // preview these snapshots remain in memory and never imply backend success.
   const [savedNodes, setSavedNodes] = useState<readonly ThirdPartyNode[] | null>(() => persistence ? nodes : null);
@@ -60,6 +62,13 @@ export function ThirdPartyNodeNamesPage({ initialNodes, persistence }: { initial
   const unsaved = !listSaved || Boolean(dirty || validation.error || (deleteId && !persistence?.onDeleteNode));
   const lifecycleBlocked = Boolean(persistence?.placeholder || persistence?.busy || !listSaved || dirty || validation.error || selectedId);
   const directLifecycle = Boolean(persistence?.onSetNodeEnabled);
+  const bulkSelection = Boolean(persistence?.onDeleteNodes);
+  const checkedNodes = filtered.filter((node) => checkedIds.has(node.id));
+  const checkedEnabledCount = checkedNodes.filter((node) => node.enabled !== false).length;
+  const bulkSelectionBlocked = lifecycleBlocked || Boolean(deleteId);
+  const bulkDeleteBlocked = bulkSelectionBlocked || !checkedNodes.length || checkedEnabledCount > 0
+    || checkedNodes.length !== checkedIds.size;
+  const allVisibleChecked = filtered.length > 0 && checkedNodes.length === filtered.length;
   const onDirtyChange = persistence?.onDirtyChange;
   useEffect(() => { onDirtyChange?.(unsaved); }, [onDirtyChange, unsaved]);
   const saveState = persistence?.placeholder ? "未就绪" : persistence
@@ -90,6 +99,30 @@ export function ThirdPartyNodeNamesPage({ initialNodes, persistence }: { initial
     setProtocol(nextProtocol);
     // A row-local confirmation must never remain armed when filters change.
     setDeleteId("");
+    // Selection cannot carry hidden rows into a later destructive action.
+    setCheckedIds(new Set());
+  }
+
+  function checkNode(nodeId: string, checked: boolean) {
+    if (!bulkSelection || bulkSelectionBlocked || !filtered.some((node) => node.id === nodeId)) return;
+    setCheckedIds((current) => {
+      const next = new Set(current);
+      if (checked) next.add(nodeId);
+      else next.delete(nodeId);
+      return next;
+    });
+  }
+
+  function checkVisibleNodes(checked: boolean) {
+    if (!bulkSelection || bulkSelectionBlocked) return;
+    setCheckedIds(new Set(checked ? filtered.map((node) => node.id) : []));
+  }
+
+  function requestBulkDelete() {
+    if (!persistence?.onDeleteNodes || bulkDeleteBlocked) return;
+    // The owner owns confirmation and revision-bound mutation. Do not remove
+    // rows optimistically or pass this component's mutable selection object.
+    persistence.onDeleteNodes(Object.freeze(checkedNodes.map((node) => node.id)));
   }
 
   function selectNode(node: ThirdPartyNode) {
@@ -179,11 +212,17 @@ export function ThirdPartyNodeNamesPage({ initialNodes, persistence }: { initial
           </div>
           <div className="tp-names-toolbar-actions" role="group" aria-label="节点列表操作">
             {persistence ? persistence.importAction : <ThirdPartyImportEntry disabled={Boolean(deleteId)} />}
+            {bulkSelection ? <button type="button" className="tp-names-bulk-delete tp-names-danger-soft" aria-label="删除选中节点" title={checkedEnabledCount ? "选中节点包含仍启用的节点，请先逐个停用，不会自动停用" : "删除当前筛选中选中的已停用节点，需再次确认"} disabled={bulkDeleteBlocked} onClick={requestBulkDelete}><Trash2 size={16} aria-hidden="true" /></button> : null}
             <button type="button" aria-label="保存节点列表" title={persistence ? "保存完整节点列表到后台，不自动启用" : "保存本地快照，不写入后台"} disabled={actionBlocked || listSaved || (!persistence && !nodes.length)} onClick={saveList}><Save size={15} aria-hidden="true" />保存</button>
             {persistence?.enabled && persistence.onDisable ? <button type="button" className="tp-names-danger-soft" aria-label="停用来源" title="暂停整个来源的分发；单节点停用请使用行内按钮" disabled={persistence.busy || Boolean(persistence.placeholder) || unsaved || Boolean(deleteId)} onClick={requestDisable}><Power size={15} aria-hidden="true" />停用来源</button>
               : <button type="button" className="tp-names-primary" aria-label="启用节点列表" aria-pressed={listEnabled} title={persistence ? "启用后台已保存的节点列表" : "仅启用本地预览，不发布真实订阅"} disabled={actionBlocked || !nodes.length || !listSaved || listEnabled} onClick={enableList}><Power size={15} aria-hidden="true" />{listEnabled ? "已启用" : "启用"}</button>}
           </div>
         </div>
+        {bulkSelection ? <div className="tp-names-bulk-selection" aria-label="批量选择状态">
+          <span aria-live="polite">已选择 {checkedNodes.length} 个节点</span>
+          <button type="button" className="tp-names-cancel-soft" disabled={!checkedIds.size || bulkSelectionBlocked} onClick={() => { if (!bulkSelectionBlocked) setCheckedIds(new Set()); }}>取消选择</button>
+          {checkedEnabledCount ? <span className="tp-names-bulk-warning">选中节点中有 {checkedEnabledCount} 个仍启用，请先逐个停用后再删除。不会自动停用。</span> : null}
+        </div> : null}
         {persistence && !persistence.placeholder ? <p className="tp-names-maintenance-hint">{directLifecycle
           ? "行内暂停/播放图标只停用或启用该节点，确认后立即生效；停用后可用垃圾桶删除，无需停用整个来源。名称和国旗修改仍需暂停来源后保存。已缓存的第三方凭证不会被撤销。"
           : listEnabled
@@ -192,12 +231,13 @@ export function ThirdPartyNodeNamesPage({ initialNodes, persistence }: { initial
         {selectionError ? <p className="tp-names-selection-error" role="alert">{selectionError}</p> : null}
         {editorHidden ? <div className="tp-names-hidden-editor" role="alert"><span>正在编辑的节点被筛选隐藏，修改已保留。</span><button type="button" onClick={() => updateFilter("", "")}>返回编辑行</button></div> : null}
         <div className="tp-names-table-scroll" tabIndex={0} role="region" aria-label="节点列表，可横向滚动">
-          <table><thead><tr><th scope="col">原始名称</th><th scope="col">对外显示名称</th><th scope="col">国家/地区</th><th scope="col">协议</th><th scope="col">操作</th></tr></thead>
+          <table className={bulkSelection ? "tp-names-bulk-table" : undefined}><thead><tr>{bulkSelection ? <th scope="col" className="tp-names-bulk-cell"><label className="tp-names-check-target"><input type="checkbox" aria-label="选择当前筛选的全部节点" title="仅选择当前筛选中可见的节点" checked={allVisibleChecked} ref={(element) => { if (element) element.indeterminate = checkedNodes.length > 0 && !allVisibleChecked; }} disabled={bulkSelectionBlocked || !filtered.length} onChange={(event) => checkVisibleNodes(event.target.checked)} /></label></th> : null}<th scope="col">原始名称</th><th scope="col">对外显示名称</th><th scope="col">国家/地区</th><th scope="col">协议</th><th scope="col">操作</th></tr></thead>
             <tbody>{filtered.map((node) => {
               const editing = node.id === selectedId;
               const nodeEnabled = node.enabled !== false;
               const deleteBlocked = persistence?.onDeleteNode ? lifecycleBlocked || nodeEnabled : writesBlocked;
               return <tr key={node.id} className={editing ? "tp-names-selected" : ""}>
+                {bulkSelection ? <td className="tp-names-bulk-cell"><label className="tp-names-check-target"><input type="checkbox" aria-label={`选择 ${node.originalName}`} checked={checkedIds.has(node.id)} disabled={bulkSelectionBlocked} onChange={(event) => checkNode(node.id, event.target.checked)} /></label></td> : null}
                 <td><strong>{node.originalName}</strong></td>
                 <td>{editing ? <form id={`${fieldId}-form`} onSubmit={(event) => { event.preventDefault(); apply(); }}>
                   <label className="tp-names-sr-only" htmlFor={fieldId}>对外显示名称</label>
