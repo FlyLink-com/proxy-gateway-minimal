@@ -1,4 +1,4 @@
-import { transitionFullMeteringCounters, transitionVerifiedFullMeteringMaterialCounters, transitionVerifiedFullMeteringBillingWindowCounters, transitionVerifiedFullMeteringPlanSwitchCounters, transitionVerifiedFullMeteringPlanSwitchReactivationCounters, reconcileVerifiedFullMeteringScope, advanceVerifiedFullMeteringGeneration } from "../../server/services/edge/full-metering-counter-transition.mjs";
+import { transitionFullMeteringCounters, transitionVerifiedFullMeteringMaterialCounters, transitionVerifiedFullMeteringBillingWindowCounters, transitionVerifiedFullMeteringPlanSwitchCounters, transitionVerifiedFullMeteringPlanSwitchReactivationCounters, transitionVerifiedFullMeteringMaterialAndPlanSwitchCounters, reconcileVerifiedFullMeteringScope, advanceVerifiedFullMeteringGeneration } from "../../server/services/edge/full-metering-counter-transition.mjs";
 import { fullMeteringBindingIdentity, makeFullMeteringSample } from "./full-metering-sample-writer.mjs";
 import { fullMeteringDigest, initializeFullMeteringJournal, readFullMeteringJournal, recoverFullMeteringJournal, commitFullMeteringJournal, withFullMeteringJournalLock, assertFullMeteringJournalNoPending, archiveFullMeteringMaterialCheckpoint, readFullMeteringMaterialCheckpointArchive } from "./full-metering-journal.mjs";
 import { admitFullMeteringMaterialContinuation, materialContinuationHistory } from "./full-metering-material-continuation.mjs";
@@ -110,7 +110,8 @@ export async function runFullMeteringCollection({ directory, context, activation
     const admission = materialContinuation ? admitFullMeteringMaterialContinuation({ approval: materialApproval, checkpoint: previous, context, activationId, identities, now: admittedAt })
       : packResets ? admitFullMeteringDataPackResets({ proofs: resetProofs, checkpoint: previous, identities }) : null;
     const billingAdmission = billingContinuation ? admitFullMeteringBillingWindowContinuation({ approval: billingWindowApproval, checkpoint: previous, context, activationId, identities, now: admittedAt }) : null;
-    const planAdmission = mode === "collect" ? admitFullMeteringPlanSwitches({ checkpoint: previous, identities, readPlanSwitchProof, now: admittedAt }) : null;
+    const planAdmission = mode === "collect" || packResets ? admitFullMeteringPlanSwitches({
+      checkpoint: previous, identities, readPlanSwitchProof, now: admittedAt, dataPackResetProofs: resetProofs }) : null;
     const sources = await readSources(before);
     verifySources(sources, selectedChannels);
     if (fullMeteringDigest(identities) !== fullMeteringDigest(inventoryProjection(readInventory(), selectedChannels))) fail("full_metering_binding_changed");
@@ -149,7 +150,9 @@ export async function runFullMeteringCollection({ directory, context, activation
           ? advanceVerifiedFullMeteringGeneration({ state: prior.counterState, generation: source.generation, verifiedAt: source.observedAt }) : null;
         if (advanced?.receipt) transitions.push({ beforePayloadDigest: fullMeteringDigest(prior.counterState), afterPayloadDigest: fullMeteringDigest(advanced.nextState), receipt: advanced.receipt });
         counterRequest = { state: advanced?.nextState ?? prior.counterState, ...counterInput };
-        outcome = transitionVerifiedFullMeteringPlanSwitchReactivationCounters({ ...counterRequest, reactivationRefs, planSwitchRefs });
+        outcome = materialRefs.length && !advanced
+          ? transitionVerifiedFullMeteringMaterialAndPlanSwitchCounters({ ...counterRequest, materialRefs, reactivationRefs, planSwitchRefs })
+          : transitionVerifiedFullMeteringPlanSwitchReactivationCounters({ ...counterRequest, reactivationRefs, planSwitchRefs });
       } else {
         const reconciled = prior ? reconcileVerifiedFullMeteringScope({ state: prior.counterState, eligibleRefs, retainedRefs }) : null;
         // Receipt + digests retain the transition without duplicating full states.
@@ -158,13 +161,15 @@ export async function runFullMeteringCollection({ directory, context, activation
           ? advanceVerifiedFullMeteringGeneration({ state: reconciled.nextState, generation: source.generation, verifiedAt: source.observedAt }) : null;
         if (advanced?.receipt) transitions.push({ beforePayloadDigest: fullMeteringDigest(reconciled.nextState), afterPayloadDigest: fullMeteringDigest(advanced.nextState), receipt: advanced.receipt });
         counterRequest = { state: advanced?.nextState ?? reconciled?.nextState ?? null, ...counterInput };
-        outcome = materialRefs.length && !advanced
-          ? transitionVerifiedFullMeteringMaterialCounters({ ...counterRequest, materialRefs })
-          : billingWindowRefs.length && !advanced
-            ? transitionVerifiedFullMeteringBillingWindowCounters({ ...counterRequest, billingWindowRefs })
-            : planSwitchRefs.length && !advanced
-              ? transitionVerifiedFullMeteringPlanSwitchCounters({ ...counterRequest, planSwitchRefs })
-              : transitionFullMeteringCounters(counterRequest);
+        outcome = materialRefs.length && planSwitchRefs.length && !advanced
+          ? transitionVerifiedFullMeteringMaterialAndPlanSwitchCounters({ ...counterRequest, materialRefs, planSwitchRefs })
+          : materialRefs.length && !advanced
+            ? transitionVerifiedFullMeteringMaterialCounters({ ...counterRequest, materialRefs })
+            : billingWindowRefs.length && !advanced
+              ? transitionVerifiedFullMeteringBillingWindowCounters({ ...counterRequest, billingWindowRefs })
+              : planSwitchRefs.length && !advanced
+                ? transitionVerifiedFullMeteringPlanSwitchCounters({ ...counterRequest, planSwitchRefs })
+                : transitionFullMeteringCounters(counterRequest);
       }
       if (outcome.receipt) transitions.push({ beforePayloadDigest: fullMeteringDigest(counterRequest.state), afterPayloadDigest: fullMeteringDigest(outcome.nextState), receipt: outcome.receipt });
       for (const delta of outcome.deltas) {
@@ -210,7 +215,8 @@ export async function runFullMeteringCollection({ directory, context, activation
     if (planAdmission?.changes.size) {
       if (fullMeteringDigest(identities) !== fullMeteringDigest(inventoryProjection(readInventory(), selectedChannels))) fail("full_metering_binding_changed");
       const commitTime = nowFn(), completedAt = commitTime instanceof Date ? commitTime.toISOString() : commitTime;
-      const finalAdmission = admitFullMeteringPlanSwitches({ checkpoint: previous, identities, readPlanSwitchProof, now: completedAt });
+      const finalAdmission = admitFullMeteringPlanSwitches({ checkpoint: previous, identities, readPlanSwitchProof,
+        now: completedAt, dataPackResetProofs: resetProofs });
       if (fullMeteringDigest([...planAdmission.changes]) !== fullMeteringDigest([...finalAdmission.changes])) fail("full_metering_plan_switch_evidence_changed");
       const archiveName = archiveFullMeteringMaterialCheckpoint({ directory, context, checkpoint: previous, namePrefix: "plan-switch-before" });
       nextCheckpoint.planSwitchContinuations = [...planHistory, { version: 1, previousCheckpointDigest: fullMeteringDigest(previous),

@@ -17,6 +17,61 @@ Release units remain `control-plane-app` and `portal-static` (desktop/mobile);
 Reuse backend #753 and mobile #13. Neither product publication nor production
 execution is recorded here. Admin defects are a separate workstream.
 
+## Latest bounded review repair (2026-10-15, source only)
+
+The operator approved correcting the two P2 findings from the independent
+whole-PR fallback security review at `abdda29d5a83cff8f45f25c8dcd43d34bb506445`.
+This is a B-tier implementation slice inside the existing A-tier release
+envelope; production, merge, catalog publication and collector installation
+are not authorized or executed by this repair.
+
+- Reset history and the real control-store receipt now accept both the original
+  two-digest full-five context and the exact three-field `local-three-v1`
+  context. Caller, checkpoint and receipt scope must agree. Extra, hidden,
+  accessor, Symbol and Proxy fields are rejected; owner/material/proof binding,
+  usage retention and receipt idempotency remain strict.
+- `collect-pack-resets` now independently validates commercial plan transitions
+  alongside exact pack-reset proofs. No arbitrary skip refs or rewritten
+  checkpoint preimages are accepted. Ordinary `collect` still cannot authorize
+  a material reset. Precommit identity and both proof rechecks remain required.
+- A single counter transition handles disjoint plan/material selections on
+  the same source. It preserves separate carry/boundary evidence, gives both
+  affected identities a zero-debit boundary and counts unaffected peers normally.
+  Plan counters remain monotonic; a pack reset does not authorize another
+  identity's material/ownership change. Plan reactivation and independently
+  verified generation changes preserve already accepted usage.
+- Pending-journal and post-commit receipt recovery use the original durable
+  sample identifiers, without a second baseline, duplicate charge or gap debit.
+
+TDD reproduced the two defects before correction. The reset-context slice's
+seven targeted files passed 154/154, including real SQLite close/reopen and
+scope/digest replay rejection. The new combined-counter and real-journal/SQLite
+collection suites passed 40/40: full-five/local-three, cumulative/connections,
+same/different source, independent-proof rejection, precommit drift, four
+interruption stages, retained-plan recovery and the next ordinary collection.
+Authority/daemon inputs in the combination fixture are synthetic; these tests
+do not establish physical protocol or production acceptance.
+
+Full backend `npm test` on the frozen repaired files passed **6,471 total /
+6,402 passed / 0 failed / 69 skipped** on Windows Node 24.16.0. Skips are not
+acceptance. Evidence: `output/data-pack-release-20261015/source-merge-review/p2-server-full.log`,
+SHA-256 `01e6a1cbd92bbd48f6f10f2a1251f808ab7e377c3d11d562e0fe1716650629d2`.
+The new nine-file diff received an independent fallback security review with
+no new findings; both original P2 issues are closed at the source/synthetic-test
+boundary. The reviewer independently ran 113 targeted checks; its counter
+subreview ran 14 tests and a 120-transition in-memory sequence. Vendor Security
+Review tooling was unavailable. This is not production or physical acceptance.
+Both document-authority checks (429 blocks) and diff whitespace checks passed.
+The existing exact-head hosted check's annotation was re-read and confirms an
+Actions budget startup block; it was not retried or counted as green.
+No frontend source was changed; its unchanged earlier tests/build remain
+separate reusable evidence.
+The earlier `70a6c8ac` 26-file overlay and observed-composition results below
+remain historical evidence only: the control-store source has changed and a
+new exact-source artifact plus affected combination validation are required
+before any production proposal. Do not install or relabel that old overlay as
+this repair.
+
 ## Confirmed product scope
 
 - 100 GB / 30 Coins, 200 GB / 50 Coins, 500 GB / 100 Coins.

@@ -6774,9 +6774,15 @@ export function createSqliteSubscriptionControlStore({
   function validateMeteringResetContinuation(continuation, proof, now) {
     meteringResetObject(continuation, ["version", "activationId", "context", "previousSequence",
       "sequence", "previousCheckpointDigest", "identityDigest", "proofDigest", "archiveName", "completedAt"]);
-    meteringResetObject(continuation.context, ["databaseIdentityDigest", "scopeDigest"]);
+    if (utilTypes.isProxy(continuation.context)) throw meteringResetInvalid();
+    const scoped = continuation.context && typeof continuation.context === "object"
+      && Object.hasOwn(continuation.context, "meteringScope");
+    // Preserve the legacy full-five shape; local-three is the only explicit
+    // discriminator. Keep this store boundary independent of CLI modules.
+    meteringResetObject(continuation.context, ["databaseIdentityDigest", "scopeDigest", ...(scoped ? ["meteringScope"] : [])]);
     if (continuation.version !== 1 || typeof continuation.activationId !== "string"
       || !SAFE_AUTHORITY_REF_PATTERN.test(continuation.activationId)
+      || scoped && continuation.context.meteringScope !== "local-three-v1"
       || !Number.isSafeInteger(continuation.previousSequence) || continuation.previousSequence < 0
       || !Number.isSafeInteger(continuation.sequence)
       || continuation.sequence !== continuation.previousSequence + 1

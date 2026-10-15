@@ -103,6 +103,74 @@ test("receipt persists across a file-backed store restart with exact replay and 
   assert.equal(f.db.prepare("select count(*) as count from platform_audit_events where action='data_pack_metering_reset_completed'").get().count, 1);
 });
 
+for (const [name, discriminator] of [
+  ["legacy full-five", {}], ["explicit local-three", { meteringScope: "local-three-v1" }]
+]) test(`real reset receipt persists ${name} context and refuses cross-scope replay`, t => {
+  const f = resetFixture(t), value = f.reset(), [proof] = f.proofs();
+  const continuation = syntheticMeteringContinuation(proof);
+  Object.assign(continuation.context, discriminator);
+  const receipt = f.control.recordCoinCommerceDataPackMeteringResetReceipt({ proof, continuation, now: NOW });
+  const directory = mkdtempSync(join(tmpdir(), "pack-meter-scope-"));
+  t.after(() => rmSync(directory, { recursive: true, force: true }));
+  const dbPath = join(directory, "synthetic.sqlite");
+  writeFileSync(dbPath, f.db.serialize());
+  const reopened = createSqliteSubscriptionControlStore({ dbPath });
+  try {
+    assert.deepEqual(reopened.getCoinCommerceDataPackMeteringResetReceipt({ ...value.input, now: NOW }), receipt);
+    assert.deepEqual(reopened.recordCoinCommerceDataPackMeteringResetReceipt({ proof, continuation, now: NOW }), receipt);
+    const changedScope = { ...continuation, context: { ...continuation.context } };
+    if (Object.hasOwn(discriminator, "meteringScope")) delete changedScope.context.meteringScope;
+    else changedScope.context.meteringScope = "local-three-v1";
+    assert.throws(() => reopened.recordCoinCommerceDataPackMeteringResetReceipt({ proof, continuation: changedScope, now: NOW }),
+      { code: "reconciliation_required" });
+    for (const field of ["scopeDigest", "databaseIdentityDigest"]) {
+      assert.throws(() => reopened.recordCoinCommerceDataPackMeteringResetReceipt({ proof,
+        continuation: { ...continuation, context: { ...continuation.context, [field]: "a".repeat(64) } }, now: NOW }),
+      { code: "reconciliation_required" });
+    }
+    assert.deepEqual(reopened.getCoinCommerceDataPackMeteringResetReceipt({ ...value.input, now: NOW }), receipt);
+    assert.equal(reopened.beginCoinCommerceDataPackCredentialReset({ ...value.input, now: NOW }).status, "edge_applied");
+  } finally { reopened.close(); }
+  assert.equal(f.db.prepare("select count(*) as count from platform_audit_events where action='data_pack_metering_reset_completed'").get().count, 1);
+  assert.equal(f.db.prepare("select count(*) as count from platform_usage_samples").get().count, 0);
+});
+
+for (const [name, change] of [
+  ["missing digest", context => { delete context.scopeDigest; }],
+  ["unknown scope", context => { context.meteringScope = "unknown"; }],
+  ["explicit full-five discriminator", context => { context.meteringScope = "full-five-v1"; }],
+  ["undefined scope", context => { context.meteringScope = undefined; }],
+  ["extra field", context => { context.extra = true; }],
+  ["symbol field", context => { context[Symbol("unapproved")] = true; }],
+  ["non-enumerable scope", context => { Object.defineProperty(context, "meteringScope", { value: "local-three-v1" }); }],
+  ["scope accessor", (context, getter) => { Object.defineProperty(context, "meteringScope", { enumerable: true, get: getter }); }],
+  ["digest accessor", (context, getter) => { Object.defineProperty(context, "scopeDigest", { enumerable: true, get: getter }); }]
+]) test(`real reset receipt rejects context ${name} without executing accessors or writing an audit`, t => {
+  const f = resetFixture(t), value = f.reset(), [proof] = f.proofs();
+  const continuation = syntheticMeteringContinuation(proof);
+  let getterCalls = 0;
+  change(continuation.context, () => { getterCalls += 1; return "local-three-v1"; });
+  assert.throws(() => f.control.recordCoinCommerceDataPackMeteringResetReceipt({ proof, continuation, now: NOW }),
+    { code: "reconciliation_required" });
+  assert.equal(getterCalls, 0);
+  assert.equal(f.control.getCoinCommerceDataPackMeteringResetReceipt({ ...value.input, now: NOW }), null);
+  assert.equal(f.control.beginCoinCommerceDataPackCredentialReset({ ...value.input, now: NOW }).status, "edge_applied");
+  assert.equal(f.db.prepare("select count(*) as count from platform_audit_events where action='data_pack_metering_reset_completed'").get().count, 0);
+});
+
+test("real reset receipt rejects proxy context before invoking traps or writing an audit", t => {
+  const f = resetFixture(t), value = f.reset(), [proof] = f.proofs();
+  const continuation = syntheticMeteringContinuation(proof);
+  let trapCalls = 0;
+  const trap = () => { trapCalls += 1; throw new Error("proxy trap must not run"); };
+  continuation.context = new Proxy(continuation.context,
+    { get: trap, getOwnPropertyDescriptor: trap, ownKeys: trap, getPrototypeOf: trap });
+  assert.throws(() => f.control.recordCoinCommerceDataPackMeteringResetReceipt({ proof, continuation, now: NOW }),
+    { code: "reconciliation_required" });
+  assert.equal(trapCalls, 0);
+  assert.equal(f.control.getCoinCommerceDataPackMeteringResetReceipt({ ...value.input, now: NOW }), null);
+});
+
 test("private continuation proof never enters account summary even when a rotation ref equals an account ref", t => {
   const f = resetFixture(t), pack = f.pack();
   const value = f.reset(pack, { rotationRef: pack.accountId }), [proof] = f.proofs();

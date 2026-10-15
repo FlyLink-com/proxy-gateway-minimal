@@ -1,5 +1,6 @@
 // Product reset authority comes from the owned control store, not a CLI payload.
 // These records stay in the private journal; public output contains counts only.
+import { types as utilTypes } from "node:util";
 import { fullMeteringDigest } from "./full-metering-journal.mjs";
 import { fullMeteringBindingIdentity } from "./full-metering-sample-writer.mjs";
 import { lifetimeDataPackQuotaBytesFor } from "../../server/services/platform/usage-billing-cycle.mjs";
@@ -19,6 +20,19 @@ function iso(value) {
   need(typeof value === "string" && Number.isFinite(Date.parse(value)) && new Date(value).toISOString() === value);
   return value;
 }
+function resetContext(value) {
+  need(value && typeof value === "object" && !Array.isArray(value) && !utilTypes.isProxy(value)
+    && [Object.prototype, null].includes(Object.getPrototypeOf(value)));
+  const scoped = Object.hasOwn(value, "meteringScope");
+  // Legacy full-five context has no discriminator. Only local-three adds one;
+  // inspect the exact data-property shape before reading any supplied value.
+  const fields = ["databaseIdentityDigest", "scopeDigest", ...(scoped ? ["meteringScope"] : [])];
+  exact(value, fields);
+  need(fields.every(field => Object.getOwnPropertyDescriptor(value, field).enumerable)
+    && (!scoped || value.meteringScope === "local-three-v1")
+    && [value.databaseIdentityDigest, value.scopeDigest].every(item => typeof item === "string" && HASH.test(item)));
+  return scoped;
+}
 export function validateFullMeteringDataPackResetProof(proof) {
   exact(proof, ["version", "rotationRef", "orderRef", "accountId", "requestRef", "entitlementRef",
     "edgeChannelRef", "edgeCredentialRef", "oldEdgeMaterialDigest", "newEdgeMaterialDigest", "billingBinding", "quotaBytes", "exhausted"]);
@@ -34,6 +48,10 @@ export function validateFullMeteringDataPackResetProof(proof) {
   return proof;
 }
 export function fullMeteringDataPackResetHistory(checkpoint, context) {
+  const scoped = resetContext(context);
+  if (checkpoint) need(scoped
+    ? Object.hasOwn(checkpoint, "meteringScope") && checkpoint.meteringScope === "local-three-v1"
+    : !Object.hasOwn(checkpoint, "meteringScope"), "full_metering_pack_reset_history_invalid");
   const records = checkpoint?.dataPackResetContinuations ?? [];
   need(Array.isArray(records) && records.length <= 128, "full_metering_pack_reset_history_invalid");
   const seen = new Set();
@@ -44,10 +62,9 @@ export function fullMeteringDataPackResetHistory(checkpoint, context) {
     const c = record.continuation;
     exact(c, ["version", "activationId", "context", "previousSequence", "sequence", "previousCheckpointDigest",
       "identityDigest", "proofDigest", "archiveName", "completedAt"]);
-    exact(c.context, ["databaseIdentityDigest", "scopeDigest"]);
+    resetContext(c.context);
     need(record.version === 1 && c.version === 1 && c.activationId === checkpoint.activationId
       && fullMeteringDigest(c.context) === fullMeteringDigest(context)
-      && Object.values(c.context).every(value => typeof value === "string" && HASH.test(value))
       && Number.isSafeInteger(c.previousSequence) && c.previousSequence >= 0 && c.sequence === c.previousSequence + 1
       && c.sequence >= lastSequence && c.sequence <= checkpoint.sequence
       && [c.previousCheckpointDigest, c.identityDigest, c.proofDigest].every(value => typeof value === "string" && HASH.test(value))
