@@ -10,7 +10,8 @@ document_metadata:
   production_authority: false
 ```
 
-Risk: A release envelope; local UI/test preparation only in this record.
+Risk: A release envelope; local source/test and backend-release preparation only
+in this record.
 Release units remain `control-plane-app` and `portal-static` (desktop/mobile);
 `frontend_surface: portal`, `identity_impact: true` for the pack runtime.
 Reuse backend #753 and mobile #13. Neither product publication nor production
@@ -186,6 +187,135 @@ Rollback must distinguish zero new business writes from post-write state:
   been executed by this preparation.
 
 ## Remaining release sequence
+
+### Backend first: installation with pack runtime disabled
+
+The operator's latest request prioritizes the backend, not another frontend
+release. The first proposed production scope is therefore **only
+`control-plane-app`**, with `COINS_COMMERCE_DATA_PACK_RUNTIME_ENABLED=false`,
+the three pack offers unpublished and Portal/Admin/mobile static pointers
+unchanged. This is backend installation, **not a claim that packs are available
+to buy or use**. It does not authorize changing the independent collector,
+readers, protocol configuration, checkpoints, identity maps or historical usage.
+
+The default-off source review at `d74f5687a1a9064e595aa4e742e71df12bc8eaef`
+found no automatic pack activation or catalog-publication path. The production
+entry retains its authoritative plan catalog, and does not compose pack escrow,
+delivery, reset or rotation workers while the flag is off. This was an
+independent bounded fallback review of the disabled deployment path, not a
+vendor Security Review or a complete security certification of all enabled
+pack functionality. Existing Commerce workers still run and can create normal
+business writes.
+
+Closing the flag does not isolate every shared change: control-store schema,
+credential attribution, desired state and material persistence are shared with
+existing plans. In particular the new readonly material reader queries pack
+tables directly; do not replace it ahead of schema initialization or quietly
+bundle it into the independently installed collector.
+
+The fixed `d74f5687` source was then tested in local WSL Ubuntu-24.04 with
+Node 22.23.1 / npm 10.9.8 / ABI 127 / glibc 2.39. Locked production dependencies
+were installed with scripts disabled, then `better-sqlite3` 12.10.0 was compiled
+from source against the verified Node headers. **260/260 tests in 12 files
+passed, zero skips**, covering production startup, catalog, schema and shared
+legacy plan, accounting, material and edge paths. Test processes ran in a new
+unprivileged user/network namespace with loopback only. No protocol process or
+production connection ran. Temporary processes/directories were checked and
+cleaned after export.
+
+The reusable **candidate-only**, not production-ready, dependency archive is
+`output/data-pack-release-20261015/linux-candidate/node-modules-linux-x64-node22.tar`
+(43,407,360 bytes, SHA-256
+`c43fefd24141890e111df6e06387eb42f18c507451c8f1cfa7de058f82531a82`).
+Its manifest, TAP and `LINUX_VALIDATION.md` are beside it. The lock SHA-256 is
+`f887e3fbc36fd2b7c61434ec4441a8b6dada6f53486f8cead76de5d03c7ace10`.
+All 1,779 archive entries are within `node_modules`; the prohibited environment,
+credential/key and database filename checks found zero matches, and dependency
+symlinks did not escape the directory. A controller-side archive rehash matched.
+Reuse still requires matching target libc/ABI, dependency lock and the reviewed
+mixed-app composition. This result neither covers later uncommitted tests nor
+replaces the BWH old-binary compatibility test.
+
+A subsequent controller-run Windows acceptance passed **5/5** (four phase
+subtests plus the parent):
+`DATA_PACK_CROSS_VERSION_ACCEPTANCE=1 node --test server/tests/data-pack-cross-version-off-acceptance.test.mjs`.
+This archives the real old master `742459d11aa15d9061e7dafe4ab584a5c72dbaf1`,
+creates the synthetic database using that old runtime, starts the current real
+production composition with pack runtime disabled, then reopens the same
+database with the old runtime. Old schema/data hashes remain unchanged on
+upgrade; the eight added named objects remain, all four pack tables stay empty,
+and old-runtime rollback preserves the additional normal Coins and usage writes.
+Old material store -> new ordinary put/transaction -> old material store also
+preserves the three synthetic materials. No pack rotation is staged.
+
+The evidence is `output/data-pack-release-20261015/cross-version-off.tap`, Node
+24.16.0 / ABI 137, old and candidate package/lock contents verified identical.
+The two runtime versions start sequentially in the **same Node process**, not
+separate old/new deployed binaries. Default execution explicitly skips this
+manual acceptance (0 passed / 1 skipped) so archive/shallow runners need no Git
+history; explicit activation fails if the fixed old object or dependency
+agreement is missing. This strengthens source compatibility evidence only,
+not mixed BWH runtime compatibility, physical traffic or enabled-pack rollback.
+Only the new test and this record changed after `d74f5687`; the business-source
+and dependency boundaries of the reused full suite and Linux run are unchanged.
+
+[The native #786 Deploy Note](https://github.com/FlyLink-com/proxy-gateway-minimal/pull/786#issuecomment-6168424121)
+read during this preparation identifies the last
+recorded BWH application as
+`control-plane-pr786-c7b094592662-mixed`, overlay source
+`c7b094592662ab764f2ad8d0086decb9925a569f`, layered on #785. It is **not**
+the whole `master` commit. This is recorded deployment evidence, not a fresh
+host read. Its code-only `old-app.tar` backups are not database backups for
+this release. Do not overwrite this composition with whole-master source
+without reconciling the existing fixes and runtime links.
+[The #785 Deploy Note](https://github.com/FlyLink-com/proxy-gateway-minimal/pull/785#issuecomment-6166805459)
+records the preceding three-module overlay. Both local overlay archives were
+rehashed against those receipts; neither is a complete current-app artifact.
+
+The #786 installer recorded the full-tree inventory at
+`/opt/proxy-gateway-minimal-candidate/backups/legacy-zero-quota-pr786-c7b094592662/installed.json`.
+Its location is established from the local installer source; the file has not
+been remotely read in this preparation. The corresponding old inventory
+reports 658 files and three runtime links, whereas the local synthetic proof
+explicitly disclaims equivalence to the complete production release. Use an
+approved server-side comparison and return only hashes/counts/classifications;
+do not fetch production runtime contents to the workstation.
+
+The independent collector's recorded directory remains
+`/opt/gccwebos-runtime/collector-plan-e834185cca07`; its recorded scope is
+`local-three-v1`. No current service health is inferred from those historical
+records. Updating that collector or its readonly reader is outside this first
+backend-only installation stage.
+
+Proceed with individually observable steps, not a new opaque execution bundle:
+
+1. Verify final source and Linux dependencies; reconcile the actual installed
+   app composition and its rollback target. Keep the frontend artifacts out of
+   the deployment scope.
+2. Exercise old-source creation, new disabled startup and old-source reopening
+   against the same synthetic databases. Preserve added schema and all new
+   normal-business writes during code rollback. A master-source fixture is
+   source compatibility evidence, not proof of the mixed BWH binary.
+3. Bind a narrow approved BWH readback: current app/dependency and collector
+   identities; service entry and runtime-link targets; database/material/journal
+   path identities and sizes; pack flag and catalog counts; exact added schema
+   presence/definitions and pending-operation counts. Do not return customer
+   rows, credentials, subscription URLs or raw configuration.
+4. Bind the immutable candidate, complete online backups, retained compatible
+   old app and schema delta before exact production approval. Install first;
+   switch only after the dependency, backup and rollback checks pass.
+5. After approved startup, verify app health, unchanged frontend and collector,
+   pack-disabled/unpublished state, preserved existing subscription and plan
+   behavior, aggregate identity and continuous natural metering. Record actual
+   execution in #753's Deploy Note. Do not call retained stale identities healthy.
+
+First-start schema mutation and post-write rollback rules above still apply.
+No production read, upload, startup, schema apply or switch is recorded by this
+preparation. Physical exhaustion/reset acceptance and the frontend work below
+remain prerequisites for **activation/publication**, not reasons to repeat
+unrelated checks during this disabled-backend preparation.
+
+### Later activation and user-facing publication
 
 1. Finish and independently verify the latest owned-pack/toolbar UI in both
    repositories; record real authenticated synthetic purchase, close/retrieve,
