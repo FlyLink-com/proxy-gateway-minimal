@@ -311,9 +311,11 @@ test("project contract canonical bytes accept CRLF normalization and reject sema
   assert.equal(verifyProjectV2ContractCanonicalBytes(CANONICAL_CONTRACT_BYTES), true);
 
   const crlfBytes = Buffer.from(
-    CANONICAL_CONTRACT_BYTES.toString("utf8").replaceAll("\n", "\r\n"),
+    CANONICAL_CONTRACT_BYTES.toString("utf8").replace(/\r?\n/gu, "\r\n"),
     "utf8"
   );
+  assert.ok(crlfBytes.includes(Buffer.from("\r\n")), "fixture must exercise CRLF input");
+  assert.equal(crlfBytes.includes(Buffer.from("\r\r\n")), false, "fixture must not double-convert CRLF");
   assert.equal(verifyProjectV2ContractCanonicalBytes(crlfBytes), true);
   assert.equal(parsePinnedProjectV2ContractBytes(crlfBytes).target.expectedClosed, false);
 

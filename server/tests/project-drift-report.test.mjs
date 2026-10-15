@@ -1278,16 +1278,20 @@ test("CLI emits JSON only and maps clean, drift, and invalid input to 0/1/2", ()
   ]);
 
   const badContractStdout = [];
+  let badContractReads = 0;
   assert.equal(runProjectDriftCli({
     argv: ["--input", inputPath, "--json"],
     stdout: (value) => badContractStdout.push(value),
     stderr: () => {},
-    readFile: (path, encoding) => (
-      String(path).endsWith("project-state/project-v2-contract.json")
-        ? Buffer.from("{}")
-        : readFileSync(path, encoding)
-    )
+    readFile: (path, encoding) => {
+      if (resolve(path) === resolve(REPOSITORY_ROOT, "project-state/project-v2-contract.json")) {
+        badContractReads += 1;
+        return Buffer.from("{}");
+      }
+      return readFileSync(path, encoding);
+    }
   }), 2);
+  assert.equal(badContractReads, 1, "the canonical contract read must use the invalid fixture");
   assert.deepEqual(JSON.parse(badContractStdout.join("")).errors, [
     { code: "project_drift_cli_contract_not_canonical" }
   ]);

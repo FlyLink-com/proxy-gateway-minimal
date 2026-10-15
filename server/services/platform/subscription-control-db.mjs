@@ -6051,6 +6051,70 @@ export function createSqliteSubscriptionControlStore({
     `).get(requiredText(tenantRef, "tenantRef")));
   }
 
+  // Unlike a usage lookup, legacy distribution must distinguish missing history
+  // from withdrawn or broken history. Never filter inactive rows out in SQL:
+  // doing so would turn a revoked binding into an unbound fallback candidate.
+  function getThirdPartySubscriptionEligibilityByTenantRefs(tenantRefs, { at = new Date().toISOString() } = {}) {
+    if (!Array.isArray(tenantRefs) || tenantRefs.length < 1 || tenantRefs.length > 2
+      || tenantRefs.some(ref => typeof ref !== "string" || !ref.trim() || ref.length > 512)) {
+      throw platformError("validation_error", "one or two tenant references are required");
+    }
+    const refs = [...new Set(tenantRefs.map(ref => ref.trim()))];
+    const atMs = Date.parse(isoText(at, "at"));
+    const placeholders = refs.map(() => "?").join(", ");
+    // The read-only transaction gives both alias forms and the portal-history
+    // guard a single snapshot. Query errors intentionally propagate to callers.
+    return db.transaction(() => {
+      const rows = db.prepare(`
+        select l.id, l.tenant_ref, l.status as link_status,
+          r.account_id, r.entitlement_id, r.status as request_status,
+          e.account_id as entitlement_account_id, e.status as entitlement_status,
+          e.plan, e.traffic_limit_bytes, e.valid_from, e.valid_until,
+          a.status as account_status, p.status as portal_status
+        from platform_issued_subscription_links l
+        left join platform_issuance_requests r on r.id = l.request_id
+        left join platform_entitlements e on e.id = r.entitlement_id
+        left join platform_accounts a on a.id = r.account_id
+        left join platform_portal_access_requests p on p.id = r.id
+        where l.tenant_ref in (${placeholders})
+        order by l.created_at desc, l.id desc
+      `).all(...refs);
+      if (!rows.length) {
+        const portalHistory = db.prepare(`
+          select 1 as present from platform_portal_access_requests
+          where tenant_id in (${placeholders}) limit 1
+        `).get(...refs);
+        return { state: portalHistory ? "denied" : "unbound" };
+      }
+      function valid(row) {
+        const fromMs = Date.parse(row.valid_from);
+        const untilMs = Date.parse(row.valid_until);
+        return row.link_status === "active" && row.request_status === "issued"
+          && row.entitlement_status === "active" && row.account_status === "active"
+          && row.account_id === row.entitlement_account_id
+          && (row.portal_status == null || ["delivered", "issued"].includes(row.portal_status))
+          && Number.isFinite(fromMs) && Number.isFinite(untilMs)
+          && fromMs <= atMs && atMs < untilMs;
+      }
+      const latest = new Map();
+      for (const row of rows) {
+        if (!latest.has(row.tenant_ref)) latest.set(row.tenant_ref, row);
+      }
+      if ([...latest.values()].some(row => !valid(row))) return { state: "denied" };
+      const binding = latest.values().next().value;
+      // An older rotated link may legitimately coexist with its replacement.
+      // Concurrent live bindings must not silently pick a different owner/tier.
+      if (rows.some(row => valid(row) && (row.account_id !== binding.account_id
+        || row.entitlement_id !== binding.entitlement_id))) return { state: "denied" };
+      return { state: "bound", binding: {
+        plan: binding.plan,
+        trafficLimitBytes: binding.traffic_limit_bytes,
+        validFrom: binding.valid_from,
+        validUntil: binding.valid_until
+      } };
+    })();
+  }
+
   function getUsageSampleByDigest(sampleDigest) {
     return mapUsageSample(db.prepare(`
       select * from platform_usage_samples
@@ -7523,6 +7587,7 @@ export function createSqliteSubscriptionControlStore({
     findIssuedSubscriptionBindingByTenantRef,
     findIssuedSubscriptionBindingByEdgeCredentialRef,
     findUsageBindingByTenantRef,
+    getThirdPartySubscriptionEligibilityByTenantRefs,
     recordUsageSample,
     recordCumulativeUsageSample,
     getUsageSampleByDigest,

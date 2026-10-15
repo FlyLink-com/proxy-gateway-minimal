@@ -30,6 +30,12 @@ Run the focused `node --test server/tests/<name>.test.mjs` command for the
 changed boundary, then `npm test` and
 `git diff --check origin/master...HEAD`.
 
+## Admin login
+
+For the default-private boundary and explicitly approved public cookie-auth
+ingress, see [Admin public login hardening](../docs/ADMIN_PUBLIC_LOGIN_HARDENING.md).
+Source availability does not open a production endpoint.
+
 ## Subscription website metadata
 
 Successful Clash YAML responses from `routes/subscription.mjs` include
@@ -45,6 +51,12 @@ Authenticated expired YAML subscriptions return a credential-free, reject-only
 notice and a fixed Portal website header; unknown/disabled/revoked/rotated links
 remain errors. This does not re-enable an expired subscription or push an update
 to a client's cached configuration. See [expiry notice and flag contract](../docs/SUBSCRIPTION_EXPIRY_NOTICE.md).
+
+Legacy monthly/yearly third-party distribution additionally requires verified
+current entitlement evidence and an exact supported quota, including the
+approved legacy numeric-zero tier mapping (not an unlimited-traffic grant).
+Missing or revoked bindings never imply eligibility. See [legacy subscription eligibility](../docs/THIRD_PARTY_LEGACY_SUBSCRIPTION_ELIGIBILITY.md)
+for source behavior, tests and the separate production boundary.
 
 ## Release identity
 

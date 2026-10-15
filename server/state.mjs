@@ -1,4 +1,5 @@
 import { createPortalReferralService } from './services/platform/portal-referral-service.mjs';
+import { validateAdminPublicLogin } from "./middleware/admin-public-login.mjs";
 import { createHash, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -61,6 +62,7 @@ import {
   createWalletFirstSetupDeliveryEscrow
 } from "./services/platform/wallet-first-setup-delivery-escrow.mjs";
 import { createPortalTotpSecretProtector, createPortalTotpVerifier } from "./services/platform/portal-totp-verifier.mjs";
+import { createSqliteThirdPartySubscriptionStore } from "./services/platform/third-party-subscription-store.mjs";
 import { createUserPortalAuthService } from "./services/platform/user-portal-auth.mjs";
 import { createPortalAccountAdminAuthService } from "./services/platform/admin-auth.mjs";
 import { createHysteria2UsageCollector } from "./services/edge/hysteria2-usage-collector.mjs";
@@ -681,6 +683,18 @@ function createOptionalPortalTotpSecretProtector(value) {
     return createPortalTotpSecretProtector({ key });
   } catch (error) {
     throw runtimeValidationError(`USER_PORTAL_TOTP_SECRET_KEY ${error.message}`);
+  }
+}
+
+function createOptionalThirdPartySecretProtector(value) {
+  const key = optionalEnvText(value);
+  if (!key) {
+    return null;
+  }
+  try {
+    return createPortalTotpSecretProtector({ key });
+  } catch (error) {
+    throw runtimeValidationError(`THIRD_PARTY_SUBSCRIPTION_SECRET_KEY ${error.message}`);
   }
 }
 
@@ -1550,6 +1564,9 @@ export function createRuntimeState(options = {}) {
   });
   const userPortalRoutesEnabled = envFlag(env.USER_PORTAL_ROUTES_ENABLED);
   const adminAuthRoutesEnabled = envFlag(env.ADMIN_AUTH_ROUTES_ENABLED || env.ADMIN_PROTECTED_ROUTE_AUTH_ENABLED);
+  const adminPublicLoginEnabled = envFlag(env.ADMIN_PUBLIC_LOGIN_ENABLED);
+  const adminBrowserOrigin = env.ADMIN_BROWSER_ORIGIN || undefined;
+  validateAdminPublicLogin({ enabled: adminPublicLoginEnabled, authEnabled: adminAuthRoutesEnabled, origin: adminBrowserOrigin });
   const adminAuthorizationEnabled = envFlag(env.ADMIN_AUTHORIZATION_ENABLED);
   const coinsWalletEnabled = envFlag(env.COINS_WALLET_ENABLED);
   const coinsCommerceEnabled = envFlag(env.COINS_COMMERCE_ENABLED);
@@ -2949,6 +2966,37 @@ export function createRuntimeState(options = {}) {
     }
   }
 
+  const thirdPartySubscriptionsEnabled = envFlag(env.THIRD_PARTY_SUBSCRIPTION_ENABLED);
+  const thirdPartySecretProtector = options.thirdPartySecretProtector
+    || createOptionalThirdPartySecretProtector(env.THIRD_PARTY_SUBSCRIPTION_SECRET_KEY);
+  let thirdPartyStore = options.thirdPartySubscriptionStore || null;
+  if (
+    !thirdPartyStore
+    && thirdPartySubscriptionsEnabled
+    && thirdPartySecretProtector
+  ) {
+    const thirdPartyDbPath = optionalEnvText(env.THIRD_PARTY_SUBSCRIPTION_DB_PATH);
+    if (thirdPartyDbPath) {
+      thirdPartyStore = createSqliteThirdPartySubscriptionStore({
+        dbPath: thirdPartyDbPath,
+        secretProtector: thirdPartySecretProtector,
+        fetchFn: options.thirdPartyFetchFn,
+        resolveFn: options.thirdPartyResolveFn,
+        nowFn: options.nowFn
+      });
+    }
+  }
+  const thirdPartySubscriptions = options.thirdPartySubscriptions || {
+    enabled: thirdPartySubscriptionsEnabled,
+    available: Boolean(
+      thirdPartySubscriptionsEnabled
+      && thirdPartySecretProtector
+      && thirdPartyStore?.available
+    ),
+    store: thirdPartyStore?.available ? thirdPartyStore : null,
+    secretProtector: thirdPartySecretProtector
+  };
+
   if (portalReferralRewardsEnabled) portalReferrals?.start();
 
   function close() {
@@ -2960,6 +3008,7 @@ export function createRuntimeState(options = {}) {
       if (ownsPaymentStore && paymentStore) {
         try { paymentStore.close(); } catch (error) { firstError ||= error; }
       }
+      try { thirdPartyStore?.close?.(); } catch (error) { firstError ||= error; }
       for (const [owned, store] of [
         [ownsCoinsWalletStore, coinsWalletStore],
         [ownsControlStore, platformControlStore],
@@ -3034,6 +3083,7 @@ export function createRuntimeState(options = {}) {
           firstError ||= error;
         }
       }
+      try { thirdPartyStore?.close?.(); } catch (error) { firstError ||= error; }
       for (const [owned, store] of [
         [ownsControlStore, platformControlStore],
         [ownsSubscriptionStore, subscriptionStore]
@@ -3065,6 +3115,7 @@ export function createRuntimeState(options = {}) {
       scope: "local_operator_console"
     },
     services: { ssLocal, httpProxy },
+    thirdPartySubscriptions,
     subscriptions: {
       store: subscriptionStore,
       core: subscriptionCore,
@@ -3114,6 +3165,8 @@ export function createRuntimeState(options = {}) {
       paymentStore,
       paymentRechargeCoordinator,
       adminAuthRoutesEnabled,
+      adminPublicLoginEnabled,
+      adminBrowserOrigin,
       adminAuthorizationEnabled,
       adminAuth: platformAdminAuth,
       userPortalRoutesEnabled,

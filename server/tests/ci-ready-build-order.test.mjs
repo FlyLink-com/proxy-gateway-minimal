@@ -99,11 +99,28 @@ function scriptOf(job) {
 }
 
 const bashAvailable = spawnSync("bash", ["--version"], { encoding: "utf8" }).status === 0;
-function status(script, env) {
-  return spawnSync("bash", ["--noprofile", "--norc", "-c", script], {
+function assertStatus(script, env, expected, label) {
+  // Legacy Windows bash.exe neither forwards arbitrary env vars into WSL nor
+  // preserves -c quoting. Supply fixture values as arguments and source via stdin.
+  for (const key of Object.keys(env)) assert.match(key, /^[A-Z_]+$/u);
+  const entered = "__ci_ready_shell_entered__";
+  const exited = "__ci_ready_shell_exit__";
+  const result = spawnSync("bash", ["--noprofile", "--norc", "-s", "--",
+    ...Object.entries(env).map(([key, value]) => `${key}=${value}`)], {
     encoding: "utf8", timeout: 5000,
-    env: { PATH: process.env.PATH, ...env }
-  }).status;
+    env: { PATH: process.env.PATH },
+    input: `export "$@" || exit 98\nprintf '%s\\n' '${entered}'\ntrap 'code=$?; printf "${exited}:%s\\n" "$code"' EXIT\n${script}\n`
+  });
+  const bounded = (value) => String(value ?? "").replaceAll("\0", "").slice(0, 1024);
+  const diagnostic = `${label}: ${JSON.stringify({
+    status: result.status, signal: result.signal, error: result.error?.code,
+    stdout: bounded(result.stdout), stderr: bounded(result.stderr)
+  })}`;
+  assert.equal(result.error, undefined, diagnostic);
+  assert.equal(result.signal, null, diagnostic);
+  assert.ok(result.stdout.startsWith(`${entered}\n`), diagnostic);
+  assert.ok(result.stdout.endsWith(`${exited}:${expected}\n`), diagnostic);
+  assert.equal(result.status, expected, diagnostic);
 }
 
 test("actual prerequisite shell rejects every failure, cancellation, missing result, or unexpected skip", { skip: !bashAvailable }, () => {
@@ -114,24 +131,24 @@ test("actual prerequisite shell rejects every failure, cancellation, missing res
     { EVENT_NAME: "workflow_dispatch", SOURCE_RESULT: "success", GOVERNANCE_RESULT: "skipped", SNAPSHOT_RESULT: "success", FOUNDATION_RESULT: "skipped" }
   ];
   for (const env of accepted) {
-    assert.equal(status(script, env), 0, env.EVENT_NAME);
+    assertStatus(script, env, 0, env.EVENT_NAME);
     for (const field of Object.keys(env).filter((key) => key !== "EVENT_NAME")) {
       for (const value of ["success", "failure", "cancelled", "skipped", ""]) {
-        if (value !== env[field]) assert.notEqual(status(script, { ...env, [field]: value }), 0, `${env.EVENT_NAME}/${field}/${value}`);
+        if (value !== env[field]) assertStatus(script, { ...env, [field]: value }, 1, `${env.EVENT_NAME}/${field}/${value}`);
       }
     }
   }
-  assert.notEqual(status(script, { ...accepted[0], EVENT_NAME: "workflow_run" }), 0);
+  assertStatus(script, { ...accepted[0], EVENT_NAME: "workflow_run" }, 1, "workflow_run");
 });
 
 test("actual final Validate shell cannot hide failed or skipped checks and builds", { skip: !bashAvailable }, () => {
   const script = scriptOf(jobs.validate);
   for (const event of ["pull_request", "push", "workflow_dispatch"]) {
     const env = { EVENT_NAME: event, CHECKS_RESULT: "success", ASSETS_RESULT: "success", DEPENDENCY_RESULT: event === "pull_request" ? "success" : "skipped" };
-    assert.equal(status(script, env), 0, event);
+    assertStatus(script, env, 0, event);
     for (const field of ["CHECKS_RESULT", "ASSETS_RESULT", "DEPENDENCY_RESULT"]) {
       for (const value of ["success", "failure", "cancelled", "skipped", ""]) {
-        if (value !== env[field]) assert.notEqual(status(script, { ...env, [field]: value }), 0, `${event}/${field}/${value}`);
+        if (value !== env[field]) assertStatus(script, { ...env, [field]: value }, 1, `${event}/${field}/${value}`);
       }
     }
   }

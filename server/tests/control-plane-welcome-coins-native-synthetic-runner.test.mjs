@@ -58,7 +58,8 @@ const BOUNDED_NATIVE_ENVIRONMENT = Object.freeze({
 
 function requiredSource(path, label) {
   assert.equal(existsSync(path), true, label + " source must exist");
-  return readFileSync(path, "utf8");
+  // These assertions inspect source structure, not checkout-specific line endings.
+  return readFileSync(path, "utf8").replace(/\r\n/gu, "\n");
 }
 
 function readExactStream(stream, size, label) {

@@ -3879,7 +3879,6 @@ test("createRuntimeState wires portal-account admin auth to the configured singl
     assert.deepEqual(state.platform.adminAuth.sessionStatus(), {
       authenticated: false,
       mode: "portalAccount",
-      operatorRef: "portal_user_20260604_001",
       setupRequired: true
     });
   } finally {

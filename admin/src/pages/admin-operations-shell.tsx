@@ -1,5 +1,5 @@
 import { Activity, Clock3, RadioTower, ShieldAlert } from "lucide-react";
-import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
+import { type ReactNode, lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import {
   ADMIN_PRODUCTION_BASELINE_GROUPS,
   ADMIN_PRODUCTION_BASELINE_PAGES,
@@ -21,16 +21,21 @@ import { AdminMonitorWorkspace } from "./admin-monitor-workspace";
 import { AdminUserMonitorWorkspace } from "./admin-user-monitor-workspace";
 
 const PAGE_IDS = new Set<string>(Object.keys(ADMIN_PRODUCTION_BASELINE_PAGES));
+type AdminOperationsPageId = AdminProductionBaselinePageId | "thirdPartyNodes";
+const ThirdPartyAdminWorkspace = lazy(async () => {
+  const module = await import("../features/third-party-node-names/third-party-admin-workspace");
+  return { default: module.ThirdPartyAdminWorkspace };
+});
 
-function formatFormalHash(pageId: AdminProductionBaselinePageId): string {
+function formatFormalHash(pageId: AdminOperationsPageId): string {
   return `#/admin/${pageId}`;
 }
 
-function formatPreviewHash(pageId: AdminProductionBaselinePageId): string {
+function formatPreviewHash(pageId: AdminOperationsPageId): string {
   return `#/admin-baseline/${pageId}`;
 }
 
-function parseHash(hash: string, preview: boolean): AdminProductionBaselinePageId {
+function parseHash(hash: string, preview: boolean): AdminOperationsPageId {
   const raw = hash.startsWith("#") ? hash.slice(1) : hash;
   const prefix = preview ? "/admin-baseline/" : "/admin/";
   try {
@@ -42,6 +47,7 @@ function parseHash(hash: string, preview: boolean): AdminProductionBaselinePageI
       return "dashboard";
     }
     const id = decoded.slice(prefix.length).split(/[/?#]/)[0] ?? "";
+    if (!preview && id === "thirdPartyNodes") return "thirdPartyNodes";
     if (PAGE_IDS.has(id)) {
       return id as AdminProductionBaselinePageId;
     }
@@ -70,16 +76,20 @@ export function AdminOperationsShell({
 } = {}) {
   const isPreview = Boolean(preview);
   const formatPageHref = useCallback(
-    (pageId: AdminProductionBaselinePageId) => (isPreview ? formatPreviewHash(pageId) : formatFormalHash(pageId)),
+    (pageId: AdminOperationsPageId) => (isPreview ? formatPreviewHash(pageId) : formatFormalHash(pageId)),
     [isPreview]
   );
 
-  function pageFromLocation(): AdminProductionBaselinePageId {
+  function pageFromLocation(): AdminOperationsPageId {
     return parseHash(window.location.hash, isPreview);
   }
 
-  const [pageId, setPageId] = useState(pageFromLocation);
-  const page = ADMIN_PRODUCTION_BASELINE_PAGES[pageId];
+  const [requestedPageId, setPageId] = useState(pageFromLocation);
+  // The baseline preview is deliberately limited to its existing read-only ten
+  // pages, including if the shell mode changes while this route is mounted.
+  const pageId = isPreview && requestedPageId === "thirdPartyNodes" ? "dashboard" : requestedPageId;
+  const page = ADMIN_PRODUCTION_BASELINE_PAGES[pageId === "thirdPartyNodes" ? "dashboard" : pageId];
+  const pageLabel = pageId === "thirdPartyNodes" ? "第三方节点" : page.label;
 
   useEffect(() => {
     function syncPage() {
@@ -93,7 +103,8 @@ export function AdminOperationsShell({
     };
   }, [isPreview]);
 
-  function navigate(nextPageId: AdminProductionBaselinePageId) {
+  function navigate(nextPageId: AdminOperationsPageId) {
+    if (isPreview && nextPageId === "thirdPartyNodes") return;
     const nextHash = formatPageHref(nextPageId);
     if (window.location.hash !== nextHash) {
       window.location.hash = nextHash;
@@ -130,20 +141,33 @@ export function AdminOperationsShell({
               ))}
             </div>
           ))}
+          {!isPreview ? <div className="admin-baseline-preview-nav-group">
+            <p className="admin-baseline-preview-group">订阅分发</p>
+            <button
+              aria-current={pageId === "thirdPartyNodes" ? "page" : undefined}
+              className={pageId === "thirdPartyNodes" ? "nav-item admin-baseline-preview-nav-item-active" : "nav-item"}
+              onClick={() => navigate("thirdPartyNodes")}
+              type="button"
+            ><span className="nav-item-copy">第三方节点</span></button>
+          </div> : null}
         </nav>
       </aside>
       <main className="admin-baseline-preview-main">
         <div className="admin-baseline-preview-header">
           <PageHeader
             ariaLabel="Operator console title"
-            description="服务观测与资源只读诊断。"
+            description={isPreview ? "服务观测与资源只读诊断。" : "服务观测、资源诊断与授权订阅管理。"}
             title={preview?.title ?? "GCC WebOS · Admin Console"}
           />
         </div>
         {preview?.banner}
-        <section aria-label={page.label} className="admin-baseline-preview-page">
-          <h2>{page.label}</h2>
-          {pageId === "userManagement" ? (
+        <section aria-label={pageLabel} className="admin-baseline-preview-page">
+          <h2>{pageLabel}</h2>
+          {pageId === "thirdPartyNodes" ? (
+            <Suspense fallback={<p role="status" aria-busy="true">正在加载第三方节点管理…</p>}>
+              <ThirdPartyAdminWorkspace onSessionExpired={onSessionExpired} />
+            </Suspense>
+          ) : pageId === "userManagement" ? (
             <AdminUserMonitorWorkspace createClient={createUserClient} />
           ) : (
             <AdminMonitorWorkspace createClient={createMonitorClient} formatPageHref={formatPageHref} pageId={pageId}>

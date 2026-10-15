@@ -92,7 +92,7 @@ describe("admin production baseline App isolation", () => {
       expect(screen.queryByRole("heading", { name: "GlobalCircle AI - Operator Console" })).toBeNull();
       expect(screen.getByRole("heading", { name: "Admin Console" })).not.toBeNull();
     });
-    expect(await screen.findByLabelText("管理员账户")).not.toBeNull();
+    expect(await screen.findByLabelText("密码")).not.toBeNull();
     expect(loadAdminSession).not.toHaveBeenCalled();
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole("heading", { name: "Connect Admin API" })).toBeNull();
@@ -107,7 +107,7 @@ describe("admin production baseline App isolation", () => {
     render(<App />);
 
     expect(await screen.findByRole("heading", { name: "Admin Console" })).not.toBeNull();
-    expect(await screen.findByLabelText("管理员账户")).not.toBeNull();
+    expect(await screen.findByLabelText("密码")).not.toBeNull();
     expect(screen.queryByRole("heading", { name: "GlobalCircle AI - Operator Console" })).toBeNull();
     expect(screen.queryByLabelText("Admin production baseline preview status")).toBeNull();
     expect(screen.queryByRole("heading", { name: "Connect Admin API" })).toBeNull();
