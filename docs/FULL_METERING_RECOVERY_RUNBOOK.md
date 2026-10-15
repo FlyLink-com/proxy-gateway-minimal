@@ -106,9 +106,19 @@ execution record. These findings are not a perpetual assertion about live state.
 Risk: A envelope / B source core. Process: one implementation PR with intent,
 targeted tests and this runbook; no production execution by source validation.
 Expected PR count: 1, `Refs #437` (not closing that Epic).
-`identity_impact: true`; `identity_gate.state: pending`;
-`production_state: not_deployed`. Production/AWS impact in this source slice:
-none. Deployment remains a separate exact-approved migration step.
+`identity_impact: true`. At the original source-only cutoff,
+`identity_gate.state: pending` and `production_state: not_deployed` described
+this implementation slice, not a permanent assertion about the host.
+Production/AWS impact of that source slice was none.
+
+The recorded BWH local-three recovery was subsequently executed on 2026-10-12.
+Its [execution closeout and Deploy Note](FULL_METERING_NEW_ACTIVATION_RECOVERY.md#execution-closeout-and-remaining-evidence)
+supersede the pending deployment status for that execution only:
+`production_state: deployed`, `identity_gate.state: degraded`,
+`retention_state: pending`, with no before counts captured. This runbook
+remains the collector contract; its preparation steps must not be replayed
+as unfinished work. Other surfaces and any new recovery retain their separate
+fresh inventory, reviewed tool/artifact pins, approval and validation gates.
 
 An absent `meteringScope` keeps the existing five-source config, context,
 checkpoint and sample encoding. Explicit `full-five-v1` selects the same scope.
