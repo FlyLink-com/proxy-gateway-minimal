@@ -132,3 +132,37 @@ test("HTTP pack handoff stays unavailable until a simulated apply receipt; resta
     assert.equal((await fixture.runOnce()).commandsClaimed, 0);
   } finally { await fixture.close(); }
 });
+
+test("real owner delivery resolver admits reset with exact ownership fields; pending retry never duplicates a reset or debit", async () => {
+  const fixture = await createPackHttpFixture();
+  try {
+    const { order } = await purchase(fixture, { trafficGb: 100, coins: 30, key: "purchase_http_reset" });
+    const handoffPath = `${ORDERS}/${order.orderRef}/subscription`;
+    const resetPath = `${handoffPath}/rotate`;
+    const reset = { method: "POST", body: { rotationRef: "packrot_http_resume" } };
+    assertHidden(await fixture.request(resetPath, reset));
+    assert.deepEqual(fixture.inspectResets(), { total: 0, complete: 0 });
+    fixture.advanceTo(order.cancelUntil);
+    assert.equal((await fixture.runOnce()).commandsDelivered, 1);
+    await getDelivery(fixture, order.orderRef, 100);
+    const before = fixture.inspect();
+    assertHidden(await fixture.request(resetPath, { ...reset, account: null }), 401);
+    assertHidden(await fixture.request(resetPath, { ...reset, account: "other" }));
+    assertHidden(await fixture.request(resetPath, { ...reset,
+      body: { rotationRef: "packrot_http_resume", accountId: "acct_pack_http_owner" } }), 400);
+    assert.deepEqual(fixture.inspectResets(), { total: 0, complete: 0 });
+
+    // Real reset reaches its durable intent, but no real apply/collector receipt
+    // exists in this fixture. It must stay unavailable rather than claim success.
+    const pending = await fixture.request(resetPath, reset);
+    assertHidden(pending, 503);
+    assert.equal(pending.json.error.code, "commerce_unavailable");
+    assert.deepEqual(fixture.inspectResets(), { total: 1, complete: 0 });
+    assert.deepEqual(fixture.inspect(), before);
+    await fixture.reopen();
+    assertHidden(await fixture.request(resetPath, reset), 503);
+    assert.deepEqual(fixture.inspectResets(), { total: 1, complete: 0 });
+    assert.deepEqual(fixture.inspect(), before);
+    assertHidden(await fixture.request(resetPath, { ...reset, account: "other" }));
+  } finally { await fixture.close(); }
+});

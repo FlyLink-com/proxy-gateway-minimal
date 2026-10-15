@@ -37,7 +37,7 @@ import type {
 
 afterEach(cleanup);
 
-test("delivered data-pack order exposes on-demand delivery and drops it when closed", async () => {
+test("opening a delivered data-pack order automatically reads delivery and drops it when closed", async () => {
   const packOrder: PortalCoinOrder = {
     ...ORDER,
     orderRef: "order_data_100gb_1",
@@ -67,10 +67,9 @@ test("delivered data-pack order exposes on-demand delivery and drops it when clo
     sessionRef="session_alpha" sessionGeneration={1} onSessionInvalid={vi.fn()} />);
   const detail = await screen.findByRole("button", { name: /order_data_100gb_1/ });
   fireEvent.click(detail);
-  await screen.findByRole("button", { name: "获取订阅" });
-  expect(getDataPackDelivery).not.toHaveBeenCalled();
-  fireEvent.click(screen.getByRole("button", { name: "获取订阅" }));
   await screen.findByRole("button", { name: "复制订阅" });
+  expect(screen.getByRole("textbox", { name: "订阅链接" })).toHaveAttribute("readonly");
+  expect(screen.queryByRole("button", { name: "获取订阅" })).toBeNull();
   expect(getDataPackDelivery).toHaveBeenCalledTimes(1);
   fireEvent.click(detail);
   expect(screen.queryByRole("button", { name: "复制订阅" })).toBeNull();

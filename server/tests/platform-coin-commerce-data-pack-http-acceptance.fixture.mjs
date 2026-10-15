@@ -20,6 +20,8 @@ import { applyCoinCommerceMigrations, COIN_COMMERCE_MIGRATIONS,
 import { COIN_COMMERCE_DATA_PACK_CANDIDATES } from "../services/platform/coin-commerce-production-catalog.mjs";
 import { createCoinCommerceDataPackMaterialEscrow } from "../services/platform/coin-commerce-data-pack-material-escrow.mjs";
 import { createCoinCommerceDataPackOrderDelivery } from "../services/platform/coin-commerce-data-pack-order-delivery.mjs";
+import { createCoinCommerceDataPackArtifactRotation } from "../services/platform/coin-commerce-data-pack-artifact-rotation.mjs";
+import { createCoinCommerceDataPackCredentialReset } from "../services/platform/coin-commerce-data-pack-credential-reset.mjs";
 import { createCoinCommerceDataPackProductionFulfillment } from "../services/platform/coin-commerce-data-pack-production-binding.mjs";
 import { createFileBackedEdgeCredentialMaterialStore } from "../services/edge/credential-material-store.mjs";
 import { createOrderEdgeCredentialIssuer } from "../services/edge/order-credential-issuer.mjs";
@@ -148,6 +150,11 @@ export async function createPackHttpFixture() {
       nowFn: () => new Date(clock.value), commandLeaseMs: 1000 });
     const delivery = createCoinCommerceDataPackOrderDelivery({ commerceStore: commerce,
       controlStore: control, runtimeCore, materialEscrow: escrow, nowFn: () => new Date(clock.value) });
+    const artifactRotation = createCoinCommerceDataPackArtifactRotation({ commerceStore: commerce,
+      controlStore: control, runtimeCore, materialEscrow: escrow, nowFn: () => new Date(clock.value) });
+    const credentialReset = createCoinCommerceDataPackCredentialReset({ commerceStore: commerce,
+      controlStore: control, materialStore: edgeMaterialStore, desiredStateNotifier: notifier,
+      artifactRotation, nowFn: () => new Date(clock.value) });
     const auth = createUserPortalAuthService({ controlStore: control,
       nowFn: () => clock.value, totpVerifier: () => false });
     if (seed) {
@@ -170,7 +177,8 @@ export async function createPackHttpFixture() {
       security: { adminAllowedCidrs: ["127.0.0.1/32"] },
       platform: { coinsCommerceEnabled: true, userPortalRoutesEnabled: true,
         coinCommerceStore: commerce, coinCommerceCoordinator: coordinator,
-        userPortalAuth: auth, coinCommerceDataPackOrderDelivery: delivery },
+        userPortalAuth: auth, coinCommerceDataPackOrderDelivery: delivery,
+        coinCommerceDataPackCredentialReset: credentialReset },
     };
     ({ server, baseUrl } = await listen(createApp(state)));
   }
@@ -206,6 +214,12 @@ export async function createPackHttpFixture() {
     runOnce: () => coordinator.runOnce(),
     advanceTo: (value) => { clock.value = value; },
     allowSimulatedApply: (value) => { simulateApply = value; },
+    inspectResets() {
+      return {
+        total: database.prepare("select count(*) from platform_data_pack_credential_resets").pluck().get(),
+        complete: database.prepare("select count(*) from platform_data_pack_credential_resets where status = 'complete'").pluck().get()
+      };
+    },
     advancePastLease() {
       clock.value = database.prepare("select max(lease_until) from platform_coin_commerce_fulfillment_commands").pluck().get();
     },

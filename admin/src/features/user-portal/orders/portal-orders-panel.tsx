@@ -44,6 +44,7 @@ export type PortalOrdersFilter =
 
 export type PortalOrdersPanelProps = {
   locale: "zh" | "en";
+  theme?: "light" | "dark";
   filter?: PortalOrdersFilter;
   onFilterChange?: (filter: PortalOrdersFilter) => void;
   commerceClient: PortalCoinCommerceClient | null;
@@ -378,6 +379,7 @@ const EMPTY_COIN_ORDERS: PortalCoinOrder[] = [];
 
 export function PortalOrdersPanel({
   locale,
+  theme = "dark",
   filter = "all",
   onFilterChange = () => undefined,
   commerceClient,
@@ -806,6 +808,8 @@ export function PortalOrdersPanel({
             && order.fulfillment.status === "delivered"
             && commerceClient && sessionRef ? (
               <PortalDataPackSubscription
+              autoLoad
+              theme={theme}
                 key={`${order.orderRef}:${sessionGeneration}:${sessionRef}`}
                 commerceClient={commerceClient}
                 sessionRef={sessionRef}

@@ -52,6 +52,7 @@ import {
   type PortalCommerceModel
 } from "./commerce";
 import { PortalOrdersPanel, type PortalOrdersFilter } from "./orders/portal-orders-panel";
+import { DataPackRotationProvider } from "./commerce/data-pack-rotation-context";
 import type { PortalServiceOrder } from "./orders/portal-order-center-model";
 import { PortalPersonalCenterPanel } from "./profile/portal-personal-center-panel";
 import {
@@ -2833,7 +2834,8 @@ export function UserPortalPage({
   );
 
   return (
-    <>
+    <DataPackRotationProvider commerceClient={portalClient.commerce ?? null}
+      sessionRef={portalSession.sessionRef ?? null} sessionGeneration={sessionGeneration}>
       <div className="portal-use-shell portal-v2-shell" data-portal-theme={theme}>
         <aside className="portal-use-sidebar portal-v2-sidebar">
           <div className="portal-v2-brand">
@@ -3049,6 +3051,7 @@ export function UserPortalPage({
               commerceClient={portalClient.commerce ?? null}
               commerceModelClient={portalClient.commerceModel ?? null}
               locale={locale}
+              onSessionInvalid={invalidateSession}
               onOpenWallet={() => setActiveView("wallet")}
               onWalletMutation={walletModel.refreshWallet}
               sessionGeneration={sessionGeneration}
@@ -3129,6 +3132,7 @@ export function UserPortalPage({
           ) : activeView === "orders" && paymentFlowActive ? renderLegacyPaymentFlow() : null}
           {activeView === "orders" && commerceModel !== "wallet_first_unique_v1" && !paymentFlowActive ? (
             <PortalOrdersPanel
+              theme={theme}
               filter={orderCenterFilter}
               onFilterChange={setOrderCenterFilter}
               commerceClient={portalClient.commerce ?? null}
@@ -3244,7 +3248,7 @@ export function UserPortalPage({
           locale={locale}
         />
       ) : null}
-    </>
+    </DataPackRotationProvider>
   );
 }
 

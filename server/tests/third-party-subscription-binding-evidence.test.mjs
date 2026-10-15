@@ -3,6 +3,9 @@ import { createHash } from "node:crypto";
 import test from "node:test";
 import Database from "better-sqlite3";
 import { createSqliteSubscriptionControlStore } from "../services/platform/subscription-control-db.mjs";
+import { COIN_COMMERCE_DATA_PACK_CANDIDATES } from "../services/platform/coin-commerce-production-catalog.mjs";
+import { DATA_PACK_TECHNICAL_VALID_UNTIL } from "../services/platform/usage-billing-cycle.mjs";
+import { resolveThirdPartyPlanIdForTenant } from "../services/platform/third-party-subscription-tier.mjs";
 
 const FROM = "2026-10-01T00:00:00.000Z";
 const NOW = "2026-10-14T00:00:00.000Z";
@@ -49,6 +52,34 @@ test("eligibility classifies only genuinely absent control history as unbound wi
   f.db.pragma("query_only = ON");
   assert.deepEqual(f.read(), { state: "unbound" });
   assert.equal(f.db.prepare("select total_changes() as count").get().count, changes);
+});
+
+test("real pack offers do not inherit a legacy monthly tier from the same account", t => {
+  const f = fixture(t);
+  const { accountId } = f.seed();
+  const tenants = [];
+  for (const offer of COIN_COMMERCE_DATA_PACK_CANDIDATES) {
+    const suffix = offer.delivery.trafficGb;
+    const tenant = `synthetic_pack_tenant_${suffix}`;
+    const entitlementId = `entitlement_pack_${suffix}`;
+    const requestId = `request_pack_${suffix}`;
+    f.store.createEntitlement({ id: entitlementId, accountId, plan: offer.offerVersionRef,
+      status: "active", validFrom: FROM, validUntil: DATA_PACK_TECHNICAL_VALID_UNTIL,
+      trafficLimitBytes: suffix * 1024 ** 3, createdAt: FROM, updatedAt: FROM });
+    f.store.createIssuanceRequest({ id: requestId, accountId, entitlementId, status: "issued",
+      approvalRef: "synthetic_approval", nodeId: "synthetic_node", purpose: "subscription",
+      requestedByRef: accountId, createdAt: FROM, updatedAt: FROM });
+    f.store.linkIssuedSubscription({ id: `link_pack_${suffix}`, requestId,
+      tenantRef: `tenantref_${createHash("sha256").update(tenant).digest("hex").slice(0, 16)}`,
+      artifactRef: "synthetic_artifact", status: "active", createdAt: FROM, updatedAt: FROM });
+    tenants.push(tenant);
+  }
+  f.db.pragma("query_only = ON");
+  assert.equal(resolveThirdPartyPlanIdForTenant(f.store, { id: TENANT, status: "active" }, { at: NOW }),
+    "monthly_basic");
+  for (const tenant of tenants) {
+    assert.equal(resolveThirdPartyPlanIdForTenant(f.store, { id: tenant, status: "active" }, { at: NOW }), null);
+  }
 });
 
 for (const tenantRef of REFS) {

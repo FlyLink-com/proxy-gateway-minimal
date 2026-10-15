@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import type {
   PortalCoinCommerceClientErrorCode,
+  PortalCoinCommerceClient,
   PortalCoinOrder,
   PortalCoinQuote
 } from "../api-contract";
@@ -15,10 +16,18 @@ import {
 import { CoinsPaymentStatusCard } from "./coins-payment-status-card";
 import { portalCoinCommerceErrorText } from "../commerce-error-presentation";
 import { isPortalCoinOrderTerminal } from "../use-coins-purchase-flow";
+import { PortalDataPackSubscription } from "./portal-data-pack-subscription";
 
 type CommerceLocale = "zh" | "en";
 
 export type CoinsPurchaseDialogProps = {
+  dataPackDelivery?: {
+    commerceClient: PortalCoinCommerceClient;
+    sessionRef: string;
+    sessionGeneration: number;
+    theme?: "light" | "dark";
+    onSessionInvalid: () => void;
+  };
   cancelling: boolean;
   confirmDisabled?: boolean;
   errorCode: PortalCoinCommerceClientErrorCode | null;
@@ -151,6 +160,7 @@ function QuoteFacts({
 }
 
 export function CoinsPurchaseDialog({
+  dataPackDelivery,
   cancelling,
   confirmDisabled = false,
   errorCode,
@@ -166,6 +176,10 @@ export function CoinsPurchaseDialog({
   submitting
 }: CoinsPurchaseDialogProps) {
   const insufficient = quote?.purchaseAvailability === "insufficient_balance";
+  const showDataPackDelivery = Boolean(dataPackDelivery && !errorCode && !submitting && !cancelling
+    && order?.offer.category === "data_pack"
+    && order.paymentStatus === "captured"
+    && order.fulfillment.status === "delivered");
   const errorRef = useRef<HTMLParagraphElement | null>(null);
   useEffect(() => {
     if (errorCode && !order) errorRef.current?.focus();
@@ -191,7 +205,9 @@ export function CoinsPurchaseDialog({
       onRequestClose={onRequestClose}
       onRestoreFocus={onRestoreFocus}
       panelClassName="portal-coins-purchase-dialog"
-      title={localized(locale, "确认 Coins 购买", "Confirm Coins purchase")}
+      title={showDataPackDelivery
+        ? localized(locale, "订阅交付", "Subscription delivery")
+        : localized(locale, "确认 Coins 购买", "Confirm Coins purchase")}
       footer={quote && !order ? (
         <button
           className="portal-coins-dialog__primary"
@@ -215,7 +231,7 @@ export function CoinsPurchaseDialog({
       {!order && errorCode ? (
         <p ref={errorRef} role="alert" tabIndex={-1}>{liveText}</p>
       ) : null}
-      {order ? (
+      {order ? (showDataPackDelivery ? null : (
         <CoinsPaymentStatusCard
           cancelling={cancelling}
           errorCode={errorCode}
@@ -224,7 +240,16 @@ export function CoinsPurchaseDialog({
           onRefresh={onRefresh}
           order={order}
         />
-      ) : quote ? <QuoteFacts locale={locale} quote={quote} /> : null}
+      )) : quote ? <QuoteFacts locale={locale} quote={quote} /> : null}
+      {showDataPackDelivery && dataPackDelivery && order ? (
+          <PortalDataPackSubscription
+            {...dataPackDelivery}
+            key={`${order.orderRef}:${dataPackDelivery.sessionRef}:${dataPackDelivery.sessionGeneration}`}
+            orderRef={order.orderRef}
+            locale={locale}
+            autoLoad
+          />
+        ) : null}
       {!order && !errorCode ? <p aria-live="polite">{liveText}</p> : null}
     </CoinsDialogFrame>
   );

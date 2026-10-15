@@ -2048,6 +2048,133 @@ describe("Portal server-backed Marketplace", () => {
     expect(actionsRule).toMatch(/(?:^|\s)margin-top\s*:\s*auto\s*;/);
   });
 
+  test("owned packs come from owner orders across explicit pages and survive reopening the marketplace", async () => {
+    const pack: PortalCoinOrder = { ...deliveredOrder, orderRef: "order_owned_pack",
+      offer: dataPackOffer };
+    const cursor = { afterCreatedAt: deliveredOrder.createdAt, afterOrderRef: deliveredOrder.orderRef };
+    const listOrders = vi.fn()
+      .mockResolvedValueOnce({ orders: [deliveredOrder, { ...pack, paymentStatus: "held" }], nextCursor: cursor })
+      .mockResolvedValueOnce({ orders: [pack], nextCursor: null })
+      .mockResolvedValueOnce({ orders: [pack], nextCursor: null });
+    const commerce = commerceClient({ listOrders,
+      getDataPackDelivery: vi.fn(async () => ({ orderRef: pack.orderRef,
+        subscriptionUrl: "https://subscriptions.example.test/s/synthetic-owned-pack",
+        usage: { usedBytes: null, totalBytes: 1000, remainingBytes: null,
+          collectionStatus: "pending" as const, updatedAt: null, exhausted: null } })) });
+    const props = { commerceClient: commerce, locale: "en" as const,
+      sessionRef: "portal_session_marketplace", theme: "dark" as const };
+    const view = render(createElement(MarketplacePanel, props));
+    const owned = await screen.findByRole("region", { name: "Owned data packs" });
+    await within(owned).findByRole("button", { name: "Load more orders" });
+    expect(within(owned).queryByText("No owned data packs yet.")).toBeNull();
+    expect(within(owned).queryByRole("button", { name: /View data pack/ })).toBeNull();
+    expect(listOrders).toHaveBeenCalledTimes(1);
+    fireEvent.click(within(owned).getByRole("button", { name: "Load more orders" }));
+    fireEvent.click(await within(owned).findByRole("button", { name: "View data pack: Server data pack" }));
+    const dialog = await screen.findByRole("dialog", { name: "Subscription delivery" });
+    await within(dialog).findByRole("textbox", { name: "Subscription link" });
+    expect(listOrders).toHaveBeenNthCalledWith(2, { sessionRef: props.sessionRef, limit: 25, ...cursor });
+    expect(commerce.getDataPackDelivery).toHaveBeenCalledTimes(1);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Close" }));
+    expect(screen.queryByRole("textbox", { name: "Subscription link" })).toBeNull();
+    view.unmount();
+    render(createElement(MarketplacePanel, props));
+    await screen.findByRole("button", { name: "View data pack: Server data pack" });
+    expect(commerce.createOrder).not.toHaveBeenCalled();
+    expect(commerce.rotateDataPackDelivery).not.toHaveBeenCalled();
+    expect(commerce.getDataPackDelivery).toHaveBeenCalledTimes(1);
+  });
+
+  test("owned pack history rejects late account replies and does not fetch credentials while listing", async () => {
+    const oldPack: PortalCoinOrder = { ...deliveredOrder, orderRef: "order_old_owner", offer: dataPackOffer };
+    const newPack: PortalCoinOrder = { ...oldPack, orderRef: "order_new_owner",
+      offer: { ...dataPackOffer, title: { zh: "新账户流量包", en: "New owner's pack" } } };
+    let resolveOld!: (page: { orders: PortalCoinOrder[]; nextCursor: null }) => void;
+    const listOrders = vi.fn()
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveOld = resolve; }))
+      .mockResolvedValueOnce({ orders: [newPack], nextCursor: null });
+    const commerce = commerceClient({ listOrders });
+    const props = { commerceClient: commerce, locale: "en" as const, theme: "light" as const };
+    const view = render(createElement(MarketplacePanel, { ...props, sessionRef: "session_alpha", sessionGeneration: 1 }));
+    view.rerender(createElement(MarketplacePanel, { ...props, sessionRef: "session_beta", sessionGeneration: 2 }));
+    await screen.findByRole("button", { name: "View data pack: New owner's pack" });
+    await act(async () => resolveOld({ orders: [oldPack], nextCursor: null }));
+    expect(screen.queryByRole("button", { name: "View data pack: Server data pack" })).toBeNull();
+    expect(listOrders.mock.calls.map(([input]) => input.sessionRef)).toEqual(["session_alpha", "session_beta"]);
+    expect(commerce.getDataPackDelivery).not.toHaveBeenCalled();
+    expect(commerce.rotateDataPackDelivery).not.toHaveBeenCalled();
+  });
+
+  test("owned history retries a failed later page without hiding owned packs or silently ending pagination", async () => {
+    const pack: PortalCoinOrder = { ...deliveredOrder, orderRef: "order_owned_pack", offer: dataPackOffer };
+    const cursor = { afterCreatedAt: pack.createdAt, afterOrderRef: pack.orderRef };
+    const listOrders = vi.fn()
+      .mockResolvedValueOnce({ orders: [pack], nextCursor: cursor })
+      .mockRejectedValueOnce(new Error("offline"))
+      .mockResolvedValueOnce({ orders: [], nextCursor: cursor });
+    const commerce = commerceClient({ listOrders });
+    render(createElement(MarketplacePanel, { commerceClient: commerce, sessionRef: "session_alpha",
+      sessionGeneration: 1, locale: "en", theme: "dark" }));
+    const owned = await screen.findByRole("region", { name: "Owned data packs" });
+    fireEvent.click(await within(owned).findByRole("button", { name: "Load more orders" }));
+    fireEvent.click(await within(owned).findByRole("button", { name: "Retry reading orders" }));
+    await waitFor(() => expect(listOrders).toHaveBeenCalledTimes(3));
+    expect(within(owned).getByRole("button", { name: "View data pack: Server data pack" })).toBeInTheDocument();
+    expect(within(owned).getByRole("alert")).toHaveTextContent("Could not read owned packs");
+    expect(within(owned).queryByText("No owned data packs yet.")).toBeNull();
+    expect(listOrders.mock.calls[2][0]).toEqual(listOrders.mock.calls[1][0]);
+    expect(commerce.getDataPackDelivery).not.toHaveBeenCalled();
+  });
+
+  test("a paid delivered pack is available immediately inside checkout and forgotten on close", async () => {
+    const order: PortalCoinOrder = { ...heldOrder, offer: dataPackOffer, paymentStatus: "captured",
+      fulfillment: { status: "delivered", safeCode: null } };
+    const commerce = commerceClient({
+      previewCheckout: vi.fn(async () => ({ ...availableQuote, offer: dataPackOffer })),
+      createOrder: vi.fn(async () => order),
+      getDataPackDelivery: vi.fn(async () => ({ orderRef: order.orderRef,
+        subscriptionUrl: "https://subscriptions.example.test/s/synthetic-checkout-only",
+        usage: { usedBytes: 250, totalBytes: 1000, remainingBytes: 750,
+          collectionStatus: "measured" as const, updatedAt: "2026-10-15T00:00:00Z", exhausted: false } }))
+    });
+    render(createElement(MarketplacePanel, { commerceClient: commerce, locale: "en",
+      sessionRef: "portal_session_marketplace", theme: "dark" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Buy with Coins: Server data pack" }));
+    const dialog = await screen.findByRole("dialog", { name: "Confirm Coins purchase" });
+    expect(commerce.getDataPackDelivery).not.toHaveBeenCalled();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Confirm purchase" }));
+    await within(dialog).findByRole("button", { name: "Copy subscription" });
+    expect(within(dialog).queryByRole("button", { name: "Refresh Order" })).toBeNull();
+    expect(within(dialog).queryByRole("region", { name: "Coins Order status" })).toBeNull();
+    expect(commerce.getDataPackDelivery).toHaveBeenCalledWith({
+      sessionRef: "portal_session_marketplace", orderRef: order.orderRef
+    });
+    await waitFor(() => expect(commerce.listOrders).toHaveBeenCalledTimes(2));
+    expect(commerce.createOrder).toHaveBeenCalledTimes(1);
+    expect(commerce.rotateDataPackDelivery).not.toHaveBeenCalled();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Close" }));
+    expect(screen.queryByRole("button", { name: "Copy subscription" })).toBeNull();
+  });
+
+  test.each(["pending", "processing", "failed"] as const)(
+    "a captured pack with %s fulfillment does not fetch a subscription", async (status) => {
+      const order: PortalCoinOrder = { ...heldOrder, offer: dataPackOffer, paymentStatus: "captured",
+        fulfillment: status === "failed" ? { status, safeCode: "fulfillment_handler_failed" }
+          : { status, safeCode: null } };
+      const commerce = commerceClient({
+        previewCheckout: vi.fn(async () => ({ ...availableQuote, offer: dataPackOffer })),
+        createOrder: vi.fn(async () => order), getOrder: vi.fn(async () => order)
+      });
+      render(createElement(MarketplacePanel, { commerceClient: commerce, locale: "en",
+        sessionRef: "portal_session_marketplace", theme: "dark" }));
+      fireEvent.click(await screen.findByRole("button", { name: "Buy with Coins: Server data pack" }));
+      const dialog = await screen.findByRole("dialog", { name: "Confirm Coins purchase" });
+      fireEvent.click(within(dialog).getByRole("button", { name: "Confirm purchase" }));
+      await waitFor(() => expect(commerce.createOrder).toHaveBeenCalledTimes(1));
+      expect(commerce.getDataPackDelivery).not.toHaveBeenCalled();
+    }
+  );
+
   test("Commerce CSS keeps theme, focus, safe-area, and responsive rules scoped", () => {
     const css = readCommerceCss();
     expect(css).toMatch(

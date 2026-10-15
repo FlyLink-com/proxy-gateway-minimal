@@ -1663,7 +1663,9 @@ export function portalCoinCommerceRoutes(state, options = {}) {
         const input = { accountId: res.locals.portalCommerceSession.accountId,
           orderRef: req.params.orderRef, rotationRef };
         try {
-          projectDataPackDelivery(dataPackDelivery.get(input), req.params.orderRef);
+          projectDataPackDelivery(dataPackDelivery.get({
+            accountId: input.accountId, orderRef: input.orderRef
+          }), req.params.orderRef);
         } catch {
           sendCommerceError(res, 404, "commerce_not_found");
           return;
