@@ -1,6 +1,6 @@
 # Project Context
 
-Last updated: 2026-10-11 UTC.
+Last updated: 2026-10-12 UTC.
 
 ```yaml
 document_metadata:
@@ -8,7 +8,7 @@ document_metadata:
   lifecycle: active
   authority_scope: project_context
   superseded_by: null
-  last_verified_at: 2026-10-11
+  last_verified_at: 2026-10-12
   production_authority: false
 ```
 
@@ -37,6 +37,16 @@ This file is the compact entrypoint for continuing
 records under `docs/`, not in this handoff. It does not authorize production,
 provider, DNS, Nginx, systemd, firewall, schema, deploy, promotion, rollback,
 credential, payment, subscription-material, or customer-data actions.
+
+## Scoped continuation (2026-10-12)
+
+The newer [metering closeout](CURRENT_RELEASE_STATE.md#scoped-metering-closeout-2026-10-12)
+records #773/#774 BWH local-three recovery and subsequent natural accounting;
+do not restart the old preparation workflow. Identity is still degraded with
+retention pending, and the recovery-before counts are unavailable. This is a
+PR-record reconciliation, not a fresh production read. Third-party subscription
+planning remains independent in #762 and its stacked implementation #771;
+neither is deployed by this closeout. Re-read those native PRs before work.
 
 ## Read First
 

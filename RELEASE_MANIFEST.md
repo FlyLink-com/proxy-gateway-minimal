@@ -6,7 +6,7 @@ document_metadata:
   lifecycle: active
   authority_scope: release_traceability
   superseded_by: null
-  last_verified_at: 2026-10-11
+  last_verified_at: 2026-10-12
   production_authority: false
 ```
 
@@ -23,6 +23,13 @@ document_metadata:
 > - No live runtime or provider readback was performed by this docs change
 > - Production authority: None. This file does not deploy, promote, roll back,
 >   mutate runtime state, or replace live inventory and validation.
+
+The later [2026-10-12 scoped metering closeout](docs/CURRENT_RELEASE_STATE.md#scoped-metering-closeout-2026-10-12)
+adds the recorded #773 collector / #774 recovery deployment and after-only
+degraded Identity Gate. It does not refresh unrelated release units, authorize
+recovery replay or establish whole-master deployment. Exact source, artifact
+and recovery-tool identities, together with the #775 not-used-on-host
+distinction, remain in the linked Deploy Note.
 
 ## Model
 
