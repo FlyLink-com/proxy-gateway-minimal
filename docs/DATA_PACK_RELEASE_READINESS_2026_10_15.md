@@ -492,6 +492,62 @@ scheduled-plan-switch fixture, the actual installed native binary, physical
 protocol/collector behavior or production backups. Those limits are not counted
 as passing tests.
 
+### Approved source-only comparison: stopped, 2026-10-15
+
+The operator approved the fixed 201-existing-file / 10-absent-path comparison.
+One SSH call ran from **11:34:57.923Z to 11:35:00.167Z** on the existing BWH
+alias with strict known-host verification. It sent the comparison program on
+stdin, not as a remote file. No configuration, database, checkpoint, credential,
+log or statistics were read; no files were installed and no services changed.
+The single-use read is consumed and was not retried.
+
+The initial current-pointer check passed. The comparison then stopped at the
+first source hash difference after **72 existing files matched and 1 new path
+was confirmed absent**. One file failed comparison and **137 paths were not
+reached**. The final all-file and pointer-stability checks were therefore not
+reached; this is not a completed source-tree or promotion result.
+
+| Source path | Expected by the local fixture | Actual BWH source hash |
+| --- | --- | --- |
+| `server/services/edge/xray-recovery-counter-parser.mjs` | `64b984b1df0722c4eb48c395335fb1e2cef95f9e42dd6aad4a603c40fffe425a` | `0864c8c276fc3adc155e9f6be2c105d5812f93eb762c3ca7082baf272e21e162` |
+
+Local raw-Git-byte comparison identifies the actual hash as the 1,609-byte LF
+file at `2dea45fcbac1`, not a CRLF transformation or unknown source blob. The
+fixture had assumed the newer 2,234-byte file from #754. That revision adds the
+CLI-protobuf zero-value adapter while retaining the strict parser. The native
+[#754 completed Deploy Note](https://github.com/FlyLink-com/proxy-gateway-minimal/pull/754#issuecomment-5908447749)
+explicitly records an independent collector/reader deployment with the business
+backend/current unchanged. Historical local mixed-source indexes support this
+old-app/new-collector composition but are preparation evidence, not installation
+receipts. Today's hash confirms only this particular current application file.
+
+The discovered defect is in the **local expected composition**, not evidence of
+a new production failure. This file is outside the 26-file overlay and must not
+be silently added to it. The adjacent application Xray reader was not reached
+by the live comparison; its actual pairing is still unverified. No fresh
+collector-health or billing claim follows from this source-only read.
+
+Receipt: `output/data-pack-release-20261015/source-compare-20261015/receipt.json`,
+SHA-256 `a6d950feaf4a1cb86c0e42ce987f91b8c319362cebdb9cc9a23ec46bf389476f`.
+The frozen comparison index retains SHA-256
+`1868b61dd879e626ac8101a470e663190136867578004040e6c496c46b021823`;
+program SHA-256 is
+`f6a6cc4741b30ad273dfcb21e3c23e1ffb2e3ace4b0b94656f67a94ea0432a3d`.
+Before execution, **12/12 synthetic Linux boundary tests** and the local runner
+syntax check passed. These validate the bounded reader, not production readiness.
+
+The existing 260-test retained-lock result remains valid for its recorded local
+source fixture; it is **not** evidence for the now-known different BWH app mix.
+The source archive, failed comparison and prior receipts remain unchanged. No
+backend source was edited, #753 was not merged, and no product was published.
+
+The next limited read should inventory hashes/absence for the remaining original
+source paths, rather than repeatedly guessing master-derived before-hashes.
+It requires a new explicit approval and must not replay this consumed command.
+Only after mapping the actual retained app source should the affected local
+composition tests run and installation preparation continue. This does not
+expand into a whole-host inventory, configuration read or collector replacement.
+
 ### Proposed individually observed production steps (not executed)
 
 The local preparation above does not authorize the following operations. Exact
