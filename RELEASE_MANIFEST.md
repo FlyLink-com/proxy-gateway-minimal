@@ -27,8 +27,9 @@ document_metadata:
 The later [2026-10-12 scoped metering closeout](docs/CURRENT_RELEASE_STATE.md#scoped-metering-closeout-2026-10-12)
 adds the recorded #773 collector / #774 recovery deployment and after-only
 degraded Identity Gate. It does not refresh unrelated release units, authorize
-recovery replay or establish whole-master deployment. Exact runtime identities
-and the #775 not-used-on-host distinction remain in the linked Deploy Note.
+recovery replay or establish whole-master deployment. Exact source, artifact
+and recovery-tool identities, together with the #775 not-used-on-host
+distinction, remain in the linked Deploy Note.
 
 ## Model
 

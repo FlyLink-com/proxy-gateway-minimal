@@ -274,8 +274,9 @@ candidate and the new config/digest only. Keep the old lane disabled. Do not
 start a catch-up burst.
 
 Expected receipt: exactly one writer; old unit still inactive; new timer not
-yet enabled until Step 8; identity_gate state is `degraded` because stale
-retained bindings remain and before counts were not captured.
+yet enabled until Step 8; identity_gate remains `pending`. Step 8 requires a
+fresh aggregate read for that execution; the later historical after-only
+snapshot below cannot satisfy this step for a new recovery.
 
 Stop: both old and new writers enabled; old `--collect` still referenced; SGP
 expansion; protocol restart.
@@ -438,9 +439,12 @@ the paused interval. No restore was performed.
 
 - Separate approval before deleting the BWH private recovery directories or
   backups.
-- The BWH one-off recovery tool copy predates PR #775. Use the corrected source
-  if a future approved recovery needs that tool; do not rerun initialization
-  or replace the already-running collector merely to update this historical copy.
+- The BWH one-off recovery tool copy predates PR #775. The #774 pins and
+  commands above describe that historical execution and are not reusable
+  approval for a future recovery. Before another recovery, prepare and review
+  a new runbook with the corrected #775-or-later tool identities, exact
+  artifact hashes, validation and approval. Do not rerun initialization or
+  replace the already-running collector to update this historical copy.
 - Retention inventory for the 89/76/88 stale mappings remains separate under
   the metering work tracked by #437. The aggregate after-read is recorded;
   missing before counts remain an explicit evidence gap, not a fabricated task
