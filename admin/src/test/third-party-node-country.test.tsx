@@ -1,4 +1,5 @@
 import "@testing-library/jest-dom/vitest";
+import { readFileSync } from "node:fs";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { renderedNodeName, validateNodeName, type ThirdPartyNode } from "../features/third-party-node-names/node-name-model";
@@ -12,6 +13,13 @@ const node: ThirdPartyNode & { customCountryCode?: string | null } = {
 afterEach(cleanup);
 
 describe("third-party country flag presentation", () => {
+  test("detected country chip keeps a valid emoji font fallback list", () => {
+    const css = readFileSync("src/features/third-party-node-names/third-party-admin-workspace.styles.css", "utf8");
+    const chipRule = css.match(/\.tp-names-detected\s*\{([^}]+)\}/)?.[1];
+    expect(chipRule).toBeDefined();
+    const fonts = chipRule?.match(/font-family:\s*([^;]+);/)?.[1].split(",").map((font) => font.trim());
+    expect(fonts).toEqual(['"Noto Color Emoji"', '"Apple Color Emoji"', '"Segoe UI Emoji"', "sans-serif"]);
+  });
   test("untouched names and cleared overrides preserve original flags", () => {
     expect(renderedNodeName(node)).toBe("🇺🇸 纽约入口");
     expect(renderedNodeName({ ...node, customCountryCode: null } as typeof node)).toBe("🇺🇸 纽约入口");

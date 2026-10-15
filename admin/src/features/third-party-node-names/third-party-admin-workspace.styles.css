@@ -44,7 +44,7 @@
 .tp-names-clamp { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; }
 .tp-names-detected { display: inline-flex; align-items: center; justify-content: center; gap: 4px; width: 58px; margin-right: 6px; vertical-align: middle; padding: 1px 4px; border-radius: 5px;
   background: #f1f5fb; color: #34445a; font-size: 11px; line-height: 18px; white-space: nowrap;
-  font-family: "Noto Color Emoji", "Apple Color Emoji", "Segoe UI Emoji", inherit; }
+  font-family: "Noto Color Emoji", "Apple Color Emoji", "Segoe UI Emoji", sans-serif; }
 .tp-names td:has(> .tp-names-detected) { white-space: nowrap; }
 .tp-names td > .tp-names-detected + .tp-names-country { width: calc(100% - 64px); vertical-align: middle; }
 /* Loading: animate the placeholder icon while the workspace is busy. */
