@@ -548,6 +548,98 @@ Only after mapping the actual retained app source should the affected local
 composition tests run and installation preparation continue. This does not
 expand into a whole-host inventory, configuration read or collector replacement.
 
+### Remaining-source inventory completed, 2026-10-15
+
+Following separate operator approval, one source-only BWH SSH read ran from
+**11:48:38.245Z to 11:48:40.445Z**. The fixed boundary was precisely the original
+index's remaining `files[74:]`: **128 existing source files and 9 expected-absent
+paths**, not a repeat of the failed comparison or a whole-host inventory.
+All 137 paths were observed; missing existing files and unexpectedly present new
+paths were both zero. This read completed its file, root and current-pointer
+stability checks. Only stdin-delivered Python standard-library code was used;
+no remote file installation, configuration/database/credential read, application
+import, service action or production mutation occurred.
+
+Of the 128 existing files, **127 match the original expectations**. The only
+remaining difference is `server/services/edge/xray-stats-cli-usage-reader.mjs`:
+5,562 bytes, SHA-256
+`f597552de3043ce5fa619e60cef5bd1a700879d244563917741913f0701e625b`.
+This exactly matches the old Git `2dea45fcbac1` reader, which imports the old
+strict parser confirmed in the preceding read. The application pair is therefore
+old/old, not an observed old-parser/new-reader mismatch. This does not query or
+make a new health claim about the independent production collector.
+
+Across the **two different observation windows**, the original 211 paths now
+have observations: 199 existing files match their original expectations, two
+have identified old Git versions, and ten new paths are absent. All **201
+observed existing-file hashes map to local Git blobs**. This is not an atomic
+whole-tree snapshot: the first 74 paths were not reread, and the first read did
+not complete its terminal stability check. Nor does this reconstruct the entire
+658-file installed application. Fresh deployment-time source/custody checks
+remain required before any installation or pointer change.
+
+Local application of the original 26-file delta to these mapped sources yields
+the indexed 209 runtime sources plus two retained package inputs. Compared with
+the earlier candidate fixture, **only the two retained old Xray files differ**.
+No unresolved Git source remains in this literal closure. The overlay is still
+the same 16 replacements and ten additions; neither Xray file, dependencies,
+frontend nor independent collector has been added to the update scope. Literal
+closure mapping does not cover dynamic runtime resources or private config.
+
+Evidence under `output/data-pack-release-20261015/source-remainder-20261015/`:
+
+- `receipt.json`: SHA-256
+  `fe87a187c9666dcfb2fcfa5c7ff029c3af9932f19a1587fc45bffac55325055e`.
+- `observed-source-index.json`: SHA-256
+  `9176219b31a9b08c965bc493853f856d4319a9f42c0b934dae03c800bbaddce1`;
+  records per-file source, both observation windows and the non-atomic limits.
+- Read program SHA-256:
+  `42b39bf92fcd32d904819519023760a39fe2c492ae423d75c2919d27f613bf64`;
+  local runner SHA-256:
+  `0ed26c7a966b27ca10aae1add0b6d501c54bb80b321aed9d8e38b423615dce6e`.
+- **15/15 synthetic Linux reader boundary tests** and runner syntax/preflight
+  passed. These include exclusion of the earlier paths, existence-only handling
+  of new paths, source changes, special files, links and forbidden paths.
+- Independent read-only evidence review confirmed the scope, counts, old/old
+  pairing and two-window limitation; it did not perform another SSH read.
+
+This completes the narrow source-discovery gap for local combination testing,
+not the Merge, Artifact or Production Gates. No new production backup, schema
+startup, switch, merge or product publication was performed. The earlier
+260-test result is not relabelled as validation of this different composition.
+
+The observed composition was then tested separately in a fresh local WSL
+namespace: the same `70a6c8ac` source fixture and retained package/lock/dependency
+archive, with **only the two old Xray Git blobs** substituted. All extracted
+source and dependency entries were rehashed. The original 12 focused files
+passed **260/260**, and a new application `state.mjs` -> old reader/parser
+composition test passed **1/1**; neither run had failures, skips or cancellations.
+The added test uses a synthetic command runner and verifies explicit directional
+counters plus idle/no-observation behavior, with the pack runtime disabled.
+It does not exercise a real Xray binary, omitted-zero behavior newly added by
+#754, physical traffic, or the independent production collector.
+
+Environment: Node 22.23.1 / ABI 127 / glibc 2.39, non-root WSL user/network
+namespace with loopback only and no routes. No npm installation, SSH, production
+input or protocol process was used. The local native dependency is still not
+claimed byte-equivalent to production. The three-process rollback rehearsal
+was not repeated; its previously documented old-master/synthetic-data limits
+remain unchanged. Full source tests were reused, not rerun. Hosted run
+`38718860475` was freshly checked: its annotation explicitly says the job did
+not start because an Actions budget blocked it. It was not retried or counted
+as passing CI.
+
+New evidence is under
+`output/data-pack-release-20261015/observed-composition-validation/`:
+`validation-manifest.json`, `focused.tap`, `reader-state.tap` and
+`execution-receipt.json`. Manifest SHA-256:
+`d788e4b6697812a7dac86088825926f1a24eff8b034b0fd432b0438c92fba498`.
+The receipt records exit code zero, zero remaining owned working-directory
+processes and independent confirmation that the exact temporary directory is
+absent. Local archives and evidence remain retained; no production source was
+copied or changed. This is new **local observed-source combination evidence**,
+not whole-production-tree, enabled-pack or deployment acceptance.
+
 ### Proposed individually observed production steps (not executed)
 
 The local preparation above does not authorize the following operations. Exact
