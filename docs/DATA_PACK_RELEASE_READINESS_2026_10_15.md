@@ -165,8 +165,8 @@ create these **eight named objects** (plus SQLite's implicit constraint indexes)
 | `platform_data_pack_edge_credentials` | `platform_data_pack_edge_active_request_idx` |
 | `platform_data_pack_credential_resets` | `platform_data_pack_credential_reset_pending_idx` |
 
-The current production presence/absence of those objects has not been read in
-this turn. Before **first** new application startup, bind current deployed app /
+The inventory recorded later in this document found all eight objects absent.
+That dated readback is not permission to apply them. Before **first** new application startup, bind current deployed app /
 collector identity, exact database and journal paths, additive schema, backup
 completeness, compatible rollback target, and service/synchronization boundaries.
 Production data and credentials must not be copied to the developer workstation.
@@ -310,10 +310,239 @@ Proceed with individually observable steps, not a new opaque execution bundle:
    execution in #753's Deploy Note. Do not call retained stale identities healthy.
 
 First-start schema mutation and post-write rollback rules above still apply.
-No production read, upload, startup, schema apply or switch is recorded by this
-preparation. Physical exhaustion/reset acceptance and the frontend work below
+The source-preparation stage above performed no production access. The later
+approved read-only inventory is recorded below; no upload, startup, schema apply
+or switch has occurred. Physical exhaustion/reset acceptance and frontend work
 remain prerequisites for **activation/publication**, not reasons to repeat
 unrelated checks during this disabled-backend preparation.
+
+### Approved BWH read-only inventory, 2026-10-15
+
+The operator approved bounded, individually observed SSH reads through the
+existing `bwh-us` alias. Strict known-host checking, batch mode and disabled
+agent forwarding were retained. The observations span 10:22:20-10:31:26 UTC.
+No old one-use executor was replayed, no remote files were installed, and no
+service, configuration, business record or release pointer was changed.
+Native SQLite readonly/fileMustExist connections used query_only and a read
+transaction; WAL/SHM coordination metadata may have been touched as disclosed.
+
+The local redacted receipt is
+`output/data-pack-release-20261015/bwh-readonly-inventory-20261015.json`.
+It establishes these bounded facts, not deployment or accounting acceptance:
+
+- Current app and process CWD still match
+  `control-plane-pr786-c7b094592662-mixed`. The complete directory-entry walk
+  rejected unlisted paths/types, did not follow runtime links, and required exact
+  key-set equality before hashing: **658 files, 3 links, 0 mismatched entries**.
+  The installed receipt SHA-256 is
+  `2e83021a623c797524b5a130b891006d3f1e89118dfd3b732370da5bf5e80f65`.
+- Backend, Nginx and all three protocol services were active with zero automatic
+  restarts. Their process/invocation identities did not change between the two
+  service observations. The collector timer was active/waiting; the latest
+  natural collection at each observation ended successfully (10:22:14 and
+  10:28:17 UTC). This does not prove positive usage, global identity health or
+  every intervening collection; no checkpoint or identity-map audit was run.
+- Node **22.23.1 / ABI 127 / glibc 2.39** and the Node binary hash match the
+  candidate Linux manifest above. The installed lock is instead
+  `a3422b6286c375e4fe5ebafc41baf27dc127ed182e63eee6c1f91dc183d92418`,
+  byte-identical to the historical `2dea45fcbac1` lock. Root dependencies include
+  ip-address 10.4.0, proxy-addr 2.0.7 and better-sqlite3 12.10.0; YAML 2.9.1 is
+  separately present under `server/services/platform/node_modules/yaml`.
+  The candidate dependency archive would also upgrade ip-address/proxy-addr;
+  do not silently install it. These dependencies remain outside this change.
+- Pack runtime is unconfigured/effectively false. Existing Commerce, plan-switch
+  and Portal link-reset flags are enabled. Control, subscription and third-party
+  databases are separate files; protected material exists, but pack escrow is
+  not configured. No private path or credential value was exported.
+- All **8 pack schema objects are absent**; pack row counts are missing/null,
+  not measured zero. The existing commerce offer table contains **0 pack offers**.
+  First startup still requires approval for additive schema creation.
+- Within the queried Coins tables: 14 orders are captured and 14 fulfillment
+  commands delivered; held/capture-pending/reconciliation-required and
+  pending/processing/failed fulfillment counts are zero. Both recorded Portal
+  link resets are completed. Scheduled plan switches contain **2 scheduled,
+  0 applying and 1 superseded**; preserve these facts during upgrade/rollback.
+  This is not a full payment reconciliation or a check of protected-file pending
+  journals. No customer rows, identifiers or subscription material were returned.
+- Control DB main file is 448,335,872 bytes; runtime/third-party databases and
+  WAL/SHM sizes are recorded separately. The backup filesystem has 29,149,978,624
+  available bytes and 2,470,410 free inodes. The prior #785 release exists, but
+  no new backup or production restore test has been performed.
+
+The scoped source comparison found **16 existing runtime files exactly matching
+the candidate base, plus 10 new pack modules**. No affected file requires a
+mixed-source merge. The preparation-only index is
+`output/data-pack-release-20261015/bwh-backend-overlay-index-70a6c8ac.json`.
+Its after-hashes identify Git blob content, not a built or approved production
+archive. Preserve all other #786 files, root dependencies, nested YAML and the
+three runtime links. Do not replace the independent collector or frontend.
+
+Next preparation is the exact 26-file mixed-app candidate and narrow validation
+with retained production dependency versions. Reuse unchanged source results;
+the earlier 260-test candidate-dependency run is not proof of this retained-lock
+combination. Review/merge and immutable artifact gates remain open. Then bind
+new online database/material backups and post-write-safe code rollback before
+asking for the exact installation/startup approval. Never restore an old data
+snapshot over new normal Coins, usage or either scheduled plan switch.
+
+### Retained-dependency source candidate, 2026-10-15
+
+This stage is local-only preparation. It did not repeat the completed BWH
+inventory, upload files, change services, create production backups, initialize
+production schema, merge #753, or publish products. The application source is
+fixed to `70a6c8ac908f9a0e18e890452ff5471cdace8433`, with base
+`742459d11aa15d9061e7dafe4ab584a5c72dbaf1`.
+
+The source-only candidate archive is
+`output/data-pack-release-20261015/backend-overlay-70a6c8ac/backend-overlay.tar`:
+**1,004,544 bytes**, SHA-256
+`d6f665022b1e7e27eb7694a7e43982672f74c4027d607fa487ada1e131c4e97c`.
+The accompanying manifest binds exactly 16 replacements and 10 additions to
+their before/after hashes. Git blob bytes, rather than checked-out CRLF content,
+were used. All 26 modules passed syntax checks; the controller separately
+rehashed the archive/staging files and verified exact archive path-set equality.
+There are no frontend, dependency, configuration, database or runtime-link
+entries. This is a branch-source candidate, **not a master release artifact or
+production execution package**.
+
+An independent, read-only security fallback review of the 26-file off-only
+boundary found no confirmed blocking defect. It checked the 16 shared paths,
+default-off composition, unpublished catalog, additive schema and import
+closure; 108 direct relative imports had no missing or unexpectedly changed
+dependencies. Its four focused Windows suites passed **38/38**, zero skips.
+The dedicated Security Review product tool was unavailable; this is an
+independent-agent fallback, not that product's certification or a whole-PR
+enabled-runtime review. In particular, the readonly material reader requires
+the new tables and must not be promoted to the independent collector here.
+
+A second local source index traces 209 runtime source files plus the retained
+package/lock inputs. All 209 candidate source blobs are available, but 160
+closure files have only historical synthetic-fixture provenance, not individual
+current production hashes. The prior full-tree match proves consistency with
+the server-private installed receipt; it does not export that receipt's full
+mapping. Neither the historical 2,012-file synthetic index nor a whole-master
+checkout is labelled the 658-file production tree. The closure index is
+`output/data-pack-release-20261015/mixed-reconstruction/source-closure-index.json`,
+SHA-256 `574b34d9afff8d7f9d13243acd0b09754a39bcf310ddcee1c30f40aad00996b3`.
+The smallest remaining live composition check is a server-side comparison of
+the expected unchanged source hashes; no database or configuration download is
+needed. A mismatch stops candidate promotion rather than replacing unknown
+production files with master.
+The prepared, non-executing comparison list is
+`output/data-pack-release-20261015/backend-baseline-source-index-70a6c8ac.json`,
+SHA-256 `1868b61dd879e626ac8101a470e663190136867578004040e6c496c46b021823`:
+201 expected regular source/package files and 10 expected absent new modules.
+It uses pre-change hashes for replacements and does not treat new-module
+after-hashes as current-production expectations. It is not a fresh host result
+or authorization to access the host.
+
+The retained-dependency local archive is
+`output/data-pack-release-20261015/retained-dependencies/node-modules-retained-linux-x64-node22.tar`:
+**43,335,680 bytes**, SHA-256
+`927fcac60d46451123401ad3421e0fd2384dffa6272af35a6a384fc25a9e9c32`.
+It reconstructs the production-matching old lock, preserves root proxy-addr
+2.0.7 and nested YAML 2.9.1, and passes an isolated dependency smoke on Node
+22.23.1 / ABI 127 / glibc 2.39 / SQLite 3.53.1. The locally rebuilt native binary
+is not byte-identical to the installed production binary. This archive is a
+**local validation input only**; production keeps its current dependencies.
+An initial archive line-ending mismatch stopped before npm installation; raw
+Git blob extraction then supplied the exact verified package/lock bytes. The
+failed attempt remains separately recorded and is not passing evidence.
+
+The retained-lock combination then passed **260/260 tests in 12 files**, with
+zero failures/skips/cancellations. This is a new, explicit validation boundary,
+not a relabelling of the earlier candidate-dependency run. It used raw Git
+source blobs from `70a6c8ac`, the verified old package/lock, the retained native
+archive and a fresh non-root WSL user/network namespace with loopback only.
+No npm reinstall, protocol process, production input or SSH was involved.
+The source archive SHA-256 is
+`5b8fb53a1f11ae9f523229029150fbf3f5f876f8227d3ff13d9c3970cd5c2572`;
+the test-list/file-digest manifest is
+`da531f46e4f11650543a50290798e2b34806f6aa94df7d4094fbfdf2f7e8449f`.
+Evidence is `retained-dependencies/focused-old-dependencies.tap` and
+`focused-old-dependencies-manifest.json` under the output root above; the latter
+has SHA-256 `1605e43d037adfdbadce2a6d0ddc8bfeea3be13b82cc1179da6cd1596292f5cd`.
+After the run, zero owned working-directory processes remained, and the exact
+temporary test directory was removed and independently read back as absent.
+Retained D: archives remain available. The unchanged full backend source result
+of 6,390 total / 6,322 pass / 68 skip is reused, not rerun or counted as physical
+acceptance. Hosted run `38718860475` at `70a6c8ac` did not start because the
+Actions budget prevented execution; it is neither a test failure nor a pass.
+
+A separate local Linux rehearsal then passed all **three independent process
+phases**: old-source seed -> new-source pack-off startup/normal writes ->
+old-source reopening. Unlike the earlier same-process Windows check, each phase
+used a distinct Node 22.23.1 process with the same retained dependency layout and
+the same synthetic database/material lineage. The old source was the fixed
+`742459d1` fixture, not a copy of BWH's mixed application. New startup preserved
+all old schema/row digests, added exactly the eight named objects and kept the
+four pack tables empty. The old runtime reopened the upgraded database and
+retained both normal usage samples, 250 synthetic Coins units and all three
+protected synthetic material records. No snapshot was restored over new writes.
+SQLite backup API creation/integrity checks also passed **after the old runtime
+had stopped**; this does not exercise concurrent production writers.
+
+The receipt is
+`output/data-pack-release-20261015/mixed-reconstruction/independent-process-result.json`,
+SHA-256 `bda0e7d91d3d3f495ab32d604d7cc093dc3b8646758103a243069ea42a2f0c2a`.
+It binds both source archives, harness inputs, dependency/archive digests and
+phase outcomes. All three child processes exited; the runner removed its exact
+temporary directory and confirmed it absent. This rehearsal does not cover a
+scheduled-plan-switch fixture, the actual installed native binary, physical
+protocol/collector behavior or production backups. Those limits are not counted
+as passing tests.
+
+### Proposed individually observed production steps (not executed)
+
+The local preparation above does not authorize the following operations. Exact
+master source/artifact and operator approval are still required. Keep each step
+and its receipt visible; do not run a consumed executor or an opaque retry loop.
+
+1. **Rebind only the candidate boundary.** Verify the installed receipt, current
+   pointer and affected before-hashes; compare the remaining source closure on
+   the server. Retain root dependencies, nested YAML, all runtime links and all
+   other #786 files. Re-read pack-disabled/catalog state and the allowlisted
+   runtime path identities. Changed source, unknown writer or changed scope
+   stops this step; no configuration, secret or customer record is exported.
+2. **Install an inactive candidate.** After the Merge/Artifact Gates, clone the
+   verified current source directory into a new private release directory,
+   without following runtime links, and apply only the frozen 26-file overlay.
+   Verify the complete resulting directory against the old installed manifest
+   plus that exact delta. Run bounded syntax/import and native in-memory checks
+   using retained production dependencies; never launch `server/index.mjs`
+   against production data as a supposedly read-only check.
+3. **Back up before first new startup.** Resolve and confirm the actual paths
+   inside the host, not from historical defaults. Bind an approved short backend
+   stop/quiescence, including its existing Commerce and plan-switch workers;
+   verify other writers before copying protected material. Create new private
+   online SQLite backups of the control, subscription and third-party stores;
+   validate each backup's integrity/foreign keys, standalone state, size and
+   hash. Preserve protected material, runtime-link/config identities and the
+   current source pointer/manifest. No raw live main-file/WAL copy is substituted
+   for SQLite online backup. Keep all backup content on the host.
+4. **Switch only the application.** Change the app pointer and start only the
+   existing backend service after the preceding receipts pass. Pack runtime
+   stays false and no pack offers are inserted or published. The four tables/four named indexes
+   are the explicitly approved first-start mutation. Nginx, frontend pointers,
+   protocol services, independent collector, its journals/checkpoints and
+   identity maps are not replaced or restarted by this stage.
+5. **Check and, if necessary, code-roll back.** Check application/process/endpoint
+   health, eight-object schema and empty pack tables, preserved old Commerce,
+   plan-switch/reset/third-party behavior, aggregate identity before/after and
+   consecutive natural metering. Do not call old stale identities healthy.
+   On application failure, stop the candidate and restore only the verified
+   old application pointer; reopen the **current** databases and retain additive
+   objects plus every new Coins/order/usage/scheduled-plan fact. The collector
+   remains a writer, so a stopped backend does not prove a zero-write window.
+   Never automatically restore old snapshots, drop tables, rebaseline metering
+   or replay historical usage. If code rollback is not safe, stop and retain
+   evidence instead of performing an unapproved database restore.
+
+Sequential online backups are per-database consistent snapshots, not a globally
+atomic three-database checkpoint. Backup timestamps and writer boundaries must
+be recorded explicitly; a backup file alone is not a tested restore plan. The
+new production backup/readback, exact final release paths, source/merge gates,
+candidate installation and production acceptance are **not yet completed**.
 
 ### Later activation and user-facing publication
 
