@@ -17,7 +17,71 @@ Release units remain `control-plane-app` and `portal-static` (desktop/mobile);
 Reuse backend #753 and mobile #13. Neither product publication nor production
 execution is recorded here. Admin defects are a separate workstream.
 
-## Latest bounded review repair (2026-10-15, source only)
+## Latest backend-off candidate validation (2026-10-15, not deployed)
+
+This section supersedes the older candidate-validation prerequisite below.
+The new candidate binds repaired source
+`18b061ac48775bcf84771455d32ca5a9c6695f13`, with master/base still
+`742459d11aa15d9061e7dafe4ab584a5c72dbaf1` at the fresh PR readback.
+#753 remains Draft. No merge, production access, installation, new production
+backup, feature activation or offer publication occurred in this preparation.
+
+The new **26-file overlay** retains the original 16 replacements and ten
+additions. Relative to the earlier `70a6c8ac` overlay, only
+`server/services/platform/subscription-control-db.mjs` changed. The other 25
+files and the app's literal import-path closure are unchanged. The separately
+fixed collector/counter modules are outside this app overlay; their source
+tests do not install them in the independent collector. Root dependencies,
+nested YAML, the retained old Xray reader/parser, frontends and protocols remain
+outside the update scope. The earlier overlay is retained as historical evidence,
+not reused as the new candidate.
+
+Local candidate evidence is in
+`output/data-pack-release-20261015/candidate-18b061ac/`:
+
+- `overlay/backend-overlay.tar`: 1,005,056 bytes; SHA-256
+  `3733fc459a05f9802a0bc77f77683d4bb588c7cb279e943cb61c66ff2073d040`.
+- `overlay/manifest.json`: SHA-256
+  `9f4d2281a8c7747aad5248c437149a3a6bf3fa9c6f94d3bf8cadc6d59206e762`.
+- `observed-inputs.json` binds 940 synthetic-fixture source files, the 11-file
+  update, 16 test entries, retained Git reader pair and old dependency archive.
+  All overlay members were compared with their exact Git blobs and fixture bytes.
+- `validation-manifest.json`: SHA-256
+  `210186d2966ef513a81f4d8d8d90ec20d20610032645507387f53c7ddb06b546`.
+  It records **387/387 focused tests plus 1/1 old-reader application-composition
+  test**, with zero failures, skips or cancellations.
+- `execution-receipt.json` records exit zero, zero remaining owned
+  working-directory processes, and an independent check that the exact temporary
+  directory is absent. The source hashes were unchanged after testing.
+
+The fresh local WSL run used Node 22.23.1 / ABI 127 / glibc 2.39 and the previously
+verified old-lock dependency archive (1,469 entries rehashed). A non-root
+user/network namespace observed only loopback and no routes before tests ran;
+the receipt distinguishes the requested boundary from the observed marker.
+No download, npm install, SSH, production input or real protocol process was used.
+Independent read-only review checked helper and candidate boundaries; its failure
+recording wording issue was corrected before execution. This was a local helper
+review, not a new whole-PR or vendor security review.
+
+The earlier repaired-source full backend **6,471 total / 6,402 pass / 69 skip**,
+five cross-version synthetic checks and unchanged frontend evidence were reused,
+not rerun or summed with this Linux run. Exact source-head advisory job
+`116425337620` was freshly checked: the Actions budget prevented startup; it is
+not green CI and was not retried. This record's subsequent documentation-only
+commit does not change the artifact's source identity.
+
+This closes the new-source local combination gap only. It does not prove the
+entire 658-file production tree, installed native-binary equality, a globally
+atomic database snapshot, enabled-pack physical stop/reset, or current production
+health. The earlier source observations remain dated and non-atomic. Separate
+Merge/Artifact Gates must bind an exact master artifact; fresh affected-file,
+runtime-path and writer checks, new private backups, approved additive startup,
+code rollback and natural-metering readback remain production prerequisites.
+The selected first installation remains `control-plane-app`, runtime disabled
+and offers unpublished; even disabled startup adds four tables and four named
+indexes. No frontend or independent collector installation is implied.
+
+## Bounded review repair (2026-10-15, source only)
 
 The operator approved correcting the two P2 findings from the independent
 whole-PR fallback security review at `abdda29d5a83cff8f45f25c8dcd43d34bb506445`.
@@ -68,9 +132,9 @@ No frontend source was changed; its unchanged earlier tests/build remain
 separate reusable evidence.
 The earlier `70a6c8ac` 26-file overlay and observed-composition results below
 remain historical evidence only: the control-store source has changed and a
-new exact-source artifact plus affected combination validation are required
-before any production proposal. Do not install or relabel that old overlay as
-this repair.
+new exact-source candidate and affected combination validation are recorded in
+the latest section above. They do not complete the master Artifact or Production
+Gates. Do not install or relabel that old overlay as this repair.
 
 ## Confirmed product scope
 
