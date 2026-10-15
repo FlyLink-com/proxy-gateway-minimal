@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -143,4 +144,72 @@ test("file-backed material transactions keep candidates out of the active file u
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test("a staged credential replacement survives restart without changing active material", () => {
+  const dir = mkdtempSync(join(tmpdir(), "edge-material-stage-"));
+  const filePath = join(dir, "protected", "edge-material.json");
+  const oldMaterial = { uuid: "66666666-6666-4666-8666-666666666666",
+    password: "synthetic-old-pack" };
+  const newMaterial = { uuid: "77777777-7777-4777-8777-777777777777",
+    password: "synthetic-new-pack" };
+  const digest = (value) => `sha256:${createHash("sha256")
+    .update(value.uuid).update("\0").update(value.password).digest("hex")}`;
+  const input = { rotationRef: "packrot_staged_001",
+    credentialRef: "edgecred_pack_staged_001",
+    oldMaterialDigest: digest(oldMaterial),
+    newMaterialDigest: digest(newMaterial), material: newMaterial };
+  try {
+    let store = createFileBackedEdgeCredentialMaterialStore({ filePath });
+    store.putCredentialMaterial({ credentialRef: input.credentialRef,
+      materialDigest: input.oldMaterialDigest, material: oldMaterial });
+    const staged = store.stageCredentialMaterialRotation(input);
+    assert.deepEqual(staged, { rotationRef: input.rotationRef,
+      credentialRef: input.credentialRef,
+      oldMaterialDigest: input.oldMaterialDigest,
+      newMaterialDigest: input.newMaterialDigest });
+    assert.equal(store.getCredentialMaterialSummary(input.credentialRef).materialDigest,
+      input.oldMaterialDigest);
+    assert.deepEqual(store.resolveCredentialMaterial(input.credentialRef), oldMaterial);
+    assert.doesNotMatch(JSON.stringify(staged), /synthetic-new-pack/);
+    store = createFileBackedEdgeCredentialMaterialStore({ filePath });
+    assert.deepEqual(store.getStagedCredentialMaterialRotation(input.rotationRef), staged);
+    assert.deepEqual(store.stageCredentialMaterialRotation(input), staged);
+    assert.throws(() => store.stageCredentialMaterialRotation({ ...input,
+      rotationRef: "packrot_conflicting_001" }), /pending|staged|rotation/);
+    assert.equal(store.getCredentialMaterialSummary(input.credentialRef).materialDigest,
+      input.oldMaterialDigest);
+    const committed = store.commitCredentialMaterialRotation(staged);
+    assert.equal(committed.materialDigest, input.newMaterialDigest);
+    store = createFileBackedEdgeCredentialMaterialStore({ filePath });
+    assert.equal(store.getStagedCredentialMaterialRotation(input.rotationRef), null);
+    assert.deepEqual(store.resolveCredentialMaterial(input.credentialRef), newMaterial);
+    assert.equal(store.commitCredentialMaterialRotation(staged).materialDigest,
+      input.newMaterialDigest);
+    assert.doesNotMatch(readFileSync(filePath, "utf8"), /synthetic-old-pack/);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test("an older transaction cannot restore over a committed credential replacement", () => {
+  const store = createEdgeCredentialMaterialStore();
+  const oldMaterial = { uuid: "88888888-8888-4888-8888-888888888888",
+    password: "synthetic-before" };
+  const newMaterial = { uuid: "99999999-9999-4999-8999-999999999999",
+    password: "synthetic-after" };
+  const digest = (value) => `sha256:${createHash("sha256")
+    .update(value.uuid).update("\0").update(value.password).digest("hex")}`;
+  const credentialRef = "edgecred_pack_restore_guard";
+  store.putCredentialMaterial({ credentialRef,
+    materialDigest: digest(oldMaterial), material: oldMaterial });
+  const prior = store.beginCredentialMaterialTransaction();
+  prior.commit();
+  const stage = store.stageCredentialMaterialRotation({
+    rotationRef: "packrot_restore_guard", credentialRef,
+    oldMaterialDigest: digest(oldMaterial),
+    newMaterialDigest: digest(newMaterial), material: newMaterial
+  });
+  store.commitCredentialMaterialRotation(stage);
+  assert.throws(() => prior.restore(), /changed|closed|restore/);
+  assert.equal(store.getCredentialMaterialSummary(credentialRef).materialDigest,
+    digest(newMaterial));
 });

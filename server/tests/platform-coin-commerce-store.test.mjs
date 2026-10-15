@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -19,8 +20,12 @@ import {
   createSqliteCoinCommerceStore
 } from "../services/platform/coin-commerce-store.mjs";
 import {
+  COIN_COMMERCE_DATA_PACK_CANDIDATES,
   COIN_COMMERCE_PRODUCTION_OFFERS
 } from "../services/platform/coin-commerce-production-catalog.mjs";
+import { createSqliteSubscriptionControlStore } from "../services/platform/subscription-control-db.mjs";
+import { createCoinCommerceDataPackRuntimeIssuer } from "../services/platform/coin-commerce-data-pack-runtime-issuer.mjs";
+import { createCoinCommerceDataPackMaterialEscrow } from "../services/platform/coin-commerce-data-pack-material-escrow.mjs";
 
 const CLOCK = "2026-07-26T12:34:56.000Z";
 const COMMERCE_TABLES = [
@@ -434,6 +439,8 @@ test("factory enforces exact ownership, schemas, connection settings, and surfac
       "confirmOrder",
       "cancelOrder",
       "getOrder",
+      "getDeliveredOrderBinding",
+      "verifyCapturedFulfillmentClaim",
       "listOrders",
       "claimDueCaptures",
       "captureClaimedOrder",
@@ -2721,6 +2728,179 @@ test("outbox leases fence stale workers, complete atomically, and fail only once
       }),
       "commerce_fulfillment_lease_lost"
     );
+  } finally {
+    state.close();
+  }
+});
+
+test("captured fulfillment verification returns only safe terms for the live exact lease", () => {
+  const state = fixture();
+  try {
+    seedWallet(state.store);
+    const order = confirm(state, publishAndQuote(state));
+    state.clock.value = order.cancelUntil;
+    state.store.claimDueCaptures({ limit: 1 });
+    state.store.captureClaimedOrder({ orderRef: order.orderRef });
+    const claim = state.store.claimNextFulfillmentCommand({ leaseMs: 1000 });
+    const input = {
+      commandRef: claim.commandRef, orderRef: claim.orderRef,
+      accountId: claim.accountId, leaseGeneration: claim.leaseGeneration,
+      leaseToken: claim.leaseToken
+    };
+    const verified = state.store.verifyCapturedFulfillmentClaim(input);
+    assert.deepEqual(verified, {
+      commandRef: claim.commandRef, orderRef: claim.orderRef,
+      accountId: claim.accountId, offerVersionRef: claim.offerVersionRef,
+      delivery: claim.delivery
+    });
+    assert.equal(JSON.stringify(verified).includes(claim.leaseToken), false);
+    expectCode(() => state.store.verifyCapturedFulfillmentClaim({
+      ...input, leaseToken: "0".repeat(64)
+    }), "commerce_fulfillment_lease_lost");
+    expectCode(() => state.store.verifyCapturedFulfillmentClaim({
+      ...input, orderRef: "coinord_other"
+    }), "commerce_fulfillment_lease_lost");
+    state.clock.value = "2026-07-26T12:35:00.000Z";
+    expectCode(() => state.store.verifyCapturedFulfillmentClaim(input),
+      "commerce_fulfillment_lease_lost");
+  } finally { state.close(); }
+});
+
+test("captured data-pack order issues one isolated subscription only under its live claim", () => {
+  const state = fixture();
+  const controlStore = createSqliteSubscriptionControlStore({ dbPath: join(state.directory, "pack-control.sqlite") });
+  const materialEscrow = createCoinCommerceDataPackMaterialEscrow({
+    key: Buffer.alloc(32, 11), filePath: join(state.directory, "pack-material.json")
+  });
+  try {
+    controlStore.createAccount({
+      id: "acct_synthetic_1", ownerRef: "owner_acct_synthetic_1",
+      status: "active", createdAt: CLOCK, updatedAt: CLOCK
+    });
+    const pack = COIN_COMMERCE_DATA_PACK_CANDIDATES[0];
+    credit(state.store, { coinType: "paid_coins", amountUnits: pack.baseCoinUnits, suffix: "captured_pack" });
+    state.store.publishOfferVersion(pack);
+    const quote = state.store.createCheckoutQuote({
+      accountId: "acct_synthetic_1", offerRef: pack.offerRef
+    });
+    const order = confirm(state, quote, "confirm_captured_pack");
+    const tenants = [];
+    const artifacts = new Map();
+    const issuer = createCoinCommerceDataPackRuntimeIssuer({
+      commerceStore: state.store, controlStore, materialEscrow, nodeId: "node_sg",
+      nowFn: () => new Date(state.clock.value),
+      runtimeCore: {
+        listTenants: () => tenants.map((tenant) => ({ ...tenant })),
+        listSubscriptionArtifacts: (id) => (artifacts.get(id) ?? []).map((artifact) => ({ ...artifact })),
+        createTenant: ({ nodeId, expiresAt, note }) => {
+          const tenant = { id: `tenant_pack_${tenants.length + 1}`, nodeId, expiresAt, note, status: "active" };
+          tenants.push(tenant);
+          return { tenant, subscriptionUrl: "https://example.invalid/tenant-secret" };
+        },
+        createSubscriptionArtifact: (id) => {
+          const artifact = { id: `artifact_pack_${artifacts.size + 1}`, tenantId: id, status: "active" };
+          artifacts.set(id, [artifact]);
+          return { artifact, subscriptionUrl: "https://example.invalid/sub/pack-secret" };
+        }
+      }
+    });
+    state.clock.value = order.cancelUntil;
+    state.store.claimDueCaptures({ limit: 1 });
+    state.store.captureClaimedOrder({ orderRef: order.orderRef });
+    const claim = state.store.claimNextFulfillmentCommand({ leaseMs: 1000 });
+    const input = {
+      commandRef: claim.commandRef, orderRef: claim.orderRef,
+      accountId: claim.accountId, offerVersionRef: claim.offerVersionRef,
+      quotaBytes: claim.delivery.trafficGb * (1024 ** 3)
+    };
+    const lease = { leaseGeneration: claim.leaseGeneration, leaseToken: claim.leaseToken };
+    assert.throws(() => issuer.issue(input, {
+      ...lease, leaseToken: "0".repeat(64)
+    }), (error) => error.code === "commerce_fulfillment_lease_lost");
+    assert.equal(tenants.length, 0);
+    const issued = issuer.issue(input, lease);
+    assert.equal(issued.status, "issued");
+    assert.equal(issued.subscriptionUrl, undefined);
+    assert.equal(tenants.length, 1);
+    assert.equal(artifacts.size, 1);
+    assert.deepEqual(issuer.issue(input, lease), issued);
+    state.clock.value = "2026-07-26T12:35:00.000Z";
+    assert.throws(() => issuer.issue(input, lease),
+      (error) => error.code === "commerce_fulfillment_lease_lost");
+    assert.equal(tenants.length, 1);
+  } finally {
+    materialEscrow.close();
+    controlStore.close();
+    state.close();
+  }
+});
+
+test("a delivered data pack exposes only its owned order binding after receipt and exact effect", () => {
+  const state = fixture();
+  try {
+    state.database.exec(`
+      create table platform_audit_events (
+        id text primary key, entity_type text not null, entity_ref text not null,
+        action text not null, actor_ref text not null, created_at text not null,
+        metadata_json text not null
+      )
+    `);
+    credit(state.store, {
+      coinType: "paid_coins", amountUnits: 30, suffix: "pack_purchase"
+    });
+    const pack = COIN_COMMERCE_DATA_PACK_CANDIDATES[0];
+    state.store.publishOfferVersion(pack);
+    const quote = state.store.createCheckoutQuote({
+      accountId: "acct_synthetic_1", offerRef: pack.offerRef
+    });
+    const order = confirm(state, quote, "confirm_pack");
+    state.clock.value = order.cancelUntil;
+    state.store.claimDueCaptures({ limit: 1 });
+    state.store.captureClaimedOrder({ orderRef: order.orderRef });
+    assert.equal(state.store.getDeliveredOrderBinding({
+      accountId: "acct_synthetic_1", orderRef: order.orderRef
+    }), null);
+    const claim = state.store.claimNextFulfillmentCommand({ leaseMs: 1000 });
+    const effectRef = `effect_coin_commerce_${createHash("sha256")
+      .update(`GCCWEBOS:COIN_COMMERCE_SUBSCRIPTION_FULFILLMENT:v1\0${claim.commandRef}`)
+      .digest("hex")}`;
+    state.store.completeFulfillmentCommand({
+      commandRef: claim.commandRef, leaseGeneration: claim.leaseGeneration,
+      leaseToken: claim.leaseToken, effectRef, status: "delivered"
+    });
+    expectCode(() => state.store.getDeliveredOrderBinding({
+      accountId: "acct_synthetic_1", orderRef: order.orderRef
+    }), "reconciliation_required");
+    const metadata = {
+      version: 1, kind: "data_pack", commandRef: claim.commandRef,
+      orderRef: order.orderRef, accountId: "acct_synthetic_1",
+      requestRef: "pareq_pack_order", entitlementRef: "ent_pack_order",
+      issuedLinkRef: "link_pack_order", offerVersionRef: pack.offerVersionRef,
+      quotaBytes: 100 * (1024 ** 3), commercialNeverExpires: true,
+      technicalValidUntil: "9999-12-31T23:59:59.999Z"
+    };
+    state.database.prepare(`
+      insert into platform_audit_events
+        (id, entity_type, entity_ref, action, actor_ref, created_at, metadata_json)
+      values (?, ?, ?, ?, ?, ?, ?)
+    `).run(effectRef, "coin_commerce_data_pack_fulfillment", "ent_pack_order",
+      "data_pack_fulfillment_applied", "coin_commerce_fulfillment",
+      state.clock.value, JSON.stringify(metadata));
+    const read = () => state.store.getDeliveredOrderBinding({
+      accountId: "acct_synthetic_1", orderRef: order.orderRef
+    });
+    assert.deepEqual(read(), {
+      kind: "data_pack", orderRef: order.orderRef,
+      offerVersionRef: pack.offerVersionRef,
+      requestRef: "pareq_pack_order", entitlementRef: "ent_pack_order"
+    });
+    expectCode(() => state.store.getDeliveredOrderBinding({
+      accountId: "acct_other", orderRef: order.orderRef
+    }), "commerce_not_found");
+    state.database.prepare(`
+      update platform_audit_events set metadata_json = ? where id = ?
+    `).run(JSON.stringify({ ...metadata, quotaBytes: 200 * (1024 ** 3) }), effectRef);
+    expectCode(read, "reconciliation_required");
   } finally {
     state.close();
   }

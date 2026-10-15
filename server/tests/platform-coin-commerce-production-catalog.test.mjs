@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  COIN_COMMERCE_DATA_PACK_CANDIDATES,
   COIN_COMMERCE_PRODUCTION_FULFILLMENT_OFFER_VERSIONS,
   COIN_COMMERCE_PRODUCTION_PUBLISHED_OFFERS,
   COIN_COMMERCE_PRODUCTION_OFFERS
@@ -111,4 +112,34 @@ test("production catalog exposes exactly three normalized immutable v1 plan offe
     COIN_COMMERCE_PRODUCTION_PUBLISHED_OFFERS
   );
   assertDeepFrozen(COIN_COMMERCE_PRODUCTION_FULFILLMENT_OFFER_VERSIONS);
+});
+
+test("three data-pack candidates have fixed Coins prices and lifetime one-time quotas but are not published yet", () => {
+  assert.deepEqual(COIN_COMMERCE_DATA_PACK_CANDIDATES.map((offer) => ({
+    category: offer.category,
+    versionRef: offer.offerVersionRef,
+    coins: offer.baseCoinUnits,
+    delivery: offer.delivery
+  })), [
+    [100, 30], [200, 50], [500, 100]
+  ].map(([gb, coins]) => ({
+    category: "data_pack",
+    versionRef: `offerv_pack_${gb}gb_v1`,
+    coins,
+    delivery: {
+      kind: "data_pack",
+      durationDays: null,
+      monthlyTrafficGb: null,
+      trafficGb: gb,
+      neverExpires: true,
+      discountBasisPoints: null
+    }
+  })));
+  assertDeepFrozen(COIN_COMMERCE_DATA_PACK_CANDIDATES);
+  for (const offer of COIN_COMMERCE_DATA_PACK_CANDIDATES) {
+    assert.deepEqual(normalizeCoinCommerceOffer(offer), offer);
+    assert.equal(COIN_COMMERCE_PRODUCTION_PUBLISHED_OFFERS.some(
+      (published) => published.offerRef === offer.offerRef
+    ), false);
+  }
 });

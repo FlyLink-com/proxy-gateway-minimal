@@ -223,6 +223,43 @@ test("traffic accounting resets quota decisions at entitlement monthly cycle bou
   });
 });
 
+test("quota decision reads only samples matching the exact account, request and entitlement", () => {
+  withStore((store) => {
+    const issuedAt = "2026-06-06T00:00:00.000Z";
+    store.createEntitlement({
+      id: "ent_other_resource", accountId: "acct_usage_service_1",
+      plan: "offerv_pack_100gb_v1", status: "active",
+      validFrom: issuedAt, validUntil: "9999-12-31T23:59:59.999Z",
+      trafficLimitBytes: 100 * 1024 ** 3,
+      createdAt: issuedAt, updatedAt: issuedAt
+    });
+    // An inconsistent historical row must not be charged to the selected
+    // resource merely because it reuses its request identifier.
+    store.recordUsageSample({
+      id: "sample_other_resource", sourceRef: "source_other_resource",
+      channelRef: "channel-aliyun-a-tuic", edgeCredentialRef: "edgecred_other_resource",
+      accountId: "acct_usage_service_1", entitlementId: "ent_other_resource",
+      requestId: "pareq_usage_service_1",
+      observedAt: "2026-06-06T00:04:00.000Z",
+      intervalStartedAt: issuedAt, intervalEndedAt: "2026-06-06T00:04:00.000Z",
+      uploadBytes: 900, downloadBytes: 0,
+      sampleDigest: "digest_other_resource", createdAt: "2026-06-06T00:04:00.000Z"
+    });
+    const service = createTrafficAccountingService({
+      controlStore: store, nowFn: () => "2026-06-06T00:10:00.000Z"
+    });
+    const result = service.recordUsageObservation({
+      sourceRef: "source_account_resource", channelRef: "channel-aliyun-a-tuic",
+      edgeCredentialRef: "edgecred_pareq_usage_service_1",
+      observedAt: "2026-06-06T00:05:00.000Z",
+      intervalStartedAt: issuedAt, intervalEndedAt: "2026-06-06T00:05:00.000Z",
+      uploadBytes: 100, downloadBytes: 0
+    });
+    assert.equal(result.status, "within_quota");
+    assert.equal(result.quota.usedBytes, 100);
+  });
+});
+
 test("traffic accounting records usage by edge credential and returns quota decisions", () => {
   withStore((store) => {
     let sequence = 0;

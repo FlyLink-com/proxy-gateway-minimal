@@ -394,7 +394,7 @@ process.exit(0);`)
         const stateOffset = status.lastIndexOf(") ") + 2;
         state = status[stateOffset] ?? null;
       } catch (error) {
-        if (error?.code !== "ENOENT") throw error;
+        if (error?.code !== "ENOENT" && error?.code !== "ESRCH") throw error;
         state = null;
       }
       if (state === null || state === "Z") break;

@@ -7,6 +7,7 @@ import { join } from "node:path";
 import test from "node:test";
 
 import {
+  COIN_COMMERCE_DATA_PACK_CANDIDATES,
   COIN_COMMERCE_PRODUCTION_OFFERS
 } from "../services/platform/coin-commerce-production-catalog.mjs";
 import {
@@ -1040,6 +1041,10 @@ test("the real coordinator confirms delayed initial issuance once without recapt
       accountId: fixture.accountId,
       orderRef: held.orderRef
     });
+    const readDeliveryBinding = () => commerceStore.getDeliveredOrderBinding({
+      accountId: fixture.accountId,
+      orderRef: held.orderRef
+    });
     const readReceiptCount = () => database.prepare(`
       select count(*) as count from platform_coin_commerce_fulfillment_receipts
     `).get().count;
@@ -1051,6 +1056,7 @@ test("the real coordinator confirms delayed initial issuance once without recapt
     assert.equal(capturedHolds[0].status, "captured");
     assert.equal(readOrder().paymentStatus, "captured");
     assert.equal(readOrder().fulfillment.status, "pending");
+    assert.equal(readDeliveryBinding(), null);
     coordinator = createCoinCommerceCoordinator({
       store: commerceStore,
       fulfillmentHandler: fixture.service.fulfillmentHandler,
@@ -1078,6 +1084,19 @@ test("the real coordinator confirms delayed initial issuance once without recapt
     assert.equal(recoveredPass.capturesProcessed, 0);
     assert.equal(readOrder().paymentStatus, "captured");
     assert.equal(readOrder().fulfillment.status, "delivered");
+    assert.deepEqual(readDeliveryBinding(), {
+      orderRef: held.orderRef,
+      offerVersionRef: COIN_COMMERCE_PRODUCTION_OFFERS[0].offerVersionRef,
+      requestRef: beforeResource.id,
+      entitlementRef: beforeResource.entitlementRef
+    });
+    assert.throws(
+      () => commerceStore.getDeliveredOrderBinding({
+        accountId: "acct_other_user",
+        orderRef: held.orderRef
+      }),
+      (error) => error?.code === "commerce_not_found"
+    );
     assert.equal(readReceiptCount(), 1);
     assert.equal(fixture.issuanceCalls, 1);
     assert.equal(fixture.controlStore.getEntitlement(beforeEntitlement.id).validUntil, beforeEntitlement.validUntil);
@@ -1094,6 +1113,21 @@ test("the real coordinator confirms delayed initial issuance once without recapt
     assert.equal(fixture.issuanceCalls, 1);
     assert.deepEqual(readHolds(), capturedHolds);
     assert.deepEqual(readLedger(), capturedLedger);
+    const receipt = database.prepare(`
+      select effect_ref from platform_coin_commerce_fulfillment_receipts
+    `).get();
+    const audit = database.prepare(`
+      select metadata_json from platform_audit_events where id = ?
+    `).get(receipt.effect_ref);
+    database.prepare(`
+      update platform_audit_events set metadata_json = ? where id = ?
+    `).run(JSON.stringify({
+      ...JSON.parse(audit.metadata_json),
+      orderRef: "coinord_other_order"
+    }), receipt.effect_ref);
+    assert.throws(readDeliveryBinding, (error) => (
+      error?.code === "reconciliation_required"
+    ));
   } finally {
     await coordinator?.stop();
     commerceStore?.close();
@@ -3422,6 +3456,18 @@ test("every published Offer version must have an exact fulfillment-history snaps
   } finally {
     fixture.close();
   }
+});
+
+test("an unimplemented data pack cannot enter the published fulfillment catalog", () => {
+  const dataPack = COIN_COMMERCE_DATA_PACK_CANDIDATES[0];
+  assert.throws(
+    () => createCoinCommerceProductionSubscriptionFulfillment({
+      accountActivationReader: ACTIVATED_ACCOUNT_READER,
+      publishedCatalog: [dataPack],
+      fulfillmentCatalog: [dataPack]
+    }),
+    (error) => error?.code === "coin_commerce_fulfillment_catalog_invalid"
+  );
 });
 
 test("offer version and delivery mismatches fail closed before subscription effects", async (t) => {

@@ -494,6 +494,12 @@ export function createCoinCommerceCoordinator(options = {}) {
           accountId: normalizedCommand.accountId,
           offerVersionRef: normalizedCommand.offerVersionRef,
           delivery: normalizedCommand.delivery,
+          ...(normalizedCommand.delivery.kind === "data_pack"
+            ? { fulfillmentLease: Object.freeze({
+              leaseGeneration: normalizedCommand.leaseGeneration,
+              leaseToken: normalizedCommand.leaseToken
+            }) }
+            : {}),
           ...(normalizedCommand.authority
             ? { authority: normalizedCommand.authority }
             : {})

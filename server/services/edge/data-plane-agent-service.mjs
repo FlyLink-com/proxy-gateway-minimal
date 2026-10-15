@@ -271,7 +271,9 @@ function latestDesiredStatesForNode({ controlStore, node, filter = {} }) {
     };
     const scoped = scopedDesiredStateFrom(desiredState, filter, {
       resolveCredentialChannelRef: (edgeCredentialRef) => (
-        controlStore.getPortalEdgeCredentialChannelRef?.(edgeCredentialRef) || null
+        controlStore.getEdgeCredentialChannelRef?.(edgeCredentialRef)
+        ?? controlStore.getPortalEdgeCredentialChannelRef?.(edgeCredentialRef)
+        ?? null
       )
     });
     if (!scoped) {
@@ -514,7 +516,8 @@ export function createDataPlaneAgentService({
           latest.edgeCredentialRefs.map(buildDataPlaneCredentialScopeDigest)
         );
         const exactLineage = scopedIdentity.credentialDigests.every((credentialDigest) => (
-          controlStore.getPortalEdgeCredentialChannelRefByScopeDigest?.(credentialDigest) === channelRef
+          (controlStore.getEdgeCredentialChannelRefByScopeDigest?.(credentialDigest)
+            ?? controlStore.getPortalEdgeCredentialChannelRefByScopeDigest?.(credentialDigest)) === channelRef
           && !activeScopeDigests.has(credentialDigest)
         ));
         const exactChannel = latest.channelRefs.length === 1 && latest.channelRefs[0] === channelRef;

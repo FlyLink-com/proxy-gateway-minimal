@@ -2550,6 +2550,97 @@
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
 }
 
+.portal-v2-shell .portal-data-pack-subscription {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid var(--portal-orders-border);
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--portal-orders-surface) 78%, transparent);
+  color: var(--portal-orders-text);
+}
+
+.portal-v2-shell .portal-data-pack-subscription p {
+  margin: 0;
+}
+
+.portal-v2-shell .portal-data-pack-subscription__toolbar,
+.portal-v2-shell .portal-data-pack-subscription__actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.portal-v2-shell .portal-data-pack-subscription__toolbar input {
+  width: 0;
+  min-width: 0;
+  flex: 1;
+  height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--portal-orders-border);
+  border-radius: 10px;
+  background: var(--portal-orders-surface);
+  color: inherit;
+  font: inherit;
+}
+
+.portal-v2-shell .portal-data-pack-subscription__actions button {
+  display: grid;
+  place-items: center;
+  flex: 0 0 44px;
+  width: 44px;
+  min-height: 44px;
+  padding: 0;
+  border-radius: 12px;
+}
+
+.portal-v2-shell .portal-data-pack-subscription__toolbar input:focus-visible {
+  outline: 3px solid var(--portal-commerce-focus-accent);
+  outline-offset: 2px;
+}
+
+.portal-data-pack-feedback.portal-coins-dialog-theme {
+  z-index: 1410;
+}
+
+.portal-v2-shell .portal-owned-data-packs__list {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.portal-v2-shell .portal-owned-data-packs__list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 16px;
+  border: 1px solid var(--portal-orders-border);
+  border-radius: 16px;
+  background: var(--portal-orders-surface);
+}
+
+.portal-v2-shell .portal-owned-data-packs__list li > div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.portal-v2-shell .portal-owned-data-packs__list span {
+  color: var(--portal-orders-muted);
+  font-size: 12px;
+}
+
+.portal-v2-shell .portal-owned-data-packs__list button {
+  flex-shrink: 0;
+  min-height: 44px;
+}
+
 .portal-v2-shell .portal-orders-panel .portal-order-detail-meta {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);

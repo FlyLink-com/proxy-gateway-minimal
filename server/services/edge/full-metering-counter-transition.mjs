@@ -533,6 +533,24 @@ export function transitionVerifiedFullMeteringPlanSwitchReactivationCounters(req
   return transitionCounters(ordinaryRequest, planSwitchRefs, "plan-switch", reactivationRefs);
 }
 
+// The caller must independently prove both disjoint kinds of continuation.
+// One complete snapshot establishes their boundaries atomically: material reset
+// counters may decrease, while unchanged-material plan counters remain monotonic.
+// Neither boundary charges an unassigned interval, and ordinary peers still count.
+export function transitionVerifiedFullMeteringMaterialAndPlanSwitchCounters(request) {
+  object(request, [...REQUEST_FIELDS, "materialRefs", "planSwitchRefs"], ["maxAgeMs", "reactivationRefs"]);
+  const materialRefs = refs(request.materialRefs, false), planSwitchRefs = refs(request.planSwitchRefs, false);
+  const planSelection = new Set(planSwitchRefs);
+  const reactivationRefs = Object.hasOwn(request, "reactivationRefs") ? refs(request.reactivationRefs, false) : null;
+  requireCondition(canonical(materialRefs) === canonical(request.materialRefs)
+    && canonical(planSwitchRefs) === canonical(request.planSwitchRefs)
+    && materialRefs.every(value => !planSelection.has(value))
+    && (!reactivationRefs || canonical(reactivationRefs) === canonical(request.reactivationRefs)
+      && reactivationRefs.every(value => planSelection.has(value))), "counter_combined_transition_invalid");
+  const { materialRefs: ignoredMaterial, planSwitchRefs: ignoredPlan, reactivationRefs: ignoredReactivation, ...ordinaryRequest } = request;
+  return transitionCounters(ordinaryRequest, materialRefs, "material", reactivationRefs, planSwitchRefs);
+}
+
 function stagePlanSwitchReactivation(before, n, reactivationRefs) {
   const allowed = value => requireCondition(value, "counter_plan_switch_reactivation_invalid");
   allowed(before !== null && (before.planSwitchReactivations?.length ?? 0) < 128);
@@ -583,36 +601,42 @@ function stagePlanSwitchReactivation(before, n, reactivationRefs) {
   return next;
 }
 
-function transitionCounters(request, materialRefs = null, boundaryKind = "material", reactivationRefs = null) {
+function transitionCounters(request, materialRefs = null, boundaryKind = "material", reactivationRefs = null, additionalPlanRefs = null) {
   const n = normalize(request);
   const previous = request.state === null ? null : validateState(request.state, reactivationRefs ? null : n);
+  const beforeStateDigest = previous?.stateDigest ?? null;
   const next = reactivationRefs ? stagePlanSwitchReactivation(previous, n, reactivationRefs) : previous ?? initialState(n);
-  const material = new Set(materialRefs ?? []);
+  const material = new Set([...(materialRefs ?? []), ...(additionalPlanRefs ?? [])]);
   const billingWindow = boundaryKind === "billing-window";
   const planSwitch = boundaryKind === "plan-switch";
+  const monotonicBoundaryRefs = new Set(planSwitch ? materialRefs ?? [] : additionalPlanRefs ?? []);
   const boundaryField = planSwitch ? "planSwitchBoundaries" : billingWindow ? "billingWindowBoundaries" : "materialBoundaries";
   const boundaryError = planSwitch ? "counter_plan_switch_transition_invalid"
     : billingWindow ? "counter_billing_window_transition_invalid" : "counter_material_transition_invalid";
-  let materialBoundary = null;
-  if (materialRefs) {
-    requireCondition(boundaryKind === "material" || billingWindow || planSwitch, boundaryError);
+  let materialBoundary = null, planSwitchBoundary = null;
+  const boundarySelections = materialRefs ? [{ selectedRefs: materialRefs, field: boundaryField, error: boundaryError },
+    ...(additionalPlanRefs ? [{ selectedRefs: additionalPlanRefs, field: "planSwitchBoundaries", error: "counter_plan_switch_transition_invalid" }] : [])] : [];
+  for (const { selectedRefs, field, error } of boundarySelections) {
+    requireCondition(boundaryKind === "material" || billingWindow || planSwitch, error);
     requireCondition(previous !== null && (n.observedAt > previous.lastObservedAt || reactivationRefs && previous.generationAwaitingObservation)
-      && (!previous.generationAwaitingObservation || reactivationRefs) && (previous[boundaryField]?.length ?? 0) < 128,
-    boundaryError);
+      && (!previous.generationAwaitingObservation || reactivationRefs) && (previous[field]?.length ?? 0) < 128, error);
     const observedRefs = new Set(n.observations.map(observation => observation.edgeCredentialRef));
-    requireCondition(materialRefs.every(r => n.eligible.has(r)
-      && (n.scope.mode === "connections" || observedRefs.has(r))), boundaryError);
+    const selected = new Set(selectedRefs);
+    requireCondition(selectedRefs.every(r => n.eligible.has(r)
+      && (n.scope.mode === "connections" || observedRefs.has(r))), error);
     const boundary = { generation: n.generation, observedAt: n.observedAt, previousStateDigest: previous.stateDigest,
-      entries: next.entries.filter(entry => material.has(entry.edgeCredentialRef))
+      entries: next.entries.filter(entry => selected.has(entry.edgeCredentialRef))
         .map(entry => ({ edgeCredentialRef: entry.edgeCredentialRef, carryUsage: { ...entry.usage } })) };
     // A just-verified generation already baselines all active entries. Restored
     // retained usage is carried by its distinct reactivation evidence at that
     // same boundary; do not fabricate an ordinary plan boundary before a read.
     if (!previous.generationAwaitingObservation) {
-      materialBoundary = { ...boundary, boundaryDigest: digest(boundary) };
-      next[boundaryField] = [...(next[boundaryField] ?? []), materialBoundary];
+      const recorded = { ...boundary, boundaryDigest: digest(boundary) };
+      if (additionalPlanRefs && field === "planSwitchBoundaries") planSwitchBoundary = recorded;
+      else materialBoundary = recorded;
+      next[field] = [...(next[field] ?? []), recorded];
     }
-    for (const entry of next.entries) if (material.has(entry.edgeCredentialRef)) entry.carryUsage = { ...entry.usage };
+    for (const entry of next.entries) if (selected.has(entry.edgeCredentialRef)) entry.carryUsage = { ...entry.usage };
   }
   let unchanged = false;
   if (previous) {
@@ -651,7 +675,7 @@ function transitionCounters(request, materialRefs = null, boundaryKind = "materi
         }
         if (entry.status === "observed") {
           if (!material.has(entry.edgeCredentialRef)) accumulate(entry, observation, entry.cursor);
-          else if (planSwitch) requireMonotonic(observation, entry.cursor);
+          else if (monotonicBoundaryRefs.has(entry.edgeCredentialRef)) requireMonotonic(observation, entry.cursor);
         }
         entry.status = "observed";
         entry.cursor = cursor(observation, n.observedAt);
@@ -683,7 +707,7 @@ function transitionCounters(request, materialRefs = null, boundaryKind = "materi
         const before = connections.get(observation.connectionId);
         if (before) {
           if (!material.has(entry.edgeCredentialRef)) accumulate(entry, observation, before);
-          else if (planSwitch) requireMonotonic(observation, before);
+          else if (monotonicBoundaryRefs.has(entry.edgeCredentialRef)) requireMonotonic(observation, before);
         }
         else {
           initializedConnectionCount++;
@@ -711,7 +735,15 @@ function transitionCounters(request, materialRefs = null, boundaryKind = "materi
   const observedCount = next.entries.filter(e => e.status === "observed").length;
   if (materialBoundary || reactivationRefs) validateState(next);
   return { nextState: next, unchanged,
-    ...(reactivationRefs ? { receipt: { type: "verified_full_metering_plan_switch_reactivation",
+    ...(additionalPlanRefs ? { receipt: { type: "verified_full_metering_material_and_plan_switch_transition",
+      materialCount: materialRefs.length, planSwitchCount: additionalPlanRefs.length,
+      materialBoundaryDigest: materialBoundary?.boundaryDigest ?? null,
+      planSwitchBoundaryDigest: planSwitchBoundary?.boundaryDigest ?? null,
+      ...(reactivationRefs ? { reactivationCount: reactivationRefs.length,
+        reactivationBoundaryDigest: next.planSwitchReactivations.at(-1).boundaryDigest } : {}),
+      beforeStateDigest, afterStateDigest: next.stateDigest,
+      generation: n.generation, observedAt: n.observedAt, unassignedBytes: null } }
+      : reactivationRefs ? { receipt: { type: "verified_full_metering_plan_switch_reactivation",
       reactivationCount: reactivationRefs.length, planSwitchCount: materialRefs.length,
       reactivationBoundaryDigest: next.planSwitchReactivations.at(-1).boundaryDigest,
       beforeStateDigest: previous.stateDigest, afterStateDigest: next.stateDigest,

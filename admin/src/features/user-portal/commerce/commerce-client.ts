@@ -3,6 +3,7 @@ import type {
   PortalCoinBalance,
   PortalCoinCommerceClient,
   PortalCoinCommerceClientErrorCode,
+  PortalCoinDataPackSubscription,
   PortalCoinCommerceErrorCode,
   PortalCommerceModel,
   PortalCommerceModelClient,
@@ -712,6 +713,41 @@ function orderProjection(input: unknown): PortalCoinOrder {
   };
 }
 
+function dataPackSubscriptionProjection(input: unknown, orderRef: string): PortalCoinDataPackSubscription {
+  const value = exactObject(input, ["orderRef", "subscriptionUrl", "usage"]);
+  if (commerceReference(value.orderRef) !== orderRef || typeof value.subscriptionUrl !== "string") {
+    return invalidProjection();
+  }
+  let url: URL;
+  try { url = new URL(value.subscriptionUrl); }
+  catch { return invalidProjection(); }
+  if (url.protocol !== "https:" || !url.hostname || url.username || url.password || url.hash) {
+    return invalidProjection();
+  }
+  const usage = exactObject(value.usage, [
+    "totalBytes", "usedBytes", "remainingBytes", "collectionStatus", "updatedAt", "exhausted"
+  ]);
+  const totalBytes = positiveSafeInteger(usage.totalBytes);
+  if (!["pending", "stale", "measured", "measured_zero"].includes(usage.collectionStatus as string)) {
+    return invalidProjection();
+  }
+  if (usage.collectionStatus === "pending") {
+    if (usage.usedBytes !== null || usage.remainingBytes !== null
+      || usage.updatedAt !== null || usage.exhausted !== null) return invalidProjection();
+  } else {
+    const usedBytes = nonNegativeSafeInteger(usage.usedBytes);
+    if (usage.remainingBytes !== Math.max(0, totalBytes - usedBytes)
+      || usage.exhausted !== (usedBytes >= totalBytes)
+      || (usage.collectionStatus === "measured_zero" && usedBytes !== 0)) return invalidProjection();
+    utcTimestamp(usage.updatedAt);
+  }
+  return {
+    orderRef,
+    subscriptionUrl: value.subscriptionUrl,
+    usage: usage as PortalCoinDataPackSubscription["usage"]
+  };
+}
+
 function offerListWrapper(input: unknown) {
   const value = exactObject(input, ["offers"]);
   return exactArray(value.offers).map(offerProjection);
@@ -1327,6 +1363,31 @@ export function createPortalCoinCommerceClient(
           return order;
         }
       );
+    },
+
+    async getDataPackDelivery(input) {
+      const value = exactInput(input, ["sessionRef", "orderRef"]);
+      const sessionRef = sessionReference(value.sessionRef);
+      const orderRef = callerCommerceReference(value.orderRef);
+      return request(fetchFn,
+        `/api/portal/commerce/orders/${orderRef}/subscription`,
+        getInit(sessionRef), 200,
+        (body) => dataPackSubscriptionProjection(body, orderRef));
+    },
+
+    async rotateDataPackDelivery(input) {
+      const value = exactInput(input, ["sessionRef", "orderRef", "rotationRef"]);
+      const sessionRef = sessionReference(value.sessionRef);
+      const orderRef = callerCommerceReference(value.orderRef);
+      const rotationRef = callerCommerceReference(value.rotationRef);
+      return request(fetchFn,
+        `/api/portal/commerce/orders/${orderRef}/subscription/rotate`,
+        postInit(sessionRef, JSON.stringify({ rotationRef })), 200,
+        (body) => {
+          const result = exactObject(body, ["orderRef", "status"]);
+          if (result.orderRef !== orderRef || result.status !== "complete") return invalidProjection();
+          return { orderRef, status: "complete" as const };
+        });
     },
 
     async cancelOrder(input) {

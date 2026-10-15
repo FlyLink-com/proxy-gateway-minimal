@@ -142,6 +142,20 @@ export type PortalCoinOrderPage = {
   } | null;
 };
 
+/** Only returned by the authenticated, no-store order delivery endpoint. */
+export type PortalCoinDataPackSubscription = {
+  orderRef: string;
+  subscriptionUrl: string;
+  usage: {
+    totalBytes: number;
+    usedBytes: number | null;
+    remainingBytes: number | null;
+    collectionStatus: "pending" | "stale" | "measured" | "measured_zero";
+    updatedAt: string | null;
+    exhausted: boolean | null;
+  };
+};
+
 export type PortalCoinOrderListInput =
   | {
       sessionRef: string;
@@ -214,6 +228,15 @@ export type PortalCoinCommerceClient = {
     sessionRef: string;
     orderRef: string;
   }): Promise<PortalCoinOrder>;
+  getDataPackDelivery(input: {
+    sessionRef: string;
+    orderRef: string;
+  }): Promise<PortalCoinDataPackSubscription>;
+  rotateDataPackDelivery(input: {
+    sessionRef: string;
+    orderRef: string;
+    rotationRef: string;
+  }): Promise<{ orderRef: string; status: "complete" }>;
   cancelOrder(input: {
     sessionRef: string;
     orderRef: string;

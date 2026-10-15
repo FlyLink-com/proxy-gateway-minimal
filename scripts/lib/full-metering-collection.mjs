@@ -1,14 +1,15 @@
-import { transitionFullMeteringCounters, transitionVerifiedFullMeteringMaterialCounters, transitionVerifiedFullMeteringBillingWindowCounters, transitionVerifiedFullMeteringPlanSwitchCounters, transitionVerifiedFullMeteringPlanSwitchReactivationCounters, reconcileVerifiedFullMeteringScope, advanceVerifiedFullMeteringGeneration } from "../../server/services/edge/full-metering-counter-transition.mjs";
+import { transitionFullMeteringCounters, transitionVerifiedFullMeteringMaterialCounters, transitionVerifiedFullMeteringBillingWindowCounters, transitionVerifiedFullMeteringPlanSwitchCounters, transitionVerifiedFullMeteringPlanSwitchReactivationCounters, transitionVerifiedFullMeteringMaterialAndPlanSwitchCounters, reconcileVerifiedFullMeteringScope, advanceVerifiedFullMeteringGeneration } from "../../server/services/edge/full-metering-counter-transition.mjs";
 import { fullMeteringBindingIdentity, makeFullMeteringSample } from "./full-metering-sample-writer.mjs";
-import { fullMeteringDigest, initializeFullMeteringJournal, readFullMeteringJournal, recoverFullMeteringJournal, commitFullMeteringJournal, withFullMeteringJournalLock, assertFullMeteringJournalNoPending, archiveFullMeteringMaterialCheckpoint } from "./full-metering-journal.mjs";
+import { fullMeteringDigest, initializeFullMeteringJournal, readFullMeteringJournal, recoverFullMeteringJournal, commitFullMeteringJournal, withFullMeteringJournalLock, assertFullMeteringJournalNoPending, archiveFullMeteringMaterialCheckpoint, readFullMeteringMaterialCheckpointArchive } from "./full-metering-journal.mjs";
 import { admitFullMeteringMaterialContinuation, materialContinuationHistory } from "./full-metering-material-continuation.mjs";
+import { admitFullMeteringDataPackResets, fullMeteringDataPackResetHistory } from "./full-metering-data-pack-reset-continuation.mjs";
 import { admitFullMeteringBillingWindowContinuation, billingWindowContinuationHistory } from "./full-metering-billing-window-continuation.mjs";
 import { admitFullMeteringPlanSwitches, planSwitchContinuationHistory } from "./full-metering-plan-switch-continuation.mjs";
 import { FULL_METERING_SCOPE, LOCAL_METERING_SCOPE, fullMeteringChannels, assertFullMeteringContextScope, assertFullMeteringCheckpointScope } from "./full-metering-scope.mjs";
 
 export { FULL_METERING_CHANNELS } from "./full-metering-scope.mjs";
 const fail = code => { throw Object.assign(new Error(code), { code }); };
-const key = entry => `${entry.channelRef}\0${entry.edgeCredentialRef}`;
+const key = entry => `${entry.channelRef ?? entry.edgeChannelRef}\0${entry.edgeCredentialRef}`;
 function inventoryProjection(inventory, channels) {
   if (!Array.isArray(inventory?.entries) || !Array.isArray(inventory?.retainedBindings)) fail("full_metering_binding_invalid");
   if (Object.hasOwn(inventory, "channelRefs") && (!Array.isArray(inventory.channelRefs)
@@ -40,7 +41,7 @@ function verifySources(sources, channels) {
 // ownership, runtime/config/material identity and generation before AND after a
 // non-clearing fetch. Public/caller-supplied counter batches are never accepted
 // by the production CLI. Tests inject disposable snapshots through this API.
-export async function runFullMeteringCollection({ directory, context, activationId, mode, meteringScope = FULL_METERING_SCOPE, materialApproval = null, billingWindowApproval = null, nowFn = () => new Date().toISOString(), readInventory, readSources, readPlanSwitchProof, applySamples, onStage }) {
+export async function runFullMeteringCollection({ directory, context, activationId, mode, meteringScope = FULL_METERING_SCOPE, materialApproval = null, billingWindowApproval = null, dataPackResetStore = null, nowFn = () => new Date().toISOString(), readInventory, readSources, readPlanSwitchProof, applySamples, onStage }) {
   const selectedChannels = fullMeteringChannels(meteringScope);
   assertFullMeteringContextScope(context, meteringScope);
   const validateCheckpoint = checkpoint => {
@@ -49,17 +50,20 @@ export async function runFullMeteringCollection({ directory, context, activation
       || checkpoint.sequence < 0) fail("full_metering_checkpoint_invalid");
     planSwitchContinuationHistory(checkpoint);
   };
-  if (!["preflight", "initialize", "collect", "continue-material", "continue-billing-window"].includes(mode) || !/^[A-Za-z0-9._:-]{1,128}$/.test(activationId)
+  if (!["preflight", "initialize", "collect", "continue-material", "continue-billing-window", "collect-pack-resets"].includes(mode) || !/^[A-Za-z0-9._:-]{1,128}$/.test(activationId)
     || typeof readInventory !== "function" || typeof readSources !== "function") fail("full_metering_collection_invalid");
   const materialContinuation = mode === "continue-material", billingContinuation = mode === "continue-billing-window";
   const continuation = materialContinuation || billingContinuation;
+  const packResets = mode === "collect-pack-resets";
+  if (packResets && ["readCoinCommerceDataPackMeteringResetProofs", "getCoinCommerceDataPackMeteringResetReceipt", "recordCoinCommerceDataPackMeteringResetReceipt"]
+    .some(method => typeof dataPackResetStore?.[method] !== "function")) fail("full_metering_pack_reset_invalid");
   if (!materialContinuation && materialApproval !== null) fail("full_metering_material_approval_forbidden");
   if (!billingContinuation && billingWindowApproval !== null) fail("full_metering_billing_window_approval_forbidden");
   const run = async () => {
     // Never replay an unrelated pending batch while admitting a new operation.
     if (continuation) assertFullMeteringJournalNoPending({ directory });
-    if (mode === "collect") recoverFullMeteringJournal({ directory, context, applySamples, validateCheckpoint });
-    const previous = mode === "collect" || continuation ? readFullMeteringJournal({ directory, context }) : null;
+    if (mode === "collect" || packResets) recoverFullMeteringJournal({ directory, context, applySamples, validateCheckpoint });
+    const previous = mode === "collect" || continuation || packResets ? readFullMeteringJournal({ directory, context }) : null;
     if (previous) validateCheckpoint(previous);
     const admissionValue = nowFn();
     const admittedAt = admissionValue instanceof Date ? admissionValue.toISOString() : admissionValue;
@@ -68,9 +72,46 @@ export async function runFullMeteringCollection({ directory, context, activation
     const history = materialContinuationHistory(previous);
     const billingHistory = billingWindowContinuationHistory(previous);
     const planHistory = planSwitchContinuationHistory(previous);
-    const admission = materialContinuation ? admitFullMeteringMaterialContinuation({ approval: materialApproval, checkpoint: previous, context, activationId, identities, now: admittedAt }) : null;
+    const packHistory = fullMeteringDataPackResetHistory(previous, context);
+    let resetProofs = [];
+    if (packResets) {
+      resetProofs = dataPackResetStore.readCoinCommerceDataPackMeteringResetProofs({ now: admittedAt });
+      if (!Array.isArray(resetProofs) || resetProofs.length > 32) fail("full_metering_pack_reset_invalid");
+      const uncommitted = [], repairs = [];
+      for (const proof of resetProofs) {
+        const record = packHistory.find(item => item.proof.rotationRef === proof.rotationRef);
+        if (!record) { uncommitted.push(proof); continue; }
+        if (fullMeteringDigest(record.proof) !== fullMeteringDigest(proof)) fail("full_metering_binding_changed");
+        const receipt = dataPackResetStore.getCoinCommerceDataPackMeteringResetReceipt({
+          rotationRef: proof.rotationRef, orderRef: proof.orderRef, accountId: proof.accountId, now: admittedAt });
+        if (receipt && fullMeteringDigest(receipt) !== fullMeteringDigest(record)) fail("full_metering_pack_reset_history_invalid");
+        if (!receipt) {
+          const archived = readFullMeteringMaterialCheckpointArchive({ directory, context, digest: record.continuation.previousCheckpointDigest });
+          if (archived.activationId !== activationId || archived.sequence !== record.continuation.previousSequence) fail("full_metering_pack_reset_history_invalid");
+          const recovered = admitFullMeteringDataPackResets({ proofs: [proof], checkpoint: archived, identities });
+          const persistedIdentity = previous.sources.find(source => source.channelRef === proof.edgeChannelRef)?.identities
+            .find(identity => identity.edgeCredentialRef === proof.edgeCredentialRef);
+          if (!persistedIdentity || fullMeteringDigest(persistedIdentity) !== record.continuation.identityDigest
+            || fullMeteringDigest(recovered.changes.get(key(proof)).nextIdentity) !== record.continuation.identityDigest) fail("full_metering_pack_reset_history_invalid");
+          repairs.push(record);
+        }
+      }
+      if (repairs.length) {
+        // A durable journal is the authority for audit-write recovery. Do not
+        // observe or baseline counters a second time to manufacture a receipt.
+        for (const record of repairs) dataPackResetStore.recordCoinCommerceDataPackMeteringResetReceipt({
+          proof: record.proof, continuation: record.continuation, now: admittedAt });
+        return { ...previous.lastSummary, status: "reset_receipts_recovered", sampleCount: 0, recordedBytes: 0,
+          dataPackResetContinuation: { identityCount: repairs.length, receiptRecovery: true, unassignedBytes: null } };
+      }
+      resetProofs = uncommitted;
+      if (packHistory.length + resetProofs.length > 128) fail("full_metering_pack_reset_history_invalid");
+    }
+    const admission = materialContinuation ? admitFullMeteringMaterialContinuation({ approval: materialApproval, checkpoint: previous, context, activationId, identities, now: admittedAt })
+      : packResets ? admitFullMeteringDataPackResets({ proofs: resetProofs, checkpoint: previous, identities }) : null;
     const billingAdmission = billingContinuation ? admitFullMeteringBillingWindowContinuation({ approval: billingWindowApproval, checkpoint: previous, context, activationId, identities, now: admittedAt }) : null;
-    const planAdmission = mode === "collect" ? admitFullMeteringPlanSwitches({ checkpoint: previous, identities, readPlanSwitchProof, now: admittedAt }) : null;
+    const planAdmission = mode === "collect" || packResets ? admitFullMeteringPlanSwitches({
+      checkpoint: previous, identities, readPlanSwitchProof, now: admittedAt, dataPackResetProofs: resetProofs }) : null;
     const sources = await readSources(before);
     verifySources(sources, selectedChannels);
     if (fullMeteringDigest(identities) !== fullMeteringDigest(inventoryProjection(readInventory(), selectedChannels))) fail("full_metering_binding_changed");
@@ -88,7 +129,8 @@ export async function runFullMeteringCollection({ directory, context, activation
         for (const identity of prior.identities) {
           const current = entries.find(entry => entry.edgeCredentialRef === identity.edgeCredentialRef);
           const expired = retained.find(entry => entry.edgeCredentialRef === identity.edgeCredentialRef);
-          if (current ? fullMeteringDigest(current) !== fullMeteringDigest(identity) && !admission?.changes.has(key(identity)) && !billingAdmission?.changes.has(key(identity)) && !planAdmission?.changes.has(key(identity)) : !expired || expired.materialDigest !== identity.materialDigest) fail("full_metering_binding_changed");
+          if (current ? fullMeteringDigest(current) !== fullMeteringDigest(identity) && !admission?.changes.has(key(identity)) && !billingAdmission?.changes.has(key(identity)) && !planAdmission?.changes.has(key(identity))
+            : !expired || expired.materialDigest !== identity.materialDigest && !admission?.changes.has(key(identity))) fail("full_metering_binding_changed");
         }
       }
       const eligibleRefs = entries.map(entry => entry.edgeCredentialRef), retainedRefs = retained.map(entry => entry.edgeCredentialRef);
@@ -108,7 +150,9 @@ export async function runFullMeteringCollection({ directory, context, activation
           ? advanceVerifiedFullMeteringGeneration({ state: prior.counterState, generation: source.generation, verifiedAt: source.observedAt }) : null;
         if (advanced?.receipt) transitions.push({ beforePayloadDigest: fullMeteringDigest(prior.counterState), afterPayloadDigest: fullMeteringDigest(advanced.nextState), receipt: advanced.receipt });
         counterRequest = { state: advanced?.nextState ?? prior.counterState, ...counterInput };
-        outcome = transitionVerifiedFullMeteringPlanSwitchReactivationCounters({ ...counterRequest, reactivationRefs, planSwitchRefs });
+        outcome = materialRefs.length && !advanced
+          ? transitionVerifiedFullMeteringMaterialAndPlanSwitchCounters({ ...counterRequest, materialRefs, reactivationRefs, planSwitchRefs })
+          : transitionVerifiedFullMeteringPlanSwitchReactivationCounters({ ...counterRequest, reactivationRefs, planSwitchRefs });
       } else {
         const reconciled = prior ? reconcileVerifiedFullMeteringScope({ state: prior.counterState, eligibleRefs, retainedRefs }) : null;
         // Receipt + digests retain the transition without duplicating full states.
@@ -117,13 +161,15 @@ export async function runFullMeteringCollection({ directory, context, activation
           ? advanceVerifiedFullMeteringGeneration({ state: reconciled.nextState, generation: source.generation, verifiedAt: source.observedAt }) : null;
         if (advanced?.receipt) transitions.push({ beforePayloadDigest: fullMeteringDigest(reconciled.nextState), afterPayloadDigest: fullMeteringDigest(advanced.nextState), receipt: advanced.receipt });
         counterRequest = { state: advanced?.nextState ?? reconciled?.nextState ?? null, ...counterInput };
-        outcome = materialRefs.length && !advanced
-          ? transitionVerifiedFullMeteringMaterialCounters({ ...counterRequest, materialRefs })
-          : billingWindowRefs.length && !advanced
-            ? transitionVerifiedFullMeteringBillingWindowCounters({ ...counterRequest, billingWindowRefs })
-            : planSwitchRefs.length && !advanced
-              ? transitionVerifiedFullMeteringPlanSwitchCounters({ ...counterRequest, planSwitchRefs })
-              : transitionFullMeteringCounters(counterRequest);
+        outcome = materialRefs.length && planSwitchRefs.length && !advanced
+          ? transitionVerifiedFullMeteringMaterialAndPlanSwitchCounters({ ...counterRequest, materialRefs, planSwitchRefs })
+          : materialRefs.length && !advanced
+            ? transitionVerifiedFullMeteringMaterialCounters({ ...counterRequest, materialRefs })
+            : billingWindowRefs.length && !advanced
+              ? transitionVerifiedFullMeteringBillingWindowCounters({ ...counterRequest, billingWindowRefs })
+              : planSwitchRefs.length && !advanced
+                ? transitionVerifiedFullMeteringPlanSwitchCounters({ ...counterRequest, planSwitchRefs })
+                : transitionFullMeteringCounters(counterRequest);
       }
       if (outcome.receipt) transitions.push({ beforePayloadDigest: fullMeteringDigest(counterRequest.state), afterPayloadDigest: fullMeteringDigest(outcome.nextState), receipt: outcome.receipt });
       for (const delta of outcome.deltas) {
@@ -137,7 +183,8 @@ export async function runFullMeteringCollection({ directory, context, activation
           if (!Number.isSafeInteger(cycleBoundaryUnassignedBytes)) fail("full_metering_counter_invalid");
         }
       }
-      const archivedIdentities = prior?.identities.filter(identity => !entries.some(entry => entry.edgeCredentialRef === identity.edgeCredentialRef)) ?? [];
+      const archivedIdentities = prior?.identities.filter(identity => !entries.some(entry => entry.edgeCredentialRef === identity.edgeCredentialRef))
+        .map(identity => packResets ? admission.changes.get(key(identity))?.nextIdentity ?? identity : identity) ?? [];
       nextSources.push({ channelRef: source.channelRef, counterState: outcome.nextState, identities: [...entries, ...archivedIdentities] });
       channels.push({ channelRef: source.channelRef, ...outcome.summary });
     }
@@ -151,8 +198,9 @@ export async function runFullMeteringCollection({ directory, context, activation
       // Coverage is not a healthy verdict for deferred sources, nor zero usage.
       summary.deferredSources = { status: "paused", usage: "unknown", channelCount: 2, sidecar: "not_enabled_by_this_collector" };
     }
-    if (admission) summary.materialContinuation = { identityCount: admission.changes.size, unassignedBytes: null };
+    if (materialContinuation) summary.materialContinuation = { identityCount: admission.changes.size, unassignedBytes: null };
     if (billingAdmission) summary.billingWindowContinuation = { identityCount: billingAdmission.changes.size, unassignedBytes: null };
+    if (packResets && resetProofs.length) summary.dataPackResetContinuation = { identityCount: resetProofs.length, unassignedBytes: null };
     if (planAdmission?.changes.size) summary.planSwitchContinuation = { identityCount: planAdmission.changes.size, unassignedBytes: null };
     if (!Number.isSafeInteger(summary.recordedBytes)) fail("full_metering_counter_invalid");
     if (mode === "preflight") return summary;
@@ -161,23 +209,25 @@ export async function runFullMeteringCollection({ directory, context, activation
     if (meteringScope === LOCAL_METERING_SCOPE) nextCheckpoint.meteringScope = meteringScope;
     if (!Number.isSafeInteger(nextCheckpoint.sequence)) fail("full_metering_checkpoint_invalid");
     if (history.length) nextCheckpoint.materialContinuations = history;
+    if (packHistory.length) nextCheckpoint.dataPackResetContinuations = packHistory;
     if (billingHistory.length) nextCheckpoint.billingWindowContinuations = billingHistory;
     if (planHistory.length) nextCheckpoint.planSwitchContinuations = planHistory;
     if (planAdmission?.changes.size) {
       if (fullMeteringDigest(identities) !== fullMeteringDigest(inventoryProjection(readInventory(), selectedChannels))) fail("full_metering_binding_changed");
       const commitTime = nowFn(), completedAt = commitTime instanceof Date ? commitTime.toISOString() : commitTime;
-      const finalAdmission = admitFullMeteringPlanSwitches({ checkpoint: previous, identities, readPlanSwitchProof, now: completedAt });
+      const finalAdmission = admitFullMeteringPlanSwitches({ checkpoint: previous, identities, readPlanSwitchProof,
+        now: completedAt, dataPackResetProofs: resetProofs });
       if (fullMeteringDigest([...planAdmission.changes]) !== fullMeteringDigest([...finalAdmission.changes])) fail("full_metering_plan_switch_evidence_changed");
       const archiveName = archiveFullMeteringMaterialCheckpoint({ directory, context, checkpoint: previous, namePrefix: "plan-switch-before" });
       nextCheckpoint.planSwitchContinuations = [...planHistory, { version: 1, previousCheckpointDigest: fullMeteringDigest(previous),
         completedAt, identityCount: planAdmission.changes.size, unassignedBytes: null, archiveName, changes: [...planAdmission.changes.values()] }];
     }
-    if (admission || billingAdmission) {
+    if (continuation) {
       // Zero-delta affected refs do not reach the sample writer. Recheck their
       // complete authority immediately before creating durable state as well.
       if (fullMeteringDigest(identities) !== fullMeteringDigest(inventoryProjection(readInventory(), selectedChannels))) fail("full_metering_binding_changed");
       const commitTime = nowFn(), completedAt = commitTime instanceof Date ? commitTime.toISOString() : commitTime;
-      if (admission) {
+      if (materialContinuation) {
         admitFullMeteringMaterialContinuation({ approval: materialApproval, checkpoint: previous, context, activationId, identities, now: completedAt });
         const archiveName = archiveFullMeteringMaterialCheckpoint({ directory, context, checkpoint: previous });
         nextCheckpoint.materialContinuations = [...history, { version: 1, approvalDigest: admission.approvalDigest,
@@ -192,11 +242,35 @@ export async function runFullMeteringCollection({ directory, context, activation
           approval: structuredClone(billingWindowApproval) }];
       }
     }
+    if (packResets && resetProofs.length) {
+      if (fullMeteringDigest(identities) !== fullMeteringDigest(inventoryProjection(readInventory(), selectedChannels))) fail("full_metering_binding_changed");
+      const commitValue = nowFn(), completedAt = commitValue instanceof Date ? commitValue.toISOString() : commitValue;
+      const currentProofs = dataPackResetStore.readCoinCommerceDataPackMeteringResetProofs({ now: completedAt });
+      for (const proof of resetProofs) {
+        if (!currentProofs.some(item => fullMeteringDigest(item) === fullMeteringDigest(proof))) fail("full_metering_binding_changed");
+      }
+      admitFullMeteringDataPackResets({ proofs: resetProofs, checkpoint: previous, identities });
+      const previousCheckpointDigest = fullMeteringDigest(previous);
+      const archiveName = archiveFullMeteringMaterialCheckpoint({ directory, context, checkpoint: previous });
+      const records = resetProofs.map(proof => ({ version: 1, proof: structuredClone(proof), continuation: {
+        version: 1, activationId, context: structuredClone(context), previousSequence: previous.sequence,
+        sequence: nextCheckpoint.sequence, previousCheckpointDigest,
+        identityDigest: fullMeteringDigest(admission.changes.get(key(proof)).nextIdentity),
+        proofDigest: fullMeteringDigest(proof), archiveName, completedAt } }));
+      nextCheckpoint.dataPackResetContinuations = [...packHistory, ...records];
+      fullMeteringDataPackResetHistory(nextCheckpoint, context);
+    }
     if (mode === "initialize") {
       if (samples.length) fail("full_metering_initialization_charge_forbidden");
       initializeFullMeteringJournal({ directory, context, checkpoint: nextCheckpoint });
     } else commitFullMeteringJournal({ directory, context, previousCheckpoint: previous, nextCheckpoint, samples, applySamples, onStage });
+    if (packResets && resetProofs.length) {
+      const receiptValue = nowFn(), receiptAt = receiptValue instanceof Date ? receiptValue.toISOString() : receiptValue;
+      for (const record of nextCheckpoint.dataPackResetContinuations.slice(packHistory.length)) {
+        dataPackResetStore.recordCoinCommerceDataPackMeteringResetReceipt({ proof: record.proof, continuation: record.continuation, now: receiptAt });
+      }
+    }
     return summary;
   };
-  return mode === "collect" || continuation ? withFullMeteringJournalLock({ directory }, run) : run();
+  return mode === "collect" || continuation || packResets ? withFullMeteringJournalLock({ directory }, run) : run();
 }

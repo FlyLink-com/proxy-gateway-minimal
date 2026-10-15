@@ -46,6 +46,7 @@ import {
 import {
   validateAccountResourceAuthorityCommerceSchema
 } from "./account-resource-authority-commerce-migrations.mjs";
+import { DATA_PACK_TECHNICAL_VALID_UNTIL } from "./usage-billing-cycle.mjs";
 
 const BUSY_TIMEOUT_MS = 2_000;
 const DEFAULT_CANCEL_WINDOW_MS = 3_000;
@@ -84,6 +85,8 @@ const STORE_METHODS = [
   "confirmOrder",
   "cancelOrder",
   "getOrder",
+  "getDeliveredOrderBinding",
+  "verifyCapturedFulfillmentClaim",
   "listOrders",
   "claimDueCaptures",
   "captureClaimedOrder",
@@ -2473,6 +2476,135 @@ export function createSqliteCoinCommerceStore(options = {}) {
     });
   }
 
+  // Internal pre-mutation check for a worker holding the exact live Commerce
+  // lease. It never captures funds or extends a lease, and its return value
+  // contains neither wallet allocations nor the lease token.
+  function verifyCapturedFulfillmentClaim(claimInput) {
+    return execute(() => {
+      const value = assertPlainObject(claimInput);
+      assertExactDataFields(value, new Set([
+        "commandRef", "orderRef", "accountId", "leaseGeneration", "leaseToken"
+      ]));
+      const commandRef = normalizeReference(value.commandRef);
+      const orderRef = normalizeReference(value.orderRef);
+      const accountId = normalizeReference(value.accountId);
+      if (!Number.isSafeInteger(value.leaseGeneration) || value.leaseGeneration < 1
+        || typeof value.leaseToken !== "string"
+        || !/^[0-9a-f]{64}$/.test(value.leaseToken)) {
+        throw commerceError("commerce_fulfillment_lease_lost");
+      }
+      const command = db.prepare(`
+        select * from platform_coin_commerce_fulfillment_commands
+        where command_ref = ?
+      `).get(commandRef);
+      if (!command) throw commerceError("commerce_fulfillment_lease_lost");
+      const { order, payload } = validateCommandAndReceipt(command);
+      const observedAt = readDatabaseUtc(db);
+      if (order.order_ref !== orderRef || order.account_id !== accountId
+        || order.payment_status !== "captured"
+        || command.status !== "processing"
+        || command.lease_generation !== value.leaseGeneration
+        || command.lease_token !== value.leaseToken
+        || command.lease_until <= observedAt) {
+        throw commerceError("commerce_fulfillment_lease_lost");
+      }
+      const hold = readOrderHoldInvariant(order);
+      if (!hold.valid || hold.hold.status !== "captured") {
+        throw commerceError("reconciliation_required");
+      }
+      return Object.freeze({
+        commandRef, orderRef, accountId,
+        offerVersionRef: payload.offerVersionRef,
+        delivery: payload.delivery
+      });
+    });
+  }
+
+  function getDeliveredOrderBinding(getInput) {
+    return execute(() => {
+      const value = assertPlainObject(getInput);
+      assertExactDataFields(value, new Set(["accountId", "orderRef"]));
+      const accountId = normalizeReference(value.accountId);
+      const orderRef = normalizeReference(value.orderRef);
+      const order = findOrder(orderRef, accountId);
+      if (!order) throw commerceError("commerce_not_found");
+      const projection = projectOrderRow(order);
+      if (
+        projection.paymentStatus !== "captured"
+        || projection.fulfillment.status !== "delivered"
+      ) return null;
+      const command = db.prepare(`
+        select * from platform_coin_commerce_fulfillment_commands
+        where order_ref = ? and account_id = ?
+      `).get(orderRef, accountId);
+      const { receipt, payload } = validateCommandAndReceipt(command, order);
+      const effect = receipt && db.prepare(`
+        select * from platform_audit_events where id = ?
+      `).get(receipt.effect_ref);
+      const metadata = effect ? parseJson(effect.metadata_json) : null;
+      if (payload.delivery.kind === "data_pack") {
+        const expectedFields = new Set([
+          "version", "kind", "commandRef", "orderRef", "accountId",
+          "requestRef", "entitlementRef", "issuedLinkRef", "offerVersionRef",
+          "quotaBytes", "commercialNeverExpires", "technicalValidUntil"
+        ]);
+        if (
+          !effect
+          || effect.entity_type !== "coin_commerce_data_pack_fulfillment"
+          || effect.action !== "data_pack_fulfillment_applied"
+          || effect.actor_ref !== "coin_commerce_fulfillment"
+          || !isStrictIsoTimestamp(effect.created_at)
+          || effect.created_at > receipt.recorded_at
+          || !metadata || typeof metadata !== "object" || Array.isArray(metadata)
+          || Reflect.ownKeys(metadata).length !== expectedFields.size
+          || !Reflect.ownKeys(metadata).every((field) => expectedFields.has(field))
+          || metadata.version !== 1 || metadata.kind !== "data_pack"
+          || metadata.commandRef !== command.command_ref
+          || metadata.orderRef !== orderRef || metadata.accountId !== accountId
+          || metadata.offerVersionRef !== payload.offerVersionRef
+          || !COMMERCE_REFERENCE.test(metadata.requestRef)
+          || !COMMERCE_REFERENCE.test(metadata.entitlementRef)
+          || !COMMERCE_REFERENCE.test(metadata.issuedLinkRef)
+          || effect.entity_ref !== metadata.entitlementRef
+          || metadata.quotaBytes !== payload.delivery.trafficGb * (1024 ** 3)
+          || metadata.commercialNeverExpires !== true
+          || metadata.technicalValidUntil !== DATA_PACK_TECHNICAL_VALID_UNTIL
+        ) throw commerceError("reconciliation_required");
+        return Object.freeze({
+          kind: "data_pack", orderRef,
+          offerVersionRef: payload.offerVersionRef,
+          requestRef: metadata.requestRef,
+          entitlementRef: metadata.entitlementRef
+        });
+      }
+      if (
+        !effect
+        || effect.entity_type !== "coin_commerce_subscription_fulfillment"
+        || effect.action !== "subscription_fulfillment_applied"
+        || effect.actor_ref !== "coin_commerce_fulfillment"
+        || !metadata
+        || metadata.version !== 1
+        || metadata.commandRef !== command.command_ref
+        || metadata.orderRef !== orderRef
+        || metadata.accountId !== accountId
+        || metadata.offerVersionRef !== payload.offerVersionRef
+        || typeof metadata.requestRef !== "string"
+        || !COMMERCE_REFERENCE.test(metadata.requestRef)
+        || typeof metadata.entitlementRef !== "string"
+        || !COMMERCE_REFERENCE.test(metadata.entitlementRef)
+        || typeof metadata.issuedLinkRef !== "string"
+        || !COMMERCE_REFERENCE.test(metadata.issuedLinkRef)
+        || effect.entity_ref !== metadata.entitlementRef
+      ) throw commerceError("reconciliation_required");
+      return Object.freeze({
+        orderRef,
+        offerVersionRef: payload.offerVersionRef,
+        requestRef: metadata.requestRef,
+        entitlementRef: metadata.entitlementRef
+      });
+    });
+  }
+
   function normalizeLimit(value) {
     if (!Number.isSafeInteger(value) || value < 1 || value > 100) {
       throw commerceError("invalid_pagination");
@@ -4233,6 +4365,8 @@ export function createSqliteCoinCommerceStore(options = {}) {
     confirmOrder,
     cancelOrder,
     getOrder,
+    getDeliveredOrderBinding,
+    verifyCapturedFulfillmentClaim,
     listOrders,
     claimDueCaptures,
     captureClaimedOrder,

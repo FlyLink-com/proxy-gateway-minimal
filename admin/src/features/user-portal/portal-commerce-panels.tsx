@@ -23,6 +23,7 @@ import type { PortalWalletFirstCommerceClient } from "./commerce";
 import { MarketplaceOfferCard } from "./marketplace-offer-card";
 import { WalletFirstMarketplacePanel } from "./wallet-first-marketplace-panel";
 import { portalCoinCommerceErrorText as safeCommerceErrorText } from "./commerce/commerce-error-presentation";
+import { PortalOwnedDataPacks } from "./commerce/components/portal-owned-data-packs";
 
 export type PortalCommerceLocale = "zh" | "en";
 
@@ -38,6 +39,7 @@ type MarketplacePanelProps = PanelProps & {
   commerceClient: PortalCoinCommerceClient | null;
   commerceModelClient?: PortalCommerceModelClient | null;
   onOpenWallet?: () => void;
+  onSessionInvalid?: () => void;
   onWalletMutation?: () => void;
   sessionGeneration?: number;
   sessionRef: string | null;
@@ -105,6 +107,7 @@ function safeCommerceFailure(error: unknown): {
 function LegacyMarketplacePanel({
   commerceClient,
   locale,
+  onSessionInvalid,
   onWalletMutation,
   sessionGeneration = 0,
   sessionRef,
@@ -114,6 +117,8 @@ function LegacyMarketplacePanel({
   const generationRef = useRef(0);
   const [refreshRevision, setRefreshRevision] = useState(0);
   const [planSwitchRevision, setPlanSwitchRevision] = useState(0);
+  const [ownedPacksRevision, setOwnedPacksRevision] = useState(0);
+  const deliveredPackRef = useRef({ sessionGeneration, sessionRef, orderRef: "" });
   const planSwitchScope = useMemo(() => ({
     commerceClient, refreshRevision, planSwitchRevision, sessionGeneration, sessionRef
   }), [commerceClient, refreshRevision, planSwitchRevision, sessionGeneration, sessionRef]);
@@ -153,6 +158,19 @@ function LegacyMarketplacePanel({
     sessionGeneration,
     sessionRef
   });
+
+  useEffect(() => {
+    const previous = deliveredPackRef.current;
+    if (previous.sessionRef !== sessionRef || previous.sessionGeneration !== sessionGeneration) {
+      deliveredPackRef.current = { sessionGeneration, sessionRef, orderRef: "" };
+      return;
+    }
+    const order = purchaseFlow.order;
+    if (!order || order.offer.category !== "data_pack" || order.paymentStatus !== "captured"
+      || order.fulfillment.status !== "delivered" || order.orderRef === previous.orderRef) return;
+    deliveredPackRef.current = { sessionGeneration, sessionRef, orderRef: order.orderRef };
+    setOwnedPacksRevision((revision) => revision + 1);
+  }, [purchaseFlow.order, sessionGeneration, sessionRef]);
 
   useEffect(() => {
     const previous = deliveredPlanRef.current;
@@ -571,6 +589,9 @@ function LegacyMarketplacePanel({
           </ul>
         </section>
       ) : null}
+      {commerceClient && sessionRef ? <PortalOwnedDataPacks commerceClient={commerceClient}
+        sessionRef={sessionRef} sessionGeneration={sessionGeneration} refreshRevision={ownedPacksRevision}
+        locale={locale} theme={theme} onSessionInvalid={onSessionInvalid} /> : null}
       {productBusy && !purchaseFlow.quote && !purchaseFlow.order ? (
         <div
           aria-live="polite"
@@ -621,6 +642,10 @@ function LegacyMarketplacePanel({
         >
           {purchaseFlow.quote || purchaseFlow.order ? (
             <CoinsPurchaseDialog
+              dataPackDelivery={commerceClient && sessionRef ? {
+                commerceClient, sessionRef, sessionGeneration, theme,
+                onSessionInvalid: onSessionInvalid ?? closeCoinsDialog
+              } : undefined}
               cancelling={purchaseFlow.cancelling}
               confirmDisabled={confirmationBlocked}
               errorCode={purchaseFlow.errorCode}

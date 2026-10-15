@@ -164,6 +164,19 @@ function productionRuntimeOptions(
   };
 }
 
+function protectedDataPackRuntimeEnvironment(directory) {
+  return {
+    COINS_COMMERCE_DATA_PACK_RUNTIME_ENABLED: "true",
+    COINS_COMMERCE_DATA_PACK_NODE_ID: "synthetic-node",
+    COINS_COMMERCE_DATA_PACK_ESCROW_KEY: "a".repeat(64),
+    COINS_COMMERCE_DATA_PACK_ESCROW_PATH: join(directory, "pack-escrow.json"),
+    USER_PORTAL_EDGE_LIFECYCLE_ENABLED: "true",
+    USER_PORTAL_EDGE_CHANNEL_REF: "synthetic-node",
+    EDGE_CREDENTIAL_MATERIAL_PATH: join(directory, "edge-material.json"),
+    EDGE_DATA_PLANE_AGENT_ROUTES_ENABLED: "true"
+  };
+}
+
 test("production entry rejects an injected state before startup", () => {
   assert.throws(
     () => startProductionProxyGateway({ state: {} }),
@@ -248,6 +261,22 @@ test("production entry does not read overridden Commerce options while default-o
       throw new Error("default-off Commerce catalog getter was read");
     }
   });
+  let packFactoryGetterReads = 0;
+  Object.defineProperty(runtimeOptions, "coinCommerceDataPackFulfillmentFactory", {
+    enumerable: true,
+    get() {
+      packFactoryGetterReads += 1;
+      throw new Error("default-off pack factory getter was read");
+    }
+  });
+  let packEscrowGetterReads = 0;
+  Object.defineProperty(runtimeOptions, "coinCommerceDataPackMaterialEscrow", {
+    enumerable: true,
+    get() {
+      packEscrowGetterReads += 1;
+      throw new Error("production pack escrow override was read");
+    }
+  });
   let handle;
 
   try {
@@ -256,6 +285,8 @@ test("production entry does not read overridden Commerce options while default-o
       logger: false
     });
     assert.equal(catalogGetterReads, 0);
+    assert.equal(packFactoryGetterReads, 0);
+    assert.equal(packEscrowGetterReads, 0);
     assert.equal(handle.state.platform.coinsCommerceEnabled, false);
     assert.equal(handle.state.platform.coinsCommerceAuthorityEnabled, false);
   } finally {
@@ -359,14 +390,25 @@ test("production entry starts with the authoritative catalog and production fulf
   const paths = prepareRuntime(directory);
   const consolePort = await reservePort();
   let handle;
+  const runtimeOptions = productionRuntimeOptions(paths, consolePort);
+  let packFactoryGetterReads = 0;
+  Object.defineProperty(runtimeOptions, "coinCommerceDataPackFulfillmentFactory", {
+    enumerable: true,
+    get() {
+      packFactoryGetterReads += 1;
+      throw new Error("production pack factory override was read");
+    }
+  });
 
   try {
     handle = await startProductionProxyGateway({
-      runtimeOptions: productionRuntimeOptions(paths, consolePort),
+      runtimeOptions,
       logger: false
     });
     assert.equal(handle.server.listening, true);
     assert.equal(handle.state.platform.coinsCommerceEnabled, true);
+    assert.equal(handle.state.platform.coinCommerceDataPackRuntimeEnabled, false);
+    assert.equal(packFactoryGetterReads, 0);
 
     const database = new Database(paths.controlDbPath, {
       readonly: true,
@@ -391,6 +433,99 @@ test("production entry starts with the authoritative catalog and production fulf
     removeTempDir(directory);
   }
 });
+
+test("production entry rejects an opted-in data pack without protected prerequisites before listening", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "proxy-gateway-production-pack-prerequisite-"));
+  const paths = prepareRuntime(directory);
+  const consolePort = await reservePort();
+  const runtimeOptions = productionRuntimeOptions(paths, consolePort);
+  runtimeOptions.env.COINS_COMMERCE_DATA_PACK_RUNTIME_ENABLED = "true";
+  let handle;
+
+  try {
+    await assert.rejects(
+      startProductionProxyGateway({ runtimeOptions, logger: false })
+        .then((started) => { handle = started; return started; }),
+      (error) => error?.code === "coin_commerce_prerequisite_missing"
+    );
+    await assertPortBindable(consolePort);
+  } finally {
+    await handle?.stop();
+    removeTempDir(directory);
+  }
+});
+
+test("production entry composes a protected pack handler without publishing pack offers", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "proxy-gateway-production-pack-composition-"));
+  const paths = prepareRuntime(directory);
+  const consolePort = await reservePort();
+  const runtimeOptions = productionRuntimeOptions(paths, consolePort);
+  Object.assign(runtimeOptions.env, protectedDataPackRuntimeEnvironment(directory));
+  let handle;
+
+  try {
+    handle = await startProductionProxyGateway({ runtimeOptions, logger: false });
+    assert.equal(handle.server.listening, true);
+    assert.equal(handle.state.platform.coinCommerceDataPackRuntimeEnabled, true);
+    assert.equal(typeof handle.state.platform.coinCommerceDataPackOrderDelivery.get, "function");
+    assert.equal(typeof handle.state.platform.coinCommerceDataPackArtifactRotation.rotate, "function");
+    assert.equal(typeof handle.state.platform.coinCommerceDataPackCredentialReset.rotate, "function");
+    assert.equal(typeof handle.state.platform.coinCommerceDataPackRotationCoordinator.start, "function");
+    // Startup must not create customer material before a captured pack order exists.
+    assert.equal(existsSync(runtimeOptions.env.COINS_COMMERCE_DATA_PACK_ESCROW_PATH), false);
+    const database = new Database(paths.controlDbPath, {
+      readonly: true, fileMustExist: true
+    });
+    try {
+      assert.deepEqual(database.prepare(`
+        select category, count(*) as count
+          from platform_coin_commerce_offer_versions
+         where status = 'published'
+         group by category
+      `).all(), [{ category: "plan", count: 3 }]);
+    } finally {
+      database.close();
+    }
+  } finally {
+    await handle?.stop();
+    removeTempDir(directory);
+  }
+});
+
+for (const [label, alter] of [
+  ["missing escrow key", (env) => { delete env.COINS_COMMERCE_DATA_PACK_ESCROW_KEY; }],
+  ["invalid escrow key", (env) => { env.COINS_COMMERCE_DATA_PACK_ESCROW_KEY = "invalid"; }],
+  ["unconfigured node", (env) => { env.COINS_COMMERCE_DATA_PACK_NODE_ID = "other-node"; }],
+  ["disabled Agent route", (env) => { env.EDGE_DATA_PLANE_AGENT_ROUTES_ENABLED = "false"; }],
+  ["relative escrow path", (env) => { env.COINS_COMMERCE_DATA_PACK_ESCROW_PATH = "pack-escrow.json"; }],
+  ["shared edge material path", (env) => {
+    env.COINS_COMMERCE_DATA_PACK_ESCROW_PATH = env.EDGE_CREDENTIAL_MATERIAL_PATH;
+  }],
+  ["shared control database path", (env, paths) => {
+    env.COINS_COMMERCE_DATA_PACK_ESCROW_PATH = paths.controlDbPath;
+  }]
+]) {
+  test(`production entry fails closed for ${label} before listening`, async () => {
+    const directory = mkdtempSync(join(tmpdir(), "proxy-gateway-production-pack-invalid-"));
+    const paths = prepareRuntime(directory);
+    const consolePort = await reservePort();
+    const runtimeOptions = productionRuntimeOptions(paths, consolePort);
+    Object.assign(runtimeOptions.env, protectedDataPackRuntimeEnvironment(directory));
+    alter(runtimeOptions.env, paths);
+    let handle;
+    try {
+      await assert.rejects(
+        startProductionProxyGateway({ runtimeOptions, logger: false })
+          .then((started) => { handle = started; return started; }),
+        (error) => error?.code === "coin_commerce_prerequisite_missing"
+      );
+      await assertPortBindable(consolePort);
+    } finally {
+      await handle?.stop();
+      removeTempDir(directory);
+    }
+  });
+}
 
 test("production entry starts all-active Commerce without canary hashes and keeps inactive accounts excluded", async () => {
   const directory = mkdtempSync(join(tmpdir(), "proxy-gateway-production-commerce-all-active-"));

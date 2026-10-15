@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { copyFileSync, existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -8,6 +8,7 @@ import Database from "better-sqlite3";
 import {
   createSqliteSubscriptionControlStore
 } from "../services/platform/subscription-control-db.mjs";
+import { createTrafficAccountingService } from "../services/platform/traffic-accounting.mjs";
 
 function scopeCredentialDigest(edgeCredentialRef) {
   return `sha256:${createHash("sha256")
@@ -28,6 +29,527 @@ function withStore(fn) {
     rmSync(tempDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 50 });
   }
 }
+
+test("data-pack issuance reservation is order-owned, atomic, and replay-safe beside a timed plan", () => {
+  withStore((store) => {
+    const now = "2026-09-28T00:00:00.000Z";
+    store.createAccount({
+      id: "acct_pack_buyer", ownerRef: "portal_pack_buyer", status: "active",
+      createdAt: now, updatedAt: now
+    });
+    store.createEntitlement({
+      id: "ent_pack_buyer_timed", accountId: "acct_pack_buyer",
+      plan: "offerv_plan_30d_100gb_monthly_v1", status: "active",
+      validFrom: now, validUntil: "2026-10-28T00:00:00.000Z",
+      maxArtifacts: 1, maxDevices: 1, trafficLimitBytes: 100 * 1024 ** 3,
+      createdAt: now, updatedAt: now
+    });
+    const base = {
+      commandRef: "coincmd_pack_reserve_a", orderRef: "coinord_pack_reserve_a",
+      accountId: "acct_pack_buyer", offerVersionRef: "offerv_pack_100gb_v1",
+      quotaBytes: 100 * 1024 ** 3, nodeId: "channel_sg_pack", now
+    };
+    const first = store.reserveCoinCommerceDataPackIssuance(base);
+    assert.equal(first.orderRef, base.orderRef);
+    assert.equal(first.commandRef, base.commandRef);
+    assert.equal(first.status, "planned");
+    assert.equal(store.getEntitlement(first.entitlementRef)?.trafficLimitBytes, base.quotaBytes);
+    assert.equal(store.getEntitlement(first.entitlementRef)?.validUntil,
+      "9999-12-31T23:59:59.999Z");
+    assert.equal(store.getIssuanceRequest(first.requestRef)?.purpose,
+      "coin_commerce_data_pack_fulfillment");
+    assert.deepEqual(store.reserveCoinCommerceDataPackIssuance({
+      ...base, now: "2026-09-29T00:00:00.000Z"
+    }), first);
+    assert.throws(() => store.reserveCoinCommerceDataPackIssuance({
+      ...base, commandRef: "coincmd_pack_reserve_other"
+    }), (error) => error.code === "reconciliation_required");
+    assert.throws(() => store.reserveCoinCommerceDataPackIssuance({
+      ...base, quotaBytes: 200 * 1024 ** 3
+    }), (error) => error.code === "validation_error");
+    const second = store.reserveCoinCommerceDataPackIssuance({
+      ...base, commandRef: "coincmd_pack_reserve_b",
+      orderRef: "coinord_pack_reserve_b", offerVersionRef: "offerv_pack_200gb_v1",
+      quotaBytes: 200 * 1024 ** 3
+    });
+    assert.notEqual(first.requestRef, second.requestRef);
+    assert.notEqual(first.entitlementRef, second.entitlementRef);
+    const finalization = {
+      commandRef: base.commandRef, orderRef: base.orderRef,
+      accountId: base.accountId, requestRef: first.requestRef,
+      entitlementRef: first.entitlementRef, nodeId: base.nodeId,
+      tenantRef: "tenantref_pack_reserved_a",
+      artifactRef: "artifactref_pack_reserved_a", now
+    };
+    const issued = store.completeCoinCommerceDataPackIssuance(finalization);
+    assert.equal(issued.status, "issued");
+    assert.equal(store.getIssuanceRequest(first.requestRef)?.status, "issued");
+    assert.equal(store.getIssuedLink(issued.issuedLinkRef)?.requestId, first.requestRef);
+    assert.deepEqual(store.completeCoinCommerceDataPackIssuance({
+      ...finalization, now: "2026-09-29T00:00:00.000Z"
+    }), issued);
+    assert.throws(() => store.completeCoinCommerceDataPackIssuance({
+      ...finalization, artifactRef: "artifactref_pack_wrong"
+    }), (error) => error.code === "reconciliation_required");
+    const effect = store.applyCoinCommerceDataPackFulfillment({
+      orderRef: base.orderRef, commandRef: base.commandRef,
+      accountId: base.accountId, requestRef: first.requestRef,
+      entitlementRef: first.entitlementRef,
+      issuedLinkRef: issued.issuedLinkRef,
+      offerVersionRef: base.offerVersionRef, quotaBytes: base.quotaBytes,
+      technicalValidUntil: "9999-12-31T23:59:59.999Z",
+      commercialNeverExpires: true, createdAt: now
+    });
+    assert.equal(effect.orderRef, base.orderRef);
+    assert.deepEqual(store.readDataPackResourceUsage({
+      accountId: base.accountId, orderRef: base.orderRef,
+      requestRef: first.requestRef, entitlementRef: first.entitlementRef, now
+    }).usage, {
+      totalBytes: base.quotaBytes, usedBytes: null, remainingBytes: null,
+      collectionStatus: "pending", updatedAt: null, exhausted: null
+    });
+    assert.equal(store.getEntitlement("ent_pack_buyer_timed")?.trafficLimitBytes,
+      100 * 1024 ** 3);
+  });
+});
+
+test("a data pack has no inferred edge identity and resolves only its explicit issued credential", () => {
+  withStore((store) => {
+    const now = "2026-09-28T00:00:00.000Z";
+    store.createAccount({
+      id: "acct_pack_edge", ownerRef: "portal_pack_edge", status: "active",
+      createdAt: now, updatedAt: now
+    });
+    const claim = {
+      commandRef: "coincmd_pack_edge", orderRef: "coinord_pack_edge",
+      accountId: "acct_pack_edge", offerVersionRef: "offerv_pack_100gb_v1",
+      quotaBytes: 100 * 1024 ** 3, nodeId: "channel_sg_pack", now
+    };
+    const reserved = store.reserveCoinCommerceDataPackIssuance(claim);
+    store.completeCoinCommerceDataPackIssuance({
+      commandRef: claim.commandRef, orderRef: claim.orderRef,
+      accountId: claim.accountId, requestRef: reserved.requestRef,
+      entitlementRef: reserved.entitlementRef, nodeId: claim.nodeId,
+      tenantRef: "tenantref_pack_edge", artifactRef: "artifactref_pack_edge", now
+    });
+    assert.equal(store.findIssuedSubscriptionBindingByEdgeCredentialRef(
+      `edgecred_${reserved.requestRef}`
+    ), null);
+    assert.equal(store.findIssuedSubscriptionBindingByEdgeCredentialRef(
+      `edgecred_${reserved.requestRef}_${claim.nodeId}`
+    ), null);
+    const credential = {
+      requestRef: reserved.requestRef, entitlementRef: reserved.entitlementRef,
+      edgeChannelRef: claim.nodeId, edgeCredentialRef: "edgecred_pack_explicit_1",
+      edgeMaterialDigest: `sha256:${"a".repeat(64)}`, now
+    };
+    const registered = store.registerCoinCommerceDataPackEdgeCredential(credential);
+    assert.deepEqual(registered, {
+      requestRef: credential.requestRef, entitlementRef: credential.entitlementRef,
+      edgeChannelRef: credential.edgeChannelRef,
+      edgeCredentialRef: credential.edgeCredentialRef,
+      edgeMaterialDigest: credential.edgeMaterialDigest, status: "active"
+    });
+    assert.deepEqual(store.registerCoinCommerceDataPackEdgeCredential(credential), registered);
+    const binding = store.findIssuedSubscriptionBindingByEdgeCredentialRef(
+      credential.edgeCredentialRef
+    );
+    assert.equal(binding?.accountId, claim.accountId);
+    assert.equal(binding?.requestId, reserved.requestRef);
+    assert.equal(binding?.entitlementId, reserved.entitlementRef);
+    assert.equal(binding?.nodeId, claim.nodeId);
+    assert.deepEqual(store.getLatestEdgeDesiredStateForChannel(claim.nodeId)?.edgeCredentialRefs, []);
+    assert.equal(store.getPortalEdgeCredentialChannelRef(credential.edgeCredentialRef), null);
+    assert.equal(store.getEdgeCredentialChannelRef(credential.edgeCredentialRef), claim.nodeId);
+    assert.equal(store.getEdgeCredentialChannelRefByScopeDigest(
+      scopeCredentialDigest(credential.edgeCredentialRef)
+    ), claim.nodeId);
+    assert.equal(store.getEdgeCredentialChannelRef(`edgecred_${reserved.requestRef}`), null);
+    const accounting = createTrafficAccountingService({
+      controlStore: store, nowFn: () => "2026-10-28T00:00:00.000Z"
+    });
+    const observation = (sourceRef, observedAt, intervalStartedAt) => ({
+      sourceRef, channelRef: claim.nodeId,
+      edgeCredentialRef: credential.edgeCredentialRef,
+      observedAt, intervalStartedAt, intervalEndedAt: observedAt,
+      uploadBytes: 50 * 1024 ** 3, downloadBytes: 0
+    });
+    const first = accounting.recordUsageObservation(observation(
+      "source_pack_sep", "2026-09-29T00:00:00.000Z", now
+    ));
+    assert.equal(first.status, "within_quota");
+    const second = accounting.recordUsageObservation(observation(
+      "source_pack_oct", "2026-10-28T00:00:00.000Z", "2026-10-27T00:00:00.000Z"
+    ));
+    assert.equal(second.status, "over_quota_disable_required");
+    assert.equal(second.quota.usedBytes, claim.quotaBytes);
+    assert.equal(second.trafficSupply.scope, "order_resource");
+    assert.equal(second.execution.directRuntimeMutationAllowed, false);
+    assert.throws(() => store.registerCoinCommerceDataPackEdgeCredential({
+      ...credential, edgeMaterialDigest: `sha256:${"b".repeat(64)}`
+    }), (error) => error.code === "reconciliation_required");
+    assert.throws(() => store.registerCoinCommerceDataPackEdgeCredential({
+      ...credential, edgeCredentialRef: "edgecred_pack_second_1"
+    }), (error) => error.code === "reconciliation_required");
+  });
+});
+
+test("data-pack control issuance resumes after store restart without a second entitlement", () => {
+  const directory = mkdtempSync(join(tmpdir(), "data-pack-issuance-restart-"));
+  const dbPath = join(directory, "control.sqlite");
+  const now = "2026-09-28T00:00:00.000Z";
+  const reserve = {
+    commandRef: "coincmd_pack_restart", orderRef: "coinord_pack_restart",
+    accountId: "acct_pack_restart", offerVersionRef: "offerv_pack_500gb_v1",
+    quotaBytes: 500 * 1024 ** 3, nodeId: "channel_sg_pack", now
+  };
+  let store;
+  try {
+    store = createSqliteSubscriptionControlStore({ dbPath });
+    store.createAccount({
+      id: reserve.accountId, ownerRef: "portal_pack_restart", status: "active",
+      createdAt: now, updatedAt: now
+    });
+    const planned = store.reserveCoinCommerceDataPackIssuance(reserve);
+    store.close();
+    store = createSqliteSubscriptionControlStore({ dbPath });
+    assert.deepEqual(store.reserveCoinCommerceDataPackIssuance({
+      ...reserve, now: "2026-09-29T00:00:00.000Z"
+    }), planned);
+    const finalization = {
+      commandRef: reserve.commandRef, orderRef: reserve.orderRef,
+      accountId: reserve.accountId, requestRef: planned.requestRef,
+      entitlementRef: planned.entitlementRef, nodeId: reserve.nodeId,
+      tenantRef: "tenantref_pack_restart", artifactRef: "artifactref_pack_restart", now
+    };
+    const issued = store.completeCoinCommerceDataPackIssuance(finalization);
+    store.close();
+    store = createSqliteSubscriptionControlStore({ dbPath });
+    assert.deepEqual(store.completeCoinCommerceDataPackIssuance({
+      ...finalization, now: "2026-09-30T00:00:00.000Z"
+    }), issued);
+    assert.equal(store.getAccountControlSummary(reserve.accountId).entitlements.length, 1);
+    assert.equal(store.listIssuedSubscriptionBindings({ accountId: reserve.accountId }).length, 1);
+  } finally {
+    store?.close();
+    rmSync(directory, { recursive: true, force: true, maxRetries: 3, retryDelay: 50 });
+  }
+});
+
+test("independent data-pack usage stays scoped to its issued resource across months and link rotation", () => {
+  withStore((store) => {
+    const issuedAt = "2026-09-01T00:00:00.000Z";
+    const now = "2026-10-02T00:00:00.000Z";
+    const gib = 1024 ** 3;
+    store.createAccount({
+      id: "acct_pack_reader", ownerRef: "portal_pack_reader", status: "active",
+      createdAt: issuedAt, updatedAt: issuedAt
+    });
+    const resources = [
+      ["a", "offerv_pack_100gb_v1", 100, "coin_commerce_data_pack_fulfillment"],
+      ["b", "offerv_pack_200gb_v1", 200, "coin_commerce_data_pack_fulfillment"],
+      ["timed", "offerv_plan_30d_100gb_monthly_v1", 100, "coin_commerce_product_fulfillment"]
+    ];
+    const packEffects = new Map();
+    for (const [suffix, plan, gigabytes, purpose] of resources) {
+      store.createEntitlement({
+        id: `ent_pack_${suffix}`, accountId: "acct_pack_reader", plan,
+        status: "active", validFrom: issuedAt, validUntil: "9999-12-31T23:59:59.999Z",
+        trafficLimitBytes: gigabytes * gib, createdAt: issuedAt, updatedAt: issuedAt
+      });
+      store.createIssuanceRequest({
+        id: `pareq_pack_${suffix}`, accountId: "acct_pack_reader",
+        entitlementId: `ent_pack_${suffix}`, approvalRef: `approval_pack_${suffix}`,
+        status: "issued", quantity: 1, nodeId: "channel-aliyun-a-tuic",
+        purpose, requestedByRef: "commerce_pack_issuer",
+        createdAt: issuedAt, updatedAt: issuedAt
+      });
+      store.linkIssuedSubscription({
+        id: `link_pack_${suffix}`, requestId: `pareq_pack_${suffix}`,
+        tenantRef: `tenant_pack_${suffix}`, artifactRef: `artifact_pack_${suffix}`,
+        status: "active", createdAt: issuedAt, updatedAt: issuedAt
+      });
+      if (purpose === "coin_commerce_data_pack_fulfillment") {
+        assert.throws(() => store.readDataPackResourceUsage({
+          accountId: "acct_pack_reader", orderRef: `coinord_pack_${suffix}`,
+          requestRef: `pareq_pack_${suffix}`,
+          entitlementRef: `ent_pack_${suffix}`, now
+        }), (error) => error.code === "reconciliation_required");
+        const resource = {
+          orderRef: `coinord_pack_${suffix}`, commandRef: `coincmd_pack_${suffix}`,
+          accountId: "acct_pack_reader",
+          requestRef: `pareq_pack_${suffix}`, entitlementRef: `ent_pack_${suffix}`,
+          offerVersionRef: plan, quotaBytes: gigabytes * gib,
+          technicalValidUntil: "9999-12-31T23:59:59.999Z",
+          commercialNeverExpires: true, createdAt: issuedAt
+        };
+        assert.deepEqual(store.createDataPackResource(resource), resource);
+        assert.deepEqual(store.createDataPackResource(resource), resource);
+        assert.throws(() => store.createDataPackResource({
+          ...resource, orderRef: `coinord_pack_duplicate_${suffix}`
+        }), (error) => error.code === "reconciliation_required");
+        assert.throws(() => store.createDataPackResource({
+          ...resource, quotaBytes: (gigabytes + 1) * gib
+        }), (error) => error.code === "validation_error");
+        assert.throws(() => store.createDataPackResource({
+          ...resource, commercialNeverExpires: false
+        }), (error) => error.code === "validation_error");
+        assert.throws(() => store.createDataPackResource({
+          ...resource, technicalValidUntil: "2030-01-01T00:00:00.000Z"
+        }), (error) => error.code === "validation_error");
+        assert.throws(() => store.readDataPackResourceUsage({
+          accountId: "acct_pack_reader", orderRef: resource.orderRef,
+          requestRef: resource.requestRef, entitlementRef: resource.entitlementRef, now
+        }), (error) => error.code === "reconciliation_required");
+        const fulfillment = { ...resource, issuedLinkRef: `link_pack_${suffix}` };
+        const firstEffect = store.applyCoinCommerceDataPackFulfillment(fulfillment);
+        assert.equal(firstEffect.orderRef, resource.orderRef);
+        assert.equal(firstEffect.requestRef, resource.requestRef);
+        assert.equal(firstEffect.entitlementRef, resource.entitlementRef);
+        assert.equal(firstEffect.issuedLinkRef, `link_pack_${suffix}`);
+        assert.deepEqual(store.applyCoinCommerceDataPackFulfillment(fulfillment), firstEffect);
+        assert.equal(store.getAuditEvent(firstEffect.effectRef)?.metadata.kind, "data_pack");
+        packEffects.set(suffix, firstEffect);
+        assert.throws(() => store.applyCoinCommerceDataPackFulfillment({
+          ...fulfillment, commandRef: `coincmd_pack_other_${suffix}`
+        }), (error) => error.code === "reconciliation_required");
+        assert.throws(() => store.applyCoinCommerceDataPackFulfillment({
+          ...fulfillment, issuedLinkRef: "link_pack_timed"
+        }), (error) => error.code === "reconciliation_required");
+      }
+    }
+    assert.equal(store.resolveAccountServiceEntitlement({
+      accountId: "acct_pack_reader", now
+    })?.id, "ent_pack_timed");
+    for (const suffix of ["a", "b"]) {
+      assert.equal(store.findIssuedSubscriptionBindingByEdgeCredentialRef(
+        `edgecred_pareq_pack_${suffix}`
+      ), null);
+    }
+    const read = (suffix, at = now) => store.readDataPackResourceUsage({
+      accountId: "acct_pack_reader", orderRef: `coinord_pack_${suffix}`,
+      requestRef: `pareq_pack_${suffix}`,
+      entitlementRef: `ent_pack_${suffix}`, now: at
+    });
+    assert.deepEqual(read("a").usage, {
+      totalBytes: 100 * gib, usedBytes: null, remainingBytes: null,
+      collectionStatus: "pending", updatedAt: null, exhausted: null
+    });
+    for (const [suffix, usedGb, observedAt] of [
+      ["a", 50, "2026-09-02T00:00:00.000Z"],
+      ["b", 200, "2026-10-01T23:59:00.000Z"],
+      ["timed", 90, "2026-10-01T23:59:00.000Z"]
+    ]) {
+      store.recordUsageSample({
+        id: `sample_pack_${suffix}`, sourceRef: `source_pack_${suffix}`,
+        channelRef: "channel-aliyun-a-tuic", edgeCredentialRef: `edgecred_pack_${suffix}`,
+        accountId: "acct_pack_reader", entitlementId: `ent_pack_${suffix}`,
+        requestId: `pareq_pack_${suffix}`, observedAt,
+        intervalStartedAt: issuedAt, intervalEndedAt: observedAt,
+        uploadBytes: usedGb * gib, downloadBytes: 0,
+        sampleDigest: `digest_pack_${suffix}`, createdAt: observedAt
+      });
+    }
+    assert.equal(read("a").usage.usedBytes, 50 * gib);
+    assert.equal(store.resolveAccountServiceEntitlement({
+      accountId: "acct_pack_reader", now
+    })?.id, "ent_pack_timed");
+    assert.equal(read("a").usage.remainingBytes, 50 * gib);
+    assert.equal(read("a").usage.exhausted, false);
+    assert.equal(read("b").usage.usedBytes, 200 * gib);
+    assert.equal(read("b").usage.remainingBytes, 0);
+    assert.equal(read("b").usage.exhausted, true);
+    assert.equal(read("a", "2026-10-03T00:00:00.000Z").usage.usedBytes, 50 * gib);
+    store.setIssuedLinkStatus("link_pack_a", {
+      status: "rotated", updatedAt: now
+    });
+    store.linkIssuedSubscription({
+      id: "link_pack_a_rotated", requestId: "pareq_pack_a",
+      tenantRef: "tenant_pack_a", artifactRef: "artifact_pack_a_rotated",
+      status: "active", createdAt: now, updatedAt: now
+    });
+    assert.deepEqual(store.applyCoinCommerceDataPackFulfillment({
+      orderRef: "coinord_pack_a", commandRef: "coincmd_pack_a",
+      accountId: "acct_pack_reader", requestRef: "pareq_pack_a",
+      entitlementRef: "ent_pack_a", issuedLinkRef: "link_pack_a",
+      offerVersionRef: "offerv_pack_100gb_v1", quotaBytes: 100 * gib,
+      technicalValidUntil: "9999-12-31T23:59:59.999Z",
+      commercialNeverExpires: true, createdAt: issuedAt
+    }), packEffects.get("a"));
+    assert.equal(read("a").usage.usedBytes, 50 * gib);
+    assert.throws(() => store.readDataPackResourceUsage({
+      accountId: "acct_other", orderRef: "coinord_pack_a", requestRef: "pareq_pack_a",
+      entitlementRef: "ent_pack_a", now
+    }), (error) => error.code === "not_found");
+    assert.throws(() => store.readDataPackResourceUsage({
+      accountId: "acct_pack_reader", orderRef: "coinord_pack_b", requestRef: "pareq_pack_b",
+      entitlementRef: "ent_pack_a", now
+    }), (error) => error.code === "reconciliation_required");
+    assert.throws(() => store.readDataPackResourceUsage({
+      accountId: "acct_pack_reader", orderRef: "coinord_pack_b", requestRef: "pareq_pack_a",
+      entitlementRef: "ent_pack_a", now
+    }), (error) => error.code === "reconciliation_required");
+    assert.throws(() => read("timed"), (error) => error.code === "reconciliation_required");
+    assert.doesNotMatch(JSON.stringify(read("a")), /token|subscriptionUrl|credential|artifact/i);
+    store.linkIssuedSubscription({
+      id: "link_pack_a_ambiguous", requestId: "pareq_pack_a",
+      tenantRef: "tenant_pack_a_other", artifactRef: "artifact_pack_a_other",
+      status: "active", createdAt: now, updatedAt: now
+    });
+    assert.throws(() => read("a"), (error) => error.code === "reconciliation_required");
+  });
+});
+
+test("pack-only accounts do not masquerade as the legacy current timed plan", () => {
+  withStore((store) => {
+    const now = "2026-10-02T00:00:00.000Z";
+    store.createAccount({
+      id: "acct_pack_only", ownerRef: "portal_pack_only", status: "active",
+      createdAt: now, updatedAt: now
+    });
+    store.createEntitlement({
+      id: "ent_pack_only", accountId: "acct_pack_only",
+      plan: "offerv_pack_100gb_v1", status: "active",
+      validFrom: now, validUntil: "9999-12-31T23:59:59.999Z",
+      trafficLimitBytes: 100 * 1024 ** 3, createdAt: now, updatedAt: now
+    });
+    store.createIssuanceRequest({
+      id: "pareq_pack_only", accountId: "acct_pack_only", entitlementId: "ent_pack_only",
+      approvalRef: "approval_pack_only", status: "issued", quantity: 1,
+      nodeId: "channel-aliyun-a-tuic", purpose: "coin_commerce_data_pack_fulfillment",
+      requestedByRef: "commerce_pack_issuer", createdAt: now, updatedAt: now
+    });
+    store.linkIssuedSubscription({
+      id: "link_pack_only", requestId: "pareq_pack_only",
+      tenantRef: "tenant_pack_only", artifactRef: "artifact_pack_only",
+      status: "active", createdAt: now, updatedAt: now
+    });
+    assert.equal(store.resolveAccountServiceEntitlement({ accountId: "acct_pack_only", now }), null);
+    assert.deepEqual(store.readLegacyPortalCurrentResource({ accountId: "acct_pack_only", now }), {
+      model: "legacy", resource: { state: "none" }, requestRef: null
+    });
+  });
+});
+
+test("add-only data-pack resource schema preserves an existing control account on reopen", () => {
+  const tempDir = mkdtempSync(join(tmpdir(), "platform-data-pack-upgrade-"));
+  const dbPath = join(tempDir, "control.sqlite");
+  const now = "2026-09-28T00:00:00.000Z";
+  try {
+    let store = createSqliteSubscriptionControlStore({ dbPath });
+    store.createAccount({
+      id: "acct_before_pack_upgrade", ownerRef: "portal_before_pack_upgrade",
+      status: "active", createdAt: now, updatedAt: now
+    });
+    store.close();
+    const priorSchema = new Database(dbPath);
+    try {
+      priorSchema.exec("drop table platform_data_pack_credential_resets");
+      priorSchema.exec("drop table platform_data_pack_edge_credentials");
+      priorSchema.exec("drop table platform_data_pack_resources");
+    } finally {
+      priorSchema.close();
+    }
+    store = createSqliteSubscriptionControlStore({ dbPath });
+    try {
+      assert.equal(store.getAccount("acct_before_pack_upgrade")?.id,
+        "acct_before_pack_upgrade");
+      const db = new Database(dbPath, { readonly: true });
+      try {
+        assert.equal(db.prepare("select count(*) as count from platform_data_pack_resources")
+          .get().count, 0);
+        assert.equal(db.prepare("select count(*) as count from platform_data_pack_edge_credentials")
+          .get().count, 0);
+        assert.equal(db.prepare("select count(*) as count from platform_data_pack_credential_resets")
+          .get().count, 0);
+      } finally {
+        db.close();
+      }
+    } finally {
+      store.close();
+    }
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 50 });
+  }
+});
+
+test("pack schema upgrade and backup restore preserve legacy access rows and constraints", () => {
+  const directory = mkdtempSync(join(tmpdir(), "platform-pack-schema-rehearsal-"));
+  const dbPath = join(directory, "control.sqlite");
+  const backupPath = join(directory, "before-pack.sqlite");
+  const now = "2026-09-28T00:00:00.000Z";
+  let store;
+  try {
+    store = createSqliteSubscriptionControlStore({ dbPath });
+    store.createAccount({ id: "acct_before_pack_rehearsal",
+      ownerRef: "portal_before_pack_rehearsal", status: "active",
+      createdAt: now, updatedAt: now });
+    store.close();
+    store = null;
+    const before = new Database(dbPath);
+    try {
+      before.exec("drop table platform_data_pack_credential_resets");
+      before.exec("drop table platform_data_pack_artifact_rotations");
+      before.exec("drop table platform_data_pack_edge_credentials");
+      before.exec("drop table platform_data_pack_resources");
+      before.prepare(`insert into platform_portal_access_requests
+        (id, portal_user_ref, plan, client_target, duration_days, quantity,
+         status, next_action, prior_trial_state, submitted_at, updated_at)
+        values (?, ?, 'monthly', 'clash', 30, 1,
+                'pending_admin_review', 'await_review', 'none', ?, ?)`)
+        .run("pareq_before_pack_rehearsal", "portal_before_pack_rehearsal", now, now);
+      assert.equal(before.pragma("foreign_key_check").length, 0);
+    } finally {
+      before.close();
+    }
+    copyFileSync(dbPath, backupPath);
+
+    store = createSqliteSubscriptionControlStore({ dbPath });
+    assert.equal(store.getAccount("acct_before_pack_rehearsal")?.status, "active");
+    store.close();
+    store = null;
+    const upgraded = new Database(dbPath);
+    try {
+      assert.equal(upgraded.prepare(`select plan from platform_portal_access_requests
+        where id = ?`).get("pareq_before_pack_rehearsal")?.plan, "monthly");
+      assert.equal(upgraded.prepare(`select count(*) as count from platform_data_pack_resources`)
+        .get().count, 0);
+      assert.equal(upgraded.prepare(`select count(*) as count from platform_data_pack_credential_resets`)
+        .get().count, 0);
+      assert.equal(upgraded.pragma("foreign_key_check").length, 0);
+      assert.equal(upgraded.pragma("integrity_check", { simple: true }), "ok");
+      assert.throws(() => upgraded.prepare(`insert into platform_portal_access_requests
+        (id, portal_user_ref, plan, client_target, duration_days, quantity,
+         status, next_action, prior_trial_state, submitted_at, updated_at)
+        values (?, ?, 'data_pack', 'clash', 30, 1,
+                'pending_admin_review', 'await_review', 'none', ?, ?)`)
+        .run("pareq_invalid_pack_plan", "portal_before_pack_rehearsal", now, now),
+      /CHECK constraint failed/);
+    } finally {
+      upgraded.close();
+    }
+
+    // Rehearse restoring only this disposable pre-upgrade snapshot. The live
+    // rollback gate must bind its own backup, process state, and exact version.
+    copyFileSync(backupPath, dbPath);
+    const restored = new Database(dbPath, { readonly: true });
+    try {
+      assert.equal(restored.prepare(`select plan from platform_portal_access_requests
+        where id = ?`).get("pareq_before_pack_rehearsal")?.plan, "monthly");
+      assert.equal(restored.prepare(`select name from sqlite_master
+        where type = 'table' and name = 'platform_data_pack_resources'`).get(), undefined);
+      assert.equal(restored.prepare(`select name from sqlite_master
+        where type = 'table' and name = 'platform_data_pack_credential_resets'`).get(), undefined);
+      assert.equal(restored.pragma("foreign_key_check").length, 0);
+      assert.equal(restored.pragma("integrity_check", { simple: true }), "ok");
+    } finally {
+      restored.close();
+    }
+  } finally {
+    store?.close();
+    rmSync(directory, { recursive: true, force: true, maxRetries: 3, retryDelay: 50 });
+  }
+});
 
 function withWelcomeCoinGrantStore(fn) {
   const database = new Database(":memory:");

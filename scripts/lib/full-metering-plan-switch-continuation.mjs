@@ -2,6 +2,7 @@
 // reader; neither HTTP callers nor operator material/window approvals do so.
 import { fullMeteringDigest } from "./full-metering-journal.mjs";
 import { fullMeteringBindingIdentity } from "./full-metering-sample-writer.mjs";
+import { admitFullMeteringDataPackResets } from "./full-metering-data-pack-reset-continuation.mjs";
 
 const HASH = /^[a-f0-9]{64}$/;
 const key = identity => `${identity.channelRef}\0${identity.edgeCredentialRef}`;
@@ -49,9 +50,13 @@ export function planSwitchContinuationHistory(checkpoint) {
   return structuredClone(history);
 }
 
-export function admitFullMeteringPlanSwitches({ checkpoint, identities, readPlanSwitchProof, now }) {
+export function admitFullMeteringPlanSwitches({ checkpoint, identities, readPlanSwitchProof, now, dataPackResetProofs = [] }) {
   const changes = new Map();
   if (!checkpoint || typeof readPlanSwitchProof !== "function") return { changes };
+  // A material rotation is never plan-switch authority. Only a separately
+  // validated, exact pack reset may be excluded from the plan-only comparison;
+  // do not accept caller-supplied skip refs or mutate the checkpoint preimage.
+  const resets = admitFullMeteringDataPackResets({ proofs: dataPackResetProofs, checkpoint, identities });
   const active = new Map(identities.entries.map(entry => [key(entry), entry]));
   const visited = new Set();
   for (const source of checkpoint.sources) {
@@ -60,6 +65,7 @@ export function admitFullMeteringPlanSwitches({ checkpoint, identities, readPlan
       visited.add(key(previous));
       const current = active.get(key(previous));
       if (!current || fullMeteringDigest(previous) === fullMeteringDigest(current)) continue;
+      if (resets.changes.has(key(previous))) continue;
       // Never use a commerce record to authorize ownership, material, source,
       // request or credential rotation. Billing is the sole admitted dimension.
       need(fullMeteringDigest(fullMeteringBindingIdentity(previous)) === fullMeteringDigest(previous));

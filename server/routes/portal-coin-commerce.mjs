@@ -135,6 +135,41 @@ function sendCommerceError(res, status, code) {
   });
 }
 
+function preventSubscriptionCaching(_req, res, next) {
+  res.set("Cache-Control", "private, no-store, max-age=0");
+  res.set("Pragma", "no-cache");
+  res.set("Referrer-Policy", "no-referrer");
+  res.set("X-Robots-Tag", "noindex");
+  next();
+}
+
+function projectDataPackDelivery(value, orderRef) {
+  const delivery = snapshotExactObject(value, ["orderRef", "subscriptionUrl", "usage"]);
+  const usage = snapshotExactObject(delivery.usage, [
+    "totalBytes", "usedBytes", "remainingBytes", "collectionStatus", "updatedAt", "exhausted"
+  ]);
+  let subscriptionUrl;
+  try { subscriptionUrl = new URL(delivery.subscriptionUrl); }
+  catch { throw projectionInvalid(); }
+  if (delivery.orderRef !== orderRef || typeof delivery.subscriptionUrl !== "string"
+    || subscriptionUrl.protocol !== "https:" || !subscriptionUrl.hostname
+    || subscriptionUrl.username || subscriptionUrl.password || subscriptionUrl.hash
+    || !Number.isSafeInteger(usage.totalBytes) || usage.totalBytes <= 0
+    || !["pending", "stale", "measured", "measured_zero"].includes(usage.collectionStatus)) {
+    throw projectionInvalid();
+  }
+  if (usage.collectionStatus === "pending") {
+    if (usage.usedBytes !== null || usage.remainingBytes !== null
+      || usage.updatedAt !== null || usage.exhausted !== null) throw projectionInvalid();
+  } else if (!Number.isSafeInteger(usage.usedBytes) || usage.usedBytes < 0
+    || usage.remainingBytes !== Math.max(0, usage.totalBytes - usage.usedBytes)
+    || usage.exhausted !== (usage.usedBytes >= usage.totalBytes)
+    || (usage.collectionStatus === "measured_zero" && usage.usedBytes !== 0)
+    || typeof usage.updatedAt !== "string"
+    || !Number.isFinite(Date.parse(usage.updatedAt))) throw projectionInvalid();
+  return { orderRef, subscriptionUrl: delivery.subscriptionUrl, usage };
+}
+
 function ownErrorCode(error) {
   try {
     if (
@@ -1314,6 +1349,8 @@ function isSelectedCommerceRoute(method, pathname, planSwitchEnabled) {
       || pathname === "/api/portal/commerce/orders"
       || /^\/api\/portal\/commerce\/orders\/[a-z][a-z0-9_]{2,95}$/
         .test(pathname)
+      || /^\/api\/portal\/commerce\/orders\/[a-z][a-z0-9_]{2,95}\/subscription$/
+        .test(pathname)
       || pathname === "/api/portal/commerce/deferred/offers"
       || /^\/api\/portal\/commerce\/deferred\/offers\/[a-z][a-z0-9_]{2,95}$/
         .test(pathname)
@@ -1328,6 +1365,8 @@ function isSelectedCommerceRoute(method, pathname, planSwitchEnabled) {
       || pathname === "/api/portal/commerce/orders"
       || /^\/api\/portal\/commerce\/orders\/[a-z][a-z0-9_]{2,95}\/cancel$/
         .test(pathname)
+      || /^\/api\/portal\/commerce\/orders\/[a-z][a-z0-9_]{2,95}\/subscription\/rotate$/
+        .test(pathname)
       || pathname === "/api/portal/commerce/deferred/checkout-preview"
       || pathname === "/api/portal/commerce/deferred/transitions"
       || /^\/api\/portal\/commerce\/deferred\/transitions\/[a-z][a-z0-9_]{2,95}\/cancel$/
@@ -1340,6 +1379,10 @@ function isSelectedCommerceRoute(method, pathname, planSwitchEnabled) {
 export function portalCoinCommerceRoutes(state, options = {}) {
   const router = Router({ caseSensitive: true, strict: true });
   const store = state.platform?.coinCommerceStore;
+  const dataPackDelivery = ownDataValue(state.platform, "coinCommerceDataPackOrderDelivery");
+  // An artifact-only rotation cannot attest that an imported edge credential
+  // has stopped working. Expose this route only for a complete reset service.
+  const dataPackRotation = ownDataValue(state.platform, "coinCommerceDataPackCredentialReset");
   const planSwitchEnabled = ownBooleanFeatureFlag(
     state.platform,
     "coinsCommercePlanSwitchEnabled"
@@ -1579,6 +1622,66 @@ export function portalCoinCommerceRoutes(state, options = {}) {
       }
     }
   );
+
+  if (typeof ownDataValue(dataPackDelivery, "get") === "function") {
+    router.get(
+      "/api/portal/commerce/orders/:orderRef/subscription",
+      preventSubscriptionCaching,
+      requireNoQuery,
+      requireSession,
+      (req, res) => {
+        try {
+          const delivery = projectDataPackDelivery(dataPackDelivery.get({
+            accountId: res.locals.portalCommerceSession.accountId,
+            orderRef: req.params.orderRef
+          }), req.params.orderRef);
+          res.json(delivery);
+        } catch {
+          // Other accounts and missing/incomplete delivery are indistinguishable.
+          sendCommerceError(res, 404, "commerce_not_found");
+        }
+      }
+    );
+  }
+
+  if (typeof ownDataValue(dataPackDelivery, "get") === "function"
+    && typeof ownDataValue(dataPackRotation, "rotate") === "function") {
+    router.post(
+      "/api/portal/commerce/orders/:orderRef/subscription/rotate",
+      preventSubscriptionCaching,
+      requireNoQuery,
+      requireSession,
+      requireJsonContentType,
+      parseStrictJson,
+      exactBody(["rotationRef"]),
+      (req, res) => {
+        const { rotationRef } = res.locals.portalCommerceBody;
+        if (typeof rotationRef !== "string" || !COMMERCE_REFERENCE.test(rotationRef)) {
+          sendCommerceError(res, 400, "commerce_request_invalid");
+          return;
+        }
+        const input = { accountId: res.locals.portalCommerceSession.accountId,
+          orderRef: req.params.orderRef, rotationRef };
+        try {
+          projectDataPackDelivery(dataPackDelivery.get({
+            accountId: input.accountId, orderRef: input.orderRef
+          }), req.params.orderRef);
+        } catch {
+          sendCommerceError(res, 404, "commerce_not_found");
+          return;
+        }
+        try {
+          const result = dataPackRotation.rotate(input);
+          if (result?.status !== "complete" || result.orderRef !== req.params.orderRef) {
+            throw new Error("Incomplete data-pack rotation");
+          }
+          res.json({ orderRef: req.params.orderRef, status: "complete" });
+        } catch {
+          sendCommerceError(res, 503, "commerce_unavailable");
+        }
+      }
+    );
+  }
 
   router.get(
     "/api/portal/commerce/model",

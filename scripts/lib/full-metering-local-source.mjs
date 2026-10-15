@@ -116,6 +116,16 @@ function parseConfig(kind, source) {
   require(principals.length<=5000,"identity_bound");return {endpoint,secret,runtimeUsers:principals};
 }
 
+// Pure private projection for an owned non-systemd validation process. Reuses
+// exactly the native reader's parser; no secret or configuration is returned.
+export function inspectFullMeteringRuntimeConfig({ kind, configText } = {}) {
+  require(Object.hasOwn(UNITS, kind) && typeof configText === "string"
+    && Buffer.byteLength(configText) <= LIMIT, "config_invalid");
+  const parsed = parseConfig(kind, configText);
+  return { configDigest: sha(configText), runtimeUsers: parsed.runtimeUsers,
+    statsAuthority: parsed.endpoint.authority };
+}
+
 /** Native Linux read only. Returns private identity evidence; never logs/configures/clears. */
 export async function readFullMeteringLocalSource({kind,runtimeUnit,configPath,credentialRefByRuntimeUser,commandRunner=nativeRunner,nowFn=()=>new Date(),fetchFn=globalThis.fetch} = {}) {
   try {

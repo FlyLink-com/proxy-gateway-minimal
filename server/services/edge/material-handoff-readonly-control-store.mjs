@@ -1,6 +1,7 @@
 import Database from "better-sqlite3";
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
+import { readDataPackDesiredStateRows } from "./data-pack-desired-state-rows.mjs";
 
 const SAFE_REF_PATTERN = /^[A-Za-z0-9._:-]{1,160}$/;
 const SAFE_LIFECYCLE_REVISION_REF_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_:/-]{0,127}$/;
@@ -114,7 +115,7 @@ export function createReadOnlyMaterialHandoffControlStore({ dbPath } = {}) {
     getLatestEdgeDesiredStateForChannel(channelRef, filters = {}) {
       const safeChannelRef = requiredSafeRef(channelRef, "channelRef");
       const nodeRef = requiredSafeRef(filters.nodeRef || safeChannelRef, "nodeRef");
-      const rows = db.prepare(`
+      const portalRows = db.prepare(`
         select
           r.id as request_id,
           r.status as request_status,
@@ -130,12 +131,14 @@ export function createReadOnlyMaterialHandoffControlStore({ dbPath } = {}) {
         where c.edge_channel_ref = ?
         order by c.edge_credential_ref asc, r.updated_at asc, r.id asc
       `).all(safeChannelRef);
+      const nowMs = Date.now();
+      const pack = readDataPackDesiredStateRows(db, safeChannelRef, nowMs);
+      const rows = [...portalRows, ...pack.rows];
       if (rows.length === 0) {
         return null;
       }
 
-      const nowMs = Date.now();
-      const activeRows = rows
+      const activeRows = [...portalRows
         .map((row) => ({
           ...row,
           validUntilMs: Date.parse(row.valid_until)
@@ -148,7 +151,11 @@ export function createReadOnlyMaterialHandoffControlStore({ dbPath } = {}) {
           )
         ))
         .filter((row) => row.edge_credential_ref && row.edge_material_digest)
-        .filter((row) => row.valid_until && !Number.isNaN(row.validUntilMs) && row.validUntilMs > nowMs);
+        .filter((row) => row.valid_until && !Number.isNaN(row.validUntilMs) && row.validUntilMs > nowMs),
+        ...pack.activeRows];
+      if (new Set(activeRows.map((row) => row.edge_credential_ref)).size !== activeRows.length) {
+        throw new Error("edge desired state credential collision");
+      }
 
       const edgeCredentialRefs = [...new Set(activeRows.map((row) => row.edge_credential_ref))]
         .sort((a, b) => a.localeCompare(b));

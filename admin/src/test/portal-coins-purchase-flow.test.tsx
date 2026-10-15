@@ -103,6 +103,8 @@ function commerceClient(
     previewCheckout: vi.fn(async () => quote),
     createOrder: vi.fn(async () => heldOrder),
     getOrder: vi.fn(async () => heldOrder),
+    getDataPackDelivery: vi.fn(),
+    rotateDataPackDelivery: vi.fn(),
     cancelOrder: vi.fn(async () => heldOrder),
     ...overrides
   };

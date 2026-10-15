@@ -1130,6 +1130,49 @@ test("one pass preserves the immutable offer version binding for the handler", a
   });
 });
 
+test("data-pack fulfillment receives its exact live lease while timed fulfillment keeps the old input", async () => {
+  const store = makeStore();
+  let pending = true;
+  store.claimNextFulfillmentCommand = () => {
+    if (!pending) return null;
+    pending = false;
+    return {
+      ...commandFixture({
+        offerVersionRef: "offerv_pack_100gb_v1",
+        leaseGeneration: 7,
+        leaseToken: "b".repeat(64)
+      }),
+      delivery: {
+        kind: "data_pack",
+        durationDays: null,
+        monthlyTrafficGb: null,
+        trafficGb: 100,
+        neverExpires: true,
+        discountBasisPoints: null
+      }
+    };
+  };
+  let handlerInput;
+  const coordinator = createCoinCommerceCoordinator({
+    store,
+    fulfillmentHandler: makeHandler({
+      async execute(input) {
+        handlerInput = input;
+        return { status: "delivered", effectRef: "effect_pack_claim" };
+      }
+    })
+  });
+
+  const summary = await coordinator.runOnce();
+  assert.equal(summary.commandsDelivered, 1);
+  assert.deepEqual(handlerInput.fulfillmentLease, {
+    leaseGeneration: 7,
+    leaseToken: "b".repeat(64)
+  });
+  assert.equal(Object.isFrozen(handlerInput.fulfillmentLease), true);
+  assert.equal(Object.hasOwn(handlerInput, "leaseToken"), false);
+});
+
 test("capture summary reports processing without claiming a captured business outcome", async () => {
   const store = makeStore();
   store.claimDueCaptures = () => [{ orderRef: "order_1" }];

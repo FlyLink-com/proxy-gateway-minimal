@@ -241,6 +241,12 @@ function fakeCoinCommerceStore(overrides = {}) {
     getOrder() {
       return null;
     },
+    getDeliveredOrderBinding() {
+      return null;
+    },
+    verifyCapturedFulfillmentClaim() {
+      return null;
+    },
     listOrders() {
       return { orders: [], nextCursor: null };
     },
@@ -333,6 +339,85 @@ function injectedCommerceStateOptions(directory, {
     ...overrides
   };
 }
+
+test("data-pack order handoff is absent by default and composed only with protected escrow", () => {
+  const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-pack-handoff-"));
+  let baseline;
+  let optedIn;
+  try {
+    baseline = createRuntimeState(injectedCommerceStateOptions(dir));
+    assert.equal(baseline.platform.coinCommerceDataPackOrderDelivery, null);
+    assert.equal(baseline.platform.coinCommerceDataPackArtifactRotation, null);
+    assert.equal(baseline.platform.coinCommerceDataPackCredentialReset, null);
+    assert.equal(baseline.platform.coinCommerceDataPackRotationCoordinator, null);
+    baseline.close();
+    baseline = null;
+    optedIn = createRuntimeState(injectedCommerceStateOptions(dir, {
+      coinCommerceDataPackMaterialEscrow: {
+        release() { return null; }, capture() {}, probe() { return "absent"; }, verify() {}
+      }
+    }));
+    assert.equal(typeof optedIn.platform.coinCommerceDataPackOrderDelivery.get, "function");
+    assert.equal(typeof optedIn.platform.coinCommerceDataPackArtifactRotation.rotate, "function");
+    assert.equal(optedIn.platform.coinCommerceDataPackCredentialReset, null);
+    assert.equal(typeof optedIn.platform.coinCommerceDataPackRotationCoordinator.start, "function");
+    optedIn.platform.coinCommerceDataPackRotationCoordinator.start();
+    assert.deepEqual(optedIn.platform.coinCommerceDataPackRotationCoordinator.getStatus(), {
+      running: true, completedBatches: 1, failedBatches: 0, failedIntents: 0
+    });
+    optedIn.platform.coinCommerceDataPackRotationCoordinator.stop();
+    assert.throws(() => optedIn.platform.coinCommerceDataPackOrderDelivery.get({
+      accountId: "acct_pack", orderRef: "coinord_pack_1"
+    }), (error) => error.code === "coin_commerce_data_pack_delivery_unavailable");
+  } finally {
+    baseline?.close();
+    optedIn?.close();
+    removeTempDir(dir);
+  }
+});
+
+test("data-pack fulfillment composes only after the live Commerce store and protected escrow exist", () => {
+  const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-pack-composition-"));
+  const store = fakeCoinCommerceStore();
+  const materialEscrow = {
+    release() { return null; }, capture() {}, probe() { return "absent"; }, verify() {}
+  };
+  let factoryCalls = 0;
+  let state;
+  try {
+    state = createRuntimeState(injectedCommerceStateOptions(dir, {
+      store,
+      coinCommerceDataPackMaterialEscrow: materialEscrow,
+      coinCommerceDataPackFulfillmentFactory({ commerceStore, materialEscrow: providedEscrow }) {
+        factoryCalls += 1;
+        assert.equal(commerceStore, store);
+        assert.equal(providedEscrow, materialEscrow);
+        return coinCommerceFulfillmentHandler();
+      }
+    }));
+    assert.equal(factoryCalls, 1);
+    assert.ok(state.platform.coinCommerceCoordinator);
+  } finally {
+    state?.close();
+    removeTempDir(dir);
+  }
+});
+
+test("data-pack fulfillment factory without protected escrow fails before coordinator creation", () => {
+  const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-pack-no-escrow-"));
+  let factoryCalls = 0;
+  try {
+    assert.throws(() => createRuntimeState(injectedCommerceStateOptions(dir, {
+      coinCommerceDataPackFulfillmentFactory() {
+        factoryCalls += 1;
+        return coinCommerceFulfillmentHandler();
+      }
+    })), (error) => error?.code === "coin_commerce_prerequisite_missing");
+    assert.equal(factoryCalls, 0);
+  } finally {
+    removeTempDir(dir);
+  }
+});
 
 test("createRuntimeState exposes expected ports and services", () => {
   const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-state-"));
@@ -1160,6 +1245,7 @@ for (const [label, configuredValue] of [
       "coinCommerceFulfillmentHandler",
       "coinCommerceFulfillmentFactory",
       "coinCommerceCoordinator",
+      "coinCommerceDataPackMaterialEscrow",
       "platformUserPortalAuth"
     ]) {
       Object.defineProperty(options, field, {
@@ -2601,7 +2687,7 @@ test("createRuntimeState exposes one injected Commerce Store wallet and never cl
   let state;
 
   try {
-    assert.equal(Reflect.ownKeys(store).length, 19);
+    assert.equal(Reflect.ownKeys(store).length, 21);
     state = createRuntimeState(injectedCommerceStateOptions(dir, { store }));
     assert.equal(state.platform.coinsCommerceEnabled, true);
     assert.equal(state.platform.coinCommerceStore, store);

@@ -19,7 +19,7 @@ const linuxPath = path => typeof path === "string" && /^\/[A-Za-z0-9_./-]+$/.tes
 export function parseFullMeteringCommand(argv) {
   const continuation = argv?.[0] === "--continue-material" ? "material"
     : argv?.[0] === "--continue-billing-window" ? "billing-window" : null;
-  if (!Array.isArray(argv) || !["--preflight", "--initialize", "--collect", "--continue-material", "--continue-billing-window"].includes(argv[0])
+  if (!Array.isArray(argv) || !["--preflight", "--initialize", "--collect", "--continue-material", "--continue-billing-window", "--collect-pack-resets"].includes(argv[0])
     || argv.length !== (continuation ? 9 : 5)
     || argv[1] !== "--config" || !linuxPath(argv[2]) || argv[3] !== "--config-sha256" || !/^[a-f0-9]{64}$/.test(argv[4])) fail("full_metering_command_invalid");
   if (continuation === "material") {
@@ -106,7 +106,7 @@ export async function runFullMeteringCommand(argv) {
   };
   const materialApproval = options.mode === "continue-material" ? readApproval(options.materialApprovalPath)(options.materialApprovalSha256) : null;
   const billingWindowApproval = options.mode === "continue-billing-window" ? readApproval(options.billingWindowApprovalPath)(options.billingWindowApprovalSha256) : null;
-  const writesSamples = options.mode === "collect" || options.mode === "continue-material" || options.mode === "continue-billing-window";
+  const writesSamples = ["collect", "continue-material", "continue-billing-window", "collect-pack-resets"].includes(options.mode);
   const databaseIdentityDigest = fullMeteringDigest(fileIdentity(config.dbPath));
   const context = { scopeDigest: options.configSha256, databaseIdentityDigest,
     ...(meteringScope === LOCAL_METERING_SCOPE ? { meteringScope } : {}) };
@@ -169,13 +169,14 @@ export async function runFullMeteringCommand(argv) {
         if (!response?.ok || !response.privateSnapshot) fail("full_metering_remote_source_failed");
         return response.privateSnapshot;
       } });
-    let applySamples;
+    let applySamples, dataPackResetStore;
     if (writesSamples) {
       const controlStore = createSqliteSubscriptionControlStore({ database: db, initializeSchema: false });
+      if (options.mode === "collect-pack-resets") dataPackResetStore = controlStore;
       const writer = createFullMeteringSampleWriter({ database: db, controlStore, readBindings, meteringScope, activationId: config.activationId });
       applySamples = samples => { assertInputs(); return writer(samples); };
     }
     return await runFullMeteringCollection({ ...options, directory: config.journalDirectory, context, activationId: config.activationId, meteringScope,
-      readInventory, readSources, readPlanSwitchProof, applySamples, materialApproval, billingWindowApproval });
+      readInventory, readSources, readPlanSwitchProof, applySamples, materialApproval, billingWindowApproval, dataPackResetStore });
   } finally { db.close(); }
 }

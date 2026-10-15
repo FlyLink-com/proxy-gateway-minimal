@@ -1,4 +1,5 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
+import { types as utilTypes } from "node:util";
 import {
   TEMP_SUBSCRIPTION_TOKEN_PREFIX,
   createSubscriptionToken,
@@ -478,16 +479,32 @@ export function createSubscriptionCore({
     };
   }
 
-  function createSubscriptionArtifact(id) {
+  function createSubscriptionArtifact(id, options = {}) {
     const tenant = subscriptionStore.getTenant(id);
     if (!tenant) {
       throw notFoundError(id);
     }
 
+    if (!options || typeof options !== "object" || Array.isArray(options)
+      || utilTypes.isProxy(options) || Object.getPrototypeOf(options) !== Object.prototype) {
+      throw validationError("artifact options must be plain");
+    }
+    const keys = Reflect.ownKeys(options);
+    if (keys.length > 1 || (keys.length === 1 && keys[0] !== "artifactId")) {
+      throw validationError("artifact options are invalid");
+    }
+    const descriptor = keys.length === 1
+      ? Object.getOwnPropertyDescriptor(options, "artifactId") : null;
+    if (descriptor && (!descriptor.enumerable || !Object.hasOwn(descriptor, "value")
+      || typeof descriptor.value !== "string"
+      || !/^artifact_packrot_[0-9a-f]{48}$/.test(descriptor.value))) {
+      throw validationError("rotation artifact id is invalid");
+    }
+
     const rawArtifact = normalizeArtifactSecret(artifactSecretFactory());
     const now = isoNow(nowFn);
     const artifact = subscriptionStore.createArtifact({
-      id: artifactIdFactory(),
+      id: descriptor ? descriptor.value : artifactIdFactory(),
       tenantId: id,
       artifactHash: hashSubscriptionToken(rawArtifact),
       artifactPrefix: artifactPrefix(rawArtifact),

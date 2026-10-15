@@ -251,6 +251,8 @@ function currentCycleUsageFor({ controlStore, binding, observedAt, fallbackRollu
     };
   }
   const samples = controlStore.listUsageSamples({
+    accountId: binding.accountId,
+    entitlementId: binding.entitlementId,
     requestId: binding.requestId,
     ...usageCycleFiltersForBinding(binding, observedAt)
   });
