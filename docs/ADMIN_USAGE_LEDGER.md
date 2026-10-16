@@ -15,7 +15,8 @@ document_metadata:
 Refs #559 and #437; neither issue is closed by this slice. The operator asked
 to open one Draft implementation PR before beginning code changes. Draft #789
 was opened with intent-only commit `5d6bc84d` before implementation began. The
-first source slice now implements the query core, not the complete feature.
+source slices now implement the query core and Admin frontend, not the complete
+HTTP-to-database feature.
 
 - Source baseline: fresh `origin/master` at
   `37907d59c202775930fd015da6079956238b2d5d`.
@@ -25,8 +26,9 @@ first source slice now implements the query core, not the complete feature.
   `frontend_surface: admin`; `identity_impact: false`.
 - Validation environment: local synthetic SQLite fixtures and loopback-only
   Admin preview. No production database copies, subscriptions or customer rows.
-- Source state: partial; read-only aggregate query core and synthetic tests
-  implemented. Bounded child process, authenticated HTTP and Admin UI pending.
+- Source state: partial; read-only aggregate query core, formal Admin frontend
+  and synthetic tests implemented. Bounded child process and authenticated HTTP
+  integration remain pending. The formal frontend has no synthetic fallback.
 - Production state: not deployed; authenticated live Admin reads not verified
   by this PR. Earlier read-only query approvals are not reused.
 
@@ -112,12 +114,13 @@ recorded traffic as verified real-customer consumption.
   no-store applies to success/error; request path/query injection rejected.
 - [ ] Worker deadline, concurrency, read-only/no-schema and scan-budget behavior;
   timeout and partial failure do not publish a successful or truncated total.
-- [ ] Admin loading/error/empty/success/mismatch states, manual refresh,
+- [x] Admin loading/error/empty/success/mismatch states, manual refresh,
   latest-response ownership, session loss and unchanged per-user entry.
-- [ ] Targeted server/Admin tests, full `npm test`, full `npm run admin:test`,
+- [x] Targeted server/Admin tests, full `npm test`, full `npm run admin:test`,
   `npm run admin:build`, frontend boundaries and `git diff --check`.
 - [ ] Independent Security Review of the exact implementation head.
-- [ ] Loopback synthetic browser acceptance; no production data in fixtures.
+- [x] Frontend loopback synthetic browser acceptance; no production data in
+  fixtures. Authenticated HTTP-to-database browser acceptance remains pending.
 
 GitHub Actions billing failures are not passing CI. Apply the existing manual
 validation policy when applicable; no protection bypass is approved by this PR.
@@ -160,9 +163,69 @@ Local validation on 2026-10-16 (synthetic data only):
   Actions budget prevented execution. No hosted CI success is claimed.
 
 Remaining source gates are trusted runtime-path composition, bounded child
-execution and response validation, authenticated/no-store routing, formal Admin
-integration, complete frontend validation and full-feature independent review.
-PR #789 remains Draft; none of this is production acceptance.
+execution and response validation, authenticated/no-store routing, full-path
+acceptance and full-feature independent review. PR #789 remains Draft; none of
+this is production acceptance.
+
+## Frontend source slice evidence
+
+The formal `usageMonitor` page now mounts `AdminUsageLedgerWorkspace` beside
+the existing monitoring workspace. Existing per-user entry and baseline preview
+are preserved. The client calls only the proposed fixed same-origin GET with
+`no-store`, cookie credentials and redirect rejection. It does not bypass the
+existing Admin auth boundary or supply database paths/query parameters. Until
+the route exists, a read fails unavailable; it does not invent a result.
+
+The view has four UTC window cards, per-window source totals, exact decimal
+bytes alongside binary units, sample/rollup/difference comparison, orphan and
+cutoff-boundary counts, and explicit population/coverage limitations. Missing
+samples render unknown (`—`), distinct from sampled zero. Aggregate equality
+is not presented as collector health. Refresh is manual-only. Pending/failed,
+expired-session and changed-owner reads clear previous data; requests abort
+after 15 seconds or unmount. Response parsing has a 262,144-byte streaming
+limit, strict UTF-8, fixed field mapping and integer/conservation checks.
+
+Implementation and validation on 2026-10-16 (local synthetic data only):
+
+- Grok CLI produced the initial frontend; Codex performed final integration
+  and acceptance. The initial Grok task was stopped after its source draft;
+  no completed Grok self-test report is claimed.
+- Controller TDD reproduced and fixed missing samples displaying `0 B`, a
+  previous client owner's result appearing during the first replacement
+  render, and a test factory lifecycle loop. The client boundary work used
+  red tests for oversize streams, cleanup failure, encoding and cancellation.
+  Initial TypeScript fixture/narrowing errors were corrected before build.
+- Final frontend targeted tests: 4 files / 79 passed. Full Admin suite:
+  103 files / 1,882 passed. After the last table-only accessibility/layout
+  adjustment, reran the 79 targeted tests and Admin build/verify; unaffected
+  full-suite results remain applicable.
+- Full `npm test` rerun: 6,506 tests / 6,437 passed / 69 skipped / zero failed.
+- `admin:build`, `admin:verify`, frontend source-boundary checks and local
+  source-environment preflight passed. Vite retains a greater-than-500-kB
+  chunk warning; the build is not a production rollout.
+- Browser used the real frontend client/component and fixtures generated by
+  the real query core from disposable synthetic SQLite files: normal, empty,
+  sampled zero, mismatch/orphans and bytes above JS safe-integer range. Checked
+  manual window selection, safe permission/invalid-response/timeout states,
+  desktop and 390-pixel narrow layout, no page-level horizontal overflow and
+  keyboard horizontal table scrolling. No API proxy or production calls.
+- Local-only harness: `admin/output/usage-ledger-preview.html`, served on
+  loopback port 4195. It is ignored output, not a published Admin route or
+  authentication exception; fixture values are clearly marked synthetic.
+- Independent read-only generic-agent Security Review fallback found no
+  concrete findings, including the final table changes. Independently passed
+  79 frontend tests and 21 existing auth tests; this is not hosted Security
+  Review or full-feature approval. Reviewed SHA-256 values:
+  - client: `57048c4a070ac6236609f78534a7d6df1d288885936ed2e34213d73812bb52a4`
+  - hook: `3772146570c40a56e52bd97f18d778842391be2797fe75d345a750db181c4917`
+  - workspace: `34ed1cd1a75cbcba9fba731f05b4985a52200580806e41a4cc89d5611d9b85fa`
+  - CSS: `4761e085f2c3774e7f24aa5b16891e94697574cf52c0f5e318e07fa638656bbf`
+  - shell: `afa2e57494c00522d21f32e744472d5289b3428e6e5c01d4debe39f1669c2f7c`
+
+Frontend source validation does not prove a production ledger is readable.
+The next source task is the bounded readonly worker and protected HTTP route,
+then authenticated full-path tests. No merge, deployment, production read,
+collector change, schema change or financial/usage write occurred in this slice.
 
 ## Separate production sequence and rollback
 
