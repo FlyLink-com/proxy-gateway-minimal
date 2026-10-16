@@ -13,8 +13,9 @@ document_metadata:
 ## Intent and current stage
 
 Refs #559 and #437; neither issue is closed by this slice. The operator asked
-to open one Draft implementation PR before beginning code changes. This initial
-commit records intent and acceptance only, not a completed feature.
+to open one Draft implementation PR before beginning code changes. Draft #789
+was opened with intent-only commit `5d6bc84d` before implementation began. The
+first source slice now implements the query core, not the complete feature.
 
 - Source baseline: fresh `origin/master` at
   `37907d59c202775930fd015da6079956238b2d5d`.
@@ -24,7 +25,8 @@ commit records intent and acceptance only, not a completed feature.
   `frontend_surface: admin`; `identity_impact: false`.
 - Validation environment: local synthetic SQLite fixtures and loopback-only
   Admin preview. No production database copies, subscriptions or customer rows.
-- Source state: planned; implementation and validation pending.
+- Source state: partial; read-only aggregate query core and synthetic tests
+  implemented. Bounded child process, authenticated HTTP and Admin UI pending.
 - Production state: not deployed; authenticated live Admin reads not verified
   by this PR. Earlier read-only query approvals are not reused.
 
@@ -44,8 +46,9 @@ recorded traffic as verified real-customer consumption.
 ## First implementation scope
 
 1. A protected aggregate-only GET, proposed as
-   `/api/admin/platform/usage-ledger-summary`, requiring both `users.read` and
-   `runtime.read`, existing Admin session/ingress protection and `no-store`.
+   `/api/admin/platform/user-monitor/usage-ledger-summary`, requiring both
+   `users.read` and `runtime.read`, existing Admin session/ingress protection
+   and `no-store`.
    Browser input cannot supply SQL, paths, hostnames or arbitrary source keys.
 2. Four fixed windows sharing one server-selected UTC cutoff: all recorded
    samples before that cutoff, the preceding 24 hours, preceding seven days,
@@ -100,11 +103,11 @@ recorded traffic as verified real-customer consumption.
 ## Acceptance and dry-run checklist
 
 - [ ] Confirm the existing per-account UI/API mapping in a local synthetic flow.
-- [ ] TDD deterministic four-window boundaries including UTC month rollover.
-- [ ] Exact upload/download/total conservation and no sample/rollup double count.
-- [ ] Duplicate accounts counted once per window; no invented test-user filter.
-- [ ] Known/unknown sources conserve all-source totals without raw-key leakage.
-- [ ] Empty, mismatch, orphan, invalid numeric/time and unavailable cases.
+- [x] TDD deterministic four-window boundaries including UTC month rollover.
+- [x] Exact upload/download/total conservation and no sample/rollup double count.
+- [x] Duplicate accounts counted once per window; no invented test-user filter.
+- [x] Known/unknown sources conserve all-source totals without raw-key leakage.
+- [x] Empty, mismatch, orphan, invalid numeric/time and unavailable core cases.
 - [ ] Unauthorized and capability-denied requests do not open the database;
   no-store applies to success/error; request path/query injection rejected.
 - [ ] Worker deadline, concurrency, read-only/no-schema and scan-budget behavior;
@@ -118,6 +121,48 @@ recorded traffic as verified real-customer consumption.
 
 GitHub Actions billing failures are not passing CI. Apply the existing manual
 validation policy when applicable; no protection bypass is approved by this PR.
+
+## First source slice evidence
+
+Implemented `server/services/platform/admin-usage-ledger-query.mjs` with
+`readAdminUsageLedger({ dbPath, cutoff, scanLimit })`. It opens an existing
+SQLite file read-only, verifies query-only/trusted-schema settings, physical
+tables and required columns, then reads one transaction snapshot. It does not
+initialize or migrate a store. The synchronous core is not wired into HTTP;
+its eventual caller must enforce a child-process deadline and concurrency.
+
+Bytes are exact decimal strings. Per-table row limits fail closed rather than
+truncate aggregates. Source labels are fixed exact-pair categories plus
+`other_sources`. The four windows exclude observations at or after the cutoff;
+reconciliation compares the entire snapshot because cumulative rollups are
+undated. Future and exactly-at-cutoff sample counts are reported separately.
+Equal aggregate totals do not prove complete collection or correct attribution.
+
+Local validation on 2026-10-16 (synthetic data only):
+
+- TDD: missing query module produced the initial failing tests; implementation
+  passed 35 new query/store tests. The store test uses the real application
+  schema and writer, without production data.
+- Combined new tests and existing user-monitor HTTP/service regressions:
+  51 passed, zero failed.
+- Full `npm test`: 6,506 tests, 6,437 passed, 69 skipped, zero failed.
+- Existing Admin client/workspace/hook/shell regressions: four files,
+  71 passed. Full Admin suite, build and browser acceptance remain pending;
+  no Admin component has changed in this slice.
+- Dependencies reused through local junctions after matching root/Admin
+  lockfile hashes; Node 24.16.0. This is local validation, not clean-host CI.
+- Independent read-only generic-agent security review found no concrete
+  finding in this slice and independently passed the 35 new tests. The
+  dedicated Security Review tool was unavailable; this is a fallback review,
+  not a hosted review or full-feature approval. Query-core SHA-256:
+  `f1916573f3335d23a8364846b626e3781890d7c481573b8063bc62910e41f438`.
+- Initial-head hosted advisory run `38854403439` did not start because an
+  Actions budget prevented execution. No hosted CI success is claimed.
+
+Remaining source gates are trusted runtime-path composition, bounded child
+execution and response validation, authenticated/no-store routing, formal Admin
+integration, complete frontend validation and full-feature independent review.
+PR #789 remains Draft; none of this is production acceptance.
 
 ## Separate production sequence and rollback
 
