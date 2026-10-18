@@ -42,15 +42,79 @@ The synthetic profiler now pins #790 (`26b837e882af`) as its baseline and can
 vary account/rollup cardinality and all four sample timestamps. This corrects
 the previous fixed 61-account/181-rollup workload's coverage gap; it is not a
 claim about the real population. The old results below retain their original
-baseline and validity. Performance and independent review evidence for this
-follow-up will be recorded with its exact source before readiness is claimed.
+baseline and validity. This follow-up's source validation is recorded below;
+production acceptance and activation have not been performed.
+
+Validated query source (LF SHA-256):
+`5ef2b026f24c96d0ae597ab8d9368ebf50732ead0dec6c5dce4b391164598569`,
+implementation commit `f346b13d2d11135aad948b5f68f049a26ab63109`.
+The earlier Windows measurement used CRLF SHA-256
+`e5f85cb73f4e83cb74620e6d4223d85628a5833aaa8dbf7af3faf42b31ef4a86`;
+reconstructing CRLF from the committed LF bytes reproduced that exact digest.
+The 117 ledger tests and full Windows suite then passed on the LF source.
+
+Fresh validation in this follow-up:
+
+- Five new deterministic tests: one resource regression failed against #790
+  (24 global window columns instead of four), then passed after the repair.
+  The other four guard full DTO equality with overlapping accounts and six
+  categories, NOCASE/CASE DISTINCT behavior, exact near-int64 byte totals,
+  and cross-category overflow rejection.
+- Windows Node 24.16.0: all 117 ledger tests passed; full `npm test` reported
+  6,588 tests, 6,519 passed, 69 skipped and zero failures. Dependencies were
+  reused only after matching the lockfile; this is not a clean-host full CI.
+- WSL Node 22.23.1: 53 query/performance tests passed, zero skips/failures.
+  This was an affected-boundary Linux run, not a full Linux suite. The exact
+  committed source was exported into a fresh private directory with synthetic
+  data and an isolated network namespace. The initial Windows-worktree path
+  mismatch was corrected locally; both temporary directories were removed.
+- One independent read-only generic Security Review fallback found no
+  reportable issue on the exact query, test and profiler source hashes.
+  Dedicated Security Review tooling was unavailable; no dedicated-tool or
+  production-review result is claimed. The reviewer did not run benchmarks
+  concurrently with the measurements.
+
+Three profiled runs per version, median milliseconds, with distinct sample
+timestamps and no competing test suite:
+
+| Local fixture | Samples / accounts / rollups | #790 core | Repaired core | Repaired reader children |
+| --- | ---: | ---: | ---: | ---: |
+| Windows Node 24.16.0 | 550,000 / 50,000 / 150,000 | 6,504 | 5,714 | 5,769-5,953 |
+| WSL Node 22.23.1 | 550,000 / 50,000 / 150,000 | 3,255 | 2,824 | 2,955-2,980 |
+| WSL Node 22.23.1 | 1,000,000 / 61 / 181 | 4,193 | 3,688 | 3,681-3,808 |
+
+All three fixture runs used SQLite 3.53.1, produced exactly the same DTO as
+the pinned #790 baseline, preserved database bytes and completed all nine
+actual reader children within the unchanged ten-second deadline. These are
+warm local measurements after seeding/direct queries, not cold-cache or
+production load tests. The one-million sample scenario does not combine the
+largest account/rollup population or exercise every table at its cap.
+Local core median reductions were about 12-13%; this is not a guarantee that
+the production query now meets its deadline or proof of its failing phase.
+
+Reproduce these synthetic fixtures with the pinned profiler:
+
+```sh
+node scripts/profile-admin-usage-ledger.mjs --rows 550000 --runs 3 --accounts 50000 --credentials 150000 --distinct-times --output output/profile-cardinality-550k.json
+node scripts/profile-admin-usage-ledger.mjs --rows 1000000 --runs 3 --distinct-times --output output/profile-distinct-1000k.json
+```
+
+Local receipts live in this follow-up worktree's ignored `output/` directory:
+`full-server-tests.log`, `targeted-tests.log`, `linux-validation-02.log`,
+`profile-repaired-cardinality-550k.json`, `profile-linux-cardinality-550k.json`
+and `profile-linux-distinct-1000k.json`. The last two receipt SHA-256 values are
+`16aa93232d96be8f8eb3850ce48377d640f22ec01100e46d36469946b1408b5d`
+and `368e4c9f1c9b91fe5223bdab753a22232f9a061d712b1f14ca5ba45cccbca9d0`.
 
 Known environment gap: the retained Linux native module and recorded BWH
 module are both better-sqlite3 12.10.0 / SQLite 3.53.1, but have different
 binary digests. A local Linux run is same-version source evidence, not an
 identical production-native or CPU/I/O/cgroup performance test. No production
 database or native binary is copied as part of this local work. New production
-acceptance and any activation remain separately gated.
+acceptance and any activation remain separately gated. This follow-up has not
+connected to production, retried query03, installed a candidate, changed a
+collector or modified any production data. It remains a Draft source follow-up
+until the operator's review/merge decision; no deployment is implied.
 
 ### Earlier source validation record (retained with its original cutoff)
 
