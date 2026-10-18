@@ -3399,9 +3399,15 @@ test("createRuntimeState awaits an in-flight coordinator stop with one idempoten
     const startPromise = state.platform.coinCommerceCoordinator.start();
     assert.equal(executeCount, 1);
 
+    const ledgerReader = state.platform.adminUsageLedger;
+    const originalLedgerClose = ledgerReader.close.bind(ledgerReader);
+    let ledgerCloseCount = 0;
+    ledgerReader.close = () => { ledgerCloseCount += 1; originalLedgerClose(); };
     const firstClose = state.close();
     const secondClose = state.close();
     assert.equal(firstClose, secondClose);
+    assert.equal(ledgerCloseCount, 1);
+    await assert.rejects(ledgerReader.read(), { code: "source_unavailable" });
     let closeSettled = false;
     firstClose.then(() => {
       closeSettled = true;

@@ -1,0 +1,260 @@
+import { isAbsolute } from "node:path";
+import Database from "better-sqlite3";
+
+// Synchronous query core only. Its caller must run it in a bounded child process
+// with a deadline; do not invoke a full-history scan on the HTTP event loop.
+const MAX_SCAN_LIMIT = 1_000_000;
+const SAFE_COUNT_MAX = BigInt(Number.MAX_SAFE_INTEGER);
+const CANONICAL_UTC = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
+const CATEGORIES = Object.freeze([
+  "local_vless", "local_hy2", "local_tuic", "sgp_vless", "sgp_hy2", "other_sources"
+]);
+// Exact pairs from full-metering-scope.mjs. These labels classify stored samples;
+// they make no statement about current host location, activation or health.
+const SOURCE_PAIRS = Object.freeze([
+  ["local_vless", "full_metering_xray_cumulative_v1", "channel-vultr-a-vless-reality-tcp"],
+  ["local_hy2", "full_metering_hy2_cumulative_v1", "channel-vultr-a-hy2"],
+  ["local_tuic", "full_metering_tuic_connections_v1", "channel-vultr-a-tuic"],
+  ["sgp_vless", "full_metering_xray_cumulative_v1", "channel-sgp-a-vless-reality-tcp"],
+  ["sgp_hy2", "full_metering_hy2_cumulative_v1", "channel-sgp-a-hy2"]
+]);
+const TABLE_COLUMNS = Object.freeze({
+  platform_usage_samples: ["source_ref", "channel_ref", "account_id", "observed_at",
+    "interval_started_at", "interval_ended_at", "created_at", "upload_bytes", "download_bytes", "total_bytes"],
+  platform_usage_rollups: ["account_id", "last_observed_at", "updated_at", "upload_bytes", "download_bytes", "total_bytes"],
+  platform_accounts: ["id"]
+});
+const COVERAGE = Object.freeze({
+  customerClassification: "not_available",
+  population: "all_recorded_accounts",
+  sourceClassification: "stored_pairs_not_current_activation",
+  thirdPartyUsage: "not_metered_here",
+  missingIntervals: "unknown",
+  collectorHealth: "not_assessed",
+  timestamps: "observation_time_not_commit_time",
+  emptySamples: "not_proven_zero_consumption",
+  reconciliation: "aggregate_totals_only"
+});
+
+class LedgerReadError extends Error {
+  constructor(code) {
+    super("Admin usage ledger unavailable");
+    this.code = code;
+  }
+}
+
+function fail(code) {
+  throw new LedgerReadError(code);
+}
+
+function canonicalIso(value) {
+  if (typeof value !== "string" || !CANONICAL_UTC.test(value)) return false;
+  const date = new Date(value);
+  return Number.isFinite(date.getTime()) && date.toISOString() === value;
+}
+
+function safeCount(value) {
+  if (typeof value !== "bigint" || value < 0n || value > SAFE_COUNT_MAX) fail("integer_overflow");
+  return Number(value);
+}
+
+function byteString(value) {
+  if (typeof value !== "bigint" || value < 0n) fail("invalid_source_data");
+  return value.toString();
+}
+
+function assertTablesAndBudget(db, scanLimit) {
+  for (const [table, requiredColumns] of Object.entries(TABLE_COLUMNS)) {
+    const schema = db.prepare("select type, sql from sqlite_schema where name = ?").get(table);
+    if (!schema || schema.type !== "table" || typeof schema.sql !== "string"
+      || !/^\s*create\s+table\b/i.test(schema.sql)) fail("source_unavailable");
+    const columns = new Set(db.prepare(`pragma table_info(${table})`).all().map((column) => column.name));
+    if (requiredColumns.some((column) => !columns.has(column))) fail("source_unavailable");
+    // COUNT over a bounded subquery visits at most cap+1 rows, unlike LIMIT on
+    // the result of a full-table aggregate. Never publish a truncated total.
+    const { row_count: count } = db.prepare(`
+      select count(*) as row_count from (select 1 from ${table} limit ?)
+    `).get(scanLimit + 1);
+    if (safeCount(count) > scanLimit) fail("scan_limit_exceeded");
+  }
+}
+
+function invalidBytesSql() {
+  return `typeof(upload_bytes) != 'integer' or upload_bytes < 0
+    or typeof(download_bytes) != 'integer' or download_bytes < 0
+    or typeof(total_bytes) != 'integer' or total_bytes < 0
+    or upload_bytes > total_bytes or download_bytes != total_bytes - upload_bytes`;
+}
+
+function invalidTextSql(field) {
+  return `typeof(${field}) != 'text' or length(${field}) = 0`;
+}
+
+function assertData(db) {
+  const checks = [
+    ["platform_usage_samples", [invalidBytesSql(), ...["account_id", "source_ref", "channel_ref"].map(invalidTextSql),
+      ...["observed_at", "interval_started_at", "interval_ended_at", "created_at"].map((field) => `ledger_iso_valid(${field}) != 1`),
+      "interval_started_at > interval_ended_at"]],
+    ["platform_usage_rollups", [invalidBytesSql(), invalidTextSql("account_id"),
+      "ledger_iso_valid(last_observed_at) != 1", "ledger_iso_valid(updated_at) != 1"]],
+    ["platform_accounts", [invalidTextSql("id")]]
+  ];
+  for (const [table, conditions] of checks) {
+    if (db.prepare(`select 1 from ${table} where ${conditions.join(" or ")} limit 1`).get()) {
+      fail("invalid_source_data");
+    }
+  }
+}
+
+function windowsFor(cutoff) {
+  const timestamp = Date.parse(cutoff);
+  const from24h = new Date(timestamp - 86_400_000).toISOString();
+  const from7d = new Date(timestamp - 7 * 86_400_000).toISOString();
+  if (!canonicalIso(from24h) || !canonicalIso(from7d)) fail("invalid_query");
+  return [
+    { id: "all_time", from: null, to: cutoff },
+    { id: "last_24h", from: from24h, to: cutoff },
+    { id: "last_7d", from: from7d, to: cutoff },
+    { id: "month_to_date", from: `${cutoff.slice(0, 7)}-01T00:00:00.000Z`, to: cutoff }
+  ];
+}
+
+function windowColumns(windows) {
+  return windows.map((window, index) => {
+    const condition = window.from === null ? "observed_at < @cutoff"
+      : `observed_at >= @from${index} and observed_at < @cutoff`;
+    return `
+      count(case when ${condition} then 1 end) as w${index}_sample_count,
+      count(distinct case when ${condition} and total_bytes > 0 then account_id end) as w${index}_positive_accounts,
+      coalesce(sum(case when ${condition} then upload_bytes else 0 end), 0) as w${index}_upload_bytes,
+      coalesce(sum(case when ${condition} then download_bytes else 0 end), 0) as w${index}_download_bytes,
+      coalesce(sum(case when ${condition} then total_bytes else 0 end), 0) as w${index}_total_bytes,
+      max(case when ${condition} then observed_at end) as w${index}_latest_observed_at`;
+  }).join(",");
+}
+
+function windowMetrics(row, index) {
+  const prefix = `w${index}_`;
+  const sampleCount = row ? safeCount(row[`${prefix}sample_count`]) : 0;
+  const totalBytes = row ? byteString(row[`${prefix}total_bytes`]) : "0";
+  const latestObservedAt = row?.[`${prefix}latest_observed_at`] ?? null;
+  if ((sampleCount === 0 && latestObservedAt !== null)
+    || (sampleCount > 0 && !canonicalIso(latestObservedAt))) fail("invalid_source_data");
+  return {
+    state: sampleCount === 0 ? "not_collected" : totalBytes === "0" ? "measured_zero" : "measured",
+    sampleCount,
+    positiveAccountCount: row ? safeCount(row[`${prefix}positive_accounts`]) : 0,
+    uploadBytes: row ? byteString(row[`${prefix}upload_bytes`]) : "0",
+    downloadBytes: row ? byteString(row[`${prefix}download_bytes`]) : "0",
+    totalBytes,
+    latestObservedAt
+  };
+}
+
+function readWindows(db, windows, cutoff) {
+  const bindings = { cutoff };
+  for (const [index, window] of windows.entries()) if (window.from !== null) bindings[`from${index}`] = window.from;
+  const columns = windowColumns(windows);
+  const totals = db.prepare(`select ${columns} from platform_usage_samples`).get(bindings);
+  const cases = SOURCE_PAIRS.map(([category], index) =>
+    `when source_ref = @source${index} and channel_ref = @channel${index} then '${category}'`).join(" ");
+  for (const [index, [, source, channel]] of SOURCE_PAIRS.entries()) {
+    bindings[`source${index}`] = source;
+    bindings[`channel${index}`] = channel;
+  }
+  const sources = new Map(db.prepare(`
+    select case ${cases} else 'other_sources' end as category, ${columns}
+      from platform_usage_samples group by category
+  `).all(bindings).map((row) => [row.category, row]));
+  return windows.map((window, index) => ({
+    ...window,
+    ...windowMetrics(totals, index),
+    sources: CATEGORIES.map((category) => ({ category, ...windowMetrics(sources.get(category), index) }))
+  }));
+}
+
+function totalsFor(db, table, countName) {
+  const row = db.prepare(`select count(*) as row_count,
+    coalesce(sum(upload_bytes), 0) as upload_bytes,
+    coalesce(sum(download_bytes), 0) as download_bytes,
+    coalesce(sum(total_bytes), 0) as total_bytes from ${table}`).get();
+  return {
+    [countName]: safeCount(row.row_count),
+    uploadBytes: byteString(row.upload_bytes),
+    downloadBytes: byteString(row.download_bytes),
+    totalBytes: byteString(row.total_bytes)
+  };
+}
+
+function orphanCount(db, table) {
+  return safeCount(db.prepare(`select count(distinct account_id) as orphan_count
+    from ${table} where account_id not in (select id from platform_accounts)`).get().orphan_count);
+}
+
+function readReconciliation(db, cutoff) {
+  // The rollup is an undated cumulative projection: compare the entire snapshot,
+  // including future / exactly-at-cutoff samples, never a window against it.
+  const samples = totalsFor(db, "platform_usage_samples", "sampleCount");
+  const rollups = totalsFor(db, "platform_usage_rollups", "rollupCount");
+  const differenceBytes = Object.fromEntries(["uploadBytes", "downloadBytes", "totalBytes"].map((key) =>
+    [key, (BigInt(samples[key]) - BigInt(rollups[key])).toString()]));
+  const outside = db.prepare(`select
+    count(case when observed_at > @cutoff then 1 end) as future_count,
+    count(case when observed_at = @cutoff then 1 end) as at_cutoff_count
+    from platform_usage_samples`).get({ cutoff });
+  return {
+    scope: "entire_database_snapshot",
+    aggregateOnly: true,
+    state: Object.values(differenceBytes).every((value) => value === "0") ? "totals_match" : "totals_mismatch",
+    samples,
+    rollups,
+    differenceBytes,
+    futureSampleCount: safeCount(outside.future_count),
+    atCutoffSampleCount: safeCount(outside.at_cutoff_count),
+    orphanSampleAccountCount: orphanCount(db, "platform_usage_samples"),
+    orphanRollupAccountCount: orphanCount(db, "platform_usage_rollups")
+  };
+}
+
+/** Read aggregate traffic evidence only. Does not initialize or migrate schemas. */
+export function readAdminUsageLedger(input = {}) {
+  let db;
+  try {
+    if (!input || typeof input !== "object" || Array.isArray(input)) fail("invalid_query");
+    const { dbPath, cutoff, scanLimit = MAX_SCAN_LIMIT } = input;
+    if (typeof dbPath !== "string" || !isAbsolute(dbPath) || !canonicalIso(cutoff)
+      || !Number.isSafeInteger(scanLimit) || scanLimit < 1 || scanLimit > MAX_SCAN_LIMIT) fail("invalid_query");
+    const windows = windowsFor(cutoff);
+    db = new Database(dbPath, { readonly: true, fileMustExist: true, timeout: 1000 });
+    db.defaultSafeIntegers(true);
+    db.pragma("query_only = ON");
+    db.pragma("trusted_schema = OFF");
+    if (!db.readonly || Number(db.pragma("query_only", { simple: true })) !== 1
+      || Number(db.pragma("trusted_schema", { simple: true })) !== 0) fail("source_unavailable");
+    db.function("ledger_iso_valid", { deterministic: true }, (value) => canonicalIso(value) ? 1 : 0);
+    return db.transaction(() => {
+      assertTablesAndBudget(db, scanLimit);
+      assertData(db);
+      const reconciliation = readReconciliation(db, cutoff);
+      return {
+        schemaVersion: "admin-usage-ledger/v1",
+        cutoff,
+        timezone: "UTC",
+        unit: "bytes",
+        windows: readWindows(db, windows, cutoff),
+        reconciliation,
+        coverage: { ...COVERAGE }
+      };
+    })();
+  } catch (error) {
+    if (error instanceof LedgerReadError) throw error;
+    if (error?.code === "SQLITE_ERROR" && error?.message === "integer overflow") fail("integer_overflow");
+    fail("source_unavailable");
+  } finally {
+    // Never publish success with uncertain connection cleanup, or expose native
+    // SQL, filenames or source values through the cleanup error.
+    if (db?.open) {
+      try { db.close(); } catch { fail("source_unavailable"); }
+    }
+  }
+}

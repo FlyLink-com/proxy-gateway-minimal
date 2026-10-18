@@ -49,6 +49,43 @@ export function adminUserMonitorRoutes(state) {
     usersRead,
     (req, res) => sendMonitor(res, () => service().readGrowth(req.query))
   );
+  router.all(
+    "/api/admin/platform/user-monitor/usage-ledger-summary",
+    usersRead,
+    runtimeRead,
+    async (req, res) => {
+      // A fixed manual read, not a caller-configurable SQL/report endpoint.
+      // Express treats HEAD as GET unless explicitly excluded here.
+      if (req.method !== "GET") {
+        res.set("Allow", "GET").status(405).json({ error: "method_not_allowed" });
+        return;
+      }
+      if (req.originalUrl.includes("?") || req.headers["transfer-encoding"]
+        || (req.headers["content-length"] && req.headers["content-length"] !== "0")) {
+        res.status(400).json({ error: "invalid_query" });
+        return;
+      }
+      const controller = new AbortController();
+      const abort = () => controller.abort();
+      const onClose = () => { if (!res.writableEnded) abort(); };
+      req.once("aborted", abort);
+      res.once("close", onClose);
+      if (req.aborted || res.destroyed) abort();
+      try {
+        const reader = state.platform?.adminUsageLedger;
+        if (!reader || typeof reader.read !== "function") throw new Error("unavailable");
+        const summary = await reader.read({ signal: controller.signal });
+        if (!controller.signal.aborted && !res.destroyed) res.json(summary);
+      } catch {
+        if (!controller.signal.aborted && !res.destroyed) {
+          res.status(503).json({ error: "source_unavailable" });
+        }
+      } finally {
+        req.removeListener("aborted", abort);
+        res.removeListener("close", onClose);
+      }
+    }
+  );
   router.get(
     "/api/admin/platform/user-monitor/accounts",
     usersRead,

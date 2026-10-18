@@ -36,6 +36,14 @@ For the default-private boundary and explicitly approved public cookie-auth
 ingress, see [Admin public login hardening](../docs/ADMIN_PUBLIC_LOGIN_HARDENING.md).
 Source availability does not open a production endpoint.
 
+The manual aggregate ledger read at
+`GET /api/admin/platform/user-monitor/usage-ledger-summary` requires the existing
+Admin session and both `users.read` and `runtime.read`. It accepts no query/body
+parameters and returns `no-store` aggregate fields only. A single bounded child
+reads the runtime-owned control database; injected stores are unavailable rather
+than falling back to another file. See [Admin usage ledger](../docs/ADMIN_USAGE_LEDGER.md)
+for recorded-usage semantics, limits, source evidence and the separate production gate.
+
 ## Subscription website metadata
 
 Successful Clash YAML responses from `routes/subscription.mjs` include
