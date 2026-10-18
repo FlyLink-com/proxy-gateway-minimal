@@ -15,8 +15,8 @@ import { createAdminUsageLedgerReader } from "../server/services/platform/admin-
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const QUERY = "server/services/platform/admin-usage-ledger-query.mjs";
-const BASELINE_REF = "e41536d9d42c0fa5b66acbcdebfe2b39ce12ff09";
-const BASELINE_SHA256 = "f1916573f3335d23a8364846b626e3781890d7c481573b8063bc62910e41f438";
+const BASELINE_REF = "26b837e882afa8c77b23fa48709d9b0dea875d80";
+const BASELINE_SHA256 = "f3e9f0d0760806a12090860b961e10f075bedff0249b8b92af1c2d68cbfac059";
 const CUTOFF = "2026-10-18T12:00:00.000Z";
 const CREDENTIALS = 181;
 const ACCOUNTS = 61;
@@ -30,10 +30,14 @@ const pairs = [
 ];
 
 function optionsFor(args) {
-  const options = { rows: 550_000, runs: 3, output: null, baselineOnly: false, baselineSource: null };
+  const options = { rows: 550_000, runs: 3, output: null, baselineOnly: false, baselineSource: null,
+    accounts: ACCOUNTS, credentials: CREDENTIALS, distinctTimes: false };
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
     if (arg === "--baseline-only") options.baselineOnly = true;
+    else if (arg === "--distinct-times") options.distinctTimes = true;
+    else if (arg === "--accounts") options.accounts = Number(args[++index]);
+    else if (arg === "--credentials") options.credentials = Number(args[++index]);
     else if (arg === "--rows") options.rows = Number(args[++index]);
     else if (arg === "--runs") options.runs = Number(args[++index]);
     else if (arg === "--output") options.output = resolve(args[++index]);
@@ -42,6 +46,8 @@ function optionsFor(args) {
   }
   assert.ok(Number.isSafeInteger(options.rows) && options.rows >= CREDENTIALS && options.rows <= 1_000_000);
   assert.ok(Number.isSafeInteger(options.runs) && options.runs >= 1 && options.runs <= 10);
+  assert.ok(Number.isSafeInteger(options.accounts) && options.accounts >= 1 && options.accounts <= options.credentials);
+  assert.ok(Number.isSafeInteger(options.credentials) && options.credentials >= 1 && options.credentials <= options.rows);
   if (options.output) mkdirSync(dirname(options.output), { recursive: true });
   return options;
 }
@@ -83,7 +89,7 @@ async function loadQuery(source, instrumented, identity) {
   return { module: await import(`data:text/javascript;base64,${Buffer.from(executable).toString("base64")}`), instrumentedSha256: sha256(executable) };
 }
 
-function makeFixture(directory, sampleCount) {
+function makeFixture(directory, sampleCount, { accounts, credentials, distinctTimes }) {
   const dbPath = join(directory, "synthetic.sqlite");
   const db = new Database(dbPath);
   const started = performance.now();
@@ -102,34 +108,39 @@ function makeFixture(directory, sampleCount) {
     db.pragma("foreign_keys = ON");
     const insert = db.prepare(`insert into platform_usage_samples values
       (@id, @source, @channel, @credential, @account, @entitlement, @request,
-       @at, @start, @at, @up, @down, @total, @id, @created)`);
+       @at, @start, @ended, @up, @down, @total, @id, @created)`);
     const accountInsert = db.prepare("insert into platform_accounts values (?)");
     const entitlementInsert = db.prepare("insert into platform_entitlements values (?)");
     const requestInsert = db.prepare("insert into platform_issuance_requests values (?)");
     const boundaries = [CUTOFF, "2026-10-18T12:00:00.001Z", "2026-10-17T12:00:00.000Z",
       "2026-10-11T12:00:00.000Z", "2026-10-01T00:00:00.000Z", "2026-09-30T23:59:59.999Z"];
-    const cycles = Math.ceil(sampleCount / CREDENTIALS);
+    const cycles = Math.ceil(sampleCount / credentials);
     const timestamps = Array.from({ length: cycles }, (_, index) =>
       new Date(Date.parse(CUTOFF) - 1 - Math.floor(index * 21 * 86_400_000 / cycles)).toISOString());
     const starts = timestamps.map((at) => new Date(Date.parse(at) - 60_000).toISOString());
+    const ends = timestamps.map((at) => new Date(Date.parse(at) - 1).toISOString());
+    const createdTimes = timestamps.map((at) => new Date(Date.parse(at) + 1).toISOString());
     db.transaction(() => {
-      for (let account = 0; account < ACCOUNTS; account += 1) {
+      for (let account = 0; account < accounts; account += 1) {
         accountInsert.run(`synthetic-account-${account}`);
         entitlementInsert.run(`synthetic-entitlement-${account}`);
         requestInsert.run(`synthetic-request-${account}`);
       }
       for (let index = 0; index < sampleCount; index += 1) {
-        const credential = index % CREDENTIALS;
-        const account = credential % ACCOUNTS;
+        const credential = index % credentials;
+        const account = credential % accounts;
         const pair = pairs[credential % pairs.length];
-        const cycle = Math.floor(index / CREDENTIALS);
+        const cycle = Math.floor(index / credentials);
         const at = index < boundaries.length ? boundaries[index] : timestamps[cycle];
         const up = account % 11 === 0 ? 0 : 5 + (index % 100);
         const down = account % 11 === 0 ? 0 : 37 + (index % 1000);
         insert.run({ id: `synthetic-sample-${index}`, source: pair[0], channel: pair[1],
           credential: `synthetic-credential-${credential}`, account: `synthetic-account-${account}`,
           entitlement: `synthetic-entitlement-${account}`, request: `synthetic-request-${account}`,
-          at, start: index < boundaries.length ? at : starts[cycle], created: at, up, down, total: up + down });
+          at, start: index < boundaries.length ? at : starts[cycle],
+          ended: distinctTimes && index >= boundaries.length ? ends[cycle] : at,
+          created: distinctTimes && index >= boundaries.length ? createdTimes[cycle] : at,
+          up, down, total: up + down });
       }
       db.exec(`insert into platform_usage_rollups
         select edge_credential_ref, account_id, entitlement_id, request_id, min(channel_ref),
@@ -153,7 +164,7 @@ const directory = mkdtempSync(join(tmpdir(), "admin-ledger-synthetic-profile-"))
 let reader;
 const children = [];
 try {
-  const fixture = makeFixture(directory, options.rows);
+  const fixture = makeFixture(directory, options.rows, options);
   console.log(JSON.stringify({ stage: "seed", rows: options.rows, seedMs: fixture.seedMs, databaseBytes: fixture.databaseBytes }));
   const beforeDatabaseSha256 = await fileSha256(fixture.dbPath);
   const input = { dbPath: fixture.dbPath, cutoff: CUTOFF };
@@ -164,7 +175,8 @@ try {
     observedAt: new Date().toISOString(), node: process.version, platform: process.platform,
     arch: process.arch, sqlite,
     baselineRef: BASELINE_REF, baselineSha256: sha256(baseline), currentSha256: sha256(current),
-    rows: options.rows, rollups: CREDENTIALS, accounts: ACCOUNTS, sourceCategories: pairs.length,
+    rows: options.rows, rollups: options.credentials, accounts: options.accounts,
+    distinctTimes: options.distinctTimes, sourceCategories: pairs.length,
     cutoff: CUTOFF, timeSpanDays: 21, seedMs: fixture.seedMs, databaseBytes: fixture.databaseBytes,
     schemaSha256: fixture.schemaSha256, runs: [], workerDurationMs: [], resultsExactlyEqual: true };
   let expected;
@@ -179,7 +191,7 @@ try {
     assert.deepEqual(result, expected);
     assert.equal(result.reconciliation.state, "totals_match");
     assert.equal(result.reconciliation.samples.sampleCount, options.rows);
-    assert.equal(result.reconciliation.rollups.rollupCount, CREDENTIALS);
+    assert.equal(result.reconciliation.rollups.rollupCount, options.credentials);
     assert.equal(JSON.stringify(result).includes("synthetic-"), false);
     const runs = [];
     for (let run = 0; run < options.runs; run += 1) {

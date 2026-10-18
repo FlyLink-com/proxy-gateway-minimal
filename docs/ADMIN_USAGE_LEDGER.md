@@ -12,6 +12,48 @@ document_metadata:
 
 ## Intent and current stage
 
+### Query03 follow-up, 2026-10-18 (local source work only)
+
+The later [#790 query03 execution receipt](https://github.com/FlyLink-com/proxy-gateway-minimal/pull/790#issuecomment-6252043582)
+supersedes the earlier pending-query notes below: source #790 merged and its
+candidate was installed inactive; prepare/upload passed, but the single
+readonly query stopped at 10,003 ms with `reader_killed_worker` and no DTO.
+Cleanup and application/database file identity checks passed. No activation
+or collector change occurred. No consumed record may be retried. The receipt
+does not identify the precise failing callback, SQL phase or a collector outage.
+
+This follow-up is Risk B source work, one PR, `control-plane-app`,
+`identity_impact: false`; validation uses synthetic local fixtures only.
+Production/provider impact: none. No schema/index, authentication, reader
+deadline, one-million-row cap, caching or billing changes are included.
+
+Local profiling of the exact #790 baseline found window aggregation to be the
+largest remaining phase. The small repair removes the redundant global
+sample-count/byte/latest aggregates: these fold the at-most-six disjoint source
+category rows using BigInt. Global positive-account counts retain their own
+four CASE/DISTINCT aggregates because accounts overlap categories; they must
+not be summed. The original category SQL and its comparison semantics remain
+unchanged. A separate local aggregate-FILTER experiment showed no additional
+clear improvement over the fold-only variant and was not retained.
+Whole-snapshot validation and reconciliation still run first, retaining
+invalid-data and signed-64-bit overflow rejection before any result is exposed.
+
+The synthetic profiler now pins #790 (`26b837e882af`) as its baseline and can
+vary account/rollup cardinality and all four sample timestamps. This corrects
+the previous fixed 61-account/181-rollup workload's coverage gap; it is not a
+claim about the real population. The old results below retain their original
+baseline and validity. Performance and independent review evidence for this
+follow-up will be recorded with its exact source before readiness is claimed.
+
+Known environment gap: the retained Linux native module and recorded BWH
+module are both better-sqlite3 12.10.0 / SQLite 3.53.1, but have different
+binary digests. A local Linux run is same-version source evidence, not an
+identical production-native or CPU/I/O/cgroup performance test. No production
+database or native binary is copied as part of this local work. New production
+acceptance and any activation remain separately gated.
+
+### Earlier source validation record (retained with its original cutoff)
+
 Refs #559 and #437; neither issue is closed by this slice. The operator asked
 to open one Draft implementation PR before beginning code changes. Draft #789
 was opened with intent-only commit `5d6bc84d` before implementation began. The
