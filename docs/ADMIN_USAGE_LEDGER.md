@@ -120,7 +120,15 @@ Recorded validation:
 - Independent read-only generic Security Review fallback: zero actionable
   findings. Dedicated Security Review tooling was unavailable; the reviewer
   ran `git diff --check`, but did not run tests during performance measurement.
-- Query SHA-256: `69e52c42bd137bde3ccef8298254cededfb79b6feaf092866f916772fc05a4c3`.
+- Reviewed/profiled query working-copy SHA-256 (CRLF):
+  `69e52c42bd137bde3ccef8298254cededfb79b6feaf092866f916772fc05a4c3`.
+  Git-normalized LF blob SHA-256:
+  `f3e9f0d0760806a12090860b961e10f075bedff0249b8b92af1c2d68cbfac059`.
+  A byte-for-byte assertion proved that CRLF-to-LF normalization is the only
+  difference; all 112 ledger tests were rerun successfully on the exact
+  committed LF query. No logic change or new performance claim is inferred
+  from line-ending normalization. Review/full-suite/profiling evidence above
+  is reused for unchanged logic, with its original byte hashes retained.
   Benchmark: `3474aa017ef661105830b8399d26c075e5a60d6f2f9b2cd6055dd5de5c851fb5`.
   New tests: `ab215463e978aa0baecbe7020a357e869a50997b8a4d37648110eba528977dc4`.
 - Raw local evidence (ignored output, SHA-256):
@@ -132,6 +140,11 @@ Recorded validation:
     `df8785179ac165a0c7e788103e136706e26a0263e2724a046edf578186a8d70e`.
   - `output/admin-ledger-profile-wsl-final-1000000.json`:
     `25c613bb8ed02522422cff50583d180baf03867d1373121b78dbe6e499c0179e`.
+
+Follow-up PR: [#790](https://github.com/FlyLink-com/proxy-gateway-minimal/pull/790),
+Draft, not merged. For its initial source commit `7c30c025`, hosted advisory
+run `39137513662` did not start because an Actions budget prevented execution;
+CI run `39137513639` was skipped. These are not passing hosted checks.
 
 No hosted CI success is claimed. No new production query, service restart,
 configuration/schema change, accounting write or
