@@ -143,13 +143,21 @@ function windowsFor(cutoff) {
   ];
 }
 
+function windowCondition(window, index) {
+  return window.from === null ? "observed_at < @cutoff"
+    : `observed_at >= @from${index} and observed_at < @cutoff`;
+}
+
+function positiveAccountsColumn(window, index) {
+  return `count(distinct case when ${windowCondition(window, index)} and total_bytes > 0 then account_id end) as w${index}_positive_accounts`;
+}
+
 function windowColumns(windows) {
   return windows.map((window, index) => {
-    const condition = window.from === null ? "observed_at < @cutoff"
-      : `observed_at >= @from${index} and observed_at < @cutoff`;
+    const condition = windowCondition(window, index);
     return `
       count(case when ${condition} then 1 end) as w${index}_sample_count,
-      count(distinct case when ${condition} and total_bytes > 0 then account_id end) as w${index}_positive_accounts,
+      ${positiveAccountsColumn(window, index)},
       coalesce(sum(case when ${condition} then upload_bytes else 0 end), 0) as w${index}_upload_bytes,
       coalesce(sum(case when ${condition} then download_bytes else 0 end), 0) as w${index}_download_bytes,
       coalesce(sum(case when ${condition} then total_bytes else 0 end), 0) as w${index}_total_bytes,
@@ -179,7 +187,11 @@ function readWindows(db, windows, cutoff) {
   const bindings = { cutoff };
   for (const [index, window] of windows.entries()) if (window.from !== null) bindings[`from${index}`] = window.from;
   const columns = windowColumns(windows);
-  const totals = db.prepare(`select ${columns} from platform_usage_samples`).get(bindings);
+  // Positive accounts overlap categories: retain the independent DISTINCT
+  // query (including CASE's original comparison semantics). Counts, bytes and
+  // latest timestamps instead fold the disjoint six-category partition below.
+  const totals = db.prepare(`select ${windows.map(positiveAccountsColumn).join(",")}
+    from platform_usage_samples`).get(bindings);
   const cases = SOURCE_PAIRS.map(([category], index) =>
     `when source_ref = @source${index} and channel_ref = @channel${index} then '${category}'`).join(" ");
   for (const [index, [, source, channel]] of SOURCE_PAIRS.entries()) {
@@ -190,6 +202,21 @@ function readWindows(db, windows, cutoff) {
     select case ${cases} else 'other_sources' end as category, ${columns}
       from platform_usage_samples group by category
   `).all(bindings).map((row) => [row.category, row]));
+  for (const index of windows.keys()) {
+    const prefix = `w${index}_`;
+    for (const field of ["sample_count", "upload_bytes", "download_bytes", "total_bytes"]) {
+      // All inputs are nonnegative BigInts. Full-snapshot reconciliation has
+      // already enforced SQLite's 64-bit SUM overflow boundary before this
+      // subset fold; do not round bytes through Number or sum account counts.
+      totals[`${prefix}${field}`] = [...sources.values()].reduce((sum, row) => sum + row[`${prefix}${field}`], 0n);
+    }
+    totals[`${prefix}latest_observed_at`] = null;
+    for (const row of sources.values()) {
+      const latest = row[`${prefix}latest_observed_at`];
+      if (latest !== null && (totals[`${prefix}latest_observed_at`] === null
+        || latest > totals[`${prefix}latest_observed_at`])) totals[`${prefix}latest_observed_at`] = latest;
+    }
+  }
   return windows.map((window, index) => ({
     ...window,
     ...windowMetrics(totals, index),

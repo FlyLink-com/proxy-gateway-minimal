@@ -17,21 +17,22 @@ const PAIRS = [
   ["other_sources", "full_metering_xray_cumulative_v1", "channel-vultr-a-vless-reality-tcp-lookalike"]
 ];
 
-function fixture(t, { samples = [], rollups = [], accounts = [] } = {}) {
+function fixture(t, { samples = [], rollups = [], accounts = [], noCaseAccountIds = false } = {}) {
   const directory = mkdtempSync(join(tmpdir(), "admin-ledger-performance-contract-"));
   t.after(() => rmSync(directory, { recursive: true, force: true }));
   const dbPath = join(directory, "synthetic.sqlite");
   const db = new Database(dbPath);
   try {
+    const accountType = noCaseAccountIds ? "text collate nocase" : "text";
     db.exec(`
-      create table platform_accounts (id text primary key);
+      create table platform_accounts (id ${accountType} primary key);
       create table platform_usage_samples (
-        account_id text, source_ref text, channel_ref text, observed_at text,
+        account_id ${accountType}, source_ref text, channel_ref text, observed_at text,
         interval_started_at text, interval_ended_at text, created_at text,
         upload_bytes, download_bytes, total_bytes
       );
       create table platform_usage_rollups (
-        account_id text, last_observed_at text, updated_at text,
+        account_id ${accountType}, last_observed_at text, updated_at text,
         upload_bytes, download_bytes, total_bytes
       );
     `);
@@ -286,4 +287,104 @@ test("timestamp validation crosses from SQLite to JS at most once per sample or 
   assert.equal(result.reconciliation.samples.sampleCount, 2);
   assert.equal(result.reconciliation.rollups.rollupCount, 2);
   assert.ok(calls <= 4, `Expected at most four validation callbacks, got ${calls}`);
+});
+
+test("global windows only aggregate distinct accounts rather than duplicating category metrics", (t) => {
+  const f = fixture(t, { samples: PAIRS.map((pair) => sample({ pair, at: "2026-10-16T11:00:00.000Z" })) });
+  const queries = [];
+  const prepare = Database.prototype.prepare;
+  t.mock.method(Database.prototype, "prepare", function (sql) {
+    const statement = prepare.call(this, sql);
+    if (/\bw0_positive_accounts\b/i.test(sql)) {
+      queries.push({ sql, columns: statement.columns().map((column) => column.name) });
+    }
+    return statement;
+  });
+  const result = f.read();
+  assert.equal(result.windows[0].sampleCount, PAIRS.length);
+  assert.equal(result.windows[0].positiveAccountCount, 1);
+  const global = queries.filter(({ sql }) => !/\bgroup\s+by\b/i.test(sql));
+  assert.equal(global.length, 1, "One global account-deduplication query is sufficient");
+  assert.deepEqual(global[0].columns, [0, 1, 2, 3].map((index) => `w${index}_positive_accounts`),
+    "Global count/bytes/latest must be folded from the bounded category rows, not rescanned");
+  assert.equal((global[0].sql.match(/\bcount\s*\(\s*distinct\s+case\b/gi) ?? []).length, 4);
+  assert.doesNotMatch(global[0].sql, /\b(?:sum|max)\s*\(/i);
+  assert.equal((global[0].sql.match(/\bcount\s*\(/gi) ?? []).length, 4);
+  assert.equal(queries.filter(({ sql }) => /\bgroup\s+by\s+category\b/i.test(sql)).length, 1);
+});
+
+test("folded windows preserve high account cardinality, category overlap and zero/future samples", (t) => {
+  const accounts = Array.from({ length: 257 }, (_, index) => `synthetic-distinct-${index}`);
+  const times = ["2026-09-30T23:59:59.999Z", "2026-10-01T00:00:00.000Z",
+    "2026-10-09T12:00:00.000Z", "2026-10-15T12:00:00.000Z"];
+  const samples = accounts.flatMap((account, index) => PAIRS.map((pair, category) => sample({
+    account, pair, at: times[index % times.length], up: BigInt(index + 1), down: BigInt(category)
+  })));
+  for (const pair of PAIRS) {
+    samples.push(sample({ account: "zero-only", pair, at: "2026-10-16T11:59:59.999Z", up: 0n, down: 0n }));
+    samples.push(sample({ account: "cutoff-only", pair, at: CUTOFF }));
+    samples.push(sample({ account: "future-only", pair, at: FUTURE }));
+  }
+  const data = { accounts: [...accounts, "zero-only", "cutoff-only", "future-only"], samples, rollups: [] };
+  const result = fixture(t, data).read();
+  const expected = reference(data, CUTOFF);
+  assert.deepEqual(result.windows, expected.windows);
+  assert.deepEqual(result.reconciliation, expected.reconciliation);
+  assert.equal(result.windows[0].positiveAccountCount, accounts.length,
+    "An account present in six categories still contributes only once globally");
+  assert.equal(result.windows[0].sources.reduce((sum, source) => sum + source.positiveAccountCount, 0),
+    accounts.length * PAIRS.length);
+  assert.equal(result.windows[0].sampleCount, (accounts.length + 1) * PAIRS.length);
+  assert.equal(result.windows[0].latestObservedAt, "2026-10-16T11:59:59.999Z",
+    "Zero-byte samples count and can provide the latest observation");
+});
+
+test("CASE-based positive-account distinctness stays binary with NOCASE account columns", (t) => {
+  const at = "2026-10-16T11:00:00.000Z";
+  const data = { noCaseAccountIds: true, accounts: ["Synthetic-Account"], rollups: [], samples: [
+    sample({ account: "Synthetic-Account", pair: PAIRS[0], at }),
+    sample({ account: "synthetic-account", pair: PAIRS[0], at }),
+    sample({ account: "Synthetic-Account", pair: PAIRS[1], at }),
+    sample({ account: "SYNTHETIC-ACCOUNT", pair: PAIRS[1], at, up: 0n, down: 0n }),
+    sample({ account: "SYNTHETIC-ACCOUNT", pair: PAIRS[2], at: CUTOFF })
+  ] };
+  const result = fixture(t, data).read();
+  assert.deepEqual(result.windows, reference(data, CUTOFF).windows);
+  for (const window of result.windows) {
+    assert.equal(window.positiveAccountCount, 2,
+      "CASE does not inherit account_id NOCASE collation; grouping raw account_id would change this");
+    assert.equal(window.sources[0].positiveAccountCount, 2);
+    assert.equal(window.sources[1].positiveAccountCount, 1);
+  }
+  assert.equal(result.reconciliation.orphanSampleAccountCount, 0,
+    "Orphan membership continues using the stored column collation, separately from CASE DISTINCT");
+});
+
+test("folded category bytes retain exact signed-64-bit totals without Number rounding", (t) => {
+  const max = 9_223_372_036_854_775_807n;
+  const first = 9_007_199_254_740_993n;
+  const at = "2026-10-16T11:00:00.000Z";
+  const data = { accounts: ["synthetic-account"], samples: [
+    sample({ pair: PAIRS[0], at, up: first, down: 0n }),
+    sample({ pair: PAIRS[1], at, up: 0n, down: max - first - 1n }),
+    sample({ pair: PAIRS[5], at, up: 0n, down: 1n })
+  ], rollups: [sample({ at, up: first, down: max - first })] };
+  const result = fixture(t, data).read();
+  const expected = reference(data, CUTOFF);
+  assert.deepEqual(result.windows, expected.windows);
+  assert.deepEqual(result.reconciliation, expected.reconciliation);
+  for (const window of result.windows) {
+    assert.equal(window.uploadBytes, first.toString());
+    assert.equal(window.totalBytes, max.toString());
+    assert.equal(window.positiveAccountCount, 1);
+  }
+});
+
+test("cross-category overflow still fails before folded window totals can be published", (t) => {
+  const at = "2026-10-16T11:00:00.000Z";
+  const f = fixture(t, { samples: [
+    sample({ pair: PAIRS[0], at, up: 9_223_372_036_854_775_807n, down: 0n }),
+    sample({ pair: PAIRS[5], at, up: 0n, down: 1n })
+  ] });
+  assertFailure(() => f.read(), "integer_overflow");
 });
