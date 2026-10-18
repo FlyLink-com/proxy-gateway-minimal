@@ -44,6 +44,7 @@ import { createXsdPaymentRuntime } from "./services/platform/xsd-payment-runtime
 import { createChaoJiPayPaymentRuntime } from "./services/platform/chaojipay-payment-runtime.mjs";
 import { createProductionCnyPaymentRechargeOffers } from "./services/platform/production-cny-payment-recharge-price-book.mjs";
 import { createSqliteSubscriptionControlStore } from "./services/platform/subscription-control-db.mjs";
+import { createAdminUsageLedgerReader } from "./services/platform/admin-usage-ledger-reader.mjs";
 import { createPlatformLeadReviewQueue } from "./services/platform/lead-review-queue.mjs";
 import { createPlatformSubscriptionAccessShell } from "./services/platform/subscription-access-shell.mjs";
 import { createPortalAccessRequestService } from "./services/platform/portal-access-requests.mjs";
@@ -3134,6 +3135,15 @@ export function createRuntimeState(options = {}) {
     secretProtector: thirdPartySecretProtector
   };
 
+  // Only the store constructed here has a proven file binding. An injected
+  // store (or an in-memory store) must not cause a read of the env/default DB.
+  // Construction is lazy: no process or database scan starts until a protected
+  // Admin request arrives.
+  const adminUsageLedger = createAdminUsageLedgerReader({
+    dbPath: ownsControlStore && controlDbPath !== ":memory:" ? resolve(controlDbPath) : null,
+    nowFn: options.nowFn
+  });
+
   if (portalReferralRewardsEnabled) portalReferrals?.start();
 
   function close() {
@@ -3141,6 +3151,7 @@ export function createRuntimeState(options = {}) {
       if (closed) return;
       closed = true;
       let firstError;
+      try { adminUsageLedger.close(); } catch (error) { firstError ||= error; }
       try { portalReferrals?.close(); } catch (error) { firstError ||= error; }
       if (ownsPaymentStore && paymentStore) {
         try { paymentStore.close(); } catch (error) { firstError ||= error; }
@@ -3165,6 +3176,7 @@ export function createRuntimeState(options = {}) {
     closed = true;
     closePromise = (async () => {
       let firstError;
+      try { adminUsageLedger.close(); } catch (error) { firstError ||= error; }
       try { portalReferrals?.close(); } catch (error) { firstError ||= error; }
       if (ownsPaymentStore && paymentStore) {
         try { paymentStore.close(); } catch (error) { firstError ||= error; }
@@ -3336,6 +3348,7 @@ export function createRuntimeState(options = {}) {
       portalAccessRequests: platformPortalAccessRequests,
       portalSupportRequests: platformPortalSupportRequests,
       controlStore: platformControlStore,
+      adminUsageLedger,
       edgeCredentialMaterialStore,
       edgeCredentialIssuer,
       edgeLifecycleService,

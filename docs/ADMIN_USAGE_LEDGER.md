@@ -6,7 +6,7 @@ document_metadata:
   lifecycle: active
   authority_scope: admin_usage_ledger_slice
   superseded_by: null
-  last_verified_at: 2026-10-16
+  last_verified_at: 2026-10-18
   production_authority: false
 ```
 
@@ -15,8 +15,8 @@ document_metadata:
 Refs #559 and #437; neither issue is closed by this slice. The operator asked
 to open one Draft implementation PR before beginning code changes. Draft #789
 was opened with intent-only commit `5d6bc84d` before implementation began. The
-source slices now implement the query core and Admin frontend, not the complete
-HTTP-to-database feature.
+source slices now implement the query core, Admin frontend and protected
+HTTP-to-database path. Local synthetic acceptance is not production acceptance.
 
 - Source baseline: fresh `origin/master` at
   `37907d59c202775930fd015da6079956238b2d5d`.
@@ -26,9 +26,9 @@ HTTP-to-database feature.
   `frontend_surface: admin`; `identity_impact: false`.
 - Validation environment: local synthetic SQLite fixtures and loopback-only
   Admin preview. No production database copies, subscriptions or customer rows.
-- Source state: partial; read-only aggregate query core, formal Admin frontend
-  and synthetic tests implemented. Bounded child process and authenticated HTTP
-  integration remain pending. The formal frontend has no synthetic fallback.
+- Source state: query core, formal Admin frontend, bounded child process and
+  existing-session HTTP integration implemented and locally validated/reviewed.
+  The formal frontend has no synthetic fallback.
 - Production state: not deployed; authenticated live Admin reads not verified
   by this PR. Earlier read-only query approvals are not reused.
 
@@ -47,7 +47,7 @@ recorded traffic as verified real-customer consumption.
 
 ## First implementation scope
 
-1. A protected aggregate-only GET, proposed as
+1. A protected aggregate-only GET at
    `/api/admin/platform/user-monitor/usage-ledger-summary`, requiring both
    `users.read` and `runtime.read`, existing Admin session/ingress protection
    and `no-store`.
@@ -89,7 +89,7 @@ recorded traffic as verified real-customer consumption.
   commit timestamp or the latest successful collector execution.
 - Full-history scans must not block the HTTP event loop. Use one bounded
   local read-only worker/child, one read transaction, a fixed concurrency limit,
-  timeout and scan budget, and a short bounded in-memory cache if necessary.
+  timeout and scan budget. The implementation has no cache or read queue.
   No Redis, queue, schema/index migration, background scheduling or new service.
 - A scan budget is a resource safety boundary, never evidence of completeness:
   exceeding it returns unavailable, not a partial sum labelled as a total.
@@ -98,29 +98,32 @@ recorded traffic as verified real-customer consumption.
   Use `readonly` / `fileMustExist` and query-only behavior; do not construct the
   schema-initializing application store in the query worker.
 - Failure, deadline, response mismatch or permission loss displays unavailable
-  and clears stale data. A cached success must retain its actual cutoff/age.
+  and clears stale data. Successful results retain their actual cutoff/age.
 - A read-only SQLite connection may touch WAL/SHM coordination metadata. This
   is not permission to modify ledger rows or journal settings.
 
 ## Acceptance and dry-run checklist
 
-- [ ] Confirm the existing per-account UI/API mapping in a local synthetic flow.
+- [x] Confirm the existing per-account UI/API mapping in a local synthetic flow.
 - [x] TDD deterministic four-window boundaries including UTC month rollover.
 - [x] Exact upload/download/total conservation and no sample/rollup double count.
 - [x] Duplicate accounts counted once per window; no invented test-user filter.
 - [x] Known/unknown sources conserve all-source totals without raw-key leakage.
 - [x] Empty, mismatch, orphan, invalid numeric/time and unavailable core cases.
-- [ ] Unauthorized and capability-denied requests do not open the database;
+- [x] Unauthorized and capability-denied requests do not open the database;
   no-store applies to success/error; request path/query injection rejected.
-- [ ] Worker deadline, concurrency, read-only/no-schema and scan-budget behavior;
+- [x] Worker deadline, concurrency, read-only/no-schema and scan-budget behavior;
   timeout and partial failure do not publish a successful or truncated total.
 - [x] Admin loading/error/empty/success/mismatch states, manual refresh,
   latest-response ownership, session loss and unchanged per-user entry.
 - [x] Targeted server/Admin tests, full `npm test`, full `npm run admin:test`,
   `npm run admin:build`, frontend boundaries and `git diff --check`.
-- [ ] Independent Security Review of the exact implementation head.
-- [x] Frontend loopback synthetic browser acceptance; no production data in
-  fixtures. Authenticated HTTP-to-database browser acceptance remains pending.
+- [x] Independent Security Review fallback of the exact source files; hashes
+  below bind the review. Hosted dedicated review was unavailable.
+- [x] Frontend loopback synthetic browser acceptance and actual typed client
+  through HTTP/worker/database acceptance; no production data in fixtures.
+  HTTP tests use the existing session gateway with a synthetic verifier, not a
+  real TOTP login. A real-session end-to-end browser check remains a later gate.
 
 GitHub Actions billing failures are not passing CI. Apply the existing manual
 validation policy when applicable; no protection bypass is approved by this PR.
@@ -162,10 +165,11 @@ Local validation on 2026-10-16 (synthetic data only):
 - Initial-head hosted advisory run `38854403439` did not start because an
   Actions budget prevented execution. No hosted CI success is claimed.
 
-Remaining source gates are trusted runtime-path composition, bounded child
-execution and response validation, authenticated/no-store routing, full-path
-acceptance and full-feature independent review. PR #789 remains Draft; none of
-this is production acceptance.
+At the end of that slice, trusted runtime-path composition, bounded child
+execution/response validation, authenticated/no-store routing, full-path
+acceptance and full-feature independent review were still pending. They are
+covered by the later slices below. PR #789 remains Draft; none of this is
+production acceptance.
 
 ## Frontend source slice evidence
 
@@ -223,9 +227,75 @@ Implementation and validation on 2026-10-16 (local synthetic data only):
   - shell: `afa2e57494c00522d21f32e744472d5289b3428e6e5c01d4debe39f1669c2f7c`
 
 Frontend source validation does not prove a production ledger is readable.
-The next source task is the bounded readonly worker and protected HTTP route,
-then authenticated full-path tests. No merge, deployment, production read,
+At the end of that slice the next task was the bounded readonly worker and
+protected HTTP route, now implemented below. No merge, deployment, production read,
 collector change, schema change or financial/usage write occurred in this slice.
+
+## Backend integration source slice evidence
+
+Implementation on 2026-10-18 binds the service only to the file-backed control
+store created by `createRuntimeState`. Injected or in-memory stores have no
+implicit file fallback. Construction is lazy. Both synchronous and Commerce
+asynchronous shutdown paths close the reader and reject subsequent requests.
+
+The existing Admin session gateway still owns authentication. Both `users.read`
+and `runtime.read` are required. Only GET is supported; HEAD, other methods,
+query strings and request bodies do not start a scan. Existing ingress
+middleware sets `no-store` before auth and parsing. Disconnects abort the read;
+errors expose only a fixed unavailable result, not paths or SQLite diagnostics.
+
+The reader starts the fixed worker with `process.execPath`, no shell, a minimal
+environment and no inherited application credentials. Limits are 8 KiB input,
+256 KiB output, one active child, a 10-second deadline and a 128 MiB V8 old-space
+limit. That heap limit is not a whole-process RSS/native SQLite memory limit;
+the actual Linux service resource envelope still requires validation. The core
+rejects any of its three tables exceeding 1,000,000 rows rather than publishing
+partial totals. Timeout, invalid output, abort or shutdown terminates the child;
+the busy slot remains held until its close event even if termination fails.
+The parent checks strict UTF-8, the exact server cutoff, fixed categories,
+integer/conservation rules and coverage constants, then projects a fresh
+aggregate-only whitelist. It never forwards raw worker JSON blindly.
+
+Local evidence (synthetic data only):
+
+- Grok CLI was given the bounded backend task but produced no implementation
+  before it was stopped. Codex and scoped coding agents implemented the slice;
+  no completed Grok backend validation is claimed.
+- TDD first reproduced missing route/service/module failures. Final combined
+  query/store/reader/response/HTTP/state tests: 98 passed, zero failed/skipped.
+  Includes real readonly SQLite, no schema/file creation, single-child
+  concurrency, late output/parse deadline, kill failure, abort/shutdown races,
+  exact response validation, capability denials and no-store error responses.
+- The real app/store writer and a real worker child verified empty then
+  recorded values, a subsequent writer update and unchanged per-account totals.
+  The actual typed Admin client also passed the loopback HTTP/worker/database
+  flow, session-loss and closed-reader cases. Session verification was a
+  synthetic fixture; no production cookie, credentials or customer data used.
+- The ignored local harness is
+  `output/usage-ledger-client-http-acceptance.mjs`; it cleans its temporary
+  synthetic database and loopback listener on completion. It is not a new
+  public route or an authentication exception.
+- Fresh Admin client tests: 48 passed. The frontend source hashes listed above
+  are unchanged, so the previous full Admin suite, build and browser visual
+  evidence are reused; this backend slice does not claim a new browser run.
+- Fresh full `npm test`: 6,569 tests, 6,500 passed, 69 skipped, zero failed.
+  Document-authority check (430 blocks), frontend source-boundary check and
+  working-tree/branch diff checks passed. Local Node 24.16.0 / Windows source
+  preflight passed; this is not clean-host CI or Linux sandbox acceptance.
+- Independent read-only generic-agent Security Review fallback found no
+  concrete source findings and independently passed all 98 ledger tests. The
+  dedicated Security Review tool remains unavailable. Reviewed SHA-256:
+  - reader: `abac07737987b07d532b9a707e4ed8f46c435cd71a1fe7e87bfadd9a6594ae02`
+  - worker: `5ac721c5b72a9581839c2a60be5de87343d7f1fe580cd9c4f130b7f715ba5b3e`
+  - response validator: `cc4c3c254aea68a0a8446f030a2531cad5da19e4bcbf32ca55788c45ba3628b8`
+  - route: `7d9ec14d5657e6bf523800a6726f1708f029898a3c23d638152ec8d43ef4d2fe`
+  - runtime state: `aa3cc37894fde7f1c452016ecec2776b33993245336726ae19eefd775f488eaa`
+  - query core unchanged: `f1916573f3335d23a8364846b626e3781890d7c481573b8063bc62910e41f438`.
+  No hosted CI success or production readiness is implied.
+
+Source implementation and local validation are complete for this slice. Merge
+approval and production-specific dependency, sandbox and query-cost checks
+remain separate. No merge, deployment or production read occurred.
 
 ## Separate production sequence and rollback
 
@@ -234,6 +304,15 @@ promotion: bind exact backend/Admin artifacts and their runtime compatibility,
 fresh protected ingress/current-release inventory, production query cost limits,
 backup and static/backend rollback targets, then obtain exact operator approval.
 Do not publish this route or the Admin page through an unprotected ingress.
+
+In particular, verify the worker/core/validator files are present in the exact
+backend artifact and the `better-sqlite3` native module matches the target Node
+ABI. Read back the actual service UID/GID, sandbox and resource settings; test
+a disposable synthetic file under that same environment, including readonly
+database/WAL access, child startup, deadline/kill/reap and no child leak. An
+existing in-memory SQLite smoke or local Windows pass is not that evidence.
+Check real ledger size against the row cap and expected query cost only within
+a separately approved aggregate-only production read scope.
 
 Validate anonymous denial, authorized aggregate-only response, same cutoff and
 unit semantics, bounded resource use and unchanged metering behavior. Production
