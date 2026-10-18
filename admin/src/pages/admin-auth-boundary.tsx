@@ -394,7 +394,7 @@ export function AdminAuthBoundary({
       ) : (
         <section className="admin-auth-card">
           <h1>Admin Console</h1>
-          <p>GCC WebOS</p>
+          <p>FlinkVPN</p>
           {view === "setup" ? (
             <>
               <p>管理员安全设置尚未完成，公网入口不支持初始化，请联系维护人员通过受限渠道完成。</p>

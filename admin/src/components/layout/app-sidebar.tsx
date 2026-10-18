@@ -78,8 +78,8 @@ export function AppSidebar({
     <WorkspaceSidebar
       ariaLabel={shellCopy.workspaceAriaLabel}
       brand={{
-        mark: "GC",
-        name: "GCC WebOS",
+        mark: "FL",
+        name: "FlinkVPN",
         subtitle: shellCopy.brandSubtitle
       }}
       pinnedAppGroups={pinnedAppGroups}

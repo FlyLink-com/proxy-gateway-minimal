@@ -128,7 +128,7 @@ export function subscribePortalSessionChange(invalidate: () => void) {
   };
 }
 
-const VIEWS = ["start", "dashboard", "usage", "marketplace", "orders", "wallet", "referrals", "profile", "settings", "support"] as const;
+const VIEWS = ["start", "dashboard", "usage", "marketplace", "checkout", "orders", "wallet", "referrals", "profile", "coupons", "redeem", "settings", "support"] as const;
 const ORDER_FILTERS = ["all", "coins_consumption", "coin_recharge", "plans_services"] as const;
 export type PortalLocation = { view: typeof VIEWS[number]; orderFilter: typeof ORDER_FILTERS[number]; profileSubview: "profile" | "security" };
 const DEFAULT_LOCATION: PortalLocation = { view: "start", orderFilter: "all", profileSubview: "profile" };

@@ -1,0 +1,72 @@
+// Server-side price computation for residential relay pack SKUs.
+// Order: list price -> coupon (coupons are the only promotion mechanism).
+// The coupon amount rounds to whole Coins (half up), is capped so the deduction
+// never exceeds 20% of the list price (floor), and the result clamps at >= 0.
+
+export const RESIDENTIAL_COUPON_MAX_BPS = 2_000; // 20%
+
+export function maxCouponDeduction(listPrice) {
+  return Math.floor((listPrice * RESIDENTIAL_COUPON_MAX_BPS) / 10_000);
+}
+
+// The full breakdown is meant to be recorded on the order. Locked terms (no refunds / rollover / renewals) are
+// unaffected by pricing.
+
+function fail(code) {
+  const error = new Error(code);
+  error.code = code;
+  return error;
+}
+
+function ms(value) {
+  if (value === null || value === undefined) return null;
+  const t = value instanceof Date ? value.getTime() : Date.parse(value);
+  if (!Number.isFinite(t)) throw fail("invalid_time");
+  return t;
+}
+
+export function isWithinWindow({ startsAt, endsAt }, now) {
+  const at = ms(now), start = ms(startsAt), end = ms(endsAt);
+  return (start === null || at >= start) && (end === null || at < end);
+}
+
+export function assertPriceAdjustment(input, code = "invalid_coupon") {
+  if (!input || typeof input !== "object") throw fail(code);
+  if (input.kind === "percent") {
+    if (!Number.isSafeInteger(input.value) || input.value <= 0 || input.value > RESIDENTIAL_COUPON_MAX_BPS) throw fail(code);
+  } else if (input.kind === "fixed") {
+    if (!Number.isSafeInteger(input.value) || input.value <= 0) throw fail(code);
+  } else throw fail(code);
+  let start, end;
+  try { start = ms(input.startsAt ?? null); end = ms(input.endsAt ?? null); } catch { throw fail(code); }
+  if (start !== null && end !== null && end <= start) throw fail(code);
+  return { kind: input.kind, value: input.value, startsAt: input.startsAt ?? null, endsAt: input.endsAt ?? null };
+}
+
+// percent values are basis points (1500 = 15%). Half-up rounding to integer Coins.
+export function applyAdjustment(price, adjustment) {
+  if (!Number.isSafeInteger(price) || price < 0) throw fail("invalid_price");
+  const off = adjustment.kind === "percent"
+    ? Math.floor((price * adjustment.value + 5_000) / 10_000)
+    : adjustment.value;
+  return Math.max(0, price - off);
+}
+
+// coupon: normalized adjustment ({ id, ref, kind, value }) or null. Redeem
+// codes never enter a price breakdown.
+export function computeResidentialPrice({ listPrice, coupon = null }) {
+  if (!Number.isSafeInteger(listPrice) || listPrice <= 0) throw fail("sku_price_unset");
+  if (!coupon) return { currency: "coins", listPrice, coupon: null, deduction: 0, finalPrice: listPrice };
+  if (coupon.kind === "percent" && (!Number.isSafeInteger(coupon.value) || coupon.value <= 0 || coupon.value > RESIDENTIAL_COUPON_MAX_BPS)) {
+    throw fail("invalid_coupon");
+  }
+  const raw = listPrice - applyAdjustment(listPrice, coupon);
+  const deduction = Math.min(raw, maxCouponDeduction(listPrice));
+  return {
+    currency: "coins",
+    listPrice,
+    coupon: { id: coupon.id ?? null, ref: coupon.ref ?? null, kind: coupon.kind, value: coupon.value, applied: true, capped: deduction < raw },
+    deduction,
+    finalPrice: Math.max(0, listPrice - deduction)
+  };
+}

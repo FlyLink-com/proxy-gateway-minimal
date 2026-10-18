@@ -39,7 +39,7 @@ function htmlEscape(value) {
 
 function buildVerificationText({ code, expiresAt }) {
   return [
-    `Your GCC WebOS registration verification code is ${code}.`,
+    `Your FlinkVPN registration verification code is ${code}.`,
     `This code expires at ${expiresAt}.`,
     "If you did not request this code, you can ignore this email."
   ].join("\n");
@@ -49,7 +49,7 @@ function buildVerificationHtml({ code, expiresAt }) {
   const safeCode = htmlEscape(code);
   const safeExpiresAt = htmlEscape(expiresAt);
   return [
-    "<p>Your GCC WebOS registration verification code is:</p>",
+    "<p>Your FlinkVPN registration verification code is:</p>",
     `<p style="font-size:24px;font-weight:700;letter-spacing:4px">${safeCode}</p>`,
     `<p>This code expires at ${safeExpiresAt}.</p>`,
     "<p>If you did not request this code, you can ignore this email.</p>"
@@ -86,7 +86,7 @@ export function createResendRegistrationEmailSender(options = {}) {
     const payload = {
       from,
       to: [email],
-      subject: "GCC WebOS registration verification code",
+      subject: "FlinkVPN registration verification code",
       text: buildVerificationText({ code, expiresAt }),
       html: buildVerificationHtml({ code, expiresAt }),
       tags: [

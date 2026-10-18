@@ -12,6 +12,8 @@ import {
   Eye,
   ExternalLink,
   Gift,
+  KeyRound,
+  TicketPercent,
   Headphones,
   History,
   LayoutGrid,
@@ -27,6 +29,7 @@ import {
   Settings,
   ShieldCheck,
   ShoppingBag,
+  ShoppingCart,
   UserCog,
   WalletCards,
   Wifi,
@@ -47,6 +50,9 @@ import {
   MarketplacePanel,
   ReferralRewardsPanel
 } from "./portal-commerce-panels";
+import { PortalCouponsPanel } from "./coupons/portal-coupons-panel";
+import { PortalRedeemPanel } from "./coupons/portal-redeem-panel";
+import { PortalCheckoutPanel } from "./coupons/portal-checkout-panel";
 import {
   PORTAL_COIN_ORDER_STORAGE_KEY,
   type PortalCommerceModel
@@ -100,10 +106,13 @@ type PortalView =
   | "dashboard"
   | "usage"
   | "marketplace"
+  | "checkout"
   | "orders"
   | "wallet"
   | "referrals"
   | "profile"
+  | "coupons"
+  | "redeem"
   | "settings"
   | "support";
 
@@ -195,15 +204,24 @@ const orderStatusTabs: Array<{ id: OrderStatusFilter; label: string }> = [
   { id: "expired", label: "已过期" }
 ];
 
+// Portal shell brand (Ethan 2026-10-14): Chinese UI 飞连VPN, English FlinkVPN.
+// Scope: signed-in shell header + tab title only.
+function portalShellBrand(locale: PortalAuthLocale) {
+  return locale === "zh" ? "飞连VPN" : "FlinkVPN";
+}
+
 const navItems: Array<{ id: PortalView; label: string; description: string; icon: LucideIcon }> = [
   { id: "start", label: "开始使用", description: "下载客户端，并按步骤导入订阅。", icon: Wifi },
   { id: "dashboard", label: "概览", description: "查看账户状态、当前套餐、流量和开始使用。", icon: LayoutGrid },
   { id: "usage", label: "用量", description: "查看流量消耗、套餐额度和用量更新状态。", icon: LineChart },
   { id: "marketplace", label: "商城", description: "浏览平台商品、套餐、流量包和增值项。", icon: ShoppingBag },
+  { id: "checkout", label: "住宅流量包", description: "选择住宅流量包，自动使用最省的优惠券。", icon: ShoppingCart },
   { id: "orders", label: "订单管理", description: "查看订单历史、支付状态和付款详情。", icon: ReceiptText },
   { id: "wallet", label: "Coins 钱包", description: "查看可用余额、分类余额和钱包流水。", icon: WalletCards },
   { id: "referrals", label: "推荐奖励", description: "查看推荐链接、邀请进度和奖励。", icon: Gift },
   { id: "profile", label: "个人中心", description: "管理账户信息、身份验证器和通行密钥。", icon: UserCog },
+  { id: "coupons", label: "我的优惠券", description: "查看可用、已使用和已过期的住宅流量包优惠券。", icon: TicketPercent },
+  { id: "redeem", label: "兑换码兑换", description: "输入兑换码，领取住宅流量包优惠券。", icon: KeyRound },
   { id: "settings", label: "设置", description: "管理界面语言和显示主题。", icon: Settings },
   { id: "support", label: "支持", description: "提交订阅、客户端或账户问题并追踪处理编号。", icon: Headphones }
 ];
@@ -232,13 +250,13 @@ const portalNavigationGroups: PortalNavigationGroup[] = [
     id: "assets",
     zh: "资产与权益",
     en: "Assets and benefits",
-    itemIds: ["marketplace", "orders", "wallet", "referrals"]
+    itemIds: ["marketplace", "checkout", "orders", "wallet", "referrals"]
   },
   {
     id: "account",
     zh: "账户",
     en: "Account",
-    itemIds: ["profile", "settings"]
+    itemIds: ["profile", "coupons", "redeem", "settings"]
   },
   {
     id: "help",
@@ -269,8 +287,9 @@ const supportCategories: Array<{ id: PortalSupportCategory; label: string }> = [
 
 const portalAuthEntryCopy = {
   en: {
-    documentTitle: "GCC WebOS - Account sign in",
-    shellDocumentTitle: "GCC WebOS - Account center",
+    documentTitle: "FlinkVPN - Account sign in",
+    brand: "FlinkVPN",
+    shellDocumentTitle: "FlinkVPN - Account center",
     language: "Language",
     theme: "Theme",
     preferences: "Display preferences",
@@ -285,10 +304,10 @@ const portalAuthEntryCopy = {
     usePasskey: "Use passkey",
     returnToLogin: "Back to account sign in",
     loginAria: "User sign in",
-    loginTitle: "Sign in to GCC WebOS",
+    loginTitle: "Sign in to FlinkVPN",
     loginDescription: "Welcome back. Enter your credentials to continue.",
     welcomeTitle: "Welcome back",
-    welcomeDescription: "GCC WebOS keeps your connection private and reliable.",
+    welcomeDescription: "FlinkVPN keeps your connection private and reliable.",
     trustItems: ["No activity logs", "Encrypted account access", "Plan managed in your account"],
     accountId: "Email",
     accountPlaceholder: "you@example.com",
@@ -307,8 +326,9 @@ const portalAuthEntryCopy = {
     registerAccount: "Create your account"
   },
   zh: {
-    documentTitle: "GCC WebOS - 账号登录",
-    shellDocumentTitle: "GCC WebOS - 用户中心",
+    documentTitle: "飞连VPN - 账号登录",
+    brand: "飞连VPN",
+    shellDocumentTitle: "飞连VPN - 用户中心",
     language: "语言",
     theme: "主题",
     preferences: "显示偏好",
@@ -326,7 +346,7 @@ const portalAuthEntryCopy = {
     loginTitle: "账号登录",
     loginDescription: "使用账户密码登录，进入用户中心管理套餐、订单和客户端。",
     welcomeTitle: "欢迎回来",
-    welcomeDescription: "GCC WebOS 会保护你的连接，并保持订阅访问稳定。",
+    welcomeDescription: "飞连VPN 会保护你的连接，并保持订阅访问稳定。",
     trustItems: ["不记录活动日志", "账户访问已加密", "订阅只在账户内管理"],
     accountId: "电子邮箱",
     accountPlaceholder: "you@example.com",
@@ -471,6 +491,10 @@ function localizedPortalViewCopy(view: PortalView, locale: PortalAuthLocale) {
       label: uiText(locale, "商城", "Marketplace"),
       description: uiText(locale, "浏览套餐和流量包，使用 Coins 完成购买。", "Browse plans and data packs, then purchase with Coins.")
     },
+    checkout: {
+      label: uiText(locale, "住宅流量包", "Residential packs"),
+      description: uiText(locale, "选择住宅流量包，自动使用最省的优惠券。", "Pick a residential pack; your best coupon is applied automatically.")
+    },
     orders: {
       label: uiText(locale, "订单", "Orders"),
       description: uiText(locale, "统一查看商城消费、套餐付款和服务记录。", "Review Marketplace purchases, plan payments, and service records in one place.")
@@ -478,6 +502,14 @@ function localizedPortalViewCopy(view: PortalView, locale: PortalAuthLocale) {
     wallet: {
       label: uiText(locale, "Coins 钱包", "Coins wallet"),
       description: uiText(locale, "查看可用余额、分类余额和钱包流水。", "Review spendable balance, balance categories, and Wallet activity.")
+    },
+    coupons: {
+      label: uiText(locale, "我的优惠券", "My coupons"),
+      description: uiText(locale, "查看可用、已使用和已过期的住宅流量包优惠券。", "Review available, used and expired residential pack coupons.")
+    },
+    redeem: {
+      label: uiText(locale, "兑换码兑换", "Redeem code"),
+      description: uiText(locale, "输入兑换码，领取住宅流量包优惠券。", "Enter a code to claim a residential pack coupon.")
     },
     referrals: {
       label: uiText(locale, "推荐奖励", "Referral rewards"),
@@ -2577,7 +2609,7 @@ export function UserPortalPage({
         <aside className="portal-login-side" aria-hidden="true">
           <div className="portal-login-brand">
             <span className="portal-login-logo"><ShieldCheck aria-hidden="true" /></span>
-            <strong>GCC WebOS</strong>
+            <strong>{authCopy.brand}</strong>
           </div>
           <div className="portal-login-side-copy">
             <h2>{authCopy.welcomeTitle}</h2>
@@ -2670,7 +2702,7 @@ export function UserPortalPage({
         <aside className="portal-login-side" aria-hidden="true">
           <div className="portal-login-brand">
             <span className="portal-login-logo"><ShieldCheck aria-hidden="true" /></span>
-            <strong>GCC WebOS</strong>
+            <strong>{authCopy.brand}</strong>
           </div>
           <div className="portal-login-side-copy">
             <h2>{authCopy.welcomeTitle}</h2>
@@ -2843,7 +2875,7 @@ export function UserPortalPage({
               <ShieldCheck aria-hidden="true" />
             </span>
             <div>
-              <strong>GCC WebOS</strong>
+              <strong>{portalShellBrand(locale)}</strong>
               <small>{uiText(locale, "用户中心", "User center")}</small>
             </div>
           </div>
@@ -2950,11 +2982,11 @@ export function UserPortalPage({
           {!paymentFlowActive ? (
             <>
               <header className="portal-use-topbar portal-v2-topbar">
-                <div className="portal-v2-mobile-brand" aria-label="GCC WebOS">
+                <div className="portal-v2-mobile-brand" aria-label={portalShellBrand(locale)}>
                   <span className="portal-v2-logo">
                     <ShieldCheck aria-hidden="true" />
                   </span>
-                  <strong>GCC WebOS</strong>
+                  <strong>{portalShellBrand(locale)}</strong>
                 </div>
                 <div className="portal-v2-page-title">
                   <h1>{activeView === "dashboard" ? uiText(locale, "账户概览", "Account overview") : activeViewCopy.label}</h1>
@@ -3067,6 +3099,28 @@ export function UserPortalPage({
               rechargeModel={rechargeModel}
             />
           ) : null}
+          {activeView === "checkout" ? <PortalCheckoutPanel
+            locale={locale}
+            couponClient={portalClient.coupons ?? null}
+            sessionRef={portalSession.sessionRef ?? null}
+            onSessionInvalid={invalidateSession}
+          /> : null}
+          {activeView === "coupons" ? <PortalCouponsPanel
+            locale={locale}
+            couponClient={portalClient.coupons ?? null}
+            sessionRef={portalSession.sessionRef ?? null}
+            sessionGeneration={sessionGeneration}
+            onSessionInvalid={invalidateSession}
+            accountKey={portalSession.userRef ?? null}
+          /> : null}
+          {activeView === "redeem" ? <PortalRedeemPanel
+            locale={locale}
+            couponClient={portalClient.coupons ?? null}
+            sessionRef={portalSession.sessionRef ?? null}
+            onSessionInvalid={invalidateSession}
+            onOpenCoupons={() => setActiveView("coupons")}
+            accountKey={portalSession.userRef ?? null}
+          /> : null}
           {activeView === "referrals" ? <ReferralRewardsPanel
             locale={locale}
             referralClient={portalClient.referral ?? null}

@@ -27,10 +27,10 @@ const PORTAL_REGISTRATION_LEGAL_AGREEMENT = {
 
 const registrationCopy = {
   en: {
-    documentTitle: "GCC WebOS - Registration",
+    documentTitle: "FlinkVPN - Registration",
     language: "Language",
     pageAria: "User registration",
-    brand: "GCC WebOS",
+    brand: "FlinkVPN",
     support: "Need help? support@gccwebos.com",
     progressTitle: "Create your account",
     steps: ["Create account", "Verify email", "Ready"],
@@ -42,8 +42,8 @@ const registrationCopy = {
     verifyHelp: "Check your spam folder if you do not see the email.",
     codeTimer: (remaining: string) => `The code expires in ${remaining}.`,
     resultTitle: "You're ready to connect.",
-    resultDescription: "Your GCC WebOS account is active.",
-    legacyTrialDescription: "Your GCC WebOS account is active. You are on the Starter Trial plan.",
+    resultDescription: "Your FlinkVPN account is active.",
+    legacyTrialDescription: "Your FlinkVPN account is active. You are on the Starter Trial plan.",
     loginLink: "Open dashboard",
     downloadLink: "Download app",
     trialHint: "Your free trial ends in 7 days. Upgrade anytime from your dashboard.",
@@ -92,10 +92,10 @@ const registrationCopy = {
     planName: "7-day trial"
   },
   zh: {
-    documentTitle: "GCC WebOS - 用户注册",
+    documentTitle: "飞连VPN - 用户注册",
     language: "语言",
     pageAria: "用户注册",
-    brand: "GCC WebOS",
+    brand: "飞连VPN",
     support: "需要帮助？support@gccwebos.com",
     progressTitle: "创建你的账户",
     steps: ["创建账户", "验证邮箱", "完成"],
@@ -107,8 +107,8 @@ const registrationCopy = {
     verifyHelp: "如果没有看到邮件，请检查垃圾邮件文件夹。",
     codeTimer: (remaining: string) => `验证码将在 ${remaining} 后过期。`,
     resultTitle: "账户已准备好。",
-    resultDescription: "你的 GCC WebOS 账户已激活。",
-    legacyTrialDescription: "你的 GCC WebOS 账户已激活，当前为 Starter Trial 方案。",
+    resultDescription: "你的 飞连VPN 账户已激活。",
+    legacyTrialDescription: "你的 飞连VPN 账户已激活，当前为 Starter Trial 方案。",
     loginLink: "打开用户面板",
     downloadLink: "下载应用",
     trialHint: "免费试用将在 7 天后结束，可随时在用户面板内升级。",

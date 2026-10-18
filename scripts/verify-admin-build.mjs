@@ -3,7 +3,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 
 const REQUIRED_RUNTIME_MARKERS = [
-  "GCC WebOS",
+  "FlinkVPN",
   "Admin Console",
   "/api/admin-auth/session",
   "/api/admin-auth/login",

@@ -19,6 +19,8 @@ import { adminSubscriptionRoutes } from "./routes/admin-subscriptions.mjs";
 import { adminPlatformRoutes } from "./routes/admin-platform.mjs";
 import { adminUserMonitorRoutes } from "./routes/admin-user-monitor.mjs";
 import { adminThirdPartySubscriptionRoutes } from "./routes/admin-third-party-subscriptions.mjs";
+import { adminResidentialRelayPackRoutes } from "./routes/admin-residential-relay-packs.mjs";
+import { portalResidentialRelayCouponRoutes } from "./routes/portal-residential-relay-coupons.mjs";
 import {
   ADMIN_AUTH_PUBLIC_PATHS,
   adminAuthRoutes,
@@ -425,6 +427,14 @@ export function createApp(state, options = {}) {
       browserSessions,
     }));
   }
+  if (state.residentialRelayPack?.enabled) {
+    app.use(portalResidentialRelayCouponRoutes(state, {
+      browserSessions,
+      nowFn: options.rateLimitNowFn,
+      clientIpResolver: options.clientIpResolver
+        || ((req) => resolveClientIp(req, { trustedProxyCidrs: state.security?.trustedProxyCidrs }))
+    }));
+  }
   if (portalCoinWalletRoutesEnabled(state)) {
     app.use(createPortalCoinWalletRouter({
       store: ownEnumerableDataValue(state.platform, "coinsWalletStore"),
@@ -565,6 +575,7 @@ export function createApp(state, options = {}) {
   }
   app.use(adminUserMonitorRoutes(state));
   app.use(adminThirdPartySubscriptionRoutes(state));
+  app.use(adminResidentialRelayPackRoutes(state));
   app.use("/sub", createRateLimitMiddleware({
     windowMs: security.subRateLimit?.windowMs,
     max: security.subRateLimit?.max,

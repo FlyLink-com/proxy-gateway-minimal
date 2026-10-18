@@ -929,7 +929,7 @@ describe("user portal route", () => {
     expect(await screen.findByRole("heading", {
       name: "先选择适合你的套餐"
     })).not.toBeNull();
-    await waitFor(() => expect(document.title).toBe("GCC WebOS - 用户中心"));
+    await waitFor(() => expect(document.title).toBe("飞连VPN - 用户中心"));
     expect(screen.getByRole("navigation", { name: "用户中心导航" })).not.toBeNull();
     expect(screen.getByRole("button", { name: "开始使用" })).not.toBeNull();
     expect(screen.getByRole("button", { name: "订单管理" })).not.toBeNull();
@@ -1120,7 +1120,7 @@ describe("user portal product surface", () => {
     }));
 
     expect(document.documentElement.lang).toBe("en");
-    expect(document.title).toBe("GCC WebOS - Registration");
+    expect(document.title).toBe("FlinkVPN - Registration");
     expect(screen.getByRole("heading", { name: "Create your account" })).not.toBeNull();
     expect(screen.getByText("No credit card required. Manage Coins and packages from your account center.")).not.toBeNull();
     expect(screen.getByLabelText("Email address")).not.toBeNull();
@@ -1141,7 +1141,7 @@ describe("user portal product surface", () => {
 
     expect(window.localStorage.getItem("gccwebos-site-locale")).toBe("zh");
     expect(document.documentElement.lang).toBe("zh-CN");
-    expect(document.title).toBe("GCC WebOS - 用户注册");
+    expect(document.title).toBe("飞连VPN - 用户注册");
     expect(screen.getByRole("heading", { name: "创建你的账户" })).not.toBeNull();
     expect(screen.getByRole("button", { name: "创建账户" })).not.toBeNull();
     expect(screen.queryByRole("button", { name: /使用 Google 继续/ })).toBeNull();
@@ -1151,8 +1151,8 @@ describe("user portal product surface", () => {
     render(createElement(UserPortalPage, { portalClient: portalClient() }));
 
     expect(document.documentElement.lang).toBe("en");
-    expect(document.title).toBe("GCC WebOS - Account sign in");
-    expect(screen.getByRole("heading", { name: "Sign in to GCC WebOS" })).not.toBeNull();
+    expect(document.title).toBe("FlinkVPN - Account sign in");
+    expect(screen.getByRole("heading", { name: "Sign in to FlinkVPN" })).not.toBeNull();
     expect(screen.getByText("Welcome back. Enter your credentials to continue.")).not.toBeNull();
     expect(screen.getByLabelText("Email")).not.toBeNull();
     expect(screen.getByLabelText("Password")).not.toBeNull();
@@ -2938,10 +2938,13 @@ describe("user portal product surface", () => {
       "概览",
       "用量",
       "商城",
+      "住宅流量包",
       "订单管理",
       "Coins 钱包",
       "推荐奖励",
       "个人中心",
+      "我的优惠券",
+      "兑换码兑换",
       "设置",
       "支持"
     ]);
@@ -4196,10 +4199,13 @@ describe("user portal product surface", () => {
       "概览",
       "用量",
       "商城",
+      "住宅流量包",
       "订单管理",
       "Coins 钱包",
       "推荐奖励",
       "个人中心",
+      "我的优惠券",
+      "兑换码兑换",
       "设置",
       "支持"
     ]);

@@ -40,7 +40,7 @@ test("Resend registration sender posts a safe verification email payload", async
   assert.equal(body.from, "GCC WebOS <verify@mail.gccwebos.com>");
   assert.deepEqual(body.to, ["new.user@example.test"]);
   assert.equal(body.reply_to, "support@gccwebos.com");
-  assert.equal(body.subject, "GCC WebOS registration verification code");
+  assert.equal(body.subject, "FlinkVPN registration verification code");
   assert.match(body.text, /246810/);
   assert.match(body.html, /246810/);
   assert.doesNotMatch(body.text, /reg_email_test_ref|synthetic-resend-api-key/);

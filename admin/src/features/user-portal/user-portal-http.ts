@@ -11,6 +11,7 @@ import type {
 } from "./user-portal-types";
 import { createPortalBrowserFetch, readCookieSession, withPortalAuthLock } from "./portal-browser-session";
 import { createPortalReferralClient, type PortalReferralClient } from "./referrals/referral-client";
+import { createPortalCouponClient, type PortalCouponClient } from "./coupons/coupon-client";
 import {
   backendFactor,
   backendHumanVerification,
@@ -170,6 +171,7 @@ export function createHttpUserPortalClient(
   walletFirstCommerce: PortalWalletFirstCommerceClient;
   wallet: PortalWalletClient;
   referral: PortalReferralClient;
+  coupons: PortalCouponClient;
   recharge: PortalRechargeClient;
 } {
   const baseUrl = options.baseUrl ?? "";
@@ -210,6 +212,7 @@ export function createHttpUserPortalClient(
     walletFirstCommerce: createPortalWalletFirstCommerceClient({ fetchFn }),
     wallet: createPortalWalletClient({ fetchFn }),
     referral: createPortalReferralClient({ fetchFn }),
+    coupons: createPortalCouponClient({ fetchFn }),
     recharge: createPortalRechargeClient({
       baseUrl,
       fetchFn,

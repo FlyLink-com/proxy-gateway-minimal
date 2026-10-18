@@ -7,7 +7,7 @@ import test from "node:test";
 import { verifyAdminBuildDirectory } from "../../scripts/verify-admin-build.mjs";
 
 const ADMIN_RUNTIME_MARKERS = [
-  "GCC WebOS",
+  "FlinkVPN",
   "Admin Console",
   "/api/admin-auth/session",
   "/api/admin-auth/login",
@@ -49,18 +49,18 @@ test("admin static build verifier accepts an Admin API shell", async () => {
   }
 });
 
-test("active Admin shell inputs use the current GCC WebOS identity", async () => {
+test("active Admin shell inputs use the current FlinkVPN identity", async () => {
   const activeInputs = [
     {
-      expectedIdentity: "GCC WebOS operator console for user operations and platform monitoring.",
+      expectedIdentity: "FlinkVPN operator console for user operations and platform monitoring.",
       relativePath: "../../admin/index.html"
     },
     {
-      expectedIdentity: "GCC WebOS",
+      expectedIdentity: "FlinkVPN",
       relativePath: "../../admin/src/pages/admin-setup-page.tsx"
     },
     {
-      expectedIdentity: "GCC WebOS",
+      expectedIdentity: "FlinkVPN",
       relativePath: "../../admin/src/components/layout/app-sidebar.tsx"
     }
   ];
