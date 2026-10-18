@@ -15,22 +15,141 @@ document_metadata:
 Refs #559 and #437; neither issue is closed by this slice. The operator asked
 to open one Draft implementation PR before beginning code changes. Draft #789
 was opened with intent-only commit `5d6bc84d` before implementation began. The
-source slices now implement the query core, Admin frontend and protected
-HTTP-to-database path. Local synthetic acceptance is not production acceptance.
+source slices implement the query core, Admin frontend and protected
+HTTP-to-database path. #789 merged on 2026-10-18; the current follow-up repairs
+query cost locally. Local synthetic acceptance is not production acceptance.
 
-- Source baseline: fresh `origin/master` at
-  `37907d59c202775930fd015da6079956238b2d5d`.
+- Original source-slice baseline: `37907d59c202775930fd015da6079956238b2d5d`.
+  Performance follow-up baseline: fresh `origin/master` at
+  `e41536d9d42c0fa5b66acbcdebfe2b39ce12ff09`.
 - Risk: B source work inside an A production envelope. No auth-model change,
   migration, production query, host access, merge or deployment is authorized.
-- Proposed release units: `control-plane-app` and `admin-static`;
-  `frontend_surface: admin`; `identity_impact: false`.
+- Original release units: `control-plane-app` and `admin-static`;
+  `frontend_surface: admin`; `identity_impact: false`. The performance follow-up
+  changes only `control-plane-app`; no frontend source or auth changes.
 - Validation environment: local synthetic SQLite fixtures and loopback-only
   Admin preview. No production database copies, subscriptions or customer rows.
 - Source state: query core, formal Admin frontend, bounded child process and
   existing-session HTTP integration implemented and locally validated/reviewed.
   The formal frontend has no synthetic fallback.
-- Production state: not deployed; authenticated live Admin reads not verified
-  by this PR. Earlier read-only query approvals are not reused.
+- Last recorded production state: candidates installed inactive, actual query
+  not accepted, no switch. See the [query02 execution note](https://github.com/FlyLink-com/proxy-gateway-minimal/pull/789#issuecomment-6251090348)
+  at 2026-10-18 14:27 UTC. This follow-up has not refreshed production state.
+  Authenticated new Admin reads remain unverified. Consumed query approvals
+  are not reused.
+
+## Query-performance follow-up (local only, 2026-10-18)
+
+The recorded query02 failure returned no aggregate DTO. Its reader requested
+SIGKILL before worker exit after 10,004 ms; cleanup and unchanged application
+binding were confirmed. That proves reader-initiated termination, not the exact
+failure callback or a specific SQL/I/O cause. It is not evidence of a collector
+outage, and does not justify another production retry.
+
+Local phase profiling on 550,000 synthetic samples identified timestamp
+validation as the largest phase (about 48% of the initial Windows run), then
+window aggregation (about 39%). The minimal repair:
+
+- Retains canonical four-digit UTC timestamps but validates Gregorian calendar
+  fields directly instead of allocating, parsing and serializing a Date for
+  every stored timestamp. Leap years, year 0000, precision and time ranges
+  remain strict; normalized dates and non-string values remain invalid.
+- Uses one fixed-arity SQLite-to-JavaScript timestamp callback per sample or
+  rollup. Reuses only exact timestamp values already validated in that same
+  row, with no cross-row cache or assumption that the writer was valid.
+- Leaves SQL aggregates, integer overflow checks, full-snapshot validation,
+  reconciliation, window boundaries, source categories and account deduplication
+  unchanged. The one-million-row cap, 10-second reader deadline, one-child
+  limit, read-only transaction and response whitelist are unchanged.
+
+The deterministic tests include an independent aggregate oracle, six-field
+invalid-date/type matrices, early-year and century boundaries, invalid future
+data, full-snapshot overflow and error precedence. These 13 behavior tests
+passed against the baseline before the repair. A separate resource test first
+failed with 12 SQLite/JS callbacks for two samples and two rollups, then passed
+with four after the repair; no wall-clock assertion is part of CI.
+
+Reproduce the local synthetic benchmark from this checkout:
+
+```sh
+node scripts/profile-admin-usage-ledger.mjs --rows 550000 --runs 3 --output output/admin-ledger-profile-550k.json
+node scripts/profile-admin-usage-ledger.mjs --rows 1000000 --runs 3 --output output/admin-ledger-profile-1000k.json
+```
+
+The benchmark pins the original source by commit and SHA-256, constructs a
+fresh temporary synthetic database using the actual usage-table/index DDL,
+and compares baseline/current full DTOs, raw and instrumented runs, and actual
+reader children. It accepts no existing database input. It verifies unchanged
+database bytes, waits for spawned children to close and removes only its exact
+temporary directory. `--baseline-source` supports a detached Linux fixture
+only when that exported source matches the pinned baseline hash. Run outside
+the normal suite and without competing load; timings are host/fixture-specific,
+not proof of production latency or the production failure's root cause.
+
+Final synthetic performance (three profiled runs per version; milliseconds,
+median; actual reader-child ranges include process startup):
+
+| Local environment | Samples | Baseline core | Repaired core | Repaired reader children |
+| --- | ---: | ---: | ---: | ---: |
+| Windows / Node 24.16.0 | 550,000 | 6,392 | 4,569 | 4,586-4,748 |
+| Windows / Node 24.16.0 | 1,000,000 | 12,247 | 8,340 | 8,425-8,539 |
+| WSL Linux / Node 22.23.1 | 550,000 | 3,548 | 2,128 | 2,279-2,450 |
+| WSL Linux / Node 22.23.1 | 1,000,000 | 6,565 | 4,028 | 4,043-4,596 |
+
+All four runs used SQLite 3.53.1, 181 rollups, 61 synthetic accounts, six source
+categories and a 21-day spread with cutoff/window boundary rows. Full DTOs
+matched the pinned original exactly; all 12 repaired reader children exited
+zero within the unchanged deadline. Synthetic database hashes were unchanged.
+The Windows raw diagnostic baseline exceeded 10 seconds at one million rows;
+that direct local measurement does not bypass the application's reader limit.
+The WSL fixture ran on ext4 in an isolated network namespace with verified
+Node/native dependency artifacts, no package installation or rebuild; its exact
+temporary directory was removed after both benchmarks and the targeted tests.
+
+Recorded validation:
+
+- Windows: all 112 ledger query/store/reader/response/HTTP/state tests passed.
+- Fresh full Windows `npm test`: 6,583 tests, 6,514 passed, 69 skipped,
+  zero failed (Node 24.16.0). Root dependencies reused only after matching
+  lockfiles; this is local validation, not a clean-host full CI run.
+- Document authority check passed for 430 metadata blocks. Working-tree and
+  staged whitespace checks passed. No frontend files changed, so no new
+  Admin build or browser acceptance is claimed by this follow-up.
+- WSL Node 22: 48 query/boundary tests passed, no failures or skips. This is an
+  affected-boundary Linux check, not a complete Linux suite or production test.
+- Independent read-only generic Security Review fallback: zero actionable
+  findings. Dedicated Security Review tooling was unavailable; the reviewer
+  ran `git diff --check`, but did not run tests during performance measurement.
+- Reviewed/profiled query working-copy SHA-256 (CRLF):
+  `69e52c42bd137bde3ccef8298254cededfb79b6feaf092866f916772fc05a4c3`.
+  Git-normalized LF blob SHA-256:
+  `f3e9f0d0760806a12090860b961e10f075bedff0249b8b92af1c2d68cbfac059`.
+  A byte-for-byte assertion proved that CRLF-to-LF normalization is the only
+  difference; all 112 ledger tests were rerun successfully on the exact
+  committed LF query. No logic change or new performance claim is inferred
+  from line-ending normalization. Review/full-suite/profiling evidence above
+  is reused for unchanged logic, with its original byte hashes retained.
+  Benchmark: `3474aa017ef661105830b8399d26c075e5a60d6f2f9b2cd6055dd5de5c851fb5`.
+  New tests: `ab215463e978aa0baecbe7020a357e869a50997b8a4d37648110eba528977dc4`.
+- Raw local evidence (ignored output, SHA-256):
+  - `output/admin-ledger-profile-windows-final-550k.json`:
+    `f9fc6484cc20ab94eb2190d092b282c85d3fbcf73c375b08bff8319b6fda2f51`.
+  - `output/admin-ledger-profile-windows-final-1000k.json`:
+    `c94616b1b6810aa3839fc9d9b1525593733fc43930ca65f56d5df41a1901909c`.
+  - `output/admin-ledger-profile-wsl-final-550000.json`:
+    `df8785179ac165a0c7e788103e136706e26a0263e2724a046edf578186a8d70e`.
+  - `output/admin-ledger-profile-wsl-final-1000000.json`:
+    `25c613bb8ed02522422cff50583d180baf03867d1373121b78dbe6e499c0179e`.
+
+Follow-up PR: [#790](https://github.com/FlyLink-com/proxy-gateway-minimal/pull/790),
+Draft, not merged. For its initial source commit `7c30c025`, hosted advisory
+run `39137513662` did not start because an Actions budget prevented execution;
+CI run `39137513639` was skipped. These are not passing hosted checks.
+
+No hosted CI success is claimed. No new production query, service restart,
+configuration/schema change, accounting write or
+deployment is part of this follow-up. Performance and hash equality do not
+replace a new separately approved production-candidate query acceptance.
 
 ## Existing behavior and gap
 

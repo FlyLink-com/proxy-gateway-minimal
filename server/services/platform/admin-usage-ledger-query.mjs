@@ -6,6 +6,7 @@ import Database from "better-sqlite3";
 const MAX_SCAN_LIMIT = 1_000_000;
 const SAFE_COUNT_MAX = BigInt(Number.MAX_SAFE_INTEGER);
 const CANONICAL_UTC = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
+const MONTH_DAYS = Object.freeze([31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]);
 const CATEGORIES = Object.freeze([
   "local_vless", "local_hy2", "local_tuic", "sgp_vless", "sgp_hy2", "other_sources"
 ]);
@@ -49,8 +50,31 @@ function fail(code) {
 
 function canonicalIso(value) {
   if (typeof value !== "string" || !CANONICAL_UTC.test(value)) return false;
-  const date = new Date(value);
-  return Number.isFinite(date.getTime()) && date.toISOString() === value;
+  // Every row is validated, including samples outside the requested windows.
+  // Check the same proleptic Gregorian calendar as Date's ISO round-trip, but
+  // avoid allocating/parsing/serializing a Date for every stored timestamp.
+  const year = Number(value.slice(0, 4));
+  const month = Number(value.slice(5, 7));
+  const day = Number(value.slice(8, 10));
+  if (month < 1 || month > 12 || day < 1) return false;
+  const leapDay = month === 2 && year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0) ? 1 : 0;
+  return day <= MONTH_DAYS[month - 1] + leapDay
+    && Number(value.slice(11, 13)) < 24
+    && Number(value.slice(14, 16)) < 60
+    && Number(value.slice(17, 19)) < 60;
+}
+
+function sampleTimesValid(observed, started, ended, created) {
+  // One SQLite -> JS call per row. Reuse only exact values already validated
+  // in this row; there is no cross-row cache or assumption of normal writes.
+  return canonicalIso(observed)
+    && (started === observed || canonicalIso(started))
+    && (ended === observed || ended === started || canonicalIso(ended))
+    && (created === observed || created === started || created === ended || canonicalIso(created)) ? 1 : 0;
+}
+
+function rollupTimesValid(observed, updated) {
+  return canonicalIso(observed) && (updated === observed || canonicalIso(updated)) ? 1 : 0;
 }
 
 function safeCount(value) {
@@ -93,10 +117,10 @@ function invalidTextSql(field) {
 function assertData(db) {
   const checks = [
     ["platform_usage_samples", [invalidBytesSql(), ...["account_id", "source_ref", "channel_ref"].map(invalidTextSql),
-      ...["observed_at", "interval_started_at", "interval_ended_at", "created_at"].map((field) => `ledger_iso_valid(${field}) != 1`),
+      "ledger_sample_times_valid(observed_at, interval_started_at, interval_ended_at, created_at) != 1",
       "interval_started_at > interval_ended_at"]],
     ["platform_usage_rollups", [invalidBytesSql(), invalidTextSql("account_id"),
-      "ledger_iso_valid(last_observed_at) != 1", "ledger_iso_valid(updated_at) != 1"]],
+      "ledger_rollup_times_valid(last_observed_at, updated_at) != 1"]],
     ["platform_accounts", [invalidTextSql("id")]]
   ];
   for (const [table, conditions] of checks) {
@@ -231,7 +255,8 @@ export function readAdminUsageLedger(input = {}) {
     db.pragma("trusted_schema = OFF");
     if (!db.readonly || Number(db.pragma("query_only", { simple: true })) !== 1
       || Number(db.pragma("trusted_schema", { simple: true })) !== 0) fail("source_unavailable");
-    db.function("ledger_iso_valid", { deterministic: true }, (value) => canonicalIso(value) ? 1 : 0);
+    db.function("ledger_sample_times_valid", { deterministic: true }, sampleTimesValid);
+    db.function("ledger_rollup_times_valid", { deterministic: true }, rollupTimesValid);
     return db.transaction(() => {
       assertTablesAndBudget(db, scanLimit);
       assertData(db);
