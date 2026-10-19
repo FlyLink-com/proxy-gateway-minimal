@@ -19,6 +19,7 @@ import { adminSubscriptionRoutes } from "./routes/admin-subscriptions.mjs";
 import { adminPlatformRoutes } from "./routes/admin-platform.mjs";
 import { adminUserMonitorRoutes } from "./routes/admin-user-monitor.mjs";
 import { adminThirdPartySubscriptionRoutes } from "./routes/admin-third-party-subscriptions.mjs";
+import { adminSubscriptionDistributionRoutes } from "./routes/admin-subscription-distribution.mjs";
 import {
   ADMIN_AUTH_PUBLIC_PATHS,
   adminAuthRoutes,
@@ -292,6 +293,8 @@ function isThirdPartySubscriptionNamespace(req) {
 
 function isThirdPartyNodeListSave(req) {
   if (req.method !== "PUT") return false;
+  // The system-owned source uses the same complete 256-label save contract.
+  if (/^\/api\/admin\/third-party-subscriptions\/distribution\/owned\/?$/i.test(req.path)) return true;
   // Match Express' case-insensitive path segments and optional trailing slash,
   // but retain the handler's exact lowercase source-id validation.
   const match = /^\/api\/admin\/third-party-subscriptions\/sources\/([^/]+)\/nodes\/?$/i.exec(req.path);
@@ -564,6 +567,7 @@ export function createApp(state, options = {}) {
     app.use(adminPlatformRoutes(state));
   }
   app.use(adminUserMonitorRoutes(state));
+  app.use(adminSubscriptionDistributionRoutes(state));
   app.use(adminThirdPartySubscriptionRoutes(state));
   app.use("/sub", createRateLimitMiddleware({
     windowMs: security.subRateLimit?.windowMs,

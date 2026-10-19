@@ -27,6 +27,10 @@ const ThirdPartyAdminWorkspace = lazy(async () => {
   const module = await import("../features/third-party-node-names/third-party-admin-workspace");
   return { default: module.ThirdPartyAdminWorkspace };
 });
+const SubscriptionDistributionPanel = lazy(async () => {
+  const module = await import("../features/third-party-node-names/subscription-distribution-panel");
+  return { default: module.SubscriptionDistributionPanel };
+});
 
 function formatFormalHash(pageId: AdminOperationsPageId): string {
   return `#/admin/${pageId}`;
@@ -90,7 +94,7 @@ export function AdminOperationsShell({
   // pages, including if the shell mode changes while this route is mounted.
   const pageId = isPreview && requestedPageId === "thirdPartyNodes" ? "dashboard" : requestedPageId;
   const page = ADMIN_PRODUCTION_BASELINE_PAGES[pageId === "thirdPartyNodes" ? "dashboard" : pageId];
-  const pageLabel = pageId === "thirdPartyNodes" ? "第三方节点" : page.label;
+  const pageLabel = pageId === "thirdPartyNodes" ? "订阅分发" : page.label;
 
   useEffect(() => {
     function syncPage() {
@@ -148,7 +152,7 @@ export function AdminOperationsShell({
               className={pageId === "thirdPartyNodes" ? "nav-item admin-baseline-preview-nav-item-active" : "nav-item"}
               onClick={() => navigate("thirdPartyNodes")}
               type="button"
-            ><span className="nav-item-copy">第三方节点</span></button>
+            ><span className="nav-item-copy">订阅分发</span></button>
           </div> : null}
         </nav>
       </aside>
@@ -164,7 +168,8 @@ export function AdminOperationsShell({
         <section aria-label={pageLabel} className="admin-baseline-preview-page">
           <h2>{pageLabel}</h2>
           {pageId === "thirdPartyNodes" ? (
-            <Suspense fallback={<p role="status" aria-busy="true">正在加载第三方节点管理…</p>}>
+            <Suspense fallback={<p role="status" aria-busy="true">正在加载订阅分发管理…</p>}>
+              <SubscriptionDistributionPanel onSessionExpired={onSessionExpired} />
               <ThirdPartyAdminWorkspace onSessionExpired={onSessionExpired} />
             </Suspense>
           ) : pageId === "userManagement" ? (

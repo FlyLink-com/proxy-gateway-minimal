@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "target": "bwh-us",
+  "sourceCommit": "REPLACE_WITH_EXACT_DEPLOYED_40_HEX_COMMIT",
+  "hostIdentityDigest": "REPLACE_WITH_SHA256_OF_TRIMMED_MACHINE_ID",
+  "verifierSha256": "REPLACE_WITH_EXACT_INSTALLED_VERIFIER_LAUNCHER_SHA256",
+  "verification": {
+    "version": 1,
+    "releaseIdentityPath": "/REPLACE_WITH_PINNED_RELEASE/control-plane-release-identity.json",
+    "releaseIdentitySha256": "REPLACE_WITH_64_HEX_DIGEST",
+    "meteringConfigPath": "/REPLACE_WITH_CURRENT_LOCAL_THREE/config.json",
+    "meteringConfigSha256": "REPLACE_WITH_64_HEX_DIGEST",
+    "controlPlanePort": 0
+  }
+}

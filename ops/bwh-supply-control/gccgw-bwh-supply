@@ -1,0 +1,4 @@
+#!/bin/sh
+# Root-owned installed launcher. Install the reviewed source tree and this
+# launcher under the exact paths in the runbook; this is NOT an installer.
+exec /usr/bin/env -i PATH=/usr/bin:/bin LC_ALL=C TZ=UTC SUDO_UID="${SUDO_UID:-}" /usr/bin/node /opt/gccgw-bwh-supply-control/scripts/bwh-supply-host.mjs "$@"

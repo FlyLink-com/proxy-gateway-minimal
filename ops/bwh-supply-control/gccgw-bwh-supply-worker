@@ -1,0 +1,4 @@
+#!/bin/sh
+# Install this launcher and its complete reviewed import/native dependency
+# closure root-owned and not writable by the application. Not an installer.
+exec /usr/bin/env -i PATH=/usr/bin:/bin LC_ALL=C TZ=UTC /usr/bin/node /opt/gccgw-bwh-supply-control/scripts/bwh-supply-worker.mjs

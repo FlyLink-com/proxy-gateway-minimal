@@ -28,6 +28,11 @@ directories, generated artifacts, or release packages, read
 destruction, read `docs/MASTER_ARCHIVE_BOUNDARY.md`. Keep current source,
 historical reference, and runtime material separated.
 
+For the opt-in choice between owned and selected imported subscription nodes,
+see [Subscription distribution routing](SUBSCRIPTION_DISTRIBUTION_ROUTING.md).
+It covers the shared Admin view, explicit policy migration, original-link
+compatibility and the separately executed BWH supply cutover.
+
 ## Document Metadata Contract
 
 Canonical document entrypoints use one top-level `document_metadata` YAML

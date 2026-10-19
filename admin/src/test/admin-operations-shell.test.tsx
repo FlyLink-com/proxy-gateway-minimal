@@ -83,6 +83,9 @@ vi.mock("../features/third-party-node-names/third-party-admin-workspace", () => 
     </div>
   )
 }));
+vi.mock("../features/third-party-node-names/subscription-distribution-panel", () => ({
+  SubscriptionDistributionPanel: () => <div data-testid="subscription-distribution-panel" />
+}));
 
 import { AdminOperationsShell } from "../pages/admin-operations-shell";
 import { AdminProductionBaselinePreview } from "../pages/admin-production-baseline-preview";
@@ -115,19 +118,20 @@ describe("AdminOperationsShell", () => {
     expect(screen.queryByLabelText("Admin production baseline preview status")).toBeNull();
     expect(screen.queryByText("GlobalCircle AI - Operator Console")).toBeNull();
     expect(screen.getByTestId("monitor-page-id").textContent).toBe("dashboard");
-    expect(screen.getByRole("button", { name: "第三方节点" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "订阅分发" })).toBeTruthy();
     expect(screen.getAllByRole("button").filter((el) => el.classList.contains("nav-item")).length).toBe(11);
   });
 
   it("opens the formal third-party route and forwards session expiration without mounting read-only workspaces", async () => {
     const onSessionExpired = vi.fn();
     render(<AdminOperationsShell onSessionExpired={onSessionExpired} />);
-    fireEvent.click(screen.getByRole("button", { name: "第三方节点" }));
+    fireEvent.click(screen.getByRole("button", { name: "订阅分发" }));
     expect(window.location.hash).toBe("#/admin/thirdPartyNodes");
     expect(await screen.findByTestId("third-party-admin-workspace")).toBeTruthy();
+    expect(await screen.findByTestId("subscription-distribution-panel")).toBeTruthy();
     expect(screen.queryByTestId("admin-monitor-workspace")).toBeNull();
     expect(screen.queryByTestId("admin-user-monitor-workspace")).toBeNull();
-    expect(screen.getByRole("button", { name: "第三方节点" }).getAttribute("aria-current")).toBe("page");
+    expect(screen.getByRole("button", { name: "订阅分发" }).getAttribute("aria-current")).toBe("page");
     fireEvent.click(screen.getByRole("button", { name: "第三方会话失效" }));
     expect(onSessionExpired).toHaveBeenCalledOnce();
   });
@@ -141,7 +145,7 @@ describe("AdminOperationsShell", () => {
   it.each(["#/admin/thirdPartyNodes", "#/admin-baseline/thirdPartyNodes"])("does not expose third-party writes in the ten-page preview at %s", async (hash) => {
     window.location.hash = hash;
     render(<AdminProductionBaselinePreview />);
-    expect(screen.queryByRole("button", { name: "第三方节点" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "订阅分发" })).toBeNull();
     expect(screen.getAllByRole("button").filter((el) => el.classList.contains("nav-item")).length).toBe(10);
     expect(screen.getByTestId("monitor-page-id").textContent).toBe("dashboard");
     expect(screen.queryByTestId("third-party-admin-workspace")).toBeNull();
@@ -153,7 +157,7 @@ describe("AdminOperationsShell", () => {
     expect(await screen.findByTestId("third-party-admin-workspace")).toBeTruthy();
     view.rerender(<AdminOperationsShell preview={{ title: "本地预览", navLabel: "预览导航", banner: null }} />);
     expect(screen.queryByTestId("third-party-admin-workspace")).toBeNull();
-    expect(screen.queryByRole("button", { name: "第三方节点" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "订阅分发" })).toBeNull();
     expect(screen.getByTestId("monitor-page-id").textContent).toBe("dashboard");
   });
 

@@ -1,0 +1,38 @@
+[Unit]
+Description=Restricted one-request BWH supply control worker
+
+[Service]
+Type=exec
+User=root
+Group=root
+ExecStart=/usr/local/libexec/gccgw-bwh-supply-worker
+StandardInput=socket
+StandardOutput=socket
+StandardError=null
+Restart=no
+RuntimeMaxSec=150s
+TimeoutStopSec=10s
+KillMode=control-group
+UMask=0077
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+RestrictNamespaces=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+SystemCallArchitectures=native
+# Prepare these exact directories before activation. Replace the SQLite
+# placeholder only with independently approved WAL/SHM coordination directory;
+# never broaden this to /var, /etc, /opt or an entire application release.
+ReadWritePaths=/var/lib/gccgw-bwh-supply-control
+ReadWritePaths=/etc/systemd/system/xray-vless-reality.service.d
+ReadWritePaths=/etc/systemd/system/hysteria2.service.d
+ReadWritePaths=/etc/systemd/system/mihomo-tuic.service.d
+ReadWritePaths=__SQLITE_COORDINATION_DIRECTORY__
