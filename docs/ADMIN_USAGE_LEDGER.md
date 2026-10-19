@@ -12,6 +12,79 @@ document_metadata:
 
 ## Intent and current stage
 
+### Query05 statement attribution preparation (source only, 2026-10-19 UTC)
+
+The historical 8,736 ms is **wall time**, not measured CPU time. Query05 did not
+capture CPU consumption, scheduler delay, I/O counters or effective ancestor
+cgroup limits. Its launcher not explicitly setting a CPU/I/O limit does not
+prove that no unit or parent limit existed. The stopped process and removed
+cgroup cannot now provide those historical counters.
+
+The independent `scripts/lib/admin-ledger-schema-budget-probe.mjs` implements
+only the old #792 schema/budget subset, using its **bounded COUNT**, not the
+#793 OFFSET optimization. For samples, rollups, then accounts it checks schema,
+required columns and at-most-cap+1 rows. These nine fixed statements run in the
+same deferred read-only transaction, with the original error priority. No
+caller-supplied SQL, aggregate DTO, timestamp validation, migration, index,
+collector or HTTP/Admin route is added. Completing this subset does **not**
+mean the full ledger query passed.
+
+Each prepare and execute operation has a start/end (or fixed-category error)
+record. Four outer operations cover DB open/setup, transaction and close. A
+normal run emits 44 core records, plus worker ready/imported markers and a
+fixed terminal result. The output contains only fixed roles/steps and numeric
+timings/counters; no SQL, row counts, DDL, column names, file paths, identities
+or exception text. The first prepare/execute may include snapshot, schema and
+page access; timing alone does not separate those costs.
+
+`scripts/lib/admin-ledger-schema-budget-probe-supervisor.mjs` exports an explicit
+one-shot API, not an automatically executing CLI or production record. It
+starts the fixed private worker with a clean environment, an 8 KiB input cap,
+48 KiB output cap, strict UTF-8/duplicate-key/field/order checks and the existing
+ten-second deadline. Failure requests SIGKILL once and allows at most two
+seconds to observe close. A missing close is `cleanup_unconfirmed`, never
+success; the first failure and validated diagnostic prefix remain available.
+The private worker must not be launched directly without this deadline.
+
+Metrics are operation wall milliseconds and process CPU user/system
+microseconds. Available process resource counters are deltas for page faults,
+context switches and block-input operations, plus maximum RSS in KiB and its
+high-water growth. They are not SQL bytes, per-table disk I/O or current memory
+allocation. Unavailable/reset/malformed counters are `unknown`; Windows
+defaults resource counters to `unknown` rather than interpreting unsupported
+zero placeholders as no I/O. Outer transaction metrics include the inner
+operations and diagnostic overhead: **do not sum nested timings/counters**.
+Worker lifecycle times and core times have different zero points. A large
+wall/CPU gap suggests waiting but does not distinguish disk, locks, scheduling
+or throttling. A new run also cannot reconstruct the old run's cache state.
+
+`node scripts/verify-admin-ledger-schema-budget-probe.mjs` is a separate local
+synthetic check. It takes no DB/path arguments, pins and hashes the actual
+#792 query source at `35c969eb53ecd689f4094c9a68d50891dbb1b26d`, and traces its
+real SQLite prepare/execute prefix against this probe. Valid, over-cap and
+missing-table cases compare SQL, bound parameters, sequence and error category.
+The normal test suite does not depend on Git history or a network connection.
+
+This source work changes neither the existing application reader/query/worker
+nor its diagnostic protocol. Prior #793 query benchmarks remain applicable to
+that unchanged code; they are not a benchmark of this new probe. New validation
+results are recorded below and in #793; independent review remains pending.
+The production candidate remains **unverified by this probe**. A future run
+needs a new exact target/Node/native-module/file-identity binding, reviewed
+helper closure, explicit single-use approval and post-read cleanup/identity
+evidence. No prior consumed record is replayable. No production read,
+installation, restart, current/Admin pointer switch or accounting write has
+been performed by this preparation.
+
+Local Windows Node 24.16.0 validation for this addition: 14 core tests and 63
+supervisor/worker tests passed; the existing 78 query suites' cases also passed.
+The manual pinned-source trace comparison passed all three scenarios. Full
+`npm test` completed with 6,719 tests: 6,650 passed, 69 skipped, zero failed
+(133.3 s). Documentation authority validation and diff checks passed. No new
+Linux or production execution is claimed, and formal independent review is
+still pending. The earlier large synthetic benchmarks were not rerun because
+their application-query source boundary did not change.
+
 ### Query05 follow-up: bounded excess-row probe (source only, 2026-10-19 UTC)
 
 The [#792 query05 readback](https://github.com/FlyLink-com/proxy-gateway-minimal/pull/792#issuecomment-6260389014)
