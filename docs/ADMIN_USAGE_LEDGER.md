@@ -12,6 +12,73 @@ document_metadata:
 
 ## Intent and current stage
 
+### Query04 follow-up: opt-in phase diagnostics (source only, 2026-10-19 UTC)
+
+The [#791 query04 receipt](https://github.com/FlyLink-com/proxy-gateway-minimal/pull/791#issuecomment-6252907602)
+records a 10,003 ms reader termination, no aggregate DTO, completed cleanup and
+an inactive candidate. It supersedes earlier pending-query status, but does not
+locate the slow SQL/native/open phase or establish a collector outage. The
+source merge and inactive installation remain reusable evidence; query04 and
+its authorization are consumed, not a command to retry.
+
+This follow-up is Risk B source work inside the separate A rollout envelope:
+one minimal PR, `release_unit: control-plane-app`, `identity_impact: false`.
+It adds observability, **not a demonstrated production performance repair**.
+No production access, backend/Admin activation, frontend/auth changes, schema
+or index change, timeout extension, caching, collector or accounting work is
+included. The original query SQL, DTO, full-snapshot checks and limits remain.
+
+The query core accepts an optional second argument `{ onPhase }`. Sixteen
+non-nested phases cover input, DB open/setup, schema/budget, sample/rollup/account
+validation, reconciliation totals/outside/orphan checks, window accounts/source
+aggregation/folding, and DB close. Events contain only fixed `phase` and
+`event: start|end|error`; no SQL, row counts, paths, identifiers or exceptions.
+Observer throws/rejections do not change the query's result or cleanup.
+
+The reader accepts an optional trusted-constructor `onDiagnostic` observer.
+Neither HTTP request parameters nor `read()` options can enable it. When absent,
+the worker command, three stdio streams, public DTO and fixed unavailable error
+are unchanged. When enabled, a fourth private pipe receives bounded progress
+before synchronous native/SQL operations. The worker adds input/import/result
+serialization/output phases and fixed failure categories. It never emits raw
+stderr, native exception text or database contents. Progress remains separate
+from the aggregate output, so a killed worker can leave useful evidence even
+when stdout contains no DTO.
+
+The parser accepts at most 8 KiB, 64 records and 512 bytes per line, validates
+strict UTF-8, exact whitelisted fields, monotonic elapsed times and phase
+transitions, and requires all expected stages before claiming complete success.
+Malformed/truncated progress fails diagnostic acceptance rather than being
+forwarded. Cleanup events do not hide the first error phase. Worker exit is
+not enough to classify a diagnostic failure: the reader waits for `close` to
+drain the pipe, while retaining the unchanged ten-second deadline. Timeout,
+abort, shutdown, invalid diagnostics/output and explicit worker failures remain
+separate internal categories. The public error stays `source_unavailable`.
+
+Worker `elapsedMs` starts at worker initialization; reader `elapsedMs` starts
+before spawn. They are different clock origins and must not be subtracted from
+one another. Differences between start/end milestones estimate stage wall time,
+not CPU time or an exact statement-level trace. `lastPhase` means the last
+observed stage (or first reported failed stage), not proof of root cause. For
+example, `source_unavailable` at DB setup does not by itself distinguish a lock,
+I/O issue, corruption or a native-module problem.
+
+Validation is local synthetic-only. Tests cover unchanged DTO/SQL/DB bytes,
+complete real-worker progress, missing/invalid DBs, callback isolation,
+malformed/oversized/truncated streams, deadline retention, delayed diagnostic
+delivery after exit, and cleanup preserving the original failure. Exact final
+test/review results are recorded below before source handoff; earlier results
+remain historical evidence, not a fresh production observation.
+
+The next production diagnostic must bind the changed query, worker, reader and
+new protocol module together, plus the helper that explicitly enables the
+observer and projects only approved diagnostics. Old query04 helpers neither
+enable nor validate this protocol and must not be edited/replayed. A new scoped
+authorization is required for any real ledger read. Only after diagnosis,
+necessary correction and successful bounded query acceptance can backend/Admin
+promotion proceed with the existing separate backup/rollback and logged-in UI
+acceptance boundaries. No schema migration or usage rewrite is introduced.
+
 ### Query03 follow-up, 2026-10-18 (local source work only)
 
 The later [#790 query03 execution receipt](https://github.com/FlyLink-com/proxy-gateway-minimal/pull/790#issuecomment-6252043582)

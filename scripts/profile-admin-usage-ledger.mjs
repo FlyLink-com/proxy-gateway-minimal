@@ -3,6 +3,7 @@
 // Run manually, outside npm test:
 // node scripts/profile-admin-usage-ledger.mjs --rows 550000 --runs 3 --output output/ledger-profile.json
 // A checkout without Git objects can use --baseline-source <exact exported module>.
+// Add --diagnostics to collect the reader's fixed private events for this synthetic fixture.
 import assert from "node:assert/strict";
 import { execFileSync, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -15,8 +16,14 @@ import { createAdminUsageLedgerReader } from "../server/services/platform/admin-
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const QUERY = "server/services/platform/admin-usage-ledger-query.mjs";
-const BASELINE_REF = "26b837e882afa8c77b23fa48709d9b0dea875d80";
-const BASELINE_SHA256 = "f3e9f0d0760806a12090860b961e10f075bedff0249b8b92af1c2d68cbfac059";
+const BASELINE_REF = "473335c38e88423bbc095c26a8644cc9eec484f6";
+const BASELINE_SHA256 = "5ef2b026f24c96d0ae597ab8d9368ebf50732ead0dec6c5dce4b391164598569";
+const CORE_PHASES = [
+  "validate_input", "db_open", "db_setup", "schema_budget", "validate_samples", "validate_rollups",
+  "validate_accounts", "reconcile_samples", "reconcile_rollups", "reconcile_outside",
+  "reconcile_orphan_samples", "reconcile_orphan_rollups", "window_accounts", "window_sources",
+  "window_fold", "db_close"
+];
 const CUTOFF = "2026-10-18T12:00:00.000Z";
 const CREDENTIALS = 181;
 const ACCOUNTS = 61;
@@ -31,11 +38,12 @@ const pairs = [
 
 function optionsFor(args) {
   const options = { rows: 550_000, runs: 3, output: null, baselineOnly: false, baselineSource: null,
-    accounts: ACCOUNTS, credentials: CREDENTIALS, distinctTimes: false };
+    accounts: ACCOUNTS, credentials: CREDENTIALS, distinctTimes: false, diagnostics: false };
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
     if (arg === "--baseline-only") options.baselineOnly = true;
     else if (arg === "--distinct-times") options.distinctTimes = true;
+    else if (arg === "--diagnostics") options.diagnostics = true;
     else if (arg === "--accounts") options.accounts = Number(args[++index]);
     else if (arg === "--credentials") options.credentials = Number(args[++index]);
     else if (arg === "--rows") options.rows = Number(args[++index]);
@@ -67,11 +75,11 @@ function replaceOnce(source, before, after) {
   return source.replace(before, after);
 }
 
-async function loadQuery(source, instrumented, identity) {
-  // Data URL modules leave the source checkout untouched. Only the dependency
-  // specifier and four exact, checked call sites are rewritten in memory.
+async function loadQuery(source, profiling, identity) {
+  // Data URL modules leave the source checkout untouched. The pinned baseline
+  // retains four checked in-memory call-site wrappers; current uses onPhase.
   let executable = replaceOnce(source, 'from "better-sqlite3"', `from ${JSON.stringify(import.meta.resolve("better-sqlite3"))}`);
-  if (instrumented) {
+  if (profiling === "baseline") {
     for (const [name, call] of [
       ["schemaAndBudget", "assertTablesAndBudget(db, scanLimit)"],
       ["validateData", "assertData(db)"],
@@ -86,7 +94,33 @@ async function loadQuery(source, instrumented, identity) {
     executable += `\nconst __phases = {};\nfunction __measure(name, action) { const start = performance.now(); try { return action(); } finally { __phases[name] = performance.now() - start; } }\nexport function benchmarkPhases() { return { ...__phases }; }\n`;
   }
   executable += `\n// benchmark-module-${identity}\n`;
-  return { module: await import(`data:text/javascript;base64,${Buffer.from(executable).toString("base64")}`), instrumentedSha256: sha256(executable) };
+  const module = await import(`data:text/javascript;base64,${Buffer.from(executable).toString("base64")}`);
+  return { module, instrumentedSha256: sha256(executable), profile(input) {
+    if (profiling === "baseline") {
+      const result = module.readAdminUsageLedger(input);
+      return { result, phases: module.benchmarkPhases() };
+    }
+    const phases = {};
+    let active = null;
+    let invalid = false;
+    const result = module.readAdminUsageLedger(input, { onPhase(record) {
+      if (Object.keys(record).sort().join(",") !== "event,phase" || !CORE_PHASES.includes(record.phase)) {
+        invalid = true;
+        return;
+      }
+      if (record.event === "start" && !active && !(record.phase in phases)) {
+        active = { phase: record.phase, started: performance.now() };
+      } else if (["end", "error"].includes(record.event) && active?.phase === record.phase) {
+        phases[record.phase] = performance.now() - active.started;
+        active = null;
+      } else invalid = true;
+    } });
+    // The observer is isolated by the core; validate its evidence outside it.
+    assert.equal(invalid, false, "Unexpected core phase event");
+    assert.equal(active, null, "Core phase was not closed");
+    assert.deepEqual(Object.keys(phases), CORE_PHASES, "All core phases must be measured in order");
+    return { result, phases };
+  } };
 }
 
 function makeFixture(directory, sampleCount, { accounts, credentials, distinctTimes }) {
@@ -183,7 +217,7 @@ try {
   const versions = options.baselineOnly ? [["baseline", baseline]] : [["baseline", baseline], ["current", current]];
   for (const [name, source] of versions) {
     const raw = await loadQuery(source, false, `${name}-raw`);
-    const profiled = await loadQuery(source, true, `${name}-profiled`);
+    const profiled = await loadQuery(source, name, `${name}-profiled`);
     const started = performance.now();
     const result = raw.module.readAdminUsageLedger(input);
     const rawMs = performance.now() - started;
@@ -196,8 +230,8 @@ try {
     const runs = [];
     for (let run = 0; run < options.runs; run += 1) {
       const began = performance.now();
-      assert.deepEqual(profiled.module.readAdminUsageLedger(input), expected);
-      const phases = profiled.module.benchmarkPhases();
+      const { result: profiledResult, phases } = profiled.profile(input);
+      assert.deepEqual(profiledResult, expected);
       runs.push({ elapsedMs: performance.now() - began, ...phases });
     }
     const entry = { name, rawMs, instrumentedSha256: profiled.instrumentedSha256, runs };
@@ -206,7 +240,9 @@ try {
   }
   if (!options.baselineOnly) {
     assert.equal(sha256(readFileSync(join(ROOT, QUERY), "utf8")), sha256(current), "Candidate changed during benchmark");
+    if (options.diagnostics) evidence.diagnostics = [];
     reader = createAdminUsageLedgerReader({ dbPath: fixture.dbPath, nowFn: () => new Date(CUTOFF),
+      ...(options.diagnostics ? { onDiagnostic: (record) => evidence.diagnostics.push(record) } : {}),
       spawnFn: (...args) => {
         const child = spawn(...args);
         const closed = new Promise((resolveClosed) => child.once("close", resolveClosed));
@@ -221,6 +257,7 @@ try {
   }
   evidence.resultSha256 = sha256(JSON.stringify(expected));
   evidence.workerExitCodes = children.map(({ child }) => child.exitCode);
+  assert.ok(evidence.workerExitCodes.every((code) => code === 0), "All synthetic reader children must exit successfully");
   const afterDatabaseSha256 = await fileSha256(fixture.dbPath);
   assert.equal(afterDatabaseSha256, beforeDatabaseSha256, "Synthetic database must remain byte-for-byte unchanged");
   evidence.databaseSha256 = afterDatabaseSha256;

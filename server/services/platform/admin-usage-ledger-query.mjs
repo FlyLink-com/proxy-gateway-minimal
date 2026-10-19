@@ -48,6 +48,32 @@ function fail(code) {
   throw new LedgerReadError(code);
 }
 
+// Optional, in-process diagnostics only. Observers receive no source values,
+// SQL, timestamps or errors, and cannot turn an observer failure into a query
+// or cleanup failure. The default path emits nothing and creates no promises.
+function phaseRunner(options) {
+  let onPhase;
+  try { onPhase = options?.onPhase; } catch { /* Diagnostics are best-effort. */ }
+  if (typeof onPhase !== "function") return (_phase, operation) => operation();
+  const emit = (phase, event) => {
+    try {
+      const pending = onPhase(Object.freeze({ phase, event }));
+      if (pending != null) Promise.resolve(pending).catch(() => {});
+    } catch { /* Preserve query and close behavior if an observer throws. */ }
+  };
+  return (phase, operation) => {
+    emit(phase, "start");
+    try {
+      const result = operation();
+      emit(phase, "end");
+      return result;
+    } catch (error) {
+      emit(phase, "error");
+      throw error;
+    }
+  };
+}
+
 function canonicalIso(value) {
   if (typeof value !== "string" || !CANONICAL_UTC.test(value)) return false;
   // Every row is validated, including samples outside the requested windows.
@@ -114,19 +140,21 @@ function invalidTextSql(field) {
   return `typeof(${field}) != 'text' or length(${field}) = 0`;
 }
 
-function assertData(db) {
+function assertData(db, stage) {
   const checks = [
-    ["platform_usage_samples", [invalidBytesSql(), ...["account_id", "source_ref", "channel_ref"].map(invalidTextSql),
+    ["validate_samples", "platform_usage_samples", [invalidBytesSql(), ...["account_id", "source_ref", "channel_ref"].map(invalidTextSql),
       "ledger_sample_times_valid(observed_at, interval_started_at, interval_ended_at, created_at) != 1",
       "interval_started_at > interval_ended_at"]],
-    ["platform_usage_rollups", [invalidBytesSql(), invalidTextSql("account_id"),
+    ["validate_rollups", "platform_usage_rollups", [invalidBytesSql(), invalidTextSql("account_id"),
       "ledger_rollup_times_valid(last_observed_at, updated_at) != 1"]],
-    ["platform_accounts", [invalidTextSql("id")]]
+    ["validate_accounts", "platform_accounts", [invalidTextSql("id")]]
   ];
-  for (const [table, conditions] of checks) {
-    if (db.prepare(`select 1 from ${table} where ${conditions.join(" or ")} limit 1`).get()) {
-      fail("invalid_source_data");
-    }
+  for (const [phase, table, conditions] of checks) {
+    stage(phase, () => {
+      if (db.prepare(`select 1 from ${table} where ${conditions.join(" or ")} limit 1`).get()) {
+        fail("invalid_source_data");
+      }
+    });
   }
 }
 
@@ -183,45 +211,47 @@ function windowMetrics(row, index) {
   };
 }
 
-function readWindows(db, windows, cutoff) {
+function readWindows(db, windows, cutoff, stage) {
   const bindings = { cutoff };
   for (const [index, window] of windows.entries()) if (window.from !== null) bindings[`from${index}`] = window.from;
   const columns = windowColumns(windows);
   // Positive accounts overlap categories: retain the independent DISTINCT
   // query (including CASE's original comparison semantics). Counts, bytes and
   // latest timestamps instead fold the disjoint six-category partition below.
-  const totals = db.prepare(`select ${windows.map(positiveAccountsColumn).join(",")}
-    from platform_usage_samples`).get(bindings);
+  const totals = stage("window_accounts", () => db.prepare(`select ${windows.map(positiveAccountsColumn).join(",")}
+    from platform_usage_samples`).get(bindings));
   const cases = SOURCE_PAIRS.map(([category], index) =>
     `when source_ref = @source${index} and channel_ref = @channel${index} then '${category}'`).join(" ");
   for (const [index, [, source, channel]] of SOURCE_PAIRS.entries()) {
     bindings[`source${index}`] = source;
     bindings[`channel${index}`] = channel;
   }
-  const sources = new Map(db.prepare(`
+  const sources = stage("window_sources", () => new Map(db.prepare(`
     select case ${cases} else 'other_sources' end as category, ${columns}
       from platform_usage_samples group by category
-  `).all(bindings).map((row) => [row.category, row]));
-  for (const index of windows.keys()) {
-    const prefix = `w${index}_`;
-    for (const field of ["sample_count", "upload_bytes", "download_bytes", "total_bytes"]) {
-      // All inputs are nonnegative BigInts. Full-snapshot reconciliation has
-      // already enforced SQLite's 64-bit SUM overflow boundary before this
-      // subset fold; do not round bytes through Number or sum account counts.
-      totals[`${prefix}${field}`] = [...sources.values()].reduce((sum, row) => sum + row[`${prefix}${field}`], 0n);
+  `).all(bindings).map((row) => [row.category, row])));
+  return stage("window_fold", () => {
+    for (const index of windows.keys()) {
+      const prefix = `w${index}_`;
+      for (const field of ["sample_count", "upload_bytes", "download_bytes", "total_bytes"]) {
+        // All inputs are nonnegative BigInts. Full-snapshot reconciliation has
+        // already enforced SQLite's 64-bit SUM overflow boundary before this
+        // subset fold; do not round bytes through Number or sum account counts.
+        totals[`${prefix}${field}`] = [...sources.values()].reduce((sum, row) => sum + row[`${prefix}${field}`], 0n);
+      }
+      totals[`${prefix}latest_observed_at`] = null;
+      for (const row of sources.values()) {
+        const latest = row[`${prefix}latest_observed_at`];
+        if (latest !== null && (totals[`${prefix}latest_observed_at`] === null
+          || latest > totals[`${prefix}latest_observed_at`])) totals[`${prefix}latest_observed_at`] = latest;
+      }
     }
-    totals[`${prefix}latest_observed_at`] = null;
-    for (const row of sources.values()) {
-      const latest = row[`${prefix}latest_observed_at`];
-      if (latest !== null && (totals[`${prefix}latest_observed_at`] === null
-        || latest > totals[`${prefix}latest_observed_at`])) totals[`${prefix}latest_observed_at`] = latest;
-    }
-  }
-  return windows.map((window, index) => ({
-    ...window,
-    ...windowMetrics(totals, index),
-    sources: CATEGORIES.map((category) => ({ category, ...windowMetrics(sources.get(category), index) }))
-  }));
+    return windows.map((window, index) => ({
+      ...window,
+      ...windowMetrics(totals, index),
+      sources: CATEGORIES.map((category) => ({ category, ...windowMetrics(sources.get(category), index) }))
+    }));
+  });
 }
 
 function totalsFor(db, table, countName) {
@@ -242,17 +272,17 @@ function orphanCount(db, table) {
     from ${table} where account_id not in (select id from platform_accounts)`).get().orphan_count);
 }
 
-function readReconciliation(db, cutoff) {
+function readReconciliation(db, cutoff, stage) {
   // The rollup is an undated cumulative projection: compare the entire snapshot,
   // including future / exactly-at-cutoff samples, never a window against it.
-  const samples = totalsFor(db, "platform_usage_samples", "sampleCount");
-  const rollups = totalsFor(db, "platform_usage_rollups", "rollupCount");
+  const samples = stage("reconcile_samples", () => totalsFor(db, "platform_usage_samples", "sampleCount"));
+  const rollups = stage("reconcile_rollups", () => totalsFor(db, "platform_usage_rollups", "rollupCount"));
   const differenceBytes = Object.fromEntries(["uploadBytes", "downloadBytes", "totalBytes"].map((key) =>
     [key, (BigInt(samples[key]) - BigInt(rollups[key])).toString()]));
-  const outside = db.prepare(`select
+  const outside = stage("reconcile_outside", () => db.prepare(`select
     count(case when observed_at > @cutoff then 1 end) as future_count,
     count(case when observed_at = @cutoff then 1 end) as at_cutoff_count
-    from platform_usage_samples`).get({ cutoff });
+    from platform_usage_samples`).get({ cutoff }));
   return {
     scope: "entire_database_snapshot",
     aggregateOnly: true,
@@ -262,38 +292,43 @@ function readReconciliation(db, cutoff) {
     differenceBytes,
     futureSampleCount: safeCount(outside.future_count),
     atCutoffSampleCount: safeCount(outside.at_cutoff_count),
-    orphanSampleAccountCount: orphanCount(db, "platform_usage_samples"),
-    orphanRollupAccountCount: orphanCount(db, "platform_usage_rollups")
+    orphanSampleAccountCount: stage("reconcile_orphan_samples", () => orphanCount(db, "platform_usage_samples")),
+    orphanRollupAccountCount: stage("reconcile_orphan_rollups", () => orphanCount(db, "platform_usage_rollups"))
   };
 }
 
 /** Read aggregate traffic evidence only. Does not initialize or migrate schemas. */
-export function readAdminUsageLedger(input = {}) {
+export function readAdminUsageLedger(input = {}, diagnostics = {}) {
+  const stage = phaseRunner(diagnostics);
   let db;
   try {
-    if (!input || typeof input !== "object" || Array.isArray(input)) fail("invalid_query");
-    const { dbPath, cutoff, scanLimit = MAX_SCAN_LIMIT } = input;
-    if (typeof dbPath !== "string" || !isAbsolute(dbPath) || !canonicalIso(cutoff)
-      || !Number.isSafeInteger(scanLimit) || scanLimit < 1 || scanLimit > MAX_SCAN_LIMIT) fail("invalid_query");
-    const windows = windowsFor(cutoff);
-    db = new Database(dbPath, { readonly: true, fileMustExist: true, timeout: 1000 });
-    db.defaultSafeIntegers(true);
-    db.pragma("query_only = ON");
-    db.pragma("trusted_schema = OFF");
-    if (!db.readonly || Number(db.pragma("query_only", { simple: true })) !== 1
-      || Number(db.pragma("trusted_schema", { simple: true })) !== 0) fail("source_unavailable");
-    db.function("ledger_sample_times_valid", { deterministic: true }, sampleTimesValid);
-    db.function("ledger_rollup_times_valid", { deterministic: true }, rollupTimesValid);
+    const { dbPath, cutoff, scanLimit, windows } = stage("validate_input", () => {
+      if (!input || typeof input !== "object" || Array.isArray(input)) fail("invalid_query");
+      const { dbPath, cutoff, scanLimit = MAX_SCAN_LIMIT } = input;
+      if (typeof dbPath !== "string" || !isAbsolute(dbPath) || !canonicalIso(cutoff)
+        || !Number.isSafeInteger(scanLimit) || scanLimit < 1 || scanLimit > MAX_SCAN_LIMIT) fail("invalid_query");
+      return { dbPath, cutoff, scanLimit, windows: windowsFor(cutoff) };
+    });
+    db = stage("db_open", () => new Database(dbPath, { readonly: true, fileMustExist: true, timeout: 1000 }));
+    stage("db_setup", () => {
+      db.defaultSafeIntegers(true);
+      db.pragma("query_only = ON");
+      db.pragma("trusted_schema = OFF");
+      if (!db.readonly || Number(db.pragma("query_only", { simple: true })) !== 1
+        || Number(db.pragma("trusted_schema", { simple: true })) !== 0) fail("source_unavailable");
+      db.function("ledger_sample_times_valid", { deterministic: true }, sampleTimesValid);
+      db.function("ledger_rollup_times_valid", { deterministic: true }, rollupTimesValid);
+    });
     return db.transaction(() => {
-      assertTablesAndBudget(db, scanLimit);
-      assertData(db);
-      const reconciliation = readReconciliation(db, cutoff);
+      stage("schema_budget", () => assertTablesAndBudget(db, scanLimit));
+      assertData(db, stage);
+      const reconciliation = readReconciliation(db, cutoff, stage);
       return {
         schemaVersion: "admin-usage-ledger/v1",
         cutoff,
         timezone: "UTC",
         unit: "bytes",
-        windows: readWindows(db, windows, cutoff),
+        windows: readWindows(db, windows, cutoff, stage),
         reconciliation,
         coverage: { ...COVERAGE }
       };
@@ -305,8 +340,10 @@ export function readAdminUsageLedger(input = {}) {
   } finally {
     // Never publish success with uncertain connection cleanup, or expose native
     // SQL, filenames or source values through the cleanup error.
-    if (db?.open) {
-      try { db.close(); } catch { fail("source_unavailable"); }
-    }
+    stage("db_close", () => {
+      if (db?.open) {
+        try { db.close(); } catch { fail("source_unavailable"); }
+      }
+    });
   }
 }
