@@ -125,6 +125,8 @@ export function decorateThirdPartyServers(nodes, existingServers = []) {
 export function applyThirdPartyProxyConfig(state, result) {
   const original = result?.proxyConfig;
   if (!original || typeof original !== "object") return original;
+  // The authenticated core already selected the complete distribution route.
+  if (result.distributionManaged === true) return original;
   const feature = state?.thirdPartySubscriptions;
   if (!feature?.enabled || feature.available !== true || !feature.store) {
     return original;

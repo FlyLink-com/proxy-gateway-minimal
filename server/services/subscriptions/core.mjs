@@ -48,7 +48,8 @@ export function createSubscriptionCore({
   lastUsedWriteIntervalMs = 15 * 60 * 1000,
   lastUsedWriteCache = new Map(),
   tenantCredentialMaterialResolver = null,
-  subscriptionChannelGate = null
+  subscriptionChannelGate = null,
+  resolveTenantProxyConfig = null
 }) {
   const subscriptionStore = store || repository;
   assertSubscriptionStore(subscriptionStore);
@@ -268,13 +269,51 @@ export function createSubscriptionCore({
       return { ok: false, status: 403, error: "Subscription expired", denialReason: "subscription_expired" };
     }
 
-    const scopedProxyConfig = applyTenantCredentialMaterial(
+    const resolveOwnedProxyConfig = () => applyTenantCredentialMaterial(
       applySubscriptionChannelGate(
         cloneProxyConfigForSubscriptionOutput(proxyConfig, tenantAuth.nodeId),
         tenantAuth
       ),
       tenantAuth
     );
+    let scopedProxyConfig;
+    let distributionManaged = false;
+    if (resolveTenantProxyConfig === null) {
+      scopedProxyConfig = resolveOwnedProxyConfig();
+    } else {
+      try {
+        const resolved = resolveTenantProxyConfig({
+          tenant: { ...tenantAuth, status },
+          baseProxyConfig: proxyConfig,
+          resolveOwnedProxyConfig
+        });
+        if (resolved === null) {
+          scopedProxyConfig = resolveOwnedProxyConfig();
+        } else {
+          if (utilTypes.isPromise(resolved)) {
+            // A distribution selector is synchronous; consume an accidental
+            // rejection without allowing asynchronous selection or fallback.
+            resolved.catch(() => {});
+            return { ok: false, status: 503, error: "subscription_distribution_unavailable" };
+          }
+          if (!resolved || typeof resolved !== "object" || Array.isArray(resolved)
+            || resolved.distributionManaged !== true || !resolved.proxyConfig
+            || typeof resolved.proxyConfig !== "object" || Array.isArray(resolved.proxyConfig)
+            || !Array.isArray(resolved.proxyConfig.servers)) {
+            return { ok: false, status: 503, error: "subscription_distribution_unavailable" };
+          }
+          for (const server of resolved.proxyConfig.servers) {
+            if (!server || typeof server !== "object" || Array.isArray(server)) {
+              return { ok: false, status: 503, error: "subscription_distribution_unavailable" };
+            }
+          }
+          scopedProxyConfig = resolved.proxyConfig;
+          distributionManaged = true;
+        }
+      } catch {
+        return { ok: false, status: 503, error: "subscription_distribution_unavailable" };
+      }
+    }
     if (scopedProxyConfig.servers.length === 0) {
       return { ok: false, status: 403, error: "Subscription node unavailable" };
     }
@@ -295,7 +334,8 @@ export function createSubscriptionCore({
     return {
       ok: true,
       tenant: serializeTenant(tenant),
-      proxyConfig: scopedProxyConfig
+      proxyConfig: scopedProxyConfig,
+      ...(distributionManaged ? { distributionManaged: true } : {})
     };
   }
 

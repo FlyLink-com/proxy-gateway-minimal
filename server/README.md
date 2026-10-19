@@ -66,6 +66,16 @@ approved legacy numeric-zero tier mapping (not an unlimited-traffic grant).
 Missing or revoked bindings never imply eligibility. See [legacy subscription eligibility](../docs/THIRD_PARTY_LEGACY_SUBSCRIPTION_ELIGIBILITY.md)
 for source behavior, tests and the separate production boundary.
 
+The opt-in `SUBSCRIPTION_DISTRIBUTION_ENABLED` policy replaces the appended-node
+model with a per-tier choice between owned nodes and selected imported nodes.
+It preserves subscription links and validates subscription lifecycle before
+selection. An authorized third-party-only selection does not require an owned
+runtime credential or application receipt; owned selection retains those gates.
+The system-owned source stores only display/distribution overrides. Its explicit
+schema migration lives in the existing imported-source database and is never
+applied on application startup. See [distribution routing](../docs/SUBSCRIPTION_DISTRIBUTION_ROUTING.md)
+for limits, Admin APIs, source validation and the separate BWH supply cutover.
+
 ## Release identity
 
 `CONTROL_PLANE_RELEASE_IDENTITY_PATH` is optional at the application boundary.

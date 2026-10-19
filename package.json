@@ -89,6 +89,7 @@
     "platform:clean-edge-readiness-summary": "node bin/gccgw.mjs platform clean-edge-readiness-summary",
     "platform:lead-retention": "node scripts/platform-lead-retention.mjs",
     "platform:coin-wallet:schema": "node scripts/platform-coin-wallet-schema.mjs",
+    "platform:subscription-distribution:schema": "node scripts/platform-subscription-distribution-schema.mjs",
     "platform:coin-wallet:reference-index-schema": "node scripts/platform-coin-wallet-reference-index-schema.mjs",
     "platform:coin-commerce:schema": "node scripts/platform-coin-commerce-schema.mjs",
     "platform:coin-commerce:plan-switch:schema": "node scripts/platform-coin-commerce-plan-switch-schema.mjs",

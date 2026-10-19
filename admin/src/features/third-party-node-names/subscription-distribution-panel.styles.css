@@ -1,0 +1,24 @@
+.subscription-distribution { margin-bottom: 1.5rem; border: 1px solid #d8e2ef; border-radius: 16px; padding: 1rem; color: #17243a; background: #fff; }
+.subscription-distribution-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; }
+.subscription-distribution h3 { margin: 0 0 .5rem; }
+.subscription-distribution p { color: #526176; line-height: 1.6; }
+.subscription-distribution fieldset { margin: 1rem 0; padding: .9rem; border: 1px solid #d8e2ef; border-radius: 12px; min-width: 0; background: #f8faff; }
+.subscription-distribution legend { padding: 0 .4rem; font-weight: 600; }
+.subscription-distribution button, .subscription-distribution input:not([type=checkbox]):not([type=radio]), .subscription-distribution select { border: 1px solid #d8e2ef; border-radius: 9px; background: #fff; color: #31558a; min-height: 36px; padding: .4rem .65rem; }
+.subscription-distribution button { cursor: pointer; }
+.subscription-distribution button:disabled { opacity: .5; cursor: default; }
+.subscription-distribution :is(button, input, select):focus-visible { outline: 2px solid #5089f5; outline-offset: 2px; }
+.subscription-distribution input[type=checkbox], .subscription-distribution input[type=radio] { margin-right: .45rem; accent-color: #54bbff; }
+.subscription-distribution-table-wrap { overflow-x: auto; margin: .8rem 0; }
+.subscription-distribution table { width: 100%; border-collapse: collapse; min-width: 560px; }
+.subscription-distribution th, .subscription-distribution td { text-align: left; padding: .45rem; border-bottom: 1px solid #d8e2ef; }
+.subscription-distribution th { color: #526176; }
+.subscription-distribution td:first-child input { width: 100%; box-sizing: border-box; min-width: 150px; }
+.subscription-distribution td select { max-width: 180px; }
+.subscription-distribution-modes { display: flex; gap: 1.2rem; margin: 1rem 0; }
+.subscription-distribution-candidates { display: grid; gap: .6rem; margin-bottom: 1rem; }
+.subscription-distribution-candidates label { display: flex; align-items: center; padding: .6rem; border: 1px solid #d8e2ef; border-radius: 9px; background: #fff; }
+.subscription-distribution-candidates small { display: block; color: #526176; margin-top: .2rem; }
+.subscription-distribution-footnote { font-size: .86rem; }
+.subscription-distribution [role=alert] { color: #b42318; }
+@media (max-width: 600px) { .subscription-distribution { padding: .75rem; } .subscription-distribution-heading { flex-direction: column; } }
