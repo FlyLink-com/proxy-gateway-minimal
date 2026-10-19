@@ -6,11 +6,117 @@ document_metadata:
   lifecycle: active
   authority_scope: admin_usage_ledger_slice
   superseded_by: null
-  last_verified_at: 2026-10-18
+  last_verified_at: 2026-10-19
   production_authority: false
 ```
 
 ## Intent and current stage
+
+### Query04 follow-up: opt-in phase diagnostics (source only, 2026-10-19 UTC)
+
+The [#791 query04 receipt](https://github.com/FlyLink-com/proxy-gateway-minimal/pull/791#issuecomment-6252907602)
+records a 10,003 ms reader termination, no aggregate DTO, completed cleanup and
+an inactive candidate. It supersedes earlier pending-query status, but does not
+locate the slow SQL/native/open phase or establish a collector outage. The
+source merge and inactive installation remain reusable evidence; query04 and
+its authorization are consumed, not a command to retry.
+
+This follow-up is Risk B source work inside the separate A rollout envelope:
+one minimal PR, `release_unit: control-plane-app`, `identity_impact: false`.
+It adds observability, **not a demonstrated production performance repair**.
+No production access, backend/Admin activation, frontend/auth changes, schema
+or index change, timeout extension, caching, collector or accounting work is
+included. The original query SQL, DTO, full-snapshot checks and limits remain.
+
+The query core accepts an optional second argument `{ onPhase }`. Sixteen
+non-nested phases cover input, DB open/setup, schema/budget, sample/rollup/account
+validation, reconciliation totals/outside/orphan checks, window accounts/source
+aggregation/folding, and DB close. Events contain only fixed `phase` and
+`event: start|end|error`; no SQL, row counts, paths, identifiers or exceptions.
+Observer throws/rejections do not change the query's result or cleanup.
+
+The reader accepts an optional trusted-constructor `onDiagnostic` observer.
+Neither HTTP request parameters nor `read()` options can enable it. When absent,
+the worker command, three stdio streams, public DTO and fixed unavailable error
+are unchanged. When enabled, a fourth private pipe receives bounded progress
+before synchronous native/SQL operations. The worker adds input/import/result
+serialization/output phases and fixed failure categories. It never emits raw
+stderr, native exception text or database contents. Progress remains separate
+from the aggregate output, so a killed worker can leave useful evidence even
+when stdout contains no DTO.
+
+The parser accepts at most 8 KiB, 64 records and 512 bytes per line, validates
+strict UTF-8, exact whitelisted fields, monotonic elapsed times and phase
+transitions, and requires all expected stages before claiming complete success.
+Malformed/truncated progress fails diagnostic acceptance rather than being
+forwarded. Cleanup events do not hide the first error phase. Worker exit is
+not enough to classify a diagnostic failure: the reader waits for `close` to
+drain the pipe, while retaining the unchanged ten-second deadline. Timeout,
+abort, shutdown, invalid diagnostics/output and explicit worker failures remain
+separate internal categories. The public error stays `source_unavailable`.
+
+Worker `elapsedMs` starts at worker initialization; reader `elapsedMs` starts
+before spawn. They are different clock origins and must not be subtracted from
+one another. Differences between start/end milestones estimate stage wall time,
+not CPU time or an exact statement-level trace. `lastPhase` means the last
+observed stage (or first reported failed stage), not proof of root cause. For
+example, `source_unavailable` at DB setup does not by itself distinguish a lock,
+I/O issue, corruption or a native-module problem.
+
+Validation is local synthetic-only. Tests cover unchanged DTO/SQL/DB bytes,
+complete real-worker progress, missing/invalid DBs, callback isolation,
+malformed/oversized/truncated streams, deadline retention, delayed diagnostic
+delivery after exit, and cleanup preserving the original failure. Exact final
+test/review results follow; earlier results remain historical evidence, not a
+fresh production observation.
+
+#### Local validation and review, 2026-10-19 UTC
+
+Runtime/test/profiler source is bound to `4d21d5e1bc636c7d2357cd1a4622f9bfc5248e3b`
+against master `473335c38e88423bbc095c26a8644cc9eec484f6`. A later documentation-only
+receipt does not change this executable boundary.
+
+- Windows Node `v24.16.0`, full `npm test`: 6,637 tests, 6,568 passed,
+  69 skipped, zero failures (139.7 s). Skips are not reported as passes.
+- WSL Linux Node `v22.23.1`, five focused query/performance/diagnostic suites:
+  102 passed, zero failures/skips. The exported immutable source ran in a fresh
+  directory with isolated user/network namespaces and synthetic SQLite only.
+  Retained dependency archive and native binary hashes were checked. This local
+  native build is **not production-binary-identical** and is not staging.
+- Linux diagnostic-enabled reader, 550,000 samples / 50,000 accounts /
+  150,000 rollups: three child runs at 2,949 / 2,908 / 2,892 ms; one-million
+  sample boundary / 61 accounts / 181 rollups: one child run at 3,725 ms.
+  The baseline, instrumented query and worker DTOs matched exactly; every child
+  exited zero, every read had all 20 phases, and synthetic DB bytes were unchanged.
+  These are local workload observations, not a BWH performance guarantee or
+  proof that the query04 timeout is repaired. All fixture directories were removed.
+- Small synthetic profiler checks, default and `--diagnostics`, both passed;
+  default output has no diagnostic field, enabled output uses fixed fields only.
+- One independent read-only security review fallback found no actionable issue
+  on the above source commit. The dedicated Security Review tool was unavailable;
+  this is not a report from that tool. The reviewer also ran 19 parser/mock tests,
+  all passing; no production query or expensive benchmark was run by the reviewer.
+- `git diff --check` and `npm run docs:authority:check` passed. No new Admin
+  frontend build is needed for this source-only diagnostic change.
+
+Local evidence (not committed production material):
+
+| Receipt under `output/` | SHA-256 |
+| --- | --- |
+| `profile-linux-diagnostics-cardinality-550k.json` | `96c4fa4b0a89d8c421f8103f5b6d483c5c6fd17eef9f75a0778d005e0070f544` |
+| `profile-linux-diagnostics-distinct-1000k.json` | `42f0b212538a697e4ee9557d08e489d1444598ec76fbde00e40abc0f99929c48` |
+
+The local test log is `output/ledger-diagnostics-linux-validation.log`. This turn
+made no production read, installation, activation, schema or accounting change.
+
+The next production diagnostic must bind the changed query, worker, reader and
+new protocol module together, plus the helper that explicitly enables the
+observer and projects only approved diagnostics. Old query04 helpers neither
+enable nor validate this protocol and must not be edited/replayed. A new scoped
+authorization is required for any real ledger read. Only after diagnosis,
+necessary correction and successful bounded query acceptance can backend/Admin
+promotion proceed with the existing separate backup/rollback and logged-in UI
+acceptance boundaries. No schema migration or usage rewrite is introduced.
 
 ### Query03 follow-up, 2026-10-18 (local source work only)
 
