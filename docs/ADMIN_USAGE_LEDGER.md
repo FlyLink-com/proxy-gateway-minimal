@@ -12,6 +12,42 @@ document_metadata:
 
 ## Intent and current stage
 
+### Staged Admin page release (source preparation, 2026-10-19)
+
+The first rollout is `release_unit: admin-static`, `frontend_surface: admin`,
+`identity_impact: false`. It publishes a static pending-availability section in
+the protected usage-monitor page, not the aggregate query. The section says the
+real summary is still under acceptance and retains the existing user-management
+detail link and coverage limitations. It shows neither zero usage nor a
+successful reconciliation in place of missing evidence.
+
+The formal shell does not import or mount the ledger reader UI/client in this
+stage. There is no URL, local-storage, environment or operator toggle that
+activates it. The implemented query UI and its tests remain in source for the
+later reviewed integration. Existing monitoring and account-detail paths are
+unchanged; the pending section itself makes no HTTP requests or polling. This
+is frontend request isolation, **not** a server authorization or endpoint
+disable mechanism. This rollout must not install/activate a backend to claim
+that its query has been disabled.
+
+The [#792 query05 readback](https://github.com/FlyLink-com/proxy-gateway-minimal/pull/792#issuecomment-6260389014)
+still records a timeout and no accepted aggregate DTO. #793 diagnosis and query
+repair remain separate. Changing the visible time window alone cannot bypass
+the current all-window/full-reconciliation query. Opening the real reader needs
+fresh production query acceptance and a separately reviewed static integration.
+
+Source validation for this slice covers the pending state, formal-shell
+navigation/remount without ledger client construction or requests, preserved
+detail navigation, full Admin tests/build, and the existing server baseline.
+Exact results belong in the PR; source implementation is not a deployment
+receipt. The production static artifact must preserve the observed Admin
+baseline and include only the approved ledger-page slice, not unrelated
+whole-master frontend changes. Before switching, bind the current protected
+Admin ingress/static pointer, exact artifact and previous static rollback
+target; obtain production approval and verify authentication, assets, the
+pending state and absence of ledger-summary requests. No backend, database,
+collector, protocol, Portal or company-site change belongs to this first slice.
+
 ### Query04 follow-up: opt-in phase diagnostics (source only, 2026-10-19 UTC)
 
 The [#791 query04 receipt](https://github.com/FlyLink-com/proxy-gateway-minimal/pull/791#issuecomment-6252907602)

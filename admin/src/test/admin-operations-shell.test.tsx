@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -67,36 +67,6 @@ vi.mock("../pages/admin-user-monitor-workspace", () => ({
           abortControllers.push(controller);
           void createClient?.()
             .accounts({ limit: 20 }, controller.signal)
-            .catch(() => undefined);
-        }}
-      >
-        start
-      </button>
-    </div>
-  )
-}));
-
-vi.mock("../pages/admin-usage-ledger-workspace", () => ({
-  AdminUsageLedgerWorkspace: ({
-    createClient,
-    userManagementHref
-  }: {
-    createClient?: () => ReturnType<
-      typeof import("../app/admin-usage-ledger-client").createAdminUsageLedgerClient
-    >;
-    userManagementHref?: string;
-  }) => (
-    <div data-testid="admin-usage-ledger-workspace">
-      <span data-testid="ledger-has-factory">{createClient ? "yes" : "no"}</span>
-      <a data-testid="ledger-user-link" href={userManagementHref}>账户明细</a>
-      <button
-        type="button"
-        data-testid="ledger-start"
-        onClick={() => {
-          const controller = new AbortController();
-          abortControllers.push(controller);
-          void createClient?.()
-            .summary(controller.signal)
             .catch(() => undefined);
         }}
       >
@@ -334,76 +304,74 @@ describe("AdminOperationsShell", () => {
     expect(onSessionExpired).not.toHaveBeenCalled();
   });
 
-  it("formal usageMonitor mounts the ledger beside the existing monitor workspace", () => {
+  it("formal usageMonitor shows the pending ledger without query controls or fabricated totals", () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
     render(<AdminOperationsShell />);
     fireEvent.click(screen.getByRole("button", { name: "使用情况和渠道" }));
     expect(window.location.hash).toBe("#/admin/usageMonitor");
-    expect(screen.getByTestId("admin-usage-ledger-workspace")).toBeTruthy();
+    const ledger = within(screen.getByRole("region", { name: "用量台账" }));
+    expect(ledger.getByRole("heading", { name: "用量台账汇总" })).toBeTruthy();
+    expect(ledger.getByRole("status").textContent).toBe("真实汇总查询验收中，暂未开放。");
+    expect(ledger.getByText(/本阶段不读取汇总台账/)).toBeTruthy();
+    expect(ledger.getByText(/无法区分测试账户与真实客户/)).toBeTruthy();
+    expect(ledger.getByText(/第三方未计量流量不在此台账/)).toBeTruthy();
+    expect(ledger.getByText(/缺失时间段视为未知/)).toBeTruthy();
+    expect(ledger.getByText(/不表示采集器健康/)).toBeTruthy();
+    expect(ledger.queryByRole("button")).toBeNull();
+    expect(ledger.queryByRole("table")).toBeNull();
+    expect(ledger.queryByText(/0 B|0 字节|尚无样本|合计一致/)).toBeNull();
+    expect(fetchMock).not.toHaveBeenCalled();
     expect(screen.getByTestId("admin-monitor-workspace")).toBeTruthy();
     expect(screen.getByTestId("monitor-page-id").textContent).toBe("usageMonitor");
-    expect(screen.getByTestId("ledger-has-factory").textContent).toBe("yes");
-    expect(screen.getByTestId("ledger-user-link").getAttribute("href")).toBe("#/admin/userManagement");
+    expect(ledger.getByRole("link", { name: "前往用户管理查看账户明细" }).getAttribute("href")).toBe("#/admin/userManagement");
     expect(screen.queryByTestId("admin-user-monitor-workspace")).toBeNull();
   });
 
-  it("does not inject the usage ledger into the ten-page baseline preview", () => {
+  it("does not inject the pending ledger into the ten-page baseline preview", () => {
     window.location.hash = "#/admin-baseline/usageMonitor";
     render(<AdminProductionBaselinePreview />);
-    expect(screen.queryByTestId("admin-usage-ledger-workspace")).toBeNull();
+    expect(screen.queryByRole("region", { name: "用量台账" })).toBeNull();
+    expect(screen.queryByText("真实汇总查询验收中，暂未开放。")).toBeNull();
     expect(screen.getByTestId("admin-monitor-workspace")).toBeTruthy();
     expect(screen.getByTestId("monitor-page-id").textContent).toBe("usageMonitor");
   });
 
-  it("usage ledger 401 invokes onSessionExpired; 403 and aborted 401 do not", async () => {
-    const onSessionExpired = vi.fn();
-    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
-      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
-      expect(url).toBe("/api/admin/platform/user-monitor/usage-ledger-summary");
-      return new Response("expired", { status: 401 });
-    });
+  it("keeps account details reachable and never queries the ledger during navigation and remount", async () => {
+    const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
-
-    render(<AdminOperationsShell onSessionExpired={onSessionExpired} />);
+    const view = render(<AdminOperationsShell />);
     fireEvent.click(screen.getByRole("button", { name: "使用情况和渠道" }));
+    fireEvent.click(screen.getByRole("link", { name: "前往用户管理查看账户明细" }));
+    await waitFor(() => {
+      expect(window.location.hash).toBe("#/admin/userManagement");
+      expect(screen.getByTestId("admin-user-monitor-workspace")).toBeTruthy();
+    });
+    expect(screen.queryByRole("region", { name: "用量台账" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "运营总览" }));
+    expect(screen.getByTestId("monitor-page-id").textContent).toBe("dashboard");
+    fireEvent.click(screen.getByRole("button", { name: "使用情况和渠道" }));
+    expect(screen.getByRole("region", { name: "用量台账" })).toBeTruthy();
+    view.unmount();
+    render(<AdminOperationsShell />);
+    expect(screen.getByRole("region", { name: "用量台账" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /读取用量台账|重新读取/ })).toBeNull();
     expect(fetchMock).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByTestId("ledger-start"));
-    await waitFor(() => {
-      expect(onSessionExpired).toHaveBeenCalledTimes(1);
-    });
-    expect(lastFetchInit(fetchMock)?.credentials).toBe("same-origin");
-    expect(lastFetchInit(fetchMock)?.cache).toBe("no-store");
-    expect(lastFetchInit(fetchMock)?.redirect).toBe("error");
-    const headers = new Headers(lastFetchInit(fetchMock)?.headers);
-    expect(headers.has("Authorization")).toBe(false);
+  });
 
-    onSessionExpired.mockClear();
-    const forbidden = vi.fn(async () => new Response("forbidden", { status: 403 }));
-    vi.stubGlobal("fetch", forbidden);
-    fireEvent.click(screen.getByTestId("ledger-start"));
+  it("preserves the existing monitor read and session guard beside the pending ledger", async () => {
+    const onSessionExpired = vi.fn();
+    const fetchMock = vi.fn<typeof fetch>(async () => new Response("expired", { status: 401 }));
+    vi.stubGlobal("fetch", fetchMock);
+    window.location.hash = "#/admin/usageMonitor";
+    render(<AdminOperationsShell onSessionExpired={onSessionExpired} />);
+    expect(fetchMock).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByTestId("monitor-start"));
     await waitFor(() => {
-      expect(forbidden).toHaveBeenCalled();
+      expect(onSessionExpired).toHaveBeenCalledOnce();
     });
-    expect(onSessionExpired).not.toHaveBeenCalled();
-
-    let resolveFetch: ((value: Response) => void) | undefined;
-    const delayed = vi.fn(
-      () =>
-        new Promise<Response>((resolve) => {
-          resolveFetch = resolve;
-        })
-    );
-    vi.stubGlobal("fetch", delayed);
-    fireEvent.click(screen.getByTestId("ledger-start"));
-    await waitFor(() => {
-      expect(delayed).toHaveBeenCalled();
-    });
-    const controller = abortControllers.at(-1);
-    expect(controller).toBeTruthy();
-    controller?.abort();
-    resolveFetch?.(new Response("expired", { status: 401 }));
-    await waitFor(() => {
-      expect(lastFetchInit(delayed)?.signal?.aborted).toBe(true);
-    });
-    expect(onSessionExpired).not.toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/admin/platform/accounts");
+    expect(screen.getByText("真实汇总查询验收中，暂未开放。")).toBeTruthy();
   });
 });
