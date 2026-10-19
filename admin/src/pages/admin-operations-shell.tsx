@@ -7,7 +7,6 @@ import {
   type AdminProductionBaselinePageId
 } from "../app/admin-production-baseline";
 import { createAdminMonitorReadClient } from "../app/admin-monitor-read-client";
-import { createAdminUsageLedgerClient } from "../app/admin-usage-ledger-client";
 import { createAdminUserMonitorClient } from "../app/admin-user-monitor-client";
 import {
   DataTable,
@@ -19,7 +18,7 @@ import {
 } from "../components/primitives";
 import "./admin-operations-shell.styles.css";
 import { AdminMonitorWorkspace } from "./admin-monitor-workspace";
-import { AdminUsageLedgerWorkspace } from "./admin-usage-ledger-workspace";
+import { AdminUsageLedgerPending } from "./admin-usage-ledger-pending";
 import { AdminUserMonitorWorkspace } from "./admin-user-monitor-workspace";
 
 const PAGE_IDS = new Set<string>(Object.keys(ADMIN_PRODUCTION_BASELINE_PAGES));
@@ -122,11 +121,6 @@ export function AdminOperationsShell({
     () => () => createAdminUserMonitorClient({ fetcher: guardedFetch(onSessionExpired) }),
     [onSessionExpired]
   );
-  const createUsageLedgerClient = useMemo(
-    () => () => createAdminUsageLedgerClient({ fetcher: guardedFetch(onSessionExpired) }),
-    [onSessionExpired]
-  );
-
   return (
     <div className="admin-baseline-preview">
       <aside className="admin-baseline-preview-sidebar">
@@ -178,8 +172,7 @@ export function AdminOperationsShell({
           ) : (
             <>
               {!isPreview && pageId === "usageMonitor" ? (
-                <AdminUsageLedgerWorkspace
-                  createClient={createUsageLedgerClient}
+                <AdminUsageLedgerPending
                   userManagementHref={formatPageHref("userManagement")}
                 />
               ) : null}
