@@ -1,36 +1,17 @@
 import { lstatSync, readFileSync } from "node:fs";
 import { spawn, spawnSync } from "node:child_process";
 import { dirname } from "node:path";
-import { assertNoDuplicateObjectKeys } from "../deployment/strict-json-scan.mjs";
+import { parseBwhSupplyHostStatus, BWH_SUPPLY_MAX_BYTES } from "./bwh-supply-status.mjs";
+export { parseBwhSupplyHostStatus } from "./bwh-supply-status.mjs";
 
-export const BWH_SUPPLY_BROKER_PATH = "/usr/local/libexec/gccgw-bwh-supply";
+export const BWH_SUPPLY_CLIENT_PATH = "/opt/gccgw-bwh-supply-control/scripts/bwh-supply-client.mjs";
 export const BWH_SUPPLY_STATUS_PATH = "/var/lib/gccgw-bwh-supply-control/status.json";
 export const BWH_SUPPLY_MARKER_PATH = "/var/lib/gccgw-bwh-supply-control/native-supply-paused";
 const ENV = Object.freeze({ PATH: "/usr/bin:/bin", LC_ALL: "C", TZ: "UTC" });
-const MAX_BYTES = 16 * 1024;
+const MAX_BYTES = BWH_SUPPLY_MAX_BYTES;
 const failure = () => Object.assign(new Error("BWH supply host unavailable"), { code: "bwh_supply_host_unavailable" });
 const unavailable = () => ({ revision: "0".repeat(64), state: "unavailable", protocolsRunning: 0,
   collectorState: "unknown", nativeDistributionEnabled: false, observedAt: null, canPause: false, canEnable: false });
-
-export function parseBwhSupplyHostStatus(text, { fresh = true, now = Date.now() } = {}) {
-  if (typeof text !== "string" || Buffer.byteLength(text) > MAX_BYTES) throw failure();
-  let value; try { assertNoDuplicateObjectKeys(text); value = JSON.parse(text); } catch { throw failure(); }
-  const keys = ["revision", "state", "protocolsRunning", "collectorState", "nativeDistributionEnabled", "observedAt", "canPause", "canEnable"];
-  if (!value || typeof value !== "object" || Array.isArray(value) || Object.keys(value).length !== keys.length
-    || !keys.every(key => Object.hasOwn(value, key)) || !/^[a-f0-9]{64}$/.test(value.revision)
-    || !["enabled", "paused", "transitioning", "failed", "unavailable"].includes(value.state)
-    || !Number.isInteger(value.protocolsRunning) || value.protocolsRunning < 0 || value.protocolsRunning > 3
-    || !["running", "paused", "unknown"].includes(value.collectorState)
-    || ["nativeDistributionEnabled", "canPause", "canEnable"].some(key => typeof value[key] !== "boolean")) throw failure();
-  if (value.observedAt !== null && (typeof value.observedAt !== "string" || !Number.isFinite(Date.parse(value.observedAt))
-    || new Date(value.observedAt).toISOString() !== value.observedAt)) throw failure();
-  if (fresh && value.state !== "unavailable" && (value.observedAt === null || Date.parse(value.observedAt) > now || now - Date.parse(value.observedAt) > 60_000)) throw failure();
-  if (value.state === "enabled") {
-    if (!value.nativeDistributionEnabled || value.protocolsRunning !== 3 || value.collectorState !== "running" || !value.canPause || value.canEnable) throw failure();
-  } else if (value.nativeDistributionEnabled || value.canPause || (value.canEnable && value.state !== "paused")) throw failure();
-  if (value.state === "paused" && (value.protocolsRunning !== 0 || value.collectorState !== "paused")) throw failure();
-  return value;
-}
 
 function trustedStatusFile({ lstat, readFile }) {
   // Root-owned, non-writable parents and no symlinks; public sanitized status
@@ -64,7 +45,7 @@ function asyncRunner(command, args, options) {
   });
 }
 
-/** Fixed privileged transport only. Construction performs no IO or mutation. */
+/** Fixed unprivileged AF_UNIX client; it inherits the application's NNP policy. */
 export function createBwhSupplyHost({ env: _env, commandRunnerSync = spawnSync, commandRunner = asyncRunner,
   readFile = readFileSync, lstat = lstatSync, nowFn = () => new Date() } = {}) {
   const options = { encoding: "utf8", shell: false, windowsHide: true, env: ENV, maxBuffer: MAX_BYTES, stdio: ["pipe", "pipe", "ignore"] };
@@ -75,7 +56,7 @@ export function createBwhSupplyHost({ env: _env, commandRunnerSync = spawnSync, 
   return {
     durableIntent: true,
     readStatus() {
-      try { return decode(commandRunnerSync("/usr/bin/sudo", ["-n", "--", BWH_SUPPLY_BROKER_PATH, "status"], { ...options, timeout: 5000, input: "" })); }
+      try { return decode(commandRunnerSync(process.execPath, [BWH_SUPPLY_CLIENT_PATH, "status"], { ...options, timeout: 5000, input: "" })); }
       catch { return unavailable(); }
     },
     allowsNativeDistribution() {
@@ -93,7 +74,7 @@ export function createBwhSupplyHost({ env: _env, commandRunnerSync = spawnSync, 
       if (!input || typeof input !== "object" || Array.isArray(input) || Object.keys(input).length !== 2
         || typeof input.enabled !== "boolean" || typeof input.expectedRevision !== "string" || !/^[a-f0-9]{64}$/.test(input.expectedRevision)) throw failure();
       try {
-        return decode(await commandRunner("/usr/bin/sudo", ["-n", "--", BWH_SUPPLY_BROKER_PATH, input.enabled ? "enable" : "pause"],
+        return decode(await commandRunner(process.execPath, [BWH_SUPPLY_CLIENT_PATH, input.enabled ? "enable" : "pause"],
           { ...options, timeout: 120_000, input: `${input.expectedRevision}\n` }));
       } catch { throw failure(); }
     }

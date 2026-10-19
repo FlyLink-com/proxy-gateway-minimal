@@ -1,0 +1,18 @@
+[Unit]
+Description=Restricted local BWH supply control socket
+
+[Socket]
+ListenStream=/run/gccgw-bwh-supply-control/control.sock
+Accept=yes
+SocketUser=root
+SocketGroup=__APP_SERVICE_GROUP__
+SocketMode=0660
+DirectoryMode=0755
+MaxConnections=4
+MaxConnectionsPerSource=4
+TriggerLimitIntervalSec=30s
+TriggerLimitBurst=20
+RemoveOnStop=yes
+
+[Install]
+WantedBy=sockets.target

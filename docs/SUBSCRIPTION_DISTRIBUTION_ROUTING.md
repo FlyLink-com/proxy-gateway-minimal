@@ -62,7 +62,15 @@ Admin 验证默认自有、第三方筛选选择、保存确认、未保存草�
 
 `BWH_SUPPLY_CONTROL_ENABLED` 默认关闭。开启前须先完成下述宿主安装与验证；开启但宿主未初始化、不可验证或状态未知时，自有下发拒绝，不静默绕过。已经独立验证资格的第三方分支不依赖此许可。普通 YAML 请求只读 root-owned 持久状态和 marker，不在每次刷新时执行 sudo 或扫描管理目录。
 
-链路为 Admin 确认 → 同源会话 API → `bwh-supply-service` → 固定 broker → Linux systemd adapter。固定目标为 BWH，固定三协议 unit 为 `xray-vless-reality.service`、`hysteria2.service`、`mihomo-tuic.service`，采集任务为 `gccgw-full-metering-collect.timer`／同名 `.service`。这些是源码 allowlist，不是本轮 fresh 生产身份读回；控制应用、Nginx 不在可变更列表。
+链路为 Admin 确认 → 同源会话 API → `bwh-supply-service` → 固定无提权客户端 → 本机 Unix socket → 独立 root worker → Linux systemd adapter。固定目标为 BWH，固定三协议 unit 为 `xray-vless-reality.service`、`hysteria2.service`、`mihomo-tuic.service`，采集任务为 `gccgw-full-metering-collect.timer`／同名 `.service`。这些是源码 allowlist；2026-10-19 的一次生产元数据读取确认同名服务存在，但不替代安装时的新鲜读回。控制应用、Nginx 不在可变更列表。
+
+### 保留 NoNewPrivileges 的本机调用边界
+
+2026-10-19 生产只读预检确认应用使用 `proxy-gateway`、`NoNewPrivileges=yes`、`ProtectSystem=strict`。因此取消未部署的 sudoers 方案：不能为了调用 helper 关闭应用加固。应用使用固定 Node 和 root-owned bundle 中的 `scripts/bwh-supply-client.mjs`；不提权，不接受可变目标或 shell 参数。同步 Admin 状态接口仍使用限时无提权子进程，订阅热路径不启动子进程。
+
+固定 socket `/run/gccgw-bwh-supply-control/control.sock` 由 systemd 建立，root 所属、准确应用组、0660；所有祖先目录须 root 所属且不可由应用写入。客户端校验类型、模式、有效组及连接前后／EOF 的 inode、device。权限依据本机文件系统组 ACL，不冒称 SO_PEERCRED 或逐浏览器用户认证；Admin 会话、CIDR、角色和 Origin 仍由应用接口校验。安装必须核对该组全部成员和同 UID 进程影响，不能扩大成共享运维组。
+
+socket 使用 `Accept=yes`，每个连接启动一个独立 root worker，限制并发及触发速率，不开放 TCP 或公网端口。worker 本身保留 `NoNewPrivileges=yes`、`ProtectSystem=strict`，只接收 status／pause／enable；initialize 仅留给人工 root CLI，不对应用开放。协议要求单行 JSON 加 EOF：请求最多 256 字节／5 秒，响应最多 16 KiB；拒绝多帧、重复键、额外字段、BOM、非法 UTF-8、任意 unit／path／command。错误不返回原文。客户端断开不取消已开始的宿主操作，不自动重试。
 
 暂停先写 durable `transitioning`，立即拒绝新的自有下发；然后停止 timer、等待正在采集的 service 空闲、安装三协议启动护栏，再逐路停止与读回。不会 kill 采集 writer。最终须三协议无运行进程和监听、timer 停止、writer 空闲及已加载护栏齐全，才能返回 paused。每个阶段写 root-private operation，Admin 不以一次 HTTP 成功替代物理读回。暂停标记为 `intentionally_paused`，不是缺测为零或计量健康。
 
@@ -74,11 +82,12 @@ Admin 验证默认自有、第三方筛选选择、保存确认、未保存草�
 
 ### 安装与回退门禁
 
-- `ops/bwh-supply-control/` 仅提供 launcher、sudoers 和故意不可直接启用的配置示例，**不自动安装**。后续绑定精确 source/artifact、Node 和依赖构件，放在全路径 root-owned、不可由应用写入的独立目录 `/opt/gccgw-bwh-supply-control`；所有传递 import、native module 和 node_modules 都属于同一不可变审查边界，不能指向应用可写 checkout 或 `current`。两份固定 launcher 为 `/usr/local/libexec/gccgw-bwh-supply`、`/usr/local/libexec/gccgw-bwh-supply-verify`，均 root:root 0755、LF 换行；后者 SHA 在每次调用前复核。
+- `ops/bwh-supply-control/` 仅提供 root CLI／verifier／worker launcher、socket／service 模板和故意不可直接启用的配置示例，**不自动安装**。后续绑定精确 source/artifact、Node 和依赖构件，放在全路径 root-owned、不可由应用写入的独立目录 `/opt/gccgw-bwh-supply-control`；所有传递 import、native module 和 node_modules 都属于同一不可变审查边界，不能指向应用可写 checkout 或 `current`。新 safe DTO、wire 和客户端也须纳入闭包。固定 launcher `/usr/local/libexec/gccgw-bwh-supply`、`gccgw-bwh-supply-verify`、`gccgw-bwh-supply-worker` 均 root:root 0755、LF 换行；verifier SHA 在每次调用前复核。
 - 根配置 `/etc/gccgw-bwh-supply-control.json` 为 root:root 0600，绑定 BWH machine-id 摘要、精确 source commit、release identity 与现役 `local-three-v1` 采集配置摘要。verifier 仅支持该已知本地三路；不支持的结构失败停止，不改成全量重建或忽略检查点。
 - 独立 `/var/lib/gccgw-bwh-supply-control` 为 root:root 0755，公开脱敏 `status.json` 0644；`operation.json` 与 marker 为 0600，锁为 0700。专用 drop-in 为 0644。不得顺手改业务父目录属主／权限，不删除数据库、WAL、checkpoint、pending 或旧回执。
-- 先 dry-run 固定 helper/完整依赖、`visudo -cf`、sudoers 精确三条命令及初始化的只读前提；应用只获 status／pause／enable，不获 shell、Node、systemctl、verifier、initialize 或通配符。首次 initialize 仅由 root operator 在确认现役三协议及采集调度运行后执行；不能由 Admin 发起。
-- 生产前新鲜核对确切 units、app identity、现役配置、身份保留状态与计量范围；备份应用/Admin、根权限配置和相关 unit/drop-in，保留控制库在线备份和 journal 证据。源码合成测试不替代真实 systemd、sudo/应用 sandbox、协议监听及停供／恢复演练。
+- 先 dry-run 固定 helper/完整依赖及 socket／worker 模板，绑定 `__APP_SERVICE_GROUP__` 和 `__SQLITE_COORDINATION_DIRECTORY__`；任何占位未替换不得安装。worker 仅获 state、三份专用 drop-in 目录及获准 SQLite WAL/SHM 协调目录写权限，不扩大为整个 `/etc`、`/var` 或应用 release。逐项验收准确组权限、AF_UNIX 可达、root-owned socket、app/worker 加固仍启用、非授权组拒绝。应用不获 sudoers、通用 shell、Node、systemctl、verifier、initialize 或可变命令权限。首次 initialize 仅由 root operator 在确认现役三协议及采集调度运行后执行，不能由 Admin 发起。
+- 实际暂停前必须先完成同源码 resume 只读准入预验；initialize 只确认正在运行，不证明将来能恢复。身份保留、材料、journal 或 activation 有未知时不得开放实际暂停按钮，禁止删 map/checkpoint/pending 或放宽检查来强行通过。
+- 生产前新鲜核对确切 units、app identity、现役配置、身份保留状态与计量范围；备份应用/Admin、根权限配置和相关 unit/drop-in，保留控制库在线备份和 journal 证据。源码合成测试不替代真实 systemd、应用 sandbox、协议监听及停供／恢复演练。
 - 暂停或启用后单独验收控制面与订阅入口、第三方直接连接、三协议物理状态及连续自然采集。timer active 只表示调度恢复，不能据此宣布用量入账正常；记录 aggregate-only identity_gate before/after、retention_state 与最终阶段。
 - 代码回退不能自动重开供流或移除护栏。先核清当前 paused/failed 状态，使用同一受审 helper 恢复并验证；确认 runtime 与计量续接后才关闭功能开关或回退代码。禁止只关闭渲染门禁来伪装恢复，禁止为回退还原旧账本。
 
@@ -101,6 +110,10 @@ Admin 验证默认自有、第三方筛选选择、保存确认、未保存草�
 
 普通独立安全复核发现并修正了完整中文节点清单请求体预算问题，读回后无剩余具体发现；当前没有专用 Security Review 工具，不冒称其结果。桌面浏览器使用正式构建及内存合成 HTTP 完成 12 项交互验证；真实 SQLite／HTTP 的存储和权限另由自动化测试验证。390px 整页受既有固定侧栏挤压，移动端未验收通过。
 
-增量已接通真实 Admin 停启 API、固定权限 bridge、实际 Linux 宿主 adapter 与独立只读 verifier，并移除不再调用的 generic 执行器。最终服务端完整 6825 项：6756 通过、69 项既有跳过、0 失败；Admin 105 文件／1985 项通过，构建及 17 文件安全检查通过；宿主／verifier／service 定向 62 项通过。独立通用代理只读安全复核修正了护栏撤销、marker 恢复、自然 writer 并发等三项 P2，复跑 75 项后无剩余具体 P1/P2；不是专用 Security Review 工具结果。精确提交的 Linux 定向结果在 PR 记录绑定。
+`ce3dbfe2` 阶段接通了 Admin 停启 API、宿主 adapter 与只读 verifier，并移除不再调用的 generic 执行器；当时服务端 6825 项、Admin 1985 项及定向 Linux 201 项通过情况保留在 PR。独立通用代理复核修正了护栏撤销、marker 恢复、自然 writer 并发三项 P2，复跑 75 项后无剩余具体 P1/P2；不是专用 Security Review 工具结果。
+
+生产预检发现的 NNP 兼容增量已取消应用 sudo，改为固定 AF_UNIX 客户端／worker。新完整服务端 6846 项：6777 通过、69 项既有跳过、0 失败；受影响边界 105 项通过，独立只读 transport 复核 27 项通过且无具体 P1/P2。Admin 未改，复用同一字节源码的 1985 项、构建和 17 文件检查，不重复运行或宣称新 UI 验收。
+
+本机 WSL 一次性 mount／network namespace 中，使用官方摘要校验的 Node 22.23.1，真实 UID/GID 65534 客户端和 root worker 均设置 `NoNewPrivileges=1`：状态、合成暂停／启用、旧 revision 拒绝、内核拒绝错误组、initialize 拒绝、断连后完成已开始操作共 7 项通过。使用真实 Unix socket 与生产 worker/client 代码，但宿主 adapter 是合成对象；未操作真实 systemd、数据库或协议服务。临时 namespace／目录／归档清理已核验，按文件摘要绑定回执；不把它当作已完成生产 socket activation 或物理停供验收。
 
 跟进索引：[Issue #795](https://github.com/FlyLink-com/proxy-gateway-minimal/issues/795)。源码包含自动路由／每日重排及 Admin 实际供流控制，**生产 helper、权限和配置尚未安装，物理停供／恢复未验收**。未合并、未迁移生产数据库、未切换配置来源、未暂停 BWH 供流。生产验证和最终构件、批准、停供回执仍按实际发布阶段补齐；本地通过不代表生产上线。

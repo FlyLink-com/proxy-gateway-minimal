@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createBwhSupplyHost, BWH_SUPPLY_BROKER_PATH, BWH_SUPPLY_STATUS_PATH, BWH_SUPPLY_MARKER_PATH } from "../services/platform/bwh-supply-host.mjs";
+import { createBwhSupplyHost, BWH_SUPPLY_CLIENT_PATH, BWH_SUPPLY_STATUS_PATH, BWH_SUPPLY_MARKER_PATH } from "../services/platform/bwh-supply-host.mjs";
 const NOW = "2026-10-19T12:00:00.000Z";
 const dto = state => ({ revision: "a".repeat(64), state, protocolsRunning: state === "enabled" ? 3 : 0,
   collectorState: state === "enabled" ? "running" : "paused", nativeDistributionEnabled: state === "enabled",
@@ -17,10 +17,10 @@ function fixture() {
     lstat, readFile: () => JSON.stringify(status), nowFn: () => new Date(NOW) });
   return { host, calls, setStatus(value) { status = value; }, setMarker(value) { marker = value; }, lstat };
 }
-test("readStatus uses fixed bounded sudo broker and a clean environment", () => {
+test("readStatus uses only the fixed unprivileged Node client and a clean environment", () => {
   const f = fixture(); assert.equal(f.host.readStatus().state, "enabled");
-  assert.deepEqual(f.calls[0].args, ["-n", "--", BWH_SUPPLY_BROKER_PATH, "status"]);
-  assert.equal(f.calls[0].command, "/usr/bin/sudo"); assert.equal(f.calls[0].options.shell, false);
+  assert.deepEqual(f.calls[0].args, [BWH_SUPPLY_CLIENT_PATH, "status"]);
+  assert.equal(f.calls[0].command, process.execPath); assert.equal(f.calls[0].options.shell, false);
   assert.equal(f.calls[0].options.timeout, 5000); assert.equal(f.calls[0].options.env.HTTP_PROXY, undefined);
 });
 test("hot path does not spawn and durable pause/transition/failure/marker all deny native output", () => {
@@ -32,7 +32,8 @@ test("hot path does not spawn and durable pause/transition/failure/marker all de
 test("only enable/pause are transported; revision is stdin, never shell arguments", async () => {
   const f = fixture(); f.setStatus(dto("paused"));
   await f.host.setEnabled({ enabled: false, expectedRevision: "b".repeat(64) });
-  assert.deepEqual(f.calls[0].args, ["-n", "--", BWH_SUPPLY_BROKER_PATH, "pause"]);
+  assert.deepEqual(f.calls[0].args, [BWH_SUPPLY_CLIENT_PATH, "pause"]);
+  assert.equal(f.calls[0].command, process.execPath);
   assert.equal(f.calls[0].options.input, `${"b".repeat(64)}\n`);
   await assert.rejects(() => f.host.setEnabled({ enabled: false, expectedRevision: "$(secret)" }));
   await assert.rejects(() => f.host.setEnabled({ enabled: false, expectedRevision: "b".repeat(64), command: "rm" }));

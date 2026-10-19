@@ -1,6 +1,0 @@
-# Not installed. Replace only __APP_SERVICE_USER__ after fresh service identity
-# inventory, then validate the exact resulting file using visudo -cf.
-# Do not grant a wildcard, shell, Node, systemctl, verifier, initialize or SETENV.
-Cmnd_Alias GCCGW_BWH_SUPPLY = /usr/local/libexec/gccgw-bwh-supply status, /usr/local/libexec/gccgw-bwh-supply pause, /usr/local/libexec/gccgw-bwh-supply enable
-__APP_SERVICE_USER__ ALL=(root) NOPASSWD: NOSETENV: GCCGW_BWH_SUPPLY
-Defaults!GCCGW_BWH_SUPPLY !setenv
