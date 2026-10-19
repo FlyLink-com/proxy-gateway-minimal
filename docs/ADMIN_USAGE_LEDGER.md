@@ -6,7 +6,7 @@ document_metadata:
   lifecycle: active
   authority_scope: admin_usage_ledger_slice
   superseded_by: null
-  last_verified_at: 2026-10-18
+  last_verified_at: 2026-10-19
   production_authority: false
 ```
 
@@ -67,8 +67,47 @@ Validation is local synthetic-only. Tests cover unchanged DTO/SQL/DB bytes,
 complete real-worker progress, missing/invalid DBs, callback isolation,
 malformed/oversized/truncated streams, deadline retention, delayed diagnostic
 delivery after exit, and cleanup preserving the original failure. Exact final
-test/review results are recorded below before source handoff; earlier results
-remain historical evidence, not a fresh production observation.
+test/review results follow; earlier results remain historical evidence, not a
+fresh production observation.
+
+#### Local validation and review, 2026-10-19 UTC
+
+Runtime/test/profiler source is bound to `4d21d5e1bc636c7d2357cd1a4622f9bfc5248e3b`
+against master `473335c38e88423bbc095c26a8644cc9eec484f6`. A later documentation-only
+receipt does not change this executable boundary.
+
+- Windows Node `v24.16.0`, full `npm test`: 6,637 tests, 6,568 passed,
+  69 skipped, zero failures (139.7 s). Skips are not reported as passes.
+- WSL Linux Node `v22.23.1`, five focused query/performance/diagnostic suites:
+  102 passed, zero failures/skips. The exported immutable source ran in a fresh
+  directory with isolated user/network namespaces and synthetic SQLite only.
+  Retained dependency archive and native binary hashes were checked. This local
+  native build is **not production-binary-identical** and is not staging.
+- Linux diagnostic-enabled reader, 550,000 samples / 50,000 accounts /
+  150,000 rollups: three child runs at 2,949 / 2,908 / 2,892 ms; one-million
+  sample boundary / 61 accounts / 181 rollups: one child run at 3,725 ms.
+  The baseline, instrumented query and worker DTOs matched exactly; every child
+  exited zero, every read had all 20 phases, and synthetic DB bytes were unchanged.
+  These are local workload observations, not a BWH performance guarantee or
+  proof that the query04 timeout is repaired. All fixture directories were removed.
+- Small synthetic profiler checks, default and `--diagnostics`, both passed;
+  default output has no diagnostic field, enabled output uses fixed fields only.
+- One independent read-only security review fallback found no actionable issue
+  on the above source commit. The dedicated Security Review tool was unavailable;
+  this is not a report from that tool. The reviewer also ran 19 parser/mock tests,
+  all passing; no production query or expensive benchmark was run by the reviewer.
+- `git diff --check` and `npm run docs:authority:check` passed. No new Admin
+  frontend build is needed for this source-only diagnostic change.
+
+Local evidence (not committed production material):
+
+| Receipt under `output/` | SHA-256 |
+| --- | --- |
+| `profile-linux-diagnostics-cardinality-550k.json` | `96c4fa4b0a89d8c421f8103f5b6d483c5c6fd17eef9f75a0778d005e0070f544` |
+| `profile-linux-diagnostics-distinct-1000k.json` | `42f0b212538a697e4ee9557d08e489d1444598ec76fbde00e40abc0f99929c48` |
+
+The local test log is `output/ledger-diagnostics-linux-validation.log`. This turn
+made no production read, installation, activation, schema or accounting change.
 
 The next production diagnostic must bind the changed query, worker, reader and
 new protocol module together, plus the helper that explicitly enables the
