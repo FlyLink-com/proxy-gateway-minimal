@@ -199,7 +199,67 @@ for (const table of ["platform_usage_samples", "platform_usage_rollups", "platfo
     assert.doesNotThrow(() => f.read({ scanLimit: 2 }));
     assertSafeError(() => f.read({ scanLimit: 1 }), "scan_limit_exceeded");
   });
+
+  test(`budget boundary handles empty through cap+1 rows for ${table}`, (t) => {
+    const cap = 3;
+    for (const rows of [0, 1, cap - 1, cap, cap + 1]) {
+      const f = fixture(t, ({ addAccount, addSample, addRollup }) => {
+        for (let index = 0; index < rows; index += 1) {
+          if (table === "platform_accounts") addAccount(`synthetic-${index}`);
+          else if (table === "platform_usage_samples") addSample();
+          else addRollup();
+        }
+      });
+      if (rows > cap) assertSafeError(() => f.read({ scanLimit: cap }), "scan_limit_exceeded");
+      else {
+        const result = f.read({ scanLimit: cap });
+        if (table === "platform_usage_samples") assert.equal(result.reconciliation.samples.sampleCount, rows);
+        if (table === "platform_usage_rollups") assert.equal(result.reconciliation.rollups.rollupCount, rows);
+      }
+    }
+  });
 }
+
+test("budget probes test for an excess row without a counting coroutine or aggregate", (t) => {
+  const f = fixture(t, ({ addAccount, addSample, addRollup }) => {
+    addAccount(); addSample(); addRollup();
+  });
+  const prepare = Database.prototype.prepare;
+  const probes = [];
+  t.mock.method(Database.prototype, "prepare", function(sql) {
+    const statement = prepare.call(this, sql);
+    // Both the old bounded COUNT and the replacement existence probe are
+    // captured. Inspect actual SQLite opcodes, not wall-clock performance.
+    if (/\bfrom platform_(?:usage_samples|usage_rollups|accounts)\b/i.test(sql)
+      && /\blimit\s+(?:\?|1\s+offset\s+\?)/i.test(sql) && !/\bwhere\b/i.test(sql)) {
+      return { get: (...bindings) => {
+        const plan = prepare.call(this, `explain ${sql}`).all(...bindings);
+        probes.push({ sql, bindings, opcodes: plan.map(row => row.opcode) });
+        return statement.get(...bindings);
+      } };
+    }
+    return statement;
+  });
+  const result = f.read({ scanLimit: 3 });
+  assert.equal(result.reconciliation.samples.sampleCount, 1);
+  assert.equal(probes.length, 3, "Check every fixed table in the same snapshot");
+  for (const [index, table] of ["platform_usage_samples", "platform_usage_rollups", "platform_accounts"].entries()) {
+    const { sql, bindings, opcodes } = probes[index];
+    assert.ok(sql.includes(`from ${table}`));
+    assert.deepEqual(bindings, [3], "Skip exactly the permitted rows, then look for one excess row");
+    assert.match(sql, /\blimit\s+1\s+offset\s+\?/i);
+    assert.equal(opcodes.some(opcode => ["AggStep", "AggFinal", "InitCoroutine", "Yield"].includes(opcode)), false,
+      "Budget detection must not count or yield each row through an aggregate subquery");
+  }
+});
+
+test("the last permitted sample is still fully validated instead of being truncated", (t) => {
+  const f = fixture(t, ({ addSample }) => {
+    addSample(); addSample(); addSample({ at: "9999-12-31T23:59:59.999Z", total: 99n });
+  });
+  assertSafeError(() => f.read({ scanLimit: 2 }), "scan_limit_exceeded");
+  assertSafeError(() => f.read({ scanLimit: 3 }), "invalid_source_data");
+});
 
 for (const patch of [
   "upload_bytes = -1", "upload_bytes = 1.5", "upload_bytes = '2'", "upload_bytes = null",

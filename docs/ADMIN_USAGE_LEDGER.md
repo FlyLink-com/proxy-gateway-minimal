@@ -12,6 +12,91 @@ document_metadata:
 
 ## Intent and current stage
 
+### Query05 follow-up: bounded excess-row probe (source only, 2026-10-19 UTC)
+
+The [#792 query05 readback](https://github.com/FlyLink-com/proxy-gateway-minimal/pull/792#issuecomment-6260389014)
+recovered a real 10,006 ms reader timeout: `schema_budget` took 8,736 ms and
+`validate_samples` started but did not finish. The combined schema/budget phase
+does not distinguish table scan, first snapshot/WAL access, storage or scheduler
+cost. No aggregate DTO was accepted. This is not evidence of a collector outage.
+
+This Risk B source follow-up replaces each bounded COUNT subquery with
+`SELECT 1 ... LIMIT 1 OFFSET scanLimit`. It only asks whether an excess row
+exists, avoiding the subquery coroutine and per-row aggregate. It remains an
+O(n), at-most-cap+1 traversal, not a constant-time count or a proven fix for the
+production timeout. Table/schema validation order, the one-million-row cap,
+full-data validation, single read-only snapshot, exact totals and ten-second
+reader deadline remain unchanged. No indexes, migrations or caches are added.
+
+The separate `scripts/profile-admin-ledger-budget-probe.mjs` pins the #792
+baseline and constructs only synthetic databases from the usage-table/index
+DDL. It compares the two exact budget implementations, full query DTOs and
+phase durations, with pending and checkpointed WAL. It accepts no existing DB
+path. Timing is local and warm after seeding, not production or cold-cache
+evidence. Run it separately from test suites; reproducible commands and measured
+results are recorded with this follow-up's PR.
+
+A distinct local helper defect compared diagnostic objects by JSON string
+order. Its correction and real Python sorted-key round-trip tests live in a
+new local helper copy; frozen query05 files, consumed authorizations and old
+receipts are not rewritten. This helper correction is not part of the deployed
+application and cannot repair the reader's actual timeout by itself.
+
+Scope: `release_unit: control-plane-app`, `identity_impact: false`; no production
+read, installation, backend/Admin activation, protocol, collector or accounting
+change. Any later production query must use a newly bound, explicitly approved
+record; source tests do not authorize replay of query05 or demonstrate its repair.
+
+Local validation for this follow-up: fresh Windows `npm ci` under Node 24.16.0
+and npm 11.13.0; source environment preflight ready; 78 targeted query tests
+passed. Full `npm test` reported 6,642 tests: 6,573 passed, 69 skipped and zero
+failures (164.8 s). The diagnostic-helper copy passed 39 tests including real
+Python 3.11.9 sorted-key round trips; its corrected contract SHA-256 is
+`1ac4a141a7650a5c2a88dbd3e3f1d317a77fa29133c021f7a239c2ffe621c2b2`.
+This local helper is retained in ignored `output/ledger-diagnostic-order-fix`,
+not shipped as an application module or runnable production record. Independent
+review and integration remain pending; no new Linux/production pass is claimed.
+
+Budget experiment results (three runs per version and mode, median):
+
+| Synthetic samples / WAL mode | Old / new budget (ms) | Old / new complete core (ms) |
+| --- | ---: | ---: |
+| 550,000 / pending WAL | 65.099 / 57.070 | 4,544.538 / 4,627.421 |
+| 550,000 / checkpointed | 61.857 / 52.831 | 4,449.960 / 4,441.216 |
+| 1,000,000 / pending WAL | 121.925 / 120.278 | 8,483.066 / 8,451.010 |
+| 1,000,000 / checkpointed | 101.882 / 90.282 | 8,424.251 / 8,375.494 |
+
+All 24 complete-core DTOs matched, 72 SQL cap-boundary checks agreed, and the
+four scenarios preserved their DB/WAL bytes. Both plans used the same covering
+indexes; OFFSET removed coroutine/aggregate work, not the O(n) traversal. Each
+fixture used SQLite 3.53.1, 61 accounts, 181 credentials/rollups and six source
+categories across 21 days. These are direct synchronous synthetic-core runs,
+not real reader-process acceptance or the highest account/rollup cardinalities.
+
+The small budget saving did **not** establish a consistent significant
+end-to-end improvement or reproduce the production 8,736 ms phase. Do not
+promote this as the production timeout repair. The next investigation needs to
+separate the individual schema/budget statements from first-snapshot/WAL,
+storage and scheduling costs; this source change does not identify which is
+responsible, and does not authorize another production read.
+
+Reproduce separately from other test loads:
+
+```sh
+node scripts/profile-admin-ledger-budget-probe.mjs --rows 550000 --runs 3 --output output/budget-probe-550000.json
+node scripts/profile-admin-ledger-budget-probe.mjs --rows 1000000 --runs 3 --output output/budget-probe-1000000.json
+```
+
+The profiler pins baseline `35c969eb53ecd689f4094c9a68d50891dbb1b26d` and verifies
+the actual current query is precisely that source with the sole budget-block
+replacement. Measured query LF SHA-256:
+`0a195e41f4ec18e3a7056984e06c7a4baa27ec50958137b2de3e78be02669aed`.
+Report SHA-256 values, respectively:
+`a2205a5811eab95771b200dda85c4363eda2be203713e0e466abeccb3efd48c6`
+and `56e03c9d04c709f9db0169ad874000ced6cd925db443428edaf0753b48b6dbbb`.
+Only self-created temporary synthetic fixture directories were removed;
+reports and the independent helper correction are retained locally.
+
 ### Query04 follow-up: opt-in phase diagnostics (source only, 2026-10-19 UTC)
 
 The [#791 query04 receipt](https://github.com/FlyLink-com/proxy-gateway-minimal/pull/791#issuecomment-6252907602)

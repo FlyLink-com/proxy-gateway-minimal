@@ -120,12 +120,14 @@ function assertTablesAndBudget(db, scanLimit) {
       || !/^\s*create\s+table\b/i.test(schema.sql)) fail("source_unavailable");
     const columns = new Set(db.prepare(`pragma table_info(${table})`).all().map((column) => column.name));
     if (requiredColumns.some((column) => !columns.has(column))) fail("source_unavailable");
-    // COUNT over a bounded subquery visits at most cap+1 rows, unlike LIMIT on
-    // the result of a full-table aggregate. Never publish a truncated total.
-    const { row_count: count } = db.prepare(`
-      select count(*) as row_count from (select 1 from ${table} limit ?)
-    `).get(scanLimit + 1);
-    if (safeCount(count) > scanLimit) fail("scan_limit_exceeded");
+    // We only need to know whether a cap+1th row exists. OFFSET still visits
+    // at most cap+1 rows, but avoids a subquery coroutine and COUNT per row.
+    // This is a budget check, not pagination: later validation and aggregates
+    // still consume the entire snapshot and never publish truncated totals.
+    const excess = db.prepare(`
+      select 1 as over_budget from ${table} limit 1 offset ?
+    `).get(scanLimit);
+    if (excess) fail("scan_limit_exceeded");
   }
 }
 
