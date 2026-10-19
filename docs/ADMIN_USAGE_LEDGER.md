@@ -12,6 +12,55 @@ document_metadata:
 
 ## Intent and current stage
 
+### Explicit diagnostic entry and bounded result contract (source only)
+
+`scripts/admin-ledger-schema-budget-entry.mjs` now provides a separate operator
+entry for the schema/budget probe, not an application endpoint. It requires the
+private `--schema-budget-entry-v1` flag, bounded stdin JSON and a separately
+drained progress pipe at fd 3. It does not discover database paths, load runtime
+environment files, call SSH/systemd, install files or retry a previous query.
+
+The request binds one absolute canonical database path, scan limit and expected
+decimal-string `dev/ino/uid/gid/mode/nlink`. A regular, single-link file and its
+canonical path must match before the worker starts; the entry holds a read-only
+descriptor and rechecks path/descriptor identity after the attempt, including
+failure paths. Size/mtime are intentionally excluded so normal database growth
+is not mistaken for file replacement. These checks detect drift, not an atomic
+write freeze or protection against a malicious swap-and-restore; trusted parent
+directories, exact runtime/source and the operator's production scope remain
+the responsibility of the separately bound execution record.
+
+Stdout contains only the versioned safe entry result and compact probe report,
+at most 16 KiB. The separate `schema-budget-report` module replays every event
+through the strict probe parser and validates terminal/cleanup consistency.
+CPU/resource values use documented fixed-position numeric arrays; null means
+unknown, never zero. Duplicate keys, extra fields, invalid values, incomplete
+success and oversized reports are refused. Object key ordering is immaterial.
+
+Fd 3 contains only already-validated diagnostics, bounded by the probe's 48 KiB
+internal stream cap. The external caller must continuously drain and safely
+retain this private stream independently of the entry, enforce a whole-task
+deadline, and prove task/cgroup cleanup. A blocked output pipe can block a
+synchronous write; the inner ten-second worker deadline alone cannot enforce
+the caller's lifetime. Entry descriptor closure is not worker/cgroup closure.
+Neither a partial prefix nor nine successful SQL operations establishes complete
+ledger retrieval or Admin launch readiness. No environment contents, file paths,
+file identity values, user rows, row counts or usage totals are emitted.
+
+Focused source validation commands:
+
+```sh
+node --test server/tests/admin-ledger-schema-budget-probe.test.mjs server/tests/admin-ledger-schema-budget-probe-supervisor.test.mjs server/tests/admin-ledger-schema-budget-report.test.mjs server/tests/admin-ledger-schema-budget-entry.test.mjs
+```
+
+Linux validation uses synthetic SQLite fixtures in a fresh private local WSL
+directory, a pinned Node 22.23.1 runtime and retained matching-version Linux
+dependencies, with no network namespace connectivity or production data.
+The locally compiled SQLite native binary differs from the historical BWH
+binary; these tests cannot establish identical production performance. The
+entry and result modules do not themselves create an executable production
+authorization, install or switch backend/Admin, or renew consumed query05.
+
 ### Query05 statement attribution preparation (source only, 2026-10-19 UTC)
 
 The historical 8,736 ms is **wall time**, not measured CPU time. Query05 did not
