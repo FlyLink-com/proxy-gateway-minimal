@@ -17,9 +17,20 @@ export type DistributionCandidate = {
   id: string; sourceId: string; sourceName: string; displayName: string; protocol: string; countryCode: string;
   enabled: boolean; sourceEnabled: boolean; tiers: DistributionPlan[];
 };
+export type DistributionAutomation = {
+  clientHealthCheckEnabled: boolean; dailyRotationEnabled: boolean;
+  healthCheckIntervalSeconds: 300; rotationTimezone: "UTC";
+};
+export type BwhSupplySnapshot = {
+  revision: string; state: "enabled" | "paused" | "transitioning" | "failed" | "unavailable";
+  protocolsRunning: number; collectorState: "running" | "paused" | "unknown";
+  nativeDistributionEnabled: boolean; observedAt: string | null; canPause: boolean; canEnable: boolean;
+};
 export type DistributionSnapshot = {
   revision: string; owned: { enabled: boolean; items: OwnedDistributionNode[] };
   routes: DistributionRoute[]; candidates: DistributionCandidate[];
+  automation?: DistributionAutomation;
+  bwhSupply?: BwhSupplySnapshot;
 };
 export type OwnedDistributionSave = {
   revision: string; enabled: boolean;
@@ -33,6 +44,7 @@ export interface SubscriptionDistributionClient {
   read(signal?: AbortSignal): Promise<DistributionSnapshot>;
   saveRoutes(input: { revision: string; routes: DistributionRoute[] }, signal?: AbortSignal): Promise<DistributionSnapshot>;
   saveOwned(input: OwnedDistributionSave, signal?: AbortSignal): Promise<DistributionSnapshot>;
+  setBwhSupply(input: { revision: string; supplyRevision: string; enabled: boolean }, signal?: AbortSignal): Promise<DistributionSnapshot>;
 }
 
 function fail(): never { throw new DistributionError("invalid"); }
@@ -71,6 +83,37 @@ function routes(value: unknown): DistributionRoute[] {
   if (result.length !== 3 || new Set(result.map((item) => item.planId)).size !== 3) fail();
   return result;
 }
+function automation(value: unknown): DistributionAutomation {
+  const item = object(value);
+  keys(item, ["clientHealthCheckEnabled", "dailyRotationEnabled", "healthCheckIntervalSeconds", "rotationTimezone"]);
+  if (item.healthCheckIntervalSeconds !== 300 || item.rotationTimezone !== "UTC") fail();
+  return { clientHealthCheckEnabled: bool(item.clientHealthCheckEnabled), dailyRotationEnabled: bool(item.dailyRotationEnabled),
+    healthCheckIntervalSeconds: 300, rotationTimezone: "UTC" };
+}
+function observationTime(value: unknown): string | null {
+  if (value === null) return null;
+  if (typeof value !== "string") fail();
+  const match = /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(?:\.(\d{1,3}))?Z$/.exec(value);
+  if (!match) fail();
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime()) || date.toISOString() !== `${match[1]}.${(match[2] ?? "").padEnd(3, "0")}Z`) fail();
+  return value;
+}
+function bwhSupply(value: unknown): BwhSupplySnapshot {
+  const item = object(value);
+  keys(item, ["revision", "state", "protocolsRunning", "collectorState", "nativeDistributionEnabled", "observedAt", "canPause", "canEnable"]);
+  if (!["enabled", "paused", "transitioning", "failed", "unavailable"].includes(item.state as string)
+    || !["running", "paused", "unknown"].includes(item.collectorState as string)
+    || !Number.isInteger(item.protocolsRunning) || (item.protocolsRunning as number) < 0 || (item.protocolsRunning as number) > 3) fail();
+  return { revision: id(item.revision, REVISION), state: item.state as BwhSupplySnapshot["state"],
+    protocolsRunning: item.protocolsRunning as number, collectorState: item.collectorState as BwhSupplySnapshot["collectorState"],
+    nativeDistributionEnabled: bool(item.nativeDistributionEnabled), observedAt: observationTime(item.observedAt),
+    canPause: bool(item.canPause), canEnable: bool(item.canEnable) };
+}
+export function isVerifiedBwhSupplyState(value: BwhSupplySnapshot | undefined, enabled: boolean): boolean {
+  return Boolean(value && value.state === (enabled ? "enabled" : "paused") && value.protocolsRunning === (enabled ? 3 : 0)
+    && value.collectorState === (enabled ? "running" : "paused") && value.nativeDistributionEnabled === enabled);
+}
 async function readBoundedJson(response: Response, signal: AbortSignal): Promise<unknown> {
   if (!response.body) fail();
   const reader = response.body.getReader();
@@ -95,7 +138,7 @@ async function readBoundedJson(response: Response, signal: AbortSignal): Promise
   } finally { reader.releaseLock(); }
 }
 function parseSnapshot(value: unknown): DistributionSnapshot {
-  const data = object(value); keys(data, ["revision", "owned", "routes", "candidates"]);
+  const data = object(value); keys(data, ["revision", "owned", "routes", "candidates"], ["automation", "bwhSupply"]);
   const owned = object(data.owned); keys(owned, ["enabled", "items"]);
   const items = unique(array(owned.items, 256).map((value): OwnedDistributionNode => {
     const item = object(value);
@@ -114,17 +157,19 @@ function parseSnapshot(value: unknown): DistributionSnapshot {
       displayName: text(item.displayName), protocol: protocol(item.protocol), countryCode: country(item.countryCode),
       enabled: bool(item.enabled), sourceEnabled: bool(item.sourceEnabled), tiers };
   }));
-  return { revision: id(data.revision, REVISION), owned: { enabled: bool(owned.enabled), items }, routes: routes(data.routes), candidates };
+  return { revision: id(data.revision, REVISION), owned: { enabled: bool(owned.enabled), items }, routes: routes(data.routes), candidates,
+    ...(Object.hasOwn(data, "automation") ? { automation: automation(data.automation) } : {}),
+    ...(Object.hasOwn(data, "bwhSupply") ? { bwhSupply: bwhSupply(data.bwhSupply) } : {}) };
 }
 
 export function createSubscriptionDistributionClient({ fetcher = fetch, timeoutMs = 15_000 }: { fetcher?: typeof fetch; timeoutMs?: number } = {}): SubscriptionDistributionClient {
-  async function request(path: string, body?: unknown, signal?: AbortSignal): Promise<DistributionSnapshot> {
+  async function request(path: string, body?: unknown, signal?: AbortSignal, requestTimeoutMs = timeoutMs): Promise<DistributionSnapshot> {
     const controller = new AbortController();
     let timedOut = false;
     const abort = () => controller.abort();
     if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
     signal?.addEventListener("abort", abort, { once: true });
-    const timer = setTimeout(() => { timedOut = true; controller.abort(); }, timeoutMs);
+    const timer = setTimeout(() => { timedOut = true; controller.abort(); }, requestTimeoutMs);
     try {
       const response = await fetcher(`${ROOT}${path}`, {
         method: body === undefined ? "GET" : "PUT", credentials: "same-origin", mode: "same-origin", cache: "no-store", redirect: "error", signal: controller.signal,
@@ -149,6 +194,14 @@ export function createSubscriptionDistributionClient({ fetcher = fetch, timeoutM
   }
   return {
     read: (signal) => request("", undefined, signal),
+    setBwhSupply(input, signal) {
+      const data = object(input); keys(data, ["revision", "supplyRevision", "enabled"]);
+      const enabled = bool(data.enabled);
+      return request("/supply", { revision: id(data.revision, REVISION), supplyRevision: id(data.supplyRevision, REVISION), enabled }, signal, 60_000).then((snapshot) => {
+        if (!isVerifiedBwhSupplyState(snapshot.bwhSupply, enabled)) fail();
+        return snapshot;
+      });
+    },
     saveRoutes(input, signal) {
       const data = object(input); keys(data, ["revision", "routes"]);
       const selectedRoutes = routes(data.routes);

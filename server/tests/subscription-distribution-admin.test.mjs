@@ -10,7 +10,7 @@ const ROOT = "/api/admin/third-party-subscriptions/distribution";
 const REVISION = "a".repeat(64);
 const ROUTES = ["monthly_basic", "monthly_plus", "yearly"].map((planId) => ({ planId, mode: "owned", nodeIds: [] }));
 
-async function fixture(t, { enabled = true, available = true, role = "admin", failure } = {}) {
+async function fixture(t, { enabled = true, available = true, role = "admin", failure, supply, authEnabled = true } = {}) {
   const calls = [];
   const snapshot = { revision: REVISION, owned: { enabled: true, items: [] }, routes: ROUTES, candidates: [] };
   const store = {
@@ -18,16 +18,16 @@ async function fixture(t, { enabled = true, available = true, role = "admin", fa
     writeRoutes(body) { calls.push(["routes", body]); if (failure) throw failure; return snapshot; },
     writeOwned(body) { calls.push(["owned", body]); if (failure) throw failure; return snapshot; }
   };
-  const state = { platform: { adminAuthRoutesEnabled: true, adminAuth: {} }, subscriptionDistribution: { enabled, available, store } };
+  const state = { platform: { adminAuthRoutesEnabled: authEnabled, adminAuth: {}, adminBrowserOrigin: "https://admin.example.test" }, subscriptionDistribution: { enabled, available, store, ...(supply ? { supply } : {}) } };
   const app = express();
   app.use(express.json({ strict: false }));
   app.use((req, _res, next) => { if (role !== null) req.adminPrincipal = { role }; next(); });
   app.use(adminSubscriptionDistributionRoutes(state));
   const { server, baseUrl } = await listen(app);
   t.after(() => { server.closeAllConnections(); server.close(); });
-  async function request(method = "GET", body, suffix = "") {
+  async function request(method = "GET", body, suffix = "", headers = {}) {
     const response = await fetch(`${baseUrl}${ROOT}${suffix}`, {
-      method, headers: { "content-type": "application/json" },
+      method, headers: { "content-type": "application/json", ...headers },
       ...(body === undefined ? {} : { body: JSON.stringify(body) })
     });
     const raw = await response.text();
@@ -35,6 +35,48 @@ async function fixture(t, { enabled = true, available = true, role = "admin", fa
   }
   return { calls, snapshot, request };
 }
+
+test("BWH supply controls require session role, exact Origin, strict request and return verified full snapshot", async t => {
+  let writes = 0;
+  let enabled = true;
+  const supplyRevision = "b".repeat(64);
+  const supply = {
+    read() { return { revision: supplyRevision, state: enabled ? "enabled" : "paused", protocolsRunning: enabled ? 3 : 0,
+      collectorState: enabled ? "running" : "paused", nativeDistributionEnabled: enabled,
+      observedAt: "2026-10-19T00:00:00.000Z", canPause: enabled, canEnable: !enabled }; },
+    async setEnabled(input) { assert.deepEqual(input, { revision: REVISION, supplyRevision, enabled: false }); writes += 1; enabled = false; return this.read(); }
+  };
+  const f = await fixture(t, { supply });
+  assert.equal((await f.request()).body.bwhSupply.state, "enabled");
+  const input = { revision: REVISION, supplyRevision, enabled: false };
+  for (const origin of [undefined, "https://evil.test"]) {
+    assert.equal((await f.request("PUT", input, "/supply", origin ? { Origin: origin } : {})).response.status, 403);
+  }
+  for (const body of [{ ...input, unit: "nginx.service" }, { ...input, enabled: "false" }, { ...input, supplyRevision: "invalid" }]) {
+    assert.equal((await f.request("PUT", body, "/supply", { Origin: "https://admin.example.test" })).response.status, 400);
+  }
+  assert.equal(writes, 0);
+  const accepted = await f.request("PUT", input, "/supply", { Origin: "https://admin.example.test" });
+  assert.equal(accepted.response.status, 200);
+  assert.equal(accepted.response.headers.get("cache-control"), "no-store");
+  assert.equal(accepted.body.bwhSupply.state, "paused");
+  assert.equal(accepted.body.revision, REVISION);
+  assert.equal(accepted.body.bwhSupply.nativeDistributionEnabled, false);
+  assert.equal(writes, 1);
+  const legacy = await fixture(t, { authEnabled: false, supply });
+  assert.equal((await legacy.request("PUT", input, "/supply", { Origin: "https://admin.example.test" })).response.status, 403);
+  assert.equal(writes, 1);
+});
+
+test("BWH supply failures are sanitized and never claim a paused state", async t => {
+  const f = await fixture(t, { supply: { read: () => ({ state: "unavailable" }), async setEnabled() {
+    throw Object.assign(new Error("private-host-secret"), { code: "bwh_supply_unavailable" });
+  } } });
+  const response = await f.request("PUT", { revision: REVISION, supplyRevision: "b".repeat(64), enabled: false }, "/supply", { Origin: "https://admin.example.test" });
+  assert.equal(response.response.status, 503);
+  assert.equal(response.raw.includes("private-host-secret"), false);
+  assert.equal(response.body.state, undefined);
+});
 
 test("distribution Admin read and writes return no-store snapshots", async (t) => {
   const f = await fixture(t);
@@ -120,27 +162,27 @@ test("real application enforces session, CIDR and Admin role on all distribution
       proxyConfig: { servers: [], pingHosts: [], nginx: {} },
       services: { ssLocal: { status: () => ({ running: false }) }, httpProxy: { status: () => ({ running: false }) } },
       security: { adminAllowedCidrs: cidrs },
-      platform: { adminAuthRoutesEnabled: true, adminAuth: auth, adminRole: role },
+      platform: { adminAuthRoutesEnabled: true, adminAuth: auth, adminRole: role, adminBrowserOrigin: "https://admin.example.test" },
       subscriptionDistribution: { enabled: true, available: true, store: {
         getSnapshot() { calls += 1; return result; },
         writeRoutes() { calls += 1; return result; },
         writeOwned() { calls += 1; return result; }
-      } },
+      }, supply: { read: () => ({ state: "enabled" }), setEnabled: async () => { calls += 1; return { state: "paused" }; } } },
       isPortListening: async () => false,
       runCommand: async () => ({ ok: true, stdout: "", stderr: "", code: 0, timedOut: false })
     };
     const { server, baseUrl } = await listen(createApp(state));
     try {
-      for (const [method, suffix, body] of [["GET", ""], ["PUT", "", { revision: REVISION, routes: ROUTES }], ["PUT", "/owned", { revision: REVISION, enabled: true, nodes: [] }]]) {
+      for (const [method, suffix, body] of [["GET", ""], ["PUT", "", { revision: REVISION, routes: ROUTES }], ["PUT", "/owned", { revision: REVISION, enabled: true, nodes: [] }], ["PUT", "/supply", { revision: REVISION, supplyRevision: "b".repeat(64), enabled: false }]]) {
         const response = await fetch(`${baseUrl}${ROOT}${suffix}`, {
-          method, headers: { "content-type": "application/json", ...(cookieHeader ? { cookie: cookieHeader } : {}) },
+          method, headers: { "content-type": "application/json", Origin: "https://admin.example.test", ...(cookieHeader ? { cookie: cookieHeader } : {}) },
           ...(body ? { body: JSON.stringify(body) } : {})
         });
         assert.equal(response.status, expected);
         assert.equal(response.headers.get("cache-control"), "no-store");
         await response.arrayBuffer();
       }
-      assert.equal(calls, expected === 200 ? 3 : 0);
+      assert.equal(calls, expected === 200 ? 5 : 0);
     } finally { server.closeAllConnections(); server.close(); }
   }
 });

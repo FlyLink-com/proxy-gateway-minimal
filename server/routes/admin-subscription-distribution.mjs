@@ -8,7 +8,9 @@ const OWNED_NODE = /^ownnode_[a-f0-9]{32}$/;
 const IMPORTED_NODE = /^tpnode_[a-f0-9]{32}$/;
 const PUBLIC_CODES = new Set([
   "invalid_input", "invalid_node_name", "duplicate_node_name", "empty_source",
-  "invalid_node", "revision_conflict", "distribution_unavailable"
+  "invalid_node", "revision_conflict", "distribution_unavailable", "bwh_supply_unavailable",
+  "bwh_supply_conflict", "bwh_supply_busy", "bwh_supply_routes_required", "bwh_supply_invalid_input",
+  "supply_busy", "third_party_required", "supply_unavailable", "supply_failed"
 ]);
 
 function exact(value, keys, optional = []) {
@@ -69,25 +71,55 @@ export function adminSubscriptionDistributionRoutes(state) {
       failure(res, "invalid_input", 400);
       return;
     }
+    if (req.method === "PUT" && state.subscriptionDistribution.supply?.isTransitioning?.() === true) {
+      failure(res, "supply_busy", 409); return;
+    }
     next();
   });
 
-  const execute = (operation) => (req, res) => {
+  const withSupply = (snapshot) => state.subscriptionDistribution.supply
+    ? { ...snapshot, bwhSupply: state.subscriptionDistribution.supply.read() } : snapshot;
+  const execute = (operation) => async (req, res) => {
     try {
-      res.json(operation(state.subscriptionDistribution.store, req));
+      res.json(await operation(state.subscriptionDistribution.store, req));
     } catch (error) {
       const code = PUBLIC_CODES.has(error?.code) ? error.code : "distribution_unavailable";
-      failure(res, code, code === "revision_conflict" ? 409 : code === "distribution_unavailable" ? 503 : 400);
+      failure(res, code, ["revision_conflict", "bwh_supply_conflict", "bwh_supply_busy", "supply_busy", "third_party_required"].includes(code) ? 409
+        : ["distribution_unavailable", "bwh_supply_unavailable", "supply_unavailable", "supply_failed"].includes(code) ? 503 : 400);
     }
   };
-  router.get(ROOT, execute((store) => store.getSnapshot()));
+  router.get(ROOT, execute((store) => withSupply(store.getSnapshot())));
   router.put(ROOT, (req, res, next) => {
     if (!validRoutes(req.body)) { failure(res, "invalid_input", 400); return; }
     next();
-  }, execute((store, req) => store.writeRoutes(req.body)));
+  }, execute((store, req) => withSupply(store.writeRoutes(req.body))));
   router.put(`${ROOT}/owned`, (req, res, next) => {
     if (!validOwned(req.body)) { failure(res, "invalid_input", 400); return; }
     next();
-  }, execute((store, req) => store.writeOwned(req.body)));
+  }, execute((store, req) => withSupply(store.writeOwned(req.body))));
+  router.put(`${ROOT}/supply`, (req, res, next) => {
+    // Actual service control never inherits the legacy console-token-only
+    // write path. Its browser mutation always binds a configured exact origin.
+    const platform = state.platform;
+    if (!platform?.adminAuthRoutesEnabled || !platform.adminAuth
+      || !["admin", "super_admin"].includes(req.adminPrincipal?.role)
+      || typeof platform.adminBrowserOrigin !== "string" || !platform.adminBrowserOrigin
+      || req.get("origin") !== platform.adminBrowserOrigin
+      || (req.get("sec-fetch-site") && req.get("sec-fetch-site") !== "same-origin")) {
+      failure(res, "admin_permission_required", 403); return;
+    }
+    if (!exact(req.body, ["revision", "supplyRevision", "enabled"])
+      || ![req.body.revision, req.body.supplyRevision].every(value => typeof value === "string" && REVISION.test(value))
+      || typeof req.body.enabled !== "boolean") {
+      failure(res, "invalid_input", 400); return;
+    }
+    if (typeof state.subscriptionDistribution.supply?.setEnabled !== "function") {
+      failure(res, "bwh_supply_unavailable", 503); return;
+    }
+    next();
+  }, execute(async (store, req) => {
+    const bwhSupply = await state.subscriptionDistribution.supply.setEnabled(req.body);
+    return { ...store.getSnapshot(), bwhSupply };
+  }));
   return router;
 }

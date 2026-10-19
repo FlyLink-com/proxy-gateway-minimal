@@ -2,7 +2,7 @@ import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { ModalFrame } from "../../shared/public/modal-frame";
 import { NODE_COUNTRY_OPTIONS, countryFlag } from "./node-country-model";
 import {
-  createSubscriptionDistributionClient, DistributionError, DISTRIBUTION_PLANS,
+  createSubscriptionDistributionClient, DistributionError, DISTRIBUTION_PLANS, isVerifiedBwhSupplyState,
   type DistributionPlan, type DistributionSnapshot, type SubscriptionDistributionClient
 } from "./subscription-distribution-client";
 import "./subscription-distribution-panel.styles.css";
@@ -16,10 +16,16 @@ const ERROR_COPY = {
   network: "请求结果未确认，请重新读取状态；不会自动重试保存。",
   timeout: "请求超时，结果未确认。请重新读取状态；不会自动重试保存。"
 };
-type Confirmation = "routes" | "owned" | "reload" | null;
+const SUPPLY_LABELS = { enabled: "已启用", paused: "已暂停", transitioning: "处理中", failed: "失败待核对", unavailable: "不可用" };
+type Confirmation = "routes" | "owned" | "reload" | "supply-pause" | "supply-enable" | null;
 function clone(value: DistributionSnapshot): DistributionSnapshot { return JSON.parse(JSON.stringify(value)) as DistributionSnapshot; }
 function dirtyPart(saved: DistributionSnapshot | null, draft: DistributionSnapshot | null, part: "owned" | "routes") {
   return Boolean(saved && draft && JSON.stringify(saved[part]) !== JSON.stringify(draft[part]));
+}
+function supplyIdentity(value: DistributionSnapshot) {
+  if (!value.bwhSupply) return undefined;
+  const { revision, state, protocolsRunning, collectorState, nativeDistributionEnabled, canPause, canEnable } = value.bwhSupply;
+  return JSON.stringify({ revision, state, protocolsRunning, collectorState, nativeDistributionEnabled, canPause, canEnable });
 }
 
 export function SubscriptionDistributionPanel({ onSessionExpired, client: providedClient }: {
@@ -45,7 +51,7 @@ export function SubscriptionDistributionPanel({ onSessionExpired, client: provid
   const dirty = routesDirty || ownedDirty;
   const locked = busy || stale;
 
-  const run = useCallback(async (operation: (signal: AbortSignal) => Promise<DistributionSnapshot>, mutation = false) => {
+  const run = useCallback(async (operation: (signal: AbortSignal) => Promise<DistributionSnapshot>, mutation = false, successMessage?: string) => {
     if (inFlightRef.current) return;
     inFlightRef.current = true;
     const controller = new AbortController(); controllerRef.current = controller;
@@ -54,7 +60,7 @@ export function SubscriptionDistributionPanel({ onSessionExpired, client: provid
       const result = await operation(controller.signal);
       if (!mountedRef.current || controller.signal.aborted) return;
       setSaved(result); setDraft(clone(result)); setStale(false);
-      setMessage(mutation ? "分发设置已保存。客户端成功刷新订阅后生效。" : "已读取当前分发设置。");
+      setMessage(successMessage ?? (mutation ? "分发设置已保存。客户端成功刷新订阅后生效。" : "已读取当前分发设置。"));
     } catch (caught) {
       if (!mountedRef.current || controller.signal.aborted) return;
       const code = caught instanceof DistributionError ? caught.code : "network";
@@ -96,12 +102,23 @@ export function SubscriptionDistributionPanel({ onSessionExpired, client: provid
   const invalidPlans = draft?.routes.filter((route) => route.mode === "third-party" && (route.nodeIds.length === 0 || route.nodeIds.some((id) => !draft.candidates.some((node) => node.id === id && node.enabled && node.sourceEnabled && node.tiers.includes(route.planId))))) ?? [];
   function confirmSave() {
     if (!draft || !saved || busy || stale) return;
-    if (confirmation === "routes") {
+    if (confirmation === "supply-pause" || confirmation === "supply-enable") {
+      const enabled = confirmation === "supply-enable";
+      const supply = saved.bwhSupply;
+      if (dirty || !supply || supply.state === "unavailable" || supply.state === "transitioning" || !(enabled ? supply.canEnable : supply.canPause)) return;
+      void run(async (signal) => {
+        const result = await client.setBwhSupply({ revision: saved.revision, supplyRevision: supply.revision, enabled }, signal);
+        if (!isVerifiedBwhSupplyState(result.bwhSupply, enabled) || JSON.stringify(result.owned) !== JSON.stringify(saved.owned)
+          || JSON.stringify(result.routes) !== JSON.stringify(saved.routes) || JSON.stringify(result.candidates) !== JSON.stringify(saved.candidates)
+          || JSON.stringify(result.automation) !== JSON.stringify(saved.automation)) throw new DistributionError("invalid");
+        return result;
+      }, true, enabled ? "BWH 协议、身份与检查点已核验，供流及计量调度已恢复；自然采集结果仍需验收，已保存路由不变。" : "BWH 供流已暂停，自有节点停止下发；仅保留所选第三方配置。");
+    } else if (confirmation === "routes") {
       if (invalidPlans.length || ownedDirty) return;
       const input = { revision: saved.revision, routes: draft.routes.map((route) => ({ ...route, nodeIds: [...route.nodeIds] })) };
       void run(async (signal) => {
         const result = await client.saveRoutes(input, signal);
-        if (JSON.stringify(result.owned) !== JSON.stringify(saved.owned) || JSON.stringify(result.candidates) !== JSON.stringify(saved.candidates)) throw new DistributionError("invalid");
+        if (JSON.stringify(result.owned) !== JSON.stringify(saved.owned) || JSON.stringify(result.candidates) !== JSON.stringify(saved.candidates) || JSON.stringify(result.automation) !== JSON.stringify(saved.automation) || supplyIdentity(result) !== supplyIdentity(saved)) throw new DistributionError("invalid");
         return result;
       }, true);
     } else if (confirmation === "owned") {
@@ -111,7 +128,7 @@ export function SubscriptionDistributionPanel({ onSessionExpired, client: provid
       })) };
       void run(async (signal) => {
         const result = await client.saveOwned(input, signal);
-        if (JSON.stringify(result.routes) !== JSON.stringify(saved.routes) || JSON.stringify(result.candidates) !== JSON.stringify(saved.candidates)) throw new DistributionError("invalid");
+        if (JSON.stringify(result.routes) !== JSON.stringify(saved.routes) || JSON.stringify(result.candidates) !== JSON.stringify(saved.candidates) || JSON.stringify(result.automation) !== JSON.stringify(saved.automation) || supplyIdentity(result) !== supplyIdentity(saved)) throw new DistributionError("invalid");
         return result;
       }, true);
     }
@@ -128,6 +145,23 @@ export function SubscriptionDistributionPanel({ onSessionExpired, client: provid
       {message ? <p role="status">{message}</p> : null}
       {busy && !draft ? <p role="status">正在读取分发设置…</p> : null}
       {draft ? <>
+        {draft.bwhSupply ? <section aria-label="BWH 实际供流">
+          <h4>BWH 实际供流</h4>
+          <p>供流状态：{SUPPLY_LABELS[draft.bwhSupply.state]}。协议运行 {draft.bwhSupply.protocolsRunning} / 3；计量调度{draft.bwhSupply.collectorState === "running" ? "已启用，待自然采集验收" : draft.bwhSupply.collectorState === "paused" ? "已暂停" : "状态未知"}；自有节点下发许可{draft.bwhSupply.nativeDistributionEnabled ? "开启" : "关闭"}。</p>
+          <p>这是实际供流控制，与下方“分发启停”不同。暂停会中断 BWH 代理连接，并停止自有节点下发；原订阅链接、账户、额度和历史用量保留，仅下发已选择的第三方节点。</p>
+          <button type="button" disabled={locked || dirty || Boolean(confirmation) || draft.bwhSupply.state === "transitioning" || draft.bwhSupply.state === "unavailable" || !draft.bwhSupply.canPause} onClick={() => setConfirmation("supply-pause")}>暂停 BWH 供流</button>
+          <button type="button" disabled={locked || dirty || Boolean(confirmation) || draft.bwhSupply.state === "transitioning" || draft.bwhSupply.state === "unavailable" || !draft.bwhSupply.canEnable} onClick={() => setConfirmation("supply-enable")}>启用 BWH 供流</button>
+          {dirty ? <p>请先保存或放弃分发草稿，再操作实际供流。</p> : null}
+          {draft.bwhSupply.state === "enabled" && !draft.bwhSupply.canPause ? <p>暂停前须将三个套餐的路由分别保存为有效的第三方节点；这不会自动为其他订阅补选节点。</p> : null}
+          {draft.bwhSupply.state === "unavailable" ? <p>宿主控制尚未安装或核验未通过；不会仅凭页面按钮执行停启。</p> : null}
+        </section> : null}
+        {draft.automation ? <section aria-label="客户端自动路由能力">
+          <h4>客户端自动路由能力 · 只读</h4>
+          <p>每日轮换：{draft.automation.dailyRotationEnabled ? "已启用" : "未启用"}。</p>
+          {draft.automation.dailyRotationEnabled ? <p>按 UTC 日期重排已选节点池，客户端成功刷新订阅后取得当天顺序；不减少节点，不会强制中断午夜时仍在使用的连接。</p> : null}
+          <p>客户端择优：{draft.automation.clientHealthCheckEnabled ? "已启用" : "未启用"}。</p>
+          {draft.automation.clientHealthCheckEnabled ? <p>支持的客户端每 300 秒通过节点进行真实协议连接测试并自动择优；服务器不主动探测节点，不代表集中式健康保证。原始 provider 片段的自动路由由父配置负责。</p> : null}
+        </section> : null}
         <fieldset disabled={locked || Boolean(confirmation) || routesDirty}>
           <legend>自有节点 · 系统来源</legend>
           <p>暂停分发仅停止后续配置下发。停止 BWH 旧连接供流需另行执行并验证；原有额度和计量保留。</p>
@@ -171,10 +205,16 @@ export function SubscriptionDistributionPanel({ onSessionExpired, client: provid
         </fieldset>
         <p className="subscription-distribution-footnote">客户端成功刷新订阅后取得新节点。第三方流量不计入自有用量；保存成功不代表旧 BWH 连接已经停止。</p>
       </> : null}
-      {confirmation ? <ModalFrame titleId={titleId} title={confirmation === "reload" ? "放弃未保存的分发设置？" : "确认保存订阅分发"} onClose={() => setConfirmation(null)} closeLabel="取消" closeDisabled={busy} footer={
-        <button type="button" disabled={busy} onClick={confirmation === "reload" ? () => void reload() : confirmSave}>{confirmation === "reload" ? "放弃草稿并重新读取" : "确认保存"}</button>
+      {confirmation ? <ModalFrame titleId={titleId} title={confirmation === "reload" ? "放弃未保存的分发设置？" : confirmation === "supply-pause" ? "确认暂停 BWH 实际供流" : confirmation === "supply-enable" ? "确认启用 BWH 实际供流" : "确认保存订阅分发"} onClose={() => setConfirmation(null)} closeLabel="取消" closeDisabled={busy} footer={
+        <button type="button" disabled={busy} onClick={confirmation === "reload" ? () => void reload() : confirmSave}>{confirmation === "reload" ? "放弃草稿并重新读取" : confirmation === "supply-pause" ? "确认暂停供流" : confirmation === "supply-enable" ? "确认启用供流" : "确认保存"}</button>
       }>
-        {confirmation === "reload" ? <p>重新读取将覆盖本页尚未保存的名称、国旗和路由选择。</p> : confirmation === "routes" ? <>
+        {confirmation === "reload" ? <p>重新读取将覆盖本页尚未保存的名称、国旗和路由选择。</p> : confirmation === "supply-pause" ? <>
+          <p>此操作会实际中断现有 BWH 代理连接，并停止自有节点下发；不是仅隐藏节点。</p>
+          <p>原订阅链接、账户、额度和历史用量保留；成功刷新后仅下发已选择的第三方节点。未选择有效第三方节点的订阅不会自动回落自有节点。</p>
+        </> : confirmation === "supply-enable" ? <>
+          <p>将申请恢复 BWH 实际供流；协议服务和计量均核验通过后，才恢复自有节点下发。</p>
+          <p>原订阅链接、账户、额度和历史用量保留；已选择的配置路由不变。</p>
+        </> : confirmation === "routes" ? <>
           <p>将保存以下全部套餐路由：</p><ul>{draft?.routes.map((value) => <li key={value.planId}>{PLAN_LABELS[value.planId]}：{value.mode === "owned" ? "自有节点" : `第三方节点（${value.nodeIds.length} 项）`}{value.mode === "third-party" ? <ul>{value.nodeIds.map((id) => <li key={id}>{draft.candidates.find((node) => node.id === id)?.displayName ?? "不可用节点"}</li>)}</ul> : null}</li>)}</ul>
           <p>用户成功刷新后生效，账户、额度与历史用量保持原状。</p>
         </> : <><p>将保存自有来源{draft?.owned.enabled ? "启用" : "暂停"}、各节点分发启停、名称和国旗。</p><p>此操作不会停止现有连接。</p></>}

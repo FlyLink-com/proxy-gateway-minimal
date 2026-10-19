@@ -20,6 +20,7 @@ import {
 import { createSqliteThirdPartySubscriptionStore } from "../services/platform/third-party-subscription-store.mjs";
 import { createSqliteSubscriptionDistributionStore } from "../services/platform/subscription-distribution-store.mjs";
 import { listen } from "./helpers/listen.mjs";
+import { parse as parseYaml } from "yaml";
 
 const NOW = "2026-10-19T00:00:00.000Z";
 const OWNED_HOST = "192.0.2.80";
@@ -41,7 +42,7 @@ function hasNoMaterials(body) {
     .some(value => body.includes(value));
 }
 
-async function fixture(t) {
+async function fixture(t, options = {}) {
   const subscriptionDb = new Database(":memory:");
   const distributionDb = new Database(":memory:");
   let server;
@@ -53,6 +54,7 @@ async function fixture(t) {
   });
   let now = NOW;
   let available = true;
+  let nativeSupply = true;
   let sequence = 0;
   const stats = { hookCalls: 0, gateCalls: 0, materialCalls: 0, networkCalls: 0 };
   const nowFn = () => new Date(now);
@@ -85,7 +87,8 @@ async function fixture(t) {
     getUsageRollupByEdgeCredentialRef: () => ({ ...history })
   };
   const distributionStore = createSqliteSubscriptionDistributionStore({ database: distributionDb,
-    proxyConfig: ownedConfig, thirdPartyStore, controlStore, nowFn });
+    proxyConfig: ownedConfig, thirdPartyStore, controlStore, nowFn, routingPolicy: options.routingPolicy,
+    nativeSupplyAllowed: options.controlNativeSupply ? () => nativeSupply : undefined });
   assert.equal(distributionStore.available, true);
   const repository = createSubscriptionRepository({ database: subscriptionDb });
   const core = createSubscriptionCore({ repository, proxyConfig: ownedConfig, nowFn,
@@ -123,18 +126,18 @@ async function fixture(t) {
     const response = await fetch(listening.baseUrl + path);
     return { status: response.status, headers: response.headers, body: await response.text() };
   };
-  function route(mode) {
+  function route(mode, nodeIds = [selectedId]) {
     const snapshot = distributionStore.getSnapshot();
     return distributionStore.writeRoutes({ revision: snapshot.revision, routes: snapshot.routes.map(value =>
       value.planId === "monthly_basic" ? { planId: value.planId, mode,
-        nodeIds: mode === "third-party" ? [selectedId] : [] } : value) });
+        nodeIds: mode === "third-party" ? nodeIds : [] } : value) });
   }
   function stableBusinessState() {
     return JSON.stringify({ history, bindings: [...bindings], tenants: repository.listTenants().map(({ id, expiresAt, nodeId, status, credentialMode }) =>
       ({ id, expiresAt, nodeId, status, credentialMode })) });
   }
   return { core, repository, source, selectedId, thirdPartyStore, distributionStore, artifacts, stats,
-    request, route, stableBusinessState, ownedAvailable(value) { available = value; }, clock(value) { now = value; } };
+    request, route, stableBusinessState, ownedAvailable(value) { available = value; }, nativeSupply(value) { nativeSupply = value; }, clock(value) { now = value; } };
 }
 
 async function assertThirdPartyOnly(f, paths) {
@@ -283,4 +286,72 @@ test("unqualified tenant cannot select third-party material even while the same 
     assert.equal(result.status, 503);
     assert.equal(hasNoMaterials(result.body), true);
   }
+});
+
+test("original HTTP links carry client automatic groups and UTC daily priority without server network or business changes", async t => {
+  const f = await fixture(t, { routingPolicy: { clientHealthCheckEnabled: true, dailyRotationEnabled: true } });
+  const ids = f.distributionStore.getSnapshot().candidates.map(node => node.id);
+  f.route("third-party", ids);
+  f.ownedAvailable(false);
+  const beforeBusiness = f.stableBusinessState();
+  const paths = pathsFor("tenant_a", f.artifacts.tenant_a.secret);
+  const before = [];
+  for (const path of paths) {
+    const result = await f.request(path);
+    assert.equal(result.status, 200);
+    const yaml = parseYaml(result.body);
+    assert.equal(yaml.proxies.length, 2);
+    assert.equal(result.body.includes(OWNED_HOST), false);
+    assert.equal(result.body.includes("tpnode_"), false);
+    const names = yaml.proxies.map(item => item.name);
+    before.push(names);
+    if (path.endsWith("/provider.yaml")) {
+      assert.deepEqual(Object.keys(yaml), ["proxies"]);
+    } else {
+      const groups = yaml["proxy-groups"];
+      const auto = groups.find(item => item.name === "3P-AUTO");
+      const fallback = groups.find(item => item.name === "3P-FALLBACK");
+      assert.equal(groups.find(item => item.name === "GLOBAL").proxies[0], "3P-AUTO");
+      assert.equal(auto.type, "url-test");
+      assert.equal(auto.interval, 300);
+      assert.deepEqual(auto.proxies, names);
+      assert.equal(fallback.type, "fallback");
+      assert.deepEqual(fallback.proxies, names);
+    }
+  }
+  f.clock("2026-10-20T00:00:00.000Z");
+  for (const [index, path] of paths.entries()) {
+    const result = await f.request(path);
+    assert.equal(result.status, 200);
+    const names = parseYaml(result.body).proxies.map(item => item.name);
+    assert.notDeepEqual(names, before[index]);
+    assert.deepEqual([...names].sort(), [...before[index]].sort());
+  }
+  assert.equal(f.stableBusinessState(), beforeBusiness);
+  assert.equal(f.stats.networkCalls, 0);
+  assert.equal(f.stats.gateCalls, 0);
+  assert.equal(f.stats.materialCalls, 0);
+});
+
+test("BWH physical pause latch removes native output on every original link while selected third-party remains refreshable", async t => {
+  const f = await fixture(t, { controlNativeSupply: true });
+  const paths = pathsFor("tenant_a", f.artifacts.tenant_a.secret);
+  const business = f.stableBusinessState();
+  f.nativeSupply(false);
+  for (const path of paths) {
+    const blocked = await f.request(path);
+    assert.equal(blocked.status, 503);
+    assert.equal(hasNoMaterials(blocked.body), true);
+  }
+  f.route("third-party");
+  await assertThirdPartyOnly(f, paths);
+  for (const path of pathsFor("tenant_unqualified", f.artifacts.tenant_unqualified.secret)) {
+    const blocked = await f.request(path);
+    assert.equal(blocked.status, 503);
+    assert.equal(hasNoMaterials(blocked.body), true);
+  }
+  f.nativeSupply(true);
+  f.route("owned");
+  assert.equal((await f.request(paths[0])).status, 200);
+  assert.equal(f.stableBusinessState(), business);
 });

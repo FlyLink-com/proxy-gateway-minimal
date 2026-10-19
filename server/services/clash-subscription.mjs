@@ -1,4 +1,5 @@
 import { proxyDisplayName, validateProxyDisplayNames } from "./proxy-display-name.mjs";
+import { DISTRIBUTION_CLIENT_ROUTING } from "./subscription-distribution-routing.mjs";
 
 function yamlQuote(value) {
   return JSON.stringify(String(value ?? ""));
@@ -545,7 +546,34 @@ function pushThirdPartyCountryGroups(lines, countryGroups) {
   }
 }
 
-function pushGlobalSelectProxies(lines, servers, ownServers, countryGroups, { inline = false } = {}) {
+function distributionClientGroups(proxyConfig, servers, countryGroups) {
+  const rawServers = proxyConfig?.servers;
+  if (proxyConfig?.[DISTRIBUTION_CLIENT_ROUTING] !== true || !Array.isArray(rawServers)
+    || servers.length === 0 || rawServers.length !== servers.length
+    || !rawServers.every(server => server.thirdParty === true)) return [];
+  const occupied = new Set([...servers, ...countryGroups].map(value => value.name.toUpperCase()));
+  const reserve = preferred => {
+    let name = preferred;
+    let suffix = 2;
+    while (occupied.has(name.toUpperCase())) name = `${preferred}-${suffix++}`;
+    occupied.add(name.toUpperCase());
+    return name;
+  };
+  // Clients test through the actual selected protocol. Control-plane rendering
+  // does not probe, relay or claim server-side availability. Daily ordering is
+  // a priority order only; url-test may retain the same fastest node each day.
+  return [
+    { name: reserve("3P-AUTO"), type: "url-test", servers },
+    { name: reserve("3P-FALLBACK"), type: "fallback", servers }
+  ];
+}
+
+function pushDistributionClientGroups(lines, groups) {
+  for (const group of groups) pushProxyGroup(lines, group);
+}
+
+function pushGlobalSelectProxies(lines, servers, ownServers, countryGroups, { inline = false, clientGroups = [] } = {}) {
+  for (const group of clientGroups) lines.push(`      - ${group.name}`);
   if (ownServers.length > 0) {
     // The inline Mihomo template historically lists AUTO unconditionally when
     // servers exist; keep that byte-for-byte for non-third-party output.
@@ -717,7 +745,7 @@ function mihomoCoreHeader() {
   ];
 }
 
-function pushInlineGlobalGroup(lines, servers) {
+function pushInlineGlobalGroup(lines, servers, clientGroups = []) {
   const ownServers = ownGroupServers(servers);
   const countryGroups = thirdPartyCountryGroupEntries(servers);
   lines.push(
@@ -725,13 +753,14 @@ function pushInlineGlobalGroup(lines, servers) {
     "    type: select",
     "    proxies:"
   );
-  pushGlobalSelectProxies(lines, servers, ownServers, countryGroups, { inline: true });
+  pushGlobalSelectProxies(lines, servers, ownServers, countryGroups, { inline: true, clientGroups });
 }
 
 export function generateMihomoRenderTemplate(proxyConfig, options = {}) {
   const servers = clashServers(proxyConfig);
   const ownServers = ownGroupServers(servers);
   const countryGroups = thirdPartyCountryGroupEntries(servers);
+  const clientGroups = distributionClientGroups(proxyConfig, servers, countryGroups);
   const lines = [
     ...mihomoCoreHeader(),
     ...nodeDomainProtectionDnsLines(servers),
@@ -744,8 +773,9 @@ export function generateMihomoRenderTemplate(proxyConfig, options = {}) {
 
   lines.push("proxy-groups:");
   pushOwnProxyGroups(lines, ownServers);
+  pushDistributionClientGroups(lines, clientGroups);
   pushThirdPartyCountryGroups(lines, countryGroups);
-  pushInlineGlobalGroup(lines, servers);
+  pushInlineGlobalGroup(lines, servers, clientGroups);
 
   lines.push(
     "rules:",
@@ -808,6 +838,7 @@ export function generateClashSubscription(proxyConfig, options = {}) {
   const servers = clashServers(proxyConfig);
   const ownServers = ownGroupServers(servers);
   const countryGroups = thirdPartyCountryGroupEntries(servers);
+  const clientGroups = distributionClientGroups(proxyConfig, servers, countryGroups);
   const lines = [
     "mixed-port: 7897",
     "allow-lan: false",
@@ -822,6 +853,7 @@ export function generateClashSubscription(proxyConfig, options = {}) {
 
   lines.push("proxy-groups:");
   pushOwnProxyGroups(lines, ownServers);
+  pushDistributionClientGroups(lines, clientGroups);
   pushThirdPartyCountryGroups(lines, countryGroups);
 
   lines.push(
@@ -829,7 +861,7 @@ export function generateClashSubscription(proxyConfig, options = {}) {
     "    type: select",
     "    proxies:"
   );
-  pushGlobalSelectProxies(lines, servers, ownServers, countryGroups);
+  pushGlobalSelectProxies(lines, servers, ownServers, countryGroups, { clientGroups });
 
   lines.push(
     "rules:",

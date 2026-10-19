@@ -12,6 +12,10 @@ function snapshot() {
   };
 }
 function response(value: unknown, status = 200) { return new Response(JSON.stringify(value), { status, headers: { "Content-Type": "application/json" } }); }
+function supply() {
+  return { revision: "d".repeat(64), state: "enabled", protocolsRunning: 3, collectorState: "running", nativeDistributionEnabled: true,
+    observedAt: "2026-10-19T09:00:00.000Z", canPause: true, canEnable: false };
+}
 
 describe("subscription distribution transport boundary", () => {
   it("uses only same-origin cookie no-store routes and an abortable finite request", async () => {
@@ -54,6 +58,124 @@ describe("subscription distribution transport boundary", () => {
     await client.saveRoutes({ revision, routes });
     expect(fetcher.mock.calls[0][1].method).toBe("PUT");
     expect(JSON.parse(fetcher.mock.calls[0][1].body)).toEqual({ revision, routes });
+  });
+  it("accepts an exact optional automation capability without inventing it for legacy snapshots", async () => {
+    const automation = { clientHealthCheckEnabled: true, dailyRotationEnabled: true, healthCheckIntervalSeconds: 300, rotationTimezone: "UTC" };
+    const fetcher = vi.fn().mockResolvedValueOnce(response(snapshot())).mockResolvedValueOnce(response({ ...snapshot(), automation }));
+    const client = createSubscriptionDistributionClient({ fetcher });
+    expect(await client.read()).not.toHaveProperty("automation");
+    expect((await client.read()).automation).toEqual(automation);
+    expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+  it.each([[false, false], [true, false], [false, true]])("preserves independent capability flags (%s, %s)", async (clientHealthCheckEnabled, dailyRotationEnabled) => {
+    const automation = { clientHealthCheckEnabled, dailyRotationEnabled, healthCheckIntervalSeconds: 300, rotationTimezone: "UTC" };
+    const fetcher = vi.fn().mockResolvedValue(response({ ...snapshot(), automation }));
+    expect((await createSubscriptionDistributionClient({ fetcher }).read()).automation).toEqual(automation);
+  });
+  it.each([
+    null,
+    {},
+    { clientHealthCheckEnabled: "true", dailyRotationEnabled: true, healthCheckIntervalSeconds: 300, rotationTimezone: "UTC" },
+    { clientHealthCheckEnabled: true, dailyRotationEnabled: 1, healthCheckIntervalSeconds: 300, rotationTimezone: "UTC" },
+    { clientHealthCheckEnabled: true, dailyRotationEnabled: true, healthCheckIntervalSeconds: 30, rotationTimezone: "UTC" },
+    { clientHealthCheckEnabled: true, dailyRotationEnabled: true, healthCheckIntervalSeconds: "300", rotationTimezone: "UTC" },
+    { clientHealthCheckEnabled: true, dailyRotationEnabled: true, healthCheckIntervalSeconds: 300, rotationTimezone: "local" },
+    { clientHealthCheckEnabled: true, dailyRotationEnabled: true, healthCheckIntervalSeconds: 300, rotationTimezone: "UTC", token: "hidden" }
+  ])("rejects malformed, incomplete or expanded automation projections", async (automation) => {
+    const fetcher = vi.fn().mockResolvedValue(response({ ...snapshot(), automation }));
+    await expect(createSubscriptionDistributionClient({ fetcher }).read()).rejects.toMatchObject({ code: "invalid" });
+    expect(fetcher).toHaveBeenCalledOnce();
+  });
+  it.each(["enabled", "paused", "transitioning", "failed", "unavailable"])("accepts the bounded optional BWH supply state %s", async (state) => {
+    const bwhSupply = { ...supply(), state };
+    const fetcher = vi.fn().mockResolvedValue(response({ ...snapshot(), bwhSupply }));
+    expect((await createSubscriptionDistributionClient({ fetcher }).read()).bwhSupply).toEqual(bwhSupply);
+  });
+  it.each([
+    null,
+    {},
+    { ...supply(), revision: "short" },
+    { ...supply(), state: "unknown" },
+    { ...supply(), protocolsRunning: -1 },
+    { ...supply(), protocolsRunning: 4 },
+    { ...supply(), protocolsRunning: 1.5 },
+    { ...supply(), collectorState: "enabled" },
+    { ...supply(), nativeDistributionEnabled: "true" },
+    { ...supply(), observedAt: "not-a-time" },
+    { ...supply(), observedAt: "2026-02-30T09:00:00.000Z" },
+    { ...supply(), canPause: 1 },
+    { ...supply(), canEnable: "false" },
+    { ...supply(), service: "hidden" }
+  ])("rejects malformed or expanded BWH supply projections", async (bwhSupply) => {
+    const fetcher = vi.fn().mockResolvedValue(response({ ...snapshot(), bwhSupply }));
+    await expect(createSubscriptionDistributionClient({ fetcher }).read()).rejects.toMatchObject({ code: "invalid" });
+  });
+  it("keeps legacy supply absent and accepts null observation time", async () => {
+    const fetcher = vi.fn().mockResolvedValueOnce(response(snapshot())).mockResolvedValueOnce(response({ ...snapshot(), bwhSupply: { ...supply(), observedAt: null } }));
+    const client = createSubscriptionDistributionClient({ fetcher });
+    expect(await client.read()).not.toHaveProperty("bwhSupply");
+    expect((await client.read()).bwhSupply?.observedAt).toBeNull();
+  });
+  it("posts only revisions and desired supply enablement with same-origin no-store transport", async () => {
+    const bwhSupply = { ...supply(), revision: "e".repeat(64), state: "paused", protocolsRunning: 0, collectorState: "paused", nativeDistributionEnabled: false, canPause: false, canEnable: true };
+    const fetcher = vi.fn().mockResolvedValue(response({ ...snapshot(), bwhSupply }));
+    const input = { revision, supplyRevision: supply().revision, enabled: false };
+    expect((await createSubscriptionDistributionClient({ fetcher }).setBwhSupply(input)).bwhSupply).toEqual(bwhSupply);
+    expect(fetcher).toHaveBeenCalledOnce();
+    expect(fetcher.mock.calls[0][0]).toBe("/api/admin/third-party-subscriptions/distribution/supply");
+    expect(fetcher.mock.calls[0][1]).toMatchObject({ method: "PUT", credentials: "same-origin", mode: "same-origin", cache: "no-store", redirect: "error" });
+    expect(JSON.parse(fetcher.mock.calls[0][1].body)).toEqual(input);
+  });
+  it("rejects caller-selected service paths and invalid supply input before dispatch", () => {
+    const fetcher = vi.fn(); const client = createSubscriptionDistributionClient({ fetcher });
+    const valid = { revision, supplyRevision: supply().revision, enabled: false };
+    expect(() => client.setBwhSupply({ ...valid, service: "hidden" } as typeof valid)).toThrow(DistributionError);
+    expect(() => client.setBwhSupply({ ...valid, supplyRevision: "short" })).toThrow(DistributionError);
+    expect(() => client.setBwhSupply({ ...valid, enabled: "false" as unknown as boolean })).toThrow(DistributionError);
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+  it.each([
+    undefined,
+    { ...supply(), state: "transitioning" },
+    { ...supply(), state: "paused", nativeDistributionEnabled: false, collectorState: "paused" },
+    { ...supply(), state: "paused", protocolsRunning: 0, nativeDistributionEnabled: false },
+    { ...supply(), state: "paused", protocolsRunning: 0, collectorState: "paused" }
+  ])("rejects a pause receipt without verified terminal supply state", async (bwhSupply) => {
+    const fetcher = vi.fn().mockResolvedValue(response({ ...snapshot(), ...(bwhSupply ? { bwhSupply } : {}) }));
+    await expect(createSubscriptionDistributionClient({ fetcher }).setBwhSupply({ revision, supplyRevision: supply().revision, enabled: false })).rejects.toMatchObject({ code: "invalid" });
+    expect(fetcher).toHaveBeenCalledOnce();
+  });
+  it.each([
+    { ...supply(), state: "paused" },
+    { ...supply(), protocolsRunning: 2 },
+    { ...supply(), collectorState: "unknown" },
+    { ...supply(), nativeDistributionEnabled: false }
+  ])("rejects enablement before protocol, collector and native-output verification", async (bwhSupply) => {
+    const fetcher = vi.fn().mockResolvedValue(response({ ...snapshot(), bwhSupply }));
+    await expect(createSubscriptionDistributionClient({ fetcher }).setBwhSupply({ revision, supplyRevision: "e".repeat(64), enabled: true })).rejects.toMatchObject({ code: "invalid" });
+    expect(fetcher).toHaveBeenCalledOnce();
+  });
+  it("accepts verified enablement and aborts an already-cancelled supply command before dispatch", async () => {
+    const fetcher = vi.fn().mockResolvedValue(response({ ...snapshot(), bwhSupply: supply() }));
+    const client = createSubscriptionDistributionClient({ fetcher });
+    const input = { revision, supplyRevision: "e".repeat(64), enabled: true };
+    expect((await client.setBwhSupply(input)).bwhSupply?.state).toBe("enabled");
+    const controller = new AbortController(); controller.abort();
+    await expect(client.setBwhSupply(input, controller.signal)).rejects.toMatchObject({ name: "AbortError" });
+    expect(fetcher).toHaveBeenCalledOnce();
+  });
+  it("waits up to 60 seconds for a supply command and never retries after timeout", async () => {
+    vi.useFakeTimers();
+    try {
+      const fetcher = vi.fn((_input, init: RequestInit) => new Promise<Response>((_resolve, reject) => init.signal?.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")))));
+      const result = createSubscriptionDistributionClient({ fetcher: fetcher as typeof fetch }).setBwhSupply({ revision, supplyRevision: supply().revision, enabled: false });
+      const assertion = expect(result).rejects.toMatchObject({ code: "timeout" });
+      await vi.advanceTimersByTimeAsync(59_999);
+      expect(fetcher.mock.calls[0][1].signal?.aborted).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+      await assertion;
+      expect(fetcher).toHaveBeenCalledOnce();
+    } finally { vi.useRealTimers(); }
   });
   it("bounds an undeclared response stream and rejects malformed JSON", async () => {
     const oversized = new Response(new Uint8Array(2 * 1024 * 1024 + 1), { headers: { "Content-Type": "application/json" } });

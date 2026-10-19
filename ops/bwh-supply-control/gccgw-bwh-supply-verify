@@ -1,0 +1,3 @@
+#!/bin/sh
+set -eu
+exec /usr/bin/env -i PATH=/usr/bin:/bin LC_ALL=C TZ=UTC /usr/bin/node /opt/gccgw-bwh-supply-control/scripts/bwh-supply-verify.mjs "$@"

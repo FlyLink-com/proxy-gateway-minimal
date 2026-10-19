@@ -117,3 +117,45 @@ test("real runtime binds explicitly migrated policy DB and closes its connection
   state.close();
   assert.throws(() => state.subscriptionDistribution.store.getSnapshot(), { code: "distribution_unavailable" });
 });
+
+test("real runtime exposes default-off client automation and binds only explicit flags", (t) => {
+  const defaults = fixture(t, { prepare: path => preparedImportedDatabase(path, true) });
+  assert.equal(defaults.state.subscriptionDistribution.store.getSnapshot().automation.clientHealthCheckEnabled, false);
+  assert.equal(defaults.state.subscriptionDistribution.store.getSnapshot().automation.dailyRotationEnabled, false);
+  const enabled = fixture(t, { prepare: path => preparedImportedDatabase(path, true), env: {
+    SUBSCRIPTION_DISTRIBUTION_CLIENT_HEALTH_ENABLED: "true", SUBSCRIPTION_DISTRIBUTION_DAILY_ROTATION_ENABLED: "true"
+  } });
+  assert.deepEqual(enabled.state.subscriptionDistribution.store.getSnapshot().automation, {
+    clientHealthCheckEnabled: true, dailyRotationEnabled: true, healthCheckIntervalSeconds: 300, rotationTimezone: "UTC"
+  });
+  const unrelated = fixture(t, { prepare: path => preparedImportedDatabase(path, true), env: {
+    SUBSCRIPTION_DISTRIBUTION_CLIENT_HEALTH_ENABLED: "arbitrary", SUBSCRIPTION_DISTRIBUTION_DAILY_ROTATION_ENABLED: "enabled"
+  } });
+  assert.equal(unrelated.state.subscriptionDistribution.store.getSnapshot().automation.clientHealthCheckEnabled, false);
+  assert.equal(unrelated.state.subscriptionDistribution.store.getSnapshot().automation.dailyRotationEnabled, false);
+});
+
+test("BWH actual control is opt-in and an unavailable host never permits native rendering", t => {
+  const { state } = fixture(t, { prepare: path => preparedImportedDatabase(path, true), env: { BWH_SUPPLY_CONTROL_ENABLED: "true" },
+    bwhSupplyHost: { durableIntent: true, readStatus: () => { throw new Error("private host detail"); },
+      allowsNativeDistribution: () => false, async setEnabled() { throw new Error("must not call"); } } });
+  assert.equal(state.subscriptionDistribution.supply.enabled, true);
+  assert.equal(state.subscriptionDistribution.supply.read().state, "unavailable");
+  const created = tenant(state.subscriptions.core);
+  const result = state.subscriptions.core.resolveSubscriptionToken(created.token);
+  assert.equal(result.status, 503);
+  assert.equal(result.error, "subscription_distribution_unavailable");
+  assert.equal(JSON.stringify(state.subscriptionDistribution.supply.read()).includes("private"), false);
+});
+
+test("BWH actual control with an injected verified paused host blocks native but leaves its control service reachable", t => {
+  const paused = { revision: "d".repeat(64), state: "paused", protocolsRunning: 0, collectorState: "paused",
+    nativeDistributionEnabled: false, observedAt: NOW.toISOString(), canPause: false, canEnable: true };
+  const { state } = fixture(t, { prepare: path => preparedImportedDatabase(path, true), env: { BWH_SUPPLY_CONTROL_ENABLED: "true" },
+    bwhSupplyHost: { durableIntent: true, readStatus: () => paused, allowsNativeDistribution: () => false,
+      async setEnabled() { throw new Error("must not call"); } } });
+  assert.equal(state.subscriptionDistribution.supply.read().state, "paused");
+  assert.equal(state.subscriptionDistribution.supply.allowsNativeDistribution(), false);
+  assert.equal(state.subscriptionDistribution.store.available, true);
+  assert.equal(state.subscriptions.core.resolveSubscriptionToken(tenant(state.subscriptions.core).token).status, 503);
+});

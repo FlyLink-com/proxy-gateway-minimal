@@ -74,6 +74,8 @@ import {
 import { createPortalTotpSecretProtector, createPortalTotpVerifier } from "./services/platform/portal-totp-verifier.mjs";
 import { createSqliteThirdPartySubscriptionStore } from "./services/platform/third-party-subscription-store.mjs";
 import { createSqliteSubscriptionDistributionStore } from "./services/platform/subscription-distribution-store.mjs";
+import { createBwhSupplyService } from "./services/platform/bwh-supply-service.mjs";
+import { createBwhSupplyHost } from "./services/platform/bwh-supply-host.mjs";
 import { createUserPortalAuthService } from "./services/platform/user-portal-auth.mjs";
 import { createPortalAccountAdminAuthService } from "./services/platform/admin-auth.mjs";
 import { createHysteria2UsageCollector } from "./services/edge/hysteria2-usage-collector.mjs";
@@ -2075,6 +2077,8 @@ export function createRuntimeState(options = {}) {
   // Bound after the existing imported-source store is constructed. The core
   // invokes this only for an authenticated, non-expired subscription.
   let subscriptionDistribution = null;
+  const bwhSupplyControlEnabled = envFlag(env.BWH_SUPPLY_CONTROL_ENABLED);
+  let bwhSupplyService = null;
   const subscriptionCore = options.subscriptionCore || options.subscriptionService || createSubscriptionCore({
     store: subscriptionStore,
     proxyConfig,
@@ -2092,6 +2096,7 @@ export function createRuntimeState(options = {}) {
       controlStore: platformControlStore
     }),
     resolveTenantProxyConfig: (input) => {
+      if (bwhSupplyControlEnabled && !subscriptionDistribution?.enabled) throw new Error("subscription_distribution_unavailable");
       if (!subscriptionDistribution?.enabled) return null;
       if (!subscriptionDistribution.available || !subscriptionDistribution.store) {
         throw new Error("subscription_distribution_unavailable");
@@ -3154,7 +3159,12 @@ export function createRuntimeState(options = {}) {
         proxyConfig,
         thirdPartyStore: thirdPartySubscriptions.store,
         controlStore: platformControlStore,
-        nowFn: subscriptionCoreNowFn
+        nowFn: subscriptionCoreNowFn,
+        routingPolicy: {
+          clientHealthCheckEnabled: envFlag(env.SUBSCRIPTION_DISTRIBUTION_CLIENT_HEALTH_ENABLED),
+          dailyRotationEnabled: envFlag(env.SUBSCRIPTION_DISTRIBUTION_DAILY_ROTATION_ENABLED)
+        },
+        nativeSupplyAllowed: bwhSupplyControlEnabled ? () => bwhSupplyService?.allowsNativeDistribution() === true : undefined
       }) : null
   );
   subscriptionDistribution = options.subscriptionDistribution || {
@@ -3162,6 +3172,13 @@ export function createRuntimeState(options = {}) {
     available: Boolean(distributionEnabled && distributionStore?.available),
     store: distributionStore?.available ? distributionStore : null
   };
+  if (bwhSupplyControlEnabled) {
+    bwhSupplyService = createBwhSupplyService({
+      enabled: true, host: options.bwhSupplyHost || createBwhSupplyHost(),
+      distributionStore: subscriptionDistribution.store, nowFn: subscriptionCoreNowFn
+    });
+    subscriptionDistribution.supply = bwhSupplyService;
+  }
 
   // Only the store constructed here has a proven file binding. An injected
   // store (or an in-memory store) must not cause a read of the env/default DB.

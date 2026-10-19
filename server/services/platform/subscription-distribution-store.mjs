@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import Database from "better-sqlite3";
+import { DISTRIBUTION_CLIENT_ROUTING, rotateSubscriptionDistributionServers } from "../subscription-distribution-routing.mjs";
 import { createNodeRegistry } from "../subscriptions/node-registry.mjs";
 import { proxyDisplayName, validateProxyDisplayNames } from "../proxy-display-name.mjs";
 import { applyThirdPartyCountryFlag, isThirdPartyCountryCode } from "./third-party-node-country.mjs";
@@ -66,11 +67,18 @@ function uniqueLabels(nodes) {
   }
 }
 
-export function createSqliteSubscriptionDistributionStore({ dbPath, database, proxyConfig, thirdPartyStore, controlStore, nowFn = () => new Date() } = {}) {
+export function createSqliteSubscriptionDistributionStore({ dbPath, database, proxyConfig, thirdPartyStore, controlStore, nowFn = () => new Date(), routingPolicy = {}, nativeSupplyAllowed } = {}) {
   const ownsDatabase = !database;
   let db = database;
   let available = false;
+  let automation;
   try {
+    if (nativeSupplyAllowed !== undefined && typeof nativeSupplyAllowed !== "function") throw failure("distribution_unavailable");
+    if (!routingPolicy || typeof routingPolicy !== "object" || Array.isArray(routingPolicy)
+      || Object.keys(routingPolicy).some(key => !["clientHealthCheckEnabled", "dailyRotationEnabled"].includes(key))
+      || Object.values(routingPolicy).some(value => typeof value !== "boolean")) throw failure("distribution_unavailable");
+    automation = Object.freeze({ clientHealthCheckEnabled: routingPolicy.clientHealthCheckEnabled === true,
+      dailyRotationEnabled: routingPolicy.dailyRotationEnabled === true, healthCheckIntervalSeconds: 300, rotationTimezone: "UTC" });
     if (!db) {
       if (!isFullyQualifiedSubscriptionDistributionPath(dbPath)) throw failure("distribution_unavailable");
       db = new Database(dbPath, { fileMustExist: true, timeout: 0 });
@@ -170,7 +178,7 @@ export function createSqliteSubscriptionDistributionStore({ dbPath, database, pr
           enabled: item.enabled === true, sourceEnabled: source.enabled === true && source.status === "ready", tiers: [...source.tiers] });
       }
     }
-    return { revision: digest({ stored, native, external, sourceSnapshots }), owned, routes, candidates };
+    return { revision: digest({ stored, native, external, sourceSnapshots, automation }), owned, routes, candidates, automation: { ...automation } };
   }
   function timestamp() {
     const at = new Date(nowFn());
@@ -230,16 +238,27 @@ export function createSqliteSubscriptionDistributionStore({ dbPath, database, pr
   }).immediate());
 
   const resolveProxyConfig = guarded(({ tenant, baseProxyConfig, resolveOwnedProxyConfig } = {}) => db.transaction(() => {
-    const planId = resolveThirdPartyPlanIdForTenant(controlStore, tenant, { at: timestamp() });
+    const at = timestamp();
+    const planId = resolveThirdPartyPlanIdForTenant(controlStore, tenant, { at });
     const route = planId ? routeProjection(planId, getRoute.get(planId)) : null;
     if (route?.mode === "third-party") {
       const selected = new Set(route.nodeIds);
       const permitted = selectedMembership.all(JSON.stringify(route.nodeIds), planId);
-      if (thirdPartyStore?.available !== true || permitted.length !== selected.size || selected.size === 0) throw failure("distribution_unavailable");
-      const active = thirdPartyStore.listActiveServersForPlan(planId).filter(item => selected.has(item.id));
-      if (active.length !== selected.size || new Set(active.map(item => item.id)).size !== selected.size) throw failure("distribution_unavailable");
-      return { proxyConfig: { ...baseProxyConfig, servers: decorateThirdPartyServers(active) }, distributionManaged: true };
+      if (thirdPartyStore?.available !== true || selected.size === 0
+        || (!automation.clientHealthCheckEnabled && permitted.length !== selected.size)) throw failure("distribution_unavailable");
+      const allowedIds = new Set(permitted.map(item => item.id));
+      const active = thirdPartyStore.listActiveServersForPlan(planId).filter(item => selected.has(item.id) && allowedIds.has(item.id));
+      if (!active.length || new Set(active.map(item => item.id)).size !== active.length
+        || (!automation.clientHealthCheckEnabled && active.length !== selected.size)) throw failure("distribution_unavailable");
+      // Assign stable output names before changing daily priority. The server
+      // filters only administrative eligibility, not network reachability.
+      const decorated = decorateThirdPartyServers(active);
+      const servers = automation.dailyRotationEnabled
+        ? rotateSubscriptionDistributionServers(decorated, { planId, at }) : decorated;
+      return { proxyConfig: { ...baseProxyConfig, servers,
+        ...(automation.clientHealthCheckEnabled ? { [DISTRIBUTION_CLIENT_ROUTING]: true } : {}) }, distributionManaged: true };
     }
+    if (nativeSupplyAllowed !== undefined && nativeSupplyAllowed() !== true) throw failure("distribution_unavailable");
     if (typeof resolveOwnedProxyConfig !== "function") throw failure("distribution_unavailable");
     // Preserve the existing native entitlement, material, runtime and AUTO rules.
     const original = resolveOwnedProxyConfig();

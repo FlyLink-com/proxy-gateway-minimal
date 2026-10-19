@@ -1,2 +1,3 @@
 *.sh text eol=lf
 *.py text eol=lf
+ops/bwh-supply-control/* text eol=lf

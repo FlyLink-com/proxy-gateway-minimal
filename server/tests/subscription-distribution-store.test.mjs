@@ -26,7 +26,7 @@ function fixture(options = {}) {
     { name: "bwh-vless", protocol: "vless", countryCode: "US", host: "198.51.100.1", port: 443, uuid: "11111111-1111-4111-8111-111111111111", credentialRef: "synthetic-credential", autoEligible: true, qualityClass: "stable" },
     { name: "bwh-tuic", protocol: "tuic", countryCode: "US", host: "198.51.100.1", port: 8443, password: "native-secret", maintenance: true }
   ] };
-  const store = createSqliteSubscriptionDistributionStore({ database, thirdPartyStore, proxyConfig, controlStore: options.controlStore || eligibility(), nowFn: () => NOW });
+  const store = createSqliteSubscriptionDistributionStore({ database, thirdPartyStore, proxyConfig, controlStore: options.controlStore || eligibility(), nowFn: options.nowFn || (() => NOW), routingPolicy: options.routingPolicy, nativeSupplyAllowed: options.nativeSupplyAllowed });
   const source = thirdPartyStore.createInlineSource({ name: "Synthetic inline", yamlContent: Y, tiers: options.tiers || TIERS, enabled: true });
   return { database, store, thirdPartyStore, source, proxyConfig, close: () => database.close() };
 }
@@ -39,6 +39,83 @@ function ownedInput(snapshot) {
   return { revision: snapshot.revision, enabled: snapshot.owned.enabled, nodes: snapshot.owned.items.map(item => ({ id: item.id, enabled: item.enabled, customName: item.customName, customCountryCode: item.customCountryCode ?? null })) };
 }
 const code = expected => error => error?.code === expected;
+
+test("paused or unknown physical BWH supply blocks native rendering but preserves qualified third-party rendering", () => {
+  let nativeAllowed = true;
+  let reads = 0;
+  const f = fixture({ nativeSupplyAllowed: () => { reads += 1; return nativeAllowed; } });
+  try {
+    const input = { tenant: { id: "synthetic", status: "active" }, baseProxyConfig: f.proxyConfig, resolveOwnedProxyConfig: () => f.proxyConfig };
+    assert.equal(f.store.resolveProxyConfig(input).proxyConfig.servers[0].name, "bwh-vless");
+    nativeAllowed = false;
+    assert.throws(() => f.store.resolveProxyConfig(input), code("distribution_unavailable"));
+    nativeAllowed = undefined;
+    assert.throws(() => f.store.resolveProxyConfig(input), code("distribution_unavailable"));
+    selectThirdParty(f.store);
+    const before = reads;
+    const result = f.store.resolveProxyConfig(input);
+    assert.equal(result.proxyConfig.servers.length, 2);
+    assert.equal(result.proxyConfig.servers.every(node => node.thirdParty === true), true);
+    assert.equal(reads, before);
+    assert.equal(f.proxyConfig.servers.length, 2);
+  } finally { f.close(); }
+});
+
+test("automation defaults off, exposes safe capability status and binds the policy into revision", () => {
+  const f = fixture();
+  try {
+    assert.deepEqual(f.store.getSnapshot().automation, { clientHealthCheckEnabled: false, dailyRotationEnabled: false,
+      healthCheckIntervalSeconds: 300, rotationTimezone: "UTC" });
+    const enabled = createSqliteSubscriptionDistributionStore({ database: f.database, thirdPartyStore: f.thirdPartyStore,
+      proxyConfig: f.proxyConfig, controlStore: eligibility(), nowFn: () => NOW,
+      routingPolicy: { clientHealthCheckEnabled: true, dailyRotationEnabled: true } });
+    assert.notEqual(enabled.getSnapshot().revision, f.store.getSnapshot().revision);
+    assert.throws(() => enabled.writeRoutes({ revision: f.store.getSnapshot().revision, routes: f.store.getSnapshot().routes }), code("revision_conflict"));
+    for (const routingPolicy of [null, [], { clientHealthCheckEnabled: "true" }, { dailyRotationEnabled: 1 }, { arbitraryUrl: "https://example.invalid" }]) {
+      const invalid = createSqliteSubscriptionDistributionStore({ database: f.database, proxyConfig: f.proxyConfig, routingPolicy });
+      assert.equal(invalid.available, false);
+      assert.throws(() => invalid.getSnapshot(), code("distribution_unavailable"));
+    }
+  } finally { f.close(); }
+});
+
+test("client automated pool removes administratively paused members but never falls back from an empty pool", () => {
+  const f = fixture({ routingPolicy: { clientHealthCheckEnabled: true } });
+  try {
+    selectThirdParty(f.store);
+    const snapshot = f.store.getSnapshot();
+    const selected = snapshot.candidates.map(item => item.id);
+    const input = { tenant: { id: "synthetic", status: "active" }, baseProxyConfig: f.proxyConfig,
+      resolveOwnedProxyConfig() { throw new Error("native resolver must not run"); } };
+    f.thirdPartyStore.setSourceNodeEnabled(f.source.id, selected[0], { revision: f.thirdPartyStore.listSourceNodes(f.source.id).revision, enabled: false });
+    const remaining = f.store.resolveProxyConfig(input);
+    assert.equal(remaining.proxyConfig.servers.length, 1);
+    assert.equal(remaining.proxyConfig.servers[0].id, selected[1]);
+    assert.equal(remaining.proxyConfig.servers[0].thirdParty, true);
+    f.thirdPartyStore.setSourceNodeEnabled(f.source.id, selected[1], { revision: f.thirdPartyStore.listSourceNodes(f.source.id).revision, enabled: false });
+    assert.throws(() => f.store.resolveProxyConfig(input), code("distribution_unavailable"));
+  } finally { f.close(); }
+});
+
+test("daily reorder keeps original names and materials stable and advances only on UTC refresh day", () => {
+  let at = "2026-10-19T23:59:59.999Z";
+  const f = fixture({ routingPolicy: { clientHealthCheckEnabled: true, dailyRotationEnabled: true }, nowFn: () => new Date(at) });
+  try {
+    selectThirdParty(f.store);
+    const input = { tenant: { id: "synthetic", status: "active" }, baseProxyConfig: f.proxyConfig,
+      resolveOwnedProxyConfig() { throw new Error("native resolver must not run"); } };
+    const before = f.store.resolveProxyConfig(input).proxyConfig;
+    assert.deepEqual(f.store.resolveProxyConfig(input).proxyConfig, before);
+    const revision = f.store.getSnapshot().revision;
+    at = "2026-10-20T00:00:00.000Z";
+    const after = f.store.resolveProxyConfig(input).proxyConfig;
+    assert.notDeepEqual(after.servers.map(item => item.id), before.servers.map(item => item.id));
+    assert.deepEqual([...after.servers].sort((a, b) => a.id.localeCompare(b.id)), [...before.servers].sort((a, b) => a.id.localeCompare(b.id)));
+    assert.equal(f.store.getSnapshot().revision, revision);
+    assert.equal(after.servers.some(item => item.name.startsWith("bwh")), false);
+    assert.deepEqual(f.proxyConfig.servers.map(item => item.name), ["bwh-vless", "bwh-tuic"]);
+  } finally { f.close(); }
+});
 
 test("runtime fails closed without migration and never creates missing files or tables", () => {
   const database = new Database(":memory:");
