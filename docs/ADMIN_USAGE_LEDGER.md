@@ -12,6 +12,213 @@ document_metadata:
 
 ## Intent and current stage
 
+### Explicit diagnostic entry and bounded result contract (source only)
+
+`scripts/admin-ledger-schema-budget-entry.mjs` now provides a separate operator
+entry for the schema/budget probe, not an application endpoint. It requires the
+private `--schema-budget-entry-v1` flag, bounded stdin JSON and a separately
+drained progress pipe at fd 3. It does not discover database paths, load runtime
+environment files, call SSH/systemd, install files or retry a previous query.
+
+The request binds one absolute canonical database path, scan limit and expected
+decimal-string `dev/ino/uid/gid/mode/nlink`. A regular, single-link file and its
+canonical path must match before the worker starts; the entry holds a read-only
+descriptor and rechecks path/descriptor identity after the attempt, including
+failure paths. Size/mtime are intentionally excluded so normal database growth
+is not mistaken for file replacement. These checks detect drift, not an atomic
+write freeze or protection against a malicious swap-and-restore; trusted parent
+directories, exact runtime/source and the operator's production scope remain
+the responsibility of the separately bound execution record.
+
+Stdout contains only the versioned safe entry result and compact probe report,
+at most 16 KiB. The separate `schema-budget-report` module replays every event
+through the strict probe parser and validates terminal/cleanup consistency.
+CPU/resource values use documented fixed-position numeric arrays; null means
+unknown, never zero. Duplicate keys, extra fields, invalid values, incomplete
+success and oversized reports are refused. Object key ordering is immaterial.
+
+Fd 3 contains only already-validated diagnostics, bounded by the probe's 48 KiB
+internal stream cap. The external caller must continuously drain and safely
+retain this private stream independently of the entry, enforce a whole-task
+deadline, and prove task/cgroup cleanup. A blocked output pipe can block a
+synchronous write; the inner ten-second worker deadline alone cannot enforce
+the caller's lifetime. Entry descriptor closure is not worker/cgroup closure.
+Neither a partial prefix nor nine successful SQL operations establishes complete
+ledger retrieval or Admin launch readiness. No environment contents, file paths,
+file identity values, user rows, row counts or usage totals are emitted.
+
+Focused source validation commands:
+
+```sh
+node --test server/tests/admin-ledger-schema-budget-probe.test.mjs server/tests/admin-ledger-schema-budget-probe-supervisor.test.mjs server/tests/admin-ledger-schema-budget-report.test.mjs server/tests/admin-ledger-schema-budget-entry.test.mjs
+```
+
+Linux validation uses synthetic SQLite fixtures in a fresh private local WSL
+directory, a pinned Node 22.23.1 runtime and retained matching-version Linux
+dependencies, with no network namespace connectivity or production data.
+The locally compiled SQLite native binary differs from the historical BWH
+binary; these tests cannot establish identical production performance. The
+entry and result modules do not themselves create an executable production
+authorization, install or switch backend/Admin, or renew consumed query05.
+
+### Query05 statement attribution preparation (source only, 2026-10-19 UTC)
+
+The historical 8,736 ms is **wall time**, not measured CPU time. Query05 did not
+capture CPU consumption, scheduler delay, I/O counters or effective ancestor
+cgroup limits. Its launcher not explicitly setting a CPU/I/O limit does not
+prove that no unit or parent limit existed. The stopped process and removed
+cgroup cannot now provide those historical counters.
+
+The independent `scripts/lib/admin-ledger-schema-budget-probe.mjs` implements
+only the old #792 schema/budget subset, using its **bounded COUNT**, not the
+#793 OFFSET optimization. For samples, rollups, then accounts it checks schema,
+required columns and at-most-cap+1 rows. These nine fixed statements run in the
+same deferred read-only transaction, with the original error priority. No
+caller-supplied SQL, aggregate DTO, timestamp validation, migration, index,
+collector or HTTP/Admin route is added. Completing this subset does **not**
+mean the full ledger query passed.
+
+Each prepare and execute operation has a start/end (or fixed-category error)
+record. Four outer operations cover DB open/setup, transaction and close. A
+normal run emits 44 core records, plus worker ready/imported markers and a
+fixed terminal result. The output contains only fixed roles/steps and numeric
+timings/counters; no SQL, row counts, DDL, column names, file paths, identities
+or exception text. The first prepare/execute may include snapshot, schema and
+page access; timing alone does not separate those costs.
+
+`scripts/lib/admin-ledger-schema-budget-probe-supervisor.mjs` exports an explicit
+one-shot API, not an automatically executing CLI or production record. It
+starts the fixed private worker with a clean environment, an 8 KiB input cap,
+48 KiB output cap, strict UTF-8/duplicate-key/field/order checks and the existing
+ten-second deadline. Failure requests SIGKILL once and allows at most two
+seconds to observe close. A missing close is `cleanup_unconfirmed`, never
+success; the first failure and validated diagnostic prefix remain available.
+The private worker must not be launched directly without this deadline.
+
+Metrics are operation wall milliseconds and process CPU user/system
+microseconds. Available process resource counters are deltas for page faults,
+context switches and block-input operations, plus maximum RSS in KiB and its
+high-water growth. They are not SQL bytes, per-table disk I/O or current memory
+allocation. Unavailable/reset/malformed counters are `unknown`; Windows
+defaults resource counters to `unknown` rather than interpreting unsupported
+zero placeholders as no I/O. Outer transaction metrics include the inner
+operations and diagnostic overhead: **do not sum nested timings/counters**.
+Worker lifecycle times and core times have different zero points. A large
+wall/CPU gap suggests waiting but does not distinguish disk, locks, scheduling
+or throttling. A new run also cannot reconstruct the old run's cache state.
+
+`node scripts/verify-admin-ledger-schema-budget-probe.mjs` is a separate local
+synthetic check. It takes no DB/path arguments, pins and hashes the actual
+#792 query source at `35c969eb53ecd689f4094c9a68d50891dbb1b26d`, and traces its
+real SQLite prepare/execute prefix against this probe. Valid, over-cap and
+missing-table cases compare SQL, bound parameters, sequence and error category.
+The normal test suite does not depend on Git history or a network connection.
+
+This source work changes neither the existing application reader/query/worker
+nor its diagnostic protocol. Prior #793 query benchmarks remain applicable to
+that unchanged code; they are not a benchmark of this new probe. New validation
+results are recorded below and in #793; independent review remains pending.
+The production candidate remains **unverified by this probe**. A future run
+needs a new exact target/Node/native-module/file-identity binding, reviewed
+helper closure, explicit single-use approval and post-read cleanup/identity
+evidence. No prior consumed record is replayable. No production read,
+installation, restart, current/Admin pointer switch or accounting write has
+been performed by this preparation.
+
+Local Windows Node 24.16.0 validation for this addition: 14 core tests and 63
+supervisor/worker tests passed; the existing 78 query suites' cases also passed.
+The manual pinned-source trace comparison passed all three scenarios. Full
+`npm test` completed with 6,719 tests: 6,650 passed, 69 skipped, zero failed
+(133.3 s). Documentation authority validation and diff checks passed. No new
+Linux or production execution is claimed, and formal independent review is
+still pending. The earlier large synthetic benchmarks were not rerun because
+their application-query source boundary did not change.
+
+### Query05 follow-up: bounded excess-row probe (source only, 2026-10-19 UTC)
+
+The [#792 query05 readback](https://github.com/FlyLink-com/proxy-gateway-minimal/pull/792#issuecomment-6260389014)
+recovered a real 10,006 ms reader timeout: `schema_budget` took 8,736 ms and
+`validate_samples` started but did not finish. The combined schema/budget phase
+does not distinguish table scan, first snapshot/WAL access, storage or scheduler
+cost. No aggregate DTO was accepted. This is not evidence of a collector outage.
+
+This Risk B source follow-up replaces each bounded COUNT subquery with
+`SELECT 1 ... LIMIT 1 OFFSET scanLimit`. It only asks whether an excess row
+exists, avoiding the subquery coroutine and per-row aggregate. It remains an
+O(n), at-most-cap+1 traversal, not a constant-time count or a proven fix for the
+production timeout. Table/schema validation order, the one-million-row cap,
+full-data validation, single read-only snapshot, exact totals and ten-second
+reader deadline remain unchanged. No indexes, migrations or caches are added.
+
+The separate `scripts/profile-admin-ledger-budget-probe.mjs` pins the #792
+baseline and constructs only synthetic databases from the usage-table/index
+DDL. It compares the two exact budget implementations, full query DTOs and
+phase durations, with pending and checkpointed WAL. It accepts no existing DB
+path. Timing is local and warm after seeding, not production or cold-cache
+evidence. Run it separately from test suites; reproducible commands and measured
+results are recorded with this follow-up's PR.
+
+A distinct local helper defect compared diagnostic objects by JSON string
+order. Its correction and real Python sorted-key round-trip tests live in a
+new local helper copy; frozen query05 files, consumed authorizations and old
+receipts are not rewritten. This helper correction is not part of the deployed
+application and cannot repair the reader's actual timeout by itself.
+
+Scope: `release_unit: control-plane-app`, `identity_impact: false`; no production
+read, installation, backend/Admin activation, protocol, collector or accounting
+change. Any later production query must use a newly bound, explicitly approved
+record; source tests do not authorize replay of query05 or demonstrate its repair.
+
+Local validation for this follow-up: fresh Windows `npm ci` under Node 24.16.0
+and npm 11.13.0; source environment preflight ready; 78 targeted query tests
+passed. Full `npm test` reported 6,642 tests: 6,573 passed, 69 skipped and zero
+failures (164.8 s). The diagnostic-helper copy passed 39 tests including real
+Python 3.11.9 sorted-key round trips; its corrected contract SHA-256 is
+`1ac4a141a7650a5c2a88dbd3e3f1d317a77fa29133c021f7a239c2ffe621c2b2`.
+This local helper is retained in ignored `output/ledger-diagnostic-order-fix`,
+not shipped as an application module or runnable production record. Independent
+review and integration remain pending; no new Linux/production pass is claimed.
+
+Budget experiment results (three runs per version and mode, median):
+
+| Synthetic samples / WAL mode | Old / new budget (ms) | Old / new complete core (ms) |
+| --- | ---: | ---: |
+| 550,000 / pending WAL | 65.099 / 57.070 | 4,544.538 / 4,627.421 |
+| 550,000 / checkpointed | 61.857 / 52.831 | 4,449.960 / 4,441.216 |
+| 1,000,000 / pending WAL | 121.925 / 120.278 | 8,483.066 / 8,451.010 |
+| 1,000,000 / checkpointed | 101.882 / 90.282 | 8,424.251 / 8,375.494 |
+
+All 24 complete-core DTOs matched, 72 SQL cap-boundary checks agreed, and the
+four scenarios preserved their DB/WAL bytes. Both plans used the same covering
+indexes; OFFSET removed coroutine/aggregate work, not the O(n) traversal. Each
+fixture used SQLite 3.53.1, 61 accounts, 181 credentials/rollups and six source
+categories across 21 days. These are direct synchronous synthetic-core runs,
+not real reader-process acceptance or the highest account/rollup cardinalities.
+
+The small budget saving did **not** establish a consistent significant
+end-to-end improvement or reproduce the production 8,736 ms phase. Do not
+promote this as the production timeout repair. The next investigation needs to
+separate the individual schema/budget statements from first-snapshot/WAL,
+storage and scheduling costs; this source change does not identify which is
+responsible, and does not authorize another production read.
+
+Reproduce separately from other test loads:
+
+```sh
+node scripts/profile-admin-ledger-budget-probe.mjs --rows 550000 --runs 3 --output output/budget-probe-550000.json
+node scripts/profile-admin-ledger-budget-probe.mjs --rows 1000000 --runs 3 --output output/budget-probe-1000000.json
+```
+
+The profiler pins baseline `35c969eb53ecd689f4094c9a68d50891dbb1b26d` and verifies
+the actual current query is precisely that source with the sole budget-block
+replacement. Measured query LF SHA-256:
+`0a195e41f4ec18e3a7056984e06c7a4baa27ec50958137b2de3e78be02669aed`.
+Report SHA-256 values, respectively:
+`a2205a5811eab95771b200dda85c4363eda2be203713e0e466abeccb3efd48c6`
+and `56e03c9d04c709f9db0169ad874000ced6cd925db443428edaf0753b48b6dbbb`.
+Only self-created temporary synthetic fixture directories were removed;
+reports and the independent helper correction are retained locally.
+
 ### Query04 follow-up: opt-in phase diagnostics (source only, 2026-10-19 UTC)
 
 The [#791 query04 receipt](https://github.com/FlyLink-com/proxy-gateway-minimal/pull/791#issuecomment-6252907602)
