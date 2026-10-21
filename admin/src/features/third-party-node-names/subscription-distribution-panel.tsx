@@ -174,7 +174,7 @@ export function SubscriptionDistributionPanel({ onSessionExpired, client: provid
           <legend>自有节点 · 系统来源</legend>
           <p>暂停分发仅停止后续配置下发。停止 BWH 旧连接供流需另行执行并验证；原有额度和计量保留。</p>
           <label className="subscription-distribution-toggle"><input type="checkbox" checked={draft.owned.enabled} onChange={(event) => setDraft({ ...draft, owned: { ...draft.owned, enabled: event.target.checked } })} />启用自有来源分发</label>
-          {draft.owned.items.length ? <div className="subscription-distribution-table-wrap"><table>
+          {draft.owned.items.length ? <div className="subscription-distribution-table-wrap" role="region" tabIndex={0} aria-label="自有节点列表，可横向滚动"><table>
             <thead><tr><th>显示名称</th><th>国家／地区</th><th>协议</th><th>分发</th><th>运行目录</th></tr></thead>
             <tbody>{draft.owned.items.map((node) => <tr key={node.id}>
               <td><input aria-label={`${node.defaultName} 显示名称`} value={node.customName ?? ""} placeholder={node.defaultName} maxLength={128} onChange={(event) => updateOwned(node.id, { customName: event.target.value || null })} /></td>

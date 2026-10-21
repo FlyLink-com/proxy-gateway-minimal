@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { MonitorReadError } from "../app/admin-monitor-read-client";
@@ -414,5 +415,38 @@ describe("admin monitor workspace", () => {
     expect(spies.entitlements.mock.calls.length).toBe(calls.entitlements);
     expect(spies.usage.mock.calls.length).toBe(calls.usage);
     expect(spies.collectors.mock.calls.length).toBe(calls.collectors);
+  });
+
+  test("scrolls the usage table in its own 390px region without filling a missing charge as zero", async () => {
+    const originalWidth = window.innerWidth;
+    Object.defineProperty(window, "innerWidth", { configurable: true, value: 390 });
+    const client = mockClient({
+      usage: vi.fn<MonitorClient["usage"]>(async () => ({
+        ...USAGE,
+        ratingBoundary: { version: 2, effectiveNotBefore: "2026-10-01T00:00:00.000Z" },
+        items: [
+          { accountId: "acct_rated", entitlementId: "ent_rated", plan: "30 天", status: "measured", usedBytes: 2, observedAt: "2026-10-01T00:01:00.000Z", rawUsedBytes: 1, chargedUsedBytes: 2, ratingState: "rated" },
+          { accountId: "acct_unknown", entitlementId: "ent_unknown", plan: "30 天", status: "not_collected", usedBytes: null, observedAt: null, rawUsedBytes: 0, chargedUsedBytes: null, ratingState: "unobserved" }
+        ]
+      }))
+    });
+    try {
+      const { rerender } = renderWs("dashboard", client);
+      await flushClick("开始只读监控");
+      rerender(<AdminMonitorWorkspace pageId="usageMonitor" createClient={() => client} />);
+      const wrap = screen.getByRole("region", { name: "用量监视表格，可横向滚动" });
+      expect(wrap.getAttribute("tabindex")).toBe("0");
+      wrap.focus();
+      expect(document.activeElement).toBe(wrap);
+      const table = within(wrap).getByRole("table");
+      expect(within(table).getByRole("cell", { name: "2 字节" })).not.toBeNull();
+      expect(within(table).getAllByRole("cell", { name: "未知" }).length).toBeGreaterThan(0);
+      expect(within(table).queryByRole("cell", { name: "0 字节" })).toBeNull();
+      const css = readFileSync("src/pages/admin-operations-shell.styles.css", "utf8");
+      expect(css).toMatch(/\.admin-baseline-preview \.admin-monitor-table-wrap \{[^}]*overflow-x: auto/s);
+      expect(css).toMatch(/\.admin-baseline-preview \.admin-monitor-table-wrap \{[^}]*min-width: 0/s);
+    } finally {
+      Object.defineProperty(window, "innerWidth", { configurable: true, value: originalWidth });
+    }
   });
 });

@@ -243,14 +243,16 @@ function DataTable({
   rowKeys,
   cells,
   empty,
+  scrollLabel = "可横向滚动的数据表",
 }: {
   columns: string[];
   rowKeys: string[];
   cells: ReactNode[][];
   empty: string;
+  scrollLabel?: string;
 }) {
   return (
-    <div className="admin-monitor-table-wrap">
+    <div className="admin-monitor-table-wrap" role="region" tabIndex={0} aria-label={scrollLabel}>
       <table className="admin-monitor-table">
         <thead>
           <tr>
@@ -528,6 +530,7 @@ export function AdminMonitorWorkspace({
               rowKeys={pagePoints.map((p, i) => `${(histPage - 1) * PAGE_SIZE + i}:${p.at ?? "na"}`)}
               cells={pagePoints.map((p) => [fmtTime(p.at), fmtGib(p.uploadBytes), fmtGib(p.downloadBytes), fmtGib(p.totalBytes)])}
               empty="无匹配记录"
+              scrollLabel="历史流量表格，可横向滚动"
             />
             <Pager page={histPage} pages={histPages} onPage={(n) => setPageMap((m) => ({ ...m, [histSpace]: n }))} />
           </>
@@ -693,6 +696,7 @@ export function AdminMonitorWorkspace({
               ];
             })}
             empty={listEmpty(sources.usage.phase, items.length, filtered.length, "用量来源不可用")}
+            scrollLabel="用量监视表格，可横向滚动"
           />
           <Pager page={pg.page} pages={pg.pages} onPage={setPage} />
           {historyBlock()}

@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { StrictMode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -435,5 +436,51 @@ describe("subscription distribution panel", () => {
   it("does not lose its initial read in StrictMode cleanup", async () => {
     const client = makeClient(); render(<StrictMode><SubscriptionDistributionPanel client={client} /></StrictMode>);
     await screen.findByText("已读取当前分发设置。"); expect(screen.getByRole("radio", { name: "自有节点" })).toBeTruthy();
+  });
+  it("keeps 390px rating controls focusable and lets the owned table scroll in its own region", async () => {
+    const originalWidth = window.innerWidth;
+    Object.defineProperty(window, "innerWidth", { configurable: true, value: 390 });
+    const ratingRevision = "c".repeat(64);
+    const value = { ...fixture(), protocolRating: { installed: true, revision: ratingRevision, active: { version: 1, state: "active" as const, effectiveNotBefore: "2026-10-20T00:00:00.000Z", multipliers: { vless: "1.0", hy2: "1.0", tuic: "1.0" } }, pending: null } };
+    const client = makeClient(value);
+    client.saveProtocolRating = vi.fn().mockImplementation(async (input: { vless: string; hy2: string; tuic: string }) => ({
+      ...structuredClone(value),
+      protocolRating: { ...value.protocolRating, revision: "d".repeat(64), pending: { version: 2, state: "pending" as const, effectiveNotBefore: "2026-10-20T01:00:00.000Z", multipliers: { vless: input.vless, hy2: input.hy2, tuic: input.tuic } } }
+    }));
+    try {
+      await loaded(client);
+      const region = screen.getByRole("region", { name: "协议用量倍率" });
+      const number = within(region).getByRole("spinbutton", { name: "hy2 用量倍率" }) as HTMLInputElement;
+      const slider = within(region).getByRole("slider", { name: "hy2 用量倍率滑块" }) as HTMLInputElement;
+      const save = within(region).getByRole("button", { name: "保存协议倍率" }) as HTMLButtonElement;
+      number.focus();
+      expect(document.activeElement).toBe(number);
+      slider.focus();
+      expect(document.activeElement).toBe(slider);
+      fireEvent.change(number, { target: { value: "2.5" } });
+      expect(client.saveProtocolRating).not.toHaveBeenCalled();
+      fireEvent.click(save);
+      const dialog = screen.getByRole("dialog");
+      const confirm = within(dialog).getByRole("button", { name: "确认保存" });
+      const cancel = within(dialog).getByRole("button", { name: "取消" });
+      confirm.focus();
+      expect(document.activeElement).toBe(confirm);
+      cancel.focus();
+      expect(document.activeElement).toBe(cancel);
+      fireEvent.click(cancel);
+      expect(client.saveProtocolRating).not.toHaveBeenCalled();
+      expect(client.setBwhSupply).not.toHaveBeenCalled();
+      const table = screen.getByRole("region", { name: "自有节点列表，可横向滚动" });
+      expect(table.getAttribute("tabindex")).toBe("0");
+      table.focus();
+      expect(document.activeElement).toBe(table);
+      const css = readFileSync("src/features/third-party-node-names/subscription-distribution-panel.styles.css", "utf8");
+      expect(css).toMatch(/\.subscription-distribution-table-wrap \{[^}]*overflow-x: auto/s);
+      expect(css).toMatch(/\.subscription-distribution-table-wrap \{[^}]*max-width: 100%/s);
+      expect(css).toMatch(/\.subscription-distribution-table-wrap \{[^}]*min-width: 0/s);
+      expect(css).not.toMatch(/\.subscription-distribution \{[^}]*overflow-x:\s*hidden/s);
+    } finally {
+      Object.defineProperty(window, "innerWidth", { configurable: true, value: originalWidth });
+    }
   });
 });
