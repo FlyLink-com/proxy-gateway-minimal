@@ -1,4 +1,6 @@
 import { createHash } from "node:crypto";
+import { lstatSync, mkdirSync, readFileSync, realpathSync, renameSync, rmdirSync, rmSync, writeFileSync } from "node:fs";
+import { isAbsolute, join, resolve } from "node:path";
 import { SUBSCRIPTION_DISTRIBUTION_SUPPLY_UNITS } from "../../../scripts/lib/bwh-supply-constants.mjs";
 
 // Planner and desired-state store only. applyBwhBandwidthSchema is the only
@@ -30,7 +32,10 @@ export const BWH_SHARED_BANDWIDTH_PROFILE = Object.freeze({
 
 const PROFILE = BWH_SHARED_BANDWIDTH_PROFILE;
 const IFB = PROFILE.ifbName;
-const CLASS_ID = `${PROFILE.htbMajor}:${PROFILE.htbClass.toString(16)}`;
+const DIRECTION_CLASS = Object.freeze({
+  inbound: `${PROFILE.htbMajor}:${PROFILE.htbClass.toString(16)}`,
+  outbound: `${PROFILE.htbMajor}:${(PROFILE.htbClass + 1).toString(16)}`
+});
 const QDISC_HANDLE = `${PROFILE.htbMajor}:`;
 const MARK_TOKEN = `0x${PROFILE.markValue.toString(16)}`;
 const MASK_TOKEN = `0x${PROFILE.markMask.toString(16)}`;
@@ -42,8 +47,10 @@ const ADMIN_KEYS = ["bandwidthRevision", "inboundEnabled", "outboundEnabled", "i
 const FIXED_ARGV = new Set([
   "ip", "link", "add", "del", "set", "up", "type", "ifb",
   "tc", "qdisc", "class", "filter", "dev", "root", "handle", "parent", "classid", "htb", "rate",
-  IFB, QDISC_HANDLE, CLASS_ID, MARK_TOKEN, MASK_TOKEN
+  IFB, QDISC_HANDLE, DIRECTION_CLASS.inbound, DIRECTION_CLASS.outbound, MARK_TOKEN, MASK_TOKEN
 ]);
+const ATTEMPT_NAME = "bwh-bandwidth-attempt.json";
+const LOCK_NAME = "bwh-bandwidth.lock";
 const MANAGEMENT_WORD = /ssh|admin|portal|subscription|control|meter|systemctl|cgroup|sudo|nginx|bash/i;
 
 function fail(code) {
@@ -152,10 +159,29 @@ function step(id, argv, direction = null) {
 export function rollbackOwnedSteps() {
   return [
     step("del-filter", ["tc", "filter", "del", "dev", IFB, "parent", QDISC_HANDLE, "handle", MARK_TOKEN]),
-    step("del-class", ["tc", "class", "del", "dev", IFB, "classid", CLASS_ID]),
+    step("del-class-outbound", ["tc", "class", "del", "dev", IFB, "classid", DIRECTION_CLASS.outbound]),
+    step("del-class-inbound", ["tc", "class", "del", "dev", IFB, "classid", DIRECTION_CLASS.inbound]),
     step("del-qdisc", ["tc", "qdisc", "del", "dev", IFB, "handle", QDISC_HANDLE]),
     step("del-ifb", ["ip", "link", "del", IFB])
   ];
+}
+
+function createKey(item) {
+  const argv = item.argv;
+  if (argv[0] === "ip" && argv.includes("add")) return `link:${IFB}`;
+  if (argv.includes("qdisc") && argv.includes("add")) return `qdisc:${IFB}:${QDISC_HANDLE}`;
+  if (argv.includes("class") && argv.includes("add")) return `class:${IFB}:${argv[argv.indexOf("classid") + 1]}`;
+  return null;
+}
+
+function assertUniqueCreates(steps) {
+  const seen = new Set();
+  for (const item of steps) {
+    const key = createKey(item);
+    if (!key) continue;
+    if (seen.has(key)) throw fail("bwh_bandwidth_plan_conflict");
+    seen.add(key);
+  }
 }
 
 export function plan(policy, interfaceName) {
@@ -171,9 +197,12 @@ export function plan(policy, interfaceName) {
     // Root qdisc is added only on the IFB this profile creates, never on the operator NIC.
     steps.push(step("htb-qdisc", ["tc", "qdisc", "add", "dev", IFB, "root", "handle", QDISC_HANDLE, "htb"]));
     for (const [id, direction, bps] of rates) {
-      steps.push(step(id, ["tc", "class", "add", "dev", IFB, "parent", QDISC_HANDLE, "classid", CLASS_ID, "htb", "rate", String(bps)], direction));
+      steps.push(step(id, [
+        "tc", "class", "add", "dev", IFB, "parent", QDISC_HANDLE, "classid", DIRECTION_CLASS[direction], "htb", "rate", String(bps)
+      ], direction));
     }
   }
+  assertUniqueCreates(steps);
   for (const planned of steps) {
     if (planned.shell !== false || planned.argv.includes(acceptedInterface)) throw fail("bwh_bandwidth_invalid");
   }
@@ -354,6 +383,57 @@ export function saveFromAdmin(db, body) {
   return saveDesired(db, body, body.bandwidthRevision);
 }
 
+function protectedDirectory(directory) {
+  if (typeof directory !== "string" || !isAbsolute(directory)) throw fail("bwh_bandwidth_invalid");
+  let info;
+  try { info = lstatSync(directory); } catch { throw fail("bwh_bandwidth_invalid"); }
+  const key = (value) => process.platform === "win32" ? value.toLowerCase() : value;
+  if (info.isSymbolicLink() || !info.isDirectory() || key(realpathSync(directory)) !== key(resolve(directory))) {
+    throw fail("bwh_bandwidth_invalid");
+  }
+}
+
+function attemptPath(directory) {
+  return join(directory, ATTEMPT_NAME);
+}
+
+function writeAttempt(directory, attempt) {
+  const target = attemptPath(directory);
+  const temporary = `${target}.tmp`;
+  writeFileSync(temporary, `${JSON.stringify(attempt)}\n`);
+  rmSync(target, { force: true });
+  renameSync(temporary, target);
+}
+
+export function readBandwidthAttempt(directory) {
+  protectedDirectory(directory);
+  let parsed;
+  try { parsed = JSON.parse(readFileSync(attemptPath(directory), "utf8")); } catch { throw fail("bwh_bandwidth_invalid"); }
+  if (!parsed || parsed.kind !== "bwh-bandwidth-attempt" || typeof parsed.revision !== "string" || !REVISION.test(parsed.revision)
+    || !Array.isArray(parsed.steps) || parsed.steps.length > 16) throw fail("bwh_bandwidth_invalid");
+  return {
+    revision: parsed.revision,
+    stopped: typeof parsed.stopped === "string" ? parsed.stopped : null,
+    steps: parsed.steps.map((item) => {
+      if (!item || typeof item.id !== "string" || item.id.length < 1 || item.id.length > 64) throw fail("bwh_bandwidth_invalid");
+      if (!(item.direction === null || typeof item.direction === "string")) throw fail("bwh_bandwidth_invalid");
+      if (!["pending", "intended", "done"].includes(item.state)) throw fail("bwh_bandwidth_invalid");
+      return { id: item.id, direction: item.direction, state: item.state };
+    })
+  };
+}
+
+function incompleteAttempt(attempt) {
+  return attempt.steps.some((item) => item.state === "intended") && attempt.steps.some((item) => item.state === "pending");
+}
+
+async function withBandwidthProcessLock(directory, callback) {
+  protectedDirectory(directory);
+  const lock = join(directory, LOCK_NAME);
+  try { mkdirSync(lock, { mode: 0o700 }); } catch { throw fail("bwh_bandwidth_locked"); }
+  try { return await callback(); } finally { rmdirSync(lock); }
+}
+
 function directionReceiptMatches(enabled, desiredBps, actual) {
   if (enabled) return actual === desiredBps;
   return actual === null;
@@ -366,7 +446,7 @@ function receiptProves(receipt, policy) {
     && directionReceiptMatches(policy.outbound.enabled, policy.outbound.bps, receipt.outboundBps);
 }
 
-export async function applyPlan({ db, run, readback, interfaceName }) {
+export async function applyPlan({ db, run, readback, interfaceName, lockDirectory, afterLock, interruptAfter } = {}) {
   const existing = readRow(db);
   if (existing?.status === "unknown") throw fail("bwh_bandwidth_conflict");
   let acceptedInterface = null;
@@ -392,12 +472,43 @@ export async function applyPlan({ db, run, readback, interfaceName }) {
     setStatus(db, "failed", "policy_invalid");
     return readBwhBandwidth(db);
   }
-  // Unproven classification must not touch the kernel. A later isolated proof
-  // has to set classificationAttached before any owned object is created.
-  if (planned.classificationAttached !== true) {
-    setStatus(db, "failed", "classification_unproven");
-    return readBwhBandwidth(db);
-  }
+  // The directory lock is the cross-process exclusion. The status column is not.
+  if (typeof lockDirectory !== "string") throw fail("bwh_bandwidth_lock_required");
+  return withBandwidthProcessLock(lockDirectory, async () => {
+    const revision = row ? row.revision : revisionForBandwidthPolicy(normalized);
+    if (afterLock !== undefined && typeof afterLock !== "function") throw fail("bwh_bandwidth_invalid");
+    if (interruptAfter !== undefined && (!Number.isSafeInteger(interruptAfter) || interruptAfter < 0)) {
+      throw fail("bwh_bandwidth_invalid");
+    }
+    if (typeof afterLock === "function") await afterLock({ revision });
+    const current = readRow(db);
+    const currentRevision = current ? current.revision : revisionForBandwidthPolicy(emptyPolicy());
+    if (currentRevision !== revision) throw fail("bwh_bandwidth_conflict");
+    let prior = null;
+    try { prior = readBandwidthAttempt(lockDirectory); } catch { prior = null; }
+    if (prior && incompleteAttempt(prior)) {
+      if (planned.classificationAttached !== true) {
+        setStatus(db, "failed", "classification_unproven");
+        return readBwhBandwidth(db);
+      }
+      throw fail("bwh_bandwidth_attempt_incomplete");
+    }
+    const steps = planned.steps.map((item) => ({ id: item.id, direction: item.direction, state: "pending" }));
+    const attempt = { kind: "bwh-bandwidth-attempt", revision, stopped: null, steps };
+    if (steps.length === 0) writeAttempt(lockDirectory, attempt);
+    for (let index = 0; index < steps.length; index += 1) {
+      steps[index].state = "intended";
+      writeAttempt(lockDirectory, attempt);
+      if (interruptAfter === index) throw fail("bwh_bandwidth_interrupted");
+    }
+    // Unproven classification must not touch the kernel. A later isolated proof
+    // has to set classificationAttached before any owned object is created.
+    if (planned.classificationAttached !== true) {
+      attempt.stopped = "classification_unproven";
+      writeAttempt(lockDirectory, attempt);
+      setStatus(db, "failed", "classification_unproven");
+      return readBwhBandwidth(db);
+    }
   if (typeof run !== "function" || typeof readback !== "function") {
     setStatus(db, "failed", "policy_invalid");
     return readBwhBandwidth(db);
@@ -447,4 +558,5 @@ export async function applyPlan({ db, run, readback, interfaceName }) {
     return readBwhBandwidth(db);
   }
   return applied;
+  });
 }

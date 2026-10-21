@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
@@ -10,7 +12,7 @@ import { listen } from "./helpers/listen.mjs";
 import {
   BWH_SHARED_BANDWIDTH_PROFILE as PROFILE,
   applyBwhBandwidthSchema, applyPlan, loadOperatorInterfaceName, mbpsTextToBps, plan,
-  readBwhBandwidth, revisionForBandwidthPolicy, rollbackOwnedSteps, saveDesired, saveFromAdmin
+  readBandwidthAttempt, readBwhBandwidth, revisionForBandwidthPolicy, rollbackOwnedSteps, saveDesired, saveFromAdmin
 } from "../services/platform/bwh-shared-bandwidth.mjs";
 import {
   encodeBwhBandwidthWireRequest, parseBwhBandwidthWireRequest, parseBwhBandwidthWireResponse
@@ -140,8 +142,110 @@ test("plan uses only fixed tokens and decimal bps, and does not classify managem
   assert.throws(() => plan({ inbound: { enabled: true, bps: 1500000 }, outbound: { enabled: false, bps: null } }, "eth0;tc"));
 });
 
-test("unproven classification does not call run or readback, and a forged receipt cannot apply", async () => {
+function classId(step) {
+  return step.argv[step.argv.indexOf("classid") + 1];
+}
+function rateSteps(planned, direction) {
+  return planned.steps.filter((step) => step.direction === direction && step.argv.includes("class") && step.argv.includes("add"));
+}
+function lockDir(t) {
+  const directory = mkdtempSync(join(tmpdir(), "bwh-bandwidth-lock-"));
+  t.after(() => rmSync(directory, { recursive: true, force: true }));
+  return directory;
+}
+
+test("each direction has one queue and one shared rate, and off adds nothing", () => {
+  const both = plan({
+    inbound: { enabled: true, bps: 1500000 }, outbound: { enabled: true, bps: 2500000 }
+  }, "eth0");
+  const inbound = rateSteps(both, "inbound");
+  const outbound = rateSteps(both, "outbound");
+  assert.equal(inbound.length, 1);
+  assert.equal(outbound.length, 1);
+  assert.notEqual(classId(inbound[0]), classId(outbound[0]));
+  assert.equal(both.steps.filter((step) => step.argv.includes("qdisc") && step.argv.includes("add")).length, 1);
+  assert.equal(both.steps.filter((step) => step.argv[0] === "ip" && step.argv.includes("add")).length, 1);
+  assert.equal(both.steps.filter((step) => step.argv.includes("rate")).length, 2);
+  assert.equal(both.classificationAttached, false);
+  assert.equal(both.steps.some((step) => step.argv.includes("filter")), false);
+  const onlyIn = plan({ inbound: { enabled: true, bps: 1500000 }, outbound: { enabled: false, bps: null } }, "eth0");
+  assert.equal(rateSteps(onlyIn, "inbound").length, 1);
+  assert.equal(rateSteps(onlyIn, "outbound").length, 0);
+  const onlyOut = plan({ inbound: { enabled: false, bps: null }, outbound: { enabled: true, bps: 2500000 } }, "eth0");
+  assert.equal(rateSteps(onlyOut, "inbound").length, 0);
+  assert.equal(rateSteps(onlyOut, "outbound").length, 1);
+  assert.notEqual(classId(rateSteps(onlyOut, "outbound")[0]), classId(rateSteps(onlyIn, "inbound")[0]));
+  const off = plan({ inbound: { enabled: false, bps: null }, outbound: { enabled: false, bps: null } }, "eth0");
+  assert.equal(off.steps.length, 0);
+  assert.equal(off.classificationAttached, false);
+});
+
+test("a held process lock and a changed revision refuse apply before any command", async (t) => {
   const db = open();
+  t.after(() => db.close());
+  const directory = lockDir(t);
+  const initial = readBwhBandwidth(db);
+  const saved = saveFromAdmin(db, { ...enabled("1.5", "2.5"), bandwidthRevision: initial.revision });
+  mkdirSync(join(directory, "bwh-bandwidth.lock"));
+  let calls = 0;
+  await assert.rejects(() => applyPlan({
+    db, lockDirectory: directory, interfaceName: "eth0",
+    run() { calls += 1; return 0; },
+    readback() { calls += 1; return {}; }
+  }), (error) => code(error) === "bwh_bandwidth_locked");
+  assert.equal(calls, 0);
+  assert.equal(readBwhBandwidth(db).state, "desired");
+  rmSync(join(directory, "bwh-bandwidth.lock"), { recursive: true, force: true });
+  await assert.rejects(() => applyPlan({
+    db, lockDirectory: directory, interfaceName: "eth0",
+    async afterLock(snapshot) {
+      assert.equal(snapshot.revision, saved.revision);
+      saveFromAdmin(db, { ...enabled("3"), bandwidthRevision: saved.revision, outboundEnabled: false });
+    },
+    run() { calls += 1; return 0; },
+    readback() { calls += 1; return {}; }
+  }), (error) => code(error) === "bwh_bandwidth_conflict");
+  assert.equal(calls, 0);
+  assert.equal(readBwhBandwidth(db).inboundMbps, "3");
+  assert.equal(readBwhBandwidth(db).state, "desired");
+});
+
+test("an interrupted attempt keeps intended and pending steps and still does not run", async (t) => {
+  const db = open();
+  t.after(() => db.close());
+  const directory = lockDir(t);
+  const initial = readBwhBandwidth(db);
+  saveFromAdmin(db, { ...enabled("1.5", "2.5"), bandwidthRevision: initial.revision });
+  let calls = 0;
+  await assert.rejects(() => applyPlan({
+    db, lockDirectory: directory, interfaceName: "eth0", interruptAfter: 0,
+    run() { calls += 1; return 0; },
+    readback() { calls += 1; return {}; }
+  }), (error) => code(error) === "bwh_bandwidth_interrupted");
+  assert.equal(calls, 0);
+  const attempt = readBandwidthAttempt(directory);
+  assert.equal(attempt.steps[0].state, "intended");
+  assert.equal(attempt.steps.slice(1).every((step) => step.state === "pending"), true);
+  assert.equal(attempt.steps.some((step) => step.state === "done"), false);
+  assert.equal(readBwhBandwidth(db).state, "desired");
+  const resumed = await applyPlan({
+    db, lockDirectory: directory, interfaceName: "eth0",
+    run() { calls += 1; return 0; },
+    readback() { calls += 1; return { classificationProven: true, managementExemptProven: true, inboundBps: 1500000, outboundBps: 2500000 }; }
+  });
+  assert.equal(calls, 0);
+  assert.equal(resumed.state, "failed");
+  assert.equal(resumed.reason, "classification_unproven");
+  const kept = readBandwidthAttempt(directory);
+  assert.equal(kept.steps[0].state, "intended");
+  assert.equal(kept.steps.some((step) => step.state === "done"), false);
+  assert.equal(kept.steps.some((step) => step.state === "pending"), true);
+});
+
+test("unproven classification does not call run or readback, and a forged receipt cannot apply", async (t) => {
+  const db = open();
+  t.after(() => db.close());
+  const directory = lockDir(t);
   const initial = readBwhBandwidth(db);
   saveFromAdmin(db, { ...enabled("1.5"), bandwidthRevision: initial.revision, outboundEnabled: false });
   let runs = 0;
@@ -153,7 +257,7 @@ test("unproven classification does not call run or readback, and a forged receip
     outboundBps: null
   };
   const unproven = await applyPlan({
-    db, interfaceName: "eth0",
+    db, lockDirectory: directory, interfaceName: "eth0",
     run() { runs += 1; return 0; },
     readback() { readbacks += 1; return forged; }
   });
@@ -164,7 +268,7 @@ test("unproven classification does not call run or readback, and a forged receip
   assert.equal(unproven.inboundMbps, "1.5");
   assert.equal(unproven.outboundMbps, null);
   const again = await applyPlan({
-    db, interfaceName: "eth0",
+    db, lockDirectory: directory, interfaceName: "eth0",
     run() { runs += 1; return 0; },
     readback() { readbacks += 1; return { code: 0, ...forged, outboundBps: 0 }; }
   });
@@ -173,7 +277,6 @@ test("unproven classification does not call run or readback, and a forged receip
   assert.notEqual(again.state, "applied");
   assert.equal(again.reason, "classification_unproven");
   assert.equal(readBwhBandwidth(db).state, "failed");
-  db.close();
 });
 
 test("a bad interface or invalid stored policy does not call run", async () => {

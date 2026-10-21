@@ -14,7 +14,7 @@ Risk: A。Process: 本文件所在变更只交付控制面源码、Admin 投影�
 
 本 PR 不证明双向分类已经成立，也不证明管理流量被排除在代理类之外。`applied` 只有在未来的隔离证明同时给出 `classificationProven`、`managementExemptProven`，且入站和出站读回速率都与期望 bps 一致时才允许写入。命令退出码 0 不能记为已生效。内核分类本次没有执行。
 
-本次是 Draft 源码原型检查点，不是限速功能完成或生产可用声明。正式 state/schema 尚未接入；双向 planner 仍有同 IFB／classid 冲突。真实分类、宿主受限执行器、kernel readback、对象归属核验与回退、进程锁／持久步骤恢复、重启恢复及 Linux 共享速率验收均待完成。保存只保存目标，不代表主机已限速。未执行生产安装或启用。
+本次是 Draft 源码原型检查点，不是限速功能完成或生产可用声明。正式 state/schema 尚未接入。入站队列是 `1:10`，出站队列是 `1:11`，同一 IFB 上的 HTB 根只创建一次，每个方向只有一个共享 rate，不按三条协议复制。两个方向都关闭时不创建队列。`classificationAttached` 仍为 false。`applyPlan` 在调用任何命令前取得调用方目录里的 `bwh-bandwidth.lock`；这把目录锁才是跨进程排除，`applying` 状态字段不是锁。步骤记在同目录的 `bwh-bandwidth-attempt.json`：中断后已记录的步骤是 `intended`，还没记录的是 `pending`，未执行的步骤不是 `done`。分类未证明时不调用 run 或 readback，也不把未完成的尝试改写成已执行。真实分类、宿主受限执行器、kernel readback、对象归属核验与回退、重启恢复及 Linux 共享速率验收均待完成。保存只保存目标，不代表主机已限速。未执行生产安装或启用。
 
 ## 范围
 
@@ -28,9 +28,10 @@ Risk: A。Process: 本文件所在变更只交付控制面源码、Admin 投影�
 
 - `readBwhBandwidth`：读取期望状态。没有行时是默认关闭，状态为已保存，不是已生效。
 - `saveDesired` / `saveFromAdmin`：校验策略后做 revision CAS。非法策略抛出 `bwh_bandwidth_invalid`，不改行，也不调用执行器。revision 不一致、或当前为 `applying` / `unknown` 时抛出 `bwh_bandwidth_conflict`。
-- `plan`：返回结构化步骤。分类附着标记恒为 false。
-- `applyPlan`：网卡名无法证明时记 `failed` / `interface_unproven`，且不调用 `run`。分类附着标记不是 true 时记 `failed` / `classification_unproven`，不调用 `run`，也不调用 `readback`。伪造的读回不能把该结果写成 `applied`。`unknown` 期间拒绝下一次 apply。当前分类标记恒为 false，不创建内核对象；未来仍须补真实分类与对象归属证明，不能只翻转该标记。读回缺少任一证明或速率不一致时不能成为 `applied`。
-- `rollbackOwnedSteps`：目前只生成固定 IFB、HTB class、qdisc handle 和 filter handle 的删除候选；没有实际对象归属 readback，不能称为已经实现安全回退。
+- `plan`：返回结构化步骤。入站和出站使用不同 classid。分类附着标记恒为 false。
+- `applyPlan`：没有调用方锁目录时拒绝，且不调用 `run`。锁目录已被占用时拒绝。锁内 revision 变化时拒绝，并留下刚保存的目标。网卡名无法证明时记 `failed` / `interface_unproven`，且不调用 `run`。分类附着标记不是 true 时记 `failed` / `classification_unproven`，不调用 `run`，也不调用 `readback`。伪造的读回不能把该结果写成 `applied`。`unknown` 期间拒绝下一次 apply。当前分类标记恒为 false，不创建内核对象；未来仍须补真实分类与对象归属证明，不能只翻转该标记。读回缺少任一证明或速率不一致时不能成为 `applied`。
+- `readBandwidthAttempt`：只读上述尝试文件，不执行步骤。
+- `rollbackOwnedSteps`：目前只生成固定 IFB、两个方向的 HTB class、qdisc handle 和 filter handle 的删除候选；没有实际对象归属 readback，不能称为已经实现安全回退。
 
 Admin `PUT /api/admin/third-party-subscriptions/distribution/bandwidth` 复用供流写入的会话、角色、精确 Origin 和 `sec-fetch-site` 约束。请求体只有 `bandwidthRevision`、`inboundEnabled`、`outboundEnabled`、`inboundMbps`、`outboundMbps`。未注入 `state.bwhBandwidth.save` 时返回 `bwh_bandwidth_unavailable`。该处理函数不写分发路由，也不改变供流开关。
 
