@@ -434,18 +434,6 @@ async function withBandwidthProcessLock(directory, callback) {
   try { return await callback(); } finally { rmdirSync(lock); }
 }
 
-function directionReceiptMatches(enabled, desiredBps, actual) {
-  if (enabled) return actual === desiredBps;
-  return actual === null;
-}
-
-function receiptProves(receipt, policy) {
-  if (!receipt || typeof receipt !== "object" || Array.isArray(receipt)) return false;
-  if (receipt.classificationProven !== true || receipt.managementExemptProven !== true) return false;
-  return directionReceiptMatches(policy.inbound.enabled, policy.inbound.bps, receipt.inboundBps)
-    && directionReceiptMatches(policy.outbound.enabled, policy.outbound.bps, receipt.outboundBps);
-}
-
 export async function applyPlan({ db, run, readback, interfaceName, lockDirectory, afterLock, interruptAfter } = {}) {
   const existing = readRow(db);
   if (existing?.status === "unknown") throw fail("bwh_bandwidth_conflict");
@@ -501,62 +489,12 @@ export async function applyPlan({ db, run, readback, interfaceName, lockDirector
       writeAttempt(lockDirectory, attempt);
       if (interruptAfter === index) throw fail("bwh_bandwidth_interrupted");
     }
-    // Unproven classification must not touch the kernel. A later isolated proof
-    // has to set classificationAttached before any owned object is created.
-    if (planned.classificationAttached !== true) {
-      attempt.stopped = "classification_unproven";
-      writeAttempt(lockDirectory, attempt);
-      setStatus(db, "failed", "classification_unproven");
-      return readBwhBandwidth(db);
-    }
-  if (typeof run !== "function" || typeof readback !== "function") {
-    setStatus(db, "failed", "policy_invalid");
-    return readBwhBandwidth(db);
-  }
-  setStatus(db, "applying", null);
-  try {
-    for (const plannedStep of planned.steps) {
-      if (plannedStep.shell !== false) throw fail("bwh_bandwidth_invalid");
-      assertArgv(plannedStep.argv);
-      if (plannedStep.argv.includes(acceptedInterface) && acceptedInterface !== IFB) throw fail("bwh_bandwidth_invalid");
-      await run(plannedStep);
-    }
-  } catch {
-    try {
-      for (const rollbackStep of rollbackOwnedSteps()) {
-        if (rollbackStep.shell !== false) throw fail("bwh_bandwidth_invalid");
-        assertArgv(rollbackStep.argv);
-        await run(rollbackStep);
-      }
-    } catch {
-      setStatus(db, "unknown", "rollback_failed");
-      return readBwhBandwidth(db);
-    }
-    setStatus(db, "failed", "apply_failed");
-    return readBwhBandwidth(db);
-  }
-  let receipt;
-  try { receipt = await readback(); } catch {
-    setStatus(db, "failed", "readback_failed");
-    return readBwhBandwidth(db);
-  }
-  if (!receiptProves(receipt, normalized)) {
-    const mismatch = receipt && typeof receipt === "object"
-      && receipt.classificationProven === true && receipt.managementExemptProven === true;
-    setStatus(db, "failed", mismatch ? "readback_mismatch" : "classification_unproven");
-    return readBwhBandwidth(db);
-  }
-  setStatus(db, "applied", null, {
-    classificationProven: true,
-    managementExemptProven: true,
-    inboundBps: normalized.inbound.enabled ? normalized.inbound.bps : null,
-    outboundBps: normalized.outbound.enabled ? normalized.outbound.bps : null
-  });
-  const applied = readBwhBandwidth(db);
-  if (applied.state !== "applied") {
+    // Classification is still unproven, so this path cannot create or delete
+    // kernel objects. executeOwnedBandwidth owns the synthetic readback and
+    // compensation state machine and is intentionally not called here.
+    attempt.stopped = "classification_unproven";
+    writeAttempt(lockDirectory, attempt);
     setStatus(db, "failed", "classification_unproven");
     return readBwhBandwidth(db);
-  }
-  return applied;
   });
 }

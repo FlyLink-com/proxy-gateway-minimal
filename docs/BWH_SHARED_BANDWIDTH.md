@@ -18,6 +18,8 @@ Risk: A。Process: 本文件所在变更只交付控制面源码、Admin 投影�
 
 `observeBandwidthClassification` 只读合成或将来的逐条观测，不执行宿主命令。服务名数组、`classificationAttached` 布尔值、监听端口、共享 UID、整网卡整形，以及未批准的 network namespace 迁移或服务身份变更，都返回明确拒绝，不构成分类。缺整段 IPv6、既有连接、入站或回源腿时停下并给出对应缺口。把管理流量放进 `1:10` 或 `1:11` 记为未豁免。144 条协议格和 28 条豁免格都填上允许的证据种类时，矩阵只表示形状完整；`proven` 和 `classificationAttached` 仍是 false，原因是 `host_fixture_unauthorized`。调用方没有内核读回、接口索引或服务 cgroup。这个结果不能让 `applyPlan` 调用 run 或 readback。本模块不迁移协议 namespace，也不改服务身份。
 
+`executeOwnedBandwidth` 先读结构化快照，再决定是否发出固定 argv。操作者网卡上的 root qdisc、未知对象、mark 不一致、IFB 名字不符或 owner 不是 `bwh-us-v1` 时不发命令。命令退出码 0 但速率不符时结果不是 applied，补偿前会再读一次快照；快照里出现 foreign、unknown 或无法解析时不发删除命令，并记为 unknown。确认仍属于本 profile 的对象才按创建逆序删除，删除 argv 只指向固定 IFB，不含操作者网卡、`root`、`flush` 或三个协议服务。速率即使与策略一致，也因为分类没有主机证明而保持未 applied，并收回本次创建的自有对象。`applyPlan` 不调用这个执行器。`scripts/bwh-bandwidth-worker.mjs` 复用一次性套接字边界，只解析独立 bandwidth wire；非 root 退出 77，多余 argv 或坏帧退出 64，合法帧也以退出码 2 拒绝，不调用执行器。namespace 脚本仍然拒绝。
+
 ## 范围
 
 三个 BWH 代理服务 `xray-vless-reality.service`、`hysteria2.service`、`mihomo-tuic.service` 共用一个总入站预算和一个总出站预算。不按用户、连接、协议、CPU 或网卡分别限速。默认两个方向都关闭；关闭保存为 `enabled: false` 且 `bps: null`，不是 0。开启时 0 Mbps 会被拒绝，不能当作暂停别名。
@@ -35,7 +37,8 @@ Risk: A。Process: 本文件所在变更只交付控制面源码、Admin 投影�
 - `plan`：返回结构化步骤。入站和出站使用不同 classid。分类附着标记恒为 false。不因观测函数而添加 filter。
 - `applyPlan`：没有调用方锁目录时拒绝，且不调用 `run`。锁目录已被占用时拒绝。锁内 revision 变化时拒绝，并留下刚保存的目标。网卡名无法证明时记 `failed` / `interface_unproven`，且不调用 `run`。分类附着标记不是 true 时记 `failed` / `classification_unproven`，不调用 `run`，也不调用 `readback`。伪造的读回不能把该结果写成 `applied`。`unknown` 期间拒绝下一次 apply。当前分类标记恒为 false，不创建内核对象；未来仍须补真实分类与对象归属证明，不能只翻转该标记。读回缺少任一证明或速率不一致时不能成为 `applied`。
 - `readBandwidthAttempt`：只读上述尝试文件，不执行步骤。
-- `rollbackOwnedSteps`：目前只生成固定 IFB、两个方向的 HTB class、qdisc handle 和 filter handle 的删除候选；没有实际对象归属 readback，不能称为已经实现安全回退。
+- `executeOwnedBandwidth`：用调用方注入的快照做执行前、执行后和补偿前读回。它不由 `applyPlan` 调用，也不会把合成快照写成 applied。
+- `rollbackOwnedSteps`：目前只生成固定 IFB、两个方向的 HTB class、qdisc handle 和 filter handle 的删除候选；没有实际对象归属 readback，不能称为已经实现安全回退。补偿删除由执行器按当次快照另算。
 
 Admin `PUT /api/admin/third-party-subscriptions/distribution/bandwidth` 复用供流写入的会话、角色、精确 Origin 和 `sec-fetch-site` 约束。请求体只有 `bandwidthRevision`、`inboundEnabled`、`outboundEnabled`、`inboundMbps`、`outboundMbps`。未注入 `state.bwhBandwidth.save` 时返回 `bwh_bandwidth_unavailable`。该处理函数不写分发路由，也不改变供流开关。
 
