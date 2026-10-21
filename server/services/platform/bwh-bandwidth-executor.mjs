@@ -112,7 +112,10 @@ function absent(snapshot, object) {
   return !snapshot.classes.some((row) => row.dev === IFB && row.classid === object.classid);
 }
 
-async function compensate(run, readSnapshot, commands, nic, reason) {
+async function compensate(run, readSnapshot, commands, nic, reason, created, ambiguous) {
+  if (created.length === 0) {
+    return result(ambiguous ? "unknown" : "failed", ambiguous ? "rollback_unknown" : reason, commands);
+  }
   let snapshot;
   try { snapshot = await Promise.resolve(readSnapshot()); } catch { return result("unknown", "rollback_unknown", commands); }
   const seen = inspect(snapshot);
@@ -120,12 +123,7 @@ async function compensate(run, readSnapshot, commands, nic, reason) {
     const reason = seen.reason === "readback_unavailable" ? "rollback_unknown" : seen.reason;
     return result("unknown", reason, commands);
   }
-  const created = [];
-  for (const argv of commands) {
-    const object = createdObject(argv);
-    if (object) created.push(object);
-  }
-  for (const object of created.reverse()) {
+  for (const object of [...created].reverse()) {
     if (absent(snapshot, object)) continue;
     if (!confirmed(snapshot, object)) return result("unknown", "owner_drift", commands);
     const argv = deleteArgv(object);
@@ -135,8 +133,9 @@ async function compensate(run, readSnapshot, commands, nic, reason) {
     let code;
     try { code = await run({ shell: false, argv }); } catch { return result("unknown", "rollback_unknown", commands); }
     commands.push(argv);
-    if (code !== 0) return result("unknown", "rollback_unknown", commands);
+    if (!Number.isInteger(code) || code !== 0) return result("unknown", "rollback_unknown", commands);
   }
+  if (ambiguous) return result("unknown", "rollback_unknown", commands);
   return result("failed", reason, commands);
 }
 
@@ -151,21 +150,29 @@ export async function executeOwnedBandwidth({ policy, interfaceName, run, readSn
   if (preflight.reason) return result(preflight.state, preflight.reason, commands);
   const planned = plan(normalized, nic);
   if (planned.classificationAttached === true) throw fail("bwh_bandwidth_invalid");
-  try {
-    for (const step of planned.steps) {
-      if (step.shell !== false || step.argv.includes(nic)) throw fail("bwh_bandwidth_invalid");
-      const code = await run(step);
-      commands.push([...step.argv]);
-      if (code !== 0) throw fail("bwh_bandwidth_apply_failed");
-    }
-  } catch {
-    return compensate(run, readSnapshot, commands, nic, "apply_failed");
+  // An add enters this set only when that object was absent before the attempt
+  // and this call returned integer 0. A name, owner string, or planned add is not proof.
+  const created = [];
+  let ambiguous = false;
+  let applyFailed = false;
+  for (const step of planned.steps) {
+    if (step.shell !== false || step.argv.includes(nic)) throw fail("bwh_bandwidth_invalid");
+    let code;
+    try { code = await run(step); } catch { ambiguous = true; break; }
+    commands.push([...step.argv]);
+    if (!Number.isInteger(code)) { ambiguous = true; break; }
+    if (code !== 0) { applyFailed = true; break; }
+    const object = createdObject(step.argv);
+    if (object && absent(before, object)) created.push(object);
+  }
+  if (ambiguous || applyFailed) {
+    return compensate(run, readSnapshot, commands, nic, "apply_failed", created, ambiguous);
   }
   if (commands.length === 0) return result("failed", "classification_unproven", commands);
   let after;
   try { after = await Promise.resolve(readSnapshot()); } catch { return result("unknown", "readback_unavailable", commands); }
   const checked = inspect(after);
-  if (checked.reason) return compensate(run, readSnapshot, commands, nic, checked.reason);
+  if (checked.reason) return compensate(run, readSnapshot, commands, nic, checked.reason, created, false);
   const reason = ratesMatch(checked.classes, normalized) ? "classification_unproven" : "readback_mismatch";
-  return compensate(run, readSnapshot, commands, nic, reason);
+  return compensate(run, readSnapshot, commands, nic, reason, created, false);
 }

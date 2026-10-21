@@ -49,6 +49,129 @@ function forbidden(commands) {
   }
 }
 
+test("EEXIST must not delete an IFB that existed before this attempt", async () => {
+  const commands = [];
+  const snapshot = ownedSnapshot();
+  await executeOwnedBandwidth({
+    policy: POLICY,
+    interfaceName: "eth0",
+    readSnapshot: () => structuredClone(snapshot),
+    run: ({ argv }) => {
+      commands.push([...argv]);
+      return argv.includes("add") ? 2 : 0;
+    }
+  });
+  assert.equal(commands.filter((argv) => argv.includes("del")).length, 0,
+    "compensation must preserve pre-existing owned objects after EEXIST");
+});
+
+test("partial presence removes only objects this attempt created", async () => {
+  const before = {
+    ...emptySnapshot(),
+    classes: [{ dev: IFB, classid: "1:10", owner: PROFILE.id, rateBps: 1500000 }]
+  };
+  const verdict = await executeOwnedBandwidth({
+    policy: POLICY,
+    interfaceName: "eth0",
+    readSnapshot: sequence([before, ownedSnapshot()]),
+    run({ argv }) {
+      return argv.includes("class") && argv.includes("add") && argv.includes("1:10") ? 2 : 0;
+    }
+  });
+  const deleted = verdict.commands.filter((argv) => argv.includes("del")).map((argv) => argv.at(-1));
+  assert.deepEqual(deleted, ["1:", IFB]);
+  assert.equal(verdict.applied, false);
+  assert.equal(verdict.state, "failed");
+  assert.equal(verdict.reason, "apply_failed");
+  forbidden(verdict.commands);
+});
+
+test("exit 0 does not delete objects that were already present", async () => {
+  const commands = [];
+  const verdict = await executeOwnedBandwidth({
+    policy: POLICY,
+    interfaceName: "eth0",
+    readSnapshot: () => ownedSnapshot(),
+    run({ argv }) {
+      commands.push([...argv]);
+      return 0;
+    }
+  });
+  assert.equal(commands.filter((argv) => argv.includes("del")).length, 0);
+  assert.equal(verdict.applied, false);
+  assert.equal(verdict.state, "failed");
+  assert.equal(verdict.reason, "classification_unproven");
+});
+
+test("a thrown add keeps a pre-existing IFB and does not claim rollback", async () => {
+  const commands = [];
+  const verdict = await executeOwnedBandwidth({
+    policy: POLICY,
+    interfaceName: "eth0",
+    readSnapshot: () => ownedSnapshot(),
+    run({ argv }) {
+      commands.push([...argv]);
+      if (argv.includes("add")) throw new Error("add failed");
+      return 0;
+    }
+  });
+  assert.equal(commands.filter((argv) => argv.includes("del")).length, 0);
+  assert.equal(verdict.applied, false);
+  assert.equal(verdict.state, "unknown");
+  assert.equal(verdict.reason, "rollback_unknown");
+});
+
+test("a thrown add after a confirmed create removes only that create", async () => {
+  const compensation = {
+    ...emptySnapshot(),
+    ifb: { name: IFB, owner: PROFILE.id },
+    rootQdiscs: [{ dev: IFB, handle: "1:", kind: "htb", owner: PROFILE.id }]
+  };
+  const verdict = await executeOwnedBandwidth({
+    policy: POLICY,
+    interfaceName: "eth0",
+    readSnapshot: sequence([emptySnapshot(), compensation]),
+    run({ argv }) {
+      if (argv.includes("qdisc") && argv.includes("add")) throw new Error("unclear");
+      return 0;
+    }
+  });
+  const deleted = verdict.commands.filter((argv) => argv.includes("del")).map((argv) => argv.at(-1));
+  assert.deepEqual(deleted, [IFB]);
+  assert.equal(verdict.applied, false);
+  assert.equal(verdict.state, "unknown");
+  assert.equal(verdict.reason, "rollback_unknown");
+  forbidden(verdict.commands);
+});
+
+test("an unclear add result deletes neither a foreign nor an unknown IFB", async () => {
+  const commands = [];
+  const run = ({ argv }) => {
+    commands.push([...argv]);
+    return argv.includes("add") ? undefined : 0;
+  };
+  const foreign = await executeOwnedBandwidth({
+    policy: POLICY, interfaceName: "eth0", run,
+    readSnapshot: sequence([
+      emptySnapshot(),
+      { ...emptySnapshot(), ifb: { name: IFB, owner: "foreign" } }
+    ])
+  });
+  const unknown = await executeOwnedBandwidth({
+    policy: POLICY, interfaceName: "eth0", run,
+    readSnapshot: sequence([
+      emptySnapshot(),
+      { ...emptySnapshot(), ifb: { name: IFB, owner: "unknown" } }
+    ])
+  });
+  assert.equal(commands.filter((argv) => argv.includes("del")).length, 0);
+  for (const verdict of [foreign, unknown]) {
+    assert.equal(verdict.applied, false);
+    assert.equal(verdict.state, "unknown");
+    assert.equal(verdict.reason, "rollback_unknown");
+  }
+});
+
 test("a foreign root qdisc, unknown object, mark, or ifb refuses before any command", async () => {
   let runs = 0;
   const run = () => { runs += 1; return 0; };
