@@ -18,7 +18,7 @@ Risk: A。Process: 本文件所在变更只交付控制面源码、Admin 投影�
 
 `observeBandwidthClassification` 只读合成或将来的逐条观测，不执行宿主命令。服务名数组、`classificationAttached` 布尔值、监听端口、共享 UID、整网卡整形，以及未批准的 network namespace 迁移或服务身份变更，都返回明确拒绝，不构成分类。缺整段 IPv6、既有连接、入站或回源腿时停下并给出对应缺口。把管理流量放进 `1:10` 或 `1:11` 记为未豁免。144 条协议格和 28 条豁免格都填上允许的证据种类时，矩阵只表示形状完整；`proven` 和 `classificationAttached` 仍是 false，原因是 `host_fixture_unauthorized`。调用方没有内核读回、接口索引或服务 cgroup。这个结果不能让 `applyPlan` 调用 run 或 readback。本模块不迁移协议 namespace，也不改服务身份。
 
-`executeOwnedBandwidth` 先读结构化快照，再决定是否发出固定 argv。操作者网卡上的 root qdisc、未知对象、mark 不一致、IFB 名字不符或 owner 不是 `bwh-us-v1` 时不发命令。命令退出码 0 但速率不符时结果不是 applied，补偿前会再读一次快照；快照里出现 foreign、unknown 或无法解析时不发删除命令，并记为 unknown。确认仍属于本 profile 的对象才按创建逆序删除，删除 argv 只指向固定 IFB，不含操作者网卡、`root`、`flush` 或三个协议服务。速率即使与策略一致，也因为分类没有主机证明而保持未 applied，并收回本次创建的自有对象。`applyPlan` 不调用这个执行器。`scripts/bwh-bandwidth-worker.mjs` 复用一次性套接字边界，只解析独立 bandwidth wire；非 root 退出 77，多余 argv 或坏帧退出 64，合法帧也以退出码 2 拒绝，不调用执行器。namespace 脚本仍然拒绝。
+`executeOwnedBandwidth` 先读结构化快照，再决定是否发出固定 argv。操作者网卡上的 root qdisc、未知对象、mark 不一致、IFB 名字不符或 owner 不是 `bwh-us-v1` 时不发命令。命令退出码 0 但速率不符时结果不是 applied，补偿前会再读一次快照；快照里出现 foreign、unknown 或无法解析时不发删除命令，并记为 unknown。确认仍属于本 profile 的对象才按创建逆序删除，删除 argv 只指向固定 IFB，不含操作者网卡、`root`、`flush` 或三个协议服务。速率即使与策略一致，也因为分类没有主机证明而保持未 applied，并收回本次创建的自有对象。`applyPlan` 不调用这个执行器。`scripts/bwh-bandwidth-worker.mjs` 复用一次性套接字边界，只解析独立 bandwidth wire；非 root 退出 77，多余 argv 或坏帧退出 64，合法帧也以退出码 2 拒绝，不调用执行器。namespace 脚本逐项列出速率、豁免和故障格，并仍然以退出码 2 拒绝。
 
 ## 范围
 
@@ -40,6 +40,7 @@ Risk: A。Process: 本文件所在变更只交付控制面源码、Admin 投影�
 - `readBandwidthAttempt`：只读上述尝试文件，不执行步骤。
 - `executeOwnedBandwidth`：用调用方注入的快照做执行前、执行后和补偿前读回。它不由 `applyPlan` 调用，也不会把合成快照写成 applied。
 - `rollbackOwnedSteps`：目前只生成固定 IFB、两个方向的 HTB class、qdisc handle 和 filter handle 的删除候选；没有实际对象归属 readback，不能称为已经实现安全回退。补偿删除由执行器按当次快照另算。
+- `observeSharedRateProof`：列出三协议分别及同时、双向、客户端／回源、首包／既有、TCP／UDP／QUIC、IPv4／IPv6 的速率格，加上管理豁免格和故障格。缺省全部未观察。合同预先固定：offered load 至少为该方向共享速率的 2 倍，warm-up 3000 ms 不计入，稳态 10000 ms，burst 排除在稳态之外，容差 10%。入站只看 `1:10`，出站只看 `1:11`。单连接 payload、丢包增多、固定成功、放宽容差，以及同时段三条协议各自打满，都记为拒绝。落在容差内的纸面计数仍不是主机测量。
 
 Admin `PUT /api/admin/third-party-subscriptions/distribution/bandwidth` 复用供流写入的会话、角色、精确 Origin 和 `sec-fetch-site` 约束。请求体只有 `bandwidthRevision`、`inboundEnabled`、`outboundEnabled`、`inboundMbps`、`outboundMbps`。显式准入后，同一路由读取并保存，返回状态是 `desired`，不是 `applied`。未注入 `state.bwhBandwidth.save` 时返回 `bwh_bandwidth_unavailable`。该处理函数不写分发路由，也不改变供流开关。页面仍把 `desired` 显示为已保存、`applied` 显示为已生效；本切片没有改页面源码。
 
@@ -49,4 +50,4 @@ Admin `PUT /api/admin/third-party-subscriptions/distribution/bandwidth` 复用�
 
 真实回退仍待实现。当前固定删除候选因分类拒绝而不会进入真实执行路径，不构成“仅删除本功能拥有对象”的证明。后续必须先核对象归属与冲突，不能删除未知 root qdisc 或整网卡规则；不自动把速率改成0，不停止协议或改变供流。
 
-生产步骤：未执行。`scripts/bwh-bandwidth-namespace-proof.mjs` 当前是始终拒绝的占位入口，只输出 `{"ok":false,"reason":"isolation_not_authorized"}` 并以退出码2结束；尚未实现获准后的真实隔离证明，不调用宿主命令。
+生产步骤：未执行。`scripts/bwh-bandwidth-namespace-proof.mjs` 输出上述观察清单，`ok` 为 false，`reason` 为 `isolation_not_authorized`，`measurement` 为 `not_run`，并以退出码 2 结束。环境变量或参数不能把它改成成功。它不调用宿主命令。获准隔离环境中的三协议真实负载、双向计数和故障演练尚未执行。

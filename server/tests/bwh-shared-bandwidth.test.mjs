@@ -342,8 +342,13 @@ test("namespace proof refuses without host commands", () => {
   assert.equal(source.includes("exec"), false);
   const result = spawnSync(process.execPath, [script, "--tc", "ip", "ssh"], { encoding: "utf8" });
   assert.equal(result.status, 2);
-  assert.equal(result.stdout, "{\"ok\":false,\"reason\":\"isolation_not_authorized\"}\n");
   assert.equal(result.stderr, "");
+  const body = JSON.parse(result.stdout);
+  assert.equal(body.ok, false);
+  assert.equal(body.reason, "isolation_not_authorized");
+  assert.equal(body.proven, false);
+  assert.equal(body.classificationAttached, false);
+  assert.equal(body.measurement, "not_run");
 });
 
 test("admin bandwidth route reuses supply authorization and does not write routes or supply", async (t) => {
