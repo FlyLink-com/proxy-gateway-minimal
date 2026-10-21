@@ -4,7 +4,11 @@
 .subscription-distribution p { color: #526176; line-height: 1.6; }
 .subscription-distribution fieldset { margin: 1rem 0; padding: .9rem; border: 1px solid #d8e2ef; border-radius: 12px; min-width: 0; background: #f8faff; }
 .subscription-distribution legend { padding: 0 .4rem; font-weight: 600; }
-.subscription-distribution button, .subscription-distribution input:not([type=checkbox]):not([type=radio]), .subscription-distribution select { border: 1px solid #d8e2ef; border-radius: 9px; background: #fff; color: #31558a; min-height: 36px; padding: .4rem .65rem; }
+.subscription-distribution button, .subscription-distribution input:not([type=checkbox]):not([type=radio]):not([type=range]), .subscription-distribution select { border: 1px solid #d8e2ef; border-radius: 9px; background: #fff; color: #31558a; min-height: 36px; padding: .4rem .65rem; }
+.subscription-distribution-rating { display: grid; gap: .6rem; margin: 1rem 0; padding: .9rem; border: 1px solid #d8e2ef; border-radius: 12px; background: #f8faff; }
+.subscription-distribution-rating label { display: grid; gap: .3rem; }
+.subscription-distribution-rating input[type=number] { max-width: 8rem; }
+.subscription-distribution-rating input[type=range] { width: 100%; }
 .subscription-distribution button { cursor: pointer; }
 .subscription-distribution button:disabled { opacity: .5; cursor: default; }
 .subscription-distribution :is(button, input, select):focus-visible { outline: 2px solid #5089f5; outline-offset: 2px; }
@@ -21,4 +25,4 @@
 .subscription-distribution-candidates small { display: block; color: #526176; margin-top: .2rem; }
 .subscription-distribution-footnote { font-size: .86rem; }
 .subscription-distribution [role=alert] { color: #b42318; }
-@media (max-width: 600px) { .subscription-distribution { padding: .75rem; } .subscription-distribution-heading { flex-direction: column; } }
+@media (max-width: 600px) { .subscription-distribution { padding: .75rem; } .subscription-distribution-heading { flex-direction: column; } .subscription-distribution-rating input[type=number] { max-width: none; width: 100%; } }

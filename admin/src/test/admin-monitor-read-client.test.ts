@@ -451,7 +451,10 @@ describe("admin monitor read client", () => {
         plan: "trial",
         status: "measured",
         usedBytes: 600,
-        observedAt: "2026-06-08T01:05:00.000Z"
+        observedAt: "2026-06-08T01:05:00.000Z",
+        rawUsedBytes: null,
+        chargedUsedBytes: null,
+        ratingState: "legacy"
       },
       {
         accountId: "acct_usage_monitor_1",
@@ -459,7 +462,10 @@ describe("admin monitor read client", () => {
         plan: "monthly",
         status: "not_collected",
         usedBytes: null,
-        observedAt: null
+        observedAt: null,
+        rawUsedBytes: null,
+        chargedUsedBytes: null,
+        ratingState: "legacy"
       },
       {
         accountId: "acct_zero",
@@ -467,7 +473,10 @@ describe("admin monitor read client", () => {
         plan: "trial",
         status: "measured_zero",
         usedBytes: 0,
-        observedAt: "2026-06-08T01:05:00.000Z"
+        observedAt: "2026-06-08T01:05:00.000Z",
+        rawUsedBytes: null,
+        chargedUsedBytes: null,
+        ratingState: "legacy"
       },
       {
         accountId: "acct_false_zero",
@@ -475,7 +484,10 @@ describe("admin monitor read client", () => {
         plan: "trial",
         status: "measured_zero",
         usedBytes: null,
-        observedAt: "2026-06-08T01:05:00.000Z"
+        observedAt: "2026-06-08T01:05:00.000Z",
+        rawUsedBytes: null,
+        chargedUsedBytes: null,
+        ratingState: "legacy"
       },
       {
         accountId: "acct_measured_zero_flag",
@@ -483,9 +495,13 @@ describe("admin monitor read client", () => {
         plan: "trial",
         status: "measured",
         usedBytes: null,
-        observedAt: "2026-06-08T01:05:00.000Z"
+        observedAt: "2026-06-08T01:05:00.000Z",
+        rawUsedBytes: null,
+        chargedUsedBytes: null,
+        ratingState: "legacy"
       }
     ]);
+    expect(usage.ratingBoundary).toBeNull();
     expect(usage.items[1]?.entitlementId).toBe("");
     expect(JSON.stringify(usage)).not.toContain("pareq_usage_monitor_1");
     expect(usage.points).toEqual([

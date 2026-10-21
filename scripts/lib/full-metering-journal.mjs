@@ -7,6 +7,7 @@ import { closeSync, existsSync, fsyncSync, lstatSync, mkdirSync, openSync, readF
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { gzipSync, gunzipSync } from "node:zlib";
 import { validateFullMeteringContext, LOCAL_METERING_SCOPE, assertFullMeteringCheckpointScope } from "./full-metering-scope.mjs";
+import { PROTOCOL_RATING_JOURNAL_V1 } from "../../server/services/platform/protocol-traffic-rating.mjs";
 
 // Storage v2 keeps the logical v1 envelope/digest and replay ordering. Bound
 // compressed storage and decoded data independently; never inflate unbounded data.
@@ -15,6 +16,7 @@ const MAX_FILE_BYTES = 128 * 1024 * 1024;
 const MAX_DECODED_BYTES = 256 * 1024 * 1024;
 const COMPRESS_AT_BYTES = 1024 * 1024;
 const MAGIC = Buffer.from("GCCFMJ2\n");
+const PRE_RATING_SWITCH_ADMISSION = "pre-rating-switch.json";
 const fail = code => { throw Object.assign(new Error(code), { code }); };
 export function fullMeteringDigest(value) {
   const hash = createHash("sha256");
@@ -124,10 +126,46 @@ function removePending(directory) {
   unlinkSync(join(directory, "pending.json"));
   syncDirectory(directory);
 }
-function applySynchronously(applySamples, samples) {
-  const result = applySamples(samples);
+function ratingPayload(rating, samples) {
+  if (rating === null || rating === undefined) return null;
+  if (!Array.isArray(rating) || rating.length !== samples.length) fail("full_metering_rating_invalid");
+  for (const decision of rating) {
+    if (decision === null) continue;
+    if (!decision || typeof decision !== "object" || Object.keys(decision).sort().join(",") !== "multiplierUnits,policyVersion,protocol,sampleId") fail("full_metering_rating_invalid");
+    if (typeof decision.sampleId !== "string" || !Number.isInteger(decision.policyVersion) || decision.policyVersion < 1) fail("full_metering_rating_invalid");
+    if (!["vless", "hy2", "tuic"].includes(decision.protocol) || !Number.isInteger(decision.multiplierUnits)
+      || decision.multiplierUnits < 1000 || decision.multiplierUnits > 100000) fail("full_metering_rating_invalid");
+  }
+  return rating;
+}
+function applySynchronously(applySamples, samples, rating) {
+  const result = rating ? applySamples(samples, rating) : applySamples(samples);
   if (result && typeof result.then === "function") fail("full_metering_async_writer_unsupported");
   return result;
+}
+function payloadKeys(value) {
+  return value && typeof value === "object" && !Array.isArray(value) ? Object.keys(value).sort().join(",") : "";
+}
+function pendingGeneration(pending) {
+  const keys = payloadKeys(pending);
+  return {
+    v1: keys === "nextCheckpoint,previousDigest,samples",
+    v2: pending?.version === 2 && keys === "nextCheckpoint,previousDigest,rating,samples,version"
+  };
+}
+function legacyAdmissionMatches(directory, context, pending) {
+  if (!existsSync(join(directory, PRE_RATING_SWITCH_ADMISSION))) return false;
+  const admission = read(directory, PRE_RATING_SWITCH_ADMISSION, context);
+  return payloadKeys(admission) === "kind,payloadDigest"
+    && admission.kind === "pre-rating-switch"
+    && admission.payloadDigest === fullMeteringDigest(pending);
+}
+function removeAdmission(directory) {
+  const path = join(directory, PRE_RATING_SWITCH_ADMISSION);
+  if (!existsSync(path)) return;
+  protectedPath(path);
+  unlinkSync(path);
+  syncDirectory(directory);
 }
 export function initializeFullMeteringJournal({ directory, context, checkpoint }) {
   checkContext(context);
@@ -168,19 +206,28 @@ export function readFullMeteringMaterialCheckpointArchive({ directory, context, 
   if (fullMeteringDigest(checkpoint) !== digest) fail("full_metering_material_archive_changed");
   return checkpoint;
 }
-export function commitFullMeteringJournal({ directory, context, previousCheckpoint, nextCheckpoint, samples, applySamples, onStage = () => {} }) {
+export function commitFullMeteringJournal({ directory, context, previousCheckpoint, nextCheckpoint, samples, applySamples, freezeRating = null, onStage = () => {} }) {
   checkContext(context);
   checkScopedCheckpoint(context, previousCheckpoint);
   checkScopedCheckpoint(context, nextCheckpoint);
   if (typeof applySamples !== "function" || !Array.isArray(samples)) fail("full_metering_batch_invalid");
   if (existsSync(join(directory, "pending.json"))) fail("full_metering_pending_recovery_required");
   if (fullMeteringDigest(readFullMeteringJournal({ directory, context })) !== fullMeteringDigest(previousCheckpoint)) fail("full_metering_checkpoint_changed");
-  const payload = { previousDigest: fullMeteringDigest(previousCheckpoint), nextCheckpoint, samples };
+  const rating = ratingPayload(typeof freezeRating === "function" ? freezeRating(samples) : null, samples);
+  // New commits always persist payload version 2, including an explicit null rating.
+  // That key set cannot be classified as a version-1 leftover. Commit never writes the admission.
+  const payload = {
+    version: 2,
+    previousDigest: fullMeteringDigest(previousCheckpoint),
+    nextCheckpoint,
+    samples,
+    rating: rating ?? null
+  };
   const pendingBytes = encode(context, payload);
   const checkpointBytes = encode(context, nextCheckpoint);
   write(directory, "pending.json", context, payload, true, pendingBytes);
   onStage("pending_durable");
-  applySynchronously(applySamples, samples);
+  applySynchronously(applySamples, samples, rating);
   onStage("samples_committed");
   write(directory, "checkpoint.json", context, nextCheckpoint, false, checkpointBytes);
   onStage("checkpoint_durable");
@@ -192,18 +239,47 @@ export function recoverFullMeteringJournal({ directory, context, applySamples, v
   validateCheckpoint(checkpoint);
   if (!existsSync(join(directory, "pending.json"))) return { recovered: false };
   const pending = read(directory, "pending.json", context);
-  if (!pending || Object.keys(pending).sort().join(",") !== "nextCheckpoint,previousDigest,samples"
-    || !Array.isArray(pending.samples) || !/^[a-f0-9]{64}$/.test(pending.previousDigest)) fail("full_metering_intent_invalid");
+  const generation = pendingGeneration(pending);
+  if (!pending || (!generation.v1 && !generation.v2) || !Array.isArray(pending.samples) || !/^[a-f0-9]{64}$/.test(pending.previousDigest)) fail("full_metering_intent_invalid");
+  const rating = generation.v2 ? ratingPayload(pending.rating, pending.samples) : null;
   const current = fullMeteringDigest(checkpoint);
   if (current !== pending.previousDigest && current !== fullMeteringDigest(pending.nextCheckpoint)) fail("full_metering_checkpoint_changed");
   checkScopedCheckpoint(context, pending.nextCheckpoint);
   validateCheckpoint(pending.nextCheckpoint);
+  // Shape alone is not a pre-switch leftover. The admission digest must match this payload.
+  if (generation.v1 && !legacyAdmissionMatches(directory, context, pending)) fail("full_metering_legacy_unadmitted");
   // Replaying the SAME identifiers is safe both before and after DB COMMIT.
   // A collision or partial prior DB transaction must fail in applySamples.
-  applySynchronously(applySamples, pending.samples);
+  applySynchronously(applySamples, pending.samples, generation.v1 ? PROTOCOL_RATING_JOURNAL_V1 : rating);
   write(directory, "checkpoint.json", context, pending.nextCheckpoint);
   removePending(directory);
+  if (generation.v1) removeAdmission(directory);
   return { recovered: true, sampleCount: pending.samples.length };
+}
+export function describeFullMeteringPending({ directory, context }) {
+  checkContext(context);
+  if (!existsSync(join(directory, "pending.json"))) return { state: "absent" };
+  const pending = read(directory, "pending.json", context);
+  const generation = pendingGeneration(pending);
+  const payloadDigest = fullMeteringDigest(pending);
+  if (generation.v1 && Array.isArray(pending.samples)) return { state: "v1", payloadDigest };
+  if (generation.v2 && Array.isArray(pending.samples)) {
+    return { state: "v2", payloadDigest, rating: pending.rating === null ? "null" : "decisions" };
+  }
+  return { state: "invalid", payloadDigest };
+}
+export function admitPreRatingSwitchPending({ directory, context }) {
+  checkContext(context);
+  const pending = read(directory, "pending.json", context);
+  const generation = pendingGeneration(pending);
+  if (!generation.v1 || !Array.isArray(pending.samples) || !/^[a-f0-9]{64}$/.test(pending.previousDigest)) fail("full_metering_legacy_unadmitted");
+  const payloadDigest = fullMeteringDigest(pending);
+  if (existsSync(join(directory, PRE_RATING_SWITCH_ADMISSION))) {
+    if (!legacyAdmissionMatches(directory, context, pending)) fail("full_metering_legacy_unadmitted");
+    return { admitted: true, payloadDigest };
+  }
+  write(directory, PRE_RATING_SWITCH_ADMISSION, context, { kind: "pre-rating-switch", payloadDigest }, true);
+  return { admitted: true, payloadDigest };
 }
 export async function withFullMeteringJournalLock({ directory }, callback) {
   protectedPath(directory, true);

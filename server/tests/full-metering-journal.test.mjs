@@ -64,6 +64,23 @@ test("missing, tampered, foreign-context and divergent state never establish a f
   assert.throws(() => recoverFullMeteringJournal({ directory: f.directory, context, applySamples: f.applySamples }), /digest_invalid/);
   assert.equal(f.inserted.size, 0);
 });
+test("v2 pending replays the frozen rating and does not freeze again", t => {
+  const f = fixture(t);
+  const decision = [{ sampleId: "sample-1", policyVersion: 1, protocol: "hy2", multiplierUnits: 15000 }];
+  const seen = [];
+  let freezes = 0;
+  const applySamples = (samples, rating) => { seen.push(rating); f.applySamples(samples); };
+  assert.throws(() => commit(f, {
+    freezeRating: () => { freezes += 1; return decision; },
+    applySamples,
+    onStage: (value) => { if (value === "samples_committed") throw new Error("synthetic_crash"); }
+  }), /synthetic_crash/);
+  assert.equal(freezes, 1);
+  assert.equal(recoverFullMeteringJournal({ directory: f.directory, context, applySamples }).recovered, true);
+  assert.equal(freezes, 1);
+  assert.deepEqual(seen, [decision, decision]);
+  assert.equal(existsSync(join(f.directory, "pending.json")), false);
+});
 test("exclusive scope lock prevents overlapping writers and releases on caught failure", async t => {
   const f = fixture(t);
   await assert.rejects(withFullMeteringJournalLock({ directory: f.directory }, async () => {

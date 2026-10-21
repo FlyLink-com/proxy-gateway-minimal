@@ -248,6 +248,33 @@ describe("admin monitor workspace", () => {
     expect(document.body.textContent ?? "").toContain(generatedStamp);
   });
 
+  test("shows raw bytes and charged bytes without turning a missing charge into zero", async () => {
+    const client = mockClient({
+      usage: vi.fn<MonitorClient["usage"]>(async () => ({
+        ...USAGE,
+        ratingBoundary: { version: 2, effectiveNotBefore: "2026-10-01T00:00:00.000Z" },
+        items: [
+          { accountId: "acct_rated", entitlementId: "ent_rated", plan: "30 天", status: "measured", usedBytes: 2, observedAt: "2026-10-01T00:01:00.000Z", rawUsedBytes: 1, chargedUsedBytes: 2, ratingState: "rated" },
+          { accountId: "acct_missing", entitlementId: "ent_missing", plan: "30 天", status: "not_collected", usedBytes: null, observedAt: null, rawUsedBytes: 1, chargedUsedBytes: null, ratingState: "charge_missing" },
+          { accountId: "acct_unknown", entitlementId: "ent_unknown", plan: "30 天", status: "not_collected", usedBytes: null, observedAt: null, rawUsedBytes: 0, chargedUsedBytes: null, ratingState: "unobserved" }
+        ]
+      }))
+    });
+    const { rerender } = renderWs("dashboard", client);
+    await flushClick("开始只读监控");
+    rerender(<AdminMonitorWorkspace pageId="usageMonitor" createClient={() => client} />);
+    expect(screen.getByText(/当前策略边界：2026-10-01T00:00:00.000Z，已生效版本 2/)).toBeTruthy();
+    const table = screen.getAllByRole("table")[0];
+    expect(within(table).getByRole("columnheader", { name: "原始字节" })).not.toBeNull();
+    expect(within(table).getByRole("columnheader", { name: "额度扣减" })).not.toBeNull();
+    expect(within(table).getAllByRole("cell", { name: "1 字节" })).toHaveLength(2);
+    expect(within(table).getByRole("cell", { name: "2 字节" })).not.toBeNull();
+    expect(within(table).getByRole("cell", { name: "异常" })).not.toBeNull();
+    expect(within(table).getAllByRole("cell", { name: "未知" })).toHaveLength(2);
+    expect(within(table).queryByRole("cell", { name: "0" })).toBeNull();
+    expect(within(table).queryByRole("cell", { name: "0 字节" })).toBeNull();
+  });
+
   test("applies valid custom history bounds and a single nodeRef, rejecting invalid input without extra usage calls", async () => {
     let resolveUsage: (value: typeof USAGE) => void = () => {};
     const client = mockClient();

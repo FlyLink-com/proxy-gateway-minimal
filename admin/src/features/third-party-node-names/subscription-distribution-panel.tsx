@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { ModalFrame } from "../../shared/public/modal-frame";
 import { NODE_COUNTRY_OPTIONS, countryFlag } from "./node-country-model";
+import { ProtocolRatingControls, RATING_FAILURE_COPY } from "./protocol-rating-controls";
 import {
   createSubscriptionDistributionClient, DistributionError, DISTRIBUTION_PLANS, isVerifiedBwhSupplyState,
   type DistributionPlan, type DistributionSnapshot, type SubscriptionDistributionClient
@@ -40,6 +41,7 @@ export function SubscriptionDistributionPanel({ onSessionExpired, client: provid
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [confirmation, setConfirmation] = useState<Confirmation>(null);
+  const [ratingDirty, setRatingDirty] = useState(false);
   const controllerRef = useRef<AbortController | null>(null);
   const inFlightRef = useRef(false);
   const mountedRef = useRef(false);
@@ -48,7 +50,8 @@ export function SubscriptionDistributionPanel({ onSessionExpired, client: provid
   const titleId = useId();
   const routesDirty = dirtyPart(saved, draft, "routes");
   const ownedDirty = dirtyPart(saved, draft, "owned");
-  const dirty = routesDirty || ownedDirty;
+  const onRatingDirty = useCallback((value: boolean) => setRatingDirty(value), []);
+  const dirty = routesDirty || ownedDirty || ratingDirty;
   const locked = busy || stale;
 
   const run = useCallback(async (operation: (signal: AbortSignal) => Promise<DistributionSnapshot>, mutation = false, successMessage?: string) => {
@@ -162,6 +165,11 @@ export function SubscriptionDistributionPanel({ onSessionExpired, client: provid
           <p>客户端择优：{draft.automation.clientHealthCheckEnabled ? "已启用" : "未启用"}。</p>
           {draft.automation.clientHealthCheckEnabled ? <p>支持的客户端每 300 秒通过节点进行真实协议连接测试并自动择优；服务器不主动探测节点，不代表集中式健康保证。原始 provider 片段的自动路由由父配置负责。</p> : null}
         </section> : null}
+        {draft.protocolRating?.installed && draft.protocolRating.revision && client.saveProtocolRating ? <ProtocolRatingControls
+          status={draft.protocolRating} client={client} disabled={locked || Boolean(confirmation)} onDirty={onRatingDirty}
+          onSaved={(result) => { setRatingDirty(false); setSaved(result); setDraft(clone(result)); setStale(false); setError(""); setMessage("协议倍率已保存为待生效，只影响之后的新用量。"); }}
+          onFailed={(code) => { setError(RATING_FAILURE_COPY[code]); setStale(true); if (code === "session" || code === "permission") { setSaved(null); setDraft(null); setConfirmation(null); expiredRef.current?.(); } }}
+        /> : null}
         <fieldset disabled={locked || Boolean(confirmation) || routesDirty}>
           <legend>自有节点 · 系统来源</legend>
           <p>暂停分发仅停止后续配置下发。停止 BWH 旧连接供流需另行执行并验证；原有额度和计量保留。</p>

@@ -13,6 +13,14 @@ import {
   DATA_PACK_TECHNICAL_VALID_UNTIL
 } from "./usage-billing-cycle.mjs";
 import {
+  applySampleRating,
+  preferRatedUsage,
+  PROTOCOL_RATING_JOURNAL_V1,
+  publishProtocolRatingPolicy,
+  readProtocolRatedUsage,
+  readProtocolRatingStatus
+} from "./protocol-traffic-rating.mjs";
+import {
   createAccountResourceAuthorityStore
 } from "./account-resource-authority.mjs";
 import { readDataPackDesiredStateRows } from "../edge/data-pack-desired-state-rows.mjs";
@@ -1651,6 +1659,7 @@ export function createSqliteSubscriptionControlStore({
     }));
   }
 
+  // Operator raw chart. Quota decisions use readProtocolRatedUsage instead.
   function summarizeUserMonitorTraffic(input = {}) {
     const accountId = requiredText(input.accountId, "accountId");
     const from = requiredText(input.from, "from");
@@ -2821,11 +2830,16 @@ export function createSqliteSubscriptionControlStore({
         observedFrom: cycle.startedAt,
         observedTo: new Date(Math.min(Date.parse(cycle.endedAt), Date.parse(now) + 1)).toISOString()
       });
-      const summary = summarizeUsageSamples(samples);
+      const summary = preferRatedUsage({ readProtocolRatedUsage: (input) => readProtocolRatedUsage(db, input) }, {
+        accountId, entitlementId: chain.entitlementId, requestId: chain.requestId,
+        cycleKey: cycle.cadence === "lifetime" ? "lifetime" : cycle.startedAt,
+        observedFrom: cycle.startedAt,
+        observedTo: new Date(Math.min(Date.parse(cycle.endedAt), Date.parse(now) + 1)).toISOString()
+      }, summarizeUsageSamples(samples));
       const totalBytes = entitlement.trafficLimitBytes;
-      const usedBytes = samples.length ? summary.totalBytes : null;
-      const collectionStatus = !samples.length ? "pending"
-        : Date.parse(now) - Date.parse(summary.lastObservedAt) > 300_000 ? "stale"
+      const usedBytes = summary.ratingMode === "rated" ? summary.totalBytes : (samples.length ? summary.totalBytes : null);
+      const collectionStatus = usedBytes === null ? "pending"
+        : summary.lastObservedAt && Date.parse(now) - Date.parse(summary.lastObservedAt) > 300_000 ? "stale"
           : usedBytes === 0 ? "measured_zero" : "measured";
       return Object.freeze({
         ...resource,
@@ -2976,11 +2990,16 @@ export function createSqliteSubscriptionControlStore({
         observedFrom: cycle.startedAt,
         observedTo: new Date(Math.min(Date.parse(cycle.endedAt), Date.parse(now) + 1)).toISOString()
       });
-      const summary = summarizeUsageSamples(samples);
+      const summary = preferRatedUsage({ readProtocolRatedUsage: (input) => readProtocolRatedUsage(db, input) }, {
+        accountId, entitlementId: entitlement.id, requestId: request.id,
+        cycleKey: cycle.cadence === "lifetime" ? "lifetime" : cycle.startedAt,
+        observedFrom: cycle.startedAt,
+        observedTo: new Date(Math.min(Date.parse(cycle.endedAt), Date.parse(now) + 1)).toISOString()
+      }, summarizeUsageSamples(samples));
       const totalBytes = entitlement.trafficLimitBytes;
-      const usedBytes = samples.length ? summary.totalBytes : null;
-      const collectionStatus = !samples.length ? "pending"
-        : Date.parse(now) - Date.parse(summary.lastObservedAt) > 300_000 ? "stale"
+      const usedBytes = summary.ratingMode === "rated" ? summary.totalBytes : (samples.length ? summary.totalBytes : null);
+      const collectionStatus = usedBytes === null ? "pending"
+        : summary.lastObservedAt && Date.parse(now) - Date.parse(summary.lastObservedAt) > 300_000 ? "stale"
           : usedBytes === 0 ? "measured_zero" : "measured";
       const resource = Object.freeze({
         state: "available",
@@ -7544,7 +7563,13 @@ export function createSqliteSubscriptionControlStore({
          where account_id = ? and entitlement_id = ? and request_id = ?
            and observed_at >= ? and observed_at <= ?
       `).get(accountId, entitlementRef, requestRef, entitlement.validFrom, now);
-      const usedBytes = measured.sample_count === 0 ? null : measured.used_bytes;
+      const ratedPack = readProtocolRatedUsage(db, {
+        accountId, entitlementId: entitlementRef, requestId: requestRef, cycleKey: "lifetime",
+        observedFrom: entitlement.validFrom, observedTo: now, inclusiveEnd: true
+      });
+      const usedBytes = ratedPack.mode === "rated"
+        ? ratedPack.totalBytes
+        : (measured.sample_count === 0 ? null : measured.used_bytes);
       if (usedBytes !== null && (!Number.isSafeInteger(usedBytes) || usedBytes < 0)) {
         throw platformError("reconciliation_required", "data pack usage is invalid");
       }
@@ -7627,8 +7652,17 @@ export function createSqliteSubscriptionControlStore({
   }
 
   function recordUsageSample(input) {
+    const ratingDecision = input && Object.hasOwn(input, "ratingDecision") ? input.ratingDecision : undefined;
+    const legacy = input && input[PROTOCOL_RATING_JOURNAL_V1] === true ? "journal-v1" : undefined;
+    if (legacy && ratingDecision !== undefined) {
+      throw Object.assign(new Error("rating_invalid"), { code: "rating_invalid" });
+    }
     const record = usageSampleRecord(input);
-    const inserted = db.transaction(() => insertUsageSampleRecord(record))();
+    const inserted = db.transaction(() => {
+      const ok = insertUsageSampleRecord(record);
+      applySampleRating(db, record, { decision: ratingDecision, inserted: ok, legacy });
+      return ok;
+    })();
     return {
       inserted,
       sample: getUsageSampleByDigest(record.sampleDigest),
@@ -7743,6 +7777,10 @@ export function createSqliteSubscriptionControlStore({
         sampleDigest
       });
       const inserted = insertUsageSampleRecord(record);
+      applySampleRating(db, record, {
+        decision: Object.hasOwn(input, "ratingDecision") ? input.ratingDecision : undefined,
+        inserted
+      });
       upsertUsageCounterCursor({
         ...current,
         epoch: cursor.epoch,
@@ -8932,6 +8970,9 @@ export function createSqliteSubscriptionControlStore({
       return verifyPortalSubscriptionLinkResetLineage(db, input);
     },
     runInTransaction,
+    readProtocolRatedUsage(filters) { return readProtocolRatedUsage(db, filters); },
+    readProtocolRatingStatus() { return readProtocolRatingStatus(db); },
+    publishProtocolRatingPolicy(input) { return publishProtocolRatingPolicy(db, input); },
     upsertLead,
     getLead,
     listLeads,

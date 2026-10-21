@@ -22,7 +22,8 @@ function makeClient(value = fixture()) {
     saveOwned: vi.fn().mockImplementation(async (input) => ({ ...structuredClone(value), revision: "b".repeat(64), owned: { enabled: input.enabled, items: value.owned.items.map((node) => ({ ...node, ...input.nodes.find((item: { id: string }) => item.id === node.id) })) } })),
     setBwhSupply: vi.fn().mockImplementation(async (input) => ({ ...structuredClone(value), bwhSupply: { ...value.bwhSupply, revision: "e".repeat(64),
       state: input.enabled ? "enabled" : "paused", protocolsRunning: input.enabled ? 3 : 0, collectorState: input.enabled ? "running" : "paused",
-      nativeDistributionEnabled: input.enabled, canPause: input.enabled, canEnable: !input.enabled } })) } satisfies SubscriptionDistributionClient;
+      nativeDistributionEnabled: input.enabled, canPause: input.enabled, canEnable: !input.enabled } })),
+    saveProtocolRating: vi.fn() } satisfies SubscriptionDistributionClient;
 }
 function supplyFixture(): DistributionSnapshot {
   return { ...fixture(), bwhSupply: { revision: "d".repeat(64), state: "enabled", protocolsRunning: 3, collectorState: "running", nativeDistributionEnabled: true,
@@ -39,6 +40,7 @@ describe("subscription distribution panel", () => {
     expect(screen.queryByRole("button", { name: /删除|导入/ })).toBeNull();
     expect(client.saveRoutes).not.toHaveBeenCalled();
     expect(screen.queryByRole("region", { name: "BWH 实际供流" })).toBeNull();
+    expect(screen.queryByRole("region", { name: "协议用量倍率" })).toBeNull();
     expect(client.setBwhSupply).not.toHaveBeenCalled();
   });
   it("requires separate confirmation for actual supply pause and adopts only the terminal response", async () => {
@@ -348,6 +350,87 @@ describe("subscription distribution panel", () => {
     render(<><SubscriptionDistributionPanel client={client} /><button>既有第三方管理</button></>);
     await screen.findByRole("alert"); expect(screen.getByRole("button", { name: "既有第三方管理" })).toBeTruthy();
     expect(screen.queryByRole("radio")).toBeNull();
+  });
+  it("keeps protocol multipliers as a local draft until a separate confirmation", async () => {
+    const ratingRevision = "c".repeat(64);
+    const value = { ...fixture(), protocolRating: { installed: true, revision: ratingRevision, active: { version: 1, state: "active" as const, effectiveNotBefore: "2026-10-20T00:00:00.000Z", multipliers: { vless: "1.0", hy2: "1.0", tuic: "1.0" } }, pending: null } };
+    const client = makeClient(value);
+    client.saveProtocolRating = vi.fn().mockImplementation(async (input: { vless: string; hy2: string; tuic: string }) => ({ ...structuredClone(value), protocolRating: { ...value.protocolRating, revision: "d".repeat(64), pending: { version: 2, state: "pending" as const, effectiveNotBefore: "2026-10-20T01:00:00.000Z", multipliers: { vless: input.vless, hy2: input.hy2, tuic: input.tuic } } } }));
+    await loaded(client);
+    const region = screen.getByRole("region", { name: "协议用量倍率" });
+    expect(within(region).getByText(/状态：已生效/)).toBeTruthy();
+    fireEvent.change(within(region).getByRole("slider", { name: "hy2 用量倍率滑块" }), { target: { value: "2.5" } });
+    expect(client.saveProtocolRating).not.toHaveBeenCalled();
+    fireEvent.click(within(region).getByRole("button", { name: "保存协议倍率" }));
+    expect(client.saveProtocolRating).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "确认保存" }));
+    await screen.findByText("协议倍率已保存为待生效，只影响之后的新用量。");
+    expect(client.saveProtocolRating).toHaveBeenCalledOnce();
+    expect(client.saveProtocolRating.mock.calls[0][0]).toEqual({ ratingRevision, vless: "1.0", hy2: "2.5", tuic: "1.0" });
+    expect(client.setBwhSupply).not.toHaveBeenCalled();
+    expect(client.saveOwned).not.toHaveBeenCalled();
+  });
+  it("keeps a pending multiplier across reload and shows the activated policy after a later read", async () => {
+    const ratingRevision = "c".repeat(64);
+    const active = { version: 1, state: "active" as const, effectiveNotBefore: "2026-10-20T00:00:00.000Z", multipliers: { vless: "1.0", hy2: "1.0", tuic: "1.0" } };
+    const value = { ...fixture(), protocolRating: { installed: true, revision: ratingRevision, active, pending: null } };
+    const pending = { version: 2, state: "pending" as const, effectiveNotBefore: "2026-10-20T01:00:00.000Z", multipliers: { vless: "1.0", hy2: "2.5", tuic: "1.0" } };
+    const client = makeClient(value);
+    client.saveProtocolRating = vi.fn().mockImplementation(async (input: { vless: string; hy2: string; tuic: string }) => ({
+      ...structuredClone(value),
+      protocolRating: { installed: true, revision: "d".repeat(64), active, pending: { ...pending, multipliers: { vless: input.vless, hy2: input.hy2, tuic: input.tuic } } }
+    }));
+    await loaded(client);
+    const region = screen.getByRole("region", { name: "协议用量倍率" });
+    fireEvent.change(within(region).getByRole("spinbutton", { name: "hy2 用量倍率" }), { target: { value: "2.5" } });
+    expect(client.saveProtocolRating).not.toHaveBeenCalled();
+    fireEvent.click(within(region).getByRole("button", { name: "保存协议倍率" }));
+    fireEvent.click(screen.getByRole("button", { name: "确认保存" }));
+    await screen.findByText("协议倍率已保存为待生效，只影响之后的新用量。");
+    expect(within(region).getByText(/待生效倍率：VLESS 1.0，Hysteria2 2.5，TUIC 1.0。策略边界 2026-10-20T01:00:00.000Z/)).toBeTruthy();
+    client.read.mockResolvedValueOnce({ ...structuredClone(value), protocolRating: { installed: true, revision: "d".repeat(64), active, pending } });
+    await waitFor(() => expect((within(region).getByRole("spinbutton", { name: "hy2 用量倍率" }) as HTMLInputElement).disabled).toBe(false));
+    fireEvent.click(screen.getByRole("button", { name: "重新读取分发" }));
+    const discardPending = screen.queryByRole("button", { name: "放弃草稿并重新读取" });
+    if (discardPending) fireEvent.click(discardPending);
+    await screen.findByText("已读取当前分发设置。");
+    expect(within(region).getByText(/状态：待生效/)).toBeTruthy();
+    expect(client.saveProtocolRating).toHaveBeenCalledOnce();
+    client.read.mockResolvedValueOnce({
+      ...structuredClone(value),
+      protocolRating: { installed: true, revision: "e".repeat(64), active: { ...active, multipliers: pending.multipliers, effectiveNotBefore: pending.effectiveNotBefore }, pending: null }
+    });
+    await waitFor(() => expect((within(region).getByRole("spinbutton", { name: "hy2 用量倍率" }) as HTMLInputElement).disabled).toBe(false));
+    fireEvent.click(screen.getByRole("button", { name: "重新读取分发" }));
+    const discardActive = screen.queryByRole("button", { name: "放弃草稿并重新读取" });
+    if (discardActive) fireEvent.click(discardActive);
+    await screen.findByText(/已生效倍率：VLESS 1.0，Hysteria2 2.5，TUIC 1.0。策略边界 2026-10-20T01:00:00.000Z/);
+    expect(within(region).getByText(/状态：已生效/)).toBeTruthy();
+    expect(within(region).getByText("待生效倍率：没有待生效倍率。")).toBeTruthy();
+    expect(client.saveProtocolRating).toHaveBeenCalledOnce();
+    expect(client.setBwhSupply).not.toHaveBeenCalled();
+  });
+  it.each(["stale", "network"] as const)("reports a %s rating save in operator language and reads again without resubmitting", async (code) => {
+    const ratingRevision = "c".repeat(64);
+    const value = { ...fixture(), protocolRating: { installed: true, revision: ratingRevision, active: { version: 1, state: "active" as const, effectiveNotBefore: "2026-10-20T00:00:00.000Z", multipliers: { vless: "1.0", hy2: "1.0", tuic: "1.0" } }, pending: null } };
+    const client = makeClient(value);
+    client.saveProtocolRating = vi.fn().mockRejectedValue(new DistributionError(code));
+    await loaded(client);
+    const region = screen.getByRole("region", { name: "协议用量倍率" });
+    fireEvent.change(within(region).getByRole("spinbutton", { name: "hy2 用量倍率" }), { target: { value: "2.5" } });
+    fireEvent.click(within(region).getByRole("button", { name: "保存协议倍率" }));
+    fireEvent.click(screen.getByRole("button", { name: "确认保存" }));
+    await screen.findByText(code === "stale"
+      ? "协议倍率版本已经变化。请重新读取后再保存。本次不会覆盖最新倍率，也不会暂停或恢复供流。"
+      : "协议倍率保存结果未确认。请先重新读取，不会自动再次提交，也不会暂停或恢复供流。");
+    expect(client.saveProtocolRating).toHaveBeenCalledOnce();
+    expect((within(region).getByRole("button", { name: "保存协议倍率" }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "重新读取分发" }));
+    fireEvent.click(screen.getByRole("button", { name: "放弃草稿并重新读取" }));
+    await screen.findByText("已读取当前分发设置。");
+    expect(client.saveProtocolRating).toHaveBeenCalledOnce();
+    expect(client.read).toHaveBeenCalledTimes(2);
+    expect(client.setBwhSupply).not.toHaveBeenCalled();
   });
   it("does not lose its initial read in StrictMode cleanup", async () => {
     const client = makeClient(); render(<StrictMode><SubscriptionDistributionPanel client={client} /></StrictMode>);

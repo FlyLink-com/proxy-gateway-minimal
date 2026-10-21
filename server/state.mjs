@@ -3309,6 +3309,27 @@ export function createRuntimeState(options = {}) {
     return closePromise;
   }
 
+  function protocolRatingNow() {
+    const value = typeof subscriptionCoreNowFn === "function" ? subscriptionCoreNowFn() : new Date();
+    const date = value instanceof Date ? value : new Date(value);
+    return (date instanceof Date && !Number.isNaN(date.getTime()) ? date : new Date()).toISOString();
+  }
+  const protocolRating = typeof platformControlStore?.publishProtocolRatingPolicy === "function"
+    && typeof platformControlStore.readProtocolRatingStatus === "function"
+    ? {
+      read() { return platformControlStore.readProtocolRatingStatus(); },
+      save(input) {
+        return platformControlStore.publishProtocolRatingPolicy({
+          vless: input?.vless,
+          hy2: input?.hy2,
+          tuic: input?.tuic,
+          expectedRevision: input?.expectedRevision,
+          now: protocolRatingNow()
+        });
+      }
+    }
+    : null;
+
   return {
     rootDir,
     host,
@@ -3326,6 +3347,7 @@ export function createRuntimeState(options = {}) {
     services: { ssLocal, httpProxy },
     thirdPartySubscriptions,
     subscriptionDistribution,
+    protocolRating,
     subscriptions: {
       store: subscriptionStore,
       core: subscriptionCore,

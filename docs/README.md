@@ -33,6 +33,9 @@ see [Subscription distribution routing](SUBSCRIPTION_DISTRIBUTION_ROUTING.md).
 It covers the shared Admin view, explicit policy migration, original-link
 compatibility and the separately executed BWH supply cutover.
 
+Protocol traffic multipliers for the owned BWH channels are source-only and
+default off. See [BWH protocol traffic rating](BWH_PROTOCOL_RATING.md).
+
 ## Document Metadata Contract
 
 Canonical document entrypoints use one top-level `document_metadata` YAML

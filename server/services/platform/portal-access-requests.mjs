@@ -10,6 +10,7 @@ import {
   usageCycleForBinding,
   usageCycleFiltersForBinding
 } from "./usage-billing-cycle.mjs";
+import { preferRatedUsage } from "./protocol-traffic-rating.mjs";
 import {
   WALLET_FIRST_COMMERCIAL_MODEL
 } from "./coin-commerce-deferred-transition-policy.mjs";
@@ -301,9 +302,11 @@ function usageSummaryFor(record, controlStore, now = null) {
   }
 
   const currentUsage = currentCycleUsageRowsFor({ record, controlStore, binding: cycleBinding, at: now, rollups });
-  const uploadBytes = currentUsage.summary.uploadBytes;
-  const downloadBytes = currentUsage.summary.downloadBytes;
-  const usedBytes = currentUsage.summary.totalBytes;
+  const observationRequired = currentUsage.summary.historyUnobserved === true
+    || (currentUsage.summary.ratingMode === "rated" && currentUsage.summary.totalBytes == null);
+  const uploadBytes = observationRequired ? null : currentUsage.summary.uploadBytes;
+  const downloadBytes = observationRequired ? null : currentUsage.summary.downloadBytes;
+  const usedBytes = observationRequired ? null : currentUsage.summary.totalBytes;
   const measuredChannelCount = measuredChannelCountFor(currentUsage.rows);
   const channelCount = Math.max(issuedChannelRefsFor(record, currentUsage.rows).length, measuredChannelCount);
   const updatedAt = currentUsage.summary.updatedAt;
@@ -313,9 +316,9 @@ function usageSummaryFor(record, controlStore, now = null) {
     downloadBytes,
     usedBytes,
     totalBytes: trafficLimitBytes,
-    usageRatio: usageRatio(usedBytes, trafficLimitBytes),
-    status: trafficLimitBytes > 0 && usedBytes >= trafficLimitBytes ? "over_limit" : "within_limit",
-    collectionStatus: usedBytes > 0 || uploadBytes > 0 || downloadBytes > 0 ? "measured" : "measured_zero",
+    usageRatio: observationRequired ? null : usageRatio(usedBytes, trafficLimitBytes),
+    status: observationRequired ? "observation_required" : (trafficLimitBytes > 0 && usedBytes >= trafficLimitBytes ? "over_limit" : "within_limit"),
+    collectionStatus: observationRequired ? "not_collected" : (usedBytes > 0 || uploadBytes > 0 || downloadBytes > 0 ? "measured" : "measured_zero"),
     channelCount,
     measuredChannelCount,
     ...(updatedAt ? { updatedAt } : {})
@@ -527,11 +530,21 @@ function currentCycleUsageRowsFor({ record, controlStore, binding, at, rollups }
       }
     };
   }
+  const atIso = at || new Date().toISOString();
+  const filters = usageCycleFiltersForBinding(binding, atIso);
+  const cycle = usageCycleForBinding(binding, atIso);
   const samples = controlStore.listUsageSamples({
     requestId: record.id,
-    ...usageCycleFiltersForBinding(binding, at || new Date().toISOString())
+    ...filters
   });
-  const summary = summarizeUsageSamples(samples);
+  const summary = preferRatedUsage(controlStore, {
+    accountId: binding.accountId,
+    entitlementId: binding.entitlementId,
+    requestId: record.id,
+    cycleKey: cycle?.cadence === "lifetime" ? "lifetime" : cycle?.startedAt,
+    observedFrom: filters.observedFrom,
+    observedTo: filters.observedTo
+  }, summarizeUsageSamples(samples));
   return {
     rows: samples.map((sample) => ({
       edgeCredentialRef: sample.edgeCredentialRef,
@@ -1345,8 +1358,9 @@ export function createPortalAccessRequestService(options = {}) {
     ) {
       return { eligible: false, reason: "quota_binding_unavailable" };
     }
+    let account;
     try {
-      const account = controlStore.getAccount(request.portalUserRef);
+      account = controlStore.getAccount(request.portalUserRef);
       const issuance = controlStore.getIssuanceRequest(request.id);
       const expectedTenantRef = safeIssuedRef("tenant", request.tenantId);
       const expectedArtifactRef = safeIssuedRef("artifact", request.artifactId);
@@ -1410,11 +1424,29 @@ export function createPortalAccessRequestService(options = {}) {
     if (trafficLimitBytes <= 0) {
       return { eligible: false, reason: "quota_limit_unavailable" };
     }
-    const currentUsage = summarizeUsageSamples(controlStore.listUsageSamples({
-      requestId: request.id,
-      observedFrom: currentCycle.startedAt,
-      observedTo: currentCycle.endedAt
-    }));
+    let currentUsage;
+    try {
+      currentUsage = preferRatedUsage(controlStore, {
+        accountId: account.id,
+        entitlementId: entitlement.id,
+        requestId: request.id,
+        cycleKey: currentCycle.cadence === "lifetime" ? "lifetime" : currentCycle.startedAt,
+        observedFrom: currentCycle.startedAt,
+        observedTo: currentCycle.endedAt
+      }, summarizeUsageSamples(controlStore.listUsageSamples({
+        requestId: request.id,
+        observedFrom: currentCycle.startedAt,
+        observedTo: currentCycle.endedAt
+      })));
+    } catch (error) {
+      if (typeof error?.code === "string" && error.code.startsWith("rating_")) {
+        return { eligible: false, reason: "quota_observation_required" };
+      }
+      throw error;
+    }
+    if (currentUsage.historyUnobserved || (currentUsage.ratingMode === "rated" && currentUsage.totalBytes === null)) {
+      return { eligible: false, reason: "quota_observation_required" };
+    }
     if (currentUsage.totalBytes >= trafficLimitBytes) {
       return { eligible: false, reason: "current_cycle_quota_exhausted" };
     }
