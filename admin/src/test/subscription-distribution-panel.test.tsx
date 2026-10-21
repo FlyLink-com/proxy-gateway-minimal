@@ -22,7 +22,11 @@ function makeClient(value = fixture()) {
     saveOwned: vi.fn().mockImplementation(async (input) => ({ ...structuredClone(value), revision: "b".repeat(64), owned: { enabled: input.enabled, items: value.owned.items.map((node) => ({ ...node, ...input.nodes.find((item: { id: string }) => item.id === node.id) })) } })),
     setBwhSupply: vi.fn().mockImplementation(async (input) => ({ ...structuredClone(value), bwhSupply: { ...value.bwhSupply, revision: "e".repeat(64),
       state: input.enabled ? "enabled" : "paused", protocolsRunning: input.enabled ? 3 : 0, collectorState: input.enabled ? "running" : "paused",
-      nativeDistributionEnabled: input.enabled, canPause: input.enabled, canEnable: !input.enabled } })) } satisfies SubscriptionDistributionClient;
+      nativeDistributionEnabled: input.enabled, canPause: input.enabled, canEnable: !input.enabled } })),
+    saveBwhBandwidth: vi.fn().mockImplementation(async (input) => ({ ...structuredClone(value), bwhBandwidth: {
+      revision: "f".repeat(64), state: "desired" as const, inboundEnabled: input.inboundEnabled, outboundEnabled: input.outboundEnabled,
+      inboundMbps: input.inboundEnabled ? input.inboundMbps : null, outboundMbps: input.outboundEnabled ? input.outboundMbps : null } }))
+  } satisfies SubscriptionDistributionClient;
 }
 function supplyFixture(): DistributionSnapshot {
   return { ...fixture(), bwhSupply: { revision: "d".repeat(64), state: "enabled", protocolsRunning: 3, collectorState: "running", nativeDistributionEnabled: true,
@@ -39,7 +43,9 @@ describe("subscription distribution panel", () => {
     expect(screen.queryByRole("button", { name: /删除|导入/ })).toBeNull();
     expect(client.saveRoutes).not.toHaveBeenCalled();
     expect(screen.queryByRole("region", { name: "BWH 实际供流" })).toBeNull();
+    expect(screen.queryByRole("region", { name: "服务器总限速" })).toBeNull();
     expect(client.setBwhSupply).not.toHaveBeenCalled();
+    expect(client.saveBwhBandwidth).not.toHaveBeenCalled();
   });
   it("requires separate confirmation for actual supply pause and adopts only the terminal response", async () => {
     const client = await loaded(makeClient(supplyFixture()));
@@ -348,6 +354,37 @@ describe("subscription distribution panel", () => {
     render(<><SubscriptionDistributionPanel client={client} /><button>既有第三方管理</button></>);
     await screen.findByRole("alert"); expect(screen.getByRole("button", { name: "既有第三方管理" })).toBeTruthy();
     expect(screen.queryByRole("radio")).toBeNull();
+  });
+  it("keeps total bandwidth local while sliding and saves decimal strings once", async () => {
+    const value = fixture();
+    value.bwhBandwidth = { revision: "c".repeat(64), state: "desired", inboundEnabled: false, outboundEnabled: false, inboundMbps: null, outboundMbps: null };
+    const client = await loaded(makeClient(value));
+    const region = screen.getByRole("region", { name: "服务器总限速" });
+    expect(within(region).getByText(/总限速状态：已保存/)).toBeTruthy();
+    expect(region.textContent ?? "").not.toMatch(/cgroup|IFB|checkpoint|检查点|\bmark\b|\btc\b/i);
+    const inbound = within(region).getByRole("slider", { name: "总入站速率" });
+    fireEvent.input(inbound, { target: { value: "1.5" } });
+    fireEvent.change(inbound, { target: { value: "1.5" } });
+    fireEvent.pointerMove(inbound);
+    expect(client.saveBwhBandwidth).not.toHaveBeenCalled();
+    expect(client.saveOwned).not.toHaveBeenCalled();
+    expect(client.setBwhSupply).not.toHaveBeenCalled();
+    fireEvent.change(within(region).getByRole("spinbutton", { name: "总出站数值" }), { target: { value: "2.5" } });
+    fireEvent.click(within(region).getByRole("switch", { name: "总入站" }));
+    fireEvent.click(within(region).getByRole("switch", { name: "总出站" }));
+    fireEvent.click(within(region).getByRole("button", { name: "保存总限速" }));
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByText(/仅保存总入站和总出站限速目标，当前未应用主机规则/)).toBeTruthy();
+    expect(within(dialog).getByText(/不会暂停或恢复供流/)).toBeTruthy();
+    expect(client.saveBwhBandwidth).not.toHaveBeenCalled();
+    fireEvent.click(within(dialog).getByRole("button", { name: "确认保存" }));
+    await screen.findByText(/总限速已保存/);
+    expect(client.saveBwhBandwidth).toHaveBeenCalledOnce();
+    expect(client.saveBwhBandwidth.mock.calls[0][0]).toEqual({ bandwidthRevision: "c".repeat(64), inboundEnabled: true, outboundEnabled: true, inboundMbps: "1.5", outboundMbps: "2.5" });
+    expect(client.saveOwned).not.toHaveBeenCalled();
+    expect(client.saveRoutes).not.toHaveBeenCalled();
+    expect(client.setBwhSupply).not.toHaveBeenCalled();
+    expect(client.read).toHaveBeenCalledOnce();
   });
   it("does not lose its initial read in StrictMode cleanup", async () => {
     const client = makeClient(); render(<StrictMode><SubscriptionDistributionPanel client={client} /></StrictMode>);

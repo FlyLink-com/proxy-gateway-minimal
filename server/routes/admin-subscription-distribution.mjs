@@ -79,6 +79,17 @@ export function adminSubscriptionDistributionRoutes(state) {
 
   const withSupply = (snapshot) => state.subscriptionDistribution.supply
     ? { ...snapshot, bwhSupply: state.subscriptionDistribution.supply.read() } : snapshot;
+  const projectBandwidth = (value) => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+    const keys = ["revision", "state", "inboundEnabled", "outboundEnabled", "inboundMbps", "outboundMbps"];
+    if (!keys.every((key) => Object.hasOwn(value, key))) return undefined;
+    return Object.fromEntries(keys.map((key) => [key, value[key]]));
+  };
+  const attachBandwidth = (snapshot) => {
+    if (Object.hasOwn(snapshot, "bwhBandwidth") || typeof state.bwhBandwidth?.read !== "function") return snapshot;
+    const bwhBandwidth = projectBandwidth(state.bwhBandwidth.read());
+    return bwhBandwidth ? { ...snapshot, bwhBandwidth } : snapshot;
+  };
   const execute = (operation) => async (req, res) => {
     try {
       res.json(await operation(state.subscriptionDistribution.store, req));
@@ -88,15 +99,15 @@ export function adminSubscriptionDistributionRoutes(state) {
         : ["distribution_unavailable", "bwh_supply_unavailable", "supply_unavailable", "supply_failed"].includes(code) ? 503 : 400);
     }
   };
-  router.get(ROOT, execute((store) => withSupply(store.getSnapshot())));
+  router.get(ROOT, execute((store) => attachBandwidth(withSupply(store.getSnapshot()))));
   router.put(ROOT, (req, res, next) => {
     if (!validRoutes(req.body)) { failure(res, "invalid_input", 400); return; }
     next();
-  }, execute((store, req) => withSupply(store.writeRoutes(req.body))));
+  }, execute((store, req) => attachBandwidth(withSupply(store.writeRoutes(req.body)))));
   router.put(`${ROOT}/owned`, (req, res, next) => {
     if (!validOwned(req.body)) { failure(res, "invalid_input", 400); return; }
     next();
-  }, execute((store, req) => withSupply(store.writeOwned(req.body))));
+  }, execute((store, req) => attachBandwidth(withSupply(store.writeOwned(req.body)))));
   router.put(`${ROOT}/supply`, (req, res, next) => {
     // Actual service control never inherits the legacy console-token-only
     // write path. Its browser mutation always binds a configured exact origin.
@@ -119,7 +130,43 @@ export function adminSubscriptionDistributionRoutes(state) {
     next();
   }, execute(async (store, req) => {
     const bwhSupply = await state.subscriptionDistribution.supply.setEnabled(req.body);
-    return { ...store.getSnapshot(), bwhSupply };
+    return attachBandwidth({ ...store.getSnapshot(), bwhSupply });
   }));
+  router.put(`${ROOT}/bandwidth`, async (req, res) => {
+    const platform = state.platform;
+    if (!platform?.adminAuthRoutesEnabled || !platform.adminAuth
+      || !["admin", "super_admin"].includes(req.adminPrincipal?.role)
+      || typeof platform.adminBrowserOrigin !== "string" || !platform.adminBrowserOrigin
+      || req.get("origin") !== platform.adminBrowserOrigin
+      || (req.get("sec-fetch-site") && req.get("sec-fetch-site") !== "same-origin")) {
+      failure(res, "admin_permission_required", 403); return;
+    }
+    if (!exact(req.body, ["bandwidthRevision", "inboundEnabled", "outboundEnabled", "inboundMbps", "outboundMbps"])
+      || typeof req.body.bandwidthRevision !== "string" || !REVISION.test(req.body.bandwidthRevision)
+      || typeof req.body.inboundEnabled !== "boolean" || typeof req.body.outboundEnabled !== "boolean"
+      || typeof req.body.inboundMbps !== "string" || typeof req.body.outboundMbps !== "string"
+      || req.body.inboundMbps.length > 16 || req.body.outboundMbps.length > 16) {
+      failure(res, "invalid_input", 400); return;
+    }
+    if (typeof state.bwhBandwidth?.save !== "function") {
+      failure(res, "bwh_bandwidth_unavailable", 503); return;
+    }
+    try {
+      const bwhBandwidth = projectBandwidth(await state.bwhBandwidth.save({
+        bandwidthRevision: req.body.bandwidthRevision,
+        inboundEnabled: req.body.inboundEnabled,
+        outboundEnabled: req.body.outboundEnabled,
+        inboundMbps: req.body.inboundMbps,
+        outboundMbps: req.body.outboundMbps
+      }));
+      if (!bwhBandwidth) throw Object.assign(new Error("BWH bandwidth projection rejected"), { code: "bwh_bandwidth_failed" });
+      const snapshot = state.subscriptionDistribution.store.getSnapshot();
+      res.json({ ...withSupply(snapshot), bwhBandwidth });
+    } catch (error) {
+      const code = error?.code === "bwh_bandwidth_conflict" ? "bwh_bandwidth_conflict"
+        : error?.code === "bwh_bandwidth_invalid" ? "bwh_bandwidth_invalid" : "bwh_bandwidth_failed";
+      failure(res, code, code === "bwh_bandwidth_conflict" ? 409 : code === "bwh_bandwidth_invalid" ? 400 : 503);
+    }
+  });
   return router;
 }
