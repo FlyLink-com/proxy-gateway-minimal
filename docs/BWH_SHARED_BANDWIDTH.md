@@ -14,7 +14,7 @@ Risk: A。Process: 本文件所在变更只交付控制面源码、Admin 投影�
 
 本 PR 不证明双向分类已经成立，也不证明管理流量被排除在代理类之外。`applied` 只有在未来的隔离证明同时给出 `classificationProven`、`managementExemptProven`，且入站和出站读回速率都与期望 bps 一致时才允许写入。命令退出码 0 不能记为已生效。内核分类本次没有执行。
 
-本次是 Draft 源码原型检查点，不是限速功能完成或生产可用声明。正式 state/schema 尚未接入。入站队列是 `1:10`，出站队列是 `1:11`，同一 IFB 上的 HTB 根只创建一次，每个方向只有一个共享 rate，不按三条协议复制。两个方向都关闭时不创建队列。`classificationAttached` 仍为 false。`applyPlan` 在调用任何命令前取得调用方目录里的 `bwh-bandwidth.lock`；这把目录锁才是跨进程排除，`applying` 状态字段不是锁。步骤记在同目录的 `bwh-bandwidth-attempt.json`：中断后已记录的步骤是 `intended`，还没记录的是 `pending`，未执行的步骤不是 `done`。分类未证明时不调用 run 或 readback，也不把未完成的尝试改写成已执行。真实分类、宿主受限执行器、kernel readback、对象归属核验与回退、重启恢复及 Linux 共享速率验收均待完成。保存只保存目标，不代表主机已限速。未执行生产安装或启用。
+本次是 Draft 源码原型检查点，不是限速功能完成或生产可用声明。普通启动仍不建表、不注入服务，也不因已有目标行应用主机规则或启动三条协议。显式 `BWH_SHARED_BANDWIDTH_ADMITTED` 且 `BWH_SHARED_BANDWIDTH_DB_PATH` 为绝对路径时，`openAdmittedBwhBandwidth` 才打开该文件并调用 `applyBwhBandwidthSchema`。相对路径、`:memory:`、缺路径，或绝对路径不是可打开的普通文件时，`state.bwhBandwidth` 保持 null；对应路由返回 503 `bwh_bandwidth_unavailable`，不会把失败写成成功。保存只写 `desired`，不调用 `applyPlan`、`executeOwnedBandwidth` 或供流。已保存的 `applied` 若没有分类与管理豁免证明，读出是 `failed` / `classification_unproven`。`unknown` 和 `applying` 拒绝下一次保存，服务不自动重试。供流启用仍未改成等待限速证明；本切片不放流。入站队列是 `1:10`，出站队列是 `1:11`，同一 IFB 上的 HTB 根只创建一次，每个方向只有一个共享 rate，不按三条协议复制。两个方向都关闭时不创建队列。`classificationAttached` 仍为 false。`applyPlan` 在调用任何命令前取得调用方目录里的 `bwh-bandwidth.lock`；这把目录锁才是跨进程排除，`applying` 状态字段不是锁。步骤记在同目录的 `bwh-bandwidth-attempt.json`：中断后已记录的步骤是 `intended`，还没记录的是 `pending`，未执行的步骤不是 `done`。分类未证明时不调用 run 或 readback，也不把未完成的尝试改写成已执行。真实分类、宿主受限执行器、kernel readback、对象归属核验与回退、重启恢复及 Linux 共享速率验收均待完成。保存只保存目标，不代表主机已限速。未执行生产安装或启用。
 
 `observeBandwidthClassification` 只读合成或将来的逐条观测，不执行宿主命令。服务名数组、`classificationAttached` 布尔值、监听端口、共享 UID、整网卡整形，以及未批准的 network namespace 迁移或服务身份变更，都返回明确拒绝，不构成分类。缺整段 IPv6、既有连接、入站或回源腿时停下并给出对应缺口。把管理流量放进 `1:10` 或 `1:11` 记为未豁免。144 条协议格和 28 条豁免格都填上允许的证据种类时，矩阵只表示形状完整；`proven` 和 `classificationAttached` 仍是 false，原因是 `host_fixture_unauthorized`。调用方没有内核读回、接口索引或服务 cgroup。这个结果不能让 `applyPlan` 调用 run 或 readback。本模块不迁移协议 namespace，也不改服务身份。
 
@@ -26,12 +26,13 @@ Risk: A。Process: 本文件所在变更只交付控制面源码、Admin 投影�
 
 规划器只把上述三个服务名放进代理类。SSH、Admin、Portal、订阅、控制面和计量在排除列表中，不能被本规划器归入代理类。操作者网卡名只接受已经通过固定形状校验的值，并且不会进入 argv。argv 只有固定配置标记和十进制 bps 数字，不使用 shell。
 
-表只由 `applyBwhBandwidthSchema(db)` 创建。应用启动不会建这张表，也不会调用执行器。
+表只由 `applyBwhBandwidthSchema(db)` 创建。普通启动不会建这张表，也不会调用执行器。唯一的新调用点是显式准入的 `openAdmittedBwhBandwidth`。
 
 ## 函数
 
 - `readBwhBandwidth`：读取期望状态。没有行时是默认关闭，状态为已保存，不是已生效。
 - `saveDesired` / `saveFromAdmin`：校验策略后做 revision CAS。非法策略抛出 `bwh_bandwidth_invalid`，不改行，也不调用执行器。revision 不一致、或当前为 `applying` / `unknown` 时抛出 `bwh_bandwidth_conflict`。
+- `openAdmittedBwhBandwidth`：只有 `admit === true` 且路径是绝对普通文件时打开连接并建表；尚不存在的绝对路径可以新建。`read` / `save` 委托给上面的读取和保存。`save` 不调用执行器或供流。关闭后读写返回 `bwh_bandwidth_unavailable`。
 - `bandwidthClassificationTopology`：列出三协议、双向、客户端／回源腿、首包／既有连接、TCP／UDP／QUIC、IPv4／IPv6，以及管理豁免类和两条共享 classid。它不是观测结果。
 - `observeBandwidthClassification`：按上面的格子验收观测。捷径和缺口都保持 `classificationAttached: false`。填满的合成矩阵也不是隔离证明。
 - `plan`：返回结构化步骤。入站和出站使用不同 classid。分类附着标记恒为 false。不因观测函数而添加 filter。
@@ -40,7 +41,7 @@ Risk: A。Process: 本文件所在变更只交付控制面源码、Admin 投影�
 - `executeOwnedBandwidth`：用调用方注入的快照做执行前、执行后和补偿前读回。它不由 `applyPlan` 调用，也不会把合成快照写成 applied。
 - `rollbackOwnedSteps`：目前只生成固定 IFB、两个方向的 HTB class、qdisc handle 和 filter handle 的删除候选；没有实际对象归属 readback，不能称为已经实现安全回退。补偿删除由执行器按当次快照另算。
 
-Admin `PUT /api/admin/third-party-subscriptions/distribution/bandwidth` 复用供流写入的会话、角色、精确 Origin 和 `sec-fetch-site` 约束。请求体只有 `bandwidthRevision`、`inboundEnabled`、`outboundEnabled`、`inboundMbps`、`outboundMbps`。未注入 `state.bwhBandwidth.save` 时返回 `bwh_bandwidth_unavailable`。该处理函数不写分发路由，也不改变供流开关。
+Admin `PUT /api/admin/third-party-subscriptions/distribution/bandwidth` 复用供流写入的会话、角色、精确 Origin 和 `sec-fetch-site` 约束。请求体只有 `bandwidthRevision`、`inboundEnabled`、`outboundEnabled`、`inboundMbps`、`outboundMbps`。显式准入后，同一路由读取并保存，返回状态是 `desired`，不是 `applied`。未注入 `state.bwhBandwidth.save` 时返回 `bwh_bandwidth_unavailable`。该处理函数不写分发路由，也不改变供流开关。页面仍把 `desired` 显示为已保存、`applied` 显示为已生效；本切片没有改页面源码。
 
 独立线协议在 `scripts/lib/bwh-bandwidth-wire.mjs`，版本 1，动作只有 `status`、`plan`、`apply`、`rollback`。它不扩展供流线协议。`apply` / `rollback` 只有 version、action、revision。
 
