@@ -16,6 +16,8 @@ Risk: A。Process: 本文件所在变更只交付控制面源码、Admin 投影�
 
 本次是 Draft 源码原型检查点，不是限速功能完成或生产可用声明。正式 state/schema 尚未接入。入站队列是 `1:10`，出站队列是 `1:11`，同一 IFB 上的 HTB 根只创建一次，每个方向只有一个共享 rate，不按三条协议复制。两个方向都关闭时不创建队列。`classificationAttached` 仍为 false。`applyPlan` 在调用任何命令前取得调用方目录里的 `bwh-bandwidth.lock`；这把目录锁才是跨进程排除，`applying` 状态字段不是锁。步骤记在同目录的 `bwh-bandwidth-attempt.json`：中断后已记录的步骤是 `intended`，还没记录的是 `pending`，未执行的步骤不是 `done`。分类未证明时不调用 run 或 readback，也不把未完成的尝试改写成已执行。真实分类、宿主受限执行器、kernel readback、对象归属核验与回退、重启恢复及 Linux 共享速率验收均待完成。保存只保存目标，不代表主机已限速。未执行生产安装或启用。
 
+`observeBandwidthClassification` 只读合成或将来的逐条观测，不执行宿主命令。服务名数组、`classificationAttached` 布尔值、监听端口、共享 UID、整网卡整形，以及未批准的 network namespace 迁移或服务身份变更，都返回明确拒绝，不构成分类。缺整段 IPv6、既有连接、入站或回源腿时停下并给出对应缺口。把管理流量放进 `1:10` 或 `1:11` 记为未豁免。144 条协议格和 28 条豁免格都填上允许的证据种类时，矩阵只表示形状完整；`proven` 和 `classificationAttached` 仍是 false，原因是 `host_fixture_unauthorized`。调用方没有内核读回、接口索引或服务 cgroup。这个结果不能让 `applyPlan` 调用 run 或 readback。本模块不迁移协议 namespace，也不改服务身份。
+
 ## 范围
 
 三个 BWH 代理服务 `xray-vless-reality.service`、`hysteria2.service`、`mihomo-tuic.service` 共用一个总入站预算和一个总出站预算。不按用户、连接、协议、CPU 或网卡分别限速。默认两个方向都关闭；关闭保存为 `enabled: false` 且 `bps: null`，不是 0。开启时 0 Mbps 会被拒绝，不能当作暂停别名。
@@ -28,7 +30,9 @@ Risk: A。Process: 本文件所在变更只交付控制面源码、Admin 投影�
 
 - `readBwhBandwidth`：读取期望状态。没有行时是默认关闭，状态为已保存，不是已生效。
 - `saveDesired` / `saveFromAdmin`：校验策略后做 revision CAS。非法策略抛出 `bwh_bandwidth_invalid`，不改行，也不调用执行器。revision 不一致、或当前为 `applying` / `unknown` 时抛出 `bwh_bandwidth_conflict`。
-- `plan`：返回结构化步骤。入站和出站使用不同 classid。分类附着标记恒为 false。
+- `bandwidthClassificationTopology`：列出三协议、双向、客户端／回源腿、首包／既有连接、TCP／UDP／QUIC、IPv4／IPv6，以及管理豁免类和两条共享 classid。它不是观测结果。
+- `observeBandwidthClassification`：按上面的格子验收观测。捷径和缺口都保持 `classificationAttached: false`。填满的合成矩阵也不是隔离证明。
+- `plan`：返回结构化步骤。入站和出站使用不同 classid。分类附着标记恒为 false。不因观测函数而添加 filter。
 - `applyPlan`：没有调用方锁目录时拒绝，且不调用 `run`。锁目录已被占用时拒绝。锁内 revision 变化时拒绝，并留下刚保存的目标。网卡名无法证明时记 `failed` / `interface_unproven`，且不调用 `run`。分类附着标记不是 true 时记 `failed` / `classification_unproven`，不调用 `run`，也不调用 `readback`。伪造的读回不能把该结果写成 `applied`。`unknown` 期间拒绝下一次 apply。当前分类标记恒为 false，不创建内核对象；未来仍须补真实分类与对象归属证明，不能只翻转该标记。读回缺少任一证明或速率不一致时不能成为 `applied`。
 - `readBandwidthAttempt`：只读上述尝试文件，不执行步骤。
 - `rollbackOwnedSteps`：目前只生成固定 IFB、两个方向的 HTB class、qdisc handle 和 filter handle 的删除候选；没有实际对象归属 readback，不能称为已经实现安全回退。
