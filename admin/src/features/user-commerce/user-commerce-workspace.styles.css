@@ -1,0 +1,82 @@
+.user-commerce {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.user-commerce-card,
+.user-commerce-dialog {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 16px;
+}
+
+.user-commerce-filters,
+.user-commerce-form,
+.user-commerce-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: end;
+}
+
+.user-commerce label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: #334155;
+  font-size: 14px;
+}
+
+.user-commerce input,
+.user-commerce select {
+  min-height: 36px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  padding: 0 10px;
+  background: #fff;
+}
+
+.user-commerce-tabs button[aria-selected="true"] {
+  background: #0f172a;
+  color: #fff;
+}
+
+.user-commerce button {
+  min-height: 36px;
+  border-radius: 8px;
+  border: 1px solid #cbd5e1;
+  background: #fff;
+  padding: 0 12px;
+}
+
+.user-commerce-primary {
+  background: #0f172a;
+  color: #fff;
+  border-color: #0f172a;
+}
+
+.user-commerce-note,
+.user-commerce-status {
+  color: #475569;
+}
+
+.user-commerce-dialog {
+  position: fixed;
+  inset: auto 16px 16px auto;
+  width: min(420px, calc(100% - 32px));
+  box-shadow: 0 12px 40px rgba(15, 23, 42, 0.16);
+}
+
+.user-commerce table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.user-commerce th,
+.user-commerce td {
+  text-align: left;
+  padding: 8px 10px;
+  border-bottom: 1px solid #e2e8f0;
+}

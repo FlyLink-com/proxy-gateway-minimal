@@ -119,7 +119,8 @@ describe("AdminOperationsShell", () => {
     expect(screen.queryByText("GlobalCircle AI - Operator Console")).toBeNull();
     expect(screen.getByTestId("monitor-page-id").textContent).toBe("dashboard");
     expect(screen.getByRole("button", { name: "订阅分发" })).toBeTruthy();
-    expect(screen.getAllByRole("button").filter((el) => el.classList.contains("nav-item")).length).toBe(11);
+    expect(screen.getByRole("button", { name: "用户商业" })).toBeTruthy();
+    expect(screen.getAllByRole("button").filter((el) => el.classList.contains("nav-item")).length).toBe(12);
   });
 
   it("opens the formal third-party route and forwards session expiration without mounting read-only workspaces", async () => {
@@ -146,6 +147,7 @@ describe("AdminOperationsShell", () => {
     window.location.hash = hash;
     render(<AdminProductionBaselinePreview />);
     expect(screen.queryByRole("button", { name: "订阅分发" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "用户商业" })).toBeNull();
     expect(screen.getAllByRole("button").filter((el) => el.classList.contains("nav-item")).length).toBe(10);
     expect(screen.getByTestId("monitor-page-id").textContent).toBe("dashboard");
     expect(screen.queryByTestId("third-party-admin-workspace")).toBeNull();
@@ -158,6 +160,7 @@ describe("AdminOperationsShell", () => {
     view.rerender(<AdminOperationsShell preview={{ title: "本地预览", navLabel: "预览导航", banner: null }} />);
     expect(screen.queryByTestId("third-party-admin-workspace")).toBeNull();
     expect(screen.queryByRole("button", { name: "订阅分发" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "用户商业" })).toBeNull();
     expect(screen.getByTestId("monitor-page-id").textContent).toBe("dashboard");
   });
 

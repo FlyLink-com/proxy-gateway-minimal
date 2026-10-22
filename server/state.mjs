@@ -45,6 +45,7 @@ import { createChaoJiPayPaymentRuntime } from "./services/platform/chaojipay-pay
 import { createProductionCnyPaymentRechargeOffers } from "./services/platform/production-cny-payment-recharge-price-book.mjs";
 import { createSqliteSubscriptionControlStore } from "./services/platform/subscription-control-db.mjs";
 import { createAdminUsageLedgerReader } from "./services/platform/admin-usage-ledger-reader.mjs";
+import { createAdminUserCommerceService } from "./services/platform/admin-user-commerce.mjs";
 import { createPlatformLeadReviewQueue } from "./services/platform/lead-review-queue.mjs";
 import { createPlatformSubscriptionAccessShell } from "./services/platform/subscription-access-shell.mjs";
 import { createPortalAccessRequestService } from "./services/platform/portal-access-requests.mjs";
@@ -3188,6 +3189,13 @@ export function createRuntimeState(options = {}) {
     dbPath: ownsControlStore && controlDbPath !== ":memory:" ? resolve(controlDbPath) : null,
     nowFn: options.nowFn
   });
+  const adminUserCommerceEnabled = envFlag(env.ADMIN_USER_COMMERCE_ENABLED);
+  const adminUserCommerce = adminUserCommerceEnabled
+    ? createAdminUserCommerceService({
+      dbPath: ownsControlStore && controlDbPath !== ":memory:" ? resolve(controlDbPath) : null,
+      nowFn: options.userPortalNowFn || options.nowFn
+    })
+    : null;
 
   if (portalReferralRewardsEnabled) portalReferrals?.start();
 
@@ -3397,6 +3405,7 @@ export function createRuntimeState(options = {}) {
       portalSupportRequests: platformPortalSupportRequests,
       controlStore: platformControlStore,
       adminUsageLedger,
+      adminUserCommerce,
       edgeCredentialMaterialStore,
       edgeCredentialIssuer,
       edgeLifecycleService,
