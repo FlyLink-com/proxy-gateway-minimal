@@ -22,7 +22,7 @@ import { AdminUsageLedgerPending } from "./admin-usage-ledger-pending";
 import { AdminUserMonitorWorkspace } from "./admin-user-monitor-workspace";
 
 const PAGE_IDS = new Set<string>(Object.keys(ADMIN_PRODUCTION_BASELINE_PAGES));
-type AdminOperationsPageId = AdminProductionBaselinePageId | "thirdPartyNodes";
+type AdminOperationsPageId = AdminProductionBaselinePageId | "thirdPartyNodes" | "userCommerce";
 const ThirdPartyAdminWorkspace = lazy(async () => {
   const module = await import("../features/third-party-node-names/third-party-admin-workspace");
   return { default: module.ThirdPartyAdminWorkspace };
@@ -30,6 +30,10 @@ const ThirdPartyAdminWorkspace = lazy(async () => {
 const SubscriptionDistributionPanel = lazy(async () => {
   const module = await import("../features/third-party-node-names/subscription-distribution-panel");
   return { default: module.SubscriptionDistributionPanel };
+});
+const UserCommerceWorkspace = lazy(async () => {
+  const module = await import("../features/user-commerce/user-commerce-workspace");
+  return { default: module.UserCommerceWorkspace };
 });
 
 function formatFormalHash(pageId: AdminOperationsPageId): string {
@@ -52,7 +56,7 @@ function parseHash(hash: string, preview: boolean): AdminOperationsPageId {
       return "dashboard";
     }
     const id = decoded.slice(prefix.length).split(/[/?#]/)[0] ?? "";
-    if (!preview && id === "thirdPartyNodes") return "thirdPartyNodes";
+    if (!preview && (id === "thirdPartyNodes" || id === "userCommerce")) return id;
     if (PAGE_IDS.has(id)) {
       return id as AdminProductionBaselinePageId;
     }
@@ -92,9 +96,9 @@ export function AdminOperationsShell({
   const [requestedPageId, setPageId] = useState(pageFromLocation);
   // The baseline preview is deliberately limited to its existing read-only ten
   // pages, including if the shell mode changes while this route is mounted.
-  const pageId = isPreview && requestedPageId === "thirdPartyNodes" ? "dashboard" : requestedPageId;
-  const page = ADMIN_PRODUCTION_BASELINE_PAGES[pageId === "thirdPartyNodes" ? "dashboard" : pageId];
-  const pageLabel = pageId === "thirdPartyNodes" ? "订阅分发" : page.label;
+  const pageId = isPreview && (requestedPageId === "thirdPartyNodes" || requestedPageId === "userCommerce") ? "dashboard" : requestedPageId;
+  const page = ADMIN_PRODUCTION_BASELINE_PAGES[pageId === "thirdPartyNodes" || pageId === "userCommerce" ? "dashboard" : pageId];
+  const pageLabel = pageId === "thirdPartyNodes" ? "订阅分发" : pageId === "userCommerce" ? "用户商业" : page.label;
 
   useEffect(() => {
     function syncPage() {
@@ -109,7 +113,7 @@ export function AdminOperationsShell({
   }, [isPreview]);
 
   function navigate(nextPageId: AdminOperationsPageId) {
-    if (isPreview && nextPageId === "thirdPartyNodes") return;
+    if (isPreview && (nextPageId === "thirdPartyNodes" || nextPageId === "userCommerce")) return;
     const nextHash = formatPageHref(nextPageId);
     if (window.location.hash !== nextHash) {
       window.location.hash = nextHash;
@@ -154,6 +158,15 @@ export function AdminOperationsShell({
               type="button"
             ><span className="nav-item-copy">订阅分发</span></button>
           </div> : null}
+          {!isPreview ? <div className="admin-baseline-preview-nav-group">
+            <p className="admin-baseline-preview-group">用户商业</p>
+            <button
+              aria-current={pageId === "userCommerce" ? "page" : undefined}
+              className={pageId === "userCommerce" ? "nav-item admin-baseline-preview-nav-item-active" : "nav-item"}
+              onClick={() => navigate("userCommerce")}
+              type="button"
+            ><span className="nav-item-copy">用户商业</span></button>
+          </div> : null}
         </nav>
       </aside>
       <main className="admin-baseline-preview-main">
@@ -167,7 +180,11 @@ export function AdminOperationsShell({
         {preview?.banner}
         <section aria-label={pageLabel} className="admin-baseline-preview-page">
           <h2>{pageLabel}</h2>
-          {pageId === "thirdPartyNodes" ? (
+          {pageId === "userCommerce" ? (
+            <Suspense fallback={<p role="status" aria-busy="true">正在加载用户商业…</p>}>
+              <UserCommerceWorkspace onSessionExpired={onSessionExpired} />
+            </Suspense>
+          ) : pageId === "thirdPartyNodes" ? (
             <Suspense fallback={<p role="status" aria-busy="true">正在加载订阅分发管理…</p>}>
               <SubscriptionDistributionPanel onSessionExpired={onSessionExpired} />
               <ThirdPartyAdminWorkspace onSessionExpired={onSessionExpired} />

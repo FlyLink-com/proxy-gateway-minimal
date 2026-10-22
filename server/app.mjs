@@ -18,6 +18,7 @@ import { networkRoutes } from "./routes/network.mjs";
 import { adminSubscriptionRoutes } from "./routes/admin-subscriptions.mjs";
 import { adminPlatformRoutes } from "./routes/admin-platform.mjs";
 import { adminUserMonitorRoutes } from "./routes/admin-user-monitor.mjs";
+import { adminUserCommerceRoutes } from "./routes/admin-user-commerce.mjs";
 import { adminThirdPartySubscriptionRoutes } from "./routes/admin-third-party-subscriptions.mjs";
 import { adminSubscriptionDistributionRoutes } from "./routes/admin-subscription-distribution.mjs";
 import {
@@ -567,6 +568,7 @@ export function createApp(state, options = {}) {
     app.use(adminPlatformRoutes(state));
   }
   app.use(adminUserMonitorRoutes(state));
+  app.use(adminUserCommerceRoutes(state));
   app.use(adminSubscriptionDistributionRoutes(state));
   app.use(adminThirdPartySubscriptionRoutes(state));
   app.use("/sub", createRateLimitMiddleware({
