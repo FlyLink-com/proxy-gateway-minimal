@@ -42,8 +42,8 @@ notes, are repository records, not new readback. Execution authority: none.
   (merge of #799, 2026-10-22). 28 PRs merged between the 2026-10-11 source
   cutoff (`483f535`) and this cutoff, including the prior reconciliation
   line itself: #765 (the 2026-10-11 source-and-deployment reconciliation),
-  #766 (alignment with live GitHub titles) and #772 (manual EPay
-  reconciliation evidence).
+  #766 (alignment with live GitHub titles) and #772 (monthly card
+  plan switch, default off).
 - Third-party subscription distribution landed as source: #762 distribution
   stages and #771 restricted inline YAML import (2026-10-13), the #779-#784
   and #788 Admin third-party node workspace series, and #785/#786 admission
