@@ -17,7 +17,10 @@ document_metadata:
 > - Source reconciliation cutoff: `master@eadefd98357a6bb616c5dd54c984ec265695acad`
 > - Latest read deployment records add #764 reset/collector, preserved #767
 >   containment and #769 desktop Portal to the earlier BWH composition;
->   they are not a whole-master backend deployment
+>   later merged deploy notes (#785/#786) record the BWH overlay
+>   application `control-plane-pr786-c7b094592662-mixed` layered on the
+>   #785 three-module overlay. They are repository deployment records,
+>   not a whole-master backend deployment or a fresh host read
 > - Dated source/check/task/deployment evidence and remaining unknowns:
 >   [2026-10-11 reconciliation](docs/CURRENT_RELEASE_STATE.md#source-and-deployment-reconciliation-2026-10-11)
 > - No live runtime or provider readback was performed by this docs change

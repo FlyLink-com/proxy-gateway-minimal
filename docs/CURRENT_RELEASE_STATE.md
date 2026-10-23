@@ -16,8 +16,12 @@ document_metadata:
 >   observed 2026-10-23 UTC; not a permanent current-head claim
 > - Latest deployment records read: #764 reset/collector, preserved #767
 >   containment and #769 desktop Portal, layered on the earlier BWH composition,
->   plus the 2026-10-12 metering closeout (#773-#778). No deployment record
->   after 2026-10-12 was read or established by the 2026-10-23 reconciliation
+>   plus the 2026-10-12 metering closeout (#773-#778) and the later merged
+>   deploy notes for #785/#786: the #786 note, preserved in
+>   docs/DATA_PACK_RELEASE_READINESS_2026_10_15.md, records the BWH
+>   application `control-plane-pr786-c7b094592662-mixed` layered on the
+>   #785 three-module overlay. Those notes are recorded deployment
+>   evidence, not a fresh host read
 > - Source, build, deployment and runtime identities are distinct; the BWH
 >   application is a documented composition, not the current whole `master`
 > - This reconciliation read GitHub records only. No provider, host, account,
@@ -30,13 +34,16 @@ Risk C documentation reconciliation from native GitHub records read
 2026-10-23 UTC. This scoped update supersedes the earlier top-level source
 status only; the dated deployment and runtime facts below retain their
 original cutoffs and are not refreshed or promoted by it. No provider, host,
-account, database or live runtime readback was performed, and no deployment
-record after the 2026-10-12 metering closeout was read or established by
-this task. Execution authority: none.
+account, database or live runtime readback was performed by this task; the
+deployment records it carries forward, including the #785/#786 deploy
+notes, are repository records, not new readback. Execution authority: none.
 
 - Source cutoff is now `master@eadefd98357a6bb616c5dd54c984ec265695acad`
-  (merge of #799, 2026-10-22). 25 PRs merged between the 2026-10-11 source
-  cutoff (`483f535`) and this cutoff.
+  (merge of #799, 2026-10-22). 28 PRs merged between the 2026-10-11 source
+  cutoff (`483f535`) and this cutoff, including the prior reconciliation
+  line itself: #765 (the 2026-10-11 source-and-deployment reconciliation),
+  #766 (alignment with live GitHub titles) and #772 (manual EPay
+  reconciliation evidence).
 - Third-party subscription distribution landed as source: #762 distribution
   stages and #771 restricted inline YAML import (2026-10-13), the #779-#784
   and #788 Admin third-party node workspace series, and #785/#786 admission

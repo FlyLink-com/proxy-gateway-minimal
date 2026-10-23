@@ -18,8 +18,10 @@ document_metadata:
 > - Source reconciliation cutoff:
 >   `master@eadefd98357a6bb616c5dd54c984ec265695acad` (observed 2026-10-23 UTC)
 > - Source/production boundary: #764 reset/collector and preserved #767 guard
->   are recorded BWH overlays; #769 is desktop Portal only. None establishes
->   a whole-master backend deployment. Merged source after 2026-10-11,
+>   are recorded BWH overlays; #769 is desktop Portal only. Later merged
+>   deploy notes record the #785 three-module BWH overlay and the #786
+>   application `control-plane-pr786-c7b094592662-mixed` layered on it.
+>   None establishes a whole-master backend deployment. Merged source after 2026-10-11,
 >   through the current cutoff, does not change this boundary. Current
 >   runtime alignment was not read
 > - Delivery navigation projection:
@@ -45,7 +47,8 @@ credential, payment, subscription-material, or customer-data actions.
 The newer [source reconciliation](CURRENT_RELEASE_STATE.md#source-reconciliation-2026-10-23)
 advances the source cutoff to `master@eadefd98357a6bb616c5dd54c984ec265695acad`
 and records the merged third-party distribution (#762/#771 and the Admin
-node workspace series), data-pack (#753), usage-ledger (#789-#794),
+node workspace series), data-pack (#753), usage-ledger
+(#789/#790/#791/#792/#794; #793 is still an open Draft),
 distribution-routing (#796) and Admin user-commerce (#799) source lines,
 plus the current six open Draft PRs. The 2026-10-12 continuation below is
 superseded where it describes third-party subscription work as planning:
@@ -53,7 +56,12 @@ that work landed as source on 2026-10-13 and is not deployed by either
 closeout. This is a GitHub-record reconciliation, not a fresh production
 read; merged source does not establish a whole-master backend deployment.
 Re-read the native PRs before work. The delivery navigation projection now
-points at the renamed FlyLink-com organization.
+points at the renamed FlyLink-com organization. That link update does not
+migrate the pinned read-only Project export contract:
+`project-state/project-v2-contract.json` still fixes `target.owner` and
+`target.repository` to the pre-rename `gccwebos-com` values, and changing
+that checksum-pinned contract is a separate reviewed contract change
+outside this docs-only alignment.
 
 ## Scoped continuation (2026-10-12)
 
@@ -144,10 +152,10 @@ Keep these distinctions explicit:
 
 ## Repository And Delivery Index
 
-Repository: `gccwebos-com/proxy-gateway-minimal`
+Repository: `FlyLink-com/proxy-gateway-minimal`
 
-The source cutoff inspected for this docs-only alignment is
-`master@483f535ee6d90fe222b866591ade19a7776b1d47`. Resolve the live `master`
+The source cutoff inspected for the 2026-10-23 docs-only alignment is
+`master@eadefd98357a6bb616c5dd54c984ec265695acad`. Resolve the live `master`
 SHA before a later source decision. The
 [2026-10-11 reconciliation](CURRENT_RELEASE_STATE.md#source-and-deployment-reconciliation-2026-10-11)
 records exact-source validation, dated deployment composition, open Drafts and
