@@ -6,15 +6,15 @@ document_metadata:
   lifecycle: active
   authority_scope: release_traceability
   superseded_by: null
-  last_verified_at: 2026-10-12
+  last_verified_at: 2026-10-23
   production_authority: false
 ```
 
 > Status:
 > - Type: Active source-to-production traceability baseline
 > - Risk: C
-> - Last updated: 2026-10-11 UTC
-> - Source reconciliation cutoff: `master@483f535ee6d90fe222b866591ade19a7776b1d47`
+> - Last updated: 2026-10-23 UTC
+> - Source reconciliation cutoff: `master@eadefd98357a6bb616c5dd54c984ec265695acad`
 > - Latest read deployment records add #764 reset/collector, preserved #767
 >   containment and #769 desktop Portal to the earlier BWH composition;
 >   they are not a whole-master backend deployment
@@ -30,6 +30,13 @@ degraded Identity Gate. It does not refresh unrelated release units, authorize
 recovery replay or establish whole-master deployment. Exact source, artifact
 and recovery-tool identities, together with the #775 not-used-on-host
 distinction, remain in the linked Deploy Note.
+
+The later [2026-10-23 source reconciliation](docs/CURRENT_RELEASE_STATE.md#source-reconciliation-2026-10-23)
+advances the source cutoff to `master@eadefd98357a6bb616c5dd54c984ec265695acad`
+(merge of #799, 2026-10-22) and records the source lines merged since the
+2026-10-11 cutoff. It adds no deployment record, refreshes no release unit
+and does not establish whole-master deployment; the latest deployment
+records remain those of the 2026-10-12 metering closeout.
 
 ## Model
 

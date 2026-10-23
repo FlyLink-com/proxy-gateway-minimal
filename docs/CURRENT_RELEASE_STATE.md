@@ -6,21 +6,59 @@ document_metadata:
   lifecycle: active
   authority_scope: current_release_state
   superseded_by: null
-  last_verified_at: 2026-10-12
+  last_verified_at: 2026-10-23
   production_authority: false
 ```
 
 > Status:
 > - Type: Dated documented source, validation and deployment snapshot
-> - Git source cutoff: `master@483f535ee6d90fe222b866591ade19a7776b1d47`,
->   observed 2026-10-11 UTC; not a permanent current-head claim
+> - Git source cutoff: `master@eadefd98357a6bb616c5dd54c984ec265695acad`,
+>   observed 2026-10-23 UTC; not a permanent current-head claim
 > - Latest deployment records read: #764 reset/collector, preserved #767
->   containment and #769 desktop Portal, layered on the earlier BWH composition
+>   containment and #769 desktop Portal, layered on the earlier BWH composition,
+>   plus the 2026-10-12 metering closeout (#773-#778). No deployment record
+>   after 2026-10-12 was read or established by the 2026-10-23 reconciliation
 > - Source, build, deployment and runtime identities are distinct; the BWH
 >   application is a documented composition, not the current whole `master`
 > - This reconciliation read GitHub records only. No provider, host, account,
 >   database or live runtime readback was performed
 > - Execution authority: None
+
+## Source Reconciliation (2026-10-23)
+
+Risk C documentation reconciliation from native GitHub records read
+2026-10-23 UTC. This scoped update supersedes the earlier top-level source
+status only; the dated deployment and runtime facts below retain their
+original cutoffs and are not refreshed or promoted by it. No provider, host,
+account, database or live runtime readback was performed, and no deployment
+record after the 2026-10-12 metering closeout was read or established by
+this task. Execution authority: none.
+
+- Source cutoff is now `master@eadefd98357a6bb616c5dd54c984ec265695acad`
+  (merge of #799, 2026-10-22). 25 PRs merged between the 2026-10-11 source
+  cutoff (`483f535`) and this cutoff.
+- Third-party subscription distribution landed as source: #762 distribution
+  stages and #771 restricted inline YAML import (2026-10-13), the #779-#784
+  and #788 Admin third-party node workspace series, and #785/#786 admission
+  of evidenced legacy subscribers.
+- #753 independent lifetime data packs merged 2026-10-15, still default-off.
+  The Admin usage-ledger line landed as #789 with follow-up fixes #790,
+  #791, #792 and #794 (2026-10-18 - 2026-10-19). Distribution routing and
+  BWH supply control landed as #796 (2026-10-19). #799 added the
+  default-off Admin user commerce console and API (2026-10-22).
+- Issue #795 is closed in the native tracker as of this read (closed
+  2026-10-22). That closure is a tracker state, not production evidence:
+  the #796/#798 PR records state the production cutover was not executed
+  by those PRs, and this reconciliation does not widen the closure into a
+  deployment or runtime claim.
+- Open native surface at this read: 18 open issues and six open Draft PRs -
+  #798 (BWH shared-bandwidth policy), #797 (protocol traffic rating),
+  #793 (Admin ledger row-budget probe), #787 (US residential relay pack,
+  default-off), #770 (sessionless public offer catalog) and #755 (rotating
+  native session renewal). Each Draft body states its own gate; none is
+  approved for Ready, merge or deployment by this reconciliation.
+- #768 remains open for real-account browser confirmation of the reset
+  display fix, unchanged from the 2026-10-11 reconciliation.
 
 ## Scoped Metering Closeout (2026-10-12)
 
