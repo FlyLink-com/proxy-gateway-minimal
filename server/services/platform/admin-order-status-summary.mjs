@@ -1,15 +1,15 @@
 import Database from "better-sqlite3";
 import { isAbsolute } from "node:path";
+import {
+  OPERATIONS_DEFAULT_SPAN_MS as DEFAULT_SPAN_MS,
+  parseUtcWindowPair
+} from "./admin-operations-window.mjs";
 import { createOperationsReadEnvelope } from "./operations-read-envelope.mjs";
 
 const DELIBERATE = Symbol("admin-order-status-summary");
-const UTC_INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 const TOKEN = /^[a-z_]{1,64}$/;
 const CURRENCY = /^[A-Z]{3}$/;
 const DECIMAL = /^(0|[1-9][0-9]*)$/;
-const DAY_MS = 24 * 60 * 60 * 1000;
-const DEFAULT_SPAN_MS = 30 * DAY_MS;
-const MAX_SPAN_MS = 31 * DAY_MS;
 const SAFE_MAX = BigInt(Number.MAX_SAFE_INTEGER);
 const SCHEMA_VERSION = "operations-order-status-summary/v1";
 const DEFINITION = "current_status_of_orders_created_in_window";
@@ -49,30 +49,8 @@ function fail(code) {
   throw error;
 }
 
-function isQueryObject(value) {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
-  const prototype = Object.getPrototypeOf(value);
-  return prototype === Object.prototype || prototype === null;
-}
-
-function readInstant(value) {
-  if (typeof value !== "string" || !UTC_INSTANT.test(value)) fail("invalid_query");
-  if (new Date(value).toISOString() !== value) fail("invalid_query");
-  return value;
-}
-
 function parseQuery(input) {
-  if (!isQueryObject(input)) fail("invalid_query");
-  const keys = Object.keys(input);
-  if (keys.length === 0) return null;
-  if (keys.length !== 2 || !Object.hasOwn(input, "from") || !Object.hasOwn(input, "to")) {
-    fail("invalid_query");
-  }
-  const from = readInstant(input.from);
-  const to = readInstant(input.to);
-  const span = Date.parse(to) - Date.parse(from);
-  if (!Number.isSafeInteger(span) || span <= 0 || span > MAX_SPAN_MS) fail("invalid_query");
-  return { from, to };
+  return parseUtcWindowPair(input, fail);
 }
 
 function readClock(nowFn) {

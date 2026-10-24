@@ -203,6 +203,19 @@ test("invalid queries and a missing source stay errors instead of empty totals",
       assert.equal(invalid.headers.get("cache-control"), "no-store");
       assert.deepEqual(await invalid.json(), { error: "invalid_query" });
 
+      for (const from of [
+        "2026-13-01T00:00:00.000Z",
+        "2026-10-01T25:00:00.000Z",
+        "2026-02-30T00:00:00.000Z"
+      ]) {
+        const impossible = await fetch(
+          `${baseUrl}${PATH}?from=${encodeURIComponent(from)}&to=2026-10-08T00:00:00.000Z`
+        );
+        assert.equal(impossible.status, 400, from);
+        assert.equal(impossible.headers.get("cache-control"), "no-store");
+        assert.deepEqual(await impossible.json(), { error: "invalid_query" });
+      }
+
       const missing = await fetch(`${baseUrl}${WINDOW}`);
       assert.equal(missing.status, 503);
       assert.equal(missing.headers.get("cache-control"), "no-store");

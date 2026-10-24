@@ -56,7 +56,9 @@ session and `operations.read`. It does not walk accounts and does not use
 (`YYYY-MM-DDTHH:mm:ss.sssZ`). The filter is half-open: `created_at >= from`
 and `created_at < to`. The default window is the last 30×24 hours ending at
 the server clock. The maximum span is 31×24 hours. Invalid query parameters
-are rejected before the database is opened.
+are rejected before the database is opened. A well-shaped instant that is not
+a real Gregorian UTC time, including month 13, 30 February, or hour 25, is
+`invalid_query` and does not open the database.
 
 Recharge rows come from `platform_payment_orders`, grouped by the stored
 `status`, `currency`, and `currency_exponent`. Each group reports the order

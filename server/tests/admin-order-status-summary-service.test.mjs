@@ -322,6 +322,13 @@ test("invalid windows are rejected before the clock or the database", () => {
     { from: to, to: from },
     { from, to: from },
     { from: "2026-02-31T00:00:00.000Z", to: "2026-03-03T00:00:00.000Z" },
+    { from: "2026-13-01T00:00:00.000Z", to },
+    { from: "2026-10-01T25:00:00.000Z", to },
+    { from: "2026-02-30T00:00:00.000Z", to: "2026-03-02T00:00:00.000Z" },
+    { from: "2026-02-29T00:00:00.000Z", to: "2026-03-01T00:00:00.000Z" },
+    { from: "1900-02-29T00:00:00.000Z", to: "1900-03-01T00:00:00.000Z" },
+    { from: "2026-10-01T00:60:00.000Z", to },
+    { from: "2026-10-01T00:00:60.000Z", to },
     { from: "2026-10-01T00:00:00Z", to },
     { from: "2026-10-01", to: "2026-10-08" },
     { from, to, accountId: "acct_sentinel_a" },
@@ -499,6 +506,18 @@ test("an empty window is a real empty result and the default window is thirty da
     assert.deepEqual(empty.warnings, []);
     assert.deepEqual(empty.data.rechargeOrders.groups, []);
     assert.deepEqual(empty.data.coinCommerceOrders.groups, []);
+
+    const leapDay = summary(db, {
+      from: "2024-02-29T00:00:00.000Z",
+      to: "2024-03-01T00:00:00.000Z"
+    });
+    assert.equal(leapDay.data.window.from, "2024-02-29T00:00:00.000Z");
+    assert.deepEqual(leapDay.data.rechargeOrders.groups, []);
+    const centuryLeap = summary(db, {
+      from: "2000-02-29T00:00:00.000Z",
+      to: "2000-03-01T00:00:00.000Z"
+    });
+    assert.equal(centuryLeap.data.window.from, "2000-02-29T00:00:00.000Z");
 
     const expressQuery = Object.create(null);
     expressQuery.from = "2026-10-01T00:00:00.000Z";
