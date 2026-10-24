@@ -44,6 +44,37 @@ reads the runtime-owned control database; injected stores are unavailable rather
 than falling back to another file. See [Admin usage ledger](../docs/ADMIN_USAGE_LEDGER.md)
 for recorded-usage semantics, limits, source evidence and the separate production gate.
 
+`GET /api/admin/operations/order-status-summary` is a platform aggregate of the
+current status of orders created inside a UTC window. It is not a count of
+status transitions, and it is not revenue, net revenue, settled receipt,
+refund, or renewal. The route is registered only when
+`ADMIN_AUTHORIZATION_ENABLED` is exactly true, then requires the existing Admin
+session and `operations.read`. It does not walk accounts and does not use
+`ADMIN_USER_COMMERCE_ENABLED`.
+
+`from` and `to` are both omitted or both canonical UTC instants
+(`YYYY-MM-DDTHH:mm:ss.sssZ`). The filter is half-open: `created_at >= from`
+and `created_at < to`. The default window is the last 30×24 hours ending at
+the server clock. The maximum span is 31×24 hours. Invalid query parameters
+are rejected before the database is opened.
+
+Recharge rows come from `platform_payment_orders`, grouped by the stored
+`status`, `currency`, and `currency_exponent`. Each group reports the order
+count and the sum of `amount_minor` as order-amount minor units. Coins
+commerce rows come from `platform_coin_commerce_orders` joined to
+`platform_coin_commerce_offer_versions.delivery_kind`, grouped by the stored
+`payment_status` and `delivery_kind`. Each group reports the order count and
+the sum of `amount_units` as Coins. `subscription_plan` and `data_pack` stay
+separate. Catalog `reference_amount_minor` is not summed. Receipts are not
+relabeled into the status groups. An empty window is an empty group list. A
+missing table, an unmatched offer version, or a sum outside the safe integer
+range fails the whole read as `source_unavailable` rather than a partial or
+zero total.
+
+`platform_payment_orders` is indexed by `(account_id, created_at, payment_order_ref)`.
+`platform_coin_commerce_orders` has no `created_at` index. This windowed
+aggregate can scan. This change does not add an index or migration.
+
 ## Subscription website metadata
 
 Successful Clash YAML responses from `routes/subscription.mjs` include

@@ -19,6 +19,7 @@ import { adminSubscriptionRoutes } from "./routes/admin-subscriptions.mjs";
 import { adminPlatformRoutes } from "./routes/admin-platform.mjs";
 import { adminUserMonitorRoutes } from "./routes/admin-user-monitor.mjs";
 import { adminUserCommerceRoutes } from "./routes/admin-user-commerce.mjs";
+import { adminOrderStatusSummaryRoutes } from "./routes/admin-order-status-summary.mjs";
 import { adminThirdPartySubscriptionRoutes } from "./routes/admin-third-party-subscriptions.mjs";
 import { adminSubscriptionDistributionRoutes } from "./routes/admin-subscription-distribution.mjs";
 import {
@@ -45,7 +46,8 @@ const PAYMENT_CALLBACK_PATHS = Object.freeze([
 ]);
 const ADMIN_CAPABILITY_PROTECTED_PATHS = [
   "/api/admin/overview",
-  "/api/admin/operations/overview"
+  "/api/admin/operations/overview",
+  "/api/admin/operations/order-status-summary"
 ];
 const PORTAL_SUBSCRIPTION_LINK_RESET_PATH = "/api/portal/access-requests/reset-link";
 const USER_PORTAL_PUBLIC_PATHS = [
@@ -569,6 +571,9 @@ export function createApp(state, options = {}) {
   }
   app.use(adminUserMonitorRoutes(state));
   app.use(adminUserCommerceRoutes(state));
+  if (state.platform?.adminAuthorizationEnabled === true) {
+    app.use(adminOrderStatusSummaryRoutes(state));
+  }
   app.use(adminSubscriptionDistributionRoutes(state));
   app.use(adminThirdPartySubscriptionRoutes(state));
   app.use("/sub", createRateLimitMiddleware({
