@@ -224,6 +224,99 @@ test("invalid calendar instants are HTTP 400 and a missing source is not an empt
   }
 });
 
+test("a calendar-invalid stored confirmation time is HTTP 503 and not a partial gross", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "recharge-confirmation-gross-bad-time-"));
+  const dbPath = join(directory, "control.sqlite");
+  const db = new Database(dbPath);
+  migrate(db);
+  db.prepare(`
+    insert into platform_accounts (
+      id, owner_ref, status, created_at, updated_at, metadata_json
+    ) values ('acct_sentinel_bad_time', 'owner_bad_time', 'active', ?, ?, '{}')
+  `).run(NOW, NOW);
+  const insertOrder = db.prepare(`
+    insert into platform_payment_orders (
+      payment_order_ref, account_id, offer_ref, create_idempotency_key,
+      create_request_digest, quote_version, expected_paid_coin_units,
+      amount_minor, currency, currency_exponent, quote_digest,
+      adapter_key, payment_method, merchant_binding_ref, status,
+      latest_receipt_ref, wallet_operation_ref, wallet_lot_ref, provider_order_ref,
+      expires_at, created_at, updated_at
+    ) values (
+      ?, 'acct_sentinel_bad_time', 'offer_sentinel', ?,
+      ?, 1, 1, 20, 'USD', 2, ?,
+      'adapter_sentinel', 'method_sentinel', 'merchant_sentinel', 'payment_verified',
+      ?, null, null, ?,
+      '2026-12-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z'
+    )
+  `);
+  const insertReceipt = db.prepare(`
+    insert into platform_payment_receipts (
+      receipt_ref, payment_order_ref, attempt_ref, provider_request_ref,
+      receipt_type, canonical_state, charge_certainty,
+      provider_order_ref, provider_capture_ref, provider_event_ref,
+      event_dedupe_key, merchant_scope_digest, payload_digest,
+      verification_result, amount_minor, currency, currency_exponent,
+      expected_paid_coin_units, accepted_at
+    ) values (
+      ?, ?, ?, ?,
+      'capture', 'payment_succeeded', 'confirmed_charged',
+      ?, ?, ?,
+      ?, ?, ?,
+      'verified', 20, 'USD', 2,
+      1, ?
+    )
+  `);
+  const rows = [
+    ["pay_order_good_http", "receipt_good_http", "2026-10-03T00:00:00.000Z"],
+    ["pay_order_hour_http", "receipt_hour_http", "2026-10-05T25:00:00.000Z"],
+    ["pay_order_day_http", "receipt_day_http", "2026-02-30T00:00:00.000Z"],
+    ["pay_order_month_http", "receipt_month_http", "2026-13-01T00:00:00.000Z"],
+    ["pay_order_shape_http", "receipt_shape_http", "not-a-timestamp"]
+  ];
+  for (const [orderRef, receiptRef, acceptedAt] of rows) {
+    insertOrder.run(orderRef, orderRef, DIGEST, DIGEST, receiptRef, `provider_${orderRef}`);
+    insertReceipt.run(
+      receiptRef,
+      orderRef,
+      `attempt_${receiptRef}`,
+      `request_${receiptRef}`,
+      `provider_${orderRef}`,
+      `capture_${receiptRef}`,
+      `event_${receiptRef}`,
+      `dedupe_${receiptRef}`,
+      DIGEST,
+      DIGEST,
+      acceptedAt
+    );
+  }
+  db.close();
+  const state = baseState({
+    adminAuthorizationEnabled: true,
+    adminAuthRoutesEnabled: true,
+    adminAuth: sessionAuth(),
+    adminRechargeConfirmationGross: createAdminRechargeConfirmationGrossService({
+      dbPath,
+      nowFn: () => new Date(NOW)
+    })
+  });
+  try {
+    await withServer(createApp(state), async (baseUrl) => {
+      const response = await fetch(`${baseUrl}${WINDOW}`, {
+        headers: { cookie: "gcc_admin_session=valid" }
+      });
+      assert.equal(response.status, 503);
+      assert.equal(response.headers.get("cache-control"), "no-store");
+      const body = await response.json();
+      assert.deepEqual(body, { error: "source_unavailable" });
+      assert.equal(Object.hasOwn(body, "confirmedCharges"), false);
+      assert.equal(Object.hasOwn(body, "freshness"), false);
+    });
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test("createApp returns gross and leaves the order-status summary on its own contract", async () => {
   const directory = mkdtempSync(join(tmpdir(), "recharge-confirmation-gross-http-"));
   const dbPath = join(directory, "control.sqlite");

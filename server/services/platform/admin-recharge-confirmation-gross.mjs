@@ -2,7 +2,8 @@ import Database from "better-sqlite3";
 import { isAbsolute } from "node:path";
 import {
   OPERATIONS_DEFAULT_SPAN_MS as DEFAULT_SPAN_MS,
-  parseUtcWindowPair
+  parseUtcWindowPair,
+  readUtcInstant
 } from "./admin-operations-window.mjs";
 import { createOperationsReadEnvelope } from "./operations-read-envelope.mjs";
 
@@ -12,14 +13,24 @@ const DECIMAL = /^(0|[1-9][0-9]*)$/;
 const SAFE_MAX = BigInt(Number.MAX_SAFE_INTEGER);
 const SCHEMA_VERSION = "operations-recharge-confirmation-gross/v1";
 const DEFINITION = "first_confirmed_charge_in_window";
-const CANONICAL_ACCEPTED_AT =
-  "[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9].[0-9][0-9][0-9]Z";
 
 // First confirmation is the earliest qualifying receipt by accepted_at, then
 // receipt_ref. SQLite walks platform_payment_receipts_order_accepted_idx for
 // that pass. verification_result, canonical_state, and charge_certainty are
 // residual filters, not index keys. This read does not add an index or change
 // payment DDL.
+//
+// Confirmation timestamps use readUtcInstant, the same calendar rule as the
+// query window. SQLite strftime rolls some impossible days and keeps hour 24,
+// so a shape or strftime round-trip is not enough. Every qualifying receipt is
+// checked, including receipts outside the requested window.
+const CONFIRMATION_ACCEPTED_AT_SQL = `
+  select distinct accepted_at
+    from platform_payment_receipts
+   where verification_result = 'verified'
+     and canonical_state = 'payment_succeeded'
+     and charge_certainty = 'confirmed_charged'
+`;
 const READ_CTE = `
   with qualifying as (
     select r.payment_order_ref as payment_order_ref,
@@ -80,11 +91,6 @@ const READ_CTE = `
 const FLAGS_SQL = `
   ${READ_CTE}
   select
-    cast((
-      select count(*)
-        from qualifying
-       where accepted_at not glob '${CANONICAL_ACCEPTED_AT}'
-    ) as text) as bad_timestamp_count,
     cast((
       select count(*)
         from qualifying q
@@ -186,14 +192,21 @@ function readSafeTotal(value, { minimum }) {
   return number;
 }
 
+function assertConfirmationTimes(db) {
+  const timestamps = db.prepare(CONFIRMATION_ACCEPTED_AT_SQL).pluck().all();
+  for (const value of timestamps) {
+    if (readUtcInstant(value) !== value) fail("source_unavailable");
+  }
+}
+
 function readAggregate(db, window) {
   requireTables(db);
   const run = db.transaction(() => {
+    assertConfirmationTimes(db);
     const flags = db.prepare(FLAGS_SQL).get(window.from, window.to);
-    const badTimestamps = readSafeTotal(flags?.bad_timestamp_count, { minimum: 0n });
     const mismatches = readSafeTotal(flags?.mismatch_count, { minimum: 0n });
     const contradictory = readSafeTotal(flags?.contradictory_count, { minimum: 0n });
-    if (badTimestamps > 0 || mismatches > 0 || contradictory > 0) fail("source_unavailable");
+    if (mismatches > 0 || contradictory > 0) fail("source_unavailable");
     const excluded = readSafeTotal(flags?.excluded_count, { minimum: 0n });
     const rows = db.prepare(RECHARGE_CONFIRMATION_GROSS_GROUP_SQL).all(window.from, window.to);
     return {

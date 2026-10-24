@@ -723,6 +723,114 @@ test("quote mismatches and contradictory statuses fail the whole read", () => {
   }
 });
 
+test("calendar-invalid confirmation times fail closed, including outside the window", () => {
+  const badTimes = [
+    "2026-10-05T25:00:00.000Z",
+    "2026-02-30T00:00:00.000Z",
+    "2026-13-01T00:00:00.000Z",
+    "not-a-timestamp",
+    "2026-10-01T24:00:00.000Z"
+  ];
+  for (const acceptedAt of badTimes) {
+    const db = openDb();
+    try {
+      confirmed(db, {
+        orderRef: "pay_order_good_time",
+        accountId: "acct_sentinel_gross",
+        status: "payment_verified",
+        amountMinor: 21,
+        currency: "USD",
+        currencyExponent: 2,
+        createdAt: "2026-10-03T00:00:00.000Z",
+        acceptedAt: "2026-10-03T00:00:00.000Z",
+        receiptRef: "receipt_good_time"
+      });
+      confirmed(db, {
+        orderRef: "pay_order_bad_time",
+        accountId: "acct_sentinel_gross",
+        status: "credited",
+        amountMinor: 99,
+        currency: "EUR",
+        currencyExponent: 2,
+        createdAt: "2026-01-01T00:00:00.000Z",
+        acceptedAt,
+        receiptRef: "receipt_bad_time"
+      });
+      let caught;
+      try {
+        gross(db);
+      } catch (error) {
+        caught = error;
+      }
+      assert.equal(caught?.code, "source_unavailable", acceptedAt);
+      assert.equal(Object.hasOwn(caught, "freshness"), false, acceptedAt);
+      assert.equal(JSON.stringify(caught).includes("confirmedCharges"), false, acceptedAt);
+    } finally {
+      db.close();
+    }
+  }
+
+  const db = openDb();
+  try {
+    confirmed(db, {
+      orderRef: "pay_order_leap",
+      accountId: "acct_sentinel_gross",
+      status: "payment_verified",
+      amountMinor: 17,
+      currency: "USD",
+      currencyExponent: 2,
+      createdAt: "2024-02-01T00:00:00.000Z",
+      acceptedAt: "2024-02-29T00:00:00.000Z",
+      receiptRef: "receipt_leap"
+    });
+    confirmed(db, {
+      orderRef: "pay_order_ordinary",
+      accountId: "acct_sentinel_gross",
+      status: "credited",
+      amountMinor: 8,
+      currency: "USD",
+      currencyExponent: 2,
+      createdAt: "2026-10-03T00:00:00.000Z",
+      acceptedAt: "2026-10-03T00:00:00.000Z",
+      receiptRef: "receipt_ordinary"
+    });
+    insertReceipt(db, {
+      receiptRef: "receipt_unverified_bad_day",
+      orderRef: "pay_order_ordinary",
+      receiptType: "query",
+      canonicalState: "pending",
+      chargeCertainty: "unknown",
+      verification: "not_applicable",
+      amountMinor: 8,
+      currency: "USD",
+      currencyExponent: 2,
+      acceptedAt: "2026-02-30T00:00:00.000Z"
+    });
+    const leap = gross(db, {
+      from: "2024-02-29T00:00:00.000Z",
+      to: "2024-03-01T00:00:00.000Z"
+    });
+    assert.equal(leap.freshness, "fresh");
+    assert.deepEqual(leap.warnings, []);
+    assert.deepEqual(leap.data.confirmedCharges.groups, [{
+      currency: "USD",
+      currencyExponent: 2,
+      confirmedChargeCount: 1,
+      paymentConfirmationGrossMinorTotal: 17
+    }]);
+    const ordinary = gross(db);
+    assert.equal(ordinary.freshness, "fresh");
+    assert.deepEqual(ordinary.data.confirmedCharges.groups, [{
+      currency: "USD",
+      currencyExponent: 2,
+      confirmedChargeCount: 1,
+      paymentConfirmationGrossMinorTotal: 8
+    }]);
+  } finally {
+    db.close();
+  }
+});
+
 test("an outside mismatch does not blank a clean window, and a bad timestamp does", () => {
   const db = openDb();
   try {

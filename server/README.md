@@ -92,6 +92,10 @@ receipt ordered by `accepted_at` then `receipt_ref`. Later capture, callback,
 and query successes do not add another amount. `from` and `to` filter that
 first `accepted_at` with the same half-open UTC rules as the order-status
 summary, including calendar validity. The clock is not the confirmation time.
+Every qualifying receipt, including one outside the requested window, must
+have an `accepted_at` that passes that same calendar check. A shape match such
+as month 13, 30 February, or hour 25 makes the whole read
+`source_unavailable`.
 
 `payment_verified` and `credited` are both confirmed charges and stay distinct
 statuses; this aggregate adds their quote minor units inside the same currency
