@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { WORKSPACE_LAYOUT_VERSION } from "../app/plugin-layout-store";
 import { DashboardPage } from "../pages/dashboard-page";
@@ -111,32 +111,7 @@ describe("admin dashboard page", () => {
   });
 
   test("renders real subscription tenant counts and does not invent health or coverage", async () => {
-    const body = {
-      schemaVersion: "operations-dashboard-summary/v1",
-      generatedAt: "2026-10-24T00:00:00.000Z",
-      freshness: "partial",
-      sourceState: "implemented_source",
-      data: {
-        subscriptions: {
-          availability: "ready",
-          definition: "subscription_tenants",
-          total: 12,
-          active: 8,
-          expiring: 2,
-          disabledOrExpired: 2
-        },
-        platformHealth: { availability: "not_connected" },
-        channelCoverage: { availability: "not_connected" },
-        freshnessP95: { availability: "not_connected" },
-        riskCandidates: { availability: "not_connected" }
-      },
-      warnings: [{ code: "source_partial" }],
-      access: { allowed: true, capability: "operations.read", reasonCode: "allowed" }
-    };
-    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify(body), {
-      status: 200,
-      headers: { "content-type": "application/json" }
-    })));
+    vi.stubGlobal("fetch", vi.fn(async () => summaryResponse(12, 8, 2, 2)));
 
     render(<DashboardPage onNavigate={vi.fn()} onRiskCountChange={vi.fn()} />);
 
@@ -150,6 +125,37 @@ describe("admin dashboard page", () => {
     expect(screen.queryByText("Good")).toBeNull();
     expect(screen.queryByText("98.6%")).toBeNull();
     expect(screen.queryByText("All 18")).toBeNull();
+    expect(screen.getByText(/2026-10-23T00:00:00.000Z Portal registrations 9/)).not.toBeNull();
+    expect(screen.getByText("Observed 2026-10-20T01:02:03.000Z")).not.toBeNull();
+    vi.unstubAllGlobals();
+  });
+
+  test("shows an unavailable registration source without inventing zero days", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => summaryResponse(4, 1, 0, 0, {
+      registrationGrowth: { availability: "unavailable" },
+      trafficCollector: { availability: "unknown", observedAt: null }
+    })));
+    render(<DashboardPage onNavigate={vi.fn()} onRiskCountChange={vi.fn()} />);
+    expect(await screen.findByText("Registration counts could not be read.")).not.toBeNull();
+    expect(screen.getByText("Traffic collector observation is unknown.")).not.toBeNull();
+    expect(screen.getByText("4")).not.toBeNull();
+    expect(screen.queryByText(/Portal registrations 0/)).toBeNull();
+    vi.unstubAllGlobals();
+  });
+
+  test("loads the selected seven day range without replacing an aborted request", async () => {
+    const calls: string[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      calls.push(String(input));
+      return summaryResponse(1, 1, 0, 0);
+    }));
+    render(<DashboardPage onNavigate={vi.fn()} onRiskCountChange={vi.fn()} />);
+    expect(await screen.findByText(/Portal registrations 9/)).not.toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Last 7 days" }));
+    await waitFor(() => expect(calls).toHaveLength(2));
+    expect(calls[0]).toBe("/api/admin/operations/dashboard-summary");
+    expect(calls[1]).toContain("/api/admin/operations/dashboard-summary?from=");
+    expect(calls[1]).toContain("to=");
     vi.unstubAllGlobals();
   });
 
@@ -173,12 +179,12 @@ describe("admin dashboard page", () => {
     }));
     render(<DashboardPage onNavigate={vi.fn()} onRiskCountChange={vi.fn()} />);
 
-    expect(await screen.findAllByText("Sign-in is required.")).toHaveLength(4);
+    expect(await screen.findAllByText("Sign-in is required.")).toHaveLength(5);
     expect(screen.getAllByText("—")).toHaveLength(4);
     expect(screen.queryByText("0")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Retry summary" }));
 
-    expect(await screen.findAllByText("operations.read is required.")).toHaveLength(4);
+    expect(await screen.findAllByText("operations.read is required.")).toHaveLength(5);
     expect(screen.queryByText("4")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Retry summary" }));
 
@@ -432,7 +438,13 @@ function jsonResponse(body: unknown, status = 200) {
   });
 }
 
-function summaryResponse(total: number, active: number, expiring: number, disabledOrExpired: number) {
+function summaryResponse(
+  total: number,
+  active: number,
+  expiring: number,
+  disabledOrExpired: number,
+  extras: { registrationGrowth?: unknown; trafficCollector?: unknown } = {}
+) {
   return jsonResponse({
     schemaVersion: "operations-dashboard-summary/v1",
     generatedAt: "2026-10-24T00:00:00.000Z",
@@ -450,7 +462,24 @@ function summaryResponse(total: number, active: number, expiring: number, disabl
       platformHealth: { availability: "not_connected" },
       channelCoverage: { availability: "not_connected" },
       freshnessP95: { availability: "not_connected" },
-      riskCandidates: { availability: "not_connected" }
+      riskCandidates: { availability: "not_connected" },
+      registrationGrowth: {
+        availability: "ready",
+        timezone: "UTC",
+        definition: "account_created_at",
+        from: "2026-10-23T00:00:00.000Z",
+        to: "2026-10-24T00:00:00.000Z",
+        registeredCount: 9,
+        otherCreatedCount: 8,
+        points: [{
+          at: "2026-10-23T00:00:00.000Z",
+          registeredCount: 9,
+          otherCreatedCount: 8,
+          coverage: "queried"
+        }]
+      },
+      trafficCollector: { availability: "partial", observedAt: "2026-10-20T01:02:03.000Z" },
+      ...extras
     },
     warnings: [{ code: "source_partial" }],
     access: { allowed: true, capability: "operations.read", reasonCode: "allowed" }

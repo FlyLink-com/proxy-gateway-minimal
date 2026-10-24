@@ -63,7 +63,7 @@ export function overviewBlueprint(
           performanceBoundary: "Independent widget render; no owner-page table or ledger mount.",
           interactionModel: "Read-only summary with owner-page routing."
         },
-        content: fixturePreviewEnabled ? <OverviewHealthSummary /> : <OverviewLiveSummary />,
+        content: fixturePreviewEnabled ? <OverviewHealthSummary /> : <OperationsDashboardLive />,
         containmentStrategy: "not-applicable",
         purpose: "Summarize platform health without owning the account, quota, channel, or receipt detail collections.",
         contentFields: [
@@ -175,17 +175,40 @@ function summaryProblem(error: OperationsDashboardReadError) {
   return "The summary could not be read.";
 }
 
-function OverviewLiveSummary() {
+const DAY_MS = 86400000;
+const MAX_RANGE_MS = 31 * DAY_MS;
+
+function lastUtcRange(days: number) {
+  const to = new Date();
+  return {
+    from: new Date(to.getTime() - days * DAY_MS).toISOString(),
+    to: to.toISOString()
+  };
+}
+
+export function OperationsDashboardLive({
+  onSessionExpired
+}: {
+  onSessionExpired?: () => void;
+} = {}) {
   const [phase, setPhase] = useState<"loading" | "ready" | "error">("loading");
   const [summary, setSummary] = useState<OperationsDashboardSummary | null>(null);
   const [problem, setProblem] = useState("Reading the summary.");
   const [attempt, setAttempt] = useState(0);
+  const [range, setRange] = useState<{ from: string; to: string } | null>(null);
+  const [rangeError, setRangeError] = useState("");
+  const [fromDay, setFromDay] = useState("");
+  const [toDay, setToDay] = useState("");
 
   useEffect(() => {
     const controller = new AbortController();
     setPhase("loading");
     setProblem("Reading the summary.");
-    readOperationsDashboardSummary({ signal: controller.signal }).then((next) => {
+    readOperationsDashboardSummary({
+      signal: controller.signal,
+      from: range?.from,
+      to: range?.to
+    }).then((next) => {
       if (controller.signal.aborted) return;
       setSummary(next);
       setPhase("ready");
@@ -194,14 +217,17 @@ function OverviewLiveSummary() {
       const readError = error instanceof OperationsDashboardReadError
         ? error
         : new OperationsDashboardReadError("unavailable");
+      if (readError.code === "session") onSessionExpired?.();
       setSummary(null);
       setProblem(summaryProblem(readError));
       setPhase("error");
     });
     return () => controller.abort();
-  }, [attempt]);
+  }, [attempt, onSessionExpired, range]);
 
   const subscriptions = phase === "ready" ? summary?.subscriptions : null;
+  const growth = phase === "ready" ? summary?.registrationGrowth : null;
+  const collector = phase === "ready" ? summary?.trafficCollector : null;
   return (
     <div className="admin-operator-content" aria-label="Operations Overview summary">
       <div className="admin-overview-metric-grid" aria-label="Operations Overview metric cards">
@@ -224,6 +250,63 @@ function OverviewLiveSummary() {
         <StatusChip label="Freshness P95 not connected" tone="neutral" />
         <StatusChip label="No production action" tone="danger" />
       </div>
+      <section aria-label="Registration trend">
+        <h3>Registration trend</h3>
+        <p>UTC calendar days. Portal registrations count self-service portal accounts. Other created accounts are every other new account. These counts are not subscription tenants.</p>
+        <div>
+          <button type="button" aria-pressed={range === null} onClick={() => { setRangeError(""); setRange(null); }}>Last 30 days</button>
+          <button type="button" aria-pressed={range !== null && fromDay === "" && toDay === ""} onClick={() => { setRangeError(""); setFromDay(""); setToDay(""); setRange(lastUtcRange(7)); }}>Last 7 days</button>
+        </div>
+        <form aria-label="UTC registration range" onSubmit={(event) => {
+          event.preventDefault();
+          if (!/^\d{4}-\d{2}-\d{2}$/.test(fromDay) || !/^\d{4}-\d{2}-\d{2}$/.test(toDay)) {
+            setRangeError("Use UTC dates.");
+            return;
+          }
+          const fromMs = Date.parse(`${fromDay}T00:00:00.000Z`);
+          const toMs = Date.parse(`${toDay}T00:00:00.000Z`) + DAY_MS;
+          if (!Number.isFinite(fromMs) || !(fromMs < toMs) || toMs - fromMs > MAX_RANGE_MS) {
+            setRangeError("The UTC range must be within 31 days.");
+            return;
+          }
+          setRangeError("");
+          setRange({ from: new Date(fromMs).toISOString(), to: new Date(toMs).toISOString() });
+        }}>
+          <label>UTC from<input value={fromDay} onChange={(event) => setFromDay(event.target.value)} /></label>
+          <label>UTC to<input value={toDay} onChange={(event) => setToDay(event.target.value)} /></label>
+          <button type="submit">Apply UTC range</button>
+        </form>
+        {rangeError ? <p>{rangeError}</p> : null}
+        {phase === "loading" ? <p>Reading registration counts.</p> : null}
+        {phase === "error" ? <p>{problem}</p> : null}
+        {growth?.availability === "ready" ? (
+          <>
+            {growth.points.every((point) => point.registeredCount === 0 && point.otherCreatedCount === 0)
+              ? <p>No accounts were created in this UTC window.</p>
+              : null}
+            <div aria-label="Registration days">
+              {growth.points.map((point) => (
+                <p key={point.at}>{point.at} Portal registrations {point.registeredCount} Other created accounts {point.otherCreatedCount}</p>
+              ))}
+            </div>
+          </>
+        ) : null}
+        {growth?.availability === "not_authorized" ? <p>users.read is required for registration counts.</p> : null}
+        {growth?.availability === "unavailable" ? <p>Registration counts could not be read.</p> : null}
+      </section>
+      <section aria-label="Traffic collector observation">
+        <h3>Traffic collector</h3>
+        {phase === "loading" ? <p>Reading collector observation.</p> : null}
+        {collector?.availability === "ready" ? <p><time dateTime={collector.observedAt}>Observed {collector.observedAt}</time></p> : null}
+        {collector?.availability === "partial" ? (
+          <>
+            <p>A collector observation exists, and the last run was not ok.</p>
+            <p><time dateTime={collector.observedAt}>Observed {collector.observedAt}</time></p>
+          </>
+        ) : null}
+        {collector?.availability === "not_connected" ? <p>Traffic collector is not connected.</p> : null}
+        {collector?.availability === "unknown" ? <p>Traffic collector observation is unknown.</p> : null}
+      </section>
     </div>
   );
 }
