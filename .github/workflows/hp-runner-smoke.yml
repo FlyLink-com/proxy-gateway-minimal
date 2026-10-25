@@ -1,0 +1,53 @@
+name: HP Runner Smoke Test
+
+on:
+  push:
+    branches:
+      - ci/hp-runner-smoke-20261025
+
+permissions: {}
+
+concurrency:
+  group: hp-runner-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  hp-runner-smoke:
+    name: HP one-job smoke test
+    runs-on: [self-hosted, Linux, X64, hp-ci-test]
+    timeout-minutes: 5
+    steps:
+      - name: Verify isolated runner runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          test "$(uname -s)" = "Linux"
+          test "$(uname -m)" = "x86_64"
+          test "$(id -u)" -ne 0
+
+          test "$(node --version)" = "v22.23.1"
+          test "$(npm --version)" = "10.9.8"
+          test "$(node -p 'process.versions.modules')" = "127"
+          test "$(getconf GNU_LIBC_VERSION)" = "glibc 2.39"
+
+          if command -v sudo >/dev/null 2>&1 && sudo -n -l >/dev/null 2>&1; then
+            echo "FAIL: runner identity has sudo privileges"
+            exit 1
+          fi
+
+          if id -nG | tr ' ' '\n' | grep -Eq '^(sudo|lxd|docker)$'; then
+            echo "FAIL: runner identity belongs to a privileged group"
+            exit 1
+          fi
+
+          test ! -e /home/g
+          test ! -S /run/docker.sock
+          test ! -S /var/run/docker.sock
+
+          if findmnt -rn -o FSTYPE | grep -Eq '^(9p|virtiofs)$'; then
+            echo "FAIL: shared host filesystem detected"
+            exit 1
+          fi
+
+          echo "PASS: isolated HP runner smoke checks completed"
