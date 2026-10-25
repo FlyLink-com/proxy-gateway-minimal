@@ -48,6 +48,7 @@ const PAYMENT_CALLBACK_PATHS = Object.freeze([
 const ADMIN_CAPABILITY_PROTECTED_PATHS = [
   "/api/admin/overview",
   "/api/admin/operations/overview",
+  "/api/admin/operations/dashboard-summary",
   "/api/admin/operations/order-status-summary",
   "/api/admin/operations/recharge-confirmation-gross"
 ];
