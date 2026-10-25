@@ -47,6 +47,7 @@ const PAYMENT_CALLBACK_PATHS = Object.freeze([
 const ADMIN_CAPABILITY_PROTECTED_PATHS = [
   "/api/admin/overview",
   "/api/admin/operations/overview",
+  "/api/admin/operations/dashboard-summary",
   "/api/admin/operations/order-status-summary"
 ];
 const PORTAL_SUBSCRIPTION_LINK_RESET_PATH = "/api/portal/access-requests/reset-link";

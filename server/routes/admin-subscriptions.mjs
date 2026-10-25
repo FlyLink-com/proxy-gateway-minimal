@@ -4,6 +4,9 @@ import {
   createOperationsReadEnvelope
 } from "../services/platform/operations-read-envelope.mjs";
 import {
+  projectOperationsDashboardSummary
+} from "../services/platform/operations-dashboard-summary.mjs";
+import {
   projectOperationsOverviewReadModel
 } from "../services/platform/operations-overview-read-model.mjs";
 
@@ -170,6 +173,31 @@ export function adminSubscriptionRoutes(state) {
             sourceState: "implemented_source",
             data,
             warnings: [],
+            access: {
+              allowed: true,
+              capability: "operations.read",
+              reasonCode: "allowed"
+            }
+          }));
+        } catch {
+          res.status(500).json({ error: "internal_error" });
+        }
+      }
+    );
+
+    router.get(
+      "/api/admin/operations/dashboard-summary",
+      requireAdminCapability("operations.read"),
+      (_req, res) => {
+        try {
+          const data = projectOperationsDashboardSummary(core.overview());
+          res.set("Cache-Control", "no-store");
+          res.json(createOperationsReadEnvelope({
+            schemaVersion: "operations-dashboard-summary/v1",
+            freshness: "partial",
+            sourceState: "implemented_source",
+            data,
+            warnings: [{ code: "source_partial" }],
             access: {
               allowed: true,
               capability: "operations.read",

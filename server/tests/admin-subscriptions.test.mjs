@@ -1300,3 +1300,196 @@ for (const [label, failureFactory] of [
     }
   });
 }
+
+test("dashboard summary returns 401 without a principal when capability authorization is enabled", async () => {
+  let overviewCalls = 0;
+  const state = fakeState();
+  state.platform = { adminAuthorizationEnabled: true };
+  state.subscriptions.service.overview = () => {
+    overviewCalls += 1;
+    return fakeService().overview();
+  };
+  const { server, baseUrl } = await listen(createApp(state));
+  try {
+    const { response, body } = await requestJson(baseUrl, "/api/admin/operations/dashboard-summary");
+    assert.equal(response.status, 401);
+    assert.deepEqual(body, { error: "admin_authentication_required" });
+    assert.equal(overviewCalls, 0);
+  } finally {
+    server.close();
+  }
+});
+
+test("dashboard summary stays unregistered when capability authorization is disabled", async () => {
+  let overviewCalls = 0;
+  const state = fakeState();
+  state.subscriptions.service.overview = () => {
+    overviewCalls += 1;
+    return {
+      ok: true,
+      counts: { total: 3, active: 2, expiring: 1, disabledOrExpired: 0 },
+      nodes: [{ name: "node-secret" }],
+      token: "must-not-cross"
+    };
+  };
+  const { server, baseUrl } = await listen(createApp(state));
+  try {
+    const summary = await requestJson(baseUrl, "/api/admin/operations/dashboard-summary");
+    assert.equal(summary.response.status, 404);
+    assert.equal(overviewCalls, 0);
+    assert.equal(JSON.stringify(summary.body).includes("access"), false);
+    assert.equal(JSON.stringify(summary.body).includes("operations.read"), false);
+
+    const legacy = await requestJson(baseUrl, "/api/admin/overview");
+    assert.equal(legacy.response.status, 200);
+    assert.equal(legacy.body.nodes[0].name, "node-secret");
+    assert.equal(overviewCalls, 1);
+
+    const operations = await requestJson(baseUrl, "/api/admin/operations/overview");
+    assert.equal(operations.response.status, 404);
+  } finally {
+    server.close();
+  }
+});
+
+test("dashboard summary returns subscription tenant counts and leaves other metrics unconnected", async () => {
+  const state = fakeState();
+  state.platform = { adminAuthorizationEnabled: true };
+  state.subscriptions.service.overview = () => ({
+    ok: true,
+    total: 0,
+    active: 0,
+    expiring: 0,
+    disabled: 0,
+    expired: 0,
+    counts: { total: 0, active: 0, expiring: 0, disabledOrExpired: 0 },
+    nodes: [{ name: "node-secret" }],
+    token: "must-not-cross",
+    subscriptionUrl: "https://gateway.example.invalid/sub/secret"
+  });
+  const app = express();
+  app.use((req, _res, next) => {
+    req.adminPrincipal = { capabilities: ["operations.read"] };
+    next();
+  });
+  app.use(adminSubscriptionRoutes(state));
+  const { server, baseUrl } = await listen(app);
+  try {
+    const { response, body } = await requestJson(baseUrl, "/api/admin/operations/dashboard-summary");
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get("cache-control"), "no-store");
+    assert.equal(body.schemaVersion, "operations-dashboard-summary/v1");
+    assert.equal(body.freshness, "partial");
+    assert.equal(body.sourceState, "implemented_source");
+    assert.match(body.generatedAt, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+    assert.deepEqual(body.warnings, [{ code: "source_partial" }]);
+    assert.deepEqual(body.data.subscriptions, {
+      availability: "ready",
+      definition: "subscription_tenants",
+      total: 0,
+      active: 0,
+      expiring: 0,
+      disabledOrExpired: 0
+    });
+    for (const key of ["platformHealth", "channelCoverage", "freshnessP95", "riskCandidates"]) {
+      assert.deepEqual(body.data[key], { availability: "not_connected" });
+    }
+    assert.equal(JSON.stringify(body).includes("node-secret"), false);
+    assert.equal(JSON.stringify(body).includes("must-not-cross"), false);
+    assert.equal(JSON.stringify(body).includes("subscriptionUrl"), false);
+  } finally {
+    server.close();
+  }
+});
+
+test("dashboard summary returns nonzero tenant counts only after operations.read allows it", async () => {
+  const state = fakeState();
+  state.platform = { adminAuthorizationEnabled: true };
+  state.subscriptions.service.overview = () => ({
+    ok: true,
+    counts: { total: 3, active: 2, expiring: 1, disabledOrExpired: 0 },
+    nodes: [{ name: "node-secret" }],
+    token: "must-not-cross"
+  });
+  const app = express();
+  app.use((req, _res, next) => {
+    req.adminPrincipal = { capabilities: ["operations.read"] };
+    next();
+  });
+  app.use(adminSubscriptionRoutes(state));
+  const { server, baseUrl } = await listen(app);
+  try {
+    const response = await fetch(`${baseUrl}/api/admin/operations/dashboard-summary`);
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.access.allowed, true);
+    assert.equal(body.access.capability, "operations.read");
+    assert.equal(body.access.reasonCode, "allowed");
+    assert.deepEqual(body.data.subscriptions, {
+      availability: "ready",
+      definition: "subscription_tenants",
+      total: 3,
+      active: 2,
+      expiring: 1,
+      disabledOrExpired: 0
+    });
+    assert.equal(JSON.stringify(body).includes("node-secret"), false);
+    assert.equal(JSON.stringify(body).includes("must-not-cross"), false);
+  } finally {
+    server.close();
+  }
+});
+
+test("dashboard summary requires operations.read when admin authorization is enabled", async () => {
+  let overviewCalls = 0;
+  const service = {
+    ...fakeService(),
+    overview: () => {
+      overviewCalls += 1;
+      return fakeService().overview();
+    }
+  };
+  const state = fakeState(service);
+  state.platform = { adminAuthorizationEnabled: true };
+  const app = express();
+  app.use((req, _res, next) => {
+    req.adminPrincipal = { capabilities: ["users.read"] };
+    next();
+  });
+  app.use(adminSubscriptionRoutes(state));
+  const { server, baseUrl } = await listen(app);
+  try {
+    const response = await fetch(`${baseUrl}/api/admin/operations/dashboard-summary`);
+    assert.equal(response.status, 403);
+    assert.deepEqual(await response.json(), {
+      error: "admin_capability_required",
+      capability: "operations.read"
+    });
+    assert.equal(overviewCalls, 0);
+  } finally {
+    server.close();
+  }
+});
+
+test("dashboard summary hides invalid subscription counts behind a safe internal error", async () => {
+  const state = fakeState();
+  state.platform = { adminAuthorizationEnabled: true };
+  state.subscriptions.service.overview = () => ({
+    counts: { total: "12", active: 1, expiring: 0, disabledOrExpired: 0 },
+    nodes: [{ name: "node-secret" }]
+  });
+  const app = express();
+  app.use((req, _res, next) => {
+    req.adminPrincipal = { capabilities: ["operations.read"] };
+    next();
+  });
+  app.use(adminSubscriptionRoutes(state));
+  const { server, baseUrl } = await listen(app);
+  try {
+    const response = await fetch(`${baseUrl}/api/admin/operations/dashboard-summary`);
+    assert.equal(response.status, 500);
+    assert.deepEqual(await response.json(), { error: "internal_error" });
+  } finally {
+    server.close();
+  }
+});
