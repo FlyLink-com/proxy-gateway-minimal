@@ -362,7 +362,8 @@ test("createApp returns the Admin-specific 401 for unauthenticated protected Ove
   try {
     for (const pathname of [
       "/api/admin/overview",
-      "/api/admin/operations/overview"
+      "/api/admin/operations/overview",
+      "/api/admin/operations/dashboard-summary"
     ]) {
       const response = await fetch(`${baseUrl}${pathname}`);
       assert.equal(response.status, 401);

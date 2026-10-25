@@ -1,5 +1,10 @@
 import { Activity, AlertTriangle, Clock3, RadioTower } from "lucide-react";
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
+import {
+  OperationsDashboardReadError,
+  readOperationsDashboardSummary,
+  type OperationsDashboardSummary
+} from "../app/operations-dashboard-client";
 import { type AdminPage } from "../app/navigation";
 import {
   DataCardPagination,
@@ -27,14 +32,18 @@ export function DashboardPage({
 
   return (
     <AdminConsolePageFrame
-      blueprint={overviewBlueprint(onNavigate)}
+      blueprint={overviewBlueprint(onNavigate, { fixturePreviewEnabled })}
       fixturePreviewEnabled={fixturePreviewEnabled}
     />
   );
 }
 
 // eslint-disable-next-line react-refresh/only-export-components -- blueprint factory imported by ~8 test files and the search-results page; extraction would churn test imports
-export function overviewBlueprint(onNavigate?: (page: AdminPage) => void): BlueprintPage {
+export function overviewBlueprint(
+  onNavigate?: (page: AdminPage) => void,
+  options: { fixturePreviewEnabled?: boolean } = {}
+): BlueprintPage {
+  const fixturePreviewEnabled = options.fixturePreviewEnabled === true;
   return {
     page: "dashboard",
     ariaLabel: "Operations Overview page header",
@@ -54,7 +63,7 @@ export function overviewBlueprint(onNavigate?: (page: AdminPage) => void): Bluep
           performanceBoundary: "Independent widget render; no owner-page table or ledger mount.",
           interactionModel: "Read-only summary with owner-page routing."
         },
-        content: <OverviewHealthSummary />,
+        content: fixturePreviewEnabled ? <OverviewHealthSummary /> : <OverviewLiveSummary />,
         containmentStrategy: "not-applicable",
         purpose: "Summarize platform health without owning the account, quota, channel, or receipt detail collections.",
         contentFields: [
@@ -88,7 +97,7 @@ export function overviewBlueprint(onNavigate?: (page: AdminPage) => void): Bluep
           performanceBoundary: "Queue rows stay bounded and do not mount object history by default.",
           interactionModel: "Select and route only; no close, approve, or mutation actions."
         },
-        content: <OverviewRiskCandidates />,
+        content: fixturePreviewEnabled ? <OverviewRiskCandidates /> : <OverviewLiveRisk />,
         containmentStrategy: "pagination",
         purpose: "Show the highest-priority computed review candidates and the owner page that should handle them.",
         contentFields: [
@@ -151,6 +160,85 @@ export function overviewBlueprint(onNavigate?: (page: AdminPage) => void): Bluep
   };
 }
 
+const SUBSCRIPTION_CARDS = [
+  { key: "total", title: "Subscription tenants", detail: "Subscription tenants, not online users." },
+  { key: "active", title: "Active subscriptions", detail: "Enabled tenants whose computed status is active." },
+  { key: "expiring", title: "Expiring subscriptions", detail: "Enabled tenants inside the expiring window." },
+  { key: "disabledOrExpired", title: "Disabled or expired", detail: "Tenants computed as disabled or expired." }
+] as const;
+
+function summaryProblem(error: OperationsDashboardReadError) {
+  if (error.code === "session") return "Sign-in is required.";
+  if (error.code === "permission") return "operations.read is required.";
+  if (error.code === "not_mounted") return "The summary route is not available.";
+  if (error.code === "invalid") return "The summary did not match the read contract.";
+  return "The summary could not be read.";
+}
+
+function OverviewLiveSummary() {
+  const [phase, setPhase] = useState<"loading" | "ready" | "error">("loading");
+  const [summary, setSummary] = useState<OperationsDashboardSummary | null>(null);
+  const [problem, setProblem] = useState("Reading the summary.");
+  const [attempt, setAttempt] = useState(0);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    setPhase("loading");
+    setProblem("Reading the summary.");
+    readOperationsDashboardSummary({ signal: controller.signal }).then((next) => {
+      if (controller.signal.aborted) return;
+      setSummary(next);
+      setPhase("ready");
+    }).catch((error: unknown) => {
+      if (controller.signal.aborted) return;
+      const readError = error instanceof OperationsDashboardReadError
+        ? error
+        : new OperationsDashboardReadError("unavailable");
+      setSummary(null);
+      setProblem(summaryProblem(readError));
+      setPhase("error");
+    });
+    return () => controller.abort();
+  }, [attempt]);
+
+  const subscriptions = phase === "ready" ? summary?.subscriptions : null;
+  return (
+    <div className="admin-operator-content" aria-label="Operations Overview summary">
+      <div className="admin-overview-metric-grid" aria-label="Operations Overview metric cards">
+        {SUBSCRIPTION_CARDS.map((card) => (
+          <OverviewMetricCard
+            body={phase === "error" ? problem : card.detail}
+            icon={<Activity aria-hidden="true" />}
+            key={card.key}
+            title={card.title}
+            tone={phase === "error" ? "warning" : "info"}
+            value={subscriptions ? String(subscriptions[card.key]) : phase === "loading" ? "Reading" : "—"}
+          />
+        ))}
+      </div>
+      {summary ? <p><time dateTime={summary.generatedAt}>Updated {summary.generatedAt}</time></p> : null}
+      {phase === "error" ? <button type="button" onClick={() => setAttempt((current) => current + 1)}>Retry summary</button> : null}
+      <div className="admin-static-status-row" aria-label="Overview source states">
+        <StatusChip label="Platform health not connected" tone="neutral" />
+        <StatusChip label="Channel coverage not connected" tone="neutral" />
+        <StatusChip label="Freshness P95 not connected" tone="neutral" />
+        <StatusChip label="No production action" tone="danger" />
+      </div>
+    </div>
+  );
+}
+
+function OverviewLiveRisk() {
+  return (
+    <section className="admin-overview-section-card" aria-label="Risk Queue">
+      <div className="admin-overview-section-heading">
+        <h3>Risk Queue</h3>
+        <p>Not connected. There is no computed risk source.</p>
+      </div>
+    </section>
+  );
+}
+
 function OverviewHealthSummary() {
   return (
     <div className="admin-operator-content" aria-label="Operations Overview static health content">
@@ -210,7 +298,7 @@ function OverviewMetricCard({
   icon: ReactNode;
   title: string;
   tone: MetricTone;
-  trend: number[];
+  trend?: number[];
   value: string;
 }) {
   return (
@@ -219,10 +307,10 @@ function OverviewMetricCard({
       icon={icon}
       label={title}
       tone={tone}
-      trend={{
+      trend={trend ? {
         ariaLabel: `${title} safe trend`,
         values: trend
-      }}
+      } : undefined}
       value={value}
     />
   );
