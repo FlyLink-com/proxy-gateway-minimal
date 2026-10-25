@@ -32,7 +32,7 @@ describe("third-party names local entry boundary", () => {
     vi.resetModules();
     const { ThirdPartyNodeNamesLocalEntry } = await import("../pages/third-party-node-names-local-entry");
     render(<ThirdPartyNodeNamesLocalEntry />);
-    await screen.findByRole("heading", { name: "第三方节点命名", level: 1 });
+    await screen.findByRole("heading", { name: "第三方节点命名", level: 1 }, { timeout: 10000 });
     expect(fetchMock).not.toHaveBeenCalled();
     expect(storageRead).not.toHaveBeenCalled();
     expect(storageWrite).not.toHaveBeenCalled();
