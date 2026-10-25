@@ -46,6 +46,7 @@ import { createProductionCnyPaymentRechargeOffers } from "./services/platform/pr
 import { createSqliteSubscriptionControlStore } from "./services/platform/subscription-control-db.mjs";
 import { createAdminUsageLedgerReader } from "./services/platform/admin-usage-ledger-reader.mjs";
 import { createAdminUserCommerceService } from "./services/platform/admin-user-commerce.mjs";
+import { createAdminOrderStatusSummaryService } from "./services/platform/admin-order-status-summary.mjs";
 import { createPlatformLeadReviewQueue } from "./services/platform/lead-review-queue.mjs";
 import { createPlatformSubscriptionAccessShell } from "./services/platform/subscription-access-shell.mjs";
 import { createPortalAccessRequestService } from "./services/platform/portal-access-requests.mjs";
@@ -3196,6 +3197,10 @@ export function createRuntimeState(options = {}) {
       nowFn: options.userPortalNowFn || options.nowFn
     })
     : null;
+  const adminOrderStatusSummary = createAdminOrderStatusSummaryService({
+    dbPath: ownsControlStore && controlDbPath !== ":memory:" ? resolve(controlDbPath) : null,
+    nowFn: options.userPortalNowFn || options.nowFn
+  });
 
   if (portalReferralRewardsEnabled) portalReferrals?.start();
 
@@ -3406,6 +3411,7 @@ export function createRuntimeState(options = {}) {
       controlStore: platformControlStore,
       adminUsageLedger,
       adminUserCommerce,
+      adminOrderStatusSummary,
       edgeCredentialMaterialStore,
       edgeCredentialIssuer,
       edgeLifecycleService,
