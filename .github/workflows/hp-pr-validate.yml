@@ -1,0 +1,141 @@
+name: HP PR validation
+
+on:
+  push:
+    branches:
+      - ci/hp-pr-validate-804-20261025
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hp-pr-validate-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  hp-pr-validate:
+    name: HP disposable PR validation
+    runs-on: [self-hosted, Linux, X64, hp-ci-test]
+    timeout-minutes: 90
+    steps:
+      - name: Check out the requested commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: 03305e1d2c08cac185d308843122c8965f1cda52
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Record HEAD
+        shell: bash
+        env:
+          GITHUB_TOKEN: ""
+          GH_TOKEN: ""
+        run: |
+          set -euo pipefail
+          actual="$(git rev-parse HEAD)"
+          echo "ACTUAL_HEAD=$actual"
+          test "$actual" = "03305e1d2c08cac185d308843122c8965f1cda52"
+          echo "NODE=$(node --version)"
+          echo "NPM=$(npm --version)"
+          echo "ID=$(id -u):$(id -nG)"
+          test "$(node --version)" = "v22.23.1"
+          test "$(npm --version)" = "10.9.8"
+          test "$(id -u)" -ne 0
+          df -h /
+
+      - name: npm ci
+        shell: bash
+        env:
+          GITHUB_TOKEN: ""
+          GH_TOKEN: ""
+        run: |
+          set -euo pipefail
+          start=$SECONDS
+          set +e
+          npm ci
+          ec=$?
+          set -e
+          echo "COMMAND_EXIT npm_ci $ec"
+          echo "COMMAND_ELAPSED_SEC npm_ci $((SECONDS - start))"
+          exit "$ec"
+
+      - name: npm ci admin
+        shell: bash
+        env:
+          GITHUB_TOKEN: ""
+          GH_TOKEN: ""
+        run: |
+          set -euo pipefail
+          start=$SECONDS
+          set +e
+          npm ci --prefix admin
+          ec=$?
+          set -e
+          echo "COMMAND_EXIT npm_ci_admin $ec"
+          echo "COMMAND_ELAPSED_SEC npm_ci_admin $((SECONDS - start))"
+          exit "$ec"
+
+      - name: npm test
+        shell: bash
+        env:
+          GITHUB_TOKEN: ""
+          GH_TOKEN: ""
+        run: |
+          set -euo pipefail
+          start=$SECONDS
+          set +e
+          npm test
+          ec=$?
+          set -e
+          echo "COMMAND_EXIT npm_test $ec"
+          echo "COMMAND_ELAPSED_SEC npm_test $((SECONDS - start))"
+          exit "$ec"
+
+      - name: admin test
+        shell: bash
+        env:
+          GITHUB_TOKEN: ""
+          GH_TOKEN: ""
+        run: |
+          set -euo pipefail
+          start=$SECONDS
+          set +e
+          npm run admin:test
+          ec=$?
+          set -e
+          echo "COMMAND_EXIT admin_test $ec"
+          echo "COMMAND_ELAPSED_SEC admin_test $((SECONDS - start))"
+          exit "$ec"
+
+      - name: admin build
+        shell: bash
+        env:
+          GITHUB_TOKEN: ""
+          GH_TOKEN: ""
+        run: |
+          set -euo pipefail
+          start=$SECONDS
+          set +e
+          npm run admin:build
+          ec=$?
+          set -e
+          echo "COMMAND_EXIT admin_build $ec"
+          echo "COMMAND_ELAPSED_SEC admin_build $((SECONDS - start))"
+          exit "$ec"
+
+      - name: git diff --check
+        shell: bash
+        env:
+          GITHUB_TOKEN: ""
+          GH_TOKEN: ""
+        run: |
+          set -euo pipefail
+          start=$SECONDS
+          set +e
+          git diff --check
+          ec=$?
+          set -e
+          echo "COMMAND_EXIT git_diff_check $ec"
+          echo "COMMAND_ELAPSED_SEC git_diff_check $((SECONDS - start))"
+          git status --short
+          exit "$ec"
