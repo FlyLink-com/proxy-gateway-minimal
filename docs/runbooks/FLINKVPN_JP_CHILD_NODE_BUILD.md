@@ -2,7 +2,7 @@
 
 Last updated: 2026-10-30 UTC.
 
-~~~yaml
+```yaml
 document_metadata:
   doc_type: operational
   lifecycle: active
@@ -10,7 +10,7 @@ document_metadata:
   superseded_by: null
   last_verified_at: 2026-10-30
   production_authority: false
-~~~
+```
 
 > 状态与权限
 > - 目标：BWH 控制面 + Vultr Japan 独立数据面。
