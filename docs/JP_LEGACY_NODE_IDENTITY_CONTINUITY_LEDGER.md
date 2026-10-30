@@ -253,7 +253,7 @@ prod-edge-c 是后续独立子节点候选实例。它的销毁或 Provider 不�
 | Existing JP instance | no（仅限 2026-10-30 M0 / Provider 观察范围） | repository_recorded |
 | Firewall / DNS ownership | unknown | BLOCKED |
 | Monthly budget / traffic cap | unknown | BLOCKED |
-| Topology authority | 2026-07-15 topology 文档仍写 JP control plane；2026-10-08/09 receipts 记录 BWH control activation / ingress / DNS cutover | dated-source conflict；须由 live read + operator decision 解决 |
+| Topology authority | `PROJECT_TOPOLOGY.md`（2026-07-15）、`PRODUCTION_EDGE_FLEET.md`（2026-07-07）和 `VULTR_JAPAN_CONTROL_DATA_PLANE_STATUS.md`（2026-07-24）仍写 JP control plane；2026-10-08/09 BWH Deploy Notes 记录 BWH control activation / ingress / DNS cutover | dated-source conflict；须由 live read + operator decision 解决 |
 
 下列项目全部通过前，不得宣布历史日本节点业务连续性闭环，也不得据此批准新 JP 节点正式供流。
 
@@ -320,9 +320,14 @@ prod-edge-c 是后续独立子节点候选实例。它的销毁或 Provider 不�
 | [2026-07-06 JP Hysteria2 IPv6/SNI execution](production-replacement-records/2026-07-06-jp-hy2-ipv6-sni-production-execution.md) | JP Hy2 通道、SNI 与证书状态 |
 | [2026-07-06 JP TUIC/Hy2 certificate alignment](production-replacement-records/2026-07-06-jp-tuic-hy2-cert-domain-alignment.md) | TLS SAN、证书路径与服务验证 |
 | [2026-07-08 Japan TUIC usage credential map rebuild](production-replacement-records/2026-07-08-japan-tuic-usage-credential-map-rebuild.md) | 日本 TUIC 身份映射与历史采集 |
-| [PR #734 certificate synchronization](https://github.com/FlyLink-com/proxy-gateway-minimal/pull/734) | JP/SGP Certbot deploy-hook 安装与验证 |
+| [PR #734 failed attempt withdrawn](https://github.com/FlyLink-com/proxy-gateway-minimal/pull/734#issuecomment-5740925414) | 2026-09-19 首次 Certbot staging rehearsal 超时并撤回；未安装自动同步 |
+| [PR #734 successful synchronization Deploy Note](https://github.com/FlyLink-com/proxy-gateway-minimal/pull/734#issuecomment-5740969069) | 后续单次执行在 JP/SGP 安装并验证 helper/deploy hook；定向 staging renewal 成功；未强制生产证书重签 |
 | [Issue #746 Certbot diagnosis](https://github.com/FlyLink-com/proxy-gateway-minimal/issues/746) | 2026-09-24 日本 Certbot 失败观察 |
-| [PR #752 — BWH migration / control / protocol / ingress / DNS Deploy Notes](https://github.com/FlyLink-com/proxy-gateway-minimal/pull/752) | 该 PR 的 Conversation 中包含 2026-10-08/09 的分步 BWH 生产 Deploy Notes；PR 标题本身是 subscription website metadata，不要只看标题判断执行范围 |
+| [PR #752 data migration Deploy Note](https://github.com/FlyLink-com/proxy-gateway-minimal/pull/752#issuecomment-6066232377) | 2026-10-08 JP → BWH 五类权威数据迁移；BWH 当时保持 inert，456 个 authority objects / 386,120,027 bytes |
+| [PR #752 BWH control activation Deploy Note](https://github.com/FlyLink-com/proxy-gateway-minimal/pull/752#issuecomment-6067109165) | 2026-10-08 BWH control active、JP 持久冻结；记录当时唯一 active control-plane authority 的操作员确认 |
+| [PR #752 BWH protocol activation Deploy Note](https://github.com/FlyLink-com/proxy-gateway-minimal/pull/752#issuecomment-6072373682) | 2026-10-09 原 JP 三协议角色在 BWH 启动；30 principals / protocol；Identity Gate 仍 pending |
+| [PR #752 BWH ingress Deploy Note](https://github.com/FlyLink-com/proxy-gateway-minimal/pull/752#issuecomment-6073584759) | 2026-10-09 BWH Portal/Sub/Admin ingress；明确当时不是 DNS cutover |
+| [PR #752 BWH DNS cutover Deploy Note](https://github.com/FlyLink-com/proxy-gateway-minimal/pull/752#issuecomment-6074115920) | 2026-10-09 五条 Portal/Admin/Sub DNS 记录切换；JP protocol-SNI 未修改 |
 | [FULL_METERING_NEW_ACTIVATION_RECOVERY.md](FULL_METERING_NEW_ACTIVATION_RECOVERY.md) | 2026-10-12 新 activation、journal、自然采集与身份限制 |
 | [PR #776 metering recovery Deploy Note](https://github.com/FlyLink-com/proxy-gateway-minimal/pull/776) | 2026-10-12 BWH local-three 新 activation 与自然采集执行回执 |
 | [PR #777 aggregate identity checker](https://github.com/FlyLink-com/proxy-gateway-minimal/pull/777) | 2026-10-12 after-read 身份聚合与 stale 统计来源 |
@@ -332,7 +337,9 @@ prod-edge-c 是后续独立子节点候选实例。它的销毁或 Provider 不�
 | [PR #808 JP child-node M0 runbook](https://github.com/FlyLink-com/proxy-gateway-minimal/pull/808) | 2026-10-30 M0 汇总；当前为 Draft，回执不是实时主机证明 |
 | [PR #808 exact-head review](https://github.com/FlyLink-com/proxy-gateway-minimal/pull/808#pullrequestreview-5713679877) | 明确 M0 remains BLOCKED、M1–M8 not authorized，并指出销毁与只读回执边界、拓扑冲突及身份缺口 |
 | [PR #808 documentation validation follow-up](https://github.com/FlyLink-com/proxy-gateway-minimal/pull/808#issuecomment-6525639150) | exact-head docs authority / diff check passed；hosted CI skipped，不能当作 production acceptance |
-| [PROJECT_TOPOLOGY.md](PROJECT_TOPOLOGY.md) | 2026-07-15 旧架构记录；与 10-08/10-09 BWH 生产回执存在日期与权威边界差异 |
+| [PROJECT_TOPOLOGY.md](PROJECT_TOPOLOGY.md) | 2026-07-15 旧架构记录，仍把 JP 写为 subscription control plane |
+| [PRODUCTION_EDGE_FLEET.md](PRODUCTION_EDGE_FLEET.md) | 2026-07-07 规划文档仍把 Vultr Japan 写为 control-plane authority；不是实时资产清单 |
+| [VULTR_JAPAN_CONTROL_DATA_PLANE_STATUS.md](VULTR_JAPAN_CONTROL_DATA_PLANE_STATUS.md) | 2026-07-24 状态文档仍把 JP 写为 subscription control plane；PR #808 review 将其列为拓扑冲突来源 |
 
 ## 12. 台账变更记录
 
