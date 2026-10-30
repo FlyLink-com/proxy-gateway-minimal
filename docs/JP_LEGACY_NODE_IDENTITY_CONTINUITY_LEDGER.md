@@ -302,6 +302,8 @@ BWH 接管的业务数据与历史账本是连续性权威，不因旧日本主�
 | [Issue #746 Certbot diagnosis](https://github.com/FlyLink-com/proxy-gateway-minimal/issues/746) | 2026-09-24 日本 Certbot 失败观察 |
 | [PR #752 BWH migration and cutover](https://github.com/FlyLink-com/proxy-gateway-minimal/pull/752) | 权威数据迁移、BWH 控制面、协议、ingress 和 DNS cutover |
 | [FULL_METERING_NEW_ACTIVATION_RECOVERY.md](FULL_METERING_NEW_ACTIVATION_RECOVERY.md) | 2026-10-12 新 activation、journal、自然采集与身份限制 |
+| [PR #776 metering recovery Deploy Note](https://github.com/FlyLink-com/proxy-gateway-minimal/pull/776) | 2026-10-12 BWH local-three 新 activation 与自然采集执行回执 |
+| [PR #777 aggregate identity checker](https://github.com/FlyLink-com/proxy-gateway-minimal/pull/777) | 2026-10-12 after-read 身份聚合与 stale 统计来源 |
 | [IDENTITY_LIFECYCLE.md](IDENTITY_LIFECYCLE.md) | Identity Gate 计数语义、retention 与禁止事项 |
 | [Issue #795 BWH distribution / supply follow-up](https://github.com/FlyLink-com/proxy-gateway-minimal/issues/795) | 2026-10-19–20 BWH 指针、分发开关与协议停止记录 |
 | [Issue #809 exact-target JP retirement M0](https://github.com/FlyLink-com/proxy-gateway-minimal/issues/809) | prod-edge-c Provider 读取、资源依赖与销毁证据缺口 |
