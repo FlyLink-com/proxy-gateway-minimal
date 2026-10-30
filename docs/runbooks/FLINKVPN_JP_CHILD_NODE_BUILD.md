@@ -54,12 +54,12 @@ document_metadata:
 
 - [ ] 核对实际运行应用版本、release identity、source commit 和目标主机角色。
 - [ ] 核对 BWH 控制面健康状态；区分公开 health 与受保护 status。
-- [ ] 核对 EDGE_DATA_PLANE_AGENT_ROUTES_ENABLED 的状态，不输出原始环境值。
+- [x] 核对 EDGE_DATA_PLANE_AGENT_ROUTES_ENABLED 的状态，不输出原始环境值。
 - [ ] 核对 EDGE_DATA_PLANE_AGENT_ALLOWED_CIDRS 的配置来源和边界；报告 loopback / private tunnel / public / unknown 分类，不粘贴原始 CIDR。
 - [ ] 核对 EDGE_DATA_PLANE_AGENT_NODES_JSON 的登记数量和安全 nodeRef 摘要，不输出 token 或原始材料。
 - [ ] 核对节点注册表、受保护材料存储及其 key/digest 引用是否就绪。
 - [ ] 核对 Desired State、Handoff、Receipt 的状态、数量和 freshness。
-- [ ] 核对 BWH 当前协议服务和用量采集状态。
+- [x] 核对 BWH 当前协议服务和用量采集状态。
 - [ ] 核对现有订阅渲染是否仍包含已停止的 BWH 节点；只报告脱敏 node/channel refs，不输出订阅 URL、Token、YAML 或凭据。
 - [ ] 核对 Identity Gate 和计量检查点状态；只输出 aggregate counts 和状态枚举。
 
@@ -74,6 +74,63 @@ document_metadata:
 **M0 交付物：** BWH/Vultr 脱敏只读盘点报告。
 
 **M0 通过条件：** 控制面真实身份、目标主机、架构归属、Agent 边界、注册与材料能力、用量/Identity 状态、预算和回退条件均有可核验依据。任何一项 unknown 不得按通过处理。
+
+### M0 回执（2026-10-30）
+
+这次回执只记录只读盘点。它不批准 M1，不批准创建实例，也不把任何节点写入订阅。操作员已销毁标签 `prod-edge-c` 的日本实例；现场实例列表为 0，不能把该主机当作可复用镜像或已审查节点。
+
+~~~yaml
+task: flinkvpn-jp-child-node
+observed_at_utc: 2026-10-30T14:13:21Z
+local_environment:
+  repository_path_confirmed: true
+  branch: docs/flinkvpn-jp-child-node-20261030
+  head_sha: e0e95d020b1c
+  origin_master_sha: a9d8d0051f7e
+  node_version: v24.16.0
+  npm_version: 11.13.0
+  ssh_client_version: OpenSSH_10.6p1
+architecture:
+  requested_control_plane: BWH
+  observed_control_plane_provider: BWH
+  observed_control_plane_role: proxy-gateway-candidate active
+  source_release_identity: unknown
+  topology_decision: conflict
+bwh:
+  health: degraded
+  agent_routes: enabled
+  agent_allowlist_boundary: unknown
+  registered_node_count: 1
+  protected_material_store: unknown
+  desired_state_summary: count 3, channels 3, newest 2026-06-11T08:41:30Z
+  handoff_summary: unknown
+  receipt_summary: edge apply receipts 1513, newest 2026-10-29T05:15:45Z
+  metering_state: degraded
+  identity_gate: unknown
+vultr:
+  jp_region_available: yes
+  existing_jp_instance: no
+  firewall_and_dns_ownership: unknown
+  monthly_budget_limit: unknown
+  traffic_limit: unknown
+result: blocked
+blockers:
+  - source release identity unknown
+  - dated topology still names a different control plane
+  - agent allowlist key absent
+  - protected material store unread
+  - handoff summary unread
+  - identity gate not run
+  - public health unread
+  - metering timer inactive
+  - budget cap not set
+  - firewall and DNS ownership unread
+evidence_refs:
+  - docs/runbooks/FLINKVPN_JP_CHILD_NODE_BUILD.md
+sensitive_values_excluded: true
+~~~
+
+未关闭项保持 unknown，不按通过处理。M1–M8 未执行。
 
 ## 4. M1：建立 BWH ↔ Vultr 私有通信通道（P0）
 
