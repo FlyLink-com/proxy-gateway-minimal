@@ -4,7 +4,7 @@ Last updated: 2026-10-30 UTC
 
 ```yaml
 document_metadata:
-  doc_type: operational
+  doc_type: evidence
   lifecycle: active
   authority_scope: jp_legacy_node_identity_and_business_continuity
   superseded_by: null
