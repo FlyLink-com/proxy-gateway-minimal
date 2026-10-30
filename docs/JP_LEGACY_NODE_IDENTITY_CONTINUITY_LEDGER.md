@@ -2,16 +2,19 @@
 
 Last updated: 2026-10-30 UTC
 
-> document_metadata:
-> - doc_type: operational
-> - lifecycle: active
-> - authority_scope: jp_legacy_node_identity_and_business_continuity
-> - superseded_by: null
-> - last_verified_at: 2026-10-30
-> - production_authority: false
-> - execution_authority: none
-> - evidence_cutoff: repository records and operator-reported observations available on 2026-10-30
-> - status: BLOCKED — historical physical identity, current dependency and continuity gates remain incomplete
+```yaml
+document_metadata:
+  doc_type: operational
+  lifecycle: active
+  authority_scope: jp_legacy_node_identity_and_business_continuity
+  superseded_by: null
+  last_verified_at: 2026-10-30
+  production_authority: false
+```
+
+> 状态：BLOCKED — 历史物理身份、当前依赖和业务连续性门禁仍未闭环。
+> 证据截止：2026-10-30 可取得的仓库记录及操作员报告。
+> 本文件不授予任何生产执行权限。
 
 ## 1. 目的与使用边界
 
