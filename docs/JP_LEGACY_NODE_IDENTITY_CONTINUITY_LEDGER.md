@@ -96,13 +96,14 @@ prod-edge-c 是后续独立子节点候选实例。它的销毁或 Provider 不�
 | Provider | BWH | 2026-10-30 M0 回执记录 |
 | 历史职责 | 账号、订单、订阅、凭据生命周期、Desired State、Handoff、Receipt 和用量账本控制面 | 2026-10-08 / 10-09 生产回执 |
 | Provider instance ID / physicalNodeRef | 本轮核对未取得 | unknown |
-| 2026-10-08 控制面 | BWH 控制服务启动；JP 原有应用/协议/计量服务进入持久冻结 | production_receipt |
+| 2026-10-08 控制面 | BWH 控制服务启动；操作员确认在当时冻结服务范围内为唯一 active control-plane authority；JP 原有应用/协议/计量服务进入持久冻结 | production_receipt；仅限当时观察窗口 |
 | 2026-10-09 数据面 | 原日本协议角色在 BWH 启动；三类协议配置各加载 30 个 principal；当时未重新读取完整业务映射 | production_receipt with limits |
 | 2026-10-20 协议服务 | BWH 自有 Xray、Hysteria2、Mihomo/TUIC 单元被停止；控制面保持 active | production_receipt |
-| 2026-10-30 控制面 | M0 回执记录 Provider 为 BWH、proxy-gateway-candidate 角色 active；source release identity 仍为 unknown | repository_recorded；不是新鲜主机登录证明 |
+| 2026-10-30 控制面 / M0 | BWH Provider；proxy-gateway-candidate 角色 active；health=degraded；source release identity=unknown；Agent routes=enabled；Agent allowlist boundary=unknown；registered nodes=1；protected material store=unknown；Desired State=3（3 channels，newest 2026-06-11）；Handoff=unknown；Applied Receipts=1513（newest 2026-10-29）；public health=not read | PR #808 M0 receipt；repository_recorded，不是新鲜主机登录证明 |
+| 2026-10-30 计量 / 身份 | metering=degraded；Identity Gate=unknown；metering timer=inactive | PR #808 M0 receipt；repository_recorded |
 | 当前完整供流 / 计量健康 | 未取得同一观察边界下的完整证明 | unknown / degraded |
 
-BWH 接管的业务数据与历史账本是连续性权威，不因旧日本主机冻结或销毁而重建、清空或回灌旧数据库。发生回退时，必须使用最新 BWH 权威数据；不得直接恢复过期的 JP 数据快照覆盖后续写入。
+按 2026-10-08 / 10-09 的迁移与控制面 Deploy Notes，BWH 是迁移后业务数据和账本的权威边界；10-08 回执记录当时唯一 active control-plane authority。该历史回执不替代 2026-10-30 对 live release identity、当前控制面角色和 writer 状态的新鲜验证。发生回退时，必须使用最新 BWH 权威数据；不得直接恢复过期的 JP 数据快照覆盖后续写入。
 
 ## 3. 关键时间线
 
@@ -233,7 +234,28 @@ BWH 接管的业务数据与历史账本是连续性权威，不因旧日本主�
 
 ## 9. M0 剩余闭环与验收标准
 
-当前总状态：**BLOCKED**。下列项目全部通过前，不得宣布历史日本节点业务连续性闭环，也不得据此批准新 JP 节点正式供流。
+当前总状态：**BLOCKED**。PR #808 的 M0 回执与审查仍将 M0 标记为 blocked；M1–M8 未开始且未获授权。PR #808 的 exact-head review 明确要求保留拓扑冲突、旧节点销毁证据缺口和 live source identity 缺口；后续本地文档检查通过只关闭了文档校验项，没有改变生产状态。
+
+| M0 维度 | 2026-10-30 已记录结果 | 状态 |
+| --- | --- | --- |
+| BWH Provider / service role | BWH；proxy-gateway-candidate active | repository_recorded；live identity 未复核 |
+| BWH source release identity | unknown | BLOCKED |
+| BWH public health | not read | UNKNOWN |
+| Agent routes | enabled | repository_recorded |
+| Agent allowlist boundary | unknown | BLOCKED |
+| Registered node count | 1 | repository_recorded；nodeRef / physicalNodeRef 未核对 |
+| Protected material store | unknown | BLOCKED |
+| Desired State | 3；3 channels；newest 2026-06-11T08:41:30Z | BLOCKED freshness |
+| Handoff | unknown | BLOCKED |
+| Applied Receipts | 1513；newest 2026-10-29T05:15:45Z | repository_recorded；freshness / mapping 未核对 |
+| Metering / Identity Gate | degraded / unknown | BLOCKED |
+| Metering timer | inactive | BLOCKED |
+| Existing JP instance | no（仅限 2026-10-30 M0 / Provider 观察范围） | repository_recorded |
+| Firewall / DNS ownership | unknown | BLOCKED |
+| Monthly budget / traffic cap | unknown | BLOCKED |
+| Topology authority | 2026-07-15 topology 文档仍写 JP control plane；2026-10-08/09 receipts 记录 BWH control activation / ingress / DNS cutover | dated-source conflict；须由 live read + operator decision 解决 |
+
+下列项目全部通过前，不得宣布历史日本节点业务连续性闭环，也不得据此批准新 JP 节点正式供流。
 
 ### P0 — 身份与业务权威
 
@@ -300,7 +322,7 @@ BWH 接管的业务数据与历史账本是连续性权威，不因旧日本主�
 | [2026-07-08 Japan TUIC usage credential map rebuild](production-replacement-records/2026-07-08-japan-tuic-usage-credential-map-rebuild.md) | 日本 TUIC 身份映射与历史采集 |
 | [PR #734 certificate synchronization](https://github.com/FlyLink-com/proxy-gateway-minimal/pull/734) | JP/SGP Certbot deploy-hook 安装与验证 |
 | [Issue #746 Certbot diagnosis](https://github.com/FlyLink-com/proxy-gateway-minimal/issues/746) | 2026-09-24 日本 Certbot 失败观察 |
-| [PR #752 BWH migration and cutover](https://github.com/FlyLink-com/proxy-gateway-minimal/pull/752) | 权威数据迁移、BWH 控制面、协议、ingress 和 DNS cutover |
+| [PR #752 — BWH migration / control / protocol / ingress / DNS Deploy Notes](https://github.com/FlyLink-com/proxy-gateway-minimal/pull/752) | 该 PR 的 Conversation 中包含 2026-10-08/09 的分步 BWH 生产 Deploy Notes；PR 标题本身是 subscription website metadata，不要只看标题判断执行范围 |
 | [FULL_METERING_NEW_ACTIVATION_RECOVERY.md](FULL_METERING_NEW_ACTIVATION_RECOVERY.md) | 2026-10-12 新 activation、journal、自然采集与身份限制 |
 | [PR #776 metering recovery Deploy Note](https://github.com/FlyLink-com/proxy-gateway-minimal/pull/776) | 2026-10-12 BWH local-three 新 activation 与自然采集执行回执 |
 | [PR #777 aggregate identity checker](https://github.com/FlyLink-com/proxy-gateway-minimal/pull/777) | 2026-10-12 after-read 身份聚合与 stale 统计来源 |
@@ -308,12 +330,14 @@ BWH 接管的业务数据与历史账本是连续性权威，不因旧日本主�
 | [Issue #795 BWH distribution / supply follow-up](https://github.com/FlyLink-com/proxy-gateway-minimal/issues/795) | 2026-10-19–20 BWH 指针、分发开关与协议停止记录 |
 | [Issue #809 exact-target JP retirement M0](https://github.com/FlyLink-com/proxy-gateway-minimal/issues/809) | prod-edge-c Provider 读取、资源依赖与销毁证据缺口 |
 | [PR #808 JP child-node M0 runbook](https://github.com/FlyLink-com/proxy-gateway-minimal/pull/808) | 2026-10-30 M0 汇总；当前为 Draft，回执不是实时主机证明 |
+| [PR #808 exact-head review](https://github.com/FlyLink-com/proxy-gateway-minimal/pull/808#pullrequestreview-5713679877) | 明确 M0 remains BLOCKED、M1–M8 not authorized，并指出销毁与只读回执边界、拓扑冲突及身份缺口 |
+| [PR #808 documentation validation follow-up](https://github.com/FlyLink-com/proxy-gateway-minimal/pull/808#issuecomment-6525639150) | exact-head docs authority / diff check passed；hosted CI skipped，不能当作 production acceptance |
 | [PROJECT_TOPOLOGY.md](PROJECT_TOPOLOGY.md) | 2026-07-15 旧架构记录；与 10-08/10-09 BWH 生产回执存在日期与权威边界差异 |
 
 ## 12. 台账变更记录
 
 | 日期 | 变更 | 证据 |
 | --- | --- | --- |
-| 2026-10-30 | 初版建立；区分早期 JP 生产主机、prod-edge-c 后续候选实例与 BWH 接管主机；记录历史时间线、通道、DNS、证书、计量及待核依赖 | PR #752、#734、#776；Issue #746、#795、#809；PR #808 Draft M0 receipt |
+| 2026-10-30 | 初版建立并经 M0 证据复核；补充 BWH M0 状态、PR #808 exact-head review、BWH Deploy Note 的真实范围及当前阻塞项 | PR #752 Conversation Deploy Notes、#734、#776、#777；Issue #746、#795、#809；PR #808 M0 receipt / review / follow-up |
 
 后续更新必须保留历史行，不得把 operator_reported 改写成 provider_verified，也不得把 unknown 改写成 pass，除非新增证据明确覆盖同一物理身份和同一依赖范围。
