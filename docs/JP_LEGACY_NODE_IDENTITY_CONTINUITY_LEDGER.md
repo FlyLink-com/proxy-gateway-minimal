@@ -3,9 +3,11 @@
 Last updated: 2026-10-30 UTC
 
 > document_metadata:
-> - doc_type: operational_evidence_ledger
+> - doc_type: operational
 > - lifecycle: active
 > - authority_scope: jp_legacy_node_identity_and_business_continuity
+> - superseded_by: null
+> - last_verified_at: 2026-10-30
 > - production_authority: false
 > - execution_authority: none
 > - evidence_cutoff: repository records and operator-reported observations available on 2026-10-30
