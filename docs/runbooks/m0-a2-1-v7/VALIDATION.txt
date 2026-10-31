@@ -1,0 +1,32 @@
+M0-A2-1 v7 OFFLINE VALIDATION
+Date: 2026-10-31
+
+[PASS] node --check scripts/m0-a2-1-v7.mjs
+[PASS] node --check scripts/lib/m0-a2-1-v7-diagnostic.mjs
+[PASS] node --check scripts/lib/m0-a2-1-v7-archive-pins.mjs
+[PASS] node --check server/tests/m0-a2-1-v7.test.mjs
+[PASS] node scripts/m0-a2-1-v7.mjs --self-test
+       m0_a2_1_v7_self_test=passed
+[PASS] node --test server/tests/m0-a2-1-v7.test.mjs
+       tests=10, pass=10, fail=0, skipped=0
+[PASS] 49-file manifest count and unique paths validated in fixture tests
+[PASS] full-metering ExecStart/config-digest and exact /usr/bin/node binding fixture tests
+[PASS] corrected App-to-traffic-usage-writer status binding and duplicate-assignment rejection fixture tests
+[PASS] exact systemd InvocationID + unit + safe errorCode extraction fixture tests
+[PASS] OnFailure stop temporal correlation fixture tests
+[PASS] static read-only command surface scan: exactly two spawnSync call sites, fixed /usr/bin/systemctl show and /usr/bin/journalctl, shell=false
+[PASS] static mutation scan: no systemd mutation verbs and no file-write APIs
+[PASS] static data-boundary scan: no config read, subscription-control.sqlite, checkpoint.json, or full-metering journal directory path is read
+
+Local runtime: Node v22.16.0, Bash not required. The target BWH Node version and live unit properties were not read.
+
+NOT RUN:
+- GitHub Actions / hosted CI
+- SSH or BWH / Provider access
+- systemctl or journalctl on any production host
+- status projection read on production
+- App or collector archive reads on production
+- SQLite, full-metering journal, checkpoint, config, environment-file, or credential reads
+- collector invocation, service/Timer action, or any production mutation
+
+This validation proves local syntax and fixture behavior only. It does not establish target-host runtime compatibility or production state.
