@@ -58,6 +58,7 @@ test('full-metering ExecStart must bind the historical 49-file root, script, con
   assert.equal(inspectFullMeteringExecStart(good.replace(`${'a'.repeat(64)}`, 'not-a-digest'), ARCHIVE).matched, false);
   assert.equal(inspectFullMeteringExecStart(good.replace('--collect','--check'), ARCHIVE).matched, false);
   assert.equal(inspectFullMeteringExecStart(good.replace('path=/usr/bin/node','path=/bin/sh'), ARCHIVE).matched, false);
+  assert.equal(inspectFullMeteringExecStart(good.replace(' ; }',' ; argv[]=/usr/bin/node /extra --collect ; }'), ARCHIVE).matched, false);
   assert.equal(inspectFullMeteringExecStart('raw command', ARCHIVE).matched, false);
 });
 
@@ -71,6 +72,7 @@ test('status-writer ExecStart accepts the canonical app release or its verified 
   assert.equal(inspectStatusWriterExecStart(canonical, '/tmp/unbound', appRoot), false);
   assert.equal(inspectStatusWriterExecStart(canonical.replace('--collect','--check'), appRoot, appRoot), false);
   assert.equal(inspectStatusWriterExecStart(canonical.replace('path=/usr/bin/node','path=/bin/sh'), appRoot, appRoot), false);
+  assert.equal(inspectStatusWriterExecStart(canonical.replace(' ; }',' ; argv[]=/usr/bin/node /extra --collect ; }'), appRoot, appRoot), false);
   assert.equal(inspectStatusWriterExecStart(canonical.replace('--collect ;','--collect --unsafe ;'), appRoot, appRoot), false);
 });
 
@@ -85,6 +87,7 @@ test('status path binding compares App with the traffic-usage writer, never the 
   assert.equal(resolveStatusBinding(app, { ...statusWriter, EnvironmentFiles: ['/etc/other.env'] }, '/var/lib/gccgw/traffic-status.json'), false);
   assert.equal(resolveStatusBinding(app, { ...statusWriter, Environment: 'EDGE_USAGE_COLLECTOR_STATUS_PATH=/var/lib/other.json' }, '/var/lib/gccgw/traffic-status.json'), false);
   assert.equal(resolveStatusBinding(app, statusWriter, '/var/lib/other.json'), false);
+  assert.equal(resolveStatusBinding({ ...app, Environment: 'EDGE_USAGE_COLLECTOR_STATUS_PATH=/var/lib/gccgw/../escape.json' }, { ...statusWriter, Environment: 'EDGE_USAGE_COLLECTOR_STATUS_PATH=/var/lib/gccgw/../escape.json' }, '/var/lib/gccgw/../escape.json'), false);
   assert.equal(resolveStatusBinding(app, { ...statusWriter, UnsetEnvironment: 'EDGE_USAGE_COLLECTOR_STATUS_PATH' }, '/var/lib/gccgw/traffic-status.json'), false);
   assert.equal(resolveStatusBinding({ ...app, Environment: `${app.Environment} EDGE_USAGE_COLLECTOR_STATUS_PATH=/var/lib/other.json` }, statusWriter, '/var/lib/gccgw/traffic-status.json'), false);
 });
@@ -107,11 +110,12 @@ test('failed error code is extracted only from the exact service invocation and 
 
 test('journal access gate requires the recorded 2026-10-20 start timestamp and a valid InvocationID', () => {
   const invocation = 'c'.repeat(32);
-  assert.equal(isExpectedFailureInvocation('Tue 2026-10-20 02:15:07 UTC', invocation), true);
-  assert.equal(isExpectedFailureInvocation('Tue Oct 20 02:15:07 UTC', invocation), true);
-  assert.equal(isExpectedFailureInvocation('Tue 2026-10-21 02:15:07 UTC', invocation), false);
-  assert.equal(isExpectedFailureInvocation('Tue 2026-10-20 02:15:07 UTC', '0'.repeat(32)), false);
-  assert.equal(isExpectedFailureInvocation('Tue 2026-10-20 02:15:07 UTC', 'not-an-id'), false);
+  assert.equal(isExpectedFailureInvocation('Tue 2026-10-20 02:15:07 UTC', invocation, '2', 'exit-code'), true);
+  assert.equal(isExpectedFailureInvocation('Tue Oct 20 02:15:07 UTC', invocation, '2', 'exit-code'), true);
+  assert.equal(isExpectedFailureInvocation('Tue 2026-10-21 02:15:07 UTC', invocation, '2', 'exit-code'), false);
+  assert.equal(isExpectedFailureInvocation('Tue 2026-10-20 02:15:07 UTC', '0'.repeat(32), '2', 'exit-code'), false);
+  assert.equal(isExpectedFailureInvocation('Tue 2026-10-20 02:15:07 UTC', 'not-an-id', '2', 'exit-code'), false);
+  assert.equal(isExpectedFailureInvocation('Tue 2026-10-20 02:15:07 UTC', invocation, '0', 'success'), false);
 });
 
 test('OnFailure stop correlation is time-bounded and never claims causality by itself', () => {
