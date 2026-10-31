@@ -95,7 +95,7 @@ const STOP_PROPERTIES = [
 function systemdShow(unit, properties) {
   const args = ['show', unit, '--no-pager', ...properties.map(property => `--property=${property}`)];
   const result = spawnSync('/usr/bin/systemctl', args, {
-    encoding: 'utf8', timeout: 5000, maxBuffer: 65536, shell: false,
+    encoding: 'utf8', timeout: 2500, maxBuffer: 65536, shell: false,
     env: { PATH: '/usr/bin:/bin', LANG: 'C', LC_ALL: 'C', TZ: 'UTC' },
     stdio: ['ignore','pipe','pipe']
   });
@@ -118,13 +118,16 @@ function appWorkingDirectoryMatchesRelease(workingDirectory, appRoot, realpathSy
 
 function resolveAppRelease(appBefore, expectedRelease) {
   if (appBefore.LoadState !== 'loaded' || appBefore.ActiveState !== 'active' || appBefore.SubState !== 'running' || !/^[1-9][0-9]*$/.test(appBefore.MainPID || '')) fail('app_not_stable');
-  const appBase = fs.realpathSync(BASE), releasesRoot = path.join(appBase, 'releases');
+  const baseInfo = fs.lstatSync(BASE, { bigint: true });
+  if (!baseInfo.isDirectory() || baseInfo.isSymbolicLink() || baseInfo.uid !== 0n || (baseInfo.mode & 0o022n) !== 0n || fs.realpathSync(BASE) !== BASE) fail('app_base_directory_unsafe');
+  const appBase = BASE, releasesRoot = path.join(appBase, 'releases');
   const currentInfo = fs.lstatSync(CURRENT_LINK, { bigint: true });
-  if (!currentInfo.isSymbolicLink()) fail('app_current_pointer_invalid');
+  if (!currentInfo.isSymbolicLink() || currentInfo.uid !== 0n || currentInfo.nlink !== 1n) fail('app_current_pointer_invalid');
   const releasesInfo = fs.lstatSync(releasesRoot, { bigint: true });
-  if (!releasesInfo.isDirectory() || releasesInfo.isSymbolicLink() || fs.realpathSync(releasesRoot) !== releasesRoot) fail('app_releases_root_unsafe');
+  if (!releasesInfo.isDirectory() || releasesInfo.isSymbolicLink() || releasesInfo.uid !== 0n || (releasesInfo.mode & 0o022n) !== 0n || fs.realpathSync(releasesRoot) !== releasesRoot) fail('app_releases_root_unsafe');
   const appRoot = fs.realpathSync(CURRENT_LINK);
-  if (!path.isAbsolute(appRoot) || path.dirname(appRoot) !== releasesRoot || !RELEASE_LABEL_PATTERN.test(path.basename(appRoot))) fail('app_release_directory_unexpected');
+  const appRootInfo = fs.lstatSync(appRoot, { bigint: true });
+  if (!appRootInfo.isDirectory() || appRootInfo.isSymbolicLink() || appRootInfo.uid !== 0n || (appRootInfo.mode & 0o022n) !== 0n || !path.isAbsolute(appRoot) || path.dirname(appRoot) !== releasesRoot || !RELEASE_LABEL_PATTERN.test(path.basename(appRoot))) fail('app_release_directory_unexpected');
   if (path.basename(appRoot) !== expectedRelease) fail('app_release_label_mismatch');
   if (!appWorkingDirectoryMatchesRelease(appBefore.WorkingDirectory, appRoot, fs.realpathSync)) fail('app_working_directory_unbound');
   let processRoot;
@@ -135,9 +138,16 @@ function resolveAppRelease(appBefore, expectedRelease) {
 
 function assertPinnedAppSource(appRoot) {
   for (const [relative, expected] of APP_PINS) {
-    const file = path.join(appRoot, relative), info = fs.lstatSync(file, { bigint: true });
-    if (!info.isFile() || info.isSymbolicLink() || info.nlink !== 1n || fs.realpathSync(file) !== file) fail('app_source_file_unsafe');
-    if (sha(fs.readFileSync(file)) !== expected) fail('app_source_hash_mismatch');
+    const file = path.join(appRoot, relative), before = fs.lstatSync(file, { bigint: true });
+    if (!before.isFile() || before.isSymbolicLink() || before.uid !== 0n || before.nlink !== 1n || (before.mode & 0o022n) !== 0n || fs.realpathSync(file) !== file) fail('app_source_file_unsafe');
+    const fd = fs.openSync(file, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
+    try {
+      const opened = fs.fstatSync(fd, { bigint: true });
+      if (opened.dev !== before.dev || opened.ino !== before.ino || opened.size !== before.size || opened.mtimeNs !== before.mtimeNs || opened.ctimeNs !== before.ctimeNs) fail('app_source_file_changed');
+      const bytes = fs.readFileSync(fd), after = fs.fstatSync(fd, { bigint: true }), named = fs.lstatSync(file, { bigint: true });
+      if (after.dev !== before.dev || after.ino !== before.ino || after.size !== before.size || after.mtimeNs !== before.mtimeNs || after.ctimeNs !== before.ctimeNs || named.dev !== before.dev || named.ino !== before.ino || named.mtimeNs !== before.mtimeNs || named.ctimeNs !== before.ctimeNs) fail('app_source_file_changed');
+      if (sha(bytes) !== expected) fail('app_source_hash_mismatch');
+    } finally { fs.closeSync(fd); }
   }
 }
 
@@ -191,10 +201,10 @@ function verifyArchive() {
 }
 
 function selectedEnvironmentAssignment(environment, key) {
-  const pattern = new RegExp(`(?:^|\\s)${key}=(\"(?:[^\"\\\\]|\\\\.)*\"|'[^']*'|[^\\s]+)`);
-  const match = pattern.exec(environment || '');
-  if (!match) return null;
-  const raw = match[1];
+  const pattern = new RegExp(`(?:^|\\s)${key}=(\"(?:[^\"\\\\]|\\\\.)*\"|'[^']*'|[^\\s]+)`, 'g');
+  const matches = [...String(environment || '').matchAll(pattern)];
+  if (matches.length !== 1) return null;
+  const raw = matches[0][1];
   if (raw.startsWith('\"') && raw.endsWith('\"')) { try { return JSON.parse(raw); } catch { return null; } }
   if (raw.startsWith("'") && raw.endsWith("'")) return raw.slice(1, -1);
   return raw;
@@ -239,7 +249,7 @@ function readStatusProjection(statusPath) {
 }
 
 export function inspectFullMeteringExecStart(execStart, workingDirectory) {
-  if (workingDirectory !== ARCHIVE_ROOT || typeof execStart !== 'string') return { matched: false, configDigestPresent: false };
+  if (workingDirectory !== ARCHIVE_ROOT || typeof execStart !== 'string' || !execStart.includes('path=/usr/bin/node ;') || !execStart.includes('argv[]=/usr/bin/node ')) return { matched: false, configDigestPresent: false };
   const expected = `${ARCHIVE_ROOT}/scripts/traffic-full-metering-collect.mjs --collect --config ${CONFIG_PATH} --config-sha256 `;
   const at = execStart.indexOf(expected);
   if (at < 0) return { matched: false, configDigestPresent: false };
@@ -247,11 +257,11 @@ export function inspectFullMeteringExecStart(execStart, workingDirectory) {
   return { matched: Boolean(digest), configDigestPresent: Boolean(digest) };
 }
 export function inspectStatusWriterExecStart(execStart, workingDirectory, appRoot, realpathSync = fs.realpathSync) {
-  if (typeof execStart !== 'string' || !appWorkingDirectoryMatchesRelease(workingDirectory, appRoot, realpathSync)) return false;
-  const canonicalScript = `${appRoot}/scripts/traffic-usage-collect-once.mjs --collect`;
-  const currentScript = `${CURRENT_LINK}/scripts/traffic-usage-collect-once.mjs --collect`;
-  if (execStart.includes(canonicalScript)) return true;
-  try { return realpathSync(CURRENT_LINK) === appRoot && execStart.includes(currentScript); }
+  if (typeof execStart !== 'string' || !execStart.includes('path=/usr/bin/node ;') || !execStart.includes('argv[]=/usr/bin/node ') || !appWorkingDirectoryMatchesRelease(workingDirectory, appRoot, realpathSync)) return false;
+  const canonicalPrefix = `argv[]=/usr/bin/node ${appRoot}/scripts/traffic-usage-collect-once.mjs --collect`;
+  const currentPrefix = `argv[]=/usr/bin/node ${CURRENT_LINK}/scripts/traffic-usage-collect-once.mjs --collect`;
+  if (execStart.includes(canonicalPrefix) && /\s*;/.test(execStart.slice(execStart.indexOf(canonicalPrefix) + canonicalPrefix.length))) return true;
+  try { return realpathSync(CURRENT_LINK) === appRoot && execStart.includes(currentPrefix) && /\s*;/.test(execStart.slice(execStart.indexOf(currentPrefix) + currentPrefix.length)); }
   catch { return false; }
 }
 
@@ -347,9 +357,9 @@ export function runSelfTests() {
   const full = inspectFullMeteringExecStart(`{ path=/usr/bin/node ; argv[]=/usr/bin/node ${ARCHIVE_ROOT}/scripts/traffic-full-metering-collect.mjs --collect --config ${CONFIG_PATH} --config-sha256 ${'a'.repeat(64)} ; }`, ARCHIVE_ROOT);
   if (!full.matched || !full.configDigestPresent) throw new Error('fixture_full_metering_exec_binding_failed');
   if (inspectFullMeteringExecStart('unsafe', ARCHIVE_ROOT).matched) throw new Error('fixture_full_metering_exec_rejection_failed');
-  if (!inspectStatusWriterExecStart(`/usr/bin/node ${BASE}/releases/fixture/scripts/traffic-usage-collect-once.mjs --collect`, `${BASE}/releases/fixture`, `${BASE}/releases/fixture`)) throw new Error('fixture_status_writer_exec_binding_failed');
+  if (!inspectStatusWriterExecStart(`{ path=/usr/bin/node ; argv[]=/usr/bin/node ${BASE}/releases/fixture/scripts/traffic-usage-collect-once.mjs --collect ; }`, `${BASE}/releases/fixture`, `${BASE}/releases/fixture`)) throw new Error('fixture_status_writer_exec_binding_failed');
   const currentAlias = value => value === CURRENT_LINK ? `${BASE}/releases/fixture` : value;
-  if (!inspectStatusWriterExecStart(`/usr/bin/node ${CURRENT_LINK}/scripts/traffic-usage-collect-once.mjs --collect`, CURRENT_LINK, `${BASE}/releases/fixture`, currentAlias)) throw new Error('fixture_status_writer_current_alias_failed');
+  if (!inspectStatusWriterExecStart(`{ path=/usr/bin/node ; argv[]=/usr/bin/node ${CURRENT_LINK}/scripts/traffic-usage-collect-once.mjs --collect ; }`, CURRENT_LINK, `${BASE}/releases/fixture`, currentAlias)) throw new Error('fixture_status_writer_current_alias_failed');
   const app = { EnvironmentFiles: ['/etc/a.env'], Environment: 'EDGE_USAGE_COLLECTOR_STATUS_PATH=/var/lib/traffic/status.json', PassEnvironment: '', UnsetEnvironment: '' };
   const writer = { ...app };
   if (!resolveStatusBinding(app, writer, '/var/lib/traffic/status.json')) throw new Error('fixture_status_binding_failed');
