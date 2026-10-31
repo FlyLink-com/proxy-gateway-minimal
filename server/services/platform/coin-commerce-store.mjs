@@ -4572,4 +4572,3 @@ export function createCoinCommerceAdsRecoveryControls(input) {
     discardAdsRecoveryEnqueues: binding.discardAdsRecoveryEnqueues
   });
 }
-

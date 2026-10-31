@@ -636,4 +636,3 @@ export function createWalletFirstCommerceService(options = {}) {
   SERVICE_INSTANCES.add(service);
   return service;
 }
-

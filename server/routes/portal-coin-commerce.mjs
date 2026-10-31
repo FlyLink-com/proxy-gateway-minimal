@@ -1909,4 +1909,3 @@ export function portalCoinCommerceRoutes(state, options = {}) {
     router(req, res, next);
   };
 }
-

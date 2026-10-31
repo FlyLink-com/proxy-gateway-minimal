@@ -421,4 +421,3 @@ export function createWalletFirstDeferredCheckoutAdapter(options = {}) {
   ADAPTER_INSTANCES.add(adapter);
   return adapter;
 }
-

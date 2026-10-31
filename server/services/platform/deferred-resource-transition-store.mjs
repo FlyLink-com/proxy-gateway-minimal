@@ -3471,4 +3471,3 @@ export function createSqliteDeferredResourceTransitionStore(options = {}) {
     verifyClaimedTransitionReservation
   });
 }
-
