@@ -1,22 +1,19 @@
-M0-A2-1 v7 / v8 PORTABILITY REPAIR REVIEW
+M0-A2-1 v7 / v9 BYTE-STABLE CHECKOUT REPAIR REVIEW
 Disposition: Draft PR candidate only; NOT approved for production execution.
 
 Repair changes:
-1. Replaces host-dependent path.join(BASE, 'current') with path.posix.join(BASE, 'current') because the compared systemd paths are Linux POSIX paths, even when local validation runs on Windows Node.
-2. Clarifies the current-symlink regression test title so the Windows portability contract is visible in the test suite.
-3. Adds targeted .gitattributes rules forcing LF for the v7 diagnostic package, including SHA256SUMS and VALIDATION.txt.
-4. Recomputes all seven SHA256SUMS entries after the final source and documentation content is fixed.
-5. Updates the runbook and validation record to require a fresh isolated checkout and Node v22.16.0 native checks.
+1. Retains the v8 `path.posix.join` fix for Linux systemd paths tested under Windows Node.
+2. Replaces targeted `text eol=lf` rules with `-text !eol` for the checksum manifest and all seven SHA256-verified inputs. This prevents Git's checkout conversion from rewriting committed LF bytes when `core.autocrlf=true`.
+3. Documents the expected `git check-attr` output (`text: unset`, `eol: unspecified`) and `git ls-files --eol` output (`i/lf w/lf attr/-text`).
+4. Requires a fresh independent checkout; an existing worktree that was populated under the previous attributes must not be used to judge the repair.
+5. Requires Node v22.16.0 exactly and records any version mismatch as a stop condition.
+6. Recomputes all seven SHA256SUMS entries after the final README, validation, and review edits.
 
-Safety review:
-- This repair writes only repository text/source metadata through the existing Draft PR branch.
-- No SSH, BWH / Provider connection, production systemd or journal read, collector invocation, service or Timer action, DB read, full-metering journal/checkpoint read, config read, environment-file read, or production mutation occurred.
-- The production diagnostic's fixed read-only command boundary is unchanged.
-- The current-symlink path change affects path construction only; it does not broaden the production command surface.
-
-Known limitations:
-- Native Node v22.16.0 validation remains pending in a fresh independent local checkout.
-- The Windows Node v24.16.0 run that exposed the regression is not a substitute for the required Node 22.16.0 run.
+Evidence and limitations:
+- The prior v8 local result was Node v24.16.0, not Node v22.16.0. Four syntax checks and self-test passed; unit tests were 10/10. The checksum command was 5/7 because two worktree files were CRLF while the index blobs were LF. Recalculating those two as LF matched the recorded digests.
+- That evidence identifies a checkout byte-conversion mismatch; it does not prove a Node 22 runtime pass.
+- v9's attribute semantics are documented but still require confirmation in a fresh Windows checkout with the user's Git version/configuration.
+- Native Node v22.16.0 validation remains pending.
 - Hosted CI remains intentionally unrun while the PR is Draft and the CI budget is being preserved.
 - App identity remains label-only plus four code-slice pins; it is not a complete App artifact/source-commit proof.
 - The collector archive check proves the 49-file content closure, not a re-created tar archive digest.
@@ -24,6 +21,10 @@ Known limitations:
 - Temporal correlation of the stop unit does not independently prove OnFailure causality.
 - Node target-host version and current production unit shape remain unknown until a separately approved read-only run.
 
-Validation: see VALIDATION.txt. No local native Node result is claimed by this repair commit.
+Safety review:
+- This repair writes only repository metadata and documentation through the existing Draft PR branch.
+- No SSH, BWH / Provider connection, production systemd or journal read, collector invocation, service or Timer action, DB read, full-metering journal/checkpoint read, config read, environment-file read, or production mutation occurred.
+- The production diagnostic's fixed read-only command surface is unchanged.
+- No global Git configuration was changed.
 
 Decision: keep M0 BLOCKED. A production read requires separate exact Risk A approval bound to the final package SHA-256, expected release label, target, and time window. No M0-A2-2, M1–M8, recovery, or Japan node creation is authorized by this package.

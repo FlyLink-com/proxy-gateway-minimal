@@ -1,6 +1,6 @@
-# M0-A2-1 v7 — BWH read-only metering diagnostic (v8 portability repair)
+# M0-A2-1 v7 — BWH read-only metering diagnostic (v9 byte-stable checkout repair)
 
-**Status:** offline candidate for review only. The v8 repair addresses Windows path semantics and line-ending stability; native Node 22.16.0 validation is still required. This document and its script do not authorize a production run.
+**Status:** offline candidate for review only. The v8 path fix is retained; v9 disables Git EOL conversion for SHA256-verified inputs so Windows `core.autocrlf=true` cannot rewrite their bytes. Native Node 22.16.0 validation is still required. This document and its script do not authorize a production run.
 
 ## Purpose
 
@@ -63,15 +63,42 @@ The producer projection remains explicitly partial: current source only defines 
 
 The caller must supply `--expected-release <exact-current-release-label>`. There is no hard-coded guessed release. The script verifies the `current` pointer, App `WorkingDirectory`, `/proc/<PID>/cwd`, and four previously pinned App-side projection/provenance modules. Output remains `app_release_identity=label_only`; these checks are not a complete App artifact/source-commit proof.
 
-## Path and line-ending portability
+## Path and byte-level portability
 
-All paths read from Linux systemd are POSIX paths. `CURRENT_LINK` is therefore built with `path.posix.join`, so a Windows Node test run keeps the same `/` separators as the Linux systemd values. Do not replace this with host-dependent `path.join`.
+All paths read from Linux systemd are POSIX paths. `CURRENT_LINK` is built with `path.posix.join`, so a Windows Node test run keeps the same `/` separators as the Linux systemd values. Do not replace this with host-dependent `path.join`.
 
-The repository `.gitattributes` explicitly forces LF for this package's runbook, CLI, diagnostic modules, and test file. On Windows, use a fresh isolated checkout/worktree after this change so the attributes are applied before checksum validation. Run `git check-attr text eol -- docs/runbooks/m0-a2-1-v7/SHA256SUMS docs/runbooks/m0-a2-1-v7/VALIDATION.txt scripts/lib/m0-a2-1-v7-diagnostic.mjs` and confirm `eol: lf`.
+The seven files listed in `SHA256SUMS` are byte-verified inputs. Their Git attributes use `-text !eol`, not `text eol=lf`: Git must write the committed blob bytes to the worktree unchanged. This specifically prevents `core.autocrlf=true` from converting LF blobs to CRLF during checkout. The rule is scoped to this diagnostic package and does not change the user's global Git configuration or other repository files.
+
+Use a **fresh, separate checkout/worktree** of the exact commit being validated. Do not reuse a checkout created before the `-text` rules were added, and do not switch or modify any other working directory with uncommitted changes.
+
+From Git Bash or WSL, inspect the effective settings:
+
+```bash
+git config --show-origin --get core.autocrlf || true
+git check-attr text eol -- \
+  docs/runbooks/m0-a2-1-v7/SHA256SUMS \
+  docs/runbooks/m0-a2-1-v7/VALIDATION.txt \
+  scripts/m0-a2-1-v7.mjs \
+  scripts/lib/m0-a2-1-v7-archive-pins.mjs
+git ls-files --eol -- \
+  scripts/m0-a2-1-v7.mjs \
+  scripts/lib/m0-a2-1-v7-diagnostic.mjs \
+  scripts/lib/m0-a2-1-v7-archive-pins.mjs \
+  server/tests/m0-a2-1-v7.test.mjs \
+  docs/runbooks/m0-a2-1-v7/README.md \
+  docs/runbooks/m0-a2-1-v7/VALIDATION.txt \
+  docs/runbooks/m0-a2-1-v7/REVIEW-REPORT.txt
+```
+
+Expected:
+- `git check-attr`: `text: unset` and `eol: unspecified` for each sampled path.
+- `git ls-files --eol`: every listed file reports `i/lf w/lf attr/-text`.
+- `core.autocrlf` may still be `true`; do not change global Git configuration. The package attributes must prevent conversion for these paths.
+- The worktree must be fresh. If any file reports `w/crlf`, stop; do not normalize the file manually and do not treat the checksum result as passed.
 
 ## Local validation
 
-Use **Node v22.16.0** and run from the repository root. On Windows, run `sha256sum` from Git Bash or WSL against the same fresh isolated checkout:
+Use **Node v22.16.0 exactly** and run from the repository root in the same fresh isolated checkout. On Windows, use Git Bash or WSL with `sha256sum` available:
 
 ```bash
 node --version
@@ -84,6 +111,8 @@ node --check server/tests/m0-a2-1-v7.test.mjs
 node scripts/m0-a2-1-v7.mjs --self-test
 node --test server/tests/m0-a2-1-v7.test.mjs
 ```
+
+Record the exact output and exit code of every command. If Node is not exactly `v22.16.0`, stop and record the version mismatch; do not substitute another Node version. A skipped CI run is not a pass.
 
 `--self-test` exits before the production branch and makes no `systemctl` or `journalctl` call. The CLI entrypoint is guarded; the Node test suite imports the diagnostic module directly and tests parsers, service binding, status-writer binding, archive manifest integrity, exact-invocation error-code extraction, time correlation, and the read-only command surface.
 

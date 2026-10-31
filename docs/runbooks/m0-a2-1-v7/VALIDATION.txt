@@ -1,28 +1,34 @@
-M0-A2-1 v7 / v8 REPAIR VALIDATION RECORD
+M0-A2-1 v7 / v9 BYTE-STABLE CHECKOUT VALIDATION RECORD
 Date: 2026-10-31
 Status: REPAIR PREPARED — NATIVE NODE 22.16.0 VALIDATION PENDING.
 
-## v8 repair scope
+## v9 repair scope
 
-- Replaced host-dependent `path.join(BASE, 'current')` with `path.posix.join(BASE, 'current')`. The runtime paths are Linux systemd paths; their separator semantics must not depend on the machine running the offline test.
-- Retained and clarified the current-symlink regression test so it exercises the slash-delimited `/opt/proxy-gateway-minimal-candidate/current` path.
-- Added targeted `.gitattributes` LF rules for this package's runbook, checksum manifest, CLI, diagnostic modules, and test file.
-- Recomputed all seven entries in `SHA256SUMS` from the exact UTF-8/LF contents in this repair commit. The checksum manifest itself is intentionally not self-hashed.
+- Replaced the v8 targeted `text eol=lf` attributes with the more restrictive `-text !eol` rules for this diagnostic package's SHA256-verified inputs.
+- `-text` disables Git text/EOL conversion for these paths. The committed blob bytes (LF) must be written to the worktree unchanged even when the user's `core.autocrlf=true`.
+- The rules are scoped to `docs/runbooks/m0-a2-1-v7/**`, `scripts/m0-a2-1-v7.mjs`, `scripts/lib/m0-a2-1-v7-*.mjs`, and `server/tests/m0-a2-1-v7.test.mjs`. They do not require changing global Git configuration.
+- Updated README to require a fresh independent checkout, check effective attributes, inspect index/worktree EOL state, and stop if any verified input is checked out as CRLF.
+- Recomputed all seven SHA-256 entries after the final documentation changes. The checksum manifest itself is intentionally not self-hashed.
 
-## v7 failures that prompted this repair
+## v8 local result reported before v9
 
-- Windows Node v24.16.0: 9/10 tests passed; the current-symlink status-writer binding test failed because the path constant used host-dependent separators.
-- The initial `sha256sum -c` also read a CRLF manifest on Windows. Separately, after normalizing line endings, `VALIDATION.txt` still did not match its recorded digest. This was a real stale checksum, not only a CRLF parsing issue.
-- The previous result is not evidence of Linux Node 22 compatibility.
+- Environment: Windows, Node v24.16.0; Node v22.16.0 was not installed.
+- `git check-attr`: sampled files reported `eol: lf`.
+- `sha256sum -c`: 5/7 passed; `scripts/m0-a2-1-v7.mjs` and `scripts/lib/m0-a2-1-v7-archive-pins.mjs` failed because the worktree held CRLF while the index held LF. Recomputing those two files as LF matched the manifest.
+- Four `node --check` commands passed.
+- `--self-test` passed.
+- `node --test`: 10/10 passed on Node v24.16.0, including the previous Windows path regression.
+- This is not a Node v22.16.0 validation and the original `sha256sum -c` result remains failed. No result is relabeled as passed.
 
 ## Required independent local validation — NOT YET RUN
 
-Use a fresh isolated checkout/worktree of this exact PR head. Do not switch or modify the original working directory with uncommitted changes.
+Use a fresh, separate checkout/worktree of this exact v9 PR head. Do not switch or modify the original working directory with uncommitted changes.
 
-1. Confirm `node --version` is exactly `v22.16.0`.
-2. Confirm `git check-attr text eol -- docs/runbooks/m0-a2-1-v7/SHA256SUMS docs/runbooks/m0-a2-1-v7/VALIDATION.txt scripts/lib/m0-a2-1-v7-diagnostic.mjs` reports `eol: lf`.
-3. Confirm the relevant tracked files are checked out as LF with `git ls-files --eol`.
-4. Run the exact README command sequence:
+1. Confirm `node --version` is exactly `v22.16.0`. If unavailable, stop and report it; do not substitute Node 24.
+2. Confirm `git check-attr text eol -- ...` reports `text: unset` and `eol: unspecified` for the sampled package files.
+3. Confirm `git ls-files --eol -- ...` reports `i/lf w/lf attr/-text` for all seven files listed in `SHA256SUMS`.
+4. It is acceptable for `core.autocrlf=true` to remain set. Do not change global Git configuration. If any target worktree file is CRLF, stop and recreate the isolated checkout; do not manually normalize it.
+5. Run the exact README command sequence:
    - `sha256sum -c docs/runbooks/m0-a2-1-v7/SHA256SUMS`
    - `node --check scripts/m0-a2-1-v7.mjs`
    - `node --check scripts/lib/m0-a2-1-v7-diagnostic.mjs`
@@ -30,15 +36,15 @@ Use a fresh isolated checkout/worktree of this exact PR head. Do not switch or m
    - `node --check server/tests/m0-a2-1-v7.test.mjs`
    - `node scripts/m0-a2-1-v7.mjs --self-test`
    - `node --test server/tests/m0-a2-1-v7.test.mjs`
-5. Record the exact exit code and output for each command. A skipped CI run is not a pass.
+6. Record exact output and exit code for each command. A skipped CI run is not a pass.
 
 ## Explicitly not performed in this repair preparation
 
-- Native Node v22.16.0 commands or Windows checkout validation.
-- GitHub Actions / hosted CI; the PR remains Draft to preserve the CI budget.
+- Native Node v22.16.0 commands or local checkout validation.
+- GitHub Actions / hosted CI; the PR remains Draft to preserve the project's CI budget.
 - SSH, BWH / Provider access, production systemd or journal reads.
 - App release or collector archive reads on production.
 - Status projection, SQLite, full-metering journal, checkpoint, config, environment-file, or credential reads.
 - Collector invocation, service/Timer action, install, restart, or production mutation.
 
-The GitHub change in this repair is limited to repository source, tests, runbook, validation metadata, review report, checksum manifest, and line-ending attributes. It does not authorize production execution. M0 remains BLOCKED. Production execution, M0-A2-2, M1–M8, recovery, and Japan node creation remain unauthorized.
+The GitHub change is limited to repository text metadata, runbook, validation/review records, and the checksum manifest. It does not authorize production execution. M0 remains BLOCKED. Production execution, M0-A2-2, M1–M8, recovery, and Japan node creation remain unauthorized.
