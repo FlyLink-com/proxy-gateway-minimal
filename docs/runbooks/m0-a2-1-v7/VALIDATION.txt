@@ -1,32 +1,32 @@
-M0-A2-1 v7 OFFLINE VALIDATION
+M0-A2-1 v7 VALIDATION RECORD
 Date: 2026-10-31
+Status: PENDING — no executable validation is claimed for the current branch head.
 
-[PASS] node --check scripts/m0-a2-1-v7.mjs
-[PASS] node --check scripts/lib/m0-a2-1-v7-diagnostic.mjs
-[PASS] node --check scripts/lib/m0-a2-1-v7-archive-pins.mjs
-[PASS] node --check server/tests/m0-a2-1-v7.test.mjs
-[PASS] node scripts/m0-a2-1-v7.mjs --self-test
-       m0_a2_1_v7_self_test=passed
-[PASS] node --test server/tests/m0-a2-1-v7.test.mjs
-       tests=10, pass=10, fail=0, skipped=0
-[PASS] 49-file manifest count and unique paths validated in fixture tests
-[PASS] full-metering ExecStart/config-digest and exact /usr/bin/node binding fixture tests
-[PASS] corrected App-to-traffic-usage-writer status binding and duplicate-assignment rejection fixture tests
-[PASS] exact systemd InvocationID + unit + safe errorCode extraction fixture tests
-[PASS] OnFailure stop temporal correlation fixture tests
-[PASS] static read-only command surface scan: exactly two spawnSync call sites, fixed /usr/bin/systemctl show and /usr/bin/journalctl, shell=false
-[PASS] static mutation scan: no systemd mutation verbs and no file-write APIs
-[PASS] static data-boundary scan: no config read, subscription-control.sqlite, checkpoint.json, or full-metering journal directory path is read
+## Verified from GitHub
 
-Local runtime: Node v22.16.0, Bash not required. The target BWH Node version and live unit properties were not read.
+- The branch `m0-a2-1-v7-readonly-diagnostic-20261031` exists.
+- The branch is based on `master` and contains the v7 diagnostic package files.
+- The package contains a CLI entrypoint, diagnostic core, 49-file archive pin manifest, Node test file, runbook, review report, and checksum manifest.
+- A source review found that the PID formatter was declared after its first use in the production output path. The declaration was moved before use and a regression assertion was added to the test file. This fix has not yet been executed by Node.
 
-NOT RUN:
+## Not yet run against the current branch head
+
+- `sha256sum -c docs/runbooks/m0-a2-1-v7/SHA256SUMS`
+- `node --check scripts/m0-a2-1-v7.mjs`
+- `node --check scripts/lib/m0-a2-1-v7-diagnostic.mjs`
+- `node --check scripts/lib/m0-a2-1-v7-archive-pins.mjs`
+- `node --check server/tests/m0-a2-1-v7.test.mjs`
+- `node scripts/m0-a2-1-v7.mjs --self-test`
+- `node --test server/tests/m0-a2-1-v7.test.mjs`
 - GitHub Actions / hosted CI
-- SSH or BWH / Provider access
-- systemctl or journalctl on any production host
-- status projection read on production
-- App or collector archive reads on production
-- SQLite, full-metering journal, checkpoint, config, environment-file, or credential reads
-- collector invocation, service/Timer action, or any production mutation
+- Target-host Node compatibility check
 
-This validation proves local syntax and fixture behavior only. It does not establish target-host runtime compatibility or production state.
+## Explicitly not performed
+
+- No SSH or BWH / Provider access.
+- No production `systemctl` or `journalctl` command.
+- No App release or collector archive read on production.
+- No status projection, SQLite, full-metering journal, checkpoint, config, environment-file, or credential read.
+- No collector invocation, service/Timer action, install, restart, or production mutation.
+
+This record is intentionally conservative. Passing local fixture tests, if later run, will not establish target-host compatibility or current production state. M0 remains BLOCKED until the package is validated and a separate exact Risk A approval authorizes one read-only production run.
