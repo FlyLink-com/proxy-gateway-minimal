@@ -3,6 +3,10 @@ import { isAbsolute } from "node:path";
 import Database from "better-sqlite3";
 
 import {
+  bindAdsClick,
+  enqueueAdsConversion
+} from "./ads-conversion-store.mjs";
+import {
   DEFAULT_COIN_COMMERCE_HOLD_RECOVERY_GRACE_MS,
   applyCoinDiscount,
   canonicalCommerceRequestDigest,
@@ -2317,6 +2321,15 @@ export function createSqliteCoinCommerceStore(options = {}) {
       actorRef: request.operation.actorRef,
       occurredAt
     });
+    // Optional Ads click binding (no-op unless ADS_CLICK_BINDING_ENABLED).
+    // The descriptor is measurement metadata only: it is excluded from the
+    // confirm request digest and never affects the purchase outcome.
+    bindAdsClick(db, {
+      orderRef,
+      accountRef: request.accountId,
+      model: "legacy",
+      adsClick: request.adsClick
+    });
     completeCommerceReceipt(receiptRef, orderRef, occurredAt);
     const projected = projectOwnedOrder(request.accountId, orderRef);
     if (
@@ -2331,8 +2344,12 @@ export function createSqliteCoinCommerceStore(options = {}) {
   function confirmOrder(confirmInput) {
     return execute(() => {
       const value = assertPlainObject(confirmInput);
-      const fields = new Set(["accountId", "quoteRef", "operation"]);
-      assertExactDataFields(value, fields);
+      const fields = new Set(["accountId", "quoteRef", "operation", "adsClick"]);
+      assertExactDataFields(
+        value,
+        fields,
+        new Set(["accountId", "quoteRef", "operation"])
+      );
       let business;
       try {
         business = normalizeConfirmOrderRequest({
@@ -2350,7 +2367,8 @@ export function createSqliteCoinCommerceStore(options = {}) {
       return confirmTransaction.immediate({
         ...business,
         operation,
-        requestDigest
+        requestDigest,
+        adsClick: value.adsClick
       });
     });
   }
@@ -3246,6 +3264,14 @@ export function createSqliteCoinCommerceStore(options = {}) {
         ).run(row.confirmed_at, row.order_ref, row.account_id, before.order.updated_at);
         if (command.changes !== 1 || order.changes !== 1) throw commerceError("reconciliation_required");
         appendOrderEvent({ orderRef: row.order_ref, eventRef, eventType: "fulfillment_delivered", actorType: "commerce_system", actorRef: "coin_commerce_initial_confirmation", occurredAt: row.confirmed_at });
+        // Same terminal-state Ads hook as completeFulfillmentCommand: this
+        // recovery path is the second writer of the delivered state.
+        enqueueAdsConversion(db, {
+          orderRef: row.order_ref,
+          model: "legacy",
+          valueUnits: before.order.amount_units,
+          terminalAt: Date.parse(row.confirmed_at)
+        });
         const after = inspectInitialConfirmation({ accountId: row.account_id, orderRef: row.order_ref });
         if (after.command.status !== "delivered" || after.events.length !== before.events.length + 1
           || JSON.stringify(after.ledger) !== JSON.stringify(before.ledger)
@@ -4085,6 +4111,15 @@ export function createSqliteCoinCommerceStore(options = {}) {
       actorRef: "coin_commerce_fulfillment",
       occurredAt
     });
+    // Terminal-state hook for Ads server-side conversion upload (no-op
+    // unless ADS_CLICK_BINDING_ENABLED). Delivered is the legacy terminal
+    // state; captured alone never enqueues.
+    enqueueAdsConversion(db, {
+      orderRef: command.order_ref,
+      model: "legacy",
+      valueUnits: validated.order.amount_units,
+      terminalAt: Date.parse(occurredAt)
+    });
     validateCommandAndReceipt(db.prepare(`
       select * from platform_coin_commerce_fulfillment_commands
        where command_ref = ?
@@ -4391,3 +4426,4 @@ export function createCoinCommerceInitialConfirmationParticipant(input) {
   if (!binding || binding.database !== value.database) throw commerceError("invalid_store_contract");
   return binding.participant;
 }
+

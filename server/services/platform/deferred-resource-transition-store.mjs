@@ -3,6 +3,10 @@ import { isAbsolute } from "node:path";
 import Database from "better-sqlite3";
 
 import {
+  bindAdsClick,
+  enqueueAdsConversion
+} from "./ads-conversion-store.mjs";
+import {
   applyCoinDiscount,
   normalizeCoinCommerceOffer
 } from "./coin-commerce-domain.mjs";
@@ -184,6 +188,36 @@ function assertAllowedFields(value, fields, code = "deferred_transition_invalid_
     }
   }
   return input;
+}
+
+// Peels the optional client-supplied `adsClick` descriptor off a request
+// object before an exact-field contract runs. Any non-data or unexpected
+// property shape leaves the input untouched, so the exact-field contract
+// rejects it exactly as it would have before this descriptor existed.
+function splitOptionalAdsClick(input) {
+  if (
+    !input
+    || typeof input !== "object"
+    || Array.isArray(input)
+    || Object.getPrototypeOf(input) !== Object.prototype
+  ) {
+    return { request: input, adsClick: undefined };
+  }
+  const descriptor = Object.getOwnPropertyDescriptor(input, "adsClick");
+  if (!descriptor) return { request: input, adsClick: undefined };
+  if (!descriptor.enumerable || !("value" in descriptor)) {
+    return { request: input, adsClick: undefined };
+  }
+  const request = {};
+  for (const key of Reflect.ownKeys(input)) {
+    if (key === "adsClick") continue;
+    const field = Object.getOwnPropertyDescriptor(input, key);
+    if (!field || !field.enumerable || !("value" in field)) {
+      return { request: input, adsClick: undefined };
+    }
+    request[key] = field.value;
+  }
+  return { request, adsClick: descriptor.value };
 }
 
 function normalizeReference(value, code = "deferred_transition_invalid_input") {
@@ -2613,6 +2647,14 @@ export function createSqliteDeferredResourceTransitionStore(options = {}) {
       actorRef: request.operation.actorRef,
       occurredAt
     });
+    // Terminal-state hook for Ads server-side conversion upload (no-op
+    // unless ADS_CLICK_BINDING_ENABLED).
+    enqueueAdsConversion(db, {
+      orderRef: row.order_ref,
+      model: "deferred",
+      valueUnits: row.amount_units,
+      terminalAt: Date.parse(occurredAt)
+    });
     completeReceipt({ receiptRef, operationRef: receiptRef, resultRef: row.transition_ref, occurredAt });
     return publicProjection(findTransition(row.transition_ref));
   });
@@ -3182,13 +3224,22 @@ export function createSqliteDeferredResourceTransitionStore(options = {}) {
   function reserveTransitionFromCheckoutQuote(input) {
     assertOpen();
     try {
-      const outcome = reserveCheckoutQuoteTransaction.immediate(
-        normalizeCheckoutQuoteReserveRequest(input)
-      );
+      const { request, adsClick } = splitOptionalAdsClick(input);
+      const normalized = normalizeCheckoutQuoteReserveRequest(request);
+      const outcome = reserveCheckoutQuoteTransaction.immediate(normalized);
       if (outcome?.kind === "error") throw storeError(outcome.code);
       if (outcome?.kind !== "transition") {
         throw storeError("deferred_transition_infrastructure_error");
       }
+      // Optional Ads click binding (no-op unless ADS_CLICK_BINDING_ENABLED).
+      // Runs in the same request path right after the reservation commits;
+      // the binding key is the server-derived order_ref of the transition.
+      bindAdsClick(db, {
+        orderRef: outcome.transition.orderRef,
+        accountRef: normalized.accountId,
+        model: "deferred",
+        adsClick
+      });
       return outcome.transition;
     } catch (error) {
       throw normalizeStoreError(error);
@@ -3397,3 +3448,4 @@ export function createSqliteDeferredResourceTransitionStore(options = {}) {
     verifyClaimedTransitionReservation
   });
 }
+

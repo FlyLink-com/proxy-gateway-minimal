@@ -173,6 +173,29 @@ function accountIdFrom(input) {
   return descriptor.value;
 }
 
+// Peels the optional client-supplied `adsClick` descriptor off a request
+// object before an exact-field contract runs. Any non-data or unexpected
+// property shape leaves the input untouched, so the exact-field contract
+// rejects it exactly as it would have before this descriptor existed.
+function splitOptionalAdsClick(input) {
+  if (!isPlainObject(input)) return { request: input, adsClick: undefined };
+  const descriptor = Object.getOwnPropertyDescriptor(input, "adsClick");
+  if (!descriptor) return { request: input, adsClick: undefined };
+  if (!descriptor.enumerable || !("value" in descriptor)) {
+    return { request: input, adsClick: undefined };
+  }
+  const request = {};
+  for (const key of Reflect.ownKeys(input)) {
+    if (key === "adsClick") continue;
+    const field = Object.getOwnPropertyDescriptor(input, key);
+    if (!field || !field.enumerable || !("value" in field)) {
+      return { request: input, adsClick: undefined };
+    }
+    request[key] = field.value;
+  }
+  return { request, adsClick: descriptor.value };
+}
+
 function exactRequest(input, fields) {
   if (!isPlainObject(input)) throw adapterError("wallet_first_deferred_checkout_invalid");
   const keys = Reflect.ownKeys(input);
@@ -341,12 +364,14 @@ export function createWalletFirstDeferredCheckoutAdapter(options = {}) {
     reserveDeferredTransition(input) {
       assertOpen();
       try {
-        const request = exactRequest(input, ["accountId", "quoteRef", "operation"]);
+        const { request: peeled, adsClick } = splitOptionalAdsClick(input);
+        const request = exactRequest(peeled, ["accountId", "quoteRef", "operation"]);
         if (!REFERENCE.test(request.quoteRef)) throw adapterError("wallet_first_deferred_checkout_invalid");
         return store.reserveTransitionFromCheckoutQuote({
           accountId: accountIdFrom(request),
           quoteRef: request.quoteRef,
-          operation: request.operation
+          operation: request.operation,
+          ...(adsClick !== undefined ? { adsClick } : {})
         });
       } catch (error) {
         throw normalizeAdapterError(error);
@@ -396,3 +421,4 @@ export function createWalletFirstDeferredCheckoutAdapter(options = {}) {
   ADAPTER_INSTANCES.add(adapter);
   return adapter;
 }
+
