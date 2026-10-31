@@ -459,13 +459,13 @@ export async function runM0A2V7(expectedRelease) {
     console.log('app_release_path_binding=matched');
     console.log('app_release_identity=label_only');
     console.log('app_source_pins=matched');
+    const pidPresent = value => value === '0' ? 'no' : (/^[1-9][0-9]*$/.test(value || '') ? 'yes' : 'unknown');
     console.log(`full_metering_service ${unitState(fullBefore)} exec_main_code=${fullBefore.ExecMainCode ?? 'unknown'} exec_main_status=${fullBefore.ExecMainStatus ?? 'unknown'} started_at=${fullBefore.ExecMainStartTimestamp ?? 'unknown'} exited_at=${fullBefore.ExecMainExitTimestamp ?? 'unknown'} main_pid_present=${pidPresent(fullBefore.MainPID)} control_pid_present=${pidPresent(fullBefore.ControlPID)} restarts=${fullBefore.NRestarts ?? 'unknown'}`);
     const fullExecStatus = !Object.hasOwn(fullBefore, 'ExecStart') || !Object.hasOwn(fullBefore, 'WorkingDirectory') ? 'unknown' : (fullExec.matched ? 'matched' : 'unmatched');
     console.log(`full_metering_exec_binding=${fullExecStatus} config_digest_present=${fullExecStatus === 'unknown' ? 'unknown' : (fullExec.configDigestPresent ? 'yes' : 'no')}`);
     console.log(`collector_archive_files=${fullExec.matched ? FILES.length : 'unknown'} collector_archive_content=${fullExec.matched ? '49_file_closure_matched' : 'not_bound'}`);
     const fragmentPresent = row => !Object.hasOwn(row, 'FragmentPath') ? 'unknown' : (typeof row.FragmentPath === 'string' && path.isAbsolute(row.FragmentPath) ? 'yes' : 'no');
     const dropInCount = row => !Object.hasOwn(row, 'DropInPaths') ? 'unknown' : (typeof row.DropInPaths === 'string' && row.DropInPaths.trim() ? row.DropInPaths.trim().split(/\s+/).length : 0);
-    const pidPresent = value => value === '0' ? 'no' : (/^[1-9][0-9]*$/.test(value || '') ? 'yes' : 'unknown');
     const unitLink = (row, expected) => !Object.hasOwn(row, 'Unit') ? 'unknown' : (row.Unit === expected ? 'yes' : 'no');
     console.log(`full_metering_unit_metadata fragment_present=${fragmentPresent(fullBefore)} drop_in_count=${dropInCount(fullBefore)}`);
     console.log(`full_metering_onfailure=${onFailureLinked}`);
