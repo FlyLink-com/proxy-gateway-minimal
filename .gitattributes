@@ -1,3 +1,9 @@
 *.sh text eol=lf
 *.py text eol=lf
 ops/bwh-supply-control/* text eol=lf
+
+# M0-A2-1 read-only diagnostic: keep manifests and validation sources byte-stable on Windows.
+docs/runbooks/m0-a2-1-v7/** text eol=lf
+scripts/m0-a2-1-v7.mjs text eol=lf
+scripts/lib/m0-a2-1-v7-*.mjs text eol=lf
+server/tests/m0-a2-1-v7.test.mjs text eol=lf

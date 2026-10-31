@@ -62,7 +62,7 @@ test('full-metering ExecStart must bind the historical 49-file root, script, con
   assert.equal(inspectFullMeteringExecStart('raw command', ARCHIVE).matched, false);
 });
 
-test('status-writer ExecStart accepts the canonical app release or its verified current symlink only', () => {
+test('status-writer ExecStart accepts canonical and POSIX current-symlink paths under Windows Node', () => {
   const appRoot = `${BASE}/releases/control-plane-fixture`;
   const canonical = `{ path=/usr/bin/node ; argv[]=/usr/bin/node ${appRoot}/scripts/traffic-usage-collect-once.mjs --collect ; }`;
   assert.equal(inspectStatusWriterExecStart(canonical, appRoot, appRoot), true);

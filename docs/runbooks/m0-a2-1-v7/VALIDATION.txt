@@ -1,41 +1,44 @@
-M0-A2-1 v7 VALIDATION RECORD
+M0-A2-1 v7 / v8 REPAIR VALIDATION RECORD
 Date: 2026-10-31
-Status: PARTIAL PASS — source-level V8 harness passed; Node CLI validation remains pending.
+Status: REPAIR PREPARED — NATIVE NODE 22.16.0 VALIDATION PENDING.
 
-## Verified from current branch contents
+## v8 repair scope
 
-- The branch `m0-a2-1-v7-readonly-diagnostic-20261031` exists and is based on `master`.
-- The branch contains the v7 diagnostic CLI, diagnostic core, 49-file archive pin manifest, test file, runbook, review report, and checksum manifest.
-- All seven SHA-256 entries in `SHA256SUMS` were recomputed from the current branch file contents and matched. The checksum manifest itself is not self-hashed.
-- The PID formatter declaration was moved before its first production-output use, and the regression test asserts that ordering.
+- Replaced host-dependent `path.join(BASE, 'current')` with `path.posix.join(BASE, 'current')`. The runtime paths are Linux systemd paths; their separator semantics must not depend on the machine running the offline test.
+- Retained and clarified the current-symlink regression test so it exercises the slash-delimited `/opt/proxy-gateway-minimal-candidate/current` path.
+- Added targeted `.gitattributes` LF rules for this package's runbook, checksum manifest, CLI, diagnostic modules, and test file.
+- Recomputed all seven entries in `SHA256SUMS` from the exact UTF-8/LF contents in this repair commit. The checksum manifest itself is intentionally not self-hashed.
 
-## Isolated V8 harness results
+## v7 failures that prompted this repair
 
-The exact current branch contents were fetched and executed in an isolated V8 harness. Filesystem and child-process interfaces were stubbed so no host reads, writes, SSH, systemctl, or journalctl could occur.
+- Windows Node v24.16.0: 9/10 tests passed; the current-symlink status-writer binding test failed because the path constant used host-dependent separators.
+- The initial `sha256sum -c` also read a CRLF manifest on Windows. Separately, after normalizing line endings, `VALIDATION.txt` still did not match its recorded digest. This was a real stale checksum, not only a CRLF parsing issue.
+- The previous result is not evidence of Linux Node 22 compatibility.
 
-- The diagnostic module's `runSelfTests()` completed with `m0_a2_1_v7_self_test=passed`.
-- The repository's ten test cases in `server/tests/m0-a2-1-v7.test.mjs` were executed against the fetched diagnostic module: 10 passed, 0 failed.
-- The CLI entrypoint, diagnostic core, archive manifest module, and test source parsed in V8 after removing Node ESM import/export declarations and replacing `import.meta` for the harness. This is not equivalent to Node's native ESM loader or `node --check`.
+## Required independent local validation — NOT YET RUN
 
-## Still required before marking local validation complete
+Use a fresh isolated checkout/worktree of this exact PR head. Do not switch or modify the original working directory with uncommitted changes.
 
-The container has Node v22.16.0, but does not have a checkout of this repository. A network clone attempt failed because the runtime cannot resolve github.com. Therefore these exact Node commands have NOT been run against the branch checkout:
+1. Confirm `node --version` is exactly `v22.16.0`.
+2. Confirm `git check-attr text eol -- docs/runbooks/m0-a2-1-v7/SHA256SUMS docs/runbooks/m0-a2-1-v7/VALIDATION.txt scripts/lib/m0-a2-1-v7-diagnostic.mjs` reports `eol: lf`.
+3. Confirm the relevant tracked files are checked out as LF with `git ls-files --eol`.
+4. Run the exact README command sequence:
+   - `sha256sum -c docs/runbooks/m0-a2-1-v7/SHA256SUMS`
+   - `node --check scripts/m0-a2-1-v7.mjs`
+   - `node --check scripts/lib/m0-a2-1-v7-diagnostic.mjs`
+   - `node --check scripts/lib/m0-a2-1-v7-archive-pins.mjs`
+   - `node --check server/tests/m0-a2-1-v7.test.mjs`
+   - `node scripts/m0-a2-1-v7.mjs --self-test`
+   - `node --test server/tests/m0-a2-1-v7.test.mjs`
+5. Record the exact exit code and output for each command. A skipped CI run is not a pass.
 
-- `sha256sum -c docs/runbooks/m0-a2-1-v7/SHA256SUMS`
-- `node --check scripts/m0-a2-1-v7.mjs`
-- `node --check scripts/lib/m0-a2-1-v7-diagnostic.mjs`
-- `node --check scripts/lib/m0-a2-1-v7-archive-pins.mjs`
-- `node --check server/tests/m0-a2-1-v7.test.mjs`
-- `node scripts/m0-a2-1-v7.mjs --self-test`
-- `node --test server/tests/m0-a2-1-v7.test.mjs`
+## Explicitly not performed in this repair preparation
 
-## Explicitly not performed
-
-- GitHub Actions / hosted CI (intentionally not run to preserve CI budget).
-- SSH or BWH / Provider access.
-- Production `systemctl` or `journalctl` commands.
+- Native Node v22.16.0 commands or Windows checkout validation.
+- GitHub Actions / hosted CI; the PR remains Draft to preserve the CI budget.
+- SSH, BWH / Provider access, production systemd or journal reads.
 - App release or collector archive reads on production.
 - Status projection, SQLite, full-metering journal, checkpoint, config, environment-file, or credential reads.
 - Collector invocation, service/Timer action, install, restart, or production mutation.
 
-The V8 harness is useful evidence for the pure diagnostic logic and fixtures, but it does not prove native Node execution or target-host compatibility. M0 remains BLOCKED. Production execution, M0-A2-2, M1–M8, recovery, and Japan node creation remain unauthorized.
+The GitHub change in this repair is limited to repository source, tests, runbook, validation metadata, review report, checksum manifest, and line-ending attributes. It does not authorize production execution. M0 remains BLOCKED. Production execution, M0-A2-2, M1–M8, recovery, and Japan node creation remain unauthorized.

@@ -9,7 +9,8 @@ import { pathToFileURL } from 'node:url';
 // changes systemd state, writes files, or returns raw environment / ExecStart / journal content.
 
 const BASE = '/opt/proxy-gateway-minimal-candidate';
-const CURRENT_LINK = path.join(BASE, 'current');
+// systemd paths are Linux paths; keep POSIX separators even when local tests run on Windows Node.
+const CURRENT_LINK = path.posix.join(BASE, 'current');
 const ARCHIVE_ROOT = '/opt/gccwebos-runtime/collector-plan-e834185cca07';
 const CONFIG_PATH = `${BASE}/full-metering-bwh-local-20261012/config.json`;
 const EXPECTED_FAILURE_START = '2026-10-20 02:15:07 UTC';
