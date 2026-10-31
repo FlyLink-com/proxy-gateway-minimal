@@ -1,0 +1,31 @@
+M0-A2-1 v7 OFFLINE REVIEW REPORT
+Disposition: Draft PR candidate only; NOT approved for production execution.
+
+Changes relative to v6:
+1. Adds a small CLI entrypoint plus isolated diagnostic core and pinned archive manifest.
+2. Adds full-metering service ExecStart / WorkingDirectory / OnFailure / FragmentPath / DropInPaths metadata checks.
+3. Verifies the exact 49-file collector content closure recorded for collector-plan-e834185cca07, rather than treating App-side pins as collector artifact proof.
+4. Inspects gccgw-full-metering-collect-stop.service and the full-metering Timer independently.
+5. Corrects the status binding comparison to use gccgw-traffic-usage-collect.service and gccgw-traffic-usage-collect.timer, not the full-metering service.
+6. Adds a narrowly gated systemd-journal lookup for only the recorded 2026-10-20 02:15:07 UTC invocation, filtered by InvocationID and unit; only a single allowlisted errorCode can be emitted.
+7. Keeps raw paths, ExecStart strings, environment values, PIDs, invocation IDs, raw journal messages, and raw status JSON out of output.
+
+Safety review:
+- No writes, install, collector invocation, service action, timer action, DB read, full-metering journal/checkpoint read, config read, environment-file read, SSH, or network call in this preparation.
+- Production branch has only two fixed child-process call sites: /usr/bin/systemctl show and /usr/bin/journalctl with exact invocation/unit filters. Both use shell=false, bounded timeout and output. The App source pin reader uses O_NOFOLLOW and before/after inode metadata checks; App release directories are required to be root-owned and not group/world writable.
+- Status projection is read only after App-to-status-writer binding is matched, is size/mode/link bounded, and is passed through the pinned App sanitizer.
+- If the recorded invocation is no longer the current service invocation, the systemd journal lookup is skipped and the failure code remains unknown.
+- If the status path is not directly provable from the App and status-writer unit metadata, status_binding remains unknown; no absence claim is made. Duplicate direct assignments are rejected.
+- Full-metering config contents, SQLite, full-metering Journal directory, checkpoint, and credentials are not read.
+
+Known limitations:
+- App identity is still label-only plus four code-slice pins; it is not a complete App artifact/source-commit proof.
+- The status binding intentionally remains unknown if the path is inherited only through an environment file and cannot be proven by the selected direct-assignment metadata.
+- The collector archive check proves the 49-file content closure, not a re-created tar archive digest.
+- The status projection's producer coverage is partial and does not prove complete Japan VLESS / Hy2 / TUIC source coverage.
+- Temporal correlation of the stop unit does not independently prove OnFailure causality.
+- Node target-host version and current production unit shape remain unknown until a separately approved read-only run.
+
+Validation: see VALIDATION.txt. Local Node v22.16.0. No CI was run to preserve the repository's CI budget.
+
+Decision: keep M0 BLOCKED. A production read requires a separate exact Risk A approval bound to this package SHA-256, expected release label, target, and time window. No M0-A2-2, M1–M8, recovery, or Japan node creation is authorized by this package.
