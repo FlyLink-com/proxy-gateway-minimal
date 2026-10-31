@@ -20,6 +20,7 @@ const STOP_SERVICE = 'gccgw-full-metering-collect-stop.service';
 const STATUS_SERVICE = 'gccgw-traffic-usage-collect.service';
 const STATUS_TIMER = 'gccgw-traffic-usage-collect.timer';
 const RELEASE_LABEL_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,159}$/;
+const SAFE_ABSOLUTE_PATH = /^\/[A-Za-z0-9_./-]+$/;
 const SAFE_ERROR_CODE = /^(full_metering_|baseline_|counter_|observation_|unknown_counter_|source_|observed_counter_|closed_connection_|connection_)[a-z0-9_]{1,88}$/;
 const MAX_JOURNAL_BYTES = 1024 * 1024;
 const MAX_STATUS_BYTES = 256 * 1024;
@@ -139,7 +140,7 @@ function resolveAppRelease(appBefore, expectedRelease) {
 function assertPinnedAppSource(appRoot) {
   for (const [relative, expected] of APP_PINS) {
     const file = path.join(appRoot, relative), before = fs.lstatSync(file, { bigint: true });
-    if (!before.isFile() || before.isSymbolicLink() || before.uid !== 0n || before.nlink !== 1n || (before.mode & 0o022n) !== 0n || fs.realpathSync(file) !== file) fail('app_source_file_unsafe');
+    if (!before.isFile() || before.isSymbolicLink() || before.uid !== 0n || before.nlink !== 1n || before.size > 1024n * 1024n || (before.mode & 0o022n) !== 0n || fs.realpathSync(file) !== file) fail('app_source_file_unsafe');
     const fd = fs.openSync(file, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
     try {
       const opened = fs.fstatSync(fd, { bigint: true });
@@ -209,6 +210,9 @@ function selectedEnvironmentAssignment(environment, key) {
   if (raw.startsWith("'") && raw.endsWith("'")) return raw.slice(1, -1);
   return raw;
 }
+function isSafeAbsolutePath(value) {
+  return typeof value === 'string' && SAFE_ABSOLUTE_PATH.test(value) && value.split('/').every(part => part !== '.' && part !== '..');
+}
 function processStatusPath(pid) {
   const bytes = fs.readFileSync(`/proc/${pid}/environ`), values = [];
   if (bytes.length > 1024 * 1024) fail('process_environment_too_large');
@@ -216,7 +220,7 @@ function processStatusPath(pid) {
     const at = entry.indexOf('=');
     if (at > 0 && entry.slice(0, at) === 'EDGE_USAGE_COLLECTOR_STATUS_PATH') values.push(entry.slice(at + 1));
   }
-  if (values.length !== 1 || !path.isAbsolute(values[0])) return null;
+  if (values.length !== 1 || !isSafeAbsolutePath(values[0])) return null;
   return values[0];
 }
 export function resolveStatusBinding(app, statusWriter, processValue) {
@@ -227,7 +231,7 @@ export function resolveStatusBinding(app, statusWriter, processValue) {
   for (const key of ['PassEnvironment','UnsetEnvironment']) if ((app[key] ?? '') !== (statusWriter[key] ?? '')) return false;
   const appValue = selectedEnvironmentAssignment(app.Environment, 'EDGE_USAGE_COLLECTOR_STATUS_PATH');
   const writerValue = selectedEnvironmentAssignment(statusWriter.Environment, 'EDGE_USAGE_COLLECTOR_STATUS_PATH');
-  return Boolean(appValue && writerValue && appValue === writerValue && processValue === appValue && path.isAbsolute(appValue));
+  return Boolean(appValue && writerValue && appValue === writerValue && processValue === appValue && isSafeAbsolutePath(appValue));
 }
 
 function readStatusProjection(statusPath) {
@@ -249,7 +253,7 @@ function readStatusProjection(statusPath) {
 }
 
 export function inspectFullMeteringExecStart(execStart, workingDirectory) {
-  if (workingDirectory !== ARCHIVE_ROOT || typeof execStart !== 'string' || !execStart.includes('path=/usr/bin/node ;') || !execStart.includes('argv[]=/usr/bin/node ')) return { matched: false, configDigestPresent: false };
+  if (workingDirectory !== ARCHIVE_ROOT || typeof execStart !== 'string' || !execStart.includes('path=/usr/bin/node ;') || !execStart.includes('argv[]=/usr/bin/node ') || execStart.split('path=').length !== 2 || execStart.split('argv[]=').length !== 2) return { matched: false, configDigestPresent: false };
   const expected = `${ARCHIVE_ROOT}/scripts/traffic-full-metering-collect.mjs --collect --config ${CONFIG_PATH} --config-sha256 `;
   const at = execStart.indexOf(expected);
   if (at < 0) return { matched: false, configDigestPresent: false };
@@ -257,7 +261,7 @@ export function inspectFullMeteringExecStart(execStart, workingDirectory) {
   return { matched: Boolean(digest), configDigestPresent: Boolean(digest) };
 }
 export function inspectStatusWriterExecStart(execStart, workingDirectory, appRoot, realpathSync = fs.realpathSync) {
-  if (typeof execStart !== 'string' || !execStart.includes('path=/usr/bin/node ;') || !execStart.includes('argv[]=/usr/bin/node ') || !appWorkingDirectoryMatchesRelease(workingDirectory, appRoot, realpathSync)) return false;
+  if (typeof execStart !== 'string' || !execStart.includes('path=/usr/bin/node ;') || !execStart.includes('argv[]=/usr/bin/node ') || execStart.split('path=').length !== 2 || execStart.split('argv[]=').length !== 2 || !appWorkingDirectoryMatchesRelease(workingDirectory, appRoot, realpathSync)) return false;
   const canonicalPrefix = `argv[]=/usr/bin/node ${appRoot}/scripts/traffic-usage-collect-once.mjs --collect`;
   const currentPrefix = `argv[]=/usr/bin/node ${CURRENT_LINK}/scripts/traffic-usage-collect-once.mjs --collect`;
   if (execStart.includes(canonicalPrefix) && /^\s*;/.test(execStart.slice(execStart.indexOf(canonicalPrefix) + canonicalPrefix.length))) return true;
@@ -265,11 +269,11 @@ export function inspectStatusWriterExecStart(execStart, workingDirectory, appRoo
   catch { return false; }
 }
 
-export function isExpectedFailureInvocation(startTimestamp, invocationId) {
+export function isExpectedFailureInvocation(startTimestamp, invocationId, execMainStatus, result) {
   const timestampMatches = startTimestamp === 'Tue 2026-10-20 02:15:07 UTC'
     || startTimestamp === 'Tue Oct 20 02:15:07 UTC'
     || startTimestamp === EXPECTED_FAILURE_START;
-  return timestampMatches && /^[a-f0-9]{32}$/.test(invocationId || '') && !/^0+$/.test(invocationId);
+  return timestampMatches && execMainStatus === '2' && result === 'exit-code' && /^[a-f0-9]{32}$/.test(invocationId || '') && !/^0+$/.test(invocationId);
 }
 export function extractFailureErrorCode(journalJsonLines, invocationId, unit = FULL_SERVICE) {
   const codes = new Set();
@@ -370,8 +374,9 @@ export function runSelfTests() {
   if (extractFailureErrorCode(journal, invocation) !== 'full_metering_binding_changed') throw new Error('fixture_journal_code_failed');
   if (extractFailureErrorCode(journal, 'b'.repeat(32)) !== 'unknown') throw new Error('fixture_journal_invocation_binding_failed');
   if (extractFailureErrorCode(JSON.stringify({ _SYSTEMD_INVOCATION_ID: invocation, _SYSTEMD_UNIT: FULL_SERVICE, MESSAGE: JSON.stringify({ type: 'other', errorCode: 'secret' }) }), invocation) !== 'unknown') throw new Error('fixture_journal_allowlist_failed');
-  if (!isExpectedFailureInvocation('Tue 2026-10-20 02:15:07 UTC', invocation)) throw new Error('fixture_expected_invocation_failed');
-  if (isExpectedFailureInvocation('Tue 2026-10-21 02:15:07 UTC', invocation)) throw new Error('fixture_wrong_date_accepted');
+  if (!isExpectedFailureInvocation('Tue 2026-10-20 02:15:07 UTC', invocation, '2', 'exit-code')) throw new Error('fixture_expected_invocation_failed');
+  if (isExpectedFailureInvocation('Tue 2026-10-21 02:15:07 UTC', invocation, '2', 'exit-code')) throw new Error('fixture_wrong_date_accepted');
+  if (isExpectedFailureInvocation('Tue 2026-10-20 02:15:07 UTC', invocation, '0', 'success')) throw new Error('fixture_nonfailure_invocation_accepted');
   if (correlateOnFailureStop('Tue 2026-10-20 02:15:08 UTC','Tue 2026-10-20 02:15:09 UTC') !== 'matched') throw new Error('fixture_stop_correlation_failed');
   if (correlateOnFailureStop('unknown','unknown') !== 'unknown') throw new Error('fixture_stop_correlation_unknown_failed');
   validateArchiveManifest();
@@ -428,7 +433,7 @@ export async function runM0A2V7(expectedRelease) {
 
     stage = 'failure_invocation_binding';
     const invocationId = fullBefore.InvocationID;
-    const exactInvocation = isExpectedFailureInvocation(fullBefore.ExecMainStartTimestamp, invocationId);
+    const exactInvocation = isExpectedFailureInvocation(fullBefore.ExecMainStartTimestamp, invocationId, fullBefore.ExecMainStatus, fullBefore.Result);
     const errorCode = exactInvocation ? readFailureErrorCode(invocationId) : 'unknown';
 
     stage = 'stability_recheck';
