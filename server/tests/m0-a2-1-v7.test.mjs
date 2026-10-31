@@ -57,18 +57,21 @@ test('full-metering ExecStart must bind the historical 49-file root, script, con
   assert.equal(inspectFullMeteringExecStart(good, '/tmp/other').matched, false);
   assert.equal(inspectFullMeteringExecStart(good.replace(`${'a'.repeat(64)}`, 'not-a-digest'), ARCHIVE).matched, false);
   assert.equal(inspectFullMeteringExecStart(good.replace('--collect','--check'), ARCHIVE).matched, false);
+  assert.equal(inspectFullMeteringExecStart(good.replace('path=/usr/bin/node','path=/bin/sh'), ARCHIVE).matched, false);
   assert.equal(inspectFullMeteringExecStart('raw command', ARCHIVE).matched, false);
 });
 
 test('status-writer ExecStart accepts the canonical app release or its verified current symlink only', () => {
   const appRoot = `${BASE}/releases/control-plane-fixture`;
-  const canonical = `/usr/bin/node ${appRoot}/scripts/traffic-usage-collect-once.mjs --collect`;
+  const canonical = `{ path=/usr/bin/node ; argv[]=/usr/bin/node ${appRoot}/scripts/traffic-usage-collect-once.mjs --collect ; }`;
   assert.equal(inspectStatusWriterExecStart(canonical, appRoot, appRoot), true);
-  const current = `/usr/bin/node ${BASE}/current/scripts/traffic-usage-collect-once.mjs --collect`;
+  const current = `{ path=/usr/bin/node ; argv[]=/usr/bin/node ${BASE}/current/scripts/traffic-usage-collect-once.mjs --collect ; }`;
   const realpath = value => value === `${BASE}/current` ? appRoot : value;
   assert.equal(inspectStatusWriterExecStart(current, `${BASE}/current`, appRoot, realpath), true);
   assert.equal(inspectStatusWriterExecStart(canonical, '/tmp/unbound', appRoot), false);
   assert.equal(inspectStatusWriterExecStart(canonical.replace('--collect','--check'), appRoot, appRoot), false);
+  assert.equal(inspectStatusWriterExecStart(canonical.replace('path=/usr/bin/node','path=/bin/sh'), appRoot, appRoot), false);
+  assert.equal(inspectStatusWriterExecStart(canonical.replace('--collect ;','--collect --unsafe ;'), appRoot, appRoot), false);
 });
 
 test('status path binding compares App with the traffic-usage writer, never the full-metering unit', () => {
@@ -83,6 +86,7 @@ test('status path binding compares App with the traffic-usage writer, never the 
   assert.equal(resolveStatusBinding(app, { ...statusWriter, Environment: 'EDGE_USAGE_COLLECTOR_STATUS_PATH=/var/lib/other.json' }, '/var/lib/gccgw/traffic-status.json'), false);
   assert.equal(resolveStatusBinding(app, statusWriter, '/var/lib/other.json'), false);
   assert.equal(resolveStatusBinding(app, { ...statusWriter, UnsetEnvironment: 'EDGE_USAGE_COLLECTOR_STATUS_PATH' }, '/var/lib/gccgw/traffic-status.json'), false);
+  assert.equal(resolveStatusBinding({ ...app, Environment: `${app.Environment} EDGE_USAGE_COLLECTOR_STATUS_PATH=/var/lib/other.json` }, statusWriter, '/var/lib/gccgw/traffic-status.json'), false);
 });
 
 test('failed error code is extracted only from the exact service invocation and safe message shape', () => {
@@ -126,6 +130,9 @@ test('production branch has only fixed read commands and no systemd mutation or 
   assert.match(source, /shell: false/g);
   assert.doesNotMatch(source, /writeFileSync|appendFileSync|unlinkSync|renameSync|chmodSync|chownSync|execSync|execFileSync/);
   assert.doesNotMatch(source, /systemctl\s+(start|stop|restart|enable|disable|reset-failed|daemon-reload)/);
+  assert.match(source, /const args = \['show', unit/);
+  assert.match(source, /'--no-pager','--output=json','--lines=64'/);
+  assert.doesNotMatch(source, /readFileSync\([^)]*CONFIG_PATH/);
   assert.doesNotMatch(source, /subscription-control\.sqlite|checkpoint\.json|full-metering-bwh-local-20261009\/journal/);
   assert.doesNotMatch(source, /--collect\s*(?:;|\n).*spawnSync/);
 });
