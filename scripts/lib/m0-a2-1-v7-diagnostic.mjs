@@ -260,8 +260,8 @@ export function inspectStatusWriterExecStart(execStart, workingDirectory, appRoo
   if (typeof execStart !== 'string' || !execStart.includes('path=/usr/bin/node ;') || !execStart.includes('argv[]=/usr/bin/node ') || !appWorkingDirectoryMatchesRelease(workingDirectory, appRoot, realpathSync)) return false;
   const canonicalPrefix = `argv[]=/usr/bin/node ${appRoot}/scripts/traffic-usage-collect-once.mjs --collect`;
   const currentPrefix = `argv[]=/usr/bin/node ${CURRENT_LINK}/scripts/traffic-usage-collect-once.mjs --collect`;
-  if (execStart.includes(canonicalPrefix) && /\s*;/.test(execStart.slice(execStart.indexOf(canonicalPrefix) + canonicalPrefix.length))) return true;
-  try { return realpathSync(CURRENT_LINK) === appRoot && execStart.includes(currentPrefix) && /\s*;/.test(execStart.slice(execStart.indexOf(currentPrefix) + currentPrefix.length)); }
+  if (execStart.includes(canonicalPrefix) && /^\s*;/.test(execStart.slice(execStart.indexOf(canonicalPrefix) + canonicalPrefix.length))) return true;
+  try { return realpathSync(CURRENT_LINK) === appRoot && execStart.includes(currentPrefix) && /^\s*;/.test(execStart.slice(execStart.indexOf(currentPrefix) + currentPrefix.length)); }
   catch { return false; }
 }
 
