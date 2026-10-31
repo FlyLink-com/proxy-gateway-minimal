@@ -3,8 +3,9 @@ import { isAbsolute } from "node:path";
 import Database from "better-sqlite3";
 
 import {
-  bindAdsClick,
-  enqueueAdsConversion
+  safeCaptureAdsClickForOrder,
+  safeEnqueueAdsConversion,
+  safeMaterializeAdsClickForOrder
 } from "./ads-conversion-store.mjs";
 import {
   applyCoinDiscount,
@@ -2133,7 +2134,14 @@ export function createSqliteDeferredResourceTransitionStore(options = {}) {
       if (!transition || transition.account_id !== request.accountId) {
         throw storeError("deferred_transition_infrastructure_error");
       }
-      return Object.freeze({ kind: "transition", transition: publicProjection(transition) });
+      // Internal signal for reserveTransitionFromCheckoutQuote's
+      // post-commit Ads step: a replay may only materialize the first
+      // request's stored click claim.
+      return Object.freeze({
+        kind: "transition",
+        transition: publicProjection(transition),
+        adsReplay: true
+      });
     }
     if (prepared.kind !== "reserve") {
       throw storeError("deferred_transition_infrastructure_error");
@@ -2149,7 +2157,7 @@ export function createSqliteDeferredResourceTransitionStore(options = {}) {
       operation: prepared.operation,
       occurredAt
     });
-    return Object.freeze({ kind: "transition", transition });
+    return Object.freeze({ kind: "transition", transition, adsReplay: false });
   });
 
   function expireLeaseBoundTransitions(occurredAt) {
@@ -2646,14 +2654,6 @@ export function createSqliteDeferredResourceTransitionStore(options = {}) {
       actorType: request.operation.actorType,
       actorRef: request.operation.actorRef,
       occurredAt
-    });
-    // Terminal-state hook for Ads server-side conversion upload (no-op
-    // unless ADS_CLICK_BINDING_ENABLED).
-    enqueueAdsConversion(db, {
-      orderRef: row.order_ref,
-      model: "deferred",
-      valueUnits: row.amount_units,
-      terminalAt: Date.parse(occurredAt)
     });
     completeReceipt({ receiptRef, operationRef: receiptRef, resultRef: row.transition_ref, occurredAt });
     return publicProjection(findTransition(row.transition_ref));
@@ -3231,15 +3231,24 @@ export function createSqliteDeferredResourceTransitionStore(options = {}) {
       if (outcome?.kind !== "transition") {
         throw storeError("deferred_transition_infrastructure_error");
       }
-      // Optional Ads click binding (no-op unless ADS_CLICK_BINDING_ENABLED).
-      // Runs in the same request path right after the reservation commits;
-      // the binding key is the server-derived order_ref of the transition.
-      bindAdsClick(db, {
-        orderRef: outcome.transition.orderRef,
-        accountRef: normalized.accountId,
-        model: "deferred",
-        adsClick
-      });
+      // Post-commit Ads measurement step (never affects the purchase
+      // result; the safe wrappers swallow every failure, so a binding
+      // problem can no longer surface as a request error after the
+      // reservation has committed). A first request records its click
+      // claim; a replay may only materialize the claim the first request
+      // stored. The binding key is the server-derived order_ref.
+      if (outcome.adsReplay === true) {
+        safeMaterializeAdsClickForOrder(db, {
+          orderRef: outcome.transition.orderRef
+        });
+      } else {
+        safeCaptureAdsClickForOrder(db, {
+          orderRef: outcome.transition.orderRef,
+          accountRef: normalized.accountId,
+          model: "deferred",
+          adsClick
+        });
+      }
       return outcome.transition;
     } catch (error) {
       throw normalizeStoreError(error);
@@ -3363,7 +3372,21 @@ export function createSqliteDeferredResourceTransitionStore(options = {}) {
   function settleTransition(input) {
     assertOpen();
     try {
-      return settleTransaction.immediate(normalizeSettleRequest(input));
+      const result = settleTransaction.immediate(normalizeSettleRequest(input));
+      // Post-commit Ads measurement step: settled is the deferred
+      // terminal state. Runs only after the settle transaction commits
+      // (including its idempotent replay), through the safe wrapper, so a
+      // measurement failure can never roll back the settlement or be
+      // mistaken for an unknown charge.
+      if (result?.state === "settled") {
+        safeEnqueueAdsConversion(db, {
+          orderRef: result.orderRef,
+          model: "deferred",
+          valueUnits: result.amountUnits,
+          terminalAt: Date.parse(result.settledAt)
+        });
+      }
+      return result;
     } catch (error) {
       throw normalizeStoreError(error);
     }

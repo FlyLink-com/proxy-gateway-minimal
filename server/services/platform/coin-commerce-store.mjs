@@ -3,8 +3,10 @@ import { isAbsolute } from "node:path";
 import Database from "better-sqlite3";
 
 import {
-  bindAdsClick,
-  enqueueAdsConversion
+  adsBindingEnabled,
+  safeCaptureAdsClickForOrder,
+  safeEnqueueAdsConversion,
+  safeMaterializeAdsClickForOrder
 } from "./ads-conversion-store.mjs";
 import {
   DEFAULT_COIN_COMMERCE_HOLD_RECOVERY_GRACE_MS,
@@ -530,12 +532,63 @@ export function createSqliteCoinCommerceStore(options = {}) {
   let recoveryAuditCursor = null;
   let recoveryAuditDue = false;
 
+  // Ads measurement post-commit work queued by the initial-confirmation
+  // participant. That participant runs inside a caller's transaction, so
+  // it must not write measurement rows itself; it only queues the order
+  // reference here (memory only). flushAdsRecoveryEnqueues() runs outside
+  // any transaction, re-reads the committed fulfillment state, and records
+  // the outbox row only for orders that really are delivered — a caller
+  // rollback therefore produces no outbox row. Entries are dropped once
+  // examined; if the process exits first, the enqueue is lost (measurement
+  // only, never purchase impact).
+  const pendingAdsRecoveryEnqueues = new Set();
+
+  function queueAdsRecoveryEnqueue(orderRef) {
+    if (typeof orderRef === "string" && orderRef.length > 0) {
+      pendingAdsRecoveryEnqueues.add(orderRef);
+    }
+  }
+
+  function flushAdsRecoveryEnqueues() {
+    if (pendingAdsRecoveryEnqueues.size === 0) return;
+    if (!adsBindingEnabled()) {
+      pendingAdsRecoveryEnqueues.clear();
+      return;
+    }
+    if (db.inTransaction) return;
+    for (const orderRef of [...pendingAdsRecoveryEnqueues]) {
+      pendingAdsRecoveryEnqueues.delete(orderRef);
+      try {
+        const delivered = db.prepare(`
+          select o.amount_units as amount_units,
+                 c.updated_at as delivered_at
+            from platform_coin_commerce_orders o
+            join platform_coin_commerce_fulfillment_commands c
+              on c.order_ref = o.order_ref
+           where o.order_ref = ? and c.status = 'delivered'
+        `).get(orderRef);
+        if (delivered) {
+          safeEnqueueAdsConversion(db, {
+            orderRef,
+            model: "legacy",
+            valueUnits: delivered.amount_units,
+            terminalAt: Date.parse(delivered.delivered_at)
+          });
+        }
+      } catch {
+        // Measurement only: a flush failure drops the queued entry and
+        // never affects the store operation that triggered the flush.
+      }
+    }
+  }
+
   function assertOpen() {
     if (closed) throw commerceError("commerce_store_closed");
   }
 
   function execute(action) {
     assertOpen();
+    flushAdsRecoveryEnqueues();
     try {
       return action();
     } catch (error) {
@@ -2160,7 +2213,12 @@ export function createSqliteCoinCommerceStore(options = {}) {
       accountId: request.accountId,
       quoteRef: request.quoteRef
     });
-    if (replay) return replay;
+    if (replay) {
+      // Internal signal for confirmOrder's post-commit Ads step: a replay
+      // may only materialize the first request's stored click claim.
+      request.adsOutcome = { replay: true, orderRef: replay.orderRef };
+      return replay;
+    }
 
     const quoteRow = db.prepare(`
       select * from platform_coin_commerce_quotes
@@ -2321,15 +2379,6 @@ export function createSqliteCoinCommerceStore(options = {}) {
       actorRef: request.operation.actorRef,
       occurredAt
     });
-    // Optional Ads click binding (no-op unless ADS_CLICK_BINDING_ENABLED).
-    // The descriptor is measurement metadata only: it is excluded from the
-    // confirm request digest and never affects the purchase outcome.
-    bindAdsClick(db, {
-      orderRef,
-      accountRef: request.accountId,
-      model: "legacy",
-      adsClick: request.adsClick
-    });
     completeCommerceReceipt(receiptRef, orderRef, occurredAt);
     const projected = projectOwnedOrder(request.accountId, orderRef);
     if (
@@ -2338,6 +2387,9 @@ export function createSqliteCoinCommerceStore(options = {}) {
     ) {
       throw commerceError("quote_stale");
     }
+    // Internal signal for confirmOrder's post-commit Ads step (see the
+    // replay branch above): this was the first request for the order.
+    request.adsOutcome = { replay: false, orderRef };
     return projected;
   });
 
@@ -2364,12 +2416,32 @@ export function createSqliteCoinCommerceStore(options = {}) {
         "confirm_order",
         business
       );
-      return confirmTransaction.immediate({
+      const transactionRequest = {
         ...business,
         operation,
         requestDigest,
-        adsClick: value.adsClick
-      });
+        adsClick: value.adsClick,
+        adsOutcome: null
+      };
+      const result = confirmTransaction.immediate(transactionRequest);
+      // Post-commit Ads measurement step (never affects the purchase
+      // result; the safe wrappers swallow every failure). The descriptor
+      // is measurement metadata only and stays out of the request digest.
+      // A first request records its click claim; a replay may only
+      // materialize the claim the first request stored.
+      if (transactionRequest.adsOutcome?.replay === false) {
+        safeCaptureAdsClickForOrder(db, {
+          orderRef: transactionRequest.adsOutcome.orderRef,
+          accountRef: business.accountId,
+          model: "legacy",
+          adsClick: value.adsClick
+        });
+      } else if (transactionRequest.adsOutcome?.replay === true) {
+        safeMaterializeAdsClickForOrder(db, {
+          orderRef: transactionRequest.adsOutcome.orderRef
+        });
+      }
+      return result;
     });
   }
 
@@ -3248,6 +3320,10 @@ export function createSqliteCoinCommerceStore(options = {}) {
           if (events.length !== 1 || events[0].event_ref !== eventRef || events[0].safe_code !== null
             || events[0].actor_type !== "commerce_system" || events[0].actor_ref !== "coin_commerce_initial_confirmation"
             || events[0].occurred_at !== row.confirmed_at) throw commerceError("reconciliation_required");
+          // Already delivered: make sure the Ads outbox enqueue is queued
+          // for the post-commit flush (memory only; this participant runs
+          // inside a caller's transaction and must not write here).
+          queueAdsRecoveryEnqueue(row.order_ref);
           return { status: "delivered" };
         }
         db.prepare(`insert into platform_coin_commerce_fulfillment_receipts
@@ -3264,14 +3340,11 @@ export function createSqliteCoinCommerceStore(options = {}) {
         ).run(row.confirmed_at, row.order_ref, row.account_id, before.order.updated_at);
         if (command.changes !== 1 || order.changes !== 1) throw commerceError("reconciliation_required");
         appendOrderEvent({ orderRef: row.order_ref, eventRef, eventType: "fulfillment_delivered", actorType: "commerce_system", actorRef: "coin_commerce_initial_confirmation", occurredAt: row.confirmed_at });
-        // Same terminal-state Ads hook as completeFulfillmentCommand: this
-        // recovery path is the second writer of the delivered state.
-        enqueueAdsConversion(db, {
-          orderRef: row.order_ref,
-          model: "legacy",
-          valueUnits: before.order.amount_units,
-          terminalAt: Date.parse(row.confirmed_at)
-        });
+        // Same terminal state as completeFulfillmentCommand, but this
+        // recovery path runs inside a caller's transaction: queue the Ads
+        // outbox enqueue for the post-commit flush instead of writing it
+        // here, so a measurement failure can never roll back the recovery.
+        queueAdsRecoveryEnqueue(row.order_ref);
         const after = inspectInitialConfirmation({ accountId: row.account_id, orderRef: row.order_ref });
         if (after.command.status !== "delivered" || after.events.length !== before.events.length + 1
           || JSON.stringify(after.ledger) !== JSON.stringify(before.ledger)
@@ -4111,21 +4184,41 @@ export function createSqliteCoinCommerceStore(options = {}) {
       actorRef: "coin_commerce_fulfillment",
       occurredAt
     });
-    // Terminal-state hook for Ads server-side conversion upload (no-op
-    // unless ADS_CLICK_BINDING_ENABLED). Delivered is the legacy terminal
-    // state; captured alone never enqueues.
-    enqueueAdsConversion(db, {
-      orderRef: command.order_ref,
-      model: "legacy",
-      valueUnits: validated.order.amount_units,
-      terminalAt: Date.parse(occurredAt)
-    });
     validateCommandAndReceipt(db.prepare(`
       select * from platform_coin_commerce_fulfillment_commands
        where command_ref = ?
     `).get(request.commandRef));
     return { status: "delivered" };
   });
+
+  // Post-commit Ads outbox step for a delivered fulfillment command.
+  // Runs only after completeCommandTransaction has committed; re-reads the
+  // committed delivered state and records the outbox row through the safe
+  // wrapper. Any failure here is measurement-only and must never change
+  // the fulfillment result, so the whole step is failure-swallowing.
+  function enqueueAdsForDeliveredCommand(commandRef) {
+    try {
+      const delivered = db.prepare(`
+        select o.order_ref as order_ref,
+               o.amount_units as amount_units,
+               c.updated_at as delivered_at
+          from platform_coin_commerce_fulfillment_commands c
+          join platform_coin_commerce_orders o
+            on o.order_ref = c.order_ref
+         where c.command_ref = ? and c.status = 'delivered'
+      `).get(commandRef);
+      if (delivered) {
+        safeEnqueueAdsConversion(db, {
+          orderRef: delivered.order_ref,
+          model: "legacy",
+          valueUnits: delivered.amount_units,
+          terminalAt: Date.parse(delivered.delivered_at)
+        });
+      }
+    } catch {
+      // Measurement only.
+    }
+  }
 
   function completeFulfillmentCommand(completeInput) {
     return execute(() => {
@@ -4156,6 +4249,10 @@ export function createSqliteCoinCommerceStore(options = {}) {
       if (result === FULFILLMENT_LEASE_LOST) {
         throw commerceError("commerce_fulfillment_lease_lost");
       }
+      // The transaction has committed and the command is delivered (the
+      // legacy terminal state; captured alone never enqueues). Record the
+      // Ads outbox row now, outside the financial transaction.
+      enqueueAdsForDeliveredCommand(normalizeReference(value.commandRef));
       return result;
     });
   }

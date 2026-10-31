@@ -1,24 +1,44 @@
-// Google Ads server-side conversion measurement (PR-1: click binding +
-// terminal-state outbox only; the dispatcher is a later change).
+// Google Ads server-side conversion measurement (PR-1: click claim +
+// binding + terminal-state outbox only; the dispatcher is a later change).
 //
 // The portal may attach an optional `adsClick` descriptor to a purchase
-// confirmation. When the master switch is on, the descriptor is validated
-// and bound to the created order, and reaching a terminal purchase state
-// (legacy fulfillment delivered / deferred transition settled) enqueues
-// exactly one outbox row per order for the future Data Manager uploader.
+// confirmation. The purchase stores never write measurement data inside a
+// purchase transaction. Instead, after a purchase request commits, the
+// calling layer runs a post-commit step through the `safe*` entry points
+// below:
+//
+//   - First (non-replay) request: `safeCaptureAdsClickForOrder` records the
+//     request's normalized click claim (first claim wins per order) and
+//     materializes the click binding from that claim.
+//   - Replay of the same idempotency key: `safeMaterializeAdsClickForOrder`
+//     materializes the binding from the stored claim only. A replay can
+//     never introduce a click the first request did not declare, and a
+//     click the first request declared is not lost just because the first
+//     materialization did not happen.
+//   - Terminal purchase state (legacy fulfillment delivered / deferred
+//     transition settled): `safeEnqueueAdsConversion` materializes once
+//     more from the claim, then writes exactly one outbox row per order.
 //
 // Master switch: ADS_CLICK_BINDING_ENABLED (default off). While off, every
 // entry point in this module is a no-op that performs no database writes,
 // so purchase flows keep their exact previous behavior, including not
-// creating the tables below.
+// creating the tables below. The `safe*` entry points never throw: a
+// measurement failure (lock, schema error, anything) returns null and can
+// never change a purchase outcome.
 //
 // Privacy: click values are sensitive measurement identifiers. They are
-// stored only in platform_ads_click_bindings, are never written to logs or
-// order event streams, and diagnostics expose counts/status only.
+// stored only in the ads tables, are never written to logs or order event
+// streams, and diagnostics expose counts/status only.
 
 const CLICK_TYPES = new Set(["gclid", "gbraid", "wbraid"]);
 const CLICK_VALUE_PATTERN = /^[A-Za-z0-9_.-]{1,512}$/;
 const MAX_CLICK_AGE_MS = 90 * 24 * 60 * 60 * 1000;
+// clickAt is accepted in exactly two shapes (see parseClickAt). The epoch
+// form must be a millisecond quantity: anything below 1e11 ms predates
+// 1973 and is treated as a seconds quantity that was passed by mistake.
+const MIN_EPOCH_MS = 100_000_000_000;
+const CLICK_AT_ISO_UTC_PATTERN =
+  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 const MODELS = new Set(["legacy", "deferred"]);
 // Same safe-reference shape the attribution binding module enforces for
 // order and account references.
@@ -31,6 +51,29 @@ export function adsBindingEnabled(env = process.env) {
 
 export function ensureAdsConversionSchema(db) {
   db.exec(`
+    create table if not exists platform_ads_click_claims (
+      order_ref text primary key,
+      account_ref text not null,
+      model text not null,
+      has_click integer not null,
+      click_type text,
+      click_value text,
+      click_at integer,
+      consent_ad_user_data integer,
+      consent_ad_personalization integer,
+      created_at integer not null,
+      updated_at integer not null,
+      check (has_click in (0, 1)),
+      check (
+        (has_click = 1 and click_type is not null and click_value is not null
+          and click_at is not null and consent_ad_user_data is not null
+          and consent_ad_personalization is not null)
+        or (has_click = 0 and click_type is null and click_value is null
+          and click_at is null and consent_ad_user_data is null
+          and consent_ad_personalization is null)
+      )
+    );
+
     create table if not exists platform_ads_click_bindings (
       order_ref text primary key,
       account_ref text not null,
@@ -49,7 +92,7 @@ export function ensureAdsConversionSchema(db) {
       model text not null,
       transaction_id text not null,
       value_units integer not null,
-      currency text not null default 'CNY',
+      value_unit text not null default 'COIN',
       terminal_at integer not null,
       status text not null,
       skip_reason text,
@@ -82,9 +125,17 @@ function safeRef(value) {
     : null;
 }
 
+// clickAt is accepted in exactly two shapes:
+//   - a millisecond epoch integer (seconds quantities are rejected), or
+//   - a complete UTC ISO string with millisecond precision and a `Z`
+//     suffix (the shape Date#toISOString produces).
+// Timezone-less strings, incomplete dates, and every other shape return
+// null instead of being guessed in the process timezone.
 function parseClickAt(value) {
-  if (Number.isSafeInteger(value)) return value;
-  if (typeof value === "string" && value.length > 0) {
+  if (Number.isSafeInteger(value)) {
+    return value >= MIN_EPOCH_MS ? value : null;
+  }
+  if (typeof value === "string" && CLICK_AT_ISO_UTC_PATTERN.test(value)) {
     const parsed = Date.parse(value);
     return Number.isSafeInteger(parsed) ? parsed : null;
   }
@@ -94,7 +145,7 @@ function parseClickAt(value) {
 // Pure validation of the client-supplied adsClick descriptor. Returns a
 // frozen normalized object ({ type, value, clickAt, consent }) or null for
 // any malformed, future, or expired input. Callers must treat null as
-// "ignore the field"; it never rejects the surrounding purchase.
+// "no click declared"; it never rejects the surrounding purchase.
 export function validateAdsClick(input, now = Date.now()) {
   const at = normalizeNow(now);
   if (!isPlainObject(input)) return null;
@@ -124,6 +175,73 @@ export function validateAdsClick(input, now = Date.now()) {
   });
 }
 
+function mapClaim(row) {
+  if (!row) return null;
+  const hasClick = row.has_click === 1;
+  return {
+    orderRef: row.order_ref,
+    accountRef: row.account_ref,
+    model: row.model,
+    hasClick,
+    clickType: hasClick ? row.click_type : null,
+    clickValue: hasClick ? row.click_value : null,
+    clickAt: hasClick ? row.click_at : null,
+    consentAdUserData: hasClick ? row.consent_ad_user_data === 1 : null,
+    consentAdPersonalization: hasClick
+      ? row.consent_ad_personalization === 1
+      : null,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+}
+
+export function getAdsClickClaim(db, orderRef) {
+  const ref = safeRef(orderRef);
+  if (!ref) return null;
+  ensureAdsConversionSchema(db);
+  return mapClaim(db.prepare(`
+    select * from platform_ads_click_claims where order_ref = ?
+  `).get(ref));
+}
+
+// Records the first purchase request's click claim for an order. The claim
+// is the request's normalized descriptor, or an explicit no-click marker
+// when the request carried no usable descriptor. The first claim wins:
+// later writes for the same order (including idempotent replays, which
+// must not call this at all) leave the stored claim unchanged. Returns the
+// stored claim, or null when disabled or the references are invalid.
+export function recordAdsClickClaim(db, input = {}, options = {}) {
+  const env = options.env ?? process.env;
+  if (!adsBindingEnabled(env)) return null;
+  const orderRef = safeRef(input.orderRef);
+  const accountRef = safeRef(input.accountRef);
+  if (!orderRef || !accountRef || !MODELS.has(input.model)) return null;
+  const at = normalizeNow(options.now);
+  const click = validateAdsClick(input.adsClick, at);
+  ensureAdsConversionSchema(db);
+  db.prepare(`
+    insert into platform_ads_click_claims (
+      order_ref, account_ref, model, has_click, click_type, click_value,
+      click_at, consent_ad_user_data, consent_ad_personalization,
+      created_at, updated_at
+    ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    on conflict(order_ref) do nothing
+  `).run(
+    orderRef,
+    accountRef,
+    input.model,
+    click ? 1 : 0,
+    click?.type ?? null,
+    click?.value ?? null,
+    click?.clickAt ?? null,
+    click ? (click.consent.adUserData ? 1 : 0) : null,
+    click ? (click.consent.adPersonalization ? 1 : 0) : null,
+    at,
+    at
+  );
+  return getAdsClickClaim(db, orderRef);
+}
+
 function mapBinding(row) {
   if (!row) return null;
   return {
@@ -149,20 +267,20 @@ export function getAdsClickBinding(db, orderRef) {
   `).get(ref));
 }
 
-// Binds a validated click descriptor to a freshly created order. The first
-// binding for an order wins: repeat submissions (idempotent confirm
-// retries) leave the stored row unchanged. Returns the stored binding, or
-// null when disabled or when any input is invalid.
-export function bindAdsClick(db, input = {}, options = {}) {
+// Materializes the click binding from the stored claim. This is the only
+// way a binding row is created: a binding always reflects the first
+// request's claim, never a descriptor carried by a later replay. Idempotent;
+// returns the stored binding, or null when disabled, when no claim exists,
+// or when the claim is an explicit no-click marker.
+export function materializeAdsClickBinding(db, input = {}, options = {}) {
   const env = options.env ?? process.env;
   if (!adsBindingEnabled(env)) return null;
   const orderRef = safeRef(input.orderRef);
-  const accountRef = safeRef(input.accountRef);
-  if (!orderRef || !accountRef || !MODELS.has(input.model)) return null;
+  if (!orderRef) return null;
   const at = normalizeNow(options.now);
-  const click = validateAdsClick(input.adsClick, at);
-  if (!click) return null;
   ensureAdsConversionSchema(db);
+  const claim = getAdsClickClaim(db, orderRef);
+  if (!claim || !claim.hasClick) return getAdsClickBinding(db, orderRef);
   db.prepare(`
     insert into platform_ads_click_bindings (
       order_ref, account_ref, model, click_type, click_value, click_at,
@@ -170,14 +288,14 @@ export function bindAdsClick(db, input = {}, options = {}) {
     ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     on conflict(order_ref) do nothing
   `).run(
-    orderRef,
-    accountRef,
-    input.model,
-    click.type,
-    click.value,
-    click.clickAt,
-    click.consent.adUserData ? 1 : 0,
-    click.consent.adPersonalization ? 1 : 0,
+    claim.orderRef,
+    claim.accountRef,
+    claim.model,
+    claim.clickType,
+    claim.clickValue,
+    claim.clickAt,
+    claim.consentAdUserData ? 1 : 0,
+    claim.consentAdPersonalization ? 1 : 0,
     at,
     at
   );
@@ -191,7 +309,7 @@ function mapOutboxRow(row) {
     model: row.model,
     transactionId: row.transaction_id,
     valueUnits: row.value_units,
-    currency: row.currency,
+    valueUnit: row.value_unit,
     terminalAt: row.terminal_at,
     status: row.status,
     skipReason: row.skip_reason,
@@ -214,10 +332,14 @@ export function getAdsConversionOutboxRow(db, orderRef) {
 }
 
 // Records the terminal outcome of a purchase for later upload. Exactly one
-// row per order: repeat terminal signals leave the first row unchanged.
-// Orders without a click binding, or whose binding lacks ad-user-data
-// consent, are still recorded as skipped so coverage can be measured.
-// Returns the stored row, or null when disabled or inputs are invalid.
+// row per order. A row that was recorded as skipped is upgraded in place
+// when a later evaluation finds a consented binding (status becomes
+// pending, skip_reason cleared); rows already pending or beyond are never
+// downgraded or rewritten. Amounts are wallet Coins: value_units stores
+// the Coins integer and value_unit names the unit ('COIN'); converting
+// Coins to a conversion currency amount is the dispatcher's concern
+// (PR-3), not this table's. Returns the stored row, or null when disabled
+// or inputs are invalid.
 export function enqueueAdsConversion(db, input = {}, options = {}) {
   const env = options.env ?? process.env;
   if (!adsBindingEnabled(env)) return null;
@@ -243,11 +365,29 @@ export function enqueueAdsConversion(db, input = {}, options = {}) {
   }
   db.prepare(`
     insert into platform_ads_conversion_outbox (
-      order_ref, model, transaction_id, value_units, currency, terminal_at,
+      order_ref, model, transaction_id, value_units, value_unit, terminal_at,
       status, skip_reason, attempts, next_attempt_at, last_error,
       google_request_id, created_at, updated_at
-    ) values (?, ?, ?, ?, 'CNY', ?, ?, ?, 0, null, null, null, ?, ?)
-    on conflict(order_ref) do nothing
+    ) values (?, ?, ?, ?, 'COIN', ?, ?, ?, 0, null, null, null, ?, ?)
+    on conflict(order_ref) do update set
+      status = case
+        when excluded.status = 'pending' then 'pending'
+        else platform_ads_conversion_outbox.status
+      end,
+      skip_reason = case
+        when excluded.status = 'pending' then null
+        else excluded.skip_reason
+      end,
+      value_units = case
+        when excluded.status = 'pending' then excluded.value_units
+        else platform_ads_conversion_outbox.value_units
+      end,
+      terminal_at = case
+        when excluded.status = 'pending' then excluded.terminal_at
+        else platform_ads_conversion_outbox.terminal_at
+      end,
+      updated_at = excluded.updated_at
+    where platform_ads_conversion_outbox.status = 'skipped'
   `).run(
     orderRef,
     input.model,
@@ -260,4 +400,48 @@ export function enqueueAdsConversion(db, input = {}, options = {}) {
     at
   );
   return getAdsConversionOutboxRow(db, orderRef);
+}
+
+// --- Post-commit safe entry points -------------------------------------
+// The purchase stores call only these wrappers, always after the purchase
+// transaction has committed. Each wrapper checks the master switch first
+// (off means no schema creation and no writes at all) and swallows every
+// error: measurement can never change a purchase outcome.
+
+// First-request step: record this request's claim, then materialize the
+// binding from the stored claim.
+export function safeCaptureAdsClickForOrder(db, input = {}, options = {}) {
+  const env = options.env ?? process.env;
+  if (!adsBindingEnabled(env)) return null;
+  try {
+    recordAdsClickClaim(db, input, options);
+    return materializeAdsClickBinding(db, { orderRef: input.orderRef }, options);
+  } catch {
+    return null;
+  }
+}
+
+// Replay / recovery step: materialize the binding from the stored claim
+// only. The current request's own descriptor is never consulted.
+export function safeMaterializeAdsClickForOrder(db, input = {}, options = {}) {
+  const env = options.env ?? process.env;
+  if (!adsBindingEnabled(env)) return null;
+  try {
+    return materializeAdsClickBinding(db, { orderRef: input.orderRef }, options);
+  } catch {
+    return null;
+  }
+}
+
+// Terminal-state step: give the binding a last chance to materialize from
+// the claim, then record the outbox row.
+export function safeEnqueueAdsConversion(db, input = {}, options = {}) {
+  const env = options.env ?? process.env;
+  if (!adsBindingEnabled(env)) return null;
+  try {
+    materializeAdsClickBinding(db, { orderRef: input.orderRef }, options);
+    return enqueueAdsConversion(db, input, options);
+  } catch {
+    return null;
+  }
 }
