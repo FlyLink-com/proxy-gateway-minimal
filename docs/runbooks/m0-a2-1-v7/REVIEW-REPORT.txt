@@ -26,6 +26,6 @@ Known limitations:
 - Temporal correlation of the stop unit does not independently prove OnFailure causality.
 - Node target-host version and current production unit shape remain unknown until a separately approved read-only run.
 
-Validation: see VALIDATION.txt. Local Node v22.16.0. No CI was run to preserve the repository's CI budget.
+Validation: see VALIDATION.txt. Executable validation is pending on the current branch head. Hosted CI has not been run to preserve the repository's CI budget.
 
 Decision: keep M0 BLOCKED. A production read requires a separate exact Risk A approval bound to this package SHA-256, expected release label, target, and time window. No M0-A2-2, M1–M8, recovery, or Japan node creation is authorized by this package.
