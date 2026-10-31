@@ -1,6 +1,6 @@
 # M0-A2-1 v7 — BWH read-only metering diagnostic (v9 byte-stable checkout repair)
 
-**Status:** offline candidate for review only. The v8 path fix is retained; v9 disables Git EOL conversion for SHA256-verified inputs so Windows `core.autocrlf=true` cannot rewrite their bytes. Native Node 22.16.0 validation is still required. This document and its script do not authorize a production run.
+**Status:** v9 Windows local validation was reported passed on code commit `5187edc19380fdb44dd2e0f531e9cfdf580b00e1` using Node `v22.16.0` (SHA256 7/7, syntax checks 4/4, self-test passed, tests 10/10). Hosted CI remains skipped; this is not production-read authorization. The documentation-only evidence update does not change diagnostic runtime or test code.
 
 ## Purpose
 
@@ -69,7 +69,7 @@ All paths read from Linux systemd are POSIX paths. `CURRENT_LINK` is built with 
 
 The seven files listed in `SHA256SUMS` are byte-verified inputs. Their Git attributes use `-text !eol`, not `text eol=lf`: Git must write the committed blob bytes to the worktree unchanged. This specifically prevents `core.autocrlf=true` from converting LF blobs to CRLF during checkout. The rule is scoped to this diagnostic package and does not change the user's global Git configuration or other repository files.
 
-Use a **fresh, separate checkout/worktree** of the exact commit being validated. Do not reuse a checkout created before the `-text` rules were added, and do not switch or modify any other working directory with uncommitted changes.
+Use an **isolated checkout/worktree** of the exact commit being validated. For the first v9 check, the worktree must have been checked out after the `-text` rules were added. For a repeat check, the same isolated worktree may be reused after confirming `git rev-parse HEAD` equals the exact target commit and rechecking the effective attributes and EOL state. Do not switch or modify any other working directory with uncommitted changes. A repeat check does not require a new workspace or Node installation when the exact target commit and required Node runtime are already present.
 
 From Git Bash or WSL, inspect the effective settings:
 
@@ -94,7 +94,7 @@ Expected:
 - `git check-attr`: `text: unset` and `eol: unspecified` for each sampled path.
 - `git ls-files --eol`: every listed file reports `i/lf w/lf attr/-text`.
 - `core.autocrlf` may still be `true`; do not change global Git configuration. The package attributes must prevent conversion for these paths.
-- The worktree must be fresh. If any file reports `w/crlf`, stop; do not normalize the file manually and do not treat the checksum result as passed.
+- The worktree must reflect the exact target commit and the `-text` attributes. If any file reports `w/crlf`, stop; do not normalize the file manually and do not treat the checksum result as passed.
 
 ## Local validation
 
@@ -111,6 +111,22 @@ node --check server/tests/m0-a2-1-v7.test.mjs
 node scripts/m0-a2-1-v7.mjs --self-test
 node --test server/tests/m0-a2-1-v7.test.mjs
 ```
+
+### Recorded v9 Windows result — operator-reported (2026-10-31)
+
+- Isolated workspace: `D:\Projects\proxy-gateway-minimal-pr812-v9`.
+- Tested code commit: `5187edc19380fdb44dd2e0f531e9cfdf580b00e1`; the existing isolated workspace was already at this exact commit, so it was reused. No new workspace was created.
+- `core.autocrlf=true` remained unchanged.
+- Node: `v22.16.0` from the isolated toolchain directory. The system Node `v24.16.0` was not replaced.
+- The sampled `git check-attr` results were `text: unset` and `eol: unspecified`.
+- All seven checksum inputs reported `i/lf w/lf attr/-text`.
+- `sha256sum -c docs/runbooks/m0-a2-1-v7/SHA256SUMS`: 7/7 OK, exit code 0.
+- Four `node --check` commands: all exit code 0.
+- `node scripts/m0-a2-1-v7.mjs --self-test`: `m0_a2_1_v7_self_test=passed`, exit code 0.
+- `node --test server/tests/m0-a2-1-v7.test.mjs`: 10/10 passed, exit code 0.
+- The original working directory with uncommitted changes was not touched. No BWH/Provider connection or production read occurred.
+
+This result is recorded as operator-reported local evidence and applies to the exact tested code commit above. The subsequent evidence-archive commit changes only README, validation/review records, and the SHA256 manifest; it does not change diagnostic runtime or test code. The seven manifest entries are regenerated for that archive commit. The 7/7 local result above is not represented as a new Windows command run against the later documentation-only commit; if validating that archive commit itself, rerun `sha256sum -c` after fetching it. No Node reinstall is needed.
 
 Record the exact output and exit code of every command. If Node is not exactly `v22.16.0`, stop and record the version mismatch; do not substitute another Node version. A skipped CI run is not a pass.
 

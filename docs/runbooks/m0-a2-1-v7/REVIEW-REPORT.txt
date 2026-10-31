@@ -1,30 +1,55 @@
 M0-A2-1 v7 / v9 BYTE-STABLE CHECKOUT REPAIR REVIEW
-Disposition: Draft PR candidate only; NOT approved for production execution.
+Disposition: Draft PR candidate only. v9 Windows local acceptance is recorded as operator-reported evidence; NOT approved for production execution.
 
-Repair changes:
+## Repair changes
+
 1. Retains the v8 `path.posix.join` fix for Linux systemd paths tested under Windows Node.
-2. Replaces targeted `text eol=lf` rules with `-text !eol` for the checksum manifest and all seven SHA256-verified inputs. This prevents Git's checkout conversion from rewriting committed LF bytes when `core.autocrlf=true`.
-3. Documents the expected `git check-attr` output (`text: unset`, `eol: unspecified`) and `git ls-files --eol` output (`i/lf w/lf attr/-text`).
-4. Requires a fresh independent checkout; an existing worktree that was populated under the previous attributes must not be used to judge the repair.
-5. Requires Node v22.16.0 exactly and records any version mismatch as a stop condition.
-6. Recomputes all seven SHA256SUMS entries after the final README, validation, and review edits.
+2. Replaces targeted `text eol=lf` rules with `-text !eol` for the checksum manifest and SHA256-verified package inputs. This prevents Git checkout conversion from rewriting committed LF bytes when `core.autocrlf=true`.
+3. Documents expected `git check-attr` output (`text: unset`, `eol: unspecified`) and `git ls-files --eol` output (`i/lf w/lf attr/-text`).
+4. Allows reuse of an existing isolated workspace for repeat validation only after confirming exact HEAD and rechecking attributes/EOL state. The original dirty working directory remains out of scope.
+5. Requires Node `v22.16.0` exactly for the recorded runtime validation.
+6. Regenerates all seven SHA256SUMS entries after the final README, validation, and review edits.
 
-Evidence and limitations:
-- The prior v8 local result was Node v24.16.0, not Node v22.16.0. Four syntax checks and self-test passed; unit tests were 10/10. The checksum command was 5/7 because two worktree files were CRLF while the index blobs were LF. Recalculating those two as LF matched the recorded digests.
-- That evidence identifies a checkout byte-conversion mismatch; it does not prove a Node 22 runtime pass.
-- v9's attribute semantics are documented but still require confirmation in a fresh Windows checkout with the user's Git version/configuration.
-- Native Node v22.16.0 validation remains pending.
-- Hosted CI remains intentionally unrun while the PR is Draft and the CI budget is being preserved.
+## v9 local validation evidence — operator-reported (2026-10-31)
+
+Tested code commit: `5187edc19380fdb44dd2e0f531e9cfdf580b00e1`
+Workspace: `D:\Projects\proxy-gateway-minimal-pr812-v9`
+
+- Node `v22.16.0` from the isolated toolchain directory; system Node `v24.16.0` left unchanged.
+- `core.autocrlf=true` remained set.
+- Attribute sample: `text: unset`, `eol: unspecified`.
+- Seven files: all `i/lf w/lf attr/-text`.
+- SHA256: 7/7 OK, exit code 0.
+- Four `node --check` commands: exit code 0.
+- Self-test: `m0_a2_1_v7_self_test=passed`, exit code 0.
+- Node test suite: 10/10 passed, exit code 0.
+- Existing isolated workspace reused; no new workspace or Node installation.
+- Original working directory with uncommitted changes untouched.
+- No BWH/Provider connection or production read.
+
+The results are recorded from the operator's report. They apply to code commit `5187edc19380fdb44dd2e0f531e9cfdf580b00e1`. The following evidence-archive commit changes only README, validation/review records, and SHA256SUMS; it does not change diagnostic runtime or test source. Its seven manifest entries are regenerated. No claim is made that the Windows `sha256sum -c` command was rerun against that later documentation-only commit.
+
+## Earlier v8 failure retained as history
+
+- v8 used Node v24.16.0, not the required Node v22.16.0.
+- The checksum command returned 5/7 because two worktree files were CRLF while index blobs were LF.
+- Syntax checks 4/4, self-test, and tests 10/10 passed under Node v24.16.0.
+- This earlier failure remains in the record and is not overwritten by the later v9 result.
+
+## Other diagnostic limitations
+
+- Hosted CI remains skipped; no CI pass is claimed.
 - App identity remains label-only plus four code-slice pins; it is not a complete App artifact/source-commit proof.
 - The collector archive check proves the 49-file content closure, not a re-created tar archive digest.
-- The status projection producer coverage remains partial and does not prove complete Japan VLESS / Hy2 / TUIC source coverage.
+- Status projection producer coverage remains partial and does not prove complete Japan VLESS / Hy2 / TUIC source coverage.
 - Temporal correlation of the stop unit does not independently prove OnFailure causality.
-- Node target-host version and current production unit shape remain unknown until a separately approved read-only run.
+- Node target-host version and current production unit shape remain unknown until separately approved read-only work.
 
-Safety review:
-- This repair writes only repository metadata and documentation through the existing Draft PR branch.
-- No SSH, BWH / Provider connection, production systemd or journal read, collector invocation, service or Timer action, DB read, full-metering journal/checkpoint read, config read, environment-file read, or production mutation occurred.
+## Safety review
+
+- No SSH, BWH / Provider connection, production systemd or journal read, collector invocation, service or Timer action, DB read, full-metering journal/checkpoint read, config read, environment-file read, or production mutation occurred in this documentation update.
 - The production diagnostic's fixed read-only command surface is unchanged.
-- No global Git configuration was changed.
+- No global Git configuration or local working directory was changed.
+- The PR remains Draft; this evidence does not authorize production execution.
 
 Decision: keep M0 BLOCKED. A production read requires separate exact Risk A approval bound to the final package SHA-256, expected release label, target, and time window. No M0-A2-2, M1–M8, recovery, or Japan node creation is authorized by this package.

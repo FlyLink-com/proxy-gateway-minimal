@@ -1,50 +1,58 @@
 M0-A2-1 v7 / v9 BYTE-STABLE CHECKOUT VALIDATION RECORD
 Date: 2026-10-31
-Status: REPAIR PREPARED — NATIVE NODE 22.16.0 VALIDATION PENDING.
+Status: V9 WINDOWS LOCAL ACCEPTANCE REPORTED PASS — HOSTED CI SKIPPED — PRODUCTION NOT AUTHORIZED.
+
+## v9 Windows local verification — operator-reported
+
+Tested code snapshot: `5187edc19380fdb44dd2e0f531e9cfdf580b00e1`
+Isolated workspace: `D:\Projects\proxy-gateway-minimal-pr812-v9`
+
+- The existing isolated workspace was already at the required commit and was reused; no new workspace was created.
+- `core.autocrlf=true` remained unchanged.
+- Node was `v22.16.0`, supplied from the isolated toolchain directory. The system Node `v24.16.0` was not replaced.
+- Attribute sample: `text: unset`, `eol: unspecified`.
+- All seven checksum inputs: `i/lf w/lf attr/-text`.
+- `sha256sum -c docs/runbooks/m0-a2-1-v7/SHA256SUMS`: 7/7 OK, exit code 0.
+- Four `node --check` commands: exit code 0.
+- `node scripts/m0-a2-1-v7.mjs --self-test`: `m0_a2_1_v7_self_test=passed`, exit code 0.
+- `node --test server/tests/m0-a2-1-v7.test.mjs`: 10/10 passed, exit code 0.
+- The original working directory with uncommitted changes was not switched or modified.
+- No new Node installation, BWH/Provider connection, SSH, or production read occurred.
+
+This section records the operator's local results. The exact tested code snapshot is `5187edc19380fdb44dd2e0f531e9cfdf580b00e1`; it is not a claim that hosted CI ran or that production was read.
 
 ## v9 repair scope
 
-- Replaced the v8 targeted `text eol=lf` attributes with the more restrictive `-text !eol` rules for this diagnostic package's SHA256-verified inputs.
-- `-text` disables Git text/EOL conversion for these paths. The committed blob bytes (LF) must be written to the worktree unchanged even when the user's `core.autocrlf=true`.
-- The rules are scoped to `docs/runbooks/m0-a2-1-v7/**`, `scripts/m0-a2-1-v7.mjs`, `scripts/lib/m0-a2-1-v7-*.mjs`, and `server/tests/m0-a2-1-v7.test.mjs`. They do not require changing global Git configuration.
-- Updated README to require a fresh independent checkout, check effective attributes, inspect index/worktree EOL state, and stop if any verified input is checked out as CRLF.
-- Recomputed all seven SHA-256 entries after the final documentation changes. The checksum manifest itself is intentionally not self-hashed.
+- Replaced the v8 targeted `text eol=lf` attributes with the more restrictive `-text !eol` rules for the diagnostic package's SHA256-verified inputs.
+- `-text` disables Git text/EOL conversion for these paths. The committed blob bytes (LF) are written to the worktree unchanged even when `core.autocrlf=true`.
+- The rules are scoped to `docs/runbooks/m0-a2-1-v7/**`, `scripts/m0-a2-1-v7.mjs`, `scripts/lib/m0-a2-1-v7-*.mjs`, and `server/tests/m0-a2-1-v7.test.mjs`.
+- README now allows reuse of the same isolated workspace for repeat checks after confirming the exact HEAD and rechecking attributes/EOL state; it continues to prohibit touching the original dirty directory.
+- All seven SHA256 entries are regenerated after the final README, validation, and review edits. The checksum manifest itself is intentionally not self-hashed.
 
 ## v8 local result reported before v9
 
-- Environment: Windows, Node v24.16.0; Node v22.16.0 was not installed.
+- Environment: Windows, Node v24.16.0; Node v22.16.0 was not installed at that time.
 - `git check-attr`: sampled files reported `eol: lf`.
-- `sha256sum -c`: 5/7 passed; `scripts/m0-a2-1-v7.mjs` and `scripts/lib/m0-a2-1-v7-archive-pins.mjs` failed because the worktree held CRLF while the index held LF. Recomputing those two files as LF matched the manifest.
+- `sha256sum -c`: 5/7 passed; `scripts/m0-a2-1-v7.mjs` and `scripts/lib/m0-a2-1-v7-archive-pins.mjs` failed because the worktree held CRLF while the index held LF. Recomputing those two as LF matched the manifest.
 - Four `node --check` commands passed.
 - `--self-test` passed.
-- `node --test`: 10/10 passed on Node v24.16.0, including the previous Windows path regression.
-- This is not a Node v22.16.0 validation and the original `sha256sum -c` result remains failed. No result is relabeled as passed.
+- `node --test`: 10/10 passed on Node v24.16.0.
+- This earlier result was not a Node v22.16.0 validation and its original checksum command remained failed. It has not been relabeled as passed.
 
-## Required independent local validation — NOT YET RUN
+## Evidence scope and remaining gates
 
-Use a fresh, separate checkout/worktree of this exact v9 PR head. Do not switch or modify the original working directory with uncommitted changes.
+- The local v9 pass above applies to code commit `5187edc19380fdb44dd2e0f531e9cfdf580b00e1`.
+- The evidence-archive commit following that test changes only `README.md`, `VALIDATION.txt`, `REVIEW-REPORT.txt`, and `SHA256SUMS`; no diagnostic script or test source is changed.
+- The seven SHA256 entries are regenerated for the evidence-archive commit from the final file contents. The 7/7 Windows command result above is not represented as a command run against that later documentation-only commit. If the archive commit itself is to be checked, rerun `sha256sum -c` in the isolated workspace after fetching it; no Node reinstall is needed.
+- GitHub Actions / hosted CI remains skipped intentionally. Skipped jobs are not a pass.
+- The local test does not establish production state, deployed App identity, or authorization to read production.
 
-1. Confirm `node --version` is exactly `v22.16.0`. If unavailable, stop and report it; do not substitute Node 24.
-2. Confirm `git check-attr text eol -- ...` reports `text: unset` and `eol: unspecified` for the sampled package files.
-3. Confirm `git ls-files --eol -- ...` reports `i/lf w/lf attr/-text` for all seven files listed in `SHA256SUMS`.
-4. It is acceptable for `core.autocrlf=true` to remain set. Do not change global Git configuration. If any target worktree file is CRLF, stop and recreate the isolated checkout; do not manually normalize it.
-5. Run the exact README command sequence:
-   - `sha256sum -c docs/runbooks/m0-a2-1-v7/SHA256SUMS`
-   - `node --check scripts/m0-a2-1-v7.mjs`
-   - `node --check scripts/lib/m0-a2-1-v7-diagnostic.mjs`
-   - `node --check scripts/lib/m0-a2-1-v7-archive-pins.mjs`
-   - `node --check server/tests/m0-a2-1-v7.test.mjs`
-   - `node scripts/m0-a2-1-v7.mjs --self-test`
-   - `node --test server/tests/m0-a2-1-v7.test.mjs`
-6. Record exact output and exit code for each command. A skipped CI run is not a pass.
+## Explicitly not performed
 
-## Explicitly not performed in this repair preparation
-
-- Native Node v22.16.0 commands or local checkout validation.
-- GitHub Actions / hosted CI; the PR remains Draft to preserve the project's CI budget.
+- GitHub Actions / hosted CI execution.
 - SSH, BWH / Provider access, production systemd or journal reads.
 - App release or collector archive reads on production.
 - Status projection, SQLite, full-metering journal, checkpoint, config, environment-file, or credential reads.
 - Collector invocation, service/Timer action, install, restart, or production mutation.
 
-The GitHub change is limited to repository text metadata, runbook, validation/review records, and the checksum manifest. It does not authorize production execution. M0 remains BLOCKED. Production execution, M0-A2-2, M1–M8, recovery, and Japan node creation remain unauthorized.
+PR #812 remains Draft. M0 remains BLOCKED. Production execution, M0-A2-2, M1–M8, recovery, and Japan node creation remain unauthorized.
