@@ -70,6 +70,8 @@ Run from the repository root:
 ```bash
 sha256sum -c docs/runbooks/m0-a2-1-v7/SHA256SUMS
 node --check scripts/m0-a2-1-v7.mjs
+node --check scripts/lib/m0-a2-1-v7-diagnostic.mjs
+node --check scripts/lib/m0-a2-1-v7-archive-pins.mjs
 node scripts/m0-a2-1-v7.mjs --self-test
 node --test server/tests/m0-a2-1-v7.test.mjs
 ```
