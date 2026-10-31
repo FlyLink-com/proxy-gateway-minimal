@@ -136,6 +136,9 @@ test('production branch has only fixed read commands and no systemd mutation or 
   assert.doesNotMatch(source, /systemctl\s+(start|stop|restart|enable|disable|reset-failed|daemon-reload)/);
   assert.match(source, /const args = \['show', unit/);
   assert.match(source, /'--no-pager','--output=json','--lines=64'/);
+  const pidFormatter = source.indexOf('const pidPresent =');
+  const pidFormatterUse = source.indexOf('main_pid_present=${pidPresent');
+  assert.ok(pidFormatter >= 0 && pidFormatter < pidFormatterUse, 'PID formatter must be initialized before production output uses it');
   assert.doesNotMatch(source, /readFileSync\([^)]*CONFIG_PATH/);
   assert.doesNotMatch(source, /subscription-control\.sqlite|checkpoint\.json|full-metering-bwh-local-20261009\/journal/);
   assert.doesNotMatch(source, /--collect\s*(?:;|\n).*spawnSync/);
