@@ -55,7 +55,7 @@ export function ensureAdsConversionSchema(db) {
       order_ref text primary key,
       account_ref text not null,
       model text not null,
-      has_click integer not null,
+      claim_state text not null,
       click_type text,
       click_value text,
       click_at integer,
@@ -63,12 +63,12 @@ export function ensureAdsConversionSchema(db) {
       consent_ad_personalization integer,
       created_at integer not null,
       updated_at integer not null,
-      check (has_click in (0, 1)),
+      check (claim_state in ('click', 'no_click', 'invalid_click')),
       check (
-        (has_click = 1 and click_type is not null and click_value is not null
+        (claim_state = 'click' and click_type is not null and click_value is not null
           and click_at is not null and consent_ad_user_data is not null
           and consent_ad_personalization is not null)
-        or (has_click = 0 and click_type is null and click_value is null
+        or (claim_state != 'click' and click_type is null and click_value is null
           and click_at is null and consent_ad_user_data is null
           and consent_ad_personalization is null)
       )
@@ -149,8 +149,11 @@ function parseClickAt(value) {
 
 // Pure validation of the client-supplied adsClick descriptor. Returns a
 // frozen normalized object ({ type, value, clickAt, consent }) or null for
-// any malformed, future, or expired input. Callers must treat null as
-// "no click declared"; it never rejects the surrounding purchase.
+// any malformed, future, or expired input. A null result means only "not
+// a valid click": whether the request carried no descriptor at all
+// (no_click) or an unusable one (invalid_click) is decided by the caller
+// from the descriptor's presence, never from this result alone. It never
+// rejects the surrounding purchase.
 export function validateAdsClick(input, now = Date.now()) {
   const at = normalizeNow(now);
   if (!isPlainObject(input)) return null;
@@ -182,11 +185,15 @@ export function validateAdsClick(input, now = Date.now()) {
 
 function mapClaim(row) {
   if (!row) return null;
-  const hasClick = row.has_click === 1;
+  const claimState = row.claim_state;
+  const hasClick = claimState === "click";
   return {
     orderRef: row.order_ref,
     accountRef: row.account_ref,
     model: row.model,
+    claimState,
+    // Derived convenience for existing consumers: true only for a
+    // validated click claim.
     hasClick,
     clickType: hasClick ? row.click_type : null,
     clickValue: hasClick ? row.click_value : null,
@@ -209,12 +216,22 @@ export function getAdsClickClaim(db, orderRef) {
   `).get(ref));
 }
 
-// Records the first purchase request's click claim for an order. The claim
-// is the request's normalized descriptor, or an explicit no-click marker
-// when the request carried no usable descriptor. The first claim wins:
-// later writes for the same order (including idempotent replays, which
-// must not call this at all) leave the stored claim unchanged. Returns the
-// stored claim, or null when disabled or the references are invalid.
+// Records the first purchase request's click claim for an order. The
+// claim is tri-state, because "no click" must only ever mean the request
+// demonstrably carried none:
+//   - 'click':         the request carried a descriptor that validated;
+//                      its normalized fields are stored.
+//   - 'no_click':      the request carried no adsClick descriptor at all.
+//   - 'invalid_click': the request carried a descriptor that failed
+//                      validation (bad type, bad value, non-boolean
+//                      consent, unusable clickAt, ...). Nothing about the
+//                      descriptor is stored, but the outcome is kept
+//                      distinct from 'no_click' so malformed measurement
+//                      never pollutes the no-click statistics.
+// The first claim wins: later writes for the same order (including
+// idempotent replays, which must not call this at all) leave the stored
+// claim unchanged. Returns the stored claim, or null when disabled or
+// the references are invalid.
 export function recordAdsClickClaim(db, input = {}, options = {}) {
   const env = options.env ?? process.env;
   if (!adsBindingEnabled(env)) return null;
@@ -222,11 +239,16 @@ export function recordAdsClickClaim(db, input = {}, options = {}) {
   const accountRef = safeRef(input.accountRef);
   if (!orderRef || !accountRef || !MODELS.has(input.model)) return null;
   const at = normalizeNow(options.now);
-  const click = validateAdsClick(input.adsClick, at);
+  let claimState = "no_click";
+  let click = null;
+  if (input.adsClick !== undefined) {
+    click = validateAdsClick(input.adsClick, at);
+    claimState = click ? "click" : "invalid_click";
+  }
   ensureAdsConversionSchema(db);
   db.prepare(`
     insert into platform_ads_click_claims (
-      order_ref, account_ref, model, has_click, click_type, click_value,
+      order_ref, account_ref, model, claim_state, click_type, click_value,
       click_at, consent_ad_user_data, consent_ad_personalization,
       created_at, updated_at
     ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -235,7 +257,7 @@ export function recordAdsClickClaim(db, input = {}, options = {}) {
     orderRef,
     accountRef,
     input.model,
-    click ? 1 : 0,
+    claimState,
     click?.type ?? null,
     click?.value ?? null,
     click?.clickAt ?? null,
@@ -274,9 +296,11 @@ export function getAdsClickBinding(db, orderRef) {
 
 // Materializes the click binding from the stored claim. This is the only
 // way a binding row is created: a binding always reflects the first
-// request's claim, never a descriptor carried by a later replay. Idempotent;
-// returns the stored binding, or null when disabled, when no claim exists,
-// or when the claim is an explicit no-click marker.
+// request's claim, never a descriptor carried by a later replay. Only a
+// 'click' claim materializes; 'no_click' and 'invalid_click' claims never
+// produce a binding. Idempotent; returns the stored binding, or null when
+// disabled, when no claim exists, or when the claim carries no valid
+// click.
 export function materializeAdsClickBinding(db, input = {}, options = {}) {
   const env = options.env ?? process.env;
   if (!adsBindingEnabled(env)) return null;
@@ -285,7 +309,7 @@ export function materializeAdsClickBinding(db, input = {}, options = {}) {
   const at = normalizeNow(options.now);
   ensureAdsConversionSchema(db);
   const claim = getAdsClickClaim(db, orderRef);
-  if (!claim || !claim.hasClick) return getAdsClickBinding(db, orderRef);
+  if (!claim || claim.claimState !== "click") return getAdsClickBinding(db, orderRef);
   db.prepare(`
     insert into platform_ads_click_bindings (
       order_ref, account_ref, model, click_type, click_value, click_at,
@@ -342,9 +366,12 @@ export function getAdsConversionOutboxRow(db, orderRef) {
 //   - no claim row at all: skipped / claim_missing (the first request's
 //     declaration was never recorded; whether it carried a click is
 //     unknown and must not be reported as "no click");
-//   - claim with has_click = 0: skipped / no_click (the first request
-//     explicitly declared no usable click);
-//   - claim with a click but no binding: skipped / binding_failed (the
+//   - claim 'no_click': skipped / no_click (the first request carried no
+//     adsClick descriptor at all);
+//   - claim 'invalid_click': skipped / invalid_click (the first request
+//     carried a descriptor that failed validation — a definite fact
+//     about the request, but not a usable click and not "no click");
+//   - claim 'click' but no binding: skipped / binding_failed (the
 //     click is known to exist but its binding never materialized —
 //     measurement pending recovery, not a missing click);
 //   - binding present but ad-user-data consent absent: skipped /
@@ -378,9 +405,12 @@ export function enqueueAdsConversion(db, input = {}, options = {}) {
   if (!claim) {
     status = "skipped";
     skipReason = "claim_missing";
-  } else if (!claim.hasClick) {
+  } else if (claim.claimState === "no_click") {
     status = "skipped";
     skipReason = "no_click";
+  } else if (claim.claimState === "invalid_click") {
+    status = "skipped";
+    skipReason = "invalid_click";
   } else if (!binding) {
     status = "skipped";
     skipReason = "binding_failed";
@@ -459,12 +489,21 @@ export function safeMaterializeAdsClickForOrder(db, input = {}, options = {}) {
 }
 
 // Terminal-state step: give the binding a last chance to materialize from
-// the claim, then record the outbox row.
+// the claim, then record the outbox row. The two steps fail independently:
+// if materialization throws (for example the bindings table is locked),
+// the enqueue must still run so it can record the recoverable
+// skipped / binding_failed outcome from the stored claim; if the enqueue
+// itself throws, the failure is swallowed as before.
 export function safeEnqueueAdsConversion(db, input = {}, options = {}) {
   const env = options.env ?? process.env;
   if (!adsBindingEnabled(env)) return null;
   try {
     materializeAdsClickBinding(db, { orderRef: input.orderRef }, options);
+  } catch {
+    // Materialization failed: fall through to the enqueue, which
+    // classifies the outcome from the claim and the (absent) binding.
+  }
+  try {
     return enqueueAdsConversion(db, input, options);
   } catch {
     return null;

@@ -212,15 +212,19 @@ test("the first claim wins: later claims never replace it", () => {
   });
 });
 
-test("a request without a usable descriptor records an explicit no-click claim", () => {
+test("claims are tri-state: absent descriptor is no_click, malformed descriptor is invalid_click", () => {
   withDb((db) => {
+    // No adsClick field at all: the only shape that may be recorded as
+    // a definite no_click.
     const binding = capture(db, { adsClick: undefined });
     assert.equal(binding, null);
-    const claim = getAdsClickClaim(db, "order_ads_001");
-    assert.equal(claim.hasClick, false);
-    assert.equal(claim.clickValue, null);
-    // And a malformed descriptor is also a no-click claim, so a later
-    // "corrected" replay cannot change what the first request declared.
+    const noClick = getAdsClickClaim(db, "order_ads_001");
+    assert.equal(noClick.claimState, "no_click");
+    assert.equal(noClick.hasClick, false);
+    assert.equal(noClick.clickValue, null);
+    // A descriptor that was carried but failed validation is a
+    // different, definite fact: invalid_click. It must never be folded
+    // into the no-click statistics.
     const binding2 = safeCaptureAdsClickForOrder(db, {
       orderRef: "order_ads_002",
       accountRef: "account_ads_001",
@@ -228,7 +232,42 @@ test("a request without a usable descriptor records an explicit no-click claim",
       adsClick: validClick({ value: "bad value" })
     }, { env: ENABLED, now: NOW });
     assert.equal(binding2, null);
-    assert.equal(getAdsClickClaim(db, "order_ads_002").hasClick, false);
+    const invalid = getAdsClickClaim(db, "order_ads_002");
+    assert.equal(invalid.claimState, "invalid_click");
+    assert.equal(invalid.hasClick, false);
+    assert.equal(invalid.clickValue, null);
+    // Every malformed shape lands in invalid_click, including a null
+    // descriptor, a bad type, a non-boolean consent, and an unusable
+    // clickAt; none of them stores descriptor fields.
+    const malformed = [
+      null,
+      "gclid",
+      validClick({ type: "dclid" }),
+      validClick({ consent: { adUserData: "yes", adPersonalization: false } }),
+      validClick({ clickAt: "2026-10-30T23:59:00" }),
+      validClick({ clickAt: NOW + 1_000 })
+    ];
+    malformed.forEach((adsClick, index) => {
+      const orderRef = `order_ads_1${String(index).padStart(2, "0")}`;
+      safeCaptureAdsClickForOrder(db, {
+        orderRef,
+        accountRef: "account_ads_001",
+        model: "legacy",
+        adsClick
+      }, { env: ENABLED, now: NOW });
+      const claim = getAdsClickClaim(db, orderRef);
+      assert.equal(claim.claimState, "invalid_click", JSON.stringify(adsClick));
+      assert.equal(claim.clickType, null);
+      assert.equal(claim.clickAt, null);
+      assert.equal(getAdsClickBinding(db, orderRef), null);
+    });
+    // A valid descriptor is the 'click' state.
+    const valid = capture(db, { orderRef: "order_ads_199" });
+    assert.equal(valid.clickValue, "EAIaIQobChMI-test_click.001");
+    assert.equal(
+      getAdsClickClaim(db, "order_ads_199").claimState,
+      "click"
+    );
   });
 });
 
@@ -422,6 +461,150 @@ test("enqueueAdsConversion records skipped/binding_failed when the claim has a c
     }, { env: ENABLED, now: NOW + 1_000 });
     assert.equal(upgraded.status, "pending");
     assert.equal(upgraded.skipReason, null);
+  });
+});
+
+test("enqueueAdsConversion records skipped/invalid_click for a malformed-descriptor claim", () => {
+  withDb((db) => {
+    safeCaptureAdsClickForOrder(db, {
+      orderRef: "order_ads_023",
+      accountRef: "account_ads_001",
+      model: "legacy",
+      adsClick: validClick({ value: "bad value" })
+    }, { env: ENABLED, now: NOW });
+    assert.equal(
+      getAdsClickClaim(db, "order_ads_023").claimState,
+      "invalid_click"
+    );
+    const row = enqueueAdsConversion(db, {
+      orderRef: "order_ads_023",
+      model: "legacy",
+      valueUnits: 20,
+      terminalAt: NOW
+    }, { env: ENABLED, now: NOW });
+    assert.equal(row.status, "skipped");
+    assert.equal(row.skipReason, "invalid_click");
+    // An invalid click never materializes a binding, so the row can
+    // never be upgraded by a later "corrected" descriptor.
+    assert.equal(getAdsClickBinding(db, "order_ads_023"), null);
+  });
+});
+
+test("safeEnqueue records binding_failed through the real entry point when only binding writes fail, then upgrades", () => {
+  withDb((db) => {
+    // A valid claim is recorded while all tables are writable.
+    recordAdsClickClaim(db, {
+      orderRef: "order_ads_024",
+      accountRef: "account_ads_001",
+      model: "legacy",
+      adsClick: validClick()
+    }, { env: ENABLED, now: NOW });
+    // Only the bindings table becomes unwritable; claims and outbox
+    // stay writable. The safe entry point must not throw, and the
+    // materialization failure must not swallow the enqueue: the outbox
+    // row records the recoverable binding_failed outcome.
+    db.exec(`
+      create trigger ads_test_fail_bindings_insert
+        before insert on platform_ads_click_bindings
+        begin select raise(abort, 'synthetic binding write failure'); end;
+      create trigger ads_test_fail_bindings_update
+        before update on platform_ads_click_bindings
+        begin select raise(abort, 'synthetic binding write failure'); end;
+    `);
+    const failed = safeEnqueueAdsConversion(db, {
+      orderRef: "order_ads_024",
+      model: "legacy",
+      valueUnits: 20,
+      terminalAt: NOW
+    }, { env: ENABLED, now: NOW });
+    assert.equal(failed.status, "skipped");
+    assert.equal(failed.skipReason, "binding_failed");
+    assert.equal(getAdsClickBinding(db, "order_ads_024"), null);
+    // Once the fault clears, the same safe entry point materializes the
+    // binding and upgrades the row to pending.
+    db.exec(`
+      drop trigger ads_test_fail_bindings_insert;
+      drop trigger ads_test_fail_bindings_update;
+    `);
+    const recovered = safeEnqueueAdsConversion(db, {
+      orderRef: "order_ads_024",
+      model: "legacy",
+      valueUnits: 20,
+      terminalAt: NOW + 1_000
+    }, { env: ENABLED, now: NOW + 1_000 });
+    assert.equal(recovered.status, "pending");
+    assert.equal(recovered.skipReason, null);
+    assert.equal(
+      getAdsClickBinding(db, "order_ads_024").clickValue,
+      "EAIaIQobChMI-test_click.001"
+    );
+  });
+});
+
+test("a failed claim write surfaces as claim_missing at the terminal step, never as no_click", () => {
+  withDb((db) => {
+    ensureAdsConversionSchema(db);
+    db.exec(`
+      create trigger ads_test_fail_claims_insert
+        before insert on platform_ads_click_claims
+        begin select raise(abort, 'synthetic claim write failure'); end;
+    `);
+    // The first request's capture fails silently: no claim row exists.
+    const binding = safeCaptureAdsClickForOrder(db, {
+      orderRef: "order_ads_025",
+      accountRef: "account_ads_001",
+      model: "legacy",
+      adsClick: validClick()
+    }, { env: ENABLED, now: NOW });
+    assert.equal(binding, null);
+    assert.equal(
+      db.prepare(`select count(*) from platform_ads_click_claims`).pluck().get(),
+      0
+    );
+    db.exec(`drop trigger ads_test_fail_claims_insert;`);
+    // The terminal outcome is the unknown state, not a definite
+    // no_click, even though the request did carry a click.
+    const row = safeEnqueueAdsConversion(db, {
+      orderRef: "order_ads_025",
+      model: "legacy",
+      valueUnits: 20,
+      terminalAt: NOW
+    }, { env: ENABLED, now: NOW });
+    assert.equal(row.status, "skipped");
+    assert.equal(row.skipReason, "claim_missing");
+  });
+});
+
+test("a failed outbox write is swallowed by the safe entry point and a later call fills the row", () => {
+  withDb((db) => {
+    capture(db, { orderRef: "order_ads_026" });
+    db.exec(`
+      create trigger ads_test_fail_outbox_insert
+        before insert on platform_ads_conversion_outbox
+        begin select raise(abort, 'synthetic outbox write failure'); end;
+      create trigger ads_test_fail_outbox_update
+        before update on platform_ads_conversion_outbox
+        begin select raise(abort, 'synthetic outbox write failure'); end;
+    `);
+    const failed = safeEnqueueAdsConversion(db, {
+      orderRef: "order_ads_026",
+      model: "legacy",
+      valueUnits: 20,
+      terminalAt: NOW
+    }, { env: ENABLED, now: NOW });
+    assert.equal(failed, null);
+    assert.equal(getAdsConversionOutboxRow(db, "order_ads_026"), null);
+    db.exec(`
+      drop trigger ads_test_fail_outbox_insert;
+      drop trigger ads_test_fail_outbox_update;
+    `);
+    const filled = safeEnqueueAdsConversion(db, {
+      orderRef: "order_ads_026",
+      model: "legacy",
+      valueUnits: 20,
+      terminalAt: NOW + 1_000
+    }, { env: ENABLED, now: NOW + 1_000 });
+    assert.equal(filled.status, "pending");
   });
 });
 

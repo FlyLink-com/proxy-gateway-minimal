@@ -238,7 +238,21 @@ export function createCoinCommerceInitialConfirmation({ database, commerceStore,
           schema();
           const selected = { accountId: approval.accountId, orderRef: approval.orderRef };
           const snapshot = participant.inspect(selected);
-          if (snapshot.confirmation) return committed(snapshot, approval);
+          if (snapshot.confirmation) {
+            // A committed confirmation already exists for this order.
+            // Re-run the participant's completion inside this
+            // transaction: for an already delivered order it performs
+            // its full delivered-state validation and re-queues the
+            // post-commit Ads enqueue (memory only; the participant
+            // never writes measurement data), so a recovery whose first
+            // post-commit flush failed can still fill the outbox from
+            // this replay. The flush after the transaction commits
+            // performs the write; a rollback discards the queue entry.
+            participant.complete({
+              confirmationRef: snapshot.confirmation.confirmation_ref
+            });
+            return committed(snapshot, approval);
+          }
           const now = clock();
           if (approval.expiresAt <= now) fail("approval_expired");
           if (Date.parse(approval.expiresAt) - Date.parse(now) > 86_400_000) fail("approval_invalid");
