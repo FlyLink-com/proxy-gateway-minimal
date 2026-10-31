@@ -1,6 +1,6 @@
 # 日本旧节点历史身份与业务连续性台账
 
-Last updated: 2026-10-30 UTC
+Last updated: 2026-10-31 UTC
 
 ```yaml
 document_metadata:
@@ -8,7 +8,7 @@ document_metadata:
   lifecycle: active
   authority_scope: jp_legacy_node_identity_and_business_continuity
   superseded_by: null
-  last_verified_at: 2026-10-30
+  last_verified_at: 2026-10-31
   production_authority: false
 ```
 
@@ -345,6 +345,10 @@ prod-edge-c 是后续独立子节点候选实例。它的销毁或 Provider 不�
 | [PR #808 JP child-node M0 runbook](https://github.com/FlyLink-com/proxy-gateway-minimal/pull/808) | 2026-10-30 M0 汇总；当前为 Draft，回执不是实时主机证明 |
 | [PR #808 exact-head review](https://github.com/FlyLink-com/proxy-gateway-minimal/pull/808#pullrequestreview-5713679877) | 明确 M0 remains BLOCKED、M1–M8 not authorized，并指出销毁与只读回执边界、拓扑冲突及身份缺口 |
 | [PR #808 documentation validation follow-up](https://github.com/FlyLink-com/proxy-gateway-minimal/pull/808#issuecomment-6525639150) | exact-head docs authority / diff check passed；hosted CI skipped，不能当作 production acceptance |
+| [Issue #809 latest repository-recorded BWH release identity reconciliation](https://github.com/FlyLink-com/proxy-gateway-minimal/issues/809#issuecomment-6540486888) | 2026-10-31 更正 PR #799 的两条实际 BWH Deploy Notes；历史发布标签不是当前主机实时身份。 |
+| [Issue #809 M0-A2-1 v6 one-shot execution receipt](https://github.com/FlyLink-com/proxy-gateway-minimal/issues/809#issuecomment-6540545036) | 2026-10-31 一次有界 BWH 只读观察；full-metering service failed、timer inactive，错误码与状态 writer 绑定仍未知。 |
+| [Issue #809 offline collector/status-writer architecture audit](https://github.com/FlyLink-com/proxy-gateway-minimal/issues/809#issuecomment-6540628177) | 2026-10-31 区分 full-metering collector 与 Admin status writer，修正 v6 错误比较对象及证据边界。 |
+| [PR #812 v7 read-only metering diagnostic package](https://github.com/FlyLink-com/proxy-gateway-minimal/pull/812) | Draft 离线诊断候选；记录 v9 Windows 本地验证及其 operator-reported / hosted-CI / production 限制，不构成生产授权。 |
 | [CURRENT_RELEASE_STATE.md](CURRENT_RELEASE_STATE.md) | 2026-10-11 dated release reconciliation；记录 BWH control-plane activation / ingress / DNS evidence，同时明确其不是 live host/runtime proof |
 | [PROJECT_TOPOLOGY.md](PROJECT_TOPOLOGY.md) | 2026-07-15 旧架构记录，仍把 JP 写为 subscription control plane |
 | [PRODUCTION_EDGE_FLEET.md](PRODUCTION_EDGE_FLEET.md) | 2026-07-07 规划文档仍把 Vultr Japan 写为 control-plane authority；不是实时资产清单 |
@@ -355,5 +359,60 @@ prod-edge-c 是后续独立子节点候选实例。它的销毁或 Provider 不�
 | 日期 | 变更 | 证据 |
 | --- | --- | --- |
 | 2026-10-30 | 初版建立并经 M0 证据复核；补充 BWH M0 状态、PR #808 exact-head review、BWH Deploy Note 的真实范围及当前阻塞项 | PR #752 Conversation Deploy Notes、#734、#776、#777；Issue #746、#795、#809；PR #808 M0 receipt / review / follow-up |
+| 2026-10-31 | 追加 v6 一次性只读回执、Collector / Timer 失败边界、App status writer 架构纠正，以及 v7 离线验证证据；M0 继续 BLOCKED | Issue #809 comments #6540486888 / #6540545036 / #6540628177；Draft PR #812 |
 
 后续更新必须保留历史行，不得把 operator_reported 改写成 provider_verified，也不得把 unknown 改写成 pass，除非新增证据明确覆盖同一物理身份和同一依赖范围。
+
+
+## 13. 2026-10-31 M0-A2-1 metering evidence update
+
+本节只补充 2026-10-31 BWH 计量诊断与源代码架构核对结果。它不改变第 2 节三套物理 / 逻辑身份的区分，不把历史部署回执升级为实时资产证明，也不关闭 M0。
+
+### 13.1 v6 一次性只读观察
+
+2026-10-31 07:20:01.988 UTC，操作员按一次性批准，在已绑定的 `bwh-us` 目标执行未修改的 v6 只读脚本一次；远程退出码为 0，无重试、无生产变更。回执记录：
+
+| 项目 | 观察结果 | 解释边界 |
+| --- | --- | --- |
+| App release label / path binding | `control-plane-pr799-eadefd98357a-mixed` / matched | 历史标签与路径绑定；`app_release_identity=label_only`，不是完整 artifact 或 source-commit 身份证明 |
+| App source pins | matched | 只核对四个 App 侧 projection / provenance 模块，不证明 full-metering collector 的部署归档身份 |
+| Full-metering service | loaded / failed / exit-code；ExecMainCode=1、ExecMainStatus=2；最近 start 2026-10-20 02:15:07 UTC、exit 02:15:08 UTC；观察时无 MainPID / ControlPID，restarts=0 | 证明该次 one-shot 命令走到退出码 2 的失败 / 阻断路径，不揭示具体错误原因 |
+| Full-metering Timer | loaded / inactive / dead；last trigger 2026-10-20 02:15:07 UTC；无 next elapse；persistent=no；unit link matched | 只表示该次观察到的 Timer 状态；不能单凭时间相同证明 OnFailure 因果链 |
+| Admin status projection binding | `status_binding=unknown`、`status_projection=unbound` | v6 未建立其假定的绑定，因此没有读取投影；不证明实际状态文件不存在 |
+| Omitted collector count / producer map | unknown / not_covered | 不得推断为零遗漏或完整 producer coverage |
+
+该次执行没有读取 Journal、SQLite、checkpoint、配置或原始环境文件，没有调用 collector，也没有启停、重置或修改任何 service / Timer。三条 JP 通道的当前健康、最近一次成功完整采集时间及 omitted-record count 仍为 unknown。
+
+### 13.2 Full-metering 错误码与 Timer 因果关系
+
+源代码审查确认，`traffic-full-metering-collect.mjs` 将 `runFullMeteringCommand` 的异常转换为脱敏 JSON 错误输出，并以退出码 2 结束。因此，2026-10-20 的 `ExecMainStatus=2` 只能证明通用错误 / fail-closed 路径被触发；具体 allowlisted `errorCode` 仍为 **unknown**，v6 没有读取对应 Journal invocation。
+
+历史记录显示，类似 full-metering 错误曾触发 `gccgw-full-metering-collect-stop.service` 停止 Timer。2026-10-20 的 collector start、exit 与 Timer last-trigger 时间相邻，和该安全链路一致，但 v6 没有读取当前 `OnFailure` 属性、stop unit 的 invocation / result 或 Timer 定义。因此本次事件的 OnFailure 因果关系为 **likely, not confirmed**，不得写成已证实。
+
+### 13.3 App 状态投影与两个 Collector 的边界纠正
+
+源代码架构存在两条不同链路：
+
+1. Full-metering lane：`gccgw-full-metering-collect.service` 运行 `traffic-full-metering-collect.mjs`，使用受保护的 config / digest 合同、SQLite 与独立 durable journal。
+2. Admin status projection lane：App 从 `EDGE_USAGE_COLLECTOR_STATUS_PATH` 读取状态；`traffic-usage-collect-once.mjs` 通过 `trafficCollectorStatusStore.write` 写入投影。历史 writer unit 为 `gccgw-traffic-usage-collect.service`，并有独立 Timer。
+
+v6 把 App 与第一条 full-metering service 比较，而不是与第二条 status-writer service 比较。故 `status_binding=unknown` 是诊断对象选择不正确导致的证据缺口，不能作为 status path 缺失或 writer 未绑定的负面结论。当前 BWH status-writer service / Timer 与 App path 的实时绑定仍为 **unknown**；必须在另一个有界只读门禁中分别核对。
+
+### 13.4 Source pins 与 producer coverage 限制
+
+v6 的 `source_pins=matched` 只覆盖四个 App 侧 projection / provenance 模块，不绑定 full-metering service 的 `WorkingDirectory`、`ExecStart`、`OnFailure`、fragment / drop-ins、部署归档或 config。2026-10-12 PR #776 中的 collector archive digest 与 source commit 是历史部署记录，不是 2026-10-31 当前主机的新鲜身份读取。
+
+现有 producer allowlist 只覆盖 `japan_tuic_usage_credential_map` 与 `sgp_tuic_connection_delta_sidecar`。它不是日本 VLESS、Hy2、TUIC 三类通道的完整 producer map。不得把 `producer_projection=not_covered` 当成通道健康或映射完整证明。
+
+### 13.5 v7 离线诊断候选的验证边界
+
+Draft PR #812 当前 head 为 `92a4ea3454cce9e873a49fd692ea374ec2078609`。其记录的 v9 Windows 本地验证针对代码提交 `5187edc19380fdb44dd2e0f531e9cfdf580b00e1`，使用 Node `v22.16.0`，操作员报告 SHA256 7/7、语法检查 4/4、self-test passed、测试 10/10。该记录是 operator-reported local evidence，不是本次 ChatGPT 重新运行的结果。
+
+PR #812 后续 evidence-archive commit 只更新 README、VALIDATION、REVIEW-REPORT 与 SHA256SUMS，不改诊断运行时代码或测试源码；但记录明确说明，Windows 上的 `sha256sum -c` 7/7 命令没有在 archive head `92a4ea3` 上重新执行。Hosted CI 为 skipped，不得记为通过。v7 包的生产目标读取仍需独立、精确的 Risk A 批准；PR #812 本身不授权 SSH、生产读取或执行。
+
+### 13.6 当前决策与后续门禁
+
+- **M0 继续 BLOCKED。** 本节没有证明早期 JP 主机已完成物理退役，也没有完成历史通道、DNS、证书、计量与依赖资源连续性闭环。
+- 不授权 M0-A2-2、M1–M8、生产恢复、服务 / Timer 操作、collector invocation、数据清理或日本新节点创建。
+- 若后续需要继续，只能先对最终 v7 包做 exact-head 复审，再另行取得绑定最终 package SHA-256、目标、expected release label 与时间窗口的一次性 Risk A 批准。
+- 在该批准前，不读取 Journal、数据库、checkpoint、config、环境文件或原始凭据，不进行 SSH / Provider 连接，也不执行任何生产变更。
