@@ -116,6 +116,31 @@ test("validateAdsClick rejects non-strict clickAt shapes", () => {
   }
 });
 
+test("validateAdsClick rejects impossible calendar dates that Date.parse would normalize", () => {
+  // Each value below parses to a real instant inside the 90-day window,
+  // so only the toISOString round-trip check can reject it.
+  const feb30Now = Date.parse("2026-03-05T00:00:00.000Z");
+  assert.equal(
+    validateAdsClick(validClick({ clickAt: "2026-02-30T23:59:00.000Z" }), feb30Now),
+    null
+  );
+  assert.equal(
+    validateAdsClick(validClick({ clickAt: "2026-10-30T24:00:00.000Z" }), NOW),
+    null
+  );
+  assert.equal(
+    validateAdsClick(validClick({ clickAt: "2026-13-01T00:00:00.000Z" }), NOW),
+    null
+  );
+  // A real leap day round-trips exactly and is accepted.
+  const leapNow = Date.parse("2028-03-01T00:00:00.000Z");
+  const leap = validateAdsClick(
+    validClick({ clickAt: "2028-02-29T12:00:00.000Z" }),
+    leapNow
+  );
+  assert.equal(leap.clickAt, Date.parse("2028-02-29T12:00:00.000Z"));
+});
+
 test("validateAdsClick rejects malformed descriptors", () => {
   const cases = [
     null,
@@ -322,8 +347,11 @@ test("safe wrappers return null instead of throwing when the database fails", ()
   }, { env: ENABLED, now: NOW }), null);
 });
 
-test("enqueueAdsConversion records skipped/no_click without a binding, in Coins", () => {
+test("enqueueAdsConversion records skipped/claim_missing when no claim was ever recorded, in Coins", () => {
   withDb((db) => {
+    // No claim row exists for this order: whether the first request
+    // carried a click is unknown, so the outcome is claim_missing and
+    // must not be reported as a definite no_click.
     const row = enqueueAdsConversion(db, {
       orderRef: "order_ads_008",
       model: "legacy",
@@ -331,7 +359,7 @@ test("enqueueAdsConversion records skipped/no_click without a binding, in Coins"
       terminalAt: NOW
     }, { env: ENABLED, now: NOW });
     assert.equal(row.status, "skipped");
-    assert.equal(row.skipReason, "no_click");
+    assert.equal(row.skipReason, "claim_missing");
     assert.equal(row.transactionId, "order_ads_008");
     assert.equal(row.valueUnits, 20);
     assert.equal(row.valueUnit, "COIN");
@@ -341,6 +369,59 @@ test("enqueueAdsConversion records skipped/no_click without a binding, in Coins"
     `).get("order_ads_008");
     assert.equal(raw.value_unit, "COIN");
     assert.equal("currency" in raw, false);
+  });
+});
+
+test("enqueueAdsConversion records skipped/no_click for an explicit no-click claim", () => {
+  withDb((db) => {
+    recordAdsClickClaim(db, {
+      orderRef: "order_ads_021",
+      accountRef: "account_ads_001",
+      model: "legacy",
+      adsClick: undefined
+    }, { env: ENABLED, now: NOW });
+    const row = enqueueAdsConversion(db, {
+      orderRef: "order_ads_021",
+      model: "legacy",
+      valueUnits: 20,
+      terminalAt: NOW
+    }, { env: ENABLED, now: NOW });
+    assert.equal(row.status, "skipped");
+    assert.equal(row.skipReason, "no_click");
+  });
+});
+
+test("enqueueAdsConversion records skipped/binding_failed when the claim has a click but no binding materialized", () => {
+  withDb((db) => {
+    recordAdsClickClaim(db, {
+      orderRef: "order_ads_022",
+      accountRef: "account_ads_001",
+      model: "deferred",
+      adsClick: validClick()
+    }, { env: ENABLED, now: NOW });
+    // Raw enqueue without a preceding materialization: the click is
+    // known to exist, so this is a recoverable binding failure, not a
+    // missing click.
+    const row = enqueueAdsConversion(db, {
+      orderRef: "order_ads_022",
+      model: "deferred",
+      valueUnits: 30,
+      terminalAt: NOW
+    }, { env: ENABLED, now: NOW });
+    assert.equal(row.status, "skipped");
+    assert.equal(row.skipReason, "binding_failed");
+    // Once the binding materializes, the same row upgrades to pending.
+    materializeAdsClickBinding(db, {
+      orderRef: "order_ads_022"
+    }, { env: ENABLED, now: NOW + 1_000 });
+    const upgraded = enqueueAdsConversion(db, {
+      orderRef: "order_ads_022",
+      model: "deferred",
+      valueUnits: 30,
+      terminalAt: NOW + 1_000
+    }, { env: ENABLED, now: NOW + 1_000 });
+    assert.equal(upgraded.status, "pending");
+    assert.equal(upgraded.skipReason, null);
   });
 });
 
@@ -418,7 +499,7 @@ test("a skipped row upgrades to pending once the binding materializes", () => {
       terminalAt: NOW
     }, { env: ENABLED, now: NOW });
     assert.equal(bare.status, "skipped");
-    assert.equal(bare.skipReason, "no_click");
+    assert.equal(bare.skipReason, "claim_missing");
     safeCaptureAdsClickForOrder(db, {
       orderRef: "order_ads_013",
       accountRef: "account_ads_001",

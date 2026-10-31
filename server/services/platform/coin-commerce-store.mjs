@@ -538,9 +538,13 @@ export function createSqliteCoinCommerceStore(options = {}) {
   // reference here (memory only). flushAdsRecoveryEnqueues() runs outside
   // any transaction, re-reads the committed fulfillment state, and records
   // the outbox row only for orders that really are delivered — a caller
-  // rollback therefore produces no outbox row. Entries are dropped once
-  // examined; if the process exits first, the enqueue is lost (measurement
-  // only, never purchase impact).
+  // rollback therefore produces no outbox row. The initial-confirmation
+  // executor flushes its own batch explicitly once its transaction has
+  // committed (and discards the batch when the transaction fails), so a
+  // completed recovery never has to wait for an unrelated store
+  // operation; execute() also flushes whatever is queued as a backstop.
+  // Entries are dropped once examined; if the process exits first, the
+  // enqueue is lost (measurement only, never purchase impact).
   const pendingAdsRecoveryEnqueues = new Set();
 
   function queueAdsRecoveryEnqueue(orderRef) {
@@ -549,14 +553,36 @@ export function createSqliteCoinCommerceStore(options = {}) {
     }
   }
 
-  function flushAdsRecoveryEnqueues() {
-    if (pendingAdsRecoveryEnqueues.size === 0) return;
+  // Resolves which queued references a flush/discard call is responsible
+  // for: an explicit batch (one recovery operation's orders) or, when the
+  // argument is omitted, the whole queue.
+  function adsRecoveryBatch(orderRefs) {
+    if (orderRefs === undefined) return [...pendingAdsRecoveryEnqueues];
+    const refs = [];
+    for (const orderRef of orderRefs ?? []) {
+      if (pendingAdsRecoveryEnqueues.has(orderRef)) refs.push(orderRef);
+    }
+    return refs;
+  }
+
+  // Drops queued recovery enqueues without writing anything. Used when
+  // the transaction that queued them has failed: those orders must never
+  // be flushed later against state the transaction did not commit.
+  function discardAdsRecoveryEnqueues(orderRefs) {
+    for (const orderRef of adsRecoveryBatch(orderRefs)) {
+      pendingAdsRecoveryEnqueues.delete(orderRef);
+    }
+  }
+
+  function flushAdsRecoveryEnqueues(orderRefs) {
+    const refs = adsRecoveryBatch(orderRefs);
+    if (refs.length === 0) return;
     if (!adsBindingEnabled()) {
-      pendingAdsRecoveryEnqueues.clear();
+      discardAdsRecoveryEnqueues(refs);
       return;
     }
     if (db.inTransaction) return;
-    for (const orderRef of [...pendingAdsRecoveryEnqueues]) {
+    for (const orderRef of refs) {
       pendingAdsRecoveryEnqueues.delete(orderRef);
       try {
         const delivered = db.prepare(`
@@ -4512,7 +4538,12 @@ export function createSqliteCoinCommerceStore(options = {}) {
   if (JSON.stringify(Reflect.ownKeys(store)) !== JSON.stringify(STORE_METHODS)) {
     throw commerceError("commerce_infrastructure_error");
   }
-  INITIAL_CONFIRMATION_PARTICIPANTS.set(store, { database: db, participant: initialConfirmationParticipant });
+  INITIAL_CONFIRMATION_PARTICIPANTS.set(store, {
+    database: db,
+    participant: initialConfirmationParticipant,
+    flushAdsRecoveryEnqueues,
+    discardAdsRecoveryEnqueues
+  });
   return store;
 }
 
@@ -4522,5 +4553,23 @@ export function createCoinCommerceInitialConfirmationParticipant(input) {
   const binding = INITIAL_CONFIRMATION_PARTICIPANTS.get(value.store);
   if (!binding || binding.database !== value.database) throw commerceError("invalid_store_contract");
   return binding.participant;
+}
+
+// Post-commit controls for the Ads recovery enqueues queued by the
+// initial-confirmation participant. Exposed as a module-level factory
+// (like the participant itself) rather than as store methods, so the
+// store's pinned public shape does not change: the executor that drives
+// the participant calls flush once its own transaction has committed,
+// and discard when that transaction fails, passing the batch of order
+// references that the transaction queued.
+export function createCoinCommerceAdsRecoveryControls(input) {
+  const value = assertPlainObject(input);
+  assertExactDataFields(value, new Set(["store", "database"]));
+  const binding = INITIAL_CONFIRMATION_PARTICIPANTS.get(value.store);
+  if (!binding || binding.database !== value.database) throw commerceError("invalid_store_contract");
+  return Object.freeze({
+    flushAdsRecoveryEnqueues: binding.flushAdsRecoveryEnqueues,
+    discardAdsRecoveryEnqueues: binding.discardAdsRecoveryEnqueues
+  });
 }
 

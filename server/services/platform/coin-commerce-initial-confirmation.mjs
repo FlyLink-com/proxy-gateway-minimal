@@ -1,7 +1,10 @@
 import { createHash } from "node:crypto";
 import { types as utilTypes } from "node:util";
 import { inspectCoinCommerceInitialConfirmationSchema } from "./coin-commerce-migrations.mjs";
-import { createCoinCommerceInitialConfirmationParticipant } from "./coin-commerce-store.mjs";
+import {
+  createCoinCommerceAdsRecoveryControls,
+  createCoinCommerceInitialConfirmationParticipant
+} from "./coin-commerce-store.mjs";
 import { COIN_COMMERCE_PRODUCTION_FULFILLMENT_OFFER_VERSIONS } from "./coin-commerce-production-catalog.mjs";
 
 // Operator-only capability. Intentionally not composed into HTTP or the coordinator.
@@ -83,6 +86,7 @@ export function createCoinCommerceInitialConfirmation({ database, commerceStore,
       || typeof runtimeCore?.getTenant !== "function"
       || typeof runtimeCore?.listSubscriptionArtifacts !== "function") fail("invalid_input");
     const participant = createCoinCommerceInitialConfirmationParticipant({ store: commerceStore, database });
+    const adsRecovery = createCoinCommerceAdsRecoveryControls({ store: commerceStore, database });
 
     function schema() {
       if (!inspectCoinCommerceInitialConfirmationSchema({ database }).ok) fail("schema_not_ready");
@@ -228,7 +232,9 @@ export function createCoinCommerceInitialConfirmation({ database, commerceStore,
         const bound = Object.fromEntries(APPROVAL_FIELDS.map((key) => [key, approval[key]]));
         if (initialConfirmationApprovalDigest(bound) !== approval.approvalSha256) fail("approval_invalid");
         if (database.inTransaction) fail("invalid_input");
-        return database.transaction(() => {
+        let outcome;
+        try {
+          outcome = database.transaction(() => {
           schema();
           const selected = { accountId: approval.accountId, orderRef: approval.orderRef };
           const snapshot = participant.inspect(selected);
@@ -271,7 +277,22 @@ export function createCoinCommerceInitialConfirmation({ database, commerceStore,
             || canonical(after.confirmation) !== canonical(row)) fail("evidence_drift");
           committed(after, approval);
           return result(row, "confirmed");
-        }).immediate();
+          }).immediate();
+        } catch (error) {
+          // The recovery transaction failed and rolled back: discard the
+          // Ads enqueue the participant queued for this order, so it can
+          // never be flushed later against state this transaction did
+          // not commit.
+          adsRecovery.discardAdsRecoveryEnqueues([approval.orderRef]);
+          throw error;
+        }
+        // The transaction has committed. Flush this recovery's queued Ads
+        // enqueue explicitly, here and outside any transaction, instead
+        // of waiting for an unrelated later store operation. The flush
+        // re-reads the committed fulfillment state before writing and
+        // swallows its own failures (measurement only).
+        adsRecovery.flushAdsRecoveryEnqueues([approval.orderRef]);
+        return outcome;
       });
     }
     return Object.freeze({ prepare, execute });

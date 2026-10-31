@@ -130,14 +130,19 @@ function safeRef(value) {
 //   - a complete UTC ISO string with millisecond precision and a `Z`
 //     suffix (the shape Date#toISOString produces).
 // Timezone-less strings, incomplete dates, and every other shape return
-// null instead of being guessed in the process timezone.
+// null instead of being guessed in the process timezone. The ISO form is
+// also round-trip checked: strings that merely look calendrical but are
+// not real dates (February 30, hour 24) are normalized by Date.parse
+// instead of rejected, so the parsed value must reproduce the input
+// exactly through toISOString.
 function parseClickAt(value) {
   if (Number.isSafeInteger(value)) {
     return value >= MIN_EPOCH_MS ? value : null;
   }
   if (typeof value === "string" && CLICK_AT_ISO_UTC_PATTERN.test(value)) {
     const parsed = Date.parse(value);
-    return Number.isSafeInteger(parsed) ? parsed : null;
+    if (!Number.isSafeInteger(parsed)) return null;
+    return new Date(parsed).toISOString() === value ? parsed : null;
   }
   return null;
 }
@@ -332,14 +337,27 @@ export function getAdsConversionOutboxRow(db, orderRef) {
 }
 
 // Records the terminal outcome of a purchase for later upload. Exactly one
-// row per order. A row that was recorded as skipped is upgraded in place
-// when a later evaluation finds a consented binding (status becomes
-// pending, skip_reason cleared); rows already pending or beyond are never
-// downgraded or rewritten. Amounts are wallet Coins: value_units stores
-// the Coins integer and value_unit names the unit ('COIN'); converting
-// Coins to a conversion currency amount is the dispatcher's concern
-// (PR-3), not this table's. Returns the stored row, or null when disabled
-// or inputs are invalid.
+// row per order. The outcome is classified from the stored claim, not just
+// the binding, so that "unknown" is never recorded as a definite fact:
+//   - no claim row at all: skipped / claim_missing (the first request's
+//     declaration was never recorded; whether it carried a click is
+//     unknown and must not be reported as "no click");
+//   - claim with has_click = 0: skipped / no_click (the first request
+//     explicitly declared no usable click);
+//   - claim with a click but no binding: skipped / binding_failed (the
+//     click is known to exist but its binding never materialized —
+//     measurement pending recovery, not a missing click);
+//   - binding present but ad-user-data consent absent: skipped /
+//     consent_denied;
+//   - binding present and consented: pending.
+// A row that was recorded as skipped is upgraded in place when a later
+// evaluation computes pending (status becomes pending, skip_reason
+// cleared); rows already pending or beyond are never downgraded or
+// rewritten. Amounts are wallet Coins: value_units stores the Coins
+// integer and value_unit names the unit ('COIN'); converting Coins to a
+// conversion currency amount is the dispatcher's concern (PR-3), not this
+// table's. Returns the stored row, or null when disabled or inputs are
+// invalid.
 export function enqueueAdsConversion(db, input = {}, options = {}) {
   const env = options.env ?? process.env;
   if (!adsBindingEnabled(env)) return null;
@@ -353,12 +371,19 @@ export function enqueueAdsConversion(db, input = {}, options = {}) {
     ? input.terminalAt
     : at;
   ensureAdsConversionSchema(db);
+  const claim = getAdsClickClaim(db, orderRef);
   const binding = getAdsClickBinding(db, orderRef);
   let status = "pending";
   let skipReason = null;
-  if (!binding) {
+  if (!claim) {
+    status = "skipped";
+    skipReason = "claim_missing";
+  } else if (!claim.hasClick) {
     status = "skipped";
     skipReason = "no_click";
+  } else if (!binding) {
+    status = "skipped";
+    skipReason = "binding_failed";
   } else if (!binding.consentAdUserData) {
     status = "skipped";
     skipReason = "consent_denied";
