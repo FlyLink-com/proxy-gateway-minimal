@@ -1,4 +1,4 @@
-import type { PortalAdsClickDescriptor } from "./user-portal/commerce/api-contract";
+import type { PortalAdsClickDescriptor } from "./ads-attribution-contract";
 
 export type AdsUserDataConsent = "unknown" | "granted" | "denied";
 

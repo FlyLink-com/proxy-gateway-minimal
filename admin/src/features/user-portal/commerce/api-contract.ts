@@ -1,3 +1,6 @@
+import type { PortalAdsClickDescriptor } from "../../ads-attribution-contract";
+export type { PortalAdsClickDescriptor } from "../../ads-attribution-contract";
+
 export type PortalCoinType =
   | "bonus_coins"
   | "paid_coins"
@@ -198,13 +201,6 @@ export type PortalCoinCommerceErrorCode =
   | "deferred_transition_conflict"
   | "wallet_first_deferred_required"
   | "wallet_not_active";
-
-export type PortalAdsClickDescriptor = {
-  type: "gclid" | "gbraid" | "wbraid";
-  value: string;
-  clickAt: number;
-  consent: { adUserData: true; adPersonalization: false };
-};
 
 export type PortalCoinCommerceClientErrorCode =
   | PortalCoinCommerceErrorCode
