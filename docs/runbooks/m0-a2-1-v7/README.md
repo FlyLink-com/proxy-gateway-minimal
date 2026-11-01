@@ -1,5 +1,15 @@
 # M0-A2-1 v7 — BWH read-only metering diagnostic (v9 byte-stable checkout repair)
 
+```yaml
+document_metadata:
+  doc_type: operational
+  lifecycle: active
+  authority_scope: m0_a2_1_v7_read_only_diagnostic_runbook
+  superseded_by: null
+  last_verified_at: 2026-11-01
+  production_authority: false
+```
+
 **Status:** The operator reports complete local acceptance on exact code commit `0477799c809aa6d16b4ad121db9915fa5a604f70` using Node `v22.16.0` (SHA256 7/7, syntax checks 4/4, self-test passed, tests 20/20). This result is bound to that code commit. A subsequent documentation-only synchronization changes this runbook, validation/review records, and the checksum manifest; the resulting exact PR head must rerun the full validation block before Ready. Hosted CI remains skipped; this is not production-read authorization.
 
 ## Purpose
