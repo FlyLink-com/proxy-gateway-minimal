@@ -150,6 +150,61 @@ describe("consent-aware Ads click attribution", () => {
     expect(readPortalAdsClickForPurchase()).toBeNull();
     expect(window.sessionStorage.getItem(PORTAL_ADS_CLICK_STORAGE_KEY)).toBeNull();
   });
+  test("propagates a failed consent withdrawal to Portal without relying on a shared-cookie write", () => {
+    expect(setAdsUserDataConsent("granted")).toBe(true);
+    const originalCookieDescriptor = Object.getOwnPropertyDescriptor(document, "cookie");
+    Object.defineProperty(document, "cookie", {
+      configurable: true,
+      get: () => `${CONSENT_COOKIE}=v1.granted`,
+      set: () => undefined
+    });
+
+    try {
+      expect(setAdsUserDataConsent("denied")).toBe(false);
+    } finally {
+      if (originalCookieDescriptor) {
+        Object.defineProperty(document, "cookie", originalCookieDescriptor);
+      } else {
+        delete (document as Document & { cookie?: string }).cookie;
+      }
+    }
+
+    // Simulate a click retained by a previously opened Portal origin.
+    window.sessionStorage.setItem(PORTAL_ADS_CLICK_STORAGE_KEY, JSON.stringify({
+      type: "gclid",
+      value: "old_portal_click",
+      clickAt: Date.now()
+    }));
+    const handoffUrl = buildPortalAdsClickHandoffUrl("/portal/#portal=orders");
+    expect(new URL(handoffUrl).hash).toContain("adsConsent=denied");
+    expect(new URL(handoffUrl).hash).not.toContain("adsClick=");
+
+    const target = new URL(handoffUrl);
+    setLocation(`${target.pathname}${target.search}${target.hash}`);
+    expect(consumePortalAdsClickHandoff()).toBeNull();
+    expect(readAdsUserDataConsent()).toBe("denied");
+    expect(window.sessionStorage.getItem(PORTAL_ADS_CLICK_STORAGE_KEY)).toBeNull();
+  });
+
+  test("fails open for Portal when transient history cleanup is unavailable", () => {
+    expect(setAdsUserDataConsent("granted")).toBe(true);
+    setLocation("/?gclid=cleanup_failure_click#/site");
+    expect(captureCompanySiteAdsClickFromLocation()).toMatchObject({ value: "cleanup_failure_click" });
+    const handoffUrl = buildPortalAdsClickHandoffUrl("/portal/#portal=orders");
+    const target = new URL(handoffUrl);
+    setLocation(`${target.pathname}${target.search}${target.hash}`);
+
+    const replaceState = vi.spyOn(window.history, "replaceState").mockImplementation(() => {
+      throw new Error("history API unavailable");
+    });
+    try {
+      expect(() => consumePortalAdsClickHandoff()).not.toThrow();
+      expect(window.sessionStorage.getItem(PORTAL_ADS_CLICK_STORAGE_KEY)).toBeNull();
+    } finally {
+      replaceState.mockRestore();
+    }
+  });
+
   test("expires a copied handoff fragment after ten minutes", () => {
     expect(setAdsUserDataConsent("granted")).toBe(true);
     const now = Date.now();

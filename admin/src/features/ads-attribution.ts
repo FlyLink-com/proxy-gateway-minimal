@@ -176,10 +176,33 @@ function encodeHandoff(click: StoredAdsClick): string | null {
   }
 }
 
+function buildPortalAdsConsentDenialUrl(baseUrl: string): string {
+  try {
+    const target = new URL(baseUrl, window.location.href);
+    const existing = target.hash.replace(/^#/u, "");
+    const segments = existing.split("&").filter(Boolean).filter((segment) => {
+      const rawKey = segment.split("=", 1)[0] ?? "";
+      try {
+        const key = decodeURIComponent(rawKey);
+        return key !== "adsClick" && key !== "adsConsent";
+      } catch {
+        return true;
+      }
+    });
+    segments.push("adsConsent=denied");
+    target.hash = segments.join("&");
+    return target.toString();
+  } catch {
+    return baseUrl;
+  }
+}
+
 export function buildPortalAdsClickHandoffUrl(baseUrl: string): string {
+  if (typeof window === "undefined") return baseUrl;
+  // A failed shared-cookie write must not let a previously granted Portal tab keep submitting attribution.
+  if (deniedConsentOverride) return buildPortalAdsConsentDenialUrl(baseUrl);
   if (
-    typeof window === "undefined"
-    || !adsClickFeatureEnabled()
+    !adsClickFeatureEnabled()
     || readAdsUserDataConsent() !== "granted"
     || !companySiteAdsClick
     || !isValidStoredClick(companySiteAdsClick)
@@ -196,7 +219,8 @@ export function buildPortalAdsClickHandoffUrl(baseUrl: string): string {
     const segments = existing.split("&").filter(Boolean).filter((segment) => {
       const rawKey = segment.split("=", 1)[0] ?? "";
       try {
-        return decodeURIComponent(rawKey) !== "adsClick";
+        const key = decodeURIComponent(rawKey);
+        return key !== "adsClick" && key !== "adsConsent";
       } catch {
         return true;
       }
@@ -246,6 +270,7 @@ export function consumePortalAdsClickHandoff(): StoredAdsClick | null {
   const rawHash = window.location.hash.replace(/^#/u, "");
   const segments = rawHash ? rawHash.split("&") : [];
   const handoffSegments: string[] = [];
+  const consentSegments: string[] = [];
   const retainedSegments: string[] = [];
 
   for (const segment of segments) {
@@ -257,21 +282,39 @@ export function consumePortalAdsClickHandoff(): StoredAdsClick | null {
       // Preserve unrecognized fragments exactly as received.
     }
     if (key === "adsClick") handoffSegments.push(segment);
+    else if (key === "adsConsent") consentSegments.push(segment);
     else if (segment) retainedSegments.push(segment);
   }
 
-  if (handoffSegments.length === 0) {
+  const carriesDenial = consentSegments.some((segment) => {
+    const separator = segment.indexOf("=");
+    if (separator < 0) return false;
+    try {
+      return decodeURIComponent(segment.slice(separator + 1)) === "denied";
+    } catch {
+      return false;
+    }
+  });
+  if (carriesDenial) setAdsUserDataConsent("denied");
+
+  if (handoffSegments.length === 0 && consentSegments.length === 0) {
     if (!adsClickFeatureEnabled() || readAdsUserDataConsent() !== "granted") {
       clearPortalAdsClick();
     }
     return null;
   }
 
-  window.history.replaceState(
-    window.history.state,
-    "",
-    `${window.location.pathname}${window.location.search}${retainedSegments.length ? `#${retainedSegments.join("&")}` : ""}`
-  );
+  try {
+    window.history.replaceState(
+      window.history.state,
+      "",
+      `${window.location.pathname}${window.location.search}${retainedSegments.length ? `#${retainedSegments.join("&")}` : ""}`
+    );
+  } catch {
+    // Attribution is optional: a blocked history API must not stop Portal startup or permit submission.
+    clearPortalAdsClick();
+    return null;
+  }
 
   if (
     handoffSegments.length !== 1
