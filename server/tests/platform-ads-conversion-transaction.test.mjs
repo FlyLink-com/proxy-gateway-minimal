@@ -18,6 +18,7 @@ import test from "node:test";
 import Database from "better-sqlite3";
 
 import { ensureAdsConversionSchema } from "../services/platform/ads-conversion-store.mjs";
+import { createSqliteAdsConsentStore } from "../services/platform/ads-consent-store.mjs";
 import * as commerce from "../services/platform/coin-commerce-store.mjs";
 import * as coinCommerceSchema from "../services/platform/coin-commerce-migrations.mjs";
 import {
@@ -90,6 +91,15 @@ function breakAdsWrites(database) {
         begin select raise(abort, 'synthetic ads write failure'); end;
     `);
   }
+}
+
+function grantAdsConsent(database, accountRef) {
+  const store = createSqliteAdsConsentStore({
+    database,
+    env: { [FLAG]: "true" }
+  });
+  store.recordConsent({ accountRef, adUserData: true });
+  store.close();
 }
 
 function adsRowCounts(database) {
@@ -194,6 +204,7 @@ test("legacy confirm and complete are unchanged when every Ads write fails", () 
     const state = legacyFixture();
     try {
       return withFlag(adsMode !== "off", () => {
+        if (adsMode !== "off") grantAdsConsent(state.database, LEGACY_ACCOUNT);
         if (adsMode === "broken") breakAdsWrites(state.database);
         const confirmed = legacyConfirmAndCapture(state, { adsClick: freshClick() });
         const claimed = state.store.claimNextFulfillmentCommand({ leaseMs: 1000 });
@@ -441,6 +452,7 @@ function deferredScenario(adsMode) {
       refFactory: references("quote"), quoteTtlMs: 60_000
     });
     return withFlag(adsMode !== "off", () => {
+      if (adsMode !== "off") grantAdsConsent(database, accountId);
       if (adsMode === "broken") breakAdsWrites(database);
       const quote = adapter.previewDeferredCheckout({
         accountId,
