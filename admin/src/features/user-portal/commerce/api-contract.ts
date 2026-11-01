@@ -199,6 +199,13 @@ export type PortalCoinCommerceErrorCode =
   | "wallet_first_deferred_required"
   | "wallet_not_active";
 
+export type PortalAdsClickDescriptor = {
+  type: "gclid" | "gbraid" | "wbraid";
+  value: string;
+  clickAt: number;
+  consent: { adUserData: true; adPersonalization: false };
+};
+
 export type PortalCoinCommerceClientErrorCode =
   | PortalCoinCommerceErrorCode
   | "commerce_request_failed";
