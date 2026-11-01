@@ -435,6 +435,7 @@ describe("Portal server-backed Marketplace", () => {
   });
 
   test("refreshes the pending downgrade banner and removes it after credited renewal in place", async () => {
+    usePendingSwitchClock();
     const downgradeQuote = switchQuote(switchBasic, 20);
     const renewalQuote = switchQuote(switchPlus, 10);
     const downgrade = switchOrder(downgradeQuote, "order_switch_downgrade");
@@ -456,22 +457,32 @@ describe("Portal server-backed Marketplace", () => {
     render(createElement(MarketplacePanel, {
       commerceClient: commerce, locale: "en", sessionRef: session.sessionRef!, theme: "light"
     }));
-    await screen.findByRole("button", { name: /Downgrade at period end.*Basic monthly/ });
-    const firstDialog = await confirmSwitch(switchBasic);
+    await settleSwitchRead();
+    expect(screen.getByRole("button", { name: /Downgrade at period end.*Basic monthly/ })).toBeInTheDocument();
+
+    const basicCard = screen.getByRole("heading", { name: switchBasic.title.en }).closest("article")!;
+    fireEvent.click(within(basicCard).getByRole("button"));
+    const firstDialog = screen.getByRole("dialog");
+    fireEvent.click(within(firstDialog).getByRole("button", { name: "Confirm purchase" }));
+    await settleSwitchRead();
+    expect(within(firstDialog).getByRole("button", { name: "Refresh Order" })).toBeInTheDocument();
     await act(async () => fireEvent.click(within(firstDialog).getByRole("button", { name: "Refresh Order" })));
-    await waitFor(() => expect(readPlanSwitchState).toHaveBeenCalledTimes(2));
+    await settleSwitchRead();
+    expect(readPlanSwitchState).toHaveBeenCalledTimes(2);
     fireEvent.click(within(firstDialog).getByRole("button", { name: "Close" }));
-    expect(await screen.findByText(/Pending downgrade: Basic monthly/)).toBeInTheDocument();
+    expect(screen.getByText(/Pending downgrade: Basic monthly/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Renew: Plus monthly" })).toBeInTheDocument();
 
     const plusCard = screen.getByRole("heading", { name: switchPlus.title.en }).closest("article")!;
     fireEvent.click(within(plusCard).getByRole("button"));
-    const secondDialog = await screen.findByRole("dialog");
+    const secondDialog = screen.getByRole("dialog");
     expect(within(secondDialog).getByText("Order amount").parentElement).toHaveTextContent("10 Coins");
     fireEvent.click(within(secondDialog).getByRole("button", { name: "Confirm purchase" }));
-    await within(secondDialog).findByRole("button", { name: "Refresh Order" });
+    await settleSwitchRead();
+    expect(within(secondDialog).getByRole("button", { name: "Refresh Order" })).toBeInTheDocument();
     await act(async () => fireEvent.click(within(secondDialog).getByRole("button", { name: "Refresh Order" })));
-    await waitFor(() => expect(readPlanSwitchState).toHaveBeenCalledTimes(3));
+    await settleSwitchRead();
+    expect(readPlanSwitchState).toHaveBeenCalledTimes(3);
     fireEvent.click(within(secondDialog).getByRole("button", { name: "Close" }));
     expect(screen.queryByText(/Pending downgrade:/)).not.toBeInTheDocument();
     expect(screen.getAllByText(/Current plan: Plus monthly/)).toHaveLength(2);
@@ -479,7 +490,6 @@ describe("Portal server-backed Marketplace", () => {
     expect(plusCard).not.toHaveTextContent(formatPortalDateTime(switchExpiry, "en"));
     expect(commerce.createOrder).toHaveBeenCalledTimes(2);
   });
-
   test.each(["cancelled", "capture_failed", "delivery_failed"] as const)(
     "%s does not refresh plan state as if fulfillment succeeded",
     async (outcome) => {
@@ -632,6 +642,7 @@ describe("Portal server-backed Marketplace", () => {
   });
 
   test("failed post-fulfillment plan read clears stale plan labels instead of inventing success", async () => {
+    usePendingSwitchClock();
     const quote = switchQuote(switchPlus, 10);
     const readPlanSwitchState = vi.fn()
       .mockResolvedValueOnce(switchState(switchPlus, true))
@@ -645,16 +656,23 @@ describe("Portal server-backed Marketplace", () => {
     render(createElement(MarketplacePanel, {
       commerceClient: commerce, locale: "en", sessionRef: session.sessionRef!, theme: "light"
     }));
-    await screen.findByText(/Pending downgrade:/);
-    const dialog = await confirmSwitch();
+    await settleSwitchRead();
+    expect(screen.getByText(/Pending downgrade:/)).toBeInTheDocument();
+
+    const plusCard = screen.getByRole("heading", { name: switchPlus.title.en }).closest("article")!;
+    fireEvent.click(within(plusCard).getByRole("button"));
+    const dialog = screen.getByRole("dialog");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Confirm purchase" }));
+    await settleSwitchRead();
+    expect(within(dialog).getByRole("button", { name: "Refresh Order" })).toBeInTheDocument();
     await act(async () => fireEvent.click(within(dialog).getByRole("button", { name: "Refresh Order" })));
-    await waitFor(() => expect(readPlanSwitchState).toHaveBeenCalledTimes(2));
+    await settleSwitchRead();
+    expect(readPlanSwitchState).toHaveBeenCalledTimes(2);
     fireEvent.click(within(dialog).getByRole("button", { name: "Close" }));
     expect(screen.queryByText(/Pending downgrade:|Current plan:/)).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Buy with Coins: Plus monthly" })).toBeInTheDocument();
     expect(commerce.createOrder).toHaveBeenCalledTimes(1);
   });
-
   test("re-reads plan state when a mounted pending downgrade reaches effectiveAt", async () => {
     const dueAt = new Date(switchExpiry).getTime();
     const laterValidUntil = "2026-11-26T08:00:00.000Z";
