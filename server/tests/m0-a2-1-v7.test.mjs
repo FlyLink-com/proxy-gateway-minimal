@@ -12,7 +12,13 @@ import {
   extractFailureErrorCode,
   correlateOnFailureStop,
   inspectStopUnitExecStart,
-  sameAppReleaseBinding
+  sameAppReleaseBinding,
+  extractSingleEnvironmentValueFromChunks,
+  isSafeStatusFileMetadata,
+  isSafeStatusDirectoryMetadata,
+  inspectOnFailure,
+  isExpectedNodeVersion,
+  isRootServiceIdentity
 } from '../../scripts/lib/m0-a2-1-v7-diagnostic.mjs';
 import { FILES } from '../../scripts/lib/m0-a2-1-v7-archive-pins.mjs';
 
@@ -106,9 +112,9 @@ test('stop-unit ExecStart requires the exact systemctl stop argv and rejects she
 
 test('status path binding compares App with the traffic-usage writer, never the full-metering unit', () => {
   const app = {
-    EnvironmentFiles: ['/etc/proxy-gateway.env (ignore_errors=no)'],
+    EnvironmentFiles: [],
     Environment: 'EDGE_USAGE_COLLECTOR_STATUS_PATH=/var/lib/gccgw/traffic-status.json',
-    PassEnvironment: '', UnsetEnvironment: ''
+    PassEnvironment: '', UnsetEnvironment: '', User: '', Group: '', DynamicUser: 'no'
   };
   const statusWriter = { ...app };
   assert.equal(resolveStatusBinding(app, statusWriter, '/var/lib/gccgw/traffic-status.json'), true);
@@ -177,4 +183,67 @@ test('future production invocation is wrapped in an external hard timeout', () =
   assert.match(readme, /sudo \/usr\/bin\/timeout --signal=TERM --kill-after=5s 45s/);
   assert.match(readme, /timeout exit (?:status|code) (?:124|137)/i);
   assert.doesNotMatch(readme, /sudo \/usr\/bin\/node scripts\/m0-a2-1-v7\.mjs --expected-release/);
+});
+
+
+test('status binding fails closed when EnvironmentFiles can override direct assignments or service identity is not root', () => {
+  const app = {
+    EnvironmentFiles: [],
+    Environment: 'EDGE_USAGE_COLLECTOR_STATUS_PATH=/var/lib/gccgw/traffic-status.json',
+    PassEnvironment: '', UnsetEnvironment: '', User: '', Group: '', DynamicUser: 'no'
+  };
+  const writer = { ...app };
+  const value = '/var/lib/gccgw/traffic-status.json';
+  assert.equal(resolveStatusBinding(app, writer, value), true);
+  assert.equal(resolveStatusBinding({ ...app, EnvironmentFiles: ['/etc/proxy-gateway.env'] }, writer, value), false);
+  assert.equal(resolveStatusBinding(app, { ...writer, EnvironmentFiles: ['/etc/proxy-gateway.env'] }, value), false);
+  assert.equal(resolveStatusBinding(app, { ...writer, User: 'proxy' }, value), false);
+  assert.equal(resolveStatusBinding({ ...app, UnsetEnvironment: 'EDGE_USAGE_COLLECTOR_STATUS_PATH' }, writer, value), false);
+  assert.equal(resolveStatusBinding({ ...app, PassEnvironment: 'EDGE_USAGE_COLLECTOR_STATUS_PATH' }, writer, value), false);
+  assert.equal(isRootServiceIdentity(writer), true);
+  assert.equal(isRootServiceIdentity({ ...writer, DynamicUser: 'yes' }), false);
+});
+
+test('process environment scanner retains only one target value and handles chunk boundaries and duplicates', () => {
+  const key = 'EDGE_USAGE_COLLECTOR_STATUS_PATH';
+  const raw = Buffer.from('LANG=C\\0' + key + '=/var/lib/gccgw/traffic-status.json\\0PATH=/usr/bin\\0');
+  const chunks = [raw.subarray(0, 7), raw.subarray(7, 29), raw.subarray(29, 47), raw.subarray(47)];
+  assert.equal(extractSingleEnvironmentValueFromChunks(chunks, key), '/var/lib/gccgw/traffic-status.json');
+  assert.equal(extractSingleEnvironmentValueFromChunks([Buffer.from(key + '=/one\\0' + key + '=/two\\0')], key), null);
+  assert.equal(extractSingleEnvironmentValueFromChunks([Buffer.from('LANG=C\\0')], key), null);
+  assert.throws(() => extractSingleEnvironmentValueFromChunks([Buffer.from('LANG=C')], key, 3), error => error.safeCode === 'process_environment_too_large');
+});
+
+test('status file and every parent directory require root ownership and restrictive metadata', () => {
+  const file = {
+    isFile: () => true, isSymbolicLink: () => false,
+    uid: 0n, gid: 0n, nlink: 1n, mode: 0o100600n, size: 128n
+  };
+  assert.equal(isSafeStatusFileMetadata(file), true);
+  assert.equal(isSafeStatusFileMetadata({ ...file, uid: 1000n }), false);
+  assert.equal(isSafeStatusFileMetadata({ ...file, gid: 1000n }), false);
+  assert.equal(isSafeStatusFileMetadata({ ...file, nlink: 2n }), false);
+  assert.equal(isSafeStatusFileMetadata({ ...file, mode: 0o100640n }), false);
+  assert.equal(isSafeStatusFileMetadata({ ...file, size: 300000n }), false);
+  const directory = { isDirectory: () => true, isSymbolicLink: () => false, uid: 0n, gid: 0n, mode: 0o40755n };
+  assert.equal(isSafeStatusDirectoryMetadata(directory), true);
+  assert.equal(isSafeStatusDirectoryMetadata({ ...directory, uid: 1000n }), false);
+  assert.equal(isSafeStatusDirectoryMetadata({ ...directory, mode: 0o40775n }), false);
+  assert.equal(isSafeStatusDirectoryMetadata({ ...directory, isSymbolicLink: () => true }), false);
+});
+
+test('OnFailure reports additional handlers instead of hiding them', () => {
+  const stop = 'gccgw-full-metering-collect-stop.service';
+  assert.deepEqual(inspectOnFailure(stop), { status: 'linked_only', extraCount: 0 });
+  assert.deepEqual(inspectOnFailure(stop + ' alert.service'), { status: 'linked_with_extras', extraCount: 1 });
+  assert.deepEqual(inspectOnFailure('alert.service'), { status: 'not_linked', extraCount: 1 });
+  assert.deepEqual(inspectOnFailure(stop + ' ' + stop), { status: 'unknown', extraCount: null });
+  assert.deepEqual(inspectOnFailure('bad/unit'), { status: 'unknown', extraCount: null });
+});
+
+test('production runtime accepts only the exact documented Node v22.16.0', () => {
+  assert.equal(isExpectedNodeVersion('22.16.0'), true);
+  assert.equal(isExpectedNodeVersion('22.16.1'), false);
+  assert.equal(isExpectedNodeVersion('22.17.0'), false);
+  assert.equal(isExpectedNodeVersion('24.16.0'), false);
 });
