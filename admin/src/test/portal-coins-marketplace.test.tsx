@@ -435,6 +435,10 @@ describe("Portal server-backed Marketplace", () => {
   });
 
   test("refreshes the pending downgrade banner and removes it after credited renewal in place", async () => {
+    // Pin Date just before the pending switch effectiveAt so the banner is
+    // not treated as overdue; timers stay real for findBy/waitFor polling.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(Date.parse(switchExpiry) - 1000);
     const downgradeQuote = switchQuote(switchBasic, 20);
     const renewalQuote = switchQuote(switchPlus, 10);
     const downgrade = switchOrder(downgradeQuote, "order_switch_downgrade");
@@ -632,6 +636,10 @@ describe("Portal server-backed Marketplace", () => {
   });
 
   test("failed post-fulfillment plan read clears stale plan labels instead of inventing success", async () => {
+    // Pin Date just before the pending switch effectiveAt so the banner is
+    // not treated as overdue; timers stay real for findBy/waitFor polling.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(Date.parse(switchExpiry) - 1000);
     const quote = switchQuote(switchPlus, 10);
     const readPlanSwitchState = vi.fn()
       .mockResolvedValueOnce(switchState(switchPlus, true))
