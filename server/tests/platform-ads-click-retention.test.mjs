@@ -90,7 +90,7 @@ test("retention inventory is aggregate-only and dry-run does not mutate rows", (
       eligibleBindingCount: 1,
       eligibleConsentLinkCount: 1,
       eligibleOutboxCount: 1,
-      redactedClaimCount: 0,
+      deletedClaimCount: 0,
       deletedBindingCount: 0,
       deletedConsentLinkCount: 0,
       skippedOutboxCount: 0
@@ -101,7 +101,7 @@ test("retention inventory is aggregate-only and dry-run does not mutate rows", (
   });
 });
 
-test("apply redacts expired click claims, deletes bindings, stops pending outbox, and is idempotent", () => {
+test("apply deletes expired claims and bindings, stops pending outbox, and is idempotent", () => {
   withDb((db) => {
     ensureAdsConversionSchema(db);
     db.exec(`
@@ -123,7 +123,7 @@ test("apply redacts expired click claims, deletes bindings, stops pending outbox
       eligibleBindingCount: 1,
       eligibleConsentLinkCount: 1,
       eligibleOutboxCount: 1,
-      redactedClaimCount: 1,
+      deletedClaimCount: 1,
       deletedBindingCount: 1,
       deletedConsentLinkCount: 1,
       skippedOutboxCount: 1
@@ -132,14 +132,7 @@ test("apply redacts expired click claims, deletes bindings, stops pending outbox
     assert.equal(JSON.stringify(result).includes("order_ads_retention_old"), false);
 
     assert.deepEqual(snapshot(db, "order_ads_retention_old"), {
-      claim: {
-        claim_state: "invalid_click",
-        click_type: null,
-        click_value: null,
-        click_at: null,
-        consent_ad_user_data: null,
-        consent_ad_personalization: null
-      },
+      claim: undefined,
       binding: null,
       outbox: { status: "skipped", skip_reason: "click_retention_expired" },
       linkCount: 0
@@ -166,7 +159,7 @@ test("apply redacts expired click claims, deletes bindings, stops pending outbox
       eligibleBindingCount: 0,
       eligibleConsentLinkCount: 0,
       eligibleOutboxCount: 0,
-      redactedClaimCount: 0,
+      deletedClaimCount: 0,
       deletedBindingCount: 0,
       deletedConsentLinkCount: 0,
       skippedOutboxCount: 0
