@@ -114,11 +114,12 @@ export function hasAdsClickConsentClaim(db, inputOrderRef, inputAccountRef) {
 }
 
 export function bindAdsClickConsentClaim(db, input = {}) {
-  const values = exactObject(input, ["orderRef", "accountRef", "createdAt"]);
+  const values = exactObject(input, ["orderRef", "accountRef", "createdAt", "authorizedAt"]);
   const orderRef = accountRef(values.orderRef);
   const account = accountRef(values.accountRef);
   if (!Number.isSafeInteger(values.createdAt) || values.createdAt < 0
-    || !hasAdsConsentForAccount(db, account)
+    || !Number.isSafeInteger(values.authorizedAt) || values.authorizedAt < 0
+    || !hasAdsConsentForAccount(db, account, values.authorizedAt)
     || !tableExists(db, "platform_ads_click_consent_claims")) {
     return false;
   }
