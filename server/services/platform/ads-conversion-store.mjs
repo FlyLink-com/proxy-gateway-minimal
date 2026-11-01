@@ -466,8 +466,8 @@ export function enqueueAdsConversion(db, input = {}, options = {}) {
       end,
       skip_reason = case
         when excluded.status = 'pending' then null
-        when platform_ads_conversion_outbox.skip_reason = 'consent_revoked'
-          then 'consent_revoked'
+        when platform_ads_conversion_outbox.skip_reason is not null
+          then platform_ads_conversion_outbox.skip_reason
         else excluded.skip_reason
       end,
       value_units = case
