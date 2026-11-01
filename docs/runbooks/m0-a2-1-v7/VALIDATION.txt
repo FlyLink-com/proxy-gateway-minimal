@@ -1,6 +1,6 @@
 M0-A2-1 v7 / v9 BYTE-STABLE CHECKOUT VALIDATION RECORD
 Date: 2026-10-31
-Status: OPERATOR-REPORTED EXACT-CODE-HEAD ACCEPTANCE PASS on `0477799c809aa6d16b4ad121db9915fa5a604f70` (Node v22.16.0; SHA256 7/7; syntax 4/4; self-test PASS; tests 20/20) — POST-SYNC HEAD REQUIRES RERUN — HOSTED CI SKIPPED — PRODUCTION NOT AUTHORIZED.
+Status: HISTORICAL OPERATOR-REPORTED PASS on `0477799c809aa6d16b4ad121db9915fa5a604f70` ONLY — CURRENT CODE SNAPSHOT `498592721fff376bcc79feef32e5d7c3b967a3e3` HAS 21 TEST DECLARATIONS AND REQUIRES FULL EXACT-HEAD VALIDATION — HOSTED CI SKIPPED — PRODUCTION NOT AUTHORIZED.
 
 ## v9 Windows local verification — operator-reported
 
@@ -146,3 +146,18 @@ The PR remains Draft; M0 remains BLOCKED. No BWH/Provider connection, production
 
 This is operator-reported local evidence, not a hosted CI result or independent execution by GitHub. It applies to the exact code commit `0477799c809aa6d16b4ad121db9915fa5a604f70`. The documentation-synchronization commits that update this runbook, validation/review records, and checksum manifest are later commits; they do not change diagnostic runtime or test source, but the resulting exact PR head must still rerun the complete checksum, syntax, self-test, and 20-test suite before Ready. Do not describe the documentation-sync head as fully validated until that rerun is recorded.
 Hosted CI remains skipped while the PR is Draft; skipped is not a pass. Production state and authorization are not established by this local test.
+
+
+## 2026-11-01 current code snapshot — Master sync and App source-parent hardening
+
+This section supersedes earlier "documentation-only synchronization" descriptions for the current branch. The historical local pass recorded above remains valid only for the exact commit it names.
+
+- Master synchronization commit: `281be450f2bf966d7ddb188d12c8c1840f9aa646`, with parents prior PR head `8a59c24a7596977b1cd7053d11b5ab4a0ddf0d8e` and Master `90d49058efc91179464a6df4157308fa707feb49`.
+- The overlapping `admin/src/test/portal-coins-marketplace.test.tsx` was resolved by keeping the current Master version, including the #813 fixed-date test repair. Nine other PR-specific files were retained.
+- App source-parent hardening commit: `f00b1c4e670297e7c8c825c08b46862fd73e6535`. It enumerates and validates each directory from `/` to the pinned source-module parent directories; requires real non-symlink directories, root UID/GID ownership, and no group/world write bits; snapshots and rechecks directory metadata around pinned-file reads; and repeats the check immediately before dynamic import.
+- Test assertion correction commit: `498592721fff376bcc79feef32e5d7c3b967a3e3`. The test file contains 21 test declarations, including coverage for ancestor enumeration, UID/GID, mode, symlink and traversal rejection, and the pre-import source recheck.
+- Current code-bearing snapshot: `498592721fff376bcc79feef32e5d7c3b967a3e3`. No exact-snapshot local checksum, syntax, self-test, or full test-suite result is recorded yet. Run the complete validation block in this file using Node `v22.16.0` against the exact final PR head and record actual outputs/exit codes. Do not transfer the earlier 20/20 result from `0477799c`.
+- For code snapshot `49859272`, CI run `41296312350` and its eight jobs were skipped while the PR was Draft. Governance advisory run `41296310042` succeeded; it is not a replacement for source checks or the test suite.
+- A fresh independent GitHub `APPROVED` review remains outstanding.
+
+No CI rerun was initiated by this documentation update. No BWH/Provider connection, SSH, production read, collector invocation, service/Timer action, or production mutation occurred. PR #812 remains Draft; M0 remains BLOCKED.

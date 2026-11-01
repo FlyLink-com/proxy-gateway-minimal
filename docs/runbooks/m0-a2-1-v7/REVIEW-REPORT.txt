@@ -1,5 +1,5 @@
 M0-A2-1 v7 / v9 BYTE-STABLE CHECKOUT REPAIR REVIEW
-Disposition: Draft PR candidate only. The operator reports full local acceptance on exact code commit `0477799c809aa6d16b4ad121db9915fa5a604f70` (Node v22.16.0; SHA256 7/7; syntax 4/4; self-test passed; tests 20/20). This result predates the documentation-only synchronization now being prepared; the resulting exact PR head must rerun the complete validation before Ready. Hosted CI remains skipped. NOT approved for production execution.
+Disposition: Draft PR candidate only. The operator-reported 20/20 local acceptance is bound to exact code commit `0477799c809aa6d16b4ad121db9915fa5a604f70` and does not validate the later Master synchronization or App source-parent hardening. Current code-bearing snapshot `498592721fff376bcc79feef32e5d7c3b967a3e3` has 21 test declarations and has not completed exact-snapshot local validation. Hosted CI is skipped; a fresh independent GitHub `APPROVED` review remains outstanding. NOT approved for production execution.
 
 ## Repair changes
 
@@ -120,3 +120,27 @@ Only that test assertion was updated in `1122a2dc71d0193f28db3d0857a4dda21bee38e
 ### Current disposition
 
 The 20/20 result is bound to code head `0477799c809aa6d16b4ad121db9915fa5a604f70`. This documentation synchronization changes only runbook/validation/review records and the checksum manifest; no diagnostic runtime or test source is changed. Nevertheless, the resulting exact PR head must rerun checksum 7/7, four syntax checks, self-test, and the complete 20-test suite under Node `v22.16.0` before Ready. Hosted CI remains skipped and is not a pass. PR #812 stays Draft; M0 stays BLOCKED; no production execution is authorized.
+
+
+## 2026-11-01 — current branch sync and App source-parent hardening review
+
+### Master synchronization
+
+- The PR base is Master `90d49058efc91179464a6df4157308fa707feb49`.
+- Merge commit `281be450f2bf966d7ddb188d12c8c1840f9aa646` has parents `8a59c24a7596977b1cd7053d11b5ab4a0ddf0d8e` (prior PR head) and `90d49058efc91179464a6df4157308fa707feb49` (Master).
+- The overlapping Marketplace test file was resolved in favor of the exact Master version, including the #813 fixed-date test repair; the other nine PR-specific files were retained. The branch was verified zero commits behind Master.
+
+### App source-parent hardening
+
+- Commit `f00b1c4e670297e7c8c825c08b46862fd73e6535` adds enumeration of the App release source-parent directory chain from `/` through each pinned module directory.
+- Each directory is checked as a real non-symlink directory with root UID/GID ownership and no group/world write bits. Resolved paths and metadata signatures are snapshotted and rechecked around source reads; the source pin gate is repeated immediately before the dynamic import of the App sanitizer.
+- Regression coverage checks the enumerated ancestor chain, owner/group, mode, symlink rejection, and path traversal rejection. Test-only assertion correction `498592721fff376bcc79feef32e5d7c3b967a3e3` fixes the static source assertion. The test file contains 21 test declarations.
+- This is a code-path inspection and test-source review only. No local execution of the 21-declaration suite was performed in this environment, so no current-head test pass is claimed. The historical operator-reported 20/20 result remains bound to `0477799c809aa6d16b4ad121db9915fa5a604f70`.
+
+### Hosted checks and disposition
+
+- On code snapshot `49859272`, CI run `41296312350` was skipped while Draft; its eight jobs were skipped. Trusted governance advisory run `41296310042` succeeded, but is not a source/test CI pass.
+- Exact final-head checksum 7/7, four syntax checks, self-test, and full `node --test` execution under Node `v22.16.0` remain pending.
+- A fresh independent GitHub `APPROVED` review remains outstanding. This report is not that approval.
+
+Keep PR #812 Draft and M0 BLOCKED. No BWH/Provider access, SSH, production systemd/journal/status/SQLite/config/environment-file read, collector invocation, service/Timer action, or production mutation is authorized.

@@ -10,7 +10,7 @@ document_metadata:
   production_authority: false
 ```
 
-**Status:** The operator reports complete local acceptance on exact code commit `0477799c809aa6d16b4ad121db9915fa5a604f70` using Node `v22.16.0` (SHA256 7/7, syntax checks 4/4, self-test passed, tests 20/20). This result is bound to that code commit. A subsequent documentation-only synchronization changes this runbook, validation/review records, and the checksum manifest; the resulting exact PR head must rerun the full validation block before Ready. Hosted CI remains skipped; this is not production-read authorization.
+**Status:** The operator-reported 20/20 local acceptance is bound only to code commit `0477799c809aa6d16b4ad121db9915fa5a604f70`. Since that result, the PR branch was synchronized with Master at `90d49058efc91179464a6df4157308fa707feb49` through merge commit `281be450f2bf966d7ddb188d12c8c1840f9aa646`, then changed by App source-parent hardening commit `f00b1c4e670297e7c8c825c08b46862fd73e6535` and test assertion correction `498592721fff376bcc79feef32e5d7c3b967a3e3`. The current code-bearing snapshot `498592721fff376bcc79feef32e5d7c3b967a3e3` has 21 test declarations and has **not** completed exact-snapshot local validation. The complete checksum, four syntax checks, self-test, and full test suite under Node `v22.16.0` remain pending. Hosted CI was skipped while Draft; this is not production-read authorization.
 
 ## Purpose
 
@@ -206,3 +206,32 @@ M0 remains **BLOCKED**. This package is diagnostic preparation only. It does not
 - No BWH/Provider connection, SSH, production read, collector invocation, service/Timer action, or production mutation occurred.
 - This is operator-reported local evidence, not a hosted CI result or independent execution by GitHub. It applies to the exact code commit `0477799c809aa6d16b4ad121db9915fa5a604f70`. The documentation-synchronization commits that update this runbook, validation/review records, and checksum manifest are later commits; they do not change diagnostic runtime or test source, but the resulting exact PR head must still rerun the complete checksum, syntax, self-test, and 20-test suite before Ready. Do not describe the documentation-sync head as fully validated until that rerun is recorded.
 - PR #812 remains Draft. M0 remains BLOCKED. Hosted CI is skipped, not passed. A formal independent GitHub review and exact post-documentation-sync validation remain outstanding.
+
+
+## 2026-11-01 — Master synchronization and App source-parent hardening
+
+This section supersedes earlier statements that described the current branch as a documentation-only synchronization. Subsequent code changes are recorded here and require fresh exact-head validation.
+
+### Master synchronization
+
+- PR base is `master` at `90d49058efc91179464a6df4157308fa707feb49`.
+- Merge synchronization commit: `281be450f2bf966d7ddb188d12c8c1840f9aa646`; parents are the prior PR head `8a59c24a7596977b1cd7053d11b5ab4a0ddf0d8e` and Master `90d49058efc91179464a6df4157308fa707feb49`.
+- The overlapping `admin/src/test/portal-coins-marketplace.test.tsx` file was resolved by retaining the exact Master version, including the merged #813 fixed-date test repair. The other nine PR-specific files were retained.
+- The current branch was verified at zero commits behind Master; GitHub reported the PR mergeable with no conflict at the pre-documentation code snapshot.
+
+### App source-parent hardening
+
+- Production diagnostic and regression-test changes were committed in `f00b1c4e670297e7c8c825c08b46862fd73e6535`.
+- The source-pin verifier now enumerates every parent directory from `/` through each pinned App module's containing directory. Each directory must be a real, non-symlink directory owned by root UID/GID and must not be group/world writable.
+- Directory metadata and resolved paths are snapshotted and rechecked around pinned-file reads. The verifier repeats the directory-chain check after each file read and immediately before the dynamic import of the App sanitizer.
+- The test suite covers full ancestor enumeration, UID/GID and mode requirements, symlink rejection, path-traversal rejection, and the static ordering requirement that source pins are rechecked immediately before import.
+- A follow-up test-only static assertion correction was committed in `498592721fff376bcc79feef32e5d7c3b967a3e3`. The current test file contains 21 test declarations. This correction does not change production runtime code.
+
+### Exact-snapshot validation and hosted checks
+
+- Historical operator-reported local acceptance remains bound to `0477799c809aa6d16b4ad121db9915fa5a604f70`: checksum 7/7, four syntax checks, self-test, and 20/20 tests on Node `v22.16.0`. It does **not** validate the later Master synchronization or App source-parent hardening.
+- The current code-bearing snapshot is `498592721fff376bcc79feef32e5d7c3b967a3e3`. Its checksum verification, four `node --check` commands, `--self-test`, and full `node --test` run have not been executed or independently verified in this record. Record the actual output and exit code against the exact final PR head before Ready; do not infer a pass from the historical result.
+- On code snapshot `49859272`, GitHub Actions CI run `41296312350` was skipped because the PR remained Draft; its eight jobs were skipped. The trusted governance advisory run `41296310042` succeeded, but that advisory is not a source/test CI pass.
+- A fresh independent GitHub `APPROVED` review remains outstanding.
+
+Keep PR #812 Draft and M0 BLOCKED. No BWH/Provider access, SSH, production read, collector invocation, service/Timer action, recovery, or production mutation is authorized by these changes.
