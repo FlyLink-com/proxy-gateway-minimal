@@ -277,11 +277,14 @@ export function recordAdsClickClaim(db, input = {}, options = {}) {
       at
     );
     if (inserted.changes === 1 && click) {
-      bindAdsClickConsentClaim(db, {
+      const linked = bindAdsClickConsentClaim(db, {
         orderRef,
         accountRef,
         createdAt: at
       });
+      if (!linked && !hasAdsClickConsentClaim(db, orderRef, accountRef)) {
+        throw new Error("ads consent claim binding failed");
+      }
     }
     return getAdsClickClaim(db, orderRef);
   });
@@ -432,7 +435,9 @@ export function enqueueAdsConversion(db, input = {}, options = {}) {
     skipReason = "no_click";
   } else if (claim.claimState === "invalid_click") {
     status = "skipped";
-    skipReason = "invalid_click";
+    skipReason = hasAdsConsentForAccount(db, claim.accountRef)
+      ? "invalid_click"
+      : "consent_denied";
   } else if (!binding && !hasAdsConsentForAccount(db, claim.accountRef)) {
     status = "skipped";
     skipReason = "consent_revoked";
@@ -456,6 +461,8 @@ export function enqueueAdsConversion(db, input = {}, options = {}) {
       end,
       skip_reason = case
         when excluded.status = 'pending' then null
+        when platform_ads_conversion_outbox.skip_reason = 'consent_revoked'
+          then 'consent_revoked'
         else excluded.skip_reason
       end,
       value_units = case
