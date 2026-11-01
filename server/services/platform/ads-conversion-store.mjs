@@ -225,11 +225,10 @@ export function getAdsClickClaim(db, orderRef) {
 //                      its normalized fields are stored.
 //   - 'no_click':      the request carried no adsClick descriptor at all.
 //   - 'invalid_click': the request carried a descriptor that failed
-//                      validation (bad type, bad value, non-boolean
-//                      consent, unusable clickAt, ...). Nothing about the
-//                      descriptor is stored, but the outcome is kept
-//                      distinct from 'no_click' so malformed measurement
-//                      never pollutes the no-click statistics.
+//                      validation or lacked a server-authorized account
+//                      consent decision at the purchase timestamp. Nothing
+//                      about the descriptor is stored, but the outcome is
+//                      kept distinct from 'no_click'.
 // The first claim wins: later writes for the same order (including
 // idempotent replays, which must not call this at all) leave the stored
 // claim unchanged. Returns the stored claim, or null when disabled or
@@ -403,12 +402,13 @@ export function getAdsConversionOutboxRow(db, orderRef) {
 //     unknown and must not be reported as "no click");
 //   - claim 'no_click': skipped / no_click (the first request carried no
 //     adsClick descriptor at all);
-//   - claim 'invalid_click': skipped / invalid_click (the first request
-//     carried a descriptor that failed validation — a definite fact
-//     about the request, but not a usable click and not "no click");
-//   - claim 'click' but no binding: skipped / binding_failed (the
-//     click is known to exist but its binding never materialized —
-//     measurement pending recovery, not a missing click);
+//   - claim 'invalid_click': skipped / invalid_click or consent_denied
+//     (the first request did not produce a usable, server-authorized click);
+//   - claim 'click' without a current consent linkage: skipped /
+//     consent_unverified or consent_denied; the raw binding is removed;
+//   - claim 'click' with consent linkage but no binding: skipped /
+//     binding_failed (the binding never materialized — measurement pending
+//     recovery, not a missing click);
 //   - binding present but ad-user-data consent absent: skipped /
 //     consent_denied;
 //   - binding present and consented: pending.
