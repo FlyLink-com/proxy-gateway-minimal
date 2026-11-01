@@ -227,8 +227,8 @@ describe("consent-aware Ads click attribution", () => {
       issuedAt: now - 10 * 60 * 1000 - 1
     };
     const encoded = window.btoa(JSON.stringify(payload))
-      .replace(/\\+/gu, "-")
-      .replace(/\\//gu, "_")
+      .replace(/\+/gu, "-")
+      .replace(/\//gu, "_")
       .replace(/=+$/gu, "");
     setLocation(`/portal/#portal=orders&adsClick=${encoded}`);
 

@@ -24,7 +24,13 @@ function adsClickFeatureEnabled() {
   const env = (import.meta as ImportMeta & {
     readonly env?: Record<string, string | undefined>;
   }).env ?? {};
-  return env.VITE_PUBLIC_ADS_CLICK_BINDING_ENABLED === "true";
+  const processEnv = (globalThis as typeof globalThis & {
+    process?: { env?: Record<string, string | undefined> };
+  }).process?.env;
+  return (
+    env.VITE_PUBLIC_ADS_CLICK_BINDING_ENABLED
+    ?? processEnv?.VITE_PUBLIC_ADS_CLICK_BINDING_ENABLED
+  ) === "true";
 }
 
 export function isAdsClickBindingEnabled() {
