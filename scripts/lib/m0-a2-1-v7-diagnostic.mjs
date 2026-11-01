@@ -349,8 +349,10 @@ function processStatusPath(pid) {
 }
 export function resolveStatusBinding(app, statusWriter, processValue, appEnvironmentValue = undefined, writerEnvironmentValue = undefined) {
   const key = 'EDGE_USAGE_COLLECTOR_STATUS_PATH';
-  const required = ['Environment','EnvironmentFiles','PassEnvironment','UnsetEnvironment','User','Group','DynamicUser'];
+  const required = ['EnvironmentFiles','PassEnvironment','UnsetEnvironment','User','Group','DynamicUser'];
   if (!required.every(name => Object.hasOwn(app, name)) || !required.every(name => Object.hasOwn(statusWriter, name))) return false;
+  if (appEnvironmentValue === undefined && !Object.hasOwn(app, 'Environment')) return false;
+  if (writerEnvironmentValue === undefined && !Object.hasOwn(statusWriter, 'Environment')) return false;
   if (!canReadTargetEnvironment(app) || !canReadTargetEnvironment(statusWriter)) return false;
   if (JSON.stringify(app.EnvironmentFiles) !== JSON.stringify(statusWriter.EnvironmentFiles)) return false;
   for (const name of ['PassEnvironment','UnsetEnvironment']) {
