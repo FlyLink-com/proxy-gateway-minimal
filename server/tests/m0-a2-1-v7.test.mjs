@@ -23,7 +23,9 @@ import {
   isRootServiceIdentity,
   canReadTargetEnvironment,
   canReadStatusBindingEnvironment,
-  readBoundedFile
+  readBoundedFile,
+  isSafeAppSourceDirectoryMetadata,
+  listAppSourceParentDirectories
 } from '../../scripts/lib/m0-a2-1-v7-diagnostic.mjs';
 import { FILES } from '../../scripts/lib/m0-a2-1-v7-archive-pins.mjs';
 
@@ -182,6 +184,13 @@ test('production branch has only fixed read commands and no systemd mutation or 
   assert.doesNotMatch(source, /systemctl\s+(start|stop|restart|enable|disable|reset-failed|daemon-reload)/);
   assert.match(source, /const args = \['show', unit/);
   assert.match(source, /'--no-pager','--output=json','--lines=64'/);
+  assert.match(source, /function snapshotAppSourceDirectories/);
+  assert.match(source, /isSafeAppSourceDirectoryMetadata\\(before\\)/);
+  const rawProjection = source.indexOf("if (raw.availability === 'raw')");
+  const immediateSourcePin = source.indexOf("assertPinnedAppSource(appRoot);", rawProjection);
+  const projectionImport = source.indexOf("await import(moduleUrl)", rawProjection);
+  assert.ok(rawProjection >= 0 && immediateSourcePin > rawProjection && immediateSourcePin < projectionImport,
+    'App source parents and pins must be revalidated immediately before dynamic import');
   const pidFormatter = source.indexOf('const pidPresent =');
   const pidFormatterUse = source.indexOf('main_pid_present=${pidPresent');
   assert.ok(pidFormatter >= 0 && pidFormatter < pidFormatterUse, 'PID formatter must be initialized before production output uses it');
@@ -224,6 +233,41 @@ test('process environment scanner retains only one target value and handles chun
   assert.equal(extractSingleEnvironmentValueFromChunks([Buffer.from(key + '=/one\0' + key + '=/two\0')], key), null);
   assert.equal(extractSingleEnvironmentValueFromChunks([Buffer.from('LANG=C\0')], key), null);
   assert.throws(() => extractSingleEnvironmentValueFromChunks([Buffer.from('LANG=C')], key, 3), error => error.safeCode === 'process_environment_too_large');
+});
+
+test('App source pins enumerate every parent directory and require root-owned non-writable directories', () => {
+  const directories = listAppSourceParentDirectories('/opt/app/releases/control-plane-fixture', [
+    ['server/services/platform/first.mjs', 'a'.repeat(64)],
+    ['server/services/platform/second.mjs', 'b'.repeat(64)]
+  ]);
+  assert.deepEqual(directories, [
+    '/',
+    '/opt',
+    '/opt/app',
+    '/opt/app/releases',
+    '/opt/app/releases/control-plane-fixture',
+    '/opt/app/releases/control-plane-fixture/server',
+    '/opt/app/releases/control-plane-fixture/server/services',
+    '/opt/app/releases/control-plane-fixture/server/services/platform'
+  ]);
+  const directory = {
+    isDirectory: () => true,
+    isSymbolicLink: () => false,
+    uid: 0n,
+    gid: 0n,
+    mode: 0o40755n
+  };
+  assert.equal(isSafeAppSourceDirectoryMetadata(directory), true);
+  assert.equal(isSafeAppSourceDirectoryMetadata({ ...directory, uid: 1000n }), false);
+  assert.equal(isSafeAppSourceDirectoryMetadata({ ...directory, gid: 1000n }), false);
+  assert.equal(isSafeAppSourceDirectoryMetadata({ ...directory, mode: 0o40775n }), false);
+  assert.equal(isSafeAppSourceDirectoryMetadata({ ...directory, isSymbolicLink: () => true }), false);
+  assert.throws(
+    () => listAppSourceParentDirectories('/opt/app/releases/control-plane-fixture', [
+      ['../escape.mjs', 'a'.repeat(64)]
+    ]),
+    error => error.safeCode === 'app_source_pin_invalid'
+  );
 });
 
 test('status file and every parent directory require root ownership and restrictive metadata', () => {

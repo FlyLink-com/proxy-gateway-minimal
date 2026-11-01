@@ -188,20 +188,114 @@ export function sameAppReleaseBinding(before, after) {
     && JSON.stringify(before?.currentPointer) === JSON.stringify(after?.currentPointer);
 }
 
+export function isSafeAppSourceDirectoryMetadata(stat, expectedUid = 0n, expectedGid = 0n) {
+  return Boolean(stat && typeof stat.isDirectory === 'function' && stat.isDirectory()
+    && typeof stat.isSymbolicLink === 'function' && !stat.isSymbolicLink()
+    && stat.uid === BigInt(expectedUid) && stat.gid === BigInt(expectedGid)
+    && (stat.mode & 0o022n) === 0n);
+}
+
+export function listAppSourceParentDirectories(appRoot, pins = APP_PINS) {
+  if (typeof appRoot !== 'string' || !path.posix.isAbsolute(appRoot)
+    || path.posix.normalize(appRoot) !== appRoot
+    || (!Array.isArray(pins) && !(pins instanceof Map))) {
+    fail('app_source_pin_invalid');
+  }
+  const entries = pins instanceof Map ? [...pins] : pins;
+  const directories = new Set();
+  for (const entry of entries) {
+    if (!Array.isArray(entry) || entry.length !== 2) fail('app_source_pin_invalid');
+    const [relative, expected] = entry;
+    if (typeof relative !== 'string' || !relative || path.posix.isAbsolute(relative)
+      || relative.split('/').some(part => !part || part === '.' || part === '..')
+      || typeof expected !== 'string' || !/^[a-f0-9]{64}$/.test(expected)) {
+      fail('app_source_pin_invalid');
+    }
+    const file = path.posix.join(appRoot, relative);
+    if (path.posix.relative(appRoot, file) !== relative) fail('app_source_pin_invalid');
+    let directory = path.posix.dirname(file);
+    while (true) {
+      directories.add(directory);
+      const parent = path.posix.dirname(directory);
+      if (parent === directory) break;
+      directory = parent;
+    }
+  }
+  return [...directories].sort((left, right) =>
+    left.split('/').length - right.split('/').length || left.localeCompare(right)
+  );
+}
+
+function snapshotAppSourceDirectories(appRoot) {
+  const snapshots = new Map();
+  for (const directory of listAppSourceParentDirectories(appRoot)) {
+    let before;
+    try { before = fs.lstatSync(directory, { bigint: true }); }
+    catch { fail('app_source_directory_unsafe'); }
+    let realPath;
+    try { realPath = fs.realpathSync(directory); }
+    catch { fail('app_source_directory_unsafe'); }
+    if (!isSafeAppSourceDirectoryMetadata(before) || realPath !== directory) {
+      fail('app_source_directory_unsafe');
+    }
+    let after;
+    try { after = fs.lstatSync(directory, { bigint: true }); }
+    catch { fail('app_source_directory_changed'); }
+    let realPathAfter;
+    try { realPathAfter = fs.realpathSync(directory); }
+    catch { fail('app_source_directory_changed'); }
+    if (!isSafeAppSourceDirectoryMetadata(after)
+      || realPathAfter !== directory
+      || JSON.stringify(signature(before)) !== JSON.stringify(signature(after))) {
+      fail('app_source_directory_changed');
+    }
+    snapshots.set(directory, signature(before));
+  }
+  return snapshots;
+}
+
+function assertAppSourceDirectorySnapshots(snapshots) {
+  for (const [directory, expected] of snapshots) {
+    let current;
+    try { current = fs.lstatSync(directory, { bigint: true }); }
+    catch { fail('app_source_directory_changed'); }
+    let realPath;
+    try { realPath = fs.realpathSync(directory); }
+    catch { fail('app_source_directory_changed'); }
+    if (!isSafeAppSourceDirectoryMetadata(current)
+      || realPath !== directory
+      || JSON.stringify(signature(current)) !== JSON.stringify(expected)) {
+      fail('app_source_directory_changed');
+    }
+  }
+}
+
 function assertPinnedAppSource(appRoot) {
+  // Verify every ancestor from / through the release's source directories.
+  // Root ownership and non-writable parent modes prevent untrusted path replacement.
+  const directorySnapshots = snapshotAppSourceDirectories(appRoot);
   for (const [relative, expected] of APP_PINS) {
-    const file = path.join(appRoot, relative), before = fs.lstatSync(file, { bigint: true });
-    if (!before.isFile() || before.isSymbolicLink() || before.uid !== 0n || before.nlink !== 1n || before.size > 1024n * 1024n || (before.mode & 0o022n) !== 0n || fs.realpathSync(file) !== file) fail('app_source_file_unsafe');
+    assertAppSourceDirectorySnapshots(directorySnapshots);
+    const file = path.posix.join(appRoot, relative), before = fs.lstatSync(file, { bigint: true });
+    if (!before.isFile() || before.isSymbolicLink() || before.uid !== 0n || before.nlink !== 1n
+      || before.size > 1024n * 1024n || (before.mode & 0o022n) !== 0n
+      || fs.realpathSync(file) !== file) fail('app_source_file_unsafe');
     const fd = fs.openSync(file, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
     try {
       const opened = fs.fstatSync(fd, { bigint: true });
-      if (opened.dev !== before.dev || opened.ino !== before.ino || opened.size !== before.size || opened.mtimeNs !== before.mtimeNs || opened.ctimeNs !== before.ctimeNs) fail('app_source_file_changed');
+      if (JSON.stringify(signature(opened)) !== JSON.stringify(signature(before))) fail('app_source_file_changed');
       const bytes = readBoundedFile(fd, 1024 * 1024, 'app_source_file_too_large');
       const after = fs.fstatSync(fd, { bigint: true }), named = fs.lstatSync(file, { bigint: true });
-      if (BigInt(bytes.length) !== before.size || after.dev !== before.dev || after.ino !== before.ino || after.size !== before.size || after.mtimeNs !== before.mtimeNs || after.ctimeNs !== before.ctimeNs || named.dev !== before.dev || named.ino !== before.ino || named.mtimeNs !== before.mtimeNs || named.ctimeNs !== before.ctimeNs) fail('app_source_file_changed');
+      if (BigInt(bytes.length) !== before.size
+        || JSON.stringify(signature(after)) !== JSON.stringify(signature(before))
+        || JSON.stringify(signature(named)) !== JSON.stringify(signature(before))
+        || fs.realpathSync(file) !== file) fail('app_source_file_changed');
       if (sha(bytes) !== expected) fail('app_source_hash_mismatch');
     } finally { fs.closeSync(fd); }
+    assertAppSourceDirectorySnapshots(directorySnapshots);
   }
+  assertAppSourceDirectorySnapshots(directorySnapshots);
+  return directorySnapshots;
 }
 
 const signature = stat => ['dev','ino','mode','uid','gid','nlink','size','mtimeNs','ctimeNs'].map(key => String(stat[key]));
@@ -645,6 +739,7 @@ export async function runM0A2V7(expectedRelease) {
       stage = 'status_projection_read';
       const raw = readStatusProjection(statusPath);
       if (raw.availability === 'raw') {
+        assertPinnedAppSource(appRoot);
         const moduleUrl = pathToFileURL(path.join(appRoot, 'server/services/platform/traffic-collector-admin-projection.mjs')).href;
         const { sanitizeTrafficCollectorAdminProjection } = await import(moduleUrl);
         projection = sanitizeTrafficCollectorAdminProjection(raw.parsed);
