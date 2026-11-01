@@ -1227,6 +1227,31 @@ function exactBody(fields) {
   };
 }
 
+// Like exactBody, but additionally tolerates the optional `adsClick`
+// measurement descriptor. The descriptor is passed through unvalidated;
+// the backend Ads module validates it and ignores it when malformed or
+// when its master switch is off.
+function exactBodyWithOptionalAdsClick(fields) {
+  return function validateExactBodyWithOptionalAdsClick(req, res, next) {
+    try {
+      const body = req.body;
+      const hasAdsClick = (
+        body
+        && typeof body === "object"
+        && !Array.isArray(body)
+        && Object.hasOwn(body, "adsClick")
+      );
+      res.locals.portalCommerceBody = snapshotExactObject(
+        body,
+        hasAdsClick ? [...fields, "adsClick"] : fields
+      );
+      next();
+    } catch {
+      sendCommerceError(res, 400, "commerce_request_invalid");
+    }
+  };
+}
+
 function requireIdempotencyKey(req, res, next) {
   const header = readRawHeader(req, "idempotency-key");
   if (header.state === "missing") {
@@ -1551,9 +1576,9 @@ export function portalCoinCommerceRoutes(state, options = {}) {
     requireJsonContentType,
     requireIdempotencyKey,
     parseStrictJson,
-    exactBody(["quoteRef"]),
+    exactBodyWithOptionalAdsClick(["quoteRef"]),
     (_req, res) => {
-      const { quoteRef } = res.locals.portalCommerceBody;
+      const { quoteRef, adsClick } = res.locals.portalCommerceBody;
       if (
         typeof quoteRef !== "string"
         || !COMMERCE_REFERENCE.test(quoteRef)
@@ -1566,7 +1591,8 @@ export function portalCoinCommerceRoutes(state, options = {}) {
           store.confirmOrder({
             accountId: res.locals.portalCommerceSession.accountId,
             quoteRef,
-            operation: mutationOperation(res)
+            operation: mutationOperation(res),
+            ...(adsClick !== undefined ? { adsClick } : {})
           })
         );
         res.status(201).json({ order });
@@ -1797,9 +1823,9 @@ export function portalCoinCommerceRoutes(state, options = {}) {
     requireJsonContentType,
     requireIdempotencyKey,
     parseStrictJson,
-    exactBody(["quoteRef"]),
+    exactBodyWithOptionalAdsClick(["quoteRef"]),
     (_req, res) => {
-      const { quoteRef } = res.locals.portalCommerceBody;
+      const { quoteRef, adsClick } = res.locals.portalCommerceBody;
       if (typeof quoteRef !== "string" || !COMMERCE_REFERENCE.test(quoteRef)) {
         sendCommerceError(res, 400, "commerce_request_invalid");
         return;
@@ -1809,7 +1835,8 @@ export function portalCoinCommerceRoutes(state, options = {}) {
           res.locals.walletFirstCommerceService.reserveDeferredTransition({
             accountId: res.locals.portalCommerceSession.accountId,
             quoteRef,
-            operation: mutationOperation(res)
+            operation: mutationOperation(res),
+            ...(adsClick !== undefined ? { adsClick } : {})
           })
         );
         res.status(201).json({ transition });
