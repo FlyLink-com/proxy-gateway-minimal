@@ -49,6 +49,27 @@ const sha = bytes => createHash('sha256').update(bytes).digest('hex');
 function assertTimeBudget(startedAt) {
   if (Date.now() - startedAt > MAX_RUNTIME_MS) fail('time_limit');
 }
+
+export function readBoundedFile(fd, maxBytes, errorCode = 'bounded_file_too_large') {
+  if (!Number.isSafeInteger(maxBytes) || maxBytes < 0 || !/^[a-z0-9_]+$/.test(errorCode)) {
+    fail('bounded_read_arguments_invalid');
+  }
+  const chunks = [];
+  let total = 0;
+  while (true) {
+    // Read at most the remaining allowance plus one byte, so growth after lstat/fstat
+    // cannot turn this into an unbounded read.
+    const readLimit = Math.min(16 * 1024, maxBytes - total + 1);
+    const chunk = Buffer.allocUnsafe(readLimit);
+    const bytesRead = fs.readSync(fd, chunk, 0, readLimit, null);
+    if (bytesRead === 0) break;
+    if (total + bytesRead > maxBytes) fail(errorCode);
+    total += bytesRead;
+    chunks.push(chunk.subarray(0, bytesRead));
+  }
+  return Buffer.concat(chunks, total);
+}
+
 let stage = 'bootstrap';
 
 export function parseArguments(argv) {
@@ -62,7 +83,7 @@ export function parseArguments(argv) {
   return { error: argv.length === 0 ? 'expected_release_required' : 'unexpected_argument' };
 }
 
-export function parseSystemdOutput(stdout, properties) {
+export function parseSystemdOutput(stdout, properties, requiredProperties = ['LoadState', 'ActiveState', 'SubState']) {
   const lines = stdout.split(/\r?\n/);
   while (lines.length && lines.at(-1) === '') lines.pop();
   if (!lines.length) fail('systemd_empty_output');
@@ -78,12 +99,12 @@ export function parseSystemdOutput(stdout, properties) {
       row[key].push(value);
     } else row[key] = MULTI_VALUE_PROPERTIES.has(key) ? [value] : value;
   }
-  for (const key of ['LoadState', 'ActiveState', 'SubState']) if (!Object.hasOwn(row, key)) fail('systemd_required_property_missing', { property: key });
+  for (const key of requiredProperties) if (!Object.hasOwn(row, key)) fail('systemd_required_property_missing', { property: key });
   return row;
 }
 
 const APP_PROPERTIES = [
-  'LoadState','ActiveState','SubState','MainPID','WorkingDirectory','EnvironmentFiles','Environment',
+  'LoadState','ActiveState','SubState','MainPID','WorkingDirectory','EnvironmentFiles',
   'PassEnvironment','UnsetEnvironment','User','Group','DynamicUser','NRestarts','FragmentPath','DropInPaths'
 ];
 const SERVICE_PROPERTIES = [
@@ -92,7 +113,7 @@ const SERVICE_PROPERTIES = [
   'FragmentPath','DropInPaths'
 ];
 const STATUS_SERVICE_PROPERTIES = [
-  ...SERVICE_PROPERTIES,'EnvironmentFiles','Environment','PassEnvironment','UnsetEnvironment','User','Group','DynamicUser'
+  ...SERVICE_PROPERTIES,'EnvironmentFiles','PassEnvironment','UnsetEnvironment','User','Group','DynamicUser'
 ];
 const TIMER_PROPERTIES = [
   'LoadState','ActiveState','SubState','Unit','LastTriggerUSec','NextElapseUSecRealtime','Persistent','Triggers','Job',
@@ -103,7 +124,7 @@ const STOP_PROPERTIES = [
   'ExecMainExitTimestamp','InvocationID','WorkingDirectory','ExecStart','FragmentPath','DropInPaths'
 ];
 
-function systemdShow(unit, properties) {
+function systemdShow(unit, properties, requiredProperties = ['LoadState', 'ActiveState', 'SubState']) {
   const args = ['show', unit, '--no-pager', ...properties.map(property => `--property=${property}`)];
   const result = spawnSync('/usr/bin/systemctl', args, {
     encoding: 'utf8', timeout: 2500, maxBuffer: 65536, shell: false,
@@ -111,7 +132,7 @@ function systemdShow(unit, properties) {
     stdio: ['ignore','pipe','pipe']
   });
   if (result.error || result.status !== 0 || result.stderr !== '') fail('systemd_read_failed');
-  return parseSystemdOutput(result.stdout, properties);
+  return parseSystemdOutput(result.stdout, properties, requiredProperties);
 }
 
 function sameSnapshot(before, after, unitName) {
@@ -175,8 +196,9 @@ function assertPinnedAppSource(appRoot) {
     try {
       const opened = fs.fstatSync(fd, { bigint: true });
       if (opened.dev !== before.dev || opened.ino !== before.ino || opened.size !== before.size || opened.mtimeNs !== before.mtimeNs || opened.ctimeNs !== before.ctimeNs) fail('app_source_file_changed');
-      const bytes = fs.readFileSync(fd), after = fs.fstatSync(fd, { bigint: true }), named = fs.lstatSync(file, { bigint: true });
-      if (after.dev !== before.dev || after.ino !== before.ino || after.size !== before.size || after.mtimeNs !== before.mtimeNs || after.ctimeNs !== before.ctimeNs || named.dev !== before.dev || named.ino !== before.ino || named.mtimeNs !== before.mtimeNs || named.ctimeNs !== before.ctimeNs) fail('app_source_file_changed');
+      const bytes = readBoundedFile(fd, 1024 * 1024, 'app_source_file_too_large');
+      const after = fs.fstatSync(fd, { bigint: true }), named = fs.lstatSync(file, { bigint: true });
+      if (BigInt(bytes.length) !== before.size || after.dev !== before.dev || after.ino !== before.ino || after.size !== before.size || after.mtimeNs !== before.mtimeNs || after.ctimeNs !== before.ctimeNs || named.dev !== before.dev || named.ino !== before.ino || named.mtimeNs !== before.mtimeNs || named.ctimeNs !== before.ctimeNs) fail('app_source_file_changed');
       if (sha(bytes) !== expected) fail('app_source_hash_mismatch');
     } finally { fs.closeSync(fd); }
   }
@@ -198,7 +220,7 @@ function readPinnedFile(file, expectedHash, expectedSize) {
   try {
     const opened = fs.fstatSync(fd, { bigint: true });
     if (JSON.stringify(signature(opened)) !== JSON.stringify(signature(before))) fail('archive_file_changed');
-    const bytes = fs.readFileSync(fd);
+    const bytes = readBoundedFile(fd, expectedSize, 'archive_file_size_mismatch');
     const after = fs.fstatSync(fd, { bigint: true });
     const named = secureMeta(file);
     if (bytes.length !== expectedSize || JSON.stringify(signature(after)) !== JSON.stringify(signature(before)) || JSON.stringify(signature(named)) !== JSON.stringify(signature(before))) fail('archive_file_changed');
@@ -260,6 +282,20 @@ export function isRootServiceIdentity(row) {
     && ['', 'root'].includes(String(row.Group ?? '').trim())
     && ['', 'no'].includes(String(row.DynamicUser ?? '').trim());
 }
+export function canReadTargetEnvironment(row) {
+  const key = 'EDGE_USAGE_COLLECTOR_STATUS_PATH';
+  const required = ['EnvironmentFiles','PassEnvironment','UnsetEnvironment','User','Group','DynamicUser'];
+  if (!row || !required.every(name => Object.hasOwn(row, name))) return false;
+  if (!Array.isArray(row.EnvironmentFiles) || hasConfiguredEnvironmentFiles(row.EnvironmentFiles)) return false;
+  if (!isRootServiceIdentity(row)) return false;
+  return ['PassEnvironment','UnsetEnvironment'].every(name => !environmentOptionContains(row[name], key));
+}
+function readTargetEnvironmentValue(unit) {
+  // Only request Environment after the metadata gate passes. systemd returns the full
+  // property transiently; this function retains only the one allowlisted assignment.
+  const row = systemdShow(unit, ['Environment'], ['Environment']);
+  return selectedEnvironmentAssignment(row.Environment, 'EDGE_USAGE_COLLECTOR_STATUS_PATH');
+}
 function createEnvironmentValueScanner(key, maxBytes = MAX_PROCESS_ENV_BYTES) {
   if (!/^[A-Z_][A-Z0-9_]*$/.test(key) || !Number.isSafeInteger(maxBytes) || maxBytes < 1) fail('environment_scan_arguments_invalid');
   const prefix = Buffer.from(`${key}=`);
@@ -311,22 +347,21 @@ function processStatusPath(pid) {
     return isSafeAbsolutePath(value) ? value : null;
   } finally { fs.closeSync(fd); }
 }
-export function resolveStatusBinding(app, statusWriter, processValue) {
+export function resolveStatusBinding(app, statusWriter, processValue, appEnvironmentValue = undefined, writerEnvironmentValue = undefined) {
   const key = 'EDGE_USAGE_COLLECTOR_STATUS_PATH';
-  const required = ['EnvironmentFiles','Environment','PassEnvironment','UnsetEnvironment','User','Group','DynamicUser'];
+  const required = ['Environment','EnvironmentFiles','PassEnvironment','UnsetEnvironment','User','Group','DynamicUser'];
   if (!required.every(name => Object.hasOwn(app, name)) || !required.every(name => Object.hasOwn(statusWriter, name))) return false;
-  if (!Array.isArray(app.EnvironmentFiles) || !Array.isArray(statusWriter.EnvironmentFiles)) return false;
-  // EnvironmentFile entries are applied after Environment= and can override it. Their contents are
-  // intentionally outside this read-only package, so any configured file makes the binding unknown.
-  if (hasConfiguredEnvironmentFiles(app.EnvironmentFiles) || hasConfiguredEnvironmentFiles(statusWriter.EnvironmentFiles)) return false;
+  if (!canReadTargetEnvironment(app) || !canReadTargetEnvironment(statusWriter)) return false;
   if (JSON.stringify(app.EnvironmentFiles) !== JSON.stringify(statusWriter.EnvironmentFiles)) return false;
   for (const name of ['PassEnvironment','UnsetEnvironment']) {
-    const appSetting = String(app[name] ?? ''), writerSetting = String(statusWriter[name] ?? '');
-    if (appSetting !== writerSetting || environmentOptionContains(appSetting, key)) return false;
+    if (String(app[name] ?? '') !== String(statusWriter[name] ?? '')) return false;
   }
-  if (!isRootServiceIdentity(app) || !isRootServiceIdentity(statusWriter)) return false;
-  const appValue = selectedEnvironmentAssignment(app.Environment, key);
-  const writerValue = selectedEnvironmentAssignment(statusWriter.Environment, key);
+  const appValue = appEnvironmentValue === undefined
+    ? selectedEnvironmentAssignment(app.Environment, key)
+    : appEnvironmentValue;
+  const writerValue = writerEnvironmentValue === undefined
+    ? selectedEnvironmentAssignment(statusWriter.Environment, key)
+    : writerEnvironmentValue;
   return Boolean(appValue && writerValue && appValue === writerValue && processValue === appValue && isSafeAbsolutePath(appValue));
 }
 
@@ -372,7 +407,7 @@ function readStatusProjection(statusPath) {
   try {
     const opened = fs.fstatSync(fd, { bigint: true });
     if (!isSafeStatusFileMetadata(opened) || JSON.stringify(signature(opened)) !== JSON.stringify(signature(before))) fail('status_file_changed');
-    bytes = fs.readFileSync(fd);
+    bytes = readBoundedFile(fd, MAX_STATUS_BYTES, 'status_file_too_large');
     const after = fs.fstatSync(fd, { bigint: true });
     let named, directoriesAfter, namedRealPath;
     try {
@@ -557,6 +592,9 @@ export async function runM0A2V7(expectedRelease) {
     const stopBefore = systemdShow(STOP_SERVICE, STOP_PROPERTIES);
     const statusBefore = systemdShow(STATUS_SERVICE, STATUS_SERVICE_PROPERTIES);
     const statusTimerBefore = systemdShow(STATUS_TIMER, TIMER_PROPERTIES);
+    const environmentReadEligibleBefore = canReadTargetEnvironment(appBefore) && canReadTargetEnvironment(statusBefore);
+    const appEnvironmentBefore = environmentReadEligibleBefore ? readTargetEnvironmentValue(APP_UNIT) : null;
+    const statusEnvironmentBefore = environmentReadEligibleBefore ? readTargetEnvironmentValue(STATUS_SERVICE) : null;
     assertTimeBudget(startedAt);
 
     stage = 'app_release_binding';
@@ -583,10 +621,17 @@ export async function runM0A2V7(expectedRelease) {
     const statusExecMatched = Object.hasOwn(statusBefore, 'ExecStart') && Object.hasOwn(statusBefore, 'WorkingDirectory')
       ? inspectStatusWriterExecStart(statusBefore.ExecStart, statusBefore.WorkingDirectory, appRoot, fs.realpathSync)
       : null;
-    if (statusExecMatched && statusBefore.LoadState === 'loaded') {
+    if (statusExecMatched && statusBefore.LoadState === 'loaded' && environmentReadEligibleBefore) {
       statusPath = processStatusPath(pid);
     }
-    const statusPathBound = Boolean(statusExecMatched === true && statusPath && resolveStatusBinding(appBefore, statusBefore, statusPath));
+    const statusPathBound = Boolean(statusExecMatched === true && environmentReadEligibleBefore && statusPath
+      && resolveStatusBinding(
+        appBefore,
+        statusBefore,
+        statusPath,
+        appEnvironmentBefore,
+        statusEnvironmentBefore
+      ));
     let projection = { availability: statusPathBound ? 'not_observed' : 'unbound' };
     if (statusPathBound) {
       stage = 'status_projection_read';
@@ -617,6 +662,15 @@ export async function runM0A2V7(expectedRelease) {
       [APP_UNIT,appBefore,appAfter],[FULL_SERVICE,fullBefore,fullAfter],[FULL_TIMER,fullTimerBefore,fullTimerAfter],
       [STOP_SERVICE,stopBefore,stopAfter],[STATUS_SERVICE,statusBefore,statusAfter],[STATUS_TIMER,statusTimerBefore,statusTimerAfter]
     ]) sameSnapshot(before, after, unit);
+    const environmentReadEligibleAfter = canReadTargetEnvironment(appAfter) && canReadTargetEnvironment(statusAfter);
+    if (environmentReadEligibleBefore !== environmentReadEligibleAfter) fail('environment_read_gate_changed');
+    if (environmentReadEligibleBefore) {
+      const appEnvironmentAfter = readTargetEnvironmentValue(APP_UNIT);
+      const statusEnvironmentAfter = readTargetEnvironmentValue(STATUS_SERVICE);
+      if (appEnvironmentBefore !== appEnvironmentAfter || statusEnvironmentBefore !== statusEnvironmentAfter) {
+        fail('environment_changed_during_read');
+      }
+    }
     const appReleaseAfter = resolveAppRelease(appAfter, expectedRelease);
     if (!sameAppReleaseBinding(appReleaseBefore, appReleaseAfter)) fail('app_release_changed_during_read');
     assertPinnedAppSource(appReleaseAfter.appRoot);
@@ -652,6 +706,7 @@ export async function runM0A2V7(expectedRelease) {
     console.log(`status_writer_service ${unitState(statusBefore)} started_at=${statusBefore.ExecMainStartTimestamp ?? 'unknown'} exited_at=${statusBefore.ExecMainExitTimestamp ?? 'unknown'} restarts=${statusBefore.NRestarts ?? 'unknown'}`);
     console.log(`status_writer_timer ${unitState(statusTimerBefore)} unit_link_matches=${unitLink(statusTimerBefore, STATUS_SERVICE)} last_trigger=${statusTimerBefore.LastTriggerUSec ?? 'unknown'} next_elapse=${statusTimerBefore.NextElapseUSecRealtime ?? 'unknown'} persistent=${statusTimerBefore.Persistent ?? 'unknown'}`);
     console.log(`status_binding=${statusPathBound ? 'matched' : 'unknown'}`);
+    console.log(`status_environment_read=${environmentReadEligibleBefore ? 'gated_target_assignment_only' : 'skipped_metadata_gate'}`);
     printProjection(projection);
     console.log(`systemd_journal_read=${exactInvocation ? 'targeted_invocation_attempted' : 'skipped_invocation_not_current'}`);
     console.log('raw_journal_output_returned=no');
