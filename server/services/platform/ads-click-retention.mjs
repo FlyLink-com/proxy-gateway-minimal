@@ -80,8 +80,8 @@ function inventoryCounts(db, cutoff, schema) {
   const eligibleConsentLinkCount = schema.consentLinks
     ? count(db, `
         select count(*) from ${CONSENT_LINKS}
-         where order_ref in ${orderRefs}
-      `, orderRefValues)
+         where created_at <= ? or order_ref in ${orderRefs}
+      `, [cutoff, ...orderRefValues])
     : 0;
   const eligibleOutboxCount = schema.outbox
     ? count(db, `
@@ -227,8 +227,8 @@ export function runAdsClickRetention(db, options = {}) {
     if (schema.consentLinks && (schema.claims || schema.bindings)) {
       changed.deletedConsentLinkCount = db.prepare(`
         delete from ${CONSENT_LINKS}
-         where order_ref in ${orderRefs}
-      `).run(...orderRefValues).changes;
+         where created_at <= ? or order_ref in ${orderRefs}
+      `).run(cutoff, ...orderRefValues).changes;
     }
 
     changed.deletedClaimCount = db.prepare(`
