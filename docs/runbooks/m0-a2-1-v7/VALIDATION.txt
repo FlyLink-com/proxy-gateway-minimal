@@ -1,6 +1,6 @@
 M0-A2-1 v7 / v9 BYTE-STABLE CHECKOUT VALIDATION RECORD
 Date: 2026-10-31
-Status: V9 WINDOWS LOCAL ACCEPTANCE REPORTED PASS — HOSTED CI SKIPPED — PRODUCTION NOT AUTHORIZED.
+Status: f60 WINDOWS LOCAL ACCEPTANCE REPORTED PASS (18/18) — FOLLOW-UP BRANCH HAS 20 TESTS PENDING FULL RERUN — HOSTED CI SKIPPED — PRODUCTION NOT AUTHORIZED.
 
 ## v9 Windows local verification — operator-reported
 
@@ -79,9 +79,30 @@ Targeted helper checks were run locally with Node v22.16.0: a standalone harness
 - Status projection reads now require root UID/GID ownership, private single-link regular file metadata, and a root-owned non-symlink parent-directory chain through `/` with no group/world write permission. File and directory metadata are compared before and after reading.
 - Full `OnFailure` lists are parsed; additional handlers are reported by count, while malformed/duplicate expected entries are `unknown`.
 - Production Node runtime is pinned to exact `v22.16.0`.
-- The repository test file now declares 18 tests (13 existing + 5 added). The complete 18-test `node --test` suite, syntax checks, self-test, and checksum verification have NOT been run against the final remediation commit in this environment. The existing isolated v9 workspace must be switched to the exact final commit and run the complete README validation block. Record exact command outputs and exit codes; do not infer a pass from the previous commit's 10/10 or helper-only harness.
+- At the time of this earlier review, the repository test file declared 18 tests and the complete suite had not yet been run. The operator subsequently reported a full 18/18 pass on exact commit `f60c0187c2fee3f3b0056d7fabfca70444b34f6c` using Node `v22.16.0`. The current bounded-read / staged-environment follow-up adds two tests (20 total); its complete validation is still pending and must be run against its exact final commit. Do not transfer the f60 result to this later code.
 - No SSH, BWH/Provider connection, production systemd/journal/status/SQLite/config/environment-file read, collector invocation, service/Timer action, or production mutation occurred.
 
 Current gate: PR remains Draft; M0 remains BLOCKED. No production execution, M0-A2-2, M1–M8, recovery, or Japan node creation is authorized.
 
 - Built-in `--self-test` fixture was updated to the new no-EnvironmentFiles/root-identity contract and now checks the EnvironmentFile override, exact Node version, and additional-OnFailure behavior; this source change is included in the final manifest below.
+
+
+## Latest f60 local acceptance — operator-reported (2026-10-31)
+
+- Exact tested commit: `f60c0187c2fee3f3b0056d7fabfca70444b34f6c`.
+- Workspace: `D:\\Projects\\proxy-gateway-minimal-pr812-v9`; the original dirty directory was not touched.
+- Runtime: Node `v22.16.0` from the isolated toolchain; system Node `v24.16.0` unchanged.
+- `sha256sum -c docs/runbooks/m0-a2-1-v7/SHA256SUMS`: 7/7 OK, exit 0.
+- Four `node --check` commands: 4/4 exit 0.
+- `node scripts/m0-a2-1-v7.mjs --self-test`: passed, exit 0.
+- `node --test server/tests/m0-a2-1-v7.test.mjs`: 18/18 passed, exit 0.
+- No BWH/Provider connection, SSH, production read, or mutation.
+- This evidence applies only to f60 and does not validate the later follow-up branch.
+
+## Bounded-read and staged-environment follow-up — pending full validation
+
+- The diagnostic now reads App source pins in chunks with a 1 MiB ceiling, archive files with each manifest-declared size as the ceiling, and the status projection with a 256 KiB ceiling. Each reader probes at most one byte beyond its allowance and fails closed; production code contains no `readFileSync` call.
+- Baseline App/status-writer systemd metadata no longer requests `Environment`. Only after both units pass the EnvironmentFiles, root-identity, PassEnvironment and UnsetEnvironment metadata gate are their Environment properties queried separately. Only the target assignment is retained; before/after values must remain identical.
+- Added two regression tests. The repository test file now declares 20 tests.
+- Full checksum, four syntax checks, self-test, and 20/20 test execution on Node `v22.16.0` have not yet been recorded for the final follow-up commit. Do not treat the f60 18/18 result as validation of this branch.
+- Hosted CI remains skipped while Draft. No production access or mutation is authorized.
