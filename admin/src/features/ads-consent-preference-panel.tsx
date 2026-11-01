@@ -94,8 +94,8 @@ export function AdsConsentPreferencePanel({
           </div>
           <p>
             {zh
-              ? "只有在你明确允许后，我们才会使用 Google Ads 点击标识衡量广告是否带来购买。点击标识最多保留 90 天，仅用于转化衡量；不会启用个性化广告。拒绝不影响账户、购买或服务。"
-              : "Only if you allow it, supported Google Ads click identifiers may be used to measure purchases from ads. Click identifiers are retained for up to 90 days for conversion measurement only. Ad personalization stays off. Declining does not affect your account, purchases, or service."}
+              ? "只有在你明确允许后，支持的 Google Ads 点击标识才会随购买请求提交，用于衡量广告是否带来购买。不会启用个性化广告。拒绝不影响账户、购买或服务。"
+              : "Only if you allow it, supported Google Ads click identifiers may be sent with a purchase request to measure whether ads led to a purchase. Ad personalization stays off. Declining does not affect your account, purchases, or service."}
           </p>
           <p className="ads-consent-panel__status" role="status">
             {zh

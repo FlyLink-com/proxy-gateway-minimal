@@ -25,6 +25,9 @@ describe("Ads consent preference panel", () => {
   test("requires an explicit choice and supports later withdrawal", () => {
     render(<AdsConsentPreferencePanel locale="zh" surface="site" />);
 
+    expect(screen.getByText(/随购买请求提交/u)).toBeInTheDocument();
+    expect(screen.queryByText(/最多保留 90 天/u)).toBeNull();
+
     fireEvent.click(screen.getByRole("button", { name: "允许广告转化衡量" }));
     expect(readAdsUserDataConsent()).toBe("granted");
     fireEvent.click(screen.getByRole("button", { name: "隐私设置" }));
