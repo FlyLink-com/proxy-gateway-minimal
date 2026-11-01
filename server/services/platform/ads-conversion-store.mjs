@@ -337,9 +337,13 @@ export function materializeAdsClickBinding(db, input = {}, options = {}) {
   const at = normalizeNow(options.now);
   ensureAdsConversionSchema(db);
   const claim = getAdsClickClaim(db, orderRef);
-  if (!claim || claim.claimState !== "click") return getAdsClickBinding(db, orderRef);
+  if (!claim || claim.claimState !== "click") {
+    db.prepare("delete from platform_ads_click_bindings where order_ref = ?").run(orderRef);
+    return null;
+  }
   if (!hasAdsClickConsentClaim(db, orderRef, claim.accountRef)) {
-    return getAdsClickBinding(db, orderRef);
+    db.prepare("delete from platform_ads_click_bindings where order_ref = ?").run(orderRef);
+    return null;
   }
   db.prepare(`
     insert into platform_ads_click_bindings (
@@ -434,19 +438,25 @@ export function enqueueAdsConversion(db, input = {}, options = {}) {
   let status = "pending";
   let skipReason = null;
   if (!claim) {
+    db.prepare("delete from platform_ads_click_bindings where order_ref = ?").run(orderRef);
     status = "skipped";
     skipReason = "claim_missing";
   } else if (claim.claimState === "no_click") {
+    db.prepare("delete from platform_ads_click_bindings where order_ref = ?").run(orderRef);
     status = "skipped";
     skipReason = "no_click";
   } else if (claim.claimState === "invalid_click") {
+    db.prepare("delete from platform_ads_click_bindings where order_ref = ?").run(orderRef);
     status = "skipped";
     skipReason = hasAdsConsentForAccount(db, claim.accountRef)
       ? "invalid_click"
       : "consent_denied";
-  } else if (!binding && !hasAdsConsentForAccount(db, claim.accountRef)) {
+  } else if (!hasAdsClickConsentClaim(db, orderRef, claim.accountRef)) {
+    db.prepare("delete from platform_ads_click_bindings where order_ref = ?").run(orderRef);
     status = "skipped";
-    skipReason = "consent_revoked";
+    skipReason = hasAdsConsentForAccount(db, claim.accountRef)
+      ? "consent_unverified"
+      : "consent_denied";
   } else if (!binding) {
     status = "skipped";
     skipReason = "binding_failed";
