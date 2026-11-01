@@ -107,3 +107,27 @@ Current gate: PR remains Draft; M0 remains BLOCKED. No production execution, M0-
 - Added two regression tests. The repository test file now declares 20 tests.
 - Full checksum, four syntax checks, self-test, and 20/20 test execution on Node `v22.16.0` have not yet been recorded for the final follow-up commit. Do not treat the f60 18/18 result as validation of this branch.
 - Hosted CI remains skipped while Draft. No production access or mutation is authorized.
+
+
+## Operator-reported local acceptance on 0f845aa — 2026-10-31
+
+The operator confirmed the isolated workspace was clean before switching to exact commit `0f845aa289c96f347774dbcd24ac3d4d11ff2d38`. The original dirty working directory was not touched. Runtime was the isolated Node `v22.16.0`.
+
+| Check | Exit | Result |
+|---|---:|---|
+| `sha256sum -c docs/runbooks/m0-a2-1-v7/SHA256SUMS` | 0 | 7/7 OK |
+| Four `node --check` commands | 0 | 4/4 passed |
+| `node scripts/m0-a2-1-v7.mjs --self-test` | 0 | `m0_a2_1_v7_self_test=passed` |
+| `node --test server/tests/m0-a2-1-v7.test.mjs` | 1 | 19/20 passed; one static assertion failed |
+
+The only failure was in test `production branch has only fixed read commands and no systemd mutation or file-write APIs` at the assertion expecting the old source text `canReadTargetEnvironment(appBefore)`. The production path uses the newer combined gate `canReadStatusBindingEnvironment(appBefore, statusBefore)`; this is a stale test expectation, not a production read failure.
+
+## Test-only assertion correction — pending rerun
+
+- Updated only the stale static assertion to require `canReadStatusBindingEnvironment(appBefore, statusBefore)`.
+- Correction commit: `1122a2dc71d0193f28db3d0857a4dda21bee38e3`.
+- Production diagnostic code is unchanged by this correction.
+- The suite still declares 20 tests. No 20/20 result is claimed for the corrected head.
+- Repeat the full checksum, four syntax checks, self-test, and complete `node --test` suite using Node `v22.16.0` against the exact current PR head. If any check fails, stop and report the exact output and exit code.
+
+The PR remains Draft; M0 remains BLOCKED. No BWH/Provider connection, production read, service action, or mutation was performed.
