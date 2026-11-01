@@ -1311,4 +1311,27 @@ describe("Portal Coins Commerce HTTP client", () => {
     });
   });
 
+  test("omits a valid adsClick when the public feature gate is disabled", async () => {
+    vi.stubEnv("VITE_PUBLIC_ADS_CLICK_BINDING_ENABLED", "false");
+    expect(setAdsUserDataConsent("granted")).toBe(true);
+    const fetchFn = vi.fn<typeof fetch>(async () => wireResponse({ order: HELD_ORDER }, 201));
+    const commerce = commerceOf(createHttpUserPortalClient({ fetchFn }));
+
+    await commerce.createOrder({
+      sessionRef: "session_alpha",
+      quoteRef: "quote_monthly_50gb_1",
+      idempotencyKey: "checkout-ads-click-disabled",
+      adsClick: {
+        type: "gclid",
+        value: "synthetic_click_disabled",
+        clickAt: Date.now(),
+        consent: { adUserData: true, adPersonalization: false }
+      }
+    });
+
+    expect(JSON.parse(String(fetchFn.mock.calls[0]?.[1]?.body))).toEqual({
+      quoteRef: "quote_monthly_50gb_1"
+    });
+  });
+
 });

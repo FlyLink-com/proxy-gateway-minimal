@@ -318,4 +318,27 @@ describe("Portal wallet-first Commerce HTTP client", () => {
     });
   });
 
+  test("omits a valid adsClick when the public feature gate is disabled", async () => {
+    vi.stubEnv("VITE_PUBLIC_ADS_CLICK_BINDING_ENABLED", "false");
+    expect(setAdsUserDataConsent("granted")).toBe(true);
+    const fetchFn = vi.fn<typeof fetch>(async () => response({ transition: TRANSITION }, 201));
+    const commerce = createPortalWalletFirstCommerceClient({ fetchFn });
+
+    await commerce.reserveDeferredTransition({
+      sessionRef: "session_alpha",
+      quoteRef: QUOTE.quoteRef,
+      idempotencyKey: "reserve-ads-click-disabled",
+      adsClick: {
+        type: "gbraid",
+        value: "synthetic_click_disabled",
+        clickAt: Date.now(),
+        consent: { adUserData: true, adPersonalization: false }
+      }
+    });
+
+    expect(JSON.parse(String(fetchFn.mock.calls[0]?.[1]?.body))).toEqual({
+      quoteRef: QUOTE.quoteRef
+    });
+  });
+
 });

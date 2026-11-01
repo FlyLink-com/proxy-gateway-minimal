@@ -99,19 +99,18 @@ export function setAdsUserDataConsent(next: Exclude<AdsUserDataConsent, "unknown
     : "";
   const secure = window.location.protocol === "https:" ? "; Secure" : "";
   const value = next === "granted" ? "v1.granted" : "v1.denied";
-  if (next === "denied") {
-    deniedConsentOverride = true;
-    clearAdsClickData();
-  }
+  if (next === "denied") clearAdsClickData();
 
   try {
     document.cookie = `${CONSENT_COOKIE}=${value}; Path=/; Max-Age=${CONSENT_MAX_AGE_SECONDS}; SameSite=Lax${domain}${secure}`;
   } catch {
+    if (next === "denied") deniedConsentOverride = true;
     return false;
   }
 
   const saved = cookieValue(CONSENT_COOKIE) === value;
-  if (next === "granted" && saved) deniedConsentOverride = false;
+  if (next === "denied") deniedConsentOverride = !saved;
+  else if (saved) deniedConsentOverride = false;
   return saved;
 }
 
