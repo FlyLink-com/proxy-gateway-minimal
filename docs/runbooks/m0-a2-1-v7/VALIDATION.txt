@@ -102,6 +102,7 @@ Current gate: PR remains Draft; M0 remains BLOCKED. No production execution, M0-
 ## Bounded-read and staged-environment follow-up — pending full validation
 
 - The diagnostic now reads App source pins in chunks with a 1 MiB ceiling, archive files with each manifest-declared size as the ceiling, and the status projection with a 256 KiB ceiling. Each reader probes at most one byte beyond its allowance and fails closed; production code contains no `readFileSync` call.
+- Baseline App/status-writer metadata omits `Environment`; the property is requested only after the status-writer `ExecStart` matches the resolved App release and both units pass the no-EnvironmentFiles/root-identity/PassEnvironment/UnsetEnvironment gate. Only the target assignment is retained and compared again at the end.
 - Baseline App/status-writer systemd metadata no longer requests `Environment`. Only after both units pass the EnvironmentFiles, root-identity, PassEnvironment and UnsetEnvironment metadata gate are their Environment properties queried separately. Only the target assignment is retained; before/after values must remain identical.
 - Added two regression tests. The repository test file now declares 20 tests.
 - Full checksum, four syntax checks, self-test, and 20/20 test execution on Node `v22.16.0` have not yet been recorded for the final follow-up commit. Do not treat the f60 18/18 result as validation of this branch.
