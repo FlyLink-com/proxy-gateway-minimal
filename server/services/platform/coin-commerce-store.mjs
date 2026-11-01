@@ -2415,7 +2415,7 @@ export function createSqliteCoinCommerceStore(options = {}) {
     }
     // Internal signal for confirmOrder's post-commit Ads step (see the
     // replay branch above): this was the first request for the order.
-    request.adsOutcome = { replay: false, orderRef };
+    request.adsOutcome = { replay: false, orderRef, authorizedAt: occurredAt };
     return projected;
   });
 
@@ -2460,7 +2460,8 @@ export function createSqliteCoinCommerceStore(options = {}) {
           orderRef: transactionRequest.adsOutcome.orderRef,
           accountRef: business.accountId,
           model: "legacy",
-          adsClick: value.adsClick
+          adsClick: value.adsClick,
+          authorizedAt: transactionRequest.adsOutcome.authorizedAt
         });
       } else if (transactionRequest.adsOutcome?.replay === true) {
         safeMaterializeAdsClickForOrder(db, {
