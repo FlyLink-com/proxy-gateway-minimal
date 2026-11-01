@@ -9,7 +9,12 @@ import {
   getAdsConsentForAccount,
   hasAdsConsentForAccount
 } from "../services/platform/ads-consent-store.mjs";
-import { ensureAdsConversionSchema } from "../services/platform/ads-conversion-store.mjs";
+import {
+  ensureAdsConversionSchema,
+  getAdsClickBinding,
+  getAdsClickClaim,
+  safeCaptureAdsClickForOrder
+} from "../services/platform/ads-conversion-store.mjs";
 
 const ENABLED = { ADS_CLICK_BINDING_ENABLED: "true" };
 const DISABLED = {};
@@ -170,6 +175,46 @@ test("revocation removes raw click identifiers and stops pending conversion rows
       skippedOutboxCount: 0,
       deletedLinkCount: 0
     });
+    store.close();
+  });
+});
+
+
+test("a client-supplied consent descriptor cannot persist a click without server consent", () => {
+  withDb((db) => {
+    const store = createSqliteAdsConsentStore({
+      database: db,
+      env: ENABLED,
+      nowFn: () => NOW
+    });
+    const click = {
+      type: "gclid",
+      value: "synthetic_forged_client_click_001",
+      clickAt: new Date(NOW - 1000).toISOString(),
+      consent: { adUserData: true, adPersonalization: false }
+    };
+    const binding = safeCaptureAdsClickForOrder(db, {
+      orderRef: "order_ads_consent_forged",
+      accountRef: ACCOUNT,
+      model: "legacy",
+      adsClick: click
+    }, { env: ENABLED, now: NOW });
+    assert.equal(binding, null);
+    assert.equal(getAdsClickClaim(db, "order_ads_consent_forged").claimState, "invalid_click");
+    assert.equal(getAdsClickClaim(db, "order_ads_consent_forged").clickValue, null);
+    assert.equal(getAdsClickBinding(db, "order_ads_consent_forged"), null);
+    assert.equal(db.prepare(
+      "select count(*) from platform_ads_click_consent_claims"
+    ).pluck().get(), 0);
+
+    store.recordConsent({ accountRef: ACCOUNT, adUserData: true });
+    const accepted = safeCaptureAdsClickForOrder(db, {
+      orderRef: "order_ads_consent_granted",
+      accountRef: ACCOUNT,
+      model: "legacy",
+      adsClick: click
+    }, { env: ENABLED, now: NOW });
+    assert.equal(accepted.clickValue, click.value);
     store.close();
   });
 });
