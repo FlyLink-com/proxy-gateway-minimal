@@ -649,6 +649,7 @@ test("client-declared denial is stored as a value-free invalid click claim", () 
 
 test("enqueueAdsConversion records pending for bound consented orders in both models", () => {
   withDb((db) => {
+    grantDefaultConsent(db);
     for (const [model, orderRef, valueUnits] of [
       ["legacy", "order_ads_010", 20],
       ["deferred", "order_ads_011", 200]
