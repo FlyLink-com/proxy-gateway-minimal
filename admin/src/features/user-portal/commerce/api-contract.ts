@@ -230,6 +230,7 @@ export type PortalCoinCommerceClient = {
     sessionRef: string;
     quoteRef: string;
     idempotencyKey: string;
+    adsClick?: PortalAdsClickDescriptor;
   }): Promise<PortalCoinOrder>;
   getOrder(input: {
     sessionRef: string;
@@ -356,6 +357,7 @@ export type PortalWalletFirstCommerceClient = {
     sessionRef: string;
     quoteRef: string;
     idempotencyKey: string;
+    adsClick?: PortalAdsClickDescriptor;
   }): Promise<PortalDeferredTransition>;
   cancelDeferredTransition(input: {
     sessionRef: string;

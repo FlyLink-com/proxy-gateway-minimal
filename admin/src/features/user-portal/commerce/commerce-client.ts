@@ -17,12 +17,17 @@ import type {
   PortalPlanSwitchQuote,
   PortalPlanSwitchState,
   PortalCoinType,
+  PortalAdsClickDescriptor,
   PortalWalletFirstCommerceClient
 } from "./api-contract";
 
 const COMMERCE_REFERENCE = /^[a-z][a-z0-9_]{2,95}$/;
 const SESSION_REFERENCE = /^[A-Za-z0-9._:-]{1,256}$/;
 const IDEMPOTENCY_KEY = /^[A-Za-z0-9._:-]{1,128}$/;
+const ADS_CLICK_TYPES = new Set(["gclid", "gbraid", "wbraid"]);
+const ADS_CLICK_VALUE = /^[A-Za-z0-9_.-]{1,512}$/;
+const ADS_CLICK_MAX_AGE_MS = 90 * 24 * 60 * 60 * 1000;
+const ADS_CLICK_MIN_EPOCH_MS = 100_000_000_000;
 const COIN_PRIORITY: PortalCoinType[] = [
   "bonus_coins",
   "paid_coins",
@@ -1055,6 +1060,35 @@ function callerIdempotencyKey(value: unknown) {
   return value;
 }
 
+function callerAdsClick(value: unknown): PortalAdsClickDescriptor | null {
+  try {
+    if (!value || typeof value !== "object" || Array.isArray(value) || Object.getPrototypeOf(value) !== Object.prototype) return null;
+    const keys = Reflect.ownKeys(value);
+    if (keys.length !== 4 || keys.some((key) => typeof key !== "string" || !["type", "value", "clickAt", "consent"].includes(key))) return null;
+    const candidate = value as Record<string, unknown>;
+    if (typeof candidate.type !== "string" || !ADS_CLICK_TYPES.has(candidate.type)) return null;
+    if (typeof candidate.value !== "string" || !ADS_CLICK_VALUE.test(candidate.value)) return null;
+    if (!Number.isSafeInteger(candidate.clickAt)) return null;
+    const clickAt = candidate.clickAt as number;
+    const now = Date.now();
+    if (clickAt < ADS_CLICK_MIN_EPOCH_MS || clickAt > now || clickAt < now - ADS_CLICK_MAX_AGE_MS) return null;
+    const consent = candidate.consent;
+    if (!consent || typeof consent !== "object" || Array.isArray(consent) || Object.getPrototypeOf(consent) !== Object.prototype) return null;
+    const consentKeys = Reflect.ownKeys(consent);
+    if (consentKeys.length !== 2 || consentKeys.some((key) => typeof key !== "string" || !["adUserData", "adPersonalization"].includes(key))) return null;
+    const consentValue = consent as Record<string, unknown>;
+    if (consentValue.adUserData !== true || consentValue.adPersonalization !== false) return null;
+    return {
+      type: candidate.type as PortalAdsClickDescriptor["type"],
+      value: candidate.value,
+      clickAt,
+      consent: { adUserData: true, adPersonalization: false }
+    };
+  } catch {
+    return null;
+  }
+}
+
 function callerOrderListInput(input: unknown) {
   try {
     if (
@@ -1330,17 +1364,19 @@ export function createPortalCoinCommerceClient(
       const value = exactInput(input, [
         "sessionRef",
         "quoteRef",
-        "idempotencyKey"
+        "idempotencyKey",
+        "adsClick"
       ]);
       const sessionRef = sessionReference(value.sessionRef);
       const quoteRef = callerCommerceReference(value.quoteRef);
       const idempotencyKey = callerIdempotencyKey(value.idempotencyKey);
+      const adsClick = callerAdsClick(value.adsClick);
       return request(
         fetchFn,
         "/api/portal/commerce/orders",
         postInit(
           sessionRef,
-          JSON.stringify({ quoteRef }),
+          JSON.stringify({ quoteRef, ...(adsClick ? { adsClick } : {}) }),
           idempotencyKey
         ),
         201,
@@ -1534,17 +1570,19 @@ export function createPortalWalletFirstCommerceClient(
       const value = exactInput(input, [
         "sessionRef",
         "quoteRef",
-        "idempotencyKey"
+        "idempotencyKey",
+        "adsClick"
       ]);
       const sessionRef = sessionReference(value.sessionRef);
       const quoteRef = callerCommerceReference(value.quoteRef);
       const idempotencyKey = callerIdempotencyKey(value.idempotencyKey);
+      const adsClick = callerAdsClick(value.adsClick);
       return request(
         fetchFn,
         "/api/portal/commerce/deferred/transitions",
         postInit(
           sessionRef,
-          JSON.stringify({ quoteRef }),
+          JSON.stringify({ quoteRef, ...(adsClick ? { adsClick } : {}) }),
           idempotencyKey
         ),
         201,

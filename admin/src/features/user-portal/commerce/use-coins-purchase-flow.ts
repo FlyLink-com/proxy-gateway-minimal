@@ -7,6 +7,7 @@ import type {
   PortalCoinQuote
 } from "./api-contract";
 import { PortalCoinCommerceClientError } from "./commerce-client";
+import { readPortalAdsClickForPurchase } from "../../ads-attribution";
 
 export type CoinsPurchasePhase =
   | "idle"
@@ -431,10 +432,12 @@ export function useCoinsPurchaseFlow({
       errorRetryable: false
     }));
     try {
+      const adsClick = readPortalAdsClickForPurchase();
       const nextOrder = await activeClient.createOrder({
         sessionRef: activeSessionRef,
         quoteRef: activeQuote.quoteRef,
-        idempotencyKey: intent.key
+        idempotencyKey: intent.key,
+        ...(adsClick ? { adsClick } : {})
       });
       if (
         generation !== generationRef.current
