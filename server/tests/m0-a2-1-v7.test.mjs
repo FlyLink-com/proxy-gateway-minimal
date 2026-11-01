@@ -206,11 +206,11 @@ test('status binding fails closed when EnvironmentFiles can override direct assi
 
 test('process environment scanner retains only one target value and handles chunk boundaries and duplicates', () => {
   const key = 'EDGE_USAGE_COLLECTOR_STATUS_PATH';
-  const raw = Buffer.from('LANG=C\\0' + key + '=/var/lib/gccgw/traffic-status.json\\0PATH=/usr/bin\\0');
+  const raw = Buffer.from('LANG=C\0' + key + '=/var/lib/gccgw/traffic-status.json\0PATH=/usr/bin\0');
   const chunks = [raw.subarray(0, 7), raw.subarray(7, 29), raw.subarray(29, 47), raw.subarray(47)];
   assert.equal(extractSingleEnvironmentValueFromChunks(chunks, key), '/var/lib/gccgw/traffic-status.json');
-  assert.equal(extractSingleEnvironmentValueFromChunks([Buffer.from(key + '=/one\\0' + key + '=/two\\0')], key), null);
-  assert.equal(extractSingleEnvironmentValueFromChunks([Buffer.from('LANG=C\\0')], key), null);
+  assert.equal(extractSingleEnvironmentValueFromChunks([Buffer.from(key + '=/one\0' + key + '=/two\0')], key), null);
+  assert.equal(extractSingleEnvironmentValueFromChunks([Buffer.from('LANG=C\0')], key), null);
   assert.throws(() => extractSingleEnvironmentValueFromChunks([Buffer.from('LANG=C')], key, 3), error => error.safeCode === 'process_environment_too_large');
 });
 
