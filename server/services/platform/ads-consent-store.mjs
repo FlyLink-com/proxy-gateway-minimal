@@ -78,19 +78,22 @@ export function ensureAdsConsentSchema(db) {
   `);
 }
 
-export function hasAdsConsentForAccount(db, inputAccountRef) {
+export function hasAdsConsentForAccount(db, inputAccountRef, authorizedAt) {
   let ref;
   try {
     ref = accountRef(inputAccountRef);
+    if (authorizedAt !== undefined
+      && (!Number.isSafeInteger(authorizedAt) || authorizedAt < 0)) return false;
     if (!tableExists(db, "platform_ads_consent_decisions")) return false;
     const row = db.prepare(`
-      select decision, ad_user_data, ad_personalization
+      select decision, ad_user_data, ad_personalization, updated_at
         from platform_ads_consent_decisions
        where account_ref = ?
     `).get(ref);
     return row?.decision === "granted"
       && row.ad_user_data === 1
-      && row.ad_personalization === 0;
+      && row.ad_personalization === 0
+      && (authorizedAt === undefined || row.updated_at <= authorizedAt);
   } catch {
     return false;
   }
