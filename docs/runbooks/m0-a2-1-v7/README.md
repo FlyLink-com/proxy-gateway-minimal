@@ -143,7 +143,7 @@ This result is recorded as operator-reported local evidence and applies to the e
 
 Record the exact output and exit code of every command. If Node is not exactly `v22.16.0`, stop and record the version mismatch; do not substitute another Node version. A skipped CI run is not a pass.
 
-`--self-test` exits before the production branch and makes no `systemctl` or `journalctl` call. The CLI entrypoint is guarded; the Node test suite imports the diagnostic module directly and tests parsers, service binding, current-pointer stability, exact stop-unit argv matching, status-writer binding, archive manifest integrity, exact-invocation error-code extraction, time correlation, the required external timeout wrapper, and the read-only command surface.
+`--self-test` exits before the production branch and makes no `systemctl` or `journalctl` call. It covers the direct status binding fixture, EnvironmentFile override rejection, the exact Node version pin, and additional OnFailure-handler reporting. The CLI entrypoint is guarded; the Node test suite imports the diagnostic module directly and tests parsers, service binding, current-pointer stability, exact stop-unit argv matching, status-writer binding, environment scanning, root service identity and status-file metadata, archive manifest integrity, exact-invocation error-code extraction, time correlation, the required external timeout wrapper, and the read-only command surface.
 
 ## Future execution shape — NOT APPROVED BY THIS PR
 
