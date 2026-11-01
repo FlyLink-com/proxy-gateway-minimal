@@ -8,6 +8,9 @@ import { isPortalRegistrationPath } from "./features/user-portal/portal-entry";
 import { createHttpUserPortalClient } from "./features/user-portal/user-portal-client";
 import "./portal-static-preserve.css";
 
+// Consume the transient fragment before runtime config parsing or Portal reads hash-based navigation.
+consumePortalAdsClickHandoff();
+
 type PortalImportMeta = ImportMeta & {
   readonly env: {
     readonly VITE_PORTAL_RECHARGE_CONFIG_BINDING: string;
@@ -39,8 +42,6 @@ const {
   (import.meta as PortalImportMeta).env.VITE_PORTAL_RECHARGE_CONFIG_BINDING,
 );
 
-// Consume the transient fragment before Portal reads its hash-based navigation state.
-consumePortalAdsClickHandoff();
 
 // eslint-disable-next-line react-refresh/only-export-components -- portal entry-point bootstrap; component is mounted once and not a Fast Refresh target
 function PortalOnlyApp() {

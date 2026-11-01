@@ -1065,20 +1065,40 @@ function callerAdsClick(value: unknown): PortalAdsClickDescriptor | null {
   // This is a client-side consent gate, not a substitute for the server-side Risk A enforcement.
   if (!isAdsClickBindingEnabled() || readAdsUserDataConsent() !== "granted") return null;
   try {
-    if (!value || typeof value !== "object" || Array.isArray(value) || Object.getPrototypeOf(value) !== Object.prototype) return null;
+    if (
+      !value
+      || typeof value !== "object"
+      || Array.isArray(value)
+      || Object.getPrototypeOf(value) !== Object.prototype
+    ) return null;
     const keys = Reflect.ownKeys(value);
-    if (keys.length !== 4 || keys.some((key) => typeof key !== "string" || !["type", "value", "clickAt", "consent"].includes(key))) return null;
+    if (
+      keys.length !== 4
+      || keys.some((key) => typeof key !== "string" || !["type", "value", "clickAt", "consent"].includes(key))
+    ) return null;
     const candidate = value as Record<string, unknown>;
     if (typeof candidate.type !== "string" || !ADS_CLICK_TYPES.has(candidate.type)) return null;
     if (typeof candidate.value !== "string" || !ADS_CLICK_VALUE.test(candidate.value)) return null;
     if (!Number.isSafeInteger(candidate.clickAt)) return null;
     const clickAt = candidate.clickAt as number;
     const now = Date.now();
-    if (clickAt < ADS_CLICK_MIN_EPOCH_MS || clickAt > now || clickAt < now - ADS_CLICK_MAX_AGE_MS) return null;
+    if (
+      clickAt < ADS_CLICK_MIN_EPOCH_MS
+      || clickAt > now
+      || clickAt < now - ADS_CLICK_MAX_AGE_MS
+    ) return null;
     const consent = candidate.consent;
-    if (!consent || typeof consent !== "object" || Array.isArray(consent) || Object.getPrototypeOf(consent) !== Object.prototype) return null;
+    if (
+      !consent
+      || typeof consent !== "object"
+      || Array.isArray(consent)
+      || Object.getPrototypeOf(consent) !== Object.prototype
+    ) return null;
     const consentKeys = Reflect.ownKeys(consent);
-    if (consentKeys.length !== 2 || consentKeys.some((key) => typeof key !== "string" || !["adUserData", "adPersonalization"].includes(key))) return null;
+    if (
+      consentKeys.length !== 2
+      || consentKeys.some((key) => typeof key !== "string" || !["adUserData", "adPersonalization"].includes(key))
+    ) return null;
     const consentValue = consent as Record<string, unknown>;
     if (consentValue.adUserData !== true || consentValue.adPersonalization !== false) return null;
     return {
