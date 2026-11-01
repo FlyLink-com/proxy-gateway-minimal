@@ -8,7 +8,11 @@ Status: Draft / source-only preparation. No production log settings, Cloudflare 
 - The current config does not set `observability.redact_query_string`.
 - The repository pins `wrangler@4.99.0` in the Cloudflare site dry-run script and deployment workflow.
 - The pinned Wrangler 4.99.0 schema does not expose `redact_query_string`; the Wrangler 4.128.0 source schema does.
-- No production Cloudflare logs or customer request data were read for this inventory.
+- Both checked Nginx source templates (`ops/nginx/proxy-gateway-public.conf` and `ops/edge-node/nginx/proxy-gateway-public.conf`) log `$uri`, not `$request_uri`, which avoids writing the request query string in the request-target field.
+- Those same Nginx templates also log the full `$http_referer` value. That is a concrete source-level leak surface: a Referer URL can itself contain a click identifier even when the request target uses `$uri`.
+- Older production inventory records report `$uri` and no `$request_uri` in the specific configs checked at that time, but those dated records are not a fresh runtime verification of the current host or of Referer values.
+- A repository source search did not identify an obvious third-party browser analytics SDK or a central Express request logger; this is not proof that every application/error path is clean.
+- No production Cloudflare logs, Nginx logs, or customer request data were read for this inventory.
 
 ## Leak surfaces to verify in the separate Risk A gate
 
@@ -16,7 +20,7 @@ Status: Draft / source-only preparation. No production log settings, Cloudflare 
 |---|---|---|
 | Cloudflare Worker request URL logs/traces | Query parameters such as `gclid`, `gbraid`, `wbraid` | Upgrade the pinned Wrangler toolchain, set top-level `observability.redact_query_string: true`, deploy only after approval, and inspect synthetic requests |
 | Cloudflare request headers | A `Referer` header may contain a full landing URL and query string | Verify provider behavior; query-string redaction of request URLs must not be assumed to redact arbitrary headers |
-| Nginx access logs | `$request` / `$request_uri` may include query strings; `$http_referer` may include a full source URL | Inspect the active log format and replace full Referer values with an approved origin-only or omitted field |
+| Nginx access logs | The checked source templates use query-free `$uri`, but also log full `$http_referer`, which may contain click IDs | Remove or reduce Referer to an approved origin-only value in a separate Risk A change; verify active host config and synthetic logs |
 | Node/Express application logs | Request URL, headers, body, or error objects may contain click identifiers | Confirm logging uses an allowlist; never log request bodies, raw headers, or full query strings |
 | Browser analytics and error reporting | URL, referrer, navigation breadcrumbs, or captured request payloads | Verify collection filters and synthetic event payloads; do not forward raw click IDs to unrelated telemetry |
 | Support exports and diagnostic bundles | Captured URLs or copied request headers | Verify redaction before export and restrict access/retention |
