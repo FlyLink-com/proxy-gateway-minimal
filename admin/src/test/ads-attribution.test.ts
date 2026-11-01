@@ -80,6 +80,17 @@ describe("consent-aware Ads click attribution", () => {
     }
   );
 
+  test("never forwards click identifiers to an untrusted external destination", () => {
+    expect(setAdsUserDataConsent("granted")).toBe(true);
+    setLocation("/?gclid=must_stay_first_party#/site");
+    expect(captureCompanySiteAdsClickFromLocation()).toMatchObject({
+      value: "must_stay_first_party"
+    });
+
+    expect(buildPortalAdsClickHandoffUrl("https://attacker.example/portal/"))
+      .toBe("https://attacker.example/portal/");
+  });
+
   test("defaults to unknown consent and discards an incoming click until the user opts in", () => {
     expect(readAdsUserDataConsent()).toBe("unknown");
     setLocation("/?gclid=not-yet-consented#/site");

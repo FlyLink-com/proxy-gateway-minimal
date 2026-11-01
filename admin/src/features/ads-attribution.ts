@@ -176,9 +176,16 @@ function encodeHandoff(click: StoredAdsClick): string | null {
   }
 }
 
+const TRUSTED_PORTAL_ORIGIN = "https://portal.gccwebos.com";
+
+function isTrustedPortalTarget(target: URL): boolean {
+  return target.origin === window.location.origin || target.origin === TRUSTED_PORTAL_ORIGIN;
+}
+
 function buildPortalAdsConsentDenialUrl(baseUrl: string): string {
   try {
     const target = new URL(baseUrl, window.location.href);
+    if (!isTrustedPortalTarget(target)) return baseUrl;
     const existing = target.hash.replace(/^#/u, "");
     const segments = existing.split("&").filter(Boolean).filter((segment) => {
       const rawKey = segment.split("=", 1)[0] ?? "";
@@ -215,6 +222,7 @@ export function buildPortalAdsClickHandoffUrl(baseUrl: string): string {
 
   try {
     const target = new URL(baseUrl, window.location.href);
+    if (!isTrustedPortalTarget(target)) return baseUrl;
     const existing = target.hash.replace(/^#/u, "");
     const segments = existing.split("&").filter(Boolean).filter((segment) => {
       const rawKey = segment.split("=", 1)[0] ?? "";
