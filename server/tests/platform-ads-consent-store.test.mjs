@@ -93,6 +93,63 @@ test("only an explicit authenticated-store grant authorizes ad-user-data measure
   });
 });
 
+
+test("first server grant compacts legacy click rows that have no server-consent linkage", () => {
+  withDb((db) => {
+    const store = createSqliteAdsConsentStore({
+      database: db,
+      env: ENABLED,
+      nowFn: () => NOW
+    });
+    ensureAdsConsentSchema(db);
+    ensureAdsConversionSchema(db);
+    db.prepare(`
+      insert into platform_ads_click_claims (
+        order_ref, account_ref, model, claim_state, click_type, click_value,
+        click_at, consent_ad_user_data, consent_ad_personalization,
+        created_at, updated_at
+      ) values (?, ?, 'legacy', 'click', 'gclid', ?, ?, 1, 0, ?, ?)
+    `).run("order_ads_consent_legacy", ACCOUNT, "synthetic_legacy_click_003", NOW - 1000, NOW - 500, NOW - 500);
+    db.prepare(`
+      insert into platform_ads_click_bindings (
+        order_ref, account_ref, model, click_type, click_value, click_at,
+        consent_ad_user_data, consent_ad_personalization, created_at, updated_at
+      ) values (?, ?, 'legacy', 'gclid', ?, ?, 1, 0, ?, ?)
+    `).run("order_ads_consent_legacy", ACCOUNT, "synthetic_legacy_click_003", NOW - 1000, NOW - 400, NOW - 400);
+    db.prepare(`
+      insert into platform_ads_conversion_outbox (
+        order_ref, model, transaction_id, value_units, value_unit, terminal_at,
+        status, skip_reason, attempts, next_attempt_at, last_error,
+        google_request_id, created_at, updated_at
+      ) values (?, 'legacy', ?, 20, 'COIN', ?, 'pending', null, 0, ?, null, null, ?, ?)
+    `).run("order_ads_consent_legacy", "order_ads_consent_legacy", NOW, NOW + 1000, NOW - 300, NOW - 300);
+
+    const granted = store.recordConsent({ accountRef: ACCOUNT, adUserData: true });
+    assert.deepEqual(granted.unverifiedCleanup, {
+      redactedClaimCount: 1,
+      deletedBindingCount: 1,
+      skippedOutboxCount: 1
+    });
+    assert.deepEqual(db.prepare(`
+      select claim_state, click_value from platform_ads_click_claims where order_ref = ?
+    `).get("order_ads_consent_legacy"), {
+      claim_state: "invalid_click",
+      click_value: null
+    });
+    assert.equal(db.prepare(
+      "select count(*) from platform_ads_click_bindings where order_ref = ?"
+    ).pluck().get("order_ads_consent_legacy"), 0);
+    assert.deepEqual(db.prepare(`
+      select status, skip_reason from platform_ads_conversion_outbox where order_ref = ?
+    `).get("order_ads_consent_legacy"), {
+      status: "skipped",
+      skip_reason: "consent_unverified"
+    });
+    assert.equal(JSON.stringify(granted).includes("synthetic_legacy_click_003"), false);
+    store.close();
+  });
+});
+
 test("revocation removes raw click identifiers and stops pending conversion rows with aggregate-only output", () => {
   withDb((db) => {
     const store = createSqliteAdsConsentStore({
