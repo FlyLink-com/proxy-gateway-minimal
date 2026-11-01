@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
+import { loadProxyConfig } from "../services/config.mjs";
+import { generateClashSubscription } from "../services/clash-subscription.mjs";
 
 const template = JSON.parse(readFileSync(
   new URL("../../config/proxy-servers.vultr-jp-child.template.json", import.meta.url),
@@ -76,6 +78,58 @@ test("JP child channel protocol and listener plan is explicit", () => {
   assert.equal(tuic.port, 443);
   assert.equal(tuic.udpRelayMode, "native");
   assert.equal(tuic.congestionController, "bbr");
+});
+
+test("JP child template loads and renders all three client protocols from protected placeholders", () => {
+  const proxyConfig = loadProxyConfig({
+    configPath: new URL("../../config/proxy-servers.vultr-jp-child.template.json", import.meta.url),
+    env: {
+      JP_CHILD_VLESS_REALITY_HOST: "jp-child.example.test",
+      JP_CHILD_VLESS_REALITY_UUID: "55555555-5555-4555-8555-555555555555",
+      JP_CHILD_VLESS_REALITY_SNI: "www.example.test",
+      JP_CHILD_VLESS_REALITY_PUBLIC_KEY: "synthetic-jp-child-public-key",
+      JP_CHILD_VLESS_REALITY_SHORT_ID: "synthetic-jp-child-short-id",
+      JP_CHILD_HY2_HOST: "jp-child.example.test",
+      JP_CHILD_HY2_PASSWORD: "synthetic-jp-child-hy2-password",
+      JP_CHILD_HY2_SNI: "jp-child.example.test",
+      JP_CHILD_TUIC_HOST: "jp-child.example.test",
+      JP_CHILD_TUIC_UUID: "66666666-6666-4666-8666-666666666666",
+      JP_CHILD_TUIC_PASSWORD: "synthetic-jp-child-tuic-password",
+      JP_CHILD_TUIC_SNI: "jp-child.example.test"
+    }
+  });
+
+  assert.deepEqual(proxyConfig.servers.map((server) => server.name), EXPECTED_CHANNELS);
+  const [vless, hy2, tuic] = proxyConfig.servers;
+  assert.equal(vless.host, "jp-child.example.test");
+  assert.equal(vless.uuid, "55555555-5555-4555-8555-555555555555");
+  assert.equal(vless.serverName, "www.example.test");
+  assert.deepEqual(vless.realityOpts, {
+    publicKey: "synthetic-jp-child-public-key",
+    shortId: "synthetic-jp-child-short-id"
+  });
+  assert.equal(hy2.host, "jp-child.example.test");
+  assert.equal(hy2.password, "synthetic-jp-child-hy2-password");
+  assert.equal(hy2.port, 10443);
+  assert.equal(tuic.host, "jp-child.example.test");
+  assert.equal(tuic.uuid, "66666666-6666-4666-8666-666666666666");
+  assert.equal(tuic.password, "synthetic-jp-child-tuic-password");
+  assert.equal(tuic.port, 443);
+  assert.doesNotMatch(JSON.stringify(proxyConfig), /\\$\\{[A-Z0-9_]+\\}/);
+
+  const yaml = generateClashSubscription(proxyConfig);
+  for (const [name, type] of [
+    [EXPECTED_CHANNELS[0], "vless"],
+    [EXPECTED_CHANNELS[1], "hysteria2"],
+    [EXPECTED_CHANNELS[2], "tuic"]
+  ]) {
+    assert.match(yaml, new RegExp(`name: "${name}"`));
+    assert.match(yaml, new RegExp(`type: ${type}`));
+  }
+  assert.match(yaml, /reality-opts:/);
+  assert.match(yaml, /synthetic-jp-child-public-key/);
+  assert.match(yaml, /udp-relay-mode: "native"/);
+  assert.match(yaml, /congestion-controller: "bbr"/);
 });
 
 test("JP child template contains only protected-material placeholders, never material values", () => {
