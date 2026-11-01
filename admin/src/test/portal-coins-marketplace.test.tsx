@@ -462,6 +462,7 @@ describe("Portal server-backed Marketplace", () => {
 
     const basicCard = screen.getByRole("heading", { name: switchBasic.title.en }).closest("article")!;
     fireEvent.click(within(basicCard).getByRole("button"));
+    await settleSwitchRead();
     const firstDialog = screen.getByRole("dialog");
     fireEvent.click(within(firstDialog).getByRole("button", { name: "Confirm purchase" }));
     await settleSwitchRead();
@@ -475,6 +476,7 @@ describe("Portal server-backed Marketplace", () => {
 
     const plusCard = screen.getByRole("heading", { name: switchPlus.title.en }).closest("article")!;
     fireEvent.click(within(plusCard).getByRole("button"));
+    await settleSwitchRead();
     const secondDialog = screen.getByRole("dialog");
     expect(within(secondDialog).getByText("Order amount").parentElement).toHaveTextContent("10 Coins");
     fireEvent.click(within(secondDialog).getByRole("button", { name: "Confirm purchase" }));
@@ -661,6 +663,7 @@ describe("Portal server-backed Marketplace", () => {
 
     const plusCard = screen.getByRole("heading", { name: switchPlus.title.en }).closest("article")!;
     fireEvent.click(within(plusCard).getByRole("button"));
+    await settleSwitchRead();
     const dialog = screen.getByRole("dialog");
     fireEvent.click(within(dialog).getByRole("button", { name: "Confirm purchase" }));
     await settleSwitchRead();
