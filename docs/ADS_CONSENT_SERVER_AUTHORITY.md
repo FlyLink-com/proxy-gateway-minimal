@@ -15,12 +15,14 @@ The Portal consent endpoint is the only source of truth for the account-level `a
 
 The account reference is an internal account key, not an anonymous identifier. The consent table stores no email, phone, IP address, click ID, browser cookie, session credential, or raw request body.
 
-## Revocation
+## Grant and revocation
+
+A newly granted server decision does not retroactively authorize older browser-only claims. During the first grant, any existing click claim without a server-created order/account consent link is compacted to a value-free tombstone, its binding is deleted, and any pending outbox row is skipped as `consent_unverified`.
 
 A transition to `adUserData: false` is processed in one SQLite transaction:
 
 1. Change the account decision to denied.
-2. Replace any linked click claim with a value-free `invalid_click` tombstone.
+2. Replace every raw click claim for the account, including pre-ledger legacy claims, with a value-free `invalid_click` tombstone.
 3. Null the click type, click value, click timestamp, and consent bits from the claim.
 4. Delete the corresponding click-binding rows.
 5. Mark pending conversion outbox rows as `skipped / consent_revoked` so they cannot be uploaded.
