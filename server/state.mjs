@@ -2983,6 +2983,11 @@ export function createRuntimeState(options = {}) {
         }
       }
     } catch (error) {
+      if (ownsAdsConsentStore && adsConsentStore) {
+        try { adsConsentStore.close(); }
+        catch { /* preserve composition failure */ }
+        adsConsentStore = null;
+      }
       if (ownedCoinCommerceDataPackMaterialEscrow) {
         try { ownedCoinCommerceDataPackMaterialEscrow.close(); }
         catch { /* preserve composition failure */ }
