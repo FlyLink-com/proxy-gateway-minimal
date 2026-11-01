@@ -1,6 +1,6 @@
 # Project Topology
 
-Last updated: 2026-07-15, America/Los_Angeles.
+Last updated: 2026-11-01, America/Los_Angeles.
 
 ```yaml
 document_metadata:
@@ -8,7 +8,7 @@ document_metadata:
   lifecycle: active
   authority_scope: project_topology
   superseded_by: null
-  last_verified_at: 2026-07-15
+  last_verified_at: 2026-11-01
   production_authority: false
 ```
 
@@ -23,15 +23,40 @@ document_metadata:
 >   subscription delivery, production edges, and server mesh planning. This is
 >   not fresh live production inventory.
 
-## Current Documented Production Topology
+## Approved Target Topology (2026-11-01)
 
-At the current repository evidence cutoff, the documented production lane uses
+The project owner has fixed the target architecture:
+
+- **BWH is the single subscription/control plane** and owns accounts, orders,
+  artifacts, credential lifecycle, desired-state, protected material
+  references, applied receipts, subscription rendering, and the usage ledger.
+- **Vultr Japan child node is a production data-plane target** and owns only
+  protocol runtimes, protected local runtime material, node-scoped apply, and
+  redacted runtime/usage evidence.
+- **Vultr Singapore remains data-plane capacity** under the same BWH control
+  plane and receipt-gated handoff model.
+- JP and SGP nodes do not own customer accounts, orders, subscription
+  authority, public Admin, or the authoritative usage ledger.
+
+This decision supersedes the earlier July 15 topology snapshot below as the
+approved target direction. Do not reopen the BWH-control-plane / Japan-child
+data-plane choice as an architecture confirmation question.
+
+This is an architecture decision and documentation baseline, **not fresh live
+host, release, health, identity, or metering proof**. M0 verifies the live BWH
+release identity and exact target/dependency facts; it does not re-decide the
+topology. Risk A execution still requires its own exact approval.
+
+## Historical Production Topology Snapshot (2026-07-15)
+
+At the 2026-07-15 evidence cutoff, the then-documented production lane used
 Vultr Japan as the subscription control plane and Vultr Japan plus Vultr
-Singapore as data-plane capacity. This is a documented topology relationship,
-not fresh live proof; any Risk A operation still requires current target
-inventory and validation. Aliyun control-center records and the former AWS
-`prod-edge-a` / `prod-edge-b` lanes are historical evidence only. Local Edge
-Agent work remains a repository prototype and is not production active.
+Singapore as data-plane capacity. That snapshot is historical and is
+superseded as target direction by the approved BWH-control-plane / JP-child
+data-plane decision above. It is not fresh live proof. Aliyun control-center
+records and the former AWS `prod-edge-a` / `prod-edge-b` lanes remain
+historical evidence only. Local Edge Agent work remains a repository prototype
+and is not production active.
 
 ```mermaid
 flowchart LR
@@ -64,31 +89,34 @@ flowchart LR
   H -.->|"does not define current authority"| A
 ```
 
-Current documented boundaries:
+Approved target boundaries:
 
 ```text
-Vultr Japan control plane: accounts, orders, artifacts, credential lifecycle,
+BWH control plane: accounts, orders, artifacts, credential lifecycle,
+  desired-state, protected material references, applied receipts,
   subscription rendering, protected Admin/operator API, and usage-ledger authority
-Vultr Japan data plane: protocol runtime capacity only
-Vultr Singapore data plane: optional protocol runtime capacity through Japan
-  control-plane handoff and matching applied receipts
+Vultr Japan child data plane: protocol runtime capacity, node-scoped apply,
+  local runtime health/usage sources, and redacted applied receipts only
+Vultr Singapore data plane: protocol runtime capacity through BWH control-plane
+  handoff and matching applied receipts
 AWS: staging/DR evidence only, not current main production authority
 Aliyun and retired AWS slots: historical evidence and archaeology only
-live health or deployment identity: requires fresh Risk A read-only verification
+live release identity, health, metering, or node identity: requires fresh
+  purpose-bound evidence before the corresponding Risk A gate
 ```
 
 ## Subscription Control / Edge Split
 
-The current documented production direction uses Vultr Japan as the
-subscription control plane and Vultr Japan/Singapore as data-plane capacity.
-The target architecture keeps subscription authority separate from replaceable
-edge capacity; any new runtime mutation still requires a fresh Risk A gate.
+The approved target uses BWH as the single subscription control plane and
+Vultr Japan child / Vultr Singapore as replaceable data-plane capacity. The
+control-plane authority remains centralized; no edge node receives a customer
+or order database. Any new runtime mutation still requires a fresh Risk A gate.
 
 ```mermaid
 flowchart LR
   subgraph "Subscription Control Plane"
-    SC["sub-control-a\nVultr Japan control plane"]
-    SB["sub-control-b\nfuture standby / restore target"]
+    SC["BWH\nsingle subscription control plane"]
+    SB["future BWH standby\nrestore target"]
     State["SQLite / artifact / tenant state"]
     Render["Subscription V2 renderer"]
   end
@@ -121,10 +149,10 @@ flowchart LR
 Target split boundaries:
 
 ```text
-sub-control-a on Vultr Japan produces subscriptions, owns artifacts, and keeps access state
+BWH is the only subscription/control plane; it produces subscriptions, owns artifacts, and keeps access state
 local Linux owns manual CI after separate validation
-Vultr Japan/Singapore data-plane nodes provide protocol capacity but do not own customer truth
-Singapore output remains handoff- and receipt-gated by the Japan control plane
+Vultr Japan child / Vultr Singapore data-plane nodes provide protocol capacity but do not own customer truth
+JP and Singapore output remain handoff- and receipt-gated by the BWH control plane
 Aliyun and former AWS carrying lanes remain historical evidence only
 future nodes should only enter service through explicit new gates
 future edge rebuilds are deferred unless a technical MVP integration gate approves them
@@ -184,9 +212,9 @@ Remote Edge or channel targets become the platform-controlled server-side data
 plane only after a later approved integration gate.
 Opaque artifacts are bootstrap/access material, not the main architecture.
 Server Edge Mesh is for edge health, management, validation, and recovery first.
-Subscription control and edge data-plane capacity should split over time.
-The preferred physical split path is now: Vultr Japan as `sub-control-a`,
-Vultr Japan/Singapore as data-plane capacity, and HP/local Linux as manual CI
+Subscription authority remains centralized on BWH while edge data-plane capacity is replaceable.
+The approved physical split is: BWH as the single control plane, Vultr Japan
+child / Vultr Singapore as data-plane capacity, and HP/local Linux as manual CI
 and operator lab. Historical Aliyun and AWS records remain rollback and
 archaeology evidence rather than current authority.
 ```
@@ -199,7 +227,7 @@ Adjacent boundary matrix:
 | Opaque artifacts | Access/bootstrap material and server-side credential containment. | Data-plane routing, local proxying, server mesh membership, or traffic accounting by themselves. |
 | Local Edge Agent | Loopback-only client-side adapter and future platform-controlled channel selection. | Clash/Mihomo UI/rules, TUN/driver/system proxy mutation in V1, HP Relay, or Server Edge Mesh. |
 | HP Relay | Operator lab diagnostics and upstream/channel behavior research. | Production, staging, CI, data-plane capacity, future recovery nodes, official Local Edge Agent runtime, or Server Edge Mesh. |
-| sub-control-a | Vultr Japan control-plane authority, subject to live verification before each Risk A operation. | Edge data-plane traffic, HP Relay, CI, or approval-free runtime mutation. |
+| BWH control plane | Account/order/subscription authority, credential lifecycle, desired-state, receipt-gated renderer, and usage ledger; exact live release identity remains a separate M0 fact. | Edge data-plane traffic, HP Relay, CI, or approval-free runtime mutation. |
 | local-ci-a | Local Linux manual CI host for repository validation evidence. | Staging, production, deploy approval, production secrets, SQLite, or subscription URL storage. |
 | Historical node retirement | Controlled drain, stop, termination, and security-group cleanup records for superseded Aliyun/AWS lanes. | Approval-free rollback, shutdown, DNS change, or deletion while a live dependency remains. |
 | Server Edge Mesh | Private edge-to-edge health, management, validation, and recovery path. | User VPN, Clash/Mihomo endpoint, Local Edge Agent transport in V1, or ordinary customer traffic routing. |
@@ -269,7 +297,7 @@ flowchart TB
     Core["Subscription Core / artifact repository"]
     State["SQLite state"]
     Docs["Runbooks / execution records"]
-    Control["sub-control-a / future sub-control-b"]
+    Control["BWH control plane / future BWH standby"]
   end
 
   subgraph "Delivery Plane"
@@ -282,7 +310,7 @@ flowchart TB
   subgraph "Data Plane"
     Clash["Clash / Mihomo"]
     Agent["Local Edge Agent adapter"]
-    Edges["Vultr Japan + Singapore\ndocumented runtime capacity"]
+    Edges["Vultr Japan child + Singapore\nremote data-plane capacity"]
     Outbound["remote outbound traffic"]
   end
 
