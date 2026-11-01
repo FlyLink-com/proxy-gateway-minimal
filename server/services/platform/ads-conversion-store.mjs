@@ -241,11 +241,11 @@ export function recordAdsClickClaim(db, input = {}, options = {}) {
   const accountRef = safeRef(input.accountRef);
   if (!orderRef || !accountRef || !MODELS.has(input.model)) return null;
   const at = normalizeNow(options.now);
+  const authorizedAt = input.authorizedAt === undefined ? at : input.authorizedAt;
   let claimState = "no_click";
   let click = null;
   if (input.adsClick !== undefined) {
     const submittedClick = validateAdsClick(input.adsClick, at);
-    const authorizedAt = input.authorizedAt === undefined ? at : input.authorizedAt;
     if (
       submittedClick
       && Number.isSafeInteger(authorizedAt)
@@ -285,7 +285,8 @@ export function recordAdsClickClaim(db, input = {}, options = {}) {
       const linked = bindAdsClickConsentClaim(db, {
         orderRef,
         accountRef,
-        createdAt: at
+        createdAt: at,
+        authorizedAt
       });
       if (!linked && !hasAdsClickConsentClaim(db, orderRef, accountRef)) {
         throw new Error("ads consent claim binding failed");
