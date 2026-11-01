@@ -341,8 +341,8 @@ export function userPortalRoutes(state, options = {}) {
     res.set("Cache-Control", "no-store");
     res.set("Referrer-Policy", "no-referrer");
     try {
-      requireNoQuery(req);
       const session = requirePortalSession(req);
+      requireNoQuery(req);
       if (!adsConsentStore || typeof adsConsentStore.getConsent !== "function") {
         res.status(503).json({ error: "ads_consent_unavailable" });
         return;
@@ -359,8 +359,8 @@ export function userPortalRoutes(state, options = {}) {
     res.set("Cache-Control", "no-store");
     res.set("Referrer-Policy", "no-referrer");
     try {
-      requireNoQuery(req);
       const session = requirePortalSession(req);
+      requireNoQuery(req);
       const body = requireExactBody(req, ["adUserData"]);
       if (typeof body.adUserData !== "boolean") {
         const error = new Error("adUserData must be a boolean");
