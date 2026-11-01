@@ -28,6 +28,7 @@ import {
   createCoinCommerceDataPackProductionFulfillment
 } from "./services/platform/coin-commerce-data-pack-production-binding.mjs";
 import { createSqliteCoinCommerceStore } from "./services/platform/coin-commerce-store.mjs";
+import { createSqliteAdsConsentStore } from "./services/platform/ads-consent-store.mjs";
 import { assertPlanSwitchStartupFlags } from "./services/platform/coin-commerce-plan-switch-policy.mjs";
 import { validatePlanSwitchSchema } from "./services/platform/coin-commerce-plan-switch-migrations.mjs";
 import {
@@ -2588,6 +2589,8 @@ export function createRuntimeState(options = {}) {
       : null
   );
   let coinCommerceStore = null;
+  let adsConsentStore = options.adsConsentStore || null;
+  let ownsAdsConsentStore = false;
   let coinCommerceCoordinator = null;
   let coinCommerceDataPackOrderDelivery = null;
   let coinCommerceDataPackArtifactRotation = null;
@@ -2779,6 +2782,18 @@ export function createRuntimeState(options = {}) {
             : {})
         });
         ownsCoinCommerceStore = true;
+      }
+      if (
+        !adsConsentStore
+        && env.ADS_CLICK_BINDING_ENABLED === "true"
+        && !configuredCoinCommerceStore
+        && controlDbPath !== ":memory:"
+      ) {
+        adsConsentStore = createSqliteAdsConsentStore({
+          dbPath: controlDbPath,
+          env
+        });
+        ownsAdsConsentStore = true;
       }
       const exactStore = exactInjectedCoinCommerceStore(coinCommerceStore);
       if (
@@ -3297,6 +3312,13 @@ export function createRuntimeState(options = {}) {
         try { ownedCoinCommerceDataPackMaterialEscrow.close(); }
         catch (error) { firstError ||= error; }
       }
+      if (ownsAdsConsentStore && adsConsentStore) {
+        try {
+          adsConsentStore.close();
+        } catch (error) {
+          firstError ||= error;
+        }
+      }
       if (coordinatorStopped && ownsCoinCommerceStore) {
         try {
           await coinCommerceStore.close();
@@ -3368,6 +3390,7 @@ export function createRuntimeState(options = {}) {
       registrationWelcomeCoinsWorkerEnabled,
       walletFirstSetupDeliveryEnabled,
       coinCommerceStore,
+      adsConsentStore,
       coinCommerceCoordinator,
       coinCommerceDataPackOrderDelivery,
       coinCommerceDataPackArtifactRotation,
