@@ -26,6 +26,8 @@ const SAFE_ERROR_CODE = /^(full_metering_|baseline_|counter_|observation_|unknow
 const MAX_JOURNAL_BYTES = 1024 * 1024;
 const MAX_RUNTIME_MS = 45000;
 const MAX_STATUS_BYTES = 256 * 1024;
+const MAX_PROCESS_ENV_BYTES = 1024 * 1024;
+const MAX_STATUS_PATH_BYTES = 4096;
 const MULTI_VALUE_PROPERTIES = new Set(['EnvironmentFiles']);
 const JP_CHANNELS = [
   'channel-vultr-a-vless-reality-tcp',
@@ -82,12 +84,15 @@ export function parseSystemdOutput(stdout, properties) {
 
 const APP_PROPERTIES = [
   'LoadState','ActiveState','SubState','MainPID','WorkingDirectory','EnvironmentFiles','Environment',
-  'PassEnvironment','UnsetEnvironment','NRestarts','FragmentPath','DropInPaths'
+  'PassEnvironment','UnsetEnvironment','User','Group','DynamicUser','NRestarts','FragmentPath','DropInPaths'
 ];
 const SERVICE_PROPERTIES = [
   'LoadState','ActiveState','SubState','Result','MainPID','ControlPID','NRestarts','ExecMainCode','ExecMainStatus',
   'ExecMainStartTimestamp','ExecMainExitTimestamp','InvocationID','WorkingDirectory','ExecStart','OnFailure',
-  'EnvironmentFiles','Environment','PassEnvironment','UnsetEnvironment','FragmentPath','DropInPaths'
+  'FragmentPath','DropInPaths'
+];
+const STATUS_SERVICE_PROPERTIES = [
+  ...SERVICE_PROPERTIES,'EnvironmentFiles','Environment','PassEnvironment','UnsetEnvironment','User','Group','DynamicUser'
 ];
 const TIMER_PROPERTIES = [
   'LoadState','ActiveState','SubState','Unit','LastTriggerUSec','NextElapseUSecRealtime','Persistent','Triggers','Job',
@@ -236,42 +241,149 @@ function selectedEnvironmentAssignment(environment, key) {
   return raw;
 }
 function isSafeAbsolutePath(value) {
-  return typeof value === 'string' && SAFE_ABSOLUTE_PATH.test(value) && value.split('/').every(part => part !== '.' && part !== '..');
+  return typeof value === 'string' && value.length <= MAX_STATUS_PATH_BYTES
+    && SAFE_ABSOLUTE_PATH.test(value)
+    && value.startsWith('/')
+    && value.slice(1).split('/').every(part => part && part !== '.' && part !== '..');
+}
+function hasConfiguredEnvironmentFiles(value) {
+  return !Array.isArray(value) || value.some(entry => typeof entry !== 'string' || entry.trim() !== '');
+}
+function environmentOptionContains(value, key) {
+  return String(value ?? '').trim().split(/\s+/).filter(Boolean)
+    .some(entry => entry === key || entry.startsWith(`${key}=`));
+}
+export function isRootServiceIdentity(row) {
+  return Boolean(row)
+    && ['User','Group','DynamicUser'].every(key => Object.hasOwn(row, key))
+    && ['', 'root'].includes(String(row.User ?? '').trim())
+    && ['', 'root'].includes(String(row.Group ?? '').trim())
+    && ['', 'no'].includes(String(row.DynamicUser ?? '').trim());
+}
+function createEnvironmentValueScanner(key, maxBytes = MAX_PROCESS_ENV_BYTES) {
+  if (!/^[A-Z_][A-Z0-9_]*$/.test(key) || !Number.isSafeInteger(maxBytes) || maxBytes < 1) fail('environment_scan_arguments_invalid');
+  const prefix = Buffer.from(`${key}=`);
+  let totalBytes = 0, prefixIndex = 0, prefixMatches = true, target = false, targetTooLarge = false;
+  let targetBytes = [];
+  const values = [];
+  function finishEntry() {
+    if (target) values.push(targetTooLarge ? null : Buffer.from(targetBytes).toString('utf8'));
+    prefixIndex = 0; prefixMatches = true; target = false; targetTooLarge = false; targetBytes = [];
+  }
+  return {
+    push(chunk) {
+      const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      totalBytes += bytes.length;
+      if (totalBytes > maxBytes) fail('process_environment_too_large');
+      for (const byte of bytes) {
+        if (byte === 0) { finishEntry(); continue; }
+        if (target) {
+          if (targetBytes.length < MAX_STATUS_PATH_BYTES) targetBytes.push(byte);
+          else targetTooLarge = true;
+        } else if (prefixMatches) {
+          if (byte !== prefix[prefixIndex]) prefixMatches = false;
+          else {
+            prefixIndex += 1;
+            if (prefixIndex === prefix.length) target = true;
+          }
+        }
+      }
+    },
+    finish() {
+      finishEntry();
+      return values.length === 1 && typeof values[0] === 'string' ? values[0] : null;
+    }
+  };
+}
+export function extractSingleEnvironmentValueFromChunks(chunks, key, maxBytes = MAX_PROCESS_ENV_BYTES) {
+  const scanner = createEnvironmentValueScanner(key, maxBytes);
+  for (const chunk of chunks) scanner.push(chunk);
+  return scanner.finish();
 }
 function processStatusPath(pid) {
-  const bytes = fs.readFileSync(`/proc/${pid}/environ`), values = [];
-  if (bytes.length > 1024 * 1024) fail('process_environment_too_large');
-  for (const entry of bytes.toString('utf8').split('\0')) {
-    const at = entry.indexOf('=');
-    if (at > 0 && entry.slice(0, at) === 'EDGE_USAGE_COLLECTOR_STATUS_PATH') values.push(entry.slice(at + 1));
-  }
-  if (values.length !== 1 || !isSafeAbsolutePath(values[0])) return null;
-  return values[0];
+  const fd = fs.openSync(`/proc/${pid}/environ`, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
+  const scanner = createEnvironmentValueScanner('EDGE_USAGE_COLLECTOR_STATUS_PATH');
+  const chunk = Buffer.alloc(16 * 1024);
+  try {
+    let bytesRead;
+    while ((bytesRead = fs.readSync(fd, chunk, 0, chunk.length, null)) > 0) scanner.push(chunk.subarray(0, bytesRead));
+    const value = scanner.finish();
+    return isSafeAbsolutePath(value) ? value : null;
+  } finally { fs.closeSync(fd); }
 }
 export function resolveStatusBinding(app, statusWriter, processValue) {
-  for (const key of ['EnvironmentFiles','Environment','PassEnvironment','UnsetEnvironment']) {
-    if (!Object.hasOwn(app, key) || !Object.hasOwn(statusWriter, key)) return false;
-  }
+  const key = 'EDGE_USAGE_COLLECTOR_STATUS_PATH';
+  const required = ['EnvironmentFiles','Environment','PassEnvironment','UnsetEnvironment','User','Group','DynamicUser'];
+  if (!required.every(name => Object.hasOwn(app, name)) || !required.every(name => Object.hasOwn(statusWriter, name))) return false;
+  if (!Array.isArray(app.EnvironmentFiles) || !Array.isArray(statusWriter.EnvironmentFiles)) return false;
+  // EnvironmentFile entries are applied after Environment= and can override it. Their contents are
+  // intentionally outside this read-only package, so any configured file makes the binding unknown.
+  if (hasConfiguredEnvironmentFiles(app.EnvironmentFiles) || hasConfiguredEnvironmentFiles(statusWriter.EnvironmentFiles)) return false;
   if (JSON.stringify(app.EnvironmentFiles) !== JSON.stringify(statusWriter.EnvironmentFiles)) return false;
-  for (const key of ['PassEnvironment','UnsetEnvironment']) if ((app[key] ?? '') !== (statusWriter[key] ?? '')) return false;
-  const appValue = selectedEnvironmentAssignment(app.Environment, 'EDGE_USAGE_COLLECTOR_STATUS_PATH');
-  const writerValue = selectedEnvironmentAssignment(statusWriter.Environment, 'EDGE_USAGE_COLLECTOR_STATUS_PATH');
+  for (const name of ['PassEnvironment','UnsetEnvironment']) {
+    const appSetting = String(app[name] ?? ''), writerSetting = String(statusWriter[name] ?? '');
+    if (appSetting !== writerSetting || environmentOptionContains(appSetting, key)) return false;
+  }
+  if (!isRootServiceIdentity(app) || !isRootServiceIdentity(statusWriter)) return false;
+  const appValue = selectedEnvironmentAssignment(app.Environment, key);
+  const writerValue = selectedEnvironmentAssignment(statusWriter.Environment, key);
   return Boolean(appValue && writerValue && appValue === writerValue && processValue === appValue && isSafeAbsolutePath(appValue));
 }
 
+export function isSafeStatusFileMetadata(stat, expectedUid = 0n, expectedGid = 0n) {
+  return Boolean(stat && typeof stat.isFile === 'function' && stat.isFile()
+    && typeof stat.isSymbolicLink === 'function' && !stat.isSymbolicLink()
+    && stat.uid === BigInt(expectedUid) && stat.gid === BigInt(expectedGid)
+    && stat.nlink === 1n && (stat.mode & 0o077n) === 0n
+    && stat.size <= BigInt(MAX_STATUS_BYTES));
+}
+export function isSafeStatusDirectoryMetadata(stat, expectedUid = 0n, expectedGid = 0n) {
+  return Boolean(stat && typeof stat.isDirectory === 'function' && stat.isDirectory()
+    && typeof stat.isSymbolicLink === 'function' && !stat.isSymbolicLink()
+    && stat.uid === BigInt(expectedUid) && stat.gid === BigInt(expectedGid)
+    && (stat.mode & 0o022n) === 0n);
+}
+function statusDirectorySnapshot(statusPath) {
+  try {
+    const rows = [];
+    let directory = path.dirname(statusPath);
+    while (true) {
+      const stat = fs.lstatSync(directory, { bigint: true });
+      if (!isSafeStatusDirectoryMetadata(stat) || fs.realpathSync(directory) !== directory) return null;
+      rows.push([directory, signature(stat)]);
+      if (directory === '/') break;
+      const parent = path.dirname(directory);
+      if (parent === directory) return null;
+      directory = parent;
+    }
+    return rows;
+  } catch { return null; }
+}
 function readStatusProjection(statusPath) {
   let before;
   try { before = fs.lstatSync(statusPath, { bigint: true }); }
   catch (error) { return { availability: error?.code === 'ENOENT' ? 'not_observed' : 'invalid_observation' }; }
-  if (!before.isFile() || before.isSymbolicLink() || before.nlink !== 1n || (before.mode & 0o077n) !== 0n || before.size > BigInt(MAX_STATUS_BYTES) || fs.realpathSync(statusPath) !== statusPath) return { availability: 'invalid_observation' };
+  let realPath;
+  try { realPath = fs.realpathSync(statusPath); } catch { return { availability: 'invalid_observation' }; }
+  const directoriesBefore = statusDirectorySnapshot(statusPath);
+  if (!isSafeStatusFileMetadata(before) || realPath !== statusPath || !directoriesBefore) return { availability: 'invalid_observation' };
   const fd = fs.openSync(statusPath, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
   let bytes;
   try {
     const opened = fs.fstatSync(fd, { bigint: true });
-    if (opened.dev !== before.dev || opened.ino !== before.ino || opened.size !== before.size) fail('status_file_changed');
+    if (!isSafeStatusFileMetadata(opened) || JSON.stringify(signature(opened)) !== JSON.stringify(signature(before))) fail('status_file_changed');
     bytes = fs.readFileSync(fd);
-    const after = fs.fstatSync(fd, { bigint: true }), named = fs.lstatSync(statusPath, { bigint: true });
-    if (after.dev !== before.dev || after.ino !== before.ino || after.size !== before.size || after.mtimeNs !== before.mtimeNs || after.ctimeNs !== before.ctimeNs || named.dev !== before.dev || named.ino !== before.ino || named.mtimeNs !== before.mtimeNs || named.ctimeNs !== before.ctimeNs) fail('status_file_changed');
+    const after = fs.fstatSync(fd, { bigint: true });
+    let named, directoriesAfter, namedRealPath;
+    try {
+      named = fs.lstatSync(statusPath, { bigint: true });
+      directoriesAfter = statusDirectorySnapshot(statusPath);
+      namedRealPath = fs.realpathSync(statusPath);
+    } catch { fail('status_file_changed'); }
+    if (!isSafeStatusFileMetadata(after) || JSON.stringify(signature(after)) !== JSON.stringify(signature(before))
+      || !isSafeStatusFileMetadata(named) || JSON.stringify(signature(named)) !== JSON.stringify(signature(before))
+      || !directoriesAfter || JSON.stringify(directoriesBefore) !== JSON.stringify(directoriesAfter)
+      || namedRealPath !== statusPath) fail('status_file_changed');
   } finally { fs.closeSync(fd); }
   try { return { availability: 'raw', parsed: JSON.parse(bytes.toString('utf8')) }; }
   catch { return { availability: 'invalid_observation' }; }
@@ -292,6 +404,16 @@ export function inspectStatusWriterExecStart(execStart, workingDirectory, appRoo
   if (execStart.includes(canonicalPrefix) && /^\s*;/.test(execStart.slice(execStart.indexOf(canonicalPrefix) + canonicalPrefix.length))) return true;
   try { return realpathSync(CURRENT_LINK) === appRoot && execStart.includes(currentPrefix) && /^\s*;/.test(execStart.slice(execStart.indexOf(currentPrefix) + currentPrefix.length)); }
   catch { return false; }
+}
+
+export function inspectOnFailure(value) {
+  if (typeof value !== 'string') return { status: 'unknown', extraCount: null };
+  const units = value.trim() ? value.trim().split(/\s+/) : [];
+  if (units.some(unit => !/^[A-Za-z0-9_.@:-]+$/.test(unit))) return { status: 'unknown', extraCount: null };
+  const matches = units.filter(unit => unit === STOP_SERVICE).length;
+  if (matches > 1) return { status: 'unknown', extraCount: null };
+  if (matches === 0) return { status: 'not_linked', extraCount: units.length };
+  return { status: units.length === 1 ? 'linked_only' : 'linked_with_extras', extraCount: units.length - 1 };
 }
 
 export function inspectStopUnitExecStart(execStart) {
@@ -416,17 +538,21 @@ export function runSelfTests() {
   console.log('m0_a2_1_v7_self_test=passed');
 }
 
+export function isExpectedNodeVersion(version) {
+  return version === '22.16.0';
+}
+
 export async function runM0A2V7(expectedRelease) {
   const startedAt = Date.now();
   let statusPath = null;
   try {
-    if (process.platform !== 'linux' || process.arch !== 'x64' || process.getuid?.() !== 0 || !/^22\./.test(process.versions.node) || process.env.NODE_OPTIONS || process.env.NODE_PATH) fail('runtime_invalid');
+    if (process.platform !== 'linux' || process.arch !== 'x64' || process.getuid?.() !== 0 || !isExpectedNodeVersion(process.versions.node) || process.env.NODE_OPTIONS || process.env.NODE_PATH) fail('runtime_invalid');
     const observedAt = new Date().toISOString();
     const appBefore = systemdShow(APP_UNIT, APP_PROPERTIES);
     const fullBefore = systemdShow(FULL_SERVICE, SERVICE_PROPERTIES);
     const fullTimerBefore = systemdShow(FULL_TIMER, TIMER_PROPERTIES);
     const stopBefore = systemdShow(STOP_SERVICE, STOP_PROPERTIES);
-    const statusBefore = systemdShow(STATUS_SERVICE, SERVICE_PROPERTIES);
+    const statusBefore = systemdShow(STATUS_SERVICE, STATUS_SERVICE_PROPERTIES);
     const statusTimerBefore = systemdShow(STATUS_TIMER, TIMER_PROPERTIES);
     assertTimeBudget(startedAt);
 
@@ -442,9 +568,9 @@ export async function runM0A2V7(expectedRelease) {
     const fullExec = inspectFullMeteringExecStart(fullBefore.ExecStart, fullBefore.WorkingDirectory);
     const archiveBefore = fullExec.matched ? verifyArchive() : null;
     assertTimeBudget(startedAt);
-    const onFailureLinked = Object.hasOwn(fullBefore, 'OnFailure')
-      ? (String(fullBefore.OnFailure || '').split(/\s+/).includes(STOP_SERVICE) ? 'stop_unit_linked' : 'not_linked')
-      : 'unknown';
+    const onFailure = Object.hasOwn(fullBefore, 'OnFailure')
+      ? inspectOnFailure(fullBefore.OnFailure)
+      : { status: 'unknown', extraCount: null };
     const stopTargetsTimer = Object.hasOwn(stopBefore, 'ExecStart')
       ? (inspectStopUnitExecStart(stopBefore.ExecStart) ? 'yes' : 'no')
       : 'unknown';
@@ -481,7 +607,7 @@ export async function runM0A2V7(expectedRelease) {
     const fullAfter = systemdShow(FULL_SERVICE, SERVICE_PROPERTIES);
     const fullTimerAfter = systemdShow(FULL_TIMER, TIMER_PROPERTIES);
     const stopAfter = systemdShow(STOP_SERVICE, STOP_PROPERTIES);
-    const statusAfter = systemdShow(STATUS_SERVICE, SERVICE_PROPERTIES);
+    const statusAfter = systemdShow(STATUS_SERVICE, STATUS_SERVICE_PROPERTIES);
     const statusTimerAfter = systemdShow(STATUS_TIMER, TIMER_PROPERTIES);
     assertTimeBudget(startedAt);
     for (const [unit, before, after] of [
@@ -511,7 +637,7 @@ export async function runM0A2V7(expectedRelease) {
     const dropInCount = row => !Object.hasOwn(row, 'DropInPaths') ? 'unknown' : (typeof row.DropInPaths === 'string' && row.DropInPaths.trim() ? row.DropInPaths.trim().split(/\s+/).length : 0);
     const unitLink = (row, expected) => !Object.hasOwn(row, 'Unit') ? 'unknown' : (row.Unit === expected ? 'yes' : 'no');
     console.log(`full_metering_unit_metadata fragment_present=${fragmentPresent(fullBefore)} drop_in_count=${dropInCount(fullBefore)}`);
-    console.log(`full_metering_onfailure=${onFailureLinked}`);
+    console.log(`full_metering_onfailure=${onFailure.status} extra_count=${onFailure.extraCount ?? 'unknown'}`);
     console.log(`stop_unit_metadata fragment_present=${fragmentPresent(stopBefore)} drop_in_count=${dropInCount(stopBefore)}`);
     console.log(`full_metering_timer_metadata fragment_present=${fragmentPresent(fullTimerBefore)} drop_in_count=${dropInCount(fullTimerBefore)}`);
     console.log(`stop_unit ${unitState(stopBefore)} targets_full_timer=${stopTargetsTimer} temporal_correlation=${stopCorrelation}`);
