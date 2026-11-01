@@ -39,7 +39,7 @@ function expiredOrderSubquery(schema) {
   if (schema.claims) {
     sources.push(`
       select order_ref from ${CLAIMS}
-       where claim_state = 'click' and created_at <= ?
+       where created_at <= ?
     `);
   }
   if (schema.bindings) {
@@ -68,7 +68,7 @@ function inventoryCounts(db, cutoff, schema) {
   const eligibleClaimCount = schema.claims
     ? count(db, `
         select count(*) from ${CLAIMS}
-         where claim_state = 'click' and created_at <= ?
+         where created_at <= ?
       `, [cutoff])
     : 0;
   const eligibleBindingCount = schema.bindings
@@ -117,7 +117,7 @@ function commandResult({
       eligibleBindingCount: counts.eligibleBindingCount ?? 0,
       eligibleConsentLinkCount: counts.eligibleConsentLinkCount ?? 0,
       eligibleOutboxCount: counts.eligibleOutboxCount ?? 0,
-      redactedClaimCount: counts.redactedClaimCount ?? 0,
+      deletedClaimCount: counts.deletedClaimCount ?? 0,
       deletedBindingCount: counts.deletedBindingCount ?? 0,
       deletedConsentLinkCount: counts.deletedConsentLinkCount ?? 0,
       skippedOutboxCount: counts.skippedOutboxCount ?? 0
@@ -158,9 +158,10 @@ export function inspectAdsClickRetention(db, options = {}) {
 /**
  * Explicitly invoked, injected-database retention operation. No path opening,
  * scheduling, production wiring, or automatic execution is provided here.
- * Apply keeps a value-free invalid_click tombstone for idempotency, deletes
- * raw bindings and consent linkage, and prevents pending outbox work from
- * being sent after the raw click value expires.
+ * Apply deletes expired claim rows, raw bindings, and consent linkage, and
+ * prevents pending outbox work from being sent after click data expires.
+ * Purchase idempotency receipts remain the replay authority; replay paths
+ * only materialize an existing claim and never recapture a click descriptor.
  */
 export function runAdsClickRetention(db, options = {}) {
   const apply = options.apply === true;
@@ -197,7 +198,7 @@ export function runAdsClickRetention(db, options = {}) {
     const orderRefs = expiredOrderSubquery(schema);
     const orderRefValues = subqueryParameters(schema, cutoff);
     const changed = {
-      redactedClaimCount: 0,
+      deletedClaimCount: 0,
       deletedBindingCount: 0,
       deletedConsentLinkCount: 0,
       skippedOutboxCount: 0
@@ -230,17 +231,9 @@ export function runAdsClickRetention(db, options = {}) {
       `).run(...orderRefValues).changes;
     }
 
-    changed.redactedClaimCount = db.prepare(`
-      update ${CLAIMS}
-         set claim_state = 'invalid_click',
-             click_type = null,
-             click_value = null,
-             click_at = null,
-             consent_ad_user_data = null,
-             consent_ad_personalization = null,
-             updated_at = ?
-       where claim_state = 'click' and created_at <= ?
-    `).run(at, cutoff).changes;
+    changed.deletedClaimCount = db.prepare(`
+      delete from ${CLAIMS} where created_at <= ?
+    `).run(cutoff).changes;
 
     return { before, changed };
   });
