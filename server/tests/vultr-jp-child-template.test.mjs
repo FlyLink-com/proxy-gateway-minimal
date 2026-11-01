@@ -115,7 +115,7 @@ test("JP child template loads and renders all three client protocols from protec
   assert.equal(tuic.uuid, "66666666-6666-4666-8666-666666666666");
   assert.equal(tuic.password, "synthetic-jp-child-tuic-password");
   assert.equal(tuic.port, 443);
-  assert.doesNotMatch(JSON.stringify(proxyConfig), /\\$\\{[A-Z0-9_]+\\}/);
+  assert.equal(JSON.stringify(proxyConfig).includes("${"), false);
 
   const yaml = generateClashSubscription(proxyConfig);
   for (const [name, type] of [
