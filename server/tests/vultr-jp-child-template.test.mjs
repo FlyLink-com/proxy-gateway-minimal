@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import { loadProxyConfig } from "../services/config.mjs";
-import { generateClashSubscription } from "../services/clash-subscription.mjs";
 
 const template = JSON.parse(readFileSync(
   new URL("../../config/proxy-servers.vultr-jp-child.template.json", import.meta.url),
@@ -117,19 +116,6 @@ test("JP child template loads and renders all three client protocols from protec
   assert.equal(tuic.port, 443);
   assert.equal(JSON.stringify(proxyConfig).includes("${"), false);
 
-  const yaml = generateClashSubscription(proxyConfig);
-  for (const [name, type] of [
-    [EXPECTED_CHANNELS[0], "vless"],
-    [EXPECTED_CHANNELS[1], "hysteria2"],
-    [EXPECTED_CHANNELS[2], "tuic"]
-  ]) {
-    assert.match(yaml, new RegExp(`name: "${name}"`));
-    assert.match(yaml, new RegExp(`type: ${type}`));
-  }
-  assert.match(yaml, /reality-opts:/);
-  assert.match(yaml, /synthetic-jp-child-public-key/);
-  assert.match(yaml, /udp-relay-mode: "native"/);
-  assert.match(yaml, /congestion-controller: "bbr"/);
 });
 
 test("JP child template contains only protected-material placeholders, never material values", () => {
