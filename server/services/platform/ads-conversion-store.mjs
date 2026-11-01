@@ -245,7 +245,12 @@ export function recordAdsClickClaim(db, input = {}, options = {}) {
   let click = null;
   if (input.adsClick !== undefined) {
     const submittedClick = validateAdsClick(input.adsClick, at);
-    if (submittedClick && hasAdsConsentForAccount(db, accountRef)) {
+    const authorizedAt = input.authorizedAt === undefined ? at : input.authorizedAt;
+    if (
+      submittedClick
+      && Number.isSafeInteger(authorizedAt)
+      && hasAdsConsentForAccount(db, accountRef, authorizedAt)
+    ) {
       click = submittedClick;
       claimState = "click";
     } else {
