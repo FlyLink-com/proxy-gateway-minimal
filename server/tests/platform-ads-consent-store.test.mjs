@@ -74,6 +74,11 @@ test("only an explicit authenticated-store grant authorizes ad-user-data measure
         deletedBindingCount: 0,
         skippedOutboxCount: 0,
         deletedLinkCount: 0
+      },
+      unverifiedCleanup: {
+        redactedClaimCount: 0,
+        deletedBindingCount: 0,
+        skippedOutboxCount: 0
       }
     });
     assert.equal(hasAdsConsentForAccount(db, ACCOUNT), true);
@@ -136,6 +141,11 @@ test("revocation removes raw click identifiers and stops pending conversion rows
         deletedBindingCount: 1,
         skippedOutboxCount: 1,
         deletedLinkCount: 1
+      },
+      unverifiedCleanup: {
+        redactedClaimCount: 0,
+        deletedBindingCount: 0,
+        skippedOutboxCount: 0
       }
     });
     assert.equal(JSON.stringify(denied).includes("synthetic_gclid_value_001"), false);
