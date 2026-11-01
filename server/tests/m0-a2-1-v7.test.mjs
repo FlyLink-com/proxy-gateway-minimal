@@ -177,7 +177,7 @@ test('production branch has only fixed read commands and no systemd mutation or 
   assert.doesNotMatch(source, /readFileSync\s*\(/);
   assert.match(source, /readBoundedFile\(fd, MAX_STATUS_BYTES/);
   assert.match(source, /readBoundedFile\(fd, expectedSize/);
-  assert.match(source, /canReadTargetEnvironment\(appBefore\)/);
+  assert.match(source, /canReadStatusBindingEnvironment\(appBefore, statusBefore\)/);
   assert.doesNotMatch(source, /writeFileSync|appendFileSync|unlinkSync|renameSync|chmodSync|chownSync|execSync|execFileSync/);
   assert.doesNotMatch(source, /systemctl\s+(start|stop|restart|enable|disable|reset-failed|daemon-reload)/);
   assert.match(source, /const args = \['show', unit/);
