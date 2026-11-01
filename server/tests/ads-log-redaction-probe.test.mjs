@@ -42,6 +42,8 @@ test("fully percent-encoded valid click IDs and base64 variants are detected wit
   const percentEncoded = Array.from(Buffer.from(SENTINELS[1], "utf8"), (byte) => (
     `%${byte.toString(16).padStart(2, "0")}`
   )).join("");
+  const percentEncodedUpper = percentEncoded.toUpperCase();
+  const percentEncodedTwice = encodeURIComponent(percentEncoded);
   const base64 = Buffer.from(raw, "utf8").toString("base64");
   const base64url = Buffer.from(raw, "utf8").toString("base64url");
   const hex = Buffer.from(SENTINELS[1], "utf8").toString("hex");
@@ -49,6 +51,8 @@ test("fully percent-encoded valid click IDs and base64 variants are detected wit
     entries: [
       `url=${base64}`,
       `referer=${percentEncoded}`,
+      `referer-encoded=${percentEncodedUpper}`,
+      `referer-double-encoded=${percentEncodedTwice}`,
       `telemetry=${base64url}`,
       `path=${hex}`
     ],
@@ -57,7 +61,9 @@ test("fully percent-encoded valid click IDs and base64 variants are detected wit
   assert.equal(result.passed, false);
   assert.equal(result.matchedIdentifierCount, 2);
   assert.ok(result.matchCount >= 3);
-  for (const value of [base64, base64url, percentEncoded, hex]) {
+  for (const value of [
+    base64, base64url, percentEncoded, percentEncodedUpper, percentEncodedTwice, hex
+  ]) {
     assert.equal(JSON.stringify(result).includes(value), false);
   }
 });
