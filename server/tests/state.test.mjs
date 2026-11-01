@@ -4649,33 +4649,52 @@ test("createRuntimeState withholds remote data-plane channels until matching app
     "channel-vultr-a-tuic",
     "channel-sgp-a-vless-reality-tcp",
     "channel-sgp-a-hy2",
-    "channel-sgp-a-tuic"
+    "channel-sgp-a-tuic",
+    "channel-vultr-jp-01-vless-reality-tcp",
+    "channel-vultr-jp-01-hy2",
+    "channel-vultr-jp-01-tuic"
   ];
   const sgpChannels = channels.filter((channel) => channel.startsWith("channel-sgp-"));
+  const jpChildChannels = channels.filter((channel) => channel.startsWith("channel-vultr-jp-01-"));
   let first;
   let second;
 
   function serverForChannel(channel) {
+    const isSgp = channel.startsWith("channel-sgp-");
+    const isJpChild = channel.startsWith("channel-vultr-jp-01-");
+    const isRemote = isSgp || isJpChild;
+    const nodeRef = isSgp ? "vultr-sgp-a" : isJpChild ? "node-vultr-jp-01" : "vultr-japan-a";
     const isHy2 = channel.includes("hy2");
     const isTuic = channel.includes("tuic");
     return {
       id: channel.replaceAll("-", "_"),
       name: channel,
       subscriptionBundleRef: "vultr-production-a",
-      physicalNodeRef: channel.startsWith("channel-sgp-") ? "vultr-sgp-a" : "vultr-japan-a",
+      physicalNodeRef: nodeRef,
+      ...(isRemote ? { nodeRef } : {}),
       protocol: isHy2 ? "hysteria2" : isTuic ? "tuic" : "vless",
       type: isHy2 ? "hysteria2" : isTuic ? "tuic" : "vless",
-      host: channel.startsWith("channel-sgp-") ? "sgp.example.test" : "jp.example.test",
+      host: isSgp ? "sgp.example.test" : isJpChild ? "jp-child.example.test" : "jp.example.test",
       port: isHy2 ? 10443 : isTuic ? 443 : 8443,
-      ...(isHy2 ? { password: channel.startsWith("channel-sgp-") ? "${SGP_HY2_STATIC_PASSWORD}" : "${VULTR_HY2_PASSWORD}" } : {}),
+      ...(isHy2 ? {
+        password: isJpChild
+          ? "${JP_CHILD_HY2_PASSWORD}"
+          : isSgp ? "${SGP_HY2_STATIC_PASSWORD}" : "${VULTR_HY2_PASSWORD}"
+      } : {}),
       ...(isTuic ? {
-        uuid: channel.startsWith("channel-sgp-") ? "${SGP_TUIC_STATIC_UUID}" : "${VULTR_TUIC_UUID}",
-        password: channel.startsWith("channel-sgp-") ? "${SGP_TUIC_STATIC_PASSWORD}" : "${VULTR_TUIC_PASSWORD}"
+        uuid: isJpChild
+          ? "${JP_CHILD_TUIC_UUID}"
+          : isSgp ? "${SGP_TUIC_STATIC_UUID}" : "${VULTR_TUIC_UUID}",
+        password: isJpChild
+          ? "${JP_CHILD_TUIC_PASSWORD}"
+          : isSgp ? "${SGP_TUIC_STATIC_PASSWORD}" : "${VULTR_TUIC_PASSWORD}"
       } : {}),
       ...(!isHy2 && !isTuic ? {
-        uuid: channel.startsWith("channel-sgp-") ? "${SGP_VLESS_STATIC_UUID}" : "${VULTR_VLESS_REALITY_UUID}"
+        uuid: isJpChild
+          ? "${JP_CHILD_VLESS_REALITY_UUID}"
+          : isSgp ? "${SGP_VLESS_STATIC_UUID}" : "${VULTR_VLESS_REALITY_UUID}"
       } : {}),
-      ...(channel.startsWith("channel-sgp-") ? { runtimeAdapter: "remote-data-plane-handoff" } : {}),
+      ...(isRemote ? { runtimeAdapter: "remote-data-plane-handoff" } : {}),
       credentialMode: "per-order",
       status: "online",
       subscriptionEligible: true
@@ -4696,6 +4715,10 @@ test("createRuntimeState withholds remote data-plane channels until matching app
       VULTR_HY2_PASSWORD: "synthetic-vultr-hy2-template-password",
       VULTR_TUIC_UUID: "22222222-2222-4222-8222-222222222222",
       VULTR_TUIC_PASSWORD: "synthetic-vultr-tuic-template-password",
+      JP_CHILD_VLESS_REALITY_UUID: "55555555-5555-4555-8555-555555555555",
+      JP_CHILD_HY2_PASSWORD: "synthetic-jp-child-hy2-template-password",
+      JP_CHILD_TUIC_UUID: "66666666-6666-4666-8666-666666666666",
+      JP_CHILD_TUIC_PASSWORD: "synthetic-jp-child-tuic-template-password",
       SGP_VLESS_STATIC_UUID: "33333333-3333-4333-8333-333333333333",
       SGP_HY2_STATIC_PASSWORD: "synthetic-sgp-hy2-template-password",
       SGP_TUIC_STATIC_UUID: "44444444-4444-4444-8444-444444444444",
@@ -4711,11 +4734,18 @@ test("createRuntimeState withholds remote data-plane channels until matching app
       USER_PORTAL_AUTO_ISSUANCE_7D_MONTHLY_LIMIT: "5000",
       USER_PORTAL_AUTO_ISSUANCE_30D_MONTHLY_LIMIT: "1000",
       EDGE_DATA_PLANE_AGENT_ROUTES_ENABLED: "true",
-      EDGE_DATA_PLANE_AGENT_NODES_JSON: JSON.stringify([{
-        nodeRef: "vultr-sgp-a",
-        channelRefs: sgpChannels,
-        tokenSha256: "0".repeat(64)
-      }])
+      EDGE_DATA_PLANE_AGENT_NODES_JSON: JSON.stringify([
+        {
+          nodeRef: "vultr-sgp-a",
+          channelRefs: sgpChannels,
+          tokenSha256: "0".repeat(64)
+        },
+        {
+          nodeRef: "node-vultr-jp-01",
+          channelRefs: jpChildChannels,
+          tokenSha256: "1".repeat(64)
+        }
+      ])
     };
 
     first = createRuntimeState({
@@ -4839,13 +4869,72 @@ test("createRuntimeState withholds remote data-plane channels until matching app
       });
     }
 
+    const jpChildScopedDesiredStates = second.platform.dataPlaneAgentService.getDesiredState({
+      nodeRef: "node-vultr-jp-01"
+    }, {
+      edgeCredentialRefs: requestEdgeCredentials.map((credential) => credential.edgeCredentialRef)
+    }).desiredStates;
+    assert.deepEqual(
+      jpChildScopedDesiredStates.map((state) => state.channelRefs[0]).sort(),
+      [...jpChildChannels].sort()
+    );
+    for (const [index, channel] of jpChildChannels.entries()) {
+      const scopedDesiredState = jpChildScopedDesiredStates.find((state) => state.channelRefs.includes(channel));
+      assert.equal(typeof scopedDesiredState?.desiredStateRef, "string");
+      assert.match(scopedDesiredState.desiredStateRef, /^desired_scoped_/);
+      second.platform.controlStore.recordEdgeApplyReceipt({
+        id: `edge_receipt_scoped_jp_child_${index + 1}`,
+        channelRef: channel,
+        desiredStateRef: scopedDesiredState.desiredStateRef,
+        status: "applied",
+        actionCounts: { add: scopedDesiredState.edgeCredentialRefs.length },
+        configTestOk: true,
+        serviceActive: true,
+        listenerUdp443: channel.includes("vless") ? false : true,
+        listenerTcp: channel.includes("vless") ? true : false,
+        appliedAt: `2026-06-11T00:2${index + 1}:00.000Z`,
+        createdAt: `2026-06-11T00:2${index + 1}:00.000Z`
+      });
+    }
+
+    const withJpChildScopedReceipts = second.subscriptions.core.resolveSubscriptionArtifact(artifactSecret);
+    assert.equal(withJpChildScopedReceipts.ok, true);
+    assert.deepEqual(withJpChildScopedReceipts.proxyConfig.servers.map((server) => server.name), channels);
+    const otherWithJpChildScopedReceipts = second.subscriptions.core.resolveSubscriptionArtifact(otherArtifactSecret);
+    assert.equal(otherWithJpChildScopedReceipts.ok, true);
+    assert.deepEqual(otherWithJpChildScopedReceipts.proxyConfig.servers.map((server) => server.name), channels.slice(0, 6));
+
+    for (const [index, channel] of jpChildChannels.entries()) {
+      const desiredState = second.platform.controlStore.getLatestEdgeDesiredStateForChannel(channel, {
+        nodeRef: "node-vultr-jp-01",
+        channelRefs: [channel]
+      });
+      assert.equal(typeof desiredState?.desiredStateRef, "string");
+      second.platform.controlStore.recordEdgeApplyReceipt({
+        id: `edge_receipt_matching_jp_child_${index + 1}`,
+        channelRef: channel,
+        desiredStateRef: desiredState.desiredStateRef,
+        status: "applied",
+        actionCounts: { add: desiredState.edgeCredentialRefs.length },
+        configTestOk: true,
+        serviceActive: true,
+        listenerUdp443: channel.includes("vless") ? false : true,
+        listenerTcp: channel.includes("vless") ? true : false,
+        appliedAt: `2026-06-11T00:3${index + 1}:00.000Z`,
+        createdAt: `2026-06-11T00:3${index + 1}:00.000Z`
+      });
+    }
+
     const withFreshReceipts = second.subscriptions.core.resolveSubscriptionArtifact(artifactSecret);
     assert.equal(withFreshReceipts.ok, true);
     assert.deepEqual(withFreshReceipts.proxyConfig.servers.map((server) => server.name), channels);
     const otherWithFreshReceipts = second.subscriptions.core.resolveSubscriptionArtifact(otherArtifactSecret);
     assert.equal(otherWithFreshReceipts.ok, true);
     assert.deepEqual(otherWithFreshReceipts.proxyConfig.servers.map((server) => server.name), channels);
-    assert.doesNotMatch(JSON.stringify(withFreshReceipts), /synthetic-sgp-hy2-template-password|synthetic-sgp-tuic-template-password/i);
+    assert.doesNotMatch(
+      JSON.stringify(withFreshReceipts),
+      /synthetic-sgp-hy2-template-password|synthetic-sgp-tuic-template-password|synthetic-jp-child-hy2-template-password|synthetic-jp-child-tuic-template-password/i
+    );
   } finally {
     first?.close();
     second?.close();
