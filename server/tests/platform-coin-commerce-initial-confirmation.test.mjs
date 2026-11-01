@@ -656,3 +656,59 @@ test("controlled initial confirmation refuses the old schema before any write", 
     await fixture.close();
   }
 });
+
+test("controlled initial confirmation replay backfills the Ads outbox after a failed first flush", async () => {
+  const previousFlag = process.env.ADS_CLICK_BINDING_ENABLED;
+  process.env.ADS_CLICK_BINDING_ENABLED = "true";
+  try {
+    const fixture = await readyConfirmationFixture();
+    try {
+      const ads = await import("../services/platform/ads-conversion-store.mjs");
+      ads.ensureAdsConversionSchema(fixture.rawDatabase);
+      const outboxRow = () => fixture.rawDatabase.prepare(`
+        select status, skip_reason from platform_ads_conversion_outbox
+         where order_ref = ?
+      `).get(fixture.orderRef);
+      // The fixture's original confirm carried no adsClick descriptor,
+      // so its recorded claim is the tri-state no_click; the backfilled
+      // row must therefore be skipped / no_click.
+      const claim = fixture.rawDatabase.prepare(`
+        select claim_state from platform_ads_click_claims where order_ref = ?
+      `).get(fixture.orderRef);
+      assert.equal(claim.claim_state, "no_click");
+      const inventory = fixture.service.prepare({ accountId: fixture.accountId, orderRef: fixture.orderRef });
+      const approval = fixture.approval(inventory.inventorySha256);
+      // Block outbox writes so the first execution's post-commit flush
+      // fails silently; the purchase outcome must be unaffected and no
+      // outbox row may appear.
+      fixture.rawDatabase.exec(`
+        create trigger ads_test_fail_outbox_insert
+          before insert on platform_ads_conversion_outbox
+          begin select raise(abort, 'synthetic outbox write failure'); end;
+        create trigger ads_test_fail_outbox_update
+          before update on platform_ads_conversion_outbox
+          begin select raise(abort, 'synthetic outbox write failure'); end;
+      `);
+      const confirmed = fixture.service.execute(approval);
+      assert.equal(confirmed.state, "confirmed");
+      assert.equal(fixture.readOrder().paymentStatus, "captured");
+      assert.equal(outboxRow(), undefined);
+      // The fault clears; replaying the same approval returns
+      // already_confirmed and this time backfills the outbox row.
+      fixture.rawDatabase.exec(`
+        drop trigger ads_test_fail_outbox_insert;
+        drop trigger ads_test_fail_outbox_update;
+      `);
+      const replay = fixture.service.execute(approval);
+      assert.deepEqual(replay, { ...confirmed, state: "already_confirmed" });
+      const row = outboxRow();
+      assert.equal(row.status, "skipped");
+      assert.equal(row.skip_reason, "no_click");
+    } finally {
+      await fixture.close();
+    }
+  } finally {
+    if (previousFlag === undefined) delete process.env.ADS_CLICK_BINDING_ENABLED;
+    else process.env.ADS_CLICK_BINDING_ENABLED = previousFlag;
+  }
+});
