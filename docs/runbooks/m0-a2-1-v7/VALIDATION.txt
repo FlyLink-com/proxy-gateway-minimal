@@ -1,6 +1,6 @@
 M0-A2-1 v7 / v9 BYTE-STABLE CHECKOUT VALIDATION RECORD
 Date: 2026-10-31
-Status: f60 WINDOWS LOCAL ACCEPTANCE REPORTED PASS (18/18) — FOLLOW-UP BRANCH HAS 20 TESTS PENDING FULL RERUN — HOSTED CI SKIPPED — PRODUCTION NOT AUTHORIZED.
+Status: OPERATOR-REPORTED EXACT-CODE-HEAD ACCEPTANCE PASS on `0477799c809aa6d16b4ad121db9915fa5a604f70` (Node v22.16.0; SHA256 7/7; syntax 4/4; self-test PASS; tests 20/20) — POST-SYNC HEAD REQUIRES RERUN — HOSTED CI SKIPPED — PRODUCTION NOT AUTHORIZED.
 
 ## v9 Windows local verification — operator-reported
 
@@ -131,3 +131,18 @@ The only failure was in test `production branch has only fixed read commands and
 - Repeat the full checksum, four syntax checks, self-test, and complete `node --test` suite using Node `v22.16.0` against the exact current PR head. If any check fails, stop and report the exact output and exit code.
 
 The PR remains Draft; M0 remains BLOCKED. No BWH/Provider connection, production read, service action, or mutation was performed.
+
+
+## Exact PR code-head local acceptance — operator-reported (2026-10-31)
+
+- Exact tested code commit: `0477799c809aa6d16b4ad121db9915fa5a604f70`.
+- The isolated workspace was clean before switching to this commit. The original working directory containing uncommitted changes was not touched.
+- Runtime: Node `v22.16.0` from the separate toolchain directory.
+- `sha256sum -c docs/runbooks/m0-a2-1-v7/SHA256SUMS`: 7/7 OK, exit code 0.
+- Four `node --check` commands: all passed, exit code 0.
+- `node scripts/m0-a2-1-v7.mjs --self-test`: `m0_a2_1_v7_self_test=passed`, exit code 0.
+- `node --test server/tests/m0-a2-1-v7.test.mjs`: 20/20 passed, exit code 0.
+- No BWH/Provider connection, SSH, production systemd/journal/status/SQLite/config/environment-file read, collector invocation, service/Timer action, or production mutation occurred.
+
+This is operator-reported local evidence, not a hosted CI result or independent execution by GitHub. It applies to the exact code commit `0477799c809aa6d16b4ad121db9915fa5a604f70`. The documentation-synchronization commits that update this runbook, validation/review records, and checksum manifest are later commits; they do not change diagnostic runtime or test source, but the resulting exact PR head must still rerun the complete checksum, syntax, self-test, and 20-test suite before Ready. Do not describe the documentation-sync head as fully validated until that rerun is recorded.
+Hosted CI remains skipped while the PR is Draft; skipped is not a pass. Production state and authorization are not established by this local test.
