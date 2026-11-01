@@ -122,6 +122,9 @@ test('status path binding compares App with the traffic-usage writer, never the 
   };
   const statusWriter = { ...app };
   assert.equal(resolveStatusBinding(app, statusWriter, '/var/lib/gccgw/traffic-status.json'), true);
+  const appMetadata = { ...app }; delete appMetadata.Environment;
+  const writerMetadata = { ...statusWriter }; delete writerMetadata.Environment;
+  assert.equal(resolveStatusBinding(appMetadata, writerMetadata, '/var/lib/gccgw/traffic-status.json', '/var/lib/gccgw/traffic-status.json', '/var/lib/gccgw/traffic-status.json'), true);
   assert.equal(resolveStatusBinding(app, { ...statusWriter, EnvironmentFiles: ['/etc/other.env'] }, '/var/lib/gccgw/traffic-status.json'), false);
   assert.equal(resolveStatusBinding(app, { ...statusWriter, Environment: 'EDGE_USAGE_COLLECTOR_STATUS_PATH=/var/lib/other.json' }, '/var/lib/gccgw/traffic-status.json'), false);
   assert.equal(resolveStatusBinding(app, statusWriter, '/var/lib/other.json'), false);
