@@ -75,9 +75,9 @@ export function AdsConsentPreferencePanel({
     setMessage(saved
       ? ""
       : (zh
-        ? "无法保存隐私偏好；广告衡量将保持关闭。"
-        : "The privacy preference could not be saved; ad measurement remains off."));
-    setExpanded(actual === "unknown");
+        ? "无法保存隐私偏好；当前页面已停止广告衡量，请检查浏览器 Cookie 设置后重试。"
+        : "The preference could not be saved. Measurement is stopped on this page; check browser cookie settings and try again."));
+    setExpanded(!saved || actual === "unknown");
   };
 
   return (

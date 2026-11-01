@@ -17,6 +17,7 @@ const CONSENT_MAX_AGE_SECONDS = 180 * 24 * 60 * 60;
 const MIN_EPOCH_MS = 100_000_000_000;
 
 let companySiteAdsClick: StoredAdsClick | null = null;
+let deniedConsentOverride = false;
 
 function adsClickFeatureEnabled() {
   const env = (import.meta as ImportMeta & {
@@ -52,13 +53,18 @@ function isValidStoredClick(value: unknown, now = Date.now()): value is StoredAd
 
 function cookieValue(name: string): string | null {
   if (typeof document === "undefined") return null;
-  const prefix = `${name}=`;
-  const entry = document.cookie.split(";").map((part) => part.trim())
-    .find((part) => part.startsWith(prefix));
-  return entry ? entry.slice(prefix.length) : null;
+  try {
+    const prefix = `${name}=`;
+    const entry = document.cookie.split(";").map((part) => part.trim())
+      .find((part) => part.startsWith(prefix));
+    return entry ? entry.slice(prefix.length) : null;
+  } catch {
+    return null;
+  }
 }
 
 export function readAdsUserDataConsent(): AdsUserDataConsent {
+  if (deniedConsentOverride) return "denied";
   const value = cookieValue(CONSENT_COOKIE);
   if (value === "v1.granted") return "granted";
   if (value === "v1.denied") return "denied";
@@ -93,16 +99,20 @@ export function setAdsUserDataConsent(next: Exclude<AdsUserDataConsent, "unknown
     : "";
   const secure = window.location.protocol === "https:" ? "; Secure" : "";
   const value = next === "granted" ? "v1.granted" : "v1.denied";
+  if (next === "denied") {
+    deniedConsentOverride = true;
+    clearAdsClickData();
+  }
 
   try {
     document.cookie = `${CONSENT_COOKIE}=${value}; Path=/; Max-Age=${CONSENT_MAX_AGE_SECONDS}; SameSite=Lax${domain}${secure}`;
   } catch {
-    if (next === "denied") clearAdsClickData();
     return false;
   }
 
-  if (next === "denied") clearAdsClickData();
-  return readAdsUserDataConsent() === next;
+  const saved = cookieValue(CONSENT_COOKIE) === value;
+  if (next === "granted" && saved) deniedConsentOverride = false;
+  return saved;
 }
 
 export function captureCompanySiteAdsClickFromLocation(now = Date.now()): StoredAdsClick | null {
