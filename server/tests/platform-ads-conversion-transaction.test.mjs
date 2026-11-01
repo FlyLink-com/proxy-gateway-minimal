@@ -93,10 +93,11 @@ function breakAdsWrites(database) {
   }
 }
 
-function grantAdsConsent(database, accountRef) {
+function grantAdsConsent(database, accountRef, at) {
   const store = createSqliteAdsConsentStore({
     database,
-    env: { [FLAG]: "true" }
+    env: { [FLAG]: "true" },
+    nowFn: () => at
   });
   store.recordConsent({ accountRef, adUserData: true });
   store.close();
@@ -204,7 +205,7 @@ test("legacy confirm and complete are unchanged when every Ads write fails", () 
     const state = legacyFixture();
     try {
       return withFlag(adsMode !== "off", () => {
-        if (adsMode !== "off") grantAdsConsent(state.database, LEGACY_ACCOUNT);
+        if (adsMode !== "off") grantAdsConsent(state.database, LEGACY_ACCOUNT, Date.parse(LEGACY_NOW));
         if (adsMode === "broken") breakAdsWrites(state.database);
         const confirmed = legacyConfirmAndCapture(state, { adsClick: freshClick() });
         const claimed = state.store.claimNextFulfillmentCommand({ leaseMs: 1000 });
@@ -452,7 +453,7 @@ function deferredScenario(adsMode) {
       refFactory: references("quote"), quoteTtlMs: 60_000
     });
     return withFlag(adsMode !== "off", () => {
-      if (adsMode !== "off") grantAdsConsent(database, accountId);
+      if (adsMode !== "off") grantAdsConsent(database, accountId, Date.parse(DEFERRED_NOW));
       if (adsMode === "broken") breakAdsWrites(database);
       const quote = adapter.previewDeferredCheckout({
         accountId,
