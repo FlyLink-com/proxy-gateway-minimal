@@ -65,3 +65,16 @@ Decision: keep M0 BLOCKED. A production read requires separate exact Risk A appr
 4. Added three regression tests; the repository test file now contains 13 test declarations. A separate standalone local Node v22.16.0 harness mirroring the added helper logic passed 12/12 assertions and its syntax check passed. The full repository test file was not run, so no 13/13 claim is made. No hosted CI is started while the PR remains Draft.
 
 No BWH/Provider access, SSH, production systemd/journal read, collector invocation, service/Timer action, or production mutation was performed by these repairs.
+
+
+## Independent-review remediation (2026-10-31)
+
+1. **EnvironmentFile override:** the App/status-writer binding now fails closed whenever either unit has a nonempty `EnvironmentFiles` list. Environment files are not read. The full-metering unit no longer requests the `Environment` property; only App and status-writer metadata are queried. `/proc/<AppPID>/environ` is scanned in bounded chunks, retaining only the requested status-path value. `PassEnvironment` / `UnsetEnvironment` references to the target variable are rejected.
+2. **Status-file ownership and path trust:** both units must have a default or explicit root identity; the status file must be root UID/GID-owned, private, single-link and non-symlinked. Every parent directory through `/` must be a real root-owned directory without group/world write permission. File and directory metadata are rechecked after reading.
+3. **Complete failure-handler reporting:** the entire `OnFailure` list is parsed. Extra handlers are surfaced by count; malformed or duplicate expected handlers become `unknown`.
+4. **Runtime pin:** the production gate now requires Node `v22.16.0` exactly, rather than accepting any `22.x` version.
+5. Added five regression tests; the test file now declares 18 tests. The complete repository test suite has NOT been run against this remediation commit in this environment. The existing isolated v9 workspace must run the documented checksum, syntax, self-test and full `node --test` commands against the exact final commit. Hosted CI remains skipped while Draft; no CI pass is claimed.
+
+No BWH/Provider access, SSH, production systemd/journal read, collector invocation, service/Timer action, database/config/environment-file read, or production mutation was performed.
+
+Disposition: keep PR #812 Draft and M0 BLOCKED until the exact final commit passes the isolated local validation and receives a fresh independent review. This remediation does not authorize production execution.
