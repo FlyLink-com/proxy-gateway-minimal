@@ -219,6 +219,35 @@ test("a client-supplied consent descriptor cannot persist a click without server
   });
 });
 
+
+test("a consent grant recorded after the purchase timestamp cannot authorize that order", () => {
+  withDb((db) => {
+    const store = createSqliteAdsConsentStore({
+      database: db,
+      env: ENABLED,
+      nowFn: () => NOW
+    });
+    store.recordConsent({ accountRef: ACCOUNT, adUserData: true });
+    const click = {
+      type: "gclid",
+      value: "synthetic_late_consent_click_002",
+      clickAt: new Date(NOW - 1000).toISOString(),
+      consent: { adUserData: true, adPersonalization: false }
+    };
+    const binding = safeCaptureAdsClickForOrder(db, {
+      orderRef: "order_ads_consent_late",
+      accountRef: ACCOUNT,
+      model: "legacy",
+      adsClick: click,
+      authorizedAt: NOW - 1
+    }, { env: ENABLED, now: NOW + 1000 });
+    assert.equal(binding, null);
+    assert.equal(getAdsClickClaim(db, "order_ads_consent_late").claimState, "invalid_click");
+    assert.equal(getAdsClickClaim(db, "order_ads_consent_late").clickValue, null);
+    store.close();
+  });
+});
+
 test("consent schema is created only by an enabled, explicit decision write", () => {
   withDb((db) => {
     assert.deepEqual(getAdsConsentForAccount(db, ACCOUNT), {
