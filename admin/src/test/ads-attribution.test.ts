@@ -65,6 +65,30 @@ describe("consent-aware Ads click attribution", () => {
     });
   });
 
+  test.each(["gclid", "gbraid", "wbraid"] as const)(
+    "captures %s independently after consent and removes it from the ordinary URL",
+    (type) => {
+      expect(setAdsUserDataConsent("granted")).toBe(true);
+      setLocation(`/?${type}=synthetic_${type}_123&campaign=summer#/site`);
+
+      expect(captureCompanySiteAdsClickFromLocation()).toMatchObject({
+        type,
+        value: `synthetic_${type}_123`
+      });
+      expect(window.location.search).toBe("?campaign=summer");
+      expect(window.location.href).not.toContain(`synthetic_${type}_123`);
+    }
+  );
+
+  test("defaults to unknown consent and discards an incoming click until the user opts in", () => {
+    expect(readAdsUserDataConsent()).toBe("unknown");
+    setLocation("/?gclid=not-yet-consented#/site");
+
+    expect(captureCompanySiteAdsClickFromLocation()).toBeNull();
+    expect(window.location.search).toBe("");
+    expect(buildPortalAdsClickHandoffUrl("/portal/")).toBe("/portal/");
+  });
+
   test("drops the click and cleans the URL when consent is denied", () => {
     expect(setAdsUserDataConsent("denied")).toBe(true);
     setLocation("/?gclid=must_not_be_saved#/site");
