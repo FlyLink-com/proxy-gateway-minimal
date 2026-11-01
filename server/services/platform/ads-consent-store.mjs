@@ -196,36 +196,27 @@ export function recordAdsConsentDecision(db, input = {}, options = {}) {
       skippedOutboxCount: 0,
       deletedLinkCount: 0
     };
+    const unverifiedCleanup = {
+      redactedClaimCount: 0,
+      deletedBindingCount: 0,
+      skippedOutboxCount: 0
+    };
+    const hasClaims = tableExists(db, "platform_ads_click_claims");
+    const hasBindings = tableExists(db, "platform_ads_click_bindings");
+    const hasOutbox = tableExists(db, "platform_ads_conversion_outbox");
+    const unverifiedOrders = `
+      select order_ref from platform_ads_click_claims
+       where account_ref = ? and claim_state = 'click'
+         and order_ref not in (
+           select order_ref from platform_ads_click_consent_claims
+            where account_ref = ?
+         )
+    `;
+
     if (!values.adUserData) {
-      if (tableExists(db, "platform_ads_click_claims")) {
-        revocation.redactedClaimCount = db.prepare(`
-          update platform_ads_click_claims
-             set claim_state = 'invalid_click',
-                 click_type = null,
-                 click_value = null,
-                 click_at = null,
-                 consent_ad_user_data = null,
-                 consent_ad_personalization = null,
-                 updated_at = ?
-           where account_ref = ?
-             and claim_state = 'click'
-             and order_ref in (
-               select order_ref from platform_ads_click_consent_claims
-                where account_ref = ?
-             )
-        `).run(at, ref, ref).changes;
-      }
-      if (tableExists(db, "platform_ads_click_bindings")) {
-        revocation.deletedBindingCount = db.prepare(`
-          delete from platform_ads_click_bindings
-           where account_ref = ?
-             and order_ref in (
-               select order_ref from platform_ads_click_consent_claims
-                where account_ref = ?
-             )
-        `).run(ref, ref).changes;
-      }
-      if (tableExists(db, "platform_ads_conversion_outbox")) {
+      // A withdrawal invalidates every raw click value for the account,
+      // including legacy claims created before the server consent ledger.
+      if (hasOutbox && hasClaims) {
         revocation.skippedOutboxCount = db.prepare(`
           update platform_ads_conversion_outbox
              set status = 'skipped',
@@ -235,23 +226,76 @@ export function recordAdsConsentDecision(db, input = {}, options = {}) {
                  updated_at = ?
            where status = 'pending'
              and order_ref in (
-               select order_ref from platform_ads_click_consent_claims
-                where account_ref = ?
+               select order_ref from platform_ads_click_claims
+                where account_ref = ? and claim_state = 'click'
              )
         `).run(at, ref).changes;
       }
-      if (tableExists(db, "platform_ads_click_consent_claims")) {
-        revocation.deletedLinkCount = db.prepare(`
-          delete from platform_ads_click_consent_claims where account_ref = ?
+      if (hasBindings) {
+        revocation.deletedBindingCount = db.prepare(`
+          delete from platform_ads_click_bindings where account_ref = ?
         `).run(ref).changes;
       }
+      if (hasClaims) {
+        revocation.redactedClaimCount = db.prepare(`
+          update platform_ads_click_claims
+             set claim_state = 'invalid_click',
+                 click_type = null,
+                 click_value = null,
+                 click_at = null,
+                 consent_ad_user_data = null,
+                 consent_ad_personalization = null,
+                 updated_at = ?
+           where account_ref = ? and claim_state = 'click'
+        `).run(at, ref).changes;
+      }
+      revocation.deletedLinkCount = db.prepare(`
+        delete from platform_ads_click_consent_claims where account_ref = ?
+      `).run(ref).changes;
+    } else if (hasClaims) {
+      // A newly granted account decision must not retroactively authorize
+      // raw identifiers captured before the server consent ledger existed.
+      if (hasOutbox) {
+        unverifiedCleanup.skippedOutboxCount = db.prepare(`
+          update platform_ads_conversion_outbox
+             set status = 'skipped',
+                 skip_reason = 'consent_unverified',
+                 next_attempt_at = null,
+                 last_error = null,
+                 updated_at = ?
+           where status = 'pending'
+             and order_ref in (${unverifiedOrders})
+        `).run(at, ref, ref).changes;
+      }
+      if (hasBindings) {
+        unverifiedCleanup.deletedBindingCount = db.prepare(`
+          delete from platform_ads_click_bindings
+           where account_ref = ? and order_ref in (${unverifiedOrders})
+        `).run(ref, ref, ref).changes;
+      }
+      unverifiedCleanup.redactedClaimCount = db.prepare(`
+        update platform_ads_click_claims
+           set claim_state = 'invalid_click',
+               click_type = null,
+               click_value = null,
+               click_at = null,
+               consent_ad_user_data = null,
+               consent_ad_personalization = null,
+               updated_at = ?
+         where account_ref = ? and claim_state = 'click'
+           and order_ref not in (
+             select order_ref from platform_ads_click_consent_claims
+              where account_ref = ?
+           )
+      `).run(at, ref, ref).changes;
     }
     return {
       decision: values.adUserData ? "granted" : "denied",
       adUserData: values.adUserData,
       adPersonalization: false,
       updatedAt: at,
-      revocation
+      revocation,
+      unverifiedCleanup
     };
   });
   return transaction.immediate();
