@@ -205,49 +205,19 @@ export function recordAdsConsentDecision(db, input = {}, options = {}) {
     const hasClaims = tableExists(db, "platform_ads_click_claims");
     const hasBindings = tableExists(db, "platform_ads_click_bindings");
     const hasOutbox = tableExists(db, "platform_ads_conversion_outbox");
-    const clickOrderSources = [];
-    const clickOrderParameters = [];
-    const unverifiedOrderSources = [];
-    const unverifiedOrderParameters = [];
-    if (hasClaims) {
-      clickOrderSources.push(`
-        select order_ref from platform_ads_click_claims
-         where account_ref = ? and claim_state = 'click'
-      `);
-      clickOrderParameters.push(ref);
-      unverifiedOrderSources.push(`
-        select order_ref from platform_ads_click_claims
-         where account_ref = ? and claim_state = 'click'
-           and order_ref not in (
-             select order_ref from platform_ads_click_consent_claims
-              where account_ref = ?
-           )
-      `);
-      unverifiedOrderParameters.push(ref, ref);
-    }
-    if (hasBindings) {
-      clickOrderSources.push(`
-        select order_ref from platform_ads_click_bindings
-         where account_ref = ?
-      `);
-      clickOrderParameters.push(ref);
-      unverifiedOrderSources.push(`
-        select order_ref from platform_ads_click_bindings
-         where account_ref = ?
-           and order_ref not in (
-             select order_ref from platform_ads_click_consent_claims
-              where account_ref = ?
-           )
-      `);
-      unverifiedOrderParameters.push(ref, ref);
-    }
-    const clickOrders = clickOrderSources.join(" union ");
-    const unverifiedOrders = unverifiedOrderSources.join(" union ");
+    const unverifiedOrders = `
+      select order_ref from platform_ads_click_claims
+       where account_ref = ? and claim_state = 'click'
+         and order_ref not in (
+           select order_ref from platform_ads_click_consent_claims
+            where account_ref = ?
+         )
+    `;
 
     if (!values.adUserData) {
       // A withdrawal invalidates every raw click value for the account,
       // including legacy claims created before the server consent ledger.
-      if (hasOutbox && clickOrderSources.length > 0) {
+      if (hasOutbox && hasClaims) {
         revocation.skippedOutboxCount = db.prepare(`
           update platform_ads_conversion_outbox
              set status = 'skipped',
@@ -256,8 +226,11 @@ export function recordAdsConsentDecision(db, input = {}, options = {}) {
                  last_error = null,
                  updated_at = ?
            where status = 'pending'
-             and order_ref in (${clickOrders})
-        `).run(at, ...clickOrderParameters).changes;
+             and order_ref in (
+               select order_ref from platform_ads_click_claims
+                where account_ref = ? and claim_state = 'click'
+             )
+        `).run(at, ref).changes;
       }
       if (hasBindings) {
         revocation.deletedBindingCount = db.prepare(`
@@ -280,12 +253,10 @@ export function recordAdsConsentDecision(db, input = {}, options = {}) {
       revocation.deletedLinkCount = db.prepare(`
         delete from platform_ads_click_consent_claims where account_ref = ?
       `).run(ref).changes;
-    } else if (hasClaims || hasBindings) {
+    } else if (hasClaims) {
       // A newly granted account decision must not retroactively authorize
       // raw identifiers captured before the server consent ledger existed.
-      // Include orphan bindings as well as legacy claims: a binding without a
-      // matching server-consent link is never sufficient proof of consent.
-      if (hasOutbox && unverifiedOrderSources.length > 0) {
+      if (hasOutbox) {
         unverifiedCleanup.skippedOutboxCount = db.prepare(`
           update platform_ads_conversion_outbox
              set status = 'skipped',
@@ -295,31 +266,29 @@ export function recordAdsConsentDecision(db, input = {}, options = {}) {
                  updated_at = ?
            where status = 'pending'
              and order_ref in (${unverifiedOrders})
-        `).run(at, ...unverifiedOrderParameters).changes;
+        `).run(at, ref, ref).changes;
       }
-      if (hasBindings && unverifiedOrderSources.length > 0) {
+      if (hasBindings) {
         unverifiedCleanup.deletedBindingCount = db.prepare(`
           delete from platform_ads_click_bindings
            where account_ref = ? and order_ref in (${unverifiedOrders})
-        `).run(ref, ...unverifiedOrderParameters).changes;
+        `).run(ref, ref, ref).changes;
       }
-      if (hasClaims) {
-        unverifiedCleanup.redactedClaimCount = db.prepare(`
-          update platform_ads_click_claims
-             set claim_state = 'invalid_click',
-                 click_type = null,
-                 click_value = null,
-                 click_at = null,
-                 consent_ad_user_data = null,
-                 consent_ad_personalization = null,
-                 updated_at = ?
-           where account_ref = ? and claim_state = 'click'
-             and order_ref not in (
-               select order_ref from platform_ads_click_consent_claims
-                where account_ref = ?
-             )
-        `).run(at, ref, ref).changes;
-      }
+      unverifiedCleanup.redactedClaimCount = db.prepare(`
+        update platform_ads_click_claims
+           set claim_state = 'invalid_click',
+               click_type = null,
+               click_value = null,
+               click_at = null,
+               consent_ad_user_data = null,
+               consent_ad_personalization = null,
+               updated_at = ?
+         where account_ref = ? and claim_state = 'click'
+           and order_ref not in (
+             select order_ref from platform_ads_click_consent_claims
+              where account_ref = ?
+           )
+      `).run(at, ref, ref).changes;
     }
     return {
       decision: values.adUserData ? "granted" : "denied",

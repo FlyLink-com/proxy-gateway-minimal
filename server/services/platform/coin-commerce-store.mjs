@@ -2461,7 +2461,7 @@ export function createSqliteCoinCommerceStore(options = {}) {
           accountRef: business.accountId,
           model: "legacy",
           adsClick: value.adsClick,
-          authorizedAt: Date.parse(transactionRequest.adsOutcome.authorizedAt)
+          authorizedAt: transactionRequest.adsOutcome.authorizedAt
         });
       } else if (transactionRequest.adsOutcome?.replay === true) {
         safeMaterializeAdsClickForOrder(db, {

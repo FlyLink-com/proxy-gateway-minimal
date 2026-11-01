@@ -36,22 +36,6 @@ function tableNames(db) {
   ).all().map((row) => row.name);
 }
 
-function insertOrphanBindingAndOutbox(db, orderRef, clickValue) {
-  db.prepare(`
-    insert into platform_ads_click_bindings (
-      order_ref, account_ref, model, click_type, click_value, click_at,
-      consent_ad_user_data, consent_ad_personalization, created_at, updated_at
-    ) values (?, ?, 'legacy', 'gclid', ?, ?, 1, 0, ?, ?)
-  `).run(orderRef, ACCOUNT, clickValue, NOW - 1000, NOW - 500, NOW - 500);
-  db.prepare(`
-    insert into platform_ads_conversion_outbox (
-      order_ref, model, transaction_id, value_units, value_unit, terminal_at,
-      status, skip_reason, attempts, next_attempt_at, last_error,
-      google_request_id, created_at, updated_at
-    ) values (?, 'legacy', ?, 20, 'COIN', ?, 'pending', null, 0, ?, null, null, ?, ?)
-  `).run(orderRef, orderRef, NOW, NOW + 1000, NOW - 400, NOW - 400);
-}
-
 test("consent reads are unknown and do not create schema by default", () => {
   withDb((db) => {
     const store = createSqliteAdsConsentStore({
@@ -162,78 +146,6 @@ test("first server grant compacts legacy click rows that have no server-consent 
       skip_reason: "consent_unverified"
     });
     assert.equal(JSON.stringify(granted).includes("synthetic_legacy_click_003"), false);
-    store.close();
-  });
-});
-
-test("first grant removes orphan raw bindings and skips their pending outbox rows", () => {
-  withDb((db) => {
-    const store = createSqliteAdsConsentStore({
-      database: db,
-      env: ENABLED,
-      nowFn: () => NOW
-    });
-    ensureAdsConsentSchema(db);
-    ensureAdsConversionSchema(db);
-    insertOrphanBindingAndOutbox(
-      db,
-      "order_ads_consent_orphan_grant",
-      "synthetic_orphan_click_grant_005"
-    );
-
-    const granted = store.recordConsent({ accountRef: ACCOUNT, adUserData: true });
-    assert.deepEqual(granted.unverifiedCleanup, {
-      redactedClaimCount: 0,
-      deletedBindingCount: 1,
-      skippedOutboxCount: 1
-    });
-    assert.equal(db.prepare(
-      "select count(*) from platform_ads_click_bindings where order_ref = ?"
-    ).pluck().get("order_ads_consent_orphan_grant"), 0);
-    assert.deepEqual(db.prepare(
-      "select status, skip_reason from platform_ads_conversion_outbox where order_ref = ?"
-    ).get("order_ads_consent_orphan_grant"), {
-      status: "skipped",
-      skip_reason: "consent_unverified"
-    });
-    assert.equal(JSON.stringify(granted).includes("synthetic_orphan_click_grant_005"), false);
-    store.close();
-  });
-});
-
-test("revocation skips pending outbox rows associated with orphan raw bindings", () => {
-  withDb((db) => {
-    const store = createSqliteAdsConsentStore({
-      database: db,
-      env: ENABLED,
-      nowFn: () => NOW
-    });
-    ensureAdsConsentSchema(db);
-    ensureAdsConversionSchema(db);
-    store.recordConsent({ accountRef: ACCOUNT, adUserData: true });
-    insertOrphanBindingAndOutbox(
-      db,
-      "order_ads_consent_orphan_revoke",
-      "synthetic_orphan_click_revoke_006"
-    );
-
-    const denied = store.recordConsent({ accountRef: ACCOUNT, adUserData: false });
-    assert.deepEqual(denied.revocation, {
-      redactedClaimCount: 0,
-      deletedBindingCount: 1,
-      skippedOutboxCount: 1,
-      deletedLinkCount: 0
-    });
-    assert.equal(db.prepare(
-      "select count(*) from platform_ads_click_bindings where order_ref = ?"
-    ).pluck().get("order_ads_consent_orphan_revoke"), 0);
-    assert.deepEqual(db.prepare(
-      "select status, skip_reason from platform_ads_conversion_outbox where order_ref = ?"
-    ).get("order_ads_consent_orphan_revoke"), {
-      status: "skipped",
-      skip_reason: "consent_revoked"
-    });
-    assert.equal(JSON.stringify(denied).includes("synthetic_orphan_click_revoke_006"), false);
     store.close();
   });
 });
