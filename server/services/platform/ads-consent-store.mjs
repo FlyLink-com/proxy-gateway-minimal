@@ -194,9 +194,6 @@ export function recordAdsConsentDecision(db, input = {}, options = {}) {
       deletedLinkCount: 0
     };
     if (!values.adUserData) {
-      const linkedOrders = () => db.prepare(`
-        select order_ref from platform_ads_click_consent_claims where account_ref = ?
-      `).all(ref);
       if (tableExists(db, "platform_ads_click_claims")) {
         revocation.redactedClaimCount = db.prepare(`
           update platform_ads_click_claims
