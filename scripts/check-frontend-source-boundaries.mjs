@@ -203,7 +203,8 @@ const PORTAL_SHARED_FILES = new Set([
 const PUBLIC_ADS_CROSS_SURFACE_FILES = new Set([
   "admin/src/features/ads-attribution.ts",
   "admin/src/features/ads-attribution-contract.ts",
-  "admin/src/features/ads-consent-preference-panel.tsx"
+  "admin/src/features/ads-consent-preference-panel.tsx",
+  "admin/src/styles/ads-consent.css"
 ]);
 
 const EXPECTED_VITE_LOCAL_IMPORTS = {
