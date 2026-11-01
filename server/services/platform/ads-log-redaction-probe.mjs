@@ -9,6 +9,9 @@ function exactStringArray(value, field, minimumLength = 1) {
     }
     values.push(item);
   }
+  if (values.length === 0) {
+    throw new TypeError(field + " must contain at least one string");
+  }
   return values;
 }
 
@@ -16,6 +19,18 @@ function reversibleVariants(identifier) {
   const encoded = encodeURIComponent(identifier);
   const encodedLower = encoded.replace(/%[0-9A-F]{2}/g, (part) => part.toLowerCase());
   const encodedTwice = encodeURIComponent(encoded);
+  // Google Ads click IDs use an unreserved ASCII alphabet. encodeURIComponent
+  // therefore leaves valid IDs unchanged; probe the fully percent-encoded
+  // UTF-8 byte representation as well as ordinary URI encoding.
+  const fullyEncoded = Array.from(Buffer.from(identifier, "utf8"), (byte) => (
+    `%${byte.toString(16).padStart(2, "0")}`
+  )).join("");
+  const fullyEncodedUpper = fullyEncoded.toUpperCase();
+  const fullyEncodedTwice = encodeURIComponent(fullyEncoded);
+  const fullyEncodedTwiceLower = fullyEncodedTwice.replace(
+    /%[0-9A-F]{2}/g,
+    (part) => part.toLowerCase()
+  );
   const base64 = Buffer.from(identifier, "utf8").toString("base64");
   const base64url = Buffer.from(identifier, "utf8").toString("base64url");
   const hex = Buffer.from(identifier, "utf8").toString("hex");
@@ -24,6 +39,10 @@ function reversibleVariants(identifier) {
     encoded,
     encodedLower,
     encodedTwice,
+    fullyEncoded,
+    fullyEncodedUpper,
+    fullyEncodedTwice,
+    fullyEncodedTwiceLower,
     base64,
     base64url,
     hex,

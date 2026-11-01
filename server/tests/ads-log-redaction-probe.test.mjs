@@ -4,8 +4,8 @@ import test from "node:test";
 import { inspectAdsClickLogEntries } from "../services/platform/ads-log-redaction-probe.mjs";
 
 const SENTINELS = [
-  "SYNTHETIC/GCLID+SENTINEL_816_A",
-  "SYNTHETIC/WBRAID+SENTINEL_816_B"
+  "SYNTHETIC_GCLID_SENTINEL_816_A",
+  "SYNTHETIC_WBRAID_SENTINEL_816_B"
 ];
 
 test("redacted synthetic log fixtures pass without exposing sentinel values", () => {
@@ -37,18 +37,40 @@ test("raw query strings and Referer values are detected in synthetic log fixture
   assert.equal(JSON.stringify(result).includes(SENTINELS[0]), false);
 });
 
-test("common reversible encodings are detected without returning the encoded values", () => {
+test("fully percent-encoded valid click IDs and base64 variants are detected without returning values", () => {
   const raw = SENTINELS[0];
-  const percentEncoded = encodeURIComponent(SENTINELS[1]);
+  const percentEncoded = Array.from(Buffer.from(SENTINELS[1], "utf8"), (byte) => (
+    `%${byte.toString(16).padStart(2, "0")}`
+  )).join("");
   const base64 = Buffer.from(raw, "utf8").toString("base64");
+  const base64url = Buffer.from(raw, "utf8").toString("base64url");
+  const hex = Buffer.from(SENTINELS[1], "utf8").toString("hex");
   const result = inspectAdsClickLogEntries({
-    entries: [`url=${base64}`, `referer=${percentEncoded}`],
+    entries: [
+      `url=${base64}`,
+      `referer=${percentEncoded}`,
+      `telemetry=${base64url}`,
+      `path=${hex}`
+    ],
     syntheticIdentifiers: SENTINELS
   });
   assert.equal(result.passed, false);
   assert.equal(result.matchedIdentifierCount, 2);
-  assert.equal(JSON.stringify(result).includes(base64), false);
-  assert.equal(JSON.stringify(result).includes(percentEncoded), false);
+  assert.ok(result.matchCount >= 4);
+  for (const value of [base64, base64url, percentEncoded, hex]) {
+    assert.equal(JSON.stringify(result).includes(value), false);
+  }
+});
+
+test("probe rejects empty entry and sentinel collections instead of passing zero coverage", () => {
+  assert.throws(() => inspectAdsClickLogEntries({
+    entries: [],
+    syntheticIdentifiers: SENTINELS
+  }), /entries must contain at least one string/);
+  assert.throws(() => inspectAdsClickLogEntries({
+    entries: ["safe"],
+    syntheticIdentifiers: []
+  }), /syntheticIdentifiers must contain at least one string/);
 });
 
 test("probe rejects non-exact input and short sentinel values", () => {
