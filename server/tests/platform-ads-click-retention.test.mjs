@@ -104,7 +104,13 @@ test("retention inventory is aggregate-only and dry-run does not mutate rows", (
 test("apply redacts expired click claims, deletes bindings, stops pending outbox, and is idempotent", () => {
   withDb((db) => {
     ensureAdsConversionSchema(db);
-    ensureAdsConsentSchema(db);
+    db.exec(`
+      create table platform_ads_click_consent_claims (
+        order_ref text primary key,
+        account_ref text not null,
+        created_at integer not null
+      )
+    `);
     seedClick(db, "order_ads_retention_old", "acct_ads_retention", "synthetic_old_gclid_001", CUTOFF);
     seedClick(db, "order_ads_retention_new", "acct_ads_retention", "synthetic_new_gclid_002", CUTOFF + 1);
 
