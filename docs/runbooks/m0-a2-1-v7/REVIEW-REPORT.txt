@@ -78,3 +78,6 @@ No BWH/Provider access, SSH, production systemd/journal read, collector invocati
 No BWH/Provider access, SSH, production systemd/journal read, collector invocation, service/Timer action, database/config/environment-file read, or production mutation was performed.
 
 Disposition: keep PR #812 Draft and M0 BLOCKED until the exact final commit passes the isolated local validation and receives a fresh independent review. This remediation does not authorize production execution.
+
+
+Self-test fixture follow-up: the built-in `--self-test` now uses the same fail-closed root-identity / no-EnvironmentFiles fixture as the production binding contract and includes EnvironmentFile override, exact Node version, and additional-OnFailure assertions. This avoids retaining a stale positive fixture that would fail under the hardened resolver.
