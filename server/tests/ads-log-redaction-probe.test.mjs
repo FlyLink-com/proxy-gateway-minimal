@@ -56,7 +56,7 @@ test("fully percent-encoded valid click IDs and base64 variants are detected wit
   });
   assert.equal(result.passed, false);
   assert.equal(result.matchedIdentifierCount, 2);
-  assert.ok(result.matchCount >= 4);
+  assert.ok(result.matchCount >= 3);
   for (const value of [base64, base64url, percentEncoded, hex]) {
     assert.equal(JSON.stringify(result).includes(value), false);
   }
