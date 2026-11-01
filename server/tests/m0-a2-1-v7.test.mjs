@@ -22,6 +22,7 @@ import {
   isExpectedNodeVersion,
   isRootServiceIdentity,
   canReadTargetEnvironment,
+  canReadStatusBindingEnvironment,
   readBoundedFile
 } from '../../scripts/lib/m0-a2-1-v7-diagnostic.mjs';
 import { FILES } from '../../scripts/lib/m0-a2-1-v7-archive-pins.mjs';
@@ -280,6 +281,9 @@ test('Environment property reads are gated by unit metadata and retain only elig
   assert.equal(canReadTargetEnvironment({ ...base, User: 'proxy' }), false);
   assert.equal(canReadTargetEnvironment({ ...base, DynamicUser: 'yes' }), false);
   assert.equal(canReadTargetEnvironment({ ...base, EnvironmentFiles: undefined }), false);
+  assert.equal(canReadStatusBindingEnvironment(base, { ...base }), true);
+  assert.equal(canReadStatusBindingEnvironment(base, { ...base, PassEnvironment: 'OTHER_VAR' }), false);
+  assert.equal(canReadStatusBindingEnvironment(base, { ...base, EnvironmentFiles: [''] }), false);
 });
 
 test('OnFailure reports additional handlers instead of hiding them', () => {
