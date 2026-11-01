@@ -1,5 +1,5 @@
 M0-A2-1 v7 / v9 BYTE-STABLE CHECKOUT REPAIR REVIEW
-Disposition: Draft PR candidate only. The operator reports full local acceptance on f60 (Node v22.16.0, 18/18); the subsequent bounded-read / staged-environment follow-up has 20 tests and remains pending full validation. NOT approved for production execution.
+Disposition: Draft PR candidate only. The operator reports full local acceptance on exact code commit `0477799c809aa6d16b4ad121db9915fa5a604f70` (Node v22.16.0; SHA256 7/7; syntax 4/4; self-test passed; tests 20/20). This result predates the documentation-only synchronization now being prepared; the resulting exact PR head must rerun the complete validation before Ready. Hosted CI remains skipped. NOT approved for production execution.
 
 ## Repair changes
 
@@ -88,7 +88,7 @@ Self-test fixture follow-up: the built-in `--self-test` now uses the same fail-c
 1. **Hard read ceilings:** introduced one chunked file reader that never reads more than the configured ceiling plus a single overflow-probe byte. App source pins are capped at 1 MiB each, archive files at their manifest-declared byte size, and the status projection at 256 KiB. A file that grows after metadata inspection fails closed. The production diagnostic no longer uses `readFileSync`.
 2. **Staged Environment inspection:** baseline App and status-writer systemd property lists no longer include `Environment`. The diagnostic requests that property separately only after the status-writer `ExecStart` matches the resolved App release and both unit metadata snapshots prove no nonempty `EnvironmentFiles`, default/root User and Group, `DynamicUser=no`, and matching `PassEnvironment` / `UnsetEnvironment` values with no target-variable reference. Each property response is parsed immediately; only the selected status-path assignment is retained. The selected values are re-read and compared during final stability verification. If the metadata gate fails, no Environment property request is made.
 3. **Regression coverage:** added tests for exact-limit and over-limit file reads, metadata-gated environment access, and resolving the status binding from separately selected values. The repository test file now declares 20 tests.
-4. **Validation disposition:** operator-reported full local validation on f60 is 18/18 under Node v22.16.0. That evidence predates these code changes. The exact final follow-up commit still requires checksum 7/7, four syntax checks, self-test, and 20/20 tests under Node v22.16.0. Hosted CI remains skipped while Draft; no CI pass is claimed.
+4. **Validation disposition:** the operator reports full local validation on exact code head `0477799c809aa6d16b4ad121db9915fa5a604f70`: checksum 7/7, four syntax checks, self-test, and 20/20 tests under Node v22.16.0, all exit 0. This evidence applies to that exact code head, not the later documentation-only synchronization commit. Hosted CI remains skipped while Draft; no CI pass is claimed.
 
 No BWH/Provider access, SSH, production systemd/journal/status/SQLite/config/environment-file read, collector invocation, service/Timer action, or production mutation occurred. Keep PR #812 Draft and M0 BLOCKED.
 
@@ -97,4 +97,26 @@ No BWH/Provider access, SSH, production systemd/journal/status/SQLite/config/env
 
 The operator reports that exact commit `0f845aa289c96f347774dbcd24ac3d4d11ff2d38` was checked in a clean isolated workspace with Node `v22.16.0`: SHA256 7/7, four syntax checks, and self-test passed; the full suite returned 19/20 (exit 1). The only failure was a stale static assertion in the read-only-surface test expecting `canReadTargetEnvironment(appBefore)`, while the current production path correctly uses `canReadStatusBindingEnvironment(appBefore, statusBefore)`.
 
-Only that test assertion was updated in `1122a2dc71d0193f28db3d0857a4dda21bee38e3`. No production code was changed. The corrected exact PR head still requires a complete local rerun under Node `v22.16.0`; do not mark the suite passed until it reports 20/20. Keep PR #812 Draft and M0 BLOCKED.
+Only that test assertion was updated in `1122a2dc71d0193f28db3d0857a4dda21bee38e3`. No production code was changed. The correction was subsequently validated on exact code head `0477799c809aa6d16b4ad121db9915fa5a604f70`: the operator reports SHA256 7/7, four syntax checks, self-test, and 20/20 tests passed under Node `v22.16.0`, all exit 0. The later documentation-only synchronization head still requires a complete rerun before Ready. Keep PR #812 Draft and M0 BLOCKED.
+
+
+## Exact code-head acceptance and review disposition (2026-11-01)
+
+### Local validation evidence — operator-reported
+
+- Exact tested code commit: `0477799c809aa6d16b4ad121db9915fa5a604f70`.
+- Isolated workspace was clean before switching; the original dirty working directory was left untouched.
+- Runtime: Node `v22.16.0` from the separate toolchain directory.
+- SHA256 7/7, four syntax checks 4/4, self-test passed, and `node --test` 20/20 passed; every command exited 0.
+- No BWH/Provider access, SSH, production read, collector invocation, service/Timer action, or production mutation occurred.
+
+### Static boundary review
+
+- The inspected production diagnostic uses fixed `systemctl show` and narrowly filtered `journalctl` invocations with `shell: false`; the journal query is conditional on the exact recorded invocation identity.
+- The inspected production path uses bounded file reads, guarded status-path/environment binding, before/after metadata checks, and no production `readFileSync` call.
+- The static review did not execute against BWH or inspect live production state. It is not a formal independent GitHub `APPROVED` review.
+- Known limits remain: App identity is label-only plus four code-slice pins; the archive check proves a 49-file content closure, not a reconstructed tar digest; producer coverage is partial; stop-unit timestamp correlation does not prove `OnFailure` causality; target-host Node version and current production unit shape remain unknown until separately approved read-only work.
+
+### Current disposition
+
+The 20/20 result is bound to code head `0477799c809aa6d16b4ad121db9915fa5a604f70`. This documentation synchronization changes only runbook/validation/review records and the checksum manifest; no diagnostic runtime or test source is changed. Nevertheless, the resulting exact PR head must rerun checksum 7/7, four syntax checks, self-test, and the complete 20-test suite under Node `v22.16.0` before Ready. Hosted CI remains skipped and is not a pass. PR #812 stays Draft; M0 stays BLOCKED; no production execution is authorized.
