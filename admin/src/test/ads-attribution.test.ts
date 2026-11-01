@@ -176,7 +176,7 @@ describe("consent-aware Ads click attribution", () => {
       if (originalCookieDescriptor) {
         Object.defineProperty(document, "cookie", originalCookieDescriptor);
       } else {
-        delete (document as Document & { cookie?: string }).cookie;
+        Reflect.deleteProperty(document, "cookie");
       }
     }
 
