@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, mkdtempSync, writeFileSync, openSync, closeSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import {
   parseArguments,
   parseSystemdOutput,
@@ -18,7 +20,9 @@ import {
   isSafeStatusDirectoryMetadata,
   inspectOnFailure,
   isExpectedNodeVersion,
-  isRootServiceIdentity
+  isRootServiceIdentity,
+  canReadTargetEnvironment,
+  readBoundedFile
 } from '../../scripts/lib/m0-a2-1-v7-diagnostic.mjs';
 import { FILES } from '../../scripts/lib/m0-a2-1-v7-archive-pins.mjs';
 
@@ -166,6 +170,10 @@ test('production branch has only fixed read commands and no systemd mutation or 
   assert.match(source, /spawnSync\('\/usr\/bin\/systemctl'/);
   assert.match(source, /spawnSync\('\/usr\/bin\/journalctl'/);
   assert.match(source, /shell: false/g);
+  assert.doesNotMatch(source, /readFileSync\s*\(/);
+  assert.match(source, /readBoundedFile\(fd, MAX_STATUS_BYTES/);
+  assert.match(source, /readBoundedFile\(fd, expectedSize/);
+  assert.match(source, /canReadTargetEnvironment\(appBefore\)/);
   assert.doesNotMatch(source, /writeFileSync|appendFileSync|unlinkSync|renameSync|chmodSync|chownSync|execSync|execFileSync/);
   assert.doesNotMatch(source, /systemctl\s+(start|stop|restart|enable|disable|reset-failed|daemon-reload)/);
   assert.match(source, /const args = \['show', unit/);
@@ -230,6 +238,45 @@ test('status file and every parent directory require root ownership and restrict
   assert.equal(isSafeStatusDirectoryMetadata({ ...directory, uid: 1000n }), false);
   assert.equal(isSafeStatusDirectoryMetadata({ ...directory, mode: 0o40775n }), false);
   assert.equal(isSafeStatusDirectoryMetadata({ ...directory, isSymbolicLink: () => true }), false);
+});
+
+test('bounded file reader accepts the exact limit and stops after the first byte over it', () => {
+  const directory = mkdtempSync(join(tmpdir(), 'm0-a2-1-v7-bounded-'));
+  const file = join(directory, 'sample.bin');
+  const read = (limit) => {
+    const fd = openSync(file, 'r');
+    try { return readBoundedFile(fd, limit).toString('utf8'); }
+    finally { closeSync(fd); }
+  };
+  try {
+    writeFileSync(file, Buffer.from('12345'));
+    assert.equal(read(5), '12345');
+    writeFileSync(file, Buffer.from('123456'));
+    const fd = openSync(file, 'r');
+    try {
+      assert.throws(() => readBoundedFile(fd, 5), error => error.safeCode === 'bounded_file_too_large');
+    } finally { closeSync(fd); }
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('Environment property reads are gated by unit metadata and retain only eligible root bindings', () => {
+  const base = {
+    EnvironmentFiles: [],
+    PassEnvironment: '',
+    UnsetEnvironment: '',
+    User: '',
+    Group: '',
+    DynamicUser: 'no'
+  };
+  assert.equal(canReadTargetEnvironment(base), true);
+  assert.equal(canReadTargetEnvironment({ ...base, EnvironmentFiles: ['/etc/proxy.env'] }), false);
+  assert.equal(canReadTargetEnvironment({ ...base, PassEnvironment: 'EDGE_USAGE_COLLECTOR_STATUS_PATH' }), false);
+  assert.equal(canReadTargetEnvironment({ ...base, UnsetEnvironment: 'EDGE_USAGE_COLLECTOR_STATUS_PATH=/tmp/x' }), false);
+  assert.equal(canReadTargetEnvironment({ ...base, User: 'proxy' }), false);
+  assert.equal(canReadTargetEnvironment({ ...base, DynamicUser: 'yes' }), false);
+  assert.equal(canReadTargetEnvironment({ ...base, EnvironmentFiles: undefined }), false);
 });
 
 test('OnFailure reports additional handlers instead of hiding them', () => {
