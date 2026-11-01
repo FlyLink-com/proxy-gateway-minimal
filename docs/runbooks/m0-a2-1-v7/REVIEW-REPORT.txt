@@ -91,3 +91,10 @@ Self-test fixture follow-up: the built-in `--self-test` now uses the same fail-c
 4. **Validation disposition:** operator-reported full local validation on f60 is 18/18 under Node v22.16.0. That evidence predates these code changes. The exact final follow-up commit still requires checksum 7/7, four syntax checks, self-test, and 20/20 tests under Node v22.16.0. Hosted CI remains skipped while Draft; no CI pass is claimed.
 
 No BWH/Provider access, SSH, production systemd/journal/status/SQLite/config/environment-file read, collector invocation, service/Timer action, or production mutation occurred. Keep PR #812 Draft and M0 BLOCKED.
+
+
+## Local validation failure and test-only correction (2026-10-31)
+
+The operator reports that exact commit `0f845aa289c96f347774dbcd24ac3d4d11ff2d38` was checked in a clean isolated workspace with Node `v22.16.0`: SHA256 7/7, four syntax checks, and self-test passed; the full suite returned 19/20 (exit 1). The only failure was a stale static assertion in the read-only-surface test expecting `canReadTargetEnvironment(appBefore)`, while the current production path correctly uses `canReadStatusBindingEnvironment(appBefore, statusBefore)`.
+
+Only that test assertion was updated in `1122a2dc71d0193f28db3d0857a4dda21bee38e3`. No production code was changed. The corrected exact PR head still requires a complete local rerun under Node `v22.16.0`; do not mark the suite passed until it reports 20/20. Keep PR #812 Draft and M0 BLOCKED.
