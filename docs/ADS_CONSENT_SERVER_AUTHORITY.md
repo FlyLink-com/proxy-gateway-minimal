@@ -11,6 +11,7 @@ The Portal consent endpoint is the only source of truth for the account-level `a
 - The request cannot choose an account. The route derives `accountRef` from `requirePortalSession()`.
 - `ad_personalization` is structurally fixed to `false`; no route input can enable it.
 - The decision is account-scoped and remains effective across Portal sessions until the account changes it.
+- The server decision timestamp must be no later than the purchase's transaction timestamp; a grant arriving after purchase commit cannot retroactively authorize that order, including during the post-commit measurement step.
 - A client-supplied `adsClick.consent` descriptor is not authorization. Click values are persisted only when the server-side account decision is currently granted and the descriptor itself is valid.
 
 The account reference is an internal account key, not an anonymous identifier. The consent table stores no email, phone, IP address, click ID, browser cookie, session credential, or raw request body.
