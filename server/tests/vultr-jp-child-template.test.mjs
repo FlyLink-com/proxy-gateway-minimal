@@ -79,7 +79,7 @@ test("JP child channel protocol and listener plan is explicit", () => {
   assert.equal(tuic.congestionController, "bbr");
 });
 
-test("JP child template loads and renders all three client protocols from protected placeholders", () => {
+test("JP child template loads and resolves all three client protocols from protected placeholders", () => {
   const proxyConfig = loadProxyConfig({
     configPath: new URL("../../config/proxy-servers.vultr-jp-child.template.json", import.meta.url),
     env: {
@@ -115,7 +115,6 @@ test("JP child template loads and renders all three client protocols from protec
   assert.equal(tuic.password, "synthetic-jp-child-tuic-password");
   assert.equal(tuic.port, 443);
   assert.equal(JSON.stringify(proxyConfig).includes("${"), false);
-
 });
 
 test("JP child template contains only protected-material placeholders, never material values", () => {
