@@ -10,15 +10,15 @@ Raw click identifiers in `platform_ads_click_claims` and `platform_ads_click_bin
 
 The operation requires an injected SQLite database handle and an explicit `apply: true` call. It never opens a database path and never creates schema.
 
-For eligible click claims it:
+For claim rows at or beyond the retention boundary it:
 
-1. Replaces the claim with a value-free `invalid_click` tombstone, clearing click type, click value, click timestamp, and consent bits.
+1. Deletes the complete claim row, removing both raw click values and the associated account/order references.
 2. Deletes corresponding raw click bindings.
-3. Deletes the non-sensitive order/account linkage rows introduced by the consent gate.
+3. Deletes expired or orphaned consent-link rows introduced by the consent gate.
 4. Marks pending outbox rows `skipped / click_retention_expired`, preventing a late retry from using expired click data.
 5. Leaves the outbox row itself intact for its separate audit/finance retention policy.
 
-The tombstone preserves first-claim/idempotency semantics without preserving the raw click identifier. Repeated execution is idempotent.
+Purchase idempotency receipts remain authoritative. The purchase replay paths only attempt to materialize an existing claim; they do not recapture a click descriptor. After claim deletion, a replay cannot recreate the expired click claim. Repeated cleanup is idempotent.
 
 ## Dry-run and output
 
