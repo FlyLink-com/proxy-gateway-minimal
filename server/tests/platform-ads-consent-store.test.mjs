@@ -184,7 +184,8 @@ test("revocation removes raw click identifiers and stops pending conversion rows
     assert.equal(bindAdsClickConsentClaim(db, {
       orderRef: "order_ads_consent_001",
       accountRef: ACCOUNT,
-      createdAt: NOW - 500
+      createdAt: NOW - 500,
+      authorizedAt: NOW
     }), true);
     db.prepare(`
       insert into platform_ads_click_claims (
