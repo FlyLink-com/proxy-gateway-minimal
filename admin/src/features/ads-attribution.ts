@@ -13,6 +13,7 @@ export const PORTAL_ADS_CLICK_STORAGE_KEY = "gccwebos-portal-ads-click-v1";
 const CLICK_TYPES = ["gclid", "gbraid", "wbraid"] as const;
 const CLICK_VALUE_PATTERN = /^[A-Za-z0-9_.-]{1,512}$/u;
 const MAX_CLICK_AGE_MS = 90 * 24 * 60 * 60 * 1000;
+const MAX_HANDOFF_AGE_MS = 10 * 60 * 1000;
 const CONSENT_MAX_AGE_SECONDS = 180 * 24 * 60 * 60;
 const MIN_EPOCH_MS = 100_000_000_000;
 
@@ -166,7 +167,8 @@ function encodeHandoff(click: StoredAdsClick): string | null {
       v: 1,
       type: click.type,
       value: click.value,
-      clickAt: click.clickAt
+      clickAt: click.clickAt,
+      issuedAt: Date.now()
     });
     return window.btoa(json).replace(/\+/gu, "-").replace(/\//gu, "_").replace(/=+$/gu, "");
   } catch {
@@ -215,17 +217,24 @@ function decodeHandoff(encoded: string): StoredAdsClick | null {
     const parsed: unknown = JSON.parse(window.atob(padded));
     if (
       !isPlainRecord(parsed)
-      || !hasExactKeys(parsed, ["v", "type", "value", "clickAt"])
+      || !hasExactKeys(parsed, ["v", "type", "value", "clickAt", "issuedAt"])
       || parsed.v !== 1
     ) {
       return null;
     }
+    const issuedAt = parsed.issuedAt;
+    const now = Date.now();
+    if (
+      !Number.isSafeInteger(issuedAt)
+      || (issuedAt as number) > now
+      || (issuedAt as number) < now - MAX_HANDOFF_AGE_MS
+    ) return null;
     const click = {
       type: parsed.type,
       value: parsed.value,
       clickAt: parsed.clickAt
     };
-    return isValidStoredClick(click) ? { ...click } : null;
+    return isValidStoredClick(click, now) ? { ...click } : null;
   } catch {
     return null;
   }

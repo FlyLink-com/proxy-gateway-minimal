@@ -150,4 +150,25 @@ describe("consent-aware Ads click attribution", () => {
     expect(readPortalAdsClickForPurchase()).toBeNull();
     expect(window.sessionStorage.getItem(PORTAL_ADS_CLICK_STORAGE_KEY)).toBeNull();
   });
+  test("expires a copied handoff fragment after ten minutes", () => {
+    expect(setAdsUserDataConsent("granted")).toBe(true);
+    const now = Date.now();
+    const payload = {
+      v: 1,
+      type: "gclid",
+      value: "expired_handoff_click",
+      clickAt: now,
+      issuedAt: now - 10 * 60 * 1000 - 1
+    };
+    const encoded = window.btoa(JSON.stringify(payload))
+      .replace(/\\+/gu, "-")
+      .replace(/\\//gu, "_")
+      .replace(/=+$/gu, "");
+    setLocation(`/portal/#portal=orders&adsClick=${encoded}`);
+
+    expect(consumePortalAdsClickHandoff()).toBeNull();
+    expect(window.location.hash).toBe("#portal=orders");
+    expect(window.sessionStorage.getItem(PORTAL_ADS_CLICK_STORAGE_KEY)).toBeNull();
+  });
+
 });
