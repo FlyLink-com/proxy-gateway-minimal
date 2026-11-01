@@ -519,10 +519,13 @@ export function runSelfTests() {
   if (!inspectStatusWriterExecStart(`{ path=/usr/bin/node ; argv[]=/usr/bin/node ${BASE}/releases/fixture/scripts/traffic-usage-collect-once.mjs --collect ; }`, `${BASE}/releases/fixture`, `${BASE}/releases/fixture`)) throw new Error('fixture_status_writer_exec_binding_failed');
   const currentAlias = value => value === CURRENT_LINK ? `${BASE}/releases/fixture` : value;
   if (!inspectStatusWriterExecStart(`{ path=/usr/bin/node ; argv[]=/usr/bin/node ${CURRENT_LINK}/scripts/traffic-usage-collect-once.mjs --collect ; }`, CURRENT_LINK, `${BASE}/releases/fixture`, currentAlias)) throw new Error('fixture_status_writer_current_alias_failed');
-  const app = { EnvironmentFiles: ['/etc/a.env'], Environment: 'EDGE_USAGE_COLLECTOR_STATUS_PATH=/var/lib/traffic/status.json', PassEnvironment: '', UnsetEnvironment: '' };
+  const app = { EnvironmentFiles: [], Environment: 'EDGE_USAGE_COLLECTOR_STATUS_PATH=/var/lib/traffic/status.json', PassEnvironment: '', UnsetEnvironment: '', User: '', Group: '', DynamicUser: 'no' };
   const writer = { ...app };
   if (!resolveStatusBinding(app, writer, '/var/lib/traffic/status.json')) throw new Error('fixture_status_binding_failed');
   if (resolveStatusBinding(app, { ...writer, EnvironmentFiles: ['/etc/other.env'] }, '/var/lib/traffic/status.json')) throw new Error('fixture_status_binding_drift_accepted');
+  if (resolveStatusBinding({ ...app, EnvironmentFiles: ['/etc/a.env'] }, writer, '/var/lib/traffic/status.json')) throw new Error('fixture_environment_file_override_accepted');
+  if (!isExpectedNodeVersion('22.16.0') || isExpectedNodeVersion('22.16.1')) throw new Error('fixture_node_version_pin_failed');
+  if (inspectOnFailure(`${STOP_SERVICE} extra.service`).status !== 'linked_with_extras') throw new Error('fixture_onfailure_extra_handler_hidden');
   const invocation = 'a'.repeat(32);
   const message = JSON.stringify({ type: 'full_metering_collection', ok: false, status: 'blocked', errorCode: 'full_metering_binding_changed' });
   const journal = JSON.stringify({ _SYSTEMD_INVOCATION_ID: invocation, _SYSTEMD_UNIT: FULL_SERVICE, MESSAGE: message });
