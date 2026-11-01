@@ -1263,6 +1263,21 @@ describe("Portal Coins Commerce HTTP client", () => {
       await expectSafeFailure(existingCall());
     }
   });
+  test("keeps the Legacy purchase mutation working when adsClick is absent", async () => {
+    const fetchFn = vi.fn<typeof fetch>(async () => wireResponse({ order: HELD_ORDER }, 201));
+    const commerce = commerceOf(createHttpUserPortalClient({ fetchFn }));
+
+    await commerce.createOrder({
+      sessionRef: "session_alpha",
+      quoteRef: "quote_monthly_50gb_1",
+      idempotencyKey: "checkout-without-ads-click"
+    });
+
+    expect(JSON.parse(String(fetchFn.mock.calls[0]?.[1]?.body))).toEqual({
+      quoteRef: "quote_monthly_50gb_1"
+    });
+  });
+
   test("submits a consented adsClick descriptor only with the final legacy createOrder mutation", async () => {
     vi.stubEnv("VITE_PUBLIC_ADS_CLICK_BINDING_ENABLED", "true");
     expect(setAdsUserDataConsent("granted")).toBe(true);

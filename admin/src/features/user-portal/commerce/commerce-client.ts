@@ -1040,6 +1040,19 @@ function exactInput(input: unknown, fields: readonly string[]) {
   }
 }
 
+const PURCHASE_INPUT_FIELDS = ["sessionRef", "quoteRef", "idempotencyKey"] as const;
+
+function exactPurchaseInput(input: unknown) {
+  try {
+    const fields = hasOwnKey(input, "adsClick")
+      ? [...PURCHASE_INPUT_FIELDS, "adsClick"]
+      : PURCHASE_INPUT_FIELDS;
+    return exactObject(input, fields);
+  } catch {
+    throw requestFailed();
+  }
+}
+
 function sessionReference(value: unknown) {
   if (typeof value !== "string" || !SESSION_REFERENCE.test(value)) {
     throw requestFailed();
@@ -1384,12 +1397,7 @@ export function createPortalCoinCommerceClient(
     },
 
     async createOrder(input) {
-      const value = exactInput(input, [
-        "sessionRef",
-        "quoteRef",
-        "idempotencyKey",
-        "adsClick"
-      ]);
+      const value = exactPurchaseInput(input);
       const sessionRef = sessionReference(value.sessionRef);
       const quoteRef = callerCommerceReference(value.quoteRef);
       const idempotencyKey = callerIdempotencyKey(value.idempotencyKey);
@@ -1590,12 +1598,7 @@ export function createPortalWalletFirstCommerceClient(
     },
 
     async reserveDeferredTransition(input) {
-      const value = exactInput(input, [
-        "sessionRef",
-        "quoteRef",
-        "idempotencyKey",
-        "adsClick"
-      ]);
+      const value = exactPurchaseInput(input);
       const sessionRef = sessionReference(value.sessionRef);
       const quoteRef = callerCommerceReference(value.quoteRef);
       const idempotencyKey = callerIdempotencyKey(value.idempotencyKey);

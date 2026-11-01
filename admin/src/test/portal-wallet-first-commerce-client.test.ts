@@ -270,6 +270,21 @@ describe("Portal wallet-first Commerce HTTP client", () => {
       });
     }
   });
+  test("keeps the Wallet-first reservation working when adsClick is absent", async () => {
+    const fetchFn = vi.fn<typeof fetch>(async () => response({ transition: TRANSITION }, 201));
+    const commerce = createPortalWalletFirstCommerceClient({ fetchFn });
+
+    await commerce.reserveDeferredTransition({
+      sessionRef: "session_alpha",
+      quoteRef: QUOTE.quoteRef,
+      idempotencyKey: "reserve-without-ads-click"
+    });
+
+    expect(JSON.parse(String(fetchFn.mock.calls[0]?.[1]?.body))).toEqual({
+      quoteRef: QUOTE.quoteRef
+    });
+  });
+
   test("submits a consented adsClick descriptor only with the final wallet-first reservation mutation", async () => {
     vi.stubEnv("VITE_PUBLIC_ADS_CLICK_BINDING_ENABLED", "true");
     expect(setAdsUserDataConsent("granted")).toBe(true);
