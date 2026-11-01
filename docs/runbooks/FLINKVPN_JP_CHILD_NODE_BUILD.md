@@ -1,6 +1,6 @@
 # FlinkVPN JP 子节点建设任务清单
 
-Last updated: 2026-10-30 UTC.
+Last updated: 2026-11-01 UTC.
 
 ```yaml
 document_metadata:
@@ -8,7 +8,7 @@ document_metadata:
   lifecycle: active
   authority_scope: flinkvpn_jp_child_node_build
   superseded_by: null
-  last_verified_at: 2026-10-30
+  last_verified_at: 2026-11-01
   production_authority: false
 ```
 
@@ -18,9 +18,9 @@ document_metadata:
 > - 本文档 PR：Risk C，仅新增任务清单和验收约束。
 > - 本文档不授权 SSH、Provider API、Vultr 资源创建、WireGuard 配置、生产读取、服务重启、配置下发、订阅解锁或流量切换。
 > - 初始节点状态：pool=private，lifecycle=private-validation。
-> - 建议节点标识 node-vultr-jp-01 仅为示例；必须先检查唯一性，不得直接假定已登记或已预留。
+> - 计划节点标识：`node-vultr-jp-01`；已核对当前仓库源码中没有同名引用。M4 仍须在 BWH 注册表中核验全局唯一性后才能登记，不得假定已预留。
 
-## 1. 目标与架构核对
+## 1. 固定目标架构
 
 目标拓扑：
 
@@ -29,9 +29,9 @@ document_metadata:
 - BWH 与 JP 通过独立私有通信通道交互；Agent 只访问获准的内部接口。
 - 新节点初始只用于 private-validation，不进入普通用户订阅。
 
-**必须先解决的架构差异：** 当前仓库的 docs/PROJECT_TOPOLOGY.md 仍记录 Vultr Japan 为订阅控制面，并将日本、新加坡列为数据面。该文档是带日期的架构记录，不是实时主机证明。本任务指定 BWH 为控制面，属于需要 M0 现场核实并由项目负责人确认的目标拓扑；不得在 M0 之前静默覆盖旧架构文档，也不得据此直接创建隧道或实例。
+**架构决策已固定，不再作为待确认事项：** BWH 是唯一订阅/控制面；新 Vultr Japan 子节点是独立生产数据面；Vultr Singapore 继续作为同一控制面下的数据面容量。`docs/PROJECT_TOPOLOGY.md` 与 `docs/VULTR_JAPAN_CONTROL_DATA_PLANE_STATUS.md` 已同步这一目标方向，旧的 Vultr Japan 控制面表述保留为历史快照，不再代表当前目标。
 
-若 M0 发现实际控制面并非 BWH、目标主机不唯一、控制面身份无法验证，或项目负责人尚未确认拓扑，立即停止后续 M1–M8。
+M0 只核验 BWH 实际运行的 release identity/source commit、控制面角色和生产依赖是否与既定目标相符，不重新询问采用哪种架构。若 live role 与目标不符、release identity 无法绑定、目标主机不唯一或关键依赖未知，停止后续 Risk A 操作并保留具体阻塞项；不得将其改写成架构决策未确认。
 
 ## 2. 执行分工
 
@@ -60,7 +60,7 @@ document_metadata:
 - [ ] 核对节点注册表、受保护材料存储及其 key/digest 引用是否就绪。
 - [ ] 核对 Desired State、Handoff、Receipt 的状态、数量和 freshness。
 - [x] 核对 BWH 当前协议服务和用量采集状态。
-- [ ] 核对现有订阅渲染是否仍包含已停止的 BWH 节点；只报告脱敏 node/channel refs，不输出订阅 URL、Token、YAML 或凭据。
+- [ ] 核对现有订阅渲染是否仍包含已停止的旧日本节点；只报告脱敏 node/channel refs，不输出订阅 URL、Token、YAML 或凭据。
 - [ ] 核对 Identity Gate 和计量检查点状态；只输出 aggregate counts 和状态枚举。
 
 ### Vultr 侧
@@ -73,11 +73,11 @@ document_metadata:
 
 **M0 交付物：** BWH/Vultr 脱敏只读盘点报告。
 
-**M0 通过条件：** 控制面真实身份、目标主机、架构归属、Agent 边界、注册与材料能力、用量/Identity 状态、预算和回退条件均有可核验依据。任何一项 unknown 不得按通过处理。
+**M0 通过条件：** BWH live release identity/source commit 与控制面角色、JP 目标主机身份、Agent 边界、注册与材料能力、用量/Identity 状态、预算和回退条件均有可核验依据。架构目标已经固定，不作为重复确认项。任何生产事实 unknown 不得按通过处理。
 
 ### M0 回执（2026-10-30）
 
-这次回执只记录只读盘点。它不批准 M1，不批准创建实例，也不把任何节点写入订阅。操作员已销毁标签 `prod-edge-c` 的日本实例；现场实例列表为 0，不能把该主机当作可复用镜像或已审查节点。
+这次回执只记录 2026-10-30 的只读盘点。它不批准 M1，不批准创建实例，也不把任何节点写入订阅。操作员已销毁标签 `prod-edge-c` 的日本实例；现场实例列表为 0，不能把该主机当作可复用镜像或已审查节点。回执中的 `topology_decision: conflict` 是当时的文档状态，后续由 2026-11-01 的架构决策收口单独更新，不回写历史观测。
 
 ~~~yaml
 task: flinkvpn-jp-child-node
@@ -131,6 +131,14 @@ sensitive_values_excluded: true
 ~~~
 
 未关闭项保持 unknown，不按通过处理。M1–M8 未执行。
+
+### 架构决策收口（2026-11-01）
+
+- BWH 唯一控制面 + Vultr Japan 子节点生产数据面 + Vultr Singapore 数据面，已由项目负责人明确固定。
+- `docs/PROJECT_TOPOLOGY.md`、`docs/VULTR_JAPAN_CONTROL_DATA_PLANE_STATUS.md` 和本任务 Runbook 已同步该目标。
+- 这只关闭“架构选择仍有冲突”这一文档/决策阻塞，不会把 2026-10-30 的 M0 回执改成通过，也不代表 BWH live release identity 已核验。
+- 当前仍有效的 M0 阻塞：BWH release/source identity 未绑定；Agent allowlist 边界未知；受保护材料存储未核验；handoff 摘要未知；Identity Gate 未执行；BWH health 未复核；计量 Timer 状态异常；预算上限未设；DNS/Firewall 所有权未知。
+- 因此 M0 仍为 BLOCKED，M1–M8 仍未执行。下一步按既定目标补齐可核验的运行证据，不再重新讨论架构方向。
 
 ## 4. M1：建立 BWH ↔ Vultr 私有通信通道（P0）
 
@@ -323,11 +331,12 @@ local_environment:
   npm_version:
   ssh_client_version:
 architecture:
-  requested_control_plane: BWH
+  approved_target: BWH control plane + Vultr Japan child data plane + Vultr Singapore data plane
+  decision_status: fixed_by_project_owner
   observed_control_plane_provider:
   observed_control_plane_role:
   source_release_identity:
-  topology_decision: confirmed | conflict | unknown
+  live_role_matches_target: yes | no | unknown
 bwh:
   health: healthy | degraded | unavailable | unknown
   agent_routes: enabled | disabled | unknown
