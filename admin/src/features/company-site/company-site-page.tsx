@@ -18,6 +18,8 @@ import {
   type LucideIcon
 } from "lucide-react";
 import { type FormEvent, type MouseEvent, useEffect, useState } from "react";
+import { AdsConsentPreferencePanel } from "../ads-consent-preference-panel";
+import { buildPortalAdsClickHandoffUrl } from "../ads-attribution";
 
 const siteEnv = (import.meta as { env?: Record<string, string | undefined> }).env ?? {};
 const leadEndpoint = (siteEnv.VITE_PUBLIC_LEAD_ENDPOINT ?? "").trim() || "/api/public/leads";
@@ -392,7 +394,7 @@ const companySiteCopy = {
       privacy: {
         title: "Privacy policy",
         summary: "Your privacy matters from the first visit.",
-        points: ["Your language choice stays on this device", "Inquiry details help us respond to your request", "No advertising trackers shape this experience"]
+        points: ["Your language choice stays on this device", "Inquiry details help us respond to your request", "Optional ad conversion measurement is used only with your consent; ad personalization stays off"]
       },
       "acceptable-use": {
         title: "Acceptable use",
@@ -647,7 +649,7 @@ const companySiteCopy = {
       privacy: {
         title: "隐私政策",
         summary: "从第一次访问开始，尊重你的隐私选择。",
-        points: ["语言偏好只保存在你的设备上", "联系信息只用于回应你的需求", "官网不使用广告追踪塑造体验"]
+        points: ["语言偏好只保存在你的设备上", "联系信息只用于回应你的需求", "广告转化衡量仅在你明确同意后使用；不会启用个性化广告"]
       },
       "acceptable-use": {
         title: "可接受使用",
@@ -825,6 +827,7 @@ export function CompanySitePage() {
 
   if (infoPage) {
     return (
+      <>
       <CompanySiteInfoPage
         copy={copy}
         locale={locale}
@@ -842,6 +845,8 @@ export function CompanySitePage() {
         onHome={returnHome}
         page={copy.infoPages[infoPage]}
       />
+      <AdsConsentPreferencePanel locale={locale} surface="site" />
+      </>
     );
   }
 
@@ -876,8 +881,8 @@ export function CompanySitePage() {
           <a href="#contact" onClick={(event) => handleSectionClick(event, "contact")}>{copy.nav.contact}</a>
           <a href={buildInfoPageHash("features")} onClick={(event) => openInfoPage(event, "features")}>{copy.nav.about}</a>
           <div className="company-site-mobile-account-links">
-            <a className="is-primary" href={registerUrl}>{copy.actions.getStarted}</a>
-            <a href={loginUrl}>{copy.actions.signIn}</a>
+            <a className="is-primary" href={buildPortalAdsClickHandoffUrl(registerUrl)}>{copy.actions.getStarted}</a>
+            <a href={buildPortalAdsClickHandoffUrl(loginUrl)}>{copy.actions.signIn}</a>
           </div>
         </nav>
 
@@ -895,8 +900,8 @@ export function CompanySitePage() {
               </button>
             ))}
           </div>
-          <a className="company-site-text-action" href={loginUrl}>{copy.actions.signIn}</a>
-          <a className="company-site-primary compact" href={registerUrl}>{copy.actions.getStarted}</a>
+          <a className="company-site-text-action" href={buildPortalAdsClickHandoffUrl(loginUrl)}>{copy.actions.signIn}</a>
+          <a className="company-site-primary compact" href={buildPortalAdsClickHandoffUrl(registerUrl)}>{copy.actions.getStarted}</a>
           <button
             className="company-site-menu-button"
             type="button"
@@ -941,7 +946,7 @@ export function CompanySitePage() {
           <h1>{copy.hero.title}</h1>
           <p>{copy.hero.description}</p>
           <div className="company-site-actions">
-            <a className="company-site-primary" href={registerUrl}>
+            <a className="company-site-primary" href={buildPortalAdsClickHandoffUrl(registerUrl)}>
               {copy.actions.getStarted}
               <ArrowRight aria-hidden="true" />
             </a>
@@ -1051,7 +1056,7 @@ export function CompanySitePage() {
                   <li key={point}><Check aria-hidden="true" />{point}</li>
                 ))}
               </ul>
-              <a className={index === 1 ? "company-site-primary" : "company-site-secondary"} href={registerUrl}>
+              <a className={index === 1 ? "company-site-primary" : "company-site-secondary"} href={buildPortalAdsClickHandoffUrl(registerUrl)}>
                 {index === 1 ? copy.actions.getStarted : copy.actions.compare}
                 <ArrowRight aria-hidden="true" />
               </a>
@@ -1122,7 +1127,7 @@ export function CompanySitePage() {
             <a className="company-site-secondary" href={buildInfoPageHash("features")} onClick={(event) => openInfoPage(event, "features")}>
               {copy.actions.about}
             </a>
-            <a className="company-site-primary" href={loginUrl}>{copy.actions.signIn}<ArrowRight aria-hidden="true" /></a>
+            <a className="company-site-primary" href={buildPortalAdsClickHandoffUrl(loginUrl)}>{copy.actions.signIn}<ArrowRight aria-hidden="true" /></a>
           </div>
         </div>
       </section>
@@ -1138,8 +1143,8 @@ export function CompanySitePage() {
           ))}
         </ol>
         <div className="company-site-actions">
-          <a className="company-site-primary" href={registerUrl}>{copy.actions.getStarted}<ArrowRight aria-hidden="true" /></a>
-          <a className="company-site-secondary" href={loginUrl}>{copy.actions.signIn}</a>
+          <a className="company-site-primary" href={buildPortalAdsClickHandoffUrl(registerUrl)}>{copy.actions.getStarted}<ArrowRight aria-hidden="true" /></a>
+          <a className="company-site-secondary" href={buildPortalAdsClickHandoffUrl(loginUrl)}>{copy.actions.signIn}</a>
         </div>
       </section>
 
@@ -1258,6 +1263,7 @@ export function CompanySitePage() {
           <span>{copy.footer.rights}</span>
         </div>
       </footer>
+      <AdsConsentPreferencePanel locale={locale} surface="site" />
       </div>
       </div>
     </main>
@@ -1320,7 +1326,7 @@ function CompanySiteInfoPage({
             <h1>{page.title}</h1>
             <p>{page.summary}</p>
             <div className="company-site-actions">
-              <a className="company-site-primary" href={registerUrl}>{copy.infoShared.getStarted}<ArrowRight aria-hidden="true" /></a>
+              <a className="company-site-primary" href={buildPortalAdsClickHandoffUrl(registerUrl)}>{copy.infoShared.getStarted}<ArrowRight aria-hidden="true" /></a>
               <a className="company-site-secondary" href="#contact" onClick={onContact}>{copy.infoShared.contact}</a>
             </div>
           </div>
