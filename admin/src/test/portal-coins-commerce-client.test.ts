@@ -28,6 +28,7 @@ type CommerceSurface = {
     sessionRef: string;
     quoteRef: string;
     idempotencyKey: string;
+    adsClick?: { type: "gclid" | "gbraid" | "wbraid"; value: string; clickAt: number; consent: { adUserData: true; adPersonalization: false } };
   }): Promise<unknown>;
   getOrder(input: { sessionRef: string; orderRef: string }): Promise<unknown>;
   cancelOrder(input: {
@@ -1258,4 +1259,48 @@ describe("Portal Coins Commerce HTTP client", () => {
       await expectSafeFailure(existingCall());
     }
   });
+  test("submits a consented adsClick descriptor only with the final legacy createOrder mutation", async () => {
+    const fetchFn = vi.fn<typeof fetch>(async () => wireResponse({ order: HELD_ORDER }, 201));
+    const commerce = commerceOf(createHttpUserPortalClient({ fetchFn }));
+    const adsClick = {
+      type: "gclid" as const,
+      value: "synthetic_click_123",
+      clickAt: Date.now(),
+      consent: { adUserData: true as const, adPersonalization: false as const }
+    };
+
+    await commerce.createOrder({
+      sessionRef: "session_alpha",
+      quoteRef: "quote_monthly_50gb_1",
+      idempotencyKey: "checkout-ads-click-1",
+      adsClick
+    });
+
+    expect(JSON.parse(String(fetchFn.mock.calls[0]?.[1]?.body))).toEqual({
+      quoteRef: "quote_monthly_50gb_1",
+      adsClick
+    });
+  });
+
+  test("omits an invalid adsClick without failing an otherwise valid legacy purchase", async () => {
+    const fetchFn = vi.fn<typeof fetch>(async () => wireResponse({ order: HELD_ORDER }, 201));
+    const commerce = commerceOf(createHttpUserPortalClient({ fetchFn }));
+
+    await commerce.createOrder({
+      sessionRef: "session_alpha",
+      quoteRef: "quote_monthly_50gb_1",
+      idempotencyKey: "checkout-ads-click-invalid",
+      adsClick: {
+        type: "gclid",
+        value: "synthetic_click_123",
+        clickAt: Date.now(),
+        consent: { adUserData: false, adPersonalization: false }
+      } as never
+    });
+
+    expect(JSON.parse(String(fetchFn.mock.calls[0]?.[1]?.body))).toEqual({
+      quoteRef: "quote_monthly_50gb_1"
+    });
+  });
+
 });

@@ -1,6 +1,7 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
-import { beforeEach, describe, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import * as commerce from "../features/user-portal/commerce";
+import { clearAdsClickData, PORTAL_ADS_CLICK_STORAGE_KEY, setAdsUserDataConsent } from "../features/ads-attribution";
 import type {
   PortalCoinCommerceClient,
   PortalCoinOffer,
@@ -122,6 +123,13 @@ function deferred<T>() {
 
 beforeEach(() => {
   window.sessionStorage.clear();
+});
+
+afterEach(() => {
+  clearAdsClickData();
+  window.sessionStorage.clear();
+  document.cookie = "gccwebos-ad-user-data-consent-v1=; Path=/; Max-Age=0";
+  vi.unstubAllEnvs();
 });
 
 describe("Portal Coins purchase flow", () => {
@@ -1325,4 +1333,38 @@ describe("Portal Coins purchase flow", () => {
     await createRequest;
     expect(storage.setItem).not.toHaveBeenCalled();
   });
+  test("attaches a consented Ads click only to the final legacy order mutation", async () => {
+    vi.stubEnv("VITE_PUBLIC_ADS_CLICK_BINDING_ENABLED", "true");
+    expect(setAdsUserDataConsent("granted")).toBe(true);
+    window.sessionStorage.setItem(PORTAL_ADS_CLICK_STORAGE_KEY, JSON.stringify({
+      type: "gclid",
+      value: "synthetic_hook_click",
+      clickAt: Date.now()
+    }));
+
+    const client = commerceClient();
+    const { result } = renderHook(() => commerce.useCoinsPurchaseFlow({
+      client,
+      sessionRef: "session-ads-click"
+    }));
+
+    await act(async () => {
+      await result.current.openProduct("offer_basic");
+      await result.current.previewCheckout();
+    });
+    await act(async () => {
+      await result.current.confirmPurchase();
+    });
+
+    expect(client.createOrder).toHaveBeenCalledWith(expect.objectContaining({
+      sessionRef: "session-ads-click",
+      adsClick: {
+        type: "gclid",
+        value: "synthetic_hook_click",
+        clickAt: expect.any(Number),
+        consent: { adUserData: true, adPersonalization: false }
+      }
+    }));
+  });
+
 });

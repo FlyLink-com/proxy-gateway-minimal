@@ -266,4 +266,48 @@ describe("Portal wallet-first Commerce HTTP client", () => {
       });
     }
   });
+  test("submits a consented adsClick descriptor only with the final wallet-first reservation mutation", async () => {
+    const fetchFn = vi.fn<typeof fetch>(async () => response({ transition: TRANSITION }, 201));
+    const commerce = createPortalWalletFirstCommerceClient({ fetchFn });
+    const adsClick = {
+      type: "wbraid" as const,
+      value: "synthetic_click_456",
+      clickAt: Date.now(),
+      consent: { adUserData: true as const, adPersonalization: false as const }
+    };
+
+    await commerce.reserveDeferredTransition({
+      sessionRef: "session_alpha",
+      quoteRef: QUOTE.quoteRef,
+      idempotencyKey: "reserve-ads-click-1",
+      adsClick
+    });
+
+    expect(JSON.parse(String(fetchFn.mock.calls[0]?.[1]?.body))).toEqual({
+      quoteRef: QUOTE.quoteRef,
+      adsClick
+    });
+  });
+
+  test("omits an invalid adsClick without failing an otherwise valid wallet-first reservation", async () => {
+    const fetchFn = vi.fn<typeof fetch>(async () => response({ transition: TRANSITION }, 201));
+    const commerce = createPortalWalletFirstCommerceClient({ fetchFn });
+
+    await commerce.reserveDeferredTransition({
+      sessionRef: "session_alpha",
+      quoteRef: QUOTE.quoteRef,
+      idempotencyKey: "reserve-ads-click-invalid",
+      adsClick: {
+        type: "wbraid",
+        value: "synthetic_click_456",
+        clickAt: Date.now(),
+        consent: { adUserData: false, adPersonalization: false }
+      } as never
+    });
+
+    expect(JSON.parse(String(fetchFn.mock.calls[0]?.[1]?.body))).toEqual({
+      quoteRef: QUOTE.quoteRef
+    });
+  });
+
 });
