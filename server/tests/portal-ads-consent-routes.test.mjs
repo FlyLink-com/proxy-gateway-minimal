@@ -113,6 +113,11 @@ test("authenticated Portal grant and withdrawal are reflected by server-side con
         deletedBindingCount: 0,
         skippedOutboxCount: 0,
         deletedLinkCount: 0
+      },
+      unverifiedCleanup: {
+        redactedClaimCount: 0,
+        deletedBindingCount: 0,
+        skippedOutboxCount: 0
       }
     });
 
@@ -138,6 +143,11 @@ test("authenticated Portal grant and withdrawal are reflected by server-side con
         deletedBindingCount: 0,
         skippedOutboxCount: 0,
         deletedLinkCount: 0
+      },
+      unverifiedCleanup: {
+        redactedClaimCount: 0,
+        deletedBindingCount: 0,
+        skippedOutboxCount: 0
       }
     });
   } finally {
