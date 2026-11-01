@@ -126,7 +126,15 @@ node --test server/tests/m0-a2-1-v7.test.mjs
 - `node --test server/tests/m0-a2-1-v7.test.mjs`: 10/10 passed, exit code 0.
 - The original working directory with uncommitted changes was not touched. No BWH/Provider connection or production read occurred.
 
-This result is recorded as operator-reported local evidence and applies to the exact tested code commit above. The subsequent evidence-archive commit changes only README, validation/review records, and the SHA256 manifest; it does not change diagnostic runtime or test code. The seven manifest entries are regenerated for that archive commit. The 7/7 local result above is not represented as a new Windows command run against the later documentation-only commit; if validating that archive commit itself, rerun `sha256sum -c` after fetching it. No Node reinstall is needed.
+This result is recorded as operator-reported local evidence and applies to the exact tested code commit above. The subsequent evidence-archive commit changes only README, validation/review records, and the SHA256 manifest; it does not change diagnostic runtime or test code. The seven manifest entries are regenerated for that archive commit.
+
+### Subsequent archive-head checksum-only verification — operator-reported (2026-10-31)
+
+- Archive head checked: `92a4ea3454cce9e873a49fd692ea374ec2078609`.
+- After switching the same isolated v9 workspace to that exact commit, the operator reran only `sha256sum -c docs/runbooks/m0-a2-1-v7/SHA256SUMS`: **7/7 OK, exit code 0**.
+- All seven files reported `i/lf w/lf attr/-text`.
+- This was checksum-only. Node was not reinstalled, and the four `node --check` commands, `--self-test`, and `node --test` were not rerun against this archive head.
+- The full code validation above remains bound to `5187edc19380fdb44dd2e0f531e9cfdf580b00e1`. This follow-up is operator-reported local checksum evidence only, not a full test rerun, hosted CI result, or production read.
 
 Record the exact output and exit code of every command. If Node is not exactly `v22.16.0`, stop and record the version mismatch; do not substitute another Node version. A skipped CI run is not a pass.
 

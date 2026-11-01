@@ -27,7 +27,9 @@ Workspace: `D:\Projects\proxy-gateway-minimal-pr812-v9`
 - Original working directory with uncommitted changes untouched.
 - No BWH/Provider connection or production read.
 
-The results are recorded from the operator's report. They apply to code commit `5187edc19380fdb44dd2e0f531e9cfdf580b00e1`. The following evidence-archive commit changes only README, validation/review records, and SHA256SUMS; it does not change diagnostic runtime or test source. Its seven manifest entries are regenerated. No claim is made that the Windows `sha256sum -c` command was rerun against that later documentation-only commit.
+The results are recorded from the operator's report and apply to code commit `5187edc19380fdb44dd2e0f531e9cfdf580b00e1`. The following evidence-archive commit changes only README, validation/review records, and SHA256SUMS; it does not change diagnostic runtime or test source. Its seven manifest entries are regenerated.
+
+A subsequent checksum-only verification was reported after switching the same isolated v9 workspace to archive head `92a4ea3454cce9e873a49fd692ea374ec2078609`: only `sha256sum -c docs/runbooks/m0-a2-1-v7/SHA256SUMS` was rerun, with **7/7 OK and exit code 0**; all seven files reported `i/lf w/lf attr/-text`. Node was not reinstalled, and the four `node --check` commands, self-test, and `node --test` were not rerun against that archive head. This follow-up verifies only the archive head's checksum inputs; the full code-test results remain bound to `5187edc19380fdb44dd2e0f531e9cfdf580b00e1`. No hosted CI or production result is implied.
 
 ## Earlier v8 failure retained as history
 

@@ -43,7 +43,10 @@ This section records the operator's local results. The exact tested code snapsho
 
 - The local v9 pass above applies to code commit `5187edc19380fdb44dd2e0f531e9cfdf580b00e1`.
 - The evidence-archive commit following that test changes only `README.md`, `VALIDATION.txt`, `REVIEW-REPORT.txt`, and `SHA256SUMS`; no diagnostic script or test source is changed.
-- The seven SHA256 entries are regenerated for the evidence-archive commit from the final file contents. The 7/7 Windows command result above is not represented as a command run against that later documentation-only commit. If the archive commit itself is to be checked, rerun `sha256sum -c` in the isolated workspace after fetching it; no Node reinstall is needed.
+- The seven SHA256 entries are regenerated for the evidence-archive commit from the final file contents.
+- After switching the same isolated v9 workspace to the then-current archive head `92a4ea3454cce9e873a49fd692ea374ec2078609`, the operator reran only `sha256sum -c docs/runbooks/m0-a2-1-v7/SHA256SUMS`: **7/7 OK, exit code 0**; all seven files reported `i/lf w/lf attr/-text`.
+- This follow-up was checksum-only: Node was not reinstalled, and the four `node --check` commands, `--self-test`, and `node --test` were not rerun against that archive head.
+- The complete code-validation results above therefore remain bound to `5187edc19380fdb44dd2e0f531e9cfdf580b00e1`. The later checksum-only result does not imply a full test rerun, Hosted CI pass, or production read.
 - GitHub Actions / hosted CI remains skipped intentionally. Skipped jobs are not a pass.
 - The local test does not establish production state, deployed App identity, or authorization to read production.
 
