@@ -69,3 +69,17 @@ PR #812 remains Draft. M0 remains BLOCKED. Production execution, M0-A2-2, M1–M
 - Added three regression tests for release-pointer stability, exact stop-unit argv, and the external timeout requirement. Expected suite size: 13 tests.
 
 Targeted helper checks were run locally with Node v22.16.0: a standalone harness mirroring the added release-binding and stop-unit parser logic passed 12/12 assertions; node --check on that harness exited 0. A GNU timeout probe that deliberately ignored TERM exited 137 after the configured kill grace, confirming the local timeout utility's hard-kill behavior. This does not represent execution of the repository's full 13-test node --test suite; that full suite remains NOT RUN in this environment and must be run in the isolated Windows workspace before any later production approval. Hosted CI remains intentionally skipped while the PR is Draft. No production read or mutation is authorized.
+
+
+## Independent-review hardening follow-up (2026-10-31)
+
+- PR #812 remains Draft; no Hosted CI was started. Draft CI guards remain in force.
+- The status-path binding now fails closed if either App or status-writer unit has any configured `EnvironmentFiles`, because those files can override direct `Environment=` assignments and their contents are outside the approved read scope. The full-metering unit no longer requests its Environment property. App `/proc/<PID>/environ` is scanned in bounded chunks, retaining only the single target variable value.
+- The binding also rejects target-variable references in `PassEnvironment` / `UnsetEnvironment` and rejects non-root or dynamic service identities.
+- Status projection reads now require root UID/GID ownership, private single-link regular file metadata, and a root-owned non-symlink parent-directory chain through `/` with no group/world write permission. File and directory metadata are compared before and after reading.
+- Full `OnFailure` lists are parsed; additional handlers are reported by count, while malformed/duplicate expected entries are `unknown`.
+- Production Node runtime is pinned to exact `v22.16.0`.
+- The repository test file now declares 18 tests (13 existing + 5 added). The complete 18-test `node --test` suite, syntax checks, self-test, and checksum verification have NOT been run against the final remediation commit in this environment. The existing isolated v9 workspace must be switched to the exact final commit and run the complete README validation block. Record exact command outputs and exit codes; do not infer a pass from the previous commit's 10/10 or helper-only harness.
+- No SSH, BWH/Provider connection, production systemd/journal/status/SQLite/config/environment-file read, collector invocation, service/Timer action, or production mutation occurred.
+
+Current gate: PR remains Draft; M0 remains BLOCKED. No production execution, M0-A2-2, M1–M8, recovery, or Japan node creation is authorized.
