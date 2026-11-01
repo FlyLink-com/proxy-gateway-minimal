@@ -481,6 +481,7 @@ test("enqueueAdsConversion records skipped/binding_failed when the claim has a c
 
 test("enqueueAdsConversion records skipped/invalid_click for a malformed-descriptor claim", () => {
   withDb((db) => {
+    grantDefaultConsent(db);
     safeCaptureAdsClickForOrder(db, {
       orderRef: "order_ads_023",
       accountRef: "account_ads_001",
@@ -641,7 +642,7 @@ test("client-declared denial is stored as a value-free invalid click claim", () 
       terminalAt: NOW
     }, { env: ENABLED, now: NOW });
     assert.equal(row.status, "skipped");
-    assert.equal(row.skipReason, "invalid_click");
+    assert.equal(row.skipReason, "consent_denied");
     assert.equal(row.model, "deferred");
   });
 });
