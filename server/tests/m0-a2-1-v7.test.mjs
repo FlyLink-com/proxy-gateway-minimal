@@ -10,7 +10,9 @@ import {
   resolveStatusBinding,
   isExpectedFailureInvocation,
   extractFailureErrorCode,
-  correlateOnFailureStop
+  correlateOnFailureStop,
+  inspectStopUnitExecStart,
+  sameAppReleaseBinding
 } from '../../scripts/lib/m0-a2-1-v7-diagnostic.mjs';
 import { FILES } from '../../scripts/lib/m0-a2-1-v7-archive-pins.mjs';
 
@@ -74,6 +76,32 @@ test('status-writer ExecStart accepts canonical and POSIX current-symlink paths 
   assert.equal(inspectStatusWriterExecStart(canonical.replace('path=/usr/bin/node','path=/bin/sh'), appRoot, appRoot), false);
   assert.equal(inspectStatusWriterExecStart(canonical.replace(' ; }',' ; argv[]=/usr/bin/node /extra --collect ; }'), appRoot, appRoot), false);
   assert.equal(inspectStatusWriterExecStart(canonical.replace('--collect ;','--collect --unsafe ;'), appRoot, appRoot), false);
+});
+
+test('App release stability requires the same current symlink target, inode signature, release and PID', () => {
+  const before = {
+    appRoot: `${BASE}/releases/control-plane-fixture`,
+    releaseLabel: 'control-plane-fixture',
+    pid: '1234',
+    currentPointer: { target: 'releases/control-plane-fixture', signature: ['dev-1','ino-1','mode','uid','gid','nlink','size','mtime','ctime'] }
+  };
+  assert.equal(sameAppReleaseBinding(before, structuredClone(before)), true);
+  assert.equal(sameAppReleaseBinding(before, { ...before, currentPointer: { ...before.currentPointer, signature: ['dev-1','ino-2','mode','uid','gid','nlink','size','mtime','ctime'] } }), false);
+  assert.equal(sameAppReleaseBinding(before, { ...before, currentPointer: { ...before.currentPointer, target: 'releases/other' } }), false);
+  assert.equal(sameAppReleaseBinding(before, { ...before, appRoot: `${BASE}/releases/other` }), false);
+  assert.equal(sameAppReleaseBinding(before, { ...before, pid: '5678' }), false);
+});
+
+test('stop-unit ExecStart requires the exact systemctl stop argv and rejects shell wrappers or extra arguments', () => {
+  const timer = FULL_SERVICE.replace('collect.service','collect.timer');
+  const good = `{ path=/usr/bin/systemctl ; argv[]=/usr/bin/systemctl stop ${timer} ; ignore_errors=no ; }`;
+  assert.equal(inspectStopUnitExecStart(good), true);
+  assert.equal(inspectStopUnitExecStart(good.replace('path=/usr/bin/systemctl','path=/bin/sh')), false);
+  assert.equal(inspectStopUnitExecStart(good.replace(' stop ',' restart ')), false);
+  assert.equal(inspectStopUnitExecStart(good.replace(`${timer} ;`, `${timer} --no-block ;`)), false);
+  assert.equal(inspectStopUnitExecStart(good.replace(' ; ignore_errors=no ;',' ; argv[]=/usr/bin/systemctl start other.timer ; ignore_errors=no ;')), false);
+  assert.equal(inspectStopUnitExecStart(`{ path=/bin/sh ; argv[]=/bin/sh -c "/usr/bin/systemctl stop ${timer}" ; }`), false);
+  assert.equal(inspectStopUnitExecStart('raw command'), false);
 });
 
 test('status path binding compares App with the traffic-usage writer, never the full-metering unit', () => {
@@ -142,4 +170,11 @@ test('production branch has only fixed read commands and no systemd mutation or 
   assert.doesNotMatch(source, /readFileSync\([^)]*CONFIG_PATH/);
   assert.doesNotMatch(source, /subscription-control\.sqlite|checkpoint\.json|full-metering-bwh-local-20261009\/journal/);
   assert.doesNotMatch(source, /--collect\s*(?:;|\n).*spawnSync/);
+});
+
+test('future production invocation is wrapped in an external hard timeout', () => {
+  const readme = readFileSync(new URL('../../docs/runbooks/m0-a2-1-v7/README.md', import.meta.url), 'utf8');
+  assert.match(readme, /sudo \/usr\/bin\/timeout --signal=TERM --kill-after=5s 45s/);
+  assert.match(readme, /timeout exit (?:status|code) (?:124|137)/i);
+  assert.doesNotMatch(readme, /sudo \/usr\/bin\/node scripts\/m0-a2-1-v7\.mjs --expected-release/);
 });

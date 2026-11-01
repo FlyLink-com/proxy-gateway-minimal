@@ -59,3 +59,13 @@ This section records the operator's local results. The exact tested code snapsho
 - Collector invocation, service/Timer action, install, restart, or production mutation.
 
 PR #812 remains Draft. M0 remains BLOCKED. Production execution, M0-A2-2, M1–M8, recovery, and Japan node creation remain unauthorized.
+
+
+## Follow-up code review — proposed repairs, not yet locally executed
+
+- App release binding now records the current symlink target plus device/inode/metadata signature, re-resolves the pointer at the end, and requires the same release and App PID.
+- Stop-unit inspection now requires the exact `/usr/bin/systemctl` executable and the complete argv `systemctl stop gccgw-full-metering-collect.timer`; shell wrappers and extra/repeated arguments fail closed.
+- A 45-second in-process elapsed budget is checked at phase boundaries. The future production command is additionally wrapped in GNU `timeout` with TERM at 45 seconds and KILL after a 5-second grace period (maximum 50 seconds). Timeout status 124/137 is a stop and must not be retried.
+- Added three regression tests for release-pointer stability, exact stop-unit argv, and the external timeout requirement. Expected suite size: 13 tests.
+
+This section will be updated only with test evidence actually obtained. Hosted CI remains intentionally skipped while the PR is Draft. No production read or mutation is authorized.

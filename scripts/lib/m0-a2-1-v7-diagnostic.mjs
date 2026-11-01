@@ -24,6 +24,7 @@ const RELEASE_LABEL_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,159}$/;
 const SAFE_ABSOLUTE_PATH = /^\/[A-Za-z0-9_./-]+$/;
 const SAFE_ERROR_CODE = /^(full_metering_|baseline_|counter_|observation_|unknown_counter_|source_|observed_counter_|closed_connection_|connection_)[a-z0-9_]{1,88}$/;
 const MAX_JOURNAL_BYTES = 1024 * 1024;
+const MAX_RUNTIME_MS = 45000;
 const MAX_STATUS_BYTES = 256 * 1024;
 const MULTI_VALUE_PROPERTIES = new Set(['EnvironmentFiles']);
 const JP_CHANNELS = [
@@ -43,6 +44,9 @@ import { FILES } from './m0-a2-1-v7-archive-pins.mjs';
 
 const fail = (code, details = {}) => { throw Object.assign(new Error('gate_stopped'), { safeCode: code, safeDetails: details }); };
 const sha = bytes => createHash('sha256').update(bytes).digest('hex');
+function assertTimeBudget(startedAt) {
+  if (Date.now() - startedAt > MAX_RUNTIME_MS) fail('time_limit');
+}
 let stage = 'bootstrap';
 
 export function parseArguments(argv) {
@@ -125,9 +129,17 @@ function resolveAppRelease(appBefore, expectedRelease) {
   const appBase = BASE, releasesRoot = path.join(appBase, 'releases');
   const currentInfo = fs.lstatSync(CURRENT_LINK, { bigint: true });
   if (!currentInfo.isSymbolicLink() || currentInfo.uid !== 0n || currentInfo.nlink !== 1n) fail('app_current_pointer_invalid');
+  const currentPointerTarget = fs.readlinkSync(CURRENT_LINK);
+  const currentInfoAfterRead = fs.lstatSync(CURRENT_LINK, { bigint: true });
+  if (JSON.stringify(signature(currentInfo)) !== JSON.stringify(signature(currentInfoAfterRead))
+    || fs.readlinkSync(CURRENT_LINK) !== currentPointerTarget) fail('app_current_pointer_changed');
   const releasesInfo = fs.lstatSync(releasesRoot, { bigint: true });
   if (!releasesInfo.isDirectory() || releasesInfo.isSymbolicLink() || releasesInfo.uid !== 0n || (releasesInfo.mode & 0o022n) !== 0n || fs.realpathSync(releasesRoot) !== releasesRoot) fail('app_releases_root_unsafe');
   const appRoot = fs.realpathSync(CURRENT_LINK);
+  const currentInfoAfterResolve = fs.lstatSync(CURRENT_LINK, { bigint: true });
+  if (JSON.stringify(signature(currentInfo)) !== JSON.stringify(signature(currentInfoAfterResolve))
+    || fs.readlinkSync(CURRENT_LINK) !== currentPointerTarget
+    || fs.realpathSync(CURRENT_LINK) !== appRoot) fail('app_current_pointer_changed');
   const appRootInfo = fs.lstatSync(appRoot, { bigint: true });
   if (!appRootInfo.isDirectory() || appRootInfo.isSymbolicLink() || appRootInfo.uid !== 0n || (appRootInfo.mode & 0o022n) !== 0n || !path.isAbsolute(appRoot) || path.dirname(appRoot) !== releasesRoot || !RELEASE_LABEL_PATTERN.test(path.basename(appRoot))) fail('app_release_directory_unexpected');
   if (path.basename(appRoot) !== expectedRelease) fail('app_release_label_mismatch');
@@ -135,7 +147,19 @@ function resolveAppRelease(appBefore, expectedRelease) {
   let processRoot;
   try { processRoot = fs.realpathSync(`/proc/${appBefore.MainPID}/cwd`); } catch { fail('app_process_cwd_unreadable'); }
   if (processRoot !== appRoot) fail('app_process_cwd_unbound');
-  return { appRoot, releaseLabel: path.basename(appRoot), pid: appBefore.MainPID };
+  return {
+    appRoot,
+    releaseLabel: path.basename(appRoot),
+    pid: appBefore.MainPID,
+    currentPointer: { target: currentPointerTarget, signature: signature(currentInfo) }
+  };
+}
+
+export function sameAppReleaseBinding(before, after) {
+  return before?.appRoot === after?.appRoot
+    && before?.releaseLabel === after?.releaseLabel
+    && before?.pid === after?.pid
+    && JSON.stringify(before?.currentPointer) === JSON.stringify(after?.currentPointer);
 }
 
 function assertPinnedAppSource(appRoot) {
@@ -270,6 +294,14 @@ export function inspectStatusWriterExecStart(execStart, workingDirectory, appRoo
   catch { return false; }
 }
 
+export function inspectStopUnitExecStart(execStart) {
+  if (typeof execStart !== 'string' || execStart.split('path=').length !== 2 || execStart.split('argv[]=').length !== 2) return false;
+  const match = /^\{\s*path=([^;]+);\s*argv\[\]=([^;]+);[\s\S]*\}$/.exec(execStart.trim());
+  if (!match || match[1].trim() !== '/usr/bin/systemctl') return false;
+  const argv = match[2].trim().split(/\s+/);
+  return argv.length === 3 && argv[0] === '/usr/bin/systemctl' && argv[1] === 'stop' && argv[2] === FULL_TIMER;
+}
+
 export function isExpectedFailureInvocation(startTimestamp, invocationId, execMainStatus, result) {
   const timestampMatches = startTimestamp === 'Tue 2026-10-20 02:15:07 UTC'
     || startTimestamp === 'Tue Oct 20 02:15:07 UTC'
@@ -396,20 +428,25 @@ export async function runM0A2V7(expectedRelease) {
     const stopBefore = systemdShow(STOP_SERVICE, STOP_PROPERTIES);
     const statusBefore = systemdShow(STATUS_SERVICE, SERVICE_PROPERTIES);
     const statusTimerBefore = systemdShow(STATUS_TIMER, TIMER_PROPERTIES);
+    assertTimeBudget(startedAt);
 
     stage = 'app_release_binding';
-    const { appRoot, releaseLabel, pid } = resolveAppRelease(appBefore, expectedRelease);
+    const appReleaseBefore = resolveAppRelease(appBefore, expectedRelease);
+    const { appRoot, releaseLabel, pid } = appReleaseBefore;
+    assertTimeBudget(startedAt);
     stage = 'app_source_pins';
     assertPinnedAppSource(appRoot);
+    assertTimeBudget(startedAt);
 
     stage = 'full_metering_exec_binding';
     const fullExec = inspectFullMeteringExecStart(fullBefore.ExecStart, fullBefore.WorkingDirectory);
     const archiveBefore = fullExec.matched ? verifyArchive() : null;
+    assertTimeBudget(startedAt);
     const onFailureLinked = Object.hasOwn(fullBefore, 'OnFailure')
       ? (String(fullBefore.OnFailure || '').split(/\s+/).includes(STOP_SERVICE) ? 'stop_unit_linked' : 'not_linked')
       : 'unknown';
     const stopTargetsTimer = Object.hasOwn(stopBefore, 'ExecStart')
-      ? (typeof stopBefore.ExecStart === 'string' && stopBefore.ExecStart.includes(`stop ${FULL_TIMER}`) ? 'yes' : 'no')
+      ? (inspectStopUnitExecStart(stopBefore.ExecStart) ? 'yes' : 'no')
       : 'unknown';
     const stopCorrelation = correlateOnFailureStop(fullBefore.ExecMainExitTimestamp, stopBefore.ExecMainStartTimestamp);
 
@@ -431,11 +468,13 @@ export async function runM0A2V7(expectedRelease) {
         projection = sanitizeTrafficCollectorAdminProjection(raw.parsed);
       } else projection = { availability: raw.availability };
     }
+    assertTimeBudget(startedAt);
 
     stage = 'failure_invocation_binding';
     const invocationId = fullBefore.InvocationID;
     const exactInvocation = isExpectedFailureInvocation(fullBefore.ExecMainStartTimestamp, invocationId, fullBefore.ExecMainStatus, fullBefore.Result);
     const errorCode = exactInvocation ? readFailureErrorCode(invocationId) : 'unknown';
+    assertTimeBudget(startedAt);
 
     stage = 'stability_recheck';
     const appAfter = systemdShow(APP_UNIT, APP_PROPERTIES);
@@ -444,16 +483,19 @@ export async function runM0A2V7(expectedRelease) {
     const stopAfter = systemdShow(STOP_SERVICE, STOP_PROPERTIES);
     const statusAfter = systemdShow(STATUS_SERVICE, SERVICE_PROPERTIES);
     const statusTimerAfter = systemdShow(STATUS_TIMER, TIMER_PROPERTIES);
+    assertTimeBudget(startedAt);
     for (const [unit, before, after] of [
       [APP_UNIT,appBefore,appAfter],[FULL_SERVICE,fullBefore,fullAfter],[FULL_TIMER,fullTimerBefore,fullTimerAfter],
       [STOP_SERVICE,stopBefore,stopAfter],[STATUS_SERVICE,statusBefore,statusAfter],[STATUS_TIMER,statusTimerBefore,statusTimerAfter]
     ]) sameSnapshot(before, after, unit);
-    assertPinnedAppSource(appRoot);
+    const appReleaseAfter = resolveAppRelease(appAfter, expectedRelease);
+    if (!sameAppReleaseBinding(appReleaseBefore, appReleaseAfter)) fail('app_release_changed_during_read');
+    assertPinnedAppSource(appReleaseAfter.appRoot);
     if (fullExec.matched) {
       const archiveAfter = verifyArchive();
       if (JSON.stringify(archiveBefore) !== JSON.stringify(archiveAfter)) fail('archive_changed_during_read');
     }
-    if (Date.now() - startedAt > 45000) fail('time_limit');
+    assertTimeBudget(startedAt);
 
     console.log(`observed_at_utc=${observedAt}`);
     console.log(`app_release_label=${releaseLabel}`);
