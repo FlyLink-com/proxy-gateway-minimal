@@ -1,7 +1,7 @@
 cc1ba5ff9feefe1b0cefe514b7f9f776fdb0fff6b043702934310ef407a97718  scripts/m0-a2-1-v7.mjs
-3c44313a8aef87e1c20d848505d42b908028538bdaad96c7c36007bf67f2c371  scripts/lib/m0-a2-1-v7-diagnostic.mjs
+6f0a1ea95db44349c6fc7e88b83417d89617172c36b188efce85ee6f3d07ea79  scripts/lib/m0-a2-1-v7-diagnostic.mjs
 14448cf9c6d2e34e7f672b646c7939a53b43290cd6852bdf889754a9554a961b  scripts/lib/m0-a2-1-v7-archive-pins.mjs
 4fad6293a184f26c5497964557c18ff8c28cdc40fbbf171dccc50114e46b7422  server/tests/m0-a2-1-v7.test.mjs
-5bc14baab2eb049dea0b428b649800753b86c0b4337b3e6b63311ad4a3e14e3f  docs/runbooks/m0-a2-1-v7/README.md
-1a6ec6317edc3de3dcad6a008aaf4690b6802e4dfaa5edcc0d1fa722397897b8  docs/runbooks/m0-a2-1-v7/VALIDATION.txt
-a329a9920415085ef244fa556652fcb8a6e0bc4dd89fc11acf06464cdee4ddb8  docs/runbooks/m0-a2-1-v7/REVIEW-REPORT.txt
+e0519352e28b4aa621d39ed3b3a9d46f7b2aec2dad8e28c8dcf2ed04b1c649a2  docs/runbooks/m0-a2-1-v7/README.md
+55d612f1a457db58dcfab6410d2a30e558fb29d9051620eb45639b06e2e08f5a  docs/runbooks/m0-a2-1-v7/VALIDATION.txt
+fe9a55ec8edbc42ee6da1e77256f3caae6efa4f823e1a583a798938cd4ce5e01  docs/runbooks/m0-a2-1-v7/REVIEW-REPORT.txt
