@@ -186,6 +186,26 @@ test("revocation removes raw click identifiers and stops pending conversion rows
       accountRef: ACCOUNT,
       createdAt: NOW - 500
     }), true);
+    db.prepare(`
+      insert into platform_ads_click_claims (
+        order_ref, account_ref, model, claim_state, click_type, click_value,
+        click_at, consent_ad_user_data, consent_ad_personalization,
+        created_at, updated_at
+      ) values (?, ?, 'legacy', 'click', 'gbraid', ?, ?, 1, 0, ?, ?)
+    `).run("order_ads_consent_unlinked", ACCOUNT, "synthetic_unlinked_click_004", NOW - 1000, NOW - 500, NOW - 500);
+    db.prepare(`
+      insert into platform_ads_click_bindings (
+        order_ref, account_ref, model, click_type, click_value, click_at,
+        consent_ad_user_data, consent_ad_personalization, created_at, updated_at
+      ) values (?, ?, 'legacy', 'gbraid', ?, ?, 1, 0, ?, ?)
+    `).run("order_ads_consent_unlinked", ACCOUNT, "synthetic_unlinked_click_004", NOW - 1000, NOW - 400, NOW - 400);
+    db.prepare(`
+      insert into platform_ads_conversion_outbox (
+        order_ref, model, transaction_id, value_units, value_unit, terminal_at,
+        status, skip_reason, attempts, next_attempt_at, last_error,
+        google_request_id, created_at, updated_at
+      ) values (?, 'legacy', ?, 20, 'COIN', ?, 'pending', null, 0, ?, null, null, ?, ?)
+    `).run("order_ads_consent_unlinked", "order_ads_consent_unlinked", NOW, NOW + 1000, NOW - 300, NOW - 300);
 
     const denied = store.recordConsent({ accountRef: ACCOUNT, adUserData: false });
     assert.deepEqual(denied, {
@@ -194,9 +214,9 @@ test("revocation removes raw click identifiers and stops pending conversion rows
       adPersonalization: false,
       updatedAt: NOW,
       revocation: {
-        redactedClaimCount: 1,
-        deletedBindingCount: 1,
-        skippedOutboxCount: 1,
+        redactedClaimCount: 2,
+        deletedBindingCount: 2,
+        skippedOutboxCount: 2,
         deletedLinkCount: 1
       },
       unverifiedCleanup: {
@@ -206,6 +226,7 @@ test("revocation removes raw click identifiers and stops pending conversion rows
       }
     });
     assert.equal(JSON.stringify(denied).includes("synthetic_gclid_value_001"), false);
+    assert.equal(JSON.stringify(denied).includes("synthetic_unlinked_click_004"), false);
     assert.equal(hasAdsConsentForAccount(db, ACCOUNT), false);
 
     const claim = db.prepare(`
@@ -234,6 +255,21 @@ test("revocation removes raw click identifiers and stops pending conversion rows
     assert.equal(db.prepare(
       "select count(*) from platform_ads_click_consent_claims where account_ref = ?"
     ).pluck().get(ACCOUNT), 0);
+    assert.deepEqual(db.prepare(`
+      select claim_state, click_value from platform_ads_click_claims where order_ref = ?
+    `).get("order_ads_consent_unlinked"), {
+      claim_state: "invalid_click",
+      click_value: null
+    });
+    assert.equal(db.prepare(
+      "select count(*) from platform_ads_click_bindings where order_ref = ?"
+    ).pluck().get("order_ads_consent_unlinked"), 0);
+    assert.deepEqual(db.prepare(`
+      select status, skip_reason from platform_ads_conversion_outbox where order_ref = ?
+    `).get("order_ads_consent_unlinked"), {
+      status: "skipped",
+      skip_reason: "consent_revoked"
+    });
 
     const repeated = store.recordConsent({ accountRef: ACCOUNT, adUserData: false });
     assert.deepEqual(repeated.revocation, {
