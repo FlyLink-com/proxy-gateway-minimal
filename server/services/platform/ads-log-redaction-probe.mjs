@@ -14,10 +14,21 @@ function exactStringArray(value, field, minimumLength = 1) {
 
 function reversibleVariants(identifier) {
   const encoded = encodeURIComponent(identifier);
+  const encodedLower = encoded.replace(/%[0-9A-F]{2}/g, (part) => part.toLowerCase());
+  const encodedTwice = encodeURIComponent(encoded);
   const base64 = Buffer.from(identifier, "utf8").toString("base64");
   const base64url = Buffer.from(identifier, "utf8").toString("base64url");
   const hex = Buffer.from(identifier, "utf8").toString("hex");
-  return new Set([identifier, encoded, base64, base64url, hex]);
+  return new Set([
+    identifier,
+    encoded,
+    encodedLower,
+    encodedTwice,
+    base64,
+    base64url,
+    hex,
+    hex.toUpperCase()
+  ]);
 }
 
 /**
