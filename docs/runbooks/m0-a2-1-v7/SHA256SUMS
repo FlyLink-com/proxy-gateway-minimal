@@ -3,5 +3,5 @@ b4d9510371baf3405656bb4ca7af217a5aa3f3165ff1c95670207a56da88247a  scripts/lib/m0
 14448cf9c6d2e34e7f672b646c7939a53b43290cd6852bdf889754a9554a961b  scripts/lib/m0-a2-1-v7-archive-pins.mjs
 82d204407b305746370d8949e76a6b7475e9ba05846c88a6fc9d5f323a332556  server/tests/m0-a2-1-v7.test.mjs
 c60c3c05dfd507c42f5cc9cf5a909226d5f0de4ab3b3f49afcdf2105beff4da7  docs/runbooks/m0-a2-1-v7/README.md
-f5b00da97d0eef8e292e626508c61fef5f777d4ff283bb2ea0c409df755bc01b  docs/runbooks/m0-a2-1-v7/VALIDATION.txt
-153211ab84dbc3393be9b5282aa0f5282433cd587b060a1afda6482e35062df1  docs/runbooks/m0-a2-1-v7/REVIEW-REPORT.txt
+e79a064bac82c6747e1684e50218fee4b2a40ca6fa303c48c5caffd0000ea02d  docs/runbooks/m0-a2-1-v7/VALIDATION.txt
+ad496659605cd7ae18b3d87837c56cc153563ab3960b11f5c42f471b66461174  docs/runbooks/m0-a2-1-v7/REVIEW-REPORT.txt
