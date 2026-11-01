@@ -2785,7 +2785,7 @@ export function createRuntimeState(options = {}) {
       }
       if (
         !adsConsentStore
-        && env.ADS_CLICK_BINDING_ENABLED === "true"
+        && (env.ADS_CLICK_BINDING_ENABLED === "true" || env.ADS_CLICK_BINDING_ENABLED === true)
         && !configuredCoinCommerceStore
         && controlDbPath !== ":memory:"
       ) {
