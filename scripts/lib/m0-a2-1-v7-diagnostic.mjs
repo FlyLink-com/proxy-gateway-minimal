@@ -735,4 +735,3 @@ export async function runM0A2V7(expectedRelease) {
     process.exitCode = 2;
   }
 }
-
