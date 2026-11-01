@@ -7,7 +7,10 @@ import {
   inspectAdsClickRetention,
   runAdsClickRetention
 } from "../services/platform/ads-click-retention.mjs";
-import { ensureAdsConversionSchema } from "../services/platform/ads-conversion-store.mjs";
+import {
+  ensureAdsConversionSchema,
+  safeMaterializeAdsClickForOrder
+} from "../services/platform/ads-conversion-store.mjs";
 
 const NOW = Date.parse("2026-11-01T00:00:00.000Z");
 const CUTOFF = NOW - ADS_CLICK_RETENTION_MS;
@@ -137,6 +140,12 @@ test("apply deletes expired claims and bindings, stops pending outbox, and is id
       outbox: { status: "skipped", skip_reason: "click_retention_expired" },
       linkCount: 0
     });
+    assert.equal(safeMaterializeAdsClickForOrder(db, {
+      orderRef: "order_ads_retention_old"
+    }, { env: { ADS_CLICK_BINDING_ENABLED: "true" }, now: NOW }), null);
+    assert.equal(db.prepare(
+      "select count(*) from platform_ads_click_claims where order_ref = ?"
+    ).pluck().get("order_ads_retention_old"), 0);
     assert.deepEqual(snapshot(db, "order_ads_retention_new"), {
       claim: {
         claim_state: "click",
