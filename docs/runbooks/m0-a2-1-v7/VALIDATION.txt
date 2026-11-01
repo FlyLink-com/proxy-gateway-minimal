@@ -83,3 +83,5 @@ Targeted helper checks were run locally with Node v22.16.0: a standalone harness
 - No SSH, BWH/Provider connection, production systemd/journal/status/SQLite/config/environment-file read, collector invocation, service/Timer action, or production mutation occurred.
 
 Current gate: PR remains Draft; M0 remains BLOCKED. No production execution, M0-A2-2, M1–M8, recovery, or Japan node creation is authorized.
+
+- Built-in `--self-test` fixture was updated to the new no-EnvironmentFiles/root-identity contract and now checks the EnvironmentFile override, exact Node version, and additional-OnFailure behavior; this source change is included in the final manifest below.
