@@ -1,5 +1,5 @@
 M0-A2-1 v7 / v9 BYTE-STABLE CHECKOUT REPAIR REVIEW
-Disposition: Draft PR candidate only. v9 Windows local acceptance is recorded as operator-reported evidence; NOT approved for production execution.
+Disposition: Draft PR candidate only. The operator reports full local acceptance on f60 (Node v22.16.0, 18/18); the subsequent bounded-read / staged-environment follow-up has 20 tests and remains pending full validation. NOT approved for production execution.
 
 ## Repair changes
 
@@ -81,3 +81,13 @@ Disposition: keep PR #812 Draft and M0 BLOCKED until the exact final commit pass
 
 
 Self-test fixture follow-up: the built-in `--self-test` now uses the same fail-closed root-identity / no-EnvironmentFiles fixture as the production binding contract and includes EnvironmentFile override, exact Node version, and additional-OnFailure assertions. This avoids retaining a stale positive fixture that would fail under the hardened resolver.
+
+
+## Bounded-read and staged-environment follow-up (2026-10-31)
+
+1. **Hard read ceilings:** introduced one chunked file reader that never reads more than the configured ceiling plus a single overflow-probe byte. App source pins are capped at 1 MiB each, archive files at their manifest-declared byte size, and the status projection at 256 KiB. A file that grows after metadata inspection fails closed. The production diagnostic no longer uses `readFileSync`.
+2. **Staged Environment inspection:** baseline App and status-writer systemd property lists no longer include `Environment`. The diagnostic requests that property separately only after both unit metadata snapshots prove no nonempty `EnvironmentFiles`, default/root User and Group, `DynamicUser=no`, and no target-variable reference in `PassEnvironment` / `UnsetEnvironment`. Each property response is parsed immediately; only the selected status-path assignment is retained. The selected values are re-read and compared during final stability verification. If the metadata gate fails, no Environment property request is made.
+3. **Regression coverage:** added tests for exact-limit and over-limit file reads, metadata-gated environment access, and resolving the status binding from separately selected values. The repository test file now declares 20 tests.
+4. **Validation disposition:** operator-reported full local validation on f60 is 18/18 under Node v22.16.0. That evidence predates these code changes. The exact final follow-up commit still requires checksum 7/7, four syntax checks, self-test, and 20/20 tests under Node v22.16.0. Hosted CI remains skipped while Draft; no CI pass is claimed.
+
+No BWH/Provider access, SSH, production systemd/journal/status/SQLite/config/environment-file read, collector invocation, service/Timer action, or production mutation occurred. Keep PR #812 Draft and M0 BLOCKED.
