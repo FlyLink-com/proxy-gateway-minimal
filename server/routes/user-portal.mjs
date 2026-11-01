@@ -102,6 +102,14 @@ function sendPortalError(res, error) {
     res.status(400).json({ error: "validation_error" });
     return;
   }
+  if (error.code === "ads_consent_invalid") {
+    res.status(400).json({ error: "ads_consent_invalid" });
+    return;
+  }
+  if (error.code === "ads_consent_unavailable") {
+    res.status(503).json({ error: "ads_consent_unavailable" });
+    return;
+  }
   if (error.code === "not_found") {
     res.status(404).json({ error: "not_found" });
     return;
@@ -112,6 +120,7 @@ function sendPortalError(res, error) {
 export function userPortalRoutes(state, options = {}) {
   const router = Router();
   const auth = options.userPortalAuth || state.platform?.userPortalAuth;
+  const adsConsentStore = options.adsConsentStore || state.platform?.adsConsentStore;
   const browserSessions = options.browserSessions || createPortalBrowserSessionTransport({auth});
   router.use(browserSessions.middleware);
   const accessRequests = options.portalAccessRequests || state.platform?.portalAccessRequests;
@@ -323,6 +332,54 @@ export function userPortalRoutes(state, options = {}) {
         passkeyProof: req.body?.passkeyProof
       });
       res.json({ session: completedSession(req, res, result.session, result.rememberMe === true) });
+    } catch (error) {
+      sendPortalError(res, error);
+    }
+  });
+
+  router.get("/api/portal/ads-consent", (req, res) => {
+    res.set("Cache-Control", "no-store");
+    res.set("Referrer-Policy", "no-referrer");
+    try {
+      requireNoQuery(req);
+      const session = requirePortalSession(req);
+      if (!adsConsentStore || typeof adsConsentStore.getConsent !== "function") {
+        res.status(503).json({ error: "ads_consent_unavailable" });
+        return;
+      }
+      res.json({
+        consent: adsConsentStore.getConsent({ accountRef: session.accountId })
+      });
+    } catch (error) {
+      sendPortalError(res, error);
+    }
+  });
+
+  router.post("/api/portal/ads-consent", (req, res) => {
+    res.set("Cache-Control", "no-store");
+    res.set("Referrer-Policy", "no-referrer");
+    try {
+      requireNoQuery(req);
+      const session = requirePortalSession(req);
+      const body = requireExactBody(req, ["adUserData"]);
+      if (typeof body.adUserData !== "boolean") {
+        const error = new Error("adUserData must be a boolean");
+        error.code = "ads_consent_invalid";
+        throw error;
+      }
+      if (!adsConsentStore || typeof adsConsentStore.recordConsent !== "function") {
+        res.status(503).json({ error: "ads_consent_unavailable" });
+        return;
+      }
+      const consent = adsConsentStore.recordConsent({
+        accountRef: session.accountId,
+        adUserData: body.adUserData
+      });
+      if (!consent) {
+        res.status(503).json({ error: "ads_consent_unavailable" });
+        return;
+      }
+      res.json({ consent });
     } catch (error) {
       sendPortalError(res, error);
     }
