@@ -20,6 +20,7 @@ import type {
   PortalAdsClickDescriptor,
   PortalWalletFirstCommerceClient
 } from "./api-contract";
+import { isAdsClickBindingEnabled, readAdsUserDataConsent } from "../../ads-attribution";
 
 const COMMERCE_REFERENCE = /^[a-z][a-z0-9_]{2,95}$/;
 const SESSION_REFERENCE = /^[A-Za-z0-9._:-]{1,256}$/;
@@ -1061,6 +1062,8 @@ function callerIdempotencyKey(value: unknown) {
 }
 
 function callerAdsClick(value: unknown): PortalAdsClickDescriptor | null {
+  // This is a client-side consent gate, not a substitute for the server-side Risk A enforcement.
+  if (!isAdsClickBindingEnabled() || readAdsUserDataConsent() !== "granted") return null;
   try {
     if (!value || typeof value !== "object" || Array.isArray(value) || Object.getPrototypeOf(value) !== Object.prototype) return null;
     const keys = Reflect.ownKeys(value);

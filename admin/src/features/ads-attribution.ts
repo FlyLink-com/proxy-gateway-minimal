@@ -211,8 +211,12 @@ function decodeHandoff(encoded: string): StoredAdsClick | null {
     ) {
       return null;
     }
-    const { v: _version, ...click } = parsed;
-    return isValidStoredClick(click) ? { ...click } as StoredAdsClick : null;
+    const click = {
+      type: parsed.type,
+      value: parsed.value,
+      clickAt: parsed.clickAt
+    };
+    return isValidStoredClick(click) ? { ...click } : null;
   } catch {
     return null;
   }

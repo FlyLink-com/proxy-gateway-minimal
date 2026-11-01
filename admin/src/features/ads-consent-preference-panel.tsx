@@ -119,8 +119,8 @@ export function AdsConsentPreferencePanel({
         <div className="ads-consent-panel__collapsed">
           <span>
             {zh
-              ? consent === "granted" ? "广告衡量：已允许" : "广告衡量：未允许"
-              : consent === "granted" ? "Ad measurement: allowed" : "Ad measurement: not allowed"}
+              ? consent === "granted" ? "广告衡量：已允许" : consent === "denied" ? "广告衡量：未允许" : "广告衡量：尚未选择"
+              : consent === "granted" ? "Ad measurement: allowed" : consent === "denied" ? "Ad measurement: not allowed" : "Ad measurement: not selected"}
           </span>
           <button type="button" onClick={() => {
             setMessage("");

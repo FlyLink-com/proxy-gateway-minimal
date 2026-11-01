@@ -394,7 +394,7 @@ const companySiteCopy = {
       privacy: {
         title: "Privacy policy",
         summary: "Your privacy matters from the first visit.",
-        points: ["Your language choice stays on this device", "Inquiry details help us respond to your request", "Optional ad conversion measurement is used only with your consent; ad personalization stays off"]
+        points: ["Your language choice stays on this device", "Inquiry details help us respond to your request", "If enabled, optional ad conversion measurement is used only with your consent; ad personalization stays off"]
       },
       "acceptable-use": {
         title: "Acceptable use",
@@ -649,7 +649,7 @@ const companySiteCopy = {
       privacy: {
         title: "隐私政策",
         summary: "从第一次访问开始，尊重你的隐私选择。",
-        points: ["语言偏好只保存在你的设备上", "联系信息只用于回应你的需求", "广告转化衡量仅在你明确同意后使用；不会启用个性化广告"]
+        points: ["语言偏好只保存在你的设备上", "联系信息只用于回应你的需求", "如启用广告转化衡量，仅在你明确同意后使用；不会启用个性化广告"]
       },
       "acceptable-use": {
         title: "可接受使用",
