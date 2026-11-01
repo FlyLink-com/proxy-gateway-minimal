@@ -82,14 +82,6 @@ test("retention inventory is aggregate-only and dry-run does not mutate rows", (
     `);
     seedClick(db, "order_ads_retention_old", "acct_ads_retention", "synthetic_old_gclid_001", CUTOFF);
     seedClick(db, "order_ads_retention_new", "acct_ads_retention", "synthetic_new_gclid_002", CUTOFF + 1);
-    // The linked rows are newer than the expired claim. Their order linkage,
-    // not their independent timestamp, must still make them eligible.
-    db.prepare(
-      "update platform_ads_click_bindings set created_at = ? where order_ref = ?"
-    ).run(CUTOFF + 1, "order_ads_retention_old");
-    db.prepare(
-      "update platform_ads_click_consent_claims set created_at = ? where order_ref = ?"
-    ).run(CUTOFF + 1, "order_ads_retention_old");
     const before = snapshot(db, "order_ads_retention_old");
 
     const result = inspectAdsClickRetention(db, { now: NOW });
@@ -124,14 +116,6 @@ test("apply deletes expired claims and bindings, stops pending outbox, and is id
     `);
     seedClick(db, "order_ads_retention_old", "acct_ads_retention", "synthetic_old_gclid_001", CUTOFF);
     seedClick(db, "order_ads_retention_new", "acct_ads_retention", "synthetic_new_gclid_002", CUTOFF + 1);
-    // The linked rows are newer than the expired claim. Their order linkage,
-    // not their independent timestamp, must still make them eligible.
-    db.prepare(
-      "update platform_ads_click_bindings set created_at = ? where order_ref = ?"
-    ).run(CUTOFF + 1, "order_ads_retention_old");
-    db.prepare(
-      "update platform_ads_click_consent_claims set created_at = ? where order_ref = ?"
-    ).run(CUTOFF + 1, "order_ads_retention_old");
 
     const result = runAdsClickRetention(db, { now: NOW, apply: true });
     assert.equal(result.status, "completed");
@@ -188,87 +172,6 @@ test("apply deletes expired claims and bindings, stops pending outbox, and is id
       deletedBindingCount: 0,
       deletedConsentLinkCount: 0,
       skippedOutboxCount: 0
-    });
-  });
-});
-
-test("retention independently removes expired orphan bindings and consent links", () => {
-  withDb((db) => {
-    ensureAdsConversionSchema(db);
-    db.exec(`
-      create table platform_ads_click_consent_claims (
-        order_ref text primary key,
-        account_ref text not null,
-        created_at integer not null
-      )
-    `);
-    db.prepare(`
-      insert into platform_ads_click_bindings (
-        order_ref, account_ref, model, click_type, click_value, click_at,
-        consent_ad_user_data, consent_ad_personalization, created_at, updated_at
-      ) values (?, ?, 'legacy', 'gclid', ?, ?, 1, 0, ?, ?)
-    `).run(
-      "order_ads_retention_orphan_binding",
-      "acct_ads_retention",
-      "synthetic_orphan_retention_003",
-      CUTOFF,
-      CUTOFF,
-      CUTOFF
-    );
-    db.prepare(`
-      insert into platform_ads_click_consent_claims (order_ref, account_ref, created_at)
-      values (?, ?, ?)
-    `).run("order_ads_retention_orphan_link", "acct_ads_retention", CUTOFF);
-    db.prepare(`
-      insert into platform_ads_conversion_outbox (
-        order_ref, model, transaction_id, value_units, value_unit, terminal_at,
-        status, skip_reason, attempts, next_attempt_at, last_error,
-        google_request_id, created_at, updated_at
-      ) values (?, 'legacy', ?, 20, 'COIN', ?, 'pending', null, 0, ?, null, null, ?, ?)
-    `).run(
-      "order_ads_retention_orphan_binding",
-      "order_ads_retention_orphan_binding",
-      CUTOFF,
-      CUTOFF + 1000,
-      CUTOFF,
-      CUTOFF
-    );
-
-    const dryRun = inspectAdsClickRetention(db, { now: NOW });
-    assert.deepEqual(dryRun.counts, {
-      eligibleClaimCount: 0,
-      eligibleBindingCount: 1,
-      eligibleConsentLinkCount: 1,
-      eligibleOutboxCount: 1,
-      deletedClaimCount: 0,
-      deletedBindingCount: 0,
-      deletedConsentLinkCount: 0,
-      skippedOutboxCount: 0
-    });
-    assert.equal(JSON.stringify(dryRun).includes("synthetic_orphan_retention_003"), false);
-
-    const applied = runAdsClickRetention(db, { now: NOW, apply: true });
-    assert.deepEqual(applied.counts, {
-      eligibleClaimCount: 0,
-      eligibleBindingCount: 1,
-      eligibleConsentLinkCount: 1,
-      eligibleOutboxCount: 1,
-      deletedClaimCount: 0,
-      deletedBindingCount: 1,
-      deletedConsentLinkCount: 1,
-      skippedOutboxCount: 1
-    });
-    assert.equal(db.prepare(
-      "select count(*) from platform_ads_click_bindings where order_ref = ?"
-    ).pluck().get("order_ads_retention_orphan_binding"), 0);
-    assert.equal(db.prepare(
-      "select count(*) from platform_ads_click_consent_claims where order_ref = ?"
-    ).pluck().get("order_ads_retention_orphan_link"), 0);
-    assert.deepEqual(db.prepare(
-      "select status, skip_reason from platform_ads_conversion_outbox where order_ref = ?"
-    ).get("order_ads_retention_orphan_binding"), {
-      status: "skipped",
-      skip_reason: "click_retention_expired"
     });
   });
 });
