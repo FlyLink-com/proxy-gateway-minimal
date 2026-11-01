@@ -1,6 +1,6 @@
 # M0-A2-1 v7 — BWH read-only metering diagnostic (v9 byte-stable checkout repair)
 
-**Status:** v9 Windows local validation was reported passed on code commit `5187edc19380fdb44dd2e0f531e9cfdf580b00e1` using Node `v22.16.0` (SHA256 7/7, syntax checks 4/4, self-test passed, tests 10/10). Hosted CI remains skipped; this is not production-read authorization. The documentation-only evidence update does not change diagnostic runtime or test code.
+**Status:** The operator reported full Windows local acceptance on `f60c0187c2fee3f3b0056d7fabfca70444b34f6c` using Node `v22.16.0` (SHA256 7/7, syntax checks 4/4, self-test passed, tests 18/18). The bounded-read / staged-environment follow-up on `fix/m0-a2-1-v7-bounded-reads-env-20261031` is a later code change with 20 tests and remains pending its own full rerun. Hosted CI remains skipped; this is not production-read authorization.
 
 ## Purpose
 
@@ -21,7 +21,7 @@ Prepare one narrowly scoped read-only pass to close the diagnostic gaps recorded
 - No `systemctl start`, `stop`, `restart`, `enable`, `disable`, `reset-failed`, `daemon-reload`, or unit-file edit.
 - No full-metering SQLite database read.
 - No full-metering journal directory, `checkpoint.json`, `pending.json`, `writer.lock`, or config-file read.
-- No environment-file content read. Only the App and status-writer units request `Environment` metadata; the full-metering unit no longer requests its environment. `systemctl show` returns each requested unit's complete `Environment` property in memory, but only the target assignment is parsed and no raw values or paths are printed. `/proc/<AppPID>/environ` is scanned in bounded chunks and only the target path value is retained. Any nonempty `EnvironmentFiles` setting on either service makes the binding `unknown`, because those files can override `Environment=` and are intentionally not read.
+- No environment-file content read. Baseline App/status-writer metadata requests omit `Environment`. Only if both units have no configured `EnvironmentFiles`, default/root identity, `DynamicUser=no`, and neither `PassEnvironment` nor `UnsetEnvironment` references the target variable does the script issue separate, per-unit `systemctl show --property=Environment` reads. `systemctl` emits the complete property transiently; the parser immediately extracts only `EDGE_USAGE_COLLECTOR_STATUS_PATH`, and unrelated values are not retained, logged, or printed. If the metadata gate fails, the `Environment` property is not requested. The full-metering unit never requests its environment. `/proc/<AppPID>/environ` is scanned in bounded chunks and only the target path value is retained.
 - No raw systemd `ExecStart`, fragment/drop-in paths, environment values, process IDs, invocation IDs, journal messages, or raw status JSON in output.
 - No automatic retry. Any blocked result is a stop point; another run requires separate approval.
 
@@ -53,7 +53,7 @@ The correct comparison is:
 
 not App ↔ `gccgw-full-metering-collect.service`.
 
-The status binding is reported `matched` only if the status writer's `ExecStart` is bound to `traffic-usage-collect-once.mjs --collect`, both the App and writer have no configured `EnvironmentFiles`, their direct `EDGE_USAGE_COLLECTOR_STATUS_PATH` assignments match, the running App process contains that same absolute path, neither `PassEnvironment` nor `UnsetEnvironment` mentions the target variable, and both units use the default or explicit root identity. Any configured environment file makes the result `unknown`: `EnvironmentFile=` is applied after `Environment=` and can override the direct assignment, while this package intentionally does not read environment-file contents. Non-root or dynamic service identities also remain `unknown`; the package does not guess UID/GID mappings.
+The status binding is reported `matched` only if the status writer's `ExecStart` is bound to `traffic-usage-collect-once.mjs --collect`, both units pass the metadata gate before any `Environment` property is requested, the separately read target assignments match, the running App process contains that same absolute path, neither `PassEnvironment` nor `UnsetEnvironment` mentions the target variable, and both units use the default or explicit root identity. Any configured environment file makes the result `unknown`: `EnvironmentFile=` is applied after `Environment=` and can override the direct assignment, while this package intentionally does not read environment-file contents. Non-root or dynamic service identities also remain `unknown`; the package does not guess UID/GID mappings.
 
 Only after a match does the script read the status projection. The file is bounded to 256 KiB, must be a regular non-symlink with one link, root UID/GID ownership, and no group/world permissions. Every parent directory through `/` must also be a real root-owned directory with no group/world write permission. File and directory metadata are snapshotted before and after the read; inode, ownership, mode, size, timestamps, path resolution, and directory-chain drift fail closed. The App release's pinned sanitizer is used before any status data is printed.
 
@@ -114,7 +114,7 @@ node --check scripts/lib/m0-a2-1-v7-archive-pins.mjs
 node --check server/tests/m0-a2-1-v7.test.mjs
 node scripts/m0-a2-1-v7.mjs --self-test
 node --test server/tests/m0-a2-1-v7.test.mjs
-# Expected: 18/18 tests passed
+# Expected: 20/20 tests passed
 ```
 
 ### Recorded v9 Windows result — operator-reported (2026-10-31)
@@ -128,7 +128,7 @@ node --test server/tests/m0-a2-1-v7.test.mjs
 - `sha256sum -c docs/runbooks/m0-a2-1-v7/SHA256SUMS`: 7/7 OK, exit code 0.
 - Four `node --check` commands: all exit code 0.
 - `node scripts/m0-a2-1-v7.mjs --self-test`: `m0_a2_1_v7_self_test=passed`, exit code 0.
-- `node --test server/tests/m0-a2-1-v7.test.mjs`: 10/10 passed, exit code 0.
+- `node --test server/tests/m0-a2-1-v7.test.mjs`: 18/18 passed, exit code 0.
 - The original working directory with uncommitted changes was not touched. No BWH/Provider connection or production read occurred.
 
 This result is recorded as operator-reported local evidence and applies to the exact tested code commit above. The subsequent evidence-archive commit changes only README, validation/review records, and the SHA256 manifest; it does not change diagnostic runtime or test code. The seven manifest entries are regenerated for that archive commit.
@@ -141,9 +141,26 @@ This result is recorded as operator-reported local evidence and applies to the e
 - This was checksum-only. Node was not reinstalled, and the four `node --check` commands, `--self-test`, and `node --test` were not rerun against this archive head.
 - The full code validation above remains bound to `5187edc19380fdb44dd2e0f531e9cfdf580b00e1`. This follow-up is operator-reported local checksum evidence only, not a full test rerun, hosted CI result, or production read.
 
+### Latest operator-reported acceptance — exact f60 head (2026-10-31)
+
+- Workspace: `D:\\Projects\\proxy-gateway-minimal-pr812-v9` (existing isolated workspace reused).
+- Exact tested commit: `f60c0187c2fee3f3b0056d7fabfca70444b34f6c`.
+- Node `v22.16.0` from the isolated toolchain; system Node `v24.16.0` was not replaced.
+- SHA256 manifest: 7/7 OK; four `node --check` commands: all exit 0.
+- `--self-test`: `m0_a2_1_v7_self_test=passed`; `node --test`: 18/18 passed; all exit 0.
+- Original dirty working directory untouched; no BWH/Provider connection or production read.
+- This is operator-reported evidence for f60 only. It does not validate the later bounded-read / staged-environment follow-up branch.
+
+### Bounded-read and environment-gate follow-up — validation pending
+
+- Every diagnostic file read now uses a chunked reader with a strict byte ceiling and a one-byte overflow probe: App source pins (1 MiB), each archive file (its manifest size), and status projection (256 KiB). The production diagnostic no longer calls `readFileSync`.
+- Baseline App/status-writer metadata no longer requests `Environment`. The property is fetched separately only after both units pass the no-EnvironmentFiles/root-identity/PassEnvironment/UnsetEnvironment gate; only the target assignment is retained, and before/after selected values must match.
+- Two regression tests were added; the repository suite now declares 20 tests.
+- The follow-up branch must pass the full checksum, four syntax checks, self-test, and 20-test suite under Node `v22.16.0` before it can be considered for Ready. Do not carry forward the f60 18/18 result as evidence for this later code.
+
 Record the exact output and exit code of every command. If Node is not exactly `v22.16.0`, stop and record the version mismatch; do not substitute another Node version. A skipped CI run is not a pass.
 
-`--self-test` exits before the production branch and makes no `systemctl` or `journalctl` call. It covers the direct status binding fixture, EnvironmentFile override rejection, the exact Node version pin, and additional OnFailure-handler reporting. The CLI entrypoint is guarded; the Node test suite imports the diagnostic module directly and tests parsers, service binding, current-pointer stability, exact stop-unit argv matching, status-writer binding, environment scanning, root service identity and status-file metadata, archive manifest integrity, exact-invocation error-code extraction, time correlation, the required external timeout wrapper, and the read-only command surface.
+`--self-test` exits before the production branch and makes no `systemctl` or `journalctl` call. It covers the direct status binding fixture, EnvironmentFile override rejection, the exact Node version pin, and additional OnFailure-handler reporting. The CLI entrypoint is guarded; the Node test suite imports the diagnostic module directly and tests parsers, bounded file reads, staged environment-read gates, service binding, current-pointer stability, exact stop-unit argv matching, status-writer binding, environment scanning, root service identity and status-file metadata, archive manifest integrity, exact-invocation error-code extraction, time correlation, the required external timeout wrapper, and the read-only command surface.
 
 ## Future execution shape — NOT APPROVED BY THIS PR
 
@@ -167,4 +184,4 @@ M0 remains **BLOCKED**. This package is diagnostic preparation only. It does not
 - Environment binding: any nonempty App or status-writer `EnvironmentFiles` list prevents a `matched` result because env files can override direct `Environment=` assignments and are intentionally not read. The full-metering unit no longer requests its `Environment` property. The App process environment is scanned in bounded chunks; unrelated values are not retained. `PassEnvironment` / `UnsetEnvironment` references to the target variable and non-root/dynamic service identities are rejected.
 - Status-file trust: the status file must be root-owned, root-group-owned, private, single-link and non-symlinked; every parent directory through `/` must be a real root-owned directory without group/world write permission. File and directory metadata are checked before and after reading.
 - Failure handling: the full `OnFailure` list is inspected and additional handlers are reported rather than hidden.
-- The test suite now declares 18 tests. Run the complete local validation block above in the isolated v9 workspace against the exact final commit before considering Ready. Hosted CI remains intentionally skipped while Draft; this follow-up does not authorize production reads or mutation.
+- The f60 head was operator-reported as 18/18 passed. This follow-up adds bounded reads and staged environment-property retrieval; the suite now declares 20 tests. Run the complete local validation block above in the isolated v9 workspace against the exact final follow-up commit before considering Ready. Hosted CI remains intentionally skipped while Draft; this follow-up does not authorize production reads or mutation.
