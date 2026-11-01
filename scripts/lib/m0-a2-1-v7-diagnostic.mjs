@@ -290,6 +290,14 @@ export function canReadTargetEnvironment(row) {
   if (!isRootServiceIdentity(row)) return false;
   return ['PassEnvironment','UnsetEnvironment'].every(name => !environmentOptionContains(row[name], key));
 }
+export function canReadStatusBindingEnvironment(app, statusWriter) {
+  return canReadTargetEnvironment(app)
+    && canReadTargetEnvironment(statusWriter)
+    && JSON.stringify(app.EnvironmentFiles) === JSON.stringify(statusWriter.EnvironmentFiles)
+    && ['PassEnvironment','UnsetEnvironment'].every(name =>
+      String(app[name] ?? '') === String(statusWriter[name] ?? '')
+    );
+}
 function readTargetEnvironmentValue(unit) {
   // Only request Environment after the metadata gate passes. systemd returns the full
   // property transiently; this function retains only the one allowlisted assignment.
@@ -353,11 +361,7 @@ export function resolveStatusBinding(app, statusWriter, processValue, appEnviron
   if (!required.every(name => Object.hasOwn(app, name)) || !required.every(name => Object.hasOwn(statusWriter, name))) return false;
   if (appEnvironmentValue === undefined && !Object.hasOwn(app, 'Environment')) return false;
   if (writerEnvironmentValue === undefined && !Object.hasOwn(statusWriter, 'Environment')) return false;
-  if (!canReadTargetEnvironment(app) || !canReadTargetEnvironment(statusWriter)) return false;
-  if (JSON.stringify(app.EnvironmentFiles) !== JSON.stringify(statusWriter.EnvironmentFiles)) return false;
-  for (const name of ['PassEnvironment','UnsetEnvironment']) {
-    if (String(app[name] ?? '') !== String(statusWriter[name] ?? '')) return false;
-  }
+  if (!canReadStatusBindingEnvironment(app, statusWriter)) return false;
   const appValue = appEnvironmentValue === undefined
     ? selectedEnvironmentAssignment(app.Environment, key)
     : appEnvironmentValue;
@@ -594,9 +598,6 @@ export async function runM0A2V7(expectedRelease) {
     const stopBefore = systemdShow(STOP_SERVICE, STOP_PROPERTIES);
     const statusBefore = systemdShow(STATUS_SERVICE, STATUS_SERVICE_PROPERTIES);
     const statusTimerBefore = systemdShow(STATUS_TIMER, TIMER_PROPERTIES);
-    const environmentReadEligibleBefore = canReadTargetEnvironment(appBefore) && canReadTargetEnvironment(statusBefore);
-    const appEnvironmentBefore = environmentReadEligibleBefore ? readTargetEnvironmentValue(APP_UNIT) : null;
-    const statusEnvironmentBefore = environmentReadEligibleBefore ? readTargetEnvironmentValue(STATUS_SERVICE) : null;
     assertTimeBudget(startedAt);
 
     stage = 'app_release_binding';
@@ -623,6 +624,11 @@ export async function runM0A2V7(expectedRelease) {
     const statusExecMatched = Object.hasOwn(statusBefore, 'ExecStart') && Object.hasOwn(statusBefore, 'WorkingDirectory')
       ? inspectStatusWriterExecStart(statusBefore.ExecStart, statusBefore.WorkingDirectory, appRoot, fs.realpathSync)
       : null;
+    const environmentReadEligibleBefore = statusExecMatched === true
+      && statusBefore.LoadState === 'loaded'
+      && canReadStatusBindingEnvironment(appBefore, statusBefore);
+    const appEnvironmentBefore = environmentReadEligibleBefore ? readTargetEnvironmentValue(APP_UNIT) : null;
+    const statusEnvironmentBefore = environmentReadEligibleBefore ? readTargetEnvironmentValue(STATUS_SERVICE) : null;
     if (statusExecMatched && statusBefore.LoadState === 'loaded' && environmentReadEligibleBefore) {
       statusPath = processStatusPath(pid);
     }
@@ -664,7 +670,9 @@ export async function runM0A2V7(expectedRelease) {
       [APP_UNIT,appBefore,appAfter],[FULL_SERVICE,fullBefore,fullAfter],[FULL_TIMER,fullTimerBefore,fullTimerAfter],
       [STOP_SERVICE,stopBefore,stopAfter],[STATUS_SERVICE,statusBefore,statusAfter],[STATUS_TIMER,statusTimerBefore,statusTimerAfter]
     ]) sameSnapshot(before, after, unit);
-    const environmentReadEligibleAfter = canReadTargetEnvironment(appAfter) && canReadTargetEnvironment(statusAfter);
+    const environmentReadEligibleAfter = statusExecMatched === true
+      && statusAfter.LoadState === 'loaded'
+      && canReadStatusBindingEnvironment(appAfter, statusAfter);
     if (environmentReadEligibleBefore !== environmentReadEligibleAfter) fail('environment_read_gate_changed');
     if (environmentReadEligibleBefore) {
       const appEnvironmentAfter = readTargetEnvironmentValue(APP_UNIT);
@@ -708,7 +716,7 @@ export async function runM0A2V7(expectedRelease) {
     console.log(`status_writer_service ${unitState(statusBefore)} started_at=${statusBefore.ExecMainStartTimestamp ?? 'unknown'} exited_at=${statusBefore.ExecMainExitTimestamp ?? 'unknown'} restarts=${statusBefore.NRestarts ?? 'unknown'}`);
     console.log(`status_writer_timer ${unitState(statusTimerBefore)} unit_link_matches=${unitLink(statusTimerBefore, STATUS_SERVICE)} last_trigger=${statusTimerBefore.LastTriggerUSec ?? 'unknown'} next_elapse=${statusTimerBefore.NextElapseUSecRealtime ?? 'unknown'} persistent=${statusTimerBefore.Persistent ?? 'unknown'}`);
     console.log(`status_binding=${statusPathBound ? 'matched' : 'unknown'}`);
-    console.log(`status_environment_read=${environmentReadEligibleBefore ? 'gated_target_assignment_only' : 'skipped_metadata_gate'}`);
+    console.log(`status_environment_read=${environmentReadEligibleBefore ? 'after_exec_and_metadata_gates_target_assignment_only' : 'skipped_exec_or_metadata_gate'}`);
     printProjection(projection);
     console.log(`systemd_journal_read=${exactInvocation ? 'targeted_invocation_attempted' : 'skipped_invocation_not_current'}`);
     console.log('raw_journal_output_returned=no');
