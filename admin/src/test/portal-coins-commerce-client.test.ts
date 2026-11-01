@@ -5,6 +5,7 @@ import {
 } from "../features/user-portal/user-portal-client";
 import { createLocalUserPortalClient } from "../features/user-portal/user-portal-preview-client";
 import { PortalCoinCommerceClientError } from "../features/user-portal/commerce";
+import { clearAdsClickData, setAdsUserDataConsent } from "../features/ads-attribution";
 
 type CommerceSurface = {
   listOffers(input: { sessionRef: string }): Promise<unknown>;
@@ -240,7 +241,10 @@ async function expectSafeFailure(
 }
 
 afterEach(() => {
+  clearAdsClickData();
+  document.cookie = "gccwebos-ad-user-data-consent-v1=; Path=/; Max-Age=0";
   vi.restoreAllMocks();
+  vi.unstubAllEnvs();
 });
 
 describe("Portal Coins Commerce HTTP client", () => {
@@ -1260,6 +1264,8 @@ describe("Portal Coins Commerce HTTP client", () => {
     }
   });
   test("submits a consented adsClick descriptor only with the final legacy createOrder mutation", async () => {
+    vi.stubEnv("VITE_PUBLIC_ADS_CLICK_BINDING_ENABLED", "true");
+    expect(setAdsUserDataConsent("granted")).toBe(true);
     const fetchFn = vi.fn<typeof fetch>(async () => wireResponse({ order: HELD_ORDER }, 201));
     const commerce = commerceOf(createHttpUserPortalClient({ fetchFn }));
     const adsClick = {
@@ -1283,6 +1289,8 @@ describe("Portal Coins Commerce HTTP client", () => {
   });
 
   test("omits an invalid adsClick without failing an otherwise valid legacy purchase", async () => {
+    vi.stubEnv("VITE_PUBLIC_ADS_CLICK_BINDING_ENABLED", "true");
+    expect(setAdsUserDataConsent("granted")).toBe(true);
     const fetchFn = vi.fn<typeof fetch>(async () => wireResponse({ order: HELD_ORDER }, 201));
     const commerce = commerceOf(createHttpUserPortalClient({ fetchFn }));
 

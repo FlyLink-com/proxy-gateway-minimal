@@ -4,6 +4,7 @@ import {
   createPortalCommerceModelClient,
   createPortalWalletFirstCommerceClient
 } from "../features/user-portal/commerce";
+import { clearAdsClickData, setAdsUserDataConsent } from "../features/ads-attribution";
 
 const OFFER = {
   offerRef: "offer_annual_premium",
@@ -87,7 +88,10 @@ async function expectSafeFailure(promise: Promise<unknown>) {
 }
 
 afterEach(() => {
+  clearAdsClickData();
+  document.cookie = "gccwebos-ad-user-data-consent-v1=; Path=/; Max-Age=0";
   vi.restoreAllMocks();
+  vi.unstubAllEnvs();
 });
 
 describe("Portal wallet-first Commerce HTTP client", () => {
@@ -267,6 +271,8 @@ describe("Portal wallet-first Commerce HTTP client", () => {
     }
   });
   test("submits a consented adsClick descriptor only with the final wallet-first reservation mutation", async () => {
+    vi.stubEnv("VITE_PUBLIC_ADS_CLICK_BINDING_ENABLED", "true");
+    expect(setAdsUserDataConsent("granted")).toBe(true);
     const fetchFn = vi.fn<typeof fetch>(async () => response({ transition: TRANSITION }, 201));
     const commerce = createPortalWalletFirstCommerceClient({ fetchFn });
     const adsClick = {
@@ -290,6 +296,8 @@ describe("Portal wallet-first Commerce HTTP client", () => {
   });
 
   test("omits an invalid adsClick without failing an otherwise valid wallet-first reservation", async () => {
+    vi.stubEnv("VITE_PUBLIC_ADS_CLICK_BINDING_ENABLED", "true");
+    expect(setAdsUserDataConsent("granted")).toBe(true);
     const fetchFn = vi.fn<typeof fetch>(async () => response({ transition: TRANSITION }, 201));
     const commerce = createPortalWalletFirstCommerceClient({ fetchFn });
 

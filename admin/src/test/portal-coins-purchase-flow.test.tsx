@@ -129,6 +129,8 @@ afterEach(() => {
   clearAdsClickData();
   window.sessionStorage.clear();
   document.cookie = "gccwebos-ad-user-data-consent-v1=; Path=/; Max-Age=0";
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
   vi.unstubAllEnvs();
 });
 
@@ -1335,6 +1337,7 @@ describe("Portal Coins purchase flow", () => {
   });
   test("attaches a consented Ads click only to the final legacy order mutation", async () => {
     vi.stubEnv("VITE_PUBLIC_ADS_CLICK_BINDING_ENABLED", "true");
+    vi.stubGlobal("crypto", { randomUUID: () => "ads_click_purchase_1" });
     expect(setAdsUserDataConsent("granted")).toBe(true);
     window.sessionStorage.setItem(PORTAL_ADS_CLICK_STORAGE_KEY, JSON.stringify({
       type: "gclid",
