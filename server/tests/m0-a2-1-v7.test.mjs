@@ -185,7 +185,7 @@ test('production branch has only fixed read commands and no systemd mutation or 
   assert.match(source, /const args = \['show', unit/);
   assert.match(source, /'--no-pager','--output=json','--lines=64'/);
   assert.match(source, /function snapshotAppSourceDirectories/);
-  assert.match(source, /isSafeAppSourceDirectoryMetadata\\(before\\)/);
+  assert.ok(source.includes('isSafeAppSourceDirectoryMetadata(before)'));
   const rawProjection = source.indexOf("if (raw.availability === 'raw')");
   const immediateSourcePin = source.indexOf("assertPinnedAppSource(appRoot);", rawProjection);
   const projectionImport = source.indexOf("await import(moduleUrl)", rawProjection);
