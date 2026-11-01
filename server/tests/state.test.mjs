@@ -4843,7 +4843,7 @@ test("createRuntimeState withholds remote data-plane channels until matching app
 
     const withScopedReceipts = second.subscriptions.core.resolveSubscriptionArtifact(artifactSecret);
     assert.equal(withScopedReceipts.ok, true);
-    assert.deepEqual(withScopedReceipts.proxyConfig.servers.map((server) => server.name), channels);
+    assert.deepEqual(withScopedReceipts.proxyConfig.servers.map((server) => server.name), channels.slice(0, 6));
     const otherWithScopedReceipts = second.subscriptions.core.resolveSubscriptionArtifact(otherArtifactSecret);
     assert.equal(otherWithScopedReceipts.ok, true);
     assert.deepEqual(otherWithScopedReceipts.proxyConfig.servers.map((server) => server.name), channels.slice(0, 3));
