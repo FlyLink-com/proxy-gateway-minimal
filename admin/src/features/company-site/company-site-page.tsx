@@ -881,8 +881,8 @@ export function CompanySitePage() {
           <a href="#contact" onClick={(event) => handleSectionClick(event, "contact")}>{copy.nav.contact}</a>
           <a href={buildInfoPageHash("features")} onClick={(event) => openInfoPage(event, "features")}>{copy.nav.about}</a>
           <div className="company-site-mobile-account-links">
-            <a className="is-primary" href={buildPortalAdsClickHandoffUrl(registerUrl)}>{copy.actions.getStarted}</a>
-            <a href={buildPortalAdsClickHandoffUrl(loginUrl)}>{copy.actions.signIn}</a>
+            <a className="is-primary" href={buildPortalAdsClickHandoffUrl(registerUrl)} referrerPolicy="no-referrer">{copy.actions.getStarted}</a>
+            <a href={buildPortalAdsClickHandoffUrl(loginUrl)} referrerPolicy="no-referrer">{copy.actions.signIn}</a>
           </div>
         </nav>
 
@@ -900,8 +900,8 @@ export function CompanySitePage() {
               </button>
             ))}
           </div>
-          <a className="company-site-text-action" href={buildPortalAdsClickHandoffUrl(loginUrl)}>{copy.actions.signIn}</a>
-          <a className="company-site-primary compact" href={buildPortalAdsClickHandoffUrl(registerUrl)}>{copy.actions.getStarted}</a>
+          <a className="company-site-text-action" href={buildPortalAdsClickHandoffUrl(loginUrl)} referrerPolicy="no-referrer">{copy.actions.signIn}</a>
+          <a className="company-site-primary compact" href={buildPortalAdsClickHandoffUrl(registerUrl)} referrerPolicy="no-referrer">{copy.actions.getStarted}</a>
           <button
             className="company-site-menu-button"
             type="button"
@@ -946,7 +946,7 @@ export function CompanySitePage() {
           <h1>{copy.hero.title}</h1>
           <p>{copy.hero.description}</p>
           <div className="company-site-actions">
-            <a className="company-site-primary" href={buildPortalAdsClickHandoffUrl(registerUrl)}>
+            <a className="company-site-primary" href={buildPortalAdsClickHandoffUrl(registerUrl)} referrerPolicy="no-referrer">
               {copy.actions.getStarted}
               <ArrowRight aria-hidden="true" />
             </a>
@@ -1056,7 +1056,7 @@ export function CompanySitePage() {
                   <li key={point}><Check aria-hidden="true" />{point}</li>
                 ))}
               </ul>
-              <a className={index === 1 ? "company-site-primary" : "company-site-secondary"} href={buildPortalAdsClickHandoffUrl(registerUrl)}>
+              <a className={index === 1 ? "company-site-primary" : "company-site-secondary"} href={buildPortalAdsClickHandoffUrl(registerUrl)} referrerPolicy="no-referrer">
                 {index === 1 ? copy.actions.getStarted : copy.actions.compare}
                 <ArrowRight aria-hidden="true" />
               </a>
@@ -1127,7 +1127,7 @@ export function CompanySitePage() {
             <a className="company-site-secondary" href={buildInfoPageHash("features")} onClick={(event) => openInfoPage(event, "features")}>
               {copy.actions.about}
             </a>
-            <a className="company-site-primary" href={buildPortalAdsClickHandoffUrl(loginUrl)}>{copy.actions.signIn}<ArrowRight aria-hidden="true" /></a>
+            <a className="company-site-primary" href={buildPortalAdsClickHandoffUrl(loginUrl)} referrerPolicy="no-referrer">{copy.actions.signIn}<ArrowRight aria-hidden="true" /></a>
           </div>
         </div>
       </section>
@@ -1143,8 +1143,8 @@ export function CompanySitePage() {
           ))}
         </ol>
         <div className="company-site-actions">
-          <a className="company-site-primary" href={buildPortalAdsClickHandoffUrl(registerUrl)}>{copy.actions.getStarted}<ArrowRight aria-hidden="true" /></a>
-          <a className="company-site-secondary" href={buildPortalAdsClickHandoffUrl(loginUrl)}>{copy.actions.signIn}</a>
+          <a className="company-site-primary" href={buildPortalAdsClickHandoffUrl(registerUrl)} referrerPolicy="no-referrer">{copy.actions.getStarted}<ArrowRight aria-hidden="true" /></a>
+          <a className="company-site-secondary" href={buildPortalAdsClickHandoffUrl(loginUrl)} referrerPolicy="no-referrer">{copy.actions.signIn}</a>
         </div>
       </section>
 
@@ -1326,7 +1326,7 @@ function CompanySiteInfoPage({
             <h1>{page.title}</h1>
             <p>{page.summary}</p>
             <div className="company-site-actions">
-              <a className="company-site-primary" href={buildPortalAdsClickHandoffUrl(registerUrl)}>{copy.infoShared.getStarted}<ArrowRight aria-hidden="true" /></a>
+              <a className="company-site-primary" href={buildPortalAdsClickHandoffUrl(registerUrl)} referrerPolicy="no-referrer">{copy.infoShared.getStarted}<ArrowRight aria-hidden="true" /></a>
               <a className="company-site-secondary" href="#contact" onClick={onContact}>{copy.infoShared.contact}</a>
             </div>
           </div>
