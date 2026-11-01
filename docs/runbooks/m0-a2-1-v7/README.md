@@ -1,6 +1,6 @@
 # M0-A2-1 v7 — BWH read-only metering diagnostic (v9 byte-stable checkout repair)
 
-**Status:** The operator reported full Windows local acceptance on `f60c0187c2fee3f3b0056d7fabfca70444b34f6c` using Node `v22.16.0` (SHA256 7/7, syntax checks 4/4, self-test passed, tests 18/18). The bounded-read / staged-environment follow-up on `fix/m0-a2-1-v7-bounded-reads-env-20261031` is a later code change with 20 tests and remains pending its own full rerun. Hosted CI remains skipped; this is not production-read authorization.
+**Status:** The operator reports complete local acceptance on exact code commit `0477799c809aa6d16b4ad121db9915fa5a604f70` using Node `v22.16.0` (SHA256 7/7, syntax checks 4/4, self-test passed, tests 20/20). This result is bound to that code commit. A subsequent documentation-only synchronization changes this runbook, validation/review records, and the checksum manifest; the resulting exact PR head must rerun the full validation block before Ready. Hosted CI remains skipped; this is not production-read authorization.
 
 ## Purpose
 
@@ -151,12 +151,12 @@ This result is recorded as operator-reported local evidence and applies to the e
 - Original dirty working directory untouched; no BWH/Provider connection or production read.
 - This is operator-reported evidence for f60 only. It does not validate the later bounded-read / staged-environment follow-up branch.
 
-### Bounded-read and environment-gate follow-up — validation pending
+### Bounded-read and environment-gate follow-up — exact-head acceptance recorded
 
 - Every diagnostic file read now uses a chunked reader with a strict byte ceiling and a one-byte overflow probe: App source pins (1 MiB), each archive file (its manifest size), and status projection (256 KiB). The production diagnostic no longer calls `readFileSync`.
 - Baseline App/status-writer metadata no longer requests `Environment`. The property is fetched separately only after the status-writer `ExecStart` matches the resolved App release and both units pass the no-EnvironmentFiles/root-identity/PassEnvironment/UnsetEnvironment gate; only the target assignment is retained, and before/after selected values must match.
 - Two regression tests were added; the repository suite now declares 20 tests.
-- Operator-reported acceptance on exact commit `0f845aa289c96f347774dbcd24ac3d4d11ff2d38` used Node `v22.16.0`: checksum 7/7, four syntax checks, and self-test passed; the complete suite was 19/20 (exit 1). The sole failure was a stale static source assertion expecting `canReadTargetEnvironment(appBefore)` after production code had moved to `canReadStatusBindingEnvironment(appBefore, statusBefore)`. The assertion alone was updated in commit `1122a2dc71d0193f28db3d0857a4dda21bee38e3`; no production code changed. The new exact PR head must pass the full checksum, four syntax checks, self-test, and 20/20 suite under Node `v22.16.0` before it can be considered for Ready. Do not carry forward earlier results as evidence for the new head.
+- Operator-reported acceptance on exact commit `0f845aa289c96f347774dbcd24ac3d4d11ff2d38` used Node `v22.16.0`: checksum 7/7, four syntax checks, and self-test passed; the complete suite was 19/20 (exit 1). The sole failure was a stale static source assertion expecting `canReadTargetEnvironment(appBefore)` after production code had moved to `canReadStatusBindingEnvironment(appBefore, statusBefore)`. The assertion alone was updated in commit `1122a2dc71d0193f28db3d0857a4dda21bee38e3`; no production code changed. The correction was then validated on exact PR code head `0477799c809aa6d16b4ad121db9915fa5a604f70`: SHA256 7/7, four syntax checks, self-test, and 20/20 tests all passed under Node `v22.16.0`, each with exit code 0. This is operator-reported local evidence, not a hosted CI result or independent execution by GitHub. It applies to the exact code commit `0477799c809aa6d16b4ad121db9915fa5a604f70`. The documentation-synchronization commits that update this runbook, validation/review records, and checksum manifest are later commits; they do not change diagnostic runtime or test source, but the resulting exact PR head must still rerun the complete checksum, syntax, self-test, and 20-test suite before Ready. Do not describe the documentation-sync head as fully validated until that rerun is recorded.
 
 Record the exact output and exit code of every command. If Node is not exactly `v22.16.0`, stop and record the version mismatch; do not substitute another Node version. A skipped CI run is not a pass.
 
@@ -185,3 +185,14 @@ M0 remains **BLOCKED**. This package is diagnostic preparation only. It does not
 - Status-file trust: the status file must be root-owned, root-group-owned, private, single-link and non-symlinked; every parent directory through `/` must be a real root-owned directory without group/world write permission. File and directory metadata are checked before and after reading.
 - Failure handling: the full `OnFailure` list is inspected and additional handlers are reported rather than hidden.
 - The f60 head was operator-reported as 18/18 passed. This follow-up adds bounded reads and staged environment-property retrieval; the suite now declares 20 tests. Run the complete local validation block above in the isolated v9 workspace against the exact final follow-up commit before considering Ready. Hosted CI remains intentionally skipped while Draft; this follow-up does not authorize production reads or mutation.
+
+
+## Latest acceptance and current gate (2026-11-01)
+
+- Exact code commit locally checked: `0477799c809aa6d16b4ad121db9915fa5a604f70`.
+- The isolated workspace was clean before switching to that commit; the original dirty working directory was not touched.
+- Node `v22.16.0` was used from the separate toolchain directory.
+- SHA256 manifest: 7/7 OK; four `node --check` commands: 4/4 passed; `--self-test`: passed; `node --test`: 20/20 passed. All commands exited 0.
+- No BWH/Provider connection, SSH, production read, collector invocation, service/Timer action, or production mutation occurred.
+- This is operator-reported local evidence, not a hosted CI result or independent execution by GitHub. It applies to the exact code commit `0477799c809aa6d16b4ad121db9915fa5a604f70`. The documentation-synchronization commits that update this runbook, validation/review records, and checksum manifest are later commits; they do not change diagnostic runtime or test source, but the resulting exact PR head must still rerun the complete checksum, syntax, self-test, and 20-test suite before Ready. Do not describe the documentation-sync head as fully validated until that rerun is recorded.
+- PR #812 remains Draft. M0 remains BLOCKED. Hosted CI is skipped, not passed. A formal independent GitHub review and exact post-documentation-sync validation remain outstanding.
