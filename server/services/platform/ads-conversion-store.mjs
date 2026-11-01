@@ -30,6 +30,8 @@
 // stored only in the ads tables, are never written to logs or order event
 // streams, and diagnostics expose counts/status only.
 
+import { bindAdsClickConsentClaim, hasAdsClickConsentClaim, hasAdsConsentForAccount } from "./ads-consent-store.mjs";
+
 const CLICK_TYPES = new Set(["gclid", "gbraid", "wbraid"]);
 const CLICK_VALUE_PATTERN = /^[A-Za-z0-9_.-]{1,512}$/;
 const MAX_CLICK_AGE_MS = 90 * 24 * 60 * 60 * 1000;
@@ -167,8 +169,8 @@ export function validateAdsClick(input, now = Date.now()) {
   }
   if (!isPlainObject(input.consent)) return null;
   if (
-    typeof input.consent.adUserData !== "boolean"
-    || typeof input.consent.adPersonalization !== "boolean"
+    input.consent.adUserData !== true
+    || input.consent.adPersonalization !== false
   ) {
     return null;
   }
@@ -242,31 +244,48 @@ export function recordAdsClickClaim(db, input = {}, options = {}) {
   let claimState = "no_click";
   let click = null;
   if (input.adsClick !== undefined) {
-    click = validateAdsClick(input.adsClick, at);
-    claimState = click ? "click" : "invalid_click";
+    const submittedClick = validateAdsClick(input.adsClick, at);
+    if (submittedClick && hasAdsConsentForAccount(db, accountRef)) {
+      click = submittedClick;
+      claimState = "click";
+    } else {
+      // A client descriptor is never consent evidence. Unknown or denied
+      // server consent records only a value-free invalid claim.
+      claimState = "invalid_click";
+    }
   }
   ensureAdsConversionSchema(db);
-  db.prepare(`
-    insert into platform_ads_click_claims (
-      order_ref, account_ref, model, claim_state, click_type, click_value,
-      click_at, consent_ad_user_data, consent_ad_personalization,
-      created_at, updated_at
-    ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    on conflict(order_ref) do nothing
-  `).run(
-    orderRef,
-    accountRef,
-    input.model,
-    claimState,
-    click?.type ?? null,
-    click?.value ?? null,
-    click?.clickAt ?? null,
-    click ? (click.consent.adUserData ? 1 : 0) : null,
-    click ? (click.consent.adPersonalization ? 1 : 0) : null,
-    at,
-    at
-  );
-  return getAdsClickClaim(db, orderRef);
+  const transaction = db.transaction(() => {
+    const inserted = db.prepare(`
+      insert into platform_ads_click_claims (
+        order_ref, account_ref, model, claim_state, click_type, click_value,
+        click_at, consent_ad_user_data, consent_ad_personalization,
+        created_at, updated_at
+      ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      on conflict(order_ref) do nothing
+    `).run(
+      orderRef,
+      accountRef,
+      input.model,
+      claimState,
+      click?.type ?? null,
+      click?.value ?? null,
+      click?.clickAt ?? null,
+      click ? 1 : null,
+      click ? 0 : null,
+      at,
+      at
+    );
+    if (inserted.changes === 1 && click) {
+      bindAdsClickConsentClaim(db, {
+        orderRef,
+        accountRef,
+        createdAt: at
+      });
+    }
+    return getAdsClickClaim(db, orderRef);
+  });
+  return transaction.immediate();
 }
 
 function mapBinding(row) {
@@ -310,6 +329,9 @@ export function materializeAdsClickBinding(db, input = {}, options = {}) {
   ensureAdsConversionSchema(db);
   const claim = getAdsClickClaim(db, orderRef);
   if (!claim || claim.claimState !== "click") return getAdsClickBinding(db, orderRef);
+  if (!hasAdsClickConsentClaim(db, orderRef, claim.accountRef)) {
+    return getAdsClickBinding(db, orderRef);
+  }
   db.prepare(`
     insert into platform_ads_click_bindings (
       order_ref, account_ref, model, click_type, click_value, click_at,
@@ -411,6 +433,9 @@ export function enqueueAdsConversion(db, input = {}, options = {}) {
   } else if (claim.claimState === "invalid_click") {
     status = "skipped";
     skipReason = "invalid_click";
+  } else if (!binding && !hasAdsConsentForAccount(db, claim.accountRef)) {
+    status = "skipped";
+    skipReason = "consent_revoked";
   } else if (!binding) {
     status = "skipped";
     skipReason = "binding_failed";
