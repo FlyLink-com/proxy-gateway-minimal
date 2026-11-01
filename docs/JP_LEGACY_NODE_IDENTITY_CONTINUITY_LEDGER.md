@@ -410,6 +410,18 @@ Draft PR #812 当前 head 为 `92a4ea3454cce9e873a49fd692ea374ec2078609`。其�
 
 PR #812 后续 evidence-archive commit 只更新 README、VALIDATION、REVIEW-REPORT 与 SHA256SUMS，不改诊断运行时代码或测试源码；但记录明确说明，Windows 上的 `sha256sum -c` 7/7 命令没有在 archive head `92a4ea3` 上重新执行。Hosted CI 为 skipped，不得记为通过。v7 包的生产目标读取仍需独立、精确的 Risk A 批准；PR #812 本身不授权 SSH、生产读取或执行。
 
+### 13.5.1 archive-head checksum-only follow-up（操作员报告，2026-10-31）
+
+在上文 archive commit 说明形成后，操作员在独立 v9 工作区切换到当时的 archive head `92a4ea3454cce9e873a49fd692ea374ec2078609`，仅重新执行：
+
+```bash
+sha256sum -c docs/runbooks/m0-a2-1-v7/SHA256SUMS
+```
+
+结果为 **7/7 OK，退出码 0**；七个文件均报告 `i/lf w/lf attr/-text`。
+
+本次仅为该 archive head 的 checksum / 工作树字节复核：未重装 Node，也未重新执行四个 `node --check`、`--self-test` 或 `node --test`。因此完整代码验证仍只绑定代码提交 `5187edc19380fdb44dd2e0f531e9cfdf580b00e1`；本次 checksum-only 结果不代表在 archive head 上重跑了完整测试，也不是 Hosted CI 或生产读取证据。原先“archive head 未重新执行 checksum”的记录保留为当时状态，后续结果以本条补充为准。
+
 ### 13.6 当前决策与后续门禁
 
 - **M0 继续 BLOCKED。** 本节没有证明早期 JP 主机已完成物理退役，也没有完成历史通道、DNS、证书、计量与依赖资源连续性闭环。
