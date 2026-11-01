@@ -3247,7 +3247,7 @@ export function createSqliteDeferredResourceTransitionStore(options = {}) {
           accountRef: normalized.accountId,
           model: "deferred",
           adsClick,
-          authorizedAt: outcome.transition.createdAt
+          authorizedAt: Date.parse(outcome.transition.createdAt)
         });
       }
       return outcome.transition;
