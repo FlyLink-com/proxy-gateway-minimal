@@ -4,8 +4,8 @@ import test from "node:test";
 import { inspectAdsClickLogEntries } from "../services/platform/ads-log-redaction-probe.mjs";
 
 const SENTINELS = [
-  "SYNTHETIC_GCLID_SENTINEL_816_A",
-  "SYNTHETIC_WBRAID_SENTINEL_816_B"
+  "SYNTHETIC/GCLID+SENTINEL_816_A",
+  "SYNTHETIC/WBRAID+SENTINEL_816_B"
 ];
 
 test("redacted synthetic log fixtures pass without exposing sentinel values", () => {
