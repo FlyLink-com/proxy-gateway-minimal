@@ -21,7 +21,7 @@ Prepare one narrowly scoped read-only pass to close the diagnostic gaps recorded
 - No `systemctl start`, `stop`, `restart`, `enable`, `disable`, `reset-failed`, `daemon-reload`, or unit-file edit.
 - No full-metering SQLite database read.
 - No full-metering journal directory, `checkpoint.json`, `pending.json`, `writer.lock`, or config-file read.
-- No environment-file content read. Systemd `Environment` values and `/proc/<AppPID>/environ` are read only in memory to compare the single status-path binding; raw values and paths are never printed.
+- No environment-file content read. Only the App and status-writer units request `Environment` metadata; the full-metering unit no longer requests its environment. `systemctl show` returns each requested unit's complete `Environment` property in memory, but only the target assignment is parsed and no raw values or paths are printed. `/proc/<AppPID>/environ` is scanned in bounded chunks and only the target path value is retained. Any nonempty `EnvironmentFiles` setting on either service makes the binding `unknown`, because those files can override `Environment=` and are intentionally not read.
 - No raw systemd `ExecStart`, fragment/drop-in paths, environment values, process IDs, invocation IDs, journal messages, or raw status JSON in output.
 - No automatic retry. Any blocked result is a stop point; another run requires separate approval.
 
@@ -41,7 +41,7 @@ The result label is deliberately `49_file_closure_matched`; it does not claim th
 
 ### OnFailure and Timer
 
-`OnFailure` is checked against `gccgw-full-metering-collect-stop.service`. The stop unit's `ExecStart` is accepted only when systemd reports `path=/usr/bin/systemctl` and the complete `argv[]` is exactly `/usr/bin/systemctl stop gccgw-full-metering-collect.timer`. Shell wrappers, a different executable, extra arguments, repeated `argv[]` records, or a different target are rejected. The stop unit's last start is compared with the collector's last exit; the output is only `matched`, `not_matched`, or `unknown`. A time match is temporal correlation, not proof of causal execution.
+`OnFailure` is checked against `gccgw-full-metering-collect-stop.service`. The stop unit's `ExecStart` is accepted only when systemd reports `path=/usr/bin/systemctl` and the complete `argv[]` is exactly `/usr/bin/systemctl stop gccgw-full-metering-collect.timer`. Shell wrappers, a different executable, extra arguments, repeated `argv[]` records, or a different target are rejected. The stop unit's last start is compared with the collector's last exit; the output is only `matched`, `not_matched`, or `unknown`. A time match is temporal correlation, not proof of causal execution. The complete `OnFailure` list is inspected: the diagnostic distinguishes the expected handler alone from the expected handler plus additional handlers, reports the additional-handler count, and treats malformed or duplicate expected entries as `unknown`.
 
 The full-metering Timer and status-writer Timer are separate records. An inactive one-shot service state is not interpreted as a disabled timer.
 
@@ -53,9 +53,9 @@ The correct comparison is:
 
 not App ↔ `gccgw-full-metering-collect.service`.
 
-The status binding is reported `matched` only if the status writer's `ExecStart` is bound to `traffic-usage-collect-once.mjs --collect`, its unit environment-file / pass / unset settings match the App, its direct `EDGE_USAGE_COLLECTOR_STATUS_PATH` assignment matches the App's assignment, and the running App process contains that same absolute path. If the value is only inherited from an environment file and no direct assignment can be proven by the selected metadata, the result remains `unknown`; do not infer that the path is absent.
+The status binding is reported `matched` only if the status writer's `ExecStart` is bound to `traffic-usage-collect-once.mjs --collect`, both the App and writer have no configured `EnvironmentFiles`, their direct `EDGE_USAGE_COLLECTOR_STATUS_PATH` assignments match, the running App process contains that same absolute path, neither `PassEnvironment` nor `UnsetEnvironment` mentions the target variable, and both units use the default or explicit root identity. Any configured environment file makes the result `unknown`: `EnvironmentFile=` is applied after `Environment=` and can override the direct assignment, while this package intentionally does not read environment-file contents. Non-root or dynamic service identities also remain `unknown`; the package does not guess UID/GID mappings.
 
-Only after a match does the script read the status projection. The file is bounded to 256 KiB, must be a regular non-symlink with one link and no group/world permissions, and is read with before/after inode and metadata checks. The App release's pinned sanitizer is used before any status data is printed.
+Only after a match does the script read the status projection. The file is bounded to 256 KiB, must be a regular non-symlink with one link, root UID/GID ownership, and no group/world permissions. Every parent directory through `/` must also be a real root-owned directory with no group/world write permission. File and directory metadata are snapshotted before and after the read; inode, ownership, mode, size, timestamps, path resolution, and directory-chain drift fail closed. The App release's pinned sanitizer is used before any status data is printed.
 
 The producer projection remains explicitly partial: current source only defines the Japan TUIC credential-map producer and the SGP TUIC sidecar producer. It is not a complete producer map for all three Japan channels.
 
@@ -114,7 +114,7 @@ node --check scripts/lib/m0-a2-1-v7-archive-pins.mjs
 node --check server/tests/m0-a2-1-v7.test.mjs
 node scripts/m0-a2-1-v7.mjs --self-test
 node --test server/tests/m0-a2-1-v7.test.mjs
-# Expected: 13/13 tests passed
+# Expected: 18/18 tests passed
 ```
 
 ### Recorded v9 Windows result — operator-reported (2026-10-31)
@@ -159,3 +159,12 @@ The timeout wrapper sends TERM at 45 seconds and KILL no later than 5 seconds af
 ## M0 decision
 
 M0 remains **BLOCKED**. This package is diagnostic preparation only. It does not authorize M0-A2-2, M1–M8, production recovery, database/journal/checkpoint inspection, or Japan node creation.
+
+
+## Independent-review hardening follow-up (2026-10-31)
+
+- Exact runtime gate: production execution now accepts only Node `v22.16.0`, matching the documented validation runtime; other Node 22 patch/minor versions fail closed.
+- Environment binding: any nonempty App or status-writer `EnvironmentFiles` list prevents a `matched` result because env files can override direct `Environment=` assignments and are intentionally not read. The full-metering unit no longer requests its `Environment` property. The App process environment is scanned in bounded chunks; unrelated values are not retained. `PassEnvironment` / `UnsetEnvironment` references to the target variable and non-root/dynamic service identities are rejected.
+- Status-file trust: the status file must be root-owned, root-group-owned, private, single-link and non-symlinked; every parent directory through `/` must be a real root-owned directory without group/world write permission. File and directory metadata are checked before and after reading.
+- Failure handling: the full `OnFailure` list is inspected and additional handlers are reported rather than hidden.
+- The test suite now declares 18 tests. Run the complete local validation block above in the isolated v9 workspace against the exact final commit before considering Ready. Hosted CI remains intentionally skipped while Draft; this follow-up does not authorize production reads or mutation.
