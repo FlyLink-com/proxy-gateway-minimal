@@ -4,7 +4,7 @@ Status: Draft / source-only. The operation is not wired to startup, a scheduler,
 
 ## Retention rule
 
-Raw click identifiers in `platform_ads_click_claims` and `platform_ads_click_bindings` have a maximum storage age of 90 days from server-side capture time (`created_at`). The boundary is inclusive: a row with `created_at <= now - 90 days` is eligible.
+The claim row's `created_at` is the server-side capture-time anchor. At 90 days, the complete claim row and every linked binding/consent-link row are deleted. Orphan bindings or consent links are independently eligible by their own `created_at`. The boundary is inclusive: a row with `created_at <= now - 90 days` is eligible.
 
 ## Apply behavior
 
