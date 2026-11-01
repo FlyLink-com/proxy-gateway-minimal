@@ -225,7 +225,7 @@ const EXPECTED_VITE_CONFIG_SHA256 = {
   "admin/vite.config.ts":
     "0e01c02bc34d25324e9432a36118097c98e6e28c74d9a25baddfab9e3273b5f7",
   "admin/vite.portal.config.ts":
-    "07e106c9ae9ab03871c82c6491cfc0bd6dc84e080e3c085295ef30904b61eadd",
+    "7d6dbf17c270a47c84573f39a4d125cbe86a270503c5cc3a9b4b3d894add47ef",
   "admin/vite.portal-web.config.ts":
     "c5ea089e70a4bf1af9519e3ad2299d283edf4ba152ce58a10b272beebd517a3b",
   "admin/vite.portal.local-api-validation.config.ts":
