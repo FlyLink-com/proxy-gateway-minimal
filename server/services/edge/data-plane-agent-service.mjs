@@ -464,10 +464,7 @@ export function createDataPlaneAgentService({
 
   function getCredentialMaterials(identity, input = {}) {
     assertMaterialStoreAvailable(credentialMaterialStore);
-    const node = nodesByRef.get(requiredRef(identity?.nodeRef, "nodeRef"));
-    if (!node) {
-      throw agentServiceError("node_scope_mismatch", 403);
-    }
+    const node = resolveAuthorizedNode(identity);
     const request = validateDataPlaneMaterialRequest(input, {
       expectedNodeRef: node.nodeRef
     });
@@ -533,10 +530,7 @@ export function createDataPlaneAgentService({
   }
 
   function recordReceipt(identity, input = {}) {
-    const node = nodesByRef.get(requiredRef(identity?.nodeRef, "nodeRef"));
-    if (!node) {
-      throw agentServiceError("node_scope_mismatch", 403);
-    }
+    const node = resolveAuthorizedNode(identity);
     const channelRef = requiredRef(input.channelRef, "channelRef");
     if (!node.channelRefs.includes(channelRef)) {
       throw agentServiceError("channel_scope_mismatch", 403);
@@ -635,10 +629,7 @@ export function createDataPlaneAgentService({
   }
 
   function recordLease(identity, input = {}) {
-    const node = nodesByRef.get(requiredRef(identity?.nodeRef, "nodeRef"));
-    if (!node) {
-      throw agentServiceError("node_scope_mismatch", 403);
-    }
+    const node = resolveAuthorizedNode(identity);
     const channelRef = requiredRef(input.channelRef, "channelRef");
     if (!node.channelRefs.includes(channelRef)) {
       throw agentServiceError("channel_scope_mismatch", 403);
