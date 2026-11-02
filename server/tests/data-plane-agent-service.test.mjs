@@ -85,9 +85,21 @@ test("credential-scoped agent filters preserve channel revocation tombstones", (
 function fakeControlStore(latestByChannel = new Map()) {
   const receipts = [];
   const leases = [];
+  const registeredNodes = new Map([["node-sgp-a", {
+    nodeRef: "node-sgp-a",
+    physicalNodeRef: "node-sgp-a",
+    pool: "private",
+    lifecycle: "private-validation",
+    status: "active",
+    channelRefs: ["channel-sgp-a-hy2", "channel-sgp-a-tuic"]
+  }]]);
   return {
     receipts,
     leases,
+    registeredNodes,
+    getEdgeRegisteredNode(nodeRef) {
+      return registeredNodes.get(nodeRef) || null;
+    },
     getLatestEdgeDesiredStateForChannel(channelRef) {
       return latestByChannel.get(channelRef) || null;
     },
@@ -126,6 +138,28 @@ function fakeControlStore(latestByChannel = new Map()) {
 }
 
 function serviceFor(store, overrides = {}) {
+  if (
+    typeof store.upsertEdgeRegisteredNode === "function"
+    && !store.getEdgeRegisteredNode("node-sgp-a")
+  ) {
+    store.upsertEdgeRegisteredNode({
+      nodeRef: "node-sgp-a",
+      physicalNodeRef: "node-sgp-a",
+      providerRef: "provider-test",
+      regionRef: "region-test",
+      roleRef: "data-plane",
+      pool: "private",
+      channelRefs: ["channel-sgp-a-hy2", "channel-sgp-a-tuic"],
+      imageManifestRef: "image-test",
+      releaseRef: "release-test",
+      lifecycle: "private-validation",
+      status: "active",
+      firstBootPacketRef: "first_boot_agent_test",
+      registeredAt: NOW.toISOString(),
+      updatedAt: NOW.toISOString(),
+      metadata: { source: "test" }
+    });
+  }
   return createDataPlaneAgentService({
     controlStore: store,
     nodes: [
@@ -232,6 +266,47 @@ function seedIssuedPortalOrder(store) {
     ]
   });
 }
+
+test("agent authorization requires an active registry row and an exact physical/channel binding", () => {
+  const missingStore = fakeControlStore();
+  missingStore.registeredNodes.delete("node-sgp-a");
+  assert.throws(
+    () => serviceFor(missingStore).authenticate({ authorization: "Bearer node-agent-token" }),
+    (error) => error.code === "node_not_registered" && error.statusCode === 403
+  );
+
+  const inactiveStore = fakeControlStore();
+  inactiveStore.registeredNodes.get("node-sgp-a").status = "inactive";
+  assert.throws(
+    () => serviceFor(inactiveStore).authenticate({ authorization: "Bearer node-agent-token" }),
+    (error) => error.code === "node_not_active" && error.statusCode === 403
+  );
+
+  const mismatchedStore = fakeControlStore();
+  mismatchedStore.registeredNodes.get("node-sgp-a").channelRefs = ["channel-sgp-a-hy2"];
+  assert.throws(
+    () => serviceFor(mismatchedStore).authenticate({ authorization: "Bearer node-agent-token" }),
+    (error) => error.code === "node_scope_mismatch" && error.statusCode === 403
+  );
+
+  const wrongPhysicalStore = fakeControlStore();
+  wrongPhysicalStore.registeredNodes.get("node-sgp-a").physicalNodeRef = "node-sgp-replacement";
+  assert.throws(
+    () => serviceFor(wrongPhysicalStore).authenticate({ authorization: "Bearer node-agent-token" }),
+    (error) => error.code === "node_identity_mismatch" && error.statusCode === 403
+  );
+});
+
+test("agent rechecks registry status before each privileged operation", () => {
+  const store = fakeControlStore();
+  const service = serviceFor(store);
+  const identity = service.authenticate({ authorization: "Bearer node-agent-token" });
+  store.registeredNodes.get("node-sgp-a").status = "disabled";
+  assert.throws(
+    () => service.getDesiredState(identity),
+    (error) => error.code === "node_not_active" && error.statusCode === 403
+  );
+});
 
 test("authenticates node bearer token without accepting missing or wrong tokens", () => {
   const service = serviceFor(fakeControlStore());

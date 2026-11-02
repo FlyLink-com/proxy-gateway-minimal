@@ -37,9 +37,21 @@ function desired(overrides = {}) {
 function fakeControlStore(desiredState = desired()) {
   const receipts = [];
   const leases = [];
+  const registeredNode = {
+    nodeRef: "node-sgp-a",
+    physicalNodeRef: "node-sgp-a",
+    pool: "private",
+    lifecycle: "private-validation",
+    status: "active",
+    channelRefs: ["channel-sgp-a-hy2"]
+  };
   return {
     receipts,
     leases,
+    registeredNode,
+    getEdgeRegisteredNode(nodeRef) {
+      return nodeRef === registeredNode.nodeRef ? registeredNode : null;
+    },
     getLatestEdgeDesiredStateForChannel(channelRef) {
       return channelRef === "channel-sgp-a-hy2" ? desiredState : null;
     },
@@ -254,6 +266,23 @@ test("agent auth middleware does not intercept public portal challenge route", a
     const body = await response.json();
     assert.equal(typeof body.challenge.challengeRef, "string");
     assert.equal(typeof body.challenge.prompt, "string");
+  } finally {
+    server.close();
+  }
+});
+
+test("agent routes reject inactive registry records even when the bearer token is valid", async () => {
+  const appState = state();
+  appState._controlStore.registeredNode.status = "inactive";
+  const { server, baseUrl } = await listen(createApp(appState));
+  try {
+    const response = await fetch(`${baseUrl}/api/internal/data-plane-agent/desired-state`, {
+      headers: agentHeaders()
+    });
+    assert.equal(response.status, 403);
+    const body = await response.json();
+    assert.equal(body.error, "node_not_active");
+    assert.equal(body.redacted, true);
   } finally {
     server.close();
   }

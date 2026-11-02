@@ -29,6 +29,7 @@ function withStore(fn) {
 function seedRegisteredNode(store, overrides = {}) {
   return store.upsertEdgeRegisteredNode({
     nodeRef: "edge-node-sgp-a",
+    physicalNodeRef: "edge-node-sgp-a",
     providerRef: "provider-vultr",
     regionRef: "region-sgp",
     roleRef: "data-plane",
@@ -38,7 +39,8 @@ function seedRegisteredNode(store, overrides = {}) {
     ],
     imageManifestRef: "node-image-manifest-20260613",
     releaseRef: "release-node-image-20260613",
-    lifecycle: "registered",
+    pool: "private",
+    lifecycle: "private-validation",
     status: "active",
     firstBootPacketRef: "first_boot_sgp_a_20260613",
     registeredAt: NOW,

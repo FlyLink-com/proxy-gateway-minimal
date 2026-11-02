@@ -73,6 +73,23 @@ test("exhausting one independent pack changes only its edge credential and Agent
           password: `synthetic-${pack.credentialRef}` }
       });
     }
+    store.upsertEdgeRegisteredNode({
+      nodeRef: NODE_REF,
+      physicalNodeRef: NODE_REF,
+      providerRef: "provider-test",
+      regionRef: "region-test",
+      roleRef: "data-plane",
+      pool: "private",
+      channelRefs: [CHANNEL_REF],
+      imageManifestRef: "image-test",
+      releaseRef: "release-test",
+      lifecycle: "private-validation",
+      status: "active",
+      firstBootPacketRef: "first_boot_pack_agent_test",
+      registeredAt: now,
+      updatedAt: now,
+      metadata: { source: "test" }
+    });
     const service = createDataPlaneAgentService({
       controlStore: store,
       nodes: [{ nodeRef: NODE_REF, channelRefs: [CHANNEL_REF],

@@ -84,6 +84,7 @@ test("first-boot packet builds a safe durable node registration record", () => {
 
   assert.deepEqual(record, {
     nodeRef: "edge-node-sgp-a",
+    physicalNodeRef: "edge-node-sgp-a",
     providerRef: "provider-vultr",
     regionRef: "region-sgp",
     roleRef: "data-plane",
@@ -94,8 +95,9 @@ test("first-boot packet builds a safe durable node registration record", () => {
     ],
     imageManifestRef: "node-image-manifest-20260613",
     releaseRef: "release-node-image-20260613",
-    lifecycle: "registered",
-    status: "active",
+    pool: "private",
+    lifecycle: "private-validation",
+    status: "inactive",
     firstBootPacketRef: "first_boot_sgp_a_20260613",
     registeredAt: "2026-06-13T12:30:00.000Z",
     updatedAt: "2026-06-13T12:30:00.000Z",
@@ -119,6 +121,10 @@ test("first-boot packet ingestion persists the registered node in the control st
     });
 
     assert.equal(inserted.nodeRef, "edge-node-sgp-a");
+    assert.equal(inserted.physicalNodeRef, "edge-node-sgp-a");
+    assert.equal(inserted.pool, "private");
+    assert.equal(inserted.lifecycle, "private-validation");
+    assert.equal(inserted.status, "inactive");
     assert.deepEqual(inserted.channelRefs, [
       "channel-sgp-a-vless-reality-tcp",
       "channel-sgp-a-hy2",
@@ -127,7 +133,7 @@ test("first-boot packet ingestion persists the registered node in the control st
 
     const fetched = store.getEdgeRegisteredNode("edge-node-sgp-a");
     assert.deepEqual(fetched, inserted);
-    assert.deepEqual(store.listEdgeRegisteredNodes({ status: "active" }), [inserted]);
+    assert.deepEqual(store.listEdgeRegisteredNodes({ status: "inactive" }), [inserted]);
   });
 });
 
@@ -151,6 +157,24 @@ test("registered node metadata rejects unsafe material values", () => {
         assert.doesNotMatch(error.message, /example\.invalid|clash\.yaml/);
         return true;
       }
+    );
+  });
+});
+
+test("registered nodeRef cannot be rebound to a different physicalNodeRef", () => {
+  withStore((store) => {
+    const inserted = ingestEdgeNodeRegistrationFromFirstBootPacket({
+      controlStore: store,
+      firstBootPacket: approvedPacket(),
+      firstBootPacketRef: "first_boot_sgp_a_20260613",
+      registeredAt: "2026-06-13T12:30:00.000Z"
+    });
+    assert.throws(
+      () => store.upsertEdgeRegisteredNode({
+        ...inserted,
+        physicalNodeRef: "edge-node-replacement"
+      }),
+      (error) => error.code === "node_identity_conflict"
     );
   });
 });

@@ -190,6 +190,23 @@ export async function runDataPackPhysicalScenario({ runDir, transport, meteringR
 
     const notifier = createDataPlaneDesiredStateNotifier({ controlStore: store,
       servers: [{ name: CHANNEL, physicalNodeRef: NODE, runtimeAdapter: "remote-data-plane-handoff" }], nowFn: now });
+    store.upsertEdgeRegisteredNode({
+      nodeRef: NODE,
+      physicalNodeRef: NODE,
+      providerRef: "provider-test",
+      regionRef: "region-test",
+      roleRef: "data-plane",
+      pool: "private",
+      channelRefs: [CHANNEL],
+      imageManifestRef: "image-test",
+      releaseRef: "release-test",
+      lifecycle: "private-validation",
+      status: "active",
+      firstBootPacketRef: "first_boot_data_pack_scenario",
+      registeredAt: now(),
+      updatedAt: now(),
+      metadata: { source: "scenario" }
+    });
     const agentToken = randomBytes(32).toString("hex");
     const agent = createDataPlaneAgentService({ controlStore: store, credentialMaterialStore: materialStore,
       nodes: [{ nodeRef: NODE, channelRefs: [CHANNEL], tokenSha256: hashDataPlaneAgentToken(agentToken) }],
