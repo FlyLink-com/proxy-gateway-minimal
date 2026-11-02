@@ -71,9 +71,11 @@ function mapEdgeRegisteredNode(row) {
   }
   return {
     nodeRef: row.node_ref,
+    physicalNodeRef: row.physical_node_ref || row.node_ref,
     providerRef: row.provider_ref,
     regionRef: row.region_ref,
     roleRef: row.role_ref,
+    pool: row.pool || "private",
     channelRefs: parseJsonArray(row.channel_refs_json),
     imageManifestRef: row.image_manifest_ref,
     releaseRef: row.release_ref,

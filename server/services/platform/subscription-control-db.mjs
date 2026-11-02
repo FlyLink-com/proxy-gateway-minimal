@@ -43,6 +43,9 @@ const UNSAFE_FIELD_PARTS = [
   "sspassword"
 ];
 const SAFE_CONTROL_REF_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_:/-]{0,127}$/;
+const EDGE_NODE_POOLS = new Set(["stable", "private", "canary", "recovery"]);
+const EDGE_NODE_LIFECYCLES = new Set(["planned", "private-validation", "canary", "active", "maintenance", "retired"]);
+const EDGE_NODE_STATUSES = new Set(["active", "inactive", "disabled", "maintenance", "retired"]);
 const SAFE_AUTHORITY_REF_PATTERN = /^[A-Za-z0-9._:-]{1,128}$/;
 const AUTHORITY_SECRET_LIKE_PATTERN =
   /^(?:https?:|mailto:|bearer[ .:_-]|sk[-_]|eyj[a-z0-9_-]{10,})/i;
@@ -682,9 +685,11 @@ function mapEdgeRegisteredNode(row) {
   if (!row) return null;
   return {
     nodeRef: row.node_ref,
+    physicalNodeRef: row.physical_node_ref || row.node_ref,
     providerRef: row.provider_ref,
     regionRef: row.region_ref,
     roleRef: row.role_ref,
+    pool: row.pool || "private",
     channelRefs: parseJsonArray(row.channel_refs_json),
     imageManifestRef: row.image_manifest_ref,
     releaseRef: row.release_ref,
@@ -1202,6 +1207,8 @@ export function createSqliteSubscriptionControlStore({
       provider_ref text not null,
       region_ref text not null,
       role_ref text not null,
+      physical_node_ref text not null default '',
+      pool text not null default 'private',
       channel_refs_json text not null default '[]',
       image_manifest_ref text not null,
       release_ref text not null,
@@ -1451,6 +1458,11 @@ export function createSqliteSubscriptionControlStore({
     create index if not exists platform_portal_sessions_status_idx
       on platform_portal_sessions(status);
   `);
+
+  if (initializeSchema) ensureTableColumns(db, "platform_edge_registered_nodes", [
+    { name: "physical_node_ref", definition: "physical_node_ref text not null default ''" },
+    { name: "pool", definition: "pool text not null default 'private'" }
+  ]);
 
   if (initializeSchema) ensureTableColumns(db, "platform_portal_access_requests", [
     { name: "client_target", definition: "client_target text not null default 'clash'" },
@@ -7866,35 +7878,54 @@ export function createSqliteSubscriptionControlStore({
     assertNoUnsafeFields(input);
     assertNoUnsafeControlValues(input.metadata);
     const now = isoText(input.updatedAt || input.registeredAt, "updatedAt");
+    const nodeRef = safeControlRef(input.nodeRef, "nodeRef");
+    const physicalNodeRef = safeControlRef(input.physicalNodeRef || input.nodeRef, "physicalNodeRef");
+    const lifecycle = safeControlRef(input.lifecycle || "private-validation", "lifecycle");
+    const status = safeControlRef(input.status || "inactive", "status");
+    const pool = safeControlRef(input.pool || "private", "pool");
+    if (
+      !EDGE_NODE_LIFECYCLES.has(lifecycle)
+      || !EDGE_NODE_STATUSES.has(status)
+      || !EDGE_NODE_POOLS.has(pool)
+    ) {
+      throw platformError("validation_error", "edge node registration state is invalid");
+    }
     const record = {
-      nodeRef: safeControlRef(input.nodeRef, "nodeRef"),
+      nodeRef,
+      physicalNodeRef,
       providerRef: safeControlRef(input.providerRef, "providerRef"),
       regionRef: safeControlRef(input.regionRef, "regionRef"),
       roleRef: safeControlRef(input.roleRef, "roleRef"),
+      pool,
       channelRefsJson: jsonArray(safeControlRefList(input.channelRefs, "channelRefs"), "channelRefs"),
       imageManifestRef: safeControlRef(input.imageManifestRef, "imageManifestRef"),
       releaseRef: safeControlRef(input.releaseRef, "releaseRef"),
-      lifecycle: safeControlRef(input.lifecycle || "registered", "lifecycle"),
-      status: safeControlRef(input.status || "active", "status"),
+      lifecycle,
+      status,
       firstBootPacketRef: safeControlRef(input.firstBootPacketRef, "firstBootPacketRef"),
       registeredAt: isoText(input.registeredAt || now, "registeredAt"),
       updatedAt: now,
       metadataJson: jsonObject(input.metadata, "metadata")
     };
+    const existing = getEdgeRegisteredNode(record.nodeRef);
+    if (existing && existing.physicalNodeRef !== record.physicalNodeRef) {
+      throw platformError("node_identity_conflict", "registered node physical identity cannot be rebound");
+    }
     sqliteRun(db.prepare(`
       insert into platform_edge_registered_nodes (
-        node_ref, provider_ref, region_ref, role_ref, channel_refs_json,
-        image_manifest_ref, release_ref, lifecycle, status, first_boot_packet_ref,
-        registered_at, updated_at, metadata_json
+        node_ref, physical_node_ref, provider_ref, region_ref, role_ref, pool,
+        channel_refs_json, image_manifest_ref, release_ref, lifecycle, status,
+        first_boot_packet_ref, registered_at, updated_at, metadata_json
       ) values (
-        @nodeRef, @providerRef, @regionRef, @roleRef, @channelRefsJson,
-        @imageManifestRef, @releaseRef, @lifecycle, @status, @firstBootPacketRef,
-        @registeredAt, @updatedAt, @metadataJson
+        @nodeRef, @physicalNodeRef, @providerRef, @regionRef, @roleRef, @pool,
+        @channelRefsJson, @imageManifestRef, @releaseRef, @lifecycle, @status,
+        @firstBootPacketRef, @registeredAt, @updatedAt, @metadataJson
       )
       on conflict(node_ref) do update set
         provider_ref = excluded.provider_ref,
         region_ref = excluded.region_ref,
         role_ref = excluded.role_ref,
+        pool = excluded.pool,
         channel_refs_json = excluded.channel_refs_json,
         image_manifest_ref = excluded.image_manifest_ref,
         release_ref = excluded.release_ref,

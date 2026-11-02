@@ -10,6 +10,13 @@ import {
 } from "./data-plane-agent-protocol.mjs";
 
 const DEFAULT_LEASE_TTL_MS = 120000;
+const REGISTERED_NODE_LIFECYCLES = new Set([
+  "private-validation",
+  "canary",
+  "active",
+  "registered" // Legacy registry rows remain usable until explicitly migrated.
+]);
+const REGISTERED_NODE_POOLS = new Set(["stable", "private", "canary", "recovery"]);
 const SAFE_NODE_REF_PATTERN = /^[A-Za-z0-9._:-]{1,160}$/;
 const TOMBSTONE_CAPABILITIES = ["empty_desired_state", "tombstone_reconcile"];
 const SCOPED_TOMBSTONE_CAPABILITY = "scoped_tombstone_lineage";
@@ -131,6 +138,7 @@ function normalizeAgentNodeConfig(config = {}) {
   }
   return {
     nodeRef,
+    physicalNodeRef: optionalRef(config.physicalNodeRef) || nodeRef,
     channelRefs,
     tokenSha256
   };
@@ -369,8 +377,48 @@ export function createDataPlaneAgentService({
   if (!controlStore) {
     throw agentServiceError("control_store_required", 500);
   }
+  if (typeof controlStore.getEdgeRegisteredNode !== "function") {
+    throw agentServiceError("node_registration_store_required", 503);
+  }
   const nodeConfigs = nodes.map(normalizeAgentNodeConfig);
   const nodesByRef = new Map(nodeConfigs.map((node) => [node.nodeRef, node]));
+
+  function assertRegisteredNode(node) {
+    let registered;
+    try {
+      registered = controlStore.getEdgeRegisteredNode(node.nodeRef);
+    } catch {
+      throw agentServiceError("node_registration_store_unavailable", 503);
+    }
+    if (!registered) throw agentServiceError("node_not_registered", 403);
+    if (registered.nodeRef !== node.nodeRef) throw agentServiceError("node_identity_mismatch", 403);
+    if (registered.status !== "active") throw agentServiceError("node_not_active", 403);
+    if (!REGISTERED_NODE_LIFECYCLES.has(text(registered.lifecycle))) {
+      throw agentServiceError("node_lifecycle_blocked", 403);
+    }
+    if (!REGISTERED_NODE_POOLS.has(text(registered.pool || "private"))) {
+      throw agentServiceError("node_pool_invalid", 403);
+    }
+    const registeredPhysicalNodeRef = optionalRef(registered.physicalNodeRef || registered.nodeRef);
+    if (registeredPhysicalNodeRef !== node.physicalNodeRef) {
+      throw agentServiceError("node_identity_mismatch", 403);
+    }
+    const registeredChannels = uniqueRefs(registered.channelRefs).sort((a, b) => a.localeCompare(b));
+    const configuredChannels = [...node.channelRefs].sort((a, b) => a.localeCompare(b));
+    if (
+      registeredChannels.length !== configuredChannels.length
+      || registeredChannels.some((channelRef, index) => channelRef !== configuredChannels[index])
+    ) {
+      throw agentServiceError("node_scope_mismatch", 403);
+    }
+  }
+
+  function resolveAuthorizedNode(identity) {
+    const node = nodesByRef.get(requiredRef(identity?.nodeRef, "nodeRef"));
+    if (!node) throw agentServiceError("node_scope_mismatch", 403);
+    assertRegisteredNode(node);
+    return node;
+  }
 
   function authenticate({ authorization } = {}) {
     const token = bearerToken(authorization);
@@ -382,6 +430,7 @@ export function createDataPlaneAgentService({
     if (!node) {
       throw agentServiceError("unauthorized", 401);
     }
+    assertRegisteredNode(node);
     return {
       nodeRef: node.nodeRef,
       channelRefs: [...node.channelRefs]
@@ -389,10 +438,7 @@ export function createDataPlaneAgentService({
   }
 
   function getDesiredState(identity, filter = {}) {
-    const node = nodesByRef.get(requiredRef(identity?.nodeRef, "nodeRef"));
-    if (!node) {
-      throw agentServiceError("node_scope_mismatch", 403);
-    }
+    const node = resolveAuthorizedNode(identity);
     const compatibility = tombstoneCompatibility(filter);
     const availableDesiredStates = latestDesiredStatesForNode({ controlStore, node, filter });
     const desiredStates = availableDesiredStates.filter((state) => {

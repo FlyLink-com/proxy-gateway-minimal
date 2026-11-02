@@ -2574,6 +2574,8 @@ export function createRuntimeState(options = {}) {
     ...parseJsonArrayEnv(env.EDGE_DATA_PLANE_AGENT_NODES_JSON, "EDGE_DATA_PLANE_AGENT_NODES_JSON"),
     ...(optionalEnvText(env.EDGE_DATA_PLANE_AGENT_NODE_REF) ? [{
       nodeRef: optionalEnvText(env.EDGE_DATA_PLANE_AGENT_NODE_REF),
+      physicalNodeRef: optionalEnvText(env.EDGE_DATA_PLANE_AGENT_PHYSICAL_NODE_REF)
+        || optionalEnvText(env.EDGE_DATA_PLANE_AGENT_NODE_REF),
       channelRefs: parseCsv(env.EDGE_DATA_PLANE_AGENT_CHANNEL_REFS, []),
       tokenSha256: optionalEnvText(env.EDGE_DATA_PLANE_AGENT_TOKEN_SHA256 || env.EDGE_DATA_PLANE_AGENT_TOKEN_HASH)
     }] : [])
