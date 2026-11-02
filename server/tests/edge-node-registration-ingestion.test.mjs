@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import test from "node:test";
 import { buildNodeImageFirstBootPacket } from "../services/node-image-first-boot-packet.mjs";
 import {
@@ -135,6 +137,43 @@ test("first-boot packet ingestion persists the registered node in the control st
     assert.deepEqual(fetched, inserted);
     assert.deepEqual(store.listEdgeRegisteredNodes({ status: "inactive" }), [inserted]);
   });
+});
+
+test("registration CLI defaults to dry-run and only persists inactive private nodes with --apply", () => {
+  const tempDir = mkdtempSync(join(tmpdir(), "edge-node-registration-cli-"));
+  const packetPath = join(tempDir, "first-boot-packet.json");
+  const dbPath = join(tempDir, "control.sqlite");
+  const cliPath = fileURLToPath(new URL("../../scripts/register-edge-node-from-first-boot-packet.mjs", import.meta.url));
+  try {
+    writeFileSync(packetPath, JSON.stringify(approvedPacket()), "utf8");
+    const dryRun = spawnSync(process.execPath, [
+      cliPath, "--packet", packetPath, "--db", dbPath
+    ], { encoding: "utf8" });
+    assert.equal(dryRun.status, 0, dryRun.stderr);
+    assert.equal(existsSync(dbPath), false);
+    assert.match(dryRun.stdout, /"mode": "dry_run"/);
+
+    const applied = spawnSync(process.execPath, [
+      cliPath, "--packet", packetPath, "--db", dbPath, "--apply"
+    ], { encoding: "utf8" });
+    assert.equal(applied.status, 0, applied.stderr);
+    withStore((store) => {
+      // The CLI's own database is checked below; this helper intentionally uses an isolated store.
+      assert.equal(store.getEdgeRegisteredNode("edge-node-sgp-a"), null);
+    });
+    const store = createSqliteSubscriptionControlStore({ dbPath });
+    try {
+      const registered = store.getEdgeRegisteredNode("edge-node-sgp-a");
+      assert.equal(registered.status, "inactive");
+      assert.equal(registered.pool, "private");
+      assert.equal(registered.lifecycle, "private-validation");
+      assert.equal(registered.physicalNodeRef, "edge-node-sgp-a");
+    } finally {
+      store.close();
+    }
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 50 });
+  }
 });
 
 test("registered node metadata rejects unsafe material values", () => {

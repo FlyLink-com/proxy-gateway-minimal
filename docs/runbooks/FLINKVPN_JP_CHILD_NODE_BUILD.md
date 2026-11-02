@@ -223,9 +223,12 @@ sensitive_values_excluded: true
 
 - [ ] 确认 nodeRef 和 physicalNodeRef 全局唯一；与仓库现有注册 schema 映射后再写入。
 - [ ] provider=Vultr，region=jp，role=data-plane。
-- [ ] 初始 pool=private，lifecycle=private-validation。
+- [ ] 注册记录绑定 reviewed physicalNodeRef；初始 pool=private，lifecycle=private-validation。
+- [ ] First Boot 自动登记只创建 status=inactive 的记录，不授予 Agent 权限。
+- [ ] 进入 M5 前须经独立审批将运行状态切换为 active；pool 仍为 private，lifecycle 仍为 private-validation，不因此进入普通用户订阅。
 - [ ] 生成独立首次启动安全注册包；不包含生产秘密。
-- [ ] 通过现有 BWH 节点注册入口登记并核验记录。
+- [ ] 先用注册 CLI dry-run，再在独立审批后使用 --apply 登记；CLI 只能写入 inactive/private/private-validation 记录。
+- [ ] 核验 Agent 的 physicalNodeRef 与 channelRefs 和注册表精确一致。
 - [ ] 不复制旧节点身份、业务数据库、订单或用户数据。
 
 ### 逻辑通道
