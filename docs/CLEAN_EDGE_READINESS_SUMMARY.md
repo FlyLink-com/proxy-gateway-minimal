@@ -56,7 +56,8 @@ values.
   "generatedAt": "2026-05-27T21:40:00.000Z",
   "repoState": {
     "branchSynced": true,
-    "noOpenPrs": true,
+    "openPrRefs": ["pr-810"],
+    "blockingPrRefs": [],
     "projectStateCheckPassed": true
   },
   "subscriptionBoundary": {
@@ -85,6 +86,14 @@ values.
   "notes": ["summary only"]
 }
 ```
+
+`repoState` carries scoped open-PR evidence instead of a global queue flag:
+`openPrRefs` lists every currently open PR ref, and `blockingPrRefs` lists
+the subset declared blocking for this readiness scope. Readiness is blocked
+only when a declared blocking PR is actually open, or when either list is
+missing (scope evidence not recorded). Unrelated open PRs never block. The
+same scoped rule is shared with the node image provisioning readiness
+summary through one common evaluation module.
 
 ## Output Semantics
 

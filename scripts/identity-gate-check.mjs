@@ -22,6 +22,25 @@ const CHANNEL_BY_KIND = Object.freeze({
   mihomo: "channel-vultr-a-tuic"
 });
 
+// Node surfaces selected explicitly with --node-ref. Without a node ref the
+// legacy vultr-a channels above stay selected, so existing invocations are
+// unchanged. A run for one node only ever reads that node's channel bindings;
+// surfaces never mix inside one comparison.
+const CHANNEL_BY_KIND_BY_NODE_REF = Object.freeze({
+  "vultr-japan-a": CHANNEL_BY_KIND,
+  "node-vultr-jp-01": Object.freeze({
+    xray: "channel-vultr-jp-01-vless-reality-tcp",
+    hy2: "channel-vultr-jp-01-hy2",
+    mihomo: "channel-vultr-jp-01-tuic"
+  })
+});
+
+function channelForKind(kind, nodeRef) {
+  if (!nodeRef) return CHANNEL_BY_KIND[kind];
+  const byKind = CHANNEL_BY_KIND_BY_NODE_REF[nodeRef];
+  return byKind ? byKind[kind] : undefined;
+}
+
 function blocked(code) {
   return {
     runtime_count: 0,
@@ -510,11 +529,10 @@ function protectedReference(kind, runtime, material, principal) {
 // rejects that split as full_metering_material_binding_changed. TUIC
 // principals are material UUIDs, so an eligible TUIC binding with no material
 // record cannot be keyed and stays out of the map.
-function projectResolverMap(kind, inventory, material) {
+function projectResolverMap(kind, inventory, material, channel) {
   if (!Array.isArray(inventory?.entries) || !Array.isArray(inventory?.retainedBindings)) {
     return { ok: false, code: "db_invalid" };
   }
-  const channel = CHANNEL_BY_KIND[kind];
   const eligible = inventory.entries.filter((entry) => entry?.channelRef === channel);
   const retained = inventory.retainedBindings.filter((entry) => entry?.channelRef === channel);
   const retainedRefs = new Set(retained.map((entry) => entry.edgeCredentialRef));
@@ -561,7 +579,7 @@ function databaseIdentityDigest(stat) {
     .digest("hex");
 }
 
-async function readResolverInventory(dbPath, kind) {
+async function readResolverInventory(dbPath, channel) {
   if (typeof dbPath !== "string" || dbPath.length === 0 || dbPath.includes("\0")) {
     return { ok: false, code: "input_invalid" };
   }
@@ -585,7 +603,7 @@ async function readResolverInventory(dbPath, kind) {
     const inventory = db.transaction(() => readFullMeteringBindings({
       db,
       databaseIdentityDigest: databaseIdentityDigest(stat),
-      channelRefs: [CHANNEL_BY_KIND[kind]],
+      channelRefs: [channel],
       now: new Date()
     }))();
     return { ok: true, inventory };
@@ -596,12 +614,12 @@ async function readResolverInventory(dbPath, kind) {
   }
 }
 
-function observeDatabase(kind, runtimeText, inventory, materialText) {
+function observeDatabase(kind, runtimeText, inventory, materialText, channel) {
   const runtime = parseRuntime(kind, runtimeText);
   if (!runtime.ok) return runtime;
   const material = parseMaterialIndex(materialText);
   if (!material.ok) return material;
-  const projected = projectResolverMap(kind, inventory, material);
+  const projected = projectResolverMap(kind, inventory, material, channel);
   if (!projected.ok) return projected;
   const materialRefs = [];
   for (const principal of runtime.principals) {
@@ -660,7 +678,7 @@ function argValue(argv, name) {
   return index >= 0 ? argv[index + 1] ?? "" : "";
 }
 
-function present(surface, gate) {
+function present(surface, gate, nodeRef) {
   const output = {
     surface,
     runtime_count: gate.runtime_count,
@@ -673,6 +691,7 @@ function present(surface, gate) {
     equalities: gate.equalities,
     state: gate.state
   };
+  if (nodeRef) output.node_ref = nodeRef;
   if (gate.code) output.code = gate.code;
   return output;
 }
@@ -686,18 +705,20 @@ export async function runIdentityGateCli({
     ? surfaceArg
     : "";
   const kind = argValue(argv, "--runtime-kind");
+  const nodeRef = argValue(argv, "--node-ref");
   const runtimePath = argValue(argv, "--runtime-config");
   const mapPath = argValue(argv, "--identity-map");
   const dbPath = argValue(argv, "--db");
   const materialPath = argValue(argv, "--material");
   const finish = (gate) => {
-    stdout.write(`${JSON.stringify(present(surface, gate))}\n`);
+    stdout.write(`${JSON.stringify(present(surface, gate, nodeRef))}\n`);
     return gate.state === "blocked" ? 1 : 0;
   };
   try {
     const useDb = dbPath.length > 0;
     const useMap = mapPath.length > 0;
-    if (!surface || !Object.hasOwn(CHANNEL_BY_KIND, kind) || !runtimePath || !materialPath || useDb === useMap) {
+    const channel = Object.hasOwn(CHANNEL_BY_KIND, kind) ? channelForKind(kind, nodeRef) : undefined;
+    if (!surface || !channel || !runtimePath || !materialPath || useDb === useMap) {
       return finish(blocked("input_invalid"));
     }
     const runtime = readRequired(runtimePath);
@@ -705,9 +726,9 @@ export async function runIdentityGateCli({
     const material = readRequired(materialPath);
     if (!material.ok) return finish(blocked(material.code));
     if (useDb) {
-      const inventory = await readResolverInventory(dbPath, kind);
+      const inventory = await readResolverInventory(dbPath, channel);
       if (!inventory.ok) return finish(blocked(inventory.code));
-      const gate = observeDatabase(kind, runtime.text, inventory.inventory, material.text);
+      const gate = observeDatabase(kind, runtime.text, inventory.inventory, material.text, channel);
       return finish(gate.ok === false ? blocked(gate.code) : gate);
     }
     const map = readRequired(mapPath);
