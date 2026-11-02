@@ -31,7 +31,7 @@ document_metadata:
 
 **架构决策已固定，不再作为待确认事项：** BWH 是唯一订阅/控制面；新 Vultr Japan 子节点是独立生产数据面；Vultr Singapore 继续作为同一控制面下的数据面容量。`docs/PROJECT_TOPOLOGY.md` 与 `docs/VULTR_JAPAN_CONTROL_DATA_PLANE_STATUS.md` 已同步这一目标方向，旧的 Vultr Japan 控制面表述保留为历史快照，不再代表当前目标。
 
-M0 只核验 BWH 实际运行的 release identity/source commit、控制面角色和生产依赖是否与既定目标相符，不重新询问采用哪种架构。若 live role 与目标不符、release identity 无法绑定、目标主机不唯一或关键依赖未知，停止后续 Risk A 操作并保留具体阻塞项；不得将其改写成架构决策未确认。
+M0 只核验 BWH 实际运行的 release identity、控制面角色和生产依赖是否与既定目标相符，不重新询问采用哪种架构。当前运行树身份已由 as-run 清单及 SHA-256 绑定（见「M0 状态更新（2026-11-02）」）；source-commit identity 明确不主张，不作为 M0 阻塞。若 live role 与目标不符、release identity 无法按 as-run 清单绑定、目标主机不唯一或关键依赖未知，停止后续 Risk A 操作并保留具体阻塞项；不得将其改写成架构决策未确认。
 
 ## 2. 执行分工
 
@@ -52,7 +52,7 @@ M0 只核验 BWH 实际运行的 release identity/source commit、控制面角�
 
 ### BWH 控制面
 
-- [ ] 核对实际运行应用版本、release identity、source commit 和目标主机角色。
+- [ ] 核对实际运行应用版本、release identity（as-run 清单绑定；source-commit identity 不主张）和目标主机角色。
 - [ ] 核对 BWH 控制面健康状态；区分公开 health 与受保护 status。
 - [x] 核对 EDGE_DATA_PLANE_AGENT_ROUTES_ENABLED 的状态，不输出原始环境值。
 - [ ] 核对 EDGE_DATA_PLANE_AGENT_ALLOWED_CIDRS 的配置来源和边界；报告 loopback / private tunnel / public / unknown 分类，不粘贴原始 CIDR。
@@ -73,7 +73,7 @@ M0 只核验 BWH 实际运行的 release identity/source commit、控制面角�
 
 **M0 交付物：** BWH/Vultr 脱敏只读盘点报告。
 
-**M0 通过条件：** BWH live release identity/source commit 与控制面角色、JP 目标主机身份、Agent 边界、注册与材料能力、用量/Identity 状态、预算和回退条件均有可核验依据。架构目标已经固定，不作为重复确认项。任何生产事实 unknown 不得按通过处理。
+**M0 通过条件：** BWH live release identity（as-run 清单及 SHA-256 绑定；source-commit identity 不主张）与控制面角色、JP 目标主机身份、Agent 边界、注册与材料能力、用量/Identity 状态、预算和回退条件均有可核验依据。架构目标已经固定，不作为重复确认项。任何生产事实 unknown 不得按通过处理。
 
 ### M0 回执（2026-10-30）
 

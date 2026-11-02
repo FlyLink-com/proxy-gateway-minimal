@@ -44,7 +44,8 @@ data-plane choice as an architecture confirmation question.
 
 This is an architecture decision and documentation baseline, **not fresh live
 host, release, health, identity, or metering proof**. M0 verifies the live BWH
-release identity and exact target/dependency facts; it does not re-decide the
+release identity (bound by the as-run manifest and its SHA-256; source-commit
+identity is not claimed) and exact target/dependency facts; it does not re-decide the
 topology. Risk A execution still requires its own exact approval.
 
 ## Historical Production Topology Snapshot (2026-07-15)
@@ -227,7 +228,7 @@ Adjacent boundary matrix:
 | Opaque artifacts | Access/bootstrap material and server-side credential containment. | Data-plane routing, local proxying, server mesh membership, or traffic accounting by themselves. |
 | Local Edge Agent | Loopback-only client-side adapter and future platform-controlled channel selection. | Clash/Mihomo UI/rules, TUN/driver/system proxy mutation in V1, HP Relay, or Server Edge Mesh. |
 | HP Relay | Operator lab diagnostics and upstream/channel behavior research. | Production, staging, CI, data-plane capacity, future recovery nodes, official Local Edge Agent runtime, or Server Edge Mesh. |
-| BWH control plane | Account/order/subscription authority, credential lifecycle, desired-state, receipt-gated renderer, and usage ledger; exact live release identity remains a separate M0 fact. | Edge data-plane traffic, HP Relay, CI, or approval-free runtime mutation. |
+| BWH control plane | Account/order/subscription authority, credential lifecycle, desired-state, receipt-gated renderer, and usage ledger; live release identity is bound by the as-run manifest (SHA-256), with source-commit identity not claimed. | Edge data-plane traffic, HP Relay, CI, or approval-free runtime mutation. |
 | local-ci-a | Local Linux manual CI host for repository validation evidence. | Staging, production, deploy approval, production secrets, SQLite, or subscription URL storage. |
 | Historical node retirement | Controlled drain, stop, termination, and security-group cleanup records for superseded Aliyun/AWS lanes. | Approval-free rollback, shutdown, DNS change, or deletion while a live dependency remains. |
 | Server Edge Mesh | Private edge-to-edge health, management, validation, and recovery path. | User VPN, Clash/Mihomo endpoint, Local Edge Agent transport in V1, or ordinary customer traffic routing. |

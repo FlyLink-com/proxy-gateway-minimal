@@ -37,7 +37,9 @@ runtime/usage evidence only; neither owns customer truth or public Admin.
 
 This is an architecture and documentation update, not a fresh live host,
 release, health, identity, or metering verification. The live BWH release
-identity and operational preconditions remain separate M0 evidence items.
+identity is bound by the as-run manifest (SHA-256) under the 2026-11-01 ruling,
+with source-commit identity not claimed; the remaining operational
+preconditions remain separate M0 evidence items.
 
 ## Historical Direction Snapshot (2026-07-24)
 
