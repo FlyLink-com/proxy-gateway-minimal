@@ -140,6 +140,27 @@ sensitive_values_excluded: true
 - 当前仍有效的 M0 阻塞：BWH release/source identity 未绑定；Agent allowlist 边界未知；受保护材料存储未核验；handoff 摘要未知；Identity Gate 未执行；BWH health 未复核；计量 Timer 状态异常；预算上限未设；DNS/Firewall 所有权未知。
 - 因此 M0 仍为 BLOCKED，M1–M8 仍未执行。下一步按既定目标补齐可核验的运行证据，不再重新讨论架构方向。
 
+### M0 状态更新（2026-11-02）
+
+本节接续并取代「架构决策收口（2026-11-01）」中的当前阻塞清单；2026-10-30 历史回执不改写。
+
+- 2026-11-01 已在一次性只读 Gate 下完成 BWH/Vultr 生产只读盘点。原回执阻塞项的处置：
+  - 受保护材料存储：已核验就绪（portal edge 凭据 714 条，digest 引用 714/714）。
+  - Handoff 摘要：已核验（pending 378 / archive 24，最新 2026-10-29）。
+  - BWH health：已复核（应用层健康：候选服务自 2026-10-22 运行，本地与公网 health 正常；受保护 /api/status 未读，未使用凭据；盘点时整体记 degraded 的构成为数据面管线停滞与计量故障）。
+  - 预算：已核验为未设（账号无预算上限字段，且当前无实例可设上限）。
+  - DNS/Firewall 所有权：已核验（边缘资源在账号内：防火墙组 3 个，均空置未挂载；Vultr 托管 DNS 仅 globalcirclecat.cloud，产品域名 DNS 不在 Vultr）。
+  - 计量 Timer：状态已查明（collect timer 自 2026-10-20 停触发、collect 服务退出码 2，故障点已定位）；修复不属于 M0 盘点范围，由计量线单独处理，不列为 M0 阻塞。
+- SGP 注册表/配置不一致已消除：node-sgp-a 的实例已销毁但注册表/配置曾仍标 active/online；2026-11-02 按单独批准的变更 Gate 执行 R1 软退役（活动配置三通道置 fail-closed、注册表 status 改 retired、Agent 登记节点集清空），六项验证通过。执行前门控比对同时定案：SGP 三通道的 Receipt 门控自 2026-10-08 后已关闭，当时并未进入订阅渲染。
+- Release identity（2026-11-01 裁定）：按 as-run 清单绑定关闭。清单为 2026-11-02 对运行目录逐文件哈希生成的 435 文件清单，SHA-256 为 `98da8db404e5196bb068ea6e3b97bc2486ac228eb3b093f94f749c8a73529a1e`；核验报告与清单在项目验收档案中归档，可重跑复验。
+  - Source-commit identity 明确不主张：运行树为 mixed 组装（435 个文件中 401 个与 eadefd98357a 逐字节相同，32 个差异可归因至 2026-09-28 至 2026-10-18 的多个仓库提交，`server/state.mjs` 与 `server/services/subscriptions/core.mjs` 两个文件的运行版本无法由仓库归因），布局标签 pr799-eadefd98357a 仅为组装基底标签，不构成内容身份。
+  - 正式身份机制（`CONTROL_PLANE_RELEASE_IDENTITY_PATH` 与制品流水线 identity 文件）列为下一次 BWH 控制面正式发布的必备项，并作为 JP 生产 Gate 的入场条件。
+- Identity Gate：仍无当期正式执行结果，按未执行/未通过处理，与 release identity 分开。仓库发布状态记录中的历史聚合 Identity Gate 结果为 degraded（retention pending），不构成 M0 所需的同一稳定读取边界下 before/after 通过证据。#812 的只读诊断不执行 Identity Gate（仅在绑定条件满足后读取采集器状态投影；文件缺失记 not_observed，不等于 verified）。
+- 当前 M0 阻塞仅余两项：
+  1. 运行时有效 allowlist 尚未验证：显式环境配置 `EDGE_DATA_PLANE_AGENT_ALLOWED_CIDRS` 缺失；源码存在 loopback 默认回退（state.mjs 以 `DEFAULT_ADMIN_ALLOWED_CIDRS` = 127.0.0.1 / ::1 解析，路由层按解析值执法），但生产进程的实际解析值未在运行时验证，且运行中的 state.mjs 版本无法由源码归因，只能以运行时证据定案。
+  2. Identity Gate 无当期正式执行结果（见上）。
+- M0 仍为 BLOCKED，M1–M8 仍未执行。
+
 ## 4. M1：建立 BWH ↔ Vultr 私有通信通道（P0）
 
 - [ ] 选用独立 WireGuard 站点到站点隧道，或经审查批准的等效私有网络。
