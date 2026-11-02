@@ -1417,7 +1417,8 @@ function cleanEdgeReadinessInput(): CleanEdgeReadinessInput {
     generatedAt: "2026-05-27T21:40:00.000Z",
     repoState: {
       branchSynced: true,
-      noOpenPrs: true,
+      openPrRefs: [],
+      blockingPrRefs: [],
       projectStateCheckPassed: true
     },
     subscriptionBoundary: {
@@ -1460,8 +1461,11 @@ function cleanEdgeReadinessSummary(): CleanEdgeReadinessSummary {
     },
     repoState: {
       branchSynced: true,
-      noOpenPrs: true,
-      projectStateCheckPassed: true
+      projectStateCheckPassed: true,
+      openPrScopeRecorded: true,
+      openPrRefs: [],
+      blockingPrRefs: [],
+      blockingOpenPrRefs: []
     },
     subscriptionBoundary: {
       subOnAliyun: true,

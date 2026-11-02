@@ -1,3 +1,9 @@
+import {
+  openPrScopeBlockers,
+  openPrScopeOutput,
+  parseOpenPrScope
+} from "./readiness-open-pr-scope.mjs";
+
 const ALLOWED_TOP_LEVEL_KEYS = new Set([
   "generatedAt",
   "repoState",
@@ -11,7 +17,8 @@ const ALLOWED_TOP_LEVEL_KEYS = new Set([
 
 const ALLOWED_REPO_STATE_KEYS = new Set([
   "branchSynced",
-  "noOpenPrs",
+  "openPrRefs",
+  "blockingPrRefs",
   "projectStateCheckPassed",
   "artifactHashRecorded"
 ]);
@@ -24,7 +31,8 @@ const ALLOWED_IMAGE_BUILD_KEYS = new Set([
   "templatesParse",
   "noSecretScanPassed",
   "buildLogsSanitized",
-  "imageManifestRecorded"
+  "imageManifestRecorded",
+  "wireguardToolsPinnedInManifest"
 ]);
 
 const ALLOWED_FIRST_BOOT_KEYS = new Set([
@@ -32,6 +40,9 @@ const ALLOWED_FIRST_BOOT_KEYS = new Set([
   "providerInventoryCaptured",
   "protectedMaterialOutOfImage",
   "privateControlPlanePathReady",
+  "wireguardPlanApproved",
+  "wireguardTunnelAddressAssigned",
+  "wireguardPeerPublicKeyExchangePlanned",
   "edgeAgentInstalled",
   "channelPlanReviewed"
 ]);
@@ -113,6 +124,7 @@ function addBlockerIf(blockers, condition, message) {
 
 function buildBlockers({
   repoState,
+  openPrScope,
   imageBuild,
   firstBoot,
   runtime,
@@ -120,7 +132,7 @@ function buildBlockers({
 }) {
   const blockers = [];
   addBlockerIf(blockers, !repoState.branchSynced, "repository branch is not synced");
-  addBlockerIf(blockers, !repoState.noOpenPrs, "open PR queue is not empty");
+  blockers.push(...openPrScopeBlockers(openPrScope));
   addBlockerIf(blockers, !repoState.projectStateCheckPassed, "project-state check has not passed");
   addBlockerIf(blockers, !repoState.artifactHashRecorded, "release artifact hash is not recorded");
   addBlockerIf(blockers, !imageBuild.noSecretBaseImage, "image is not confirmed no-secret");
@@ -131,10 +143,14 @@ function buildBlockers({
   addBlockerIf(blockers, !imageBuild.noSecretScanPassed, "image staging no-secret scan has not passed");
   addBlockerIf(blockers, !imageBuild.buildLogsSanitized, "image build logs are not confirmed sanitized");
   addBlockerIf(blockers, !imageBuild.imageManifestRecorded, "image manifest is not recorded");
+  addBlockerIf(blockers, !imageBuild.wireguardToolsPinnedInManifest, "wireguard tools are not pinned in the image manifest");
   addBlockerIf(blockers, !firstBoot.nodeRefReviewed, "nodeRef is not reviewed");
   addBlockerIf(blockers, !firstBoot.providerInventoryCaptured, "provider inventory is not captured");
   addBlockerIf(blockers, !firstBoot.protectedMaterialOutOfImage, "protected material boundary is not confirmed outside the image");
   addBlockerIf(blockers, !firstBoot.privateControlPlanePathReady, "private control-plane path is not ready");
+  addBlockerIf(blockers, !firstBoot.wireguardPlanApproved, "wireguard plan is not approved");
+  addBlockerIf(blockers, !firstBoot.wireguardTunnelAddressAssigned, "wireguard tunnel address is not assigned");
+  addBlockerIf(blockers, !firstBoot.wireguardPeerPublicKeyExchangePlanned, "wireguard peer public-key exchange is not planned");
   addBlockerIf(blockers, !firstBoot.edgeAgentInstalled, "edge agent is not confirmed installed");
   addBlockerIf(blockers, !firstBoot.channelPlanReviewed, "channel plan is not reviewed");
   addBlockerIf(blockers, !runtime.xrayConfigTestPlanned, "Xray config-test is not planned");
@@ -155,10 +171,10 @@ export function buildNodeImageProvisioningReadinessSummary(input = {}) {
 
   const repoState = safeBooleanGroup(input.repoState, ALLOWED_REPO_STATE_KEYS, [
     "branchSynced",
-    "noOpenPrs",
     "projectStateCheckPassed",
     "artifactHashRecorded"
   ]);
+  const openPrScope = parseOpenPrScope(input.repoState, safeSummaryError);
   const imageBuild = safeBooleanGroup(input.imageBuild, ALLOWED_IMAGE_BUILD_KEYS, [
     "noSecretBaseImage",
     "approvedReleaseSkeleton",
@@ -167,13 +183,17 @@ export function buildNodeImageProvisioningReadinessSummary(input = {}) {
     "templatesParse",
     "noSecretScanPassed",
     "buildLogsSanitized",
-    "imageManifestRecorded"
+    "imageManifestRecorded",
+    "wireguardToolsPinnedInManifest"
   ]);
   const firstBoot = safeBooleanGroup(input.firstBoot, ALLOWED_FIRST_BOOT_KEYS, [
     "nodeRefReviewed",
     "providerInventoryCaptured",
     "protectedMaterialOutOfImage",
     "privateControlPlanePathReady",
+    "wireguardPlanApproved",
+    "wireguardTunnelAddressAssigned",
+    "wireguardPeerPublicKeyExchangePlanned",
     "edgeAgentInstalled",
     "channelPlanReviewed"
   ]);
@@ -197,6 +217,7 @@ export function buildNodeImageProvisioningReadinessSummary(input = {}) {
   ]);
   const blockers = buildBlockers({
     repoState,
+    openPrScope,
     imageBuild,
     firstBoot,
     runtime,
@@ -215,7 +236,10 @@ export function buildNodeImageProvisioningReadinessSummary(input = {}) {
       liveOrderSmokeAllowed: preconditionsReady && approval.exactApprovalReceived && approval.liveOrderSmokeApproved,
       blockers
     },
-    repoState,
+    repoState: {
+      ...repoState,
+      ...openPrScopeOutput(openPrScope)
+    },
     imageBuild,
     firstBoot,
     runtime,
@@ -240,6 +264,7 @@ export function buildNodeImageProvisioningReadinessSummary(input = {}) {
         "subscriptionUrls",
         "credentials",
         "privateKeys",
+        "wireguardPrivateKeys",
         "customerData",
         "providerApiKeys",
         "sshPrivateKeys"
