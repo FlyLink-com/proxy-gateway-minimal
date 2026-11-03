@@ -89,6 +89,8 @@ PR #822 明确不包含：
 | 本文件 `docs/JP_CHILD_NODE_ENGINEERING_STATUS.md` | 当前总状态、源码基线、阶段状态与下一步 |
 | `docs/runbooks/FLINKVPN_JP_CHILD_NODE_BUILD.md` | M0–M8 操作顺序、检查项、Gate、回滚和验收 |
 | `docs/runbooks/JP_CHILD_CANDIDATE_INSTALL_ENABLE_INTEGRATION_GATE.md` | JP-01 候选镜像、安装、WireGuard、Agent、E1-A V2 注册、Receipt、Canary 的精确 Gate 包 |
+| `docs/drafts/E1-A_REGISTRATION_BINDING_AMENDMENT_v1.1_2026-11-02.md` | E1-A v1.1 注册绑定合同修订单草案；待单独确认，未实现 |
+| `docs/drafts/E4-A_RELEASE_IDENTITY_V2_SCHEMA_v0.12_2026-11-02.md` | E4-A v0.12 发布身份 V2 与信任合同草案；有条件通过，未冻结 |
 | `docs/PROJECT_TOPOLOGY.md` | 固定目标拓扑；不证明实时生产状态 |
 | `docs/VULTR_JAPAN_CONTROL_DATA_PLANE_STATUS.md` | Japan/SGP 目标方向与历史事实边界 |
 | PR #822 | E1 源码交付、最终头审查与合并证据 |
@@ -116,7 +118,7 @@ PR #822 明确不包含：
 
 **E1-A 注册绑定合同修订单 v1.1**
 
-- 当前工作稿：`e1a-registration-binding-amendment-order-draft-2026-11-02 (10).md`。
+- 当前仓库权威草案：[`docs/drafts/E1-A_REGISTRATION_BINDING_AMENDMENT_v1.1_2026-11-02.md`](drafts/E1-A_REGISTRATION_BINDING_AMENDMENT_v1.1_2026-11-02.md)。这是对当前工作稿的原文归档副本；后续修订只更新此仓库文件并递增版本，不再以附件名后缀判断新旧。
 - B31–B36 与配套测试 55–62 已写入草案，包括第三锚 `agentSigningPublicKeyFingerprint`、V2 绑定、PoP、自举入口、genesis 接受证据和 T_first 候选数组。
 - 状态：待项目负责人对 v1.1 单独确认；确认前不得开始该修订单的源码实施。
 - 当前已合并 E1 源码仍是 v1 的 11 字段绑定与两枚锚点；第三锚、PoP 和 v2 注册绑定尚未实现。
@@ -124,7 +126,7 @@ PR #822 明确不包含：
 
 **E4-A Release Identity V2 Schema 与信任合同 v0.12**
 
-- 当前工作稿：`e4a-schema-draft-2026-11-02 (11).md`。
+- 当前仓库权威草案：[`docs/drafts/E4-A_RELEASE_IDENTITY_V2_SCHEMA_v0.12_2026-11-02.md`](drafts/E4-A_RELEASE_IDENTITY_V2_SCHEMA_v0.12_2026-11-02.md)。这是对当前工作稿的原文归档副本；后续修订只更新此仓库文件并递增版本，不再以附件名后缀判断新旧。
 - A24–A26 已写入草案。
 - 状态：有条件通过，尚未进入 E4-A-4 正式冻结，更未进入 E4-B。
 - 正式冻结的四项剩余条件：①负责人确认 v0.12；②真实镜像产物出现后完成六项 As-Run 规模实测并冻结文件数/maxBytes；③E1-A v1.1 单独确认；④补齐正式错误码表并落实 P6/P10/P11/P12/P13 测试向量及 P7 三项测试。
