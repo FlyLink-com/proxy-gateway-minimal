@@ -129,7 +129,7 @@ The manifest must explicitly record the WireGuard tool versions/pins required by
 
 ### E4-A v0.12 six required measurements
 
-All six must be produced from the actual reproducible JP candidate image, not estimates or hand-written fixtures:
+All six must be produced from the actual reproducible JP candidate image, not estimates or hand-written fixtures. The current contract is [E4-A v0.12](../drafts/E4-A_RELEASE_IDENTITY_V2_SCHEMA_v0.12_2026-11-02.md); it is still conditional and not frozen:
 
 1. Generate the image file inventory from the actual image build contents.
 2. Count all files in the installation domain.
@@ -209,6 +209,8 @@ Required exact inputs:
 Keep the Agent unavailable on public routes. The registration execution flag remains default-off until its own exact approval; setting the flag is not itself approval.
 
 ## 7. C4 — E1-A V2 registration gate
+
+合同基线草案：[`docs/drafts/E1-A_REGISTRATION_BINDING_AMENDMENT_v1.1_2026-11-02.md`](../drafts/E1-A_REGISTRATION_BINDING_AMENDMENT_v1.1_2026-11-02.md)。该草案未获单独确认前不得实施。
 
 C4 is blocked until all of the following are true:
 
