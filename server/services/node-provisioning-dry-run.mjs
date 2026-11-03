@@ -44,6 +44,10 @@ const SAFE_REF_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_:/-]{0,127}$/;
 const SENSITIVE_TEXT_PATTERN = /https?:|token=|secret|credential|password|private|customer|@|\/sub\/clash\.yaml|(?:\d{1,3}\.){3}\d{1,3}|[a-z0-9-]+\.[a-z]{2,}/i;
 const SENSITIVE_BLOCKER_PATTERN = /https?:|token\s*=|secret\s*=|credential\s*=|password\s*=|@|(?:\d{1,3}\.){3}\d{1,3}|(?:private|secret)[\s_-]*(?:key|material|value)/i;
 
+const FIRST_BOOT_PROFILE_KEYS = new Set([
+  "generatedAt", "node", "image", "controlPlane", "wireguard", "runtime",
+  "receiptGate", "approval", "notes"
+]);
 const FIRST_BOOT_PACKET_KEYS = new Set([
   "generatedAt", "node", "image", "controlPlane", "wireguard", "runtime",
   "receiptGate", "approval", "plannedOperations", "notes", "safety", "ok",
@@ -227,6 +231,7 @@ function assertSafeSummaryText(value, maxLength = 256) {
     || value.length === 0
     || value.length > maxLength
     || SENSITIVE_BLOCKER_PATTERN.test(value)
+    || SENSITIVE_TEXT_PATTERN.test(value)
     || containsIpLiteral(value)
   ) throw safeError();
   return value;
@@ -313,6 +318,11 @@ function validateFirstBootPacket(packet, profile) {
     if (packet.safety[key] !== undefined) assertBoolean(packet.safety[key]);
   }
   if (requiredSafety.some((key) => packet.safety[key] !== true)) throw safeError();
+  for (const key of [
+    "noRuntimeMutation", "noDnsMutation", "noProviderFirewallMutation", "noSubscriptionOutputMutation"
+  ]) {
+    if (packet.safety[key] !== undefined && packet.safety[key] !== true) throw safeError();
+  }
   if (packet.safety.omittedFields !== undefined) {
     if (
       !Array.isArray(packet.safety.omittedFields)
@@ -396,6 +406,45 @@ function validateProviderPlan(providerPlan, profile) {
   if (!Array.isArray(providerPlan.unresolved) || JSON.stringify(providerPlan.unresolved) !== JSON.stringify(expectedUnresolved)) throw safeError();
 }
 
+function validateFirstBootProfile(firstBoot, expectedNode) {
+  assertExactKeys(firstBoot, FIRST_BOOT_PROFILE_KEYS);
+  assertExactKeys(firstBoot.node, FIRST_BOOT_NODE_KEYS);
+  assertExactKeys(firstBoot.image, FIRST_BOOT_IMAGE_KEYS);
+  assertExactKeys(firstBoot.controlPlane, FIRST_BOOT_CONTROL_PLANE_KEYS);
+  assertExactKeys(firstBoot.wireguard, FIRST_BOOT_WIREGUARD_KEYS);
+  assertExactKeys(firstBoot.runtime, FIRST_BOOT_RUNTIME_KEYS);
+  assertExactKeys(firstBoot.receiptGate, FIRST_BOOT_RECEIPT_GATE_KEYS);
+  assertExactKeys(firstBoot.approval, FIRST_BOOT_APPROVAL_KEYS);
+
+  for (const key of ["nodeRef", "providerRef", "regionRef", "roleRef"]) {
+    assertSafeRef(firstBoot.node[key]);
+    if (firstBoot.node[key] !== expectedNode[key]) throw safeError();
+  }
+  if (!Array.isArray(firstBoot.node.channelRefs) || firstBoot.node.channelRefs.length !== expectedNode.channelRefs.length) throw safeError();
+  firstBoot.node.channelRefs.forEach(assertSafeRef);
+  if (firstBoot.node.channelRefs.some((value, index) => value !== expectedNode.channelRefs[index])) throw safeError();
+
+  assertSafeRef(firstBoot.image.imageManifestRef);
+  assertSafeRef(firstBoot.image.releaseRef);
+  assertBoolean(firstBoot.image.artifactSha256Recorded);
+  assertBoolean(firstBoot.image.noSecretImageConfirmed);
+  assertSafeRef(firstBoot.wireguard.planRef);
+  for (const [group, fields] of [
+    [firstBoot.controlPlane, [...FIRST_BOOT_CONTROL_PLANE_KEYS]],
+    [firstBoot.runtime, [...FIRST_BOOT_RUNTIME_KEYS]],
+    [firstBoot.receiptGate, [...FIRST_BOOT_RECEIPT_GATE_KEYS]],
+    [firstBoot.approval, [...FIRST_BOOT_APPROVAL_KEYS]],
+    [firstBoot.wireguard, [...FIRST_BOOT_WIREGUARD_KEYS].filter((key) => key !== "planRef")]
+  ]) {
+    for (const field of fields) assertBoolean(group[field]);
+  }
+  if (firstBoot.notes !== undefined) {
+    if (!Array.isArray(firstBoot.notes)) throw safeError();
+    firstBoot.notes.forEach((note) => assertSafeSummaryText(note, 512));
+  }
+  if (firstBoot.generatedAt !== undefined) assertSafeSummaryText(firstBoot.generatedAt, 128);
+}
+
 function validateProfile(profile) {
   assertExactKeys(profile, PROFILE_KEYS);
   if (profile.schemaVersion !== "1" || profile.profileRef !== "jp-01") throw safeError();
@@ -422,12 +471,13 @@ function validateProfile(profile) {
   for (const key of ["sizeDecisionApproved", "regionDecisionApproved", "costCapApproved", "firewallPlanApproved", "managementAccessApproved", "rollbackPlanApproved", "validationPlanApproved", "providerMutationApproved", "biosBootVerified", "firstBootAccessApproved", "c1ApprovalReceived"]) assertBoolean(profile.installation[key]);
   if (!["pending-c1-review", "approved"].includes(profile.installation.cloudInitPolicy)) throw safeError();
   if (profile.installation.sshService !== "disabled") throw safeError();
-  if (!isObject(profile.firstBoot)) throw safeError();
+  validateFirstBootProfile(profile.firstBoot, profile.node);
 }
 
 export function buildNodeProvisioningDryRunPlan({ profile, firstBootPacket, providerPlan } = {}) {
   validateProfile(profile);
-  const firstBootBlockers = validateFirstBootPacket(firstBootPacket, profile);  validateProviderPlan(providerPlan, profile);
+  const firstBootBlockers = validateFirstBootPacket(firstBootPacket, profile);
+  validateProviderPlan(providerPlan, profile);
 
   const c1Blockers = [];
   const addC1Blocker = (condition, message) => {
