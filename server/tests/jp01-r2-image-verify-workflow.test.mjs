@@ -52,6 +52,7 @@ test("R2 secrets and non-sensitive variables use the exact Environment names", (
 });
 
 test("workflow uses an exact S3 read allowlist and never downloads the full image", () => {
+  assert.equal((workflow.match(/\baws\b/g) ?? []).length, 5);
   const awsCalls = awsCliCalls(workflow);
   assert.deepEqual(awsCalls.map(({ command, subcommand }) => [command, subcommand]), [
     ["--version", ""],
