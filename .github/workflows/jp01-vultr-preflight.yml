@@ -1,0 +1,150 @@
+name: JP01 Vultr API Preflight
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: jp01-vultr-api-preflight-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    name: Vultr API preflight (read-only account check)
+    if: github.ref == 'refs/heads/master'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    environment:
+      name: jp01-c1-production
+
+    steps:
+      - name: Checkout reviewed master commit
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Check VULTR_API_KEY presence without exposing it
+        id: secret_presence
+        shell: bash
+        env:
+          VULTR_API_KEY: ${{ secrets.VULTR_API_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -n "$VULTR_API_KEY" ]; then
+            echo "::add-mask::$VULTR_API_KEY"
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          fi
+          unset VULTR_API_KEY
+
+      - name: Call the Vultr account endpoint (GET only) and write the redacted report
+        id: preflight
+        shell: bash
+        env:
+          VULTR_API_KEY: ${{ secrets.VULTR_API_KEY }}
+          SECRET_PRESENT: ${{ steps.secret_presence.outputs.present }}
+          REPORT_FILE: jp01-vultr-preflight-report.json
+        run: |
+          set -euo pipefail
+          set +x
+          umask 077
+
+          response_file="$(mktemp "$RUNNER_TEMP/vultr-account.XXXXXX")"
+          trap 'rm -f "$response_file"' EXIT
+
+          http_status="000"
+          if [ "$SECRET_PRESENT" = "true" ]; then
+            http_status="$(curl --silent --show-error --output "$response_file" \
+              --write-out '%{http_code}' --connect-timeout 10 --max-time 30 \
+              --request GET \
+              --header "Authorization: Bearer $VULTR_API_KEY" \
+              "https://api.vultr.com/v2/account")" || http_status="000"
+            unset VULTR_API_KEY
+          fi
+
+          python3 - "$response_file" "$REPORT_FILE" "$http_status" "$SECRET_PRESENT" <<'PY'
+          import json
+          import os
+          import sys
+          from datetime import datetime, timezone
+
+          response_path, report_path, http_status, secret_present = sys.argv[1:5]
+
+          acls = []
+          if secret_present == "true" and http_status == "200":
+              try:
+                  with open(response_path, encoding="utf-8") as handle:
+                      payload = json.load(handle)
+                  raw_acls = payload.get("account", {}).get("acls", [])
+                  if isinstance(raw_acls, list):
+                      acls = sorted({item for item in raw_acls if isinstance(item, str)})
+              except Exception:
+                  acls = []
+
+          checks = [
+              {"id": "secret_present", "status": "pass" if secret_present == "true" else "fail"},
+              {"id": "http_status_200", "status": "pass" if http_status == "200" else "fail"},
+              {
+                  "id": "provisioning_acl_present",
+                  "status": "pass" if "provisioning" in acls else "fail",
+              },
+          ]
+          verdict = "pass" if all(check["status"] == "pass" for check in checks) else "fail"
+
+          report = {
+              "schema": "jp01-vultr-preflight-report/v1",
+              "workflow": os.environ.get("GITHUB_WORKFLOW", ""),
+              "run_id": os.environ.get("GITHUB_RUN_ID", ""),
+              "run_attempt": int(os.environ.get("GITHUB_RUN_ATTEMPT", "0") or 0),
+              "commit_sha": os.environ.get("GITHUB_SHA", ""),
+              "ref": os.environ.get("GITHUB_REF", ""),
+              "environment": "jp01-c1-production",
+              "tested_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+              "endpoint": "GET https://api.vultr.com/v2/account",
+              "secret_present": secret_present == "true",
+              "http_status": int(http_status) if http_status.isdigit() else 0,
+              "account_acls": acls,
+              "checks": checks,
+              "verdict": verdict,
+              "side_effects": {"api_writes": "none", "resources_created": "none"},
+          }
+
+          with open(report_path, "w", encoding="utf-8") as handle:
+              json.dump(report, handle, indent=2, sort_keys=True)
+              handle.write("\n")
+
+          print(json.dumps(report, indent=2, sort_keys=True))
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write(f"verdict={verdict}\n")
+          PY
+
+          report_sha256="$(sha256sum "$REPORT_FILE" | awk '{print $1}')"
+          echo "report_sha256=$report_sha256" >> "$GITHUB_OUTPUT"
+          {
+            echo "## JP-01 Vultr API Preflight"
+            echo
+            echo "- Endpoint: GET https://api.vultr.com/v2/account"
+            echo "- HTTP status: $http_status"
+            echo "- Redacted report artifact: jp01-vultr-preflight-report.json"
+            echo "- Report SHA-256: $report_sha256"
+            echo "- API writes / resources created: none"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload the redacted preflight report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: jp01-vultr-preflight-report-${{ github.run_id }}
+          path: jp01-vultr-preflight-report.json
+          if-no-files-found: error
+
+      - name: Enforce the preflight verdict
+        if: steps.preflight.outputs.verdict != 'pass'
+        shell: bash
+        run: |
+          echo "JP-01 Vultr API preflight did not pass; see the redacted report artifact."
+          exit 1

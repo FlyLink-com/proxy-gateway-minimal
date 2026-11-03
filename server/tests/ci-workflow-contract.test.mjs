@@ -60,6 +60,10 @@ const EXPECTED_WORKFLOW_ACTIONS = {
     "actions/checkout",
     "actions/setup-node"
   ],
+  "jp01-vultr-preflight.yml": [
+    "actions/checkout",
+    "actions/upload-artifact"
+  ],
   "production-deploy-dry-run.yml": [
     "actions/checkout",
     "actions/setup-node",
@@ -100,7 +104,7 @@ const REVIEWED_ACTION_PINS = {
   "actions/checkout": {
     sha: DEFAULT_CHECKOUT_PIN,
     annotation: "v6",
-    count: 24
+    count: 25
   },
   "actions/download-artifact": {
     sha: "3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c",
@@ -115,16 +119,16 @@ const REVIEWED_ACTION_PINS = {
   "actions/upload-artifact": {
     sha: "043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",
     annotation: "v7",
-    count: 7
+    count: 8
   }
 };
-const EXPECTED_ACTION_REFERENCE_COUNT = 58;
+const EXPECTED_ACTION_REFERENCE_COUNT = 60;
 const EXPECTED_ACTION_REVISION_COUNTS = {
-  [`actions/checkout@${DEFAULT_CHECKOUT_PIN}`]: 22,
+  [`actions/checkout@${DEFAULT_CHECKOUT_PIN}`]: 23,
   [`actions/checkout@${TRUSTED_GOVERNANCE_CHECKOUT_PIN}`]: 2,
   [`actions/download-artifact@${REVIEWED_ACTION_PINS["actions/download-artifact"].sha}`]: 7,
   [`actions/setup-node@${REVIEWED_ACTION_PINS["actions/setup-node"].sha}`]: 20,
-  [`actions/upload-artifact@${REVIEWED_ACTION_PINS["actions/upload-artifact"].sha}`]: 7
+  [`actions/upload-artifact@${REVIEWED_ACTION_PINS["actions/upload-artifact"].sha}`]: 8
 };
 // Keep this source-only guard dependency-free: every uncommented `uses` token is
 // reserved for this canonical one-line form and every other spelling fails closed.
