@@ -14,9 +14,9 @@ document_metadata:
 
 ## Risk and scope
 
-- Current source change: Risk B, repository-only dry-run framework.
-- Expected PR count: one focused source PR.
-- Production/AWS/Vultr impact: none.
+- Current source change: Risk B for the repository-only dry-run framework; the separate R2 metadata/sidecar verification is a Risk A, manual, master-only provider-read gate.
+- Expected PR count: one focused JP-01 source PR.
+- Production/AWS/Vultr impact: no production mutation, no AWS access, and no Vultr API or host access; one exact Cloudflare R2 read-only verification is separately gated.
 - This module has only a pure Vultr dry-run plan adapter; it has no API-capable
   provider client, no apply command, no GitHub Environment, and no provider
   secret reference.
@@ -54,10 +54,12 @@ the safe JP-01 profile, calls the existing first-boot packet helper, and emits
 a short-lived plan artifact. The workflow does not contact Vultr or
 BWH and does not read any secret.
 
-The plan is always non-executable and currently reports `C1_PLAN_BLOCKED`
-because the candidate image is still held on the operator workstation, the
-exact C1 instance/cost/firewall/access/rollback/validation decisions remain
-open, and M0 evidence is deliberately not fetched or copied into this profile.
+The plan is always non-executable and currently reports `C1_PLAN_BLOCKED`.
+The compressed candidate image and checksum sidecar are now stored in private
+R2, but full-byte retrieval and SHA-256 verification from a GitHub runner have
+not passed. The exact C1 instance/cost/firewall/access/rollback/validation
+decisions remain open, and M0 evidence is deliberately not fetched or copied
+into this profile.
 M0 and E4-A-4 must be checked against their canonical status/contract sources
 at the relevant Gate. C2/C3 are not authorized by this workflow.
 
@@ -65,10 +67,13 @@ at the relevant Gate. C2/C3 are not authorized by this workflow.
 
 The profile records the approved C0 artifact SHA-256, raw image SHA-256, BOM
 SHA-256, file-inventory SHA-256, As-Run sample SHA-256, source commit, 40,603 installed
-files, 185-byte longest path, and 1,910-byte As-Run sample. It explicitly marks
-the image as unavailable to the GitHub runner: the image itself is not copied
-into Git or uploaded by this workflow. The profile records content-level
-reproducibility only, not bit-for-bit disk-image reproducibility. The C0 report
+files, 185-byte longest path, and 1,910-byte As-Run sample. It marks full
+artifact availability to the GitHub runner as false until an independent
+full-byte download and SHA-256 check passes. The image is not copied into Git
+or uploaded by the node-provisioning dry-run workflow; its separate R2 storage
+and metadata/sidecar verification boundary are documented below. The profile
+records content-level reproducibility only, not bit-for-bit disk-image
+reproducibility. The C0 report
 does not explicitly evidence template-parse success, sanitized-log status, or
 that the WireGuard package pin is bound into a release manifest; this module
 does not promote those points into claims or readiness assertions. The file-inventory
@@ -93,14 +98,14 @@ remains blocked when the C0 artifact SHA-256 record, no-secret scan, or
 first-boot image assertions are missing. These checks validate planning
 evidence only and do not authorize a provider operation.
 
-The dry-run workflow is limited to:
+The node-provisioning dry-run workflow is limited to:
 
 1. checkout the reviewed `master` commit without persisting checkout credentials;
 2. run the existing first-boot packet helper plus focused tests;
 3. render a plan with `executable: false`;
 4. upload only the redacted JSON plan for seven days.
 
-The workflow must not gain any of these capabilities in this source change:
+The node-provisioning dry-run workflow must not gain any of these capabilities:
 
 - `VULTR_API_KEY`, SSH key, Agent token, WireGuard private key, or other secret;
 - `environment:` binding, `id-token: write`, or write permission;
@@ -108,11 +113,12 @@ The workflow must not gain any of these capabilities in this source change:
   WireGuard key generation, Agent registration, service activation, or traffic;
 - automatic push, pull-request, schedule, or repository-dispatch trigger.
 
-A future provider execution workflow is a separate Risk A design and approval.
-If a provider credential is later approved for Actions, its scope, Environment,
-reviewers, branch restrictions, rotation, lifetime, and cleanup/readback must
-be reviewed independently. This README does not create that Environment or
-store a credential.
+The separate R2 read-only verification workflow is the only provider-access
+exception in this source change; its exact Risk A scope is recorded in
+R2_IMAGE_VERIFY_GATE.md. It does not change the pure Vultr dry-run adapter.
+Any future Vultr provider-execution workflow remains a separate Risk A design
+and approval. Its scope, Environment, reviewers, branch restrictions, rotation,
+lifetime, and cleanup/readback must be reviewed independently.
 
 
 ## R2 image storage and verification
