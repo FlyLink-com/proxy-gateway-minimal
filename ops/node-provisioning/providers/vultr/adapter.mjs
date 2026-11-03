@@ -1,4 +1,10 @@
+import { isIP } from "node:net";
+
 const SAFE_REF_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_:/-]{0,127}$/;
+const ALLOWED_PROFILE_KEYS = new Set([
+  "providerRef", "regionRef", "instancePlanRef", "sizePlanRef",
+  "installationMethod", "bootMode", "sizeDecisionApproved", "regionDecisionApproved"
+]);
 const BLOCKED_MUTATIONS = Object.freeze([
   "create-instance",
   "delete-instance",
@@ -18,13 +24,21 @@ function safeError() {
   return new Error("vultr node provisioning adapter accepts only the reviewed dry-run profile");
 }
 
+function containsIpLiteral(value) {
+  const candidates = value.match(/[0-9a-f:.%]+/gi) ?? [];
+  return candidates.some((candidate) => {
+    const normalized = candidate.replace(/%[a-z0-9_.-]+$/i, "");
+    return isIP(normalized) !== 0;
+  });
+}
+
 function safeRef(value) {
-  if (typeof value !== "string" || !SAFE_REF_PATTERN.test(value)) throw safeError();
+  if (typeof value !== "string" || !SAFE_REF_PATTERN.test(value) || containsIpLiteral(value)) throw safeError();
   return value;
 }
 
 export function buildVultrNodeProvisioningDryRun(profile = {}) {
-  if (!isObject(profile) || profile.providerRef !== "provider-vultr") throw safeError();
+  if (!isObject(profile) || Object.keys(profile).some((key) => !ALLOWED_PROFILE_KEYS.has(key)) || profile.providerRef !== "provider-vultr") throw safeError();
   const regionRef = safeRef(profile.regionRef);
   const instancePlanRef = safeRef(profile.instancePlanRef);
   const sizePlanRef = safeRef(profile.sizePlanRef);
