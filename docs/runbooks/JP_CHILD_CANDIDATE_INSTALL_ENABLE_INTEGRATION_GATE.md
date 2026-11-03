@@ -103,7 +103,7 @@ Before build, record all of the following:
 
 ## 4. C0b — Local isolated no-secret base image build and E4-A measurements
 
-<badge color="success">C0b PASS — 2026-11-02</badge>
+**C0b PASS — 2026-11-02**
 
 Candidate #1 was built from the approved BOM in an isolated temporary builder, scanned, measured, boot-tested with QEMU, transferred to lucky, and the temporary builder resources were destroyed. This is a base-image delivery only: it does not install the JP production Agent, create a JP instance, connect BWH, or authorize C1–C6.
 
