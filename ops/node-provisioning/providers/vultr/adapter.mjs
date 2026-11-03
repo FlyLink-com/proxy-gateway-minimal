@@ -1,6 +1,7 @@
 import { isIP } from "node:net";
 
 const SAFE_REF_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_:/-]{0,127}$/;
+const SENSITIVE_REF_PATTERN = /https?:|token|secret|credential|password|private|customer|@/i;
 const ALLOWED_PROFILE_KEYS = new Set([
   "providerRef", "regionRef", "instancePlanRef", "sizePlanRef",
   "installationMethod", "bootMode", "sizeDecisionApproved", "regionDecisionApproved"
@@ -33,7 +34,7 @@ function containsIpLiteral(value) {
 }
 
 function safeRef(value) {
-  if (typeof value !== "string" || !SAFE_REF_PATTERN.test(value) || containsIpLiteral(value)) throw safeError();
+  if (typeof value !== "string" || !SAFE_REF_PATTERN.test(value) || SENSITIVE_REF_PATTERN.test(value) || containsIpLiteral(value)) throw safeError();
   return value;
 }
 
