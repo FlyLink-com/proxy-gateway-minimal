@@ -63,10 +63,13 @@ JP-01 10.77.0.2/32, interface `wg-child0`, /32 AllowedIPs) was approved on
 | Agent token | node (P2), see §5 | node | SHA-256 fingerprint only (`agentAuthFingerprint`) |
 | Protocol material (Xray/HY2/TUIC) | BWH protected material store | BWH store + node at apply time | materialRef + materialDigest only, until the agent pulls by reference over the private link |
 
-Fingerprint derivation (pinned by this design): the lowercase hex SHA-256
-of the raw public-key bytes (for the agent token: of the token bytes). Both
-sides compute it identically and the gate compares for equality against the
-registration record.
+Fingerprint format (pinned by the existing registration contract, not by
+this design): the string `sha256:` followed by the lowercase hex SHA-256 of
+the raw public-key bytes (for the agent token: of the token bytes) —
+`ANCHOR_FINGERPRINT_PATTERN = /^sha256:[0-9a-f]{64}$/` in
+`node-registration-ingestion.mjs`. All D1 schemas use exactly this format
+for anchor and digest fields; both sides compute it identically and the
+gate compares for equality against the registration record.
 
 ## 4. Exchange sequence (P2)
 
@@ -137,3 +140,25 @@ inbound connections to the node.
 - Post-registration identity failure: follow the registration
   supersede/retirement flow; never delete historical identity, user, or
   metering records.
+
+## 9. Open contradiction to resolve before D3: SSH bootstrap
+
+The pipeline (PR #825, stage C1) requires that after installation SSH
+stays disabled until C2/C3 access is deliberately provisioned. This
+design's P1, however, assumes a one-time SSH bootstrap session with a
+fixed host fingerprint. Both cannot hold as written. Before D3 starts,
+one resolution must be chosen and the losing text amended:
+
+- Option A: the C1 install injects a one-time bootstrap public key via
+  cloud-init and enables sshd only inside a time-boxed bootstrap window;
+  the install receipt records the SSH host fingerprint as the trust
+  anchor; P1 consumes the window, and revocation restores the
+  SSH-disabled steady state.
+- Option B: no SSH bootstrap at all; the first exchange runs entirely
+  over the provider console / cloud-init user-data channel, and P1 is
+  rewritten accordingly.
+
+Status: UNDECIDED. The first-boot packet builder currently has no SSH
+host fingerprint output field, which either option must address. This
+item sits alongside the GitHub egress decision in §7: both are D3
+preconditions, neither is resolved by D1.

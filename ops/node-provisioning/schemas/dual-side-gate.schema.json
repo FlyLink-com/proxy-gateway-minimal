@@ -1,1 +1,362 @@
-{"$id":"https://github.com/FlyLink-com/proxy-gateway-minimal/ops/node-provisioning/schemas/dual-side-gate.schema.json","$schema":"https://json-schema.org/draft/2020-12/schema","additionalProperties":false,"description":"Dual-side gate report: the cross-validation of one BWH integration plan and one node runtime plan of the same generation, per section 7 of the Post-Install Dual-Side Integration design v0.1. The verdict is pass only when every check passes; any fail or not_evaluated check blocks service activation (DUAL_SIDE_GATE_BLOCKED). Carries digests and check outcomes only — no configuration bodies, no secrets.","properties":{"bwhPlanDigest":{"pattern":"^[a-f0-9]{64}$","type":"string"},"checks":{"items":{"additionalProperties":false,"properties":{"detail":{"maxLength":300,"type":"string"},"id":{"enum":["node_ref_match","provider_ref_match","region_ref_match","role_ref_match","channel_refs_match","image_manifest_ref_match","profile_digest_match","generation_match","wireguard_key_cross_match","allowed_ips_within_plan","no_default_route","agent_binding_match","agent_private_path_only","protocol_config_tests","stats_loopback_only","no_unreplaced_placeholders","file_permissions","secret_hygiene_scan","material_digests_match"],"type":"string"},"status":{"enum":["pass","fail","not_evaluated"],"type":"string"}},"required":["id","status"],"type":"object"},"minItems":1,"type":"array"},"evaluatedAt":{"format":"date-time","type":"string"},"gateRef":{"pattern":"^[A-Za-z0-9._:-]{1,160}$","type":"string"},"generation":{"minimum":1,"type":"integer"},"nodePlanDigest":{"pattern":"^[a-f0-9]{64}$","type":"string"},"nodeRef":{"pattern":"^[A-Za-z0-9._:-]{1,160}$","type":"string"},"profileDigest":{"pattern":"^[a-f0-9]{64}$","type":"string"},"schema":{"const":"dual-side-gate/v1","type":"string"},"verdict":{"enum":["pass","blocked"],"type":"string"}},"required":["schema","gateRef","evaluatedAt","nodeRef","generation","profileDigest","bwhPlanDigest","nodePlanDigest","checks","verdict"],"title":"Dual-Side Gate Report","type":"object"}
+{
+  "$id": "https://github.com/FlyLink-com/proxy-gateway-minimal/ops/node-provisioning/schemas/dual-side-gate.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Dual-Side Gate Report",
+  "description": "Dual-side gate report: the cross-validation of one BWH integration plan and one node runtime plan of the same generation, per section 7 of the Post-Install Dual-Side Integration design v0.1. The check set is complete by construction: the checks array must contain each of the 19 check ids exactly once (minItems/maxItems 19 plus one contains clause per id), so a report cannot be schema-valid with a check missing or duplicated. The verdict is pass only when every check passes; that coherence rule is semantic and is enforced by the gate evaluator and the contract tests. Carries digests and check outcomes only — no configuration bodies, no secrets.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schema": {
+      "const": "dual-side-gate/v1",
+      "type": "string"
+    },
+    "gateRef": {
+      "pattern": "^[A-Za-z0-9._:-]{1,160}$",
+      "type": "string"
+    },
+    "evaluatedAt": {
+      "format": "date-time",
+      "type": "string"
+    },
+    "nodeRef": {
+      "pattern": "^[A-Za-z0-9._:-]{1,160}$",
+      "type": "string"
+    },
+    "generation": {
+      "pattern": "^[A-Za-z0-9._:-]{1,160}$",
+      "type": "string"
+    },
+    "profileDigest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "bwhPlanDigest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "nodePlanDigest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "checks": {
+      "type": "array",
+      "minItems": 19,
+      "maxItems": 19,
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "enum": [
+              "node_ref_match",
+              "provider_ref_match",
+              "region_ref_match",
+              "role_ref_match",
+              "channel_refs_match",
+              "image_manifest_ref_match",
+              "profile_digest_match",
+              "generation_match",
+              "wireguard_key_cross_match",
+              "allowed_ips_within_plan",
+              "no_default_route",
+              "agent_binding_match",
+              "agent_private_path_only",
+              "protocol_config_tests",
+              "stats_loopback_only",
+              "no_unreplaced_placeholders",
+              "file_permissions",
+              "secret_hygiene_scan",
+              "material_digests_match"
+            ],
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "pass",
+              "fail",
+              "not_evaluated"
+            ],
+            "type": "string"
+          },
+          "detail": {
+            "maxLength": 300,
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "status"
+        ]
+      },
+      "allOf": [
+        {
+          "contains": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "const": "node_ref_match"
+              }
+            },
+            "required": [
+              "id"
+            ]
+          }
+        },
+        {
+          "contains": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "const": "provider_ref_match"
+              }
+            },
+            "required": [
+              "id"
+            ]
+          }
+        },
+        {
+          "contains": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "const": "region_ref_match"
+              }
+            },
+            "required": [
+              "id"
+            ]
+          }
+        },
+        {
+          "contains": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "const": "role_ref_match"
+              }
+            },
+            "required": [
+              "id"
+            ]
+          }
+        },
+        {
+          "contains": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "const": "channel_refs_match"
+              }
+            },
+            "required": [
+              "id"
+            ]
+          }
+        },
+        {
+          "contains": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "const": "image_manifest_ref_match"
+              }
+            },
+            "required": [
+              "id"
+            ]
+          }
+        },
+        {
+          "contains": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "const": "profile_digest_match"
+              }
+            },
+            "required": [
+              "id"
+            ]
+          }
+        },
+        {
+          "contains": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "const": "generation_match"
+              }
+            },
+            "required": [
+              "id"
+            ]
+          }
+        },
+        {
+          "contains": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "const": "wireguard_key_cross_match"
+              }
+            },
+            "required": [
+              "id"
+            ]
+          }
+        },
+        {
+          "contains": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "const": "allowed_ips_within_plan"
+              }
+            },
+            "required": [
+              "id"
+            ]
+          }
+        },
+        {
+          "contains": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "const": "no_default_route"
+              }
+            },
+            "required": [
+              "id"
+            ]
+          }
+        },
+        {
+          "contains": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "const": "agent_binding_match"
+              }
+            },
+            "required": [
+              "id"
+            ]
+          }
+        },
+        {
+          "contains": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "const": "agent_private_path_only"
+              }
+            },
+            "required": [
+              "id"
+            ]
+          }
+        },
+        {
+          "contains": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "const": "protocol_config_tests"
+              }
+            },
+            "required": [
+              "id"
+            ]
+          }
+        },
+        {
+          "contains": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "const": "stats_loopback_only"
+              }
+            },
+            "required": [
+              "id"
+            ]
+          }
+        },
+        {
+          "contains": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "const": "no_unreplaced_placeholders"
+              }
+            },
+            "required": [
+              "id"
+            ]
+          }
+        },
+        {
+          "contains": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "const": "file_permissions"
+              }
+            },
+            "required": [
+              "id"
+            ]
+          }
+        },
+        {
+          "contains": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "const": "secret_hygiene_scan"
+              }
+            },
+            "required": [
+              "id"
+            ]
+          }
+        },
+        {
+          "contains": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "const": "material_digests_match"
+              }
+            },
+            "required": [
+              "id"
+            ]
+          }
+        }
+      ]
+    },
+    "verdict": {
+      "enum": [
+        "pass",
+        "blocked"
+      ],
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema",
+    "gateRef",
+    "evaluatedAt",
+    "nodeRef",
+    "generation",
+    "profileDigest",
+    "bwhPlanDigest",
+    "nodePlanDigest",
+    "checks",
+    "verdict"
+  ]
+}

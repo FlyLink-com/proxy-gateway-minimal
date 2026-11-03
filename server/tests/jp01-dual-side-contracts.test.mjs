@@ -2,14 +2,19 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
-// Contract tests for the dual-side integration schemas (D1).
+import { validateDataPlaneApplyReceipt } from "../../server/services/edge/data-plane-agent-protocol.mjs";
+
+// Contract tests for the dual-side integration schemas (D1, revised after
+// independent review). Fixtures are fully synthetic. Beyond schema
+// conformance, this file checks the D1 contracts against the REAL
+// contracts they must interoperate with: the registration anchor format
+// and the live agent-protocol receipt validator are imported/exercised,
+// not re-described.
 //
-// The fixtures are fully synthetic: fixed placeholder fingerprints and
-// digests, no production values, no secrets. The validator below
-// implements exactly the JSON Schema subset the D1 schemas use (type,
-// const, enum, pattern, required, properties, additionalProperties,
-// items, minItems, uniqueItems, minimum, maxLength), so the conformance
-// claims in this file are exercised, not assumed.
+// The validator below implements exactly the JSON Schema subset the D1
+// schemas use (type, const, enum, pattern, required, properties,
+// additionalProperties, items, minItems, maxItems, uniqueItems, minimum,
+// maxLength, allOf, contains, anyOf).
 
 const SCHEMA_DIR = new URL("../../ops/node-provisioning/schemas/", import.meta.url);
 
@@ -20,7 +25,9 @@ function loadSchema(name) {
 const bwhSchema = loadSchema("bwh-integration-plan.schema.json");
 const nodeSchema = loadSchema("node-runtime-plan.schema.json");
 const gateSchema = loadSchema("dual-side-gate.schema.json");
-const receiptSchema = loadSchema("postinstall-receipt.schema.json");
+const agentReceiptSchema = loadSchema("agent-apply-receipt.schema.json");
+const summaryReceiptSchema = loadSchema("postinstall-receipt.schema.json");
+const ALL_SCHEMAS = [bwhSchema, nodeSchema, gateSchema, agentReceiptSchema, summaryReceiptSchema];
 
 function typeOf(value) {
   if (Array.isArray(value)) return "array";
@@ -36,6 +43,18 @@ function validate(schema, value, path = "$") {
   }
   if (schema.enum && !schema.enum.includes(value)) {
     errors.push(`${path}: ${JSON.stringify(value)} not in enum`);
+  }
+  if (schema.anyOf) {
+    const ok = schema.anyOf.some((sub) => validate(sub, value, path).length === 0);
+    if (!ok) errors.push(`${path}: matches none of anyOf`);
+    return errors;
+  }
+  if (schema.allOf) {
+    schema.allOf.forEach((sub, i) => errors.push(...validate(sub, value, `${path}<allOf${i}>`)));
+  }
+  if (schema.contains !== undefined && Array.isArray(value)) {
+    const ok = value.some((item) => validate(schema.contains, item, `${path}[]`).length === 0);
+    if (!ok) errors.push(`${path}: no item satisfies contains`);
   }
   if (schema.type) {
     const actual = typeOf(value);
@@ -59,6 +78,9 @@ function validate(schema, value, path = "$") {
   if (Array.isArray(value)) {
     if (schema.minItems !== undefined && value.length < schema.minItems) {
       errors.push(`${path}: fewer than minItems ${schema.minItems}`);
+    }
+    if (schema.maxItems !== undefined && value.length > schema.maxItems) {
+      errors.push(`${path}: more than maxItems ${schema.maxItems}`);
     }
     if (schema.uniqueItems) {
       const seen = new Set(value.map((item) => JSON.stringify(item)));
@@ -92,8 +114,6 @@ function assertInvalid(schema, value) {
   assert.ok(validate(schema, value).length > 0, "expected validation to fail");
 }
 
-// Key vocabulary forbidden by the data-plane agent protocol
-// (normalised: lowercase, alphanumerics only).
 const FORBIDDEN_KEYS = new Set([
   "authorization", "cookie", "customerdata", "env", "password",
   "privatekey", "rawconfig", "rawenv", "rawlog", "secret", "sqlite",
@@ -105,14 +125,18 @@ function propertyNames(schema, acc = []) {
     acc.push(key);
     propertyNames(sub, acc);
     if (sub.items) propertyNames(sub.items, acc);
+    for (const alt of sub.anyOf ?? []) propertyNames(alt, acc);
   }
   return acc;
 }
 
-const FP_A = "a".repeat(64);
-const FP_B = "b".repeat(64);
-const FP_C = "c".repeat(64);
-const FP_D = "d".repeat(64);
+const fp = (ch) => `sha256:${ch.repeat(64)}`;
+const FP_A = fp("a");
+const FP_B = fp("b");
+const FP_C = fp("c");
+const FP_D = fp("d");
+const FP_E = fp("e");
+const FP_F = fp("f");
 const CHANNELS = [
   "channel-vultr-jp-01-vless-reality-tcp",
   "channel-vultr-jp-01-hy2",
@@ -123,7 +147,7 @@ function bwhPlan() {
   return {
     schema: "bwh-integration-plan/v1",
     planRef: "bwh-plan-jp01-g1",
-    generation: 1,
+    generation: "1",
     nodeRef: "node-vultr-jp-01",
     providerRef: "provider-vultr",
     regionRef: "region-japan-pending-c1-gate",
@@ -136,9 +160,9 @@ function bwhPlan() {
     lifecycle: "private-validation",
     pool: "private",
     channels: [
-      { channelRef: CHANNELS[0], runtimeAdapter: "xray", desiredStateRef: "desired-jp01-vless-g1", materialRef: "material-jp01-vless", materialDigest: "sha256:" + "1".repeat(64), endpointRef: "endpoint-jp01-vless" },
-      { channelRef: CHANNELS[1], runtimeAdapter: "hysteria2", desiredStateRef: "desired-jp01-hy2-g1", materialRef: "material-jp01-hy2", materialDigest: "sha256:" + "2".repeat(64), endpointRef: "endpoint-jp01-hy2" },
-      { channelRef: CHANNELS[2], runtimeAdapter: "mihomo", desiredStateRef: "desired-jp01-tuic-g1", materialRef: "material-jp01-tuic", materialDigest: "sha256:" + "3".repeat(64), endpointRef: "endpoint-jp01-tuic" }
+      { channelRef: CHANNELS[0], runtimeAdapter: "xray", desiredStateRef: "desired-jp01-vless-g1", materialRef: "material-jp01-vless", materialDigest: fp("1"), endpointRef: "endpoint-jp01-vless" },
+      { channelRef: CHANNELS[1], runtimeAdapter: "hysteria2", desiredStateRef: "desired-jp01-hy2-g1", materialRef: "material-jp01-hy2", materialDigest: fp("2"), endpointRef: "endpoint-jp01-hy2" },
+      { channelRef: CHANNELS[2], runtimeAdapter: "mihomo", desiredStateRef: "desired-jp01-tuic-g1", materialRef: "material-jp01-tuic", materialDigest: fp("3"), endpointRef: "endpoint-jp01-tuic" }
     ],
     wireguard: {
       planRef: "wg-plan-jp01",
@@ -147,7 +171,7 @@ function bwhPlan() {
       allowedIps: ["10.77.0.2/32"]
     },
     agent: { agentAuthFingerprint: FP_D, endpointRef: "agent-endpoint-bwh-private" },
-    digest: "e".repeat(64)
+    digest: FP_E
   };
 }
 
@@ -155,7 +179,7 @@ function nodePlan() {
   return {
     schema: "node-runtime-plan/v1",
     planRef: "node-plan-jp01-g1",
-    generation: 1,
+    generation: "1",
     nodeRef: "node-vultr-jp-01",
     providerRef: "provider-vultr",
     regionRef: "region-japan-pending-c1-gate",
@@ -172,52 +196,89 @@ function nodePlan() {
     },
     agent: { releaseRef: "source-eb83197e", authFingerprint: FP_D, bwhEndpointRef: "agent-endpoint-bwh-private" },
     services: [
-      { channelRef: CHANNELS[0], runtimeAdapter: "xray", unitName: "xray.service", configDigest: "sha256:" + "4".repeat(64), statsListen: "127.0.0.1" },
-      { channelRef: CHANNELS[1], runtimeAdapter: "hysteria2", unitName: "hysteria2.service", configDigest: "sha256:" + "5".repeat(64), statsListen: "127.0.0.1" },
-      { channelRef: CHANNELS[2], runtimeAdapter: "mihomo", unitName: "mihomo.service", configDigest: "sha256:" + "6".repeat(64), statsListen: "::1" }
+      { channelRef: CHANNELS[0], runtimeAdapter: "xray", unitName: "xray.service", configDigest: fp("4"), statsListen: "127.0.0.1" },
+      { channelRef: CHANNELS[1], runtimeAdapter: "hysteria2", unitName: "hysteria2.service", configDigest: fp("5"), statsListen: "127.0.0.1" },
+      { channelRef: CHANNELS[2], runtimeAdapter: "mihomo", unitName: "mihomo.service", configDigest: fp("6"), statsListen: "::1" }
     ],
     activation: { controlServicesEnabled: false, trafficServicesEnabled: false },
-    digest: "f".repeat(64)
+    digest: FP_F
   };
 }
 
-function gateReport(checks, verdict) {
+const GATE_CHECK_IDS = [
+  "node_ref_match", "provider_ref_match", "region_ref_match", "role_ref_match",
+  "channel_refs_match", "image_manifest_ref_match", "profile_digest_match", "generation_match",
+  "wireguard_key_cross_match", "allowed_ips_within_plan", "no_default_route", "agent_binding_match",
+  "agent_private_path_only", "protocol_config_tests", "stats_loopback_only", "no_unreplaced_placeholders",
+  "file_permissions", "secret_hygiene_scan", "material_digests_match"
+];
+
+function gateReport(statusById = {}, verdict = "pass") {
   return {
     schema: "dual-side-gate/v1",
     gateRef: "dual-side-gate-jp01-g1",
     evaluatedAt: "2026-11-03T00:00:00Z",
     nodeRef: "node-vultr-jp-01",
-    generation: 1,
+    generation: "1",
     profileDigest: FP_C,
-    bwhPlanDigest: "e".repeat(64),
-    nodePlanDigest: "f".repeat(64),
-    checks,
+    bwhPlanDigest: FP_E,
+    nodePlanDigest: FP_F,
+    checks: GATE_CHECK_IDS.map((id) => ({ id, status: statusById[id] ?? "pass" })),
     verdict
   };
 }
 
-function receipt() {
+function agentReceipt() {
   return {
-    schema: "postinstall-receipt/v1",
     type: "gccgw_data_plane_apply_receipt",
-    receiptRef: "receipt-jp01-g1",
     nodeRef: "node-vultr-jp-01",
-    channelRefs: [...CHANNELS],
-    sourceDesiredStateRef: "desired-jp01-g1",
-    sourceGeneration: 1,
-    desiredStateRef: "desired-jp01-g1",
-    generation: 1,
-    materialDigest: "sha256:" + "1".repeat(64),
-    credentialDigests: ["sha256:" + "7".repeat(64)],
-    configTest: { status: "pass" },
+    desiredStateRef: "desired-jp01-vless-g1",
+    generation: "1",
+    channelRef: CHANNELS[0],
+    status: "applied",
+    configTest: true,
     serviceActive: true,
     listenerPresent: true,
+    credentialCount: 2,
+    appliedAt: "2026-11-03T00:00:00Z",
+    materialDigests: [fp("1")],
+    redacted: true
+  };
+}
+
+function summaryReceipt() {
+  return {
+    schema: "postinstall-receipt/v1",
+    type: "gccgw_postinstall_summary_receipt",
+    receiptRef: "receipt-jp01-g1",
+    nodeRef: "node-vultr-jp-01",
+    generation: "1",
+    desiredStateRef: "desired-jp01-g1",
+    channelSummaries: CHANNELS.map((channelRef, i) => ({
+      channelRef,
+      receiptRef: `receipt-jp01-g1-${i + 1}`,
+      status: "applied",
+      configTest: true,
+      serviceActive: true,
+      listenerPresent: true,
+      credentialCount: 2,
+      materialDigests: [fp(String(i + 1))]
+    })),
     status: "applied",
     appliedAt: "2026-11-03T00:00:00Z"
   };
 }
 
-// Cross-plan identity consistency, mirroring the gate's identity checks.
+// Semantic CIDR rule the D2 gate must implement (the schemas pin the
+// shape; this checks the meaning): every entry is a /32 inside the
+// approved 10.77.0.0/24 plan, and no default route appears.
+function cidrWithinApprovedPlan(cidr) {
+  const match = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})\/(\d{1,2})$/.exec(cidr);
+  if (!match) return false;
+  const [, a, b, c, , prefix] = match.map(Number);
+  return a === 10 && b === 77 && c === 0 && prefix === 32;
+}
+
 function dualSideConsistency(bwh, node) {
   const failed = [];
   const sorted = (values) => [...values].sort();
@@ -225,7 +286,9 @@ function dualSideConsistency(bwh, node) {
   if (bwh.providerRef !== node.providerRef) failed.push("provider_ref_match");
   if (bwh.regionRef !== node.regionRef) failed.push("region_ref_match");
   if (bwh.roleRef !== node.roleRef) failed.push("role_ref_match");
-  if (JSON.stringify(sorted(bwh.channelRefs)) !== JSON.stringify(sorted(node.services.map((s) => s.channelRef)))) {
+  const bwhChannels = sorted(bwh.channels.map((c) => c.channelRef));
+  if (JSON.stringify(sorted(bwh.channelRefs)) !== JSON.stringify(bwhChannels) ||
+      JSON.stringify(bwhChannels) !== JSON.stringify(sorted(node.services.map((s) => s.channelRef)))) {
     failed.push("channel_refs_match");
   }
   if (bwh.imageManifestRef !== node.imageManifestRef) failed.push("image_manifest_ref_match");
@@ -235,17 +298,25 @@ function dualSideConsistency(bwh, node) {
       bwh.wireguard.bwhPeerPublicKeyFingerprint !== node.wireguard.peerPublicKeyFingerprint) {
     failed.push("wireguard_key_cross_match");
   }
+  const allIps = [...bwh.wireguard.allowedIps, ...node.wireguard.allowedIps, node.wireguard.addressCidr];
+  if (!allIps.every(cidrWithinApprovedPlan)) failed.push("allowed_ips_within_plan");
+  if (allIps.some((ip) => ip === "0.0.0.0/0" || ip === "::/0")) failed.push("no_default_route");
+  if (!bwh.wireguard.allowedIps.includes(node.wireguard.addressCidr)) failed.push("allowed_ips_within_plan");
   if (bwh.agent.agentAuthFingerprint !== node.agent.authFingerprint) failed.push("agent_binding_match");
-  return failed;
+  return [...new Set(failed)];
 }
 
 function gateVerdictCoherent(report) {
-  const allPass = report.checks.every((check) => check.status === "pass");
-  return (report.verdict === "pass") === allPass && report.checks.length > 0;
+  const ids = report.checks.map((check) => check.id);
+  const complete = report.checks.length === GATE_CHECK_IDS.length &&
+    new Set(ids).size === GATE_CHECK_IDS.length &&
+    GATE_CHECK_IDS.every((id) => ids.includes(id));
+  const allPass = complete && report.checks.every((check) => check.status === "pass");
+  return (report.verdict === "pass") === allPass;
 }
 
-test("all four schemas are closed objects on draft 2020-12 with no forbidden key vocabulary", () => {
-  for (const schema of [bwhSchema, nodeSchema, gateSchema, receiptSchema]) {
+test("all five schemas are closed objects on draft 2020-12 with no forbidden key vocabulary", () => {
+  for (const schema of ALL_SCHEMAS) {
     assert.equal(schema.$schema, "https://json-schema.org/draft/2020-12/schema");
     assert.equal(schema.type, "object");
     assert.equal(schema.additionalProperties, false);
@@ -256,20 +327,57 @@ test("all four schemas are closed objects on draft 2020-12 with no forbidden key
   }
 });
 
-test("synthetic fixtures conform to all four schemas", () => {
+test("synthetic fixtures conform to all five schemas", () => {
   assertValid(bwhSchema, bwhPlan());
   assertValid(nodeSchema, nodePlan());
-  assertValid(gateSchema, gateReport([{ id: "node_ref_match", status: "pass" }], "pass"));
-  assertValid(receiptSchema, receipt());
+  assertValid(gateSchema, gateReport());
+  assertValid(agentReceiptSchema, agentReceipt());
+  assertValid(summaryReceiptSchema, summaryReceipt());
+});
+
+test("anchor fingerprints must use the registration format sha256:<lowercase hex>", () => {
+  // The exact failure the review found: a bare-hex fingerprint passes a
+  // naive schema but the E1 registration executor rejects it.
+  const bare = bwhPlan();
+  bare.agent = { ...bare.agent, agentAuthFingerprint: "d".repeat(64) };
+  assertInvalid(bwhSchema, bare);
+  const bareNode = nodePlan();
+  bareNode.wireguard = { ...bareNode.wireguard, ownPublicKeyFingerprint: "a".repeat(64) };
+  assertInvalid(nodeSchema, bareNode);
+  const upper = bwhPlan();
+  upper.wireguard = { ...upper.wireguard, nodePeerPublicKeyFingerprint: `sha256:${"A".repeat(64)}` };
+  assertInvalid(bwhSchema, upper);
+});
+
+test("wireguard planRef follows WG_PLAN_REF_PATTERN: a plan name, never an address", () => {
+  const dotted = bwhPlan();
+  dotted.wireguard = { ...dotted.wireguard, planRef: "wg.plan.jp01" };
+  assertInvalid(bwhSchema, dotted);
+  const addressed = bwhPlan();
+  addressed.wireguard = { ...addressed.wireguard, planRef: "10.77.0.2" };
+  assertInvalid(bwhSchema, addressed);
+});
+
+test("allowedIps and the node address are pinned to the approved /32 plan, semantically and structurally", () => {
+  const defaultRoute = bwhPlan();
+  defaultRoute.wireguard = { ...defaultRoute.wireguard, allowedIps: ["0.0.0.0/0"] };
+  assertInvalid(bwhSchema, defaultRoute);
+  const subnet = nodePlan();
+  subnet.wireguard = { ...subnet.wireguard, allowedIps: ["10.77.0.0/24"] };
+  assertInvalid(nodeSchema, subnet);
+  const wrongHost = nodePlan();
+  wrongHost.wireguard = { ...wrongHost.wireguard, addressCidr: "10.77.0.3/32" };
+  assertInvalid(nodeSchema, wrongHost);
+  assert.equal(cidrWithinApprovedPlan("10.77.0.2/32"), true);
+  assert.equal(cidrWithinApprovedPlan("10.77.1.2/32"), false);
+  assert.equal(cidrWithinApprovedPlan("10.77.0.2/24"), false);
+  assert.equal(cidrWithinApprovedPlan("0.0.0.0/0"), false);
 });
 
 test("schemas reject secret-bearing and out-of-contract documents", () => {
-  const withToken = { ...bwhPlan(), token: "synthetic" };
-  assertInvalid(bwhSchema, withToken);
-  const withPrivateKey = { ...nodePlan(), privateKey: "synthetic" };
-  assertInvalid(nodeSchema, withPrivateKey);
+  assertInvalid(bwhSchema, { ...bwhPlan(), token: "synthetic" });
+  assertInvalid(nodeSchema, { ...nodePlan(), privateKey: "synthetic" });
   assertInvalid(bwhSchema, { ...bwhPlan(), lifecycle: "active" });
-  assertInvalid(bwhSchema, { ...bwhPlan(), wireguard: { ...bwhPlan().wireguard, nodePeerPublicKeyFingerprint: "A".repeat(64) } });
   const { materialDigest, ...missingDigest } = bwhPlan().channels[0];
   assertInvalid(bwhSchema, { ...bwhPlan(), channels: [missingDigest] });
 });
@@ -282,10 +390,62 @@ test("a conforming node plan can never authorise service activation", () => {
   assertInvalid(nodeSchema, publicStats);
 });
 
-test("receipt vocabulary matches the agent protocol exactly", () => {
-  assertInvalid(receiptSchema, { ...receipt(), status: "success" });
-  assertInvalid(receiptSchema, { ...receipt(), type: "apply_receipt" });
-  assertValid(receiptSchema, { ...receipt(), status: "unchanged", serviceActive: false });
+test("gate completeness: all 19 checks exactly once, enforced by the schema itself", () => {
+  const missing = gateReport();
+  missing.checks = missing.checks.filter((check) => check.id !== "material_digests_match");
+  assertInvalid(gateSchema, missing);
+  const duplicated = gateReport();
+  duplicated.checks[18] = { id: "node_ref_match", status: "pass" };
+  assertInvalid(gateSchema, duplicated);
+  const extra = gateReport();
+  extra.checks.push({ id: "node_ref_match", status: "pass", detail: "again" });
+  assertInvalid(gateSchema, extra);
+  const singleCheck = { ...gateReport(), checks: [{ id: "node_ref_match", status: "pass" }] };
+  assertInvalid(gateSchema, singleCheck);
+});
+
+test("gate verdict must cohere: pass requires the complete set, all passing", () => {
+  assert.equal(gateVerdictCoherent(gateReport()), true);
+  assert.equal(gateVerdictCoherent(gateReport({ material_digests_match: "fail" }, "pass")), false);
+  assert.equal(gateVerdictCoherent(gateReport({ agent_binding_match: "not_evaluated" }, "pass")), false);
+  assert.equal(gateVerdictCoherent(gateReport({ material_digests_match: "fail" }, "blocked")), true);
+  assert.equal(gateVerdictCoherent(gateReport({}, "blocked")), false);
+});
+
+test("agent receipt fixtures pass BOTH the D1 schema and the real protocol validator", () => {
+  const fixture = agentReceipt();
+  assertValid(agentReceiptSchema, fixture);
+  const normalised = validateDataPlaneApplyReceipt(fixture, {
+    expectedNodeRef: "node-vultr-jp-01",
+    expectedGeneration: "1",
+    expectedDesiredStateRef: "desired-jp01-vless-g1",
+    allowedChannelRefs: CHANNELS
+  });
+  assert.equal(normalised.type, "gccgw_data_plane_apply_receipt");
+  assert.equal(normalised.channelRef, CHANNELS[0]);
+  // The shape this PR originally shipped (object configTest, channel
+  // array) is rejected by the real protocol — the regression this test
+  // exists to prevent.
+  const objectConfig = { ...fixture, configTest: { status: "pass" } };
+  assertInvalid(agentReceiptSchema, objectConfig);
+  assert.throws(() => validateDataPlaneApplyReceipt(objectConfig, {
+    expectedNodeRef: "node-vultr-jp-01",
+    expectedGeneration: "1",
+    expectedDesiredStateRef: "desired-jp01-vless-g1",
+    allowedChannelRefs: CHANNELS
+  }));
+  assertInvalid(agentReceiptSchema, { ...fixture, status: "success" });
+  assertInvalid(agentReceiptSchema, { ...fixture, redacted: false });
+});
+
+test("the summary receipt can never be confused with a raw agent receipt", () => {
+  const summary = summaryReceipt();
+  assertValid(summaryReceiptSchema, summary);
+  assertInvalid(agentReceiptSchema, summary);
+  assert.throws(() => validateDataPlaneApplyReceipt(
+    { ...agentReceipt(), type: "gccgw_postinstall_summary_receipt" },
+    { expectedNodeRef: "node-vultr-jp-01", expectedGeneration: "1", expectedDesiredStateRef: "desired-jp01-vless-g1", allowedChannelRefs: CHANNELS }
+  ));
 });
 
 test("dual-side consistency holds for the fixture pair and breaks on any identity drift", () => {
@@ -298,14 +458,12 @@ test("dual-side consistency holds for the fixture pair and breaks on any identit
   const wrongAgent = nodePlan();
   wrongAgent.agent = { ...wrongAgent.agent, authFingerprint: FP_A };
   assert.deepEqual(dualSideConsistency(bwhPlan(), wrongAgent), ["agent_binding_match"]);
-  const wrongGeneration = { ...nodePlan(), generation: 2 };
+  const wrongGeneration = { ...nodePlan(), generation: "2" };
   assert.deepEqual(dualSideConsistency(bwhPlan(), wrongGeneration), ["generation_match"]);
-});
-
-test("gate verdict must cohere with its checks: pass requires every check to pass", () => {
-  assert.equal(gateVerdictCoherent(gateReport([{ id: "node_ref_match", status: "pass" }], "pass")), true);
-  assert.equal(gateVerdictCoherent(gateReport([{ id: "node_ref_match", status: "fail" }], "pass")), false);
-  assert.equal(gateVerdictCoherent(gateReport([{ id: "material_digests_match", status: "not_evaluated" }], "pass")), false);
-  assert.equal(gateVerdictCoherent(gateReport([{ id: "node_ref_match", status: "fail" }], "blocked")), true);
-  assertInvalid(gateSchema, gateReport([{ id: "invented_check", status: "pass" }], "blocked"));
+  const driftedChannels = bwhPlan();
+  driftedChannels.channels = driftedChannels.channels.slice(0, 2);
+  assert.ok(dualSideConsistency(driftedChannels, nodePlan()).includes("channel_refs_match"));
+  const escapedIps = nodePlan();
+  escapedIps.wireguard = { ...escapedIps.wireguard, allowedIps: ["10.77.0.1/32", "192.168.0.1/32"] };
+  assert.ok(dualSideConsistency(bwhPlan(), escapedIps).includes("allowed_ips_within_plan"));
 });
