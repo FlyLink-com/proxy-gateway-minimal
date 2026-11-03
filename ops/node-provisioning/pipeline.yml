@@ -11,6 +11,22 @@ profile: ops/node-provisioning/profiles/jp-01.json
 production_authority: false
 status_as_of: "2026-11-03"
 
+# Mapping to the Post-Install Dual-Side Integration design (v0.1, 2026-11-03).
+# The P-phases refine the C-stages below; they do not replace them. Delivery
+# batches: D1 contracts/schemas/identity exchange, D2 dual renderers,
+# D3 WireGuard + Agent + E1-A, D4 runtime apply + receipt + canary.
+dual_side_phases:
+  - { phase: P0, name: Post-install admission checks, pipeline_stages: [T2, T3, M0], batch: D2 }
+  - { phase: P1, name: GitHub SSH bootstrap and handover, pipeline_stages: [C1], batch: D3 }
+  - { phase: P2, name: Runtime identity initialisation and public-key exchange, pipeline_stages: [C2, C3], batch: D1 }
+  - { phase: P3, name: Dual-side configuration rendering, pipeline_stages: [C4], batch: D2 }
+  - { phase: P4, name: Dual-side validation gate, pipeline_stages: [C4, C5], batch: D2 }
+  - { phase: P5, name: WireGuard private control link, pipeline_stages: [C2], batch: D3 }
+  - { phase: P6, name: Agent private onboarding, pipeline_stages: [C3], batch: D3 }
+  - { phase: P7, name: E1-A registration (executor path only), pipeline_stages: [C4], batch: D3 }
+  - { phase: P8, name: Desired state, material, apply, and receipt, pipeline_stages: [C5], batch: D4 }
+  - { phase: P9, name: Client canary, pipeline_stages: [C6], batch: D4 }
+
 stages:
   - id: T2
     name: R2 object and checksum sidecar verification
@@ -133,7 +149,8 @@ stages:
       agent control traffic only.
     prerequisites: [C1]
     inputs:
-      - Approved segment 10.77.0.0/24 (BWH 10.77.0.1/32, JP-01 10.77.0.2/32)
+      - Segment 10.77.0.0/24 (BWH 10.77.0.1/32, JP-01 10.77.0.2/32) — address
+        plan approved 2026-11-02; production application remains C2-gated
       - Interface wg-child0 on both sides; keys generated on-host only
     steps:
       - Generate key pairs on each host; exchange public keys only.
