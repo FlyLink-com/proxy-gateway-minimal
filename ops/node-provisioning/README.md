@@ -114,6 +114,29 @@ reviewers, branch restrictions, rotation, lifetime, and cleanup/readback must
 be reviewed independently. This README does not create that Environment or
 store a credential.
 
+
+## R2 image storage and verification
+
+The JP-01 C0 compressed image and its checksum sidecar have been uploaded to the private Cloudflare R2 bucket:
+
+- Bucket: `jp01-images`.
+- Image: `jp-01/c0/2026-11-02/jp01-candidate-1.img.zst` (2,269,994,633 bytes).
+- Sidecar: `jp-01/c0/2026-11-02/jp01-candidate-1.img.zst.sha256` (92 bytes).
+- The profile's expected compressed-artifact SHA-256 remains the source identity; the R2 object-list readback establishes object existence and size, not full-byte integrity.
+
+The separate `.github/workflows/jp01-image-verify.yml` workflow is manual-only and master-only. It binds the dedicated `jp01-image-verify` Environment and performs only:
+
+1. An unauthenticated endpoint/TLS preflight.
+2. `HeadObject` for the exact image key.
+3. `HeadObject` and `GetObject` for the 92-byte checksum sidecar.
+4. A comparison of the sidecar digest and filename against this profile.
+
+It does not download the full image, list the bucket, upload/overwrite/delete objects, call Vultr, SSH to a host, install an image, or change production/runtime state. It has only `contents: read` GitHub permission. The existing `node-provisioning-dry-run.yml` remains unchanged and has no Environment or provider credential.
+
+The GitHub Environment must remain restricted to `master`. Its secrets are `R2_READ_ACCESS_KEY_ID` and `R2_READ_SECRET_ACCESS_KEY`; its variables are `R2_ACCOUNT_ID`, `R2_BUCKET`, `R2_ENDPOINT`, and `R2_REGION`. The credential name does not prove its Cloudflare-side privilege: until a Cloudflare permission readback confirms Object Read Only scoped only to `jp01-images`, treat the credential as `unverified_assume_full_access`. The workflow itself still executes only the exact read operations above.
+
+A successful smoke test proves runner authentication, exact-object metadata, and checksum-sidecar/profile agreement. It does not prove the full image bytes match the digest. Full independent download and SHA-256 verification remains a separate higher-bandwidth gate. Until that gate passes, `artifactAvailableToRunner` stays false and no C1 readiness or installation approval is inferred.
+
 ## Stage responsibilities
 
 - C0: candidate image build and evidence.
