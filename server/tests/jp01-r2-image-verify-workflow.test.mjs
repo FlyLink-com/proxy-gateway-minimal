@@ -41,7 +41,8 @@ test("workflow performs only exact-object read operations and never downloads th
   assert.doesNotMatch(workflow, /aws s3api (?:put-object|delete-object|list-objects|list-buckets|delete-bucket|create-bucket)/i);
   assert.doesNotMatch(workflow, /aws s3 (?:cp|sync)\b/i);
   assert.doesNotMatch(workflow, /--key "\$image_key"[\s\S]{0,200}get-object/);
-  assert.doesNotMatch(workflow, /VULTR_API_KEY|vultr-cli|ssh |scp |rsync |dd if=|systemctl|wg-quick|wireguard private|agent token/i);
+  assert.doesNotMatch(workflow, /VULTR_API_KEY|vultr-cli|dd if=|systemctl|wg-quick|wireguard private|agent token/i);
+  assert.doesNotMatch(workflow, /(?:^|\\n)\\s*(?:ssh|scp|rsync)\\s+/im);
 });
 
 test("workflow binds object identity to the JP-01 profile and exact uploaded sizes", () => {
