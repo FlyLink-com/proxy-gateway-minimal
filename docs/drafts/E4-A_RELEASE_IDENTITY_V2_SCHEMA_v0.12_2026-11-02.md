@@ -1,5 +1,15 @@
 # E4-A · 发布身份 V2 Schema 与信任合同草案（修订稿 v0.12）
 
+```yaml
+document_metadata:
+  doc_type: canonical
+  lifecycle: active
+  authority_scope: e4a_release_identity_v2_schema_draft
+  superseded_by: null
+  last_verified_at: 2026-11-02
+  production_authority: false
+```
+
 **项目：** FlyLink.com / proxy-gateway-minimal
 **日期：** 2026-11-02（v0.1 初稿、v0.2–v0.12 十一轮修订均同日）
 **状态：** 修订稿 v0.12，待 Yi 确认；正式冻结（E4-A-4）尚需 §10 的剩余条件齐备（本稿通过文档审查不等于冻结）
