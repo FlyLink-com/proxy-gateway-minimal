@@ -1,52 +1,309 @@
 {
   "$id": "https://github.com/FlyLink-com/proxy-gateway-minimal/ops/node-provisioning/schemas/dual-side-gate.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "Dual-Side Gate Report",
-  "description": "Dual-side gate report: the cross-validation of one BWH integration plan and one node runtime plan of the same generation, per section 7 of the Post-Install Dual-Side Integration design v0.1. The check set is complete by construction: the checks array must contain each of the 19 check ids exactly once (minItems/maxItems 19 plus one contains clause per id), so a report cannot be schema-valid with a check missing or duplicated. The verdict is pass only when every check passes; that coherence rule is semantic and is enforced by the gate evaluator and the contract tests. Carries digests and check outcomes only — no configuration bodies, no secrets.",
-  "type": "object",
   "additionalProperties": false,
+  "description": "Dual-side gate report: the cross-validation of one BWH integration plan and one node runtime plan of the same generation, per section 7 of the Post-Install Dual-Side Integration design v0.1. The check set covers every E1-A registration binding field (all eleven) plus the WireGuard, agent, protocol, and hygiene checks, and it is complete by construction: the checks array must contain each of the 22 check ids exactly once (minItems/maxItems 22 plus one contains clause per id), so a report cannot be schema-valid with a check missing or duplicated. WireGuard key checks recompute the SHA-256 fingerprints from the exchanged public keys, not merely compare fingerprint strings. The verdict is pass only when every check passes; that coherence rule is semantic and is enforced by the gate evaluator and the contract tests. Carries digests and check outcomes only — no configuration bodies, no secrets.",
   "properties": {
-    "schema": {
-      "const": "dual-side-gate/v1",
-      "type": "string"
-    },
-    "gateRef": {
-      "pattern": "^[A-Za-z0-9._:-]{1,160}$",
-      "type": "string"
-    },
-    "evaluatedAt": {
-      "format": "date-time",
-      "type": "string"
-    },
-    "nodeRef": {
-      "pattern": "^[A-Za-z0-9._:-]{1,160}$",
-      "type": "string"
-    },
-    "generation": {
-      "pattern": "^[A-Za-z0-9._:-]{1,160}$",
-      "type": "string"
-    },
-    "profileDigest": {
-      "pattern": "^sha256:[0-9a-f]{64}$",
-      "type": "string"
-    },
     "bwhPlanDigest": {
       "pattern": "^sha256:[0-9a-f]{64}$",
       "type": "string"
     },
-    "nodePlanDigest": {
-      "pattern": "^sha256:[0-9a-f]{64}$",
-      "type": "string"
-    },
     "checks": {
-      "type": "array",
-      "minItems": 19,
-      "maxItems": 19,
-      "uniqueItems": true,
+      "allOf": [
+        {
+          "contains": {
+            "properties": {
+              "id": {
+                "const": "node_ref_match"
+              }
+            },
+            "required": [
+              "id"
+            ],
+            "type": "object"
+          }
+        },
+        {
+          "contains": {
+            "properties": {
+              "id": {
+                "const": "provider_ref_match"
+              }
+            },
+            "required": [
+              "id"
+            ],
+            "type": "object"
+          }
+        },
+        {
+          "contains": {
+            "properties": {
+              "id": {
+                "const": "region_ref_match"
+              }
+            },
+            "required": [
+              "id"
+            ],
+            "type": "object"
+          }
+        },
+        {
+          "contains": {
+            "properties": {
+              "id": {
+                "const": "role_ref_match"
+              }
+            },
+            "required": [
+              "id"
+            ],
+            "type": "object"
+          }
+        },
+        {
+          "contains": {
+            "properties": {
+              "id": {
+                "const": "channel_refs_match"
+              }
+            },
+            "required": [
+              "id"
+            ],
+            "type": "object"
+          }
+        },
+        {
+          "contains": {
+            "properties": {
+              "id": {
+                "const": "image_manifest_ref_match"
+              }
+            },
+            "required": [
+              "id"
+            ],
+            "type": "object"
+          }
+        },
+        {
+          "contains": {
+            "properties": {
+              "id": {
+                "const": "release_ref_match"
+              }
+            },
+            "required": [
+              "id"
+            ],
+            "type": "object"
+          }
+        },
+        {
+          "contains": {
+            "properties": {
+              "id": {
+                "const": "first_boot_packet_ref_match"
+              }
+            },
+            "required": [
+              "id"
+            ],
+            "type": "object"
+          }
+        },
+        {
+          "contains": {
+            "properties": {
+              "id": {
+                "const": "wireguard_plan_ref_match"
+              }
+            },
+            "required": [
+              "id"
+            ],
+            "type": "object"
+          }
+        },
+        {
+          "contains": {
+            "properties": {
+              "id": {
+                "const": "profile_digest_match"
+              }
+            },
+            "required": [
+              "id"
+            ],
+            "type": "object"
+          }
+        },
+        {
+          "contains": {
+            "properties": {
+              "id": {
+                "const": "generation_match"
+              }
+            },
+            "required": [
+              "id"
+            ],
+            "type": "object"
+          }
+        },
+        {
+          "contains": {
+            "properties": {
+              "id": {
+                "const": "wireguard_key_cross_match"
+              }
+            },
+            "required": [
+              "id"
+            ],
+            "type": "object"
+          }
+        },
+        {
+          "contains": {
+            "properties": {
+              "id": {
+                "const": "allowed_ips_within_plan"
+              }
+            },
+            "required": [
+              "id"
+            ],
+            "type": "object"
+          }
+        },
+        {
+          "contains": {
+            "properties": {
+              "id": {
+                "const": "no_default_route"
+              }
+            },
+            "required": [
+              "id"
+            ],
+            "type": "object"
+          }
+        },
+        {
+          "contains": {
+            "properties": {
+              "id": {
+                "const": "agent_binding_match"
+              }
+            },
+            "required": [
+              "id"
+            ],
+            "type": "object"
+          }
+        },
+        {
+          "contains": {
+            "properties": {
+              "id": {
+                "const": "agent_private_path_only"
+              }
+            },
+            "required": [
+              "id"
+            ],
+            "type": "object"
+          }
+        },
+        {
+          "contains": {
+            "properties": {
+              "id": {
+                "const": "protocol_config_tests"
+              }
+            },
+            "required": [
+              "id"
+            ],
+            "type": "object"
+          }
+        },
+        {
+          "contains": {
+            "properties": {
+              "id": {
+                "const": "stats_loopback_only"
+              }
+            },
+            "required": [
+              "id"
+            ],
+            "type": "object"
+          }
+        },
+        {
+          "contains": {
+            "properties": {
+              "id": {
+                "const": "no_unreplaced_placeholders"
+              }
+            },
+            "required": [
+              "id"
+            ],
+            "type": "object"
+          }
+        },
+        {
+          "contains": {
+            "properties": {
+              "id": {
+                "const": "file_permissions"
+              }
+            },
+            "required": [
+              "id"
+            ],
+            "type": "object"
+          }
+        },
+        {
+          "contains": {
+            "properties": {
+              "id": {
+                "const": "secret_hygiene_scan"
+              }
+            },
+            "required": [
+              "id"
+            ],
+            "type": "object"
+          }
+        },
+        {
+          "contains": {
+            "properties": {
+              "id": {
+                "const": "material_digests_match"
+              }
+            },
+            "required": [
+              "id"
+            ],
+            "type": "object"
+          }
+        }
+      ],
       "items": {
-        "type": "object",
         "additionalProperties": false,
         "properties": {
+          "detail": {
+            "maxLength": 300,
+            "type": "string"
+          },
           "id": {
             "enum": [
               "node_ref_match",
@@ -55,6 +312,9 @@
               "role_ref_match",
               "channel_refs_match",
               "image_manifest_ref_match",
+              "release_ref_match",
+              "first_boot_packet_ref_match",
+              "wireguard_plan_ref_match",
               "profile_digest_match",
               "generation_match",
               "wireguard_key_cross_match",
@@ -78,266 +338,46 @@
               "not_evaluated"
             ],
             "type": "string"
-          },
-          "detail": {
-            "maxLength": 300,
-            "type": "string"
           }
         },
         "required": [
           "id",
           "status"
-        ]
+        ],
+        "type": "object"
       },
-      "allOf": [
-        {
-          "contains": {
-            "type": "object",
-            "properties": {
-              "id": {
-                "const": "node_ref_match"
-              }
-            },
-            "required": [
-              "id"
-            ]
-          }
-        },
-        {
-          "contains": {
-            "type": "object",
-            "properties": {
-              "id": {
-                "const": "provider_ref_match"
-              }
-            },
-            "required": [
-              "id"
-            ]
-          }
-        },
-        {
-          "contains": {
-            "type": "object",
-            "properties": {
-              "id": {
-                "const": "region_ref_match"
-              }
-            },
-            "required": [
-              "id"
-            ]
-          }
-        },
-        {
-          "contains": {
-            "type": "object",
-            "properties": {
-              "id": {
-                "const": "role_ref_match"
-              }
-            },
-            "required": [
-              "id"
-            ]
-          }
-        },
-        {
-          "contains": {
-            "type": "object",
-            "properties": {
-              "id": {
-                "const": "channel_refs_match"
-              }
-            },
-            "required": [
-              "id"
-            ]
-          }
-        },
-        {
-          "contains": {
-            "type": "object",
-            "properties": {
-              "id": {
-                "const": "image_manifest_ref_match"
-              }
-            },
-            "required": [
-              "id"
-            ]
-          }
-        },
-        {
-          "contains": {
-            "type": "object",
-            "properties": {
-              "id": {
-                "const": "profile_digest_match"
-              }
-            },
-            "required": [
-              "id"
-            ]
-          }
-        },
-        {
-          "contains": {
-            "type": "object",
-            "properties": {
-              "id": {
-                "const": "generation_match"
-              }
-            },
-            "required": [
-              "id"
-            ]
-          }
-        },
-        {
-          "contains": {
-            "type": "object",
-            "properties": {
-              "id": {
-                "const": "wireguard_key_cross_match"
-              }
-            },
-            "required": [
-              "id"
-            ]
-          }
-        },
-        {
-          "contains": {
-            "type": "object",
-            "properties": {
-              "id": {
-                "const": "allowed_ips_within_plan"
-              }
-            },
-            "required": [
-              "id"
-            ]
-          }
-        },
-        {
-          "contains": {
-            "type": "object",
-            "properties": {
-              "id": {
-                "const": "no_default_route"
-              }
-            },
-            "required": [
-              "id"
-            ]
-          }
-        },
-        {
-          "contains": {
-            "type": "object",
-            "properties": {
-              "id": {
-                "const": "agent_binding_match"
-              }
-            },
-            "required": [
-              "id"
-            ]
-          }
-        },
-        {
-          "contains": {
-            "type": "object",
-            "properties": {
-              "id": {
-                "const": "agent_private_path_only"
-              }
-            },
-            "required": [
-              "id"
-            ]
-          }
-        },
-        {
-          "contains": {
-            "type": "object",
-            "properties": {
-              "id": {
-                "const": "protocol_config_tests"
-              }
-            },
-            "required": [
-              "id"
-            ]
-          }
-        },
-        {
-          "contains": {
-            "type": "object",
-            "properties": {
-              "id": {
-                "const": "stats_loopback_only"
-              }
-            },
-            "required": [
-              "id"
-            ]
-          }
-        },
-        {
-          "contains": {
-            "type": "object",
-            "properties": {
-              "id": {
-                "const": "no_unreplaced_placeholders"
-              }
-            },
-            "required": [
-              "id"
-            ]
-          }
-        },
-        {
-          "contains": {
-            "type": "object",
-            "properties": {
-              "id": {
-                "const": "file_permissions"
-              }
-            },
-            "required": [
-              "id"
-            ]
-          }
-        },
-        {
-          "contains": {
-            "type": "object",
-            "properties": {
-              "id": {
-                "const": "secret_hygiene_scan"
-              }
-            },
-            "required": [
-              "id"
-            ]
-          }
-        },
-        {
-          "contains": {
-            "type": "object",
-            "properties": {
-              "id": {
-                "const": "material_digests_match"
-              }
-            },
-            "required": [
-              "id"
-            ]
-          }
-        }
-      ]
+      "maxItems": 22,
+      "minItems": 22,
+      "type": "array",
+      "uniqueItems": true
+    },
+    "evaluatedAt": {
+      "format": "date-time",
+      "type": "string"
+    },
+    "gateRef": {
+      "pattern": "^[A-Za-z0-9._:-]{1,160}$",
+      "type": "string"
+    },
+    "generation": {
+      "pattern": "^[A-Za-z0-9._:-]{1,160}$",
+      "type": "string"
+    },
+    "nodePlanDigest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "nodeRef": {
+      "pattern": "^[A-Za-z0-9._:-]{1,160}$",
+      "type": "string"
+    },
+    "profileDigest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "schema": {
+      "const": "dual-side-gate/v1",
+      "type": "string"
     },
     "verdict": {
       "enum": [
@@ -358,5 +398,7 @@
     "nodePlanDigest",
     "checks",
     "verdict"
-  ]
+  ],
+  "title": "Dual-Side Gate Report",
+  "type": "object"
 }

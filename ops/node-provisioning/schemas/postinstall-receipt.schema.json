@@ -1,1 +1,117 @@
-{"$id":"https://github.com/FlyLink-com/proxy-gateway-minimal/ops/node-provisioning/schemas/postinstall-receipt.schema.json","$schema":"https://json-schema.org/draft/2020-12/schema","additionalProperties":false,"description":"Post-install summary receipt: the aggregation of the three per-channel agent apply receipts (agent-apply-receipt.schema.json, the existing gccgw_data_plane_apply_receipt protocol) for one node and generation. It deliberately uses its own message type, gccgw_postinstall_summary_receipt, so the aggregate can never be confused with a raw agent receipt. Carries references, digests, and per-channel evidence summaries only; subscription rendering stays fail-closed until BWH matches the underlying agent receipts against the current desired state, generation, and material digests.","properties":{"appliedAt":{"format":"date-time","type":"string"},"channelSummaries":{"items":{"additionalProperties":false,"properties":{"channelRef":{"pattern":"^[A-Za-z0-9._:-]{1,160}$","type":"string"},"configTest":{"type":"boolean"},"credentialCount":{"minimum":0,"type":"integer"},"listenerPresent":{"type":"boolean"},"materialDigests":{"items":{"pattern":"^[A-Za-z0-9._:+/-]{6,256}$","type":"string"},"type":"array"},"receiptRef":{"pattern":"^[A-Za-z0-9._:-]{1,160}$","type":"string"},"serviceActive":{"type":"boolean"},"status":{"enum":["applied","failed","unchanged","stale","rejected"],"type":"string"}},"required":["channelRef","receiptRef","status","configTest","serviceActive","listenerPresent","credentialCount","materialDigests"],"type":"object"},"minItems":1,"type":"array"},"desiredStateRef":{"pattern":"^[A-Za-z0-9._:-]{1,160}$","type":"string"},"generation":{"pattern":"^[A-Za-z0-9._:-]{1,160}$","type":"string"},"nodeRef":{"pattern":"^[A-Za-z0-9._:-]{1,160}$","type":"string"},"receiptRef":{"pattern":"^[A-Za-z0-9._:-]{1,160}$","type":"string"},"schema":{"const":"postinstall-receipt/v1","type":"string"},"status":{"enum":["applied","failed","unchanged","stale","rejected"],"type":"string"},"type":{"const":"gccgw_postinstall_summary_receipt","type":"string"}},"required":["schema","type","receiptRef","nodeRef","generation","desiredStateRef","channelSummaries","status","appliedAt"],"title":"Post-Install Summary Receipt (aggregate, own message type)","type":"object"}
+{
+  "$id": "https://github.com/FlyLink-com/proxy-gateway-minimal/ops/node-provisioning/schemas/postinstall-receipt.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Post-install summary receipt: the aggregation of the three per-channel agent apply receipts (agent-apply-receipt.schema.json, the existing gccgw_data_plane_apply_receipt protocol) for one node and generation. It deliberately uses its own message type, gccgw_postinstall_summary_receipt, so the aggregate can never be confused with a raw agent receipt. Aggregation constraints (enforced by the D4 aggregator and gate, contract-tested here): for JP-01 the channelSummaries set must equal the registered channel set of the E1 binding exactly — no channel missing, none extra — and the summary status may be 'applied' only when every channel summary is 'applied'. Carries references, digests, and per-channel evidence summaries only; subscription rendering stays fail-closed until BWH matches the underlying agent receipts against the current desired state, generation, and material digests.",
+  "properties": {
+    "appliedAt": {
+      "format": "date-time",
+      "type": "string"
+    },
+    "channelSummaries": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "channelRef": {
+            "pattern": "^[A-Za-z0-9._:-]{1,160}$",
+            "type": "string"
+          },
+          "configTest": {
+            "type": "boolean"
+          },
+          "credentialCount": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "listenerPresent": {
+            "type": "boolean"
+          },
+          "materialDigests": {
+            "items": {
+              "pattern": "^[A-Za-z0-9._:+/-]{6,256}$",
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "receiptRef": {
+            "pattern": "^[A-Za-z0-9._:-]{1,160}$",
+            "type": "string"
+          },
+          "serviceActive": {
+            "type": "boolean"
+          },
+          "status": {
+            "enum": [
+              "applied",
+              "failed",
+              "unchanged",
+              "stale",
+              "rejected"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "channelRef",
+          "receiptRef",
+          "status",
+          "configTest",
+          "serviceActive",
+          "listenerPresent",
+          "credentialCount",
+          "materialDigests"
+        ],
+        "type": "object"
+      },
+      "minItems": 1,
+      "type": "array"
+    },
+    "desiredStateRef": {
+      "pattern": "^[A-Za-z0-9._:-]{1,160}$",
+      "type": "string"
+    },
+    "generation": {
+      "pattern": "^[A-Za-z0-9._:-]{1,160}$",
+      "type": "string"
+    },
+    "nodeRef": {
+      "pattern": "^[A-Za-z0-9._:-]{1,160}$",
+      "type": "string"
+    },
+    "receiptRef": {
+      "pattern": "^[A-Za-z0-9._:-]{1,160}$",
+      "type": "string"
+    },
+    "schema": {
+      "const": "postinstall-receipt/v1",
+      "type": "string"
+    },
+    "status": {
+      "enum": [
+        "applied",
+        "failed",
+        "unchanged",
+        "stale",
+        "rejected"
+      ],
+      "type": "string"
+    },
+    "type": {
+      "const": "gccgw_postinstall_summary_receipt",
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema",
+    "type",
+    "receiptRef",
+    "nodeRef",
+    "generation",
+    "desiredStateRef",
+    "channelSummaries",
+    "status",
+    "appliedAt"
+  ],
+  "title": "Post-Install Summary Receipt (aggregate, own message type)",
+  "type": "object"
+}

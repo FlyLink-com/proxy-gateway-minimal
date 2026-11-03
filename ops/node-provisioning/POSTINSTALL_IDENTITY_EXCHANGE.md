@@ -76,17 +76,24 @@ gate compares for equality against the registration record.
 1. Node generates its WireGuard key pair and agent token locally.
 2. Node computes `wireguardPublicKeyFingerprint` and `agentAuthFingerprint`
    and emits them in its node runtime plan (P3, Node Renderer) together
-   with the profile digest and generation.
+   with the profile digest and generation. The plan also carries the
+   node's WireGuard **public key itself** (base64): a fingerprint alone
+   cannot configure a WireGuard peer, so the key is part of the exchange
+   contract, in both plans, in both directions.
 3. BWH side reads its own peer public key, computes
    `bwhPeerPublicKeyFingerprint`, and emits the BWH integration plan (P3,
-   BWH Renderer) carrying both fingerprints and the /32 AllowedIPs of the
-   approved address plan.
+   BWH Renderer) carrying both public keys, both fingerprints, and the
+   /32 AllowedIPs of the approved address plan.
 4. The dual-side gate (P4) cross-checks: node plan
    `wireguard.ownPublicKeyFingerprint` == BWH plan
    `wireguard.nodePeerPublicKeyFingerprint`; node plan
    `wireguard.peerPublicKeyFingerprint` == BWH plan
    `wireguard.bwhPeerPublicKeyFingerprint`; node plan
    `agent.authFingerprint` == BWH plan `agent.agentAuthFingerprint`.
+   It also **recomputes** each fingerprint from the decoded public-key
+   bytes and rejects the pair if a fingerprint does not match its key —
+   comparing fingerprint strings alone would let a plan pair a valid
+   fingerprint with the wrong key.
 5. Only after the gate passes may P5 apply the WireGuard peer entries and
    P7 run the executor registration with the same anchors.
 

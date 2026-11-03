@@ -1,1 +1,213 @@
-{"$id":"https://github.com/FlyLink-com/proxy-gateway-minimal/ops/node-provisioning/schemas/bwh-integration-plan.schema.json","$schema":"https://json-schema.org/draft/2020-12/schema","additionalProperties":false,"description":"Control-plane (BWH) side of the dual-side integration contract, rendered from a Node Profile. Contains only safe references, generations, digests, and public-key fingerprints — never protocol passwords, UUIDs, private keys, tokens, full runtime configuration, or customer data (key vocabulary follows the forbidden-key set of server/services/edge/data-plane-agent-protocol.mjs). Identity anchors use the registration contract's fingerprint format, ANCHOR_FINGERPRINT_PATTERN /^sha256:[0-9a-f]{64}$/ in server/services/edge/node-registration-ingestion.mjs, and the field names of the E1 registration binding. Generation is a safe-reference string, exactly as the agent protocol carries it. The WireGuard planRef follows WG_PLAN_REF_PATTERN from server/services/node-image-first-boot-packet.mjs (a plan name, never a network address). AllowedIPs are pinned to the approved 10.77.0.0/24 plan as /32 entries; semantic CIDR validation is additionally enforced by the dual-side gate.","properties":{"agent":{"additionalProperties":false,"properties":{"agentAuthFingerprint":{"description":"SHA-256 fingerprint of the node agent token, in the registration anchor format; the token itself never appears.","pattern":"^sha256:[0-9a-f]{64}$","type":"string"},"endpointRef":{"pattern":"^[A-Za-z0-9._:-]{1,160}$","type":"string"}},"required":["agentAuthFingerprint","endpointRef"],"type":"object"},"channelRefs":{"items":{"pattern":"^[A-Za-z0-9._:-]{1,160}$","type":"string"},"minItems":1,"type":"array","uniqueItems":true},"channels":{"items":{"additionalProperties":false,"properties":{"channelRef":{"pattern":"^[A-Za-z0-9._:-]{1,160}$","type":"string"},"desiredStateRef":{"pattern":"^[A-Za-z0-9._:-]{1,160}$","type":"string"},"endpointRef":{"pattern":"^[A-Za-z0-9._:-]{1,160}$","type":"string"},"materialDigest":{"pattern":"^[A-Za-z0-9._:+/-]{6,256}$","type":"string"},"materialRef":{"pattern":"^[A-Za-z0-9._:-]{1,160}$","type":"string"},"runtimeAdapter":{"enum":["xray","hysteria2","mihomo"],"type":"string"}},"required":["channelRef","runtimeAdapter","desiredStateRef","materialRef","materialDigest","endpointRef"],"type":"object"},"minItems":1,"type":"array"},"digest":{"pattern":"^sha256:[0-9a-f]{64}$","type":"string"},"firstBootPacketRef":{"pattern":"^[A-Za-z0-9._:-]{1,160}$","type":"string"},"generation":{"pattern":"^[A-Za-z0-9._:-]{1,160}$","type":"string"},"imageManifestRef":{"pattern":"^[A-Za-z0-9._:-]{1,160}$","type":"string"},"lifecycle":{"const":"private-validation","type":"string"},"nodeRef":{"pattern":"^[A-Za-z0-9._:-]{1,160}$","type":"string"},"planRef":{"pattern":"^[A-Za-z0-9._:-]{1,160}$","type":"string"},"pool":{"const":"private","type":"string"},"profileDigest":{"pattern":"^sha256:[0-9a-f]{64}$","type":"string"},"providerRef":{"pattern":"^[A-Za-z0-9._:-]{1,160}$","type":"string"},"regionRef":{"pattern":"^[A-Za-z0-9._:-]{1,160}$","type":"string"},"releaseRef":{"pattern":"^[A-Za-z0-9._:-]{1,160}$","type":"string"},"roleRef":{"pattern":"^[A-Za-z0-9._:-]{1,160}$","type":"string"},"schema":{"const":"bwh-integration-plan/v1","type":"string"},"wireguard":{"additionalProperties":false,"properties":{"allowedIps":{"description":"Node addresses BWH accepts over the tunnel: /32 entries inside the approved 10.77.0.0/24 plan only; no default route is expressible.","items":{"pattern":"^10\\.77\\.0\\.[0-9]{1,3}/32$","type":"string"},"maxItems":8,"minItems":1,"type":"array","uniqueItems":true},"bwhPeerPublicKeyFingerprint":{"description":"SHA-256 fingerprint of the BWH WireGuard public key for this peer relation, anchor format; BWH's existing key is never regenerated for a new node.","pattern":"^sha256:[0-9a-f]{64}$","type":"string"},"nodePeerPublicKeyFingerprint":{"description":"SHA-256 fingerprint of the node WireGuard public key, anchor format; identical to the registration binding anchor wireguardPublicKeyFingerprint.","pattern":"^sha256:[0-9a-f]{64}$","type":"string"},"planRef":{"description":"WG_PLAN_REF_PATTERN: a plan name, never a network address (no dots, colons, or slashes).","pattern":"^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$","type":"string"}},"required":["planRef","bwhPeerPublicKeyFingerprint","nodePeerPublicKeyFingerprint","allowedIps"],"type":"object"}},"required":["schema","planRef","generation","nodeRef","providerRef","regionRef","roleRef","channelRefs","imageManifestRef","releaseRef","firstBootPacketRef","profileDigest","lifecycle","pool","channels","wireguard","agent","digest"],"title":"BWH Integration Plan (dual-side contract, BWH side)","type":"object"}
+{
+  "$id": "https://github.com/FlyLink-com/proxy-gateway-minimal/ops/node-provisioning/schemas/bwh-integration-plan.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Control-plane (BWH) side of the dual-side integration contract, rendered from a Node Profile. Contains only safe references, generations, digests, and public-key fingerprints — never protocol passwords, UUIDs, private keys, tokens, full runtime configuration, or customer data (key vocabulary follows the forbidden-key set of server/services/edge/data-plane-agent-protocol.mjs). Identity anchors use the registration contract's fingerprint format, ANCHOR_FINGERPRINT_PATTERN /^sha256:[0-9a-f]{64}$/ in server/services/edge/node-registration-ingestion.mjs, and the field names of the E1 registration binding. Generation is a safe-reference string, exactly as the agent protocol carries it. The WireGuard planRef follows WG_PLAN_REF_PATTERN from server/services/node-image-first-boot-packet.mjs (a plan name, never a network address). AllowedIPs are pinned to the approved 10.77.0.0/24 plan as /32 entries; semantic CIDR validation is additionally enforced by the dual-side gate.",
+  "properties": {
+    "agent": {
+      "additionalProperties": false,
+      "properties": {
+        "agentAuthFingerprint": {
+          "description": "SHA-256 fingerprint of the node agent token, in the registration anchor format; the token itself never appears.",
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "endpointRef": {
+          "pattern": "^[A-Za-z0-9._:-]{1,160}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "agentAuthFingerprint",
+        "endpointRef"
+      ],
+      "type": "object"
+    },
+    "channelRefs": {
+      "items": {
+        "pattern": "^[A-Za-z0-9._:-]{1,160}$",
+        "type": "string"
+      },
+      "minItems": 1,
+      "type": "array",
+      "uniqueItems": true
+    },
+    "channels": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "channelRef": {
+            "pattern": "^[A-Za-z0-9._:-]{1,160}$",
+            "type": "string"
+          },
+          "desiredStateRef": {
+            "pattern": "^[A-Za-z0-9._:-]{1,160}$",
+            "type": "string"
+          },
+          "endpointRef": {
+            "pattern": "^[A-Za-z0-9._:-]{1,160}$",
+            "type": "string"
+          },
+          "materialDigest": {
+            "pattern": "^[A-Za-z0-9._:+/-]{6,256}$",
+            "type": "string"
+          },
+          "materialRef": {
+            "pattern": "^[A-Za-z0-9._:-]{1,160}$",
+            "type": "string"
+          },
+          "runtimeAdapter": {
+            "enum": [
+              "xray",
+              "hysteria2",
+              "mihomo"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "channelRef",
+          "runtimeAdapter",
+          "desiredStateRef",
+          "materialRef",
+          "materialDigest",
+          "endpointRef"
+        ],
+        "type": "object"
+      },
+      "minItems": 1,
+      "type": "array"
+    },
+    "digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "firstBootPacketRef": {
+      "pattern": "^[A-Za-z0-9._:-]{1,160}$",
+      "type": "string"
+    },
+    "generation": {
+      "pattern": "^[A-Za-z0-9._:-]{1,160}$",
+      "type": "string"
+    },
+    "imageManifestRef": {
+      "pattern": "^[A-Za-z0-9._:-]{1,160}$",
+      "type": "string"
+    },
+    "lifecycle": {
+      "const": "private-validation",
+      "type": "string"
+    },
+    "nodeRef": {
+      "pattern": "^[A-Za-z0-9._:-]{1,160}$",
+      "type": "string"
+    },
+    "planRef": {
+      "pattern": "^[A-Za-z0-9._:-]{1,160}$",
+      "type": "string"
+    },
+    "pool": {
+      "const": "private",
+      "type": "string"
+    },
+    "profileDigest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "providerRef": {
+      "pattern": "^[A-Za-z0-9._:-]{1,160}$",
+      "type": "string"
+    },
+    "regionRef": {
+      "pattern": "^[A-Za-z0-9._:-]{1,160}$",
+      "type": "string"
+    },
+    "releaseRef": {
+      "pattern": "^[A-Za-z0-9._:-]{1,160}$",
+      "type": "string"
+    },
+    "roleRef": {
+      "pattern": "^[A-Za-z0-9._:-]{1,160}$",
+      "type": "string"
+    },
+    "schema": {
+      "const": "bwh-integration-plan/v1",
+      "type": "string"
+    },
+    "wireguard": {
+      "additionalProperties": false,
+      "properties": {
+        "allowedIps": {
+          "description": "Node addresses BWH accepts over the tunnel: /32 entries inside the approved 10.77.0.0/24 plan only; no default route is expressible.",
+          "items": {
+            "pattern": "^10\\.77\\.0\\.(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])/32$",
+            "type": "string"
+          },
+          "maxItems": 8,
+          "minItems": 1,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "bwhPeerPublicKey": {
+          "description": "BWH WireGuard public key (base64, 32 bytes). Public keys are safe to exchange; the gate recomputes the fingerprint from the decoded bytes and compares it with bwhPeerPublicKeyFingerprint.",
+          "pattern": "^[A-Za-z0-9+/]{43}=$",
+          "type": "string"
+        },
+        "bwhPeerPublicKeyFingerprint": {
+          "description": "SHA-256 fingerprint of the BWH WireGuard public key for this peer relation, anchor format; BWH's existing key is never regenerated for a new node.",
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "nodePeerPublicKey": {
+          "description": "Node WireGuard public key (base64, 32 bytes), as exchanged in P2; the gate recomputes wireguardPublicKeyFingerprint from it.",
+          "pattern": "^[A-Za-z0-9+/]{43}=$",
+          "type": "string"
+        },
+        "nodePeerPublicKeyFingerprint": {
+          "description": "SHA-256 fingerprint of the node WireGuard public key, anchor format; identical to the registration binding anchor wireguardPublicKeyFingerprint.",
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "planRef": {
+          "description": "WG_PLAN_REF_PATTERN: a plan name, never a network address (no dots, colons, or slashes).",
+          "not": {
+            "pattern": "https?:|token=|[Ss][Ee][Cc][Rr][Ee][Tt]|[Cc][Rr][Ee][Dd][Ee][Nn][Tt][Ii][Aa][Ll]|[Pp][Aa][Ss][Ss][Ww][Oo][Rr][Dd]|[Pp][Rr][Ii][Vv][Aa][Tt][Ee]|[Cc][Uu][Ss][Tt][Oo][Mm][Ee][Rr]|@|sub/clash\\.yaml|(?:[0-9]{1,3}\\.){3}[0-9]{1,3}|[a-z0-9-]+\\.[a-z]{2,}"
+          },
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "allowedIps",
+        "bwhPeerPublicKey",
+        "bwhPeerPublicKeyFingerprint",
+        "nodePeerPublicKey",
+        "nodePeerPublicKeyFingerprint",
+        "planRef"
+      ],
+      "type": "object"
+    }
+  },
+  "required": [
+    "schema",
+    "planRef",
+    "generation",
+    "nodeRef",
+    "providerRef",
+    "regionRef",
+    "roleRef",
+    "channelRefs",
+    "imageManifestRef",
+    "releaseRef",
+    "firstBootPacketRef",
+    "profileDigest",
+    "lifecycle",
+    "pool",
+    "channels",
+    "wireguard",
+    "agent",
+    "digest"
+  ],
+  "title": "BWH Integration Plan (dual-side contract, BWH side)",
+  "type": "object"
+}

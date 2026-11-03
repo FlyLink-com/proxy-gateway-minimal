@@ -1,20 +1,22 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import { validateDataPlaneApplyReceipt } from "../../server/services/edge/data-plane-agent-protocol.mjs";
+import { isSafeWireguardPlanRef } from "../../server/services/node-image-first-boot-packet.mjs";
 
-// Contract tests for the dual-side integration schemas (D1, revised after
-// independent review). Fixtures are fully synthetic. Beyond schema
-// conformance, this file checks the D1 contracts against the REAL
-// contracts they must interoperate with: the registration anchor format
-// and the live agent-protocol receipt validator are imported/exercised,
-// not re-described.
+// Contract tests for the dual-side integration schemas (D1, second
+// revision). Fixtures are fully synthetic. Beyond schema conformance,
+// this file checks the D1 contracts against the REAL contracts they
+// must interoperate with: the registration anchor format, the live
+// agent-protocol receipt validator, and the live WireGuard planRef
+// predicate are imported/exercised, not re-described.
 //
 // The validator below implements exactly the JSON Schema subset the D1
-// schemas use (type, const, enum, pattern, required, properties,
-// additionalProperties, items, minItems, maxItems, uniqueItems, minimum,
-// maxLength, allOf, contains, anyOf).
+// schemas use (type, const, enum, pattern, not, required, properties,
+// additionalProperties, items, minItems, maxItems, uniqueItems,
+// minimum, maxLength, allOf, contains, anyOf).
 
 const SCHEMA_DIR = new URL("../../ops/node-provisioning/schemas/", import.meta.url);
 
@@ -43,6 +45,9 @@ function validate(schema, value, path = "$") {
   }
   if (schema.enum && !schema.enum.includes(value)) {
     errors.push(`${path}: ${JSON.stringify(value)} not in enum`);
+  }
+  if (schema.not && validate(schema.not, value, path).length === 0) {
+    errors.push(`${path}: matches the forbidden 'not' schema`);
   }
   if (schema.anyOf) {
     const ok = schema.anyOf.some((sub) => validate(sub, value, path).length === 0);
@@ -131,8 +136,14 @@ function propertyNames(schema, acc = []) {
 }
 
 const fp = (ch) => `sha256:${ch.repeat(64)}`;
-const FP_A = fp("a");
-const FP_B = fp("b");
+// Synthetic WireGuard keys: fixed 32-byte values, base64-encoded, with
+// fingerprints honestly computed from the key bytes.
+const keyB64 = (byte) => Buffer.alloc(32, byte).toString("base64");
+const keyFp = (byte) => `sha256:${createHash("sha256").update(Buffer.alloc(32, byte)).digest("hex")}`;
+const NODE_KEY = keyB64(0x22);
+const BWH_KEY = keyB64(0x11);
+const FP_A = keyFp(0x22);
+const FP_B = keyFp(0x11);
 const FP_C = fp("c");
 const FP_D = fp("d");
 const FP_E = fp("e");
@@ -142,6 +153,7 @@ const CHANNELS = [
   "channel-vultr-jp-01-hy2",
   "channel-vultr-jp-01-tuic"
 ];
+const BWH_TUNNEL_ADDRESS = "10.77.0.1/32";
 
 function bwhPlan() {
   return {
@@ -166,7 +178,9 @@ function bwhPlan() {
     ],
     wireguard: {
       planRef: "wg-plan-jp01",
+      bwhPeerPublicKey: BWH_KEY,
       bwhPeerPublicKeyFingerprint: FP_B,
+      nodePeerPublicKey: NODE_KEY,
       nodePeerPublicKeyFingerprint: FP_A,
       allowedIps: ["10.77.0.2/32"]
     },
@@ -186,13 +200,17 @@ function nodePlan() {
     roleRef: "data-plane",
     hostname: "node-vultr-jp-01",
     imageManifestRef: "jp01-candidate-1-file-inventory",
+    firstBootPacketRef: "first-boot-packet-jp01",
+    wireguardPlanRef: "wg-plan-jp01",
     profileDigest: FP_C,
     wireguard: {
       interfaceName: "wg-child0",
       addressCidr: "10.77.0.2/32",
+      ownPublicKey: NODE_KEY,
       ownPublicKeyFingerprint: FP_A,
+      peerPublicKey: BWH_KEY,
       peerPublicKeyFingerprint: FP_B,
-      allowedIps: ["10.77.0.1/32"]
+      allowedIps: [BWH_TUNNEL_ADDRESS]
     },
     agent: { releaseRef: "source-eb83197e", authFingerprint: FP_D, bwhEndpointRef: "agent-endpoint-bwh-private" },
     services: [
@@ -207,7 +225,8 @@ function nodePlan() {
 
 const GATE_CHECK_IDS = [
   "node_ref_match", "provider_ref_match", "region_ref_match", "role_ref_match",
-  "channel_refs_match", "image_manifest_ref_match", "profile_digest_match", "generation_match",
+  "channel_refs_match", "image_manifest_ref_match", "release_ref_match", "first_boot_packet_ref_match",
+  "wireguard_plan_ref_match", "profile_digest_match", "generation_match",
   "wireguard_key_cross_match", "allowed_ips_within_plan", "no_default_route", "agent_binding_match",
   "agent_private_path_only", "protocol_config_tests", "stats_loopback_only", "no_unreplaced_placeholders",
   "file_permissions", "secret_hygiene_scan", "material_digests_match"
@@ -269,16 +288,21 @@ function summaryReceipt() {
   };
 }
 
-// Semantic CIDR rule the D2 gate must implement (the schemas pin the
-// shape; this checks the meaning): every entry is a /32 inside the
-// approved 10.77.0.0/24 plan, and no default route appears.
+function fingerprintOfPublicKey(b64) {
+  return `sha256:${createHash("sha256").update(Buffer.from(b64, "base64")).digest("hex")}`;
+}
+
 function cidrWithinApprovedPlan(cidr) {
   const match = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})\/(\d{1,2})$/.exec(cidr);
   if (!match) return false;
-  const [, a, b, c, , prefix] = match.map(Number);
+  const octets = match.slice(1, 5).map(Number);
+  if (octets.some((octet) => octet > 255)) return false;
+  const [a, b, c, , prefix] = [...octets, Number(match[5])];
   return a === 10 && b === 77 && c === 0 && prefix === 32;
 }
 
+// Mirrors the gate's identity checks: all eleven E1-A binding fields
+// plus the WireGuard key and address-plan semantics.
 function dualSideConsistency(bwh, node) {
   const failed = [];
   const sorted = (values) => [...values].sort();
@@ -292,16 +316,26 @@ function dualSideConsistency(bwh, node) {
     failed.push("channel_refs_match");
   }
   if (bwh.imageManifestRef !== node.imageManifestRef) failed.push("image_manifest_ref_match");
+  if (bwh.releaseRef !== node.agent.releaseRef) failed.push("release_ref_match");
+  if (bwh.firstBootPacketRef !== node.firstBootPacketRef) failed.push("first_boot_packet_ref_match");
+  if (bwh.wireguard.planRef !== node.wireguardPlanRef) failed.push("wireguard_plan_ref_match");
   if (bwh.profileDigest !== node.profileDigest) failed.push("profile_digest_match");
   if (bwh.generation !== node.generation) failed.push("generation_match");
-  if (bwh.wireguard.nodePeerPublicKeyFingerprint !== node.wireguard.ownPublicKeyFingerprint ||
-      bwh.wireguard.bwhPeerPublicKeyFingerprint !== node.wireguard.peerPublicKeyFingerprint) {
-    failed.push("wireguard_key_cross_match");
-  }
+  const keyPairsOk =
+    bwh.wireguard.nodePeerPublicKey === node.wireguard.ownPublicKey &&
+    bwh.wireguard.bwhPeerPublicKey === node.wireguard.peerPublicKey &&
+    bwh.wireguard.nodePeerPublicKeyFingerprint === node.wireguard.ownPublicKeyFingerprint &&
+    bwh.wireguard.bwhPeerPublicKeyFingerprint === node.wireguard.peerPublicKeyFingerprint &&
+    fingerprintOfPublicKey(node.wireguard.ownPublicKey) === node.wireguard.ownPublicKeyFingerprint &&
+    fingerprintOfPublicKey(node.wireguard.peerPublicKey) === node.wireguard.peerPublicKeyFingerprint &&
+    fingerprintOfPublicKey(bwh.wireguard.nodePeerPublicKey) === bwh.wireguard.nodePeerPublicKeyFingerprint &&
+    fingerprintOfPublicKey(bwh.wireguard.bwhPeerPublicKey) === bwh.wireguard.bwhPeerPublicKeyFingerprint;
+  if (!keyPairsOk) failed.push("wireguard_key_cross_match");
   const allIps = [...bwh.wireguard.allowedIps, ...node.wireguard.allowedIps, node.wireguard.addressCidr];
   if (!allIps.every(cidrWithinApprovedPlan)) failed.push("allowed_ips_within_plan");
   if (allIps.some((ip) => ip === "0.0.0.0/0" || ip === "::/0")) failed.push("no_default_route");
   if (!bwh.wireguard.allowedIps.includes(node.wireguard.addressCidr)) failed.push("allowed_ips_within_plan");
+  if (!node.wireguard.allowedIps.includes(BWH_TUNNEL_ADDRESS)) failed.push("allowed_ips_within_plan");
   if (bwh.agent.agentAuthFingerprint !== node.agent.authFingerprint) failed.push("agent_binding_match");
   return [...new Set(failed)];
 }
@@ -314,6 +348,28 @@ function gateVerdictCoherent(report) {
   const allPass = complete && report.checks.every((check) => check.status === "pass");
   return (report.verdict === "pass") === allPass;
 }
+
+// D4 aggregation rules, stated in the summary schema and tested here:
+// the summary's channel set equals the registered set exactly, and the
+// summary status is 'applied' only when every channel is 'applied'.
+function summaryCoversRegisteredChannels(summary, registeredChannelRefs) {
+  const summarised = summary.channelSummaries.map((entry) => entry.channelRef).sort();
+  return JSON.stringify(summarised) === JSON.stringify([...registeredChannelRefs].sort());
+}
+
+function summaryStatusCoherent(summary) {
+  if (summary.status === "applied") {
+    return summary.channelSummaries.every((entry) => entry.status === "applied");
+  }
+  return true;
+}
+
+const PROTOCOL_OPTIONS = {
+  expectedNodeRef: "node-vultr-jp-01",
+  expectedGeneration: "1",
+  expectedDesiredStateRef: "desired-jp01-vless-g1",
+  allowedChannelRefs: CHANNELS
+};
 
 test("all five schemas are closed objects on draft 2020-12 with no forbidden key vocabulary", () => {
   for (const schema of ALL_SCHEMAS) {
@@ -336,8 +392,6 @@ test("synthetic fixtures conform to all five schemas", () => {
 });
 
 test("anchor fingerprints must use the registration format sha256:<lowercase hex>", () => {
-  // The exact failure the review found: a bare-hex fingerprint passes a
-  // naive schema but the E1 registration executor rejects it.
   const bare = bwhPlan();
   bare.agent = { ...bare.agent, agentAuthFingerprint: "d".repeat(64) };
   assertInvalid(bwhSchema, bare);
@@ -349,13 +403,31 @@ test("anchor fingerprints must use the registration format sha256:<lowercase hex
   assertInvalid(bwhSchema, upper);
 });
 
-test("wireguard planRef follows WG_PLAN_REF_PATTERN: a plan name, never an address", () => {
+test("wireguard planRef follows the real predicate: shape plus sensitive-text filter", () => {
+  assert.equal(isSafeWireguardPlanRef("wg-plan-jp01"), true);
+  assert.equal(isSafeWireguardPlanRef("wg-secret-plan"), false);
+  const sensitive = bwhPlan();
+  sensitive.wireguard = { ...sensitive.wireguard, planRef: "wg-secret-plan" };
+  assertInvalid(bwhSchema, sensitive);
   const dotted = bwhPlan();
   dotted.wireguard = { ...dotted.wireguard, planRef: "wg.plan.jp01" };
   assertInvalid(bwhSchema, dotted);
-  const addressed = bwhPlan();
-  addressed.wireguard = { ...addressed.wireguard, planRef: "10.77.0.2" };
-  assertInvalid(bwhSchema, addressed);
+  const sensitiveNode = nodePlan();
+  sensitiveNode.wireguardPlanRef = "wg-secret-plan";
+  assertInvalid(nodeSchema, sensitiveNode);
+});
+
+test("public keys are carried by both plans and fingerprints are recomputed from key bytes", () => {
+  assert.deepEqual(dualSideConsistency(bwhPlan(), nodePlan()), []);
+  const wrongKey = nodePlan();
+  wrongKey.wireguard = { ...wrongKey.wireguard, ownPublicKey: keyB64(0x33) };
+  assert.deepEqual(dualSideConsistency(bwhPlan(), wrongKey), ["wireguard_key_cross_match"]);
+  const wrongFingerprint = nodePlan();
+  wrongFingerprint.wireguard = { ...wrongFingerprint.wireguard, ownPublicKeyFingerprint: keyFp(0x44) };
+  assert.deepEqual(dualSideConsistency(bwhPlan(), wrongFingerprint), ["wireguard_key_cross_match"]);
+  const shortKey = nodePlan();
+  shortKey.wireguard = { ...shortKey.wireguard, ownPublicKey: Buffer.alloc(16, 1).toString("base64") };
+  assertInvalid(nodeSchema, shortKey);
 });
 
 test("allowedIps and the node address are pinned to the approved /32 plan, semantically and structurally", () => {
@@ -365,13 +437,21 @@ test("allowedIps and the node address are pinned to the approved /32 plan, seman
   const subnet = nodePlan();
   subnet.wireguard = { ...subnet.wireguard, allowedIps: ["10.77.0.0/24"] };
   assertInvalid(nodeSchema, subnet);
+  const badOctet = bwhPlan();
+  badOctet.wireguard = { ...badOctet.wireguard, allowedIps: ["10.77.0.999/32"] };
+  assertInvalid(bwhSchema, badOctet);
   const wrongHost = nodePlan();
   wrongHost.wireguard = { ...wrongHost.wireguard, addressCidr: "10.77.0.3/32" };
   assertInvalid(nodeSchema, wrongHost);
   assert.equal(cidrWithinApprovedPlan("10.77.0.2/32"), true);
+  assert.equal(cidrWithinApprovedPlan("10.77.0.999/32"), false);
   assert.equal(cidrWithinApprovedPlan("10.77.1.2/32"), false);
   assert.equal(cidrWithinApprovedPlan("10.77.0.2/24"), false);
   assert.equal(cidrWithinApprovedPlan("0.0.0.0/0"), false);
+  // Reverse direction: the node must allow BWH's tunnel address too.
+  const oneWay = nodePlan();
+  oneWay.wireguard = { ...oneWay.wireguard, allowedIps: ["10.77.0.2/32"] };
+  assert.ok(dualSideConsistency(bwhPlan(), oneWay).includes("allowed_ips_within_plan"));
 });
 
 test("schemas reject secret-bearing and out-of-contract documents", () => {
@@ -390,12 +470,12 @@ test("a conforming node plan can never authorise service activation", () => {
   assertInvalid(nodeSchema, publicStats);
 });
 
-test("gate completeness: all 19 checks exactly once, enforced by the schema itself", () => {
+test("gate completeness: all 22 checks exactly once, enforced by the schema itself", () => {
   const missing = gateReport();
   missing.checks = missing.checks.filter((check) => check.id !== "material_digests_match");
   assertInvalid(gateSchema, missing);
   const duplicated = gateReport();
-  duplicated.checks[18] = { id: "node_ref_match", status: "pass" };
+  duplicated.checks[duplicated.checks.length - 1] = { id: "node_ref_match", status: "pass" };
   assertInvalid(gateSchema, duplicated);
   const extra = gateReport();
   extra.checks.push({ id: "node_ref_match", status: "pass", detail: "again" });
@@ -412,30 +492,58 @@ test("gate verdict must cohere: pass requires the complete set, all passing", ()
   assert.equal(gateVerdictCoherent(gateReport({}, "blocked")), false);
 });
 
-test("agent receipt fixtures pass BOTH the D1 schema and the real protocol validator", () => {
+test("agent receipt: the normalized output of the real protocol validator passes the D1 schema", () => {
   const fixture = agentReceipt();
   assertValid(agentReceiptSchema, fixture);
-  const normalised = validateDataPlaneApplyReceipt(fixture, {
-    expectedNodeRef: "node-vultr-jp-01",
-    expectedGeneration: "1",
-    expectedDesiredStateRef: "desired-jp01-vless-g1",
-    allowedChannelRefs: CHANNELS
-  });
-  assert.equal(normalised.type, "gccgw_data_plane_apply_receipt");
-  assert.equal(normalised.channelRef, CHANNELS[0]);
-  // The shape this PR originally shipped (object configTest, channel
-  // array) is rejected by the real protocol — the regression this test
-  // exists to prevent.
+  const normalised = validateDataPlaneApplyReceipt(fixture, PROTOCOL_OPTIONS);
+  assertValid(agentReceiptSchema, normalised);
+  // Raw input may omit redacted and materialDigests; the normalizer's
+  // output — what this schema describes — always carries both.
+  const raw = agentReceipt();
+  delete raw.redacted;
+  delete raw.materialDigests;
+  const normalisedRaw = validateDataPlaneApplyReceipt(raw, PROTOCOL_OPTIONS);
+  assert.equal(normalisedRaw.redacted, true);
+  assert.deepEqual(normalisedRaw.materialDigests, []);
+  assertValid(agentReceiptSchema, normalisedRaw);
   const objectConfig = { ...fixture, configTest: { status: "pass" } };
   assertInvalid(agentReceiptSchema, objectConfig);
-  assert.throws(() => validateDataPlaneApplyReceipt(objectConfig, {
-    expectedNodeRef: "node-vultr-jp-01",
-    expectedGeneration: "1",
-    expectedDesiredStateRef: "desired-jp01-vless-g1",
-    allowedChannelRefs: CHANNELS
-  }));
+  assert.throws(() => validateDataPlaneApplyReceipt(objectConfig, PROTOCOL_OPTIONS));
   assertInvalid(agentReceiptSchema, { ...fixture, status: "success" });
   assertInvalid(agentReceiptSchema, { ...fixture, redacted: false });
+});
+
+test("agent receipt: scoped tombstone and backup refs match the real normalizer exactly", () => {
+  const tombstoned = {
+    ...agentReceipt(),
+    scopedTombstone: {
+      sourceDesiredStateRef: "desired-jp01-vless-g0",
+      sourceGeneration: "0",
+      credentialDigests: [fp("9")]
+    }
+  };
+  assertValid(agentReceiptSchema, tombstoned);
+  const normalised = validateDataPlaneApplyReceipt(tombstoned, PROTOCOL_OPTIONS);
+  assertValid(agentReceiptSchema, normalised);
+  const missingSource = {
+    ...tombstoned,
+    scopedTombstone: { sourceDesiredStateRef: "desired-jp01-vless-g0", credentialDigests: [fp("9")] }
+  };
+  assertInvalid(agentReceiptSchema, missingSource);
+  const dupDigests = {
+    ...tombstoned,
+    scopedTombstone: { ...tombstoned.scopedTombstone, credentialDigests: [fp("9"), fp("9")] }
+  };
+  assertInvalid(agentReceiptSchema, dupDigests);
+  assert.throws(() => validateDataPlaneApplyReceipt(dupDigests, PROTOCOL_OPTIONS));
+  const bareDigest = {
+    ...tombstoned,
+    scopedTombstone: { ...tombstoned.scopedTombstone, credentialDigests: ["9".repeat(64)] }
+  };
+  assertInvalid(agentReceiptSchema, bareDigest);
+  const dotdot = { ...agentReceipt(), backupRef: ".." };
+  assertInvalid(agentReceiptSchema, dotdot);
+  assert.throws(() => validateDataPlaneApplyReceipt(dotdot, PROTOCOL_OPTIONS));
 });
 
 test("the summary receipt can never be confused with a raw agent receipt", () => {
@@ -444,26 +552,42 @@ test("the summary receipt can never be confused with a raw agent receipt", () =>
   assertInvalid(agentReceiptSchema, summary);
   assert.throws(() => validateDataPlaneApplyReceipt(
     { ...agentReceipt(), type: "gccgw_postinstall_summary_receipt" },
-    { expectedNodeRef: "node-vultr-jp-01", expectedGeneration: "1", expectedDesiredStateRef: "desired-jp01-vless-g1", allowedChannelRefs: CHANNELS }
+    PROTOCOL_OPTIONS
   ));
 });
 
-test("dual-side consistency holds for the fixture pair and breaks on any identity drift", () => {
+test("summary aggregation rules for D4: exact channel set and status coherence", () => {
+  const summary = summaryReceipt();
+  assert.equal(summaryCoversRegisteredChannels(summary, CHANNELS), true);
+  assert.equal(summaryStatusCoherent(summary), true);
+  const missingChannel = summaryReceipt();
+  missingChannel.channelSummaries = missingChannel.channelSummaries.slice(0, 2);
+  assert.equal(summaryCoversRegisteredChannels(missingChannel, CHANNELS), false);
+  const failedChannel = summaryReceipt();
+  failedChannel.channelSummaries[1].status = "failed";
+  assert.equal(summaryStatusCoherent(failedChannel), false);
+});
+
+test("dual-side consistency covers all eleven binding fields and breaks on any drift", () => {
   assert.deepEqual(dualSideConsistency(bwhPlan(), nodePlan()), []);
   const wrongNode = { ...nodePlan(), nodeRef: "node-vultr-jp-02" };
   assert.deepEqual(dualSideConsistency(bwhPlan(), wrongNode), ["node_ref_match"]);
-  const wrongKey = nodePlan();
-  wrongKey.wireguard = { ...wrongKey.wireguard, ownPublicKeyFingerprint: FP_C };
-  assert.deepEqual(dualSideConsistency(bwhPlan(), wrongKey), ["wireguard_key_cross_match"]);
   const wrongAgent = nodePlan();
   wrongAgent.agent = { ...wrongAgent.agent, authFingerprint: FP_A };
   assert.deepEqual(dualSideConsistency(bwhPlan(), wrongAgent), ["agent_binding_match"]);
   const wrongGeneration = { ...nodePlan(), generation: "2" };
   assert.deepEqual(dualSideConsistency(bwhPlan(), wrongGeneration), ["generation_match"]);
+  const wrongRelease = nodePlan();
+  wrongRelease.agent = { ...wrongRelease.agent, releaseRef: "source-deadbeef" };
+  assert.deepEqual(dualSideConsistency(bwhPlan(), wrongRelease), ["release_ref_match"]);
+  const wrongPacket = { ...nodePlan(), firstBootPacketRef: "first-boot-packet-other" };
+  assert.deepEqual(dualSideConsistency(bwhPlan(), wrongPacket), ["first_boot_packet_ref_match"]);
+  const wrongWgPlan = { ...nodePlan(), wireguardPlanRef: "wg-plan-other" };
+  assert.deepEqual(dualSideConsistency(bwhPlan(), wrongWgPlan), ["wireguard_plan_ref_match"]);
   const driftedChannels = bwhPlan();
   driftedChannels.channels = driftedChannels.channels.slice(0, 2);
   assert.ok(dualSideConsistency(driftedChannels, nodePlan()).includes("channel_refs_match"));
   const escapedIps = nodePlan();
-  escapedIps.wireguard = { ...escapedIps.wireguard, allowedIps: ["10.77.0.1/32", "192.168.0.1/32"] };
+  escapedIps.wireguard = { ...escapedIps.wireguard, allowedIps: [BWH_TUNNEL_ADDRESS, "192.168.0.1/32"] };
   assert.ok(dualSideConsistency(bwhPlan(), escapedIps).includes("allowed_ips_within_plan"));
 });
