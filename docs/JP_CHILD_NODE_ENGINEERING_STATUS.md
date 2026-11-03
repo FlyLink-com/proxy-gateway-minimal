@@ -88,6 +88,7 @@ PR #822 明确不包含：
 | --- | --- |
 | 本文件 `docs/JP_CHILD_NODE_ENGINEERING_STATUS.md` | 当前总状态、源码基线、阶段状态与下一步 |
 | `docs/runbooks/FLINKVPN_JP_CHILD_NODE_BUILD.md` | M0–M8 操作顺序、检查项、Gate、回滚和验收 |
+| `docs/runbooks/JP_CHILD_CANDIDATE_INSTALL_ENABLE_INTEGRATION_GATE.md` | JP-01 候选镜像、安装、WireGuard、Agent、E1-A V2 注册、Receipt、Canary 的精确 Gate 包 |
 | `docs/PROJECT_TOPOLOGY.md` | 固定目标拓扑；不证明实时生产状态 |
 | `docs/VULTR_JAPAN_CONTROL_DATA_PLANE_STATUS.md` | Japan/SGP 目标方向与历史事实边界 |
 | PR #822 | E1 源码交付、最终头审查与合并证据 |
