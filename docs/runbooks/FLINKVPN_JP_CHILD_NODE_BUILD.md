@@ -184,7 +184,7 @@ sensitive_values_excluded: true
 - 全阶段保持 `pool=private`、`lifecycle=private-validation`；不得进入普通用户订阅或切换客户流量。
 - “候选阶段已开启”不代表镜像已构建、主机已安装、WireGuard 已接通、Agent 已启用或生产注册已完成。
 
-**当前第一项工作：** 按 `docs/runbooks/JP_CHILD_CANDIDATE_INSTALL_ENABLE_INTEGRATION_GATE.md` 准备 C0 精确构建 Gate，先固定批准 BOM 原件路径与 SHA-256、构建环境、镜像目标、输出清单、扫描边界、验证和回滚方式。
+**当前第一项工作：** 按 `docs/runbooks/JP_CHILD_CANDIDATE_INSTALL_ENABLE_INTEGRATION_GATE.md` 准备 C0 精确构建 Gate；设计合同以 `docs/drafts/E1-A_REGISTRATION_BINDING_AMENDMENT_v1.1_2026-11-02.md` 与 `docs/drafts/E4-A_RELEASE_IDENTITY_V2_SCHEMA_v0.12_2026-11-02.md` 的当前草案为准，先固定批准 BOM 原件路径与 SHA-256、构建环境、镜像目标、输出清单、扫描边界、验证和回滚方式。
 
 ## 4. M1：建立 BWH ↔ Vultr 私有通信通道（P0）
 
