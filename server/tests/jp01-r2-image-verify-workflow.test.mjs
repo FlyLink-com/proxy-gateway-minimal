@@ -14,6 +14,23 @@ function actionPins(source) {
   return [...source.matchAll(/^\s+uses: ([^\s#]+)(?:\s+#.*)?$/gm)].map((match) => match[1]);
 }
 
+function awsCliCalls(source) {
+  const lines = source.split(/\r?\n/);
+  const calls = [];
+  for (let index = 0; index < lines.length; index += 1) {
+    const match = lines[index].match(/^\s*aws\s+([a-z0-9-]+)(?:\s+([a-z0-9-]+))?\s*(?:\\)?\s*$/);
+    if (!match) continue;
+    const args = [];
+    while (/\\\s*$/.test(lines[index])) {
+      index += 1;
+      if (index >= lines.length) break;
+      args.push(lines[index].trim().replace(/\\\s*$/, ""));
+    }
+    calls.push({ command: match[1], subcommand: match[2] ?? "", args: args.join(" ") });
+  }
+  return calls;
+}
+
 test("JP-01 R2 verification is manual, master-only, and bound to its dedicated Environment", () => {
   assert.match(workflow, /^name: JP01 R2 Image Verify$/m);
   assert.match(workflow, /^on:\n  workflow_dispatch:\s*$/m);
@@ -34,15 +51,28 @@ test("R2 secrets and non-sensitive variables use the exact Environment names", (
   assert.doesNotMatch(workflow, /\$\{\{\s*secrets\.(?!R2_READ_)[A-Z0-9_]+\s*\}\}/);
 });
 
-test("workflow performs only exact-object read operations and never downloads the full image", () => {
-  assert.match(workflow, /aws s3api head-object/);
-  assert.match(workflow, /aws s3api get-object/);
-  assert.match(workflow, /--key "\$sidecar_key"/);
-  assert.doesNotMatch(workflow, /aws s3api (?:put-object|delete-object|list-objects|list-buckets|delete-bucket|create-bucket)/i);
-  assert.doesNotMatch(workflow, /aws s3 (?:cp|sync)\b/i);
-  assert.doesNotMatch(workflow, /--key "\$image_key"[\s\S]{0,200}get-object/);
+test("workflow uses an exact S3 read allowlist and never downloads the full image", () => {
+  const awsCalls = awsCliCalls(workflow);
+  assert.deepEqual(awsCalls.map(({ command, subcommand }) => [command, subcommand]), [
+    ["--version", ""],
+    ["s3api", "head-object"],
+    ["s3api", "head-object"],
+    ["s3api", "get-object"]
+  ]);
+
+  const s3Calls = awsCalls.filter(({ command }) => command === "s3api");
+  assert.deepEqual(s3Calls.map(({ subcommand }) => subcommand), ["head-object", "head-object", "get-object"]);
+  assert.ok(s3Calls.every(({ args }) => /--bucket "\$R2_BUCKET"/.test(args)));
+  assert.ok(s3Calls.every(({ args }) => /--endpoint-url "\$R2_ENDPOINT"/.test(args)));
+  assert.ok(s3Calls.every(({ args }) => /--region "\$R2_REGION"/.test(args)));
+  assert.match(s3Calls[0].args, /--key "\$image_key"/);
+  assert.match(s3Calls[1].args, /--key "\$sidecar_key"/);
+  assert.match(s3Calls[2].args, /--key "\$sidecar_key"/);
+  assert.doesNotMatch(s3Calls[2].args, /--key "\$image_key"/);
+
+  assert.doesNotMatch(workflow, /^\s*(?:ssh|scp|rsync)(?:\s|$)/im);
+  assert.match("ssh user@host", /^\s*(?:ssh|scp|rsync)(?:\s|$)/im);
   assert.doesNotMatch(workflow, /VULTR_API_KEY|vultr-cli|dd if=|systemctl|wg-quick|wireguard private|agent token/i);
-  assert.doesNotMatch(workflow, /(?:^|\\n)\\s*(?:ssh|scp|rsync)\\s+/im);
 });
 
 test("workflow binds object identity to the JP-01 profile and exact uploaded sizes", () => {
