@@ -149,14 +149,11 @@
           "type": "string"
         },
         "allowedIps": {
-          "items": {
-            "pattern": "^10\\.77\\.0\\.(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])/32$",
-            "type": "string"
-          },
-          "maxItems": 8,
-          "minItems": 1,
-          "type": "array",
-          "uniqueItems": true
+          "const": [
+            "10.77.0.1/32"
+          ],
+          "description": "Exact whitelist for JP-01 under the approved address plan: the node accepts only BWH's tunnel address.",
+          "type": "array"
         },
         "interfaceName": {
           "const": "wg-child0",

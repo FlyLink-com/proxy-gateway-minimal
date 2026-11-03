@@ -138,15 +138,11 @@
       "additionalProperties": false,
       "properties": {
         "allowedIps": {
-          "description": "Node addresses BWH accepts over the tunnel: /32 entries inside the approved 10.77.0.0/24 plan only; no default route is expressible.",
-          "items": {
-            "pattern": "^10\\.77\\.0\\.(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])/32$",
-            "type": "string"
-          },
-          "maxItems": 8,
-          "minItems": 1,
-          "type": "array",
-          "uniqueItems": true
+          "const": [
+            "10.77.0.2/32"
+          ],
+          "description": "Exact whitelist for JP-01 under the approved address plan: BWH accepts only the node's tunnel address. Any future address requires an approved allocation-list change, never a silent widening to the /24.",
+          "type": "array"
         },
         "bwhPeerPublicKey": {
           "description": "BWH WireGuard public key (base64, 32 bytes). Public keys are safe to exchange; the gate recomputes the fingerprint from the decoded bytes and compares it with bwhPeerPublicKeyFingerprint.",

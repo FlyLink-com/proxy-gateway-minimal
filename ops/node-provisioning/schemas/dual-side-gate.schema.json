@@ -2,7 +2,7 @@
   "$id": "https://github.com/FlyLink-com/proxy-gateway-minimal/ops/node-provisioning/schemas/dual-side-gate.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
-  "description": "Dual-side gate report: the cross-validation of one BWH integration plan and one node runtime plan of the same generation, per section 7 of the Post-Install Dual-Side Integration design v0.1. The check set covers every E1-A registration binding field (all eleven) plus the WireGuard, agent, protocol, and hygiene checks, and it is complete by construction: the checks array must contain each of the 22 check ids exactly once (minItems/maxItems 22 plus one contains clause per id), so a report cannot be schema-valid with a check missing or duplicated. WireGuard key checks recompute the SHA-256 fingerprints from the exchanged public keys, not merely compare fingerprint strings. The verdict is pass only when every check passes; that coherence rule is semantic and is enforced by the gate evaluator and the contract tests. Carries digests and check outcomes only — no configuration bodies, no secrets.",
+  "description": "Dual-side gate report: the cross-validation of one BWH integration plan, one node runtime plan, and the authoritative E1-A candidate registration binding, all of the same generation. The gate takes the binding (the eleven fields of registrationBindingOf) as a third input and compares BOTH plans against it field by field, so two plans that drift together to the same wrong value still fail; the fingerprints recomputed from the exchanged WireGuard public keys and the agent fingerprint must equal the binding's anchors exactly — the same candidate binding that P7 later submits to the registration executor. The check set is complete by construction: the checks array must contain each of the 23 check ids exactly once (minItems/maxItems 23 plus one contains clause per id). All digests follow the frozen computation rule in POSTINSTALL_IDENTITY_EXCHANGE.md (canonical JSON, self-digest field excluded, sha256: prefix). The verdict is pass only when every check passes; that coherence rule is semantic and is enforced by the gate evaluator and the contract tests.",
   "properties": {
     "bwhPlanDigest": {
       "pattern": "^sha256:[0-9a-f]{64}$",
@@ -209,6 +209,19 @@
           "contains": {
             "properties": {
               "id": {
+                "const": "registration_binding_match"
+              }
+            },
+            "required": [
+              "id"
+            ],
+            "type": "object"
+          }
+        },
+        {
+          "contains": {
+            "properties": {
+              "id": {
                 "const": "agent_private_path_only"
               }
             },
@@ -321,6 +334,7 @@
               "allowed_ips_within_plan",
               "no_default_route",
               "agent_binding_match",
+              "registration_binding_match",
               "agent_private_path_only",
               "protocol_config_tests",
               "stats_loopback_only",
@@ -346,8 +360,8 @@
         ],
         "type": "object"
       },
-      "maxItems": 22,
-      "minItems": 22,
+      "maxItems": 23,
+      "minItems": 23,
       "type": "array",
       "uniqueItems": true
     },
@@ -375,6 +389,10 @@
       "pattern": "^sha256:[0-9a-f]{64}$",
       "type": "string"
     },
+    "registrationBindingDigest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
     "schema": {
       "const": "dual-side-gate/v1",
       "type": "string"
@@ -396,6 +414,7 @@
     "profileDigest",
     "bwhPlanDigest",
     "nodePlanDigest",
+    "registrationBindingDigest",
     "checks",
     "verdict"
   ],

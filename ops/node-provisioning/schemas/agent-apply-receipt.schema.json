@@ -9,7 +9,14 @@
       "type": "string"
     },
     "backupRef": {
-      "pattern": "^(?=.*[A-Za-z0-9])[A-Za-z0-9._:-]{1,128}$",
+      "description": "Basename per optionalBackupBasename in the agent protocol: the charset/length pattern, never '.' or '..', never a path separator. Values like '...' or '::' are valid, exactly as the protocol admits.",
+      "not": {
+        "enum": [
+          ".",
+          ".."
+        ]
+      },
+      "pattern": "^[A-Za-z0-9._:-]{1,128}$",
       "type": "string"
     },
     "channelRef": {
@@ -81,7 +88,14 @@
       "type": "boolean"
     },
     "rollbackRef": {
-      "pattern": "^(?=.*[A-Za-z0-9])[A-Za-z0-9._:-]{1,128}$",
+      "description": "Basename per optionalBackupBasename in the agent protocol: the charset/length pattern, never '.' or '..', never a path separator. Values like '...' or '::' are valid, exactly as the protocol admits.",
+      "not": {
+        "enum": [
+          ".",
+          ".."
+        ]
+      },
+      "pattern": "^[A-Za-z0-9._:-]{1,128}$",
       "type": "string"
     },
     "scopedTombstone": {

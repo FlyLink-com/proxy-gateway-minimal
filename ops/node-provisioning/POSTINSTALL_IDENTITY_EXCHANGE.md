@@ -94,7 +94,16 @@ gate compares for equality against the registration record.
    bytes and rejects the pair if a fingerprint does not match its key —
    comparing fingerprint strings alone would let a plan pair a valid
    fingerprint with the wrong key.
-5. Only after the gate passes may P5 apply the WireGuard peer entries and
+5. The gate takes a third input: the authoritative E1-A candidate
+   registration binding (the eleven fields of `registrationBindingOf`,
+   taken from the actual registration candidate). Both plans are compared
+   against the binding field by field — two plans drifting together to
+   the same wrong value still fail — and the fingerprints recomputed from
+   the exchanged public keys, and the agent fingerprint, must equal the
+   binding's anchors exactly. The binding the gate validates is the same
+   candidate P7 submits to the registration executor; its digest
+   (`registrationBindingDigest`) is recorded in the gate report.
+6. Only after the gate passes may P5 apply the WireGuard peer entries and
    P7 run the executor registration with the same anchors.
 
 ## 5. Agent first trust (no secret ever moves)
@@ -169,3 +178,23 @@ Status: UNDECIDED. The first-boot packet builder currently has no SSH
 host fingerprint output field, which either option must address. This
 item sits alongside the GitHub egress decision in §7: both are D3
 preconditions, neither is resolved by D1.
+
+## 10. Digest computation rule (frozen by D1)
+
+Every digest in the D1 contracts (`digest` on both plans,
+`profileDigest`, the gate report's `bwhPlanDigest` / `nodePlanDigest` /
+`registrationBindingDigest`) is computed one way:
+
+- Input: the object the digest describes, with its own top-level
+  `digest` field removed (for the gate report: the digest of each plan
+  as the plan itself carries it; for the binding: the eleven-field
+  binding object exactly as `registrationBindingOf` returns it).
+- Canonical form: JSON with object keys sorted recursively at every
+  depth, arrays kept in order, no insignificant whitespace, UTF-8.
+- Value: `sha256:` followed by the lowercase hex SHA-256 of the
+  canonical form's UTF-8 bytes.
+
+A verifier recomputes the digest from the received object and rejects
+on any mismatch; changing any field after digesting invalidates the
+digest. D2's two renderers must implement this rule identically — it is
+part of the frozen interface, not an implementation choice.
