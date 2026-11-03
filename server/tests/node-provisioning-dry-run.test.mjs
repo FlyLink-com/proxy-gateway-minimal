@@ -215,7 +215,9 @@ test("IPv6 literals and unreviewed first-boot summary fields are rejected", () =
     })
   }), /safe profile and evidence shape/);
   assert.throws(() => build({
-    profile: { ...profile, firstBoot: { ...profile.firstBoot, sshPrivateKey: "synthetic-private-key" } }
+    profile: { ...profile, firstBoot: { ...profile.firstBoot, sshPrivateKey: "synthetic-private-key" } },
+    firstBootPacket: firstBootPacket(),
+    providerPlan: providerPlan()
   }), /safe profile and evidence shape/);
 });
 
