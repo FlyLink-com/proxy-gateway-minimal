@@ -5,7 +5,10 @@ import test from "node:test";
 
 import { validateDataPlaneApplyReceipt } from "../../server/services/edge/data-plane-agent-protocol.mjs";
 import { isSafeWireguardPlanRef } from "../../server/services/node-image-first-boot-packet.mjs";
-import { registrationBindingOf } from "../../server/services/edge/node-registration-ingestion.mjs";
+import {
+  buildEdgeNodeRegistrationRecordFromFirstBootPacket,
+  registrationBindingOf
+} from "../../server/services/edge/node-registration-ingestion.mjs";
 
 // Contract tests for the dual-side integration schemas (D1, second
 // revision). Fixtures are fully synthetic. Beyond schema conformance,
@@ -244,24 +247,69 @@ function nodePlan() {
 }
 
 // The authoritative third input: the E1-A candidate registration
-// binding, derived with the REAL registrationBindingOf from a synthetic
-// candidate record — the same candidate P7 would submit.
+// binding, produced exactly the way P7 produces it — a synthetic first
+// boot packet through the REAL record builder
+// (buildEdgeNodeRegistrationRecordFromFirstBootPacket, the same
+// function the registration executor calls), then the REAL
+// registrationBindingOf over the built record.
+function syntheticFirstBootPacket() {
+  const planned = {
+    nodeRegistrationDryRunPassed: true,
+    privateAgentRoutePlanned: true,
+    protectedMaterialInjectPlanned: true,
+    agentNodeIdentityPlanned: true
+  };
+  return {
+    mode: "node-image-first-boot-packet",
+    generatedAt: "2026-11-03T00:00:00Z",
+    packet: { readyForFirstBootApproval: true, firstBootApplyAllowed: true },
+    node: {
+      nodeRef: "node-vultr-jp-01",
+      providerRef: "provider-vultr",
+      regionRef: "region-japan-pending-c1-gate",
+      roleRef: "data-plane",
+      channelRefs: [...CHANNELS]
+    },
+    image: {
+      imageManifestRef: "jp01-candidate-1-file-inventory",
+      releaseRef: "source-eb83197e",
+      artifactSha256Recorded: true,
+      noSecretImageConfirmed: true
+    },
+    controlPlane: { ...planned },
+    wireguard: {
+      planRef: "wg-plan-jp01",
+      tunnelAddressAssigned: true,
+      hostKeyGenerationPlanned: true,
+      peerPublicKeyExchangePlanned: true,
+      toolsPinnedInImageManifest: true
+    },
+    runtime: {
+      servicesDisabledInImage: true,
+      xrayConfigTestPlanned: true,
+      hysteria2ConfigTestPlanned: true,
+      tuicConfigTestPlanned: true,
+      statsLoopbackOnly: true
+    },
+    receiptGate: {
+      desiredStatePullRequired: true,
+      materialPullRequired: true,
+      appliedReceiptRequired: true,
+      renderWithholdsUntilReceipt: true
+    },
+    approval: { exactApprovalReceived: true, firstBootApplyApproved: true },
+    notes: []
+  };
+}
+
 function candidateBinding() {
-  return registrationBindingOf({
-    nodeRef: "node-vultr-jp-01",
-    providerRef: "provider-vultr",
-    regionRef: "region-japan-pending-c1-gate",
-    roleRef: "data-plane",
-    channelRefs: [...CHANNELS],
-    imageManifestRef: "jp01-candidate-1-file-inventory",
-    releaseRef: "source-eb83197e",
+  const record = buildEdgeNodeRegistrationRecordFromFirstBootPacket(syntheticFirstBootPacket(), {
+    wireguardPublicKeyFingerprint: FP_A,
+    agentAuthFingerprint: FP_D,
     firstBootPacketRef: "first-boot-packet-jp01",
-    metadata: {
-      wireguardPlanRef: "wg-plan-jp01",
-      wireguardPublicKeyFingerprint: FP_A,
-      agentAuthFingerprint: FP_D
-    }
+    registeredAt: "2026-11-03T00:00:00Z"
   });
+  return registrationBindingOf(record);
 }
 
 const GATE_CHECK_IDS = [
@@ -536,7 +584,7 @@ test("a conforming node plan can never authorise service activation", () => {
   assertInvalid(nodeSchema, publicStats);
 });
 
-test("gate completeness: all 22 checks exactly once, enforced by the schema itself", () => {
+test("gate completeness: all 23 checks exactly once, enforced by the schema itself", () => {
   const missing = gateReport();
   missing.checks = missing.checks.filter((check) => check.id !== "material_digests_match");
   assertInvalid(gateSchema, missing);
@@ -704,14 +752,19 @@ test("plan digests follow the frozen rule and detect tampering", () => {
 });
 
 test("backup and rollback refs mirror the protocol basename rule exactly", () => {
-  for (const okValue of ["...", "::", "backup-2026-11-03.tar"]) {
-    const receipt = { ...agentReceipt(), backupRef: okValue };
-    assertValid(agentReceiptSchema, receipt);
-    assert.doesNotThrow(() => validateDataPlaneApplyReceipt(receipt, PROTOCOL_OPTIONS));
-  }
-  for (const badValue of [".", "..", "a/b", "a\\b"]) {
-    const receipt = { ...agentReceipt(), backupRef: badValue };
-    assertInvalid(agentReceiptSchema, receipt);
-    assert.throws(() => validateDataPlaneApplyReceipt(receipt, PROTOCOL_OPTIONS));
+  // Both fields run the same case set through BOTH the schema and the
+  // real protocol validator; neither field's evidence stands in for
+  // the other's.
+  for (const field of ["backupRef", "rollbackRef"]) {
+    for (const okValue of ["...", "::", "backup-2026-11-03.tar"]) {
+      const receipt = { ...agentReceipt(), [field]: okValue };
+      assertValid(agentReceiptSchema, receipt);
+      assert.doesNotThrow(() => validateDataPlaneApplyReceipt(receipt, PROTOCOL_OPTIONS));
+    }
+    for (const badValue of [".", "..", "a/b", "a\\b"]) {
+      const receipt = { ...agentReceipt(), [field]: badValue };
+      assertInvalid(agentReceiptSchema, receipt);
+      assert.throws(() => validateDataPlaneApplyReceipt(receipt, PROTOCOL_OPTIONS));
+    }
   }
 });

@@ -198,3 +198,17 @@ A verifier recomputes the digest from the received object and rejects
 on any mismatch; changing any field after digesting invalidates the
 digest. D2's two renderers must implement this rule identically — it is
 part of the frozen interface, not an implementation choice.
+
+## 11. D2 preconditions carried forward
+
+Recorded at the D1 final review; these bind D2's acceptance, they do
+not reopen D1:
+
+- **BWH WireGuard key continuity.** The E1-A binding anchors the node's
+  keys, not BWH's. D2's BWH Renderer must therefore obtain BWH's current
+  production WireGuard public key **read-only** and must never generate
+  or replace a BWH key; the D2 gate must verify the plan's BWH peer key
+  equals that existing identity, with a counterexample test in which
+  both plans drift to a new BWH key together and must fail.
+- The SSH bootstrap resolution (§9) and the GitHub egress decision
+  (§7) remain pre-D3 items.
