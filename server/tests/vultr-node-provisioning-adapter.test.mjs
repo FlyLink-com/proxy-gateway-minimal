@@ -35,3 +35,15 @@ test("Vultr adapter rejects any installation method outside the reviewed rescue-
   assert.throws(() => buildVultrNodeProvisioningDryRun({ ...safeProfile, installationMethod: "api-image" }));
   assert.throws(() => buildVultrNodeProvisioningDryRun({ ...safeProfile, bootMode: "uefi" }));
 });
+
+
+test("Vultr adapter rejects IPv6 literals and unreviewed credential fields", () => {
+  assert.throws(() => buildVultrNodeProvisioningDryRun({
+    ...safeProfile,
+    regionRef: "2001:db8::1"
+  }));
+  assert.throws(() => buildVultrNodeProvisioningDryRun({
+    ...safeProfile,
+    apiKey: "synthetic-provider-key"
+  }));
+});
