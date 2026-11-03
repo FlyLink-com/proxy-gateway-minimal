@@ -178,7 +178,8 @@ test("dry-run rejects a provider plan that claims API use or a mutating operatio
 test("IPv6 literals and unreviewed first-boot summary fields are rejected", () => {
   const base = firstBootPacket();
   assert.throws(() => build({
-    profile: { ...profile, node: { ...profile.node, regionRef: "2001:db8::1" } }
+    profile: { ...profile, node: { ...profile.node, regionRef: "2001:db8::1" } },
+    providerPlan: providerPlan()
   }), /safe profile and evidence shape/);
   assert.throws(() => build({
     firstBootPacket: firstBootPacket({
