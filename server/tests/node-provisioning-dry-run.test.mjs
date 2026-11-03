@@ -219,6 +219,23 @@ test("IPv6 literals and unreviewed first-boot summary fields are rejected", () =
   }), /safe profile and evidence shape/);
 });
 
+test("first-boot packet requires every state group and a readiness flag consistent with blockers", () => {
+  const complete = firstBootPacket();
+  const missingGroup = { ...complete };
+  delete missingGroup.controlPlane;
+  assert.throws(() => build({ firstBootPacket: missingGroup }), /safe profile and evidence shape/);
+  assert.throws(() => build({
+    firstBootPacket: firstBootPacket({
+      packet: { readyForFirstBootApproval: true }
+    })
+  }), /safe profile and evidence shape/);
+  assert.throws(() => build({
+    firstBootPacket: firstBootPacket({
+      packet: { blockers: [] }
+    })
+  }), /safe profile and evidence shape/);
+});
+
 test("provider plan rejects extra fields at every copied boundary", () => {
   const valid = providerPlan();
   assert.throws(() => build({
