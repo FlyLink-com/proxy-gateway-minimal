@@ -188,6 +188,13 @@ function assertExactKeys(value, allowed) {
   }
 }
 
+function assertRequiredKeys(value, allowed) {
+  assertExactKeys(value, allowed);
+  for (const key of allowed) {
+    if (!Object.prototype.hasOwnProperty.call(value, key)) throw safeError();
+  }
+}
+
 function assertSafeRef(value) {
   if (typeof value !== "string" || !SAFE_REF_PATTERN.test(value) || containsSensitiveReference(value)) throw safeError();
   return value;
@@ -264,39 +271,46 @@ function safeBlockers(value) {
 
 function validateFirstBootPacket(packet, profile) {
   if (!isObject(packet) || packet.ok !== true || packet.mode !== "node-image-first-boot-packet") throw safeError();
-  assertExactKeys(packet, FIRST_BOOT_PACKET_KEYS);
-  if (!isObject(packet.packet) || !isObject(packet.node) || !isObject(packet.image) || !isObject(packet.safety)) throw safeError();
-
-  assertExactKeys(packet.packet, FIRST_BOOT_SUMMARY_KEYS);
-  assertExactKeys(packet.node, FIRST_BOOT_NODE_KEYS);
-  assertExactKeys(packet.image, FIRST_BOOT_IMAGE_KEYS);
-  assertExactKeys(packet.safety, FIRST_BOOT_SAFETY_KEYS);
+  assertRequiredKeys(packet, FIRST_BOOT_PACKET_KEYS);
+  assertRequiredKeys(packet.packet, FIRST_BOOT_SUMMARY_KEYS);
+  assertRequiredKeys(packet.node, FIRST_BOOT_NODE_KEYS);
+  assertRequiredKeys(packet.image, FIRST_BOOT_IMAGE_KEYS);
+  assertRequiredKeys(packet.controlPlane, FIRST_BOOT_CONTROL_PLANE_KEYS);
+  assertRequiredKeys(packet.wireguard, FIRST_BOOT_WIREGUARD_KEYS);
+  assertRequiredKeys(packet.runtime, FIRST_BOOT_RUNTIME_KEYS);
+  assertRequiredKeys(packet.receiptGate, FIRST_BOOT_RECEIPT_GATE_KEYS);
+  assertRequiredKeys(packet.approval, FIRST_BOOT_APPROVAL_KEYS);
+  assertRequiredKeys(packet.safety, FIRST_BOOT_SAFETY_KEYS);
 
   for (const key of ["readyForFirstBootApproval", "approvalRequired", "firstBootApplyAllowed"]) {
-    if (packet.packet[key] !== undefined) assertBoolean(packet.packet[key]);
+    assertBoolean(packet.packet[key]);
   }
-  if (!Array.isArray(packet.node.channelRefs)) throw safeError();
+  if (!Array.isArray(packet.node.channelRefs) || packet.node.channelRefs.length !== profile.node.channelRefs.length) throw safeError();
   if (packet.packet.channelRefCount !== profile.node.channelRefs.length) throw safeError();
-  if (packet.node.channelRefs.length !== profile.node.channelRefs.length) throw safeError();
   assertOptionalSafeRefs(packet.packet, [
     "nodeRef", "providerRef", "regionRef", "roleRef", "imageManifestRef", "releaseRef", "wireguardPlanRef"
   ]);
   assertOptionalSafeRefs(packet.node, ["nodeRef", "providerRef", "regionRef", "roleRef"]);
   packet.node.channelRefs.forEach(assertSafeRef);
-  if (packet.node.channelRefs.some((value, index) => value !== profile.node.channelRefs[index])) throw safeError();
-
-  const expected = profile.node;
   if (
-    packet.packet.nodeRef !== expected.nodeRef
-    || packet.packet.providerRef !== expected.providerRef
-    || packet.packet.regionRef !== expected.regionRef
-    || packet.packet.roleRef !== expected.roleRef
-    || packet.packet.imageManifestRef !== profile.firstBoot.image.imageManifestRef
-    || packet.packet.releaseRef !== profile.firstBoot.image.releaseRef
-    || packet.packet.wireguardPlanRef !== profile.firstBoot.wireguard.planRef
-    || packet.packet.channelRefCount !== expected.channelRefs.length
-    || packet.node.channelRefs.some((value, index) => value !== expected.channelRefs[index])
+    packet.packet.nodeRef !== profile.node.nodeRef
+    || packet.packet.providerRef !== profile.node.providerRef
+    || packet.packet.regionRef !== profile.node.regionRef
+    || packet.packet.roleRef !== profile.node.roleRef
+    || packet.node.nodeRef !== profile.node.nodeRef
+    || packet.node.providerRef !== profile.node.providerRef
+    || packet.node.regionRef !== profile.node.regionRef
+    || packet.node.roleRef !== profile.node.roleRef
+    || packet.node.channelRefs.some((value, index) => value !== profile.node.channelRefs[index])
   ) throw safeError();
+
+  for (const key of ["nodeRef", "providerRef", "regionRef", "roleRef", "channelRefs"]) {
+    if (key === "channelRefs") continue;
+    if (packet.node[key] !== profile.firstBoot.node[key]) throw safeError();
+  }
+  if (packet.packet.imageManifestRef !== profile.firstBoot.image.imageManifestRef
+    || packet.packet.releaseRef !== profile.firstBoot.image.releaseRef
+    || packet.packet.wireguardPlanRef !== profile.firstBoot.wireguard.planRef) throw safeError();
 
   assertSafeRef(packet.image.imageManifestRef);
   assertSafeRef(packet.image.releaseRef);
@@ -309,59 +323,58 @@ function validateFirstBootPacket(packet, profile) {
     || packet.image.noSecretImageConfirmed !== profile.firstBoot.image.noSecretImageConfirmed
   ) throw safeError();
 
-  const requiredSafety = ["summaryOnly", "noCloudMutation", "noProductionMutation", "noProtectedMaterialOutput"];
+  const booleanGroups = [
+    ["controlPlane", FIRST_BOOT_CONTROL_PLANE_KEYS],
+    ["runtime", FIRST_BOOT_RUNTIME_KEYS],
+    ["receiptGate", FIRST_BOOT_RECEIPT_GATE_KEYS],
+    ["approval", FIRST_BOOT_APPROVAL_KEYS]
+  ];
+  for (const [name, keys] of booleanGroups) {
+    for (const key of keys) {
+      assertBoolean(packet[name][key]);
+      if (packet[name][key] !== profile.firstBoot[name][key]) throw safeError();
+    }
+  }
+  assertSafeRef(packet.wireguard.planRef);
+  if (packet.wireguard.planRef !== profile.firstBoot.wireguard.planRef) throw safeError();
+  for (const key of FIRST_BOOT_WIREGUARD_KEYS) {
+    if (key === "planRef") continue;
+    assertBoolean(packet.wireguard[key]);
+    if (packet.wireguard[key] !== profile.firstBoot.wireguard[key]) throw safeError();
+  }
+
   for (const key of [
     "summaryOnly", "noRuntimeMutation", "noProductionMutation", "noCloudMutation",
     "noDnsMutation", "noProviderFirewallMutation", "noSubscriptionOutputMutation",
     "noProtectedMaterialOutput"
   ]) {
-    if (packet.safety[key] !== undefined) assertBoolean(packet.safety[key]);
+    if (packet.safety[key] !== true) throw safeError();
   }
-  if (requiredSafety.some((key) => packet.safety[key] !== true)) throw safeError();
-  for (const key of [
-    "noRuntimeMutation", "noDnsMutation", "noProviderFirewallMutation", "noSubscriptionOutputMutation"
-  ]) {
-    if (packet.safety[key] !== undefined && packet.safety[key] !== true) throw safeError();
-  }
-  if (packet.safety.omittedFields !== undefined) {
+  if (JSON.stringify(packet.safety.omittedFields) !== JSON.stringify(SAFE_OMITTED_FIELDS)) throw safeError();
+
+  if (!Array.isArray(packet.plannedOperations) || packet.plannedOperations.length !== FIRST_BOOT_OPERATION_IDS.size) throw safeError();
+  for (let index = 0; index < packet.plannedOperations.length; index += 1) {
+    const operation = packet.plannedOperations[index];
+    assertRequiredKeys(operation, FIRST_BOOT_OPERATION_KEYS);
     if (
-      !Array.isArray(packet.safety.omittedFields)
-      || JSON.stringify(packet.safety.omittedFields) !== JSON.stringify(SAFE_OMITTED_FIELDS)
+      operation.id !== [...FIRST_BOOT_OPERATION_IDS][index]
+      || operation.mutation !== false
+      || operation.requiresRiskAGate !== true
     ) throw safeError();
   }
+  if (!Array.isArray(packet.notes)) throw safeError();
+  packet.notes.forEach((note) => assertSafeSummaryText(note, 512));
+  if (JSON.stringify(packet.notes) !== JSON.stringify(profile.firstBoot.notes ?? [])) throw safeError();
+  assertSafeSummaryText(packet.generatedAt, 128);
 
-  const optionalGroups = [
-    ["controlPlane", FIRST_BOOT_CONTROL_PLANE_KEYS, [...FIRST_BOOT_CONTROL_PLANE_KEYS]],
-    ["wireguard", FIRST_BOOT_WIREGUARD_KEYS, [...FIRST_BOOT_WIREGUARD_KEYS].filter((key) => key !== "planRef")],
-    ["runtime", FIRST_BOOT_RUNTIME_KEYS, [...FIRST_BOOT_RUNTIME_KEYS]],
-    ["receiptGate", FIRST_BOOT_RECEIPT_GATE_KEYS, [...FIRST_BOOT_RECEIPT_GATE_KEYS]],
-    ["approval", FIRST_BOOT_APPROVAL_KEYS, [...FIRST_BOOT_APPROVAL_KEYS]]
-  ];
-  for (const [name, allowed, fields] of optionalGroups) {
-    if (packet[name] !== undefined) assertOptionalBooleanFields(packet[name], allowed, fields);
-  }
-  if (packet.wireguard !== undefined && packet.wireguard.planRef !== undefined) {
-    assertSafeRef(packet.wireguard.planRef);
-    if (packet.wireguard.planRef !== profile.firstBoot.wireguard.planRef) throw safeError();
-  }
-  if (packet.plannedOperations !== undefined) {
-    if (!Array.isArray(packet.plannedOperations) || packet.plannedOperations.length !== FIRST_BOOT_OPERATION_IDS.size) throw safeError();
-    for (let index = 0; index < packet.plannedOperations.length; index += 1) {
-      const operation = packet.plannedOperations[index];
-      assertExactKeys(operation, FIRST_BOOT_OPERATION_KEYS);
-      if (
-        operation.id !== [...FIRST_BOOT_OPERATION_IDS][index]
-        || operation.mutation !== false
-        || operation.requiresRiskAGate !== true
-      ) throw safeError();
-    }
-  }
-  if (packet.notes !== undefined) {
-    if (!Array.isArray(packet.notes)) throw safeError();
-    packet.notes.forEach((note) => assertSafeSummaryText(note, 512));
-  }
-  if (packet.generatedAt !== undefined) assertSafeSummaryText(packet.generatedAt, 128);
-  return safeBlockers(packet.packet.blockers);
+  const blockers = safeBlockers(packet.packet.blockers);
+  if (packet.packet.readyForFirstBootApproval !== (blockers.length === 0)) throw safeError();
+  if (packet.packet.approvalRequired !== !profile.firstBoot.approval.exactApprovalReceived) throw safeError();
+  const applyAllowed = blockers.length === 0
+    && profile.firstBoot.approval.exactApprovalReceived
+    && profile.firstBoot.approval.firstBootApplyApproved;
+  if (packet.packet.firstBootApplyAllowed !== applyAllowed) throw safeError();
+  return blockers;
 }
 
 function validateProviderPlan(providerPlan, profile) {
