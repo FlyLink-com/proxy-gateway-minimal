@@ -18,7 +18,7 @@ function awsCliCalls(source) {
   const lines = source.split(/\r?\n/);
   const calls = [];
   for (let index = 0; index < lines.length; index += 1) {
-    const match = lines[index].match(/^\s*aws\s+([a-z0-9-]+)(?:\s+([a-z0-9-]+))?\s*(?:\\)?\s*$/);
+    const match = lines[index].match(/^\s*(?:[A-Za-z_][A-Za-z0-9_]*="\$\()?\s*aws\s+([a-z0-9-]+)(?:\s+([a-z0-9-]+))?\s*(?:\\)?\s*$/);
     if (!match) continue;
     const args = [];
     while (/\\\s*$/.test(lines[index])) {
