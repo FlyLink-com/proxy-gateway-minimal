@@ -195,6 +195,14 @@ test("IPv6 literals and unreviewed first-boot summary fields are rejected", () =
       safety: { ...base.safety, sshPrivateKey: "synthetic-private-key" }
     })
   }), /safe profile and evidence shape/);
+  assert.throws(() => build({
+    firstBootPacket: firstBootPacket({
+      safety: { ...base.safety, noRuntimeMutation: false }
+    })
+  }), /safe profile and evidence shape/);
+  assert.throws(() => build({
+    profile: { ...profile, firstBoot: { ...profile.firstBoot, sshPrivateKey: "synthetic-private-key" } }
+  }), /safe profile and evidence shape/);
 });
 
 test("provider plan rejects extra fields at every copied boundary", () => {
