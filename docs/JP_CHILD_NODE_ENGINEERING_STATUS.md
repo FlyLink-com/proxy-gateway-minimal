@@ -35,7 +35,7 @@ document_metadata:
 
 ## 2. 源码基线：E1 步骤 5–8 已合并
 
-<badge>源码已合并</badge>
+**源码已合并**
 
 - PR：[#822](https://github.com/FlyLink-com/proxy-gateway-minimal/pull/822)
 - 最终功能头：`8ee26c6727c1e1dd3f1569c211fad8f4423dc41d`
@@ -134,7 +134,7 @@ PR #822 明确不包含：
 
 ### 4.1 M0
 
-<badge color="danger">BLOCKED</badge>
+**BLOCKED**
 
 当前只剩两项 M0 阻塞：
 
@@ -160,7 +160,7 @@ M0 两项未闭合前，不得开始生产主机、私有网络、BWH Agent 接�
 
 ## 5. 候选安装、启用与接入阶段
 
-<badge color="warning">阶段已开启：仅候选准备</badge>
+**阶段已开启：仅候选准备**
 
 本轮开始进入 Candidate Install / Enable / Integration 阶段，但当前仅开放候选准备和 Gate 编制，不把任何生产操作视为已授权或已执行。
 
