@@ -4,42 +4,30 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 import { buildVultrNodeProvisioningDryRun } from "../../ops/node-provisioning/providers/vultr/adapter.mjs";
+import { buildNodeImageFirstBootPacket } from "../services/node-image-first-boot-packet.mjs";
 import { buildNodeProvisioningDryRunPlan } from "../services/node-provisioning-dry-run.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const PROFILE_PATH = resolve(ROOT, "ops/node-provisioning/profiles/jp-01.json");
 const profile = JSON.parse(readFileSync(PROFILE_PATH, "utf8"));
 
-function firstBootPacket(overrides = {}) {
+function firstBootPacket(overrides = {}, selectedProfile = profile) {
+  const base = buildNodeImageFirstBootPacket(selectedProfile.firstBoot);
   return {
-    ok: true,
-    mode: "node-image-first-boot-packet",
-    packet: {
-      readyForFirstBootApproval: false,
-      blockers: ["node registration dry-run has not passed", "wireguard tunnel address is not assigned"],
-      nodeRef: profile.node.nodeRef,
-      providerRef: profile.node.providerRef,
-      regionRef: profile.node.regionRef,
-      roleRef: profile.node.roleRef,
-      channelRefCount: profile.node.channelRefs.length,
-      imageManifestRef: profile.firstBoot.image.imageManifestRef,
-      releaseRef: profile.firstBoot.image.releaseRef,
-      wireguardPlanRef: profile.firstBoot.wireguard.planRef
-    },
-    node: { channelRefs: [...profile.node.channelRefs] },
-    image: {
-      imageManifestRef: profile.firstBoot.image.imageManifestRef,
-      releaseRef: profile.firstBoot.image.releaseRef,
-      artifactSha256Recorded: true,
-      noSecretImageConfirmed: true
-    },
-    safety: {
-      summaryOnly: true,
-      noCloudMutation: true,
-      noProductionMutation: true,
-      noProtectedMaterialOutput: true
-    },
-    ...overrides
+    ...base,
+    ...overrides,
+    packet: { ...base.packet, ...(overrides.packet ?? {}) },
+    node: { ...base.node, ...(overrides.node ?? {}) },
+    image: { ...base.image, ...(overrides.image ?? {}) },
+    controlPlane: { ...base.controlPlane, ...(overrides.controlPlane ?? {}) },
+    wireguard: { ...base.wireguard, ...(overrides.wireguard ?? {}) },
+    runtime: { ...base.runtime, ...(overrides.runtime ?? {}) },
+    receiptGate: { ...base.receiptGate, ...(overrides.receiptGate ?? {}) },
+    approval: { ...base.approval, ...(overrides.approval ?? {}) },
+    plannedOperations: overrides.plannedOperations ?? base.plannedOperations,
+    notes: overrides.notes ?? base.notes,
+    safety: { ...base.safety, ...(overrides.safety ?? {}) },
+    generatedAt: overrides.generatedAt ?? base.generatedAt
   };
 }
 
@@ -60,7 +48,7 @@ function build(input = {}) {
   const selectedProfile = input.profile ?? profile;
   return buildNodeProvisioningDryRunPlan({
     profile: selectedProfile,
-    firstBootPacket: input.firstBootPacket ?? firstBootPacket(),
+    firstBootPacket: input.firstBootPacket ?? firstBootPacket({}, selectedProfile),
     providerPlan: input.providerPlan ?? providerPlan(selectedProfile)
   });
 }
@@ -136,9 +124,34 @@ test("first-boot packet must match the exact reviewed node, channels, and image 
 });
 
 test("plan remains non-executable even when all C1 decision flags are marked true", () => {
+  const approvedFirstBoot = {
+    ...profile.firstBoot,
+    controlPlane: {
+      nodeRegistrationDryRunPassed: true,
+      privateAgentRoutePlanned: true,
+      protectedMaterialInjectPlanned: true,
+      agentNodeIdentityPlanned: true
+    },
+    wireguard: {
+      ...profile.firstBoot.wireguard,
+      tunnelAddressAssigned: true,
+      hostKeyGenerationPlanned: true,
+      peerPublicKeyExchangePlanned: true,
+      toolsPinnedInImageManifest: true
+    },
+    runtime: {
+      ...profile.firstBoot.runtime,
+      xrayConfigTestPlanned: true,
+      hysteria2ConfigTestPlanned: true,
+      tuicConfigTestPlanned: true,
+      statsLoopbackOnly: true
+    },
+    approval: { exactApprovalReceived: true, firstBootApplyApproved: true }
+  };
   const approvedC1Profile = {
     ...profile,
     image: { ...profile.image, artifactAvailableToRunner: true },
+    firstBoot: approvedFirstBoot,
     installation: {
       ...profile.installation,
       sizeDecisionApproved: true,
@@ -155,7 +168,7 @@ test("plan remains non-executable even when all C1 decision flags are marked tru
       cloudInitPolicy: "approved"
     }
   };
-  const plan = build({ profile: approvedC1Profile, firstBootPacket: firstBootPacket({ packet: { ...firstBootPacket().packet, readyForFirstBootApproval: true, blockers: [] } }) });
+  const plan = build({ profile: approvedC1Profile, firstBootPacket: firstBootPacket({}, approvedC1Profile) });
   assert.equal(plan.status, "C1_PLAN_BLOCKED");
   assert.equal(plan.executable, false);
   assert.ok(plan.c1.blockers.some((item) => item.startsWith("M0 current evidence")));
@@ -253,13 +266,7 @@ test("missing first-boot C0 image assertions are explicit C1 blockers", () => {
       }
     }
   };
-  const packet = firstBootPacket({
-    image: {
-      ...firstBootPacket().image,
-      artifactSha256Recorded: false,
-      noSecretImageConfirmed: false
-    }
-  });
+  const packet = firstBootPacket({}, incomplete);
   const plan = build({ profile: incomplete, firstBootPacket: packet });
   assert.equal(plan.status, "C1_PLAN_BLOCKED");
   assert.ok(plan.c1.blockers.includes("C0 first-boot packet does not record artifact SHA-256 evidence"));
