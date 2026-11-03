@@ -173,3 +173,86 @@ test("dry-run rejects a provider plan that claims API use or a mutating operatio
   assert.throws(() => build({ providerPlan: { ...validPlan, safety: { ...validPlan.safety, providerApiCalled: true } } }), /safe profile and evidence shape/);
   assert.throws(() => build({ providerPlan: { ...validPlan, plannedOperations: [{ id: "create-instance", mutation: true }] } }), /safe profile and evidence shape/);
 });
+
+
+test("IPv6 literals and unreviewed first-boot summary fields are rejected", () => {
+  const base = firstBootPacket();
+  assert.throws(() => build({
+    profile: { ...profile, node: { ...profile.node, regionRef: "2001:db8::1" } }
+  }), /safe profile and evidence shape/);
+  assert.throws(() => build({
+    firstBootPacket: firstBootPacket({
+      packet: { ...base.packet, rawIpv6: "2001:db8::1" }
+    })
+  }), /safe profile and evidence shape/);
+  assert.throws(() => build({
+    firstBootPacket: firstBootPacket({
+      packet: { ...base.packet, blockers: [...base.packet.blockers, "node address 2001:db8::1"] }
+    })
+  }), /safe profile and evidence shape/);
+  assert.throws(() => build({
+    firstBootPacket: firstBootPacket({
+      safety: { ...base.safety, sshPrivateKey: "synthetic-private-key" }
+    })
+  }), /safe profile and evidence shape/);
+});
+
+test("provider plan rejects extra fields at every copied boundary", () => {
+  const valid = providerPlan();
+  assert.throws(() => build({
+    providerPlan: { ...valid, sshPrivateKey: "synthetic-private-key" }
+  }), /safe profile and evidence shape/);
+  assert.throws(() => build({
+    providerPlan: { ...valid, target: { ...valid.target, host: "2001:db8::1" } }
+  }), /safe profile and evidence shape/);
+  assert.throws(() => build({
+    providerPlan: {
+      ...valid,
+      plannedOperations: [{ ...valid.plannedOperations[0], token: "synthetic" }, ...valid.plannedOperations.slice(1)]
+    }
+  }), /safe profile and evidence shape/);
+  assert.throws(() => build({
+    providerPlan: { ...valid, unresolved: ["provider endpoint 2001:db8::1"] }
+  }), /safe profile and evidence shape/);
+});
+
+test("missing C0 digest or no-secret scan evidence remains a C1 blocker", () => {
+  const incomplete = {
+    ...profile,
+    image: {
+      ...profile.image,
+      artifactSha256Recorded: false,
+      noSecretScanPassed: false
+    }
+  };
+  const plan = build({ profile: incomplete });
+  assert.equal(plan.status, "C1_PLAN_BLOCKED");
+  assert.equal(plan.executable, false);
+  assert.ok(plan.c1.blockers.includes("C0 artifact SHA-256 evidence is not recorded"));
+  assert.ok(plan.c1.blockers.includes("C0 no-secret scan has not passed"));
+});
+
+test("missing first-boot C0 image assertions are explicit C1 blockers", () => {
+  const incomplete = {
+    ...profile,
+    firstBoot: {
+      ...profile.firstBoot,
+      image: {
+        ...profile.firstBoot.image,
+        artifactSha256Recorded: false,
+        noSecretImageConfirmed: false
+      }
+    }
+  };
+  const packet = firstBootPacket({
+    image: {
+      ...firstBootPacket().image,
+      artifactSha256Recorded: false,
+      noSecretImageConfirmed: false
+    }
+  });
+  const plan = build({ profile: incomplete, firstBootPacket: packet });
+  assert.equal(plan.status, "C1_PLAN_BLOCKED");
+  assert.ok(plan.c1.blockers.includes("C0 first-boot packet does not record artifact SHA-256 evidence"));
+  assert.ok(plan.c1.blockers.includes("C0 first-boot packet does not confirm a no-secret image"));
+});
