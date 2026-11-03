@@ -1,5 +1,15 @@
 # E1-A · 注册绑定合同修订单（草案 v1.1）
 
+```yaml
+document_metadata:
+  doc_type: canonical
+  lifecycle: active
+  authority_scope: e1a_registration_binding_amendment_draft
+  superseded_by: null
+  last_verified_at: 2026-11-02
+  production_authority: false
+```
+
 **项目：** FlyLink.com / proxy-gateway-minimal
 **日期：** 2026-11-02（v0.1 初稿，v0.2–v1.1 十轮修订同日）
 **状态：** 修订单草案 v1.1，立项方向已获 Yi 批准；待 Yi 对本修订稿单独确认后才可进入源码实施（本稿通过合同审查不等于源码实施授权，更不自动授权 E4-E）
