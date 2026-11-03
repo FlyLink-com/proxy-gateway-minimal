@@ -29,7 +29,9 @@ document_metadata:
 - GitHub Environment: jp01-image-verify, deployment branch restricted to master.
 - Credential logical ID: R2_READ_ACCESS_KEY_ID + R2_READ_SECRET_ACCESS_KEY.
 - Credential source: GitHub Environment Secrets; injected only into the one authenticated verification step.
-- Privilege: unverified_assume_full_access until the Cloudflare credential permission screen/readback independently confirms Object Read Only and bucket scope jp01-images. Secret names are not proof of provider-side privilege.
+- Provider-side permission readback (2026-11-03): the active account-owned token named `jp01-images-read-github` has permission group `Workers R2 Storage Bucket Item Read` and its policy resource is exactly `com.cloudflare.edge.r2.bucket.17d66c001f9d851fa0d5a88cd311c2c0_default_jp01-images`. This confirms the Cloudflare-side read-only permission and bucket scope.
+- GitHub secret binding: GitHub does not reveal the stored Environment Secret values. Their association with the Cloudflare token remains pending the hosted T2 authentication test; secret names alone are not proof of binding.
+- Separate upload credential: `jp01-images-upload-02` was also active at readback, with `Workers R2 Storage Bucket Item Write` scoped to the same bucket. It is not used by this workflow and should be revoked by the operator after upload completion.
 - Non-sensitive variables: R2_ACCOUNT_ID, R2_BUCKET, R2_ENDPOINT, R2_REGION.
 
 ## Exact object scope
