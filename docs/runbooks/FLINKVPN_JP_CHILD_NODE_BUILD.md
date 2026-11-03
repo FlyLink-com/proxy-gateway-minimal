@@ -1,6 +1,6 @@
 # FlinkVPN JP 子节点建设任务清单
 
-Last updated: 2026-11-01 UTC.
+Last updated: 2026-11-02 UTC.
 
 ```yaml
 document_metadata:
@@ -8,7 +8,7 @@ document_metadata:
   lifecycle: active
   authority_scope: flinkvpn_jp_child_node_build
   superseded_by: null
-  last_verified_at: 2026-11-01
+  last_verified_at: 2026-11-02
   production_authority: false
 ```
 
@@ -18,7 +18,7 @@ document_metadata:
 > - 本文档 PR：Risk C，仅新增任务清单和验收约束。
 > - 本文档不授权 SSH、Provider API、Vultr 资源创建、WireGuard 配置、生产读取、服务重启、配置下发、订阅解锁或流量切换。
 > - 初始节点状态：pool=private，lifecycle=private-validation。
-> - 计划节点标识：`node-vultr-jp-01`；已核对当前仓库源码中没有同名引用。M4 仍须在 BWH 注册表中核验全局唯一性后才能登记，不得假定已预留。
+> - 节点标识：`node-vultr-jp-01` 已由 PR #822 纳入源码，Identity Gate 已具备 JP-01 三面映射；这不代表 BWH 注册表已登记、Vultr 主机已存在或生产运行时已启用。M4 仍须在 BWH 注册表中核验全局唯一性后才能登记。
 
 ## 1. 固定目标架构
 
@@ -160,6 +160,31 @@ sensitive_values_excluded: true
   1. 运行时有效 allowlist 尚未验证：显式环境配置 `EDGE_DATA_PLANE_AGENT_ALLOWED_CIDRS` 缺失；源码存在 loopback 默认回退（state.mjs 以 `DEFAULT_ADMIN_ALLOWED_CIDRS` = 127.0.0.1 / ::1 解析，路由层按解析值执法），但生产进程的实际解析值未在运行时验证，且运行中的 state.mjs 版本无法由源码归因，只能以运行时证据定案。
   2. Identity Gate 无当期正式执行结果（见上）。
 - M0 仍为 BLOCKED，M1–M8 仍未执行。
+
+## 3A. 候选安装、启用与接入阶段（2026-11-02）
+
+本项目已进入 Candidate Install / Enable / Integration 阶段，当前仅开放候选准备和 Gate 编制。当前权威总台账见 `docs/JP_CHILD_NODE_ENGINEERING_STATUS.md`。
+
+| 子阶段 | 内容 | 当前状态 |
+| --- | --- | --- |
+| C0 | 固定 BOM 原件及 SHA；本地隔离构建无密钥镜像；产出 manifest/As-Run 清单并完成六项规模实测 | PREP 未完成；尚无可复现镜像 |
+| C1 | 在全新 JP 候选实例安装镜像 | BLOCKED：M0 通过及精确 Provider Risk A Gate 未满足 |
+| C2 | 启用 WireGuard、交换公钥、验收最小私有路由 | BLOCKED：M0 与独立网络 Gate 未满足 |
+| C3 | Agent 经私有路径接入 BWH | BLOCKED：allowlist 运行时证据和独立 Agent Gate 未满足 |
+| C4 | 以 E1-A V2 绑定执行受控注册 | BLOCKED：E1-A v1.1 待单独确认、实施和验收；需独立注册 Gate |
+| C5 | Desired State、材料 digest、dry-run、apply、Receipt、Identity Gate | NOT RUN |
+| C6 | 受控客户端 Canary，连续观察 3–7 天 | NOT STARTED |
+
+**阶段顺序与边界：**
+
+- C0 仅可在单独批准的本地隔离构建 Gate 下执行；不连接 BWH/Vultr，不创建生产密钥，不部署。
+- C1–C3 必须先关闭 M0 两项阻塞，并逐项取得 Provider、网络和 Agent 的精确 Risk A 批准。
+- C4 不得以当前 E1 v1 双锚代码替代 E1-A v1.1 的第三锚与 PoP 合同；E1-A v1.1 须独立确认、实施和验收。
+- E4-A v0.12 的 As-Run 六项实测必须基于真实可复现镜像产物；不得以估算、手写样本或旧运行树代替。
+- 全阶段保持 `pool=private`、`lifecycle=private-validation`；不得进入普通用户订阅或切换客户流量。
+- “候选阶段已开启”不代表镜像已构建、主机已安装、WireGuard 已接通、Agent 已启用或生产注册已完成。
+
+**当前第一项工作：** 准备 C0 精确构建 Gate，先固定批准 BOM 原件路径与 SHA-256、构建环境、镜像目标、输出清单、扫描边界、验证和回滚方式。
 
 ## 4. M1：建立 BWH ↔ Vultr 私有通信通道（P0）
 
