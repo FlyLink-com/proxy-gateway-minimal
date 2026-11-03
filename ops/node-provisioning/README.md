@@ -84,10 +84,12 @@ BIOS boot support and the initial access path also remain unverified.
 
 The dry-run input boundary is closed-schema at every copied layer. Profile,
 First Boot Packet, Vultr Provider Plan, target, safety, and planned-operation
-objects reject unknown fields. Reference and summary validation rejects IPv4
-and IPv6 literals plus credential-shaped or otherwise sensitive text; blocker
-and unresolved-message lists are constrained to reviewed values. The C1 plan
-also remains blocked when the C0 artifact SHA-256 record, no-secret scan, or
+objects reject unknown fields and require the complete First Boot state
+groups. Readiness and apply-approval flags must agree with the blocker list and
+the reviewed JP-01 profile. Reference and summary validation rejects IPv4 and
+IPv6 literals plus credential-shaped or otherwise sensitive text; blocker and
+unresolved-message lists are constrained to reviewed values. The C1 plan also
+remains blocked when the C0 artifact SHA-256 record, no-secret scan, or
 first-boot image assertions are missing. These checks validate planning
 evidence only and do not authorize a provider operation.
 
