@@ -1,6 +1,6 @@
 # Project Topology
 
-Last updated: 2026-11-01, America/Los_Angeles.
+Last updated: 2026-11-02, America/Los_Angeles.
 
 ```yaml
 document_metadata:
@@ -8,7 +8,7 @@ document_metadata:
   lifecycle: active
   authority_scope: project_topology
   superseded_by: null
-  last_verified_at: 2026-11-01
+  last_verified_at: 2026-11-02
   production_authority: false
 ```
 
@@ -47,6 +47,17 @@ host, release, health, identity, or metering proof**. M0 verifies the live BWH
 release identity (bound by the as-run manifest and its SHA-256; source-commit
 identity is not claimed) and exact target/dependency facts; it does not re-decide the
 topology. Risk A execution still requires its own exact approval.
+
+## Source Implementation Update (2026-11-02)
+
+PR #822 has merged the E1 JP child source milestone at `eb83197e`. The repository now contains:
+
+- first-boot WireGuard plan fields and validation;
+- WireGuard-gated registration ingestion and a default-off registration executor;
+- JP-01 per-node Identity Gate mapping for VLESS Reality, Hysteria2, and TUIC;
+- JP-01 metering registry references and WireGuard/scoped-PR readiness blockers.
+
+This is repository source capability only. It does **not** establish a Vultr Japan instance, live WireGuard tunnel, BWH registration, Agent activation, applied Receipt, production metering, or subscription rendering. M0 remains BLOCKED; M1–M8 remain unexecuted. See `docs/JP_CHILD_NODE_ENGINEERING_STATUS.md` for the single current engineering ledger.
 
 ## Historical Production Topology Snapshot (2026-07-15)
 
