@@ -1,6 +1,6 @@
 # JP-01 候选安装、启用与接入 Gate 包
 
-Last updated: 2026-11-02 UTC.
+Last updated: 2026-11-03 UTC.
 
 ```yaml
 document_metadata:
@@ -8,7 +8,7 @@ document_metadata:
   lifecycle: active
   authority_scope: jp01_candidate_install_enable_integration
   superseded_by: null
-  last_verified_at: 2026-11-02
+  last_verified_at: 2026-11-03
   production_authority: false
 ```
 
@@ -34,10 +34,15 @@ document_metadata:
 
 | 项目 | 状态 |
 | --- | --- |
-| E1 源码步骤 5–8 | 已合并：PR #822 / `eb83197e` |
+| E1 源码步骤 5–8 | 已合并：PR #822 / eb83197e |
 | JP-01 三面 Identity Gate 源码 | 已合并 |
 | WireGuard 计划字段与 readiness gate | 已合并 |
-| 可复现 JP 镜像 | 不存在 |
+| C0 候选无密钥基础镜像 | **PASS**：Candidate #1 已构建、扫描、测量并交付 |
+| 通用镜像可移植性审计 | **CLOSED**：Phase 1 / Phase 2 均完成，可供 JP/US/SG 复用 |
+| M0 BWH 生产前置条件 | **BLOCKED**：运行时 Agent allowlist 与正式 Identity Gate before/after 两项证据未闭合 |
+| T2 R2 sidecar / object metadata 验证 | 未执行托管验证；PR #824 Draft |
+| T3 全量镜像下载及 SHA-256 | 未执行托管验证；PR #824 Draft |
+| Vultr API preflight | 未执行；PR #825 Draft |
 | JP 候选 Vultr 实例 | 未创建 |
 | WireGuard 实际隧道 | 未建立/未验收 |
 | Agent 私有接入 | 未执行 |
@@ -48,11 +53,11 @@ document_metadata:
 ## 2. Gate 依赖顺序
 
 ```text
-C0a  Approved BOM + isolated build inputs
+C0a  Approved BOM + isolated build inputs [PASS]
   ↓
-C0b  Local reproducible no-secret image + six As-Run measurements
+C0b  Candidate #1 no-secret base image + six As-Run measurements [PASS]
   ↓
-E4-A-4  Schema freeze (E1-A v1.1 separate confirmation included)
+E4-A-4  Contract freeze (E1-A v1.2 separate confirmation; E4-A v0.13 freeze still pending)
   ↓
 M0    BWH live preconditions closed
   ↓
@@ -96,61 +101,52 @@ Before build, record all of the following:
 
 **Stop condition:** any missing BOM original/digest, unpinned runtime/tool version, mutable/unverifiable package source, or unreviewed build recipe means no build.
 
-## 4. C0b — Local isolated no-secret image build and E4-A measurements
+## 4. C0b — Local isolated no-secret base image build and E4-A measurements
 
-This is a local/offline candidate build for reproducibility and size measurement. It is not provider image promotion and not a production release.
+<badge color="success">C0b PASS — 2026-11-02</badge>
 
-### Allowed scope after a separate exact build approval
+Candidate #1 was built from the approved BOM in an isolated temporary builder, scanned, measured, boot-tested with QEMU, transferred to lucky, and the temporary builder resources were destroyed. This is a base-image delivery only: it does not install the JP production Agent, create a JP instance, connect BWH, or authorize C1–C6.
 
-- Build only in a dedicated isolated builder.
-- Use the exact approved BOM and protected-master source commit.
-- Install the approved base OS packages, runtime binaries, WireGuard tools and edge-agent skeleton.
-- Keep all service units disabled/inactive.
-- Include only non-secret templates, health/config-test helpers, and no-secret manifests.
-- Run image readiness and no-secret scans with synthetic safe inputs.
-- Generate the actual installed-file inventory and canonical As-Run sample.
-- Record redacted build logs, checksums, tool versions and measurements.
+### Artifact identity
 
-### Forbidden
+- Compressed artifact: jp01-candidate-1.img.zst
+- Size: 2,269,994,633 bytes
+- SHA-256: 693d9f5afdfbc440870ecb7ec84bee8cc2af644574496f564f2c92ab59946442
+- Raw image SHA-256: 752f2e2358129d606f15467433fdf4aed1bd5fb18220136ea8e8e5de8ce2d883
+- Source baseline: eb83197e47155943087655ff7d4aad7a6c954849
+- BOM: approved original SHA-256 4bb1ef0f3cc993db77de2971ca512ff0b796d25fb7da18c88df758c75e45fde9; all five pinned payload hashes matched on the builder.
+- Evidence archive on lucky: D:\JP-C0-20261102\evidence\
 
-- No BWH or Vultr connection.
-- No provider API, instance creation, image upload/promotion, firewall, DNS or public network mutation.
-- No production secrets, private keys, Agent tokens, protocol credentials, customer data, subscription URLs, SQLite databases or production env.
-- No creation of production signing keys or PoP challenges.
-- No enabling service units or opening customer-facing listeners.
-- No hosted CI, PR, or release-signing action as part of this local measurement Gate.
-- No copy of protected material into the image, source tree, build logs or artifact metadata.
+### Six As-Run measurements — completed
 
-### Image contents
+| Item | Actual result |
+| --- | --- |
+| Full installed-file inventory | 52,500 entries; manifest SHA-256 d7e9ad1387329fc47c619c9d0a5c00572b425efd2f35190e8fed2f5d9ea1f574 |
+| Regular files in install domain | 40,603 |
+| Longest path, characters | 185 |
+| Longest path, bytes | 185 |
+| Canonical As-Run JSON sample | 1,910 bytes; SHA-256 12dedc1ecb3c170beb4b0bdfbbeb7432e29f0ef53947675a448d447227a65d7a |
+| Freeze basis | Use measured installedFiles=40,603 and longest path=185 to set final E4-A installedFiles / maxBytes bounds |
 
-The JP candidate image may contain only the approved OS hardening, pinned runtime binaries, disabled service units, edge-agent software, WireGuard tools, non-secret templates, config-test/health/receipt helpers and a manifest that records exact source/package versions and digests.
+The six measurements are real image-derived evidence, not estimates. They do **not** freeze the E4-A thresholds by themselves; the values must be incorporated into the separately reviewed E4-A v0.13 freeze revision.
 
-The manifest must explicitly record the WireGuard tool versions/pins required by the PR #822 readiness contract. Do not add Nginx/public Admin or other services merely because a generic image template lists them; any additional package requires a JP-specific BOM entry and review.
+### Image validation and security
 
-### E4-A v0.12 six required measurements
+- No production private keys, SSH host keys, authorized_keys, real .env values, Agent token, WireGuard material, business database, or production protocol credentials were found in the image.
+- SSH service and socket are disabled; no Xray/Hysteria2/Mihomo/Agent runtime units are installed or started in this base image.
+- machine-id is empty and root password is locked; per-node identities must be generated at provisioning.
+- QEMU TCG boot reached systemd targets. The 420-second emulation did not observe console login or cloud-init completion; that is not a C1 first-boot proof.
+- Clean build #2 had the same 52,500-entry file set, 40,603 regular files and 185-character/byte longest path. Content matched byte-for-byte for 52,498/52,500 files; the two generated-file differences were identified. Whole-disk bit-for-bit reproducibility is not claimed.
+- Universal image portability Phase 1 and Phase 2 audits are complete. Candidate #1 is accepted as the common FlyLink child-node base image; only /etc/hostname is rewritten per node. Filesystem label jp01root remains a shared label and must stay aligned with /etc/fstab if ever changed.
 
-All six must be produced from the actual reproducible JP candidate image, not estimates or hand-written fixtures. The current contract is [E4-A v0.12](../drafts/E4-A_RELEASE_IDENTITY_V2_SCHEMA_v0.12_2026-11-02.md); it is still conditional and not frozen:
+### E4-A v0.13 freeze remains open
 
-1. Generate the image file inventory from the actual image build contents.
-2. Count all files in the installation domain.
-3. Measure the longest path in characters and bytes.
-4. Generate a canonical JSON As-Run sample from that exact inventory.
-5. Measure the canonicalized sample's actual byte size.
-6. Use measurements 2–5 to freeze `installedFiles` and `maxBytes` in E4-A-4.
+PR #826 D1 records E1-A v1.2 / E4-A v0.13 as the current working baseline. E4-A v0.13 is not frozen. Remaining requirements:
 
-Until these six results exist, the As-Run size limits remain **UNFROZEN**. Do not use the draft's rough 2 MiB estimate as a frozen value.
-
-### C0b completion evidence
-
-- exact BOM ref and SHA-256;
-- exact source commit and builder/toolchain versions;
-- reproducible build recipe and artifact digest;
-- full installed-file count and longest path measurements;
-- canonical As-Run JSON byte measurement;
-- no-secret scan result;
-- disabled-service proof;
-- sanitized build log reference;
-- discard/rollback evidence.
+1. Separate owner confirmation of E4-A v0.13.
+2. Carry the actual C0 measurements above into the freeze draft and explicitly freeze installedFiles / maxBytes.
+3. Separate confirmation of E1-A v1.2.
+4. Complete the formal error-code table and the required P6, P10, P11, P12, P13 vectors plus P7 cumulative-revocation / fingerprint-revocation / authorization-third-anchor rollback tests.
 
 ## 5. M0 — BWH production precondition gate
 
@@ -210,7 +206,7 @@ Keep the Agent unavailable on public routes. The registration execution flag rem
 
 ## 7. C4 — E1-A V2 registration gate
 
-合同基线草案：[`docs/drafts/E1-A_REGISTRATION_BINDING_AMENDMENT_v1.1_2026-11-02.md`](../drafts/E1-A_REGISTRATION_BINDING_AMENDMENT_v1.1_2026-11-02.md)。该草案未获单独确认前不得实施。
+合同基线：PR #826 D1 当前记录 E1-A v1.2；PR #823 中的 v1.1 文件是旧工作稿快照。v1.2 必须单独确认并完成源码实施、审查与验收后，C4 才能进入生产 Gate。
 
 C4 is blocked until all of the following are true:
 
