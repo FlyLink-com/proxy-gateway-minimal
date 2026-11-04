@@ -487,7 +487,7 @@ export function WalletFirstMarketplacePanel({
     const generation = generationRef.current;
     setFlow({ status: "reserving", quote: flow.quote });
     try {
-      const adsClick = readPortalAdsClickForPurchase();
+      const adsClick = readPortalAdsClickForPurchase(sessionRef);
       const transition = await commerceClient.reserveDeferredTransition({
         sessionRef,
         quoteRef: flow.quote.quoteRef,
