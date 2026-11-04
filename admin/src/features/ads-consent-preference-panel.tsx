@@ -140,7 +140,7 @@ export function AdsConsentPreferencePanel({
       setPending(true);
       setLoading(false);
       setPortalAdsServerConsent(sessionRef, "unknown");
-      clearAdsClickData();
+      if (next === "denied") clearAdsClickData();
       setConsent("unknown");
       setExpanded(true);
       setMessage("");
@@ -158,7 +158,7 @@ export function AdsConsentPreferencePanel({
       }).catch(() => {
         if (requestVersionRef.current !== requestVersion) return;
         setPortalAdsServerConsent(sessionRef, "unknown");
-        clearAdsClickData();
+        if (next === "denied") clearAdsClickData();
         setConsent("unknown");
         setExpanded(true);
         setMessage(zh
