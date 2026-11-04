@@ -13,7 +13,7 @@
 // -shm is allowed; SQLite may create transient coordination state for a
 // read-only WAL connection. The main database and WAL are not intentionally written.
 import { createHash } from "node:crypto";
-import { existsSync, lstatSync } from "node:fs";
+import { lstatSync } from "node:fs";
 import { isAbsolute } from "node:path";
 import Database from "better-sqlite3";
 
@@ -31,6 +31,15 @@ function fail(code) {
   process.exit(1);
 }
 
+function unsafeMainDb(dbPath) {
+  try {
+    const main = lstatSync(dbPath);
+    return main.isSymbolicLink() || !main.isFile();
+  } catch {
+    return true;
+  }
+}
+
 function unsafeSidecar(dbPath) {
   for (const suffix of ["-wal", "-shm"]) {
     try {
@@ -43,7 +52,7 @@ function unsafeSidecar(dbPath) {
   return false;
 }
 if (!path || !isAbsolute(path)) fail("args_invalid");
-if (!existsSync(path) || lstatSync(path).isSymbolicLink() || !lstatSync(path).isFile()) fail("db_invalid");
+if (unsafeMainDb(path)) fail("db_invalid");
 if (unsafeSidecar(path)) fail("sidecar_invalid");
 
 let db;
@@ -51,6 +60,11 @@ let result;
 let failureCode;
 try {
   db = new Database(path, { readonly: true, fileMustExist: true });
+  // Revalidate the path after SQLite opens it. This detects a main-DB path
+  // replaced by a symlink or non-regular file during the open boundary.
+  if (unsafeMainDb(path)) {
+    throw Object.assign(new Error("db_invalid"), { gateCode: "db_invalid" });
+  }
   if (unsafeSidecar(path)) {
     throw Object.assign(new Error("sidecar_invalid"), { gateCode: "sidecar_invalid" });
   }
@@ -115,17 +129,24 @@ try {
     };
   }).deferred();
 
+  if (unsafeMainDb(path)) {
+    throw Object.assign(new Error("db_invalid"), { gateCode: "db_invalid" });
+  }
   if (unsafeSidecar(path)) {
     throw Object.assign(new Error("sidecar_invalid"), { gateCode: "sidecar_invalid" });
   }
 } catch (error) {
   if (error?.gateCode === "census_inconsistent") failureCode = "census_inconsistent";
+  else if (error?.gateCode === "db_invalid") failureCode = "db_invalid";
   else if (error?.gateCode === "sidecar_invalid") failureCode = "sidecar_invalid";
   else failureCode = "census_failed";
 } finally {
   try { db?.close(); } catch { /* ignore */ }
 }
 
+// Revalidate once more after close so the path/sidecar contract covers the
+// entire SQLite open/use/close interval, not only the initial preflight.
+if (unsafeMainDb(path)) failureCode = failureCode || "db_invalid";
+if (unsafeSidecar(path)) failureCode = failureCode || "sidecar_invalid";
 if (failureCode) fail(failureCode);
-if (unsafeSidecar(path)) fail("sidecar_invalid");
 process.stdout.write(JSON.stringify(result) + "\n");
