@@ -34,11 +34,48 @@ const sha256 = path => createHash("sha256").update(readFileSync(path)).digest("h
 
 function maybeLstat(path) {
   try {
-    return lstatSync(path);
+    return lstatSync(path, { bigint: true });
   } catch (error) {
     if (error?.code === "ENOENT") return null;
     throw error;
   }
+}
+
+function pathFingerprint(path) {
+  const stat = maybeLstat(path);
+  if (!stat) return null;
+  const kind = stat.isSymbolicLink() ? "symlink"
+    : stat.isFile() ? "file"
+      : stat.isDirectory() ? "directory" : "other";
+  const fingerprint = {
+    kind,
+    size: stat.size.toString(),
+    mtimeNs: stat.mtimeNs.toString()
+  };
+  // Never follow a symlink while collecting a source fingerprint.
+  if (kind === "file") fingerprint.sha256 = sha256(path);
+  return fingerprint;
+}
+
+function sourceFingerprint(dbPath) {
+  const main = pathFingerprint(dbPath);
+  assert.equal(main?.kind, "file", "main DB must be a regular non-symlink file");
+  return { main, wal: pathFingerprint(dbPath + "-wal") };
+}
+
+function assertSourceFingerprintUnchanged(dbPath, before, label) {
+  assert.deepEqual(
+    sourceFingerprint(dbPath),
+    before,
+    label + ": source DB/WAL size, mtimeNs, and SHA-256 must remain unchanged"
+  );
+}
+
+function runWithSourceFingerprint(helper, args, dbPath) {
+  const before = sourceFingerprint(dbPath);
+  const result = runJson(helper, args);
+  assertSourceFingerprintUnchanged(dbPath, before, helper);
+  return result;
 }
 
 function assertSafeSidecarOrAbsent(path) {
@@ -61,7 +98,7 @@ function runJson(helper, args) {
 }
 
 function assertHelperSuccess(helper, args) {
-  const result = runJson(helper, args);
+  const result = runWithSourceFingerprint(helper, args, args[0]);
   assert.equal(result.status, 0, "helper failed: " + result.stderr + " " + JSON.stringify(result.payload));
   assert.equal(result.payload.ok, true);
   return result.payload;
@@ -69,7 +106,9 @@ function assertHelperSuccess(helper, args) {
 
 function assertSidecarRejected(helper, dbPath, dest) {
   const args = dest ? [dbPath, dest] : [dbPath];
+  const before = sourceFingerprint(dbPath);
   const result = runJson(helper, args);
+  assertSourceFingerprintUnchanged(dbPath, before, helper + " sidecar rejection");
   assert.equal(result.status, 1, "unsafe sidecar must fail closed");
   assert.deepEqual(result.payload, { ok: false, code: "sidecar_invalid" });
 }
@@ -115,7 +154,7 @@ test("M0 helpers protect sidecars and compare schemaDigest across live WAL and b
   const mainBefore = sha256(source);
   const walBefore = sha256(walPath);
 
-  const liveCensus = JSON.parse(execFileSync(process.execPath, [CENSUS_HELPER, source], { encoding: "utf8" }).trim());
+  const liveCensus = assertHelperSuccess(CENSUS_HELPER, [source]);
   assert.equal(liveCensus.ok, true);
   assert.equal(Object.hasOwn(liveCensus, "schemaVersion"), false, "schemaVersion must not be part of census identity");
   assert.equal(typeof liveCensus.schemaDigest, "string");
@@ -132,8 +171,7 @@ test("M0 helpers protect sidecars and compare schemaDigest across live WAL and b
   assertSafeSidecarOrAbsent(source + "-wal");
   assertSafeSidecarOrAbsent(source + "-shm");
 
-  const snapshotStdout = execFileSync(process.execPath, [SNAPSHOT_HELPER, source, snapshot], { encoding: "utf8" });
-  const snapshotResult = JSON.parse(snapshotStdout.trim());
+  const snapshotResult = assertHelperSuccess(SNAPSHOT_HELPER, [source, snapshot]);
   assert.deepEqual(Object.keys(snapshotResult).sort(), ["bytes", "integrity", "journalMode", "ok"]);
   assert.equal(snapshotResult.ok, true);
   assert.equal(snapshotResult.integrity, "ok");
@@ -168,8 +206,7 @@ test("M0 helpers protect sidecars and compare schemaDigest across live WAL and b
     "the disposable read-only probe directory must be removed"
   );
 
-  const censusStdout = execFileSync(process.execPath, [CENSUS_HELPER, snapshot], { encoding: "utf8" });
-  const census = JSON.parse(censusStdout.trim());
+  const census = assertHelperSuccess(CENSUS_HELPER, [snapshot]);
   assert.equal(census.ok, true);
   assert.equal(Object.hasOwn(census, "schemaVersion"), false, "schemaVersion must not be part of snapshot census identity");
   assert.equal(census.schemaDigest, liveCensus.schemaDigest, "schemaDigest is the sole schema identity fingerprint");
@@ -252,6 +289,31 @@ test("M0 helpers protect sidecars and compare schemaDigest across live WAL and b
       assertSidecarRejected(helper, invalidDb, dest);
       assert.equal(lstatSync(sidecar).isDirectory(), true, "non-regular sidecar must remain untouched");
     }
+  }
+
+  // Main DB path itself must fail closed when it is a symlink or a non-regular
+  // file. These cases exercise the pre-open half of the main-path lstat guard;
+  // the helper source also rechecks the path immediately after open and close.
+  for (const helper of [CENSUS_HELPER, SNAPSHOT_HELPER]) {
+    const helperName = helper === CENSUS_HELPER ? "census" : "snapshot";
+    const expectedCode = helper === CENSUS_HELPER ? "db_invalid" : "source_invalid";
+    const symlinkDb = join(dir, "main-db-symlink-" + helperName);
+    symlinkSync(source, symlinkDb);
+    const symlinkDest = helper === SNAPSHOT_HELPER ? join(dir, "main-symlink-rejected.sqlite") : undefined;
+    const symlinkArgs = symlinkDest ? [symlinkDb, symlinkDest] : [symlinkDb];
+    const symlinkResult = runJson(helper, symlinkArgs);
+    assert.equal(symlinkResult.status, 1);
+    assert.deepEqual(symlinkResult.payload, { ok: false, code: expectedCode });
+    assert.equal(lstatSync(symlinkDb).isSymbolicLink(), true, "main DB symlink must remain untouched");
+
+    const nonRegularDb = join(dir, "main-db-nonregular-" + helperName);
+    mkdirSync(nonRegularDb);
+    const nonRegularDest = helper === SNAPSHOT_HELPER ? join(dir, "main-nonregular-rejected.sqlite") : undefined;
+    const nonRegularArgs = nonRegularDest ? [nonRegularDb, nonRegularDest] : [nonRegularDb];
+    const nonRegularResult = runJson(helper, nonRegularArgs);
+    assert.equal(nonRegularResult.status, 1);
+    assert.deepEqual(nonRegularResult.payload, { ok: false, code: expectedCode });
+    assert.equal(lstatSync(nonRegularDb).isDirectory(), true, "non-regular main DB path must remain untouched");
   }
 
   assert.equal(sha256(source), mainBefore, "all helper paths must preserve source main DB bytes");
