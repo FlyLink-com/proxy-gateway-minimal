@@ -139,9 +139,25 @@ test("M0 helpers protect sidecars and compare schemaDigest across live WAL and b
   assert.equal(snapshotResult.integrity, "ok");
   assert.equal(typeof snapshotResult.bytes, "number");
   assert.equal(typeof snapshotResult.journalMode, "string");
-  const snapshotSchemaDb = new Database(snapshot, { readonly: true, fileMustExist: true });
-  const snapshotSchemaVersion = snapshotSchemaDb.pragma("schema_version", { simple: true });
-  snapshotSchemaDb.close();
+  // Match the snapshot helper's probe discipline: inspect a disposable copy,
+  // never open the snapshot artifact that the caller will hash and consume.
+  let snapshotProbeDir;
+  let snapshotSchemaDb;
+  let snapshotSchemaVersion;
+  try {
+    snapshotProbeDir = mkdtempSync(join(dir, ".m0-gate-probe-"));
+    const snapshotProbe = join(snapshotProbeDir, "snapshot.sqlite");
+    copyFileSync(snapshot, snapshotProbe);
+    snapshotSchemaDb = new Database(snapshotProbe, { readonly: true, fileMustExist: true });
+    snapshotSchemaDb.pragma("query_only = ON");
+    snapshotSchemaDb.pragma("busy_timeout = 2000");
+    snapshotSchemaVersion = snapshotSchemaDb.pragma("schema_version", { simple: true });
+  } finally {
+    try { snapshotSchemaDb?.close(); } finally {
+      if (snapshotProbeDir) rmSync(snapshotProbeDir, { recursive: true, force: true });
+    }
+  }
+  assert.equal(existsSync(snapshotProbeDir), false, "disposable schema-cookie probe directory must be removed");
   assert.notEqual(liveSchemaVersion, snapshotSchemaVersion, "fixture must reproduce SQLite schema cookie divergence");
   assert.equal(sha256(walPath), walBefore, "read-only Backup API must not change source WAL bytes");
   assert.equal(existsSync(snapshot + "-wal"), false);
