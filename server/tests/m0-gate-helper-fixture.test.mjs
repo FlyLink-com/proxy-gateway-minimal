@@ -81,7 +81,7 @@ function copyWalDatabase(source, directory, name) {
   return copy;
 }
 
-test("M0 helpers protect sidecars and census live WAL consistently with its backup snapshot", t => {
+test("M0 helpers protect sidecars and compare schemaDigest across live WAL and backup snapshot", t => {
   const dir = mkdtempSync(join(ROOT, "m0-gate-helper-fixture-"));
   const source = join(dir, "source.sqlite");
   const snapshot = join(dir, "snapshot.sqlite");
@@ -95,6 +95,7 @@ test("M0 helpers protect sidecars and census live WAL consistently with its back
   db.pragma("wal_autocheckpoint = 0");
   db.exec("CREATE TABLE platform_portal_edge_credentials (edge_channel_ref TEXT NOT NULL, edge_credential_ref TEXT NOT NULL);\n" +
     "CREATE TABLE platform_portal_access_requests (id TEXT NOT NULL);");
+  const liveSchemaVersion = db.pragma("schema_version", { simple: true });
   db.pragma("wal_checkpoint(TRUNCATE)");
   const mainBeforeWalOnlyRows = sha256(source);
 
@@ -116,6 +117,8 @@ test("M0 helpers protect sidecars and census live WAL consistently with its back
 
   const liveCensus = JSON.parse(execFileSync(process.execPath, [CENSUS_HELPER, source], { encoding: "utf8" }).trim());
   assert.equal(liveCensus.ok, true);
+  assert.equal(Object.hasOwn(liveCensus, "schemaVersion"), false, "schemaVersion must not be part of census identity");
+  assert.equal(typeof liveCensus.schemaDigest, "string");
   assert.equal(liveCensus.credentialsTotal, 5);
   assert.equal(liveCensus.bindingRows, 5);
   assert.equal(liveCensus.otherChannelsTotal, 2);
@@ -136,6 +139,10 @@ test("M0 helpers protect sidecars and census live WAL consistently with its back
   assert.equal(snapshotResult.integrity, "ok");
   assert.equal(typeof snapshotResult.bytes, "number");
   assert.equal(typeof snapshotResult.journalMode, "string");
+  const snapshotSchemaDb = new Database(snapshot, { readonly: true, fileMustExist: true });
+  const snapshotSchemaVersion = snapshotSchemaDb.pragma("schema_version", { simple: true });
+  snapshotSchemaDb.close();
+  assert.notEqual(liveSchemaVersion, snapshotSchemaVersion, "fixture must reproduce SQLite schema cookie divergence");
   assert.equal(sha256(walPath), walBefore, "read-only Backup API must not change source WAL bytes");
   assert.equal(existsSync(snapshot + "-wal"), false);
   assert.equal(existsSync(snapshot + "-shm"), false);
@@ -148,7 +155,9 @@ test("M0 helpers protect sidecars and census live WAL consistently with its back
   const censusStdout = execFileSync(process.execPath, [CENSUS_HELPER, snapshot], { encoding: "utf8" });
   const census = JSON.parse(censusStdout.trim());
   assert.equal(census.ok, true);
-  assert.deepEqual(census, liveCensus, "live WAL census and snapshot census must match exactly");
+  assert.equal(Object.hasOwn(census, "schemaVersion"), false, "schemaVersion must not be part of snapshot census identity");
+  assert.equal(census.schemaDigest, liveCensus.schemaDigest, "schemaDigest is the sole schema identity fingerprint");
+  assert.deepEqual(census, liveCensus, "live WAL census and snapshot census must match exactly after schemaVersion is excluded");
   assert.equal(census.credentialsTotal, 5);
   assert.equal(census.bindingRows, 5);
   assert.equal(census.otherChannelsTotal, 2);
