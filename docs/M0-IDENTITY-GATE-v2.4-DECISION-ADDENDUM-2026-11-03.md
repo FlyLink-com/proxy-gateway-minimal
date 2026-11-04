@@ -60,11 +60,11 @@ R8 proved that a Backup API snapshot has no -wal/-shm sidecars immediately after
 
 ## Required before first-layer review
 
-1. Complete the v2.4 execution-package and this addendum's Snapshot sidecar contract alignment (§6.4.2 / §7 / §9.4); do not modify either helper or checker.
-2. Re-read both revised documents and run document-only static checks; calculate and record their new SHA-256 values after the final byte-level content is fixed.
+1. Snapshot census 后 sidecar 合同已在 v2.4 执行包 §6.4.2 / §7 / §9.4 与本附录之间完成对齐；Helper/Checker 未修改。
+2. 当前文档 SHA-256 已固定：执行包 `9dee405826f4a195a2f4f038552055cd525563f1b82dd490d1cf7fabf19bb90e`；本附录在本次修改前的 SHA-256 为 `4af235618e60c52ecf6c6dfde86a54063734f27084b4107d5e747790f52d086f`，本次修改后必须重新计算。执行包整份静态复核仍待完成；执行包本轮修改的 4 个 shell 片段 `bash -n` 4/4 PASS。
 3. Preserve the R8 18-item manifest/tarball and its three separately hashed raw outputs unchanged. Preserve the R6 18-item manifest/tarball as historical evidence.
 4. Keep the R8 runner harness version/hash and exact post-run realpath/cleanup record as an explicit open evidence item unless a source receipt supplies it; do not infer it from R6/R7 cleanup records.
-5. Only after the above document checks are complete, return the fixed package and its external SHA-256 to Yi for the first-layer execution-package signature. First-layer signature does not authorize BWH access or the formal Gate.
+5. Only after the full-document static review and runner-evidence gap are resolved, return the fixed package and its external SHA-256 to Yi for the first-layer execution-package signature. First-layer signature does not authorize BWH access or the formal Gate.
 
 
 ## Authorization boundary
