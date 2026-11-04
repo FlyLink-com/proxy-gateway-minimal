@@ -103,7 +103,9 @@ function sendPortalError(res, error) {
     return;
   }
   if (error.code === "ads_consent_invalid") {
-    res.status(400).json({ error: "ads_consent_invalid" });
+    // Preserve the established Portal response contract rather than
+    // returning an internal consent-store validation code to clients.
+    res.status(400).json({ error: "validation_error" });
     return;
   }
   if (error.code === "ads_consent_unavailable") {

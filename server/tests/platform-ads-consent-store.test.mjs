@@ -307,11 +307,12 @@ test("a client-supplied consent descriptor cannot persist a click without server
     assert.equal(getAdsClickClaim(db, "order_ads_consent_forged").claimState, "invalid_click");
     assert.equal(getAdsClickClaim(db, "order_ads_consent_forged").clickValue, null);
     assert.equal(getAdsClickBinding(db, "order_ads_consent_forged"), null);
-    assert.equal(db.prepare(
-      "select count(*) from platform_ads_click_consent_claims"
-    ).pluck().get(), 0);
+    // A browser-only request cannot initialize account-consent schema.
+    // The first authenticated consent write, not capture, creates this table.
+    assert.equal(tableNames(db).includes("platform_ads_click_consent_claims"), false);
 
     store.recordConsent({ accountRef: ACCOUNT, adUserData: true });
+    assert.equal(tableNames(db).includes("platform_ads_click_consent_claims"), true);
     const accepted = safeCaptureAdsClickForOrder(db, {
       orderRef: "order_ads_consent_granted",
       accountRef: ACCOUNT,

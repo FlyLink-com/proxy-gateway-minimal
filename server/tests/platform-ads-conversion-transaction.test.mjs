@@ -247,6 +247,9 @@ test("legacy complete records a pending conversion when Ads writes succeed", () 
   const state = legacyFixture();
   try {
     withFlag(true, () => {
+      // Explicit server-side grant is required, independently of the
+      // consent bits declared in the browser click descriptor.
+      grantAdsConsent(state.database, LEGACY_ACCOUNT, Date.parse(LEGACY_NOW));
       const click = freshClick();
       const confirmed = legacyConfirmAndCapture(state, { adsClick: click });
       const claimed = state.store.claimNextFulfillmentCommand({ leaseMs: 1000 });
