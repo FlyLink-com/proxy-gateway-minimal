@@ -947,7 +947,7 @@ Snapshot 的 0-byte WAL / transient SHM 是 $WORK 内 SQLite 只读协调残留�
 
 回执保存到项目既定 hidden_files/files 位置，并同步 Google Drive「M0 审批与回执」与 Notion 进度页；不得写入凭据或 secret。
 
-### v2.4 当前未关闭事项（不得签署）
+### v2.4 签署前核对项与未关闭事项（不得签署）
 
 1. Snapshot census 后 sidecar 合同已按 R8 证据对齐至 §6.4.2、§7.1–§7.4、§8.1、§9.3–§9.4 及决策附录。2026-11-04 完整文档静态复核已完成；两份文档 SHA-256 统一由 Notion/审批回执外部锚定，不在任一文件中互相嵌入，以避免自引用/互引用循环。任何后续字节修改均须重算并更新外部哈希锚点。
 2. R8 回执未提供本轮 WAL runner harness 版本/哈希及退出后精确 realpath、清理前后原始记录；正式 Gate 前须补齐受控 harness 绑定与清理证据，不能以 R6 或 R7 的清理记录外推 R8。
