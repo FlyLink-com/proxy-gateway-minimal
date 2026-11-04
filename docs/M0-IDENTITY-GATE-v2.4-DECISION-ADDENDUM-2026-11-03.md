@@ -36,10 +36,10 @@ This ruling does not authorize writes to the main DB/WAL, configuration, units, 
 ### Audit remediation candidate (Draft; not dynamically revalidated)
 
 - Branch: `feat/m0-identity-gate-v2-4-audit-remediation-20261103`
-- Helper/test source commit: `e50401516bebd9093a9a3b4cf60b358e649887f9`
+- Helper/test source commit: `8dd5e321a5ca1a1f07e89a1d75cdc93cacfd6479`
 - Census Git blob SHA-1: `b42bd54674d456fa32df7146f376a983cc393e73`
 - Snapshot Git blob SHA-1: `f96127476ce842310d394ab9c39a5d75ae5e5034`
-- Fixture test Git blob SHA-1: `61f733f75163e01ec95bcb404d30f7b9be9f3b65`
+- Fixture test Git blob SHA-1: `233d072c7a0b5bd7d3a9cc0f93ededb9c68d3688`
 - Changes: main DB path is lstat-checked before SQLite open, immediately after open, after census/Backup, and after close; fixture records DB/WAL size, mtimeNs and SHA-256 before/after each helper call; main DB symlink and non-regular path rejection cases are added.
 - Candidate is Draft only. Three file SHA-256 values, fixed-stack dynamic test outputs, new manifest/tarball, and second independent review remain pending.
 
