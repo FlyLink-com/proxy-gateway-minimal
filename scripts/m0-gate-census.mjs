@@ -1,12 +1,12 @@
 #!/usr/bin/env node
-// M0 formal Identity Gate — census helper v2.2.
+// M0 formal Identity Gate — census helper v2.4.
 // Read-only aggregate census of ONE database file (a standalone snapshot, or
 // the production DB via a normal WAL-aware read-only connection — never
 // immutable=1). Every query runs in one BEGIN DEFERRED read transaction so
 // schema, counts and the binding digest describe one SQLite read snapshot.
 // Credential refs are hashed host-side and are never printed.
 // Usage: node m0-gate-census.mjs <dbAbsPath>
-// Output: one JSON line with schemaVersion, schemaDigest, credentialsTotal,
+// Output: one JSON line with schemaDigest, credentialsTotal,
 // six perChannel counts, otherChannelsTotal, accessRequestsTotal, bindingRows,
 // bindingProjectionDigest and successful count-equality flags.
 // Existing -wal/-shm sidecars must be regular, non-symlink files. A missing
@@ -64,7 +64,6 @@ try {
     const schemaRows = db.prepare(
       "SELECT type, name, tbl_name, COALESCE(sql, '') AS sql FROM sqlite_master ORDER BY type, name"
     ).all();
-    const schemaVersion = db.pragma("schema_version", { simple: true });
     const schemaDigest = createHash("sha256")
       .update(schemaRows.map((r) => r.type + "|" + r.name + "|" + r.tbl_name + "|" + r.sql).join("\n"))
       .digest("hex");
@@ -105,7 +104,6 @@ try {
 
     return {
       ok: true,
-      schemaVersion,
       schemaDigest,
       credentialsTotal,
       perChannel,
