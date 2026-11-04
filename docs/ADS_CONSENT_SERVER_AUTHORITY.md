@@ -1,5 +1,15 @@
 # Server-authoritative Google Ads consent
 
+```yaml
+document_metadata:
+  doc_type: operational
+  lifecycle: active
+  authority_scope: source_only_ads_consent_server_authority
+  superseded_by: null
+  last_verified_at: 2026-11-04
+  production_authority: false
+```
+
 Status: Draft / source-only. This document does not authorize production schema creation, feature-flag enablement, deployment, or Google Ads delivery.
 
 ## Decision model

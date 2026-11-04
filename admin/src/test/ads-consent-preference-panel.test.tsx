@@ -48,15 +48,15 @@ describe("Ads consent preference panel", () => {
     expect(setAdsUserDataConsent("granted")).toBe(true);
     const client: PortalAdsConsentClient = {
       getConsent: vi.fn(async () => ({
-        decision: "unknown",
+        decision: "unknown" as const,
         adUserData: null,
-        adPersonalization: false,
+        adPersonalization: false as const,
         updatedAt: null
       })),
       setConsent: vi.fn(async () => ({
-        decision: "granted",
+        decision: "granted" as const,
         adUserData: true,
-        adPersonalization: false,
+        adPersonalization: false as const,
         updatedAt: Date.now()
       }))
     };
@@ -81,15 +81,15 @@ describe("Ads consent preference panel", () => {
     expect(setAdsUserDataConsent("denied")).toBe(true);
     const client: PortalAdsConsentClient = {
       getConsent: vi.fn(async () => ({
-        decision: "granted",
+        decision: "granted" as const,
         adUserData: true,
-        adPersonalization: false,
+        adPersonalization: false as const,
         updatedAt: 1_798_000_000_000
       })),
       setConsent: vi.fn(async () => ({
-        decision: "denied",
+        decision: "denied" as const,
         adUserData: false,
-        adPersonalization: false,
+        adPersonalization: false as const,
         updatedAt: Date.now()
       }))
     };
@@ -111,15 +111,15 @@ describe("Ads consent preference panel", () => {
     expect(setAdsUserDataConsent("granted")).toBe(true);
     const client: PortalAdsConsentClient = {
       getConsent: vi.fn(async () => ({
-        decision: "denied",
+        decision: "denied" as const,
         adUserData: false,
-        adPersonalization: false,
+        adPersonalization: false as const,
         updatedAt: 1_798_000_000_000
       })),
       setConsent: vi.fn(async () => ({
-        decision: "granted",
+        decision: "granted" as const,
         adUserData: true,
-        adPersonalization: false,
+        adPersonalization: false as const,
         updatedAt: Date.now()
       }))
     };
@@ -141,15 +141,15 @@ describe("Ads consent preference panel", () => {
     expect(setAdsUserDataConsent("denied")).toBe(true);
     const client: PortalAdsConsentClient = {
       getConsent: vi.fn(async () => ({
-        decision: "unknown",
+        decision: "unknown" as const,
         adUserData: null,
-        adPersonalization: false,
+        adPersonalization: false as const,
         updatedAt: null
       })),
       setConsent: vi.fn(async () => ({
-        decision: "granted",
+        decision: "granted" as const,
         adUserData: true,
-        adPersonalization: false,
+        adPersonalization: false as const,
         updatedAt: 1_798_000_000_000
       }))
     };
@@ -174,9 +174,9 @@ describe("Ads consent preference panel", () => {
     const client: PortalAdsConsentClient = {
       getConsent: vi.fn(async () => { throw new Error("offline"); }),
       setConsent: vi.fn(async () => ({
-        decision: "denied",
+        decision: "denied" as const,
         adUserData: false,
-        adPersonalization: false,
+        adPersonalization: false as const,
         updatedAt: 1_798_000_000_000
       }))
     };

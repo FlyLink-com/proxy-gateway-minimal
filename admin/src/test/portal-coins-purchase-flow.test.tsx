@@ -1,7 +1,7 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import * as commerce from "../features/user-portal/commerce";
-import { clearAdsClickData, PORTAL_ADS_CLICK_STORAGE_KEY, setAdsUserDataConsent } from "../features/ads-attribution";
+import { clearAdsClickData, clearPortalAdsServerConsent, PORTAL_ADS_CLICK_STORAGE_KEY, setAdsUserDataConsent, setPortalAdsServerConsent } from "../features/ads-attribution";
 import type {
   PortalCoinCommerceClient,
   PortalCoinOffer,
@@ -127,6 +127,7 @@ beforeEach(() => {
 
 afterEach(() => {
   clearAdsClickData();
+  clearPortalAdsServerConsent();
   window.sessionStorage.clear();
   document.cookie = "gccwebos-ad-user-data-consent-v1=; Path=/; Max-Age=0";
   vi.restoreAllMocks();
@@ -1339,6 +1340,8 @@ describe("Portal Coins purchase flow", () => {
     vi.stubEnv("VITE_PUBLIC_ADS_CLICK_BINDING_ENABLED", "true");
     vi.stubGlobal("crypto", { randomUUID: () => "ads_click_purchase_1" });
     expect(setAdsUserDataConsent("granted")).toBe(true);
+    // This fixture models a separate authenticated account consent decision.
+    setPortalAdsServerConsent("session-ads-click", "granted");
     window.sessionStorage.setItem(PORTAL_ADS_CLICK_STORAGE_KEY, JSON.stringify({
       type: "gclid",
       value: "synthetic_hook_click",
