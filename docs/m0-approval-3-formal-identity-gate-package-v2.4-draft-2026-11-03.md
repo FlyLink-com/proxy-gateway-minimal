@@ -811,10 +811,15 @@ printf '%s\n' "$CURRENT_SNAP_B_SIDECARS" > "$WORKDATA/snapshot-b-sidecars-final.
 
 A/B 三面计数及状态按正式 Gate 口径记录；A/B census 的 schemaDigest、六通道计数、otherChannelsTotal、accessRequestsTotal、bindingRows、bindingProjectionDigest 与 equalities 必须逐项一致。schemaVersion 不在 census 输出中，不参与比较。snapshot A/B 主 DB 的 bytes/mtime/SHA-256 必须分别与各自 Backup 后、首次 census 前的 baseline 相同；snapshot sidecar 只须满足 §6.4.2。生产 Source DB/WAL 四时点指纹仍须严格相等。
 
-新增 Snapshot sidecar 专用退出码（72–76 原有定义保持不变）：
+§7 新增退出码如下；其余既有退出码保持原义。退出码不得跨失败条件复用：
 
 | Exit | 唯一失败含义 |
 | ---: | --- |
+| 72 | A 阶段 snapshot census 与 live census 不一致 |
+| 73 | Snapshot A Backup 后无法采集主 DB baseline |
+| 74 | 某个 monitor 样本无法取得 UTC 时间戳 |
+| 75 | B 阶段 snapshot census 与 live census 不一致 |
+| 76 | A/B 两份 snapshot census 不一致 |
 | 77 | Snapshot A 首次 census 前 sidecar 不为空或类型不安全 |
 | 78 | Snapshot A census 后 sidecar 超出 §6.4.2 允许形态 |
 | 79 | Snapshot A 主 DB 指纹在 census 后发生变化 |
