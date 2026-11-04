@@ -39,7 +39,7 @@ try {
   // better-sqlite3's deferred transaction issues BEGIN DEFERRED. The first
   // SELECT below establishes the read snapshot; all subsequent reads remain
   // pinned to that same snapshot until this callback returns.
-  const readSnapshot = db.transaction(() => {
+  const result = db.transaction(() => {
     const schemaRows = db.prepare(
       "SELECT type, name, tbl_name, COALESCE(sql, '') AS sql FROM sqlite_master ORDER BY type, name"
     ).all();
@@ -96,7 +96,6 @@ try {
     };
   }).deferred();
 
-  const result = readSnapshot();
   process.stdout.write(JSON.stringify(result) + "\n");
 } catch (error) {
   fail(error?.gateCode === "census_inconsistent" ? "census_inconsistent" : "census_failed");
