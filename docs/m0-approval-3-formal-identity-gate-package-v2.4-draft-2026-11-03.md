@@ -6,7 +6,7 @@
 - 执行人：Muse；预定路径：B2（`ssh bwh`）
 - 适用范围：Yi 独立审查并签署本执行包，仅表示确认并冻结执行合同；**该签署本身不授权任何 BWH 操作**。只有在签署之后，Yi 再对正式 Identity Gate 作出单独、明确、范围受限的执行授权，才可按本包执行一次封闭 Gate。执行或停止后该次授权耗尽；重跑必须重新取得单独授权。
 
-> **当前状态：REVIEW_PENDING / NOT SIGNABLE。** Yi 已于 2026-11-03 正式裁定 Y-3 选甲、Y-4 选甲。第六轮（R6）在固定依赖栈 Node `v22.23.1` / better-sqlite3 `12.10.0` / SQLite `3.53.1` 上，对当时 helper HEAD `2e55ba3571b71879ad7ed5d718e8678d097682d4` 的 helper fixture、原始 WAL runner 与 census 全部报告 PASS；18 项 manifest 亦已冻结。但第二轮独立复核发现：R6 被测 helper 尚未在 SQLite open 后复核主 DB 路径；R6 fixture 未对 DB/WAL 的 size、mtime 做前后断言；执行包仍留有旧版 PENDING 与 v2-4 归档路径。现已在 GitHub Draft 修订分支 `feat/m0-identity-gate-v2-4-audit-remediation-20261103` 补入主 DB 生命周期 lstat 检查、DB/WAL size/mtimeNs/SHA-256 断言及主 DB symlink/非普通文件用例。**R6 PASS 与冻结包是修订前历史证据，不代表当前修订分支已通过固定栈动态重测。** 当前分支仅完成源码/文档 Draft 修订；固定栈重测、新 raw output、新 manifest 和再次独立终审仍待完成。本轮不触发 CI、不连接 BWH、不读取生产 DB、不执行 Gate、不合并、不部署；M0 继续 `BLOCKED`。
+> **当前状态：REVIEW_PENDING / NOT SIGNABLE。** Yi 已于 2026-11-03 正式裁定 Y-3 选甲、Y-4 选甲。第六轮（R6）在固定依赖栈 Node `v22.23.1` / better-sqlite3 `12.10.0` / SQLite `3.53.1` 上，对当时 helper HEAD `2e55ba3571b71879ad7ed5d718e8678d097682d4` 的 helper fixture、原始 WAL runner 与 census 全部报告 PASS；18 项 manifest 亦已冻结。但第二轮独立复核发现：R6 被测 helper 尚未在 SQLite open 后复核主 DB 路径；R6 fixture 未对 DB/WAL 的 size、mtime 做前后断言；执行包仍留有旧版 PENDING 与不匹配的归档路径命名（现已修订为 v2-4）。现已在 GitHub Draft 修订分支 `feat/m0-identity-gate-v2-4-audit-remediation-20261103` 补入主 DB 生命周期 lstat 检查、DB/WAL size/mtimeNs/SHA-256 断言及主 DB symlink/非普通文件用例。**R6 PASS 与冻结包是修订前历史证据，不代表当前修订分支已通过固定栈动态重测。** 当前分支仅完成源码/文档 Draft 修订；固定栈重测、新 raw output、新 manifest 和再次独立终审仍待完成。本轮不触发 CI、不连接 BWH、不读取生产 DB、不执行 Gate、不合并、不部署；M0 继续 `BLOCKED`。
 
 ## v2.4 修订裁定与证据来源
 
@@ -146,7 +146,7 @@ R6 冻结的 18 项 manifest 仍包含第三轮三份 raw output：`fixture-cens
 | `74125e4ca9a3148652c360e5e0ab91a3cffa97489984ab28210b38550c71bdb2` | `server/services/platform/portal-subscription-link-reset-store.mjs` |
 | `8e247f1b1adf11e0e8f632707b51ee0ccc31830078bc47832ea22959357d2a6e` | `server/services/platform/usage-billing-cycle.mjs` |
 
-### 2.2 辅助程序与测试锚点（历史基线 + v2.4 待冻结变更）
+### 2.2 辅助程序与测试锚点（历史基线 + R6 冻结候选 + 当前审查修订）
 
 历史第三轮通过的 helper 基线：
 
@@ -161,8 +161,8 @@ R6 冻结的 18 项 manifest 仍包含第三轮三份 raw output：`fixture-cens
 当前审查修订分支与候选源码锚点：
 
 - 分支：`feat/m0-identity-gate-v2-4-audit-remediation-20261103`，以 R6 helper HEAD `2e55ba3571b71879ad7ed5d718e8678d097682d4` 为基线。
-- Helper/test 源码提交：`e50401516bebd9093a9a3b4cf60b358e649887f9`（仅作为当前 Draft 候选，不代表已通过固定栈动态测试）。
-- 当前 Git blob SHA-1：census `b42bd54674d456fa32df7146f376a983cc393e73`；snapshot `f96127476ce842310d394ab9c39a5d75ae5e5034`；fixture test `61f733f75163e01ec95bcb404d30f7b9be9f3b65`。
+- Helper/test 源码提交：`8dd5e321a5ca1a1f07e89a1d75cdc93cacfd6479`（仅作为当前 Draft 候选，不代表已通过固定栈动态测试）。
+- 当前 Git blob SHA-1：census `b42bd54674d456fa32df7146f376a983cc393e73`；snapshot `f96127476ce842310d394ab9c39a5d75ae5e5034`；fixture test `233d072c7a0b5bd7d3a9cc0f93ededb9c68d3688`。
 - 当前三个文件的签署用 SHA-256 尚未冻结；须在当前候选代码通过固定依赖栈动态重测后，从确切文件字节重新计算。
 
 Y-3 / Y-4 正式裁定已写入 v2.4。helper/test 与执行包必须落实以下合同：
@@ -261,7 +261,7 @@ Census helper 的实际读取与输出另见 §6.3 / §7：它在一个 `BEGIN D
 ### 4.1 固定输入
 
 - Checker commit：`eb83197e47155943087655ff7d4aad7a6c954849`。
-- Helper branch：`feat/m0-identity-gate-v2-4-audit-remediation-20261103`；候选 helper commit `e50401516bebd9093a9a3b4cf60b358e649887f9`。该 commit 仅代表 Draft 源码修订；未完成固定依赖栈动态复验，不得用于第一层签署。
+- Helper branch：`feat/m0-identity-gate-v2-4-audit-remediation-20261103`；候选 helper commit `8dd5e321a5ca1a1f07e89a1d75cdc93cacfd6479`。该 commit 仅代表 Draft 源码修订；未完成固定依赖栈动态复验，不得用于第一层签署。
 - 原始 fixture 规范、完整日志、第三轮回执：沿用 §2.3 的三个固定 SHA-256。
 - runner：`fixture-wal-rerun-runner-2026-11-03.mjs`，SHA-256 `096ca7e2d7a143e3b454f6153b0e22d1641d65de4e5217fb17a17d83bbf4e112`。
 - 三份第三轮 raw output：`fixture-census-output-r3-2026-11-03.txt`、`fixture-helper-test-output-r3-2026-11-03.txt`、`fixture-wal-rerun-output-r3-2026-11-03.txt`。必须从归档原件复制，打包时分别计算 SHA-256；不允许用摘要/截图替代原始文本。
@@ -878,7 +878,7 @@ A/B 三面计数及状态按正式 Gate 口径记录；A/B census 的 `schemaDig
 - D-2：`eb83197e47155943087655ff7d4aad7a6c954849`（已确认）
 - D-3：先测量、后裁定（已确认）
 - 离线验收：R6 旧 helper HEAD 动态测试 PASS、18 项 manifest 冻结；当前修订分支尚未固定栈重测，R6 不替代当前代码验收
-- 当前 helper/test 候选 commit：`e50401516bebd9093a9a3b4cf60b358e649887f9`；当前三个文件签署用 SHA-256 与固定栈动态验收待完成
+- 当前 helper/test 候选 commit：`8dd5e321a5ca1a1f07e89a1d75cdc93cacfd6479`；当前三个文件签署用 SHA-256 与固定栈动态验收待完成
 - R6 历史 18 项 manifest 已冻结（tarball SHA-256 `a5600dbab180167a8bd6f27474bf491637c37044014f36b0c806cc3e60ba6da7`）；当前修订后的新 manifest 与 raw output 哈希待重建
 - 当前修订分支的独立技术复审：待完成；第一层签署保持空白
 - Yi 执行包审查/签署：____________________ 日期：____________________
