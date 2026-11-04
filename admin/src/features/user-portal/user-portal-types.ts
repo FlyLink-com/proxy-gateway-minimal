@@ -538,6 +538,18 @@ export type PortalPasskeyExport = {
   };
 };
 
+export type PortalAdsConsentDecision = "unknown" | "granted" | "denied";
+export type PortalAdsConsentState = {
+  decision: PortalAdsConsentDecision;
+  adUserData: boolean | null;
+  adPersonalization: false;
+  updatedAt: number | null;
+};
+export type PortalAdsConsentClient = {
+  getConsent(input: { sessionRef: string }): Promise<PortalAdsConsentState>;
+  setConsent(input: { sessionRef: string; adUserData: boolean }): Promise<PortalAdsConsentState>;
+};
+
 export type UserPortalClient = {
   restoreSession?(): Promise<PortalSession | null>;
   logout?(input: { sessionRef: string }): Promise<void>;
@@ -547,6 +559,7 @@ export type UserPortalClient = {
   wallet?: PortalWalletClient;
   referral?: PortalReferralClient;
   recharge?: PortalRechargeClient;
+  adsConsent?: PortalAdsConsentClient;
   issueHumanChallenge(input?: PortalHumanChallengeRequestInput): Promise<PortalHumanVerificationChallenge>;
   requestEmailCode(input: PortalEmailCodeRequestInput): Promise<PortalEmailCodeChallenge>;
   requestRegistrationEmailVerification(
