@@ -6,7 +6,7 @@
 - 执行人：Muse；预定路径：B2（`ssh bwh`）
 - 适用范围：Yi 独立审查并签署本执行包，仅表示确认并冻结执行合同；**该签署本身不授权任何 BWH 操作**。只有在签署之后，Yi 再对正式 Identity Gate 作出单独、明确、范围受限的执行授权，才可按本包执行一次封闭 Gate。执行或停止后该次授权耗尽；重跑必须重新取得单独授权。
 
-> **当前状态：REVIEW_PENDING / NOT SIGNABLE（R8 为唯一正式签署候选；执行包与决策附录的 Snapshot sidecar 合同已对齐，整份文档静态复核仍待完成）。** Yi 已于 2026-11-03 正式裁定 Y-3 选甲、Y-4 选甲，并在第二轮独立终审后明确选择 R8 修订线。R6 的 18 项冻结包保留为历史证据，不覆盖、不删除。R8 helper/test 已在固定依赖栈 Node v22.23.1 / better-sqlite3 12.10.0 / SQLite 3.53.1 上全项 PASS，R8 的 18 项 manifest/tarball 已冻结并经独立复算。两份文档已完成本轮合同对齐，当前文档 SHA-256 已固定；执行包本轮修改的 4 个 shell 片段已 bash -n 4/4 PASS，但整份执行包的完整静态复核仍是第一层签署前置项。R8 动态验收仅在隔离 VM 完成，没有连接 BWH 或读取生产 DB；R7 曾有一次 BWH 专用合成 fixture 复现，已在本包如实披露。R8 runner harness 版本/哈希及退出后精确 realpath、清理前后原始记录仍缺。第一层签署仍为空白，第二层正式 Gate 授权仍未授予；M0 继续 BLOCKED。
+> **当前状态：REVIEW_PENDING / NOT SIGNABLE（R8 为唯一正式签署候选；完整文档静态复核已完成，但 R8 runner harness/清理证据仍未补齐）。** Yi 已于 2026-11-03 正式裁定 Y-3 选甲、Y-4 选甲，并在第二轮独立终审后明确选择 R8 修订线。R6 的 18 项冻结包保留为历史证据，不覆盖、不删除。R8 helper/test 已在固定依赖栈 Node v22.23.1 / better-sqlite3 12.10.0 / SQLite 3.53.1 上全项 PASS，R8 的 18 项 manifest/tarball 已冻结并经独立复算。两份文档的 Snapshot sidecar 合同已对齐；当前执行包 15 个 Bash 代码块已全部 `bash -n` 15/15 PASS，58 个 exit 使用点现已全部唯一。R8 动态验收仅在隔离 VM 完成，没有连接 BWH 或读取生产 DB；R7 曾有一次 BWH 专用合成 fixture 复现，已在本包如实披露。R8 runner harness 版本/哈希及退出后精确 realpath、清理前后原始记录仍缺。第一层签署仍为空白，第二层正式 Gate 授权仍未授予；M0 继续 BLOCKED。
 
 ## v2.4 修订裁定与证据来源
 
@@ -20,14 +20,14 @@
 | Y-4 · inode/SHM 记录 | 删除 sidecar inode 不变及 SHM before/after 哈希作为硬门槛；metadata/hash 可保留为观察项 | helper 实际只保证 sidecar 类型/非符号链接；不得在包文中声称有 inode 级保护 |
 | F1/F2/M1/M2 | 沿用 v2.3 已修正的路径、WAL 证据归属、工作目录权限和 exit-code 分配 | 不回退 v2.3 已通过的静态修正 |
 
-R8 固定栈动态验收与 18 项冻结包已完成；执行包 §6.4.2、§7.1–§7.4、§8.1、§9.3–§9.4 与本决策附录的 Snapshot census 后 sidecar 合同现已对齐。当前文档 SHA-256 已固定；整份文档静态复核仍待完成。动态 fixture PASS 不等同于正式 Identity Gate，也不代表已执行任何 BWH 生产读取。
+R8 固定栈动态验收与 18 项冻结包已完成；执行包 §6.4.2、§7.1–§7.4、§8.1、§9.3–§9.4 与本决策附录的 Snapshot census 后 sidecar 合同现已对齐。2026-11-04 完整文档静态复核已完成；动态 fixture PASS 不等同于正式 Identity Gate，也不代表已执行任何 BWH 生产读取。
 
 | 项目 | v2.4 裁定 | 证据状态 |
 | --- | --- | --- |
 | B1 · SHA256SUMS | 修正为从冻结源码重新计算的 64 位值；历史 BWH 12/12 实测不因 v2.1 归档错误而被追溯否定 | Yi 提供三轮执行事实；本轮从 GitHub 冻结文件重新读取并复算 |
 | B2 · runner | R6 与 R8 原始 WAL runner 均报告 PASS（R8：ok=true、failures=[]）；runner 原件 SHA-256 已固定 | R8 回执未提供本轮 harness 版本/哈希及退出后精确 realpath、清理前后原始记录；正式 Gate 前仍须补齐受控清理证据，不把其他轮次的清理记录外推到 R8 |
 | B3 · 数据读取合同 | 明确运行时配置、protected material、精确 channel DB 绑定及 census 的内存读取/比对范围；只允许聚合字段和摘要输出 | 本轮读取冻结 checker 与 census 源码核对 |
-| B4 · WAL/SHM | R8 fixture 已验证 live Source DB/WAL 指纹不变、Snapshot census 后 absent→0-byte WAL 与 transient SHM、symlink/非普通 sidecar 拒绝 | 固定栈动态验收 PASS；Snapshot census 后协调 sidecar 合同已按 §6.4.2 / §7 / §9.4 对齐；整份文档静态复核仍待完成 |
+| B4 · WAL/SHM | R8 fixture 已验证 live Source DB/WAL 指纹不变、Snapshot census 后 absent→0-byte WAL 与 transient SHM、symlink/非普通 sidecar 拒绝 | 固定栈动态验收 PASS；Snapshot census 后协调 sidecar 合同已按 §6.4.2 / §7 / §9.4 对齐；2026-11-04 完整文档静态复核 PASS |
 | B5 · 执行身份 | `ssh bwh` 固定 root 登录，使用专用 `id_ed25519_bwh`；不再使用 sudo 包装 | Yi 提供 TOOLS.md 事实及 2026-11-01 两次验证记录；本轮未读取私钥或连接 BWH |
 | B6 · 网络边界 | 唯一网络例外为 Tailscale SSH/SCP 传输通道；Gate/helper 本身不发起网络请求 | 按 Yi 本轮明确口径写入 |
 | R1 · 时间与 mtime | 四时点和 30 个监视样本均记录 UTC 时间戳；snapshot A/B 记录 size、mtime、SHA-256 | 文档命令待复审，未执行 |
@@ -174,7 +174,7 @@ R8 18 项 manifest 内固定的是 R3 历史三份 raw output；R8 本轮三份 
 
 **v2.4 Helper/Test 合同实现：** 两个 Helper 在 SQLite 生命周期中复核主 DB 与 sidecar 类型；主 DB/WAL 的 size、mtimeNs、SHA-256 前后断言由 R8 fixture 覆盖。Y-3 以 schemaDigest 作为唯一模式身份；Y-4 对已存在 sidecar 逐个执行 regular-file / non-symlink 检查，不强制 WAL/SHM 成对存在。
 
-**当前状态：** R8 动态验收与归档冻结已完成，第二轮独立终审已选择 R8。执行包与决策附录的 Snapshot census 后 sidecar 合同已对齐，当前文档 SHA-256 已固定；整份执行包静态复核与 R8 runner harness/清理证据补齐仍待完成。第一层签署仍为空白，M0 仍 BLOCKED。
+**当前状态：** R8 动态验收与归档冻结已完成，第二轮独立终审已选择 R8。执行包与决策附录的 Snapshot census 后 sidecar 合同已对齐，2026-11-04 完整文档静态复核已通过；R8 runner harness/清理证据仍待补齐。第一层签署仍为空白，M0 仍 BLOCKED。
 
 ### 2.3 第三轮历史验收记录与 runner 锚点（2026-11-03）
 
@@ -515,6 +515,7 @@ node --test server/tests/m0-gate-helper-fixture.test.mjs
 
 ```bash
 set -euo pipefail
+DB=/opt/proxy-gateway-minimal-candidate/shared/state/subscription-control.sqlite
 for f in \
   /etc/xray/config.json \
   /etc/hysteria/config.yaml \
@@ -540,7 +541,7 @@ for f in "$WAL" "$SHM"; do
 done
 ```
 
-主 DB 必须是普通文件且非 symlink。`-wal` 与 `-shm` 分别检查：每个已存在的 sidecar 必须是普通文件且非 symlink；缺失任意一方不单独触发停止。helper 自身必须在 SQLite open 前后重复执行等价 `lstat` 检查，不能只依赖本 shell 预检。文件大小、mtime、UID/GID/mode 和 SHA-256 只作为观察指纹，不读取文件内容。
+主 DB 必须是普通文件且非 symlink。`-wal` 与 `-shm` 分别检查：每个已存在的 sidecar 必须是普通文件且非 symlink；缺失任意一方不单独触发停止。helper 自身必须在 SQLite open 前后重复执行等价 `lstat` 检查，不能只依赖本 shell 预检。`sha256sum` 会读取文件字节以计算摘要；本流程只记录哈希与元数据，不输出或持久化原始文件内容。
 
 ### 6.4.1 Production Source DB 的 SHM 副作用合同（v2.4；按 Y-4 甲裁定）
 
@@ -696,13 +697,13 @@ printf '%s\n' "$A_BEFORE_SIDECARS" > "$WORKDATA/a-before-sidecars.txt"
 node "$BUNDLE/scripts/m0-gate-snapshot.mjs" "$DB" "$SNAP_A" > "$WORKDATA/snapshot-a-result.json"
 SNAP_A_BASELINE="$(capture_snapshot "$SNAP_A")" || exit 73
 printf '%s\n' "$SNAP_A_BASELINE" > "$WORKDATA/snapshot-a-meta.txt"
-SNAP_A_SIDECARS_BEFORE="$(capture_snapshot_sidecars "$SNAP_A")" || exit 77
+SNAP_A_SIDECARS_BEFORE="$(capture_snapshot_sidecars "$SNAP_A")" || exit 90
 test "$SNAP_A_SIDECARS_BEFORE" = "$(printf 'wal|absent\nshm|absent')" || exit 77
 printf '%s\n' "$SNAP_A_SIDECARS_BEFORE" > "$WORKDATA/snapshot-a-sidecars-before-census.txt"
 node "$BUNDLE/scripts/m0-gate-census.mjs" "$SNAP_A" > "$WORKDATA/census-a-snapshot.json"
-SNAP_A_SIDECARS_AFTER="$(capture_snapshot_sidecars "$SNAP_A")" || exit 78
+SNAP_A_SIDECARS_AFTER="$(capture_snapshot_sidecars "$SNAP_A")" || exit 91
 assert_snapshot_census_sidecars "$SNAP_A" || exit 78
-SNAP_A_AFTER_CENSUS="$(capture_snapshot "$SNAP_A")" || exit 79
+SNAP_A_AFTER_CENSUS="$(capture_snapshot "$SNAP_A")" || exit 92
 test "$SNAP_A_AFTER_CENSUS" = "$SNAP_A_BASELINE" || exit 79
 printf '%s\n' "$SNAP_A_SIDECARS_AFTER" > "$WORKDATA/snapshot-a-sidecars-after-census.txt"
 node "$BUNDLE/scripts/m0-gate-census.mjs" "$DB" > "$WORKDATA/census-a-live.json"
@@ -773,13 +774,13 @@ test "$B_BEFORE_SOURCE" = "$A_AFTER_SOURCE" || exit 60
 node "$BUNDLE/scripts/m0-gate-snapshot.mjs" "$DB" "$SNAP_B" > "$WORKDATA/snapshot-b-result.json"
 SNAP_B_BASELINE="$(capture_snapshot "$SNAP_B")" || exit 82
 printf '%s\n' "$SNAP_B_BASELINE" > "$WORKDATA/snapshot-b-meta.txt"
-SNAP_B_SIDECARS_BEFORE="$(capture_snapshot_sidecars "$SNAP_B")" || exit 83
+SNAP_B_SIDECARS_BEFORE="$(capture_snapshot_sidecars "$SNAP_B")" || exit 93
 test "$SNAP_B_SIDECARS_BEFORE" = "$(printf 'wal|absent\nshm|absent')" || exit 83
 printf '%s\n' "$SNAP_B_SIDECARS_BEFORE" > "$WORKDATA/snapshot-b-sidecars-before-census.txt"
 node "$BUNDLE/scripts/m0-gate-census.mjs" "$SNAP_B" > "$WORKDATA/census-b-snapshot.json"
-SNAP_B_SIDECARS_AFTER="$(capture_snapshot_sidecars "$SNAP_B")" || exit 84
+SNAP_B_SIDECARS_AFTER="$(capture_snapshot_sidecars "$SNAP_B")" || exit 94
 assert_snapshot_census_sidecars "$SNAP_B" || exit 84
-SNAP_B_AFTER_CENSUS="$(capture_snapshot "$SNAP_B")" || exit 85
+SNAP_B_AFTER_CENSUS="$(capture_snapshot "$SNAP_B")" || exit 95
 test "$SNAP_B_AFTER_CENSUS" = "$SNAP_B_BASELINE" || exit 85
 printf '%s\n' "$SNAP_B_SIDECARS_AFTER" > "$WORKDATA/snapshot-b-sidecars-after-census.txt"
 node "$BUNDLE/scripts/m0-gate-census.mjs" "$DB" > "$WORKDATA/census-b-live.json"
@@ -833,6 +834,12 @@ A/B 三面计数及状态按正式 Gate 口径记录；A/B census 的 schemaDige
 | 87 | 最终核对 Snapshot A sidecar 超出 §6.4.2 允许形态 |
 | 88 | 最终核对无法采集 Snapshot B sidecar |
 | 89 | 最终核对 Snapshot B sidecar 超出 §6.4.2 允许形态 |
+| 90 | Snapshot A 首次 census 前 sidecar metadata/hash 无法采集 |
+| 91 | Snapshot A census 后 sidecar metadata/hash 无法采集 |
+| 92 | Snapshot A census 后主 DB 指纹无法采集 |
+| 93 | Snapshot B 首次 census 前 sidecar metadata/hash 无法采集 |
+| 94 | Snapshot B census 后 sidecar metadata/hash 无法采集 |
+| 95 | Snapshot B census 后主 DB 指纹无法采集 |
 
 ### 7.5 JP-01 DB-only 附则
 
@@ -942,13 +949,23 @@ Snapshot 的 0-byte WAL / transient SHM 是 $WORK 内 SQLite 只读协调残留�
 
 ### v2.4 当前未关闭事项（不得签署）
 
-1. Snapshot census 后 sidecar 合同已按 R8 证据对齐至 §6.4.2、§7.1–§7.4、§8.1、§9.3–§9.4 及决策附录；两份当前文档 SHA-256 已固定（执行包 9dee405826f4a195a2f4f038552055cd525563f1b82dd490d1cf7fabf19bb90e；附录 4af235618e60c52ecf6c6dfde86a54063734f27084b4107d5e747790f52d086f）。整份执行包最终静态复核仍待完成；若复核后修改任何字节，必须重算对应哈希。
+1. Snapshot census 后 sidecar 合同已按 R8 证据对齐至 §6.4.2、§7.1–§7.4、§8.1、§9.3–§9.4 及决策附录。2026-11-04 完整文档静态复核已完成；两份文档 SHA-256 统一由 Notion/审批回执外部锚定，不在任一文件中互相嵌入，以避免自引用/互引用循环。任何后续字节修改均须重算并更新外部哈希锚点。
 2. R8 回执未提供本轮 WAL runner harness 版本/哈希及退出后精确 realpath、清理前后原始记录；正式 Gate 前须补齐受控 harness 绑定与清理证据，不能以 R6 或 R7 的清理记录外推 R8。
 3. R8 的三份 raw output 已分别固定 SHA-256，但不属于 R8 18 项 manifest；R8 manifest 中三份 raw output 是 R3 历史原件。两组证据必须保持区分，不得覆盖或混写。
 4. R8 18 项 manifest/tarball 已独立复核 18/18，R6 历史 manifest/tarball 保持不变；不得因本次文档修订重建或覆盖任一冻结包。
-5. 当前执行包共有 15 个 Bash fenced blocks；本轮改动的 4 个 Snapshot/参数片段已 bash -n 4/4 PASS。整份当前文档的全量静态复核仍须完成，不能把历史版本 15/15 的记录外推为本轮整份文档通过。Helper/Checker 不在本轮授权修改范围内，不得为文档修订改动代码、触发 CI、连接 BWH 或执行生产 Gate。
+5. Helper/Checker 不在本轮授权修改范围内；本轮复核与修订仅限两份 Draft 文档，不改代码、不触发 CI、不连接 BWH、不读取生产 DB、不执行正式 Gate。
 
 
+
+### 2026-11-04 文档静态复核记录（已完成）
+
+- 对象：本执行包与同分支 Y-3/Y-4 决策附录；核对 R8 回执、冻结包锚点、sidecar 合同、Shell 命令顺序、退出码和签署边界。
+- Bash 语法：当前执行包 15 个 Bash fenced blocks 全部 `bash -n` 通过（15/15）；只做语法检查，没有执行任何块内命令。
+- 退出码：修订后 58 个 `exit` 使用点为 58 个唯一值；Snapshot A/B 的 sidecar/主 DB 指纹采集失败与策略不满足分别使用不同退出码（90–95 与 77–79 / 83–85 分离）。
+- 发现并修正：§6.4 显式初始化 DB 路径；明确 SHA-256 计算读取字节但不输出原始内容；拆分 6 组重复退出码；移除文档内过期的相互哈希引用，改由 Notion/审批回执外部锚定。
+- 合同复核：Snapshot census 后 sidecar 规则与决策附录一致；R6/R8 冻结包及 R8 三份补充 raw output 的 manifest 外关系保持区分。
+- 结论：文档静态复核 PASS；但 R8 runner harness 版本/哈希、退出后精确 realpath、清理前后原始记录仍未在 R8 回执/已检索的 Notion 与 Drive 证据中找到，仍是第一层签署前置缺口。不得用 R6/R7 清理记录外推 R8。
+- 边界：仅进行文档读取、静态检查和 Draft 文档修订；未修改 Helper/Checker，未触发 CI，未连接 BWH，未读取生产 DB，未执行正式 Identity Gate。
 
 ### 10.1 Yi 执行包审查/签署（第一层；当前留空）
 
@@ -961,7 +978,7 @@ Snapshot 的 0-byte WAL / transient SHM 是 $WORK 内 SQLite 只读协调残留�
 - Helper/Test SHA-256：census 3351443a84f7ff0b99ddde73bb8defc28a6fc3226935a1719ef216e4a5d7056c；snapshot fb3ea4a3bcb91f878e39b30a2c45be1ec78003c10aa710cef3270e8d8a5010f0；test 12c8dd1722fe6ef129f7a6177a76d4e80a087ab1dd4f24ea302aab402f1f9e8c。
 - R8 18 项 manifest：18/18 PASS；tarball 50,190 bytes；SHA-256 6de61f665174106fc6a22fa45e011b14b084094380a8445239c1cbba10873a22。R6 历史包保持独立。
 - R8 三份补充 raw output SHA-256：helper-test a4d910d8d69acaee1bcbd8cadea1decc9c1c286eaced6bf16e6163df4d240a16；WAL runner 938545287c4c52a15e782f2c148b15326a9936584b8f911669990b4129a70254；census ddaef37761f35af06b4f5a3dda84b5dd8b69521bdb53a403eb0b088293e27921。三份 R8 raw output 不属于 18 项 manifest。
-- 第二轮独立终审：已选择 R8；Snapshot census 后 sidecar 合同文档对齐已完成，执行包最终静态复核仍待完成。
+- 第二轮独立终审：已选择 R8；Snapshot census 后 sidecar 合同文档对齐已完成；2026-11-04 完整文档静态复核 PASS。R8 runner harness/清理证据仍待补齐。
 - Yi 执行包审查/签署：____________________ 日期：____________________
 
 **第一层签署的效力仅为确认 v2.4 执行合同及其固定内容；不授权 BWH 连接、目录创建、文件传输、生产路径读取、生产快照或 Gate 执行。**
@@ -987,4 +1004,4 @@ Snapshot 的 0-byte WAL / transient SHM 是 $WORK 内 SQLite 只读协调残留�
 - M0 最终状态：`BLOCKED`（当前状态；不得预判解除）
 - Yi 最终裁定：____________________ 日期：____________________
 
-**当前结论：M0 继续 BLOCKED。R8 离线验收与 18 项冻结包已完成并被选为唯一正式签署候选；执行包与决策附录的 Snapshot sidecar 合同已对齐，当前文档 SHA-256 已固定，但整份执行包最终静态复核及 R8 runner harness/清理证据仍待完成。第一层执行包签署、第二层正式 Gate 执行授权和 Gate 本身均未发生；本包不构成生产放行。**
+**当前结论：M0 继续 BLOCKED。R8 离线验收与 18 项冻结包已完成并被选为唯一正式签署候选；执行包与决策附录的 Snapshot sidecar 合同已对齐，2026-11-04 完整文档静态复核 PASS；但 R8 runner harness/清理证据仍未补齐。第一层执行包签署、第二层正式 Gate 执行授权和 Gate 本身均未发生；本包不构成生产放行。**
