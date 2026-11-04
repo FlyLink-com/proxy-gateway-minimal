@@ -1,10 +1,10 @@
 # M0 Identity Gate v2.4 — Y-3 / Y-4 Decision Addendum
 
 - Date: 2026-11-03 (PST)
-- Status: Draft / FIRST_LAYER_SIGNED / SECOND_LAYER_AUTH_PENDING_WINDOW
+- Status: Draft / FIRST_LAYER_SIGNED / SECOND_LAYER_AUTH_ACTIVE / FORMAL_GATE_NOT_EXECUTED
 - Branch: `feat/m0-identity-gate-v2-4-audit-remediation-20261103`
 - Base helper head before this ruling implementation: `9a90c22f4d3db2a10683b0682f2797d117eafbd5`
-- This addendum records the formal Y-3 and Y-4 rulings. It does not authorize BWH access, production reads, snapshots, or the formal Identity Gate.
+- This addendum records the formal Y-3 and Y-4 rulings. The first-layer signature is limited to contract confirmation; the separate one-time second-layer authorization is active only for 2026-11-04T01:11:56-08:00 through 2026-11-05T01:11:56-08:00 (PST), bound to the final v2.4 execution-package SHA-256 in the external approval receipt and the fixed host/path/scope below.
 
 ## Formal decisions
 
@@ -73,15 +73,15 @@ R8 proved that a Backup API snapshot has no -wal/-shm sidecars immediately after
 2. 2026-11-04 完整文档静态复核已完成：执行包 15 个 Bash fenced blocks `bash -n` 15/15 PASS；58 个 exit 使用点为 58 个唯一值；§6.4 已显式初始化 DB 路径，并澄清 SHA-256 计算读取字节但不输出/持久化原始内容。两份文档的当前 SHA-256 由 Notion/审批回执外部锚定，不在任一文件内互相嵌入，以避免自引用/互引用循环。
 3. Preserve the R8 18-item manifest/tarball and its three separately hashed raw outputs unchanged. Preserve the R6 18-item manifest/tarball as historical evidence.
 4. The R8 runner evidence supplement is now available and independently hash-verified: runner identity/hash and original r2 realpaths/as-left state are recorded; the same runner was instrumented in a pristine r3 stage with pre-run listing, successful output, post-run inventory, workdir cleanup/absence, and supplement-stage cleanup/absence. Preserve the distinction that r2 remains retained and was not cleaned; r3 is a separate controlled supplement run. Do not infer r2 cleanup from r3.
-5. Yi completed the first-layer v2.4 execution-package signature on 2026-11-04. The signature confirms the execution contract only and does not authorize BWH access or the formal Gate. Yi has explicitly consented to the separate one-time second-layer authorization; its exact validity window must still be recorded in an external receipt bound to the final package SHA-256 before execution.
+5. Yi completed the first-layer v2.4 execution-package signature on 2026-11-04. The signature confirms the execution contract only and does not authorize BWH access or the formal Gate. Yi separately authorized the one-time second-layer formal Gate execution for 2026-11-04T01:11:56-08:00 through 2026-11-05T01:11:56-08:00 (PST); the exact final package SHA-256 is bound in the external approval receipt. The formal Gate has not yet been executed.
 
 
 ## Authorization boundary
 
 - R8 was dynamically tested only in an isolated VM. R5/R6 used the BWH fixed stack only for isolated synthetic fixtures; R7 included one disclosed BWH synthetic-fixture reproduction. No round performed a production DB read, production snapshot, or formal Identity Gate.
-- 2026-11-04 approval update: Yi has completed the first-layer v2.4 execution-package signature and explicitly consented to a separate one-time second-layer formal Gate authorization. The authorization is not executable until its exact validity window is recorded in an external receipt bound to the final package SHA-256.
-- Not yet executable pending the second-layer time-window record: BWH connection, production DB access, production snapshot, and formal Gate. Still not authorized: Helper/Checker changes, CI/workflows, merge, Ready transition, deployment, service/configuration/Timer/Collector/retention changes, or JP-01 instance creation/traffic.
+- 2026-11-04 approval update: Yi has completed the first-layer v2.4 execution-package signature and activated a separate one-time second-layer formal Gate authorization for 2026-11-04T01:11:56-08:00 through 2026-11-05T01:11:56-08:00 (PST), bound to the final package SHA-256 in the external approval receipt.
+- Authorized only during the stated 24-hour window and only within the exact package scope: BWH connection, production DB read-only access, production snapshot, and one formal Identity Gate run. Still not authorized: Helper/Checker changes, CI/workflows, production DB/WAL writes, merge, Ready transition, deployment, service/configuration/Timer/Collector/retention changes, JP-01 instance creation/traffic, or any rerun.
 - The 2026-11-04 review and corrections were document-only; no CI workflow was triggered. The branch remains Draft.
-- M0 remains BLOCKED; first-layer signature completed 2026-11-04; second-layer authorization consented but not yet effective because the exact validity window has not been recorded; formal Gate has not been executed.
+- M0 remains BLOCKED; first-layer signature completed 2026-11-04; second-layer one-time authorization is active for the stated 24-hour window; formal Gate has not yet been executed.
 
 
