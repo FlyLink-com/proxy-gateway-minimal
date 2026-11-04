@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
@@ -57,6 +57,11 @@ test("M0 helpers preserve WAL and emit a single-snapshot, aggregate-only census"
   assert.equal(sha256(walPath), walBefore, "read-only Backup API must not change source WAL bytes");
   assert.equal(existsSync(snapshot + "-wal"), false);
   assert.equal(existsSync(snapshot + "-shm"), false);
+  assert.deepEqual(
+    readdirSync(dir).filter(name => name.startsWith(".m0-gate-probe-")),
+    [],
+    "the disposable read-only probe directory must be removed"
+  );
 
   const censusStdout = execFileSync(process.execPath, [CENSUS_HELPER, snapshot], { encoding: "utf8" });
   const census = JSON.parse(censusStdout.trim());
