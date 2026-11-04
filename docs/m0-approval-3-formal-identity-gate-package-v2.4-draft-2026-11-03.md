@@ -6,7 +6,7 @@
 - 执行人：Muse；预定路径：B2（`ssh bwh`）
 - 适用范围：Yi 独立审查并签署本执行包，仅表示确认并冻结执行合同；**该签署本身不授权任何 BWH 操作**。只有在签署之后，Yi 再对正式 Identity Gate 作出单独、明确、范围受限的执行授权，才可按本包执行一次封闭 Gate。执行或停止后该次授权耗尽；重跑必须重新取得单独授权。
 
-> **当前状态：READY_FOR_FIRST_LAYER_REVIEW / SIGNABLE（R8 runner harness 补充证据已收齐并完成独立哈希核验；等待 Yi 第一层签署）。** Yi 已于 2026-11-03 正式裁定 Y-3 选甲、Y-4 选甲，并在第二轮独立终审后明确选择 R8 修订线。R6 的 18 项冻结包保留为历史证据，不覆盖、不删除。R8 helper/test 已在固定依赖栈 Node v22.23.1 / better-sqlite3 12.10.0 / SQLite 3.53.1 上全项 PASS，R8 的 18 项 manifest/tarball 已冻结并经独立复算。两份文档的 Snapshot sidecar 合同已对齐；当前执行包 15 个 Bash 代码块已全部 `bash -n` 15/15 PASS，58 个 exit 使用点现已全部唯一。R8 原始动态验收仅在隔离 VM 完成，没有连接 BWH 或读取生产 DB；R7 曾有一次 BWH 专用合成 fixture 复现，已在本包如实披露。2026-11-04 补充回执固定了 R8 runner 身份与 r2 as-left 状态，并以同一哈希 runner 在全新 r3 stage 完成仪器化运行和清理缺席核验；原 R8 r2 stage 仍作为审计证据保留，不声称其已清理。第一层签署仍为空白，第二层正式 Gate 授权仍未授予；M0 继续 BLOCKED。
+> **当前状态：FIRST_LAYER_SIGNED / SECOND_LAYER_AUTH_PENDING_WINDOW（R8 runner harness 补充证据已收齐并完成独立哈希核验；Yi 已于 2026-11-04 完成第一层签署）。** Yi 已于 2026-11-03 正式裁定 Y-3 选甲、Y-4 选甲，并在第二轮独立终审后明确选择 R8 修订线。R6 的 18 项冻结包保留为历史证据，不覆盖、不删除。R8 helper/test 已在固定依赖栈 Node v22.23.1 / better-sqlite3 12.10.0 / SQLite 3.53.1 上全项 PASS，R8 的 18 项 manifest/tarball 已冻结并经独立复算。两份文档的 Snapshot sidecar 合同已对齐；当前执行包 15 个 Bash 代码块已全部 `bash -n` 15/15 PASS，58 个 exit 使用点现已全部唯一。R8 原始动态验收仅在隔离 VM 完成，没有连接 BWH 或读取生产 DB；R7 曾有一次 BWH 专用合成 fixture 复现，已在本包如实披露。2026-11-04 补充回执固定了 R8 runner 身份与 r2 as-left 状态，并以同一哈希 runner 在全新 r3 stage 完成仪器化运行和清理缺席核验；原 R8 r2 stage 仍作为审计证据保留，不声称其已清理。第一层签署已完成；Yi 已同意第二层一次性正式 Gate 授权，但授权有效时间窗尚待明确并外部登记；时间窗记录完成前不执行 Gate，M0 继续 BLOCKED。
 
 ## v2.4 修订裁定与证据来源
 
@@ -183,7 +183,7 @@ R8 18 项 manifest 内固定的是 R3 历史三份 raw output；R8 本轮三份 
 
 **v2.4 Helper/Test 合同实现：** 两个 Helper 在 SQLite 生命周期中复核主 DB 与 sidecar 类型；主 DB/WAL 的 size、mtimeNs、SHA-256 前后断言由 R8 fixture 覆盖。Y-3 以 schemaDigest 作为唯一模式身份；Y-4 对已存在 sidecar 逐个执行 regular-file / non-symlink 检查，不强制 WAL/SHM 成对存在。
 
-**当前状态：** R8 动态验收与归档冻结已完成，第二轮独立终审已选择 R8。执行包与决策附录的 Snapshot census 后 sidecar 合同已对齐，2026-11-04 完整文档静态复核已通过；R8 runner harness 补充证据及两份原始文件哈希已复核，已具备第一层签署条件。第一层签署仍为空白，第二层正式 Gate 授权仍未授予，M0 仍 BLOCKED。
+**当前状态：** R8 动态验收与归档冻结已完成，第二轮独立终审已选择 R8。执行包与决策附录的 Snapshot census 后 sidecar 合同已对齐，2026-11-04 完整文档静态复核已通过；R8 runner harness 补充证据及两份原始文件哈希已复核，已具备第一层签署条件。第一层签署已完成（2026-11-04）；第二层授权意向已确认，待补齐有效时间窗并外部登记，M0 仍 BLOCKED。
 
 ### 2.3 第三轮历史验收记录与 runner 锚点（2026-11-03）
 
@@ -956,7 +956,7 @@ Snapshot 的 0-byte WAL / transient SHM 是 $WORK 内 SQLite 只读协调残留�
 
 回执保存到项目既定 hidden_files/files 位置，并同步 Google Drive「M0 审批与回执」与 Notion 进度页；不得写入凭据或 secret。
 
-### v2.4 第一层签署前核对项（仅剩程序性签署）
+### v2.4 第一层签署记录与后续授权项
 
 1. Snapshot census 后 sidecar 合同已按 R8 证据对齐至 §6.4.2、§7.1–§7.4、§8.1、§9.3–§9.4 及决策附录。2026-11-04 完整文档静态复核已完成；两份文档 SHA-256 统一由 Notion/审批回执外部锚定，不在任一文件中互相嵌入，以避免自引用/互引用循环。任何后续字节修改均须重算并更新外部哈希锚点。
 2. R8 runner harness 证据链已由 2026-11-04 补充回执闭环：runner SHA-256、R8 r2 执行 realpath 与 as-left 状态均已记录；同一 runner 在全新 r3 stage 的仪器化日志记录运行前清单、exit 0、运行后清单、清理后 workdir/stage 缺席。日志与 runner 输出 SHA-256 已独立复算一致。注意：r2 原 stage 保留作审计证据，未被清理；r3 清理演练是独立补充运行，不得混写。
@@ -973,10 +973,10 @@ Snapshot 的 0-byte WAL / transient SHM 是 $WORK 内 SQLite 只读协调残留�
 - 退出码：修订后 58 个 `exit` 使用点为 58 个唯一值；Snapshot A/B 的 sidecar/主 DB 指纹采集失败与策略不满足分别使用不同退出码（90–95 与 77–79 / 83–85 分离）。
 - 发现并修正：§6.4 显式初始化 DB 路径；明确 SHA-256 计算读取字节但不输出原始内容；拆分 6 组重复退出码；移除文档内过期的相互哈希引用，改由 Notion/审批回执外部锚定。
 - 合同复核：Snapshot census 后 sidecar 规则与决策附录一致；R6/R8 冻结包及 R8 三份补充 raw output 的 manifest 外关系保持区分。
-- 结论：文档静态复核 PASS；R8 runner harness 补充证据现已收齐。runner 文件与冻结包副本 SHA-256 一致；补充运行日志/输出哈希独立复算一致，运行成功且 r3 清理后 workdir/stage 缺席。R8 原 r2 stage 保留作审计证据，不声称已清理。当前仅待 Yi 第一层签署；第二层 Gate 授权仍单独保留。
+- 结论：文档静态复核 PASS；R8 runner harness 补充证据现已收齐。runner 文件与冻结包副本 SHA-256 一致；补充运行日志/输出哈希独立复算一致，运行成功且 r3 清理后 workdir/stage 缺席。R8 原 r2 stage 保留作审计证据，不声称已清理。Yi 于 2026-11-04 已完成第一层执行包签署；该签署仅确认合同，不授权 BWH 连接或正式 Gate。Yi 已同意另行授予一次性第二层授权，但授权有效时间窗待补齐并写入外部回执；此前不执行 §5–§9。
 - 边界：仅进行文档读取、静态检查和 Draft 文档修订；未修改 Helper/Checker，未触发 CI，未连接 BWH，未读取生产 DB，未执行正式 Identity Gate。
 
-### 10.1 Yi 执行包审查/签署（第一层；当前留空）
+### 10.1 Yi 执行包审查/签署（第一层；已签署）
 
 - 执行包版本：v2.4（R8 选定签署候选）
 - 签署线：R8；HEAD 9b4bff888e6eb7b4c4545b1f005a32e24855ab9e。R6 仅保留为历史冻结线。
@@ -988,11 +988,11 @@ Snapshot 的 0-byte WAL / transient SHM 是 $WORK 内 SQLite 只读协调残留�
 - R8 18 项 manifest：18/18 PASS；tarball 50,190 bytes；SHA-256 6de61f665174106fc6a22fa45e011b14b084094380a8445239c1cbba10873a22。R6 历史包保持独立。
 - R8 三份补充 raw output SHA-256：helper-test a4d910d8d69acaee1bcbd8cadea1decc9c1c286eaced6bf16e6163df4d240a16；WAL runner 938545287c4c52a15e782f2c148b15326a9936584b8f911669990b4129a70254；census ddaef37761f35af06b4f5a3dda84b5dd8b69521bdb53a403eb0b088293e27921。三份 R8 raw output 不属于 18 项 manifest。
 - 第二轮独立终审：已选择 R8；Snapshot census 后 sidecar 合同文档对齐已完成；2026-11-04 完整文档静态复核 PASS。2026-11-04 R8 runner harness 补充证据已复核，具备第一层签署条件；Yi 第一层签署仍待完成。
-- Yi 执行包审查/签署：____________________ 日期：____________________
+- Yi 执行包审查/签署：Yi 日期：2026-11-04（PST）
 
 **第一层签署的效力仅为确认 v2.4 执行合同及其固定内容；不授权 BWH 连接、目录创建、文件传输、生产路径读取、生产快照或 Gate 执行。**
 
-### 10.2 正式 Identity Gate 单独执行授权（第二层；当前未授权、留空）
+### 10.2 正式 Identity Gate 单独执行授权（第二层；已同意，待补齐授权时间窗，尚未生效）
 
 只有在 10.1 完成且 Yi 另行明确授权后，才允许执行 §5–§9。授权记录必须逐项填写并绑定本 v2.4 文件的外部 SHA-256（该值在文件发布后记录于 Notion/审批回执，避免文件自引用）：
 
@@ -1005,6 +1005,8 @@ Snapshot 的 0-byte WAL / transient SHM 是 $WORK 内 SQLite 只读协调残留�
 - 执行人：Muse
 - Yi 正式 Gate 单独授权原文/签署：____________________ 日期：____________________
 
+用户授权确认：Yi 已于 2026-11-04 同意本节所述一次性 Gate 执行授权；授权有效时间窗尚未填写并外部登记，因此本授权尚不生效，执行人不得开始 §5–§9。
+
 以上任一关键字段缺失、包 SHA-256 不匹配、授权过期或授权范围不覆盖拟执行动作，均不得执行。重跑、改主机、改路径、改包内容或扩大范围，必须重新取得授权。
 
 ### 10.3 M0 最终裁定（第三层；须在 Gate 回执完成后单独作出）
@@ -1013,4 +1015,4 @@ Snapshot 的 0-byte WAL / transient SHM 是 $WORK 内 SQLite 只读协调残留�
 - M0 最终状态：`BLOCKED`（当前状态；不得预判解除）
 - Yi 最终裁定：____________________ 日期：____________________
 
-**当前结论：v2.4 执行包已达到 READY_FOR_FIRST_LAYER_REVIEW / SIGNABLE：R8 离线验收与 18 项冻结包已完成并被选为唯一正式签署候选；执行包与决策附录的 Snapshot sidecar 合同已对齐；2026-11-04 完整文档静态复核及 R8 runner harness 补充证据复核均 PASS。Yi 第一层执行包签署仍待完成；第二层正式 Gate 执行授权和 Gate 本身均未发生。因此 M0 继续 BLOCKED，本包不构成生产放行。**
+**当前结论：v2.4 执行包已达到 READY_FOR_FIRST_LAYER_REVIEW / SIGNABLE：R8 离线验收与 18 项冻结包已完成并被选为唯一正式签署候选；执行包与决策附录的 Snapshot sidecar 合同已对齐；2026-11-04 完整文档静态复核及 R8 runner harness 补充证据复核均 PASS。Yi 第一层执行包签署已完成（2026-11-04）；第二层一次性正式 Gate 授权意向已确认，但授权有效时间窗尚待明确并在外部回执登记，正式 Gate 尚未执行。因此 M0 继续 BLOCKED，本包不构成生产放行。**
