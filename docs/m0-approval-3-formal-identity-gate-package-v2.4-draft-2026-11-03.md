@@ -6,7 +6,7 @@
 - 执行人：Muse；预定路径：B2（`ssh bwh`）
 - 适用范围：Yi 独立审查并签署本执行包，仅表示确认并冻结执行合同；**该签署本身不授权任何 BWH 操作**。只有在签署之后，Yi 再对正式 Identity Gate 作出单独、明确、范围受限的执行授权，才可按本包执行一次封闭 Gate。执行或停止后该次授权耗尽；重跑必须重新取得单独授权。
 
-> **当前状态：REVIEW_PENDING / NOT SIGNABLE。** Yi 已于 2026-11-03 正式裁定 Y-3 选甲、Y-4 选甲。第六轮（R6）在固定依赖栈 Node `v22.23.1` / better-sqlite3 `12.10.0` / SQLite `3.53.1` 上，对当时 helper HEAD `2e55ba3571b71879ad7ed5d718e8678d097682d4` 的 helper fixture、原始 WAL runner 与 census 全部报告 PASS；18 项 manifest 亦已冻结。但第二轮独立复核发现：R6 被测 helper 尚未在 SQLite open 后复核主 DB 路径；R6 fixture 未对 DB/WAL 的 size、mtime 做前后断言；执行包仍留有旧版 PENDING 与不匹配的归档路径命名（现已修订为 v2-4）。现已在 GitHub Draft 修订分支 `feat/m0-identity-gate-v2-4-audit-remediation-20261103` 补入主 DB 生命周期 lstat 检查、DB/WAL size/mtimeNs/SHA-256 断言及主 DB symlink/非普通文件用例。**R6 PASS 与冻结包是修订前历史证据，不代表当前修订分支已通过固定栈动态重测。** 当前分支仅完成源码/文档 Draft 修订；固定栈重测、新 raw output、新 manifest 和再次独立终审仍待完成。本轮不触发 CI、不连接 BWH、不读取生产 DB、不执行 Gate、不合并、不部署；M0 继续 `BLOCKED`。
+> **当前状态：REVIEW_PENDING / NOT SIGNABLE。** Yi 已于 2026-11-03 正式裁定 Y-3 选甲、Y-4 选甲。第六轮（R6）在固定依赖栈 Node `v22.23.1` / better-sqlite3 `12.10.0` / SQLite `3.53.1` 上，对当时 helper HEAD `2e55ba3571b71879ad7ed5d718e8678d097682d4` 的 helper fixture、原始 WAL runner 与 census 全部报告 PASS；18 项 manifest 亦已冻结。但第二轮独立复核发现：R6 被测 helper 尚未在 SQLite open 后复核主 DB 路径；R6 fixture 未对 DB/WAL 的 size、mtime 做前后断言；执行包的验收状态此前未随 R6 更新，且打包路径仍沿用旧命名；现已按 R6 历史证据与当前修订状态分别记录，并统一修订为 v2-4。现已在 GitHub Draft 修订分支 `feat/m0-identity-gate-v2-4-audit-remediation-20261103` 补入主 DB 生命周期 lstat 检查、DB/WAL size/mtimeNs/SHA-256 断言及主 DB symlink/非普通文件用例。**R6 PASS 与冻结包是修订前历史证据，不代表当前修订分支已通过固定栈动态重测。** 当前分支仅完成源码/文档 Draft 修订；固定栈重测、新 raw output、新 manifest 和再次独立终审仍待完成。本轮不触发 CI、不连接 BWH、不读取生产 DB、不执行 Gate、不合并、不部署；M0 继续 `BLOCKED`。
 
 ## v2.4 修订裁定与证据来源
 
