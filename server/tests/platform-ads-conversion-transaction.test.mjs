@@ -453,7 +453,10 @@ function deferredScenario(adsMode) {
       refFactory: references("quote"), quoteTtlMs: 60_000
     });
     return withFlag(adsMode !== "off", () => {
-      if (adsMode !== "off") grantAdsConsent(database, accountId, Date.parse(DEFERRED_NOW));
+      if (adsMode !== "off") {
+        const consentAt = Date.parse(DEFERRED_NOW) + (adsMode === "late" ? 1 : 0);
+        grantAdsConsent(database, accountId, consentAt);
+      }
       if (adsMode === "broken") breakAdsWrites(database);
       const quote = adapter.previewDeferredCheckout({
         accountId,
@@ -495,11 +498,20 @@ function deferredScenario(adsMode) {
         leaseToken: claim.leaseToken,
         operation: deferredOperation(accountId, `settle_ads_tx_${adsMode}`, "commerce_system")
       });
+      const clickClaim = adsMode === "off" ? null : database.prepare(
+        "select claim_state, click_value from platform_ads_click_claims where order_ref = ?"
+      ).get(reserved.orderRef) ?? null;
+      const bindingCount = adsMode === "off" ? null : database.prepare(
+        "select count(*) from platform_ads_click_bindings where order_ref = ?"
+      ).pluck().get(reserved.orderRef);
       return {
         reservedState: reserved.state,
         settledState: settled.state,
         orderRef: reserved.orderRef,
         ads: adsMode === "off" ? null : adsRowCounts(database),
+        claimState: clickClaim?.claim_state ?? null,
+        hasRawClick: typeof clickClaim?.click_value === "string",
+        bindingCount,
         outbox: adsMode === "off" ? null : database.prepare(
           "select status, skip_reason from platform_ads_conversion_outbox where order_ref = ?"
         ).get(reserved.orderRef) ?? null
@@ -525,13 +537,28 @@ test("deferred reserve and settle are unchanged when every Ads write fails", () 
     platform_ads_click_bindings: 0,
     platform_ads_conversion_outbox: 0
   });
+  assert.equal(broken.claimState, null);
+  assert.equal(broken.hasRawClick, false);
+  assert.equal(broken.bindingCount, 0);
   assert.equal(broken.outbox, null);
 
   const healthy = deferredScenario("healthy");
   assert.equal(healthy.reservedState, off.reservedState);
   assert.equal(healthy.settledState, off.settledState);
-  // Control: with working Ads writes the settle hook enqueues pending.
+  assert.equal(healthy.claimState, "click");
+  assert.equal(healthy.hasRawClick, true);
+  assert.equal(healthy.bindingCount, 1);
+  // Control: with working Ads writes and pre-commit consent, the settle hook
+  // enqueues a usable conversion for later measurement.
   assert.deepEqual(healthy.outbox, { status: "pending", skip_reason: null });
+
+  const late = deferredScenario("late");
+  assert.equal(late.reservedState, off.reservedState);
+  assert.equal(late.settledState, off.settledState);
+  assert.equal(late.claimState, "invalid_click");
+  assert.equal(late.hasRawClick, false);
+  assert.equal(late.bindingCount, 0);
+  assert.deepEqual(late.outbox, { status: "skipped", skip_reason: "invalid_click" });
 });
 
 /* ------------------------------------------------------------------ */

@@ -4,7 +4,6 @@ import {
   clearPortalAdsServerConsent,
   isAdsClickBindingEnabled,
   readAdsUserDataConsent,
-  setAdsUserDataConsent,
   setPortalAdsServerConsent,
   type AdsUserDataConsent
 } from "./ads-attribution";
@@ -87,13 +86,7 @@ export function AdsConsentPreferencePanel({
       void adsConsentClient.getConsent({ sessionRef }).then((state) => {
         if (cancelled || requestVersionRef.current !== requestVersion) return;
         setPortalAdsServerConsent(sessionRef, state.decision);
-        if (state.decision === "granted") {
-          setAdsUserDataConsent("granted");
-        } else if (state.decision === "denied") {
-          setAdsUserDataConsent("denied");
-        } else {
-          clearAdsClickData();
-        }
+        if (state.decision !== "granted") clearAdsClickData();
         setConsent(state.decision);
         setExpanded(state.decision === "unknown");
       }).catch(() => {
@@ -152,7 +145,7 @@ export function AdsConsentPreferencePanel({
         const expected = next === "granted" ? "granted" : "denied";
         if (state.decision !== expected) throw new Error("Consent decision was not confirmed.");
         setPortalAdsServerConsent(sessionRef, state.decision);
-        setAdsUserDataConsent(next);
+        if (state.decision === "denied") clearAdsClickData();
         setConsent(state.decision);
         setExpanded(false);
       }).catch(() => {

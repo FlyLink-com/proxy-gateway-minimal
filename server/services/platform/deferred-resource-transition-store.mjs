@@ -737,6 +737,13 @@ function normalizeNow(nowFn) {
   return now.toISOString();
 }
 
+function timestampMillisecondsFromIsoUtc(timestamp) {
+  if (typeof timestamp !== "string" || !ISO_UTC_MILLIS.test(timestamp)) return null;
+  const milliseconds = Date.parse(timestamp);
+  if (!Number.isSafeInteger(milliseconds)) return null;
+  return new Date(milliseconds).toISOString() === timestamp ? milliseconds : null;
+}
+
 function addMilliseconds(timestamp, milliseconds) {
   const value = Date.parse(timestamp) + milliseconds;
   if (!Number.isSafeInteger(value) || Math.abs(value) > 8.64e15) {
@@ -3242,12 +3249,15 @@ export function createSqliteDeferredResourceTransitionStore(options = {}) {
           orderRef: outcome.transition.orderRef
         });
       } else {
+        // The transition projection exposes canonical ISO UTC text, while
+        // the consent ledger compares epoch milliseconds. Convert strictly;
+        // malformed timestamps fail closed and cannot authorize a click.
         safeCaptureAdsClickForOrder(db, {
           orderRef: outcome.transition.orderRef,
           accountRef: normalized.accountId,
           model: "deferred",
           adsClick,
-          authorizedAt: outcome.transition.createdAt
+          authorizedAt: timestampMillisecondsFromIsoUtc(outcome.transition.createdAt)
         });
       }
       return outcome.transition;

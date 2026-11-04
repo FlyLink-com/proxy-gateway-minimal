@@ -42,9 +42,13 @@ Outbox rows are not deleted by this operation. They contain transaction/order re
 - When the feature gate is off, reads return `unknown`, writes are no-ops, and no consent schema is created.
 - No production database is opened or migrated by this Draft PR. No deployment or flag change is part of this work.
 
-## Frontend integration dependency
+## Browser and Portal consent boundaries
 
-PR #815's consent UI must call the Portal endpoint after an authenticated account is available and hydrate the server decision before attempting click-ID measurement. Until that integration is merged and verified, the backend fails closed: a client preference alone cannot authorize click-ID persistence.
+- The public-site preference is browser-scoped and remains in the site consent cookie. Only the public-site surface reads or writes that cookie.
+- Portal account consent is account-scoped and authoritative only through the authenticated Portal endpoints. Portal hydration and account-choice submission must never write the public-site cookie.
+- The two decisions are independent: public-site consent is required before capturing and handing off a click ID; Portal account consent is separately required before the server persists a purchase claim. A browser preference alone never authorizes a server-side claim.
+- The Portal UI hydrates the account decision after authentication and keeps the current decision in page memory for purchase gating. A denied or unknown server decision clears the Portal click handoff without changing the site preference.
+- The deferred wallet-first path exposes the committed transition timestamp as canonical UTC ISO text. The store strictly converts that value to epoch milliseconds before comparing it with the consent ledger's numeric timestamp; malformed values fail closed. A grant later than the purchase transaction cannot authorize that order.
 
 ## Validation
 
@@ -54,6 +58,8 @@ The source tests use only in-memory SQLite databases and synthetic identifiers. 
 - authenticated Portal account scoping;
 - rejection of client-supplied account references and non-boolean decisions;
 - server-side grant as a prerequisite for click-ID persistence;
+- deferred wallet-first timestamp normalization, including rejection of a grant later than the purchase transaction;
+- independent Portal account consent and public-site browser preference, including hydration and submission without cross-writing;
 - revocation redaction of claims and bindings;
 - stopping pending outbox rows;
 - aggregate-only revocation results and idempotent repeated withdrawal.

@@ -73,10 +73,72 @@ describe("Ads consent preference panel", () => {
     expect(await screen.findByText("当前状态：尚未选择")).toBeInTheDocument();
     expect(screen.getByText(/账户级授权由服务器保存/u)).toBeInTheDocument();
     expect(client.getConsent).toHaveBeenCalledWith({ sessionRef });
+    expect(readAdsUserDataConsent()).toBe("granted");
     expect(readPortalAdsClickForPurchase(sessionRef)).toBeNull();
   });
 
+  test("Portal server grant does not overwrite an independent site denial", async () => {
+    expect(setAdsUserDataConsent("denied")).toBe(true);
+    const client: PortalAdsConsentClient = {
+      getConsent: vi.fn(async () => ({
+        decision: "granted",
+        adUserData: true,
+        adPersonalization: false,
+        updatedAt: 1_798_000_000_000
+      })),
+      setConsent: vi.fn(async () => ({
+        decision: "denied",
+        adUserData: false,
+        adPersonalization: false,
+        updatedAt: Date.now()
+      }))
+    };
+
+    render(
+      <AdsConsentPreferencePanel
+        locale="zh"
+        surface="portal"
+        sessionRef={sessionRef}
+        adsConsentClient={client}
+      />
+    );
+
+    expect(await screen.findByText("广告衡量：已允许")).toBeInTheDocument();
+    expect(readAdsUserDataConsent()).toBe("denied");
+  });
+
+  test("Portal server denial does not overwrite an independent site grant", async () => {
+    expect(setAdsUserDataConsent("granted")).toBe(true);
+    const client: PortalAdsConsentClient = {
+      getConsent: vi.fn(async () => ({
+        decision: "denied",
+        adUserData: false,
+        adPersonalization: false,
+        updatedAt: 1_798_000_000_000
+      })),
+      setConsent: vi.fn(async () => ({
+        decision: "granted",
+        adUserData: true,
+        adPersonalization: false,
+        updatedAt: Date.now()
+      }))
+    };
+
+    render(
+      <AdsConsentPreferencePanel
+        locale="zh"
+        surface="portal"
+        sessionRef={sessionRef}
+        adsConsentClient={client}
+      />
+    );
+
+    expect(await screen.findByText("广告衡量：未允许")).toBeInTheDocument();
+    expect(readAdsUserDataConsent()).toBe("granted");
+  });
+
   test("Portal submits a choice and only reflects it after the server confirms", async () => {
+    expect(setAdsUserDataConsent("denied")).toBe(true);
     const client: PortalAdsConsentClient = {
       getConsent: vi.fn(async () => ({
         decision: "unknown",
@@ -105,6 +167,7 @@ describe("Ads consent preference panel", () => {
     fireEvent.click(screen.getByRole("button", { name: "允许广告转化衡量" }));
     expect(await screen.findByText("广告衡量：已允许")).toBeInTheDocument();
     expect(client.setConsent).toHaveBeenCalledWith({ sessionRef, adUserData: true });
+    expect(readAdsUserDataConsent()).toBe("denied");
   });
 
   test("Portal fails closed when the server consent read is unavailable", async () => {
