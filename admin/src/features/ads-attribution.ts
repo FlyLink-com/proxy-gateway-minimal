@@ -105,10 +105,12 @@ export function setPortalAdsServerConsent(sessionRef: string, next: AdsUserDataC
     clearPortalAdsServerConsent();
     return;
   }
-  if (portalAdsConsentSessionRef !== normalizedSessionRef) clearPortalAdsClick();
+  if (portalAdsConsentSessionRef && portalAdsConsentSessionRef !== normalizedSessionRef) {
+    clearPortalAdsClick();
+  }
   portalAdsConsentSessionRef = normalizedSessionRef;
   portalAdsServerConsent = next;
-  if (next !== "granted") clearPortalAdsClick();
+  if (next === "denied") clearPortalAdsClick();
 }
 
 export function clearPortalAdsServerConsent(sessionRef?: string) {
