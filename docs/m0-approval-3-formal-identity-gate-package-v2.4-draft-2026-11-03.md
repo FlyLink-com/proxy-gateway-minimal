@@ -1015,4 +1015,4 @@ Snapshot 的 0-byte WAL / transient SHM 是 $WORK 内 SQLite 只读协调残留�
 - M0 最终状态：`BLOCKED`（当前状态；不得预判解除）
 - Yi 最终裁定：____________________ 日期：____________________
 
-**当前结论：v2.4 执行包已达到 READY_FOR_FIRST_LAYER_REVIEW / SIGNABLE：R8 离线验收与 18 项冻结包已完成并被选为唯一正式签署候选；执行包与决策附录的 Snapshot sidecar 合同已对齐；2026-11-04 完整文档静态复核及 R8 runner harness 补充证据复核均 PASS。Yi 第一层执行包签署已完成（2026-11-04）；第二层一次性正式 Gate 授权已生效，窗口为 2026-11-04T01:11:56-08:00 至 2026-11-05T01:11:56-08:00（PST）；正式 Gate 尚未执行。因此 M0 继续 BLOCKED，本包不构成生产放行。因此 M0 继续 BLOCKED，本包不构成生产放行。**
+**当前结论：v2.4 执行包已达到 READY_FOR_FIRST_LAYER_REVIEW / SIGNABLE：R8 离线验收与 18 项冻结包已完成并被选为唯一正式签署候选；执行包与决策附录的 Snapshot sidecar 合同已对齐；2026-11-04 完整文档静态复核及 R8 runner harness 补充证据复核均 PASS。Yi 第一层执行包签署已完成（2026-11-04）；第二层一次性正式 Gate 授权已生效，窗口为 2026-11-04T01:11:56-08:00 至 2026-11-05T01:11:56-08:00（PST）；正式 Gate 尚未执行。因此 M0 继续 BLOCKED，本包不构成生产放行。**
