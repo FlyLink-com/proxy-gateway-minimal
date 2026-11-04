@@ -85,6 +85,61 @@ function runWithSourceFingerprint(helper, args, dbPath) {
   return result;
 }
 
+function snapshotFingerprint(dbPath) {
+  const main = pathFingerprint(dbPath);
+  assert.equal(main?.kind, "file", "snapshot main DB must be a regular non-symlink file");
+  const wal = pathFingerprint(dbPath + "-wal");
+  const shm = pathFingerprint(dbPath + "-shm");
+  assertSafeSidecarOrAbsent(dbPath + "-wal");
+  assertSafeSidecarOrAbsent(dbPath + "-shm");
+  return { main, wal, shm };
+}
+
+function runWithSnapshotFingerprint(helper, args, dbPath) {
+  const before = snapshotFingerprint(dbPath);
+  const result = runJson(helper, args);
+  const after = snapshotFingerprint(dbPath);
+
+  assert.deepEqual(
+    after.main,
+    before.main,
+    "snapshot census must not change main DB size, mtimeNs, or SHA-256"
+  );
+
+  // A read-only WAL-aware census may create one empty coordination WAL when
+  // the snapshot had no WAL. No non-empty WAL creation or existing-WAL change
+  // is permitted.
+  if (before.wal === null && after.wal !== null) {
+    assert.equal(after.wal.kind, "file", "snapshot coordination WAL must be a regular non-symlink file");
+    assert.equal(after.wal.size, "0", "only an empty snapshot coordination WAL may be created");
+  } else {
+    assert.deepEqual(
+      after.wal,
+      before.wal,
+      "snapshot census must not change an existing WAL fingerprint"
+    );
+  }
+
+  // SHM is transient SQLite coordination state under the accepted Y-4 / §9.4
+  // contract. Its presence and metadata are observational only; any existing
+  // or newly-created SHM must still be a regular non-symlink file.
+  sourceIntegrityRecords.push({
+    label: helperLabel(helper) + " snapshot census",
+    before,
+    after,
+    emptyWalCoordinationCreated: before.wal === null && after.wal?.kind === "file" && after.wal.size === "0",
+    transientShmObserved: before.shm === null && after.shm?.kind === "file"
+  });
+  return result;
+}
+
+function assertSnapshotCensusSuccess(dbPath) {
+  const result = runWithSnapshotFingerprint(CENSUS_HELPER, [dbPath], dbPath);
+  assert.equal(result.status, 0, "snapshot census failed: " + result.stderr + " " + JSON.stringify(result.payload));
+  assert.equal(result.payload.ok, true);
+  return result.payload;
+}
+
 function assertSafeSidecarOrAbsent(path) {
   const stat = maybeLstat(path);
   if (!stat) return;
@@ -213,7 +268,7 @@ test("M0 helpers protect sidecars and compare schemaDigest across live WAL and b
     "the disposable read-only probe directory must be removed"
   );
 
-  const census = assertHelperSuccess(CENSUS_HELPER, [snapshot]);
+  const census = assertSnapshotCensusSuccess(snapshot);
   assert.equal(census.ok, true);
   assert.equal(Object.hasOwn(census, "schemaVersion"), false, "schemaVersion must not be part of snapshot census identity");
   assert.equal(census.schemaDigest, liveCensus.schemaDigest, "schemaDigest is the sole schema identity fingerprint");
@@ -258,7 +313,7 @@ test("M0 helpers protect sidecars and compare schemaDigest across live WAL and b
   assert.equal(sha256(missingShmForBackup + "-wal"), missingBackupWalHash);
   assertSafeSidecarOrAbsent(missingShmForBackup + "-shm");
   assert.deepEqual(
-    assertHelperSuccess(CENSUS_HELPER, [missingShmSnapshot]),
+    assertSnapshotCensusSuccess(missingShmSnapshot),
     liveCensus,
     "snapshot from WAL source with absent SHM must retain WAL-only rows"
   );
