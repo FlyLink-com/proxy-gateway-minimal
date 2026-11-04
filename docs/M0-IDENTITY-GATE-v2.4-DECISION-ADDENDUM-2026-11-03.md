@@ -33,37 +33,46 @@ This ruling does not authorize writes to the main DB/WAL, configuration, units, 
 - Snapshot helper version alignment: `38ea8e4c88cdc0b91081be6907525f662137e86c`
 - Fixture regression test: `01097ffd1dbbd47869b8acf57e94392ce7772edb`
 
-### Audit remediation candidate (Draft; not dynamically revalidated)
+### R8 selected signing candidate — dynamic acceptance and frozen evidence
 
-- Branch: `feat/m0-identity-gate-v2-4-audit-remediation-20261103`
-- Helper/test source commit: `8dd5e321a5ca1a1f07e89a1d75cdc93cacfd6479`
-- Census Git blob SHA-1: `b42bd54674d456fa32df7146f376a983cc393e73`
-- Snapshot Git blob SHA-1: `f96127476ce842310d394ab9c39a5d75ae5e5034`
-- Fixture test Git blob SHA-1: `233d072c7a0b5bd7d3a9cc0f93ededb9c68d3688`
-- Changes: main DB path is lstat-checked before SQLite open, immediately after open, after census/Backup, and after close; fixture records DB/WAL size, mtimeNs and SHA-256 before/after each helper call; main DB symlink and non-regular path rejection cases are added.
-- Candidate is Draft only. Three file SHA-256 values, fixed-stack dynamic test outputs, new manifest/tarball, and second independent review remain pending.
+- Selected line: R8, explicitly confirmed by Yi on 2026-11-03 PST as the sole formal signing candidate. R6 remains a read-only historical freeze; it is not deleted, overwritten, or treated as the current candidate.
+- Branch: feat/m0-identity-gate-v2-4-audit-remediation-20261103.
+- R8 HEAD: 9b4bff888e6eb7b4c4545b1f005a32e24855ab9e; relative to 5ecee088c8a2d926ede05d24f860f20797f4dd48, ahead 1 / behind 0; the sole commit changes only server/tests/m0-gate-helper-fixture.test.mjs (+57 / -2). The two helpers are unchanged from R7.
+- Helper/Test SHA-256:
+  - Census: 3351443a84f7ff0b99ddde73bb8defc28a6fc3226935a1719ef216e4a5d7056c
+  - Snapshot: fb3ea4a3bcb91f878e39b30a2c45be1ec78003c10aa710cef3270e8d8a5010f0
+  - Fixture test: 12c8dd1722fe6ef129f7a6177a76d4e80a087ab1dd4f24ea302aab402f1f9e8c
+- Fixed-stack R8 dynamic results: helper fixture PASS (exit 0, 1/1); original WAL runner PASS (ok=true, failures=[]); direct census PASS with no schemaVersion field and both equality flags true. Runtime stack: Node v22.23.1 / better-sqlite3 12.10.0 / SQLite 3.53.1.
+- R8 raw output SHA-256: helper-test a4d910d8d69acaee1bcbd8cadea1decc9c1c286eaced6bf16e6163df4d240a16; WAL runner 938545287c4c52a15e782f2c148b15326a9936584b8f911669990b4129a70254; census ddaef37761f35af06b4f5a3dda84b5dd8b69521bdb53a403eb0b088293e27921. The census raw output includes the VM's Node UNDICI proxy warning; that warning is not part of the helper JSON.
+- R8 18-item manifest/tarball: m0-identity-gate-v2-4r-bundle-20261103.tar.gz, 50,190 bytes, SHA-256 6de61f665174106fc6a22fa45e011b14b084094380a8445239c1cbba10873a22; sha256sum -c 18/18 and independent extraction review 18/18 PASS. The 18-item manifest contains the R3 historical raw outputs; the three R8 raw outputs above are separate supplementary evidence, not manifest payloads.
+- R6 historical archive remains unchanged: 48,570 bytes, SHA-256 a5600dbab180167a8bd6f27474bf491637c37044014f36b0c806cc3e60ba6da7.
 
-Full execution package: `docs/m0-approval-3-formal-identity-gate-package-v2.4-draft-2026-11-03.md`.
+### R5–R8 execution and BWH access disclosure
 
-Files changed:
-- `scripts/m0-gate-census.mjs`
-- `scripts/m0-gate-snapshot.mjs`
-- `server/tests/m0-gate-helper-fixture.test.mjs`
+- R5: BWH fixed stack, isolated synthetic $WORK only; WAL runner and direct census PASS; helper fixture failed because the cookie probe opened the snapshot itself and left a sidecar. No production DB read or formal Gate.
+- R6: BWH fixed stack, isolated synthetic $WORK only; helper fixture, WAL runner and census all PASS; R6 archive frozen. No production DB read or formal Gate.
+- R7: isolated VM helper fixture failed because snapshot census created an absent→0-byte WAL while the main DB fingerprint stayed unchanged. During root-cause reproduction, one synthetic fixture was also run in a dedicated BWH fixture directory; this BWH access was disclosed in the R7 receipt, and the directory was deleted and verified absent. No production DB read or formal Gate.
+- R8: isolated VM only; no BWH connection. The first stage copy contained residue from a prior runner work directory and exited 2 before running the tests; after cleaning to a pristine stage, the full run passed. This corrected first attempt is disclosed, not hidden.
 
-The new fixture asserts that live and snapshot SQLite schema cookies differ, that neither census output contains `schemaVersion`, and that `schemaDigest` and all remaining census fields match.
+### R8 Snapshot sidecar contract clarification
+
+R8 proved that a Backup API snapshot has no -wal/-shm sidecars immediately after creation, but a subsequent normal read-only snapshot census may create an absent→0-byte regular WAL and a transient regular SHM while leaving the snapshot main DB bytes/mtime/SHA-256 unchanged. The execution package must therefore scope the “no sidecar” check to the instant after Backup API completion and before the first census. After census, only an absent or 0-byte regular WAL and an absent or regular non-symlink SHM are allowed. This local $WORK snapshot exception does not apply to the production Source DB/WAL: production main DB/WAL presence and fingerprints remain unchanged, and the production exception is limited to transient regular SHM coordination.
 
 ## Required before first-layer review
 
-1. Review the current Draft helper source changes and the fixture assertions; verify main DB lstat checks around the SQLite lifecycle and DB/WAL size/mtimeNs/SHA-256 stability coverage.
-2. Run `node --check` on all three files and the complete fixture suite on the fixed stack: Node `v22.23.1`, better-sqlite3 `12.10.0`, SQLite `3.53.1`. Current authorization does not permit BWH access, CI, or dependency installation, so this remains pending until a permitted fixed-stack environment is available.
-3. Capture three new raw outputs from the current remediation commit; do not reuse R6 outputs as evidence for the changed source.
-4. Preserve the R6 18-item manifest/tarball as historical. Recompute current helper/test SHA-256 and create a new 18-item manifest/tarball only after the current dynamic suite passes.
-5. Complete independent review of the current source, package section references, runner harness binding/cleanup evidence, and new archive. Only then return to Yi for first-layer package signature.
+1. Complete the v2.4 execution-package and this addendum's Snapshot sidecar contract alignment (§6.4.2 / §7 / §9.4); do not modify either helper or checker.
+2. Re-read both revised documents and run document-only static checks; calculate and record their new SHA-256 values after the final byte-level content is fixed.
+3. Preserve the R8 18-item manifest/tarball and its three separately hashed raw outputs unchanged. Preserve the R6 18-item manifest/tarball as historical evidence.
+4. Keep the R8 runner harness version/hash and exact post-run realpath/cleanup record as an explicit open evidence item unless a source receipt supplies it; do not infer it from R6/R7 cleanup records.
+5. Only after the above document checks are complete, return the fixed package and its external SHA-256 to Yi for the first-layer execution-package signature. First-layer signature does not authorize BWH access or the formal Gate.
+
 
 ## Authorization boundary
 
-- Authorized for this round: edits to the two helpers, fixture test, and v2.4 Draft execution/decision documents on the GitHub Draft branch only.
-- Not authorized: CI/workflows, BWH connection or production DB access, production snapshot, formal Gate, merge, Ready transition, deployment, or changes to services/configuration/Timer/Collector/retention.
-- No BWH connection, file transfer, production DB read, production snapshot, or formal Gate was performed by the current remediation commits.
-- No CI workflow was triggered. The branch remains Draft.
-- M0 remains `BLOCKED`; first-layer signature and the separate one-time second-layer Gate authorization remain ungranted.
+- R8 was dynamically tested only in an isolated VM. R5/R6 used the BWH fixed stack only for isolated synthetic fixtures; R7 included one disclosed BWH synthetic-fixture reproduction. No round performed a production DB read, production snapshot, or formal Identity Gate.
+- Current user-confirmed scope: update only the v2.4 execution package and this decision addendum on the existing GitHub Draft branch to align the R8 Snapshot sidecar contract and signing-line evidence.
+- Not authorized: Helper/Checker changes, CI/workflows, BWH connection or production DB access, production snapshot, formal Gate, merge, Ready transition, deployment, service/configuration/Timer/Collector/retention changes, or JP-01 instance creation/traffic.
+- No CI workflow was triggered in this document-only update. The branch remains Draft.
+- M0 remains BLOCKED; first-layer signature and the separate one-time second-layer Gate authorization remain ungranted.
+
+
