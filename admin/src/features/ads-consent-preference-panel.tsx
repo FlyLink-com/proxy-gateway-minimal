@@ -4,6 +4,7 @@ import {
   clearPortalAdsServerConsent,
   isAdsClickBindingEnabled,
   readAdsUserDataConsent,
+  setAdsUserDataConsent,
   setPortalAdsServerConsent,
   type AdsUserDataConsent
 } from "./ads-attribution";
