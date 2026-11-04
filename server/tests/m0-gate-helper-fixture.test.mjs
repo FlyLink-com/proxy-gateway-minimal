@@ -301,7 +301,9 @@ test("M0 helpers protect sidecars and compare schemaDigest across live WAL and b
     symlinkSync(source, symlinkDb);
     const symlinkDest = helper === SNAPSHOT_HELPER ? join(dir, "main-symlink-rejected.sqlite") : undefined;
     const symlinkArgs = symlinkDest ? [symlinkDb, symlinkDest] : [symlinkDb];
+    const sourceBeforeSymlinkReject = sourceFingerprint(source);
     const symlinkResult = runJson(helper, symlinkArgs);
+    assertSourceFingerprintUnchanged(source, sourceBeforeSymlinkReject, helper + " main DB symlink rejection");
     assert.equal(symlinkResult.status, 1);
     assert.deepEqual(symlinkResult.payload, { ok: false, code: expectedCode });
     assert.equal(lstatSync(symlinkDb).isSymbolicLink(), true, "main DB symlink must remain untouched");
@@ -310,7 +312,9 @@ test("M0 helpers protect sidecars and compare schemaDigest across live WAL and b
     mkdirSync(nonRegularDb);
     const nonRegularDest = helper === SNAPSHOT_HELPER ? join(dir, "main-nonregular-rejected.sqlite") : undefined;
     const nonRegularArgs = nonRegularDest ? [nonRegularDb, nonRegularDest] : [nonRegularDb];
+    const sourceBeforeNonRegularReject = sourceFingerprint(source);
     const nonRegularResult = runJson(helper, nonRegularArgs);
+    assertSourceFingerprintUnchanged(source, sourceBeforeNonRegularReject, helper + " main DB non-regular rejection");
     assert.equal(nonRegularResult.status, 1);
     assert.deepEqual(nonRegularResult.payload, { ok: false, code: expectedCode });
     assert.equal(lstatSync(nonRegularDb).isDirectory(), true, "non-regular main DB path must remain untouched");
