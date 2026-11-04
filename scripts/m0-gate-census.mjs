@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// M0 formal Identity Gate — census helper v2.
+// M0 formal Identity Gate — census helper v2.2.
 // Read-only aggregate census of ONE database file (a standalone snapshot, or
 // the production DB via a normal WAL-aware read-only connection — never
 // immutable=1). Every query runs in one BEGIN DEFERRED read transaction so
@@ -9,6 +9,9 @@
 // Output: one JSON line with schemaVersion, schemaDigest, credentialsTotal,
 // six perChannel counts, otherChannelsTotal, accessRequestsTotal, bindingRows,
 // bindingProjectionDigest and successful count-equality flags.
+// Existing -wal/-shm sidecars must be regular, non-symlink files. A missing
+// -shm is allowed; SQLite may create transient coordination state for a
+// read-only WAL connection. The main database and WAL are not intentionally written.
 import { createHash } from "node:crypto";
 import { existsSync, lstatSync } from "node:fs";
 import { isAbsolute } from "node:path";
