@@ -7,6 +7,10 @@ import type {
   PortalWalletFirstCommerceClient
 } from "./commerce";
 import type { PortalWalletClient } from "./wallet";
+import type { PortalAdsConsentClient } from "../ads-attribution-contract";
+export type {
+  PortalAdsConsentClient, PortalAdsConsentDecision, PortalAdsConsentState
+} from "../ads-attribution-contract";
 import type { PortalReferralClient } from "./referrals/referral-client";
 import type {
   PortalRechargeClient,
@@ -536,18 +540,6 @@ export type PortalPasskeyExport = {
     noProductionCredentialMutation: true;
     noRawPrivateKeyReturned: true;
   };
-};
-
-export type PortalAdsConsentDecision = "unknown" | "granted" | "denied";
-export type PortalAdsConsentState = {
-  decision: PortalAdsConsentDecision;
-  adUserData: boolean | null;
-  adPersonalization: false;
-  updatedAt: number | null;
-};
-export type PortalAdsConsentClient = {
-  getConsent(input: { sessionRef: string }): Promise<PortalAdsConsentState>;
-  setConsent(input: { sessionRef: string; adUserData: boolean }): Promise<PortalAdsConsentState>;
 };
 
 export type UserPortalClient = {

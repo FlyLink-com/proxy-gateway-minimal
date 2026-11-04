@@ -35,7 +35,6 @@ import {
 import { ModalFrame } from "../../shared/public/modal-frame";
 import { copyText } from "../../shared/public/clipboard";
 import { errorMessage } from "../../shared/public/errors";
-import { AdsConsentPreferencePanel } from "../ads-consent-preference-panel";
 import { cn } from "../../shared/public/utils";
 import {
   PublicLocaleSwitch,
@@ -1534,11 +1533,18 @@ function downloadPasskeyExport(passkeyExport: PortalPasskeyExport) {
 export function UserPortalPage({
   initialSession,
   paymentRedirect = defaultPaymentRedirect,
-  portalClient
+  portalClient,
+  AdsConsentPanel
 }: {
   initialSession?: PortalSession;
   paymentRedirect?: (url: string) => void;
   portalClient: UserPortalClient;
+  AdsConsentPanel?: ComponentType<{
+    locale?: "zh" | "en" | "auto";
+    surface?: "site" | "portal";
+    sessionRef?: string;
+    adsConsentClient?: NonNullable<UserPortalClient["adsConsent"]>;
+  }>;
   onBackToAdmin?: () => void;
 }) {
   const { locale, setLocale } = usePublicLocalePreference();
@@ -2948,8 +2954,8 @@ export function UserPortalPage({
           "portal-use-main portal-v2-main",
           paymentFlowActive && "portal-v2-main-payment"
         )}>
-          {portalClient.adsConsent ? (
-            <AdsConsentPreferencePanel
+          {portalClient.adsConsent && AdsConsentPanel ? (
+            <AdsConsentPanel
               locale={locale}
               surface="portal"
               sessionRef={portalSession.sessionRef}

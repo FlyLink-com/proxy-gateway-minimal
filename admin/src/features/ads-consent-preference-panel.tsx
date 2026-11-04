@@ -8,7 +8,7 @@ import {
   setPortalAdsServerConsent,
   type AdsUserDataConsent
 } from "./ads-attribution";
-import type { PortalAdsConsentClient } from "./user-portal/user-portal-client";
+import type { PortalAdsConsentClient } from "./ads-attribution-contract";
 
 type PanelLocale = "zh" | "en" | "auto";
 type PanelSurface = "site" | "portal";
