@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
@@ -22,7 +21,7 @@ const CHANNELS = [
 const sha256 = path => createHash("sha256").update(readFileSync(path)).digest("hex");
 
 test("M0 helpers preserve WAL and emit a single-snapshot, aggregate-only census", t => {
-  const dir = mkdtempSync(join(tmpdir(), "m0-gate-helper-fixture-"));
+  const dir = mkdtempSync(join(ROOT, "m0-gate-helper-fixture-"));
   const source = join(dir, "source.sqlite");
   const snapshot = join(dir, "snapshot.sqlite");
   const db = new Database(source);
