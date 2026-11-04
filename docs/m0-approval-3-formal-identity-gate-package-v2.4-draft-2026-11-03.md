@@ -438,8 +438,8 @@ ssh bwh 'test "$(id -u)" = 0 && test "$(id -un)" = root'
 set -euo pipefail
 WORK=/opt/proxy-gateway-minimal-candidate/protected/muse-identity-gate-20261103-v2
 DEPS=/opt/proxy-gateway-minimal-candidate/releases/control-plane-2dea45fcbac1-bwh-20261008/node_modules
-ARCHIVE="$HOME/m0-identity-gate-v2-4r-bundle-20261103.tar.gz"
-REMOTE_ARCHIVE="$WORK/bundle/m0-identity-gate-v2-4r-bundle-20261103.tar.gz"
+test "$(basename "$ARCHIVE")" = "m0-identity-gate-v2-4r-bundle-20261103.tar.gz"
+REMOTE_ARCHIVE="$WORK/bundle/$(basename "$ARCHIVE")"
 
 ssh bwh 'test "$(id -u)" = 0 && test "$(id -un)" = root && test ! -e /opt/proxy-gateway-minimal-candidate/protected/muse-identity-gate-20261103-v2 && test ! -L /opt/proxy-gateway-minimal-candidate/protected/muse-identity-gate-20261103-v2 && install -d -m 700 -o root -g root /opt/proxy-gateway-minimal-candidate/protected/muse-identity-gate-20261103-v2 /opt/proxy-gateway-minimal-candidate/protected/muse-identity-gate-20261103-v2/bundle /opt/proxy-gateway-minimal-candidate/protected/muse-identity-gate-20261103-v2/work'
 scp "$ARCHIVE" "bwh:$REMOTE_ARCHIVE"
