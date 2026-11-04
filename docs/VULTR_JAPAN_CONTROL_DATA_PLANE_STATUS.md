@@ -1,6 +1,6 @@
 # Vultr Japan Control / Data-Plane Status
 
-Last updated: 2026-07-24, UTC.
+Last updated: 2026-11-01, UTC.
 
 ```yaml
 document_metadata:
@@ -8,7 +8,7 @@ document_metadata:
   lifecycle: active
   authority_scope: vultr_japan_control_data_plane_status
   superseded_by: null
-  last_verified_at: 2026-07-24
+  last_verified_at: 2026-11-01
   production_authority: false
 ```
 
@@ -23,9 +23,28 @@ document_metadata:
 >   migration, subscription issuance, traffic activation, or production cutover
 > - Production impact: None
 
-## Current Direction
+## Approved Target Direction (2026-11-01)
 
-The current control/data-plane direction is:
+The project owner has fixed the target architecture: **BWH is the single
+subscription/control plane; the new Vultr Japan child node and Vultr Singapore
+are data-plane capacity.** This supersedes the earlier July 24 direction below
+as the target architecture. Do not reopen this topology choice as a question.
+
+BWH owns account/order state, subscription artifacts and rendering, credential
+lifecycle, desired-state, protected material references, applied receipts, and
+the usage ledger. JP and SGP nodes own protocol runtime capacity and node-local
+runtime/usage evidence only; neither owns customer truth or public Admin.
+
+This is an architecture and documentation update, not a fresh live host,
+release, health, identity, or metering verification. The live BWH release
+identity is bound by the as-run manifest (SHA-256) under the 2026-11-01 ruling,
+with source-commit identity not claimed; the remaining operational
+preconditions remain separate M0 evidence items.
+
+## Historical Direction Snapshot (2026-07-24)
+
+At the 2026-07-24 evidence cutoff, the then-documented control/data-plane
+direction was:
 
 ```text
 Vultr Japan:
@@ -39,7 +58,7 @@ Vultr Japan + Vultr Singapore:
   no new traffic activation or runtime mutation without a separate A-tier gate
 ```
 
-Current production client-facing domains for this lane are under
+The historical client-facing domain records for that lane are under
 `gccwebos.com`. For JP QUIC-based protocols, the rendered client host/SNI and
 the runtime certificate SAN must stay aligned; a subscription render proof alone
 is not enough if the runtime service still presents an older certificate.

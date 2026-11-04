@@ -1448,7 +1448,8 @@ test("admin platform clean edge readiness route is protected and redacts unsafe 
     generatedAt: "2026-05-27T21:40:00.000Z",
     repoState: {
       branchSynced: true,
-      noOpenPrs: true,
+      openPrRefs: [],
+      blockingPrRefs: [],
       projectStateCheckPassed: true
     },
     subscriptionBoundary: {

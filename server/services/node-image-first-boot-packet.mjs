@@ -3,6 +3,7 @@ const ALLOWED_TOP_LEVEL_KEYS = new Set([
   "node",
   "image",
   "controlPlane",
+  "wireguard",
   "runtime",
   "receiptGate",
   "approval",
@@ -29,6 +30,14 @@ const ALLOWED_CONTROL_PLANE_KEYS = new Set([
   "privateAgentRoutePlanned",
   "protectedMaterialInjectPlanned",
   "agentNodeIdentityPlanned"
+]);
+
+const ALLOWED_WIREGUARD_KEYS = new Set([
+  "planRef",
+  "tunnelAddressAssigned",
+  "hostKeyGenerationPlanned",
+  "peerPublicKeyExchangePlanned",
+  "toolsPinnedInImageManifest"
 ]);
 
 const ALLOWED_RUNTIME_KEYS = new Set([
@@ -83,6 +92,29 @@ function safeRef(value) {
   const normalized = text(value);
   if (!normalized) return "";
   if (!SAFE_REF_PATTERN.test(normalized) || SENSITIVE_TEXT_PATTERN.test(normalized)) {
+    throw safePacketError();
+  }
+  return normalized;
+}
+
+// A WireGuard planRef names a plan, never a network address: it must not
+// contain the characters an IPv4/IPv6 address, a CIDR range, or a path
+// would need (dots, colons, slashes). This single rule is shared with
+// the registration record builder (node-registration-ingestion), so a
+// planRef is judged identically on both sides of the registration
+// boundary; the generic safeRef above deliberately stays as-is for the
+// other reference fields.
+export const WG_PLAN_REF_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/;
+
+export function isSafeWireguardPlanRef(value) {
+  const normalized = text(value);
+  return WG_PLAN_REF_PATTERN.test(normalized) && !SENSITIVE_TEXT_PATTERN.test(normalized);
+}
+
+export function safeWireguardPlanRef(value) {
+  const normalized = text(value);
+  if (!normalized) return "";
+  if (!isSafeWireguardPlanRef(normalized)) {
     throw safePacketError();
   }
   return normalized;
@@ -165,6 +197,13 @@ export function buildNodeImageFirstBootPacket(input = {}) {
     "protectedMaterialInjectPlanned",
     "agentNodeIdentityPlanned"
   ]);
+  const wireguardPlanRef = safeWireguardPlanRef((input.wireguard ?? {}).planRef);
+  const wireguardChecks = booleanGroup(input.wireguard, ALLOWED_WIREGUARD_KEYS, [
+    "tunnelAddressAssigned",
+    "hostKeyGenerationPlanned",
+    "peerPublicKeyExchangePlanned",
+    "toolsPinnedInImageManifest"
+  ]);
   const runtime = booleanGroup(input.runtime, ALLOWED_RUNTIME_KEYS, [
     "servicesDisabledInImage",
     "xrayConfigTestPlanned",
@@ -197,6 +236,11 @@ export function buildNodeImageFirstBootPacket(input = {}) {
   addBlockerIf(blockers, !controlPlane.privateAgentRoutePlanned, "private agent route is not planned");
   addBlockerIf(blockers, !controlPlane.protectedMaterialInjectPlanned, "protected material injection is not planned");
   addBlockerIf(blockers, !controlPlane.agentNodeIdentityPlanned, "agent node identity is not planned");
+  addBlockerIf(blockers, !wireguardPlanRef, "wireguard plan ref is required");
+  addBlockerIf(blockers, !wireguardChecks.tunnelAddressAssigned, "wireguard tunnel address is not assigned");
+  addBlockerIf(blockers, !wireguardChecks.hostKeyGenerationPlanned, "wireguard host key generation is not planned");
+  addBlockerIf(blockers, !wireguardChecks.peerPublicKeyExchangePlanned, "wireguard peer public-key exchange is not planned");
+  addBlockerIf(blockers, !wireguardChecks.toolsPinnedInImageManifest, "wireguard tools are not pinned in the image manifest");
   addBlockerIf(blockers, !runtime.servicesDisabledInImage, "services are not confirmed disabled in the image");
   addBlockerIf(blockers, !runtime.xrayConfigTestPlanned, "Xray config-test is not planned");
   addBlockerIf(blockers, !runtime.hysteria2ConfigTestPlanned, "Hysteria2 config-test is not planned");
@@ -223,7 +267,8 @@ export function buildNodeImageFirstBootPacket(input = {}) {
       roleRef,
       channelRefCount: channelRefs.length,
       imageManifestRef,
-      releaseRef
+      releaseRef,
+      wireguardPlanRef
     },
     node: {
       nodeRef,
@@ -238,12 +283,21 @@ export function buildNodeImageFirstBootPacket(input = {}) {
       ...imageChecks
     },
     controlPlane,
+    wireguard: {
+      planRef: wireguardPlanRef,
+      ...wireguardChecks
+    },
     runtime,
     receiptGate,
     approval,
     plannedOperations: [
       {
         id: "review-first-boot-registration-packet",
+        mutation: false,
+        requiresRiskAGate: true
+      },
+      {
+        id: "establish-wireguard-control-tunnel",
         mutation: false,
         requiresRiskAGate: true
       },
@@ -277,6 +331,7 @@ export function buildNodeImageFirstBootPacket(input = {}) {
         "subscriptionUrls",
         "credentials",
         "privateKeys",
+        "wireguardPrivateKeys",
         "customerData",
         "providerApiKeys",
         "sshPrivateKeys"

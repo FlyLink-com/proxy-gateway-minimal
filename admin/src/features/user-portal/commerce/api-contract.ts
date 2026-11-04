@@ -1,3 +1,6 @@
+import type { PortalAdsClickDescriptor } from "../../ads-attribution-contract";
+export type { PortalAdsClickDescriptor } from "../../ads-attribution-contract";
+
 export type PortalCoinType =
   | "bonus_coins"
   | "paid_coins"
@@ -223,6 +226,7 @@ export type PortalCoinCommerceClient = {
     sessionRef: string;
     quoteRef: string;
     idempotencyKey: string;
+    adsClick?: PortalAdsClickDescriptor;
   }): Promise<PortalCoinOrder>;
   getOrder(input: {
     sessionRef: string;
@@ -349,6 +353,7 @@ export type PortalWalletFirstCommerceClient = {
     sessionRef: string;
     quoteRef: string;
     idempotencyKey: string;
+    adsClick?: PortalAdsClickDescriptor;
   }): Promise<PortalDeferredTransition>;
   cancelDeferredTransition(input: {
     sessionRef: string;
