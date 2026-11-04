@@ -35,6 +35,15 @@ function pathExists(path) {
   }
 }
 
+function unsafeMainDb(dbPath) {
+  try {
+    const main = lstatSync(dbPath);
+    return main.isSymbolicLink() || !main.isFile();
+  } catch {
+    return true;
+  }
+}
+
 function unsafeSidecar(dbPath) {
   for (const suffix of ["-wal", "-shm"]) {
     try {
@@ -47,7 +56,7 @@ function unsafeSidecar(dbPath) {
   return false;
 }
 if (!source || !dest || !isAbsolute(source) || !isAbsolute(dest)) fail("args_invalid");
-if (!existsSync(source) || lstatSync(source).isSymbolicLink() || !lstatSync(source).isFile()) fail("source_invalid");
+if (unsafeMainDb(source)) fail("source_invalid");
 if (unsafeSidecar(source)) fail("sidecar_invalid");
 if (pathExists(dest) || pathExists(dest + "-wal") || pathExists(dest + "-shm")) fail("dest_exists");
 
@@ -55,22 +64,34 @@ let db;
 let failureCode;
 try {
   db = new Database(source, { readonly: true, fileMustExist: true });
+  // Revalidate the main DB path after SQLite opens it, then again after the
+  // Backup API operation and after close. No inode-equality assumption is made.
+  if (unsafeMainDb(source)) {
+    throw Object.assign(new Error("source_invalid"), { gateCode: "source_invalid" });
+  }
   if (unsafeSidecar(source)) {
     throw Object.assign(new Error("sidecar_invalid"), { gateCode: "sidecar_invalid" });
   }
   db.pragma("query_only = ON");
   db.pragma("busy_timeout = 2000");
   await db.backup(dest);
+  if (unsafeMainDb(source)) {
+    throw Object.assign(new Error("source_invalid"), { gateCode: "source_invalid" });
+  }
   if (unsafeSidecar(source)) {
     throw Object.assign(new Error("sidecar_invalid"), { gateCode: "sidecar_invalid" });
   }
 } catch (error) {
-  failureCode = error?.gateCode === "sidecar_invalid" ? "sidecar_invalid" : "backup_failed";
+  failureCode = error?.gateCode === "source_invalid" ? "source_invalid"
+    : error?.gateCode === "sidecar_invalid" ? "sidecar_invalid" : "backup_failed";
 } finally {
   try { db?.close(); } catch { /* ignore */ }
 }
+// The connection is closed here. Revalidate the main DB and sidecars once
+// more so path replacement during the full open/backup/close interval fails closed.
+if (unsafeMainDb(source)) failureCode = failureCode || "source_invalid";
+if (unsafeSidecar(source)) failureCode = failureCode || "sidecar_invalid";
 if (failureCode) fail(failureCode);
-if (unsafeSidecar(source)) fail("sidecar_invalid");
 if (!existsSync(dest) || pathExists(dest + "-wal") || pathExists(dest + "-shm")) fail("sidecar_present");
 
 let probeDir;
@@ -101,6 +122,10 @@ try {
 }
 if (probeDir && pathExists(probeDir)) verifyError = verifyError || "probe_cleanup_failed";
 if (verifyError) fail(verifyError);
+
+// The source remains part of the read-only contract through probe cleanup.
+if (unsafeMainDb(source)) fail("source_invalid");
+if (unsafeSidecar(source)) fail("sidecar_invalid");
 
 // Re-check the artifact after the probe copy has been closed and removed.
 // These checks intentionally inspect the original snapshot, never open it.
