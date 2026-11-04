@@ -44,7 +44,7 @@ Outbox rows are not deleted by this operation. They contain transaction/order re
 
 ## Browser and Portal consent boundaries
 
-- The public-site preference is browser-scoped and remains in the site consent cookie. Only the public-site surface reads or writes that cookie.
+- The public-site preference is browser-scoped and remains in the site consent cookie. The public-site UI is the only surface that writes it; capture and handoff code may read it as a browser-side prerequisite. Portal account-consent hydration and submission must never change it.
 - Portal account consent is account-scoped and authoritative only through the authenticated Portal endpoints. Portal hydration and account-choice submission must never write the public-site cookie.
 - The two decisions are independent: public-site consent is required before capturing and handing off a click ID; Portal account consent is separately required before the server persists a purchase claim. A browser preference alone never authorizes a server-side claim.
 - The Portal UI hydrates the account decision after authentication and keeps the current decision in page memory for purchase gating. A denied or unknown server decision clears the Portal click handoff without changing the site preference.
