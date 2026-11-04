@@ -1,7 +1,7 @@
 # M0 Identity Gate v2.4 — Y-3 / Y-4 Decision Addendum
 
 - Date: 2026-11-03 (PST)
-- Status: Draft / REVIEW_PENDING / NOT SIGNABLE
+- Status: Draft / READY_FOR_FIRST_LAYER_REVIEW / SIGNABLE
 - Branch: `feat/m0-identity-gate-v2-4-audit-remediation-20261103`
 - Base helper head before this ruling implementation: `9a90c22f4d3db2a10683b0682f2797d117eafbd5`
 - This addendum records the formal Y-3 and Y-4 rulings. It does not authorize BWH access, production reads, snapshots, or the formal Identity Gate.
@@ -47,6 +47,15 @@ This ruling does not authorize writes to the main DB/WAL, configuration, units, 
 - R8 18-item manifest/tarball: m0-identity-gate-v2-4r-bundle-20261103.tar.gz, 50,190 bytes, SHA-256 6de61f665174106fc6a22fa45e011b14b084094380a8445239c1cbba10873a22; sha256sum -c 18/18 and independent extraction review 18/18 PASS. The 18-item manifest contains the R3 historical raw outputs; the three R8 raw outputs above are separate supplementary evidence, not manifest payloads.
 - R6 historical archive remains unchanged: 48,570 bytes, SHA-256 a5600dbab180167a8bd6f27474bf491637c37044014f36b0c806cc3e60ba6da7.
 
+### R8 runner harness evidence supplement — 2026-11-04
+
+- Supplement receipt: [R8 runner harness evidence supplement](https://drive.google.com/file/d/1MLBuc8G-0PZ0ydNeBLcMdBTYCvWbhbFz/view?usp=drivesdk). It records the original R8 runner realpath as `/home/hatch/m0-gate-fixture-stage-vm-r2/fixtures/wal-fixture-rerun.mjs` and SHA-256 `096ca7e2d7a143e3b454f6153b0e22d1641d65de4e5217fb17a17d83bbf4e112`. The separately available runner and the copy in the R8 frozen tarball are byte-identical (10,355 bytes); the supplementary run log records the same hash.
+- Original R8 VM stage `m0-gate-fixture-stage-vm-r2` was retained as an audit artifact. Its as-left runner workdir realpath is `/home/hatch/m0-gate-fixture-stage-vm-r2/fixtures/wal-rerun-work`; it was not deleted after the original R8 run. This is recorded as retained state, not misrepresented as a successful cleanup.
+- On 2026-11-04, the same runner hash was run in a new pristine stage `m0-gate-fixture-stage-vm-r3`. The raw log records the pre-run fixtures listing and absent workdir, runner exit 0 / `ok=true` / `failures=[]`, runtime Node v22.23.1 / better-sqlite3 12.10.0 / SQLite 3.53.1, post-run workdir inventory, deletion of the workdir and its absence check, followed by deletion and absence check of the supplement stage.
+- Raw log: [r8-runner-harness-evidence-log-2026-11-04.txt](https://drive.google.com/file/d/16-KzUPW44p6ANtExXj8iKECKm0A3GnKs/view?usp=drivesdk), SHA-256 `d1db5ee725461c027eefd14c41e6facc6ed2e2f9b469cd7e5ac69a3f70deefe1`. Raw runner output: [r8-runner-supplement-output-2026-11-04.txt](https://drive.google.com/file/d/1IPD7TT8m2v7_E4GYmgx8A6J9oarvdS00/view?usp=drivesdk), SHA-256 `2b07d1dfc8ab1acc5d2537dca0f3e7c141ecbec18b4e3fdd7af9ccc35c9df373`. Both raw contents were re-fetched and their hashes independently recomputed; both match the receipt.
+- The log discloses a separate version probe run from `$HOME` that failed with MODULE_NOT_FOUND because `better-sqlite3` was not resolvable there. This was not the runner execution; runtime versions are taken from the runner's own output and the prior fixed-stack verification. Preserve this disclosure.
+- The supplement does not modify or rebuild the R8 18-item manifest/tarball and does not replace the original R8 outputs. The r3 cleanup demonstration is separate supplementary evidence; it is not the cleanup history of the retained r2 stage.
+
 ### R5–R8 execution and BWH access disclosure
 
 - R5: BWH fixed stack, isolated synthetic $WORK only; WAL runner and direct census PASS; helper fixture failed because the cookie probe opened the snapshot itself and left a sidecar. No production DB read or formal Gate.
@@ -63,8 +72,8 @@ R8 proved that a Backup API snapshot has no -wal/-shm sidecars immediately after
 1. Snapshot census 后 sidecar 合同已在 v2.4 执行包 §6.4.2 / §7 / §9.4 与本附录之间完成对齐；Helper/Checker 未修改。
 2. 2026-11-04 完整文档静态复核已完成：执行包 15 个 Bash fenced blocks `bash -n` 15/15 PASS；58 个 exit 使用点为 58 个唯一值；§6.4 已显式初始化 DB 路径，并澄清 SHA-256 计算读取字节但不输出/持久化原始内容。两份文档的当前 SHA-256 由 Notion/审批回执外部锚定，不在任一文件内互相嵌入，以避免自引用/互引用循环。
 3. Preserve the R8 18-item manifest/tarball and its three separately hashed raw outputs unchanged. Preserve the R6 18-item manifest/tarball as historical evidence.
-4. The R8 receipt and currently located Notion/Drive records do not contain the runner harness version/hash or exact post-run realpath and cleanup-before/after records. Keep this as an explicit open evidence item; do not infer it from R6/R7 cleanup records.
-5. Full-document static review is complete. Only after the R8 runner-evidence gap is resolved, return the fixed package and its externally anchored SHA-256 to Yi for the first-layer execution-package signature. First-layer signature does not authorize BWH access or the formal Gate.
+4. The R8 runner evidence supplement is now available and independently hash-verified: runner identity/hash and original r2 realpaths/as-left state are recorded; the same runner was instrumented in a pristine r3 stage with pre-run listing, successful output, post-run inventory, workdir cleanup/absence, and supplement-stage cleanup/absence. Preserve the distinction that r2 remains retained and was not cleaned; r3 is a separate controlled supplement run. Do not infer r2 cleanup from r3.
+5. Full-document static review and the R8 runner-evidence supplement review are complete. The package is ready to return to Yi for the first-layer execution-package signature. First-layer signature does not authorize BWH access or the formal Gate.
 
 
 ## Authorization boundary
