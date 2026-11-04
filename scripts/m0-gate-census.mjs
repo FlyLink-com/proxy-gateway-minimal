@@ -27,19 +27,37 @@ function fail(code) {
   process.stdout.write(JSON.stringify({ ok: false, code }) + "\n");
   process.exit(1);
 }
+
+function unsafeSidecar(dbPath) {
+  for (const suffix of ["-wal", "-shm"]) {
+    try {
+      const sidecar = lstatSync(dbPath + suffix);
+      if (sidecar.isSymbolicLink() || !sidecar.isFile()) return true;
+    } catch (error) {
+      if (error?.code !== "ENOENT") return true;
+    }
+  }
+  return false;
+}
 if (!path || !isAbsolute(path)) fail("args_invalid");
 if (!existsSync(path) || lstatSync(path).isSymbolicLink() || !lstatSync(path).isFile()) fail("db_invalid");
+if (unsafeSidecar(path)) fail("sidecar_invalid");
 
 let db;
+let result;
+let failureCode;
 try {
   db = new Database(path, { readonly: true, fileMustExist: true });
+  if (unsafeSidecar(path)) {
+    throw Object.assign(new Error("sidecar_invalid"), { gateCode: "sidecar_invalid" });
+  }
   db.pragma("query_only = ON");
   db.pragma("busy_timeout = 2000");
 
   // better-sqlite3's deferred transaction issues BEGIN DEFERRED. The first
   // SELECT below establishes the read snapshot; all subsequent reads remain
   // pinned to that same snapshot until this callback returns.
-  const result = db.transaction(() => {
+  result = db.transaction(() => {
     const schemaRows = db.prepare(
       "SELECT type, name, tbl_name, COALESCE(sql, '') AS sql FROM sqlite_master ORDER BY type, name"
     ).all();
@@ -96,9 +114,17 @@ try {
     };
   }).deferred();
 
-  process.stdout.write(JSON.stringify(result) + "\n");
+  if (unsafeSidecar(path)) {
+    throw Object.assign(new Error("sidecar_invalid"), { gateCode: "sidecar_invalid" });
+  }
 } catch (error) {
-  fail(error?.gateCode === "census_inconsistent" ? "census_inconsistent" : "census_failed");
+  if (error?.gateCode === "census_inconsistent") failureCode = "census_inconsistent";
+  else if (error?.gateCode === "sidecar_invalid") failureCode = "sidecar_invalid";
+  else failureCode = "census_failed";
 } finally {
   try { db?.close(); } catch { /* ignore */ }
 }
+
+if (failureCode) fail(failureCode);
+if (unsafeSidecar(path)) fail("sidecar_invalid");
+process.stdout.write(JSON.stringify(result) + "\n");

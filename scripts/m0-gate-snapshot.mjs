@@ -33,23 +33,43 @@ function pathExists(path) {
     throw error;
   }
 }
+
+function unsafeSidecar(dbPath) {
+  for (const suffix of ["-wal", "-shm"]) {
+    try {
+      const sidecar = lstatSync(dbPath + suffix);
+      if (sidecar.isSymbolicLink() || !sidecar.isFile()) return true;
+    } catch (error) {
+      if (error?.code !== "ENOENT") return true;
+    }
+  }
+  return false;
+}
 if (!source || !dest || !isAbsolute(source) || !isAbsolute(dest)) fail("args_invalid");
 if (!existsSync(source) || lstatSync(source).isSymbolicLink() || !lstatSync(source).isFile()) fail("source_invalid");
+if (unsafeSidecar(source)) fail("sidecar_invalid");
 if (pathExists(dest) || pathExists(dest + "-wal") || pathExists(dest + "-shm")) fail("dest_exists");
 
 let db;
-let backupFailed = false;
+let failureCode;
 try {
   db = new Database(source, { readonly: true, fileMustExist: true });
+  if (unsafeSidecar(source)) {
+    throw Object.assign(new Error("sidecar_invalid"), { gateCode: "sidecar_invalid" });
+  }
   db.pragma("query_only = ON");
   db.pragma("busy_timeout = 2000");
   await db.backup(dest);
-} catch {
-  backupFailed = true;
+  if (unsafeSidecar(source)) {
+    throw Object.assign(new Error("sidecar_invalid"), { gateCode: "sidecar_invalid" });
+  }
+} catch (error) {
+  failureCode = error?.gateCode === "sidecar_invalid" ? "sidecar_invalid" : "backup_failed";
 } finally {
   try { db?.close(); } catch { /* ignore */ }
 }
-if (backupFailed) fail("backup_failed");
+if (failureCode) fail(failureCode);
+if (unsafeSidecar(source)) fail("sidecar_invalid");
 if (!existsSync(dest) || pathExists(dest + "-wal") || pathExists(dest + "-shm")) fail("sidecar_present");
 
 let probeDir;
