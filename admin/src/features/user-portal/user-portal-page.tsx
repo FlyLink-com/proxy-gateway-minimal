@@ -35,6 +35,7 @@ import {
 import { ModalFrame } from "../../shared/public/modal-frame";
 import { copyText } from "../../shared/public/clipboard";
 import { errorMessage } from "../../shared/public/errors";
+import { AdsConsentPreferencePanel } from "../ads-consent-preference-panel";
 import { cn } from "../../shared/public/utils";
 import {
   PublicLocaleSwitch,
@@ -2947,6 +2948,14 @@ export function UserPortalPage({
           "portal-use-main portal-v2-main",
           paymentFlowActive && "portal-v2-main-payment"
         )}>
+          {portalClient.adsConsent ? (
+            <AdsConsentPreferencePanel
+              locale={locale}
+              surface="portal"
+              sessionRef={portalSession.sessionRef}
+              adsConsentClient={portalClient.adsConsent}
+            />
+          ) : null}
           {!paymentFlowActive ? (
             <>
               <header className="portal-use-topbar portal-v2-topbar">
