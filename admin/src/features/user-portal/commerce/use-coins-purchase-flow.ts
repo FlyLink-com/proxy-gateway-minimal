@@ -432,7 +432,7 @@ export function useCoinsPurchaseFlow({
       errorRetryable: false
     }));
     try {
-      const adsClick = readPortalAdsClickForPurchase();
+      const adsClick = readPortalAdsClickForPurchase(activeSessionRef);
       const nextOrder = await activeClient.createOrder({
         sessionRef: activeSessionRef,
         quoteRef: activeQuote.quoteRef,
