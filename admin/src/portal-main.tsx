@@ -2,9 +2,14 @@ import { StrictMode, useMemo } from "react";
 import { createRoot } from "react-dom/client";
 import { UserRegistrationPage } from "./features/user-portal/user-registration-page";
 import { UserPortalPage } from "./features/user-portal/user-portal-page";
+import { AdsConsentPreferencePanel } from "./features/ads-consent-preference-panel";
+import { consumePortalAdsClickHandoff } from "./features/ads-attribution";
 import { isPortalRegistrationPath } from "./features/user-portal/portal-entry";
 import { createHttpUserPortalClient } from "./features/user-portal/user-portal-client";
 import "./portal-static-preserve.css";
+
+// Consume the transient fragment before runtime config parsing or Portal reads hash-based navigation.
+consumePortalAdsClickHandoff();
 
 type PortalImportMeta = ImportMeta & {
   readonly env: {
@@ -37,15 +42,20 @@ const {
   (import.meta as PortalImportMeta).env.VITE_PORTAL_RECHARGE_CONFIG_BINDING,
 );
 
+
 // eslint-disable-next-line react-refresh/only-export-components -- portal entry-point bootstrap; component is mounted once and not a Fast Refresh target
 function PortalOnlyApp() {
   const portalClient = useMemo(() => createHttpUserPortalClient({
     rechargeTrustedActionOriginsJson,
   }), []);
-  if (isPortalRegistrationPath(window.location.pathname)) {
-    return <UserRegistrationPage portalClient={portalClient} />;
-  }
-  return <UserPortalPage portalClient={portalClient} />;
+  return (
+    <>
+      {isPortalRegistrationPath(window.location.pathname)
+        ? <UserRegistrationPage portalClient={portalClient} />
+        : <UserPortalPage portalClient={portalClient} />}
+      <AdsConsentPreferencePanel locale="auto" surface="portal" />
+    </>
+  );
 }
 
 const portalRoot = document.getElementById("root")!;
