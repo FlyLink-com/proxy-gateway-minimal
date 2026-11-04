@@ -61,18 +61,18 @@ R8 proved that a Backup API snapshot has no -wal/-shm sidecars immediately after
 ## Required before first-layer review
 
 1. Snapshot census 后 sidecar 合同已在 v2.4 执行包 §6.4.2 / §7 / §9.4 与本附录之间完成对齐；Helper/Checker 未修改。
-2. 当前文档 SHA-256 已固定：执行包 `9dee405826f4a195a2f4f038552055cd525563f1b82dd490d1cf7fabf19bb90e`；本附录在本次修改前的 SHA-256 为 `4af235618e60c52ecf6c6dfde86a54063734f27084b4107d5e747790f52d086f`，本次修改后必须重新计算。执行包整份静态复核仍待完成；执行包本轮修改的 4 个 shell 片段 `bash -n` 4/4 PASS。
+2. 2026-11-04 完整文档静态复核已完成：执行包 15 个 Bash fenced blocks `bash -n` 15/15 PASS；58 个 exit 使用点为 58 个唯一值；§6.4 已显式初始化 DB 路径，并澄清 SHA-256 计算读取字节但不输出/持久化原始内容。两份文档的当前 SHA-256 由 Notion/审批回执外部锚定，不在任一文件内互相嵌入，以避免自引用/互引用循环。
 3. Preserve the R8 18-item manifest/tarball and its three separately hashed raw outputs unchanged. Preserve the R6 18-item manifest/tarball as historical evidence.
-4. Keep the R8 runner harness version/hash and exact post-run realpath/cleanup record as an explicit open evidence item unless a source receipt supplies it; do not infer it from R6/R7 cleanup records.
-5. Only after the full-document static review and runner-evidence gap are resolved, return the fixed package and its external SHA-256 to Yi for the first-layer execution-package signature. First-layer signature does not authorize BWH access or the formal Gate.
+4. The R8 receipt and currently located Notion/Drive records do not contain the runner harness version/hash or exact post-run realpath and cleanup-before/after records. Keep this as an explicit open evidence item; do not infer it from R6/R7 cleanup records.
+5. Full-document static review is complete. Only after the R8 runner-evidence gap is resolved, return the fixed package and its externally anchored SHA-256 to Yi for the first-layer execution-package signature. First-layer signature does not authorize BWH access or the formal Gate.
 
 
 ## Authorization boundary
 
 - R8 was dynamically tested only in an isolated VM. R5/R6 used the BWH fixed stack only for isolated synthetic fixtures; R7 included one disclosed BWH synthetic-fixture reproduction. No round performed a production DB read, production snapshot, or formal Identity Gate.
-- Current user-confirmed scope: update only the v2.4 execution package and this decision addendum on the existing GitHub Draft branch to align the R8 Snapshot sidecar contract and signing-line evidence.
+- Current user-confirmed scope: review and make document-only corrections to the v2.4 execution package and this decision addendum on the existing GitHub Draft branch; do not change Helper/Checker code or expand the operational scope.
 - Not authorized: Helper/Checker changes, CI/workflows, BWH connection or production DB access, production snapshot, formal Gate, merge, Ready transition, deployment, service/configuration/Timer/Collector/retention changes, or JP-01 instance creation/traffic.
-- No CI workflow was triggered in this document-only update. The branch remains Draft.
+- The 2026-11-04 review and corrections were document-only; no CI workflow was triggered. The branch remains Draft.
 - M0 remains BLOCKED; first-layer signature and the separate one-time second-layer Gate authorization remain ungranted.
 
 
