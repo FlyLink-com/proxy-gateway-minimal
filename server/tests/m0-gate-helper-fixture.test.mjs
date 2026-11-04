@@ -31,6 +31,7 @@ const CHANNELS = [
   "channel-vultr-jp-01-tuic"
 ];
 const sha256 = path => createHash("sha256").update(readFileSync(path)).digest("hex");
+const sourceIntegrityRecords = [];
 
 function maybeLstat(path) {
   try {
@@ -64,17 +65,23 @@ function sourceFingerprint(dbPath) {
 }
 
 function assertSourceFingerprintUnchanged(dbPath, before, label) {
+  const after = sourceFingerprint(dbPath);
   assert.deepEqual(
-    sourceFingerprint(dbPath),
+    after,
     before,
     label + ": source DB/WAL size, mtimeNs, and SHA-256 must remain unchanged"
   );
+  sourceIntegrityRecords.push({ label, before, after });
+}
+
+function helperLabel(helper) {
+  return helper === CENSUS_HELPER ? "census" : "snapshot";
 }
 
 function runWithSourceFingerprint(helper, args, dbPath) {
   const before = sourceFingerprint(dbPath);
   const result = runJson(helper, args);
-  assertSourceFingerprintUnchanged(dbPath, before, helper);
+  assertSourceFingerprintUnchanged(dbPath, before, helperLabel(helper));
   return result;
 }
 
@@ -108,7 +115,7 @@ function assertSidecarRejected(helper, dbPath, dest) {
   const args = dest ? [dbPath, dest] : [dbPath];
   const before = sourceFingerprint(dbPath);
   const result = runJson(helper, args);
-  assertSourceFingerprintUnchanged(dbPath, before, helper + " sidecar rejection");
+  assertSourceFingerprintUnchanged(dbPath, before, helperLabel(helper) + " sidecar rejection");
   assert.equal(result.status, 1, "unsafe sidecar must fail closed");
   assert.deepEqual(result.payload, { ok: false, code: "sidecar_invalid" });
 }
@@ -303,7 +310,7 @@ test("M0 helpers protect sidecars and compare schemaDigest across live WAL and b
     const symlinkArgs = symlinkDest ? [symlinkDb, symlinkDest] : [symlinkDb];
     const sourceBeforeSymlinkReject = sourceFingerprint(source);
     const symlinkResult = runJson(helper, symlinkArgs);
-    assertSourceFingerprintUnchanged(source, sourceBeforeSymlinkReject, helper + " main DB symlink rejection");
+    assertSourceFingerprintUnchanged(source, sourceBeforeSymlinkReject, helperLabel(helper) + " main DB symlink rejection");
     assert.equal(symlinkResult.status, 1);
     assert.deepEqual(symlinkResult.payload, { ok: false, code: expectedCode });
     assert.equal(lstatSync(symlinkDb).isSymbolicLink(), true, "main DB symlink must remain untouched");
@@ -314,7 +321,7 @@ test("M0 helpers protect sidecars and compare schemaDigest across live WAL and b
     const nonRegularArgs = nonRegularDest ? [nonRegularDb, nonRegularDest] : [nonRegularDb];
     const sourceBeforeNonRegularReject = sourceFingerprint(source);
     const nonRegularResult = runJson(helper, nonRegularArgs);
-    assertSourceFingerprintUnchanged(source, sourceBeforeNonRegularReject, helper + " main DB non-regular rejection");
+    assertSourceFingerprintUnchanged(source, sourceBeforeNonRegularReject, helperLabel(helper) + " main DB non-regular rejection");
     assert.equal(nonRegularResult.status, 1);
     assert.deepEqual(nonRegularResult.payload, { ok: false, code: expectedCode });
     assert.equal(lstatSync(nonRegularDb).isDirectory(), true, "non-regular main DB path must remain untouched");
@@ -324,5 +331,6 @@ test("M0 helpers protect sidecars and compare schemaDigest across live WAL and b
   assert.equal(sha256(walPath), walBefore, "all helper paths must preserve source WAL bytes");
   assertSafeSidecarOrAbsent(source + "-wal");
   assertSafeSidecarOrAbsent(source + "-shm");
+  t.diagnostic("source_db_wal_integrity=" + JSON.stringify(sourceIntegrityRecords));
   db.close();
 });
