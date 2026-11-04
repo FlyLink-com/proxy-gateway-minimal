@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// M0 formal Identity Gate — snapshot helper v2.2.
+// M0 formal Identity Gate — snapshot helper v2.4.
 // Creates ONE standalone SQLite snapshot of a live database using the Online
 // Backup API from a READ-ONLY source connection. Integrity/readability checks
 // run against a disposable copy in a temporary sibling directory so SQLite's
