@@ -6,7 +6,7 @@
 - 执行人：Muse；预定路径：B2（`ssh bwh`）
 - 适用范围：Yi 独立审查并签署本执行包，仅表示确认并冻结执行合同；**该签署本身不授权任何 BWH 操作**。只有在签署之后，Yi 再对正式 Identity Gate 作出单独、明确、范围受限的执行授权，才可按本包执行一次封闭 Gate。执行或停止后该次授权耗尽；重跑必须重新取得单独授权。
 
-> **当前状态：REVIEW_PENDING / NOT SIGNABLE（R8 为唯一正式签署候选；完整文档静态复核已完成，但 R8 runner harness/清理证据仍未补齐）。** Yi 已于 2026-11-03 正式裁定 Y-3 选甲、Y-4 选甲，并在第二轮独立终审后明确选择 R8 修订线。R6 的 18 项冻结包保留为历史证据，不覆盖、不删除。R8 helper/test 已在固定依赖栈 Node v22.23.1 / better-sqlite3 12.10.0 / SQLite 3.53.1 上全项 PASS，R8 的 18 项 manifest/tarball 已冻结并经独立复算。两份文档的 Snapshot sidecar 合同已对齐；当前执行包 15 个 Bash 代码块已全部 `bash -n` 15/15 PASS，58 个 exit 使用点现已全部唯一。R8 动态验收仅在隔离 VM 完成，没有连接 BWH 或读取生产 DB；R7 曾有一次 BWH 专用合成 fixture 复现，已在本包如实披露。R8 runner harness 版本/哈希及退出后精确 realpath、清理前后原始记录仍缺。第一层签署仍为空白，第二层正式 Gate 授权仍未授予；M0 继续 BLOCKED。
+> **当前状态：READY_FOR_FIRST_LAYER_REVIEW / SIGNABLE（R8 runner harness 补充证据已收齐并完成独立哈希核验；等待 Yi 第一层签署）。** Yi 已于 2026-11-03 正式裁定 Y-3 选甲、Y-4 选甲，并在第二轮独立终审后明确选择 R8 修订线。R6 的 18 项冻结包保留为历史证据，不覆盖、不删除。R8 helper/test 已在固定依赖栈 Node v22.23.1 / better-sqlite3 12.10.0 / SQLite 3.53.1 上全项 PASS，R8 的 18 项 manifest/tarball 已冻结并经独立复算。两份文档的 Snapshot sidecar 合同已对齐；当前执行包 15 个 Bash 代码块已全部 `bash -n` 15/15 PASS，58 个 exit 使用点现已全部唯一。R8 原始动态验收仅在隔离 VM 完成，没有连接 BWH 或读取生产 DB；R7 曾有一次 BWH 专用合成 fixture 复现，已在本包如实披露。2026-11-04 补充回执固定了 R8 runner 身份与 r2 as-left 状态，并以同一哈希 runner 在全新 r3 stage 完成仪器化运行和清理缺席核验；原 R8 r2 stage 仍作为审计证据保留，不声称其已清理。第一层签署仍为空白，第二层正式 Gate 授权仍未授予；M0 继续 BLOCKED。
 
 ## v2.4 修订裁定与证据来源
 
@@ -25,7 +25,7 @@ R8 固定栈动态验收与 18 项冻结包已完成；执行包 §6.4.2、§7.1
 | 项目 | v2.4 裁定 | 证据状态 |
 | --- | --- | --- |
 | B1 · SHA256SUMS | 修正为从冻结源码重新计算的 64 位值；历史 BWH 12/12 实测不因 v2.1 归档错误而被追溯否定 | Yi 提供三轮执行事实；本轮从 GitHub 冻结文件重新读取并复算 |
-| B2 · runner | R6 与 R8 原始 WAL runner 均报告 PASS（R8：ok=true、failures=[]）；runner 原件 SHA-256 已固定 | R8 回执未提供本轮 harness 版本/哈希及退出后精确 realpath、清理前后原始记录；正式 Gate 前仍须补齐受控清理证据，不把其他轮次的清理记录外推到 R8 |
+| B2 · runner | R6 与 R8 原始 WAL runner 均报告 PASS（R8：ok=true、failures=[]）；runner SHA-256 固定为 `096ca7e2d7a143e3b454f6153b0e22d1641d65de4e5217fb17a17d83bbf4e112` | 2026-11-04 补充回执记录 R8 r2 runner realpath 与 as-left 状态；同一哈希 runner 在全新 r3 stage 的仪器化日志/输出哈希独立复算一致，运行 exit 0，清理后 workdir 与 stage 均验证缺席。r2 stage 保留为审计证据，不声称已清理 |
 | B3 · 数据读取合同 | 明确运行时配置、protected material、精确 channel DB 绑定及 census 的内存读取/比对范围；只允许聚合字段和摘要输出 | 本轮读取冻结 checker 与 census 源码核对 |
 | B4 · WAL/SHM | R8 fixture 已验证 live Source DB/WAL 指纹不变、Snapshot census 后 absent→0-byte WAL 与 transient SHM、symlink/非普通 sidecar 拒绝 | 固定栈动态验收 PASS；Snapshot census 后协调 sidecar 合同已按 §6.4.2 / §7 / §9.4 对齐；2026-11-04 完整文档静态复核 PASS |
 | B5 · 执行身份 | `ssh bwh` 固定 root 登录，使用专用 `id_ed25519_bwh`；不再使用 sudo 包装 | Yi 提供 TOOLS.md 事实及 2026-11-01 两次验证记录；本轮未读取私钥或连接 BWH |
@@ -47,6 +47,15 @@ Yi 提供的历史事实是：三轮 BWH 实际执行的 SHA256SUMS 均为 64 �
 - runner 不是独立可执行的单文件 bundle：它通过相对路径依赖完整仓库中的 `server/services/platform/subscription-control-db.mjs`、冻结 checker、snapshot helper 和既有 `better-sqlite3`。复跑必须在完整仓库 checkout 中进行，checker 固定 `eb83197e`，snapshot helper 使用第三轮固定 helper 版本；不得只把 runner 单独放入空 bundle 后宣称可复现。
 - runner 将合成工作目录固定为 `fixtures/wal-rerun-work`，本体没有自动删除该目录。复跑 harness 必须在退出后校验该路径是本次创建的普通目录、realpath 精确匹配后清理，并验证不存在；若清理失败即 `blocked(fixture_cleanup)`。不得扩大删除路径。
 - runner 的普通只读连接计数证明活动 WAL 下能读到 WAL-only 行，但它没有调用 `m0-gate-census.mjs`；因此它不替代 R2 新增的 live census 动态用例。
+
+### R8 runner harness 补充证据（2026-11-04）
+
+- 补充回执：[R8 runner harness 证据补充回执](https://drive.google.com/file/d/1MLBuc8G-0PZ0ydNeBLcMdBTYCvWbhbFz/view?usp=drivesdk)。回执记录 R8 实际 runner realpath 为 `/home/hatch/m0-gate-fixture-stage-vm-r2/fixtures/wal-fixture-rerun.mjs`；R8 runner、B2 归档 runner 与 R8 冻结包内 runner 的 SHA-256 均为 `096ca7e2d7a143e3b454f6153b0e22d1641d65de4e5217fb17a17d83bbf4e112`。本轮重新读取的 runner（10,355 bytes）与 R8 tarball 内副本逐字节一致；r3 仪器化日志再次记录相同 SHA-256。
+- R8 原 stage `m0-gate-fixture-stage-vm-r2` 的 runner workdir as-left realpath 为 `/home/hatch/m0-gate-fixture-stage-vm-r2/fixtures/wal-rerun-work`，其状态与 R8 回执所述一致。该 VM stage 被保留作审计证据，workdir 未在原 R8 运行后删除；不得将其描述为“清理后缺席”，也不得将 R6/R7 的清理记录外推到 R8。
+- 2026-11-04 以全新 pristine stage `m0-gate-fixture-stage-vm-r3` 对同一 SHA-256 runner 执行仪器化补充运行。运行前 fixtures 清单仅有规范与 runner，workdir 不存在；runner exit 0、`ok=true`、`failures=[]`，自报 Node v22.23.1 / better-sqlite3 12.10.0 / SQLite 3.53.1。运行后记录工作目录文件清单与大小；随后删除该 workdir 并验证缺席，再删除 supplement stage 并验证缺席。
+- 原始日志：[r8-runner-harness-evidence-log-2026-11-04.txt](https://drive.google.com/file/d/16-KzUPW44p6ANtExXj8iKECKm0A3GnKs/view?usp=drivesdk)，SHA-256 `d1db5ee725461c027eefd14c41e6facc6ed2e2f9b469cd7e5ac69a3f70deefe1`；runner 原始输出：[r8-runner-supplement-output-2026-11-04.txt](https://drive.google.com/file/d/1IPD7TT8m2v7_E4GYmgx8A6J9oarvdS00/view?usp=drivesdk)，SHA-256 `2b07d1dfc8ab1acc5d2537dca0f3e7c141ecbec18b4e3fdd7af9ccc35c9df373`。两份 Drive 原始内容均已重新读取并独立复算，哈希与补充回执一致。
+- 日志披露一次位于 `$HOME` 的独立版本探针因缺少 `better-sqlite3` 而 MODULE_NOT_FOUND；该探针不是 runner 执行，运行栈版本以 runner 自报和既有固定栈核验为准。该瑕疵保留披露，不影响 runner 输出中的 `ok=true` / `failures=[]`。
+- 补充运行不修改 R8 18 项 manifest/tarball，也不覆盖 R8 原始结果；r3 清理演练是独立补充证据，不冒充原 R8 r2 stage 的清理。
 
 ### 原始输出日志的归档口径
 
@@ -174,7 +183,7 @@ R8 18 项 manifest 内固定的是 R3 历史三份 raw output；R8 本轮三份 
 
 **v2.4 Helper/Test 合同实现：** 两个 Helper 在 SQLite 生命周期中复核主 DB 与 sidecar 类型；主 DB/WAL 的 size、mtimeNs、SHA-256 前后断言由 R8 fixture 覆盖。Y-3 以 schemaDigest 作为唯一模式身份；Y-4 对已存在 sidecar 逐个执行 regular-file / non-symlink 检查，不强制 WAL/SHM 成对存在。
 
-**当前状态：** R8 动态验收与归档冻结已完成，第二轮独立终审已选择 R8。执行包与决策附录的 Snapshot census 后 sidecar 合同已对齐，2026-11-04 完整文档静态复核已通过；R8 runner harness/清理证据仍待补齐。第一层签署仍为空白，M0 仍 BLOCKED。
+**当前状态：** R8 动态验收与归档冻结已完成，第二轮独立终审已选择 R8。执行包与决策附录的 Snapshot census 后 sidecar 合同已对齐，2026-11-04 完整文档静态复核已通过；R8 runner harness 补充证据及两份原始文件哈希已复核，已具备第一层签署条件。第一层签署仍为空白，第二层正式 Gate 授权仍未授予，M0 仍 BLOCKED。
 
 ### 2.3 第三轮历史验收记录与 runner 锚点（2026-11-03）
 
@@ -947,10 +956,10 @@ Snapshot 的 0-byte WAL / transient SHM 是 $WORK 内 SQLite 只读协调残留�
 
 回执保存到项目既定 hidden_files/files 位置，并同步 Google Drive「M0 审批与回执」与 Notion 进度页；不得写入凭据或 secret。
 
-### v2.4 签署前核对项与未关闭事项（不得签署）
+### v2.4 第一层签署前核对项（仅剩程序性签署）
 
 1. Snapshot census 后 sidecar 合同已按 R8 证据对齐至 §6.4.2、§7.1–§7.4、§8.1、§9.3–§9.4 及决策附录。2026-11-04 完整文档静态复核已完成；两份文档 SHA-256 统一由 Notion/审批回执外部锚定，不在任一文件中互相嵌入，以避免自引用/互引用循环。任何后续字节修改均须重算并更新外部哈希锚点。
-2. R8 回执未提供本轮 WAL runner harness 版本/哈希及退出后精确 realpath、清理前后原始记录；正式 Gate 前须补齐受控 harness 绑定与清理证据，不能以 R6 或 R7 的清理记录外推 R8。
+2. R8 runner harness 证据链已由 2026-11-04 补充回执闭环：runner SHA-256、R8 r2 执行 realpath 与 as-left 状态均已记录；同一 runner 在全新 r3 stage 的仪器化日志记录运行前清单、exit 0、运行后清单、清理后 workdir/stage 缺席。日志与 runner 输出 SHA-256 已独立复算一致。注意：r2 原 stage 保留作审计证据，未被清理；r3 清理演练是独立补充运行，不得混写。
 3. R8 的三份 raw output 已分别固定 SHA-256，但不属于 R8 18 项 manifest；R8 manifest 中三份 raw output 是 R3 历史原件。两组证据必须保持区分，不得覆盖或混写。
 4. R8 18 项 manifest/tarball 已独立复核 18/18，R6 历史 manifest/tarball 保持不变；不得因本次文档修订重建或覆盖任一冻结包。
 5. Helper/Checker 不在本轮授权修改范围内；本轮复核与修订仅限两份 Draft 文档，不改代码、不触发 CI、不连接 BWH、不读取生产 DB、不执行正式 Gate。
@@ -964,7 +973,7 @@ Snapshot 的 0-byte WAL / transient SHM 是 $WORK 内 SQLite 只读协调残留�
 - 退出码：修订后 58 个 `exit` 使用点为 58 个唯一值；Snapshot A/B 的 sidecar/主 DB 指纹采集失败与策略不满足分别使用不同退出码（90–95 与 77–79 / 83–85 分离）。
 - 发现并修正：§6.4 显式初始化 DB 路径；明确 SHA-256 计算读取字节但不输出原始内容；拆分 6 组重复退出码；移除文档内过期的相互哈希引用，改由 Notion/审批回执外部锚定。
 - 合同复核：Snapshot census 后 sidecar 规则与决策附录一致；R6/R8 冻结包及 R8 三份补充 raw output 的 manifest 外关系保持区分。
-- 结论：文档静态复核 PASS；但 R8 runner harness 版本/哈希、退出后精确 realpath、清理前后原始记录仍未在 R8 回执/已检索的 Notion 与 Drive 证据中找到，仍是第一层签署前置缺口。不得用 R6/R7 清理记录外推 R8。
+- 结论：文档静态复核 PASS；R8 runner harness 补充证据现已收齐。runner 文件与冻结包副本 SHA-256 一致；补充运行日志/输出哈希独立复算一致，运行成功且 r3 清理后 workdir/stage 缺席。R8 原 r2 stage 保留作审计证据，不声称已清理。当前仅待 Yi 第一层签署；第二层 Gate 授权仍单独保留。
 - 边界：仅进行文档读取、静态检查和 Draft 文档修订；未修改 Helper/Checker，未触发 CI，未连接 BWH，未读取生产 DB，未执行正式 Identity Gate。
 
 ### 10.1 Yi 执行包审查/签署（第一层；当前留空）
@@ -978,7 +987,7 @@ Snapshot 的 0-byte WAL / transient SHM 是 $WORK 内 SQLite 只读协调残留�
 - Helper/Test SHA-256：census 3351443a84f7ff0b99ddde73bb8defc28a6fc3226935a1719ef216e4a5d7056c；snapshot fb3ea4a3bcb91f878e39b30a2c45be1ec78003c10aa710cef3270e8d8a5010f0；test 12c8dd1722fe6ef129f7a6177a76d4e80a087ab1dd4f24ea302aab402f1f9e8c。
 - R8 18 项 manifest：18/18 PASS；tarball 50,190 bytes；SHA-256 6de61f665174106fc6a22fa45e011b14b084094380a8445239c1cbba10873a22。R6 历史包保持独立。
 - R8 三份补充 raw output SHA-256：helper-test a4d910d8d69acaee1bcbd8cadea1decc9c1c286eaced6bf16e6163df4d240a16；WAL runner 938545287c4c52a15e782f2c148b15326a9936584b8f911669990b4129a70254；census ddaef37761f35af06b4f5a3dda84b5dd8b69521bdb53a403eb0b088293e27921。三份 R8 raw output 不属于 18 项 manifest。
-- 第二轮独立终审：已选择 R8；Snapshot census 后 sidecar 合同文档对齐已完成；2026-11-04 完整文档静态复核 PASS。R8 runner harness/清理证据仍待补齐。
+- 第二轮独立终审：已选择 R8；Snapshot census 后 sidecar 合同文档对齐已完成；2026-11-04 完整文档静态复核 PASS。2026-11-04 R8 runner harness 补充证据已复核，具备第一层签署条件；Yi 第一层签署仍待完成。
 - Yi 执行包审查/签署：____________________ 日期：____________________
 
 **第一层签署的效力仅为确认 v2.4 执行合同及其固定内容；不授权 BWH 连接、目录创建、文件传输、生产路径读取、生产快照或 Gate 执行。**
@@ -1004,4 +1013,4 @@ Snapshot 的 0-byte WAL / transient SHM 是 $WORK 内 SQLite 只读协调残留�
 - M0 最终状态：`BLOCKED`（当前状态；不得预判解除）
 - Yi 最终裁定：____________________ 日期：____________________
 
-**当前结论：M0 继续 BLOCKED。R8 离线验收与 18 项冻结包已完成并被选为唯一正式签署候选；执行包与决策附录的 Snapshot sidecar 合同已对齐，2026-11-04 完整文档静态复核 PASS；但 R8 runner harness/清理证据仍未补齐。第一层执行包签署、第二层正式 Gate 执行授权和 Gate 本身均未发生；本包不构成生产放行。**
+**当前结论：v2.4 执行包已达到 READY_FOR_FIRST_LAYER_REVIEW / SIGNABLE：R8 离线验收与 18 项冻结包已完成并被选为唯一正式签署候选；执行包与决策附录的 Snapshot sidecar 合同已对齐；2026-11-04 完整文档静态复核及 R8 runner harness 补充证据复核均 PASS。Yi 第一层执行包签署仍待完成；第二层正式 Gate 执行授权和 Gate 本身均未发生。因此 M0 继续 BLOCKED，本包不构成生产放行。**
