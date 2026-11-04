@@ -2,7 +2,6 @@ import { StrictMode, useMemo } from "react";
 import { createRoot } from "react-dom/client";
 import { UserRegistrationPage } from "./features/user-portal/user-registration-page";
 import { UserPortalPage } from "./features/user-portal/user-portal-page";
-import { AdsConsentPreferencePanel } from "./features/ads-consent-preference-panel";
 import { consumePortalAdsClickHandoff } from "./features/ads-attribution";
 import { isPortalRegistrationPath } from "./features/user-portal/portal-entry";
 import { createHttpUserPortalClient } from "./features/user-portal/user-portal-client";
@@ -53,7 +52,6 @@ function PortalOnlyApp() {
       {isPortalRegistrationPath(window.location.pathname)
         ? <UserRegistrationPage portalClient={portalClient} />
         : <UserPortalPage portalClient={portalClient} />}
-      <AdsConsentPreferencePanel locale="auto" surface="portal" />
     </>
   );
 }
