@@ -1,12 +1,13 @@
 #!/usr/bin/env node
-// M0 formal Identity Gate — snapshot helper v2.1.
+// M0 formal Identity Gate — snapshot helper v2.2.
 // Creates ONE standalone SQLite snapshot of a live database using the Online
 // Backup API from a READ-ONLY source connection. Integrity/readability checks
 // run against a disposable copy in a temporary sibling directory so SQLite's
 // WAL-mode read-only probe can never create sidecars beside the snapshot.
 // Usage: node m0-gate-snapshot.mjs <sourceDbAbsPath> <destAbsPath>
 // Output: one JSON line {ok, bytes, integrity, journalMode}; never emits paths.
-// Never writes to the source; never uses immutable=1; refuses symlinks,
+// Never writes the source main DB or WAL; SQLite may create transient -shm
+// coordination state when absent. Never uses immutable=1; refuses symlinks,
 // non-absolute paths, and pre-existing destinations.
 import {
   copyFileSync,
