@@ -6,7 +6,7 @@
 - 执行人：Muse；预定路径：B2（`ssh bwh`）
 - 适用范围：Yi 独立审查并签署本执行包，仅表示确认并冻结执行合同；**该签署本身不授权任何 BWH 操作**。只有在签署之后，Yi 再对正式 Identity Gate 作出单独、明确、范围受限的执行授权，才可按本包执行一次封闭 Gate。执行或停止后该次授权耗尽；重跑必须重新取得单独授权。
 
-> **当前状态：REVIEW_PENDING / NOT SIGNABLE。** Yi 已于 2026-11-03 正式裁定 Y-3 选甲、Y-4 选甲。第六轮（R6）在固定依赖栈 Node `v22.23.1` / better-sqlite3 `12.10.0` / SQLite `3.53.1` 上，对当时 helper HEAD `2e55ba3571b71879ad7ed5d718e8678d097682d4` 的 helper fixture、原始 WAL runner 与 census 全部报告 PASS；18 项 manifest 亦已冻结。但第二轮独立复核发现：R6 被测 helper 尚未在 SQLite open 后复核主 DB 路径；R6 fixture 未对 DB/WAL 的 size、mtime 做前后断言；执行包的验收状态此前未随 R6 更新，且打包路径仍沿用旧命名；现已按 R6 历史证据与当前修订状态分别记录，并统一修订为 v2-4。现已在 GitHub Draft 修订分支 `feat/m0-identity-gate-v2-4-audit-remediation-20261103` 补入主 DB 生命周期 lstat 检查、DB/WAL size/mtimeNs/SHA-256 断言及主 DB symlink/非普通文件用例。**R6 PASS 与冻结包是修订前历史证据，不代表当前修订分支已通过固定栈动态重测。** 当前分支仅完成源码/文档 Draft 修订；固定栈重测、新 raw output、新 manifest 和再次独立终审仍待完成。本轮不触发 CI、不连接 BWH、不读取生产 DB、不执行 Gate、不合并、不部署；M0 继续 `BLOCKED`。
+> **当前状态：REVIEW_PENDING / NOT SIGNABLE（R8 已选定为唯一正式签署候选线；文档对齐与复核待完成）。** Yi 已于 2026-11-03 正式裁定 Y-3 选甲、Y-4 选甲，并在第二轮独立终审后明确选择 R8 修订线作为正式签署候选。R6 的 18 项冻结包保留为历史证据，不覆盖、不删除。R8 helper/test 已在固定依赖栈 Node v22.23.1 / better-sqlite3 12.10.0 / SQLite 3.53.1 上全项 PASS，R8 的 18 项 manifest/tarball 已冻结并经独立复算。当前仅待本执行包与决策附录对 Snapshot census 后协调 sidecar 的合同表述对齐、文档静态复核及新文档 SHA-256 固定。R8 动态验收仅在隔离 VM 完成，没有连接 BWH 或读取生产 DB；R7 曾有一次 BWH 专用合成 fixture 复现，已在本包如实披露。第一层签署仍为空白，第二层正式 Gate 授权仍未授予；M0 继续 BLOCKED。
 
 ## v2.4 修订裁定与证据来源
 
@@ -20,19 +20,19 @@
 | Y-4 · inode/SHM 记录 | 删除 sidecar inode 不变及 SHM before/after 哈希作为硬门槛；metadata/hash 可保留为观察项 | helper 实际只保证 sidecar 类型/非符号链接；不得在包文中声称有 inode 级保护 |
 | F1/F2/M1/M2 | 沿用 v2.3 已修正的路径、WAL 证据归属、工作目录权限和 exit-code 分配 | 不回退 v2.3 已通过的静态修正 |
 
-本次 v2.4 文档静态复核将在下方修订完成后执行；本稿不把静态检查等同于固定依赖栈动态测试，也不代表已执行任何 BWH 命令。
+R8 固定栈动态验收与 18 项冻结包已完成；本轮正在对齐 Snapshot census 后 sidecar 的文档合同。文档静态复核将在本次修订完成后执行；不把动态 fixture PASS 等同于正式 Identity Gate，也不代表已执行任何 BWH 生产读取。
 
 | 项目 | v2.4 裁定 | 证据状态 |
 | --- | --- | --- |
 | B1 · SHA256SUMS | 修正为从冻结源码重新计算的 64 位值；历史 BWH 12/12 实测不因 v2.1 归档错误而被追溯否定 | Yi 提供三轮执行事实；本轮从 GitHub 冻结文件重新读取并复算 |
-| B2 · runner | runner 原件 SHA-256 已固定；R6 回执报告 runner PASS、工作目录已删除并验证缺席 | R6 回执未给出 harness 版本/哈希、精确 realpath 与逐项清理记录；该证据细节仍待补齐 |
+| B2 · runner | R6 与 R8 原始 WAL runner 均报告 PASS（R8：ok=true、failures=[]）；runner 原件 SHA-256 已固定 | R8 回执未提供本轮 harness 版本/哈希及退出后精确 realpath、清理前后原始记录；正式 Gate 前仍须补齐受控清理证据，不把其他轮次的清理记录外推到 R8 |
 | B3 · 数据读取合同 | 明确运行时配置、protected material、精确 channel DB 绑定及 census 的内存读取/比对范围；只允许聚合字段和摘要输出 | 本轮读取冻结 checker 与 census 源码核对 |
-| B4 · WAL/SHM | R6 的缺失 SHM、WAL/SHM symlink 与非普通 sidecar 用例 PASS；本轮又补齐主 DB open 后/close 后 lstat | R6 PASS 针对旧 helper；当前 Draft 代码尚未固定栈动态复验 |
+| B4 · WAL/SHM | R8 fixture 已验证 live Source DB/WAL 指纹不变、Snapshot census 后 absent→0-byte WAL 与 transient SHM、symlink/非普通 sidecar 拒绝 | 固定栈动态验收 PASS；Snapshot census 后协调 sidecar 的正式执行合同仍须按 §6.4.2 / §7 / §9.4 对齐 |
 | B5 · 执行身份 | `ssh bwh` 固定 root 登录，使用专用 `id_ed25519_bwh`；不再使用 sudo 包装 | Yi 提供 TOOLS.md 事实及 2026-11-01 两次验证记录；本轮未读取私钥或连接 BWH |
 | B6 · 网络边界 | 唯一网络例外为 Tailscale SSH/SCP 传输通道；Gate/helper 本身不发起网络请求 | 按 Yi 本轮明确口径写入 |
-| R1 · 时间与 mtime | 当前 fixture Draft 增加每次 helper 调用前后 DB/WAL size、mtimeNs、SHA-256 对比 | 代码已修改；固定依赖栈动态复验待完成 |
-| R2 · live census | R6 live census 与 snapshot census 的 schemaDigest/字段一致性 PASS；当前修订保留此逻辑并增加源完整性断言 | R6 是旧 helper 的动态证据；当前修订尚未重跑 |
-| R3 · SHM | R6 缺失 SHM 正常只读路径 PASS；当前 helper 仍允许 transient SHM，并对主 DB/sidecar 做生命周期检查 | 当前修订的固定栈动态行为待重测 |
+| R1 · 时间与 mtime | 四时点和 30 个监视样本均记录 UTC 时间戳；snapshot A/B 记录 size、mtime、SHA-256 | 文档命令待复审，未执行 |
+| R2 · live census | R8 活动 WAL 下 live census 与 Backup snapshot census 逐字段相等，包含 WAL-only 行；输出不含 schemaVersion，仅用 schemaDigest | 固定栈动态验收 PASS；R8 raw census 输出已单独归档并固定 SHA-256 |
+| R3 · SHM | 缺失 SHM 时允许只读打开；SQLite transient SHM 协调不要求 inode/哈希恒定；Snapshot census 后另允许 absent→0-byte WAL | R8 已在固定 SQLite 3.53.1 上实测；Snapshot WAL 例外仅适用于 $WORK 内快照，不扩展到生产 Source DB/WAL |
 
 ### B1 范围说明
 
@@ -43,24 +43,19 @@ Yi 提供的历史事实是：三轮 BWH 实际执行的 SHA256SUMS 均为 64 �
 ### B2 runner 归档与复现边界
 
 - runner：`fixture-wal-rerun-runner-2026-11-03.mjs`；Drive 原件：[runner](https://drive.google.com/file/d/1RxcDho7QzC0ho8fCDGThAQPIAJIV2Ffa/view?usp=drivesdk)。
-- runner 原件为 10,355 bytes / 159 lines；SHA-256：`096ca7e2d7a143e3b454f6153b0e22d1641d65de4e5217fb17a17d83bbf4e112`。
-- R6 回执报告原始 WAL runner `ok=true`、`failures=[]`，执行环境为固定依赖栈；R6 被测 helper 分支 HEAD 为 `2e55ba3571b71879ad7ed5d718e8678d097682d4`，snapshot helper SHA-256 为 `f77fa574ced4fab401f108acf1889fa912157fee80e15ba7964b6aa45d2a04b6`。R6 回执同时声明合成工作目录全程隔离、结束后已删除并验证缺席。
-- runner 不是独立可执行的单文件 bundle：它通过相对路径依赖完整仓库中的 `server/services/platform/subscription-control-db.mjs`、冻结 checker、snapshot helper 和既有 `better-sqlite3`。后续复跑必须在完整仓库 checkout 中进行，checker 固定 `eb83197e`，snapshot helper 必须绑定本次重新审查的 helper commit；不得只把 runner 单独放入空 bundle 后宣称可复现。
-- runner 将合成工作目录固定为 `fixtures/wal-rerun-work`，本体没有自动删除该目录。R6 回执报告清理完成，但未附 harness 版本/哈希、清理前精确 realpath、删除前目录类型检查和删除后路径缺席的独立原始记录。该项仍保持待补；后续 harness 必须校验路径为本次创建的普通目录、realpath 精确匹配后清理并验证不存在，若清理失败即 `blocked(fixture_cleanup)`。不得扩大删除路径。
-- runner 的普通只读连接计数证明活动 WAL 下能读到 WAL-only 行，但它没有调用 `m0-gate-census.mjs`；因此它不替代 live census 动态用例。
-- 本轮授权未包含修改 runner 或 harness；runner 原件与 SHA-256 保持不变。当前修订分支若重新执行 runner，必须使用更新后的 snapshot helper，并重新取得相应离线测试环境；不得把 R6 runner PASS 直接外推为当前分支 PASS。
+- 本轮实际读取的文件为 10,355 bytes / 159 lines；本地 `sha256sum`：`096ca7e2d7a143e3b454f6153b0e22d1641d65de4e5217fb17a17d83bbf4e112`，与 Yi 在 Notion 补档记录的哈希一致。
+- runner 不是独立可执行的单文件 bundle：它通过相对路径依赖完整仓库中的 `server/services/platform/subscription-control-db.mjs`、冻结 checker、snapshot helper 和既有 `better-sqlite3`。复跑必须在完整仓库 checkout 中进行，checker 固定 `eb83197e`，snapshot helper 使用第三轮固定 helper 版本；不得只把 runner 单独放入空 bundle 后宣称可复现。
+- runner 将合成工作目录固定为 `fixtures/wal-rerun-work`，本体没有自动删除该目录。复跑 harness 必须在退出后校验该路径是本次创建的普通目录、realpath 精确匹配后清理，并验证不存在；若清理失败即 `blocked(fixture_cleanup)`。不得扩大删除路径。
+- runner 的普通只读连接计数证明活动 WAL 下能读到 WAL-only 行，但它没有调用 `m0-gate-census.mjs`；因此它不替代 R2 新增的 live census 动态用例。
 
 ### 原始输出日志的归档口径
 
-R6 冻结的 18 项 manifest 仍包含第三轮三份 raw output：`fixture-census-output-r3-2026-11-03.txt`、`fixture-helper-test-output-r3-2026-11-03.txt`、`fixture-wal-rerun-output-r3-2026-11-03.txt`。R6 新生成的三份 raw output 是单独的补充证据，**不在已冻结的 18 项 manifest 内**；不得把它们误写成 manifest 已包含，也不得覆盖第三轮历史原件。R6 新输出文件名及 SHA-256 见 §2.3-R6。
-
-现有 R6 tarball 与 manifest 的哈希仍是有效的历史归档完整性证据，但其中三个 helper/test 文件对应修订前 HEAD `2e55ba3571b71879ad7ed5d718e8678d097682d4`。当前修订分支已改变 helper/test，因此 R6 tarball 不得作为当前修订的签署闭包。待当前分支固定栈动态测试通过后，必须从精确新源码重新计算 helper/test SHA-256，并生成新一版 18 项 manifest/tarball；原 R6 归档保持只读，不覆盖。
+第三轮回执引用以下三个原始输出文件：`fixture-census-output-r3-2026-11-03.txt`、`fixture-helper-test-output-r3-2026-11-03.txt`、`fixture-wal-rerun-output-r3-2026-11-03.txt`。Yi 表示它们与 runner 同存于归档位置。本轮可读取的第三轮回执确认了这些文件名，但连接器未把三个 hidden_files 原始输出作为独立文件 materialize 到当前工作区；这不等于断言它们不存在。v2.4 最终 bundle 构建必须将三份原始输出逐一纳入证据目录并计算哈希，缺任一项则不生成最终归档。
 
 ### 本次授权边界
 
-- 当前明确授权：仅在 GitHub Draft 分支 `feat/m0-identity-gate-v2-4-audit-remediation-20261103` 修改两个 M0 Helper、fixture 测试、v2.4 执行包与其决策附录；允许读取现有 Drive/Notion/GitHub 证据和执行本地静态语法检查。
-- 当前未授权：CI/workflow、BWH 连接、BWH 生产 DB 读取、生产快照、正式 Identity Gate、BWH 目录创建或文件传输、任何服务/Timer/Collector 操作、数据库/配置/retention 写入、JP-01 实例创建或真实流量接入、合并、转 Ready、部署。
-- 固定依赖栈动态测试如需使用 BWH 既有 node_modules 或在 BWH 执行，必须另行授权；当前不得连接 BWH，也不得自行安装/下载/替换依赖来伪造固定栈结果。
+- 已授权：按 Y-3 甲 / Y-4 甲修订 helper/test 与 v2.4 执行包 Draft；读取现有 Drive/Notion/GitHub 证据；执行静态检查与固定依赖栈离线重测准备。
+- 未授权：BWH 连接、BWH 生产 DB 读取、生产快照、正式 Identity Gate 执行、BWH 目录创建或文件传输、任何服务/Timer/Collector 操作、数据库/配置/retention 写入、JP-01 实例创建或真实流量接入。
 - 本轮没有使用 `id_ed25519_bwh`，没有读取或复制私钥；凭据不进入 bundle、Notion 或 Drive。
 - **两级授权不变：** 第一层仅审查/签署执行合同；第二层须由 Yi 另行明确、一次性授权正式 Gate。第一层不蕴含第二层。
 - Tailscale SSH/SCP 是未来正式执行时唯一允许的 BWH 网络传输通道；Gate/helper 不主动发起任何网络请求。
@@ -146,39 +141,42 @@ R6 冻结的 18 项 manifest 仍包含第三轮三份 raw output：`fixture-cens
 | `74125e4ca9a3148652c360e5e0ab91a3cffa97489984ab28210b38550c71bdb2` | `server/services/platform/portal-subscription-link-reset-store.mjs` |
 | `8e247f1b1adf11e0e8f632707b51ee0ccc31830078bc47832ea22959357d2a6e` | `server/services/platform/usage-billing-cycle.mjs` |
 
-### 2.2 辅助程序与测试锚点（历史基线 + R6 冻结候选 + 当前审查修订）
+### 2.2 辅助程序与测试锚点（R6 历史冻结线 + R8 选定修订线）
 
 历史第三轮通过的 helper 基线：
 
-- 分支：`feat/m0-identity-gate-v2-helpers-20261103`
-- 历史测试 HEAD：`aed3d0a049c85684604b678adef74746100baf90`（相对 checker commit `eb83197e`：7 ahead / 0 behind）
-- `scripts/m0-gate-census.mjs` SHA-256：`56bb9d47d6dda64ec9d9d48dfab62bb59ef1fe04cfcc2e6ac3774b53890395e9`
-- `scripts/m0-gate-snapshot.mjs` SHA-256：`a684e1ecc669642fc2b91fcadf4e638636a917d4050c9be71b92e0d3fc0a826b`
-- `server/tests/m0-gate-helper-fixture.test.mjs` SHA-256：`1f1545021dc08fa6de49645b41030809cba5b8eccd682646ba57f3fe241be29a`
+- 分支：feat/m0-identity-gate-v2-helpers-20261103
+- 历史测试 HEAD：aed3d0a049c85684604b678adef74746100baf90（相对 checker commit eb83197e：7 ahead / 0 behind）
+- census SHA-256：56bb9d47d6dda64ec9d9d48dfab62bb59ef1fe04cfcc2e6ac3774b53890395e9
+- snapshot SHA-256：a684e1ecc669642fc2b91fcadf4e638636a917d4050c9be71b92e0d3fc0a826b
+- fixture test SHA-256：1f1545021dc08fa6de49645b41030809cba5b8eccd682646ba57f3fe241be29a
 
-上述三项是第三轮历史通过的 helper 基线，不代表已经包含 v2.4 或当前审查修订。R6 冻结候选另有明确源码锚点：helper 分支 HEAD `2e55ba3571b71879ad7ed5d718e8678d097682d4`；census `1dc5f05276a68ce22ad6c4452358963c5efd3887ad0ccfd7460888ac00aa3d38`；snapshot `f77fa574ced4fab401f108acf1889fa912157fee80e15ba7964b6aa45d2a04b6`；test `676a0a54fce84f1fd17375de28cb0ef6a9f9771fedd7c5e8dd98e4e9c56cb40c`。这些是 R6 已测旧版本的冻结哈希，不可冒充当前修订哈希。
+上述是第三轮历史通过锚点，不代表 v2.4 最终签署闭包。
 
-当前审查修订分支与候选源码锚点：
+**R6 历史冻结线（保留，不再作为签署候选）：**
 
-- 分支：`feat/m0-identity-gate-v2-4-audit-remediation-20261103`，以 R6 helper HEAD `2e55ba3571b71879ad7ed5d718e8678d097682d4` 为基线。
-- Helper/test 源码提交：`8dd5e321a5ca1a1f07e89a1d75cdc93cacfd6479`（仅作为当前 Draft 候选，不代表已通过固定栈动态测试）。
-- 当前 Git blob SHA-1：census `b42bd54674d456fa32df7146f376a983cc393e73`；snapshot `f96127476ce842310d394ab9c39a5d75ae5e5034`；fixture test `233d072c7a0b5bd7d3a9cc0f93ededb9c68d3688`。
-- 当前三个文件的签署用 SHA-256 尚未冻结；须在当前候选代码通过固定依赖栈动态重测后，从确切文件字节重新计算。
+- Helper/Test HEAD：2e55ba3571b71879ad7ed5d718e8678d097682d4
+- 18 项冻结包：48,570 bytes；SHA-256：a5600dbab180167a8bd6f27474bf491637c37044014f36b0c806cc3e60ba6da7；18/18 PASS。
 
-Y-3 / Y-4 正式裁定已写入 v2.4。helper/test 与执行包必须落实以下合同：
+**R8 正式签署候选线（Yi 已确认）：**
 
-1. `m0-gate-census.mjs` 与 `m0-gate-snapshot.mjs` 在 SQLite open 前、open 后、主要读取/Backup 操作后及 close 后，对主 DB 与每个已存在的 `-wal` / `-shm` 执行等价 `lstat`；主 DB 必须为普通文件且非 symlink，已存在的 sidecar 必须分别为普通文件且非 symlink。**不要求 WAL/SHM 成对存在或成对缺失**；单边缺失本身不是 gate failure。
-2. 使用正常 WAL-aware read-only 连接。缺失 SHM 时允许直开；SQLite 可能为 WAL 协调创建 transient SHM。此行为必须在固定 SQLite 3.53.1 上实测并如实记录；不得声称 helper 能阻止 SQLite 创建 SHM，也不得把该 transient SHM 协调误写为 DB/WAL 写入。
-3. helper 在连接打开后、读取/Backup 完成后及连接关闭后重新检查主 DB 与 sidecar 类型/非符号链接状态；不做 inode 相等性断言。主 DB/WAL 的 bytes、size、mtime、SHA-256 必须保持不变；SHM 内容、mtime、inode 或是否从缺失变为存在不构成稳定性硬门槛，但应记录可获得的存在性/类型观察，作为诊断信息。
-4. 活动 WAL writer fixture 保持打开；对 live source DB 直接运行 census，再对 Backup API snapshot 运行 census。两份 census 必须逐字段相等、均包含 WAL-only 行，并明确断言输出不含 `schemaVersion`。测试可读取 raw SQLite `PRAGMA schema_version` 作为 fixture 诊断，确认 live 与 snapshot cookie 不同；该值不得进入 census JSON 或身份指纹。
-5. Census 身份模式只由 `schemaDigest` 表示；`schemaDigest`、六通道计数、总数、`bindingProjectionDigest` 与 equality flags 等其他字段仍须一致。`schemaVersion` 是 SQLite DDL 变更计数器，不是模式内容身份，不得用于 live/snapshot 相等性或稳定指纹。
-6. 动态测试对每次正常 helper 调用记录源 DB 与 WAL 的 size、mtimeNs、SHA-256 前后值；DB/WAL 必须不变。WAL 缺失时记录其缺失状态。SHM 的 metadata/hash 可记录为观察项，但不要求相等或同 inode。
-7. sidecar 用例至少覆盖 WAL 存在而 SHM 缺失、WAL/SHM symlink、WAL/SHM 非普通文件；每个已存在的不安全 sidecar 必须在 SQLite open 前 fail-stop。另须覆盖主 DB 路径本身为 symlink 或非普通文件时 fail-stop；不得把“仅一方存在”本身作为 fail-stop 条件。
-8. 新测试输出不得包含 synthetic refs、UUID、password 或原始行；仅保留聚合计数、等式、错误码和 SHA-256 摘要。
+- 分支：feat/m0-identity-gate-v2-4-audit-remediation-20261103
+- R8 HEAD：9b4bff888e6eb7b4c4545b1f005a32e24855ab9e
+- 相对前一 HEAD 5ecee088c8a2d926ede05d24f860f20797f4dd48：ahead 1 / behind 0；唯一提交仅修改 server/tests/m0-gate-helper-fixture.test.mjs（57 additions / 2 deletions），两个 Helper 未改。
+- census SHA-256：3351443a84f7ff0b99ddde73bb8defc28a6fc3226935a1719ef216e4a5d7056c
+- snapshot SHA-256：fb3ea4a3bcb91f878e39b30a2c45be1ec78003c10aa710cef3270e8d8a5010f0
+- test SHA-256：12c8dd1722fe6ef129f7a6177a76d4e80a087ab1dd4f24ea302aab402f1f9e8c
+- 固定栈动态结果：helper fixture PASS（exit 0，1/1）；原始 WAL runner PASS（ok=true、failures=[]）；直接 census PASS（输出无 schemaVersion，两条等式均为 true）。
+- R8 raw output SHA-256：helper-test a4d910d8d69acaee1bcbd8cadea1decc9c1c286eaced6bf16e6163df4d240a16；WAL runner 938545287c4c52a15e782f2c148b15326a9936584b8f911669990b4129a70254；census ddaef37761f35af06b4f5a3dda84b5dd8b69521bdb53a403eb0b088293e27921。census 原始文件包含 Node UNDICI 代理环境警告行；该警告不属于 helper JSON 输出。
+- R8 18 项冻结包：m0-identity-gate-v2-4r-bundle-20261103.tar.gz，50,190 bytes；SHA-256：6de61f665174106fc6a22fa45e011b14b084094380a8445239c1cbba10873a22；manifest 18/18 PASS，解包独立复核 18/18 PASS。
 
-**未完成项：** R6 在旧 helper HEAD 上的动态测试和 18 项归档均通过，但当前修订分支已改变两个 helper 与 fixture test；R6 的 PASS 不得替代当前修订的固定依赖栈重测。当前 Draft 已补入主 DB 生命周期 lstat 与 DB/WAL size/mtimeNs/SHA-256 断言，仍须在固定 Node `v22.23.1` / better-sqlite3 `12.10.0` / SQLite `3.53.1` 栈上动态复验。当前授权不含 BWH、CI 或依赖安装；因此固定栈重测、当前版本三份 raw output、新 manifest/tarball 与第二轮独立终审均保持待完成。本版仍为 `REVIEW_PENDING / NOT SIGNABLE`。
+R8 18 项 manifest 内固定的是 R3 历史三份 raw output；R8 本轮三份 raw output 是独立补充证据，单独保存并使用上述 SHA-256 锚定，不得声称它们已包含在 18 项 manifest 内。R6 与 R8 两只 tarball 各自绑定各自代码线，均保持只读；R8 被选定不覆盖或删除 R6。
 
-### 2.3 离线验收历史记录与 runner 锚点（第三轮最终回执，2026-11-03）
+**v2.4 Helper/Test 合同实现：** 两个 Helper 在 SQLite 生命周期中复核主 DB 与 sidecar 类型；主 DB/WAL 的 size、mtimeNs、SHA-256 前后断言由 R8 fixture 覆盖。Y-3 以 schemaDigest 作为唯一模式身份；Y-4 对已存在 sidecar 逐个执行 regular-file / non-symlink 检查，不强制 WAL/SHM 成对存在。
+
+**当前状态：** R8 动态验收与归档冻结已完成，第二轮独立终审已选择 R8。当前仅待本执行包与决策附录对 Snapshot census 后的协调 sidecar 规则做文档对齐、完成文档静态复核和固定新文档 SHA-256；第一层签署仍为空白，M0 仍 BLOCKED。
+
+### 2.3 第三轮历史验收记录与 runner 锚点（2026-11-03）
 
 第三轮在 BWH 固定依赖栈上完成，且仅打开 `$WORK` 内合成数据库；没有读取生产 DB、没有创建生产快照、没有执行正式 Gate、没有修改服务或配置。最终回执记录 `$WORK` 已整体删除并验证不存在。
 
@@ -201,17 +199,18 @@ Y-3 / Y-4 正式裁定已写入 v2.4。helper/test 与执行包必须落实以�
 
 **历史执行证据边界：** 本节记录的是 2026-11-03 第三轮已经完成的离线合成测试，不代表 v2.4 新增 live census / schemaDigest / sidecar / SHM 测试已经通过，也不授权生产 Gate。
 
-### 2.3-R6 第六轮离线验收与 18 项 manifest 冻结（2026-11-03）
+### 2.3.1 R5–R8 验收轮次与 BWH 访问边界（2026-11-03）
 
-R6 原始回执：[fixture-test-receipt-r6-2026-11-03.md](https://drive.google.com/file/d/1PylkXKmQqRpbEvLG8NafFz6Ve6l3mLqr/view)。
+| 轮次 | 环境与结果 | 失败/访问披露 |
+|---|---|---|
+| R5 | BWH 固定栈；仅使用隔离的合成 $WORK；WAL runner 与直接 census PASS，helper fixture FAIL | cookie 探针直接打开 snapshot 本体后留下 WAL sidecar，属于测试自干扰；未打开生产 DB，未执行正式 Gate |
+| R6 | BWH 固定栈；仅使用隔离的合成 $WORK；helper fixture、WAL runner、直接 census 全部 PASS；R6 18 项包冻结 | 回执记录 $WORK 结束后已删除并验证缺席；未打开生产 DB，未执行正式 Gate |
+| R7 | 以隔离 VM 为主；helper fixture FAIL，根因为 snapshot census 后出现 absent→0-byte WAL，主 DB 指纹不变 | 根因定位时另在 BWH 专用 fixture 目录做过一次合成数据复现；回执披露该次 BWH 访问，目录已删除并验证缺席；未读取生产 DB、未执行正式 Gate |
+| R8 | 仅在隔离 VM 固定栈完成；helper fixture 1/1 PASS、WAL runner ok=true / failures=[]、直接 census PASS | 首次 stage 副本混入上一轮 runner 工作目录产物，首次退出码 2 且未运行测试；清理为 pristine 后完整重跑 PASS。本轮未连接 BWH |
 
-- 被测 Helper/test HEAD：`2e55ba3571b71879ad7ed5d718e8678d097682d4`；固定栈 Node `v22.23.1` / better-sqlite3 `12.10.0` / SQLite `3.53.1`。
-- Helper/test SHA-256：census `1dc5f05276a68ce22ad6c4452358963c5efd3887ad0ccfd7460888ac00aa3d38`；snapshot `f77fa574ced4fab401f108acf1889fa912157fee80e15ba7964b6aa45d2a04b6`；test `676a0a54fce84f1fd17375de28cb0ef6a9f9771fedd7c5e8dd98e4e9c56cb40c`。
-- R6 动态结果：helper test 1/1 PASS；原始 WAL runner `ok=true` / `failures=[]`；直接 census `ok=true`，`schemaDigest=066d471e...`、`bindingProjectionDigest=b62263ad...` 与历轮一致且输出不含 `schemaVersion`；缺失 SHM 正常 census；WAL/SHM symlink 和非普通文件拒绝；探针残留 0。
-- R6 三份原始输出及 SHA-256：helper-test `54251588cb5cc15b0f8b7e86d2074b563dd565d9b17fbf907943d8de1e8275cf`；WAL rerun `52d1bdae99e3d7701d3962aeb1a51f019cdddee493d5944b4875dfb279350c2a`；census `4a3f9b058a49ade9d1f19488339e9cedbb3f1a7ecff1eb8f9bc1e9ef0844d633`。原件：[helper test](https://drive.google.com/file/d/1uSephZV_qG4_0-4PiyYlhu1rsYegGsdn/view)、[WAL rerun](https://drive.google.com/file/d/1Yi7o_jg5siBV6PHzvYd36BjLXEgZooOW/view)、[census](https://drive.google.com/file/d/11mFRQXX1v4MAWJziDoDYGwdOtxWxU1QP/view)。
-- R6 manifest：18/18 PASS；tarball `m0-identity-gate-v2-4-bundle-20261103.tar.gz`，48,570 bytes，SHA-256 `a5600dbab180167a8bd6f27474bf491637c37044014f36b0c806cc3e60ba6da7`。外部与归档内 SHA256SUMS 字节一致；归档实际为 18 个 payload + 1 个 SHA256SUMS 文件，共 19 个普通文件。原件：[tarball](https://drive.google.com/file/d/1nOKSqs8JPYing-FVBQPGkd4sbhDw9Qli/view)、[SHA256SUMS](https://drive.google.com/file/d/1g_nUkbuVMNY-IEWTjdi5L_NB2x6DxfX3/view)。
-- R6 回执声明 `$WORK` 全程隔离，结束已删除并验证缺席；但未提供 harness 版本/哈希、精确 realpath 与删除前后独立原始记录，按 §B2 仍需补足证据细节。
-- **证据边界：** R6 manifest 中固定的是 R3 三份历史 raw output；R6 新生成的三份输出在 manifest 外单独存放。R6 PASS 与冻结 tarball 都针对上述旧 HEAD；不能作为当前审查修订分支的动态通过证据。当前修订需重新固定栈测试并生成新的原始输出及签署闭包。
+R5/R6 的 BWH 使用范围是专用隔离目录内的合成 fixture，不是生产数据库读取或生产快照。R7 的一次 BWH 合成复现必须作为已发生的 BWH 访问保留披露，不能概括成“所有 R5–R8 均未连接 BWH”。R8 本轮才是完全未连接 BWH 的隔离 VM 验收。
+
+R8 动态输出的 SHA-256 与 R8 回执一致；R8 归档复核确认 tarball SHA-256 为 6de61f665174106fc6a22fa45e011b14b084094380a8445239c1cbba10873a22，外部与内部 SHA256SUMS 字节一致，18 个 payload 项全部 PASS，归档含 19 个普通文件（18 个 payload + SHA256SUMS）。
 
 ### 2.4 运行时依赖基线
 
@@ -256,56 +255,55 @@ Census helper 的实际读取与输出另见 §6.3 / §7：它在一个 `BEGIN D
 
 ## 4. 本机/仓库打包命令（只准备本地 bundle；不连接 BWH）
 
-本节只描述本地准备流程，不连接 BWH、不修改仓库、不触发 CI。最终 bundle 只有在 B4/R2 helper/test 新 commit、所有 SHA-256 和三份第三轮 raw output 均固定后才可生成。
+本节只描述本地准备流程，不连接 BWH、不修改仓库、不触发 CI。R8 的 18 项最终 bundle 已冻结；本节后续仅作为经另行授权后的可复现打包口径。
 
 ### 4.1 固定输入
 
 - Checker commit：`eb83197e47155943087655ff7d4aad7a6c954849`。
-- Helper branch：`feat/m0-identity-gate-v2-4-audit-remediation-20261103`；候选 helper commit `8dd5e321a5ca1a1f07e89a1d75cdc93cacfd6479`。该 commit 仅代表 Draft 源码修订；未完成固定依赖栈动态复验，不得用于第一层签署。
+- Helper/Test branch：feat/m0-identity-gate-v2-4-audit-remediation-20261103；R8 固定 HEAD 9b4bff888e6eb7b4c4545b1f005a32e24855ab9e；三个 Helper/Test SHA-256 见 §2.2。
 - 原始 fixture 规范、完整日志、第三轮回执：沿用 §2.3 的三个固定 SHA-256。
 - runner：`fixture-wal-rerun-runner-2026-11-03.mjs`，SHA-256 `096ca7e2d7a143e3b454f6153b0e22d1641d65de4e5217fb17a17d83bbf4e112`。
-- 三份第三轮 raw output：`fixture-census-output-r3-2026-11-03.txt`、`fixture-helper-test-output-r3-2026-11-03.txt`、`fixture-wal-rerun-output-r3-2026-11-03.txt`。必须从归档原件复制，打包时分别计算 SHA-256；不允许用摘要/截图替代原始文本。
+- 18 项 R8 manifest 仍纳入三份 R3 历史 raw output：fixture-census-output-r3-2026-11-03.txt、fixture-helper-test-output-r3-2026-11-03.txt、fixture-wal-rerun-output-r3-2026-11-03.txt。R8 本轮三份 raw output 不属于该 18 项 manifest，作为补充证据单独保存并使用 §2.2 的 SHA-256；不允许用摘要/截图替代原始文本。
 
 ### 4.2 18 项最终 manifest 结构
 
-最终 `SHA256SUMS` 预期为 18 项：
+R8 最终 SHA256SUMS 为 18 项：
 
 - 8 个冻结 checker 文件；
-- 3 个 v2.4 helper/test 文件（新 commit 与新 SHA 待冻结）；
+- R8 选定 Helper/Test 的 3 个文件（固定 HEAD 9b4bff888e6eb7b4c4545b1f005a32e24855ab9e，三个 SHA-256 见 §2.2）；
 - 原始 fixture 规范、原始 fixture 完整日志、第三轮最终回执 3 项；
 - 归档 runner 1 项；
 - 第三轮原始 census/helper/WAL 输出 3 项。
 
-其中 `portal-subscription-link-reset-store.mjs` 必须使用经冻结源码复算的 64 位 SHA-256：`74125e4ca9a3148652c360e5e0ab91a3cffa97489984ab28210b38550c71bdb2`。v2.1 归档件中的 62 位错误值不得复制到 v2.4。
+R8 归档：m0-identity-gate-v2-4r-bundle-20261103.tar.gz，50,190 bytes，SHA-256 6de61f665174106fc6a22fa45e011b14b084094380a8445239c1cbba10873a22。R6 历史归档 m0-identity-gate-v2-4-bundle-20261103.tar.gz 保持 48,570 bytes / SHA-256 a5600dbab180167a8bd6f27474bf491637c37044014f36b0c806cc3e60ba6da7，不覆盖。
+
+R8 本轮三份 raw output（§2.2 所列）不计入 18 项 manifest；不得将补充证据误写为 bundle payload。独立复核必须对确切 tarball 解包后执行 sha256sum -c SHA256SUMS，并核对外部与内部 SHA256SUMS 字节相同。
+
+其中 portal-subscription-link-reset-store.mjs 必须使用经冻结源码复算的 64 位 SHA-256：74125e4ca9a3148652c360e5e0ab91a3cffa97489984ab28210b38550c71bdb2。v2.1 归档件中的 62 位错误值不得复制到 v2.4.
 
 ### 4.3 打包前置与失败关闭
 
-可信工作站上必须具备完整仓库 clone、冻结 checker commit、经 B4/R2 修订并审查的 helper commit、三份原始 evidence、runner 和三份 raw output。runner 必须放在完整 checkout 的 `fixtures/` 目录中进行复现；不能在不含仓库依赖的空 bundle 中直接运行。运行时需要 checkout 中的 `server/services/platform/subscription-control-db.mjs`、checker、snapshot helper 和固定 `better-sqlite3` 依赖。
-
-以下为打包模板；`HELPER_COMMIT` 与三个 helper/test 的期望 SHA 只能在当前修订分支通过代码复核和固定依赖栈动态测试后填入。任一值仍为 `PENDING` 时，脚本必须停止，不得生成 tarball。R6 的 `a5600dba…` 归档为修订前历史包，不得覆盖或复用为当前签署闭包。
+R8 的 18 项 manifest/tarball 已冻结。以下打包模板仅作为未来经单独授权后的可复现构建口径，不表示本轮需要重新打包，也不得覆盖 R6/R8 任一历史归档。运行时必须使用完整仓库 checkout、冻结 checker commit、R8 helper/test commit、固定 better-sqlite3 依赖和 §2.3.1 所列证据原件；runner 必须放在完整 checkout 的 fixtures/ 目录中，不能在不含仓库依赖的空 bundle 中运行。Evidence/stage/archive 路径必须由执行者显式提供，不从历史 v2-3 路径推断。
 
 ```bash
 set -euo pipefail
 CHECKER_COMMIT=eb83197e47155943087655ff7d4aad7a6c954849
-HELPER_BRANCH=feat/m0-identity-gate-v2-4-audit-remediation-20261103
-HELPER_COMMIT="${HELPER_COMMIT:?set the reviewed v2.4 helper commit}"
-EXPECTED_CENSUS_SHA="${EXPECTED_CENSUS_SHA:?set reviewed census SHA-256}"
-EXPECTED_SNAPSHOT_SHA="${EXPECTED_SNAPSHOT_SHA:?set reviewed snapshot SHA-256}"
-EXPECTED_TEST_SHA="${EXPECTED_TEST_SHA:?set reviewed fixture-test SHA-256}"
+HELPER_COMMIT=9b4bff888e6eb7b4c4545b1f005a32e24855ab9e
+EXPECTED_CENSUS_SHA=3351443a84f7ff0b99ddde73bb8defc28a6fc3226935a1719ef216e4a5d7056c
+EXPECTED_SNAPSHOT_SHA=fb3ea4a3bcb91f878e39b30a2c45be1ec78003c10aa710cef3270e8d8a5010f0
+EXPECTED_TEST_SHA=12c8dd1722fe6ef129f7a6177a76d4e80a087ab1dd4f24ea302aab402f1f9e8c
 REPO="$(git rev-parse --show-toplevel)"
-EVIDENCE_DIR="$HOME/m0-identity-gate-v2-4-evidence-20261103"
-STAGE="$HOME/m0-identity-gate-v2-4-stage-20261103"
-ARCHIVE="$HOME/m0-identity-gate-v2-4-bundle-20261103.tar.gz"
+EVIDENCE_DIR="${EVIDENCE_DIR:?set exact approved R8 evidence directory}"
+STAGE="${STAGE:?set unique R8 stage directory}"
+ARCHIVE="${ARCHIVE:?set R8 archive output path}"
 RUNNER="$EVIDENCE_DIR/fixture-wal-rerun-runner-2026-11-03.mjs"
 
-test "$HELPER_COMMIT" != PENDING
-test "$EXPECTED_CENSUS_SHA" != PENDING
-test "$EXPECTED_SNAPSHOT_SHA" != PENDING
-test "$EXPECTED_TEST_SHA" != PENDING
+test "$HELPER_COMMIT" = 9b4bff888e6eb7b4c4545b1f005a32e24855ab9e
+test "$EXPECTED_CENSUS_SHA" = 3351443a84f7ff0b99ddde73bb8defc28a6fc3226935a1719ef216e4a5d7056c
+test "$EXPECTED_SNAPSHOT_SHA" = fb3ea4a3bcb91f878e39b30a2c45be1ec78003c10aa710cef3270e8d8a5010f0
+test "$EXPECTED_TEST_SHA" = 12c8dd1722fe6ef129f7a6177a76d4e80a087ab1dd4f24ea302aab402f1f9e8c
 git -C "$REPO" cat-file -e "$CHECKER_COMMIT^{commit}"
 git -C "$REPO" cat-file -e "$HELPER_COMMIT^{commit}"
-git -C "$REPO" fetch --no-tags origin "refs/heads/$HELPER_BRANCH:refs/remotes/origin/$HELPER_BRANCH"
-git -C "$REPO" merge-base --is-ancestor "$HELPER_COMMIT" "refs/remotes/origin/$HELPER_BRANCH"
 test -f "$RUNNER" && test ! -L "$RUNNER"
 printf '%s  %s\n' '096ca7e2d7a143e3b454f6153b0e22d1641d65de4e5217fb17a17d83bbf4e112' "$RUNNER" | sha256sum -c -
 for f in \
@@ -395,7 +393,7 @@ sha256sum "$ARCHIVE"
 tar -tzf "$ARCHIVE" | sort
 ```
 
-以上模板仅在新 helper commit、期望哈希和 6 个 evidence 输入均固定后运行。打包完成后，必须再次独立核对 18/18、tarball SHA-256 和文件列表；不得把历史 BWH 12/12 结果写成当前 18/18。
+R8 既有归档的独立复核结果见 §2.2 与 §2.3.1。以上模板仅可用于未来另行授权的重建；执行后必须再次独立核对 18/18、tarball SHA-256 和文件列表，不得把历史 BWH 12/12 结果写成当前 18/18。
 
 ## 5. BWH 传输与工作目录（仅在正式 Gate 单独授权后执行）
 
@@ -440,8 +438,8 @@ ssh bwh 'test "$(id -u)" = 0 && test "$(id -un)" = root'
 set -euo pipefail
 WORK=/opt/proxy-gateway-minimal-candidate/protected/muse-identity-gate-20261103-v2
 DEPS=/opt/proxy-gateway-minimal-candidate/releases/control-plane-2dea45fcbac1-bwh-20261008/node_modules
-ARCHIVE="$HOME/m0-identity-gate-v2-4-bundle-20261103.tar.gz"
-REMOTE_ARCHIVE="$WORK/bundle/m0-identity-gate-v2-4-bundle-20261103.tar.gz"
+ARCHIVE="$HOME/m0-identity-gate-v2-4r-bundle-20261103.tar.gz"
+REMOTE_ARCHIVE="$WORK/bundle/m0-identity-gate-v2-4r-bundle-20261103.tar.gz"
 
 ssh bwh 'test "$(id -u)" = 0 && test "$(id -un)" = root && test ! -e /opt/proxy-gateway-minimal-candidate/protected/muse-identity-gate-20261103-v2 && test ! -L /opt/proxy-gateway-minimal-candidate/protected/muse-identity-gate-20261103-v2 && install -d -m 700 -o root -g root /opt/proxy-gateway-minimal-candidate/protected/muse-identity-gate-20261103-v2 /opt/proxy-gateway-minimal-candidate/protected/muse-identity-gate-20261103-v2/bundle /opt/proxy-gateway-minimal-candidate/protected/muse-identity-gate-20261103-v2/work'
 scp "$ARCHIVE" "bwh:$REMOTE_ARCHIVE"
@@ -483,9 +481,9 @@ node -e 'const Database=require("/opt/proxy-gateway-minimal-candidate/releases/c
 
 ### 6.3 离线 fixture 硬前置与证据核验
 
-以下测试只使用 `$WORK` 内的合成 DB；不得读取生产 DB、不得创建生产快照、不得执行正式 Identity Gate、不得操作服务/配置/Collector/Timer。第三轮旧回执、第四轮失败回执和 R6 PASS 均为历史证据；R6 对应修订前 helper HEAD，不替代当前审查修订分支的实际运行。
+以下测试只使用 `$WORK` 内的合成 DB；不得读取生产 DB、不得创建生产快照、不得执行正式 Identity Gate、不得操作服务/配置/Collector/Timer。第三轮旧回执与第四轮失败回执是历史证据，不替代 v2.4 新增 helper/test 的实际运行。
 
-1. **当前修订 helper fixture：** 当前 Draft helper/test commit 完成独立代码复核后，在固定 Node/better-sqlite3/SQLite 栈上执行：
+1. **v2.4 helper fixture：** Y-3/Y-4 修订后的 helper/test commit 完成后，在固定 Node/better-sqlite3/SQLite 栈上执行：
 
 ```bash
 set -euo pipefail
@@ -498,18 +496,16 @@ node --test server/tests/m0-gate-helper-fixture.test.mjs
 - 合成 WAL writer 保持打开，基线行已 checkpoint，随后提交一条 WAL-only 绑定；
 - `m0-gate-census.mjs` 对 live source DB 的普通只读/WAL-aware census 能读到 WAL-only 行；
 - 同一源 DB 经 Online Backup API 生成 snapshot 后，snapshot census 与 live census 的全部字段逐项相等；输出中不存在 `schemaVersion`，并且 `schemaDigest` 相等；
-- 每次正常 helper 调用前后，对 source DB 与 WAL 分别记录 size、mtimeNs、SHA-256；三者必须不变。WAL 缺失时记录缺失状态；SHM metadata 仅作诊断观察；
-- helper 在 SQLite open 后、主要读取/Backup 操作后、close 后复核主 DB 与 sidecar 的普通文件/非 symlink 状态；
-- helper fixture 对主 DB 路径本身为 symlink 或非普通文件的情况 fail-stop；
+- source DB/WAL 的 bytes、mtime、SHA-256 前后不变；
 - SHM sidecar 的存在性、类型、size/mtime/hash 可作为观察项记录；不要求 inode、bytes、mtime 或 hash 前后相等；
-- 快照无 `-wal/-shm` 侧车，integrity 为 `ok`，probe 临时目录已清理；
+- Backup API 返回后、首次 snapshot census 前，快照无 -wal/-shm 侧车且 integrity 为 ok；首次 census 后允许的协调 sidecar 形态仅按 §6.4.2 检查；probe 临时目录已清理；
 - 六通道、`otherChannelsTotal`、`bindingRows`、`credentialsTotal`、`accessRequestsTotal` 和两条 equality flags 全部勾稽；输出不含 synthetic refs / UUID / password。
 
 2. **sidecar 合成边界用例：** 覆盖 WAL 存在而 SHM 缺失，以及 WAL/SHM 各自的 symlink、非普通文件拒绝。任何已存在的 sidecar 若为 symlink 或非普通文件，必须在 SQLite open 前失败；不强制 WAL/SHM 成对存在，不因缺少 SHM 或 SQLite 生成 transient SHM 本身失败。
 
-3. **原始 WAL fixture runner：** 归档 runner 的 SHA-256 固定为 `096ca7e2d7a143e3b454f6153b0e22d1641d65de4e5217fb17a17d83bbf4e112`。R6 已报告 runner PASS，但当前 helper 已变更；如需复跑，必须使用完整仓库 checkout：checker `eb83197e`、snapshot helper 使用本次经审查的 helper commit，runner 放在 checkout 的 `fixtures/` 下，`better-sqlite3` 使用固定依赖栈。runner 结束后由受控 harness 校验并清理精确的 `fixtures/wal-rerun-work`，验证路径不存在；清理失败即 `blocked(fixture_cleanup)`。不得直接运行一个没有 cleanup 的 runner 后把残留目录留在 checkout。
+3. **原始 WAL fixture runner：** 归档 runner 的 SHA-256 固定为 `096ca7e2d7a143e3b454f6153b0e22d1641d65de4e5217fb17a17d83bbf4e112`。复跑时必须使用完整仓库 checkout：checker `eb83197e`，snapshot helper 使用经确认的 helper commit，runner 放在 checkout 的 `fixtures/` 下，`better-sqlite3` 使用既有依赖栈。runner 结束后由受控 harness 校验并清理精确的 `fixtures/wal-rerun-work`，验证路径不存在；清理失败即 `blocked(fixture_cleanup)`。不得直接运行一个没有 cleanup 的 runner 后把残留目录留在 checkout。
 
-4. **原始输出固定：** runner、原始 fixture 规范/日志、第三轮回执，以及三份第三轮 raw output 必须纳入新生成的 18 项 bundle 并固定 SHA-256；当前修订后的三份新 raw output 也必须作为本轮补充证据独立存档并固定 SHA-256。R6 raw output 不得冒充当前修订的输出。缺文件或哈希不符即 `blocked(fixture_evidence)`。
+4. **原始输出固定：** runner、原始 fixture 规范/日志、第三轮回执，以及三份第三轮 raw output 必须纳入最终 18 项 bundle 并固定 SHA-256。缺文件或哈希不符即 `blocked(fixture_evidence)`。
 
 5. **固定依赖版本：** Node `v22.23.1` / better-sqlite3 `12.10.0` / SQLite `3.53.1`。若任一不同，先停止；不得自动安装、下载或替换依赖。上述新增用例仍属合成离线测试，可按 Yi 已声明的同一离线 fixture 授权范围补跑；不扩展为生产读取授权。
 
@@ -546,13 +542,24 @@ done
 
 主 DB 必须是普通文件且非 symlink。`-wal` 与 `-shm` 分别检查：每个已存在的 sidecar 必须是普通文件且非 symlink；缺失任意一方不单独触发停止。helper 自身必须在 SQLite open 前后重复执行等价 `lstat` 检查，不能只依赖本 shell 预检。文件大小、mtime、UID/GID/mode 和 SHA-256 只作为观察指纹，不读取文件内容。
 
-### 6.4.1 SQLite SHM 副作用合同（v2.4；按 Y-4 甲裁定）
+### 6.4.1 Production Source DB 的 SHM 副作用合同（v2.4；按 Y-4 甲裁定）
 
-- 每个已存在的 `-wal` / `-shm` sidecar 必须是普通文件且非符号链接；不要求二者成对存在或成对缺失。
-- 缺失 SHM 时允许正常只读/WAL-aware census 或 Backup API 连接。SQLite 可能为 WAL 协调创建 transient SHM；该行为是本合同明确披露并接受的临时副作用，不得描述成“不会创建 SHM”或“SHM 缺失即 fail-stop”。
-- helper 不主动写入主 DB/WAL；DB/WAL 的 bytes、mtime、SHA-256 必须保持不变。若 SQLite 产生 transient SHM，其必须是普通文件且非符号链接；sidecar 若变为 symlink 或非普通文件，立即停止。
+- 每个已存在的生产 Source DB -wal / -shm sidecar 必须分别是普通文件且非符号链接；不要求 WAL/SHM 成对存在或成对缺失。
+- 缺失 SHM 时允许正常只读/WAL-aware census 或 Backup API 连接。SQLite 可能为 WAL 协调创建 transient SHM；该行为是本合同明确披露并接受的临时副作用。
+- 对生产 Source DB，主 DB 与 WAL 的存在性、bytes、mtime、SHA-256 必须保持不变；若 WAL 原本缺失而在读取后新出现，或既有 WAL 发生任何变化，立即停止。helper 不主动写入主 DB/WAL。
+- 若 SQLite 产生 transient SHM，其必须是普通文件且非符号链接；sidecar 若变为 symlink 或非普通文件，立即停止。
 - 不要求 SHM 前后 inode、size、mtime 或 SHA-256 相等；这些字段可作为观察项记录，但不参与四时点稳定性等式或通过条件。
-- 上述是经 Yi 正式裁定的 v2.4 合同；仍须由固定 Node `v22.23.1` / better-sqlite3 `12.10.0` / SQLite `3.53.1` 离线动态测试验证实际行为。动态测试未通过前，不得执行任何生产 census 或 snapshot。
+- 上述是经 Yi 正式裁定的生产 Source DB v2.4 合同；固定栈 R8 fixture 已验证合成环境中的实际行为。该验证不等于已执行生产读取。
+
+### 6.4.2 Snapshot census 后的协调 sidecar 合同（仅限 $WORK 内 snapshot）
+
+- 本条只适用于正式 Gate 工作目录 $WORK 内由 Backup API 生成的 snapshot-a.sqlite / snapshot-b.sqlite，不适用于生产 Source DB。
+- Backup API 返回后、第一次 snapshot census 前，snapshot 主 DB 必须是普通文件、integrity 为 ok，且 -wal 与 -shm 均不存在。该时点若已有任一 sidecar，即停止。
+- 第一次正常只读 snapshot census 后，允许原本 absent 的 -wal 变为普通文件且 size 必须恰为 0 bytes；允许 -shm 出现为普通文件。R8 实测观察到 0-byte WAL 与 32,768-byte SHM；SHM 的 size、mtime、inode、hash 仅作诊断记录，不作为固定值或相等性门槛。
+- 已存在的 sidecar 始终必须是普通文件且非符号链接。非零 WAL、任何 symlink/非普通文件、snapshot 主 DB bytes/mtime/SHA-256 变化，均立即停止。
+- 每次 snapshot census 前后均记录 sidecar 存在性、类型与可得 metadata/hash；census 后还须验证 WAL 仅为 absent 或 0-byte regular file，SHM 仅为 absent 或 regular non-symlink file。
+- 该例外仅描述 $WORK 内 snapshot 的只读协调残留，不是生产 DB/WAL 写入授权，也不扩大 §9.5 的禁止事项。
+
 ### 6.5 进程世代与数据面状态
 
 ```bash
@@ -598,7 +605,7 @@ SNAP_B="$WORKDATA/snapshot-b.sqlite"
 
 ### 7.1 采样函数与 A.before / snapshot A
 
-所有采样均使用 UTC 纳秒时间戳。`capture_core` 比较 current、进程世代、unit 状态、runtime/material/catalog SHA-256、DB/WAL 存在性/大小/mtime；`capture_sidecars` 分别记录每个 sidecar 的存在性、类型与可得 metadata，不检查成对性、不比较 inode；`capture_snapshot` 记录 snapshot 的 bytes、mtime 和 SHA-256。
+所有采样均使用 UTC 纳秒时间戳。capture_core 比较 current、进程世代、unit 状态、runtime/material/catalog SHA-256、生产 DB/WAL 存在性/大小/mtime；capture_sidecars 记录生产 Source DB sidecar；capture_snapshot 记录 snapshot 主 DB 的 bytes、mtime 和 SHA-256。另以独立函数记录 $WORK snapshot sidecar，避免把生产 WAL 规则与 snapshot census 协调残留混为一谈。
 
 ```bash
 set -euo pipefail
@@ -648,6 +655,35 @@ capture_snapshot() {
   stat -c 'snapshot|%n|%s|%y|%Y' "$f" || return 1
   sha256sum "$f" || return 1
 }
+assert_snapshot_sidecars_safe() {
+  local base="$1" label f
+  for label in wal shm; do
+    f="$base-$label"
+    if [ -e "$f" ] || [ -L "$f" ]; then
+      [ ! -L "$f" ] && [ -f "$f" ] || return 1
+    fi
+  done
+}
+capture_snapshot_sidecars() {
+  local base="$1" label f
+  assert_snapshot_sidecars_safe "$base" || return 1
+  for label in wal shm; do
+    f="$base-$label"
+    if [ -e "$f" ]; then
+      stat -c "$label|%n|%s|%y|%Y" "$f" || return 1
+      sha256sum "$f" || return 1
+    else
+      printf '%s|absent\n' "$label"
+    fi
+  done
+}
+assert_snapshot_census_sidecars() {
+  local base="$1" wal="$1-wal"
+  assert_snapshot_sidecars_safe "$base" || return 1
+  if [ -e "$wal" ]; then
+    [ "$(stat -c %s "$wal")" = "0" ] || return 1
+  fi
+}
 
 A_BEFORE_TS="$(date -u +%Y-%m-%dT%H:%M:%S.%NZ)" || exit 40
 A_BEFORE="$(capture_core)" || exit 41
@@ -658,13 +694,22 @@ printf '%s\n' "$A_BEFORE_SOURCE" > "$WORKDATA/a-before-source-integrity.txt"
 printf '%s\n' "$A_BEFORE_SIDECARS" > "$WORKDATA/a-before-sidecars.txt"
 
 node "$BUNDLE/scripts/m0-gate-snapshot.mjs" "$DB" "$SNAP_A" > "$WORKDATA/snapshot-a-result.json"
-capture_snapshot "$SNAP_A" > "$WORKDATA/snapshot-a-meta.txt"
+SNAP_A_BASELINE="$(capture_snapshot "$SNAP_A")" || exit 73
+printf '%s\n' "$SNAP_A_BASELINE" > "$WORKDATA/snapshot-a-meta.txt"
+SNAP_A_SIDECARS_BEFORE="$(capture_snapshot_sidecars "$SNAP_A")" || exit 77
+test "$SNAP_A_SIDECARS_BEFORE" = "$(printf 'wal|absent\nshm|absent')" || exit 77
+printf '%s\n' "$SNAP_A_SIDECARS_BEFORE" > "$WORKDATA/snapshot-a-sidecars-before-census.txt"
 node "$BUNDLE/scripts/m0-gate-census.mjs" "$SNAP_A" > "$WORKDATA/census-a-snapshot.json"
+SNAP_A_SIDECARS_AFTER="$(capture_snapshot_sidecars "$SNAP_A")" || exit 78
+assert_snapshot_census_sidecars "$SNAP_A" || exit 78
+SNAP_A_AFTER_CENSUS="$(capture_snapshot "$SNAP_A")" || exit 79
+test "$SNAP_A_AFTER_CENSUS" = "$SNAP_A_BASELINE" || exit 79
+printf '%s\n' "$SNAP_A_SIDECARS_AFTER" > "$WORKDATA/snapshot-a-sidecars-after-census.txt"
 node "$BUNDLE/scripts/m0-gate-census.mjs" "$DB" > "$WORKDATA/census-a-live.json"
 cmp -s "$WORKDATA/census-a-snapshot.json" "$WORKDATA/census-a-live.json" || exit 72
 ```
 
-snapshot helper 必须报告 `ok=true`、`integrity=ok`，且 snapshot 本身无 `-wal/-shm` 侧车。live census 必须在 v2.4 helper 已通过 §6.3 活动 WAL / schemaDigest 测试后才允许运行。snapshot/live census 必须逐字段一致；不一致即 `blocked(snapshot_unproven)`。
+snapshot helper 必须报告 ok=true、integrity=ok；Backup API 完成后、第一次 snapshot census 前必须无 -wal/-shm。snapshot census 后的 sidecar 只按 §6.4.2 验证，不再使用“全程无 sidecar”的错误口径。live census 必须在 R8 helper 已通过 §6.3 活动 WAL / schemaDigest 测试后才允许运行；snapshot/live census 必须逐字段一致，不一致即 blocked(snapshot_unproven)。
 
 ### 7.2 三面 A Gate 与 A.after
 
@@ -688,27 +733,29 @@ test "$A_AFTER_SOURCE" = "$A_BEFORE_SOURCE" || exit 49
 
 ### 7.3 A/B 之间稳定性监视（至少 30 分钟）
 
-每分钟采样一次，共 30 次。每个样本必须保存 UTC 时间戳、`capture_core`、`capture_sidecars` 和 snapshot A 的 size/mtime/SHA-256。比较时：core 必须与 `A.after` 相同；snapshot A 的 size/mtime/SHA-256 必须完全不变；SHM 只记录，不参与相等性判断。
+每分钟采样一次，共 30 次。每个样本必须保存 UTC 时间戳、capture_core、生产 capture_sidecars、snapshot A 主 DB 的 size/mtime/SHA-256，以及 snapshot A sidecar 的存在性/类型/可得 metadata。snapshot A 主 DB 指纹必须与 §7.1 在第一次 census 前取得的 baseline 完全一致；snapshot sidecar 每次均须满足 §6.4.2，SHM metadata/hash 不参与相等性判断。
 
 ```bash
 set -euo pipefail
 BASELINE="$A_AFTER"
-SNAP_A_BASELINE="$(capture_snapshot "$SNAP_A")" || exit 73
 for n in $(seq 1 30); do
   sleep 60
   SAMPLE_TS="$(date -u +%Y-%m-%dT%H:%M:%S.%NZ)" || exit 74
   CURRENT_SAMPLE="$(capture_core)" || exit 50
   CURRENT_SIDECARS="$(capture_sidecars)" || exit 51
   CURRENT_SNAP="$(capture_snapshot "$SNAP_A")" || exit 52
+  CURRENT_SNAP_SIDECARS="$(capture_snapshot_sidecars "$SNAP_A")" || exit 80
+  assert_snapshot_census_sidecars "$SNAP_A" || exit 81
   test "$CURRENT_SAMPLE" = "$BASELINE" || exit 53
   test "$CURRENT_SNAP" = "$SNAP_A_BASELINE" || exit 54
   printf 'timestamp_utc=%s\n%s\n' "$SAMPLE_TS" "$CURRENT_SAMPLE" > "$WORKDATA/monitor-$n.txt"
   printf '%s\n' "$CURRENT_SIDECARS" > "$WORKDATA/monitor-sidecars-$n.txt"
   printf '%s\n' "$CURRENT_SNAP" > "$WORKDATA/monitor-snapshot-a-$n.txt"
+  printf '%s\n' "$CURRENT_SNAP_SIDECARS" > "$WORKDATA/monitor-snapshot-a-sidecars-$n.txt"
 done
 ```
 
-任何采样不同、命令失败或不足 30 分钟，均 `blocked(unstable)`。不自动重试、不继续 B。每个 monitor 样本必须有独立 UTC 时间戳；不得只记录采样内容而省略时间。
+任何采样不同、命令失败或不足 30 分钟，均 blocked(unstable)。不自动重试、不继续 B。每个 monitor 样本必须有独立 UTC 时间戳；snapshot A sidecar 只作安全类型/允许形态检查，不要求 SHM inode、size、mtime 或 hash 恒定。
 
 ### 7.4 B.before、快照 B、三面 B Gate 与 B.after
 
@@ -724,9 +771,17 @@ printf '%s\n' "$B_BEFORE_SIDECARS" > "$WORKDATA/b-before-sidecars.txt"
 test "$B_BEFORE" = "$A_AFTER" || exit 59
 test "$B_BEFORE_SOURCE" = "$A_AFTER_SOURCE" || exit 60
 node "$BUNDLE/scripts/m0-gate-snapshot.mjs" "$DB" "$SNAP_B" > "$WORKDATA/snapshot-b-result.json"
-SNAP_B_BASELINE="$(capture_snapshot "$SNAP_B")" || exit 67
+SNAP_B_BASELINE="$(capture_snapshot "$SNAP_B")" || exit 82
 printf '%s\n' "$SNAP_B_BASELINE" > "$WORKDATA/snapshot-b-meta.txt"
+SNAP_B_SIDECARS_BEFORE="$(capture_snapshot_sidecars "$SNAP_B")" || exit 83
+test "$SNAP_B_SIDECARS_BEFORE" = "$(printf 'wal|absent\nshm|absent')" || exit 83
+printf '%s\n' "$SNAP_B_SIDECARS_BEFORE" > "$WORKDATA/snapshot-b-sidecars-before-census.txt"
 node "$BUNDLE/scripts/m0-gate-census.mjs" "$SNAP_B" > "$WORKDATA/census-b-snapshot.json"
+SNAP_B_SIDECARS_AFTER="$(capture_snapshot_sidecars "$SNAP_B")" || exit 84
+assert_snapshot_census_sidecars "$SNAP_B" || exit 84
+SNAP_B_AFTER_CENSUS="$(capture_snapshot "$SNAP_B")" || exit 85
+test "$SNAP_B_AFTER_CENSUS" = "$SNAP_B_BASELINE" || exit 85
+printf '%s\n' "$SNAP_B_SIDECARS_AFTER" > "$WORKDATA/snapshot-b-sidecars-after-census.txt"
 node "$BUNDLE/scripts/m0-gate-census.mjs" "$DB" > "$WORKDATA/census-b-live.json"
 cmp -s "$WORKDATA/census-b-snapshot.json" "$WORKDATA/census-b-live.json" || exit 75
 cmp -s "$WORKDATA/census-a-snapshot.json" "$WORKDATA/census-b-snapshot.json" || exit 76
@@ -746,19 +801,33 @@ CURRENT_SNAP_A="$(capture_snapshot "$SNAP_A")" || exit 68
 CURRENT_SNAP_B="$(capture_snapshot "$SNAP_B")" || exit 69
 test "$CURRENT_SNAP_A" = "$SNAP_A_BASELINE" || exit 70
 test "$CURRENT_SNAP_B" = "$SNAP_B_BASELINE" || exit 71
+CURRENT_SNAP_A_SIDECARS="$(capture_snapshot_sidecars "$SNAP_A")" || exit 86
+assert_snapshot_census_sidecars "$SNAP_A" || exit 87
+CURRENT_SNAP_B_SIDECARS="$(capture_snapshot_sidecars "$SNAP_B")" || exit 88
+assert_snapshot_census_sidecars "$SNAP_B" || exit 89
+printf '%s\n' "$CURRENT_SNAP_A_SIDECARS" > "$WORKDATA/snapshot-a-sidecars-final.txt"
+printf '%s\n' "$CURRENT_SNAP_B_SIDECARS" > "$WORKDATA/snapshot-b-sidecars-final.txt"
 ```
 
-A/B 三面计数及状态按正式 Gate 口径记录；A/B census 的 `schemaDigest`、六通道计数、otherChannelsTotal、accessRequestsTotal、bindingRows、bindingProjectionDigest 与 equalities 必须逐项一致。`schemaVersion` 不在 census 输出中，不参与比较。`B.before` 必须等于 `A.after`，`B.after` 必须等于 `B.before`。任一比较失败即 `blocked(unstable)`。
+A/B 三面计数及状态按正式 Gate 口径记录；A/B census 的 schemaDigest、六通道计数、otherChannelsTotal、accessRequestsTotal、bindingRows、bindingProjectionDigest 与 equalities 必须逐项一致。schemaVersion 不在 census 输出中，不参与比较。snapshot A/B 主 DB 的 bytes/mtime/SHA-256 必须分别与各自 Backup 后、首次 census 前的 baseline 相同；snapshot sidecar 只须满足 §6.4.2。生产 Source DB/WAL 四时点指纹仍须严格相等。
 
-§7 新增的唯一退出码如下；其余既有退出码保持原义。退出码不得跨失败条件复用：
+新增 Snapshot sidecar 专用退出码（72–76 原有定义保持不变）：
 
 | Exit | 唯一失败含义 |
 | ---: | --- |
-| 72 | A 阶段 snapshot census 与 live census 不一致 |
-| 73 | 监视开始前无法采集 snapshot A baseline |
-| 74 | 某个 monitor 样本无法取得 UTC 时间戳 |
-| 75 | B 阶段 snapshot census 与 live census 不一致 |
-| 76 | A/B 两份 snapshot census 不一致 |
+| 77 | Snapshot A 首次 census 前 sidecar 不为空或类型不安全 |
+| 78 | Snapshot A census 后 sidecar 超出 §6.4.2 允许形态 |
+| 79 | Snapshot A 主 DB 指纹在 census 后发生变化 |
+| 80 | Monitor 样本无法采集 Snapshot A sidecar |
+| 81 | Monitor 样本的 Snapshot A sidecar 超出 §6.4.2 允许形态 |
+| 82 | Snapshot B Backup 后无法采集主 DB baseline |
+| 83 | Snapshot B 首次 census 前 sidecar 不为空或类型不安全 |
+| 84 | Snapshot B census 后 sidecar 超出 §6.4.2 允许形态 |
+| 85 | Snapshot B 主 DB 指纹在 census 后发生变化 |
+| 86 | 最终核对无法采集 Snapshot A sidecar |
+| 87 | 最终核对 Snapshot A sidecar 超出 §6.4.2 允许形态 |
+| 88 | 最终核对无法采集 Snapshot B sidecar |
+| 89 | 最终核对 Snapshot B sidecar 超出 §6.4.2 允许形态 |
 
 ### 7.5 JP-01 DB-only 附则
 
@@ -768,7 +837,7 @@ A/B 三面计数及状态按正式 Gate 口径记录；A/B census 的 `schemaDig
 
 ### 8.1 双层指纹、四时点时间戳与 snapshot 物理证据
 
-- 物理快照证据：Backup API 方法、snapshot A/B bytes、mtime（同时保留 UTC 可读时间和 epoch）、SHA-256、integrity、journalMode；生产 DB/WAL 的存在性、size、mtime 与 SHA-256；SHM 的存在性、regular-file / non-symlink 与可得 size/mtime/hash 可作为观察记录，不要求 device/inode 不变。
+- 物理快照证据：Backup API 方法、snapshot A/B 主 DB bytes、mtime（同时保留 UTC 可读时间和 epoch）、SHA-256、integrity、journalMode；生产 Source DB/WAL 的存在性、size、mtime 与 SHA-256；生产 SHM 与 snapshot A/B sidecar 的存在性、regular-file / non-symlink 与可得 metadata/hash 观察。Snapshot sidecar 在首次 census 前必须 absent，之后只允许 §6.4.2 的 0-byte WAL / regular SHM 协调形态。
 - 身份稳定指纹：`schemaDigest`、`credentialsTotal`、`perChannel` 六项、`otherChannelsTotal`、`accessRequestsTotal`、`bindingRows`、`bindingProjectionDigest`、`equalities`。`schemaVersion` 不输出、不比较、不进入身份指纹。
 - 四个采样点必须分别记录 UTC 时间戳：
   1. `A.before`：snapshot A 之前；
@@ -811,8 +880,8 @@ A/B 三面计数及状态按正式 Gate 口径记录；A/B census 的 `schemaDig
 - 主机名/current 目标、checker 8 文件哈希、v2.4 helper/test 新 commit 或哈希、依赖版本不符。
 - 原始 fixture 文件、runner、第三轮回执或三份 raw output 缺失，SHA 未固定，任何离线 fixture 未通过。
 - 输入缺失、主 DB/WAL/SHM 为 symlink 或非普通文件；任何已存在的 sidecar 不符合 regular-file / non-symlink 要求。WAL/SHM 单边存在本身不构成停止条件。
-- snapshot 失败、snapshot 出现 `-wal/-shm` 侧车、integrity 非 ok、snapshot/live census 不一致。
-- 主 DB/WAL bytes、mtime、SHA-256 任一变化；任何 sidecar 被替换为 symlink 或非普通文件。SQLite 因缺失 SHM 而创建 transient regular-file SHM 不构成单独停止条件。
+- snapshot 失败、Backup API 完成后首次 census 前 snapshot 已出现 -wal/-shm 侧车、integrity 非 ok、snapshot/live census 不一致。首次 snapshot census 后的 sidecar 不按“必须始终 absent”判定，改按 §6.4.2：仅 absent→0-byte regular WAL 与 regular non-symlink SHM 可接受。
+- 生产 Source DB/WAL 的存在性、bytes、mtime、SHA-256 任一变化；任何生产或 snapshot sidecar 为 symlink / 非普通文件。Snapshot census 后出现非零 WAL 不允许；仅 §6.4.2 所述 0-byte WAL 与 regular SHM 协调残留不构成单独停止条件。
 - SQLite sidecar 行为超出 §6.4.1 / §9.4 的明确范围，或新出现的 sidecar 为 symlink / 非普通文件。无需证明 SHM inode 前后相同。
 - JP-01 三通道任一计数非零。
 - candidate PID/启动时间/NRestarts 变化；数据面 unit 状态分类变化；current 目标变化。
@@ -823,21 +892,25 @@ A/B 三面计数及状态按正式 Gate 口径记录；A/B census 的 `schemaDig
 - 未取得 §10 正式 Gate 单独执行授权却尝试执行 §5–§9 任一命令。
 - 任何需要写入生产 DB/WAL、配置、unit、服务、Timer、Collector、retention，或读取输入清单之外数据的动作。
 
-### 9.4 唯一允许的临时写入与 SHM 协调例外
+### 9.4 唯一允许的临时写入与 SQLite 协调副作用
 
-只有在 §10.2 正式 Gate 单独执行授权生效后，才允许在精确 `$WORK` 内创建 bundle、`node_modules` symlink、合成 fixture、snapshot A/B、聚合 JSON/哈希/监视记录。测试合成数据必须位于 `$WORK` 内并在测试后清理。
+只有在 §10.2 正式 Gate 单独执行授权生效后，才允许在精确 $WORK 内创建 bundle、node_modules symlink、合成 fixture、snapshot A/B、聚合 JSON/哈希/监视记录。测试合成数据必须位于 $WORK 内并在测试后清理。
 
-对生产数据库路径，唯一额外允许的临时副作用是：SQLite 3.53.1 在正常 WAL-aware read-only census / Backup API 连接期间，可能对既有 SHM 执行短暂锁/读标记协调；若 SHM 原本缺失，SQLite 也可能创建 transient SHM 文件。该行为由 Yi 在 Y-4 甲裁定中明确接受，并须在 v2.4 固定依赖动态测试中验证。
+**A. Production Source DB（生产路径）**
 
-该例外不允许：
+- 唯一额外允许的临时副作用是 SQLite 3.53.1 在正常 WAL-aware read-only census / Backup API 连接期间，对既有 SHM 执行短暂锁/读标记协调；若 SHM 原本缺失，SQLite 可能创建 transient regular-file SHM。
+- 主 DB 与 WAL 的存在性、bytes、mtime、SHA-256 必须保持不变；不允许因本条创建新 WAL，也不允许修改既有 WAL。
+- 不要求 SHM inode、bytes、mtime 或 SHA-256 前后恒定；但任何已存在或新出现的 sidecar 必须为普通文件且非符号链接。
 
-- 写入/修改主 DB 或 WAL；
-- 任何 sidecar 为 symlink 或非普通文件；
-- 修改配置、服务、Timer、Collector、retention 或工作目录之外文件。
+**B. $WORK 内 Backup Snapshot（仅本地快照路径）**
 
-不要求 WAL/SHM 成对存在，不要求缺失 SHM 时 fail-stop，也不要求 SHM inode、bytes、mtime 或 SHA-256 前后恒定。可记录 sidecar 的存在性、类型和可得 metadata/hash 作为观察项，但不把它们作为身份稳定性等式。主 DB/WAL 的 bytes/mtime/SHA-256 必须不变。
+- Backup API 返回后、首次 snapshot census 前，snapshot 主 DB 必须 integrity=ok，且 WAL/SHM 均 absent。
+- 首次正常只读 snapshot census 后，允许原本 absent 的 WAL 出现为 0-byte regular file；允许 SHM 出现为 regular non-symlink file。R8 观察到的 SHM size 为 32,768 bytes，仅作实际观察，不是固定要求。
+- Snapshot 主 DB bytes/mtime/SHA-256 必须不变；WAL 若出现必须恰为 0 bytes；任何非零 WAL、symlink 或非普通 sidecar 均 fail-stop。SHM metadata/hash/inode 不作恒定要求。
+- 每次 snapshot census 前后均记录 sidecar 存在性、类型与可得 metadata/hash；30 分钟监视期间持续验证允许形态。结束时所有 $WORK 内容按 §9.6 清理。
 
-此 SHM 例外只有在 v2.4 helper/test 对活动 WAL、缺失 SHM、symlink 和非普通 sidecar 场景全部通过后才生效。除该精确定义的 SQLite transient SHM 协调外，BWH 生产状态仍只读。任何临时写入若需要超出 `$WORK` 或超出该 SHM 例外，立即停止。
+Snapshot 的 0-byte WAL / transient SHM 是 $WORK 内 SQLite 只读协调残留，不是生产 DB/WAL 写入授权，不扩大生产数据、副作用或网络边界。任何临时写入若需要超出 $WORK 或超出上述精确定义的 SQLite 协调行为，立即停止。
+
 ### 9.5 明确禁止的副作用
 
 不写生产数据库/WAL、不修改配置、不启停/重载服务、不触发 Collector/Timer、不恢复三个 staged 服务、不修复投影写入方、不触碰 retention 工作底稿（原定独立处理期限 2026-11-09）、不创建 JP-01 实例、不接入真实流量。BWH 不得主动联网；仅允许由可信工作站经 Tailscale `ssh bwh` / `scp bwh:` 上传 bundle 与取回脱敏输出。
@@ -864,23 +937,26 @@ A/B 三面计数及状态按正式 Gate 口径记录；A/B census 的 `schemaDig
 
 ### v2.4 当前未关闭事项（不得签署）
 
-1. 当前 Draft helper/test 源码已补入主 DB 生命周期 lstat 检查、DB/WAL size/mtimeNs/SHA-256 前后断言及主 DB symlink/非普通文件拒绝用例；仍须在固定依赖栈完成 `node --check` 与完整动态 fixture 重测。当前容器只有 Node `v22.16.0` 且无 `better-sqlite3`，不能冒充固定栈；本轮不得连接 BWH 或安装/下载依赖。
-2. R6 原始 WAL runner 报告 PASS，且 R6 回执称 `$WORK` 已删除并验证缺席；但 harness 版本/哈希、清理前 realpath 和删除前后原始记录仍需补齐。当前授权不允许连接 BWH 或执行 runner。
-3. R6 三份 raw output 已独立归档并有哈希，但不属于 R6 18 项 manifest；该 manifest 中三份 raw output 是 R3 历史文件。新修订代码的三份 raw output 必须来自未来固定栈真实运行，不能复用 R6 输出。
-4. R6 tarball/manifest 保持只读历史冻结；当前 helper/test 已变化，须在当前修订动态验收通过后重新计算三个 helper/test SHA-256，并生成新的 18 项 manifest、tarball SHA-256 与文件列表。
-5. 更新后的 §4.3/§5.2 路径和 helper commit 绑定须经静态复核；所有 shell 代码块需 `bash -n`，三个 JS 文件需在目标 Node 版本执行 `node --check`。本轮没有触发 CI。
-6. 完成针对当前新 commit 和新归档包的第二轮独立技术终审。第一层 Yi 签署与第二层正式 Gate 授权均保持空白。
+1. 本次已按 R8 证据修订 §6.4.2、§7.1–§7.4、§8.1 与 §9.3–§9.4；仍须对修改后的执行包与决策附录进行最终文档静态复核，并重新计算两份文档 SHA-256。
+2. R8 回执未提供本轮 WAL runner harness 版本/哈希及退出后精确 realpath、清理前后原始记录；正式 Gate 前须补齐受控 harness 绑定与清理证据，不能以 R6 或 R7 的清理记录外推 R8。
+3. R8 的三份 raw output 已分别固定 SHA-256，但不属于 R8 18 项 manifest；R8 manifest 中三份 raw output 是 R3 历史原件。两组证据必须保持区分，不得覆盖或混写。
+4. R8 18 项 manifest/tarball 已独立复核 18/18，R6 历史 manifest/tarball 保持不变；不得因本次文档修订重建或覆盖任一冻结包。
+5. 本次文档中的 shell 代码块须通过 bash -n；Helper/Checker 不在本轮授权修改范围内，不得为文档修订改动代码、触发 CI、连接 BWH 或执行生产 Gate。
+
+
 
 ### 10.1 Yi 执行包审查/签署（第一层；当前留空）
 
-- 执行包版本：v2.4
+- 执行包版本：v2.4（R8 选定签署候选）
+- 签署线：R8；HEAD 9b4bff888e6eb7b4c4545b1f005a32e24855ab9e。R6 仅保留为历史冻结线。
 - D-1：方案甲（已确认）
-- D-2：`eb83197e47155943087655ff7d4aad7a6c954849`（已确认）
+- D-2：eb83197e47155943087655ff7d4aad7a6c954849（已确认）
 - D-3：先测量、后裁定（已确认）
-- 离线验收：R6 旧 helper HEAD 动态测试 PASS、18 项 manifest 冻结；当前修订分支尚未固定栈重测，R6 不替代当前代码验收
-- 当前 helper/test 候选 commit：`8dd5e321a5ca1a1f07e89a1d75cdc93cacfd6479`；当前三个文件签署用 SHA-256 与固定栈动态验收待完成
-- R6 历史 18 项 manifest 已冻结（tarball SHA-256 `a5600dbab180167a8bd6f27474bf491637c37044014f36b0c806cc3e60ba6da7`）；当前修订后的新 manifest 与 raw output 哈希待重建
-- 当前修订分支的独立技术复审：待完成；第一层签署保持空白
+- 固定栈离线验收：R8 helper fixture PASS（1/1）、原始 WAL runner PASS（ok=true、failures=[]）、直接 census PASS；Node v22.23.1 / better-sqlite3 12.10.0 / SQLite 3.53.1。
+- Helper/Test SHA-256：census 3351443a84f7ff0b99ddde73bb8defc28a6fc3226935a1719ef216e4a5d7056c；snapshot fb3ea4a3bcb91f878e39b30a2c45be1ec78003c10aa710cef3270e8d8a5010f0；test 12c8dd1722fe6ef129f7a6177a76d4e80a087ab1dd4f24ea302aab402f1f9e8c。
+- R8 18 项 manifest：18/18 PASS；tarball 50,190 bytes；SHA-256 6de61f665174106fc6a22fa45e011b14b084094380a8445239c1cbba10873a22。R6 历史包保持独立。
+- R8 三份补充 raw output SHA-256：helper-test a4d910d8d69acaee1bcbd8cadea1decc9c1c286eaced6bf16e6163df4d240a16；WAL runner 938545287c4c52a15e782f2c148b15326a9936584b8f911669990b4129a70254；census ddaef37761f35af06b4f5a3dda84b5dd8b69521bdb53a403eb0b088293e27921。三份 R8 raw output 不属于 18 项 manifest。
+- 第二轮独立终审：已选择 R8；本次 Snapshot census 后 sidecar 合同文档对齐及最终静态复核待完成。
 - Yi 执行包审查/签署：____________________ 日期：____________________
 
 **第一层签署的效力仅为确认 v2.4 执行合同及其固定内容；不授权 BWH 连接、目录创建、文件传输、生产路径读取、生产快照或 Gate 执行。**
@@ -906,4 +982,4 @@ A/B 三面计数及状态按正式 Gate 口径记录；A/B census 的 `schemaDig
 - M0 最终状态：`BLOCKED`（当前状态；不得预判解除）
 - Yi 最终裁定：____________________ 日期：____________________
 
-**当前结论：M0 继续 BLOCKED。R6 旧 helper/test 与 18 项 manifest 已有历史 PASS/冻结证据；当前审查修订分支的固定栈动态测试、新 SHA-256、新 18 项 manifest、独立技术复审、第一层执行包签署与第二层 Gate 执行授权均尚未完成。本包不构成生产放行。**
+**当前结论：M0 继续 BLOCKED。R8 离线验收与 18 项冻结包已完成并被选为唯一正式签署候选；本次执行包/附录文档对齐、最终静态复核与文档 SHA-256 固定仍待完成。第一层执行包签署、第二层正式 Gate 执行授权和 Gate 本身均未发生；本包不构成生产放行。**
