@@ -4,7 +4,7 @@
 - Repository: `FlyLink-com/proxy-gateway-minimal`
 - Documentation branch: `feat/m0-identity-gate-v2-4-audit-remediation-20261103`
 - R8 helper/test candidate commit: `9b4bff888e6eb7b4c4545b1f005a32e24855ab9e`
-- Documentation HEAD immediately before this receipt: `acea5ffc9758755057b6e89a780c275310f4cbef`
+- Documentation HEAD immediately before this receipt update: `ea14a7359ea47514431b09c30c67f8f6657d543a`
 
 ## 1. Immutable document anchors
 
@@ -12,8 +12,8 @@ The following values are SHA-256 of the exact UTF-8 file contents fetched back f
 
 | Artifact | SHA-256 |
 | --- | --- |
-| v2.4 execution package | `2bac9fd2d196802218f1b9bf09be3dd21a59bbf75ace1970abf39176d4b31610` |
-| Y-3 / Y-4 decision addendum | `6d2c71ea35da6faebb960a55688abbf18982dcccb2768f13ff5d2d0b6bf610a0` |
+| v2.4 execution package | `c7ae1eb4bfa62ab17025bc669d35f32967fd8853fdc90926cbca3fac625090f3` |
+| Y-3 / Y-4 decision addendum | `c34737105183c652d7552591df99cccefbfece0f4bd5455251129ae3bb5c2f7f` |
 | R8 frozen 18-item tarball | `6de61f665174106fc6a22fa45e011b14b084094380a8445239c1cbba10873a22` |
 
 The R6 historical freeze remains separate and unchanged.
@@ -32,12 +32,12 @@ The signature is recorded in §10.1 of the v2.4 execution package. The package a
 
 - Decision-maker: Yi
 - Consent: **EXPLICITLY GIVEN on 2026-11-04**
-- Execution status: **NOT YET EFFECTIVE — exact authorization time window is still required**
-- Execution package SHA-256 binding: `2bac9fd2d196802218f1b9bf09be3dd21a59bbf75ace1970abf39176d4b31610`
+- Execution status: **ACTIVE — one-time authorization window is in effect**
+- Execution package SHA-256 binding: `c7ae1eb4bfa62ab17025bc669d35f32967fd8853fdc90926cbca3fac625090f3`
 - Target host: `elegant-box-1.localdomain` (any mismatch means stop)
 - Sole permitted work directory: `/opt/proxy-gateway-minimal-candidate/protected/muse-identity-gate-20261103-v2`
 - Permitted transport: Tailscale `ssh bwh` / `scp bwh:` only, for bundle transfer and retrieval of sanitized outputs.
-- Permitted operation scope, once the time window is completed:
+- Permitted operation scope, only during the active time window:
   - root identity and SSH alias/identity-file verification;
   - create and use only the exact `$WORK` directory above;
   - §6 read-only environment/input preflight and synthetic helper fixture;
@@ -45,10 +45,10 @@ The signature is recorded in §10.1 of the v2.4 execution package. The package a
   - only the transient SQLite SHM coordination side effect expressly permitted by §9.4.
 - Maximum executions: **one**. Execution or stop exhausts this authorization; any rerun requires a new authorization.
 - Executor: Muse.
-- Authorization validity window: **PENDING — Yi must specify exact start and end in PST.**
-- Formal authorization record: **consented, but not executable until the validity window is filled here and independently checked against the package SHA-256 above.**
+- Authorization validity window: **2026-11-04T01:11:56-08:00 to 2026-11-05T01:11:56-08:00 (PST; exactly 24 hours).**
+- Formal authorization record: **ACTIVE**. Yi explicitly authorized one execution of v2.4 §§5–9 for the stated 24-hour window, bound to the exact package SHA-256 above and the host/path/scope in this receipt.
 
-No BWH connection, production DB read, production snapshot, or formal Gate command may begin before the time window is recorded. Missing or mismatched fields, host drift, package hash drift, expiry, or scope expansion require an immediate stop.
+Execution is permitted only within the stated window and exact scope. Before any production read or snapshot, verify the host, root identity, SSH alias/identity file, package SHA-256, and the sole permitted work directory against v2.4. Any mismatch, expiry, scope drift, or failed preflight requires an immediate stop; the single authorization is then exhausted.
 
 ## 4. Explicit exclusions
 
@@ -63,11 +63,11 @@ This approval does not authorize:
 
 - R8 offline evidence and runner-harness supplement: PASS.
 - First-layer v2.4 signature: SIGNED.
-- Second-layer authorization: user consent recorded; effective window pending.
+- Second-layer authorization: ACTIVE for 2026-11-04T01:11:56-08:00 through 2026-11-05T01:11:56-08:00 (PST); one execution maximum.
 - Formal Identity Gate: NOT EXECUTED.
 - M0 Production Identity Gate: **BLOCKED**.
 - Production release: **NOT AUTHORIZED**.
 
 The R8 original r2 stage remains retained as an audit artifact; the separate r3 supplement run demonstrated cleanup of its own workdir and stage. The two are not conflated.
 
-This receipt does not assert that any BWH or production operation has occurred.
+This receipt records authorization only; it does not assert that any BWH or production operation has occurred.
