@@ -2,7 +2,7 @@
 
 Last updated: 2026-11-04, America/Los_Angeles.
 
-\`\`\`yaml
+```yaml
 document_metadata:
   doc_type: canonical
   lifecycle: active
@@ -10,14 +10,14 @@ document_metadata:
   superseded_by: null
   last_verified_at: 2026-11-04
   production_authority: false
-\`\`\`
+```
 
 > Status:
 > - Type: Owner-approved target architecture direction and staged implementation plan
 > - Owner decision: **Approved on 2026-11-04** — Cloudflare Workers may become the control-plane API host and Cloudflare D1 the authoritative control database after gated migration
 > - Risk: C for this document; B for repository-only implementation and local synthetic D1 tests; A for remote Cloudflare resources, D1 bindings, secrets, Worker routes, production schema/data migration, DNS, or cutover
 > - Current runtime: **not migrated**; Node/Express and SQLite remain the current source of truth
-> - Source review cutoff: \`master@3768644aa33a01af55d5da6444acebe16f78fd64\`
+> - Source review cutoff: `master@3768644aa33a01af55d5da6444acebe16f78fd64`
 > - This document grants no production, provider, credential, database, deployment, or runtime mutation authority
 
 ## Executive decision
@@ -27,13 +27,13 @@ The owner has approved the target direction to extend Cloudflare beyond static h
 1. the platform control-plane API on Cloudflare Workers; and
 2. the authoritative business-control database on one Cloudflare D1 database.
 
-This is an approved architecture direction, **not a statement that the new runtime exists or is deployed**. At this source cutoff, the repository still runs its Node/Express modular monolith with synchronous \`better-sqlite3\` repositories and SQLite stores. The root \`wrangler.jsonc\` remains an assets-only static-site configuration; no Worker control-plane entrypoint, D1 binding, remote D1 database, or production route was created by this decision.
+This is an approved architecture direction, **not a statement that the new runtime exists or is deployed**. At this source cutoff, the repository still runs its Node/Express modular monolith with synchronous `better-sqlite3` repositories and SQLite stores. The root `wrangler.jsonc` remains an assets-only static-site configuration; no Worker control-plane entrypoint, D1 binding, remote D1 database, or production route was created by this decision.
 
-The target preserves the existing single-control-plane / multi-data-plane contract. It does not create a control plane per node, split business domains that currently share \`control.sqlite\`, or permit dual writes. The initial D1 data target is one database corresponding to the current shared \`controlDbPath\`. The subscription runtime database, optional third-party subscription database, and protected edge credential-material store remain outside the first migration scope until their ownership and dependency contracts are separately resolved.
+The target preserves the existing single-control-plane / multi-data-plane contract. It does not create a control plane per node, split business domains that currently share `control.sqlite`, or permit dual writes. The initial D1 data target is one database corresponding to the current shared `controlDbPath`. The subscription runtime database, optional third-party subscription database, and protected edge credential-material store remain outside the first migration scope until their ownership and dependency contracts are separately resolved.
 
 ## Approved target architecture
 
-\`\`\`text
+```text
 Admin / User Portal / company clients
               |
               v
@@ -59,7 +59,7 @@ BWH data-plane agent — outbound pull / receipt
               |
               v
        Japan / other edge runtimes
-\`\`\`
+```
 
 ### Cloudflare Workers owns
 
@@ -71,7 +71,7 @@ BWH data-plane agent — outbound pull / receipt
 
 ### Cloudflare D1 owns
 
-The first D1 database should correspond to the existing shared \`control.sqlite\` boundary. Keep the existing business domains in one database so that their current transaction and integrity relationships can be preserved:
+The first D1 database should correspond to the existing shared `control.sqlite` boundary. Keep the existing business domains in one database so that their current transaction and integrity relationships can be preserved:
 
 - account, access, entitlement, issuance, and resource-authority records;
 - subscription control, quota, device-binding, revocation, and audit facts;
@@ -95,31 +95,31 @@ The preferred initial communication pattern is **BWH-initiated authenticated pol
 
 ## Current repository boundaries
 
-The following paths and ownership were read from \`server/state.mjs\` and the current store implementations at the source cutoff above.
+The following paths and ownership were read from `server/state.mjs` and the current store implementations at the source cutoff above.
 
 | Store | Current path selection | Current responsibility | Target treatment |
 | --- | --- | --- | --- |
-| Control database | \`SUBSCRIPTION_CONTROL_DB_PATH\`, then \`CONTROL_DB_PATH\`, otherwise \`.proxy-gateway/control.sqlite\` | Shared business-control state; Wallet, Commerce, Payment, Ads Consent, and platform control stores receive the shared path | **First D1 target**, one database |
-| Subscription runtime database | \`SUBSCRIPTION_DB_PATH\`, otherwise \`.proxy-gateway/subscriptions.sqlite\` | Technical tenant, audit, temporary-link, and subscription-artifact state | Excluded from first D1 cutover; resolve ownership and route dependencies before moving subscription-rendering APIs |
-| Optional third-party subscription database | \`THIRD_PARTY_SUBSCRIPTION_DB_PATH\` | Third-party subscription source and distribution state | Remains separate pending its own dependency, authority, and transaction review |
+| Control database | `SUBSCRIPTION_CONTROL_DB_PATH`, then `CONTROL_DB_PATH`, otherwise `.proxy-gateway/control.sqlite` | Shared business-control state; Wallet, Commerce, Payment, Ads Consent, and platform control stores receive the shared path | **First D1 target**, one database |
+| Subscription runtime database | `SUBSCRIPTION_DB_PATH`, otherwise `.proxy-gateway/subscriptions.sqlite` | Technical tenant, audit, temporary-link, and subscription-artifact state | Excluded from first D1 cutover; resolve ownership and route dependencies before moving subscription-rendering APIs |
+| Optional third-party subscription database | `THIRD_PARTY_SUBSCRIPTION_DB_PATH` | Third-party subscription source and distribution state | Remains separate pending its own dependency, authority, and transaction review |
 | Edge credential-material file store | Configured protected file path | Actual per-order runtime material, including protocol UUID/password values | Remains in protected BWH custody; never copy raw material into D1 |
 
-The shared \`controlDbPath\` is passed to the platform subscription-control store and to the Coins Wallet, Coins Commerce, Payment, and Ads Consent stores, among other control-plane components. Those domains must remain within one D1 transaction boundary unless a future architecture decision proves an alternative consistency model.
+The shared `controlDbPath` is passed to the platform subscription-control store and to the Coins Wallet, Coins Commerce, Payment, and Ads Consent stores, among other control-plane components. Those domains must remain within one D1 transaction boundary unless a future architecture decision proves an alternative consistency model.
 
-The control database includes the business-control tables documented in \`docs/SUBSCRIPTION_CONTROL_DATABASE.md\`, including accounts, entitlements, issuance requests, issued-link references, quota counters, device bindings, revocations, audit events, and edge desired-state / receipt coordination. Additional source-owned modules add wallet, commerce, payment, portal, referral, usage, and authority objects. This is a domain summary, not an exhaustive schema inventory.
+The control database includes the business-control tables documented in `docs/SUBSCRIPTION_CONTROL_DATABASE.md`, including accounts, entitlements, issuance requests, issued-link references, quota counters, device bindings, revocations, audit events, and edge desired-state / receipt coordination. Additional source-owned modules add wallet, commerce, payment, portal, referral, usage, and authority objects. This is a domain summary, not an exhaustive schema inventory.
 
 The subscription runtime repository currently creates:
 
-- \`subscription_tenants\`
-- \`subscription_audit_events\`
-- \`subscription_temp_links\`
-- \`subscription_artifacts\`
+- `subscription_tenants`
+- `subscription_audit_events`
+- `subscription_temp_links`
+- `subscription_artifacts`
 
 The optional third-party distribution store has its own migration and owned objects. Neither database is silently merged into the first D1 database. Before claiming that the complete User Portal or public subscription-rendering path has moved to Workers, the project must explicitly resolve how these stores are accessed, migrated, or retired. No temporary bridge may become an unreviewed second writer.
 
 ## Worker application and repository design
 
-The current server uses Node.js and synchronous \`better-sqlite3\` repositories. D1 is accessed through the Workers D1 API, with asynchronous prepared statements, \`batch()\`, and \`withSession()\`. D1 is not a SQLite file path that the existing Node process can open.
+The current server uses Node.js and synchronous `better-sqlite3` repositories. D1 is accessed through the Workers D1 API, with asynchronous prepared statements, `batch()`, and `withSession()`. D1 is not a SQLite file path that the existing Node process can open.
 
 The Worker implementation therefore needs a deliberate application boundary:
 
@@ -129,17 +129,17 @@ The Worker implementation therefore needs a deliberate application boundary:
 4. Port each domain transaction and idempotency contract with tests; do not assume synchronous SQLite transaction callbacks translate directly.
 5. Keep Node-only runtime operations in the BWH agent or another explicitly scoped execution adapter, not in the Worker request path.
 
-The Worker path must not depend on native \`better-sqlite3\`, local SQLite files, arbitrary filesystem access, systemd, protocol binaries, or a Node server being co-located with D1.
+The Worker path must not depend on native `better-sqlite3`, local SQLite files, arbitrary filesystem access, systemd, protocol binaries, or a Node server being co-located with D1.
 
 ### Transaction and consistency requirements
 
 Cloudflare documents that:
 
-- \`D1Database.batch()\` executes supplied statements sequentially in one SQL transaction and aborts/rolls back the batch when a statement fails.
-- \`withSession()\` provides sequential consistency for queries in a session; session bookmarks can be used to carry read consistency.
+- `D1Database.batch()` executes supplied statements sequentially in one SQL transaction and aborts/rolls back the batch when a statement fails.
+- `withSession()` provides sequential consistency for queries in a session; session bookmarks can be used to carry read consistency.
 - D1 migrations are versioned SQL files applied through Wrangler, with local and remote targets kept distinct.
 
-These features are useful, but they do not prove that existing \`better-sqlite3\` callback transactions, synchronous read-modify-write sequences, cross-store coordination, or file-lock assumptions can be ported unchanged. Each transaction participant must be mapped to an explicit D1 transaction/batch or a redesigned idempotent workflow.
+These features are useful, but they do not prove that existing `better-sqlite3` callback transactions, synchronous read-modify-write sequences, cross-store coordination, or file-lock assumptions can be ported unchanged. Each transaction participant must be mapped to an explicit D1 transaction/batch or a redesigned idempotent workflow.
 
 Required invariants include:
 
@@ -148,7 +148,7 @@ Required invariants include:
 - A D1 transaction must not be presented as atomic with a BWH operation or another SQLite database.
 - Edge commands use durable desired-state references, idempotency keys, leases/retries, and redacted receipts.
 - Read-after-write paths that affect balance, entitlements, orders, or issuance must use a consistency strategy that is explicitly tested.
-- Repository migration IDs and DDL checksums remain auditable; the relationship to Wrangler's \`d1_migrations\` history must be defined rather than silently replacing the existing migration ledger.
+- Repository migration IDs and DDL checksums remain auditable; the relationship to Wrangler's `d1_migrations` history must be defined rather than silently replacing the existing migration ledger.
 
 Where a workflow spans D1 and BWH, use a durable command/outbox pattern with idempotent execution and explicit receipts. Do not claim distributed ACID semantics.
 
@@ -156,11 +156,11 @@ Where a workflow spans D1 and BWH, use a durable command/outbox pattern with ide
 
 Keep the current static-site lane intact:
 
-- Root \`wrangler.jsonc\` remains the static asset configuration for \`admin/dist-site\` until a separately reviewed implementation changes it.
+- Root `wrangler.jsonc` remains the static asset configuration for `admin/dist-site` until a separately reviewed implementation changes it.
 - The static-site build, verifier, and dry-run continue to validate only the public static bundle.
 - Do not mix backend Worker deployment credentials or D1 migrations into the public-site static build lane.
 
-The control-plane Worker should use a **separate, explicitly named configuration** (proposed: \`wrangler.control-plane.jsonc\`) with its own Worker entrypoint, D1 binding, migrations directory, validation commands, and deployment gate. The name and exact layout may be refined during implementation, but the separation between static-site and control-plane delivery must remain.
+The control-plane Worker should use a **separate, explicitly named configuration** (proposed: `wrangler.control-plane.jsonc`) with its own Worker entrypoint, D1 binding, migrations directory, validation commands, and deployment gate. The name and exact layout may be refined during implementation, but the separation between static-site and control-plane delivery must remain.
 
 The Worker CI lane should, at minimum, run source/environment checks, Worker bundle validation, local D1 migration application, schema/constraint tests, domain transaction tests, API contract tests, redaction checks, and synthetic edge-agent protocol tests. Pull-request validation must not require production credentials and must not deploy or run remote migrations.
 
@@ -190,7 +190,7 @@ The protected edge credential-material store is separate from the control databa
 
 Worker authentication and authorization must preserve the current account, session, Admin, Portal, and agent trust boundaries. The design must specify cookie/session protections, CSRF controls where applicable, rate limiting, credential storage, token rotation, replay protection for agents, and redacted audit/observability. Secrets belong only in an approved secret-management surface, never in D1 rows, source, logs, or PR evidence.
 
-Historical runtime identities, stale identity-map entries, and traffic-accounting history are not migration cleanup candidates. Preserve stable references and historical ledger facts. Do not reclassify, rotate, activate, or delete Japan/other node identities as part of this migration. Any change to runtime-principal bindings or protected material remains subject to \`docs/IDENTITY_LIFECYCLE.md\` and its separate Identity Gate / retention process.
+Historical runtime identities, stale identity-map entries, and traffic-accounting history are not migration cleanup candidates. Preserve stable references and historical ledger facts. Do not reclassify, rotate, activate, or delete Japan/other node identities as part of this migration. Any change to runtime-principal bindings or protected material remains subject to `docs/IDENTITY_LIFECYCLE.md` and its separate Identity Gate / retention process.
 
 Never put raw SQLite rows, customer data, runtime UUIDs, passwords, tokens, subscription URLs, raw configs, private logs, or secret values in this document, PR description, test output, or migration evidence. Use aggregate counts, safe references, and non-reversible digests only where the approved validation contract permits them.
 
@@ -210,15 +210,15 @@ The owner decision authorizes the target direction and source-level design work.
 | G7 — Production cutover | Freeze the source writer, take and verify an immutable backup, apply the exact reviewed migration, reconcile, and switch one authoritative writer | Exact Risk A approval, backup identity, migration identity, validation receipt, and rollback/forward-recovery readiness | **Risk A; not authorized by this decision** |
 | G8 — Post-cutover recovery | Prove D1 export/restore, RPO/RTO, and recovery of writes accepted after cutover | Tested recovery evidence and explicit recovery decision | Separate Risk A gate |
 
-The existing SQLite snapshot/restore contract in \`docs/CONTROL_PLANE_DB_SNAPSHOT_RESTORE_CONTRACT.md\` applies only to the current SQLite file and its WAL/service-custody procedure. It is not a D1 backup or restore runbook. A future D1 plan must separately validate Time Travel, export/backup retention (including any proposed R2 use), restore, and post-restore reconciliation. No R2 resource or backup schedule is created by this decision.
+The existing SQLite snapshot/restore contract in `docs/CONTROL_PLANE_DB_SNAPSHOT_RESTORE_CONTRACT.md` applies only to the current SQLite file and its WAL/service-custody procedure. It is not a D1 backup or restore runbook. A future D1 plan must separately validate Time Travel, export/backup retention (including any proposed R2 use), restore, and post-restore reconciliation. No R2 resource or backup schedule is created by this decision.
 
 ## Current go / no-go
 
 - **GO:** architecture direction, repository documentation, source-level route/schema inventory, and local synthetic D1/Worker compatibility work.
 - **NO-GO:** remote D1 creation, Worker production routes, Cloudflare secrets, DNS/custom-domain changes, production database inventory, real-data migration, payment/provider activation, BWH runtime mutation, and production cutover until their separate gates are approved.
 - **Current source of truth:** existing Node/Express + SQLite remains authoritative until a completed Risk A cutover. No dual write and no early traffic split.
-- **Initial D1 scope:** one database corresponding to shared \`control.sqlite\`. No database-per-domain split.
-- **Out of first scope:** \`subscriptions.sqlite\`, the optional third-party subscription database, and all raw edge credential material.
+- **Initial D1 scope:** one database corresponding to shared `control.sqlite`. No database-per-domain split.
+- **Out of first scope:** `subscriptions.sqlite`, the optional third-party subscription database, and all raw edge credential material.
 
 ## References
 
