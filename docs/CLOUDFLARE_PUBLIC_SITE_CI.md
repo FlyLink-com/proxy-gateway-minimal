@@ -2,7 +2,7 @@
 
 Last updated: 2026-11-04, America/Los_Angeles.
 
-\`\`\`yaml
+```yaml
 document_metadata:
   doc_type: operational
   lifecycle: active
@@ -10,12 +10,12 @@ document_metadata:
   superseded_by: null
   last_verified_at: 2026-11-04
   production_authority: false
-\`\`\`
+```
 
 This document defines only the repository-owned CI boundary for the public static
 site built for Cloudflare. It does not define or validate the separate
 Cloudflare Workers control-plane API / D1 lane approved in
-\`docs/CLOUDFLARE_D1_DATABASE_EVALUATION.md\`.
+`docs/CLOUDFLARE_D1_DATABASE_EVALUATION.md`.
 
 The owner approved the target direction on 2026-11-04 for Cloudflare Workers to
 host the control-plane API and one D1 database to become the authoritative
@@ -26,14 +26,14 @@ resource, add a binding, or authorize deployment.
 ## Scope
 
 The Cloudflare public-site lane remains limited to static assets from
-\`admin/dist-site\`, produced by the Admin app site build.
+`admin/dist-site`, produced by the Admin app site build.
 
 Allowed in this lane:
 
 - Build the public static site.
 - Verify that the public static bundle does not contain Admin, portal API, or
   subscription API routes.
-- Run a Wrangler dry-run against the root \`wrangler.jsonc\`.
+- Run a Wrangler dry-run against the root `wrangler.jsonc`.
 
 Not covered or authorized by this lane:
 
@@ -54,25 +54,25 @@ approval gates.
 
 Run these from the repository root:
 
-\`\`\`powershell
+```powershell
 npm run cloudflare:site:build
 npm run cloudflare:site:verify
 npm run cloudflare:site:dry-run
-\`\`\`
+```
 
 For the full local CI-equivalent public-site check:
 
-\`\`\`powershell
+```powershell
 npm run cloudflare:site:validate
-\`\`\`
+```
 
-The dry-run script pins Wrangler through \`npx --yes wrangler@4.99.0\` instead of
+The dry-run script pins Wrangler through `npx --yes wrangler@4.99.0` instead of
 adding Wrangler as a root dev dependency. This keeps the backend package's Node
 engine boundary intact while still making the Cloudflare validation
 reproducible.
 
-The repository keeps \`wrangler.public-site.jsonc\` as an explicit local
-preview configuration. The root \`wrangler.jsonc\` remains the static-site
+The repository keeps `wrangler.public-site.jsonc` as an explicit local
+preview configuration. The root `wrangler.jsonc` remains the static-site
 configuration at this source cutoff; it has no control-plane Worker entrypoint
 or D1 binding.
 
@@ -80,11 +80,11 @@ or D1 binding.
 
 The main CI workflow runs the same public-site checks after the Admin build:
 
-1. \`npm run validation:environment:source\`
-2. \`npm ci\` and \`npm ci --prefix admin\`
-3. \`npm run cloudflare:site:build\`
-4. \`npm run cloudflare:site:verify\`
-5. \`npm run cloudflare:site:dry-run\`
+1. `npm run validation:environment:source`
+2. `npm ci` and `npm ci --prefix admin`
+3. `npm run cloudflare:site:build`
+4. `npm run cloudflare:site:verify`
+5. `npm run cloudflare:site:dry-run`
 
 The separately scheduled deploy job repeats the Source preflight and build
 instead of inheriting a dependency tree from the validation runner. This proves
@@ -101,14 +101,14 @@ Keep the two delivery lanes separate:
 ### Public static site
 
 - Repository root: project root.
-- Build command: \`npm run validation:environment:source && npm ci && npm ci --prefix admin && npm run cloudflare:site:build && npm run cloudflare:site:verify\`
-- Deploy command: \`npx wrangler deploy\` or \`npx --yes wrangler@4.99.0 deploy --config wrangler.jsonc\`
-- Static output source: \`admin/dist-site\`.
+- Build command: `npm run validation:environment:source && npm ci && npm ci --prefix admin && npm run cloudflare:site:build && npm run cloudflare:site:verify`
+- Deploy command: `npx wrangler deploy` or `npx --yes wrangler@4.99.0 deploy --config wrangler.jsonc`
+- Static output source: `admin/dist-site`.
 
 ### Control-plane Worker and D1 — separate future lane
 
 The approved target should use a dedicated Worker configuration (proposed:
-\`wrangler.control-plane.jsonc\`), Worker entrypoint, D1 binding, migrations
+`wrangler.control-plane.jsonc`), Worker entrypoint, D1 binding, migrations
 directory, validation commands, and deployment gate. Do not add its secrets or
 remote migration commands to the public static-site build.
 
