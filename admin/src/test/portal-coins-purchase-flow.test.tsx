@@ -1,7 +1,9 @@
-import { act, renderHook, waitFor } from "@testing-library/react";
+import { act, render, renderHook, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import * as commerce from "../features/user-portal/commerce";
-import { clearAdsClickData, clearPortalAdsServerConsent, PORTAL_ADS_CLICK_STORAGE_KEY, setAdsUserDataConsent, setPortalAdsServerConsent } from "../features/ads-attribution";
+import { AdsConsentPreferencePanel } from "../features/ads-consent-preference-panel";
+import type { PortalAdsConsentClient } from "../features/ads-attribution-contract";
+import { clearAdsClickData, clearPortalAdsServerConsent, PORTAL_ADS_CLICK_STORAGE_KEY, readAdsUserDataConsent, setAdsUserDataConsent, setPortalAdsServerConsent } from "../features/ads-attribution";
 import type {
   PortalCoinCommerceClient,
   PortalCoinOffer,
@@ -1336,6 +1338,67 @@ describe("Portal Coins purchase flow", () => {
     await createRequest;
     expect(storage.setItem).not.toHaveBeenCalled();
   });
+  test("does not attach the retained click after another tab revokes consent without remounting", async () => {
+    vi.stubEnv("VITE_PUBLIC_ADS_CLICK_BINDING_ENABLED", "true");
+    expect(setAdsUserDataConsent("granted")).toBe(true);
+    const sessionRef = "session-ads-cross-tab-withdrawal";
+    let serverDecision: "granted" | "denied" = "granted";
+    const consentClient: PortalAdsConsentClient = {
+      getConsent: vi.fn(async () => ({
+        decision: serverDecision,
+        adUserData: serverDecision === "granted",
+        adPersonalization: false as const,
+        updatedAt: Date.now()
+      })),
+      setConsent: vi.fn(async () => ({
+        decision: "denied" as const,
+        adUserData: false,
+        adPersonalization: false as const,
+        updatedAt: Date.now()
+      }))
+    };
+    render(
+      <AdsConsentPreferencePanel
+        locale="zh"
+        surface="portal"
+        sessionRef={sessionRef}
+        adsConsentClient={consentClient}
+      />
+    );
+    await waitFor(() => {
+      expect(screen.getByText("广告衡量：已允许")).toBeTruthy();
+    });
+    window.sessionStorage.setItem(PORTAL_ADS_CLICK_STORAGE_KEY, JSON.stringify({
+      type: "gclid",
+      value: "synthetic_revoked_purchase_click",
+      clickAt: Date.now()
+    }));
+
+    serverDecision = "denied";
+    act(() => window.dispatchEvent(new Event("focus")));
+    // No remount: the original mounted panel must refresh and revoke.
+    await waitFor(() => {
+      expect(screen.getByText("广告衡量：未允许")).toBeTruthy();
+    });
+    expect(consentClient.getConsent).toHaveBeenCalledTimes(2);
+
+    const client = commerceClient();
+    const { result } = renderHook(() => commerce.useCoinsPurchaseFlow({
+      client,
+      sessionRef
+    }));
+    await act(async () => {
+      await result.current.openProduct("offer_basic");
+      await result.current.previewCheckout();
+    });
+    await act(async () => {
+      await result.current.confirmPurchase();
+    });
+    expect(client.createOrder).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(client.createOrder).mock.calls[0]?.[0]).not.toHaveProperty("adsClick");
+    expect(readAdsUserDataConsent()).toBe("granted");
+  });
+
   test("attaches a consented Ads click only to the final legacy order mutation", async () => {
     vi.stubEnv("VITE_PUBLIC_ADS_CLICK_BINDING_ENABLED", "true");
     vi.stubGlobal("crypto", { randomUUID: () => "ads_click_purchase_1" });

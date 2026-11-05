@@ -50,6 +50,7 @@ Outbox rows are not deleted by this operation. They contain transaction/order re
 - Opening that existing database does not create consent tables.
 - Consent tables are created only by an explicit authenticated consent write while the feature gate is enabled.
 - When the feature gate is off, reads return `unknown`, writes are no-ops, and no consent schema is created.
+- If build-time `VITE_PUBLIC_ADS_CLICK_BINDING_ENABLED` is on but runtime `ADS_CLICK_BINDING_ENABLED` is off, the Portal endpoint returns 503 and the client pauses and purges click data (fail closed). Other Portal runtime compositions without a consent store also return 503; they do not imply server authorization.
 - No production database is opened or migrated by this Draft PR. No deployment or flag change is part of this work.
 
 ## Browser and Portal consent boundaries
@@ -57,7 +58,8 @@ Outbox rows are not deleted by this operation. They contain transaction/order re
 - The public-site preference is browser-scoped and remains in the site consent cookie. The public-site UI is the only surface that writes it; capture and handoff code may read it as a browser-side prerequisite. Portal account-consent hydration and submission must never change it.
 - Portal account consent is account-scoped and authoritative only through the authenticated Portal endpoints. Portal hydration and account-choice submission must never write the public-site cookie.
 - The two decisions are independent: public-site consent is required before capturing and handing off a click ID; Portal account consent is separately required before the server persists a purchase claim. A browser preference alone never authorizes a server-side claim.
-- The Portal UI hydrates the account decision after authentication and keeps the current decision in page memory for purchase gating. A denied or unknown server decision clears the Portal click handoff without changing the site preference.
+- The Portal UI hydrates the account decision after authentication and rechecks it on window focus, pageshow and document visibility change. Before each resumed server GET, the client synchronously suspends purchase attribution; when the server returns denied or unknown (or cannot be reached), stored click data is purged without changing the public-site preference. A browser-only grant cannot authorize a Portal claim.
+- A Portal panel unmount also clears in-tab attribution data; React development StrictMode effect replay or an ordinary remount may discard a valid click. This is a fail-closed attribution-retention limitation, not permission to submit an unverified click.
 - Both legacy confirmation and deferred wallet-first reservation expose their committed transaction timestamps as canonical UTC ISO text. The stores strictly convert those values to epoch milliseconds before comparing them with the consent ledger's numeric timestamp; malformed values fail closed. A grant later than the purchase transaction cannot authorize that order.
 
 ## Validation
@@ -70,6 +72,7 @@ The source tests use only in-memory SQLite databases and synthetic identifiers. 
 - server-side grant as a prerequisite for click-ID persistence;
 - legacy and deferred wallet-first timestamp normalization, including rejection of a grant later than the purchase transaction;
 - independent Portal account consent and public-site browser preference, including hydration and submission without cross-writing;
+- Portal focus/pageshow/visibility revalidation after a different tab revokes server consent, with no-remount purchase requests omitting click descriptors;
 - revocation redaction of claims and bindings;
 - stopping pending outbox rows;
 - aggregate-only revocation results and idempotent repeated withdrawal.

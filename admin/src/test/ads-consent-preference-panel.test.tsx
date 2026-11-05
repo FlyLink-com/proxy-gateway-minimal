@@ -1,10 +1,11 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { AdsConsentPreferencePanel } from "../features/ads-consent-preference-panel";
 import {
   clearAdsClickData,
   clearPortalAdsServerConsent,
+  PORTAL_ADS_CLICK_STORAGE_KEY,
   readAdsUserDataConsent,
   readPortalAdsClickForPurchase,
   setAdsUserDataConsent
@@ -106,6 +107,62 @@ describe("Ads consent preference panel", () => {
     expect(await screen.findByText("广告衡量：已允许")).toBeInTheDocument();
     expect(readAdsUserDataConsent()).toBe("denied");
   });
+
+  test.each(["focus", "pageshow", "visibilitychange"] as const)(
+    "Portal revocation in another tab suspends attribution on %s without remounting",
+    async (eventName) => {
+      expect(setAdsUserDataConsent("granted")).toBe(true);
+      let serverDecision: "granted" | "denied" = "granted";
+      const client: PortalAdsConsentClient = {
+        getConsent: vi.fn(async () => ({
+          decision: serverDecision,
+          adUserData: serverDecision === "granted",
+          adPersonalization: false as const,
+          updatedAt: Date.now()
+        })),
+        setConsent: vi.fn(async () => ({
+          decision: "denied" as const,
+          adUserData: false,
+          adPersonalization: false as const,
+          updatedAt: Date.now()
+        }))
+      };
+      render(
+        <AdsConsentPreferencePanel
+          locale="zh"
+          surface="portal"
+          sessionRef={sessionRef}
+          adsConsentClient={client}
+        />
+      );
+      expect(await screen.findByText("广告衡量：已允许")).toBeInTheDocument();
+      window.sessionStorage.setItem(PORTAL_ADS_CLICK_STORAGE_KEY, JSON.stringify({
+        type: "gclid",
+        value: "synthetic_cross_tab_click",
+        clickAt: Date.now()
+      }));
+      expect(readPortalAdsClickForPurchase(sessionRef)).toMatchObject({
+        value: "synthetic_cross_tab_click"
+      });
+
+      // A different Portal tab updates the server decision. This mounted
+      // tab must invalidate its stale grant as soon as it resumes.
+      serverDecision = "denied";
+      act(() => {
+        if (eventName === "visibilitychange") {
+          document.dispatchEvent(new Event(eventName));
+        } else {
+          window.dispatchEvent(new Event(eventName));
+        }
+      });
+      expect(readPortalAdsClickForPurchase(sessionRef)).toBeNull();
+      expect(await screen.findByText("广告衡量：未允许")).toBeInTheDocument();
+      expect(client.getConsent).toHaveBeenCalledTimes(2);
+      expect(window.sessionStorage.getItem(PORTAL_ADS_CLICK_STORAGE_KEY)).toBeNull();
+      // Portal revalidation never writes the independent site preference.
+      expect(readAdsUserDataConsent()).toBe("granted");
+    }
+  );
 
   test("Portal server denial does not overwrite an independent site grant", async () => {
     expect(setAdsUserDataConsent("granted")).toBe(true);

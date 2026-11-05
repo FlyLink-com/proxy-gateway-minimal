@@ -41,6 +41,8 @@ export function AdsConsentPreferencePanel({
   const [loading, setLoading] = useState(surface === "portal");
   const [pending, setPending] = useState(false);
   const requestVersionRef = useRef(0);
+  // A resume event must not race with an in-flight account-consent write.
+  const pendingConsentWriteRef = useRef(false);
   const [resolvedLocale, setResolvedLocale] = useState<"zh" | "en">(
     () => locale === "auto" ? detectLocale() : locale
   );
@@ -76,34 +78,51 @@ export function AdsConsentPreferencePanel({
         return undefined;
       }
 
-      const requestVersion = ++requestVersionRef.current;
       let cancelled = false;
-      setPortalAdsServerConsent(sessionRef, "unknown");
+      const refreshPortalConsent = () => {
+        const requestVersion = ++requestVersionRef.current;
+        // Synchronously suspend purchase attribution before an async GET:
+        // a different tab may have withdrawn the server account grant.
+        setPortalAdsServerConsent(sessionRef, "unknown");
+        setLoading(true);
+        setMessage("");
+
+        void adsConsentClient.getConsent({ sessionRef }).then((state) => {
+          if (cancelled || requestVersionRef.current !== requestVersion) return;
+          setPortalAdsServerConsent(sessionRef, state.decision);
+          if (state.decision !== "granted") clearAdsClickData();
+          setConsent(state.decision);
+          setExpanded(state.decision === "unknown");
+        }).catch(() => {
+          if (cancelled || requestVersionRef.current !== requestVersion) return;
+          setPortalAdsServerConsent(sessionRef, "unknown");
+          clearAdsClickData();
+          setConsent("unknown");
+          setExpanded(true);
+          setMessage("无法读取账户授权；当前会话已暂停广告点击标识使用，请检查网络后重试。");
+        }).finally(() => {
+          if (!cancelled && requestVersionRef.current === requestVersion) setLoading(false);
+        });
+      };
+
       setConsent("unknown");
       setExpanded(true);
-      setLoading(true);
-      setMessage("");
+      refreshPortalConsent();
 
-      void adsConsentClient.getConsent({ sessionRef }).then((state) => {
-        if (cancelled || requestVersionRef.current !== requestVersion) return;
-        setPortalAdsServerConsent(sessionRef, state.decision);
-        if (state.decision !== "granted") clearAdsClickData();
-        setConsent(state.decision);
-        setExpanded(state.decision === "unknown");
-      }).catch(() => {
-        if (cancelled || requestVersionRef.current !== requestVersion) return;
-        setPortalAdsServerConsent(sessionRef, "unknown");
-        clearAdsClickData();
-        setConsent("unknown");
-        setExpanded(true);
-        setMessage("无法读取账户授权；当前会话已暂停广告点击标识使用，请检查网络后重试。");
-      }).finally(() => {
-        if (!cancelled && requestVersionRef.current === requestVersion) setLoading(false);
-      });
-
+      const refreshOnResume = () => {
+        if (pendingConsentWriteRef.current || document.visibilityState === "hidden") return;
+        refreshPortalConsent();
+      };
+      window.addEventListener("focus", refreshOnResume);
+      window.addEventListener("pageshow", refreshOnResume);
+      document.addEventListener("visibilitychange", refreshOnResume);
       return () => {
         cancelled = true;
         requestVersionRef.current += 1;
+        window.removeEventListener("focus", refreshOnResume);
+        window.removeEventListener("pageshow", refreshOnResume);
+        document.removeEventListener("visibilitychange", refreshOnResume);
+        pendingConsentWriteRef.current = false;
         clearPortalAdsServerConsent(sessionRef);
       };
     }
@@ -129,8 +148,9 @@ export function AdsConsentPreferencePanel({
   const zh = resolvedLocale === "zh";
   const choose = (next: "granted" | "denied") => {
     if (surface === "portal") {
-      if (!sessionRef || !adsConsentClient || pending) return;
+      if (!sessionRef || !adsConsentClient || pending || pendingConsentWriteRef.current) return;
       const requestVersion = ++requestVersionRef.current;
+      pendingConsentWriteRef.current = true;
       setPending(true);
       setLoading(false);
       setPortalAdsServerConsent(sessionRef, "unknown");
@@ -159,7 +179,10 @@ export function AdsConsentPreferencePanel({
           ? "服务器未确认保存；当前会话已停止发送广告点击标识，请重试。"
           : "The server did not confirm this choice. Click-ID measurement is paused in this session; please retry.");
       }).finally(() => {
-        if (requestVersionRef.current === requestVersion) setPending(false);
+        if (requestVersionRef.current === requestVersion) {
+          pendingConsentWriteRef.current = false;
+          setPending(false);
+        }
       });
       return;
     }
