@@ -136,7 +136,7 @@ Target responsibility split:
 - Cloudflare Worker: authenticated Admin / User Portal / client control-plane
   API, domain services, authorization, safe audit, and the asynchronous D1
   repository layer.
-- One D1 database: first target is the existing shared \`control.sqlite\`
+- One D1 database: first target is the existing shared `control.sqlite`
   boundary; domains that currently share this database remain in one
   transactional control store.
 - BWH and edge nodes: data-plane agent, protocol runtimes, protected local
@@ -146,12 +146,12 @@ Target responsibility split:
   on a data-plane node.
 
 This is an approved target, not current runtime state. The source cutoff still
-uses Node/Express, synchronous \`better-sqlite3\`, and SQLite. The root
-\`wrangler.jsonc\` remains static-assets-only; no Worker API, D1 binding, remote
+uses Node/Express, synchronous `better-sqlite3`, and SQLite. The root
+`wrangler.jsonc` remains static-assets-only; no Worker API, D1 binding, remote
 D1 resource, or production route has been created by this decision.
 
-The initial D1 scope is one database matching the shared \`control.sqlite\`
-path. \`subscriptions.sqlite\` and the optional third-party subscription store
+The initial D1 scope is one database matching the shared `control.sqlite`
+path. `subscriptions.sqlite` and the optional third-party subscription store
 remain outside the first cutover until their ownership and API dependencies
 are explicitly resolved. Raw edge credential material remains in protected
 BWH custody and is never migrated into D1.
@@ -160,8 +160,8 @@ No dual writes are permitted. SQLite remains authoritative until an exact
 Risk A migration and cutover gate is completed. Remote Cloudflare resources,
 secrets, routes, DNS, production data inventory, schema/data migration, and
 production cutover each require their own approval. See
-\`docs/CLOUDFLARE_D1_DATABASE_EVALUATION.md\` and
-\`docs/CLOUDFLARE_PUBLIC_SITE_CI.md\`.
+`docs/CLOUDFLARE_D1_DATABASE_EVALUATION.md` and
+`docs/CLOUDFLARE_PUBLIC_SITE_CI.md`.
 
 ## Repository And Delivery Index
 
