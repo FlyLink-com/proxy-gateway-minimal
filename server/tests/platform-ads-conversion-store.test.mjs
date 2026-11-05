@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import Database from "better-sqlite3";
 import test from "node:test";
+import { createSqliteAdsConsentStore } from "../services/platform/ads-consent-store.mjs";
 import {
   adsBindingEnabled,
   enqueueAdsConversion,
@@ -46,7 +47,18 @@ function tableNames(db) {
   `).all().map((row) => row.name);
 }
 
+function grantDefaultConsent(db) {
+  const consent = createSqliteAdsConsentStore({
+    database: db,
+    env: ENABLED,
+    nowFn: () => NOW
+  });
+  consent.recordConsent({ accountRef: "account_ads_001", adUserData: true });
+  consent.close();
+}
+
 function capture(db, overrides = {}) {
+  grantDefaultConsent(db);
   return safeCaptureAdsClickForOrder(db, {
     orderRef: "order_ads_001",
     accountRef: "account_ads_001",
@@ -273,6 +285,7 @@ test("claims are tri-state: absent descriptor is no_click, malformed descriptor 
 
 test("replay materialization uses only the stored claim, never the replay's descriptor", () => {
   withDb((db) => {
+    grantDefaultConsent(db);
     // First request declared a click; simulate its binding never having
     // been materialized (claim recorded directly).
     recordAdsClickClaim(db, {
@@ -308,6 +321,7 @@ test("replay materialization uses only the stored claim, never the replay's desc
 
 test("materializeAdsClickBinding is idempotent and claim-driven", () => {
   withDb((db) => {
+    grantDefaultConsent(db);
     recordAdsClickClaim(db, {
       orderRef: "order_ads_005",
       accountRef: "account_ads_001",
@@ -432,6 +446,7 @@ test("enqueueAdsConversion records skipped/no_click for an explicit no-click cla
 
 test("enqueueAdsConversion records skipped/binding_failed when the claim has a click but no binding materialized", () => {
   withDb((db) => {
+    grantDefaultConsent(db);
     recordAdsClickClaim(db, {
       orderRef: "order_ads_022",
       accountRef: "account_ads_001",
@@ -466,6 +481,7 @@ test("enqueueAdsConversion records skipped/binding_failed when the claim has a c
 
 test("enqueueAdsConversion records skipped/invalid_click for a malformed-descriptor claim", () => {
   withDb((db) => {
+    grantDefaultConsent(db);
     safeCaptureAdsClickForOrder(db, {
       orderRef: "order_ads_023",
       accountRef: "account_ads_001",
@@ -492,6 +508,7 @@ test("enqueueAdsConversion records skipped/invalid_click for a malformed-descrip
 
 test("safeEnqueue records binding_failed through the real entry point when only binding writes fail, then upgrades", () => {
   withDb((db) => {
+    grantDefaultConsent(db);
     // A valid claim is recorded while all tables are writable.
     recordAdsClickClaim(db, {
       orderRef: "order_ads_024",
@@ -608,7 +625,7 @@ test("a failed outbox write is swallowed by the safe entry point and a later cal
   });
 });
 
-test("enqueueAdsConversion records skipped/consent_denied when ad user data consent is absent", () => {
+test("client-declared denial is stored as a value-free invalid click claim", () => {
   withDb((db) => {
     safeCaptureAdsClickForOrder(db, {
       orderRef: "order_ads_009",
@@ -632,6 +649,7 @@ test("enqueueAdsConversion records skipped/consent_denied when ad user data cons
 
 test("enqueueAdsConversion records pending for bound consented orders in both models", () => {
   withDb((db) => {
+    grantDefaultConsent(db);
     for (const [model, orderRef, valueUnits] of [
       ["legacy", "order_ads_010", 20],
       ["deferred", "order_ads_011", 200]
@@ -659,6 +677,7 @@ test("enqueueAdsConversion records pending for bound consented orders in both mo
 
 test("a skipped row upgrades to pending once the binding materializes", () => {
   withDb((db) => {
+    grantDefaultConsent(db);
     // Terminal arrives first (binding not yet materialized): skipped.
     recordAdsClickClaim(db, {
       orderRef: "order_ads_012",
@@ -708,6 +727,7 @@ test("a skipped row upgrades to pending once the binding materializes", () => {
 
 test("a pending row is never downgraded by a later skipped evaluation", () => {
   withDb((db) => {
+    grantDefaultConsent(db);
     safeCaptureAdsClickForOrder(db, {
       orderRef: "order_ads_014",
       accountRef: "account_ads_001",
@@ -740,6 +760,7 @@ test("a pending row is never downgraded by a later skipped evaluation", () => {
 
 test("enqueueAdsConversion is idempotent per order", () => {
   withDb((db) => {
+    grantDefaultConsent(db);
     safeCaptureAdsClickForOrder(db, {
       orderRef: "order_ads_015",
       accountRef: "account_ads_001",

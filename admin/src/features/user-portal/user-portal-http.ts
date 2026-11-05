@@ -4,6 +4,8 @@ import type {
   PortalCurrentResource,
   PortalCurrentResourceSetupDelivery,
   PortalHumanVerificationInput,
+  PortalAdsConsentClient,
+  PortalAdsConsentState,
   PortalSecondFactorKind,
   PortalSession,
   PortalUserSecurityState,
@@ -153,6 +155,33 @@ function mapSecurityState(raw: Record<string, unknown> | undefined): PortalUserS
   };
 }
 
+function mapPortalAdsConsent(raw: unknown): PortalAdsConsentState {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    throw portalError("广告衡量授权状态无效。");
+  }
+  const value = raw as Record<string, unknown>;
+  const decision = value.decision;
+  if (decision !== "unknown" && decision !== "granted" && decision !== "denied") {
+    throw portalError("广告衡量授权状态无效。");
+  }
+  const expectedAdUserData = decision === "unknown" ? null : decision === "granted";
+  const updatedAt = value.updatedAt;
+  if (
+    value.adUserData !== expectedAdUserData
+    || value.adPersonalization !== false
+    || !(updatedAt === null || (typeof updatedAt === "number" && Number.isSafeInteger(updatedAt) && updatedAt >= 0))
+    || ((decision === "unknown") !== (updatedAt === null))
+  ) {
+    throw portalError("广告衡量授权状态无效。");
+  }
+  return {
+    decision,
+    adUserData: expectedAdUserData,
+    adPersonalization: false,
+    updatedAt: updatedAt as number | null
+  };
+}
+
 export function createHttpUserPortalClient(
   options: HttpUserPortalClientOptions = {}
 ): UserPortalClient & {
@@ -171,6 +200,7 @@ export function createHttpUserPortalClient(
   wallet: PortalWalletClient;
   referral: PortalReferralClient;
   recharge: PortalRechargeClient;
+  adsConsent: PortalAdsConsentClient;
 } {
   const baseUrl = options.baseUrl ?? "";
   const fetchFn = createPortalBrowserFetch(options.fetchFn ?? fetch);
@@ -215,6 +245,23 @@ export function createHttpUserPortalClient(
       fetchFn,
       trustedActionOriginsByAdapter: rechargeActionOrigins,
     }),
+    adsConsent: {
+      async getConsent(input) {
+        const body = await jsonRequest(fetchFn, endpoint(baseUrl, "/api/portal/ads-consent"), {
+          method: "GET",
+          headers: portalSessionHeaders(input.sessionRef)
+        });
+        return mapPortalAdsConsent(body.consent);
+      },
+      async setConsent(input) {
+        const body = await jsonRequest(fetchFn, endpoint(baseUrl, "/api/portal/ads-consent"), {
+          method: "POST",
+          headers: portalSessionHeaders(input.sessionRef),
+          body: JSON.stringify({ adUserData: input.adUserData })
+        });
+        return mapPortalAdsConsent(body.consent);
+      }
+    },
     async issueHumanChallenge(input = {}) {
       const body = await jsonRequest(fetchFn, endpoint(baseUrl, "/api/portal/human-challenges"), {
         method: "POST",

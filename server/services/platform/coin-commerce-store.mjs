@@ -245,6 +245,17 @@ function isStrictIsoTimestamp(value) {
   );
 }
 
+// Consent decisions are compared against the committed order timestamp in
+// milliseconds. Commerce exposes that same timestamp as canonical UTC ISO
+// text. An invalid timestamp must never become implicit authorization.
+function adsAuthorizedAtMilliseconds(timestamp) {
+  if (!isStrictIsoTimestamp(timestamp)) return null;
+  const milliseconds = Date.parse(timestamp);
+  return Number.isSafeInteger(milliseconds) && milliseconds >= 0
+    ? milliseconds
+    : null;
+}
+
 function addMilliseconds(timestamp, milliseconds) {
   const value = Date.parse(timestamp) + milliseconds;
   if (!Number.isSafeInteger(value)) {
@@ -2415,7 +2426,7 @@ export function createSqliteCoinCommerceStore(options = {}) {
     }
     // Internal signal for confirmOrder's post-commit Ads step (see the
     // replay branch above): this was the first request for the order.
-    request.adsOutcome = { replay: false, orderRef };
+    request.adsOutcome = { replay: false, orderRef, authorizedAt: occurredAt };
     return projected;
   });
 
@@ -2460,7 +2471,8 @@ export function createSqliteCoinCommerceStore(options = {}) {
           orderRef: transactionRequest.adsOutcome.orderRef,
           accountRef: business.accountId,
           model: "legacy",
-          adsClick: value.adsClick
+          adsClick: value.adsClick,
+          authorizedAt: adsAuthorizedAtMilliseconds(transactionRequest.adsOutcome.authorizedAt)
         });
       } else if (transactionRequest.adsOutcome?.replay === true) {
         safeMaterializeAdsClickForOrder(db, {

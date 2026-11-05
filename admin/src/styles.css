@@ -2,6 +2,7 @@
 @import "./styles/base.css";
 @import "./styles/admin-os-chrome.css";
 @import "./styles/public-site.css";
+@import "./styles/ads-consent.css";
 @import "./styles/shared-components.css";
 @import "./styles/admin-os-workspace.css";
 @import "./styles/legacy-entrypoints.css";

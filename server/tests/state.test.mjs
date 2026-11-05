@@ -4649,33 +4649,52 @@ test("createRuntimeState withholds remote data-plane channels until matching app
     "channel-vultr-a-tuic",
     "channel-sgp-a-vless-reality-tcp",
     "channel-sgp-a-hy2",
-    "channel-sgp-a-tuic"
+    "channel-sgp-a-tuic",
+    "channel-vultr-jp-01-vless-reality-tcp",
+    "channel-vultr-jp-01-hy2",
+    "channel-vultr-jp-01-tuic"
   ];
   const sgpChannels = channels.filter((channel) => channel.startsWith("channel-sgp-"));
+  const jpChildChannels = channels.filter((channel) => channel.startsWith("channel-vultr-jp-01-"));
   let first;
   let second;
 
   function serverForChannel(channel) {
+    const isSgp = channel.startsWith("channel-sgp-");
+    const isJpChild = channel.startsWith("channel-vultr-jp-01-");
+    const isRemote = isSgp || isJpChild;
+    const nodeRef = isSgp ? "vultr-sgp-a" : isJpChild ? "node-vultr-jp-01" : "vultr-japan-a";
     const isHy2 = channel.includes("hy2");
     const isTuic = channel.includes("tuic");
     return {
       id: channel.replaceAll("-", "_"),
       name: channel,
       subscriptionBundleRef: "vultr-production-a",
-      physicalNodeRef: channel.startsWith("channel-sgp-") ? "vultr-sgp-a" : "vultr-japan-a",
+      physicalNodeRef: nodeRef,
+      ...(isRemote ? { nodeRef } : {}),
       protocol: isHy2 ? "hysteria2" : isTuic ? "tuic" : "vless",
       type: isHy2 ? "hysteria2" : isTuic ? "tuic" : "vless",
-      host: channel.startsWith("channel-sgp-") ? "sgp.example.test" : "jp.example.test",
+      host: isSgp ? "sgp.example.test" : isJpChild ? "jp-child.example.test" : "jp.example.test",
       port: isHy2 ? 10443 : isTuic ? 443 : 8443,
-      ...(isHy2 ? { password: channel.startsWith("channel-sgp-") ? "${SGP_HY2_STATIC_PASSWORD}" : "${VULTR_HY2_PASSWORD}" } : {}),
+      ...(isHy2 ? {
+        password: isJpChild
+          ? "${JP_CHILD_HY2_PASSWORD}"
+          : isSgp ? "${SGP_HY2_STATIC_PASSWORD}" : "${VULTR_HY2_PASSWORD}"
+      } : {}),
       ...(isTuic ? {
-        uuid: channel.startsWith("channel-sgp-") ? "${SGP_TUIC_STATIC_UUID}" : "${VULTR_TUIC_UUID}",
-        password: channel.startsWith("channel-sgp-") ? "${SGP_TUIC_STATIC_PASSWORD}" : "${VULTR_TUIC_PASSWORD}"
+        uuid: isJpChild
+          ? "${JP_CHILD_TUIC_UUID}"
+          : isSgp ? "${SGP_TUIC_STATIC_UUID}" : "${VULTR_TUIC_UUID}",
+        password: isJpChild
+          ? "${JP_CHILD_TUIC_PASSWORD}"
+          : isSgp ? "${SGP_TUIC_STATIC_PASSWORD}" : "${VULTR_TUIC_PASSWORD}"
       } : {}),
       ...(!isHy2 && !isTuic ? {
-        uuid: channel.startsWith("channel-sgp-") ? "${SGP_VLESS_STATIC_UUID}" : "${VULTR_VLESS_REALITY_UUID}"
+        uuid: isJpChild
+          ? "${JP_CHILD_VLESS_REALITY_UUID}"
+          : isSgp ? "${SGP_VLESS_STATIC_UUID}" : "${VULTR_VLESS_REALITY_UUID}"
       } : {}),
-      ...(channel.startsWith("channel-sgp-") ? { runtimeAdapter: "remote-data-plane-handoff" } : {}),
+      ...(isRemote ? { runtimeAdapter: "remote-data-plane-handoff" } : {}),
       credentialMode: "per-order",
       status: "online",
       subscriptionEligible: true
@@ -4696,6 +4715,10 @@ test("createRuntimeState withholds remote data-plane channels until matching app
       VULTR_HY2_PASSWORD: "synthetic-vultr-hy2-template-password",
       VULTR_TUIC_UUID: "22222222-2222-4222-8222-222222222222",
       VULTR_TUIC_PASSWORD: "synthetic-vultr-tuic-template-password",
+      JP_CHILD_VLESS_REALITY_UUID: "55555555-5555-4555-8555-555555555555",
+      JP_CHILD_HY2_PASSWORD: "synthetic-jp-child-hy2-template-password",
+      JP_CHILD_TUIC_UUID: "66666666-6666-4666-8666-666666666666",
+      JP_CHILD_TUIC_PASSWORD: "synthetic-jp-child-tuic-template-password",
       SGP_VLESS_STATIC_UUID: "33333333-3333-4333-8333-333333333333",
       SGP_HY2_STATIC_PASSWORD: "synthetic-sgp-hy2-template-password",
       SGP_TUIC_STATIC_UUID: "44444444-4444-4444-8444-444444444444",
@@ -4711,11 +4734,18 @@ test("createRuntimeState withholds remote data-plane channels until matching app
       USER_PORTAL_AUTO_ISSUANCE_7D_MONTHLY_LIMIT: "5000",
       USER_PORTAL_AUTO_ISSUANCE_30D_MONTHLY_LIMIT: "1000",
       EDGE_DATA_PLANE_AGENT_ROUTES_ENABLED: "true",
-      EDGE_DATA_PLANE_AGENT_NODES_JSON: JSON.stringify([{
-        nodeRef: "vultr-sgp-a",
-        channelRefs: sgpChannels,
-        tokenSha256: "0".repeat(64)
-      }])
+      EDGE_DATA_PLANE_AGENT_NODES_JSON: JSON.stringify([
+        {
+          nodeRef: "vultr-sgp-a",
+          channelRefs: sgpChannels,
+          tokenSha256: "0".repeat(64)
+        },
+        {
+          nodeRef: "node-vultr-jp-01",
+          channelRefs: jpChildChannels,
+          tokenSha256: "1".repeat(64)
+        }
+      ])
     };
 
     first = createRuntimeState({
@@ -4813,7 +4843,7 @@ test("createRuntimeState withholds remote data-plane channels until matching app
 
     const withScopedReceipts = second.subscriptions.core.resolveSubscriptionArtifact(artifactSecret);
     assert.equal(withScopedReceipts.ok, true);
-    assert.deepEqual(withScopedReceipts.proxyConfig.servers.map((server) => server.name), channels);
+    assert.deepEqual(withScopedReceipts.proxyConfig.servers.map((server) => server.name), channels.slice(0, 6));
     const otherWithScopedReceipts = second.subscriptions.core.resolveSubscriptionArtifact(otherArtifactSecret);
     assert.equal(otherWithScopedReceipts.ok, true);
     assert.deepEqual(otherWithScopedReceipts.proxyConfig.servers.map((server) => server.name), channels.slice(0, 3));
@@ -4839,13 +4869,184 @@ test("createRuntimeState withholds remote data-plane channels until matching app
       });
     }
 
+    const jpStaleDesired = second.platform.controlStore.getLatestEdgeDesiredStateForChannel(jpChildChannels[0], {
+      nodeRef: "node-vultr-jp-01",
+      channelRefs: [jpChildChannels[0]]
+    });
+    assert.equal(typeof jpStaleDesired?.desiredStateRef, "string");
+    const otherBeforeJpStale = second.subscriptions.core.resolveSubscriptionArtifact(otherArtifactSecret);
+    assert.equal(otherBeforeJpStale.ok, true);
+    second.platform.controlStore.recordEdgeApplyReceipt({
+      id: "edge_receipt_stale_jp_child_vless",
+      channelRef: jpChildChannels[0],
+      desiredStateRef: `${jpStaleDesired.desiredStateRef}_stale`,
+      status: "applied",
+      actionCounts: { add: jpStaleDesired.edgeCredentialRefs.length },
+      configTestOk: true,
+      serviceActive: true,
+      listenerUdp443: false,
+      listenerTcp: true,
+      appliedAt: "2026-06-11T00:00:30.000Z",
+      createdAt: "2026-06-11T00:00:30.000Z"
+    });
+    const otherWithJpStaleReceipt = second.subscriptions.core.resolveSubscriptionArtifact(otherArtifactSecret);
+    assert.equal(otherWithJpStaleReceipt.ok, true);
+    assert.deepEqual(
+      otherWithJpStaleReceipt.proxyConfig.servers.map((server) => server.name),
+      otherBeforeJpStale.proxyConfig.servers.map((server) => server.name)
+    );
+    assert.equal(
+      otherWithJpStaleReceipt.proxyConfig.servers.some((server) => jpChildChannels.includes(server.name)),
+      false
+    );
+
+    const jpChildScopedDesiredStates = second.platform.dataPlaneAgentService.getDesiredState({
+      nodeRef: "node-vultr-jp-01"
+    }, {
+      edgeCredentialRefs: requestEdgeCredentials.map((credential) => credential.edgeCredentialRef)
+    }).desiredStates;
+    assert.deepEqual(
+      jpChildScopedDesiredStates.map((state) => state.channelRefs[0]).sort(),
+      [...jpChildChannels].sort()
+    );
+    for (const [index, channel] of jpChildChannels.entries()) {
+      const scopedDesiredState = jpChildScopedDesiredStates.find((state) => state.channelRefs.includes(channel));
+      assert.equal(typeof scopedDesiredState?.desiredStateRef, "string");
+      assert.match(scopedDesiredState.desiredStateRef, /^desired_scoped_/);
+      second.platform.controlStore.recordEdgeApplyReceipt({
+        id: `edge_receipt_scoped_jp_child_${index + 1}`,
+        channelRef: channel,
+        desiredStateRef: scopedDesiredState.desiredStateRef,
+        status: "applied",
+        actionCounts: { add: scopedDesiredState.edgeCredentialRefs.length },
+        configTestOk: true,
+        serviceActive: true,
+        listenerUdp443: channel.includes("vless") ? false : true,
+        listenerTcp: channel.includes("vless") ? true : false,
+        appliedAt: `2026-06-11T00:2${index + 1}:00.000Z`,
+        createdAt: `2026-06-11T00:2${index + 1}:00.000Z`
+      });
+    }
+
+    const withJpChildScopedReceipts = second.subscriptions.core.resolveSubscriptionArtifact(artifactSecret);
+    assert.equal(withJpChildScopedReceipts.ok, true);
+    assert.deepEqual(withJpChildScopedReceipts.proxyConfig.servers.map((server) => server.name), channels);
+    const otherWithJpChildScopedReceipts = second.subscriptions.core.resolveSubscriptionArtifact(otherArtifactSecret);
+    assert.equal(otherWithJpChildScopedReceipts.ok, true);
+    assert.deepEqual(otherWithJpChildScopedReceipts.proxyConfig.servers.map((server) => server.name), channels.slice(0, 6));
+
+    for (const [index, channel] of jpChildChannels.entries()) {
+      const desiredState = second.platform.controlStore.getLatestEdgeDesiredStateForChannel(channel, {
+        nodeRef: "node-vultr-jp-01",
+        channelRefs: [channel]
+      });
+      assert.equal(typeof desiredState?.desiredStateRef, "string");
+      second.platform.controlStore.recordEdgeApplyReceipt({
+        id: `edge_receipt_matching_jp_child_${index + 1}`,
+        channelRef: channel,
+        desiredStateRef: desiredState.desiredStateRef,
+        status: "applied",
+        actionCounts: { add: desiredState.edgeCredentialRefs.length },
+        configTestOk: true,
+        serviceActive: true,
+        listenerUdp443: channel.includes("vless") ? false : true,
+        listenerTcp: channel.includes("vless") ? true : false,
+        appliedAt: `2026-06-11T00:3${index + 1}:00.000Z`,
+        createdAt: `2026-06-11T00:3${index + 1}:00.000Z`
+      });
+    }
+
     const withFreshReceipts = second.subscriptions.core.resolveSubscriptionArtifact(artifactSecret);
     assert.equal(withFreshReceipts.ok, true);
     assert.deepEqual(withFreshReceipts.proxyConfig.servers.map((server) => server.name), channels);
     const otherWithFreshReceipts = second.subscriptions.core.resolveSubscriptionArtifact(otherArtifactSecret);
     assert.equal(otherWithFreshReceipts.ok, true);
     assert.deepEqual(otherWithFreshReceipts.proxyConfig.servers.map((server) => server.name), channels);
-    assert.doesNotMatch(JSON.stringify(withFreshReceipts), /synthetic-sgp-hy2-template-password|synthetic-sgp-tuic-template-password/i);
+    assert.doesNotMatch(
+      JSON.stringify(withFreshReceipts),
+      /synthetic-sgp-hy2-template-password|synthetic-sgp-tuic-template-password|synthetic-jp-child-hy2-template-password|synthetic-jp-child-tuic-template-password/i
+    );
+
+    const thirdRequest = second.platform.portalAccessRequests.submitRequest({
+      portalUserRef: "portal_user_remote_receipt_gate_3",
+      plan: "monthly",
+      clientTarget: "clash",
+      quantity: 1
+    });
+    const thirdArtifactSecret = new URL(thirdRequest.subscriptionUrl).pathname
+      .split("/")
+      .at(-1)
+      .replace(/\.yaml$/, "");
+
+    const testAfterSupersede = second.subscriptions.core.resolveSubscriptionArtifact(artifactSecret);
+    assert.equal(testAfterSupersede.ok, true);
+    assert.deepEqual(testAfterSupersede.proxyConfig.servers.map((server) => server.name), channels.slice(0, 3));
+    const otherAfterSupersede = second.subscriptions.core.resolveSubscriptionArtifact(otherArtifactSecret);
+    assert.equal(otherAfterSupersede.ok, true);
+    assert.deepEqual(otherAfterSupersede.proxyConfig.servers.map((server) => server.name), channels.slice(0, 3));
+    const thirdInitial = second.subscriptions.core.resolveSubscriptionArtifact(thirdArtifactSecret);
+    assert.equal(thirdInitial.ok, true);
+    assert.deepEqual(thirdInitial.proxyConfig.servers.map((server) => server.name), channels.slice(0, 3));
+
+    const refreshedRequestCredentials = second.platform.controlStore.getPortalAccessRequest(request.id).edgeCredentials;
+    for (const [nodeRef, nodeChannels, idPrefix] of [
+      ["vultr-sgp-a", sgpChannels, "sgp"],
+      ["node-vultr-jp-01", jpChildChannels, "jp_child"]
+    ]) {
+      const refreshedScoped = second.platform.dataPlaneAgentService.getDesiredState(
+        { nodeRef },
+        { edgeCredentialRefs: refreshedRequestCredentials.map((credential) => credential.edgeCredentialRef) }
+      ).desiredStates;
+      assert.deepEqual(refreshedScoped.map((state) => state.channelRefs[0]).sort(), [...nodeChannels].sort());
+      for (const [index, channel] of nodeChannels.entries()) {
+        const scopedState = refreshedScoped.find((state) => state.channelRefs.includes(channel));
+        assert.equal(typeof scopedState?.desiredStateRef, "string");
+        second.platform.controlStore.recordEdgeApplyReceipt({
+          id: `edge_receipt_rescoped_${idPrefix}_${index + 1}`,
+          channelRef: channel,
+          desiredStateRef: scopedState.desiredStateRef,
+          status: "applied",
+          actionCounts: { add: scopedState.edgeCredentialRefs.length },
+          configTestOk: true,
+          serviceActive: true,
+          listenerUdp443: channel.includes("vless") ? false : true,
+          listenerTcp: channel.includes("vless") ? true : false,
+          appliedAt: `2026-06-11T00:4${index + 1}:00.000Z`,
+          createdAt: `2026-06-11T00:4${index + 1}:00.000Z`
+        });
+      }
+    }
+    const testAfterRescoped = second.subscriptions.core.resolveSubscriptionArtifact(artifactSecret);
+    assert.equal(testAfterRescoped.ok, true);
+    assert.deepEqual(testAfterRescoped.proxyConfig.servers.map((server) => server.name), channels);
+    const otherAfterRescoped = second.subscriptions.core.resolveSubscriptionArtifact(otherArtifactSecret);
+    assert.equal(otherAfterRescoped.ok, true);
+    assert.deepEqual(otherAfterRescoped.proxyConfig.servers.map((server) => server.name), channels.slice(0, 3));
+
+    for (const [index, channel] of [...sgpChannels, ...jpChildChannels].entries()) {
+      const nodeRef = sgpChannels.includes(channel) ? "vultr-sgp-a" : "node-vultr-jp-01";
+      const latest = second.platform.controlStore.getLatestEdgeDesiredStateForChannel(channel, {
+        nodeRef,
+        channelRefs: [channel]
+      });
+      assert.equal(typeof latest?.desiredStateRef, "string");
+      second.platform.controlStore.recordEdgeApplyReceipt({
+        id: `edge_receipt_rematched_${index + 1}`,
+        channelRef: channel,
+        desiredStateRef: latest.desiredStateRef,
+        status: "applied",
+        actionCounts: { add: latest.edgeCredentialRefs.length },
+        configTestOk: true,
+        serviceActive: true,
+        listenerUdp443: channel.includes("vless") ? false : true,
+        listenerTcp: channel.includes("vless") ? true : false,
+        appliedAt: `2026-06-11T00:5${index + 1}:00.000Z`,
+        createdAt: `2026-06-11T00:5${index + 1}:00.000Z`
+      });
+    }
+    const otherAfterRematched = second.subscriptions.core.resolveSubscriptionArtifact(otherArtifactSecret);
+    assert.equal(otherAfterRematched.ok, true);
+    assert.deepEqual(otherAfterRematched.proxyConfig.servers.map((server) => server.name), channels);
   } finally {
     first?.close();
     second?.close();

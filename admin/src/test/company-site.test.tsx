@@ -4,6 +4,11 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { createElement } from "react";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { App } from "../App";
+import {
+  captureCompanySiteAdsClickFromLocation,
+  clearAdsClickData,
+  setAdsUserDataConsent
+} from "../features/ads-attribution";
 
 const portalLoginUrl = "https://portal.gccwebos.com/";
 const portalRegisterUrl = "https://portal.gccwebos.com/portal/register/";
@@ -33,7 +38,10 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  clearAdsClickData();
+  document.cookie = "gccwebos-ad-user-data-consent-v1=; Path=/; Max-Age=0";
   vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
   window.localStorage.clear();
   window.location.hash = "";
 });
@@ -158,6 +166,29 @@ describe("company site route", () => {
       /Portal|service management|signed-in service|account gateway|public website explains/i
     );
     expect(container.innerHTML).not.toMatch(/t\.me|gcaltd0528|telegram/i);
+  });
+
+  test("prepares the consented Portal handoff for primary, auxiliary, and context-menu activation", () => {
+    vi.stubEnv("VITE_PUBLIC_ADS_CLICK_BINDING_ENABLED", "true");
+    expect(setAdsUserDataConsent("granted")).toBe(true);
+    window.history.replaceState(window.history.state, "", "/?gclid=company_site_click_123#/site");
+    expect(captureCompanySiteAdsClickFromLocation()).toMatchObject({
+      type: "gclid",
+      value: "company_site_click_123"
+    });
+
+    render(createElement(App));
+    const link = screen.getAllByRole("link", { name: "Get Started" })[0] as HTMLAnchorElement;
+    expect(link.href).toBe(portalRegisterUrl);
+
+    fireEvent(link, new MouseEvent("auxclick", { bubbles: true, button: 1 }));
+    expect(link.href).toContain("adsClick=");
+
+    fireEvent.contextMenu(link, { button: 2 });
+    expect(link.href).toContain("adsClick=");
+
+    fireEvent.click(link);
+    expect(link.href).toContain("adsClick=");
   });
 
   test("separates the mobile concept stage from the vertically scrolling product story", () => {

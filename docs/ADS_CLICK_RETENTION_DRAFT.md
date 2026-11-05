@@ -14,7 +14,7 @@ For claim rows at or beyond the retention boundary it:
 
 1. Deletes the complete claim row, removing both raw click values and the associated account/order references.
 2. Deletes corresponding raw click bindings.
-3. Deletes expired or orphaned consent-link rows introduced by the consent gate.
+3. Deletes expired or orphaned consent-link rows introduced by the consent gate. The consent-link cleanup runs before binding deletion so the expired-binding predicate remains visible; links without claim rows are also treated as orphaned.
 4. Marks pending outbox rows `skipped / click_retention_expired`, preventing a late retry from using expired click data.
 5. Leaves the outbox row itself intact for its separate audit/finance retention policy.
 
@@ -31,3 +31,4 @@ Purchase idempotency receipts remain authoritative. The purchase replay paths on
 - No automatic retention policy for conversion outbox rows.
 - No deletion of financial transaction records.
 - No legal determination of the appropriate retention period; 90 days is the source-side maximum currently specified for raw click IDs and still requires the separate Risk A privacy review before activation.
+- Conversion outbox retention is a **separate unresolved policy**: this operation only skips pending rows for expired clicks, not deletion of financial/audit records. A production cleanup job, schedule, database connection, or activation is not included.

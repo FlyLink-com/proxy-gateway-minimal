@@ -81,6 +81,10 @@ function inventoryCounts(db, cutoff, schema) {
     ? count(db, `
         select count(*) from ${CONSENT_LINKS}
          where created_at <= ? or order_ref in ${orderRefs}
+            or not exists (
+              select 1 from ${CLAIMS}
+               where ${CLAIMS}.order_ref = ${CONSENT_LINKS}.order_ref
+            )
       `, [cutoff, ...orderRefValues])
     : 0;
   const eligibleOutboxCount = schema.outbox
@@ -217,16 +221,23 @@ export function runAdsClickRetention(db, options = {}) {
       `).run(at, ...orderRefValues).changes;
     }
 
-    if (schema.bindings) {
-      changed.deletedBindingCount = db.prepare(`
-        delete from ${BINDINGS}
+    // Keep the expired-binding subquery visible while removing its consent
+    // link. Deleting bindings first would erase the reason for removing a
+    // recently written link attached to an already expired binding.
+    if (schema.consentLinks) {
+      changed.deletedConsentLinkCount = db.prepare(`
+        delete from ${CONSENT_LINKS}
          where created_at <= ? or order_ref in ${orderRefs}
+            or not exists (
+              select 1 from ${CLAIMS}
+               where ${CLAIMS}.order_ref = ${CONSENT_LINKS}.order_ref
+            )
       `).run(cutoff, ...orderRefValues).changes;
     }
 
-    if (schema.consentLinks && (schema.claims || schema.bindings)) {
-      changed.deletedConsentLinkCount = db.prepare(`
-        delete from ${CONSENT_LINKS}
+    if (schema.bindings) {
+      changed.deletedBindingCount = db.prepare(`
+        delete from ${BINDINGS}
          where created_at <= ? or order_ref in ${orderRefs}
       `).run(cutoff, ...orderRefValues).changes;
     }

@@ -15,6 +15,7 @@ import {
   type PortalWalletFirstCommerceClient
 } from "./commerce";
 import { MarketplaceOfferCard } from "./marketplace-offer-card";
+import { readPortalAdsClickForPurchase } from "../ads-attribution";
 import {
   formatPortalDateTime,
   portalCoinTypeListLabel
@@ -486,10 +487,12 @@ export function WalletFirstMarketplacePanel({
     const generation = generationRef.current;
     setFlow({ status: "reserving", quote: flow.quote });
     try {
+      const adsClick = readPortalAdsClickForPurchase(sessionRef);
       const transition = await commerceClient.reserveDeferredTransition({
         sessionRef,
         quoteRef: flow.quote.quoteRef,
-        idempotencyKey: intent.key
+        idempotencyKey: intent.key,
+        ...(adsClick ? { adsClick } : {})
       });
       if (generation !== generationRef.current) return;
       setTransitions((current) => [
