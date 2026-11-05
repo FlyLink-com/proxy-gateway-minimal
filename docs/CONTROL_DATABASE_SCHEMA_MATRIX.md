@@ -1,7 +1,7 @@
 # Shared Control Database — Source Schema Matrix
 
 > **Evidence cut:** repository `FlyLink-com/proxy-gateway-minimal`, `master` at PR #828 base `3768644a` (source files below are read from that base branch).  
-> **Purpose:** G1 source inventory for the future one-D1 control-plane target.  
+> **Purpose:** Source-level schema matrix for the 48-table core slice. The six companion G1-21–G1-26 annexes in §6 add 22 tables, completing the 70-table integrated source inventory.  
 > **Execution boundary:** source-only inspection. No local/production SQLite file was opened; no rows, secrets, backups, migrations, Cloudflare resources, CI, or deployment were touched.
 
 ## 1. Scope and database boundary
@@ -277,9 +277,31 @@ Source: [`server/services/platform/coin-wallet-reference-index-migrations.mjs`#L
 | `account-resource-authority-commerce-migrations.mjs` | 1 | 0 | 3 |
 | `coin-wallet-reference-index-migrations.mjs` | 0 | 3 | 0 |
 | `coin-commerce-plan-switch-schema-contract.mjs` | 2 | 1 | 6 |
+| **Core-slice total** | **48** | **71** | **41** |
 
 The shared ledger is deduplicated in the overall count. Wallet reference indexes add indexes to existing wallet tables and do not add a table.
 
-## 6. Remaining G1 slices
+## 6. Companion G1-21–G1-26 schema annexes (22 tables)
 
-The following shared-control owners are appended in the next section of this matrix: payment and its legacy archive, referral, deferred resource transitions, wallet-first deferred checkout/runtime claims/setup handoffs, registration welcome grants, and the conditional Ads consent/conversion tables.
+This repository matrix keeps the **48-table core slice** above. The remaining 22 source-defined tables are documented in the six companion G1 schema dossiers below. Together, the core slice (48) and these annexes (22) complete the **70-table integrated source inventory**.
+
+These are source-schema counts, not proof that every optional or archival object exists in a production SQLite file. The linked dossiers preserve the per-table columns, constraints, indexes, triggers, source references, and G1-F correction history.
+
+| G1 slice | Tables counted | Scope note | Companion evidence |
+|---|---:|---|---|
+| G1-21 Payment and legacy archive | 3 | 2 payment tables plus 1 conditional legacy archive table; archive forms only when the old table fingerprint matches | [Payment schema dossier](https://drive.google.com/file/d/1N_LLemPXIYw16Zdent-QdqPoTrzfI49N/view) · SHA-256 `d0beb66d60f7763f64e95c76fc2df971462826fad9f6a4bd32920366c628d159` |
+| G1-22 Referral | 7 | Referral policy, attribution, reward, and event tables | [Referral schema dossier](https://drive.google.com/file/d/138zkC3Q7qzYB4DOs9jsE-rVKpWuVAp4A/view) · SHA-256 `8ca38d7738d55020da305d71f973e1848277309fb802c2a7d97f56fc8e6bf384` |
+| G1-23 Deferred Transition | 6 | Deferred resource transition and reservation state | [Deferred schema dossier](https://drive.google.com/file/d/1gCIX63uGW3ya-ZykQ6DkWSr_4beQDxcp/view) · SHA-256 `8058c14bcafcd547a161ffd7c703db23e881c344e729665424d2648200ad6f64` |
+| G1-24 Checkout / Claims / Handoffs | 3 | Wallet-first checkout quote, runtime claim, and setup-delivery handoff | [Checkout / Claims / Handoffs dossier](https://drive.google.com/file/d/1W60RapRcWfjciklgu3szWJZRZej7MJVt/view) · SHA-256 `18a53a996c7ef754039bc4c4ebbdc13239e4026ea6909b2887b630b55ac1dadc` |
+| G1-25 Welcome Bonus | 1 | Registration welcome grant, including its chained schema migrations | [Welcome Bonus schema dossier](https://drive.google.com/file/d/15QHyN2kZrDWY9OUzfNq5c5tVoWw8vABv/view) · SHA-256 `e95ee6fda8e65d42267a53f8e9e87ca08ae0f1f9e1e87f94a35e776ac3306354` |
+| G1-26 Ads Consent | 2 | Conditional Consent tables; enabled only through the source's feature and store-construction gates | [Ads Consent schema dossier](https://drive.google.com/file/d/1fE5D3N6Q0DEhpnQ2Bpcg7CK3sZrzpXKz/view) · SHA-256 `a35915bfdafbcf028605b2c1b25eacb6536cfc137d07da436483c2599eb48155` |
+| **Companion total** | **22** | Includes the conditional Payment archive | |
+
+### Objects excluded from the 70-table integrated inventory
+
+- **Ads Conversion (3 tables):** DDL exists, but the schema-creation helper has test callers only; production composition uses fail-soft write helpers and does not create these tables. Keep them outside the D1 migration set pending Issue #816 and its separate risk decision.
+- **Portal Link Reset (1 manually prepared table, 2 unique indexes):** this schema is not created by the normal control-store assembly. Track it as a separately prepared optional object; do not add it to the 70-table integrated count.
+- **Subscription runtime database:** its 4 tables remain in `subscriptions.sqlite`, outside the first D1 cutover.
+- **Optional third-party subscription database:** its 7 tables remain separate and outside the first D1 cutover.
+
+The 18 versioned control-store migration IDs and their exact checksum-input contracts are recorded in the G1-28 migration ledger. The companion dossiers are evidence references; the source code at the stated Master baseline remains authoritative.
