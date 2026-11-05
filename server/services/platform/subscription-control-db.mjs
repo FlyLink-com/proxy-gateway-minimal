@@ -7862,11 +7862,11 @@ export function createSqliteSubscriptionControlStore({
     return mapAuditEvent(db.prepare("select * from platform_audit_events where id = ?").get(requiredText(id, "id")));
   }
 
-  function upsertEdgeRegisteredNode(input) {
+  function edgeRegisteredNodeRecord(input) {
     assertNoUnsafeFields(input);
     assertNoUnsafeControlValues(input.metadata);
     const now = isoText(input.updatedAt || input.registeredAt, "updatedAt");
-    const record = {
+    return {
       nodeRef: safeControlRef(input.nodeRef, "nodeRef"),
       providerRef: safeControlRef(input.providerRef, "providerRef"),
       regionRef: safeControlRef(input.regionRef, "regionRef"),
@@ -7881,6 +7881,18 @@ export function createSqliteSubscriptionControlStore({
       updatedAt: now,
       metadataJson: jsonObject(input.metadata, "metadata")
     };
+  }
+
+  // Boundary note: this store's record methods are ungated persistence
+  // primitives. The registration execution gate and the no-overwrite
+  // identity-binding rule live at the registration service layer
+  // (node-registration-ingestion / node-registration-execution);
+  // registration writes must go through that layer and use
+  // insertEdgeRegisteredNodeIfAbsent. This upsert remains for
+  // non-registration callers and test fixtures and must never be used to
+  // overwrite an established registration identity binding.
+  function upsertEdgeRegisteredNode(input) {
+    const record = edgeRegisteredNodeRecord(input);
     sqliteRun(db.prepare(`
       insert into platform_edge_registered_nodes (
         node_ref, provider_ref, region_ref, role_ref, channel_refs_json,
@@ -7905,6 +7917,32 @@ export function createSqliteSubscriptionControlStore({
         metadata_json = excluded.metadata_json
     `), record);
     return getEdgeRegisteredNode(record.nodeRef);
+  }
+
+  // Insert-only counterpart of upsertEdgeRegisteredNode: the single
+  // statement either lands the new row or leaves an existing row for the
+  // same node_ref completely untouched, so race-safe registration flows
+  // can build on it (attempt the insert, then compare the read-back
+  // record) instead of a check-then-upsert sequence that two concurrent
+  // writers could interleave into a silent overwrite.
+  function insertEdgeRegisteredNodeIfAbsent(input) {
+    const record = edgeRegisteredNodeRecord(input);
+    const info = sqliteRun(db.prepare(`
+      insert into platform_edge_registered_nodes (
+        node_ref, provider_ref, region_ref, role_ref, channel_refs_json,
+        image_manifest_ref, release_ref, lifecycle, status, first_boot_packet_ref,
+        registered_at, updated_at, metadata_json
+      ) values (
+        @nodeRef, @providerRef, @regionRef, @roleRef, @channelRefsJson,
+        @imageManifestRef, @releaseRef, @lifecycle, @status, @firstBootPacketRef,
+        @registeredAt, @updatedAt, @metadataJson
+      )
+      on conflict(node_ref) do nothing
+    `), record);
+    return {
+      inserted: info.changes > 0,
+      record: getEdgeRegisteredNode(record.nodeRef)
+    };
   }
 
   function getEdgeRegisteredNode(nodeRef) {
@@ -9033,6 +9071,7 @@ export function createSqliteSubscriptionControlStore({
     recordAuditEvent,
     getAuditEvent,
     upsertEdgeRegisteredNode,
+    insertEdgeRegisteredNodeIfAbsent,
     getEdgeRegisteredNode,
     listEdgeRegisteredNodes,
     getLatestEdgeDesiredStateForChannel,
