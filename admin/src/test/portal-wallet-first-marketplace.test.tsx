@@ -29,7 +29,7 @@ import type {
 import { PortalCoinCommerceClientError } from "../features/user-portal/commerce";
 import { MarketplacePanel } from "../features/user-portal/portal-commerce-panels";
 import { WalletFirstMarketplacePanel } from "../features/user-portal/wallet-first-marketplace-panel";
-import { clearAdsClickData, PORTAL_ADS_CLICK_STORAGE_KEY, setAdsUserDataConsent } from "../features/ads-attribution";
+import { clearAdsClickData, clearPortalAdsServerConsent, PORTAL_ADS_CLICK_STORAGE_KEY, setAdsUserDataConsent, setPortalAdsServerConsent } from "../features/ads-attribution";
 
 const OFFER: PortalCoinOffer = {
   offerRef: "offer_annual_premium",
@@ -185,6 +185,7 @@ function renderMarketplace(input: {
 afterEach(() => {
   cleanup();
   clearAdsClickData();
+  clearPortalAdsServerConsent();
   document.cookie = "gccwebos-ad-user-data-consent-v1=; Path=/; Max-Age=0";
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
@@ -562,6 +563,8 @@ describe("Portal wallet-first Marketplace model gate", () => {
   test("attaches consented Ads attribution only to the final wallet-first reservation", async () => {
     vi.stubEnv("VITE_PUBLIC_ADS_CLICK_BINDING_ENABLED", "true");
     expect(setAdsUserDataConsent("granted")).toBe(true);
+    // Site-cookie preference does not stand in for the Portal account grant.
+    setPortalAdsServerConsent("portal_session_wallet_first", "granted");
     window.sessionStorage.setItem(PORTAL_ADS_CLICK_STORAGE_KEY, JSON.stringify({
       type: "gbraid",
       value: "synthetic_wallet_click",

@@ -5,13 +5,16 @@ import {
   clearAdsClickData,
   consumePortalAdsClickHandoff,
   PORTAL_ADS_CLICK_STORAGE_KEY,
+  clearPortalAdsServerConsent,
   readAdsUserDataConsent,
   readPortalAdsClickForPurchase,
-  setAdsUserDataConsent
+  setAdsUserDataConsent,
+  setPortalAdsServerConsent
 } from "../features/ads-attribution";
 
 const CONSENT_COOKIE = "gccwebos-ad-user-data-consent-v1";
 const MAX_AGE_MS = 90 * 24 * 60 * 60 * 1000;
+const sessionRef = `portalctx_${"a".repeat(64)}`;
 
 function setLocation(url: string) {
   window.history.replaceState(window.history.state, "", url);
@@ -20,6 +23,7 @@ function setLocation(url: string) {
 beforeEach(() => {
   vi.stubEnv("VITE_PUBLIC_ADS_CLICK_BINDING_ENABLED", "true");
   clearAdsClickData();
+  clearPortalAdsServerConsent();
   window.sessionStorage.clear();
   document.cookie = `${CONSENT_COOKIE}=; Path=/; Max-Age=0`;
   setLocation("/");
@@ -27,6 +31,7 @@ beforeEach(() => {
 
 afterEach(() => {
   clearAdsClickData();
+  clearPortalAdsServerConsent();
   window.sessionStorage.clear();
   document.cookie = `${CONSENT_COOKIE}=; Path=/; Max-Age=0`;
   setLocation("/");
@@ -55,7 +60,8 @@ describe("consent-aware Ads click attribution", () => {
       value: "click_123"
     });
     expect(window.location.hash).toBe("#portal=orders&orders=all");
-    expect(readPortalAdsClickForPurchase()).toMatchObject({
+    setPortalAdsServerConsent(sessionRef, "granted");
+    expect(readPortalAdsClickForPurchase(sessionRef)).toMatchObject({
       type: "gclid",
       value: "click_123",
       consent: {
@@ -149,7 +155,8 @@ describe("consent-aware Ads click attribution", () => {
       value: "expired_click",
       clickAt: Date.now() - MAX_AGE_MS - 1
     }));
-    expect(readPortalAdsClickForPurchase()).toBeNull();
+    setPortalAdsServerConsent(sessionRef, "granted");
+    expect(readPortalAdsClickForPurchase(sessionRef)).toBeNull();
     expect(window.sessionStorage.getItem(PORTAL_ADS_CLICK_STORAGE_KEY)).toBeNull();
 
     window.sessionStorage.setItem(PORTAL_ADS_CLICK_STORAGE_KEY, JSON.stringify({
@@ -157,10 +164,31 @@ describe("consent-aware Ads click attribution", () => {
       value: "withdrawn_click",
       clickAt: Date.now()
     }));
-    expect(setAdsUserDataConsent("denied")).toBe(true);
-    expect(readPortalAdsClickForPurchase()).toBeNull();
+    setPortalAdsServerConsent(sessionRef, "denied");
+    expect(readPortalAdsClickForPurchase(sessionRef)).toBeNull();
     expect(window.sessionStorage.getItem(PORTAL_ADS_CLICK_STORAGE_KEY)).toBeNull();
   });
+
+  test("requires account-bound server consent even when browser cookie consent is granted", () => {
+    expect(setAdsUserDataConsent("granted")).toBe(true);
+    window.sessionStorage.setItem(PORTAL_ADS_CLICK_STORAGE_KEY, JSON.stringify({
+      type: "gclid",
+      value: "browser_only_click",
+      clickAt: Date.now()
+    }));
+    expect(readPortalAdsClickForPurchase(sessionRef)).toBeNull();
+    expect(window.sessionStorage.getItem(PORTAL_ADS_CLICK_STORAGE_KEY)).toBeNull();
+
+    setPortalAdsServerConsent(sessionRef, "granted");
+    window.sessionStorage.setItem(PORTAL_ADS_CLICK_STORAGE_KEY, JSON.stringify({
+      type: "gclid",
+      value: "account_scoped_click",
+      clickAt: Date.now()
+    }));
+    expect(readPortalAdsClickForPurchase("portalctx_" + "b".repeat(64))).toBeNull();
+    expect(window.sessionStorage.getItem(PORTAL_ADS_CLICK_STORAGE_KEY)).toBeNull();
+  });
+
   test("propagates a failed consent withdrawal to Portal without relying on a shared-cookie write", () => {
     expect(setAdsUserDataConsent("granted")).toBe(true);
     const originalCookieDescriptor = Object.getOwnPropertyDescriptor(document, "cookie");

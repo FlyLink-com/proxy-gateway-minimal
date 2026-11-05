@@ -7,6 +7,10 @@ import type {
   PortalWalletFirstCommerceClient
 } from "./commerce";
 import type { PortalWalletClient } from "./wallet";
+import type { PortalAdsConsentClient } from "../ads-attribution-contract";
+export type {
+  PortalAdsConsentClient, PortalAdsConsentDecision, PortalAdsConsentState
+} from "../ads-attribution-contract";
 import type { PortalReferralClient } from "./referrals/referral-client";
 import type {
   PortalRechargeClient,
@@ -547,6 +551,7 @@ export type UserPortalClient = {
   wallet?: PortalWalletClient;
   referral?: PortalReferralClient;
   recharge?: PortalRechargeClient;
+  adsConsent?: PortalAdsConsentClient;
   issueHumanChallenge(input?: PortalHumanChallengeRequestInput): Promise<PortalHumanVerificationChallenge>;
   requestEmailCode(input: PortalEmailCodeRequestInput): Promise<PortalEmailCodeChallenge>;
   requestRegistrationEmailVerification(

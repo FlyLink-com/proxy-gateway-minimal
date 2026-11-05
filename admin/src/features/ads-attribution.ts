@@ -19,6 +19,8 @@ const MIN_EPOCH_MS = 100_000_000_000;
 
 let companySiteAdsClick: StoredAdsClick | null = null;
 let deniedConsentOverride = false;
+let portalAdsConsentSessionRef: string | null = null;
+let portalAdsServerConsent: AdsUserDataConsent = "unknown";
 
 function adsClickFeatureEnabled() {
   const env = (import.meta as ImportMeta & {
@@ -94,6 +96,27 @@ export function clearPortalAdsClick() {
 
 export function clearAdsClickData() {
   clearCompanySiteAdsClick();
+  clearPortalAdsClick();
+}
+
+export function setPortalAdsServerConsent(sessionRef: string, next: AdsUserDataConsent) {
+  const normalizedSessionRef = typeof sessionRef === "string" ? sessionRef.trim() : "";
+  if (!normalizedSessionRef) {
+    clearPortalAdsServerConsent();
+    return;
+  }
+  if (portalAdsConsentSessionRef && portalAdsConsentSessionRef !== normalizedSessionRef) {
+    clearPortalAdsClick();
+  }
+  portalAdsConsentSessionRef = normalizedSessionRef;
+  portalAdsServerConsent = next;
+  if (next === "denied") clearPortalAdsClick();
+}
+
+export function clearPortalAdsServerConsent(sessionRef?: string) {
+  if (sessionRef && portalAdsConsentSessionRef !== sessionRef) return;
+  portalAdsConsentSessionRef = null;
+  portalAdsServerConsent = "unknown";
   clearPortalAdsClick();
 }
 
@@ -363,11 +386,16 @@ export function consumePortalAdsClickHandoff(): StoredAdsClick | null {
   }
 }
 
-export function readPortalAdsClickForPurchase(now = Date.now()): PortalAdsClickDescriptor | null {
+export function readPortalAdsClickForPurchase(
+  sessionRef: string,
+  now = Date.now()
+): PortalAdsClickDescriptor | null {
   if (
     typeof window === "undefined"
     || !adsClickFeatureEnabled()
-    || readAdsUserDataConsent() !== "granted"
+    || !sessionRef
+    || portalAdsConsentSessionRef !== sessionRef
+    || portalAdsServerConsent !== "granted"
   ) {
     clearPortalAdsClick();
     return null;

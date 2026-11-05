@@ -18,6 +18,7 @@ import test from "node:test";
 import Database from "better-sqlite3";
 
 import { ensureAdsConversionSchema } from "../services/platform/ads-conversion-store.mjs";
+import { createSqliteAdsConsentStore } from "../services/platform/ads-consent-store.mjs";
 import * as commerce from "../services/platform/coin-commerce-store.mjs";
 import * as coinCommerceSchema from "../services/platform/coin-commerce-migrations.mjs";
 import {
@@ -90,6 +91,16 @@ function breakAdsWrites(database) {
         begin select raise(abort, 'synthetic ads write failure'); end;
     `);
   }
+}
+
+function grantAdsConsent(database, accountRef, at) {
+  const store = createSqliteAdsConsentStore({
+    database,
+    env: { [FLAG]: "true" },
+    nowFn: () => at
+  });
+  store.recordConsent({ accountRef, adUserData: true });
+  store.close();
 }
 
 function adsRowCounts(database) {
@@ -194,6 +205,7 @@ test("legacy confirm and complete are unchanged when every Ads write fails", () 
     const state = legacyFixture();
     try {
       return withFlag(adsMode !== "off", () => {
+        if (adsMode !== "off") grantAdsConsent(state.database, LEGACY_ACCOUNT, Date.parse(LEGACY_NOW));
         if (adsMode === "broken") breakAdsWrites(state.database);
         const confirmed = legacyConfirmAndCapture(state, { adsClick: freshClick() });
         const claimed = state.store.claimNextFulfillmentCommand({ leaseMs: 1000 });
@@ -231,10 +243,53 @@ test("legacy confirm and complete are unchanged when every Ads write fails", () 
   assert.deepEqual(healthy.state, off.state);
 });
 
+test("legacy conversion rejects a server grant recorded after the purchase commit", () => {
+  const state = legacyFixture();
+  try {
+    withFlag(true, () => {
+      // The account decision exists, but becomes effective one millisecond
+      // after the transaction timestamp. It cannot authorize that order.
+      grantAdsConsent(state.database, LEGACY_ACCOUNT, Date.parse(LEGACY_NOW) + 1);
+      const confirmed = legacyConfirmAndCapture(state, { adsClick: freshClick() });
+      const claim = state.database.prepare(
+        "select claim_state, click_value from platform_ads_click_claims where order_ref = ?"
+      ).get(confirmed.orderRef);
+      assert.deepEqual(claim, { claim_state: "invalid_click", click_value: null });
+      const bindingCount = state.database.prepare(
+        "select count(*) from platform_ads_click_bindings where order_ref = ?"
+      ).pluck().get(confirmed.orderRef);
+      assert.equal(bindingCount, 0);
+      const claimed = state.store.claimNextFulfillmentCommand({ leaseMs: 1000 });
+      state.store.completeFulfillmentCommand({
+        commandRef: claimed.commandRef,
+        leaseGeneration: claimed.leaseGeneration,
+        leaseToken: claimed.leaseToken,
+        effectRef: "effect_ads_tx_late_grant",
+        status: "delivered"
+      });
+      assert.deepEqual(state.database.prepare(
+        "select status, skip_reason from platform_ads_conversion_outbox where order_ref = ?"
+      ).get(confirmed.orderRef), {
+        status: "skipped",
+        skip_reason: "invalid_click"
+      });
+      assert.deepEqual(legacyOrderState(state.database, confirmed.orderRef), {
+        paymentStatus: "captured",
+        commandStatus: "delivered"
+      });
+    });
+  } finally {
+    state.close();
+  }
+});
+
 test("legacy complete records a pending conversion when Ads writes succeed", () => {
   const state = legacyFixture();
   try {
     withFlag(true, () => {
+      // Explicit server-side grant is required, independently of the
+      // consent bits declared in the browser click descriptor.
+      grantAdsConsent(state.database, LEGACY_ACCOUNT, Date.parse(LEGACY_NOW));
       const click = freshClick();
       const confirmed = legacyConfirmAndCapture(state, { adsClick: click });
       const claimed = state.store.claimNextFulfillmentCommand({ leaseMs: 1000 });
@@ -441,6 +496,10 @@ function deferredScenario(adsMode) {
       refFactory: references("quote"), quoteTtlMs: 60_000
     });
     return withFlag(adsMode !== "off", () => {
+      if (adsMode !== "off") {
+        const consentAt = Date.parse(DEFERRED_NOW) + (adsMode === "late" ? 1 : 0);
+        grantAdsConsent(database, accountId, consentAt);
+      }
       if (adsMode === "broken") breakAdsWrites(database);
       const quote = adapter.previewDeferredCheckout({
         accountId,
@@ -482,11 +541,20 @@ function deferredScenario(adsMode) {
         leaseToken: claim.leaseToken,
         operation: deferredOperation(accountId, `settle_ads_tx_${adsMode}`, "commerce_system")
       });
+      const clickClaim = adsMode === "off" ? null : database.prepare(
+        "select claim_state, click_value from platform_ads_click_claims where order_ref = ?"
+      ).get(reserved.orderRef) ?? null;
+      const bindingCount = adsMode === "off" ? null : database.prepare(
+        "select count(*) from platform_ads_click_bindings where order_ref = ?"
+      ).pluck().get(reserved.orderRef);
       return {
         reservedState: reserved.state,
         settledState: settled.state,
         orderRef: reserved.orderRef,
         ads: adsMode === "off" ? null : adsRowCounts(database),
+        claimState: clickClaim?.claim_state ?? null,
+        hasRawClick: typeof clickClaim?.click_value === "string",
+        bindingCount,
         outbox: adsMode === "off" ? null : database.prepare(
           "select status, skip_reason from platform_ads_conversion_outbox where order_ref = ?"
         ).get(reserved.orderRef) ?? null
@@ -512,13 +580,28 @@ test("deferred reserve and settle are unchanged when every Ads write fails", () 
     platform_ads_click_bindings: 0,
     platform_ads_conversion_outbox: 0
   });
+  assert.equal(broken.claimState, null);
+  assert.equal(broken.hasRawClick, false);
+  assert.equal(broken.bindingCount, 0);
   assert.equal(broken.outbox, null);
 
   const healthy = deferredScenario("healthy");
   assert.equal(healthy.reservedState, off.reservedState);
   assert.equal(healthy.settledState, off.settledState);
-  // Control: with working Ads writes the settle hook enqueues pending.
+  assert.equal(healthy.claimState, "click");
+  assert.equal(healthy.hasRawClick, true);
+  assert.equal(healthy.bindingCount, 1);
+  // Control: with working Ads writes and pre-commit consent, the settle hook
+  // enqueues a usable conversion for later measurement.
   assert.deepEqual(healthy.outbox, { status: "pending", skip_reason: null });
+
+  const late = deferredScenario("late");
+  assert.equal(late.reservedState, off.reservedState);
+  assert.equal(late.settledState, off.settledState);
+  assert.equal(late.claimState, "invalid_click");
+  assert.equal(late.hasRawClick, false);
+  assert.equal(late.bindingCount, 0);
+  assert.deepEqual(late.outbox, { status: "skipped", skip_reason: "invalid_click" });
 });
 
 /* ------------------------------------------------------------------ */

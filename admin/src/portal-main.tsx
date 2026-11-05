@@ -52,8 +52,7 @@ function PortalOnlyApp() {
     <>
       {isPortalRegistrationPath(window.location.pathname)
         ? <UserRegistrationPage portalClient={portalClient} />
-        : <UserPortalPage portalClient={portalClient} />}
-      <AdsConsentPreferencePanel locale="auto" surface="portal" />
+        : <UserPortalPage portalClient={portalClient} AdsConsentPanel={AdsConsentPreferencePanel} />}
     </>
   );
 }

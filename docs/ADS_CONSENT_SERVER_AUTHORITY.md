@@ -1,0 +1,80 @@
+# Server-authoritative Google Ads consent
+
+```yaml
+document_metadata:
+  doc_type: operational
+  lifecycle: active
+  authority_scope: source_only_ads_consent_server_authority
+  superseded_by: null
+  last_verified_at: 2026-11-04
+  production_authority: false
+```
+
+Status: Draft / source-only. This document does not authorize production schema creation, feature-flag enablement, deployment, or Google Ads delivery.
+
+## Decision model
+
+The Portal consent endpoint is the only source of truth for the account-level `ad_user_data` decision:
+
+- `GET /api/portal/ads-consent` reads the decision for the account resolved from the authenticated Portal session.
+- `POST /api/portal/ads-consent` accepts exactly `{ "adUserData": true | false }`.
+- The request cannot choose an account. The route derives `accountRef` from `requirePortalSession()`.
+- `ad_personalization` is structurally fixed to `false`; no route input can enable it.
+- The decision is account-scoped and remains effective across Portal sessions until the account changes it.
+- The server decision timestamp must be no later than the purchase's transaction timestamp; a grant arriving after purchase commit cannot retroactively authorize that order, including during the post-commit measurement step.
+- A client-supplied `adsClick.consent` descriptor is not authorization. Click values are persisted only when the server-side account decision is currently granted and the descriptor itself is valid.
+
+The account reference is an internal account key, not an anonymous identifier. The consent table stores no email, phone, IP address, click ID, browser cookie, session credential, or raw request body.
+
+## Grant and revocation
+
+A newly granted server decision does not retroactively authorize older browser-only claims. During the first grant, any existing click claim without a server-created order/account consent link is compacted to a value-free tombstone, its binding is deleted, and any pending outbox row is skipped as `consent_unverified`.
+
+A transition to `adUserData: false` is processed in one SQLite transaction:
+
+1. Change the account decision to denied.
+2. Replace every raw click claim for the account, including pre-ledger legacy claims, with a value-free `invalid_click` tombstone.
+3. Null the click type, click value, click timestamp, and consent bits from the claim.
+4. Delete the corresponding click-binding rows.
+5. Mark pending conversion outbox rows as `skipped / consent_revoked` so they cannot be uploaded.
+6. Delete the non-sensitive order/account linkage rows.
+
+The response contains aggregate counts only. It never returns order references or click values. Repeating the same withdrawal is idempotent and reports zero additional deletions.
+
+Outbox rows are not deleted by this operation. They contain transaction/order references and remain subject to a separate finance, audit, and privacy retention decision. This change does not claim that those rows are anonymous.
+
+## Feature gate and schema boundary
+
+- `ADS_CLICK_BINDING_ENABLED` remains default-off.
+- The consent SQLite connection is composed only when the Ads feature gate is explicitly enabled and the normal Coin Commerce store owns the control database path.
+- Opening that existing database does not create consent tables.
+- Consent tables are created only by an explicit authenticated consent write while the feature gate is enabled.
+- When the feature gate is off, reads return `unknown`, writes are no-ops, and no consent schema is created.
+- If build-time `VITE_PUBLIC_ADS_CLICK_BINDING_ENABLED` is on but runtime `ADS_CLICK_BINDING_ENABLED` is off, the Portal endpoint returns 503 and the client pauses and purges click data (fail closed). Other Portal runtime compositions without a consent store also return 503; they do not imply server authorization.
+- No production database is opened or migrated by this Draft PR. No deployment or flag change is part of this work.
+
+## Browser and Portal consent boundaries
+
+- The public-site preference is browser-scoped and remains in the site consent cookie. The public-site UI is the only surface that writes it; capture and handoff code may read it as a browser-side prerequisite. Portal account-consent hydration and submission must never change it.
+- Portal account consent is account-scoped and authoritative only through the authenticated Portal endpoints. Portal hydration and account-choice submission must never write the public-site cookie.
+- The two decisions are independent: public-site consent is required before capturing and handing off a click ID; Portal account consent is separately required before the server persists a purchase claim. A browser preference alone never authorizes a server-side claim.
+- The Portal UI hydrates the account decision after authentication and rechecks it on window focus, pageshow and document visibility change. Before each resumed server GET, the client synchronously suspends purchase attribution; when the server returns denied or unknown (or cannot be reached), stored click data is purged without changing the public-site preference. A browser-only grant cannot authorize a Portal claim.
+- A Portal panel unmount also clears in-tab attribution data; React development StrictMode effect replay or an ordinary remount may discard a valid click. This is a fail-closed attribution-retention limitation, not permission to submit an unverified click.
+- Both legacy confirmation and deferred wallet-first reservation expose their committed transaction timestamps as canonical UTC ISO text. The stores strictly convert those values to epoch milliseconds before comparing them with the consent ledger's numeric timestamp; malformed values fail closed. A grant later than the purchase transaction cannot authorize that order.
+
+## Validation
+
+The source tests use only in-memory SQLite databases and synthetic identifiers. They cover:
+
+- unknown-by-default behavior and no schema creation while disabled;
+- authenticated Portal account scoping;
+- rejection of client-supplied account references and non-boolean decisions;
+- server-side grant as a prerequisite for click-ID persistence;
+- legacy and deferred wallet-first timestamp normalization, including rejection of a grant later than the purchase transaction;
+- independent Portal account consent and public-site browser preference, including hydration and submission without cross-writing;
+- Portal focus/pageshow/visibility revalidation after a different tab revokes server consent, with no-remount purchase requests omitting click descriptors;
+- revocation redaction of claims and bindings;
+- stopping pending outbox rows;
+- aggregate-only revocation results and idempotent repeated withdrawal.
+
+Production validation, legal review, schema approval, Cloudflare/Nginx log review, and all feature activation remain separate Risk A gates.
