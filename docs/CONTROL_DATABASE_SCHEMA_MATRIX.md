@@ -37,7 +37,7 @@ The source inventory describes schema objects that the current source can create
 
 ## 3. Shared baseline and core control tables
 
-### Control-store baseline (27 tables) — 28 tables
+### Control-store baseline (28 tables)
 
 | Table | Columns (type; NOT NULL; PK; UNIQUE; DEFAULT; FK; CHECK`) | Table-level constraints | Source |
 |---|---|---|---|
@@ -275,7 +275,7 @@ Source: [`server/services/platform/coin-wallet-reference-index-migrations.mjs`#L
 | `coin-commerce-migrations.mjs` | 8 | 9 | 19 |
 | `account-resource-authority-migrations.mjs` | 1 | 4 | 5 |
 | `account-resource-authority-commerce-migrations.mjs` | 1 | 0 | 3 |
-| `coin-wallet-reference-index-migrations.mjs` | 1 | 3 | 0 |
+| `coin-wallet-reference-index-migrations.mjs` | 0 | 3 | 0 |
 | `coin-commerce-plan-switch-schema-contract.mjs` | 2 | 1 | 6 |
 
 The shared ledger is deduplicated in the overall count. Wallet reference indexes add indexes to existing wallet tables and do not add a table.
