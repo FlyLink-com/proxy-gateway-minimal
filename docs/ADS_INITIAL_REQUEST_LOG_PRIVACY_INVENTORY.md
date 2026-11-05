@@ -1,5 +1,15 @@
 # Initial-request click-ID log privacy inventory
 
+```yaml
+document_metadata:
+  doc_type: operational
+  lifecycle: active
+  authority_scope: source_only_ads_initial_request_log_privacy
+  superseded_by: null
+  last_verified_at: 2026-11-05
+  production_authority: false
+```
+
 Status: Draft / source-only preparation. No production log settings, Cloudflare configuration, Nginx configuration, deployment workflow, secrets, or runtime variables are changed by this PR.
 
 ## Source facts confirmed
