@@ -1,5 +1,15 @@
 # Google Ads click-ID retention operation
 
+```yaml
+document_metadata:
+  doc_type: operational
+  lifecycle: active
+  authority_scope: source_only_ads_click_retention
+  superseded_by: null
+  last_verified_at: 2026-11-05
+  production_authority: false
+```
+
 Status: Draft / source-only. The operation is not wired to startup, a scheduler, an API route, or a production CLI.
 
 ## Retention rule
