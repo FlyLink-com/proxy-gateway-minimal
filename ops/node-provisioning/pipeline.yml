@@ -1,0 +1,283 @@
+# JP-01 node provisioning pipeline orchestration.
+#
+# This file is a definition only. It grants no execution authority: every
+# stage still requires its own Gate decision and, where marked, a GitHub
+# Environment approval by the operator. Stage statuses are a dated snapshot,
+# not a live state ledger; the sources of truth remain the linked Gate
+# documents, PRs, and production receipts.
+schema: node-provisioning-pipeline/v1
+node: node-vultr-jp-01
+profile: ops/node-provisioning/profiles/jp-01.json
+production_authority: false
+status_as_of: "2026-11-03"
+
+# Mapping to the Post-Install Dual-Side Integration design (v0.1, 2026-11-03).
+# The P-phases refine the C-stages below; they do not replace them. Delivery
+# batches: D1 contracts/schemas/identity exchange, D2 dual renderers,
+# D3 WireGuard + Agent + E1-A, D4 runtime apply + receipt + canary.
+dual_side_phases:
+  - { phase: P0, name: Post-install admission checks, pipeline_stages: [T2, T3, M0], batch: D2 }
+  - { phase: P1, name: GitHub SSH bootstrap and handover, pipeline_stages: [C1], batch: D3 }
+  - { phase: P2, name: Runtime identity initialisation and public-key exchange, pipeline_stages: [C2, C3], batch: D1 }
+  - { phase: P3, name: Dual-side configuration rendering, pipeline_stages: [C4], batch: D2 }
+  - { phase: P4, name: Dual-side validation gate, pipeline_stages: [C4, C5], batch: D2 }
+  - { phase: P5, name: WireGuard private control link, pipeline_stages: [C2], batch: D3 }
+  - { phase: P6, name: Agent private onboarding, pipeline_stages: [C3], batch: D3 }
+  - { phase: P7, name: E1-A registration (executor path only), pipeline_stages: [C4], batch: D3 }
+  - { phase: P8, name: Desired state, material, apply, and receipt, pipeline_stages: [C5], batch: D4 }
+  - { phase: P9, name: Client canary, pipeline_stages: [C6], batch: D4 }
+
+stages:
+  - id: T2
+    name: R2 object and checksum sidecar verification
+    purpose: Prove the C0 candidate image object and its SHA-256 sidecar exist
+      in the jp01-images R2 bucket with the exact sizes and digest recorded in
+      the JP-01 profile, without downloading the full image.
+    prerequisites: []
+    inputs:
+      - ops/node-provisioning/profiles/jp-01.json (image artifact identity)
+    steps:
+      - Dispatch the JP01 R2 Image Verify workflow on master.
+      - Compare object sizes and the sidecar digest against the profile.
+    success_criteria:
+      - Image object size matches the profiled artifact size.
+      - Sidecar content equals the profiled artifact SHA-256 and file name.
+    failure_blocks:
+      - Any size or digest mismatch blocks T3 and C1.
+    evidence_outputs:
+      - GitHub Actions run record and step summary of JP01 R2 Image Verify.
+    rollback: Not applicable (read-only stage).
+    human_approval:
+      required: true
+      environment: jp01-image-verify
+    side_effects: read-only
+    current_status: "Implemented by PR #824 (Draft, under independent review); not merged."
+
+  - id: T3
+    name: Full image download and SHA-256 verification
+    purpose: Download the complete candidate image to the installation host
+      staging area and verify its SHA-256 against the JP-01 profile before any
+      installation step consumes it.
+    prerequisites: [T2]
+    inputs:
+      - ops/node-provisioning/profiles/jp-01.json (expected artifact SHA-256)
+    steps:
+      - Download the full image artifact.
+      - Compute SHA-256 locally and compare with the profile.
+      - Compare the file manifest against the C0 As-Run measurements.
+    success_criteria:
+      - Downloaded image SHA-256 equals the profiled artifact SHA-256.
+    failure_blocks:
+      - Any digest mismatch destroys the local copy and blocks C1.
+    evidence_outputs:
+      - sha256sum output and manifest comparison recorded in the C1 run record.
+    rollback: Delete the unverified local copy; no production state exists yet.
+    human_approval:
+      required: false
+      environment: null
+    side_effects: none (local staging disk only)
+    current_status: C0 evidence complete (image built and measured
+      2026-11-03); download execution waits for the C1 gate.
+
+  - id: M0
+    name: Production environment Identity Gate (BWH)
+    purpose: Read-only inventory of the BWH control plane proving which
+      identities, bindings, and materials exist before a new child node is
+      admitted, with stale items dispositioned rather than assumed away.
+    prerequisites: []
+    inputs:
+      - BWH candidate layout read-only inventory
+    steps:
+      - Run the identity gate inventory on BWH (read-only).
+      - Record missing / stale / changed / missing_material aggregates.
+      - Obtain the operator ruling for every stale disposition.
+    success_criteria:
+      - Identity gate result is not degraded, or every degraded item carries
+        an explicit operator disposition.
+    failure_blocks:
+      - An unexplained degraded gate blocks C1, C2, and C3.
+    evidence_outputs:
+      - Identity gate aggregate report (no credential material).
+    rollback: Not applicable (read-only stage).
+    human_approval:
+      required: true
+      environment: null
+    side_effects: read-only
+    current_status: Blocked — gate executed 2026-11-02 with a degraded result;
+      stale retention disposition and the operator ruling are outstanding.
+      New-node onboarding is not gated on old-node retention closure, but C1
+      installation remains M0-blocked per the candidate gate document.
+
+  - id: C1
+    name: Vultr instance plan and candidate installation
+    purpose: Create the JP-01 Vultr instance in the Tokyo region and install
+      the verified C0 candidate image, with access injected at install time
+      (the image ships with SSH disabled and no keys).
+    prerequisites: [T3, M0]
+    inputs:
+      - JP01 Vultr API Preflight passing run on master
+      - Approved BOM and C0 image identity from the JP-01 profile
+      - Region nrt; plan and install path fixed by the C1 gate decision
+    steps:
+      - Run the Vultr API preflight and confirm the provisioning ACL.
+      - Present the instance plan (region, plan, price, install path) for
+        approval.
+      - Create the instance and install the verified image.
+      - Verify first boot and the first-boot packet-path checks.
+    success_criteria:
+      - Instance exists in nrt running the verified image digest.
+      - First-boot validation passes with SSH still disabled until C2/C3
+        access is deliberately provisioned.
+    failure_blocks:
+      - Preflight failure, plan deviation, or first-boot failure blocks C2
+        and triggers rollback.
+    evidence_outputs:
+      - Instance identifier, plan, and cost record in the C1 run record.
+      - First-boot validation output.
+    rollback: Destroy the created instance and verify the account returns to
+      zero JP-01 instances; retain the pre-change configuration backup.
+    human_approval:
+      required: true
+      environment: jp01-c1-production
+    side_effects: production-write (creates a billable instance)
+    current_status: Not approved. The Vultr API preflight workflow is proposed
+      separately; a passing preflight never authorizes instance creation.
+
+  - id: C2
+    name: WireGuard child link
+    purpose: Establish the dedicated WireGuard link between BWH and JP-01 for
+      agent control traffic only.
+    prerequisites: [C1]
+    inputs:
+      - Segment 10.77.0.0/24 (BWH 10.77.0.1/32, JP-01 10.77.0.2/32) — address
+        plan approved 2026-11-02; production application remains C2-gated
+      - Interface wg-child0 on both sides; keys generated on-host only
+    steps:
+      - Generate key pairs on each host; exchange public keys only.
+      - Configure wg-child0 with /32 AllowedIPs, node-initiated UDP 51820.
+      - Verify handshake and agent-control reachability only.
+    success_criteria:
+      - Handshake completes and the agent control path responds over
+        wg-child0; no user traffic routes over the link.
+    failure_blocks:
+      - Any handshake or reachability failure blocks C3.
+    evidence_outputs:
+      - Handshake timestamps and peer public-key fingerprints.
+    rollback: Remove the peer configuration and bring wg-child0 down on both
+      sides.
+    human_approval:
+      required: true
+      environment: null
+    side_effects: production-write (network configuration on BWH and JP-01)
+    current_status: Not approved.
+
+  - id: C3
+    name: Agent installation and check-in
+    purpose: Install the node agent on JP-01 and prove it checks in to BWH
+      over the WireGuard link with the expected node identity.
+    prerequisites: [C2]
+    inputs:
+      - Node identity node-vultr-jp-01 with channels
+        channel-vultr-jp-01-vless-reality-tcp, channel-vultr-jp-01-hy2,
+        channel-vultr-jp-01-tuic
+    steps:
+      - Install the agent from the verified release identity.
+      - Start the agent and observe the first check-in on BWH.
+      - Compare the reported inventory against the JP-01 profile.
+    success_criteria:
+      - Agent heartbeat observed on BWH and inventory matches the profile.
+    failure_blocks:
+      - Missing heartbeat or inventory mismatch blocks C4.
+    evidence_outputs:
+      - Agent check-in record and inventory comparison.
+    rollback: Stop and remove the agent; the node remains unregistered.
+    human_approval:
+      required: true
+      environment: null
+    side_effects: production-write (JP-01 only)
+    current_status: Not approved.
+
+  - id: C4
+    name: E1-A registration
+    purpose: Register JP-01 in the BWH subscription control plane through the
+      E1 registration execution path, keeping the execution gate default-off
+      until this stage is explicitly approved.
+    prerequisites: [C3]
+    inputs:
+      - E1-A amendment confirmation and implementation
+      - Registration binding for node-vultr-jp-01 and its three channels
+    steps:
+      - Confirm the E1-A binding values against the JP-01 profile.
+      - Enable the registration execution gate for the single JP-01 execution.
+      - Execute registration and verify the registry entry.
+    success_criteria:
+      - Registry contains exactly node-vultr-jp-01 with its three channels;
+        no subscription rendering change yet.
+    failure_blocks:
+      - Any binding mismatch aborts before the gate is enabled.
+    evidence_outputs:
+      - Registration execution record and registry readback.
+    rollback: Disable the execution gate; remove the registry entry through
+      the approved supersede path.
+    human_approval:
+      required: true
+      environment: null
+    side_effects: production-write (BWH registry)
+    current_status: Not approved — E1-A confirmation and implementation are
+      outstanding; the E1 source primitive is merged but not deployed and the
+      execution gate remains default-off.
+
+  - id: C5
+    name: Receipt and metering acceptance
+    purpose: Prove the receipt chain and metering work end to end for JP-01
+      before any client canary — receipts matched at read, subscription
+      rendering includes the JP channels only for the canary scope, and
+      metering samples flow.
+    prerequisites: [C4]
+    inputs:
+      - Registered node and channels from C4
+    steps:
+      - Emit and observe desired/applied receipts for the three channels.
+      - Verify subscription rendering for the canary scope only.
+      - Verify metering samples are collected and attributed to JP-01.
+    success_criteria:
+      - Receipts match at read for all three channels.
+      - Rendering and metering evidence recorded per channel.
+    failure_blocks:
+      - Any unmatched receipt or missing metering blocks C6.
+    evidence_outputs:
+      - Receipt identifiers and per-channel metering evidence.
+    rollback: Remove the JP channels from rendering; the node stays
+      registered but unserved.
+    human_approval:
+      required: true
+      environment: null
+    side_effects: production-write (rendering scope)
+    current_status: Not approved.
+
+  - id: C6
+    name: Client canary
+    purpose: Serve the JP-01 channels to a limited canary cohort for 3-7 days
+      and verify VLESS, HY2, and TUIC from real clients before any general
+      availability decision.
+    prerequisites: [C5]
+    inputs:
+      - Canary cohort definition and per-protocol acceptance checks
+    steps:
+      - Enable the JP channels for the canary cohort only.
+      - Run per-protocol client acceptance for VLESS, HY2, and TUIC.
+      - Monitor metering and errors for the canary window.
+    success_criteria:
+      - All three protocols pass client acceptance during the canary window
+        with no Sev-1 regression.
+    failure_blocks:
+      - Any protocol failure removes that channel from the canary scope.
+    evidence_outputs:
+      - Per-protocol acceptance record and canary monitoring summary.
+    rollback: Remove the JP channels from the canary scope immediately; full
+      user subscriptions remain disabled.
+    human_approval:
+      required: true
+      environment: null
+    side_effects: production-write (limited user traffic)
+    current_status: Not approved.
