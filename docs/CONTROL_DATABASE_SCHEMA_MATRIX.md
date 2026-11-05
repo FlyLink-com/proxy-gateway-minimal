@@ -1,7 +1,7 @@
 # Shared Control Database — Source Schema Matrix
 
-> **Evidence cut:** repository `FlyLink-com/proxy-gateway-minimal`, `master` at PR #828 base `3768644a` (source files below are read from that base branch).  
-> **Purpose:** Source-level schema matrix for the 48-table core slice. The six companion G1-21–G1-26 annexes in §6 add 22 tables, completing the 70-table integrated source inventory.  
+> **Evidence cut:** repository `FlyLink-com/proxy-gateway-minimal`, `master` at PR #828 base `3768644a` (source files below are read from that base branch).
+> **Purpose:** Source-level schema matrix for the 48-table core slice. The six companion G1-21–G1-26 annexes in §6 add 22 tables, completing the 70-table integrated source inventory.
 > **Execution boundary:** source-only inspection. No local/production SQLite file was opened; no rows, secrets, backups, migrations, Cloudflare resources, CI, or deployment were touched.
 
 ## 1. Scope and database boundary
