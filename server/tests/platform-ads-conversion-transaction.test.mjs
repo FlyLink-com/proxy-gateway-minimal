@@ -243,6 +243,46 @@ test("legacy confirm and complete are unchanged when every Ads write fails", () 
   assert.deepEqual(healthy.state, off.state);
 });
 
+test("legacy conversion rejects a server grant recorded after the purchase commit", () => {
+  const state = legacyFixture();
+  try {
+    withFlag(true, () => {
+      // The account decision exists, but becomes effective one millisecond
+      // after the transaction timestamp. It cannot authorize that order.
+      grantAdsConsent(state.database, LEGACY_ACCOUNT, Date.parse(LEGACY_NOW) + 1);
+      const confirmed = legacyConfirmAndCapture(state, { adsClick: freshClick() });
+      const claim = state.database.prepare(
+        "select claim_state, click_value from platform_ads_click_claims where order_ref = ?"
+      ).get(confirmed.orderRef);
+      assert.deepEqual(claim, { claim_state: "invalid_click", click_value: null });
+      const bindingCount = state.database.prepare(
+        "select count(*) from platform_ads_click_bindings where order_ref = ?"
+      ).pluck().get(confirmed.orderRef);
+      assert.equal(bindingCount, 0);
+      const claimed = state.store.claimNextFulfillmentCommand({ leaseMs: 1000 });
+      state.store.completeFulfillmentCommand({
+        commandRef: claimed.commandRef,
+        leaseGeneration: claimed.leaseGeneration,
+        leaseToken: claimed.leaseToken,
+        effectRef: "effect_ads_tx_late_grant",
+        status: "delivered"
+      });
+      assert.deepEqual(state.database.prepare(
+        "select status, skip_reason from platform_ads_conversion_outbox where order_ref = ?"
+      ).get(confirmed.orderRef), {
+        status: "skipped",
+        skip_reason: "invalid_click"
+      });
+      assert.deepEqual(legacyOrderState(state.database, confirmed.orderRef), {
+        paymentStatus: "captured",
+        commandStatus: "delivered"
+      });
+    });
+  } finally {
+    state.close();
+  }
+});
+
 test("legacy complete records a pending conversion when Ads writes succeed", () => {
   const state = legacyFixture();
   try {

@@ -58,7 +58,7 @@ Outbox rows are not deleted by this operation. They contain transaction/order re
 - Portal account consent is account-scoped and authoritative only through the authenticated Portal endpoints. Portal hydration and account-choice submission must never write the public-site cookie.
 - The two decisions are independent: public-site consent is required before capturing and handing off a click ID; Portal account consent is separately required before the server persists a purchase claim. A browser preference alone never authorizes a server-side claim.
 - The Portal UI hydrates the account decision after authentication and keeps the current decision in page memory for purchase gating. A denied or unknown server decision clears the Portal click handoff without changing the site preference.
-- The deferred wallet-first path exposes the committed transition timestamp as canonical UTC ISO text. The store strictly converts that value to epoch milliseconds before comparing it with the consent ledger's numeric timestamp; malformed values fail closed. A grant later than the purchase transaction cannot authorize that order.
+- Both legacy confirmation and deferred wallet-first reservation expose their committed transaction timestamps as canonical UTC ISO text. The stores strictly convert those values to epoch milliseconds before comparing them with the consent ledger's numeric timestamp; malformed values fail closed. A grant later than the purchase transaction cannot authorize that order.
 
 ## Validation
 
@@ -68,7 +68,7 @@ The source tests use only in-memory SQLite databases and synthetic identifiers. 
 - authenticated Portal account scoping;
 - rejection of client-supplied account references and non-boolean decisions;
 - server-side grant as a prerequisite for click-ID persistence;
-- deferred wallet-first timestamp normalization, including rejection of a grant later than the purchase transaction;
+- legacy and deferred wallet-first timestamp normalization, including rejection of a grant later than the purchase transaction;
 - independent Portal account consent and public-site browser preference, including hydration and submission without cross-writing;
 - revocation redaction of claims and bindings;
 - stopping pending outbox rows;
