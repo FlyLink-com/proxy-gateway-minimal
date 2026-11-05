@@ -1,6 +1,6 @@
 # Documentation Index
 
-Last updated: 2026-10-11 UTC.
+Last updated: 2026-11-04 UTC.
 
 ```yaml
 document_metadata:
@@ -8,7 +8,7 @@ document_metadata:
   lifecycle: active
   authority_scope: documentation_navigation
   superseded_by: null
-  last_verified_at: 2026-10-11
+  last_verified_at: 2026-11-04
   production_authority: false
 ```
 
@@ -212,6 +212,7 @@ security-alert counts and makes no current claim about them.
 | [`docs/CI_STATUS_LOG.md`](CI_STATUS_LOG.md) | Dated CI availability, exact-source hosted/local results and safe append-only run summaries. | Evidence index; no workflow, budget, execution or production authority. | Read for current reported CI blockers and the pending November 2026 latest-master manual check. |
 | `docs/CI_MANUAL_VALIDATION.md` | Manual CI validation host workflow; target direction is local Linux manual CI, with historical Aliyun manual CI facts retained until the transition is validated. | Active runbook, not staging or deploy approval. | Read before using a manual validation host for repo-level CI evidence. |
 | `docs/CLOUDFLARE_PUBLIC_SITE_CI.md` | Repository-only Cloudflare public static site CI boundary, pinned Wrangler dry-run command, and non-goals for keeping backend/control-plane/API/runtime work off Cloudflare. | Active CI boundary; no deploy, DNS, Cloudflare account, secret, or production authority. | Read before changing `wrangler.public-site.jsonc`, `admin/dist-site` public-site builds, GitHub public-site CI, or Cloudflare static-site deploy preparation. |
+| `docs/CLOUDFLARE_D1_DATABASE_EVALUATION.md` | Feasibility and decision record for Cloudflare D1 as a possible future control-database target. | Evaluation only; D1 is not adopted and the current Cloudflare public-site boundary remains authoritative. | Read before any proposal to move control-plane data or APIs to Cloudflare D1. |
 
 ## Project Intelligence Layer
 
