@@ -1,6 +1,6 @@
 # Cloudflare Workers + D1 Control-Plane Architecture Decision
 
-Last updated: 2026-11-04, America/Los_Angeles.
+Last updated: 2026-11-05, America/Los_Angeles.
 
 ```yaml
 document_metadata:
@@ -8,7 +8,7 @@ document_metadata:
   lifecycle: active
   authority_scope: cloudflare_workers_d1_control_plane
   superseded_by: null
-  last_verified_at: 2026-11-04
+  last_verified_at: 2026-11-05
   production_authority: false
 ```
 
@@ -91,7 +91,11 @@ This is one logical control database with domain-owned tables and repositories, 
 
 The BWH agent must not connect directly to D1, receive a D1 credential, become a second business database, or expose a public Admin surface. It receives only the commands and safe references required for its own node. It returns redacted receipts; raw credential material never travels through D1, API responses, logs, or documentation.
 
-The preferred initial communication pattern is **BWH-initiated authenticated polling or another explicitly reviewed outbound agent channel**. Do not expose a new inbound management port on BWH as a shortcut. The exact agent authentication, replay protection, command lease, acknowledgement, retry, and receipt protocol remains a source-design task.
+The preferred initial communication pattern is **BWH-initiated authenticated polling or another explicitly reviewed outbound agent channel**. Do not expose a new inbound management port on BWH as a shortcut. The exact agent authentication, replay protection, command lease, acknowledgement, retry, and receipt protocol remains a source-design task. The G1-30 communication and material-custody text is finalized but **pending the owner's formal approval**; it is not an approved implementation contract.
+
+### Rendering and desired-state phase boundary
+
+The JP-01 #826 GitHub Orchestrator / BWH Renderer / Node Renderer dual-side arrangement describes the **current-phase JP-01 rollout contract only**. It does not define the future Workers + D1 renderer data-source contract. In the future phase, Worker-side desired-state authority and BWH/node-side rendering execution must be connected by a separate reviewed handoff contract. Do not assume that the current BWH-local SQLite renderer read or the #826 Dual-Side Gate automatically carries over after cutover. This architecture decision does not authorize that renderer transition.
 
 ## Current repository boundaries
 
@@ -106,7 +110,7 @@ The following paths and ownership were read from `server/state.mjs` and the curr
 
 The shared `controlDbPath` is passed to the platform subscription-control store and to the Coins Wallet, Coins Commerce, Payment, and Ads Consent stores, among other control-plane components. Those domains must remain within one D1 transaction boundary unless a future architecture decision proves an alternative consistency model.
 
-The control database includes the business-control tables documented in `docs/SUBSCRIPTION_CONTROL_DATABASE.md`, including accounts, entitlements, issuance requests, issued-link references, quota counters, device bindings, revocations, audit events, and edge desired-state / receipt coordination. Additional source-owned modules add wallet, commerce, payment, portal, referral, usage, and authority objects. This is a domain summary, not an exhaustive schema inventory.
+The control database includes the business-control tables documented in `docs/SUBSCRIPTION_CONTROL_DATABASE.md`, including accounts, entitlements, issuance requests, issued-link references, quota counters, device bindings, revocations, audit events, and edge desired-state / receipt coordination. Additional source-owned modules add wallet, commerce, payment, portal, referral, usage, and authority objects. This is a domain summary, not an exhaustive schema inventory. For the source-level table detail, use `docs/CONTROL_DATABASE_SCHEMA_MATRIX.md`: its 48-table core slice plus the six G1-21–G1-26 companion annexes in §6 complete the 70-table integrated inventory. This inventory does not establish which optional or archival tables are present in production.
 
 The subscription runtime repository currently creates:
 
@@ -201,8 +205,8 @@ The owner decision authorizes the target direction and source-level design work.
 | Gate | Required work | Exit evidence | Authority |
 | --- | --- | --- | --- |
 | G0 — Architecture direction | **Approved 2026-11-04:** Workers control-plane API + one D1 control database; BWH remains data plane | This decision record and updated Cloudflare boundary/context docs | Completed |
-| G1 — Source inventory | Map all control-plane routes, stores, schemas, migration IDs/checksums, indexes, triggers, foreign keys, transaction participants, and data ownership | Exact-source inventory and dependency map; no customer rows or secret output | Repository/source review; production DB inventory still needs separate Risk A approval |
-| G2 — Local D1 compatibility spike | Use local D1 and synthetic fixtures only; test schema SQL, constraints, batches, sessions, pagination, migration ledger, and representative transaction patterns | Repeatable tests and parity report; no remote Cloudflare resource or production data | Source-only / isolated fixture |
+| G1 — Source inventory | Map all control-plane routes, stores, schemas, migration IDs/checksums, indexes, triggers, foreign keys, transaction participants, and data ownership | Exact-source inventory and dependency map; G1-F independent review declared passed by Yi on 2026-11-05; no customer rows or secret output | Source-level G1 complete; production DB inventory still needs separate Risk A approval |
+| G2 — Local D1 compatibility spike | Use local D1 and synthetic fixtures only; test schema SQL, constraints, batches, sessions, pagination, migration ledger, and representative transaction patterns | Repeatable tests and parity report; no remote Cloudflare resource or production data | **Not released; requires a separate G2 owner decision.** If released, local synthetic fixtures only. |
 | G3 — Worker API vertical slice | Implement a narrow Worker API and async D1 repository; begin with a safe read-only projection, then prove one bounded write flow with synthetic data | API contract tests, auth/redaction tests, transaction and failure tests | Separate source PR review |
 | G4 — BWH agent contract | Implement synthetic outbound polling, scoped command delivery, idempotent acknowledgement, retry/lease behavior, and redacted receipts | Protocol contract tests; no live node or runtime material | Separate source PR review |
 | G5 — Remote staging | Create a non-production Worker/D1 environment, secrets, bindings, and isolated route only after exact approval | Resource inventory, access boundary, staging validation, cost/retention plan | Separate explicit Cloudflare account/resource approval |
@@ -210,11 +214,19 @@ The owner decision authorizes the target direction and source-level design work.
 | G7 — Production cutover | Freeze the source writer, take and verify an immutable backup, apply the exact reviewed migration, reconcile, and switch one authoritative writer | Exact Risk A approval, backup identity, migration identity, validation receipt, and rollback/forward-recovery readiness | **Risk A; not authorized by this decision** |
 | G8 — Post-cutover recovery | Prove D1 export/restore, RPO/RTO, and recovery of writes accepted after cutover | Tested recovery evidence and explicit recovery decision | Separate Risk A gate |
 
+### Gate numbering across the G1 workstream and this architecture plan
+
+The `G0`–`G8` labels above are Cloudflare architecture stages. They are **not interchangeable** with the separate G1-E / G1-F workstream labels:
+
+- Workstream **G1** (source inventory, including G1-F independent review) corresponds to this plan's **G1 — Source inventory**.
+- A separate workstream **G2 release decision** authorizes only entry into this plan's **G2 — Local D1 compatibility spike**, using local synthetic data.
+- Passing the workstream G2 spike does **not** authorize this plan's G3–G8 stages. In particular, **G7 production cutover remains a separate Risk A decision**.
+
 The existing SQLite snapshot/restore contract in `docs/CONTROL_PLANE_DB_SNAPSHOT_RESTORE_CONTRACT.md` applies only to the current SQLite file and its WAL/service-custody procedure. It is not a D1 backup or restore runbook. A future D1 plan must separately validate Time Travel, export/backup retention (including any proposed R2 use), restore, and post-restore reconciliation. No R2 resource or backup schedule is created by this decision.
 
 ## Current go / no-go
 
-- **GO:** architecture direction, repository documentation, source-level route/schema inventory, and local synthetic D1/Worker compatibility work.
+- **GO:** architecture direction, repository documentation, source-level route/schema inventory, and planning/review of local synthetic D1/Worker compatibility work. Execution of the G2 compatibility spike remains blocked until a separate G2 owner decision.
 - **NO-GO:** remote D1 creation, Worker production routes, Cloudflare secrets, DNS/custom-domain changes, production database inventory, real-data migration, payment/provider activation, BWH runtime mutation, and production cutover until their separate gates are approved.
 - **Current source of truth:** existing Node/Express + SQLite remains authoritative until a completed Risk A cutover. No dual write and no early traffic split.
 - **Initial D1 scope:** one database corresponding to shared `control.sqlite`. No database-per-domain split.
