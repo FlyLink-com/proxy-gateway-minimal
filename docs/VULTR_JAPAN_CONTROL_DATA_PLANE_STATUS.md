@@ -1,6 +1,6 @@
 # Vultr Japan Control / Data-Plane Status
 
-Last updated: 2026-11-01, UTC.
+Last updated: 2026-11-02, UTC.
 
 ```yaml
 document_metadata:
@@ -8,7 +8,7 @@ document_metadata:
   lifecycle: active
   authority_scope: vultr_japan_control_data_plane_status
   superseded_by: null
-  last_verified_at: 2026-11-01
+  last_verified_at: 2026-11-02
   production_authority: false
 ```
 
@@ -40,6 +40,14 @@ release, health, identity, or metering verification. The live BWH release
 identity is bound by the as-run manifest (SHA-256) under the 2026-11-01 ruling,
 with source-commit identity not claimed; the remaining operational
 preconditions remain separate M0 evidence items.
+
+## Source Implementation Update (2026-11-02)
+
+PR #822 is merged at `eb83197e`; final feature head `8ee26c67` received independent approval and GitHub Actions CI Run #2310 succeeded.
+
+The merged source now has JP-01 WireGuard-gated registration primitives, a default-off registration executor, per-node Identity Gate surfaces for the three JP channels, metering registry references, and readiness blockers. These are source-level capabilities only. No current JP candidate host, live tunnel, BWH production registration, Agent apply, Receipt, production metering, or client Canary is evidenced by this merge.
+
+The E1-A v1.1 and E4-A v0.12 working drafts remain separately gated; they are not frozen or implemented. M0 remains BLOCKED, and M1–M8 remain unexecuted. The candidate phase is open for preparation only; candidate build/install/enablement requires its own exact Gate. See `docs/JP_CHILD_NODE_ENGINEERING_STATUS.md`.
 
 ## Historical Direction Snapshot (2026-07-24)
 
