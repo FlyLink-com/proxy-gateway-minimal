@@ -1350,12 +1350,16 @@ describe("Portal Coins purchase flow", () => {
         adPersonalization: false as const,
         updatedAt: Date.now()
       })),
-      setConsent: vi.fn(async () => ({
-        decision: "denied" as const,
-        adUserData: false,
-        adPersonalization: false as const,
-        updatedAt: Date.now()
-      }))
+      setConsent: vi.fn(async ({ adUserData }) => {
+        // Simulates the same authenticated server API called from Tab A.
+        serverDecision = adUserData ? "granted" : "denied";
+        return {
+          decision: serverDecision,
+          adUserData,
+          adPersonalization: false as const,
+          updatedAt: Date.now()
+        };
+      })
     };
     render(
       <AdsConsentPreferencePanel
@@ -1374,13 +1378,23 @@ describe("Portal Coins purchase flow", () => {
       clickAt: Date.now()
     }));
 
-    serverDecision = "denied";
+    // A separate tab withdraws through the authenticated server API.
+    await act(async () => {
+      await consentClient.setConsent({
+        sessionRef: "session-ads-other-tab",
+        adUserData: false
+      });
+    });
     act(() => window.dispatchEvent(new Event("focus")));
     // No remount: the original mounted panel must refresh and revoke.
     await waitFor(() => {
       expect(screen.getByText("广告衡量：未允许")).toBeTruthy();
     });
     expect(consentClient.getConsent).toHaveBeenCalledTimes(2);
+    expect(consentClient.setConsent).toHaveBeenCalledWith({
+      sessionRef: "session-ads-other-tab",
+      adUserData: false
+    });
 
     const client = commerceClient();
     const { result } = renderHook(() => commerce.useCoinsPurchaseFlow({
