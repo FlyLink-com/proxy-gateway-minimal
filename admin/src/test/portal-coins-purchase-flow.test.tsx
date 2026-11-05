@@ -1350,7 +1350,7 @@ describe("Portal Coins purchase flow", () => {
         adPersonalization: false as const,
         updatedAt: Date.now()
       })),
-      setConsent: vi.fn(async ({ adUserData }) => {
+      setConsent: vi.fn(async ({ adUserData }: { sessionRef: string; adUserData: boolean }) => {
         // Simulates the same authenticated server API called from Tab A.
         serverDecision = adUserData ? "granted" : "denied";
         return {
