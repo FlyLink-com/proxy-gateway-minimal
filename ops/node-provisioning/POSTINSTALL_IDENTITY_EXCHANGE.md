@@ -1,5 +1,15 @@
 # Post-Install Identity Exchange — Design (D1)
 
+```yaml
+document_metadata:
+  doc_type: canonical
+  lifecycle: active
+  authority_scope: jp01_postinstall_identity_exchange_d1_contract
+  superseded_by: null
+  last_verified_at: 2026-11-05
+  production_authority: false
+```
+
 Status: D1 contract design for the Post-Install Dual-Side Integration
 programme (design v0.1, 2026-11-03). This document freezes the identity
 exchange interface for JP-01 and later child nodes. It defines no workflow
