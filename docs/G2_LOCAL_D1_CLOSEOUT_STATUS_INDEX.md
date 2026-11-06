@@ -42,11 +42,11 @@ This decision does not authorize production migration, persistent production DDL
 - The strict foreign-key accounting remains **68 PASS / 58 attribution-limited**. The 75/51 view is supplementary and does not replace the strict formal reading.
 - Stage 7's 39 checks comprise 26 data-layer checks and 13 application-layer checks. Application-layer cursor decoding evidence is not relabeled as database-engine evidence.
 
-## Remaining closeout and acceptance boundary
+## Acceptance boundary
 
-The evidence above is not, by itself, a formal overall G2 acceptance decision. The consolidated report and the underlying archived receipts remain the evidence package to inspect. Any missing or unverified source artifact must remain identified as such; this index does not infer or recreate absent hashes.
+The formal G2 local evidence closeout decision is recorded above as **ACCEPTED WITH DOCUMENTED LIMITATIONS**. The acceptance is restricted to the listed local synthetic-data test surfaces and the archived evidence package.
 
-Yi retains the formal G2 stage decision. Until that decision is recorded, status remains **HOLD FOR CLOSEOUT**.
+This is not a claim that every D1 behavior has been exhaustively tested, and it does not change the explicit attribution-limited or untested classifications below and in Rev2. It is also not production migration acceptance or deployment authority. Any later request to resolve the remaining compatibility evidence gaps, validate multi-replica behavior, inspect the production migration set, or apply migrations requires its own scoped plan and approval.
 
 ## Accepted limitations (not promoted to PASS)
 
