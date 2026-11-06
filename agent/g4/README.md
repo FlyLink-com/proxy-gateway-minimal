@@ -12,11 +12,7 @@ AGT-POLL / AGT-ADDR / AGT-ROT / AGT-DATA / AGT-MFT).
   server, or connected to BWH. The legacy `agent/production-edge-agent.mjs`
   and its private-address rule are **untouched**; the current phase
   (BWH authority, private addressing) is unchanged.
-- **No endpoints are added to the live server.** The Worker-side
-  Agent API (`/v1/agent/desired-state`, `/v1/agent/receipts`) is a
-  later step; in this slice the control side exists as the signed
-  manifest format, the receipt shape, and the ledger semantics the
-  client is tested against (via a stub transport).
+- **Worker source endpoints now exist as a separate local slice.** `workers/control-plane` implements `GET /v1/agent/desired-state` and `POST /v1/agent/receipts` against local synthetic D1 fixtures. This does not add routes to the live Node server, create remote resources, or connect BWH.
 - **No timer is configured.** The systemd files are templates; the
   60-second interval in the timer template is deployment
   configuration and the G1-30 design target, not a configured fact
@@ -41,6 +37,7 @@ AGT-POLL / AGT-ADDR / AGT-ROT / AGT-DATA / AGT-MFT).
 | `agent-client.mjs` | One oneshot poll cycle: single-instance locks (memory + file with PID-liveness-checked stale takeover, serialized reaping and token-owned release), refs-only payload boundary, local material resolution with digest check, generation/digest no-change skip, dry-run/apply posture, idempotent receipt submission, state saved only after confirmation (AGT-POLL-3..6, AGT-DATA-1..2) |
 | `run-once.mjs` | Runnable oneshot entrypoint (env-configured; HTTPS addressing rule with loopback-only http exception; path-contained generation output; owner-only staged material files and directories) (AGT-ADDR-1, AGT-MFT-2, AGT-DATA-2) |
 | `systemd/` | Service (Type=oneshot, hardened like the current unit) and timer templates — not installed (AGT-POLL-1/2) |
+| `workers/control-plane/src/agent-protocol.mjs` | Local-only Worker endpoints for signed desired-state manifests and redacted idempotent receipts; synthetic D1 fixtures only |
 
 ## Clause map
 
@@ -73,6 +70,9 @@ recomputes the desired-state digest, skips if generation + digest
 are unchanged, resolves each material locally by reference and
 checks its digest, applies (unless dry-run / apply-disabled), and
 submits one redacted receipt per channel under a deterministic
-idempotency key. Local state is saved only after the receipts are
-accepted, so any failure is retried by the next tick under the same
-keys — lease/retry semantics without a daemon.
+idempotency key. After apply, the Agent persists its generation and
+pending redacted receipts before network acknowledgement; if a response
+is lost, the next tick replays those receipts without applying the same
+generation again. The control-plane receipt ledger accepts identical
+replays once and rejects a changed outcome. The Worker slice verifies
+the same manifest and receipt contract against local synthetic D1.

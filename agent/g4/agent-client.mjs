@@ -314,13 +314,42 @@ export function createAgentClient({
         return { status: "rejected", stage: "digest", code: "digest_mismatch" };
       }
 
-      const state = await stateStore.load();
+      let state = await stateStore.load();
+      let receiptsRecovered = 0;
+      if (Array.isArray(state?.pendingReceipts) && state.pendingReceipts.length > 0) {
+        receiptsRecovered = state.pendingReceipts.length;
+        try {
+          for (const receipt of state.pendingReceipts) {
+            await transport.submitReceipt(receipt, { headers: buildHeaders() });
+          }
+        } catch (error) {
+          return {
+            status: "retry_later",
+            stage: "receipt",
+            error: String(error?.message ?? error),
+          };
+        }
+        state = { ...state, pendingReceipts: [] };
+        try {
+          await stateStore.save(state);
+        } catch (error) {
+          return {
+            status: "retry_later",
+            stage: "state",
+            error: String(error?.message ?? error),
+          };
+        }
+      }
       if (
         state
         && state.generation === manifest.generation
         && state.desiredStateDigest === manifest.desiredStateDigest
       ) {
-        return { status: "unchanged", generation: manifest.generation };
+        return {
+          status: "unchanged",
+          generation: manifest.generation,
+          receiptsRecovered,
+        };
       }
 
       const resolved = [];
@@ -364,22 +393,36 @@ export function createAgentClient({
 
       await apply({ manifest, materials: resolved });
 
+      const appliedState = {
+        generation: manifest.generation,
+        desiredStateDigest: manifest.desiredStateDigest,
+        desiredStateRef: manifest.desiredStateRef,
+        pendingReceipts: receipts,
+      };
+      try {
+        // Persist the completed generation and redacted receipt intent
+        // before network acknowledgement. A retry can replay receipts
+        // without applying the same generation a second time.
+        await stateStore.save(appliedState);
+      } catch (error) {
+        return { status: "retry_later", stage: "state", error: String(error?.message ?? error) };
+      }
+
       try {
         for (const receipt of receipts) {
           await transport.submitReceipt(receipt, { headers: buildHeaders() });
         }
       } catch (error) {
-        // Apply happened but confirmation did not: state is NOT saved,
-        // so the next cycle re-runs and re-submits under the same
-        // idempotency keys; the control ledger records each key once.
         return { status: "retry_later", stage: "receipt", error: String(error?.message ?? error) };
       }
 
-      await stateStore.save({
-        generation: manifest.generation,
-        desiredStateDigest: manifest.desiredStateDigest,
-        desiredStateRef: manifest.desiredStateRef,
-      });
+      try {
+        await stateStore.save({ ...appliedState, pendingReceipts: [] });
+      } catch (error) {
+        // A later cycle may replay accepted receipts; their deterministic
+        // idempotency keys make that replay safe.
+        return { status: "retry_later", stage: "state", error: String(error?.message ?? error) };
+      }
       return { status: "applied", generation: manifest.generation, receipts };
     } finally {
       await handle.release();

@@ -269,7 +269,7 @@ test("AGT-POLL-5: material ordering does not change the idempotency fingerprint"
   assert.deepEqual(ledger.record(reordered), { recorded: false, replayed: true });
 });
 
-test("AGT-POLL-5: a failed receipt submission leaves state unsaved so the next cycle retries under the same keys", async () => {
+test("AGT-POLL-5: a failed receipt acknowledgement is retried without applying the same generation twice", async () => {
   const ledger = createReceiptLedger();
   let failSubmit = true;
   const transport = {
@@ -281,16 +281,18 @@ test("AGT-POLL-5: a failed receipt submission leaves state unsaved so the next c
       ledger.record(receipt);
     },
   };
-  // Fresh verifier per cycle would reject the replayed manifest; a real
-  // deployment persists the anti-replay set, and a retried cycle fetches
-  // a fresh manifest — the stub therefore re-signs per fetch.
-  const { client } = makeClient({ transport });
+  // Fresh verifier per cycle rejects a reused anti-replay id; the stub
+  // signs a fresh envelope for the same generation on each poll.
+  const { client, calls } = makeClient({ transport });
   const first = await client.runOnce();
   assert.equal(first.status, "retry_later");
   assert.equal(first.stage, "receipt");
+  assert.equal(calls.apply, 1);
   failSubmit = false;
   const second = await client.runOnce();
-  assert.equal(second.status, "applied");
+  assert.equal(second.status, "unchanged");
+  assert.equal(second.receiptsRecovered, 2);
+  assert.equal(calls.apply, 1);
   assert.equal(ledger.size(), 2);
 });
 
