@@ -237,6 +237,22 @@ test("G4 receipt endpoint enforces binding, redaction and idempotent replay", as
   assert.ok(!JSON.stringify(rows.results).includes(AGENT_TOKEN));
 });
 
+test("G4 desired-state claims reject per-channel material sets that cannot fit a bounded receipt", async (t) => {
+  const { mf, db, agent } = await createWorker();
+  t.after(() => mf.dispose());
+  const extra = Array.from({ length: 32 }, (_, index) =>
+    db.prepare(
+      "INSERT INTO agent_desired_state_materials (desired_state_ref, channel_ref, edge_credential_ref, digest) VALUES (?, ?, ?, ?)",
+    ).bind("desired-synth-001", agent.channelRefs[0], "cred-extra-" + String(index).padStart(3, "0"), "a".repeat(64)),
+  );
+  await db.batch(extra);
+  const response = await fetchDesired(mf, agent);
+  assert.equal(response.status, 413);
+  assert.equal((await response.json()).error.code, "desired_state_too_large");
+  const claims = await db.prepare("SELECT COUNT(*) AS n FROM agent_manifest_claims").first();
+  assert.equal(claims.n, 0);
+});
+
 test("G4 receipts preserve an exact historical apply record after desired state revocation", async (t) => {
   const { mf, db, agent } = await createWorker();
   t.after(() => mf.dispose());
