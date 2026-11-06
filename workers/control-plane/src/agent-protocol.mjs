@@ -16,6 +16,7 @@ const MAX_CLOCK_SKEW_MS = 5 * 60 * 1000;
 const MAX_CLAIM_LEASE_MS = 120 * 1000;
 const IDEMPOTENCY_KEY_PATTERN = /^[!-~]{16,256}$/;
 const MAX_RECEIPT_BODY_BYTES = 16 * 1024;
+const MAX_RECEIPT_MATERIALS_PER_CHANNEL = 32;
 const encoder = new TextEncoder();
 
 function jsonResponse(status, body, extraHeaders = {}) {
@@ -345,6 +346,13 @@ export async function handleAgentDesiredState(request, env) {
     edgeCredentialRef: row.edge_credential_ref,
     digest: row.digest,
   }));
+  const materialCounts = new Map();
+  for (const item of materials) {
+    materialCounts.set(item.channelRef, (materialCounts.get(item.channelRef) ?? 0) + 1);
+  }
+  if ([...materialCounts.values()].some((count) => count > MAX_RECEIPT_MATERIALS_PER_CHANNEL)) {
+    return jsonError(413, "desired_state_too_large", "desired state exceeds the per-channel receipt material limit");
+  }
   const materialChannels = sortChannelRefs([...new Set(materials.map((item) => item.channelRef))]);
   if (
     materials.length === 0
