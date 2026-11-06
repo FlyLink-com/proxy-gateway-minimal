@@ -12,6 +12,17 @@ import { canonicalJson, sha256Hex } from "./manifest.mjs";
 
 export const APPLY_RECEIPT_TYPE = "gccgw_data_plane_apply_receipt";
 
+// Encode the tuple structurally before hashing so delimiter characters
+// inside otherwise-valid references cannot create key collisions.
+export function buildReceiptIdempotencyKey({ desiredStateRef, generation, channelRef }) {
+  for (const [field, value] of Object.entries({ desiredStateRef, generation, channelRef })) {
+    if (typeof value !== "string" || value.length === 0) {
+      throw new ReceiptError("validation_error", "receipt key tuple fields must be non-empty strings");
+    }
+  }
+  return "receipt:v1:" + sha256Hex(canonicalJson([desiredStateRef, generation, channelRef]));
+}
+
 export class ReceiptError extends Error {
   constructor(code, message) {
     super(message);
