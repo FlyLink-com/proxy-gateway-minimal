@@ -31,7 +31,6 @@ const SCHEMA_ERRORS = new Set([
 const SAFE_REASONS = new Set([
   ...CONTRACT_REASONS, ...SCHEMA_ERRORS,
   "commerce_invalid_database_path", "commerce_invalid_migration_contract", "commerce_invalid_temp_root",
-  "commerce_initial_confirmation_migration_missing",
   "commerce_source_changed_during_dry_run",
   "commerce_initial_confirmation_guard_migration_failed",
   "database_close_failed", "database_inspection_failed",
