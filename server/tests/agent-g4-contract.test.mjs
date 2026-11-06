@@ -35,6 +35,7 @@ import {
 } from "../../agent/g4/manifest.mjs";
 import {
   buildChannelReceipt,
+  buildReceiptIdempotencyKey,
   createReceiptLedger,
   redactDetail,
 } from "../../agent/g4/receipt.mjs";
@@ -240,7 +241,11 @@ test("AGT-POLL-5: the receipt ledger records a key exactly once and conflicts on
       edgeCredentialRef: m.edgeCredentialRef,
       digest: createHash("sha256").update(m.bytes).digest("hex"),
     })),
-    idempotencyKey: "receipt:desired-gen-1:gen-1:chan-synth-hy2",
+    idempotencyKey: buildReceiptIdempotencyKey({
+      desiredStateRef: "desired-gen-1",
+      generation: "gen-1",
+      channelRef: CHANNELS[0],
+    }),
     status: "applied",
   });
   assert.deepEqual(ledger.record(receipt), { recorded: true, replayed: false });
@@ -263,7 +268,11 @@ test("AGT-POLL-5: material ordering does not change the idempotency fingerprint"
     channelRef: CHANNELS[0],
     generation: "gen-1",
     desiredStateRef: "desired-gen-1",
-    idempotencyKey: "receipt:desired-gen-1:gen-1:chan-synth-hy2",
+    idempotencyKey: buildReceiptIdempotencyKey({
+      desiredStateRef: "desired-gen-1",
+      generation: "gen-1",
+      channelRef: CHANNELS[0],
+    }),
     status: "applied",
   };
   const first = buildChannelReceipt({ ...common, materialDigests: materials });
