@@ -130,6 +130,7 @@ export class AgentRepository {
   async beginRotation({ currentKeyId, nextKeyId, nextToken, nowIso = new Date().toISOString(), overlapMs = MAX_OVERLAP_MS }) {
     if (
       typeof currentKeyId !== "string"
+      || typeof nextKeyId !== "string"
       || !KEY_ID_PATTERN.test(nextKeyId)
       || nextKeyId === currentKeyId
       || typeof nextToken !== "string"
@@ -137,6 +138,7 @@ export class AgentRepository {
       || !Number.isInteger(overlapMs)
       || overlapMs < 1
       || overlapMs > MAX_OVERLAP_MS
+      || !Number.isFinite(Date.parse(nowIso))
     ) {
       throw new AgentCredentialError("rotation_invalid", "rotation parameters are invalid");
     }
@@ -160,6 +162,9 @@ export class AgentRepository {
 
     const expiresAt = new Date(Date.parse(nowIso) + overlapMs).toISOString();
     const tokenDigest = await sha256Hex(nextToken);
+    if (tokenDigest === current.token_sha256) {
+      throw new AgentCredentialError("rotation_token_reused", "next communication token must be different");
+    }
     await this.db.batch([
       this.db
         .prepare(
@@ -208,12 +213,13 @@ export class AgentRepository {
     if (!current || current.status !== "active" || !next) {
       throw new AgentCredentialError("rotation_not_found", "no active key rotation exists");
     }
-    if (!next.auth_confirmed_at) {
-      throw new AgentCredentialError("rotation_ack_required", "new key must authenticate successfully before old key revocation");
-    }
-    if (Date.parse(nowIso) >= Date.parse(next.overlap_expires_at)) {
+    const expiresAt = Date.parse(next.overlap_expires_at);
+    if (!Number.isFinite(expiresAt) || Date.parse(nowIso) >= expiresAt) {
       await this.expireOverlap(next.key_id, nowIso);
       throw new AgentCredentialError("rotation_expired", "overlap expired; current key is retained and manual ruling is required");
+    }
+    if (!next.auth_confirmed_at) {
+      throw new AgentCredentialError("rotation_ack_required", "new key must authenticate successfully before old key revocation");
     }
 
     await this.db.batch([

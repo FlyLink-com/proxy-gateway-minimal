@@ -12,6 +12,8 @@ const KEY_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const DIGEST_PATTERN = /^[0-9a-f]{64}$/;
 const NONCE_PATTERN = /^[A-Za-z0-9_-]{16,128}$/;
 const MAX_CLOCK_SKEW_MS = 5 * 60 * 1000;
+const MAX_CLAIM_LEASE_MS = 120 * 1000;
+const IDEMPOTENCY_KEY_PATTERN = /^[!-~]{16,256}$/;
 const MAX_RECEIPT_BODY_BYTES = 16 * 1024;
 const encoder = new TextEncoder();
 
@@ -262,8 +264,12 @@ export async function handleAgentDesiredState(request, env) {
   }
   const nodeRef = url.searchParams.get("nodeRef");
   const channelRefs = parseChannelRefs(url.searchParams.get("channelRefs"));
+  const idempotencyKey = request.headers.get("idempotency-key") ?? "";
   if (!REF_PATTERN.test(nodeRef ?? "") || !channelRefs) {
     return jsonError(400, "invalid_query", "nodeRef or channelRefs are invalid");
+  }
+  if (!IDEMPOTENCY_KEY_PATTERN.test(idempotencyKey)) {
+    return jsonError(400, "invalid_idempotency_key", "Idempotency-Key is required for a manifest claim");
   }
 
   const auth = await authenticateAgent(request, env, {
@@ -273,16 +279,50 @@ export async function handleAgentDesiredState(request, env) {
   });
   if (auth.response) return auth.response;
 
+  const requestFingerprint = await sha256Hex(canonicalJson({
+    nodeRef,
+    channelRefs,
+    keyId: auth.keyId,
+  }));
+  const existing = await env.CONTROL_DB
+    .prepare(
+      "SELECT request_fingerprint, manifest_json, materials_json, signature, lease_until, status " +
+      "FROM agent_manifest_claims WHERE idempotency_key = ?",
+    )
+    .bind(idempotencyKey)
+    .first();
+  if (existing) {
+    if (existing.request_fingerprint !== requestFingerprint) {
+      return jsonError(409, "idempotency_conflict", "claim idempotency key was reused with a different scope");
+    }
+    if (existing.status === "expired" || Date.parse(existing.lease_until) <= auth.now.getTime()) {
+      await env.CONTROL_DB
+        .prepare(
+          "UPDATE agent_manifest_claims SET status = 'expired' " +
+          "WHERE idempotency_key = ? AND status = 'leased'",
+        )
+        .bind(idempotencyKey)
+        .run();
+      return jsonError(410, "claim_expired", "manifest claim lease expired; request a new claim key");
+    }
+    return jsonResponse(200, {
+      manifest: JSON.parse(existing.manifest_json),
+      signature: existing.signature,
+      materials: JSON.parse(existing.materials_json),
+    });
+  }
+
   const state = await env.CONTROL_DB
     .prepare(
-      "SELECT desired_state_ref, node_ref, generation, status, issued_at, expires_at " +
+      "SELECT desired_state_ref, node_ref, generation, status, expires_at " +
       "FROM agent_desired_states WHERE node_ref = ? AND status = 'active' " +
       "ORDER BY created_at DESC LIMIT 1",
     )
     .bind(nodeRef)
     .first();
   if (!state) return jsonError(404, "desired_state_not_found", "no active desired state exists");
-  if (Date.parse(state.expires_at) <= auth.now.getTime()) {
+  const stateExpiry = Date.parse(state.expires_at);
+  if (!Number.isFinite(stateExpiry) || stateExpiry <= auth.now.getTime()) {
     return jsonError(410, "desired_state_expired", "active desired state has expired");
   }
 
@@ -307,11 +347,14 @@ export async function handleAgentDesiredState(request, env) {
     return jsonError(409, "desired_state_incomplete", "desired state does not cover the scoped channels");
   }
 
-  const keyId = env.AGENT_MANIFEST_SIGNING_KEY_ID;
+  const signingKeyId = env.AGENT_MANIFEST_SIGNING_KEY_ID;
   const privateKeyPem = env.AGENT_MANIFEST_SIGNING_PRIVATE_KEY;
-  if (typeof keyId !== "string" || !KEY_ID_PATTERN.test(keyId) || typeof privateKeyPem !== "string") {
+  if (typeof signingKeyId !== "string" || !KEY_ID_PATTERN.test(signingKeyId) || typeof privateKeyPem !== "string") {
     return jsonError(503, "signing_unavailable", "manifest signing is not configured");
   }
+  const leaseUntilMs = Math.min(stateExpiry, auth.now.getTime() + MAX_CLAIM_LEASE_MS);
+  const leaseUntil = new Date(leaseUntilMs).toISOString();
+  const antiReplayId = crypto.randomUUID();
   const manifest = {
     nodeRef,
     channelRefs,
@@ -325,12 +368,60 @@ export async function handleAgentDesiredState(request, env) {
       materials,
     }),
     issuedAt: auth.now.toISOString(),
-    expiresAt: state.expires_at,
-    antiReplayId: crypto.randomUUID(),
-    keyId,
+    expiresAt: leaseUntil,
+    antiReplayId,
+    keyId: signingKeyId,
   };
   const signature = await signManifest(manifest, privateKeyPem);
-  return jsonResponse(200, { manifest, signature, materials });
+  const envelope = { manifest, signature, materials };
+
+  try {
+    await env.CONTROL_DB
+      .prepare(
+        "INSERT INTO agent_manifest_claims " +
+        "(idempotency_key, request_fingerprint, node_ref, channel_refs_json, desired_state_ref, " +
+        "generation, manifest_json, materials_json, signature, anti_replay_id, claimed_at, " +
+        "lease_until, status, created_at) " +
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'leased', ?)",
+      )
+      .bind(
+        idempotencyKey,
+        requestFingerprint,
+        nodeRef,
+        JSON.stringify(channelRefs),
+        state.desired_state_ref,
+        state.generation,
+        JSON.stringify(manifest),
+        JSON.stringify(materials),
+        signature,
+        antiReplayId,
+        auth.now.toISOString(),
+        leaseUntil,
+        auth.now.toISOString(),
+      )
+      .run();
+  } catch {
+    const committed = await env.CONTROL_DB
+      .prepare(
+        "SELECT request_fingerprint, manifest_json, materials_json, signature, lease_until, status " +
+        "FROM agent_manifest_claims WHERE idempotency_key = ?",
+      )
+      .bind(idempotencyKey)
+      .first();
+    if (!committed) throw new Error("manifest claim write failed");
+    if (committed.request_fingerprint !== requestFingerprint) {
+      return jsonError(409, "idempotency_conflict", "claim idempotency key was reused with a different scope");
+    }
+    if (committed.status === "expired" || Date.parse(committed.lease_until) <= auth.now.getTime()) {
+      return jsonError(410, "claim_expired", "manifest claim lease expired; request a new claim key");
+    }
+    return jsonResponse(200, {
+      manifest: JSON.parse(committed.manifest_json),
+      signature: committed.signature,
+      materials: JSON.parse(committed.materials_json),
+    });
+  }
+  return jsonResponse(200, envelope);
 }
 
 function exactKeys(value, keys) {
@@ -342,7 +433,7 @@ function exactKeys(value, keys) {
 
 async function readReceiptBody(request) {
   const raw = await request.text();
-  if (raw.length > MAX_RECEIPT_BODY_BYTES) return null;
+  if (encoder.encode(raw).byteLength > MAX_RECEIPT_BODY_BYTES) return null;
   try {
     return JSON.parse(raw);
   } catch {
@@ -360,6 +451,34 @@ function receiptFingerprint(receipt, materialDigests) {
     materialDigests,
     status: receipt.status,
   }));
+}
+
+
+async function markClaimsCompleted(db, receipt) {
+  if (receipt.status !== "applied") return;
+  const expected = await db
+    .prepare(
+      "SELECT COUNT(DISTINCT channel_ref) AS n FROM agent_desired_state_materials " +
+      "WHERE desired_state_ref = ?",
+    )
+    .bind(receipt.desiredStateRef)
+    .first();
+  const received = await db
+    .prepare(
+      "SELECT COUNT(DISTINCT channel_ref) AS n FROM agent_apply_receipts " +
+      "WHERE desired_state_ref = ? AND node_ref = ? AND generation = ? AND status = 'applied'",
+    )
+    .bind(receipt.desiredStateRef, receipt.nodeRef, receipt.generation)
+    .first();
+  if (Number(received?.n ?? 0) >= Number(expected?.n ?? 0) && Number(expected?.n ?? 0) > 0) {
+    await db
+      .prepare(
+        "UPDATE agent_manifest_claims SET status = 'completed' " +
+        "WHERE desired_state_ref = ? AND node_ref = ? AND generation = ? AND status = 'leased'",
+      )
+      .bind(receipt.desiredStateRef, receipt.nodeRef, receipt.generation)
+      .run();
+  }
 }
 
 function replayReceipt(existing, fingerprint) {
@@ -384,6 +503,9 @@ export async function handleAgentReceipt(request, env) {
     "redacted",
   ])) {
     return jsonError(400, "invalid_receipt", "receipt shape is invalid");
+  }
+  if (request.headers.get("idempotency-key") !== payload.idempotencyKey) {
+    return jsonError(400, "invalid_idempotency_key", "receipt Idempotency-Key header must match the body");
   }
   if (
     payload.type !== "gccgw_data_plane_apply_receipt"
@@ -449,14 +571,16 @@ export async function handleAgentReceipt(request, env) {
   }
 
   const fingerprint = await receiptFingerprint(payload, materialDigests);
-  const repository = new AgentRepository(env.CONTROL_DB);
   const existing = await env.CONTROL_DB
     .prepare(
       "SELECT fingerprint FROM agent_apply_receipts WHERE idempotency_key = ?",
     )
     .bind(payload.idempotencyKey)
     .first();
-  if (existing) return replayReceipt(existing, fingerprint);
+  if (existing) {
+    await markClaimsCompleted(env.CONTROL_DB, payload);
+    return replayReceipt(existing, fingerprint);
+  }
 
   const receivedAt = auth.now.toISOString();
   try {
@@ -489,5 +613,6 @@ export async function handleAgentReceipt(request, env) {
     if (committed) return replayReceipt(committed, fingerprint);
     throw new Error("receipt write failed");
   }
+  await markClaimsCompleted(env.CONTROL_DB, payload);
   return jsonResponse(201, { recorded: true, replayed: false });
 }

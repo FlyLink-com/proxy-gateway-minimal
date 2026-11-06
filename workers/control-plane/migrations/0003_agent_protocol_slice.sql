@@ -89,6 +89,31 @@ CREATE TABLE agent_request_nonces (
 CREATE INDEX agent_request_nonces_expires_idx
   on agent_request_nonces(expires_at);
 
+CREATE TABLE agent_manifest_claims (
+  idempotency_key text primary key,
+  request_fingerprint text not null check (
+    length(request_fingerprint) = 64 and request_fingerprint not glob '*[^0-9a-f]*'
+  ),
+  node_ref text not null references agent_nodes(node_ref),
+  channel_refs_json text not null,
+  desired_state_ref text not null references agent_desired_states(desired_state_ref),
+  generation text not null,
+  manifest_json text not null,
+  materials_json text not null,
+  signature text not null,
+  anti_replay_id text not null unique,
+  claimed_at text not null,
+  lease_until text not null,
+  status text not null check (status in ('leased', 'completed', 'expired')),
+  created_at text not null
+);
+
+CREATE INDEX agent_manifest_claims_node_generation_idx
+  on agent_manifest_claims(node_ref, generation, status);
+
+CREATE INDEX agent_manifest_claims_lease_idx
+  on agent_manifest_claims(lease_until, status);
+
 CREATE TABLE agent_apply_receipts (
   idempotency_key text primary key,
   fingerprint text not null check (
