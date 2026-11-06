@@ -326,6 +326,85 @@ test("G4 receipt endpoint caps streamed request bodies before JSON parsing", asy
   assert.equal((await response.json()).error.code, "receipt_too_large");
 });
 
+test("G4 Agent client replaces a pending claim key when its authorized channel scope changes", async (t) => {
+  const { mf, db, agent } = await createWorker();
+  t.after(() => mf.dispose());
+
+  const stateStore = createMemoryStateStore();
+  const claimKeys = [];
+  let loseFirstResponse = true;
+  const transport = {
+    async fetchDesiredState({ headers, channelRefs, idempotencyKey }) {
+      claimKeys.push(idempotencyKey);
+      const response = await fetchDesired(
+        mf,
+        agent,
+        { ...headers, "idempotency-key": idempotencyKey },
+        channelRefs,
+      );
+      if (!response.ok) throw new Error("desired-state HTTP " + response.status);
+      const envelope = await response.json();
+      if (loseFirstResponse) {
+        loseFirstResponse = false;
+        throw new Error("simulated response loss after claim commit");
+      }
+      return envelope;
+    },
+    async submitReceipt(receipt, { headers }) {
+      const response = await postReceipt(mf, agent, receipt, headers);
+      if (!response.ok) throw new Error("receipt HTTP " + response.status);
+      await response.json();
+    },
+  };
+  const verifier = createManifestVerifier({
+    publicKeys: new Map([[agent.manifestKeyId, createPublicKey(agent.manifestPublicKeyPem)]]),
+  });
+  const firstClient = createAgentClient({
+    nodeRef: agent.nodeRef,
+    channelRefs: agent.channelRefs,
+    transport,
+    materialStore: { async resolve(ref) { return MATERIALS.get(ref); } },
+    verifier,
+    stateStore,
+    lock: createMemoryLock(),
+    auth: { keyId: agent.keyId, token: agent.token },
+    config: { dryRun: true, applyEnabled: false },
+    apply: async () => {},
+  });
+
+  const first = await firstClient.runOnce();
+  assert.equal(first.status, "retry_later");
+  assert.equal(first.stage, "fetch");
+  const firstClaim = await db.prepare(
+    "SELECT channel_refs_json FROM agent_manifest_claims WHERE idempotency_key = ?",
+  ).bind(claimKeys[0]).first();
+  assert.deepEqual(JSON.parse(firstClaim.channel_refs_json), [...agent.channelRefs].sort());
+
+  const narrowedChannels = [agent.channelRefs[0]];
+  await db.prepare(
+    "UPDATE agent_api_credentials SET channel_refs_json = ? WHERE key_id = ?",
+  ).bind(JSON.stringify(narrowedChannels), agent.keyId).run();
+  const secondClient = createAgentClient({
+    nodeRef: agent.nodeRef,
+    channelRefs: narrowedChannels,
+    transport,
+    materialStore: { async resolve(ref) { return MATERIALS.get(ref); } },
+    verifier,
+    stateStore,
+    lock: createMemoryLock(),
+    auth: { keyId: agent.keyId, token: agent.token },
+    config: { dryRun: true, applyEnabled: false },
+    apply: async () => {},
+  });
+
+  const second = await secondClient.runOnce();
+  assert.equal(second.status, "applied");
+  assert.equal(claimKeys.length, 2);
+  assert.notEqual(claimKeys[0], claimKeys[1]);
+  const count = await db.prepare("SELECT COUNT(*) AS n FROM agent_manifest_claims").first();
+  assert.equal(count.n, 2);
+});
+
 test("G4 Agent client completes the Worker/D1 loop and recovers a lost receipt response without re-applying", async (t) => {
   const { mf, db, agent } = await createWorker();
   t.after(() => mf.dispose());
