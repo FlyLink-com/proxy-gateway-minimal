@@ -413,6 +413,134 @@ test("G4 Agent client replaces a pending claim key when its authorized channel s
   assert.equal(count.n, 2);
 });
 
+test("G4 Agent client defers receipts outside narrowed scope and resumes them when scope returns", async (t) => {
+  const { mf, db, agent } = await createWorker();
+  t.after(() => mf.dispose());
+
+  const initialResponse = await fetchDesired(mf, agent);
+  assert.equal(initialResponse.status, 200);
+  const initialEnvelope = await initialResponse.json();
+  const retainedChannel = agent.channelRefs[0];
+  const removedChannel = agent.channelRefs[1];
+  const removedReceipt = receiptFor(agent, initialEnvelope, removedChannel);
+  const removedMaterial = await db.prepare(
+    "SELECT edge_credential_ref, digest FROM agent_desired_state_materials " +
+    "WHERE desired_state_ref = ? AND channel_ref = ?",
+  ).bind(initialEnvelope.manifest.desiredStateRef, removedChannel).first();
+
+  const stateStore = createMemoryStateStore({
+    generation: initialEnvelope.manifest.generation,
+    desiredStateDigest: initialEnvelope.manifest.desiredStateDigest,
+    desiredStateRef: initialEnvelope.manifest.desiredStateRef,
+    pendingClaim: null,
+    pendingReceipts: [removedReceipt],
+  });
+  const submittedChannels = [];
+  let applyCount = 0;
+  const transport = {
+    async fetchDesiredState({ headers, channelRefs, idempotencyKey }) {
+      const response = await fetchDesired(
+        mf,
+        agent,
+        { ...headers, "idempotency-key": idempotencyKey },
+        channelRefs,
+      );
+      if (!response.ok) {
+        const body = await response.json().catch(() => null);
+        const error = new Error("desired-state HTTP " + response.status);
+        error.statusCode = response.status;
+        error.code = body?.error?.code;
+        throw error;
+      }
+      return response.json();
+    },
+    async submitReceipt(receipt, { headers }) {
+      submittedChannels.push(receipt.channelRef);
+      const response = await postReceipt(mf, agent, receipt, headers);
+      if (!response.ok) {
+        const body = await response.json().catch(() => null);
+        const error = new Error("receipt HTTP " + response.status);
+        error.statusCode = response.status;
+        error.code = body?.error?.code;
+        throw error;
+      }
+      await response.json();
+    },
+  };
+  const verifier = createManifestVerifier({
+    publicKeys: new Map([[agent.manifestKeyId, createPublicKey(agent.manifestPublicKeyPem)]]),
+  });
+  const makeClient = (authorizedChannels) => createAgentClient({
+    nodeRef: agent.nodeRef,
+    channelRefs: authorizedChannels,
+    transport,
+    materialStore: { async resolve(ref) { return MATERIALS.get(ref); } },
+    verifier,
+    stateStore,
+    lock: createMemoryLock(),
+    auth: { keyId: agent.keyId, token: agent.token },
+    config: { dryRun: false, applyEnabled: true },
+    apply: async () => { applyCount += 1; },
+  });
+
+  await db.batch([
+    db.prepare(
+      "UPDATE agent_api_credentials SET channel_refs_json = ? WHERE key_id = ?",
+    ).bind(JSON.stringify([retainedChannel]), agent.keyId),
+    db.prepare(
+      "UPDATE agent_node_channels SET status = 'inactive' WHERE node_ref = ? AND channel_ref = ?",
+    ).bind(agent.nodeRef, removedChannel),
+    db.prepare(
+      "DELETE FROM agent_desired_state_materials WHERE desired_state_ref = ? AND channel_ref = ?",
+    ).bind(initialEnvelope.manifest.desiredStateRef, removedChannel),
+  ]);
+
+  const narrowed = await makeClient([retainedChannel]).runOnce();
+  assert.equal(narrowed.status, "applied", JSON.stringify(narrowed));
+  assert.equal(narrowed.receiptsDeferred, 1);
+  assert.equal(applyCount, 1);
+  assert.deepEqual(submittedChannels, [retainedChannel]);
+  const narrowedState = await stateStore.load();
+  assert.deepEqual(narrowedState.pendingReceipts, []);
+  assert.equal(narrowedState.deferredReceipts.length, 1);
+  assert.equal(narrowedState.deferredReceipts[0].channelRef, removedChannel);
+  const removedReceiptBeforeRestore = await db.prepare(
+    "SELECT idempotency_key FROM agent_apply_receipts WHERE idempotency_key = ?",
+  ).bind(removedReceipt.idempotencyKey).first();
+  assert.equal(removedReceiptBeforeRestore, null);
+
+  await db.batch([
+    db.prepare(
+      "UPDATE agent_api_credentials SET channel_refs_json = ? WHERE key_id = ?",
+    ).bind(JSON.stringify(agent.channelRefs), agent.keyId),
+    db.prepare(
+      "UPDATE agent_node_channels SET status = 'active' WHERE node_ref = ? AND channel_ref = ?",
+    ).bind(agent.nodeRef, removedChannel),
+    db.prepare(
+      "INSERT INTO agent_desired_state_materials (desired_state_ref, channel_ref, edge_credential_ref, digest) " +
+      "VALUES (?, ?, ?, ?)",
+    ).bind(
+      initialEnvelope.manifest.desiredStateRef,
+      removedChannel,
+      removedMaterial.edge_credential_ref,
+      removedMaterial.digest,
+    ),
+  ]);
+
+  const restored = await makeClient(agent.channelRefs).runOnce();
+  assert.equal(restored.status, "applied", JSON.stringify(restored));
+  assert.equal(restored.receiptsRecovered, 1);
+  assert.equal(restored.receiptsDeferred, 0);
+  assert.equal(applyCount, 2);
+  const restoredState = await stateStore.load();
+  assert.deepEqual(restoredState.pendingReceipts, []);
+  assert.deepEqual(restoredState.deferredReceipts, []);
+  const recoveredReceipt = await db.prepare(
+    "SELECT channel_ref FROM agent_apply_receipts WHERE idempotency_key = ?",
+  ).bind(removedReceipt.idempotencyKey).first();
+  assert.equal(recoveredReceipt.channel_ref, removedChannel);
+});
+
 test("G4 Agent client completes the Worker/D1 loop and recovers a lost receipt response without re-applying", async (t) => {
   const { mf, db, agent } = await createWorker();
   t.after(() => mf.dispose());
@@ -500,6 +628,36 @@ test("G4 Agent client completes the Worker/D1 loop and recovers a lost receipt r
     "SELECT status FROM agent_manifest_claims WHERE status = ? LIMIT 1",
   ).bind("completed").first();
   assert.equal(completedClaim.status, "completed");
+});
+
+test("G4 rotation rejects tokens outside the Bearer authentication contract before reserving a key", async (t) => {
+  const { mf, db, agent } = await createWorker();
+  t.after(() => mf.dispose());
+
+  const repository = new AgentRepository(db);
+  const invalidCandidates = [
+    { keyId: "agent-key-synth-whitespace", token: "synth-agent-token contains-space-20261106" },
+    { keyId: "agent-key-synth-too-long", token: "t".repeat(513) },
+  ];
+  for (const candidate of invalidCandidates) {
+    await assert.rejects(
+      repository.beginRotation({
+        currentKeyId: agent.keyId,
+        nextKeyId: candidate.keyId,
+        nextToken: candidate.token,
+      }),
+      (error) => error.code === "rotation_invalid",
+    );
+    assert.equal(await repository.findCredential(candidate.keyId), null);
+  }
+  const overlapCount = await db.prepare(
+    "SELECT COUNT(*) AS n FROM agent_api_credentials WHERE status = 'overlap'",
+  ).first();
+  assert.equal(overlapCount.n, 0);
+  const rotationEvents = await db.prepare(
+    "SELECT COUNT(*) AS n FROM agent_credential_events WHERE event_type = 'rotation_started'",
+  ).first();
+  assert.equal(rotationEvents.n, 0);
 });
 
 test("G4 credential rotation records new-key authentication before retiring the old key", async (t) => {
