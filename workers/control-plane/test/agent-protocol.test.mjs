@@ -241,13 +241,9 @@ test("G4 receipt endpoint caps streamed request bodies before JSON parsing", asy
   const { mf } = await createWorker();
   t.after(() => mf.dispose());
 
-  let cancelled = false;
   const oversizedBody = new ReadableStream({
     start(controller) {
       controller.enqueue(new Uint8Array(16 * 1024 + 1));
-    },
-    cancel() {
-      cancelled = true;
     },
   });
   const response = await mf.dispatchFetch(BASE + "/v1/agent/receipts", {
