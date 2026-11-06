@@ -152,12 +152,18 @@ test("AGT-POLL-2: the interval lives in the timer template as deployment configu
 
 test("AGT-POLL-3: a second concurrent cycle is skipped while the lock is held", async () => {
   let releaseFetch;
+  let markFetchStarted;
+  const fetchStarted = new Promise((resolve) => { markFetchStarted = resolve; });
   const transport = {
-    fetchDesiredState: () => new Promise((resolve) => { releaseFetch = () => resolve(makeDesired()); }),
+    fetchDesiredState: () => {
+      markFetchStarted();
+      return new Promise((resolve) => { releaseFetch = () => resolve(makeDesired()); });
+    },
     async submitReceipt() {},
   };
   const { client, calls } = makeClient({ transport });
   const first = client.runOnce();
+  await fetchStarted;
   const second = await client.runOnce();
   assert.equal(second.status, "skipped_locked");
   releaseFetch();
