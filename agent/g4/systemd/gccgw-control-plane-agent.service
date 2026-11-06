@@ -1,0 +1,26 @@
+[Unit]
+Description=GlobalCircle Gateway Control-Plane Agent (G4 contract, oneshot)
+After=network-online.target
+Wants=network-online.target
+
+# G4 contract slice — TEMPLATE, not installed. Deployment of this unit
+# is a separate production gate. Posture mirrors the current
+# edge-agent unit: oneshot (AGT-POLL-1), low-privilege user, sandbox
+# flags unchanged, dry-run default true / apply default false carried
+# by the protected environment file (AGT-POLL-6).
+
+[Service]
+Type=oneshot
+User=proxy-gateway
+Group=proxy-gateway
+WorkingDirectory=/opt/proxy-gateway-minimal-candidate/current
+Environment=NODE_ENV=production
+EnvironmentFile=/opt/proxy-gateway-minimal-candidate/protected/control-plane-agent.env
+ExecStart=/usr/bin/node agent/g4/run-once.mjs
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ReadWritePaths=/opt/proxy-gateway-minimal-candidate/protected /opt/proxy-gateway-minimal-candidate/shared/state
+
+[Install]
+WantedBy=multi-user.target
