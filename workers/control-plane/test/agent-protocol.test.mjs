@@ -237,6 +237,31 @@ test("G4 receipt endpoint enforces binding, redaction and idempotent replay", as
   assert.ok(!JSON.stringify(rows.results).includes(AGENT_TOKEN));
 });
 
+test("G4 receipt endpoint caps streamed request bodies before JSON parsing", async (t) => {
+  const { mf } = await createWorker();
+  t.after(() => mf.dispose());
+
+  let cancelled = false;
+  const oversizedBody = new ReadableStream({
+    start(controller) {
+      controller.enqueue(new Uint8Array(16 * 1024 + 1));
+    },
+    cancel() {
+      cancelled = true;
+    },
+  });
+  const response = await mf.dispatchFetch(BASE + "/v1/agent/receipts", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: oversizedBody,
+    duplex: "half",
+  });
+
+  assert.equal(response.status, 413);
+  assert.equal((await response.json()).error.code, "receipt_too_large");
+  assert.equal(cancelled, true, "the oversized stream should be cancelled immediately");
+});
+
 test("G4 Agent client completes the Worker/D1 loop and recovers a lost receipt response without re-applying", async (t) => {
   const { mf, db, agent } = await createWorker();
   t.after(() => mf.dispose());
