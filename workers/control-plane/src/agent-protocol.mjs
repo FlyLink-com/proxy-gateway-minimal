@@ -439,12 +439,69 @@ function exactKeys(value, keys) {
 }
 
 async function readReceiptBody(request) {
-  const raw = await request.text();
-  if (encoder.encode(raw).byteLength > MAX_RECEIPT_BODY_BYTES) return null;
+  const contentLength = request.headers.get("content-length");
+  if (contentLength !== null) {
+    if (!/^[0-9]+$/.test(contentLength)) {
+      return { response: jsonError(400, "invalid_content_length", "receipt Content-Length is invalid") };
+    }
+    if (Number(contentLength) > MAX_RECEIPT_BODY_BYTES) {
+      return { response: jsonError(413, "receipt_too_large", "receipt body exceeds the 16 KiB limit") };
+    }
+  }
+  if (!request.body) {
+    return { response: jsonError(400, "invalid_receipt", "receipt body is required") };
+  }
+
+  const reader = request.body.getReader();
+  const chunks = [];
+  let totalBytes = 0;
   try {
-    return JSON.parse(raw);
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      totalBytes += value.byteLength;
+      if (totalBytes > MAX_RECEIPT_BODY_BYTES) {
+        try {
+          await reader.cancel("receipt body exceeds the 16 KiB limit");
+        } catch {
+          // The size limit is already enforced; cancellation is best-effort.
+        }
+        return { response: jsonError(413, "receipt_too_large", "receipt body exceeds the 16 KiB limit") };
+      }
+      chunks.push(value);
+    }
   } catch {
-    return null;
+    try {
+      await reader.cancel();
+    } catch {
+      // Preserve the bounded-body failure response.
+    }
+    return { response: jsonError(400, "invalid_receipt", "receipt body could not be read") };
+  } finally {
+    try {
+      reader.releaseLock();
+    } catch {
+      // The reader may already be released by the runtime.
+    }
+  }
+
+  const bytes = new Uint8Array(totalBytes);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+
+  let raw;
+  try {
+    raw = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  } catch {
+    return { response: jsonError(400, "invalid_receipt", "receipt body must be valid UTF-8 JSON") };
+  }
+  try {
+    return { payload: JSON.parse(raw) };
+  } catch {
+    return { response: jsonError(400, "invalid_receipt", "receipt body must be valid JSON") };
   }
 }
 
@@ -496,7 +553,9 @@ function replayReceipt(existing, fingerprint) {
 }
 
 export async function handleAgentReceipt(request, env) {
-  const payload = await readReceiptBody(request);
+  const body = await readReceiptBody(request);
+  if (body.response) return body.response;
+  const payload = body.payload;
   if (!exactKeys(payload, [
     "type",
     "nodeRef",
