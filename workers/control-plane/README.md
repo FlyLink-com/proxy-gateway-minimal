@@ -1,14 +1,6 @@
 # FlyLink Control-Plane Worker — G3 Local Vertical Slice
 
-The first runnable slice of the approved Workers + D1 control-plane
-target architecture (`docs/CLOUDFLARE_D1_DATABASE_EVALUATION.md`, gate
-**G3 — Worker API vertical slice**). It proves, entirely locally and
-with synthetic data only, that a Cloudflare Worker can serve a
-protected account API backed by an asynchronous D1 repository using
-the repository's real control-database DDL: first a read-only account
-API, and now one bounded, idempotent write flow (issuing a
-second-factor challenge) that exercises D1 transaction atomicity and
-failure recovery.
+The runnable G3/G4 control-plane source slices for the approved Workers + D1 target architecture (`docs/CLOUDFLARE_D1_DATABASE_EVALUATION.md`). G3 proves a protected account API and one bounded idempotent write. G4 adds the BWH Agent's outbound HTTPS control channel: signed desired-state manifests, scoped request authentication, replay protection and redacted idempotent receipts. All Worker/D1 execution remains local Miniflare with synthetic data only.
 
 ## Status and non-goals
 
@@ -21,9 +13,7 @@ failure recovery.
 - **No remote Cloudflare resources.** Creating a remote D1 database,
   deploying this Worker, or adding routes/secrets requires the
   separate G5+ gates in the architecture decision.
-- **Scope is two tables.** The migration covers `platform_accounts`
-  plus `platform_portal_second_factor_challenges`. It is not a
-  migration of the 70-table control schema.
+- **No production schema migration.** `0001` is the two-table G3 source slice, `0002` is its slice-local idempotency store, and `0003` adds only local G4 Agent protocol fixtures/ledgers. None is a migration of the 70-table control schema or an approved production DDL change.
 
 ## Layout
 
@@ -31,7 +21,10 @@ failure recovery.
 | --- | --- |
 | `wrangler.control-plane.jsonc` | Separate control-plane Wrangler config (binding `CONTROL_DB`, database name `flylink-control-dev`, `migrations/`) |
 | `migrations/0001_accounts_slice.sql` | DDL copied verbatim from the G2 stage-1 DDL set (`ddl-set.json`, baseline `master@63082bae`) |
-| `migrations/0002_write_idempotency.sql` | Slice-local idempotency store (new table, **not** production DDL — see below) |
+| `migrations/0002_write_idempotency.sql` | G3 slice-local bounded-write idempotency store (not production DDL) |
+| `migrations/0003_agent_protocol_slice.sql` | G4 local-only node/channel, desired-state refs/digests, 120-second manifest claim/lease ledger, hashed Agent credentials, replay nonces, receipt ledger, credential events, and a partial unique index enforcing one active rotation candidate per current key |
+| `src/agent-protocol.mjs` | G4 signed desired-state and redacted receipt HTTP handlers; WebCrypto only |
+| `src/repositories/agent-repository.mjs` | G4 Agent credential, nonce, receipt and bounded key-rotation persistence |
 | `src/index.mjs` | Worker entrypoint and routing |
 | `src/auth.mjs` | Fail-closed Bearer-token checks (constant-time, digest-based); separate read and write tokens |
 | `src/cursor.mjs` | Strict keyset cursor codec (base64url JSON `{createdAt, id}`) |
@@ -39,7 +32,7 @@ failure recovery.
 | `src/repositories/account-repository.mjs` | Async D1 repository: `findById`, `listDirectory` |
 | `src/repositories/challenge-repository.mjs` | Async D1 repository for the write flow: idempotency lookup + atomic challenge issuance |
 | `seed/synthetic-seed.sql` | Obviously synthetic seed data (`acct-synth-*`) with same-timestamp groups |
-| `test/` | Node test runner + Miniflare suites (migration, repository, pagination, API) |
+| `test/` | Node test runner + Miniflare suites (migration, repository, pagination, API, Agent protocol) plus the root G4 Agent contract tests |
 
 ### Why the second table is second-factor challenges, not portal sessions
 
@@ -59,12 +52,15 @@ tables.
 | `GET /v1/accounts/:accountId` | Bearer (read) | One account, safe projection only |
 | `GET /v1/accounts?status=&limit=&cursor=` | Bearer (read) | Keyset-paginated directory |
 | `POST /v1/accounts/:accountId/second-factor-challenges` | Bearer (write) | Issue one second-factor challenge; requires `Idempotency-Key` |
+| `GET /v1/agent/desired-state?nodeRef=&channelRefs=` | Scoped Agent Bearer + key ID + timestamp + nonce + `Idempotency-Key` | Claim a signed refs/digests-only manifest for the exact node/channel scope; 120-second lease; same key replays the same claim |
+| `POST /v1/agent/receipts` | Scoped Agent Bearer + key ID + timestamp + nonce | Validate the node/channel/generation/digest binding and record one redacted idempotent receipt per channel |
 
 - Read routes expect the `CONTROL_PLANE_READ_TOKEN` secret/var; the
   write route expects the separate `CONTROL_PLANE_WRITE_TOKEN`.
   **When the relevant token is not configured, every such request
   returns 401** (fail-closed), and neither token works for the other
   privilege level.
+- Agent credentials are stored as SHA-256 token digests, never plaintext. Each Agent request binds `x-agent-key-id`, `x-agent-node-ref`, an ISO timestamp (±5 minutes) and a single-use nonce. Desired-state claims also require an `Idempotency-Key`; the Worker persists the exact signed envelope and a 120-second lease, returning the same envelope for the same key and scope. The Agent persists that key with a canonical node/channel-scope fingerprint and replaces it when scope changes. Receipt idempotency keys are versioned SHA-256 hashes of canonical tuple encoding, not delimiter concatenations. Per-channel material count is bounded to 32 so the deterministic receipt remains under the 16 KiB request limit. The credential's node and channel set must authorize the request; missing configuration fails closed. Rotation candidates use the same Bearer token contract as authentication (24–512 non-whitespace characters), so an unusable candidate cannot reserve the overlap slot. The 15-minute maximum overlap is enforced in the local credential repository, and a new key's first successful authentication is recorded before the old key can be revoked.
 - The safe projection is exactly `id`, `status`, `createdAt`,
   `updatedAt`. `owner_ref` and `metadata_json` are never selected by
   the repository and cannot appear in a response.
@@ -92,11 +88,7 @@ tables.
   secret and the hash never appear in any response. Delivering the
   secret to a factor channel is a production concern outside this
   slice.
-- Migration `0002` adds `platform_write_idempotency_keys`. Unlike
-  migration `0001`, this table is **not** copied from the production
-  schema: it is a new slice-local design following the G1-30
-  contract's idempotency requirement, and it graduates to production
-  only through the normal migration gates, if adopted.
+- Migration `0002` adds `platform_write_idempotency_keys`; migration `0003` adds local-only G4 protocol fixtures and ledgers. These are slice-local designs, **not** copied production DDL. D1 contains only opaque refs, SHA-256 digests, generation/status, hashed Agent API tokens, replay nonces, signed refs-only claim envelopes and receipt metadata. Manifest signing private keys are Worker secret bindings, never D1 rows. Raw credential material is resolved only on BWH and never enters Worker requests, responses, D1 or logs.
 - Pagination mirrors the verified monitor contract
   (`listUserMonitorAccountDirectory` + `readAccounts`): rows are
   ordered `created_at DESC, id DESC`, the keyset predicate is
@@ -164,15 +156,9 @@ fresh local D1 database with the real migrations applied:
 - **api** — auth matrix (missing / malformed / wrong / correct token),
   fail-closed behavior when no token is configured, safe-projection
   key set, and JSON error shapes for 400 / 401 / 404 / 405.
-- **write-flow** — issuance projection and stored-row shape, replay
-  of canonically identical retries (`idempotency-replayed: true`,
-  exactly one challenge), 409 on key reuse with a different request,
-  per-account key scoping, `Idempotency-Key` and body validation
-  (nothing written on any 400), 404 with no orphan idempotency
-  record, read/write privilege separation, write fail-closed, 405,
-  and a repository-level atomicity proof: when the idempotency
-  insert fails, the challenge insert in the same batch is rolled
-  back.
+- **write-flow** — issuance projection, idempotent replay/conflict, privilege separation, fail-closed behavior and atomic rollback.
+- **agent-protocol** — Ed25519 manifest verification with the existing Agent verifier, refs/digests-only payloads, node/channel scope, timestamp and nonce replay checks, 120-second idempotent claim leases, redacted receipt binding and replay/conflict behavior, credential overlap/expiry/leak revocation, and a full Agent-client ↔ Worker ↔ local D1 cycle including lost claim/receipt response recovery without a second apply, narrowed-scope receipt deferral/recovery, and rejection of invalid rotation tokens before key reservation.
+- **Agent contract** — the existing `server/tests/agent-g4-contract.test.mjs` suite also runs in this targeted Worker workflow, including the persisted claim-key and pending-receipt retry semantics.
 
 CI (`.github/workflows/control-plane-worker.yml`) runs the same
 `npm ci` + `npm test` for pull requests that touch
@@ -190,6 +176,4 @@ never deploys.
   keyset-pagination verification, Issue #830 item 3).
 - Transaction/binding model: D1 prepared statements and `batch()`
   semantics as validated in the G2 local compatibility spike.
-- Write idempotency: the G1-30 contract requirement that writes be
-  idempotency-keyed (request fingerprint + stored-response replay);
-  the storage table itself is a slice-local design (migration 0002).
+- G1-30: the formally approved Agent HTTPS, scoped authentication, signed-manifest, local material-resolution and redacted receipt contract. The Worker implementation is still a local synthetic slice; it is not connected to BWH and is not deployed.
