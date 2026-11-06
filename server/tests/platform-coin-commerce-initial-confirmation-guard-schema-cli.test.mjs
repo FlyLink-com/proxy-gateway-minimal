@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { runCoinCommerceInitialConfirmationGuardSchemaCli } from "../scripts/platform-coin-commerce-initial-confirmation-guard-schema.mjs";
+import { runCoinCommerceInitialConfirmationGuardSchemaCli } from "../../scripts/platform-coin-commerce-initial-confirmation-guard-schema.mjs";
 import {
   REQUIRED_COIN_COMMERCE_INITIAL_CONFIRMATION_GUARD_MIGRATION_ID as ID,
   COIN_COMMERCE_INITIAL_CONFIRMATION_GUARD_MIGRATIONS
-} from "../server/services/platform/coin-commerce-initial-confirmation-guard-plan-c-ddl.mjs";
+} from "../services/platform/coin-commerce-initial-confirmation-guard-plan-c-ddl.mjs";
 
 const CHECKSUM = COIN_COMMERCE_INITIAL_CONFIRMATION_GUARD_MIGRATIONS[0].ddlChecksum;
 

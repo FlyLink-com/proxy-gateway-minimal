@@ -1,5 +1,15 @@
 # Coin Commerce initial-confirmation guard · Scheme C forward migration
 
+```yaml
+document_metadata:
+  doc_type: canonical
+  lifecycle: active
+  authority_scope: coin_commerce_initial_confirmation_guard_plan_c
+  superseded_by: null
+  last_verified_at: 2026-11-05
+  production_authority: false
+```
+
 - Status: source-level implementation; Draft PR only.
 - Baseline: `master@63082bae5d980c3905d6e7405329b19e6c4e38ac`.
 - Prior extension: `20260906_001_coin_commerce_initial_confirmation`.

@@ -593,7 +593,7 @@ test("Plan C dry-run applies only to a private clone and leaves the source uncha
       assert.equal(planC.inspectCoinCommerceInitialConfirmationGuardSchema({ database: source }).ok, false);
     } finally { source.close(); }
   } finally { state.close(); rmSync(root, { recursive: true, force: true }); }
-}));
+});
 
 test("unused extension inverse removes the Plan C ledger row together with the extension", () => withState({}, (state) => {
   applyPlanC(state);
