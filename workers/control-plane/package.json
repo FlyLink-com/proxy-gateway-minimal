@@ -1,20 +1,20 @@
 {
-    "description": "G3 control-plane Worker + D1 local vertical slice: protected read API plus one idempotent bounded write (local synthetic development only; not deployed).",
-    "devDependencies": {
-        "miniflare": "4.20251109.0",
-        "wrangler": "4.99.0"
-    },
-    "engines": {
-        "node": ">=22"
-    },
-    "name": "flylink-control-plane-worker",
-    "private": true,
-    "scripts": {
-        "dev": "wrangler dev --local --config wrangler.control-plane.jsonc",
-        "migrate:local": "wrangler d1 migrations apply flylink-control-dev --local --config wrangler.control-plane.jsonc",
-        "seed": "wrangler d1 execute flylink-control-dev --local --config wrangler.control-plane.jsonc --file=./seed/synthetic-seed.sql --yes",
-        "test": "node --test \"test/**/*.test.mjs\""
-    },
-    "type": "module",
-    "version": "0.2.0"
+  "description": "G3/G4 control-plane Worker + D1 local vertical slices: protected API, signed Agent claims and redacted receipts (synthetic development only; not deployed).",
+  "devDependencies": {
+    "miniflare": "4.20251109.0",
+    "wrangler": "4.99.0"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "name": "flylink-control-plane-worker",
+  "private": true,
+  "scripts": {
+    "dev": "wrangler dev --local --config wrangler.control-plane.jsonc",
+    "migrate:local": "wrangler d1 migrations apply flylink-control-dev --local --config wrangler.control-plane.jsonc",
+    "seed": "wrangler d1 execute flylink-control-dev --local --config wrangler.control-plane.jsonc --file=./seed/synthetic-seed.sql --yes",
+    "test": "node --test \"test/**/*.test.mjs\" \"../../server/tests/agent-g4-contract.test.mjs\""
+  },
+  "type": "module",
+  "version": "0.2.0"
 }
