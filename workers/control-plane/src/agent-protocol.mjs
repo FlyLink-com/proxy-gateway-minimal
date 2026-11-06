@@ -3,6 +3,7 @@
 
 import {
   AgentRepository,
+  AGENT_TOKEN_PATTERN,
   MAX_OVERLAP_MS,
   NonceReplayError,
 } from "./repositories/agent-repository.mjs";
@@ -154,8 +155,7 @@ async function authenticateAgent(request, env, {
   const nonce = request.headers.get("x-agent-nonce") ?? "";
   if (
     !bearer
-    || bearer[1].length < 24
-    || bearer[1].length > 512
+    || !AGENT_TOKEN_PATTERN.test(bearer[1])
     || !KEY_ID_PATTERN.test(keyId)
     || !REF_PATTERN.test(headerNodeRef)
     || !NONCE_PATTERN.test(nonce)
