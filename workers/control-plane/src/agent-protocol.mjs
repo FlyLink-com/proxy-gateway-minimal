@@ -8,6 +8,7 @@ import {
 } from "./repositories/agent-repository.mjs";
 
 const REF_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
+const GENERATION_PATTERN = /^[A-Za-z0-9._:-]{1,128}$/;
 const KEY_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const DIGEST_PATTERN = /^[0-9a-f]{64}$/;
 const NONCE_PATTERN = /^[A-Za-z0-9_-]{16,128}$/;
@@ -289,7 +290,6 @@ export async function handleAgentDesiredState(request, env) {
   const requestFingerprint = await sha256Hex(canonicalJson({
     nodeRef,
     channelRefs,
-    keyId: auth.keyId,
   }));
   const existing = await env.CONTROL_DB
     .prepare(
@@ -578,7 +578,9 @@ export async function handleAgentReceipt(request, env) {
     || payload.redacted !== true
     || !REF_PATTERN.test(payload.nodeRef ?? "")
     || !REF_PATTERN.test(payload.channelRef ?? "")
-    || !REF_PATTERN.test(payload.generation ?? "")
+    || !GENERATION_PATTERN.test(payload.generation ?? "")
+    || payload.generation === "."
+    || payload.generation === ".."
     || !REF_PATTERN.test(payload.desiredStateRef ?? "")
     || !["applied", "dry_run"].includes(payload.status)
     || payload.idempotencyKey !== "receipt:" + payload.desiredStateRef + ":" + payload.generation + ":" + payload.channelRef
@@ -613,7 +615,7 @@ export async function handleAgentReceipt(request, env) {
     )
     .bind(payload.desiredStateRef, payload.nodeRef, payload.generation)
     .first();
-  if (!state || !["active", "superseded"].includes(state.status)) {
+  if (!state || !["active", "superseded", "revoked"].includes(state.status)) {
     return jsonError(409, "receipt_binding_mismatch", "receipt does not match a retained desired-state generation");
   }
 
