@@ -280,10 +280,48 @@ export function createAgentClient({
       if (!state || typeof state !== "object" || Array.isArray(state)) state = {};
 
       let receiptsRecovered = 0;
-      if (Array.isArray(state.pendingReceipts) && state.pendingReceipts.length > 0) {
-        receiptsRecovered = state.pendingReceipts.length;
+      let receiptsDeferred = 0;
+      const pendingReceipts = state.pendingReceipts ?? [];
+      const previouslyDeferredReceipts = state.deferredReceipts ?? [];
+      if (!Array.isArray(pendingReceipts) || !Array.isArray(previouslyDeferredReceipts)) {
+        return { status: "rejected", stage: "receipt_state", code: "receipt_state_invalid" };
+      }
+      const receiptsToRecover = [];
+      const receiptsToDefer = [];
+      for (const receipt of [...pendingReceipts, ...previouslyDeferredReceipts]) {
+        if (
+          !receipt
+          || typeof receipt !== "object"
+          || Array.isArray(receipt)
+          || typeof receipt.channelRef !== "string"
+          || receipt.channelRef.length === 0
+        ) {
+          return { status: "rejected", stage: "receipt_state", code: "receipt_scope_unverifiable" };
+        }
+        if (channelRefs.includes(receipt.channelRef)) receiptsToRecover.push(receipt);
+        else receiptsToDefer.push(receipt);
+      }
+      receiptsRecovered = receiptsToRecover.length;
+      receiptsDeferred = receiptsToDefer.length;
+      if (pendingReceipts.length > 0 || previouslyDeferredReceipts.length > 0) {
+        state = {
+          ...state,
+          pendingReceipts: receiptsToRecover,
+          deferredReceipts: receiptsToDefer,
+        };
         try {
-          for (const receipt of state.pendingReceipts) {
+          await stateStore.save(state);
+        } catch (error) {
+          return {
+            status: "retry_later",
+            stage: "state",
+            error: String(error?.message ?? error),
+          };
+        }
+      }
+      if (receiptsToRecover.length > 0) {
+        try {
+          for (const receipt of receiptsToRecover) {
             await transport.submitReceipt(receipt, { headers: buildHeaders() });
           }
         } catch (error) {
@@ -293,7 +331,11 @@ export function createAgentClient({
             error: String(error?.message ?? error),
           };
         }
-        state = { ...state, pendingReceipts: [] };
+        state = {
+          ...state,
+          pendingReceipts: [],
+          deferredReceipts: receiptsToDefer,
+        };
         try {
           await stateStore.save(state);
         } catch (error) {
@@ -407,6 +449,7 @@ export function createAgentClient({
           status: "unchanged",
           generation: manifest.generation,
           receiptsRecovered,
+          receiptsDeferred,
         };
       }
 
@@ -450,7 +493,7 @@ export function createAgentClient({
       );
 
       if (effectiveDryRun) {
-        return { status: "dry_run", generation: manifest.generation, receipts };
+        return { status: "dry_run", generation: manifest.generation, receipts, receiptsDeferred };
       }
 
       await apply({ manifest, materials: resolved });
@@ -461,6 +504,7 @@ export function createAgentClient({
         desiredStateRef: manifest.desiredStateRef,
         pendingClaim: null,
         pendingReceipts: receipts,
+        deferredReceipts: Array.isArray(state.deferredReceipts) ? state.deferredReceipts : [],
       };
       try {
         await stateStore.save(appliedState);
@@ -481,7 +525,7 @@ export function createAgentClient({
       } catch (error) {
         return { status: "retry_later", stage: "state", error: String(error?.message ?? error) };
       }
-      return { status: "applied", generation: manifest.generation, receipts, receiptsRecovered };
+      return { status: "applied", generation: manifest.generation, receipts, receiptsRecovered, receiptsDeferred };
     } finally {
       await handle.release();
     }
