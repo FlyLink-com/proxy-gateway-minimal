@@ -22,7 +22,7 @@ The runnable G3/G4 control-plane source slices for the approved Workers + D1 tar
 | `wrangler.control-plane.jsonc` | Separate control-plane Wrangler config (binding `CONTROL_DB`, database name `flylink-control-dev`, `migrations/`) |
 | `migrations/0001_accounts_slice.sql` | DDL copied verbatim from the G2 stage-1 DDL set (`ddl-set.json`, baseline `master@63082bae`) |
 | `migrations/0002_write_idempotency.sql` | G3 slice-local bounded-write idempotency store (not production DDL) |
-| `migrations/0003_agent_protocol_slice.sql` | G4 local-only node/channel, desired-state refs/digests, 120-second manifest claim/lease ledger, hashed Agent credentials, replay nonces, receipt ledger and credential events |
+| `migrations/0003_agent_protocol_slice.sql` | G4 local-only node/channel, desired-state refs/digests, 120-second manifest claim/lease ledger, hashed Agent credentials, replay nonces, receipt ledger, credential events, and a partial unique index enforcing one active rotation candidate per current key |
 | `src/agent-protocol.mjs` | G4 signed desired-state and redacted receipt HTTP handlers; WebCrypto only |
 | `src/repositories/agent-repository.mjs` | G4 Agent credential, nonce, receipt and bounded key-rotation persistence |
 | `src/index.mjs` | Worker entrypoint and routing |
@@ -60,7 +60,7 @@ tables.
   **When the relevant token is not configured, every such request
   returns 401** (fail-closed), and neither token works for the other
   privilege level.
-- Agent credentials are stored as SHA-256 token digests, never plaintext. Each Agent request binds `x-agent-key-id`, `x-agent-node-ref`, an ISO timestamp (±5 minutes) and a single-use nonce. Desired-state claims also require an `Idempotency-Key`; the Worker persists the exact signed envelope and a 120-second lease, returning the same envelope for the same key and scope. The credential's node and channel set must authorize the request; missing configuration fails closed. The 15-minute maximum overlap is enforced in the local credential repository, and a new key's first successful authentication is recorded before the old key can be revoked.
+- Agent credentials are stored as SHA-256 token digests, never plaintext. Each Agent request binds `x-agent-key-id`, `x-agent-node-ref`, an ISO timestamp (±5 minutes) and a single-use nonce. Desired-state claims also require an `Idempotency-Key`; the Worker persists the exact signed envelope and a 120-second lease, returning the same envelope for the same key and scope. The Agent persists that key with a canonical node/channel-scope fingerprint and replaces it when scope changes. Receipt idempotency keys are versioned SHA-256 hashes of canonical tuple encoding, not delimiter concatenations. Per-channel material count is bounded to 32 so the deterministic receipt remains under the 16 KiB request limit. The credential's node and channel set must authorize the request; missing configuration fails closed. The 15-minute maximum overlap is enforced in the local credential repository, and a new key's first successful authentication is recorded before the old key can be revoked.
 - The safe projection is exactly `id`, `status`, `createdAt`,
   `updatedAt`. `owner_ref` and `metadata_json` are never selected by
   the repository and cannot appear in a response.
