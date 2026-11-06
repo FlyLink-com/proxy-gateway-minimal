@@ -1,4 +1,5 @@
 import { lstatSync } from "node:fs";
+import { lstatSync } from "node:fs";
 import { isAbsolute, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -22,6 +23,7 @@ const CONTRACT_REASONS = new Set([
   "migration_id_mismatch", "mode_required", "temp_root_must_be_absolute", "unknown_argument"
 ]);
 const SCHEMA_ERRORS = new Set([
+  "commerce_initial_confirmation_migration_missing",
   "commerce_initial_confirmation_schema_incompatible",
   "commerce_initial_confirmation_guard_migration_missing",
   "commerce_initial_confirmation_guard_schema_incompatible",
@@ -29,7 +31,8 @@ const SCHEMA_ERRORS = new Set([
 ]);
 const SAFE_REASONS = new Set([
   ...CONTRACT_REASONS, ...SCHEMA_ERRORS,
-  "commerce_invalid_database_path", "commerce_invalid_temp_root",
+  "commerce_invalid_database_path", "commerce_invalid_migration_contract", "commerce_invalid_temp_root",
+  "commerce_initial_confirmation_migration_missing",
   "commerce_source_changed_during_dry_run",
   "commerce_initial_confirmation_guard_migration_failed",
   "database_close_failed", "database_inspection_failed",

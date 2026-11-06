@@ -142,7 +142,7 @@ backup/restore uncertainty, checksum mismatch, unexpected objects or rows,
 integrity failure, source mutation during dry-run, cleanup failure, or any
 request to enable runtime behavior in the same gate.
 
- 
+
 ## Initial-confirmation guard Plan C follow-on migration
 
 The optional initial-confirmation extension remains anchored by
