@@ -1,4 +1,6 @@
----
+# G2 Local D1 Compatibility — Status and Evidence Index
+
+```yaml
 document_metadata:
   doc_type: evidence
   lifecycle: active
@@ -6,9 +8,7 @@ document_metadata:
   superseded_by: null
   last_verified_at: 2026-11-06
   production_authority: false
----
-
-# G2 Local D1 Compatibility — Status and Evidence Index
+```
 
 - Status: **HOLD FOR CLOSEOUT / core compatibility evidence assembled / overall gate not closed**
 - Verification date: 2026-11-06 (PST)
