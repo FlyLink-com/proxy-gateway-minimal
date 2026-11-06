@@ -105,20 +105,19 @@ export class AgentRepository {
   async expireOverlap(keyId, nowIso) {
     const credential = await this.findCredential(keyId);
     if (!credential || credential.status !== "overlap") return false;
-    const result = await this.db
-      .prepare(
-        "UPDATE agent_api_credentials SET status = 'revoked', revoked_at = ? " +
-        "WHERE key_id = ? AND status = 'overlap' AND overlap_expires_at <= ?",
-      )
-      .bind(nowIso, keyId, nowIso)
-      .run();
-    const changes = Number(result?.meta?.changes ?? 0);
-    if (changes > 0) {
-      await this.db
+    const results = await this.db.batch([
+      this.db
+        .prepare(
+          "UPDATE agent_api_credentials SET status = 'revoked', revoked_at = ? " +
+          "WHERE key_id = ? AND status = 'overlap' AND overlap_expires_at <= ?",
+        )
+        .bind(nowIso, keyId, nowIso),
+      this.db
         .prepare(
           "INSERT OR IGNORE INTO agent_credential_events " +
           "(event_id, event_key, key_id, node_ref, event_type, occurred_at, detail_code) " +
-          "VALUES (?, ?, ?, ?, 'overlap_expired', ?, 'manual_ruling_required_current_key_retained')",
+          "SELECT ?, ?, ?, ?, 'overlap_expired', ?, 'manual_ruling_required_current_key_retained' " +
+          "WHERE changes() = 1",
         )
         .bind(
           crypto.randomUUID(),
@@ -126,11 +125,9 @@ export class AgentRepository {
           keyId,
           credential.node_ref,
           nowIso,
-        )
-        .run();
-      return true;
-    }
-    return false;
+        ),
+    ]);
+    return Number(results?.[0]?.meta?.changes ?? 0) > 0;
   }
 
   async beginRotation({ currentKeyId, nextKeyId, nextToken, nowIso = new Date().toISOString(), overlapMs = MAX_OVERLAP_MS }) {

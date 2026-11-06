@@ -775,6 +775,114 @@ test("G4 expired overlap revokes only the candidate and retains the current key"
   assert.ok(events.results.some((event) => event.event_type === "overlap_expired"));
 });
 
+test("G4 expireOverlap atomically rolls back candidate revocation if the ruling event cannot be written", async (t) => {
+  const { mf, db, agent } = await createWorker();
+  t.after(() => mf.dispose());
+
+  const repository = new AgentRepository(db);
+  const candidateKeyId = "agent-key-synth-expiry-atomic";
+  const candidateToken = "synth-agent-token-expiry-atomic-20261106";
+  const startedAt = new Date(Date.now() - MAX_OVERLAP_MS - 5000);
+  const expiredAt = new Date(startedAt.getTime() + MAX_OVERLAP_MS).toISOString();
+  await repository.beginRotation({
+    currentKeyId: agent.keyId,
+    nextKeyId: candidateKeyId,
+    nextToken: candidateToken,
+    nowIso: startedAt.toISOString(),
+    overlapMs: MAX_OVERLAP_MS,
+  });
+  await db.prepare(
+    "UPDATE agent_api_credentials SET activated_at = ?, overlap_expires_at = ? WHERE key_id = ?",
+  ).bind(startedAt.toISOString(), expiredAt, candidateKeyId).run();
+
+  const failingDb = {
+    prepare: db.prepare.bind(db),
+    batch: (statements) => {
+      assert.equal(statements.length, 2);
+      return db.batch([
+        statements[0],
+        db.prepare(
+          "INSERT INTO agent_credential_events " +
+          "(event_id, event_key, key_id, node_ref, event_type, occurred_at, detail_code) " +
+          "VALUES (?, ?, ?, ?, 'invalid_event_type', ?, 'forced_test_failure')",
+        ).bind(
+          crypto.randomUUID(),
+          "forced-expiry-event-failure",
+          candidateKeyId,
+          agent.nodeRef,
+          new Date().toISOString(),
+        ),
+      ]);
+    },
+  };
+  await assert.rejects(
+    new AgentRepository(failingDb).expireOverlap(candidateKeyId, new Date().toISOString()),
+  );
+
+  assert.equal((await repository.findCredential(candidateKeyId)).status, "overlap");
+  const missingEvent = await db.prepare(
+    "SELECT COUNT(*) AS n FROM agent_credential_events " +
+    "WHERE key_id = ? AND event_type = 'overlap_expired'",
+  ).bind(candidateKeyId).first();
+  assert.equal(missingEvent.n, 0);
+
+  const nowIso = new Date().toISOString();
+  assert.equal(await repository.expireOverlap(candidateKeyId, nowIso), true);
+  assert.equal((await repository.findCredential(candidateKeyId)).status, "revoked");
+  const committedEvent = await db.prepare(
+    "SELECT COUNT(*) AS n FROM agent_credential_events " +
+    "WHERE key_id = ? AND event_type = 'overlap_expired'",
+  ).bind(candidateKeyId).first();
+  assert.equal(committedEvent.n, 1);
+  assert.equal((await repository.findCredential(agent.keyId)).status, "active");
+});
+
+test("G4 a concurrent rotation cannot bypass an overlap-expiry ruling gate", async (t) => {
+  const { mf, db, agent } = await createWorker();
+  t.after(() => mf.dispose());
+
+  const repository = new AgentRepository(db);
+  const expiredKeyId = "agent-key-synth-expiry-race";
+  const expiredToken = "synth-agent-token-expiry-race-20261106";
+  const startedAt = new Date(Date.now() - MAX_OVERLAP_MS - 5000);
+  const expiredAt = new Date(startedAt.getTime() + MAX_OVERLAP_MS).toISOString();
+  await repository.beginRotation({
+    currentKeyId: agent.keyId,
+    nextKeyId: expiredKeyId,
+    nextToken: expiredToken,
+    nowIso: startedAt.toISOString(),
+    overlapMs: MAX_OVERLAP_MS,
+  });
+  await db.prepare(
+    "UPDATE agent_api_credentials SET activated_at = ?, overlap_expires_at = ? WHERE key_id = ?",
+  ).bind(startedAt.toISOString(), expiredAt, expiredKeyId).run();
+
+  const nextKeyId = "agent-key-synth-after-expiry-race";
+  const [expiry, rotation] = await Promise.allSettled([
+    repository.expireOverlap(expiredKeyId, new Date().toISOString()),
+    repository.beginRotation({
+      currentKeyId: agent.keyId,
+      nextKeyId,
+      nextToken: "synth-agent-token-after-expiry-race-20261106",
+    }),
+  ]);
+  assert.equal(expiry.status, "fulfilled");
+  assert.equal(expiry.value, true);
+  assert.equal(rotation.status, "rejected");
+  assert.ok(
+    ["rotation_in_progress", "rotation_exception_active"].includes(rotation.reason.code),
+  );
+  assert.equal(await repository.findCredential(nextKeyId), null);
+  assert.equal((await repository.findCredential(expiredKeyId)).status, "revoked");
+  assert.equal((await repository.findCredential(agent.keyId)).status, "active");
+
+  const expiryEvents = await db.prepare(
+    "SELECT COUNT(*) AS n FROM agent_credential_events " +
+    "WHERE key_id = ? AND event_type = 'overlap_expired'",
+  ).bind(expiredKeyId).first();
+  assert.equal(expiryEvents.n, 1);
+});
+
 test("G4 an expired overlap blocks automatic rotations until an explicit manual ruling clears it", async (t) => {
   const { mf, db, agent } = await createWorker();
   t.after(() => mf.dispose());
