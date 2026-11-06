@@ -10,6 +10,7 @@ import {
   createManifestVerifier,
   desiredStateDigest,
 } from "../../../agent/g4/manifest.mjs";
+import { buildReceiptIdempotencyKey } from "../../../agent/g4/receipt.mjs";
 import {
   AGENT_CHANNEL_REFS,
   AGENT_TOKEN,
@@ -54,8 +55,11 @@ function receiptFor(agent, envelope, channelRef, status = "applied") {
     generation: envelope.manifest.generation,
     desiredStateRef: envelope.manifest.desiredStateRef,
     materialDigests,
-    idempotencyKey: "receipt:" + envelope.manifest.desiredStateRef + ":" +
-      envelope.manifest.generation + ":" + channelRef,
+    idempotencyKey: buildReceiptIdempotencyKey({
+      desiredStateRef: envelope.manifest.desiredStateRef,
+      generation: envelope.manifest.generation,
+      channelRef,
+    }),
     status,
     detail: { mode: status === "applied" ? "apply" : "dry_run" },
     redacted: true,
@@ -198,6 +202,22 @@ test("G4 Agent authentication fails closed on bad token, scope, timestamp and re
   assert.equal(first.status, 200);
   assert.equal(replay.status, 409);
   assert.equal((await replay.json()).error.code, "replay_detected");
+});
+
+test("G4 receipt idempotency keys are unambiguous for delimiter-bearing tuple values", async () => {
+  const first = buildReceiptIdempotencyKey({
+    desiredStateRef: "desired:x",
+    generation: "gen",
+    channelRef: "channel",
+  });
+  const second = buildReceiptIdempotencyKey({
+    desiredStateRef: "desired",
+    generation: "x:gen",
+    channelRef: "channel",
+  });
+  assert.notEqual(first, second);
+  assert.match(first, /^receipt:v1:[0-9a-f]{64}$/);
+  assert.match(second, /^receipt:v1:[0-9a-f]{64}$/);
 });
 
 test("G4 receipt endpoint enforces binding, redaction and idempotent replay", async (t) => {
@@ -545,6 +565,58 @@ test("G4 an expired overlap blocks automatic rotations until an explicit manual 
     nextToken: "synth-agent-token-after-ruling-20261106",
   });
   assert.equal(next.nextKeyId, "agent-key-synth-after-ruling");
+});
+
+test("G4 concurrent beginRotation calls create exactly one active candidate", async (t) => {
+  const { mf, db, agent } = await createWorker();
+  t.after(() => mf.dispose());
+
+  let arrivals = 0;
+  let releaseBarrier;
+  const barrier = new Promise((resolve) => { releaseBarrier = resolve; });
+  const racingDb = {
+    prepare(sql) {
+      const statement = db.prepare(sql);
+      if (sql.includes("WHERE rotation_from_key_id = ? AND status = 'overlap' LIMIT 1")) {
+        return {
+          bind(...values) {
+            const bound = statement.bind(...values);
+            return {
+              async first() {
+                const result = await bound.first();
+                arrivals += 1;
+                if (arrivals === 2) releaseBarrier();
+                await barrier;
+                return result;
+              },
+            };
+          },
+        };
+      }
+      return statement;
+    },
+    batch: db.batch.bind(db),
+  };
+  const repository = new AgentRepository(racingDb);
+  const outcomes = await Promise.allSettled([
+    repository.beginRotation({
+      currentKeyId: agent.keyId,
+      nextKeyId: "agent-key-concurrent-a",
+      nextToken: "synth-agent-token-concurrent-a-20261106",
+    }),
+    repository.beginRotation({
+      currentKeyId: agent.keyId,
+      nextKeyId: "agent-key-concurrent-b",
+      nextToken: "synth-agent-token-concurrent-b-20261106",
+    }),
+  ]);
+  assert.equal(outcomes.filter((result) => result.status === "fulfilled").length, 1);
+  const rejected = outcomes.find((result) => result.status === "rejected");
+  assert.equal(rejected.reason.code, "rotation_in_progress");
+  const candidates = await db.prepare(
+    "SELECT key_id FROM agent_api_credentials WHERE rotation_from_key_id = ? AND status = 'overlap'",
+  ).bind(agent.keyId).all();
+  assert.equal(candidates.results.length, 1);
 });
 
 test("G4 rotation race never retires the current key if the candidate is leaked before promotion", async (t) => {
