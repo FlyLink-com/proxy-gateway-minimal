@@ -342,7 +342,10 @@ test("G4 Agent client replaces a pending claim key when its authorized channel s
         { ...headers, "idempotency-key": idempotencyKey },
         channelRefs,
       );
-      if (!response.ok) throw new Error("desired-state HTTP " + response.status);
+      if (!response.ok) {
+        const body = await response.json().catch(() => null);
+        throw new Error("desired-state HTTP " + response.status + " " + JSON.stringify(body?.error) + " key=" + idempotencyKey);
+      }
       const envelope = await response.json();
       if (loseFirstResponse) {
         loseFirstResponse = false;
@@ -398,7 +401,7 @@ test("G4 Agent client replaces a pending claim key when its authorized channel s
   });
 
   const second = await secondClient.runOnce();
-  assert.equal(second.status, "applied", JSON.stringify(second));
+  assert.equal(second.status, "applied", JSON.stringify({ second, claimKeys }));
   assert.equal(claimKeys.length, 2);
   assert.notEqual(claimKeys[0], claimKeys[1]);
   const count = await db.prepare("SELECT COUNT(*) AS n FROM agent_manifest_claims").first();
