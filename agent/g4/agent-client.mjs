@@ -21,7 +21,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { mkdir, open, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { desiredStateDigest } from "./manifest.mjs";
-import { buildChannelReceipt } from "./receipt.mjs";
+import { buildChannelReceipt, buildReceiptIdempotencyKey } from "./receipt.mjs";
 
 export class AgentContractError extends Error {
   constructor(code, message) {
@@ -425,7 +425,11 @@ export function createAgentClient({
           generation: manifest.generation,
           desiredStateRef: manifest.desiredStateRef,
           materialDigests: desired.materials.filter((m) => m.channelRef === channelRef),
-          idempotencyKey: "receipt:" + manifest.desiredStateRef + ":" + manifest.generation + ":" + channelRef,
+          idempotencyKey: buildReceiptIdempotencyKey({
+            desiredStateRef: manifest.desiredStateRef,
+            generation: manifest.generation,
+            channelRef,
+          }),
           status: receiptStatus,
           detail: { mode: effectiveDryRun ? "dry_run" : "apply" },
         }),
