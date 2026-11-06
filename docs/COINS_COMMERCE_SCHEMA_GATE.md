@@ -1,6 +1,6 @@
 # Coins Commerce Schema Gate
 
-Last updated: 2026-08-16.
+Last updated: 2026-11-05.
 
 ```yaml
 document_metadata:
@@ -8,7 +8,7 @@ document_metadata:
   lifecycle: active
   authority_scope: source_only_coins_commerce_schema_gate
   superseded_by: null
-  last_verified_at: 2026-08-16
+  last_verified_at: 2026-11-05
   production_authority: false
 ```
 
@@ -141,3 +141,40 @@ Stop and escalate on identity drift, lock contention, unplanned writers,
 backup/restore uncertainty, checksum mismatch, unexpected objects or rows,
 integrity failure, source mutation during dry-run, cleanup failure, or any
 request to enable runtime behavior in the same gate.
+
+ 
+## Initial-confirmation guard Plan C follow-on migration
+
+The optional initial-confirmation extension remains anchored by
+`20260906_001_coin_commerce_initial_confirmation`. The approved Scheme C
+forward migration is a separate, checksum-bound follow-on:
+
+- Migration ID:
+  `20261105_001_coin_commerce_initial_confirmation_guard_plan_c`
+- Checksum source:
+  `COIN_COMMERCE_INITIAL_CONFIRMATION_GUARD_MIGRATIONS[0].ddlChecksum`
+- DDL contract: domain-separated SHA-256 over the exact UTF-8 DROP/CREATE
+  statements joined with NUL; always read the value from the exact reviewed
+  source commit rather than copying a historical checksum.
+- Scope: replace only
+  `coin_commerce_initial_confirmations_insert_guard`; preserve all 44
+  database predicates in S1/S2/S3/S4 (18/16/9/1), the single trigger name,
+  and the original `coin_commerce_initial_confirmation_binding_invalid`
+  rejection signature. The original extension migration ID/checksum remain
+  unchanged.
+
+The dedicated schema command supports read-only `validate`, private-clone
+`dry-run`, and confirmation-bound `apply`:
+
+```sh
+npm run platform:coin-commerce:initial-confirmation-guard:schema -- --mode validate --db-path <absolute-reviewed-path>
+npm run platform:coin-commerce:initial-confirmation-guard:schema -- --mode dry-run --db-path <absolute-reviewed-path> --temp-root <absolute-owned-temp-root>
+npm run platform:coin-commerce:initial-confirmation-guard:schema -- --mode apply --db-path <absolute-reviewed-path> --confirm-migration-id 20261105_001_coin_commerce_initial_confirmation_guard_plan_c --confirm-ddl-checksum <exact-reviewed-checksum>
+```
+
+This source change and its local synthetic tests do not authorize running
+`apply` against a persistent BWH database, remote D1, or production. Any
+persistent or remote execution remains subject to its own exact database,
+backup, host, source, and Risk A approval gate. The existing unused-extension
+inverse removes the follow-on ledger row together with the extension only
+when the confirmation table is empty.
