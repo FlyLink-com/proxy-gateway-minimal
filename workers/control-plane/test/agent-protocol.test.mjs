@@ -384,9 +384,14 @@ test("G4 Agent client replaces a pending claim key when its authorized channel s
   assert.deepEqual(JSON.parse(firstClaim.channel_refs_json), [...agent.channelRefs].sort());
 
   const narrowedChannels = [agent.channelRefs[0]];
-  await db.prepare(
-    "UPDATE agent_api_credentials SET channel_refs_json = ? WHERE key_id = ?",
-  ).bind(JSON.stringify(narrowedChannels), agent.keyId).run();
+  await db.batch([
+    db.prepare(
+      "UPDATE agent_api_credentials SET channel_refs_json = ? WHERE key_id = ?",
+    ).bind(JSON.stringify(narrowedChannels), agent.keyId),
+    db.prepare(
+      "DELETE FROM agent_desired_state_materials WHERE desired_state_ref = ? AND channel_ref = ?",
+    ).bind("desired-synth-001", agent.channelRefs[1]),
+  ]);
   const secondClient = createAgentClient({
     nodeRef: agent.nodeRef,
     channelRefs: narrowedChannels,
