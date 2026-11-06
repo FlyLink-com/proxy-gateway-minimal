@@ -145,7 +145,8 @@ CREATE TABLE agent_credential_events (
       'rotation_revoked',
       'key_promoted',
       'key_revoked_leak',
-      'overlap_expired'
+      'overlap_expired',
+      'rotation_exception_cleared'
     )
   ),
   occurred_at text not null,
