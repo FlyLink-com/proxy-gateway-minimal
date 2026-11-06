@@ -22,7 +22,7 @@ The runnable G3/G4 control-plane source slices for the approved Workers + D1 tar
 | `wrangler.control-plane.jsonc` | Separate control-plane Wrangler config (binding `CONTROL_DB`, database name `flylink-control-dev`, `migrations/`) |
 | `migrations/0001_accounts_slice.sql` | DDL copied verbatim from the G2 stage-1 DDL set (`ddl-set.json`, baseline `master@63082bae`) |
 | `migrations/0002_write_idempotency.sql` | G3 slice-local bounded-write idempotency store (not production DDL) |
-| `migrations/0003_agent_protocol_slice.sql` | G4 local-only node/channel, desired-state refs/digests, hashed Agent credentials, replay nonces, receipt ledger and credential events |
+| `migrations/0003_agent_protocol_slice.sql` | G4 local-only node/channel, desired-state refs/digests, 120-second manifest claim/lease ledger, hashed Agent credentials, replay nonces, receipt ledger and credential events |
 | `src/agent-protocol.mjs` | G4 signed desired-state and redacted receipt HTTP handlers; WebCrypto only |
 | `src/repositories/agent-repository.mjs` | G4 Agent credential, nonce, receipt and bounded key-rotation persistence |
 | `src/index.mjs` | Worker entrypoint and routing |
@@ -52,7 +52,7 @@ tables.
 | `GET /v1/accounts/:accountId` | Bearer (read) | One account, safe projection only |
 | `GET /v1/accounts?status=&limit=&cursor=` | Bearer (read) | Keyset-paginated directory |
 | `POST /v1/accounts/:accountId/second-factor-challenges` | Bearer (write) | Issue one second-factor challenge; requires `Idempotency-Key` |
-| `GET /v1/agent/desired-state?nodeRef=&channelRefs=` | Scoped Agent Bearer + key ID + timestamp + nonce | Return a signed refs/digests-only manifest for the exact node/channel scope |
+| `GET /v1/agent/desired-state?nodeRef=&channelRefs=` | Scoped Agent Bearer + key ID + timestamp + nonce + `Idempotency-Key` | Claim a signed refs/digests-only manifest for the exact node/channel scope; 120-second lease; same key replays the same claim |
 | `POST /v1/agent/receipts` | Scoped Agent Bearer + key ID + timestamp + nonce | Validate the node/channel/generation/digest binding and record one redacted idempotent receipt per channel |
 
 - Read routes expect the `CONTROL_PLANE_READ_TOKEN` secret/var; the
@@ -60,7 +60,7 @@ tables.
   **When the relevant token is not configured, every such request
   returns 401** (fail-closed), and neither token works for the other
   privilege level.
-- Agent credentials are stored as SHA-256 token digests, never plaintext. Each Agent request binds `x-agent-key-id`, `x-agent-node-ref`, an ISO timestamp (±5 minutes) and a single-use nonce. The credential's node and channel set must authorize the request; missing configuration fails closed. The 15-minute maximum overlap is enforced in the local credential repository, and a new key's first successful authentication is recorded before the old key can be revoked.
+- Agent credentials are stored as SHA-256 token digests, never plaintext. Each Agent request binds `x-agent-key-id`, `x-agent-node-ref`, an ISO timestamp (±5 minutes) and a single-use nonce. Desired-state claims also require an `Idempotency-Key`; the Worker persists the exact signed envelope and a 120-second lease, returning the same envelope for the same key and scope. The credential's node and channel set must authorize the request; missing configuration fails closed. The 15-minute maximum overlap is enforced in the local credential repository, and a new key's first successful authentication is recorded before the old key can be revoked.
 - The safe projection is exactly `id`, `status`, `createdAt`,
   `updatedAt`. `owner_ref` and `metadata_json` are never selected by
   the repository and cannot appear in a response.
@@ -88,7 +88,7 @@ tables.
   secret and the hash never appear in any response. Delivering the
   secret to a factor channel is a production concern outside this
   slice.
-- Migration `0002` adds `platform_write_idempotency_keys`; migration `0003` adds local-only G4 protocol fixtures and ledgers. These are slice-local designs, **not** copied production DDL. D1 contains only opaque refs, SHA-256 digests, generation/status, hashed Agent API tokens, replay nonces and receipt metadata. Manifest signing private keys are Worker secret bindings, never D1 rows. Raw credential material is resolved only on BWH and never enters Worker requests, responses, D1 or logs.
+- Migration `0002` adds `platform_write_idempotency_keys`; migration `0003` adds local-only G4 protocol fixtures and ledgers. These are slice-local designs, **not** copied production DDL. D1 contains only opaque refs, SHA-256 digests, generation/status, hashed Agent API tokens, replay nonces, signed refs-only claim envelopes and receipt metadata. Manifest signing private keys are Worker secret bindings, never D1 rows. Raw credential material is resolved only on BWH and never enters Worker requests, responses, D1 or logs.
 - Pagination mirrors the verified monitor contract
   (`listUserMonitorAccountDirectory` + `readAccounts`): rows are
   ordered `created_at DESC, id DESC`, the keyset predicate is
@@ -157,7 +157,7 @@ fresh local D1 database with the real migrations applied:
   fail-closed behavior when no token is configured, safe-projection
   key set, and JSON error shapes for 400 / 401 / 404 / 405.
 - **write-flow** — issuance projection, idempotent replay/conflict, privilege separation, fail-closed behavior and atomic rollback.
-- **agent-protocol** — Ed25519 manifest verification with the existing Agent verifier, refs/digests-only payloads, node/channel scope, timestamp and nonce replay checks, redacted receipt binding and replay/conflict behavior, credential overlap/expiry/leak revocation, and a full Agent-client ↔ Worker ↔ local D1 cycle including lost-response recovery without a second apply.
+- **agent-protocol** — Ed25519 manifest verification with the existing Agent verifier, refs/digests-only payloads, node/channel scope, timestamp and nonce replay checks, 120-second idempotent claim leases, redacted receipt binding and replay/conflict behavior, credential overlap/expiry/leak revocation, and a full Agent-client ↔ Worker ↔ local D1 cycle including lost claim/receipt response recovery without a second apply.
 
 CI (`.github/workflows/control-plane-worker.yml`) runs the same
 `npm ci` + `npm test` for pull requests that touch
