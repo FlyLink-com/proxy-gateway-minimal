@@ -186,7 +186,8 @@ export class AgentRepository {
     if (tokenDigest === current.token_sha256) {
       throw new AgentCredentialError("rotation_token_reused", "next communication token must be different");
     }
-    await this.db.batch([
+    try {
+      await this.db.batch([
       this.db
         .prepare(
           "INSERT INTO agent_api_credentials " +
@@ -218,7 +219,20 @@ export class AgentRepository {
           current.node_ref,
           nowIso,
         ),
-    ]);
+      ]);
+    } catch (error) {
+      const winner = await this.db
+        .prepare(
+          "SELECT key_id FROM agent_api_credentials " +
+          "WHERE rotation_from_key_id = ? AND status = 'overlap' LIMIT 1",
+        )
+        .bind(currentKeyId)
+        .first();
+      if (winner) {
+        throw new AgentCredentialError("rotation_in_progress", "a concurrent key rotation already created a candidate");
+      }
+      throw error;
+    }
     return { nextKeyId, activatedAt: nowIso, overlapExpiresAt: expiresAt };
   }
 
