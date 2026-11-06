@@ -78,6 +78,10 @@ CREATE TABLE agent_api_credentials (
 CREATE INDEX agent_api_credentials_node_status_idx
   on agent_api_credentials(node_ref, status);
 
+CREATE UNIQUE INDEX agent_api_credentials_one_rotation_candidate_idx
+  on agent_api_credentials(rotation_from_key_id)
+  where status = 'overlap' and rotation_from_key_id is not null;
+
 CREATE TABLE agent_request_nonces (
   key_id text not null references agent_api_credentials(key_id) on delete cascade,
   nonce text not null,
