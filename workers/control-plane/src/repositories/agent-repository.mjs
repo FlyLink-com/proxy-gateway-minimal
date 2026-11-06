@@ -161,6 +161,22 @@ export class AgentRepository {
     if (inProgress) {
       throw new AgentCredentialError("rotation_in_progress", "a key rotation is already in progress");
     }
+    const unresolvedException = await this.db
+      .prepare(
+        "SELECT expired.key_id FROM agent_api_credentials AS expired " +
+        "JOIN agent_credential_events AS event ON event.key_id = expired.key_id " +
+        "WHERE expired.rotation_from_key_id = ? AND event.event_type = 'overlap_expired' " +
+        "AND NOT EXISTS (" +
+        "SELECT 1 FROM agent_credential_events AS cleared " +
+        "WHERE cleared.key_id = ? AND cleared.event_type = 'rotation_exception_cleared' " +
+        "AND cleared.event_key = ? || ':rotation-exception-cleared:' || expired.key_id" +
+        ") LIMIT 1",
+      )
+      .bind(currentKeyId, currentKeyId, currentKeyId)
+      .first();
+    if (unresolvedException) {
+      throw new AgentCredentialError("rotation_exception_active", "manual ruling is required before another automatic rotation");
+    }
     if (await this.findCredential(nextKeyId)) {
       throw new AgentCredentialError("key_id_reused", "next key id already exists");
     }
@@ -227,19 +243,32 @@ export class AgentRepository {
       throw new AgentCredentialError("rotation_ack_required", "new key must authenticate successfully before old key revocation");
     }
 
-    await this.db.batch([
+    const results = await this.db.batch([
       this.db
         .prepare(
           "UPDATE agent_api_credentials SET status = 'revoked', revoked_at = ? " +
-          "WHERE key_id = ? AND status = 'active'",
+          "WHERE key_id = ? AND status = 'active' AND EXISTS (" +
+          "SELECT 1 FROM agent_api_credentials AS candidate " +
+          "WHERE candidate.key_id = ? AND candidate.status = 'overlap' " +
+          "AND candidate.auth_confirmed_at IS NOT NULL AND candidate.overlap_expires_at > ?)",
         )
-        .bind(nowIso, currentKeyId),
+        .bind(nowIso, currentKeyId, next.key_id, nowIso),
       this.db
         .prepare(
           "UPDATE agent_api_credentials SET status = 'active', overlap_expires_at = NULL, " +
-          "rotation_from_key_id = NULL WHERE key_id = ? AND status = 'overlap' AND auth_confirmed_at IS NOT NULL",
+          "rotation_from_key_id = NULL WHERE key_id = ? AND status = 'overlap' " +
+          "AND auth_confirmed_at IS NOT NULL AND EXISTS (" +
+          "SELECT 1 FROM agent_api_credentials AS previous " +
+          "WHERE previous.key_id = ? AND previous.status = 'revoked' AND previous.revoked_at = ?)",
         )
-        .bind(next.key_id),
+        .bind(next.key_id, currentKeyId, nowIso),
+    ]);
+    const oldKeyChanges = Number(results?.[0]?.meta?.changes ?? 0);
+    const nextKeyChanges = Number(results?.[1]?.meta?.changes ?? 0);
+    if (oldKeyChanges !== 1 || nextKeyChanges !== 1) {
+      throw new AgentCredentialError("rotation_conflict", "credential state changed during rotation; current key was not retired by this attempt");
+    }
+    await this.db.batch([
       this.db
         .prepare(
           "INSERT OR IGNORE INTO agent_credential_events " +
@@ -268,6 +297,53 @@ export class AgentRepository {
         ),
     ]);
     return { revokedKeyId: currentKeyId, activeKeyId: next.key_id };
+  }
+
+  async clearRotationException({ currentKeyId, expiredCandidateKeyId, manualRulingRef, nowIso = new Date().toISOString() }) {
+    if (
+      typeof currentKeyId !== "string"
+      || typeof expiredCandidateKeyId !== "string"
+      || typeof manualRulingRef !== "string"
+      || !/^[A-Za-z0-9._:-]{8,128}$/.test(manualRulingRef)
+      || !Number.isFinite(Date.parse(nowIso))
+    ) {
+      throw new AgentCredentialError("manual_ruling_invalid", "a bounded manual ruling reference is required");
+    }
+    const current = await this.findCredential(currentKeyId);
+    const expired = await this.findCredential(expiredCandidateKeyId);
+    if (
+      !current || current.status !== "active" || current.revoked_at
+      || !expired || expired.status !== "revoked"
+      || expired.rotation_from_key_id !== currentKeyId
+    ) {
+      throw new AgentCredentialError("manual_ruling_target_invalid", "manual ruling must target the active current key and its expired revoked candidate");
+    }
+    const expiryEvent = await this.db
+      .prepare(
+        "SELECT event_key FROM agent_credential_events " +
+        "WHERE key_id = ? AND event_type = 'overlap_expired' LIMIT 1",
+      )
+      .bind(expiredCandidateKeyId)
+      .first();
+    if (!expiryEvent) {
+      throw new AgentCredentialError("manual_ruling_not_required", "the candidate has no recorded expired-overlap exception");
+    }
+    await this.db
+      .prepare(
+        "INSERT OR IGNORE INTO agent_credential_events " +
+        "(event_id, event_key, key_id, node_ref, event_type, occurred_at, detail_code) " +
+        "VALUES (?, ?, ?, ?, 'rotation_exception_cleared', ?, ?)",
+      )
+      .bind(
+        crypto.randomUUID(),
+        currentKeyId + ":rotation-exception-cleared:" + expiredCandidateKeyId,
+        currentKeyId,
+        current.node_ref,
+        nowIso,
+        "manual_ruling_ref:" + manualRulingRef,
+      )
+      .run();
+    return { currentKeyId, expiredCandidateKeyId, manualRulingRef };
   }
 
   async revokeForLeak(keyId, nowIso = new Date().toISOString()) {
