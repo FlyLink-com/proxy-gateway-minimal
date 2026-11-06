@@ -2,6 +2,7 @@
 
 Last updated: 2026-11-05, America/Los_Angeles.
 
+```yaml
 document_metadata:
   doc_type: evidence
   lifecycle: active
@@ -9,6 +10,7 @@ document_metadata:
   superseded_by: null
   last_verified_at: 2026-11-05
   production_authority: false
+```
 
 > **Formal status:** HOLD FOR CLOSEOUT / core compatibility conditions passed / total gate not closed.
 > This evidence index does not declare G2 PASS, authorize G3–G8, create remote resources, or approve production migration.
