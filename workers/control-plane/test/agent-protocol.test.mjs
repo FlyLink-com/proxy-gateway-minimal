@@ -398,7 +398,7 @@ test("G4 Agent client replaces a pending claim key when its authorized channel s
   });
 
   const second = await secondClient.runOnce();
-  assert.equal(second.status, "applied");
+  assert.equal(second.status, "applied", JSON.stringify(second));
   assert.equal(claimKeys.length, 2);
   assert.notEqual(claimKeys[0], claimKeys[1]);
   const count = await db.prepare("SELECT COUNT(*) AS n FROM agent_manifest_claims").first();
