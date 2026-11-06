@@ -92,6 +92,7 @@
     "platform:subscription-distribution:schema": "node scripts/platform-subscription-distribution-schema.mjs",
     "platform:coin-wallet:reference-index-schema": "node scripts/platform-coin-wallet-reference-index-schema.mjs",
     "platform:coin-commerce:schema": "node scripts/platform-coin-commerce-schema.mjs",
+    "platform:coin-commerce:initial-confirmation-guard:schema": "node scripts/platform-coin-commerce-initial-confirmation-guard-schema.mjs",
     "platform:coin-commerce:plan-switch:schema": "node scripts/platform-coin-commerce-plan-switch-schema.mjs",
     "platform:account-resource-authority:schema": "node scripts/platform-account-resource-authority-schema.mjs",
     "platform:portal-registration-welcome-bonus:schema": "node scripts/platform-portal-registration-welcome-bonus-schema-cli.mjs",
