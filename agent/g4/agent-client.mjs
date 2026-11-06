@@ -276,14 +276,78 @@ export function createAgentClient({
       return { status: "skipped_locked" };
     }
     try {
+      let state = await stateStore.load();
+      if (!state || typeof state !== "object" || Array.isArray(state)) state = {};
+
+      let receiptsRecovered = 0;
+      if (Array.isArray(state.pendingReceipts) && state.pendingReceipts.length > 0) {
+        receiptsRecovered = state.pendingReceipts.length;
+        try {
+          for (const receipt of state.pendingReceipts) {
+            await transport.submitReceipt(receipt, { headers: buildHeaders() });
+          }
+        } catch (error) {
+          return {
+            status: "retry_later",
+            stage: "receipt",
+            error: String(error?.message ?? error),
+          };
+        }
+        state = { ...state, pendingReceipts: [] };
+        try {
+          await stateStore.save(state);
+        } catch (error) {
+          return {
+            status: "retry_later",
+            stage: "state",
+            error: String(error?.message ?? error),
+          };
+        }
+      }
+
+      const claimKeyPattern = /^claim:[A-Za-z0-9][A-Za-z0-9._:-]{0,127}:[A-Za-z0-9_-]{16,128}$/;
+      let claimIdempotencyKey = state.pendingClaim?.idempotencyKey;
+      if (typeof claimIdempotencyKey !== "string" || !claimKeyPattern.test(claimIdempotencyKey)) {
+        claimIdempotencyKey = "claim:" + nodeRef + ":" + randomUUID();
+        state = { ...state, pendingClaim: { idempotencyKey: claimIdempotencyKey } };
+        try {
+          await stateStore.save(state);
+        } catch (error) {
+          return {
+            status: "retry_later",
+            stage: "state",
+            error: String(error?.message ?? error),
+          };
+        }
+      }
+
       let desired;
       try {
         desired = await transport.fetchDesiredState({
           nodeRef,
           channelRefs,
           headers: buildHeaders(),
+          idempotencyKey: claimIdempotencyKey,
         });
       } catch (error) {
+        if (error?.code === "claim_expired" || error?.statusCode === 410) {
+          state = { ...state, pendingClaim: null };
+          try {
+            await stateStore.save(state);
+          } catch (saveError) {
+            return {
+              status: "retry_later",
+              stage: "state",
+              error: String(saveError?.message ?? saveError),
+            };
+          }
+          return {
+            status: "retry_later",
+            stage: "claim",
+            code: "claim_expired",
+            error: String(error?.message ?? error),
+          };
+        }
         return { status: "retry_later", stage: "fetch", error: String(error?.message ?? error) };
       }
 
@@ -314,35 +378,15 @@ export function createAgentClient({
         return { status: "rejected", stage: "digest", code: "digest_mismatch" };
       }
 
-      let state = await stateStore.load();
-      let receiptsRecovered = 0;
-      if (Array.isArray(state?.pendingReceipts) && state.pendingReceipts.length > 0) {
-        receiptsRecovered = state.pendingReceipts.length;
-        try {
-          for (const receipt of state.pendingReceipts) {
-            await transport.submitReceipt(receipt, { headers: buildHeaders() });
-          }
-        } catch (error) {
-          return {
-            status: "retry_later",
-            stage: "receipt",
-            error: String(error?.message ?? error),
-          };
-        }
-        state = { ...state, pendingReceipts: [] };
-        try {
-          await stateStore.save(state);
-        } catch (error) {
-          return {
-            status: "retry_later",
-            stage: "state",
-            error: String(error?.message ?? error),
-          };
-        }
+      state = { ...state, pendingClaim: null };
+      try {
+        await stateStore.save(state);
+      } catch (error) {
+        return { status: "retry_later", stage: "state", error: String(error?.message ?? error) };
       }
+
       if (
-        state
-        && state.generation === manifest.generation
+        state.generation === manifest.generation
         && state.desiredStateDigest === manifest.desiredStateDigest
       ) {
         return {
@@ -381,7 +425,7 @@ export function createAgentClient({
           generation: manifest.generation,
           desiredStateRef: manifest.desiredStateRef,
           materialDigests: desired.materials.filter((m) => m.channelRef === channelRef),
-          idempotencyKey: `receipt:${manifest.desiredStateRef}:${manifest.generation}:${channelRef}`,
+          idempotencyKey: "receipt:" + manifest.desiredStateRef + ":" + manifest.generation + ":" + channelRef,
           status: receiptStatus,
           detail: { mode: effectiveDryRun ? "dry_run" : "apply" },
         }),
@@ -397,12 +441,10 @@ export function createAgentClient({
         generation: manifest.generation,
         desiredStateDigest: manifest.desiredStateDigest,
         desiredStateRef: manifest.desiredStateRef,
+        pendingClaim: null,
         pendingReceipts: receipts,
       };
       try {
-        // Persist the completed generation and redacted receipt intent
-        // before network acknowledgement. A retry can replay receipts
-        // without applying the same generation a second time.
         await stateStore.save(appliedState);
       } catch (error) {
         return { status: "retry_later", stage: "state", error: String(error?.message ?? error) };
@@ -419,15 +461,12 @@ export function createAgentClient({
       try {
         await stateStore.save({ ...appliedState, pendingReceipts: [] });
       } catch (error) {
-        // A later cycle may replay accepted receipts; their deterministic
-        // idempotency keys make that replay safe.
         return { status: "retry_later", stage: "state", error: String(error?.message ?? error) };
       }
-      return { status: "applied", generation: manifest.generation, receipts };
+      return { status: "applied", generation: manifest.generation, receipts, receiptsRecovered };
     } finally {
       await handle.release();
     }
   }
-
   return { runOnce };
 }
