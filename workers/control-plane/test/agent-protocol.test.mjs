@@ -30,6 +30,7 @@ function headersFor(agent, overrides = {}) {
     "x-agent-node-ref": overrides.nodeRef ?? agent.nodeRef,
     "x-agent-timestamp": overrides.timestamp ?? new Date().toISOString(),
     "x-agent-nonce": overrides.nonce ?? "nonce-" + crypto.randomUUID(),
+    "idempotency-key": overrides.idempotencyKey ?? "claim:" + agent.nodeRef + ":" + crypto.randomUUID(),
   };
 }
 
@@ -64,10 +65,64 @@ function receiptFor(agent, envelope, channelRef, status = "applied") {
 async function postReceipt(mf, agent, receipt, headers = headersFor(agent)) {
   return mf.dispatchFetch(BASE + "/v1/agent/receipts", {
     method: "POST",
-    headers: { ...headers, "content-type": "application/json" },
+    headers: { ...headers, "content-type": "application/json", "idempotency-key": receipt.idempotencyKey },
     body: JSON.stringify(receipt),
   });
 }
+
+
+test("G4 desired-state claims are idempotent and expire without extending their lease", async (t) => {
+  const { mf, db, agent } = await createWorker();
+  t.after(() => mf.dispose());
+
+  const idempotencyKey = "claim:" + agent.nodeRef + ":stable-claim-key-00000001";
+  const first = await fetchDesired(
+    mf,
+    agent,
+    headersFor(agent, { idempotencyKey, nonce: "nonce-claim-first-000000001" }),
+  );
+  assert.equal(first.status, 200);
+  const firstEnvelope = await first.json();
+  assert.ok(Date.parse(firstEnvelope.manifest.expiresAt) - Date.parse(firstEnvelope.manifest.issuedAt) <= 120000);
+
+  const replay = await fetchDesired(
+    mf,
+    agent,
+    headersFor(agent, { idempotencyKey, nonce: "nonce-claim-replay-00000001" }),
+  );
+  assert.equal(replay.status, 200);
+  assert.deepEqual(await replay.json(), firstEnvelope);
+
+  const count = await db.prepare("SELECT COUNT(*) AS n FROM agent_manifest_claims").first();
+  assert.equal(count.n, 1);
+
+  const expiredAt = new Date(Date.now() - 1000).toISOString();
+  await db.prepare(
+    "UPDATE agent_manifest_claims SET lease_until = ? WHERE idempotency_key = ?",
+  ).bind(expiredAt, idempotencyKey).run();
+
+  const expired = await fetchDesired(
+    mf,
+    agent,
+    headersFor(agent, { idempotencyKey, nonce: "nonce-claim-expired-0000001" }),
+  );
+  assert.equal(expired.status, 410);
+  assert.equal((await expired.json()).error.code, "claim_expired");
+
+  const freshKey = "claim:" + agent.nodeRef + ":fresh-claim-key-0000000001";
+  const fresh = await fetchDesired(mf, agent, headersFor(agent, { idempotencyKey: freshKey }));
+  assert.equal(fresh.status, 200);
+  const freshEnvelope = await fresh.json();
+  assert.notEqual(freshEnvelope.manifest.antiReplayId, firstEnvelope.manifest.antiReplayId);
+  const firstClaim = await db.prepare(
+    "SELECT status FROM agent_manifest_claims WHERE idempotency_key = ?",
+  ).bind(idempotencyKey).first();
+  const freshClaim = await db.prepare(
+    "SELECT status FROM agent_manifest_claims WHERE idempotency_key = ?",
+  ).bind(freshKey).first();
+  assert.equal(firstClaim.status, "expired");
+  assert.equal(freshClaim.status, "leased");
+});
 
 test("G4 desired-state endpoint returns a signed manifest and refs/digests only", async (t) => {
   const { mf, agent } = await createWorker();
@@ -186,13 +241,28 @@ test("G4 Agent client completes the Worker/D1 loop and recovers a lost receipt r
   const { mf, db, agent } = await createWorker();
   t.after(() => mf.dispose());
 
+  let loseFirstClaimResponse = true;
   let loseFirstReceiptResponse = true;
   let applyCount = 0;
   const transport = {
-    async fetchDesiredState({ headers, nodeRef, channelRefs }) {
-      const response = await fetchDesired(mf, agent, headers, channelRefs);
-      if (!response.ok) throw new Error("desired-state HTTP " + response.status);
-      return response.json();
+    async fetchDesiredState({ headers, channelRefs, idempotencyKey }) {
+      const response = await fetchDesired(
+        mf,
+        agent,
+        { ...headers, "idempotency-key": idempotencyKey },
+        channelRefs,
+      );
+      if (!response.ok) {
+        const error = new Error("desired-state HTTP " + response.status);
+        if (response.status === 410) error.code = "claim_expired";
+        throw error;
+      }
+      const envelope = await response.json();
+      if (loseFirstClaimResponse) {
+        loseFirstClaimResponse = false;
+        throw new Error("simulated response loss after claim commit");
+      }
+      return envelope;
     },
     async submitReceipt(receipt, { headers }) {
       const response = await postReceipt(mf, agent, receipt, headers);
@@ -228,22 +298,32 @@ test("G4 Agent client completes the Worker/D1 loop and recovers a lost receipt r
 
   const first = await client.runOnce();
   assert.equal(first.status, "retry_later");
-  assert.equal(first.stage, "receipt");
-  assert.equal(applyCount, 1);
-  const afterFirst = await db.prepare("SELECT COUNT(*) AS n FROM agent_apply_receipts").first();
-  assert.equal(afterFirst.n, 1);
+  assert.equal(first.stage, "fetch");
+  assert.equal(applyCount, 0);
+  const firstClaimCount = await db.prepare("SELECT COUNT(*) AS n FROM agent_manifest_claims").first();
+  assert.equal(firstClaimCount.n, 1);
 
   const second = await client.runOnce();
-  assert.equal(second.status, "unchanged");
-  assert.equal(second.receiptsRecovered, 2);
+  assert.equal(second.status, "retry_later");
+  assert.equal(second.stage, "receipt");
   assert.equal(applyCount, 1);
   const afterSecond = await db.prepare("SELECT COUNT(*) AS n FROM agent_apply_receipts").first();
-  assert.equal(afterSecond.n, 2);
+  assert.equal(afterSecond.n, 1);
+  const secondClaimCount = await db.prepare("SELECT COUNT(*) AS n FROM agent_manifest_claims").first();
+  assert.equal(secondClaimCount.n, 1);
 
   const third = await client.runOnce();
   assert.equal(third.status, "unchanged");
-  assert.equal(third.receiptsRecovered, 0);
+  assert.equal(third.receiptsRecovered, 2);
   assert.equal(applyCount, 1);
+  const afterThird = await db.prepare("SELECT COUNT(*) AS n FROM agent_apply_receipts").first();
+  assert.equal(afterThird.n, 2);
+  const thirdClaimCount = await db.prepare("SELECT COUNT(*) AS n FROM agent_manifest_claims").first();
+  assert.equal(thirdClaimCount.n, 2);
+  const completedClaim = await db.prepare(
+    "SELECT status FROM agent_manifest_claims WHERE status = ? LIMIT 1",
+  ).bind("completed").first();
+  assert.equal(completedClaim.status, "completed");
 });
 
 test("G4 credential rotation records new-key authentication before retiring the old key", async (t) => {
