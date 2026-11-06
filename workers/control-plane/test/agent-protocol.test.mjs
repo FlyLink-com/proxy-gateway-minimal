@@ -237,6 +237,39 @@ test("G4 receipt endpoint enforces binding, redaction and idempotent replay", as
   assert.ok(!JSON.stringify(rows.results).includes(AGENT_TOKEN));
 });
 
+test("G4 receipts preserve an exact historical apply record after desired state revocation", async (t) => {
+  const { mf, db, agent } = await createWorker();
+  t.after(() => mf.dispose());
+  const desired = await fetchDesired(mf, agent);
+  assert.equal(desired.status, 200);
+  const envelope = await desired.json();
+  await db.prepare(
+    "UPDATE agent_desired_states SET status = 'revoked' WHERE desired_state_ref = ?",
+  ).bind(envelope.manifest.desiredStateRef).run();
+  const receipt = receiptFor(agent, envelope, agent.channelRefs[0]);
+  const response = await postReceipt(mf, agent, receipt);
+  assert.equal(response.status, 201);
+  const stored = await db.prepare(
+    "SELECT status FROM agent_apply_receipts WHERE idempotency_key = ?",
+  ).bind(receipt.idempotencyKey).first();
+  assert.equal(stored.status, "applied");
+});
+
+test("G4 receipt generation validation matches the signed manifest safe-segment contract", async (t) => {
+  const { mf, db, agent } = await createWorker();
+  t.after(() => mf.dispose());
+  await db.prepare(
+    "UPDATE agent_desired_states SET generation = ? WHERE desired_state_ref = ?",
+  ).bind("_gen-001", "desired-synth-001").run();
+  const desired = await fetchDesired(mf, agent);
+  assert.equal(desired.status, 200);
+  const envelope = await desired.json();
+  assert.equal(envelope.manifest.generation, "_gen-001");
+  const receipt = receiptFor(agent, envelope, agent.channelRefs[0]);
+  const response = await postReceipt(mf, agent, receipt);
+  assert.equal(response.status, 201);
+});
+
 test("G4 receipt endpoint caps streamed request bodies before JSON parsing", async (t) => {
   const { mf } = await createWorker();
   t.after(() => mf.dispose());
@@ -390,6 +423,44 @@ test("G4 credential rotation records new-key authentication before retiring the 
   assert.equal(newKeyAgain.status, 200);
 });
 
+test("G4 a same-scope credential rotation can replay an unacknowledged claim", async (t) => {
+  const { mf, agent } = await createWorker();
+  t.after(() => mf.dispose());
+
+  const idempotencyKey = "claim:" + agent.nodeRef + ":claim-before-rotation-00000001";
+  const first = await fetchDesired(
+    mf,
+    agent,
+    headersFor(agent, { idempotencyKey, nonce: "nonce-claim-old-key-0000001" }),
+  );
+  assert.equal(first.status, 200);
+  const originalEnvelope = await first.json();
+
+  const repository = new AgentRepository(await mf.getD1Database("CONTROL_DB"));
+  const nextKeyId = "agent-key-synth-claim-replay";
+  const nextToken = "synth-agent-token-claim-replay-after-rotation-20261106";
+  await repository.beginRotation({
+    currentKeyId: agent.keyId,
+    nextKeyId,
+    nextToken,
+    overlapMs: MAX_OVERLAP_MS,
+  });
+  const nextAuth = await fetchDesired(
+    mf,
+    agent,
+    headersFor(agent, { keyId: nextKeyId, token: nextToken }),
+  );
+  assert.equal(nextAuth.status, 200);
+
+  const replay = await fetchDesired(
+    mf,
+    agent,
+    headersFor(agent, { keyId: nextKeyId, token: nextToken, idempotencyKey, nonce: "nonce-claim-new-key-0000001" }),
+  );
+  assert.equal(replay.status, 200);
+  assert.deepEqual(await replay.json(), originalEnvelope);
+});
+
 test("G4 expired overlap revokes only the candidate and retains the current key", async (t) => {
   const { mf, db, agent } = await createWorker();
   t.after(() => mf.dispose());
@@ -421,6 +492,82 @@ test("G4 expired overlap revokes only the candidate and retains the current key"
     "SELECT event_type FROM agent_credential_events WHERE key_id = ?",
   ).bind(nextKeyId).all();
   assert.ok(events.results.some((event) => event.event_type === "overlap_expired"));
+});
+
+test("G4 an expired overlap blocks automatic rotations until an explicit manual ruling clears it", async (t) => {
+  const { mf, db, agent } = await createWorker();
+  t.after(() => mf.dispose());
+  const repository = new AgentRepository(db);
+  const expiredKeyId = "agent-key-synth-expired-ruling";
+  const expiredToken = "synth-agent-token-expired-ruling-candidate-20261106";
+  const startedAt = new Date(Date.now() - MAX_OVERLAP_MS - 5000);
+  const expiredAt = new Date(startedAt.getTime() + MAX_OVERLAP_MS).toISOString();
+  await repository.beginRotation({
+    currentKeyId: agent.keyId,
+    nextKeyId: expiredKeyId,
+    nextToken: expiredToken,
+    nowIso: startedAt.toISOString(),
+    overlapMs: MAX_OVERLAP_MS,
+  });
+  await repository.expireOverlap(expiredKeyId, new Date().toISOString());
+  await assert.rejects(
+    repository.beginRotation({
+      currentKeyId: agent.keyId,
+      nextKeyId: "agent-key-synth-after-block",
+      nextToken: "synth-agent-token-after-block-20261106",
+    }),
+    (error) => error.code === "rotation_exception_active",
+  );
+  await repository.clearRotationException({
+    currentKeyId: agent.keyId,
+    expiredCandidateKeyId: expiredKeyId,
+    manualRulingRef: "manual-ruling-2026-11-06-001",
+  });
+  const next = await repository.beginRotation({
+    currentKeyId: agent.keyId,
+    nextKeyId: "agent-key-synth-after-ruling",
+    nextToken: "synth-agent-token-after-ruling-20261106",
+  });
+  assert.equal(next.nextKeyId, "agent-key-synth-after-ruling");
+});
+
+test("G4 rotation race never retires the current key if the candidate is leaked before promotion", async (t) => {
+  const { mf, db, agent } = await createWorker();
+  t.after(() => mf.dispose());
+  const nextKeyId = "agent-key-synth-race";
+  const nextToken = "synth-agent-token-race-candidate-20261106";
+  const setupRepository = new AgentRepository(db);
+  await setupRepository.beginRotation({
+    currentKeyId: agent.keyId,
+    nextKeyId,
+    nextToken,
+    overlapMs: MAX_OVERLAP_MS,
+  });
+  const auth = await fetchDesired(
+    mf,
+    agent,
+    headersFor(agent, { keyId: nextKeyId, token: nextToken }),
+  );
+  assert.equal(auth.status, 200);
+
+  let injectLeak = true;
+  const racingDb = {
+    prepare: db.prepare.bind(db),
+    batch: async (statements) => {
+      if (injectLeak) {
+        injectLeak = false;
+        await new AgentRepository(db).revokeForLeak(nextKeyId);
+      }
+      return db.batch(statements);
+    },
+  };
+  const racingRepository = new AgentRepository(racingDb);
+  await assert.rejects(
+    racingRepository.revokeAfterRotation(agent.keyId),
+    (error) => error.code === "rotation_conflict",
+  );
+  assert.equal((await setupRepository.findCredential(agent.keyId)).status, "active");
+  assert.equal((await setupRepository.findCredential(nextKeyId)).status, "revoked");
 });
 
 test("G4 emergency leak revocation is immediate and scoped to Agent communication keys", async (t) => {
