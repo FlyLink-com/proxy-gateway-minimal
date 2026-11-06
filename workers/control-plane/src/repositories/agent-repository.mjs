@@ -78,7 +78,12 @@ export class AgentRepository {
       .bind(nowIso, nowIso, credential.key_id)
       .run();
 
-    if (credential.status === "overlap" && !credential.auth_confirmed_at) {
+    const current = await this.findCredential(credential.key_id);
+    if (!current || !["active", "overlap"].includes(current.status) || current.revoked_at) {
+      throw new AgentCredentialError("credential_revoked", "Agent credential was revoked during authentication");
+    }
+
+    if (current.status === "overlap" && !credential.auth_confirmed_at) {
       await this.db
         .prepare(
           "INSERT OR IGNORE INTO agent_credential_events " +
