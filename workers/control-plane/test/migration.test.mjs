@@ -17,6 +17,7 @@ test("migration applies and creates the slice schema verbatim", async (t) => {
   const objects = results.map((row) => `${row.type}:${row.name}`).sort();
   assert.deepEqual(objects, [
     "index:agent_api_credentials_node_status_idx",
+    "index:agent_api_credentials_one_rotation_candidate_idx",
     "index:agent_apply_receipts_node_generation_idx",
     "index:agent_credential_events_key_time_idx",
     "index:agent_desired_state_materials_channel_idx",
