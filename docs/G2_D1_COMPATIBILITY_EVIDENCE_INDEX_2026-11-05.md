@@ -130,4 +130,3 @@ The post-cleanup harness retained 33 runner scripts, 22 result JSON files, the t
 - Local compatibility evidence does not authorize remote D1 creation, Worker deployment, secrets, routes, DNS, BWH connection, production data access, migration apply, traffic switching, or G7 cutover.
 - The current source-of-truth control plane remains Node/Express + SQLite until an exact Risk A migration and cutover gate is completed.
 - The G2 Issue #830 evidence comments are the source records for the Rev2 report, the corrected 57/56/1 transaction count, and the stage 7 pagination probes.
-
