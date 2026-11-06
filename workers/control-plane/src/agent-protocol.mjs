@@ -591,7 +591,11 @@ export async function handleAgentReceipt(request, env) {
     || payload.generation === ".."
     || !REF_PATTERN.test(payload.desiredStateRef ?? "")
     || !["applied", "dry_run"].includes(payload.status)
-    || payload.idempotencyKey !== "receipt:" + payload.desiredStateRef + ":" + payload.generation + ":" + payload.channelRef
+    || payload.idempotencyKey !== "receipt:v1:" + await sha256Hex(canonicalJson([
+      payload.desiredStateRef,
+      payload.generation,
+      payload.channelRef,
+    ]))
     || !exactKeys(payload.detail, ["mode"])
     || payload.detail.mode !== (payload.status === "applied" ? "apply" : "dry_run")
     || !Array.isArray(payload.materialDigests)
