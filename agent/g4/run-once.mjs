@@ -27,8 +27,8 @@
 // production node-side config writers are an existing system and are
 // NOT replaced by this slice; wiring them in is a separate gate.
 
-import { createPublicKey } from "node:crypto";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { createPublicKey, randomUUID } from "node:crypto";
+import { chmod, lstat, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import {
   createAgentClient,
@@ -80,6 +80,45 @@ export function resolveAppliedGenerationDir(stateDir, generation) {
   return target;
 }
 
+const SAFE_MATERIAL_REF_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]*$/;
+
+async function ensurePrivateDirectory(path) {
+  await mkdir(path, { recursive: true, mode: 0o700 });
+  const info = await lstat(path);
+  if (!info.isDirectory() || info.isSymbolicLink()) {
+    throw new Error("applied material path must be a real directory");
+  }
+  await chmod(path, 0o700);
+}
+
+export async function writeAppliedMaterials(stateDir, generation, materials) {
+  const appliedRoot = resolve(stateDir, "applied");
+  const generationDir = resolveAppliedGenerationDir(stateDir, generation);
+  await ensurePrivateDirectory(appliedRoot);
+  await ensurePrivateDirectory(generationDir);
+
+  for (const material of materials) {
+    const ref = material?.edgeCredentialRef;
+    if (
+      typeof ref !== "string"
+      || !SAFE_MATERIAL_REF_PATTERN.test(ref)
+      || ref.includes("..")
+    ) {
+      throw new Error("material reference must be a safe path segment");
+    }
+    const target = join(generationDir, ref);
+    const temporary = join(generationDir, `.${ref}.${randomUUID()}.tmp`);
+    try {
+      await writeFile(temporary, material.bytes, { flag: "wx", mode: 0o600 });
+      await chmod(temporary, 0o600);
+      await rename(temporary, target);
+    } finally {
+      await rm(temporary, { force: true });
+    }
+  }
+  return generationDir;
+}
+
 async function main() {
   const baseUrl = validateBaseUrl(requiredEnv("GCCGW_G4_BASE_URL"));
   const nodeRef = requiredEnv("GCCGW_G4_NODE_REF");
@@ -95,7 +134,8 @@ async function main() {
   );
   const stateDir = requiredEnv("GCCGW_G4_STATE_DIR");
   const materialsDir = requiredEnv("GCCGW_G4_MATERIALS_DIR");
-  await mkdir(stateDir, { recursive: true });
+  await mkdir(stateDir, { recursive: true, mode: 0o700 });
+  await chmod(stateDir, 0o700);
 
   const transport = {
     async fetchDesiredState({ headers }) {
@@ -130,11 +170,7 @@ async function main() {
       applyEnabled: process.env.GCCGW_G4_APPLY_ENABLED === "true",
     },
     apply: async ({ manifest, materials }) => {
-      const dir = resolveAppliedGenerationDir(stateDir, manifest.generation);
-      await mkdir(dir, { recursive: true });
-      for (const material of materials) {
-        await writeFile(join(dir, material.edgeCredentialRef), material.bytes);
-      }
+      await writeAppliedMaterials(stateDir, manifest.generation, materials);
     },
   });
 

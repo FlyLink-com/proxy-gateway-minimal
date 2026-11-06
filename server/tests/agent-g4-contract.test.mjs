@@ -9,7 +9,7 @@
 
 import assert from "node:assert/strict";
 import { createHash, generateKeyPairSync } from "node:crypto";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import test from "node:test";
@@ -41,6 +41,7 @@ import {
 import {
   resolveAppliedGenerationDir,
   validateBaseUrl,
+  writeAppliedMaterials,
 } from "../../agent/g4/run-once.mjs";
 import { normalizeProductionEdgeAgentConfig } from "../../agent/production-edge-agent.mjs";
 
@@ -135,6 +136,7 @@ function makeClient(overrides = {}) {
 test("AGT-POLL-1: the G4 service template is Type=oneshot and no daemon unit exists", async () => {
   const service = await readFile(join(G4_DIR, "systemd/gccgw-control-plane-agent.service"), "utf8");
   assert.match(service, /^Type=oneshot$/m);
+  assert.match(service, /^UMask=0077$/m);
   assert.doesNotMatch(service, /^Type=simple$/m);
 });
 
@@ -530,6 +532,37 @@ test("AGT-MFT-2: bad signature, expiry, replay, and binding mismatch all fail cl
   assert.equal(result.status, "rejected");
   assert.equal(calls.apply, 0);
   assert.equal(calls.submitted.length, 0);
+});
+
+test("AGT-DATA-2: applied material staging enforces owner-only directory and file modes", async (t) => {
+  const stateDir = await mkdtemp(join(tmpdir(), "g4-applied-materials-"));
+  t.after(() => rm(stateDir, { recursive: true, force: true }));
+  await writeAppliedMaterials(stateDir, "gen-1", [{
+    edgeCredentialRef: "cred-synth-a",
+    bytes: Buffer.from("synthetic-protected-material"),
+  }]);
+  const root = join(stateDir, "applied");
+  const generationDir = join(root, "gen-1");
+  const materialPath = join(generationDir, "cred-synth-a");
+
+  // Simulate permissive pre-existing paths and a previously loose file.
+  await chmod(root, 0o755);
+  await chmod(generationDir, 0o755);
+  await chmod(materialPath, 0o644);
+  await writeAppliedMaterials(stateDir, "gen-1", [{
+    edgeCredentialRef: "cred-synth-a",
+    bytes: Buffer.from("replacement-protected-material"),
+  }]);
+
+  const [rootInfo, generationInfo, materialInfo] = await Promise.all([
+    stat(root),
+    stat(generationDir),
+    stat(materialPath),
+  ]);
+  assert.equal(rootInfo.mode & 0o777, 0o700);
+  assert.equal(generationInfo.mode & 0o777, 0o700);
+  assert.equal(materialInfo.mode & 0o777, 0o600);
+  assert.equal(await readFile(materialPath, "utf8"), "replacement-protected-material");
 });
 
 test("AGT-MFT-2: generation is restricted to a safe local path segment", () => {

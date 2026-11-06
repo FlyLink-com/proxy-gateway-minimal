@@ -22,9 +22,10 @@ AGT-POLL / AGT-ADDR / AGT-ROT / AGT-DATA / AGT-MFT).
   configuration and the G1-30 design target, not a configured fact
   (AGT-POLL-2).
 - **The real node-side apply is not replaced.** `run-once.mjs`
-  demonstrates the cycle with a staging-directory apply; the
-  production config writers are an existing system behind a separate
-  gate.
+  demonstrates the cycle with a staging-directory apply; staged
+  generation directories and material files are owner-only (0700/0600),
+  and the systemd template sets `UMask=0077`. The production config
+  writers are an existing system behind a separate gate.
 - **Manifest signing keys are not E4-A keys.** AGT-MFT-3: no E4-A
   code, keys, or security semantics are used; the canonicalization
   and hashing helpers here are written fresh for this contract
@@ -38,7 +39,7 @@ AGT-POLL / AGT-ADDR / AGT-ROT / AGT-DATA / AGT-MFT).
 | `key-rotation.mjs` | Communication-credential rotation state machine: 15-minute max dual-key overlap, recorded-auth precondition for revocation, expired candidate revoked while the current key is retained, exception blocks automatic progression, leak exception, comms-only scope guard (AGT-ROT-1..5) |
 | `receipt.mjs` | Per-channel apply receipts in the existing protocol shape (`gccgw_data_plane_apply_receipt`) + idempotency key; deterministic material ordering; deep redaction of detail payloads including authorization, cookies and subscription URLs; control-side ledger semantics (record exactly once, conflict on different outcome) (AGT-POLL-5, AGT-DATA-1) |
 | `agent-client.mjs` | One oneshot poll cycle: single-instance locks (memory + file with PID-liveness-checked stale takeover, serialized reaping and token-owned release), refs-only payload boundary, local material resolution with digest check, generation/digest no-change skip, dry-run/apply posture, idempotent receipt submission, state saved only after confirmation (AGT-POLL-3..6, AGT-DATA-1..2) |
-| `run-once.mjs` | Runnable oneshot entrypoint (env-configured; HTTPS addressing rule with loopback-only http exception) (AGT-ADDR-1) |
+| `run-once.mjs` | Runnable oneshot entrypoint (env-configured; HTTPS addressing rule with loopback-only http exception; path-contained generation output; owner-only staged material files and directories) (AGT-ADDR-1, AGT-MFT-2, AGT-DATA-2) |
 | `systemd/` | Service (Type=oneshot, hardened like the current unit) and timer templates — not installed (AGT-POLL-1/2) |
 
 ## Clause map
