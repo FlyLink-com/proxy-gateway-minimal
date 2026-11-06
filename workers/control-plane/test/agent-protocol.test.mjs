@@ -704,6 +704,78 @@ test("G4 credential rotation records new-key authentication before retiring the 
   assert.equal(newKeyAgain.status, 200);
 });
 
+test("G4 revokeAfterRotation atomically rolls back key promotion if completion audit cannot be written", async (t) => {
+  const { mf, db, agent } = await createWorker();
+  t.after(() => mf.dispose());
+
+  const repository = new AgentRepository(db);
+  const nextKeyId = "agent-key-synth-audit-atomic";
+  const nextToken = "synth-agent-token-audit-atomic-20261106";
+  await repository.beginRotation({
+    currentKeyId: agent.keyId,
+    nextKeyId,
+    nextToken,
+    overlapMs: MAX_OVERLAP_MS,
+  });
+
+  const newKeyResponse = await fetchDesired(
+    mf,
+    agent,
+    headersFor(agent, { keyId: nextKeyId, token: nextToken }),
+  );
+  assert.equal(newKeyResponse.status, 200);
+  assert.ok((await repository.findCredential(nextKeyId)).auth_confirmed_at);
+
+  const completionAt = new Date().toISOString();
+  const failingDb = {
+    prepare: db.prepare.bind(db),
+    batch: (statements) => {
+      assert.equal(statements.length, 4);
+      return db.batch([
+        statements[0],
+        statements[1],
+        db.prepare(
+          "INSERT INTO agent_credential_events " +
+          "(event_id, event_key, key_id, node_ref, event_type, occurred_at, detail_code) " +
+          "VALUES (?, ?, ?, ?, 'invalid_event_type', ?, 'forced_test_failure')",
+        ).bind(
+          crypto.randomUUID(),
+          "forced-rotation-audit-failure",
+          agent.keyId,
+          agent.nodeRef,
+          completionAt,
+        ),
+        statements[3],
+      ]);
+    },
+  };
+
+  await assert.rejects(
+    new AgentRepository(failingDb).revokeAfterRotation(agent.keyId, completionAt),
+  );
+  assert.equal((await repository.findCredential(agent.keyId)).status, "active");
+  assert.equal((await repository.findCredential(nextKeyId)).status, "overlap");
+
+  const missingEvents = await db.prepare(
+    "SELECT COUNT(*) AS n FROM agent_credential_events " +
+    "WHERE event_key IN (?, ?)",
+  ).bind(agent.keyId + ":rotation-revoked", nextKeyId + ":promoted").first();
+  assert.equal(missingEvents.n, 0);
+
+  const rotation = await repository.revokeAfterRotation(agent.keyId, completionAt);
+  assert.deepEqual(rotation, { revokedKeyId: agent.keyId, activeKeyId: nextKeyId });
+  assert.equal((await repository.findCredential(agent.keyId)).status, "revoked");
+  assert.equal((await repository.findCredential(nextKeyId)).status, "active");
+
+  const committedEvents = await db.prepare(
+    "SELECT event_type FROM agent_credential_events WHERE event_key IN (?, ?) ORDER BY event_type",
+  ).bind(agent.keyId + ":rotation-revoked", nextKeyId + ":promoted").all();
+  assert.deepEqual(
+    committedEvents.results.map((event) => event.event_type),
+    ["key_promoted", "rotation_revoked"],
+  );
+});
+
 test("G4 a same-scope credential rotation can replay an unacknowledged claim", async (t) => {
   const { mf, agent } = await createWorker();
   t.after(() => mf.dispose());

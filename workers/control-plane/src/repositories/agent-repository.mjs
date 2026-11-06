@@ -304,18 +304,12 @@ export class AgentRepository {
           "WHERE previous.key_id = ? AND previous.status = 'revoked' AND previous.revoked_at = ?)",
         )
         .bind(next.key_id, currentKeyId, nowIso),
-    ]);
-    const oldKeyChanges = Number(results?.[0]?.meta?.changes ?? 0);
-    const nextKeyChanges = Number(results?.[1]?.meta?.changes ?? 0);
-    if (oldKeyChanges !== 1 || nextKeyChanges !== 1) {
-      throw new AgentCredentialError("rotation_conflict", "credential state changed during rotation; current key was not retired by this attempt");
-    }
-    await this.db.batch([
       this.db
         .prepare(
           "INSERT OR IGNORE INTO agent_credential_events " +
           "(event_id, event_key, key_id, node_ref, event_type, occurred_at, detail_code) " +
-          "VALUES (?, ?, ?, ?, 'rotation_revoked', ?, 'old_key_revoked_after_new_key_auth')",
+          "SELECT ?, ?, ?, ?, 'rotation_revoked', ?, 'old_key_revoked_after_new_key_auth' " +
+          "WHERE changes() = 1",
         )
         .bind(
           crypto.randomUUID(),
@@ -328,7 +322,11 @@ export class AgentRepository {
         .prepare(
           "INSERT OR IGNORE INTO agent_credential_events " +
           "(event_id, event_key, key_id, node_ref, event_type, occurred_at, detail_code) " +
-          "VALUES (?, ?, ?, ?, 'key_promoted', ?, 'new_key_promoted_after_auth')",
+          "SELECT ?, ?, ?, ?, 'key_promoted', ?, 'new_key_promoted_after_auth' " +
+          "WHERE EXISTS (" +
+          "SELECT 1 FROM agent_credential_events " +
+          "WHERE event_key = ? AND event_type = 'rotation_revoked'" +
+          ")",
         )
         .bind(
           crypto.randomUUID(),
@@ -336,8 +334,14 @@ export class AgentRepository {
           next.key_id,
           next.node_ref,
           nowIso,
+          currentKeyId + ":rotation-revoked",
         ),
     ]);
+    const oldKeyChanges = Number(results?.[0]?.meta?.changes ?? 0);
+    const nextKeyChanges = Number(results?.[1]?.meta?.changes ?? 0);
+    if (oldKeyChanges !== 1 || nextKeyChanges !== 1) {
+      throw new AgentCredentialError("rotation_conflict", "credential state changed during rotation; current key was not retired by this attempt");
+    }
     return { revokedKeyId: currentKeyId, activeKeyId: next.key_id };
   }
 
