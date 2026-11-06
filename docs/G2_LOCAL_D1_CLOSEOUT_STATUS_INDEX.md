@@ -10,17 +10,20 @@ document_metadata:
   production_authority: false
 ```
 
-- Status: **HOLD FOR CLOSEOUT / core compatibility evidence assembled / overall gate not closed**
+- Status: **ACCEPTED WITH DOCUMENTED LIMITATIONS — G2 local compatibility evidence closeout only**
+- Formal decision: Yi accepted the scoped G2 local evidence closeout on 2026-11-06, after completion of the four #830 closeout items and review of the Rev2 report and archived receipts.
 - Verification date: 2026-11-06 (PST)
 - Scope: local Wrangler / Miniflare D1 and synthetic fixtures only.
 - Current source baseline: repository `master` at the time of this index; see the linked G2 report for its exact baseline and evidence provenance.
 - Production authority: none.
 
-## Decision boundary
+## Formal acceptance and decision boundary
 
-This index records local compatibility evidence. It does not declare overall G2 acceptance, authorize G3–G8 progression, create remote Cloudflare resources, connect to BWH, access production data, apply a persistent migration, deploy, change DNS, or cut over traffic.
+G2 local compatibility evidence closeout is **accepted with the limitations below retained as explicit exceptions**. This accepts the recorded test scope and evidence package; it does not claim complete behavioral coverage of every D1 feature, universal SQLite/D1 equivalence, or production readiness.
 
-The existing Node/Express + SQLite control plane remains the current authoritative writer. No dual writes are permitted. Production cutover remains a separate Risk A decision.
+The acceptance covers the Rev2 report completeness, corrected Stage 6 transaction ledger, Stage 7 pagination differential probes, Scheme C 91/91 trigger retest, and the repository-side status/evidence index. The strict FK 68/58 accounting and all other attribution-limited / untested surfaces remain exactly as disclosed; no unresolved item is silently promoted to PASS.
+
+This decision does not authorize production migration, persistent production DDL, production data access, dual writes, deployment, DNS changes, or traffic cutover. The existing Node/Express + SQLite control plane remains the current authoritative writer. Production cutover remains a separate Risk A decision.
 
 ## Evidence received
 
@@ -44,6 +47,18 @@ The existing Node/Express + SQLite control plane remains the current authoritati
 The evidence above is not, by itself, a formal overall G2 acceptance decision. The consolidated report and the underlying archived receipts remain the evidence package to inspect. Any missing or unverified source artifact must remain identified as such; this index does not infer or recreate absent hashes.
 
 Yi retains the formal G2 stage decision. Until that decision is recorded, status remains **HOLD FOR CLOSEOUT**.
+
+## Accepted limitations (not promoted to PASS)
+
+- **Foreign keys:** strict formal reading remains 68 PASS / 58 attribution-limited. The supplementary 75/51 reading is not the accepted accounting.
+- **CHECK constraints:** 246 PASS / 27 attribution-limited as described in Rev2; the 18 stronger-invariant-covered and 9 legacy-archive unreachable cases remain classified as such.
+- **Indexes:** definition consistency is 88/88; unique-index behavior has 7 PASS / 4 attribution-limited; ordinary partial-index behavior is 10/10 PASS; 60 of the 67 ordinary full indexes were definition-only and have no individual behavior probe.
+- **withSession:** local single-replica behavior was exercised; production multi-replica bookmark semantics were not tested.
+- **Pagination:** static-dataset cursor semantics were tested; concurrent-write snapshot semantics were not tested.
+- **G1-29 cross-database subscription fulfillment** remains outside G2 scope.
+- **Production migration set:** not observed; no persistent migration or production apply was performed.
+
+These are scope/evidence limitations accepted for this G2 local closeout, not assertions that the untested behaviors passed.
 
 ## Archive
 
