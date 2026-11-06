@@ -36,6 +36,10 @@ const EXPECTED_WORKFLOW_ACTIONS = {
   ],
   "control-plane-foundation-toolchain-inventory.yml": ["actions/checkout"],
   "control-plane-foundation-toolchain-publish.yml": [],
+  "control-plane-worker.yml": [
+    "actions/checkout",
+    "actions/setup-node"
+  ],
   "deploy-cloudflare-site.yml": [
     "actions/checkout",
     "actions/setup-node",
@@ -100,7 +104,7 @@ const REVIEWED_ACTION_PINS = {
   "actions/checkout": {
     sha: DEFAULT_CHECKOUT_PIN,
     annotation: "v6",
-    count: 24
+    count: 25
   },
   "actions/download-artifact": {
     sha: "3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c",
@@ -110,7 +114,7 @@ const REVIEWED_ACTION_PINS = {
   "actions/setup-node": {
     sha: "249970729cb0ef3589644e2896645e5dc5ba9c38",
     annotation: "v6",
-    count: 20
+    count: 21
   },
   "actions/upload-artifact": {
     sha: "043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",
@@ -118,12 +122,12 @@ const REVIEWED_ACTION_PINS = {
     count: 7
   }
 };
-const EXPECTED_ACTION_REFERENCE_COUNT = 58;
+const EXPECTED_ACTION_REFERENCE_COUNT = 60;
 const EXPECTED_ACTION_REVISION_COUNTS = {
-  [`actions/checkout@${DEFAULT_CHECKOUT_PIN}`]: 22,
+  [`actions/checkout@${DEFAULT_CHECKOUT_PIN}`]: 23,
   [`actions/checkout@${TRUSTED_GOVERNANCE_CHECKOUT_PIN}`]: 2,
   [`actions/download-artifact@${REVIEWED_ACTION_PINS["actions/download-artifact"].sha}`]: 7,
-  [`actions/setup-node@${REVIEWED_ACTION_PINS["actions/setup-node"].sha}`]: 20,
+  [`actions/setup-node@${REVIEWED_ACTION_PINS["actions/setup-node"].sha}`]: 21,
   [`actions/upload-artifact@${REVIEWED_ACTION_PINS["actions/upload-artifact"].sha}`]: 7
 };
 // Keep this source-only guard dependency-free: every uncommented `uses` token is
