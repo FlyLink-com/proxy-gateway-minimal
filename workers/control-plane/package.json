@@ -1,5 +1,5 @@
 {
-    "description": "G3 control-plane Worker + D1 local vertical slice (local synthetic development only; not deployed).",
+    "description": "G3 control-plane Worker + D1 local vertical slice: protected read API plus one idempotent bounded write (local synthetic development only; not deployed).",
     "devDependencies": {
         "miniflare": "4.20251109.0",
         "wrangler": "4.99.0"
@@ -16,5 +16,5 @@
         "test": "node --test \"test/**/*.test.mjs\""
     },
     "type": "module",
-    "version": "0.1.0"
+    "version": "0.2.0"
 }
