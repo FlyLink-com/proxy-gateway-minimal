@@ -1,6 +1,6 @@
 # Documentation Index
 
-Last updated: 2026-11-05 UTC.
+Last updated: 2026-11-06 UTC.
 
 ```yaml
 document_metadata:
@@ -8,7 +8,7 @@ document_metadata:
   lifecycle: active
   authority_scope: documentation_navigation
   superseded_by: null
-  last_verified_at: 2026-11-05
+  last_verified_at: 2026-11-06
   production_authority: false
 ```
 
@@ -213,7 +213,8 @@ security-alert counts and makes no current claim about them.
 | [`docs/CI_STATUS_LOG.md`](CI_STATUS_LOG.md) | Dated CI availability, exact-source hosted/local results and safe append-only run summaries. | Evidence index; no workflow, budget, execution or production authority. | Read for current reported CI blockers and the pending November 2026 latest-master manual check. |
 | `docs/CI_MANUAL_VALIDATION.md` | Manual CI validation host workflow; target direction is local Linux manual CI, with historical Aliyun manual CI facts retained until the transition is validated. | Active runbook, not staging or deploy approval. | Read before using a manual validation host for repo-level CI evidence. |
 | `docs/CLOUDFLARE_PUBLIC_SITE_CI.md` | Repository-only CI contract for the `admin/dist-site` static lane, explicitly separated from the approved future control-plane Worker/D1 lane. | Active static-site CI boundary only; no Worker API, D1, DNS, secret, or production authority. | Read before changing public-site builds, the root `wrangler.jsonc`, or the separate Cloudflare delivery lanes. |
-| `docs/CLOUDFLARE_D1_DATABASE_EVALUATION.md` | Owner-approved target architecture and phased plan for a Cloudflare Workers control-plane API with one D1 business-control database, while BWH remains data plane. | Architecture direction approved 2026-11-04; current SQLite runtime remains authoritative; remote resources, migration, and production cutover are separately gated. | Read before Worker API, D1 schema/repository, BWH agent, or control-plane migration work. |
+| `docs/CLOUDFLARE_D1_DATABASE_EVALUATION.md` | Owner-approved Workers + D1 target architecture and phased implementation gates, with dated source-only G2/G3/G4 progress. | Architecture direction approved 2026-11-04; current SQLite runtime remains authoritative; remote resources, migration, and production cutover are separately gated. | Read before Worker API, D1 schema/repository, BWH Agent, or control-plane migration work. |
+| `docs/G2_D1_COMPATIBILITY_EVIDENCE_INDEX_2026-11-05.md` | Evidence index for the local SQLite ↔ Miniflare D1 compatibility work, including strict FK accounting, Scheme C, transaction counts, pagination, hashes, and remaining gaps. | Evidence only; formal G2 status remains HOLD FOR CLOSEOUT, not G2 PASS or production approval. | Read when reviewing the G2 local compatibility result or its remaining evidence gaps. |
 | `docs/CONTROL_DATABASE_SCHEMA_MATRIX.md` | Source-level schema matrix for the 48-table core slice, with §6 linking six G1-21–G1-26 companion dossiers that complete the 70-table integrated inventory. | G1 source evidence only; not production-applied Schema proof or migration authority. | Read with the Cloudflare D1 architecture decision before planning local synthetic compatibility tests. |
 
 ## Project Intelligence Layer
