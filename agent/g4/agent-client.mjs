@@ -20,7 +20,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir, open, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { desiredStateDigest } from "./manifest.mjs";
+import { canonicalJson, desiredStateDigest } from "./manifest.mjs";
 import { buildChannelReceipt, buildReceiptIdempotencyKey } from "./receipt.mjs";
 
 export class AgentContractError extends Error {
@@ -306,10 +306,24 @@ export function createAgentClient({
       }
 
       const claimKeyPattern = /^claim:[A-Za-z0-9][A-Za-z0-9._:-]{0,127}:[A-Za-z0-9_-]{16,128}$/;
+      const claimScopeFingerprint = canonicalJson({
+        nodeRef,
+        channelRefs: [...channelRefs].sort(),
+      });
       let claimIdempotencyKey = state.pendingClaim?.idempotencyKey;
-      if (typeof claimIdempotencyKey !== "string" || !claimKeyPattern.test(claimIdempotencyKey)) {
+      if (
+        typeof claimIdempotencyKey !== "string"
+        || !claimKeyPattern.test(claimIdempotencyKey)
+        || state.pendingClaim?.scopeFingerprint !== claimScopeFingerprint
+      ) {
         claimIdempotencyKey = "claim:" + nodeRef + ":" + randomUUID();
-        state = { ...state, pendingClaim: { idempotencyKey: claimIdempotencyKey } };
+        state = {
+          ...state,
+          pendingClaim: {
+            idempotencyKey: claimIdempotencyKey,
+            scopeFingerprint: claimScopeFingerprint,
+          },
+        };
         try {
           await stateStore.save(state);
         } catch (error) {
