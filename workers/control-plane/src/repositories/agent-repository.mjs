@@ -4,6 +4,7 @@
 import { sha256Hex } from "../digests.mjs";
 
 export const MAX_OVERLAP_MS = 15 * 60 * 1000;
+export const AGENT_TOKEN_PATTERN = /^\S{24,512}$/;
 const KEY_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 
 export class NonceReplayError extends Error {
@@ -139,7 +140,7 @@ export class AgentRepository {
       || !KEY_ID_PATTERN.test(nextKeyId)
       || nextKeyId === currentKeyId
       || typeof nextToken !== "string"
-      || nextToken.length < 24
+      || !AGENT_TOKEN_PATTERN.test(nextToken)
       || !Number.isInteger(overlapMs)
       || overlapMs < 1
       || overlapMs > MAX_OVERLAP_MS
