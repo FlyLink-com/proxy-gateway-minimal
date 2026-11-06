@@ -488,7 +488,7 @@ test("G4 Agent client defers receipts outside narrowed scope and resumes them wh
       "UPDATE agent_api_credentials SET channel_refs_json = ? WHERE key_id = ?",
     ).bind(JSON.stringify([retainedChannel]), agent.keyId),
     db.prepare(
-      "UPDATE agent_node_channels SET status = 'inactive' WHERE node_ref = ? AND channel_ref = ?",
+      "UPDATE agent_node_channels SET status = 'disabled' WHERE node_ref = ? AND channel_ref = ?",
     ).bind(agent.nodeRef, removedChannel),
     db.prepare(
       "DELETE FROM agent_desired_state_materials WHERE desired_state_ref = ? AND channel_ref = ?",
