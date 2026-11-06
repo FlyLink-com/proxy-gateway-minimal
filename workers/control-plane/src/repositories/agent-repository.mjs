@@ -187,39 +187,51 @@ export class AgentRepository {
     if (tokenDigest === current.token_sha256) {
       throw new AgentCredentialError("rotation_token_reused", "next communication token must be different");
     }
+    let results;
     try {
-      await this.db.batch([
-      this.db
-        .prepare(
-          "INSERT INTO agent_api_credentials " +
-          "(key_id, token_sha256, node_ref, channel_refs_json, status, activated_at, " +
-          "overlap_expires_at, rotation_from_key_id, last_authenticated_at, " +
-          "auth_confirmed_at, revoked_at, created_at) " +
-          "VALUES (?, ?, ?, ?, 'overlap', ?, ?, ?, NULL, NULL, NULL, ?)",
-        )
-        .bind(
-          nextKeyId,
-          tokenDigest,
-          current.node_ref,
-          current.channel_refs_json,
-          nowIso,
-          expiresAt,
-          currentKeyId,
-          nowIso,
-        ),
-      this.db
-        .prepare(
-          "INSERT INTO agent_credential_events " +
-          "(event_id, event_key, key_id, node_ref, event_type, occurred_at, detail_code) " +
-          "VALUES (?, ?, ?, ?, 'rotation_started', ?, 'max_overlap_15_minutes')",
-        )
-        .bind(
-          crypto.randomUUID(),
-          nextKeyId + ":rotation-started",
-          nextKeyId,
-          current.node_ref,
-          nowIso,
-        ),
+      results = await this.db.batch([
+        this.db
+          .prepare(
+            "INSERT INTO agent_api_credentials " +
+            "(key_id, token_sha256, node_ref, channel_refs_json, status, activated_at, " +
+            "overlap_expires_at, rotation_from_key_id, last_authenticated_at, " +
+            "auth_confirmed_at, revoked_at, created_at) " +
+            "SELECT ?, ?, ?, ?, 'overlap', ?, ?, ?, NULL, NULL, NULL, ? " +
+            "WHERE EXISTS (" +
+            "SELECT 1 FROM agent_api_credentials " +
+            "WHERE key_id = ? AND status = 'active' AND revoked_at IS NULL" +
+            ")",
+          )
+          .bind(
+            nextKeyId,
+            tokenDigest,
+            current.node_ref,
+            current.channel_refs_json,
+            nowIso,
+            expiresAt,
+            currentKeyId,
+            nowIso,
+            currentKeyId,
+          ),
+        this.db
+          .prepare(
+            "INSERT INTO agent_credential_events " +
+            "(event_id, event_key, key_id, node_ref, event_type, occurred_at, detail_code) " +
+            "SELECT ?, ?, ?, ?, 'rotation_started', ?, 'max_overlap_15_minutes' " +
+            "WHERE EXISTS (" +
+            "SELECT 1 FROM agent_api_credentials " +
+            "WHERE key_id = ? AND rotation_from_key_id = ? AND status = 'overlap'" +
+            ")",
+          )
+          .bind(
+            crypto.randomUUID(),
+            nextKeyId + ":rotation-started",
+            nextKeyId,
+            current.node_ref,
+            nowIso,
+            nextKeyId,
+            currentKeyId,
+          ),
       ]);
     } catch (error) {
       const winner = await this.db
@@ -233,6 +245,24 @@ export class AgentRepository {
         throw new AgentCredentialError("rotation_in_progress", "a concurrent key rotation already created a candidate");
       }
       throw error;
+    }
+
+    const candidateChanges = Number(results?.[0]?.meta?.changes ?? 0);
+    if (candidateChanges !== 1) {
+      const winner = await this.db
+        .prepare(
+          "SELECT key_id FROM agent_api_credentials " +
+          "WHERE rotation_from_key_id = ? AND status = 'overlap' LIMIT 1",
+        )
+        .bind(currentKeyId)
+        .first();
+      if (winner) {
+        throw new AgentCredentialError("rotation_in_progress", "a concurrent key rotation already created a candidate");
+      }
+      throw new AgentCredentialError(
+        "rotation_conflict",
+        "current communication key changed before the rotation candidate could be created",
+      );
     }
     return { nextKeyId, activatedAt: nowIso, overlapExpiresAt: expiresAt };
   }

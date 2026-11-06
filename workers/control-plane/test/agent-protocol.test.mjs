@@ -864,6 +864,53 @@ test("G4 concurrent beginRotation calls create exactly one active candidate", as
   assert.equal(candidates.results.length, 1);
 });
 
+test("G4 beginRotation rejects a candidate when the current key is revoked after preflight", async (t) => {
+  const { mf, db, agent } = await createWorker();
+  t.after(() => mf.dispose());
+
+  const nextKeyId = "agent-key-synth-revoked-before-insert";
+  const nextToken = "synth-agent-token-revoked-before-insert-20261106";
+  let revokeBeforeBatch = true;
+  const racingDb = {
+    prepare: db.prepare.bind(db),
+    batch: async (statements) => {
+      if (revokeBeforeBatch) {
+        revokeBeforeBatch = false;
+        assert.equal(await new AgentRepository(db).revokeForLeak(agent.keyId), true);
+      }
+      return db.batch(statements);
+    },
+  };
+  const repository = new AgentRepository(racingDb);
+  await assert.rejects(
+    repository.beginRotation({
+      currentKeyId: agent.keyId,
+      nextKeyId,
+      nextToken,
+      overlapMs: MAX_OVERLAP_MS,
+    }),
+    (error) => error.code === "rotation_conflict",
+  );
+
+  const persisted = new AgentRepository(db);
+  const current = await persisted.findCredential(agent.keyId);
+  assert.equal(current.status, "revoked");
+  assert.ok(current.revoked_at);
+  assert.equal(await persisted.findCredential(nextKeyId), null);
+
+  const rotationStarted = await db.prepare(
+    "SELECT COUNT(*) AS n FROM agent_credential_events " +
+    "WHERE key_id = ? AND event_type = 'rotation_started'",
+  ).bind(nextKeyId).first();
+  assert.equal(rotationStarted.n, 0);
+
+  const overlapCandidates = await db.prepare(
+    "SELECT COUNT(*) AS n FROM agent_api_credentials " +
+    "WHERE rotation_from_key_id = ? AND status = 'overlap'",
+  ).bind(agent.keyId).first();
+  assert.equal(overlapCandidates.n, 0);
+});
+
 test("G4 rotation race never retires the current key if the candidate is leaked before promotion", async (t) => {
   const { mf, db, agent } = await createWorker();
   t.after(() => mf.dispose());
