@@ -34,10 +34,10 @@ AGT-POLL / AGT-ADDR / AGT-ROT / AGT-DATA / AGT-MFT).
 
 | Path | Purpose |
 | --- | --- |
-| `manifest.mjs` | Signed desired-state manifest: canonical JSON, desired-state digest (refs + digests only), Ed25519 sign/verify, fail-closed verifier with anti-replay memory (AGT-MFT-1/2, AGT-DATA-1) |
-| `key-rotation.mjs` | Communication-credential rotation state machine: 15-minute max dual-key overlap, recorded-auth precondition for revocation, no extension path, leak exception, comms-only scope guard (AGT-ROT-1..5) |
-| `receipt.mjs` | Per-channel apply receipts in the existing protocol shape (`gccgw_data_plane_apply_receipt`) + idempotency key; deep redaction of detail payloads; control-side ledger semantics (record exactly once, conflict on different outcome) (AGT-POLL-5, AGT-DATA-1) |
-| `agent-client.mjs` | One oneshot poll cycle: single-instance locks (memory + file with stale takeover), refs-only payload boundary, local material resolution with digest check, generation/digest no-change skip, dry-run/apply posture, idempotent receipt submission, state saved only after confirmation (AGT-POLL-3..6, AGT-DATA-1..2) |
+| `manifest.mjs` | Signed desired-state manifest: canonical JSON, desired-state digest (refs + digests only), safe path-segment validation for generation, Ed25519 sign/verify, fail-closed verifier with anti-replay memory (AGT-MFT-1/2, AGT-DATA-1) |
+| `key-rotation.mjs` | Communication-credential rotation state machine: 15-minute max dual-key overlap, recorded-auth precondition for revocation, expired candidate revoked while the current key is retained, exception blocks automatic progression, leak exception, comms-only scope guard (AGT-ROT-1..5) |
+| `receipt.mjs` | Per-channel apply receipts in the existing protocol shape (`gccgw_data_plane_apply_receipt`) + idempotency key; deterministic material ordering; deep redaction of detail payloads including authorization, cookies and subscription URLs; control-side ledger semantics (record exactly once, conflict on different outcome) (AGT-POLL-5, AGT-DATA-1) |
+| `agent-client.mjs` | One oneshot poll cycle: single-instance locks (memory + file with PID-liveness-checked stale takeover, serialized reaping and token-owned release), refs-only payload boundary, local material resolution with digest check, generation/digest no-change skip, dry-run/apply posture, idempotent receipt submission, state saved only after confirmation (AGT-POLL-3..6, AGT-DATA-1..2) |
 | `run-once.mjs` | Runnable oneshot entrypoint (env-configured; HTTPS addressing rule with loopback-only http exception) (AGT-ADDR-1) |
 | `systemd/` | Service (Type=oneshot, hardened like the current unit) and timer templates — not installed (AGT-POLL-1/2) |
 
@@ -47,13 +47,13 @@ AGT-POLL / AGT-ADDR / AGT-ROT / AGT-DATA / AGT-MFT).
 | --- | --- | --- |
 | AGT-POLL-1 oneshot, no daemon | `systemd/*.service`, `agent-client.mjs` (one cycle, no loop) | service template shape |
 | AGT-POLL-2 interval is deployment config | `systemd/*.timer` | timer template content; no `setInterval` in the client |
-| AGT-POLL-3 single-instance lock | `createMemoryLock` / `createFileLock` | concurrent cycle skipped; stale-lock takeover |
+| AGT-POLL-3 single-instance lock | `createMemoryLock` / `createFileLock` | concurrent cycle skipped; live stale owner is not stolen; dead-owner takeover is serialized; release checks owner token |
 | AGT-POLL-4 generation+digest no-change skip | `runOnce` state comparison | second identical cycle is `unchanged`, apply count stays 1 |
 | AGT-POLL-5 idempotent claim + receipt | `receipt.mjs` ledger, client receipt keys | ledger records once / conflicts; failed submission retries under the same keys |
 | AGT-POLL-6 posture + failure never widens | client defaults, error mapping | defaults dry-run; fetch failure → `retry_later`, nothing changes |
 | AGT-ADDR-1 no early relaxation | legacy agent untouched; `validateBaseUrl` in `run-once.mjs` | legacy validator still rejects public URLs; new rule requires https (loopback http dev-only) |
-| AGT-ROT-1..5 rotation | `key-rotation.mjs` | window validity, revoke precondition, no-extension + exception record, leak path, scope guard |
-| AGT-DATA-1 refs/digests only, redaction | payload boundary in the client; `redactDetail` | material-bearing payload refused; passwords/UUIDs never in receipts |
+| AGT-ROT-1..5 rotation | `key-rotation.mjs` | window validity, revoke precondition, expired candidate revoked while current key is retained, exception blocks automatic progression, leak path, scope guard |
+| AGT-DATA-1 refs/digests only, redaction | payload boundary in the client; `redactDetail` | material-bearing payload refused; passwords, authorization, cookies, subscription URLs and UUIDs never in receipts |
 | AGT-DATA-2 local resolution + digest check | `createFileMaterialStore`, client digest comparison | digest mismatch and unsafe refs refused before apply |
 | AGT-MFT-1 signature binds the tuple | `manifest.mjs` | tampering any bound field invalidates |
 | AGT-MFT-2 local verify, fail-closed | `createManifestVerifier`, client | bad signature / expiry / replay / binding mismatch all rejected, no apply |

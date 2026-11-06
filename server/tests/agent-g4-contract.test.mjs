@@ -30,6 +30,7 @@ import {
 import {
   createManifestVerifier,
   desiredStateDigest,
+  normalizeManifest,
   signManifest,
 } from "../../agent/g4/manifest.mjs";
 import {
@@ -37,7 +38,10 @@ import {
   createReceiptLedger,
   redactDetail,
 } from "../../agent/g4/receipt.mjs";
-import { validateBaseUrl } from "../../agent/g4/run-once.mjs";
+import {
+  resolveAppliedGenerationDir,
+  validateBaseUrl,
+} from "../../agent/g4/run-once.mjs";
 import { normalizeProductionEdgeAgentConfig } from "../../agent/production-edge-agent.mjs";
 
 const G4_DIR = fileURLToPath(new URL("../../agent/g4/", import.meta.url));
@@ -170,10 +174,34 @@ test("AGT-POLL-3: file lock refuses a live holder and takes over a stale lock", 
   assert.equal(await lock.acquire(), null);
   await handle.release();
 
-  await writeFile(path, JSON.stringify({ pid: 999_999, at: NOW - 10_000 }));
-  const takeover = await lock.acquire();
-  assert.ok(takeover, "stale lock must be taken over");
+  await writeFile(path, JSON.stringify({
+    pid: process.pid,
+    at: NOW - 10_000,
+    token: "live-owner",
+  }));
+  assert.equal(await lock.acquire(), null, "a stale timestamp must not override a live PID");
+
+  await writeFile(path, JSON.stringify({
+    pid: 999_999_999,
+    at: NOW - 10_000,
+    token: "dead-owner",
+  }));
+  const [first, second] = await Promise.all([lock.acquire(), lock.acquire()]);
+  assert.equal([first, second].filter(Boolean).length, 1, "only one contender may reap a dead owner");
+  const takeover = first ?? second;
+  assert.ok(takeover, "a stale lock with a dead owner may be reclaimed");
+
+  await writeFile(path, JSON.stringify({
+    pid: process.pid,
+    at: NOW,
+    token: "replacement-owner",
+  }));
   await takeover.release();
+  assert.equal(
+    JSON.parse(await readFile(path, "utf8")).token,
+    "replacement-owner",
+    "a previous owner's release must not remove a replacement lock",
+  );
 });
 
 // --- AGT-POLL-4: generation + digest no-change skip ---
@@ -215,6 +243,28 @@ test("AGT-POLL-5: the receipt ledger records a key exactly once and conflicts on
     () => ledger.record({ ...receipt, status: "failed" }),
     (error) => error.code === "idempotency_conflict",
   );
+});
+
+test("AGT-POLL-5: material ordering does not change the idempotency fingerprint", () => {
+  const materials = [
+    { channelRef: CHANNELS[0], edgeCredentialRef: "cred-b", digest: "b".repeat(64) },
+    { channelRef: CHANNELS[0], edgeCredentialRef: "cred-a", digest: "a".repeat(64) },
+  ];
+  const common = {
+    nodeRef: NODE,
+    channelRef: CHANNELS[0],
+    generation: "gen-1",
+    desiredStateRef: "desired-gen-1",
+    idempotencyKey: "receipt:desired-gen-1:gen-1:chan-synth-hy2",
+    status: "applied",
+  };
+  const first = buildChannelReceipt({ ...common, materialDigests: materials });
+  const reordered = buildChannelReceipt({ ...common, materialDigests: [...materials].reverse() });
+  assert.deepEqual(first.materialDigests, reordered.materialDigests);
+
+  const ledger = createReceiptLedger();
+  assert.deepEqual(ledger.record(first), { recorded: true, replayed: false });
+  assert.deepEqual(ledger.record(reordered), { recorded: false, replayed: true });
 });
 
 test("AGT-POLL-5: a failed receipt submission leaves state unsaved so the next cycle retries under the same keys", async () => {
@@ -283,6 +333,22 @@ test("AGT-ADDR-1: the new contract requires https, with http only for loopback d
   assert.throws(() => validateBaseUrl("http://control.example.test"), /must be https/);
 });
 
+test("AGT-MFT-2: applied generation paths remain inside the applied state directory", async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), "g4-generation-"));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  assert.equal(
+    resolveAppliedGenerationDir(dir, "gen-1"),
+    join(dir, "applied", "gen-1"),
+  );
+  for (const generation of ["../../escaped", "../escape", "a/b", "a\\b", ".", "..", "/tmp/escape"]) {
+    assert.throws(
+      () => resolveAppliedGenerationDir(dir, generation),
+      /safe path segment|outside the applied state directory/,
+      `unsafe generation ${generation} must be rejected`,
+    );
+  }
+});
+
 // --- AGT-ROT-1..5: credential rotation ---
 
 test("AGT-ROT-1: both keys are valid inside the 15-minute overlap; the old key fails after it", () => {
@@ -293,7 +359,8 @@ test("AGT-ROT-1: both keys are valid inside the 15-minute overlap; the old key f
   assert.equal(rotation.isKeyValid("key-a"), true);
   assert.equal(rotation.isKeyValid("key-b"), true);
   t += MAX_OVERLAP_MS; // beyond the window
-  assert.equal(rotation.isKeyValid("key-a"), false);
+  assert.equal(rotation.isKeyValid("key-a"), true);
+  assert.equal(rotation.isKeyValid("key-b"), false);
 });
 
 test("AGT-ROT-2: the old key cannot be revoked before the new key has a recorded successful auth", () => {
@@ -318,6 +385,18 @@ test("AGT-ROT-3: there is no window-extension path, and expiry raises an excepti
   t += MAX_OVERLAP_MS + 1;
   const status = rotation.status();
   assert.equal(status.exception?.type, "overlap_expired");
+  assert.equal(status.currentKeyId, "key-a", "expiry must retain the current key");
+  assert.deepEqual(status.revokedKeyIds, ["key-b"], "expiry must revoke the unacknowledged candidate");
+  assert.equal(rotation.isKeyValid("key-a"), true);
+  assert.equal(rotation.isKeyValid("key-b"), false);
+  assert.throws(
+    () => rotation.recordSuccessfulAuth("key-b"),
+    (error) => error.code === "unknown_key",
+  );
+  assert.throws(
+    () => rotation.beginRotation("key-c"),
+    (error) => error.code === "rotation_exception_active",
+  );
   assert.ok(rotation.auditLog().some((entry) => entry.type === "overlap_expired"));
 });
 
@@ -356,12 +435,21 @@ test("AGT-DATA-1: receipt details are redacted — no passwords, secrets, or raw
   const redacted = redactDetail({
     note: `applied credential ${uuid} ok`,
     password: "synthetic-password",
+    authorization: "Bearer synthetic-bearer",
+    cookie: "session=synthetic-cookie",
+    subscriptionUrl: "https://subscription.example.test/sub?token=synthetic-subscription",
     nested: { apiSecret: "synthetic-secret", count: 3 },
   });
   const serialized = JSON.stringify(redacted);
   assert.ok(!serialized.includes(uuid));
   assert.ok(!serialized.includes("synthetic-password"));
   assert.ok(!serialized.includes("synthetic-secret"));
+  assert.ok(!serialized.includes("synthetic-bearer"));
+  assert.ok(!serialized.includes("synthetic-cookie"));
+  assert.ok(!serialized.includes("https://subscription.example.test"));
+  assert.equal(redacted.authorization, "[redacted]");
+  assert.equal(redacted.cookie, "[redacted]");
+  assert.equal(redacted.subscriptionUrl, "[redacted]");
   assert.equal(redacted.nested.count, 3);
 });
 
@@ -442,6 +530,18 @@ test("AGT-MFT-2: bad signature, expiry, replay, and binding mismatch all fail cl
   assert.equal(result.status, "rejected");
   assert.equal(calls.apply, 0);
   assert.equal(calls.submitted.length, 0);
+});
+
+test("AGT-MFT-2: generation is restricted to a safe local path segment", () => {
+  const { manifest } = makeDesired();
+  assert.equal(normalizeManifest(manifest).generation, "gen-1");
+  for (const generation of ["../../escaped", "../escape", "a/b", "a\\b", ".", "..", "/tmp/escape"]) {
+    assert.throws(
+      () => normalizeManifest({ ...manifest, generation }),
+      (error) => error.code === "manifest_invalid",
+      `unsafe generation ${generation} must be rejected`,
+    );
+  }
 });
 
 test("AGT-MFT-3: the G4 module code contains no E4-A references (no keys, no semantics, no imports)", async () => {

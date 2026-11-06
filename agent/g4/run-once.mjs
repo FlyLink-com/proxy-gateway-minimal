@@ -29,7 +29,7 @@
 
 import { createPublicKey } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import {
   createAgentClient,
   createFileLock,
@@ -53,6 +53,31 @@ export function validateBaseUrl(raw) {
   if (parsed.protocol === "https:") return parsed.toString().replace(/\/$/, "");
   if (parsed.protocol === "http:" && loopback) return parsed.toString().replace(/\/$/, "");
   throw new Error("baseUrl must be https (plain http is loopback-development only)");
+}
+
+const SAFE_GENERATION_PATTERN = /^[A-Za-z0-9._:-]{1,128}$/;
+
+export function resolveAppliedGenerationDir(stateDir, generation) {
+  if (
+    typeof generation !== "string"
+    || !SAFE_GENERATION_PATTERN.test(generation)
+    || generation === "."
+    || generation === ".."
+  ) {
+    throw new Error("generation must be a safe path segment");
+  }
+  const root = resolve(stateDir, "applied");
+  const target = resolve(root, generation);
+  const relativeTarget = relative(root, target);
+  if (
+    !relativeTarget
+    || relativeTarget === ".."
+    || relativeTarget.startsWith(`..${sep}`)
+    || isAbsolute(relativeTarget)
+  ) {
+    throw new Error("generation resolves outside the applied state directory");
+  }
+  return target;
 }
 
 async function main() {
@@ -105,7 +130,7 @@ async function main() {
       applyEnabled: process.env.GCCGW_G4_APPLY_ENABLED === "true",
     },
     apply: async ({ manifest, materials }) => {
-      const dir = join(stateDir, "applied", manifest.generation);
+      const dir = resolveAppliedGenerationDir(stateDir, manifest.generation);
       await mkdir(dir, { recursive: true });
       for (const material of materials) {
         await writeFile(join(dir, material.edgeCredentialRef), material.bytes);

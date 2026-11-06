@@ -13,9 +13,9 @@
 // - The old key may be revoked (rotation path) only after the new key
 //   has completed one recorded successful authentication (ROT-2).
 // - The overlap window can never be extended: this module exposes no
-//   extension operation at all. A window that expires unfinished
-//   closes the old key and raises an exception record for manual
-//   ruling (ROT-3).
+//   extension operation at all. If the window expires before the new
+//   key is acknowledged, the candidate is revoked, the current key is
+//   retained, and an exception blocks further automatic rotation (ROT-3).
 // - Leak exception: a key may be revoked immediately on a confirmed
 //   leak, without the ROT-2 precondition, and the revocation is
 //   audit-logged (ROT-4).
@@ -54,13 +54,13 @@ export function createKeyRotation({ initialKeyId, scope, now = () => Date.now() 
     if (overlap && at >= overlap.expiresAt) {
       const expired = overlap;
       overlap = null;
-      revoked.add(currentKeyId);
+      revoked.add(expired.nextKeyId);
       exception = {
         type: "overlap_expired",
         at,
-        detail: `overlap for ${expired.nextKeyId} expired before rotation completed`,
+        detail: `overlap for ${expired.nextKeyId} expired before acknowledgement; current key ${currentKeyId} retained`,
       };
-      log("overlap_expired", { nextKeyId: expired.nextKeyId, oldKeyId: currentKeyId });
+      log("overlap_expired", { nextKeyId: expired.nextKeyId, currentKeyId });
     }
   }
 
@@ -68,6 +68,9 @@ export function createKeyRotation({ initialKeyId, scope, now = () => Date.now() 
     beginRotation(nextKeyId) {
       const at = now();
       settleExpiredOverlap(at);
+      if (exception) {
+        throw new RotationError("rotation_exception_active", "manual ruling is required before another rotation");
+      }
       if (overlap) {
         throw new RotationError("rotation_in_progress", "a rotation overlap is already active");
       }
@@ -98,10 +101,6 @@ export function createKeyRotation({ initialKeyId, scope, now = () => Date.now() 
       if (revoked.has(keyId)) return false;
       if (keyId === currentKeyId) return true;
       if (overlap && keyId === overlap.nextKeyId && at < overlap.expiresAt) return true;
-      // After an expired overlap the incoming key was already activated;
-      // it stays valid so the operator can complete the rotation, while
-      // the old key is closed (see settleExpiredOverlap).
-      if (exception && exception.type === "overlap_expired" && successfulAuthAt.has(keyId)) return true;
       return false;
     },
 
@@ -132,11 +131,10 @@ export function createKeyRotation({ initialKeyId, scope, now = () => Date.now() 
       }
       // Rotation-path revocation of the old key (ROT-2): the successor
       // must exist and must already have a recorded successful auth.
-      if (!overlap && !exception) {
-        throw new RotationError("no_rotation_in_progress", "no rotation is in progress");
+      if (!overlap) {
+        throw new RotationError("no_rotation_in_progress", "no active rotation is in progress");
       }
-      const nextKeyId = overlap ? overlap.nextKeyId : null;
-      const successor = nextKeyId ?? [...successfulAuthAt.keys()].find((id) => id !== keyId && !revoked.has(id));
+      const successor = overlap.nextKeyId;
       if (!successor || !successfulAuthAt.has(successor)) {
         throw new RotationError(
           "revoke_precondition_unmet",

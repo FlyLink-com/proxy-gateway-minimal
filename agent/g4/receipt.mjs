@@ -23,9 +23,23 @@ export class ReceiptError extends Error {
 // Keys whose values are material or credential bearing and must never
 // leave the host inside a receipt detail payload.
 const SENSITIVE_KEY_PATTERN =
-  /(password|passwd|secret|token|private|material|raw|credential(?!ref))/i;
+  /(password|passwd|secret|token|private|material|raw|credential(?!ref)|auth(?:orization|header)?|proxy[-_]?authorization|set[-_]?cookie|cookie|subscription(?:[_-]?url)?)/i;
 const UUID_PATTERN =
   /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
+
+function compareMaterialDigest(a, b) {
+  for (const key of ["channelRef", "edgeCredentialRef", "digest"]) {
+    const left = String(a?.[key] ?? "");
+    const right = String(b?.[key] ?? "");
+    if (left < right) return -1;
+    if (left > right) return 1;
+  }
+  return 0;
+}
+
+function sortMaterialDigests(items) {
+  return [...items].sort(compareMaterialDigest);
+}
 
 // Deep-redact a detail payload: sensitive keys are replaced wholesale,
 // and any raw UUID appearing in a free-text string is masked (raw
@@ -76,11 +90,11 @@ export function buildChannelReceipt({
     channelRef,
     generation,
     desiredStateRef,
-    materialDigests: materialDigests.map((m) => ({
+    materialDigests: sortMaterialDigests(materialDigests.map((m) => ({
       channelRef: m.channelRef,
       edgeCredentialRef: m.edgeCredentialRef,
       digest: m.digest,
-    })),
+    }))),
     idempotencyKey,
     status,
     detail: redactDetail(detail),
@@ -99,7 +113,7 @@ export function receiptFingerprint(receipt) {
       channelRef: receipt.channelRef,
       generation: receipt.generation,
       desiredStateRef: receipt.desiredStateRef,
-      materialDigests: receipt.materialDigests,
+      materialDigests: sortMaterialDigests(receipt.materialDigests),
       status: receipt.status,
     }),
   );

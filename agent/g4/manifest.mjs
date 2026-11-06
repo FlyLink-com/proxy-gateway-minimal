@@ -76,6 +76,7 @@ const REQUIRED_FIELDS = [
   "antiReplayId",
   "keyId",
 ];
+const SAFE_GENERATION_PATTERN = /^[A-Za-z0-9._:-]{1,128}$/;
 
 export function normalizeManifest(payload) {
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
@@ -102,6 +103,13 @@ export function normalizeManifest(payload) {
     if (typeof value !== "string" || value.length === 0) {
       throw new ManifestError("manifest_invalid", `manifest ${field} must be a non-empty string`);
     }
+  }
+  if (
+    !SAFE_GENERATION_PATTERN.test(generation)
+    || generation === "."
+    || generation === ".."
+  ) {
+    throw new ManifestError("manifest_invalid", "manifest generation must be a safe path segment");
   }
   if (!Array.isArray(channelRefs) || channelRefs.length === 0
     || channelRefs.some((ref) => typeof ref !== "string" || ref.length === 0)

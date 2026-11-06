@@ -18,7 +18,7 @@
 // must match the manifest before apply (AGT-DATA-2).
 
 import { createHash, randomUUID } from "node:crypto";
-import { open, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { mkdir, open, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { desiredStateDigest } from "./manifest.mjs";
 import { buildChannelReceipt } from "./receipt.mjs";
@@ -48,34 +48,104 @@ export function createMemoryLock() {
   };
 }
 
-// Lock file with owner pid + timestamp; a lock older than staleMs is
-// considered abandoned (e.g. a killed oneshot run) and may be taken
-// over exactly once per acquire call.
+// A stale timestamp alone is not proof that an owner died: an apply may
+// legitimately run longer than staleMs. Treat EPERM as alive and fail
+// closed when process liveness cannot be disproved.
+function isProcessAlive(pid) {
+  if (!Number.isInteger(pid) || pid <= 0) return false;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return error.code === "EPERM";
+  }
+}
+
+// Lock file with pid, timestamp and an ownership token. A stale lock is
+// reclaimable only when its owner process is gone. A sibling reaper
+// directory serializes reclaimers; if a reaper itself is interrupted,
+// acquisition fails closed until an operator inspects the stale reaper.
 export function createFileLock(path, { staleMs = 120_000, now = () => Date.now() } = {}) {
+  const reaperPath = `${path}.reaper`;
+  const staleAndOwnerGone = (info) =>
+    Number.isInteger(info?.pid)
+    && info.pid > 0
+    && typeof info.at === "number"
+    && now() - info.at > staleMs
+    && !isProcessAlive(info.pid);
+
+  async function createOwnedLock() {
+    const token = randomUUID();
+    const handle = await open(path, "wx");
+    try {
+      await handle.writeFile(JSON.stringify({ pid: process.pid, at: now(), token }));
+    } finally {
+      await handle.close();
+    }
+    return {
+      async release() {
+        let current;
+        try {
+          current = JSON.parse(await readFile(path, "utf8"));
+        } catch {
+          return;
+        }
+        if (current.token === token) {
+          await rm(path, { force: true });
+        }
+      },
+    };
+  }
+
   return {
     async acquire() {
       for (let attempt = 0; attempt < 2; attempt += 1) {
         try {
-          const handle = await open(path, "wx");
-          await handle.writeFile(JSON.stringify({ pid: process.pid, at: now() }));
-          await handle.close();
-          return {
-            async release() {
-              await rm(path, { force: true });
-            },
-          };
+          return await createOwnedLock();
         } catch (error) {
           if (error.code !== "EEXIST") throw error;
-          let stale = false;
-          try {
-            const info = JSON.parse(await readFile(path, "utf8"));
-            stale = typeof info.at === "number" && now() - info.at > staleMs;
-          } catch {
-            stale = false;
-          }
-          if (!stale) return null;
-          await rm(path, { force: true });
         }
+
+        let observed;
+        try {
+          observed = JSON.parse(await readFile(path, "utf8"));
+        } catch {
+          return null;
+        }
+        if (!staleAndOwnerGone(observed)) return null;
+
+        try {
+          await mkdir(reaperPath);
+        } catch (error) {
+          if (error.code === "EEXIST") return null;
+          throw error;
+        }
+
+        let reclaimed = false;
+        try {
+          let current;
+          try {
+            current = JSON.parse(await readFile(path, "utf8"));
+          } catch (error) {
+            if (error.code === "ENOENT") {
+              reclaimed = true;
+            } else {
+              return null;
+            }
+          }
+          if (!reclaimed) {
+            const sameOwner =
+              current.token === observed.token
+              && current.pid === observed.pid
+              && current.at === observed.at;
+            if (!sameOwner || !staleAndOwnerGone(current)) return null;
+            await rm(path, { force: true });
+            reclaimed = true;
+          }
+        } finally {
+          await rm(reaperPath, { recursive: true, force: true });
+        }
+        if (!reclaimed) return null;
       }
       return null;
     },
