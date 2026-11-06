@@ -141,9 +141,14 @@ test("AGT-POLL-1: the G4 service template is Type=oneshot and no daemon unit exi
   assert.doesNotMatch(service, /^Type=simple$/m);
 });
 
-test("AGT-POLL-2: the interval lives in the timer template as deployment configuration", async () => {
+test("AGT-POLL-2: the interval lives in the timer template as positive deployment configuration", async () => {
   const timer = await readFile(join(G4_DIR, "systemd/gccgw-control-plane-agent.timer"), "utf8");
-  assert.match(timer, /^OnUnitActiveSec=\d+(?:\.\d+)?(?:ms|s|min|h|d)?$/m);
+  const intervalPattern = /^(?:[1-9]\d*(?:\.\d+)?|0\.\d*[1-9]\d*)(?:ms|s|min|h|d)?$/;
+  const interval = timer.match(/^OnUnitActiveSec=(\S+)$/m)?.[1];
+  assert.ok(interval, "OnUnitActiveSec must be configured in the timer template");
+  assert.match(interval, intervalPattern);
+  assert.ok(["60", "60s", "1.5min", "2h", "3d"].every((value) => intervalPattern.test(value)));
+  assert.ok(["0", "0s", "0.0", "0min"].every((value) => !intervalPattern.test(value)));
   assert.match(timer, /deployment configuration/);
   const clientSource = await readFile(join(G4_DIR, "agent-client.mjs"), "utf8");
   assert.doesNotMatch(clientSource, /setInterval/);
