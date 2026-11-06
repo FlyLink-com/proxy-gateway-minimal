@@ -21,6 +21,7 @@ test("migration applies and creates the slice schema verbatim", async (t) => {
     "index:platform_portal_second_factor_status_idx",
     "table:platform_accounts",
     "table:platform_portal_second_factor_challenges",
+    "table:platform_write_idempotency_keys",
   ]);
 });
 
