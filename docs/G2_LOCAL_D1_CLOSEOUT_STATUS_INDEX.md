@@ -29,7 +29,7 @@ The existing Node/Express + SQLite control plane remains the current authoritati
 | G2 Rev2 consolidated report | Complete report with sections §1–§7 and appendices A/B; completeness checks reported by the author | SHA-256 `4dcd60413f719f51d51066a6aceb1278ac940bb31f44fca3cacde0d5917ee4f8`; 17,602 bytes |
 | Stage 6 transaction reconciliation | 15 scenarios; 57 actions; 56 terminal states equal; 1 expected divergence | `tx-results.json` SHA-256 `9d5b7c9e0d6ba0dd81b2861913a2d6f6943a142a687461c2ac004c4cca325b93` |
 | Stage 7 pagination differential | 39 checks; dual-engine results reported identical across data-layer and application-layer classifications | Receipt SHA-256 `c0c40dbd0a1a4cc52d8ad1065c13b64151c5048f0fb71625e84dac465992b411`; results JSON SHA-256 `c26541f857f5b85352893c67c74a10fd7255dc3d4aac62fb753d3f2dea33f435` |
-| Scheme C trigger retest | 91/91 trigger definitions passed in the reported local D1 differential retest; 88 unchanged and 3 expected transitions from unsupported to pass | Receipt SHA-256 `e8461887100fc1ab915150a2da65ac955723d9af5bf3a55fb3f4a212737736db` |
+| Scheme C trigger retest | 91/91 trigger definitions passed in the reported local D1 differential retest; 88 unchanged and 3 expected transitions from unsupported to pass | Receipt SHA-256 `ce7f516ccec5a305efc7dd62a8063e49112b5e275a0163744230686b4d909b32` |
 | Scheme C source migration | Separate migration source merged; no persistent database apply | PR [#832](https://github.com/FlyLink-com/proxy-gateway-minimal/pull/832) |
 
 ## Explicit accounting rules
