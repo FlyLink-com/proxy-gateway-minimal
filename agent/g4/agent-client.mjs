@@ -20,8 +20,8 @@
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir, open, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { desiredStateDigest } from "./manifest.mjs";
-import { buildChannelReceipt } from "./receipt.mjs";
+import { canonicalJson, desiredStateDigest } from "./manifest.mjs";
+import { buildChannelReceipt, buildReceiptIdempotencyKey } from "./receipt.mjs";
 
 export class AgentContractError extends Error {
   constructor(code, message) {
@@ -276,14 +276,134 @@ export function createAgentClient({
       return { status: "skipped_locked" };
     }
     try {
+      let state = await stateStore.load();
+      if (!state || typeof state !== "object" || Array.isArray(state)) state = {};
+
+      let receiptsRecovered = 0;
+      let receiptsDeferred = 0;
+      const pendingReceipts = state.pendingReceipts ?? [];
+      const previouslyDeferredReceipts = state.deferredReceipts ?? [];
+      if (!Array.isArray(pendingReceipts) || !Array.isArray(previouslyDeferredReceipts)) {
+        return { status: "rejected", stage: "receipt_state", code: "receipt_state_invalid" };
+      }
+      const receiptsToRecover = [];
+      const receiptsToDefer = [];
+      for (const receipt of [...pendingReceipts, ...previouslyDeferredReceipts]) {
+        if (
+          !receipt
+          || typeof receipt !== "object"
+          || Array.isArray(receipt)
+          || typeof receipt.channelRef !== "string"
+          || receipt.channelRef.length === 0
+        ) {
+          return { status: "rejected", stage: "receipt_state", code: "receipt_scope_unverifiable" };
+        }
+        if (channelRefs.includes(receipt.channelRef)) receiptsToRecover.push(receipt);
+        else receiptsToDefer.push(receipt);
+      }
+      receiptsRecovered = receiptsToRecover.length;
+      receiptsDeferred = receiptsToDefer.length;
+      if (pendingReceipts.length > 0 || previouslyDeferredReceipts.length > 0) {
+        state = {
+          ...state,
+          pendingReceipts: receiptsToRecover,
+          deferredReceipts: receiptsToDefer,
+        };
+        try {
+          await stateStore.save(state);
+        } catch (error) {
+          return {
+            status: "retry_later",
+            stage: "state",
+            error: String(error?.message ?? error),
+          };
+        }
+      }
+      if (receiptsToRecover.length > 0) {
+        try {
+          for (const receipt of receiptsToRecover) {
+            await transport.submitReceipt(receipt, { headers: buildHeaders() });
+          }
+        } catch (error) {
+          return {
+            status: "retry_later",
+            stage: "receipt",
+            error: String(error?.message ?? error),
+          };
+        }
+        state = {
+          ...state,
+          pendingReceipts: [],
+          deferredReceipts: receiptsToDefer,
+        };
+        try {
+          await stateStore.save(state);
+        } catch (error) {
+          return {
+            status: "retry_later",
+            stage: "state",
+            error: String(error?.message ?? error),
+          };
+        }
+      }
+
+      const claimKeyPattern = /^claim:[A-Za-z0-9][A-Za-z0-9._:-]{0,127}:[A-Za-z0-9_-]{16,128}$/;
+      const claimScopeFingerprint = canonicalJson({
+        nodeRef,
+        channelRefs: [...channelRefs].sort(),
+      });
+      let claimIdempotencyKey = state.pendingClaim?.idempotencyKey;
+      if (
+        typeof claimIdempotencyKey !== "string"
+        || !claimKeyPattern.test(claimIdempotencyKey)
+        || state.pendingClaim?.scopeFingerprint !== claimScopeFingerprint
+      ) {
+        claimIdempotencyKey = "claim:" + nodeRef + ":" + randomUUID();
+        state = {
+          ...state,
+          pendingClaim: {
+            idempotencyKey: claimIdempotencyKey,
+            scopeFingerprint: claimScopeFingerprint,
+          },
+        };
+        try {
+          await stateStore.save(state);
+        } catch (error) {
+          return {
+            status: "retry_later",
+            stage: "state",
+            error: String(error?.message ?? error),
+          };
+        }
+      }
+
       let desired;
       try {
         desired = await transport.fetchDesiredState({
           nodeRef,
           channelRefs,
           headers: buildHeaders(),
+          idempotencyKey: claimIdempotencyKey,
         });
       } catch (error) {
+        if (error?.code === "claim_expired" || error?.statusCode === 410) {
+          state = { ...state, pendingClaim: null };
+          try {
+            await stateStore.save(state);
+          } catch (saveError) {
+            return {
+              status: "retry_later",
+              stage: "state",
+              error: String(saveError?.message ?? saveError),
+            };
+          }
+          return {
+            status: "retry_later",
+            stage: "claim",
+            code: "claim_expired",
+            error: String(error?.message ?? error),
+          };
+        }
         return { status: "retry_later", stage: "fetch", error: String(error?.message ?? error) };
       }
 
@@ -314,13 +434,23 @@ export function createAgentClient({
         return { status: "rejected", stage: "digest", code: "digest_mismatch" };
       }
 
-      const state = await stateStore.load();
+      state = { ...state, pendingClaim: null };
+      try {
+        await stateStore.save(state);
+      } catch (error) {
+        return { status: "retry_later", stage: "state", error: String(error?.message ?? error) };
+      }
+
       if (
-        state
-        && state.generation === manifest.generation
+        state.generation === manifest.generation
         && state.desiredStateDigest === manifest.desiredStateDigest
       ) {
-        return { status: "unchanged", generation: manifest.generation };
+        return {
+          status: "unchanged",
+          generation: manifest.generation,
+          receiptsRecovered,
+          receiptsDeferred,
+        };
       }
 
       const resolved = [];
@@ -352,39 +482,53 @@ export function createAgentClient({
           generation: manifest.generation,
           desiredStateRef: manifest.desiredStateRef,
           materialDigests: desired.materials.filter((m) => m.channelRef === channelRef),
-          idempotencyKey: `receipt:${manifest.desiredStateRef}:${manifest.generation}:${channelRef}`,
+          idempotencyKey: buildReceiptIdempotencyKey({
+            desiredStateRef: manifest.desiredStateRef,
+            generation: manifest.generation,
+            channelRef,
+          }),
           status: receiptStatus,
           detail: { mode: effectiveDryRun ? "dry_run" : "apply" },
         }),
       );
 
       if (effectiveDryRun) {
-        return { status: "dry_run", generation: manifest.generation, receipts };
+        return { status: "dry_run", generation: manifest.generation, receipts, receiptsDeferred };
       }
 
       await apply({ manifest, materials: resolved });
+
+      const appliedState = {
+        generation: manifest.generation,
+        desiredStateDigest: manifest.desiredStateDigest,
+        desiredStateRef: manifest.desiredStateRef,
+        pendingClaim: null,
+        pendingReceipts: receipts,
+        deferredReceipts: Array.isArray(state.deferredReceipts) ? state.deferredReceipts : [],
+      };
+      try {
+        await stateStore.save(appliedState);
+      } catch (error) {
+        return { status: "retry_later", stage: "state", error: String(error?.message ?? error) };
+      }
 
       try {
         for (const receipt of receipts) {
           await transport.submitReceipt(receipt, { headers: buildHeaders() });
         }
       } catch (error) {
-        // Apply happened but confirmation did not: state is NOT saved,
-        // so the next cycle re-runs and re-submits under the same
-        // idempotency keys; the control ledger records each key once.
         return { status: "retry_later", stage: "receipt", error: String(error?.message ?? error) };
       }
 
-      await stateStore.save({
-        generation: manifest.generation,
-        desiredStateDigest: manifest.desiredStateDigest,
-        desiredStateRef: manifest.desiredStateRef,
-      });
-      return { status: "applied", generation: manifest.generation, receipts };
+      try {
+        await stateStore.save({ ...appliedState, pendingReceipts: [] });
+      } catch (error) {
+        return { status: "retry_later", stage: "state", error: String(error?.message ?? error) };
+      }
+      return { status: "applied", generation: manifest.generation, receipts, receiptsRecovered, receiptsDeferred };
     } finally {
       await handle.release();
     }
   }
-
   return { runOnce };
 }

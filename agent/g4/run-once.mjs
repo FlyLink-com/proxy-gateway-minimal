@@ -138,18 +138,30 @@ async function main() {
   await chmod(stateDir, 0o700);
 
   const transport = {
-    async fetchDesiredState({ headers }) {
+    async fetchDesiredState({ headers, idempotencyKey }) {
       const url = new URL(`${baseUrl}/v1/agent/desired-state`);
       url.searchParams.set("nodeRef", nodeRef);
       url.searchParams.set("channelRefs", channelRefs.join(","));
-      const response = await fetch(url, { headers });
-      if (!response.ok) throw new Error(`desired-state fetch failed: HTTP ${response.status}`);
+      const response = await fetch(url, {
+        headers: { ...headers, "idempotency-key": idempotencyKey },
+      });
+      if (!response.ok) {
+        const body = await response.json().catch(() => null);
+        const error = new Error("desired-state fetch failed: HTTP " + response.status);
+        error.statusCode = response.status;
+        if (body?.error?.code) error.code = body.error.code;
+        throw error;
+      }
       return response.json();
     },
     async submitReceipt(receipt, { headers }) {
       const response = await fetch(`${baseUrl}/v1/agent/receipts`, {
         method: "POST",
-        headers: { ...headers, "content-type": "application/json" },
+        headers: {
+          ...headers,
+          "content-type": "application/json",
+          "idempotency-key": receipt.idempotencyKey,
+        },
         body: JSON.stringify(receipt),
       });
       if (!response.ok) throw new Error(`receipt submit failed: HTTP ${response.status}`);

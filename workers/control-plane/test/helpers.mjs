@@ -3,17 +3,24 @@
 // migration files in filename order, and seeds an obviously synthetic
 // fixture.
 
+import { createHash, generateKeyPairSync } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { Miniflare } from "miniflare";
 
 export const READ_TOKEN = "synth-test-read-token";
 export const WRITE_TOKEN = "synth-test-write-token";
+export const AGENT_TOKEN = "synth-agent-token-for-local-g4-only-20261106";
+export const AGENT_API_KEY_ID = "agent-key-synth-1";
+export const AGENT_MANIFEST_KEY_ID = "manifest-key-synth-1";
+export const AGENT_NODE_REF = "node-synth-01";
+export const AGENT_CHANNEL_REFS = ["chan-synth-hy2", "chan-synth-vless"];
 
 const workerEntrypoint = fileURLToPath(new URL("../src/index.mjs", import.meta.url));
 const migrationPaths = [
   fileURLToPath(new URL("../migrations/0001_accounts_slice.sql", import.meta.url)),
   fileURLToPath(new URL("../migrations/0002_write_idempotency.sql", import.meta.url)),
+  fileURLToPath(new URL("../migrations/0003_agent_protocol_slice.sql", import.meta.url)),
 ];
 
 export async function applyMigration(db) {
@@ -99,10 +106,76 @@ export async function seedFixture(db) {
   await db.batch(statements);
 }
 
-export async function createWorker({ withToken = true, withWriteToken = true, seed = true } = {}) {
+export async function seedAgentFixture(db) {
+  const now = new Date();
+  const createdAt = now.toISOString();
+  const issuedAt = new Date(now.getTime() - 1000).toISOString();
+  const expiresAt = new Date(now.getTime() + 10 * 60 * 1000).toISOString();
+  const materialA = Buffer.from("synthetic-material-a");
+  const materialB = Buffer.from("synthetic-material-b");
+  const digestA = createHash("sha256").update(materialA).digest("hex");
+  const digestB = createHash("sha256").update(materialB).digest("hex");
+  const tokenDigest = createHash("sha256").update(AGENT_TOKEN).digest("hex");
+
+  await db.batch([
+    db.prepare(
+      "INSERT INTO agent_nodes (node_ref, status, created_at, updated_at) VALUES (?, 'active', ?, ?)",
+    ).bind(AGENT_NODE_REF, createdAt, createdAt),
+    db.prepare(
+      "INSERT INTO agent_node_channels (node_ref, channel_ref, status) VALUES (?, ?, 'active')",
+    ).bind(AGENT_NODE_REF, AGENT_CHANNEL_REFS[0]),
+    db.prepare(
+      "INSERT INTO agent_node_channels (node_ref, channel_ref, status) VALUES (?, ?, 'active')",
+    ).bind(AGENT_NODE_REF, AGENT_CHANNEL_REFS[1]),
+    db.prepare(
+      "INSERT INTO agent_desired_states " +
+      "(desired_state_ref, node_ref, generation, status, issued_at, expires_at, created_at) " +
+      "VALUES (?, ?, ?, 'active', ?, ?, ?)",
+    ).bind("desired-synth-001", AGENT_NODE_REF, "gen-synth-001", issuedAt, expiresAt, createdAt),
+    db.prepare(
+      "INSERT INTO agent_desired_state_materials " +
+      "(desired_state_ref, channel_ref, edge_credential_ref, digest) VALUES (?, ?, ?, ?)",
+    ).bind("desired-synth-001", AGENT_CHANNEL_REFS[0], "cred-synth-a", digestA),
+    db.prepare(
+      "INSERT INTO agent_desired_state_materials " +
+      "(desired_state_ref, channel_ref, edge_credential_ref, digest) VALUES (?, ?, ?, ?)",
+    ).bind("desired-synth-001", AGENT_CHANNEL_REFS[1], "cred-synth-b", digestB),
+    db.prepare(
+      "INSERT INTO agent_api_credentials " +
+      "(key_id, token_sha256, node_ref, channel_refs_json, status, activated_at, " +
+      "overlap_expires_at, rotation_from_key_id, last_authenticated_at, " +
+      "auth_confirmed_at, revoked_at, created_at) " +
+      "VALUES (?, ?, ?, ?, 'active', ?, NULL, NULL, NULL, NULL, NULL, ?)",
+    ).bind(
+      AGENT_API_KEY_ID,
+      tokenDigest,
+      AGENT_NODE_REF,
+      JSON.stringify(AGENT_CHANNEL_REFS),
+      createdAt,
+      createdAt,
+    ),
+  ]);
+}
+
+export async function createWorker({
+  withToken = true,
+  withWriteToken = true,
+  seed = true,
+  withAgent = true,
+  withAgentSigning = true,
+} = {}) {
   const bindings = {};
   if (withToken) bindings.CONTROL_PLANE_READ_TOKEN = READ_TOKEN;
   if (withWriteToken) bindings.CONTROL_PLANE_WRITE_TOKEN = WRITE_TOKEN;
+
+  const manifestKeys = generateKeyPairSync("ed25519");
+  const manifestPrivateKeyPem = manifestKeys.privateKey.export({ format: "pem", type: "pkcs8" });
+  const manifestPublicKeyPem = manifestKeys.publicKey.export({ format: "pem", type: "spki" });
+  if (withAgentSigning) {
+    bindings.AGENT_MANIFEST_SIGNING_PRIVATE_KEY = manifestPrivateKeyPem;
+    bindings.AGENT_MANIFEST_SIGNING_KEY_ID = AGENT_MANIFEST_KEY_ID;
+  }
+
   const mf = new Miniflare({
     modules: true,
     scriptPath: workerEntrypoint,
@@ -112,8 +185,22 @@ export async function createWorker({ withToken = true, withWriteToken = true, se
   });
   const db = await mf.getD1Database("CONTROL_DB");
   await applyMigration(db);
-  if (seed) await seedFixture(db);
-  return { mf, db };
+  if (seed) {
+    await seedFixture(db);
+    if (withAgent) await seedAgentFixture(db);
+  }
+  return {
+    mf,
+    db,
+    agent: {
+      token: AGENT_TOKEN,
+      keyId: AGENT_API_KEY_ID,
+      nodeRef: AGENT_NODE_REF,
+      channelRefs: [...AGENT_CHANNEL_REFS],
+      manifestKeyId: AGENT_MANIFEST_KEY_ID,
+      manifestPublicKeyPem,
+    },
+  };
 }
 
 export function authHeaders() {

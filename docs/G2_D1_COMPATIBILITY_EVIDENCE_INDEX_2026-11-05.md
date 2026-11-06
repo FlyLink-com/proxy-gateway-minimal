@@ -1,6 +1,6 @@
 # G2 Local D1 Compatibility Evidence Index — 2026-11-05
 
-Last updated: 2026-11-05, America/Los_Angeles.
+Last updated: 2026-11-06, America/Los_Angeles.
 
 ```yaml
 document_metadata:
@@ -8,12 +8,20 @@ document_metadata:
   lifecycle: active
   authority_scope: g2_d1_compatibility_evidence
   superseded_by: null
-  last_verified_at: 2026-11-05
+  last_verified_at: 2026-11-06
   production_authority: false
 ```
 
-> **Formal status:** HOLD FOR CLOSEOUT / core compatibility conditions passed / total gate not closed.
-> This evidence index does not declare G2 PASS, authorize G3–G8, create remote resources, or approve production migration.
+> **Formal status:** ACCEPTED WITH DOCUMENTED LIMITATIONS (2026-11-06; PR #836 merged as `c50dc1df0d6b8e28d15e0bc8c53a11cbe86ffb40`; Issue #830 closed).
+> Acceptance covers the Rev2 report, stages 1–7 receipts, and local Wrangler/Miniflare D1 synthetic validation only. It does not claim full D1 equivalence, authorize remote resources, or approve production migration.
+
+## Formal acceptance record (2026-11-06)
+
+- PR [#836](https://github.com/FlyLink-com/proxy-gateway-minimal/pull/836) merged to master as `c50dc1df0d6b8e28d15e0bc8c53a11cbe86ffb40`; G2 closeout Issue [#830](https://github.com/FlyLink-com/proxy-gateway-minimal/issues/830) is closed.
+- Decision: **ACCEPTED WITH DOCUMENTED LIMITATIONS**. The accepted scope is this Rev2 report, stages 1–7 archived receipts, and the local Wrangler/Miniflare D1 synthetic validation surface.
+- Limitations remain explicit: FK 68 PASS / 58 attribution-limited; CHECK 246 PASS / 27 attribution-limited; 60 ordinary full indexes have definition-only verification; multi-replica `withSession()` bookmark semantics are unverified; concurrent-write pagination snapshot semantics are unverified; G1-29 cross-database subscription fulfillment is outside G2; production migration set remains `not_observed`.
+- The historical test baseline remains `master@63082bae5d980c3905d6e7405329b19e6c4e38ac`. The current master pointer does not rewrite that baseline.
+- This acceptance does not authorize remote D1/Worker creation, BWH access, production data access, persistent migration, dual writes, deployment, DNS, or traffic cutover.
 
 ## Scope and evidence boundary
 
@@ -21,7 +29,7 @@ document_metadata:
 - Test environment: Node v22.23.1; better-sqlite3 12.10.0 / SQLite 3.53.1 versus local Miniflare D1 using Wrangler 4.99.0.
 - Test data: synthetic only; local databases only.
 - No remote Cloudflare API, remote D1/Worker, BWH, production database, DNS, production runtime, or customer data was accessed.
-- The current repository master is 42db751defaaf9e1d24906cd03b7a4d4856aad30. This later source head does not change the historical G2 test baseline.
+- Current repository master at the 2026-11-06 closeout is `c8336ae6b0112ed3fb823d6bec29e1b34ad2a9fb`. This later source head does not change the historical G2 test baseline.
 
 The full Rev2 report is archived at [Google Drive — G2 Rev2 compatibility report](https://drive.google.com/file/d/1mC3-o9F4rsvBCuOJlAk7FPLwF5qz7rmV/view). Report SHA-256: **4dcd60413f719f51d51066a6aceb1278ac940bb31f44fca3cacde0d5917ee4f8** (17,602 bytes). The Rev2 report supersedes the truncated Rev1 artifact; Rev1 remains frozen and must not be cited as the complete report.
 
@@ -118,7 +126,7 @@ The post-cleanup harness retained 33 runner scripts, 22 result JSON files, the t
 
 ## Decision boundary
 
-- G2 is not declared PASS by this index. The current formal state remains HOLD FOR CLOSEOUT until Yi makes the final stage decision.
+- G2 is accepted with documented limitations; this is not a claim of full D1 behavior equivalence. The acceptance is limited to the evidence and local synthetic environment stated above.
 - Local compatibility evidence does not authorize remote D1 creation, Worker deployment, secrets, routes, DNS, BWH connection, production data access, migration apply, traffic switching, or G7 cutover.
 - The current source-of-truth control plane remains Node/Express + SQLite until an exact Risk A migration and cutover gate is completed.
 - The G2 Issue #830 evidence comments are the source records for the Rev2 report, the corrected 57/56/1 transaction count, and the stage 7 pagination probes.

@@ -30,6 +30,7 @@ import {
   ChallengeRepository,
   CHALLENGE_TTL_MS,
 } from "./repositories/challenge-repository.mjs";
+import { handleAgentDesiredState, handleAgentReceipt } from "./agent-protocol.mjs";
 
 const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 100;
@@ -246,6 +247,18 @@ export default {
           return jsonError(405, "method_not_allowed", "method not allowed");
         }
         return jsonResponse(200, { ok: true, service: "flylink-control-plane" });
+      }
+      if (pathname === "/v1/agent/desired-state") {
+        if (request.method !== "GET") {
+          return jsonError(405, "method_not_allowed", "method not allowed");
+        }
+        return await handleAgentDesiredState(request, env);
+      }
+      if (pathname === "/v1/agent/receipts") {
+        if (request.method !== "POST") {
+          return jsonError(405, "method_not_allowed", "method not allowed");
+        }
+        return await handleAgentReceipt(request, env);
       }
       const challengeMatch = /^\/v1\/accounts\/([^/]+)\/second-factor-challenges$/.exec(pathname);
       if (challengeMatch) {
