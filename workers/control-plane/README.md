@@ -32,7 +32,7 @@ The runnable G3/G4 control-plane source slices for the approved Workers + D1 tar
 | `src/repositories/account-repository.mjs` | Async D1 repository: `findById`, `listDirectory` |
 | `src/repositories/challenge-repository.mjs` | Async D1 repository for the write flow: idempotency lookup + atomic challenge issuance |
 | `seed/synthetic-seed.sql` | Obviously synthetic seed data (`acct-synth-*`) with same-timestamp groups |
-| `test/` | Node test runner + Miniflare suites (migration, repository, pagination, API) |
+| `test/` | Node test runner + Miniflare suites (migration, repository, pagination, API, Agent protocol) plus the root G4 Agent contract tests |
 
 ### Why the second table is second-factor challenges, not portal sessions
 
@@ -158,6 +158,7 @@ fresh local D1 database with the real migrations applied:
   key set, and JSON error shapes for 400 / 401 / 404 / 405.
 - **write-flow** — issuance projection, idempotent replay/conflict, privilege separation, fail-closed behavior and atomic rollback.
 - **agent-protocol** — Ed25519 manifest verification with the existing Agent verifier, refs/digests-only payloads, node/channel scope, timestamp and nonce replay checks, 120-second idempotent claim leases, redacted receipt binding and replay/conflict behavior, credential overlap/expiry/leak revocation, and a full Agent-client ↔ Worker ↔ local D1 cycle including lost claim/receipt response recovery without a second apply.
+- **Agent contract** — the existing `server/tests/agent-g4-contract.test.mjs` suite also runs in this targeted Worker workflow, including the persisted claim-key and pending-receipt retry semantics.
 
 CI (`.github/workflows/control-plane-worker.yml`) runs the same
 `npm ci` + `npm test` for pull requests that touch

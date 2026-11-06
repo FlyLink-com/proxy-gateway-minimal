@@ -248,7 +248,14 @@ async function authenticateAgent(request, env, {
     }
     throw error;
   }
-  await repository.recordAuthenticatedRequest({ credential, nowIso });
+  try {
+    await repository.recordAuthenticatedRequest({ credential, nowIso });
+  } catch (error) {
+    if (error?.code === "credential_revoked") {
+      return { response: jsonError(401, "unauthorized", "Agent credential is no longer active") };
+    }
+    throw error;
+  }
   return { credential, keyId, now };
 }
 

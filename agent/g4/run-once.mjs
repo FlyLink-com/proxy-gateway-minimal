@@ -146,8 +146,10 @@ async function main() {
         headers: { ...headers, "idempotency-key": idempotencyKey },
       });
       if (!response.ok) {
-        const error = new Error(`desired-state fetch failed: HTTP ${response.status}`);
-        if (response.status === 410) error.code = "claim_expired";
+        const body = await response.json().catch(() => null);
+        const error = new Error("desired-state fetch failed: HTTP " + response.status);
+        error.statusCode = response.status;
+        if (body?.error?.code) error.code = body.error.code;
         throw error;
       }
       return response.json();
