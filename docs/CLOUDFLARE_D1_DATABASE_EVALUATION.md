@@ -264,6 +264,23 @@ The open [PR #837](https://github.com/FlyLink-com/proxy-gateway-minimal/pull/837
 
 Production boundary remains unchanged: Node/Express + SQLite is the single production writer; no remote D1/Worker, production secrets, BWH/SSH, production data read/write, DNS, deployment, systemd installation, or traffic cutover occurred. Never infer production authority from local Miniflare tests or a source merge.
 
+## 2026-11-06 PST — G5 remote Staging and BWH Agent dry-run validation
+
+This dated addendum supersedes the earlier G5 "not started / no BWH connection" statements above. It records the approved non-production Staging execution only; it does not authorize production mutation.
+
+- **G5 Staging integration: PASS (synthetic dry-run scope).** The non-production Worker/D1 environment was deployed and the BWH Agent was exercised from the isolated directory `/opt/flylink-g5-staging` against source commit `c8336ae6b0112ed3fb823d6bec29e1b34ad2a9fb`.
+- User-provided BWH execution receipt: `dry_run=true`, `apply=false`; result `{"status":"dry_run","generation":"gen-synth-staging-001","stage":null,"code":null}`. Both synthetic channels, `chan-synth-staging-hy2` and `chan-synth-staging-vless`, returned first receipt HTTP 201 / `recorded=true`, then idempotent replay HTTP 200 / `replayed=true`; both receipts were `redacted=true`. User-reported checks include Worker handshake, manifest signature, and material validation.
+- Cloudflare D1: `flylink-control-plane-staging` / `1ec6458a-0ac0-4ab0-92f3-5ba58b775acc`; direct readback found 1 synthetic node, 2 channels, 1 desired state, 2 materials, 1 Agent credential, 1 manifest claim, and 2 apply receipts. Both stored receipts are `dry_run` for generation `gen-synth-staging-001`.
+- Worker deployment readback: version `6c1b8434-8a5d-4d9e-9085-e31852963263` at 100%.
+- The manifest claim remains `leased`. This is consistent with the protocol: `markClaimsCompleted()` completes a claim only after all expected channels have `applied` receipts. Dry-run receipts do not represent a real apply and must not be described as completed production work.
+- The four G4 Agent file Git blob SHA-1 values at the exact BWH source commit were independently read from GitHub:
+  - `agent/g4/README.md` — `f9bc3b5e6388c663a6037b3dab6dbc481430f37f`
+  - `agent/g4/agent-client.mjs` — `8b0f526c6e73e6e6eb9915d1b8d1d5aaa651aa3c`
+  - `agent/g4/receipt.mjs` — `be6b1bbaf52f533d3d72b0939f14505d65a247cb`
+  - `agent/g4/run-once.mjs` — `61e4f5f9e0b628734352ad6b475e7323a934c769`
+  The user-provided BWH summary reports all four matched. The original full terminal transcript and its literal four-value comparison output are not yet attached to this repository record; retain that as an evidence-archive follow-up rather than implying the transcript is archived here.
+- Boundary: no production database or customer data access, production Apply, production subscription rendering, production service/systemd installation or timer activation, production DNS, or traffic cutover. No credential material is included in this record.
+
 ### Gate numbering across the G1 workstream and this architecture plan
 
 The `G0`–`G8` labels above are Cloudflare architecture stages. They are **not interchangeable** with the separate G1-E / G1-F workstream labels:
