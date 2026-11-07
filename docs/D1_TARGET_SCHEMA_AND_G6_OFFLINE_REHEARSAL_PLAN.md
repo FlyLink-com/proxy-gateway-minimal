@@ -304,3 +304,19 @@ Structural review compared the full field map with T1 inventory: 820/820 source 
 Open blockers remain explicit: named domain-owner approval; idempotency HMAC key custody/version/rotation; exact per-field JSON allowlists; opaque-reference grammar and conformance; provider event dedupe and payment action URL custody; retention schedules; the low-confidence generation field; and accepted G2 D1 compatibility limitations.
 
 This T2 map does not authorize production DDL or data loading. The next bounded work is to close these contracts using source evidence and synthetic vectors, then prepare T3 target DDL proposal. No BWH/production read, remote D1 mutation, Worker deployment, CI, PR, merge or cutover occurred. BWH remains the only production writer.
+
+ 
+## T2 core security contract design — 2026-11-07
+
+**Status: FOUR CORE DESIGNS DOCUMENTED; T2 APPROVAL STILL BLOCKED ON IMPLEMENTATION-LEVEL EVIDENCE AND OWNER APPROVAL.**
+
+Added `docs/D1_T2_CORE_SECURITY_CONTRACTS_V1.md` with:
+1. Lease capability: domain-separated SHA-256 over the exact 32-byte random token; preserve generation/deadline/status/CAS fencing.
+2. Idempotency: versioned HMAC-SHA-256 with unambiguous length-prefixed scope encoding, separate purpose domains, key IDs and dual-key rotation/read compatibility. Provider `event_dedupe_key` uses a separate HMAC domain/key and preserves the current merchant-scope uniqueness boundary. No key was provisioned.
+3. JSON: field-specific schema IDs and high-level allowlist contracts for all 26 JSON columns; exact exhaustive writer key sets still need a source callsite audit.
+4. Payment action URL: raw URL/QR excluded from D1; D1 holds only opaque action ref/type/expiry/state; custody API, owner, TTL, restore and outage behavior remain unselected.
+5. Retention: Leads 90-day expiry/purge preserved; raw usage samples excluded pending finite TTL/aggregation; financial/audit/session/challenge/consent retention remains owner-approved, not guessed.
+
+The design specifies synthetic negative/positive tests and fail-closed behavior. It does not yet prove production compatibility or approve implementation. The remaining source-contract work is to enumerate all JSON writers and exact allowlist keys, validate provider/URL custody contract, define the HMAC migration key operational handoff without provisioning it, resolve the low-confidence notification generation field, and obtain named owners/retention decisions.
+
+No BWH/production read, secrets provisioned, remote D1 mutation, Worker deployment, CI, PR, merge, dual-write or cutover. BWH remains production's only writer.
