@@ -1,6 +1,6 @@
 # Project Topology
 
-Last updated: 2026-11-01, America/Los_Angeles.
+Last updated: 2026-11-05, America/Los_Angeles.
 
 ```yaml
 document_metadata:
@@ -8,7 +8,7 @@ document_metadata:
   lifecycle: active
   authority_scope: project_topology
   superseded_by: null
-  last_verified_at: 2026-11-01
+  last_verified_at: 2026-11-05
   production_authority: false
 ```
 
@@ -22,10 +22,16 @@ document_metadata:
 >   across local agent, subscription control plane, operator lab relay,
 >   subscription delivery, production edges, and server mesh planning. This is
 >   not fresh live production inventory.
+> - Phase distinction (2026-11-05): The topology below is the **current**
+>   authoritative topology. A separate, later owner-approved direction adds a
+>   **future** phase (Cloudflare Workers + D1) that takes effect only through
+>   its own cutover gate; see "Cloudflare Control-Plane Migration — Current
+>   vs Future Phase" in this document. Nothing in that addendum changes the
+>   current topology or authorizes any migration step.
 
-## Approved Target Topology (2026-11-01)
+## Current Authoritative Topology (2026-11-01 decision)
 
-The project owner has fixed the target architecture:
+The project owner has fixed the current operating topology:
 
 - **BWH is the single subscription/control plane** and owns accounts, orders,
   artifacts, credential lifecycle, desired-state, protected material
@@ -39,7 +45,7 @@ The project owner has fixed the target architecture:
   authority, public Admin, or the authoritative usage ledger.
 
 This decision supersedes the earlier July 15 topology snapshot below as the
-approved target direction. Do not reopen the BWH-control-plane / Japan-child
+current operating topology. Do not reopen the BWH-control-plane / Japan-child
 data-plane choice as an architecture confirmation question.
 
 This is an architecture decision and documentation baseline, **not fresh live
@@ -47,6 +53,63 @@ host, release, health, identity, or metering proof**. M0 verifies the live BWH
 release identity (bound by the as-run manifest and its SHA-256; source-commit
 identity is not claimed) and exact target/dependency facts; it does not re-decide the
 topology. Risk A execution still requires its own exact approval.
+
+Phase note (2026-11-05): the topology in this section is the **current**
+authoritative topology and remains operative until a separate cutover gate
+completes. It is no longer the final target direction: the owner has since
+approved a future phase in which business-control authority moves to
+Cloudflare Workers + D1 (see the addendum directly below). Reading this
+section as the end-state target, or the addendum as current fact, are both
+incorrect.
+
+## Cloudflare Control-Plane Migration — Current vs Future Phase (Addendum, 2026-11-05)
+
+The owner approved the target direction on 2026-11-04: after separately
+gated implementation and migration, Cloudflare Workers may host the
+control-plane API and one Cloudflare D1 database may become the
+authoritative business-control database. The full architecture decision
+record lives in `docs/CLOUDFLARE_D1_DATABASE_EVALUATION.md`. This addendum
+aligns the topology statement with that decision by separating the two
+phases. It grants no production, provider, credential, database,
+deployment, or runtime authority, and it does not change the current
+topology above.
+
+| Dimension | Current phase (authoritative now) | Future phase (only after the cutover gate) |
+| --- | --- | --- |
+| Business-control authority | The existing BWH control system (Node/Express + SQLite) | Cloudflare Workers + one D1 database mapped from the shared `control.sqlite` |
+| Data writes | BWH is the single writer | D1 is the single writer for the migrated control domains |
+| Raw credential material | BWH protected storage | Remains in BWH protected storage; never enters D1, Worker transit, or logs |
+| Rendering and node agents | BWH / node side | Remain BWH / node side |
+| JP / Vultr nodes | Data plane | Remain data plane |
+
+Hard constraints that bind both phases and the migration itself:
+
+1. **No dual writers before cutover.** BWH SQLite and D1 must never be
+   authoritative writers at the same time; there is exactly one write
+   authority in every phase.
+2. **The old database is archive-only after cutover.** Once D1 has taken
+   authority, the former SQLite control database may be read only under
+   the archive and audit contract; it must not silently resume writes.
+3. **Rollback requires reverse reconciliation.** If D1 has accepted new
+   business data, a rollback must first reconcile that delta back; simply
+   restoring the old database's write permission is not a rollback.
+
+Migration gates, in order: source inventory of schemas, migration IDs and
+checksums, transaction participants, and data ownership (complete at the
+source level); local synthetic D1 compatibility validation (a separate
+release decision — **not yet released**); Worker API and BWH-agent
+implementation through their own source reviews; remote staging resources
+only after exact approval; production cutover only as a Risk A decision
+with backup, reconciliation, and rollback readiness. The BWH agent
+communication and material-custody contract exists as a finalized text
+that is **pending the owner's formal approval**; it is not yet an approved
+project contract and authorizes no implementation.
+
+Out of the first migration phase: `subscriptions.sqlite`, the optional
+third-party subscription database, and all raw edge credential material.
+Historical runtime identities are not migration cleanup candidates and are
+not reclassified, rotated, activated, or deleted by this migration; they
+remain governed by `docs/IDENTITY_LIFECYCLE.md` and its separate gates.
 
 ## Historical Production Topology Snapshot (2026-07-15)
 
