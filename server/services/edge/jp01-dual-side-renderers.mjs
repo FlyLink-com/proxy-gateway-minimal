@@ -13,6 +13,7 @@ const FINGERPRINT = /^sha256:[0-9a-f]{64}$/;
 const KEY = /^[A-Za-z0-9+/]{43}=$/;
 const HOSTNAME = /^[a-z0-9][a-z0-9-]{0,62}$/;
 const SERVICE = /^[A-Za-z0-9@._-]+\.service$/;
+const DATE_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/;
 const ADAPTERS = new Set(['xray', 'hysteria2', 'mihomo']);
 const PROFILE_FIELDS = [
   'schema', 'nodeRef', 'providerRef', 'regionRef', 'roleRef', 'generation',
@@ -291,10 +292,17 @@ function checkKey(value, expectedFingerprint) {
 export function evaluateD2Candidate({ profile, bwhPlan, nodePlan,
   registrationBinding, independentlyObservedBwhPublicKey, evaluatedAt, gateRef }) {
   if (!isRecord(bwhPlan) || !isRecord(nodePlan) ||
-      !isRecord(registrationBinding)) throw new Error('invalid_d2_gate_input');
+      !isRecord(registrationBinding) ||
+      typeof bwhPlan.nodeRef !== 'string' || !REF.test(bwhPlan.nodeRef) ||
+      typeof bwhPlan.generation !== 'string' || !REF.test(bwhPlan.generation) ||
+      typeof bwhPlan.digest !== 'string' || !FINGERPRINT.test(bwhPlan.digest) ||
+      typeof nodePlan.digest !== 'string' || !FINGERPRINT.test(nodePlan.digest)) {
+    throw new Error('invalid_d2_gate_input');
+  }
   const p = checkProfile(profile);
   safeRef(gateRef);
-  if (typeof evaluatedAt !== 'string' || !Number.isFinite(Date.parse(evaluatedAt))) {
+  if (typeof evaluatedAt !== 'string' || !DATE_TIME.test(evaluatedAt) ||
+      !Number.isFinite(Date.parse(evaluatedAt))) {
     throw new Error('invalid_d2_gate_time');
   }
   const states = Object.fromEntries(GATE_IDS.map((id) => [id, 'not_evaluated']));
