@@ -594,6 +594,31 @@ test('missing independent key observation cannot yield identity continuity', () 
   assertSchema(gateSchema, result);
 });
 
+test('preflight enforces D1 date-time format and schema-safe report metadata', () => {
+  const plans = render();
+  const base = {
+    ...plans, profile: profile(), registrationBinding: binding(),
+    independentlyObservedBwhPublicKey: BWH_KEY,
+    evaluatedAt: '2026-11-07T00:00:00Z', gateRef: 'd2-gate'
+  };
+  for (const evaluatedAt of ['2026-11-07', '2026-11-07T00:00:00', 'Nov 7 2026']) {
+    assert.throws(() => evaluateD2Candidate({ ...base, evaluatedAt }),
+      /invalid_d2_gate_time/);
+  }
+  assert.throws(() => evaluateD2Candidate({
+    ...base, bwhPlan: { ...plans.bwhPlan, nodeRef: ['node-vultr-jp-01'] }
+  }), /invalid_d2_gate_input/);
+  assert.throws(() => evaluateD2Candidate({
+    ...base, bwhPlan: { ...plans.bwhPlan, generation: ['1'] }
+  }), /invalid_d2_gate_input/);
+  assert.throws(() => evaluateD2Candidate({
+    ...base, bwhPlan: { ...plans.bwhPlan, digest: [] }
+  }), /invalid_d2_gate_input/);
+  assert.throws(() => evaluateD2Candidate({
+    ...base, nodePlan: { ...plans.nodePlan, digest: 'not-a-sha256-digest' }
+  }), /invalid_d2_gate_input/);
+});
+
 test('preflight rejects unsafe time, gate reference and missing inputs', () => {
   const plans = render();
   assert.throws(() => evaluateD2Candidate({ ...plans, profile: profile(),
