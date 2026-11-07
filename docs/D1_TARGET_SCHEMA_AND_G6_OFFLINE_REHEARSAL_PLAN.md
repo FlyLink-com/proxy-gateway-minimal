@@ -283,3 +283,24 @@ Evidence freshness is explicitly qualified: the 18 historical migration hashes r
 No BWH or production database access occurred. No remote Cloudflare resource, D1 apply, Worker deployment, CI, PR, merge, or cutover occurred. Production presence of all source-defined objects remains NOT_OBSERVED.
 
 Next: T2 field disposition contract (KEEP / TRANSFORM / EXTERNALIZE / DEFER / CONDITIONAL), repository-only.
+ 
+## T2 execution record — 2026-11-07
+
+**Status: FIELD DISPOSITION MAP COMPLETE; STRUCTURAL REVIEW PASS WITH OPEN CONTRACT BLOCKERS. Not yet domain-owner approved or target-DDL approved.**
+
+Added:
+- `docs/D1_CONTROL_FIELD_DISPOSITION_T2_V1.json` — 70 tables / 820 per-column disposition records.
+- `docs/D1_CONTROL_FIELD_DISPOSITION_T2_REVIEW.md` — independent structural review and blocker list.
+
+Disposition totals:
+- KEEP 712
+- TRANSFORM 19
+- EXTERNALIZE 7
+- DEFER 23
+- CONDITIONAL 59
+
+Structural review compared the full field map with T1 inventory: 820/820 source fields covered; zero missing, extra or duplicate field keys; zero source type/nullability/PK/default/CHECK metadata mismatches; zero unknown rule IDs; zero duplicate target names within a table; zero invalid disposition/inclusion combinations. There is one low-confidence field: `platform_edge_desired_state_notifications.generation`.
+
+Open blockers remain explicit: named domain-owner approval; idempotency HMAC key custody/version/rotation; exact per-field JSON allowlists; opaque-reference grammar and conformance; provider event dedupe and payment action URL custody; retention schedules; the low-confidence generation field; and accepted G2 D1 compatibility limitations.
+
+This T2 map does not authorize production DDL or data loading. The next bounded work is to close these contracts using source evidence and synthetic vectors, then prepare T3 target DDL proposal. No BWH/production read, remote D1 mutation, Worker deployment, CI, PR, merge or cutover occurred. BWH remains the only production writer.
