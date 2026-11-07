@@ -15,6 +15,47 @@ const RUNTIME_PROFILE_FIELDS = [
   'generation', 'nodePlanRef', 'bwhPlanRef', 'firstBootPacketRef',
   'hostname', 'agentEndpointRef', 'channels'
 ];
+const FIRST_BOOT_PACKET_FIELDS = [
+  'ok', 'mode', 'generatedAt', 'packet', 'node', 'image', 'controlPlane',
+  'wireguard', 'runtime', 'receiptGate', 'approval', 'plannedOperations', 'notes', 'safety'
+];
+const PACKET_SUMMARY_FIELDS = [
+  'readyForFirstBootApproval', 'approvalRequired', 'firstBootApplyAllowed',
+  'blockers', 'nodeRef', 'providerRef', 'regionRef', 'roleRef', 'channelRefCount',
+  'imageManifestRef', 'releaseRef', 'wireguardPlanRef'
+];
+const OMITTED_FIELDS = [
+  'rawHosts', 'rawIps', 'rawPorts', 'rawSecrets', 'tokens', 'subscriptionUrls',
+  'credentials', 'privateKeys', 'wireguardPrivateKeys', 'customerData',
+  'providerApiKeys', 'sshPrivateKeys'
+];
+const PACKET_SAFETY_FIELDS = [
+  'summaryOnly', 'noRuntimeMutation', 'noProductionMutation', 'noCloudMutation',
+  'noDnsMutation', 'noProviderFirewallMutation', 'noSubscriptionOutputMutation',
+  'noProtectedMaterialOutput', 'omittedFields'
+];
+const PACKET_NODE_FIELDS = ['nodeRef', 'providerRef', 'regionRef', 'roleRef', 'channelRefs'];
+const PACKET_IMAGE_FIELDS = [
+  'imageManifestRef', 'releaseRef', 'artifactSha256Recorded', 'noSecretImageConfirmed'
+];
+const PACKET_CONTROL_FIELDS = [
+  'nodeRegistrationDryRunPassed', 'privateAgentRoutePlanned',
+  'protectedMaterialInjectPlanned', 'agentNodeIdentityPlanned'
+];
+const PACKET_WIREGUARD_FIELDS = [
+  'planRef', 'tunnelAddressAssigned', 'hostKeyGenerationPlanned',
+  'peerPublicKeyExchangePlanned', 'toolsPinnedInImageManifest'
+];
+const PACKET_RUNTIME_FIELDS = [
+  'servicesDisabledInImage', 'xrayConfigTestPlanned', 'hysteria2ConfigTestPlanned',
+  'tuicConfigTestPlanned', 'statsLoopbackOnly'
+];
+const PACKET_RECEIPT_FIELDS = [
+  'desiredStatePullRequired', 'materialPullRequired', 'appliedReceiptRequired',
+  'renderWithholdsUntilReceipt'
+];
+const PACKET_APPROVAL_FIELDS = ['exactApprovalReceived', 'firstBootApplyApproved'];
+const PACKET_OPERATION_FIELDS = ['id', 'mutation', 'requiresRiskAGate'];
 const PACKET_SAFETY_FLAGS = [
   'summaryOnly', 'noRuntimeMutation', 'noProductionMutation', 'noCloudMutation',
   'noDnsMutation', 'noProviderFirewallMutation', 'noSubscriptionOutputMutation',
@@ -68,6 +109,16 @@ function safeHostname(value) {
 }
 
 function requireFirstBootSummary(packet) {
+  exactKeys(packet, FIRST_BOOT_PACKET_FIELDS, 'first_boot_packet_shape_invalid');
+  exactKeys(packet.packet, PACKET_SUMMARY_FIELDS, 'first_boot_packet_shape_invalid');
+  exactKeys(packet.node, PACKET_NODE_FIELDS, 'first_boot_packet_shape_invalid');
+  exactKeys(packet.image, PACKET_IMAGE_FIELDS, 'first_boot_packet_shape_invalid');
+  exactKeys(packet.controlPlane, PACKET_CONTROL_FIELDS, 'first_boot_packet_shape_invalid');
+  exactKeys(packet.wireguard, PACKET_WIREGUARD_FIELDS, 'first_boot_packet_shape_invalid');
+  exactKeys(packet.runtime, PACKET_RUNTIME_FIELDS, 'first_boot_packet_shape_invalid');
+  exactKeys(packet.receiptGate, PACKET_RECEIPT_FIELDS, 'first_boot_packet_shape_invalid');
+  exactKeys(packet.approval, PACKET_APPROVAL_FIELDS, 'first_boot_packet_shape_invalid');
+  exactKeys(packet.safety, PACKET_SAFETY_FIELDS, 'first_boot_packet_shape_invalid');
   if (!isRecord(packet) ||
       packet.ok !== true ||
       packet.mode !== 'node-image-first-boot-packet' ||
@@ -89,7 +140,11 @@ function requireFirstBootSummary(packet) {
       throw new Error('first_boot_packet_gate_missing');
     }
   }
-  if (PACKET_SAFETY_FLAGS.some((key) => packet.safety[key] !== true)) {
+  if (PACKET_SAFETY_FLAGS.some((key) => packet.safety[key] !== true) ||
+      JSON.stringify(packet.safety.omittedFields) !== JSON.stringify(OMITTED_FIELDS) ||
+      PACKET_APPROVAL_FIELDS.some((key) => typeof packet.approval[key] !== 'boolean') ||
+      !Array.isArray(packet.notes) || packet.notes.some((note) =>
+        typeof note !== 'string' || /https?:|token=|secret|credential|password|private|customer|@/i.test(note))) {
     throw new Error('first_boot_packet_safety_not_proven');
   }
   if (packet.packet.nodeRef !== packet.node.nodeRef ||
@@ -120,9 +175,12 @@ function requireFirstBootSummary(packet) {
     throw new Error('first_boot_packet_identity_invalid');
   }
   if (!Array.isArray(packet.plannedOperations) ||
-      packet.plannedOperations.length === 0 ||
-      packet.plannedOperations.some((operation) =>
-        !isRecord(operation) || operation.mutation !== false)) {
+      packet.plannedOperations.length !== 4 ||
+      packet.plannedOperations.some((operation) => {
+        try { exactKeys(operation, PACKET_OPERATION_FIELDS, 'invalid_first_boot_operation'); }
+        catch { return true; }
+        return operation.mutation !== false || operation.requiresRiskAGate !== true;
+      })) {
     throw new Error('first_boot_packet_contains_mutating_operation');
   }
   return packet;
