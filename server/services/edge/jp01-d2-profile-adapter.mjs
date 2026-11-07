@@ -109,6 +109,7 @@ function safeHostname(value) {
 }
 
 function requireFirstBootSummary(packet) {
+  if (!isRecord(packet)) throw new Error('first_boot_packet_shape_invalid');
   exactKeys(packet, FIRST_BOOT_PACKET_FIELDS, 'first_boot_packet_shape_invalid');
   exactKeys(packet.packet, PACKET_SUMMARY_FIELDS, 'first_boot_packet_shape_invalid');
   exactKeys(packet.node, PACKET_NODE_FIELDS, 'first_boot_packet_shape_invalid');
@@ -142,6 +143,10 @@ function requireFirstBootSummary(packet) {
   }
   if (PACKET_SAFETY_FLAGS.some((key) => packet.safety[key] !== true) ||
       JSON.stringify(packet.safety.omittedFields) !== JSON.stringify(OMITTED_FIELDS) ||
+      packet.packet.approvalRequired !== !packet.approval.exactApprovalReceived ||
+      packet.packet.firstBootApplyAllowed !== (
+        packet.packet.readyForFirstBootApproval && packet.approval.exactApprovalReceived &&
+        packet.approval.firstBootApplyApproved) ||
       PACKET_APPROVAL_FIELDS.some((key) => typeof packet.approval[key] !== 'boolean') ||
       !Array.isArray(packet.notes) || packet.notes.some((note) =>
         typeof note !== 'string' || /https?:|token=|secret|credential|password|private|customer|@/i.test(note))) {
