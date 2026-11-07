@@ -59,15 +59,24 @@
     },
     "generation": {
       "pattern": "^[A-Za-z0-9._:-]{1,160}$",
-      "type": "string"
+      "type": "string",
+      "not": {
+        "pattern": "[Ss][Ee][Cc][Rr][Ee][Tt]|[Pp][Aa][Ss][Ss][Ww][Oo][Rr][Dd]|[Pp][Rr][Ii][Vv][Aa][Tt][Ee][Kk][Ee][Yy]|[Cc][Rr][Ee][Dd][Ee][Nn][Tt][Ii][Aa][Ll]|[Cc][Uu][Ss][Tt][Oo][Mm][Ee][Rr][Dd][Aa][Tt][Aa]|[Tt][Oo][Kk][Ee][Nn]"
+      }
     },
     "nodePlanRef": {
       "pattern": "^[A-Za-z0-9._:-]{1,160}$",
-      "type": "string"
+      "type": "string",
+      "not": {
+        "pattern": "[Ss][Ee][Cc][Rr][Ee][Tt]|[Pp][Aa][Ss][Ss][Ww][Oo][Rr][Dd]|[Pp][Rr][Ii][Vv][Aa][Tt][Ee][Kk][Ee][Yy]|[Cc][Rr][Ee][Dd][Ee][Nn][Tt][Ii][Aa][Ll]|[Cc][Uu][Ss][Tt][Oo][Mm][Ee][Rr][Dd][Aa][Tt][Aa]|[Tt][Oo][Kk][Ee][Nn]"
+      }
     },
     "bwhPlanRef": {
       "pattern": "^[A-Za-z0-9._:-]{1,160}$",
-      "type": "string"
+      "type": "string",
+      "not": {
+        "pattern": "[Ss][Ee][Cc][Rr][Ee][Tt]|[Pp][Aa][Ss][Ss][Ww][Oo][Rr][Dd]|[Pp][Rr][Ii][Vv][Aa][Tt][Ee][Kk][Ee][Yy]|[Cc][Rr][Ee][Dd][Ee][Nn][Tt][Ii][Aa][Ll]|[Cc][Uu][Ss][Tt][Oo][Mm][Ee][Rr][Dd][Aa][Tt][Aa]|[Tt][Oo][Kk][Ee][Nn]"
+      }
     },
     "imageManifestRef": {
       "pattern": "^[A-Za-z0-9][A-Za-z0-9_:-]{0,127}$",
@@ -107,7 +116,10 @@
     },
     "agentEndpointRef": {
       "pattern": "^[A-Za-z0-9._:-]{1,160}$",
-      "type": "string"
+      "type": "string",
+      "not": {
+        "pattern": "[Ss][Ee][Cc][Rr][Ee][Tt]|[Pp][Aa][Ss][Ss][Ww][Oo][Rr][Dd]|[Pp][Rr][Ii][Vv][Aa][Tt][Ee][Kk][Ee][Yy]|[Cc][Rr][Ee][Dd][Ee][Nn][Tt][Ii][Aa][Ll]|[Cc][Uu][Ss][Tt][Oo][Mm][Ee][Rr][Dd][Aa][Tt][Aa]|[Tt][Oo][Kk][Ee][Nn]"
+      }
     },
     "channels": {
       "type": "array",
@@ -144,11 +156,17 @@
           },
           "desiredStateRef": {
             "pattern": "^[A-Za-z0-9._:-]{1,160}$",
-            "type": "string"
+            "type": "string",
+            "not": {
+              "pattern": "[Ss][Ee][Cc][Rr][Ee][Tt]|[Pp][Aa][Ss][Ss][Ww][Oo][Rr][Dd]|[Pp][Rr][Ii][Vv][Aa][Tt][Ee][Kk][Ee][Yy]|[Cc][Rr][Ee][Dd][Ee][Nn][Tt][Ii][Aa][Ll]|[Cc][Uu][Ss][Tt][Oo][Mm][Ee][Rr][Dd][Aa][Tt][Aa]|[Tt][Oo][Kk][Ee][Nn]"
+            }
           },
           "materialRef": {
             "pattern": "^[A-Za-z0-9._:-]{1,160}$",
-            "type": "string"
+            "type": "string",
+            "not": {
+              "pattern": "[Ss][Ee][Cc][Rr][Ee][Tt]|[Pp][Aa][Ss][Ss][Ww][Oo][Rr][Dd]|[Pp][Rr][Ii][Vv][Aa][Tt][Ee][Kk][Ee][Yy]|[Cc][Rr][Ee][Dd][Ee][Nn][Tt][Ii][Aa][Ll]|[Cc][Uu][Ss][Tt][Oo][Mm][Ee][Rr][Dd][Aa][Tt][Aa]|[Tt][Oo][Kk][Ee][Nn]"
+            }
           },
           "materialDigest": {
             "pattern": "^sha256:[0-9a-f]{64}$",
@@ -156,7 +174,10 @@
           },
           "endpointRef": {
             "pattern": "^[A-Za-z0-9._:-]{1,160}$",
-            "type": "string"
+            "type": "string",
+            "not": {
+              "pattern": "[Ss][Ee][Cc][Rr][Ee][Tt]|[Pp][Aa][Ss][Ss][Ww][Oo][Rr][Dd]|[Pp][Rr][Ii][Vv][Aa][Tt][Ee][Kk][Ee][Yy]|[Cc][Rr][Ee][Dd][Ee][Nn][Tt][Ii][Aa][Ll]|[Cc][Uu][Ss][Tt][Oo][Mm][Ee][Rr][Dd][Aa][Tt][Aa]|[Tt][Oo][Kk][Ee][Nn]"
+            }
           },
           "unitName": {
             "pattern": "^[A-Za-z0-9@._-]+\\.service$",
