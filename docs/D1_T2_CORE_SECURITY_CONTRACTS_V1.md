@@ -216,3 +216,16 @@ The four designs above are proposed, not approved. Close these before marking T2
 ## 7. Authorization
 
 Repository-only documentation and synthetic test design. No production DB reads, BWH connection, real secrets, remote D1 mutation, Worker deployment, CI, PR, merge, dual-write, DNS or cutover. BWH remains production's only writer. A future G6 PASS authorizes consideration of the next separately approved step only.
+
+ 
+### T2 source-contract follow-up — 2026-11-07
+
+Repository source inspection confirmed:
+- Lease producers currently issue 32-byte random values rendered as 64 lowercase hex; lease checks include generation/deadline/state fencing.
+- Six source `lease_token` columns are in scope for SHA-256 digest transformation.
+- Six source idempotency columns are in scope for HMAC transformation; Payment `event_dedupe_key` is a seventh, separate provider-event HMAC domain, preserving `(merchant_scope_digest, event_dedupe_key)` uniqueness.
+- T2 inventory contains 26 JSON columns, not 21. The security contract document has been corrected to enumerate all 26; Passkey JSON remains deferred.
+- Payment `next_action_url` currently flows through order/receipt projections to Portal; HTTPS-only validation does not rule out signed/bearer query or QR capabilities. A custody adapter is required before D1 can replace the source URL.
+- Source edge notification `generation` is TEXT and its writer currently validates only required text. It remains CONDITIONAL pending a bounded safe-generation grammar and producer callsite proof.
+
+This source inspection did not execute production code or read production values. Exact exhaustive JSON writer key enumeration remains open; current helper-level validation is not treated as proof of a complete allowlist.
