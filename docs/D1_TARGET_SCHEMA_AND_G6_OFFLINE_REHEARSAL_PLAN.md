@@ -258,3 +258,28 @@ This plan does not:
 - deploy, restart services, activate timers, change node state, or switch traffic.
 
 Those activities remain separately gated. Production remains BWH-authoritative until a completed and explicitly approved Risk A cutover.
+
+## T1 execution record — 2026-11-07
+
+**Status: SOURCE-ONLY T1 COMPLETE.**
+
+Added the machine-readable inventory and a human-readable reconciliation summary:
+
+- `docs/D1_CONTROL_SCHEMA_INVENTORY_V1.json`
+- `docs/D1_CONTROL_SCHEMA_INVENTORY_V1.md`
+
+Current source-head verification reconciles exactly:
+
+- 48 core tables + 22 companion tables = 70 tables.
+- 530 core columns + 290 companion columns = 820 terminal columns.
+- 84 core FK constraints + 42 companion FK constraints = 126 declared FK edges.
+- 71 core indexes + 17 companion indexes = 88 explicit indexes.
+- 41 core triggers + 50 companion triggers = 91 steady-state trigger names.
+
+All 70 table names and 820 terminal column names were cross-checked against the approved field inventory. Every declared FK target resolves within the 70-table source inventory. The terminal Welcome Bonus table is 21 columns; the 30-column Payment archive is conditional; Ads Consent is feature-gated; generated Referral triggers and the Plan C same-name trigger replacement are accounted for.
+
+Evidence freshness is explicitly qualified: the 18 historical migration hashes retain their G1-28 recomputation provenance and current-head source-diff review; this is not a full 19/19 current-head runtime re-execution. Plan C's checksum is independently recomputed from current source.
+
+No BWH or production database access occurred. No remote Cloudflare resource, D1 apply, Worker deployment, CI, PR, merge, or cutover occurred. Production presence of all source-defined objects remains NOT_OBSERVED.
+
+Next: T2 field disposition contract (KEEP / TRANSFORM / EXTERNALIZE / DEFER / CONDITIONAL), repository-only.
