@@ -1,5 +1,6 @@
 import { isSafeWireguardPlanRef } from '../node-image-first-boot-packet.mjs';
 import {
+  isSafeNodeRegistrationReference,
   normalizeRegistrationAnchorFingerprint,
   registrationBindingOf
 } from './node-registration-ingestion.mjs';
@@ -101,6 +102,13 @@ function safeRef(value) {
   return value;
 }
 
+function safeRegistrationRef(value) {
+  if (typeof value !== 'string' || !isSafeNodeRegistrationReference(value)) {
+    throw new Error('invalid_d2_registration_reference');
+  }
+  return value;
+}
+
 function safeHostname(value) {
   if (typeof value !== 'string' || !HOSTNAME.test(value)) {
     throw new Error('invalid_d2_hostname');
@@ -162,19 +170,20 @@ function requireFirstBootSummary(packet) {
       packet.packet.wireguardPlanRef !== packet.wireguard.planRef) {
     throw new Error('first_boot_packet_projection_mismatch');
   }
-  safeRef(packet.node.nodeRef);
-  safeRef(packet.node.providerRef);
-  safeRef(packet.node.regionRef);
-  safeRef(packet.node.roleRef);
-  safeRef(packet.image.imageManifestRef);
-  safeRef(packet.image.releaseRef);
+  safeRegistrationRef(packet.node.nodeRef);
+  safeRegistrationRef(packet.node.providerRef);
+  safeRegistrationRef(packet.node.regionRef);
+  safeRegistrationRef(packet.node.roleRef);
+  safeRegistrationRef(packet.image.imageManifestRef);
+  safeRegistrationRef(packet.image.releaseRef);
   if (packet.image.artifactSha256Recorded !== true ||
       packet.image.noSecretImageConfirmed !== true ||
+      typeof packet.wireguard.planRef !== 'string' ||
       !isSafeWireguardPlanRef(packet.wireguard.planRef) ||
       !Array.isArray(packet.node.channelRefs) ||
       packet.node.channelRefs.length === 0 ||
       packet.node.channelRefs.some((ref) => {
-        try { safeRef(ref); return false; } catch { return true; }
+        try { safeRegistrationRef(ref); return false; } catch { return true; }
       }) ||
       new Set(packet.node.channelRefs).size !== packet.node.channelRefs.length) {
     throw new Error('first_boot_packet_identity_invalid');
@@ -202,6 +211,10 @@ export function buildD2RegistrationBindingCandidateFromFirstBootPacket({
   agentAuthFingerprint
 } = {}) {
   const packet = requireFirstBootSummary(firstBootPacket);
+  if (typeof wireguardPublicKeyFingerprint !== 'string' ||
+      typeof agentAuthFingerprint !== 'string') {
+    throw new Error('d2_registration_candidate_requires_identity_anchors');
+  }
   const wgFingerprint = normalizeRegistrationAnchorFingerprint(
     wireguardPublicKeyFingerprint, 'wireguardPublicKeyFingerprint');
   const agentFingerprint = normalizeRegistrationAnchorFingerprint(
@@ -209,16 +222,16 @@ export function buildD2RegistrationBindingCandidateFromFirstBootPacket({
   if (!FINGERPRINT.test(wgFingerprint) || !FINGERPRINT.test(agentFingerprint)) {
     throw new Error('d2_registration_candidate_requires_identity_anchors');
   }
-  const nodeRef = safeRef(packet.node.nodeRef);
+  const nodeRef = safeRegistrationRef(packet.node.nodeRef);
   const candidateRecord = {
     nodeRef,
     providerRef: safeRef(packet.node.providerRef),
     regionRef: safeRef(packet.node.regionRef),
     roleRef: safeRef(packet.node.roleRef),
-    channelRefs: packet.node.channelRefs.map(safeRef),
+    channelRefs: packet.node.channelRefs.map(safeRegistrationRef),
     imageManifestRef: safeRef(packet.image.imageManifestRef),
     releaseRef: safeRef(packet.image.releaseRef),
-    firstBootPacketRef: safeRef(firstBootPacketRef || 'first_boot_' + nodeRef),
+    firstBootPacketRef: safeRegistrationRef(firstBootPacketRef || 'first_boot_' + nodeRef),
     metadata: {
       wireguardPlanRef: packet.wireguard.planRef,
       wireguardPublicKeyFingerprint: wgFingerprint,
@@ -256,7 +269,7 @@ export function buildD2ProfileFromFirstBootPacket({
     exactKeys(channel, CHANNEL_FIELDS, 'invalid_d2_channel_shape');
     return { ...channel };
   });
-  const channelRefs = channels.map((channel) => safeRef(channel.channelRef)).sort();
+  const channelRefs = channels.map((channel) => safeRegistrationRef(channel.channelRef)).sort();
   if (JSON.stringify(channelRefs) !== JSON.stringify(registrationBinding.channelRefs)) {
     throw new Error('d2_profile_channel_binding_mismatch');
   }

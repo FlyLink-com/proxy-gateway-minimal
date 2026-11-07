@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { isSafeWireguardPlanRef } from '../node-image-first-boot-packet.mjs';
+import { isSafeNodeRegistrationReference } from './node-registration-ingestion.mjs';
 export { buildD2ProfileFromFirstBootPacket } from './jp01-d2-profile-adapter.mjs';
 
 // D2 is a source-only, inert candidate renderer. In particular it NEVER reads
@@ -19,6 +20,10 @@ const PROFILE_FIELDS = [
   'firstBootPacketRef', 'wireguardPlanRef', 'hostname',
   'agentAuthFingerprint', 'agentEndpointRef', 'channels'
 ];
+const E1_REFERENCE_FIELDS = new Set([
+  'nodeRef', 'providerRef', 'regionRef', 'roleRef',
+  'imageManifestRef', 'releaseRef', 'firstBootPacketRef'
+]);
 const CHANNEL_FIELDS = [
   'channelRef', 'runtimeAdapter', 'desiredStateRef', 'materialRef',
   'materialDigest', 'endpointRef', 'unitName', 'configDigest', 'statsListen'
@@ -56,6 +61,13 @@ function safeRef(value) {
   if (typeof value !== 'string' || !REF.test(value) ||
       /(?:secret|password|privatekey|credential|customerdata|token)/i.test(value)) {
     throw new Error('invalid_d2_reference');
+  }
+  return value;
+}
+
+function safeRegistrationRef(value) {
+  if (typeof value !== 'string' || !isSafeNodeRegistrationReference(value)) {
+    throw new Error('invalid_d2_registration_reference');
   }
   return value;
 }
@@ -99,10 +111,13 @@ function checkProfile(profile) {
   for (const key of PROFILE_FIELDS) {
     if (['schema', 'hostname', 'agentAuthFingerprint', 'channels',
       'wireguardPlanRef'].includes(key)) continue;
-    safeRef(profile[key]);
+    if (E1_REFERENCE_FIELDS.has(key)) safeRegistrationRef(profile[key]);
+    else safeRef(profile[key]);
   }
-  if (!isSafeWireguardPlanRef(profile.wireguardPlanRef) ||
-      !HOSTNAME.test(profile.hostname) ||
+  if (typeof profile.wireguardPlanRef !== 'string' ||
+      !isSafeWireguardPlanRef(profile.wireguardPlanRef) ||
+      typeof profile.hostname !== 'string' || !HOSTNAME.test(profile.hostname) ||
+      typeof profile.agentAuthFingerprint !== 'string' ||
       !FINGERPRINT.test(profile.agentAuthFingerprint) ||
       !Array.isArray(profile.channels) || profile.channels.length === 0) {
     throw new Error('invalid_d2_profile');
@@ -110,12 +125,16 @@ function checkProfile(profile) {
   const seen = new Set();
   for (const channel of profile.channels) {
     exactKeys(channel, CHANNEL_FIELDS);
-    for (const key of ['channelRef', 'desiredStateRef', 'materialRef', 'endpointRef']) {
+    safeRegistrationRef(channel.channelRef);
+    for (const key of ['desiredStateRef', 'materialRef', 'endpointRef']) {
       safeRef(channel[key]);
     }
     if (!ADAPTERS.has(channel.runtimeAdapter) ||
+        typeof channel.materialDigest !== 'string' ||
         !FINGERPRINT.test(channel.materialDigest) ||
+        typeof channel.configDigest !== 'string' ||
         !FINGERPRINT.test(channel.configDigest) ||
+        typeof channel.unitName !== 'string' ||
         !SERVICE.test(channel.unitName) ||
         !['127.0.0.1', '::1'].includes(channel.statsListen) ||
         seen.has(channel.channelRef)) {
@@ -131,7 +150,9 @@ function checkBinding(binding, profile, nodeKeyFingerprint) {
   exactKeys(binding, BINDING_FIELDS);
   if (!Array.isArray(binding.channelRefs) ||
       !binding.channelRefs.every((ref) => typeof ref === 'string') ||
+      typeof binding.wireguardPublicKeyFingerprint !== 'string' ||
       !FINGERPRINT.test(binding.wireguardPublicKeyFingerprint) ||
+      typeof binding.agentAuthFingerprint !== 'string' ||
       !FINGERPRINT.test(binding.agentAuthFingerprint)) {
     throw new Error('invalid_registration_binding');
   }
@@ -164,7 +185,9 @@ export function renderD2Candidate({ profile, registrationBinding,
   const nodeFingerprint = fingerprintD2PublicKey(nodePublicKey);
   const bwhFingerprint = fingerprintD2PublicKey(bwhReadOnlyPublicKey);
   checkBinding(registrationBinding, p, nodeFingerprint);
-  const profileDigest = digestD2Object(p);
+  // The D1 digest describes the original profile, including channel order.
+  // Sorting below is only a deterministic plan-output presentation choice.
+  const profileDigest = digestD2Object(profile);
   const common = {
     generation: p.generation, nodeRef: p.nodeRef, providerRef: p.providerRef,
     regionRef: p.regionRef, roleRef: p.roleRef, imageManifestRef: p.imageManifestRef,
@@ -214,6 +237,43 @@ export function renderD2Candidate({ profile, registrationBinding,
 
 function equal(a, b) { return JSON.stringify(a) === JSON.stringify(b); }
 function ordered(values) { return [...values].sort(); }
+
+function channelMap(items) {
+  if (!Array.isArray(items)) return null;
+  const result = new Map();
+  for (const item of items) {
+    if (!isRecord(item) || typeof item.channelRef !== 'string' ||
+        result.has(item.channelRef)) return null;
+    result.set(item.channelRef, item);
+  }
+  return result;
+}
+
+function channelBindingsMatch(profileChannels, bwhChannels, nodeServices) {
+  const profileByRef = channelMap(profileChannels);
+  const bwhByRef = channelMap(bwhChannels);
+  const nodeByRef = channelMap(nodeServices);
+  if (!profileByRef || !bwhByRef || !nodeByRef ||
+      profileByRef.size === 0 ||
+      profileByRef.size !== bwhByRef.size ||
+      profileByRef.size !== nodeByRef.size) return false;
+  for (const [channelRef, profileChannel] of profileByRef) {
+    const bwhChannel = bwhByRef.get(channelRef);
+    const nodeService = nodeByRef.get(channelRef);
+    if (!bwhChannel || !nodeService ||
+        bwhChannel.runtimeAdapter !== profileChannel.runtimeAdapter ||
+        bwhChannel.desiredStateRef !== profileChannel.desiredStateRef ||
+        bwhChannel.materialRef !== profileChannel.materialRef ||
+        bwhChannel.materialDigest !== profileChannel.materialDigest ||
+        bwhChannel.endpointRef !== profileChannel.endpointRef ||
+        nodeService.runtimeAdapter !== profileChannel.runtimeAdapter ||
+        nodeService.unitName !== profileChannel.unitName ||
+        nodeService.configDigest !== profileChannel.configDigest ||
+        nodeService.statsListen !== profileChannel.statsListen) return false;
+  }
+  return true;
+}
+
 function checkKey(value, expectedFingerprint) {
   try { return fingerprintD2PublicKey(value) === expectedFingerprint; }
   catch { return false; }
@@ -245,7 +305,7 @@ export function evaluateD2Candidate({ profile, bwhPlan, nodePlan,
   const profileChannels = p.channels;
   const refs = Array.isArray(b.channelRefs) ? b.channelRefs : [];
   const bindingChannels = Array.isArray(a.channelRefs) ? a.channelRefs : [];
-  const expectedProfileDigest = digestD2Object(p);
+  const expectedProfileDigest = digestD2Object(profile);
 
   match('node_ref_match', b.nodeRef === n.nodeRef &&
     n.nodeRef === p.nodeRef && p.nodeRef === a.nodeRef);
@@ -262,7 +322,8 @@ export function evaluateD2Candidate({ profile, bwhPlan, nodePlan,
     equal(ordered(refs), ordered(bChannelRefs)) &&
     equal(ordered(bChannelRefs), ordered(nodeChannelRefs)) &&
     equal(ordered(nodeChannelRefs), ordered(profileChannelRefs)) &&
-    equal(ordered(profileChannelRefs), ordered(bindingChannels)));
+    equal(ordered(profileChannelRefs), ordered(bindingChannels)) &&
+    channelBindingsMatch(profileChannels, channelsB, servicesN));
   match('image_manifest_ref_match', b.imageManifestRef === n.imageManifestRef &&
     n.imageManifestRef === p.imageManifestRef &&
     p.imageManifestRef === a.imageManifestRef);
@@ -344,6 +405,9 @@ export function evaluateD2Candidate({ profile, bwhPlan, nodePlan,
     registrationBindingDigest: digestD2Object(a),
     checks: GATE_IDS.map((id) => ({
       id, status: states[id],
+      ...(id === 'channel_refs_match' ? {
+        detail: 'Channel refs and per-channel BWH/Node runtime declarations match the canonical profile; no live config or material readback was performed.'
+      } : {}),
       ...(id === 'wireguard_key_cross_match' ? {
         detail: 'Source-level comparison only; the supplied BWH public key has no authenticated production inventory provenance.'
       } : {}),

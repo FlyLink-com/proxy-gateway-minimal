@@ -5,6 +5,7 @@ import test from 'node:test';
 import { buildNodeImageFirstBootPacket } from '../services/node-image-first-boot-packet.mjs';
 import {
   buildEdgeNodeRegistrationRecordFromFirstBootPacket,
+  isSafeNodeRegistrationReference,
   registrationBindingOf
 } from '../services/edge/node-registration-ingestion.mjs';
 import {
@@ -276,6 +277,28 @@ test('D2 preview binding equals the E1 executor binding projection without writi
   assert.deepEqual(candidate.registrationBinding, registrationBindingOf(executorRecord));
 });
 
+test('D2 registration references use the exact E1 predicate without synthesizing Apply approval', () => {
+  assert.equal(isSafeNodeRegistrationReference('first_boot_node-vultr-jp-01'), true);
+  assert.equal(isSafeNodeRegistrationReference('first.boot.jp01'), false);
+  const readyPacket = buildNodeImageFirstBootPacket(firstBootInput(false));
+  assert.throws(() => buildD2ProfileFromFirstBootPacket({
+    firstBootPacket: readyPacket,
+    runtimeProfile: { ...runtimeProfile(), firstBootPacketRef: 'first.boot.jp01' },
+    wireguardPublicKeyFingerprint: fingerprint(0x22),
+    agentAuthFingerprint: refHash('d')
+  }), /invalid_d2_registration_reference/);
+  const approvedPacket = buildNodeImageFirstBootPacket(firstBootInput(true));
+  assert.throws(() => buildEdgeNodeRegistrationRecordFromFirstBootPacket(
+    approvedPacket, {
+      firstBootPacketRef: 'first.boot.jp01',
+      wireguardPublicKeyFingerprint: fingerprint(0x22),
+      agentAuthFingerprint: refHash('d')
+    }), (error) => error.code === 'validation_error');
+  const invalidProfile = { ...profile(), firstBootPacketRef: 'first.boot.jp01' };
+  assert.throws(() => render(invalidProfile), /invalid_d2_registration_reference/);
+  assert.notDeepEqual(validate(profileSchema, invalidProfile), []);
+});
+
 test('D2 profile adapter rejects unready packets, missing anchors and identity/channel drift', () => {
   const readyPacket = buildNodeImageFirstBootPacket(firstBootInput(false));
   const input = {
@@ -326,6 +349,11 @@ test('both plans are identity-bound and service activation is impossible in the 
   assertSchema(bwhSchema, plans.bwhPlan);
   assertSchema(nodeSchema, plans.nodePlan);
   assert.deepEqual(plans.bwhPlan.channelRefs, [...refs].sort());
+  assert.equal(plans.bwhPlan.profileDigest, digestD2Object(p));
+  assert.equal(plans.nodePlan.profileDigest, digestD2Object(p));
+  assert.notEqual(plans.bwhPlan.profileDigest, digestD2Object(profile()));
+  assert.equal(statusOf(evaluate(plans, binding(p), BWH_KEY, p),
+    'profile_digest_match'), 'pass');
   assert.equal(plans.bwhPlan.lifecycle, 'private-validation');
   assert.equal(plans.bwhPlan.pool, 'private');
   assert.equal(plans.nodePlan.activation.controlServicesEnabled, false);
@@ -346,6 +374,27 @@ test('bad profile fields, unsafe references and secret-bearing inputs fail close
   const p3 = profile();
   p3.channels.push({ ...p3.channels[0] });
   assert.throws(() => render(p3), /invalid_d2_channel/);
+});
+
+test('renderer rejects non-string values before hostname, service and digest regex checks', () => {
+  const badHostname = { ...profile(), hostname: ['node-vultr-jp-01'] };
+  assert.throws(() => render(badHostname), /invalid_d2_profile/);
+  const badAgentFingerprint = { ...profile(), agentAuthFingerprint: [refHash('d')] };
+  assert.throws(() => render(badAgentFingerprint), /invalid_d2_profile/);
+  for (const [field, value] of [
+    ['unitName', ['xray.service']],
+    ['materialDigest', [refHash('1')]],
+    ['configDigest', [refHash('4')]]
+  ]) {
+    const bad = profile();
+    bad.channels[0][field] = value;
+    assert.throws(() => render(bad), /invalid_d2_channel/);
+  }
+  const badBinding = {
+    ...binding(),
+    wireguardPublicKeyFingerprint: [fingerprint(0x22)]
+  };
+  assert.throws(() => render(profile(), badBinding), /invalid_registration_binding/);
 });
 
 test('E1-A binding drift, wrong agent and wrong node public key are rejected', () => {
@@ -403,6 +452,30 @@ test('gate recomputes the canonical profile digest and checks the Agent endpoint
   const endpointResult = evaluate(endpointDrift);
   assert.equal(statusOf(endpointResult, 'agent_binding_match'), 'fail');
   assert.equal(endpointResult.verdict, 'blocked');
+});
+
+test('gate rejects per-channel runtime declaration drift after plan re-digesting', () => {
+  const mutations = [
+    ['node', 'runtimeAdapter', 'xray'],
+    ['node', 'unitName', 'wrong.service'],
+    ['node', 'configDigest', refHash('9')],
+    ['bwh', 'runtimeAdapter', 'xray'],
+    ['bwh', 'materialDigest', refHash('9')]
+  ];
+  for (const [side, field, value] of mutations) {
+    const plans = render();
+    const channelRef = refs[1];
+    const target = side === 'node'
+      ? plans.nodePlan.services.find((item) => item.channelRef === channelRef)
+      : plans.bwhPlan.channels.find((item) => item.channelRef === channelRef);
+    target[field] = value;
+    if (side === 'node') plans.nodePlan.digest = digestD2Object(plans.nodePlan);
+    else plans.bwhPlan.digest = digestD2Object(plans.bwhPlan);
+    const result = evaluate(plans);
+    assert.equal(statusOf(result, 'channel_refs_match'), 'fail',
+      side + '.' + field + ' drift must fail the per-channel binding check');
+    assert.equal(result.verdict, 'blocked');
+  }
 });
 
 test('candidate gate rejects asymmetric keys and forged plan digests', () => {

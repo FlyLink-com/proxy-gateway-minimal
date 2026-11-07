@@ -19,7 +19,7 @@ Status: Source-only D2 candidate. Not accepted, production-ready or authorized f
 - Production, Provider, BWH, SSH, Cloudflare, DNS, runtime and customer impact: none.
 - Base contract: D1 POSTINSTALL_IDENTITY_EXCHANGE.md, owner-accepted and merged as PR #826.
 - Source: server/services/edge/jp01-dual-side-renderers.mjs.
-- Profile adapter: server/services/edge/jp01-d2-profile-adapter.mjs; it projects the safe first-boot summary into the eleven-field E1 registration-binding shape using the same registrationBindingOf projection as the registration executor. It does not require firstBootApplyAllowed, does not open the registration execution gate, and performs no write.
+- Profile adapter: server/services/edge/jp01-d2-profile-adapter.mjs; it projects the safe first-boot summary into the eleven-field E1 registration-binding shape using the same registrationBindingOf projection and isSafeNodeRegistrationReference predicate as the E1 registration builder. It does not require firstBootApplyAllowed, synthesize approval, open the registration execution gate, or write a record.
 - D2 profile schema: ops/node-provisioning/schemas/jp01-node-profile.schema.json.
 - Tests: server/tests/jp01-d2-renderers.test.mjs (synthetic, plus parity check against the existing registration executor projection).
 
@@ -27,10 +27,10 @@ Status: Source-only D2 candidate. Not accepted, production-ready or authorized f
 
 1. Strict JP-01 input validation and a source adapter from the existing first-boot summary and E1 registration-binding projection. The adapter compares the same eleven binding fields the executor uses, without requiring apply approval or writing a record.
 2. Emit two inactive D1-schema-shaped candidate plans: bwh-integration-plan/v1 and node-runtime-plan/v1. The existing BWH public key is passed as an input; no key is generated, replaced or read from BWH by this code.
-3. Derive fingerprints from 32-byte public key material and digests using the frozen D1 canonical-JSON SHA-256 rule (sorted object keys, order-preserved arrays, omit own digest field).
+3. Derive fingerprints from 32-byte public key material and digests using the frozen D1 canonical-JSON SHA-256 rule (sorted object keys, order-preserved arrays, omit own digest field). The profile digest is computed from the original Node Profile input; sorting channel rows for plan presentation never changes the digest input.
 4. Emit an exactly 23-check D1 gate-shaped synthetic report, whose overall verdict is always BLOCKED. Checks requiring real trusted host evidence remain not_evaluated.
 5. Enforce a second, independently supplied BWH public key observation in the consistency check. If both plans jointly drift to a different BWH key, wireguard_key_cross_match fails.
-6. Recompute the canonical profile digest from the same profile and cross-check profile, both plans, E1 binding and Agent endpoint references.
+6. Recompute the canonical profile digest from the original profile input and cross-check profile, both plans, E1 binding and Agent endpoint references. For every channelRef, compare BWH runtimeAdapter/desiredStateRef/materialRef/materialDigest/endpointRef and Node runtimeAdapter/unitName/configDigest/statsListen against that same profile row.
 
 ## Explicitly NOT provided
 
@@ -42,7 +42,7 @@ Status: Source-only D2 candidate. Not accepted, production-ready or authorized f
 
 ## Validation
 
-- Targeted: node --test server/tests/jp01-d2-renderers.test.mjs (first-boot to E1 binding parity plus exact D1 plan/gate schema checks)
+- Targeted: node --test server/tests/jp01-d2-renderers.test.mjs (E1 reference-rule parity, original-array-order digest, per-channel cross-binding, explicit string-type rejection, and exact D1 plan/gate schema checks)
 - D1 regression: node --test server/tests/jp01-dual-side-contracts.test.mjs
 - Required full server baseline: npm test
 - Git diff: git diff --check origin/master...HEAD
