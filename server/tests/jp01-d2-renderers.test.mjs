@@ -449,4 +449,3 @@ test('preflight rejects unsafe time, gate reference and missing inputs', () => {
     registrationBinding: binding(), evaluatedAt: '2026-11-07T00:00:00Z',
     gateRef: 'd2-gate' }), /invalid_d2_gate_input/);
 });
-
