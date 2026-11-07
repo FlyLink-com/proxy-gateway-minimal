@@ -342,7 +342,21 @@ export function evaluateD2Candidate({ profile, bwhPlan, nodePlan,
     generation: b.generation, profileDigest: expectedProfileDigest,
     bwhPlanDigest: b.digest, nodePlanDigest: n.digest,
     registrationBindingDigest: digestD2Object(a),
-    checks: GATE_IDS.map((id) => ({ id, status: states[id] })),
+    checks: GATE_IDS.map((id) => ({
+      id, status: states[id],
+      ...(id === 'wireguard_key_cross_match' ? {
+        detail: 'Source-level comparison only; the supplied BWH public key has no authenticated production inventory provenance.'
+      } : {}),
+      ...(id === 'registration_binding_match' ? {
+        detail: 'E1 candidate projection parity only; no persisted production registration record was read.'
+      } : {}),
+      ...(id === 'allowed_ips_within_plan' || id === 'no_default_route' ? {
+        detail: 'Validated against the candidate plan only; no live WireGuard interface or route table was inspected.'
+      } : {}),
+      ...(id === 'stats_loopback_only' ? {
+        detail: 'Plan declaration only; live listeners, runtime config and file permissions remain unverified.'
+      } : {})
+    })),
     verdict: 'blocked'
   };
 }
