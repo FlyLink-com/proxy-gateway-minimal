@@ -329,6 +329,31 @@ test('D2 profile schema pins the JP-01 identity and SHA-256 channel digests', ()
   }
 });
 
+test('D2 profile schema and renderer reject sensitive markers in generic refs', () => {
+  for (const [field, value] of [
+    ['generation', 'secret-generation'],
+    ['nodePlanRef', 'password-plan'],
+    ['bwhPlanRef', 'credential-plan'],
+    ['agentEndpointRef', 'token-endpoint']
+  ]) {
+    const invalid = profile();
+    invalid[field] = value;
+    assert.notDeepEqual(validate(profileSchema, invalid), []);
+    assert.throws(() => render(invalid), /invalid_d2_reference/);
+  }
+
+  for (const [field, value] of [
+    ['desiredStateRef', 'secret-state'],
+    ['materialRef', 'customerdata-material'],
+    ['endpointRef', 'token-endpoint']
+  ]) {
+    const invalid = profile();
+    invalid.channels[0][field] = value;
+    assert.notDeepEqual(validate(profileSchema, invalid), []);
+    assert.throws(() => render(invalid), /invalid_d2_reference/);
+  }
+});
+
 test('D2 profile adapter rejects unready packets, missing anchors and identity/channel drift', () => {
   const readyPacket = buildNodeImageFirstBootPacket(firstBootInput(false));
   const input = {
