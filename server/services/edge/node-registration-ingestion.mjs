@@ -46,12 +46,22 @@ function text(value) {
   return String(value ?? "").trim();
 }
 
+// Export the exact E1 reference predicate so source-only consumers can
+// validate candidate bindings without constructing an approved record.
+// Keep safeRef below on this same predicate to prevent rule drift.
+export function isSafeNodeRegistrationReference(value) {
+  const normalized = text(value);
+  return Boolean(normalized) &&
+    SAFE_REF_PATTERN.test(normalized) &&
+    !SENSITIVE_TEXT_PATTERN.test(normalized);
+}
+
 function safeRef(value, field) {
   const normalized = text(value);
   if (!normalized) {
     throw nodeRegistrationError("validation_error", `${field} is required`);
   }
-  if (!SAFE_REF_PATTERN.test(normalized) || SENSITIVE_TEXT_PATTERN.test(normalized)) {
+  if (!isSafeNodeRegistrationReference(normalized)) {
     throw nodeRegistrationError("validation_error", "node registration packet contains unsafe reference material");
   }
   return normalized;
