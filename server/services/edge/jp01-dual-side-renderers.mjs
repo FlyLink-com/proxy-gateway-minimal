@@ -185,6 +185,9 @@ export function renderD2Candidate({ profile, registrationBinding,
   const p = checkProfile(profile);
   const nodeFingerprint = fingerprintD2PublicKey(nodePublicKey);
   const bwhFingerprint = fingerprintD2PublicKey(bwhReadOnlyPublicKey);
+  if (nodeFingerprint === bwhFingerprint) {
+    throw new Error('wireguard_key_reuse');
+  }
   checkBinding(registrationBinding, p, nodeFingerprint);
   // The D1 digest describes the original profile, including channel order.
   // Sorting below is only a deterministic plan-output presentation choice.
@@ -353,6 +356,10 @@ export function evaluateD2Candidate({ profile, bwhPlan, nodePlan,
     independentlyObservedBwhPublicKey === wgN.peerPublicKey;
   match('wireguard_key_cross_match',
     inventoryOk &&
+    wgB.nodePeerPublicKey !== wgB.bwhPeerPublicKey &&
+    wgB.nodePeerPublicKeyFingerprint !== wgB.bwhPeerPublicKeyFingerprint &&
+    wgN.ownPublicKey !== wgN.peerPublicKey &&
+    wgN.ownPublicKeyFingerprint !== wgN.peerPublicKeyFingerprint &&
     wgB.nodePeerPublicKey === wgN.ownPublicKey &&
     wgB.bwhPeerPublicKey === wgN.peerPublicKey &&
     wgB.nodePeerPublicKeyFingerprint === wgN.ownPublicKeyFingerprint &&
