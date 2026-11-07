@@ -159,7 +159,7 @@ function profile() {
 function binding(p = profile()) {
   return {
     nodeRef: p.nodeRef, providerRef: p.providerRef, regionRef: p.regionRef,
-    roleRef: p.roleRef, channelRefs: [...refs].sort(),
+    roleRef: p.roleRef, channelRefs: p.channels.map((channel) => channel.channelRef).sort(),
     imageManifestRef: p.imageManifestRef, releaseRef: p.releaseRef,
     firstBootPacketRef: p.firstBootPacketRef, wireguardPlanRef: p.wireguardPlanRef,
     wireguardPublicKeyFingerprint: fingerprint(0x22),
@@ -277,16 +277,25 @@ test('D2 preview binding equals the E1 executor binding projection without writi
   assert.deepEqual(candidate.registrationBinding, registrationBindingOf(executorRecord));
 });
 
-test('D2 registration references use the exact E1 predicate without synthesizing Apply approval', () => {
+test('D2 registration refs enforce the E1/D1 intersection without synthesizing Apply approval', () => {
   assert.equal(isSafeNodeRegistrationReference('first_boot_node-vultr-jp-01'), true);
   assert.equal(isSafeNodeRegistrationReference('first.boot.jp01'), false);
+  // E1 permits slash in a safe reference, but D1 plan schemas do not.
+  assert.equal(isSafeNodeRegistrationReference('channel/jp01/vless'), true);
   const readyPacket = buildNodeImageFirstBootPacket(firstBootInput(false));
   assert.throws(() => buildD2ProfileFromFirstBootPacket({
     firstBootPacket: readyPacket,
     runtimeProfile: { ...runtimeProfile(), firstBootPacketRef: 'first.boot.jp01' },
     wireguardPublicKeyFingerprint: fingerprint(0x22),
     agentAuthFingerprint: refHash('d')
-  }), /invalid_d2_registration_reference/);
+  }), /invalid_d2_registration_plan_reference/);
+  const slashRuntime = runtimeProfile();
+  slashRuntime.channels[0].channelRef = 'channel/jp01/vless';
+  assert.throws(() => buildD2ProfileFromFirstBootPacket({
+    firstBootPacket: readyPacket, runtimeProfile: slashRuntime,
+    wireguardPublicKeyFingerprint: fingerprint(0x22),
+    agentAuthFingerprint: refHash('d')
+  }), /invalid_d2_registration_plan_reference/);
   const approvedPacket = buildNodeImageFirstBootPacket(firstBootInput(true));
   assert.throws(() => buildEdgeNodeRegistrationRecordFromFirstBootPacket(
     approvedPacket, {
@@ -295,8 +304,16 @@ test('D2 registration references use the exact E1 predicate without synthesizing
       agentAuthFingerprint: refHash('d')
     }), (error) => error.code === 'validation_error');
   const invalidProfile = { ...profile(), firstBootPacketRef: 'first.boot.jp01' };
-  assert.throws(() => render(invalidProfile), /invalid_d2_registration_reference/);
+  assert.throws(() => render(invalidProfile), /invalid_d2_registration_plan_reference/);
   assert.notDeepEqual(validate(profileSchema, invalidProfile), []);
+  const slashProfile = profile();
+  slashProfile.channels[0].channelRef = 'channel/jp01/vless';
+  assert.throws(() => render(slashProfile), /invalid_d2_registration_plan_reference/);
+  assert.notDeepEqual(validate(profileSchema, slashProfile), []);
+  assert.notDeepEqual(validate(bwhSchema.properties.channels.items.properties.channelRef,
+    'channel/jp01/vless'), []);
+  assert.notDeepEqual(validate(nodeSchema.properties.services.items.properties.channelRef,
+    'channel/jp01/vless'), []);
 });
 
 test('D2 profile adapter rejects unready packets, missing anchors and identity/channel drift', () => {
@@ -452,6 +469,18 @@ test('gate recomputes the canonical profile digest and checks the Agent endpoint
   const endpointResult = evaluate(endpointDrift);
   assert.equal(statusOf(endpointResult, 'agent_binding_match'), 'fail');
   assert.equal(endpointResult.verdict, 'blocked');
+});
+
+test('channel ordering matches E1 registrationBindingOf default lexical sort', () => {
+  const p = profile();
+  p.channels[0].channelRef = 'channel-A';
+  p.channels[1].channelRef = 'channel-a';
+  const plans = render(p);
+  const expected = p.channels.map((channel) => channel.channelRef).sort();
+  assert.deepEqual(plans.bwhPlan.channelRefs, expected);
+  assert.deepEqual(plans.nodePlan.services.map((service) => service.channelRef), expected);
+  const result = evaluate(plans, binding(p), BWH_KEY, p);
+  assert.equal(statusOf(result, 'channel_refs_match'), 'pass');
 });
 
 test('gate rejects per-channel runtime declaration drift after plan re-digesting', () => {

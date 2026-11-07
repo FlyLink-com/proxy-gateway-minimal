@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { isSafeWireguardPlanRef } from '../node-image-first-boot-packet.mjs';
-import { isSafeNodeRegistrationReference } from './node-registration-ingestion.mjs';
+import { isSafeD2RegistrationPlanReference } from './jp01-d2-profile-adapter.mjs';
 export { buildD2ProfileFromFirstBootPacket } from './jp01-d2-profile-adapter.mjs';
 
 // D2 is a source-only, inert candidate renderer. In particular it NEVER reads
@@ -65,9 +65,9 @@ function safeRef(value) {
   return value;
 }
 
-function safeRegistrationRef(value) {
-  if (typeof value !== 'string' || !isSafeNodeRegistrationReference(value)) {
-    throw new Error('invalid_d2_registration_reference');
+function safeD2RegistrationPlanRef(value) {
+  if (!isSafeD2RegistrationPlanReference(value)) {
+    throw new Error('invalid_d2_registration_plan_reference');
   }
   return value;
 }
@@ -111,7 +111,7 @@ function checkProfile(profile) {
   for (const key of PROFILE_FIELDS) {
     if (['schema', 'hostname', 'agentAuthFingerprint', 'channels',
       'wireguardPlanRef'].includes(key)) continue;
-    if (E1_REFERENCE_FIELDS.has(key)) safeRegistrationRef(profile[key]);
+    if (E1_REFERENCE_FIELDS.has(key)) safeD2RegistrationPlanRef(profile[key]);
     else safeRef(profile[key]);
   }
   if (typeof profile.wireguardPlanRef !== 'string' ||
@@ -125,7 +125,7 @@ function checkProfile(profile) {
   const seen = new Set();
   for (const channel of profile.channels) {
     exactKeys(channel, CHANNEL_FIELDS);
-    safeRegistrationRef(channel.channelRef);
+    safeD2RegistrationPlanRef(channel.channelRef);
     for (const key of ['desiredStateRef', 'materialRef', 'endpointRef']) {
       safeRef(channel[key]);
     }
@@ -143,7 +143,8 @@ function checkProfile(profile) {
     seen.add(channel.channelRef);
   }
   return { ...profile, channels: profile.channels.map((c) => ({ ...c }))
-    .sort((a, b) => a.channelRef.localeCompare(b.channelRef)) };
+    .sort((a, b) => a.channelRef < b.channelRef ? -1 :
+      a.channelRef > b.channelRef ? 1 : 0) };
 }
 
 function checkBinding(binding, profile, nodeKeyFingerprint) {
