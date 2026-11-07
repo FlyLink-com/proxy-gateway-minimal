@@ -1,13 +1,17 @@
 {
   "description": "G3/G4 control-plane Worker + D1 local vertical slices: protected API, signed Agent claims and redacted receipts (synthetic development only; not deployed).",
   "devDependencies": {
-    "miniflare": "4.20251109.0",
-    "wrangler": "4.99.0"
+    "miniflare": "4.20260730.0",
+    "wrangler": "4.158.0"
   },
   "engines": {
     "node": ">=22"
   },
   "name": "flylink-control-plane-worker",
+  "overrides": {
+    "sharp": "0.35.5",
+    "undici": "7.30.1"
+  },
   "private": true,
   "scripts": {
     "dev": "wrangler dev --local --config wrangler.control-plane.jsonc",
