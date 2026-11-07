@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { isSafeWireguardPlanRef } from '../node-image-first-boot-packet.mjs';
+export { buildD2ProfileFromFirstBootPacket } from './jp01-d2-profile-adapter.mjs';
 
 // D2 is a source-only, inert candidate renderer. In particular it NEVER reads
 // BWH, generates keys, writes runtime files, provisions nodes or authorizes Apply.
@@ -223,10 +224,11 @@ function checkKey(value, expectedFingerprint) {
  * inventory provenance, config tests, permissions, secret inspection and
  * material evidence cannot be certified by source-only rendering.
  */
-export function evaluateD2Candidate({ bwhPlan, nodePlan, registrationBinding,
-  independentlyObservedBwhPublicKey, evaluatedAt, gateRef }) {
+export function evaluateD2Candidate({ profile, bwhPlan, nodePlan,
+  registrationBinding, independentlyObservedBwhPublicKey, evaluatedAt, gateRef }) {
   if (!isRecord(bwhPlan) || !isRecord(nodePlan) ||
       !isRecord(registrationBinding)) throw new Error('invalid_d2_gate_input');
+  const p = checkProfile(profile);
   safeRef(gateRef);
   if (typeof evaluatedAt !== 'string' || !Number.isFinite(Date.parse(evaluatedAt))) {
     throw new Error('invalid_d2_gate_time');
@@ -234,30 +236,57 @@ export function evaluateD2Candidate({ bwhPlan, nodePlan, registrationBinding,
   const states = Object.fromEntries(GATE_IDS.map((id) => [id, 'not_evaluated']));
   const match = (id, ok) => { states[id] = ok ? 'pass' : 'fail'; };
   const b = bwhPlan, n = nodePlan, a = registrationBinding;
-  const ns = n.services?.map((x) => x.channelRef) ?? [];
-  const bs = b.channels?.map((x) => x.channelRef) ?? [];
-  const refs = b.channelRefs ?? [];
-  for (const [id, left, right, binding] of [
-    ['node_ref_match', b.nodeRef, n.nodeRef, a.nodeRef],
-    ['provider_ref_match', b.providerRef, n.providerRef, a.providerRef],
-    ['region_ref_match', b.regionRef, n.regionRef, a.regionRef],
-    ['role_ref_match', b.roleRef, n.roleRef, a.roleRef],
-    ['image_manifest_ref_match', b.imageManifestRef, n.imageManifestRef, a.imageManifestRef],
-    ['release_ref_match', b.releaseRef, n.agent?.releaseRef, a.releaseRef],
-    ['first_boot_packet_ref_match', b.firstBootPacketRef, n.firstBootPacketRef, a.firstBootPacketRef],
-    ['wireguard_plan_ref_match', b.wireguard?.planRef, n.wireguardPlanRef, a.wireguardPlanRef]
-  ]) match(id, left !== undefined && left === right && right === binding);
-  match('channel_refs_match', equal(ordered(refs), ordered(bs)) &&
-    equal(ordered(bs), ordered(ns)) &&
-    equal(ordered(ns), ordered(a.channelRefs ?? [])));
-  match('generation_match', b.generation === n.generation);
-  match('profile_digest_match', b.profileDigest === n.profileDigest &&
+  const wgB = isRecord(b.wireguard) ? b.wireguard : {};
+  const wgN = isRecord(n.wireguard) ? n.wireguard : {};
+  const agentB = isRecord(b.agent) ? b.agent : {};
+  const agentN = isRecord(n.agent) ? n.agent : {};
+  const channelsB = Array.isArray(b.channels) ? b.channels : [];
+  const servicesN = Array.isArray(n.services) ? n.services : [];
+  const profileChannels = p.channels;
+  const refs = Array.isArray(b.channelRefs) ? b.channelRefs : [];
+  const bindingChannels = Array.isArray(a.channelRefs) ? a.channelRefs : [];
+  const expectedProfileDigest = digestD2Object(p);
+
+  match('node_ref_match', b.nodeRef === n.nodeRef &&
+    n.nodeRef === p.nodeRef && p.nodeRef === a.nodeRef);
+  match('provider_ref_match', b.providerRef === n.providerRef &&
+    n.providerRef === p.providerRef && p.providerRef === a.providerRef);
+  match('region_ref_match', b.regionRef === n.regionRef &&
+    n.regionRef === p.regionRef && p.regionRef === a.regionRef);
+  match('role_ref_match', b.roleRef === n.roleRef &&
+    n.roleRef === p.roleRef && p.roleRef === a.roleRef);
+  const bChannelRefs = channelsB.map((c) => c?.channelRef);
+  const nodeChannelRefs = servicesN.map((c) => c?.channelRef);
+  const profileChannelRefs = profileChannels.map((c) => c.channelRef);
+  match('channel_refs_match',
+    equal(ordered(refs), ordered(bChannelRefs)) &&
+    equal(ordered(bChannelRefs), ordered(nodeChannelRefs)) &&
+    equal(ordered(nodeChannelRefs), ordered(profileChannelRefs)) &&
+    equal(ordered(profileChannelRefs), ordered(bindingChannels)));
+  match('image_manifest_ref_match', b.imageManifestRef === n.imageManifestRef &&
+    n.imageManifestRef === p.imageManifestRef &&
+    p.imageManifestRef === a.imageManifestRef);
+  match('release_ref_match', b.releaseRef === agentN.releaseRef &&
+    agentN.releaseRef === p.releaseRef && p.releaseRef === a.releaseRef);
+  match('first_boot_packet_ref_match',
+    b.firstBootPacketRef === n.firstBootPacketRef &&
+    n.firstBootPacketRef === p.firstBootPacketRef &&
+    p.firstBootPacketRef === a.firstBootPacketRef);
+  match('wireguard_plan_ref_match',
+    wgB.planRef === n.wireguardPlanRef &&
+    n.wireguardPlanRef === p.wireguardPlanRef &&
+    p.wireguardPlanRef === a.wireguardPlanRef);
+  match('profile_digest_match',
+    b.profileDigest === expectedProfileDigest &&
+    n.profileDigest === expectedProfileDigest &&
     FINGERPRINT.test(b.profileDigest || '') &&
-    b.digest === digestD2Object(b) && n.digest === digestD2Object(n));
-  const wgB = b.wireguard || {}, wgN = n.wireguard || {};
+    b.digest === digestD2Object(b) &&
+    n.digest === digestD2Object(n));
+  match('generation_match',
+    b.generation === n.generation && n.generation === p.generation);
+
   const inventoryOk = typeof independentlyObservedBwhPublicKey === 'string' &&
-    checkKey(independentlyObservedBwhPublicKey,
-      wgB.bwhPeerPublicKeyFingerprint) &&
+    checkKey(independentlyObservedBwhPublicKey, wgB.bwhPeerPublicKeyFingerprint) &&
     independentlyObservedBwhPublicKey === wgB.bwhPeerPublicKey &&
     independentlyObservedBwhPublicKey === wgN.peerPublicKey;
   match('wireguard_key_cross_match',
@@ -271,31 +300,46 @@ export function evaluateD2Candidate({ bwhPlan, nodePlan, registrationBinding,
     checkKey(wgN.peerPublicKey, wgN.peerPublicKeyFingerprint) &&
     checkKey(wgB.bwhPeerPublicKey, wgB.bwhPeerPublicKeyFingerprint) &&
     a.wireguardPublicKeyFingerprint === wgN.ownPublicKeyFingerprint);
-  match('allowed_ips_within_plan', equal(wgB.allowedIps, ['10.77.0.2/32']) &&
+  match('allowed_ips_within_plan',
+    equal(wgB.allowedIps, ['10.77.0.2/32']) &&
     equal(wgN.allowedIps, ['10.77.0.1/32']) &&
-    wgN.addressCidr === '10.77.0.2/32' && wgN.interfaceName === 'wg-child0');
-  match('no_default_route', !JSON.stringify([wgB.allowedIps, wgN.allowedIps])
-    .includes('0.0.0.0/0') &&
+    wgN.addressCidr === '10.77.0.2/32' &&
+    wgN.interfaceName === 'wg-child0');
+  match('no_default_route',
+    !JSON.stringify([wgB.allowedIps, wgN.allowedIps]).includes('0.0.0.0/0') &&
     !JSON.stringify([wgB.allowedIps, wgN.allowedIps]).includes('::/0'));
-  match('agent_binding_match', b.agent?.agentAuthFingerprint === a.agentAuthFingerprint &&
-    n.agent?.authFingerprint === a.agentAuthFingerprint);
-  match('registration_binding_match', [
-    'node_ref_match', 'provider_ref_match', 'region_ref_match', 'role_ref_match',
-    'channel_refs_match', 'image_manifest_ref_match', 'release_ref_match',
-    'first_boot_packet_ref_match', 'wireguard_plan_ref_match',
-    'wireguard_key_cross_match', 'agent_binding_match'
-  ].every((id) => states[id] === 'pass'));
-  match('stats_loopback_only', Array.isArray(n.services) &&
-    n.services.length > 0 && n.services.every((s) =>
-      ['127.0.0.1', '::1'].includes(s.statsListen)) &&
+  match('agent_binding_match',
+    agentB.agentAuthFingerprint === a.agentAuthFingerprint &&
+    agentN.authFingerprint === a.agentAuthFingerprint &&
+    a.agentAuthFingerprint === p.agentAuthFingerprint &&
+    agentB.endpointRef === agentN.bwhEndpointRef &&
+    agentN.bwhEndpointRef === p.agentEndpointRef);
+  let bindingValid = false;
+  try {
+    checkBinding(a, p, wgN.ownPublicKeyFingerprint);
+    bindingValid = true;
+  } catch {
+    bindingValid = false;
+  }
+  match('registration_binding_match', bindingValid &&
+    ['node_ref_match', 'provider_ref_match', 'region_ref_match', 'role_ref_match',
+      'channel_refs_match', 'image_manifest_ref_match', 'release_ref_match',
+      'first_boot_packet_ref_match', 'wireguard_plan_ref_match',
+      'wireguard_key_cross_match', 'agent_binding_match']
+      .every((id) => states[id] === 'pass'));
+  match('stats_loopback_only',
+    servicesN.length > 0 &&
+    servicesN.every((service) => ['127.0.0.1', '::1'].includes(service.statsListen)) &&
+    profileChannels.every((channel) => ['127.0.0.1', '::1'].includes(channel.statsListen)) &&
     n.activation?.controlServicesEnabled === false &&
     n.activation?.trafficServicesEnabled === false);
-  match('no_unreplaced_placeholders', !/\{\{|\}\}|__TODO__|<replace>/i
-    .test(JSON.stringify([b, n])));
-  // These runtime/provenance checks are deliberately not claimed by D2.
+  match('no_unreplaced_placeholders',
+    !/\{\{|\}\}|__TODO__|<replace>/i.test(JSON.stringify([p, b, n, a])));
+  // Trusted host provenance, private-path reachability, real config tests,
+  // permissions, secret inspection and material readback stay not_evaluated.
   return {
     schema: 'dual-side-gate/v1', gateRef, evaluatedAt, nodeRef: b.nodeRef,
-    generation: b.generation, profileDigest: b.profileDigest,
+    generation: b.generation, profileDigest: expectedProfileDigest,
     bwhPlanDigest: b.digest, nodePlanDigest: n.digest,
     registrationBindingDigest: digestD2Object(a),
     checks: GATE_IDS.map((id) => ({ id, status: states[id] })),
