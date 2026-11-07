@@ -389,6 +389,22 @@ test('BWH key continuity rejects both plans drifting together to a new BWH key',
   assert.equal(statusOf(result, 'registration_binding_match'), 'fail');
 });
 
+
+test('gate recomputes the canonical profile digest and checks the Agent endpoint cross-binding', () => {
+  const plans = render();
+  const driftedProfile = profile();
+  driftedProfile.generation = '2';
+  const drifted = evaluate(plans, binding(), BWH_KEY, driftedProfile);
+  assert.equal(statusOf(drifted, 'profile_digest_match'), 'fail');
+  assert.equal(statusOf(drifted, 'generation_match'), 'fail');
+  const endpointDrift = render();
+  endpointDrift.nodePlan.agent.bwhEndpointRef = 'agent-endpoint-other';
+  endpointDrift.nodePlan.digest = digestD2Object(endpointDrift.nodePlan);
+  const endpointResult = evaluate(endpointDrift);
+  assert.equal(statusOf(endpointResult, 'agent_binding_match'), 'fail');
+  assert.equal(endpointResult.verdict, 'blocked');
+});
+
 test('candidate gate rejects asymmetric keys and forged plan digests', () => {
   const asymmetric = render();
   asymmetric.nodePlan.wireguard.peerPublicKey = key(0x55);
