@@ -33,7 +33,8 @@
       "type": "string",
       "not": {
         "pattern": "https?:|token=|[Ss][Ee][Cc][Rr][Ee][Tt]|[Cc][Rr][Ee][Dd][Ee][Nn][Tt][Ii][Aa][Ll]|[Pp][Aa][Ss][Ss][Ww][Oo][Rr][Dd]|[Pp][Rr][Ii][Vv][Aa][Tt][Ee]|[Cc][Uu][Ss][Tt][Oo][Mm][Ee][Rr]|@|sub/clash\\.yaml|(?:[0-9]{1,3}\\.){3}[0-9]{1,3}|[a-z0-9-]+\\.[a-z]{2,}"
-      }
+      },
+      "const": "node-vultr-jp-01"
     },
     "providerRef": {
       "pattern": "^[A-Za-z0-9][A-Za-z0-9_:-]{0,127}$",
@@ -150,7 +151,7 @@
             "type": "string"
           },
           "materialDigest": {
-            "pattern": "^[A-Za-z0-9._:+/-]{6,256}$",
+            "pattern": "^sha256:[0-9a-f]{64}$",
             "type": "string"
           },
           "endpointRef": {
@@ -162,7 +163,7 @@
             "type": "string"
           },
           "configDigest": {
-            "pattern": "^[A-Za-z0-9._:+/-]{6,256}$",
+            "pattern": "^sha256:[0-9a-f]{64}$",
             "type": "string"
           },
           "statsListen": {
