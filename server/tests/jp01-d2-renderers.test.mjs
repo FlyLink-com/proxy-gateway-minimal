@@ -494,6 +494,23 @@ test('BWH key continuity rejects both plans drifting together to a new BWH key',
 });
 
 
+test('renderer and gate reject reuse of one WireGuard public key on both sides', () => {
+  assert.throws(() => render(profile(), binding(), NODE_KEY), /wireguard_key_reuse/);
+
+  const reused = render();
+  reused.bwhPlan.wireguard.bwhPeerPublicKey = NODE_KEY;
+  reused.bwhPlan.wireguard.bwhPeerPublicKeyFingerprint = fingerprint(0x22);
+  reused.nodePlan.wireguard.peerPublicKey = NODE_KEY;
+  reused.nodePlan.wireguard.peerPublicKeyFingerprint = fingerprint(0x22);
+  reused.bwhPlan.digest = digestD2Object(reused.bwhPlan);
+  reused.nodePlan.digest = digestD2Object(reused.nodePlan);
+
+  const result = evaluate(reused, binding(), NODE_KEY);
+  assert.equal(statusOf(result, 'wireguard_key_cross_match'), 'fail');
+  assert.equal(statusOf(result, 'registration_binding_match'), 'fail');
+  assert.equal(result.verdict, 'blocked');
+});
+
 test('gate recomputes the canonical profile digest and checks the Agent endpoint cross-binding', () => {
   const plans = render();
   const driftedProfile = profile();
