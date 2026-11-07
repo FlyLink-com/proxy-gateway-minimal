@@ -235,7 +235,7 @@ export function buildD2RegistrationBindingCandidateFromFirstBootPacket({
     providerRef: safeD2RegistrationPlanRef(packet.node.providerRef),
     regionRef: safeD2RegistrationPlanRef(packet.node.regionRef),
     roleRef: safeD2RegistrationPlanRef(packet.node.roleRef),
-    channelRefs: packet.node.channelRefs.map(safeRegistrationRef),
+    channelRefs: packet.node.channelRefs.map(safeD2RegistrationPlanRef),
     imageManifestRef: safeD2RegistrationPlanRef(packet.image.imageManifestRef),
     releaseRef: safeD2RegistrationPlanRef(packet.image.releaseRef),
     firstBootPacketRef: safeD2RegistrationPlanRef(firstBootPacketRef || 'first_boot_' + nodeRef),
