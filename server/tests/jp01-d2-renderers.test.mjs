@@ -258,7 +258,7 @@ test('default routes, public stats and service enablement cannot yield a pass', 
 });
 
 test('missing independent key observation cannot yield identity continuity', () => {
-  const result = evaluate(render(), binding(), undefined);
+  const result = evaluate(render(), binding(), null);
   assert.equal(result.verdict, 'blocked');
   assert.equal(statusOf(result, 'wireguard_key_cross_match'), 'fail');
   assertSchema(gateSchema, result);
