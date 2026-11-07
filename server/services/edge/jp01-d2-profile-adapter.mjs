@@ -280,4 +280,3 @@ export function buildD2ProfileFromFirstBootPacket({
   };
   return { profile, registrationBinding };
 }
-
