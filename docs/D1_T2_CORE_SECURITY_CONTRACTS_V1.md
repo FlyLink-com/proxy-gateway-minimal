@@ -61,6 +61,8 @@ The digest is only a storage transformation. Preserve the exact existing uniquen
 
 A same-scope/same-key/same-request replay must return the original result. A same-scope/same-key/different-request replay must retain the current conflict behavior. No new cross-scope dedupe is allowed.
 
+The same contract also applies to `platform_payment_receipts.event_dedupe_key`: its current uniqueness scope is `(merchant_scope_digest, event_dedupe_key)`. Compute a provider-event HMAC under a separate `flylink:d1:provider-event:v1` domain, scoped by the stable merchant-scope digest. Do not reuse the idempotency HMAC domain or key. Keep the merchant-scope digest and receipt payload digest as separate evidence fields.
+
 ### 2.2 Target representation
 
 Use one versioned envelope in TEXT:
@@ -138,7 +140,7 @@ Canonical JSON uses UTF-8, deterministic object-key order, no duplicate keys, no
 
 ### 3.2 Explicit incompleteness
 
-The source currently has a generic `assertNoUnsafeFields()` key-name guard and a narrower edge metadata value validator; neither is a whole-table guarantee. The table above establishes target schema IDs and safe high-level shapes, but it does **not** claim every current producer's exact key set has been enumerated. Before T2 approval, enumerate all INSERT/UPDATE call sites and tests for the five metadata/event columns and every JSON schema above. In particular, `account-metadata/v1`, `issuance-metadata/v1`, `audit-metadata/v1`, `edge-node-metadata/v1`, referral policy and wallet balance snapshots need exact exhaustive key sets from all source writers.
+The source currently has a generic `assertNoUnsafeFields()` key-name guard and a narrower edge metadata value validator; neither is a whole-table guarantee. The table above establishes target schema IDs and safe high-level shapes, but it does **not** claim every current producer's exact key set has been enumerated. Before T2 approval, enumerate all INSERT/UPDATE call sites and tests for the five metadata/event columns and every JSON schema above (26 JSON columns in the T2 inventory, including deferred Passkey JSON). In particular, `account-metadata/v1`, `issuance-metadata/v1`, `audit-metadata/v1`, `edge-node-metadata/v1`, referral policy and wallet balance snapshots need exact exhaustive key sets from all source writers.
 
 ### 3.3 Required synthetic tests
 
