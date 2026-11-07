@@ -1,0 +1,33 @@
+name: Control Plane Worker
+
+# Local-only validation for the G3 control-plane Worker slice.
+# Runs the Miniflare test suites; uses no Cloudflare credentials,
+# creates no remote resources, and never deploys.
+on:
+  pull_request:
+    paths:
+      - "workers/control-plane/**"
+      - ".github/workflows/control-plane-worker.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Worker slice tests (local Miniflare D1)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: workers/control-plane
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: workers/control-plane/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      - name: Run tests
+        run: npm test
