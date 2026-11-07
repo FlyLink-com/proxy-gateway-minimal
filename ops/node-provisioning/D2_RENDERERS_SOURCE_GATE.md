@@ -19,27 +19,30 @@ Status: Source-only D2 candidate. Not accepted, production-ready or authorized f
 - Production, Provider, BWH, SSH, Cloudflare, DNS, runtime and customer impact: none.
 - Base contract: D1 POSTINSTALL_IDENTITY_EXCHANGE.md, owner-accepted and merged as PR #826.
 - Source: server/services/edge/jp01-dual-side-renderers.mjs.
-- Tests: server/tests/jp01-d2-renderers.test.mjs (synthetic).
+- Profile adapter: server/services/edge/jp01-d2-profile-adapter.mjs; it projects the safe first-boot summary into the eleven-field E1 registration-binding shape using the same registrationBindingOf projection as the registration executor. It does not require firstBootApplyAllowed, does not open the registration execution gate, and performs no write.
+- D2 profile schema: ops/node-provisioning/schemas/jp01-node-profile.schema.json.
+- Tests: server/tests/jp01-d2-renderers.test.mjs (synthetic, plus parity check against the existing registration executor projection).
 
 ## Implemented source-only behavior
 
-1. Strict JP-01 input validation rejects raw/extra properties, unsafe references, unapproved node targets, invalid WireGuard keys, public stats listeners, and duplicate channels.
+1. Strict JP-01 input validation and a source adapter from the existing first-boot summary and E1 registration-binding projection. The adapter compares the same eleven binding fields the executor uses, without requiring apply approval or writing a record.
 2. Emit two inactive D1-schema-shaped candidate plans: bwh-integration-plan/v1 and node-runtime-plan/v1. The existing BWH public key is passed as an input; no key is generated, replaced or read from BWH by this code.
 3. Derive fingerprints from 32-byte public key material and digests using the frozen D1 canonical-JSON SHA-256 rule (sorted object keys, order-preserved arrays, omit own digest field).
 4. Emit an exactly 23-check D1 gate-shaped synthetic report, whose overall verdict is always BLOCKED. Checks requiring real trusted host evidence remain not_evaluated.
 5. Enforce a second, independently supplied BWH public key observation in the consistency check. If both plans jointly drift to a different BWH key, wireguard_key_cross_match fails.
+6. Recompute the canonical profile digest from the same profile and cross-check profile, both plans, E1 binding and Agent endpoint references.
 
 ## Explicitly NOT provided
 
 - No actual read-only BWH inventory, no identity provenance or authenticated evidence freshness. A synthetic caller-provided key does not establish BWH continuity.
-- No canonical production Node Profile adapter and no proof that the supplied registration binding is the actual E1-A registration candidate.
+- No production Node Profile source or attested E1-A production candidate binding. The new adapter proves source-level parity with the executor's eleven-field projection, but its inputs remain synthetic and are not an actual registered production candidate.
 - No Agent handshake, bootstrap, credential exchange, runtime config generation, file writes, service activation, provisioning, apply, or production changes.
 - No real config tests, permissions readback, material digest readback, secure material scan, or private-path network proof. These checks cannot be asserted from source.
 - No D2 acceptance or D3/D4 start authorization. M0 remains BLOCKED; 256 stale identities remain RETAIN.
 
 ## Validation
 
-- Targeted: node --test server/tests/jp01-d2-renderers.test.mjs
+- Targeted: node --test server/tests/jp01-d2-renderers.test.mjs (first-boot to E1 binding parity plus exact D1 plan/gate schema checks)
 - D1 regression: node --test server/tests/jp01-dual-side-contracts.test.mjs
 - Required full server baseline: npm test
 - Git diff: git diff --check origin/master...HEAD
