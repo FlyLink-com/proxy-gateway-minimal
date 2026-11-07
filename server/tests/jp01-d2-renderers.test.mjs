@@ -316,6 +316,19 @@ test('D2 registration refs enforce the E1/D1 intersection without synthesizing A
     'channel/jp01/vless'), []);
 });
 
+test('D2 profile schema pins the JP-01 identity and SHA-256 channel digests', () => {
+  const wrongNode = { ...profile(), nodeRef: 'node-vultr-jp-02' };
+  assert.notDeepEqual(validate(profileSchema, wrongNode), []);
+  assert.throws(() => render(wrongNode), /unapproved_d2_profile/);
+
+  for (const field of ['materialDigest', 'configDigest']) {
+    const invalid = profile();
+    invalid.channels[0][field] = 'sha512:' + 'a'.repeat(128);
+    assert.notDeepEqual(validate(profileSchema, invalid), []);
+    assert.throws(() => render(invalid), /invalid_d2_channel/);
+  }
+});
+
 test('D2 profile adapter rejects unready packets, missing anchors and identity/channel drift', () => {
   const readyPacket = buildNodeImageFirstBootPacket(firstBootInput(false));
   const input = {
