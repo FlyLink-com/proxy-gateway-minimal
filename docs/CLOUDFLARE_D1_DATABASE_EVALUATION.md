@@ -1,6 +1,6 @@
 # Cloudflare Workers + D1 Control-Plane Architecture Decision
 
-Last updated: 2026-11-05, America/Los_Angeles.
+Last updated: 2026-11-06, America/Los_Angeles.
 
 ```yaml
 document_metadata:
@@ -8,7 +8,7 @@ document_metadata:
   lifecycle: active
   authority_scope: cloudflare_workers_d1_control_plane
   superseded_by: null
-  last_verified_at: 2026-11-05
+  last_verified_at: 2026-11-06
   production_authority: false
 ```
 
@@ -218,13 +218,68 @@ The owner decision authorizes the target direction and source-level design work.
 | --- | --- | --- | --- |
 | G0 — Architecture direction | **Approved 2026-11-04:** Workers control-plane API + one D1 control database; BWH remains data plane | This decision record and updated Cloudflare boundary/context docs | Completed |
 | G1 — Source inventory | Map all control-plane routes, stores, schemas, migration IDs/checksums, indexes, triggers, foreign keys, transaction participants, and data ownership | Exact-source inventory and dependency map; G1-F independent review declared passed by Yi on 2026-11-05; no customer rows or secret output | Source-level G1 complete; production DB inventory still needs separate Risk A approval |
-| G2 — Local D1 compatibility spike | Use local D1 and synthetic fixtures only; test schema SQL, constraints, batches, sessions, pagination, migration ledger, and representative transaction patterns | Repeatable tests and parity report; no remote Cloudflare resource or production data | **Not released; requires a separate G2 owner decision.** If released, local synthetic fixtures only. |
-| G3 — Worker API vertical slice | Implement a narrow Worker API and async D1 repository; begin with a safe read-only projection, then prove one bounded write flow with synthetic data | API contract tests, auth/redaction tests, transaction and failure tests | Separate source PR review |
-| G4 — BWH agent contract | Implement synthetic outbound polling, scoped command delivery, idempotent acknowledgement, retry/lease behavior, and redacted receipts | Protocol contract tests; no live node or runtime material | Separate source PR review |
+| G2 — Local D1 compatibility spike | Use local D1 and synthetic fixtures only; test schema SQL, constraints, batches, sessions, pagination, migration ledger, and representative transaction patterns | Repeatable tests and parity report; no remote Cloudflare resource or production data | **ACCEPTED WITH DOCUMENTED LIMITATIONS** on 2026-11-06; see the evidence index and dated acceptance record. This is not full D1 equivalence or migration approval. |
+| G3 — Worker API vertical slice | Implement a narrow Worker API and async D1 repository; begin with a safe read-only projection, then prove one bounded write flow with synthetic data | API contract tests, auth/redaction tests, transaction and failure tests | **Local source slice merged:** #831 read API + #833 bounded idempotent write; Worker suite 30/30 on the #833 head. Synthetic D1 only; not deployed. |
+| G4 — BWH agent contract | Implement synthetic outbound polling, scoped command delivery, idempotent acknowledgement, retry/lease behavior, and redacted receipts | Protocol contract tests; no live node or runtime material | **Local Agent + Worker source contracts merged:** #834 Agent-side and #838 Worker endpoints. Worker Miniflare D1 suite passed on the exact #838 source head. No BWH connection, systemd installation, or deployment. |
 | G5 — Remote staging | Create a non-production Worker/D1 environment, secrets, bindings, and isolated route only after exact approval | Resource inventory, access boundary, staging validation, cost/retention plan | Separate explicit Cloudflare account/resource approval |
 | G6 — Offline migration rehearsal | Use synthetic or separately approved immutable fixture; compare schema, aggregate counts, safe digests, financial invariants, and restore behavior | Reproducible reconciliation and tested recovery evidence | Source / isolated fixture; production inventory remains separately gated |
 | G7 — Production cutover | Freeze the source writer, take and verify an immutable backup, apply the exact reviewed migration, reconcile, and switch one authoritative writer | Exact Risk A approval, backup identity, migration identity, validation receipt, and rollback/forward-recovery readiness | **Risk A; not authorized by this decision** |
 | G8 — Post-cutover recovery | Prove D1 export/restore, RPO/RTO, and recovery of writes accepted after cutover | Tested recovery evidence and explicit recovery decision | Separate Risk A gate |
+
+
+## 2026-11-05 PST / 2026-11-06 UTC — Source-only implementation progress
+
+This dated addendum supersedes the earlier G2/G3/G4 progress assumptions in the original gate table. It records repository evidence only; it does not promote a source slice to a remote runtime or production state.
+
+| Gate | Current source evidence | Current status |
+| --- | --- | --- |
+| G2 — Local D1 compatibility | The Rev2 compatibility report records the local synthetic dual-engine results, including the 57/56/1 transaction correction and the 39-item pagination probe. The evidence index is [G2_D1_COMPATIBILITY_EVIDENCE_INDEX_2026-11-05.md](G2_D1_COMPATIBILITY_EVIDENCE_INDEX_2026-11-05.md). | **HOLD FOR CLOSEOUT / core compatibility conditions passed / total gate not closed.** This is not a G2 PASS or migration approval. |
+| G2-C1 — Scheme C source migration | [PR #832](https://github.com/FlyLink-com/proxy-gateway-minimal/pull/832) merged the source migration 20261105_001_coin_commerce_initial_confirmation_guard_plan_c at 5c1bccb526d49d45056d2b8780464e0d091b30c4. | Source migration is in master. No persistent SQLite or remote D1 apply was performed. |
+| G3 — Worker local vertical slice | [PR #831](https://github.com/FlyLink-com/proxy-gateway-minimal/pull/831) added the read API; [PR #833](https://github.com/FlyLink-com/proxy-gateway-minimal/pull/833) added the bounded idempotent write. The Worker suite is 30/30 on the #833 head; its Worker CI and applicable root CI jobs succeeded. | **Local source slice complete.** Synthetic D1 only; no remote Worker/D1, production route, or data cutover. |
+| G4 — BWH Agent HTTPS contract | [PR #834](https://github.com/FlyLink-com/proxy-gateway-minimal/pull/834) merged the Agent-side contract. Its final reviewed head was 733d5888ca7e4ff8bed88a4174c5283099b54724; merge commit is 42db751defaaf9e1d24906cd03b7a4d4856aad30. The 22 contract tests and stub-control-plane smoke passed; six P2 findings were remediated before merge. | **Agent-side contract source complete; Worker-side /v1/agent/desired-state and /v1/agent/receipts remain open.** No BWH connection or systemd installation. |
+| G5 — Remote staging | No remote Worker/D1 resource, secret, binding, route, or Cloudflare account configuration is created by the source PRs above. | Not started; requires a separate exact Cloudflare resource approval. |
+| G6–G8 | Offline migration rehearsal, production cutover, and post-cutover recovery remain separate gates. | Not authorized by the source evidence above. |
+
+At this update, master is 42db751defaaf9e1d24906cd03b7a4d4856aad30. The G2 test baseline 63082bae5d980c3905d6e7405329b19e6c4e38ac remains the historical source cutoff for the G2 dual-engine evidence; it must not be rewritten as the current master.
+
+The current production authority remains Node/Express + SQLite. No remote Cloudflare D1/Worker was created or deployed; no production secret, route, DNS, BWH connection, production database read/write, migration apply, or traffic switch occurred. Passing source CI does not authorize any of those actions.
+
+## 2026-11-06 PST / 2026-11-06 UTC — G2 acceptance and G4 source integration closeout
+
+This dated status supersedes the earlier G2/G3/G4 status assumptions above and in the 2026-11-05 addendum. It records source and local synthetic evidence only; it does not authorize remote staging or production work.
+
+| Gate | Current evidence | Current status |
+| --- | --- | --- |
+| G2 — Local D1 compatibility | PR [#836](https://github.com/FlyLink-com/proxy-gateway-minimal/pull/836) merged as `c50dc1df0d6b8e28d15e0bc8c53a11cbe86ffb40`; closeout Issue [#830](https://github.com/FlyLink-com/proxy-gateway-minimal/issues/830) closed. Accepted scope is the Rev2 report, stages 1–7 receipts, and local Wrangler/Miniflare D1 synthetic validation. | **ACCEPTED WITH DOCUMENTED LIMITATIONS.** Not full D1 equivalence and not production migration approval. Limits: FK 68 PASS / 58 attribution-limited; CHECK 246 PASS / 27 attribution-limited; 60 ordinary full indexes definition-only; multi-replica `withSession()` and concurrent-write pagination snapshot semantics unverified; G1-29 cross-database subscription fulfillment outside scope; production migration set remains `not_observed`. |
+| G3 — Worker API vertical slice | [#831](https://github.com/FlyLink-com/proxy-gateway-minimal/pull/831) read API and [#833](https://github.com/FlyLink-com/proxy-gateway-minimal/pull/833) bounded idempotent write are merged. Worker suite 30/30 was recorded on the #833 head. | Local synthetic D1 source slice complete; no remote Worker/D1, production route, or data cutover. |
+| G4 — BWH Agent contract | [#834](https://github.com/FlyLink-com/proxy-gateway-minimal/pull/834) merged Agent-side contract; [#838](https://github.com/FlyLink-com/proxy-gateway-minimal/pull/838) merged Worker-side `/v1/agent/desired-state` and `/v1/agent/receipts`. Worker Miniflare D1 suite [Run 42212113001](https://github.com/FlyLink-com/proxy-gateway-minimal/actions/runs/42212113001) succeeded on the exact #838 source head. Master CI [Run 42216358621](https://github.com/FlyLink-com/proxy-gateway-minimal/actions/runs/42216358621) succeeded on merge commit `c8336ae6b0112ed3fb823d6bec29e1b34ad2a9fb`. | Local Agent ↔ Worker ↔ D1 synthetic contract source is merged. No BWH connection, Agent installation, timer activation, remote D1/Worker, or deployment. |
+| G5 — Remote staging | No remote Worker/D1, Cloudflare secret, binding, route, or account setting has been created by these source changes. | Not started; requires separate exact Cloudflare account/resource approval and a staging access/cost/retention plan. |
+| G6 — Offline migration rehearsal | No production data or production database inventory was used in the local G2/G3/G4 work. | Separate offline/immutable-fixture plan and evidence still required. |
+| G7 — Production cutover | Existing Node/Express + SQLite remains the production control-plane authority. | Risk A; not authorized. No dual write or traffic split. |
+| G8 — Post-cutover recovery | No D1 production cutover has occurred. | Separate recovery design, restore rehearsal, and Risk A decision required. |
+
+Current master at this record is `c8336ae6b0112ed3fb823d6bec29e1b34ad2a9fb`. The G2 test baseline `63082bae5d980c3905d6e7405329b19e6c4e38ac` remains the historical source cutoff for the G2 compatibility evidence and is not rewritten as the current master.
+
+The open [PR #837](https://github.com/FlyLink-com/proxy-gateway-minimal/pull/837) is a separate test-only correction to align AGT-POLL-2 with the approved G1-30 rule that 60 seconds is a design target, not a hard-coded production timer fact. It does not change Agent runtime behavior or configure/activate a timer; its exact-head CI and independent review are pending.
+
+Production boundary remains unchanged: Node/Express + SQLite is the single production writer; no remote D1/Worker, production secrets, BWH/SSH, production data read/write, DNS, deployment, systemd installation, or traffic cutover occurred. Never infer production authority from local Miniflare tests or a source merge.
+
+## 2026-11-06 PST — G5 remote Staging and BWH Agent dry-run validation
+
+This dated addendum supersedes the earlier G5 "not started / no BWH connection" statements above. It records the approved non-production Staging execution only; it does not authorize production mutation.
+
+- **G5 Staging integration: PASS (synthetic dry-run scope).** The non-production Worker/D1 environment was deployed and the BWH Agent was exercised from the isolated directory `/opt/flylink-g5-staging` against source commit `c8336ae6b0112ed3fb823d6bec29e1b34ad2a9fb`.
+- User-provided BWH execution receipt: `dry_run=true`, `apply=false`; result `{"status":"dry_run","generation":"gen-synth-staging-001","stage":null,"code":null}`. Both synthetic channels, `chan-synth-staging-hy2` and `chan-synth-staging-vless`, returned first receipt HTTP 201 / `recorded=true`, then idempotent replay HTTP 200 / `replayed=true`; both receipts were `redacted=true`. User-reported checks include Worker handshake, manifest signature, and material validation.
+- Cloudflare D1: `flylink-control-plane-staging` / `1ec6458a-0ac0-4ab0-92f3-5ba58b775acc`; direct readback found 1 synthetic node, 2 channels, 1 desired state, 2 materials, 1 Agent credential, 1 manifest claim, and 2 apply receipts. Both stored receipts are `dry_run` for generation `gen-synth-staging-001`.
+- Worker deployment readback: version `6c1b8434-8a5d-4d9e-9085-e31852963263` at 100%.
+- The manifest claim remains `leased`. This is consistent with the protocol: `markClaimsCompleted()` completes a claim only after all expected channels have `applied` receipts. Dry-run receipts do not represent a real apply and must not be described as completed production work.
+- The four G4 Agent file Git blob SHA-1 values at the exact BWH source commit were independently read from GitHub:
+  - `agent/g4/README.md` — `f9bc3b5e6388c663a6037b3dab6dbc481430f37f`
+  - `agent/g4/agent-client.mjs` — `8b0f526c6e73e6e6eb9915d1b8d1d5aaa651aa3c`
+  - `agent/g4/receipt.mjs` — `be6b1bbaf52f533d3d72b0939f14505d65a247cb`
+  - `agent/g4/run-once.mjs` — `61e4f5f9e0b628734352ad6b475e7323a934c769`
+  The user-provided BWH summary reports all four matched. The original full terminal transcript and its literal four-value comparison output are not yet attached to this repository record; retain that as an evidence-archive follow-up rather than implying the transcript is archived here.
+- Boundary: no production database or customer data access, production Apply, production subscription rendering, production service/systemd installation or timer activation, production DNS, or traffic cutover. No credential material is included in this record.
 
 ### Gate numbering across the G1 workstream and this architecture plan
 
@@ -238,8 +293,8 @@ The existing SQLite snapshot/restore contract in `docs/CONTROL_PLANE_DB_SNAPSHOT
 
 ## Current go / no-go
 
-- **GO:** architecture direction, repository documentation, source-level route/schema inventory, and planning/review of local synthetic D1/Worker compatibility work. Execution of the G2 compatibility spike remains blocked until a separate G2 owner decision.
-- **NO-GO:** remote D1 creation, Worker production routes, Cloudflare secrets, DNS/custom-domain changes, production database inventory, real-data migration, payment/provider activation, BWH runtime mutation, and production cutover until their separate gates are approved.
+- **GO:** architecture direction, repository documentation, source-level route/schema inventory, and repository-only Worker/Agent implementation with local synthetic data. G2 is **ACCEPTED WITH DOCUMENTED LIMITATIONS**; G3 and G4 source slices are merged. These are source/local-simulation results only.
+- **NO-GO:** G5 remote Worker/D1 staging, Cloudflare secrets/bindings/routes, DNS/custom-domain changes, production database inventory, real-data migration, payment/provider activation, BWH access/runtime mutation, and production cutover until their separate exact approvals are granted.
 - **Current source of truth:** existing Node/Express + SQLite remains authoritative until a completed Risk A cutover. No dual write and no early traffic split.
 - **Initial D1 scope:** one database corresponding to shared `control.sqlite`. No database-per-domain split.
 - **Out of first scope:** `subscriptions.sqlite`, the optional third-party subscription database, and all raw edge credential material.
