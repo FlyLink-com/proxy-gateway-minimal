@@ -134,35 +134,69 @@ function buildAuth0CustomPasswordHash(passwordHash) {
   };
 }
 
-// R3 disposition only. This rehearsal never decodes, decrypts, normalizes,
-// or imports legacy TOTP material. The historical "enc:" prefix identifies
-// Base32 text; it is not evidence that the value is encrypted.
+// T1 disposition only. This rehearsal never decodes, decrypts, imports,
+// or re-encrypts legacy TOTP material. Valid legacy values require re-enrollment;
+// malformed or unrecognized values are quarantined. The "enc:" prefix is not
+// evidence that the value is encrypted.
+function decodeCanonicalBase64Url(value) {
+  if (typeof value !== "string" || !/^[A-Za-z0-9_-]+$/u.test(value)) return null;
+  const decoded = Buffer.from(value, "base64url");
+  return decoded.length > 0 && decoded.toString("base64url") === value ? decoded : null;
+}
+
+function isLegacyV2TotpEnvelope(value) {
+  const parts = value.split(":");
+  if (parts.length !== 5 || parts[0] !== "v2" || parts[1] !== "aes-256-gcm") return false;
+  const iv = decodeCanonicalBase64Url(parts[2]);
+  const tag = decodeCanonicalBase64Url(parts[3]);
+  const ciphertext = decodeCanonicalBase64Url(parts[4]);
+  return iv?.length === 12 && tag?.length === 16 && ciphertext?.length > 0;
+}
+
+function isLegacyBase32TotpSecret(value) {
+  if (typeof value !== "string" || value.length > 4096) return false;
+  const compact = value.trim().replace(/[\s-]/gu, "").toUpperCase();
+  const match = /^([A-Z2-7]+)(=*)$/u.exec(compact);
+  if (!match) return false;
+  const normalized = match[1];
+  const suppliedPadding = match[2].length;
+  const remainder = normalized.length % 8;
+  const expectedPaddingByRemainder = { 0: 0, 2: 6, 4: 4, 5: 3, 7: 1 };
+  const padBitsByRemainder = { 0: 0, 2: 2, 4: 4, 5: 1, 7: 3 };
+  const expectedPadding = expectedPaddingByRemainder[remainder];
+  const padBits = padBitsByRemainder[remainder];
+  if (expectedPadding === undefined || padBits === undefined
+    || (suppliedPadding !== 0 && suppliedPadding !== expectedPadding)) return false;
+  if (padBits > 0) {
+    const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+    const lastValue = alphabet.indexOf(normalized.at(-1));
+    if (lastValue < 0 || (lastValue & ((1 << padBits) - 1)) !== 0) return false;
+  }
+  return true;
+}
+
 export function classifySyntheticLegacyTotpDisposition(value) {
-  if (value === undefined || value === null || String(value).trim() === "") {
+  if (value === undefined || value === null || (typeof value === "string" && value.trim() === "")) {
     return { outcome: "none", nextAction: "none" };
   }
-  const raw = String(value).trim();
-  if (raw.startsWith("v2:")) {
-    return {
-      outcome: "blocked",
-      nextAction: "blocked_pending_c2_key_custody"
-    };
+  if (typeof value !== "string") {
+    return { outcome: "quarantine", nextAction: "manual_review" };
   }
-  if (raw.startsWith("enc:")) {
-    const payload = raw.slice(4).replace(/[\s-]/gu, "").replace(/=+$/u, "").toUpperCase();
+  const raw = value.trim();
+  if (raw.startsWith("v2:")) {
+    return isLegacyV2TotpEnvelope(raw)
+      ? { outcome: "re_enroll_required", nextAction: "re_enroll", legacyEncoding: "legacy_v2_envelope" }
+      : { outcome: "quarantine", nextAction: "manual_review" };
+  }
+  const payload = raw.startsWith("enc:") ? raw.slice(4) : raw;
+  if (isLegacyBase32TotpSecret(payload)) {
     return {
       outcome: "re_enroll_required",
       nextAction: "re_enroll",
-      legacyEncoding: /^[A-Z2-7]+$/u.test(payload)
-        ? "base32_syntax_not_ciphertext"
-        : "unverified_enc_prefix"
+      legacyEncoding: raw.startsWith("enc:") ? "base32_syntax_not_ciphertext" : "raw_base32"
     };
   }
-  return {
-    outcome: "re_enroll_required",
-    nextAction: "re_enroll",
-    legacyEncoding: "unverified"
-  };
+  return { outcome: "quarantine", nextAction: "manual_review" };
 }
 
 export function classifyAuth0FirstLoginPassword(plainPassword) {
@@ -388,8 +422,8 @@ export function createSyntheticAuth0BulkImportRecord({
     throw failure("synthetic_password_hash_required");
   }
   const totpDisposition = classifySyntheticLegacyTotpDisposition(legacyTotpSecret);
-  if (totpDisposition.outcome === "blocked") {
-    throw failure("totp_secret_requires_c2_key_custody");
+  if (totpDisposition.outcome === "quarantine") {
+    throw failure("totp_secret_format_quarantined");
   }
   if (totpDisposition.outcome === "re_enroll_required") {
     throw failure("totp_secret_requires_reenrollment");
@@ -409,7 +443,7 @@ export function createSyntheticAuth0BulkImportRecord({
   };
 
   // TOTP factor material is deliberately omitted from this import record.
-  // Legacy users re-enroll; v2 envelopes remain blocked pending C2 approval.
+  // Under T1, valid legacy formats require re-enrollment; malformed values quarantine.
   return record;
 }
 
@@ -517,7 +551,9 @@ export function runSyntheticPortalIdentityImportRehearsal() {
   const password72 = evaluateSyntheticAuth0FirstLoginPassword("a".repeat(72));
   const password73 = evaluateSyntheticAuth0FirstLoginPassword("a".repeat(73));
   const legacyTotpDisposition = classifySyntheticLegacyTotpDisposition(fixture.legacyTotpSecret);
-  const protectedV2Disposition = classifySyntheticLegacyTotpDisposition("v2:aes-256-gcm:synthetic-envelope");
+  const legacyV2Fixture = "v2:aes-256-gcm:" + Buffer.alloc(12).toString("base64url")
+    + ":" + Buffer.alloc(16).toString("base64url") + ":" + Buffer.from([1]).toString("base64url");
+  const legacyV2Disposition = classifySyntheticLegacyTotpDisposition(legacyV2Fixture);
   const totpFactorAbsent = !Object.hasOwn(record, "mfa_factors");
 
   const expectedKeys = [
@@ -539,8 +575,8 @@ export function runSyntheticPortalIdentityImportRehearsal() {
   const totpSchemaExact = totpFactorAbsent
     && legacyTotpDisposition.outcome === "re_enroll_required"
     && legacyTotpDisposition.nextAction === "re_enroll"
-    && protectedV2Disposition.outcome === "blocked"
-    && protectedV2Disposition.nextAction === "blocked_pending_c2_key_custody";
+    && legacyV2Disposition.outcome === "re_enroll_required"
+    && legacyV2Disposition.nextAction === "re_enroll";
   const recordJson = JSON.stringify(record);
   const rawPasswordAbsent = !recordJson.includes(fixture.plainPassword);
   const independentVectorMatches = parsed.hash.toString("hex") === fixture.expectedHashHex;
@@ -591,7 +627,7 @@ export function runSyntheticPortalIdentityImportRehearsal() {
       importFactorIncluded: false,
       legacyEncDisposition: "RE_ENROLL_REQUIRED",
       legacyEncIsCiphertext: false,
-      protectedV2Disposition: "BLOCKED_PENDING_C2_KEY_CUSTODY",
+      legacyV2Disposition: "RE_ENROLL_REQUIRED",
       secretMaterialIncluded: false
     },
     importRecord: {
@@ -619,7 +655,7 @@ export function runSyntheticPortalIdentityImportRehearsal() {
     notRun: [
       "Auth0 tenant or API import acceptance",
       "Auth0 hosted first-login rehash behavior and actual Show error enforcement",
-      "provider TOTP re-enrollment and C2 secret custody",
+      "provider TOTP new-enrollment lifecycle proof",
       "provider lockout and email OTP policy",
       "Portal/Admin tenant isolation",
       "Admin directory search and audit",
