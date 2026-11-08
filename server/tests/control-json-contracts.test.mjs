@@ -48,6 +48,11 @@ test("portal access event JSON accepts only registered discriminated variants", 
       previousStatus: "issued"
     },
     {
+      type: "subscription_disabled",
+      occurredAt: NOW,
+      previousStatus: "disabled"
+    },
+    {
       type: "subscription_expired",
       occurredAt: NOW,
       previousStatus: "delivered",
