@@ -30,18 +30,23 @@ The same source currently puts `legalAgreementSourceIpDigest` and `registrationS
 
 These dependencies mean simply deleting fields from `portal-registration.mjs` would break user-facing identity behavior. A separate, explicitly approved identity/PII custody boundary is required before source behavior can be changed.
 
-### 1.3 Active authentication credential boundary
+### 1.3 Active identity and authentication credential boundary
 
-The current source inventory shows that account identity and authentication cannot be treated as an email-only PII cleanup:
+The current source inventory shows that identity and authentication cannot be treated as an email-only PII cleanup:
 
-- `server/services/platform/user-portal-auth.mjs` resolves the login identifier through `controlStore.resolvePortalLoginAccount()`, then verifies the password by opaque `accountId`. The public browser session currently derives its user-facing `userRef` / `displayName` from `metadata.loginRef`.
-- `server/services/platform/portal-password-credentials.mjs` creates and verifies password hashes through the current control store. `server/state.mjs` wires this service into the active portal routes. The T2 field disposition currently marks all 11 columns of `platform_portal_password_credentials` as DEFER / excluded from D1. This is a data-placement decision, not evidence that password login is unused or may be disabled.
-- `server/services/platform/user-portal-auth.mjs` passes `encryptedTotpSecret` to the TOTP verifier. The field disposition marks `platform_portal_totp_credentials.encrypted_totp_secret` EXTERNALIZE while the credential ref, account ref, status, lockout counters and timestamps remain KEEP candidates.
+- `server/services/platform/subscription-control-db.mjs` resolves a portal login by accepting an exact account ID first; otherwise it scans active accounts for `loginRef` and `displayRef` metadata and resolves only a unique match. `server/services/platform/user-portal-auth.mjs` delegates to this lookup before password verification.
+- `server/services/platform/user-portal-auth.mjs` currently derives the public browser session's `userRef` and `displayName` from `metadata.loginRef`. Removing the raw email without a replacement identity lookup changes the visible account identity.
+- `server/services/platform/portal-password-credentials.mjs` creates and verifies password hashes through the current control store. `server/state.mjs` wires this service when the user-portal or admin-auth routes are enabled. The T2 field disposition marks all 11 columns of `platform_portal_password_credentials` DEFER / excluded from D1. Production route activation is NOT OBSERVED in this source-only review; the active source path nevertheless exists and is wired conditionally. DEFER is a data-placement decision, not evidence that the capability is unused or may be silently disabled.
+- `server/services/platform/user-portal-auth.mjs` passes `encryptedTotpSecret` to the TOTP verifier. The field disposition marks `platform_portal_totp_credentials.encrypted_totp_secret` EXTERNALIZE while credential refs, account refs, status, lockout counters and timestamps remain KEEP candidates.
+- `server/services/platform/portal-totp-verifier.mjs` currently protects TOTP secrets with AES-256-GCM and the `v2:aes-256-gcm` prefix. The envelope contains IV, tag and ciphertext but no key ID. `server/state.mjs` obtains the key from `USER_PORTAL_TOTP_SECRET_KEY`; the same protector instance is passed to both User Portal and Admin TOTP verification. Key separation and rotation are therefore unresolved.
+- The TOTP unwrapping path accepts non-`v2` values as raw text and strips a legacy `enc:` prefix before Base32 decoding. Consequently `enc:<base32>` is not proof of encryption; it represents raw TOTP secret material and must not be copied into D1 or fixtures as though it were ciphertext.
 - `platform_portal_passkey_credentials` remains DEFER; the scoped source audit did not find a production service caller.
 
-Before T2-C1 can pass, the project must approve an identity/authentication custody boundary that preserves current password and TOTP behavior without copying password hashes or encrypted TOTP secrets into D1. The target login path must define how email is resolved to an opaque account reference, how password verification and lockout state are performed, how TOTP verification retrieves the protected secret, and how session issuance remains bound to the resolved account. The source audit has not identified a separate production identity/credential service; do not assume one exists.
+Before T2-C1/C2 can pass, the project must approve an identity/authentication custody boundary that preserves current login and TOTP behavior without copying password hashes or TOTP secrets into D1. The target login path must define how email resolves to an opaque account reference, how password verification and lockout state are performed, how TOTP verification retrieves the protected secret, and how session issuance remains bound to the resolved account. The source audit has not identified a separate production identity/credential service; do not assume one exists.
 
-This section is a source-derived blocker clarification, not approval to deploy a new identity service, move credentials, change login behavior, or create secrets.
+The TOTP custody contract must add an explicit key ID and rotation/re-encryption behavior or document a separately approved, verifiable equivalent. It must decide whether User Portal and Admin TOTP use distinct keys. Legacy `enc:` or unprefixed Base32 values must be re-encrypted under the approved envelope or quarantined/rejected before any target load.
+
+This section is a source-derived blocker clarification, not approval to deploy a new identity service, move credentials, change login behavior, create secrets, or change the production key.
 
 ## 2. Data disposition
 
