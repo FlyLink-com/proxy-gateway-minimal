@@ -310,6 +310,41 @@ export function fingerprintSyntheticAuth0ImportRecord(record) {
   return createHash("sha256").update(canonical, "utf8").digest("hex");
 }
 
+function assertSyntheticAuth0ImportRecord(record) {
+  const expectedKeys = [
+    "app_metadata",
+    "custom_password_hash",
+    "email",
+    "email_verified",
+    "user_id"
+  ];
+  if (JSON.stringify(Object.keys(record).sort()) !== JSON.stringify(expectedKeys)) {
+    throw failure("import_plan_record_schema_invalid");
+  }
+  if (typeof record.email !== "string"
+    || !/^[^@\s]+@example\.test$/u.test(record.email)
+    || record.email !== record.email.trim().toLowerCase()) {
+    throw failure("import_plan_record_email_invalid");
+  }
+  if (typeof record.email_verified !== "boolean") {
+    throw failure("import_plan_record_email_verified_invalid");
+  }
+  requireSyntheticIdentifier(record.user_id, "import_plan_record_user_id_invalid");
+
+  const metadata = validateSyntheticAuth0AppMetadata(record.app_metadata);
+  if (!Object.hasOwn(metadata, "legacy_account_ref")) {
+    throw failure("import_plan_record_account_ref_required");
+  }
+  const metadataMatches = JSON.stringify(canonicalizeSyntheticJson(metadata))
+    === JSON.stringify(canonicalizeSyntheticJson(record.app_metadata));
+  if (!metadataMatches) throw failure("import_plan_record_metadata_invalid");
+
+  const expectedHash = buildAuth0CustomPasswordHash(SYNTHETIC_PORTAL_IDENTITY_FIXTURE.passwordHash);
+  const hashMatches = JSON.stringify(canonicalizeSyntheticJson(record.custom_password_hash))
+    === JSON.stringify(canonicalizeSyntheticJson(expectedHash));
+  if (!hashMatches) throw failure("import_plan_record_password_hash_invalid");
+}
+
 export function createSyntheticAuth0BulkImportRecord({
   email,
   emailVerified,
@@ -376,6 +411,7 @@ export function planSyntheticAuth0BulkImport(records, options = {}) {
       throw failure("import_plan_record_user_id_required");
     }
     requireSyntheticIdentifier(userId, "import_plan_record_user_id_invalid");
+    assertSyntheticAuth0ImportRecord(record);
     return {
       index,
       userId,

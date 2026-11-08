@@ -295,6 +295,12 @@ test("R6: import plan requires matching provider readback fingerprints and rejec
   assert.throws(() => planSyntheticAuth0BulkImport([first], {
     providerReadbackFingerprints: { "synthetic-unrelated-001": firstFingerprint }
   }), { code: "import_plan_provider_readback_unknown_user_id" });
+  assert.throws(() => planSyntheticAuth0BulkImport([{ ...first, password: fixture.plainPassword }]), {
+    code: "import_plan_record_schema_invalid"
+  });
+  assert.throws(() => planSyntheticAuth0BulkImport([{ ...first, mfa_factors: [{ totp: { secret: "synthetic-secret" } }] }]), {
+    code: "import_plan_record_schema_invalid"
+  });
   assert.throws(() => planSyntheticAuth0BulkImport("nope"), { code: "import_plan_records_invalid" });
   assert.throws(() => planSyntheticAuth0BulkImport([{ email: "x@example.test" }]), { code: "import_plan_record_user_id_required" });
 });
