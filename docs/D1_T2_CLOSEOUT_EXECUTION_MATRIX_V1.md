@@ -48,7 +48,7 @@ All work packages begin OPEN. Existing design documents are inputs, not completi
 - [ ] Contract tests prove raw identity values, password hashes, encrypted TOTP secrets, and credential capabilities cannot be persisted to D1 or emitted to Worker/log/evidence surfaces.
 - [ ] Synthetic compatibility tests preserve registration dedupe, password login, TOTP second-factor verification, portal display, administrator search/display, and Coins-canary behavior.
 - [ ] Password-login remains supported through an approved credential authority; DEFER is not treated as permission to disable the current feature.
-- [ ] TOTP external custody has an explicit credential-ref, encryption-key, enrollment, verify, rotation, recovery, revocation, and outage contract.
+- [ ] Auth0/T1 MFA ownership, opaque credential binding, new enrollment, verification, recovery, revocation and outage behavior are proven; no first-party target TOTP AES keys are provisioned.
 - [ ] Historical-value handling is explicit: deterministic conversion, quarantine, or rejection; no silent fallback.
 - [ ] Named Identity/Privacy and Security owner approvals are recorded.
 
@@ -242,7 +242,7 @@ G6 PASS authorizes only consideration of the next separately gated step. It does
 
 | Package | Current evidence | Status |
 |---|---|---|
-| T2-C1 Identity custody | C1/C2 source-slice review APPROVED at exact HEAD `bc3f8c9a`; owner selected Auth0 Essentials + Bulk User Import and approved targeted reset for passwords over 72 UTF-8 bytes plus Portal/Admin isolation; current Node scrypt import compatibility is schema-mappable, but byte-length cohort identification, trim-normalization, first-login bcrypt rehash behavior, TOTP/email compatibility, real OIDC/JWKS gateway/adapter and hosted non-production proof remain open | OPEN |
+| T2-C1 Identity custody | C1/C2 source-slice review APPROVED at exact HEAD `bc3f8c9a`; owner selected Auth0 Essentials + Bulk User Import and approved targeted reset for passwords over 72 UTF-8 bytes plus Portal/Admin isolation; current Node scrypt import compatibility is schema-mappable, but byte-length cohort identification, trim-normalization, first-login bcrypt rehash behavior, new-factor MFA lifecycle/email compatibility, real OIDC/JWKS gateway/adapter and hosted non-production proof remain open | OPEN |
 | T2-C2 HMAC and legacy compatibility | [C2 key custody/rotation ADR](D1_T2_C2_KEY_CUSTODY_AND_ROTATION_ADR_V1.md) + executable Web Crypto primitives + source-importing synthetic tests added; PR #842 source-slice review APPROVED at exact HEAD `bc3f8c9a`; actual key custody, named custodians, independent escrow/recovery, Wallet-first legacy digest compatibility and retention/retirement proof remain open | OPEN |
 | T2-C3 JSON/ref/generation | 26 fields reconciled: 7 writer families closed, 16 existing source contracts retained/mapped, 2 Passkey fields DEFER, account metadata BLOCKED pending C1 identity custody; independent review absent | OPEN |
 | T2-C4 Payment custody | DO SQLite proposal exists; owner, key, lifecycle, and outage decisions remain open | OPEN |
@@ -255,10 +255,10 @@ No task is marked complete by this matrix. The work is not authorized to cross t
 ### Draft progress — 2026-11-07: C1/C2 executable source contracts
 
 - C1: added `server/services/platform/d1-t2-identity-boundary.mjs` and `server/tests/d1-t2-identity-boundary.test.mjs`. The 9 focused tests cover strict opaque actor context, issuer/audience/expiry/factor checks, PII/credential-field rejection, exact account binding, duplicate/unknown/revoked fail-closed behavior and idempotent binding planning. This is a provider-neutral internal boundary contract; it does not verify OIDC/JWKS or implement a selected provider.
-- C1 decision sheet: `docs/D1_T2_C1_OWNER_DECISION_SHEET_V1.md`. Auth0 Essentials remains a recommended managed candidate, not selected. The >72 UTF-8-byte password reset decision is still required; Keycloak custom scrypt remains the no-reset alternative.
-- C2: added `server/services/platform/d1-t2-security-primitives.mjs`, which the new `server/tests/d1-t2-security-primitives.test.mjs` imports directly. The new source helper implements HMAC families/domains, strict key rings, active/retained rotation, PII lookup, lease digest grammar, Portal/Admin TOTP key separation, v3 AES-GCM AAD and synthetic v2 re-encryption.
+- C1 decision sheet: `docs/D1_T2_C1_OWNER_DECISION_SHEET_V1.md`. Historical status before the 2026-11-08 owner decisions: Auth0 Essentials was only a candidate and the >72 UTF-8-byte reset policy was pending. Superseded by the approved Auth0/T1 direction recorded below.
+- C2: added `server/services/platform/d1-t2-security-primitives.mjs`, which the new `server/tests/d1-t2-security-primitives.test.mjs` imports directly. The source helper implements HMAC families/domains, strict key rings, active/retained rotation, PII lookup, lease digest grammar, Portal/Admin TOTP key separation, and a generic v3 AES-GCM primitive. T1 supersedes the historical synthetic v2 re-encryption proposal; legacy values now require re-enrollment or quarantine.
 - Local mirror verification: Node v22.16.0, 23 C2 tests + 9 C1 tests = 32/32 PASS; syntax checks passed. This 2026-11-07 mirror-only verification note is superseded by the exact-HEAD Node v22.23.1 source-slice and full-suite comparative evidence recorded in the 2026-11-08 update below. No CI was triggered.
-- Both C1 and C2 remain OPEN pending owner decisions and hosted provider/key-custody proof. No real provider, secret store, key, BWH, D1, deployment or production data was accessed.
+- Both C1 and C2 remain OPEN pending remaining owner decisions and hosted provider/key-custody proof. T1 resolves target TOTP ownership but not new-factor lifecycle proof or the other C2 custody gates. No real provider, secret store, key, BWH, D1, deployment or production data was accessed.
 
 
 ### Evidence update — 2026-11-08: C1/C2 exact-head source review
