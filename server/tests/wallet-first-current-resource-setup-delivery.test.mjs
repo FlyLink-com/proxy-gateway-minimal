@@ -7,7 +7,7 @@ import {
 
 const NOW = "2026-08-14T00:00:00.000Z";
 const HANDOFF_REF = "setup_handoff_alpha";
-const IDEMPOTENCY_KEY = "setup-idempotency-key-alpha-0001";
+const IDEMPOTENCY_KEY = "123e4567-e89b-42d3-a456-426614174000";
 const SESSION_REF = "portal_session_alpha";
 const SUBSCRIPTION_URL = "https://portal.example.test/sub/clash.yaml?token=opaque-test-token";
 const BINDING = Object.freeze({
@@ -258,6 +258,7 @@ test("wallet-first setup delivery rejects malformed caller input, non-HTTPS mate
     {},
     { accountId: "acct_alpha", sessionRef: SESSION_REF },
     { accountId: "acct_alpha", sessionRef: SESSION_REF, idempotencyKey: "short" },
+    { accountId: "acct_alpha", sessionRef: SESSION_REF, idempotencyKey: "setup-idempotency-key-alpha-0001" },
     {
       accountId: "acct_alpha",
       sessionRef: SESSION_REF,
