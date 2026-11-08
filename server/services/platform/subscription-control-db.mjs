@@ -8188,10 +8188,10 @@ export function createSqliteSubscriptionControlStore({
     assertNoUnsafeFields(input);
     const now = isoText(input.updatedAt || input.createdAt, "updatedAt");
     const record = {
-      id: requiredText(input.id, "id"),
-      nodeRef: requiredText(input.nodeRef, "nodeRef"),
-      channelRef: requiredText(input.channelRef, "channelRef"),
-      desiredStateRef: requiredText(input.desiredStateRef, "desiredStateRef"),
+      id: safeControlRef(input.id, "id"),
+      nodeRef: safeControlRef(input.nodeRef, "nodeRef"),
+      channelRef: safeControlRef(input.channelRef, "channelRef"),
+      desiredStateRef: safeControlRef(input.desiredStateRef, "desiredStateRef"),
       generation: safeEdgeGeneration(input.generation),
       reason: requiredText(input.reason, "reason"),
       status: requiredText(input.status || "pending", "status"),
