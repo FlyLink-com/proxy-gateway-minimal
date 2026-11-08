@@ -112,6 +112,8 @@ Reviewer must verify the final file bytes rather than relying on this note.
 - This deterministic filter is not comprehensive PII detection; independent review must challenge coverage and false-positive/negative behavior.
 
 ### Audit and Portal event JSON writer evidence — 2026-11-07
+- Audit inputs are snapshotted as plain enumerable data before recursive unsafe-field checks; invalid wallet-first audit parser results fail closed as `validation_error`. Source commits: `fddc836b806af21d116e4f2a8355b8dea94170a5`, `28a6f381bba182876a49410a2bad74c8bbeeb371`, `a724b762f56f4d3f0afb459eb0574c4d56bfb60f`.
+
 
 - Shared validator module: `server/services/platform/control-json-contracts.mjs`.
 - Audit entity/action union: 8 exact variants covering issuance, entitlement traffic limit, wallet-first prepared/runtime/receipt, Coin Commerce subscription fulfillment and data-pack fulfillment.
