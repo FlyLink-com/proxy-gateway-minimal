@@ -78,3 +78,18 @@ After the evidence/documentation commit `2b95496c95238df2b7dae24f903d91d32a266f4
 - `node --check` passed for all nine service/test files (9/9).
 
 The source files were byte-identical to the Section 3 inventory; this follow-up confirms the documentation-only branch update did not alter tested source behavior. No full repository `npm test`, hosted CI, Auth0 tenant, BWH, production key, D1, or deployment was used.
+
+
+## 7. Agent-run exact-current-branch-head verification — 2026-11-08
+
+The current T1 branch head was re-read from GitHub as `41b5d1a15e717be812a0772405dab766d773879c`. Comparing source head `c6a70b3f216d68c6ee7014af268645e1f9df5925` to this head shows two commits containing six documentation-file changes only. All nine service/test Git Blob SHAs listed in Section 3 were fetched again from the current branch and matched exactly; no service or test source changed.
+
+- Runtime: Node v22.23.1, installed from the exact `node@22.23.1` npm package and version-checked before running.
+- Environment: isolated Vercel non-production sandbox, Linux x86_64, 2 vCPU / 4 GiB RAM. Network policy allowed only the npm registry for installing the Node runtime. No Auth0, Cloudflare, BWH or production endpoint was accessed.
+- Exact command: `node --test --test-reporter=tap server/tests/d1-t2-security-primitives.test.mjs server/tests/d1-t2-identity-boundary.test.mjs server/tests/platform-portal-identity-import-rehearsal.test.mjs server/tests/platform-portal-totp-verifier.test.mjs server/tests/d1-t2-security-vectors.test.mjs`.
+- Run 1: 62 tests / 62 pass / 0 fail / 0 skipped; duration 1,027.136 ms; TAP SHA-256 `5846bbd3dc4ff9e2470ecfdd7eb9938c852279d9a19429eb72233fb0c0f4833c`.
+- Run 2: 62 tests / 62 pass / 0 fail / 0 skipped; duration 917.540 ms; TAP SHA-256 `6c41d9100dcb574328d7beee8a2e66859ca116bf4aec648013006c16f620630a`.
+- `node --check` passed for all four service modules and all five test files (9/9).
+- The nine transferred UTF-8 source/test SHA-256 values matched the Section 3 inventory exactly.
+
+This is a repeatable bounded source-slice result at exact head `41b5d1a1`, not full repository `npm test`, hosted CI, formal C1/C2 acceptance, or full T2 acceptance. No tenant, real key, BWH, production data, D1, Worker/DO, deployment, merge, or writer-authority change was used. BWH remains the only production control-data writer; C1/C2 remain OPEN and T2 remains BLOCKED.
