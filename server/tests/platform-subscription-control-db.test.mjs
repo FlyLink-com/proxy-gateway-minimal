@@ -1234,6 +1234,30 @@ test("subscription control store enforces the two observed desired-state generat
         updatedAt: now
       }), { code: "validation_error" });
     });
+
+    const validGeneration = `gen_${"c".repeat(24)}`;
+    const base = {
+      id: "edge_state_notify_bad_ref",
+      nodeRef: "vultr-sgp-a",
+      channelRef: "channel-sgp-a-hy2",
+      desiredStateRef: "desired_state_valid_ref",
+      generation: validGeneration,
+      reason: "order_delivered",
+      status: "pending",
+      createdAt: now,
+      updatedAt: now
+    };
+    for (const [field, value] of [
+      ["id", "edge state notification"],
+      ["nodeRef", "node ref"],
+      ["channelRef", "channel ref"],
+      ["desiredStateRef", "desired state ref"]
+    ]) {
+      assert.throws(() => store.recordEdgeDesiredStateNotification({
+        ...base,
+        [field]: value
+      }), { code: "validation_error" });
+    }
   });
 });
 
