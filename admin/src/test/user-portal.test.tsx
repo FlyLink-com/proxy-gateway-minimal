@@ -3461,7 +3461,7 @@ describe("user portal product surface", () => {
     await waitFor(() => {
       expect(createCurrentResourceSetup).toHaveBeenCalledWith({
         sessionRef: "portal_setup_ui_session_001",
-        idempotencyKey: expect.any(String)
+        idempotencyKey: expect.stringMatching(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/)
       });
     });
     const deliveredLink = await screen.findByLabelText("订阅链接");
