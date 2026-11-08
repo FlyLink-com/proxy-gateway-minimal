@@ -146,6 +146,36 @@ test("rejects unsafe redirect URLs and invalid key material", () => {
   assert.throws(() => createRecord({ key: Buffer.alloc(16) }), /payment_action_key_invalid/);
 });
 
+test("rejects unsupported record and envelope schema versions", () => {
+  const record = createRecord();
+  assert.throws(() => resolvePaymentActionRecord({
+    record: { ...record, schemaVersion: 2 },
+    keyring: KEYRING,
+    accountRef: record.accountRef,
+    orderRef: record.orderRef,
+    actionRef: record.actionRef,
+    orderStatus: "pending",
+    now: NOW
+  }), /payment_action_schema_version_invalid/);
+  assert.throws(() => resolvePaymentActionRecord({
+    record: { ...record, actionEnvelope: { ...record.actionEnvelope, schemaVersion: 2 } },
+    keyring: KEYRING,
+    accountRef: record.accountRef,
+    orderRef: record.orderRef,
+    actionRef: record.actionRef,
+    orderStatus: "pending",
+    now: NOW
+  }), /payment_action_authentication_failed|payment_action_record_invalid/);
+});
+
+test("rejects malformed tombstone purge bounds", () => {
+  const terminal = transitionPaymentActionRecord(createRecord(), {
+    nextStatus: "expired", at: NOW, purgeAfter: PURGE_AFTER
+  });
+  const malformed = Object.freeze({ ...terminal, purgeAfter: "not-a-time" });
+  assert.throws(() => purgePaymentActionTombstone(malformed, { now: PURGE_AFTER }), /payment_action_timestamp_invalid/);
+});
+
 test("rejects oversized QR payloads", () => {
   assert.throws(() => createPaymentActionRecord({
     orderRef: "order_synthetic_001",
