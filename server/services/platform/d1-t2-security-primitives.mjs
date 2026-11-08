@@ -602,7 +602,7 @@ async function importAesKey(rawKey, usages) {
 
 function normalizeLegacyBase32(value) {
   if (typeof value !== "string" || value.length > MAX_TOTP_SECRET_INPUT_CHARS) return null;
-  const compact = value.trim().replace(/^enc:/u, "").replace(/[\\s-]/gu, "").toUpperCase();
+  const compact = value.trim().replace(/[\\s-]/gu, "").toUpperCase();
   const match = /^([A-Z2-7]+)(=*)$/u.exec(compact);
   if (!match) return null;
   const normalized = match[1];
@@ -686,48 +686,20 @@ export function createD1TotpSecretProtector({ keyRing, scope, ivFactory } = {}) 
   return Object.freeze({ protect, unprotect, reencrypt });
 }
 
-async function decryptLegacyV2Totp(value, legacyKey) {
-  if (typeof value !== "string" || value.length > MAX_TOTP_ENVELOPE_CHARS) return null;
-  const parts = value.split(":");
-  if (parts.length !== 5 || parts[0] !== "v2" || parts[1] !== "aes-256-gcm") return null;
-  const iv = base64UrlToBytes(parts[2]);
-  const tag = base64UrlToBytes(parts[3]);
-  const ciphertext = base64UrlToBytes(parts[4]);
-  if (!iv || iv.length !== 12 || !tag || tag.length !== 16 || !ciphertext || ciphertext.length === 0) return null;
-  const rawKey = toBytes(legacyKey, "legacy_totp_key_invalid");
-  if (rawKey.length !== 32) {
-    rawKey.fill(0);
-    throw fail("legacy_totp_key_invalid");
+/**
+ * Owner decision T1 (2026-11-08): legacy BWH TOTP values are invalidated at cutover.
+ * This legacy-named export is retained only as a disposition classifier for callers;
+ * it must never decrypt, transfer, or re-encrypt legacy material.
+ */
+export async function reencryptLegacyD1TotpV2({ value } = {}) {
+  if (typeof value !== "string" || value.length > MAX_TOTP_ENVELOPE_CHARS) {
+    return { status: "quarantine" };
   }
-  try {
-    const key = await importAesKey(rawKey, ["decrypt"]);
-    const plaintext = await cryptoApi().subtle.decrypt({
-      name: "AES-GCM", iv, tagLength: 128
-    }, key, concatBytes(ciphertext, tag));
-    return decoder.decode(plaintext);
-  } catch {
-    return null;
-  }
-}
-
-export async function reencryptLegacyD1TotpV2({ value, legacyKey, keyRing, scope, credentialRef, ivFactory } = {}) {
-  const protector = createD1TotpSecretProtector({ keyRing, scope, ivFactory });
-  if (typeof value !== "string") return { status: "quarantine" };
-  if (value.startsWith("enc:") || !value.startsWith("v2:aes-256-gcm:")) {
+  const candidate = value.trim();
+  if (candidate.startsWith("v2:aes-256-gcm:")
+    || candidate.startsWith("enc:")
+    || /^[A-Za-z2-7\s=-]+$/u.test(candidate)) {
     return { status: "re_enroll_required" };
   }
-  let plaintext;
-  try {
-    plaintext = await decryptLegacyV2Totp(value, legacyKey);
-  } catch {
-    return { status: "quarantine" };
-  }
-  const normalized = normalizeLegacyBase32(plaintext);
-  if (!normalized) return { status: "quarantine" };
-  try {
-    const envelope = await protector.protect(normalized, { credentialRef });
-    return { status: "reencrypted", envelope };
-  } catch {
-    return { status: "quarantine" };
-  }
+  return { status: "quarantine" };
 }
