@@ -1271,6 +1271,153 @@ test("subscription control store enforces the exact edge-node metadata contract"
   });
 });
 
+test("subscription control store enforces registered audit metadata unions", () => {
+  withStore((store) => {
+    const now = "2026-11-07T00:00:00.000Z";
+    store.createAccount({
+      id: "acct_audit_contract",
+      ownerRef: "owner_audit_contract",
+      status: "active",
+      createdAt: now,
+      updatedAt: now
+    });
+    store.createEntitlement({
+      id: "ent_audit_contract",
+      accountId: "acct_audit_contract",
+      plan: "monthly",
+      status: "active",
+      validFrom: now,
+      validUntil: "2026-12-07T00:00:00.000Z",
+      trafficLimitBytes: 1_000_000,
+      createdAt: now,
+      updatedAt: now
+    });
+    const request = store.createIssuanceRequest({
+      id: "pareq_audit_contract",
+      accountId: "acct_audit_contract",
+      entitlementId: "ent_audit_contract",
+      approvalRef: "approval_audit_contract",
+      status: "issued",
+      quantity: 1,
+      nodeId: "channel_audit_contract",
+      purpose: "subscription",
+      requestedByRef: "operator_audit_contract",
+      createdAt: now,
+      updatedAt: now
+    });
+
+    const issued = store.recordAuditEvent({
+      id: "audit_issued_contract",
+      entityType: "issuance_request",
+      entityRef: request.id,
+      action: "issued",
+      actorRef: "operator_audit_contract",
+      createdAt: now,
+      metadata: { source: "platform:issue-subscription" }
+    });
+    assert.deepEqual(issued.metadata, { source: "platform:issue-subscription" });
+
+    const compensated = store.recordAuditEvent({
+      id: "audit_compensated_contract",
+      entityType: "issuance_request",
+      entityRef: request.id,
+      action: "issuance_failed_compensated",
+      actorRef: "operator_audit_contract",
+      createdAt: now,
+      metadata: { compensation: { artifactRevoked: true, tenantDisabled: false } }
+    });
+    assert.deepEqual(compensated.metadata, {
+      compensation: { artifactRevoked: true, tenantDisabled: false }
+    });
+
+    const trafficLimit = store.recordAuditEvent({
+      id: "audit_traffic_limit_contract",
+      entityType: "entitlement",
+      entityRef: "ent_audit_contract",
+      action: "traffic_limit_updated",
+      actorRef: "operator_audit_contract",
+      createdAt: now,
+      metadata: {
+        requestRef: request.id,
+        reasonCode: "operator_adjustment",
+        previousTrafficLimitBytes: 1_000_000,
+        trafficLimitBytes: 2_000_000
+      }
+    });
+    assert.equal(trafficLimit.metadata.trafficLimitBytes, 2_000_000);
+
+    const invalid = [
+      {
+        id: "audit_issued_extra",
+        entityType: "issuance_request",
+        entityRef: request.id,
+        action: "issued",
+        actorRef: "operator_audit_contract",
+        createdAt: now,
+        metadata: { source: "platform:issue-subscription", extra: true }
+      },
+      {
+        id: "audit_issued_source",
+        entityType: "issuance_request",
+        entityRef: request.id,
+        action: "issued",
+        actorRef: "operator_audit_contract",
+        createdAt: now,
+        metadata: { source: "unknown" }
+      },
+      {
+        id: "audit_compensation_type",
+        entityType: "issuance_request",
+        entityRef: request.id,
+        action: "issuance_failed_compensated",
+        actorRef: "operator_audit_contract",
+        createdAt: now,
+        metadata: { compensation: { artifactRevoked: "yes", tenantDisabled: false } }
+      },
+      {
+        id: "audit_traffic_reason",
+        entityType: "entitlement",
+        entityRef: "ent_audit_contract",
+        action: "traffic_limit_updated",
+        actorRef: "operator_audit_contract",
+        createdAt: now,
+        metadata: {
+          requestRef: request.id,
+          reasonCode: "https://example.invalid",
+          previousTrafficLimitBytes: 1_000_000,
+          trafficLimitBytes: 2_000_000
+        }
+      },
+      {
+        id: "audit_traffic_number",
+        entityType: "entitlement",
+        entityRef: "ent_audit_contract",
+        action: "traffic_limit_updated",
+        actorRef: "operator_audit_contract",
+        createdAt: now,
+        metadata: {
+          requestRef: request.id,
+          reasonCode: "operator_adjustment",
+          previousTrafficLimitBytes: "1000000",
+          trafficLimitBytes: 2_000_000
+        }
+      },
+      {
+        id: "audit_unknown_action",
+        entityType: "account",
+        entityRef: "acct_audit_contract",
+        action: "created",
+        actorRef: "operator_audit_contract",
+        createdAt: now,
+        metadata: { publicEvidence: "summary-only" }
+      }
+    ];
+    invalid.forEach((record) => {
+      assert.throws(() => store.recordAuditEvent(record), { code: "validation_error" });
+    });
+  });
+});
+
 test("subscription control store enforces the closed issuance metadata union", () => {
   withStore((store) => {
     const now = "2026-11-07T00:00:00.000Z";
