@@ -134,16 +134,10 @@ function buildAuth0CustomPasswordHash(passwordHash) {
   };
 }
 
-// T1 disposition only. This rehearsal never decodes, decrypts, imports,
-// or re-encrypts legacy TOTP material. Valid legacy values require re-enrollment;
-// malformed or unrecognized values are quarantined. The "enc:" prefix is not
-// evidence that the value is encrypted.
-function decodeCanonicalBase64Url(value) {
-  if (typeof value !== "string" || !/^[A-Za-z0-9_-]+$/u.test(value)) return null;
-  const decoded = Buffer.from(value, "base64url");
-  return decoded.length > 0 && decoded.toString("base64url") === value ? decoded : null;
-}
-
+// T1 disposition only. This rehearsal never decrypts, transfers, imports,
+// or re-encrypts legacy TOTP material. It validates only envelope structure;
+// valid legacy values require re-enrollment and malformed values are quarantined.
+// The "enc:" prefix is not evidence that the value is encrypted.
 function isLegacyV2TotpEnvelope(value) {
   if (typeof value !== "string" || value.length > 8192) return false;
   const parts = value.split(":");
