@@ -83,3 +83,9 @@ Remaining work:
 4. Reconcile the source/target projection with retention decisions and synthetic import/replay tests.
 
 No target D1 data load, DDL apply, Worker/DO deployment, BWH mutation, or production writer change is authorized by this work. BWH remains the only production control-data writer.
+
+## 6. Full 26-field JSON review
+
+The account metadata contract is one part of the full JSON field review. The complete 26-field writer/transform matrix, including the two explicitly deferred passkey fields and the exact focused test suites, is documented in `docs/D1_T2_C3_JSON_26_FIELD_WRITER_REVIEW_V1.md`.
+
+Five fixed-runtime suite groups passed twice, covering 290 focused cases per pass. This closes the source-only JSON field inventory review; it does not remove the remaining Auth0 identity externalization or C2 HMAC blockers for account metadata.
