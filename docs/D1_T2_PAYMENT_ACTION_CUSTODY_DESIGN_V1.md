@@ -133,3 +133,29 @@ Before implementation, obtain explicit approval for:
 6. Payment-domain owner and independent security review.
 
 This document chooses a technical direction for review. It does not authorize implementation, key creation, deployment or D1 mutation.
+
+## 10. Source confirmation and synthetic contract prototype — 2026-11-08
+
+### Source confirmation
+
+The current `server/services/platform/payment-store.mjs` source confirms the original exposure:
+
+- `ORDER_TTL_MS` is 10 minutes, which is only order validity.
+- `next_action_url` is persisted in `platform_payment_receipts`.
+- `mapReceipt()` returns the raw URL in `nextAction.url`.
+- `ORDER_SELECT` reads the latest `next_action_url`, and `mapOrder()` returns it while the order is `entry_ready` or `pending`.
+- The inspected payment-store module contains no receipt/order purge path.
+
+Therefore, the raw capability custody issue is real in source; it is not merely a hypothetical D1 mapping concern.
+
+### Synthetic contract prototype
+
+Added:
+- `server/services/platform/payment-action-custody-contract.mjs`
+- `server/tests/payment-action-custody-contract.test.mjs`
+
+The provider-neutral helper demonstrates AES-256-GCM envelope creation, authenticated additional data bound to order/account/action/type/expiry, key-ID lookup, account/order/action authorization, pending/entry-ready gating, expiry denial, terminal transition with ciphertext removal, and caller-selected tombstone purge boundary. It performs no I/O and uses only synthetic key material in tests.
+
+The prototype is not a Durable Object implementation and is not wired into `payment-store.mjs`, the provider callback, Portal routes, or D1. No namespace, secret, binding, or deployment was created.
+
+The 14-case fixed Node v22.23.1 regression evidence is recorded after the latest run in the C4/C5 closeout notes. C4 remains OPEN pending Payment/Security owner approval of custody, key rotation, outage/recovery, and tombstone replay duration.
