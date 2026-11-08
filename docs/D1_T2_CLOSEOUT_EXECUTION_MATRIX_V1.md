@@ -54,26 +54,30 @@ All work packages begin OPEN. Existing design documents are inputs, not completi
 
 **Required artifact:** identity-custody decision record plus synthetic compatibility tests.
 
-### T2-C2 — HMAC key custody, rotation, and legacy digest compatibility
+### T2-C2 — Cryptographic key custody, HMAC rotation, and legacy digest compatibility
 
-**Problem:** Idempotency and PII pseudonyms require a real custody/version/rotation contract. The existing wallet-first setup handoff `idempotency_key_hash` is a separate legacy unkeyed SHA-256 exception and is not one of the six raw idempotency fields.
+**Problem:** Idempotency and PII pseudonyms require a real custody/version/rotation contract. The existing wallet-first setup handoff `idempotency_key_hash` is a separate legacy unkeyed SHA-256 exception and is not one of the six raw idempotency fields. TOTP uses a separate AES-256-GCM protector: the current `v2:aes-256-gcm` envelope has no key ID, `USER_PORTAL_TOTP_SECRET_KEY` supplies the key, and the same protector is passed to both User Portal and Admin TOTP verification. The verifier also accepts legacy `enc:` values by stripping the prefix and treating the remainder as raw Base32; that prefix is not proof of encryption.
 
 **Required decisions and implementation contract**
 
-1. Name the accountable key custodian role and the approved secret-management boundary. No key material may be committed, placed in D1, logged, or included in fixtures.
-2. Define key IDs, algorithm/version envelope, domain separation, canonical input encoding, active-write key, candidate-read key set, rotation overlap, retirement condition, and emergency revocation.
-3. New writes use only the active key. Reads may consider only explicitly configured retained key IDs. Unknown key IDs, malformed envelopes, and legacy bare SHA-256 values fail closed unless a separately approved compatibility path exists.
-4. Preserve separate domains for the six raw idempotency values, provider-event dedupe, and PII pseudonyms. Never reuse one domain/key contract across semantically different identifiers.
-5. Resolve `idempotency_key_hash` for wallet-first setup handoffs: identify callers and replay windows; choose explicit re-key, compatibility-read, or retirement behavior; prove duplicate prevention and recovery behavior.
+1. Name the accountable key-custodian roles and approved secret-management boundary for HMAC keys and AES-256-GCM credential-encryption keys. No key material may be committed, placed in D1, logged, or included in fixtures.
+2. For HMAC, define key IDs, algorithm/version envelope, domain separation, canonical input encoding, active-write key, candidate-read key set, rotation overlap, retirement condition, and emergency revocation.
+3. For TOTP encryption, define a versioned envelope carrying a key ID, key separation between User Portal and Admin authentication (or an explicit owner-approved shared-key exception), old-key decrypt/re-encrypt procedure, retirement condition, and emergency revocation. Do not assume the current keyless `v2:aes-256-gcm` envelope supports safe key rotation.
+4. New HMAC writes use only the active key. Reads may consider only explicitly configured retained key IDs. Unknown key IDs, malformed envelopes, and legacy bare SHA-256 values fail closed unless a separately approved compatibility path exists.
+5. Preserve separate HMAC domains for the six raw idempotency values, provider-event dedupe, and PII pseudonyms. Never reuse one domain/key contract across semantically different identifiers.
+6. Treat legacy TOTP `enc:<base32>` or unprefixed Base32 values as raw secret material, not ciphertext. They must be re-encrypted under the approved key/version or quarantined/rejected before any target load.
+7. Resolve `idempotency_key_hash` for wallet-first setup handoffs: identify callers and replay windows; choose explicit re-key, compatibility-read, or retirement behavior; prove duplicate prevention and recovery behavior.
 
 **Acceptance evidence**
 
-- [ ] Key-custody ADR names accountable role, secret boundary, access model, rotation and incident-revocation procedure; it contains no secret values.
-- [ ] Envelope parser/writer tests cover valid active key, retained key, unknown key, malformed envelope, wrong domain, wrong version, empty input, and rotation overlap.
-- [ ] Known-answer vectors independently verify canonical encoding and HMAC output for each domain.
-- [ ] Tests prove no fallback from unknown/new envelopes to legacy bare SHA-256.
+- [ ] Key-custody ADR names accountable roles, HMAC and AES-GCM secret boundaries, access models, key separation, rotation/re-encryption, retirement and incident-revocation procedures; it contains no secret values.
+- [ ] HMAC envelope parser/writer tests cover active/retained/unknown key, malformed envelope, wrong domain/version, empty input, and rotation overlap.
+- [ ] Known-answer vectors independently verify canonical encoding and HMAC output for every domain.
+- [ ] Tests prove no fallback from unknown/new HMAC envelopes to legacy bare SHA-256.
+- [ ] TOTP envelope tests cover key ID, old-key decrypt/new-key encrypt, wrong key, modified tag/ciphertext, unknown key, malformed envelope, and legacy `enc:` rejection/quarantine.
+- [ ] User Portal/Admin key sharing is either removed with separate key domains or explicitly accepted by both accountable owners.
 - [ ] Wallet-first handoff compatibility tests prove retry/replay does not create duplicate effects across the approved transition.
-- [ ] Payment/commerce and Identity owners approve their respective domains and retention dependencies.
+- [ ] Payment/commerce, Identity and Security owners approve their respective domains and retention dependencies.
 
 **Required artifact:** key-custody/rotation ADR, compatibility decision for the wallet-first handoff digest, and reproducible synthetic vectors.
 
