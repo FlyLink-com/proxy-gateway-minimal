@@ -181,15 +181,22 @@ Implemented in Draft:
 - Portal/Admin TOTP key separation, v3 AAD binding and rotation;
 - synthetic v2 re-encryption and legacy enc/raw Base32 re-enrollment disposition.
 
+Target architecture approved by the project owner on 2026-11-08:
+- Dedicated Crypto Worker + private Service Binding; no public key-operation endpoint or raw key return.
+- Per-Worker secret bindings by default; Secrets Store only for demonstrated multi-Worker sharing, not as an HSM/KMS.
+- Independent encrypted escrow outside Cloudflare/GitHub/Notion, with two-person recovery/revocation.
+- Separate key material and domains by purpose.
+- Active-write / retained-read rotation and evidence-based retirement.
+- No first-party Portal/Admin TOTP AES provisioning under the T1/Auth0-managed MFA decision.
+
 Still OPEN:
-1. Approve the actual key custody provider and per-Worker secret binding versus account-level Secrets Store use.
-2. Name accountable key-custodian and Security owner roles.
-3. Approve independent encrypted key escrow, recovery and incident revocation procedures.
-4. Resolve wallet-first idempotency_key_hash and session_binding_hash compatibility.
-5. Confirm whether C1 uses managed-provider TOTP custody or first-party TOTP v3 custody.
-6. Define retention/replay windows needed before HMAC key retirement.
-7. Run the exact focused test file in Node v22.23.1; then run the broader approved local suite when budget permits.
-8. Obtain the applicable owner decisions and final source review.
+1. Name the actual accountable Platform/Security key custodians and Identity/Privacy and Payment/Commerce domain owners.
+2. Select the concrete independent escrow/wrapping mechanism (external KMS/HSM or approved offline recovery) and complete the two-person recovery/revocation runbook.
+3. Implement and test the Crypto Worker + private Service Binding in isolated non-production, including caller authentication/authorization, no public endpoint, no raw key return, and fail-closed behavior.
+4. Obtain domain-owner approval for payment-event and PII HMAC purposes, source normalization, and allowed consumers.
+5. Resolve Wallet-first digest compatibility and delivered-row replay/retention duration separately; this is not included in the target architecture approval.
+6. Define key-family-specific retention/replay windows and evidence required before old-key retirement.
+7. Complete independent exact-HEAD review and remaining C2 formal acceptance evidence.
 
 No production keys, Cloudflare Secrets Store, Worker bindings, D1 schema, customer rows, BWH host, deployment, dual-write, CI, PR Ready transition, merge or cutover were used or authorized by this ADR. BWH remains the only production writer.
 
