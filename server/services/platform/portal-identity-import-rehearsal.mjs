@@ -115,7 +115,7 @@ export function buildAuth0CustomPasswordHash(passwordHash) {
   };
 }
 
-function decodeBase32Strict(value) {
+function decodeBase32ForLegacyCompatibility(value) {
   let buffer = 0;
   let bits = 0;
   const bytes = [];
@@ -150,7 +150,7 @@ export function normalizeAuth0TotpSecret(value) {
     .replace(/[\s-]/gu, "")
     .replace(/=+$/u, "")
     .toUpperCase();
-  if (!/^[A-Z2-7]+$/u.test(normalized) || !decodeBase32Strict(normalized)) {
+  if (!/^[A-Z2-7]+$/u.test(normalized) || !decodeBase32ForLegacyCompatibility(normalized)) {
     throw failure("totp_secret_invalid");
   }
   return normalized;
