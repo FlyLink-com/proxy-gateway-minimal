@@ -347,7 +347,7 @@ No provider tenant is to be created by this document. If Auth0 is approved for a
 | C1-IDP-12 | Token projection | No email/name/credential claims in the business Worker actor context; direct gateway bypass rejected |
 | C1-IDP-13 | Duplicate and partial import | Normalized-email preflight, deterministic account binding, per-record error reconciliation and idempotent rerun |
 | C1-IDP-14 | Provider outage/revocation | Fail closed for new auth; valid existing sessions follow approved bounded expiry/revocation policy |
-| C1-IDP-15 | Data exposure scan | No raw email, password, TOTP seed, recovery code, bearer token or unkeyed low-entropy digest in Worker, D1, logs, traces, fixtures or evidence |
+| C1-IDP-15 | Data exposure scan | No real raw email, password, TOTP seed, recovery code, bearer token or unkeyed low-entropy digest in Worker, D1, logs, traces or evidence; test fixtures may contain only clearly synthetic, non-production values |
 | C1-IDP-16 | Android and browser parity | Same issuer, audience, MFA strength and account binding across supported clients |
 
 The proof must record exact provider plan, tenant region, SDK versions, synthetic fixture hashes, API request/response status, and import/readback results. Do not use real users or production credentials.
