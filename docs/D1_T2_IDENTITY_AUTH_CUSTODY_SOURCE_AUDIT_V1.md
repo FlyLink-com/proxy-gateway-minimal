@@ -97,7 +97,7 @@ At `state.mjs:695–707` and 2452–2464:
 - the protector key is read from `USER_PORTAL_TOTP_SECRET_KEY`;
 - the same protector object is passed to both User Portal and Admin TOTP verification.
 
-A safe key rotation cannot be inferred from the `v2` algorithm prefix alone. The target contract needs a key ID, old-key read / new-key write policy, re-encryption procedure, retirement proof, and an explicit decision on whether User Portal and Admin TOTP share or separate keys.
+The historical BWH `v2` format has no key ID, so its key cannot be safely rotated by inference. Under T1, the target Auth0-managed MFA path does not access or re-encrypt that key: legacy values are invalidated at cutover and users re-enroll. A first-party key-ID/rotation contract is required only if that route is separately selected by a new owner decision.
 
 ### 5.2 Legacy plaintext handling
 
@@ -107,7 +107,7 @@ At lines 112–128, the TOTP unwrapping function strips `enc:` and passes the re
 
 The field map marks `platform_portal_totp_credentials.encrypted_totp_secret` EXTERNALIZE. Before any target load:
 - all values must be classified by exact format;
-- legacy `enc:` / unprefixed Base32 values must be re-encrypted under the approved key/version or quarantined/rejected;
+- under T1, valid legacy `enc:`, unprefixed Base32 and `v2:` values are invalidated at cutover and require Auth0 MFA re-enrollment; they are never imported, decrypted, transferred or re-encrypted;
 - no legacy value may be copied into D1 or a fixture under the assumption that it is encrypted.
 
 Other TOTP fields (credential ref, account ref, status, failure/lock state and timestamps) remain KEEP candidates only after the external-secret reference and lifecycle contract is approved.
@@ -116,8 +116,8 @@ Other TOTP fields (credential ref, account ref, status, failure/lock state and t
 
 1. **Identity authority:** named owner, system of record, normalized email lookup, display-label retrieval, Admin authorization, outage behavior, deletion and retention.
 2. **Password authority:** explain the DEFER-vs-conditionally-wired-source discrepancy; preserve or explicitly retire password login through a separate approval.
-3. **TOTP custody:** external secret store, opaque secret reference, encryption-key custody, key ID, key separation, rotation/re-encryption, enrollment, verification, lockout, recovery, revocation and outage behavior.
-4. **Legacy values:** exact inventory method, accepted formats, re-encryption/quarantine, failure-closed behavior and evidence retention.
+3. **TOTP custody:** Auth0 owns target factors under T1; define opaque credential-reference binding, new enrollment, verification, lockout, recovery, revocation and outage behavior. Do not provision first-party Portal/Admin TOTP AES keys or transfer legacy secrets.
+4. **Legacy values:** T1 invalidation/re-enrollment disposition, format-classifier quarantine behavior, cutover sequencing and evidence retention; no secret inventory/export or decryption is authorized in this phase.
 5. **Synthetic compatibility:** duplicate registration, unique/ambiguous login lookup, generic login failure, password lockout, TOTP success/failure/lockout, session identity, Admin search/display, canary equality and account deletion.
 6. **Owner approval:** Identity/Privacy and Security owners must approve the final custody model before T2-C1/C2 can pass.
 
