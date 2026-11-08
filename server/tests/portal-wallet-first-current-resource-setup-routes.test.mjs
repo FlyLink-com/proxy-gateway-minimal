@@ -13,7 +13,7 @@ import {
 import { listen } from "./helpers/listen.mjs";
 
 const HANDOFF_REF = "setup_handoff_alpha";
-const IDEMPOTENCY_KEY = "setup-idempotency-key-alpha-0001";
+const IDEMPOTENCY_KEY = "123e4567-e89b-42d3-a456-426614174000";
 const SUBSCRIPTION_URL = "https://portal.example.test/sub/clash.yaml?token=opaque-test-token";
 const AVAILABLE_RESOURCE = Object.freeze({
   state: "available",
@@ -237,7 +237,7 @@ test("wallet-first setup route accepts only header-session exact setup input and
     "now",
     "sessionBindingHash"
   ]);
-  assert.doesNotMatch(JSON.stringify(calls.claim), /session_alpha|setup-idempotency-key-alpha-0001/);
+  assert.doesNotMatch(JSON.stringify(calls.claim), /session_alpha|123e4567-e89b-42d3-a456-426614174000/);
   assert.deepEqual(calls.release, [{ handoffRef: HANDOFF_REF, ...escrowBinding() }]);
 });
 

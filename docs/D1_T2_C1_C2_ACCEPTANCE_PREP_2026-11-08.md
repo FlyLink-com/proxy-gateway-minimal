@@ -105,3 +105,41 @@ The C2 design recommendation remains: prefer per-Worker secret bindings when a k
 - Do not schedule external reviewer sourcing. The existing GitHub account-level approval is source-slice evidence only; it does not by itself prove natural-person independence or close full T2-C6.
 
 **Current decision:** C1 and C2 are in source/doc alignment and acceptance preparation. C1/C2 formal acceptance is OPEN; T2 is BLOCKED; T3 and G6 remain not authorized. BWH remains the production control-data writer.
+
+## 8. Parallel closeout progress — 2026-11-08
+
+### C1-A04
+- The synthetic Risk A helper and test remain unchanged; the 12-case suite passed twice under Node v22.23.1 with `node --check` 2/2.
+- Added `docs/D1_T2_C1_RISK_A_OWNER_DECISION_PROPOSAL_V1.md` with grouped default recommendations for the window, conditional persistence, access, retention, notification/reset, and unclassified-account handling.
+- These are recommendations only. C1-A04 remains OPEN until owner decision; no production login hook or persistence is authorized.
+
+### C2 Wallet-first digest compatibility
+- Added `docs/D1_T2_C2_WALLET_FIRST_DIGEST_COMPATIBILITY_AUDIT_V1.md` with source paths, exact domain-separated SHA-256 v1 semantics, caller entropy findings, replay state and retention gap.
+- Recommended preserve-v1 disposition avoids needless HMAC/key-custody migration. A weak `Math.random()` fallback in the first-party UI idempotency helper is identified for a small source-hardening patch; no source behavior has been changed yet.
+- The 10-minute lease is not treated as a retention TTL. Delivered-row retention/purge still needs a bounded owner decision.
+
+### Execution boundary
+This is documentation-only progress on a child branch of the synthetic Risk A branch. No BWH connection, production data read/write, real key creation, Auth0 tenant creation, remote D1 mutation, Worker/DO deployment, CI, merge or cutover occurred. BWH remains the only production writer.
+
+## 9. Wallet-first idempotency source hardening — 2026-11-08
+
+A narrow source hardening was added to the child Draft branch:
+
+- Replaced the Portal setup idempotency `Math.random()`/timestamp fallback with cryptographic `getRandomValues()` UUIDv4 generation; fail closed if secure randomness is unavailable.
+- Enforced canonical UUIDv4 at the Wallet-first service boundary only; left the legacy non-Wallet-first path unchanged.
+- Added a five-case Node test for native UUID, secure fallback, missing RNG, RNG failure, and malformed native output; updated Wallet-first service/route fixtures and the Portal UI assertion.
+- Existing domain-separated SHA-256 v1 values and their exact input bytes are unchanged.
+
+An isolated copy of the helper/test passed 5/5 on Node v22.16.0. This is not the fixed Node v22.23.1 repository regression or Hosted CI. The focused repository files still require fixed-environment execution before source review. No production behavior has changed; no BWH, Auth0, D1, key, or deployment operation occurred.
+
+## 10. Fixed Node 22.23.1 combined regression — 2026-11-08
+
+On the child Draft branch, an isolated non-production Vercel sandbox ran the combined focused suite under Node v22.23.1 twice:
+
+- 86/86 PASS, 0 fail, 0 skipped; Run 1 TAP SHA-256 `4d8e0eef6ace1490e849cac1814c24d119c0e270e94de6da1a21908a7032643e`.
+- 86/86 PASS, 0 fail, 0 skipped; Run 2 TAP SHA-256 `eda8198d8f19ac65ae2dda4e07eeb637aa146f6ed9d9e928ce544f11ac581a4e`.
+- `node --check` 15/15 PASS.
+
+Scope: 62 existing T1/C1/C2 tests + 12 Risk A contract tests + 5 secure idempotency helper tests + 7 Wallet-first delivery service tests. The nine T1 file SHA-256 values match the existing fixed-runtime evidence inventory. Risk A and Wallet-first source/test files were fetched from the exact child branch before execution.
+
+The updated Admin TSX integration test and HTTP route integration test remain unrun; no full repository `npm test`, TypeScript build, Hosted CI or production integration is claimed. C1-A04 and C2-A04 remain OPEN; C1/C2 formal acceptance and T2 remain OPEN/BLOCKED.

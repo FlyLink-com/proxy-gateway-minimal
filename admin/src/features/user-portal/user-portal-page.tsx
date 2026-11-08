@@ -33,6 +33,7 @@ import {
   type LucideIcon
 } from "lucide-react";
 import { ModalFrame } from "../../shared/public/modal-frame";
+import { createSecurePortalSetupIdempotencyKey } from "./secure-idempotency-key.mjs";
 import { copyText } from "../../shared/public/clipboard";
 import { errorMessage } from "../../shared/public/errors";
 import { cn } from "../../shared/public/utils";
@@ -353,10 +354,7 @@ function uiText(locale: PortalAuthLocale, zh: string, en: string) {
 }
 
 function nextPortalSetupIdempotencyKey() {
-  if (typeof globalThis.crypto?.randomUUID === "function") {
-    return globalThis.crypto.randomUUID();
-  }
-  return `portal-setup-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  return createSecurePortalSetupIdempotencyKey();
 }
 
 const defaultPaymentRedirect = (url: string) => {
