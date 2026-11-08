@@ -484,3 +484,27 @@ Audit inputs are now snapshotted as plain enumerable data before recursive unsaf
 - Shared metadata snapshot refactor: `a724b762f56f4d3f0afb459eb0574c4d56bfb60f`
 
 This is Draft-only hardening. No production data or secret was accessed. Repository Node tests, full suite and CI remain NOT RUN.
+
+## G6 preflight evidence refresh — 2026-11-08
+
+This update supersedes the historical checksum-evidence qualification in §2.1 for the current Draft source modules only.
+
+### Current-head source checksum execution
+
+- Exact Draft branch source head used for the imported migration modules: `79ccad29f39ab503d48c54d516fbb3c3b4bde846`.
+- Rechecked the 16 source migration modules against the current PR branch head `4dcf9f0c29717393200ed98bba33884c3a879df7`; all 16 module Git blob identities are unchanged from the imported test set.
+- 19/19 source migration IDs and DDL SHA-256 checksums match the pinned inventory.
+- Node v22.23.1, 5/5 registry tests PASS twice; combined inventory + migration tests 28/28 PASS twice.
+- No DB was opened; a throwing `better-sqlite3` stub ensured no database construction could occur during module import.
+
+### T2 field-disposition structural validation
+
+- Added a read-only contract/CLI that binds the field map to the exact source inventory Git blob and validates every source field row, table mapping, source column property, rule/retention/test reference, target-column inclusion and proposal-only authorization.
+- Exact coverage: 70 tables / 820 fields; 64 KEEP, 4 CONDITIONAL, 2 DEFER tables; 712 KEEP, 59 CONDITIONAL, 7 EXTERNALIZE, 19 TRANSFORM, 23 DEFER fields; 790 target candidates; 1 low-confidence field.
+- Node v22.23.1, CLI PASS; 12/12 tests PASS twice, 0 failed / 0 skipped.
+
+### What this does and does not establish
+
+This closes the source-checksum re-execution requirement and structural integrity checks for the current T2 field map. It does not approve the proposed field dispositions, conditional feature inclusion, key custody, identity/privacy/retention choices, or the remaining T2 owner decisions. The T2 formal decision is still required before T3 target DDL work under the current plan.
+
+G6 itself has **not** started: there is no target DDL proposal, deterministic SQLite fixture, offline transform/load rehearsal, recovery drill, or end-to-end reconciliation. No BWH connection, production database read, remote D1 resource, DDL apply, row load, Worker deployment, CI, merge, dual-write, or cutover occurred. BWH remains the only production control-data writer.
