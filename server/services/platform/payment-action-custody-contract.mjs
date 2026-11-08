@@ -87,6 +87,7 @@ function requireRecord(record) {
   if (!record || typeof record !== "object" || Array.isArray(record)) {
     throw fail("payment_action_record_invalid");
   }
+  if (record.schemaVersion !== SCHEMA_VERSION) throw fail("payment_action_schema_version_invalid");
   requireRef(record.orderRef);
   requireRef(record.accountRef);
   requireRef(record.actionRef);
@@ -98,6 +99,23 @@ function requireRecord(record) {
   }
   if (!["active", ...TERMINAL_STATES].includes(record.status)) {
     throw fail("payment_action_state_invalid");
+  }
+  if (record.status === "active") {
+    if (
+      !record.actionEnvelope
+      || record.actionEnvelope.schemaVersion !== SCHEMA_VERSION
+      || record.terminalAt !== null
+      || record.purgeAfter !== null
+    ) {
+      throw fail("payment_action_record_invalid");
+    }
+  } else {
+    if (record.actionEnvelope !== null) throw fail("payment_action_record_invalid");
+    const terminalAt = requireTimestamp(record.terminalAt);
+    const purgeAfter = requireTimestamp(record.purgeAfter);
+    if (Date.parse(purgeAfter) <= Date.parse(terminalAt)) {
+      throw fail("payment_action_purge_time_invalid");
+    }
   }
   return record;
 }
