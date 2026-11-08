@@ -26,5 +26,5 @@ pip3 install --target tools/c1-auth0-validator/vendor "bcrypt==5.0.0"
 node --test tools/c1-auth0-validator/*.test.mjs
 ```
 
-预期：37/37 PASS（导入校验 10 + 登录证明 9 + 租户隔离 8 + 第 6 步
-端到端 10）。`vendor/` 已被本目录 `.gitignore` 排除。
+预期：40/40 PASS（导入校验 12 + 登录证明 9 + 租户隔离 8 + 第 6 步
+端到端 11）。`vendor/` 已被本目录 `.gitignore` 排除。
