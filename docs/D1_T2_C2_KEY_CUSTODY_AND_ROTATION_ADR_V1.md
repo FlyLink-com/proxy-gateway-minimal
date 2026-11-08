@@ -114,12 +114,12 @@ v3:aes-256-gcm:<key-id>:<iv-base64url>:<tag-base64url>:<ciphertext-base64url>
 - Key-ring material is hidden behind a WeakMap-backed object; callers receive only public family/key-ID metadata. Temporary key copies are best-effort zeroized after import/use. JavaScript runtime memory zeroization is not a hardware guarantee.
 
 Legacy behavior:
-- The existing v2 AES-GCM envelope has no key ID. A one-time isolated conversion therefore requires the exact legacy key supplied explicitly by the authorized migration process; the runtime must not guess which key applies.
-- A valid legacy v2 envelope can be decrypted in memory and re-encrypted directly to v3. The helper returns only the new envelope, never plaintext.
-- Legacy enc: values and unprefixed Base32 values are raw secret material, not ciphertext. The current C1 synthetic policy remains RE_ENROLL_REQUIRED; no automatic runtime fallback or silent import is introduced.
-- Malformed v2 values are quarantined. Unknown keys, modified tags, wrong credential refs, wrong scope and malformed envelopes fail closed.
+- Owner-selected T1 (2026-11-08) supersedes the earlier one-time conversion proposal: legacy v2: and enc: values are invalidated at cutover and require Auth0 MFA re-enrollment.
+- No legacy TOTP value is decrypted, transferred, imported or re-encrypted. The legacy key is not accessed for this migration.
+- The source enc: prefix is raw Base32, not ciphertext. The v2 envelope is legacy ciphertext without a key ID, but T1 does not authorize opening it.
+- Malformed or unrecognized legacy values remain quarantined. The compatibility classifier returns re_enroll_required for recognized legacy formats and never performs cryptographic conversion.
 
-If Auth0 or another managed identity provider is selected and owns TOTP factors, this first-party v3 envelope is a fallback/transition capability, not a reason to keep TOTP secrets in D1 or the business Worker.
+Under the selected Auth0/T1 path, first-party v3 TOTP encryption is not part of the target migration and no target Portal/Admin TOTP AES keys are provisioned. The generic v3 primitive remains unconfigured and is not a reason to retain legacy secrets in D1 or the business Worker.
 
 ## 5. Rotation, retirement and recovery
 
@@ -186,7 +186,7 @@ Still OPEN:
 2. Name accountable key-custodian and Security owner roles.
 3. Approve independent encrypted key escrow, recovery and incident revocation procedures.
 4. Resolve wallet-first idempotency_key_hash and session_binding_hash compatibility.
-5. Confirm whether C1 uses managed-provider TOTP custody or first-party TOTP v3 custody.
+5. Resolved by T1: Auth0-managed MFA owns target factors; no first-party TOTP key provisioning or legacy secret transfer for this migration. Synthetic enrollment/lifecycle proof remains open.
 6. Define retention/replay windows needed before HMAC key retirement.
 7. Run the separate 14-case PII security-vector test file as one suite under Node v22.23.1; it is distinct from the four-file 48/48 source-slice run recorded above.
 8. Complete the remaining owner decisions and the full T2 review. The bounded C1/C2 source-slice review is APPROVED at exact HEAD `bc3f8c9a`; it does not constitute full T2-C6 approval.
@@ -201,3 +201,9 @@ PR #842 source-slice review is APPROVED by `gccltdco-cmd` (Review ID `5817529933
 The full repository suite was also executed on candidate and baseline: 7,112 versus 7,084 tests; the 156 baseline failures all remained, all 28 added tests passed, and the failure-name difference was zero. The second candidate run had one additional usage-ledger timing-flake name, which passed 5/5 isolated runs on each HEAD. This is not an all-green repository suite and no hosted CI PASS is claimed.
 
 Still outstanding: the separate 14-case PII vector file has not been run as one suite under Node v22.23.1; real key custody, named custodians, encrypted escrow and restore; Wallet-first legacy digest compatibility; owner-approved TOTP custody choice; retention/replay windows; and the full T2 review. C2 remains OPEN.
+
+
+## Owner decision update — T1 (2026-11-08)
+
+The project owner selected Auth0-managed MFA as the target TOTP authority. Portal enrollment is optional; Admin enrollment is mandatory. All existing BWH enc: and v2: values are invalidated at cutover and require user re-enrollment. They must not be decrypted, imported, transferred or re-encrypted. C2-D05 is therefore resolved for this migration path; it does not close C2 overall. The first-party v3 TOTP primitive remains generic/unconfigured and must not be provisioned for the selected target path without a new owner decision.
+
