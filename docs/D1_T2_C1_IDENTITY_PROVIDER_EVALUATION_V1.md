@@ -223,7 +223,7 @@ Required synthetic proof:
 - verify five failed attempts and the 900-second lockout policy, or document the approved replacement;
 - prove that no raw secret appears in Worker logs, traces, fixtures or response bodies.
 
-For real migration, the C2 key-custody decision must separately authorize decrypting the `v2` envelope. The `enc:` legacy value must be treated as raw Base32, stripped and normalized, not decrypted.
+Owner-selected T1 (2026-11-08) supersedes this earlier transfer proposal: no existing BWH TOTP secret is imported. Both legacy `enc:` and `v2:` values are invalidated at cutover; users re-enroll with Auth0 MFA. Do not decrypt, strip-and-import, transfer or re-encrypt either format.
 
 ### 3.4 Email verification and signup behavior
 
@@ -386,7 +386,7 @@ This proves only local parsing, byte-preserving conversion, synthetic password v
 - **Best no-reset fidelity fallback:** Keycloak with custom password-hash and TOTP import extensions.
 - **Conditional cost challenger:** Clerk Pro, only if custom Node scrypt raw-salt import is confirmed.
 - **Not preferred under current TOTP-preservation requirement:** Firebase Identity Platform and Amazon Cognito, because the documented bulk/import path does not import the existing TOTP secret.
-- **Vendor selected:** NONE.
+- **Vendor selected:** Auth0 Essentials + Bulk User Import (owner-selected 2026-11-08); non-production proof pending.
 - **C1:** BLOCKED — local synthetic converter rehearsal is implemented; Auth0 hosted import proof, provider behavior checks and owner approval remain outstanding.
 - **C2:** OPEN — TOTP key custody, key IDs, separation and legacy compatibility remain unresolved.
 - **C3:** OPEN — account metadata/PII and independent review remain outstanding.
@@ -459,3 +459,9 @@ The project owner selected **Auth0 Essentials + Bulk User Import** and approved 
 ### Required stop conditions
 
 Do not import any real identity until the selected Scrypt vector passes, the 72-byte boundary is proven to fail closed on login, the >72-byte cohort is safely identified, the trim-normalization behavior is preserved, and the Portal/Admin/non-production tenant topology is approved. If Auth0 Essentials cannot meet those requirements, return for an owner decision; do not silently upgrade, switch to Keycloak, or weaken password semantics.
+
+
+## Owner decision update — T1 (2026-11-08)
+
+The owner selected Auth0-managed MFA. Existing Portal/Admin TOTP factors are not imported. At cutover, all legacy BWH enc: and v2: values are invalidated and users re-enroll. Portal enrollment is optional; Admin enrollment is mandatory. The provider comparison's earlier no-TOTP-loss ranking and any v2 decrypt/transfer proposal are historical and do not describe the selected target. Acceptance must prove enrollment, verification, time-window, lockout, recovery, revocation and outage behavior using synthetic identities only.
+
