@@ -289,6 +289,20 @@ The source audit and synthetic vectors are complete for this pass, but T2 remain
 Repository-only documentation and synthetic test design. No production DB reads, BWH connection, real secrets, remote D1 mutation, Worker deployment, CI, PR, merge, dual-write, DNS or cutover. BWH remains production's only writer. A future G6 PASS authorizes consideration of the next separately approved step only.
 
  
+## 9. PII pseudonymization compatibility follow-up — 2026-11-07
+
+Detailed source-consumer mapping, field disposition, fixed PII domains, HMAC-over-legacy-digest encoding, historical transformation, rotation and fail-closed compatibility are specified in `docs/D1_T2_PII_PSEUDONYMIZATION_AND_HMAC_COMPATIBILITY_V1.md`.
+
+Source review identified four compatibility surfaces that must be migrated together:
+- registration duplicate-account detection (`portal-registration.mjs`);
+- admin email search (`admin-platform.mjs`);
+- registration welcome-Coins canary matching (`state.mjs`);
+- User Portal and admin display identity (`user-portal-auth.mjs`, `admin-platform.mjs`, and initial-account issuance).
+
+The PII synthetic vector test file now contains four additional tests for email/source-IP/request-context known-answer vectors, domain/key-ID separation, retained-old-key lookup with active-key writes, and rejection of legacy SHA-256 as a runtime fallback. The repository test file has 14 test cases by static count. An isolated Node 22 formula check independently passed the three new known-answer vectors and rotation/envelope checks; the full repository test file was not executed, and no CI was run.
+
+**PII status remains BLOCKED:** identity custody has no approved owner/interface; no real PII key or secret binding exists; registration/admin/canary integration and historical transformation rehearsal are not implemented. No source runtime was changed.
+
 ## 8. Source-contract follow-up — 2026-11-07
 
 The source audit corrected two earlier assumptions: one of six lease issuers uses a prefixed UUIDv4 rather than a 32-byte hex token, and the account metadata guard does not prevent raw email/displayName values or unkeyed SHA-256 PII digests from entering JSON. The 26-field writer inventory is recorded in the companion audit.
