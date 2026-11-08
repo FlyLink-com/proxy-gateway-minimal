@@ -277,3 +277,15 @@ No task is marked complete by this matrix. The work is not authorized to cross t
 
 ### Gate status
 C4 and C5 remain OPEN. This source/prototype progress does not close T2, authorize D1 DDL/data loading, or change the production writer. BWH remains the only production control-data writer.
+
+## 10. C3 shared JSON contract focused regression — 2026-11-08
+
+The existing C3 shared JSON contract module/test were fetched from this branch and run in the isolated non-production sandbox under Node v22.23.1:
+
+- `server/tests/control-json-contracts.test.mjs`: **7/7 PASS**, 0 failed, 0 skipped.
+- TAP SHA-256: `66b5fb22e9f760c908181c3337cb3cd0f24e8235d1ee8751142e4ad9dc7d8c8d`.
+- `node --check`: source and test 2/2 PASS.
+- Source blob: `f9e7e4841c11bf77bcfd1aa74df867159013b5ac`.
+- Test blob: `0be5a56462402f87a9a5f76666dd9d42ae04e0ff`.
+
+This covers the registered Portal access-event and subscription-fulfillment JSON variants, exact keys, unsafe refs/values, accessor/symbol/non-plain-object rejection and hostile proxy traps. It is not the full C3 writer integration test: `platform-subscription-control-db.test.mjs` and the complete 26-field writer-path review remain unrun. C3 remains OPEN for account metadata/PII and full writer-path evidence.
