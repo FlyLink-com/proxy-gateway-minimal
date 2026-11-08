@@ -123,7 +123,7 @@ The 26-column inventory is complete as a source-path map, but this follow-up sep
 - The second-factor persistence writer previously accepted values that the current reader may later ignore. Draft commit `c39b3987b557274fce2b9c4aabbf11367454245f` now enforces a non-empty, unique `totp` / `passkey` allowlist at the persistence boundary; integration assertions were added in `591629b0b0aaeab8679d2f79b793bef67137b19d`. Focused helper tests passed 4/4, but the full store test file has not yet been run.
 - Commerce notice normalization now enforces the Draft bounds/content filters, and `insertPublishedOffer()` re-normalizes at the final persistence boundary before writing. The filter is deterministic pattern screening, not comprehensive PII detection; reviewer must challenge its coverage and false-positive behavior.
 
-**Current result:** write-path discovery is complete for all 26 listed columns. Draft now closes the issuance metadata union and edge-node metadata allowlist at their current store writers. Account metadata remains BLOCKED by identity/PII custody. Audit metadata and portal event JSON are now closed at all current source writers through shared action/event contracts. Commerce notices, issuance metadata and edge-node metadata are also closed at current writers. Passkey JSON remains DEFER. The full repository test files, full suite and CI have not been run. The full repository test file and CI have not been run.
+**Current result:** write-path discovery is complete for all 26 listed columns. Seven JSON fields are now closed at their current writers; sixteen have existing source-owned schemas/allowlists or versioned unions; two Passkey fields remain DEFER; account metadata remains BLOCKED by identity/PII custody. Actual repository Node tests, the full suite and CI have not been run.
 
 ## 3. Lease, idempotency and generation field audit
 
@@ -283,7 +283,7 @@ T2 is not approved and production migration is not authorized.
 
 The 26-field disposition now reconciles to:
 - **7 fields CLOSED at current writers:** issuance metadata; audit metadata; edge-node metadata; Portal event JSON; second-factor allowed factors; Chinese notices; English notices.
-- **16 fields SOURCE SHAPE ACCEPTABLE:** channel refs; accepted coin types; quote allocation/balance snapshots; order offer/allocation snapshots; fulfillment command payload; referral policy/origin snapshots; deferred-transition offer/allocation snapshots; wallet-first quote offer/allocation/balance snapshots.
+- **16 fields have existing source-owned contracts:** 15 KEEP fields with explicit ref/enum/aggregate/snapshot schemas (channel refs; accepted coin types; quote allocation/balance snapshots; order offer/allocation snapshots; referral policy/origin snapshots; deferred-transition offer/allocation snapshots; wallet-first quote offer/allocation/balance snapshots), plus the fulfillment-command payload's existing versioned discriminated union and transform mapping.
 - **2 fields DEFER:** Passkey public JWK and transports; no production caller was found, so they remain excluded.
 - **1 field BLOCKED:** account metadata. Raw login/display refs, display name and unkeyed low-entropy identity digests remain coupled to current registration/login/admin behavior. C1 identity custody must resolve this before a safe target transformation is approved.
 
