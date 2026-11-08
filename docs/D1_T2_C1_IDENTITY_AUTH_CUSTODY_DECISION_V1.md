@@ -14,7 +14,7 @@ C1 cannot be closed by removing `loginRef` / `displayRef` from `platform_account
 
 **Recommended target boundary:** use an identity/authentication authority that is separate from the Cloudflare control-plane Worker and D1. Prefer a standards-based external identity provider (OIDC Authorization Code + PKCE) only if it can preserve the required password, email-verification, TOTP, lockout, credential-revocation and administrator-directory behavior. If no provider meets those requirements, use a dedicated first-party identity service with its own isolated identity/credential store and key custody. Do not create a substitute identity authority inside the control-plane D1.
 
-The target control plane should receive only an opaque, stable identity subject and verified authentication context. D1 should retain the opaque account-to-identity binding and approved non-secret lifecycle facts. Email, display name, password hashes, TOTP secret material and raw authentication capabilities must not be copied into D1, control-plane Worker request/response bodies, logs, traces, fixtures or evidence.
+The target control plane should receive only an opaque, stable identity subject and verified authentication context. D1 should retain the opaque account-to-identity binding and approved non-secret lifecycle facts. Email, display name, password hashes, TOTP secret material and raw authentication capabilities must not be copied into D1, control-plane Worker request/response bodies or forwarded headers, logs, traces, fixtures or evidence.
 
 This is a recommendation, not a vendor selection. No identity provider, tenant, account, key, secret or remote resource is selected or configured by this document.
 
@@ -35,7 +35,7 @@ The source audit is pinned to `be261abc60f28bb2733764fa5364ab44b3e76844`. The re
 
 | Area | Source evidence | Current behavior that must be reconciled |
 | --- | --- | --- |
-| Registration | `portal-registration.mjs`, blob `df3a67dc61f94f4d4c14043b3fbf49418d419b39` | Email is normalized (trim + lowercase); duplicate detection compares ordinary SHA-256 digests; raw email is written to `loginRef` and `displayRef`; `displayName` defaults to email. Registration also creates the trial / welcome-Coins path. |
+| Registration | `portal-registration.mjs`, blob `df3a67dc61f94f4d4c14043b3fbf49418d419b39` | Email is normalized (trim + lowercase); duplicate detection compares ordinary SHA-256 digests; raw email is written to `loginRef` and `displayRef`; the public session display label is derived from the email. Registration also creates the trial / welcome-Coins path. |
 | Login resolver | `subscription-control-db.mjs`, blob `bc6694a93f452f97393ff6f1a8099e854c0b19ac` | Exact account ID is checked first. Otherwise active accounts are scanned for `loginRef` / `displayRef`; only one matching account resolves. Multiple matches return `ambiguous`; no match returns `not_found`. |
 | Password login | `user-portal-auth.mjs`, blob `f9e4e7036b079a63092898a15948424b074a067a`; `portal-password-credentials.mjs`, blob `ca9a5f201487f89202aff60e01f504c1622b4c28` | Login resolves the account before password verification. Password verification is account-bound, returns generic invalid-login behavior, updates failure counters/lockout and records verification. The credential service is conditionally wired for User Portal/Admin Auth routes; production activation is NOT OBSERVED. |
 | Password credential schema | `subscription-control-db.mjs`, source blob above | The 11 columns are `id`, `account_id`, `password_hash`, `status`, `failure_count`, `locked_until`, `must_rotate`, `created_at`, `last_verified_at`, `revoked_at`, `updated_at`. All 11 remain DEFER for D1. DEFER is a data-disposition decision, not feature-retirement approval. |
@@ -80,12 +80,12 @@ The authority must issue an immutable opaque subject identifier that is not an e
 Preferred flow, subject to provider capability verification:
 
 1. Browser registration, email verification, password login and TOTP enrollment/verification occur directly with the selected identity authority. Raw credentials do not transit the control-plane Worker.
-2. The authority returns a short-lived, audience-bound signed identity assertion. Its claims are minimal: issuer, opaque subject, audience, expiry, issue/authentication time and approved authentication-strength/factor claims. Email and display-name claims are excluded from the control-plane assertion.
-3. The edge authentication boundary validates signature, issuer, audience, expiry, nonce and required authentication strength. It converts the assertion into an internal trusted context containing only opaque `issuerRef`, `subjectRef`, `accountRef` and approved auth-context flags.
-4. The assertion/token itself is never written to D1, returned in application JSON, logged, traced, captured in fixtures or included in evidence. It is accepted only through a protected authentication channel, not an application request body.
-5. Control-plane handlers operate on opaque references and business state only. They do not receive raw email, password, TOTP code or secret.
+2. The authority returns a short-lived, audience-bound signed identity assertion with minimal claims: issuer, opaque subject, audience, expiry, issue/authentication time and approved authentication-strength/factor claims. Email and display-name claims are excluded.
+3. A dedicated edge/API authentication gateway (outside the business Worker) validates signature, issuer, audience, expiry, nonce and required authentication strength. It strips the user assertion and all inbound credential headers before forwarding the request.
+4. The gateway forwards only a trusted opaque actor context (`issuerRef`, `subjectRef`, `accountRef` and approved auth-context flags) over a protected internal channel. The business Worker must not receive the original assertion, access/refresh token, authorization code, password, TOTP code or recovery capability in its body or headers. Direct calls that bypass the gateway must be rejected.
+5. The gateway and Worker do not log or trace the assertion or credential material. Control-plane handlers operate on opaque references and business state only.
 
-If the provider requires raw credentials or email claims to pass through the control-plane Worker, it does not satisfy this proposal without a separately approved exception.
+If the provider or edge gateway requires raw credentials, email claims or bearer assertions to pass through to the business Worker, it does not satisfy this proposal without a separately approved exception.
 
 ### 4.3 D1 identity binding (conceptual only; no DDL authorization)
 
@@ -184,7 +184,7 @@ All tests must use synthetic identities, synthetic passwords, synthetic TOTP sec
 | C1-08 | Authorized Admin search/display works through the separate identity-directory channel; unauthorized search fails closed. |
 | C1-09 | Coins canary match/non-match is identical to the current policy; invalid eligibility results fail before writes. |
 | C1-10 | D1 writer rejects raw email, display name, password hash, TOTP secret, recovery code, token and unkeyed low-entropy identity digests. |
-| C1-11 | No raw email/password/TOTP code is sent to the control-plane Worker body in the target browser flow. |
+| C1-11 | No raw email/password/TOTP code, authorization code, access/refresh token, recovery capability or user bearer assertion reaches the business Worker body or forwarded headers in the target browser flow; gateway bypass is rejected. |
 | C1-12 | Identity deletion/unlink revokes sessions and external credential references without deleting immutable financial/audit facts outside the C5 policy. |
 
 The tests must record exact Node version, command, output, fixture hash and tested adapter/provider contract. A source-mirroring harness alone is not repository test evidence.
