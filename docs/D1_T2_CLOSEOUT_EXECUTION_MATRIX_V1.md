@@ -337,3 +337,24 @@ Added `docs/D1_T2_C3_ACCOUNT_METADATA_26_FIELD_DISPOSITION_AUDIT_V1.md` after ex
 - Privacy-sensitive use-case, IP and request-correlation digests default to DROP unless a specific purpose and owner approve keyed, time-bounded processing.
 
 The source module currently documents that the allowlist is a legacy BWH source-writer contract, not a D1 target projection. The disposition audit does not read production values or authorize migration. C3 remains OPEN pending Account/Identity, Privacy and Legal decisions plus a target writer integration regression.
+
+## 15. G6 inventory graph and referential-integrity validator — 2026-11-08
+
+Hardened `server/services/platform/d1-control-schema-inventory-contract.mjs` and its regression suite beyond declared totals:
+
+- Recompute and compare all global and layer-specific counts: 70 tables, 820 columns, 126 FK edges, 88 indexes, 91 triggers; core/companion breakdowns also match.
+- Resolve every FK edge to real source/target tables and columns, enforce column arity, layer consistency and known delete actions.
+- Resolve every index to an existing table/column, including ASC/DESC order terms; validate uniqueness flag and predicate shape.
+- Resolve every trigger to an existing table and supported timing/event shape.
+- Bind every table/index/trigger source path + Git blob to the inventory's pinned source-file list.
+- Verify table-to-migration references, unique source paths, dependency graph node/kind validity and acyclicity.
+- Preserve all source-only and no-production authorization assertions.
+
+Fixed Node v22.23.1, isolated sandbox with network denied during test execution:
+- CLI: PASS; validates the pinned source inventory at source commit `be261abc60f28bb2733764fa5364ab44b3e76844`.
+- Regression suite: **23/23 PASS twice**, 0 failed, 0 skipped.
+- Run 1 TAP SHA-256: `cd2e4b13004aa87c6b4d9889d6f948f067a5faf9f6755da3ea433dbce61e5603`.
+- Run 2 TAP SHA-256: `f7649cc1cd8e0ac32cd087b85374207febb9cd80bf71f2097702553880fd4587`.
+- `node --check`: 3/3 PASS (validator module, test, CLI).
+
+This is a stronger structural consistency check over the checked-in source inventory. It does not establish live BWH schema state, D1 parity, or source migration ledger application history. It does not apply DDL or load rows; G6 remains offline-only.
