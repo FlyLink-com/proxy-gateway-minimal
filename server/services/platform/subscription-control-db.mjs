@@ -323,6 +323,71 @@ function listenerReadyFlag(input = {}) {
   ) ? 1 : 0;
 }
 
+function edgeNodeMetadataJson(value) {
+  if (
+    !value
+    || typeof value !== "object"
+    || Array.isArray(value)
+    || (Object.getPrototypeOf(value) !== Object.prototype && Object.getPrototypeOf(value) !== null)
+  ) {
+    throw platformError("validation_error", "edge node metadata must be a plain object");
+  }
+
+  const keys = Reflect.ownKeys(value);
+  if (keys.some((key) => typeof key !== "string")) {
+    throw platformError("validation_error", "edge node metadata keys must be strings");
+  }
+  const snapshot = {};
+  for (const key of keys) {
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+    if (!descriptor || !("value" in descriptor)) {
+      throw platformError("validation_error", "edge node metadata must contain data properties only");
+    }
+    snapshot[key] = descriptor.value;
+  }
+
+  const allowed = new Set([
+    "source",
+    "receiptGateRequired",
+    "imageSafeConfirmed",
+    "artifactHashRecorded",
+    "wireguardPlanRef",
+    "wireguardPublicKeyFingerprint",
+    "agentAuthFingerprint"
+  ]);
+  if (Object.keys(snapshot).some((key) => !allowed.has(key))) {
+    throw platformError("validation_error", "edge node metadata contains an unknown field");
+  }
+  if (
+    snapshot.source !== "node-image-first-boot-packet"
+    || snapshot.receiptGateRequired !== true
+    || typeof snapshot.imageSafeConfirmed !== "boolean"
+    || typeof snapshot.artifactHashRecorded !== "boolean"
+    || typeof snapshot.wireguardPlanRef !== "string"
+    || !/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/.test(snapshot.wireguardPlanRef)
+    || /https?:|token=|secret|credential|password|private|customer|@|\/sub\/clash\.yaml|(?:\d{1,3}\.){3}\d{1,3}|[a-z0-9-]+\.[a-z]{2,}/i.test(snapshot.wireguardPlanRef)
+  ) {
+    throw platformError("validation_error", "edge node metadata does not match the first-boot contract");
+  }
+
+  const normalized = {
+    source: snapshot.source,
+    receiptGateRequired: snapshot.receiptGateRequired,
+    imageSafeConfirmed: snapshot.imageSafeConfirmed,
+    artifactHashRecorded: snapshot.artifactHashRecorded,
+    wireguardPlanRef: snapshot.wireguardPlanRef
+  };
+  for (const field of ["wireguardPublicKeyFingerprint", "agentAuthFingerprint"]) {
+    if (Object.prototype.hasOwnProperty.call(snapshot, field)) {
+      if (typeof snapshot[field] !== "string" || !/^sha256:[0-9a-f]{64}$/.test(snapshot[field])) {
+        throw platformError("validation_error", "edge node metadata fingerprint is invalid");
+      }
+      normalized[field] = snapshot[field];
+    }
+  }
+  return JSON.stringify(normalized);
+}
+
 function issuanceMetadataJson(value) {
   const metadata = value == null ? {} : value;
   if (
@@ -7961,7 +8026,7 @@ export function createSqliteSubscriptionControlStore({
       firstBootPacketRef: safeControlRef(input.firstBootPacketRef, "firstBootPacketRef"),
       registeredAt: isoText(input.registeredAt || now, "registeredAt"),
       updatedAt: now,
-      metadataJson: jsonObject(input.metadata, "metadata")
+      metadataJson: edgeNodeMetadataJson(input.metadata)
     };
   }
 
