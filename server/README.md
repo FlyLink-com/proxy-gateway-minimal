@@ -30,6 +30,20 @@ Run the focused `node --test server/tests/<name>.test.mjs` command for the
 changed boundary, then `npm test` and
 `git diff --check origin/master...HEAD`.
 
+## C1 identity import rehearsal
+
+The Auth0 candidate has a local synthetic-only converter rehearsal. It does not
+read account data, decrypt TOTP keys, call a provider, or write an import file.
+Run:
+
+- npm run platform:identity-import:rehearsal — emits a redacted synthetic receipt.
+- npm run test:portal-identity-import — runs the focused parser/converter tests.
+
+The source/test contract is documented in
+the C1 identity provider evaluation (../docs/D1_T2_C1_IDENTITY_PROVIDER_EVALUATION_V1.md).
+This local rehearsal is not provider acceptance or authorization to migrate
+real accounts.
+
 ## Admin login
 
 For the default-private boundary and explicitly approved public cookie-auth
