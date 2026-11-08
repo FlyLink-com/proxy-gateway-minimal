@@ -4,7 +4,7 @@ import { types as utilTypes } from "node:util";
 const ACCOUNT_REFERENCE = /^[a-z][a-z0-9_]{2,95}$/;
 const HANDOFF_REFERENCE = /^[a-z][a-z0-9_]{2,191}$/;
 const RUNTIME_IDENTIFIER = /^[A-Za-z0-9_-]{3,128}$/;
-const IDEMPOTENCY_KEY = /^[A-Za-z0-9][A-Za-z0-9._~-]{15,127}$/;
+const IDEMPOTENCY_KEY = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const SHA256_HEX = /^[a-f0-9]{64}$/;
 const ESCROW_VERSION = "wallet_first_setup_delivery_escrow_v1";
 // Keep the handoff claim long enough for a user to import the delivered URL
