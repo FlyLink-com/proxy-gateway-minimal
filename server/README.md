@@ -36,7 +36,7 @@ The Auth0 candidate has a local synthetic-only converter rehearsal. It does not
 read account data, decrypt TOTP keys, call a provider, or write an import file.
 Run:
 
-- npm run platform:identity-import:rehearsal — emits a redacted synthetic receipt.
+- npm run --silent platform:identity-import:rehearsal — emits only the redacted synthetic receipt JSON.
 - npm run test:portal-identity-import — runs the focused parser/converter tests.
 
 The source/test contract is documented in
