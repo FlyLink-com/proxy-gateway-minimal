@@ -29,15 +29,19 @@ Review the full T2 closeout contract, not only the original lease/idempotency pr
 ### Identity and PII
 
 - Reconcile raw `loginRef`, `displayRef`, `displayName` and all related low-entropy digests with current source callers.
+- Verify `resolvePortalLoginAccount()` semantics: exact account-ID resolution, active-account scan by `loginRef`/`displayRef`, unique-match requirement, and ambiguity behavior.
 - Verify the identity source of truth, authorized lookup path, outage behavior, retention and deletion contract.
-- Confirm no raw identity value or unkeyed low-entropy digest enters D1, Worker payloads, logs, traces, fixtures or evidence.
+- Reconcile the 11-column `platform_portal_password_credentials` DEFER disposition with the conditionally wired current password-login path; DEFER must not silently disable a supported feature.
+- Reconcile `platform_portal_totp_credentials.encrypted_totp_secret` EXTERNALIZE with the remaining TOTP state fields; prove password hashes and TOTP secrets never enter D1, Worker payloads, logs, traces, fixtures or evidence.
+- Review the current AES-256-GCM TOTP envelope: no key ID, `USER_PORTAL_TOTP_SECRET_KEY`, shared User Portal/Admin protector, and legacy `enc:` / unprefixed Base32 behavior. Require key separation or explicit risk acceptance, key ID/rotation/re-encryption, and rejection/quarantine of legacy raw secret values.
 - Verify fixed PII domains, normalization, HMAC input bytes, key ID and rotation behavior.
 
 ### HMAC, lease and replay
 
 - Verify all six lease-token issuer formats: five 64-lowercase-hex tokens and one prefixed UUIDv4 reservation token.
 - Verify six raw idempotency fields, uniqueness/replay scopes, and separate provider-event and PII key/domain families.
-- Verify the versioned envelope, key-ID grammar, byte-exact four-byte big-endian length prefix and NUL domain separator.
+- Verify the HMAC versioned envelope, key-ID grammar, byte-exact four-byte big-endian length prefix and NUL domain separator.
+- Separately verify AES-256-GCM TOTP envelope key IDs, key separation, old-key decrypt/new-key re-encrypt, tag/ciphertext tampering, unknown key and legacy `enc:` rejection/quarantine.
 - Verify unknown/missing key ID, malformed envelope and wrong domain fail closed without plaintext or bare-SHA fallback.
 - Independently review `platform_wallet_first_setup_delivery_handoffs.idempotency_key_hash` and `session_binding_hash`; do not silently classify them as one of the six raw fields.
 
@@ -85,8 +89,8 @@ Reviewer must verify the final file bytes rather than relying on this note.
 
 T2 remains BLOCKED until all are resolved with evidence:
 
-1. Identity custody owner and technical boundary; raw email/displayName externalization and preserved portal/admin/registration behavior.
-2. HMAC key custody, rotation/retirement and historical compatibility approval; wallet-first pre-hashed digest exception.
+1. Identity/authentication custody owner and technical boundary; raw email/displayName externalization; current password login and TOTP behavior preserved without password hashes or TOTP secrets entering D1.
+2. HMAC and AES-256-GCM key custody, rotation/retirement and historical compatibility approval; wallet-first pre-hashed digest exception; TOTP key ID, shared User Portal/Admin key scope and legacy `enc:` raw-secret handling.
 3. Closed JSON schemas enforced at every writer; opaque-ref and generation grammar; direct Audit SQL bypass and atomicity.
 4. Payment action custody owner, encryption-key boundary, TTL, terminal purge, tombstone and outage/restore behavior.
 5. Named domain owners and approved retention rules; G2 residual probes or explicit risk acceptance.
