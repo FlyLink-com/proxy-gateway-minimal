@@ -243,7 +243,7 @@ G6 PASS authorizes only consideration of the next separately gated step. It does
 | Package | Current evidence | Status |
 |---|---|---|
 | T2-C1 Identity custody | C1 custody proposal + provider evaluation + [owner decision sheet](D1_T2_C1_OWNER_DECISION_SHEET_V1.md); provider-neutral opaque actor-context and identity-binding helper/tests added; Auth0 Essentials remains preferred candidate, not selected; hosted provider proof and owner decisions remain outstanding | OPEN |
-| T2-C2 HMAC and legacy compatibility | [C2 key custody/rotation ADR](D1_T2_C2_KEY_CUSTODY_AND_ROTATION_ADR_V1.md) + executable Web Crypto primitives + source-importing synthetic tests added; key custody provider/escrow approval and wallet-first digest compatibility remain open | OPEN |
+| T2-C2 HMAC and legacy compatibility | [C2 key custody/rotation ADR](D1_T2_C2_KEY_CUSTODY_AND_ROTATION_ADR_V1.md) + executable Web Crypto primitives + synthetic escrow contract; **target architecture approved 2026-11-08** (Crypto Worker/private Service Binding, per-Worker secrets, independent encrypted escrow/two-person recovery, key-family separation, active-write/retained-read rotation). Named custodians, concrete escrow mechanism and real recovery, non-production integration, domain-owner approvals, Wallet-first replay/retention decision and independent review remain open | OPEN |
 | T2-C3 JSON/ref/generation | 26 fields reconciled: 7 writer families closed, 16 existing source contracts retained/mapped, 2 Passkey fields DEFER, account metadata BLOCKED pending C1 identity custody; independent review absent | OPEN |
 | T2-C4 Payment custody | DO SQLite proposal exists; owner, key, lifecycle, and outage decisions remain open | OPEN |
 | T2-C5 Retention/G2 residuals | Retention register exists; RET-02–RET-12 and G2 residual dispositions remain open | OPEN |
@@ -436,3 +436,20 @@ Recorded isolated Node v22.23.1 / better-sqlite3 12.10.0 / SQLite 3.53.1 results
 - Group sizes: 45 control-store; 48 JSON/payment/key-escrow/inventory; 113 commerce; 68 deferred/referral/Portal; 16 Wallet-first.
 
 This closes the source-only 26-field writer/transform inventory review. It does not close the remaining Auth0 identity externalization or C2 keyed-digest replacement. It does not authorize a D1 account-row load or target DDL. T2 remains OPEN.
+
+
+## 19. C2 target architecture owner decision — 2026-11-08
+
+The project owner approved the C2 target architecture baseline recorded in the C2 owner decision proposal and key custody/rotation ADR.
+
+Approved design baseline:
+- Dedicated Crypto Worker and private Service Binding; no public key-operation endpoint or raw key return.
+- Per-Worker secret bindings by default; Secrets Store only for demonstrated sharing.
+- Independent encrypted escrow outside Cloudflare/GitHub/Notion, with two-person recovery/revocation.
+- Separate key material and domains by purpose.
+- Active-write / retained-read rotation and evidence-based retirement.
+- No first-party Portal/Admin TOTP AES provisioning under T1/Auth0-managed MFA.
+
+Not included: named people, concrete KMS/HSM/offline escrow provider, real keys or bindings, deployed Crypto Worker, non-production integration, actual external recovery rehearsal, Wallet-first digest/replay-retention disposition, payment/PII domain approvals, or production change authorization.
+
+C2 remains OPEN. The synthetic escrow contract passed 10/10 twice under Node v22.23.1, but this is not real escrow or production restore evidence. BWH remains the only production control-data writer; no BWH access, production data read, D1 mutation, Worker/DO deployment, dual-write or cutover is authorized.
