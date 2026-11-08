@@ -1,6 +1,6 @@
 # D1 T2-C2 Key Custody and Rotation ADR v1
 
-> Status: IMPLEMENTATION DRAFT — synthetic primitives and tests added; key-custody provider, accountable owners, legacy handoff disposition and production provisioning remain unapproved.
+> Status: TARGET ARCHITECTURE APPROVED BY PROJECT OWNER — 2026-11-08. C2 implementation, named custodians, concrete escrow mechanism, non-production integration, real recovery proof and production provisioning remain OPEN / NOT AUTHORIZED.
 > Source anchor: master@be261abc60f28bb2733764fa5364ab44b3e76844
 > Draft branch: docs/d1-target-schema-g6-rehearsal-plan-20261107
 > Scope: HMAC pseudonyms/idempotency, provider-event dedupe, TOTP encryption, key separation, rotation and failure behavior.
@@ -12,7 +12,7 @@ C2 now has an executable, Cloudflare-compatible cryptographic primitive module a
 
 The implementation is deliberately not wired into production writers, the BWH runtime, D1, or a Worker deployment. It accepts key rings injected by the caller and does not generate, persist, export, or provision production keys.
 
-Recommended architecture:
+Approved target architecture (owner decision 2026-11-08):
 
 1. Keep cryptographic keys out of the business control-plane Worker.
 2. Put each key family behind a narrowly scoped crypto/identity service Worker. Expose only operations such as digest, verify, encrypt, re-encrypt, or TOTP verification; never return raw key bytes.
@@ -201,7 +201,7 @@ The audited contract uses two distinct domain-separated SHA-256 v1 digests over 
 
 A grouped key-custody recommendation is available in `docs/D1_T2_C2_KEY_CUSTODY_OWNER_DECISION_PROPOSAL_V1.md`. It consolidates the crypto Worker/private Service Binding boundary, per-Worker secret binding default, independent encrypted escrow, family separation, active-write/retained-read rotation, restore acceptance, and the already-approved T1 decision not to provision first-party Portal/Admin TOTP AES keys while Auth0 owns target MFA.
 
-Both documents are recommendations/source audits only. C2 remains OPEN until the owner accepts the grouped custody/escrow/recovery contract and the synthetic restore rehearsal passes. No real key, secret, binding, or Worker was created.
+The owner has since approved the target custody architecture on 2026-11-08. The Wallet-first audit remains a separate source/compatibility record, not included in this architecture approval. C2 remains OPEN pending named custodians, concrete escrow mechanism and independent recovery, non-production service-binding integration, domain-owner approvals, replay/retention decisions and independent review. The synthetic escrow rehearsal has passed 10/10 twice but is not a real external backup or production restore.
 
 ## 15. Synthetic escrow contract and fixed-runtime validation — 2026-11-08
 
@@ -209,4 +209,21 @@ Added the pure synthetic key-escrow contract `server/services/platform/d1-t2-key
 
 Under Node v22.23.1 in an isolated non-production sandbox, the suite passed 10/10 twice; `node --check` 2/2 PASS. TAP hashes: `86bd5b1c9c8efd655b017161be263ef1a5f24e978e131d38b39063ad0e611a56` and `7b071c69b87e61231e186143371886a2f16af5de41a576d67524afe405d67729`.
 
-This is not a real KMS/HSM, Cloudflare secret, escrow backup, or production restore. No real key or binding was created. C2 remains OPEN.
+This is not a real KMS/HSM, Cloudflare secret, escrow backup, or production restore. No real key or binding was created. The target architecture is owner-approved; C2 implementation and formal acceptance remain OPEN.
+
+
+## 16. Owner approval — target architecture baseline — 2026-11-08
+
+The project owner approved the C2 target architecture described in this ADR and the grouped proposal:
+
+1. Dedicated, narrowly scoped Crypto Worker; no raw key material in the business control-plane Worker and no raw key return to callers.
+2. Private Worker Service Binding only; caller identity and authorization must be validated before the internal invocation; no public key-operation route.
+3. Per-Worker secret bindings are the default. Cloudflare Secrets Store is permitted only for a demonstrated multi-Worker sharing requirement and is not considered an HSM/KMS.
+4. Independent encrypted escrow outside Cloudflare/GitHub/Notion, with two-person recovery and revocation. The actual external wrapping provider or approved offline mechanism remains to be selected.
+5. Separate key material and domains for idempotency HMAC, provider-event HMAC, PII HMAC and any separately approved future AES purpose.
+6. Active-write / retained-read rotation, explicit dependent-row/replay/retention evidence before retirement, and fail-closed behavior.
+7. No first-party Portal/Admin TOTP AES key provisioning under the already-approved T1 decision that Auth0 owns target MFA and legacy BWH TOTP values are invalidated at cutover.
+
+This decision approves the target architecture only. It does not approve or perform implementation or provisioning. The following remain open: named Platform/Security custodians and domain owners; concrete external escrow/wrapping mechanism; two-person recovery runbook and real recovery evidence; isolated non-production Crypto Worker/Service Binding integration and authorization tests; payment-event and PII domain approvals; Wallet-first digest compatibility and replay/retention decision; key-family-specific retention windows; independent review and formal C2 acceptance.
+
+No real key, Cloudflare secret, binding, Worker, Durable Object, KMS/HSM resource or escrow backup has been created by this decision. No BWH access, production data read, D1 mutation, deployment, dual-write, cutover or production writer-authority change is authorized. BWH remains the only production control-data writer.
