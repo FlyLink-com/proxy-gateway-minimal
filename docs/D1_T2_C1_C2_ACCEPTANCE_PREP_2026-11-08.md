@@ -3,7 +3,7 @@
 > **Status:** Draft execution plan. C1 and C2 remain OPEN; T2 remains BLOCKED.
 > **Working branch:** `fix/t2-c1-c2-t1-reenroll-only-20261108`
 > **Source-review anchor:** PR #842, exact reviewed source HEAD `bc3f8c9a713de05715f42f733b8fa72ba53d4477`
-> **Current T1 draft HEAD:** `d13fdea43d0b6da9257b9390b1ca14bb64188e15` (189 commits ahead / 0 behind Master; 47 changed files; no PR; not a merge candidate).
+> **Current T1 draft HEAD:** `70fd4d6a39a5c71388d89aecf444081a539ffdb4` (195 commits ahead / 0 behind Master; 47 changed files; no PR; not a merge candidate).
 > **Current production authority:** BWH remains the only production control-data writer.
 > **Scope:** Repository-only source/doc alignment and synthetic/local acceptance preparation. No production, tenant, real-key, deployment or migration action is authorized here.
 
@@ -18,7 +18,7 @@
 - This is bounded source-slice and comparative evidence, not an all-green suite, hosted CI PASS, formal C1/C2 acceptance or full T2 approval.
 - PR #842 has no Hosted CI run. Do not describe local tests as CI.
 - The separate 14-case `d1-t2-security-vectors.test.mjs` suite has not yet been run as one suite under Node v22.23.1.
-- Current T1 draft HEAD `d13fdea43d0b6da9257b9390b1ca14bb64188e15` has no test execution evidence, no GitHub status checks and no workflow runs. The historical 48/48 result applies only to `bc3f8c9a`.
+- Current T1 draft HEAD `70fd4d6a39a5c71388d89aecf444081a539ffdb4` has no test execution evidence, no GitHub status checks and no Actions workflow runs. The historical 48/48 result applies only to `bc3f8c9a`.
 
 ### C1 local provider rehearsal
 
@@ -91,7 +91,7 @@ The C2 design recommendation remains: prefer per-Worker secret bindings when a k
 
 - PR #842 is a bounded source-review vehicle based on `review/t2-c1-c2-baseline-bf200c47`; its exact approved source HEAD must remain unchanged.
 - The documentation synchronization branch `docs/t2-c1-c2-review-evidence-sync-20261108` is 160 commits ahead of current Master. It is a Draft workstream, not a narrow merge candidate.
-- This branch is a separate Draft follow-up based on the latest decision-sync branch. Its current HEAD is 189 commits ahead / 0 behind Master across 47 files; it is not a narrow merge candidate. Do not create a PR to Master, merge, force-push PR #842, or treat the entire Draft history as a mergeable C1/C2 patch.
+- This branch is a separate Draft follow-up based on the latest decision-sync branch. Its current HEAD is 195 commits ahead / 0 behind Master across 47 files; it is not a narrow merge candidate. Do not create a PR to Master, merge, force-push PR #842, or treat the entire Draft history as a mergeable C1/C2 patch.
 - Any later integration PR must be rebuilt from an explicitly reviewed target baseline with only the required, dependency-complete changes. No such PR is opened by this plan.
 
 ## 7. Non-negotiable no-go boundaries
