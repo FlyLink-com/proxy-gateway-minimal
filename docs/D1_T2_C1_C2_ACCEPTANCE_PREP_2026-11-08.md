@@ -131,3 +131,15 @@ A narrow source hardening was added to the child Draft branch:
 - Existing domain-separated SHA-256 v1 values and their exact input bytes are unchanged.
 
 An isolated copy of the helper/test passed 5/5 on Node v22.16.0. This is not the fixed Node v22.23.1 repository regression or Hosted CI. The focused repository files still require fixed-environment execution before source review. No production behavior has changed; no BWH, Auth0, D1, key, or deployment operation occurred.
+
+## 10. Fixed Node 22.23.1 combined regression — 2026-11-08
+
+On the child Draft branch, an isolated non-production Vercel sandbox ran the combined focused suite under Node v22.23.1 twice:
+
+- 86/86 PASS, 0 fail, 0 skipped; Run 1 TAP SHA-256 `4d8e0eef6ace1490e849cac1814c24d119c0e270e94de6da1a21908a7032643e`.
+- 86/86 PASS, 0 fail, 0 skipped; Run 2 TAP SHA-256 `eda8198d8f19ac65ae2dda4e07eeb637aa146f6ed9d9e928ce544f11ac581a4e`.
+- `node --check` 15/15 PASS.
+
+Scope: 62 existing T1/C1/C2 tests + 12 Risk A contract tests + 5 secure idempotency helper tests + 7 Wallet-first delivery service tests. The nine T1 file SHA-256 values match the existing fixed-runtime evidence inventory. Risk A and Wallet-first source/test files were fetched from the exact child branch before execution.
+
+The updated Admin TSX integration test and HTTP route integration test remain unrun; no full repository `npm test`, TypeScript build, Hosted CI or production integration is claimed. C1-A04 and C2-A04 remain OPEN; C1/C2 formal acceptance and T2 remain OPEN/BLOCKED.
