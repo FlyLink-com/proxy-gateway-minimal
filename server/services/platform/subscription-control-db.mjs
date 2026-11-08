@@ -131,11 +131,10 @@ function safeControlRef(value, field) {
 }
 
 function safeEdgeGeneration(value) {
-  const normalized = requiredText(value, "generation");
-  if (!SAFE_EDGE_GENERATION_PATTERN.test(normalized)) {
+  if (typeof value !== "string" || !SAFE_EDGE_GENERATION_PATTERN.test(value)) {
     throw platformError("validation_error", "generation must match a supported desired-state generation");
   }
-  return normalized;
+  return value;
 }
 
 function portalSecondFactorAllowedFactors(value) {
