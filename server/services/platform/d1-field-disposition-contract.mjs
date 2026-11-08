@@ -25,7 +25,7 @@ function sameCounts(actual, expected) {
   return [...keys].every((key) => (actual[key] ?? 0) === (expected?.[key] ?? 0));
 }
 
-export function validateD1FieldDisposition({ inventory, disposition } = {}) {
+export function validateD1FieldDisposition({ inventory, disposition, sourceInventoryBlob } = {}) {
   const errors = [];
   const add = (condition, code) => { if (!condition) errors.push(code); };
 
@@ -69,7 +69,8 @@ export function validateD1FieldDisposition({ inventory, disposition } = {}) {
   add(SOURCE_COMMIT.test(disposition.sourceCommit ?? ""), "source_commit_invalid");
   add(disposition.sourceCommit === inventory.sourceCommit, "source_commit_mismatch");
   add(disposition.sourceInventory?.path === "docs/D1_CONTROL_SCHEMA_INVENTORY_V1.json", "source_inventory_path_mismatch");
-  add(disposition.sourceInventory?.blob === inventory.sourceInventoryBlob, "source_inventory_blob_mismatch");
+  add(/^[0-9a-f]{40}$/.test(sourceInventoryBlob ?? ""), "source_inventory_blob_invalid");
+  add(disposition.sourceInventory?.blob === sourceInventoryBlob, "source_inventory_blob_mismatch");
   add(disposition.sourceInventory?.sourceTables === sourceTables.length, "source_inventory_table_count_mismatch");
   add(disposition.sourceInventory?.sourceFields === sourceTables.reduce((sum, table) => sum + table.columns.length, 0), "source_inventory_field_count_mismatch");
 
