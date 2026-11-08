@@ -12,7 +12,7 @@
 
 The local synthetic rehearsal is useful as a narrow byte/schema compatibility probe. Its fixed-fixture allowlist, no-network/no-file behavior, v2 TOTP rejection, and redacted CLI are appropriate for this phase.
 
-It does NOT establish a production-ready identity migration converter or complete C1 acceptance. Two password-compatibility blockers and the existing TOTP custody gate remain unresolved. Provider behavior, import reconciliation, and account lifecycle compatibility have not been tested.
+It does NOT establish a production-ready identity migration converter or complete C1 acceptance. Password-compatibility blockers, provider behavior, import reconciliation and account lifecycle compatibility remain unproven. T1 resolves target TOTP ownership to Auth0-managed MFA, but new-factor enrollment and lifecycle proof remain open.
 
 **Disposition: C1 BLOCKED; C2 OPEN; T2 BLOCKED. Do not promote to Ready, merge, deploy, create a tenant, or use real account material on the strength of this rehearsal.**
 
@@ -86,18 +86,18 @@ References:
 
 ### C1-R3 — HISTORICAL: Legacy enc: TOTP fixture is synthetic-only; superseded by T1
 
-The current TOTP verifier strips the legacy enc: prefix and treats the remainder as Base32. That prefix is not encryption. The rehearsal normalizes the fixed synthetic enc:JBSWY3DPEHPK3PXP fixture into Auth0's unpadded Base32 field.
+The current legacy verifier recognizes the enc: prefix as a marker for raw Base32; it is not encryption. This paragraph records the historical fixture only. The current rehearsal no longer maps any legacy TOTP value into an Auth0 import field.
 
-The synthetic record builder is restricted to that exact fixture and rejects arbitrary TOTP values. It also fails closed for a v2: envelope without C2 key custody. No real secret was read or decrypted.
+The synthetic record builder emits no TOTP factor. Under T1, structurally valid enc:, raw Base32 and v2: legacy formats require re-enrollment; malformed formats are quarantined. No real secret was read or decrypted.
 
-However, the D1 field-disposition and T2-C2 contracts explicitly require legacy enc:<base32> values to be re-registered, re-protected under an approved custody contract, or quarantined/rejected before a target load. The current TOTP secret field remains EXTERNALIZE; C2 key ID, key separation, rotation and old-value handling remain open.
+T1 supersedes the earlier re-protection/transfer alternatives: all legacy enc:, raw Base32 and v2: values are invalidated at cutover and require Auth0 MFA re-enrollment. They are never loaded into the target. The existing BWH verifier remains unchanged until a separately authorized cutover; no source key is accessed in this phase.
 
-Required before any real TOTP import:
+T1 acceptance requirements (no legacy TOTP import):
 
-1. Preserve the fixed synthetic-only guard.
-2. Do not feed production enc: or unprefixed Base32 values through this path.
-3. Obtain the separate C2 custody decision and the required Identity/Privacy and Security approvals.
-4. Choose re-enrollment or approved re-encryption/quarantine for historical values.
+1. Prove new synthetic Auth0 MFA enrollment and verification.
+2. Verify the approved ±1 time window, lockout, recovery, revocation and outage behavior.
+3. Prove no legacy enc:, raw Base32 or v2: secret reaches the provider import record, D1, Worker, logs or evidence.
+4. Keep old BWH source values and runtime unchanged until a separately authorized cutover.
 
 References:
 - D1_CONTROL_FIELD_DISPOSITION_T2_V1.md
