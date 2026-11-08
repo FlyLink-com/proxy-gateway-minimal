@@ -64,7 +64,7 @@ Review the full T2 closeout contract, not only the original lease/idempotency pr
 
 ## 4. Test evidence and freshness
 
-The earlier isolated Node built-in run recorded 9/9 passing contract tests. The PII vector additions later expanded the current test file to **19 declared test cases**. The historical 9/9 result must not be represented as a pass of the expanded 19-case file.
+The earlier isolated Node built-in run recorded 9/9 passing contract tests. The PII vector additions expanded the current test file to **13 declared test cases**. The historical 9/9 result must not be represented as a pass of the expanded 19-case file.
 
 A focused Node 22 formula check was run after correcting a domain-separator discrepancy. It verified:
 - the PII digest domain prefix is one NUL byte, not the two-byte literal backslash-plus-zero;
