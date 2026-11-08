@@ -120,3 +120,14 @@ The C2 design recommendation remains: prefer per-Worker secret bindings when a k
 
 ### Execution boundary
 This is documentation-only progress on a child branch of the synthetic Risk A branch. No BWH connection, production data read/write, real key creation, Auth0 tenant creation, remote D1 mutation, Worker/DO deployment, CI, merge or cutover occurred. BWH remains the only production writer.
+
+## 9. Wallet-first idempotency source hardening — 2026-11-08
+
+A narrow source hardening was added to the child Draft branch:
+
+- Replaced the Portal setup idempotency `Math.random()`/timestamp fallback with cryptographic `getRandomValues()` UUIDv4 generation; fail closed if secure randomness is unavailable.
+- Enforced canonical UUIDv4 at the Wallet-first service boundary only; left the legacy non-Wallet-first path unchanged.
+- Added a five-case Node test for native UUID, secure fallback, missing RNG, RNG failure, and malformed native output; updated Wallet-first service/route fixtures and the Portal UI assertion.
+- Existing domain-separated SHA-256 v1 values and their exact input bytes are unchanged.
+
+An isolated copy of the helper/test passed 5/5 on Node v22.16.0. This is not the fixed Node v22.23.1 repository regression or Hosted CI. The focused repository files still require fixed-environment execution before source review. No production behavior has changed; no BWH, Auth0, D1, key, or deployment operation occurred.
