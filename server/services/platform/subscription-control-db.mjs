@@ -328,28 +328,7 @@ function listenerReadyFlag(input = {}) {
 }
 
 function edgeNodeMetadataJson(value) {
-  if (
-    !value
-    || typeof value !== "object"
-    || Array.isArray(value)
-    || (Object.getPrototypeOf(value) !== Object.prototype && Object.getPrototypeOf(value) !== null)
-  ) {
-    throw platformError("validation_error", "edge node metadata must be a plain object");
-  }
-
-  const keys = Reflect.ownKeys(value);
-  if (keys.some((key) => typeof key !== "string")) {
-    throw platformError("validation_error", "edge node metadata keys must be strings");
-  }
-  const snapshot = {};
-  for (const key of keys) {
-    const descriptor = Object.getOwnPropertyDescriptor(value, key);
-    if (!descriptor || !("value" in descriptor)) {
-      throw platformError("validation_error", "edge node metadata must contain data properties only");
-    }
-    snapshot[key] = descriptor.value;
-  }
-
+  const snapshot = snapshotControlJsonObject(value, "edge node metadata");
   const allowed = new Set([
     "source",
     "receiptGateRequired",
@@ -393,29 +372,7 @@ function edgeNodeMetadataJson(value) {
 }
 
 function issuanceMetadataJson(value) {
-  const metadata = value == null ? {} : value;
-  if (
-    !metadata
-    || typeof metadata !== "object"
-    || Array.isArray(metadata)
-    || (Object.getPrototypeOf(metadata) !== Object.prototype && Object.getPrototypeOf(metadata) !== null)
-  ) {
-    throw platformError("validation_error", "issuance metadata must be a plain object");
-  }
-
-  const keys = Reflect.ownKeys(metadata);
-  if (keys.some((key) => typeof key !== "string")) {
-    throw platformError("validation_error", "issuance metadata keys must be strings");
-  }
-  const snapshot = {};
-  for (const key of keys) {
-    const descriptor = Object.getOwnPropertyDescriptor(metadata, key);
-    if (!descriptor || !("value" in descriptor)) {
-      throw platformError("validation_error", "issuance metadata must contain data properties only");
-    }
-    snapshot[key] = descriptor.value;
-  }
-
+  const snapshot = value == null ? {} : snapshotControlJsonObject(value, "issuance metadata");
   const fields = Object.keys(snapshot);
   if (fields.length === 0) return "{}";
 
