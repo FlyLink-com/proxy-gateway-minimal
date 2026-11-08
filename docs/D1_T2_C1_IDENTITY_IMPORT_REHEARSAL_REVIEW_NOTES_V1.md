@@ -10,11 +10,11 @@
 
 ## 1. Executive disposition
 
-The local synthetic rehearsal is useful as a narrow byte/schema compatibility probe. Its fixed-fixture allowlist, no-network/no-file behavior, v2 TOTP rejection, and redacted CLI are appropriate for this phase.
+The local synthetic rehearsal is useful as a narrow password-byte/schema compatibility probe. Its fixed-fixture allowlist, no-network/no-file behavior, T1 legacy TOTP disposition classification, and redacted CLI are appropriate for this phase.
 
 It does NOT establish a production-ready identity migration converter or complete C1 acceptance. Password-compatibility blockers, provider behavior, import reconciliation and account lifecycle compatibility remain unproven. T1 resolves target TOTP ownership to Auth0-managed MFA, but new-factor enrollment and lifecycle proof remain open.
 
-**Disposition: C1 BLOCKED; C2 OPEN; T2 BLOCKED. Do not promote to Ready, merge, deploy, create a tenant, or use real account material on the strength of this rehearsal.**
+**Disposition: C1 OPEN; C2 OPEN; T2 BLOCKED. Do not promote to Ready, merge, deploy, create a tenant, or use real account material on the strength of this rehearsal.**
 
 ## 2. Pinned source and local validation evidence
 
