@@ -412,3 +412,27 @@ Fixed Node v22.23.1:
 - `node --check`: 3/3 PASS (contract, test, CLI).
 
 This closes the structural integrity check for the proposed field map, not its domain-owner approval. The one low-confidence generation field and conditional inclusion rules remain explicitly proposed. T2 remains OPEN; no T3 DDL or production migration is authorized by this validation.
+
+## 18. C3 full 26-field writer review and source SQLite regression — 2026-11-08
+
+Added two C3 evidence documents:
+
+- `docs/D1_T2_C3_ACCOUNT_METADATA_SOURCE_TARGET_CONTRACT_V1.md`
+- `docs/D1_T2_C3_JSON_26_FIELD_WRITER_REVIEW_V1.md`
+
+The latter records the complete 26-field JSON inventory: 24 active fields have identified writer/reader/transform contracts and focused dynamic coverage; two Passkey credential fields remain explicitly DEFERRED under the future-auth gate. The account metadata field now has a bounded BWH source-writer contract and a pure D1 projection gate. The D1 projection fails closed while raw identity/display fields or legacy unkeyed digests remain; it does not silently discard them.
+
+### Fixed-runtime source test evidence
+
+The evidence documents are based on source and test blobs byte-identical to the current PR #846 branch:
+- `subscription-control-db.mjs`: `2bbdc573ec13fd8774ee87bf0904ce8aa7c51454`.
+- `platform-subscription-control-db.test.mjs`: `e5ef7c2f87236457b2b01dc9e607905a76d73cb5`.
+- `control-json-contracts.mjs`: `9d76d64d897707e5689fe94c275f548ee858707c`.
+- `control-json-contracts.test.mjs`: `a60b27f3bdd5d6608e3ba4f8b574eba55fb0e442`.
+
+Recorded isolated Node v22.23.1 / better-sqlite3 12.10.0 / SQLite 3.53.1 results:
+- Full SQLite control-store suite: **45/45 PASS twice**; TAP SHA-256 `b7d0e4da530d0b2ae4535adbeeaf27be45c7bb835f0a68c9e76a8d5637ade74a` and `690d044fa2d92675d193827d0bd0192e5c57c80dc54f62da40f27395b23cbc30`.
+- Five focused groups: **290 distinct cases per pass**, 5/5 suite groups PASS twice; **580 successful test executions** across both passes.
+- Group sizes: 45 control-store; 48 JSON/payment/key-escrow/inventory; 113 commerce; 68 deferred/referral/Portal; 16 Wallet-first.
+
+This closes the source-only 26-field writer/transform inventory review. It does not close the remaining Auth0 identity externalization or C2 keyed-digest replacement. It does not authorize a D1 account-row load or target DDL. T2 remains OPEN.
