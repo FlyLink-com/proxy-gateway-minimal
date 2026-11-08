@@ -8,12 +8,13 @@
 环境：本 VM，Node v22.23.1；bcrypt 阶段使用真实 pyca/bcrypt 5.0.0；
 TOTP 实现以 RFC 6238 官方测试向量锚定（S0）。
 
-## 验证清单与结果（场景 S0–S9，全包合计 37/37 PASS）
+## 验证清单与结果（场景 S0–S9，全包合计 40/40 PASS）
 
 | # | 验证项 | 场景 | 结果 |
 |---|---|---|---|
 | 1 | TOTP 实现正确性（RFC 6238 向量） | S0 | PASS |
 | 2 | 导入管线逐户分流：可导入 / 定向重置 / 无证明暂缓 / R1 建议标记；重置与暂缓户不落任何凭证 | S1 | PASS |
+| 2a | attestation.accountRef 必须与目标账户引用相同；错配在整批写入前拒绝，不产生部分导入 | S1b | PASS |
 | 3 | 首次登录：错密码不触发转存；对密码先验 scrypt、成功后存储形变为 bcrypt（$2b$），后续登录走 bcrypt | S2 | PASS |
 | 4 | 签发令牌可验签（iss/sub 正确），投影上下文通过对应面的本地校验 | S2 | PASS |
 | 5 | R1 真实行为复现：带空格形式登录失败、trim 后形式成功（与通知口径一致） | S3 | PASS |
@@ -36,6 +37,18 @@ TOTP 实现以 RFC 6238 官方测试向量锚定（S0）。
 4. Auth0 MFA 自助绑定的真实 API/UX 形态（T1 的设置内绑定流程）。
 5. 租户开通事项本身：命名/域名、Essentials 套餐限额、自定义域名、
    重置与通知邮件的发信配置。
+
+## 2026-11-08 验证器硬化补充回归
+
+在隔离 Vercel 非生产 Sandbox 中，以 Node v22.23.1、Python 3.9.25、pyca/bcrypt 5.0.0 复跑：
+
+- 第一次：40/40 PASS；0 failed / 0 skipped。
+- 第二次：40/40 PASS；0 failed / 0 skipped。
+- JavaScript 语法检查：9/9 PASS。
+- Run 1 TAP SHA-256：`9065766314f6c95f0422828ae1a1233928ee9e7abcef4ae215a4ae065c55b8df`。
+- Run 2 TAP SHA-256：`7698d693fa6bc6e5d1544129d6e2d74fbe4281f57d2c50b424d0dd3a7c282aca`。
+
+新增回归覆盖非规范 Base64URL、非 16-byte salt、Auth0 缺失 salt / 错误 password encoding / 嵌套额外属性，以及跨账户 attestation 错配。所有测试均为合成数据；未连接真实供应商或生产端点。
 
 ## 结论
 
