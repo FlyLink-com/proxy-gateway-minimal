@@ -508,3 +508,25 @@ This update supersedes the historical checksum-evidence qualification in §2.1 f
 This closes the source-checksum re-execution requirement and structural integrity checks for the current T2 field map. It does not approve the proposed field dispositions, conditional feature inclusion, key custody, identity/privacy/retention choices, or the remaining T2 owner decisions. The T2 formal decision is still required before T3 target DDL work under the current plan.
 
 G6 itself has **not** started: there is no target DDL proposal, deterministic SQLite fixture, offline transform/load rehearsal, recovery drill, or end-to-end reconciliation. No BWH connection, production database read, remote D1 resource, DDL apply, row load, Worker deployment, CI, merge, dual-write, or cutover occurred. BWH remains the only production control-data writer.
+
+## T2-C3 writer review evidence refresh — 2026-11-08
+
+Added the complete 26-field JSON writer/transform review and account metadata source/target contract:
+
+- `docs/D1_T2_C3_ACCOUNT_METADATA_SOURCE_TARGET_CONTRACT_V1.md`
+- `docs/D1_T2_C3_JSON_26_FIELD_WRITER_REVIEW_V1.md`
+
+All 26 JSON fields are accounted for: 24 active fields have identified source writer/reader/transform contracts and focused dynamic evidence; the two Passkey credential fields remain DEFERRED. The account metadata source writer preserves BWH compatibility through a bounded 26-field contract; the pure D1 projection gate rejects raw identity/display values and legacy unkeyed digests until Auth0 externalization and C2 keyed-digest custody are resolved. No values are silently dropped.
+
+The test evidence was recorded against source/test Git blobs confirmed byte-identical on the current PR #846 branch:
+- `subscription-control-db.mjs`: `2bbdc573ec13fd8774ee87bf0904ce8aa7c51454`.
+- `platform-subscription-control-db.test.mjs`: `e5ef7c2f87236457b2b01dc9e607905a76d73cb5`.
+- `control-json-contracts.mjs`: `9d76d64d897707e5689fe94c275f548ee858707c`.
+- `control-json-contracts.test.mjs`: `a60b27f3bdd5d6608e3ba4f8b574eba55fb0e442`.
+
+Recorded fixed-runtime evidence (Node v22.23.1, better-sqlite3 12.10.0, SQLite 3.53.1, isolated non-production sandbox):
+- Full SQLite control-store suite: 45/45 PASS twice.
+- Five focused suite groups: 290 distinct cases per pass, all five groups passed twice (580 successful test executions).
+- The exact per-run TAP hashes and group breakdown are in `docs/D1_T2_C3_JSON_26_FIELD_WRITER_REVIEW_V1.md`.
+
+This updates the historical C3 writer-review status. It does not mean D1 target data writing has been integrated or production rows have been inspected. C3 remains OPEN for Auth0 identity mapping and C2 keyed-digest replacement; T2 remains OPEN pending grouped owner decisions and independent review. T3 target DDL and G6 offline database rehearsal have not started under the current plan.
