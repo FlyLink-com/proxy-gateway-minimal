@@ -1,8 +1,9 @@
 # D1 T2 C1/C2 Acceptance Preparation — 2026-11-08
 
 > **Status:** Draft execution plan. C1 and C2 remain OPEN; T2 remains BLOCKED.
-> **Working branch:** \`fix/t2-c1-c2-t1-reenroll-only-20261108\`
-> **Source-review anchor:** PR #842, exact reviewed source HEAD \`bc3f8c9a713de05715f42f733b8fa72ba53d4477\`
+> **Working branch:** `fix/t2-c1-c2-t1-reenroll-only-20261108`
+> **Source-review anchor:** PR #842, exact reviewed source HEAD `bc3f8c9a713de05715f42f733b8fa72ba53d4477`
+> **Current T1 draft HEAD:** `d13fdea43d0b6da9257b9390b1ca14bb64188e15` (189 commits ahead / 0 behind Master; 47 changed files; no PR; not a merge candidate).
 > **Current production authority:** BWH remains the only production control-data writer.
 > **Scope:** Repository-only source/doc alignment and synthetic/local acceptance preparation. No production, tenant, real-key, deployment or migration action is authorized here.
 
@@ -11,12 +12,13 @@
 ### Source-slice review
 
 - PR #842 remains OPEN / DRAFT / unmerged.
-- The bounded C1/C2 source review is APPROVED by GitHub account \`gccltdco-cmd\`, Review ID \`5817529933\`, bound to exact HEAD \`bc3f8c9a713de05715f42f733b8fa72ba53d4477\`.
+- The bounded C1/C2 source review is APPROVED by GitHub account `gccltdco-cmd`, Review ID `5817529933`, bound to exact HEAD `bc3f8c9a713de05715f42f733b8fa72ba53d4477`.
 - The reviewer reported four focused repository test files at Node v22.23.1: **48/48 PASS**.
-- The full-suite comparison reported zero new failure names against baseline \`bf200c47\`; the 156 baseline failure names remained, and a second run had one timer-flake name isolated at 5/5 on both heads.
+- The full-suite comparison reported zero new failure names against baseline `bf200c47`; the 156 baseline failure names remained, and a second run had one timer-flake name isolated at 5/5 on both heads.
 - This is bounded source-slice and comparative evidence, not an all-green suite, hosted CI PASS, formal C1/C2 acceptance or full T2 approval.
 - PR #842 has no Hosted CI run. Do not describe local tests as CI.
-- The separate 14-case \`d1-t2-security-vectors.test.mjs\` suite has not yet been run as one suite under Node v22.23.1.
+- The separate 14-case `d1-t2-security-vectors.test.mjs` suite has not yet been run as one suite under Node v22.23.1.
+- Current T1 draft HEAD `d13fdea43d0b6da9257b9390b1ca14bb64188e15` has no test execution evidence, no GitHub status checks and no workflow runs. The historical 48/48 result applies only to `bc3f8c9a`.
 
 ### C1 local provider rehearsal
 
@@ -27,7 +29,7 @@ The Notion project record contains a user-provided receipt for the local Auth0 v
 1. **Identity provider:** Auth0 Essentials + Bulk User Import is selected as the target direction. Selection does not authorize tenant creation.
 2. **Passwords above 72 UTF-8 bytes:** targeted, user-notified reset before import/first Auth0 login; never truncate or silently change passwords.
 3. **Portal/Admin isolation:** separate Auth0 tenants and distinct issuer, audience, clients, factors and administrative boundaries.
-4. **TOTP — T1:** Auth0-managed MFA owns target factors. Portal enrollment is optional; Admin enrollment is mandatory. At cutover, all legacy BWH TOTP values (\`enc:\`, \`v2:\` and legacy raw Base32) are invalidated. They are not imported, decrypted, transferred or re-encrypted. Users re-enroll.
+4. **TOTP — T1:** Auth0-managed MFA owns target factors. Portal enrollment is optional; Admin enrollment is mandatory. At cutover, all legacy BWH TOTP values (`enc:`, `v2:` and legacy raw Base32) are invalidated. They are not imported, decrypted, transferred or re-encrypted. Users re-enroll.
 5. **Production authority:** BWH remains the only production writer until a separately approved cutover.
 
 T1 supersedes earlier proposals for synthetic legacy-secret import or one-time v2 decrypt/re-encryption. The generic first-party v3 TOTP primitive is not a selected target path and must not be provisioned for this migration without a new owner decision.
@@ -37,7 +39,7 @@ T1 supersedes earlier proposals for synthetic legacy-secret import or one-time v
 | ID | Required proof | Current status |
 |---|---|---|
 | C1-A01 | Exact Node Scrypt envelope import vector, byte-preserving salt/hash encoding | OPEN |
-| C1-A02 | Preserve current \`String(password).trim()\` behavior across Browser, Android and identity service | OPEN |
+| C1-A02 | Preserve current `String(password).trim()` behavior across Browser, Android and identity service | OPEN |
 | C1-A03 | Prove 73+ UTF-8-byte passwords are rejected before first Auth0 bcrypt rehash; never infer affected cohort from Scrypt hashes | OPEN |
 | C1-A04 | Login proof window Risk A design, privacy review and synthetic tests | OPEN |
 | C1-A05 | Separate Portal/Admin tenant topology and negative cross-tenant tests | OPEN |
@@ -54,9 +56,9 @@ T1 supersedes earlier proposals for synthetic legacy-secret import or one-time v
 The existing legacy verifier is the only authority during the proof window. For a successful legacy-authenticated login:
 
 - Measure UTF-8 byte length transiently from the exact normalized in-memory password value already passed to the legacy verifier. Preserve the existing trim-only normalization; do not add lowercasing, internal-space folding or Unicode normalization.
-- Record only the opaque account reference, a coarse bucket (\`le_72\` or \`gt_72\`), an edge-whitespace boolean and a timestamp.
+- Record only the opaque account reference, a coarse bucket (`le_72` or `gt_72`), an edge-whitespace boolean and a timestamp.
 - Never record the password, exact byte length, password hash, salt, bearer token or request body.
-- A \`gt_72\` account enters the approved, user-notified reset path before any Auth0 import or first provider login.
+- A `gt_72` account enters the approved, user-notified reset path before any Auth0 import or first provider login.
 - An unclassified account stays on the legacy authority or enters a separately approved reset cohort. Never guess from a one-way hash.
 
 Still requiring owner approval before any production implementation: proof-window duration, storage boundary, encryption/access policy, retention and purge time, notification copy/channel, reset expiry/retry behavior, and the exact cutover treatment of accounts that never complete the proof window. This document does not authorize production login-path changes.
@@ -68,7 +70,7 @@ Still requiring owner approval before any production implementation: proof-windo
 | C2-A01 | Choose per-Worker secret bindings vs Secrets Store; document least-privilege consumers and environment separation | OPEN |
 | C2-A02 | Name primary/backup custodians and Security approver; define access and revocation | OPEN |
 | C2-A03 | Approve independent encrypted escrow, dual-control recovery and incident revocation; prove restore with synthetic keys | OPEN |
-| C2-A04 | Inventory Wallet-first \`idempotency_key_hash\` and \`session_binding_hash\` callers, replay scopes and retention; choose explicit compatibility or retirement | OPEN |
+| C2-A04 | Inventory Wallet-first `idempotency_key_hash` and `session_binding_hash` callers, replay scopes and retention; choose explicit compatibility or retirement | OPEN |
 | C2-A05 | Target TOTP ownership | **APPROVED by T1:** Auth0-managed MFA; no legacy secret transfer and no first-party target TOTP key provisioning |
 | C2-A06 | Define per-family replay/retention windows, key rotation overlap, retirement and restore proof | OPEN |
 | C2-A07 | Run the separate 14-case PII security-vector test file under Node v22.23.1; attach exact command, output and file hash | OPEN |
@@ -77,19 +79,19 @@ The C2 design recommendation remains: prefer per-Worker secret bindings when a k
 
 ## 5. Execution sequence
 
-1. **T1 alignment:** keep the legacy TOTP path re-enrollment-only; ensure the source helper cannot decrypt or re-encrypt legacy values. The current branch contains this draft correction. Its new HEAD has not yet been tested.
+1. **T1 alignment:** keep the legacy TOTP path re-enrollment-only; ensure the source helper cannot decrypt or re-encrypt legacy values. The current branch contains this draft correction and strict malformed-value quarantine. Its new HEAD `d13fdea43d0b6da9257b9390b1ca14bb64188e15` has not yet been tested.
 2. **Fixed-environment verification:** run the four focused source tests again under Node v22.23.1 at the new exact HEAD; run the separate 14-case PII vector suite; record stdout/stderr, command, runtime and file hashes. Do not infer these results from the earlier 48/48.
 3. **Risk A preparation:** finish the proof-window specification and synthetic tests only. Keep duration, storage, retention and notification decisions explicitly OPEN until approved.
 4. **C1 provider proof:** only after a separate explicit authorization to create non-production Auth0 tenants. Use synthetic identities only; prove import, first-login rehash, 72-byte rejection, normalization, tenant isolation, email verification and T1 MFA lifecycle. No real account import.
 5. **C2 custody proof:** complete owner decisions and synthetic-key backup/restore/revocation drills. Do not create real production keys or Cloudflare bindings.
-6. **Exact-head review:** after tests and source/doc alignment, obtain review of the new exact HEAD. The PR #842 approval remains bound only to \`bc3f8c9a\`; it does not transfer to this branch.
+6. **Exact-head review:** after tests and source/doc alignment, obtain review of the new exact HEAD. The PR #842 approval remains bound only to `bc3f8c9a`; it does not transfer to this branch.
 7. **Formal package decision:** keep C1/C2 OPEN until all owner decisions and applicable proofs are accepted. T2 remains BLOCKED until C1–C6 and the full T2 exit criteria are satisfied.
 
 ## 6. Branch and integration boundary
 
-- PR #842 is a bounded source-review vehicle based on \`review/t2-c1-c2-baseline-bf200c47\`; its exact approved source HEAD must remain unchanged.
-- The documentation synchronization branch \`docs/t2-c1-c2-review-evidence-sync-20261108\` is 160 commits ahead of current Master. It is a Draft workstream, not a narrow merge candidate.
-- This branch is a separate Draft follow-up based on the latest decision-sync branch. Do not create a PR to Master, merge, force-push PR #842, or treat the entire Draft history as a mergeable C1/C2 patch.
+- PR #842 is a bounded source-review vehicle based on `review/t2-c1-c2-baseline-bf200c47`; its exact approved source HEAD must remain unchanged.
+- The documentation synchronization branch `docs/t2-c1-c2-review-evidence-sync-20261108` is 160 commits ahead of current Master. It is a Draft workstream, not a narrow merge candidate.
+- This branch is a separate Draft follow-up based on the latest decision-sync branch. Its current HEAD is 189 commits ahead / 0 behind Master across 47 files; it is not a narrow merge candidate. Do not create a PR to Master, merge, force-push PR #842, or treat the entire Draft history as a mergeable C1/C2 patch.
 - Any later integration PR must be rebuilt from an explicitly reviewed target baseline with only the required, dependency-complete changes. No such PR is opened by this plan.
 
 ## 7. Non-negotiable no-go boundaries
