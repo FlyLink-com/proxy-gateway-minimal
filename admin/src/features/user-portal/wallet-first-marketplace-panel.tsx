@@ -16,6 +16,7 @@ import {
 } from "./commerce";
 import { MarketplaceOfferCard } from "./marketplace-offer-card";
 import { readPortalAdsClickForPurchase } from "../ads-attribution";
+import { createSecureIdempotencyKey } from "./secure-idempotency-key";
 import {
   formatPortalDateTime,
   portalCoinTypeListLabel
@@ -150,11 +151,7 @@ function deliveryText(offer: PortalCoinOffer, locale: CommerceLocale) {
 }
 
 function nextIdempotencyKey() {
-  const runtimeCrypto = globalThis.crypto;
-  if (!runtimeCrypto || typeof runtimeCrypto.randomUUID !== "function") {
-    throw new PortalCoinCommerceClientError("commerce_request_failed", true);
-  }
-  return runtimeCrypto.randomUUID();
+  return createSecureIdempotencyKey();
 }
 
 function MarketplaceNotice({
