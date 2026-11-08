@@ -56,7 +56,7 @@ PR #842 状态：已获 gccltdco-cmd **APPROVED**（review `5817529933`，
 - 新增 3 项回归，测试总数从 37 增至 **40**。
 - 修复后连续两次：**40/40 PASS**，0 failed / 0 skipped。
 - `node --check`：9/9 PASS。
-- TAP SHA-256：Run 1 `9065766314f6c95f0422828ae1a1233928ee9e7abcef4ae215a4ae065c55b8df`；Run 2 `7698d693fa6bc6e5d1544129d6e2d74fbe4281f57d2c50b424d0dd3a7c282aca`。
+- TAP SHA-256：Run 1 `f1bd5a11d9bf45ff7ee8b9a7b695caef9d0cb26899f07a495a512d416b244b12`；Run 2 `f396e6858331e43d1ff1228f9aa604d60454aa1753210b8f555ad7d066f5d0a4`。
 - 本次仅修复本地合成验证器，不改变生产认证代码，不代表 Auth0 真实租户行为已经验证。
 
 ## 四、当前状态口径（不合并三种状态）
