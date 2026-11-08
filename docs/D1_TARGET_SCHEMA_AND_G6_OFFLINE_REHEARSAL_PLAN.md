@@ -423,3 +423,19 @@ The complete `platform-subscription-control-db.test.mjs` file has not yet been r
 `recordEdgeDesiredStateNotification()` now validates `id`, `nodeRef`, `channelRef`, and `desiredStateRef` with the existing `safeControlRef` grammar in addition to the strict generation format. Implementation: `11a4a8e6a7872a73cc1d5568a6255b2e0e983e4a`; regression assertions: `254c0ad408052373de3e2963c3339bee18e9a89d`. A focused Node v22.16.0 validator harness covering generation, opaque refs and second-factor allowlists passed **5/5** (SHA-256 `05d124b9461b10966f715b165f64ab5946249aa574c94dcf73b8a9cb5a1e9ab5`).
 
 This is a Draft-only source hardening. The full store test file, full repository suite and CI remain unrun. Historical production generation/reference values are NOT OBSERVED; C3 remains OPEN until all 26 JSON writers and historical compatibility rules are closed.
+
+
+## C3 issuance and edge-node JSON writer closure — 2026-11-07
+
+Draft source hardening now closes two additional JSON writer families:
+
+1. **Issuance metadata** — `createIssuanceRequest()` and wallet-first resource-chain insert/update accept only: empty object; exact CLI marker `{cli:"platform:issue-subscription"}`; or the exact five-key wallet-first chain v1 object with fixed model identifiers/version and safe opaque transition refs. Unknown keys, variants, versions and unsafe refs fail closed.
+   - Source: `a1b55bcc33e745b7094c93141d4a05530812c216`
+   - Regression tests added: `0943ffe6b2f98841edb1ec58b866c4034bc3bbc4`
+
+2. **Edge-node metadata** — the shared registered-node persistence record now accepts only the exact first-boot metadata key set, requires the fixed source and receipt gate, validates booleans and WireGuard plan reference, and validates optional identity anchors as lowercase SHA-256 fingerprints.
+   - Source: `559156cbf8c4f841a80b20b68289811fb89efbba`
+   - Regression tests added: `4c0e3c7c32227dfbb581582f6e3123a495d366de`
+   - Preflight fixture updated to the approved shape: `87e0147a8154b99339a8090f19e4793fc121196f`
+
+Source-mirroring pure synthetic harnesses passed 10/10 per contract. The repository Node test files, complete repository test suite and CI have NOT RUN. No production values were read. C3 remains OPEN for account PII, audit metadata/direct SQL, portal event/direct writers, commerce notices, and full independent review.
