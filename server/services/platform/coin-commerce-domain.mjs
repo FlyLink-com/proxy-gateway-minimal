@@ -12,12 +12,12 @@ const OFFER_FIELDS = [
 ];
 const MAX_IMPORTANT_NOTICES_PER_LOCALE = 8;
 const MAX_IMPORTANT_NOTICE_UTF8_BYTES = 512;
-const NOTICE_CONTROL_CHARACTER_PATTERN = /[\\u0000-\\u001f\\u007f]/;
-const NOTICE_URL_OR_MARKUP_PATTERN = /(?:\\b(?:https?|ftp):\\/\\/|(?:^|\\s)www\\.|mailto:|javascript:)|<\\/?[a-z][^>]*>/i;
-const NOTICE_EMAIL_PATTERN = /\\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}\\b/i;
-const NOTICE_PHONE_PATTERN = /(?=(?:\\D*\\d){10,})\\+?\\d[\\d\\s().-]{8,}\\d/;
-const NOTICE_IP_PATTERN = /\\b(?:\\d{1,3}\\.){3}\\d{1,3}\\b/;
-const NOTICE_SECRET_PATTERN = /(?:\\bbearer\\s+[A-Za-z0-9._~+/-]{12,}|\\b(?:api[_-]?key|token|secret|password)\\s*[:=]|-----BEGIN [A-Z ]*PRIVATE KEY-----|\\b(?:sk-[A-Za-z0-9_-]{12,}|gh[pousr]_[A-Za-z0-9]{20,}|xox[baprs]-[A-Za-z0-9-]{10,}|AKIA[A-Z0-9]{16})\\b|\\b[a-f0-9]{64}\\b)/i;
+const NOTICE_CONTROL_CHARACTER_PATTERN = /[\u0000-\u001f\u007f]/;
+const NOTICE_URL_OR_MARKUP_PATTERN = /(?:\b(?:https?|ftp):\/\/|(?:^|\s)www\.|mailto:|javascript:)|<\/?[a-z][^>]*>/i;
+const NOTICE_EMAIL_PATTERN = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i;
+const NOTICE_PHONE_PATTERN = /(?=(?:\D*\d){10,})\+?\d[\d\s().-]{8,}\d/;
+const NOTICE_IP_PATTERN = /\b(?:\d{1,3}\.){3}\d{1,3}\b/;
+const NOTICE_SECRET_PATTERN = /(?:\bbearer\s+[A-Za-z0-9._~+/-]{12,}|\b(?:api[_-]?key|token|secret|password)\s*[:=]|-----BEGIN [A-Z ]*PRIVATE KEY-----|\b(?:sk-[A-Za-z0-9_-]{12,}|gh[pousr]_[A-Za-z0-9]{20,}|xox[baprs]-[A-Za-z0-9-]{10,}|AKIA[A-Z0-9]{16})\b|\b[a-f0-9]{64}\b)/i;
 const DELIVERY_FIELDS = [
   "kind", "durationDays", "monthlyTrafficGb", "trafficGb", "neverExpires", "discountBasisPoints"
 ];
