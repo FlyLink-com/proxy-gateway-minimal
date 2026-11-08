@@ -305,3 +305,22 @@ Added a pure synthetic AES-256-GCM key-escrow envelope contract and 10-case test
 Fixed Node v22.23.1 isolated regression: 10/10 PASS twice; `node --check` 2/2 PASS. Evidence and TAP hashes are in `docs/D1_T2_C2_KEY_CUSTODY_OWNER_DECISION_PROPOSAL_V1.md`.
 
 This does not create a real key, external escrow, KMS/HSM integration, Cloudflare secret binding, or production restore. C2 remains OPEN pending the grouped owner decision and real custody plan.
+
+## 13. G6 source-only schema inventory validator — 2026-11-08
+
+Added an offline read-only validator for the pinned source inventory:
+
+- `server/services/platform/d1-control-schema-inventory-contract.mjs`
+- `server/tests/d1-control-schema-inventory-contract.test.mjs`
+- `scripts/validate-d1-control-schema-inventory.mjs`
+
+The validator checks source-only status, production-writer authority, declared vs recomputed counts, 70 table/820 column totals, 126 foreign-key edges, 88 indexes, 91 triggers, 48 core tables/530 core columns, 22 companion tables/290 companion columns, 19 source migration ordinals/checksums, per-table source blob fingerprints, explicit exclusions, and all production mutation/connection/merge/cutover authorization flags remaining false.
+
+Fixed Node v22.23.1 in the isolated non-production sandbox:
+- Inventory CLI: PASS; source commit `be261abc60f28bb2733764fa5364ab44b3e76844`.
+- 10/10 PASS twice, 0 failed, 0 skipped.
+- Run 1 TAP SHA-256: `a1e2a22d66b9a7af1fd687226ed1767f134dcd27733553e53c15914ed6d99c0b`.
+- Run 2 TAP SHA-256: `d5dbf5014978818a4f98cac48110512fbb8cf17e2fc74468dde3dada3b08752b`.
+- `node --check` passed for the validator module, test, and CLI (3/3).
+
+This validates the checked-in source inventory artifact only. It does not establish live BWH schema state, D1 parity, current migration application state, or authorize target DDL/data loading. G6 remains an offline rehearsal gate; production database migration remains unauthorized.
