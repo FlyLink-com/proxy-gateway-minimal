@@ -297,3 +297,11 @@ Added `docs/D1_T2_C2_KEY_CUSTODY_OWNER_DECISION_PROPOSAL_V1.md` to consolidate t
 The previous Wallet-first compatibility recommendation in the C2 ADR is superseded by the source audit: preserve the exact domain-separated SHA-256 v1 contract after secure UUIDv4 source hardening; do not add these high-entropy transient token digests to the PII HMAC key family. The delivered-row replay/retention window remains open.
 
 No production key or secret was created. C2 remains OPEN pending the grouped owner decision and synthetic restore evidence.
+
+## 12. C2 synthetic escrow/restore contract — 2026-11-08
+
+Added a pure synthetic AES-256-GCM key-escrow envelope contract and 10-case test. It verifies key ID/family/algorithm AAD, restore under the correct wrapping key, wrong-key/tamper rejection, metadata-only inventory projection, and no key material reuse across families.
+
+Fixed Node v22.23.1 isolated regression: 10/10 PASS twice; `node --check` 2/2 PASS. Evidence and TAP hashes are in `docs/D1_T2_C2_KEY_CUSTODY_OWNER_DECISION_PROPOSAL_V1.md`.
+
+This does not create a real key, external escrow, KMS/HSM integration, Cloudflare secret binding, or production restore. C2 remains OPEN pending the grouped owner decision and real custody plan.
