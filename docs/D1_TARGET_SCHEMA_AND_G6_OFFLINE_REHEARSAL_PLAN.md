@@ -473,3 +473,14 @@ Regression test commits:
 - historical malformed audit fixtures were changed to raw SQL insertion in tests so they continue to model pre-existing corrupted rows without weakening the production writer contract.
 
 A source-mirroring pure synthetic harness passed **30/30** portal event and subscription fulfillment metadata cases. Actual Node test files, the full repository suite and CI have NOT RUN. No production audit rows or portal events were read. Account metadata/identity custody and complete 26-field independent review remain open; T2 remains BLOCKED.
+
+
+## Final T2-C3 writer-boundary hardening follow-up — 2026-11-08
+
+Audit inputs are now snapshotted as plain enumerable data before recursive unsafe-field inspection. Wallet-first audit parser null results are explicitly converted to fail-closed `validation_error` responses. The issuance and edge-node metadata validators now reuse the same hardened object-snapshot helper.
+
+- Audit snapshot ordering: `fddc836b806af21d116e4f2a8355b8dea94170a5`
+- Wallet-first audit parser null guards: `28a6f381bba182876a49410a2bad74c8bbeeb371`
+- Shared metadata snapshot refactor: `a724b762f56f4d3f0afb459eb0574c4d56bfb60f`
+
+This is Draft-only hardening. No production data or secret was accessed. Repository Node tests, full suite and CI remain NOT RUN.
