@@ -996,16 +996,38 @@ test("subscription control store exposes only safe references in serialized summ
       createdAt: now,
       updatedAt: now
     });
+    store.createEntitlement({
+      id: "ent_public_summary",
+      accountId: "acct_public_summary",
+      plan: "monthly",
+      status: "active",
+      validFrom: now,
+      validUntil: "2026-12-07T00:00:00.000Z",
+      trafficLimitBytes: 1_000_000,
+      createdAt: now,
+      updatedAt: now
+    });
+    const request = store.createIssuanceRequest({
+      id: "pareq_public_summary",
+      accountId: "acct_public_summary",
+      entitlementId: "ent_public_summary",
+      approvalRef: "approval_public_summary",
+      status: "issued",
+      quantity: 1,
+      nodeId: "channel_public_summary",
+      purpose: "subscription",
+      requestedByRef: "operator_safe_ref",
+      createdAt: now,
+      updatedAt: now
+    });
     store.recordAuditEvent({
       id: "audit_safe",
-      entityType: "account",
-      entityRef: "acct_public_summary",
-      action: "created",
+      entityType: "issuance_request",
+      entityRef: request.id,
+      action: "issued",
       actorRef: "operator_safe_ref",
       createdAt: now,
-      metadata: {
-        publicEvidence: "summary-only"
-      }
+      metadata: { source: "platform:issue-subscription" }
     });
 
     const serialized = JSON.stringify(store.getAccountControlSummary("acct_public_summary"));
