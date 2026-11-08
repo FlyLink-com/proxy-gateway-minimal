@@ -27,26 +27,30 @@ The existing 820-field disposition map is structurally reviewed; it is not a tar
 
 All work packages begin OPEN. Existing design documents are inputs, not completion evidence.
 
-### T2-C1 — Account identity custody and PII externalization
+### T2-C1 — Identity/authentication custody and PII externalization
 
-**Problem:** Source account metadata currently carries raw email values through `loginRef` / `displayRef` and a raw `displayName`. Several low-entropy email, IP, or registration-context SHA-256 digests are not anonymization.
+**Problem:** Source account metadata currently carries raw email values through `loginRef` / `displayRef` and a raw `displayName`. Several low-entropy email, IP, or registration-context SHA-256 digests are not anonymization. The identity boundary also intersects active authentication: `portal-password-credentials.mjs` issues and verifies password hashes through the current control store, while the T2 field map marks the entire `platform_portal_password_credentials` table DEFER. `platform_portal_totp_credentials.encrypted_totp_secret` is EXTERNALIZE while its status/lock/timestamp fields are KEEP. These dispositions must not silently disable current password/TOTP login or cause credentials to be copied into D1.
 
 **Required decisions and implementation contract**
 
-1. Identify the authoritative identity store/service and accountable Identity/Privacy owner. Do not invent a new authority in D1.
-2. Define stable opaque account and identity references. D1 may hold only the approved opaque reference and lifecycle facts.
-3. Move raw email, display name, and any other direct identifier out of D1 rows, Worker request/response bodies, logs, traces, fixture snapshots, and evidence bundles.
-4. Preserve the existing product behavior for registration deduplication, user-portal login identity display, administrator email search, administrator display name, and registration Coins canary through an explicitly authorized identity lookup path.
-5. Decide which pseudonyms are necessary. If retained, use the separately specified domain-separated keyed digest; delete unnecessary low-entropy digests. Never describe an unkeyed SHA-256 of a low-entropy value as anonymous.
+1. Identify the authoritative identity and authentication service(s), their source-of-truth boundary, and accountable Identity/Privacy/Security owners. Do not invent a new authority in D1.
+2. Define stable opaque account, identity, password-credential, and TOTP-credential references. D1 may hold only approved opaque references and non-secret lifecycle facts.
+3. Move raw email, display name, password hashes, encrypted TOTP secrets, and any other direct identifier/authentication secret out of D1 rows, Worker request/response bodies, logs, traces, fixture snapshots, and evidence bundles.
+4. Reconcile the active password-login path with the field-map disposition: `platform_portal_password_credentials` is DEFER and must not be copied into D1, but the existing login capability must remain available through an approved external credential-verification authority or an explicitly approved replacement. Do not silently turn off password login.
+5. Reconcile TOTP custody: `platform_portal_totp_credentials.encrypted_totp_secret` remains EXTERNALIZE; define the external secret reference, encryption-key custody, verify path, enrollment, lockout, rotation, recovery, revocation, and outage behavior. D1 may hold only approved state and opaque refs.
+6. Preserve the existing product behavior for registration deduplication, password login, second-factor verification, user-portal identity display, administrator email search/display, and registration Coins canary through explicitly authorized identity/auth lookup paths.
+7. Decide which pseudonyms are necessary. If retained, use the separately specified domain-separated keyed digest; delete unnecessary low-entropy digests. Never describe an unkeyed SHA-256 of a low-entropy value as anonymous.
 
 **Acceptance evidence**
 
-- [ ] Data-flow diagram identifies the source of truth, D1 reference, lookup caller, authorization check, and failure behavior.
-- [ ] Field-by-field disposition covers `loginRef`, `displayRef`, `displayName`, and every related identity/risk digest.
-- [ ] Contract tests prove raw identity values cannot be persisted to D1 or emitted to Worker/log/evidence surfaces.
-- [ ] Synthetic compatibility tests preserve registration dedupe, portal display, administrator search/display, and Coins-canary behavior.
+- [ ] Data-flow diagram identifies identity and authentication source(s) of truth, D1 references, login/lookup/verify callers, authorization checks, and failure behavior.
+- [ ] Field-by-field disposition covers `loginRef`, `displayRef`, `displayName`, all related identity/risk digests, all 11 `platform_portal_password_credentials` columns, and `platform_portal_totp_credentials.encrypted_totp_secret`.
+- [ ] Contract tests prove raw identity values, password hashes, encrypted TOTP secrets, and credential capabilities cannot be persisted to D1 or emitted to Worker/log/evidence surfaces.
+- [ ] Synthetic compatibility tests preserve registration dedupe, password login, TOTP second-factor verification, portal display, administrator search/display, and Coins-canary behavior.
+- [ ] Password-login remains supported through an approved credential authority; DEFER is not treated as permission to disable the current feature.
+- [ ] TOTP external custody has an explicit credential-ref, encryption-key, enrollment, verify, rotation, recovery, revocation, and outage contract.
 - [ ] Historical-value handling is explicit: deterministic conversion, quarantine, or rejection; no silent fallback.
-- [ ] Named Identity/Privacy owner approval is recorded.
+- [ ] Named Identity/Privacy and Security owner approvals are recorded.
 
 **Required artifact:** identity-custody decision record plus synthetic compatibility tests.
 
