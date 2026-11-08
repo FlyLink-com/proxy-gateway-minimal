@@ -37,7 +37,7 @@ Review the full T2 closeout contract, not only the original lease/idempotency pr
 - Verify `resolvePortalLoginAccount()` semantics: exact account-ID resolution, active-account scan by `loginRef`/`displayRef`, unique-match requirement, and ambiguity behavior.
 - Verify the identity source of truth, authorized lookup path, outage behavior, retention and deletion contract.
 - Reconcile the 11-column `platform_portal_password_credentials` DEFER disposition with the conditionally wired current password-login path; DEFER must not silently disable a supported feature.
-- Reconcile `platform_portal_totp_credentials.encrypted_totp_secret` EXTERNALIZE with the remaining TOTP state fields; prove password hashes and TOTP secrets never enter D1, Worker payloads, logs, traces, fixtures or evidence.
+- Reconcile `platform_portal_totp_credentials.encrypted_totp_secret` EXTERNALIZE with the remaining TOTP state fields; prove real password hashes and TOTP secrets never enter D1, Worker payloads, logs, traces or evidence; only clearly synthetic, non-production fixtures may appear in tests.
 - Review the current BWH AES-256-GCM TOTP envelope and shared User Portal/Admin protector as source facts. Apply T1 to the target: Auth0-managed MFA, no first-party target TOTP AES keys, no legacy `enc:`/raw Base32/v2 import or transfer, and mandatory re-enrollment at cutover (Portal optional enrollment; Admin mandatory).
 - Verify fixed PII domains, normalization, HMAC input bytes, key ID and rotation behavior.
 
