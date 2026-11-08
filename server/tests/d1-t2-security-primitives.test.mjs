@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { createCipheriv, createHash, randomBytes } from "node:crypto";
 import test from "node:test";
 import {
+  assertDistinctD1KeyRingSet,
   assertDistinctKeyRings,
   createD1IdempotencyEnvelope,
   createD1IdempotencyLookupCandidates,
@@ -221,6 +222,38 @@ test("unapproved domains and cross-family key rings fail closed", async () => {
   assert.equal(parseD1HmacEnvelope(rawIdemKey), null);
 });
 
+test("configured D1 key-ring sets reject duplicate families and pairwise key reuse", () => {
+  const idempotency = createD1KeyRing({
+    family: "idempotency-hmac", activeKeyId: "set-idem", readKeyIds: ["set-idem"],
+    keys: { "set-idem": Buffer.from("10".repeat(32), "hex") }
+  });
+  const provider = createD1KeyRing({
+    family: "provider-event-hmac", activeKeyId: "set-provider", readKeyIds: ["set-provider"],
+    keys: { "set-provider": Buffer.from("20".repeat(32), "hex") }
+  });
+  const pii = createD1KeyRing({
+    family: "pii-hmac", activeKeyId: "set-pii", readKeyIds: ["set-pii"],
+    keys: { "set-pii": Buffer.from("30".repeat(32), "hex") }
+  });
+  assert.equal(assertDistinctD1KeyRingSet([idempotency, provider, pii]), true);
+
+  const reusedBytes = createD1KeyRing({
+    family: "pii-hmac", activeKeyId: "set-pii-reused", readKeyIds: ["set-pii-reused"],
+    keys: { "set-pii-reused": Buffer.from("10".repeat(32), "hex") }
+  });
+  assert.throws(() => assertDistinctD1KeyRingSet([idempotency, reusedBytes]), {
+    code: "key_family_reuse_detected"
+  });
+
+  const duplicateFamily = createD1KeyRing({
+    family: "idempotency-hmac", activeKeyId: "set-idem-duplicate", readKeyIds: ["set-idem-duplicate"],
+    keys: { "set-idem-duplicate": Buffer.from("40".repeat(32), "hex") }
+  });
+  assert.throws(() => assertDistinctD1KeyRingSet([idempotency, duplicateFamily]), {
+    code: "key_ring_set_family_duplicate"
+  });
+});
+
 test("Portal and Admin TOTP key families reject identical key bytes", () => {
   const shared = Buffer.from("77".repeat(32), "hex");
   const portal = totpRing("portal-totp-aes", "portal-v1", ["portal-v1"], { "portal-v1": shared });
@@ -245,6 +278,35 @@ test("TOTP v3 envelope binds key ID, credential scope and opaque credential refe
   });
   const adminProtector = createD1TotpSecretProtector({ keyRing: adminRing, scope: "admin" });
   assert.equal(await adminProtector.unprotect(envelope, { credentialRef: "totp_credential_001" }), null);
+});
+
+test("TOTP Base32 validation rejects impossible encodings and oversized inputs", async () => {
+  const ring = totpRing("portal-totp-aes", "portal-bounds", ["portal-bounds"], {
+    "portal-bounds": Buffer.from("91".repeat(32), "hex")
+  });
+  const protector = createD1TotpSecretProtector({ keyRing: ring, scope: "portal" });
+  for (const invalid of ["A", "AAA", "AB", "AAAB", "A".repeat(4097)]) {
+    await assert.rejects(
+      () => protector.protect(invalid, { credentialRef: "totp_credential_bounds" }),
+      { code: "totp_secret_invalid" }
+    );
+  }
+  const valid = await protector.protect("JBSWY3DPEHPK3PXP", {
+    credentialRef: "totp_credential_bounds"
+  });
+  assert.match(valid, /^v3:aes-256-gcm:portal-bounds:/u);
+  assert.equal(await protector.unprotect("x".repeat(8193), {
+    credentialRef: "totp_credential_bounds"
+  }), null);
+
+  const oversizedLegacy = await reencryptLegacyD1TotpV2({
+    value: "v2:aes-256-gcm:" + "A".repeat(8193),
+    legacyKey: Buffer.alloc(32),
+    keyRing: ring,
+    scope: "portal",
+    credentialRef: "totp_credential_bounds"
+  });
+  assert.deepEqual(oversizedLegacy, { status: "quarantine" });
 });
 
 test("TOTP rotation decrypts retained old key and writes only with the active key", async () => {
