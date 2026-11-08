@@ -5,7 +5,7 @@ import {
   AUTH0_BCRYPT_MAX_PASSWORD_BYTES,
   SYNTHETIC_PORTAL_IDENTITY_FIXTURE,
   classifyAuth0FirstLoginPassword,
-  createAuth0BulkImportRecord,
+  createSyntheticAuth0BulkImportRecord,
   parsePortalScryptPasswordHash,
   runSyntheticPortalIdentityImportRehearsal,
   verifyPortalScryptPassword
@@ -14,7 +14,7 @@ import {
 const fixture = SYNTHETIC_PORTAL_IDENTITY_FIXTURE;
 
 function buildRecord(overrides = {}) {
-  return createAuth0BulkImportRecord({
+  return createSyntheticAuth0BulkImportRecord({
     email: fixture.email,
     emailVerified: fixture.emailVerified,
     userId: fixture.userId,
