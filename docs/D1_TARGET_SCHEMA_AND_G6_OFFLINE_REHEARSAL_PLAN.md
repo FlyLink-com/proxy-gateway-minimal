@@ -404,3 +404,15 @@ New T2-C1/C2 findings:
 - Identity/auth custody must preserve any approved login/TOTP capability while keeping password hashes and TOTP secrets out of D1. The TOTP key contract must define key ID, key separation or explicit shared-key acceptance, rotation/re-encryption, and legacy-value quarantine.
 
 The closeout matrix and independent review packet now include the source audit. T2-C1/C2 remain OPEN pending named owner decisions and synthetic compatibility evidence. No production login behavior, credentials, or keys were changed.
+
+
+## C3 Draft persistence-boundary hardening — 2026-11-07
+
+Two narrow T2-C3 writer gaps have now been hardened on the existing Draft branch:
+
+- `recordEdgeDesiredStateNotification()` accepts only the two source-derived formats: `gen_[0-9a-f]{24}` and `gen_scoped_[0-9a-f]{32}`. Non-string, whitespace-padded, malformed, uppercase and unobserved values fail closed. Source implementation: `2a6865bdafcb27f6a741f84171220d27eca77576`.
+- `createPortalSecondFactorChallenge()` now requires a non-empty, unique list containing only `totp` and/or `passkey`. Source implementation: `c39b3987b557274fce2b9c4aabbf11367454245f`.
+- Integration assertions were added to `server/tests/platform-subscription-control-db.test.mjs`: `591629b0b0aaeab8679d2f79b793bef67137b19d`.
+- A focused Node v22.16.0 harness covering both validators passed **4/4** (raw SHA-256 `bb230837b57cab38333465d7cc8fd1d66203dbac08ce8d7c93282adad7f9b17f`).
+
+The complete `platform-subscription-control-db.test.mjs` file has not yet been run; no full repository test suite or CI has run. Production historical generation values remain NOT OBSERVED, so the generation field stays CONDITIONAL pending an approved compatibility inventory or quarantine rule. C3 remains OPEN because the other JSON writer allowlists, opaque-reference families, and direct Audit/Portal event paths are not yet closed.
