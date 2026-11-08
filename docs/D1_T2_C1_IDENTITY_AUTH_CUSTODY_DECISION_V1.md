@@ -202,7 +202,7 @@ The tests must record exact Node version, command, output, fixture hash and test
 
 1. Record the selected identity authority, owner roles, Portal/Admin boundary and display/canary policies.
 2. Define a provider-neutral adapter contract with typed outcomes for resolved/not-found/ambiguous/unavailable, password verification, TOTP verification, profile lookup and Admin directory lookup.
-3. Add synthetic adapter tests for C1-01 through C1-12 without real accounts or keys.
+3. The local synthetic converter rehearsal is implemented and focused tests are available; after the owner selects a provider, add separate adapter/API contract tests for C1-01 through C1-12 without real accounts or keys.
 4. Implement the selected adapter and route the browser authentication flow directly to the identity authority; keep raw credentials out of control-plane Worker bodies.
 5. Replace account metadata identity lookups with opaque subject bindings; remove raw identity fields and unkeyed low-entropy digests from the D1 target candidate.
 6. Keep the password credential table DEFER; externalize TOTP secret material and use opaque references only.
