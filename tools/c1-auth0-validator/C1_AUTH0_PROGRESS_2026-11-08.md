@@ -34,7 +34,7 @@
 
 | 对象 | 环境 | 结果 |
 |---|---|---|
-| 本地验证器包（`~/workspace/c1-auth0-validator/`，未入仓） | Node v22.23.1；bcrypt 阶段为真实 pyca/bcrypt 5.0.0 | **37/37 PASS**（导入校验 10 + 登录证明 9 + 租户隔离 8 + 第 6 步端到端 10），0 失败 0 跳过 |
+| 本地验证器包（`tools/c1-auth0-validator/`，PR #844 独立 Draft 分支） | Node v22.23.1；bcrypt 阶段为真实 pyca/bcrypt 5.0.0 | **40/40 PASS**（导入校验 12 + 登录证明 9 + 租户隔离 8 + 第 6 步端到端 11），0 失败 0 跳过；Node 22.23.1 固定环境独立复跑两次 |
 | 仓库 C1/C2 修复分支（PR #842，head `bc3f8c9a`） | Node v22.23.1 本地精确 head | 相关 4 文件 **48/48 PASS**；全量回归与基线 `bf200c47` 逐名比对**零新增失败**（基线 156 项失败两边一致；1 项为全量时序抖动，隔离重跑 5/5） |
 | 演练分支（head `bf200c47`） | Node v22.23.1 | 20/20 PASS（先前轮次固定环境回归） |
 
@@ -42,6 +42,22 @@ PR #842 状态：已获 gccltdco-cmd **APPROVED**（review `5817529933`，
 绑定 head `bc3f8c9a` 回读核验，未被撤销）；仍为 Draft、未合并。
 注：该 PR 无托管 CI 运行（Draft + base 分支触发条件），批准依据为
 本地精确 head 执行，不声称 CI 通过。
+
+### 3.1 2026-11-08 独立复测与验证器硬化补记
+
+本轮在隔离 Vercel 非生产 Sandbox 内重新取得验证证据，未连接 Auth0、Cloudflare、BWH 或任何生产端点：
+
+- Runtime：Node v22.23.1；Python 3.9.25；pyca/bcrypt 5.0.0。
+- 原始 PR #844 验证器基线：37/37 PASS，两次独立运行。
+- 发现并修复三项验证器缺陷：
+  1. legacy Scrypt envelope 的 Base64URL 解码过于宽松；现要求规范、无填充 Base64URL，16-byte salt 与 64-byte hash。
+  2. Auth0 custom_password_hash shape gate 未完整要求 salt/password 子对象；现对外层与嵌套键集、UTF-8 password encoding、hash 长度和材料编码执行严格校验。
+  3. 模拟导入管线未核对 attestation.accountRef 与目标 accountRef；现先对整批记录执行账户绑定预检，错配整批 fail-closed，避免部分导入。
+- 新增 3 项回归，测试总数从 37 增至 **40**。
+- 修复后连续两次：**40/40 PASS**，0 failed / 0 skipped。
+- `node --check`：9/9 PASS。
+- TAP SHA-256：Run 1 `9065766314f6c95f0422828ae1a1233928ee9e7abcef4ae215a4ae065c55b8df`；Run 2 `7698d693fa6bc6e5d1544129d6e2d74fbe4281f57d2c50b424d0dd3a7c282aca`。
+- 本次仅修复本地合成验证器，不改变生产认证代码，不代表 Auth0 真实租户行为已经验证。
 
 ## 四、当前状态口径（不合并三种状态）
 
@@ -65,11 +81,11 @@ PR #842 状态：已获 gccltdco-cmd **APPROVED**（review `5817529933`，
 6. 历史 TOTP 账户归属证明。
 7. C1/C2 正式独立（人工）审查签署——本轮参与方均参与过实现，
    不能自任独立审查人。
-8. 验证器包的入仓位置待定（不得挂到 #842 分支，否则作废其
-   绑定 head 的批准）。
+8. 验证器包已独立放在 PR #844 Draft 分支；不得挂到 #842 分支，避免改变 #842 已批准的绑定 Head。PR #844 仍需精确 Head 审查。
 
-## 六、下一步（均待 Yi 指令，不自动推进）
+## 六、下一步
 
-- 申请创建真实非生产 Auth0 租户，完成五项供应商行为确认；或
-- 先定验证器包的入仓方式（新分支/新 PR）；或
-- 起草证明窗口的生产门禁包（Risk A）供审。
+- 继续在独立 Draft PR #844 内收口验证器代码、回归与证据文档；不得修改 #842 已批准的源码 Head。
+- 对 PR #844 当前精确 Head 发起源码审查；保持 Draft，不自动合并或部署。
+- R1 统一密码规范与证明窗口 Risk A 生产接入继续只做设计/合成验证，生产接入另设审批门。
+- 真实非生产 Auth0 租户创建、真实用户导入与供应商行为确认仍需 Yi 单独批准；本次“继续”不等于该项授权。
