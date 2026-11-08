@@ -64,14 +64,14 @@ Review the full T2 closeout contract, not only the original lease/idempotency pr
 
 ## 4. Test evidence and freshness
 
-The earlier isolated Node built-in run recorded 9/9 passing contract tests. The PII vector additions expanded the current test file to **13 declared test cases**. The historical 9/9 result must not be represented as a pass of the expanded 19-case file.
+The earlier isolated Node built-in run recorded 9/9 passing contract tests. The PII vector additions expanded the current test file to **13 declared test cases**. The historical 9/9 result must not be represented as a pass of the expanded 13-case file.
 
 A focused Node 22 formula check was run after correcting a domain-separator discrepancy. It verified:
 - the PII digest domain prefix is one NUL byte, not the two-byte literal backslash-plus-zero;
 - the old-key and active-key email pseudonym known-answer outputs match the documented vectors;
 - the NUL-prefixed and literal-backslash-prefixed byte strings differ.
 
-That focused check passed. **The complete 19-case test file has not yet been run after the correction; the full repository test suite and CI have not been run.** The independent reviewer must run the complete test file at the pinned review commit and record the exact command, Node version, output and file hash.
+The focused check passed. The complete 13-case file was run from a byte-identical copy of the current GitHub blob using Node v22.16.0: `node --test /tmp/d1-t2-security-vectors.test.mjs` — **13/13 PASS**. The executed file Git blob SHA-1 is `c61b5d6d54416524317f0c43bc4b4158583cf954`; its raw SHA-256 is `ddbf91af45ea721192563e8fa4b5b14261bee3badab8000f95c44392d6545243`. This is still only the isolated Node built-in vector file; the full repository test suite and CI have not been run. The independent reviewer must rerun the file from the pinned review commit and record the exact command, Node version, output and file hash.
 
 ### Corrected discrepancy
 
