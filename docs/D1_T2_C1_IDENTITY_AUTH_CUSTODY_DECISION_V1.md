@@ -14,7 +14,7 @@ C1 cannot be closed by removing `loginRef` / `displayRef` from `platform_account
 
 **Recommended target boundary:** use an identity/authentication authority that is separate from the Cloudflare control-plane Worker and D1. Prefer a standards-based external identity provider (OIDC Authorization Code + PKCE) only if it can preserve the required password, email-verification, new MFA enrollment/verification, lockout, credential-revocation and administrator-directory behavior. T1 explicitly accepts legacy TOTP re-enrollment rather than secret continuity. If no provider meets those requirements, use a dedicated first-party identity service with its own isolated identity/credential store and key custody. Do not create a substitute identity authority inside the control-plane D1.
 
-The target control plane should receive only an opaque, stable identity subject and verified authentication context. D1 should retain the opaque account-to-identity binding and approved non-secret lifecycle facts. Email, display name, password hashes, TOTP secret material and raw authentication capabilities must not be copied into D1, control-plane Worker request/response bodies or forwarded headers, logs, traces, fixtures or evidence.
+The target control plane should receive only an opaque, stable identity subject and verified authentication context. D1 should retain the opaque account-to-identity binding and approved non-secret lifecycle facts. Email, display name, password hashes, real TOTP secret material and raw authentication capabilities must not be copied into D1, control-plane Worker request/response bodies or forwarded headers, logs, traces or evidence. Tests may use clearly synthetic, non-production fixture values only.
 
 Auth0 Essentials + Bulk User Import is now the owner-selected identity direction. This document does not authorize purchase, tenant creation, account import, key provisioning or production implementation.
 
@@ -23,7 +23,7 @@ Auth0 Essentials + Bulk User Import is now the owner-selected identity direction
 1. BWH remains the current production source of truth and only production writer until an independent cutover decision.
 2. The existing password-login capability must not be silently disabled merely because all 11 `platform_portal_password_credentials` fields are DEFER for D1.
 3. The two Passkey JSON fields and Passkey credential schema remain DEFER; this proposal does not activate Passkey.
-4. No raw email, display name, password hash, encrypted TOTP secret, raw TOTP secret, recovery code, bearer token, authorization code or other credential capability is persisted to D1 or written to logs/traces/fixtures/evidence.
+4. No real raw email, display name, password hash, encrypted/raw TOTP secret, recovery code, bearer token, authorization code or other credential capability is persisted to D1 or written to logs/traces/evidence. Synthetic test fixtures must remain clearly non-production and isolated.
 5. No ordinary SHA-256 digest of an email, IP address or other low-entropy identifier is described as anonymization. Retained pseudonyms require the separately approved C2 HMAC contract.
 6. No historical credential value is presumed to be encrypted because of a prefix. In particular, legacy `enc:<base32>` is raw Base32 secret material under the current verifier.
 7. Identity-provider outage, invalid assertion, unknown issuer/subject, duplicate binding or ambiguous identity resolution must fail closed. No fallback to raw PII or an unkeyed digest in D1.
