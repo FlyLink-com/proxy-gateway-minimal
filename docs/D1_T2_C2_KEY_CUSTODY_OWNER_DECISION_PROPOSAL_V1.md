@@ -73,7 +73,7 @@ Project owner approval covers the architecture choices below:
 - Independent encrypted escrow and two-person recovery.
 - The family separation table above, including no Portal/Admin TOTP AES key under current T1.
 - Active-write / retained-read rotation and evidence-based retirement.
-- Wallet-first SHA-256-domain-v1 compatibility.
+- **Not included in this architecture approval:** Wallet-first SHA-256-domain-v1 compatibility and its delivered-row replay/retention duration; see the separate source audit and obtain the relevant domain-owner decision.
 
 Approval boundary: the target architecture is accepted as the design baseline. This does not assign named people or approve each data-domain purpose. Functional owner roles remain Platform/Security key custodian, Identity/Privacy owner, and Payment/Commerce owner; the actual accountable people must be named in the project decision register before implementation.
 
