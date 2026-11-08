@@ -105,3 +105,18 @@ The C2 design recommendation remains: prefer per-Worker secret bindings when a k
 - Do not schedule external reviewer sourcing. The existing GitHub account-level approval is source-slice evidence only; it does not by itself prove natural-person independence or close full T2-C6.
 
 **Current decision:** C1 and C2 are in source/doc alignment and acceptance preparation. C1/C2 formal acceptance is OPEN; T2 is BLOCKED; T3 and G6 remain not authorized. BWH remains the production control-data writer.
+
+## 8. Parallel closeout progress — 2026-11-08
+
+### C1-A04
+- The synthetic Risk A helper and test remain unchanged; the 12-case suite passed twice under Node v22.23.1 with `node --check` 2/2.
+- Added `docs/D1_T2_C1_RISK_A_OWNER_DECISION_PROPOSAL_V1.md` with grouped default recommendations for the window, conditional persistence, access, retention, notification/reset, and unclassified-account handling.
+- These are recommendations only. C1-A04 remains OPEN until owner decision; no production login hook or persistence is authorized.
+
+### C2 Wallet-first digest compatibility
+- Added `docs/D1_T2_C2_WALLET_FIRST_DIGEST_COMPATIBILITY_AUDIT_V1.md` with source paths, exact domain-separated SHA-256 v1 semantics, caller entropy findings, replay state and retention gap.
+- Recommended preserve-v1 disposition avoids needless HMAC/key-custody migration. A weak `Math.random()` fallback in the first-party UI idempotency helper is identified for a small source-hardening patch; no source behavior has been changed yet.
+- The 10-minute lease is not treated as a retention TTL. Delivered-row retention/purge still needs a bounded owner decision.
+
+### Execution boundary
+This is documentation-only progress on a child branch of the synthetic Risk A branch. No BWH connection, production data read/write, real key creation, Auth0 tenant creation, remote D1 mutation, Worker/DO deployment, CI, merge or cutover occurred. BWH remains the only production writer.
