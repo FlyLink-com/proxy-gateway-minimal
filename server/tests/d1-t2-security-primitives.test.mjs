@@ -285,7 +285,12 @@ test("TOTP Base32 validation rejects impossible encodings and oversized inputs",
     "portal-bounds": Buffer.from("91".repeat(32), "hex")
   });
   const protector = createD1TotpSecretProtector({ keyRing: ring, scope: "portal" });
-  for (const invalid of ["A", "AAA", "AB", "AAAB", "A".repeat(4097)]) {
+  for (const invalid of [
+    "A", "AAA", "AB", "AAAB",
+    "JBSWY3DPEHPK3PXP=",
+    "JBSWY3DPEHPK3PXAAA=",
+    "A".repeat(4097)
+  ]) {
     await assert.rejects(
       () => protector.protect(invalid, { credentialRef: "totp_credential_bounds" }),
       { code: "totp_secret_invalid" }
@@ -295,6 +300,10 @@ test("TOTP Base32 validation rejects impossible encodings and oversized inputs",
     credentialRef: "totp_credential_bounds"
   });
   assert.match(valid, /^v3:aes-256-gcm:portal-bounds:/u);
+  const validPadded = await protector.protect("JBSWY3DPEHPK3PXAAA======", {
+    credentialRef: "totp_credential_bounds"
+  });
+  assert.match(validPadded, /^v3:aes-256-gcm:portal-bounds:/u);
   assert.equal(await protector.unprotect("x".repeat(8193), {
     credentialRef: "totp_credential_bounds"
   }), null);

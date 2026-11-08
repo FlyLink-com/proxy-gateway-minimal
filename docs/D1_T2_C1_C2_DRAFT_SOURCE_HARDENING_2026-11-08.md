@@ -27,7 +27,7 @@
    - This is a helper contract only; no production key rings are created or wired by this branch.
 
 4. **C2 TOTP input hardening**
-   - Validates unpadded Base32 length classes and zero pad bits before accepting a secret.
+   - Validates Base32 length classes, canonical optional padding and zero pad bits before accepting a secret.
    - Bounds raw TOTP secret input to 4,096 characters and v2/v3 envelopes to 8,192 characters.
    - Adds regression cases for impossible Base32 lengths, non-canonical pad bits, oversized inputs and preserved valid synthetic input.
 

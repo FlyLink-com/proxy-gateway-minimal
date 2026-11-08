@@ -602,13 +602,18 @@ async function importAesKey(rawKey, usages) {
 
 function normalizeLegacyBase32(value) {
   if (typeof value !== "string" || value.length > MAX_TOTP_SECRET_INPUT_CHARS) return null;
-  const normalized = value.trim().replace(/^enc:/u, "").replace(/[\s-]/gu, "")
-    .replace(/=+$/gu, "").toUpperCase();
-  if (!/^[A-Z2-7]+$/u.test(normalized)) return null;
+  const compact = value.trim().replace(/^enc:/u, "").replace(/[\\s-]/gu, "").toUpperCase();
+  const match = /^([A-Z2-7]+)(=*)$/u.exec(compact);
+  if (!match) return null;
+  const normalized = match[1];
+  const suppliedPadding = match[2].length;
   const remainder = normalized.length % 8;
+  const expectedPaddingByRemainder = { 0: 0, 2: 6, 4: 4, 5: 3, 7: 1 };
   const padBitsByRemainder = { 0: 0, 2: 2, 4: 4, 5: 1, 7: 3 };
+  const expectedPadding = expectedPaddingByRemainder[remainder];
   const padBits = padBitsByRemainder[remainder];
-  if (padBits === undefined) return null;
+  if (expectedPadding === undefined || padBits === undefined
+    || (suppliedPadding !== 0 && suppliedPadding !== expectedPadding)) return null;
   if (padBits > 0) {
     const lastValue = BASE32_ALPHABET.indexOf(normalized.at(-1));
     if (lastValue < 0 || (lastValue & ((1 << padBits) - 1)) !== 0) return null;
