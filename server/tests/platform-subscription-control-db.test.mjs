@@ -1217,7 +1217,9 @@ test("subscription control store enforces the two observed desired-state generat
       "gen_scoped_client_supplied",
       `gen_${"A".repeat(24)}`,
       `gen_${"a".repeat(23)}`,
-      `gen_scoped_${"b".repeat(31)}`
+      `gen_scoped_${"b".repeat(31)}`,
+      ` gen_${"a".repeat(24)} `,
+      123
     ];
     invalid.forEach((generation, index) => {
       assert.throws(() => store.recordEdgeDesiredStateNotification({
