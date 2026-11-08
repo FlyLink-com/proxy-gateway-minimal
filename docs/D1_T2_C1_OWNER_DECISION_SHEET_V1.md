@@ -17,7 +17,7 @@ The helper validates a strict actor-context schema, issuer allowlist, audience, 
 
 Important limitation: this helper validates the internal actor-context contract. It does not verify OIDC/JWKS signatures and must only be called after a separate gateway has verified issuer, audience, signature, nonce, expiry and required authentication strength. The business Worker must not expose a public bypass route; only the approved private service-binding path may call it.
 
-Local focused verification: Node v22.16.0, 9/9 tests PASS. The exact repository test file has been added but has not yet been rerun in the project-fixed Node v22.23.1 environment. No CI or full repository suite was run.
+Focused source-slice verification: at exact HEAD `bc3f8c9a713de05715f42f733b8fa72ba53d4477`, Node v22.23.1, the reviewer reran four related repository test files and recorded 48/48 PASS, including `d1-t2-identity-boundary.test.mjs` and `platform-portal-identity-import-rehearsal.test.mjs`. This does not prove a hosted identity-provider integration, OIDC/JWKS gateway, >72-byte password behavior, production route activation or historical TOTP ownership. PR #842 source-slice review by `gccltdco-cmd` is APPROVED at that exact HEAD; C1 remains OPEN pending the owner decisions and hosted compatibility proof below. Full-suite comparative evidence and the no-hosted-CI caveat are recorded in the closeout matrix.
 
 ## 2. Provider choice
 
@@ -104,3 +104,12 @@ C1 may be closed only after:
 - The project owner records the data-processing, recovery, deletion/unlink and outage decisions.
 
 No external identity tenant, real account import, production password, TOTP seed, provider API credential, BWH access, remote D1 mutation, deployment, dual-write, CI, PR Ready transition, merge or cutover is authorized by this sheet. BWH remains the only production writer.
+
+
+## 7. Evidence update — 2026-11-08
+
+The C1 source-slice review on PR #842 is APPROVED by GitHub account `gccltdco-cmd`, Review ID `5817529933`, bound to exact HEAD `bc3f8c9a713de05715f42f733b8fa72ba53d4477`. The reviewer reran four related repository test files under Node v22.23.1: 48/48 PASS. This is source-level review evidence only; the approval does not close C1.
+
+The owner decisions C1-D01 through C1-D08 remain as recorded above. In particular, no provider is selected, no tenant may be created before the selection decision, the >72 UTF-8-byte password policy is unresolved, Portal/Admin isolation and TOTP import/re-enrollment policy are unapproved, and accountable Identity/Privacy/Security owners are not yet named. The module still does not implement OIDC/JWKS signature verification or a real provider adapter.
+
+The full repository suite was separately executed and compared against the Draft baseline at Node v22.23.1; this is comparative zero-new-regression evidence, not a green suite. No hosted CI PASS is claimed. C1 remains OPEN.

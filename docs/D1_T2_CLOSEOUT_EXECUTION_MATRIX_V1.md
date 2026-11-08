@@ -242,12 +242,12 @@ G6 PASS authorizes only consideration of the next separately gated step. It does
 
 | Package | Current evidence | Status |
 |---|---|---|
-| T2-C1 Identity custody | C1 custody proposal + provider evaluation + [owner decision sheet](D1_T2_C1_OWNER_DECISION_SHEET_V1.md); provider-neutral opaque actor-context and identity-binding helper/tests added; Auth0 Essentials remains preferred candidate, not selected; hosted provider proof and owner decisions remain outstanding | OPEN |
-| T2-C2 HMAC and legacy compatibility | [C2 key custody/rotation ADR](D1_T2_C2_KEY_CUSTODY_AND_ROTATION_ADR_V1.md) + executable Web Crypto primitives + source-importing synthetic tests added; key custody provider/escrow approval and wallet-first digest compatibility remain open | OPEN |
+| T2-C1 Identity custody | C1 custody proposal + provider evaluation + [owner decision sheet](D1_T2_C1_OWNER_DECISION_SHEET_V1.md); provider-neutral actor-context and identity-binding helpers/tests added; PR #842 C1/C2 source-slice review APPROVED at exact HEAD `bc3f8c9a`; provider selection, >72-byte password policy, real OIDC/JWKS gateway/adapter, Portal/Admin isolation and hosted proof remain open | OPEN |
+| T2-C2 HMAC and legacy compatibility | [C2 key custody/rotation ADR](D1_T2_C2_KEY_CUSTODY_AND_ROTATION_ADR_V1.md) + executable Web Crypto primitives + source-importing synthetic tests added; PR #842 source-slice review APPROVED at exact HEAD `bc3f8c9a`; actual key custody, named custodians, independent escrow/recovery, Wallet-first legacy digest compatibility and retention/retirement proof remain open | OPEN |
 | T2-C3 JSON/ref/generation | 26 fields reconciled: 7 writer families closed, 16 existing source contracts retained/mapped, 2 Passkey fields DEFER, account metadata BLOCKED pending C1 identity custody; independent review absent | OPEN |
 | T2-C4 Payment custody | DO SQLite proposal exists; owner, key, lifecycle, and outage decisions remain open | OPEN |
 | T2-C5 Retention/G2 residuals | Retention register exists; RET-02–RET-12 and G2 residual dispositions remain open | OPEN |
-| T2-C6 Independent review | Review packet exists; separate reviewer signature absent | OPEN |
+| T2-C6 Independent review | PR #842 C1/C2 source-slice review APPROVED by `gccltdco-cmd` at exact HEAD `bc3f8c9a`; full T2 review across C1–C6, 820-field disposition, 26 JSON writers, synthetic vectors and G2 residuals remains outstanding; distinct GitHub account alone does not establish distinct natural-person independence | OPEN |
 
 No task is marked complete by this matrix. The work is not authorized to cross the production boundary described above.
 
@@ -257,5 +257,40 @@ No task is marked complete by this matrix. The work is not authorized to cross t
 - C1: added `server/services/platform/d1-t2-identity-boundary.mjs` and `server/tests/d1-t2-identity-boundary.test.mjs`. The 9 focused tests cover strict opaque actor context, issuer/audience/expiry/factor checks, PII/credential-field rejection, exact account binding, duplicate/unknown/revoked fail-closed behavior and idempotent binding planning. This is a provider-neutral internal boundary contract; it does not verify OIDC/JWKS or implement a selected provider.
 - C1 decision sheet: `docs/D1_T2_C1_OWNER_DECISION_SHEET_V1.md`. Auth0 Essentials remains a recommended managed candidate, not selected. The >72 UTF-8-byte password reset decision is still required; Keycloak custom scrypt remains the no-reset alternative.
 - C2: added `server/services/platform/d1-t2-security-primitives.mjs`, which the new `server/tests/d1-t2-security-primitives.test.mjs` imports directly. The new source helper implements HMAC families/domains, strict key rings, active/retained rotation, PII lookup, lease digest grammar, Portal/Admin TOTP key separation, v3 AES-GCM AAD and synthetic v2 re-encryption.
-- Local mirror verification: Node v22.16.0, 23 C2 tests + 9 C1 tests = 32/32 PASS; syntax checks passed. The project-fixed Node v22.23.1 exact repository test run remains outstanding. No full repository suite or CI was triggered.
+- Local mirror verification: Node v22.16.0, 23 C2 tests + 9 C1 tests = 32/32 PASS; syntax checks passed. This 2026-11-07 mirror-only verification note is superseded by the exact-HEAD Node v22.23.1 source-slice and full-suite comparative evidence recorded in the 2026-11-08 update below. No CI was triggered.
 - Both C1 and C2 remain OPEN pending owner decisions and hosted provider/key-custody proof. No real provider, secret store, key, BWH, D1, deployment or production data was accessed.
+
+
+### Evidence update — 2026-11-08: C1/C2 exact-head source review
+
+- Review vehicle: [PR #842](https://github.com/FlyLink-com/proxy-gateway-minimal/pull/842), OPEN / DRAFT, not merged and not Ready.
+- Review baseline: `bf200c474173d58d855fab66050a9c2b6b1ac4d4`.
+- Exact reviewed source HEAD: `bc3f8c9a713de05715f42f733b8fa72ba53d4477`.
+- Review ID: `5817529933`; reviewer account: `gccltdco-cmd`; result: `APPROVED`; submitted 2026-11-08T10:28:54Z.
+- GitHub REST review `commit_id` exactly matches PR head; no `review_dismissed` event was found at verification time.
+- Reviewed cumulative scope: 10 commits / 10 files / +1,836 −14, from the exact baseline to the exact source HEAD.
+- Review conclusion is limited to the C1/C2 source slice. It is not formal C1/C2 gate acceptance and not the full T2-C6 review.
+
+#### Fixed-environment tests and full-suite attribution
+
+- Reviewer reran the four related repository test files at exact HEAD in Node v22.23.1: `d1-t2-security-primitives.test.mjs`, `d1-t2-identity-boundary.test.mjs`, `platform-portal-identity-import-rehearsal.test.mjs`, and `platform-portal-totp-verifier.test.mjs`: **48/48 PASS**.
+- Full `npm test` comparative evidence at Node v22.23.1:
+  - Baseline `bf200c47`: 7,084 tests; 6,922 passed / 156 failed / 6 skipped.
+  - Candidate `bc3f8c9a`: 7,112 tests; first run 6,950 passed / 156 failed / 6 skipped; second run had 157 failures.
+  - Failure-name comparison: every baseline failure also occurred on candidate; new-failure difference = 0; all 28 added tests passed.
+  - The only candidate-only failure name was the usage-ledger kill-timer test; isolated runs were 5/5 PASS on each HEAD, consistent with a full-suite timing flake.
+- This is a comparative no-new-regression result, **not** an all-green full-suite result. The 156 baseline failures remain present and outside this C1/C2 source-slice remediation scope.
+- PR #842 has no hosted CI run. No CI PASS is claimed.
+- The separate 14-case PII security-vector test file noted in the review packet has not yet been run as one complete suite under Node v22.23.1; the 48/48 result above does not supersede that outstanding check.
+
+#### Remaining C1/C2 gate blockers
+
+- C1: final provider selection; >72 UTF-8-byte password policy; Portal/Admin identity isolation; real OIDC/JWKS gateway and provider adapter; hosted synthetic compatibility proof; TOTP account-ownership and migration acceptance; accountable Identity/Privacy/Security owners.
+- C2: actual Cloudflare key-custody boundary; named custodians; independent encrypted escrow/backup and restore; Wallet-first `idempotency_key_hash` and `session_binding_hash` compatibility; managed-provider versus first-party TOTP custody choice; retention/replay windows and key-retirement proof.
+- C1 and C2 therefore remain OPEN.
+
+#### T2-C6 scope distinction
+
+The approval by `gccltdco-cmd` is recorded as a separate GitHub-account review of the exact C1/C2 source slice. It does not by itself establish that the reviewer is a different natural person from the author, and PR #842 did not review all six T2 packages, the complete 820-field disposition, all 26 JSON writer paths, payment custody, retention, or G2 residuals. T2-C6 therefore remains OPEN pending the full-scope review and required independence evidence.
+
+See [remaining owner decisions](D1_T2_C1_C2_REMAINING_OWNER_DECISIONS_2026-11-08.md) and [migration-readiness reassessment](D1_T2_MIGRATION_READINESS_REASSESSMENT_2026-11-08.md).

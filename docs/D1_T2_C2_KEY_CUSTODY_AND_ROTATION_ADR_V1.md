@@ -170,7 +170,7 @@ The helper now implements:
 - domain-separated lease token SHA-256 and field-specific issuer grammar;
 - TOTP v3 AES-256-GCM with key ID, scope/credential AAD, active/retained rotation and controlled v2 re-encryption.
 
-Local mirror verification on Node v22.16.0: 23/23 focused tests PASS; node --check passed for the primitive and local focused test files. The repository-focused test file has been added, but the project-fixed Node v22.23.1 environment has not yet rerun the exact repository test file. No full repository suite or CI was run. This is source/synthetic evidence only.
+Historical local mirror verification on Node v22.16.0: 23/23 focused tests PASS; `node --check` passed for the primitive and local focused test files. Superseding fixed-environment evidence: at exact HEAD `bc3f8c9a713de05715f42f733b8fa72ba53d4477`, the reviewer reran four related repository test files under Node v22.23.1 and recorded 48/48 PASS, including `d1-t2-security-primitives.test.mjs` and `platform-portal-totp-verifier.test.mjs`. The full repository `npm test` was also compared against baseline `bf200c47`: zero new failure names, all 28 added tests passed, and 156 baseline failures remained (a second candidate run had one additional timing-flake failure name, isolated 5/5 on both HEADs). This is comparative evidence, not an all-green suite. No hosted CI PASS is claimed. This is source/synthetic evidence only.
 
 ## 8. C2 acceptance status
 
@@ -188,7 +188,16 @@ Still OPEN:
 4. Resolve wallet-first idempotency_key_hash and session_binding_hash compatibility.
 5. Confirm whether C1 uses managed-provider TOTP custody or first-party TOTP v3 custody.
 6. Define retention/replay windows needed before HMAC key retirement.
-7. Run the exact focused test file in Node v22.23.1; then run the broader approved local suite when budget permits.
-8. Obtain the applicable owner decisions and final source review.
+7. Run the separate 14-case PII security-vector test file as one suite under Node v22.23.1; it is distinct from the four-file 48/48 source-slice run recorded above.
+8. Complete the remaining owner decisions and the full T2 review. The bounded C1/C2 source-slice review is APPROVED at exact HEAD `bc3f8c9a`; it does not constitute full T2-C6 approval.
 
 No production keys, Cloudflare Secrets Store, Worker bindings, D1 schema, customer rows, BWH host, deployment, dual-write, CI, PR Ready transition, merge or cutover were used or authorized by this ADR. BWH remains the only production writer.
+
+
+## 9. Evidence update — 2026-11-08
+
+PR #842 source-slice review is APPROVED by `gccltdco-cmd` (Review ID `5817529933`) and bound to exact HEAD `bc3f8c9a713de05715f42f733b8fa72ba53d4477`. Under Node v22.23.1, the reviewer reran four related repository test files and recorded 48/48 PASS, including this HMAC/TOTP primitive test file and the Portal TOTP verifier test file.
+
+The full repository suite was also executed on candidate and baseline: 7,112 versus 7,084 tests; the 156 baseline failures all remained, all 28 added tests passed, and the failure-name difference was zero. The second candidate run had one additional usage-ledger timing-flake name, which passed 5/5 isolated runs on each HEAD. This is not an all-green repository suite and no hosted CI PASS is claimed.
+
+Still outstanding: the separate 14-case PII vector file has not been run as one suite under Node v22.23.1; real key custody, named custodians, encrypted escrow and restore; Wallet-first legacy digest compatibility; owner-approved TOTP custody choice; retention/replay windows; and the full T2 review. C2 remains OPEN.
