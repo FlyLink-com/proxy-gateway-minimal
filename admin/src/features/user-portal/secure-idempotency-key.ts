@@ -6,13 +6,13 @@ export function createSecureIdempotencyKey(
 ): string {
   const randomUUID = cryptoProvider?.randomUUID;
   if (cryptoProvider && typeof randomUUID === "function") {
-    return cryptoProvider.randomUUID();
+    return randomUUID.call(cryptoProvider as Crypto);
   }
 
   const getRandomValues = cryptoProvider?.getRandomValues;
   if (cryptoProvider && typeof getRandomValues === "function") {
     const bytes = new Uint8Array(16);
-    cryptoProvider.getRandomValues(bytes);
+    getRandomValues.call(cryptoProvider as Crypto, bytes);
     const suffix = Array.from(bytes, (value) => value.toString(16).padStart(2, "0")).join("");
     return `portal-setup-${suffix}`;
   }
