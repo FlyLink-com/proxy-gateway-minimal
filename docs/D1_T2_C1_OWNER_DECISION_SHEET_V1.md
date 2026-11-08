@@ -32,7 +32,7 @@ Blocking conditions:
 - Imported scrypt credentials are re-hashed to the provider's native bcrypt after successful first login. The provider's bcrypt path has a 72 UTF-8-byte ceiling.
 - Existing passwords above 72 UTF-8 bytes cannot be truncated or silently accepted. Auth0's bcrypt storage path ignores bytes after the 72-byte boundary. The affected production-user count is UNKNOWN because no production identity rows were read; a one-way scrypt hash does not reveal the original password byte length.
 - The exact email verification/OTP attempt and rate-limit behavior, first-login rehash behavior, TOTP import acceptance, ±1 interval, lockout and Portal/Admin tenant isolation still require an isolated provider proof.
-- Legacy v2 AES-GCM TOTP envelopes have no key ID and require the approved C2 one-time decrypt/transfer process. The historical enc: prefix is raw Base32, not ciphertext.
+- Owner-selected T1 (2026-11-08) supersedes the earlier transfer option: both legacy enc: and v2: TOTP values are invalidated at cutover; do not import, decrypt, transfer or re-encrypt them. Users re-enroll in Auth0 MFA.
 
 Recommended policy if Option A is selected:
 - Preserve existing passwords for the import-compatible range.
@@ -86,7 +86,7 @@ Clerk remains conditional on vendor confirmation that the current raw 16-byte No
 | C1-D01 | Identity provider | Auth0 Essentials + Bulk User Import | APPROVED — 2026-11-08 |
 | C1-D02 | Passwords above 72 UTF-8 bytes | Targeted, user-notified reset before import/first Auth0 login; never truncate | APPROVED — execution proof OPEN |
 | C1-D03 | Portal/Admin separation | Separate Auth0 tenants, issuer refs, audiences, factors and admin policies; no cross-reuse | APPROVED — topology proof OPEN |
-| C1-D04 | Existing TOTP | Prove synthetic import first; then preserve via provider import where accepted, otherwise explicit re-enrollment | PENDING |
+| C1-D04 | Existing TOTP | T1: Auth0-managed MFA; Portal enrollment is optional and Admin enrollment is mandatory. At cutover, all legacy BWH enc: and v2: values are invalidated; no import/decrypt/transfer/re-encryption; users re-enroll. | APPROVED — enrollment proof OPEN |
 | C1-D05 | Email verification policy | Preserve single-use, duplicate and rate-limit behavior unless an explicit product change is approved | PENDING |
 | C1-D06 | Visible account label | Masked email or user-managed display name through identity-profile service; never route raw value through business Worker | PENDING |
 | C1-D07 | Coins canary | Keyed PII pseudonym or provider eligibility claim | RECOMMENDED: keyed PII pseudonym |
@@ -140,3 +140,16 @@ The project owner approved **Auth0 Essentials + Bulk User Import** as the select
 6. Reconcile the three-tenant Essentials entitlement with two isolated production tenants and the required non-production tenant allocation.
 
 No vendor tenant, real user, password, TOTP seed, provider credential, production configuration or production resource was created or changed by this approval.
+
+
+## Owner decision update — T1 (2026-11-08)
+
+The owner-selected T1 policy is authoritative and supersedes the earlier synthetic-import / possible v2-transfer alternatives in this document:
+
+- Auth0 owns target Portal/Admin MFA factors.
+- Portal users may enroll voluntarily; Admin users must enroll before accessing Admin.
+- At cutover, all legacy BWH TOTP values (enc: and v2:) are invalidated. No legacy secret is imported, decrypted, transferred or re-encrypted.
+- Existing users re-enroll with Auth0 MFA. The old BWH key remains under the existing BWH production boundary until a separately authorized cutover; this record does not authorize key access or deletion.
+- C1-D04 is APPROVED as a design decision; synthetic enrollment, verification, lockout, recovery, revocation and outage proof remain OPEN.
+- C2-D05 is resolved for this migration path: do not provision first-party Portal/Admin TOTP AES keys for the Auth0-managed target. The generic v3 primitive is not a selected production path.
+
