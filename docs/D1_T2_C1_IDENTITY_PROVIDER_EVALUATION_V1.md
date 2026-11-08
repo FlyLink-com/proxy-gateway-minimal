@@ -91,7 +91,7 @@ Auth0's official Bulk User Import schema supports `custom_password_hash.algorith
 | Derived hash bytes | `hash.value` | Decode the current base64url digest to its original 64 bytes, then encode as supported base64 |
 | Password byte encoding | `password.encoding` | `utf8` |
 
-This is a schema-level parameter match, not yet an Auth0 endpoint acceptance test. The import converter must parse the project envelope strictly, reject unknown versions/parameters, preserve the exact byte values, and never emit the original combined string as an unsupported opaque hash.
+A synthetic-only cross-implementation check also compared Node `crypto.scryptSync` with Python `hashlib.scrypt` using the same password bytes, raw salt bytes and N/r/p/keylen; the derived 64-byte outputs matched. This validates the standard scrypt primitive, not Auth0's hosted import endpoint. This is a schema-level parameter match, not yet an Auth0 endpoint acceptance test. The import converter must parse the project envelope strictly, reject unknown versions/parameters, preserve the exact byte values, and never emit the original combined string as an unsupported opaque hash.
 
 Auth0 also supports a TOTP factor in `mfa_factors`. The current project's normalized Base32 secret is structurally compatible with the TOTP import field. The same user import record can carry `email_verified`, the custom password hash, and the TOTP factor.
 
@@ -110,7 +110,8 @@ Required compatibility policy:
 3. Never send a password longer than 72 UTF-8 bytes to Auth0 for first login.
 4. Route such a user to an email-verified, targeted password-reset flow; do not force-reset the entire user base.
 5. Set the provider's minimum password length to 8 to match the existing registration contract; test the provider's password policy separately from imported-password verification.
-6. Set new-password maximum to 72 UTF-8 bytes unless an approved alternative hash path is selected.
+6. Explicitly configure the minimum: Auth0's new database connections default to a 15-character minimum under Flexible Password Policy, which would otherwise reject passwords allowed by the current project.
+7. Set new-password maximum to 72 UTF-8 bytes unless an approved alternative hash path is selected.
 
 The current project does not reveal which users have passwords longer than 72 bytes. Do not claim that the affected population is zero.
 
@@ -144,7 +145,7 @@ Do not claim exact registration compatibility until this is tested end to end. T
 
 Auth0 Essentials currently includes three tenants. A plausible separation is Portal production, Admin production, and shared non-production; this still needs owner approval and environment design. Do not treat a single shared user directory as sufficient Admin isolation.
 
-The Admin directory must use a separate Management API client with minimum read scopes and explicit audit. Auth0 user search has a 1,000-result query ceiling; exact-email lookup and bounded search should be used rather than unbounded broad scans. The current Admin search semantics must be compared to the Management API query language before replacing them. Raw email may be returned to an authorized Admin interface, but it must not be projected into D1 or the business Worker.
+The Admin directory must use a separate Management API client with minimum read scopes and explicit audit. Store the provider issuer/subject to account mapping in D1; do not use email as the subject or account key. Auth0's imported `user_id` is connection-strategy-prefixed, so the import must record the final subject and reconcile it to the existing opaque account ID. Auth0 user search has a 1,000-result query ceiling; exact-email lookup and bounded search should be used rather than unbounded broad scans. The current Admin search semantics must be compared to the Management API query language before replacing them. Raw email may be returned to an authorized Admin interface, but it must not be projected into D1 or the business Worker.
 
 ### 3.6 Current public pricing and plan fit
 
