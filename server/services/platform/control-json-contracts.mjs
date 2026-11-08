@@ -95,20 +95,27 @@ export function portalAccessEventJson(value) {
   if (keys.length === 0) return "{}";
 
   const type = event.type;
-  if (type === "traffic_supply_suspended" || type === "subscription_disabled") {
+  if (type === "traffic_supply_suspended") {
     exactKeys(event, ["type", "occurredAt", "previousStatus"], ["lifecycleRevisionRef"]);
     if (!["delivered", "issued"].includes(event.previousStatus)) throw contractError();
     canonicalTimestamp(event.occurredAt);
-    if (Object.hasOwn(event, "lifecycleRevisionRef")) safeControlRef(event.lifecycleRevisionRef);
+    if (
+      Object.hasOwn(event, "lifecycleRevisionRef")
+      && !/^lifecycle_ref_[a-f0-9]{32}$/.test(event.lifecycleRevisionRef)
+    ) throw contractError();
+  } else if (type === "subscription_disabled") {
+    exactKeys(event, ["type", "occurredAt", "previousStatus"]);
+    if (!["delivered", "issued"].includes(event.previousStatus)) throw contractError();
+    canonicalTimestamp(event.occurredAt);
   } else if (type === "subscription_expired") {
     exactKeys(event, ["type", "occurredAt", "previousStatus", "lifecycleRevisionRef"]);
     if (!["delivered", "issued"].includes(event.previousStatus)) throw contractError();
     canonicalTimestamp(event.occurredAt);
-    safeControlRef(event.lifecycleRevisionRef);
+    if (!/^lifecycle_ref_[a-f0-9]{32}$/.test(event.lifecycleRevisionRef)) throw contractError();
   } else if (type === "traffic_supply_resumed") {
     exactKeys(event, ["type", "occurredAt", "lifecycleRevisionRef"]);
     canonicalTimestamp(event.occurredAt);
-    safeControlRef(event.lifecycleRevisionRef);
+    if (!/^lifecycle_ref_[a-f0-9]{32}$/.test(event.lifecycleRevisionRef)) throw contractError();
   } else if (type === "delivery_generation_reissued" || type === "subscription_link_reset") {
     exactKeys(event, ["type", "occurredAt"]);
     canonicalTimestamp(event.occurredAt);
