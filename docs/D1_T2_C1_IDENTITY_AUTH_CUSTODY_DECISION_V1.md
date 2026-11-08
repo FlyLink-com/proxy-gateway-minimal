@@ -110,7 +110,8 @@ The exact table/column names, multi-provider linking policy and migration IDs re
 
 - Keep all 11 current `platform_portal_password_credentials` columns DEFER from D1.
 - Do not copy password hashes, salts, password credential rows or bearer credentials into D1.
-- The selected authority must preserve password verification, generic invalid-login behavior, lockout/failure policy, `mustRotate`, credential revocation and account binding.
+- The selected authority must preserve password verification, generic invalid-login behavior, lockout/failure policy, the stored `mustRotate` state and its existing consumers, credential revocation and account binding. Do not infer that `mustRotate` currently blocks session creation: the pinned `user-portal-auth.mjs` path does not itself read that flag.
+- The current password hash is a project-specific Node scrypt envelope: `scrypt$v=1$N=32768$r=8$p=1$<salt-base64url>$<64-byte-derived-base64url>`, using a 16-byte minimum salt and timing-safe comparison. Provider migration must prove exact hash import/verification compatibility or use an approved just-in-time legacy verifier that re-hashes only after successful login. If neither is supported, use an owner-approved, user-notified password-reset plan; never silently invalidate existing passwords.
 - If the selected provider cannot preserve a required behavior, use a dedicated credential service outside D1 and outside the control-plane Worker request/response body; do not weaken the behavior or silently disable password login.
 - A provider migration must not assume that the conditional source wiring means the feature is unused. Confirm production activation only through a separately authorized, non-customer-data deployment/configuration review; this round does not perform that review.
 
@@ -178,7 +179,7 @@ All tests must use synthetic identities, synthetic passwords, synthetic TOTP sec
 | C1-02 | Duplicate registration is atomic and cannot create a second account, trial or welcome-Coins grant. |
 | C1-03 | Exact account-ID compatibility path and opaque subject lookup both resolve only the intended active account. |
 | C1-04 | Unique identity lookup succeeds; unknown or ambiguous lookup fails with the existing generic public login error. |
-| C1-05 | Password success, invalid password, lockout, `mustRotate`, revocation and provider outage preserve defined behavior. |
+| C1-05 | Password success, invalid password, lockout, stored `mustRotate` state/consumers, revocation and provider outage preserve defined behavior; the exact current scrypt envelope is import-compatible or has an approved JIT re-hash / reset path. |
 | C1-06 | TOTP success, invalid code, challenge expiry, lockout, revocation and provider outage do not create unauthorized sessions. |
 | C1-07 | Session response contains opaque `userRef`; no raw email/display name or credential material appears in control-plane response/log fixtures. |
 | C1-08 | Authorized Admin search/display works through the separate identity-directory channel; unauthorized search fails closed. |
