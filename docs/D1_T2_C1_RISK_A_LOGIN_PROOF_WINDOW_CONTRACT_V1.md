@@ -116,3 +116,11 @@ A bounded default decision package is available in `docs/D1_T2_C1_RISK_A_OWNER_D
 The proposal also defines a no-persistence fallback: accounts without an already-approved non-secret length marker remain unclassified and follow the reset-safe path. The synthetic helper and its 12/12 twice evidence remain unchanged and unconnected.
 
 C1-A04 remains OPEN until the project owner accepts or amends the grouped defaults. No production login instrumentation or persistence is authorized.
+
+## 10. Exact child-branch combined regression — 2026-11-08
+
+The Risk A helper and its 12-case test were fetched from this child branch and rerun under the fixed Node v22.23.1 runtime in the isolated non-production sandbox. The Risk A cases passed 12/12; the helper and test both passed `node --check`.
+
+The combined focused regression also passed 86/86 twice, including the 62-case T1/C1/C2 source slice, these 12 Risk A cases, five secure idempotency helper cases, and seven Wallet-first delivery service cases. TAP SHA-256 values and the 15/15 syntax-check inventory are recorded in `docs/D1_T2_C2_WALLET_FIRST_DIGEST_COMPATIBILITY_AUDIT_V1.md`.
+
+This is synthetic source evidence only. The owner decisions in Section 9 remain proposals; no persistence or production login hook is authorized. C1-A04 remains OPEN.
