@@ -1133,7 +1133,7 @@ test("subscription control store persists safe edge desired-state notifications"
       nodeRef: "vultr-sgp-a",
       channelRef: "channel-sgp-a-hy2",
       desiredStateRef: "desired_state_channel-sgp-a-hy2_001",
-      generation: "gen_001",
+      generation: "gen_000000000000000000000000",
       reason: "order_delivered",
       status: "pending",
       createdAt: now,
@@ -1150,7 +1150,7 @@ test("subscription control store persists safe edge desired-state notifications"
       nodeRef: "vultr-sgp-a",
       channelRef: "channel-sgp-a-hy2",
       desiredStateRef: "desired_state_channel-sgp-a-hy2_001",
-      generation: "gen_001",
+      generation: "gen_000000000000000000000000",
       reason: "order_delivered",
       status: "acknowledged",
       createdAt: now,
@@ -1179,13 +1179,59 @@ test("subscription control store persists safe edge desired-state notifications"
       nodeRef: "vultr-sgp-a",
       channelRef: "channel-sgp-a-hy2",
       desiredStateRef: "desired_state_channel-sgp-a-hy2_unsafe",
-      generation: "gen_unsafe",
+      generation: "gen_333333333333333333333333",
       reason: "order_delivered",
       status: "pending",
       rawConfig: "users:\n- password: unsafe",
       createdAt: now,
       updatedAt: now
     }), /unsafe field is not allowed/);
+  });
+});
+
+test("subscription control store enforces the two observed desired-state generation formats", () => {
+  withStore((store) => {
+    const now = "2026-06-11T00:00:00.000Z";
+    const valid = [
+      "gen_aaaaaaaaaaaaaaaaaaaaaaaa",
+      "gen_scoped_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    ];
+    valid.forEach((generation, index) => {
+      const saved = store.recordEdgeDesiredStateNotification({
+        id: `edge_state_notify_generation_valid_${index}`,
+        nodeRef: "vultr-sgp-a",
+        channelRef: "channel-sgp-a-hy2",
+        desiredStateRef: `desired_state_generation_${index}`,
+        generation,
+        reason: "order_delivered",
+        status: "pending",
+        createdAt: now,
+        updatedAt: now
+      });
+      assert.equal(saved.generation, generation);
+    });
+
+    const invalid = [
+      "gen_001",
+      "gen_current",
+      "gen_scoped_client_supplied",
+      `gen_${"A".repeat(24)}`,
+      `gen_${"a".repeat(23)}`,
+      `gen_scoped_${"b".repeat(31)}`
+    ];
+    invalid.forEach((generation, index) => {
+      assert.throws(() => store.recordEdgeDesiredStateNotification({
+        id: `edge_state_notify_generation_invalid_${index}`,
+        nodeRef: "vultr-sgp-a",
+        channelRef: "channel-sgp-a-hy2",
+        desiredStateRef: `desired_state_generation_invalid_${index}`,
+        generation,
+        reason: "order_delivered",
+        status: "pending",
+        createdAt: now,
+        updatedAt: now
+      }), { code: "validation_error" });
+    });
   });
 });
 
@@ -1198,7 +1244,7 @@ test("subscription control store marks matching desired-state notification appli
       nodeRef: "vultr-sgp-a",
       channelRef: "channel-sgp-a-hy2",
       desiredStateRef: "desired_state_channel-sgp-a-hy2_current",
-      generation: "gen_current",
+      generation: "gen_111111111111111111111111",
       reason: "order_delivered",
       status: "pending",
       createdAt: now,
@@ -1209,7 +1255,7 @@ test("subscription control store marks matching desired-state notification appli
       nodeRef: "vultr-sgp-a",
       channelRef: "channel-sgp-a-hy2",
       desiredStateRef: "desired_state_channel-sgp-a-hy2_old",
-      generation: "gen_old",
+      generation: "gen_222222222222222222222222",
       reason: "order_delivered",
       status: "pending",
       createdAt: now,
@@ -1245,7 +1291,7 @@ test("subscription control store marks matching desired-state notification appli
       nodeRef: "vultr-sgp-a",
       channelRef: "channel-sgp-a-hy2",
       desiredStateRef: "desired_state_channel-sgp-a-hy2_current",
-      generation: "gen_current",
+      generation: "gen_111111111111111111111111",
       reason: "order_delivered",
       status: "pending",
       createdAt: now,
@@ -1259,7 +1305,7 @@ test("subscription control store marks matching desired-state notification appli
       nodeRef: "vultr-sgp-a",
       channelRef: "channel-sgp-a-hy2",
       desiredStateRef: "desired_state_channel-sgp-a-hy2_current",
-      generation: "gen_current",
+      generation: "gen_111111111111111111111111",
       reason: "order_delivered",
       status: "pending",
       lifecycleRevisionSafe: false,
@@ -1961,6 +2007,38 @@ test("subscription control store persists portal passkey credentials without pub
 
     const serialized = JSON.stringify(store.getAccountControlSummary("acct_passkey_1"));
     assert.doesNotMatch(serialized, /webauthn-credential-id|credhash_abcdef|publicKeyJwk|safe-x|safe-y|credential/i);
+  });
+});
+
+test("subscription control store rejects invalid second-factor allowlists at the writer boundary", () => {
+  withStore((store) => {
+    const now = "2026-06-03T00:00:00.000Z";
+    store.createAccount({
+      id: "acct_factor_allowlist",
+      ownerRef: "owner_safe_ref",
+      status: "active",
+      createdAt: now,
+      updatedAt: now
+    });
+    const invalid = [
+      [],
+      ["sms"],
+      ["totp", "totp"],
+      ["totp", "passkey", "totp"],
+      [null]
+    ];
+    invalid.forEach((allowedFactors, index) => {
+      assert.throws(() => store.createPortalSecondFactorChallenge({
+        id: `mfa_challenge_invalid_${index}`,
+        accountId: "acct_factor_allowlist",
+        challengeHash: "challengehash_abcdef",
+        allowedFactors,
+        status: "active",
+        expiresAt: "2026-06-03T00:05:00.000Z",
+        createdAt: now,
+        updatedAt: now
+      }), { code: "validation_error" });
+    });
   });
 });
 
