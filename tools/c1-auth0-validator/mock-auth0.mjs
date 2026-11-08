@@ -141,6 +141,14 @@ export function createMockTenant({ tenantRef, issuerRef, nowFn = () => Date.now(
       const report = [];
       for (const account of accounts) {
         const classification = classifyAttestationRecord(account.attestation ?? undefined);
+        if (classification.eligibility === "r1_decision_hold") {
+          report.push({
+            accountRef: account.accountRef,
+            action: "held_r1_decision",
+            advisories: [...classification.advisories]
+          });
+          continue;
+        }
         const plan = planImport({
           envelope: account.envelope,
           attestedUtf8Bytes: attestedBytesFromRecord(account.attestation)
