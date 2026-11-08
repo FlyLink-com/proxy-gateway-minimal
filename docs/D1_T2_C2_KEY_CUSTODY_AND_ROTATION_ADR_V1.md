@@ -202,3 +202,11 @@ The audited contract uses two distinct domain-separated SHA-256 v1 digests over 
 A grouped key-custody recommendation is available in `docs/D1_T2_C2_KEY_CUSTODY_OWNER_DECISION_PROPOSAL_V1.md`. It consolidates the crypto Worker/private Service Binding boundary, per-Worker secret binding default, independent encrypted escrow, family separation, active-write/retained-read rotation, restore acceptance, and the already-approved T1 decision not to provision first-party Portal/Admin TOTP AES keys while Auth0 owns target MFA.
 
 Both documents are recommendations/source audits only. C2 remains OPEN until the owner accepts the grouped custody/escrow/recovery contract and the synthetic restore rehearsal passes. No real key, secret, binding, or Worker was created.
+
+## 15. Synthetic escrow contract and fixed-runtime validation — 2026-11-08
+
+Added the pure synthetic key-escrow contract `server/services/platform/d1-t2-key-escrow-contract.mjs` and 10-case test `server/tests/d1-t2-key-escrow-contract.test.mjs`. It proves AES-256-GCM wrap/restore with family/key-ID/algorithm AAD, metadata-only inventory projection, wrong-key/tamper rejection, and key-family material separation.
+
+Under Node v22.23.1 in an isolated non-production sandbox, the suite passed 10/10 twice; `node --check` 2/2 PASS. TAP hashes: `86bd5b1c9c8efd655b017161be263ef1a5f24e978e131d38b39063ad0e611a56` and `7b071c69b87e61231e186143371886a2f16af5de41a576d67524afe405d67729`.
+
+This is not a real KMS/HSM, Cloudflare secret, escrow backup, or production restore. No real key or binding was created. C2 remains OPEN.
