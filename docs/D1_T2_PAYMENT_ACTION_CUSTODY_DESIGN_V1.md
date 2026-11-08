@@ -171,3 +171,12 @@ The current synthetic contract module and test file were fetched from this branc
 The test scope covers encrypted envelope confidentiality, exact account/order/action binding, AES-GCM authenticated-data tamper detection, key lookup failure, expiry/order-state denial, terminal ciphertext removal, idempotent/conflicting terminal transitions, caller-selected tombstone purge boundaries, URL safety and payload/key bounds.
 
 This validates the pure synthetic contract only. It does not validate a Durable Object adapter, Worker authorization, provider callback integration, D1 pointer transaction, real key custody, outage/recovery, or production route behavior. C4 remains OPEN.
+
+## 12. Repeated fixed-runtime regression — 2026-11-08
+
+The same 14-case synthetic suite was repeated under Node v22.23.1:
+
+- 14/14 PASS, 0 failed, 0 skipped.
+- Run 2 TAP SHA-256: `e114c94e4dcbc82447acac5bbf66d9b30505450c1c9954f4be3165a58ed912e9`.
+
+Together with Section 11, this is two consecutive 14/14 passes. The two JavaScript files also passed `node --check` on the first run.
