@@ -522,6 +522,51 @@ function issuanceMetadataJson(value) {
     return JSON.stringify(snapshot);
   }
 
+  const dataPackFields = [
+    "version",
+    "kind",
+    "commandRef",
+    "orderRef",
+    "offerVersionRef",
+    "quotaBytes",
+    "nodeId",
+    "commercialNeverExpires",
+    "technicalValidUntil"
+  ];
+  if (
+    fields.length === dataPackFields.length
+    && dataPackFields.every((field) => Object.prototype.hasOwnProperty.call(snapshot, field))
+  ) {
+    const commandRef = safeControlRef(snapshot.commandRef, "commandRef");
+    const orderRef = safeControlRef(snapshot.orderRef, "orderRef");
+    const offerVersionRef = safeControlRef(snapshot.offerVersionRef, "offerVersionRef");
+    const nodeId = safeControlRef(snapshot.nodeId, "nodeId");
+    const quotaBytes = integer(snapshot.quotaBytes, "quotaBytes", { min: 1 });
+    const expectedQuotaBytes = lifetimeDataPackQuotaBytesFor({ plan: offerVersionRef });
+    const technicalValidUntil = isoText(snapshot.technicalValidUntil, "technicalValidUntil");
+    if (
+      snapshot.version !== 1
+      || snapshot.kind !== "data_pack"
+      || snapshot.commercialNeverExpires !== true
+      || expectedQuotaBytes === null
+      || quotaBytes !== expectedQuotaBytes
+      || technicalValidUntil !== DATA_PACK_TECHNICAL_VALID_UNTIL
+    ) {
+      throw platformError("validation_error", "issuance metadata does not match the data-pack contract");
+    }
+    return JSON.stringify({
+      version: 1,
+      kind: "data_pack",
+      commandRef,
+      orderRef,
+      offerVersionRef,
+      quotaBytes,
+      nodeId,
+      commercialNeverExpires: true,
+      technicalValidUntil
+    });
+  }
+
   const chainFields = [
     "commercialModel",
     "resourceModel",
