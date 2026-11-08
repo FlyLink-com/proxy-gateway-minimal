@@ -352,6 +352,20 @@ No provider tenant is to be created by this document. If Auth0 is approved for a
 
 The proof must record exact provider plan, tenant region, SDK versions, synthetic fixture hashes, API request/response status, and import/readback results. Do not use real users or production credentials.
 
+### 6.1 Local offline converter rehearsal (Risk B source-only)
+
+The repository now contains a synthetic-only converter rehearsal:
+
+- server/services/platform/portal-identity-import-rehearsal.mjs strictly parses the current scrypt envelope, verifies it with Node crypto.scryptSync, and builds the documented Auth0 custom_password_hash shape with explicit Base64 hash/salt and UTF-8 password encoding.
+- The fixture hash is an independently generated Python hashlib.scrypt vector; the Node verifier must reproduce the same 64-byte result.
+- Auth0 TOTP uses the exact mfa_factors[].totp.secret path. Only raw Base32 or legacy enc:-prefixed raw Base32 is accepted in this rehearsal. A v2: AES-GCM envelope fails closed with totp_secret_requires_c2_key_custody; this code does not load or accept a real key.
+- The record builder accepts only reserved .test email addresses and synthetic- user/account references. It creates the Auth0 record in memory only; the CLI accepts no arguments, writes no import file, makes no network call, and emits only a redacted receipt.
+- scripts/platform-identity-import-rehearsal.mjs runs the local fixture. npm run platform:identity-import:rehearsal prints the redacted receipt; npm run test:portal-identity-import runs the focused tests.
+- The converter bounds imported salt length to 16–64 bytes; the current runtime default is 16 bytes. Anything outside that offline contract is rejected for separate review.
+
+This proves only local parsing, byte-preserving conversion, synthetic password verification, TOTP schema/validator compatibility, UTF-8 72-byte routing, and redacted receipt behavior. It does not prove Auth0 API acceptance, hosted first-login rehash, provider lockout/email OTP, account import reconciliation, token projection, Android/browser parity, or real-key TOTP transfer. Those remain NOT RUN. The offline PASS does not change C1 or T2 from BLOCKED.
+
+
 ## 7. Owner decisions still required
 
 1. Approve or reject Auth0 Essentials as the preferred managed candidate after the synthetic proof; this is not approved by the present assessment.
@@ -372,7 +386,7 @@ The proof must record exact provider plan, tenant region, SDK versions, syntheti
 - **Conditional cost challenger:** Clerk Pro, only if custom Node scrypt raw-salt import is confirmed.
 - **Not preferred under current TOTP-preservation requirement:** Firebase Identity Platform and Amazon Cognito, because the documented bulk/import path does not import the existing TOTP secret.
 - **Vendor selected:** NONE.
-- **C1:** BLOCKED — provider not owner-approved; synthetic provider proof not run.
+- **C1:** BLOCKED — local synthetic converter rehearsal is implemented; Auth0 hosted import proof, provider behavior checks and owner approval remain outstanding.
 - **C2:** OPEN — TOTP key custody, key IDs, separation and legacy compatibility remain unresolved.
 - **C3:** OPEN — account metadata/PII and independent review remain outstanding.
 - **T2:** BLOCKED.
