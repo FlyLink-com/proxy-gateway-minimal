@@ -323,6 +323,67 @@ function listenerReadyFlag(input = {}) {
   ) ? 1 : 0;
 }
 
+function issuanceMetadataJson(value) {
+  const metadata = value == null ? {} : value;
+  if (
+    !metadata
+    || typeof metadata !== "object"
+    || Array.isArray(metadata)
+    || (Object.getPrototypeOf(metadata) !== Object.prototype && Object.getPrototypeOf(metadata) !== null)
+  ) {
+    throw platformError("validation_error", "issuance metadata must be a plain object");
+  }
+
+  const keys = Reflect.ownKeys(metadata);
+  if (keys.some((key) => typeof key !== "string")) {
+    throw platformError("validation_error", "issuance metadata keys must be strings");
+  }
+  const snapshot = {};
+  for (const key of keys) {
+    const descriptor = Object.getOwnPropertyDescriptor(metadata, key);
+    if (!descriptor || !("value" in descriptor)) {
+      throw platformError("validation_error", "issuance metadata must contain data properties only");
+    }
+    snapshot[key] = descriptor.value;
+  }
+
+  const fields = Object.keys(snapshot);
+  if (fields.length === 0) return "{}";
+
+  if (fields.length === 1 && fields[0] === "cli") {
+    if (snapshot.cli !== "platform:issue-subscription") {
+      throw platformError("validation_error", "issuance metadata CLI source is not allowed");
+    }
+    return JSON.stringify(snapshot);
+  }
+
+  const chainFields = [
+    "commercialModel",
+    "resourceModel",
+    "resourceModelVersion",
+    "initialTransitionRef",
+    "lastTransitionRef"
+  ];
+  if (
+    fields.length !== chainFields.length
+    || chainFields.some((field) => !Object.prototype.hasOwnProperty.call(snapshot, field))
+    || snapshot.commercialModel !== WALLET_FIRST_RESOURCE_EFFECT_COMMERCIAL_MODEL
+    || snapshot.resourceModel !== WALLET_FIRST_RESOURCE_CHAIN_MODEL
+    || snapshot.resourceModelVersion !== WALLET_FIRST_RESOURCE_EFFECT_VERSION
+  ) {
+    throw platformError("validation_error", "issuance metadata does not match a supported versioned contract");
+  }
+
+  const normalized = {
+    commercialModel: snapshot.commercialModel,
+    resourceModel: snapshot.resourceModel,
+    resourceModelVersion: snapshot.resourceModelVersion,
+    initialTransitionRef: safeControlRef(snapshot.initialTransitionRef, "initialTransitionRef"),
+    lastTransitionRef: safeControlRef(snapshot.lastTransitionRef, "lastTransitionRef")
+  };
+  return JSON.stringify(normalized);
+}
+
 function jsonObject(value, field) {
   if (value == null) {
     return "{}";
@@ -1558,7 +1619,7 @@ export function createSqliteSubscriptionControlStore({
       status: requiredText(input.status || "active", "status"),
       createdAt: isoText(input.createdAt, "createdAt"),
       updatedAt: isoText(input.updatedAt, "updatedAt"),
-      metadataJson: jsonObject(input.metadata, "metadata")
+      metadataJson: issuanceMetadataJson(input.metadata)
     };
     sqliteRun(db.prepare(`
       insert into platform_accounts (
@@ -3809,7 +3870,7 @@ export function createSqliteSubscriptionControlStore({
       nodeId: prepared.nodeId,
       requestedByRef: WALLET_FIRST_RESOURCE_EFFECT_ACTOR_REF,
       now,
-      metadataJson: jsonObject(requestMetadata, "walletFirstResourceChainMetadata")
+      metadataJson: issuanceMetadataJson(requestMetadata)
     });
     sqliteRun(db.prepare(`
       insert into platform_issued_subscription_links (
@@ -3940,8 +4001,8 @@ export function createSqliteSubscriptionControlStore({
       accountId: prepared.accountId,
       entitlementId: current.entitlementId,
       nodeId: prepared.nodeId,
-      metadataJson: jsonObject(nextMetadata, "walletFirstResourceChainMetadata"),
-      previousMetadataJson: jsonObject(previousMetadata, "walletFirstResourceChainMetadata"),
+      metadataJson: issuanceMetadataJson(nextMetadata),
+      previousMetadataJson: issuanceMetadataJson(previousMetadata),
       now
     });
     if (requestUpdate.changes !== 1) {
