@@ -244,7 +244,7 @@ G6 PASS authorizes only consideration of the next separately gated step. It does
 |---|---|---|
 | T2-C1 Identity custody | PII/HMAC proposal exists; identity authority and externalization decision remain open | OPEN |
 | T2-C2 HMAC and legacy compatibility | HMAC domains/vectors drafted; key custody approval and wallet-first digest decision remain open | OPEN |
-| T2-C3 JSON/ref/generation | 26 writer paths mapped; exact allowlists and enforcement remain open | OPEN |
+| T2-C3 JSON/ref/generation | 26 fields reconciled: 7 writer families closed, 16 existing source contracts retained/mapped, 2 Passkey fields DEFER, account metadata BLOCKED pending C1 identity custody; independent review absent | OPEN |
 | T2-C4 Payment custody | DO SQLite proposal exists; owner, key, lifecycle, and outage decisions remain open | OPEN |
 | T2-C5 Retention/G2 residuals | Retention register exists; RET-02–RET-12 and G2 residual dispositions remain open | OPEN |
 | T2-C6 Independent review | Review packet exists; separate reviewer signature absent | OPEN |
