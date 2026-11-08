@@ -59,6 +59,10 @@ The pinned source test suite includes tests for:
 
 These existing tests are source compatibility evidence, not proof of an external identity-provider adapter or a Cloudflare migration.
 
+### 3.2 Existing provider-integration inventory
+
+A targeted repository code search at the source anchor located no application-level OIDC/JWKS identity adapter or integration for Auth0, Clerk, Cognito, Keycloak or `openid-client`. The OIDC/JWKS references found were for GitHub Actions deployment/supply-chain trust, not User Portal or Admin authentication. An archived Admin UI shell note excluded Clerk/external auth for that specific UI-shell phase; it is not a current C1 identity-provider selection or a general prohibition. Therefore the current source does not establish an existing external identity authority.
+
 ## 4. Recommended target architecture (provider-neutral)
 
 ### 4.1 Identity and credential authority
