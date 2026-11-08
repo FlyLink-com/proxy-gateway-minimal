@@ -37,7 +37,7 @@ Blocking conditions:
 Recommended policy if Option A is selected:
 - Preserve existing passwords for the import-compatible range.
 - For a password above 72 UTF-8 bytes, require a targeted, user-notified reset before that credential is imported or used for its first Auth0 login. Never truncate. If the account cannot be classified from an already-approved non-secret length marker, classify only when the user submits the password to the existing verifier and measure `Buffer.byteLength(password, "utf8")` in memory; do not log or persist the password. Accounts still unclassified at cutover must remain on the legacy authority or enter a separately approved reset cohort—never guess from the hash.
-- Import synthetic TOTP factors in an isolated proof first. Real factor transfer remains separately authorized and must not write plaintext seeds to disk, logs, D1, Worker request bodies or evidence.
+- Do not import legacy TOTP factors. The isolated provider proof must exercise a newly generated synthetic Auth0 MFA enrollment and its lifecycle only; no legacy seed is read, decrypted, transferred or included in an import record.
 - Preserve the current password normalization contract: the existing Node credential service applies `String(password).trim()` before Scrypt. Prove that the Auth0 login path applies equivalent normalization or require a safe reset for any incompatible case; do not silently change effective password semantics.
 - The current Node Scrypt envelope (`N=32768`, `r=8`, `p=1`, `keylen=64`, 16-byte salt) maps to Auth0 `custom_password_hash` parameters (`cost=32768`, `blockSize=8`, `parallelization=1`, `keylen=64`). Convert decoded salt/hash bytes to supported import encodings without ever materializing plaintext passwords.
 - Use separate Portal and Admin tenants, separate clients, issuer references, factor policies and administrative credentials.
@@ -98,7 +98,7 @@ The owner direction for C1-D01/C1-D02 and the Portal/Admin isolation principle i
 
 C1 may be closed only after:
 - Provider and Portal/Admin boundary are selected and approved.
-- Synthetic hosted proof covers import, first login, password normalization, over-limit policy, email verification, TOTP, lockout, session projection and Admin directory.
+- Synthetic hosted proof covers Scrypt password import, first login, password normalization, over-limit policy, email verification, new Auth0 MFA enrollment/verification, lockout, recovery, revocation, session projection and Admin directory.
 - Provider adapter and gateway are implemented and tested against the selected provider.
 - Account binding is unique, opaque, idempotent and fail-closed for ambiguous mappings.
 - No raw PII or credential capability reaches the business Worker, D1, logs, traces, fixtures or evidence.
@@ -112,7 +112,7 @@ No external identity tenant, real account import, production password, TOTP seed
 
 The C1 source-slice review on PR #842 is APPROVED by GitHub account `gccltdco-cmd`, Review ID `5817529933`, bound to exact HEAD `bc3f8c9a713de05715f42f733b8fa72ba53d4477`. The reviewer reran four related repository test files under Node v22.23.1: 48/48 PASS. This is source-level review evidence only; the approval does not close C1.
 
-The owner decisions C1-D01/C1-D02 and the Portal/Admin isolation principle C1-D03 are now APPROVED as recorded above. C1-D04 through C1-D08 remain open, and the module still does not implement OIDC/JWKS signature verification or a real provider adapter. Provider selection does not authorize tenant creation. Password cohort identification, trim normalization and the exact first-login 72-byte behavior remain mandatory proof items.
+The owner decisions C1-D01 through C1-D04 are approved as recorded above; C1-D04 is a design decision with enrollment/lifecycle proof still open. C1-D05 through C1-D08 remain open. The module still does not implement OIDC/JWKS signature verification or a real provider adapter. Provider selection does not authorize tenant creation. Password cohort identification, trim normalization and the exact first-login 72-byte behavior remain mandatory proof items.
 
 The full repository suite was separately executed and compared against the Draft baseline at Node v22.23.1; this is comparative zero-new-regression evidence, not a green suite. No hosted CI PASS is claimed. C1 remains OPEN.
 
