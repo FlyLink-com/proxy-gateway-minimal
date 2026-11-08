@@ -120,7 +120,7 @@ The 26-column inventory is complete as a source-path map, but this follow-up sep
 - Audit metadata has at least three independent source shapes: issuance compensation (`{compensation:...}`), entitlement traffic-limit change (`requestRef, reasonCode, previousTrafficLimitBytes, trafficLimitBytes`), and coin-commerce fulfillment's fixed 17-key evidence object. Additional actions must be enumerated from every caller before the allowlist is declared complete.
 - The coin-commerce initial-confirmation direct writer remains inside the same SQLite transaction as its confirmation row. Do not consolidate it by moving the audit write outside that transaction.
 - Portal event source names recorded in §2.3 form a closed candidate union, but every event's exact payload keys still require one-by-one source extraction and positive/negative fixtures.
-- The second-factor persistence writer accepts values that the current reader may later ignore; reader filtering is not a write-time security boundary.
+- The second-factor persistence writer previously accepted values that the current reader may later ignore. Draft commit `c39b3987b557274fce2b9c4aabbf11367454245f` now enforces a non-empty, unique `totp` / `passkey` allowlist at the persistence boundary; integration assertions were added in `591629b0b0aaeab8679d2f79b793bef67137b19d`. Focused helper tests passed 4/4, but the full store test file has not yet been run.
 - Commerce notice normalization is an input-level business validator, not a guarantee that already-normalized or internal callers cannot supply unsafe notice strings. Validate again at the final persistence boundary.
 
 **Current result:** write-path discovery is complete for the 26 listed columns, but the exact writer contracts are not yet all closed. No source code was changed in this follow-up; this is a source-derived contract clarification only.
@@ -200,7 +200,7 @@ Two production builder formats were found:
 - gen_ followed by 24 lowercase hex characters;
 - gen_scoped_ followed by 32 lowercase hex characters.
 
-The recordEdgeDesiredStateNotification persistence writer currently validates only required text. Proposed target grammar is the union of those two forms. Synthetic tests cover both forms, but production values were not read; keep the field CONDITIONAL until the source writer enforces the grammar and the approved migration evidence proves compatibility.
+The `recordEdgeDesiredStateNotification` writer previously validated only required text. Draft commit `2a6865bdafcb27f6a741f84171220d27eca77576` now enforces the exact union `gen_[0-9a-f]{24}` / `gen_scoped_[0-9a-f]{32}` without trimming or coercing non-string input. Integration assertions were added in `591629b0b0aaeab8679d2f79b793bef67137b19d`. Focused validator tests passed 4/4. Production stored values were not read; keep the field CONDITIONAL until a separately approved inventory/fixture proves historical values conform or are quarantined.
 
 ## 4. Payment action custody decision
 
