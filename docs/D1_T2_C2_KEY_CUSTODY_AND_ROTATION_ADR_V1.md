@@ -236,3 +236,9 @@ The source proves a 10-minute claim lease, not a row-retention TTL. Delivered-ro
 The first-party Portal setup idempotency fallback has been hardened on the child Draft branch: native `crypto.randomUUID()` is preferred; `crypto.getRandomValues()` constructs the UUIDv4 fallback; absence/failure of secure randomness fails closed. The Wallet-first service boundary now requires canonical lowercase UUIDv4. The legacy non-Wallet-first path and existing SHA-256 v1 digest formula are unchanged.
 
 The five-case isolated helper harness passed under Node v22.16.0. The fixed Node v22.23.1 repository regression remains pending; this does not close C2-A04 or formal C2 acceptance.
+
+## 13. Fixed-runtime validation of Wallet-first hardening — 2026-11-08
+
+The current child Draft branch's Wallet-first service and secure idempotency helper were exercised under Node v22.23.1 in an isolated non-production Vercel sandbox. The combined focused regression passed 86/86 twice, including seven Wallet-first service cases and five secure idempotency helper cases; all 15 relevant JS service/test/helper files passed `node --check`. See `docs/D1_T2_C2_WALLET_FIRST_DIGEST_COMPATIBILITY_AUDIT_V1.md` for TAP SHA-256 values and scope.
+
+The route-level HTTP integration test and Admin TSX integration test remain unrun. No Hosted CI or production behavior change is claimed.
