@@ -4,7 +4,7 @@
 > **Repository:** `FlyLink-com/proxy-gateway-minimal`
 > **Draft branch:** `docs/d1-target-schema-g6-rehearsal-plan-20261107`
 > **Source anchor:** `master@be261abc60f28bb2733764fa5364ab44b3e76844`
-> **Draft evidence anchor:** `86a7637a9f60a78f37574db47afb9e9b102933e2`
+> **Pre-C1 Draft baseline:** `86a7637a9f60a78f37574db47afb9e9b102933e2`
 > **Production authority:** BWH remains the only production writer until a separately approved cutover.
 > **Scope:** Repository design and synthetic/local work only. No production identity, credential, secret, customer-row, BWH or remote Cloudflare access.
 
