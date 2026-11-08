@@ -1189,6 +1189,66 @@ test("subscription control store persists safe edge desired-state notifications"
   });
 });
 
+test("subscription control store enforces the exact edge-node metadata contract", () => {
+  withStore((store) => {
+    const now = "2026-11-07T00:00:00.000Z";
+    const base = {
+      nodeRef: "edge-node-metadata-contract",
+      providerRef: "provider-synthetic",
+      regionRef: "region-synthetic",
+      roleRef: "data-plane",
+      channelRefs: ["channel-synthetic"],
+      imageManifestRef: "image-manifest-synthetic",
+      releaseRef: "release-synthetic",
+      firstBootPacketRef: "first_boot_synthetic",
+      registeredAt: now,
+      updatedAt: now
+    };
+    const metadata = {
+      source: "node-image-first-boot-packet",
+      receiptGateRequired: true,
+      imageSafeConfirmed: true,
+      artifactHashRecorded: true,
+      wireguardPlanRef: "wg-plan-synthetic",
+      wireguardPublicKeyFingerprint: `sha256:${"a".repeat(64)}`,
+      agentAuthFingerprint: `sha256:${"b".repeat(64)}`
+    };
+    assert.deepEqual(store.upsertEdgeRegisteredNode({
+      ...base, metadata
+    }).metadata, metadata);
+
+    const validWithoutOptionalFingerprints = {
+      source: "node-image-first-boot-packet",
+      receiptGateRequired: true,
+      imageSafeConfirmed: false,
+      artifactHashRecorded: false,
+      wireguardPlanRef: "wg-plan-synthetic"
+    };
+    assert.deepEqual(store.upsertEdgeRegisteredNode({
+      ...base, nodeRef: "edge-node-metadata-contract-minimal",
+      metadata: validWithoutOptionalFingerprints
+    }).metadata, validWithoutOptionalFingerprints);
+
+    const invalid = [
+      { ...metadata, extra: "not-allowed" },
+      { ...metadata, source: "test" },
+      { ...metadata, receiptGateRequired: false },
+      { ...metadata, imageSafeConfirmed: "true" },
+      { ...metadata, wireguardPlanRef: "wg-secret-plan" },
+      { ...metadata, wireguardPlanRef: "203.0.113.10" },
+      { ...metadata, wireguardPublicKeyFingerprint: "not-a-fingerprint" },
+      { ...metadata, agentAuthFingerprint: `sha256:${"A".repeat(64)}` }
+    ];
+    invalid.forEach((candidate, index) => {
+      assert.throws(() => store.upsertEdgeRegisteredNode({
+        ...base,
+        nodeRef: `edge-node-metadata-invalid-${index}`,
+        metadata: candidate
+      }), { code: "validation_error" });
+    });
+  });
+});
+
 test("subscription control store enforces the closed issuance metadata union", () => {
   withStore((store) => {
     const now = "2026-11-07T00:00:00.000Z";
