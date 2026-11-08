@@ -17,8 +17,8 @@ The full repository suite is not all green: the baseline and candidate both reta
 
 | Gate | State | Why it remains open |
 |---|---|---|
-| T2-C1 Identity/auth custody | OPEN | Auth0 Essentials + Bulk User Import selected and >72-byte targeted-reset/Portal-Admin isolation directions approved. Still missing exact Scrypt import and trim-normalization proof, safe over-limit cohort identification, 72-byte rejection-before-rehash proof, real OIDC/JWKS gateway/provider adapter, TOTP/email/lockout compatibility and isolated hosted proof. |
-| T2-C2 HMAC/key custody | OPEN | No approved Cloudflare secret custody boundary, named custodians, independent escrow/restore; two Wallet-first historical SHA-256 fields unresolved; TOTP custody choice and key-retirement windows pending. |
+| T2-C1 Identity/auth custody | OPEN | Auth0 Essentials + Bulk User Import selected and >72-byte targeted-reset/Portal-Admin isolation directions approved. Still missing exact Scrypt import and trim-normalization proof, safe over-limit cohort identification, 72-byte rejection-before-rehash proof, real OIDC/JWKS gateway/provider adapter, T1 Auth0 MFA re-enrollment, email/lockout compatibility and isolated hosted proof. |
+| T2-C2 HMAC/key custody | OPEN | No approved Cloudflare secret custody boundary, named custodians, independent escrow/restore; two Wallet-first historical SHA-256 fields unresolved; T1 resolves target TOTP ownership to Auth0-managed MFA with no legacy-secret transfer; HMAC custody, Wallet-first digests and key-retirement windows remain pending. |
 | T2-C3 JSON/ref/generation | OPEN | 26-column inventory is reconciled, but only 7 writer families are recorded closed; 16 existing contracts are mapped, 2 Passkey fields DEFER and account metadata remains BLOCKED pending C1. Full writer-path independent review and historical compatibility evidence remain outstanding. |
 | T2-C4 Payment capability custody | OPEN | DO SQLite is only a proposal; payment/security owners, key boundary, access control, expiry/purge/tombstone and outage/restore proof remain outstanding. |
 | T2-C5 Retention/G2 residuals | OPEN | RET-02–RET-12 lack approved owner decisions; G2 limitations need G6 probes or explicit named risk acceptance. |
@@ -38,9 +38,9 @@ Therefore:
 
 ## 4. Required sequence before reconsidering migration readiness
 
-1. **Record remaining C1 owner decisions:** TOTP import/re-enrollment; email verification; display identity; Coins canary; named Identity/Privacy/Security owners. Provider selection, targeted >72-byte reset policy and Portal/Admin isolation principle were approved on 2026-11-08.
+1. **Record remaining C1 owner decisions:** email verification; display identity; Coins canary; named Identity/Privacy/Security owners. Auth0 selection, targeted >72-byte reset policy, Portal/Admin isolation and T1 re-enrollment-only TOTP policy were approved on 2026-11-08.
 2. **Prove the selected Auth0 path before any tenant creation:** exact Node Scrypt import vector and byte encoding; current `trim()` normalization; imported-user first-login rehash; rejection of 73+ UTF-8-byte passwords before bcrypt truncation; safe classification of over-limit accounts without plaintext; two-tenant Portal/Admin isolation plus non-production tenant allocation; email/TOTP/lockout/revocation; real OIDC/JWKS gateway and provider adapter. The password hash alone cannot identify over-limit users. If the Essentials login path cannot fail closed for 73+ byte passwords, stop and return with a concrete alternative; do not weaken the contract.
-3. **Resolve C2 custody and compatibility:** per-Worker secret vs Secrets Store; named custodians; encrypted independent escrow/restore; Wallet-first `idempotency_key_hash` and `session_binding_hash`; TOTP key ownership; retention/replay windows.
+3. **Resolve C2 custody and compatibility:** per-Worker secret vs Secrets Store; named custodians; encrypted independent escrow/restore; Wallet-first `idempotency_key_hash` and `session_binding_hash`; retention/replay windows. T1 resolves target TOTP to Auth0-managed MFA; no legacy secret transfer or first-party target TOTP key provisioning.
 4. **Complete remaining C2 tests:** run the separate 14-case PII vector file as one suite in Node v22.23.1 and attach exact output/hash.
 5. **Complete C3:** verify all 26 JSON writers at persistence boundaries; resolve account metadata and historical conformance; retain Passkey as DEFER unless separately approved.
 6. **Complete C4:** approve payment-action capability custody, owner, key boundary, expiry, purge, tombstone, outage and restore; prove with synthetic tests.
@@ -81,3 +81,9 @@ Critical unresolved execution issue: the existing Scrypt hash does not reveal th
 Additional compatibility blockers include current `String(password).trim()` normalization, exact Scrypt import parameter/encoding proof, and provider-side rejection of over-limit input before bcrypt rehash. The Auth0 official 2026 Flexible Password Policy release notes must be reconciled with the older support article documenting the 72-byte bcrypt behavior; a non-production test of imported-user login is mandatory.
 
 The three-tenant Essentials entitlement also needs a concrete allocation proving that two isolated production tenants and the required non-production validation can coexist.
+
+
+## Owner decision update — T1 (2026-11-08)
+
+T1 is now the authoritative TOTP migration policy: Auth0-managed MFA owns target factors; Portal enrollment is optional and Admin enrollment mandatory. Existing BWH enc: and v2: values are invalidated at cutover; no legacy secret is imported, decrypted, transferred or re-encrypted. This resolves the target TOTP ownership decision but does not close C1/C2. Synthetic enrollment, verification, lockout, recovery, revocation and outage proof remains open. T2 remains BLOCKED.
+
