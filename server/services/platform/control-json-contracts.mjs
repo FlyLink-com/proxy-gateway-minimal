@@ -138,6 +138,18 @@ export function projectAccountMetadataForD1(value) {
   ]);
   if (keys.some((key) => !known.has(key))) throw contractError();
 
+  if (
+    Object.hasOwn(metadata, "source")
+    && (typeof metadata.source !== "string" || !/^[a-z][a-z0-9_-]{1,63}$/.test(metadata.source))
+  ) throw contractError();
+  if (
+    Object.hasOwn(metadata, "channel")
+    && (typeof metadata.channel !== "string" || !/^[a-z][a-z0-9_-]{1,63}$/.test(metadata.channel))
+  ) throw contractError();
+  if (Object.hasOwn(metadata, "synthetic") && typeof metadata.synthetic !== "boolean") {
+    throw contractError();
+  }
+
   const externalizedFields = keys
     .filter((key) => ACCOUNT_METADATA_EXTERNALIZED_FIELDS.has(key))
     .sort();
