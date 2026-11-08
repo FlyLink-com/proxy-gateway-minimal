@@ -499,3 +499,14 @@ Fixed Node v22.23.1 evidence:
 - JavaScript syntax checks 9/9 PASS; source inventory validator PASS for 70 tables / 820 columns / 126 foreign-key edges / 88 indexes / 91 triggers / 19 source migrations.
 
 This is source-only and synthetic offline evidence. C3 remains OPEN for Auth0 identity relation, C2 HMAC-backed replacement, and the complete 26-field JSON writer/transform review. T3/G6 target D1 apply and data loading remain unstarted; BWH remains the production writer.
+
+## 15. 26-field JSON writer/transform review complete — 2026-11-08
+
+The full 26-field inventory has now been mapped to source writer/transform contracts and dynamic tests in `docs/D1_T2_C3_JSON_26_FIELD_WRITER_REVIEW_V1.md`.
+
+- 24 active JSON fields have field-specific writer/transform functions and focused dynamic coverage.
+- Two passkey credential fields remain explicitly DEFERRED under the future-auth gate; they are not part of this D1 import.
+- Five focused suite groups passed twice: 290 tests per pass (580 successful test executions), 0 skipped.
+- The evidence covers account/issuance/audit/edge/Portal JSON, second-factor allowed factors, coin commerce offers/quotes/orders/fulfillment, referral policies/origins, deferred transition snapshots, and Wallet-first deferred checkout snapshots.
+
+This closes the source-only 26-field inventory/writer-path review task. It does not close C3 overall: account identity/display values still require Auth0 externalization, and legacy unkeyed SHA-256 digests still require C2 HMAC replacement or an approved purpose-removal decision. T2 remains OPEN/BLOCKED; no D1 DDL apply or data load is authorized.
