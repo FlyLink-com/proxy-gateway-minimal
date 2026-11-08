@@ -1271,6 +1271,44 @@ test("subscription control store enforces the exact edge-node metadata contract"
   });
 });
 
+test("subscription control store enforces registered portal event JSON at the request writer", () => {
+  withStore((store) => {
+    const now = "2026-11-07T00:00:00.000Z";
+    const base = {
+      id: "pareq_portal_event_contract",
+      portalUserRef: "acct_portal_event_contract",
+      plan: "monthly",
+      clientTarget: "clash",
+      durationDays: 30,
+      quantity: 1,
+      status: "delivered",
+      nextAction: "none",
+      noteProvided: false,
+      priorTrialState: "not_eligible",
+      submittedAt: now,
+      updatedAt: now
+    };
+    const event = { type: "delivery_generation_reissued", occurredAt: now };
+    assert.deepEqual(store.upsertPortalAccessRequest({
+      ...base, event
+    }).event, event);
+
+    const invalid = [
+      { type: "old_link_invalidated", occurredAt: now },
+      { type: "delivery_generation_reissued", occurredAt: now, rawMaterial: "not-allowed" },
+      { type: "subscription_disabled", occurredAt: now, previousStatus: "pending" },
+      { type: "traffic_supply_resumed", occurredAt: now, lifecycleRevisionRef: "https://example.invalid" }
+    ];
+    invalid.forEach((eventValue, index) => {
+      assert.throws(() => store.upsertPortalAccessRequest({
+        ...base,
+        id: `pareq_portal_event_invalid_${index}`,
+        event: eventValue
+      }), { code: "validation_error" });
+    });
+  });
+});
+
 test("subscription control store enforces registered audit metadata unions", () => {
   withStore((store) => {
     const now = "2026-11-07T00:00:00.000Z";
