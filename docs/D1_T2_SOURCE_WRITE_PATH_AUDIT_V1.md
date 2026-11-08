@@ -111,7 +111,7 @@ The 26-column inventory is complete as a source-path map, but this follow-up sep
 | edge-node-metadata/v1 | `edgeRegisteredNodeRecord()` used by upsert and insert-if-absent | Draft now enforces the exact first-boot key set, fixed source and receipt gate, boolean flags, safe WireGuard planRef, and optional lowercase SHA-256 identity fingerprints | CLOSED AT CURRENT STORE WRITERS; non-registration/test fixtures must use the same source contract |
 | portal-access-event/v1 | `upsertPortalAccessRequest()` | `jsonObject()` only for event payload | Closed event discriminated union and exact keys per event; reject unknown event type/key/version |
 | second-factor-list/v1 | `createPortalSecondFactorChallenge()` | `jsonArray()` plus optional boolean check for rememberMe; factors are not enum-checked here | Non-empty unique enum list limited to totp/passkey, or exact wrapper {version:1,allowedFactors,rememberMe}; reject duplicates and unknown keys |
-| commerce-notices/v1 | `insertPublishedOffer()` | Persists normalizedOffer notice arrays as JSON; current normalization checks non-empty unique strings but lacks full item/count bounds and content filtering | Bounded item count and UTF-8 length; reject URLs, markup/script, PII and secret-like text before persistence |
+| commerce-notices/v1 | `normalizeCoinCommerceOffer()` plus final `insertPublishedOffer()` writer | Draft enforces max 8 notices per locale, max 512 UTF-8 bytes/item, single-line plain text, and known URL/markup/email/phone/IP/secret-pattern rejection; final writer re-normalizes before INSERT | CLOSED AT CURRENT OFFER WRITERS for the documented deterministic patterns; independent review must challenge false positives/negatives and any future writer bypass |
 
 ### 2.5 Source-derived writer details and test obligations
 
@@ -121,9 +121,9 @@ The 26-column inventory is complete as a source-path map, but this follow-up sep
 - The coin-commerce initial-confirmation direct writer remains inside the same SQLite transaction as its confirmation row. Do not consolidate it by moving the audit write outside that transaction.
 - Portal event source names recorded in §2.3 form a closed candidate union, but every event's exact payload keys still require one-by-one source extraction and positive/negative fixtures.
 - The second-factor persistence writer previously accepted values that the current reader may later ignore. Draft commit `c39b3987b557274fce2b9c4aabbf11367454245f` now enforces a non-empty, unique `totp` / `passkey` allowlist at the persistence boundary; integration assertions were added in `591629b0b0aaeab8679d2f79b793bef67137b19d`. Focused helper tests passed 4/4, but the full store test file has not yet been run.
-- Commerce notice normalization is an input-level business validator, not a guarantee that already-normalized or internal callers cannot supply unsafe notice strings. Validate again at the final persistence boundary.
+- Commerce notice normalization now enforces the Draft bounds/content filters, and `insertPublishedOffer()` re-normalizes at the final persistence boundary before writing. The filter is deterministic pattern screening, not comprehensive PII detection; reviewer must challenge its coverage and false-positive behavior.
 
-**Current result:** write-path discovery is complete for all 26 listed columns. Draft now closes the issuance metadata union and edge-node metadata allowlist at their current store writers. Account metadata remains BLOCKED by identity/PII custody; audit metadata remains BLOCKED by action-specific unions and a direct SQL writer; portal events remain BLOCKED by per-event unions and direct writers; commerce notices remain BLOCKED by bounds/content filtering. Passkey JSON remains DEFER. The full repository test file and CI have not been run.
+**Current result:** write-path discovery is complete for all 26 listed columns. Draft now closes the issuance metadata union and edge-node metadata allowlist at their current store writers. Account metadata remains BLOCKED by identity/PII custody; audit metadata remains BLOCKED by action-specific unions and a direct SQL writer; portal events remain BLOCKED by per-event unions and direct writers. Commerce notices are now closed at the current offer writers under the documented deterministic bounds/content filters. Passkey JSON remains DEFER. The full repository test file and CI have not been run.
 
 ## 3. Lease, idempotency and generation field audit
 
@@ -255,3 +255,13 @@ T2 is not approved and production migration is not authorized.
 - A source-mirroring pure synthetic harness passed 10/10 issuance cases and 10/10 edge-metadata cases. This is not a run of the repository's Node test files.
 - The complete `server/tests/platform-subscription-control-db.test.mjs` file, the preflight test file, the full repository suite and CI remain NOT RUN.
 - No production historical JSON values were read. The validators are source-contract enforcement on the Draft branch only.
+
+
+### 2.7 Commerce notice boundary implementation evidence — 2026-11-07
+
+- Domain normalizer now limits each locale to 8 unique notices and each notice to 512 UTF-8 bytes, requires trimmed single-line text, and rejects URL/markup, email, phone, IPv4 and common secret-like patterns.
+- `insertPublishedOffer()` re-normalizes the complete offer immediately before INSERT, so an internal caller cannot bypass the normalizer by passing a previously-shaped object.
+- Source commits: domain `e0f568b91e58e74189fe65ace4de5c5623f7ffbe`, final writer `06e5c0dc7a04d3bafb87925982d5d52eefcbc145`, regex escaping correction `60a3a8c200b7caf3bd09c47c19738d1da7fc8228`.
+- Regression tests added: `d8a055ec8b723c5f50a7402f478c466a4b452d70`.
+- Source-mirroring pure synthetic harness: 14/14 PASS. The repository Node test file and full suite remain NOT RUN.
+- The content filter is deterministic pattern screening, not proof of complete PII/secret detection. Independent review must assess false positives, false negatives, and future write paths.
