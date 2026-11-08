@@ -99,6 +99,32 @@ This is a positive narrow-schema source path, but it does not close the general 
 - second-factor JSON: only totp and passkey; versioned wrapper keys must be exactly version, allowedFactors and rememberMe when that wrapper form is used.
 - commerce notices: operator-curated text only; set bounded item/count limits and reject URLs, markup/script, PII and secret-like strings before migration.
 
+## 2.4 Writer-boundary enforcement matrix — 2026-11-07 follow-up
+
+The 26-column inventory is complete as a source-path map, but this follow-up separates the current runtime enforcement from the proposed target contract. The key finding is that most high-risk JSON writers serialize a caller-supplied object after only generic shape checks; an allowlist in a downstream Worker or migration loader would be too late.
+
+| JSON contract family | Current persistence boundary | Current enforcement observed | Required target enforcement |
+|---|---|---|---|
+| account-metadata/v1 | `createAccount()` in `subscription-control-db.mjs` | `assertNoUnsafeFields(input)` checks key names recursively; `jsonObject()` checks object shape only | Exact versioned keys and per-value types/enums; reject raw email/display refs, display name and low-entropy unkeyed digests |
+| issuance-metadata/v1 | `createIssuanceRequest()` in `subscription-control-db.mjs` | Same recursive key-name check plus object-shape check | Closed union for observed CLI metadata and wallet-first chain metadata; no caller-defined extras |
+| audit-metadata/v1 | `recordAuditEvent()` in `subscription-control-db.mjs` | Same generic object checks; one direct INSERT in `coin-commerce-initial-confirmation.mjs` | Exact schema selected by entity_type + action, enforced at every write entrypoint; direct writer must call same validator or be removed |
+| edge-node-metadata/v1 | `edgeRegisteredNodeRecord()` used by upsert and insert-if-absent | Key-name scan plus broad unsafe-string regex; no exact key allowlist | Exact first-boot key set and per-key boolean/ref/fingerprint types; reject unknown keys |
+| portal-access-event/v1 | `upsertPortalAccessRequest()` | `jsonObject()` only for event payload | Closed event discriminated union and exact keys per event; reject unknown event type/key/version |
+| second-factor-list/v1 | `createPortalSecondFactorChallenge()` | `jsonArray()` plus optional boolean check for rememberMe; factors are not enum-checked here | Non-empty unique enum list limited to totp/passkey, or exact wrapper {version:1,allowedFactors,rememberMe}; reject duplicates and unknown keys |
+| commerce-notices/v1 | `insertPublishedOffer()` | Persists normalizedOffer notice arrays as JSON; current normalization checks non-empty unique strings but lacks full item/count bounds and content filtering | Bounded item count and UTF-8 length; reject URLs, markup/script, PII and secret-like text before persistence |
+
+### 2.5 Source-derived writer details and test obligations
+
+- Account registration caller `portal-registration.mjs` currently writes 22 metadata keys (including raw `loginRef` and `displayRef`, and ordinary SHA-256 digests); the key-name guard does not catch these values. `portal-initial-account-issuance.mjs` separately writes `displayName`. These are explicit blockers, not merely a future schema concern.
+- Issuance currently has a simple CLI producer `{cli:"platform:issue-subscription"}`; wallet-first flows also update issuance metadata with resource-chain state. Keep these as separate tagged variants until the exact chain writer fields and lifecycle are exhaustively enumerated.
+- Audit metadata has at least three independent source shapes: issuance compensation (`{compensation:...}`), entitlement traffic-limit change (`requestRef, reasonCode, previousTrafficLimitBytes, trafficLimitBytes`), and coin-commerce fulfillment's fixed 17-key evidence object. Additional actions must be enumerated from every caller before the allowlist is declared complete.
+- The coin-commerce initial-confirmation direct writer remains inside the same SQLite transaction as its confirmation row. Do not consolidate it by moving the audit write outside that transaction.
+- Portal event source names recorded in §2.3 form a closed candidate union, but every event's exact payload keys still require one-by-one source extraction and positive/negative fixtures.
+- The second-factor persistence writer accepts values that the current reader may later ignore; reader filtering is not a write-time security boundary.
+- Commerce notice normalization is an input-level business validator, not a guarantee that already-normalized or internal callers cannot supply unsafe notice strings. Validate again at the final persistence boundary.
+
+**Current result:** write-path discovery is complete for the 26 listed columns, but the exact writer contracts are not yet all closed. No source code was changed in this follow-up; this is a source-derived contract clarification only.
+
 ## 3. Lease, idempotency and generation field audit
 
 ### 3.1 Lease token issuer formats
