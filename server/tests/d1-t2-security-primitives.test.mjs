@@ -356,11 +356,11 @@ test("TOTP tampering, unknown keys, malformed envelopes and legacy raw Base32 fa
   assert.deepEqual(legacy, { status: "re_enroll_required" });
 });
 
-test("T1: legacy v2, enc-prefixed and raw Base32 TOTP values require re-enrollment", async () => {
+test("T1: only structurally valid legacy TOTP formats require re-enrollment", async () => {
   const legacyKey = Buffer.from("de".repeat(32), "hex");
   const legacyEnvelope = encryptLegacyV2("JBSWY3DPEHPK3PXP", legacyKey, randomBytes(12));
 
-  assert.deepEqual(await reencryptLegacyD1TotpV2({ value: legacyEnvelope, legacyKey }), {
+  assert.deepEqual(await reencryptLegacyD1TotpV2({ value: legacyEnvelope }), {
     status: "re_enroll_required"
   });
   assert.deepEqual(await reencryptLegacyD1TotpV2({ value: "enc:JBSWY3DPEHPK3PXP" }), {
@@ -369,9 +369,16 @@ test("T1: legacy v2, enc-prefixed and raw Base32 TOTP values require re-enrollme
   assert.deepEqual(await reencryptLegacyD1TotpV2({ value: "JBSWY3DPEHPK3PXP" }), {
     status: "re_enroll_required"
   });
-  assert.deepEqual(await reencryptLegacyD1TotpV2({ value: "malformed legacy payload" }), {
-    status: "quarantine"
-  });
+  for (const malformed of [
+    "v2:aes-256-gcm:synthetic-envelope",
+    "v2:aes-256-gcm:bad:bad:bad",
+    "enc:NOT-BASE32!",
+    "malformed legacy payload"
+  ]) {
+    assert.deepEqual(await reencryptLegacyD1TotpV2({ value: malformed }), {
+      status: "quarantine"
+    });
+  }
 });
 
 test("destroying a key ring zeroizes and disables its key material", async () => {
