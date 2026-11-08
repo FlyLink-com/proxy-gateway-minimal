@@ -159,3 +159,15 @@ The provider-neutral helper demonstrates AES-256-GCM envelope creation, authenti
 The prototype is not a Durable Object implementation and is not wired into `payment-store.mjs`, the provider callback, Portal routes, or D1. No namespace, secret, binding, or deployment was created.
 
 The 14-case fixed Node v22.23.1 regression evidence is recorded after the latest run in the C4/C5 closeout notes. C4 remains OPEN pending Payment/Security owner approval of custody, key rotation, outage/recovery, and tombstone replay duration.
+
+## 11. Fixed Node 22.23.1 prototype regression — 2026-11-08
+
+The current synthetic contract module and test file were fetched from this branch and executed in an isolated non-production Vercel sandbox using Node v22.23.1:
+
+- 14/14 PASS, 0 failed, 0 skipped.
+- TAP SHA-256: `d3d28fb5c44277115cf0f392c594a457af2b8412e5788b09d6c72ba14ecff310`.
+- `node --check` passed for both the module and test file.
+
+The test scope covers encrypted envelope confidentiality, exact account/order/action binding, AES-GCM authenticated-data tamper detection, key lookup failure, expiry/order-state denial, terminal ciphertext removal, idempotent/conflicting terminal transitions, caller-selected tombstone purge boundaries, URL safety and payload/key bounds.
+
+This validates the pure synthetic contract only. It does not validate a Durable Object adapter, Worker authorization, provider callback integration, D1 pointer transaction, real key custody, outage/recovery, or production route behavior. C4 remains OPEN.
