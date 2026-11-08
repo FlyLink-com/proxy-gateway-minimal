@@ -30,6 +30,19 @@ The same source currently puts `legalAgreementSourceIpDigest` and `registrationS
 
 These dependencies mean simply deleting fields from `portal-registration.mjs` would break user-facing identity behavior. A separate, explicitly approved identity/PII custody boundary is required before source behavior can be changed.
 
+### 1.3 Active authentication credential boundary
+
+The current source inventory shows that account identity and authentication cannot be treated as an email-only PII cleanup:
+
+- `server/services/platform/user-portal-auth.mjs` resolves the login identifier through `controlStore.resolvePortalLoginAccount()`, then verifies the password by opaque `accountId`. The public browser session currently derives its user-facing `userRef` / `displayName` from `metadata.loginRef`.
+- `server/services/platform/portal-password-credentials.mjs` creates and verifies password hashes through the current control store. `server/state.mjs` wires this service into the active portal routes. The T2 field disposition currently marks all 11 columns of `platform_portal_password_credentials` as DEFER / excluded from D1. This is a data-placement decision, not evidence that password login is unused or may be disabled.
+- `server/services/platform/user-portal-auth.mjs` passes `encryptedTotpSecret` to the TOTP verifier. The field disposition marks `platform_portal_totp_credentials.encrypted_totp_secret` EXTERNALIZE while the credential ref, account ref, status, lockout counters and timestamps remain KEEP candidates.
+- `platform_portal_passkey_credentials` remains DEFER; the scoped source audit did not find a production service caller.
+
+Before T2-C1 can pass, the project must approve an identity/authentication custody boundary that preserves current password and TOTP behavior without copying password hashes or encrypted TOTP secrets into D1. The target login path must define how email is resolved to an opaque account reference, how password verification and lockout state are performed, how TOTP verification retrieves the protected secret, and how session issuance remains bound to the resolved account. The source audit has not identified a separate production identity/credential service; do not assume one exists.
+
+This section is a source-derived blocker clarification, not approval to deploy a new identity service, move credentials, change login behavior, or create secrets.
+
 ## 2. Data disposition
 
 | Existing field | Observed purpose | Draft target disposition |
