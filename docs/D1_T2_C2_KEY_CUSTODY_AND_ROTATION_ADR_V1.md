@@ -192,3 +192,13 @@ Still OPEN:
 8. Obtain the applicable owner decisions and final source review.
 
 No production keys, Cloudflare Secrets Store, Worker bindings, D1 schema, customer rows, BWH host, deployment, dual-write, CI, PR Ready transition, merge or cutover were used or authorized by this ADR. BWH remains the only production writer.
+
+## 14. Superseding Wallet-first digest decision and grouped custody proposal — 2026-11-08
+
+The earlier Section 6 recommendation to consider HMAC conversion or retirement is superseded by the source-grounded audit in `docs/D1_T2_C2_WALLET_FIRST_DIGEST_COMPATIBILITY_AUDIT_V1.md`.
+
+The audited contract uses two distinct domain-separated SHA-256 v1 digests over transient inputs. The Portal session reference is server-side and random; the first-party idempotency path now uses cryptographically secure UUIDv4 generation, and the Wallet-first service boundary rejects non-canonical values. The exact v1 digest formula and existing rows remain unchanged. These values are not PII HMAC pseudonyms and do not require a new HMAC key family. The separate 10-minute claim lease is not a row-retention TTL; delivered-row retention remains an owner decision.
+
+A grouped key-custody recommendation is available in `docs/D1_T2_C2_KEY_CUSTODY_OWNER_DECISION_PROPOSAL_V1.md`. It consolidates the crypto Worker/private Service Binding boundary, per-Worker secret binding default, independent encrypted escrow, family separation, active-write/retained-read rotation, restore acceptance, and the already-approved T1 decision not to provision first-party Portal/Admin TOTP AES keys while Auth0 owns target MFA.
+
+Both documents are recommendations/source audits only. C2 remains OPEN until the owner accepts the grouped custody/escrow/recovery contract and the synthetic restore rehearsal passes. No real key, secret, binding, or Worker was created.
