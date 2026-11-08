@@ -289,3 +289,11 @@ The existing C3 shared JSON contract module/test were fetched from this branch a
 - Test blob: `0be5a56462402f87a9a5f76666dd9d42ae04e0ff`.
 
 This covers the registered Portal access-event and subscription-fulfillment JSON variants, exact keys, unsafe refs/values, accessor/symbol/non-plain-object rejection and hostile proxy traps. It is not the full C3 writer integration test: `platform-subscription-control-db.test.mjs` and the complete 26-field writer-path review remain unrun. C3 remains OPEN for account metadata/PII and full writer-path evidence.
+
+## 11. C2 grouped key-custody proposal — 2026-11-08
+
+Added `docs/D1_T2_C2_KEY_CUSTODY_OWNER_DECISION_PROPOSAL_V1.md` to consolidate the remaining C2 owner decisions into one grouped approval: crypto Worker/private Service Binding, per-Worker secret binding default, independent encrypted escrow/two-person recovery, key-family separation, active-write/retained-read rotation, and synthetic restore acceptance.
+
+The previous Wallet-first compatibility recommendation in the C2 ADR is superseded by the source audit: preserve the exact domain-separated SHA-256 v1 contract after secure UUIDv4 source hardening; do not add these high-entropy transient token digests to the PII HMAC key family. The delivered-row replay/retention window remains open.
+
+No production key or secret was created. C2 remains OPEN pending the grouped owner decision and synthetic restore evidence.
