@@ -63,6 +63,10 @@ These existing tests are source compatibility evidence, not proof of an external
 
 A targeted repository code search at the source anchor located no application-level OIDC/JWKS identity adapter or integration for Auth0, Clerk, Cognito, Keycloak or `openid-client`. The OIDC/JWKS references found were for GitHub Actions deployment/supply-chain trust, not User Portal or Admin authentication. An archived Admin UI shell note excluded Clerk/external auth for that specific UI-shell phase; it is not a current C1 identity-provider selection or a general prohibition. Therefore the current source does not establish an existing external identity authority.
 
+### 3.3 Provider assessment (2026-11-07)
+
+The separate [C1 identity-provider evaluation](D1_T2_C1_IDENTITY_PROVIDER_EVALUATION_V1.md) identifies **Auth0 Essentials + Bulk User Import** as the preferred managed candidate because its import schema supports the current scrypt parameter set and TOTP factors. This is not a vendor selection or tenant authorization. Keycloak with custom password/TOTP import is the no-reset fidelity fallback; Clerk remains conditional on vendor confirmation of the raw-salt Node scrypt format. Firebase Identity Platform and Cognito have no documented existing-TOTP-seed import path in their bulk/user-migration APIs. C1 remains BLOCKED until the synthetic provider proof and accountable-owner decisions pass.
+
 ## 4. Recommended target architecture (provider-neutral)
 
 ### 4.1 Identity and credential authority
@@ -207,7 +211,7 @@ The tests must record exact Node version, command, output, fixture hash and test
 
 ## 9. Current disposition
 
-- **C1:** BLOCKED — identity authority and owner decisions not yet selected/approved.
+- **C1:** BLOCKED — Auth0 Essentials bulk import is the preferred managed candidate, but no vendor/tenant is selected or approved; synthetic import proof and owner decisions remain outstanding.
 - **C2:** OPEN — key custody, key IDs, key separation and legacy compatibility remain separate blockers.
 - **C3:** OPEN — account metadata/PII and independent review remain outstanding after writer-boundary hardening.
 - **T2:** BLOCKED.
