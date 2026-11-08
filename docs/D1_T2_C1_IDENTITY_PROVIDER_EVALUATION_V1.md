@@ -1,6 +1,6 @@
 # D1 T2-C1 Identity Provider Evaluation v1
 
-> **Status:** DRAFT technical assessment — not a vendor selection, purchase approval, tenant-creation authorization, or implementation authorization.
+> **Status:** DRAFT technical assessment — Auth0 Essentials + Bulk User Import is owner-selected; this is not purchase, tenant-creation, or implementation authorization.
 > **Review date:** 2026-11-07
 > **Repository:** `FlyLink-com/proxy-gateway-minimal`
 > **Draft branch:** `docs/d1-target-schema-g6-rehearsal-plan-20261107`
@@ -18,7 +18,7 @@
 The decisive finding is that Auth0's bulk-import schema supports both:
 
 - `custom_password_hash` using standard `scrypt` with explicit cost, block-size, parallelization and key-length parameters;
-- `mfa_factors` containing a TOTP secret.
+- Auth0 supports `mfa_factors` containing a TOTP secret as a schema capability; owner-selected T1 deliberately does not use legacy-factor import and requires new MFA enrollment.
 
 The current project password format is standard Node `crypto.scryptSync` with `N=32768`, `r=8`, `p=1`, `keylen=64`, and a raw 16-byte salt. These parameters can be represented in Auth0's scrypt import schema. The current salt and derived hash are stored as base64url fields inside the project envelope; a converter can decode the original bytes and encode them in the import schema without knowing the user's plaintext password.
 
@@ -38,7 +38,7 @@ It can be engineered to verify the existing Node scrypt envelope exactly and sto
 
 Clerk becomes a viable lower-cost challenger only if Clerk confirms support for the project's exact raw-salt Node scrypt format (or a synthetic proof establishes a lossless import path). No support request has been sent.
 
-### 1.4 Not recommended as the first choice under the current no-TOTP-loss constraint
+### 1.4 Historical provider comparison before the owner-selected T1 re-enrollment policy
 
 - **Firebase Identity Platform:** standard scrypt import appears parameter-compatible, and Android TOTP is supported; however, the documented bulk-import MFA factor schema exposes phone MFA, not TOTP. Existing TOTP seeds therefore have no documented import path.
 - **Amazon Cognito:** native Android TOTP and a password migration Lambda are available, but the documented TOTP enrollment flow creates a new secret; no existing-seed import path was found. It therefore requires TOTP re-enrollment or a custom external TOTP challenge.
@@ -91,11 +91,11 @@ Auth0's official Bulk User Import schema supports `custom_password_hash.algorith
 | Derived hash bytes | `hash.value` | Decode the current base64url digest to its original 64 bytes, then encode as supported base64 |
 | Password byte encoding | `password.encoding` | `utf8` |
 
-A synthetic-only cross-implementation check also compared Node `crypto.scryptSync` with Python `hashlib.scrypt` using the same password bytes, raw salt bytes and N/r/p/keylen; the derived 64-byte outputs matched. This validates the standard scrypt primitive, not Auth0's hosted import endpoint. This is a schema-level parameter match, not yet an Auth0 endpoint acceptance test. Auth0 documents that `custom_password_hash` can be updated only if the user has not logged in with the initially imported hash; the first import must therefore include the final hash and factor data rather than creating placeholder users and trying to repair them after login. The import converter must parse the project envelope strictly, reject unknown versions/parameters, preserve the exact byte values, and never emit the original combined string as an unsupported opaque hash.
+A synthetic-only cross-implementation check also compared Node `crypto.scryptSync` with Python `hashlib.scrypt` using the same password bytes, raw salt bytes and N/r/p/keylen; the derived 64-byte outputs matched. This validates the standard scrypt primitive, not Auth0's hosted import endpoint. This is a schema-level parameter match, not yet an Auth0 endpoint acceptance test. Auth0 documents that `custom_password_hash` can be updated only if the user has not logged in with the initially imported hash; the first import must therefore include the final password hash and approved identity fields rather than creating placeholder users and trying to repair the password hash after login; under T1 it deliberately omits `mfa_factors`. The import converter must parse the project envelope strictly, reject unknown versions/parameters, preserve the exact byte values, and never emit the original combined string as an unsupported opaque hash.
 
-Auth0 also supports a TOTP factor in `mfa_factors`. The exact documented shape is `mfa_factors: [{ "totp": { "secret": "<UNPADDED_BASE32>" } }]`; the field path is `mfa_factors[].totp.secret`, and the secret must be unpadded uppercase Base32 matching `^[A-Z2-7]+# D1 T2-C1 Identity Provider Evaluation v1
+Auth0 also documents a TOTP factor in `mfa_factors` (provider schema capability only; T1 intentionally omits this field from the bulk import and uses new MFA enrollment after cutover). The exact documented shape is `mfa_factors: [{ "totp": { "secret": "<UNPADDED_BASE32>" } }]`; the field path is `mfa_factors[].totp.secret`, and the secret must be unpadded uppercase Base32 matching `^[A-Z2-7]+# D1 T2-C1 Identity Provider Evaluation v1
 
-> **Status:** DRAFT technical assessment — not a vendor selection, purchase approval, tenant-creation authorization, or implementation authorization.
+> **Status:** DRAFT technical assessment — Auth0 Essentials + Bulk User Import is owner-selected; this is not purchase, tenant-creation, or implementation authorization.
 > **Review date:** 2026-11-07
 > **Repository:** `FlyLink-com/proxy-gateway-minimal`
 > **Draft branch:** `docs/d1-target-schema-g6-rehearsal-plan-20261107`
@@ -113,7 +113,7 @@ Auth0 also supports a TOTP factor in `mfa_factors`. The exact documented shape i
 The decisive finding is that Auth0's bulk-import schema supports both:
 
 - `custom_password_hash` using standard `scrypt` with explicit cost, block-size, parallelization and key-length parameters;
-- `mfa_factors` containing a TOTP secret.
+- Auth0 supports `mfa_factors` containing a TOTP secret as a schema capability; owner-selected T1 deliberately does not use legacy-factor import and requires new MFA enrollment.
 
 The current project password format is standard Node `crypto.scryptSync` with `N=32768`, `r=8`, `p=1`, `keylen=64`, and a raw 16-byte salt. These parameters can be represented in Auth0's scrypt import schema. The current salt and derived hash are stored as base64url fields inside the project envelope; a converter can decode the original bytes and encode them in the import schema without knowing the user's plaintext password.
 
@@ -133,7 +133,7 @@ It can be engineered to verify the existing Node scrypt envelope exactly and sto
 
 Clerk becomes a viable lower-cost challenger only if Clerk confirms support for the project's exact raw-salt Node scrypt format (or a synthetic proof establishes a lossless import path). No support request has been sent.
 
-### 1.4 Not recommended as the first choice under the current no-TOTP-loss constraint
+### 1.4 Historical provider comparison before the owner-selected T1 re-enrollment policy
 
 - **Firebase Identity Platform:** standard scrypt import appears parameter-compatible, and Android TOTP is supported; however, the documented bulk-import MFA factor schema exposes phone MFA, not TOTP. Existing TOTP seeds therefore have no documented import path.
 - **Amazon Cognito:** native Android TOTP and a password migration Lambda are available, but the documented TOTP enrollment flow creates a new secret; no existing-seed import path was found. It therefore requires TOTP re-enrollment or a custom external TOTP challenge.
@@ -186,7 +186,7 @@ Auth0's official Bulk User Import schema supports `custom_password_hash.algorith
 | Derived hash bytes | `hash.value` | Decode the current base64url digest to its original 64 bytes, then encode as supported base64 |
 | Password byte encoding | `password.encoding` | `utf8` |
 
-A synthetic-only cross-implementation check also compared Node `crypto.scryptSync` with Python `hashlib.scrypt` using the same password bytes, raw salt bytes and N/r/p/keylen; the derived 64-byte outputs matched. This validates the standard scrypt primitive, not Auth0's hosted import endpoint. This is a schema-level parameter match, not yet an Auth0 endpoint acceptance test. Auth0 documents that `custom_password_hash` can be updated only if the user has not logged in with the initially imported hash; the first import must therefore include the final hash and factor data rather than creating placeholder users and trying to repair them after login. The import converter must parse the project envelope strictly, reject unknown versions/parameters, preserve the exact byte values, and never emit the original combined string as an unsupported opaque hash.
+A synthetic-only cross-implementation check also compared Node `crypto.scryptSync` with Python `hashlib.scrypt` using the same password bytes, raw salt bytes and N/r/p/keylen; the derived 64-byte outputs matched. This validates the standard scrypt primitive, not Auth0's hosted import endpoint. This is a schema-level parameter match, not yet an Auth0 endpoint acceptance test. Auth0 documents that `custom_password_hash` can be updated only if the user has not logged in with the initially imported hash; the first import must therefore include the final password hash and approved identity fields rather than creating placeholder users and trying to repair the password hash after login; under T1 it deliberately omits `mfa_factors`. The import converter must parse the project envelope strictly, reject unknown versions/parameters, preserve the exact byte values, and never emit the original combined string as an unsupported opaque hash.
 
 . Under T1, the Auth0 bulk-import record carries the approved identity fields and custom password hash only; it does not carry `mfa_factors`. All legacy `enc:`, raw Base32 and `v2:` values are omitted and require re-enrollment at cutover. The converter never decrypts or transfers legacy TOTP material.
 
@@ -369,12 +369,12 @@ This proves only local parsing, byte-preserving password conversion, synthetic p
 
 ## 7. Owner decisions still required
 
-1. Approve or reject Auth0 Essentials as the preferred managed candidate after the synthetic proof; this is not approved by the present assessment.
-2. Approve the targeted password-reset policy for passwords over 72 UTF-8 bytes, or choose Keycloak/custom hashing if no reset is acceptable.
+1. Auth0 Essentials + Bulk User Import is already owner-selected; complete the synthetic proof only after separate authorization to create non-production tenants.
+2. Implement and prove the approved targeted password-reset policy for passwords over 72 UTF-8 bytes; never truncate. If Auth0 cannot enforce it before first-login rehash, stop and return with a concrete alternative.
 3. Decide whether the email-verification OTP contract may change from 10 minutes/five attempts to the provider's native policy, or must be reproduced exactly.
 4. Confirm customer geography, required data residency, email deliverability and login reachability from actual user regions.
 5. Confirm expected MAU/MRU and acceptable monthly cost.
-6. Approve Portal/Admin tenant separation and account-link policy.
+6. Prove the approved Portal/Admin tenant separation and account-link policy using synthetic identities.
 7. Apply T1 re-enrollment-only handling at cutover. No one-time TOTP transfer or legacy-key decryption is authorized; any later retention or purge of old source values requires a separate lifecycle decision.
 8. Confirm whether `mustRotate` is a product requirement or merely a stored legacy field.
 9. Confirm production authentication route activation through a separately authorized configuration-only review; current activation is NOT OBSERVED.
@@ -382,12 +382,12 @@ This proves only local parsing, byte-preserving password conversion, synthetic p
 
 ## 8. Decision and current disposition
 
-- **Preferred managed candidate:** Auth0 Essentials + Bulk User Import, conditional on synthetic proof and the 72-byte/OTP policy decisions.
+- **Selected managed direction:** Auth0 Essentials + Bulk User Import; synthetic provider proof and separate tenant-creation authorization remain pending.
 - **Password-compatibility fallback:** Keycloak with a custom password-hash verifier; under T1, legacy TOTP factors would still be invalidated and re-enrolled.
 - **Conditional cost challenger:** Clerk Pro, only if custom Node scrypt raw-salt import is confirmed.
 - **Alternative providers:** Firebase Identity Platform and Amazon Cognito require new TOTP enrollment rather than importing existing seeds; that behavior is compatible with T1, subject to their other password, policy and operational trade-offs.
 - **Vendor selected:** Auth0 Essentials + Bulk User Import (owner-selected 2026-11-08); non-production proof pending.
-- **C1:** BLOCKED — local synthetic converter rehearsal is implemented; Auth0 hosted import proof, provider behavior checks and owner approval remain outstanding.
+- **C1:** OPEN — Auth0/T1 direction and the targeted >72-byte reset policy are owner-approved; hosted Scrypt import/first-login proof, new MFA lifecycle proof, remaining C1-D05–D08 decisions, and the real OIDC/JWKS gateway/provider adapter remain outstanding.
 - **C2:** OPEN — HMAC/key custody provider, named custodians, independent escrow/restore, Wallet-first digest compatibility, retention/replay windows and key retirement remain unresolved. Target TOTP ownership is resolved by T1; synthetic MFA lifecycle proof remains open.
 - **C3:** OPEN — account metadata/PII and independent review remain outstanding.
 - **T2:** BLOCKED.
