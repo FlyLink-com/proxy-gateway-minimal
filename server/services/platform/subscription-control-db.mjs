@@ -479,7 +479,7 @@ function accountMetadataJson(value) {
 
     if (field === "displayRef" || field === "displayName") {
       const display = requiredText(entry, field);
-      if (display.length > 254 || /[\\u0000-\\u001f\\u007f]/u.test(display)) {
+      if (display.length > 254 || /[\u0000-\u001f\u007f]/u.test(display)) {
         throw platformError("validation_error", "account metadata display value is invalid");
       }
       normalized[field] = display;
