@@ -95,6 +95,14 @@ Reviewer must verify the final file bytes rather than relying on this note.
 - The complete store test file has not yet been run; full repository tests and CI remain unrun.
 - Historical production generation values are NOT OBSERVED. This does not close the migration compatibility requirement.
 
+### Draft writer hardening evidence — 2026-11-07
+
+- Issuance metadata union is enforced at create and wallet-first insert/update writers; edge-node metadata is enforced at the shared store writer.
+- Source commits: `a1b55bcc33e745b7094c93141d4a05530812c216`, `559156cbf8c4f841a80b20b68289811fb89efbba`.
+- Regression tests added: `0943ffe6b2f98841edb1ec58b866c4034bc3bbc4`, `4c0e3c7c32227dfbb581582f6e3123a495d366de`; preflight fixture alignment: `87e0147a8154b99339a8090f19e4793fc121196f`.
+- Source-mirroring pure harnesses: 10/10 per contract. Repository Node test files, full suite and CI have NOT RUN.
+- Remaining C3 review scope: account metadata/PII, action-specific audit metadata plus direct SQL writer, portal event union plus direct writers, commerce notice bounds/content filtering, and the 26-field full independent review.
+
 ## 5. Blocking findings
 
 T2 remains BLOCKED until all are resolved with evidence:
