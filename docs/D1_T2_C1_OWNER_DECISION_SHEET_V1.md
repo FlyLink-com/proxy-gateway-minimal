@@ -101,7 +101,7 @@ C1 may be closed only after:
 - Synthetic hosted proof covers Scrypt password import, first login, password normalization, over-limit policy, email verification, new Auth0 MFA enrollment/verification, lockout, recovery, revocation, session projection and Admin directory.
 - Provider adapter and gateway are implemented and tested against the selected provider.
 - Account binding is unique, opaque, idempotent and fail-closed for ambiguous mappings.
-- No raw PII or credential capability reaches the business Worker, D1, logs, traces, fixtures or evidence.
+- No real raw PII or production credential capability reaches the business Worker, D1, logs, traces or evidence; only clearly synthetic, non-production fixture values may appear in tests.
 - Registration dedupe, trial/welcome-Coins, existing account compatibility and Coins canary behavior match the approved contract.
 - The project owner records the data-processing, recovery, deletion/unlink and outage decisions.
 
