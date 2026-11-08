@@ -56,3 +56,16 @@ Until then:
 - no automatic purge of financial/audit facts;
 - no indefinite-retention default;
 - no T2 PASS or production migration.
+
+## 5. Source-grounded retention audit — 2026-11-08
+
+The exact source observations and their distinction from record retention are consolidated in `docs/D1_T2_C5_SOURCE_RETENTION_AUDIT_V1.md`.
+
+Key confirmations:
+- Leads is still the only accepted numeric rule: 90 days, with a 2-hour backup-prune safety margin and an explicit dry-run/apply purge path.
+- Payment order 10-minute TTL, deferred quote 5-minute TTL, reservation 24-hour grace, Portal session 30-minute/7-day validity, second-factor 5-minute challenge, TOTP 15-minute lock, and Wallet-first 10-minute claim lease are validity/lease windows only.
+- The inspected payment store has no receipt/order purge path and currently stores/projects raw `next_action_url`; C4 custody must be resolved before D1 migration.
+- The inspected control-store source exposes Leads purge but no dedicated persistent Portal session/challenge purge method; in-memory enrollment/conversion pruning does not prove persistent-row deletion.
+- Wallet-first delivered-row digest retention is not implied by its claim lease.
+
+No new numeric duration is approved. RET-02–RET-12 remain OPEN/DEFERRED as recorded; this source audit narrows the evidence but does not substitute for domain-owner decisions.
