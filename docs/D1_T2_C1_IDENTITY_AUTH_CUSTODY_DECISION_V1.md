@@ -12,11 +12,11 @@
 
 C1 cannot be closed by removing `loginRef` / `displayRef` from `platform_accounts.metadata_json`. Registration, password verification, second-factor verification, portal sessions, administrator search and the Coins canary currently share identity data and behavior.
 
-**Recommended target boundary:** use an identity/authentication authority that is separate from the Cloudflare control-plane Worker and D1. Prefer a standards-based external identity provider (OIDC Authorization Code + PKCE) only if it can preserve the required password, email-verification, TOTP, lockout, credential-revocation and administrator-directory behavior. If no provider meets those requirements, use a dedicated first-party identity service with its own isolated identity/credential store and key custody. Do not create a substitute identity authority inside the control-plane D1.
+**Recommended target boundary:** use an identity/authentication authority that is separate from the Cloudflare control-plane Worker and D1. Prefer a standards-based external identity provider (OIDC Authorization Code + PKCE) only if it can preserve the required password, email-verification, new MFA enrollment/verification, lockout, credential-revocation and administrator-directory behavior. T1 explicitly accepts legacy TOTP re-enrollment rather than secret continuity. If no provider meets those requirements, use a dedicated first-party identity service with its own isolated identity/credential store and key custody. Do not create a substitute identity authority inside the control-plane D1.
 
 The target control plane should receive only an opaque, stable identity subject and verified authentication context. D1 should retain the opaque account-to-identity binding and approved non-secret lifecycle facts. Email, display name, password hashes, TOTP secret material and raw authentication capabilities must not be copied into D1, control-plane Worker request/response bodies or forwarded headers, logs, traces, fixtures or evidence.
 
-This is a recommendation, not a vendor selection. No identity provider, tenant, account, key, secret or remote resource is selected or configured by this document.
+Auth0 Essentials + Bulk User Import is now the owner-selected identity direction. This document does not authorize purchase, tenant creation, account import, key provisioning or production implementation.
 
 ## 2. Non-negotiable invariants
 
@@ -65,7 +65,7 @@ A targeted repository code search at the source anchor located no application-le
 
 ### 3.3 Provider assessment (2026-11-07)
 
-The separate [C1 identity-provider evaluation](D1_T2_C1_IDENTITY_PROVIDER_EVALUATION_V1.md) and project owner now select **Auth0 Essentials + Bulk User Import** as the identity direction because its import schema supports the current Scrypt parameter set and TOTP factors. This is not tenant-creation or migration authorization. Keycloak remains a fallback only if Auth0 cannot prove the approved password semantics; any switch requires a new owner decision. C1 remains OPEN/BLOCKED until synthetic provider proof and remaining accountable-owner decisions pass.
+The separate [C1 identity-provider evaluation](D1_T2_C1_IDENTITY_PROVIDER_EVALUATION_V1.md) and project owner now select **Auth0 Essentials + Bulk User Import** as the identity direction because its import schema supports the current Scrypt parameter set and its managed MFA supports new factor enrollment. Under T1, legacy BWH TOTP factors are not imported; users re-enroll. This is not tenant-creation or migration authorization. Keycloak remains a fallback only if Auth0 cannot prove the approved password semantics; any switch requires a new owner decision. C1 remains OPEN/BLOCKED until synthetic provider proof and remaining accountable-owner decisions pass.
 
 ## 4. Recommended target architecture (provider-neutral)
 
@@ -172,7 +172,7 @@ C1 cannot be marked complete until these decisions are explicit:
 4. **Display policy:** choose masked email or user-managed display label; define whether any privileged role may retrieve the full email.
 5. **Coins canary:** choose provider claim or isolated eligibility service; preserve existing eligibility behavior without exposing email or an unkeyed digest to the control plane.
 6. **Password capability:** confirm the required product behavior and the external verifier's support for lockout, `mustRotate`, revocation and generic failure semantics. Do not interpret DEFER as retirement.
-7. **Historical TOTP disposition:** choose re-enrollment or approved re-encryption/quarantine. Exact key mechanics remain under C2.
+7. **Historical TOTP disposition:** T1 is approved — invalidate legacy enc:, raw Base32 and v2: values at cutover; do not import, decrypt, transfer or re-encrypt them. Portal enrollment is optional and Admin enrollment is mandatory. New-factor lifecycle proof remains open.
 8. **Outage/recovery policy:** approve session continuation/revocation behavior during identity-provider outage and the account recovery path.
 
 No owner names, retention period or production activation state are inferred in this proposal. Auth0 direction is selected, but no tenant is created and no production identity is accessed.
@@ -202,7 +202,7 @@ The tests must record exact Node version, command, output, fixture hash and test
 
 1. Record the selected identity authority, owner roles, Portal/Admin boundary and display/canary policies.
 2. Define a provider-neutral adapter contract with typed outcomes for resolved/not-found/ambiguous/unavailable, password verification, TOTP verification, profile lookup and Admin directory lookup.
-3. The local synthetic converter rehearsal is implemented and focused tests are available; after the owner selects a provider, add separate adapter/API contract tests for C1-01 through C1-12 without real accounts or keys.
+3. The local synthetic converter rehearsal is implemented and focused tests are available; after separate authorization to create non-production Auth0 tenants, add adapter/API contract tests for C1-01 through C1-12 using synthetic identities only.
 4. Implement the selected adapter and route the browser authentication flow directly to the identity authority; keep raw credentials out of control-plane Worker bodies.
 5. Replace account metadata identity lookups with opaque subject bindings; remove raw identity fields and unkeyed low-entropy digests from the D1 target candidate.
 6. Keep the password credential table DEFER; externalize TOTP secret material and use opaque references only.
@@ -211,8 +211,8 @@ The tests must record exact Node version, command, output, fixture hash and test
 
 ## 9. Current disposition
 
-- **C1:** OPEN/BLOCKED — Auth0 Essentials + Bulk User Import is owner-selected; targeted >72-byte reset and Portal/Admin isolation are approved. Exact Scrypt import, trim normalization, safe long-password cohort identification, 72-byte rejection before bcrypt rehash, hosted provider proof and C1-D04–D08 owner decisions remain outstanding. No tenant is created.
-- **C2:** OPEN — key custody, key IDs, key separation and legacy compatibility remain separate blockers.
+- **C1:** OPEN — Auth0 Essentials + Bulk User Import, targeted >72-byte reset, Portal/Admin isolation and T1 TOTP re-enrollment policy are owner-approved. Exact Scrypt import, trim normalization, safe long-password cohort identification, 72-byte rejection before bcrypt rehash, hosted provider proof, new MFA lifecycle proof and C1-D05–D08 decisions remain outstanding. No tenant is created.
+- **C2:** OPEN — HMAC key custody, named custodians, independent escrow/restore, Wallet-first digest compatibility and retention/replay windows remain blockers. Target TOTP ownership is resolved by T1; no first-party target TOTP AES keys are provisioned.
 - **C3:** OPEN — account metadata/PII and independent review remain outstanding after writer-boundary hardening.
 - **T2:** BLOCKED.
 - **T3 / G6:** not started; remain gated on formal T2 completion.
