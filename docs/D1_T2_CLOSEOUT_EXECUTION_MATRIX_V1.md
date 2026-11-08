@@ -379,3 +379,14 @@ Fixed Node v22.23.1:
 - `node --check`: 19/19 PASS across the imported source modules, registry, test and CLI.
 
 This closes the current-head source DDL checksum re-execution gap for these 19 recorded migrations. It does **not** establish which migrations were ever applied to BWH, their live database identity, or target D1 migration parity. No BWH connection, database read, DDL apply, or row load occurred.
+
+### G6 combined offline acceptance — 2026-11-08
+
+Combined the inventory graph validator and 19-migration source checksum registry into one fixed-runtime regression invocation:
+
+- Node v22.23.1.
+- **28/28 PASS twice**, 0 failed, 0 skipped.
+- Run 1 TAP SHA-256: `c2ccf80753c8d78eb69e4fe746454c6d26a9f39f76b4ba1ecff9289be2b8a292`.
+- Run 2 TAP SHA-256: `692ac794e51cde8cf3e545eca6aecbece80ba215d67fafeff4d6e6d25f55bc91`.
+
+This is combined offline source-artifact acceptance, not a migration rehearsal against a SQLite backup or D1 database.
