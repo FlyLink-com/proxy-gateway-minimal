@@ -109,7 +109,7 @@ export function portalAccessEventJson(value) {
     ) throw contractError();
   } else if (type === "subscription_disabled") {
     exactKeys(event, ["type", "occurredAt", "previousStatus"]);
-    if (!["delivered", "issued"].includes(event.previousStatus)) throw contractError();
+    if (!["delivered", "issued", "disabled"].includes(event.previousStatus)) throw contractError();
     canonicalTimestamp(event.occurredAt);
   } else if (type === "subscription_expired") {
     exactKeys(event, ["type", "occurredAt", "previousStatus", "lifecycleRevisionRef"]);
