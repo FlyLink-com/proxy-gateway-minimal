@@ -64,14 +64,14 @@ Review the full T2 closeout contract, not only the original lease/idempotency pr
 
 ## 4. Test evidence and freshness
 
-The earlier isolated Node built-in run recorded 9/9 passing contract tests. The PII vector additions expanded the current test file to **13 declared test cases**. The historical 9/9 result must not be represented as a pass of the expanded 13-case file.
+The earlier isolated Node built-in run recorded 9/9 passing contract tests. The PII vector additions expanded the current test file to **14 declared test cases**. The historical 9/9 result must not be represented as a pass of the expanded 13-case file.
 
 A focused Node 22 formula check was run after correcting a domain-separator discrepancy. It verified:
 - the PII digest domain prefix is one NUL byte, not the two-byte literal backslash-plus-zero;
 - the old-key and active-key email pseudonym known-answer outputs match the documented vectors;
 - the NUL-prefixed and literal-backslash-prefixed byte strings differ.
 
-The focused check passed. The complete 13-case file was run from a byte-identical copy of the current GitHub blob using Node v22.16.0: `node --test /tmp/d1-t2-security-vectors.test.mjs` — **13/13 PASS**. The executed file Git blob SHA-1 is `c61b5d6d54416524317f0c43bc4b4158583cf954`; its raw SHA-256 is `ddbf91af45ea721192563e8fa4b5b14261bee3badab8000f95c44392d6545243`. This is still only the isolated Node built-in vector file; the full repository test suite and CI have not been run. The independent reviewer must rerun the file from the pinned review commit and record the exact command, Node version, output and file hash.
+The focused check passed. Before the latest normalization-test addition, the 13-case file was run from a byte-identical copy of GitHub blob `c61b5d6d54416524317f0c43bc4b4158583cf954` using Node v22.16.0: `node --test /tmp/d1-t2-security-vectors.test.mjs` — **13/13 PASS** (raw SHA-256 `ddbf91af45ea721192563e8fa4b5b14261bee3badab8000f95c44392d6545243`). The added 14th test covers source `normalizeEmail()` trim/lowercase behavior; that case was run separately under Node v22.16.0 — **1/1 PASS** (isolated script SHA-256 `f7a4375fea03ee48433afe0d96e28c22896fc8de8a2caa83df58e8fdbbffd08f`). Current full test file Git blob is `a20a49c77255d3b10a1c8ebff742f9aca4804765`; **the complete 14-case file has not yet been run as one suite**. The full repository test suite and CI have not been run. The independent reviewer must run the current 14-case file from the pinned review commit and record the exact command, Node version, output and file hash.
 
 ### Corrected discrepancy
 
