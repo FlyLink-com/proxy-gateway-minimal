@@ -1,6 +1,6 @@
 # D1 T2-C1 Identity and Authentication Custody Decision v1
 
-> **Status:** DRAFT PROPOSAL — owner decision required; not approved and not an implementation authorization.
+> **Status:** PARTIALLY OWNER-APPROVED DESIGN — Auth0 Essentials + Bulk User Import, targeted reset for passwords above 72 UTF-8 bytes, and Portal/Admin isolation were approved on 2026-11-08. Remaining C1 decisions, technical proof and all implementation authorization remain pending.
 > **Repository:** `FlyLink-com/proxy-gateway-minimal`
 > **Draft branch:** `docs/d1-target-schema-g6-rehearsal-plan-20261107`
 > **Source anchor:** `master@be261abc60f28bb2733764fa5364ab44b3e76844`
@@ -65,7 +65,7 @@ A targeted repository code search at the source anchor located no application-le
 
 ### 3.3 Provider assessment (2026-11-07)
 
-The separate [C1 identity-provider evaluation](D1_T2_C1_IDENTITY_PROVIDER_EVALUATION_V1.md) identifies **Auth0 Essentials + Bulk User Import** as the preferred managed candidate because its import schema supports the current scrypt parameter set and TOTP factors. This is not a vendor selection or tenant authorization. Keycloak with custom password/TOTP import is the no-reset fidelity fallback; Clerk remains conditional on vendor confirmation of the raw-salt Node scrypt format. Firebase Identity Platform and Cognito have no documented existing-TOTP-seed import path in their bulk/user-migration APIs. C1 remains BLOCKED until the synthetic provider proof and accountable-owner decisions pass.
+The separate [C1 identity-provider evaluation](D1_T2_C1_IDENTITY_PROVIDER_EVALUATION_V1.md) and project owner now select **Auth0 Essentials + Bulk User Import** as the identity direction because its import schema supports the current Scrypt parameter set and TOTP factors. This is not tenant-creation or migration authorization. Keycloak remains a fallback only if Auth0 cannot prove the approved password semantics; any switch requires a new owner decision. C1 remains OPEN/BLOCKED until synthetic provider proof and remaining accountable-owner decisions pass.
 
 ## 4. Recommended target architecture (provider-neutral)
 
@@ -166,16 +166,16 @@ The exact table/column names, multi-provider linking policy and migration IDs re
 
 C1 cannot be marked complete until these decisions are explicit:
 
-1. **Identity authority selection:** name the existing or new provider/service and prove support for email verification, stable opaque subject, password login, TOTP, lockout, revocation, account deletion and Admin directory operations.
+1. **Identity authority selection:** Auth0 Essentials + Bulk User Import is owner-selected; still prove email verification, stable opaque subject, password login, TOTP, lockout, revocation, account deletion and Admin directory operations in an isolated non-production environment.
 2. **Source-of-truth ownership:** name the Identity/Privacy owner and Security owner; define who controls identity lifecycle and who can approve recovery or account linking.
-3. **Portal/Admin separation:** choose one provider with separate clients/realms and scopes, or separate providers. Shared TOTP key scope is not assumed.
+3. **Portal/Admin separation:** the isolation principle is owner-approved; prove separate Auth0 tenants, issuer refs, audiences, factors, clients and admin policies. Shared TOTP key scope is not assumed.
 4. **Display policy:** choose masked email or user-managed display label; define whether any privileged role may retrieve the full email.
 5. **Coins canary:** choose provider claim or isolated eligibility service; preserve existing eligibility behavior without exposing email or an unkeyed digest to the control plane.
 6. **Password capability:** confirm the required product behavior and the external verifier's support for lockout, `mustRotate`, revocation and generic failure semantics. Do not interpret DEFER as retirement.
 7. **Historical TOTP disposition:** choose re-enrollment or approved re-encryption/quarantine. Exact key mechanics remain under C2.
 8. **Outage/recovery policy:** approve session continuation/revocation behavior during identity-provider outage and the account recovery path.
 
-No owner names, vendor, retention period or production activation state are inferred in this proposal.
+No owner names, retention period or production activation state are inferred in this proposal. Auth0 direction is selected, but no tenant is created and no production identity is accessed.
 
 ## 7. C1 synthetic acceptance matrix
 
@@ -211,10 +211,26 @@ The tests must record exact Node version, command, output, fixture hash and test
 
 ## 9. Current disposition
 
-- **C1:** BLOCKED — Auth0 Essentials bulk import is the preferred managed candidate, but no vendor/tenant is selected or approved; synthetic import proof and owner decisions remain outstanding.
+- **C1:** OPEN/BLOCKED — Auth0 Essentials + Bulk User Import is owner-selected; targeted >72-byte reset and Portal/Admin isolation are approved. Exact Scrypt import, trim normalization, safe long-password cohort identification, 72-byte rejection before bcrypt rehash, hosted provider proof and C1-D04–D08 owner decisions remain outstanding. No tenant is created.
 - **C2:** OPEN — key custody, key IDs, key separation and legacy compatibility remain separate blockers.
 - **C3:** OPEN — account metadata/PII and independent review remain outstanding after writer-boundary hardening.
 - **T2:** BLOCKED.
 - **T3 / G6:** not started; remain gated on formal T2 completion.
 
 This document adds a reviewable proposal only. It does not change authentication source code, D1 schema, migration code, production configuration or production authority. No BWH or Cloudflare production access, customer data, credentials, real keys, remote D1 mutation, Worker/DO deployment, CI, PR Ready transition, merge or cutover is authorized.
+
+
+## 10. Owner decision record — 2026-11-08
+
+The project owner approved:
+- Identity direction: Auth0 Essentials + Bulk User Import.
+- Password policy: accounts with passwords exceeding 72 UTF-8 bytes require a targeted, user-notified reset before the credential is imported or used for first Auth0 login; never truncate.
+- Isolation: Portal and Admin identities/factors must not be reused across boundaries; separate Auth0 tenants are the preferred topology, subject to tenant-allocation proof.
+
+The current source uses Node Scrypt `N=32768`, `r=8`, `p=1`, `keylen=64`, a raw 16-byte salt and trims password input before deriving/verifying. Auth0's import schema can express the Scrypt parameters. Auth0 re-hashes imported custom hashes to bcrypt after successful first login, and the documented bcrypt path has a 72-byte boundary. The imported-user login behavior under the newer Flexible Password Policy must be proven.
+
+The Scrypt hash cannot disclose original password length. Affected accounts cannot be reliably identified by inspecting the hash; do not read/export plaintext or guess. Use a pre-existing non-secret length marker or transiently measure UTF-8 byte length during a successful legacy-authenticated login. Unknown accounts remain on the legacy authority or enter a separately approved reset cohort.
+
+The current source's `String(password).trim()` normalization must be preserved or explicitly reset. The three-tenant Essentials entitlement must be reconciled with two isolated production tenants and the non-production proof environment.
+
+This approval is not permission to create a tenant, import a real user, transfer a TOTP seed, configure production, connect to BWH, mutate D1, deploy a Worker/DO, dual-write, migrate or cut over.

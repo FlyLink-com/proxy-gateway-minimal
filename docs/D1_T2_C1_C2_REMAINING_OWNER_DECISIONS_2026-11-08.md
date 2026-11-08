@@ -10,9 +10,9 @@
 
 | ID | Owner decision | Current recommendation / options | Required proof before closure | Status |
 |---|---|---|---|---|
-| C1-D01 | Select identity provider | Auth0 Essentials + Bulk User Import is the preferred managed candidate if the targeted reset policy for passwords above 72 UTF-8 bytes is acceptable. Keycloak with a custom scrypt provider is the fidelity fallback if resets are unacceptable. | Decision recorded by project owner and Identity/Security owners; no provider tenant before approval. | PENDING |
-| C1-D02 | Passwords above 72 UTF-8 bytes | Never truncate. Either approve targeted, user-notified reset for affected accounts or choose a provider/path that preserves the exact current Node scrypt behavior. Affected production-user count is unknown because no production identity rows were read. | Synthetic proof for selected path; explicit user-impact and recovery policy. | PENDING |
-| C1-D03 | Portal/Admin isolation | Prefer separate Auth0 tenants or separate Keycloak realms/deployments, distinct issuer references, audiences, factors and admin policy. | Negative tests proving cross-tenant/realm identity and factor cannot be reused. | PENDING |
+| C1-D01 | Select identity provider | Auth0 Essentials + Bulk User Import. Owner-selected 2026-11-08; no tenant creation authorized. | Non-production plan-fit and adapter proof; confirm three-tenant entitlement is sufficient for two isolated production tenants plus non-production validation. | APPROVED — proof OPEN |
+| C1-D02 | Passwords above 72 UTF-8 bytes | Targeted, user-notified reset before import/first Auth0 login; never truncate. | Prove the >72-byte cohort can be identified without plaintext; prove Auth0 rejects over-limit login before bcrypt rehash; preserve current trim normalization. | APPROVED — proof OPEN |
+| C1-D03 | Portal/Admin isolation | Separate Auth0 tenants with distinct issuer refs, audiences, factors, clients and admin policies; no cross-reuse. | Negative tests proving cross-tenant identity/factor reuse is rejected; confirm tenant allocation. | APPROVED — topology proof OPEN |
 | C1-D04 | Existing TOTP migration | First prove synthetic provider import. If import is unsupported or fails compatibility, require explicit re-enrollment rather than unsafe conversion. Legacy v2 requires the exact authorized old key and re-encryption; legacy `enc:`/unprefixed Base32 is raw secret material and must be re-enrolled or quarantined, not treated as ciphertext. | Account-ownership evidence, provider import or re-enrollment decision, lockout/recovery/revocation tests. | PENDING |
 | C1-D05 | Email verification | Preserve current single-use code, expiry, attempt and rate-limit semantics unless a deliberate product change is approved. | Synthetic provider-flow tests for expiry, retries, duplicate registration and rate limits. | PENDING |
 | C1-D06 | Visible account label | Use masked email or user-managed display name through an authorized identity-profile path; do not send raw identity values through the business Worker or persist them in D1. | Data-flow and authorization proof; privacy owner approval. | PENDING |
@@ -43,3 +43,30 @@
 ## 4. Gate rule
 
 C1 and C2 remain OPEN until all applicable owner decisions, real non-production provider/key-custody proofs, historical compatibility tests and recovery evidence are complete. Source-slice APPROVED is not formal package acceptance. No tenant, production key, BWH connection, remote D1 operation, deployment, merge or writer-authority switch is authorized by this register.
+
+
+## 5. Owner approval — 2026-11-08
+
+The project owner approved C1-D01 (Auth0 Essentials + Bulk User Import), C1-D02 (targeted reset for passwords exceeding 72 UTF-8 bytes; never truncate), and the C1-D03 Portal/Admin isolation principle.
+
+This approval does not authorize an Auth0 tenant, real user import, credential transfer, production change or migration. It is an architecture/decision-record update only.
+
+### Auth0 compatibility facts and proof gates
+
+- Auth0's public plan comparison lists User Import and Pro MFA on Essentials, three included tenants, and Custom Database Connections only on Professional. Bulk import is the chosen path; Professional is not selected merely to obtain a custom-database connection.
+- Auth0's bulk-import schema supports `custom_password_hash.algorithm=scrypt`, with `cost`, `blockSize`, `parallelization` and `keylen`. The repository's current Node Scrypt parameters map to `32768 / 8 / 1 / 64`. Salt/hash bytes must be decoded and re-encoded to Auth0's supported encodings.
+- Auth0 re-hashes a correctly imported custom hash to bcrypt after a successful first login. The 72-byte bcrypt boundary therefore matters at the login transition; do not infer that bulk import alone preserves passwords longer than 72 UTF-8 bytes.
+- The repository's `portal-password-credentials.mjs` applies `String(password).trim()` before Scrypt. This normalization must be reproduced by the chosen login flow or handled through an explicit reset; it must not change silently.
+- A Scrypt hash does not reveal the original password length. A targeted cohort cannot be found by inspecting hashes. Use an existing non-secret length marker if present, or measure `Buffer.byteLength(password, "utf8")` transiently when the user submits to the legacy verifier. Never log or persist plaintext. Keep accounts with unknown status on the legacy authority or request a separately approved reset cohort.
+- Auth0's current password-policy documentation must be tested against imported-user login to prove 73+ byte input is rejected before any bcrypt rehash. A reset-page-only limit is not enough.
+- The 72-byte threshold is measured in UTF-8 bytes, not characters.
+
+References:
+- Auth0 pricing and plan comparison: https://auth0.com/pricing
+- Auth0 bulk import schema: https://auth0.com/docs/manage-users/user-migration/bulk-user-import-database-schema-and-examples
+- Auth0 bulk import prerequisites: https://support.auth0.com/center/s/article/Cosiderations-before-Bulk-Importing-users
+- Auth0 custom-hash rehash behavior: https://support.auth0.com/center/s/article/How-to-update-user-data-while-lazy-migration
+- Auth0 72-byte bcrypt behavior: https://support.auth0.com/center/s/article/customize-max-password-length
+- Auth0 Flexible Password Policy release: https://auth0.com/changelog
+
+C1 remains OPEN until these proofs and the remaining C1-D04–D08 decisions are complete.

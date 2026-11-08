@@ -1,6 +1,6 @@
 # D1 T2-C1 Identity Provider and Owner Decision Sheet v1
 
-> Status: OWNER DECISION REQUIRED — provider-neutral boundary code is implemented in Draft; no identity provider, tenant, account, real identity, credential, or production resource is selected or configured.
+> Status: PARTIALLY OWNER-APPROVED — on 2026-11-08 the project owner selected Auth0 Essentials + Bulk User Import, approved a targeted reset for passwords exceeding 72 UTF-8 bytes, and approved Portal/Admin identity isolation. No vendor tenant, account, real identity, credential, or production resource has been created or configured.
 > Source anchor: master@be261abc60f28bb2733764fa5364ab44b3e76844
 > Draft branch: docs/d1-target-schema-g6-rehearsal-plan-20261107
 > Production authority: BWH remains the only production writer.
@@ -21,7 +21,7 @@ Focused source-slice verification: at exact HEAD `bc3f8c9a713de05715f42f733b8fa7
 
 ## 2. Provider choice
 
-### Option A — Auth0 Essentials + Bulk User Import (recommended managed candidate)
+### Option A — Auth0 Essentials + Bulk User Import (owner-selected managed path; proof pending)
 
 Advantages:
 - Current provider evaluation found a direct import schema for the project's scrypt parameters and a TOTP factor import path.
@@ -30,14 +30,16 @@ Advantages:
 
 Blocking conditions:
 - Imported scrypt credentials are re-hashed to the provider's native bcrypt after successful first login. The provider's bcrypt path has a 72 UTF-8-byte ceiling.
-- Existing passwords above 72 UTF-8 bytes cannot be truncated or silently accepted. The affected production-user count is UNKNOWN because no production identity rows were read.
+- Existing passwords above 72 UTF-8 bytes cannot be truncated or silently accepted. Auth0's bcrypt storage path ignores bytes after the 72-byte boundary. The affected production-user count is UNKNOWN because no production identity rows were read; a one-way scrypt hash does not reveal the original password byte length.
 - The exact email verification/OTP attempt and rate-limit behavior, first-login rehash behavior, TOTP import acceptance, ±1 interval, lockout and Portal/Admin tenant isolation still require an isolated provider proof.
 - Legacy v2 AES-GCM TOTP envelopes have no key ID and require the approved C2 one-time decrypt/transfer process. The historical enc: prefix is raw Base32, not ciphertext.
 
 Recommended policy if Option A is selected:
 - Preserve existing passwords for the import-compatible range.
-- For a password above 72 UTF-8 bytes, require a targeted, user-notified reset before migration/login. Never truncate.
+- For a password above 72 UTF-8 bytes, require a targeted, user-notified reset before that credential is imported or used for its first Auth0 login. Never truncate. If the account cannot be classified from an already-approved non-secret length marker, classify only when the user submits the password to the existing verifier and measure `Buffer.byteLength(password, "utf8")` in memory; do not log or persist the password. Accounts still unclassified at cutover must remain on the legacy authority or enter a separately approved reset cohort—never guess from the hash.
 - Import synthetic TOTP factors in an isolated proof first. Real factor transfer remains separately authorized and must not write plaintext seeds to disk, logs, D1, Worker request bodies or evidence.
+- Preserve the current password normalization contract: the existing Node credential service applies `String(password).trim()` before Scrypt. Prove that the Auth0 login path applies equivalent normalization or require a safe reset for any incompatible case; do not silently change effective password semantics.
+- The current Node Scrypt envelope (`N=32768`, `r=8`, `p=1`, `keylen=64`, 16-byte salt) maps to Auth0 `custom_password_hash` parameters (`cost=32768`, `blockSize=8`, `parallelization=1`, `keylen=64`). Convert decoded salt/hash bytes to supported import encodings without ever materializing plaintext passwords.
 - Use separate Portal and Admin tenants, separate clients, issuer references, factor policies and administrative credentials.
 - Keep Admin directory search behind a separate Admin identity-directory service with least-privilege provider scopes.
 
@@ -81,16 +83,16 @@ Clerk remains conditional on vendor confirmation that the current raw 16-byte No
 
 | ID | Decision | Recommendation | Status |
 |---|---|---|---|
-| C1-D01 | Identity provider | Auth0 Essentials if targeted reset for >72-byte passwords is acceptable; otherwise Keycloak custom scrypt | PENDING |
-| C1-D02 | Passwords above 72 UTF-8 bytes | Targeted, user-notified reset; never truncate | PENDING |
-| C1-D03 | Portal/Admin separation | Separate Auth0 tenants or separate Keycloak realms/deployments, with separate issuer refs and factors | PENDING |
+| C1-D01 | Identity provider | Auth0 Essentials + Bulk User Import | APPROVED — 2026-11-08 |
+| C1-D02 | Passwords above 72 UTF-8 bytes | Targeted, user-notified reset before import/first Auth0 login; never truncate | APPROVED — execution proof OPEN |
+| C1-D03 | Portal/Admin separation | Separate Auth0 tenants, issuer refs, audiences, factors and admin policies; no cross-reuse | APPROVED — topology proof OPEN |
 | C1-D04 | Existing TOTP | Prove synthetic import first; then preserve via provider import where accepted, otherwise explicit re-enrollment | PENDING |
 | C1-D05 | Email verification policy | Preserve single-use, duplicate and rate-limit behavior unless an explicit product change is approved | PENDING |
 | C1-D06 | Visible account label | Masked email or user-managed display name through identity-profile service; never route raw value through business Worker | PENDING |
 | C1-D07 | Coins canary | Keyed PII pseudonym or provider eligibility claim | RECOMMENDED: keyed PII pseudonym |
 | C1-D08 | Identity lifecycle owner | Assign accountable Identity/Privacy and Security roles | PENDING |
 
-The first blocking owner decision is C1-D01/C1-D02. If the project owner rejects targeted resets for over-72-byte passwords, select Keycloak rather than weaken or truncate existing credentials. Do not create a provider tenant until the choice is explicit.
+The owner direction for C1-D01/C1-D02 and the Portal/Admin isolation principle is approved on 2026-11-08. Remaining blockers are proof, not provider selection: exact Scrypt import vectors; 72-byte rejection behavior during login (not only password setting); identification of over-limit accounts without plaintext; current trim normalization; tenant topology and non-production integration proof. If Auth0 cannot preserve these contracts, stop and return with a concrete fallback decision rather than weakening or truncating credentials. Do not create a provider tenant until a separate explicit authorization is issued.
 
 ## 6. C1 completion evidence
 
@@ -110,6 +112,31 @@ No external identity tenant, real account import, production password, TOTP seed
 
 The C1 source-slice review on PR #842 is APPROVED by GitHub account `gccltdco-cmd`, Review ID `5817529933`, bound to exact HEAD `bc3f8c9a713de05715f42f733b8fa72ba53d4477`. The reviewer reran four related repository test files under Node v22.23.1: 48/48 PASS. This is source-level review evidence only; the approval does not close C1.
 
-The owner decisions C1-D01 through C1-D08 remain as recorded above. In particular, no provider is selected, no tenant may be created before the selection decision, the >72 UTF-8-byte password policy is unresolved, Portal/Admin isolation and TOTP import/re-enrollment policy are unapproved, and accountable Identity/Privacy/Security owners are not yet named. The module still does not implement OIDC/JWKS signature verification or a real provider adapter.
+The owner decisions C1-D01/C1-D02 and the Portal/Admin isolation principle C1-D03 are now APPROVED as recorded above. C1-D04 through C1-D08 remain open, and the module still does not implement OIDC/JWKS signature verification or a real provider adapter. Provider selection does not authorize tenant creation. Password cohort identification, trim normalization and the exact first-login 72-byte behavior remain mandatory proof items.
 
 The full repository suite was separately executed and compared against the Draft baseline at Node v22.23.1; this is comparative zero-new-regression evidence, not a green suite. No hosted CI PASS is claimed. C1 remains OPEN.
+
+
+## 8. Owner decision — 2026-11-08
+
+The project owner approved **Auth0 Essentials + Bulk User Import** as the selected identity-provider direction, approved targeted user-notified reset for passwords exceeding 72 UTF-8 bytes, and approved the Portal/Admin isolation principle. This is an architecture decision only.
+
+### Compatibility details that must be proven before any tenant or user import
+
+- Current repository source at the C1/C2 review HEAD uses Node `crypto.scryptSync` with `N=32768`, `r=8`, `p=1`, `keylen=64`, a raw 16-byte salt, and `String(password).trim()` before deriving/verifying the hash.
+- Auth0's documented Scrypt import schema can represent the parameters as `cost=32768`, `blockSize=8`, `parallelization=1`, `keylen=64`; import encodings must be derived from the decoded salt/hash bytes, not by copying the project's base64url strings without conversion.
+- Auth0 re-hashes an imported custom password hash to bcrypt after successful first login. Auth0 Support documents a 72-byte limit where bytes beyond the limit may be ignored. The exact current Flexible Password Policy behavior for imported-user login must be tested; a setting that only rejects long new/reset passwords is insufficient.
+- The existing Scrypt hash is one-way and contains no recoverable plaintext length. A targeted reset population cannot be inferred from the hash. Use an already-approved non-secret length marker if one exists, or measure UTF-8 byte length in memory when a user submits a password to the legacy verifier. Never log, export or persist plaintext. Unknown users must remain on the legacy authority or be handled through a separately approved reset cohort.
+- Current password input normalization trims leading/trailing whitespace before Scrypt. The Auth0 flow must preserve this exact effective behavior or explicitly route incompatible cases through an approved reset; do not silently alter it.
+- The 72-byte unit is UTF-8 **bytes**, not Unicode characters. A password containing multibyte characters can reach the byte boundary with fewer than 72 visible characters.
+
+### Non-production proof required
+
+1. Synthetic known-answer tests for the exact Node Scrypt envelope, including ASCII, multibyte UTF-8, edge whitespace, 71/72/73-byte values and malformed salts/hashes.
+2. Verify that imported hashes authenticate exactly once and are re-hashed as expected after successful login.
+3. Prove that 73+ UTF-8-byte passwords are rejected before bcrypt rehash/truncation; if not, Auth0 Essentials is not acceptable without a different guarded migration path.
+4. Verify reset behavior and ensure the initial bulk import omits the incompatible password hash for any account that must reset; do not attempt to bulk-upsert a hash later as a workaround.
+5. Verify TOTP, email verification, lockout, account binding, issuer/audience isolation, session revocation and Admin directory behavior using synthetic identities only.
+6. Reconcile the three-tenant Essentials entitlement with two isolated production tenants and the required non-production tenant allocation.
+
+No vendor tenant, real user, password, TOTP seed, provider credential, production configuration or production resource was created or changed by this approval.

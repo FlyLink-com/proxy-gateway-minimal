@@ -11,9 +11,9 @@
 
 ## 1. Executive conclusion
 
-### 1.1 Recommended managed candidate
+### 1.1 Owner-selected managed direction (2026-11-08)
 
-**Auth0 Essentials + Bulk User Import** is the strongest managed candidate on the evidence currently available.
+**Auth0 Essentials + Bulk User Import** is the owner-selected identity-provider direction, subject to the non-production proof gates in this evaluation. Selection is not tenant-creation or migration authorization.
 
 The decisive finding is that Auth0's bulk-import schema supports both:
 
@@ -24,7 +24,7 @@ The current project password format is standard Node `crypto.scryptSync` with `N
 
 Auth0 Essentials currently lists **$35/month for up to 500 MAU**, includes Pro MFA and User Import, and includes three tenants. The Professional tier lists $240/month for up to 500 MAU and adds Custom Database Connections. A direct bulk-import path does not require the Custom Database Connection feature; Professional should not be purchased merely for this migration.
 
-**This is a preferred candidate, not a selected provider.** It remains conditional on the 72-byte bcrypt limit, password normalization, email-OTP policy, TOTP time-window compatibility, customer-region reachability, data-processing terms, and a synthetic import proof.
+**Owner decision 2026-11-08:** Auth0 Essentials + Bulk User Import is selected as the preferred implementation path. It remains conditional on the 72-byte bcrypt transition, password normalization, safe identification of over-limit accounts, email-OTP policy, TOTP time-window compatibility, customer-region reachability, data-processing terms, tenant allocation and a synthetic import proof. No tenant is authorized or created.
 
 ### 1.2 Alternative if no password reset is acceptable
 
@@ -106,9 +106,9 @@ Auth0 also supports a TOTP factor in `mfa_factors`. The exact documented shape i
 
 ## 1. Executive conclusion
 
-### 1.1 Recommended managed candidate
+### 1.1 Owner-selected managed direction (2026-11-08)
 
-**Auth0 Essentials + Bulk User Import** is the strongest managed candidate on the evidence currently available.
+**Auth0 Essentials + Bulk User Import** is the owner-selected identity-provider direction, subject to the non-production proof gates in this evaluation. Selection is not tenant-creation or migration authorization.
 
 The decisive finding is that Auth0's bulk-import schema supports both:
 
@@ -119,7 +119,7 @@ The current project password format is standard Node `crypto.scryptSync` with `N
 
 Auth0 Essentials currently lists **$35/month for up to 500 MAU**, includes Pro MFA and User Import, and includes three tenants. The Professional tier lists $240/month for up to 500 MAU and adds Custom Database Connections. A direct bulk-import path does not require the Custom Database Connection feature; Professional should not be purchased merely for this migration.
 
-**This is a preferred candidate, not a selected provider.** It remains conditional on the 72-byte bcrypt limit, password normalization, email-OTP policy, TOTP time-window compatibility, customer-region reachability, data-processing terms, and a synthetic import proof.
+**Owner decision 2026-11-08:** Auth0 Essentials + Bulk User Import is selected as the preferred implementation path. It remains conditional on the 72-byte bcrypt transition, password normalization, safe identification of over-limit accounts, email-OTP policy, TOTP time-window compatibility, customer-region reachability, data-processing terms, tenant allocation and a synthetic import proof. No tenant is authorized or created.
 
 ### 1.2 Alternative if no password reset is acceptable
 
@@ -258,7 +258,7 @@ If the user base is mainly in mainland China or another region with restrictive 
 
 | Provider | Existing password | Existing TOTP | Android | Main limitation | Assessment |
 | --- | --- | --- | --- | --- | --- |
-| Auth0 Essentials | Direct scrypt bulk import schema match | TOTP import supported | Official Android SDK + OIDC/PKCE | bcrypt 72-byte cap after first successful login; email OTP policy differs | **Preferred managed candidate**, conditional |
+| Auth0 Essentials | Direct scrypt bulk import schema match | TOTP import supported | Official Android SDK + OIDC/PKCE | bcrypt 72-byte cap after first successful login; email OTP policy differs; over-limit cohort cannot be inferred from hash alone | **Owner-selected direction**, proof pending |
 | Keycloak | Custom PasswordHashProvider can verify the exact legacy format | Custom credential importer / provider required | OIDC/PKCE via native OIDC library | Java extension and full identity-service operations | **Best fidelity fallback** if targeted reset is not acceptable |
 | Clerk Pro | Supports specific digest formats including `scrypt_werkzeug`; current raw Buffer salt is not proven losslessly compatible | `totpSecret` import fields available | Native Android SDK supports TOTP | Requires vendor confirmation or custom hasher support for this exact Node scrypt format | **Cost challenger**, conditional |
 | Firebase Identity Platform | `STANDARD_SCRYPT` import exposes cost, parallelization, block size and key length; candidate mapping is N=32768, p=1, r=8, dkLen=64 | Bulk import `MfaFactor` schema exposes phone factor only; no TOTP seed import field | Android TOTP supported from SDK 22.1.0; adjacent intervals configurable | Existing TOTP cannot be imported through the documented batch-create MFA schema; duplicate identifiers are not checked automatically | Low-cost option only if TOTP re-enrollment is explicitly accepted |
@@ -440,3 +440,22 @@ This assessment adds documentation only. It does not change authentication sourc
 ### Keycloak
 - [Server Developer Guide — custom providers and password hash providers](https://www.keycloak.org/docs/latest/server_development/)
 - [Server Administration Guide — OTP policy and user federation](https://www.keycloak.org/docs/latest/server_admin/)
+
+
+## 7. Owner decision and implementation guardrails — 2026-11-08
+
+The project owner selected **Auth0 Essentials + Bulk User Import** and approved the targeted reset policy for passwords above 72 UTF-8 bytes. Portal/Admin identity isolation is also approved as a design principle. No tenant, real user, provider credential or production change is authorized.
+
+### Reconciled current Auth0 documentation
+
+- The public plan page lists User Import and Pro MFA on Essentials, three included tenants, and Custom Database Connections on Professional. The chosen path is direct bulk import, so Professional is not selected solely for Custom Database Connections. Current plan price/MAU entitlement must be reconfirmed before any purchase or tenant creation.
+- Auth0 bulk-import schema accepts `custom_password_hash` with `algorithm: scrypt` and explicit `cost`, `blockSize`, `parallelization` and `keylen`.
+- Repository source uses `N=32768`, `r=8`, `p=1`, `keylen=64`, a raw 16-byte salt and `String(password).trim()` before Scrypt. The import mapping is `cost=32768`, `blockSize=8`, `parallelization=1`, `keylen=64`; decode salt/hash bytes and use a documented Auth0-supported encoding.
+- Auth0 re-hashes a valid imported custom hash to bcrypt after the user's first successful login. Auth0 Support documents a 72-byte boundary where trailing bytes are ignored. The Auth0 changelog later announced Flexible Password Policy with an over-limit behavior defaulting to Error for new connections; this newer policy must be reconciled against the support article and proven for imported-user login, not merely sign-up/reset.
+- The one-way Scrypt envelope does not reveal the original password length. Do not attempt to classify >72-byte users by reading or exporting hashes. A privacy-preserving transient measurement during a legacy-authenticated login may classify only users who log in; accounts remaining unknown must stay on the legacy authority or be included in a separately approved reset cohort.
+- The current source trims leading/trailing whitespace before Scrypt. Prove equivalent login normalization or require an explicit reset; do not silently change behavior.
+- Three included tenants must be allocated deliberately: two isolated production identity tenants plus a non-production proof tenant may consume all three; confirm the exact environment entitlement before any creation.
+
+### Required stop conditions
+
+Do not import any real identity until the selected Scrypt vector passes, the 72-byte boundary is proven to fail closed on login, the >72-byte cohort is safely identified, the trim-normalization behavior is preserved, and the Portal/Admin/non-production tenant topology is approved. If Auth0 Essentials cannot meet those requirements, return for an owner decision; do not silently upgrade, switch to Keycloak, or weaken password semantics.
