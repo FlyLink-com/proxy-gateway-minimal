@@ -131,20 +131,20 @@ For real migration, the C2 key-custody decision must separately authorize decryp
 
 ### 3.4 Email verification and signup behavior
 
-Auth0 supports an email OTP verification flow before signup completes. Its documented defaults are not identical to the current service: the code validity period is 15 minutes, and the documented request limit is IP-based (5 requests per minute), not the current per-email/per-request limits with a 5-attempt cap per code.
+Auth0 supports an email OTP verification flow before signup completes, using its Identifier-First / Flexible Identifiers flow. Its documented defaults are not identical to the current service: the code validity period is 15 minutes, and the documented request limit is IP-based (5 requests per minute); the documentation does not provide the current per-code five-attempt cap or per-email/per-request throttle contract.
 
 Two acceptable paths remain open:
 
 - approve the provider-native OTP policy as a deliberate behavior change after abuse/rate-limit review; or
 - implement a separately bounded verification policy that preserves the current 10-minute TTL, five attempts, and per-email/per-request throttles.
 
-Do not claim exact registration compatibility until this is tested end to end. Account creation, trial issuance, welcome-Coins and canary decisions must occur only after the verified provider subject is bound, and must remain idempotent.
+Do not claim exact registration compatibility until this is tested end to end. The Identifier-First flow may change the current form sequence and must be checked against the existing email/password registration UI. Account creation, trial issuance, welcome-Coins and canary decisions must occur only after the verified provider subject is bound, and must remain idempotent.
 
 ### 3.5 Portal/Admin separation and directory
 
 Auth0 Essentials currently includes three tenants. A plausible separation is Portal production, Admin production, and shared non-production; this still needs owner approval and environment design. Do not treat a single shared user directory as sufficient Admin isolation.
 
-The Admin directory must use a separate Management API client with minimum read scopes and explicit audit. Auth0 user search has a 1,000-result query ceiling; exact-email lookup and bounded search should be used rather than unbounded broad scans. Raw email may be returned to an authorized Admin interface, but it must not be projected into D1 or the business Worker.
+The Admin directory must use a separate Management API client with minimum read scopes and explicit audit. Auth0 user search has a 1,000-result query ceiling; exact-email lookup and bounded search should be used rather than unbounded broad scans. The current Admin search semantics must be compared to the Management API query language before replacing them. Raw email may be returned to an authorized Admin interface, but it must not be projected into D1 or the business Worker.
 
 ### 3.6 Current public pricing and plan fit
 
@@ -199,7 +199,7 @@ Blockers:
 Strengths:
 - User Migration Lambda can validate a user's existing password during first sign-in and migrate the user without requiring a blanket password reset.
 - Amplify Android supports TOTP and email confirmation codes.
-- Current published pricing has a 10,000-MAU free tier; Lite and Essentials differ in per-MAU rates and feature availability.
+- Current published pricing has a 10,000-MAU free tier; Lite is $0.0055 per MAU for the next tier, while Essentials is $0.015 per MAU after the free tier. Email/SMS delivery and usage details must be priced separately. This is usage-based and not directly comparable to Auth0's plan price.
 
 Blockers:
 - The documented TOTP setup flow generates a new software-token secret; no API to import an existing TOTP seed was found.
@@ -293,6 +293,7 @@ This assessment adds documentation only. It does not change authentication sourc
 - [Email OTP verification before signup](https://support.auth0.com/center/s/article/Verify-email-address-before-signup-completes)
 - [Password hash import and bcrypt behavior](https://support.auth0.com/center/s/article/Password-Hash-Import-with-Firebase-s-Scrypt-Algorithm)
 - [Auth0 Android SDK](https://github.com/auth0/Auth0.Android)
+- [Auth0 Management API — Search Users](https://auth0.com/docs/api/management/v2/users/get-users)
 
 ### Clerk
 - [Create User API](https://clerk.com/docs/reference/backend/user/create-user)
