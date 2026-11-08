@@ -1274,6 +1274,13 @@ test("subscription control store enforces the exact edge-node metadata contract"
 test("subscription control store enforces registered portal event JSON at the request writer", () => {
   withStore((store) => {
     const now = "2026-11-07T00:00:00.000Z";
+    store.createAccount({
+      id: "acct_portal_event_contract",
+      ownerRef: "owner_portal_event_contract",
+      status: "active",
+      createdAt: now,
+      updatedAt: now
+    });
     const base = {
       id: "pareq_portal_event_contract",
       portalUserRef: "acct_portal_event_contract",
