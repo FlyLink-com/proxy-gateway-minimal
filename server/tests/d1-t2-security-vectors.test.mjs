@@ -244,8 +244,11 @@ function piiDigestEnvelope({ key, keyId, domain, legacyDigestHex }) {
 }
 
 function piiLookupCandidates({ rawValue, domain, keyRing }) {
+  const sourceValue = domain === "account-email-lookup/v1"
+    ? String(rawValue).trim().toLowerCase()
+    : String(rawValue);
   const legacyDigestHex = createHash("sha256")
-    .update(String(rawValue), "utf8")
+    .update(sourceValue, "utf8")
     .digest("hex");
   return [...keyRing.entries()].map(([keyId, key]) => ({
     keyId,
@@ -299,6 +302,21 @@ test("PII pseudonym known-answer vectors cover email, source IP and request cont
     assert.equal(vector.expected.includes(vector.raw), false);
     assert.equal(vector.expected.includes(vector.legacy), false);
   }
+});
+
+test("account email lookup applies the source trim-and-lowercase normalization", () => {
+  const keyRing = new Map([[PII_TEST_KEY_ID, PII_TEST_KEY]]);
+  const canonical = piiLookupCandidates({
+    rawValue: "synthetic-user@example.test",
+    domain: "account-email-lookup/v1",
+    keyRing
+  })[0].envelope;
+  const nonCanonical = piiLookupCandidates({
+    rawValue: "  Synthetic-User@Example.Test  ",
+    domain: "account-email-lookup/v1",
+    keyRing
+  })[0].envelope;
+  assert.equal(nonCanonical, canonical);
 });
 
 test("PII pseudonyms are separated by domain and key ID", () => {
