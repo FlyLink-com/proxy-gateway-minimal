@@ -269,6 +269,9 @@ T2 is not approved and production migration is not authorized.
 
 ### 2.8 Audit and Portal event JSON writer implementation evidence — 2026-11-07
 
+- Follow-up hardening: audit input is snapshotted as plain enumerable data before recursive unsafe-field inspection; wallet-first audit parser null results are converted to fail-closed validation errors; issuance/edge metadata reuse the same hardened snapshot helper. Source commit: `a724b762f56f4d3f0afb459eb0574c4d56bfb60f` (plus audit snapshot ordering `fddc836b806af21d116e4f2a8355b8dea94170a5` and wallet parser null guards `28a6f381bba182876a49410a2bad74c8bbeeb371`).
+
+
 - New shared module: `server/services/platform/control-json-contracts.mjs`.
 - `recordAuditEvent()` now accepts only 8 registered entity/action variants: issuance issued; issuance failed/compensated; entitlement traffic-limit update; wallet-first resource-effect prepared; wallet-first runtime receipt; wallet-first effect receipt; Coin Commerce subscription fulfillment; Coin Commerce data-pack fulfillment. It validates opaque refs, exact key sets, typed numeric values, canonical timestamps and cross-field bindings.
 - The direct initial-confirmation SQL INSERT now uses `coinCommerceSubscriptionFulfillmentMetadataJson()`; the audit row and confirmation row remain in the same SQLite transaction and the exact serialized metadata bytes remain inside the approval digest.
