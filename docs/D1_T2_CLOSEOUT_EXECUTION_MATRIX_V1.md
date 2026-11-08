@@ -259,3 +259,21 @@ No task is marked complete by this matrix. The work is not authorized to cross t
 - C2: added `server/services/platform/d1-t2-security-primitives.mjs`, which the new `server/tests/d1-t2-security-primitives.test.mjs` imports directly. The new source helper implements HMAC families/domains, strict key rings, active/retained rotation, PII lookup, lease digest grammar, Portal/Admin TOTP key separation, v3 AES-GCM AAD and synthetic v2 re-encryption.
 - Local mirror verification: Node v22.16.0, 23 C2 tests + 9 C1 tests = 32/32 PASS; syntax checks passed. The project-fixed Node v22.23.1 exact repository test run remains outstanding. No full repository suite or CI was triggered.
 - Both C1 and C2 remain OPEN pending owner decisions and hosted provider/key-custody proof. No real provider, secret store, key, BWH, D1, deployment or production data was accessed.
+
+## 9. C4/C5 parallel source and synthetic progress — 2026-11-08
+
+### T2-C4 — Payment action custody
+- Confirmed the live source exposure in `server/services/platform/payment-store.mjs`: raw `next_action_url` is inserted into payment receipts and returned by receipt/order projections while an order is active. The 10-minute order TTL is not a capability retention policy.
+- Added a provider-neutral, synthetic-only AES-256-GCM custody contract and tests. Fixed Node v22.23.1 isolated regression: 14/14 PASS; `node --check` 2/2 PASS.
+- The prototype has no I/O and is not connected to payment-store, provider callbacks, D1, Worker routes, or a Durable Object. No DO namespace, key, secret binding, or deployment was created.
+- C4 remains OPEN pending Payment/Security owner approval of the custody system, key lifecycle, resolver access, outage/recovery, and tombstone replay window.
+
+### T2-C5 — Retention/G2 residuals
+- Added `docs/D1_T2_C5_SOURCE_RETENTION_AUDIT_V1.md` and linked it from the retention decision register.
+- Confirmed Leads 90 days (plus 2-hour backup prune safety margin) is the only accepted numeric record-retention rule currently evidenced.
+- Documented the distinction between active TTL/lease windows and record retention for payment orders, deferred quotes, Portal sessions/challenges, Wallet-first handoffs, and payment-action capabilities.
+- The inspected repository paths do not expose a dedicated persistent Portal session/challenge purge method or payment receipt/order purge method; this is recorded as an inspection finding, not a claim about external operator jobs.
+- No new numeric retention duration is approved. RET-02–RET-12 remain OPEN/DEFERRED.
+
+### Gate status
+C4 and C5 remain OPEN. This source/prototype progress does not close T2, authorize D1 DDL/data loading, or change the production writer. BWH remains the only production control-data writer.
