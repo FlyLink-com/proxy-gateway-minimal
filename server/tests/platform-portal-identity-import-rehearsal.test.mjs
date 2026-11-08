@@ -10,6 +10,7 @@ import {
   classifySyntheticLegacyTotpDisposition,
   createSyntheticAuth0BulkImportRecord,
   evaluateSyntheticAuth0FirstLoginPassword,
+  fingerprintSyntheticAuth0ImportRecord,
   normalizePortalPasswordForIdentity,
   mergeAuth0AppMetadata,
   parsePortalScryptPasswordHash,
@@ -125,7 +126,12 @@ test("R3: legacy enc values require re-enrollment and v2 envelopes remain blocke
   assert.deepEqual(classifySyntheticLegacyTotpDisposition(fixture.legacyTotpSecret), {
     outcome: "re_enroll_required",
     nextAction: "re_enroll",
-    legacyEncoding: "base32_not_ciphertext"
+    legacyEncoding: "base32_syntax_not_ciphertext"
+  });
+  assert.deepEqual(classifySyntheticLegacyTotpDisposition("enc:NOT-BASE32!"), {
+    outcome: "re_enroll_required",
+    nextAction: "re_enroll",
+    legacyEncoding: "unverified_enc_prefix"
   });
   assert.deepEqual(classifySyntheticLegacyTotpDisposition("v2:aes-256-gcm:synthetic-envelope"), {
     outcome: "blocked",
@@ -221,13 +227,24 @@ function buildSecondRecord() {
   });
 }
 
-test("R6: app_metadata merge preserves existing keys, import wins conflicts, inputs stay unmutated", () => {
-  const existing = Object.freeze({ plan_tier: "synthetic", legacy_account_ref: "synthetic-stale-ref", nested: { keep: true } });
+test("R6: synthetic app_metadata merge preserves only allowlisted scalar fields", () => {
+  const existing = Object.freeze({ plan_tier: "synthetic", legacy_account_ref: "synthetic-stale-ref" });
   const incoming = Object.freeze({ legacy_account_ref: "synthetic-account-001" });
   const merged = mergeAuth0AppMetadata(existing, incoming);
-  assert.deepEqual(merged, { plan_tier: "synthetic", legacy_account_ref: "synthetic-account-001", nested: { keep: true } });
+  assert.deepEqual(merged, { plan_tier: "synthetic", legacy_account_ref: "synthetic-account-001" });
+  assert.deepEqual(existing, { plan_tier: "synthetic", legacy_account_ref: "synthetic-stale-ref" });
+  assert.deepEqual(incoming, { legacy_account_ref: "synthetic-account-001" });
   assert.deepEqual(mergeAuth0AppMetadata(null, incoming), { legacy_account_ref: "synthetic-account-001" });
-  assert.deepEqual(mergeAuth0AppMetadata(existing, null), { plan_tier: "synthetic", legacy_account_ref: "synthetic-stale-ref", nested: { keep: true } });
+  assert.deepEqual(mergeAuth0AppMetadata(existing, null), { plan_tier: "synthetic", legacy_account_ref: "synthetic-stale-ref" });
+  assert.throws(() => mergeAuth0AppMetadata({ nested: { keep: true } }, incoming), {
+    code: "app_metadata_key_not_allowlisted"
+  });
+  assert.throws(() => mergeAuth0AppMetadata({ plan_tier: { nested: true } }, incoming), {
+    code: "app_metadata_value_invalid"
+  });
+  assert.throws(() => mergeAuth0AppMetadata([], incoming), {
+    code: "app_metadata_object_required"
+  });
 });
 
 test("R6: record builder carries the fully merged app_metadata instead of delegating the merge to the provider", () => {
@@ -239,39 +256,66 @@ test("R6: record builder carries the fully merged app_metadata instead of delega
   assert.deepEqual(buildRecord().app_metadata, { legacy_account_ref: "synthetic-account-001" });
 });
 
-test("R6: import plan is idempotent across reruns and flags duplicates inside one batch", () => {
+test("R6: import plan requires matching provider readback fingerprints and rejects conflicts", () => {
   const first = buildRecord();
   const second = buildSecondRecord();
+  const reorderedFirst = {
+    user_id: first.user_id,
+    custom_password_hash: first.custom_password_hash,
+    email: first.email,
+    email_verified: first.email_verified,
+    app_metadata: { legacy_account_ref: "synthetic-account-001" }
+  };
+  const firstFingerprint = fingerprintSyntheticAuth0ImportRecord(first);
+  assert.equal(fingerprintSyntheticAuth0ImportRecord(reorderedFirst), firstFingerprint);
 
   assert.deepEqual(planSyntheticAuth0BulkImport([first, second]), [
     { index: 0, user_id: "synthetic-portal-user-001", action: "create" },
     { index: 1, user_id: "synthetic-portal-user-002", action: "create" }
   ]);
   assert.deepEqual(planSyntheticAuth0BulkImport([first, second], {
-    alreadyImportedUserIds: ["synthetic-portal-user-001", "synthetic-portal-user-002"]
+    providerReadbackFingerprints: { [first.user_id]: firstFingerprint }
   }), [
-    { index: 0, user_id: "synthetic-portal-user-001", action: "skip_already_imported" },
-    { index: 1, user_id: "synthetic-portal-user-002", action: "skip_already_imported" }
+    { index: 0, user_id: "synthetic-portal-user-001", action: "skip_already_imported_verified" },
+    { index: 1, user_id: "synthetic-portal-user-002", action: "create" }
   ]);
   assert.deepEqual(planSyntheticAuth0BulkImport([first, first]), [
     { index: 0, user_id: "synthetic-portal-user-001", action: "create" },
     { index: 1, user_id: "synthetic-portal-user-001", action: "skip_duplicate_in_batch" }
   ]);
+  assert.throws(() => planSyntheticAuth0BulkImport([first, { ...first, email: "c1.changed@example.test" }]), {
+    code: "import_plan_duplicate_user_id_conflict"
+  });
+  assert.throws(() => planSyntheticAuth0BulkImport([first], {
+    providerReadbackFingerprints: { [first.user_id]: fingerprintSyntheticAuth0ImportRecord({ ...first, email: "c1.changed@example.test" }) }
+  }), { code: "import_plan_provider_readback_mismatch" });
+  assert.throws(() => planSyntheticAuth0BulkImport([first], {
+    alreadyImportedUserIds: [first.user_id]
+  }), { code: "import_plan_provider_readback_fingerprint_required" });
+  assert.throws(() => planSyntheticAuth0BulkImport([first], {
+    providerReadbackFingerprints: { "synthetic-unrelated-001": firstFingerprint }
+  }), { code: "import_plan_provider_readback_unknown_user_id" });
   assert.throws(() => planSyntheticAuth0BulkImport("nope"), { code: "import_plan_records_invalid" });
   assert.throws(() => planSyntheticAuth0BulkImport([{ email: "x@example.test" }]), { code: "import_plan_record_user_id_required" });
 });
 
-test("R6: resume after a partial import returns exactly the outstanding records and converges to empty", () => {
+test("R6: resume uses verified readback fingerprints and converges to empty", () => {
   const first = buildRecord();
   const second = buildSecondRecord();
   const batch = [first, second];
+  const firstFingerprint = fingerprintSyntheticAuth0ImportRecord(first);
+  const secondFingerprint = fingerprintSyntheticAuth0ImportRecord(second);
+  const firstReadback = { providerReadbackFingerprints: { [first.user_id]: firstFingerprint } };
 
-  const remaining = resumeSyntheticAuth0BulkImport(batch, { completedUserIds: ["synthetic-portal-user-001"] });
+  const remaining = resumeSyntheticAuth0BulkImport(batch, firstReadback);
   assert.deepEqual(remaining, [second]);
-  // Resuming the resumed set with the same completions is a no-op (idempotent).
-  assert.deepEqual(resumeSyntheticAuth0BulkImport(remaining, { completedUserIds: ["synthetic-portal-user-001"] }), [second]);
-  // Once every record is completed, a full-batch rerun has nothing left to do.
+  // Repeating the same full-batch reconciliation remains stable.
+  assert.deepEqual(resumeSyntheticAuth0BulkImport(batch, firstReadback), [second]);
+  // Once provider readback matches both complete records, nothing remains.
   assert.deepEqual(resumeSyntheticAuth0BulkImport(batch, {
-    completedUserIds: ["synthetic-portal-user-001", "synthetic-portal-user-002"]
+    providerReadbackFingerprints: {
+      [first.user_id]: firstFingerprint,
+      [second.user_id]: secondFingerprint
+    }
   }), []);
 });

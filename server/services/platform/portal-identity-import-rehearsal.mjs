@@ -149,10 +149,13 @@ export function classifySyntheticLegacyTotpDisposition(value) {
     };
   }
   if (raw.startsWith("enc:")) {
+    const payload = raw.slice(4).replace(/[\s-]/gu, "").replace(/=+$/u, "").toUpperCase();
     return {
       outcome: "re_enroll_required",
       nextAction: "re_enroll",
-      legacyEncoding: "base32_not_ciphertext"
+      legacyEncoding: /^[A-Z2-7]+$/u.test(payload)
+        ? "base32_syntax_not_ciphertext"
+        : "unverified_enc_prefix"
     };
   }
   return {
@@ -218,14 +221,93 @@ function requireSyntheticIdentifier(value, code) {
 // locally and deterministically: keys already present on the account are
 // preserved, keys carried by the import win on conflict, and neither input
 // object is mutated.
+const SYNTHETIC_AUTH0_APP_METADATA_ALLOWLIST = Object.freeze({
+  plan_tier: "label",
+  legacy_account_ref: "synthetic_identifier"
+});
+
+function isPlainRecord(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
+}
+
+function validateSyntheticAuth0AppMetadata(value) {
+  if (value === undefined || value === null) return {};
+  if (!isPlainRecord(value)) throw failure("app_metadata_object_required");
+
+  const validated = {};
+  for (const key of Object.keys(value)) {
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+    if (!descriptor || !Object.hasOwn(descriptor, "value")) {
+      throw failure("app_metadata_accessor_not_allowed");
+    }
+    const entry = descriptor.value;
+    if (!Object.hasOwn(SYNTHETIC_AUTH0_APP_METADATA_ALLOWLIST, key)) {
+      throw failure("app_metadata_key_not_allowlisted");
+    }
+    const fieldPolicy = SYNTHETIC_AUTH0_APP_METADATA_ALLOWLIST[key];
+    if (typeof entry !== "string" || !entry || entry.length > 64) {
+      throw failure("app_metadata_value_invalid");
+    }
+    if (fieldPolicy === "synthetic_identifier"
+      && !/^synthetic-[a-z0-9-]{1,80}$/u.test(entry)) {
+      throw failure("app_metadata_synthetic_identifier_invalid");
+    }
+    if (fieldPolicy === "label" && !/^[a-z0-9][a-z0-9_-]{0,31}$/iu.test(entry)) {
+      throw failure("app_metadata_label_invalid");
+    }
+    validated[key] = entry;
+  }
+  return validated;
+}
+
+// This is a fixture-only allowlist, not an approved production metadata schema.
+// Production import requires a separately reviewed field list and provider readback.
 export function mergeAuth0AppMetadata(existingAppMetadata, importAppMetadata) {
-  const existing = existingAppMetadata && typeof existingAppMetadata === "object" && !Array.isArray(existingAppMetadata)
-    ? existingAppMetadata
-    : {};
-  const incoming = importAppMetadata && typeof importAppMetadata === "object" && !Array.isArray(importAppMetadata)
-    ? importAppMetadata
-    : {};
+  const existing = validateSyntheticAuth0AppMetadata(existingAppMetadata);
+  const incoming = validateSyntheticAuth0AppMetadata(importAppMetadata);
   return { ...existing, ...incoming };
+}
+
+function canonicalizeSyntheticJson(value, ancestors = new WeakSet()) {
+  if (value === null || typeof value === "string" || typeof value === "boolean") {
+    return value;
+  }
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+  if (Array.isArray(value)) {
+    if (ancestors.has(value)) throw failure("import_plan_record_circular");
+    ancestors.add(value);
+    const result = value.map((entry) => canonicalizeSyntheticJson(entry, ancestors));
+    ancestors.delete(value);
+    return result;
+  }
+  if (isPlainRecord(value)) {
+    if (ancestors.has(value)) throw failure("import_plan_record_circular");
+    ancestors.add(value);
+    const result = {};
+    for (const key of Object.keys(value).sort()) {
+      if (["__proto__", "constructor", "prototype"].includes(key)) {
+        throw failure("import_plan_record_key_invalid");
+      }
+      const descriptor = Object.getOwnPropertyDescriptor(value, key);
+      if (!descriptor || !Object.hasOwn(descriptor, "value")) {
+        throw failure("import_plan_record_accessor_not_allowed");
+      }
+      result[key] = canonicalizeSyntheticJson(descriptor.value, ancestors);
+    }
+    ancestors.delete(value);
+    return result;
+  }
+  throw failure("import_plan_record_not_json_safe");
+}
+
+export function fingerprintSyntheticAuth0ImportRecord(record) {
+  if (!isPlainRecord(record)) throw failure("import_plan_record_invalid");
+  const canonical = JSON.stringify(canonicalizeSyntheticJson(record));
+  return createHash("sha256").update(canonical, "utf8").digest("hex");
 }
 
 export function createSyntheticAuth0BulkImportRecord({
@@ -272,35 +354,70 @@ export function createSyntheticAuth0BulkImportRecord({
   return record;
 }
 
-// R6 import idempotency contract: planning is a pure function of the batch
-// and the set of user_ids already imported. Re-running the same batch after
-// a partial failure must never re-create a completed record: completed
-// user_ids plan as skips, a user_id repeated inside one batch is created at
-// most once, and resuming returns exactly the records still outstanding.
-export function planSyntheticAuth0BulkImport(records, { alreadyImportedUserIds = [] } = {}) {
-  if (!Array.isArray(records)) {
-    throw failure("import_plan_records_invalid");
+// R6 synthetic idempotency contract. A provider "already imported" result is
+// accepted only when a separately obtained readback fingerprint matches the
+// exact canonical import record. IDs alone are never sufficient evidence.
+export function planSyntheticAuth0BulkImport(records, options = {}) {
+  if (!Array.isArray(records)) throw failure("import_plan_records_invalid");
+  if (!isPlainRecord(options)) throw failure("import_plan_options_invalid");
+  if (Object.hasOwn(options, "alreadyImportedUserIds")) {
+    throw failure("import_plan_provider_readback_fingerprint_required");
   }
-  const alreadyImported = new Set(alreadyImportedUserIds);
-  const seenInBatch = new Set();
-  return records.map((record, index) => {
-    const userId = record?.user_id;
+
+  const readbackFingerprints = options.providerReadbackFingerprints ?? {};
+  if (!isPlainRecord(readbackFingerprints)) {
+    throw failure("import_plan_provider_readback_invalid");
+  }
+
+  const entries = records.map((record, index) => {
+    if (!isPlainRecord(record)) throw failure("import_plan_record_invalid");
+    const userId = record.user_id;
     if (typeof userId !== "string" || !userId) {
       throw failure("import_plan_record_user_id_required");
     }
-    let action = "create";
-    if (alreadyImported.has(userId)) {
-      action = "skip_already_imported";
-    } else if (seenInBatch.has(userId)) {
-      action = "skip_duplicate_in_batch";
+    requireSyntheticIdentifier(userId, "import_plan_record_user_id_invalid");
+    return {
+      index,
+      userId,
+      fingerprint: fingerprintSyntheticAuth0ImportRecord(record)
+    };
+  });
+
+  const batchUserIds = new Set(entries.map((entry) => entry.userId));
+  const readback = new Map();
+  for (const [userId, fingerprint] of Object.entries(readbackFingerprints)) {
+    if (!batchUserIds.has(userId)) {
+      throw failure("import_plan_provider_readback_unknown_user_id");
     }
-    seenInBatch.add(userId);
-    return { index, user_id: userId, action };
+    if (typeof fingerprint !== "string" || !/^[a-f0-9]{64}$/u.test(fingerprint)) {
+      throw failure("import_plan_provider_readback_fingerprint_invalid");
+    }
+    readback.set(userId, fingerprint);
+  }
+
+  const seenInBatch = new Map();
+  return entries.map((entry) => {
+    const previous = seenInBatch.get(entry.userId);
+    if (previous) {
+      if (previous !== entry.fingerprint) {
+        throw failure("import_plan_duplicate_user_id_conflict");
+      }
+      return { index: entry.index, user_id: entry.userId, action: "skip_duplicate_in_batch" };
+    }
+
+    seenInBatch.set(entry.userId, entry.fingerprint);
+    if (readback.has(entry.userId)) {
+      if (readback.get(entry.userId) !== entry.fingerprint) {
+        throw failure("import_plan_provider_readback_mismatch");
+      }
+      return { index: entry.index, user_id: entry.userId, action: "skip_already_imported_verified" };
+    }
+    return { index: entry.index, user_id: entry.userId, action: "create" };
   });
 }
 
-export function resumeSyntheticAuth0BulkImport(records, { completedUserIds = [] } = {}) {
-  const plan = planSyntheticAuth0BulkImport(records, { alreadyImportedUserIds: completedUserIds });
+export function resumeSyntheticAuth0BulkImport(records, options = {}) {
+  const plan = planSyntheticAuth0BulkImport(records, options);
   const outstanding = new Set(
     plan.filter((entry) => entry.action === "create").map((entry) => entry.index)
   );
