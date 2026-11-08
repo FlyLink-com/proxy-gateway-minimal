@@ -305,3 +305,13 @@ Added a pure synthetic AES-256-GCM key-escrow envelope contract and 10-case test
 Fixed Node v22.23.1 isolated regression: 10/10 PASS twice; `node --check` 2/2 PASS. Evidence and TAP hashes are in `docs/D1_T2_C2_KEY_CUSTODY_OWNER_DECISION_PROPOSAL_V1.md`.
 
 This does not create a real key, external escrow, KMS/HSM integration, Cloudflare secret binding, or production restore. C2 remains OPEN pending the grouped owner decision and real custody plan.
+
+## 13. C3 account metadata source/target gate — 2026-11-08
+
+- Separated the current BWH `createAccount()` source metadata allowlist from the issuance-request metadata union. This restores the actual operator/Portal source shapes while keeping the source writer closed to unknown fields.
+- Enforced `issuanceMetadataJson()` at `createIssuanceRequest()` and added the exact data-pack v1 metadata variant already emitted by the data-pack reservation path.
+- Added the pure `projectAccountMetadataForD1()` fail-closed gate. Raw login/display fields require Auth0 identity externalization; legacy unkeyed SHA-256 fields require a separately approved C2 HMAC replacement or an explicit purpose-removal decision. The gate never silently drops those fields.
+- Fixed Node v22.23.1 full SQLite control-store suite: **45/45 PASS twice**; TAP hashes `b7d0e4da530d0b2ae4535adbeeaf27be45c7bb835f0a68c9e76a8d5637ade74a` and `690d044fa2d92675d193827d0bd0192e5c57c80dc54f62da40f27395b23cbc30`.
+- Shared JSON, payment custody, key escrow and schema inventory contracts: **48/48 PASS twice**; TAP hashes `37f1ab071b3e6915f2f63a90d9bfb139f43f5ce15cf3cd56bf2f253831d3137e` and `66ad182eea46dadcd111c0ca429690d305478fd5e829190b9b8b6cd60fb9392`; syntax checks 9/9 PASS; source inventory validator PASS (70 tables, 820 columns, 126 FK edges, 88 indexes, 91 triggers, 19 source migration entries).
+
+C3 remains OPEN for the actual Auth0 identity relation, keyed digest replacement, and the complete 26-field JSON writer/transform review. No production data or D1 was accessed or mutated.
