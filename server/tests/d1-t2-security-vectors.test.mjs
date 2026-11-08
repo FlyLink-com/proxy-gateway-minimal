@@ -222,8 +222,8 @@ test("PII lookup pseudonym uses a separate keyed domain over the legacy digest",
     lengthPrefix(legacyDigestHex)
   ]);
   const digest = createHmac("sha256", piiKey).update(message).digest("hex");
-  assert.equal(legacyDigestHex, "f7f6823924555e936175da8ec0ce2d69abf3800ddbf5d4a0ad6e9f7d5629c44");
-  assert.equal( 
+  assert.equal(legacyDigestHex, "f7f6823924555e936175da8ec0ce2d69abf3800ddbf5d4a0ad6e9f97d5629c44");
+  assert.equal(
     `hmac-sha256:v1:${piiKeyId}:${digest}`,
     "hmac-sha256:v1:test-pii-20261107:34abee6aeb0d49ebde0e23fe1ab31a32c867bea313e9ce5a5faa3f9bce6e58ba"
   );

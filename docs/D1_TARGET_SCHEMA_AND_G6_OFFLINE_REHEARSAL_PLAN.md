@@ -306,20 +306,45 @@ Open blockers remain explicit: named domain-owner approval; idempotency HMAC key
 This T2 map does not authorize production DDL or data loading. The next bounded work is to close these contracts using source evidence and synthetic vectors, then prepare T3 target DDL proposal. No BWH/production read, remote D1 mutation, Worker deployment, CI, PR, merge or cutover occurred. BWH remains the only production writer.
 
  
-## T2 core security contract design — 2026-11-07
+## T2 source-level closure pass — 2026-11-07
 
-**Status: FOUR CORE DESIGNS DOCUMENTED; T2 APPROVAL STILL BLOCKED ON IMPLEMENTATION-LEVEL EVIDENCE AND OWNER APPROVAL.**
+Base draft: 6d148796b251362ac8504677b62504eb39c39a3e. Source anchor: master at be261abc60f28bb2733764fa5364ab44b3e76844.
 
-Added `docs/D1_T2_CORE_SECURITY_CONTRACTS_V1.md` with:
-1. Lease capability: domain-separated SHA-256 over the exact 32-byte random token; preserve generation/deadline/status/CAS fencing.
-2. Idempotency: versioned HMAC-SHA-256 with unambiguous length-prefixed scope encoding, separate purpose domains, key IDs and dual-key rotation/read compatibility. Provider `event_dedupe_key` uses a separate HMAC domain/key and preserves the current merchant-scope uniqueness boundary. No key was provisioned.
-3. JSON: field-specific schema IDs and high-level allowlist contracts for all 26 JSON columns; exact exhaustive writer key sets still need a source callsite audit.
-4. Payment action URL: raw URL/QR excluded from D1; D1 holds only opaque action ref/type/expiry/state; custody API, owner, TTL, restore and outage behavior remain unselected.
-5. Retention: Leads 90-day expiry/purge preserved; raw usage samples excluded pending finite TTL/aggregation; financial/audit/session/challenge/consent retention remains owner-approved, not guessed.
+### Completed in this Draft-only pass
 
-The design specifies synthetic negative/positive tests and fail-closed behavior. It does not yet prove production compatibility or approve implementation. The remaining source-contract work is to enumerate all JSON writers and exact allowlist keys, validate provider/URL custody contract, define the HMAC migration key operational handoff without provisioning it, resolve the low-confidence notification generation field, and obtain named owners/retention decisions.
+- Mapped all 26 JSON columns in D1_CONTROL_SCHEMA_INVENTORY_V1.json to observed source writer entrypoints and current production callers.
+- Corrected lease source contract: five issuers use 32-byte random hex; platform_deferred_resource_transition_reservations.lease_token uses deferred_reservation_lease_ plus randomUUID().
+- Corrected lease digest to use domain-separated, length-prefixed UTF-8 token text. No decodeHex assumption remains.
+- Specified six raw idempotency HMAC domains, a separate provider-event HMAC key/domain, key ID in the envelope, four-byte big-endian LP and synthetic known-answer vectors.
+- Added a separate PII pseudonymization HMAC proposal for historical SHA-256 digests; no key created.
+- Found account metadata raw email/displayName and unkeyed SHA-256 digest risks; migration is blocked until externalization or keyed transformation is approved.
+- Distinguished aggregate coin allocation from per-lot allocation; identified generic JSON writer boundaries that still need exact allowlists.
+- Recommended Durable Objects SQLite storage for payment action custody; design only, no DO or key created.
+- Prepared retention decision register; only Leads 90-day rule remains accepted.
+- Prepared an independent review packet; no separate reviewer has signed it.
 
-No BWH/production read, secrets provisioned, remote D1 mutation, Worker deployment, CI, PR, merge, dual-write or cutover. BWH remains production's only writer.
+### Artifacts
 
- 
-T2 source-contract follow-up: source inspection confirms six lease-token columns, six idempotency columns and one separate provider-event dedupe token. Lease issuers use 32 random bytes encoded as 64 lowercase hex and existing fencing checks remain mandatory. The inventory contains **26 JSON columns** (not 21); the security contract was corrected accordingly, with Passkey JSON deferred. Payment next-action URLs flow to Portal projections; HTTPS validation alone does not remove signed/bearer capability risk, so a separate custody adapter is required before D1 cutover. The edge notification `generation` writer currently accepts required text only; it remains CONDITIONAL until a bounded grammar is established. Exact exhaustive JSON writer-key audit remains open.
+- docs/D1_T2_CORE_SECURITY_CONTRACTS_V1.md
+- docs/D1_T2_SOURCE_WRITE_PATH_AUDIT_V1.md
+- docs/D1_T2_PAYMENT_ACTION_CUSTODY_DESIGN_V1.md
+- docs/D1_T2_RETENTION_DECISION_RECORDS_V1.md
+- docs/D1_T2_INDEPENDENT_REVIEW_PACKET_V1.md
+- server/tests/d1-t2-security-vectors.test.mjs
+
+### Synthetic test result
+
+The isolated Node built-in test run passed 9/9 known-answer/contract tests. This is not the full repository test suite. No CI was run on the Draft branch.
+
+### Remaining T2 blockers
+
+1. Remove/externalize raw account identity values and decide which keyed PII pseudonyms remain.
+2. Close generic JSON writer allowlists and notice content limits.
+3. Resolve the existing wallet-first setup handoff unkeyed digest exception.
+4. Approve HMAC key custody/rotation and historical replay compatibility.
+5. Approve payment custody owner, TTL, secret binding and operational restore/outage policy.
+6. Assign domain owners and approve unresolved retention periods.
+7. Enforce generation grammar at source writer and retain conditional status until compatible.
+8. Obtain a separate independent review.
+
+T2 remains BLOCKED. No production customer data was read; no BWH connection, real secret, remote D1 mutation, Worker/DO deployment, CI, PR, merge, dual-write or cutover occurred. BWH remains production's only writer.

@@ -289,14 +289,12 @@ The source audit and synthetic vectors are complete for this pass, but T2 remain
 Repository-only documentation and synthetic test design. No production DB reads, BWH connection, real secrets, remote D1 mutation, Worker deployment, CI, PR, merge, dual-write, DNS or cutover. BWH remains production's only writer. A future G6 PASS authorizes consideration of the next separately approved step only.
 
  
-### T2 source-contract follow-up — 2026-11-07
+## 8. Source-contract follow-up — 2026-11-07
 
-Repository source inspection confirmed:
-- Lease producers currently issue 32-byte random values rendered as 64 lowercase hex; lease checks include generation/deadline/state fencing.
-- Six source `lease_token` columns are in scope for SHA-256 digest transformation.
-- Six source idempotency columns are in scope for HMAC transformation; Payment `event_dedupe_key` is a seventh, separate provider-event HMAC domain, preserving `(merchant_scope_digest, event_dedupe_key)` uniqueness.
-- T2 inventory contains 26 JSON columns, not 21. The security contract document has been corrected to enumerate all 26; Passkey JSON remains deferred.
-- Payment `next_action_url` currently flows through order/receipt projections to Portal; HTTPS-only validation does not rule out signed/bearer query or QR capabilities. A custody adapter is required before D1 can replace the source URL.
-- Source edge notification `generation` is TEXT and its writer currently validates only required text. It remains CONDITIONAL pending a bounded safe-generation grammar and producer callsite proof.
+The source audit corrected two earlier assumptions: one of six lease issuers uses a prefixed UUIDv4 rather than a 32-byte hex token, and the account metadata guard does not prevent raw email/displayName values or unkeyed SHA-256 PII digests from entering JSON. The 26-field writer inventory is recorded in the companion audit.
 
-This source inspection did not execute production code or read production values. Exact exhaustive JSON writer key enumeration remains open; current helper-level validation is not treated as proof of a complete allowlist.
+The synthetic vector file contains nine tests covering five-hex/one-UUID lease issuer formats, all six idempotency HMAC domains, provider-event separation, PII digest pseudonymization, length-prefix ambiguity, key-ID envelope parsing and the two observed generation forms. The isolated Node test run passed 9/9. No full repository suite or CI was run.
+
+The custody design recommends Durable Objects SQLite storage but is not implemented. The retention register has only the existing Leads 90-day period accepted; all other unresolved domain periods remain pending. The independent-review packet is prepared but has not been signed by a separate reviewer.
+
+T2 is not approved and production migration is not authorized.
