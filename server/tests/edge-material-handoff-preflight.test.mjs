@@ -43,7 +43,13 @@ function seedRegisteredNode(store, overrides = {}) {
     firstBootPacketRef: "first_boot_sgp_a_20260613",
     registeredAt: NOW,
     updatedAt: NOW,
-    metadata: { source: "test" },
+    metadata: {
+      source: "node-image-first-boot-packet",
+      receiptGateRequired: true,
+      imageSafeConfirmed: true,
+      artifactHashRecorded: true,
+      wireguardPlanRef: "wg-plan-synthetic"
+    },
     ...overrides
   });
 }
