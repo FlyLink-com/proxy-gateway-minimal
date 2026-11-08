@@ -136,3 +136,21 @@ The bounded source hardening is now present on the child Draft branch:
 Local isolated helper check: the helper and the same five-case Node test harness passed 5/5 under Node v22.16.0; `node --check` passed for the helper. This was not the project's fixed Node v22.23.1 environment and was not a repository-wide run. The full focused repository test files still need execution under Node v22.23.1. No Hosted CI was run.
 
 The exact Draft branch head containing these changes is tracked by the accompanying Draft PR. Existing persisted v1 hashes and their domain-separation bytes are unchanged. C2-A04 remains OPEN pending exact fixed-environment regression and owner approval of the delivered-row replay/retention window.
+
+## 8. Fixed Node 22.23.1 combined regression — 2026-11-08
+
+The latest exact child Draft branch source was fetched and exercised in an isolated non-production Vercel sandbox using Node v22.23.1. The combined focused suite ran twice:
+
+- **86/86 PASS**, 0 fail, 0 skipped — Run 1 TAP SHA-256: `4d8e0eef6ace1490e849cac1814c24d119c0e270e94de6da1a21908a7032643e`.
+- **86/86 PASS**, 0 fail, 0 skipped — Run 2 TAP SHA-256: `eda8198d8f19ac65ae2dda4e07eeb637aa146f6ed9d9e928ce544f11ac581a4e`.
+- `node --check`: **15/15 PASS**.
+
+The combined 86 cases comprise:
+- Existing T1/C1/C2 source slice: 62 cases.
+- Risk A proof-window contract: 12 cases.
+- Secure Portal idempotency helper: 5 cases.
+- Wallet-first delivery service: 7 cases.
+
+The nine T1 service/test file SHA-256 values were re-read from the sandbox and matched the existing fixed-runtime evidence inventory exactly. The Risk A and Wallet-first source/test files were fetched from this child branch before being placed into the isolated sandbox. No project-wide `npm test`, Hosted CI, TypeScript build, Admin TSX integration test, or HTTP route integration test is claimed. The latter two remain for the full repository environment.
+
+This supersedes the earlier local Node v22.16.0-only helper smoke note in Section 7 for the current focused evidence. C1-A04 and C2-A04 remain OPEN; this does not constitute formal C1/C2 acceptance or T2 PASS.
