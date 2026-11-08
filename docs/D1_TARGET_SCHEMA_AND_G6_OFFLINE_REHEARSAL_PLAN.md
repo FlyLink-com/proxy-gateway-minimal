@@ -391,3 +391,16 @@ The pinned Master source `server/services/platform/portal-registration.mjs` conf
 - The full repository test suite and CI have not been run.
 
 T2 remains BLOCKED; this test coverage addition does not close the identity-custody, key-custody, JSON-enforcement, payment-custody, retention, or independent-review gates.
+
+
+## Identity/authentication custody source audit — 2026-11-07
+
+Added `docs/D1_T2_IDENTITY_AUTH_CUSTODY_SOURCE_AUDIT_V1.md`, pinned to `master@be261abc60f28bb2733764fa5364ab44b3e76844`. The audit is source-only and does not establish production feature activation.
+
+New T2-C1/C2 findings:
+- `resolvePortalLoginAccount()` accepts exact account IDs first, otherwise scans active accounts for `loginRef` / `displayRef` and requires a unique match. User-facing browser sessions currently derive identity labels from `metadata.loginRef`.
+- The source conditionally wires the password credential service when User Portal/Admin Auth routes are enabled; production activation is NOT OBSERVED. All 11 `platform_portal_password_credentials` columns remain DEFER in the current field map. DEFER does not authorize silent login disablement or copying password hashes into D1.
+- `platform_portal_totp_credentials.encrypted_totp_secret` is EXTERNALIZE. Current AES-256-GCM envelope has no key ID; `USER_PORTAL_TOTP_SECRET_KEY` is shared by User Portal and Admin TOTP verifiers. Legacy `enc:` values are unwrapped as raw Base32, not decrypted ciphertext.
+- Identity/auth custody must preserve any approved login/TOTP capability while keeping password hashes and TOTP secrets out of D1. The TOTP key contract must define key ID, key separation or explicit shared-key acceptance, rotation/re-encryption, and legacy-value quarantine.
+
+The closeout matrix and independent review packet now include the source audit. T2-C1/C2 remain OPEN pending named owner decisions and synthetic compatibility evidence. No production login behavior, credentials, or keys were changed.
