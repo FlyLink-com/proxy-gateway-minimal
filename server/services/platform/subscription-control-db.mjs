@@ -8082,19 +8082,20 @@ export function createSqliteSubscriptionControlStore({
       if (action === "resource_effect_prepared") {
         const prepared = walletFirstResourceEffectPreparedFromAudit(audit);
         if (
-          entityRef !== prepared.transitionRef
+          !prepared
+          || entityRef !== prepared.transitionRef
           || id !== walletFirstResourceEffectPreparationRef(prepared.transitionRef)
         ) {
           throw platformError("validation_error", "wallet-first preparation audit binding is invalid");
         }
       } else if (action === "resource_runtime_applied") {
         const runtime = walletFirstResourceEffectRuntimeReceiptFromAudit(audit);
-        if (entityRef !== runtime.transitionRef || id !== runtime.runtimeReceiptRef) {
+        if (!runtime || entityRef !== runtime.transitionRef || id !== runtime.runtimeReceiptRef) {
           throw platformError("validation_error", "wallet-first runtime audit binding is invalid");
         }
       } else if (action === "resource_effect_applied") {
         const receipt = walletFirstResourceEffectReceiptFromAudit(audit);
-        if (entityRef !== receipt.transitionRef || id !== receipt.effectRef) {
+        if (!receipt || entityRef !== receipt.transitionRef || id !== receipt.effectRef) {
           throw platformError("validation_error", "wallet-first receipt audit binding is invalid");
         }
       } else {
