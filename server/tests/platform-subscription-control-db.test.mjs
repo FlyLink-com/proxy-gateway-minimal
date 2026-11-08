@@ -1036,6 +1036,54 @@ test("subscription control store exposes only safe references in serialized summ
   });
 });
 
+test("subscription control store enforces the bounded legacy account metadata contract", () => {
+  withStore((store) => {
+    const now = "2026-11-08T00:00:00.000Z";
+    const account = store.createAccount({
+      id: "acct_account_metadata_contract",
+      ownerRef: "owner_account_metadata_contract",
+      status: "active",
+      createdAt: now,
+      updatedAt: now,
+      metadata: {
+        source: "operator_provisioning_form",
+        channel: "manual"
+      }
+    });
+    assert.deepEqual(account.metadata, {
+      source: "operator_provisioning_form",
+      channel: "manual"
+    });
+
+    assert.throws(() => store.createAccount({
+      id: "acct_account_metadata_unknown",
+      ownerRef: "owner_account_metadata_unknown",
+      status: "active",
+      createdAt: now,
+      updatedAt: now,
+      metadata: { unknownField: true }
+    }), { code: "validation_error" });
+
+    assert.throws(() => store.createAccount({
+      id: "acct_account_metadata_bad_digest",
+      ownerRef: "owner_account_metadata_bad_digest",
+      status: "active",
+      createdAt: now,
+      updatedAt: now,
+      metadata: { loginDigest: "not-a-sha256-digest" }
+    }), { code: "validation_error" });
+
+    assert.throws(() => store.createAccount({
+      id: "acct_account_metadata_bad_login",
+      ownerRef: "owner_account_metadata_bad_login",
+      status: "active",
+      createdAt: now,
+      updatedAt: now,
+      metadata: { loginRef: "not-an-email" }
+    }), { code: "validation_error" });
+  });
+});
+
 test("subscription control store persists portal password credential summaries safely", () => {
   withStore((store) => {
     const now = "2026-06-03T00:00:00.000Z";
@@ -1897,7 +1945,7 @@ test("subscription control store upgrades legacy portal access request schema", 
       edgeCredentialRef: "edgecred_pareq_legacy_upgrade_001",
       edgeMaterialDigest: "sha256:digest_pareq_legacy_upgrade_001",
       edgeLifecycleMutation: true,
-      event: { status: "auto_issued" }
+      event: null
     });
 
     assert.equal(saved.tenantId, "tenant_legacy_upgrade_001");
