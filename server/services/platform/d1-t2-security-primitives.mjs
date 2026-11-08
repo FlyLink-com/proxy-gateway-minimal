@@ -169,13 +169,21 @@ export function createD1KeyRing({ family, activeKeyId, readKeyIds, keys } = {}) 
   if (!entries || entries.length !== readKeyIds.length) throw fail("key_ring_keys_invalid");
 
   const supplied = new Map();
-  for (const [keyId, value] of entries) {
-    requireKeyId(keyId);
-    const key = toBytes(value);
-    if (key.length !== 32 || supplied.has(keyId)) throw fail("key_material_invalid");
-    supplied.set(keyId, key);
+  try {
+    for (const [keyId, value] of entries) {
+      requireKeyId(keyId);
+      const key = toBytes(value);
+      if (key.length !== 32 || supplied.has(keyId)) {
+        key.fill(0);
+        throw fail("key_material_invalid");
+      }
+      supplied.set(keyId, key);
+    }
+    if (readKeyIds.some((keyId) => !supplied.has(keyId))) throw fail("key_ring_keys_invalid");
+  } catch (error) {
+    for (const key of supplied.values()) key.fill(0);
+    throw error;
   }
-  if (readKeyIds.some((keyId) => !supplied.has(keyId))) throw fail("key_ring_keys_invalid");
 
   const ring = Object.freeze({
     family,
@@ -202,17 +210,21 @@ export function parseD1KeyRingSecret(secretText, { family } = {}) {
     throw fail("key_ring_secret_invalid");
   }
   const keys = {};
-  for (const [keyId, encoded] of Object.entries(parsed.keys)) {
-    const decoded = base64UrlToBytes(encoded);
-    if (!decoded || decoded.length !== 32) throw fail("key_ring_secret_invalid");
-    keys[keyId] = decoded;
+  try {
+    for (const [keyId, encoded] of Object.entries(parsed.keys)) {
+      const decoded = base64UrlToBytes(encoded);
+      if (!decoded || decoded.length !== 32) throw fail("key_ring_secret_invalid");
+      keys[keyId] = decoded;
+    }
+    return createD1KeyRing({
+      family,
+      activeKeyId: parsed.activeKeyId,
+      readKeyIds: parsed.readKeyIds,
+      keys
+    });
+  } finally {
+    for (const key of Object.values(keys)) key.fill(0);
   }
-  return createD1KeyRing({
-    family,
-    activeKeyId: parsed.activeKeyId,
-    readKeyIds: parsed.readKeyIds,
-    keys
-  });
 }
 
 export function destroyD1KeyRing(keyRing) {
@@ -581,16 +593,16 @@ export function createD1TotpSecretProtector({ keyRing, scope, ivFactory } = {}) 
   requireKeyFamily(keyRing, expectedFamily);
 
   async function protect(secret, { credentialRef } = {}) {
-    const plaintext = requireText(secret, "totp_secret_invalid").trim();
+    const plaintext = normalizeLegacyBase32(requireText(secret, "totp_secret_invalid"));
     if (!plaintext) throw fail("totp_secret_invalid");
     const ref = requireCredentialRef(credentialRef);
     const keyId = keyRing.activeKeyId;
-    const rawKey = keyBytes(keyRing, keyId);
     const crypto = cryptoApi();
     const iv = ivFactory
       ? toBytes(ivFactory(), "totp_iv_invalid")
       : crypto.getRandomValues(new Uint8Array(12));
     if (iv.length !== 12) throw fail("totp_iv_invalid");
+    const rawKey = keyBytes(keyRing, keyId);
     const key = await importAesKey(rawKey, ["encrypt"]);
     const encrypted = new Uint8Array(await crypto.subtle.encrypt({
       name: "AES-GCM",
@@ -648,7 +660,10 @@ async function decryptLegacyV2Totp(value, legacyKey) {
   const ciphertext = base64UrlToBytes(parts[4]);
   if (!iv || iv.length !== 12 || !tag || tag.length !== 16 || !ciphertext || ciphertext.length === 0) return null;
   const rawKey = toBytes(legacyKey, "legacy_totp_key_invalid");
-  if (rawKey.length !== 32) throw fail("legacy_totp_key_invalid");
+  if (rawKey.length !== 32) {
+    rawKey.fill(0);
+    throw fail("legacy_totp_key_invalid");
+  }
   try {
     const key = await importAesKey(rawKey, ["decrypt"]);
     const plaintext = await cryptoApi().subtle.decrypt({
