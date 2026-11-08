@@ -24,7 +24,8 @@ Review the full T2 closeout contract, not only the original lease/idempotency pr
 9. `server/tests/d1-t2-security-vectors.test.mjs`
 10. `docs/D1_T2_IDENTITY_AUTH_CUSTODY_SOURCE_AUDIT_V1.md`
 11. `docs/D1_T2_C1_IDENTITY_AUTH_CUSTODY_DECISION_V1.md` (DRAFT proposal; not owner-approved)
-12. `docs/D1_TARGET_SCHEMA_AND_G6_OFFLINE_REHEARSAL_PLAN.md`
+12. `docs/D1_T2_C1_IDENTITY_PROVIDER_EVALUATION_V1.md` (DRAFT assessment; Auth0 candidate not selected)
+13. `docs/D1_TARGET_SCHEMA_AND_G6_OFFLINE_REHEARSAL_PLAN.md`
 
 ## 3. Required independent checks
 
