@@ -105,6 +105,26 @@ test("portal access event JSON rejects accessors, symbols and non-enumerable fie
   assert.throws(() => portalAccessEventJson(hidden), { code: "validation_error" });
 });
 
+test("shared JSON contracts reject hostile proxy traps without leaking details", () => {
+  const marker = "RAW_PROXY_TRAP_MARKER";
+  const eventProxy = new Proxy(
+    { type: "delivery_generation_reissued", occurredAt: NOW },
+    { ownKeys() { throw new Error(marker); } }
+  );
+  assert.throws(
+    () => portalAccessEventJson(eventProxy),
+    (error) => error?.code === "validation_error" && !error.message.includes(marker)
+  );
+
+  const metadataProxy = new Proxy(fulfillmentMetadata(), {
+    getPrototypeOf() { throw new Error(marker); }
+  });
+  assert.throws(
+    () => coinCommerceSubscriptionFulfillmentMetadataJson(metadataProxy),
+    (error) => error?.code === "validation_error" && !error.message.includes(marker)
+  );
+});
+
 test("subscription fulfillment audit JSON accepts the exact base and switch variants", () => {
   const base = fulfillmentMetadata();
   assert.deepEqual(JSON.parse(coinCommerceSubscriptionFulfillmentMetadataJson(base)), base);
