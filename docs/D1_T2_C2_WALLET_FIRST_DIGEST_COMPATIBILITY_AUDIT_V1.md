@@ -154,3 +154,17 @@ The combined 86 cases comprise:
 The nine T1 service/test file SHA-256 values were re-read from the sandbox and matched the existing fixed-runtime evidence inventory exactly. The Risk A and Wallet-first source/test files were fetched from this child branch before being placed into the isolated sandbox. No project-wide `npm test`, Hosted CI, TypeScript build, Admin TSX integration test, or HTTP route integration test is claimed. The latter two remain for the full repository environment.
 
 This supersedes the earlier local Node v22.16.0-only helper smoke note in Section 7 for the current focused evidence. C1-A04 and C2-A04 remain OPEN; this does not constitute formal C1/C2 acceptance or T2 PASS.
+
+
+## 9. Secure RNG return-view hardening — 2026-11-08
+
+A further fail-closed guard was added to the first-party UUIDv4 fallback:
+
+- `crypto.getRandomValues(bytes)` must return the exact supplied `Uint8Array`, as specified by Web Crypto. A different return object is rejected rather than allowing the supplied buffer to remain unchanged and be formatted as an idempotency key.
+- Added a regression proving a mismatched return view fails with `secure_random_unavailable`.
+- Fixed Node v22.23.1 focused regression: Portal idempotency helper + Wallet-first delivery service **13/13 PASS**, 0 failed / 0 skipped.
+- `node --check`: 4/4 PASS.
+- TAP SHA-256: `6c96281e24a8fb77b8433c35c08760a3e71c897b90d1237596850eae319a8a4d`.
+- Exact changed blobs: helper `bae99a935c35097f57663d19e76fc30d21ed98ed`; test `b83c1dfc61109d6c68dbf918df96bb84d8add65a`.
+
+The earlier 86/86 two-run evidence is bound to the preceding branch Head `690451b6`; it is not represented as a full-suite run on this new Head. The current Head has the incremental 13/13 targeted result. The full combined 87-case rerun, Admin TSX integration test, HTTP route integration test, TypeScript build, and Hosted CI remain NOT RUN. C2-A04 remains OPEN pending owner approval of digest disposition and replay/retention duration.
