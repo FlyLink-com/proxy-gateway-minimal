@@ -242,11 +242,20 @@ G6 PASS authorizes only consideration of the next separately gated step. It does
 
 | Package | Current evidence | Status |
 |---|---|---|
-| T2-C1 Identity custody | [C1 custody proposal](D1_T2_C1_IDENTITY_AUTH_CUSTODY_DECISION_V1.md) + [provider evaluation](D1_T2_C1_IDENTITY_PROVIDER_EVALUATION_V1.md); Auth0 Essentials bulk import is the preferred candidate, not selected; local synthetic converter tests implemented, hosted provider proof and owner decisions remain outstanding | OPEN |
-| T2-C2 HMAC and legacy compatibility | HMAC domains/vectors drafted; key custody approval and wallet-first digest decision remain open | OPEN |
+| T2-C1 Identity custody | C1 custody proposal + provider evaluation + [owner decision sheet](D1_T2_C1_OWNER_DECISION_SHEET_V1.md); provider-neutral opaque actor-context and identity-binding helper/tests added; Auth0 Essentials remains preferred candidate, not selected; hosted provider proof and owner decisions remain outstanding | OPEN |
+| T2-C2 HMAC and legacy compatibility | [C2 key custody/rotation ADR](D1_T2_C2_KEY_CUSTODY_AND_ROTATION_ADR_V1.md) + executable Web Crypto primitives + source-importing synthetic tests added; key custody provider/escrow approval and wallet-first digest compatibility remain open | OPEN |
 | T2-C3 JSON/ref/generation | 26 fields reconciled: 7 writer families closed, 16 existing source contracts retained/mapped, 2 Passkey fields DEFER, account metadata BLOCKED pending C1 identity custody; independent review absent | OPEN |
 | T2-C4 Payment custody | DO SQLite proposal exists; owner, key, lifecycle, and outage decisions remain open | OPEN |
 | T2-C5 Retention/G2 residuals | Retention register exists; RET-02–RET-12 and G2 residual dispositions remain open | OPEN |
 | T2-C6 Independent review | Review packet exists; separate reviewer signature absent | OPEN |
 
 No task is marked complete by this matrix. The work is not authorized to cross the production boundary described above.
+
+
+### Draft progress — 2026-11-07: C1/C2 executable source contracts
+
+- C1: added `server/services/platform/d1-t2-identity-boundary.mjs` and `server/tests/d1-t2-identity-boundary.test.mjs`. The 9 focused tests cover strict opaque actor context, issuer/audience/expiry/factor checks, PII/credential-field rejection, exact account binding, duplicate/unknown/revoked fail-closed behavior and idempotent binding planning. This is a provider-neutral internal boundary contract; it does not verify OIDC/JWKS or implement a selected provider.
+- C1 decision sheet: `docs/D1_T2_C1_OWNER_DECISION_SHEET_V1.md`. Auth0 Essentials remains a recommended managed candidate, not selected. The >72 UTF-8-byte password reset decision is still required; Keycloak custom scrypt remains the no-reset alternative.
+- C2: added `server/services/platform/d1-t2-security-primitives.mjs`, which the new `server/tests/d1-t2-security-primitives.test.mjs` imports directly. The new source helper implements HMAC families/domains, strict key rings, active/retained rotation, PII lookup, lease digest grammar, Portal/Admin TOTP key separation, v3 AES-GCM AAD and synthetic v2 re-encryption.
+- Local mirror verification: Node v22.16.0, 23 C2 tests + 9 C1 tests = 32/32 PASS; syntax checks passed. The project-fixed Node v22.23.1 exact repository test run remains outstanding. No full repository suite or CI was triggered.
+- Both C1 and C2 remain OPEN pending owner decisions and hosted provider/key-custody proof. No real provider, secret store, key, BWH, D1, deployment or production data was accessed.
