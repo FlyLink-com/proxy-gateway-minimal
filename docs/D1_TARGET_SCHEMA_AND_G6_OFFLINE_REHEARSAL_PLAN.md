@@ -378,3 +378,16 @@ A source-level adversarial pass found and corrected a PII pseudonym test-helper 
 - Executed file raw SHA-256: `ddbf91af45ea721192563e8fa4b5b14261bee3badab8000f95c44392d6545243`.
 
 The test was run from a byte-identical copy of the current GitHub blob. This is the isolated synthetic vector file only; the full repository test suite and CI have not been run. A separate reviewer has not yet been assigned. T2 remains BLOCKED and no production boundary was crossed.
+
+
+## PII email-normalization test addition — 2026-11-07
+
+The pinned Master source `server/services/platform/portal-registration.mjs` confirms `normalizeEmail()` applies `requiredText(...).trim()` followed by `.toLowerCase()`. The synthetic PII lookup helper now mirrors that exact normalization for `account-email-lookup/v1`, and a 14th test verifies mixed-case/whitespace input produces the same lookup pseudonym as the canonical email.
+
+- Current test file blob: `a20a49c77255d3b10a1c8ebff742f9aca4804765`.
+- The prior 13-case file blob `c61b5d6d54416524317f0c43bc4b4158583cf954` passed 13/13 under Node v22.16.0.
+- The added normalization case passed separately 1/1 under Node v22.16.0.
+- The complete current 14-case file has not yet been run as one suite.
+- The full repository test suite and CI have not been run.
+
+T2 remains BLOCKED; this test coverage addition does not close the identity-custody, key-custody, JSON-enforcement, payment-custody, retention, or independent-review gates.
