@@ -691,15 +691,32 @@ export function createD1TotpSecretProtector({ keyRing, scope, ivFactory } = {}) 
  * This legacy-named export is retained only as a disposition classifier for callers;
  * it must never decrypt, transfer, or re-encrypt legacy material.
  */
+/**
+ * Owner decision T1 (2026-11-08): legacy BWH TOTP values are invalidated at cutover.
+ * This legacy-named export is retained only as a strict disposition classifier;
+ * it never decrypts, transfers, imports, or re-encrypts legacy material.
+ */
 export async function reencryptLegacyD1TotpV2({ value } = {}) {
   if (typeof value !== "string" || value.length > MAX_TOTP_ENVELOPE_CHARS) {
     return { status: "quarantine" };
   }
   const candidate = value.trim();
-  if (candidate.startsWith("v2:aes-256-gcm:")
-    || candidate.startsWith("enc:")
-    || /^[A-Za-z2-7\s=-]+$/u.test(candidate)) {
+  if (candidate.startsWith("v2:")) {
+    const parts = candidate.split(":");
+    if (parts.length !== 5 || parts[0] !== "v2" || parts[1] !== "aes-256-gcm") {
+      return { status: "quarantine" };
+    }
+    const iv = base64UrlToBytes(parts[2]);
+    const tag = base64UrlToBytes(parts[3]);
+    const ciphertext = base64UrlToBytes(parts[4]);
+    if (!iv || iv.length !== 12 || !tag || tag.length !== 16
+      || !ciphertext || ciphertext.length === 0) {
+      return { status: "quarantine" };
+    }
     return { status: "re_enroll_required" };
   }
-  return { status: "quarantine" };
+  const legacyBase32 = candidate.startsWith("enc:") ? candidate.slice(4) : candidate;
+  return normalizeLegacyBase32(legacyBase32)
+    ? { status: "re_enroll_required" }
+    : { status: "quarantine" };
 }
