@@ -101,7 +101,7 @@ Reviewer must verify the final file bytes rather than relying on this note.
 - Source commits: `a1b55bcc33e745b7094c93141d4a05530812c216`, `559156cbf8c4f841a80b20b68289811fb89efbba`.
 - Regression tests added: `0943ffe6b2f98841edb1ec58b866c4034bc3bbc4`, `4c0e3c7c32227dfbb581582f6e3123a495d366de`; preflight fixture alignment: `87e0147a8154b99339a8090f19e4793fc121196f`.
 - Source-mirroring pure harnesses: 10/10 per contract. Repository Node test files, full suite and CI have NOT RUN.
-- Remaining C3 review scope: account metadata/PII, action-specific audit metadata plus direct SQL writer, portal event union plus direct writers, commerce notice bounds/content filtering, and the 26-field full independent review.
+- Remaining C3 review scope: account metadata/PII and independent review of all 26 fields. Audit/Portal event and commerce notice writer contracts have been implemented on Draft and must now be independently challenged for caller coverage, false positives/negatives, atomicity and historical compatibility.
 
 ### Commerce notice JSON writer evidence — 2026-11-07
 
@@ -118,7 +118,7 @@ Reviewer must verify the final file bytes rather than relying on this note.
 - Direct initial-confirmation INSERT uses the same 17-key fulfillment serializer and preserves the existing SQLite transaction boundary.
 - All current Portal event writers use the shared discriminated event union; legacy `old_link_invalidated` is read-only.
 - Regression tests: `control-json-contracts.test.mjs` commit `243d5084f939c62743f9cb7adc486267d39fbe3a`; store integration assertions commit `1c2e5b32292e836deb5b2173b2554407258aefb9`. Malformed historical rows in tests are now inserted via raw SQL intentionally.
-- Pure source-mirroring event/fulfillment harness: 30/30 PASS. Actual Node test files, full suite and CI remain NOT RUN.
+- Pure source-mirroring event/fulfillment harness: 30/30 PASS; separate issuance/compensation/traffic-limit audit metadata harness: 11/11 PASS. These are not repository Node test runs. Actual Node test files, full suite and CI remain NOT RUN.
 
 ## 5. Blocking findings
 
@@ -126,7 +126,7 @@ T2 remains BLOCKED until all are resolved with evidence:
 
 1. Identity/authentication custody owner and technical boundary; raw email/displayName externalization; current password login and TOTP behavior preserved without password hashes or TOTP secrets entering D1.
 2. HMAC and AES-256-GCM key custody, rotation/retirement and historical compatibility approval; wallet-first pre-hashed digest exception; TOTP key ID, shared User Portal/Admin key scope and legacy `enc:` raw-secret handling.
-3. Closed JSON schemas enforced at every writer; opaque-ref and generation grammar; direct Audit SQL bypass and atomicity.
+3. Closed JSON schemas enforced at every writer; opaque-ref and generation grammar; independently verify the shared Audit SQL serializer and preserved atomicity.
 4. Payment action custody owner, encryption-key boundary, TTL, terminal purge, tombstone and outage/restore behavior.
 5. Named domain owners and approved retention rules; G2 residual probes or explicit risk acceptance.
 6. Separate reviewer signature on the exact final commit.
