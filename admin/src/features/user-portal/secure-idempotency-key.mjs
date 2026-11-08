@@ -29,7 +29,11 @@ export function createSecurePortalSetupIdempotencyKey(cryptoSource = globalThis.
 
   const bytes = new Uint8Array(16);
   try {
-    cryptoSource.getRandomValues(bytes);
+    // Web Crypto returns the exact ArrayBufferView it fills. A provider that
+    // returns a different object may have left the supplied buffer unchanged.
+    if (cryptoSource.getRandomValues(bytes) !== bytes) {
+      throw secureRandomError();
+    }
   } catch {
     throw secureRandomError();
   }
