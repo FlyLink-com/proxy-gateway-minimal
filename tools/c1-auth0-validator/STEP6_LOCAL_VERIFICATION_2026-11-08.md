@@ -45,8 +45,8 @@ TOTP 实现以 RFC 6238 官方测试向量锚定（S0）。
 - 第一次：40/40 PASS；0 failed / 0 skipped。
 - 第二次：40/40 PASS；0 failed / 0 skipped。
 - JavaScript 语法检查：9/9 PASS。
-- Run 1 TAP SHA-256：`9065766314f6c95f0422828ae1a1233928ee9e7abcef4ae215a4ae065c55b8df`。
-- Run 2 TAP SHA-256：`7698d693fa6bc6e5d1544129d6e2d74fbe4281f57d2c50b424d0dd3a7c282aca`。
+- Run 1 TAP SHA-256：`f1bd5a11d9bf45ff7ee8b9a7b695caef9d0cb26899f07a495a512d416b244b12`。
+- Run 2 TAP SHA-256：`f396e6858331e43d1ff1228f9aa604d60454aa1753210b8f555ad7d066f5d0a4`。
 
 新增回归覆盖非规范 Base64URL、非 16-byte salt、Auth0 缺失 salt / 错误 password encoding / 嵌套额外属性，以及跨账户 attestation 错配。所有测试均为合成数据；未连接真实供应商或生产端点。
 
