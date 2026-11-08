@@ -113,6 +113,7 @@ test("Auth0 bulk record uses the documented TOTP schema and only synthetic ident
 
 test("Auth0 TOTP normalization accepts only raw or legacy enc-prefixed Base32 and blocks v2 without C2", () => {
   assert.equal(normalizeAuth0TotpSecret("enc: jbsw-y3dp ehpk3pxp=== "), "JBSWY3DPEHPK3PXP");
+  assert.equal(normalizeAuth0TotpSecret("AC"), "AC");
   assert.throws(() => normalizeAuth0TotpSecret("v2:aes-256-gcm:synthetic"), { code: "totp_secret_requires_c2_key_custody" });
   assert.throws(() => normalizeAuth0TotpSecret("enc:NOT-BASE32!"), { code: "totp_secret_invalid" });
   assert.throws(() => buildRecord({ legacyTotpSecret: "v2:aes-256-gcm:synthetic" }), { code: "totp_secret_requires_c2_key_custody" });
