@@ -8163,15 +8163,20 @@ export function createSqliteSubscriptionControlStore({
   }
 
   function recordAuditEvent(input) {
-    assertNoUnsafeFields(input);
+    const snapshot = snapshotControlJsonObject(input, "audit event");
+    const metadataJson = auditMetadataJson(snapshot);
+    assertNoUnsafeFields({
+      ...snapshot,
+      metadata: JSON.parse(metadataJson)
+    });
     const record = {
-      id: safeControlRef(input.id, "id"),
-      entityType: requiredText(input.entityType, "entityType"),
-      entityRef: safeControlRef(input.entityRef, "entityRef"),
-      action: requiredText(input.action, "action"),
-      actorRef: safeControlRef(input.actorRef, "actorRef"),
-      createdAt: isoText(input.createdAt, "createdAt"),
-      metadataJson: auditMetadataJson(input)
+      id: safeControlRef(snapshot.id, "id"),
+      entityType: requiredText(snapshot.entityType, "entityType"),
+      entityRef: safeControlRef(snapshot.entityRef, "entityRef"),
+      action: requiredText(snapshot.action, "action"),
+      actorRef: safeControlRef(snapshot.actorRef, "actorRef"),
+      createdAt: isoText(snapshot.createdAt, "createdAt"),
+      metadataJson
     };
     sqliteRun(db.prepare(`
       insert into platform_audit_events (
