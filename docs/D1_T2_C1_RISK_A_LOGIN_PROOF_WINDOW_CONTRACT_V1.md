@@ -95,3 +95,16 @@ Until those decisions are approved, this artifact remains a local synthetic cont
 - Does not authorize Auth0 tenant creation, user import, real key creation, BWH access, D1 mutation, Worker/DO deployment, merge, cutover, or writer-authority change.
 
 **Current gate:** C1-A04 remains OPEN until owner decisions and privacy/security review are complete. C1/C2 remain OPEN; T2 remains BLOCKED.
+
+
+## 8. Fixed Node 22 synthetic verification — 2026-11-08
+
+- Exact source branch HEAD tested: `0fdd8b9b28320676c6ba1486928d7f815abfac77`.
+- Runtime: Node v22.23.1 in an isolated Vercel non-production sandbox (Linux x86_64, 2 vCPU / 4 GiB RAM). Network allowlist was limited to npm registry for runtime installation; no Auth0, Cloudflare, BWH or production endpoint was accessed.
+- The 12-case contract test passed twice: 12/12 PASS, 0 fail, 0 skipped.
+- Run 1: duration 101.261 ms; TAP SHA-256 `96cfe2e0ac4e366cff98df25e9c871b66f087b8d74c178e4368e7677547c40dc`.
+- Run 2: duration 91.447 ms; TAP SHA-256 `69869ae0236d39385540b2cbedfec97ccbae0a21c84e30c5d1d31b1afbb2abe0`.
+- `node --check` passed for the contract module and test file (2/2).
+- Source SHA-256: helper `fe1d1511c6a902eaa1b59c0f3f562172d04b4fed04d0cca7989d368483f8724c`; test `3967a425013f453799f5f104d4896e57d38b7ac1cda0b7e94845066d5963518d`.
+
+The contract remains synthetic-only and unconnected. The test result does not approve proof-window duration, persistence, retention, notifications, reset workflow or production login instrumentation. C1-A04 remains OPEN; C1/C2 remain OPEN; T2 remains BLOCKED.
