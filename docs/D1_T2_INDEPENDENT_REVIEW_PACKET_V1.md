@@ -103,6 +103,14 @@ Reviewer must verify the final file bytes rather than relying on this note.
 - Source-mirroring pure harnesses: 10/10 per contract. Repository Node test files, full suite and CI have NOT RUN.
 - Remaining C3 review scope: account metadata/PII, action-specific audit metadata plus direct SQL writer, portal event union plus direct writers, commerce notice bounds/content filtering, and the 26-field full independent review.
 
+### Commerce notice JSON writer evidence — 2026-11-07
+
+- Per locale: 1–8 unique notices; each notice is trimmed, single-line plain text and at most 512 UTF-8 bytes.
+- Deterministic screening rejects URL/markup, email, phone, IPv4 and common secret-like patterns; final offer INSERT re-runs full offer normalization.
+- Source commits: `e0f568b91e58e74189fe65ace4de5c5623f7ffbe`, `06e5c0dc7a04d3bafb87925982d5d52eefcbc145`, regex correction `60a3a8c200b7caf3bd09c47c19738d1da7fc8228`; regression tests added `d8a055ec8b723c5f50a7402f478c466a4b452d70`.
+- Source-mirroring pure synthetic harness: 14/14 PASS. Actual Node test file, full repository suite and CI remain NOT RUN.
+- This deterministic filter is not comprehensive PII detection; independent review must challenge coverage and false-positive/negative behavior.
+
 ## 5. Blocking findings
 
 T2 remains BLOCKED until all are resolved with evidence:
