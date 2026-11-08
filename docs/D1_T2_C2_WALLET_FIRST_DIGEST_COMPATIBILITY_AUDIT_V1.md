@@ -122,3 +122,17 @@ This audit does not authorize:
 - Changing Worker/DO deployment, payment, or runtime resource delivery.
 
 **Current status:** source inventory and compatibility recommendation are ready. C2-A04 remains OPEN until the owner accepts the v1 digest disposition and the replay/retention rule. C2 and T2 remain OPEN/BLOCKED respectively.
+
+## 7. First-party entropy hardening implemented — 2026-11-08
+
+The bounded source hardening is now present on the child Draft branch:
+
+- Added `admin/src/features/user-portal/secure-idempotency-key.mjs` and its `.d.mts` declaration.
+- The Portal setup UI now uses native `crypto.randomUUID()` or a UUIDv4 constructed from `crypto.getRandomValues()`. If secure randomness is unavailable or returns malformed output, the helper fails closed. The `Math.random()`/timestamp fallback is removed.
+- The Wallet-first delivery service now accepts only canonical lowercase UUIDv4 idempotency keys. The legacy non-Wallet-first setup path was not changed.
+- Updated the Wallet-first service and route fixtures to use canonical UUIDv4 values; added `server/tests/portal-setup-idempotency-key.test.mjs` covering native UUID, secure fallback, unavailable RNG, RNG failure, and malformed native output.
+- Updated the Portal UI test to assert the UUIDv4 contract.
+
+Local isolated helper check: the helper and the same five-case Node test harness passed 5/5 under Node v22.16.0; `node --check` passed for the helper. This was not the project's fixed Node v22.23.1 environment and was not a repository-wide run. The full focused repository test files still need execution under Node v22.23.1. No Hosted CI was run.
+
+The exact Draft branch head containing these changes is tracked by the accompanying Draft PR. Existing persisted v1 hashes and their domain-separation bytes are unchanged. C2-A04 remains OPEN pending exact fixed-environment regression and owner approval of the delivered-row replay/retention window.
