@@ -57,7 +57,7 @@ The existing equality behavior can be retained without storing the low-entropy s
 
 ```text
 HMAC-SHA-256(K_pii[key_id],
-  UTF8("flylink:d1:pii-digest:v1\\0") ||
+  UTF8("flylink:d1:pii-digest:v1\0") ||
   LP(UTF8(key_id)) ||
   LP(UTF8(domain)) ||
   LP(UTF8(legacy_digest_hex)))
