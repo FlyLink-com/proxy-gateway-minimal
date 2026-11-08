@@ -19,6 +19,12 @@ test("accepts the pinned source-only 70-table inventory", () => {
     companionTables: 22,
     coreColumns: 530,
     companionColumns: 290,
+    coreForeignKeys: 84,
+    companionForeignKeys: 42,
+    coreIndexes: 71,
+    companionIndexes: 17,
+    coreTriggers: 41,
+    companionTriggers: 50,
     sourceMigrations: 19
   });
 });
@@ -87,4 +93,79 @@ test("rejects any source object marked as production-observed", () => {
   const copy = structuredClone(inventory);
   copy.tables[0].productionPresence = "PRESENT";
   assert.ok(validateD1ControlSchemaInventory(copy).errors.includes("table_production_presence_not_observed:platform_leads"));
+});
+
+
+test("rejects foreign-key edges with unknown tables or columns", () => {
+  const unknownTable = structuredClone(inventory);
+  unknownTable.foreignKeyEdges[0].toTable = "platform_missing_parent";
+  assert.ok(validateD1ControlSchemaInventory(unknownTable).errors
+    .includes("foreign_key_to_table_unknown:platform_missing_parent"));
+
+  const unknownColumn = structuredClone(inventory);
+  unknownColumn.foreignKeyEdges[0].fromColumns[0] = "missing_account_ref";
+  assert.ok(validateD1ControlSchemaInventory(unknownColumn).errors
+    .includes("foreign_key_from_column_unknown:platform_entitlements"));
+});
+
+test("rejects indexes that reference missing tables or columns", () => {
+  const unknownTable = structuredClone(inventory);
+  unknownTable.indexes[0].table = "platform_missing_table";
+  assert.ok(validateD1ControlSchemaInventory(unknownTable).errors
+    .includes("index_table_unknown:platform_leads_status_created_idx"));
+
+  const unknownColumn = structuredClone(inventory);
+  unknownColumn.indexes[0].columns[0] = "missing_column";
+  assert.ok(validateD1ControlSchemaInventory(unknownColumn).errors
+    .includes("index_column_unknown:platform_leads_status_created_idx"));
+});
+
+test("rejects triggers that reference unknown tables or invalid events", () => {
+  const unknownTable = structuredClone(inventory);
+  unknownTable.triggers[0].table = "platform_missing_table";
+  assert.ok(validateD1ControlSchemaInventory(unknownTable).errors
+    .includes(`trigger_table_unknown:${inventory.triggers[0].name}`));
+
+  const invalidEvent = structuredClone(inventory);
+  invalidEvent.triggers[0].event = "UPSERT";
+  assert.ok(validateD1ControlSchemaInventory(invalidEvent).errors
+    .includes(`trigger_event_invalid:${inventory.triggers[0].name}`));
+});
+
+test("requires table migration references and source blob identities to resolve", () => {
+  const unknownMigration = structuredClone(inventory);
+  const migratedTable = unknownMigration.tables.find((table) => table.migrationIds.length > 0);
+  migratedTable.migrationIds.push("20990101_001_unknown_migration");
+  assert.ok(validateD1ControlSchemaInventory(unknownMigration).errors
+    .includes(`table_migration_reference_unknown:${migratedTable.name}`));
+
+  const wrongSource = structuredClone(inventory);
+  wrongSource.tables[0].source.blob = "a".repeat(40);
+  assert.ok(validateD1ControlSchemaInventory(wrongSource).errors
+    .includes(`table_source_identity_mismatch:${wrongSource.tables[0].name}`));
+});
+
+test("rejects dependency graph cycles and unknown nodes", () => {
+  const unknownNode = structuredClone(inventory);
+  unknownNode.dependencyGraph.edges.push({
+    from: "UNKNOWN_MIGRATION",
+    to: unknownNode.sourceMigrationHistory[0].migrationId,
+    kind: "module_chain"
+  });
+  assert.ok(validateD1ControlSchemaInventory(unknownNode).errors
+    .includes(`dependency_graph_node_unknown:UNKNOWN_MIGRATION->${unknownNode.sourceMigrationHistory[0].migrationId}`));
+
+  const cycle = structuredClone(inventory);
+  cycle.dependencyGraph.edges.push({
+    from: cycle.sourceMigrationHistory[0].migrationId,
+    to: cycle.dependencyGraph.baseNode,
+    kind: "module_chain"
+  });
+  assert.ok(validateD1ControlSchemaInventory(cycle).errors.includes("dependency_graph_cycle"));
+});
+
+test("rejects layer-specific object count drift", () => {
+  const copy = structuredClone(inventory);
+  copy.counts.companionTriggers = 49;
+  assert.ok(validateD1ControlSchemaInventory(copy).errors.includes("count_mismatch:companionTriggers"));
 });
