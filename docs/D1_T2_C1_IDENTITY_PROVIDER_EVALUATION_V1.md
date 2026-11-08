@@ -91,7 +91,7 @@ Auth0's official Bulk User Import schema supports `custom_password_hash.algorith
 | Derived hash bytes | `hash.value` | Decode the current base64url digest to its original 64 bytes, then encode as supported base64 |
 | Password byte encoding | `password.encoding` | `utf8` |
 
-A synthetic-only cross-implementation check also compared Node `crypto.scryptSync` with Python `hashlib.scrypt` using the same password bytes, raw salt bytes and N/r/p/keylen; the derived 64-byte outputs matched. This validates the standard scrypt primitive, not Auth0's hosted import endpoint. This is a schema-level parameter match, not yet an Auth0 endpoint acceptance test. The import converter must parse the project envelope strictly, reject unknown versions/parameters, preserve the exact byte values, and never emit the original combined string as an unsupported opaque hash.
+A synthetic-only cross-implementation check also compared Node `crypto.scryptSync` with Python `hashlib.scrypt` using the same password bytes, raw salt bytes and N/r/p/keylen; the derived 64-byte outputs matched. This validates the standard scrypt primitive, not Auth0's hosted import endpoint. This is a schema-level parameter match, not yet an Auth0 endpoint acceptance test. Auth0 documents that `custom_password_hash` can be updated only if the user has not logged in with the initially imported hash; the first import must therefore include the final hash and factor data rather than creating placeholder users and trying to repair them after login. The import converter must parse the project envelope strictly, reject unknown versions/parameters, preserve the exact byte values, and never emit the original combined string as an unsupported opaque hash.
 
 Auth0 also supports a TOTP factor in `mfa_factors`. The current project's normalized Base32 secret is structurally compatible with the TOTP import field. The same user import record can carry `email_verified`, the custom password hash, and the TOTP factor.
 
@@ -286,6 +286,16 @@ The proof must record exact provider plan, tenant region, SDK versions, syntheti
 This assessment adds documentation only. It does not change authentication source code, D1 schema, migration code, production configuration, provider tenants, email delivery, keys or production authority. No BWH access, Cloudflare production access, customer-data read, real TOTP decryption, import, Worker/DO deployment, CI, PR Ready transition, merge or cutover is authorized.
 
 ## 9. Official references
+
+### Project source (pinned to `be261abc60f28bb2733764fa5364ab44b3e76844`)
+- [Password credential service](https://github.com/FlyLink-com/proxy-gateway-minimal/blob/be261abc60f28bb2733764fa5364ab44b3e76844/server/services/platform/portal-password-credentials.mjs)
+- [Portal TOTP verifier and secret protector](https://github.com/FlyLink-com/proxy-gateway-minimal/blob/be261abc60f28bb2733764fa5364ab44b3e76844/server/services/platform/portal-totp-verifier.mjs)
+- [Portal authentication/session projection](https://github.com/FlyLink-com/proxy-gateway-minimal/blob/be261abc60f28bb2733764fa5364ab44b3e76844/server/services/platform/user-portal-auth.mjs)
+- [Portal registration](https://github.com/FlyLink-com/proxy-gateway-minimal/blob/be261abc60f28bb2733764fa5364ab44b3e76844/server/services/platform/portal-registration.mjs)
+- [Registration email verification](https://github.com/FlyLink-com/proxy-gateway-minimal/blob/be261abc60f28bb2733764fa5364ab44b3e76844/server/services/platform/portal-registration-email-verification.mjs)
+- [Portal/Admin service composition](https://github.com/FlyLink-com/proxy-gateway-minimal/blob/be261abc60f28bb2733764fa5364ab44b3e76844/server/state.mjs)
+- [Admin authentication](https://github.com/FlyLink-com/proxy-gateway-minimal/blob/be261abc60f28bb2733764fa5364ab44b3e76844/server/services/platform/admin-auth.mjs)
+- [Admin account search/projection](https://github.com/FlyLink-com/proxy-gateway-minimal/blob/be261abc60f28bb2733764fa5364ab44b3e76844/server/routes/admin-platform.mjs)
 
 ### Auth0
 - [Bulk User Import Schema and Examples](https://auth0.com/docs/manage-users/user-migration/bulk-user-import-database-schema-and-examples)
