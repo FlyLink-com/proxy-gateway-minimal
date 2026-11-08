@@ -457,3 +457,19 @@ Commits:
 - Regression test addition: `d8a055ec8b723c5f50a7402f478c466a4b452d70`
 
 A source-mirroring pure synthetic harness passed 14/14. The repository Node test file, full suite and CI have NOT RUN. The pattern filter is deterministic and not comprehensive PII detection; independent review must assess false positives/negatives. T2 remains BLOCKED; C3 remains OPEN for account PII, audit, portal events and complete 26-field independent review.
+
+
+## C3 audit and Portal event JSON writer closure — 2026-11-07
+
+The shared pure contract module `server/services/platform/control-json-contracts.mjs` now covers:
+
+1. **Portal event JSON** — null/empty sentinel plus the seven current discriminated event variants, exact per-event fields, canonical timestamps, lifecycle revision refs and safe transition/effect refs. All current writers are covered: generic request upsert, two wallet-first direct writes, and subscription-link-reset direct write. Legacy `old_link_invalidated` remains read-only compatibility data.
+2. **Coin Commerce subscription fulfillment audit JSON** — exact 17-key base schema plus the two registered switch variants, safe refs, plan/duration/traffic consistency and canonical validity timestamps. The direct initial-confirmation INSERT calls the shared serializer; its atomic audit+confirmation SQLite transaction and digest semantics remain unchanged.
+3. **Generic audit event writer** — `recordAuditEvent()` now dispatches on 8 exact entity/action pairs: issuance issued/compensated, entitlement traffic-limit update, wallet-first prepared/runtime/receipt, Coin Commerce subscription fulfillment, and data-pack fulfillment. Unknown pairs and malformed metadata fail closed.
+
+Regression test commits:
+- `control-json-contracts.test.mjs`: `243d5084f939c62743f9cb7adc486267d39fbe3a`
+- store integration assertions: `1c2e5b32292e836deb5b2173b2554407258aefb9`
+- historical malformed audit fixtures were changed to raw SQL insertion in tests so they continue to model pre-existing corrupted rows without weakening the production writer contract.
+
+A source-mirroring pure synthetic harness passed **30/30** portal event and subscription fulfillment metadata cases. Actual Node test files, the full repository suite and CI have NOT RUN. No production audit rows or portal events were read. Account metadata/identity custody and complete 26-field independent review remain open; T2 remains BLOCKED.
