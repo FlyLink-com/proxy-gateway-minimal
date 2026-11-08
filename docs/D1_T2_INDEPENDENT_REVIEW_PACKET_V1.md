@@ -111,6 +111,15 @@ Reviewer must verify the final file bytes rather than relying on this note.
 - Source-mirroring pure synthetic harness: 14/14 PASS. Actual Node test file, full repository suite and CI remain NOT RUN.
 - This deterministic filter is not comprehensive PII detection; independent review must challenge coverage and false-positive/negative behavior.
 
+### Audit and Portal event JSON writer evidence — 2026-11-07
+
+- Shared validator module: `server/services/platform/control-json-contracts.mjs`.
+- Audit entity/action union: 8 exact variants covering issuance, entitlement traffic limit, wallet-first prepared/runtime/receipt, Coin Commerce subscription fulfillment and data-pack fulfillment.
+- Direct initial-confirmation INSERT uses the same 17-key fulfillment serializer and preserves the existing SQLite transaction boundary.
+- All current Portal event writers use the shared discriminated event union; legacy `old_link_invalidated` is read-only.
+- Regression tests: `control-json-contracts.test.mjs` commit `243d5084f939c62743f9cb7adc486267d39fbe3a`; store integration assertions commit `1c2e5b32292e836deb5b2173b2554407258aefb9`. Malformed historical rows in tests are now inserted via raw SQL intentionally.
+- Pure source-mirroring event/fulfillment harness: 30/30 PASS. Actual Node test files, full suite and CI remain NOT RUN.
+
 ## 5. Blocking findings
 
 T2 remains BLOCKED until all are resolved with evidence:
