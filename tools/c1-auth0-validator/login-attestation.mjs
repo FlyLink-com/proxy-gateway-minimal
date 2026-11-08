@@ -105,10 +105,15 @@ export function classifyAttestationRecord(record) {
   if (record.bucket === "over_72") {
     return Object.freeze({ eligibility: "targeted_reset", advisories: Object.freeze([]) });
   }
-  return Object.freeze({
-    eligibility: "importable",
-    advisories: Object.freeze(record.edgeWhitespace ? ["edge_whitespace_r1_notice"] : [])
-  });
+  if (record.edgeWhitespace) {
+    // R1 normalization has not been approved. Hold this cohort instead of
+    // silently changing the old trim-before-hash login semantics.
+    return Object.freeze({
+      eligibility: "r1_decision_hold",
+      advisories: Object.freeze(["edge_whitespace_r1_decision_required"])
+    });
+  }
+  return Object.freeze({ eligibility: "importable", advisories: Object.freeze([]) });
 }
 
 // Recorder over a caller-supplied store (Map-like). Latest successful login
