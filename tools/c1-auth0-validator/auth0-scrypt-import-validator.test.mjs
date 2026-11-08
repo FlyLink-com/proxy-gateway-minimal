@@ -27,6 +27,30 @@ test("conversion preserves scrypt parameters and bytes exactly", () => {
   assert.deepEqual(Buffer.from(auth0.hash.value, "base64"), parsed.hash);
 });
 
+test("legacy envelope rejects noncanonical base64url and non-16-byte salts", () => {
+  const envelope = legacyEnroll("synthetic-parser-pw", salt(12));
+  const parts = envelope.split("$");
+  const badSalt = [...parts.slice(0, 5), parts[5] + "!!", parts[6]].join("$");
+  const badHash = [...parts.slice(0, 6), parts[6] + "!!"].join("$");
+  const shortSalt = [...parts.slice(0, 5), Buffer.alloc(8, 1).toString("base64url"), parts[6]].join("$");
+  assert.throws(() => parseLegacyEnvelope(badSalt), /legacy_scrypt_hash_invalid/);
+  assert.throws(() => parseLegacyEnvelope(badHash), /legacy_scrypt_hash_invalid/);
+  assert.throws(() => parseLegacyEnvelope(shortSalt), /legacy_scrypt_hash_invalid/);
+});
+
+test("Auth0 Scrypt shape gate requires salt, UTF-8 password encoding, and exact nested keys", () => {
+  const valid = toAuth0CustomPasswordHash(legacyEnroll("synthetic-shape-pw", salt(13)));
+  const missingSalt = structuredClone(valid);
+  delete missingSalt.salt;
+  assert.throws(() => validateAuth0ScryptObject(missingSalt), /auth0_object_shape_invalid/);
+  const wrongPasswordEncoding = structuredClone(valid);
+  wrongPasswordEncoding.password.encoding = "utf16";
+  assert.throws(() => validateAuth0ScryptObject(wrongPasswordEncoding), /auth0_object_password_encoding_invalid/);
+  const nestedExtra = structuredClone(valid);
+  nestedExtra.hash.unreviewed = true;
+  assert.throws(() => validateAuth0ScryptObject(nestedExtra), /auth0_object_hash_invalid/);
+});
+
 test("known-answer: validator scrypt matches Python hashlib.scrypt byte-for-byte", () => {
   const envelope = legacyEnroll("synthetic-kat-pw", salt(2));
   const parsed = parseLegacyEnvelope(envelope);
