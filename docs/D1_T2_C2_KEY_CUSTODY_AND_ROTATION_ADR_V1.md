@@ -220,3 +220,13 @@ At exact source HEAD `c6a70b3f216d68c6ee7014af268645e1f9df5925`, Node v22.23.1, 
 - `d1-t2-security-vectors.test.mjs`: 14/14
 
 `node --check` passed for all four service modules and five test files. Combined TAP log SHA-256 values: `8e467a8807cc3dd5c34b2ea7a02a1f99d6947101d326ea650dfa84aedc2b54be` and `43e852e42bb8bb5fa810e175ad6b0c1e804201f07913d385b4bf075fdd816811`. Full repository `npm test` and hosted CI were not run at this head. See `D1_T2_C1_C2_FIXED_NODE22_REGRESSION_2026-11-08.md` for source blob and file SHA-256 inventory. C2 remains OPEN.
+
+## 11. Wallet-first handoff digest compatibility audit — 2026-11-08
+
+The source-grounded inventory is recorded in `docs/D1_T2_C2_WALLET_FIRST_DIGEST_COMPATIBILITY_AUDIT_V1.md`.
+
+The two handoff fields are generated with distinct domain-separated SHA-256 v1 labels over transient inputs; raw inputs are not persisted. The Portal route obtains the session reference from the authenticated session context. The default server session reference uses 12 random bytes. The first-party setup idempotency helper uses `crypto.randomUUID()` when available, but its fallback currently uses `Date.now()` plus `Math.random()`; this is a concrete hardening item, not a reason to re-key existing records.
+
+Recommended disposition: preserve the exact v1 digest formula for compatibility, remove the weak UI fallback in favor of `crypto.getRandomValues()` (or fail closed), enforce canonical UUIDv4 at the Wallet-first service boundary, and keep the digest fields distinct from PII HMAC families. Existing hashes cannot be transformed to HMAC without the raw input.
+
+The source proves a 10-minute claim lease, not a row-retention TTL. Delivered-row replay/acknowledgement retention and purge remain a bounded owner decision. C2-A04 is therefore partially source-audited but remains OPEN pending disposition and retention approval. No source behavior was changed by this documentation update.
