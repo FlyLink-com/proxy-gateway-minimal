@@ -23,8 +23,8 @@ Review the full T2 closeout contract, not only the original lease/idempotency pr
 8. `docs/D1_CONTROL_SCHEMA_INVENTORY_V1.json` and `docs/D1_CONTROL_FIELD_DISPOSITION_T2_V1.json`
 9. `server/tests/d1-t2-security-vectors.test.mjs`
 10. `docs/D1_T2_IDENTITY_AUTH_CUSTODY_SOURCE_AUDIT_V1.md`
-11. `docs/D1_T2_C1_IDENTITY_AUTH_CUSTODY_DECISION_V1.md` (DRAFT proposal; not owner-approved)
-12. `docs/D1_T2_C1_IDENTITY_PROVIDER_EVALUATION_V1.md` (DRAFT assessment; Auth0 candidate not selected)
+11. `docs/D1_T2_C1_IDENTITY_AUTH_CUSTODY_DECISION_V1.md` (DRAFT proposal; partially owner-approved, with T1 and provider direction selected)
+12. `docs/D1_T2_C1_IDENTITY_PROVIDER_EVALUATION_V1.md` (DRAFT assessment; Auth0 Essentials + Bulk User Import owner-selected, tenant/proof pending)
 13. server/services/platform/portal-identity-import-rehearsal.mjs (local synthetic-only converter; no provider I/O)
 14. server/tests/platform-portal-identity-import-rehearsal.test.mjs and scripts/platform-identity-import-rehearsal.mjs (focused tests and redacted receipt command)
 15. `docs/D1_TARGET_SCHEMA_AND_G6_OFFLINE_REHEARSAL_PLAN.md`
@@ -38,7 +38,7 @@ Review the full T2 closeout contract, not only the original lease/idempotency pr
 - Verify the identity source of truth, authorized lookup path, outage behavior, retention and deletion contract.
 - Reconcile the 11-column `platform_portal_password_credentials` DEFER disposition with the conditionally wired current password-login path; DEFER must not silently disable a supported feature.
 - Reconcile `platform_portal_totp_credentials.encrypted_totp_secret` EXTERNALIZE with the remaining TOTP state fields; prove password hashes and TOTP secrets never enter D1, Worker payloads, logs, traces, fixtures or evidence.
-- Review the current AES-256-GCM TOTP envelope: no key ID, `USER_PORTAL_TOTP_SECRET_KEY`, shared User Portal/Admin protector, and legacy `enc:` / unprefixed Base32 behavior. Require key separation or explicit risk acceptance, key ID/rotation/re-encryption, and rejection/quarantine of legacy raw secret values.
+- Review the current BWH AES-256-GCM TOTP envelope and shared User Portal/Admin protector as source facts. Apply T1 to the target: Auth0-managed MFA, no first-party target TOTP AES keys, no legacy `enc:`/raw Base32/v2 import or transfer, and mandatory re-enrollment at cutover (Portal optional enrollment; Admin mandatory).
 - Verify fixed PII domains, normalization, HMAC input bytes, key ID and rotation behavior.
 
 ### HMAC, lease and replay
@@ -46,7 +46,7 @@ Review the full T2 closeout contract, not only the original lease/idempotency pr
 - Verify all six lease-token issuer formats: five 64-lowercase-hex tokens and one prefixed UUIDv4 reservation token.
 - Verify six raw idempotency fields, uniqueness/replay scopes, and separate provider-event and PII key/domain families.
 - Verify the HMAC versioned envelope, key-ID grammar, byte-exact four-byte big-endian length prefix and NUL domain separator.
-- Separately verify AES-256-GCM TOTP envelope key IDs, key separation, old-key decrypt/new-key re-encrypt, tag/ciphertext tampering, unknown key and legacy `enc:` rejection/quarantine.
+- Separately review the generic v3 AES-GCM primitive for correct AAD/key-family behavior if it remains in the source slice, but record that it is not the selected Auth0/T1 production path. Verify the T1 classifier returns re-enrollment for structurally valid legacy formats and quarantine for malformed values; do not decrypt or re-encrypt legacy v2.
 - Verify unknown/missing key ID, malformed envelope and wrong domain fail closed without plaintext or bare-SHA fallback.
 - Independently review `platform_wallet_first_setup_delivery_handoffs.idempotency_key_hash` and `session_binding_hash`; do not silently classify them as one of the six raw fields.
 
@@ -167,7 +167,7 @@ This section records the bounded source-slice review. It does not replace the fu
 
 ### Reviewed conclusions
 
-The approval body records review of identity-versus-password evidence separation; R3 legacy TOTP fail-closed behavior; key-family isolation and cross-family reuse detection; TOTP v3 AES-256-GCM AAD binding to key ID, scope and credential reference; canonical Base32 padding/pad-bit validation; required-factor policy; explicit non-implementation of OIDC/JWT signature verification; and honest OPEN/PENDING status in the decision/ADR/matrix documents.
+The approval body records review of identity-versus-password evidence separation; the then-current legacy TOTP fail-closed behavior; key-family isolation and cross-family reuse detection; generic TOTP v3 AES-256-GCM AAD binding to key ID, scope and credential reference; canonical Base32 padding/pad-bit validation; required-factor policy; explicit non-implementation of OIDC/JWT signature verification; and honest OPEN/PENDING status. That approval is pinned to bc3f8c9a and does not review the later T1 re-enrollment-only changes or make the generic v3 TOTP primitive a selected production path.
 
 ### Test evidence
 
