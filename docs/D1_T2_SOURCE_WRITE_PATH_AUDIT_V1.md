@@ -29,7 +29,7 @@ Additional source findings:
 |---:|---|---|---|---|
 | 1 | platform_accounts.metadata_json | createAccount in subscription-control-db.mjs:1537-1546; callers in portal-registration.mjs:308-335, portal-initial-account-issuance.mjs:93-100, subscription-issuance.mjs:166-176 and 260-270 | jsonObject plus recursive key-name guard; no exact value schema | BLOCKED: raw loginRef/displayRef email values and displayName are written; unkeyed digests also present |
 | 2 | platform_issuance_requests.metadata_json | createIssuanceRequest in subscription-control-db.mjs:5827-5847; subscription-issuance.mjs:211-213; wallet-first chain insert/update in subscription-control-db.mjs around 3778-3794 and 3909-3925 | jsonObject plus key-name guard; current producers have a small number of recognizable variants | CONDITIONAL: define a closed versioned union and reject arbitrary metadata at the persistence boundary |
-| 3 | platform_audit_events.metadata_json | recordAuditEvent in subscription-control-db.mjs around 7840-7855; callers in subscription-issuance.mjs, portal-access-requests.mjs and internal control-store flows; direct metering-reset receipt writer in coin-commerce-store.mjs around 6953-6956 | generic JSON object; action-specific builders exist but are not centrally enforced | BLOCKED: action/entity-specific metadata allowlist required |
+| 3 | platform_audit_events.metadata_json | recordAuditEvent in subscription-control-db.mjs around 7840-7855; callers in subscription-issuance.mjs, portal-access-requests.mjs and internal control-store flows; direct fixed-shape INSERT in coin-commerce-initial-confirmation.mjs around 278-285; metering-reset receipt writer in coin-commerce-store.mjs around 6953-6956 | generic recordAuditEvent boundary plus one direct SQL writer; direct writer currently serializes a fixed 17-key evidence object | BLOCKED: include every direct writer in the entity/action allowlist and prevent new bypasses |
 | 4 | platform_edge_registered_nodes.channel_refs_json | edgeRegisteredNodeRecord / upsertEdgeRegisteredNode in subscription-control-db.mjs around 7874-7880; node-registration-ingestion.mjs and node-registration-execution.mjs | safeControlRefList and opaque-ref validation | SOURCE SHAPE ACCEPTABLE; retain exact uniqueness and ref grammar in D1 |
 | 5 | platform_edge_registered_nodes.metadata_json | same edge-node persistence entrypoints around 7882-7910 and 7938; first-boot builder in node-registration-ingestion.mjs:185-193 | jsonObject plus unsafe-control-value scan; no exact key allowlist | CONDITIONAL: enforce the observed edge-node metadata key set, not only value filtering |
 | 6 | platform_portal_access_requests.event_json | upsertPortalAccessRequest in subscription-control-db.mjs:8377-8451; event builders in portal-access-requests.mjs; wallet-first event writers in subscription-control-db.mjs around 3834-3839 and 3967-3972; subscription-link-reset writer in portal-subscription-link-reset-store.mjs around line 208 | jsonObject only at persistence boundary | BLOCKED: define the closed event union and per-event keys |
@@ -77,6 +77,18 @@ Required disposition:
 3. If email equality lookup must remain, transform the existing SHA-256 email digest into a keyed, domain-separated HMAC envelope and update future writes/lookups to the same two-step transform. The migration can HMAC the historical digest without exporting raw email.
 4. Drop display/use-case digests unless a concrete lookup requirement exists. If source-IP/request-key digests remain, use separate keyed domains or exclude them.
 5. No PII key is provisioned by this audit.
+
+### 2.3 Direct audit INSERT discovered in source follow-up
+
+A source search for `insert into platform_audit_events` found a direct runtime writer in `server/services/platform/coin-commerce-initial-confirmation.mjs` (source anchor `be261abc60f28bb2733764fa5364ab44b3e76844`, around lines 278-285). It bypasses `recordAuditEvent` and inserts `effect.metadata_json` directly.
+
+The direct writer's builder is `resourceEvidence()` (around lines 106-182) and currently emits this exact schema for entity/action `coin_commerce_subscription_fulfillment / subscription_fulfillment_applied`:
+
+- Exact keys: `version`, `commandRef`, `orderRef`, `accountId`, `requestRef`, `entitlementRef`, `issuedLinkRef`, `tenantRef`, `artifactRef`, `offerVersionRef`, `portalPlan`, `durationDays`, `monthlyTrafficGb`, `trafficLimitBytes`, `validFrom`, `previousValidUntil`, `targetValidUntil`.
+- `version` is exactly integer `1`; `durationDays` is constrained by the source flow to `30` or `365`; numeric traffic values must remain bounded safe integers; date values are canonical source timestamps; all reference fields are opaque refs, not raw identity or subscription material.
+- The same source path computes an integrity digest over the audit effect and writes the audit row and initial-confirmation row in one SQLite transaction. Preserve this atomicity and the exact metadata bytes/semantics during transformation.
+
+This is a positive narrow-schema source path, but it does not close the general audit contract: `recordAuditEvent` still accepts a generic object, and the direct SQL writer proves that allowlist enforcement only inside `recordAuditEvent` would be incomplete. The target writer contract must dispatch on the exact `entity_type + action` pair and cover both entrypoints, or consolidate them behind one validated persistence boundary.
 
 ### 2.3 Other generic JSON blockers
 
