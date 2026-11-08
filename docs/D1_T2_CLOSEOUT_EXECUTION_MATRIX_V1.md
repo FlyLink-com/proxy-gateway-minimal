@@ -324,3 +324,16 @@ Fixed Node v22.23.1 in the isolated non-production sandbox:
 - `node --check` passed for the validator module, test, and CLI (3/3).
 
 This validates the checked-in source inventory artifact only. It does not establish live BWH schema state, D1 parity, current migration application state, or authorize target DDL/data loading. G6 remains an offline rehearsal gate; production database migration remains unauthorized.
+
+## 14. C3 account metadata 26-field disposition audit — 2026-11-08
+
+Added `docs/D1_T2_C3_ACCOUNT_METADATA_26_FIELD_DISPOSITION_AUDIT_V1.md` after exact review of the current child-branch `ACCOUNT_METADATA_FIELDS` and `ACCOUNT_METADATA_DIGEST_FIELDS` source declarations:
+
+- Exact allowlist: **26/26 fields**.
+- Unkeyed SHA-256 digest fields: **8/8 identified**.
+- Raw email/login and display identifiers separated from opaque Auth0 subject mapping.
+- Consent evidence separated from generic account metadata.
+- Business policy fields separated from identity/profile data.
+- Privacy-sensitive use-case, IP and request-correlation digests default to DROP unless a specific purpose and owner approve keyed, time-bounded processing.
+
+The source module currently documents that the allowlist is a legacy BWH source-writer contract, not a D1 target projection. The disposition audit does not read production values or authorize migration. C3 remains OPEN pending Account/Identity, Privacy and Legal decisions plus a target writer integration regression.
