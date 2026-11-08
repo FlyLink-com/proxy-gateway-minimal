@@ -81,7 +81,7 @@ A focused Node 22 formula check was run after correcting a domain-separator disc
 - the old-key and active-key email pseudonym known-answer outputs match the documented vectors;
 - the NUL-prefixed and literal-backslash-prefixed byte strings differ.
 
-The focused check passed. Before the latest normalization-test addition, the 13-case file was run from a byte-identical copy of GitHub blob `c61b5d6d54416524317f0c43bc4b4158583cf954` using Node v22.16.0: `node --test /tmp/d1-t2-security-vectors.test.mjs` — **13/13 PASS** (raw SHA-256 `ddbf91af45ea721192563e8fa4b5b14261bee3badab8000f95c44392d6545243`). The added 14th test covers source `normalizeEmail()` trim/lowercase behavior; that case was run separately under Node v22.16.0 — **1/1 PASS** (isolated script SHA-256 `f7a4375fea03ee48433afe0d96e28c22896fc8de8a2caa83df58e8fdbbffd08f`). Current full test file Git blob is `a20a49c77255d3b10a1c8ebff742f9aca4804765`; **the complete 14-case PII vector file has not yet been run as one suite under Node v22.23.1**. Separately, the full repository `npm test` was run at Node v22.23.1 on C1/C2 candidate HEAD `bc3f8c9a` and baseline `bf200c47`; see the 2026-11-08 review record below. The comparative result is zero new failures, not an all-green suite. PR #842 has no hosted CI run and no CI PASS is claimed. The full-scope reviewer must still run the current 14-case PII vector file from a pinned commit and record the exact command, Node version, output and file hash.
+The complete 14-case PII vector file is now run as part of the five-file exact T1 source-head regression at `c6a70b3f216d68c6ee7014af268645e1f9df5925`, Node v22.23.1: **14/14 PASS**. The five-file suite totals 62/62 and passed twice; the pinned source/blob hashes and combined log hashes are recorded in `D1_T2_C1_C2_FIXED_NODE22_REGRESSION_2026-11-08.md`. The earlier Node v22.16.0 13/13 + isolated 1/1 results remain historical only. Separately, the full repository `npm test` comparative result remains bound to `bc3f8c9a` and `bf200c47`: zero new failures, not an all-green suite. PR #842 has no hosted CI run and no CI PASS is claimed. The full-scope reviewer should verify the pinned T1 evidence bundle and still review the full T2 scope.
 
 ### Corrected discrepancy
 
@@ -131,7 +131,7 @@ Reviewer must verify the final file bytes rather than relying on this note.
 T2 remains BLOCKED until all are resolved with evidence:
 
 1. Identity/authentication custody owner and technical boundary; raw email/displayName externalization; current password login and TOTP behavior preserved without password hashes or TOTP secrets entering D1.
-2. HMAC and AES-256-GCM key custody, rotation/retirement and historical compatibility approval; wallet-first pre-hashed digest exception; TOTP key ID, shared User Portal/Admin key scope and legacy `enc:` raw-secret handling.
+2. HMAC key custody, rotation/retirement and historical compatibility approval; wallet-first pre-hashed digest exception; T1 legacy TOTP invalidation/re-enrollment sequencing and Auth0 new-factor lifecycle proof. Do not require first-party TOTP key IDs or shared Portal/Admin TOTP AES keys for the selected Auth0/T1 path.
 3. Closed JSON schemas enforced at every writer; opaque-ref and generation grammar; independently verify the shared Audit SQL serializer and preserved atomicity.
 4. Payment action custody owner, encryption-key boundary, TTL, terminal purge, tombstone and outage/restore behavior.
 5. Named domain owners and approved retention rules; G2 residual probes or explicit risk acceptance.
@@ -184,3 +184,8 @@ The approval body records review of identity-versus-password evidence separation
 - No merge, Ready transition, deployment, BWH access, production key creation, production D1 operation, migration or writer-authority switch is authorized.
 
 See the closeout matrix and the companion remaining-owner-decisions and migration-readiness documents.
+
+
+## 8. T1 follow-up fixed-environment evidence — 2026-11-08
+
+The T1 follow-up review vehicle is PR #843, OPEN / DRAFT, based on the previously reviewed C1/C2 source head `bc3f8c9a` and tested at exact head `c6a70b3f216d68c6ee7014af268645e1f9df5925`. In an isolated non-production sandbox with Node v22.23.1, all five focused test files passed **62/62 twice** (18 security primitives, 10 identity boundary, 16 Auth0 import rehearsal, 4 Portal TOTP verifier, 14 PII vectors). `node --check` passed for all four service modules and five test files. No full repository `npm test`, hosted CI, Auth0 tenant, BWH, production key, D1 or deployment was used. First/second TAP log SHA-256: `8e467a8807cc3dd5c34b2ea7a02a1f99d6947101d326ea650dfa84aedc2b54be` / `43e852e42bb8bb5fa810e175ad6b0c1e804201f07913d385b4bf075fdd816811`. The separate synthetic validator package in PR #844 also passed 37/37 twice with pyca/bcrypt 5.0.0; it uses a local mock Auth0 only. This evidence does not close C1/C2 or T2.
