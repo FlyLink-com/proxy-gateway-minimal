@@ -66,6 +66,7 @@ import {
 } from "./recharge";
 import { useDesktopScrollRegion } from "./use-desktop-scroll-region";
 import { createSubscriptionResetRecovery, type SubscriptionResetScope } from "./subscription-reset-recovery";
+import { createSecureIdempotencyKey } from "./secure-idempotency-key";
 import { broadcastPortalSessionChange, clearPendingPortalLogout, readPendingPortalLogout, readPortalLocation, stagePendingPortalLogout, subscribePortalSessionChange, writePortalLocation } from "./portal-browser-session";
 import { portalAssetPath, portalRoutePath } from "./portal-entry";
 import {
@@ -353,10 +354,7 @@ function uiText(locale: PortalAuthLocale, zh: string, en: string) {
 }
 
 function nextPortalSetupIdempotencyKey() {
-  if (typeof globalThis.crypto?.randomUUID === "function") {
-    return globalThis.crypto.randomUUID();
-  }
-  return `portal-setup-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  return createSecureIdempotencyKey();
 }
 
 const defaultPaymentRedirect = (url: string) => {
