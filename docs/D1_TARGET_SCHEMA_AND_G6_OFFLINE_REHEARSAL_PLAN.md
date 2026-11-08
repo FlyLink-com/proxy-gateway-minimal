@@ -348,3 +348,18 @@ The isolated Node built-in test run passed 9/9 known-answer/contract tests. This
 8. Obtain a separate independent review.
 
 T2 remains BLOCKED. No production customer data was read; no BWH connection, real secret, remote D1 mutation, Worker/DO deployment, CI, PR, merge, dual-write or cutover occurred. BWH remains production's only writer.
+
+
+## T2 closeout execution matrix — 2026-11-07
+
+The remaining T2 work is now split into six independently verifiable work packages. This is a planning/checklist addition only; it does not mark any blocker complete.
+
+- `docs/D1_T2_CLOSEOUT_EXECUTION_MATRIX_V1.md` — scope, acceptance evidence, T2 exit gate, T3 entry criteria, G6 rehearsal requirements, and current status ledger.
+- T2-C1: account identity custody and PII externalization.
+- T2-C2: HMAC key custody, rotation, and wallet-first legacy digest compatibility.
+- T2-C3: closed JSON writer schemas, opaque-reference grammar, and generation fencing.
+- T2-C4: payment action URL / QR capability custody.
+- T2-C5: retention approvals and G2 compatibility residuals.
+- T2-C6: independent review and formal T2 gate decision.
+
+T2 remains BLOCKED. All six packages are OPEN. T3 may begin only after the formal T2 decision; G6 may begin only after the T3 DDL proposal is reviewed. Both remain repository/local-only. No BWH, production data, real secret, remote D1, remote Worker/DO, CI, production migration, dual-write, or cutover is authorized.
