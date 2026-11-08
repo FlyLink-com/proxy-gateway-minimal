@@ -29,7 +29,7 @@ All work packages begin OPEN. Existing design documents are inputs, not completi
 
 ### T2-C1 — Identity/authentication custody and PII externalization
 
-**Problem:** Source account metadata currently carries raw email values through `loginRef` / `displayRef` and a raw `displayName`. Several low-entropy email, IP, or registration-context SHA-256 digests are not anonymization. The identity boundary also intersects active authentication: `portal-password-credentials.mjs` issues and verifies password hashes through the current control store, while the T2 field map marks the entire `platform_portal_password_credentials` table DEFER. `platform_portal_totp_credentials.encrypted_totp_secret` is EXTERNALIZE while its status/lock/timestamp fields are KEEP. These dispositions must not silently disable current password/TOTP login or cause credentials to be copied into D1.
+**Problem:** Source account metadata currently carries raw email values through `loginRef` / `displayRef` and a raw `displayName`. Several low-entropy email, IP, or registration-context SHA-256 digests are not anonymization. The identity boundary also intersects active authentication: `portal-password-credentials.mjs` issues and verifies password hashes through the current control store, while the T2 field map marks the entire `platform_portal_password_credentials` table DEFER. The source path is conditionally wired when User Portal/Admin Auth routes are enabled; production activation is NOT OBSERVED. `platform_portal_totp_credentials.encrypted_totp_secret` is EXTERNALIZE while its status/lock/timestamp fields are KEEP. These dispositions must not silently disable an approved password/TOTP feature or cause credentials to be copied into D1.
 
 **Required decisions and implementation contract**
 
@@ -52,7 +52,7 @@ All work packages begin OPEN. Existing design documents are inputs, not completi
 - [ ] Historical-value handling is explicit: deterministic conversion, quarantine, or rejection; no silent fallback.
 - [ ] Named Identity/Privacy and Security owner approvals are recorded.
 
-**Required artifact:** identity-custody decision record plus synthetic compatibility tests.
+**Required artifact:** identity/authentication-custody decision record, [source audit](D1_T2_IDENTITY_AUTH_CUSTODY_SOURCE_AUDIT_V1.md), and synthetic compatibility tests.
 
 ### T2-C2 — Cryptographic key custody, HMAC rotation, and legacy digest compatibility
 
