@@ -126,6 +126,18 @@ export function createMockTenant({ tenantRef, issuerRef, nowFn = () => Date.now(
     // Pipeline from steps 1-4: legacy accounts arrive with an envelope and
     // (optionally) an attestation record; the import gate decides each one.
     importLegacyAccounts(accounts) {
+      // Attestation is account-scoped evidence. Validate the complete batch
+      // before writing any user so a copied/misbound record cannot classify
+      // another account or leave a partially imported batch behind.
+      for (const account of accounts) {
+        const attestation = account?.attestation;
+        if (attestation !== undefined && attestation !== null) {
+          classifyAttestationRecord(attestation); // validates the exact record shape
+          if (attestation.accountRef !== account.accountRef) {
+            throw fail("attestation_account_ref_mismatch");
+          }
+        }
+      }
       const report = [];
       for (const account of accounts) {
         const classification = classifyAttestationRecord(account.attestation ?? undefined);
