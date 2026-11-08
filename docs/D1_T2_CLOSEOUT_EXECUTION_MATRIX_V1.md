@@ -52,7 +52,7 @@ All work packages begin OPEN. Existing design documents are inputs, not completi
 - [ ] Historical-value handling is explicit: deterministic conversion, quarantine, or rejection; no silent fallback.
 - [ ] Named Identity/Privacy and Security owner approvals are recorded.
 
-**Required artifact:** identity/authentication-custody decision record, [source audit](D1_T2_IDENTITY_AUTH_CUSTODY_SOURCE_AUDIT_V1.md), and synthetic compatibility tests.
+**Required artifact:** [C1 identity/authentication custody decision proposal](D1_T2_C1_IDENTITY_AUTH_CUSTODY_DECISION_V1.md) (DRAFT / not owner-approved), [source audit](D1_T2_IDENTITY_AUTH_CUSTODY_SOURCE_AUDIT_V1.md), and synthetic compatibility tests.
 
 ### T2-C2 — Cryptographic key custody, HMAC rotation, and legacy digest compatibility
 
