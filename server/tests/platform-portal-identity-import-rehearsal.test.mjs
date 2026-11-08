@@ -268,6 +268,15 @@ test("R6: import plan requires matching provider readback fingerprints and rejec
   };
   const firstFingerprint = fingerprintSyntheticAuth0ImportRecord(first);
   assert.equal(fingerprintSyntheticAuth0ImportRecord(reorderedFirst), firstFingerprint);
+  // Provider readback omits custom_password_hash and may add provider-owned fields.
+  const providerReadback = {
+    user_id: first.user_id,
+    email: first.email,
+    email_verified: first.email_verified,
+    app_metadata: first.app_metadata,
+    created_at: "2026-11-08T00:00:00.000Z"
+  };
+  assert.equal(fingerprintSyntheticAuth0ImportRecord(providerReadback), firstFingerprint);
 
   assert.deepEqual(planSyntheticAuth0BulkImport([first, second]), [
     { index: 0, user_id: "synthetic-portal-user-001", action: "create" },

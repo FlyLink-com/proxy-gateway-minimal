@@ -304,9 +304,33 @@ function canonicalizeSyntheticJson(value, ancestors = new WeakSet()) {
   throw failure("import_plan_record_not_json_safe");
 }
 
+// This projection contains only stable fields available to a provider readback.
+// It deliberately excludes custom_password_hash: identity providers do not return
+// imported password hashes through ordinary user readback. SHA-256 here is only
+// for the synthetic .test fixture; production PII fingerprints require a separately
+// approved keyed construction and authenticated provider-readback adapter.
 export function fingerprintSyntheticAuth0ImportRecord(record) {
   if (!isPlainRecord(record)) throw failure("import_plan_record_invalid");
-  const canonical = JSON.stringify(canonicalizeSyntheticJson(record));
+  const projection = {};
+  for (const key of ["user_id", "email", "email_verified", "app_metadata"]) {
+    const descriptor = Object.getOwnPropertyDescriptor(record, key);
+    if (!descriptor || !Object.hasOwn(descriptor, "value")) {
+      throw failure("import_plan_readback_projection_incomplete");
+    }
+    projection[key] = descriptor.value;
+  }
+  if (typeof projection.user_id !== "string" || !/^synthetic-[a-z0-9-]{1,80}$/u.test(projection.user_id)
+    || typeof projection.email !== "string"
+    || !/^[^@\s]+@example\.test$/u.test(projection.email)
+    || projection.email !== projection.email.trim().toLowerCase()
+    || typeof projection.email_verified !== "boolean") {
+    throw failure("import_plan_readback_projection_invalid");
+  }
+  projection.app_metadata = validateSyntheticAuth0AppMetadata(projection.app_metadata);
+  if (!Object.hasOwn(projection.app_metadata, "legacy_account_ref")) {
+    throw failure("import_plan_readback_projection_incomplete");
+  }
+  const canonical = JSON.stringify(canonicalizeSyntheticJson(projection));
   return createHash("sha256").update(canonical, "utf8").digest("hex");
 }
 
@@ -592,6 +616,7 @@ export function runSyntheticPortalIdentityImportRehearsal() {
       "Portal/Admin tenant isolation",
       "Admin directory search and audit",
       "Worker token projection and gateway bypass",
+      "provider readback acquisition/authentication and production keyed fingerprinting",
       "real-account duplicate and partial-import reconciliation",
       "provider outage and revocation behavior",
       "Android/browser parity"
