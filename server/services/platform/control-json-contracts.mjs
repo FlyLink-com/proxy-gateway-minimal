@@ -10,23 +10,27 @@ function contractError() {
 }
 
 function snapshotPlainObject(value) {
-  if (
-    !value
-    || typeof value !== "object"
-    || Array.isArray(value)
-    || (Object.getPrototypeOf(value) !== Object.prototype && Object.getPrototypeOf(value) !== null)
-  ) {
+  try {
+    if (
+      !value
+      || typeof value !== "object"
+      || Array.isArray(value)
+      || (Object.getPrototypeOf(value) !== Object.prototype && Object.getPrototypeOf(value) !== null)
+    ) {
+      throw new Error("invalid object");
+    }
+    const keys = Reflect.ownKeys(value);
+    if (keys.some((key) => typeof key !== "string")) throw new Error("invalid key");
+    const snapshot = {};
+    for (const key of keys) {
+      const descriptor = Object.getOwnPropertyDescriptor(value, key);
+      if (!descriptor || !descriptor.enumerable || !("value" in descriptor)) throw new Error("invalid property");
+      snapshot[key] = descriptor.value;
+    }
+    return snapshot;
+  } catch {
     throw contractError();
   }
-  const keys = Reflect.ownKeys(value);
-  if (keys.some((key) => typeof key !== "string")) throw contractError();
-  const snapshot = {};
-  for (const key of keys) {
-    const descriptor = Object.getOwnPropertyDescriptor(value, key);
-    if (!descriptor || !descriptor.enumerable || !("value" in descriptor)) throw contractError();
-    snapshot[key] = descriptor.value;
-  }
-  return snapshot;
 }
 
 function exactKeys(snapshot, required, optional = []) {
