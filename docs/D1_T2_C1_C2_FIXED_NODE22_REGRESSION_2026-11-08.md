@@ -67,3 +67,14 @@ The Git Blob SHA identifies the exact repository file fetched from the tested so
 - These tests do not implement or prove real OIDC/JWKS signature verification, real Auth0 tenant behavior, real MFA UX/API, production proof-window hooks, key custody/escrow, or historical Wallet-first digest compatibility.
 - No BWH connection, production data read/export, production key creation, remote D1 mutation, Worker/DO deployment, merge, or writer-authority switch occurred.
 - BWH remains the only production control-data writer; C1/C2 remain OPEN and T2 remains BLOCKED.
+
+
+## 6. Follow-up exact-branch-head verification — 2026-11-08
+
+After the evidence/documentation commit `2b95496c95238df2b7dae24f903d91d32a266f4f`, the exact branch head was re-read from GitHub. All nine service/test Git Blob SHAs in Section 3 were identical to the tested source files from `c6a70b3f`. The five-file suite was rerun twice at this exact head under Node v22.23.1:
+
+- Run 1: 62 tests / 62 pass / 0 fail / 0 skipped; duration 889.220 ms; TAP SHA-256 `6562575453bf4fc9de3dcaad7b3c7fa01aab5045abc82d5e4aa6a5aaad9ece6d`.
+- Run 2: 62 tests / 62 pass / 0 fail / 0 skipped; duration 894.008 ms; TAP SHA-256 `ee4089f69438ee05d8a0324278a76016ca7b5d5ae3b74f4c04a4c59a062f1041`.
+- `node --check` passed for all nine service/test files (9/9).
+
+The source files were byte-identical to the Section 3 inventory; this follow-up confirms the documentation-only branch update did not alter tested source behavior. No full repository `npm test`, hosted CI, Auth0 tenant, BWH, production key, D1, or deployment was used.

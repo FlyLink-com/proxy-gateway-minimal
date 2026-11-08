@@ -2,8 +2,8 @@
 
 > **Status:** Draft execution plan. C1 and C2 remain OPEN; T2 remains BLOCKED.
 > **Working branch:** `fix/t2-c1-c2-t1-reenroll-only-20261108`
-> **Source-review anchor:** PR #843, T1 follow-up source HEAD `c6a70b3f216d68c6ee7014af268645e1f9df5925` (review pending; PR #842 approval remains bound only to `bc3f8c9a`).
-> **Branch audit:** `c6a70b3f` is 198 commits ahead / 0 behind Master across 47 files; PR #843 is OPEN / DRAFT against `fix/t2-c1-c2-source-hardening-20261108` at `bc3f8c9a`. The PR-base diff is 50 commits / 19 files. Keep this as a review follow-up, not a Master merge candidate.
+> **Source-review anchor:** PR #843, T1 follow-up branch HEAD `2b95496c95238df2b7dae24f903d91d32a266f4f` (review pending; PR #842 approval remains bound only to `bc3f8c9a`). The only changes after tested source HEAD `c6a70b3f` are documentation/evidence updates; all nine source/test Git Blob SHAs were re-read and match the tested inventory.
+> **Branch audit:** PR #843 is OPEN / DRAFT against `fix/t2-c1-c2-source-hardening-20261108` at `bc3f8c9a`. Keep this as a review follow-up, not a Master merge candidate.
 > **Current production authority:** BWH remains the only production control-data writer.
 > **Scope:** Repository-only source/doc alignment and synthetic/local acceptance preparation. No production, tenant, real-key, deployment or migration action is authorized here.
 
@@ -17,7 +17,7 @@
 - The full-suite comparison reported zero new failure names against baseline `bf200c47`; the 156 baseline failure names remained, and a second run had one timer-flake name isolated at 5/5 on both heads.
 - This is bounded source-slice and comparative evidence, not an all-green suite, hosted CI PASS, formal C1/C2 acceptance or full T2 approval.
 - PR #842 has no Hosted CI run. Do not describe local tests as CI.
-- At exact T1 source HEAD `c6a70b3f216d68c6ee7014af268645e1f9df5925`, five repository test files passed **62/62 twice** under Node v22.23.1: security primitives 18/18, identity boundary 10/10, Auth0 import rehearsal 16/16, Portal TOTP verifier 4/4, and PII security vectors 14/14. Nine source/test files also passed `node --check`. Logs and per-file SHA-256 evidence are recorded in `D1_T2_C1_C2_FIXED_NODE22_REGRESSION_2026-11-08.md`.
+- At exact T1 branch HEAD `2b95496c95238df2b7dae24f903d91d32a266f4f`, the five repository test files passed **62/62 twice** under Node v22.23.1. All nine source/test Git Blob SHAs match the previously tested `c6a70b3f` inventory; the intervening changes were documentation only. Nine source/test files passed `node --check`. Latest exact-head logs: `6562575453bf4fc9de3dcaad7b3c7fa01aab5045abc82d5e4aa6a5aaad9ece6d` and `ee4089f69438ee05d8a0324278a76016ca7b5d5ae3b74f4c04a4c59a062f1041`.
 - This is a bounded source-slice run, not the full repository `npm test`, not hosted CI, and not formal C1/C2 acceptance. PR #843 remains OPEN / DRAFT pending exact-head review.
 
 ### C1 local provider rehearsal
