@@ -28,7 +28,7 @@ describe("secure Portal idempotency key generation", () => {
   });
 
   test("fails closed when no cryptographic random source is available", () => {
-    expect(() => createSecureIdempotencyKey(undefined)).toThrow("secure_random_unavailable");
+    expect(() => createSecureIdempotencyKey(null)).toThrow("secure_random_unavailable");
     expect(() => createSecureIdempotencyKey({})).toThrow("secure_random_unavailable");
   });
 
