@@ -234,3 +234,9 @@ The Scrypt hash cannot disclose original password length. Affected accounts cann
 The current source's `String(password).trim()` normalization must be preserved or explicitly reset. The three-tenant Essentials entitlement must be reconciled with two isolated production tenants and the non-production proof environment.
 
 This approval is not permission to create a tenant, import a real user, transfer a TOTP seed, configure production, connect to BWH, mutate D1, deploy a Worker/DO, dual-write, migrate or cut over.
+
+
+## Owner decision update — T1 (2026-11-08)
+
+The owner-selected Auth0/T1 path uses Auth0-managed MFA for target Portal/Admin factors. Portal enrollment is optional; Admin enrollment is mandatory. All existing BWH enc: and v2: TOTP values are invalidated at cutover and require re-enrollment; no legacy secret is imported, decrypted, transferred or re-encrypted. This resolves target TOTP ownership for this migration but does not authorize any source-key access or production change. The old BWH runtime remains authoritative until a separately approved cutover.
+
