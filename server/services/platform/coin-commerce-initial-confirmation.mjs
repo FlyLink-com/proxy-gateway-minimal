@@ -6,6 +6,7 @@ import {
   createCoinCommerceInitialConfirmationParticipant
 } from "./coin-commerce-store.mjs";
 import { COIN_COMMERCE_PRODUCTION_FULFILLMENT_OFFER_VERSIONS } from "./coin-commerce-production-catalog.mjs";
+import { coinCommerceSubscriptionFulfillmentMetadataJson } from "./control-json-contracts.mjs";
 
 // Operator-only capability. Intentionally not composed into HTTP or the coordinator.
 // Approval digests bind reviewed evidence; they are not an authentication scheme.
@@ -262,7 +263,7 @@ export function createCoinCommerceInitialConfirmation({ database, commerceStore,
           if (snapshot.command.updated_at > now || snapshot.order.updated_at !== snapshot.command.updated_at) fail("not_eligible");
           const effect = { id: evidence.refs.effectRef, entity_type: "coin_commerce_subscription_fulfillment",
             entity_ref: evidence.refs.entitlementRef, action: "subscription_fulfillment_applied",
-            actor_ref: "coin_commerce_fulfillment", created_at: now, metadata_json: JSON.stringify(evidence.metadata) };
+            actor_ref: "coin_commerce_fulfillment", created_at: now, metadata_json: coinCommerceSubscriptionFulfillmentMetadataJson(evidence.metadata) };
           const row = {
             confirmation_ref: `initial_confirm_${hash(approval.approvalSha256)}`,
             command_ref: snapshot.command.command_ref, order_ref: selected.orderRef, account_id: selected.accountId,
