@@ -470,7 +470,7 @@ function accountMetadataJson(value) {
 
     if (field === "loginRef") {
       const loginRef = requiredText(entry, field);
-      if (loginRef.length > 254 || !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(loginRef)) {
+      if (loginRef.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(loginRef)) {
         throw platformError("validation_error", "account metadata login reference is invalid");
       }
       normalized[field] = loginRef;
