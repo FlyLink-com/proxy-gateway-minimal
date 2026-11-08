@@ -22,7 +22,8 @@ Review the full T2 closeout contract, not only the original lease/idempotency pr
 7. `docs/D1_T2_INDEPENDENT_REVIEW_PACKET_V1.md`
 8. `docs/D1_CONTROL_SCHEMA_INVENTORY_V1.json` and `docs/D1_CONTROL_FIELD_DISPOSITION_T2_V1.json`
 9. `server/tests/d1-t2-security-vectors.test.mjs`
-10. `docs/D1_TARGET_SCHEMA_AND_G6_OFFLINE_REHEARSAL_PLAN.md`
+10. `docs/D1_T2_IDENTITY_AUTH_CUSTODY_SOURCE_AUDIT_V1.md`
+11. `docs/D1_TARGET_SCHEMA_AND_G6_OFFLINE_REHEARSAL_PLAN.md`
 
 ## 3. Required independent checks
 
