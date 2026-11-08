@@ -358,3 +358,24 @@ Fixed Node v22.23.1, isolated sandbox with network denied during test execution:
 - `node --check`: 3/3 PASS (validator module, test, CLI).
 
 This is a stronger structural consistency check over the checked-in source inventory. It does not establish live BWH schema state, D1 parity, or source migration ledger application history. It does not apply DDL or load rows; G6 remains offline-only.
+
+## 16. G6 source migration checksum re-execution — 2026-11-08
+
+Added a read-only registry of the actual source-module checksum exports and a CLI verifier:
+
+- `server/services/platform/d1-source-migration-registry.mjs`
+- `scripts/validate-d1-source-migration-checksums.mjs`
+- `server/tests/d1-source-migration-registry.test.mjs`
+- `server/services/platform/payment-store-migrations.mjs` now exposes its existing primary and legacy-archive migration IDs/checksums as a frozen read-only metadata array. No migration behavior or SQL was changed by this export.
+
+The registry imports the real source migration modules (with a throwing `better-sqlite3` stub in the isolated audit sandbox; no database object was constructed) and recomputes the checksums from the modules' existing DDL statements at module load.
+
+Fixed Node v22.23.1:
+- **19/19 source migration IDs and DDL SHA-256 checksums match** the pinned source inventory, including the legacy payment archive, Wallet-first/deferred migrations, Portal registration contract, plan switch and Plan C guard.
+- CLI: PASS, `expectedCount=19`, `actualCount=19`, `errors=[]`.
+- Regression suite: **5/5 PASS twice**, 0 failed, 0 skipped.
+- Run 1 TAP SHA-256: `866720d017740772d8293d09e1630691fd32bc7377ce3270d773420de261eb5d`.
+- Run 2 TAP SHA-256: `afd3a6f0f8cc6eb9314150342bc96574c3390a872dcf28fc5aadac530a35f192`.
+- `node --check`: 19/19 PASS across the imported source modules, registry, test and CLI.
+
+This closes the current-head source DDL checksum re-execution gap for these 19 recorded migrations. It does **not** establish which migrations were ever applied to BWH, their live database identity, or target D1 migration parity. No BWH connection, database read, DDL apply, or row load occurred.
