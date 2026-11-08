@@ -416,3 +416,10 @@ Two narrow T2-C3 writer gaps have now been hardened on the existing Draft branch
 - A focused Node v22.16.0 harness covering both validators passed **4/4** (raw SHA-256 `bb230837b57cab38333465d7cc8fd1d66203dbac08ce8d7c93282adad7f9b17f`).
 
 The complete `platform-subscription-control-db.test.mjs` file has not yet been run; no full repository test suite or CI has run. Production historical generation values remain NOT OBSERVED, so the generation field stays CONDITIONAL pending an approved compatibility inventory or quarantine rule. C3 remains OPEN because the other JSON writer allowlists, opaque-reference families, and direct Audit/Portal event paths are not yet closed.
+
+
+## C3 opaque-reference writer hardening — 2026-11-07
+
+`recordEdgeDesiredStateNotification()` now validates `id`, `nodeRef`, `channelRef`, and `desiredStateRef` with the existing `safeControlRef` grammar in addition to the strict generation format. Implementation: `11a4a8e6a7872a73cc1d5568a6255b2e0e983e4a`; regression assertions: `254c0ad408052373de3e2963c3339bee18e9a89d`. A focused Node v22.16.0 validator harness covering generation, opaque refs and second-factor allowlists passed **5/5** (SHA-256 `05d124b9461b10966f715b165f64ab5946249aa574c94dcf73b8a9cb5a1e9ab5`).
+
+This is a Draft-only source hardening. The full store test file, full repository suite and CI remain unrun. Historical production generation/reference values are NOT OBSERVED; C3 remains OPEN until all 26 JSON writers and historical compatibility rules are closed.
