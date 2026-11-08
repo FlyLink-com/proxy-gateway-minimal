@@ -43,7 +43,7 @@ The following key families are separate. Different key IDs do not make reuse of 
 
 Lease tokens use the separately specified domain-separated SHA-256 digest and do not require a secret key.
 
-Portal and Admin TOTP keys must be distinct. The helper includes a key-ring separation assertion. If C1 selects a managed identity provider that owns TOTP factors, the target may not need either first-party AES key family; the provider becomes the factor custody authority and the old BWH key is used only in an approved one-time transfer process.
+Portal and Admin TOTP keys must be distinct only if a first-party TOTP AES path is separately selected. Under owner-selected T1, Auth0 manages target factors and neither first-party AES key family is provisioned. Legacy BWH enc:, raw Base32 and v2: values are invalidated at cutover; no old key access, decryption, transfer or re-encryption is part of this migration.
 
 ## 3. HMAC envelope and canonical encoding
 
@@ -168,7 +168,7 @@ The helper now implements:
 - six allowlisted idempotency domains, separate provider-event domain and three PII pseudonym domains;
 - active-write / retained-read candidate generation and rotation verification;
 - domain-separated lease token SHA-256 and field-specific issuer grammar;
-- TOTP v3 AES-256-GCM with key ID, scope/credential AAD, active/retained rotation and controlled v2 re-encryption.
+- generic TOTP v3 AES-256-GCM with key ID, scope/credential AAD and active/retained rotation; this first-party primitive is not selected or provisioned for the Auth0/T1 migration, and no v2 decryption/re-encryption path is used.
 
 Historical local mirror verification on Node v22.16.0: 23/23 focused tests PASS; `node --check` passed for the primitive and local focused test files. Superseding fixed-environment evidence: at exact HEAD `bc3f8c9a713de05715f42f733b8fa72ba53d4477`, the reviewer reran four related repository test files under Node v22.23.1 and recorded 48/48 PASS, including `d1-t2-security-primitives.test.mjs` and `platform-portal-totp-verifier.test.mjs`. The full repository `npm test` was also compared against baseline `bf200c47`: zero new failure names, all 28 added tests passed, and 156 baseline failures remained (a second candidate run had one additional timing-flake failure name, isolated 5/5 on both HEADs). This is comparative evidence, not an all-green suite. No hosted CI PASS is claimed. This is source/synthetic evidence only.
 
@@ -179,7 +179,7 @@ Implemented in Draft:
 - active/retained key behavior and no legacy SHA-256 fallback;
 - strict key ID, family and domain validation;
 - Portal/Admin TOTP key separation, v3 AAD binding and rotation;
-- synthetic v2 re-encryption and legacy enc/raw Base32 re-enrollment disposition.
+- strict T1 disposition for valid legacy v2, enc: and raw Base32 values: re-enrollment required; malformed values quarantine; no legacy secret is decrypted or re-encrypted.
 
 Still OPEN:
 1. Approve the actual key custody provider and per-Worker secret binding versus account-level Secrets Store use.
@@ -200,7 +200,7 @@ PR #842 source-slice review is APPROVED by `gccltdco-cmd` (Review ID `5817529933
 
 The full repository suite was also executed on candidate and baseline: 7,112 versus 7,084 tests; the 156 baseline failures all remained, all 28 added tests passed, and the failure-name difference was zero. The second candidate run had one additional usage-ledger timing-flake name, which passed 5/5 isolated runs on each HEAD. This is not an all-green repository suite and no hosted CI PASS is claimed.
 
-Still outstanding: the separate 14-case PII vector file has not been run as one suite under Node v22.23.1; real key custody, named custodians, encrypted escrow and restore; Wallet-first legacy digest compatibility; owner-approved TOTP custody choice; retention/replay windows; and the full T2 review. C2 remains OPEN.
+Still outstanding: the separate 14-case PII vector file has not been run as one suite under Node v22.23.1; real key custody, named custodians, encrypted escrow and restore; Wallet-first legacy digest compatibility; synthetic Auth0 MFA enrollment/lifecycle proof (T1 target ownership is resolved); retention/replay windows; and the full T2 review. C2 remains OPEN.
 
 
 ## Owner decision update — T1 (2026-11-08)
