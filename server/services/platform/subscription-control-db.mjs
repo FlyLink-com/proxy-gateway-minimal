@@ -29,6 +29,10 @@ import {
   readScheduledPlanSwitchByRef,
   supersedeScheduledPlanSwitch
 } from "./coin-commerce-plan-switch-runtime.mjs";
+import {
+  coinCommerceSubscriptionFulfillmentMetadataJson,
+  portalAccessEventJson
+} from "./control-json-contracts.mjs";
 
 const UNSAFE_FIELD_PARTS = [
   "email",
@@ -447,6 +451,32 @@ function issuanceMetadataJson(value) {
     lastTransitionRef: safeControlRef(snapshot.lastTransitionRef, "lastTransitionRef")
   };
   return JSON.stringify(normalized);
+}
+
+function snapshotControlJsonObject(value, field) {
+  try {
+    if (
+      !value
+      || typeof value !== "object"
+      || Array.isArray(value)
+      || (Object.getPrototypeOf(value) !== Object.prototype && Object.getPrototypeOf(value) !== null)
+    ) {
+      throw new Error("invalid object");
+    }
+    const keys = Reflect.ownKeys(value);
+    if (keys.some((key) => typeof key !== "string")) throw new Error("invalid key");
+    const snapshot = {};
+    for (const key of keys) {
+      const descriptor = Object.getOwnPropertyDescriptor(value, key);
+      if (!descriptor || !descriptor.enumerable || !("value" in descriptor)) {
+        throw new Error("invalid property");
+      }
+      snapshot[key] = descriptor.value;
+    }
+    return snapshot;
+  } catch {
+    throw platformError("validation_error", field + " must be a plain data object");
+  }
 }
 
 function jsonObject(value, field) {
@@ -3978,7 +4008,7 @@ export function createSqliteSubscriptionControlStore({
       accessGrantRef: prepared.effectRef,
       tenantId: runtimeReceipt.tenantId,
       artifactId: runtimeReceipt.artifactId,
-      eventJson: jsonObject({
+      eventJson: portalAccessEventJson({
         type: "wallet_first_resource_effect_applied",
         transitionRef: prepared.transitionRef,
         effectRef: prepared.effectRef,
@@ -4111,7 +4141,7 @@ export function createSqliteSubscriptionControlStore({
       reviewedByRef: WALLET_FIRST_RESOURCE_EFFECT_ACTOR_REF,
       validUntil: prepared.successor.validUntil,
       accessGrantRef: prepared.effectRef,
-      eventJson: jsonObject({
+      eventJson: portalAccessEventJson({
         type: "wallet_first_resource_effect_applied",
         transitionRef: prepared.transitionRef,
         effectRef: prepared.effectRef,
@@ -7984,16 +8014,159 @@ export function createSqliteSubscriptionControlStore({
     return mapRevocationEvent(db.prepare("select * from platform_revocation_events where id = ?").get(requiredText(id, "id")));
   }
 
+  function auditMetadataJson(input) {
+    const entityType = requiredText(input.entityType, "entityType");
+    const action = requiredText(input.action, "action");
+    const metadata = snapshotControlJsonObject(input.metadata, "audit metadata");
+    const entityRef = safeControlRef(input.entityRef, "entityRef");
+    const actorRef = safeControlRef(input.actorRef, "actorRef");
+    const id = safeControlRef(input.id, "id");
+    const createdAt = isoText(input.createdAt, "createdAt");
+
+    if (entityType === "issuance_request" && action === "issued") {
+      exactObject(metadata, {
+        allowed: ["source"],
+        required: ["source"],
+        name: "issuanceAuditMetadata"
+      });
+      if (metadata.source !== "platform:issue-subscription") {
+        throw platformError("validation_error", "issuance audit source is not allowed");
+      }
+      return JSON.stringify(metadata);
+    }
+
+    if (entityType === "issuance_request" && action === "issuance_failed_compensated") {
+      exactObject(metadata, {
+        allowed: ["compensation"],
+        required: ["compensation"],
+        name: "issuanceCompensationAuditMetadata"
+      });
+      const compensation = snapshotControlJsonObject(metadata.compensation, "compensation");
+      exactObject(compensation, {
+        allowed: ["artifactRevoked", "tenantDisabled"],
+        required: ["artifactRevoked", "tenantDisabled"],
+        name: "issuanceCompensation"
+      });
+      if (
+        typeof compensation.artifactRevoked !== "boolean"
+        || typeof compensation.tenantDisabled !== "boolean"
+      ) {
+        throw platformError("validation_error", "issuance compensation audit flags are invalid");
+      }
+      return JSON.stringify({ compensation });
+    }
+
+    if (entityType === "entitlement" && action === "traffic_limit_updated") {
+      exactObject(metadata, {
+        allowed: ["requestRef", "reasonCode", "previousTrafficLimitBytes", "trafficLimitBytes"],
+        required: ["requestRef", "reasonCode", "previousTrafficLimitBytes", "trafficLimitBytes"],
+        name: "trafficLimitAuditMetadata"
+      });
+      safeControlRef(metadata.requestRef, "requestRef");
+      if (
+        typeof metadata.reasonCode !== "string"
+        || !/^[A-Za-z0-9][A-Za-z0-9_:-]{0,79}$/.test(metadata.reasonCode)
+        || /https?:|token|secret|credential|password|private|customer|@|\//i.test(metadata.reasonCode)
+      ) {
+        throw platformError("validation_error", "traffic-limit audit reason code is invalid");
+      }
+      integer(metadata.previousTrafficLimitBytes, "previousTrafficLimitBytes", { min: 0 });
+      integer(metadata.trafficLimitBytes, "trafficLimitBytes", { min: 0 });
+      return JSON.stringify(metadata);
+    }
+
+    if (entityType === WALLET_FIRST_RESOURCE_EFFECT_AUDIT_ENTITY_TYPE) {
+      const audit = { entityType, action, actorRef, metadata };
+      if (action === "resource_effect_prepared") {
+        const prepared = walletFirstResourceEffectPreparedFromAudit(audit);
+        if (
+          entityRef !== prepared.transitionRef
+          || id !== walletFirstResourceEffectPreparationRef(prepared.transitionRef)
+        ) {
+          throw platformError("validation_error", "wallet-first preparation audit binding is invalid");
+        }
+      } else if (action === "resource_runtime_applied") {
+        const runtime = walletFirstResourceEffectRuntimeReceiptFromAudit(audit);
+        if (entityRef !== runtime.transitionRef || id !== runtime.runtimeReceiptRef) {
+          throw platformError("validation_error", "wallet-first runtime audit binding is invalid");
+        }
+      } else if (action === "resource_effect_applied") {
+        const receipt = walletFirstResourceEffectReceiptFromAudit(audit);
+        if (entityRef !== receipt.transitionRef || id !== receipt.effectRef) {
+          throw platformError("validation_error", "wallet-first receipt audit binding is invalid");
+        }
+      } else {
+        throw platformError("validation_error", "wallet-first audit action is not allowed");
+      }
+      return JSON.stringify(metadata);
+    }
+
+    if (
+      entityType === "coin_commerce_subscription_fulfillment"
+      && action === "subscription_fulfillment_applied"
+    ) {
+      const metadataJson = coinCommerceSubscriptionFulfillmentMetadataJson(metadata);
+      const parsed = parseCoinCommerceFulfillmentEffect({
+        id,
+        entityType,
+        entityRef,
+        action,
+        actorRef,
+        createdAt,
+        metadata
+      }, {
+        accountId: metadata.accountId,
+        entitlementRef: metadata.entitlementRef
+      });
+      if (!parsed) throw platformError("validation_error", "subscription fulfillment audit metadata is invalid");
+      return metadataJson;
+    }
+
+    if (
+      entityType === "coin_commerce_data_pack_fulfillment"
+      && action === "data_pack_fulfillment_applied"
+    ) {
+      const fields = [
+        "version", "kind", "commandRef", "orderRef", "accountId", "requestRef",
+        "entitlementRef", "issuedLinkRef", "offerVersionRef", "quotaBytes",
+        "commercialNeverExpires", "technicalValidUntil"
+      ];
+      exactObject(metadata, {
+        allowed: fields,
+        required: fields,
+        name: "dataPackFulfillmentAuditMetadata"
+      });
+      if (
+        metadata.version !== 1
+        || metadata.kind !== "data_pack"
+        || actorRef !== "coin_commerce_fulfillment"
+        || entityRef !== safeControlRef(metadata.entitlementRef, "entitlementRef")
+        || id !== effectRefForCommand(safeControlRef(metadata.commandRef, "commandRef"))
+        || metadata.commercialNeverExpires !== true
+      ) {
+        throw platformError("validation_error", "data-pack fulfillment audit binding is invalid");
+      }
+      for (const field of [
+        "orderRef", "accountId", "requestRef", "issuedLinkRef", "offerVersionRef"
+      ]) safeControlRef(metadata[field], field);
+      integer(metadata.quotaBytes, "quotaBytes", { min: 1 });
+      isoText(metadata.technicalValidUntil, "technicalValidUntil");
+      return JSON.stringify(metadata);
+    }
+
+    throw platformError("validation_error", "audit entity/action JSON contract is not registered");
+  }
+
   function recordAuditEvent(input) {
     assertNoUnsafeFields(input);
     const record = {
-      id: requiredText(input.id, "id"),
+      id: safeControlRef(input.id, "id"),
       entityType: requiredText(input.entityType, "entityType"),
-      entityRef: requiredText(input.entityRef, "entityRef"),
+      entityRef: safeControlRef(input.entityRef, "entityRef"),
       action: requiredText(input.action, "action"),
-      actorRef: requiredText(input.actorRef, "actorRef"),
+      actorRef: safeControlRef(input.actorRef, "actorRef"),
       createdAt: isoText(input.createdAt, "createdAt"),
-      metadataJson: jsonObject(input.metadata, "metadata")
+      metadataJson: auditMetadataJson(input)
     };
     sqliteRun(db.prepare(`
       insert into platform_audit_events (
@@ -8549,7 +8722,7 @@ export function createSqliteSubscriptionControlStore({
       edgeCredentialRef: optionalText(input.edgeCredentialRef),
       edgeMaterialDigest: optionalText(input.edgeMaterialDigest),
       edgeLifecycleMutation: input.edgeLifecycleMutation ? 1 : 0,
-      eventJson: jsonObject(input.event, "event")
+      eventJson: portalAccessEventJson(input.event)
     };
     const edgeCredentials = normalizePortalEdgeCredentials(input, record);
     db.transaction(() => {
