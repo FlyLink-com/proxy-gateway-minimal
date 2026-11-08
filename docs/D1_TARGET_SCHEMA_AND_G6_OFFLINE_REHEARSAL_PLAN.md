@@ -439,3 +439,21 @@ Draft source hardening now closes two additional JSON writer families:
    - Preflight fixture updated to the approved shape: `87e0147a8154b99339a8090f19e4793fc121196f`
 
 Source-mirroring pure synthetic harnesses passed 10/10 per contract. The repository Node test files, complete repository test suite and CI have NOT RUN. No production values were read. C3 remains OPEN for account PII, audit metadata/direct SQL, portal event/direct writers, commerce notices, and full independent review.
+
+
+## C3 commerce notice JSON writer hardening — 2026-11-07
+
+The Coin Commerce offer notice path now enforces:
+- 1–8 unique notices per locale;
+- at most 512 UTF-8 bytes per notice;
+- trimmed, single-line plain text;
+- deterministic rejection of URL/markup, email, phone, IPv4 and common secret-like patterns;
+- complete offer re-normalization immediately before final INSERT.
+
+Commits:
+- Domain normalizer: `e0f568b91e58e74189fe65ace4de5c5623f7ffbe`
+- Final persistence-boundary revalidation: `06e5c0dc7a04d3bafb87925982d5d52eefcbc145`
+- Regex escaping correction: `60a3a8c200b7caf3bd09c47c19738d1da7fc8228`
+- Regression test addition: `d8a055ec8b723c5f50a7402f478c466a4b452d70`
+
+A source-mirroring pure synthetic harness passed 14/14. The repository Node test file, full suite and CI have NOT RUN. The pattern filter is deterministic and not comprehensive PII detection; independent review must assess false positives/negatives. T2 remains BLOCKED; C3 remains OPEN for account PII, audit, portal events and complete 26-field independent review.
