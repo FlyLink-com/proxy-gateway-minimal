@@ -52,16 +52,27 @@ export function legacyEnroll(presentedPassword, salt = randomBytes(16)) {
   ].join("$");
 }
 
+function decodeCanonicalBase64Url(value) {
+  if (typeof value !== "string" || !/^[A-Za-z0-9_-]+$/u.test(value)) return null;
+  const decoded = Buffer.from(value, "base64url");
+  if (decoded.length === 0 || decoded.toString("base64url") !== value) return null;
+  return decoded;
+}
+
 export function parseLegacyEnvelope(envelope) {
   const parts = String(envelope ?? "").split("$");
   if (parts.length !== 7 || parts[0] !== "scrypt" || parts[1] !== "v=1"
-    || parts[2] !== `N=${LEGACY_SCRYPT.N}` || parts[3] !== `r=${LEGACY_SCRYPT.r}`
-    || parts[4] !== `p=${LEGACY_SCRYPT.p}`) {
+    || parts[2] !== "N=" + LEGACY_SCRYPT.N || parts[3] !== "r=" + LEGACY_SCRYPT.r
+    || parts[4] !== "p=" + LEGACY_SCRYPT.p) {
     throw fail("legacy_scrypt_hash_invalid");
   }
-  const salt = Buffer.from(parts[5], "base64url");
-  const hash = Buffer.from(parts[6], "base64url");
-  if (salt.length === 0 || hash.length !== LEGACY_SCRYPT.keyLength) throw fail("legacy_scrypt_hash_invalid");
+  const salt = decodeCanonicalBase64Url(parts[5]);
+  const hash = decodeCanonicalBase64Url(parts[6]);
+  // The legacy service creates a 16-byte random salt and a 64-byte Scrypt result.
+  // Reject Node Buffer's permissive base64url decoding of malformed/noncanonical input.
+  if (!salt || salt.length !== 16 || !hash || hash.length !== LEGACY_SCRYPT.keyLength) {
+    throw fail("legacy_scrypt_hash_invalid");
+  }
   return { N: LEGACY_SCRYPT.N, r: LEGACY_SCRYPT.r, p: LEGACY_SCRYPT.p, keylen: hash.length, salt, hash };
 }
 
@@ -82,21 +93,50 @@ export function toAuth0CustomPasswordHash(envelope) {
   };
 }
 
-// Shape check against the Auth0 schema facts that matter here:
-// required algorithm+hash, no additional properties, scrypt requires keylen,
-// cost must be a power of two greater than one.
+// Strictly validate the Auth0 custom_password_hash object used by this route.
+// The outer and nested objects have exact key sets; required salt/password
+// properties and their encodings must be present before a test can claim
+// that the generated object matches the import contract.
+function isRecord(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function hasExactKeys(value, expected) {
+  return isRecord(value)
+    && Object.keys(value).sort().join(",") === [...expected].sort().join(",");
+}
+
+function decodeAuth0Bytes(field) {
+  if (!isRecord(field) || typeof field.value !== "string" || field.value.length === 0) return null;
+  if (field.encoding === "base64") {
+    if (!/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/u.test(field.value)) return null;
+    const bytes = Buffer.from(field.value, "base64");
+    return bytes.length > 0 && bytes.toString("base64") === field.value ? bytes : null;
+  }
+  if (field.encoding === "hex") {
+    if (!/^(?:[0-9a-fA-F]{2})+$/u.test(field.value)) return null;
+    return Buffer.from(field.value, "hex");
+  }
+  if (field.encoding === "utf8") return Buffer.from(field.value, "utf8");
+  return null;
+}
+
 export function validateAuth0ScryptObject(obj) {
-  const allowed = new Set(["algorithm", "hash", "salt", "password", "keylen", "cost", "blockSize", "parallelization"]);
-  if (!obj || typeof obj !== "object" || Array.isArray(obj)) throw fail("auth0_object_invalid");
-  for (const key of Object.keys(obj)) if (!allowed.has(key)) throw fail("auth0_object_additional_property");
+  const required = ["algorithm", "hash", "salt", "password", "keylen", "cost", "blockSize", "parallelization"];
+  if (!hasExactKeys(obj, required)) throw fail("auth0_object_shape_invalid");
   if (obj.algorithm !== "scrypt") throw fail("auth0_object_algorithm_invalid");
-  if (!obj.hash || typeof obj.hash.value !== "string" || !["base64", "hex", "utf8"].includes(obj.hash.encoding)) {
-    throw fail("auth0_object_hash_invalid");
+  if (!hasExactKeys(obj.hash, ["value", "encoding"])) throw fail("auth0_object_hash_invalid");
+  if (!hasExactKeys(obj.salt, ["value", "encoding"])) throw fail("auth0_object_salt_invalid");
+  if (!hasExactKeys(obj.password, ["encoding"]) || obj.password.encoding !== "utf8") {
+    throw fail("auth0_object_password_encoding_invalid");
   }
   if (!Number.isInteger(obj.keylen) || obj.keylen <= 0) throw fail("auth0_object_keylen_required");
   if (!Number.isInteger(obj.cost) || obj.cost <= 1 || (obj.cost & (obj.cost - 1)) !== 0) throw fail("auth0_object_cost_invalid");
   if (!Number.isInteger(obj.blockSize) || obj.blockSize <= 0) throw fail("auth0_object_block_size_invalid");
   if (!Number.isInteger(obj.parallelization) || obj.parallelization <= 0) throw fail("auth0_object_parallelization_invalid");
+  const hash = decodeAuth0Bytes(obj.hash);
+  const salt = decodeAuth0Bytes(obj.salt);
+  if (!hash || hash.length !== obj.keylen || !salt) throw fail("auth0_object_material_invalid");
   return true;
 }
 
@@ -105,8 +145,8 @@ export function validateAuth0ScryptObject(obj) {
 // (transcoded from utf8 per password.encoding).
 export function simulateAuth0ScryptVerify(auth0Object, presentedPassword) {
   validateAuth0ScryptObject(auth0Object);
-  const salt = Buffer.from(auth0Object.salt.value, auth0Object.salt.encoding);
-  const expected = Buffer.from(auth0Object.hash.value, auth0Object.hash.encoding);
+  const salt = decodeAuth0Bytes(auth0Object.salt);
+  const expected = decodeAuth0Bytes(auth0Object.hash);
   const derived = scryptSync(String(presentedPassword ?? ""), salt, auth0Object.keylen, {
     N: auth0Object.cost, r: auth0Object.blockSize, p: auth0Object.parallelization, maxmem: LEGACY_SCRYPT.maxmem
   });
