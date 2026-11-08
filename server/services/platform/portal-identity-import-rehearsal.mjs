@@ -145,6 +145,7 @@ function decodeCanonicalBase64Url(value) {
 }
 
 function isLegacyV2TotpEnvelope(value) {
+  if (typeof value !== "string" || value.length > 8192) return false;
   const parts = value.split(":");
   if (parts.length !== 5 || parts[0] !== "v2" || parts[1] !== "aes-256-gcm") return false;
   const iv = decodeCanonicalBase64Url(parts[2]);
