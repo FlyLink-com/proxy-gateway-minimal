@@ -93,7 +93,7 @@ export function verifyPortalScryptPassword({ plainPassword, passwordHash } = {})
   return derived.length === parsed.hash.length && timingSafeEqual(derived, parsed.hash);
 }
 
-export function buildAuth0CustomPasswordHash(passwordHash) {
+function buildAuth0CustomPasswordHash(passwordHash) {
   const parsed = parsePortalScryptPasswordHash(passwordHash);
   return {
     algorithm: "scrypt",
@@ -139,7 +139,7 @@ function decodeBase32ForLegacyCompatibility(value) {
   return Buffer.from(bytes);
 }
 
-export function normalizeAuth0TotpSecret(value) {
+function normalizeAuth0TotpSecret(value) {
   const raw = String(value ?? "").trim();
   if (!raw) throw failure("totp_secret_invalid");
   if (raw.startsWith("v2:")) {
@@ -189,6 +189,13 @@ export function createAuth0BulkImportRecord({
   }
   const normalizedUserId = requireSyntheticIdentifier(userId, "synthetic_user_id_required");
   const normalizedAccountRef = requireSyntheticIdentifier(accountRef, "synthetic_account_ref_required");
+  if (passwordHash !== SYNTHETIC_PORTAL_IDENTITY_FIXTURE.passwordHash) {
+    throw failure("synthetic_password_hash_required");
+  }
+  if (legacyTotpSecret !== undefined && legacyTotpSecret !== null
+    && legacyTotpSecret !== SYNTHETIC_PORTAL_IDENTITY_FIXTURE.legacyTotpSecret) {
+    throw failure("synthetic_totp_secret_required");
+  }
   if (typeof emailVerified !== "boolean") {
     throw failure("email_verified_boolean_required");
   }
