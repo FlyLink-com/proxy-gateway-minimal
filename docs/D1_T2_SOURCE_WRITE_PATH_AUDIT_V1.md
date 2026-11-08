@@ -106,9 +106,9 @@ The 26-column inventory is complete as a source-path map, but this follow-up sep
 | JSON contract family | Current persistence boundary | Current enforcement observed | Required target enforcement |
 |---|---|---|---|
 | account-metadata/v1 | `createAccount()` in `subscription-control-db.mjs` | `assertNoUnsafeFields(input)` checks key names recursively; `jsonObject()` checks object shape only | Exact versioned keys and per-value types/enums; reject raw email/display refs, display name and low-entropy unkeyed digests |
-| issuance-metadata/v1 | `createIssuanceRequest()` in `subscription-control-db.mjs` | Same recursive key-name check plus object-shape check | Closed union for observed CLI metadata and wallet-first chain metadata; no caller-defined extras |
+| issuance-metadata/v1 | `createIssuanceRequest()` plus wallet-first chain insert/update in `subscription-control-db.mjs` | Draft now enforces exactly `{}`, `{cli:"platform:issue-subscription"}`, or the five-key `wallet_first_unique_v1` / `wallet_first_resource_chain_v1` v1 chain shape; refs use `safeControlRef` | CLOSED AT CURRENT STORE WRITERS; future variants require an explicit versioned contract |
 | audit-metadata/v1 | `recordAuditEvent()` in `subscription-control-db.mjs` | Same generic object checks; one direct INSERT in `coin-commerce-initial-confirmation.mjs` | Exact schema selected by entity_type + action, enforced at every write entrypoint; direct writer must call same validator or be removed |
-| edge-node-metadata/v1 | `edgeRegisteredNodeRecord()` used by upsert and insert-if-absent | Key-name scan plus broad unsafe-string regex; no exact key allowlist | Exact first-boot key set and per-key boolean/ref/fingerprint types; reject unknown keys |
+| edge-node-metadata/v1 | `edgeRegisteredNodeRecord()` used by upsert and insert-if-absent | Draft now enforces the exact first-boot key set, fixed source and receipt gate, boolean flags, safe WireGuard planRef, and optional lowercase SHA-256 identity fingerprints | CLOSED AT CURRENT STORE WRITERS; non-registration/test fixtures must use the same source contract |
 | portal-access-event/v1 | `upsertPortalAccessRequest()` | `jsonObject()` only for event payload | Closed event discriminated union and exact keys per event; reject unknown event type/key/version |
 | second-factor-list/v1 | `createPortalSecondFactorChallenge()` | `jsonArray()` plus optional boolean check for rememberMe; factors are not enum-checked here | Non-empty unique enum list limited to totp/passkey, or exact wrapper {version:1,allowedFactors,rememberMe}; reject duplicates and unknown keys |
 | commerce-notices/v1 | `insertPublishedOffer()` | Persists normalizedOffer notice arrays as JSON; current normalization checks non-empty unique strings but lacks full item/count bounds and content filtering | Bounded item count and UTF-8 length; reject URLs, markup/script, PII and secret-like text before persistence |
@@ -116,14 +116,14 @@ The 26-column inventory is complete as a source-path map, but this follow-up sep
 ### 2.5 Source-derived writer details and test obligations
 
 - Account registration caller `portal-registration.mjs` currently writes 22 metadata keys (including raw `loginRef` and `displayRef`, and ordinary SHA-256 digests); the key-name guard does not catch these values. `portal-initial-account-issuance.mjs` separately writes `displayName`. These are explicit blockers, not merely a future schema concern.
-- Issuance currently has a simple CLI producer `{cli:"platform:issue-subscription"}`; wallet-first flows also update issuance metadata with resource-chain state. Keep these as separate tagged variants until the exact chain writer fields and lifecycle are exhaustively enumerated.
+- Issuance source producers are now closed in Draft: empty metadata for callers with no metadata, the exact CLI marker `{cli:"platform:issue-subscription"}`, and the five-key wallet-first chain variant (`commercialModel`, `resourceModel`, `resourceModelVersion`, `initialTransitionRef`, `lastTransitionRef`). Both initial insert and subsequent `lastTransitionRef` update use the same validator; unknown keys/versions and unsafe refs fail closed.
 - Audit metadata has at least three independent source shapes: issuance compensation (`{compensation:...}`), entitlement traffic-limit change (`requestRef, reasonCode, previousTrafficLimitBytes, trafficLimitBytes`), and coin-commerce fulfillment's fixed 17-key evidence object. Additional actions must be enumerated from every caller before the allowlist is declared complete.
 - The coin-commerce initial-confirmation direct writer remains inside the same SQLite transaction as its confirmation row. Do not consolidate it by moving the audit write outside that transaction.
 - Portal event source names recorded in §2.3 form a closed candidate union, but every event's exact payload keys still require one-by-one source extraction and positive/negative fixtures.
 - The second-factor persistence writer previously accepted values that the current reader may later ignore. Draft commit `c39b3987b557274fce2b9c4aabbf11367454245f` now enforces a non-empty, unique `totp` / `passkey` allowlist at the persistence boundary; integration assertions were added in `591629b0b0aaeab8679d2f79b793bef67137b19d`. Focused helper tests passed 4/4, but the full store test file has not yet been run.
 - Commerce notice normalization is an input-level business validator, not a guarantee that already-normalized or internal callers cannot supply unsafe notice strings. Validate again at the final persistence boundary.
 
-**Current result:** write-path discovery is complete for the 26 listed columns, but the exact writer contracts are not yet all closed. No source code was changed in this follow-up; this is a source-derived contract clarification only.
+**Current result:** write-path discovery is complete for all 26 listed columns. Draft now closes the issuance metadata union and edge-node metadata allowlist at their current store writers. Account metadata remains BLOCKED by identity/PII custody; audit metadata remains BLOCKED by action-specific unions and a direct SQL writer; portal events remain BLOCKED by per-event unions and direct writers; commerce notices remain BLOCKED by bounds/content filtering. Passkey JSON remains DEFER. The full repository test file and CI have not been run.
 
 ## 3. Lease, idempotency and generation field audit
 
@@ -246,3 +246,12 @@ The synthetic vector file contains nine tests covering five-hex/one-UUID lease i
 The custody design recommends Durable Objects SQLite storage but is not implemented. The retention register has only the existing Leads 90-day period accepted; all other unresolved domain periods remain pending. The independent-review packet is prepared but has not been signed by a separate reviewer.
 
 T2 is not approved and production migration is not authorized.
+
+
+### 2.6 Draft writer implementation evidence — 2026-11-07
+
+- Issuance metadata validator: source commit `a1b55bcc33e745b7094c93141d4a05530812c216`; store regression tests: `0943ffe6b2f98841edb1ec58b866c4034bc3bbc4`.
+- Edge-node metadata validator: source commit `559156cbf8c4f841a80b20b68289811fb89efbba`; store regression tests: `4c0e3c7c32227dfbb581582f6e3123a495d366de`; preflight seed fixture aligned: `87e0147a8154b99339a8090f19e4793fc121196f`.
+- A source-mirroring pure synthetic harness passed 10/10 issuance cases and 10/10 edge-metadata cases. This is not a run of the repository's Node test files.
+- The complete `server/tests/platform-subscription-control-db.test.mjs` file, the preflight test file, the full repository suite and CI remain NOT RUN.
+- No production historical JSON values were read. The validators are source-contract enforcement on the Draft branch only.
