@@ -40,6 +40,21 @@ test("fails closed when secure randomness is unavailable", () => {
   );
 });
 
+test("fails closed when getRandomValues does not return the supplied typed array", () => {
+  let supplied;
+  assert.throws(
+    () => createSecurePortalSetupIdempotencyKey({
+      getRandomValues(bytes) {
+        supplied = bytes;
+        bytes.fill(0);
+        return new Uint8Array(16).fill(1);
+      }
+    }),
+    /secure_random_unavailable/
+  );
+  assert.ok(supplied instanceof Uint8Array);
+});
+
 test("fails closed when the secure random provider throws", () => {
   assert.throws(
     () => createSecurePortalSetupIdempotencyKey({
