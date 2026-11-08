@@ -1,5 +1,4 @@
 import { createHash, scryptSync, timingSafeEqual } from "node:crypto";
-import { createPortalTotpVerifier } from "./portal-totp-verifier.mjs";
 
 export const PORTAL_SCRYPT_PARAMS = Object.freeze({
   N: 32768,
@@ -10,6 +9,7 @@ export const PORTAL_SCRYPT_PARAMS = Object.freeze({
 });
 
 export const AUTH0_BCRYPT_MAX_PASSWORD_BYTES = 72;
+export const AUTH0_BCRYPT_OVERFLOW_POLICY = "show_error";
 
 // R4 input bounds: parser/verifier ceilings, not login policy. The canonical
 // scrypt hash string is well under 256 chars (fixed parameter header, a
@@ -32,9 +32,6 @@ export const SYNTHETIC_PORTAL_IDENTITY_FIXTURE = Object.freeze({
   accountRef: "synthetic-account-001",
   emailVerified: true,
   legacyTotpSecret: "enc:JBSWY3DPEHPK3PXP",
-  totpNow: "2026-06-06T00:00:00.000Z",
-  currentTotpCode: "049557",
-  adjacentTotpCode: "186022"
 });
 
 function failure(code) {
@@ -79,11 +76,19 @@ export function parsePortalScryptPasswordHash(encoded) {
   return { salt, hash };
 }
 
-export function verifyPortalScryptPassword({ plainPassword, passwordHash } = {}) {
-  const rawPassword = String(plainPassword ?? "");
-  if (rawPassword.length > PORTAL_PASSWORD_INPUT_MAX_CHARS) return false;
-  if (typeof passwordHash === "string" && passwordHash.length > PORTAL_SCRYPT_HASH_MAX_CHARS) return false;
-  const normalizedPassword = rawPassword.trim();
+// Preserve the legacy trim-only rule for values that have passed the input
+// type boundary. R4 rejects non-string verifier inputs before parsing or scrypt.
+export function normalizePortalPasswordForIdentity(value) {
+  return String(value ?? "").trim();
+}
+
+export function verifyPortalScryptPassword(input = {}) {
+  if (!input || typeof input !== "object" || Array.isArray(input)) return false;
+  const { plainPassword, passwordHash } = input;
+  if (typeof plainPassword !== "string" || typeof passwordHash !== "string") return false;
+  if (plainPassword.length > PORTAL_PASSWORD_INPUT_MAX_CHARS) return false;
+  if (passwordHash.length > PORTAL_SCRYPT_HASH_MAX_CHARS) return false;
+  const normalizedPassword = normalizePortalPasswordForIdentity(plainPassword);
   if (!normalizedPassword) return false;
 
   let parsed;
@@ -129,49 +134,36 @@ function buildAuth0CustomPasswordHash(passwordHash) {
   };
 }
 
-function decodeBase32ForLegacyCompatibility(value) {
-  let buffer = 0;
-  let bits = 0;
-  const bytes = [];
-  for (const character of value) {
-    const code = character.charCodeAt(0);
-    const index = code >= 65 && code <= 90
-      ? code - 65
-      : code >= 50 && code <= 55
-        ? code - 24
-        : -1;
-    if (index < 0) return null;
-    buffer = (buffer << 5) | index;
-    bits += 5;
-    if (bits >= 8) {
-      bits -= 8;
-      bytes.push((buffer >> bits) & 0xff);
-      buffer &= (1 << bits) - 1;
-    }
+// R3 disposition only. This rehearsal never decodes, decrypts, normalizes,
+// or imports legacy TOTP material. The historical "enc:" prefix identifies
+// Base32 text; it is not evidence that the value is encrypted.
+export function classifySyntheticLegacyTotpDisposition(value) {
+  if (value === undefined || value === null || String(value).trim() === "") {
+    return { outcome: "none", nextAction: "none" };
   }
-  if (bytes.length === 0) return null;
-  return Buffer.from(bytes);
-}
-
-function normalizeAuth0TotpSecret(value) {
-  const raw = String(value ?? "").trim();
-  if (!raw) throw failure("totp_secret_invalid");
+  const raw = String(value).trim();
   if (raw.startsWith("v2:")) {
-    throw failure("totp_secret_requires_c2_key_custody");
+    return {
+      outcome: "blocked",
+      nextAction: "blocked_pending_c2_key_custody"
+    };
   }
-  const unwrapped = raw.startsWith("enc:") ? raw.slice("enc:".length) : raw;
-  const normalized = unwrapped
-    .replace(/[\s-]/gu, "")
-    .replace(/=+$/u, "")
-    .toUpperCase();
-  if (!/^[A-Z2-7]+$/u.test(normalized) || !decodeBase32ForLegacyCompatibility(normalized)) {
-    throw failure("totp_secret_invalid");
+  if (raw.startsWith("enc:")) {
+    return {
+      outcome: "re_enroll_required",
+      nextAction: "re_enroll",
+      legacyEncoding: "base32_not_ciphertext"
+    };
   }
-  return normalized;
+  return {
+    outcome: "re_enroll_required",
+    nextAction: "re_enroll",
+    legacyEncoding: "unverified"
+  };
 }
 
 export function classifyAuth0FirstLoginPassword(plainPassword) {
-  const normalizedPassword = String(plainPassword ?? "").trim();
+  const normalizedPassword = normalizePortalPasswordForIdentity(plainPassword);
   if (!normalizedPassword) {
     return { outcome: "invalid", utf8Bytes: 0 };
   }
@@ -179,6 +171,37 @@ export function classifyAuth0FirstLoginPassword(plainPassword) {
   return {
     outcome: utf8Bytes > AUTH0_BCRYPT_MAX_PASSWORD_BYTES ? "targeted_reset_required" : "allow",
     utf8Bytes
+  };
+}
+
+// Synthetic-only contract: over-limit passwords are rejected with Show error
+// before bcrypt re-hash. They are never truncated. A real tenant must still
+// prove this behavior in an isolated provider test before production use.
+export function evaluateSyntheticAuth0FirstLoginPassword(plainPassword) {
+  const classification = classifyAuth0FirstLoginPassword(plainPassword);
+  if (classification.outcome === "invalid") {
+    return {
+      outcome: "reject",
+      reason: "invalid_password",
+      utf8Bytes: 0,
+      rehashAllowed: false
+    };
+  }
+  if (classification.outcome === "targeted_reset_required") {
+    return {
+      outcome: "reject",
+      reason: "bcrypt_72_byte_limit",
+      utf8Bytes: classification.utf8Bytes,
+      overflowPolicy: AUTH0_BCRYPT_OVERFLOW_POLICY,
+      nextAction: "targeted_reset_required",
+      rehashAllowed: false
+    };
+  }
+  return {
+    outcome: "allow",
+    utf8Bytes: classification.utf8Bytes,
+    overflowPolicy: AUTH0_BCRYPT_OVERFLOW_POLICY,
+    rehashAllowed: true
   };
 }
 
@@ -223,9 +246,12 @@ export function createSyntheticAuth0BulkImportRecord({
   if (passwordHash !== SYNTHETIC_PORTAL_IDENTITY_FIXTURE.passwordHash) {
     throw failure("synthetic_password_hash_required");
   }
-  if (legacyTotpSecret !== undefined && legacyTotpSecret !== null
-    && legacyTotpSecret !== SYNTHETIC_PORTAL_IDENTITY_FIXTURE.legacyTotpSecret) {
-    throw failure("synthetic_totp_secret_required");
+  const totpDisposition = classifySyntheticLegacyTotpDisposition(legacyTotpSecret);
+  if (totpDisposition.outcome === "blocked") {
+    throw failure("totp_secret_requires_c2_key_custody");
+  }
+  if (totpDisposition.outcome === "re_enroll_required") {
+    throw failure("totp_secret_requires_reenrollment");
   }
   if (typeof emailVerified !== "boolean") {
     throw failure("email_verified_boolean_required");
@@ -241,14 +267,8 @@ export function createSyntheticAuth0BulkImportRecord({
     custom_password_hash: buildAuth0CustomPasswordHash(passwordHash)
   };
 
-  if (legacyTotpSecret !== undefined && legacyTotpSecret !== null) {
-    record.mfa_factors = [{
-      totp: {
-        secret: normalizeAuth0TotpSecret(legacyTotpSecret)
-      }
-    }];
-  }
-
+  // TOTP factor material is deliberately omitted from this import record.
+  // Legacy users re-enroll; v2 envelopes remain blocked pending C2 approval.
   return record;
 }
 
@@ -295,8 +315,7 @@ export function runSyntheticPortalIdentityImportRehearsal() {
     emailVerified: fixture.emailVerified,
     userId: fixture.userId,
     accountRef: fixture.accountRef,
-    passwordHash: fixture.passwordHash,
-    legacyTotpSecret: fixture.legacyTotpSecret
+    passwordHash: fixture.passwordHash
   });
   const passwordAccepted = verifyPortalScryptPassword({
     plainPassword: fixture.plainPassword,
@@ -310,36 +329,17 @@ export function runSyntheticPortalIdentityImportRehearsal() {
     plainPassword: fixture.plainPassword + "x",
     passwordHash: fixture.passwordHash
   });
-  const password72 = classifyAuth0FirstLoginPassword("a".repeat(72));
-  const password73 = classifyAuth0FirstLoginPassword("a".repeat(73));
-  const totpVerifier = createPortalTotpVerifier({ nowFn: () => fixture.totpNow });
-  const importedTotpSecret = record.mfa_factors?.[0]?.totp?.secret;
-  const currentTotpAccepted = totpVerifier({
-    encryptedTotpSecret: importedTotpSecret,
-    code: fixture.currentTotpCode
-  });
-  const adjacentTotpAccepted = totpVerifier({
-    encryptedTotpSecret: importedTotpSecret,
-    code: fixture.adjacentTotpCode
-  });
-  const wrongTotpRejected = !totpVerifier({
-    encryptedTotpSecret: importedTotpSecret,
-    code: "000000"
-  });
-
-  let protectedV2Rejected = false;
-  try {
-    normalizeAuth0TotpSecret("v2:aes-256-gcm:synthetic-envelope");
-  } catch (error) {
-    protectedV2Rejected = error?.code === "totp_secret_requires_c2_key_custody";
-  }
+  const password72 = evaluateSyntheticAuth0FirstLoginPassword("a".repeat(72));
+  const password73 = evaluateSyntheticAuth0FirstLoginPassword("a".repeat(73));
+  const legacyTotpDisposition = classifySyntheticLegacyTotpDisposition(fixture.legacyTotpSecret);
+  const protectedV2Disposition = classifySyntheticLegacyTotpDisposition("v2:aes-256-gcm:synthetic-envelope");
+  const totpFactorAbsent = !Object.hasOwn(record, "mfa_factors");
 
   const expectedKeys = [
     "app_metadata",
     "custom_password_hash",
     "email",
     "email_verified",
-    "mfa_factors",
     "user_id"
   ];
   const schemaKeysExact = JSON.stringify(Object.keys(record).sort()) === JSON.stringify(expectedKeys);
@@ -351,9 +351,11 @@ export function runSyntheticPortalIdentityImportRehearsal() {
     && record.custom_password_hash.cost === 32768
     && record.custom_password_hash.blockSize === 8
     && record.custom_password_hash.parallelization === 1;
-  const totpSchemaExact = record.mfa_factors?.length === 1
-    && record.mfa_factors[0]?.totp?.secret === "JBSWY3DPEHPK3PXP"
-    && Object.keys(record.mfa_factors[0]).length === 1;
+  const totpSchemaExact = totpFactorAbsent
+    && legacyTotpDisposition.outcome === "re_enroll_required"
+    && legacyTotpDisposition.nextAction === "re_enroll"
+    && protectedV2Disposition.outcome === "blocked"
+    && protectedV2Disposition.nextAction === "blocked_pending_c2_key_custody";
   const recordJson = JSON.stringify(record);
   const rawPasswordAbsent = !recordJson.includes(fixture.plainPassword);
   const independentVectorMatches = parsed.hash.toString("hex") === fixture.expectedHashHex;
@@ -362,14 +364,13 @@ export function runSyntheticPortalIdentityImportRehearsal() {
     passwordAccepted,
     trimmedPasswordAccepted,
     wrongPasswordRejected,
-    password72.outcome === "allow" && password72.utf8Bytes === 72,
-    password73.outcome === "targeted_reset_required" && password73.utf8Bytes === 73,
+    password72.outcome === "allow" && password72.utf8Bytes === 72 && password72.rehashAllowed,
+    password73.outcome === "reject" && password73.utf8Bytes === 73
+      && password73.overflowPolicy === AUTH0_BCRYPT_OVERFLOW_POLICY
+      && password73.nextAction === "targeted_reset_required"
+      && !password73.rehashAllowed,
     passwordHashSchemaExact,
     totpSchemaExact,
-    currentTotpAccepted,
-    adjacentTotpAccepted,
-    wrongTotpRejected,
-    protectedV2Rejected,
     schemaKeysExact,
     rawPasswordAbsent
   ];
@@ -402,11 +403,11 @@ export function runSyntheticPortalIdentityImportRehearsal() {
       auth0SchemaEncoding: "base64-hash-and-salt; utf8-password"
     },
     totp: {
-      importPath: "mfa_factors[].totp.secret",
-      currentIntervalAccepted: currentTotpAccepted,
-      adjacentIntervalAccepted: adjacentTotpAccepted,
-      wrongCodeRejected: wrongTotpRejected,
-      protectedV2Envelope: "BLOCKED_PENDING_C2_KEY_CUSTODY"
+      importFactorIncluded: false,
+      legacyEncDisposition: "RE_ENROLL_REQUIRED",
+      legacyEncIsCiphertext: false,
+      protectedV2Disposition: "BLOCKED_PENDING_C2_KEY_CUSTODY",
+      secretMaterialIncluded: false
     },
     importRecord: {
       generatedInMemory: true,
@@ -415,7 +416,7 @@ export function runSyntheticPortalIdentityImportRehearsal() {
       userIdOpaque: true,
       accountRefOpaque: true,
       customPasswordHashIncluded: true,
-      totpFactorIncluded: true,
+      totpFactorIncluded: false,
       rawPasswordIncluded: false
     },
     integrity: {
@@ -432,7 +433,8 @@ export function runSyntheticPortalIdentityImportRehearsal() {
     },
     notRun: [
       "Auth0 tenant or API import acceptance",
-      "Auth0 hosted first-login rehash behavior",
+      "Auth0 hosted first-login rehash behavior and actual Show error enforcement",
+      "provider TOTP re-enrollment and C2 secret custody",
       "provider lockout and email OTP policy",
       "Portal/Admin tenant isolation",
       "Admin directory search and audit",
