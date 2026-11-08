@@ -230,3 +230,9 @@ The two handoff fields are generated with distinct domain-separated SHA-256 v1 l
 Recommended disposition: preserve the exact v1 digest formula for compatibility, remove the weak UI fallback in favor of `crypto.getRandomValues()` (or fail closed), enforce canonical UUIDv4 at the Wallet-first service boundary, and keep the digest fields distinct from PII HMAC families. Existing hashes cannot be transformed to HMAC without the raw input.
 
 The source proves a 10-minute claim lease, not a row-retention TTL. Delivered-row replay/acknowledgement retention and purge remain a bounded owner decision. C2-A04 is therefore partially source-audited but remains OPEN pending disposition and retention approval. No source behavior was changed by this documentation update.
+
+## 12. Wallet-first idempotency entropy hardening — 2026-11-08
+
+The first-party Portal setup idempotency fallback has been hardened on the child Draft branch: native `crypto.randomUUID()` is preferred; `crypto.getRandomValues()` constructs the UUIDv4 fallback; absence/failure of secure randomness fails closed. The Wallet-first service boundary now requires canonical lowercase UUIDv4. The legacy non-Wallet-first path and existing SHA-256 v1 digest formula are unchanged.
+
+The five-case isolated helper harness passed under Node v22.16.0. The fixed Node v22.23.1 repository regression remains pending; this does not close C2-A04 or formal C2 acceptance.
