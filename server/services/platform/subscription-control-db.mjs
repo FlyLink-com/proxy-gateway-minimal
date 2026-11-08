@@ -43,6 +43,8 @@ const UNSAFE_FIELD_PARTS = [
   "sspassword"
 ];
 const SAFE_CONTROL_REF_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_:/-]{0,127}$/;
+const SAFE_EDGE_GENERATION_PATTERN = /^(?:gen_[a-f0-9]{24}|gen_scoped_[a-f0-9]{32})$/;
+const PORTAL_SECOND_FACTOR_TYPES = new Set(["totp", "passkey"]);
 const SAFE_AUTHORITY_REF_PATTERN = /^[A-Za-z0-9._:-]{1,128}$/;
 const AUTHORITY_SECRET_LIKE_PATTERN =
   /^(?:https?:|mailto:|bearer[ .:_-]|sk[-_]|eyj[a-z0-9_-]{10,})/i;
@@ -126,6 +128,26 @@ function safeControlRef(value, field) {
     throw platformError("validation_error", `${field} must be a safe control-plane reference`);
   }
   return normalized;
+}
+
+function safeEdgeGeneration(value) {
+  const normalized = requiredText(value, "generation");
+  if (!SAFE_EDGE_GENERATION_PATTERN.test(normalized)) {
+    throw platformError("validation_error", "generation must match a supported desired-state generation");
+  }
+  return normalized;
+}
+
+function portalSecondFactorAllowedFactors(value) {
+  const factors = JSON.parse(jsonArray(value ?? [], "allowedFactors"));
+  if (
+    factors.length === 0
+    || factors.some((factor) => typeof factor !== "string" || !PORTAL_SECOND_FACTOR_TYPES.has(factor))
+    || new Set(factors).size !== factors.length
+  ) {
+    throw platformError("validation_error", "allowedFactors must contain unique supported factors");
+  }
+  return JSON.stringify(factors);
 }
 
 function safeAuthorityRef(value, field) {
@@ -8171,7 +8193,7 @@ export function createSqliteSubscriptionControlStore({
       nodeRef: requiredText(input.nodeRef, "nodeRef"),
       channelRef: requiredText(input.channelRef, "channelRef"),
       desiredStateRef: requiredText(input.desiredStateRef, "desiredStateRef"),
-      generation: requiredText(input.generation, "generation"),
+      generation: safeEdgeGeneration(input.generation),
       reason: requiredText(input.reason, "reason"),
       status: requiredText(input.status || "pending", "status"),
       preserveApplied: input.lifecycleRevisionSafe === false ? 0 : 1,
@@ -8765,7 +8787,7 @@ export function createSqliteSubscriptionControlStore({
     if (input.rememberMe !== undefined && typeof input.rememberMe !== "boolean") {
       throw platformError("validation_error", "rememberMe must be a boolean");
     }
-    const factorsJson = jsonArray(input.allowedFactors ?? [], "allowedFactors");
+    const factorsJson = portalSecondFactorAllowedFactors(input.allowedFactors);
     const record = {
       id: requiredText(input.id, "id"),
       accountId: requiredText(input.accountId, "accountId"),
