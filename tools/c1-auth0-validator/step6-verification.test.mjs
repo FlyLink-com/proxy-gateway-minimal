@@ -5,7 +5,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createMockTenant, totpAt } from "./mock-auth0.mjs";
-import { legacyEnroll } from "./auth0-scrypt-import-validator.mjs";
+import { legacyEnroll, toAuth0CustomPasswordHash, simulateAuth0ScryptVerify } from "./auth0-scrypt-import-validator.mjs";
 import { buildAttestationRecord } from "./login-attestation.mjs";
 import { validateSurfaceActorContext, SURFACES } from "./tenant-isolation.mjs";
 
@@ -35,16 +35,17 @@ test("S0: TOTP implementation matches the RFC 6238 known-answer vector", () => {
   assert.equal(totpAt("GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ", 59000), "287082");
 });
 
-test("S1: import pipeline applies the gate per account (import / reset / hold / advisory)", () => {
+test("S1: import pipeline applies the gate per account (import / reset / no-proof hold / R1 decision hold)", () => {
   const byRef = Object.fromEntries(importReport.map((r) => [r.accountRef, r]));
   assert.equal(byRef.alice.action, "imported");
   assert.equal(byRef.bob.action, "reset_required");
   assert.equal(byRef.carol.action, "held_no_attestation");
-  assert.equal(byRef.dave.action, "imported");
-  assert.deepEqual(byRef.dave.advisories, ["edge_whitespace_r1_notice"]);
+  assert.equal(byRef.dave.action, "held_r1_decision");
+  assert.deepEqual(byRef.dave.advisories, ["edge_whitespace_r1_decision_required"]);
   assert.equal(portal.inspectUser("alice@synthetic.test").storedForm, "custom_password_hash:scrypt");
   assert.equal(portal.inspectUser("bob@synthetic.test").credentialKind, null, "no credential was imported for bob");
   assert.equal(portal.inspectUser("carol@synthetic.test"), undefined, "held accounts are not imported at all");
+  assert.equal(portal.inspectUser("dave@synthetic.test"), undefined, "R1 cohort is not imported before an owner decision");
 });
 
 test("attestation must belong to the target account; a cross-account record fails before any import", () => {
@@ -79,9 +80,10 @@ test("S2: first login verifies against scrypt, then the stored form becomes bcry
   assert.equal(validateSurfaceActorContext("portal", first.context, { nowMs: NOW }).surface, "portal");
 });
 
-test("S3: R1 in-tenant reality — the spaced form fails, the trimmed form the hash was built from succeeds", () => {
-  assert.equal(portal.login("dave@synthetic.test", DAVE_TYPED).outcome, "invalid_credentials");
-  assert.equal(portal.login("dave@synthetic.test", "dave-pw").outcome, "ok");
+test("S3: Auth0-shaped simulation confirms raw spaced form fails while the legacy-trimmed form matches", () => {
+  const importedShape = toAuth0CustomPasswordHash(legacyEnroll(DAVE_TYPED, salt));
+  assert.equal(simulateAuth0ScryptVerify(importedShape, DAVE_TYPED), false);
+  assert.equal(simulateAuth0ScryptVerify(importedShape, DAVE_TYPED.trim()), true);
 });
 
 test("S4: reset-required flow — old password never logs in; an over-72 replacement is refused; a valid reset restores access", () => {
