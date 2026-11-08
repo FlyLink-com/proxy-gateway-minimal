@@ -1,67 +1,107 @@
-# D1 T2 Independent Review Packet v1 — Draft
+# D1 T2 Independent Review Packet v1.1 — Draft
 
-Status: AWAITING A SEPARATE REVIEWER. This packet is not an independent review and does not self-approve T2.
+> **Status:** AWAITING A SEPARATE REVIEWER. This packet is not an independent review and does not self-approve T2.
+> **Source anchor:** `master@be261abc60f28bb2733764fa5364ab44b3e76844`.
+> **Draft branch:** `docs/d1-target-schema-g6-rehearsal-plan-20261107`.
+> **Reviewer:** NOT ASSIGNED.
+> **Review target:** Pin the exact commit and artifact hashes when the T2 evidence bundle is ready; do not review a moving branch head.
+> **Production authority:** BWH remains the only production writer.
 
-- Repository: FlyLink-com/proxy-gateway-minimal
-- Draft branch: docs/d1-target-schema-g6-rehearsal-plan-20261107
-- Review base: 294a24cba7e9c5e31c98e20b6827cca4b66b706b
-- Source anchor: master at be261abc60f28bb2733764fa5364ab44b3e76844
-- Reviewer: NOT ASSIGNED
-- Scope: T2 source security contracts, synthetic vectors, payment action custody design and retention register only.
+## 1. Review scope
 
-## 1. Artifacts to review
+Review the full T2 closeout contract, not only the original lease/idempotency proposal. The review must cover identity custody, PII pseudonyms, key custody/rotation, the wallet-first legacy digest exception, all 26 JSON fields and every writer path, opaque-reference/generation grammar, payment-action capability custody, retention, and G2 compatibility residuals.
 
-1. docs/D1_T2_CORE_SECURITY_CONTRACTS_V1.md
-2. docs/D1_T2_SOURCE_WRITE_PATH_AUDIT_V1.md
-3. docs/D1_T2_PAYMENT_ACTION_CUSTODY_DESIGN_V1.md
-4. docs/D1_T2_RETENTION_DECISION_RECORDS_V1.md
-5. server/tests/d1-t2-security-vectors.test.mjs
-6. docs/D1_TARGET_SCHEMA_AND_G6_OFFLINE_REHEARSAL_PLAN.md
+## 2. Artifacts to review
 
-## 2. Required independent checks
+1. `docs/D1_T2_CORE_SECURITY_CONTRACTS_V1.md`
+2. `docs/D1_T2_SOURCE_WRITE_PATH_AUDIT_V1.md`
+3. `docs/D1_T2_PII_PSEUDONYMIZATION_AND_HMAC_COMPATIBILITY_V1.md`
+4. `docs/D1_T2_PAYMENT_ACTION_CUSTODY_DESIGN_V1.md`
+5. `docs/D1_T2_RETENTION_DECISION_RECORDS_V1.md`
+6. `docs/D1_T2_CLOSEOUT_EXECUTION_MATRIX_V1.md`
+7. `docs/D1_T2_INDEPENDENT_REVIEW_PACKET_V1.md`
+8. `docs/D1_CONTROL_SCHEMA_INVENTORY_V1.json` and `docs/D1_CONTROL_FIELD_DISPOSITION_T2_V1.json`
+9. `server/tests/d1-t2-security-vectors.test.mjs`
+10. `docs/D1_TARGET_SCHEMA_AND_G6_OFFLINE_REHEARSAL_PLAN.md`
 
-- Reconcile all 26 JSON columns against D1_CONTROL_SCHEMA_INVENTORY_V1.json.
-- Verify each source writer and caller; challenge any missing INSERT/UPDATE path.
-- Confirm account metadata PII findings, including raw loginRef/displayRef/displayName and unkeyed SHA-256 digests.
-- Verify the six lease-token issuer formats: five 64-hex random tokens and one prefixed UUIDv4 reservation token.
-- Verify the six raw idempotency fields, uniqueness/replay scopes and the separate provider-event HMAC domain.
-- Verify the versioned HMAC envelope carries key_id and the LP encoding is byte-exact.
-- Review the existing wallet-first setup handoff unkeyed digest exception.
-- Review the generation grammar against both production builders and the required_text-only persistence writer.
-- Review Durable Objects custody selection, repeatable active resolution, saga ordering, alarm retries and restore reconciliation.
-- Verify retention decisions are not silently inferred from active expiry fields.
-- Confirm no production data, BWH, real key, remote D1 or deployment was used.
+## 3. Required independent checks
 
-## 3. Test evidence
+### Identity and PII
 
-The isolated Node built-in test run for d1-t2-security-vectors.test.mjs passed 9/9:
-- two lease known-answer vectors;
-- field-specific five-hex/one-UUID issuer grammar;
-- six idempotency HMAC known-answer vectors;
-- length-prefix ambiguity;
-- separate provider-event key/domain;
-- key-ID envelope parsing and unknown-key fail-closed;
-- two observed generation forms;
-- a separate keyed PII-digest vector.
+- Reconcile raw `loginRef`, `displayRef`, `displayName` and all related low-entropy digests with current source callers.
+- Verify the identity source of truth, authorized lookup path, outage behavior, retention and deletion contract.
+- Confirm no raw identity value or unkeyed low-entropy digest enters D1, Worker payloads, logs, traces, fixtures or evidence.
+- Verify fixed PII domains, normalization, HMAC input bytes, key ID and rotation behavior.
 
-This is not a full repository test suite and no CI was run on the Draft branch.
+### HMAC, lease and replay
 
-## 4. Blocking findings
+- Verify all six lease-token issuer formats: five 64-lowercase-hex tokens and one prefixed UUIDv4 reservation token.
+- Verify six raw idempotency fields, uniqueness/replay scopes, and separate provider-event and PII key/domain families.
+- Verify the versioned envelope, key-ID grammar, byte-exact four-byte big-endian length prefix and NUL domain separator.
+- Verify unknown/missing key ID, malformed envelope and wrong domain fail closed without plaintext or bare-SHA fallback.
+- Independently review `platform_wallet_first_setup_delivery_handoffs.idempotency_key_hash` and `session_binding_hash`; do not silently classify them as one of the six raw fields.
 
-T2 must remain BLOCKED until:
-1. raw account email/displayName values are removed/externalized;
-2. PII-derived digest policy and key custody are approved;
-3. generic JSON writer boundaries are closed with exact allowlists;
-4. the pre-hashed wallet-first setup digest exception is resolved;
-5. payment custody owner, TTL, key custody and operations are approved;
-6. retention owners and periods are approved;
-7. an independent reviewer signs the result.
+### JSON, references and generation
 
-## 5. Reviewer outcome
+- Reconcile all 26 JSON columns against the T1 inventory.
+- Verify each writer and caller; challenge missing INSERT/UPDATE paths and direct SQL bypasses.
+- Verify exact closed schemas and persistence-boundary enforcement, including direct Audit SQL writer and transaction atomicity.
+- Verify aggregate allocation and per-lot allocation remain distinct contracts.
+- Verify opaque-reference grammar and historical conformance.
+- Verify generation grammar against both source builders and the persistence writer; check the low-confidence field remains CONDITIONAL until justified.
+
+### Payment and retention
+
+- Review payment capability storage, encryption-key custody, resolver authorization, repeatable active resolution, saga ordering, terminal purge, alarm retries, outage and restore reconciliation.
+- Verify no raw payment URL/QR or bearer capability is written to D1, logs, traces or evidence.
+- Verify retention periods are owner-approved and not inferred from active expiry/lease fields.
+- Verify financial/audit immutable facts, replay windows, legal hold and redacted tombstone rules.
+
+### G2 compatibility and production boundary
+
+- Review all accepted G2 residual limitations and their G6 probe or named risk-acceptance mapping.
+- Confirm no BWH, production data, real key, remote D1, deployment, CI or production cutover was used in this Draft-only work.
+
+## 4. Test evidence and freshness
+
+The earlier isolated Node built-in run recorded 9/9 passing contract tests. The PII vector additions later expanded the current test file to **19 declared test cases**. The historical 9/9 result must not be represented as a pass of the expanded 19-case file.
+
+A focused Node 22 formula check was run after correcting a domain-separator discrepancy. It verified:
+- the PII digest domain prefix is one NUL byte, not the two-byte literal backslash-plus-zero;
+- the old-key and active-key email pseudonym known-answer outputs match the documented vectors;
+- the NUL-prefixed and literal-backslash-prefixed byte strings differ.
+
+That focused check passed. **The complete 19-case test file has not yet been run after the correction; the full repository test suite and CI have not been run.** The independent reviewer must run the complete test file at the pinned review commit and record the exact command, Node version, output and file hash.
+
+### Corrected discrepancy
+
+The PII rotation helper previously encoded `\\0` (literal backslash plus zero) while the first PII known-answer vector encoded `\0` (NUL byte). The helper and the PII contract notation have been aligned to the NUL-byte separator. Relevant Draft commits:
+- `8ff614a3a74637b7ad7300e971df0d4858051486` — test helper correction.
+- `944660925625349e8ad20e1da256a0c0405169ca` — PII contract notation correction.
+
+Reviewer must verify the final file bytes rather than relying on this note.
+
+## 5. Blocking findings
+
+T2 remains BLOCKED until all are resolved with evidence:
+
+1. Identity custody owner and technical boundary; raw email/displayName externalization and preserved portal/admin/registration behavior.
+2. HMAC key custody, rotation/retirement and historical compatibility approval; wallet-first pre-hashed digest exception.
+3. Closed JSON schemas enforced at every writer; opaque-ref and generation grammar; direct Audit SQL bypass and atomicity.
+4. Payment action custody owner, encryption-key boundary, TTL, terminal purge, tombstone and outage/restore behavior.
+5. Named domain owners and approved retention rules; G2 residual probes or explicit risk acceptance.
+6. Separate reviewer signature on the exact final commit.
+
+The closeout execution matrix tracks acceptance criteria for each work package.
+
+## 6. Reviewer outcome
 
 Reviewer must record one of:
-- APPROVE: all T2 gates are evidenced and no blocking findings remain;
-- REQUEST_CHANGES: list exact source path, field, contract and required evidence;
-- BLOCKED: required owner decision or evidence is unavailable.
+- **APPROVE:** all mandatory T2 gates are evidenced and no blocking findings remain.
+- **APPROVE WITH EXPLICIT RESIDUALS:** every remaining limitation has a named accountable owner, bounded impact, mitigation and explicit acceptance; no mandatory security/identity/payment blocker remains.
+- **REQUEST_CHANGES:** list exact source path, field, contract and required evidence.
+- **BLOCKED:** required owner decision or evidence is unavailable.
 
-No approval, merge, deployment, production read or migration is authorized by this packet.
+The review record must identify the reviewer, reviewed commit SHA, artifact hashes, commands, environment, results, findings, dispositions and approval scope.
+
+No approval, PR Ready transition, merge, deployment, production read, remote resource mutation or migration is authorized by this packet.
