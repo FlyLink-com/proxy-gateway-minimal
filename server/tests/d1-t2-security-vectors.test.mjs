@@ -234,7 +234,7 @@ const PII_TEST_KEY = Buffer.from("33".repeat(32), "hex");
 
 function piiDigestEnvelope({ key, keyId, domain, legacyDigestHex }) {
   const message = Buffer.concat([
-    Buffer.from("flylink:d1:pii-digest:v1\\0", "utf8"),
+    Buffer.from("flylink:d1:pii-digest:v1\0", "utf8"),
     lengthPrefix(keyId),
     lengthPrefix(domain),
     lengthPrefix(legacyDigestHex)
