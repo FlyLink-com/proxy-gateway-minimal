@@ -135,7 +135,7 @@ function decodeBase32Strict(value) {
       buffer &= (1 << bits) - 1;
     }
   }
-  if (bytes.length === 0 || (bits > 0 && buffer !== 0)) return null;
+  if (bytes.length === 0) return null;
   return Buffer.from(bytes);
 }
 
