@@ -484,3 +484,18 @@ Audit inputs are now snapshotted as plain enumerable data before recursive unsaf
 - Shared metadata snapshot refactor: `a724b762f56f4d3f0afb459eb0574c4d56bfb60f`
 
 This is Draft-only hardening. No production data or secret was accessed. Repository Node tests, full suite and CI remain NOT RUN.
+
+## 14. C3 account metadata source/target evidence — 2026-11-08
+
+The C3 source-writer/target-projection distinction is documented in `docs/D1_T2_C3_ACCOUNT_METADATA_SOURCE_TARGET_CONTRACT_V1.md`.
+
+The current BWH source writer now has a bounded account metadata allowlist distinct from the issuance-request metadata union. The issuance-request writer uses its closed union, including the data-pack v1 shape already used by the reservation path. The legacy schema-upgrade fixture no longer writes an obsolete Portal event variant.
+
+A separate pure D1 projection gate accepts only the safe business/legal metadata fields. It blocks raw `loginRef`, `displayRef`, `displayName` pending Auth0 identity externalization and blocks all legacy unkeyed SHA-256 digest fields pending C2 HMAC custody or an explicit purpose-removal decision. It does not silently discard either class.
+
+Fixed Node v22.23.1 evidence:
+- Full SQLite control-store suite: 45/45 PASS twice; TAP SHA-256 `b7d0e4da530d0b2ae4535adbeeaf27be45c7bb835f0a68c9e76a8d5637ade74a` and `690d044fa2d92675d193827d0bd0192e5c57c80dc54f62da40f27395b23cbc30`.
+- JSON + payment custody + key escrow + schema inventory: 48/48 PASS twice; TAP SHA-256 `37f1ab071b3e6915f2f63a90d9bfb139f43f5ce15cf3cd56bf2f253831d3137e` and `66ad182eea46dadcd111c0ca429690d305478fd5e829190b9b8b6cd60fb9392`.
+- JavaScript syntax checks 9/9 PASS; source inventory validator PASS for 70 tables / 820 columns / 126 foreign-key edges / 88 indexes / 91 triggers / 19 source migrations.
+
+This is source-only and synthetic offline evidence. C3 remains OPEN for Auth0 identity relation, C2 HMAC-backed replacement, and the complete 26-field JSON writer/transform review. T3/G6 target D1 apply and data loading remain unstarted; BWH remains the production writer.
