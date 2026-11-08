@@ -390,3 +390,25 @@ Combined the inventory graph validator and 19-migration source checksum registry
 - Run 2 TAP SHA-256: `692ac794e51cde8cf3e545eca6aecbece80ba215d67fafeff4d6e6d25f55bc91`.
 
 This is combined offline source-artifact acceptance, not a migration rehearsal against a SQLite backup or D1 database.
+
+## 17. T2 field disposition integrity validator — 2026-11-08
+
+Added a machine-checkable integrity contract for the full T2 field disposition artifact:
+
+- `server/services/platform/d1-field-disposition-contract.mjs`
+- `server/tests/d1-field-disposition-contract.test.mjs`
+- `scripts/validate-d1-field-disposition.mjs`
+
+The CLI verifies the exact inventory Git blob identity and cross-checks all 70 source tables / 820 source columns against the 70 table dispositions / 820 field rows. It validates source type/nullability/PK/unique/default/CHECK metadata, ordinal/order, rule and retention references, test catalog references, inclusion semantics, target column uniqueness, table-level candidate counts, all disposition totals, low-confidence count, DEFER table containment, and the proposal-only / no-production authorization boundary.
+
+Fixed Node v22.23.1:
+- CLI: PASS; source inventory Git blob `b04cb13b483cb9088418f9dd469760380cbf6b74` matches the field-map pin.
+- Exact map: 70 tables / 820 fields / 790 target candidates / 1 low-confidence field.
+- Table dispositions: KEEP 64 / CONDITIONAL 4 / DEFER 2.
+- Field dispositions: KEEP 712 / CONDITIONAL 59 / EXTERNALIZE 7 / TRANSFORM 19 / DEFER 23.
+- Regression suite: **12/12 PASS twice**, 0 failed, 0 skipped.
+- Run 1 TAP SHA-256: `85c13859f2fb0447f33faf72e68e5bdd6ccacfb703c9accab0c2f946ed962307`.
+- Run 2 TAP SHA-256: `902011d53397d11d771718487d5b83dc5c010894e761b43eeac1a210079bed6d`.
+- `node --check`: 3/3 PASS (contract, test, CLI).
+
+This closes the structural integrity check for the proposed field map, not its domain-owner approval. The one low-confidence generation field and conditional inclusion rules remain explicitly proposed. T2 remains OPEN; no T3 DDL or production migration is authorized by this validation.
