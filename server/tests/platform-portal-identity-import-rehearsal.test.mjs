@@ -4,10 +4,8 @@ import { createPortalTotpVerifier } from "../services/platform/portal-totp-verif
 import {
   AUTH0_BCRYPT_MAX_PASSWORD_BYTES,
   SYNTHETIC_PORTAL_IDENTITY_FIXTURE,
-  buildAuth0CustomPasswordHash,
   classifyAuth0FirstLoginPassword,
   createAuth0BulkImportRecord,
-  normalizeAuth0TotpSecret,
   parsePortalScryptPasswordHash,
   runSyntheticPortalIdentityImportRehearsal,
   verifyPortalScryptPassword
@@ -78,7 +76,7 @@ test("legacy scrypt parser fails closed for altered algorithm, parameters, encod
 });
 
 test("Auth0 scrypt object preserves raw salt/hash bytes with explicit Base64 and UTF-8 encodings", () => {
-  const result = buildAuth0CustomPasswordHash(fixture.passwordHash);
+  const result = buildRecord().custom_password_hash;
   assert.equal(result.algorithm, "scrypt");
   assert.equal(result.hash.encoding, "base64");
   assert.equal(result.salt.encoding, "base64");
@@ -111,12 +109,12 @@ test("Auth0 bulk record uses the documented TOTP schema and only synthetic ident
   assert.equal(verifier({ encryptedTotpSecret: record.mfa_factors[0].totp.secret, code: "000000" }), false);
 });
 
-test("Auth0 TOTP normalization accepts only raw or legacy enc-prefixed Base32 and blocks v2 without C2", () => {
-  assert.equal(normalizeAuth0TotpSecret("enc: jbsw-y3dp ehpk3pxp=== "), "JBSWY3DPEHPK3PXP");
-  assert.equal(normalizeAuth0TotpSecret("AC"), "AC");
-  assert.throws(() => normalizeAuth0TotpSecret("v2:aes-256-gcm:synthetic"), { code: "totp_secret_requires_c2_key_custody" });
-  assert.throws(() => normalizeAuth0TotpSecret("enc:NOT-BASE32!"), { code: "totp_secret_invalid" });
-  assert.throws(() => buildRecord({ legacyTotpSecret: "v2:aes-256-gcm:synthetic" }), { code: "totp_secret_requires_c2_key_custody" });
+test("Auth0 TOTP rehearsal uses the fixed synthetic Base32 fixture and blocks v2 without C2", () => {
+  const record = buildRecord();
+  assert.equal(record.mfa_factors[0].totp.secret, "JBSWY3DPEHPK3PXP");
+  assert.equal(runSyntheticPortalIdentityImportRehearsal().totp.protectedV2Envelope, "BLOCKED_PENDING_C2_KEY_CUSTODY");
+  assert.throws(() => buildRecord({ legacyTotpSecret: "v2:aes-256-gcm:synthetic" }), { code: "synthetic_totp_secret_required" });
+  assert.throws(() => buildRecord({ legacyTotpSecret: "enc:NOT-BASE32!" }), { code: "synthetic_totp_secret_required" });
 });
 
 test("Auth0 first-login password gate uses UTF-8 bytes after trim, not character count", () => {
