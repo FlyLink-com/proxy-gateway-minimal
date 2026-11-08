@@ -82,3 +82,18 @@ Functional owners: Platform/Security key custodian, Identity/Privacy owner, Paym
 This proposal does not authorize production key generation, Cloudflare Secrets Store creation, Worker secret bindings, crypto Worker deployment, Auth0 tenant creation, production PII/identity reads, BWH access, D1 writes, or cutover.
 
 **Current gate:** C2 key custody and independent restore remain OPEN pending the grouped owner decision. Synthetic primitives and source audits may continue independently.
+
+## 8. Synthetic escrow restore prototype validated — 2026-11-08
+
+Added:
+- `server/services/platform/d1-t2-key-escrow-contract.mjs`
+- `server/tests/d1-t2-key-escrow-contract.test.mjs`
+
+The pure contract wraps and restores 32-byte synthetic key material with AES-256-GCM using a separate wrapping key and AAD bound to key ID, family, algorithm, and wrapped timestamp. It also checks family/key-ID uniqueness and prevents material reuse across key families. Inventory projection exposes metadata only.
+
+Fixed Node v22.23.1, isolated non-production sandbox:
+- 10/10 PASS, 0 failed, 0 skipped — Run 1 TAP SHA-256: `86bd5b1c9c8efd655b017161be263ef1a5f24e978e131d38b39063ad0e611a56`.
+- 10/10 PASS, 0 failed, 0 skipped — Run 2 TAP SHA-256: `7b071c69b87e61231e186143371886a2f16af5de41a576d67524afe405d67729`.
+- `node --check` 2/2 PASS.
+
+This validates the synthetic envelope contract only. It is not an external KMS/HSM integration, a real escrow backup, a Cloudflare secret binding, or a production restore drill. No real key was generated or stored. The grouped owner decision and real custody/restore acceptance remain OPEN.
