@@ -50,6 +50,7 @@ Review the full T2 closeout contract, not only the original lease/idempotency pr
 
 - Reconcile all 26 JSON columns against the T1 inventory.
 - Verify each writer and caller; challenge missing INSERT/UPDATE paths and direct SQL bypasses.
+- Verify the Draft generation validator accepts only `gen_[0-9a-f]{24}` / `gen_scoped_[0-9a-f]{32}` and the second-factor persistence writer accepts only non-empty unique `totp` / `passkey`; review focused test evidence and rerun the full store test file at the pinned commit.
 - Verify exact closed schemas and persistence-boundary enforcement, including direct Audit SQL writer and transaction atomicity.
 - Verify aggregate allocation and per-lot allocation remain distinct contracts.
 - Verify opaque-reference grammar and historical conformance.
@@ -85,6 +86,14 @@ The PII rotation helper previously encoded `\\0` (literal backslash plus zero) w
 - `944660925625349e8ad20e1da256a0c0405169ca` — PII contract notation correction.
 
 Reviewer must verify the final file bytes rather than relying on this note.
+
+### Draft implementation evidence — 2026-11-07
+
+- `subscription-control-db.mjs` now validates desired-state generation grammar and second-factor allowed-factor enums at the persistence boundary.
+- Focused Node 22.16.0 validator harness: 4/4 PASS.
+- Integration assertions were added to `server/tests/platform-subscription-control-db.test.mjs` (current blob `3645d6e619ff74fa7d0c3664bde120531ded315a`).
+- The complete store test file has not yet been run; full repository tests and CI remain unrun.
+- Historical production generation values are NOT OBSERVED. This does not close the migration compatibility requirement.
 
 ## 5. Blocking findings
 
