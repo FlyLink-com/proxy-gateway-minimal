@@ -714,6 +714,7 @@ export function createSqliteCoinCommerceStore(options = {}) {
   }
 
   function insertPublishedOffer(normalizedOffer, occurredAt) {
+    const safeOffer = normalizeStoredOffer(normalizedOffer);
     const inserted = db.prepare(`
       insert into platform_coin_commerce_offer_versions (
         offer_version_ref, offer_ref, version, status, category,
@@ -728,26 +729,26 @@ export function createSqliteCoinCommerceStore(options = {}) {
         ?, ?, null
       )
     `).run(
-      normalizedOffer.offerVersionRef,
-      normalizedOffer.offerRef,
-      normalizedOffer.version,
-      normalizedOffer.category,
-      normalizedOffer.title.zh,
-      normalizedOffer.title.en,
-      normalizedOffer.summary.zh,
-      normalizedOffer.summary.en,
-      JSON.stringify(normalizedOffer.importantNotices.zh),
-      JSON.stringify(normalizedOffer.importantNotices.en),
-      normalizedOffer.baseCoinUnits,
-      normalizedOffer.referencePrice.currency,
-      normalizedOffer.referencePrice.amountMinor,
-      JSON.stringify(normalizedOffer.acceptedCoinTypes),
-      normalizedOffer.delivery.kind,
-      normalizedOffer.delivery.durationDays,
-      normalizedOffer.delivery.monthlyTrafficGb,
-      normalizedOffer.delivery.trafficGb,
-      normalizedOffer.delivery.neverExpires ? 1 : 0,
-      normalizedOffer.delivery.discountBasisPoints,
+      safeOffer.offerVersionRef,
+      safeOffer.offerRef,
+      safeOffer.version,
+      safeOffer.category,
+      safeOffer.title.zh,
+      safeOffer.title.en,
+      safeOffer.summary.zh,
+      safeOffer.summary.en,
+      JSON.stringify(safeOffer.importantNotices.zh),
+      JSON.stringify(safeOffer.importantNotices.en),
+      safeOffer.baseCoinUnits,
+      safeOffer.referencePrice.currency,
+      safeOffer.referencePrice.amountMinor,
+      JSON.stringify(safeOffer.acceptedCoinTypes),
+      safeOffer.delivery.kind,
+      safeOffer.delivery.durationDays,
+      safeOffer.delivery.monthlyTrafficGb,
+      safeOffer.delivery.trafficGb,
+      safeOffer.delivery.neverExpires ? 1 : 0,
+      safeOffer.delivery.discountBasisPoints,
       occurredAt,
       occurredAt
     );
