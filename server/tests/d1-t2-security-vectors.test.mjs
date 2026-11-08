@@ -228,3 +228,146 @@ test("PII lookup pseudonym uses a separate keyed domain over the legacy digest",
     "hmac-sha256:v1:test-pii-20261107:34abee6aeb0d49ebde0e23fe1ab31a32c867bea313e9ce5a5faa3f9bce6e58ba"
   );
 });
+
+const PII_TEST_KEY_ID = "test-pii-20261107";
+const PII_TEST_KEY = Buffer.from("33".repeat(32), "hex");
+
+function piiDigestEnvelope({ key, keyId, domain, legacyDigestHex }) {
+  const message = Buffer.concat([
+    Buffer.from("flylink:d1:pii-digest:v1\\0", "utf8"),
+    lengthPrefix(keyId),
+    lengthPrefix(domain),
+    lengthPrefix(legacyDigestHex)
+  ]);
+  const digest = createHmac("sha256", key).update(message).digest("hex");
+  return `hmac-sha256:v1:${keyId}:${digest}`;
+}
+
+function piiLookupCandidates({ rawValue, domain, keyRing }) {
+  const legacyDigestHex = createHash("sha256")
+    .update(String(rawValue), "utf8")
+    .digest("hex");
+  return [...keyRing.entries()].map(([keyId, key]) => ({
+    keyId,
+    envelope: piiDigestEnvelope({ key, keyId, domain, legacyDigestHex })
+  }));
+}
+
+function verifyPiiEnvelope({ envelope, keyRing, domain, legacyDigestHex }) {
+  const parsed = parseEnvelope(envelope);
+  if (!parsed) return false;
+  const key = keyRing.get(parsed.keyId);
+  if (!key) return false;
+  return piiDigestEnvelope({
+    key,
+    keyId: parsed.keyId,
+    domain,
+    legacyDigestHex
+  }) === envelope;
+}
+
+test("PII pseudonym known-answer vectors cover email, source IP and request context domains", () => {
+  const vectors = [
+    {
+      domain: "account-email-lookup/v1",
+      raw: "synthetic-user@example.test",
+      legacy: "f7f6823924555e936175da8ec0ce2d69abf3800ddbf5d4a0ad6e9f97d5629c44",
+      expected: "hmac-sha256:v1:test-pii-20261107:34abee6aeb0d49ebde0e23fe1ab31a32c867bea313e9ce5a5faa3f9bce6e58ba"
+    },
+    {
+      domain: "registration-source-ip/v1",
+      raw: "198.18.0.1",
+      legacy: "3ebe27a5987fe4053782dff38d127dd59c717773fc9133fca22bee1a71caf1f3",
+      expected: "hmac-sha256:v1:test-pii-20261107:7e0168966e458f63199660e912284c064c8ea4c10a909afe638ff78147c2af7e"
+    },
+    {
+      domain: "registration-request-key/v1",
+      raw: "198.18.0.1:synthetic-agent/1.0",
+      legacy: "8b2d15a03fdfb489033e370cf527ff23773d2f8f4bdf987a9810210eaca0e83f",
+      expected: "hmac-sha256:v1:test-pii-20261107:a09ccddeb8fead9dbfb234ca71733b773703f746ce897ec33e95d93c6b31e58e"
+    }
+  ];
+  for (const vector of vectors) {
+    const legacyDigestHex = createHash("sha256").update(vector.raw, "utf8").digest("hex");
+    assert.equal(legacyDigestHex, vector.legacy);
+    assert.equal(piiDigestEnvelope({
+      key: PII_TEST_KEY,
+      keyId: PII_TEST_KEY_ID,
+      domain: vector.domain,
+      legacyDigestHex
+    }), vector.expected);
+    assert.equal(vector.expected.includes(vector.raw), false);
+    assert.equal(vector.expected.includes(vector.legacy), false);
+  }
+});
+
+test("PII pseudonyms are separated by domain and key ID", () => {
+  const legacyDigestHex = createHash("sha256")
+    .update("synthetic-user@example.test", "utf8")
+    .digest("hex");
+  const email = piiDigestEnvelope({
+    key: PII_TEST_KEY, keyId: PII_TEST_KEY_ID,
+    domain: "account-email-lookup/v1", legacyDigestHex
+  });
+  const otherDomain = piiDigestEnvelope({
+    key: PII_TEST_KEY, keyId: PII_TEST_KEY_ID,
+    domain: "registration-source-ip/v1", legacyDigestHex
+  });
+  const otherKeyId = piiDigestEnvelope({
+    key: PII_TEST_KEY, keyId: "test-pii-alias-20261107",
+    domain: "account-email-lookup/v1", legacyDigestHex
+  });
+  assert.notEqual(email, otherDomain);
+  assert.notEqual(email, otherKeyId);
+});
+
+test("PII key rotation reads retained old envelopes and writes only with the active key", () => {
+  const rawEmail = "synthetic-user@example.test";
+  const legacyDigestHex = createHash("sha256").update(rawEmail, "utf8").digest("hex");
+  const oldKeyId = "test-pii-20261107";
+  const oldKey = Buffer.from("33".repeat(32), "hex");
+  const activeKeyId = "test-pii-20261108";
+  const activeKey = Buffer.from("44".repeat(32), "hex");
+  const keyRing = new Map([[oldKeyId, oldKey], [activeKeyId, activeKey]]);
+  const oldEnvelope = piiDigestEnvelope({
+    key: oldKey, keyId: oldKeyId,
+    domain: "account-email-lookup/v1", legacyDigestHex
+  });
+  const activeEnvelope = piiDigestEnvelope({
+    key: activeKey, keyId: activeKeyId,
+    domain: "account-email-lookup/v1", legacyDigestHex
+  });
+  const candidates = piiLookupCandidates({
+    rawValue: rawEmail, domain: "account-email-lookup/v1", keyRing
+  });
+  assert.equal(candidates.some(candidate => candidate.envelope === oldEnvelope), true);
+  assert.equal(candidates.some(candidate => candidate.envelope === activeEnvelope), true);
+  assert.equal(activeEnvelope, "hmac-sha256:v1:test-pii-20261108:0e8117b96f15b2726b08e2f3fd5ed59913c4f93fe3bc9f1973b068e71e0f2d48");
+  assert.equal(verifyPiiEnvelope({
+    envelope: oldEnvelope, keyRing, domain: "account-email-lookup/v1", legacyDigestHex
+  }), true);
+  assert.equal(verifyPiiEnvelope({
+    envelope: oldEnvelope, keyRing: new Map([[activeKeyId, activeKey]]),
+    domain: "account-email-lookup/v1", legacyDigestHex
+  }), false);
+  assert.equal(verifyPiiEnvelope({
+    envelope: createHash("sha256").update(rawEmail).digest("hex"),
+    keyRing, domain: "account-email-lookup/v1", legacyDigestHex
+  }), false);
+});
+
+test("PII rotation never treats a legacy SHA-256 digest as a runtime fallback", () => {
+  const rawEmail = "synthetic-user@example.test";
+  const legacyDigestHex = createHash("sha256").update(rawEmail, "utf8").digest("hex");
+  const keyRing = new Map([[PII_TEST_KEY_ID, PII_TEST_KEY]]);
+  const candidates = piiLookupCandidates({
+    rawValue: rawEmail, domain: "account-email-lookup/v1", keyRing
+  });
+  assert.equal(candidates.length, 1);
+  assert.notEqual(candidates[0].envelope, legacyDigestHex);
+  assert.equal(verifyPiiEnvelope({
+    envelope: legacyDigestHex, keyRing,
+    domain: "account-email-lookup/v1", legacyDigestHex
+  }), false);
+});
+
