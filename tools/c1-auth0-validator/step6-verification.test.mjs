@@ -47,6 +47,22 @@ test("S1: import pipeline applies the gate per account (import / reset / hold / 
   assert.equal(portal.inspectUser("carol@synthetic.test"), undefined, "held accounts are not imported at all");
 });
 
+test("attestation must belong to the target account; a cross-account record fails before any import", () => {
+  const isolated = createMockTenant({
+    tenantRef: "attestation-binding-dev",
+    issuerRef: "flylink-portal-attestation-binding",
+    nowFn: () => NOW
+  });
+  const mismatched = attest("source-account", "short-safe-password");
+  assert.throws(() => isolated.importLegacyAccounts([{
+    accountRef: "target-account",
+    email: "target@synthetic.test",
+    envelope: legacyEnroll("z".repeat(73), salt),
+    attestation: mismatched
+  }]), /attestation_account_ref_mismatch/);
+  assert.equal(isolated.inspectUser("target@synthetic.test"), undefined);
+});
+
 test("S2: first login verifies against scrypt, then the stored form becomes bcrypt; token + context are sound", () => {
   assert.equal(portal.login("alice@synthetic.test", "wrong-pw").outcome, "invalid_credentials");
   assert.equal(portal.inspectUser("alice@synthetic.test").storedForm, "custom_password_hash:scrypt",
