@@ -55,7 +55,7 @@ All source findings below are pinned to `be261abc60f28bb2733764fa5364ab44b3e7684
 | `mustRotate` | Credential record stores the flag; the pinned `user-portal-auth.mjs` path does not read it | Do not infer that current login blocks sessions on this flag. Do not introduce forced rotation without a separate owner decision. |
 | Account resolution | Exact account ID first; otherwise scan active accounts for `loginRef` / `displayRef`; only a unique match resolves; ambiguous matches fail closed | Preserve a stable opaque account binding and reject duplicate/ambiguous identity links. |
 | Portal TOTP | Standard TOTP: SHA-1, 6 digits, 30-second period, one adjacent interval on either side | Provider time-window tolerance and lockout must be verified using synthetic codes around period boundaries. |
-| TOTP storage | AES-256-GCM `v2` envelope has no key ID; legacy `enc:` values are raw Base32 secret material, not ciphertext | C2 must approve key inventory/decryption and the one-time secret transfer. Never infer that `enc:` is encrypted. |
+| TOTP storage | AES-256-GCM `v2` envelope has no key ID; legacy `enc:` values are raw Base32 secret material, not ciphertext | T1: do not import, decrypt, transfer or re-encrypt any legacy TOTP value. Invalidate legacy `enc:`, raw Base32 and `v2:` values at cutover; users re-enroll with Auth0 MFA. Never infer that `enc:` is encrypted. |
 | Portal/Admin composition | Portal and Admin use the shared password credential service and TOTP protector in the current composition | Target identity domains must have explicit Portal/Admin separation; do not carry the shared key boundary forward by default. |
 | Registration verification | Six-digit email code; 10-minute expiry; at most 5 attempts; 3 sends per normalized email per 15 minutes; 5 sends per request key per 15 minutes; in-memory state | Provider-native OTP behavior must be compared to the exact current TTL, retry and rate-limit contract. |
 | Registration side effects | Account/trial/welcome-Coins and eligibility/canary logic are coordinated with account creation | Create the account and grant trial/Coins only after verified identity binding; all writes must remain idempotent. |
@@ -150,7 +150,7 @@ All source findings below are pinned to `be261abc60f28bb2733764fa5364ab44b3e7684
 | `mustRotate` | Credential record stores the flag; the pinned `user-portal-auth.mjs` path does not read it | Do not infer that current login blocks sessions on this flag. Do not introduce forced rotation without a separate owner decision. |
 | Account resolution | Exact account ID first; otherwise scan active accounts for `loginRef` / `displayRef`; only a unique match resolves; ambiguous matches fail closed | Preserve a stable opaque account binding and reject duplicate/ambiguous identity links. |
 | Portal TOTP | Standard TOTP: SHA-1, 6 digits, 30-second period, one adjacent interval on either side | Provider time-window tolerance and lockout must be verified using synthetic codes around period boundaries. |
-| TOTP storage | AES-256-GCM `v2` envelope has no key ID; legacy `enc:` values are raw Base32 secret material, not ciphertext | C2 must approve key inventory/decryption and the one-time secret transfer. Never infer that `enc:` is encrypted. |
+| TOTP storage | AES-256-GCM `v2` envelope has no key ID; legacy `enc:` values are raw Base32 secret material, not ciphertext | T1: do not import, decrypt, transfer or re-encrypt any legacy TOTP value. Invalidate legacy `enc:`, raw Base32 and `v2:` values at cutover; users re-enroll with Auth0 MFA. Never infer that `enc:` is encrypted. |
 | Portal/Admin composition | Portal and Admin use the shared password credential service and TOTP protector in the current composition | Target identity domains must have explicit Portal/Admin separation; do not carry the shared key boundary forward by default. |
 | Registration verification | Six-digit email code; 10-minute expiry; at most 5 attempts; 3 sends per normalized email per 15 minutes; 5 sends per request key per 15 minutes; in-memory state | Provider-native OTP behavior must be compared to the exact current TTL, retry and rate-limit contract. |
 | Registration side effects | Account/trial/welcome-Coins and eligibility/canary logic are coordinated with account creation | Create the account and grant trial/Coins only after verified identity binding; all writes must remain idempotent. |
@@ -188,9 +188,9 @@ Auth0's official Bulk User Import schema supports `custom_password_hash.algorith
 
 A synthetic-only cross-implementation check also compared Node `crypto.scryptSync` with Python `hashlib.scrypt` using the same password bytes, raw salt bytes and N/r/p/keylen; the derived 64-byte outputs matched. This validates the standard scrypt primitive, not Auth0's hosted import endpoint. This is a schema-level parameter match, not yet an Auth0 endpoint acceptance test. Auth0 documents that `custom_password_hash` can be updated only if the user has not logged in with the initially imported hash; the first import must therefore include the final hash and factor data rather than creating placeholder users and trying to repair them after login. The import converter must parse the project envelope strictly, reject unknown versions/parameters, preserve the exact byte values, and never emit the original combined string as an unsupported opaque hash.
 
-. The same user import record can carry `email_verified`, the custom password hash, and the TOTP factor. The converter must reject a `v2:aes-256-gcm:` envelope unless a separately approved C2 key-custody/decryption adapter is supplied; this offline rehearsal deliberately does not decrypt it.
+. Under T1, the Auth0 bulk-import record carries the approved identity fields and custom password hash only; it does not carry `mfa_factors`. All legacy `enc:`, raw Base32 and `v2:` values are omitted and require re-enrollment at cutover. The converter never decrypts or transfers legacy TOTP material.
 
-**Important:** the bulk import file contains raw email and decrypted TOTP secret material. It must never be committed to GitHub, retained as a normal build artifact, written to logs, or left on persistent local storage. A real import would require a separately approved, ephemeral, encrypted transfer process under C2 and Risk A controls.
+**Important:** a bulk import file contains raw email and password-hash material, but under T1 it contains no TOTP factor or TOTP seed. It must never be committed to GitHub, retained as a normal build artifact, written to logs, or left on persistent local storage. Any real import still requires a separately approved, ephemeral, encrypted transfer process under the applicable privacy and security controls.
 
 ### 3.2 Auth0 password-length limitation
 
@@ -212,11 +212,11 @@ The current project does not reveal which users have passwords longer than 72 by
 
 ### 3.3 TOTP compatibility
 
-The source verifier uses SHA-1, six digits, a 30-second period and a ±1 interval window. Auth0's TOTP import accepts the secret, but the effective validation window and lockout semantics must be tested.
+The source verifier uses SHA-1, six digits, a 30-second period and a ±1 interval window. Under T1, no legacy TOTP secret is imported. The non-production proof must enroll a newly generated synthetic Auth0 MFA factor and test the effective validation window, lockout, recovery, revocation and outage semantics.
 
 Required synthetic proof:
 
-- import one synthetic Base32 TOTP secret;
+- enroll a newly generated synthetic Auth0 MFA factor through the provider's enrollment flow; do not use a legacy BWH secret or the legacy bulk-import field;
 - verify a code in the current 30-second interval;
 - verify behavior at the previous and next intervals;
 - verify rejection outside the allowed window;
@@ -258,7 +258,7 @@ If the user base is mainly in mainland China or another region with restrictive 
 
 | Provider | Existing password | Existing TOTP | Android | Main limitation | Assessment |
 | --- | --- | --- | --- | --- | --- |
-| Auth0 Essentials | Direct scrypt bulk import schema match | TOTP import supported | Official Android SDK + OIDC/PKCE | bcrypt 72-byte cap after first successful login; email OTP policy differs; over-limit cohort cannot be inferred from hash alone | **Owner-selected direction**, proof pending |
+| Auth0 Essentials | Direct scrypt bulk import schema match | MFA enrollment supported; T1 does not import legacy factors | Official Android SDK + OIDC/PKCE | bcrypt 72-byte cap after first successful login; email OTP policy differs; over-limit cohort cannot be inferred from hash alone | **Owner-selected direction**, proof pending |
 | Keycloak | Custom PasswordHashProvider can verify the exact legacy format | Custom credential importer / provider required | OIDC/PKCE via native OIDC library | Java extension and full identity-service operations | **Best fidelity fallback** if targeted reset is not acceptable |
 | Clerk Pro | Supports specific digest formats including `scrypt_werkzeug`; current raw Buffer salt is not proven losslessly compatible | `totpSecret` import fields available | Native Android SDK supports TOTP | Requires vendor confirmation or custom hasher support for this exact Node scrypt format | **Cost challenger**, conditional |
 | Firebase Identity Platform | `STANDARD_SCRYPT` import exposes cost, parallelization, block size and key length; candidate mapping is N=32768, p=1, r=8, dkLen=64 | Bulk import `MfaFactor` schema exposes phone factor only; no TOTP seed import field | Android TOTP supported from SDK 22.1.0; adjacent intervals configurable | Existing TOTP cannot be imported through the documented batch-create MFA schema; duplicate identifiers are not checked automatically | Low-cost option only if TOTP re-enrollment is explicitly accepted |
@@ -338,7 +338,7 @@ No provider tenant is to be created by this document. If Auth0 is approved for a
 | C1-IDP-03 | First successful login after custom-hash import | Rehash behavior observed; no hidden password truncation or normalization change |
 | C1-IDP-04 | Passwords with leading/trailing whitespace | Provider-facing client preserves current JavaScript `trim()` semantics |
 | C1-IDP-05 | Password length | 8-byte/8-character minimum preserved; >72 UTF-8-byte password is routed to targeted reset before provider authentication |
-| C1-IDP-06 | Synthetic TOTP factor import | Existing synthetic Base32 seed works without re-enrollment |
+| C1-IDP-06 | New synthetic MFA enrollment | A newly generated factor enrolls and verifies through Auth0 MFA; no legacy seed is imported |
 | C1-IDP-07 | TOTP time window | Current, previous and next interval behavior matches the approved ±1 policy |
 | C1-IDP-08 | TOTP lockout | Five failures / 900-second lockout or explicitly approved equivalent |
 | C1-IDP-09 | Email OTP registration | Code length, expiry, attempts, per-email and per-request rate limits are explicitly accepted or reproduced |
@@ -358,13 +358,13 @@ The repository now contains a synthetic-only converter rehearsal:
 
 - server/services/platform/portal-identity-import-rehearsal.mjs strictly parses the current scrypt envelope, verifies it with Node crypto.scryptSync, and builds the documented Auth0 custom_password_hash shape with explicit Base64 hash/salt and UTF-8 password encoding.
 - The fixture hash is an independently generated Python hashlib.scrypt vector; the Node verifier must reproduce the same 64-byte result.
-- Auth0 TOTP uses the exact mfa_factors[].totp.secret path. Only raw Base32 or legacy enc:-prefixed raw Base32 is accepted in this rehearsal. A v2: AES-GCM envelope fails closed with totp_secret_requires_c2_key_custody; this code does not load or accept a real key.
-- The record builder accepts only reserved .test email addresses, synthetic- user/account references, and the exact fixed synthetic password-hash/TOTP fixture; arbitrary credential hashes or TOTP seeds are rejected. It creates the Auth0 record in memory only; the CLI accepts no arguments, writes no import file, makes no network call, and emits only a redacted receipt.
+- The local rehearsal does not emit an `mfa_factors` field. It classifies valid legacy `enc:`, raw Base32 and structurally valid `v2:` values as re-enrollment-required, and malformed values as quarantined. It never reads a real key or decrypts legacy TOTP material.
+- The record builder accepts only reserved .test email addresses, synthetic user/account references, the fixed synthetic password-hash fixture and a fixed legacy TOTP disposition fixture; it never emits a TOTP factor. Arbitrary credential hashes are rejected. It creates the Auth0 record in memory only; the CLI accepts no arguments, writes no import file, makes no network call, and emits only a redacted receipt.
 - scripts/platform-identity-import-rehearsal.mjs runs the local fixture. npm run --silent platform:identity-import:rehearsal prints only the redacted receipt JSON; npm run test:portal-identity-import runs the focused tests.
 - Local validation on Node v22.16.0: focused suite 9/9 PASS; syntax checks for service, test and CLI PASS; the rehearsal command returned PASS_LOCAL_SYNTHETIC_ONLY with a redacted receipt. The full repository test suite and git diff --check were not run in this isolated workspace.
 - The converter bounds imported salt length to 16–64 bytes; the current runtime default is 16 bytes. Anything outside that offline contract is rejected for separate review.
 
-This proves only local parsing, byte-preserving conversion, synthetic password verification, TOTP schema/validator compatibility, UTF-8 72-byte routing, and redacted receipt behavior. It does not prove Auth0 API acceptance, hosted first-login rehash, provider lockout/email OTP, account import reconciliation, token projection, Android/browser parity, or real-key TOTP transfer. Those remain NOT RUN. The offline PASS does not change C1 or T2 from BLOCKED.
+This proves only local parsing, byte-preserving password conversion, synthetic password verification, strict legacy TOTP disposition classification, UTF-8 72-byte routing, and redacted receipt behavior. It does not prove Auth0 API acceptance, hosted first-login rehash, provider lockout/email OTP, account import reconciliation, token projection, Android/browser parity, or real-key TOTP transfer. Those remain NOT RUN. The offline PASS does not change C1 or T2 from BLOCKED.
 
 
 ## 7. Owner decisions still required
@@ -375,7 +375,7 @@ This proves only local parsing, byte-preserving conversion, synthetic password v
 4. Confirm customer geography, required data residency, email deliverability and login reachability from actual user regions.
 5. Confirm expected MAU/MRU and acceptable monthly cost.
 6. Approve Portal/Admin tenant separation and account-link policy.
-7. Approve the one-time transfer and purge process for decrypted TOTP seeds under C2; no real key is authorized here.
+7. Apply T1 re-enrollment-only handling at cutover. No one-time TOTP transfer or legacy-key decryption is authorized; any later retention or purge of old source values requires a separate lifecycle decision.
 8. Confirm whether `mustRotate` is a product requirement or merely a stored legacy field.
 9. Confirm production authentication route activation through a separately authorized configuration-only review; current activation is NOT OBSERVED.
 10. Name Identity/Privacy and Security owners for provider, data processing, recovery and account lifecycle decisions.
@@ -383,12 +383,12 @@ This proves only local parsing, byte-preserving conversion, synthetic password v
 ## 8. Decision and current disposition
 
 - **Preferred managed candidate:** Auth0 Essentials + Bulk User Import, conditional on synthetic proof and the 72-byte/OTP policy decisions.
-- **Best no-reset fidelity fallback:** Keycloak with custom password-hash and TOTP import extensions.
+- **Password-compatibility fallback:** Keycloak with a custom password-hash verifier; under T1, legacy TOTP factors would still be invalidated and re-enrolled.
 - **Conditional cost challenger:** Clerk Pro, only if custom Node scrypt raw-salt import is confirmed.
-- **Not preferred under current TOTP-preservation requirement:** Firebase Identity Platform and Amazon Cognito, because the documented bulk/import path does not import the existing TOTP secret.
+- **Alternative providers:** Firebase Identity Platform and Amazon Cognito require new TOTP enrollment rather than importing existing seeds; that behavior is compatible with T1, subject to their other password, policy and operational trade-offs.
 - **Vendor selected:** Auth0 Essentials + Bulk User Import (owner-selected 2026-11-08); non-production proof pending.
 - **C1:** BLOCKED — local synthetic converter rehearsal is implemented; Auth0 hosted import proof, provider behavior checks and owner approval remain outstanding.
-- **C2:** OPEN — TOTP key custody, key IDs, separation and legacy compatibility remain unresolved.
+- **C2:** OPEN — HMAC/key custody provider, named custodians, independent escrow/restore, Wallet-first digest compatibility, retention/replay windows and key retirement remain unresolved. Target TOTP ownership is resolved by T1; synthetic MFA lifecycle proof remains open.
 - **C3:** OPEN — account metadata/PII and independent review remain outstanding.
 - **T2:** BLOCKED.
 - **T3 / G6:** not started.
