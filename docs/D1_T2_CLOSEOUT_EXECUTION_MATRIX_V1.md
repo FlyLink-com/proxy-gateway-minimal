@@ -315,3 +315,15 @@ This does not create a real key, external escrow, KMS/HSM integration, Cloudflar
 - Shared JSON, payment custody, key escrow and schema inventory contracts: **48/48 PASS twice**; TAP hashes `37f1ab071b3e6915f2f63a90d9bfb139f43f5ce15cf3cd56bf2f253831d3137e` and `66ad182eea46dadcd111c0ca429690d305478fd5e829190b9b8b6cd60fb9392`; syntax checks 9/9 PASS; source inventory validator PASS (70 tables, 820 columns, 126 FK edges, 88 indexes, 91 triggers, 19 source migration entries).
 
 C3 remains OPEN for the actual Auth0 identity relation, keyed digest replacement, and the complete 26-field JSON writer/transform review. No production data or D1 was accessed or mutated.
+
+## 14. C3 JSON 26-field writer/transform review — 2026-11-08
+
+Added `docs/D1_T2_C3_JSON_26_FIELD_WRITER_REVIEW_V1.md`, mapping every JSON field in `D1_CONTROL_FIELD_DISPOSITION_T2_V1.json` to its writer/transform function and dynamic test suite.
+
+Review result:
+- 24 active JSON fields have an identified writer/transform contract and focused dynamic test evidence.
+- The two passkey credential fields (`public_key_jwk_json`, `transports_json`) remain DEFERRED under the future-auth gate; they are not silently imported or treated as ordinary metadata.
+- Five focused suite groups passed twice: 45 + 48 + 113 + 68 + 16 = **290 cases per pass**, **580 successful executions** across two passes. No skipped tests.
+- Covered suites: SQLite control store, shared JSON/payment/key-escrow/source-inventory contracts, coin commerce store/migrations, deferred transitions/referrals/Portal browser sessions, and Wallet-first deferred checkout adapter/migrations.
+
+C3's 26-field inventory/writer-path review is complete as a source-only evidence task. C3 overall remains OPEN for Auth0 identity externalization and C2 HMAC replacement of the account metadata's raw identity and unkeyed digest fields.
