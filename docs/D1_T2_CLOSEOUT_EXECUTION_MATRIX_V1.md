@@ -242,7 +242,7 @@ G6 PASS authorizes only consideration of the next separately gated step. It does
 
 | Package | Current evidence | Status |
 |---|---|---|
-| T2-C1 Identity custody | C1 custody proposal + provider evaluation exist; Auth0 Essentials bulk import is the preferred candidate, not selected; synthetic proof and owner decisions remain outstanding | OPEN |
+| T2-C1 Identity custody | [C1 custody proposal](D1_T2_C1_IDENTITY_AUTH_CUSTODY_DECISION_V1.md) + [provider evaluation](D1_T2_C1_IDENTITY_PROVIDER_EVALUATION_V1.md); Auth0 Essentials bulk import is the preferred candidate, not selected; synthetic proof and owner decisions remain outstanding | OPEN |
 | T2-C2 HMAC and legacy compatibility | HMAC domains/vectors drafted; key custody approval and wallet-first digest decision remain open | OPEN |
 | T2-C3 JSON/ref/generation | 26 fields reconciled: 7 writer families closed, 16 existing source contracts retained/mapped, 2 Passkey fields DEFER, account metadata BLOCKED pending C1 identity custody; independent review absent | OPEN |
 | T2-C4 Payment custody | DO SQLite proposal exists; owner, key, lifecycle, and outage decisions remain open | OPEN |
