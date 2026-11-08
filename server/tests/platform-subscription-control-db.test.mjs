@@ -1189,6 +1189,78 @@ test("subscription control store persists safe edge desired-state notifications"
   });
 });
 
+test("subscription control store enforces the closed issuance metadata union", () => {
+  withStore((store) => {
+    const now = "2026-11-07T00:00:00.000Z";
+    store.createAccount({
+      id: "acct_issuance_metadata",
+      ownerRef: "owner_issuance_metadata",
+      status: "active",
+      createdAt: now,
+      updatedAt: now
+    });
+    store.createEntitlement({
+      id: "ent_issuance_metadata",
+      accountId: "acct_issuance_metadata",
+      plan: "monthly",
+      status: "active",
+      validFrom: now,
+      validUntil: "2026-12-07T00:00:00.000Z",
+      trafficLimitBytes: 1_000_000,
+      createdAt: now,
+      updatedAt: now
+    });
+    const base = {
+      accountId: "acct_issuance_metadata",
+      entitlementId: "ent_issuance_metadata",
+      approvalRef: "approval_issuance_metadata",
+      status: "planned",
+      quantity: 1,
+      nodeId: "channel_synthetic",
+      purpose: "subscription",
+      requestedByRef: "owner_issuance_metadata",
+      createdAt: now,
+      updatedAt: now
+    };
+    assert.deepEqual(store.createIssuanceRequest({
+      ...base, id: "issuance_metadata_empty"
+    }).metadata, {});
+    assert.deepEqual(store.createIssuanceRequest({
+      ...base, id: "issuance_metadata_cli",
+      metadata: { cli: "platform:issue-subscription" }
+    }).metadata, { cli: "platform:issue-subscription" });
+
+    const chain = {
+      commercialModel: "wallet_first_unique_v1",
+      resourceModel: "wallet_first_resource_chain_v1",
+      resourceModelVersion: 1,
+      initialTransitionRef: "wfxtransition_initial_safe",
+      lastTransitionRef: "wfxtransition_latest_safe"
+    };
+    assert.deepEqual(store.createIssuanceRequest({
+      ...base, id: "issuance_metadata_wallet_first", metadata: chain
+    }).metadata, chain);
+
+    const invalid = [
+      { cli: "unknown-command" },
+      { cli: "platform:issue-subscription", extra: true },
+      { commercialModel: "wallet_first_unique_v1" },
+      { ...chain, resourceModelVersion: 2 },
+      { ...chain, initialTransitionRef: "unsafe transition ref" },
+      { ...chain, lastTransitionRef: "https://example.invalid" },
+      { ...chain, extra: "not-allowed" },
+      []
+    ];
+    invalid.forEach((metadata, index) => {
+      assert.throws(() => store.createIssuanceRequest({
+        ...base,
+        id: `issuance_metadata_invalid_${index}`,
+        metadata
+      }), { code: "validation_error" });
+    });
+  });
+});
+
 test("subscription control store enforces the two observed desired-state generation formats", () => {
   withStore((store) => {
     const now = "2026-06-11T00:00:00.000Z";
