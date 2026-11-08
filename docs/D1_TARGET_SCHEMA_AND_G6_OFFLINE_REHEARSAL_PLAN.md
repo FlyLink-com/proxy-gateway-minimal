@@ -363,3 +363,18 @@ The remaining T2 work is now split into six independently verifiable work packag
 - T2-C6: independent review and formal T2 gate decision.
 
 T2 remains BLOCKED. All six packages are OPEN. T3 may begin only after the formal T2 decision; G6 may begin only after the T3 DDL proposal is reviewed. Both remain repository/local-only. No BWH, production data, real secret, remote D1, remote Worker/DO, CI, production migration, dual-write, or cutover is authorized.
+
+
+## T2 pre-review validation update — 2026-11-07
+
+A source-level adversarial pass found and corrected a PII pseudonym test-helper mismatch: the rotation helper used a literal backslash-plus-zero prefix while the initial known-answer vector and contract require one NUL byte. The helper and contract notation are now aligned.
+
+- Test helper correction: `8ff614a3a74637b7ad7300e971df0d4858051486`.
+- Contract notation correction: `944660925625349e8ad20e1da256a0c0405169ca`.
+- Isolated test file: `server/tests/d1-t2-security-vectors.test.mjs`.
+- Executed with Node `v22.16.0`: `node --test /tmp/d1-t2-security-vectors.test.mjs`.
+- Result: **13/13 PASS**.
+- Executed file Git blob SHA-1: `c61b5d6d54416524317f0c43bc4b4158583cf954`.
+- Executed file raw SHA-256: `ddbf91af45ea721192563e8fa4b5b14261bee3badab8000f95c44392d6545243`.
+
+The test was run from a byte-identical copy of the current GitHub blob. This is the isolated synthetic vector file only; the full repository test suite and CI have not been run. A separate reviewer has not yet been assigned. T2 remains BLOCKED and no production boundary was crossed.
