@@ -200,7 +200,7 @@ Two production builder formats were found:
 - gen_ followed by 24 lowercase hex characters;
 - gen_scoped_ followed by 32 lowercase hex characters.
 
-The `recordEdgeDesiredStateNotification` writer previously validated only required text. Draft commit `2a6865bdafcb27f6a741f84171220d27eca77576` now enforces the exact union `gen_[0-9a-f]{24}` / `gen_scoped_[0-9a-f]{32}` without trimming or coercing non-string input. Integration assertions were added in `591629b0b0aaeab8679d2f79b793bef67137b19d`. Focused validator tests passed 4/4. Production stored values were not read; keep the field CONDITIONAL until a separately approved inventory/fixture proves historical values conform or are quarantined.
+The `recordEdgeDesiredStateNotification` writer previously validated only required text. Draft commit `2a6865bdafcb27f6a741f84171220d27eca77576` now enforces the exact union `gen_[0-9a-f]{24}` / `gen_scoped_[0-9a-f]{32}` without trimming or coercing non-string input. Draft commit `11a4a8e6a7872a73cc1d5568a6255b2e0e983e4a` also applies `safeControlRef` to notification `id`, `nodeRef`, `channelRef`, and `desiredStateRef`. Integration assertions are in `254c0ad408052373de3e2963c3339bee18e9a89d`. Focused validator tests passed 5/5. Production stored values were not read; keep the field CONDITIONAL until a separately approved inventory/fixture proves historical values conform or are quarantined.
 
 ## 4. Payment action custody decision
 
