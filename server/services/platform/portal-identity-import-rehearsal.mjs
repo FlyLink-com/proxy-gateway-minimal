@@ -175,7 +175,7 @@ function requireSyntheticIdentifier(value, code) {
   return value;
 }
 
-export function createAuth0BulkImportRecord({
+export function createSyntheticAuth0BulkImportRecord({
   email,
   emailVerified,
   userId,
@@ -224,7 +224,7 @@ export function createAuth0BulkImportRecord({
 export function runSyntheticPortalIdentityImportRehearsal() {
   const fixture = SYNTHETIC_PORTAL_IDENTITY_FIXTURE;
   const parsed = parsePortalScryptPasswordHash(fixture.passwordHash);
-  const record = createAuth0BulkImportRecord({
+  const record = createSyntheticAuth0BulkImportRecord({
     email: fixture.email,
     emailVerified: fixture.emailVerified,
     userId: fixture.userId,
