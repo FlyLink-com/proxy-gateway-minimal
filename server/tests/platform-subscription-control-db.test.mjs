@@ -1084,6 +1084,48 @@ test("subscription control store enforces the bounded legacy account metadata co
   });
 });
 
+test("subscription control store preserves the registered legacy Portal account metadata shape", () => {
+  withStore((store) => {
+    const now = "2026-11-08T00:00:00.000Z";
+    const digest = "a".repeat(64);
+    const account = store.createAccount({
+      id: "acct_portal_registration_metadata",
+      ownerRef: "acct_portal_registration_metadata",
+      status: "active",
+      createdAt: now,
+      updatedAt: now,
+      metadata: {
+        initialAccount: false,
+        requireSecuritySetup: false,
+        registrationSource: "self_service_portal",
+        singleSubscriptionOnly: true,
+        subscriptionLimit: 1,
+        loginRef: "member@example.test",
+        displayRef: "member@example.test",
+        contactDigest: digest,
+        loginDigest: digest,
+        displayDigest: digest,
+        useCaseDigest: null,
+        intentPlan: "trial",
+        requestedDeviceCount: 1,
+        primaryRegion: "japan",
+        legalAgreementAccepted: true,
+        legalAgreementAcceptedAt: now,
+        termsVersion: "2026-07-02",
+        privacyVersion: "2026-07-02",
+        legalAgreementSourceIpDigest: null,
+        legalAgreementRequestKeyDigest: null,
+        registrationSourceIpDigest: null,
+        registrationRequestKeyDigest: null
+      }
+    });
+    assert.equal(account.metadata.registrationSource, "self_service_portal");
+    assert.equal(account.metadata.loginRef, "member@example.test");
+    assert.equal(account.metadata.loginDigest, digest);
+    assert.equal(account.metadata.legalAgreementAcceptedAt, now);
+  });
+});
+
 test("subscription control store persists portal password credential summaries safely", () => {
   withStore((store) => {
     const now = "2026-06-03T00:00:00.000Z";
