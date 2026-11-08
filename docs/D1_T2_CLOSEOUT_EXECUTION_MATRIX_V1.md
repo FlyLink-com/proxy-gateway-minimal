@@ -111,6 +111,8 @@ All work packages begin OPEN. Existing design documents are inputs, not completi
 - [ ] Passkey JSON remains DEFER until a production caller, schema, and retention contract are separately approved.
 - [ ] Structural recheck against T1 confirms 820/820 disposition keys still match and no target-column collision was introduced.
 
+**Draft progress — 2026-11-07:** The source writer now enforces the exact two observed generation formats, and the second-factor persistence writer rejects empty, duplicate, unknown and non-string factors. Implementation commits: `c39b3987b557274fce2b9c4aabbf11367454245f` and `2a6865bdafcb27f6a741f84171220d27eca77576`; integration assertions are in `591629b0b0aaeab8679d2f79b793bef67137b19d`. A focused Node 22.16.0 validator harness passed 4/4. The full `platform-subscription-control-db.test.mjs` file has not yet run; production historical generation values remain NOT OBSERVED, so C3 remains OPEN.
+
 **Required artifact:** versioned JSON schema/union registry, writer enforcement matrix, opaque-ref/generation contract, and synthetic tests.
 
 ### T2-C4 — Payment action URL / QR capability custody
