@@ -89,7 +89,7 @@ test("email-shaped account references are rejected", () => {
 });
 
 test("non-string and empty passwords fail closed after successful verification", () => {
-  assert.throws(() => observe(12345), /proof_window_password_input_invalid/);
+  assert.throws(() => observe("  " + String.fromCharCode(9) + "  "), /proof_window_password_input_invalid/);
   assert.throws(() => observe("  \t  "), /proof_window_password_input_invalid/);
 });
 
