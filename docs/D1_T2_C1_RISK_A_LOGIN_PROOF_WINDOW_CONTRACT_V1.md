@@ -108,3 +108,11 @@ Until those decisions are approved, this artifact remains a local synthetic cont
 - Source SHA-256: helper `fe1d1511c6a902eaa1b59c0f3f562172d04b4fed04d0cca7989d368483f8724c`; test `3967a425013f453799f5f104d4896e57d38b7ac1cda0b7e94845066d5963518d`.
 
 The contract remains synthetic-only and unconnected. The test result does not approve proof-window duration, persistence, retention, notifications, reset workflow or production login instrumentation. C1-A04 remains OPEN; C1/C2 remain OPEN; T2 remains BLOCKED.
+
+## 9. Owner decision proposal — 2026-11-08
+
+A bounded default decision package is available in `docs/D1_T2_C1_RISK_A_OWNER_DECISION_PROPOSAL_V1.md`. It proposes a 30-day one-time window, a four-field-only record, conditional persistence in the existing BWH authoritative control store, a 37-day maximum cleanup horizon, reuse of the existing reset workflow, and no import of unresolved accounts. These are recommendations only; none is treated as approved.
+
+The proposal also defines a no-persistence fallback: accounts without an already-approved non-secret length marker remain unclassified and follow the reset-safe path. The synthetic helper and its 12/12 twice evidence remain unchanged and unconnected.
+
+C1-A04 remains OPEN until the project owner accepts or amends the grouped defaults. No production login instrumentation or persistence is authorized.
