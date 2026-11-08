@@ -37,7 +37,7 @@ All work packages begin OPEN. Existing design documents are inputs, not completi
 2. Define stable opaque account, identity, password-credential, and TOTP-credential references. D1 may hold only approved opaque references and non-secret lifecycle facts.
 3. Move raw email, display name, password hashes, encrypted TOTP secrets, and any other direct identifier/authentication secret out of D1 rows, Worker request/response bodies, logs, traces, fixture snapshots, and evidence bundles.
 4. Reconcile the active password-login path with the field-map disposition: `platform_portal_password_credentials` is DEFER and must not be copied into D1, but the existing login capability must remain available through an approved external credential-verification authority or an explicitly approved replacement. Do not silently turn off password login.
-5. Reconcile TOTP custody: `platform_portal_totp_credentials.encrypted_totp_secret` remains EXTERNALIZE; define the external secret reference, encryption-key custody, verify path, enrollment, lockout, rotation, recovery, revocation, and outage behavior. D1 may hold only approved state and opaque refs.
+5. Apply owner-selected T1 for TOTP: Auth0-managed MFA owns target factors; Portal enrollment is optional and Admin enrollment mandatory. All legacy BWH enc: and v2: values are invalidated at cutover and are never imported, decrypted, transferred or re-encrypted. Prove new enrollment, verification, lockout, recovery, revocation and outage behavior. D1 holds only approved state and opaque refs.
 6. Preserve the existing product behavior for registration deduplication, password login, second-factor verification, user-portal identity display, administrator email search/display, and registration Coins canary through explicitly authorized identity/auth lookup paths.
 7. Decide which pseudonyms are necessary. If retained, use the separately specified domain-separated keyed digest; delete unnecessary low-entropy digests. Never describe an unkeyed SHA-256 of a low-entropy value as anonymous.
 
@@ -62,10 +62,10 @@ All work packages begin OPEN. Existing design documents are inputs, not completi
 
 1. Name the accountable key-custodian roles and approved secret-management boundary for HMAC keys and AES-256-GCM credential-encryption keys. No key material may be committed, placed in D1, logged, or included in fixtures.
 2. For HMAC, define key IDs, algorithm/version envelope, domain separation, canonical input encoding, active-write key, candidate-read key set, rotation overlap, retirement condition, and emergency revocation.
-3. For TOTP encryption, define a versioned envelope carrying a key ID, key separation between User Portal and Admin authentication (or an explicit owner-approved shared-key exception), old-key decrypt/re-encrypt procedure, retirement condition, and emergency revocation. Do not assume the current keyless `v2:aes-256-gcm` envelope supports safe key rotation.
+3. For first-party TOTP encryption, define a versioned envelope and separate Portal/Admin keys only if that route is separately selected. Under current owner-selected T1, Auth0 owns target MFA; do not provision target first-party TOTP keys and do not decrypt/re-encrypt legacy v2 values.
 4. New HMAC writes use only the active key. Reads may consider only explicitly configured retained key IDs. Unknown key IDs, malformed envelopes, and legacy bare SHA-256 values fail closed unless a separately approved compatibility path exists.
 5. Preserve separate HMAC domains for the six raw idempotency values, provider-event dedupe, and PII pseudonyms. Never reuse one domain/key contract across semantically different identifiers.
-6. Treat legacy TOTP `enc:<base32>` or unprefixed Base32 values as raw secret material, not ciphertext. They must be re-encrypted under the approved key/version or quarantined/rejected before any target load.
+6. Under T1, treat legacy TOTP enc:/unprefixed Base32 and v2 envelope values as non-migrating credentials: invalidate at cutover and require re-enrollment. Never decrypt, transfer, import or re-encrypt them.
 7. Resolve `idempotency_key_hash` for wallet-first setup handoffs: identify callers and replay windows; choose explicit re-key, compatibility-read, or retirement behavior; prove duplicate prevention and recovery behavior.
 
 **Acceptance evidence**
@@ -74,7 +74,7 @@ All work packages begin OPEN. Existing design documents are inputs, not completi
 - [ ] HMAC envelope parser/writer tests cover active/retained/unknown key, malformed envelope, wrong domain/version, empty input, and rotation overlap.
 - [ ] Known-answer vectors independently verify canonical encoding and HMAC output for every domain.
 - [ ] Tests prove no fallback from unknown/new HMAC envelopes to legacy bare SHA-256.
-- [ ] TOTP envelope tests cover key ID, old-key decrypt/new-key encrypt, wrong key, modified tag/ciphertext, unknown key, malformed envelope, and legacy `enc:` rejection/quarantine.
+- [ ] T1 tests prove legacy v2, enc: and unprefixed Base32 values return re_enroll_required without decrypt/re-encrypt; new Auth0 MFA enrollment/verification/lifecycle proof is separate.
 - [ ] User Portal/Admin key sharing is either removed with separate key domains or explicitly accepted by both accountable owners.
 - [ ] Wallet-first handoff compatibility tests prove retry/replay does not create duplicate effects across the approved transition.
 - [ ] Payment/commerce, Identity and Security owners approve their respective domains and retention dependencies.
@@ -285,8 +285,8 @@ No task is marked complete by this matrix. The work is not authorized to cross t
 
 #### Remaining C1/C2 gate blockers
 
-- C1: final provider selection; >72 UTF-8-byte password policy; Portal/Admin identity isolation; real OIDC/JWKS gateway and provider adapter; hosted synthetic compatibility proof; TOTP account-ownership and migration acceptance; accountable Identity/Privacy/Security owners.
-- C2: actual Cloudflare key-custody boundary; named custodians; independent encrypted escrow/backup and restore; Wallet-first `idempotency_key_hash` and `session_binding_hash` compatibility; managed-provider versus first-party TOTP custody choice; retention/replay windows and key-retirement proof.
+- C1: final provider selection; >72 UTF-8-byte password policy; Portal/Admin identity isolation; real OIDC/JWKS gateway and provider adapter; hosted synthetic compatibility proof; TOTP re-enrollment and lifecycle acceptance; accountable Identity/Privacy/Security owners.
+- C2: actual Cloudflare key-custody boundary; named custodians; independent encrypted escrow/backup and restore; Wallet-first `idempotency_key_hash` and `session_binding_hash` compatibility; synthetic Auth0 MFA enrollment/lifecycle proof (T1 ownership choice is resolved); retention/replay windows and key-retirement proof.
 - C1 and C2 therefore remain OPEN.
 
 #### T2-C6 scope distinction
@@ -294,3 +294,9 @@ No task is marked complete by this matrix. The work is not authorized to cross t
 The approval by `gccltdco-cmd` is recorded as a separate GitHub-account review of the exact C1/C2 source slice. It does not by itself establish that the reviewer is a different natural person from the author, and PR #842 did not review all six T2 packages, the complete 820-field disposition, all 26 JSON writer paths, payment custody, retention, or G2 residuals. T2-C6 therefore remains OPEN pending the full-scope review and required independence evidence.
 
 See [remaining owner decisions](D1_T2_C1_C2_REMAINING_OWNER_DECISIONS_2026-11-08.md) and [migration-readiness reassessment](D1_T2_MIGRATION_READINESS_REASSESSMENT_2026-11-08.md).
+
+
+## Owner decision update — T1 (2026-11-08)
+
+T1 supersedes earlier C1/C2 TOTP transfer, decryption and re-encryption proposals. Auth0-managed MFA is the target; Portal enrollment is optional and Admin enrollment mandatory. All existing BWH enc:, v2: and unprefixed legacy TOTP values are invalidated at cutover. No legacy secret is transferred or decrypted. The first-party v3 TOTP primitive is not provisioned for this migration. Required acceptance evidence is synthetic new-factor enrollment, verification, time-window, lockout, recovery, revocation and outage behavior.
+
