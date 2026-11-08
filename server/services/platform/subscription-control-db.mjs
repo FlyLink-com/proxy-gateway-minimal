@@ -371,6 +371,145 @@ function edgeNodeMetadataJson(value) {
   return JSON.stringify(normalized);
 }
 
+const ACCOUNT_METADATA_FIELDS = new Set([
+  "source",
+  "channel",
+  "synthetic",
+  "displayName",
+  "loginRef",
+  "displayRef",
+  "initialAccount",
+  "requireSecuritySetup",
+  "registrationSource",
+  "singleSubscriptionOnly",
+  "subscriptionLimit",
+  "contactDigest",
+  "loginDigest",
+  "displayDigest",
+  "useCaseDigest",
+  "intentPlan",
+  "requestedDeviceCount",
+  "primaryRegion",
+  "legalAgreementAccepted",
+  "legalAgreementAcceptedAt",
+  "termsVersion",
+  "privacyVersion",
+  "legalAgreementSourceIpDigest",
+  "legalAgreementRequestKeyDigest",
+  "registrationSourceIpDigest",
+  "registrationRequestKeyDigest"
+]);
+const ACCOUNT_METADATA_DIGEST_FIELDS = new Set([
+  "contactDigest",
+  "loginDigest",
+  "displayDigest",
+  "useCaseDigest",
+  "legalAgreementSourceIpDigest",
+  "legalAgreementRequestKeyDigest",
+  "registrationSourceIpDigest",
+  "registrationRequestKeyDigest"
+]);
+
+function accountMetadataJson(value) {
+  const snapshot = value == null ? {} : snapshotControlJsonObject(value, "account metadata");
+  const fields = Object.keys(snapshot);
+  if (fields.some((field) => !ACCOUNT_METADATA_FIELDS.has(field))) {
+    throw platformError("validation_error", "account metadata contains an unknown field");
+  }
+
+  const normalized = {};
+  for (const field of fields) {
+    const entry = snapshot[field];
+    if (ACCOUNT_METADATA_DIGEST_FIELDS.has(field)) {
+      if (entry === null && [
+        "useCaseDigest",
+        "legalAgreementSourceIpDigest",
+        "legalAgreementRequestKeyDigest",
+        "registrationSourceIpDigest",
+        "registrationRequestKeyDigest"
+      ].includes(field)) {
+        normalized[field] = null;
+      } else if (typeof entry !== "string" || !/^[a-f0-9]{64}$/.test(entry)) {
+        throw platformError("validation_error", "account metadata digest is invalid");
+      } else {
+        normalized[field] = entry;
+      }
+      continue;
+    }
+
+    if (["initialAccount", "requireSecuritySetup", "singleSubscriptionOnly", "legalAgreementAccepted", "synthetic"].includes(field)) {
+      if (typeof entry !== "boolean") throw platformError("validation_error", "account metadata boolean is invalid");
+      normalized[field] = entry;
+      continue;
+    }
+
+    if (["subscriptionLimit", "requestedDeviceCount"].includes(field)) {
+      normalized[field] = integer(entry, field, { min: 1 });
+      if (normalized[field] > 20) throw platformError("validation_error", "account metadata integer is out of range");
+      continue;
+    }
+
+    if (field === "registrationSource") {
+      if (entry !== "self_service_portal") throw platformError("validation_error", "account metadata registration source is invalid");
+      normalized[field] = entry;
+      continue;
+    }
+
+    if (field === "intentPlan") {
+      if (!["trial", "monthly", "yearly"].includes(entry)) {
+        throw platformError("validation_error", "account metadata plan is invalid");
+      }
+      normalized[field] = entry;
+      continue;
+    }
+
+    if (field === "legalAgreementAcceptedAt") {
+      normalized[field] = isoText(entry, field);
+      continue;
+    }
+
+    if (field === "loginRef") {
+      const loginRef = requiredText(entry, field);
+      if (loginRef.length > 254 || !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(loginRef)) {
+        throw platformError("validation_error", "account metadata login reference is invalid");
+      }
+      normalized[field] = loginRef;
+      continue;
+    }
+
+    if (field === "displayRef" || field === "displayName") {
+      const display = requiredText(entry, field);
+      if (display.length > 254 || /[\\u0000-\\u001f\\u007f]/u.test(display)) {
+        throw platformError("validation_error", "account metadata display value is invalid");
+      }
+      normalized[field] = display;
+      continue;
+    }
+
+    if (field === "termsVersion" || field === "privacyVersion") {
+      const version = requiredText(entry, field);
+      if (version.length > 64 || !/^[A-Za-z0-9._:-]+$/.test(version)) {
+        throw platformError("validation_error", "account metadata legal version is invalid");
+      }
+      normalized[field] = version;
+      continue;
+    }
+
+    if (field === "primaryRegion" || field === "source" || field === "channel") {
+      const token = requiredText(entry, field);
+      if (!/^[a-z][a-z0-9_-]{1,63}$/.test(token)) {
+        throw platformError("validation_error", "account metadata token is invalid");
+      }
+      normalized[field] = token;
+    }
+  }
+
+  // This is a bounded legacy BWH source-writer contract, not the D1 target
+  // projection. Raw login/display refs and unkeyed SHA-256 digests must be
+  // externalized/replaced before any D1 account-metadata load.
+  return JSON.stringify(normalized);
+}
+
 function issuanceMetadataJson(value) {
   const snapshot = value == null ? {} : snapshotControlJsonObject(value, "issuance metadata");
   const fields = Object.keys(snapshot);
@@ -1671,7 +1810,7 @@ export function createSqliteSubscriptionControlStore({
       status: requiredText(input.status || "active", "status"),
       createdAt: isoText(input.createdAt, "createdAt"),
       updatedAt: isoText(input.updatedAt, "updatedAt"),
-      metadataJson: issuanceMetadataJson(input.metadata)
+      metadataJson: accountMetadataJson(input.metadata)
     };
     sqliteRun(db.prepare(`
       insert into platform_accounts (
@@ -5972,7 +6111,7 @@ export function createSqliteSubscriptionControlStore({
       requestedByRef: requiredText(input.requestedByRef, "requestedByRef"),
       createdAt: isoText(input.createdAt, "createdAt"),
       updatedAt: isoText(input.updatedAt, "updatedAt"),
-      metadataJson: jsonObject(input.metadata, "metadata")
+      metadataJson: issuanceMetadataJson(input.metadata)
     };
     sqliteRun(db.prepare(`
       insert into platform_issuance_requests (
