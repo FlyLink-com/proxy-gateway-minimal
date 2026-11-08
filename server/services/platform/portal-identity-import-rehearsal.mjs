@@ -11,6 +11,17 @@ export const PORTAL_SCRYPT_PARAMS = Object.freeze({
 
 export const AUTH0_BCRYPT_MAX_PASSWORD_BYTES = 72;
 
+// R4 input bounds: parser/verifier ceilings, not login policy. The canonical
+// scrypt hash string is well under 256 chars (fixed parameter header, a
+// 16-64 byte salt and a 64 byte digest in base64url); anything longer is
+// malformed by construction and is rejected before any decoding or scrypt
+// work happens. The password ceiling only stops pathological inputs from
+// reaching the synchronous scrypt call; legitimate passwords are orders of
+// magnitude shorter, and the 72-byte first-login rule stays a separate
+// classification (R2), not an enforcement here.
+export const PORTAL_SCRYPT_HASH_MAX_CHARS = 256;
+export const PORTAL_PASSWORD_INPUT_MAX_CHARS = 4096;
+
 export const SYNTHETIC_PORTAL_IDENTITY_FIXTURE = Object.freeze({
   id: "C1-SYNTHETIC-001",
   plainPassword: "Synthetic-Only-Password-2026!",
@@ -44,7 +55,7 @@ function decodeCanonicalBase64Url(value) {
 }
 
 export function parsePortalScryptPasswordHash(encoded) {
-  if (typeof encoded !== "string") {
+  if (typeof encoded !== "string" || encoded.length > PORTAL_SCRYPT_HASH_MAX_CHARS) {
     throw failure("legacy_scrypt_hash_invalid");
   }
   const parts = encoded.split("$");
@@ -69,7 +80,10 @@ export function parsePortalScryptPasswordHash(encoded) {
 }
 
 export function verifyPortalScryptPassword({ plainPassword, passwordHash } = {}) {
-  const normalizedPassword = String(plainPassword ?? "").trim();
+  const rawPassword = String(plainPassword ?? "");
+  if (rawPassword.length > PORTAL_PASSWORD_INPUT_MAX_CHARS) return false;
+  if (typeof passwordHash === "string" && passwordHash.length > PORTAL_SCRYPT_HASH_MAX_CHARS) return false;
+  const normalizedPassword = rawPassword.trim();
   if (!normalizedPassword) return false;
 
   let parsed;
@@ -175,13 +189,30 @@ function requireSyntheticIdentifier(value, code) {
   return value;
 }
 
+// R6 metadata contract: a provider bulk-import upsert replaces the whole
+// app_metadata object instead of merging it. The import record must
+// therefore carry the complete merged object, and the merge happens here,
+// locally and deterministically: keys already present on the account are
+// preserved, keys carried by the import win on conflict, and neither input
+// object is mutated.
+export function mergeAuth0AppMetadata(existingAppMetadata, importAppMetadata) {
+  const existing = existingAppMetadata && typeof existingAppMetadata === "object" && !Array.isArray(existingAppMetadata)
+    ? existingAppMetadata
+    : {};
+  const incoming = importAppMetadata && typeof importAppMetadata === "object" && !Array.isArray(importAppMetadata)
+    ? importAppMetadata
+    : {};
+  return { ...existing, ...incoming };
+}
+
 export function createSyntheticAuth0BulkImportRecord({
   email,
   emailVerified,
   userId,
   accountRef,
   passwordHash,
-  legacyTotpSecret
+  legacyTotpSecret,
+  existingAppMetadata
 } = {}) {
   const normalizedEmail = String(email ?? "").trim().toLowerCase();
   if (!/^[^@\s]+@example\.test$/u.test(normalizedEmail)) {
@@ -204,9 +235,9 @@ export function createSyntheticAuth0BulkImportRecord({
     email: normalizedEmail,
     email_verified: emailVerified,
     user_id: normalizedUserId,
-    app_metadata: {
+    app_metadata: mergeAuth0AppMetadata(existingAppMetadata, {
       legacy_account_ref: normalizedAccountRef
-    },
+    }),
     custom_password_hash: buildAuth0CustomPasswordHash(passwordHash)
   };
 
@@ -219,6 +250,41 @@ export function createSyntheticAuth0BulkImportRecord({
   }
 
   return record;
+}
+
+// R6 import idempotency contract: planning is a pure function of the batch
+// and the set of user_ids already imported. Re-running the same batch after
+// a partial failure must never re-create a completed record: completed
+// user_ids plan as skips, a user_id repeated inside one batch is created at
+// most once, and resuming returns exactly the records still outstanding.
+export function planSyntheticAuth0BulkImport(records, { alreadyImportedUserIds = [] } = {}) {
+  if (!Array.isArray(records)) {
+    throw failure("import_plan_records_invalid");
+  }
+  const alreadyImported = new Set(alreadyImportedUserIds);
+  const seenInBatch = new Set();
+  return records.map((record, index) => {
+    const userId = record?.user_id;
+    if (typeof userId !== "string" || !userId) {
+      throw failure("import_plan_record_user_id_required");
+    }
+    let action = "create";
+    if (alreadyImported.has(userId)) {
+      action = "skip_already_imported";
+    } else if (seenInBatch.has(userId)) {
+      action = "skip_duplicate_in_batch";
+    }
+    seenInBatch.add(userId);
+    return { index, user_id: userId, action };
+  });
+}
+
+export function resumeSyntheticAuth0BulkImport(records, { completedUserIds = [] } = {}) {
+  const plan = planSyntheticAuth0BulkImport(records, { alreadyImportedUserIds: completedUserIds });
+  const outstanding = new Set(
+    plan.filter((entry) => entry.action === "create").map((entry) => entry.index)
+  );
+  return records.filter((record, index) => outstanding.has(index));
 }
 
 export function runSyntheticPortalIdentityImportRehearsal() {

@@ -3,10 +3,15 @@ import test from "node:test";
 import { createPortalTotpVerifier } from "../services/platform/portal-totp-verifier.mjs";
 import {
   AUTH0_BCRYPT_MAX_PASSWORD_BYTES,
+  PORTAL_PASSWORD_INPUT_MAX_CHARS,
+  PORTAL_SCRYPT_HASH_MAX_CHARS,
   SYNTHETIC_PORTAL_IDENTITY_FIXTURE,
   classifyAuth0FirstLoginPassword,
   createSyntheticAuth0BulkImportRecord,
+  mergeAuth0AppMetadata,
   parsePortalScryptPasswordHash,
+  planSyntheticAuth0BulkImport,
+  resumeSyntheticAuth0BulkImport,
   runSyntheticPortalIdentityImportRehearsal,
   verifyPortalScryptPassword
 } from "../services/platform/portal-identity-import-rehearsal.mjs";
@@ -137,4 +142,90 @@ test("Auth0 record builder rejects non-synthetic identities and missing verifica
 test("Auth0 import record can omit TOTP when no synthetic factor is present", () => {
   const record = buildRecord({ legacyTotpSecret: undefined });
   assert.equal(Object.hasOwn(record, "mfa_factors"), false);
+});
+
+test("R4: scrypt hash parser rejects oversized encodings before decoding", () => {
+  assert.equal(PORTAL_SCRYPT_HASH_MAX_CHARS, 256);
+  assert.ok(fixture.passwordHash.length <= PORTAL_SCRYPT_HASH_MAX_CHARS);
+  const oversized = "scrypt$v=1$N=32768$r=8$p=1$" + "A".repeat(160) + "$" + "A".repeat(120);
+  assert.ok(oversized.length > PORTAL_SCRYPT_HASH_MAX_CHARS);
+  assert.throws(() => parsePortalScryptPasswordHash(oversized), { code: "legacy_scrypt_hash_invalid" });
+  assert.throws(() => parsePortalScryptPasswordHash("x".repeat(PORTAL_SCRYPT_HASH_MAX_CHARS + 1)), { code: "legacy_scrypt_hash_invalid" });
+  assert.equal(verifyPortalScryptPassword({ plainPassword: fixture.plainPassword, passwordHash: oversized }), false);
+});
+
+test("R4: scrypt verifier fails closed for oversized and non-string inputs without running scrypt on them", () => {
+  assert.equal(PORTAL_PASSWORD_INPUT_MAX_CHARS, 4096);
+  const oversizedPassword = fixture.plainPassword + " ".repeat(PORTAL_PASSWORD_INPUT_MAX_CHARS);
+  assert.ok(oversizedPassword.length > PORTAL_PASSWORD_INPUT_MAX_CHARS);
+  assert.equal(verifyPortalScryptPassword({ plainPassword: oversizedPassword, passwordHash: fixture.passwordHash }), false);
+  for (const badHash of [null, undefined, 42, {}, []]) {
+    assert.throws(() => parsePortalScryptPasswordHash(badHash), { code: "legacy_scrypt_hash_invalid" });
+    assert.equal(verifyPortalScryptPassword({ plainPassword: fixture.plainPassword, passwordHash: badHash }), false);
+  }
+  // A within-bounds wrong password still goes through the normal path.
+  assert.equal(verifyPortalScryptPassword({ plainPassword: "x".repeat(512), passwordHash: fixture.passwordHash }), false);
+});
+
+function buildSecondRecord() {
+  return buildRecord({
+    email: "c1.synthetic2@example.test",
+    userId: "synthetic-portal-user-002",
+    accountRef: "synthetic-account-002"
+  });
+}
+
+test("R6: app_metadata merge preserves existing keys, import wins conflicts, inputs stay unmutated", () => {
+  const existing = Object.freeze({ plan_tier: "synthetic", legacy_account_ref: "synthetic-stale-ref", nested: { keep: true } });
+  const incoming = Object.freeze({ legacy_account_ref: "synthetic-account-001" });
+  const merged = mergeAuth0AppMetadata(existing, incoming);
+  assert.deepEqual(merged, { plan_tier: "synthetic", legacy_account_ref: "synthetic-account-001", nested: { keep: true } });
+  assert.deepEqual(mergeAuth0AppMetadata(null, incoming), { legacy_account_ref: "synthetic-account-001" });
+  assert.deepEqual(mergeAuth0AppMetadata(existing, null), { plan_tier: "synthetic", legacy_account_ref: "synthetic-stale-ref", nested: { keep: true } });
+});
+
+test("R6: record builder carries the fully merged app_metadata instead of delegating the merge to the provider", () => {
+  const record = buildRecord({
+    existingAppMetadata: { plan_tier: "synthetic", legacy_account_ref: "synthetic-stale-ref" }
+  });
+  assert.deepEqual(record.app_metadata, { plan_tier: "synthetic", legacy_account_ref: "synthetic-account-001" });
+  // Without pre-existing metadata the record is unchanged from the base contract.
+  assert.deepEqual(buildRecord().app_metadata, { legacy_account_ref: "synthetic-account-001" });
+});
+
+test("R6: import plan is idempotent across reruns and flags duplicates inside one batch", () => {
+  const first = buildRecord();
+  const second = buildSecondRecord();
+
+  assert.deepEqual(planSyntheticAuth0BulkImport([first, second]), [
+    { index: 0, user_id: "synthetic-portal-user-001", action: "create" },
+    { index: 1, user_id: "synthetic-portal-user-002", action: "create" }
+  ]);
+  assert.deepEqual(planSyntheticAuth0BulkImport([first, second], {
+    alreadyImportedUserIds: ["synthetic-portal-user-001", "synthetic-portal-user-002"]
+  }), [
+    { index: 0, user_id: "synthetic-portal-user-001", action: "skip_already_imported" },
+    { index: 1, user_id: "synthetic-portal-user-002", action: "skip_already_imported" }
+  ]);
+  assert.deepEqual(planSyntheticAuth0BulkImport([first, first]), [
+    { index: 0, user_id: "synthetic-portal-user-001", action: "create" },
+    { index: 1, user_id: "synthetic-portal-user-001", action: "skip_duplicate_in_batch" }
+  ]);
+  assert.throws(() => planSyntheticAuth0BulkImport("nope"), { code: "import_plan_records_invalid" });
+  assert.throws(() => planSyntheticAuth0BulkImport([{ email: "x@example.test" }]), { code: "import_plan_record_user_id_required" });
+});
+
+test("R6: resume after a partial import returns exactly the outstanding records and converges to empty", () => {
+  const first = buildRecord();
+  const second = buildSecondRecord();
+  const batch = [first, second];
+
+  const remaining = resumeSyntheticAuth0BulkImport(batch, { completedUserIds: ["synthetic-portal-user-001"] });
+  assert.deepEqual(remaining, [second]);
+  // Resuming the resumed set with the same completions is a no-op (idempotent).
+  assert.deepEqual(resumeSyntheticAuth0BulkImport(remaining, { completedUserIds: ["synthetic-portal-user-001"] }), [second]);
+  // Once every record is completed, a full-batch rerun has nothing left to do.
+  assert.deepEqual(resumeSyntheticAuth0BulkImport(batch, {
+    completedUserIds: ["synthetic-portal-user-001", "synthetic-portal-user-002"]
+  }), []);
 });
