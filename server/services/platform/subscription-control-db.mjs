@@ -8070,8 +8070,10 @@ export function createSqliteSubscriptionControlStore({
       ) {
         throw platformError("validation_error", "traffic-limit audit reason code is invalid");
       }
-      integer(metadata.previousTrafficLimitBytes, "previousTrafficLimitBytes", { min: 0 });
-      integer(metadata.trafficLimitBytes, "trafficLimitBytes", { min: 0 });
+      if (!Number.isSafeInteger(metadata.previousTrafficLimitBytes) || metadata.previousTrafficLimitBytes < 0
+        || !Number.isSafeInteger(metadata.trafficLimitBytes) || metadata.trafficLimitBytes < 0) {
+        throw platformError("validation_error", "traffic-limit audit byte values are invalid");
+      }
       return JSON.stringify(metadata);
     }
 
@@ -8149,8 +8151,10 @@ export function createSqliteSubscriptionControlStore({
       for (const field of [
         "orderRef", "accountId", "requestRef", "issuedLinkRef", "offerVersionRef"
       ]) safeControlRef(metadata[field], field);
-      integer(metadata.quotaBytes, "quotaBytes", { min: 1 });
-      isoText(metadata.technicalValidUntil, "technicalValidUntil");
+      if (!Number.isSafeInteger(metadata.quotaBytes) || metadata.quotaBytes < 1
+        || isoText(metadata.technicalValidUntil, "technicalValidUntil") !== metadata.technicalValidUntil) {
+        throw platformError("validation_error", "data-pack fulfillment audit values are invalid");
+      }
       return JSON.stringify(metadata);
     }
 
