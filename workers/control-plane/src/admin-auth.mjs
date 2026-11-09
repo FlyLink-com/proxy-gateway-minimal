@@ -219,14 +219,14 @@ export async function completeAdminLogin(request, env, { fetcher = fetch, now = 
     const form = new URLSearchParams({
       grant_type: "authorization_code",
       client_id: cfg.clientId,
+      client_secret: cfg.clientSecret,
       code: codeValues[0],
       redirect_uri: cfg.redirectUri,
       code_verifier: verifier,
     });
-    const basic = btoa(`${cfg.clientId}:${cfg.clientSecret}`);
     const tokenResponse = await fetcher(`${cfg.issuer}oauth/token`, {
       method: "POST", redirect: "error",
-      headers: { "content-type": "application/x-www-form-urlencoded", authorization: `Basic ${basic}` },
+      headers: { "content-type": "application/x-www-form-urlencoded" },
       body: form.toString(),
     });
     if (!tokenResponse.ok) throw new Error("provider_error");
@@ -252,7 +252,7 @@ export async function completeAdminLogin(request, env, { fetcher = fetch, now = 
       || typeof mfa.completed_at !== "string") throw new Error("mfa_missing");
     const mfaVerifiedAt = Date.parse(mfa.completed_at);
     if (!Number.isSafeInteger(mfaVerifiedAt) || mfaVerifiedAt > now + 30000 || now - mfaVerifiedAt > MFA_MAX_AGE_MS
-      || Math.floor(now / 1000) - verifiedId.authTime > 300) throw new Error("mfa_stale");
+      || mfaVerifiedAt < verifiedId.authTime * 1000 - 30000 || Math.floor(now / 1000) - verifiedId.authTime > 300) throw new Error("mfa_stale");
 
     const sessionToken = randomBase64Url(32);
     const sessionHash = await sha256(sessionToken);
