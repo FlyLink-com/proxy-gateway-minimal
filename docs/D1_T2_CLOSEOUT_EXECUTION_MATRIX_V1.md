@@ -470,3 +470,13 @@ C2 remains OPEN. The synthetic escrow contract passed 10/10 twice under Node v22
 
 
 **Draft progress — 2026-11-08 (external escrow evaluation):** Added [D1_T2_C2_EXTERNAL_ESCROW_PROVIDER_EVALUATION_V1.md](D1_T2_C2_EXTERNAL_ESCROW_PROVIDER_EVALUATION_V1.md). Google Cloud KMS is the leading technical candidate when no independent provider account is already preferred; AWS KMS is an equivalent alternative where a separate AWS organization/account exists; Azure Key Vault is an option for an existing Azure tenant. The evaluation defines non-exportable KEK, metadata-bound AAD/encryption context, distinct admin/user roles, two-person break-glass approval, audit, two ciphertext copies, and isolated restore/revocation acceptance. No provider or resource is selected/created. C2 remains OPEN.
+
+
+## 20. C2/C4 synthetic envelope and payment-action hardening — 2026-11-09
+
+- C2 escrow envelope: exact field allowlist, canonical encoding/length checks, and fail-closed metadata projection; 11 tests.
+- C4 payment action: key ID added to AES-GCM AAD; exact record/envelope key sets; ciphertext size bound; terminal chronology enforced; 17 tests.
+- Exact source/test Git blob hashes were verified in the isolated sandbox before execution.
+- Fixed Node v22.23.1 regression: **28/28 PASS twice**, 0 failed / 0 skipped; syntax checks **2/2 PASS**.
+- C2 still requires external provider/account, named custodians, two-person recovery, and real non-production restore. C4 remains a proposal pending owner approval; no DO adapter or namespace was implemented. C5 retention durations remain OPEN and owner-controlled.
+- No real keys, production data, BWH access, remote D1 write, Worker/DO deployment, merge, or cutover occurred.
