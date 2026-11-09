@@ -261,3 +261,12 @@ Fixed Node v22.23.1: 5/5 PASS twice, 0 failed / 0 skipped. TAP hashes: `3b17bb52
 The fixture proves user authorization occurs before the Service Binding call, the caller uses a separate internal token, invalid internal credentials are rejected, missing binding/key ring fails closed, and PII digest-only behavior remains enforced across the binding.
 
 This is not actual control-plane integration. The existing G3 control-plane slice has service-level read/write tokens but no end-user/domain authorization context. The actual Service Binding declaration and caller wrapper remain deferred until the C1 identity/domain authorization path exists. No public crypto relay route is added. No Cloudflare binding, secret, deployment, production data access, D1 mutation, dual-write, or cutover occurred. C2 remains OPEN; BWH remains the only production writer.
+
+
+## 19. External escrow provider evaluation — 2026-11-08
+
+Added `docs/D1_T2_C2_EXTERNAL_ESCROW_PROVIDER_EVALUATION_V1.md` as a source-only options evaluation. It compares Google Cloud KMS, AWS KMS, Azure Key Vault/Managed HSM, HashiCorp Vault Transit, and offline encrypted escrow.
+
+Technical recommendation: use an independent managed KMS with a non-exportable symmetric KEK, metadata-bound AAD/encryption context, distinct key-admin/key-user roles, audit logging, and a separate two-person break-glass approval workflow. Google Cloud KMS is the leading technical candidate if no existing independent KMS account is preferred; AWS KMS is equivalent where a separate AWS organization/account already exists. Azure is viable where an independent Azure tenant exists.
+
+No provider or account is selected by this evaluation. Two-person recovery must be separately enforced and tested; provider role separation alone is not proof of two-person approval. No cloud account, KMS/HSM key, policy, escrow object, real key, Cloudflare secret, or Worker binding was created. The concrete provider, named custodians, and real recovery proof remain OPEN.
