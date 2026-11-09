@@ -63,6 +63,9 @@ export class AdminAuthState {
       createdAt: body.createdAt,
       expiresAt: body.expiresAt,
     };
+    // Schedule cleanup before persisting so a crash cannot strand sensitive
+    // transaction material without an expiry alarm.
+    await this.state.storage.setAlarm(record.expiresAt);
     let created = false;
     await this.state.storage.transaction(async (txn) => {
       if (await txn.get("record")) return;
@@ -70,7 +73,6 @@ export class AdminAuthState {
       created = true;
     });
     if (!created) return json(409, { error: "transaction_exists" });
-    await this.state.storage.setAlarm(record.expiresAt);
     return json(201, { ok: true });
   }
 
@@ -117,6 +119,8 @@ export class AdminAuthState {
       createdAt: body.createdAt,
       expiresAt: body.expiresAt,
     };
+    // Schedule cleanup before persisting so a crash cannot strand a session.
+    await this.state.storage.setAlarm(record.expiresAt);
     let created = false;
     await this.state.storage.transaction(async (txn) => {
       if (await txn.get("record")) return;
@@ -124,7 +128,6 @@ export class AdminAuthState {
       created = true;
     });
     if (!created) return json(409, { error: "session_exists" });
-    await this.state.storage.setAlarm(record.expiresAt);
     return json(201, { ok: true });
   }
 
