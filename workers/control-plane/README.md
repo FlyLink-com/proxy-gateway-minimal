@@ -53,7 +53,7 @@ Two **isolated, read-only identity proof routes** are present in this source bra
 | `GET /v1/auth/portal/identity` | Portal JWT Access Token, signed RS256 and validated against Portal JWKS | `read:portal_identity` | No mandatory MFA |
 | `GET /v1/auth/admin/identity` | Admin JWT Access Token, signed RS256 and validated against Admin JWKS | `read:admin_identity` | Namespaced completed-MFA claim containing `mfa` |
 
-The Portal route returns only a minimal verified external actor projection, **not** internal account/operator authorization. It never reads/writes D1. The Admin route deliberately returns `503 admin_mfa_orchestration_unavailable` even for a valid JWT until the gateway-owned `mfa_required → mfa-otp` exchange and bound, revocable Admin session proof are implemented; a custom token claim is not accepted as proof because the verified ROPG flow does not emit completed MFA evidence in Access Token claims. Other G3 read/write and G4 Agent routes keep their original separate bearer checks. Missing tenant config or unsuccessful JWKS verification fails closed. Identity endpoints never echo tokens or PII.
+The Portal route returns only a minimal verified external actor projection, **not** internal account/operator authorization. It never reads/writes D1. Admin uses a same-origin Backend-for-Frontend flow: `/v1/auth/admin/login` redirects to Auth0 Universal Login (Authorization Code + PKCE S256); `/v1/auth/admin/callback` validates one-time state, PKCE, ID Token nonce/subject and the verified Access Token MFA claim; `/v1/auth/admin/identity` reads a 15-minute opaque HttpOnly session; `/v1/auth/admin/logout` revokes it. No password/OTP grant or `offline_access` is used. Access/ID tokens are discarded after verification; session and short-lived transaction state live in the dedicated `AdminAuthState` Durable Object, never D1. The two source-only Auth0 Actions must be separately ordered: `auth0-actions/admin-mfa-challenge.js` uses `challengeWith({type:'otp'})`; `admin-mfa-assert.js` runs afterward and emits the signed MFA claim only when `event.authentication.methods` proves OTP completion. These Action templates are not deployed. The local Wrangler config binds the DO for local testing only; no remote namespace, secret, Action or Worker deployment has been created. Other G3 read/write and G4 Agent routes keep their original separate bearer checks. Missing configuration or unsuccessful verification fails closed. Identity/session endpoints never echo tokens or PII.
 
 Required environment bindings (not provisioned in this branch): `AUTH0_PORTAL_ISSUER`, `AUTH0_PORTAL_AUDIENCE`, `AUTH0_PORTAL_ALLOWED_CLIENT_IDS`, `AUTH0_ADMIN_ISSUER`, `AUTH0_ADMIN_AUDIENCE`, `AUTH0_ADMIN_ALLOWED_CLIENT_IDS`, `AUTH0_ADMIN_MFA_CLAIM`. Optional: `AUTH0_MAX_TOKEN_LIFETIME_SECONDS` (60–86400, default 7200). The client allowlists use comma-separated IDs. `AUTH0_ADMIN_MFA_CLAIM` is no longer used; Admin stays unavailable until gateway-owned MFA orchestration and session proof are implemented. The two scopes above are **provisional API-permission identifiers**, not approved or provisioned Auth0 resource configuration.
 
@@ -192,3 +192,21 @@ never deploys.
 - Transaction/binding model: D1 prepared statements and `batch()`
   semantics as validated in the G2 local compatibility spike.
 - G1-30: the formally approved Agent HTTPS, scoped authentication, signed-manifest, local material-resolution and redacted receipt contract. The Worker implementation is still a local synthetic slice; it is not connected to BWH and is not deployed.
+
+
+### Admin Auth0 BFF — source-only implementation
+
+Required local/synthetic environment names (real values are not committed):
+- `AUTH0_ADMIN_ISSUER`
+- `AUTH0_ADMIN_AUDIENCE`
+- `AUTH0_ADMIN_CLIENT_ID`
+- `AUTH0_ADMIN_CLIENT_SECRET` (Worker Secret only; never D1)
+- `AUTH0_ADMIN_ALLOWED_CLIENT_IDS`
+- `AUTH0_ADMIN_REDIRECT_URI` (must be the fixed same-origin `/v1/auth/admin/callback`)
+- `ADMIN_APP_ORIGIN` (must equal the callback origin)
+- `AUTH0_ADMIN_MFA_CLAIM` (the exact HTTPS namespace configured in the second Action)
+- `AUTH0_ADMIN_TX_ENCRYPTION_KEY` (32 random bytes, Base64URL; encrypts PKCE verifier at rest in the short-lived transaction DO)
+
+The initial session is absolute 15 minutes, no sliding renewal, no refresh token, and a fresh interactive login + OTP is required at expiry. The transaction is single-use and expires after 5 minutes. The local Durable Object binding is defined only in `wrangler.control-plane.jsonc`; this is not a remote namespace creation or deployment authorization.
+
+The browser must call the Admin BFF on the same origin as the Admin application. Do not add arbitrary redirect targets or CORS wildcard support. Mutating routes require exact Origin validation. Admin domain/business authorization remains a separate server-side C1/C3 mapping and is not granted by the session itself.
