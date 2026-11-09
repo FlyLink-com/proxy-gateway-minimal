@@ -89,3 +89,22 @@ PR #842 状态：已获 gccltdco-cmd **APPROVED**（review `5817529933`，
 - 对 PR #844 当前精确 Head 发起源码审查；保持 Draft，不自动合并或部署。
 - PR #844 的 R1 文档已按既有 trim-only 政策校正；客户端兼容证明仍待完成。生产登录 hook 与证明窗口持久化仍须单独 Risk A 决策/授权。
 - 真实非生产 Auth0 租户创建、真实用户导入与供应商行为确认仍需 Yi 单独批准；本次“继续”不等于该项授权。
+
+
+## 2026-11-08｜Step 6 真实 Auth0 非生产租户验证补记
+
+本节补充真实供应商行为证据；上文第 6 步“真实租户未执行”是本地验证器最初完成时的历史状态，现已由本节更新。完整、脱敏且不含凭据的证据记录见 `STEP6_REAL_TENANT_VERIFICATION_2026-11-08.md`。
+
+- **真实批量导入：PASS，但发现导入校验浅。** Portal 合成主任务 `job_2Mk5zCWax9LmgUE2` 插入 5/5；故意截断至 32-byte hash、却声明 keylen 64 的坏记录也被 Auth0 接受（1/1），登录时才返回 403 `Password change required.`。导入前 canonical envelope、salt/hash/keylen、算法参数、accountRef 绑定、attestation 与批次完整性校验仍是唯一可靠防线。
+- **Scrypt → bcrypt lazy rehash：PASS，72-byte hazard 坐实。** 80-byte 合成密码首次 Scrypt 登录成功后，仅前 72 bytes 也能登录。C1-D01 >72 UTF-8-byte 用户定向通知重置、禁止截断、重置前不得导入，得到真实供应商证据支持。
+- **R1 trim-only：PASS。** 带首尾空白的原始输入失败，trim 后形式成功；Auth0 不自动执行旧系统 trim。已批准的 trim-only 必须在每个支持的客户端/路径进入 Auth0 前完成。
+- **真实 JWKS / 双租户隔离：PASS。** Portal/Admin 的真实 RS256 id_token 各自通过本租户 JWKS 验签，跨租户双向拒绝；Portal 合成用户在 Admin 用户库查询为 0。
+- **Admin MFA：PASS。** all-applications 策略下未绑定用户被 `mfa_required` 拦截；`/mfa/associate` + `mfa-otp` 自助绑定与登录流程通过。错码及同窗口重放被拒，新窗口码成功；重放防护为本次时序观察支持的结论。Portal 仍保持 T1 自愿 MFA。
+- 租户均为 DEVELOPMENT 非生产租户，使用 `example.test` 合成用户；未升级付费套餐。Default App client_secret 已轮换，短期 Management API token 与本地会话秘密已按记录清理；仓库不保存凭据。
+
+### 状态修正
+
+- C1 不再以“真实 Auth0 Provider 行为未验证”作为阻塞项；Step 6 的真实非生产供应商行为验证通过。
+- C1 整体仍 OPEN：Admin R1 修复仍在 Draft child PR #848；Cloudflare Gateway OIDC/JWKS adapter 与业务域授权集成、生产证明窗口、真实用户迁移/批次对账、生产租户决策、Hosted Login UX/邮件配置尚未完成。
+- Browser / Android 已有 trim-only 源码与测试证据；Admin 修复位于 PR #848，尚未精确 Head review / 集成。故 `edgeWhitespace=true` cohort 继续 fail-closed。
+- T2 仍 BLOCKED / NOT READY；不启动 T3 target DDL 或 G6 migration rehearsal。BWH 仍是唯一生产控制数据写入权威。
