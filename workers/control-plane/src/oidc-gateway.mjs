@@ -106,7 +106,8 @@ function validJwk(jwk) {
   if (jwk.key_ops !== undefined && (!Array.isArray(jwk.key_ops) || jwk.key_ops.length !== 1 || jwk.key_ops[0] !== 'verify')) deny();
   const n = b64url(jwk.n, 1500);
   const e = b64url(jwk.e, 12);
-  if (n.length < 256 || n.length > 1024 || e.length < 1 || e.length > 4 || (e[e.length - 1] & 1) === 0) deny();
+  const exponent = e.reduce((number, byte) => number * 256 + byte, 0);
+  if (n.length < 256 || n.length > 1024 || e.length < 1 || e.length > 4 || exponent < 3 || (exponent & 1) === 0) deny();
 }
 async function fetchJwks(issuer, fetcher) {
   const response = await fetcher(`${issuer}.well-known/jwks.json`, { method: 'GET', redirect: 'error', headers: { accept: 'application/json' } });
