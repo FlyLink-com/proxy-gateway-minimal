@@ -251,3 +251,66 @@ test("Worker routes expose the Admin BFF and preserve Portal route separation", 
   }), e);
   assert.equal(crossOriginLogout.status, 403);
 });
+
+
+test("callback rejects a nonce mismatch and never creates an Admin session", async () => {
+  const e = env();
+  const start = await startAdminLogin(new Request("https://admin.example.test/v1/auth/admin/login", {
+    headers: { origin: "https://admin.example.test" },
+  }), e);
+  const authorize = new URL(start.headers.get("location"));
+  const state = authorize.searchParams.get("state");
+  const cookie = cookieValue(start, "__Host-flylink_admin_oauth_state");
+  const accessToken = jwt({
+    iss: issuer, sub: "auth0|synthetic-admin", aud: audience, azp: clientId,
+    scope: "read:admin_identity", iat: nowS, exp: nowS + 600,
+    [claimUri]: { method: "otp", completed_at: new Date(now).toISOString() },
+  });
+  const idToken = jwt({
+    iss: issuer, sub: "auth0|synthetic-admin", aud: clientId, azp: clientId,
+    nonce: "wrong-nonce", iat: nowS, exp: nowS + 600, auth_time: nowS,
+  });
+  const fetcher = async (url) => url === issuer + "oauth/token"
+    ? new Response(JSON.stringify({ token_type: "Bearer", expires_in: 600, access_token: accessToken, id_token: idToken }))
+    : jwksResponse();
+  const callback = await completeAdminLogin(new Request(
+    `https://admin.example.test/v1/auth/admin/callback?code=code&state=${state}`,
+    { headers: { cookie: `__Host-flylink_admin_oauth_state=${cookie}` } },
+  ), e, { fetcher, now });
+  assert.equal(callback.status, 302);
+  assert.equal(cookieValue(callback, "__Host-flylink_admin_session"), null);
+});
+
+test("unexpected Refresh Token is revoked and cannot create an Admin session", async () => {
+  const e = env();
+  const start = await startAdminLogin(new Request("https://admin.example.test/v1/auth/admin/login", {
+    headers: { origin: "https://admin.example.test" },
+  }), e);
+  const authorize = new URL(start.headers.get("location"));
+  const state = authorize.searchParams.get("state");
+  const cookie = cookieValue(start, "__Host-flylink_admin_oauth_state");
+  let revoked = false;
+  const fetcher = async (url, init) => {
+    if (url === issuer + "oauth/token") {
+      return new Response(JSON.stringify({
+        token_type: "Bearer", expires_in: 600,
+        access_token: "synthetic-access", id_token: "synthetic-id",
+        refresh_token: "synthetic-refresh-token",
+      }));
+    }
+    if (url === issuer + "oauth/revoke") {
+      const form = new URLSearchParams(init.body);
+      assert.equal(form.get("token"), "synthetic-refresh-token");
+      revoked = true;
+      return new Response(null, { status: 200 });
+    }
+    throw new Error("unexpected provider endpoint");
+  };
+  const callback = await completeAdminLogin(new Request(
+    `https://admin.example.test/v1/auth/admin/callback?code=code&state=${state}`,
+    { headers: { cookie: `__Host-flylink_admin_oauth_state=${cookie}` } },
+  ), e, { fetcher, now });
+  assert.equal(callback.status, 302);
+  assert.equal(revoked, true);
+  assert.equal(cookieValue(callback, "__Host-flylink_admin_session"), null);
+});
