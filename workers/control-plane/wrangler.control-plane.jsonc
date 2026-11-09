@@ -9,7 +9,15 @@
   "name": "flylink-control-plane",
   "main": "src/index.mjs",
   "compatibility_date": "2025-06-01",
-  "durable_objects": {\n    "bindings": [\n      { "name": "ADMIN_AUTH_STATE", "class_name": "AdminAuthState" }\n    ]\n  },\n  "migrations": [\n    { "tag": "v1-admin-auth-state", "new_sqlite_classes": ["AdminAuthState"] }\n  ],\n  "d1_databases": [
+  "durable_objects": {
+    "bindings": [
+      { "name": "ADMIN_AUTH_STATE", "class_name": "AdminAuthState" }
+    ]
+  },
+  "migrations": [
+    { "tag": "v1-admin-auth-state", "new_sqlite_classes": ["AdminAuthState"] }
+  ],
+  "d1_databases": [
     {
       "binding": "CONTROL_DB",
       "database_name": "flylink-control-dev",
