@@ -89,3 +89,16 @@ PR #842 状态：已获 gccltdco-cmd **APPROVED**（review `5817529933`，
 - 对 PR #844 当前精确 Head 发起源码审查；保持 Draft，不自动合并或部署。
 - PR #844 的 R1 文档已按既有 trim-only 政策校正；客户端兼容证明仍待完成。生产登录 hook 与证明窗口持久化仍须单独 Risk A 决策/授权。
 - 真实非生产 Auth0 租户创建、真实用户导入与供应商行为确认仍需 Yi 单独批准；本次“继续”不等于该项授权。
+
+
+## 2026-11-09｜R1 三端密码归一化源码证据补记
+
+本补记更新 §五第 3 项“客户端兼容证明仍待完成”的当前进度，不覆盖 2026-11-08 历史状态。
+
+- **Browser Portal：源码已证实。** `user-portal-parsers.ts` 的 `requiredText()` 使用 JavaScript `String(value ?? "").trim()`；`user-portal-http.ts` 的注册与密码登录都在构造请求前调用该 helper。PR #848 补强密码登录的 edge-whitespace 回归。
+- **Android Portal：源码与测试已证实。** Android main 精确 commit `c19d5bf57388b427a5e8248d838cbf3e87b39d47`；`PortalRepository.login()` 在请求前调用与 ECMAScript trim 集合对齐的 `normalizedLoginPassword()`，注册也复用同一 helper。测试 `AccountLoginAttemptTest.edgeWhitespaceMatchesServerWithoutChangingPasswordInterior` 覆盖边缘空白与内部字符保留。
+- **Admin：已提交修复候选。** 原 `admin-auth-client.ts` 曾将原始密码直接传给登录 API；PR #848 的 Draft child branch `fix/c1-admin-preauth-trim-20261109` 在提交前执行 `String.trim()`、空白归一后拒绝，并保持原始输入 4096 字符上限。新增测试覆盖 FEFF/NBSP/Tab/全角空格等边缘空白、内部 FEFF 保留和空白输入不发请求。
+- PR [#848](https://github.com/FlyLink-com/proxy-gateway-minimal/pull/848) 当前 Draft，head `f3e9619fcb439feda2fb9a26163a328f30eea310`；已请求 `gccltdco-cmd` 对精确 Head 审查。focused Node v22.16.0 直接执行 Admin client 通过。全仓 Vitest 与 Android Gradle 套件尚未重跑；不声称 Hosted CI PASS。
+- **Gate 口径：部分完成，仍不关闭。** Browser 与 Android 已有主线源码/测试证据；Admin 修复仍在 Draft，未合并、未进入未来 Auth0 登录路径。因此 `edgeWhitespace=true` cohort 继续在 Auth0 导入验证器中 fail-closed 暂缓，不能提前改为 importable。
+
+本轮没有创建 Auth0 tenant、导入真实用户、处理真实密码/TOTP、接入生产登录证明窗口、连接 BWH、写入远程 D1、部署或切换生产认证。
