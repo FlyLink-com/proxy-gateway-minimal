@@ -139,7 +139,8 @@ Security basis:
 | Provider refresh silently extending MFA | No offline_access requested; Refresh Token rejected/revoked if unexpectedly returned; no refresh endpoint | Source; provider integration test outstanding |
 | DO state compromise | Store only encrypted PKCE verifier/nonce transaction and minimal actor/session metadata; no provider tokens; dedicated Worker encryption secret | Source design; remote secret custody not provisioned |
 | Auth0 Action bypass / factor not enrolled | Action denies non-approved client, refresh grant, absent OTP enrollment, missing MFA method | Source template only; separate Action deployment approval required |
-| Auth0 outage / JWKS propagation | Bounded JWKS cache, single-flight refresh, unknown-kid cooldown; fail closed | Existing synthetic tests; hosted provider integration pending |\n| Login initiation / transaction allocation abuse | Auth0 bot protection plus edge rate limit for the fixed Admin login path; 5-minute transaction TTL and DO alarm cleanup | Edge rate-limit rule not configured; must be verified before shared enablement |
+| Auth0 outage / JWKS propagation | Bounded JWKS cache, single-flight refresh, unknown-kid cooldown; fail closed | Existing synthetic tests; hosted provider integration pending |
+| Login initiation / transaction allocation abuse | Auth0 bot protection plus edge rate limit for the fixed Admin login path; 5-minute transaction TTL and DO alarm cleanup | Edge rate-limit rule not configured; must be verified before shared enablement |
 
 Residual risks that block Admin enablement:
 1. The exact DEVELOPMENT tenant must prove Universal Login Authorization Code + PKCE, two-Action ordering, first-login MFA completion, and Access Token custom claim emission. The earlier ROPG test is not evidence for this hosted flow.
