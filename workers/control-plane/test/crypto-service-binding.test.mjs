@@ -151,7 +151,7 @@ test("missing Service Binding or incomplete key custody fails closed", async (t)
   assert.equal(unavailable.status, 503);
   assert.equal(noBinding.serviceCalls, 0);
 
-  const missingRing = await createPair({ cryptoSecretOverrides: { PII_HMAC_KEYRING_JSON: undefined } });
+  const missingRing = await createPair({ cryptoSecretOverrides: { PII_HMAC_KEYRING_JSON: "" } });
   t.after(() => missingRing.dispose());
   const failed = await missingRing.callerMf.dispatchFetch(
     "http://caller.local/__test/crypto",
