@@ -187,14 +187,17 @@ export function createAdminAuthClient(options?: {
 
     async login(input, signal) {
       if (input.operatorRef !== undefined && !isSafeRef(input.operatorRef)) fail("invalid");
-      if (typeof input.password !== "string") fail("invalid");
-      if (input.password.length < 1 || input.password.length > 4096) fail("invalid");
+      if (typeof input.password !== "string" || input.password.length > 4096) fail("invalid");
+      // Preserve the legacy password contract before any hosted identity provider
+      // sees the value: trim ECMAScript edge whitespace only; keep the interior.
+      const normalizedPassword = input.password.trim();
+      if (!normalizedPassword) fail("invalid");
       const response = await requestJson(fetcher, "/api/admin-auth/login", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           operatorRef: input.operatorRef,
-          bootstrapToken: input.password,
+          bootstrapToken: normalizedPassword,
         }),
         signal,
       });
