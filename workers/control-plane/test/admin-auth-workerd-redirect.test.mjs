@@ -130,7 +130,7 @@ async function createRuntime() {
       },
     ],
   });
-  return { mf, idp: await mf.getWorker("idp") };
+  return { mf, control: await mf.getWorker("control-plane"), idp: await mf.getWorker("idp") };
 }
 
 async function setIdpMode(idp, mode) {
@@ -142,8 +142,8 @@ async function setIdpMode(idp, mode) {
   assert.equal(response.status, 200);
 }
 
-async function beginAdminCallback(mf, idp, mode) {
-  const start = await mf.dispatchFetch(appOrigin + "/v1/auth/admin/login", {
+async function beginAdminCallback(control, idp, mode) {
+  const start = await control.fetch(appOrigin + "/v1/auth/admin/login", {
     headers: { origin: appOrigin },
   });
   assert.equal(start.status, 302);
@@ -157,7 +157,7 @@ async function beginAdminCallback(mf, idp, mode) {
   const callbackUrl = appOrigin + "/v1/auth/admin/callback?code=synthetic-auth-code"
     + "&state=" + encodeURIComponent(state)
     + "&iss=" + encodeURIComponent(issuer);
-  return mf.dispatchFetch(callbackUrl, {
+  return control.fetch(callbackUrl, {
     headers: { cookie: "__Host-flylink_admin_oauth_state=" + match[1] },
   });
 }
@@ -169,9 +169,9 @@ async function idpState(idp) {
 }
 
 test("workerd authorization-code exchange receives 3xx and existing !ok handling fails closed", async () => {
-  const { mf, idp } = await createRuntime();
+  const { mf, control, idp } = await createRuntime();
   try {
-    const callback = await beginAdminCallback(mf, idp, "token-redirect");
+    const callback = await beginAdminCallback(control, idp, "token-redirect");
     assert.equal(callback.status, 302);
     assert.equal(callback.headers.get("location"), appOrigin);
     const state = await idpState(idp);
@@ -184,10 +184,10 @@ test("workerd authorization-code exchange receives 3xx and existing !ok handling
 });
 
 test("workerd JWKS fetch receives 3xx and existing !ok handling denies the token", async () => {
-  const { mf, idp } = await createRuntime();
+  const { mf, control, idp } = await createRuntime();
   try {
     await setIdpMode(idp, "jwks-redirect");
-    const response = await mf.dispatchFetch("https://portal.example.test/v1/auth/portal/identity", {
+    const response = await control.fetch("https://portal.example.test/v1/auth/portal/identity", {
       headers: { authorization: "Bearer " + signedPortalToken() },
     });
     assert.equal(response.status, 401);
@@ -201,9 +201,9 @@ test("workerd JWKS fetch receives 3xx and existing !ok handling denies the token
 });
 
 test("workerd unexpected Refresh Token revocation receives 3xx and fails closed", async () => {
-  const { mf, idp } = await createRuntime();
+  const { mf, control, idp } = await createRuntime();
   try {
-    const callback = await beginAdminCallback(mf, idp, "refresh-token");
+    const callback = await beginAdminCallback(control, idp, "refresh-token");
     assert.equal(callback.status, 302);
     assert.equal(callback.headers.get("location"), appOrigin);
     const state = await idpState(idp);
