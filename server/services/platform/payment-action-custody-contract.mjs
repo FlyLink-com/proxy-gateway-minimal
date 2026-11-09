@@ -6,6 +6,13 @@ const ACTION_TYPES = new Set(["redirect_url", "qr_payload"]);
 const ACTIVE_ORDER_STATES = new Set(["entry_ready", "pending"]);
 const TERMINAL_STATES = new Set(["consumed", "expired", "revoked"]);
 const MAX_ACTION_BYTES = 4096;
+const RECORD_KEYS = Object.freeze([
+  "schemaVersion", "orderRef", "accountRef", "actionRef", "actionType", "status",
+  "createdAt", "expiresAt", "actionEnvelope", "terminalAt", "purgeAfter"
+].sort());
+const ACTION_ENVELOPE_KEYS = Object.freeze([
+  "schemaVersion", "keyId", "nonce", "ciphertext", "tag"
+].sort());
 
 function fail(code) {
   const error = new Error(code);
@@ -60,14 +67,15 @@ function requireRawValue(value, actionType) {
   return value;
 }
 
-function associatedData(record) {
+function associatedData(record, keyId) {
   return Buffer.from(JSON.stringify([
     SCHEMA_VERSION,
     record.orderRef,
     record.accountRef,
     record.actionRef,
     record.actionType,
-    record.expiresAt
+    record.expiresAt,
+    keyId
   ]), "utf8");
 }
 
@@ -83,10 +91,19 @@ function decodeCanonical(value, expectedBytes, code) {
   return decoded;
 }
 
+function requireExactKeys(value, expected, code) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw fail(code);
+  const keys = Object.keys(value).sort();
+  if (keys.length !== expected.length || keys.some((key, index) => key !== expected[index])) {
+    throw fail(code);
+  }
+}
+
 function requireRecord(record) {
   if (!record || typeof record !== "object" || Array.isArray(record)) {
     throw fail("payment_action_record_invalid");
   }
+  requireExactKeys(record, RECORD_KEYS, "payment_action_record_invalid");
   if (record.schemaVersion !== SCHEMA_VERSION) throw fail("payment_action_schema_version_invalid");
   requireRef(record.orderRef);
   requireRef(record.accountRef);
@@ -103,16 +120,29 @@ function requireRecord(record) {
   if (record.status === "active") {
     if (
       !record.actionEnvelope
-      || record.actionEnvelope.schemaVersion !== SCHEMA_VERSION
       || record.terminalAt !== null
       || record.purgeAfter !== null
     ) {
       throw fail("payment_action_record_invalid");
     }
+    requireExactKeys(record.actionEnvelope, ACTION_ENVELOPE_KEYS, "payment_action_envelope_invalid");
+    if (record.actionEnvelope.schemaVersion !== SCHEMA_VERSION) {
+      throw fail("payment_action_record_invalid");
+    }
+    requireRef(record.actionEnvelope.keyId, "payment_action_key_id_invalid");
+    decodeCanonical(record.actionEnvelope.nonce, 12, "payment_action_envelope_invalid");
+    const ciphertext = decodeCanonical(record.actionEnvelope.ciphertext, null, "payment_action_envelope_invalid");
+    if (ciphertext.length < 1 || ciphertext.length > MAX_ACTION_BYTES) {
+      throw fail("payment_action_envelope_invalid");
+    }
+    decodeCanonical(record.actionEnvelope.tag, 16, "payment_action_envelope_invalid");
   } else {
     if (record.actionEnvelope !== null) throw fail("payment_action_record_invalid");
     const terminalAt = requireTimestamp(record.terminalAt);
     const purgeAfter = requireTimestamp(record.purgeAfter);
+    if (Date.parse(terminalAt) < Date.parse(record.createdAt)) {
+      throw fail("payment_action_terminal_time_invalid");
+    }
     if (Date.parse(purgeAfter) <= Date.parse(terminalAt)) {
       throw fail("payment_action_purge_time_invalid");
     }
@@ -161,7 +191,7 @@ export function createPaymentActionRecord({
     expiresAt: expiry
   };
   const cipher = createCipheriv("aes-256-gcm", keyBytes, nonceBytes);
-  cipher.setAAD(associatedData(recordBase));
+  cipher.setAAD(associatedData(recordBase, keyId));
   const ciphertext = Buffer.concat([
     cipher.update(Buffer.from(value, "utf8")),
     cipher.final()
@@ -215,7 +245,7 @@ export function resolvePaymentActionRecord({
   const tag = decodeCanonical(record.actionEnvelope.tag, 16, "payment_action_envelope_invalid");
   try {
     const decipher = createDecipheriv("aes-256-gcm", keyBytes, nonce);
-    decipher.setAAD(associatedData(record));
+    decipher.setAAD(associatedData(record, record.actionEnvelope.keyId));
     decipher.setAuthTag(tag);
     const plaintext = Buffer.concat([decipher.update(ciphertext), decipher.final()]);
     return plaintext.toString("utf8");
@@ -233,6 +263,9 @@ export function transitionPaymentActionRecord(record, {
   if (!TERMINAL_STATES.has(nextStatus)) throw fail("payment_action_terminal_state_invalid");
   const terminalAt = requireTimestamp(at);
   const purgeAt = requireTimestamp(purgeAfter);
+  if (Date.parse(terminalAt) < Date.parse(record.createdAt)) {
+    throw fail("payment_action_terminal_time_invalid");
+  }
   if (Date.parse(purgeAt) <= Date.parse(terminalAt)) throw fail("payment_action_purge_time_invalid");
   if (record.status !== "active") {
     if (record.status === nextStatus) return record;
