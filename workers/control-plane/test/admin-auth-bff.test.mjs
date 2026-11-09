@@ -2,7 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createSign, createHash, generateKeyPairSync, webcrypto, randomBytes } from "node:crypto";
 import { AdminAuthState } from "../src/admin-auth-state.mjs";
-import { startAdminLogin, completeAdminLogin, getAdminSession, logoutAdminSession } from "../src/admin-auth.mjs";\nimport worker from "../src/index.mjs";
+import { startAdminLogin, completeAdminLogin, getAdminSession, logoutAdminSession } from "../src/admin-auth.mjs";
+import worker from "../src/index.mjs";
 
 globalThis.crypto ??= webcrypto;
 const encoder = new TextEncoder();
