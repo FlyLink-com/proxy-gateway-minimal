@@ -180,3 +180,20 @@ The same 14-case synthetic suite was repeated under Node v22.23.1:
 - Run 2 TAP SHA-256: `e114c94e4dcbc82447acac5bbf66d9b30505450c1c9954f4be3165a58ed912e9`.
 
 Together with Section 11, this is two consecutive 14/14 passes. The two JavaScript files also passed `node --check` on the first run.
+
+
+## 2026-11-09｜Synthetic payment-action contract hardening
+
+The provider-neutral synthetic contract received three fail-closed improvements:
+
+1. AES-GCM authenticated additional data now includes the envelope `keyId`, preventing a key-ID substitution from succeeding even if two IDs temporarily resolve to identical key bytes.
+2. Active records and action envelopes require exact key sets; canonical nonce/ciphertext/tag encoding and the 4096-byte ciphertext bound are checked before pointer projection or resolution. Extra raw-value fields are rejected.
+3. Terminal timestamps cannot precede action creation; persisted tombstones enforce the same chronology and the existing `purgeAfter > terminalAt` rule.
+
+Evidence on exact source/test blobs in the #846 branch:
+
+- Contract source commit `efb99f751d0391e65788944fdd1f0a3db7fd45b4`, blob `611d3e352873a3800cd0e141dd64f36a9e26e000`.
+- Regression test commit `0f7e2a7db88916b6ecb96e3916e98d613b49767b`, blob `973ebe4147ad181f85e9d74dcf5815bce199653f`.
+- Node v22.23.1 isolated synthetic sandbox: 17/17 PASS twice; 0 failed / 0 skipped; `node --check` PASS.
+
+The exact blobs were hash-checked in the isolated sandbox before execution. This remains a pure in-memory contract: no Durable Object namespace, storage adapter, secret binding, key, resolver route, or D1 pointer write was created. The C4 proposal still requires explicit owner approval for the DO class/namespace, key custody/rotation, provider TTL and tombstone window, authenticated resolver, and recovery operations.
