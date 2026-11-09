@@ -144,7 +144,7 @@ export class AdminAuthState {
       await this.state.storage.deleteAlarm();
       return json(401, { error: "session_invalid" });
     }
-    return json(200, { actor: record.actor, mfaVerifiedAt: record.mfaVerifiedAt, authTime: record.authTime, expiresAt: record.expiresAt });
+    return json(200, { actor: record.actor, mfaVerifiedAt: record.mfaVerifiedAt, mfaFresh: now - record.mfaVerifiedAt <= 5 * 60 * 1000, authTime: record.authTime, expiresAt: record.expiresAt });
   }
 
   async revokeSession() {
