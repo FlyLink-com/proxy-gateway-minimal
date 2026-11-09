@@ -144,7 +144,10 @@ async function setIdpMode(idp, mode) {
 
 async function beginAdminCallback(control, idp, mode) {
   const start = await control.fetch(appOrigin + "/v1/auth/admin/login", {
-    headers: { origin: appOrigin },
+    headers: {
+      origin: appOrigin,
+      "sec-fetch-site": "same-origin",
+    },
   });
   assert.equal(start.status, 302);
   const authorize = new URL(start.headers.get("location"));
