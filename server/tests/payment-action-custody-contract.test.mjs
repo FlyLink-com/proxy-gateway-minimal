@@ -102,6 +102,50 @@ test("authenticated additional data prevents record-binding tampering", () => {
   }), /payment_action_authentication_failed/);
 });
 
+test("authenticated additional data binds the action key id", () => {
+  const record = createRecord();
+  const aliasKeyring = new Map([
+    [KEY_ID, KEY],
+    ["synthetic-key-alias-v1", KEY]
+  ]);
+  const tampered = Object.freeze({
+    ...record,
+    actionEnvelope: Object.freeze({
+      ...record.actionEnvelope,
+      keyId: "synthetic-key-alias-v1"
+    })
+  });
+  assert.throws(() => resolvePaymentActionRecord({
+    record: tampered,
+    keyring: aliasKeyring,
+    accountRef: record.accountRef,
+    orderRef: record.orderRef,
+    actionRef: record.actionRef,
+    orderStatus: "pending",
+    now: NOW
+  }), /payment_action_authentication_failed/);
+});
+
+test("rejects extra record or action-envelope fields", () => {
+  const record = createRecord();
+  const withExtraRecordField = { ...record, rawValue: RAW_URL };
+  const withExtraEnvelopeField = {
+    ...record,
+    actionEnvelope: { ...record.actionEnvelope, rawValue: RAW_URL }
+  };
+  assert.throws(() => projectPaymentActionPointer(withExtraRecordField), /payment_action_record_invalid/);
+  assert.throws(() => projectPaymentActionPointer(withExtraEnvelopeField), /payment_action_envelope_invalid/);
+});
+
+test("rejects terminal timestamps earlier than action creation", () => {
+  const record = createRecord();
+  assert.throws(() => transitionPaymentActionRecord(record, {
+    nextStatus: "revoked",
+    at: "2026-11-08T11:59:59.999Z",
+    purgeAfter: PURGE_AFTER
+  }), /payment_action_terminal_time_invalid/);
+});
+
 test("fails closed when the envelope key id is unavailable", () => {
   const record = createRecord();
   assert.throws(() => resolvePaymentActionRecord({
