@@ -147,12 +147,13 @@ async function readJsonBounded(response, maxBytes) {
 async function revokeUnexpectedRefreshToken(cfg, token, fetcher) {
   const form = new URLSearchParams({ client_id: cfg.clientId, client_secret: cfg.clientSecret, token });
   try {
-    await fetcher(`${cfg.issuer}oauth/revoke`, {
+    const response = await fetcher(`${cfg.issuer}oauth/revoke`, {
       method: "POST", redirect: "error",
       headers: { "content-type": "application/x-www-form-urlencoded" },
       body: form.toString(),
     });
-  } catch { /* Do not log token or provider response. */ }
+    return response.ok;
+  } catch { /* Do not log token or provider response. */ return false; }
 }
 
 export async function startAdminLogin(request, env, { now = Date.now() } = {}) {
