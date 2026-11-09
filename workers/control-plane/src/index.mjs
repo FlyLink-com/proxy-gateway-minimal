@@ -31,7 +31,7 @@ import {
   CHALLENGE_TTL_MS,
 } from "./repositories/challenge-repository.mjs";
 import { handleAgentDesiredState, handleAgentReceipt } from "./agent-protocol.mjs";
-import { handleAuth0IdentityProof } from "./oidc-gateway.mjs";
+import { handleAuth0IdentityProof } from "./oidc-gateway.mjs";\nimport { AdminAuthState } from "./admin-auth-state.mjs";\nimport { startAdminLogin, completeAdminLogin, getAdminSession, logoutAdminSession } from "./admin-auth.mjs";
 
 const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 100;
