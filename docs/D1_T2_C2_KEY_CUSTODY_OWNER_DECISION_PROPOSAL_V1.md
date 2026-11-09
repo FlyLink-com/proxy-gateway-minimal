@@ -120,3 +120,18 @@ Not included in this approval:
 The synthetic escrow contract has passed 10/10 twice under Node v22.23.1. This is a synthetic envelope test, not a real external backup or recovery drill. C2 remains OPEN until the remaining implementation, domain approvals, recovery proof and independent review gates pass.
 
 BWH remains the only production control-data writer.
+
+## 10. Owner decision — Cloudflare-native online custody and offline 2-of-3 escrow
+
+On 2026-11-08, the project owner approved the concrete C2 route:
+
+- Online runtime secrets: Cloudflare per-Worker Secrets, bound only to the dedicated Crypto Worker. No separate GCP, AWS, Azure, or other KMS cloud account will be created for this requirement.
+- Internal calls: private Worker Service Binding only, after caller identity and domain authorization. No public crypto endpoint and no raw key return.
+- Offline recovery: AES-256-GCM encrypted key envelope plus a unique 256-bit recovery KEK per envelope, split using Shamir Secret Sharing with a 2-of-3 threshold.
+- The encrypted envelope and metadata-only manifest are held in two independent offline physical locations. Three distinct named custodians hold one share each; no person holds two shares.
+- Cloudflare Secrets Store remains unnecessary unless a real multi-Worker sharing requirement is demonstrated; it is not an HSM/KMS.
+- The existing synthetic escrow helper remains synthetic-only. A vetted, pinned Shamir implementation and a separately reviewed offline utility must pass synthetic threshold/recovery tests before any real key is generated.
+
+The implementation and operational boundaries are specified in [D1_T2_C2_OFFLINE_ESCROW_RUNBOOK_V1.md](D1_T2_C2_OFFLINE_ESCROW_RUNBOOK_V1.md). This decision selects the architecture, not the Shamir software, individual custodians, physical custody locations, or real provisioning.
+
+No real key, recovery KEK, share, Cloudflare secret, binding, Worker deployment, external account, D1 mutation, BWH access, or production operation is authorized. C2 remains OPEN pending the runbook acceptance gates, domain-owner approvals, and independent review. BWH remains the only production control-data writer.
