@@ -151,3 +151,17 @@ The C2 target architecture is approved. The external provider, account, named cu
 - Azure Key Vault key operations and non-exportability: https://learn.microsoft.com/en-us/azure/key-vault/keys/about-keys-details
 - Azure Key Vault recovery and purge protection: https://learn.microsoft.com/en-us/azure/key-vault/general/key-vault-recovery
 - HashiCorp Vault Transit: https://developer.hashicorp.com/vault/docs/secrets/transit
+
+## 10. Superseding owner decision — offline 2-of-3 escrow selected — 2026-11-08
+
+This document remains a historical source-only comparison of managed KMS/HSM and offline options. The project owner has since selected **offline encrypted escrow with 2-of-3 recovery** as the C2 implementation route because no independent key-custody cloud account is available and a new cloud account is not required for this project.
+
+Consequences:
+
+- Google Cloud KMS, AWS KMS, Azure Key Vault/Managed HSM, and HashiCorp Vault Transit are not selected. No account or provider resource will be created for this requirement.
+- Cloudflare per-Worker Secrets provide online runtime secret custody for the dedicated Crypto Worker. They are not described as an HSM/KMS and do not replace independent recovery.
+- Each runtime key envelope is wrapped with AES-256-GCM under a unique 256-bit recovery KEK. The KEK is split with a vetted Shamir Secret Sharing implementation using a 2-of-3 threshold.
+- The encrypted envelope and metadata-only manifest are stored in two independent offline physical locations. Three distinct named custodians hold one share each.
+- The concrete Shamir tool/version/hash, named custodians, and physical custody locations remain OPEN. The synthetic escrow contract is not a production key-management utility.
+
+Use [D1_T2_C2_OFFLINE_ESCROW_RUNBOOK_V1.md](D1_T2_C2_OFFLINE_ESCROW_RUNBOOK_V1.md) as the current implementation and acceptance contract. This superseding decision does not authorize real key generation, share creation, Cloudflare secret provisioning, binding creation, deployment, BWH access, D1 mutation, or production cutover. C2 remains OPEN; T2 remains BLOCKED; BWH remains the only production control-data writer.
