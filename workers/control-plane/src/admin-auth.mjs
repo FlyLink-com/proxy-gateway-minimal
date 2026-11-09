@@ -21,7 +21,8 @@ function b64url(bytes) {
 }
 function decodeB64url(value) {
   if (typeof value !== "string" || !/^[A-Za-z0-9_-]+$/.test(value)) throw new Error("invalid_encoding");
-  const normalized = value.replace(/-/g, "+").replace(/_/g, "/");\n  const binary = atob(normalized + "=".repeat((4 - (normalized.length % 4)) % 4));
+  const normalized = value.replace(/-/g, "+").replace(/_/g, "/");
+  const binary = atob(normalized + "=".repeat((4 - (normalized.length % 4)) % 4));
   const bytes = Uint8Array.from(binary, c => c.charCodeAt(0));
   if (b64url(bytes) !== value) throw new Error("invalid_encoding");
   return bytes;
