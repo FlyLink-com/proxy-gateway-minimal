@@ -196,6 +196,13 @@ async function dispatchAdminCallback(mf, control, idp, mode, txKey) {
   });
 }
 
+function assertAdminSessionNotIssued(response) {
+  const values = response.headers.getSetCookie?.() ?? [response.headers.get("set-cookie") ?? ""];
+  const raw = values.join(", ");
+  assert.match(raw, /__Host-flylink_admin_session=;\\s*Path=\\/;\\s*Max-Age=0\\b/);
+  assert.doesNotMatch(raw, /__Host-flylink_admin_session=[^;,\\s]+;/);
+}
+
 async function idpState(idp) {
   const response = await idp.fetch("http://idp/__test/state");
   assert.equal(response.status, 200);
@@ -211,7 +218,7 @@ test("workerd authorization-code exchange receives 3xx and existing !ok handling
     const state = await idpState(idp);
     assert.equal(state.calls.token, 1);
     assert.equal(state.calls.followedRedirect, 0);
-    assert.equal(callback.headers.get("set-cookie").includes("__Host-flylink_admin_session="), false);
+    assertAdminSessionNotIssued(callback);
   } finally {
     await mf.dispose();
   }
@@ -245,7 +252,7 @@ test("workerd unexpected Refresh Token revocation receives 3xx and fails closed"
     assert.equal(state.calls.token, 1);
     assert.equal(state.calls.revoke, 1);
     assert.equal(state.calls.followedRedirect, 0);
-    assert.equal(callback.headers.get("set-cookie").includes("__Host-flylink_admin_session="), false);
+    assertAdminSessionNotIssued(callback);
   } finally {
     await mf.dispose();
   }
