@@ -156,7 +156,9 @@ test("Universal Login BFF completes state, PKCE, nonce, Access Token and MFA pro
     if (url === issuer + "oauth/token") {
       assert.equal(init.method, "POST");
       const form = new URLSearchParams(init.body);
-      assert.equal(form.get("client_secret"), "synthetic-client-secret");\n      const verifier = form.get("code_verifier");\n      assert.equal(Buffer.from(createHash("sha256").update(verifier).digest()).toString("base64url"), authorize.searchParams.get("code_challenge"));
+      assert.equal(form.get("client_secret"), "synthetic-client-secret");
+      const verifier = form.get("code_verifier");
+      assert.equal(Buffer.from(createHash("sha256").update(verifier).digest()).toString("base64url"), authorize.searchParams.get("code_challenge"));
       assert.equal(form.get("grant_type"), "authorization_code");
       assert.ok(form.get("code_verifier"));
       return new Response(JSON.stringify({ token_type: "Bearer", expires_in: 600, access_token: accessToken, id_token: idToken }));
@@ -182,7 +184,8 @@ test("Universal Login BFF completes state, PKCE, nonce, Access Token and MFA pro
   const actor = await identity.json();
   assert.equal(actor.actor.subject, "auth0|synthetic-admin");
   assert.equal(actor.actor.surface, "admin");
-  assert.equal(actor.mfaVerifiedAt, now);\n  assert.equal(actor.mfaFresh, true);
+  assert.equal(actor.mfaVerifiedAt, now);
+  assert.equal(actor.mfaFresh, true);
 
   const logout = await logoutAdminSession(new Request("https://admin.example.test/v1/auth/admin/logout", {
     method: "POST",
