@@ -3,13 +3,13 @@
   // This configuration intentionally has no account_id and no remote
   // database_id. It must only ever be used with `wrangler dev --local`,
   // `wrangler d1 ... --local`, or Miniflare. Creating a remote D1 database,
-  // binding a real database_id, or deploying this Worker requires a
+  // binding a real database_id, creating a remote Durable Object namespace, or deploying this Worker requires a
   // separate gate decision (see docs/CLOUDFLARE_D1_DATABASE_EVALUATION.md).
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "flylink-control-plane",
   "main": "src/index.mjs",
   "compatibility_date": "2025-06-01",
-  "d1_databases": [
+  "durable_objects": {\n    "bindings": [\n      { "name": "ADMIN_AUTH_STATE", "class_name": "AdminAuthState" }\n    ]\n  },\n  "migrations": [\n    { "tag": "v1-admin-auth-state", "new_sqlite_classes": ["AdminAuthState"] }\n  ],\n  "d1_databases": [
     {
       "binding": "CONTROL_DB",
       "database_name": "flylink-control-dev",
