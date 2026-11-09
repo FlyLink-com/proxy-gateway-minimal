@@ -82,42 +82,47 @@ The Worker returns a minimal authenticated actor context only: surface, issuer, 
 
 Cloudflare Workers Web Crypto supports RSASSA-PKCS1-v1_5 and JWK import/verification; use the runtime API rather than Node-only crypto. See https://developers.cloudflare.com/workers/runtime-apis/web-crypto/.
 
-## 6. Authorization and Admin MFA — Step 6 provider finding
+## 6. Authorization and Admin MFA — Universal Login BFF contract
 
 Authentication is not business authorization. A valid Portal or Admin Access Token establishes only a verified external principal and token scopes. Domain authorization (account ownership, operator privileges, tenant/business boundaries, and action-specific permissions) must be derived from trusted server-side records and the C1/C3 identity mapping.
 
 Portal:
 - MFA remains voluntary per T1.
-- Portal identity proof does not require an MFA claim.
+- Portal identity proof does not require an MFA claim; its existing bearer-token proof route remains independent.
 
 Admin:
-- Admin login remains MFA-enforced at the Auth0 tenant.
-- The 2026-11-08 non-production provider test conclusively found that the tested password-realm + `mfa-otp` flow first returns `mfa_required`, then issues Access/ID/Refresh Tokens after OTP completion, but the resulting tokens contain neither `amr` nor `acr`.
-- The Post-Login Action ran before OTP completion; `event.authentication.methods` contained only `pwd`. The Action did not rerun with the MFA result after `mfa-otp`. A custom claim emitted by that Action therefore cannot attest MFA completion for this flow.
-- Consequently, an Access Token (with or without a caller-controlled/custom `mfa` claim) proves identity only. The Worker must not treat such a claim as completed MFA evidence.
-- **Fail-closed interim behavior:** `GET /v1/auth/admin/identity` validates the Admin JWT identity contract but returns `503 admin_mfa_orchestration_unavailable` and never returns an Admin actor until gateway-owned MFA orchestration and a bound, revocable session proof exist. This is intentional; do not remove this block merely to make Admin login appear functional.
-- Required future design: the gateway must own the full primary-authentication → `mfa_required` → `mfa-otp` success exchange, correlate the OTP completion to the original authentication transaction, and issue a short-lived gateway session proof bound to the exact issuer, subject, client, token/session context, authentication time, and session identifier. Client input or a token claim alone is never proof.
-- The gateway session design must include transaction expiry, single-use challenge/continuation semantics, replay resistance, brute-force/rate limits, secure secret handling, session TTL, refresh behavior, explicit revocation, and Admin re-authentication for sensitive actions. A design without enforceable revocation/session lifecycle is not ready for Admin authorization.
-- The gateway must not persist plaintext passwords, OTP values, Auth0 `mfa_token`, Access Tokens, or Refresh Tokens in D1 or logs. Any transient handling must be bounded and narrowly scoped; token custody and refresh strategy require separate review.
-- Universal Login hosted-flow Action timing remains unverified; the present provider conclusion is limited to the tested password-realm + `mfa-otp` API chain.
+- **Do not use Resource Owner Password Credentials (ROPG/ROPC) or password-realm grants in the gateway.** RFC 9700 §2.4 says this grant MUST NOT be used: it exposes the resource-owner password to the client and is not designed for multi-step MFA. The previously tested password-realm + `mfa-otp` chain remains provider evidence only, not the implementation architecture.
+- Use Auth0 Universal Login with OpenID Connect Authorization Code + PKCE (S256), confidential BFF token exchange, exact registered redirect URI, `state`, `nonce`, and `prompt=login` / `max_age=0`. The browser is redirected to Auth0; the gateway never receives the user's password or OTP.
+- The Admin tenant Post-Login Action sequence must use the newer `api.authentication.challengeWith({ type: 'otp' })` API in an earlier Action, then a separate subsequent Action must inspect `event.authentication.methods` for a completed `mfa` method with `type: 'otp'`. Auth0 documents that `challengeWith` pauses the login flow so subsequent Actions can observe the MFA result; the older `api.multifactor.enable()` runs MFA after the Action and can omit MFA from the first-login event.
+- The assertion Action may set a namespaced custom Access Token claim containing only `{ method: 'otp', completed_at: '<ISO-8601>' }` after it observes the completed MFA method. The Worker trusts this claim only after validating the Auth0 Access Token signature, issuer, audience, client, scope, and claim timestamp. A caller-supplied claim, ID Token alone, or ROPG token is not proof.
+- The Action must be bound to the approved Admin client only. It must deny access when no OTP factor is enrolled, when the expected MFA method is absent, or when the transaction is an OAuth refresh-token grant. Initial factor enrollment is a separate owner-controlled onboarding operation; this login flow must not silently bypass MFA.
+- The gateway must verify both the API Access Token and the OIDC ID Token. The Access Token must have the Admin API audience and required scope; the ID Token must have the exact Admin client audience, transaction nonce, issuer, expiry, and matching subject. The MFA custom claim must be on the verified Access Token and have a fresh timestamp.
+- After successful callback validation, the Worker discards Access Token and ID Token and issues a random opaque, HttpOnly, Secure, SameSite=Strict session cookie. The session record contains only minimal actor context, MFA completion time, authentication time, creation time, and expiry. It contains no provider token.
+- **Initial session policy:** absolute TTL 15 minutes, no sliding extension, no Refresh Token request or custody, and re-authentication through Universal Login + OTP when expired. Sensitive actions may require MFA completion within the preceding 5 minutes (step-up policy to be enforced by each sensitive route).
+- Authorization Code transaction state (state hash, nonce, encrypted PKCE verifier, fixed redirect URI, created/expiry times) is held in a single-use Durable Object transaction record with a 5-minute TTL. The PKCE verifier is encrypted with a dedicated Worker secret using AES-GCM and transaction-bound AAD. Callback consumes the transaction atomically before code exchange; replay or expiry fails closed.
+- Admin session state is stored in a separate Durable Object namespace/keyspace, not D1. It is keyed by a hash of the random opaque cookie value; only the cookie value is sent to the browser. Logout explicitly revokes/deletes the state. A Durable Object alarm removes expired transaction/session records.
+- Cookies are host-only (`__Host-` prefix, Secure, HttpOnly, Path=/, no Domain). OAuth state cookie uses SameSite=Lax for the top-level Auth0 callback; authenticated session cookie uses SameSite=Strict. Mutating Admin routes must additionally validate exact Origin and reject cross-site requests.
+- Do not request `offline_access`; do not persist Refresh Tokens, Access Tokens, ID Tokens, authorization codes, passwords, OTP values, or Auth0 `mfa_token` in D1, Durable Object storage, logs, or browser storage. The gateway only transiently handles the authorization code and token response in memory, then discards provider tokens after verification.
+- Auth0 Universal Login + Action-triggered MFA has not yet been exercised in the non-production tenant. The previous password-realm + `mfa-otp` test does not validate this flow. Do not enable Admin session issuance until the actual hosted flow proves the expected MFA claim and the exact Worker callback tests pass.
+- Universal Login first-factor/OTP enrollment bootstrap and lost-factor recovery remain separate procedures and cannot bypass Admin MFA.
 
-Refresh-token finding:
-- The tested non-production applications currently use non-rotating Refresh Tokens. Repeated refresh with the same token succeeds, returns a new Access Token, and does not issue a replacement Refresh Token.
-- Admin MFA is not re-evaluated on Refresh Token grant. Therefore, the gateway must not assume that refresh re-proves MFA. Refresh Token rotation/reuse detection, session expiry, revocation, and step-up policy must be explicitly designed and tested before Admin access is enabled.
+Refresh-token policy:
+- No Refresh Token is requested or retained in the initial BFF design. This avoids relying on the observed non-rotating refresh behavior, where reuse succeeds and MFA is not re-evaluated. Session expiry requires a fresh interactive login and MFA.
+- If a future requirement proposes refresh, it needs a separate threat model, rotation/reuse detection evidence, server-side custody and revocation design, and explicit approval; it must not silently extend MFA assurance.
 
-JWKS rotation finding:
-- Auth0 exposes previous/current/next signing keys. A rotation promotes next to current, demotes current to previous, and stages another next key.
-- Previous remains published during the grace period, so signatures made by the previous key must remain verifiable while that key is present in the trusted JWKS.
-- Newly staged keys may take time to propagate (Admin test observed approximately 75 seconds). The cache/unknown-kid refresh strategy must tolerate propagation without unbounded fetch amplification.
-- Management API deletion of the previous key returned 404 twice in the test. Do not broaden token scopes or retry speculatively. The exact console revocation procedure and API permission/semantics remain a pre-production operational check.
+JWKS rotation:
+- Auth0 previous/current/next key grace and propagation behavior remains as recorded above. The Worker must retain bounded JWKS caching, single-flight refresh, and throttled unknown-kid refresh; test previous-key grace and propagation delays. Management API deletion of previous key returned 404 twice; do not expand scopes or retry speculatively.
 
+Security basis:
+- RFC 9700 §2.4 prohibits ROPC.
+- Auth0 Support (updated 2026-01-13) documents that legacy `api.multifactor.enable()` may run MFA after the current Post-Login Action, while `api.authentication.challengeWith()` triggers MFA at that action boundary so subsequent Actions can observe `event.authentication.methods`.
 ## 7. Worker route boundary
 
 The existing G3 service Bearer tokens (`CONTROL_PLANE_READ_TOKEN` / `CONTROL_PLANE_WRITE_TOKEN`) are service credentials, not user identities. They must remain separate from Auth0 user tokens.
 
 The first integration slice should expose only minimal non-PII identity-proof routes:
 - Portal identity route: Auth0 Portal Access Token, Portal audience/issuer/client allowlist, required Portal scope.
-- Admin identity route: Auth0 Admin Access Token, Admin audience/issuer/client allowlist, required Admin scope and MFA claim.
+- Admin login/callback/session routes: Universal Login Authorization Code + PKCE, verified Admin API Access Token + ID Token nonce/subject binding, MFA claim emitted only by the post-challenge Action, then a short-lived opaque BFF session.
 
 These routes return only the minimal actor context and do not read or write D1. Existing service/Agent routes keep their current auth contract until a separate route-by-route authorization migration is reviewed. Do not globally replace all service Bearer checks with user JWT validation.
 
@@ -133,7 +138,10 @@ These routes return only the minimal actor context and do not read or write D1. 
 - JWKS unavailable, malformed JWKS, duplicate kid, private key member, wrong kty/use/alg/key_ops rejected.
 - Unknown kid causes one refresh; rotated key succeeds after refresh; unknown kid still fails after refresh.
 - Concurrent requests share one JWKS refresh.
-- Admin missing MFA claim rejected; Portal without MFA claim accepted.
+- Admin missing/stale/invalid MFA claim rejected; Portal without MFA claim accepted.
+- Admin Authorization Code callback rejects wrong/missing state, nonce, PKCE, issuer, audience, client, subject, or replayed transaction.
+- Admin session rejects missing, expired, revoked, malformed, or cross-site cookies; logout revokes the session.
+- No Refresh Token is requested, stored, or accepted as proof of fresh MFA.
 - No token or PII is present in error bodies or logs.
 
 ## 9. Non-production provider proof still required
@@ -142,7 +150,7 @@ The existing Step 6 record proves ID Token verification, not this Access Token c
 1. Configure a custom API resource and distinct audience for each non-production surface, plus the approved first-party client allowlist.
 2. Obtain real JWT Access Tokens for each API audience (not ID Tokens and not opaque tokens).
 3. Verify the exact Access Token issuer, audience, azp/client profile, scopes, RS256 header, kid, signature, expiry, and tenant separation.
-4. For Admin, configure and test the namespaced MFA Access Token claim after a completed OTP challenge, including first login and refresh-token renewal behavior.
+4. For Admin, test Universal Login Authorization Code + PKCE with two sequenced Post-Login Actions (`challengeWith` then assertion claim), including first login, enrolled-factor requirements, exact Access Token MFA claim, and refresh-token grant denial. No Refresh Token is requested by the BFF.
 5. Test unknown-kid refresh/key rotation and failure behavior.
 6. Integrate the Worker verifier in local/isolated Miniflare first; only after source review and synthetic tests should the non-production Auth0 ↔ Worker connection be separately authorized.
 
