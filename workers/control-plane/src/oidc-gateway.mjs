@@ -185,7 +185,7 @@ function verifiedClaims(claims, config, surface, nowSeconds) {
   return { surface, issuer: config.issuer, subject: claims.sub, clientId: claims.azp, scopes, authenticationMethods: [], issuedAt: claims.iat, expiresAt: claims.exp };
 }
 /** Verify exactly one surface; the caller must select surface from a fixed route. */
-export async function verifyAuth0AccessToken(request, env, surface, { fetcher = fetch, nowSeconds = Math.floor(Date.now()/1000) } = {}) {
+async function verifyAuth0AccessTokenInternal(request, env, surface, { fetcher = fetch, nowSeconds = Math.floor(Date.now()/1000) } = {}) {
   try {
     const config = readConfiguration(env, surface);
     const token = jwtFromRequest(request);
@@ -201,7 +201,47 @@ export async function verifyAuth0AccessToken(request, env, surface, { fetcher = 
     const key = await crypto.subtle.importKey('jwk', jwk, { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' }, false, ['verify']);
     const valid = await crypto.subtle.verify({ name: 'RSASSA-PKCS1-v1_5' }, key, token.signature, token.signed);
     if (!valid) deny();
-    return result;
+    return { actor: result, claims: token.claims };
+  } catch { deny(); }
+}
+export async function verifyAuth0AccessToken(request, env, surface, options) {
+  return (await verifyAuth0AccessTokenInternal(request, env, surface, options)).actor;
+}
+export async function verifyAuth0AccessTokenWithClaims(request, env, surface, options) {
+  return verifyAuth0AccessTokenInternal(request, env, surface, options);
+}
+
+// Verify the OIDC ID Token independently from the API Access Token.
+// The ID Token proves the login transaction (nonce/client); it is never an API bearer credential.
+export async function verifyAuth0IdToken(idToken, env, { nonce, fetcher = fetch, nowSeconds = Math.floor(Date.now()/1000) } = {}) {
+  try {
+    const config = readConfiguration(env, 'admin');
+    if (typeof idToken !== 'string' || idToken.length > MAX_JWT_BYTES) deny();
+    const parts = idToken.split('.'); if (parts.length !== 3) deny();
+    const [h, p, sig] = parts;
+    const header = safeJson(b64url(h));
+    if (Object.keys(header).some(k => !['alg','kid','typ'].includes(k)) || header.alg !== 'RS256'
+      || !nonblank(header.kid,128) || !/^[A-Za-z0-9_-]+$/.test(header.kid)
+      || (header.typ !== undefined && header.typ !== 'JWT')) deny();
+    const claims = safeJson(b64url(p));
+    const clientId = env.AUTH0_ADMIN_CLIENT_ID;
+    if (!nonblank(clientId,256) || claims.iss !== config.issuer || claims.sub === undefined || !nonblank(claims.sub,512)
+      || !(claims.aud === clientId || (Array.isArray(claims.aud) && claims.aud.includes(clientId)))
+      || (Array.isArray(claims.aud) && claims.azp !== clientId)
+      || (claims.azp !== undefined && claims.azp !== clientId)
+      || claims.nonce !== nonce || !nonblank(nonce,256)
+      || !Number.isSafeInteger(claims.iat) || !Number.isSafeInteger(claims.exp)
+      || !Number.isSafeInteger(claims.auth_time)
+      || claims.exp <= nowSeconds - CLOCK_SKEW_S || claims.iat > nowSeconds + CLOCK_SKEW_S
+      || claims.exp <= claims.iat || claims.exp - claims.iat > 86400
+      || claims.auth_time > nowSeconds + CLOCK_SKEW_S || nowSeconds - claims.auth_time > 300 + CLOCK_SKEW_S) deny();
+    const keys = await getKeys(config.issuer, fetcher);
+    let jwk = keys.get(header.kid);
+    if (!jwk) jwk = (await refreshForUnknownKid(config.issuer, fetcher)).get(header.kid);
+    if (!jwk) deny();
+    const key = await crypto.subtle.importKey('jwk', jwk, { name:'RSASSA-PKCS1-v1_5', hash:'SHA-256' }, false, ['verify']);
+    if (!await crypto.subtle.verify({name:'RSASSA-PKCS1-v1_5'},key,b64url(sig),textEncoder.encode(h+'.'+p))) deny();
+    return { subject: claims.sub, issuer: claims.iss, clientId, authTime: claims.auth_time, expiresAt: claims.exp };
   } catch { deny(); }
 }
 // A separate, non-D1 proof route. Never grants business-domain permissions.
