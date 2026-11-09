@@ -73,7 +73,8 @@ function safeJson(bytes) {
 function b64url(s, max = MAX_JWT_BYTES) {
   if (typeof s !== 'string' || s.length < 1 || s.length > max || !/^[A-Za-z0-9_-]+$/.test(s)) deny();
   try {
-    const b64 = s.replace(/-/g, '+').replace(/_/g, '/');
+    const normalized = s.replace(/-/g, '+').replace(/_/g, '/');
+    const b64 = normalized + '='.repeat((4 - (normalized.length % 4)) % 4);
     const binary = atob(b64);
     const canonical = btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
     if (canonical !== s) deny();
