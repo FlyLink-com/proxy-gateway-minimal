@@ -13,11 +13,11 @@ TOTP 实现以 RFC 6238 官方测试向量锚定（S0）。
 | # | 验证项 | 场景 | 结果 |
 |---|---|---|---|
 | 1 | TOTP 实现正确性（RFC 6238 向量） | S0 | PASS |
-| 2 | 导入管线逐户分流：可导入 / 定向重置 / 无证明暂缓 / R1 决策暂缓；重置与暂缓户不落任何凭证 | S1 | PASS |
+| 2 | 导入管线逐户分流：可导入 / 定向重置 / 无证明暂缓 / 客户端归一化证明暂缓；重置与暂缓户不落任何凭证 | S1 | PASS |
 | 2a | attestation.accountRef 必须与目标账户引用相同；错配在整批写入前拒绝，不产生部分导入 | S1b | PASS |
 | 3 | 首次登录：错密码不触发转存；对密码先验 scrypt、成功后存储形变为 bcrypt（$2b$），后续登录走 bcrypt | S2 | PASS |
 | 4 | 签发令牌可验签（iss/sub 正确），投影上下文通过对应面的本地校验 | S2 | PASS |
-| 5 | Auth0-shaped 本地模拟：带空格形式失败、trim 后形式匹配 legacy hash；R1 cohort 不导入 | S3 | PASS |
+| 5 | Auth0-shaped 本地模拟：带空格形式失败、trim 后形式匹配 legacy hash；未证明 pre-Auth0 trim-only 的 edgeWhitespace cohort 暂缓导入 | S3 | PASS |
 | 6 | 重置流：旧密码永远登不进；>72 字节的新密码被拒；合格新密码恢复登录 | S4 | PASS |
 | 7 | Portal 动态码自愿：未绑可登录；设置内绑后，错码拒绝、对码才追加因子 | S5 | PASS |
 | 8 | Admin 强制：仅密码永远拿不到 Admin 上下文；Portal 侧的绑定对 Admin 不算数；Admin 侧绑后对码才放行 | S6 | PASS |
@@ -48,7 +48,7 @@ TOTP 实现以 RFC 6238 官方测试向量锚定（S0）。
 - Run 1 TAP SHA-256：`24132d4730f8d3f23c90186c2c369d5f99fc191fec20e769a51cb14acb8f26cf`。
 - Run 2 TAP SHA-256：`71dd212be7fadf66a067be1565ff5a816e7a0bd681a2b4992dc9251f0fc8bf96`。
 
-新增回归覆盖非规范 Base64URL、非 16-byte salt、Auth0 缺失 salt / 错误 password encoding / 嵌套额外属性、跨账户 attestation 错配，以及 R1 未决 cohort 的 fail-closed 暂缓。所有测试均为合成数据；未连接真实供应商或生产端点。
+新增回归覆盖非规范 Base64URL、非 16-byte salt、Auth0 缺失 salt / 错误 password encoding / 嵌套额外属性、跨账户 attestation 错配，以及 未完成客户端归一化证明的 edgeWhitespace cohort fail-closed 暂缓。所有测试均为合成数据；未连接真实供应商或生产端点。
 
 ## 结论
 
