@@ -98,6 +98,33 @@ describe("createAdminAuthClient", () => {
     expect(setItem).not.toHaveBeenCalled();
   });
 
+  it("applies trim-only normalization before the Admin authentication request", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(
+      jsonResponse(202, {
+        challenge: {
+          challengeRef: "admin_totp_challenge_1",
+          operatorRef: "acct_op1",
+          methods: ["totp"],
+          issuedAt: FUTURE,
+          expiresAt: FUTURE,
+        },
+      }),
+    );
+    const client = createAdminAuthClient({ fetcher });
+    const signal = new AbortController().signal;
+
+    await expect(client.login({
+      password: "\uFEFF\u00A0\tsecret\uFEFF-pass \u00A0\u3000\u2029",
+    }, signal)).resolves.toEqual({
+      challengeRef: "admin_totp_challenge_1",
+      expiresAt: FUTURE,
+    });
+
+    expect(JSON.parse(String(fetcher.mock.calls[0]?.[1]?.body))).toEqual({
+      bootstrapToken: "secret\uFEFF-pass",
+    });
+  });
+
   it("projects authenticated session and setupRequired while stripping private extras", async () => {
     const fetcher = vi.fn<typeof fetch>();
     fetcher
@@ -190,6 +217,7 @@ describe("createAdminAuthClient", () => {
     const signal = new AbortController().signal;
     await expect(client.login({ operatorRef: "bad ref", password: "secret-pass" }, signal)).rejects.toSatisfy(expectError("invalid"));
     await expect(client.login({ operatorRef: "acct_op1", password: "" }, signal)).rejects.toSatisfy(expectError("invalid"));
+    await expect(client.login({ operatorRef: "acct_op1", password: " \t\uFEFF\u00A0\u3000\u2029" }, signal)).rejects.toSatisfy(expectError("invalid"));
     await expect(client.verify({ challengeRef: "admin_totp_challenge_1", code: "12 456" }, signal)).rejects.toSatisfy(expectError("invalid"));
     await expect(client.verify({ challengeRef: "bad ref", code: "123456" }, signal)).rejects.toSatisfy(expectError("invalid"));
     expect(fetcher).not.toHaveBeenCalled();
