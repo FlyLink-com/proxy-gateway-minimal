@@ -151,16 +151,29 @@ Fixed Node v22.23.1 isolated non-production sandbox:
 
 The tests invoke the Worker handler directly with synthetic-only key material and synthetic caller tokens. They do not constitute a Miniflare Service Binding integration test, a real Cloudflare secret, a real Service Binding, a deployed Worker, or a production recovery drill.
 
-## 8. Next integration gate
+## 8. Service Binding proof and actual control-plane integration gate
 
-Next source step: add the caller-side private Service Binding to the local-only control-plane Worker configuration and a narrowly scoped wrapper that:
+A Miniflare Service Binding proof is now included in workers/control-plane/test/crypto-service-binding.test.mjs. It runs the Crypto Worker and a separate synthetic caller Worker in two Miniflare instances and connects them with a private serviceBindings entry.
 
-1. performs the existing user/session and domain authorization before the call;
-2. forwards only the exact versioned request contract;
-3. uses a dedicated caller-side secret binding, not a key-family secret;
-4. never exposes the Crypto Worker token to a client;
-5. maps Worker unavailable/invalid responses to fail-closed domain behavior.
+Fixed Node v22.23.1 isolated non-production result:
 
-Add Miniflare Service Binding integration tests proving caller authorization, no public route, no raw key/PII exposure, and failure behavior. Do not add a Cloudflare account resource, real secret, public route, production deployment, BWH access, D1 mutation, dual-write, or cutover in that step.
+- Miniflare Service Binding proof: 5/5 PASS twice, 0 failed / 0 skipped.
+- TAP SHA-256 Run 1: 3b17bb52a8c6997bf184023e2b15ff36fb01e30c158b7ef6bb19fa14ae2dc90b.
+- TAP SHA-256 Run 2: 64db515f7eb070728f4c55fb9eded1c16a30f86956803827f232a6d93a018ae4.
+- node --check: 4/4 PASS for the shared primitive, Crypto Worker, synthetic caller fixture, and Service Binding test.
 
-C2 remains OPEN pending this integration, concrete independent escrow/recovery, named custodians, domain-owner approvals, replay/retention decisions, and independent review. T2 remains BLOCKED. BWH remains the only production control-data writer.
+The fixture proves that an unauthenticated caller is rejected before the Service Binding is invoked; an authorized synthetic caller uses a separate internal service token; an invalid internal token is rejected by the Crypto Worker; missing bindings/key rings fail closed; and PII digest-only inputs remain enforced across the binding.
+
+This is a synthetic caller fixture, not the actual control-plane Worker integration or an identity-provider integration. The existing G3 control-plane slice currently has only service-level read/write tokens and no end-user/domain authorization context. Adding a general crypto relay route to that Worker now would create an unsafe public capability surface. Therefore the actual control-plane Service Binding declaration and caller wrapper are deliberately deferred until the C1 identity/domain authorization path exists.
+
+Next actual integration gate:
+
+1. Identify the exact production-intended control-plane handler and its completed user/session + domain authorization context.
+2. Add the private Service Binding only to the local-only control-plane configuration for that handler.
+3. Call the Crypto Worker only after that handler has authorized the original user and operation.
+4. Keep the internal service token in a dedicated Worker secret binding; never forward the user bearer token or reveal the internal token to a client.
+5. Add Miniflare tests against the actual control-plane handler, including unauthorized user, wrong domain scope, missing binding, missing key ring, no raw PII/key exposure, and fail-closed behavior.
+
+Do not add a generic public crypto relay route. Do not create a Cloudflare account resource, real secret, production binding, public route, deployment, BWH access, D1 mutation, dual-write, or cutover.
+
+C2 remains OPEN pending actual control-plane integration, concrete independent escrow/recovery, named custodians, domain-owner approvals, replay/retention decisions, and independent review. T2 remains BLOCKED. BWH remains the only production control-data writer.
