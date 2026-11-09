@@ -23,7 +23,7 @@ test('accepts scoped Portal/Admin signed access tokens and isolates surfaces',as
   const pc=await verify('portal',token(portal,P),{fetcher:fp});
   assert.equal(pc.subject,'auth0|portal1');assert.equal(pc.surface,'portal');assert.deepEqual(pc.authenticationMethods,[]);
   const ac=await verify('admin',token(admin,A),{fetcher:fp});
-  assert.deepEqual(ac.authenticationMethods,['pwd','mfa','otp']);
+  assert.deepEqual(ac.authenticationMethods,[]); // token claims do not attest MFA completion
   await rejected(verify('admin',token(portal,P),{fetcher:fp}));
   await rejected(verify('portal',token(admin,A),{fetcher:fp}));
   await rejected(verify('admin',token(portal,{...A,iss:P.iss}),{fetcher:fp}));
