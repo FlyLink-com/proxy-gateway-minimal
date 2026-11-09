@@ -281,3 +281,18 @@ The synthetic envelope contract now enforces an exact eight-field envelope schem
 - Node v22.23.1, isolated synthetic sandbox: 11/11 PASS twice; 0 failed / 0 skipped; `node --check` PASS.
 
 This is a stricter synthetic envelope contract only. It does not create a KMS/HSM key, external escrow, real ciphertext backup, or recovery workflow. C2 remains OPEN pending provider/account selection, named custodians, two-person restore/revocation procedure, and real non-production recovery evidence.
+
+## 20. Owner decision — Cloudflare-native online custody and offline 2-of-3 recovery — 2026-11-08
+
+The project owner has now selected the concrete custody direction, superseding the earlier open choice between an external managed KMS/HSM and offline recovery:
+
+1. Cloudflare per-Worker Secrets are the online runtime secret store. The three HMAC key-ring secrets are bound only to the dedicated Crypto Worker.
+2. No separate GCP, AWS, Azure, or other cloud KMS account is required or selected for C2.
+3. The independent recovery copy uses the existing AES-256-GCM envelope shape, with a unique 256-bit recovery KEK per key envelope.
+4. The recovery KEK is split using a vetted Shamir Secret Sharing implementation at a 2-of-3 threshold. Three distinct named custodians each hold one share; the encrypted envelope and metadata-only manifest are stored in two independent offline physical locations.
+5. The concrete Shamir tool/version/hash, named custodians, and physical custody locations remain open. No custom Shamir implementation is permitted without a separate security review.
+6. Cloudflare Secrets Store remains optional only for a demonstrated multi-Worker sharing need and is not treated as an HSM/KMS.
+
+The executable operating boundary is [D1_T2_C2_OFFLINE_ESCROW_RUNBOOK_V1.md](D1_T2_C2_OFFLINE_ESCROW_RUNBOOK_V1.md). The existing key-escrow module and tests remain synthetic-only and do not authorize processing real key material.
+
+This decision does not authorize real key or KEK generation, share creation/distribution, Cloudflare Secret or Service Binding creation, Worker deployment, D1 mutation, BWH access, production reads, dual-write, or cutover. C2 remains OPEN pending tool review, named custodians, synthetic 2-of-3 implementation tests, non-production integration, domain-owner approvals, and independent review. BWH remains the only production control-data writer.
