@@ -82,6 +82,14 @@ test('JWKS refresh on unknown kid, single-flight concurrent load and fail-closed
   }
 });
 
+test('throttles repeated unknown-kid JWKS refresh attempts',async()=>{
+  resetOidcJwksCacheForTests();const calls=[];const f=fixtureFetch([portal.jwk],[admin.jwk],calls);
+  await rejected(verify('portal',token({...portal,kid:'unknown-one'},P),{fetcher:f}));
+  await rejected(verify('portal',token({...portal,kid:'unknown-two'},P),{fetcher:f}));
+  // One initial fetch plus one forced refresh; attacker-controlled kid values cannot fan out fetches.
+  assert.equal(calls.length,2);
+});
+
 test('denies duplicate JWT header and duplicate claim keys',async()=>{
   resetOidcJwksCacheForTests();
   const dupHeader=b64('{"alg":"RS256","kid":"portal-key","kid":"portal-key","typ":"JWT"}');
