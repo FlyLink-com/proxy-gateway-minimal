@@ -127,8 +127,8 @@ Security basis:
 | Threat / failure mode | Required control | Current status |
 | --- | --- | --- |
 | Password/OTP theft at the application gateway | Universal Login; gateway never receives credentials; ROPC prohibited | Source design implemented; hosted flow not yet provider-tested |
-| Login CSRF / OAuth response injection | Random state cookie + query state equality, transaction-bound state hash, exact issuer, fixed same-origin callback | Source and synthetic tests |
-| Authorization-code interception / verifier substitution | PKCE S256; verifier encrypted with AES-GCM and transaction-specific AAD; exact redirect URI | Source and synthetic tests |
+| Login CSRF / OAuth response injection | Random state cookie + query state equality, transaction-bound state hash, exact issuer, fixed same-origin callback, Fetch Metadata rejection of cross-site initiation | Source and synthetic tests |
+| Authorization-code interception / verifier substitution | PKCE S256; verifier encrypted with AES-GCM and transaction-specific AAD; exact redirect URI; callback query string redacted from edge/access logs | Source implemented; log redaction is a deployment gate |
 | Callback replay / parallel callback race | Durable Object transaction consumed atomically before code exchange; 5-minute expiry | Source and synthetic concurrency test |
 | ID Token substituted for API bearer token | Verify ID Token separately for client audience + nonce; verify API Access Token for API audience + scope | Source and synthetic signed-token tests |
 | Cross-tenant / cross-client token substitution | Trusted issuer, audience, azp allowlist, subject equality across ID/Access Tokens | Existing OIDC verifier plus BFF binding tests |
@@ -139,13 +139,13 @@ Security basis:
 | Provider refresh silently extending MFA | No offline_access requested; Refresh Token rejected/revoked if unexpectedly returned; no refresh endpoint | Source; provider integration test outstanding |
 | DO state compromise | Store only encrypted PKCE verifier/nonce transaction and minimal actor/session metadata; no provider tokens; dedicated Worker encryption secret | Source design; remote secret custody not provisioned |
 | Auth0 Action bypass / factor not enrolled | Action denies non-approved client, refresh grant, absent OTP enrollment, missing MFA method | Source template only; separate Action deployment approval required |
-| Auth0 outage / JWKS propagation | Bounded JWKS cache, single-flight refresh, unknown-kid cooldown; fail closed | Existing synthetic tests; hosted provider integration pending |
+| Auth0 outage / JWKS propagation | Bounded JWKS cache, single-flight refresh, unknown-kid cooldown; fail closed | Existing synthetic tests; hosted provider integration pending |\n| Login initiation / transaction allocation abuse | Auth0 bot protection plus edge rate limit for the fixed Admin login path; 5-minute transaction TTL and DO alarm cleanup | Edge rate-limit rule not configured; must be verified before shared enablement |
 
 Residual risks that block Admin enablement:
 1. The exact DEVELOPMENT tenant must prove Universal Login Authorization Code + PKCE, two-Action ordering, first-login MFA completion, and Access Token custom claim emission. The earlier ROPG test is not evidence for this hosted flow.
 2. The Action templates must be independently reviewed, configured with exact client/claim secrets, deployed only to the Admin DEVELOPMENT tenant, and read back before the BFF can be considered integrated.
-3. The local Durable Object binding and AES-GCM transaction envelope must pass exact-HEAD local Miniflare tests. Remote DO namespace and Worker Secret provisioning are a separate Cloudflare resource gate.
-4. The Admin application must be served on the same origin as the BFF callback. If the deployment cannot satisfy same-origin hosting, stop and design a separate credentialed-CORS + CSRF contract; do not weaken cookie policy.
+3. Configure the Admin API Access Token lifetime at or below 3600 seconds and set the verifier maximum consistently; the BFF rejects token responses with a longer expires_in. The local Durable Object binding and AES-GCM transaction envelope must pass exact-HEAD local Miniflare tests. Remote DO namespace and Worker Secret provisioning are a separate Cloudflare resource gate.
+4. Configure and verify Auth0 bot protection plus a Cloudflare edge rate-limit rule for Admin login initiation; redact callback query strings from edge/access logs so authorization codes are not retained. The Admin application must be served on the same origin as the BFF callback. If the deployment cannot satisfy same-origin hosting, stop and design a separate credentialed-CORS + CSRF contract; do not weaken cookie policy.
 5. No Admin business route may infer account/operator permission from the session. C1/C3 identity mapping and domain authorization remain separate.
 
 ## 7. Worker route boundary
