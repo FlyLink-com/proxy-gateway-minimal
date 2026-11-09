@@ -80,7 +80,8 @@ All work packages begin OPEN. Existing design documents are inputs, not completi
 - [ ] Payment/commerce, Identity and Security owners approve their respective domains and retention dependencies.
 - [ ] The dedicated Crypto Worker accepts only exact versioned internal operations, enforces caller identity/token authorization, bounds request bodies, fails closed, and exposes no public route.
 - [ ] The Worker loads all purpose-separated HMAC key rings, rejects cross-family key-material reuse, never returns raw keys, and accepts only precomputed PII digests.
-- [ ] A Miniflare private Service Binding integration test proves the authorized control-plane caller boundary and failure behavior; direct-handler tests alone do not satisfy this item.
+- [x] Miniflare Service Binding fixture with a separate synthetic authorized caller proves binding mechanics, user-auth-before-call, internal token separation, missing-binding/key-ring failure, and digest-only PII behavior (5/5 PASS twice). This is fixture evidence, not actual control-plane integration.
+- [ ] Actual control-plane Service Binding integration is completed only after the C1 user/session and domain-authorization context exists; no generic public crypto relay route is allowed.
 
 **Required artifacts:** key-custody/rotation ADR; [Crypto Worker interface contract](D1_T2_C2_CRYPTO_WORKER_INTERFACE_CONTRACT_V1.md) and source-importing tests; separate Wallet-first handoff digest compatibility decision; reproducible synthetic vectors.
 
@@ -459,3 +460,6 @@ C2 remains OPEN. The synthetic escrow contract passed 10/10 twice under Node v22
 
 
 **Draft progress — 2026-11-08 (Crypto Worker v1):** Added the versioned interface contract and dedicated Worker source. The source provides idempotency, provider-event and PII HMAC create/candidates/verify operations; PII inputs are digest-only. The three key-ring families are loaded and checked for cross-family reuse on each request. Caller auth, current/previous token overlap, exact schemas, 16 KiB body cap, generic fail-closed errors, no public route, and no persistent bindings are covered by 11/11 focused tests twice under Node v22.23.1; node --check 3/3 PASS. Wrangler 4.99.0 deploy --dry-run passed (28.19 KiB / 6.42 KiB gzip). The Service Binding integration, real secret provisioning, escrow, owner/domain approvals and independent review remain OPEN. No deployment or production operation occurred.
+
+
+**Draft progress — 2026-11-08 (Miniflare Service Binding proof):** A separate synthetic caller Worker and Crypto Worker now run in two Miniflare instances joined by a private Service Binding. The focused suite passed 5/5 twice under Node v22.23.1; TAP hashes 3b17bb52a8c6997bf184023e2b15ff36fb01e30c158b7ef6bb19fa14ae2dc90b and 64db515f7eb070728f4c55fb9eded1c16a30f86956803827f232a6d93a018ae4; syntax 4/4 PASS. This proves binding mechanics and separate caller credentials only. The actual G3 control-plane has no end-user/domain authorization context yet, so its binding declaration and route wrapper remain deferred rather than adding a generic public crypto relay.
