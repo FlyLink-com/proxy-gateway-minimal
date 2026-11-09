@@ -52,7 +52,7 @@ class FakeNamespace {
       this.objects.set(id, { state, object });
     }
     const { object } = this.objects.get(id);
-    return { fetch: (request) => object.fetch(request) };
+    return { fetch: (input, init) => object.fetch(new Request(input, init)) };
   }
 }
 function env() {
