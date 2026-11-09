@@ -8,6 +8,8 @@ const CLOCK_SKEW_S = 60;
 const DEFAULT_MAX_LIFETIME_S = 7200;
 const caches = new Map();
 const inflight = new Map();
+const unknownKidRefreshAt = new Map();
+const UNKNOWN_KID_REFRESH_COOLDOWN_MS = 15000;
 const textDecoder = new TextDecoder('utf-8', { fatal: true });
 const textEncoder = new TextEncoder();
 const configs = {
@@ -152,6 +154,13 @@ async function getKeys(issuer, fetcher, force = false) {
   }
   return inflight.get(issuer);
 }
+function resetUnknownKidRefresh(issuer) { unknownKidRefreshAt.set(issuer, Date.now()); }
+async function refreshForUnknownKid(issuer, fetcher) {
+  const last = unknownKidRefreshAt.get(issuer) ?? 0;
+  if (Date.now() - last < UNKNOWN_KID_REFRESH_COOLDOWN_MS) return caches.get(issuer)?.keys ?? new Map();
+  resetUnknownKidRefresh(issuer);
+  return getKeys(issuer, fetcher, true);
+}
 function jwtFromRequest(request) {
   const header = request.headers.get('authorization');
   if (!header || header.length > MAX_JWT_BYTES + 7) deny();
@@ -188,7 +197,7 @@ export async function verifyAuth0AccessToken(request, env, surface, { fetcher = 
     let keys = await getKeys(config.issuer, fetcher);
     let jwk = keys.get(token.header.kid);
     if (!jwk) {
-      keys = await getKeys(config.issuer, fetcher, true);
+      keys = await refreshForUnknownKid(config.issuer, fetcher);
       jwk = keys.get(token.header.kid);
     }
     if (!jwk) deny();
@@ -218,4 +227,4 @@ export async function handleAuth0IdentityProof(request, env, surface, options) {
 }
 
 // Testing-only reset to keep isolated fixtures deterministic.
-export function resetOidcJwksCacheForTests() { caches.clear(); inflight.clear(); }
+export function resetOidcJwksCacheForTests() { caches.clear(); inflight.clear(); unknownKidRefreshAt.clear(); }
