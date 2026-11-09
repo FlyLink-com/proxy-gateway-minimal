@@ -148,7 +148,7 @@ async function revokeUnexpectedRefreshToken(cfg, token, fetcher) {
   const form = new URLSearchParams({ client_id: cfg.clientId, client_secret: cfg.clientSecret, token });
   try {
     const response = await fetcher(`${cfg.issuer}oauth/revoke`, {
-      method: "POST", redirect: "error",
+      method: "POST", redirect: "manual",
       headers: { "content-type": "application/x-www-form-urlencoded" },
       body: form.toString(),
     });
@@ -234,7 +234,7 @@ export async function completeAdminLogin(request, env, { fetcher = fetch, now = 
       code_verifier: verifier,
     });
     const tokenResponse = await fetcher(`${cfg.issuer}oauth/token`, {
-      method: "POST", redirect: "error",
+      method: "POST", redirect: "manual",
       headers: { "content-type": "application/x-www-form-urlencoded" },
       body: form.toString(),
     });

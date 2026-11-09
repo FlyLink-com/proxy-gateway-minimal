@@ -111,7 +111,7 @@ function validJwk(jwk) {
   if (n.length < 256 || n.length > 1024 || e.length < 1 || e.length > 4 || exponent < 3 || (exponent & 1) === 0) deny();
 }
 async function fetchJwks(issuer, fetcher) {
-  const response = await fetcher(`${issuer}.well-known/jwks.json`, { method: 'GET', redirect: 'error', headers: { accept: 'application/json' } });
+  const response = await fetcher(`${issuer}.well-known/jwks.json`, { method: 'GET', redirect: 'manual', headers: { accept: 'application/json' } });
   if (!response.ok) deny();
   if (Number(response.headers.get('content-length')) > MAX_JWKS_BYTES) deny();
   let bytes;
