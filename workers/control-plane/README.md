@@ -177,3 +177,8 @@ never deploys.
 - Transaction/binding model: D1 prepared statements and `batch()`
   semantics as validated in the G2 local compatibility spike.
 - G1-30: the formally approved Agent HTTPS, scoped authentication, signed-manifest, local material-resolution and redacted receipt contract. The Worker implementation is still a local synthetic slice; it is not connected to BWH and is not deployed.
+
+
+## C2 Crypto Worker Service Binding proof
+
+The test suite includes crypto-service-binding.test.mjs. It uses a synthetic caller Worker fixture and a separate Miniflare Crypto Worker joined by a private Service Binding. This proves only the internal binding and caller-token mechanics; it does not add a Service Binding or crypto route to this G3 Worker. The G3 slice currently has no end-user/domain authorization context, so actual integration is deferred until the C1 identity path supplies that authorization boundary. Do not add a generic public crypto relay route.
