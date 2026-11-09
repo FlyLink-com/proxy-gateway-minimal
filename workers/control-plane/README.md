@@ -44,6 +44,21 @@ so it is not DDL-self-contained.
 account-security direction, so the slice stays self-contained with two
 tables.
 
+## C1 Auth0 Access Token proof (development only)
+
+Two **isolated, read-only identity proof routes** are present in this source branch:
+
+| Route | Required bearer | Required scope | Additional policy |
+| --- | --- | --- | --- |
+| `GET /v1/auth/portal/identity` | Portal JWT Access Token, signed RS256 and validated against Portal JWKS | `read:portal_identity` | No mandatory MFA |
+| `GET /v1/auth/admin/identity` | Admin JWT Access Token, signed RS256 and validated against Admin JWKS | `read:admin_identity` | Namespaced completed-MFA claim containing `mfa` |
+
+The routes return only a minimal verified external actor projection, **not** internal account/operator authorization. They never read/write D1. Other G3 read/write and G4 Agent routes keep their original separate bearer checks. Missing tenant config or unsuccessful JWKS verification fails closed. Identity endpoints return generic `401` errors without echoing tokens or PII.
+
+Required environment bindings (not provisioned in this branch): `AUTH0_PORTAL_ISSUER`, `AUTH0_PORTAL_AUDIENCE`, `AUTH0_PORTAL_ALLOWED_CLIENT_IDS`, `AUTH0_ADMIN_ISSUER`, `AUTH0_ADMIN_AUDIENCE`, `AUTH0_ADMIN_ALLOWED_CLIENT_IDS`, `AUTH0_ADMIN_MFA_CLAIM`. Optional: `AUTH0_MAX_TOKEN_LIFETIME_SECONDS` (60–86400, default 7200). The client allowlists use comma-separated IDs; the Admin MFA claim must be a namespaced HTTPS claim containing an array of methods with `mfa`. The two scopes above are **provisional API-permission identifiers**, not approved or provisioned Auth0 resource configuration.
+
+The implementation is in `src/oidc-gateway.mjs` and `test/oidc-gateway.test.mjs`. Its synthetic RSA/JWKS test groups exercise expiry, issuer/audience/client separation, rejected ID/opaque tokens, signature/key errors, key refresh, single-flight caching, Admin MFA and safe HTTP responses. A verified real Auth0 **ID Token** from Step 6 is not equivalent to the API **Access Token** required here. No real Auth0 API audience, Actions, JWT Access Token, Cloudflare deployment, production identity mapping, or hosted authentication integration is claimed. See `docs/D1_T2_C1_AUTH0_GATEWAY_ACCESS_TOKEN_CONTRACT_V1.md`.
+
 ## API
 
 | Route | Auth | Behavior |
