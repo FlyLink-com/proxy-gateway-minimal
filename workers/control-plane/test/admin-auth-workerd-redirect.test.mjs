@@ -191,6 +191,7 @@ async function dispatchAdminCallback(mf, control, idp, mode, txKey) {
     + "&state=" + encodeURIComponent(state)
     + "&iss=" + encodeURIComponent(issuer);
   return control.fetch(callbackUrl, {
+    redirect: "manual",
     headers: { cookie: "__Host-flylink_admin_oauth_state=" + state },
   });
 }
@@ -221,6 +222,7 @@ test("workerd JWKS fetch receives 3xx and existing !ok handling denies the token
   try {
     await setIdpMode(idp, "jwks-redirect");
     const response = await control.fetch("https://portal.example.test/v1/auth/portal/identity", {
+      redirect: "manual",
       headers: { authorization: "Bearer " + signedPortalToken() },
     });
     assert.equal(response.status, 401);
