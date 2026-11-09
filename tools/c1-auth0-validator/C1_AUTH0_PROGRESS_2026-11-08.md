@@ -25,7 +25,7 @@
 |---|---|---|---|
 | 1 | 本地构建 Auth0 Scrypt 合成导入验证器 | 完成 | 转换逐字保真 + Node/Python 已知答案交叉核对 |
 | 2 | 71/72/73 UTF-8 字节边界 | 完成 | 71/72 全周期通过；73 在 scrypt 阶段即被区分；导入门拦截已证明超长账户 |
-| 3 | 空格处理、中文密码、首次登录重哈希 | 完成 | R1 失败形态钉死（带空格形式失败、trim 形式通过）；edgeWhitespace=true 现进入 r1_decision_hold，不导入，待 Yi 裁定；中文按字节判定（24 字=72B 可导入、25 字=75B 转重置）；危险演示：绕过导入门时重哈希后同前缀异密码被接受 |
+| 3 | 空格处理、中文密码、首次登录重哈希 | 完成 | R1 trim-only 政策已批准（注册/登录一致、仅去首尾空白）；Auth0 本身不自动 trim，edgeWhitespace=true 在 Browser/Android/Admin 的 pre-Auth0 归一化证明完成前暂缓导入；无法证明的托管登录路径采用通知式重置；中文按字节判定（24 字=72B 可导入、25 字=75B 转重置）；危险演示：绕过导入门时重哈希后同前缀异密码被接受 |
 | 4 | 超长账户安全识别 + 定向重置机制 | 完成 | 设计文档 + 本地实现：只落 {账户引用, 桶位, 边缘空白标记, 时间}，形状门拒绝夹带字段 |
 | 5 | Portal/Admin 隔离 + TOTP 兼容方案 | 完成 | 方案文档（含 T1 裁定附记）+ 隔离测试直接复用已批准原语 |
 | 6 | 非生产环境验证 | **VM 内完成**；真实租户部分未执行 | 端到端场景 S0–S9 全过；真实租户五项供应商行为待验（见第 6 步记录） |
@@ -57,7 +57,7 @@ PR #842 状态：已获 gccltdco-cmd **APPROVED**（review `5817529933`，
 - 修复后连续两次：**40/40 PASS**，0 failed / 0 skipped。
 - `node --check`：9/9 PASS。
 - TAP SHA-256：Run 1 `24132d4730f8d3f23c90186c2c369d5f99fc191fec20e769a51cb14acb8f26cf`；Run 2 `71dd212be7fadf66a067be1565ff5a816e7a0bd681a2b4992dc9251f0fc8bf96`。
-- 另将 R1 未决 cohort 改为 fail-closed：`edgeWhitespace=true` → `r1_decision_hold`，导入模拟器不创建该用户凭证；S3 改为直接验证 Auth0-shaped 本地模型，不再依赖该 cohort 被导入。
+- 保留 `edgeWhitespace=true` cohort 的 fail-closed 暂缓：原因是 Browser/Android/Admin 在 Auth0 前执行同一 trim-only 的路径证据尚未齐全，而非等待重新选择 R1 政策；未证明的托管登录路径须走通知式重置。S3 直接验证 Auth0-shaped 本地模型，不依赖该 cohort 被导入。
 - 本次仅修复本地合成验证器，不改变生产认证代码，不代表 Auth0 真实租户行为已经验证。
 
 ## 四、当前状态口径（不合并三种状态）
@@ -75,7 +75,7 @@ PR #842 状态：已获 gccltdco-cmd **APPROVED**（review `5817529933`，
    重哈希的确切行为、真实 JWKS 端点验签、MFA 自助绑定的真实
    API/UX、租户开通与套餐事项——待 Yi 单独批准创建非生产租户。
 2. 证明窗口的生产接入（Risk A）：已形成门禁包草案；窗口时长、存储位置、通知文案/重置流和销毁时机仍待批准。
-3. R1 统一密码规范：已新增决策草案，待 Yi 选择 legacy edgeWhitespace cohort 的处置方式。
+3. R1 政策已批准 trim-only；剩余工作是补齐 Browser / Android / Admin 全路径在密码离开客户端前执行同一规范的代码与测试证据。无法证明的托管登录路径采用通知式重置；证明完成前对应 cohort 保持暂缓。
 4. Wallet-first 两个历史 SHA-256 字段的兼容迁移归属裁定。
 5. 真实密钥托管与独立备份/恢复演练。
 6. 历史 TOTP 账户归属证明。
@@ -87,5 +87,5 @@ PR #842 状态：已获 gccltdco-cmd **APPROVED**（review `5817529933`，
 
 - 继续在独立 Draft PR #844 内收口验证器代码、回归与证据文档；不得修改 #842 已批准的源码 Head。
 - 对 PR #844 当前精确 Head 发起源码审查；保持 Draft，不自动合并或部署。
-- R1 决策草案与 Risk A 门禁包草案已放入 PR #844；生产接入仍须单独 Risk A 批准。
+- PR #844 的 R1 文档已按既有 trim-only 政策校正；客户端兼容证明仍待完成。生产登录 hook 与证明窗口持久化仍须单独 Risk A 决策/授权。
 - 真实非生产 Auth0 租户创建、真实用户导入与供应商行为确认仍需 Yi 单独批准；本次“继续”不等于该项授权。
