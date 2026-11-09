@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import test from "node:test";
 
@@ -234,4 +235,20 @@ test("responses never expose raw key material or caller credentials", async () =
   assert.equal(serialized.includes(Buffer.alloc(32, 0x11).toString("base64url")), false);
   assert.equal(serialized.includes(TOKEN), false);
   assert.equal(serialized.includes("keyMaterial"), false);
+});
+
+
+test("Wrangler config disables public exposure and remote data bindings", () => {
+  const config = readFileSync(
+    new URL("../../workers/crypto/wrangler.crypto.jsonc", import.meta.url),
+    "utf8"
+  );
+  assert.match(config, /"workers_dev"\s*:\s*false/u);
+  assert.match(config, /"preview_urls"\s*:\s*false/u);
+  assert.doesNotMatch(config, /"routes"\s*:/u);
+  assert.doesNotMatch(config, /"account_id"\s*:/u);
+  assert.doesNotMatch(config, /"d1_databases"\s*:/u);
+  assert.doesNotMatch(config, /"kv_namespaces"\s*:/u);
+  assert.doesNotMatch(config, /"r2_buckets"\s*:/u);
+  assert.doesNotMatch(config, /"durable_objects"\s*:/u);
 });
