@@ -13,6 +13,7 @@
 | `login-attestation.mjs` | 迁移前登录证明窗口（方案 A）：只落桶位事实；edgeWhitespace cohort 在 Browser/Android/Admin 的 pre-Auth0 trim-only 证明完成前 fail-closed 暂缓（兼容性证明门，不是待选政策） |
 | `tenant-isolation.mjs` | Portal/Admin 双租户隔离契约测试层（直接复用 `server/services/platform/` 的已批准原语） |
 | `mock-auth0.mjs` | Auth0 形状的本地模拟租户（导入/登录/转存/Ed25519 令牌/TOTP/撤销） |
+| `STEP6_REAL_TENANT_VERIFICATION_2026-11-08.md` | Auth0 非生产真实租户的供应商行为证据；不含凭据，不代表生产准入 |
 | `*.test.mjs` | 对应测试；`step6-verification.test.mjs` 为第 6 步端到端场景 S0–S9 |
 | `ATTESTATION_WINDOW_DESIGN_V1.md` | 证明窗口设计与失败语义 |
 | `R1_PASSWORD_NORMALIZATION_DECISION_2026-11-08.md` | R1 已批准 trim-only 政策与客户端兼容验收门 |
