@@ -34,6 +34,12 @@ Required environment configuration (names are contract placeholders; values are 
 - `AUTH0_ADMIN_AUDIENCE`
 - `AUTH0_ADMIN_ALLOWED_CLIENT_IDS`
 - `AUTH0_ADMIN_MFA_CLAIM`
+- `AUTH0_ADMIN_CLIENT_ID`
+- `AUTH0_ADMIN_CLIENT_SECRET` (Worker Secret; never D1)
+- `AUTH0_ADMIN_REDIRECT_URI` (fixed same-origin callback)
+- `ADMIN_APP_ORIGIN` (must equal callback origin; no wildcard CORS)
+- `AUTH0_ADMIN_TX_ENCRYPTION_KEY` (32 random bytes, Base64URL; encrypts the PKCE verifier in short-lived DO transaction state)
+- `ADMIN_AUTH_STATE` Durable Object binding (local-only config in this PR; remote namespace creation remains separately gated)
 
 Configuration is fail-closed: missing, malformed, non-HTTPS, or internally inconsistent values disable the corresponding surface. Portal and Admin audiences should be distinct API identifiers. The exact identifiers and client allowlists must be created/approved in the non-production Auth0 tenants before real Access Token integration testing; this document does not create them.
 
@@ -116,6 +122,32 @@ JWKS rotation:
 Security basis:
 - RFC 9700 §2.4 prohibits ROPC.
 - Auth0 Support (updated 2026-01-13) documents that legacy `api.multifactor.enable()` may run MFA after the current Post-Login Action, while `api.authentication.challengeWith()` triggers MFA at that action boundary so subsequent Actions can observe `event.authentication.methods`.
+## 6A. Admin BFF threat model and residual-risk register
+
+| Threat / failure mode | Required control | Current status |
+| --- | --- | --- |
+| Password/OTP theft at the application gateway | Universal Login; gateway never receives credentials; ROPC prohibited | Source design implemented; hosted flow not yet provider-tested |
+| Login CSRF / OAuth response injection | Random state cookie + query state equality, transaction-bound state hash, exact issuer, fixed same-origin callback | Source and synthetic tests |
+| Authorization-code interception / verifier substitution | PKCE S256; verifier encrypted with AES-GCM and transaction-specific AAD; exact redirect URI | Source and synthetic tests |
+| Callback replay / parallel callback race | Durable Object transaction consumed atomically before code exchange; 5-minute expiry | Source and synthetic concurrency test |
+| ID Token substituted for API bearer token | Verify ID Token separately for client audience + nonce; verify API Access Token for API audience + scope | Source and synthetic signed-token tests |
+| Cross-tenant / cross-client token substitution | Trusted issuer, audience, azp allowlist, subject equality across ID/Access Tokens | Existing OIDC verifier plus BFF binding tests |
+| Forged or stale MFA assertion | Separate Auth0 Actions; challengeWith in Action 1; Action 2 emits signed claim only after observed mfa/otp; Worker checks timestamp and binds it after auth_time | Action source only; tenant deployment and hosted-flow test outstanding |
+| Session fixation / cookie theft | Fresh 256-bit opaque cookie; hash-only DO key; Secure, HttpOnly, host-only, SameSite=Strict; no token in browser storage | Source and synthetic session tests |
+| CSRF against Admin mutations | Same-origin deployment, SameSite=Strict, exact Origin on logout and every future mutating route | Current logout tested; future Admin mutation routes must use the same guard |
+| Session replay after logout / expiry | DO-backed state lookup, explicit deletion, 15-minute absolute expiry, alarm cleanup | Source and synthetic tests |
+| Provider refresh silently extending MFA | No offline_access requested; Refresh Token rejected/revoked if unexpectedly returned; no refresh endpoint | Source; provider integration test outstanding |
+| DO state compromise | Store only encrypted PKCE verifier/nonce transaction and minimal actor/session metadata; no provider tokens; dedicated Worker encryption secret | Source design; remote secret custody not provisioned |
+| Auth0 Action bypass / factor not enrolled | Action denies non-approved client, refresh grant, absent OTP enrollment, missing MFA method | Source template only; separate Action deployment approval required |
+| Auth0 outage / JWKS propagation | Bounded JWKS cache, single-flight refresh, unknown-kid cooldown; fail closed | Existing synthetic tests; hosted provider integration pending |
+
+Residual risks that block Admin enablement:
+1. The exact DEVELOPMENT tenant must prove Universal Login Authorization Code + PKCE, two-Action ordering, first-login MFA completion, and Access Token custom claim emission. The earlier ROPG test is not evidence for this hosted flow.
+2. The Action templates must be independently reviewed, configured with exact client/claim secrets, deployed only to the Admin DEVELOPMENT tenant, and read back before the BFF can be considered integrated.
+3. The local Durable Object binding and AES-GCM transaction envelope must pass exact-HEAD local Miniflare tests. Remote DO namespace and Worker Secret provisioning are a separate Cloudflare resource gate.
+4. The Admin application must be served on the same origin as the BFF callback. If the deployment cannot satisfy same-origin hosting, stop and design a separate credentialed-CORS + CSRF contract; do not weaken cookie policy.
+5. No Admin business route may infer account/operator permission from the session. C1/C3 identity mapping and domain authorization remain separate.
+
 ## 7. Worker route boundary
 
 The existing G3 service Bearer tokens (`CONTROL_PLANE_READ_TOKEN` / `CONTROL_PLANE_WRITE_TOKEN`) are service credentials, not user identities. They must remain separate from Auth0 user tokens.
