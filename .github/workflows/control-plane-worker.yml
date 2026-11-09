@@ -13,10 +13,17 @@ on:
 permissions:
   contents: read
 
+# One run per ref: a new push to the same PR branch cancels the stale
+# in-progress run instead of piling up parallel runs on superseded heads.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
     name: Worker slice tests (local Miniflare D1)
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     defaults:
       run:
         working-directory: workers/control-plane

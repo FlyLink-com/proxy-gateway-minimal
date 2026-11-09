@@ -8,6 +8,15 @@ const USER_TOKEN = "synthetic-authorized-user-token-20261108";
 const SERVICE_TOKEN = "synthetic-control-plane-to-crypto-token-20261108";
 const cryptoEntrypoint = fileURLToPath(new URL("../../crypto/src/index.mjs", import.meta.url));
 const callerEntrypoint = fileURLToPath(new URL("../../crypto/test/fixtures/authorized-caller.mjs", import.meta.url));
+// Both entrypoints live outside this package (workers/crypto/...), and the
+// Crypto Worker additionally imports the shared D1 T2 primitives from
+// server/services/platform via a relative path. Miniflare names each module
+// relative to a module root that defaults to the process working directory,
+// so these entrypoints get names starting with "../" and Workerd refuses to
+// start them ("can't use .. to break out of starting directory"). Pin the
+// module root to the repository root for both instances so every module in
+// the graph stays inside it.
+const repoModulesRoot = fileURLToPath(new URL("../../../", import.meta.url));
 
 function keyRing(activeKeyId, retainedKeyId, activeByte, retainedByte) {
   return JSON.stringify({
@@ -38,6 +47,7 @@ async function createPair({
   const cryptoMf = new Miniflare({
     modules: true,
     scriptPath: cryptoEntrypoint,
+    modulesRoot: repoModulesRoot,
     compatibilityDate: "2025-06-01",
     bindings: cryptoBindings(cryptoSecretOverrides)
   });
@@ -57,6 +67,7 @@ async function createPair({
   const callerMf = new Miniflare({
     modules: true,
     scriptPath: callerEntrypoint,
+    modulesRoot: repoModulesRoot,
     compatibilityDate: "2025-06-01",
     bindings: {
       SYNTHETIC_USER_TOKEN: USER_TOKEN,
@@ -89,7 +100,7 @@ function authorizedRequest(body, token = USER_TOKEN) {
   };
 }
 
-test("Miniflare private Service Binding rejects an unauthorized user before invoking Crypto Worker", async (t) => {
+test("Miniflare private Service Binding rejects an unauthorized user before invoking Crypto Worker", { timeout: 120_000 }, async (t) => {
   const pair = await createPair();
   t.after(() => pair.dispose());
 
@@ -104,7 +115,7 @@ test("Miniflare private Service Binding rejects an unauthorized user before invo
   assert.equal(pair.serviceCalls, 0);
 });
 
-test("authorized synthetic caller reaches Crypto Worker through Service Binding with a separate internal token", async (t) => {
+test("authorized synthetic caller reaches Crypto Worker through Service Binding with a separate internal token", { timeout: 120_000 }, async (t) => {
   const pair = await createPair();
   t.after(() => pair.dispose());
 
@@ -125,7 +136,7 @@ test("authorized synthetic caller reaches Crypto Worker through Service Binding 
   assert.equal(JSON.stringify(body).includes(SERVICE_TOKEN), false);
 });
 
-test("wrong internal service token is rejected by Crypto Worker", async (t) => {
+test("wrong internal service token is rejected by Crypto Worker", { timeout: 120_000 }, async (t) => {
   const pair = await createPair({ callerServiceToken: "synthetic-wrong-service-token-20261108" });
   t.after(() => pair.dispose());
 
@@ -140,7 +151,7 @@ test("wrong internal service token is rejected by Crypto Worker", async (t) => {
   assert.equal(pair.serviceCalls, 1);
 });
 
-test("missing Service Binding or incomplete key custody fails closed", async (t) => {
+test("missing Service Binding or incomplete key custody fails closed", { timeout: 120_000 }, async (t) => {
   const noBinding = await createPair({ omitServiceBinding: true });
   t.after(() => noBinding.dispose());
   const request = authorizedRequest({
@@ -163,7 +174,7 @@ test("missing Service Binding or incomplete key custody fails closed", async (t)
   assert.equal(failed.status, 503);
 });
 
-test("PII digest crosses Service Binding without raw PII and extra raw-value fields are rejected", async (t) => {
+test("PII digest crosses Service Binding without raw PII and extra raw-value fields are rejected", { timeout: 120_000 }, async (t) => {
   const pair = await createPair();
   t.after(() => pair.dispose());
 
