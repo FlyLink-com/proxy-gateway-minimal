@@ -146,3 +146,41 @@ The architecture choice is APPROVED. The implementation tool, named custodians, 
 - docs/D1_T2_C2_EXTERNAL_ESCROW_PROVIDER_EVALUATION_V1.md
 - server/services/platform/d1-t2-key-escrow-contract.mjs
 - server/tests/d1-t2-key-escrow-contract.test.mjs
+
+## 10. Candidate tool evaluation — SOPS + age (not yet selected)
+
+A source-only review identified **SOPS v3.13.3 + age v1.3.2** as the leading implementation candidate for the approved offline 2-of-3 route. This is a candidate recommendation, not a completed tool selection or a claim that the binaries have been installed, signature-verified, or exercised in this repository.
+
+Why it fits:
+
+- SOPS officially supports multiple key groups, age recipients, and a configurable Shamir threshold. Three key groups with one distinct age recipient per group and shamir_threshold: 2 require two of the three custodians to decrypt.
+- SOPS encrypts structured files and handles its own random data key, authenticated encryption, MAC, and Shamir key splitting. This can avoid a custom Shamir implementation and may replace the proposed manual recovery-KEK splitting for the real offline artifact.
+- Age identities can be held offline by separate custodians. No external KMS account or online key service is required.
+- The SOPS v3.13.3 release documents a Cosign-signed checksums file and SLSA provenance verification. The SOPS project is a CNCF Sandbox project, not a graduated CNCF project; retain independent source, release, and operational review.
+- Age v1.3.2 is the current release identified in the official age release list at this review point.
+
+Proposed SOPS mapping, pending acceptance:
+
+- One SOPS key group per custodian.
+- Exactly one age recipient in each group; do not put multiple custodians in one group.
+- Set shamir_threshold: 2 for the three groups.
+- Store one SOPS-encrypted JSON key record per runtime key ID/family. The encrypted record contains the key ID, family, algorithm, generation metadata, and 32-byte key material. The SOPS file's authenticated content/MAC binds the record; compare the decrypted metadata with the independent metadata-only manifest.
+- Store two identical encrypted artifact copies in separate offline physical locations. Each custodian retains only their own age identity in separate protected custody.
+- Do not add a second custom AES-GCM/KEK layer unless a separate threat-model review demonstrates a need. The existing d1-t2-key-escrow-contract.mjs remains a synthetic contract only and is not automatically the production artifact format.
+
+Required proof before selecting SOPS as the concrete tool:
+
+1. Select the exact offline workstation OS/architecture and pin the SOPS and age binaries.
+2. Verify the SOPS release checksum bundle with Cosign, verify SLSA provenance, and verify the age release artifact using its published integrity evidence. Record exact artifact SHA-256 values in the source-controlled non-secret BOM.
+3. Generate three synthetic age identities only. Create a fixture with three separate age key groups and shamir_threshold: 2.
+4. Prove each of the three possible two-identity combinations decrypts successfully; prove every one-identity attempt fails.
+5. Prove wrong recipients, malformed key groups, tampered ciphertext/MAC, modified encrypted metadata, and missing identities fail closed.
+6. Run the test with networking disabled and verify no external KMS, API, or hosted service is contacted.
+7. Verify plaintext fixture material is held only in an isolated temporary memory-backed workspace, never committed, logged, uploaded, or retained after the test.
+8. Obtain independent review of the exact tool versions, hashes, configuration, test outputs, and custody procedure.
+
+Until those tests pass, the Shamir implementation remains OPEN and no real age identity, SOPS escrow file, runtime key, or Cloudflare secret may be created. Official references:
+
+- SOPS key groups and Shamir threshold: https://getsops.io/docs/reference/
+- SOPS v3.13.3 release and verification instructions: https://github.com/getsops/sops/releases/tag/v3.13.3
+- Age v1.3.2 release: https://github.com/FiloSottile/age/releases/tag/v1.3.2
