@@ -2068,7 +2068,7 @@ describe("user portal product surface", () => {
       expect(String(input)).toBe("/api/portal/password/session");
       expect(JSON.parse(String(init?.body))).toEqual({
         accountId: "user@example.test",
-        password: "secret-passphrase",
+        password: "secret\uFEFF-passphrase",
         rememberMe: false,
         humanVerification: {
           challengeRef: "phc_http_1",
@@ -2094,7 +2094,7 @@ describe("user portal product surface", () => {
     const result = await client.authenticate({
       mode: "password",
       accountId: "user@example.test",
-      password: "secret-passphrase",
+      password: "\uFEFF\u00A0\tsecret\uFEFF-passphrase \u00A0\u3000\u2029",
       humanVerification: backendHumanVerification()
     });
 
