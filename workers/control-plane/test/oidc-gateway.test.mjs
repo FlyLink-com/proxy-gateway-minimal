@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createSign, generateKeyPairSync, webcrypto } from 'node:crypto';
-import { verifyAuth0AccessToken, resetOidcJwksCacheForTests, handleAuth0IdentityProof } from './oidc-gateway.mjs';
+import { verifyAuth0AccessToken, resetOidcJwksCacheForTests, handleAuth0IdentityProof } from '../src/oidc-gateway.mjs';
 globalThis.crypto ??= webcrypto;
 
 const now = 1794200000;
