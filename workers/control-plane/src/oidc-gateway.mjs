@@ -156,6 +156,7 @@ async function getKeys(issuer, fetcher, force = false) {
 }
 function resetUnknownKidRefresh(issuer) { unknownKidRefreshAt.set(issuer, Date.now()); }
 async function refreshForUnknownKid(issuer, fetcher) {
+  if (inflight.has(issuer)) return getKeys(issuer, fetcher, true);
   const last = unknownKidRefreshAt.get(issuer) ?? 0;
   if (Date.now() - last < UNKNOWN_KID_REFRESH_COOLDOWN_MS) return caches.get(issuer)?.keys ?? new Map();
   resetUnknownKidRefresh(issuer);
