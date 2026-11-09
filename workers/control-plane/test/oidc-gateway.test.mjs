@@ -77,7 +77,7 @@ test('JWKS refresh on unknown kid, single-flight concurrent load and fail-closed
   await verify('portal',jwt,{fetcher:rotating});
   assert.equal((await verify('portal',token(rotated,P),{fetcher:rotating})).subject,P.sub);assert.equal(stage,2);
   resetOidcJwksCacheForTests();await rejected(verify('portal',jwt,{fetcher:async()=>{throw Error('unavailable')}}));
-  for(const keys of [[{...portal.jwk,d:'secret'}],[{...portal.jwk,kty:'EC'}],[{...portal.jwk,use:'enc'}],[{...portal.jwk,alg:'HS256'}],[{...portal.jwk,key_ops:['sign']}],[portal.jwk,portal.jwk]]){
+  for(const keys of [[{...portal.jwk,d:'secret'}],[{...portal.jwk,kty:'EC'}],[{...portal.jwk,use:'enc'}],[{...portal.jwk,alg:'HS256'}],[{...portal.jwk,key_ops:['sign']}],[{...portal.jwk,e:'AQ'}],[portal.jwk,portal.jwk]]){
     resetOidcJwksCacheForTests();await rejected(verify('portal',jwt,{fetcher:fixtureFetch(keys)}));
   }
 });
