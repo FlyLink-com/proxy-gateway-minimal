@@ -31,6 +31,7 @@ import {
   CHALLENGE_TTL_MS,
 } from "./repositories/challenge-repository.mjs";
 import { handleAgentDesiredState, handleAgentReceipt } from "./agent-protocol.mjs";
+import { handleAuth0IdentityProof } from "./oidc-gateway.mjs";
 
 const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 100;
@@ -247,6 +248,12 @@ export default {
           return jsonError(405, "method_not_allowed", "method not allowed");
         }
         return jsonResponse(200, { ok: true, service: "flylink-control-plane" });
+      }
+      // C1 proof-only: Auth0 Access Tokens are never interchangeable with G3/G4 service tokens.
+      // These routes perform no D1 reads/writes and grant no domain authorization.
+      if (pathname === "/v1/auth/portal/identity" || pathname === "/v1/auth/admin/identity") {
+        const surface = pathname === "/v1/auth/admin/identity" ? "admin" : "portal";
+        return await handleAuth0IdentityProof(request, env, surface);
       }
       if (pathname === "/v1/agent/desired-state") {
         if (request.method !== "GET") {
