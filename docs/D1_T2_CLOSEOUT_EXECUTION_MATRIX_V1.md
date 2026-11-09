@@ -82,8 +82,12 @@ All work packages begin OPEN. Existing design documents are inputs, not completi
 - [ ] The Worker loads all purpose-separated HMAC key rings, rejects cross-family key-material reuse, never returns raw keys, and accepts only precomputed PII digests.
 - [x] Miniflare Service Binding fixture with a separate synthetic authorized caller proves binding mechanics, user-auth-before-call, internal token separation, missing-binding/key-ring failure, and digest-only PII behavior (5/5 PASS twice). This is fixture evidence, not actual control-plane integration.
 - [ ] Actual control-plane Service Binding integration is completed only after the C1 user/session and domain-authorization context exists; no generic public crypto relay route is allowed.
+- [ ] Owner selects an independent external KMS/HSM provider/account and records distinct Key Custodian, Security Approver, Recovery Operator, and KMS Administrator roles.
+- [ ] Provider key policy enforces non-exportable KEK use, separate admin/user permissions, two-person recovery approval, short-lived decrypt access, and audit retention.
+- [ ] Escrow ciphertext and metadata-only manifest are stored in two independent locations; real non-production restore, AAD binding, HMAC known-answer, and permission-revocation tests pass.
+- [ ] Crypto Worker and business control-plane identities have no KMS Decrypt/Unwrap permission.
 
-**Required artifacts:** key-custody/rotation ADR; [Crypto Worker interface contract](D1_T2_C2_CRYPTO_WORKER_INTERFACE_CONTRACT_V1.md) and source-importing tests; separate Wallet-first handoff digest compatibility decision; reproducible synthetic vectors.
+**Required artifacts:** key-custody/rotation ADR; [Crypto Worker interface contract](D1_T2_C2_CRYPTO_WORKER_INTERFACE_CONTRACT_V1.md) and source-importing tests; [external escrow provider evaluation](D1_T2_C2_EXTERNAL_ESCROW_PROVIDER_EVALUATION_V1.md); separate Wallet-first handoff digest compatibility decision; reproducible synthetic vectors.
 
 ### T2-C3 — Closed JSON schemas, opaque-reference grammar, and generation fencing
 
@@ -463,3 +467,6 @@ C2 remains OPEN. The synthetic escrow contract passed 10/10 twice under Node v22
 
 
 **Draft progress — 2026-11-08 (Miniflare Service Binding proof):** A separate synthetic caller Worker and Crypto Worker now run in two Miniflare instances joined by a private Service Binding. The focused suite passed 5/5 twice under Node v22.23.1; TAP hashes 3b17bb52a8c6997bf184023e2b15ff36fb01e30c158b7ef6bb19fa14ae2dc90b and 64db515f7eb070728f4c55fb9eded1c16a30f86956803827f232a6d93a018ae4; syntax 4/4 PASS. This proves binding mechanics and separate caller credentials only. The actual G3 control-plane has no end-user/domain authorization context yet, so its binding declaration and route wrapper remain deferred rather than adding a generic public crypto relay.
+
+
+**Draft progress — 2026-11-08 (external escrow evaluation):** Added [D1_T2_C2_EXTERNAL_ESCROW_PROVIDER_EVALUATION_V1.md](D1_T2_C2_EXTERNAL_ESCROW_PROVIDER_EVALUATION_V1.md). Google Cloud KMS is the leading technical candidate when no independent provider account is already preferred; AWS KMS is an equivalent alternative where a separate AWS organization/account exists; Azure Key Vault is an option for an existing Azure tenant. The evaluation defines non-exportable KEK, metadata-bound AAD/encryption context, distinct admin/user roles, two-person break-glass approval, audit, two ciphertext copies, and isolated restore/revocation acceptance. No provider or resource is selected/created. C2 remains OPEN.
