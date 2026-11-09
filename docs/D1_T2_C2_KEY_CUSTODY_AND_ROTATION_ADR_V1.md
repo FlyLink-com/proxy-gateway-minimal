@@ -250,3 +250,14 @@ Implemented in Draft source:
 Fixed Node v22.23.1 isolated non-production tests: 11/11 PASS twice; node --check 3/3 PASS. Wrangler 4.99.0 deploy --dry-run passed (28.19 KiB bundle / 6.42 KiB gzip; no bindings found; no deployment).
 
 This is direct Worker-handler and bundle evidence only. The control-plane private Service Binding and caller-side authorization wrapper have not yet been integrated or tested through Miniflare. No real key, secret, binding, external escrow, Worker deployment, BWH access, D1 mutation, dual-write, or cutover occurred. C2 remains OPEN and BWH remains the only production writer.
+
+
+## 18. Miniflare Service Binding proof — synthetic caller only — 2026-11-08
+
+Added `workers/crypto/test/fixtures/authorized-caller.mjs` and `workers/control-plane/test/crypto-service-binding.test.mjs`. The test runs a synthetic caller Worker and the Crypto Worker in separate Miniflare instances joined by a private Service Binding callback.
+
+Fixed Node v22.23.1: 5/5 PASS twice, 0 failed / 0 skipped. TAP hashes: `3b17bb52a8c6997bf184023e2b15ff36fb01e30c158b7ef6bb19fa14ae2dc90b` and `64db515f7eb070728f4c55fb9eded1c16a30f86956803827f232a6d93a018ae4`. Syntax checks: 4/4 PASS.
+
+The fixture proves user authorization occurs before the Service Binding call, the caller uses a separate internal token, invalid internal credentials are rejected, missing binding/key ring fails closed, and PII digest-only behavior remains enforced across the binding.
+
+This is not actual control-plane integration. The existing G3 control-plane slice has service-level read/write tokens but no end-user/domain authorization context. The actual Service Binding declaration and caller wrapper remain deferred until the C1 identity/domain authorization path exists. No public crypto relay route is added. No Cloudflare binding, secret, deployment, production data access, D1 mutation, dual-write, or cutover occurred. C2 remains OPEN; BWH remains the only production writer.
