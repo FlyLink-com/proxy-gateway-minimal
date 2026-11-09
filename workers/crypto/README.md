@@ -24,3 +24,8 @@ From the repository root, run:
 The test uses synthetic-only key material and caller tokens. It does not create Cloudflare resources or use production data.
 
 The control-plane Service Binding and caller-side authorization wrapper are deliberately a separate next step. This first slice does not add a binding to the existing control-plane Worker.
+
+
+## Service Binding proof
+
+The Miniflare integration fixture is in workers/control-plane/test/crypto-service-binding.test.mjs and uses the synthetic-only caller at workers/crypto/test/fixtures/authorized-caller.mjs. It proves private binding mechanics and separate user/service credentials; it is not the actual control-plane integration. The existing G3 control-plane has no end-user/domain authorization context yet, so no binding or crypto relay route is added to its Wrangler config.
