@@ -1,0 +1,11 @@
+{
+  // C2 Crypto Worker — local-only source slice.
+  // No account_id, public route, workers.dev hostname, preview URL, D1, KV, R2 or DO binding.
+  // A private Service Binding is configured by an authorized caller in a later integration step.
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "flylink-crypto-worker",
+  "main": "src/index.mjs",
+  "compatibility_date": "2025-06-01",
+  "workers_dev": false,
+  "preview_urls": false
+}
