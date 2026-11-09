@@ -25,7 +25,7 @@ exports.onExecutePostLogin = async (event, api) => {
     .filter((method) => method && method.name === "mfa" && method.type === "otp"
       && typeof method.timestamp === "string")
     .map((method) => ({ ...method, at: Date.parse(method.timestamp) }))
-    .filter(method) => Number.isSafeInteger(method.at)
+    .filter((method) => Number.isSafeInteger(method.at)
       && method.at <= Date.now() + 30000
       && Date.now() - method.at <= 5 * 60 * 1000)
     .sort((a, b) => b.at - a.at)[0];
