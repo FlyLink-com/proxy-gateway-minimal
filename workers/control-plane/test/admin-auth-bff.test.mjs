@@ -243,7 +243,8 @@ test("logout rejects cross-origin POST and callback rejects state-cookie mismatc
 
 test("Worker routes expose the Admin BFF and preserve Portal route separation", async () => {
   const e = env();
-  const crossSiteLogin = await worker.fetch(new Request("https://admin.example.test/v1/auth/admin/login", {\n    headers: { origin: "https://evil.example.test", "sec-fetch-site": "cross-site" },
+  const crossSiteLogin = await worker.fetch(new Request("https://admin.example.test/v1/auth/admin/login", {
+    headers: { origin: "https://evil.example.test", "sec-fetch-site": "cross-site" },
   }), e);
   assert.equal(crossSiteLogin.status, 403);
   const login = await worker.fetch(new Request("https://admin.example.test/v1/auth/admin/login", {
