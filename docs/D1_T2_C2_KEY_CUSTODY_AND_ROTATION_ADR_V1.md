@@ -234,3 +234,19 @@ The project owner approved the C2 target architecture described in this ADR and 
 This decision approves the target architecture only. It does not approve or perform implementation or provisioning. The following remain open: named Platform/Security custodians and domain owners; concrete external escrow/wrapping mechanism; two-person recovery runbook and real recovery evidence; isolated non-production Crypto Worker/Service Binding integration and authorization tests; payment-event and PII domain approvals; Wallet-first digest compatibility and replay/retention decision; key-family-specific retention windows; independent review and formal C2 acceptance.
 
 No real key, Cloudflare secret, binding, Worker, Durable Object, KMS/HSM resource or escrow backup has been created by this decision. No BWH access, production data read, D1 mutation, deployment, dual-write, cutover or production writer-authority change is authorized. BWH remains the only production control-data writer.
+
+
+## 17. Crypto Worker interface contract and source-only implementation — 2026-11-08
+
+The C2 interface contract is recorded in `docs/D1_T2_C2_CRYPTO_WORKER_INTERFACE_CONTRACT_V1.md`.
+
+Implemented in Draft source:
+- `workers/crypto/src/index.mjs` provides one internal POST route, strict versioned operation schemas, per-caller bearer authentication, a current/previous credential overlap, bounded request parsing, and generic fail-closed errors.
+- It loads the three purpose-separated HMAC key-ring secret bindings, checks pairwise key-material separation, and destroys the in-memory key rings after each operation.
+- PII requests accept only the existing precomputed SHA-256 digest; no raw PII enters the Worker request body.
+- The Wrangler configuration disables workers.dev and preview URLs and declares no public route, account ID, D1, KV, R2, or Durable Object binding.
+- The shared primitive adds digest-only PII candidate generation and verification without changing the existing raw-value helper contract.
+
+Fixed Node v22.23.1 isolated non-production tests: 11/11 PASS twice; node --check 3/3 PASS. Wrangler 4.99.0 deploy --dry-run passed (28.19 KiB bundle / 6.42 KiB gzip; no bindings found; no deployment).
+
+This is direct Worker-handler and bundle evidence only. The control-plane private Service Binding and caller-side authorization wrapper have not yet been integrated or tested through Miniflare. No real key, secret, binding, external escrow, Worker deployment, BWH access, D1 mutation, dual-write, or cutover occurred. C2 remains OPEN and BWH remains the only production writer.
