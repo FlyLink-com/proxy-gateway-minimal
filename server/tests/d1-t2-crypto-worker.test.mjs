@@ -8,7 +8,6 @@ import cryptoWorker from "../../workers/crypto/src/index.mjs";
 const PATH = "/internal/v1/digests";
 const TOKEN = "synthetic-crypto-caller-token-20261108";
 const PREVIOUS_TOKEN = "synthetic-crypto-caller-token-previous-20261108";
-const URL = "https://crypto.internal" + PATH;
 
 function keyRing(activeKeyId, retainedKeyId, activeByte, retainedByte) {
   return JSON.stringify({
