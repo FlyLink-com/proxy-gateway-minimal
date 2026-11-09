@@ -115,7 +115,7 @@ test("Admin session state is bounded, expires and can be explicitly revoked", as
     mfaVerifiedAt: createdAt, authTime: createdAt, createdAt, expiresAt: createdAt + 900000,
   };
   assert.equal((await object.fetch(new Request("https://do/session/create", { method: "POST", body: JSON.stringify(body) }))).status, 201);
-  assert.equal((await object.fetch(new Request("https://do/session/validate", { method: "POST", body: JSON.stringify({ now: createdAt + 1000 }) }))).status, 200);
+  const fresh = await object.fetch(new Request("https://do/session/validate", { method: "POST", body: JSON.stringify({ now: createdAt + 1000 }) }));\n  assert.equal(fresh.status, 200);\n  assert.equal((await fresh.json()).mfaFresh, true);\n  const aged = await object.fetch(new Request("https://do/session/validate", { method: "POST", body: JSON.stringify({ now: createdAt + 6 * 60 * 1000 }) }));\n  assert.equal(aged.status, 200);\n  assert.equal((await aged.json()).mfaFresh, false);
   assert.equal((await object.fetch(new Request("https://do/session/validate", { method: "POST", body: JSON.stringify({ now: createdAt + 900001 }) }))).status, 401);
   assert.equal((await object.fetch(new Request("https://do/session/revoke", { method: "POST", body: "{}" }))).status, 200);
 });
@@ -177,7 +177,7 @@ test("Universal Login BFF completes state, PKCE, nonce, Access Token and MFA pro
   const actor = await identity.json();
   assert.equal(actor.actor.subject, "auth0|synthetic-admin");
   assert.equal(actor.actor.surface, "admin");
-  assert.equal(actor.mfaVerifiedAt, now);
+  assert.equal(actor.mfaVerifiedAt, now);\n  assert.equal(actor.mfaFresh, true);
 
   const logout = await logoutAdminSession(new Request("https://admin.example.test/v1/auth/admin/logout", {
     method: "POST",
