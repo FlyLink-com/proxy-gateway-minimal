@@ -149,8 +149,8 @@ test("Universal Login BFF completes state, PKCE, nonce, Access Token and MFA pro
   const fetcher = async (url, init) => {
     if (url === issuer + "oauth/token") {
       assert.equal(init.method, "POST");
-      assert.match(init.headers.authorization, /^Basic /);
       const form = new URLSearchParams(init.body);
+      assert.equal(form.get("client_secret"), "synthetic-client-secret");
       assert.equal(form.get("grant_type"), "authorization_code");
       assert.ok(form.get("code_verifier"));
       return new Response(JSON.stringify({ token_type: "Bearer", expires_in: 600, access_token: accessToken, id_token: idToken }));
