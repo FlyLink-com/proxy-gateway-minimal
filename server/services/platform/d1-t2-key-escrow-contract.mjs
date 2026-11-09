@@ -3,6 +3,9 @@ import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:
 const SCHEMA_VERSION = 1;
 const SAFE_REF = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const ALGORITHMS = new Set(["hmac-sha256", "aes-256-gcm"]);
+const ENVELOPE_KEYS = Object.freeze([
+  "schemaVersion", "keyId", "family", "algorithm", "wrappedAt", "nonce", "ciphertext", "tag"
+].sort());
 
 function fail(code) {
   const error = new Error(code);
@@ -52,6 +55,25 @@ function decodeCanonical(value, expectedBytes, code) {
   return decoded;
 }
 
+function requireEnvelope(envelope) {
+  if (!envelope || typeof envelope !== "object" || Array.isArray(envelope)) {
+    throw fail("key_escrow_envelope_invalid");
+  }
+  const keys = Object.keys(envelope).sort();
+  if (keys.length !== ENVELOPE_KEYS.length || keys.some((key, index) => key !== ENVELOPE_KEYS[index])) {
+    throw fail("key_escrow_envelope_invalid");
+  }
+  if (envelope.schemaVersion !== SCHEMA_VERSION) throw fail("key_escrow_schema_version_invalid");
+  requireRef(envelope.keyId, "key_escrow_key_id_invalid");
+  requireRef(envelope.family, "key_escrow_family_invalid");
+  if (!ALGORITHMS.has(envelope.algorithm)) throw fail("key_escrow_algorithm_invalid");
+  requireTimestamp(envelope.wrappedAt);
+  decodeCanonical(envelope.nonce, 12, "key_escrow_envelope_invalid");
+  decodeCanonical(envelope.ciphertext, 32, "key_escrow_envelope_invalid");
+  decodeCanonical(envelope.tag, 16, "key_escrow_envelope_invalid");
+  return envelope;
+}
+
 /**
  * Synthetic-only envelope for testing independent key escrow.
  * It does not create keys, call a KMS, persist data, or access Cloudflare.
@@ -99,14 +121,7 @@ export function restoreKeyFromEscrow({
   expectedFamily,
   expectedAlgorithm
 } = {}) {
-  if (!envelope || typeof envelope !== "object" || Array.isArray(envelope)) {
-    throw fail("key_escrow_envelope_invalid");
-  }
-  if (envelope.schemaVersion !== SCHEMA_VERSION) throw fail("key_escrow_schema_version_invalid");
-  requireRef(envelope.keyId, "key_escrow_key_id_invalid");
-  requireRef(envelope.family, "key_escrow_family_invalid");
-  if (!ALGORITHMS.has(envelope.algorithm)) throw fail("key_escrow_algorithm_invalid");
-  requireTimestamp(envelope.wrappedAt);
+  requireEnvelope(envelope);
   if (envelope.keyId !== expectedKeyId || envelope.family !== expectedFamily) {
     throw fail("key_escrow_binding_mismatch");
   }
@@ -152,9 +167,7 @@ export function assertDistinctKeyFamilies(entries) {
 }
 
 export function projectKeyEscrowInventory(envelope) {
-  if (!envelope || typeof envelope !== "object" || Array.isArray(envelope)) {
-    throw fail("key_escrow_envelope_invalid");
-  }
+  requireEnvelope(envelope);
   return Object.freeze({
     schemaVersion: envelope.schemaVersion,
     keyId: envelope.keyId,
