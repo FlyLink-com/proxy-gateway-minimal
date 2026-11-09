@@ -82,12 +82,12 @@ All work packages begin OPEN. Existing design documents are inputs, not completi
 - [ ] The Worker loads all purpose-separated HMAC key rings, rejects cross-family key-material reuse, never returns raw keys, and accepts only precomputed PII digests.
 - [x] Miniflare Service Binding fixture with a separate synthetic authorized caller proves binding mechanics, user-auth-before-call, internal token separation, missing-binding/key-ring failure, and digest-only PII behavior (5/5 PASS twice). This is fixture evidence, not actual control-plane integration.
 - [ ] Actual control-plane Service Binding integration is completed only after the C1 user/session and domain-authorization context exists; no generic public crypto relay route is allowed.
-- [ ] Owner selects an independent external KMS/HSM provider/account and records distinct Key Custodian, Security Approver, Recovery Operator, and KMS Administrator roles.
-- [ ] Provider key policy enforces non-exportable KEK use, separate admin/user permissions, two-person recovery approval, short-lived decrypt access, and audit retention.
-- [ ] Escrow ciphertext and metadata-only manifest are stored in two independent locations; real non-production restore, AAD binding, HMAC known-answer, and permission-revocation tests pass.
-- [ ] Crypto Worker and business control-plane identities have no KMS Decrypt/Unwrap permission.
+- [ ] Three named offline recovery custodians and distinct recovery/approval roles are recorded; no custodian holds more than one Shamir share.
+- [ ] A vetted, version-pinned Shamir Secret Sharing implementation is independently reviewed and passes synthetic 2-of-3 reconstruction and one-share rejection tests.
+- [ ] AES-256-GCM escrow envelopes and metadata-only manifests are stored in two independent offline physical locations; synthetic restore, exact AAD binding, HMAC known-answer, custody receipt, and share-revocation tests pass.
+- [ ] Crypto Worker and business Control Plane identities have no access to offline KEKs or Shamir shares; only the Crypto Worker receives its approved per-Worker runtime Secrets.
 
-**Required artifacts:** key-custody/rotation ADR; [Crypto Worker interface contract](D1_T2_C2_CRYPTO_WORKER_INTERFACE_CONTRACT_V1.md) and source-importing tests; [external escrow provider evaluation](D1_T2_C2_EXTERNAL_ESCROW_PROVIDER_EVALUATION_V1.md); separate Wallet-first handoff digest compatibility decision; reproducible synthetic vectors.
+**Required artifacts:** key-custody/rotation ADR; [Crypto Worker interface contract](D1_T2_C2_CRYPTO_WORKER_INTERFACE_CONTRACT_V1.md) and source-importing tests; [historical external escrow provider evaluation](D1_T2_C2_EXTERNAL_ESCROW_PROVIDER_EVALUATION_V1.md); [approved offline 2-of-3 escrow runbook](D1_T2_C2_OFFLINE_ESCROW_RUNBOOK_V1.md); separate Wallet-first handoff digest compatibility decision; reproducible synthetic vectors.
 
 ### T2-C3 — Closed JSON schemas, opaque-reference grammar, and generation fencing
 
@@ -251,7 +251,7 @@ G6 PASS authorizes only consideration of the next separately gated step. It does
 | Package | Current evidence | Status |
 |---|---|---|
 | T2-C1 Identity custody | C1 custody proposal + provider evaluation + [owner decision sheet](D1_T2_C1_OWNER_DECISION_SHEET_V1.md); provider-neutral opaque actor-context and identity-binding helper/tests added; Auth0 Essentials remains preferred candidate, not selected; hosted provider proof and owner decisions remain outstanding | OPEN |
-| T2-C2 HMAC and legacy compatibility | [C2 key custody/rotation ADR](D1_T2_C2_KEY_CUSTODY_AND_ROTATION_ADR_V1.md) + executable Web Crypto primitives + synthetic escrow contract; **target architecture approved 2026-11-08** (Crypto Worker/private Service Binding, per-Worker secrets, independent encrypted escrow/two-person recovery, key-family separation, active-write/retained-read rotation). Named custodians, concrete escrow mechanism and real recovery, non-production integration, domain-owner approvals, Wallet-first replay/retention decision and independent review remain open | OPEN |
+| T2-C2 HMAC and legacy compatibility | [C2 key custody/rotation ADR](D1_T2_C2_KEY_CUSTODY_AND_ROTATION_ADR_V1.md) + executable Web Crypto primitives + synthetic escrow contract; **target architecture approved 2026-11-08** (Crypto Worker/private Service Binding, per-Worker secrets, Cloudflare per-Worker Secrets plus offline AES-256-GCM escrow with Shamir 2-of-3 recovery (owner-approved 2026-11-08), key-family separation, active-write/retained-read rotation). Named custodians, concrete escrow mechanism and real recovery, non-production integration, domain-owner approvals, Wallet-first replay/retention decision and independent review remain open | OPEN |
 | T2-C3 JSON/ref/generation | 26 fields reconciled: 7 writer families closed, 16 existing source contracts retained/mapped, 2 Passkey fields DEFER, account metadata BLOCKED pending C1 identity custody; independent review absent | OPEN |
 | T2-C4 Payment custody | DO SQLite proposal exists; owner, key, lifecycle, and outage decisions remain open | OPEN |
 | T2-C5 Retention/G2 residuals | Retention register exists; RET-02–RET-12 and G2 residual dispositions remain open | OPEN |
@@ -300,7 +300,7 @@ This covers the registered Portal access-event and subscription-fulfillment JSON
 
 ## 11. C2 grouped key-custody proposal — 2026-11-08
 
-Added `docs/D1_T2_C2_KEY_CUSTODY_OWNER_DECISION_PROPOSAL_V1.md` to consolidate the remaining C2 owner decisions into one grouped approval: crypto Worker/private Service Binding, per-Worker secret binding default, independent encrypted escrow/two-person recovery, key-family separation, active-write/retained-read rotation, and synthetic restore acceptance.
+Added `docs/D1_T2_C2_KEY_CUSTODY_OWNER_DECISION_PROPOSAL_V1.md` to consolidate the remaining C2 owner decisions into one grouped approval: crypto Worker/private Service Binding, per-Worker secret binding default, Cloudflare per-Worker Secrets plus offline AES-256-GCM escrow with Shamir 2-of-3 recovery (owner-approved 2026-11-08), key-family separation, active-write/retained-read rotation, and synthetic restore acceptance.
 
 The previous Wallet-first compatibility recommendation in the C2 ADR is superseded by the source audit: preserve the exact domain-separated SHA-256 v1 contract after secure UUIDv4 source hardening; do not add these high-entropy transient token digests to the PII HMAC key family. The delivered-row replay/retention window remains open.
 
@@ -494,3 +494,9 @@ The focused C2/C4 hardening suites were expanded with the shared JSON contracts 
 - TAP summaries: run 1 = 65 pass / 0 fail; run 2 = 65 pass / 0 fail.
 
 This is source-only, isolated synthetic evidence. It does not close C2 real escrow/provider/custodian gates, C4 Durable Object implementation/owner approval, C5 retention owner approvals, or T2 migration readiness.
+
+## 22. C2 offline escrow owner decision — 2026-11-08
+
+The owner has selected Cloudflare per-Worker Secrets for online runtime custody and offline AES-256-GCM escrow with Shamir 2-of-3 recovery. No independent KMS cloud account is required or selected. The current operational contract is [D1_T2_C2_OFFLINE_ESCROW_RUNBOOK_V1.md](D1_T2_C2_OFFLINE_ESCROW_RUNBOOK_V1.md); the external provider evaluation is retained as historical comparison only.
+
+Still open before real key provisioning: three named custodians, audited/version-pinned Shamir implementation, separate offline custody locations, synthetic threshold/recovery tests, actual C1-authorized control-plane Service Binding integration, domain-owner approvals, and independent review. No real key/share/secret/binding/deployment or production operation is authorized. C2 remains OPEN, T2 remains BLOCKED, and BWH remains the only production control-data writer.
