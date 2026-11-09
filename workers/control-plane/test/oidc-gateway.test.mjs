@@ -46,11 +46,16 @@ test('denies ID token, opaque, wrong issuer, audience, azp, scope, malformed hea
   const good=token(portal,P);await rejected(verify('portal',good.slice(0,-2)+'aa',{fetcher:f}));
 });
 
-test('denies Admin without completed MFA claim; Portal has no MFA requirement',async()=>{
+test('Admin Access Token proves identity only; JWT claims cannot assert completed MFA',async()=>{
   resetOidcJwksCacheForTests();const f=fixtureFetch();
   const {['https://flylink.example.test/amr']:removed,...noMfa}=A;
-  await rejected(verify('admin',token(admin,noMfa),{fetcher:f}));
-  for(const bad of ['mfa',['pwd'],{},[],['MFA']])await rejected(verify('admin',token(admin,{...A,'https://flylink.example.test/amr':bad}),{fetcher:f}));
+  const plain=await verify('admin',token(admin,noMfa),{fetcher:f});
+  assert.equal(plain.surface,'admin');
+  assert.deepEqual(plain.authenticationMethods,[]);
+  for(const claim of ['mfa',['pwd','mfa','otp'],['pwd'],{},[]]){
+    const actor=await verify('admin',token(admin,{...A,'https://flylink.example.test/amr':claim}),{fetcher:f});
+    assert.deepEqual(actor.authenticationMethods,[]);
+  }
   assert.equal((await verify('portal',token(portal,P),{fetcher:f})).surface,'portal');
 });
 
@@ -109,6 +114,10 @@ test('identity proof HTTP route returns non-PII context and generic unauthorized
   assert.equal(res.headers.get('cache-control'),'no-store');
   const wrong=await handleAuth0IdentityProof(request(token(admin,A)),env,'portal',{fetcher:fixtureFetch(),nowSeconds:now});
   assert.equal(wrong.status,401);assert.equal((await wrong.json()).error.code,'unauthorized');
+  const adminBlocked=await handleAuth0IdentityProof(request(token(admin,A)),env,'admin',{fetcher:fixtureFetch(),nowSeconds:now});
+  assert.equal(adminBlocked.status,503);
+  assert.equal((await adminBlocked.json()).error.code,'admin_mfa_orchestration_unavailable');
+  assert.equal(adminBlocked.headers.get('cache-control'),'no-store');
   const wrongMethod=await handleAuth0IdentityProof(new Request('https://worker.test/',{method:'POST'}),env,'portal');
   assert.equal(wrongMethod.status,405);
 });
