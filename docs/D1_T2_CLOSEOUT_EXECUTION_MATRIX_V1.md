@@ -480,3 +480,17 @@ C2 remains OPEN. The synthetic escrow contract passed 10/10 twice under Node v22
 - Fixed Node v22.23.1 regression: **28/28 PASS twice**, 0 failed / 0 skipped; syntax checks **2/2 PASS**.
 - C2 still requires external provider/account, named custodians, two-person recovery, and real non-production restore. C4 remains a proposal pending owner approval; no DO adapter or namespace was implemented. C5 retention durations remain OPEN and owner-controlled.
 - No real keys, production data, BWH access, remote D1 write, Worker/DO deployment, merge, or cutover occurred.
+
+
+## 21. Expanded C2/C4/JSON/schema regression — 2026-11-09
+
+The focused C2/C4 hardening suites were expanded with the shared JSON contracts and source schema inventory contract. All eight source/test files were verified byte-identical to their GitHub blobs in the isolated sandbox using `git hash-object` before execution.
+
+- C2 escrow contract + tests: 11 cases.
+- C4 payment-action contract + tests: 17 cases.
+- Shared JSON contract + tests and source schema inventory contract + tests: included in the same exact-head run.
+- Combined fixed Node v22.23.1 regression: **65/65 PASS twice**, 0 failed / 0 skipped.
+- Four relevant implementation modules: `node --check` **4/4 PASS**.
+- TAP summaries: run 1 = 65 pass / 0 fail; run 2 = 65 pass / 0 fail.
+
+This is source-only, isolated synthetic evidence. It does not close C2 real escrow/provider/custodian gates, C4 Durable Object implementation/owner approval, C5 retention owner approvals, or T2 migration readiness.
