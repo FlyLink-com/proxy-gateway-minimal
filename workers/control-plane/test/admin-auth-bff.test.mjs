@@ -115,7 +115,12 @@ test("Admin session state is bounded, expires and can be explicitly revoked", as
     mfaVerifiedAt: createdAt, authTime: createdAt, createdAt, expiresAt: createdAt + 900000,
   };
   assert.equal((await object.fetch(new Request("https://do/session/create", { method: "POST", body: JSON.stringify(body) }))).status, 201);
-  const fresh = await object.fetch(new Request("https://do/session/validate", { method: "POST", body: JSON.stringify({ now: createdAt + 1000 }) }));\n  assert.equal(fresh.status, 200);\n  assert.equal((await fresh.json()).mfaFresh, true);\n  const aged = await object.fetch(new Request("https://do/session/validate", { method: "POST", body: JSON.stringify({ now: createdAt + 6 * 60 * 1000 }) }));\n  assert.equal(aged.status, 200);\n  assert.equal((await aged.json()).mfaFresh, false);
+  const fresh = await object.fetch(new Request("https://do/session/validate", { method: "POST", body: JSON.stringify({ now: createdAt + 1000 }) }));
+  assert.equal(fresh.status, 200);
+  assert.equal((await fresh.json()).mfaFresh, true);
+  const aged = await object.fetch(new Request("https://do/session/validate", { method: "POST", body: JSON.stringify({ now: createdAt + 6 * 60 * 1000 }) }));
+  assert.equal(aged.status, 200);
+  assert.equal((await aged.json()).mfaFresh, false);
   assert.equal((await object.fetch(new Request("https://do/session/validate", { method: "POST", body: JSON.stringify({ now: createdAt + 900001 }) }))).status, 401);
   assert.equal((await object.fetch(new Request("https://do/session/revoke", { method: "POST", body: "{}" }))).status, 200);
 });
