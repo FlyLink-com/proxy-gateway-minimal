@@ -107,6 +107,18 @@ test("rejects malformed envelope and unsupported schema versions", () => {
   }), /key_escrow_envelope_invalid/);
 });
 
+test("rejects extra envelope fields before restore or inventory projection", () => {
+  const envelope = makeEnvelope();
+  const contaminated = { ...envelope, rawKey: KEY_MATERIAL.toString("base64") };
+  assert.throws(() => restoreKeyFromEscrow({
+    envelope: contaminated,
+    wrappingKey: WRAPPING_KEY,
+    expectedKeyId: "pii-hmac-key-v1",
+    expectedFamily: "pii-hmac"
+  }), /key_escrow_envelope_invalid/);
+  assert.throws(() => projectKeyEscrowInventory(contaminated), /key_escrow_envelope_invalid/);
+});
+
 test("requires 32-byte key and wrapping material", () => {
   assert.throws(() => makeEnvelope({ keyMaterial: Buffer.alloc(16) }), /key_escrow_material_invalid/);
   assert.throws(() => makeEnvelope({ wrappingKey: Buffer.alloc(16) }), /key_escrow_wrapping_key_invalid/);
