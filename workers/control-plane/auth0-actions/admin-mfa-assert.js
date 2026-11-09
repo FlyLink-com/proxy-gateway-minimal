@@ -25,13 +25,16 @@ exports.onExecutePostLogin = async (event, api) => {
     .filter((method) => method && method.name === "mfa" && method.type === "otp"
       && typeof method.timestamp === "string")
     .map((method) => ({ ...method, at: Date.parse(method.timestamp) }))
-    .filter((method) => Number.isSafeInteger(method.at)
+    .filter(method) => Number.isSafeInteger(method.at)
       && method.at <= Date.now() + 30000
       && Date.now() - method.at <= 5 * 60 * 1000)
     .sort((a, b) => b.at - a.at)[0];
 
   if (!completed) {
-    api.access.deny("admin_mfa_completion_not_proven");
+    const enrollmentRequired = event.transaction?.metadata?.flylink_admin_otp_enrollment_required === true;
+    api.access.deny(enrollmentRequired
+      ? "admin_mfa_enrollment_completed_reauthenticate"
+      : "admin_mfa_completion_not_proven");
     return;
   }
 
