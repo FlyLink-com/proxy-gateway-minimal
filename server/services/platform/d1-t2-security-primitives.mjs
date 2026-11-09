@@ -491,10 +491,10 @@ export async function createD1PiiDigestEnvelope({ keyRing, domain, legacyDigestH
   });
 }
 
-export async function createD1PiiLookupCandidates({ keyRing, domain, rawValue } = {}) {
+export async function createD1PiiLookupCandidatesFromDigest({ keyRing, domain, legacyDigestHex } = {}) {
   requireKeyFamily(keyRing, "pii-hmac");
   validatePiiDomain(domain);
-  const legacyDigestHex = await legacyPiiDigest(rawValue, domain);
+  if (!LOWER_HEX_64_PATTERN.test(legacyDigestHex || "")) throw fail("legacy_digest_invalid");
   const candidates = [];
   for (const keyId of keyRing.readKeyIds) {
     candidates.push({
@@ -509,16 +509,34 @@ export async function createD1PiiLookupCandidates({ keyRing, domain, rawValue } 
   return candidates;
 }
 
-export async function verifyD1PiiDigestEnvelope({ envelope, keyRing, domain, rawValue } = {}) {
+export async function createD1PiiLookupCandidates({ keyRing, domain, rawValue } = {}) {
+  requireKeyFamily(keyRing, "pii-hmac");
+  validatePiiDomain(domain);
+  const legacyDigestHex = await legacyPiiDigest(rawValue, domain);
+  return createD1PiiLookupCandidatesFromDigest({ keyRing, domain, legacyDigestHex });
+}
+
+export async function verifyD1PiiDigestEnvelopeFromDigest({ envelope, keyRing, domain, legacyDigestHex } = {}) {
   try {
     requireKeyFamily(keyRing, "pii-hmac");
     validatePiiDomain(domain);
-    const legacyDigestHex = await legacyPiiDigest(rawValue, domain);
+    if (!LOWER_HEX_64_PATTERN.test(legacyDigestHex || "")) return false;
     return verifyEnvelope({
       envelope,
       keyRing,
       messageForKeyId: (keyId) => piiDigestMessage({ keyId, domain, legacyDigestHex })
     });
+  } catch {
+    return false;
+  }
+}
+
+export async function verifyD1PiiDigestEnvelope({ envelope, keyRing, domain, rawValue } = {}) {
+  try {
+    requireKeyFamily(keyRing, "pii-hmac");
+    validatePiiDomain(domain);
+    const legacyDigestHex = await legacyPiiDigest(rawValue, domain);
+    return verifyD1PiiDigestEnvelopeFromDigest({ envelope, keyRing, domain, legacyDigestHex });
   } catch {
     return false;
   }
