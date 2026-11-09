@@ -199,8 +199,8 @@ async function dispatchAdminCallback(mf, control, idp, mode, txKey) {
 function assertAdminSessionNotIssued(response) {
   const values = response.headers.getSetCookie?.() ?? [response.headers.get("set-cookie") ?? ""];
   const raw = values.join(", ");
-  assert.match(raw, /__Host-flylink_admin_session=;\\s*Path=\\/;\\s*Max-Age=0\\b/);
-  assert.doesNotMatch(raw, /__Host-flylink_admin_session=[^;,\\s]+;/);
+  assert.match(raw, /__Host-flylink_admin_session=;\s*Path=\/;\s*Max-Age=0\b/);
+  assert.doesNotMatch(raw, /__Host-flylink_admin_session=[^;,\s]+;/);
 }
 
 async function idpState(idp) {
