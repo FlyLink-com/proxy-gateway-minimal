@@ -21,7 +21,7 @@ function b64url(bytes) {
 }
 function decodeB64url(value) {
   if (typeof value !== "string" || !/^[A-Za-z0-9_-]+$/.test(value)) throw new Error("invalid_encoding");
-  const binary = atob(value.replace(/-/g, "+").replace(/_/g, "/"));
+  const normalized = value.replace(/-/g, "+").replace(/_/g, "/");\n  const binary = atob(normalized + "=".repeat((4 - (normalized.length % 4)) % 4));
   const bytes = Uint8Array.from(binary, c => c.charCodeAt(0));
   if (b64url(bytes) !== value) throw new Error("invalid_encoding");
   return bytes;
@@ -47,7 +47,7 @@ function config(env) {
   const redirectUrl = new URL(redirectUri);
   const appUrl = new URL(appOrigin);
   if (issuerUrl.protocol !== "https:" || issuerUrl.pathname !== "/" || issuerUrl.search || issuerUrl.hash || issuerUrl.href !== issuer
-    || redirectUrl.protocol !== "https:" || redirectUrl.pathname !== "/v1/auth/admin/callback" || redirectUrl.search || redirectUrl.hash
+    || redirectUrl.protocol !== "https:" || redirectUrl.pathname !== "/v1/auth/admin/callback" || redirectUrl.search || redirectUrl.hash || redirectUrl.origin !== appOrigin
     || appUrl.protocol !== "https:" || appUrl.pathname !== "/" || appUrl.search || appUrl.hash || appUrl.origin !== appOrigin
     || !mfaClaim.startsWith("https://") || !env.AUTH0_ADMIN_ALLOWED_CLIENT_IDS?.split(",").map(x => x.trim()).includes(clientId)) {
     throw new Error("configuration");
