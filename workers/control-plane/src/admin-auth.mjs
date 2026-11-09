@@ -87,6 +87,13 @@ function originAllowed(request, appOrigin, requireOrigin = false) {
   const origin = request.headers.get("origin");
   return origin ? origin === appOrigin : !requireOrigin;
 }
+function loginInitiationAllowed(request, appOrigin) {
+  const origin = request.headers.get("origin");
+  if (origin) return origin === appOrigin;
+  const fetchSite = request.headers.get("sec-fetch-site");
+  // Direct address-bar navigation is "none"; same-origin app navigation is "same-origin".
+  return fetchSite === "none" || fetchSite === "same-origin";
+}
 async function stateCall(env, name, path, body) {
   if (!env.ADMIN_AUTH_STATE || typeof env.ADMIN_AUTH_STATE.idFromName !== "function") throw new Error("state_unavailable");
   const id = env.ADMIN_AUTH_STATE.idFromName(name);
@@ -152,7 +159,7 @@ export async function startAdminLogin(request, env, { now = Date.now() } = {}) {
   if (request.method !== "GET") return response(405, { error: { code: "method_not_allowed" } });
   let cfg;
   try { cfg = config(env); } catch { return response(503, { error: { code: "admin_auth_unavailable" } }); }
-  if (!originAllowed(request, cfg.appOrigin)) return response(403, { error: { code: "origin_denied" } });
+  if (!loginInitiationAllowed(request, cfg.appOrigin)) return response(403, { error: { code: "origin_denied" } });
   try {
     const state = randomBase64Url(32);
     const nonce = randomBase64Url(32);
