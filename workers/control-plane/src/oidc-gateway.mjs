@@ -14,7 +14,7 @@ const textDecoder = new TextDecoder('utf-8', { fatal: true });
 const textEncoder = new TextEncoder();
 const configs = {
   portal: { issuer: 'AUTH0_PORTAL_ISSUER', audience: 'AUTH0_PORTAL_AUDIENCE', clients: 'AUTH0_PORTAL_ALLOWED_CLIENT_IDS', scope: 'read:portal_identity' },
-  admin: { issuer: 'AUTH0_ADMIN_ISSUER', audience: 'AUTH0_ADMIN_AUDIENCE', clients: 'AUTH0_ADMIN_ALLOWED_CLIENT_IDS', mfa: 'AUTH0_ADMIN_MFA_CLAIM', scope: 'read:admin_identity' },
+  admin: { issuer: 'AUTH0_ADMIN_ISSUER', audience: 'AUTH0_ADMIN_AUDIENCE', clients: 'AUTH0_ADMIN_ALLOWED_CLIENT_IDS', scope: 'read:admin_identity' },
 };
 
 export class Auth0GatewayError extends Error {
@@ -94,12 +94,10 @@ function readConfiguration(env, surface) {
   // A shared surface identity would make a cross-surface mistake difficult to see.
   const other = surface === 'portal' ? 'admin' : 'portal';
   if (env[configs[other].issuer] === issuer || env[configs[other].audience] === audience) deny();
-  const claim = names.mfa ? env[names.mfa] : undefined;
-  if (names.mfa && (!nonblank(claim, 512) || !/^https:\/\/[^\s/#?]+\/[^\s]+$/.test(claim))) deny();
   const maxRaw = env.AUTH0_MAX_TOKEN_LIFETIME_SECONDS;
   const maxLifetime = maxRaw === undefined ? DEFAULT_MAX_LIFETIME_S : Number(maxRaw);
   if (!Number.isSafeInteger(maxLifetime) || maxLifetime < 60 || maxLifetime > 86400) deny();
-  return { issuer, audience, clients: new Set(clients), scope: names.scope, claim, maxLifetime };
+  return { issuer, audience, clients: new Set(clients), scope: names.scope, maxLifetime };
 }
 function validJwk(jwk) {
   if (!jwk || typeof jwk !== 'object' || Array.isArray(jwk)) deny();
@@ -181,12 +179,10 @@ function verifiedClaims(claims, config, surface, nowSeconds) {
   if (!nonblank(claims.scope, 4096) || !/^[A-Za-z0-9:_-]+(?: [A-Za-z0-9:_-]+)*$/.test(claims.scope)) deny();
   const scopes = [...new Set(claims.scope.split(' '))];
   if (!scopes.includes(config.scope)) deny();
-  let factors = [];
-  if (surface === 'admin') {
-    factors = claims[config.claim];
-    if (!Array.isArray(factors) || factors.length > 16 || factors.some(x => typeof x !== 'string') || !factors.includes('mfa')) deny();
-  }
-  return { surface, issuer: config.issuer, subject: claims.sub, clientId: claims.azp, scopes, authenticationMethods: factors, issuedAt: claims.iat, expiresAt: claims.exp };
+  // Auth0 Step 6 proved that this ROPG + mfa-otp flow does not expose
+  // completed MFA in Access Token claims. A JWT proves identity only.
+  // Admin authorization requires a separate gateway-owned MFA session proof.
+  return { surface, issuer: config.issuer, subject: claims.sub, clientId: claims.azp, scopes, authenticationMethods: [], issuedAt: claims.iat, expiresAt: claims.exp };
 }
 /** Verify exactly one surface; the caller must select surface from a fixed route. */
 export async function verifyAuth0AccessToken(request, env, surface, { fetcher = fetch, nowSeconds = Math.floor(Date.now()/1000) } = {}) {
@@ -217,6 +213,13 @@ export async function handleAuth0IdentityProof(request, env, surface, options) {
   }
   try {
     const actor = await verifyAuth0AccessToken(request, env, surface, options);
+    if (surface === 'admin') {
+      // Deliberately fail closed until the gateway itself completes the
+      // mfa_required -> mfa-otp exchange and issues a bound, revocable session.
+      return new Response(JSON.stringify({error:{code:'admin_mfa_orchestration_unavailable',message:'admin authentication policy is not available'}}), {
+        status:503, headers:{'content-type':'application/json; charset=utf-8','cache-control':'no-store'},
+      });
+    }
     return new Response(JSON.stringify({actor}), {
       status:200, headers:{'content-type':'application/json; charset=utf-8','cache-control':'no-store'},
     });
