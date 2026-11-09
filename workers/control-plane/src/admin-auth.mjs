@@ -241,7 +241,8 @@ export async function completeAdminLogin(request, env, { fetcher = fetch, now = 
     if (!tokenResponse.ok) throw new Error("provider_error");
     const tokens = await readJsonBounded(tokenResponse, MAX_TOKEN_RESPONSE_BYTES);
     if (typeof tokens.refresh_token === "string" && tokens.refresh_token.length) {
-      await revokeUnexpectedRefreshToken(cfg, tokens.refresh_token, fetcher);
+      const revoked = await revokeUnexpectedRefreshToken(cfg, tokens.refresh_token, fetcher);
+      if (!revoked) throw new Error("unexpected_refresh_token_revoke_failed");
       throw new Error("unexpected_refresh_token");
     }
     if (tokens.token_type !== "Bearer" || !Number.isSafeInteger(tokens.expires_in) || tokens.expires_in < 1
