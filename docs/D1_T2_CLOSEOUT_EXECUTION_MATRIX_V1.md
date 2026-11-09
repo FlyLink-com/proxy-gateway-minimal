@@ -78,8 +78,11 @@ All work packages begin OPEN. Existing design documents are inputs, not completi
 - [ ] User Portal/Admin key sharing is either removed with separate key domains or explicitly accepted by both accountable owners.
 - [ ] Wallet-first handoff compatibility tests prove retry/replay does not create duplicate effects across the approved transition.
 - [ ] Payment/commerce, Identity and Security owners approve their respective domains and retention dependencies.
+- [ ] The dedicated Crypto Worker accepts only exact versioned internal operations, enforces caller identity/token authorization, bounds request bodies, fails closed, and exposes no public route.
+- [ ] The Worker loads all purpose-separated HMAC key rings, rejects cross-family key-material reuse, never returns raw keys, and accepts only precomputed PII digests.
+- [ ] A Miniflare private Service Binding integration test proves the authorized control-plane caller boundary and failure behavior; direct-handler tests alone do not satisfy this item.
 
-**Required artifact:** key-custody/rotation ADR, compatibility decision for the wallet-first handoff digest, and reproducible synthetic vectors.
+**Required artifacts:** key-custody/rotation ADR; [Crypto Worker interface contract](D1_T2_C2_CRYPTO_WORKER_INTERFACE_CONTRACT_V1.md) and source-importing tests; separate Wallet-first handoff digest compatibility decision; reproducible synthetic vectors.
 
 ### T2-C3 — Closed JSON schemas, opaque-reference grammar, and generation fencing
 
@@ -453,3 +456,6 @@ Approved design baseline:
 Not included: named people, concrete KMS/HSM/offline escrow provider, real keys or bindings, deployed Crypto Worker, non-production integration, actual external recovery rehearsal, Wallet-first digest/replay-retention disposition, payment/PII domain approvals, or production change authorization.
 
 C2 remains OPEN. The synthetic escrow contract passed 10/10 twice under Node v22.23.1, but this is not real escrow or production restore evidence. BWH remains the only production control-data writer; no BWH access, production data read, D1 mutation, Worker/DO deployment, dual-write or cutover is authorized.
+
+
+**Draft progress — 2026-11-08 (Crypto Worker v1):** Added the versioned interface contract and dedicated Worker source. The source provides idempotency, provider-event and PII HMAC create/candidates/verify operations; PII inputs are digest-only. The three key-ring families are loaded and checked for cross-family reuse on each request. Caller auth, current/previous token overlap, exact schemas, 16 KiB body cap, generic fail-closed errors, no public route, and no persistent bindings are covered by 11/11 focused tests twice under Node v22.23.1; node --check 3/3 PASS. Wrangler 4.99.0 deploy --dry-run passed (28.19 KiB / 6.42 KiB gzip). The Service Binding integration, real secret provisioning, escrow, owner/domain approvals and independent review remain OPEN. No deployment or production operation occurred.
