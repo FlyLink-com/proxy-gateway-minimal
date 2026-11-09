@@ -270,3 +270,14 @@ Added `docs/D1_T2_C2_EXTERNAL_ESCROW_PROVIDER_EVALUATION_V1.md` as a source-only
 Technical recommendation: use an independent managed KMS with a non-exportable symmetric KEK, metadata-bound AAD/encryption context, distinct key-admin/key-user roles, audit logging, and a separate two-person break-glass approval workflow. Google Cloud KMS is the leading technical candidate if no existing independent KMS account is preferred; AWS KMS is equivalent where a separate AWS organization/account already exists. Azure is viable where an independent Azure tenant exists.
 
 No provider or account is selected by this evaluation. Two-person recovery must be separately enforced and tested; provider role separation alone is not proof of two-person approval. No cloud account, KMS/HSM key, policy, escrow object, real key, Cloudflare secret, or Worker binding was created. The concrete provider, named custodians, and real recovery proof remain OPEN.
+
+
+## 2026-11-09｜Synthetic escrow envelope strict-shape hardening
+
+The synthetic envelope contract now enforces an exact eight-field envelope schema before either restore or metadata-only inventory projection. It validates schema version, key ID, family, allowed algorithm, canonical timestamp, and canonical nonce/ciphertext/tag lengths. Unknown fields are rejected, so a raw key field cannot ride along in an otherwise valid envelope and be ignored by the inventory projection.
+
+- Source: `server/services/platform/d1-t2-key-escrow-contract.mjs`, commit `1de2fbcc449ce4e640131616e797926153eaa0d8`, blob `101eaa8f6811e7e50cecff1cc81aa82d078366ab`.
+- Test: `server/tests/d1-t2-key-escrow-contract.test.mjs`, commit `f3ff14ea4fad016bac687b92fc686f43ec086fc3`, blob `64a3be4f9a0c87d4f0d81e2e62ef3c2d2b355a17`.
+- Node v22.23.1, isolated synthetic sandbox: 11/11 PASS twice; 0 failed / 0 skipped; `node --check` PASS.
+
+This is a stricter synthetic envelope contract only. It does not create a KMS/HSM key, external escrow, real ciphertext backup, or recovery workflow. C2 remains OPEN pending provider/account selection, named custodians, two-person restore/revocation procedure, and real non-production recovery evidence.
