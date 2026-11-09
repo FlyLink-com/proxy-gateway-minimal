@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createSign, generateKeyPairSync, randomBytes } from "node:crypto";
+import { createHash, createSign, generateKeyPairSync, randomBytes, webcrypto } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { Miniflare } from "miniflare";
 
@@ -98,6 +98,7 @@ function signedPortalToken() {
 }
 
 async function createRuntime() {
+  const txKey = base64url(randomBytes(32));
   const mf = new Miniflare({
     workers: [
       {
@@ -116,7 +117,7 @@ async function createRuntime() {
           ADMIN_APP_ORIGIN: appOrigin,
           AUTH0_ADMIN_ALLOWED_CLIENT_IDS: clientId,
           AUTH0_ADMIN_MFA_CLAIM: claimUri,
-          AUTH0_ADMIN_TX_ENCRYPTION_KEY: base64url(randomBytes(32)),
+          AUTH0_ADMIN_TX_ENCRYPTION_KEY: txKey,
           AUTH0_PORTAL_ISSUER: portalIssuer,
           AUTH0_PORTAL_AUDIENCE: portalAudience,
           AUTH0_PORTAL_ALLOWED_CLIENT_IDS: portalClientId,
@@ -130,7 +131,7 @@ async function createRuntime() {
       },
     ],
   });
-  return { mf, control: await mf.getWorker("control-plane"), idp: await mf.getWorker("idp") };
+  return { mf, control: await mf.getWorker("control-plane"), idp: await mf.getWorker("idp"), txKey };
 }
 
 async function setIdpMode(idp, mode) {
@@ -142,26 +143,55 @@ async function setIdpMode(idp, mode) {
   assert.equal(response.status, 200);
 }
 
-async function beginAdminCallback(control, idp, mode) {
-  const start = await control.fetch(appOrigin + "/v1/auth/admin/login", {
-    headers: {
-      origin: appOrigin,
-      "sec-fetch-site": "same-origin",
+// Seed a valid encrypted PKCE transaction in the test Durable Object, then
+// dispatch the real callback route. This isolates callback transport behavior
+// from browser-only Origin / Fetch-Metadata header generation.
+async function dispatchAdminCallback(mf, control, idp, mode, txKey) {
+  const state = base64url(randomBytes(32));
+  const stateHash = createHash("sha256").update(state).digest("hex");
+  const nonce = base64url(randomBytes(32));
+  const verifier = base64url(randomBytes(32));
+  const key = await webcrypto.subtle.importKey(
+    "raw",
+    Buffer.from(txKey, "base64url"),
+    "AES-GCM",
+    false,
+    ["encrypt"],
+  );
+  const iv = randomBytes(12);
+  const ciphertext = await webcrypto.subtle.encrypt(
+    {
+      name: "AES-GCM",
+      iv,
+      additionalData: new TextEncoder().encode("admin-auth-tx:" + stateHash),
+      tagLength: 128,
     },
+    key,
+    new TextEncoder().encode(verifier),
+  );
+  const encryptedVerifier = base64url(iv) + "." + base64url(new Uint8Array(ciphertext));
+  const namespace = await mf.getDurableObjectNamespace("ADMIN_AUTH_STATE", "control-plane");
+  const stub = namespace.get(namespace.idFromName("tx:" + stateHash));
+  const createdAt = Date.now();
+  const seeded = await stub.fetch("https://admin-auth-state.internal/transaction/create", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      stateHash,
+      nonce,
+      encryptedVerifier,
+      redirectUri: appOrigin + "/v1/auth/admin/callback",
+      createdAt,
+      expiresAt: createdAt + 5 * 60 * 1000,
+    }),
   });
-  assert.equal(start.status, 302);
-  const authorize = new URL(start.headers.get("location"));
-  const state = authorize.searchParams.get("state");
-  const setCookie = start.headers.get("set-cookie") || "";
-  const match = /__Host-flylink_admin_oauth_state=([^;]+)/.exec(setCookie);
-  assert.ok(state);
-  assert.ok(match, "login must issue the state cookie");
+  assert.equal(seeded.status, 201, await seeded.text());
   await setIdpMode(idp, mode);
   const callbackUrl = appOrigin + "/v1/auth/admin/callback?code=synthetic-auth-code"
     + "&state=" + encodeURIComponent(state)
     + "&iss=" + encodeURIComponent(issuer);
   return control.fetch(callbackUrl, {
-    headers: { cookie: "__Host-flylink_admin_oauth_state=" + match[1] },
+    headers: { cookie: "__Host-flylink_admin_oauth_state=" + state },
   });
 }
 
@@ -172,9 +202,9 @@ async function idpState(idp) {
 }
 
 test("workerd authorization-code exchange receives 3xx and existing !ok handling fails closed", async () => {
-  const { mf, control, idp } = await createRuntime();
+  const { mf, control, idp, txKey } = await createRuntime();
   try {
-    const callback = await beginAdminCallback(control, idp, "token-redirect");
+    const callback = await dispatchAdminCallback(mf, control, idp, "token-redirect", txKey);
     assert.equal(callback.status, 302);
     assert.equal(callback.headers.get("location"), appOrigin);
     const state = await idpState(idp);
@@ -204,9 +234,9 @@ test("workerd JWKS fetch receives 3xx and existing !ok handling denies the token
 });
 
 test("workerd unexpected Refresh Token revocation receives 3xx and fails closed", async () => {
-  const { mf, control, idp } = await createRuntime();
+  const { mf, control, idp, txKey } = await createRuntime();
   try {
-    const callback = await beginAdminCallback(control, idp, "refresh-token");
+    const callback = await dispatchAdminCallback(mf, control, idp, "refresh-token", txKey);
     assert.equal(callback.status, 302);
     assert.equal(callback.headers.get("location"), appOrigin);
     const state = await idpState(idp);
