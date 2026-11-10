@@ -194,3 +194,43 @@ test("deleting an in-scope configuration fails", () => {
     assert.match(stdout, /missing/);
   });
 });
+
+
+test("quoted TOML top-level account_id keys are subject to the allowlist", () => {
+  for (const key of ['"account_id"', "'account_id'"]) {
+    withFixture((c) => {
+      c["workers/crypto/wrangler.extra.toml"] =
+        key + ' = "22222222222222222222222222222222"\n';
+    }, ({ code, stdout }) => {
+      assert.equal(code, 1);
+      assert.match(stdout, /top-level account_id is not an allowed account/);
+    });
+  }
+});
+
+test("quoted TOML Primary account_id passes and quoted nested account_id is ignored", () => {
+  withFixture((c) => {
+    c["workers/crypto/wrangler.extra.toml"] =
+      '"account_id" = "17d66c001f9d851fa0d5a88cd311c2c0" # approved\n' +
+      "[vars]\n" +
+      "'account_id' = \"not-a-deploy-target\"\n";
+  }, ({ code, stdout }) => assert.equal(code, 0, stdout));
+});
+
+test("JSONC trailing commas are parsed and checked", () => {
+  withFixture((c) => {
+    const original = c["wrangler.jsonc"];
+    const updated = original.replace("  }\n}", "  },\n}");
+    assert.notEqual(updated, original, "fixture must add a trailing comma");
+    c["wrangler.jsonc"] = updated;
+  }, ({ code, stdout }) => assert.equal(code, 0, stdout));
+});
+
+test("malformed out-of-scope Wrangler JSONC fails closed", () => {
+  withFixture((c) => {
+    c["wrangler.public-site.jsonc"] = '{\n  "name": "broken",\n';
+  }, ({ code, stdout }) => {
+    assert.equal(code, 1);
+    assert.match(stdout, /wrangler\.public-site\.jsonc: configuration does not parse/);
+  });
+});
