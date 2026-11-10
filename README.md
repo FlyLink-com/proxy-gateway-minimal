@@ -1,553 +1,190 @@
-# proxy-gateway-minimal / gccgw
+<p align="center">
+  <img src="docs/assets/flylink-gateway-banner.svg" alt="FlyLink Gateway — Subscription Control and Delivery Platform" width="100%">
+</p>
 
-[![CI](https://github.com/gccwebos-com/proxy-gateway-minimal/actions/workflows/ci.yml/badge.svg?branch=master&event=push)](https://github.com/gccwebos-com/proxy-gateway-minimal/actions/workflows/ci.yml?query=branch%3Amaster+event%3Apush)
-[![Control Plane Artifact Ingress](https://github.com/gccwebos-com/proxy-gateway-minimal/actions/workflows/control-plane-artifact-ingress.yml/badge.svg?branch=master)](https://github.com/gccwebos-com/proxy-gateway-minimal/actions/workflows/control-plane-artifact-ingress.yml?query=branch%3Amaster)
-[![Docs](https://img.shields.io/badge/docs-docs%2FCONVENTIONS-blue)](docs/CONVENTIONS.md)
+<p align="center">
+  <a href="README_EN.md">English</a> ·
+  <a href="docs/COMMUNITY_GUIDE.md">开发者指南</a> ·
+  <a href="docs/README.md">完整文档索引</a> ·
+  <a href="CONTRIBUTING.md">贡献指南</a> ·
+  <a href="SECURITY.md">安全报告</a>
+</p>
 
-[English](README_EN.md) | [文档索引](docs/README.md)
+<p align="center">
+  <img src="https://github.com/FlyLink-com/proxy-gateway-minimal/actions/workflows/ci.yml/badge.svg?branch=master&event=push" alt="Master CI">
+  <img src="https://img.shields.io/badge/Node.js-supported-2563EB?logo=node.js&logoColor=white" alt="Node.js">
+  <img src="https://img.shields.io/badge/Express-5-2563EB?logo=express&logoColor=white" alt="Express 5">
+  <img src="https://img.shields.io/badge/SQLite-better--sqlite3-2563EB?logo=sqlite&logoColor=white" alt="SQLite">
+</p>
 
-> CI 徽章反映最近一次推送到 `master` 的工作流执行结果。仅改动 Markdown
-> 的推送会被 `scripts/ci-change-classifier.mjs` 归类为 **docs-only 任务**,
-> 跳过依赖安装、服务端 / 管理端测试、管理端 / 公开站点构建,以及站点
-> 验证 / dry-run 检查。该任务只运行 `git diff --check`、`npm run
-> docs:authority:strict`,以及 `Governance evidence` 检查。
-> docs-only 任务下的“绿色”徽章只表示文档与治理门禁通过,并不代表
-> 应用测试或构建被执行。完整任务合同见
-> [`docs/VALIDATION_BASELINE.md`](docs/VALIDATION_BASELINE.md)。
+# FlyLink Gateway
 
-> Control Plane Artifact Ingress 徽章反映该**手动**候选制品下发工作流的
-> 最近一次运行结果。它不代表生产部署、release 指针切换、服务重启或运行
-> 健康状态；成功仅表示受限四对象包已通过工作流边界处理。
+**订阅控制与节点交付平台**
 
-`proxy-gateway-minimal` 是一个订阅控制与交付项目。现在的主线不是
-“再写一个代理面板”，而是把订阅生产、发放、审计、撤回、安装配置和节点包
-收口到一个可验证的工程骨架里。
+FlyLink Gateway 是一个以 Node.js 为核心的工程项目，围绕账户与订阅生命周期、运营工作流、配置交付和节点协作，提供可审查的服务端、管理界面、CLI 与 Agent 代码。
 
-## 权威阅读顺序
+它不是一个代理客户端，也不意味着仓库中的每项能力都已经部署或对外开放。这里展示的是可追踪的项目源码、模块边界和开发入口。
 
-第一次进入仓库或恢复工作时，按以下顺序建立当前事实：
+## 项目能做什么
 
-1. [`docs/CURRENT_RELEASE_STATE.md`](docs/CURRENT_RELEASE_STATE.md)：当前已记录的发布与生产对账状态。
-2. [`RELEASE_MANIFEST.md`](RELEASE_MANIFEST.md)：源码、制品、发布、部署和运行状态之间的身份边界。
-3. [`docs/PROJECT_CONTEXT.md`](docs/PROJECT_CONTEXT.md)：项目定位、文档化边界、当前工作原生读取路由和风险边界。
-4. `git status --short --branch`：当前 checkout 的路径、分支和工作树状态。
-5. [`docs/README.md`](docs/README.md)：完整文档索引、权威范围和生命周期导航。
-6. 当前任务涉及的 subsystem README：进入具体模块后再读取其职责与验证边界。
-7. 原生 GitHub Issue/PR：在选择、排序或声明当前工作前 fresh 读取其状态、范围、风险、完成条件与 review 证据；Project #1 仅作导航投影。
-
-`AGENTS.md` 定义仓库任务规则并始终适用，但不替代上述当前状态读取顺序。
-
-当前控制面是 `gccgw`：
-
-```bash
-node bin/gccgw.mjs capabilities
-node bin/gccgw.mjs commands
-node bin/gccgw.mjs docs list
-node bin/gccgw.mjs project check
-```
-
-它把项目能力分成这些工作流：
-
-```text
-project / install / node / package / subscription / channel / config / site-admin / operations
-```
-
-## 文档化项目阶段（当前生产需实时核验）
-
-项目当前处于 **Phase 2 Operational Reliability**，是在受控平台基础上继续完成
-运行可靠性和发布对账，而不是已经结束演进的“收尾项目”。
-
-```yaml
-project_status:
-  phase: Phase 2 Operational Reliability
-  maturity: controlled platform foundation
-  source_model: release-managed monorepo
-  production: dated evidence exists; current state requires fresh inventory
-```
-
-### 2026-08-10 源码快照
-
-| 事实面 | 当前结论 |
-| --- | --- |
-| 复核输入 | 2026-08-10 只读复核以 `master@b7276cff9a9cb7c3983ae42f2be2ef9fa8483c12` 为输入；这是审计基线，不是永久“当前 master”，执行前必须实时刷新。 |
-| 可执行源码截止点 | `02fc63a3f949b748dcccf26ba7d310be82f4b6df`；从该提交到本次复核输入仅有 docs、`project-state` 与 README 变更。 |
-| Operations Plane | #557 仍为 `partial`；#558 的授权边界、#559 的完整指标合同和 #560 的通用 Admin action audit 尚未闭环。 |
-| Commerce / Authority | Wallet、Coin Ledger、Recharge/Payment、Commerce 与 Account Resource Authority 已有较完整的源码基础；#592 仍是未部署的 Draft source candidate。 |
-| 部署基础 | #593 是设计/计划 Draft；#594 是 Foundation Draft，inventory 仅为 `inventory_only`，不构成制品发布或生产授权。 |
-| 生产状态 | 当前 live artifact、runtime identity、provider flags、schema 与服务状态未做新鲜盘点；最近记录的生产部署事件仍是 2026-07-20 的 `9982d378…`。 |
-
-以上是 2026-08-10 的源码与仓库治理快照，不是生产健康声明，也不是当前打开
-PR/Issue 清单。#592、#593、#594 已不再打开。2026-09-14 的过期/错位盘点与可变
-GitHub 计数见 `docs/CURRENT_RELEASE_STATE.md`。开放 PR、Issue、
-Actions 和 provider 状态属于可变事实，在审核、合并或生产决策前必须重新读取。
-
-### 工程成熟度下一阶段
-
-定性结论：受控平台基础已经建立，下一阶段的主线是补齐生产证据成熟度，而不是继续用
-源码数量代替上线事实。
-
-| 优先级 | 目标 | 追踪 |
+| 模块 | 能力范围 | 源码边界 |
 | --- | --- | --- |
-| P0 | 新鲜对账 Source、Artifact、Release、Deployment 与 Runtime，并建立可覆盖部署/回滚窗口的 durable immutable artifact retention | [Release Maturity P0](https://github.com/gccwebos-com/proxy-gateway-minimal/issues/597)、[#437](https://github.com/gccwebos-com/proxy-gateway-minimal/issues/437) |
-| P1 | 补齐 SBOM、provenance、signing、Action full-SHA pinning，以及完整 metric/freshness/SLO 边界 | [Supply Chain P1](https://github.com/gccwebos-com/proxy-gateway-minimal/issues/598)、[#559](https://github.com/gccwebos-com/proxy-gateway-minimal/issues/559) |
-| P2 | 将 default-off/source-only capability 按 implemented → validated → staged → promoted → observed 逐项晋升 | [#524](https://github.com/gccwebos-com/proxy-gateway-minimal/issues/524) 及对应 domain gate |
-| P3 | 只展示可由默认分支和机器证据支撑的 badges/status；展示层不替代 release 或 runtime evidence | 后续展示治理 |
+| Operator CLI | 统一命令入口、能力发现、项目检查和受控工作流路由 | 命令可用不等于获得生产操作授权 |
+| Control Plane | Node.js / Express 服务、账户与订阅域、订单与权益、用量证据和审计投影 | 当前源码控制面；运行状态须由独立证据确认 |
+| Admin & Portal | React 管理界面、用户门户和公司站点前端源码 | 三个界面共享 Admin 工作区与工具链，不代表三个独立部署已完成 |
+| Agent & Delivery | 本地 Agent、节点执行适配器、订阅渲染及交付契约 | 真实节点访问、配置应用和运行时变更仍受独立门禁约束 |
+| Cloudflare Worker | Workers + D1 控制面迁移方向的本地验证切片 | Miniflare 合成数据验证；尚非生产控制面，也未部署远程 D1 |
 
-当前边界：
+## 架构概览
 
-- 核心架构是单体 Node/Express 服务 + SQLite 业务状态 + `gccgw` operator CLI。
-- 文档化目标架构是一个订阅控制面管理账号、订单、订阅 artifact、凭据生命周期和
-  用量账本；带日期的证据记录 Vultr Japan 与 Singapore 等节点承担可替换数据面角色，
-  当前角色、容量和健康状态必须通过 fresh task-specific inventory 重新核验。
-- `.env` 是目标主机运行时配置的收口入口。
-- `deployments/production-template/` 是非敏感生产输入包模板。
-- `deployments/production-template/OPERATOR_NOTEPAD.md` 是人工记事本式检查面，不是机器导入文件。
-- Admin/Web 只作为受保护 review / local operator surface，不是公网 Admin 产品。
-- 用户门户、支付、节点扩容、生产部署、DNS/Nginx/systemd 仍按门禁执行。
-- 历史 Shadowsocks 本地代理路径保留为兼容路径；当前新用户交付主线是
-  Clash/Mihomo 订阅文件中的 VLESS Reality、Hysteria2、TUIC 多通道策略。
+~~~mermaid
+flowchart TB
+    subgraph ENTRY["访问与运营入口"]
+        CLI["gccgw CLI"]
+        ADMIN["受保护 Admin"]
+        PORTAL["User Portal"]
+        CLIENT["Clash / Mihomo 客户端"]
+    end
 
-不要把一次本地测试或 HP 手工 CI 通过理解成 production ready。生产、云、节点、
-Nginx、systemd、DNS、SQLite、真实用户或订阅材料变更仍属于 Risk A，必须走
-runbook、dry-run、明确 approval、验证和 rollback。
+    subgraph CURRENT["当前源码控制面"]
+        API["Node.js / Express"]
+        DOMAIN["账户 · 订阅 · 订单 · 权益 · 审计"]
+        DB[("SQLite")]
+        DELIVERY["订阅渲染与交付接口"]
+        API --> DOMAIN
+        DOMAIN --> DB
+        API --> DELIVERY
+    end
 
-## 当前工程治理能力
+    subgraph DATA["Agent 与数据面"]
+        AGENT["Agent / 节点适配器"]
+        NODES["Node / Channel Runtime"]
+        AGENT --> NODES
+    end
 
-README 只提供导航；协议细节和状态结论以链接文档为准。
+    subgraph FUTURE["未来目标 · 本地合成验证"]
+        WORKER["Cloudflare Workers"]
+        D1[("Cloudflare D1")]
+        WORKER --> D1
+    end
 
-| 能力 | 权威入口 | 当前边界 |
-| --- | --- | --- |
-| Execution Contract v1 | [`docs/EXECUTION_CONTRACT_V1.md`](docs/EXECUTION_CONTRACT_V1.md) | 源码级执行契约；不接入生产执行器或真实 Gate。 |
-| Authority Metadata Validation | [`docs/README.md`](docs/README.md#document-metadata-contract) | 校验已声明的 canonical authority 和生命周期元数据。 |
-| Documentation Lane Governance | [`docs/PROJECT_OPERATING_MODEL.md`](docs/PROJECT_OPERATING_MODEL.md) | 非阻塞文档治理轨道；不创建新的审批状态机。 |
-| Release Artifact Identity | [`RELEASE_MANIFEST.md`](RELEASE_MANIFEST.md#artifact-manifest-v1) | 建立源码与不可变制品身份；不等于部署或生产状态。 |
-| Runtime Evidence Collection | [`docs/CURRENT_RELEASE_STATE.md`](docs/CURRENT_RELEASE_STATE.md) 与 [`docs/RUNTIME_LANE_AUTHORITY.md`](docs/RUNTIME_LANE_AUTHORITY.md) | 记录受控运行证据；生产判断仍需 Release Flow 实时证据。 |
+    CLI --> API
+    ADMIN --> API
+    PORTAL --> API
+    DELIVERY --> CLIENT
+    API --> AGENT
+    WORKER -. "通过独立迁移门禁后替代控制面" .-> API
 
-## 当前源码与归档边界
+    classDef current fill:#EFF6FF,stroke:#60A5FA,color:#1E3A8A
+    classDef future fill:#F8FAFC,stroke:#94A3B8,color:#475569,stroke-dasharray:5 5
+    class API,DOMAIN,DB,DELIVERY current
+    class WORKER,D1 future
+~~~
 
-当前本地源码入口固定为：
+> **阶段说明：** 这是面向开发者的逻辑源码架构图，不是生产部署拓扑或实时健康图。当前源码控制面仍是 Node.js / Express + SQLite。Cloudflare Workers + D1 是已批准的未来迁移方向；仓库中的 Worker 切片仅在本地 Miniflare 环境使用合成数据，尚未接管生产读写，也未部署远程 D1。迁移必须经过独立实施、数据迁移和切换门禁。
 
-```text
-D:\Projects\proxy-gateway-minimal
-```
+## 1 分钟快速开始
 
-完成顶部权威阅读顺序后，涉及旧 checkout、归档或生成物时再补读
-[`docs/CURRENT_SOURCE_AND_ARCHIVE_BOUNDARY.md`](docs/CURRENT_SOURCE_AND_ARCHIVE_BOUNDARY.md)。
+### 环境要求
 
-不要把以下位置当作当前项目：
+- Node.js 版本遵循根目录 package.json 的 engines 声明：20.10.x（不含 21.x），以及 22.x–26.x。
+- npm 与仓库 lockfile 配套使用。
+- Git。
 
-- `C:\Users\g\OneDrive\文档\订阅管理`
-- `C:\Users\g\Projects\订阅管理\proxy-gateway-minimal`
-- `C:\Users\g\WorkBuddy\2026-05-20-18-07-31\proxy-gateway-minimal`
-- `.worktrees/` 下的旧临时工作树
-- `docs/archive/` 下的历史资料
-- `.codex-runtime/`、`.codex-artifacts/`、`.playwright-cli/`、`.tmp-node/`、
-  `test-results/`、`admin/dist*` 等本地生成物
+### 安装并检查项目
 
-旧 checkout、历史工作树、归档文档和生成输出只能用于对比和考古。要重新采用其中
-的代码或模板，必须先和当前源码 diff，再跑对应验证；涉及生产、节点、账号、订阅、
-支付、DNS、Nginx、systemd、SQLite 或云资源时重新按 Risk A 门禁处理。
+~~~bash
+git clone https://github.com/FlyLink-com/proxy-gateway-minimal.git
+cd proxy-gateway-minimal
 
-## 运行环境要求
-
-| 项目 | 要求 |
-| --- | --- |
-| Node.js | 以 `package.json` 的 `engines.node` 为准；Node 20 从 `20.10.0` 起支持，另包括 `22.x` 至 `26.x` 中列明的版本。 |
-| 包管理器 | 使用 `npm` 和仓库 `package-lock.json`；干净安装优先执行 `npm ci`。 |
-| Admin 依赖 | Admin workspace 独立安装，执行 `npm ci --prefix admin`。 |
-| 操作系统 | Windows 用于本地开发、预览和诊断；真实 Linux 目标必须重新执行目标机 preflight。 |
-
-## 快速验证
-
-```bash
 npm ci
-npm ci --prefix admin
 
-node bin/gccgw.mjs self check
-node bin/gccgw.mjs project check
+# 查看 CLI 能力
+npm run cli -- capabilities
+
+# 查看 CLI 命令
+npm run cli -- commands
+
+# 运行根目录服务端源码测试
 npm test
-npm run admin:test
-npm run admin:build
-```
+~~~
 
-常用脚本：
+### 启动本地开发界面
 
-```bash
-npm run cli              # gccgw
-npm run server           # 本地服务
-npm run daemon           # 本地守护启动
-npm run project-state:check
-npm run project:verify -- --with-admin
-```
+需要开发 Admin / Portal 界面时：
 
-## 配置收口
-
-运行时配置统一从目标主机 `.env` 收口。先复制模板：
-
-```bash
-cp .env.example .env
-```
-
-核心键：
-
-```text
-NODE_ENV
-CONSOLE_PORT
-CONSOLE_TOKEN
-SS_PASSWORD
-SUBSCRIPTION_DB_PATH
-SUBSCRIPTION_CONTROL_DB_PATH
-HANDOFF_DIR
-PUBLIC_SUBSCRIPTION_BASE_URL
-ADMIN_ALLOWED_CIDRS
-TRUSTED_PROXY_CIDRS
-EDGE_DATA_PLANE_AGENT_ALLOWED_CIDRS
-USER_PORTAL_TOTP_SECRET_KEY
-SUB_RATE_LIMIT_WINDOW_MS
-SUB_RATE_LIMIT_MAX
-SUBSCRIPTION_TEMP_LINK_TTL_MINUTES
-```
-
-规则：
-
-- `.env.example` 只放占位符和安全默认形状。
-- 管理面与 data-plane agent 的 allowlist 默认只包含 loopback；生产私网或固定
-  operator 来源必须在目标机显式写入对应 CIDR。
-- `TRUSTED_PROXY_CIDRS` 默认为空；仅来自显式信任代理的
-  `X-Forwarded-For` 才参与客户端地址解析，IPv4-mapped IPv6 地址会先规范化；
-  转发链中任一地址格式无效时，客户端地址解析会以不可匹配结果关闭，避免将
-  受信代理自身的直连地址误判为原始客户端地址。
-- `USER_PORTAL_TOTP_SECRET_KEY` 只在目标机配置，必须是 32-byte key 的
-  hex/base64/base64url 表示；用于新 TOTP credential 的 at-rest 保护。
-- 真实 token、密码、节点凭据、订阅 URL、SQLite、客户数据只允许留在目标机
-  `.env`、受保护 runtime 文件或 operator-only handoff 中。
-- 不要把真实 `.env`、订阅链接、客户资料、私钥、云 AK/SK、SQLite 内容写入
-  Git、README、PR、聊天或日志。
-- JSON 包只描述非敏感结构和必填 env 名称，不承载真实运行值。
-
-## 数据库和存储边界
-
-当前项目数据库是 SQLite 文件，不是 SQL Server、RDS 或其他可直接远程连接的
-云数据库服务。
-
-默认本地路径：
-
-```text
-.proxy-gateway/subscriptions.sqlite
-.proxy-gateway/control.sqlite
-```
-
-目标服务器上通常由 `.env` 指定：
-
-```text
-SUBSCRIPTION_DB_PATH
-SUBSCRIPTION_CONTROL_DB_PATH
-```
-
-规则：
-
-- SQLite 文件由项目进程或 `gccgw` 访问；SSMS 这类 SQL Server 工具不能直接连接。
-- EBS、云盘或服务器数据盘只是存储层，可以承载 SQLite 文件，但它们不是数据库服务。
-- 生产 SQLite 不进 Git、不写 README、不复制到聊天、不作为普通桌面文件传递。
-- 如需升级到 PostgreSQL、SQL Server、RDS 等云数据库，属于 Risk A 架构变更，
-  必须先做 schema mapping、adapter、migration、backup、staging validation 和 rollback。
-
-## gccgw 控制面
-
-常用入口：
-
-```bash
-node bin/gccgw.mjs capabilities
-node bin/gccgw.mjs commands
-node bin/gccgw.mjs architecture
-node bin/gccgw.mjs docs command "platform issue-subscription"
-node bin/gccgw.mjs docs domain package
-```
-
-配置 profile：
-
-```bash
-node bin/gccgw.mjs config list
-node bin/gccgw.mjs config show local
-node bin/gccgw.mjs config validate --profile vultr-japan-prod
-```
-
-项目验证：
-
-```bash
-node bin/gccgw.mjs env check
-node bin/gccgw.mjs self check
-node bin/gccgw.mjs project check
-node bin/gccgw.mjs project verify --with-admin
-```
-
-## 安装和新服务器流程
-
-README 里的安装流程只覆盖 read-only / dry-run / gated 形状。它不授权生产。
-
-### 1. 放置项目并安装 CLI
-
-```bash
-git clone <repo-url> /opt/proxy-gateway-minimal
-cd /opt/proxy-gateway-minimal
-npm ci
-npm link
-gccgw self check
-```
-
-Windows 本地 checkout 可做预览和 dry-run；真实 Linux 目标机必须在目标机上重新
-跑 preflight。
-
-### 2. 只读安装计划
-
-```bash
-gccgw install plan
-gccgw install preflight --json
-```
-
-`install plan` 不安装、不部署、不复制 `.env`、不恢复 SQLite、不启动服务、不改
-Nginx/DNS/防火墙、不发放订阅。
-
-### 3. 生成安装配置计划
-
-```bash
-gccgw install configure --dry-run \
-  --domain https://control.example.invalid \
-  --install-dir /opt/proxy-gateway-minimal \
-  --management-source 203.0.113.10/32 \
-  --json > reviewed-install-configure-plan.json
-```
-
-输出必须是脱敏计划。真实 `CONSOLE_TOKEN`、`SS_PASSWORD`、节点凭据和客户数据不
-进入计划文件。
-
-### 4. 检查生产输入包
-
-人工记事本：
-
-```text
-deployments/production-template/OPERATOR_NOTEPAD.md
-```
-
-机器导入文件：
-
-```text
-deployments/production-template/package-manifest.json
-deployments/production-template/topology.json
-deployments/production-template/public-boundary.json
-deployments/production-template/plans.json
-deployments/production-template/nodes.json
-deployments/production-template/env.required.json
-deployments/production-template/runbook.md
-```
-
-检查和 dry-run：
-
-```bash
-gccgw package inspect deployments/production-template --json
-gccgw package import deployments/production-template --dry-run --json \
-  > reviewed-package-import-plan.json
-```
-
-### 5. A 档执行门禁
-
-只有在 runbook、dry-run 证据、目标机 preflight、明确 operator approval 和
-rollback 计划齐全后，才允许执行：
-
-```bash
-gccgw install bootstrap \
-  --config-plan reviewed-install-configure-plan.json \
-  --execute-production-mutation \
-  --apply
-
-gccgw package apply deployments/production-template \
-  --import-plan reviewed-package-import-plan.json \
-  --config-plan reviewed-install-configure-plan.json \
-  --execute-production-mutation \
-  --apply
-```
-
-这些命令不是快速启动命令。
-
-## 节点包
-
-节点侧材料在：
-
-```text
-ops/edge-node/
-```
-
-它提供 provider-neutral edge host bootstrap / systemd / Nginx / template
-材料。它不包含真实密钥、SQLite、客户数据、订阅材料或生产授权。
-
-常用检查：
-
-```bash
-gccgw node inspect --json
-gccgw node validate --package deployments/production-template --json
-gccgw node register --dry-run safe-node-facts.json --json
-gccgw node disable --dry-run prod-edge-a --reason maintenance --json
-```
-
-真实节点创建、bootstrap、systemd/Nginx、DNS、firewall、流量切换、订阅输出改变
-都属于 Risk A。
-
-## 订阅工厂
-
-当前主线是受控发放：
-
-```text
-operator input
--> provisioning form
--> resource package / dry-run
--> explicit approval
--> issue subscription or portal entry
--> operator-only handoff
--> audit / revoke
-```
-
-常用命令：
-
-```bash
-gccgw platform provisioning-form <input.json>
-gccgw platform resource-package <input.json>
-gccgw platform issue-subscription --dry-run <input.json>
-gccgw platform issue-portal-entry --dry-run <input.json>
-gccgw platform revoke-access <tenant-ref> --dry-run
-```
-
-无 `--dry-run` 的真实发放、入口签发、撤回或 handoff 写入都要按对应门禁执行，
-不得在 README、PR 或聊天里输出原始订阅材料。
-
-## Admin、用户门户和 public site
-
-Admin app 在 `admin/`，用于受保护 operator review、本地验证和 public site
-构建，不是公网 Admin。
-
-```bash
+~~~bash
 npm ci --prefix admin
 npm run admin:dev
-npm run admin:test
-npm run admin:build
-npm run admin:site:build
-npm run admin:site:verify
-```
+~~~
 
-Admin fixture preview 用于前端实现和 Vercel 预览，不连接生产 Admin API，也不启用
-订单、receipt apply、collector activation、DNS/Nginx/provider firewall 或任何真实
-runtime mutation。默认 Admin 入口仍要求本地连接配置；本地只读预览可运行：
+Vite 开发服务器绑定本机回环地址。不要将本地开发服务器作为公网 Admin 服务使用。
 
-```bash
-npm run admin:dev
-```
+需要启动后端服务时，先阅读 [Server Workspace](server/README.md) 和 [本地开发环境边界](docs/LIGHTWEIGHT_OPERATING_DEV_ENVIRONMENT.md)，为本机准备隔离的本地配置与测试数据，再执行：
 
-然后打开 `http://127.0.0.1:5173/#/fixture-preview`。根目录 `vercel.json`
-将 Vercel Preview 构建到 `admin/dist`，并在构建时设置
-`VITE_ADMIN_FIXTURE_PREVIEW=true`，因此 Vercel 预览页可直接显示安全 fixture
-Admin shell。该预览只能用于 UI 验收和实现交接，不代表公网 Admin 产品化。
+~~~bash
+npm run server
+~~~
 
-用户门户路由默认不挂载。只有运行状态显式启用
-`state.platform.userPortalRoutesEnabled === true`，并注入对应 auth / service
-能力时，用户侧 API 才进入公共白名单。生产启用门户、支付、自动权益、真实订阅
-发放仍是单独门禁。
+不要把生产环境的 .env、数据库、订阅链接、用户数据或节点凭据复制到本地开发环境。仓库中的 .env.example 是目标运行环境变量模板，不是可直接用于本地的安全配置包。
 
-当前仓库已有默认关闭的用户侧 7 天自助订阅服务：
-`state.platform.portalSelfServiceSubscriptions` 注入后，已登录 durable 账号可用
-`trial` 策略自动开通 7 天、刷新 visible-once 订阅材料、禁用当前订阅；用户门户不提供
-删除订单/订阅记录的能力。月卡 / 年卡仍是申请路径；仓库默认源码不启用支付、公网门户
-或自动发放。本文不证明当前生产 runtime 的启用状态；相关判断必须基于 fresh Risk A inventory。
+## 技术栈
 
-## 历史 Clash/Mihomo 兼容
-
-`/sub/clash.yaml` 保留为历史兼容和测试覆盖入口：
-
-```text
-GET /sub/clash.yaml?token=<legacy-or-visible-once-token>
-```
-
-它不是当前新用户 onboarding 主线。当前主线是套餐申请、运营审核、opaque
-artifact、operator CLI 和受保护 handoff。
-
-不要在 README、PR、日志或聊天中粘贴真实 token、订阅 URL、YAML、节点密码或客户
-信息。
-
-## Windows 本地代理能力
-
-旧的 Windows 本地代理链仍保留，用于本地适配和诊断：
-
-```text
-Windows app
--> 127.0.0.1:18180 HTTP bridge
--> 127.0.0.1:1080 ss-local
--> remote Shadowsocks server
-```
-
-脚本：
-
-```powershell
-npm run proxy:on
-npm run proxy:pac
-npm run proxy:off
-npm run proxy:status
-npm run network:status
-npm run network:repair
-npm run network:reset
-```
-
-`CONSOLE_PORT` 只影响 Node runtime。Windows 代理脚本默认仍围绕本地
-`3456 / 1080 / 18180` 工作；改 `.env` 不会自动改 PAC 或 Windows 代理脚本。
-
-## 文档入口
-
-恢复项目上下文时必须使用顶部的权威阅读顺序；下表只提供进一步导航。
-
-重要当前文档：
-
-| 文档 | 用途 |
+| 层次 | 技术 |
 | --- | --- |
-| `docs/CURRENT_RELEASE_STATE.md` | 当前已记录的发布与生产对账状态 |
-| `RELEASE_MANIFEST.md` | 源码、制品、发布、部署和运行状态身份模型 |
-| `docs/PROJECT_CONTEXT.md` | 项目定位、风险边界和当前工作原生 Issue/PR 读取入口 |
-| `docs/VALIDATION_BASELINE.md` | 验证命令矩阵 |
-| `docs/CONFIGURATION_OWNERSHIP_MATRIX.md` | 配置归属 |
-| `docs/PRODUCTION_INPUT_PACKAGE_FORMAT.md` | 生产输入包格式 |
-| `deployments/production-template/README.md` | 生产包模板 |
-| `docs/OPERATOR_CLI_PLATFORM_BOUNDARY.md` | CLI-first 操作边界 |
-| `docs/NETWORK_FORWARDING.md` | 网络路径边界 |
-| `docs/CI_MANUAL_VALIDATION.md` | HP / local Linux 手工 CI 边界 |
-| `docs/HP_PORTAL_VALIDATION_RUNBOOK.md` | HP 私有验证边界 |
+| Runtime | Node.js |
+| HTTP 服务 | Express 5 |
+| 数据存储 | SQLite / better-sqlite3 |
+| Web UI | React 19 / Vite |
+| Operator Tooling | gccgw CLI |
+| Agent | Node.js Agent 与节点适配器 |
+| Future Control Plane | Cloudflare Workers + D1（本地合成验证阶段） |
 
-## 代码结构
+## 仓库结构
 
-```text
-.
-├── bin/
-│   ├── gccgw.mjs              # 当前 operator CLI
-│   └── proxy-gateway.mjs      # 兼容 CLI
-├── server/                    # Express app, routes, services, tests
-├── admin/                     # Vite React Admin / portal / public site surfaces
-├── agent/                     # local edge / data-plane agent surfaces
-├── schemas/                   # portable versioned data contracts
-├── config/                    # redacted local config templates
-├── deployments/
-│   └── production-template/   # non-secret production input package template
-├── docs/                      # current docs, runbooks, records, archive index
-├── ops/
-│   └── edge-node/             # provider-neutral edge-node package materials
-├── scripts/                   # Windows helpers, backup/restore, diagnostics
-├── public/                    # local console/static assets
-├── project-state/             # machine-checkable lane taxonomy and dated compatibility snapshots
-├── .env.example               # runtime env template
-└── .gitattributes             # keeps shell scripts LF for Linux archive runs
-```
+| 路径 | 作用 |
+| --- | --- |
+| bin/ | gccgw CLI 路由与兼容入口 |
+| server/ | Express 应用、路由、领域服务与持久化适配器 |
+| admin/ | Admin、User Portal、公司站点的 React / Vite 前端源码 |
+| agent/ | 本地 Edge Agent、数据面 Agent Runner 与适配器 |
+| workers/control-plane/ | Workers + D1 的本地合成验证切片 |
+| schemas/ | 共享数据结构与版本化契约 |
+| docs/ | 架构、开发、API、验证与项目治理文档 |
 
-## 风险分级
+## 文档导航
 
-| Risk | 适用范围 | 默认验证 |
-| --- | --- | --- |
-| C | docs、README、索引、只读检查 | `git diff --check` |
-| B | 本地代码、测试、Admin UI、dry-run CLI | focused tests + `npm test` / Admin checks |
-| A | production、云、节点、Nginx、systemd、DNS、auth、schema、deploy、rollback、真实订阅 | inventory + dry-run + approval + validation + rollback |
+| 想了解 | 从这里开始 |
+| --- | --- |
+| 开发者入门与项目目录 | [Community & Developer Guide](docs/COMMUNITY_GUIDE.md) |
+| 完整文档分类与权威入口 | [Documentation Index](docs/README.md) |
+| 项目定位与领域边界 | [Project Context](docs/PROJECT_CONTEXT.md) |
+| 逻辑拓扑与当前 / 未来阶段 | [Project Topology](docs/PROJECT_TOPOLOGY.md) |
+| API 兼容说明 | [API Compatibility](docs/API_COMPATIBILITY.md) |
+| CLI 使用入口 | [CLI Workspace](bin/README.md) |
+| 后端服务 | [Server Workspace](server/README.md) |
+| 前端工作区 | [Admin Workspace](admin/README.md) |
+| Agent 与节点适配 | [Edge Agent Workspace](agent/README.md) |
+| Worker 本地验证 | [Control-Plane Worker](workers/control-plane/README.md) |
+| 验证命令与风险分级 | [Validation Baseline](docs/VALIDATION_BASELINE.md) |
+| 安全漏洞报告 | [Security Policy](SECURITY.md) |
 
-README 不授予生产权限。任何 A 档动作必须读取对应 runbook，并取得明确 operator
-approval。
+## 状态与安全边界
+
+- GitHub 上的 master 是受审查源码，不等于某个生产环境正在运行的版本。
+- 源码存在、测试通过、构建成功、制品发布、生产部署和运行时健康是不同状态，不能互相替代。
+- Admin 保持受保护边界；不要把本地预览或源代码可用性理解为公网管理入口。
+- 真实云资源、数据库迁移、节点、凭据、DNS、部署与生产切换均遵循独立审批和验证流程。
+- 报告漏洞时不要创建公开 Issue。请按 [SECURITY.md](SECURITY.md) 使用私密报告渠道。
+
+## 贡献与许可证
+
+欢迎先通过 GitHub Issues 讨论问题与改进方向。代码贡献请阅读 [CONTRIBUTING.md](CONTRIBUTING.md)。
+
+**许可证状态：** 当前仓库根目录尚无 LICENSE 文件。仓库公开可见不等于已授予 MIT、Apache-2.0 或其他开源许可证；在维护者正式发布许可证前，请不要假定拥有复制、修改、分发或商用权限。
+
+---
+
+<p align="center">
+  <sub>FlyLink Gateway · Subscription Control & Delivery Platform</sub>
+</p>
