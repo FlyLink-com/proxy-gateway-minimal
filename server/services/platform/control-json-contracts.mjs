@@ -92,6 +92,131 @@ function safePositiveInteger(value) {
   return value;
 }
 
+const ACCOUNT_METADATA_D1_SAFE_FIELDS = new Set([
+  "initialAccount",
+  "requireSecuritySetup",
+  "registrationSource",
+  "singleSubscriptionOnly",
+  "subscriptionLimit",
+  "intentPlan",
+  "requestedDeviceCount",
+  "primaryRegion",
+  "legalAgreementAccepted",
+  "legalAgreementAcceptedAt",
+  "termsVersion",
+  "privacyVersion"
+]);
+const ACCOUNT_METADATA_SOURCE_ONLY_FIELDS = new Set(["source", "channel", "synthetic"]);
+const ACCOUNT_METADATA_EXTERNALIZED_FIELDS = new Set(["displayName", "loginRef", "displayRef"]);
+const ACCOUNT_METADATA_UNKEYED_DIGEST_FIELDS = new Set([
+  "contactDigest",
+  "loginDigest",
+  "displayDigest",
+  "useCaseDigest",
+  "legalAgreementSourceIpDigest",
+  "legalAgreementRequestKeyDigest",
+  "registrationSourceIpDigest",
+  "registrationRequestKeyDigest"
+]);
+
+/**
+ * Pure source-to-target projection gate for platform_accounts.metadata_json.
+ *
+ * This function deliberately does not externalize identity data or invent
+ * keyed digests. Legacy PII and unkeyed SHA-256 values block projection until
+ * Auth0 identity mapping and the separately approved C2 HMAC custody path
+ * provide replacements. No raw source value is returned in a blocked result.
+ */
+export function projectAccountMetadataForD1(value) {
+  const metadata = value == null ? {} : snapshotPlainObject(value);
+  const keys = Object.keys(metadata);
+  const known = new Set([
+    ...ACCOUNT_METADATA_D1_SAFE_FIELDS,
+    ...ACCOUNT_METADATA_SOURCE_ONLY_FIELDS,
+    ...ACCOUNT_METADATA_EXTERNALIZED_FIELDS,
+    ...ACCOUNT_METADATA_UNKEYED_DIGEST_FIELDS
+  ]);
+  if (keys.some((key) => !known.has(key))) throw contractError();
+
+  if (
+    Object.hasOwn(metadata, "source")
+    && (typeof metadata.source !== "string" || !/^[a-z][a-z0-9_-]{1,63}$/.test(metadata.source))
+  ) throw contractError();
+  if (
+    Object.hasOwn(metadata, "channel")
+    && (typeof metadata.channel !== "string" || !/^[a-z][a-z0-9_-]{1,63}$/.test(metadata.channel))
+  ) throw contractError();
+  if (Object.hasOwn(metadata, "synthetic") && typeof metadata.synthetic !== "boolean") {
+    throw contractError();
+  }
+
+  const externalizedFields = keys
+    .filter((key) => ACCOUNT_METADATA_EXTERNALIZED_FIELDS.has(key))
+    .sort();
+  const unkeyedDigestFields = keys
+    .filter((key) => ACCOUNT_METADATA_UNKEYED_DIGEST_FIELDS.has(key))
+    .sort();
+  const sourceOnlyFields = keys
+    .filter((key) => ACCOUNT_METADATA_SOURCE_ONLY_FIELDS.has(key))
+    .sort();
+  const blockers = [];
+  if (externalizedFields.length) {
+    blockers.push({
+      code: "identity_externalization_required",
+      fields: externalizedFields
+    });
+  }
+  if (unkeyedDigestFields.length) {
+    blockers.push({
+      code: "keyed_digest_replacement_required",
+      fields: unkeyedDigestFields
+    });
+  }
+  if (blockers.length) {
+    return Object.freeze({
+      status: "blocked",
+      metadataJson: null,
+      blockers,
+      sourceOnlyFields
+    });
+  }
+
+  const projected = { version: 1 };
+  for (const field of keys) {
+    if (!ACCOUNT_METADATA_D1_SAFE_FIELDS.has(field)) continue;
+    const entry = metadata[field];
+    if (["initialAccount", "requireSecuritySetup", "singleSubscriptionOnly", "legalAgreementAccepted"].includes(field)) {
+      if (typeof entry !== "boolean") throw contractError();
+      projected[field] = entry;
+    } else if (["subscriptionLimit", "requestedDeviceCount"].includes(field)) {
+      safePositiveInteger(entry);
+      if (entry > 20) throw contractError();
+      projected[field] = entry;
+    } else if (field === "registrationSource") {
+      if (entry !== "self_service_portal") throw contractError();
+      projected[field] = entry;
+    } else if (field === "intentPlan") {
+      if (!["trial", "monthly", "yearly"].includes(entry)) throw contractError();
+      projected[field] = entry;
+    } else if (field === "primaryRegion") {
+      if (typeof entry !== "string" || !/^[a-z][a-z0-9_-]{1,31}$/.test(entry)) throw contractError();
+      projected[field] = entry;
+    } else if (field === "legalAgreementAcceptedAt") {
+      projected[field] = canonicalTimestamp(entry);
+    } else if (field === "termsVersion" || field === "privacyVersion") {
+      if (typeof entry !== "string" || !/^[A-Za-z0-9._:-]{1,64}$/.test(entry)) throw contractError();
+      projected[field] = entry;
+    }
+  }
+
+  return Object.freeze({
+    status: "ready",
+    metadataJson: JSON.stringify(projected),
+    blockers: [],
+    sourceOnlyFields
+  });
+}
+
 export function portalAccessEventJson(value) {
   if (value == null) return "{}";
   const event = snapshotPlainObject(value);

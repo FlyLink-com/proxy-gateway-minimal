@@ -1,5 +1,16 @@
 # D1 T2 Independent Review Packet v1.1 — Draft
 
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: active
+  authority_scope: d1_t2_independent_review_packet
+  superseded_by: null
+  last_verified_at: 2026-11-10
+  production_authority: false
+```
+
+
 > **Status:** AWAITING A SEPARATE REVIEWER. This packet is not an independent review and does not self-approve T2.
 > **Source anchor:** `master@be261abc60f28bb2733764fa5364ab44b3e76844`.
 > **Draft branch:** `docs/d1-target-schema-g6-rehearsal-plan-20261107`.

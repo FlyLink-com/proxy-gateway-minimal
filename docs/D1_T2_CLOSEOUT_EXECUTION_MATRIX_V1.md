@@ -1,5 +1,16 @@
 # D1 T2 Closeout Execution Matrix v1
 
+```yaml
+document_metadata:
+  doc_type: operational
+  lifecycle: active
+  authority_scope: d1_t2_closeout_execution_matrix
+  superseded_by: null
+  last_verified_at: 2026-11-10
+  production_authority: false
+```
+
+
 > **Status:** Draft execution checklist. This document does not declare T2 PASS and does not authorize production migration.
 > **Repository:** `FlyLink-com/proxy-gateway-minimal`
 > **Draft branch:** `docs/d1-target-schema-g6-rehearsal-plan-20261107`
@@ -78,8 +89,16 @@ All work packages begin OPEN. Existing design documents are inputs, not completi
 - [ ] User Portal/Admin key sharing is either removed with separate key domains or explicitly accepted by both accountable owners.
 - [ ] Wallet-first handoff compatibility tests prove retry/replay does not create duplicate effects across the approved transition.
 - [ ] Payment/commerce, Identity and Security owners approve their respective domains and retention dependencies.
+- [ ] The dedicated Crypto Worker accepts only exact versioned internal operations, enforces caller identity/token authorization, bounds request bodies, fails closed, and exposes no public route.
+- [ ] The Worker loads all purpose-separated HMAC key rings, rejects cross-family key-material reuse, never returns raw keys, and accepts only precomputed PII digests.
+- [x] Miniflare Service Binding fixture with a separate synthetic authorized caller proves binding mechanics, user-auth-before-call, internal token separation, missing-binding/key-ring failure, and digest-only PII behavior (5/5 PASS twice). This is fixture evidence, not actual control-plane integration.
+- [ ] Actual control-plane Service Binding integration is completed only after the C1 user/session and domain-authorization context exists; no generic public crypto relay route is allowed.
+- [ ] Three named offline recovery custodians and distinct recovery/approval roles are recorded; no custodian holds more than one Shamir share.
+- [ ] A vetted, version-pinned Shamir Secret Sharing implementation is independently reviewed and passes synthetic 2-of-3 reconstruction and one-share rejection tests.
+- [ ] AES-256-GCM escrow envelopes and metadata-only manifests are stored in two independent offline physical locations; synthetic restore, exact AAD binding, HMAC known-answer, custody receipt, and share-revocation tests pass.
+- [ ] Crypto Worker and business Control Plane identities have no access to offline KEKs or Shamir shares; only the Crypto Worker receives its approved per-Worker runtime Secrets.
 
-**Required artifact:** key-custody/rotation ADR, compatibility decision for the wallet-first handoff digest, and reproducible synthetic vectors.
+**Required artifacts:** key-custody/rotation ADR; [Crypto Worker interface contract](D1_T2_C2_CRYPTO_WORKER_INTERFACE_CONTRACT_V1.md) and source-importing tests; [historical external escrow provider evaluation](D1_T2_C2_EXTERNAL_ESCROW_PROVIDER_EVALUATION_V1.md); [approved offline 2-of-3 escrow runbook](D1_T2_C2_OFFLINE_ESCROW_RUNBOOK_V1.md); separate Wallet-first handoff digest compatibility decision; reproducible synthetic vectors.
 
 ### T2-C3 — Closed JSON schemas, opaque-reference grammar, and generation fencing
 
@@ -243,7 +262,7 @@ G6 PASS authorizes only consideration of the next separately gated step. It does
 | Package | Current evidence | Status |
 |---|---|---|
 | T2-C1 Identity custody | C1 custody proposal + provider evaluation + [owner decision sheet](D1_T2_C1_OWNER_DECISION_SHEET_V1.md); provider-neutral opaque actor-context and identity-binding helper/tests added; Auth0 Essentials remains preferred candidate, not selected; hosted provider proof and owner decisions remain outstanding | OPEN |
-| T2-C2 HMAC and legacy compatibility | [C2 key custody/rotation ADR](D1_T2_C2_KEY_CUSTODY_AND_ROTATION_ADR_V1.md) + executable Web Crypto primitives + source-importing synthetic tests added; key custody provider/escrow approval and wallet-first digest compatibility remain open | OPEN |
+| T2-C2 HMAC and legacy compatibility | [C2 key custody/rotation ADR](D1_T2_C2_KEY_CUSTODY_AND_ROTATION_ADR_V1.md) + executable Web Crypto primitives + synthetic escrow contract; **target architecture approved 2026-11-08** (Crypto Worker/private Service Binding, per-Worker secrets, Cloudflare per-Worker Secrets plus offline AES-256-GCM escrow with Shamir 2-of-3 recovery (owner-approved 2026-11-08), key-family separation, active-write/retained-read rotation). Named custodians, concrete escrow mechanism and real recovery, non-production integration, domain-owner approvals, Wallet-first replay/retention decision and independent review remain open | OPEN |
 | T2-C3 JSON/ref/generation | 26 fields reconciled: 7 writer families closed, 16 existing source contracts retained/mapped, 2 Passkey fields DEFER, account metadata BLOCKED pending C1 identity custody; independent review absent | OPEN |
 | T2-C4 Payment custody | DO SQLite proposal exists; owner, key, lifecycle, and outage decisions remain open | OPEN |
 | T2-C5 Retention/G2 residuals | Retention register exists; RET-02–RET-12 and G2 residual dispositions remain open | OPEN |
@@ -259,3 +278,236 @@ No task is marked complete by this matrix. The work is not authorized to cross t
 - C2: added `server/services/platform/d1-t2-security-primitives.mjs`, which the new `server/tests/d1-t2-security-primitives.test.mjs` imports directly. The new source helper implements HMAC families/domains, strict key rings, active/retained rotation, PII lookup, lease digest grammar, Portal/Admin TOTP key separation, v3 AES-GCM AAD and synthetic v2 re-encryption.
 - Local mirror verification: Node v22.16.0, 23 C2 tests + 9 C1 tests = 32/32 PASS; syntax checks passed. The project-fixed Node v22.23.1 exact repository test run remains outstanding. No full repository suite or CI was triggered.
 - Both C1 and C2 remain OPEN pending owner decisions and hosted provider/key-custody proof. No real provider, secret store, key, BWH, D1, deployment or production data was accessed.
+
+## 9. C4/C5 parallel source and synthetic progress — 2026-11-08
+
+### T2-C4 — Payment action custody
+- Confirmed the live source exposure in `server/services/platform/payment-store.mjs`: raw `next_action_url` is inserted into payment receipts and returned by receipt/order projections while an order is active. The 10-minute order TTL is not a capability retention policy.
+- Added a provider-neutral, synthetic-only AES-256-GCM custody contract and tests. Fixed Node v22.23.1 isolated regression: 14/14 PASS; `node --check` 2/2 PASS.
+- The prototype has no I/O and is not connected to payment-store, provider callbacks, D1, Worker routes, or a Durable Object. No DO namespace, key, secret binding, or deployment was created.
+- C4 remains OPEN pending Payment/Security owner approval of the custody system, key lifecycle, resolver access, outage/recovery, and tombstone replay window.
+
+### T2-C5 — Retention/G2 residuals
+- Added `docs/D1_T2_C5_SOURCE_RETENTION_AUDIT_V1.md` and linked it from the retention decision register.
+- Confirmed Leads 90 days (plus 2-hour backup prune safety margin) is the only accepted numeric record-retention rule currently evidenced.
+- Documented the distinction between active TTL/lease windows and record retention for payment orders, deferred quotes, Portal sessions/challenges, Wallet-first handoffs, and payment-action capabilities.
+- The inspected repository paths do not expose a dedicated persistent Portal session/challenge purge method or payment receipt/order purge method; this is recorded as an inspection finding, not a claim about external operator jobs.
+- No new numeric retention duration is approved. RET-02–RET-12 remain OPEN/DEFERRED.
+
+### Gate status
+C4 and C5 remain OPEN. This source/prototype progress does not close T2, authorize D1 DDL/data loading, or change the production writer. BWH remains the only production control-data writer.
+
+## 10. C3 shared JSON contract focused regression — 2026-11-08
+
+The existing C3 shared JSON contract module/test were fetched from this branch and run in the isolated non-production sandbox under Node v22.23.1:
+
+- `server/tests/control-json-contracts.test.mjs`: **7/7 PASS**, 0 failed, 0 skipped.
+- TAP SHA-256: `66b5fb22e9f760c908181c3337cb3cd0f24e8235d1ee8751142e4ad9dc7d8c8d`.
+- `node --check`: source and test 2/2 PASS.
+- Source blob: `f9e7e4841c11bf77bcfd1aa74df867159013b5ac`.
+- Test blob: `0be5a56462402f87a9a5f76666dd9d42ae04e0ff`.
+
+This covers the registered Portal access-event and subscription-fulfillment JSON variants, exact keys, unsafe refs/values, accessor/symbol/non-plain-object rejection and hostile proxy traps. It is not the full C3 writer integration test: `platform-subscription-control-db.test.mjs` and the complete 26-field writer-path review remain unrun. C3 remains OPEN for account metadata/PII and full writer-path evidence.
+
+## 11. C2 grouped key-custody proposal — 2026-11-08
+
+Added `docs/D1_T2_C2_KEY_CUSTODY_OWNER_DECISION_PROPOSAL_V1.md` to consolidate the remaining C2 owner decisions into one grouped approval: crypto Worker/private Service Binding, per-Worker secret binding default, Cloudflare per-Worker Secrets plus offline AES-256-GCM escrow with Shamir 2-of-3 recovery (owner-approved 2026-11-08), key-family separation, active-write/retained-read rotation, and synthetic restore acceptance.
+
+The previous Wallet-first compatibility recommendation in the C2 ADR is superseded by the source audit: preserve the exact domain-separated SHA-256 v1 contract after secure UUIDv4 source hardening; do not add these high-entropy transient token digests to the PII HMAC key family. The delivered-row replay/retention window remains open.
+
+No production key or secret was created. C2 remains OPEN pending the grouped owner decision and synthetic restore evidence.
+
+## 12. C2 synthetic escrow/restore contract — 2026-11-08
+
+Added a pure synthetic AES-256-GCM key-escrow envelope contract and 10-case test. It verifies key ID/family/algorithm AAD, restore under the correct wrapping key, wrong-key/tamper rejection, metadata-only inventory projection, and no key material reuse across families.
+
+Fixed Node v22.23.1 isolated regression: 10/10 PASS twice; `node --check` 2/2 PASS. Evidence and TAP hashes are in `docs/D1_T2_C2_KEY_CUSTODY_OWNER_DECISION_PROPOSAL_V1.md`.
+
+This does not create a real key, external escrow, KMS/HSM integration, Cloudflare secret binding, or production restore. C2 remains OPEN pending the grouped owner decision and real custody plan.
+
+## 13. G6 source-only schema inventory validator — 2026-11-08
+
+Added an offline read-only validator for the pinned source inventory:
+
+- `server/services/platform/d1-control-schema-inventory-contract.mjs`
+- `server/tests/d1-control-schema-inventory-contract.test.mjs`
+- `scripts/validate-d1-control-schema-inventory.mjs`
+
+The validator checks source-only status, production-writer authority, declared vs recomputed counts, 70 table/820 column totals, 126 foreign-key edges, 88 indexes, 91 triggers, 48 core tables/530 core columns, 22 companion tables/290 companion columns, 19 source migration ordinals/checksums, per-table source blob fingerprints, explicit exclusions, and all production mutation/connection/merge/cutover authorization flags remaining false.
+
+Fixed Node v22.23.1 in the isolated non-production sandbox:
+- Inventory CLI: PASS; source commit `be261abc60f28bb2733764fa5364ab44b3e76844`.
+- 10/10 PASS twice, 0 failed, 0 skipped.
+- Run 1 TAP SHA-256: `a1e2a22d66b9a7af1fd687226ed1767f134dcd27733553e53c15914ed6d99c0b`.
+- Run 2 TAP SHA-256: `d5dbf5014978818a4f98cac48110512fbb8cf17e2fc74468dde3dada3b08752b`.
+- `node --check` passed for the validator module, test, and CLI (3/3).
+
+This validates the checked-in source inventory artifact only. It does not establish live BWH schema state, D1 parity, current migration application state, or authorize target DDL/data loading. G6 remains an offline rehearsal gate; production database migration remains unauthorized.
+
+## 14. C3 account metadata 26-field disposition audit — 2026-11-08
+
+Added `docs/D1_T2_C3_ACCOUNT_METADATA_26_FIELD_DISPOSITION_AUDIT_V1.md` after exact review of the current child-branch `ACCOUNT_METADATA_FIELDS` and `ACCOUNT_METADATA_DIGEST_FIELDS` source declarations:
+
+- Exact allowlist: **26/26 fields**.
+- Unkeyed SHA-256 digest fields: **8/8 identified**.
+- Raw email/login and display identifiers separated from opaque Auth0 subject mapping.
+- Consent evidence separated from generic account metadata.
+- Business policy fields separated from identity/profile data.
+- Privacy-sensitive use-case, IP and request-correlation digests default to DROP unless a specific purpose and owner approve keyed, time-bounded processing.
+
+The source module currently documents that the allowlist is a legacy BWH source-writer contract, not a D1 target projection. The disposition audit does not read production values or authorize migration. C3 remains OPEN pending Account/Identity, Privacy and Legal decisions plus a target writer integration regression.
+
+## 15. G6 inventory graph and referential-integrity validator — 2026-11-08
+
+Hardened `server/services/platform/d1-control-schema-inventory-contract.mjs` and its regression suite beyond declared totals:
+
+- Recompute and compare all global and layer-specific counts: 70 tables, 820 columns, 126 FK edges, 88 indexes, 91 triggers; core/companion breakdowns also match.
+- Resolve every FK edge to real source/target tables and columns, enforce column arity, layer consistency and known delete actions.
+- Resolve every index to an existing table/column, including ASC/DESC order terms; validate uniqueness flag and predicate shape.
+- Resolve every trigger to an existing table and supported timing/event shape.
+- Bind every table/index/trigger source path + Git blob to the inventory's pinned source-file list.
+- Verify table-to-migration references, unique source paths, dependency graph node/kind validity and acyclicity.
+- Preserve all source-only and no-production authorization assertions.
+
+Fixed Node v22.23.1, isolated sandbox with network denied during test execution:
+- CLI: PASS; validates the pinned source inventory at source commit `be261abc60f28bb2733764fa5364ab44b3e76844`.
+- Regression suite: **23/23 PASS twice**, 0 failed, 0 skipped.
+- Run 1 TAP SHA-256: `cd2e4b13004aa87c6b4d9889d6f948f067a5faf9f6755da3ea433dbce61e5603`.
+- Run 2 TAP SHA-256: `f7649cc1cd8e0ac32cd087b85374207febb9cd80bf71f2097702553880fd4587`.
+- `node --check`: 3/3 PASS (validator module, test, CLI).
+
+This is a stronger structural consistency check over the checked-in source inventory. It does not establish live BWH schema state, D1 parity, or source migration ledger application history. It does not apply DDL or load rows; G6 remains offline-only.
+
+## 16. G6 source migration checksum re-execution — 2026-11-08
+
+Added a read-only registry of the actual source-module checksum exports and a CLI verifier:
+
+- `server/services/platform/d1-source-migration-registry.mjs`
+- `scripts/validate-d1-source-migration-checksums.mjs`
+- `server/tests/d1-source-migration-registry.test.mjs`
+- `server/services/platform/payment-store-migrations.mjs` now exposes its existing primary and legacy-archive migration IDs/checksums as a frozen read-only metadata array. No migration behavior or SQL was changed by this export.
+
+The registry imports the real source migration modules (with a throwing `better-sqlite3` stub in the isolated audit sandbox; no database object was constructed) and recomputes the checksums from the modules' existing DDL statements at module load.
+
+Fixed Node v22.23.1:
+- **19/19 source migration IDs and DDL SHA-256 checksums match** the pinned source inventory, including the legacy payment archive, Wallet-first/deferred migrations, Portal registration contract, plan switch and Plan C guard.
+- CLI: PASS, `expectedCount=19`, `actualCount=19`, `errors=[]`.
+- Regression suite: **5/5 PASS twice**, 0 failed, 0 skipped.
+- Run 1 TAP SHA-256: `866720d017740772d8293d09e1630691fd32bc7377ce3270d773420de261eb5d`.
+- Run 2 TAP SHA-256: `afd3a6f0f8cc6eb9314150342bc96574c3390a872dcf28fc5aadac530a35f192`.
+- `node --check`: 19/19 PASS across the imported source modules, registry, test and CLI.
+
+This closes the current-head source DDL checksum re-execution gap for these 19 recorded migrations. It does **not** establish which migrations were ever applied to BWH, their live database identity, or target D1 migration parity. No BWH connection, database read, DDL apply, or row load occurred.
+
+### G6 combined offline acceptance — 2026-11-08
+
+Combined the inventory graph validator and 19-migration source checksum registry into one fixed-runtime regression invocation:
+
+- Node v22.23.1.
+- **28/28 PASS twice**, 0 failed, 0 skipped.
+- Run 1 TAP SHA-256: `c2ccf80753c8d78eb69e4fe746454c6d26a9f39f76b4ba1ecff9289be2b8a292`.
+- Run 2 TAP SHA-256: `692ac794e51cde8cf3e545eca6aecbece80ba215d67fafeff4d6e6d25f55bc91`.
+
+This is combined offline source-artifact acceptance, not a migration rehearsal against a SQLite backup or D1 database.
+
+## 17. T2 field disposition integrity validator — 2026-11-08
+
+Added a machine-checkable integrity contract for the full T2 field disposition artifact:
+
+- `server/services/platform/d1-field-disposition-contract.mjs`
+- `server/tests/d1-field-disposition-contract.test.mjs`
+- `scripts/validate-d1-field-disposition.mjs`
+
+The CLI verifies the exact inventory Git blob identity and cross-checks all 70 source tables / 820 source columns against the 70 table dispositions / 820 field rows. It validates source type/nullability/PK/unique/default/CHECK metadata, ordinal/order, rule and retention references, test catalog references, inclusion semantics, target column uniqueness, table-level candidate counts, all disposition totals, low-confidence count, DEFER table containment, and the proposal-only / no-production authorization boundary.
+
+Fixed Node v22.23.1:
+- CLI: PASS; source inventory Git blob `b04cb13b483cb9088418f9dd469760380cbf6b74` matches the field-map pin.
+- Exact map: 70 tables / 820 fields / 790 target candidates / 1 low-confidence field.
+- Table dispositions: KEEP 64 / CONDITIONAL 4 / DEFER 2.
+- Field dispositions: KEEP 712 / CONDITIONAL 59 / EXTERNALIZE 7 / TRANSFORM 19 / DEFER 23.
+- Regression suite: **12/12 PASS twice**, 0 failed, 0 skipped.
+- Run 1 TAP SHA-256: `85c13859f2fb0447f33faf72e68e5bdd6ccacfb703c9accab0c2f946ed962307`.
+- Run 2 TAP SHA-256: `902011d53397d11d771718487d5b83dc5c010894e761b43eeac1a210079bed6d`.
+- `node --check`: 3/3 PASS (contract, test, CLI).
+
+This closes the structural integrity check for the proposed field map, not its domain-owner approval. The one low-confidence generation field and conditional inclusion rules remain explicitly proposed. T2 remains OPEN; no T3 DDL or production migration is authorized by this validation.
+
+## 18. C3 full 26-field writer review and source SQLite regression — 2026-11-08
+
+Added two C3 evidence documents:
+
+- `docs/D1_T2_C3_ACCOUNT_METADATA_SOURCE_TARGET_CONTRACT_V1.md`
+- `docs/D1_T2_C3_JSON_26_FIELD_WRITER_REVIEW_V1.md`
+
+The latter records the complete 26-field JSON inventory: 24 active fields have identified writer/reader/transform contracts and focused dynamic coverage; two Passkey credential fields remain explicitly DEFERRED under the future-auth gate. The account metadata field now has a bounded BWH source-writer contract and a pure D1 projection gate. The D1 projection fails closed while raw identity/display fields or legacy unkeyed digests remain; it does not silently discard them.
+
+### Fixed-runtime source test evidence
+
+The evidence documents are based on source and test blobs byte-identical to the current PR #846 branch:
+- `subscription-control-db.mjs`: `2bbdc573ec13fd8774ee87bf0904ce8aa7c51454`.
+- `platform-subscription-control-db.test.mjs`: `e5ef7c2f87236457b2b01dc9e607905a76d73cb5`.
+- `control-json-contracts.mjs`: `9d76d64d897707e5689fe94c275f548ee858707c`.
+- `control-json-contracts.test.mjs`: `a60b27f3bdd5d6608e3ba4f8b574eba55fb0e442`.
+
+Recorded isolated Node v22.23.1 / better-sqlite3 12.10.0 / SQLite 3.53.1 results:
+- Full SQLite control-store suite: **45/45 PASS twice**; TAP SHA-256 `b7d0e4da530d0b2ae4535adbeeaf27be45c7bb835f0a68c9e76a8d5637ade74a` and `690d044fa2d92675d193827d0bd0192e5c57c80dc54f62da40f27395b23cbc30`.
+- Five focused groups: **290 distinct cases per pass**, 5/5 suite groups PASS twice; **580 successful test executions** across both passes.
+- Group sizes: 45 control-store; 48 JSON/payment/key-escrow/inventory; 113 commerce; 68 deferred/referral/Portal; 16 Wallet-first.
+
+This closes the source-only 26-field writer/transform inventory review. It does not close the remaining Auth0 identity externalization or C2 keyed-digest replacement. It does not authorize a D1 account-row load or target DDL. T2 remains OPEN.
+
+
+## 19. C2 target architecture owner decision — 2026-11-08
+
+The project owner approved the C2 target architecture baseline recorded in the C2 owner decision proposal and key custody/rotation ADR.
+
+Approved design baseline:
+- Dedicated Crypto Worker and private Service Binding; no public key-operation endpoint or raw key return.
+- Per-Worker secret bindings by default; Secrets Store only for demonstrated sharing.
+- Independent encrypted escrow outside Cloudflare/GitHub/Notion, with two-person recovery/revocation.
+- Separate key material and domains by purpose.
+- Active-write / retained-read rotation and evidence-based retirement.
+- No first-party Portal/Admin TOTP AES provisioning under T1/Auth0-managed MFA.
+
+Not included: named people, concrete KMS/HSM/offline escrow provider, real keys or bindings, deployed Crypto Worker, non-production integration, actual external recovery rehearsal, Wallet-first digest/replay-retention disposition, payment/PII domain approvals, or production change authorization.
+
+C2 remains OPEN. The synthetic escrow contract passed 10/10 twice under Node v22.23.1, but this is not real escrow or production restore evidence. BWH remains the only production control-data writer; no BWH access, production data read, D1 mutation, Worker/DO deployment, dual-write or cutover is authorized.
+
+
+**Draft progress — 2026-11-08 (Crypto Worker v1):** Added the versioned interface contract and dedicated Worker source. The source provides idempotency, provider-event and PII HMAC create/candidates/verify operations; PII inputs are digest-only. The three key-ring families are loaded and checked for cross-family reuse on each request. Caller auth, current/previous token overlap, exact schemas, 16 KiB body cap, generic fail-closed errors, no public route, and no persistent bindings are covered by 11/11 focused tests twice under Node v22.23.1; node --check 3/3 PASS. Wrangler 4.99.0 deploy --dry-run passed (28.19 KiB / 6.42 KiB gzip). The Service Binding integration, real secret provisioning, escrow, owner/domain approvals and independent review remain OPEN. No deployment or production operation occurred.
+
+
+**Draft progress — 2026-11-08 (Miniflare Service Binding proof):** A separate synthetic caller Worker and Crypto Worker now run in two Miniflare instances joined by a private Service Binding. The focused suite passed 5/5 twice under Node v22.23.1; TAP hashes 3b17bb52a8c6997bf184023e2b15ff36fb01e30c158b7ef6bb19fa14ae2dc90b and 64db515f7eb070728f4c55fb9eded1c16a30f86956803827f232a6d93a018ae4; syntax 4/4 PASS. This proves binding mechanics and separate caller credentials only. The actual G3 control-plane has no end-user/domain authorization context yet, so its binding declaration and route wrapper remain deferred rather than adding a generic public crypto relay.
+
+
+**Draft progress — 2026-11-08 (external escrow evaluation):** Added [D1_T2_C2_EXTERNAL_ESCROW_PROVIDER_EVALUATION_V1.md](D1_T2_C2_EXTERNAL_ESCROW_PROVIDER_EVALUATION_V1.md). Google Cloud KMS is the leading technical candidate when no independent provider account is already preferred; AWS KMS is an equivalent alternative where a separate AWS organization/account exists; Azure Key Vault is an option for an existing Azure tenant. The evaluation defines non-exportable KEK, metadata-bound AAD/encryption context, distinct admin/user roles, two-person break-glass approval, audit, two ciphertext copies, and isolated restore/revocation acceptance. No provider or resource is selected/created. C2 remains OPEN.
+
+
+## 20. C2/C4 synthetic envelope and payment-action hardening — 2026-11-09
+
+- C2 escrow envelope: exact field allowlist, canonical encoding/length checks, and fail-closed metadata projection; 11 tests.
+- C4 payment action: key ID added to AES-GCM AAD; exact record/envelope key sets; ciphertext size bound; terminal chronology enforced; 17 tests.
+- Exact source/test Git blob hashes were verified in the isolated sandbox before execution.
+- Fixed Node v22.23.1 regression: **28/28 PASS twice**, 0 failed / 0 skipped; syntax checks **2/2 PASS**.
+- C2 still requires external provider/account, named custodians, two-person recovery, and real non-production restore. C4 remains a proposal pending owner approval; no DO adapter or namespace was implemented. C5 retention durations remain OPEN and owner-controlled.
+- No real keys, production data, BWH access, remote D1 write, Worker/DO deployment, merge, or cutover occurred.
+
+
+## 21. Expanded C2/C4/JSON/schema regression — 2026-11-09
+
+The focused C2/C4 hardening suites were expanded with the shared JSON contracts and source schema inventory contract. All eight source/test files were verified byte-identical to their GitHub blobs in the isolated sandbox using `git hash-object` before execution.
+
+- C2 escrow contract + tests: 11 cases.
+- C4 payment-action contract + tests: 17 cases.
+- Shared JSON contract + tests and source schema inventory contract + tests: included in the same exact-head run.
+- Combined fixed Node v22.23.1 regression: **65/65 PASS twice**, 0 failed / 0 skipped.
+- Four relevant implementation modules: `node --check` **4/4 PASS**.
+- TAP summaries: run 1 = 65 pass / 0 fail; run 2 = 65 pass / 0 fail.
+
+This is source-only, isolated synthetic evidence. It does not close C2 real escrow/provider/custodian gates, C4 Durable Object implementation/owner approval, C5 retention owner approvals, or T2 migration readiness.
+
+## 22. C2 offline escrow owner decision — 2026-11-08
+
+The owner has selected Cloudflare per-Worker Secrets for online runtime custody and offline AES-256-GCM escrow with Shamir 2-of-3 recovery. No independent KMS cloud account is required or selected. The current operational contract is [D1_T2_C2_OFFLINE_ESCROW_RUNBOOK_V1.md](D1_T2_C2_OFFLINE_ESCROW_RUNBOOK_V1.md); the external provider evaluation is retained as historical comparison only.
+
+Still open before real key provisioning: three named custodians, audited/version-pinned Shamir implementation, separate offline custody locations, synthetic threshold/recovery tests, actual C1-authorized control-plane Service Binding integration, domain-owner approvals, and independent review. No real key/share/secret/binding/deployment or production operation is authorized. C2 remains OPEN, T2 remains BLOCKED, and BWH remains the only production control-data writer.

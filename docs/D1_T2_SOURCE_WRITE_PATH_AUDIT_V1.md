@@ -1,5 +1,16 @@
 # D1 T2 Source Write-Path Audit v1 — Draft
 
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: d1_t2_source_write_path_audit
+  superseded_by: null
+  last_verified_at: 2026-11-10
+  production_authority: false
+```
+
+
 Status: SOURCE WRITE-PATH INVENTORY COMPLETED; SECURITY BLOCKERS REMAIN. This is a source-code audit, not a production-data audit and not a T2 approval.
 
 - Repository: FlyLink-com/proxy-gateway-minimal

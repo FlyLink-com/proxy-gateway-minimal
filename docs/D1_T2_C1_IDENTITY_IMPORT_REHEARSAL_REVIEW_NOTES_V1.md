@@ -1,5 +1,16 @@
 # D1 T2-C1 Identity Import Rehearsal — Second-Pass Review Notes v1
 
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: d1_t2_c1_identity_import_rehearsal_review_notes
+  superseded_by: null
+  last_verified_at: 2026-11-10
+  production_authority: false
+```
+
+
 - Review date: 2026-11-07 (PST)
 - Reviewed branch: docs/d1-target-schema-g6-rehearsal-plan-20261107
 - Reviewed HEAD: 76bd676ddc3e1a214b6cdc9392ad40baea993088

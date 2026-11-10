@@ -1,5 +1,16 @@
 # D1 T2 Identity and Authentication Custody — Source Audit v1
 
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: d1_t2_identity_auth_custody_source_audit
+  superseded_by: null
+  last_verified_at: 2026-11-10
+  production_authority: false
+```
+
+
 > **Status:** Source-only findings for T2 decision-making. This is not an identity-service design approval, production activation finding, secret migration authorization, or T2 PASS.
 > **Source anchor:** `master@be261abc60f28bb2733764fa5364ab44b3e76844`.
 > **Draft branch:** `docs/d1-target-schema-g6-rehearsal-plan-20261107`.
