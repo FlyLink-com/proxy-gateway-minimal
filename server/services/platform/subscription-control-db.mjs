@@ -8159,7 +8159,10 @@ export function createSqliteSubscriptionControlStore({
     const entityType = requiredText(input.entityType, "entityType");
     const action = requiredText(input.action, "action");
     const metadata = snapshotControlJsonObject(input.metadata, "audit metadata");
-    const entityRef = safeControlRef(input.entityRef, "entityRef");
+    const entityRef = entityType === "coin_commerce_subscription_fulfillment"
+      && action === "subscription_fulfillment_applied"
+      ? safeAuthorityRef(input.entityRef, "entityRef")
+      : safeControlRef(input.entityRef, "entityRef");
     const actorRef = safeControlRef(input.actorRef, "actorRef");
     const id = safeControlRef(input.id, "id");
     const createdAt = isoText(input.createdAt, "createdAt");
