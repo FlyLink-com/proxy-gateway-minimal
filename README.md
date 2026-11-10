@@ -17,6 +17,8 @@
   <img src="https://img.shields.io/badge/SQLite-better--sqlite3-2563EB?logo=sqlite&logoColor=white" alt="SQLite">
 </p>
 
+> CI 徽章显示 master 最近一次 push 工作流结果。仅文档变更时，工作流可能只执行文档与治理检查；绿色徽章不代表应用测试或构建已运行。详见 [Validation Baseline](docs/VALIDATION_BASELINE.md)。
+
 # FlyLink Gateway
 
 **订阅控制与节点交付平台**
@@ -31,7 +33,7 @@ FlyLink Gateway 是一个以 Node.js 为核心的工程项目，围绕账户与�
 | --- | --- | --- |
 | Operator CLI | 统一命令入口、能力发现、项目检查和受控工作流路由 | 命令可用不等于获得生产操作授权 |
 | Control Plane | Node.js / Express 服务、账户与订阅域、订单与权益、用量证据和审计投影 | 当前源码控制面；运行状态须由独立证据确认 |
-| Admin & Portal | React 管理界面、用户门户和公司站点前端源码 | 三个界面共享 Admin 工作区与工具链，不代表三个独立部署已完成 |
+| Admin & Portal | React 管理界面、用户门户和公司站点前端源码 | 三个界面共享 Admin 工作区与工具链，发布单元仍需分别核验 |
 | Agent & Delivery | 本地 Agent、节点执行适配器、订阅渲染及交付契约 | 真实节点访问、配置应用和运行时变更仍受独立门禁约束 |
 | Cloudflare Worker | Workers + D1 控制面迁移方向的本地验证切片 | Miniflare 合成数据验证；尚非生产控制面，也未部署远程 D1 |
 
@@ -87,7 +89,7 @@ flowchart TB
 
 ### 环境要求
 
-- Node.js 版本遵循根目录 package.json 的 engines 声明：20.10.x（不含 21.x），以及 22.x–26.x。
+- Node.js 版本遵循根目录 package.json 的 engines 声明：20.x 中从 20.10.0 起且低于 21.0.0，以及 22.x–26.x（不支持 21.x）。
 - npm 与仓库 lockfile 配套使用。
 - Git。
 
@@ -159,7 +161,7 @@ npm run server
 | 开发者入门与项目目录 | [Community & Developer Guide](docs/COMMUNITY_GUIDE.md) |
 | 完整文档分类与权威入口 | [Documentation Index](docs/README.md) |
 | 项目定位与领域边界 | [Project Context](docs/PROJECT_CONTEXT.md) |
-| 逻辑拓扑与当前 / 未来阶段 | [Project Topology](docs/PROJECT_TOPOLOGY.md) |
+| 项目架构与当前 / 未来阶段 | [Project Context](docs/PROJECT_CONTEXT.md) |
 | API 兼容说明 | [API Compatibility](docs/API_COMPATIBILITY.md) |
 | CLI 使用入口 | [CLI Workspace](bin/README.md) |
 | 后端服务 | [Server Workspace](server/README.md) |

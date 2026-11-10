@@ -38,7 +38,7 @@ This guide helps external developers understand the repository and find the righ
 
 ### Requirements
 
-Use a Node.js version allowed by the root package.json engines field (20.10.x, excluding 21.x, or 22.x–26.x), npm, and Git. The Worker workspace separately requires Node.js 22 or newer.
+Use a Node.js version allowed by the root package.json engines field (20.x from 20.10.0 onward and below 21.0.0, or 22.x–26.x), npm, and Git. The Worker workspace separately requires Node.js 22 or newer.
 
 ### Install dependencies
 
@@ -98,7 +98,6 @@ The authoritative command selection and stop conditions live in [Validation Base
 
 - [API Compatibility](API_COMPATIBILITY.md) — documented HTTP compatibility surface.
 - [Project Context](PROJECT_CONTEXT.md) — current source model, domain boundaries, and future target separation.
-- [Project Topology](PROJECT_TOPOLOGY.md) — documented logical and physical phase boundaries.
 - [Validation Baseline](VALIDATION_BASELINE.md) — validation ownership and risk-tier commands.
 - [Security Policy](../SECURITY.md) — private vulnerability reporting.
 - [Contributing](../CONTRIBUTING.md) — pull-request expectations and safe development rules.

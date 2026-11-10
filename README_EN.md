@@ -17,6 +17,8 @@
   <img src="https://img.shields.io/badge/SQLite-better--sqlite3-2563EB?logo=sqlite&logoColor=white" alt="SQLite">
 </p>
 
+> The CI badge shows the latest push workflow on master. Documentation-only changes may run only documentation and governance checks; a green badge does not imply that application tests or builds ran. See the [Validation Baseline](docs/VALIDATION_BASELINE.md).
+
 # FlyLink Gateway
 
 **Subscription Control & Delivery Platform**
@@ -31,7 +33,7 @@ It is not a proxy client, and the presence of a capability in the repository doe
 | --- | --- | --- |
 | Operator CLI | Unified command entrypoint, capability discovery, project checks, and controlled workflow routing | A command being available does not authorize production operations |
 | Control Plane | Node.js / Express service, account and subscription domains, orders and entitlements, usage evidence, and audit projections | Current source control plane; runtime state requires separate evidence |
-| Admin & Portal | React management UI, user portal, and company-site frontend source | The three surfaces share the Admin workspace and toolchain; this does not imply three completed independent deployments |
+| Admin & Portal | React management UI, user portal, and company-site frontend source | The three surfaces share the Admin workspace and toolchain; each release unit must be verified independently |
 | Agent & Delivery | Local Agent, node execution adapters, subscription rendering, and delivery contracts | Real node access, configuration apply, and runtime changes remain separately gated |
 | Cloudflare Worker | Local validation slice for the Workers + D1 control-plane migration direction | Synthetic data under Miniflare; not the production control plane and not deployed to remote D1 |
 
@@ -87,7 +89,7 @@ flowchart TB
 
 ### Requirements
 
-- Node.js versions follow the root package.json engines declaration: 20.10.x (excluding 21.x), plus 22.x–26.x.
+- Node.js versions follow the root package.json engines declaration: 20.x from 20.10.0 onward and below 21.0.0, plus 22.x–26.x (21.x is not supported).
 - npm compatible with the repository lockfile.
 - Git.
 
@@ -159,7 +161,7 @@ Do not copy production .env files, databases, subscription links, user data, or 
 | Developer onboarding and repository map | [Community & Developer Guide](docs/COMMUNITY_GUIDE.md) |
 | Full document taxonomy and authoritative entrypoints | [Documentation Index](docs/README.md) |
 | Project context and domain boundaries | [Project Context](docs/PROJECT_CONTEXT.md) |
-| Logical topology and current / future phases | [Project Topology](docs/PROJECT_TOPOLOGY.md) |
+| Project architecture and current / future phases | [Project Context](docs/PROJECT_CONTEXT.md) |
 | API compatibility notes | [API Compatibility](docs/API_COMPATIBILITY.md) |
 | CLI entrypoint | [CLI Workspace](bin/README.md) |
 | Backend service | [Server Workspace](server/README.md) |
