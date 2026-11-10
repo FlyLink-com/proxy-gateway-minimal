@@ -61,15 +61,15 @@ function parseJsonc(text) {
 function readTomlTopLevelAccountIds(text) {
   const values = [];
   let topLevel = true;
-  for (const line of text.split(/\\r?\\n/)) {
+  for (const line of text.split(/\r?\n/)) {
     const trimmed = line.trim();
     if (!trimmed || trimmed.startsWith("#")) continue;
-    if (/^\\[\\[?/.test(trimmed)) {
+    if (/^\[\[?/.test(trimmed)) {
       topLevel = false;
       continue;
     }
     if (!topLevel) continue;
-    const match = /^\\s*account_id\\s*=\\s*(.*?)\\s*(?:#.*)?$/.exec(line);
+    const match = /^\s*account_id\s*=\s*(.*?)\s*(?:#.*)?$/.exec(line);
     if (!match) continue;
     const literal = match[1].trim();
     let value = null;
@@ -106,7 +106,7 @@ for (const file of allConfigs) {
     if (raw.includes(value)) fail(where, `forbidden string present (${why})`);
   }
 
-  if (/\\.toml$/.test(file)) {
+  if (/\.toml$/.test(file)) {
     const accountIds = readTomlTopLevelAccountIds(raw);
     if (accountIds.length > 1) fail(where, "multiple top-level account_id values are not allowed");
     for (const accountId of accountIds) {
