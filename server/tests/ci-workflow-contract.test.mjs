@@ -17,6 +17,11 @@ const EXPECTED_WORKFLOW_ACTIONS = {
     "actions/checkout",
     "actions/setup-node"
   ],
+  "codeql.yml": [
+    "actions/checkout",
+    "github/codeql-action/init",
+    "github/codeql-action/analyze"
+  ],
   "control-plane-artifact-ingress-v2.yml": [
     "actions/checkout",
     "actions/setup-node",
@@ -104,7 +109,7 @@ const REVIEWED_ACTION_PINS = {
   "actions/checkout": {
     sha: DEFAULT_CHECKOUT_PIN,
     annotation: "v6",
-    count: 25
+    count: 26
   },
   "actions/download-artifact": {
     sha: "3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c",
@@ -120,15 +125,27 @@ const REVIEWED_ACTION_PINS = {
     sha: "043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",
     annotation: "v7",
     count: 7
+  },
+  "github/codeql-action/init": {
+    sha: "33d7b85da1a04171e211befe2c739303b9a4c066",
+    annotation: "v4",
+    count: 1
+  },
+  "github/codeql-action/analyze": {
+    sha: "33d7b85da1a04171e211befe2c739303b9a4c066",
+    annotation: "v4",
+    count: 1
   }
 };
-const EXPECTED_ACTION_REFERENCE_COUNT = 60;
+const EXPECTED_ACTION_REFERENCE_COUNT = 63;
 const EXPECTED_ACTION_REVISION_COUNTS = {
-  [`actions/checkout@${DEFAULT_CHECKOUT_PIN}`]: 23,
+  [`actions/checkout@${DEFAULT_CHECKOUT_PIN}`]: 24,
   [`actions/checkout@${TRUSTED_GOVERNANCE_CHECKOUT_PIN}`]: 2,
   [`actions/download-artifact@${REVIEWED_ACTION_PINS["actions/download-artifact"].sha}`]: 7,
   [`actions/setup-node@${REVIEWED_ACTION_PINS["actions/setup-node"].sha}`]: 21,
-  [`actions/upload-artifact@${REVIEWED_ACTION_PINS["actions/upload-artifact"].sha}`]: 7
+  [`actions/upload-artifact@${REVIEWED_ACTION_PINS["actions/upload-artifact"].sha}`]: 7,
+  [`github/codeql-action/init@${REVIEWED_ACTION_PINS["github/codeql-action/init"].sha}`]: 1,
+  [`github/codeql-action/analyze@${REVIEWED_ACTION_PINS["github/codeql-action/analyze"].sha}`]: 1
 };
 // Keep this source-only guard dependency-free: every uncommented `uses` token is
 // reserved for this canonical one-line form and every other spelling fails closed.
@@ -527,6 +544,20 @@ test("all workflow Action references use the reviewed full commit inventory", ()
     violations,
     [],
     `workflow Action pin violations:\n${violations.join("\n")}`
+  );
+});
+
+test("CodeQL workflow uses least-privilege permissions and credential-free checkout", () => {
+  const workflow = readRepositoryFile(".github/workflows/codeql.yml");
+
+  assert.match(workflow, /^ +security-events: write$/mu);
+  assert.match(workflow, /^ +contents: read$/mu);
+  assert.doesNotMatch(workflow, /^ +(actions|packages): read$/mu);
+  assert.match(workflow, new RegExp(`uses: actions/checkout@${DEFAULT_CHECKOUT_PIN} # v6`));
+  assert.match(workflow, /^ +persist-credentials: false$/mu);
+  assert.equal(
+    (workflow.match(/^[ ]+uses: github\/codeql-action\/(?:init|analyze)@[a-f0-9]{40} # v4$/gmu) ?? []).length,
+    2
   );
 });
 
