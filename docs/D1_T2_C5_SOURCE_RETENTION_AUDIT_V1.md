@@ -1,5 +1,16 @@
 # D1 T2-C5 Source-grounded Retention Audit v1
 
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: active
+  authority_scope: d1_t2_c5_source_retention_audit
+  superseded_by: null
+  last_verified_at: 2026-11-10
+  production_authority: false
+```
+
+
 > **Status:** SOURCE AUDIT ONLY. No retention duration is approved or changed by this document.
 > **Source branch:** `feat/t2-c4-c5-payment-retention-contracts-20261108`, based on the current D1 T2 schema/G6 preparation branch.
 > **Production boundary:** No production database rows, logs, or customer records were read.

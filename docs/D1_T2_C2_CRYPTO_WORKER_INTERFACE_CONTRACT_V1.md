@@ -1,5 +1,16 @@
 # D1 T2-C2 Crypto Worker Interface Contract v1
 
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: active
+  authority_scope: d1_t2_c2_crypto_worker_interface_contract
+  superseded_by: null
+  last_verified_at: 2026-11-10
+  production_authority: false
+```
+
+
 > Status: Implemented as a source-only Draft contract on 2026-11-08. The C2 target architecture is owner-approved; this interface contract does not authorize secret provisioning, Service Binding creation, deployment, or production use.
 > Owner decision: 2026-11-08.
 > Source branch: feat/t2-c4-c5-payment-retention-contracts-20261108.

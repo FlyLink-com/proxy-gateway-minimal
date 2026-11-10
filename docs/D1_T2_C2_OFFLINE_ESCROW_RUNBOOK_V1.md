@@ -1,5 +1,16 @@
 # D1 T2-C2 Cloudflare Runtime Secrets + SOPS/age 2-of-3 Custody-Domain Runbook v1.1
 
+```yaml
+document_metadata:
+  doc_type: operational
+  lifecycle: active
+  authority_scope: d1_t2_c2_offline_escrow_runbook
+  superseded_by: null
+  last_verified_at: 2026-11-10
+  production_authority: false
+```
+
+
 > Status: OWNER-APPROVED AMENDMENT — 2026-11-10. SOPS v3.13.3 + age v1.3.2 toolchain verification and synthetic threshold rehearsal PASS (Stage 2 item 1 only). Exact offline workstation and real custody-domain configuration remain OPEN.
 > Scope: online runtime key custody, independent offline recovery, and staged C2 gates. This is not C2 formal acceptance.
 > Production authority: BWH remains the only production control-data writer.

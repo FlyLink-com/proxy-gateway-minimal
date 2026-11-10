@@ -1,5 +1,16 @@
 # D1 T2-C3 JSON 26-field Writer/Transform Review v1
 
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: d1_t2_c3_json_26_field_writer_review
+  superseded_by: null
+  last_verified_at: 2026-11-10
+  production_authority: false
+```
+
+
 > **Status:** Field inventory and dynamic writer-path review completed for 24 active JSON fields. Two passkey credential fields remain explicitly DEFERRED under the future-auth gate. C3 overall remains OPEN for Auth0 identity externalization and C2 keyed-digest replacement.
 > **Source of truth:** `docs/D1_CONTROL_FIELD_DISPOSITION_T2_V1.json` (26 JSON fields).
 > **Execution:** Node.js v22.23.1 in isolated non-production Vercel sandboxes; better-sqlite3 12.10.0 / SQLite 3.53.1 for SQLite suites.

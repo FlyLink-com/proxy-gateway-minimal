@@ -1,5 +1,16 @@
 # D1 T2 Closeout Execution Matrix v1
 
+```yaml
+document_metadata:
+  doc_type: operational
+  lifecycle: active
+  authority_scope: d1_t2_closeout_execution_matrix
+  superseded_by: null
+  last_verified_at: 2026-11-10
+  production_authority: false
+```
+
+
 > **Status:** Draft execution checklist. This document does not declare T2 PASS and does not authorize production migration.
 > **Repository:** `FlyLink-com/proxy-gateway-minimal`
 > **Draft branch:** `docs/d1-target-schema-g6-rehearsal-plan-20261107`

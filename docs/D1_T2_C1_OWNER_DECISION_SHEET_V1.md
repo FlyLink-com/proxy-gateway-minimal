@@ -1,5 +1,16 @@
 # D1 T2-C1 Identity Provider and Owner Decision Sheet v1
 
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: d1_t2_c1_owner_decision_sheet
+  superseded_by: null
+  last_verified_at: 2026-11-10
+  production_authority: false
+```
+
+
 > Status: OWNER DECISION REQUIRED — provider-neutral boundary code is implemented in Draft; no identity provider, tenant, account, real identity, credential, or production resource is selected or configured.
 > Source anchor: master@be261abc60f28bb2733764fa5364ab44b3e76844
 > Draft branch: docs/d1-target-schema-g6-rehearsal-plan-20261107

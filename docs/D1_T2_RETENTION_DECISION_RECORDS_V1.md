@@ -1,5 +1,16 @@
 # D1 T2 Retention Decision Records v1 — Draft
 
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: active
+  authority_scope: d1_t2_retention_decision_records
+  superseded_by: null
+  last_verified_at: 2026-11-10
+  production_authority: false
+```
+
+
 Status: DECISION REGISTER PREPARED; DOMAIN OWNER APPROVAL PENDING. No new numeric retention periods are approved by this document.
 
 ## 1. Rules

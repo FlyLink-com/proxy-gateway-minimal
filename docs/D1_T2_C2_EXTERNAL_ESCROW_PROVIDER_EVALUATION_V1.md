@@ -1,5 +1,16 @@
 # D1 T2-C2 External Key Escrow Provider Evaluation v1
 
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: d1_t2_c2_external_escrow_provider_evaluation
+  superseded_by: null
+  last_verified_at: 2026-11-10
+  production_authority: false
+```
+
+
 > Status: SOURCE-ONLY EVALUATION. No external provider is selected or approved by this document. No cloud account, KMS/HSM key, escrow object, credential, or production resource is created.
 > Evaluation date: 2026-11-08.
 > Architecture approval: C2 target architecture approved by project owner on 2026-11-08.

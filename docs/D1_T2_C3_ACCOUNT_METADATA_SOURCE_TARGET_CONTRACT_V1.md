@@ -1,5 +1,16 @@
 # D1 T2-C3 Account Metadata Source/Target Contract v1
 
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: active
+  authority_scope: d1_t2_c3_account_metadata_source_target_contract
+  superseded_by: null
+  last_verified_at: 2026-11-10
+  production_authority: false
+```
+
+
 > **Status:** BWH source-writer contract and synthetic D1 projection gate validated. D1 account metadata migration remains **BLOCKED** pending Auth0 identity externalization and C2 HMAC custody.
 > **Source branch:** `docs/t2-c3-account-metadata-contract-20261108`.
 > **Production boundary:** Source-only code and synthetic tests. No BWH connection, production row read, D1 write, or cutover.

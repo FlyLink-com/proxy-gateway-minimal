@@ -1,5 +1,16 @@
 # D1 T2-C1 Identity and Authentication Custody Decision v1
 
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: d1_t2_c1_identity_auth_custody_decision
+  superseded_by: null
+  last_verified_at: 2026-11-10
+  production_authority: false
+```
+
+
 > **Status:** DRAFT PROPOSAL — owner decision required; not approved and not an implementation authorization.
 > **Repository:** `FlyLink-com/proxy-gateway-minimal`
 > **Draft branch:** `docs/d1-target-schema-g6-rehearsal-plan-20261107`
