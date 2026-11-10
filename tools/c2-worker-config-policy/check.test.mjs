@@ -153,7 +153,7 @@ test("D1 binding with an extra database_id fails closed", () => {
   withFixture((c) => {
     c["workers/control-plane/wrangler.control-plane.jsonc"] = c["workers/control-plane/wrangler.control-plane.jsonc"].replace(
       '"database_name": "flylink-control-dev",',
-      '"database_name": "flylink-control-dev",\\n      "database_id": "11111111-1111-4111-8111-111111111111",'
+      '"database_name": "flylink-control-dev",\n      "database_id": "11111111-1111-4111-8111-111111111111",'
     );
   }, ({ code, stdout }) => {
     assert.equal(code, 1);
@@ -165,7 +165,7 @@ test("approved service binding with an extra entrypoint fails closed", () => {
   withFixture((c) => {
     c["workers/control-plane/wrangler.control-plane.jsonc"] = c["workers/control-plane/wrangler.control-plane.jsonc"].replace(
       '"compatibility_date": "2025-06-01",',
-      '"compatibility_date": "2025-06-01",\\n  "services": [{ "binding": "CRYPTO", "service": "flylink-crypto-worker", "entrypoint": "Unexpected" }],'
+      '"compatibility_date": "2025-06-01",\n  "services": [{ "binding": "CRYPTO", "service": "flylink-crypto-worker", "entrypoint": "Unexpected" }],'
     );
   }, ({ code, stdout }) => {
     assert.equal(code, 1);
@@ -175,7 +175,7 @@ test("approved service binding with an extra entrypoint fails closed", () => {
 
 test("TOML top-level account_id outside the allowlist fails", () => {
   withFixture((c) => {
-    c["workers/crypto/wrangler.extra.toml"] = 'name = "extra-worker"\\naccount_id = "22222222222222222222222222222222"\\n';
+    c["workers/crypto/wrangler.extra.toml"] = 'name = "extra-worker"\naccount_id = "22222222222222222222222222222222"\n';
   }, ({ code, stdout }) => {
     assert.equal(code, 1);
     assert.match(stdout, /top-level account_id is not an allowed account/);
@@ -184,7 +184,7 @@ test("TOML top-level account_id outside the allowlist fails", () => {
 
 test("TOML top-level Primary account_id passes and nested account_id is not a deploy target", () => {
   withFixture((c) => {
-    c["workers/crypto/wrangler.extra.toml"] = 'name = "extra-worker"\\naccount_id = "17d66c001f9d851fa0d5a88cd311c2c0" # approved\\n[vars]\\naccount_id = "not-a-deploy-target"\\n';
+    c["workers/crypto/wrangler.extra.toml"] = 'name = "extra-worker"\naccount_id = "17d66c001f9d851fa0d5a88cd311c2c0" # approved\n[vars]\naccount_id = "not-a-deploy-target"\n';
   }, ({ code, stdout }) => assert.equal(code, 0, stdout));
 });
 
