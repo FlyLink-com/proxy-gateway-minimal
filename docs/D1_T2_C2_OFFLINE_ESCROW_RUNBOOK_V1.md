@@ -15,7 +15,7 @@ The project owner has approved the following current C2-D1 route:
 4. **Custody model:** three independent control domains, not necessarily three different natural persons. Each domain holds one age identity. The cryptographic threshold protects against one domain being compromised; it does not prove two-person approval.
 5. **No second wrapping layer:** SOPS is the selected production recovery format. Do not add the historical AES-256-GCM envelope + per-envelope KEK + manual Shamir layer on top of SOPS. The repository AES-GCM helper remains synthetic-only.
 6. **No separate KMS selection:** AWS KMS, GCP KMS, Azure Key Vault/Managed HSM, and other managed KMS products are not selected for this route. An AWS account may be considered as a custody domain for one age identity, not as a KMS dependency.
-7. **Artifact copies:** SOPS ciphertext and metadata-only manifests must exist in at least two physically independent offline locations, separate from the age-identity stores. Google Drive may be an additional ciphertext-only copy, not an offline location.
+7. **Artifact copies:** SOPS ciphertext and metadata-only manifests must exist in at least two physically independent offline locations, separate from the age-identity stores. Google Drive may be an additional ciphertext-only copy, not an offline location. **Owner deviation (ADR §21.3, ruled 2026-11-10):** the two designated copies are (1) Google Drive and (2) the owner's BitLocker-encrypted USB drive held offline; the Drive copy holds ciphertext and metadata only, never age identities.
 8. **Human limitation:** a single operator may currently administer the three domains. This is not human separation of duties and is not two-person recovery/approval. Record this limitation in C2/T2 until independent human custodians are available.
 
 This amendment supersedes the previous runbook's three-named-custodian and custom AES-GCM/KEK recovery procedure. The online Cloudflare runtime architecture remains unchanged.
@@ -38,7 +38,7 @@ This amendment supersedes the previous runbook's three-named-custodian and custo
 - Each custody domain owns exactly one independent age identity (private key) and its corresponding public recipient.
 - The age private identity is never placed in Cloudflare Worker Secrets, passed to the Crypto Worker, placed in the business Control Plane Worker, BWH, D1, GitHub, Notion, CI, or the runtime deployment pipeline.
 - The SOPS encrypted file may be copied between approved backup locations. The age private identities must remain separated by custody domain.
-- The encrypted records and metadata-only manifest are stored in at least two physically independent offline locations, separate from the three identity stores.
+- The encrypted records and metadata-only manifest are stored in at least two physically independent offline locations, separate from the three identity stores. (Designated copies per the ADR §21.3 owner deviation: Google Drive + offline BitLocker-encrypted USB.)
 - No plaintext runtime key, decrypted SOPS record, or age private identity may be written to logs, terminal transcripts, shell history, chat, issue comments, PR descriptions, screenshots, or evidence bundles.
 - Do not treat a shared administrator, shared SSO, shared recovery email, or common reset authority as independent custody.
 
@@ -171,7 +171,7 @@ The following is the future implementation sequence. Do not execute it until eac
 5. Generate one age identity per domain in the approved isolated process. Deliver each private identity only to its own domain; retain only public recipient strings in the non-secret SOPS config.
 6. Generate purpose-separated runtime keys using the approved OS cryptographic random source. One 32-byte key per key ID/family/generation; never reuse key bytes across families.
 7. Build the JSON record and metadata-only manifest. Encrypt the JSON with the exact three-group SOPS configuration and `shamir_threshold: 2`.
-8. Place ciphertext + manifest in two physically independent offline locations, separate from the three identity stores. Google Drive may be an additional ciphertext-only copy.
+8. Place ciphertext + manifest in two physically independent offline locations, separate from the three identity stores. Google Drive may be an additional ciphertext-only copy. Per the ADR §21.3 owner deviation (2026-11-10), the designated copies are Google Drive (ciphertext + manifest only) and the owner's offline BitLocker-encrypted USB drive.
 9. Conduct Stage 3 recovery rehearsal with networking disabled. Demonstrate how two domain identities are brought to the workstation without collapsing the custody domains; do not write plaintext key material or identities to persistent storage or logs.
 10. Obtain independent review and explicit owner authorization before any real key is generated or any Cloudflare Secret / Service Binding is configured.
 
