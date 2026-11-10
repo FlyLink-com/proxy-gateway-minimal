@@ -6,8 +6,9 @@
 // Exit 1 = findings are printed, one per line, prefixed with FAIL.
 // See docs/C2_CRYPTO_WORKER_DEPLOYMENT_AND_DRIFT_CONTROL_V1.md.
 
-import { readdirSync, readFileSync, existsSync, statSync } from "node:fs";
+import { readdirSync, readFileSync, existsSync } from "node:fs";
 import { join, dirname, relative } from "node:path";
+import { isDeepStrictEqual } from "node:util";
 import { fileURLToPath } from "node:url";
 
 const args = process.argv.slice(2);
@@ -55,6 +56,33 @@ function parseJsonc(text) {
   return JSON.parse(out);
 }
 
+// TOML account_id is a top-level Wrangler setting. Parse only this field:
+// table headers end the top-level section, so nested [vars] keys are ignored.
+function readTomlTopLevelAccountIds(text) {
+  const values = [];
+  let topLevel = true;
+  for (const line of text.split(/\\r?\\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    if (/^\\[\\[?/.test(trimmed)) {
+      topLevel = false;
+      continue;
+    }
+    if (!topLevel) continue;
+    const match = /^\\s*account_id\\s*=\\s*(.*?)\\s*(?:#.*)?$/.exec(line);
+    if (!match) continue;
+    const literal = match[1].trim();
+    let value = null;
+    if (literal.startsWith('"') && literal.endsWith('"')) {
+      try { value = JSON.parse(literal); } catch { value = null; }
+    } else if (literal.startsWith("'") && literal.endsWith("'")) {
+      value = literal.slice(1, -1);
+    }
+    values.push(value);
+  }
+  return values;
+}
+
 // --- Collect every Wrangler config in the tree (excluding deps/vcs).
 const WRANGLER_RE = /^wrangler(\..+)?\.(jsonc|json|toml)$/;
 function walk(dir, acc) {
@@ -69,20 +97,31 @@ function walk(dir, acc) {
 const allConfigs = walk(root, []);
 const rel = (p) => relative(root, p).split("\\").join("/");
 
-// --- Global guards on raw text of every Wrangler config.
+// --- Global guards on every Wrangler config.
+const allowedAccountIds = new Set(policy.allowedAccountIds ?? []);
 for (const file of allConfigs) {
   const raw = readFileSync(file, "utf8");
+  const where = rel(file);
   for (const { value, why } of policy.globalForbiddenStrings ?? []) {
-    if (raw.includes(value)) fail(rel(file), `forbidden string present (${why})`);
+    if (raw.includes(value)) fail(where, `forbidden string present (${why})`);
   }
-  if (/\.toml$/.test(file)) continue; // TOML: raw-text guards only.
+
+  if (/\\.toml$/.test(file)) {
+    const accountIds = readTomlTopLevelAccountIds(raw);
+    if (accountIds.length > 1) fail(where, "multiple top-level account_id values are not allowed");
+    for (const accountId of accountIds) {
+      if (typeof accountId !== "string" || !allowedAccountIds.has(accountId)) {
+        fail(where, "top-level account_id is not an allowed account");
+      }
+    }
+    continue;
+  }
+
   let parsed = null;
   try { parsed = parseJsonc(raw); } catch { parsed = null; }
-  if (parsed && typeof parsed.account_id === "string") {
-    const inScope = (policy.configs ?? []).some((c) => c.path === rel(file));
-    if (!inScope && !(policy.allowedAccountIds ?? []).includes(parsed.account_id)) {
-      fail(rel(file), `account_id is not an allowed account`);
-    }
+  if (parsed && Object.hasOwn(parsed, "account_id") &&
+      (typeof parsed.account_id !== "string" || !allowedAccountIds.has(parsed.account_id))) {
+    fail(where, "account_id is not an allowed account");
   }
 }
 
@@ -114,16 +153,16 @@ for (const cfg of policy.configs ?? []) {
     if (entries.length > allowedEntries.length) {
       fail(cfg.path, `"${section}" has ${entries.length} entries, allowlist permits at most ${allowedEntries.length}`);
     }
+    const remainingAllowedEntries = [...allowedEntries];
     for (const entry of entries) {
-      const match = allowedEntries.some((allowed) =>
-        Object.entries(allowed).every(([k, v]) => entry[k] === v)
-      );
-      if (!match) fail(cfg.path, `"${section}" entry ${JSON.stringify(entry)} matches no allowlisted entry`);
+      const matchIndex = remainingAllowedEntries.findIndex((allowed) => isDeepStrictEqual(entry, allowed));
+      if (matchIndex < 0) {
+        fail(cfg.path, `"${section}" entry ${JSON.stringify(entry)} does not exactly match an unused allowlisted entry`);
+      } else {
+        remainingAllowedEntries.splice(matchIndex, 1);
+      }
     }
   }
-  // Any section that looks like a binding surface but is not policed above
-  // is already caught by the top-level allowlist; nothing else to do.
-  void statSync;
 }
 
 if (findings.length > 0) {
