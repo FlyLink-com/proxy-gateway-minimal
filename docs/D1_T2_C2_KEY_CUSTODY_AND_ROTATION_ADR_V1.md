@@ -1,6 +1,6 @@
 # D1 T2-C2 Key Custody and Rotation ADR v1
 
-> Status: TARGET ARCHITECTURE APPROVED BY PROJECT OWNER — 2026-11-08. C2 implementation, named custodians, concrete escrow mechanism, non-production integration, real recovery proof and production provisioning remain OPEN / NOT AUTHORIZED.
+> Status: CURRENT OWNER-APPROVED C2-D1 AMENDMENT — 2026-11-10. Cloudflare per-Worker runtime Secrets remain the online custody boundary; SOPS v3.13.3 + age v1.3.2 with three independent custody-domain key groups and shamir_threshold 2 is the selected offline recovery format. Stage 2 item 1 is PASS (synthetic); exact offline workstation and real domain configuration remain OPEN. No real identities, runtime keys, Cloudflare/AWS resources, bindings, or production provisioning are authorized.
 > Source anchor: master@be261abc60f28bb2733764fa5364ab44b3e76844
 > Draft branch: docs/d1-target-schema-g6-rehearsal-plan-20261107
 > Scope: HMAC pseudonyms/idempotency, provider-event dedupe, TOTP encryption, key separation, rotation and failure behavior.
@@ -172,33 +172,38 @@ The helper now implements:
 
 Local mirror verification on Node v22.16.0: 23/23 focused tests PASS; node --check passed for the primitive and local focused test files. The repository-focused test file has been added, but the project-fixed Node v22.23.1 environment has not yet rerun the exact repository test file. No full repository suite or CI was run. This is source/synthetic evidence only.
 
-## 8. C2 acceptance status
+## 8. C2 acceptance status — current as of 2026-11-10
 
-Implemented in Draft:
-- primitive-level HMAC and PII algorithms are now exercised through the source helper rather than test-local copies;
-- active/retained key behavior and no legacy SHA-256 fallback;
-- strict key ID, family and domain validation;
-- Portal/Admin TOTP key separation, v3 AAD binding and rotation;
-- synthetic v2 re-encryption and legacy enc/raw Base32 re-enrollment disposition.
+Implemented in Draft source:
+- purpose-separated HMAC/PII primitives, key-family validation, active-write / retained-read behavior, and fail-closed handling;
+- dedicated Crypto Worker source with synthetic caller authorization and private Service Binding Miniflare proof;
+- synthetic escrow contract tests (AES-GCM helper) remain test evidence only and are not the selected production recovery format.
 
-Target architecture approved by the project owner on 2026-11-08:
-- Dedicated Crypto Worker + private Service Binding; no public key-operation endpoint or raw key return.
-- Per-Worker secret bindings by default; Secrets Store only for demonstrated multi-Worker sharing, not as an HSM/KMS.
-- Independent encrypted escrow outside Cloudflare/GitHub/Notion, with two-person recovery/revocation.
-- Separate key material and domains by purpose.
-- Active-write / retained-read rotation and evidence-based retirement.
+Current owner-approved custody baseline:
+- Online runtime key custody remains Cloudflare per-Worker Secrets, bound only to the dedicated Crypto Worker. The business Control Plane Worker does not receive raw key bytes.
+- Internal crypto calls remain private Service Binding only, after caller identity and domain authorization; no public crypto endpoint or raw-key return.
+- Offline recovery format is SOPS v3.13.3 + age v1.3.2, with exactly three SOPS key groups, exactly one age recipient per group, and `shamir_threshold: 2`.
+- The three recovery identities represent three independent custody domains, not a requirement for three natural-person custodians. Single-person control is an explicit limitation and is not two-person approval.
+- SOPS is the sole selected offline recovery format. Do not add a second custom AES-GCM / per-envelope KEK / manual Shamir layer unless a future, separately approved threat-model decision requires it.
+- The existing `server/services/platform/d1-t2-key-escrow-contract.mjs` and its tests remain synthetic-only; they are not authorized for real key wrapping or production escrow.
+- Cloudflare Secrets Store remains optional only for a demonstrated multi-Worker sharing requirement and is not an HSM/KMS.
 - No first-party Portal/Admin TOTP AES provisioning under the T1/Auth0-managed MFA decision.
 
-Still OPEN:
-1. Name the actual accountable Platform/Security key custodians and Identity/Privacy and Payment/Commerce domain owners.
-2. Select the concrete independent escrow/wrapping mechanism (external KMS/HSM or approved offline recovery) and complete the two-person recovery/revocation runbook.
-3. Implement and test the Crypto Worker + private Service Binding in isolated non-production, including caller authentication/authorization, no public endpoint, no raw key return, and fail-closed behavior.
-4. Obtain domain-owner approval for payment-event and PII HMAC purposes, source normalization, and allowed consumers.
-5. Resolve Wallet-first digest compatibility and delivered-row replay/retention duration separately; this is not included in the target architecture approval.
-6. Define key-family-specific retention/replay windows and evidence required before old-key retirement.
-7. Complete independent exact-HEAD review and remaining C2 formal acceptance evidence.
+Stage 2 verification:
+- SOPS v3.13.3 checksum, Cosign bundle identity, and SLSA provenance verification passed.
+- age v1.3.2 release artifact Sigsum verification passed.
+- Synthetic 2-of-3 matrix: 10/10 expected outcomes; all three two-domain combinations succeeded and matched the metadata-only manifest; each single domain, non-member, mixed member/non-member, and tampered ciphertext was rejected.
+- Evidence: [SOPS_AGE_TOOLCHAIN_VERIFICATION_2026-11-09.md](https://drive.google.com/file/d/1-ALe9oRFd1q5a9K9ia5hWZ_VtxXGOBl1/view), SHA-256 `64eea14eeb92e530cdb6c32e954ea288be866ebebc15fc7fc8b4c771722b880e`.
 
-No production keys, Cloudflare Secrets Store, Worker bindings, D1 schema, customer rows, BWH host, deployment, dual-write, CI, PR Ready transition, merge or cutover were used or authorized by this ADR. BWH remains the only production writer.
+Still OPEN:
+1. Select the exact offline workstation OS/architecture. Muse VM linux/amd64 was only a stand-in and is not the final offline workstation decision.
+2. Configure and prove the three real custody domains, including independent credentials, MFA, recovery channels, and administrators. Synthetic labels A=Cloudflare, B=AWS account 580857941765, C=fully offline are placeholders, not provisioned stores. The Cloudflare recovery identity must remain inaccessible to the runtime Crypto Worker and its deployment principal; otherwise Domain A does not qualify. Before AWS can serve as Domain B, replace the AWS root credentials currently on lucky with a dedicated least-privilege IAM identity. The exact final provider/account mapping remains open.
+3. Complete Stage 3 offline recovery rehearsal using the approved toolchain and real domain retrieval procedures, under separate authorization.
+4. Complete Stage 4 isolated non-production Crypto Worker / Service Binding integration under separate authorization.
+5. Obtain domain-purpose approvals for payment-event and PII HMAC, resolve Wallet-first digest/replay/retention decisions, and define family-specific retention windows.
+6. Complete independent exact-HEAD review and the remaining C2 formal acceptance evidence.
+
+No real age identity, runtime key, escrow record, Cloudflare Secret, Service Binding, Worker deployment, AWS custody object, BWH access, D1 mutation, dual-write, or cutover has been authorized. C2 remains OPEN; T2 remains BLOCKED. BWH remains the only production control-data writer.
 
 ## 14. Superseding Wallet-first digest decision and grouped custody proposal — 2026-11-08
 
@@ -282,7 +287,9 @@ The synthetic envelope contract now enforces an exact eight-field envelope schem
 
 This is a stricter synthetic envelope contract only. It does not create a KMS/HSM key, external escrow, real ciphertext backup, or recovery workflow. C2 remains OPEN pending provider/account selection, named custodians, two-person restore/revocation procedure, and real non-production recovery evidence.
 
-## 20. Owner decision — Cloudflare-native online custody and offline 2-of-3 recovery — 2026-11-08
+## 20. Historical owner decision — Cloudflare-native online custody and offline 2-of-3 recovery — 2026-11-08 (recovery details superseded by §21)
+
+> Historical baseline only. The Cloudflare online runtime-secret boundary remains in force. The AES-256-GCM + per-envelope KEK + manually held Shamir shares and three-named-custodian model below are superseded by the SOPS + age / three-independent-domain amendment in §21; do not use this historical section as the current recovery procedure.
 
 The project owner has now selected the concrete custody direction, superseding the earlier open choice between an external managed KMS/HSM and offline recovery:
 
@@ -296,3 +303,42 @@ The project owner has now selected the concrete custody direction, superseding t
 The executable operating boundary is [D1_T2_C2_OFFLINE_ESCROW_RUNBOOK_V1.md](D1_T2_C2_OFFLINE_ESCROW_RUNBOOK_V1.md). The existing key-escrow module and tests remain synthetic-only and do not authorize processing real key material.
 
 This decision does not authorize real key or KEK generation, share creation/distribution, Cloudflare Secret or Service Binding creation, Worker deployment, D1 mutation, BWH access, production reads, dual-write, or cutover. C2 remains OPEN pending tool review, named custodians, synthetic 2-of-3 implementation tests, non-production integration, domain-owner approvals, and independent review. BWH remains the only production control-data writer.
+
+## 21. Owner amendment — SOPS + age and three independent custody domains — 2026-11-10
+
+This section is the current authoritative C2-D1 recovery decision and supersedes only the offline recovery format and human-custodian model in §20. The online Cloudflare Crypto Worker architecture in §§1, 16, 20 remains unchanged.
+
+### 21.1 Selected recovery format
+
+- Selected: SOPS v3.13.3 + age v1.3.2.
+- Configure exactly three SOPS `key_groups`, each containing exactly one distinct age recipient, and set `shamir_threshold: 2`.
+- Any two of the three independent domain identities must decrypt; any single identity must fail. Do not place multiple recipients in one key group, because that would not represent three independent threshold domains.
+- Store one SOPS-encrypted JSON record per runtime key ID and key family. The record contains schemaVersion, keyId, family, algorithm, keyLengthBits, generatedAt, and keyMaterialBase64. The runtime key material is 32 random bytes for the current HMAC key families.
+- Keep a separate metadata-only manifest with the same non-secret metadata and the SHA-256 of the decoded key material. The manifest never contains key material or age identities. SOPS authenticated encryption/MAC remains the cryptographic integrity control; the manifest is an independent inventory cross-check.
+- SOPS performs the encrypted structured-file handling, data-key management, authenticated encryption/MAC, and Shamir threshold operation. Do not add the historical custom AES-GCM / per-envelope KEK / manual Shamir layer on top of SOPS.
+- The synthetic AES-GCM helper remains synthetic-only. It is not a production recovery format and must not receive real key material.
+
+### 21.2 Three independent custody domains, not three people
+
+- The threshold is defined across three independently controlled domains. It does not require three different natural persons at the current single-operator stage.
+- Each domain must have its own age identity, independent credentials, MFA, account recovery path, and administrator/control boundary. A common SSO, shared recovery mailbox, or one organization administrator capable of resetting all domains collapses the independence and must be recorded as a single effective domain.
+- A single natural person controlling all three domains can still obtain two identities. This design therefore protects against a single account/provider/domain compromise, not whole-person compromise or malicious single-operator action. Natural-person custodian separation is an explicit T2 limitation; two-domain authentication is not two-person approval.
+- Stage 2 synthetic fixture labels A=Cloudflare, B=AWS account 580857941765, and C=fully offline are placeholders only. They do not prove those providers/accounts are configured or independently administered. Final provider/account mapping and independence evidence remain OPEN.
+- If Cloudflare is retained as Domain A, the age private identity must not be placed in a Worker Secret, exposed to the Crypto Worker, or accessible to the Crypto Worker's deployment principal. If that separation cannot be demonstrated, Cloudflare does not qualify as an independent recovery domain and Domain A must be reassigned.
+- Before AWS is accepted as Domain B, replace the AWS root credentials currently on lucky with a dedicated least-privilege IAM identity; independently verify root email/MFA/recovery and organization-level administrator boundaries. AWS is a custody-domain candidate only; this does not select AWS KMS or authorize a new AWS account.
+- Domain C is a fully offline identity/custody location. Its physical medium and access procedure remain to be selected and tested.
+
+### 21.3 Artifact storage and offline requirement
+
+- Store the SOPS-encrypted records and metadata-only manifests in at least two physically independent offline locations, separate from the three age-identity custody locations.
+- Google Drive may hold an additional ciphertext-only copy; it does not count as either required offline physical location.
+- A genuinely offline recovery must be possible without depending on a live provider API to obtain the two required identities. Stage 3 must prove how the two identities are retrieved into the offline workstation while preserving domain separation. If the procedure requires network access, describe it as network-assisted recovery, not air-gapped recovery.
+- The exact offline workstation OS/architecture remains an owner selection. The Stage 2 Muse VM linux/amd64 environment was only a stand-in.
+
+### 21.4 Stage 2 evidence and remaining gates
+
+- Stage 2 item 1 is PASS: pinned SOPS/age acquisition and release-integrity verification plus synthetic threshold rehearsal.
+- Evidence record: [SOPS_AGE_TOOLCHAIN_VERIFICATION_2026-11-09.md](https://drive.google.com/file/d/1-ALe9oRFd1q5a9K9ia5hWZ_VtxXGOBl1/view); SHA-256 `64eea14eeb92e530cdb6c32e954ea288be866ebebc15fc7fc8b4c771722b880e`.
+- Matrix: A+B, A+C, B+C, and A+B+C succeeded; A-only, B-only, C-only, non-member-only, member+non-member, and tampered ciphertext were rejected; 10/10 expected outcomes.
+- Stage 2 remains in progress for final offline workstation selection and real custody-domain configuration. Stage 3 offline recovery drill and Stage 4 non-production Cloudflare integration are separate gates and are not authorized by this amendment.
+- No real age identities, runtime keys, SOPS escrow records, Cloudflare Secrets, Service Bindings, AWS storage objects, or production resources were created or authorized. C2 remains OPEN; T2 remains BLOCKED; BWH remains the only production control-data writer.
