@@ -1,6 +1,6 @@
 # Documentation Index
 
-Last updated: 2026-11-06 UTC.
+Last updated: 2026-11-09 UTC.
 
 ```yaml
 document_metadata:
@@ -8,7 +8,7 @@ document_metadata:
   lifecycle: active
   authority_scope: documentation_navigation
   superseded_by: null
-  last_verified_at: 2026-11-06
+  last_verified_at: 2026-11-09
   production_authority: false
 ```
 
@@ -59,8 +59,10 @@ directory restructure.
 
 | Document | Purpose | Status | When to read |
 | --- | --- | --- | --- |
-| `README.md` | Chinese project landing page for the current `gccgw` control plane, validation flow, `.env` closure, install/package gates, compatibility boundaries, and docs navigation. | Active entrypoint. | Read when onboarding Chinese-speaking operators or checking the current project entry surface. |
-| `README_EN.md` | English semantic mirror of `README.md`, with the same project position, status, reading order, commands, links, and governance boundaries. | Active mirrored entrypoint; semantic changes must remain aligned with `README.md`. | Read when onboarding English-speaking collaborators or verifying language-entry parity. |
+| `README.md` | Chinese public-source landing page: project scope, source architecture, quick start, module map, and documentation navigation. | Active public entrypoint. | Read first when discovering the repository or deciding which module to explore. |
+| `README_EN.md` | English semantic mirror of `README.md`; keep product scope, phase boundaries, commands, links, and license notice aligned. | Active mirrored public entrypoint. | Read for English-language onboarding and parity review. |
+| `COMMUNITY_GUIDE.md` | External developer onboarding, repository map, local-safe commands, validation routing, and community boundaries. | Active operational guide; not an architecture or production authority. | Read when preparing a local development environment or contributing to a subsystem. |
+| `../CONTRIBUTING.md` | Contribution expectations, focused PR guidance, validation checklist, and license limitation. | Active contribution guide. | Read before opening a code or documentation Pull Request. |
 
 ## Subsystem Entry Points
 
