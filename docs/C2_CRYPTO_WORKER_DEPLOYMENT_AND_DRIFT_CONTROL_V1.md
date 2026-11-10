@@ -89,12 +89,14 @@ Policy file: `tools/c2-worker-config-policy/policy.json`.
 Checker: `tools/c2-worker-config-policy/check.mjs` (dependency-free Node;
 exit 0 = conforming, exit 1 = findings listed).
 
-Model: **default-deny**. For each in-scope Wrangler configuration, only
-the listed top-level keys may appear; values pinned by the policy must
-match exactly; binding arrays may contain only entries that match an
-allowlisted entry field-for-field on the policed fields. Any new binding
-type, route, or surface fails closed until the policy is amended by a
-reviewed change.
+Model: **default-deny**. For each in-scope JSONC Wrangler configuration,
+only the listed top-level keys may appear and pinned values must match
+exactly. Every binding entry must be an exact object match to one unused
+allowlisted entry: additional keys are rejected, including D1 identifiers
+such as `database_id` / `preview_database_id` and Service Binding fields
+such as `entrypoint`. Duplicate entries cannot consume the same allowance.
+Any new binding type, route, or surface fails closed until the policy is
+amended by a reviewed change.
 
 In scope today:
 
@@ -113,8 +115,10 @@ Global guards (all Wrangler configs in the repository):
   may reference the custody account).
 - The Domain A bucket name (`flylink-c2-custody-a`) must never appear (no
   Worker may bind it, from any config).
-- If any `account_id` appears outside the in-scope configs, it must be
-  the Primary account id.
+- If any `account_id` appears in a JSON/JSONC Wrangler config or as a
+  top-level key in a TOML Wrangler config, it must be the Primary account
+  id. TOML top-level account IDs are checked explicitly; keys nested under
+  TOML tables (for example `[vars]`) are not deploy-target account IDs.
 
 Known boundary: Wrangler configuration does not declare provisioned
 Worker secrets. The four runtime secret binding **names** —
