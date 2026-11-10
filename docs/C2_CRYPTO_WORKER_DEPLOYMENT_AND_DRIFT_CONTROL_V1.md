@@ -106,9 +106,9 @@ only the listed top-level keys may appear and pinned values must match
 exactly. Every binding entry must be an exact object match to one unused
 allowlisted entry: additional keys are rejected, including D1 identifiers
 such as `database_id` / `preview_database_id` and Service Binding fields
-such as `entrypoint`. Duplicate entries cannot consume the same
-allowance. Any new binding type, route, or surface fails closed until the
-policy is amended by a reviewed change.
+such as `entrypoint`. Duplicate entries cannot consume the same allowance.
+Any new binding type, route, or surface fails closed until the policy is
+amended by a reviewed change.
 
 In scope today:
 
