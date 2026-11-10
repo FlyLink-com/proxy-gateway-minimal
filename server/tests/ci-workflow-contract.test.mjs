@@ -550,13 +550,13 @@ test("all workflow Action references use the reviewed full commit inventory", ()
 test("CodeQL workflow uses least-privilege permissions and credential-free checkout", () => {
   const workflow = readRepositoryFile(".github/workflows/codeql.yml");
 
-  assert.match(workflow, /^[ \\t]+security-events: write$/mu);
-  assert.match(workflow, /^[ \\t]+contents: read$/mu);
-  assert.doesNotMatch(workflow, /^[ \\t]+(?:actions|packages): read$/mu);
+  assert.match(workflow, /^ +security-events: write$/mu);
+  assert.match(workflow, /^ +contents: read$/mu);
+  assert.doesNotMatch(workflow, /^ +(actions|packages): read$/mu);
   assert.match(workflow, new RegExp(`uses: actions/checkout@${DEFAULT_CHECKOUT_PIN} # v6`));
-  assert.match(workflow, /^[ \\t]+persist-credentials: false$/mu);
+  assert.match(workflow, /^ +persist-credentials: false$/mu);
   assert.equal(
-    (workflow.match(/^[ \\t]+uses: github\\/codeql-action\\/(?:init|analyze)@[a-f0-9]{40} # v4$/gmu) ?? []).length,
+    (workflow.match(/^[ ]+uses: github\/codeql-action\/(?:init|analyze)@[a-f0-9]{40} # v4$/gmu) ?? []).length,
     2
   );
 });
