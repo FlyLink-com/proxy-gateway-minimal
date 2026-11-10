@@ -1,5 +1,16 @@
 # D1 T2-C3 Account Metadata 26-field Disposition Audit v1
 
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: d1_t2_c3_account_metadata_26_field_disposition_audit
+  superseded_by: null
+  last_verified_at: 2026-11-10
+  production_authority: false
+```
+
+
 > **Status:** SOURCE-ONLY FIELD AUDIT. No account metadata was read from BWH or production.
 > **Source:** `server/services/platform/subscription-control-db.mjs`, `ACCOUNT_METADATA_FIELDS` and `accountMetadataJson()` (exact child-branch blob reviewed).
 > **Target rule:** The legacy SQLite JSON object is not a D1 load contract. Apply the dispositions below before any target D1 write.

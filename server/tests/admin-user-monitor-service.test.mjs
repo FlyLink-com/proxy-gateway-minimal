@@ -106,9 +106,7 @@ test("readGrowth counts self_service vs other and fills empty UTC days", () => {
       registrationSource: "self_service_portal"
     });
     putAccount(controlStore, "acc_other", "2026-01-12T02:00:00.000Z", {});
-    putAccount(controlStore, "acc_bad", "2026-01-12T03:00:00.000Z", {
-      registrationSource: "admin"
-    });
+    putAccount(controlStore, "acc_bad", "2026-01-12T03:00:00.000Z", {});
     putAccount(controlStore, "acc_out", "2026-01-13T00:00:00.000Z", {
       registrationSource: "self_service_portal"
     });

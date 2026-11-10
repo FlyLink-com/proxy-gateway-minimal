@@ -1,5 +1,16 @@
 # D1 T2 Core Security Contracts v1.1 — Draft
 
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: active
+  authority_scope: d1_t2_core_security_contracts
+  superseded_by: null
+  last_verified_at: 2026-11-10
+  production_authority: false
+```
+
+
 > **Status:** DESIGN PROPOSAL / SYNTHETIC-TEST CONTRACT. Not domain-owner approval, not production DDL, not secret provisioning, not production migration authorization.
 > **Source anchor:** `master@be261abc60f28bb2733764fa5364ab44b3e76844`.
 > **Draft branch:** `docs/d1-target-schema-g6-rehearsal-plan-20261107`.

@@ -1,5 +1,16 @@
 # D1 Target Schema & G6 Offline Migration Rehearsal Plan
 
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: active
+  authority_scope: d1_target_schema_g6_offline_rehearsal_plan
+  superseded_by: null
+  last_verified_at: 2026-11-10
+  production_authority: false
+```
+
+
 > **Status:** Draft proposal — repository-only, source/fixture-only.
 > **Source anchor:** `master@be261abc60f28bb2733764fa5364ab44b3e76844`.
 > **Risk boundary:** B for repository documentation and isolated synthetic/local D1 tests. This document authorizes no BWH access, production inventory, remote Cloudflare resources, production data export, D1 apply, Worker deployment, DNS, or traffic cutover.

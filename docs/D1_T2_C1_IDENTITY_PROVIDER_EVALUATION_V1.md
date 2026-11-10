@@ -1,5 +1,16 @@
 # D1 T2-C1 Identity Provider Evaluation v1
 
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: d1_t2_c1_identity_provider_evaluation
+  superseded_by: null
+  last_verified_at: 2026-11-10
+  production_authority: false
+```
+
+
 > **Status:** DRAFT technical assessment — not a vendor selection, purchase approval, tenant-creation authorization, or implementation authorization.
 > **Review date:** 2026-11-07
 > **Repository:** `FlyLink-com/proxy-gateway-minimal`

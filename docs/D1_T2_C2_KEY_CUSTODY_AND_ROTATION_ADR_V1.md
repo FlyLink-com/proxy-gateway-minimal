@@ -1,5 +1,16 @@
 # D1 T2-C2 Key Custody and Rotation ADR v1
 
+```yaml
+document_metadata:
+  doc_type: canonical
+  lifecycle: active
+  authority_scope: d1_t2_c2_key_custody_and_rotation_adr
+  superseded_by: null
+  last_verified_at: 2026-11-10
+  production_authority: false
+```
+
+
 > Status: CURRENT OWNER-APPROVED C2-D1 AMENDMENT — 2026-11-10. Cloudflare per-Worker runtime Secrets remain the online custody boundary; SOPS v3.13.3 + age v1.3.2 with three independent custody-domain key groups and shamir_threshold 2 is the selected offline recovery format. Stage 2 item 1 is PASS (synthetic); exact offline workstation and real domain configuration remain OPEN. No real identities, runtime keys, Cloudflare/AWS resources, bindings, or production provisioning are authorized.
 > Source anchor: master@be261abc60f28bb2733764fa5364ab44b3e76844
 > Draft branch: docs/d1-target-schema-g6-rehearsal-plan-20261107

@@ -1,5 +1,16 @@
 # D1 T2-C2 Key Custody Owner Decision Proposal v1
 
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: d1_t2_c2_key_custody_owner_decision_proposal
+  superseded_by: null
+  last_verified_at: 2026-11-10
+  production_authority: false
+```
+
+
 > **Status:** TARGET ARCHITECTURE APPROVED BY PROJECT OWNER — 2026-11-08. This approval selects the bounded architecture below only; implementation, real custody, named custodians, external escrow provisioning and production operations remain separately gated.
 > **Source anchor:** `feat/t2-c4-c5-payment-retention-contracts-20261108`.
 > **Production authority:** BWH remains the only production control-data writer.

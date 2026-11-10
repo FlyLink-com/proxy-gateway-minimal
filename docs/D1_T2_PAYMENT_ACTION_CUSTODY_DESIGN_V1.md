@@ -1,5 +1,16 @@
 # D1 T2 Payment Action Custody Design v1 — Draft
 
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: active
+  authority_scope: d1_t2_payment_action_custody_design
+  superseded_by: null
+  last_verified_at: 2026-11-10
+  production_authority: false
+```
+
+
 Status: TECHNICAL RECOMMENDATION ONLY. No Durable Object, key, binding, route, migration or deployment was created.
 
 ## 1. Source problem

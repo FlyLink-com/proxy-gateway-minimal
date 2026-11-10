@@ -1,5 +1,16 @@
 # T2 · D1 Field Disposition Contract v1
 
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: active
+  authority_scope: d1_control_field_disposition_t2_contract
+  superseded_by: null
+  last_verified_at: 2026-11-10
+  production_authority: false
+```
+
+
 > **Status: Draft proposal — pending domain-owner review and final target-schema approval.** This is a field-level migration contract, not production data inspection, D1 SQL, or permission to migrate.
 > Source head: `be261abc60f28bb2733764fa5364ab44b3e76844`; source inventory: `docs/D1_CONTROL_SCHEMA_INVENTORY_V1.json`.
 

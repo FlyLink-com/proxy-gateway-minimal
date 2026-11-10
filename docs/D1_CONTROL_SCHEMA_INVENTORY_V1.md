@@ -1,5 +1,16 @@
 # D1 Control Database Source Inventory v1
 
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: active
+  authority_scope: d1_control_schema_inventory
+  superseded_by: null
+  last_verified_at: 2026-11-10
+  production_authority: false
+```
+
+
 > **Status:** SOURCE-ONLY T1 COMPLETE. This is a source-schema inventory, not a production database inventory or migration approval.
 > **Current source head:** `be261abc60f28bb2733764fa5364ab44b3e76844` (master), read 2026-11-07.
 > **Target boundary:** one D1 database corresponding to the existing shared `control.sqlite` boundary.
