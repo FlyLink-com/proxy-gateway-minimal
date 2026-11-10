@@ -1,1 +1,72 @@
-{"allowedAccountIds":["17d66c001f9d851fa0d5a88cd311c2c0"],"configs":[{"allowedBindings":{},"allowedTopLevelKeys":["$schema","name","main","compatibility_date","workers_dev","preview_urls"],"path":"workers/crypto/wrangler.crypto.jsonc","requiredValues":{"main":"src/index.mjs","name":"flylink-crypto-worker","preview_urls":false,"workers_dev":false}},{"allowedBindings":{"d1_databases":[{"binding":"CONTROL_DB","database_name":"flylink-control-dev","migrations_dir":"migrations"}],"services":[{"binding":"CRYPTO","service":"flylink-crypto-worker"}]},"allowedTopLevelKeys":["$schema","name","main","compatibility_date","d1_databases","services"],"path":"workers/control-plane/wrangler.control-plane.jsonc","requiredValues":{"main":"src/index.mjs","name":"flylink-control-plane"},"requiredValuesIfPresent":{"preview_urls":false,"workers_dev":false}}],"description":"C2 Worker configuration allowlist. Default-deny: any top-level key, binding section, binding entry or value not listed here fails the check. Amending this file is a security-reviewed change (see docs/C2_CRYPTO_WORKER_DEPLOYMENT_AND_DRIFT_CONTROL_V1.md).","globalForbiddenStrings":[{"value":"00f7acc72af9e3a2d9557d2bf67bc8ce","why":"Domain A custody Cloudflare account id must never appear in any Wrangler configuration"},{"value":"flylink-c2-custody-a","why":"Domain A R2 bucket must never be bound or referenced by any Worker configuration"}],"version":1}
+{
+  "allowedAccountIds": [
+    "17d66c001f9d851fa0d5a88cd311c2c0"
+  ],
+  "configs": [
+    {
+      "allowedTopLevelKeys": [
+        "$schema",
+        "name",
+        "main",
+        "compatibility_date",
+        "workers_dev",
+        "preview_urls"
+      ],
+      "path": "workers/crypto/wrangler.crypto.jsonc",
+      "requiredValues": {
+        "main": "src/index.mjs",
+        "name": "flylink-crypto-worker",
+        "preview_urls": false,
+        "workers_dev": false
+      }
+    },
+    {
+      "requiredBindings": {
+        "d1_databases": [
+          {
+            "binding": "CONTROL_DB",
+            "database_name": "flylink-control-dev",
+            "migrations_dir": "migrations"
+          }
+        ]
+      },
+      "optionalBindings": {
+        "services": [
+          {
+            "binding": "CRYPTO",
+            "service": "flylink-crypto-worker"
+          }
+        ]
+      },
+      "allowedTopLevelKeys": [
+        "$schema",
+        "name",
+        "main",
+        "compatibility_date",
+        "d1_databases",
+        "services"
+      ],
+      "path": "workers/control-plane/wrangler.control-plane.jsonc",
+      "requiredValues": {
+        "main": "src/index.mjs",
+        "name": "flylink-control-plane"
+      },
+      "requiredValuesIfPresent": {
+        "preview_urls": false,
+        "workers_dev": false
+      }
+    }
+  ],
+  "description": "C2 Worker configuration allowlist. Default-deny: any top-level key or binding not listed here fails. requiredBindings entries must be present exactly once; optionalBindings entries are dormant permissions and may be absent. Every present binding must exactly match one unused required or optional entry. Amending this file is a security-reviewed change (see docs/C2_CRYPTO_WORKER_DEPLOYMENT_AND_DRIFT_CONTROL_V1.md).",
+  "globalForbiddenStrings": [
+    {
+      "value": "00f7acc72af9e3a2d9557d2bf67bc8ce",
+      "why": "Domain A custody Cloudflare account id must never appear in any Wrangler configuration"
+    },
+    {
+      "value": "flylink-c2-custody-a",
+      "why": "Domain A R2 bucket must never be bound or referenced by any Worker configuration"
+    }
+  ],
+  "version": 1
+}

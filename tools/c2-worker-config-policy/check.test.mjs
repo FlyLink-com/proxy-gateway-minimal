@@ -234,3 +234,36 @@ test("malformed out-of-scope Wrangler JSONC fails closed", () => {
     assert.match(stdout, /wrangler\.public-site\.jsonc: configuration does not parse/);
   });
 });
+
+
+test("control-plane removing the required CONTROL_DB section fails", () => {
+  withFixture((c) => {
+    const path = "workers/control-plane/wrangler.control-plane.jsonc";
+    const original = c[path];
+    const updated = original.replace(
+      /  "d1_databases": \[\s*\{\s*"binding": "CONTROL_DB",\s*"database_name": "flylink-control-dev",\s*"migrations_dir": "migrations"\s*\}\s*\]/,
+      ""
+    );
+    assert.notEqual(updated, original, "fixture must remove the required D1 section");
+    c[path] = updated;
+  }, ({ code, stdout }) => {
+    assert.equal(code, 1);
+    assert.match(stdout, /d1_databases.*required binding/);
+  });
+});
+
+test("control-plane removing the required CONTROL_DB entry fails", () => {
+  withFixture((c) => {
+    const path = "workers/control-plane/wrangler.control-plane.jsonc";
+    const original = c[path];
+    const updated = original.replace(
+      /"d1_databases": \[\s*\{[\s\S]*?\}\s*\]/,
+      '"d1_databases": []'
+    );
+    assert.notEqual(updated, original, "fixture must remove the required D1 entry");
+    c[path] = updated;
+  }, ({ code, stdout }) => {
+    assert.equal(code, 1);
+    assert.match(stdout, /d1_databases.*required binding/);
+  });
+});

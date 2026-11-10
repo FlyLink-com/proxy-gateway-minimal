@@ -254,21 +254,41 @@ for (const cfg of policy.configs ?? []) {
   for (const [key, want] of Object.entries(cfg.requiredValuesIfPresent ?? {})) {
     if (Object.hasOwn(parsed, key) && parsed[key] !== want) fail(cfg.path, `"${key}" must be ${JSON.stringify(want)} when present, found ${JSON.stringify(parsed[key])}`);
   }
-  for (const [section, allowedEntries] of Object.entries(cfg.allowedBindings ?? {})) {
+  const requiredBindings = cfg.requiredBindings ?? {};
+  const optionalBindings = cfg.optionalBindings ?? {};
+  const bindingSections = new Set([
+    ...Object.keys(requiredBindings),
+    ...Object.keys(optionalBindings),
+  ]);
+  for (const section of bindingSections) {
+    const requiredEntries = requiredBindings[section] ?? [];
+    const optionalEntries = optionalBindings[section] ?? [];
     const entries = parsed[section];
-    if (entries === undefined) continue;
-    if (!Array.isArray(entries)) { fail(cfg.path, `"${section}" must be an array`); continue; }
-    if (entries.length > allowedEntries.length) {
-      fail(cfg.path, `"${section}" has ${entries.length} entries, allowlist permits at most ${allowedEntries.length}`);
-    }
-    const remainingAllowedEntries = [...allowedEntries];
-    for (const entry of entries) {
-      const matchIndex = remainingAllowedEntries.findIndex((allowed) => isDeepStrictEqual(entry, allowed));
-      if (matchIndex < 0) {
-        fail(cfg.path, `"${section}" entry ${JSON.stringify(entry)} does not exactly match an unused allowlisted entry`);
-      } else {
-        remainingAllowedEntries.splice(matchIndex, 1);
+    if (entries === undefined) {
+      if (requiredEntries.length > 0) {
+        fail(cfg.path, `"${section}" is missing required binding entries`);
       }
+      continue;
+    }
+    if (!Array.isArray(entries)) { fail(cfg.path, `"${section}" must be an array`); continue; }
+
+    const remainingRequiredEntries = [...requiredEntries];
+    const remainingOptionalEntries = [...optionalEntries];
+    for (const entry of entries) {
+      const requiredIndex = remainingRequiredEntries.findIndex((required) => isDeepStrictEqual(entry, required));
+      if (requiredIndex >= 0) {
+        remainingRequiredEntries.splice(requiredIndex, 1);
+        continue;
+      }
+      const optionalIndex = remainingOptionalEntries.findIndex((optional) => isDeepStrictEqual(entry, optional));
+      if (optionalIndex >= 0) {
+        remainingOptionalEntries.splice(optionalIndex, 1);
+        continue;
+      }
+      fail(cfg.path, `"${section}" entry ${JSON.stringify(entry)} does not exactly match an unused required or optional binding`);
+    }
+    for (const missing of remainingRequiredEntries) {
+      fail(cfg.path, `"${section}" is missing required binding entry ${JSON.stringify(missing)}`);
     }
   }
 }
