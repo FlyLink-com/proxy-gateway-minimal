@@ -207,7 +207,7 @@ for (const file of allConfigs) {
   const raw = readFileSync(file, "utf8");
   const where = rel(file);
   for (const { value, why } of policy.globalForbiddenStrings ?? []) {
-    if (raw.includes(value)) fail(where, \`forbidden string present (\${why})\`);
+    if (raw.includes(value)) fail(where, `forbidden string present (${why})`);
   }
 
   if (/\.toml$/u.test(file)) {
@@ -233,7 +233,7 @@ for (const file of allConfigs) {
       fail(where, "account_id is not an allowed account");
     }
   } catch (e) {
-    fail(where, \`configuration does not parse: \${e.message}\`);
+    fail(where, `configuration does not parse: ${e.message}`);
   }
 }
 
@@ -246,26 +246,26 @@ for (const cfg of policy.configs ?? []) {
 
   const allowedKeys = new Set(cfg.allowedTopLevelKeys ?? []);
   for (const key of Object.keys(parsed)) {
-    if (!allowedKeys.has(key)) fail(cfg.path, \`top-level key "\${key}" is not in the allowlist\`);
+    if (!allowedKeys.has(key)) fail(cfg.path, `top-level key "${key}" is not in the allowlist`);
   }
   for (const [key, want] of Object.entries(cfg.requiredValues ?? {})) {
-    if (parsed[key] !== want) fail(cfg.path, \`"\${key}" must be \${JSON.stringify(want)}, found \${JSON.stringify(parsed[key])}\`);
+    if (parsed[key] !== want) fail(cfg.path, `"${key}" must be ${JSON.stringify(want)}, found ${JSON.stringify(parsed[key])}`);
   }
   for (const [key, want] of Object.entries(cfg.requiredValuesIfPresent ?? {})) {
-    if (Object.hasOwn(parsed, key) && parsed[key] !== want) fail(cfg.path, \`"\${key}" must be \${JSON.stringify(want)} when present, found \${JSON.stringify(parsed[key])}\`);
+    if (Object.hasOwn(parsed, key) && parsed[key] !== want) fail(cfg.path, `"${key}" must be ${JSON.stringify(want)} when present, found ${JSON.stringify(parsed[key])}`);
   }
   for (const [section, allowedEntries] of Object.entries(cfg.allowedBindings ?? {})) {
     const entries = parsed[section];
     if (entries === undefined) continue;
-    if (!Array.isArray(entries)) { fail(cfg.path, \`"\${section}" must be an array\`); continue; }
+    if (!Array.isArray(entries)) { fail(cfg.path, `"${section}" must be an array`); continue; }
     if (entries.length > allowedEntries.length) {
-      fail(cfg.path, \`"\${section}" has \${entries.length} entries, allowlist permits at most \${allowedEntries.length}\`);
+      fail(cfg.path, `"${section}" has ${entries.length} entries, allowlist permits at most ${allowedEntries.length}`);
     }
     const remainingAllowedEntries = [...allowedEntries];
     for (const entry of entries) {
       const matchIndex = remainingAllowedEntries.findIndex((allowed) => isDeepStrictEqual(entry, allowed));
       if (matchIndex < 0) {
-        fail(cfg.path, \`"\${section}" entry \${JSON.stringify(entry)} does not exactly match an unused allowlisted entry\`);
+        fail(cfg.path, `"${section}" entry ${JSON.stringify(entry)} does not exactly match an unused allowlisted entry`);
       } else {
         remainingAllowedEntries.splice(matchIndex, 1);
       }
