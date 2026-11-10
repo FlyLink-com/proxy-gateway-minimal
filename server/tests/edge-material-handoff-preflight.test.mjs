@@ -420,7 +420,7 @@ test("material handoff lifecycle revision prevents clock-rollback desired-state 
         type: "traffic_supply_suspended",
         occurredAt: resumeAt,
         previousStatus: "delivered",
-        lifecycleRevisionRef: "lifecycle_revision_resume_a"
+        lifecycleRevisionRef: "lifecycle_ref_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
       }
     });
     const firstProjection = mutableStore.getLatestEdgeDesiredStateForChannel(

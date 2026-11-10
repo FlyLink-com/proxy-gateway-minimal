@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+import { seedAccountModelForTest } from "./helpers/account-model-seed.mjs";
 
 import Database from "better-sqlite3";
 
@@ -180,13 +181,13 @@ function createFixture({ setupDeliveryRuntimeEscrow = null } = {}) {
     database: controlDatabase
   });
   commerceStore.bootstrapPublishedOffers([MONTHLY_OFFER, ANNUAL_OFFER]);
-  controlStore.createAccount({
+  seedAccountModelForTest(controlDatabase, {
     id: ACCOUNT_ID,
     ownerRef: "owner_runtime_e2e",
     status: "active",
     createdAt: clock.value,
     updatedAt: clock.value,
-    metadata: { commercialModel: "wallet_first_unique_v1" }
+    commercialModel: "wallet_first_unique_v1"
   });
   commerceStore.walletStore.creditCoins({
     accountId: ACCOUNT_ID,

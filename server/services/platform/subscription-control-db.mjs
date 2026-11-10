@@ -8313,7 +8313,10 @@ export function createSqliteSubscriptionControlStore({
     const record = {
       id: safeControlRef(snapshot.id, "id"),
       entityType: requiredText(snapshot.entityType, "entityType"),
-      entityRef: safeControlRef(snapshot.entityRef, "entityRef"),
+      entityRef: snapshot.entityType === "coin_commerce_subscription_fulfillment"
+        && snapshot.action === "subscription_fulfillment_applied"
+        ? safeAuthorityRef(snapshot.entityRef, "entityRef")
+        : safeControlRef(snapshot.entityRef, "entityRef"),
       action: requiredText(snapshot.action, "action"),
       actorRef: safeControlRef(snapshot.actorRef, "actorRef"),
       createdAt: isoText(snapshot.createdAt, "createdAt"),

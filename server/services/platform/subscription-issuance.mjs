@@ -170,8 +170,7 @@ export function planSubscriptionIssuance({ controlStore, input, approvalRef, now
       createdAt: now,
       updatedAt: now,
       metadata: {
-        source: "platform-plan-subscription",
-        approvalRef
+        source: "platform-plan-subscription"
       }
     });
   }
@@ -264,8 +263,7 @@ export function executeSubscriptionIssuance({ controlStore, runtimeCore, input, 
       createdAt: now,
       updatedAt: now,
       metadata: {
-        source: "platform-issue-subscription",
-        approvalRef
+        source: "platform-issue-subscription"
       }
     });
   }

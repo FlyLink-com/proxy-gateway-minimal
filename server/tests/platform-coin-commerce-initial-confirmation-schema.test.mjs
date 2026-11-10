@@ -221,7 +221,13 @@ for (const [field, value] of Object.entries({ approval_sha256: "A".repeat(64), i
 
 for (const field of ["commandRef", "orderRef", "accountId", "requestRef", "entitlementRef", "issuedLinkRef"]) {
   test(`effect metadata mismatch ${field} cannot authorize confirmation`, () => withState({ failed: true }, (state) => {
-    apply(state); audit(state, { ...state.metadata, [field]: "different_ref" });
+    apply(state);
+    const mismatchedMetadata = { ...state.metadata, [field]: "different_ref" };
+    if (field === "commandRef" || field === "entitlementRef") {
+      assert.throws(() => audit(state, mismatchedMetadata));
+    } else {
+      audit(state, mismatchedMetadata);
+    }
     assert.throws(() => insert(state));
   }));
 }
