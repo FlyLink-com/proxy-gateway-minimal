@@ -205,7 +205,9 @@ Still OPEN:
 
 No real age identity, runtime key, escrow record, Cloudflare Secret, Service Binding, Worker deployment, AWS custody object, BWH access, D1 mutation, dual-write, or cutover has been authorized. C2 remains OPEN; T2 remains BLOCKED. BWH remains the only production control-data writer.
 
-## 14. Superseding Wallet-first digest decision and grouped custody proposal — 2026-11-08
+## 14. Historical Wallet-first digest decision and grouped custody proposal — 2026-11-08
+
+> Historical decision record. Its Wallet-first digest disposition remains separate; any old custodian/recovery wording is superseded by the current custody amendment in §21.
 
 The earlier Section 6 recommendation to consider HMAC conversion or retirement is superseded by the source-grounded audit in `docs/D1_T2_C2_WALLET_FIRST_DIGEST_COMPATIBILITY_AUDIT_V1.md`.
 
@@ -224,7 +226,9 @@ Under Node v22.23.1 in an isolated non-production sandbox, the suite passed 10/1
 This is not a real KMS/HSM, Cloudflare secret, escrow backup, or production restore. No real key or binding was created. The target architecture is owner-approved; C2 implementation and formal acceptance remain OPEN.
 
 
-## 16. Owner approval — target architecture baseline — 2026-11-08
+## 16. Historical owner approval — target architecture baseline — 2026-11-08 (recovery/custody terms superseded by §21)
+
+> Historical baseline. The online Crypto Worker, private Service Binding, per-Worker runtime Secrets, key-family separation, rotation, and T1/Auth0 decisions remain in force. The old two-person / named-custodian and unspecified escrow-mechanism wording is superseded by §21.
 
 The project owner approved the C2 target architecture described in this ADR and the grouped proposal:
 
@@ -268,7 +272,9 @@ The fixture proves user authorization occurs before the Service Binding call, th
 This is not actual control-plane integration. The existing G3 control-plane slice has service-level read/write tokens but no end-user/domain authorization context. The actual Service Binding declaration and caller wrapper remain deferred until the C1 identity/domain authorization path exists. No public crypto relay route is added. No Cloudflare binding, secret, deployment, production data access, D1 mutation, dual-write, or cutover occurred. C2 remains OPEN; BWH remains the only production writer.
 
 
-## 19. External escrow provider evaluation — 2026-11-08
+## 19. Historical external escrow provider evaluation — 2026-11-08 (not the selected route)
+
+> Historical source-only comparison. It did not select a provider. The current owner-selected offline recovery format is SOPS + age as recorded in §21; no managed KMS is selected.
 
 Added `docs/D1_T2_C2_EXTERNAL_ESCROW_PROVIDER_EVALUATION_V1.md` as a source-only options evaluation. It compares Google Cloud KMS, AWS KMS, Azure Key Vault/Managed HSM, HashiCorp Vault Transit, and offline encrypted escrow.
 
@@ -306,7 +312,7 @@ This decision does not authorize real key or KEK generation, share creation/dist
 
 ## 21. Owner amendment — SOPS + age and three independent custody domains — 2026-11-10
 
-This section is the current authoritative C2-D1 recovery decision and supersedes only the offline recovery format and human-custodian model in §20. The online Cloudflare Crypto Worker architecture in §§1, 16, 20 remains unchanged.
+This section is the current authoritative C2-D1 recovery decision. It supersedes the offline recovery format and human-custodian / two-person language in the historical baselines §§14, 16, 19 and 20. The online Cloudflare Crypto Worker architecture in §§1, 16 and 20 remains unchanged.
 
 ### 21.1 Selected recovery format
 
