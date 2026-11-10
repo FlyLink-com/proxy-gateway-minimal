@@ -24,57 +24,159 @@ const policy = JSON.parse(readFileSync(policyPath, "utf8"));
 const findings = [];
 const fail = (where, msg) => findings.push(`${where}: ${msg}`);
 
-// --- JSONC parsing: strip // and /* */ comments outside string literals.
-function parseJsonc(text) {
+// --- JSONC parsing: strip comments and trailing commas outside string literals.
+function stripJsoncComments(text) {
   let out = "";
-  let inStr = false;
-  let esc = false;
+  let inString = false;
+  let escaped = false;
+  let inLineComment = false;
+  let inBlockComment = false;
   for (let i = 0; i < text.length; i++) {
     const ch = text[i];
     const next = text[i + 1];
-    if (inStr) {
-      out += ch;
-      if (esc) esc = false;
-      else if (ch === "\\") esc = true;
-      else if (ch === '"') inStr = false;
+    if (inLineComment) {
+      if (ch === "\n") {
+        inLineComment = false;
+        out += "\n";
+      }
       continue;
     }
-    if (ch === '"') { inStr = true; out += ch; continue; }
+    if (inBlockComment) {
+      if (ch === "*" && next === "/") {
+        inBlockComment = false;
+        i++;
+      } else if (ch === "\n") {
+        out += "\n";
+      }
+      continue;
+    }
+    if (inString) {
+      out += ch;
+      if (escaped) escaped = false;
+      else if (ch === "\\") escaped = true;
+      else if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"') {
+      inString = true;
+      out += ch;
+      continue;
+    }
     if (ch === "/" && next === "/") {
-      while (i < text.length && text[i] !== "\n") i++;
-      if (i < text.length) out += "\n";
+      inLineComment = true;
+      i++;
       continue;
     }
     if (ch === "/" && next === "*") {
-      i += 2;
-      while (i < text.length && !(text[i] === "*" && text[i + 1] === "/")) i++;
+      inBlockComment = true;
       i++;
       continue;
     }
     out += ch;
   }
-  return JSON.parse(out);
+  if (inBlockComment) throw new SyntaxError("unterminated JSONC block comment");
+  return out;
 }
 
-// TOML account_id is a top-level Wrangler setting. Parse only this field:
-// table headers end the top-level section, so nested [vars] keys are ignored.
+function stripJsoncTrailingCommas(text) {
+  let out = "";
+  let inString = false;
+  let escaped = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (inString) {
+      out += ch;
+      if (escaped) escaped = false;
+      else if (ch === "\\") escaped = true;
+      else if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"') {
+      inString = true;
+      out += ch;
+      continue;
+    }
+    if (ch === ",") {
+      let next = i + 1;
+      while (next < text.length && /\s/u.test(text[next])) next++;
+      if (text[next] === "}" || text[next] === "]") continue;
+    }
+    out += ch;
+  }
+  return out;
+}
+
+function parseJsonc(text) {
+  return JSON.parse(stripJsoncTrailingCommas(stripJsoncComments(text)));
+}
+
+// TOML account_id is a top-level Wrangler setting. Recognize bare and quoted
+// keys, strip comments without treating # inside strings as a comment, and
+// fail closed when an account_id assignment is present but not a simple string.
+function stripTomlComment(line) {
+  let quote = null;
+  let escaped = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (quote === '"') {
+      if (escaped) escaped = false;
+      else if (ch === "\\") escaped = true;
+      else if (ch === '"') quote = null;
+      continue;
+    }
+    if (quote === "'") {
+      if (ch === "'") quote = null;
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      quote = ch;
+      continue;
+    }
+    if (ch === "#") return line.slice(0, i);
+  }
+  return line;
+}
+
 function readTomlTopLevelAccountIds(text) {
   const values = [];
   let topLevel = true;
-  for (const line of text.split(/\r?\n/)) {
+  for (const originalLine of text.replace(/^\uFEFF/u, "").split(/\r?\n/u)) {
+    const line = stripTomlComment(originalLine);
     const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith("#")) continue;
-    if (/^\[\[?/.test(trimmed)) {
+    if (!trimmed) continue;
+    if (/^\s*\[/u.test(line)) {
       topLevel = false;
       continue;
     }
     if (!topLevel) continue;
-    const match = /^\s*account_id\s*=\s*(.*?)\s*(?:#.*)?$/.exec(line);
-    if (!match) continue;
-    const literal = match[1].trim();
+
+    const match = /^\s*(?:"((?:\\.|[^"\\])*)"|'([^']*)'|([A-Za-z0-9_-]+))\s*=\s*(.*?)\s*$/u.exec(line);
+    const looksLikeAccountIdKey = /^\s*(?:"account_id"|'account_id'|account_id)(?:\s|=|$)/u.test(line);
+    if (!match) {
+      if (looksLikeAccountIdKey) values.push(null);
+      continue;
+    }
+
+    let key;
+    try {
+      if (match[1] !== undefined) key = JSON.parse('"' + match[1] + '"');
+      else if (match[2] !== undefined) key = match[2];
+      else key = match[3];
+    } catch {
+      if (looksLikeAccountIdKey) values.push(null);
+      continue;
+    }
+    if (key !== "account_id") continue;
+
+    const literal = match[4].trim();
     let value = null;
     if (literal.startsWith('"') && literal.endsWith('"')) {
-      try { value = JSON.parse(literal); } catch { value = null; }
+      try {
+        const parsed = JSON.parse(literal);
+        if (typeof parsed === "string") value = parsed;
+      } catch {
+        value = null;
+      }
     } else if (literal.startsWith("'") && literal.endsWith("'")) {
       value = literal.slice(1, -1);
     }
@@ -97,16 +199,18 @@ function walk(dir, acc) {
 const allConfigs = walk(root, []);
 const rel = (p) => relative(root, p).split("\\").join("/");
 
-// --- Global guards on every Wrangler config.
+// --- Global guards on every Wrangler config. Parse failures are findings,
+// never silently skipped, because every discovered Wrangler config is in scope.
 const allowedAccountIds = new Set(policy.allowedAccountIds ?? []);
+const parsedJsonConfigs = new Map();
 for (const file of allConfigs) {
   const raw = readFileSync(file, "utf8");
   const where = rel(file);
   for (const { value, why } of policy.globalForbiddenStrings ?? []) {
-    if (raw.includes(value)) fail(where, `forbidden string present (${why})`);
+    if (raw.includes(value)) fail(where, \`forbidden string present (\${why})\`);
   }
 
-  if (/\.toml$/.test(file)) {
+  if (/\.toml$/u.test(file)) {
     const accountIds = readTomlTopLevelAccountIds(raw);
     if (accountIds.length > 1) fail(where, "multiple top-level account_id values are not allowed");
     for (const accountId of accountIds) {
@@ -117,11 +221,19 @@ for (const file of allConfigs) {
     continue;
   }
 
-  let parsed = null;
-  try { parsed = parseJsonc(raw); } catch { parsed = null; }
-  if (parsed && Object.hasOwn(parsed, "account_id") &&
-      (typeof parsed.account_id !== "string" || !allowedAccountIds.has(parsed.account_id))) {
-    fail(where, "account_id is not an allowed account");
+  try {
+    const parsed = parseJsonc(raw);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      fail(where, "configuration root must be an object");
+      continue;
+    }
+    parsedJsonConfigs.set(file, parsed);
+    if (Object.hasOwn(parsed, "account_id") &&
+        (typeof parsed.account_id !== "string" || !allowedAccountIds.has(parsed.account_id))) {
+      fail(where, "account_id is not an allowed account");
+    }
+  } catch (e) {
+    fail(where, \`configuration does not parse: \${e.message}\`);
   }
 }
 
@@ -129,35 +241,31 @@ for (const file of allConfigs) {
 for (const cfg of policy.configs ?? []) {
   const file = join(root, cfg.path);
   if (!existsSync(file)) { fail(cfg.path, "in-scope configuration file is missing"); continue; }
-  let parsed;
-  try {
-    parsed = parseJsonc(readFileSync(file, "utf8"));
-  } catch (e) {
-    fail(cfg.path, `configuration does not parse: ${e.message}`);
-    continue;
-  }
+  const parsed = parsedJsonConfigs.get(file);
+  if (!parsed) continue; // The global scan already recorded the parse failure.
+
   const allowedKeys = new Set(cfg.allowedTopLevelKeys ?? []);
   for (const key of Object.keys(parsed)) {
-    if (!allowedKeys.has(key)) fail(cfg.path, `top-level key "${key}" is not in the allowlist`);
+    if (!allowedKeys.has(key)) fail(cfg.path, \`top-level key "\${key}" is not in the allowlist\`);
   }
   for (const [key, want] of Object.entries(cfg.requiredValues ?? {})) {
-    if (parsed[key] !== want) fail(cfg.path, `"${key}" must be ${JSON.stringify(want)}, found ${JSON.stringify(parsed[key])}`);
+    if (parsed[key] !== want) fail(cfg.path, \`"\${key}" must be \${JSON.stringify(want)}, found \${JSON.stringify(parsed[key])}\`);
   }
   for (const [key, want] of Object.entries(cfg.requiredValuesIfPresent ?? {})) {
-    if (key in parsed && parsed[key] !== want) fail(cfg.path, `"${key}" must be ${JSON.stringify(want)} when present, found ${JSON.stringify(parsed[key])}`);
+    if (Object.hasOwn(parsed, key) && parsed[key] !== want) fail(cfg.path, \`"\${key}" must be \${JSON.stringify(want)} when present, found \${JSON.stringify(parsed[key])}\`);
   }
   for (const [section, allowedEntries] of Object.entries(cfg.allowedBindings ?? {})) {
     const entries = parsed[section];
     if (entries === undefined) continue;
-    if (!Array.isArray(entries)) { fail(cfg.path, `"${section}" must be an array`); continue; }
+    if (!Array.isArray(entries)) { fail(cfg.path, \`"\${section}" must be an array\`); continue; }
     if (entries.length > allowedEntries.length) {
-      fail(cfg.path, `"${section}" has ${entries.length} entries, allowlist permits at most ${allowedEntries.length}`);
+      fail(cfg.path, \`"\${section}" has \${entries.length} entries, allowlist permits at most \${allowedEntries.length}\`);
     }
     const remainingAllowedEntries = [...allowedEntries];
     for (const entry of entries) {
       const matchIndex = remainingAllowedEntries.findIndex((allowed) => isDeepStrictEqual(entry, allowed));
       if (matchIndex < 0) {
-        fail(cfg.path, `"${section}" entry ${JSON.stringify(entry)} does not exactly match an unused allowlisted entry`);
+        fail(cfg.path, \`"\${section}" entry \${JSON.stringify(entry)} does not exactly match an unused allowlisted entry\`);
       } else {
         remainingAllowedEntries.splice(matchIndex, 1);
       }
