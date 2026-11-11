@@ -1961,7 +1961,8 @@ describe("user portal product surface", () => {
 
     fireEvent.change(screen.getByLabelText("电子邮箱"), { target: { value: "local-user@example.test" } });
     fireEvent.change(screen.getByLabelText("密码"), { target: { value: registrationPassword.input } });
-    fireEvent.change(screen.getByLabelText("确认密码"), { target: { value: registrationPassword.expected } });
+    const confirmationInput = `\uFEFF\u00A0\t${registrationPassword.expected}\u3000\u2029`;
+    fireEvent.change(screen.getByLabelText("确认密码"), { target: { value: confirmationInput } });
     expect(screen.queryByLabelText("邮箱验证码")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "创建账户" }));
 
@@ -2005,6 +2006,20 @@ describe("user portal product surface", () => {
     expect(persisted ?? "").toContain("local-user@example.test");
     expect(persisted ?? "").not.toContain(registrationPassword.expected);
     expect(screen.getByRole("link", { name: "打开用户面板" }).getAttribute("href")).toBe("/portal/");
+  });
+
+  test("registration page rejects passwords that remain different after trim normalization", () => {
+    const client = portalClient();
+    render(createElement(UserRegistrationPage, { portalClient: client }));
+
+    fireEvent.change(screen.getByLabelText("电子邮箱"), { target: { value: "local-user@example.test" } });
+    fireEvent.change(screen.getByLabelText("密码"), { target: { value: "Register-passphrase-1!" } });
+    fireEvent.change(screen.getByLabelText("确认密码"), { target: { value: "\uFEFF\u00A0\tRegister-passphrase-2!\u3000\u2029" } });
+    fireEvent.click(screen.getByRole("button", { name: "创建账户" }));
+
+    expect(screen.getByText("两次输入的密码不一致。")).not.toBeNull();
+    expect(client.requestRegistrationEmailVerification).not.toHaveBeenCalled();
+    expect(client.registerTrialAccount).not.toHaveBeenCalled();
   });
 
   test("registration page displays an available normal-Commerce welcome bonus without a trial claim", async () => {
