@@ -53,19 +53,19 @@
 ## G6 selective-integration reconciliation — 2026-11-11
 
 This integration slice is based on G6 staging commit
-\`3490de6046a4fe48346984b22b0bba4a31546df4\` and preserves the original
+`3490de6046a4fe48346984b22b0bba4a31546df4` and preserves the original
 source review anchor at #842 HEAD
-\`bc3f8c9a713de05715f42f733b8fa72ba53d4477\`.
+`bc3f8c9a713de05715f42f733b8fa72ba53d4477`.
 
-- The G6 \`createD1PiiLookupCandidatesFromDigest\` and
-  \`verifyD1PiiDigestEnvelopeFromDigest\` interfaces remain intact. The
+- The G6 `createD1PiiLookupCandidatesFromDigest` and
+  `verifyD1PiiDigestEnvelopeFromDigest` interfaces remain intact. The
   digest-only PII path is retained; this integration does not restore
   raw PII or ordinary SHA-256 persistence.
 - The TOTP Base32 normalizer uses the intended whitespace/hyphen class
-  \`/[\s-]/gu\`. The source-head escaped character class was corrected
-  because it matched a literal backslash or \`s\`, not whitespace.
+  `/[\s-]/gu`. The source-head escaped character class was corrected
+  because it matched a literal backslash or `s`, not whitespace.
 - The padded positive test vector was corrected to canonical
-  \`MY======\`; explicit whitespace, hyphen and non-zero pad-bit cases
+  `MY======`; explicit whitespace, hyphen and non-zero pad-bit cases
   were added.
 - This branch is a source-only integration candidate. No CI, full test
   suite, Ready transition, merge, deployment, BWH access or production
