@@ -11,7 +11,7 @@ document_metadata:
 ```
 
 Date: 2026-11-10.
-Scope: source-level compatibility evidence for the owner-approved R1 trim-only contract in Browser Portal and Android, plus a separately classified legacy Admin bootstrap-token parity fix. All credential values in tests are synthetic.
+Scope: source-level compatibility evidence for the owner-approved R1 trim-only contract in Browser Portal and Android, plus Admin local Portal-account password trim parity through the legacy-named `bootstrapToken` request field. All credential values in tests are synthetic.
 
 ## Approved contract
 
@@ -38,23 +38,27 @@ Registration and login use the same effective value before hashing or verificati
   - registration UI after correction: `8de57fbfbe8ea8df71a6261623eaa488d99c003f`
   - Browser tests after correction: `dae6785b9c4fa253173916f4178ff89c2a910cb8`
 
-## Admin boundary (legacy bootstrap authentication)
+## Admin boundary (local Portal-account password + TOTP)
 
-- The current Admin auth surface is **not an Auth0 hosted password flow**. `admin/src/app/admin-auth-client.ts` sends the UI credential as `bootstrapToken` to the same-origin `/api/admin-auth/login` endpoint.
-- `server/routes/admin-auth.mjs` forwards that field to the local Admin auth service; `server/services/platform/admin-auth.mjs` compares it with the locally configured bootstrap token. The service normalizes its configured value through its own `requiredText()` helper. No Auth0 SDK, hosted authorization redirect, or Auth0 password verification is called by this route.
-- This PR applies JavaScript `String.trim()` to the client-side bootstrap credential and rejects empty-after-trim before dispatch. That is a **legacy bootstrap-token compatibility fix**, not proof that an Admin end-user password is normalized before a future Auth0 hosted flow.
-- The current Admin client exposes session, bootstrap login, TOTP verification, and logout; it does not expose self-service registration or password reset. No such absent route is claimed as implemented by this PR.
-- `admin/src/test/admin-auth-client.test.ts` runs the shared synthetic trim-only vectors against the outgoing `bootstrapToken` request field. This validates local bootstrap-token parity only.
-- **R1 Admin hosted-auth acceptance remains OPEN:** when an Admin Auth0 password path is introduced, it must trim the actual user password before it reaches Auth0 and run the shared vectors against that exact hosted-auth adapter/UI path. The current bootstrap-token test cannot close that gate.
+- The current Admin client sends the operator's password in the legacy-named `bootstrapToken` field to the same-origin `/api/admin-auth/login` endpoint. The field name is a wire-compatibility detail; it does not identify the credential type.
+- The default runtime wiring in `server/state.mjs` requires `ADMIN_AUTH_PORTAL_ACCOUNT_ID` and constructs `createPortalAccountAdminAuthService` with that bound `accountId` and `platformPortalPasswordCredentialService`.
+- In `server/services/platform/admin-auth.mjs`, `createPortalAccountAdminAuthService` passes the received `bootstrapToken` value to `verifyPasswordCredential()` as `plainPassword` for the bound Portal account. `server/services/platform/portal-password-credentials.mjs` applies `requiredText()` — `String(value ?? "").trim()` — before scrypt password verification. A successful password check is followed by TOTP verification.
+- The same module also retains an older `createAdminAuthService` factory with static configured-bootstrap-token semantics. That is not the default runtime path wired by `server/state.mjs`; its behavior must not be attributed to the active Portal-account Admin path.
+- This PR applies JavaScript `String.trim()` to the client-side Portal-account password and rejects empty-after-trim before placing it in the legacy-named request field. Combined with the server-side `requiredText()` boundary, this proves trim-only parity for the current local Admin Portal-account password + TOTP path. It is **not** proof of an Auth0 hosted password flow.
+- The current Admin client exposes session, local password login, TOTP verification, and logout; it does not expose self-service registration or password reset. No such absent route is claimed as implemented by this PR.
+- `admin/src/test/admin-auth-client.test.ts` runs the shared synthetic trim-only vectors against the outgoing legacy-named `bootstrapToken` field. This proves client-side normalization for the current local Admin password-login request; together with the server source above, it supports the current local verifier boundary only.
+- **Future Admin Auth0 hosted-login acceptance remains OPEN:** no Admin Auth0 hosted password adapter/UI path is present in the reviewed source. If one is introduced, it must normalize the actual user password before the Auth0 handoff and run the shared vectors against that exact hosted-auth path. The current local password test cannot close that separate gate.
 - Source blobs:
-  - Admin client: `aa14c674857378796bb55713e4775a8ca5fad21a`
+  - Admin client: `3acee02418630c059ba1c59504095213e3a2bfa1`
   - Admin tests: `7ea16377c68ed9c6f355c0f1c34f1de61b7e8e35`
   - Admin route: `8a3f34a6bcb81d241012754766bf0003e68e6e4d`
   - Admin service: `e5aaf6f24440c442556af3aebc89f5ffff526dc5`
+  - Runtime wiring: `da3ddbe459d44d75e80cb196b2454ebbd6f3212c`
+  - Portal password credential service: `ca9a5f201487f89202aff60e01f504c1622b4c28`
 
 ## Shared synthetic compatibility vectors
 
-Browser Portal login/registration tests import the shared R1 password vectors. The Admin bootstrap-token parity test reuses the same trim-only input/expected pairs, but its credential type and acceptance boundary remain distinct:
+Browser Portal login/registration tests import the shared R1 password vectors. The Admin test reuses the same trim-only input/expected pairs against the legacy-named `bootstrapToken` request field; the active runtime treats that value as the bound Portal account's local password, not as a static token:
 
 `admin/src/test/password-normalization-vectors.ts`, blob `fcec3a050c0da3f1e80330ec876b4082abe898c9`.
 
