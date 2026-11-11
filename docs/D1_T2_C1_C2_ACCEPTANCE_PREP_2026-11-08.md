@@ -2,7 +2,7 @@
 
 > **Status:** Draft execution plan. C1 and C2 remain OPEN; T2 remains BLOCKED.
 > **Working branch:** `fix/t2-c1-c2-t1-reenroll-only-20261108`
-> **Source-review anchor:** PR #843, T1 follow-up branch HEAD `2b95496c95238df2b7dae24f903d91d32a266f4f` (review pending; PR #842 approval remains bound only to `bc3f8c9a`). The only changes after tested source HEAD `c6a70b3f` are documentation/evidence updates; all nine source/test Git Blob SHAs were re-read and match the tested inventory.
+> **Source-review anchor:** PR #843, T1 follow-up branch HEAD `2b95496c95238df2b7dae24f903d91d32a266f4f` at the time this anchor was written (a 2026-11-08 historical snapshot taken after tested source HEAD `c6a70b3f`; the PR head later advanced through documentation-only commits to `4be249a3` before this head-label correction commit, so `2b95496c` is a historical snapshot, not the current PR head; review pending at the time of writing; PR #842 approval remains bound only to `bc3f8c9a`). The only changes after tested source HEAD `c6a70b3f` are documentation/evidence updates; all nine source/test Git Blob SHAs were re-read and match the tested inventory.
 > **Branch audit:** PR #843 is OPEN / DRAFT against `fix/t2-c1-c2-source-hardening-20261108` at `bc3f8c9a`. Keep this as a review follow-up, not a Master merge candidate.
 > **Current production authority:** BWH remains the only production control-data writer.
 > **Scope:** Repository-only source/doc alignment and synthetic/local acceptance preparation. No production, tenant, real-key, deployment or migration action is authorized here.
@@ -91,7 +91,7 @@ The C2 design recommendation remains: prefer per-Worker secret bindings when a k
 
 - PR #842 is a bounded source-review vehicle based on `review/t2-c1-c2-baseline-bf200c47`; its exact approved source HEAD must remain unchanged.
 - The documentation synchronization branch `docs/t2-c1-c2-review-evidence-sync-20261108` is 160 commits ahead of current Master. It is a Draft workstream, not a narrow merge candidate.
-- PR #843 is the exact T1 follow-up review vehicle (OPEN / DRAFT; base `fix/t2-c1-c2-source-hardening-20261108` at `bc3f8c9a`; head `c6a70b3f` at the time of this evidence). PR #844 is a separate Draft for the synthetic Auth0 validator package. Do not create a PR to Master, merge, force-push PR #842, or treat the stacked Draft history as a Master merge candidate.
+- PR #843 is the exact T1 follow-up review vehicle (OPEN / DRAFT; base `fix/t2-c1-c2-source-hardening-20261108` at `bc3f8c9a`; head `c6a70b3f` at the time of this evidence — a historical snapshot; the PR head later advanced through documentation-only commits to `4be249a3` before this head-label correction commit). PR #844 is a separate Draft for the synthetic Auth0 validator package. Do not create a PR to Master, merge, force-push PR #842, or treat the stacked Draft history as a Master merge candidate.
 - Any later integration PR must be rebuilt from an explicitly reviewed target baseline with only the required, dependency-complete changes. No such PR is opened by this plan.
 
 ## 7. Non-negotiable no-go boundaries

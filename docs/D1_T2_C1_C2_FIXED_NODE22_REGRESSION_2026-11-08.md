@@ -82,7 +82,7 @@ The source files were byte-identical to the Section 3 inventory; this follow-up 
 
 ## 7. Agent-run exact-current-branch-head verification — 2026-11-08
 
-The current T1 branch head was re-read from GitHub as `41b5d1a15e717be812a0772405dab766d773879c`. Comparing source head `c6a70b3f216d68c6ee7014af268645e1f9df5925` to this head shows two commits containing six documentation-file changes only. All nine service/test Git Blob SHAs listed in Section 3 were fetched again from the current branch and matched exactly; no service or test source changed.
+The T1 branch head, as re-read from GitHub on 2026-11-08, was `41b5d1a15e717be812a0772405dab766d773879c` (the exact head tested that day; the later commit `4be249a3` only records that evidence and adds documentation, and was the PR head before this head-label correction commit). Comparing source head `c6a70b3f216d68c6ee7014af268645e1f9df5925` to this head shows two commits containing six documentation-file changes only. All nine service/test Git Blob SHAs listed in Section 3 were fetched again from the branch at that time and matched exactly; no service or test source changed.
 
 - Runtime: Node v22.23.1, installed from the exact `node@22.23.1` npm package and version-checked before running.
 - Environment: isolated Vercel non-production sandbox, Linux x86_64, 2 vCPU / 4 GiB RAM. Network policy allowed only the npm registry for installing the Node runtime. No Auth0, Cloudflare, BWH or production endpoint was accessed.

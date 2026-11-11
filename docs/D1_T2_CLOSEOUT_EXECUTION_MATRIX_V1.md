@@ -242,12 +242,12 @@ G6 PASS authorizes only consideration of the next separately gated step. It does
 
 | Package | Current evidence | Status |
 |---|---|---|
-| T2-C1 Identity custody | Auth0 Essentials + Bulk User Import, >72-byte targeted reset, Portal/Admin isolation and T1 re-enrollment policy are owner-approved. T1 follow-up PR #843 is OPEN / DRAFT at exact source HEAD `c6a70b3f`; five-file fixed Node v22.23.1 regression passed 62/62 twice. Real Auth0 tenant/provider proof, OIDC/JWKS gateway, password normalization/first-login rehash, email verification, MFA lifecycle, account display and identity ownership remain open | OPEN |
+| T2-C1 Identity custody | Auth0 Essentials + Bulk User Import, >72-byte targeted reset, Portal/Admin isolation and T1 re-enrollment policy are owner-approved. T1 follow-up PR #843 is OPEN / DRAFT; tested source HEAD `c6a70b3f` (the 62/62 evidence anchor; APPROVED review 5817942288 binds this head only); PR head before this head-label correction commit `4be249a3`, differing from `c6a70b3f` by 3 documentation-only commits / 6 files; five-file fixed Node v22.23.1 regression passed 62/62 twice at the tested source HEAD. Real Auth0 tenant/provider proof, OIDC/JWKS gateway, password normalization/first-login rehash, email verification, MFA lifecycle, account display and identity ownership remain open | OPEN |
 | T2-C2 HMAC and legacy compatibility | HMAC/PII primitives and strict T1 legacy TOTP classifier passed the same exact-head 62/62 two-run regression, including PII vectors 14/14. Actual key custody, named custodians, independent escrow/recovery, Wallet-first legacy digest compatibility, replay/retention/retirement and restore proof remain open | OPEN |
 | T2-C3 JSON/ref/generation | 26 fields reconciled: 7 writer families closed, 16 existing source contracts retained/mapped, 2 Passkey fields DEFER, account metadata BLOCKED pending C1 identity custody; independent review absent | OPEN |
 | T2-C4 Payment custody | DO SQLite proposal exists; owner, key, lifecycle, and outage decisions remain open | OPEN |
 | T2-C5 Retention/G2 residuals | Retention register exists; RET-02–RET-12 and G2 residual dispositions remain open | OPEN |
-| T2-C6 Independent review | PR #842 approval remains bound to `bc3f8c9a`. PR #843 is the T1 follow-up exact-head review vehicle at `c6a70b3f`, with 62/62 tests passing twice but no new reviewer approval yet. Full T2 review across C1–C6, 820-field disposition, 26 JSON writers, payment custody, retention and G2 residuals remains outstanding | OPEN |
+| T2-C6 Independent review | PR #842 approval remains bound to `bc3f8c9a`. PR #843 is the T1 follow-up review vehicle; tested source HEAD `c6a70b3f` (62/62 tests passing twice; APPROVED review 5817942288 binds this head only); PR head `4be249a3` received docs-only incremental review 5858428230 = CHANGES_REQUESTED (head-label corrections); no approval binds `4be249a3`. Full T2 review across C1–C6, 820-field disposition, 26 JSON writers, payment custody, retention and G2 residuals remains outstanding | OPEN |
 
 No task is marked complete by this matrix. The work is not authorized to cross the production boundary described above.
 
@@ -304,7 +304,7 @@ T1 supersedes earlier C1/C2 TOTP transfer, decryption and re-encryption proposal
 
 ### T1 follow-up fixed-environment evidence — 2026-11-08
 
-- Exact source HEAD: `c6a70b3f216d68c6ee7014af268645e1f9df5925` (PR #843 head at test time).
+- Exact source HEAD: `c6a70b3f216d68c6ee7014af268645e1f9df5925` (PR #843 head at test time; the PR head later advanced through documentation-only commits to `4be249a38c0347337cf51d92cf1fe81b60c2f659` before this head-label correction commit).
 - Node v22.23.1; `node --check` passed for four service modules and five test files.
 - Five test files: security primitives 18/18, identity boundary 10/10, Auth0 import rehearsal 16/16, Portal TOTP verifier 4/4, PII security vectors 14/14; total **62/62**, 0 failed, 0 skipped. Two combined runs both passed.
 - This is bounded source-slice evidence. Full `npm test` was not run at this HEAD; no hosted CI run is claimed. PR #843 remains Draft; C1/C2 and T2 remain OPEN/BLOCKED.
