@@ -11,7 +11,7 @@ document_metadata:
 ```
 
 Date: 2026-11-10.
-Scope: source-level compatibility evidence for the owner-approved R1 trim-only contract. All password values in tests are synthetic.
+Scope: source-level compatibility evidence for the owner-approved R1 trim-only contract in Browser Portal and Android, plus a separately classified legacy Admin bootstrap-token parity fix. All credential values in tests are synthetic.
 
 ## Approved contract
 
@@ -38,18 +38,23 @@ Registration and login use the same effective value before hashing or verificati
   - registration UI after correction: `8de57fbfbe8ea8df71a6261623eaa488d99c003f`
   - Browser tests after correction: `dae6785b9c4fa253173916f4178ff89c2a910cb8`
 
-## Admin
+## Admin boundary (legacy bootstrap authentication)
 
-- `admin/src/app/admin-auth-client.ts` now applies JavaScript `String.trim()` to the password before constructing the same-origin `/api/admin-auth/login` request's `bootstrapToken` field and rejects empty-after-trim before network dispatch.
-- The current Admin client exposes session, login, TOTP verification, and logout; it does not expose self-service registration or password reset. No such absent route is claimed as implemented by this PR.
-- `admin/src/test/admin-auth-client.test.ts` runs the same shared synthetic vector set and asserts the exact value sent in the request.
+- The current Admin auth surface is **not an Auth0 hosted password flow**. `admin/src/app/admin-auth-client.ts` sends the UI credential as `bootstrapToken` to the same-origin `/api/admin-auth/login` endpoint.
+- `server/routes/admin-auth.mjs` forwards that field to the local Admin auth service; `server/services/platform/admin-auth.mjs` compares it with the locally configured bootstrap token. The service normalizes its configured value through its own `requiredText()` helper. No Auth0 SDK, hosted authorization redirect, or Auth0 password verification is called by this route.
+- This PR applies JavaScript `String.trim()` to the client-side bootstrap credential and rejects empty-after-trim before dispatch. That is a **legacy bootstrap-token compatibility fix**, not proof that an Admin end-user password is normalized before a future Auth0 hosted flow.
+- The current Admin client exposes session, bootstrap login, TOTP verification, and logout; it does not expose self-service registration or password reset. No such absent route is claimed as implemented by this PR.
+- `admin/src/test/admin-auth-client.test.ts` runs the shared synthetic trim-only vectors against the outgoing `bootstrapToken` request field. This validates local bootstrap-token parity only.
+- **R1 Admin hosted-auth acceptance remains OPEN:** when an Admin Auth0 password path is introduced, it must trim the actual user password before it reaches Auth0 and run the shared vectors against that exact hosted-auth adapter/UI path. The current bootstrap-token test cannot close that gate.
 - Source blobs:
-  - Admin client: `f633ec713cb9927c219063f50276840607cdf7e8`
-  - Admin tests after vector expansion: `3c23b32d88f7105789ca538ad0d23f3d23155f6e`
+  - Admin client: `aa14c674857378796bb55713e4775a8ca5fad21a`
+  - Admin tests: `7ea16377c68ed9c6f355c0f1c34f1de61b7e8e35`
+  - Admin route: `8a3f34a6bcb81d241012754766bf0003e68e6e4d`
+  - Admin service: `e5aaf6f24440c442556af3aebc89f5ffff526dc5`
 
 ## Shared synthetic compatibility vectors
 
-The Browser login/registration and Admin login tests import the same fixture:
+Browser Portal login/registration tests import the shared R1 password vectors. The Admin bootstrap-token parity test reuses the same trim-only input/expected pairs, but its credential type and acceptance boundary remain distinct:
 
 `admin/src/test/password-normalization-vectors.ts`, blob `fcec3a050c0da3f1e80330ec876b4082abe898c9`.
 
