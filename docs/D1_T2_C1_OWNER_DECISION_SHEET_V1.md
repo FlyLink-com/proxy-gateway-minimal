@@ -11,7 +11,8 @@ document_metadata:
 ```
 
 
-> Status: OWNER DECISION REQUIRED — provider-neutral boundary code is implemented in Draft; no identity provider, tenant, account, real identity, credential, or production resource is selected or configured.
+> Historical status at original drafting: OWNER DECISION REQUIRED — provider-neutral boundary code was implemented in Draft; no identity provider, tenant, account, real identity, credential, or production resource was then selected or configured.
+> Reconciliation (2026-11-10): C1-D01 and C1-D02 were subsequently approved on 2026-11-08, and C1 core acceptance with documented limitations was recorded on 2026-11-09. The PENDING rows below preserve the original proposal snapshot; they are not the current decision status for D01/D02. See `docs/D1_T2_C1_OWNER_DECISION_RECONCILIATION_20261110.md`.
 > Source anchor: master@be261abc60f28bb2733764fa5364ab44b3e76844
 > Draft branch: docs/d1-target-schema-g6-rehearsal-plan-20261107
 > Production authority: BWH remains the only production writer.
