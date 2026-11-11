@@ -356,22 +356,29 @@ test("TOTP tampering, unknown keys, malformed envelopes and legacy raw Base32 fa
   assert.deepEqual(legacy, { status: "re_enroll_required" });
 });
 
-test("legacy keyless v2 TOTP can be re-encrypted without returning plaintext", async () => {
+test("T1: only structurally valid legacy TOTP formats require re-enrollment", async () => {
   const legacyKey = Buffer.from("de".repeat(32), "hex");
   const legacyEnvelope = encryptLegacyV2("JBSWY3DPEHPK3PXP", legacyKey, randomBytes(12));
-  const newRing = totpRing("portal-totp-aes", "portal-v3", ["portal-v3"], {
-    "portal-v3": Buffer.from("ef".repeat(32), "hex")
+
+  assert.deepEqual(await reencryptLegacyD1TotpV2({ value: legacyEnvelope }), {
+    status: "re_enroll_required"
   });
-  const migrated = await reencryptLegacyD1TotpV2({
-    value: legacyEnvelope, legacyKey, keyRing: newRing, scope: "portal",
-    credentialRef: "totp_credential_005",
-    ivFactory: () => Uint8Array.from([3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3])
+  assert.deepEqual(await reencryptLegacyD1TotpV2({ value: "enc:JBSWY3DPEHPK3PXP" }), {
+    status: "re_enroll_required"
   });
-  assert.equal(migrated.status, "reencrypted");
-  assert.match(migrated.envelope, /^v3:aes-256-gcm:portal-v3:/u);
-  assert.equal(Object.hasOwn(migrated, "plaintext"), false);
-  const protector = createD1TotpSecretProtector({ keyRing: newRing, scope: "portal" });
-  assert.equal(await protector.unprotect(migrated.envelope, { credentialRef: "totp_credential_005" }), "JBSWY3DPEHPK3PXP");
+  assert.deepEqual(await reencryptLegacyD1TotpV2({ value: "JBSWY3DPEHPK3PXP" }), {
+    status: "re_enroll_required"
+  });
+  for (const malformed of [
+    "v2:aes-256-gcm:synthetic-envelope",
+    "v2:aes-256-gcm:bad:bad:bad",
+    "enc:NOT-BASE32!",
+    "malformed legacy payload"
+  ]) {
+    assert.deepEqual(await reencryptLegacyD1TotpV2({ value: malformed }), {
+      status: "quarantine"
+    });
+  }
 });
 
 test("destroying a key ring zeroizes and disables its key material", async () => {

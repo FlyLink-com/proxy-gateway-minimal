@@ -33,12 +33,12 @@
 
 ## Still open — no owner decision inferred
 
-- Identity provider selection (Auth0 vs Keycloak), tenant/realm isolation and actual OIDC/JWKS signature verification.
+- Auth0 is owner-selected; non-production tenant allocation/proof and actual OIDC/JWKS signature verification remain open. No tenant is created in this branch.
 - Production provider adapter, gateway integration, session revocation and Admin directory path.
 - Historical revoked-subject rebind policy; no automatic rebind policy is invented here.
 - Actual HMAC/AES key custody provider, accountable custodians, independent escrow, recovery, incident revocation and production rotation.
 - Wallet-first `idempotency_key_hash` and `session_binding_hash` compatibility; existing unkeyed SHA-256 storage is unchanged pending caller/retention/schema inventory and owner decision.
-- Legacy v2 TOTP source-to-target credential ownership proof; this branch only validates the helper's input envelope and target AAD behavior.
+- T1 removes legacy v2 source-to-target transfer: legacy enc:, raw Base32 and v2: values are invalidated at cutover and require re-enrollment. This branch classifies valid legacy formats and quarantines malformed values; it does not decrypt or re-encrypt them. New Auth0 MFA lifecycle proof remains open.
 - Full C1/C2 provider integration and independent review.
 
 ## Validation and gate status

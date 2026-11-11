@@ -37,7 +37,7 @@ All work packages begin OPEN. Existing design documents are inputs, not completi
 2. Define stable opaque account, identity, password-credential, and TOTP-credential references. D1 may hold only approved opaque references and non-secret lifecycle facts.
 3. Move raw email, display name, password hashes, encrypted TOTP secrets, and any other direct identifier/authentication secret out of D1 rows, Worker request/response bodies, logs, traces, fixture snapshots, and evidence bundles.
 4. Reconcile the active password-login path with the field-map disposition: `platform_portal_password_credentials` is DEFER and must not be copied into D1, but the existing login capability must remain available through an approved external credential-verification authority or an explicitly approved replacement. Do not silently turn off password login.
-5. Reconcile TOTP custody: `platform_portal_totp_credentials.encrypted_totp_secret` remains EXTERNALIZE; define the external secret reference, encryption-key custody, verify path, enrollment, lockout, rotation, recovery, revocation, and outage behavior. D1 may hold only approved state and opaque refs.
+5. Apply owner-selected T1 for TOTP: Auth0-managed MFA owns target factors; Portal enrollment is optional and Admin enrollment mandatory. All legacy BWH enc: and v2: values are invalidated at cutover and are never imported, decrypted, transferred or re-encrypted. Prove new enrollment, verification, lockout, recovery, revocation and outage behavior. D1 holds only approved state and opaque refs.
 6. Preserve the existing product behavior for registration deduplication, password login, second-factor verification, user-portal identity display, administrator email search/display, and registration Coins canary through explicitly authorized identity/auth lookup paths.
 7. Decide which pseudonyms are necessary. If retained, use the separately specified domain-separated keyed digest; delete unnecessary low-entropy digests. Never describe an unkeyed SHA-256 of a low-entropy value as anonymous.
 
@@ -48,11 +48,11 @@ All work packages begin OPEN. Existing design documents are inputs, not completi
 - [ ] Contract tests prove raw identity values, password hashes, encrypted TOTP secrets, and credential capabilities cannot be persisted to D1 or emitted to Worker/log/evidence surfaces.
 - [ ] Synthetic compatibility tests preserve registration dedupe, password login, TOTP second-factor verification, portal display, administrator search/display, and Coins-canary behavior.
 - [ ] Password-login remains supported through an approved credential authority; DEFER is not treated as permission to disable the current feature.
-- [ ] TOTP external custody has an explicit credential-ref, encryption-key, enrollment, verify, rotation, recovery, revocation, and outage contract.
+- [ ] Auth0/T1 MFA ownership, opaque credential binding, new enrollment, verification, recovery, revocation and outage behavior are proven; no first-party target TOTP AES keys are provisioned.
 - [ ] Historical-value handling is explicit: deterministic conversion, quarantine, or rejection; no silent fallback.
 - [ ] Named Identity/Privacy and Security owner approvals are recorded.
 
-**Required artifact:** [C1 identity/authentication custody decision proposal](D1_T2_C1_IDENTITY_AUTH_CUSTODY_DECISION_V1.md) (DRAFT / not owner-approved), [source audit](D1_T2_IDENTITY_AUTH_CUSTODY_SOURCE_AUDIT_V1.md), and synthetic compatibility tests.
+**Required artifact:** [C1 identity/authentication custody decision proposal](D1_T2_C1_IDENTITY_AUTH_CUSTODY_DECISION_V1.md) (DRAFT / partially owner-approved; Auth0/T1 decisions recorded, proof and remaining decisions open), [source audit](D1_T2_IDENTITY_AUTH_CUSTODY_SOURCE_AUDIT_V1.md), and synthetic compatibility tests.
 
 ### T2-C2 — Cryptographic key custody, HMAC rotation, and legacy digest compatibility
 
@@ -62,10 +62,10 @@ All work packages begin OPEN. Existing design documents are inputs, not completi
 
 1. Name the accountable key-custodian roles and approved secret-management boundary for HMAC keys and AES-256-GCM credential-encryption keys. No key material may be committed, placed in D1, logged, or included in fixtures.
 2. For HMAC, define key IDs, algorithm/version envelope, domain separation, canonical input encoding, active-write key, candidate-read key set, rotation overlap, retirement condition, and emergency revocation.
-3. For TOTP encryption, define a versioned envelope carrying a key ID, key separation between User Portal and Admin authentication (or an explicit owner-approved shared-key exception), old-key decrypt/re-encrypt procedure, retirement condition, and emergency revocation. Do not assume the current keyless `v2:aes-256-gcm` envelope supports safe key rotation.
+3. For first-party TOTP encryption, define a versioned envelope and separate Portal/Admin keys only if that route is separately selected. Under current owner-selected T1, Auth0 owns target MFA; do not provision target first-party TOTP keys and do not decrypt/re-encrypt legacy v2 values.
 4. New HMAC writes use only the active key. Reads may consider only explicitly configured retained key IDs. Unknown key IDs, malformed envelopes, and legacy bare SHA-256 values fail closed unless a separately approved compatibility path exists.
 5. Preserve separate HMAC domains for the six raw idempotency values, provider-event dedupe, and PII pseudonyms. Never reuse one domain/key contract across semantically different identifiers.
-6. Treat legacy TOTP `enc:<base32>` or unprefixed Base32 values as raw secret material, not ciphertext. They must be re-encrypted under the approved key/version or quarantined/rejected before any target load.
+6. Under T1, treat legacy TOTP enc:/unprefixed Base32 and v2 envelope values as non-migrating credentials: invalidate at cutover and require re-enrollment. Never decrypt, transfer, import or re-encrypt them.
 7. Resolve `idempotency_key_hash` for wallet-first setup handoffs: identify callers and replay windows; choose explicit re-key, compatibility-read, or retirement behavior; prove duplicate prevention and recovery behavior.
 
 **Acceptance evidence**
@@ -74,7 +74,7 @@ All work packages begin OPEN. Existing design documents are inputs, not completi
 - [ ] HMAC envelope parser/writer tests cover active/retained/unknown key, malformed envelope, wrong domain/version, empty input, and rotation overlap.
 - [ ] Known-answer vectors independently verify canonical encoding and HMAC output for every domain.
 - [ ] Tests prove no fallback from unknown/new HMAC envelopes to legacy bare SHA-256.
-- [ ] TOTP envelope tests cover key ID, old-key decrypt/new-key encrypt, wrong key, modified tag/ciphertext, unknown key, malformed envelope, and legacy `enc:` rejection/quarantine.
+- [ ] T1 tests prove legacy v2, enc: and unprefixed Base32 values return re_enroll_required without decrypt/re-encrypt; new Auth0 MFA enrollment/verification/lifecycle proof is separate.
 - [ ] User Portal/Admin key sharing is either removed with separate key domains or explicitly accepted by both accountable owners.
 - [ ] Wallet-first handoff compatibility tests prove retry/replay does not create duplicate effects across the approved transition.
 - [ ] Payment/commerce, Identity and Security owners approve their respective domains and retention dependencies.
@@ -242,12 +242,12 @@ G6 PASS authorizes only consideration of the next separately gated step. It does
 
 | Package | Current evidence | Status |
 |---|---|---|
-| T2-C1 Identity custody | C1 custody proposal + provider evaluation + [owner decision sheet](D1_T2_C1_OWNER_DECISION_SHEET_V1.md); provider-neutral opaque actor-context and identity-binding helper/tests added; Auth0 Essentials remains preferred candidate, not selected; hosted provider proof and owner decisions remain outstanding | OPEN |
-| T2-C2 HMAC and legacy compatibility | [C2 key custody/rotation ADR](D1_T2_C2_KEY_CUSTODY_AND_ROTATION_ADR_V1.md) + executable Web Crypto primitives + source-importing synthetic tests added; key custody provider/escrow approval and wallet-first digest compatibility remain open | OPEN |
+| T2-C1 Identity custody | Auth0 Essentials + Bulk User Import, >72-byte targeted reset, Portal/Admin isolation and T1 re-enrollment policy are owner-approved. T1 follow-up PR #843 is OPEN / DRAFT; tested source HEAD `c6a70b3f` (the 62/62 evidence anchor; APPROVED review 5817942288 binds this head only); PR head before this head-label correction commit `4be249a3`, differing from `c6a70b3f` by 3 documentation-only commits / 6 files; five-file fixed Node v22.23.1 regression passed 62/62 twice at the tested source HEAD. Real Auth0 tenant/provider proof, OIDC/JWKS gateway, password normalization/first-login rehash, email verification, MFA lifecycle, account display and identity ownership remain open | OPEN |
+| T2-C2 HMAC and legacy compatibility | HMAC/PII primitives and strict T1 legacy TOTP classifier passed the same exact-head 62/62 two-run regression, including PII vectors 14/14. Actual key custody, named custodians, independent escrow/recovery, Wallet-first legacy digest compatibility, replay/retention/retirement and restore proof remain open | OPEN |
 | T2-C3 JSON/ref/generation | 26 fields reconciled: 7 writer families closed, 16 existing source contracts retained/mapped, 2 Passkey fields DEFER, account metadata BLOCKED pending C1 identity custody; independent review absent | OPEN |
 | T2-C4 Payment custody | DO SQLite proposal exists; owner, key, lifecycle, and outage decisions remain open | OPEN |
 | T2-C5 Retention/G2 residuals | Retention register exists; RET-02–RET-12 and G2 residual dispositions remain open | OPEN |
-| T2-C6 Independent review | Review packet exists; separate reviewer signature absent | OPEN |
+| T2-C6 Independent review | PR #842 approval remains bound to `bc3f8c9a`. PR #843 is the T1 follow-up review vehicle; tested source HEAD `c6a70b3f` (62/62 tests passing twice; APPROVED review 5817942288 binds this head only); PR head `4be249a3` received docs-only incremental review 5858428230 = CHANGES_REQUESTED (head-label corrections); no approval binds `4be249a3`. Full T2 review across C1–C6, 820-field disposition, 26 JSON writers, payment custody, retention and G2 residuals remains outstanding | OPEN |
 
 No task is marked complete by this matrix. The work is not authorized to cross the production boundary described above.
 
@@ -255,7 +255,56 @@ No task is marked complete by this matrix. The work is not authorized to cross t
 ### Draft progress — 2026-11-07: C1/C2 executable source contracts
 
 - C1: added `server/services/platform/d1-t2-identity-boundary.mjs` and `server/tests/d1-t2-identity-boundary.test.mjs`. The 9 focused tests cover strict opaque actor context, issuer/audience/expiry/factor checks, PII/credential-field rejection, exact account binding, duplicate/unknown/revoked fail-closed behavior and idempotent binding planning. This is a provider-neutral internal boundary contract; it does not verify OIDC/JWKS or implement a selected provider.
-- C1 decision sheet: `docs/D1_T2_C1_OWNER_DECISION_SHEET_V1.md`. Auth0 Essentials remains a recommended managed candidate, not selected. The >72 UTF-8-byte password reset decision is still required; Keycloak custom scrypt remains the no-reset alternative.
-- C2: added `server/services/platform/d1-t2-security-primitives.mjs`, which the new `server/tests/d1-t2-security-primitives.test.mjs` imports directly. The new source helper implements HMAC families/domains, strict key rings, active/retained rotation, PII lookup, lease digest grammar, Portal/Admin TOTP key separation, v3 AES-GCM AAD and synthetic v2 re-encryption.
-- Local mirror verification: Node v22.16.0, 23 C2 tests + 9 C1 tests = 32/32 PASS; syntax checks passed. The project-fixed Node v22.23.1 exact repository test run remains outstanding. No full repository suite or CI was triggered.
-- Both C1 and C2 remain OPEN pending owner decisions and hosted provider/key-custody proof. No real provider, secret store, key, BWH, D1, deployment or production data was accessed.
+- C1 decision sheet: `docs/D1_T2_C1_OWNER_DECISION_SHEET_V1.md`. Historical status before the 2026-11-08 owner decisions: Auth0 Essentials was only a candidate and the >72 UTF-8-byte reset policy was pending. Superseded by the approved Auth0/T1 direction recorded below.
+- C2: added `server/services/platform/d1-t2-security-primitives.mjs`, which the new `server/tests/d1-t2-security-primitives.test.mjs` imports directly. The source helper implements HMAC families/domains, strict key rings, active/retained rotation, PII lookup, lease digest grammar, Portal/Admin TOTP key separation, and a generic v3 AES-GCM primitive. T1 supersedes the historical synthetic v2 re-encryption proposal; legacy values now require re-enrollment or quarantine.
+- Local mirror verification: Node v22.16.0, 23 C2 tests + 9 C1 tests = 32/32 PASS; syntax checks passed. This 2026-11-07 mirror-only verification note is superseded by the exact-HEAD Node v22.23.1 source-slice and full-suite comparative evidence recorded in the 2026-11-08 update below. No CI was triggered.
+- Both C1 and C2 remain OPEN pending remaining owner decisions and hosted provider/key-custody proof. T1 resolves target TOTP ownership but not new-factor lifecycle proof or the other C2 custody gates. No real provider, secret store, key, BWH, D1, deployment or production data was accessed.
+
+
+### Evidence update — 2026-11-08: C1/C2 exact-head source review
+
+- Review vehicle: [PR #842](https://github.com/FlyLink-com/proxy-gateway-minimal/pull/842), OPEN / DRAFT, not merged and not Ready.
+- Review baseline: `bf200c474173d58d855fab66050a9c2b6b1ac4d4`.
+- Exact reviewed source HEAD: `bc3f8c9a713de05715f42f733b8fa72ba53d4477`.
+- Review ID: `5817529933`; reviewer account: `gccltdco-cmd`; result: `APPROVED`; submitted 2026-11-08T10:28:54Z.
+- GitHub REST review `commit_id` exactly matches PR head; no `review_dismissed` event was found at verification time.
+- Reviewed cumulative scope: 10 commits / 10 files / +1,836 −14, from the exact baseline to the exact source HEAD.
+- Review conclusion is limited to the C1/C2 source slice. It is not formal C1/C2 gate acceptance and not the full T2-C6 review.
+
+#### Fixed-environment tests and full-suite attribution
+
+- Reviewer reran the four related repository test files at exact HEAD in Node v22.23.1: `d1-t2-security-primitives.test.mjs`, `d1-t2-identity-boundary.test.mjs`, `platform-portal-identity-import-rehearsal.test.mjs`, and `platform-portal-totp-verifier.test.mjs`: **48/48 PASS**.
+- Full `npm test` comparative evidence at Node v22.23.1:
+  - Baseline `bf200c47`: 7,084 tests; 6,922 passed / 156 failed / 6 skipped.
+  - Candidate `bc3f8c9a`: 7,112 tests; first run 6,950 passed / 156 failed / 6 skipped; second run had 157 failures.
+  - Failure-name comparison: every baseline failure also occurred on candidate; new-failure difference = 0; all 28 added tests passed.
+  - The only candidate-only failure name was the usage-ledger kill-timer test; isolated runs were 5/5 PASS on each HEAD, consistent with a full-suite timing flake.
+- This is a comparative no-new-regression result, **not** an all-green full-suite result. The 156 baseline failures remain present and outside this C1/C2 source-slice remediation scope.
+- PR #842 has no hosted CI run. No CI PASS is claimed.
+- The separate 14-case PII security-vector test file noted in the review packet has not yet been run as one complete suite under Node v22.23.1; the 48/48 result above does not supersede that outstanding check.
+
+#### Remaining C1/C2 gate blockers
+
+- C1: final provider selection; >72 UTF-8-byte password policy; Portal/Admin identity isolation; real OIDC/JWKS gateway and provider adapter; hosted synthetic compatibility proof; TOTP re-enrollment and lifecycle acceptance; accountable Identity/Privacy/Security owners.
+- C2: actual Cloudflare key-custody boundary; named custodians; independent encrypted escrow/backup and restore; Wallet-first `idempotency_key_hash` and `session_binding_hash` compatibility; synthetic Auth0 MFA enrollment/lifecycle proof (T1 ownership choice is resolved); retention/replay windows and key-retirement proof.
+- C1 and C2 therefore remain OPEN.
+
+#### T2-C6 scope distinction
+
+The approval by `gccltdco-cmd` is recorded as a separate GitHub-account review of the exact C1/C2 source slice. It does not by itself establish that the reviewer is a different natural person from the author, and PR #842 did not review all six T2 packages, the complete 820-field disposition, all 26 JSON writer paths, payment custody, retention, or G2 residuals. T2-C6 therefore remains OPEN pending the full-scope review and required independence evidence.
+
+See [remaining owner decisions](D1_T2_C1_C2_REMAINING_OWNER_DECISIONS_2026-11-08.md) and [migration-readiness reassessment](D1_T2_MIGRATION_READINESS_REASSESSMENT_2026-11-08.md).
+
+
+## Owner decision update — T1 (2026-11-08)
+
+T1 supersedes earlier C1/C2 TOTP transfer, decryption and re-encryption proposals. Auth0-managed MFA is the target; Portal enrollment is optional and Admin enrollment mandatory. All existing BWH enc:, v2: and unprefixed legacy TOTP values are invalidated at cutover. No legacy secret is transferred or decrypted. The first-party v3 TOTP primitive is not provisioned for this migration. Required acceptance evidence is synthetic new-factor enrollment, verification, time-window, lockout, recovery, revocation and outage behavior.
+
+
+
+### T1 follow-up fixed-environment evidence — 2026-11-08
+
+- Exact source HEAD: `c6a70b3f216d68c6ee7014af268645e1f9df5925` (PR #843 head at test time; the PR head later advanced through documentation-only commits to `4be249a38c0347337cf51d92cf1fe81b60c2f659` before this head-label correction commit).
+- Node v22.23.1; `node --check` passed for four service modules and five test files.
+- Five test files: security primitives 18/18, identity boundary 10/10, Auth0 import rehearsal 16/16, Portal TOTP verifier 4/4, PII security vectors 14/14; total **62/62**, 0 failed, 0 skipped. Two combined runs both passed.
+- This is bounded source-slice evidence. Full `npm test` was not run at this HEAD; no hosted CI run is claimed. PR #843 remains Draft; C1/C2 and T2 remain OPEN/BLOCKED.

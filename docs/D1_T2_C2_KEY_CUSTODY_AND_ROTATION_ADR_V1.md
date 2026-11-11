@@ -43,7 +43,7 @@ The following key families are separate. Different key IDs do not make reuse of 
 
 Lease tokens use the separately specified domain-separated SHA-256 digest and do not require a secret key.
 
-Portal and Admin TOTP keys must be distinct. The helper includes a key-ring separation assertion. If C1 selects a managed identity provider that owns TOTP factors, the target may not need either first-party AES key family; the provider becomes the factor custody authority and the old BWH key is used only in an approved one-time transfer process.
+Portal and Admin TOTP keys must be distinct only if a first-party TOTP AES path is separately selected. Under owner-selected T1, Auth0 manages target factors and neither first-party AES key family is provisioned. Legacy BWH enc:, raw Base32 and v2: values are invalidated at cutover; no old key access, decryption, transfer or re-encryption is part of this migration.
 
 ## 3. HMAC envelope and canonical encoding
 
@@ -114,12 +114,12 @@ v3:aes-256-gcm:<key-id>:<iv-base64url>:<tag-base64url>:<ciphertext-base64url>
 - Key-ring material is hidden behind a WeakMap-backed object; callers receive only public family/key-ID metadata. Temporary key copies are best-effort zeroized after import/use. JavaScript runtime memory zeroization is not a hardware guarantee.
 
 Legacy behavior:
-- The existing v2 AES-GCM envelope has no key ID. A one-time isolated conversion therefore requires the exact legacy key supplied explicitly by the authorized migration process; the runtime must not guess which key applies.
-- A valid legacy v2 envelope can be decrypted in memory and re-encrypted directly to v3. The helper returns only the new envelope, never plaintext.
-- Legacy enc: values and unprefixed Base32 values are raw secret material, not ciphertext. The current C1 synthetic policy remains RE_ENROLL_REQUIRED; no automatic runtime fallback or silent import is introduced.
-- Malformed v2 values are quarantined. Unknown keys, modified tags, wrong credential refs, wrong scope and malformed envelopes fail closed.
+- Owner-selected T1 (2026-11-08) supersedes the earlier one-time conversion proposal: legacy v2: and enc: values are invalidated at cutover and require Auth0 MFA re-enrollment.
+- No legacy TOTP value is decrypted, transferred, imported or re-encrypted. The legacy key is not accessed for this migration.
+- The source enc: prefix is raw Base32, not ciphertext. The v2 envelope is legacy ciphertext without a key ID, but T1 does not authorize opening it.
+- Malformed or unrecognized legacy values remain quarantined. The compatibility classifier returns re_enroll_required for recognized legacy formats and never performs cryptographic conversion.
 
-If Auth0 or another managed identity provider is selected and owns TOTP factors, this first-party v3 envelope is a fallback/transition capability, not a reason to keep TOTP secrets in D1 or the business Worker.
+Under the selected Auth0/T1 path, first-party v3 TOTP encryption is not part of the target migration and no target Portal/Admin TOTP AES keys are provisioned. The generic v3 primitive remains unconfigured and is not a reason to retain legacy secrets in D1 or the business Worker.
 
 ## 5. Rotation, retirement and recovery
 
@@ -168,9 +168,9 @@ The helper now implements:
 - six allowlisted idempotency domains, separate provider-event domain and three PII pseudonym domains;
 - active-write / retained-read candidate generation and rotation verification;
 - domain-separated lease token SHA-256 and field-specific issuer grammar;
-- TOTP v3 AES-256-GCM with key ID, scope/credential AAD, active/retained rotation and controlled v2 re-encryption.
+- generic TOTP v3 AES-256-GCM with key ID, scope/credential AAD and active/retained rotation; this first-party primitive is not selected or provisioned for the Auth0/T1 migration, and no v2 decryption/re-encryption path is used.
 
-Local mirror verification on Node v22.16.0: 23/23 focused tests PASS; node --check passed for the primitive and local focused test files. The repository-focused test file has been added, but the project-fixed Node v22.23.1 environment has not yet rerun the exact repository test file. No full repository suite or CI was run. This is source/synthetic evidence only.
+Historical local mirror verification on Node v22.16.0: 23/23 focused tests PASS; `node --check` passed for the primitive and local focused test files. Superseding fixed-environment evidence: at exact HEAD `bc3f8c9a713de05715f42f733b8fa72ba53d4477`, the reviewer reran four related repository test files under Node v22.23.1 and recorded 48/48 PASS, including `d1-t2-security-primitives.test.mjs` and `platform-portal-totp-verifier.test.mjs`. The full repository `npm test` was also compared against baseline `bf200c47`: zero new failure names, all 28 added tests passed, and 156 baseline failures remained (a second candidate run had one additional timing-flake failure name, isolated 5/5 on both HEADs). This is comparative evidence, not an all-green suite. No hosted CI PASS is claimed. This is source/synthetic evidence only.
 
 ## 8. C2 acceptance status
 
@@ -179,16 +179,44 @@ Implemented in Draft:
 - active/retained key behavior and no legacy SHA-256 fallback;
 - strict key ID, family and domain validation;
 - Portal/Admin TOTP key separation, v3 AAD binding and rotation;
-- synthetic v2 re-encryption and legacy enc/raw Base32 re-enrollment disposition.
+- strict T1 disposition for valid legacy v2, enc: and raw Base32 values: re-enrollment required; malformed values quarantine; no legacy secret is decrypted or re-encrypted.
 
 Still OPEN:
 1. Approve the actual key custody provider and per-Worker secret binding versus account-level Secrets Store use.
 2. Name accountable key-custodian and Security owner roles.
 3. Approve independent encrypted key escrow, recovery and incident revocation procedures.
 4. Resolve wallet-first idempotency_key_hash and session_binding_hash compatibility.
-5. Confirm whether C1 uses managed-provider TOTP custody or first-party TOTP v3 custody.
+5. Resolved by T1: Auth0-managed MFA owns target factors; no first-party TOTP key provisioning or legacy secret transfer for this migration. Synthetic enrollment/lifecycle proof remains open.
 6. Define retention/replay windows needed before HMAC key retirement.
-7. Run the exact focused test file in Node v22.23.1; then run the broader approved local suite when budget permits.
-8. Obtain the applicable owner decisions and final source review.
+7. **Completed:** the separate 14-case PII security-vector file passed 14/14 under Node v22.23.1 as part of the exact T1 source-head five-file regression at `c6a70b3f`; this closes only the vector-test execution task, not key custody or C2 acceptance.
+8. Complete the remaining owner decisions and the full T2 review. The bounded C1/C2 source-slice review is APPROVED at exact HEAD `bc3f8c9a`; it does not constitute full T2-C6 approval.
 
 No production keys, Cloudflare Secrets Store, Worker bindings, D1 schema, customer rows, BWH host, deployment, dual-write, CI, PR Ready transition, merge or cutover were used or authorized by this ADR. BWH remains the only production writer.
+
+
+## 9. Evidence update — 2026-11-08
+
+PR #842 source-slice review is APPROVED by `gccltdco-cmd` (Review ID `5817529933`) and bound to exact HEAD `bc3f8c9a713de05715f42f733b8fa72ba53d4477`. Under Node v22.23.1, the reviewer reran four related repository test files and recorded 48/48 PASS, including this HMAC/TOTP primitive test file and the Portal TOTP verifier test file.
+
+The full repository suite was also executed on candidate and baseline: 7,112 versus 7,084 tests; the 156 baseline failures all remained, all 28 added tests passed, and the failure-name difference was zero. The second candidate run had one additional usage-ledger timing-flake name, which passed 5/5 isolated runs on each HEAD. This is not an all-green repository suite and no hosted CI PASS is claimed.
+
+Still outstanding: real key custody, named custodians, encrypted escrow and restore; Wallet-first legacy digest compatibility; synthetic Auth0 MFA enrollment/lifecycle proof (T1 target ownership is resolved); retention/replay windows; and the full T2 review. The separate 14-case PII vector test is now PASS at the T1 source head, but C2 remains OPEN.
+
+
+## Owner decision update — T1 (2026-11-08)
+
+The project owner selected Auth0-managed MFA as the target TOTP authority. Portal enrollment is optional; Admin enrollment is mandatory. All existing BWH enc: and v2: values are invalidated at cutover and require user re-enrollment. They must not be decrypted, imported, transferred or re-encrypted. C2-D05 is therefore resolved for this migration path; it does not close C2 overall. The first-party v3 TOTP primitive remains generic/unconfigured and must not be provisioned for the selected target path without a new owner decision.
+
+
+
+## 10. T1 follow-up regression evidence — 2026-11-08
+
+At exact source HEAD `c6a70b3f216d68c6ee7014af268645e1f9df5925`, Node v22.23.1, the following five source-importing test files passed **62/62 twice**, with zero failures and zero skips:
+
+- `d1-t2-security-primitives.test.mjs`: 18/18
+- `d1-t2-identity-boundary.test.mjs`: 10/10
+- `platform-portal-identity-import-rehearsal.test.mjs`: 16/16
+- `platform-portal-totp-verifier.test.mjs`: 4/4
+- `d1-t2-security-vectors.test.mjs`: 14/14
+
+`node --check` passed for all four service modules and five test files. Combined TAP log SHA-256 values: `8e467a8807cc3dd5c34b2ea7a02a1f99d6947101d326ea650dfa84aedc2b54be` and `43e852e42bb8bb5fa810e175ad6b0c1e804201f07913d385b4bf075fdd816811`. Full repository `npm test` and hosted CI were not run at this head. See `D1_T2_C1_C2_FIXED_NODE22_REGRESSION_2026-11-08.md` for source blob and file SHA-256 inventory. C2 remains OPEN.
