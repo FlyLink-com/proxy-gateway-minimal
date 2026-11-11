@@ -256,7 +256,7 @@ test("R6: record builder carries the fully merged app_metadata instead of delega
   assert.deepEqual(buildRecord().app_metadata, { legacy_account_ref: "synthetic-account-001" });
 });
 
-test("R6: import plan requires matching provider readback fingerprints and rejects conflicts", () => {
+test("R6: import plan separates identity readback from password credential proof", () => {
   const first = buildRecord();
   const second = buildSecondRecord();
   const reorderedFirst = {
@@ -285,7 +285,13 @@ test("R6: import plan requires matching provider readback fingerprints and rejec
   assert.deepEqual(planSyntheticAuth0BulkImport([first, second], {
     providerReadbackFingerprints: { [first.user_id]: firstFingerprint }
   }), [
-    { index: 0, user_id: "synthetic-portal-user-001", action: "skip_already_imported_verified" },
+    {
+      index: 0,
+      user_id: "synthetic-portal-user-001",
+      action: "verify_existing_password_credential",
+      identityReadback: "verified",
+      passwordCredential: "unverified"
+    },
     { index: 1, user_id: "synthetic-portal-user-002", action: "create" }
   ]);
   assert.deepEqual(planSyntheticAuth0BulkImport([first, first]), [
@@ -314,7 +320,7 @@ test("R6: import plan requires matching provider readback fingerprints and rejec
   assert.throws(() => planSyntheticAuth0BulkImport([{ email: "x@example.test" }]), { code: "import_plan_record_user_id_required" });
 });
 
-test("R6: resume uses verified readback fingerprints and converges to empty", () => {
+test("R6: resume returns remaining identity creates without implying credential verification", () => {
   const first = buildRecord();
   const second = buildSecondRecord();
   const batch = [first, second];
@@ -326,7 +332,19 @@ test("R6: resume uses verified readback fingerprints and converges to empty", ()
   assert.deepEqual(remaining, [second]);
   // Repeating the same full-batch reconciliation remains stable.
   assert.deepEqual(resumeSyntheticAuth0BulkImport(batch, firstReadback), [second]);
-  // Once provider readback matches both complete records, nothing remains.
+  // Once identity readback matches both records, no identity create remains,
+  // but each existing password credential still requires separate verification.
+  const reconciledPlan = planSyntheticAuth0BulkImport(batch, {
+    providerReadbackFingerprints: {
+      [first.user_id]: firstFingerprint,
+      [second.user_id]: secondFingerprint
+    }
+  });
+  assert.ok(reconciledPlan.every((entry) => (
+    entry.action === "verify_existing_password_credential"
+      && entry.identityReadback === "verified"
+      && entry.passwordCredential === "unverified"
+  )));
   assert.deepEqual(resumeSyntheticAuth0BulkImport(batch, {
     providerReadbackFingerprints: {
       [first.user_id]: firstFingerprint,
