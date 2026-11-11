@@ -12,6 +12,7 @@ import {
 import { UserRegistrationPage } from "../features/user-portal/user-registration-page";
 import { UserPortalPage } from "../features/user-portal/user-portal-page";
 import { createTotpCode } from "../features/user-portal/totp-preview";
+import { PASSWORD_NORMALIZATION_VECTORS } from "./password-normalization-vectors";
 const COOKIE_CONTEXT = `portalctx_${"a".repeat(64)}`;
 import {
   createHttpUserPortalClient,
@@ -1490,7 +1491,8 @@ describe("user portal product surface", () => {
     expect(fetchFn).toHaveBeenCalledTimes(2);
   });
 
-  test("http portal client retains the legacy trial registration fallback without echoing collected form fields", async () => {
+  test("http portal client applies the shared R1 vectors to registration without echoing collected form fields", async () => {
+    const registrationPassword = PASSWORD_NORMALIZATION_VECTORS[0];
     const fetchFn = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       if (String(input) === "/api/portal/registration/email-verification") {
         expect(JSON.parse(String(init?.body))).toEqual({
@@ -1511,7 +1513,7 @@ describe("user portal product surface", () => {
       expect(String(input)).toBe("/api/portal/registration");
       expect(JSON.parse(String(init?.body))).toEqual({
         email: "local-user@example.test",
-        password: "register-passphrase-1",
+        password: registrationPassword.expected,
         legalAgreement: {
           termsAccepted: true,
           privacyAccepted: true,
@@ -1559,7 +1561,7 @@ describe("user portal product surface", () => {
 
     const result = await client.registerTrialAccount({
       email: "local-user@example.test",
-      password: "register-passphrase-1",
+      password: registrationPassword.input,
       legalAgreement: {
         termsAccepted: true,
         privacyAccepted: true,
@@ -1584,7 +1586,7 @@ describe("user portal product surface", () => {
     expect(result.trial.durationDays).toBe(7);
     expect(JSON.stringify(result)).not.toContain("acct_registration_1");
     expect(JSON.stringify(result)).toContain("local-user@example.test");
-    expect(JSON.stringify(result)).not.toContain("register-passphrase-1");
+    expect(JSON.stringify(result)).not.toContain(registrationPassword.expected);
     expect(fetchFn).toHaveBeenCalledTimes(2);
   });
 
@@ -1904,7 +1906,8 @@ describe("user portal product surface", () => {
     expect("trial" in result).toBe(false);
   });
 
-  test("registration page keeps rendering a legacy trial result and stores the portal session", async () => {
+  test("registration page trims the shared R1 password vector before rules, confirmation, and submission", async () => {
+    const registrationPassword = PASSWORD_NORMALIZATION_VECTORS[0];
     const requestRegistrationEmailVerification = vi.fn(async (): Promise<PortalRegistrationEmailVerificationChallenge> => ({
       status: "requested",
       verificationRef: "reg_email_1",
@@ -1957,8 +1960,8 @@ describe("user portal product surface", () => {
     render(createElement(UserRegistrationPage, { portalClient: client }));
 
     fireEvent.change(screen.getByLabelText("电子邮箱"), { target: { value: "local-user@example.test" } });
-    fireEvent.change(screen.getByLabelText("密码"), { target: { value: "Register-passphrase-1!" } });
-    fireEvent.change(screen.getByLabelText("确认密码"), { target: { value: "Register-passphrase-1!" } });
+    fireEvent.change(screen.getByLabelText("密码"), { target: { value: registrationPassword.input } });
+    fireEvent.change(screen.getByLabelText("确认密码"), { target: { value: registrationPassword.expected } });
     expect(screen.queryByLabelText("邮箱验证码")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "创建账户" }));
 
@@ -1979,7 +1982,7 @@ describe("user portal product surface", () => {
     await waitFor(() => {
       expect(registerTrialAccount).toHaveBeenCalledWith({
         email: "local-user@example.test",
-        password: "Register-passphrase-1!",
+        password: registrationPassword.expected,
         legalAgreement: {
           termsAccepted: true,
           privacyAccepted: true,
@@ -1995,12 +1998,12 @@ describe("user portal product surface", () => {
     expect(screen.getByRole("heading", { name: "账户已准备好。" })).not.toBeNull();
     expect(screen.queryByLabelText("电子邮箱")).toBeNull();
     expect(screen.queryByLabelText("密码")).toBeNull();
-    expect(screen.queryByText("Register-passphrase-1!")).toBeNull();
+    expect(screen.queryByText(registrationPassword.expected)).toBeNull();
     const persisted = window.sessionStorage.getItem(PORTAL_REGISTRATION_SESSION_STORAGE_KEY);
     expect(persisted).not.toBeNull();
     expect(persisted ?? "").not.toContain("acct_registration_1");
     expect(persisted ?? "").toContain("local-user@example.test");
-    expect(persisted ?? "").not.toContain("Register-passphrase-1!");
+    expect(persisted ?? "").not.toContain(registrationPassword.expected);
     expect(screen.getByRole("link", { name: "打开用户面板" }).getAttribute("href")).toBe("/portal/");
   });
 
@@ -2063,18 +2066,11 @@ describe("user portal product surface", () => {
     expect(screen.queryByText("Starter Trial")).toBeNull();
   });
 
-  test("http portal client posts password login to backend and maps TOTP challenges", async () => {
+  test("http portal client applies the shared R1 vectors before password login and maps TOTP challenges", async () => {
+    const submittedBodies: Record<string, unknown>[] = [];
     const fetchFn = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       expect(String(input)).toBe("/api/portal/password/session");
-      expect(JSON.parse(String(init?.body))).toEqual({
-        accountId: "user@example.test",
-        password: "secret\uFEFF-passphrase",
-        rememberMe: false,
-        humanVerification: {
-          challengeRef: "phc_http_1",
-          answer: "13"
-        }
-      });
+      submittedBodies.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
       return new Response(JSON.stringify({
         challenge: {
           status: "second_factor_required",
@@ -2091,22 +2087,33 @@ describe("user portal product surface", () => {
     });
     const client = createHttpUserPortalClient({ fetchFn });
 
-    const result = await client.authenticate({
-      mode: "password",
-      accountId: "user@example.test",
-      password: "\uFEFF\u00A0\tsecret\uFEFF-passphrase \u00A0\u3000\u2029",
-      humanVerification: backendHumanVerification()
-    });
-
-    expect(result.status).toBe("second_factor_required");
-    if (result.status !== "second_factor_required") {
-      throw new Error("expected second-factor challenge");
+    for (const vector of PASSWORD_NORMALIZATION_VECTORS) {
+      const result = await client.authenticate({
+        mode: "password",
+        accountId: "user@example.test",
+        password: vector.input,
+        humanVerification: backendHumanVerification()
+      });
+      expect(result.status).toBe("second_factor_required");
+      if (result.status !== "second_factor_required") {
+        throw new Error("expected second-factor challenge");
+      }
+      expect(result.challengeRef).toBe("mfa_http_1");
+      expect(result.userRef).toBe("user@example.test");
+      expect(result.availableFactors).toEqual(["authenticator"]);
+      expect(result.safety.noSessionCreated).toBe(true);
     }
-    expect(result.challengeRef).toBe("mfa_http_1");
-    expect(result.userRef).toBe("user@example.test");
-    expect(result.availableFactors).toEqual(["authenticator"]);
-    expect(result.safety.noSessionCreated).toBe(true);
-    expect(fetchFn).toHaveBeenCalledTimes(1);
+
+    expect(submittedBodies).toEqual(PASSWORD_NORMALIZATION_VECTORS.map((vector) => ({
+      accountId: "user@example.test",
+      password: vector.expected,
+      rememberMe: false,
+      humanVerification: {
+        challengeRef: "phc_http_1",
+        answer: "13"
+      }
+    })));
+    expect(fetchFn).toHaveBeenCalledTimes(PASSWORD_NORMALIZATION_VECTORS.length);
   });
 
   test("http portal client completes backend TOTP second-factor challenges", async () => {
