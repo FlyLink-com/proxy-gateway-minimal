@@ -1,6 +1,6 @@
 /**
  * Shared synthetic vectors for the approved R1 String.trim() compatibility contract.
- * Keep the same input/expected pairs aligned with the Android parity tests.
+ * Mirror these inputs in Android parity tests when that repository is updated.
  */
 export const PASSWORD_NORMALIZATION_VECTORS = [
   {
