@@ -221,7 +221,9 @@ export function UserRegistrationPage({ portalClient }: UserRegistrationPageProps
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<PortalRegistrationResult | null>(null);
-  const rules = useMemo(() => passwordState(password), [password]);
+  const normalizedPassword = password.trim();
+  const normalizedConfirmPassword = confirmPassword.trim();
+  const rules = useMemo(() => passwordState(normalizedPassword), [normalizedPassword]);
   const passwordReady = isPasswordReady(rules);
   const activeStep = step === "account" ? 1 : step === "verify" ? 2 : 3;
   const otpDigits = useMemo(() => splitOtpDigits(emailVerificationCode), [emailVerificationCode]);
@@ -274,7 +276,7 @@ export function UserRegistrationPage({ portalClient }: UserRegistrationPageProps
       setError(copy.passwordRuleRequired);
       return;
     }
-    if (password !== confirmPassword) {
+    if (normalizedPassword !== normalizedConfirmPassword) {
       setError(copy.passwordMismatch);
       return;
     }
@@ -292,7 +294,7 @@ export function UserRegistrationPage({ portalClient }: UserRegistrationPageProps
     try {
       const nextResult = await portalClient.registerTrialAccount({
         email,
-        password,
+        password: normalizedPassword,
         legalAgreement: PORTAL_REGISTRATION_LEGAL_AGREEMENT,
         emailVerification: {
           verificationRef: emailVerification.verificationRef,
