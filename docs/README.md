@@ -1,6 +1,6 @@
 # Documentation Index
 
-Last updated: 2026-11-06 UTC.
+Last updated: 2026-11-10 UTC.
 
 ```yaml
 document_metadata:
@@ -8,7 +8,7 @@ document_metadata:
   lifecycle: active
   authority_scope: documentation_navigation
   superseded_by: null
-  last_verified_at: 2026-11-06
+  last_verified_at: 2026-11-10
   production_authority: false
 ```
 
@@ -214,6 +214,7 @@ security-alert counts and makes no current claim about them.
 | `docs/CI_MANUAL_VALIDATION.md` | Manual CI validation host workflow; target direction is local Linux manual CI, with historical Aliyun manual CI facts retained until the transition is validated. | Active runbook, not staging or deploy approval. | Read before using a manual validation host for repo-level CI evidence. |
 | `docs/CLOUDFLARE_PUBLIC_SITE_CI.md` | Repository-only CI contract for the `admin/dist-site` static lane, explicitly separated from the approved future control-plane Worker/D1 lane. | Active static-site CI boundary only; no Worker API, D1, DNS, secret, or production authority. | Read before changing public-site builds, the root `wrangler.jsonc`, or the separate Cloudflare delivery lanes. |
 | `docs/CLOUDFLARE_D1_DATABASE_EVALUATION.md` | Owner-approved Workers + D1 architecture and phased gates, including dated G2 acceptance, G3/G4 source merge, and G5 Staging/BWH Agent synthetic dry-run evidence. | G2 accepted with documented limitations; G5 Staging Worker/D1 and synthetic BWH Agent dry-run passed; production Node/Express + SQLite remains authoritative; G6–G8 and production cutover remain separately gated. | Read before Worker API, D1 schema/repository, BWH Agent, or control-plane migration work. |
+| `docs/D1_T2_C1_OWNER_DECISION_RECONCILIATION_20261110.md` | Owner-approved C1-D01/D02 decisions, Auth0 Essentials + Bulk User Import direction, Portal/Admin tenant separation, and the no-truncation reset policy for passwords above 72 UTF-8 bytes. | Active decision evidence; no production tenant, credential/user migration, deployment, BWH, or D1 authority. | Read before continuing C1 Auth0 integration, R1 normalization follow-up, or T2 closeout. |
 | `docs/D1_T2_C2_CRYPTO_WORKER_INTERFACE_CONTRACT_V1.md` | Versioned internal Crypto Worker API, per-caller authorization, key-family secret bindings, PII digest-only inputs, and failure behavior. | Source-only implementation; no Service Binding, real secret, public route, deployment, or production authority. | Read before wiring the control-plane Service Binding or adding a new crypto operation. |
 | `docs/D1_T2_C2_EXTERNAL_ESCROW_PROVIDER_EVALUATION_V1.md` | Compares external KMS candidates, non-exportable KEK, AAD binding, role separation, two-person recovery, audit, and restore requirements. | Source-only evaluation; no provider, account, KMS/HSM key, or escrow resource selected or created. | Read before selecting the concrete independent escrow provider. |
 | `docs/G2_D1_COMPATIBILITY_EVIDENCE_INDEX_2026-11-05.md` | Evidence index for the local SQLite ↔ Miniflare D1 compatibility work, including strict FK accounting, Scheme C, transaction counts, pagination, hashes, and remaining gaps. | G2 accepted with documented limitations on 2026-11-06; not full D1 equivalence or production migration approval. | Read when reviewing the G2 local compatibility result or its remaining evidence gaps. |

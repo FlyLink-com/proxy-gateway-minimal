@@ -11,7 +11,8 @@ document_metadata:
 ```
 
 
-> **Status:** DRAFT PROPOSAL — owner decision required; not approved and not an implementation authorization.
+> **Historical proposal status at original drafting:** DRAFT PROPOSAL — owner decision required; not approved and not an implementation authorization.
+> **Reconciliation (2026-11-10):** C1-D01 and C1-D02 were subsequently approved on 2026-11-08. Auth0 Essentials + Bulk User Import is selected, Portal/Admin tenant separation is approved as the architecture direction, and passwords above 72 UTF-8 bytes require targeted user-notified reset without truncation. See `docs/D1_T2_C1_OWNER_DECISION_RECONCILIATION_20261110.md`. This does not authorize production resources or credential migration.
 > **Repository:** `FlyLink-com/proxy-gateway-minimal`
 > **Draft branch:** `docs/d1-target-schema-g6-rehearsal-plan-20261107`
 > **Source anchor:** `master@be261abc60f28bb2733764fa5364ab44b3e76844`
