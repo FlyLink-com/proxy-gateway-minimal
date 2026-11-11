@@ -1,54 +1,81 @@
 # C1 R1 Password Normalization Source Proof
 
-Date: 2026-11-09
-Scope: source-level compatibility evidence for the already-approved R1 trim-only password contract. All password examples in tests are synthetic.
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: active
+  authority_scope: c1_r1_password_normalization_source_proof
+  superseded_by: null
+  last_verified_at: 2026-11-10
+  production_authority: false
+```
+
+Date: 2026-11-10.
+Scope: source-level compatibility evidence for the owner-approved R1 trim-only contract. All password values in tests are synthetic.
 
 ## Approved contract
 
-R1 is already approved: registration and login remove leading and trailing ECMAScript whitespace only; password interior bytes/characters remain unchanged. Auth0 does not perform this legacy trim itself, so every client must normalize before sending a password to the hosted identity provider.
+The owner-approved rule is exactly:
 
-This record is a source/test audit, not proof of a live Auth0 tenant or production login path.
+`String(value ?? "").trim()`
+
+Remove leading and trailing ECMAScript whitespace only. Preserve internal whitespace, case, and Unicode code-point sequences. Do not lowercase, normalize NFC/NFD/NFKC, collapse internal whitespace, truncate, or silently rewrite a password.
+
+Registration and login use the same effective value before hashing or verification. Any future password-reset entrypoint must use the same rule before hashing or handing off to Auth0. The separate C1-D02 rule for passwords above 72 UTF-8 bytes remains targeted user-notified reset with no truncation; R1 does not alter it.
 
 ## Browser Portal
 
-- `admin/src/features/user-portal/user-portal-parsers.ts` defines `requiredText()` as `String(value ?? "").trim()` and rejects empty-after-trim input.
-- `admin/src/features/user-portal/user-portal-http.ts` calls that helper for both `registerTrialAccount()` and password-mode `authenticate()` before constructing the HTTP request body.
-- Regression: `admin/src/test/user-portal.test.tsx`, test `http portal client posts password login to backend and maps TOTP challenges`, now submits synthetic leading/trailing ECMAScript whitespace and asserts the outgoing password is trimmed while an interior U+FEFF is retained.
-- Source baseline: proxy-gateway branch commit `8c0afddc18d5255dad4c980fd945dcb3b118d008`.
-- Blob references:
+- `admin/src/features/user-portal/user-portal-parsers.ts` defines `requiredText()` as `String(value ?? "").trim()` and rejects empty-after-trim values.
+- `admin/src/features/user-portal/user-portal-http.ts` uses that helper for both `registerTrialAccount()` and password-mode `authenticate()` before constructing request bodies.
+- **Registration UI correction in this PR:** `user-registration-page.tsx` now computes password rules from the trimmed effective value, compares the trimmed password and confirmation, and submits the trimmed value. Previously, UI validation and confirmation used raw input even though the HTTP adapter trimmed later; that could let edge whitespace affect the minimum-length rule or make the UI and request use different effective values.
+- Regression coverage in `admin/src/test/user-portal.test.tsx`:
+  - registration UI submits the trimmed effective password and accepts a confirmation containing that same effective value;
+  - HTTP registration trims before dispatch;
+  - HTTP login exercises the shared R1 vector set.
+- Source blobs:
   - parser: `fe9de716ba7981896e93f8569b2b2f01b445ec49`
   - HTTP adapter: `385bb695acbf07da6e7479762800ca73e9795e13`
-  - updated regression test: `ce21e12016d24522e61385f4ff28a9adb4177661`
+  - registration UI after correction: `8de57fbfbe8ea8df71a6261623eaa488d99c003f`
+  - Browser tests after correction: `dae6785b9c4fa253173916f4178ff89c2a910cb8`
+
+## Admin
+
+- `admin/src/app/admin-auth-client.ts` now applies JavaScript `String.trim()` to the password before constructing the same-origin `/api/admin-auth/login` request's `bootstrapToken` field and rejects empty-after-trim before network dispatch.
+- The current Admin client exposes session, login, TOTP verification, and logout; it does not expose self-service registration or password reset. No such absent route is claimed as implemented by this PR.
+- `admin/src/test/admin-auth-client.test.ts` runs the same shared synthetic vector set and asserts the exact value sent in the request.
+- Source blobs:
+  - Admin client: `f633ec713cb9927c219063f50276840607cdf7e8`
+  - Admin tests after vector expansion: `3c23b32d88f7105789ca538ad0d23f3d23155f6e`
+
+## Shared synthetic compatibility vectors
+
+The Browser login/registration and Admin login tests import the same fixture:
+
+`admin/src/test/password-normalization-vectors.ts`, blob `571b782174d8a591bb56b39275a6a1f11e4a66ef`.
+
+It covers:
+1. Leading/trailing ECMAScript whitespace (including FEFF, NBSP, TAB, ideographic space and paragraph separator) removed.
+2. Interior FEFF, tabs, repeated spaces and other interior characters preserved.
+3. Case preserved.
+4. Composed NFC and decomposed NFD sequences remain distinct; no Unicode normalization.
+5. Non-ECMAScript control characters U+001C/U+001F are not accidentally trimmed.
 
 ## Android Portal
 
-- `app/src/main/java/com/gccwebos/android/portal/PortalRepository.kt` defines `normalizedLoginPassword()` with the ECMAScript String.trim whitespace set and calls it before constructing the `/api/portal/password/session` request.
-- `RegistrationModels.kt` uses the same helper for registration password validation and confirmation, preserving registration/login normalization parity.
-- Regression: `app/src/test/java/com/gccwebos/android/portal/AccountLoginAttemptTest.kt` covers blank-after-trim values, edge whitespace parity, and preservation of internal characters.
-- Verified Android main commit: `c19d5bf57388b427a5e8248d838cbf3e87b39d47`.
-- Blob references:
-  - PortalRepository: `e5f61cbf15385606448074fcce59a6a137c965da`
-  - login regression test: `c8aded8b6dc735cd55cd1fc348fd44e5dbe835f7`
+- Verified main commit: `c19d5bf57388b427a5e8248d838cbf3e87b39d47`.
+- `PortalRepository.kt` defines `normalizedLoginPassword()` using the ECMAScript String.trim whitespace set and applies it before the password-session request.
+- `RegistrationModels.kt` reuses the same helper for registration password validation and request construction.
+- `AccountLoginAttemptTest.edgeWhitespaceMatchesServerWithoutChangingPasswordInterior` covers leading/trailing whitespace, interior FEFF preservation and non-ECMAScript controls; the long-password test also checks internal Unicode and whitespace preservation.
+- Android source is unchanged in this PR. The shared Browser/Admin fixture has not yet been ported verbatim to Android, so the policy's full cross-client identical-vector evidence remains an open acceptance item rather than being overstated as complete.
 
-## Admin Portal
+## Password-reset scope
 
-- Before this change, `admin/src/app/admin-auth-client.ts` forwarded the raw password to `/api/admin-auth/login`; the backend's legacy trim therefore did not prove normalization before a future Auth0 handoff.
-- This branch now applies JavaScript `String.trim()` before constructing `bootstrapToken`, rejects empty-after-trim input before network dispatch, and preserves the existing raw-input 4096-character upper bound.
-- Regression: `admin/src/test/admin-auth-client.test.ts` verifies leading/trailing ECMAScript whitespace removal, interior U+FEFF preservation, and whitespace-only fail-closed behavior.
-- Branch: `fix/c1-admin-preauth-trim-20261109`.
-- Relevant commits:
-  - implementation: `4d5e20de24b9132aa79e340c3fc95c4bb6e5a0f1`
-  - Admin test: `20f34e00d56d8f9ae3b3206488854c90bfbe65c4`
-  - Browser regression: `da19f96283ccd115b4938126e802795806b61178`
-- Current blobs:
-  - Admin client: `f633ec713cb9927c219063f50276840607cdf7e8`
-  - Admin test: `237aee167db1bed04a6b93b4e280bee1b53cc869`
-  - Browser regression test: `ce21e12016d24522e61385f4ff28a9adb4177661`
+The reviewed Browser/Admin client surfaces do not currently expose a password-reset endpoint. If one is introduced, it must apply the same trim-only rule before the password reaches hashing or the hosted provider. The notified user-initiated reset fallback for a path that cannot prove pre-Auth0 normalization remains a separate gated operation; this PR does not send notifications or reset accounts.
 
 ## Validation and remaining gate
 
-- Focused Node v22.16.0 execution against the updated Admin client passed: trim-only normalization, preservation of interior characters, blank-after-trim rejection before fetch, and normal request dispatch.
-- The full repository Vitest suite and Android Gradle suite have not been rerun in this work item.
-- The Admin source change is on a Draft child PR and is not merged. Do not mark the cross-client R1 source gate complete yet.
-- Keep the `edgeWhitespace=true` cohort fail-closed in the Auth0 import validator until the Admin change receives exact-head review and is integrated into the intended hosted-auth path.
-- This does not authorize creating Auth0 tenants, importing real accounts, collecting real passwords, deploying, or changing production authentication.
+- Source files and updated tests were read back from the exact Draft branch.
+- No Admin Vitest suite, Admin TypeScript/build, full repository `npm test`, or Android Gradle suite has been run in this work item. Draft CI was intentionally not triggered; no Hosted CI PASS is claimed.
+- The shared vector fixture is synthetic and contains no customer credentials.
+- Keep the Auth0 `edgeWhitespace=true` cohort fail-closed until the exact current PR head receives independent review, required source tests/build validation pass, and the normalized first-party path is integrated into the intended hosted-auth flow.
+- This record does not authorize creating Auth0 tenants, importing real accounts, reading/exporting production credentials, sending notifications, resetting production passwords/TOTP, deploying, changing production authentication, connecting to BWH, or writing remote D1.
