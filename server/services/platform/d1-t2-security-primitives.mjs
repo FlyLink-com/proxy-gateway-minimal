@@ -35,6 +35,10 @@ const LEASE_HEX_FIELDS = new Set([
   "platform_portal_registration_welcome_coin_grants.lease_token"
 ]);
 
+const MAX_TOTP_SECRET_INPUT_CHARS = 4096;
+const MAX_TOTP_ENVELOPE_CHARS = 8192;
+const BASE32_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+
 const keyRingSecrets = new WeakMap();
 
 function fail(code) {
@@ -258,6 +262,28 @@ export function assertDistinctKeyRings(left, right) {
       }
     } finally {
       leftKey?.fill(0);
+    }
+  }
+  return true;
+}
+
+export function assertDistinctD1KeyRingSet(keyRings) {
+  if (!Array.isArray(keyRings) || keyRings.length === 0) {
+    throw fail("key_ring_set_invalid");
+  }
+  const families = [];
+  for (let index = 0; index < keyRings.length; index += 1) {
+    if (!Object.hasOwn(keyRings, index)) throw fail("key_ring_set_invalid");
+    const ring = keyRings[index];
+    if (!ring || !keyRingSecrets.has(ring)) throw fail("key_ring_set_invalid");
+    families.push(ring.family);
+  }
+  if (new Set(families).size !== families.length) {
+    throw fail("key_ring_set_family_duplicate");
+  }
+  for (let left = 0; left < keyRings.length; left += 1) {
+    for (let right = left + 1; right < keyRings.length; right += 1) {
+      assertDistinctKeyRings(keyRings[left], keyRings[right]);
     }
   }
   return true;
@@ -576,7 +602,7 @@ function totpAad({ keyId, scope, credentialRef }) {
 }
 
 function parseTotpEnvelope(value) {
-  if (typeof value !== "string") return null;
+  if (typeof value !== "string" || value.length > MAX_TOTP_ENVELOPE_CHARS) return null;
   const parts = value.split(":");
   if (parts.length !== 6 || parts[0] !== "v3" || parts[1] !== "aes-256-gcm"
     || !KEY_ID_PATTERN.test(parts[2])) return null;
@@ -598,10 +624,24 @@ async function importAesKey(rawKey, usages) {
 }
 
 function normalizeLegacyBase32(value) {
-  if (typeof value !== "string") return null;
-  const normalized = value.trim().replace(/^enc:/u, "").replace(/[\s-]/gu, "")
-    .replace(/=+$/gu, "").toUpperCase();
-  return /^[A-Z2-7]+$/u.test(normalized) ? normalized : null;
+  if (typeof value !== "string" || value.length > MAX_TOTP_SECRET_INPUT_CHARS) return null;
+  const compact = value.trim().replace(/^enc:/u, "").replace(/[\s-]/gu, "").toUpperCase();
+  const match = /^([A-Z2-7]+)(=*)$/u.exec(compact);
+  if (!match) return null;
+  const normalized = match[1];
+  const suppliedPadding = match[2].length;
+  const remainder = normalized.length % 8;
+  const expectedPaddingByRemainder = { 0: 0, 2: 6, 4: 4, 5: 3, 7: 1 };
+  const padBitsByRemainder = { 0: 0, 2: 2, 4: 4, 5: 1, 7: 3 };
+  const expectedPadding = expectedPaddingByRemainder[remainder];
+  const padBits = padBitsByRemainder[remainder];
+  if (expectedPadding === undefined || padBits === undefined
+    || (suppliedPadding !== 0 && suppliedPadding !== expectedPadding)) return null;
+  if (padBits > 0) {
+    const lastValue = BASE32_ALPHABET.indexOf(normalized.at(-1));
+    if (lastValue < 0 || (lastValue & ((1 << padBits) - 1)) !== 0) return null;
+  }
+  return normalized;
 }
 
 export function createD1TotpSecretProtector({ keyRing, scope, ivFactory } = {}) {
@@ -670,7 +710,7 @@ export function createD1TotpSecretProtector({ keyRing, scope, ivFactory } = {}) 
 }
 
 async function decryptLegacyV2Totp(value, legacyKey) {
-  if (typeof value !== "string") return null;
+  if (typeof value !== "string" || value.length > MAX_TOTP_ENVELOPE_CHARS) return null;
   const parts = value.split(":");
   if (parts.length !== 5 || parts[0] !== "v2" || parts[1] !== "aes-256-gcm") return null;
   const iv = base64UrlToBytes(parts[2]);

@@ -39,11 +39,14 @@ function requireTimestamp(value, code) {
   return value;
 }
 
+// This validates an already trusted gateway projection; it does not verify OIDC/JWT signatures.
+// Callers must pass requiredFactors for context-specific policy (for example, ["totp"] for Admin).
 export function parseTrustedIdentityActorContext(input, {
   allowedIssuers,
   nowMs = Date.now(),
   maxLifetimeMs = 300_000,
-  clockSkewMs = 30_000
+  clockSkewMs = 30_000,
+  requiredFactors = []
 } = {}) {
   if (!hasExactKeys(input, ACTOR_CONTEXT_KEYS)) throw fail("identity_actor_context_schema_invalid");
   if (!(Array.isArray(allowedIssuers) || allowedIssuers instanceof Set)
@@ -69,11 +72,34 @@ export function parseTrustedIdentityActorContext(input, {
     || authTimeMs > nowMs + clockSkewMs || authTimeMs > expiresAtMs) {
     throw fail("identity_actor_context_time_invalid");
   }
-  if (!Array.isArray(input.factors) || input.factors.length === 0
-    || new Set(input.factors).size !== input.factors.length
-    || input.factors.some((factor) => typeof factor !== "string" || !ALLOWED_FACTORS.has(factor))
-    || !input.factors.some((factor) => factor === "password" || factor === "passkey")) {
+  if (!Array.isArray(input.factors) || input.factors.length === 0) {
     throw fail("identity_actor_factors_invalid");
+  }
+  const actorFactors = new Set();
+  for (let index = 0; index < input.factors.length; index += 1) {
+    if (!Object.hasOwn(input.factors, index)) throw fail("identity_actor_factors_invalid");
+    const factor = input.factors[index];
+    if (typeof factor !== "string" || !ALLOWED_FACTORS.has(factor) || actorFactors.has(factor)) {
+      throw fail("identity_actor_factors_invalid");
+    }
+    actorFactors.add(factor);
+  }
+  if (!actorFactors.has("password") && !actorFactors.has("passkey")) {
+    throw fail("identity_actor_factors_invalid");
+  }
+
+  if (!Array.isArray(requiredFactors)) throw fail("identity_required_factors_invalid");
+  const requiredFactorSet = new Set();
+  for (let index = 0; index < requiredFactors.length; index += 1) {
+    if (!Object.hasOwn(requiredFactors, index)) throw fail("identity_required_factors_invalid");
+    const factor = requiredFactors[index];
+    if (typeof factor !== "string" || !ALLOWED_FACTORS.has(factor) || requiredFactorSet.has(factor)) {
+      throw fail("identity_required_factors_invalid");
+    }
+    requiredFactorSet.add(factor);
+  }
+  for (const factor of requiredFactorSet) {
+    if (!actorFactors.has(factor)) throw fail("identity_actor_required_factor_missing");
   }
 
   return Object.freeze({
