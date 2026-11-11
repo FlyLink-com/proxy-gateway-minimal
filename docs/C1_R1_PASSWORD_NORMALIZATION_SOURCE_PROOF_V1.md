@@ -6,11 +6,11 @@ document_metadata:
   lifecycle: active
   authority_scope: c1_r1_password_normalization_source_proof
   superseded_by: null
-  last_verified_at: 2026-11-10
+  last_verified_at: 2026-11-11
   production_authority: false
 ```
 
-Date: 2026-11-10.
+Date: 2026-11-11.
 Scope: source-level compatibility evidence for the owner-approved R1 trim-only contract in Browser Portal and Android, plus Admin local Portal-account password trim parity through the legacy-named `bootstrapToken` request field. All credential values in tests are synthetic.
 
 ## Approved contract
