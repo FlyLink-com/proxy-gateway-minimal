@@ -188,7 +188,7 @@ export function createAdminAuthClient(options?: {
     async login(input, signal) {
       if (input.operatorRef !== undefined && !isSafeRef(input.operatorRef)) fail("invalid");
       if (typeof input.password !== "string" || input.password.length > 4096) fail("invalid");
-      // The legacy wire field is named bootstrapToken, but the active runtime
+      // The legacy wire field is named bootstrapToken, but default runtime wiring
       // binds Admin auth to ADMIN_AUTH_PORTAL_ACCOUNT_ID and verifies this as
       // that Portal account's local password credential (scrypt), not a static
       // token or an Auth0-hosted login. Match the server's requiredText() trim-only contract.
