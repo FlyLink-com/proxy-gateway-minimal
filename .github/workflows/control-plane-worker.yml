@@ -8,6 +8,7 @@ on:
     paths:
       - "workers/control-plane/**"
       - ".github/workflows/control-plane-worker.yml"
+      - "tools/c2-worker-config-policy/**"
   workflow_dispatch:
 
 permissions:
@@ -38,3 +39,8 @@ jobs:
         run: npm ci
       - name: Run tests
         run: npm test
+      - name: Run C2 Worker configuration policy tests
+        working-directory: .
+        run: |
+          node --test tools/c2-worker-config-policy/check.test.mjs
+          node tools/c2-worker-config-policy/check.mjs
