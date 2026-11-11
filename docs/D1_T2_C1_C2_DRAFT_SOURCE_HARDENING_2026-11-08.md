@@ -62,7 +62,7 @@ source review anchor at #842 HEAD
   digest-only PII path is retained; this integration does not restore
   raw PII or ordinary SHA-256 persistence.
 - The TOTP Base32 normalizer uses the intended whitespace/hyphen class
-  \`/[\\s-]/gu\`. The source-head escaped character class was corrected
+  \`/[\s-]/gu\`. The source-head escaped character class was corrected
   because it matched a literal backslash or \`s\`, not whitespace.
 - The padded positive test vector was corrected to canonical
   \`MY======\`; explicit whitespace, hyphen and non-zero pad-bit cases
