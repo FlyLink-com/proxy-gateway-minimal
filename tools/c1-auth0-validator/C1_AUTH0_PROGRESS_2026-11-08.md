@@ -133,6 +133,6 @@ PR #842 状态：已获 gccltdco-cmd **APPROVED**（review `5817529933`，
 - **密码重置边界：** 本轮审查的 Browser/Admin 客户端没有活动的密码重置入口。若未来增加，必须复用同一 trim-only 合同；通知式重置仍是 Auth0 不可证明路径的受控回退，不在本 PR 执行。
 - **Admin R1 口径纠正：** 当前 Admin 登录是本地 bootstrap token + TOTP，不是已接入 Auth0 的用户密码登录。此前将该客户端修复概括为 Admin 的 pre-Auth0 密码证明过宽；本节明确纠正，不改写 2026-11-09 历史快照。真正的 Admin hosted-auth 密码入口尚未出现在当前源码中，待其接入后再按共享向量验证。故 `edgeWhitespace=true` 的 Admin hosted-auth 证明门仍开放。
 - **共享测试向量 fixture：** `admin/src/test/password-normalization-vectors.ts`；Admin 登录测试与 Browser 注册 UI、注册 HTTP、登录 HTTP 测试使用相同合成输入/预期值。相关实现提交：fixture 初建 `87bb150c3ac3a5536274619483cabe88fd9219e0`、Android parity 注释澄清 `9d9b1c1b3edf02cb36301a4674012ef6623a696c`，Browser 注册页 `75fb0b5635f939a4362889193f463e27b3615707`，Admin 测试 `426204517ecab9cf4b4bec3796bad5883d19ec76`，Browser 测试 `87b5a5cc11d4da536c3382e1ce18c41a7aeb2613`。
-- **验证状态：** 源码与测试文件已读回；本轮没有运行 Admin Vitest、Admin build、全仓 `npm test` 或 Android Gradle。Draft 阶段不触发 Hosted CI；当前环境无法解析 GitHub 主机，不能声称完成本地全套验证。必须在可用 checkout 中按 B 档基线执行后，才可评估 Source Gate。
+- **验证状态：** 源码与测试文件已读回；本轮没有运行 Admin Vitest、Admin build/verify、Portal build/verify、全仓 `npm test` 或 Android Gradle。Draft 阶段不触发 Hosted CI；当前环境无法解析 GitHub 主机，不能声称完成本地全套验证。必须在可用 checkout 中按 B 档基线执行后，才可评估 Source Gate。
 - **Gate 仍保持开放：** PR #848 仍为 Draft；未请求合并、未转 Ready。Auth0 validator 的 `edgeWhitespace=true` cohort 继续 fail-closed，直到精确 HEAD 获得独立审查、必需验证通过并进入目标 hosted-auth 路径。
 - **生产边界：** 未创建/修改 Auth0 tenant，未导入或读取真实用户/密码/TOTP，未发送通知/重置，未连接 BWH、未写入远程 D1，未创建/修改 Cloudflare Worker/Secret/Binding，未部署、未切换生产认证。BWH 仍是唯一生产控制数据写入权威。
