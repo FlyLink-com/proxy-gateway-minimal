@@ -268,11 +268,16 @@ export function assertDistinctKeyRings(left, right) {
 }
 
 export function assertDistinctD1KeyRingSet(keyRings) {
-  if (!Array.isArray(keyRings) || keyRings.length === 0
-    || keyRings.some((ring) => !ring || !keyRingSecrets.has(ring))) {
+  if (!Array.isArray(keyRings) || keyRings.length === 0) {
     throw fail("key_ring_set_invalid");
   }
-  const families = keyRings.map((ring) => ring.family);
+  const families = [];
+  for (let index = 0; index < keyRings.length; index += 1) {
+    if (!Object.hasOwn(keyRings, index)) throw fail("key_ring_set_invalid");
+    const ring = keyRings[index];
+    if (!ring || !keyRingSecrets.has(ring)) throw fail("key_ring_set_invalid");
+    families.push(ring.family);
+  }
   if (new Set(families).size !== families.length) {
     throw fail("key_ring_set_family_duplicate");
   }

@@ -105,6 +105,20 @@ test("trusted actor context enforces caller-required factors such as Admin TOTP"
   }), { code: "identity_required_factors_invalid" });
 });
 
+test("trusted actor context rejects sparse actor and required factor arrays", () => {
+  const sparseActorFactors = new Array(1);
+  assert.throws(() => parseTrustedIdentityActorContext({
+    ...actor, factors: sparseActorFactors
+  }, {
+    allowedIssuers: [issuerRef], nowMs: NOW
+  }), { code: "identity_actor_factors_invalid" });
+
+  const sparseRequiredFactors = new Array(1);
+  assert.throws(() => parseTrustedIdentityActorContext(actor, {
+    allowedIssuers: [issuerRef], nowMs: NOW, requiredFactors: sparseRequiredFactors
+  }), { code: "identity_required_factors_invalid" });
+});
+
 test("D1 identity binding stores only opaque subject/account references", () => {
   const record = binding();
   assert.deepEqual(Object.keys(record).sort(), [

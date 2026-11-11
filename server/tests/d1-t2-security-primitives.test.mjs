@@ -291,6 +291,13 @@ test("configured D1 key-ring sets reject duplicate families and pairwise key reu
   });
 });
 
+test("configured D1 key-ring sets reject sparse arrays", () => {
+  const sparseKeyRingSet = new Array(1);
+  assert.throws(() => assertDistinctD1KeyRingSet(sparseKeyRingSet), {
+    code: "key_ring_set_invalid"
+  });
+});
+
 test("Portal and Admin TOTP key families reject identical key bytes", () => {
   const shared = Buffer.from("77".repeat(32), "hex");
   const portal = totpRing("portal-totp-aes", "portal-v1", ["portal-v1"], { "portal-v1": shared });
