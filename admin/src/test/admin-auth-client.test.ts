@@ -99,7 +99,7 @@ describe("createAdminAuthClient", () => {
     expect(setItem).not.toHaveBeenCalled();
   });
 
-  it("applies the shared R1 trim-only vectors before the Admin authentication request", async () => {
+  it("applies shared trim-only vectors before the legacy Admin bootstrap-token request", async () => {
     const fetcher = vi.fn<typeof fetch>().mockImplementation(async () =>
       jsonResponse(202, {
         challenge: {
