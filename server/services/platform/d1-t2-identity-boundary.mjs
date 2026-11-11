@@ -39,11 +39,14 @@ function requireTimestamp(value, code) {
   return value;
 }
 
+// This validates an already trusted gateway projection; it does not verify OIDC/JWT signatures.
+// Callers must pass requiredFactors for context-specific policy (for example, ["totp"] for Admin).
 export function parseTrustedIdentityActorContext(input, {
   allowedIssuers,
   nowMs = Date.now(),
   maxLifetimeMs = 300_000,
-  clockSkewMs = 30_000
+  clockSkewMs = 30_000,
+  requiredFactors = []
 } = {}) {
   if (!hasExactKeys(input, ACTOR_CONTEXT_KEYS)) throw fail("identity_actor_context_schema_invalid");
   if (!(Array.isArray(allowedIssuers) || allowedIssuers instanceof Set)
@@ -74,6 +77,14 @@ export function parseTrustedIdentityActorContext(input, {
     || input.factors.some((factor) => typeof factor !== "string" || !ALLOWED_FACTORS.has(factor))
     || !input.factors.some((factor) => factor === "password" || factor === "passkey")) {
     throw fail("identity_actor_factors_invalid");
+  }
+  if (!Array.isArray(requiredFactors)
+    || new Set(requiredFactors).size !== requiredFactors.length
+    || requiredFactors.some((factor) => typeof factor !== "string" || !ALLOWED_FACTORS.has(factor))) {
+    throw fail("identity_required_factors_invalid");
+  }
+  if (requiredFactors.some((factor) => !input.factors.includes(factor))) {
+    throw fail("identity_actor_required_factor_missing");
   }
 
   return Object.freeze({
