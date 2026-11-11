@@ -148,7 +148,7 @@ test("PII pseudonym known-answer vectors preserve all three approved domains", a
     assert.equal(envelope.includes(legacy), false);
   }
 });
- 
+
 test("PII digest-only lookup helpers preserve G6's precomputed-digest boundary", async () => {
   const rawValue = "synthetic-user@example.test";
   const legacyDigestHex = createHash("sha256")
