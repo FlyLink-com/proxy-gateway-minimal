@@ -49,7 +49,7 @@ Registration and login use the same effective value before hashing or verificati
 - `admin/src/test/admin-auth-client.test.ts` runs the shared synthetic trim-only vectors against the outgoing legacy-named `bootstrapToken` field. This proves client-side normalization for the current local Admin password-login request; together with the server source above, it supports the current local verifier boundary only.
 - **Future Admin Auth0 hosted-login acceptance remains OPEN:** no Admin Auth0 hosted password adapter/UI path is present in the reviewed source. If one is introduced, it must normalize the actual user password before the Auth0 handoff and run the shared vectors against that exact hosted-auth path. The current local password test cannot close that separate gate.
 - Source blobs:
-  - Admin client: `3acee02418630c059ba1c59504095213e3a2bfa1`
+  - Admin client: `6cc4b43d09e4730a4fa1f4baa07bd563223a463a`
   - Admin tests: `7ea16377c68ed9c6f355c0f1c34f1de61b7e8e35`
   - Admin route: `8a3f34a6bcb81d241012754766bf0003e68e6e4d`
   - Admin service: `e5aaf6f24440c442556af3aebc89f5ffff526dc5`
