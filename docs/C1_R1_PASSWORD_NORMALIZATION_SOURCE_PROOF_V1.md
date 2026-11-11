@@ -51,7 +51,7 @@ Registration and login use the same effective value before hashing or verificati
 
 The Browser login/registration and Admin login tests import the same fixture:
 
-`admin/src/test/password-normalization-vectors.ts`, blob `571b782174d8a591bb56b39275a6a1f11e4a66ef`.
+`admin/src/test/password-normalization-vectors.ts`, blob `fcec3a050c0da3f1e80330ec876b4082abe898c9`.
 
 It covers:
 1. Leading/trailing ECMAScript whitespace (including FEFF, NBSP, TAB, ideographic space and paragraph separator) removed.
