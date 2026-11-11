@@ -165,7 +165,7 @@ G6 is an integration lane, not a DDD bounded context and not Master. The followi
 | --- | --- | --- | --- |
 | [#846](https://github.com/FlyLink-com/proxy-gateway-minimal/pull/846) | Key Custody & Deployment Authority; Identity, data governance, and payment-action custody contracts | 0fe25da36e4ce9ef805ea1eda92c69ae6765a475 | Merged 2026-11-10 into the G6 rehearsal branch. |
 | [#852](https://github.com/FlyLink-com/proxy-gateway-minimal/pull/852) | Key Custody & Deployment Authority; Crypto Worker deployment principal and config-drift policy | 3490de6046a4fe48346984b22b0bba4a31546df4 | Merged 2026-11-11 on top of #846 in G6. |
-| [#855](https://github.com/FlyLink-com/proxy-gateway-minimal/pull/855) | Cross-context integration of Identity & Access and Key Custody hardening | 76982c43b7f3b6c6a6022ae317603111 | Merged 2026-11-11 on top of #852 in G6; not merged to Master. |
+| [#855](https://github.com/FlyLink-com/proxy-gateway-minimal/pull/855) | Cross-context integration of Identity & Access and Key Custody hardening | 76982c43b7f3b6c6a6028e6b91f11f0afc0533fa | Merged 2026-11-11 on top of #852 in G6; not merged to Master. |
 
 For #855, exact merge commit CI run 43011278299 reported Source checks, Governance snapshot, Prerequisite checks, Build and verify assets, and Validate as SUCCESS. Governance evidence, Foundation inventory, and Dependency artifact were SKIPPED. Skipped jobs are not passes and must be evaluated under the applicable Master integration gate.
 
