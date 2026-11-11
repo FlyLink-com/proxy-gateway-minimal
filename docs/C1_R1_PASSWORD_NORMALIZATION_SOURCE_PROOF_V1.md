@@ -80,7 +80,7 @@ The reviewed Browser/Admin client surfaces do not currently expose a password-re
 ## Validation and remaining gate
 
 - Source files and updated tests were read back from the exact Draft branch.
-- No Admin Vitest suite, Admin TypeScript/build, full repository `npm test`, or Android Gradle suite has been run in this work item. Draft CI was intentionally not triggered; no Hosted CI PASS is claimed.
+- No Admin Vitest suite, Admin build/verify, Portal build/verify, full repository `npm test`, or Android Gradle suite has been run in this work item. Draft CI was intentionally not triggered; no Hosted CI PASS is claimed.
 - The shared vector fixture is synthetic and contains no customer credentials.
 - Keep the Auth0 `edgeWhitespace=true` cohort fail-closed until the exact current PR head receives independent review, required source tests/build validation pass, and the normalized first-party path is integrated into the intended hosted-auth flow.
 - This record does not authorize creating Auth0 tenants, importing real accounts, reading/exporting production credentials, sending notifications, resetting production passwords/TOTP, deploying, changing production authentication, connecting to BWH, or writing remote D1.
