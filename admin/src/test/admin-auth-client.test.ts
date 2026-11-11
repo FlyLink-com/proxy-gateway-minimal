@@ -4,6 +4,7 @@ import {
   createAdminAuthClient,
   type AdminAuthErrorCode,
 } from "../app/admin-auth-client";
+import { PASSWORD_NORMALIZATION_VECTORS } from "./password-normalization-vectors";
 
 const FUTURE = "2099-01-01T00:00:00.000Z";
 const PAST = "2000-01-01T00:00:00.000Z";
@@ -98,8 +99,8 @@ describe("createAdminAuthClient", () => {
     expect(setItem).not.toHaveBeenCalled();
   });
 
-  it("applies trim-only normalization before the Admin authentication request", async () => {
-    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(
+  it("applies the shared R1 trim-only vectors before the Admin authentication request", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockImplementation(async () =>
       jsonResponse(202, {
         challenge: {
           challengeRef: "admin_totp_challenge_1",
@@ -113,16 +114,18 @@ describe("createAdminAuthClient", () => {
     const client = createAdminAuthClient({ fetcher });
     const signal = new AbortController().signal;
 
-    await expect(client.login({
-      password: "\uFEFF\u00A0\tsecret\uFEFF-pass \u00A0\u3000\u2029",
-    }, signal)).resolves.toEqual({
-      challengeRef: "admin_totp_challenge_1",
-      expiresAt: FUTURE,
-    });
-
-    expect(JSON.parse(String(fetcher.mock.calls[0]?.[1]?.body))).toEqual({
-      bootstrapToken: "secret\uFEFF-pass",
-    });
+    for (const vector of PASSWORD_NORMALIZATION_VECTORS) {
+      await expect(client.login({ password: vector.input }, signal)).resolves.toEqual({
+        challengeRef: "admin_totp_challenge_1",
+        expiresAt: FUTURE,
+      });
+      const lastCall = fetcher.mock.calls[fetcher.mock.calls.length - 1];
+      expect(lastCall?.[0]).toBe("/api/admin-auth/login");
+      expect(JSON.parse(String(lastCall?.[1]?.body))).toEqual({
+        bootstrapToken: vector.expected,
+      });
+    }
+    expect(fetcher).toHaveBeenCalledTimes(PASSWORD_NORMALIZATION_VECTORS.length);
   });
 
   it("projects authenticated session and setupRequired while stripping private extras", async () => {
