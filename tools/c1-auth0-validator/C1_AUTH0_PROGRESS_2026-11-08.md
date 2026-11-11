@@ -150,4 +150,3 @@ PR #842 状态：已获 gccltdco-cmd **APPROVED**（review `5817529933`，
 - **未来 Hosted Login：** 当前 Admin 源码没有 Auth0 Hosted Login 密码入口。未来若引入该路径，必须针对实际 Hosted Login adapter/UI 单独证明在密码交给 Auth0 前执行 trim-only；在该路径有证据前，相关 `edgeWhitespace=true` cohort 继续 fail-closed。
 - **变更边界：** 本次只修正 Admin 客户端源码注释、证据文档、进度记录与 PR 描述；不改认证业务逻辑、密码算法、API 字段、测试断言或生产配置。相关前置文档提交：`c0b790c6e58465ac8618460d81621d66d4daf2fb`、`78cd41ca4c1f0332321340fd3e56a68a7e363f74`。
 - **门禁边界：** PR #848 保持 OPEN / Draft；不触发 CI，不提交 Review，不转 Ready，不合并、不部署，也不执行 Auth0、Cloudflare、BWH 或生产数据操作。
-
