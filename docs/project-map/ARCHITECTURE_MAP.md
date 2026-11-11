@@ -1,6 +1,6 @@
 # Architecture Map
 
-Last verified: 2026-07-15, America/Los_Angeles.
+Last verified: 2026-11-11 UTC for the DDD context-map cross-reference; topology and runtime facts retain their cited cutoffs.
 
 ```yaml
 document_metadata:
@@ -8,7 +8,7 @@ document_metadata:
   lifecycle: active
   authority_scope: architecture_map
   superseded_by: null
-  last_verified_at: 2026-08-29
+  last_verified_at: 2026-11-11
   production_authority: false
 ```
 
@@ -35,6 +35,7 @@ When statements conflict, use the narrowest current authority for the question:
 | What is the latest documented release identity? | `docs/CURRENT_RELEASE_STATE.md`, subject to its cutoff and newer validated evidence. | Summarizes links only. |
 | What is the source/artifact/release/deployment model? | `RELEASE_MANIFEST.md`. | Cross-references planes and dependencies. |
 | What is the current work state and sequencing? | Fresh native Issue/PR records; Project #1 is mutable navigation only. | Provides no competing queue or item status. |
+| What are the business bounded contexts and PR-to-domain relationships? | docs/PROJECT_CONTEXT.md owns the stable business spine; docs/project-map/DDD_CONTEXT_MAP.md provides a dated derived context crosswalk; native PRs and source contracts own current state and behavior. | Derived classification only; no new queue, service boundary, or production authority. |
 | What machine-readable orientation is retained? | Reviewed definitions in `project-state/lanes.json` plus dated compatibility contracts in `current.json` and `tasks.json`. | Must not create a competing YAML, machine state, or live queue. |
 | What topology concepts and historical transitions exist? | `docs/PROJECT_TOPOLOGY.md` and other cited architecture docs, reconciled against current context. | Provides a current-first crosswalk and records reconciliation boundaries. |
 | How are agent ownership and delegation governed? | `AGENTS.md` and `docs/MULTI_AGENT_OPERATING_MODEL.md`. | Maps Planner/Architect/Engineer/Reviewer labels onto existing roles. |
