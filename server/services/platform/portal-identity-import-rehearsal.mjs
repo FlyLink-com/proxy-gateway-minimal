@@ -304,11 +304,11 @@ function canonicalizeSyntheticJson(value, ancestors = new WeakSet()) {
   throw failure("import_plan_record_not_json_safe");
 }
 
-// This projection contains only stable fields available to a provider readback.
-// It deliberately excludes custom_password_hash: identity providers do not return
-// imported password hashes through ordinary user readback. SHA-256 here is only
-// for the synthetic .test fixture; production PII fingerprints require a separately
-// approved keyed construction and authenticated provider-readback adapter.
+// This projection contains only stable identity fields available to provider readback.
+// It deliberately excludes custom_password_hash: ordinary user readback does not return
+// imported password hashes. A matching fingerprint proves identity projection only,
+// never password-credential acceptance. SHA-256 here is only for the synthetic fixture;
+// production PII fingerprints require an approved keyed construction and authenticated adapter.
 export function fingerprintSyntheticAuth0ImportRecord(record) {
   if (!isPlainRecord(record)) throw failure("import_plan_record_invalid");
   const projection = {};
@@ -413,9 +413,9 @@ export function createSyntheticAuth0BulkImportRecord({
   return record;
 }
 
-// R6 synthetic idempotency contract. A provider "already imported" result is
+// R6 synthetic idempotency contract. A provider "already imported" identity is
 // accepted only when a separately obtained readback fingerprint matches the
-// exact canonical import record. IDs alone are never sufficient evidence.
+// canonical identity-readback projection. This does not verify password credentials.
 export function planSyntheticAuth0BulkImport(records, options = {}) {
   if (!Array.isArray(records)) throw failure("import_plan_records_invalid");
   if (!isPlainRecord(options)) throw failure("import_plan_options_invalid");
@@ -470,12 +470,20 @@ export function planSyntheticAuth0BulkImport(records, options = {}) {
       if (readback.get(entry.userId) !== entry.fingerprint) {
         throw failure("import_plan_provider_readback_mismatch");
       }
-      return { index: entry.index, user_id: entry.userId, action: "skip_already_imported_verified" };
+      return {
+        index: entry.index,
+        user_id: entry.userId,
+        action: "verify_existing_password_credential",
+        identityReadback: "verified",
+        passwordCredential: "unverified"
+      };
     }
     return { index: entry.index, user_id: entry.userId, action: "create" };
   });
 }
 
+// Returns only records that still need provider identity creation. An empty result
+// does not establish password-credential acceptance for existing provider identities.
 export function resumeSyntheticAuth0BulkImport(records, options = {}) {
   const plan = planSyntheticAuth0BulkImport(records, options);
   const outstanding = new Set(
