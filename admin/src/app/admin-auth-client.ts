@@ -188,8 +188,8 @@ export function createAdminAuthClient(options?: {
     async login(input, signal) {
       if (input.operatorRef !== undefined && !isSafeRef(input.operatorRef)) fail("invalid");
       if (typeof input.password !== "string" || input.password.length > 4096) fail("invalid");
-      // Preserve the legacy password contract before any hosted identity provider
-      // sees the value: trim ECMAScript edge whitespace only; keep the interior.
+      // This legacy Admin endpoint accepts a configured bootstrap token, not an
+      // Auth0 user password. Match the server's requiredText() trim-only contract.
       const normalizedPassword = input.password.trim();
       if (!normalizedPassword) fail("invalid");
       const response = await requestJson(fetcher, "/api/admin-auth/login", {
