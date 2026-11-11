@@ -1,5 +1,15 @@
 # D1 T2-C1/C2 Draft Source Hardening — 2026-11-08
 
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: active
+  authority_scope: d1_t2_c1_c2_draft_source_hardening
+  superseded_by: null
+  last_verified_at: 2026-11-11
+  production_authority: false
+```
+
 ## Execution classification
 
 - Risk: B — repository-only server helper and test changes; no production behavior is activated by this branch.
