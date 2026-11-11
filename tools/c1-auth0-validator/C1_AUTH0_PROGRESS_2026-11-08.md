@@ -128,7 +128,7 @@ PR #842 状态：已获 gccltdco-cmd **APPROVED**（review `5817529933`，
 - **冲突来源与处理：** PR #848 的 base 分支相对分支分叉点前进 3 个提交。逐文件比对后，真正的文本冲突交集定位在本进度文件：base 侧新增 2026-11-08 Step 6 真实 DEVELOPMENT 租户观察，PR head 侧新增 2026-11-09 R1 三端源码证据。已将两段按时间合并，并把 base 同批新增的 `STEP6_REAL_TENANT_VERIFICATION_2026-11-08.md` 与验证器 README 导航行完整带入分支。随后以 `04386f2a503dc5605871b3fe9ad330ea6b3235f0` 创建双父 merge-sync commit，PR base 现为祖先（behind=0、mergeable=clean）；未改写或删除任一侧历史证据。
 - **Browser Portal 注册页修复：** 原页面在原始输入上计算密码规则、以原始字符串比较确认密码，并将原始值交给 HTTP adapter。现在先按 ECMAScript `String.trim()` 生成有效密码，再用该值计算规则、比较确认值，并提交该有效值；因此前后空白不再错误地参与最小长度/符号判定，也不会造成 UI 与服务端采用不同有效密码。
 - **Browser Portal HTTP 边界：** 注册和密码登录仍通过共同的 `requiredText()` 在请求体构造前 trim；新增/扩展的合成回归使用共享向量覆盖首尾 ECMAScript 空白、内部空白保留、大小写保留、NFC/NFD 不归一化，以及非 ECMAScript 控制字符不误删。
-- **Admin 当前边界（按 2026-11-11 源码复核修正）：** `/api/admin-auth/login` 的 JSON 字段仍名为 `bootstrapToken`，但这是历史 wire-field 名称，不代表当前默认运行时使用静态配置 token。`server/state.mjs` 在 Admin auth routes 启用时要求 `ADMIN_AUTH_PORTAL_ACCOUNT_ID`，并默认构造 `createPortalAccountAdminAuthService`，将该 `accountId` 与 `platformPortalPasswordCredentialService` 注入。该服务把收到的 `bootstrapToken` 值作为 `plainPassword` 传给 `verifyPasswordCredential()`；`portal-password-credentials.mjs` 通过 `requiredText()`（`String(value ?? "").trim()`）归一化后执行 scrypt 校验。密码通过后再走 TOTP。PR #848 的客户端 trim-only 修复因此是当前本地 Portal-account password + TOTP 路径的客户端归一化修复；它不是静态 bootstrap-token parity，也不是 Auth0 hosted password flow 证明。
+- **Admin 当前边界（按 2026-11-10 源码复核修正）：** `/api/admin-auth/login` 的 JSON 字段仍名为 `bootstrapToken`，但这是历史 wire-field 名称，不代表当前默认运行时使用静态配置 token。`server/state.mjs` 在 Admin auth routes 启用时要求 `ADMIN_AUTH_PORTAL_ACCOUNT_ID`，并默认构造 `createPortalAccountAdminAuthService`，将该 `accountId` 与 `platformPortalPasswordCredentialService` 注入。该服务把收到的 `bootstrapToken` 值作为 `plainPassword` 传给 `verifyPasswordCredential()`；`portal-password-credentials.mjs` 通过 `requiredText()`（`String(value ?? "").trim()`）归一化后执行 scrypt 校验。密码通过后再走 TOTP。PR #848 的客户端 trim-only 修复因此是当前本地 Portal-account password + TOTP 路径的客户端归一化修复；它不是静态 bootstrap-token parity，也不是 Auth0 hosted password flow 证明。
 - **Android：** 不改动 Android 仓库。现有 main commit `c19d5bf57388b427a5e8248d838cbf3e87b39d47` 已在 PortalRepository 登录和 RegistrationRules 注册前复用 ECMAScript whitespace helper；现有测试覆盖边缘空白、内部字符保留及非 ECMAScript 控制字符。
 - **密码重置边界：** 本轮审查的 Browser/Admin 客户端没有活动的密码重置入口。若未来增加，必须复用同一 trim-only 合同；通知式重置仍是 Auth0 不可证明路径的受控回退，不在本 PR 执行。
 - **Admin R1 / Auth0 边界：** 当前 Admin 登录使用绑定 Portal account 的本地密码凭据 + TOTP。客户端在发送前执行 `String.trim()`；服务端 `requiredText()` 再执行同一 trim-only 归一化后进行 scrypt 验证。PR #848 补充的是当前本地 Admin 密码路径的源码与客户端向量证据，仍待精确 HEAD 独立审查、必要验证和集成。当前源码没有 Admin Auth0 Hosted Login 密码入口，因此本 PR 不证明、也不关闭未来 Hosted Login 路径的 pre-Auth0 归一化验收。`edgeWhitespace=true` 对尚未证明的目标 hosted-auth 路径继续 fail-closed。
@@ -138,7 +138,7 @@ PR #842 状态：已获 gccltdco-cmd **APPROVED**（review `5817529933`，
 - **生产边界：** 未创建/修改 Auth0 tenant，未导入或读取真实用户/密码/TOTP，未发送通知/重置，未连接 BWH、未写入远程 D1，未创建/修改 Cloudflare Worker/Secret/Binding，未部署、未切换生产认证。BWH 仍是唯一生产控制数据写入权威。
 
 
-## 2026-11-11｜PR #848 Admin 认证路径与字段名口径复核
+## 2026-11-10｜PR #848 Admin 认证路径与字段名口径复核
 
 本节按当前源码修正 2026-11-10 记录中的 Admin 认证类型描述；2026-11-08、2026-11-09 的历史状态快照保留，不追溯改写。
 
