@@ -125,7 +125,7 @@ PR #842 状态：已获 gccltdco-cmd **APPROVED**（review `5817529933`，
 
 本节在保留 2026-11-08 Step 6 非生产 Auth0 供应商证据的基础上，合并 PR #848 原有 2026-11-09 R1 补记；不覆盖历史记录。
 
-- **冲突来源与处理：** PR #848 的 base 分支相对分支分叉点前进 3 个提交。逐文件比对后，冲突交集定位在本进度文件：base 侧新增 2026-11-08 Step 6 真实 DEVELOPMENT 租户观察，PR head 侧新增 2026-11-09 R1 三端源码证据。当前版本保留 Step 6 原始证据，并按时间追加 R1 记录；未改写或删除任一侧历史结论。
+- **冲突来源与处理：** PR #848 的 base 分支相对分支分叉点前进 3 个提交。逐文件比对后，真正的文本冲突交集定位在本进度文件：base 侧新增 2026-11-08 Step 6 真实 DEVELOPMENT 租户观察，PR head 侧新增 2026-11-09 R1 三端源码证据。已将两段按时间合并，并把 base 同批新增的 `STEP6_REAL_TENANT_VERIFICATION_2026-11-08.md` 与验证器 README 导航行完整带入分支。随后以 `04386f2a503dc5605871b3fe9ad330ea6b3235f0` 创建双父 merge-sync commit，PR base 现为祖先（behind=0、mergeable=clean）；未改写或删除任一侧历史证据。
 - **Browser Portal 注册页修复：** 原页面在原始输入上计算密码规则、以原始字符串比较确认密码，并将原始值交给 HTTP adapter。现在先按 ECMAScript `String.trim()` 生成有效密码，再用该值计算规则、比较确认值，并提交该有效值；因此前后空白不再错误地参与最小长度/符号判定，也不会造成 UI 与服务端采用不同有效密码。
 - **Browser Portal HTTP 边界：** 注册和密码登录仍通过共同的 `requiredText()` 在请求体构造前 trim；新增/扩展的合成回归使用共享向量覆盖首尾 ECMAScript 空白、内部空白保留、大小写保留、NFC/NFD 不归一化，以及非 ECMAScript 控制字符不误删。
 - **Admin 登录边界：** `admin-auth-client.ts` 在 `/api/admin-auth/login` 请求前 trim-only，并对 trim 后空值 fail-closed；新增共享向量回归覆盖相同有效值。当前 Admin 客户端只有 bootstrap/login、session、TOTP verify 与 logout 路径；本次没有虚构或新增 Admin 注册/密码重置路径。
