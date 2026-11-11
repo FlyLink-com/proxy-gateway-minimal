@@ -91,6 +91,24 @@ PR #842 状态：已获 gccltdco-cmd **APPROVED**（review `5817529933`，
 - 真实非生产 Auth0 租户创建、真实用户导入与供应商行为确认仍需 Yi 单独批准；本次“继续”不等于该项授权。
 
 
+## 2026-11-08｜Step 6 真实 Auth0 非生产租户验证补记
+
+本节补充真实供应商行为证据；上文第 6 步“真实租户未执行”是本地验证器最初完成时的历史状态，现已由本节更新。完整、脱敏且不含凭据的证据记录见 `STEP6_REAL_TENANT_VERIFICATION_2026-11-08.md`。
+
+- **真实批量导入：PASS，但发现导入校验浅。** Portal 合成主任务 `job_2Mk5zCWax9LmgUE2` 插入 5/5；故意截断至 32-byte hash、却声明 keylen 64 的坏记录也被 Auth0 接受（1/1），登录时才返回 403 `Password change required.`。导入前 canonical envelope、salt/hash/keylen、算法参数、accountRef 绑定、attestation 与批次完整性校验仍是唯一可靠防线。
+- **Scrypt → bcrypt lazy rehash：PASS，72-byte hazard 坐实。** 80-byte 合成密码首次 Scrypt 登录成功后，仅前 72 bytes 也能登录。C1-D01 >72 UTF-8-byte 用户定向通知重置、禁止截断、重置前不得导入，得到真实供应商证据支持。
+- **R1 trim-only：PASS。** 带首尾空白的原始输入失败，trim 后形式成功；Auth0 不自动执行旧系统 trim。已批准的 trim-only 必须在每个支持的客户端/路径进入 Auth0 前完成。
+- **真实 JWKS / 双租户隔离：PASS。** Portal/Admin 的真实 RS256 id_token 各自通过本租户 JWKS 验签，跨租户双向拒绝；Portal 合成用户在 Admin 用户库查询为 0。
+- **Admin MFA：PASS。** all-applications 策略下未绑定用户被 `mfa_required` 拦截；`/mfa/associate` + `mfa-otp` 自助绑定与登录流程通过。错码及同窗口重放被拒，新窗口码成功；重放防护为本次时序观察支持的结论。Portal 仍保持 T1 自愿 MFA。
+- 租户均为 DEVELOPMENT 非生产租户，使用 `example.test` 合成用户；未升级付费套餐。Default App client_secret 已轮换，短期 Management API token 与本地会话秘密已按记录清理；仓库不保存凭据。
+
+### 状态修正
+
+- C1 不再以“真实 Auth0 Provider 行为未验证”作为阻塞项；Step 6 的真实非生产供应商行为验证通过。
+- C1 整体仍 OPEN：Admin R1 修复仍在 Draft child PR #848；Cloudflare Gateway OIDC/JWKS adapter 与业务域授权集成、生产证明窗口、真实用户迁移/批次对账、生产租户决策、Hosted Login UX/邮件配置尚未完成。
+- Browser / Android 已有 trim-only 源码与测试证据；Admin 修复位于 PR #848，尚未精确 Head review / 集成。故 `edgeWhitespace=true` cohort 继续 fail-closed。
+- T2 仍 BLOCKED / NOT READY；不启动 T3 target DDL 或 G6 migration rehearsal。BWH 仍是唯一生产控制数据写入权威。
+
 ## 2026-11-09｜R1 三端密码归一化源码证据补记
 
 本补记更新 §五第 3 项“客户端兼容证明仍待完成”的当前进度，不覆盖 2026-11-08 历史状态。
@@ -102,3 +120,18 @@ PR #842 状态：已获 gccltdco-cmd **APPROVED**（review `5817529933`，
 - **Gate 口径：部分完成，仍不关闭。** Browser 与 Android 已有主线源码/测试证据；Admin 修复仍在 Draft，未合并、未进入未来 Auth0 登录路径。因此 `edgeWhitespace=true` cohort 继续在 Auth0 导入验证器中 fail-closed 暂缓，不能提前改为 importable。
 
 本轮没有创建 Auth0 tenant、导入真实用户、处理真实密码/TOTP、接入生产登录证明窗口、连接 BWH、写入远程 D1、部署或切换生产认证。
+
+## 2026-11-10｜R1 trim-only 注册与登录统一补强 + PR #848 冲突收口
+
+本节在保留 2026-11-08 Step 6 非生产 Auth0 供应商证据的基础上，合并 PR #848 原有 2026-11-09 R1 补记；不覆盖历史记录。
+
+- **冲突来源与处理：** PR #848 的 base 分支相对分支分叉点前进 3 个提交。逐文件比对后，冲突交集定位在本进度文件：base 侧新增 2026-11-08 Step 6 真实 DEVELOPMENT 租户观察，PR head 侧新增 2026-11-09 R1 三端源码证据。当前版本保留 Step 6 原始证据，并按时间追加 R1 记录；未改写或删除任一侧历史结论。
+- **Browser Portal 注册页修复：** 原页面在原始输入上计算密码规则、以原始字符串比较确认密码，并将原始值交给 HTTP adapter。现在先按 ECMAScript `String.trim()` 生成有效密码，再用该值计算规则、比较确认值，并提交该有效值；因此前后空白不再错误地参与最小长度/符号判定，也不会造成 UI 与服务端采用不同有效密码。
+- **Browser Portal HTTP 边界：** 注册和密码登录仍通过共同的 `requiredText()` 在请求体构造前 trim；新增/扩展的合成回归使用共享向量覆盖首尾 ECMAScript 空白、内部空白保留、大小写保留、NFC/NFD 不归一化，以及非 ECMAScript 控制字符不误删。
+- **Admin 登录边界：** `admin-auth-client.ts` 在 `/api/admin-auth/login` 请求前 trim-only，并对 trim 后空值 fail-closed；新增共享向量回归覆盖相同有效值。当前 Admin 客户端只有 bootstrap/login、session、TOTP verify 与 logout 路径；本次没有虚构或新增 Admin 注册/密码重置路径。
+- **Android：** 不改动 Android 仓库。现有 main commit `c19d5bf57388b427a5e8248d838cbf3e87b39d47` 已在 PortalRepository 登录和 RegistrationRules 注册前复用 ECMAScript whitespace helper；现有测试覆盖边缘空白、内部字符保留及非 ECMAScript 控制字符。
+- **密码重置边界：** 本轮审查的 Browser/Admin 客户端没有活动的密码重置入口。若未来增加，必须复用同一 trim-only 合同；通知式重置仍是 Auth0 不可证明路径的受控回退，不在本 PR 执行。
+- **共享测试向量 fixture：** `admin/src/test/password-normalization-vectors.ts`；Admin 登录测试与 Browser 注册 UI、注册 HTTP、登录 HTTP 测试使用相同合成输入/预期值。相关实现提交：fixture `87bb150c3ac3a5536274619483cabe88fd9219e0`，Browser 注册页 `75fb0b5635f939a4362889193f463e27b3615707`，Admin 测试 `426204517ecab9cf4b4bec3796bad5883d19ec76`，Browser 测试 `87b5a5cc11d4da536c3382e1ce18c41a7aeb2613`。
+- **验证状态：** 源码与测试文件已读回；本轮没有运行 Admin Vitest、Admin build、全仓 `npm test` 或 Android Gradle。Draft 阶段不触发 Hosted CI；当前环境无法解析 GitHub 主机，不能声称完成本地全套验证。必须在可用 checkout 中按 B 档基线执行后，才可评估 Source Gate。
+- **Gate 仍保持开放：** PR #848 仍为 Draft；未请求合并、未转 Ready。Auth0 validator 的 `edgeWhitespace=true` cohort 继续 fail-closed，直到精确 HEAD 获得独立审查、必需验证通过并进入目标 hosted-auth 路径。
+- **生产边界：** 未创建/修改 Auth0 tenant，未导入或读取真实用户/密码/TOTP，未发送通知/重置，未连接 BWH、未写入远程 D1，未创建/修改 Cloudflare Worker/Secret/Binding，未部署、未切换生产认证。BWH 仍是唯一生产控制数据写入权威。
