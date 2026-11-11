@@ -1,6 +1,6 @@
 # Documentation Index
 
-Last updated: 2026-11-09 UTC.
+Last updated: 2026-11-11 UTC.
 
 ```yaml
 document_metadata:
@@ -8,7 +8,7 @@ document_metadata:
   lifecycle: active
   authority_scope: documentation_navigation
   superseded_by: null
-  last_verified_at: 2026-11-09
+  last_verified_at: 2026-11-11
   production_authority: false
 ```
 
@@ -226,6 +226,7 @@ They reference the reviewed lane taxonomy and dated compatibility snapshots in
 `project-state/*.json`; they do not create a current-work source of truth or
 any production authority. The
 authority/derivation matrix in `docs/project-map/ARCHITECTURE_MAP.md` governs
+| docs/project-map/DDD_CONTEXT_MAP.md | DDD bounded contexts, business-fact ownership, context relationships, and dated PR-to-domain mapping. | Active derived crosswalk; native PRs own mutable state and no production authority is granted. | Read before classifying or integrating a PR, then refresh the native PR and exact source head. |
 conflicts; every document in this layer is an index or derived view.
 
 | Document | Purpose | Status | When to read |
