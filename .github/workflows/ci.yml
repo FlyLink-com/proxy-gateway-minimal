@@ -12,7 +12,6 @@ on:
 
 permissions:
   contents: read
-  pull-requests: read
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
@@ -229,11 +228,14 @@ jobs:
   pr-domain-validation:
     name: PR domain validation (C1 + DDD)
     if: github.event_name == 'pull_request' && github.event.pull_request.base.ref == 'master' && github.event.pull_request.head.ref == 'ci/pr-domain-validation-20261112'
+    permissions:
+      contents: read
+      pull-requests: read
     uses: ./.github/workflows/pr-domain-validation.yml
 
   checks-passed:
     name: Prerequisite checks
-    needs: [governance-evidence, governance-snapshot, source-checks, foundation-inventory]
+    needs: [governance-evidence, governance-snapshot, source-checks, foundation-inventory, pr-domain-validation]
     if: always() && (github.event_name != 'pull_request' || github.event.pull_request.draft == false)
     runs-on: ubuntu-24.04
     steps:
@@ -245,6 +247,8 @@ jobs:
           GOVERNANCE_RESULT: ${{ needs.governance-evidence.result }}
           SNAPSHOT_RESULT: ${{ needs.governance-snapshot.result }}
           FOUNDATION_RESULT: ${{ needs.foundation-inventory.result }}
+          DOMAIN_RESULT: ${{ needs.pr-domain-validation.result }}
+          DOMAIN_REQUIRED: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.ref == 'master' && github.event.pull_request.head.ref == 'ci/pr-domain-validation-20261112' }}
         run: |
           set -euo pipefail
           test "$SOURCE_RESULT" = success
@@ -253,16 +257,23 @@ jobs:
               test "$GOVERNANCE_RESULT" = success
               test "$SNAPSHOT_RESULT" = skipped
               test "$FOUNDATION_RESULT" = success
+              if [[ "$DOMAIN_REQUIRED" == "true" ]]; then
+                test "$DOMAIN_RESULT" = success
+              else
+                test "$DOMAIN_RESULT" = skipped
+              fi
               ;;
             push)
               test "$GOVERNANCE_RESULT" = success
               test "$SNAPSHOT_RESULT" = skipped
               test "$FOUNDATION_RESULT" = skipped
+              test "$DOMAIN_RESULT" = skipped
               ;;
             workflow_dispatch)
               test "$GOVERNANCE_RESULT" = skipped
               test "$SNAPSHOT_RESULT" = success
               test "$FOUNDATION_RESULT" = skipped
+              test "$DOMAIN_RESULT" = skipped
               ;;
             *) exit 1 ;;
           esac

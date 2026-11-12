@@ -10,12 +10,15 @@ permissions:
   pull-requests: read
 
 concurrency:
-  group: pr-domain-validation-9f76c3b986741111c5c16fde23a16ab13614f465-99b348dc4dd67daec9492212ab7a0399c06daa7f
+  group: pr-domain-validation-6d106e17e0cb4a85889485ec36620ec2f349f397-99b348dc4dd67daec9492212ab7a0399c06daa7f
   cancel-in-progress: false
 
 jobs:
   c1-auth0:
     name: C1 Auth0 synthetic validator · exact SHA
+    permissions:
+      contents: read
+      pull-requests: read
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
@@ -25,7 +28,7 @@ jobs:
           PR_NUMBER: 844
           EXPECTED_HEAD_REF: feat/c1-auth0-validator-20261108
           EXPECTED_BASE_REF: fix/t2-c1-c2-t1-reenroll-only-20261108
-          EXPECTED_HEAD_SHA: 9f76c3b986741111c5c16fde23a16ab13614f465
+          EXPECTED_HEAD_SHA: 6d106e17e0cb4a85889485ec36620ec2f349f397
           EXPECTED_BASE_SHA: 4be493a06a55d245bd2d89a1019f62922ab251bb
         shell: bash
         run: |
@@ -60,7 +63,7 @@ jobs:
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           repository: ${{ github.repository }}
-          ref: 9f76c3b986741111c5c16fde23a16ab13614f465
+          ref: 6d106e17e0cb4a85889485ec36620ec2f349f397
           path: c1-target
           fetch-depth: 0
           persist-credentials: false
@@ -93,7 +96,7 @@ jobs:
       - name: Run all C1 syntax checks and the complete synthetic suite
         working-directory: c1-target
         env:
-          EXPECTED_HEAD_SHA: 9f76c3b986741111c5c16fde23a16ab13614f465
+          EXPECTED_HEAD_SHA: 6d106e17e0cb4a85889485ec36620ec2f349f397
           EXPECTED_BASE_SHA: 4be493a06a55d245bd2d89a1019f62922ab251bb
         shell: bash
         run: |
@@ -114,8 +117,8 @@ jobs:
           done
 
           node --test --test-reporter=tap tools/c1-auth0-validator/*.test.mjs 2>&1 | tee "$out/c1-auth0.tap"
-          grep -Fxq '# tests 40' "$out/c1-auth0.tap"
-          grep -Fxq '# pass 40' "$out/c1-auth0.tap"
+          grep -Fxq '# tests 43' "$out/c1-auth0.tap"
+          grep -Fxq '# pass 43' "$out/c1-auth0.tap"
           grep -Fxq '# fail 0' "$out/c1-auth0.tap"
           grep -Fxq '# skipped 0' "$out/c1-auth0.tap"
 
@@ -143,7 +146,7 @@ jobs:
             echo "- Head: `$EXPECTED_HEAD_SHA`"
             echo "- Runtime: Node $(node --version), Python $(python --version), bcrypt $(PYTHONPATH=tools/c1-auth0-validator/vendor python -c 'import bcrypt; print(bcrypt.__version__)')"
             echo "- Syntax: ${#source_files[@]}/9 PASS"
-            echo "- Suite: 40/40 PASS, 0 failed, 0 skipped"
+            echo "- Suite: 43/43 PASS, 0 failed, 0 skipped"
             echo "- TAP SHA-256: `$tap_sha`"
             echo "- Node-check manifest SHA-256: `$node_sha`"
           } >> "$GITHUB_STEP_SUMMARY"
@@ -152,13 +155,16 @@ jobs:
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: c1-auth0-validation-9f76c3b986741111c5c16fde23a16ab13614f465
+          name: c1-auth0-validation-6d106e17e0cb4a85889485ec36620ec2f349f397
           path: ${{ runner.temp }}/pr-domain-validation/c1/
           if-no-files-found: warn
           retention-days: 14
 
   ddd-documents:
     name: DDD document authority · exact SHA
+    permissions:
+      contents: read
+      pull-requests: read
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -279,3 +285,39 @@ jobs:
           path: ${{ runner.temp }}/pr-domain-validation/docs/
           if-no-files-found: warn
           retention-days: 14
+
+  ci-workflow-contract:
+    name: CI workflow contract · exact caller head
+    permissions:
+      contents: read
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact caller PR head
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          repository: ${{ github.repository }}
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: caller-target
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Setup Node 22.23.1
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 22.23.1
+
+      - name: Run CI permission and aggregate contract tests
+        working-directory: caller-target
+        env:
+          EXPECTED_CALLER_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          EXPECTED_CALLER_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$EXPECTED_CALLER_HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$EXPECTED_CALLER_BASE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          test "$(git rev-parse HEAD)" = "$EXPECTED_CALLER_HEAD_SHA"
+          git cat-file -e "$EXPECTED_CALLER_BASE_SHA^{commit}"
+          git diff --check "$EXPECTED_CALLER_BASE_SHA...$EXPECTED_CALLER_HEAD_SHA"
+          node --test server/tests/ci-workflow-contract.test.mjs
