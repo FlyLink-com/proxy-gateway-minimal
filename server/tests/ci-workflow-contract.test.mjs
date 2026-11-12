@@ -109,7 +109,7 @@ const EXPECTED_WORKFLOW_ACTIONS = {
     "actions/upload-artifact"
   ]
 };
-const EXPECTED_WORKFLOW_FILES = Object.keys(EXPECTED_WORKFLOW_ACTIONS);
+const EXPECTED_WORKFLOW_FILES = Object.keys(EXPECTED_WORKFLOW_ACTIONS).sort();
 const DEFAULT_CHECKOUT_PIN = "d23441a48e516b6c34aea4fa41551a30e30af803";
 // governance-validate.yml is an immutable trust root in its own trusted job. Its
 // two exact-SHA checkout positions remain on the base-reviewed pin until a
