@@ -2,8 +2,8 @@
 
 > **Status:** Draft execution plan. C1 and C2 remain OPEN; T2 remains BLOCKED.
 > **Working branch:** `fix/t2-c1-c2-t1-reenroll-only-20261108`
-> **Source-review anchor:** PR #842, exact reviewed source HEAD `bc3f8c9a713de05715f42f733b8fa72ba53d4477`
-> **Last full branch audit before this plan refresh:** HEAD `70fd4d6a39a5c71388d89aecf444081a539ffdb4` (195 commits ahead / 0 behind Master; 47 changed files; no PR; not a merge candidate). This plan refresh is commit `51627068875be33133f781069ac9f6a9cf718745`; re-query GitHub for the latest HEAD before any later PR/merge decision.
+> **Source-review anchor:** PR #843, T1 follow-up branch HEAD `2b95496c95238df2b7dae24f903d91d32a266f4f` at the time this anchor was written (a 2026-11-08 historical snapshot taken after tested source HEAD `c6a70b3f`; the PR head later advanced through documentation-only commits to `4be249a3` before this head-label correction commit, so `2b95496c` is a historical snapshot, not the current PR head; review pending at the time of writing; PR #842 approval remains bound only to `bc3f8c9a`). The only changes after tested source HEAD `c6a70b3f` are documentation/evidence updates; all nine source/test Git Blob SHAs were re-read and match the tested inventory.
+> **Branch audit:** PR #843 is OPEN / DRAFT against `fix/t2-c1-c2-source-hardening-20261108` at `bc3f8c9a`. Keep this as a review follow-up, not a Master merge candidate.
 > **Current production authority:** BWH remains the only production control-data writer.
 > **Scope:** Repository-only source/doc alignment and synthetic/local acceptance preparation. No production, tenant, real-key, deployment or migration action is authorized here.
 
@@ -17,12 +17,12 @@
 - The full-suite comparison reported zero new failure names against baseline `bf200c47`; the 156 baseline failure names remained, and a second run had one timer-flake name isolated at 5/5 on both heads.
 - This is bounded source-slice and comparative evidence, not an all-green suite, hosted CI PASS, formal C1/C2 acceptance or full T2 approval.
 - PR #842 has no Hosted CI run. Do not describe local tests as CI.
-- The separate 14-case `d1-t2-security-vectors.test.mjs` suite has not yet been run as one suite under Node v22.23.1.
-- The last audited T1 draft HEAD `70fd4d6a39a5c71388d89aecf444081a539ffdb4` had no test execution evidence, no GitHub status checks and no Actions workflow runs. The subsequent plan-refresh commit `51627068875be33133f781069ac9f6a9cf718745` changed documentation only and did not run tests. The historical 48/48 result applies only to `bc3f8c9a`.
+- At exact T1 branch HEAD `2b95496c95238df2b7dae24f903d91d32a266f4f`, the five repository test files passed **62/62 twice** under Node v22.23.1. All nine source/test Git Blob SHAs match the previously tested `c6a70b3f` inventory; the intervening changes were documentation only. Nine source/test files passed `node --check`. Latest exact-head logs: `6562575453bf4fc9de3dcaad7b3c7fa01aab5045abc82d5e4aa6a5aaad9ece6d` and `ee4089f69438ee05d8a0324278a76016ca7b5d5ae3b74f4c04a4c59a062f1041`.
+- This is a bounded source-slice run, not the full repository `npm test`, not hosted CI, and not formal C1/C2 acceptance. PR #843 remains OPEN / DRAFT pending exact-head review.
 
 ### C1 local provider rehearsal
 
-The Notion project record contains a user-provided receipt for the local Auth0 validator: Node v22.23.1, 37/37 tests PASS, with VM synthetic scenarios S0–S9 completed. The validator package remains outside the repository. This is user-reported local evidence, not a test rerun in this branch and not proof of a real Auth0 tenant.
+The local Auth0 validator package is now present in separate Draft PR #844 at HEAD `9dac357b0cd25bb676ce9a278bc2a882509e8309`, based on this T1 branch. It was independently rerun in the isolated Node v22.23.1 environment with Python pyca/bcrypt 5.0.0: **37/37 PASS twice** (10 import, 9 attestation, 8 tenant isolation, 10 S0–S9 end-to-end); all validator .mjs files passed `node --check`. It uses only a local mock Auth0 tenant and synthetic identities; it does not prove real Auth0 API/JWKS/MFA behavior or authorize tenant creation.
 
 ## 2. Owner decisions now treated as authoritative
 
@@ -73,14 +73,14 @@ Still requiring owner approval before any production implementation: proof-windo
 | C2-A04 | Inventory Wallet-first `idempotency_key_hash` and `session_binding_hash` callers, replay scopes and retention; choose explicit compatibility or retirement | OPEN |
 | C2-A05 | Target TOTP ownership | **APPROVED by T1:** Auth0-managed MFA; no legacy secret transfer and no first-party target TOTP key provisioning |
 | C2-A06 | Define per-family replay/retention windows, key rotation overlap, retirement and restore proof | OPEN |
-| C2-A07 | Run the separate 14-case PII security-vector test file under Node v22.23.1; attach exact command, output and file hash | OPEN |
+| C2-A07 | Run the separate 14-case PII security-vector test file under Node v22.23.1; attach exact command, output and file hash | **PASS — 14/14 at c6a70b3f; formal C2 remains OPEN** |
 
 The C2 design recommendation remains: prefer per-Worker secret bindings when a key family has one Worker consumer; use Secrets Store only where cross-Worker sharing is genuinely required. Secrets Store is not a non-exportable HSM/KMS. Keep any approved encrypted escrow outside the repository and Notion. No real keys are generated or provisioned in this phase.
 
 ## 5. Execution sequence
 
-1. **T1 alignment:** keep the legacy TOTP path re-enrollment-only; ensure the source helper cannot decrypt or re-encrypt legacy values. The current branch contains this draft correction and strict malformed-value quarantine. Its new HEAD `d13fdea43d0b6da9257b9390b1ca14bb64188e15` has not yet been tested.
-2. **Fixed-environment verification:** run the four focused source tests again under Node v22.23.1 at the new exact HEAD; run the separate 14-case PII vector suite; record stdout/stderr, command, runtime and file hashes. Do not infer these results from the earlier 48/48.
+1. **T1 source correction:** complete. The duplicate `decodeCanonicalBase64Url` declaration was removed; strict TOTP classification remains re-enrollment-only and malformed values quarantine.
+2. **Fixed-environment verification:** complete for exact source HEAD `c6a70b3f`: five files 62/62 PASS twice, including the independent 14-case PII suite; nine files pass `node --check`. See the pinned regression report. Do not infer full repository `npm test` or CI success.
 3. **Risk A preparation:** finish the proof-window specification and synthetic tests only. Keep duration, storage, retention and notification decisions explicitly OPEN until approved.
 4. **C1 provider proof:** only after a separate explicit authorization to create non-production Auth0 tenants. Use synthetic identities only; prove import, first-login rehash, 72-byte rejection, normalization, tenant isolation, email verification and T1 MFA lifecycle. No real account import.
 5. **C2 custody proof:** complete owner decisions and synthetic-key backup/restore/revocation drills. Do not create real production keys or Cloudflare bindings.
@@ -91,7 +91,7 @@ The C2 design recommendation remains: prefer per-Worker secret bindings when a k
 
 - PR #842 is a bounded source-review vehicle based on `review/t2-c1-c2-baseline-bf200c47`; its exact approved source HEAD must remain unchanged.
 - The documentation synchronization branch `docs/t2-c1-c2-review-evidence-sync-20261108` is 160 commits ahead of current Master. It is a Draft workstream, not a narrow merge candidate.
-- This branch is a separate Draft follow-up based on the latest decision-sync branch. At the last full audit it was 195 commits ahead / 0 behind Master across 47 files; it is not a narrow merge candidate. Do not create a PR to Master, merge, force-push PR #842, or treat the entire Draft history as a mergeable C1/C2 patch.
+- PR #843 is the exact T1 follow-up review vehicle (OPEN / DRAFT; base `fix/t2-c1-c2-source-hardening-20261108` at `bc3f8c9a`; head `c6a70b3f` at the time of this evidence — a historical snapshot; the PR head later advanced through documentation-only commits to `4be249a3` before this head-label correction commit). PR #844 is a separate Draft for the synthetic Auth0 validator package. Do not create a PR to Master, merge, force-push PR #842, or treat the stacked Draft history as a Master merge candidate.
 - Any later integration PR must be rebuilt from an explicitly reviewed target baseline with only the required, dependency-complete changes. No such PR is opened by this plan.
 
 ## 7. Non-negotiable no-go boundaries

@@ -188,7 +188,7 @@ Still OPEN:
 4. Resolve wallet-first idempotency_key_hash and session_binding_hash compatibility.
 5. Resolved by T1: Auth0-managed MFA owns target factors; no first-party TOTP key provisioning or legacy secret transfer for this migration. Synthetic enrollment/lifecycle proof remains open.
 6. Define retention/replay windows needed before HMAC key retirement.
-7. Run the separate 14-case PII security-vector test file as one suite under Node v22.23.1; it is distinct from the four-file 48/48 source-slice run recorded above.
+7. **Completed:** the separate 14-case PII security-vector file passed 14/14 under Node v22.23.1 as part of the exact T1 source-head five-file regression at `c6a70b3f`; this closes only the vector-test execution task, not key custody or C2 acceptance.
 8. Complete the remaining owner decisions and the full T2 review. The bounded C1/C2 source-slice review is APPROVED at exact HEAD `bc3f8c9a`; it does not constitute full T2-C6 approval.
 
 No production keys, Cloudflare Secrets Store, Worker bindings, D1 schema, customer rows, BWH host, deployment, dual-write, CI, PR Ready transition, merge or cutover were used or authorized by this ADR. BWH remains the only production writer.
@@ -200,10 +200,23 @@ PR #842 source-slice review is APPROVED by `gccltdco-cmd` (Review ID `5817529933
 
 The full repository suite was also executed on candidate and baseline: 7,112 versus 7,084 tests; the 156 baseline failures all remained, all 28 added tests passed, and the failure-name difference was zero. The second candidate run had one additional usage-ledger timing-flake name, which passed 5/5 isolated runs on each HEAD. This is not an all-green repository suite and no hosted CI PASS is claimed.
 
-Still outstanding: the separate 14-case PII vector file has not been run as one suite under Node v22.23.1; real key custody, named custodians, encrypted escrow and restore; Wallet-first legacy digest compatibility; synthetic Auth0 MFA enrollment/lifecycle proof (T1 target ownership is resolved); retention/replay windows; and the full T2 review. C2 remains OPEN.
+Still outstanding: real key custody, named custodians, encrypted escrow and restore; Wallet-first legacy digest compatibility; synthetic Auth0 MFA enrollment/lifecycle proof (T1 target ownership is resolved); retention/replay windows; and the full T2 review. The separate 14-case PII vector test is now PASS at the T1 source head, but C2 remains OPEN.
 
 
 ## Owner decision update — T1 (2026-11-08)
 
 The project owner selected Auth0-managed MFA as the target TOTP authority. Portal enrollment is optional; Admin enrollment is mandatory. All existing BWH enc: and v2: values are invalidated at cutover and require user re-enrollment. They must not be decrypted, imported, transferred or re-encrypted. C2-D05 is therefore resolved for this migration path; it does not close C2 overall. The first-party v3 TOTP primitive remains generic/unconfigured and must not be provisioned for the selected target path without a new owner decision.
 
+
+
+## 10. T1 follow-up regression evidence — 2026-11-08
+
+At exact source HEAD `c6a70b3f216d68c6ee7014af268645e1f9df5925`, Node v22.23.1, the following five source-importing test files passed **62/62 twice**, with zero failures and zero skips:
+
+- `d1-t2-security-primitives.test.mjs`: 18/18
+- `d1-t2-identity-boundary.test.mjs`: 10/10
+- `platform-portal-identity-import-rehearsal.test.mjs`: 16/16
+- `platform-portal-totp-verifier.test.mjs`: 4/4
+- `d1-t2-security-vectors.test.mjs`: 14/14
+
+`node --check` passed for all four service modules and five test files. Combined TAP log SHA-256 values: `8e467a8807cc3dd5c34b2ea7a02a1f99d6947101d326ea650dfa84aedc2b54be` and `43e852e42bb8bb5fa810e175ad6b0c1e804201f07913d385b4bf075fdd816811`. Full repository `npm test` and hosted CI were not run at this head. See `D1_T2_C1_C2_FIXED_NODE22_REGRESSION_2026-11-08.md` for source blob and file SHA-256 inventory. C2 remains OPEN.

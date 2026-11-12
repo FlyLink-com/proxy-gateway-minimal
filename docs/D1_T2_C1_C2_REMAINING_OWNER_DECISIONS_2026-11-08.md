@@ -29,7 +29,7 @@
 | C2-D04 | Wallet-first historical digests | Resolve both `idempotency_key_hash` and `session_binding_hash` separately. Inventory callers, uniqueness/replay windows and whether canonical inputs remain available; choose explicit compatibility-read, deterministic transformation or retirement. No indefinite unkeyed SHA-256 fallback. | Caller/retention inventory; duplicate/replay and crash-recovery synthetic tests; owner-approved migration semantics. | PENDING |
 | C2-D05 | TOTP key ownership | Resolved for this migration: Auth0-managed MFA owns target factors. Do not provision first-party TOTP AES keys or transfer legacy BWH secrets; invalidate legacy enc: and v2: values at cutover and require re-enrollment. | Synthetic provider enrollment/verification and lifecycle proof; no legacy-secret import or decryption path. | APPROVED — provider proof OPEN |
 | C2-D06 | Rotation and retirement windows | Define payment retry, idempotency replay, registration lookup, data retention and backup windows before retiring any old HMAC/AES key. | Per-family retention register, row-count/reconciliation by key ID, restore test and owner approval. | PENDING |
-| C2-D07 | PII vector test completion | Run the separate 14-case `d1-t2-security-vectors.test.mjs` as one suite under Node v22.23.1; do not infer its result from the four-file 48/48 run. | Exact command, Node version, complete output and file hash attached to the pinned evidence bundle. | OPEN |
+| C2-D07 | PII vector test completion | Separate 14-case `d1-t2-security-vectors.test.mjs` executed as part of the exact T1 source-head five-file regression. | Node v22.23.1, 14/14 PASS; complete command, two combined-run hashes and source hashes recorded in the pinned regression report. | PASS — test gate only |
 
 ## 3. Evidence already completed — not a substitute for owner decisions
 
@@ -39,6 +39,9 @@
 - Full repository comparative test run: baseline `bf200c47` had 7,084 tests / 156 failures / 6 skips; candidate `bc3f8c9a` had 7,112 tests / 156 failures / 6 skips on first run. All baseline failure names remained, all 28 added tests passed, and new-failure difference was zero. A second candidate run had one extra usage-ledger timer failure name, isolated 5/5 on both HEADs.
 - The full suite is not green; this is a comparative no-new-regression result. PR #842 has no hosted CI run and no CI PASS is claimed.
 - Account separation is evidenced at GitHub level. It does not, by itself, establish that the reviewer is a different natural person from the author.
+- PR #843 is the T1 follow-up review vehicle, OPEN / DRAFT. Tested source HEAD at the time of the 62/62 evidence: `c6a70b3f` (APPROVED review 5817942288 binds this head only). PR head before this head-label correction commit: `4be249a3` (3 documentation-only commits / 6 files after `c6a70b3f`); incremental review 5858428230 against `4be249a3` = CHANGES_REQUESTED; no approval binds `4be249a3`.
+- PR #843 source slice: five files 62/62 PASS twice at Node v22.23.1, including the 14-case PII vectors; nine files pass `node --check`. First and second combined TAP log SHA-256: `8e467a8807cc3dd5c34b2ea7a02a1f99d6947101d326ea650dfa84aedc2b54be` and `43e852e42bb8bb5fa810e175ad6b0c1e804201f07913d385b4bf075fdd816811`.
+- PR #844 synthetic validator package at `9dac357b` independently passed 37/37 twice using Node v22.23.1 and pyca/bcrypt 5.0.0; it uses mock Auth0 only and creates no real tenant.
 
 ## 4. Gate rule
 
