@@ -232,7 +232,7 @@ test("package test-runner contract requires Node concurrency support", () => {
   );
   assert.equal(
     packageJson.scripts["test:server"],
-    "node scripts/source-validation-test-runner.mjs"
+    "node scripts/source-validation-test-runner.mjs && npm run test:c2-worker-config-policy"
   );
   assert.match(sourceValidationRunner, /"--test-concurrency=4"/u);
   assert.match(sourceValidationRunner, /name\.endsWith\("\.test\.mjs"\)/u);

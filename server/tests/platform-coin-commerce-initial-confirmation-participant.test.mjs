@@ -98,9 +98,19 @@ function confirmationFixture(state) {
     failed_updated_at: NOW, attempt_count: command.attempt_count, lease_generation: command.lease_generation,
     confirmed_at: confirmed, operator_ref: "operator_synthetic" };
   function insert({ metadataOverride = {}, rowOverride = {} } = {}) {
-    state.control.recordAuditEvent({ id: effect, entityType: "coin_commerce_subscription_fulfillment",
-      entityRef: entitlement, action: "subscription_fulfillment_applied", actorRef: "coin_commerce_fulfillment",
-      createdAt: confirmed, metadata: { ...metadata, ...metadataOverride } });
+    state.database.prepare(`
+      insert into platform_audit_events (
+        id, entity_type, entity_ref, action, actor_ref, created_at, metadata_json
+      ) values (?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      effect,
+      "coin_commerce_subscription_fulfillment",
+      entitlement,
+      "subscription_fulfillment_applied",
+      "coin_commerce_fulfillment",
+      confirmed,
+      JSON.stringify({ ...metadata, ...metadataOverride })
+    );
     const rawAudit = state.database.prepare("select * from platform_audit_events where id=?").get(effect);
     const canonicalAudit = Object.fromEntries(Object.keys(rawAudit).sort().map((key) => [key, rawAudit[key]]));
     const row = { ...values, effect_sha256: sha(JSON.stringify(canonicalAudit)), ...rowOverride };

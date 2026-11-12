@@ -10,6 +10,14 @@ const OFFER_FIELDS = [
   "offerRef", "offerVersionRef", "version", "category", "title", "summary",
   "importantNotices", "baseCoinUnits", "referencePrice", "acceptedCoinTypes", "delivery"
 ];
+const MAX_IMPORTANT_NOTICES_PER_LOCALE = 8;
+const MAX_IMPORTANT_NOTICE_UTF8_BYTES = 512;
+const NOTICE_CONTROL_CHARACTER_PATTERN = /[\u0000-\u001f\u007f]/;
+const NOTICE_URL_OR_MARKUP_PATTERN = /(?:\b(?:https?|ftp):\/\/|(?:^|\s)www\.|mailto:|javascript:)|<\/?[a-z][^>]*>/i;
+const NOTICE_EMAIL_PATTERN = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i;
+const NOTICE_PHONE_PATTERN = /(?=(?:\D*\d){10,})\+?\d[\d\s().-]{8,}\d/;
+const NOTICE_IP_PATTERN = /\b(?:\d{1,3}\.){3}\d{1,3}\b/;
+const NOTICE_SECRET_PATTERN = /(?:\bbearer\s+[A-Za-z0-9._~+/-]{12,}|\b(?:api[_-]?key|token|secret|password)\s*[:=]|-----BEGIN [A-Z ]*PRIVATE KEY-----|\b(?:sk-[A-Za-z0-9_-]{12,}|gh[pousr]_[A-Za-z0-9]{20,}|xox[baprs]-[A-Za-z0-9-]{10,}|AKIA[A-Z0-9]{16})\b|\b[a-f0-9]{64}\b)/i;
 const DELIVERY_FIELDS = [
   "kind", "durationDays", "monthlyTrafficGb", "trafficGb", "neverExpires", "discountBasisPoints"
 ];
@@ -132,16 +140,32 @@ function normalizeLocaleMap(input, field) {
   };
 }
 
+function assertSafeNoticeText(value, field) {
+  const normalized = assertNormalizedText(value, field, "invalid_commerce_locale");
+  if (
+    Buffer.byteLength(normalized, "utf8") > MAX_IMPORTANT_NOTICE_UTF8_BYTES
+    || NOTICE_CONTROL_CHARACTER_PATTERN.test(normalized)
+    || NOTICE_URL_OR_MARKUP_PATTERN.test(normalized)
+    || NOTICE_EMAIL_PATTERN.test(normalized)
+    || NOTICE_PHONE_PATTERN.test(normalized)
+    || NOTICE_IP_PATTERN.test(normalized)
+    || NOTICE_SECRET_PATTERN.test(normalized)
+  ) {
+    throw commerceError("invalid_commerce_locale", field);
+  }
+  return normalized;
+}
+
 function normalizeImportantNotices(input) {
   const values = ownValues(input, ["zh", "en"], "importantNotices", "invalid_commerce_locale");
   const normalizeNotices = (notices, locale) => {
     const snapshot = snapshotPlainArray(notices, `importantNotices.${locale}`, "invalid_commerce_locale");
-    if (snapshot.length === 0) {
+    if (snapshot.length === 0 || snapshot.length > MAX_IMPORTANT_NOTICES_PER_LOCALE) {
       throw commerceError("invalid_commerce_locale", `importantNotices.${locale}`);
     }
     const normalized = [];
     for (let index = 0; index < snapshot.length; index += 1) {
-      normalized.push(assertNormalizedText(snapshot[index], `importantNotices.${locale}[${index}]`, "invalid_commerce_locale"));
+      normalized.push(assertSafeNoticeText(snapshot[index], `importantNotices.${locale}[${index}]`));
     }
     if (new Set(normalized).size !== normalized.length) {
       throw commerceError("invalid_commerce_locale", `importantNotices.${locale}`);
