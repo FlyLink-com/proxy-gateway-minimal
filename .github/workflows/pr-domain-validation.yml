@@ -187,6 +187,7 @@ jobs:
         working-directory: c1-target
         env:
           EXPECTED_HEAD_SHA: ${{ inputs.c1_head_sha }}
+          EXPECTED_BASE_SHA: ${{ inputs.c1_base_sha }}
         shell: bash
         run: |
           set -euo pipefail
