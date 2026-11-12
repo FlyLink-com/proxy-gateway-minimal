@@ -299,7 +299,7 @@ The source audit and synthetic vectors are complete for this pass, but T2 remain
 
 Repository-only documentation and synthetic test design. No production DB reads, BWH connection, real secrets, remote D1 mutation, Worker deployment, CI, PR, merge, dual-write, DNS or cutover. BWH remains production's only writer. A future G6 PASS authorizes consideration of the next separately approved step only.
 
- 
+
 ## 9. PII pseudonymization compatibility follow-up — 2026-11-07
 
 Detailed source-consumer mapping, field disposition, fixed PII domains, HMAC-over-legacy-digest encoding, historical transformation, rotation and fail-closed compatibility are specified in `docs/D1_T2_PII_PSEUDONYMIZATION_AND_HMAC_COMPATIBILITY_V1.md`.
