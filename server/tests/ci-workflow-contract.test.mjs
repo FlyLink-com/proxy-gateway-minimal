@@ -677,6 +677,12 @@ test("PR domain validation verifies the merged DDD authority snapshot at its exa
   assert.match(ddd, /git diff --check "\$EXPECTED_BASE_SHA\.\.\.\$EXPECTED_HEAD_SHA"/);
 });
 
+
+test("validation workflow summaries avoid shell command substitution", () => {
+  const workflow = readRepositoryFile(".github/workflows/pr-domain-validation.yml");
+  assert.doesNotMatch(workflow, /^\s*echo .*\x60/m);
+});
+
 test("PR domain validation runs the workflow contract suite on the exact caller head", () => {
   const workflow = readRepositoryFile(".github/workflows/pr-domain-validation.yml");
   const contract = jobBlock(workflow, "ci-workflow-contract");

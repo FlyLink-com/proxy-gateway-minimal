@@ -142,13 +142,13 @@ jobs:
           {
             echo "### C1 Auth0 synthetic validation"
             echo "- Exact PR: #844"
-            echo "- Base: `$EXPECTED_BASE_SHA`"
-            echo "- Head: `$EXPECTED_HEAD_SHA`"
+            echo "- Base: $EXPECTED_BASE_SHA"
+            echo "- Head: $EXPECTED_HEAD_SHA"
             echo "- Runtime: Node $(node --version), Python $(python --version), bcrypt $(PYTHONPATH=tools/c1-auth0-validator/vendor python -c 'import bcrypt; print(bcrypt.__version__)')"
             echo "- Syntax: ${#source_files[@]}/9 PASS"
             echo "- Suite: 43/43 PASS, 0 failed, 0 skipped"
-            echo "- TAP SHA-256: `$tap_sha`"
-            echo "- Node-check manifest SHA-256: `$node_sha`"
+            echo "- TAP SHA-256: $tap_sha"
+            echo "- Node-check manifest SHA-256: $node_sha"
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload C1 validation evidence
@@ -268,13 +268,13 @@ jobs:
           {
             echo "### DDD document authority validation"
             echo "- Exact PR: #856"
-            echo "- Base: `$EXPECTED_BASE_SHA`"
-            echo "- Head: `$EXPECTED_HEAD_SHA`"
+            echo "- Base: $EXPECTED_BASE_SHA"
+            echo "- Head: $EXPECTED_HEAD_SHA"
             echo "- Node: $(node --version)"
-            echo "- Authority checker blob: `$checker_blob`"
-            echo "- docs:authority:check: exit $check_status; log SHA-256 `$check_sha`"
-            echo "- docs:authority:strict: exit $strict_status; log SHA-256 `$strict_sha`"
-            echo "- Exact `git diff --check base...head`: exit $diff_status; log SHA-256 `$diff_sha`"
+            echo "- Authority checker blob: $checker_blob"
+            echo "- docs:authority:check: exit $check_status; log SHA-256 $check_sha"
+            echo "- docs:authority:strict: exit $strict_status; log SHA-256 $strict_sha"
+            echo "- Exact git diff --check BASE_SHA...HEAD_SHA: exit $diff_status; log SHA-256 $diff_sha"
           } >> "$GITHUB_STEP_SUMMARY"
 
           test "$check_status" -eq 0
