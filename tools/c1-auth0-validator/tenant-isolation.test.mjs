@@ -5,6 +5,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createCipheriv, randomBytes } from "node:crypto";
 import { SURFACES, validateSurfaceActorContext, createSessionRevocationRegistry } from "./tenant-isolation.mjs";
+import { createMockTenant, totpAt } from "./mock-auth0.mjs";
 import {
   createD1IdentityBindingRecord, resolveD1IdentityBinding, planD1IdentityBinding
 } from "../../server/services/platform/d1-t2-identity-boundary.mjs";
@@ -28,6 +29,24 @@ test("portal context validates on the portal surface", () => {
   const result = validateSurfaceActorContext("portal", ctx({ issuerRef: PORTAL }), { nowMs: NOW });
   assert.equal(result.surface, "portal");
   assert.equal(result.context.issuerRef, PORTAL);
+});
+
+test("mock Auth0 TOTP step-up rejects foreign-tenant contexts in both directions", () => {
+  const portalTenant = createMockTenant({ tenantRef: "portal-step-up-test", issuerRef: PORTAL, nowFn: () => NOW });
+  const adminTenant = createMockTenant({ tenantRef: "admin-step-up-test", issuerRef: ADMIN, nowFn: () => NOW });
+  const portalContext = ctx({ issuerRef: PORTAL, accountRef: "acct-shared" });
+  const adminContext = ctx({ issuerRef: ADMIN, accountRef: "acct-shared" });
+  const { secretBase32: portalSecret } = portalTenant.enrollTotp("acct-shared");
+  const { secretBase32: adminSecret } = adminTenant.enrollTotp("acct-shared");
+  const portalCode = totpAt(portalSecret, NOW);
+  const adminCode = totpAt(adminSecret, NOW);
+
+  // Use the receiving tenant's own valid code and the same accountRef: only
+  // the foreign issuer should cause rejection.
+  assert.throws(() => portalTenant.stepUpTotp(adminContext, portalCode, NOW), /totp_tenant_mismatch/);
+  assert.throws(() => adminTenant.stepUpTotp(portalContext, adminCode, NOW), /totp_tenant_mismatch/);
+  assert.deepEqual([...portalTenant.stepUpTotp(portalContext, portalCode, NOW).factors], ["password", "totp"]);
+  assert.deepEqual([...adminTenant.stepUpTotp(adminContext, adminCode, NOW).factors], ["password", "totp"]);
 });
 
 test("a portal-issued context is rejected on the admin surface even when it carries a totp factor", () => {
