@@ -261,6 +261,15 @@ export function createMockTenant({ tenantRef, issuerRef, nowFn = () => Date.now(
     hasTotp: (accountRef) => enrollments.has(accountRef),
 
     stepUpTotp(context, code, nowMs = nowFn()) {
+      // A factor enrollment is tenant-local. Never let a valid code from this
+      // tenant upgrade an actor context issued by the other tenant.
+      if (!context || typeof context !== "object" || context.issuerRef !== issuerRef) {
+        throw fail("totp_tenant_mismatch");
+      }
+      if (typeof context.accountRef !== "string" || context.accountRef.length === 0
+        || !Array.isArray(context.factors)) {
+        throw fail("totp_context_invalid");
+      }
       const enrollment = enrollments.get(context.accountRef);
       if (!enrollment) throw fail("totp_not_enrolled");
       if (!totpMatches(enrollment.secretBase32, code, nowMs)) throw fail("totp_code_invalid");
