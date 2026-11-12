@@ -107,7 +107,7 @@ Before implementing an event, define its owner, immutable identity, aggregate ID
 
 ## 5. Open PR-to-domain map (2026-11-11 snapshot)
 
-There were 21 open PRs at the snapshot cutoff. “M=Y/N” is GitHub's mergeable readback only; “R=APP” means an APPROVED review was observed on the exact HEAD listed; “R=—” means no review submission was observed; “R=comments” means comments existed but no approval was observed. These are not Source Gate or Merge Gate conclusions.
+There were 21 open delivery PRs at the snapshot cutoff. PR #856 is the documentation-only crosswalk PR created from this snapshot and is intentionally excluded from its own delivery inventory. “M=Y/N” is GitHub's mergeable readback only; “R=APP” means an APPROVED review was observed on the exact HEAD listed; “R=—” means no review submission was observed; “R=comments” means non-approval comments existed; “R=comments/dismissed” means only comments or dismissed review submissions existed, with no active approval observed. These are not Source Gate or Merge Gate conclusions.
 
 The Master comparison column is ahead / behind relative to Master `84b81ab0024a64607c9ca4ca2f05dd5c4529b5a0`. For stacked / G6 / review-only branches, the base lane is shown instead of a misleading Master delta.
 
@@ -135,7 +135,7 @@ The Master comparison column is ahead / behind relative to Master `84b81ab0024a6
 
 | PR | Primary context and secondary impact | Base lane | Exact HEAD | Snapshot / review |
 | --- | --- | --- | --- | --- |
-| [#812](https://github.com/FlyLink-com/proxy-gateway-minimal/pull/812) | Metering & Usage Accounting; read-only M0 diagnostics | master | 56f2bb8d3cb16c8c488fed05b39c4297771a888a | OPEN Draft; M=Y; R=—; Master delta +78 / −294; read-only diagnostic scope does not establish production metering health. |
+| [#812](https://github.com/FlyLink-com/proxy-gateway-minimal/pull/812) | Metering & Usage Accounting; read-only M0 diagnostics | master | 56f2bb8d3cb16c8c488fed05b39c4297771a888a | OPEN Draft; M=Y; R=comments/dismissed; no active approval; Master delta +78 / −294; read-only diagnostic scope does not establish production metering health. |
 | [#793](https://github.com/FlyLink-com/proxy-gateway-minimal/pull/793) | Metering & Usage Accounting; Operations ledger-query performance | master | 387185d0b931ad727fb25c3a9297901e2e2739d2 | OPEN Draft; M=N; R=—; Master delta +3 / −313; no production timeout conclusion follows from this probe alone. |
 | [#797](https://github.com/FlyLink-com/proxy-gateway-minimal/pull/797) | Traffic & Capacity Policy; Metering and Operations projections | master | 4bd6302aff5925e3a5d2cc3a1b76098144336cc8 | OPEN Draft; M=Y; R=—; Master delta +2 / −308; separate rating policy from usage accounting and Admin projection. |
 | [#798](https://github.com/FlyLink-com/proxy-gateway-minimal/pull/798) | Traffic & Capacity Policy; BWH data-plane capacity enforcement | master | a0571e90ee0818af29b138837310c479fb1208f8 | OPEN Draft; M=Y; R=—; Master delta +7 / −308; keep policy decision separate from applied node state. |
