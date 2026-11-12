@@ -247,7 +247,7 @@ test("admin platform routes list portal registration accounts from control store
         registrationSource: "self_service_portal",
         loginRef: "local-user@example.test",
         displayRef: "local-user@example.test",
-        registrationSourceIpDigest: "digest_should_not_be_listed",
+        registrationSourceIpDigest: sha256Hex("synthetic-registration-source-ip"),
         intentPlan: "trial"
       }
     });
@@ -286,7 +286,7 @@ test("admin platform routes list portal registration accounts from control store
         createdAt: now,
         updatedAt: now
       });
-      assert.equal(JSON.stringify(accountsBody).includes("digest_should_not_be_listed"), false);
+      assert.equal(JSON.stringify(accountsBody).includes(sha256Hex("synthetic-registration-source-ip")), false);
 
       const entitlements = await fetch(`${baseUrl}/api/admin/platform/entitlements?accountId=acct_registration_1`, {
         headers: authHeaders()
@@ -471,7 +471,7 @@ test("admin platform account search resolves legacy digest-only portal accounts 
         registrationSource: "self_service_portal",
         contactDigest: legacyEmailDigest,
         loginDigest: legacyEmailDigest,
-        displayDigest: "digest_should_not_be_listed"
+        displayDigest: sha256Hex("synthetic-display-digest")
       }
     });
     controlStore.createEntitlement({
@@ -500,7 +500,7 @@ test("admin platform account search resolves legacy digest-only portal accounts 
       assert.equal(listedBody.items[0].displayName, "acct_digest_only_1");
       assert.equal(JSON.stringify(listedBody).includes(legacyEmail), false);
       assert.equal(JSON.stringify(listedBody).includes(legacyEmailDigest), false);
-      assert.equal(JSON.stringify(listedBody).includes("digest_should_not_be_listed"), false);
+      assert.equal(JSON.stringify(listedBody).includes(sha256Hex("synthetic-display-digest")), false);
 
       const searched = await fetch(`${baseUrl}/api/admin/platform/accounts?search=LEGACY-USER%40EXAMPLE.TEST`, {
         headers: authHeaders()
@@ -511,7 +511,7 @@ test("admin platform account search resolves legacy digest-only portal accounts 
       assert.equal(searchedBody.items[0].email, legacyEmail);
       assert.equal(searchedBody.items[0].displayName, legacyEmail);
       assert.equal(JSON.stringify(searchedBody).includes(legacyEmailDigest), false);
-      assert.equal(JSON.stringify(searchedBody).includes("digest_should_not_be_listed"), false);
+      assert.equal(JSON.stringify(searchedBody).includes(sha256Hex("synthetic-display-digest")), false);
     } finally {
       server.close();
     }

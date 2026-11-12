@@ -1060,7 +1060,8 @@ export type CleanEdgeReadinessInput = {
   generatedAt?: string;
   repoState?: {
     branchSynced?: boolean;
-    noOpenPrs?: boolean;
+    openPrRefs?: string[];
+    blockingPrRefs?: string[];
     projectStateCheckPassed?: boolean;
   };
   subscriptionBoundary?: {
@@ -1091,8 +1092,11 @@ export type CleanEdgeReadinessInput = {
 
 export type CleanEdgeRepoState = {
   branchSynced: boolean;
-  noOpenPrs: boolean;
   projectStateCheckPassed: boolean;
+  openPrScopeRecorded: boolean;
+  openPrRefs: string[];
+  blockingPrRefs: string[];
+  blockingOpenPrRefs: string[];
 };
 
 export type CleanEdgeSubscriptionBoundary = {

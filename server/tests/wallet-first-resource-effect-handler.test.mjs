@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { seedAccountModelForTest } from "./helpers/account-model-seed.mjs";
 
 import Database from "better-sqlite3";
 
@@ -187,13 +188,13 @@ function createFixture({ commercialModel = "wallet_first_unique_v1" } = {}) {
     idFactory: () => "tenant_handler_001",
     artifactIdFactory: () => "artifact_handler_001"
   });
-  controlStore.createAccount({
+  seedAccountModelForTest(controlDatabase, {
     id: "acct_handler",
     ownerRef: "owner_handler",
     status: "active",
     createdAt: now,
     updatedAt: now,
-    metadata: { commercialModel }
+    commercialModel
   });
   const adapters = createWalletFirstResourceEffectAdapters({
     controlStore,

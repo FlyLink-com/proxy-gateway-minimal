@@ -47,6 +47,12 @@ function portalRechargeBuildConfig(): Plugin {
         define: {
           "import.meta.env.VITE_PORTAL_RECHARGE_CONFIG_BINDING":
             JSON.stringify(runtimeBinding),
+          "import.meta.env.VITE_PUBLIC_ADS_CLICK_BINDING_ENABLED":
+            JSON.stringify(
+              process.env.VITE_PUBLIC_ADS_CLICK_BINDING_ENABLED === "true"
+                ? "true"
+                : "false",
+            ),
         },
       };
     },
@@ -63,6 +69,7 @@ function portalRechargeBuildConfig(): Plugin {
 export default defineConfig({
   root: path.resolve(adminDir, "portal"),
   publicDir: path.resolve(adminDir, "public"),
+  envPrefix: [],
   plugins: [portalRechargeBuildConfig(), react()],
   build: {
     outDir: path.resolve(adminDir, "dist-portal"),

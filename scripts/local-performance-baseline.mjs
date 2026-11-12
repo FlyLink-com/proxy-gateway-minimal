@@ -2270,7 +2270,7 @@ async function runDbWriterChild() {
           status: "active",
           createdAt: NOW,
           updatedAt: NOW,
-          metadata: { synthetic: true, writerId }
+          metadata: { synthetic: true }
         });
         succeeded += 1;
       } catch (caught) {

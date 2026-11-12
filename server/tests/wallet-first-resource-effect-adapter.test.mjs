@@ -3,6 +3,7 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+import { seedAccountModelForTest } from "./helpers/account-model-seed.mjs";
 
 import Database from "better-sqlite3";
 
@@ -215,13 +216,13 @@ function createFixture({ setupDeliveryRuntimeEscrow = null } = {}) {
     idFactory: () => "tenant_wallet_001",
     artifactIdFactory: () => "artifact_wallet_001"
   });
-  controlStore.createAccount({
+  seedAccountModelForTest(controlDatabase, {
     id: "acct_wallet_001",
     ownerRef: "owner_wallet_001",
     status: "active",
     createdAt: now,
     updatedAt: now,
-    metadata: { commercialModel: "wallet_first_unique_v1" }
+    commercialModel: "wallet_first_unique_v1"
   });
   const adapters = createWalletFirstResourceEffectAdapters({
     controlStore,

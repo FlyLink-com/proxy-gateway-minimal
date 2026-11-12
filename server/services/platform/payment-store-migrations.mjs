@@ -306,6 +306,19 @@ const LEGACY_ARCHIVE_MIGRATION_CHECKSUM = createHash("sha256")
     ...LEGACY_ARCHIVE_GUARD_STATEMENTS,
   ].join("\n-- statement --\n"), "utf8")
   .digest("hex");
+
+// Read-only checksum registry for source-only migration inventory validation.
+// This does not apply either migration or inspect a database.
+export const PAYMENT_STORE_MIGRATIONS = Object.freeze([
+  Object.freeze({
+    id: REQUIRED_PAYMENT_STORE_MIGRATION_ID,
+    ddlChecksum: DDL_CHECKSUM
+  }),
+  Object.freeze({
+    id: LEGACY_PAYMENT_ORDERS_ARCHIVE_MIGRATION_ID,
+    ddlChecksum: LEGACY_ARCHIVE_MIGRATION_CHECKSUM
+  })
+]);
 const NEW_PAYMENT_OBJECT_NAMES = Object.freeze([
   "platform_payment_receipts",
   "platform_payment_orders_account_created_idx",

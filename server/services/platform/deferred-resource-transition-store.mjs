@@ -3,6 +3,11 @@ import { isAbsolute } from "node:path";
 import Database from "better-sqlite3";
 
 import {
+  safeCaptureAdsClickForOrder,
+  safeEnqueueAdsConversion,
+  safeMaterializeAdsClickForOrder
+} from "./ads-conversion-store.mjs";
+import {
   applyCoinDiscount,
   normalizeCoinCommerceOffer
 } from "./coin-commerce-domain.mjs";
@@ -184,6 +189,36 @@ function assertAllowedFields(value, fields, code = "deferred_transition_invalid_
     }
   }
   return input;
+}
+
+// Peels the optional client-supplied `adsClick` descriptor off a request
+// object before an exact-field contract runs. Any non-data or unexpected
+// property shape leaves the input untouched, so the exact-field contract
+// rejects it exactly as it would have before this descriptor existed.
+function splitOptionalAdsClick(input) {
+  if (
+    !input
+    || typeof input !== "object"
+    || Array.isArray(input)
+    || Object.getPrototypeOf(input) !== Object.prototype
+  ) {
+    return { request: input, adsClick: undefined };
+  }
+  const descriptor = Object.getOwnPropertyDescriptor(input, "adsClick");
+  if (!descriptor) return { request: input, adsClick: undefined };
+  if (!descriptor.enumerable || !("value" in descriptor)) {
+    return { request: input, adsClick: undefined };
+  }
+  const request = {};
+  for (const key of Reflect.ownKeys(input)) {
+    if (key === "adsClick") continue;
+    const field = Object.getOwnPropertyDescriptor(input, key);
+    if (!field || !field.enumerable || !("value" in field)) {
+      return { request: input, adsClick: undefined };
+    }
+    request[key] = field.value;
+  }
+  return { request, adsClick: descriptor.value };
 }
 
 function normalizeReference(value, code = "deferred_transition_invalid_input") {
@@ -700,6 +735,13 @@ function normalizeNow(nowFn) {
     throw storeError("deferred_transition_infrastructure_error");
   }
   return now.toISOString();
+}
+
+function timestampMillisecondsFromIsoUtc(timestamp) {
+  if (typeof timestamp !== "string" || !ISO_UTC_MILLIS.test(timestamp)) return null;
+  const milliseconds = Date.parse(timestamp);
+  if (!Number.isSafeInteger(milliseconds)) return null;
+  return new Date(milliseconds).toISOString() === timestamp ? milliseconds : null;
 }
 
 function addMilliseconds(timestamp, milliseconds) {
@@ -2099,7 +2141,14 @@ export function createSqliteDeferredResourceTransitionStore(options = {}) {
       if (!transition || transition.account_id !== request.accountId) {
         throw storeError("deferred_transition_infrastructure_error");
       }
-      return Object.freeze({ kind: "transition", transition: publicProjection(transition) });
+      // Internal signal for reserveTransitionFromCheckoutQuote's
+      // post-commit Ads step: a replay may only materialize the first
+      // request's stored click claim.
+      return Object.freeze({
+        kind: "transition",
+        transition: publicProjection(transition),
+        adsReplay: true
+      });
     }
     if (prepared.kind !== "reserve") {
       throw storeError("deferred_transition_infrastructure_error");
@@ -2115,7 +2164,7 @@ export function createSqliteDeferredResourceTransitionStore(options = {}) {
       operation: prepared.operation,
       occurredAt
     });
-    return Object.freeze({ kind: "transition", transition });
+    return Object.freeze({ kind: "transition", transition, adsReplay: false });
   });
 
   function expireLeaseBoundTransitions(occurredAt) {
@@ -3182,12 +3231,34 @@ export function createSqliteDeferredResourceTransitionStore(options = {}) {
   function reserveTransitionFromCheckoutQuote(input) {
     assertOpen();
     try {
-      const outcome = reserveCheckoutQuoteTransaction.immediate(
-        normalizeCheckoutQuoteReserveRequest(input)
-      );
+      const { request, adsClick } = splitOptionalAdsClick(input);
+      const normalized = normalizeCheckoutQuoteReserveRequest(request);
+      const outcome = reserveCheckoutQuoteTransaction.immediate(normalized);
       if (outcome?.kind === "error") throw storeError(outcome.code);
       if (outcome?.kind !== "transition") {
         throw storeError("deferred_transition_infrastructure_error");
+      }
+      // Post-commit Ads measurement step (never affects the purchase
+      // result; the safe wrappers swallow every failure, so a binding
+      // problem can no longer surface as a request error after the
+      // reservation has committed). A first request records its click
+      // claim; a replay may only materialize the claim the first request
+      // stored. The binding key is the server-derived order_ref.
+      if (outcome.adsReplay === true) {
+        safeMaterializeAdsClickForOrder(db, {
+          orderRef: outcome.transition.orderRef
+        });
+      } else {
+        // The transition projection exposes canonical ISO UTC text, while
+        // the consent ledger compares epoch milliseconds. Convert strictly;
+        // malformed timestamps fail closed and cannot authorize a click.
+        safeCaptureAdsClickForOrder(db, {
+          orderRef: outcome.transition.orderRef,
+          accountRef: normalized.accountId,
+          model: "deferred",
+          adsClick,
+          authorizedAt: timestampMillisecondsFromIsoUtc(outcome.transition.createdAt)
+        });
       }
       return outcome.transition;
     } catch (error) {
@@ -3312,7 +3383,21 @@ export function createSqliteDeferredResourceTransitionStore(options = {}) {
   function settleTransition(input) {
     assertOpen();
     try {
-      return settleTransaction.immediate(normalizeSettleRequest(input));
+      const result = settleTransaction.immediate(normalizeSettleRequest(input));
+      // Post-commit Ads measurement step: settled is the deferred
+      // terminal state. Runs only after the settle transaction commits
+      // (including its idempotent replay), through the safe wrapper, so a
+      // measurement failure can never roll back the settlement or be
+      // mistaken for an unknown charge.
+      if (result?.state === "settled") {
+        safeEnqueueAdsConversion(db, {
+          orderRef: result.orderRef,
+          model: "deferred",
+          valueUnits: result.amountUnits,
+          terminalAt: Date.parse(result.settledAt)
+        });
+      }
+      return result;
     } catch (error) {
       throw normalizeStoreError(error);
     }

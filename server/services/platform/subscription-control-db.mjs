@@ -29,6 +29,10 @@ import {
   readScheduledPlanSwitchByRef,
   supersedeScheduledPlanSwitch
 } from "./coin-commerce-plan-switch-runtime.mjs";
+import {
+  coinCommerceSubscriptionFulfillmentMetadataJson,
+  portalAccessEventJson
+} from "./control-json-contracts.mjs";
 
 const UNSAFE_FIELD_PARTS = [
   "email",
@@ -43,6 +47,8 @@ const UNSAFE_FIELD_PARTS = [
   "sspassword"
 ];
 const SAFE_CONTROL_REF_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_:/-]{0,127}$/;
+const SAFE_EDGE_GENERATION_PATTERN = /^(?:gen_[a-f0-9]{24}|gen_scoped_[a-f0-9]{32})$/;
+const PORTAL_SECOND_FACTOR_TYPES = new Set(["totp", "passkey"]);
 const SAFE_AUTHORITY_REF_PATTERN = /^[A-Za-z0-9._:-]{1,128}$/;
 const AUTHORITY_SECRET_LIKE_PATTERN =
   /^(?:https?:|mailto:|bearer[ .:_-]|sk[-_]|eyj[a-z0-9_-]{10,})/i;
@@ -126,6 +132,25 @@ function safeControlRef(value, field) {
     throw platformError("validation_error", `${field} must be a safe control-plane reference`);
   }
   return normalized;
+}
+
+function safeEdgeGeneration(value) {
+  if (typeof value !== "string" || !SAFE_EDGE_GENERATION_PATTERN.test(value)) {
+    throw platformError("validation_error", "generation must match a supported desired-state generation");
+  }
+  return value;
+}
+
+function portalSecondFactorAllowedFactors(value) {
+  const factors = JSON.parse(jsonArray(value ?? [], "allowedFactors"));
+  if (
+    factors.length === 0
+    || factors.some((factor) => typeof factor !== "string" || !PORTAL_SECOND_FACTOR_TYPES.has(factor))
+    || new Set(factors).size !== factors.length
+  ) {
+    throw platformError("validation_error", "allowedFactors must contain unique supported factors");
+  }
+  return JSON.stringify(factors);
 }
 
 function safeAuthorityRef(value, field) {
@@ -300,6 +325,299 @@ function listenerReadyFlag(input = {}) {
     || input.listenerTcp === true
     || input.listenerPresent === true
   ) ? 1 : 0;
+}
+
+function edgeNodeMetadataJson(value) {
+  const snapshot = snapshotControlJsonObject(value, "edge node metadata");
+  const allowed = new Set([
+    "source",
+    "receiptGateRequired",
+    "imageSafeConfirmed",
+    "artifactHashRecorded",
+    "wireguardPlanRef",
+    "wireguardPublicKeyFingerprint",
+    "agentAuthFingerprint"
+  ]);
+  if (Object.keys(snapshot).some((key) => !allowed.has(key))) {
+    throw platformError("validation_error", "edge node metadata contains an unknown field");
+  }
+  if (
+    snapshot.source !== "node-image-first-boot-packet"
+    || snapshot.receiptGateRequired !== true
+    || typeof snapshot.imageSafeConfirmed !== "boolean"
+    || typeof snapshot.artifactHashRecorded !== "boolean"
+    || typeof snapshot.wireguardPlanRef !== "string"
+    || !/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/.test(snapshot.wireguardPlanRef)
+    || /https?:|token=|secret|credential|password|private|customer|@|\/sub\/clash\.yaml|(?:\d{1,3}\.){3}\d{1,3}|[a-z0-9-]+\.[a-z]{2,}/i.test(snapshot.wireguardPlanRef)
+  ) {
+    throw platformError("validation_error", "edge node metadata does not match the first-boot contract");
+  }
+
+  const normalized = {
+    source: snapshot.source,
+    receiptGateRequired: snapshot.receiptGateRequired,
+    imageSafeConfirmed: snapshot.imageSafeConfirmed,
+    artifactHashRecorded: snapshot.artifactHashRecorded,
+    wireguardPlanRef: snapshot.wireguardPlanRef
+  };
+  for (const field of ["wireguardPublicKeyFingerprint", "agentAuthFingerprint"]) {
+    if (Object.prototype.hasOwnProperty.call(snapshot, field)) {
+      if (typeof snapshot[field] !== "string" || !/^sha256:[0-9a-f]{64}$/.test(snapshot[field])) {
+        throw platformError("validation_error", "edge node metadata fingerprint is invalid");
+      }
+      normalized[field] = snapshot[field];
+    }
+  }
+  return JSON.stringify(normalized);
+}
+
+const ACCOUNT_METADATA_FIELDS = new Set([
+  "source",
+  "channel",
+  "synthetic",
+  "displayName",
+  "loginRef",
+  "displayRef",
+  "initialAccount",
+  "requireSecuritySetup",
+  "registrationSource",
+  "singleSubscriptionOnly",
+  "subscriptionLimit",
+  "contactDigest",
+  "loginDigest",
+  "displayDigest",
+  "useCaseDigest",
+  "intentPlan",
+  "requestedDeviceCount",
+  "primaryRegion",
+  "legalAgreementAccepted",
+  "legalAgreementAcceptedAt",
+  "termsVersion",
+  "privacyVersion",
+  "legalAgreementSourceIpDigest",
+  "legalAgreementRequestKeyDigest",
+  "registrationSourceIpDigest",
+  "registrationRequestKeyDigest"
+]);
+const ACCOUNT_METADATA_DIGEST_FIELDS = new Set([
+  "contactDigest",
+  "loginDigest",
+  "displayDigest",
+  "useCaseDigest",
+  "legalAgreementSourceIpDigest",
+  "legalAgreementRequestKeyDigest",
+  "registrationSourceIpDigest",
+  "registrationRequestKeyDigest"
+]);
+
+function accountMetadataJson(value) {
+  const snapshot = value == null ? {} : snapshotControlJsonObject(value, "account metadata");
+  const fields = Object.keys(snapshot);
+  if (fields.some((field) => !ACCOUNT_METADATA_FIELDS.has(field))) {
+    throw platformError("validation_error", "account metadata contains an unknown field");
+  }
+
+  const normalized = {};
+  for (const field of fields) {
+    const entry = snapshot[field];
+    if (ACCOUNT_METADATA_DIGEST_FIELDS.has(field)) {
+      if (entry === null && [
+        "useCaseDigest",
+        "legalAgreementSourceIpDigest",
+        "legalAgreementRequestKeyDigest",
+        "registrationSourceIpDigest",
+        "registrationRequestKeyDigest"
+      ].includes(field)) {
+        normalized[field] = null;
+      } else if (typeof entry !== "string" || !/^[a-f0-9]{64}$/.test(entry)) {
+        throw platformError("validation_error", "account metadata digest is invalid");
+      } else {
+        normalized[field] = entry;
+      }
+      continue;
+    }
+
+    if (["initialAccount", "requireSecuritySetup", "singleSubscriptionOnly", "legalAgreementAccepted", "synthetic"].includes(field)) {
+      if (typeof entry !== "boolean") throw platformError("validation_error", "account metadata boolean is invalid");
+      normalized[field] = entry;
+      continue;
+    }
+
+    if (["subscriptionLimit", "requestedDeviceCount"].includes(field)) {
+      normalized[field] = integer(entry, field, { min: 1 });
+      if (normalized[field] > 20) throw platformError("validation_error", "account metadata integer is out of range");
+      continue;
+    }
+
+    if (field === "registrationSource") {
+      if (entry !== "self_service_portal") throw platformError("validation_error", "account metadata registration source is invalid");
+      normalized[field] = entry;
+      continue;
+    }
+
+    if (field === "intentPlan") {
+      if (!["trial", "monthly", "yearly"].includes(entry)) {
+        throw platformError("validation_error", "account metadata plan is invalid");
+      }
+      normalized[field] = entry;
+      continue;
+    }
+
+    if (field === "legalAgreementAcceptedAt") {
+      normalized[field] = isoText(entry, field);
+      continue;
+    }
+
+    if (field === "loginRef") {
+      const loginRef = requiredText(entry, field);
+      if (loginRef.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(loginRef)) {
+        throw platformError("validation_error", "account metadata login reference is invalid");
+      }
+      normalized[field] = loginRef;
+      continue;
+    }
+
+    if (field === "displayRef" || field === "displayName") {
+      const display = requiredText(entry, field);
+      if (display.length > 254 || /[\u0000-\u001f\u007f]/u.test(display)) {
+        throw platformError("validation_error", "account metadata display value is invalid");
+      }
+      normalized[field] = display;
+      continue;
+    }
+
+    if (field === "termsVersion" || field === "privacyVersion") {
+      const version = requiredText(entry, field);
+      if (version.length > 64 || !/^[A-Za-z0-9._:-]+$/.test(version)) {
+        throw platformError("validation_error", "account metadata legal version is invalid");
+      }
+      normalized[field] = version;
+      continue;
+    }
+
+    if (field === "primaryRegion" || field === "source" || field === "channel") {
+      const token = requiredText(entry, field);
+      if (!/^[a-z][a-z0-9_-]{1,63}$/.test(token)) {
+        throw platformError("validation_error", "account metadata token is invalid");
+      }
+      normalized[field] = token;
+    }
+  }
+
+  // This is a bounded legacy BWH source-writer contract, not the D1 target
+  // projection. Raw login/display refs and unkeyed SHA-256 digests must be
+  // externalized/replaced before any D1 account-metadata load.
+  return JSON.stringify(normalized);
+}
+
+function issuanceMetadataJson(value) {
+  const snapshot = value == null ? {} : snapshotControlJsonObject(value, "issuance metadata");
+  const fields = Object.keys(snapshot);
+  if (fields.length === 0) return "{}";
+
+  if (fields.length === 1 && fields[0] === "cli") {
+    if (snapshot.cli !== "platform:issue-subscription") {
+      throw platformError("validation_error", "issuance metadata CLI source is not allowed");
+    }
+    return JSON.stringify(snapshot);
+  }
+
+  const dataPackFields = [
+    "version",
+    "kind",
+    "commandRef",
+    "orderRef",
+    "offerVersionRef",
+    "quotaBytes",
+    "nodeId",
+    "commercialNeverExpires",
+    "technicalValidUntil"
+  ];
+  if (
+    fields.length === dataPackFields.length
+    && dataPackFields.every((field) => Object.prototype.hasOwnProperty.call(snapshot, field))
+  ) {
+    const commandRef = safeControlRef(snapshot.commandRef, "commandRef");
+    const orderRef = safeControlRef(snapshot.orderRef, "orderRef");
+    const offerVersionRef = safeControlRef(snapshot.offerVersionRef, "offerVersionRef");
+    const nodeId = safeControlRef(snapshot.nodeId, "nodeId");
+    const quotaBytes = integer(snapshot.quotaBytes, "quotaBytes", { min: 1 });
+    const expectedQuotaBytes = lifetimeDataPackQuotaBytesFor({ plan: offerVersionRef });
+    const technicalValidUntil = isoText(snapshot.technicalValidUntil, "technicalValidUntil");
+    if (
+      snapshot.version !== 1
+      || snapshot.kind !== "data_pack"
+      || snapshot.commercialNeverExpires !== true
+      || expectedQuotaBytes === null
+      || quotaBytes !== expectedQuotaBytes
+      || technicalValidUntil !== DATA_PACK_TECHNICAL_VALID_UNTIL
+    ) {
+      throw platformError("validation_error", "issuance metadata does not match the data-pack contract");
+    }
+    return JSON.stringify({
+      version: 1,
+      kind: "data_pack",
+      commandRef,
+      orderRef,
+      offerVersionRef,
+      quotaBytes,
+      nodeId,
+      commercialNeverExpires: true,
+      technicalValidUntil
+    });
+  }
+
+  const chainFields = [
+    "commercialModel",
+    "resourceModel",
+    "resourceModelVersion",
+    "initialTransitionRef",
+    "lastTransitionRef"
+  ];
+  if (
+    fields.length !== chainFields.length
+    || chainFields.some((field) => !Object.prototype.hasOwnProperty.call(snapshot, field))
+    || snapshot.commercialModel !== WALLET_FIRST_RESOURCE_EFFECT_COMMERCIAL_MODEL
+    || snapshot.resourceModel !== WALLET_FIRST_RESOURCE_CHAIN_MODEL
+    || snapshot.resourceModelVersion !== WALLET_FIRST_RESOURCE_EFFECT_VERSION
+  ) {
+    throw platformError("validation_error", "issuance metadata does not match a supported versioned contract");
+  }
+
+  const normalized = {
+    commercialModel: snapshot.commercialModel,
+    resourceModel: snapshot.resourceModel,
+    resourceModelVersion: snapshot.resourceModelVersion,
+    initialTransitionRef: safeControlRef(snapshot.initialTransitionRef, "initialTransitionRef"),
+    lastTransitionRef: safeControlRef(snapshot.lastTransitionRef, "lastTransitionRef")
+  };
+  return JSON.stringify(normalized);
+}
+
+function snapshotControlJsonObject(value, field) {
+  try {
+    if (
+      !value
+      || typeof value !== "object"
+      || Array.isArray(value)
+      || (Object.getPrototypeOf(value) !== Object.prototype && Object.getPrototypeOf(value) !== null)
+    ) {
+      throw new Error("invalid object");
+    }
+    const keys = Reflect.ownKeys(value);
+    if (keys.some((key) => typeof key !== "string")) throw new Error("invalid key");
+    const snapshot = {};
+    for (const key of keys) {
+      const descriptor = Object.getOwnPropertyDescriptor(value, key);
+      if (!descriptor || !descriptor.enumerable || !("value" in descriptor)) {
+        throw new Error("invalid property");
+      }
+      snapshot[key] = descriptor.value;
+    }
+    return snapshot;
+  } catch {
+    throw platformError("validation_error", field + " must be a plain data object");
+  }
 }
 
 function jsonObject(value, field) {
@@ -1537,7 +1855,7 @@ export function createSqliteSubscriptionControlStore({
       status: requiredText(input.status || "active", "status"),
       createdAt: isoText(input.createdAt, "createdAt"),
       updatedAt: isoText(input.updatedAt, "updatedAt"),
-      metadataJson: jsonObject(input.metadata, "metadata")
+      metadataJson: accountMetadataJson(input.metadata)
     };
     sqliteRun(db.prepare(`
       insert into platform_accounts (
@@ -3788,7 +4106,7 @@ export function createSqliteSubscriptionControlStore({
       nodeId: prepared.nodeId,
       requestedByRef: WALLET_FIRST_RESOURCE_EFFECT_ACTOR_REF,
       now,
-      metadataJson: jsonObject(requestMetadata, "walletFirstResourceChainMetadata")
+      metadataJson: issuanceMetadataJson(requestMetadata)
     });
     sqliteRun(db.prepare(`
       insert into platform_issued_subscription_links (
@@ -3831,7 +4149,7 @@ export function createSqliteSubscriptionControlStore({
       accessGrantRef: prepared.effectRef,
       tenantId: runtimeReceipt.tenantId,
       artifactId: runtimeReceipt.artifactId,
-      eventJson: jsonObject({
+      eventJson: portalAccessEventJson({
         type: "wallet_first_resource_effect_applied",
         transitionRef: prepared.transitionRef,
         effectRef: prepared.effectRef,
@@ -3919,8 +4237,8 @@ export function createSqliteSubscriptionControlStore({
       accountId: prepared.accountId,
       entitlementId: current.entitlementId,
       nodeId: prepared.nodeId,
-      metadataJson: jsonObject(nextMetadata, "walletFirstResourceChainMetadata"),
-      previousMetadataJson: jsonObject(previousMetadata, "walletFirstResourceChainMetadata"),
+      metadataJson: issuanceMetadataJson(nextMetadata),
+      previousMetadataJson: issuanceMetadataJson(previousMetadata),
       now
     });
     if (requestUpdate.changes !== 1) {
@@ -3964,7 +4282,7 @@ export function createSqliteSubscriptionControlStore({
       reviewedByRef: WALLET_FIRST_RESOURCE_EFFECT_ACTOR_REF,
       validUntil: prepared.successor.validUntil,
       accessGrantRef: prepared.effectRef,
-      eventJson: jsonObject({
+      eventJson: portalAccessEventJson({
         type: "wallet_first_resource_effect_applied",
         transitionRef: prepared.transitionRef,
         effectRef: prepared.effectRef,
@@ -5838,7 +6156,7 @@ export function createSqliteSubscriptionControlStore({
       requestedByRef: requiredText(input.requestedByRef, "requestedByRef"),
       createdAt: isoText(input.createdAt, "createdAt"),
       updatedAt: isoText(input.updatedAt, "updatedAt"),
-      metadataJson: jsonObject(input.metadata, "metadata")
+      metadataJson: issuanceMetadataJson(input.metadata)
     };
     sqliteRun(db.prepare(`
       insert into platform_issuance_requests (
@@ -7837,16 +8155,175 @@ export function createSqliteSubscriptionControlStore({
     return mapRevocationEvent(db.prepare("select * from platform_revocation_events where id = ?").get(requiredText(id, "id")));
   }
 
+  function auditMetadataJson(input) {
+    const entityType = requiredText(input.entityType, "entityType");
+    const action = requiredText(input.action, "action");
+    const metadata = snapshotControlJsonObject(input.metadata, "audit metadata");
+    const entityRef = entityType === "coin_commerce_subscription_fulfillment"
+      && action === "subscription_fulfillment_applied"
+      ? safeAuthorityRef(input.entityRef, "entityRef")
+      : safeControlRef(input.entityRef, "entityRef");
+    const actorRef = safeControlRef(input.actorRef, "actorRef");
+    const id = safeControlRef(input.id, "id");
+    const createdAt = isoText(input.createdAt, "createdAt");
+
+    if (entityType === "issuance_request" && action === "issued") {
+      exactObject(metadata, {
+        allowed: ["source"],
+        required: ["source"],
+        name: "issuanceAuditMetadata"
+      });
+      if (metadata.source !== "platform:issue-subscription") {
+        throw platformError("validation_error", "issuance audit source is not allowed");
+      }
+      return JSON.stringify(metadata);
+    }
+
+    if (entityType === "issuance_request" && action === "issuance_failed_compensated") {
+      exactObject(metadata, {
+        allowed: ["compensation"],
+        required: ["compensation"],
+        name: "issuanceCompensationAuditMetadata"
+      });
+      const compensation = snapshotControlJsonObject(metadata.compensation, "compensation");
+      exactObject(compensation, {
+        allowed: ["artifactRevoked", "tenantDisabled"],
+        required: ["artifactRevoked", "tenantDisabled"],
+        name: "issuanceCompensation"
+      });
+      if (
+        typeof compensation.artifactRevoked !== "boolean"
+        || typeof compensation.tenantDisabled !== "boolean"
+      ) {
+        throw platformError("validation_error", "issuance compensation audit flags are invalid");
+      }
+      return JSON.stringify({ compensation });
+    }
+
+    if (entityType === "entitlement" && action === "traffic_limit_updated") {
+      exactObject(metadata, {
+        allowed: ["requestRef", "reasonCode", "previousTrafficLimitBytes", "trafficLimitBytes"],
+        required: ["requestRef", "reasonCode", "previousTrafficLimitBytes", "trafficLimitBytes"],
+        name: "trafficLimitAuditMetadata"
+      });
+      safeControlRef(metadata.requestRef, "requestRef");
+      if (
+        typeof metadata.reasonCode !== "string"
+        || !/^[A-Za-z0-9][A-Za-z0-9_:-]{0,79}$/.test(metadata.reasonCode)
+        || /https?:|token|secret|credential|password|private|customer|@|\//i.test(metadata.reasonCode)
+      ) {
+        throw platformError("validation_error", "traffic-limit audit reason code is invalid");
+      }
+      if (!Number.isSafeInteger(metadata.previousTrafficLimitBytes) || metadata.previousTrafficLimitBytes < 0
+        || !Number.isSafeInteger(metadata.trafficLimitBytes) || metadata.trafficLimitBytes < 0) {
+        throw platformError("validation_error", "traffic-limit audit byte values are invalid");
+      }
+      return JSON.stringify(metadata);
+    }
+
+    if (entityType === WALLET_FIRST_RESOURCE_EFFECT_AUDIT_ENTITY_TYPE) {
+      const audit = { entityType, action, actorRef, metadata };
+      if (action === "resource_effect_prepared") {
+        const prepared = walletFirstResourceEffectPreparedFromAudit(audit);
+        if (
+          !prepared
+          || entityRef !== prepared.transitionRef
+          || id !== walletFirstResourceEffectPreparationRef(prepared.transitionRef)
+        ) {
+          throw platformError("validation_error", "wallet-first preparation audit binding is invalid");
+        }
+      } else if (action === "resource_runtime_applied") {
+        const runtime = walletFirstResourceEffectRuntimeReceiptFromAudit(audit);
+        if (!runtime || entityRef !== runtime.transitionRef || id !== runtime.runtimeReceiptRef) {
+          throw platformError("validation_error", "wallet-first runtime audit binding is invalid");
+        }
+      } else if (action === "resource_effect_applied") {
+        const receipt = walletFirstResourceEffectReceiptFromAudit(audit);
+        if (!receipt || entityRef !== receipt.transitionRef || id !== receipt.effectRef) {
+          throw platformError("validation_error", "wallet-first receipt audit binding is invalid");
+        }
+      } else {
+        throw platformError("validation_error", "wallet-first audit action is not allowed");
+      }
+      return JSON.stringify(metadata);
+    }
+
+    if (
+      entityType === "coin_commerce_subscription_fulfillment"
+      && action === "subscription_fulfillment_applied"
+    ) {
+      const metadataJson = coinCommerceSubscriptionFulfillmentMetadataJson(metadata);
+      const parsed = parseCoinCommerceFulfillmentEffect({
+        id,
+        entityType,
+        entityRef,
+        action,
+        actorRef,
+        createdAt,
+        metadata
+      }, {
+        accountId: metadata.accountId,
+        entitlementRef: metadata.entitlementRef
+      });
+      if (!parsed) throw platformError("validation_error", "subscription fulfillment audit metadata is invalid");
+      return metadataJson;
+    }
+
+    if (
+      entityType === "coin_commerce_data_pack_fulfillment"
+      && action === "data_pack_fulfillment_applied"
+    ) {
+      const fields = [
+        "version", "kind", "commandRef", "orderRef", "accountId", "requestRef",
+        "entitlementRef", "issuedLinkRef", "offerVersionRef", "quotaBytes",
+        "commercialNeverExpires", "technicalValidUntil"
+      ];
+      exactObject(metadata, {
+        allowed: fields,
+        required: fields,
+        name: "dataPackFulfillmentAuditMetadata"
+      });
+      if (
+        metadata.version !== 1
+        || metadata.kind !== "data_pack"
+        || actorRef !== "coin_commerce_fulfillment"
+        || entityRef !== safeControlRef(metadata.entitlementRef, "entitlementRef")
+        || id !== effectRefForCommand(safeControlRef(metadata.commandRef, "commandRef"))
+        || metadata.commercialNeverExpires !== true
+      ) {
+        throw platformError("validation_error", "data-pack fulfillment audit binding is invalid");
+      }
+      for (const field of [
+        "orderRef", "accountId", "requestRef", "issuedLinkRef", "offerVersionRef"
+      ]) safeControlRef(metadata[field], field);
+      if (!Number.isSafeInteger(metadata.quotaBytes) || metadata.quotaBytes < 1
+        || isoText(metadata.technicalValidUntil, "technicalValidUntil") !== metadata.technicalValidUntil) {
+        throw platformError("validation_error", "data-pack fulfillment audit values are invalid");
+      }
+      return JSON.stringify(metadata);
+    }
+
+    throw platformError("validation_error", "audit entity/action JSON contract is not registered");
+  }
+
   function recordAuditEvent(input) {
-    assertNoUnsafeFields(input);
+    const snapshot = snapshotControlJsonObject(input, "audit event");
+    const metadataJson = auditMetadataJson(snapshot);
+    assertNoUnsafeFields({
+      ...snapshot,
+      metadata: JSON.parse(metadataJson)
+    });
     const record = {
-      id: requiredText(input.id, "id"),
-      entityType: requiredText(input.entityType, "entityType"),
-      entityRef: requiredText(input.entityRef, "entityRef"),
-      action: requiredText(input.action, "action"),
-      actorRef: requiredText(input.actorRef, "actorRef"),
-      createdAt: isoText(input.createdAt, "createdAt"),
-      metadataJson: jsonObject(input.metadata, "metadata")
+      id: safeControlRef(snapshot.id, "id"),
+      entityType: requiredText(snapshot.entityType, "entityType"),
+      entityRef: snapshot.entityType === "coin_commerce_subscription_fulfillment"
+        && snapshot.action === "subscription_fulfillment_applied"
+        ? safeAuthorityRef(snapshot.entityRef, "entityRef")
+        : safeControlRef(snapshot.entityRef, "entityRef"),
+      action: requiredText(snapshot.action, "action"),
+      actorRef: safeControlRef(snapshot.actorRef, "actorRef"),
+      createdAt: isoText(snapshot.createdAt, "createdAt"),
+      metadataJson
     };
     sqliteRun(db.prepare(`
       insert into platform_audit_events (
@@ -7862,11 +8339,11 @@ export function createSqliteSubscriptionControlStore({
     return mapAuditEvent(db.prepare("select * from platform_audit_events where id = ?").get(requiredText(id, "id")));
   }
 
-  function upsertEdgeRegisteredNode(input) {
+  function edgeRegisteredNodeRecord(input) {
     assertNoUnsafeFields(input);
     assertNoUnsafeControlValues(input.metadata);
     const now = isoText(input.updatedAt || input.registeredAt, "updatedAt");
-    const record = {
+    return {
       nodeRef: safeControlRef(input.nodeRef, "nodeRef"),
       providerRef: safeControlRef(input.providerRef, "providerRef"),
       regionRef: safeControlRef(input.regionRef, "regionRef"),
@@ -7879,8 +8356,20 @@ export function createSqliteSubscriptionControlStore({
       firstBootPacketRef: safeControlRef(input.firstBootPacketRef, "firstBootPacketRef"),
       registeredAt: isoText(input.registeredAt || now, "registeredAt"),
       updatedAt: now,
-      metadataJson: jsonObject(input.metadata, "metadata")
+      metadataJson: edgeNodeMetadataJson(input.metadata)
     };
+  }
+
+  // Boundary note: this store's record methods are ungated persistence
+  // primitives. The registration execution gate and the no-overwrite
+  // identity-binding rule live at the registration service layer
+  // (node-registration-ingestion / node-registration-execution);
+  // registration writes must go through that layer and use
+  // insertEdgeRegisteredNodeIfAbsent. This upsert remains for
+  // non-registration callers and test fixtures and must never be used to
+  // overwrite an established registration identity binding.
+  function upsertEdgeRegisteredNode(input) {
+    const record = edgeRegisteredNodeRecord(input);
     sqliteRun(db.prepare(`
       insert into platform_edge_registered_nodes (
         node_ref, provider_ref, region_ref, role_ref, channel_refs_json,
@@ -7905,6 +8394,32 @@ export function createSqliteSubscriptionControlStore({
         metadata_json = excluded.metadata_json
     `), record);
     return getEdgeRegisteredNode(record.nodeRef);
+  }
+
+  // Insert-only counterpart of upsertEdgeRegisteredNode: the single
+  // statement either lands the new row or leaves an existing row for the
+  // same node_ref completely untouched, so race-safe registration flows
+  // can build on it (attempt the insert, then compare the read-back
+  // record) instead of a check-then-upsert sequence that two concurrent
+  // writers could interleave into a silent overwrite.
+  function insertEdgeRegisteredNodeIfAbsent(input) {
+    const record = edgeRegisteredNodeRecord(input);
+    const info = sqliteRun(db.prepare(`
+      insert into platform_edge_registered_nodes (
+        node_ref, provider_ref, region_ref, role_ref, channel_refs_json,
+        image_manifest_ref, release_ref, lifecycle, status, first_boot_packet_ref,
+        registered_at, updated_at, metadata_json
+      ) values (
+        @nodeRef, @providerRef, @regionRef, @roleRef, @channelRefsJson,
+        @imageManifestRef, @releaseRef, @lifecycle, @status, @firstBootPacketRef,
+        @registeredAt, @updatedAt, @metadataJson
+      )
+      on conflict(node_ref) do nothing
+    `), record);
+    return {
+      inserted: info.changes > 0,
+      record: getEdgeRegisteredNode(record.nodeRef)
+    };
   }
 
   function getEdgeRegisteredNode(nodeRef) {
@@ -8129,11 +8644,11 @@ export function createSqliteSubscriptionControlStore({
     assertNoUnsafeFields(input);
     const now = isoText(input.updatedAt || input.createdAt, "updatedAt");
     const record = {
-      id: requiredText(input.id, "id"),
-      nodeRef: requiredText(input.nodeRef, "nodeRef"),
-      channelRef: requiredText(input.channelRef, "channelRef"),
-      desiredStateRef: requiredText(input.desiredStateRef, "desiredStateRef"),
-      generation: requiredText(input.generation, "generation"),
+      id: safeControlRef(input.id, "id"),
+      nodeRef: safeControlRef(input.nodeRef, "nodeRef"),
+      channelRef: safeControlRef(input.channelRef, "channelRef"),
+      desiredStateRef: safeControlRef(input.desiredStateRef, "desiredStateRef"),
+      generation: safeEdgeGeneration(input.generation),
       reason: requiredText(input.reason, "reason"),
       status: requiredText(input.status || "pending", "status"),
       preserveApplied: input.lifecycleRevisionSafe === false ? 0 : 1,
@@ -8364,7 +8879,7 @@ export function createSqliteSubscriptionControlStore({
       edgeCredentialRef: optionalText(input.edgeCredentialRef),
       edgeMaterialDigest: optionalText(input.edgeMaterialDigest),
       edgeLifecycleMutation: input.edgeLifecycleMutation ? 1 : 0,
-      eventJson: jsonObject(input.event, "event")
+      eventJson: portalAccessEventJson(input.event)
     };
     const edgeCredentials = normalizePortalEdgeCredentials(input, record);
     db.transaction(() => {
@@ -8727,7 +9242,7 @@ export function createSqliteSubscriptionControlStore({
     if (input.rememberMe !== undefined && typeof input.rememberMe !== "boolean") {
       throw platformError("validation_error", "rememberMe must be a boolean");
     }
-    const factorsJson = jsonArray(input.allowedFactors ?? [], "allowedFactors");
+    const factorsJson = portalSecondFactorAllowedFactors(input.allowedFactors);
     const record = {
       id: requiredText(input.id, "id"),
       accountId: requiredText(input.accountId, "accountId"),
@@ -9033,6 +9548,7 @@ export function createSqliteSubscriptionControlStore({
     recordAuditEvent,
     getAuditEvent,
     upsertEdgeRegisteredNode,
+    insertEdgeRegisteredNodeIfAbsent,
     getEdgeRegisteredNode,
     listEdgeRegisteredNodes,
     getLatestEdgeDesiredStateForChannel,
