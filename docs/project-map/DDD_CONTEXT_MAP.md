@@ -153,7 +153,7 @@ The Master comparison column is ahead / behind relative to Master `84b81ab0024a6
 
 | PR | Primary context and secondary impact | Base lane | Exact HEAD | Snapshot / review |
 | --- | --- | --- | --- | --- |
-| [#802](https://github.com/FlyLink-com/proxy-gateway-minimal/pull/802) | Operations Read Models; registration growth and collector observation | master | 9b37c1276bb09d9dc93bad0e320fd6fce296672b | OPEN non-Draft; M=Y; R=APP exact HEAD; Master delta +2 / −296; read-only projection, not collector write authority. |
+| [#802](https://github.com/FlyLink-com/proxy-gateway-minimal/pull/802) | Operations Read Models; registration growth and collector observation | master | 9b37c1276bb09d9dc93bad0e320fd6fce296672b | OPEN Draft; M=Y; R=APP exact HEAD; Master delta +2 / −296; read-only projection, not collector write authority. |
 | [#804](https://github.com/FlyLink-com/proxy-gateway-minimal/pull/804) | Payment & Recharge; read-only Operations gross aggregate | master | 03305e1d2c08cac185d308843122c8965f1cda52 | OPEN non-Draft; M=Y; R=APP exact HEAD; Master delta +3 / −296; gross order amount is not settled revenue, net revenue, or wallet balance. |
 | [#800](https://github.com/FlyLink-com/proxy-gateway-minimal/pull/800) | Release & Engineering Governance; dated release/context documentation | master | 9021b42fa2e704a67bd477d7b610ef755be9a418 | OPEN non-Draft; M=N; R=comments only; Master delta +3 / −306; re-read current canonical docs before deciding whether this snapshot is superseded. |
 
