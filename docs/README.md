@@ -1,6 +1,6 @@
 # Documentation Index
 
-Last updated: 2026-11-09 UTC.
+Last updated: 2026-11-11 UTC.
 
 ```yaml
 document_metadata:
@@ -8,7 +8,7 @@ document_metadata:
   lifecycle: active
   authority_scope: documentation_navigation
   superseded_by: null
-  last_verified_at: 2026-11-09
+  last_verified_at: 2026-11-11
   production_authority: false
 ```
 
@@ -63,6 +63,7 @@ directory restructure.
 | `README_EN.md` | English semantic mirror of `README.md`; keep product scope, phase boundaries, commands, links, and license notice aligned. | Active mirrored public entrypoint. | Read for English-language onboarding and parity review. |
 | `COMMUNITY_GUIDE.md` | External developer onboarding, repository map, local-safe commands, validation routing, and community boundaries. | Active operational guide; not an architecture or production authority. | Read when preparing a local development environment or contributing to a subsystem. |
 | `../CONTRIBUTING.md` | Contribution expectations, focused PR guidance, validation checklist, and license limitation. | Active contribution guide. | Read before opening a code or documentation Pull Request. |
+| `project-map/DDD_CONTEXT_MAP.md` | DDD bounded contexts, business-fact ownership, context relationships, and dated PR-to-domain mapping. | Active derived crosswalk; native PRs own mutable state and no production authority is granted. | Read before classifying or integrating a PR, then refresh the native PR and exact source head. |
 
 ## Subsystem Entry Points
 
