@@ -48,6 +48,7 @@ import { createSqliteSubscriptionControlStore } from "./services/platform/subscr
 import { createAdminUsageLedgerReader } from "./services/platform/admin-usage-ledger-reader.mjs";
 import { createAdminUserCommerceService } from "./services/platform/admin-user-commerce.mjs";
 import { createAdminOrderStatusSummaryService } from "./services/platform/admin-order-status-summary.mjs";
+import { createAdminRechargeConfirmationGrossService } from "./services/platform/admin-recharge-confirmation-gross.mjs";
 import { createPlatformLeadReviewQueue } from "./services/platform/lead-review-queue.mjs";
 import { createPlatformSubscriptionAccessShell } from "./services/platform/subscription-access-shell.mjs";
 import { createPortalAccessRequestService } from "./services/platform/portal-access-requests.mjs";
@@ -3221,6 +3222,10 @@ export function createRuntimeState(options = {}) {
     dbPath: ownsControlStore && controlDbPath !== ":memory:" ? resolve(controlDbPath) : null,
     nowFn: options.userPortalNowFn || options.nowFn
   });
+  const adminRechargeConfirmationGross = createAdminRechargeConfirmationGrossService({
+    dbPath: ownsControlStore && controlDbPath !== ":memory:" ? resolve(controlDbPath) : null,
+    nowFn: options.userPortalNowFn || options.nowFn
+  });
 
   if (portalReferralRewardsEnabled) portalReferrals?.start();
 
@@ -3440,6 +3445,7 @@ export function createRuntimeState(options = {}) {
       adminUsageLedger,
       adminUserCommerce,
       adminOrderStatusSummary,
+      adminRechargeConfirmationGross,
       edgeCredentialMaterialStore,
       edgeCredentialIssuer,
       edgeLifecycleService,
