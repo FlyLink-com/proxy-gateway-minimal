@@ -1,7 +1,7 @@
 # 第 5 步方案 V1：Portal/Admin 隔离与 TOTP 兼容
 
-状态：设计稿（源码层）+ 本地合成契约验证。依据 Yi 2026-11-08 裁定：
-C1-D01 选定 Auth0 路线；配套原则第 4 条——Portal 与 Admin 必须隔离，
+状态：历史设计稿 + 本地合成契约验证；最终执行口径以第六节 T1 裁定为准。
+依据 Yi 2026-11-08 裁定：C1-D01 选定 Auth0 路线；配套原则第 4 条——Portal 与 Admin 必须隔离，
 不能互相复用身份和认证因子（C1-D03 由此确认）。本文件不授权创建租户、
 不授权迁移任何真实身份或因子。
 
@@ -49,18 +49,21 @@ Portal 与 Admin 使用**两个独立的 Auth0 租户**，而不是同一租户�
 
 - legacy `enc:` 秘密等同明文存放（R3 BLOCKER）——这类秘密**没有资格被
   “迁移”**：把明文等价物搬进任何新系统都是延续已暴露的凭证材料。
-- legacy `v2:` 秘密是 AES-256-GCM 信封（旧密钥、无 AAD 绑定），可由旧
-  密钥解密后重新保护；C2 已建 v3 族隔离信封（`portal-totp-aes` /
-  `admin-totp-aes` 两族、AAD 绑定 keyId+scope+credentialRef、跨族复用
-  检测）与 `reencryptLegacyD1TotpV2`（`enc:`→`re_enroll_required`、
-  异常→`quarantine`、v2→重加密）。
+- legacy `v2:` 秘密是 AES-256-GCM 信封（旧密钥、无 AAD 绑定）。解密后
+  重保护曾是 T3 方案的一部分，但已被最终 T1 裁定取代；当前迁移路径
+  不读取旧密钥、不解密、不重保护。结构可识别的 `enc:` 与 `v2:` 均
+  退役并要求重新注册；结构异常的 `v2:` 进入 `quarantine`。
+- C2 已建 v3 族隔离信封（`portal-totp-aes` / `admin-totp-aes` 两族，
+  AAD 绑定 keyId+scope+credentialRef，并检测跨族复用），保留为托管资产，
+  但退出 TOTP 迁移关键路径。
 - 既定口径不变：TOTP 密钥 EXTERNALIZE、永不进入 D1；密钥托管/轮换
   按 C2 ADR（IMPLEMENTATION DRAFT，托管方与责任人仍未批准）。
 
 ### 三个选项
 
-**T1 全部重新注册（Auth0 MFA）**：所有用户在 Auth0 首次登录时被引导
-重新注册 authenticator，旧秘密整体作废。
+**T1 全部重新注册（Auth0 MFA，最终采用）**：旧 `enc:` / `v2:` 因子
+整体作废，不导入、不解密、不重保护。原已绑定用户收到重新绑定邀请；
+Portal 端在设置中自愿绑定，Admin 面强制绑定；从未绑定的 Portal 用户不受影响。
 + 安全姿态最干净，`enc:` 明文等价物彻底退役；与超长密码定向重置可
   合并为同一次“安全更新”通知。
 − 摩擦最大；未及时重新注册的用户在过渡期没有第二因子（需明确过渡
@@ -74,7 +77,7 @@ Portal 与 Admin 使用**两个独立的 Auth0 租户**，而不是同一租户�
   与 EXTERNALIZE + C2 族隔离托管的设计方向相反。**本方案不推荐，
   且 `enc:` 部分应明确禁止。**
 
-**T3 自有托管 + 控制面 step-up（推荐）**：密码身份在 Auth0；TOTP 验证
+**T3 自有托管 + 控制面 step-up（历史备选；已被最终 T1 裁定取代）**：密码身份在 Auth0；TOTP 验证
 保留在控制面侧——用户在 Portal/Admin 登录后，控制面用既有
 `portal-totp-verifier` + v3 族信封做 step-up 挑战，通过后在 actor
 context 的 factors 中投影 `totp`（Admin 面由 `requiredFactors` 强制）。
@@ -87,20 +90,19 @@ context 的 factors 中投影 `totp`（Admin 面由 `requiredFactors` 强制）�
   覆盖两层（撤销注册表按 issuer 定域，本步已给出合成契约）；用户体验
   比单一 Auth0 MFA 多一步挑战（与现状一致，用户无感知变化）。
 
-### 建议
+### 原建议（已被最终裁定取代）
 
-采用 **T3**，其中 `enc:` 一律重新注册（无例外）、`v2:` 一律重保护。
-T1 作为备选保留：若 Yi 认为因子托管应随身份一并交给 Auth0，
-则 T1 是唯一可接受的“交给供应商”方式（重新注册，而不是导入旧秘密）。
-**待 Yi 裁定**：T3（自有托管 step-up）还是 T1（Auth0 MFA 重新注册）。
-在裁定前，不动任何真实因子。
+本节早期曾建议采用 T3，并提出将 `v2:` 重保护为 v3；该建议已被
+2026-11-08 的最终 T1 裁定取代，不再是当前执行口径。当前不导入、不解密、
+不重保护任何 legacy TOTP 秘密；所有旧因子退役，按 Portal 自愿 / Admin
+强制的规则在 Auth0 MFA 重新绑定。真实因子操作仍须遵守单独授权边界。
 
 ## 四、与前序步骤的衔接
 
 - 密码轨（第 1–4 步）与 TOTP 轨相互独立：证明窗口只管密码长度分类，
   不测量、不记录任何因子信息。
 - 通知合并：`over_72` 定向重置、`edgeWhitespace` 的 R1 通知、以及
-  TOTP 重新注册（`enc:` 账户）可在同一波“账户安全更新”中触达，
+  legacy TOTP 重新注册（`enc:` 与 `v2:` 账户）可在同一波“账户安全更新”中触达，
   减少用户被打扰次数；文案属生产门禁包内容，本步不拟。
 - Admin 入驻顺序：Admin 租户与管理员身份应在 Portal 批量迁移之前
   就绪（管理面先行），但这只是顺序建议，租户创建本身属第 6 步的
@@ -111,8 +113,8 @@ T1 作为备选保留：若 Yi 认为因子托管应随身份一并交给 Auth0�
 - `tenant-isolation.mjs`：分面策略封装（单 issuer 白名单 + 分面
   requiredFactors）、按 issuer 定域的会话撤销注册表。
 - `tenant-isolation.test.mjs`：跨面 issuer 拒绝、Admin 因子强制、
-  绑定隔离、撤销隔离、TOTP 族隔离与 legacy 秘密处置（enc→重新注册、
-  v2→重保护、篡改→隔离）的合成验证；直接复用已批准 HEAD 中的
+  绑定隔离、撤销隔离、TOTP 族隔离与 legacy 秘密处置（enc/v2→重新注册并退役、
+  结构异常 v2→隔离）的合成验证；直接复用已批准 HEAD 中的
   identity-boundary 与 security-primitives 两个模块作为被测原语。
 
 ## 六、裁定记录（2026-11-08，Yi）
