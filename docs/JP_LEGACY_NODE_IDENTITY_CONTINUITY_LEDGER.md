@@ -9,7 +9,7 @@ document_metadata:
   authority_scope: jp_legacy_node_identity_and_business_continuity
   superseded_by: null
   last_verified_at: 2026-10-31
-  last_evidence_record_at: 2026-11-05
+
   production_authority: false
 ```
 
