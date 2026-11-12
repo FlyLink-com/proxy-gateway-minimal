@@ -20,6 +20,7 @@ import "./admin-operations-shell.styles.css";
 import { AdminMonitorWorkspace } from "./admin-monitor-workspace";
 import { AdminUsageLedgerPending } from "./admin-usage-ledger-pending";
 import { AdminUserMonitorWorkspace } from "./admin-user-monitor-workspace";
+import { OperationsDashboardLive } from "./dashboard-page";
 
 const PAGE_IDS = new Set<string>(Object.keys(ADMIN_PRODUCTION_BASELINE_PAGES));
 type AdminOperationsPageId = AdminProductionBaselinePageId | "thirdPartyNodes" | "userCommerce";
@@ -199,7 +200,11 @@ export function AdminOperationsShell({
                 />
               ) : null}
               <AdminMonitorWorkspace createClient={createMonitorClient} formatPageHref={formatPageHref} pageId={pageId}>
-                {pageId === "dashboard" ? <OverviewPanels /> : <InventoryPage page={page} />}
+                {pageId === "dashboard" ? (
+                  <OverviewPanels live={!isPreview} onSessionExpired={onSessionExpired} />
+                ) : (
+                  <InventoryPage page={page} />
+                )}
               </AdminMonitorWorkspace>
             </>
           )}
@@ -209,15 +214,25 @@ export function AdminOperationsShell({
   );
 }
 
-function OverviewPanels() {
+function OverviewPanels({
+  live,
+  onSessionExpired
+}: {
+  live: boolean;
+  onSessionExpired?: () => void;
+}) {
   return (
     <>
-      <div className="admin-baseline-preview-metrics">
-        <MetricCard detail="未连接" icon={<Activity aria-hidden="true" />} label="Platform health" tone="neutral" value="未连接" />
-        <MetricCard detail="未连接" icon={<ShieldAlert aria-hidden="true" />} label="Risk" tone="neutral" value="未连接" />
-        <MetricCard detail="未连接" icon={<Clock3 aria-hidden="true" />} label="Freshness" tone="neutral" value="未连接" />
-        <MetricCard detail="未连接" icon={<RadioTower aria-hidden="true" />} label="Coverage" tone="neutral" value="未连接" />
-      </div>
+      {live ? (
+        <OperationsDashboardLive onSessionExpired={onSessionExpired} />
+      ) : (
+        <div className="admin-baseline-preview-metrics">
+          <MetricCard detail="未连接" icon={<Activity aria-hidden="true" />} label="Platform health" tone="neutral" value="未连接" />
+          <MetricCard detail="未连接" icon={<ShieldAlert aria-hidden="true" />} label="Risk" tone="neutral" value="未连接" />
+          <MetricCard detail="未连接" icon={<Clock3 aria-hidden="true" />} label="Freshness" tone="neutral" value="未连接" />
+          <MetricCard detail="未连接" icon={<RadioTower aria-hidden="true" />} label="Coverage" tone="neutral" value="未连接" />
+        </div>
+      )}
       <SectionPanel title="Risk Queue"><p>未连接</p></SectionPanel>
       <SectionPanel title="Owner Routing"><p>未连接</p></SectionPanel>
       <SectionPanel title="Review"><p>未连接</p></SectionPanel>
