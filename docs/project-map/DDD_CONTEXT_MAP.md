@@ -1,6 +1,6 @@
 # DDD Context Map
 
-Last verified: 2026-11-11 UTC.
+Last verified: 2026-11-12 UTC for the PR #844 incremental refresh; the 21-PR inventory and G6 lane remain the 2026-11-11 snapshot.
 
 ```yaml
 document_metadata:
@@ -8,7 +8,7 @@ document_metadata:
   lifecycle: active
   authority_scope: ddd_context_map
   superseded_by: null
-  last_verified_at: 2026-11-11
+  last_verified_at: 2026-11-12
   production_authority: false
 ```
 
@@ -117,11 +117,19 @@ The Master comparison column is ahead / behind relative to Master `84b81ab0024a6
 | --- | --- | --- | --- | --- |
 | [#842](https://github.com/FlyLink-com/proxy-gateway-minimal/pull/842) | Identity & Access; Key Custody / security primitives | review-only baseline branch | bc3f8c9a713de05715f42f733b8fa72ba53d4477 | OPEN Draft; M=Y; R=APP exact HEAD; review anchor, not a Master merge target. |
 | [#843](https://github.com/FlyLink-com/proxy-gateway-minimal/pull/843) | Identity & Access; TOTP re-enrollment and custody decisions | child of #842 source-hardening branch | 4be493a06a55d245bd2d89a1019f62922ab251bb | OPEN Draft; M=Y; R=APP exact HEAD; prior change request was followed by a corrective review and approval. |
-| [#844](https://github.com/FlyLink-com/proxy-gateway-minimal/pull/844) | Identity & Access; synthetic-only migration validation tooling | #843 re-enrollment branch; PR base snapshot c6a70b3f | 1f32d50d702be5b5a4d73624fd8f1e2dd236e9b6 | OPEN Draft; M=Y; R=APP exact HEAD; #843 current HEAD is four commits ahead of this PR's recorded base snapshot. Reconcile before integration. |
+| [#844](https://github.com/FlyLink-com/proxy-gateway-minimal/pull/844) | Identity & Access; synthetic-only migration validation tooling | #843 re-enrollment branch; base tip `4be493a0` | `937fc2f2252461dcb993c4baf03816fba4223f0b` | OPEN Draft; M=Y; 29 commits ahead / 0 behind base; 18 files / +1,909 / −0, all under `tools/c1-auth0-validator/`. Four #843 commits are ancestors via a two-parent merge; inherited six docs are not in the PR diff. Review API reports APPROVED / commit_id=`937fc2f2`, but the body says it reviewed old HEAD `1f32d50d`; exact-head approval is unverified. No hosted run/status at new HEAD. Prior 40/40 Node 22.23.1 evidence is bound to `1f32d50d`; all 18 PR blobs are unchanged. Keep Draft pending review reconciliation. |
 | [#848](https://github.com/FlyLink-com/proxy-gateway-minimal/pull/848) | Identity & Access; Browser Portal and Admin adapters | #844 validator branch; base snapshot matches #844 HEAD | 3a5788251dcdec10f20c452ef539b59011570db1 | OPEN Draft; M=Y; R=APP exact HEAD after corrections. |
 | [#849](https://github.com/FlyLink-com/proxy-gateway-minimal/pull/849) | Identity & Access; Control Plane Worker / OIDC adapter | master (PR base metadata still points to be261abc, not current Master) | 51145b237e4f89b4ee8a1bf4d28dbc1d81919610 | OPEN Draft; M=Y; R=APP exact HEAD; current-Master delta +64 / −9. Control Plane Worker workflow succeeded; CI was skipped, not passed. Refresh and re-read the base before integration. |
 | [#853](https://github.com/FlyLink-com/proxy-gateway-minimal/pull/853) | Identity & Access decision reconciliation; Release / documentation governance | G6 staging branch after #852 merge | 993aab6571f31047b531b3dc506cf54be268e67b | OPEN Draft; M=Y; R=—; docs-only G6 lane, not a Master PR. |
 | [#755](https://github.com/FlyLink-com/proxy-gateway-minimal/pull/755) | Identity & Access; native session renewal | master | 0cc44b00bec5652ed77e17446f26b93e8ca533a5 | OPEN Draft; M=N; R=—; Master delta +1 / −510; stale branch requires source comparison before deciding successor or closure. |
+
+
+**PR #844 incremental refresh — 2026-11-12 UTC (2026-11-11 PST).** Live GitHub readback confirms #844 now has base branch tip `4be493a06a55d245bd2d89a1019f62922ab251bb` (the current #843 HEAD) and new HEAD `937fc2f2252461dcb993c4baf03816fba4223f0b`. The merge commit preserves old #844 HEAD `1f32d50d` as first parent and #843 HEAD as second parent. All four #843 commits are ancestors. Comparing old and new #844 trees shows only six inherited `docs/D1_T2_*` evidence files changed/added; all 18 `tools/c1-auth0-validator/` PR paths remain unchanged. The PR diff is still 18 files / +1,909 / −0; compare is 29 ahead / 0 behind; GitHub reports mergeable=true / clean.
+
+- No hosted workflow run or combined status exists for new HEAD; no CI was dispatched. The prior 40/40 Node v22.23.1 local result and diff-check belong to old HEAD `1f32d50d`; identical source/test blobs preserve that bounded evidence, but no new-head test run is claimed.
+- Review `5858908990` is returned as APPROVED with API `commit_id=937fc2f2`, while its body explicitly says it reviewed `1f32d50d`. Treat the approval as unverified for the new HEAD. No distinct natural-person reviewer is established by the two account identities alone.
+- Technical re-review notes are recorded in [PR #844 comment](https://github.com/FlyLink-com/proxy-gateway-minimal/pull/844#issuecomment-6811965225): stale R1 “decision pending” label versus approved policy / open client proof; Auth0 Scrypt validator does not pin all legacy parameters; and S9 proves issuer-scoped revocation-registry state, not rejection of a revoked token because the mock verifier does not consult the registry.
+- Keep #844 OPEN / Draft pending source/documentation reconciliation and a fresh review by an independently accountable reviewer. No production or deployment authority is implied.
 
 ### Wallet, payment, offers, and entitlement
 
