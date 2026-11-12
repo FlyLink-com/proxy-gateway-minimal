@@ -126,6 +126,9 @@ safe integer range fails the whole read.
 index for the qualifying pass and searches it again by `payment_order_ref` and
 `accepted_at` to choose the first receipt. `verification_result`,
 `canonical_state`, and `charge_certainty` are residual filters, not index keys.
+A later migration could add a partial index limited to confirmed receipts;
+every receipt insert would maintain it. This change does not add that index
+or any payment DDL.
 
 ## Subscription website metadata
 
