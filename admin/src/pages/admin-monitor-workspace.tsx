@@ -552,12 +552,15 @@ export function AdminMonitorWorkspace({
       const colObs = colWrap?.observedAt ? fmtTime(colWrap.observedAt) : "尚无采样";
       const colFresh = sources.collectors.phase === "error" ? "非最新" : `观测时间 ${colObs}${colWrap?.observedAt && aged(colWrap.observedAt) ? " · 观测已过期" : ""}`;
       return (
-        <div className="admin-monitor-cards">
-          {card("账户", formatPageHref("userManagement"), sources.accounts, accounts.length, fetchLabel(sources.accounts))}
-          {card("权益", formatPageHref("portalRequests"), sources.entitlements, entitlements.length, fetchLabel(sources.entitlements))}
-          {card("用量", formatPageHref("usageMonitor"), sources.usage, items.length, fetchLabel(sources.usage))}
-          {card("采集器", formatPageHref("nodeHealth"), sources.collectors, collectors.length, `快照${colState} · ${colFresh} · ${fetchLabel(sources.collectors)}`)}
-        </div>
+        <>
+          <div className="admin-monitor-cards">
+            {card("账户", formatPageHref("userManagement"), sources.accounts, accounts.length, fetchLabel(sources.accounts))}
+            {card("权益", formatPageHref("portalRequests"), sources.entitlements, entitlements.length, fetchLabel(sources.entitlements))}
+            {card("用量", formatPageHref("usageMonitor"), sources.usage, items.length, fetchLabel(sources.usage))}
+            {card("采集器", formatPageHref("nodeHealth"), sources.collectors, collectors.length, `快照${colState} · ${colFresh} · ${fetchLabel(sources.collectors)}`)}
+          </div>
+          {children}
+        </>
       );
     }
     if (pageId === "userManagement") {
