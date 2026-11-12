@@ -1,6 +1,6 @@
 # Project Context
 
-Last updated: 2026-11-11 UTC.
+Last updated: 2026-11-12 UTC.
 
 ```yaml
 document_metadata:
@@ -8,20 +8,24 @@ document_metadata:
   lifecycle: active
   authority_scope: project_context
   superseded_by: null
-  last_verified_at: 2026-11-11
+  last_verified_at: 2026-11-12
   production_authority: false
 ```
 
 > Status:
 > - Type: Active current-state handoff
 > - Risk: C
-> - Source reconciliation cutoff:
->   `master@483f535ee6d90fe222b866591ade19a7776b1d47` (observed 2026-10-11 UTC)
+> - Most recent full source reconciliation record:
+>   `master@eadefd98357a6bb616c5dd54c984ec265695acad` (2026-10-23 UTC; historical snapshot, not current Master)
 > - Source/production boundary: #764 reset/collector and preserved #767 guard
->   are recorded BWH overlays; #769 is desktop Portal only. None establishes
->   a whole-master backend deployment. Current runtime alignment was not read
+>   are recorded BWH overlays; #769 is desktop Portal only. Later merged
+>   deploy notes record the #785 three-module BWH overlay and the #786
+>   application `control-plane-pr786-c7b094592662-mixed` layered on it.
+>   None establishes a whole-master backend deployment. Merged source after 2026-10-11,
+>   through the 2026-10-23 source cutoff, does not change this boundary. Current
+>   runtime alignment was not read
 > - Delivery navigation projection:
->   [GCC WebOS — Delivery Project #1](https://github.com/orgs/gccwebos-com/projects/1)
+>   [GCC WebOS — Delivery Project #1](https://github.com/orgs/FlyLink-com/projects/1)
 > - Earlier A3, expiry, source-capability and provider observations retain
 >   their original dates; new PR reads do not refresh their runtime evidence
 > - Production state: Refer to `docs/CURRENT_RELEASE_STATE.md`; this handoff
@@ -59,7 +63,7 @@ Use the repository entry order required by `AGENTS.md` and restated by
 4. `git status --short --branch`
 5. `docs/README.md`
 6. The subsystem README relevant to the task
-7. [GCC WebOS — Delivery Project #1](https://github.com/orgs/gccwebos-com/projects/1) to navigate relevant
+7. [GCC WebOS — Delivery Project #1](https://github.com/orgs/FlyLink-com/projects/1) to navigate relevant
    Issue/PR items, followed by fresh native records
 8. Live GitHub, deployment, or production inventory required by the task risk
 
@@ -125,6 +129,27 @@ Keep these distinctions explicit:
   a migration, a default-off adapter, and a successful artifact run are
   source/build evidence, not deployed runtime state.
 
+## Scoped continuation (2026-10-23)
+
+The newer [source reconciliation](CURRENT_RELEASE_STATE.md#source-reconciliation-2026-10-23)
+advances the source cutoff to `master@eadefd98357a6bb616c5dd54c984ec265695acad`
+and records the merged third-party distribution (#762/#771 and the Admin
+node workspace series), data-pack (#753), usage-ledger
+(#789/#790/#791/#792/#794; #793 is still an open Draft),
+distribution-routing (#796) and Admin user-commerce (#799) source lines,
+plus the current six open Draft PRs. The 2026-10-12 continuation below is
+superseded where it describes third-party subscription work as planning:
+that work landed as source on 2026-10-13 and is not deployed by either
+closeout. This is a GitHub-record reconciliation, not a fresh production
+read; merged source does not establish a whole-master backend deployment.
+Re-read the native PRs before work. The delivery navigation projection now
+points at the renamed FlyLink-com organization. That link update does not
+migrate the pinned read-only Project export contract:
+`project-state/project-v2-contract.json` still fixes `target.owner` and
+`target.repository` to the pre-rename `gccwebos-com` values, and changing
+that checksum-pinned contract is a separate reviewed contract change
+outside this docs-only alignment.
+
 ## DDD Context Map (2026-11-11; derived PR classification)
 
 The business spine above remains the stable architecture boundary. The detailed
@@ -178,10 +203,10 @@ production cutover each require their own approval. See
 
 ## Repository And Delivery Index
 
-Repository: `gccwebos-com/proxy-gateway-minimal`
+Repository: `FlyLink-com/proxy-gateway-minimal`
 
-The source cutoff inspected for this docs-only alignment is
-`master@483f535ee6d90fe222b866591ade19a7776b1d47`. Resolve the live `master`
+The source cutoff inspected for the 2026-10-23 docs-only alignment is
+`master@eadefd98357a6bb616c5dd54c984ec265695acad`. Resolve the live `master`
 SHA before a later source decision. The
 [2026-10-11 reconciliation](CURRENT_RELEASE_STATE.md#source-and-deployment-reconciliation-2026-10-11)
 records exact-source validation, dated deployment composition, open Drafts and
@@ -199,7 +224,7 @@ were Draft at that cutoff. Client repositories were not refreshed by this
 Company-site publication is separate: the recorded BWH cutover retained the
 existing company apex/www site and did not deploy a new site build.
 
-Use [GCC WebOS — Delivery Project #1](https://github.com/orgs/gccwebos-com/projects/1)
+Use [GCC WebOS — Delivery Project #1](https://github.com/orgs/FlyLink-com/projects/1)
 only to navigate mutable Issue/PR, status, lane and risk projections. Resolve
 scope, sequencing and completion from fresh native records and exact-SHA checks.
 `project-state/*.json` remains dated compatibility input, not a parallel task
@@ -443,7 +468,7 @@ Use these entrypoints:
 - `docs/ACCOUNT_RESOURCE_AUTHORITY_LIFECYCLE.md`: exact resource-authority and
   Quote-provenance lifecycle
 - `docs/TRAFFIC_ACCOUNTING_QUOTA_GATEWAY_PLAN.md`: traffic usage evidence plan
-- [GCC WebOS — Delivery Project #1](https://github.com/orgs/gccwebos-com/projects/1): mutable navigation projection
+- [GCC WebOS — Delivery Project #1](https://github.com/orgs/FlyLink-com/projects/1): mutable navigation projection
 - `docs/GITHUB_ISSUE_PR_WORKFLOW.md`: Issue, PR, and Project authority boundaries
 - `docs/production-replacement-records/`: dated production execution evidence
 - `docs/archive/`: superseded plans and historical context
