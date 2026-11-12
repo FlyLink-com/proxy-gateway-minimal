@@ -321,6 +321,23 @@ const DB_CHANNEL = {
   mihomo: "channel-vultr-a-tuic"
 };
 const DB_HEALTHY = { xray: "xray-healthy.json", hy2: "hy2-healthy.yaml", mihomo: "mihomo-healthy.yaml" };
+const JP_CHANNEL = {
+  xray: "channel-vultr-jp-01-vless-reality-tcp",
+  hy2: "channel-vultr-jp-01-hy2",
+  mihomo: "channel-vultr-jp-01-tuic"
+};
+const JP_SURFACE = { xray: "jp01-vless", hy2: "jp01-hy2", mihomo: "jp01-tuic" };
+
+function jpDbArgs(kind, runtimePath, dbPath, materialPath) {
+  return [
+    "--surface", JP_SURFACE[kind],
+    "--runtime-kind", kind,
+    "--runtime-config", runtimePath,
+    "--db", dbPath,
+    "--material", materialPath,
+    "--node-ref", "node-vultr-jp-01"
+  ];
+}
 const PEOPLE = {
   alpha: {
     ref: "edgecred_alpha_001",
@@ -352,7 +369,7 @@ function dbRow(kind, person, { retained = false, digest = person.digest } = {}) 
   return { kind, ref: person.ref, digest, retained };
 }
 
-function createControlDatabase(t, rows) {
+function createControlDatabase(t, rows, channelByKind = DB_CHANNEL) {
   const directory = mkdtempSync(join(tmpdir(), "identity-gate-db-"));
   const dbPath = join(directory, "subscription-control.sqlite");
   const db = new Database(dbPath);
@@ -375,7 +392,7 @@ function createControlDatabase(t, rows) {
     const accountId = `acct-${suffix}`;
     const entitlementId = `ent-${suffix}`;
     const requestId = `req-${suffix}`;
-    const channelRef = DB_CHANNEL[row.kind];
+    const channelRef = channelByKind[row.kind];
     store.createAccount({
       id: accountId, ownerRef: `owner-${suffix}`, status: "active", createdAt: DB_OLD, updatedAt: DB_OLD
     });
@@ -652,6 +669,89 @@ test("missing database is blocked without the path", () => {
   assert.equal(gate.code, "input_unreadable");
   assert.equal(result.stdout.includes(missing), false);
   assert.equal(result.stdout.includes("does-not-exist-identity-gate"), false);
+});
+
+for (const kind of DB_KINDS) {
+  test(`${kind} jp-01 database binding snapshot is verified under its own node ref`, (t) => {
+    const built = createControlDatabase(t, [dbRow(kind, PEOPLE.alpha), dbRow(kind, PEOPLE.beta)], JP_CHANNEL);
+    const result = run(jpDbArgs(kind, fixture(DB_HEALTHY[kind]), built.dbPath, fixture("material-healthy.json")));
+    expectDbGate(result, {
+      surface: JP_SURFACE[kind],
+      node_ref: "node-vultr-jp-01",
+      runtime_count: 2,
+      mapped_count: 2,
+      missing: 0,
+      stale: 0,
+      changed: 0,
+      missing_material: 0,
+      map_total: 2,
+      equalities: { runtime_eq: true, map_eq: true },
+      state: "verified"
+    });
+  });
+
+  // A surface with zero bindings in the database is a scope failure for the
+  // bindings reader, so cross-surface selection fails closed as db_invalid
+  // with zeroed counts: the other surface's bindings are never read into a
+  // comparison, and no conclusion leaks across surfaces.
+  test(`${kind} jp-01 selection does not read legacy surface bindings`, (t) => {
+    const built = createControlDatabase(t, [dbRow(kind, PEOPLE.alpha), dbRow(kind, PEOPLE.beta)]);
+    const result = run(jpDbArgs(kind, fixture(DB_HEALTHY[kind]), built.dbPath, fixture("material-healthy.json")));
+    expectDbGate(result, {
+      surface: JP_SURFACE[kind],
+      node_ref: "node-vultr-jp-01",
+      runtime_count: 0,
+      mapped_count: 0,
+      missing: 0,
+      stale: 0,
+      changed: 0,
+      missing_material: 0,
+      map_total: 0,
+      equalities: { runtime_eq: false, map_eq: false },
+      state: "blocked",
+      code: "db_invalid"
+    });
+  });
+
+  test(`${kind} legacy selection does not read jp-01 surface bindings`, (t) => {
+    const built = createControlDatabase(t, [dbRow(kind, PEOPLE.alpha), dbRow(kind, PEOPLE.beta)], JP_CHANNEL);
+    const result = run(dbArgs(kind, fixture(DB_HEALTHY[kind]), built.dbPath, fixture("material-healthy.json")));
+    expectDbGate(result, {
+      surface: DB_SURFACE[kind],
+      runtime_count: 0,
+      mapped_count: 0,
+      missing: 0,
+      stale: 0,
+      changed: 0,
+      missing_material: 0,
+      map_total: 0,
+      equalities: { runtime_eq: false, map_eq: false },
+      state: "blocked",
+      code: "db_invalid"
+    });
+  });
+}
+
+test("jp-01 node ref is accepted in identity map mode", () => {
+  const result = run([
+    ...gateArgs("xray", "xray-healthy.json", "map-healthy.json", "material-healthy.json", "jp01-vless"),
+    "--node-ref", "node-vultr-jp-01"
+  ]);
+  const gate = readGate(result);
+  assert.equal(result.status, 0);
+  assert.equal(gate.state, "verified");
+  assert.equal(gate.node_ref, "node-vultr-jp-01");
+});
+
+test("unknown node ref is blocked in identity map mode", () => {
+  const result = run([
+    ...gateArgs("xray", "xray-healthy.json", "map-healthy.json", "material-healthy.json"),
+    "--node-ref", "node-unknown-99"
+  ]);
+  const gate = readGate(result);
+  assert.equal(result.status, 1);
+  assert.equal(gate.state, "blocked");
+  assert.equal(gate.code, "input_invalid");
 });
 
 test("database and identity map together are blocked", () => {

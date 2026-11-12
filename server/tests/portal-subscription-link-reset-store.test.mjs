@@ -17,7 +17,7 @@ function fixture(t, enabled = true) {
     durationDays: 30, quantity: 1, status: "delivered", nextAction: "subscription_ready", priorTrialState: "none",
     submittedAt: NOW, updatedAt: NOW, validUntil: "2026-11-09T00:00:00.000Z", entitlementRef: "ent_reset", accessGrantRef: "grant_reset",
     tenantId: plan.tenantId, artifactId: plan.previousArtifactId, subscriptionUrl: "https://subscription.example.test/sub/a/synthetic_old.yaml",
-    edgeChannelRef: "channel_synthetic", edgeCredentialRef: "edgecred_synthetic", edgeMaterialDigest: "1".repeat(64), event: { type: "delivered", occurredAt: NOW } });
+    edgeChannelRef: "channel_synthetic", edgeCredentialRef: "edgecred_synthetic", edgeMaterialDigest: "1".repeat(64), event: null });
   if (enabled) ensurePortalSubscriptionLinkResetSchema(db);
   return { db, control, store: enabled ? createPortalSubscriptionLinkResetStore({ database: db, nowFn: () => new Date(NOW) }) : null };
 }

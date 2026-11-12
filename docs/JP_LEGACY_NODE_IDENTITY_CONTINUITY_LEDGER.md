@@ -1,6 +1,6 @@
 # 日本旧节点历史身份与业务连续性台账
 
-Last updated: 2026-10-31 UTC
+Last updated: 2026-11-12 UTC
 
 ```yaml
 document_metadata:
@@ -9,11 +9,12 @@ document_metadata:
   authority_scope: jp_legacy_node_identity_and_business_continuity
   superseded_by: null
   last_verified_at: 2026-10-31
+  last_evidence_record_at: 2026-11-05
   production_authority: false
 ```
 
 > 状态：BLOCKED — 历史物理身份、当前依赖和业务连续性门禁仍未闭环。
-> 证据截止：2026-10-31 可取得的仓库记录及操作员报告；生产状态仍严格受各条回执的时间与范围约束。
+> 证据覆盖：历史审计资料截至 2026-10-31，并追加 2026-11-05 Issue #809 进度回执（记录 2026-11-04 Formal Identity Gate）；该回执不是 2026-11-12 的实时主机或 Provider 读取。
 > 本文件不授予任何生产执行权限。
 
 ## 1. 目的与使用边界
@@ -428,3 +429,48 @@ sha256sum -c docs/runbooks/m0-a2-1-v7/SHA256SUMS
 - 不授权 M0-A2-2、M1–M8、生产恢复、服务 / Timer 操作、collector invocation、数据清理或日本新节点创建。
 - 若后续需要继续，只能先对最终 v7 包做 exact-head 复审，再另行取得绑定最终 package SHA-256、目标、expected release label 与时间窗口的一次性 Risk A 批准。
 - 在该批准前，不读取 Journal、数据库、checkpoint、config、环境文件或原始凭据，不进行 SSH / Provider 连接，也不执行任何生产变更。
+
+
+## 14. 2026-11-04 Formal Identity Gate follow-up（Issue #809 回执，2026-11-05）
+
+本节追加 2026-11-05 发布的仓库进度回执，记录 2026-11-04 获准的一次性 Formal Identity Gate 执行结果。它不改写 2026-10-12、2026-10-30 或 2026-10-31 的历史观察，也不是 2026-11-12 的实时主机、Provider 或业务流量读取。
+
+### 14.1 一次性执行结果（操作员报告 / repository_recorded）
+
+Issue [#809 comment #6658560830](https://github.com/FlyLink-com/proxy-gateway-minimal/issues/809#issuecomment-6658560830) 记录本次执行完成；完整执行回执归档于[Formal Identity Gate receipt](https://drive.google.com/file/d/1cRN2PGUkVs-b8FK9PtJ5s1599SBpbRa_/view)。
+
+| Channel face | Gate state | stale identities |
+| --- | --- | ---: |
+| japan-vless | degraded | 90 |
+| japan-hy2 | degraded | 77 |
+| japan-tuic | degraded | 89 |
+| **Total** | **degraded** | **256** |
+
+同一回执还记录：
+
+- `missing=0`、`changed=0`、`missing_material=0`。
+- Snapshot A / Snapshot B 与 census 一致。
+- 监控样本为 30/30 稳定。
+- 四个生产 DB/WAL hash checkpoints 保持不变。
+- 本次执行没有修改生产数据或 retention record。
+
+以上为该次获准执行的限定范围结果。零 missing / changed / missing_material 不抵消 256 条 stale identities，也不把三个 channel face 的 `degraded` 升级为 PASS；30/30 样本和四个 hash checkpoints 仅证明回执所述样本与检查点，不代表全局、持续或当前健康状态。
+
+### 14.2 Retention 与授权边界
+
+- **M0 继续 BLOCKED。** 256 条 stale identities 全部保持 **RETAIN**；不得删除、撤销、改写、重新分类或恢复到 runtime。
+- 本次是一项一次性授权，执行后已耗尽。该回执不授权 M1–M8、清理、再次读取 BWH、重跑 Identity Gate、恢复生产或修改服务 / Timer。
+- 任何新的生产读取或变更，都必须先取得绑定准确目标、范围和时间窗口的独立 Risk A 授权。
+- 该回执不证明早期日本主机的 Provider 删除事件、历史 channelRef / physicalNodeRef 完整绑定、DNS / 证书依赖退役，亦不改变本台账中仍为 unknown 的项目。
+
+### 14.3 同期仓库交付的范围区分
+
+Issue #809 同一进度回执还明确区分了同期 PR 的源码状态与生产状态：
+
+- PR #820 已合并，但只增加 receipt-gated JP child configuration / tests；没有创建节点、应用生产配置或激活流量。
+- PR #826 仍为 Draft / Open；其 D1 source / contract review 不等于 owner final acceptance 或 D2 授权，且同步最新 Master 后仍须重新验收。
+- PR #828 / #829 为文档交付，记录未来 Workers + D1 方向；不代表已创建 Worker / D1 资源、迁移生产数据或通过 M0 live-role gate。
+
+### 14.4 本次台账增补记录
+
+2026-11-12：在保留全部既有历史内容的前提下，追加 2026-11-04 Formal Identity Gate 结果及 2026-11-05 Issue #809 回执索引；本次只更新仓库文档，不执行生产读取或变更。

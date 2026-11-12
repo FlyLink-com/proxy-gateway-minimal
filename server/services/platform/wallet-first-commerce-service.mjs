@@ -465,12 +465,37 @@ function normalizeOfferRequest(input) {
   });
 }
 
+// Peels the optional client-supplied `adsClick` descriptor off a request
+// object before an exact-field contract runs. Any non-data or unexpected
+// property shape leaves the input untouched, so the exact-field contract
+// rejects it exactly as it would have before this descriptor existed.
+function splitOptionalAdsClick(input) {
+  if (!isPlainObject(input)) return { request: input, adsClick: undefined };
+  const descriptor = Object.getOwnPropertyDescriptor(input, "adsClick");
+  if (!descriptor) return { request: input, adsClick: undefined };
+  if (!descriptor.enumerable || !("value" in descriptor)) {
+    return { request: input, adsClick: undefined };
+  }
+  const request = {};
+  for (const key of Reflect.ownKeys(input)) {
+    if (key === "adsClick") continue;
+    const field = Object.getOwnPropertyDescriptor(input, key);
+    if (!field || !field.enumerable || !("value" in field)) {
+      return { request: input, adsClick: undefined };
+    }
+    request[key] = field.value;
+  }
+  return { request, adsClick: descriptor.value };
+}
+
 function normalizeReserveRequest(input) {
-  const value = snapshotExactObject(input, ["accountId", "quoteRef", "operation"], "wallet_first_commerce_service_invalid");
+  const { request, adsClick } = splitOptionalAdsClick(input);
+  const value = snapshotExactObject(request, ["accountId", "quoteRef", "operation"], "wallet_first_commerce_service_invalid");
   return Object.freeze({
     accountId: normalizeAccountId(value.accountId, "wallet_first_commerce_service_invalid"),
     quoteRef: normalizeReference(value.quoteRef, "wallet_first_commerce_service_invalid"),
-    operation: normalizeOperation(value.operation, "wallet_first_commerce_service_invalid")
+    operation: normalizeOperation(value.operation, "wallet_first_commerce_service_invalid"),
+    ...(adsClick !== undefined ? { adsClick } : {})
   });
 }
 

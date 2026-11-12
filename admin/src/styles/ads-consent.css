@@ -1,0 +1,122 @@
+.ads-consent-panel {
+  position: fixed;
+  right: max(16px, env(safe-area-inset-right));
+  bottom: max(16px, env(safe-area-inset-bottom));
+  z-index: 12000;
+  width: min(440px, calc(100vw - 32px));
+  box-sizing: border-box;
+  border: 1px solid rgba(148, 163, 184, 0.42);
+  border-radius: 16px;
+  padding: 16px;
+  background: rgba(255, 255, 255, 0.97);
+  color: #172033;
+  box-shadow: 0 18px 55px rgba(15, 23, 42, 0.22);
+  backdrop-filter: blur(18px);
+  font: inherit;
+}
+
+.ads-consent-panel__content {
+  display: grid;
+  gap: 10px;
+}
+
+.ads-consent-panel__heading,
+.ads-consent-panel__collapsed {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.ads-consent-panel__heading strong {
+  font-size: 15px;
+  line-height: 1.35;
+}
+
+.ads-consent-panel__heading span {
+  flex: none;
+  border-radius: 999px;
+  padding: 3px 8px;
+  background: #eff6ff;
+  color: #1d4ed8;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.ads-consent-panel__content p {
+  margin: 0;
+  color: #475569;
+  font-size: 12px;
+  line-height: 1.65;
+}
+
+.ads-consent-panel__content .ads-consent-panel__status {
+  color: #334155;
+  font-weight: 700;
+}
+
+.ads-consent-panel__content .ads-consent-panel__message {
+  color: #b45309;
+}
+
+.ads-consent-panel__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.ads-consent-panel__actions button,
+.ads-consent-panel__collapsed button {
+  min-height: 36px;
+  border: 1px solid #cbd5e1;
+  border-radius: 9px;
+  padding: 7px 11px;
+  background: #ffffff;
+  color: #334155;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.ads-consent-panel__actions .ads-consent-panel__allow {
+  border-color: #1d4ed8;
+  background: #1d4ed8;
+  color: #ffffff;
+}
+
+.ads-consent-panel__actions .ads-consent-panel__reject {
+  border-color: #94a3b8;
+  background: #f8fafc;
+  color: #334155;
+}
+
+.ads-consent-panel__actions .ads-consent-panel__quiet {
+  border-color: transparent;
+  background: transparent;
+  color: #64748b;
+}
+
+.ads-consent-panel__collapsed {
+  font-size: 12px;
+  color: #475569;
+}
+
+.ads-consent-panel button:focus-visible {
+  outline: 3px solid #60a5fa;
+  outline-offset: 2px;
+}
+
+@media (max-width: 560px) {
+  .ads-consent-panel {
+    right: 12px;
+    bottom: max(12px, env(safe-area-inset-bottom));
+    width: calc(100vw - 24px);
+    padding: 14px;
+  }
+
+  .ads-consent-panel__actions button {
+    flex: 1 1 auto;
+  }
+}
