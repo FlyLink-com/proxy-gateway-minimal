@@ -6,6 +6,7 @@ import { join } from "node:path";
 import test from "node:test";
 import Database from "better-sqlite3";
 import * as schema from "../services/platform/coin-commerce-migrations.mjs";
+import * as planC from "../services/platform/coin-commerce-initial-confirmation-guard-plan-c-schema.mjs";
 import { applyCoinWalletMigrations, COIN_WALLET_MIGRATIONS,
   REQUIRED_COIN_WALLET_MIGRATION_ID } from "../services/platform/coin-wallet-migrations.mjs";
 import { createSqliteSubscriptionControlStore } from "../services/platform/subscription-control-db.mjs";
@@ -97,6 +98,18 @@ function input(database) {
     nowFn: () => new Date(NOW) };
 }
 function apply(state) { return schema.applyCoinCommerceInitialConfirmationMigrations(input(state.database)); }
+function planCInput(database) {
+  return {
+    database,
+    expectedMigrationId: planC.REQUIRED_COIN_COMMERCE_INITIAL_CONFIRMATION_GUARD_MIGRATION_ID,
+    expectedDdlChecksum: planC.COIN_COMMERCE_INITIAL_CONFIRMATION_GUARD_MIGRATIONS[0].ddlChecksum,
+    nowFn: () => new Date(NOW)
+  };
+}
+function applyPlanC(state) {
+  apply(state);
+  return planC.applyCoinCommerceInitialConfirmationGuardMigrations(planCInput(state.database));
+}
 function audit(state, metadata = state.metadata) {
   state.control.recordAuditEvent({ id: state.effectRef, entityType: "coin_commerce_subscription_fulfillment",
     entityRef: state.values.entitlement_ref, action: "subscription_fulfillment_applied",
@@ -208,7 +221,13 @@ for (const [field, value] of Object.entries({ approval_sha256: "A".repeat(64), i
 
 for (const field of ["commandRef", "orderRef", "accountId", "requestRef", "entitlementRef", "issuedLinkRef"]) {
   test(`effect metadata mismatch ${field} cannot authorize confirmation`, () => withState({ failed: true }, (state) => {
-    apply(state); audit(state, { ...state.metadata, [field]: "different_ref" });
+    apply(state);
+    const mismatchedMetadata = { ...state.metadata, [field]: "different_ref" };
+    if (field === "commandRef" || field === "entitlementRef") {
+      assert.throws(() => audit(state, mismatchedMetadata));
+    } else {
+      audit(state, mismatchedMetadata);
+    }
     assert.throws(() => insert(state));
   }));
 }
@@ -399,4 +418,195 @@ test("unused inverse failures retain the entire installed extension", () => with
   } finally { state.database.exec = originalExec; }
   assert.deepEqual(schemaSnapshot(state.database), before);
   assert.equal(schema.inspectCoinCommerceInitialConfirmationSchema({ database: state.database }).ok, true);
+}));
+
+const PLAN_C_PREDICATE_GROUPS = Object.freeze({
+  S1: [
+    "c.command_ref = new.command_ref", "c.order_ref = new.order_ref",
+    "c.account_id = new.account_id", "c.status = 'failed'",
+    "c.safe_failure_code = 'fulfillment_handler_unavailable'", "c.lease_token is null",
+    "c.lease_until is null", "c.updated_at = new.failed_updated_at",
+    "c.attempt_count = new.attempt_count", "c.lease_generation = new.lease_generation",
+    "o.account_id = new.account_id", "o.payment_status = 'reconciliation_required'",
+    "o.updated_at = new.failed_updated_at", "h.status = 'captured'",
+    "h.purpose = 'product_purchase'", "h.purpose_ref = o.order_ref",
+    "h.amount_units = o.amount_units", "w.account_id = new.account_id"
+  ],
+  S2: [
+    "a.entity_type = 'coin_commerce_subscription_fulfillment'",
+    "a.entity_ref = new.entitlement_ref", "a.action = 'subscription_fulfillment_applied'",
+    "a.actor_ref = 'coin_commerce_fulfillment'", "a.created_at = new.confirmed_at",
+    "json_valid(a.metadata_json)", "json_extract(a.metadata_json, '$.version') = 1",
+    "json_extract(a.metadata_json, '$.commandref') = new.command_ref",
+    "json_extract(a.metadata_json, '$.orderref') = new.order_ref",
+    "json_extract(a.metadata_json, '$.accountid') = new.account_id",
+    "json_extract(a.metadata_json, '$.requestref') = new.resource_request_ref",
+    "json_extract(a.metadata_json, '$.entitlementref') = new.entitlement_ref",
+    "json_extract(a.metadata_json, '$.issuedlinkref') = new.issued_link_ref",
+    "json_extract(a.metadata_json, '$.offerversionref') = o.offer_version_ref",
+    "json_extract(a.metadata_json, '$.tenantref') = l.tenant_ref",
+    "json_extract(a.metadata_json, '$.artifactref') = l.artifact_ref"
+  ],
+  S3: [
+    "r.account_id = new.account_id", "r.entitlement_id = e.id",
+    "r.status = 'issued'", "r.quantity = 1",
+    "r.purpose = 'coin_commerce_product_fulfillment'",
+    "e.account_id = new.account_id", "e.status = 'active'",
+    "l.request_id = r.id", "l.status = 'active'"
+  ],
+  S4: ["f.command_ref = new.command_ref or f.receipt_ref = new.receipt_ref"]
+});
+
+test("Scheme C has an independent checksum-bound migration and preserves the original ledger row", () => withState({}, (state) => {
+  const original = apply(state);
+  const originalRow = state.database.prepare(
+    "select migration_id,ddl_checksum from platform_schema_migrations where migration_id=?"
+  ).get(schema.REQUIRED_COIN_COMMERCE_INITIAL_CONFIRMATION_MIGRATION_ID);
+  const result = planC.applyCoinCommerceInitialConfirmationGuardMigrations(planCInput(state.database));
+  assert.equal(result.ok, true);
+  assert.equal(result.sourceChanged, true);
+  assert.deepEqual(result.appliedMigrationIds, [planC.REQUIRED_COIN_COMMERCE_INITIAL_CONFIRMATION_GUARD_MIGRATION_ID]);
+  assert.equal(originalRow.ddl_checksum, schema.COIN_COMMERCE_INITIAL_CONFIRMATION_MIGRATIONS[0].ddlChecksum);
+  const guardRow = state.database.prepare(
+    "select migration_id,ddl_checksum from platform_schema_migrations where migration_id=?"
+  ).get(planC.REQUIRED_COIN_COMMERCE_INITIAL_CONFIRMATION_GUARD_MIGRATION_ID);
+  assert.equal(guardRow.ddl_checksum, planC.COIN_COMMERCE_INITIAL_CONFIRMATION_GUARD_MIGRATIONS[0].ddlChecksum);
+  assert.equal(schema.inspectCoinCommerceSchema({ database: state.database }).ok, true);
+  assert.equal(schema.inspectCoinCommerceInitialConfirmationSchema({ database: state.database }).ok, true);
+  assert.equal(planC.inspectCoinCommerceInitialConfirmationGuardSchema({ database: state.database }).ok, true);
+  assert.equal(planC.applyCoinCommerceInitialConfirmationGuardMigrations(planCInput(state.database)).sourceChanged, false);
+  assert.equal(schema.COIN_COMMERCE_MIGRATIONS[0].ddlChecksum, BASE_CHECKSUM);
+  assert.equal(original.ok, true);
+}));
+
+test("Scheme C keeps all 44 database predicates in one INSERT guard", () => withState({}, (state) => {
+  applyPlanC(state);
+  const row = state.database.prepare(
+    "select sql from sqlite_master where type='trigger' and name=?"
+  ).get("coin_commerce_initial_confirmations_insert_guard");
+  const sql = row.sql.toLowerCase().replace(/\s+/g, " ");
+  assert.deepEqual(Object.values(PLAN_C_PREDICATE_GROUPS).map((group) => group.length), [18, 16, 9, 1]);
+  assert.equal(Object.values(PLAN_C_PREDICATE_GROUPS).flat().length, 44);
+  for (const [groupName, fragments] of Object.entries(PLAN_C_PREDICATE_GROUPS)) {
+    for (const fragment of fragments) {
+      assert.equal(sql.split(fragment).length - 1, 1, `${groupName}: ${fragment}`);
+    }
+  }
+  assert.equal(state.database.prepare(
+    "select count(*) from sqlite_master where type='trigger' and name='coin_commerce_initial_confirmations_insert_guard'"
+  ).pluck().get(), 1);
+}));
+
+for (const field of ["expectedMigrationId", "expectedDdlChecksum"]) {
+  test(`Scheme C migration rejects wrong ${field} without writes`, () => withState({}, (state) => {
+    apply(state);
+    const before = schemaSnapshot(state.database);
+    const ledgerBefore = state.database.prepare("select * from platform_schema_migrations order by migration_id").all();
+    assert.throws(() => planC.applyCoinCommerceInitialConfirmationGuardMigrations({
+      ...planCInput(state.database), [field]: "wrong"
+    }), (error) => error.code === (field === "expectedMigrationId"
+      ? "commerce_migration_id_mismatch" : "commerce_migration_checksum_mismatch"));
+    assert.deepEqual(schemaSnapshot(state.database), before);
+    assert.deepEqual(state.database.prepare("select * from platform_schema_migrations order by migration_id").all(), ledgerBefore);
+  }));
+}
+
+test("Scheme C fails closed if the original confirmation extension is absent", () => withState({}, (state) => {
+  assert.throws(() => planC.applyCoinCommerceInitialConfirmationGuardMigrations(planCInput(state.database)),
+    (error) => error.code === "commerce_initial_confirmation_schema_incompatible");
+}));
+
+test("Scheme C replacement and ledger insert roll back together on DDL failure", () => withState({}, (state) => {
+  apply(state);
+  const before = schemaSnapshot(state.database);
+  const originalExec = state.database.exec.bind(state.database);
+  state.database.exec = function failPlanCCreate(sql) {
+    if (/^CREATE TRIGGER coin_commerce_initial_confirmations_insert_guard/.test(sql)) {
+      throw new Error("synthetic_plan_c_create_failure");
+    }
+    return originalExec(sql);
+  };
+  assert.throws(() => planC.applyCoinCommerceInitialConfirmationGuardMigrations(planCInput(state.database)),
+    (error) => error.code === "commerce_initial_confirmation_guard_migration_failed");
+  state.database.exec = originalExec;
+  assert.deepEqual(schemaSnapshot(state.database), before);
+  assert.equal(schema.inspectCoinCommerceInitialConfirmationSchema({ database: state.database }).ok, true);
+  assert.equal(planC.inspectCoinCommerceInitialConfirmationGuardSchema({ database: state.database }).ok, false);
+  assert.equal(state.database.prepare(
+    "select count(*) from platform_schema_migrations where migration_id=?"
+  ).pluck().get(planC.REQUIRED_COIN_COMMERCE_INITIAL_CONFIRMATION_GUARD_MIGRATION_ID), 0);
+}));
+
+test("Scheme C preserves the legal recovery path and both downstream state transitions", () => withState({ failed: true }, (state) => {
+  applyPlanC(state);
+  const ledgerBefore = state.database.prepare("select * from platform_coin_ledger_entries order by entry_ref").all();
+  const eventsBefore = state.database.prepare("select * from platform_coin_commerce_order_events order by event_ref").all();
+  audit(state); insert(state); receipt(state); completeCommand(state); completeOrder(state);
+  assert.equal(state.store.getOrder({ accountId: state.accountId, orderRef: state.values.order_ref }).fulfillment.status, "delivered");
+  assert.equal(state.store.getOrder({ accountId: state.accountId, orderRef: state.values.order_ref }).paymentStatus, "captured");
+  assert.deepEqual(state.database.prepare("select * from platform_coin_ledger_entries order by entry_ref").all(), ledgerBefore);
+  assert.deepEqual(state.database.prepare("select * from platform_coin_commerce_order_events order by event_ref").all(), eventsBefore);
+}));
+
+test("Scheme C retains the original fail-closed binding signature for a metadata mismatch", () => withState({ failed: true }, (state) => {
+  applyPlanC(state);
+  audit(state, { ...state.metadata, tenantRef: "tenantref_wrong" });
+  assert.throws(() => insert(state), (error) => error.message.includes("coin_commerce_initial_confirmation_binding_invalid"));
+  assert.equal(state.database.prepare(`select count(*) from ${TABLE}`).pluck().get(), 0);
+}));
+
+test("Scheme C S4 rejects a prior fulfillment receipt", () => withState({ failed: true }, (state) => {
+  applyPlanC(state); audit(state); receipt(state);
+  assert.throws(() => insert(state), (error) => error.message.includes("coin_commerce_initial_confirmation_binding_invalid"));
+  assert.equal(state.database.prepare(`select count(*) from ${TABLE}`).pluck().get(), 0);
+}));
+
+test("Scheme C keeps immutable UPDATE and DELETE guards effective", () => withState({ failed: true }, (state) => {
+  applyPlanC(state); audit(state); insert(state);
+  assert.throws(() => state.database.prepare(`update ${TABLE} set operator_ref='changed'`).run(),
+    (error) => error.message.includes("coin_commerce_initial_confirmation_immutable"));
+  assert.throws(() => state.database.prepare(`delete from ${TABLE}`).run(),
+    (error) => error.message.includes("coin_commerce_initial_confirmation_immutable"));
+  assert.equal(state.database.prepare(`select count(*) from ${TABLE}`).pluck().get(), 1);
+}));
+
+test("Plan C validation distinguishes the original extension from the follow-on migration", () => withState({}, (state) => {
+  apply(state);
+  assert.equal(schema.inspectCoinCommerceInitialConfirmationSchema({ database: state.database }).ok, true);
+  const result = planC.inspectCoinCommerceInitialConfirmationGuardSchema({ database: state.database });
+  assert.equal(result.ok, false);
+  assert.ok(result.reasonCodes.includes("commerce_initial_confirmation_guard_migration_missing"));
+}));
+
+test("Plan C dry-run applies only to a private clone and leaves the source unchanged", async () => {
+  const root = mkdtempSync(join(tmpdir(), "initial-confirmation-plan-c-dry-run-test-"));
+  const sourcePath = join(root, "source.sqlite");
+  const state = fixture();
+  try {
+    apply(state); await state.database.backup(sourcePath);
+    const before = sha(readFileSync(sourcePath));
+    const result = await planC.dryRunCoinCommerceInitialConfirmationGuardMigrations({ dbPath: sourcePath, tempRoot: root });
+    assert.equal(result.ok, true);
+    assert.equal(result.mode, "dry-run");
+    assert.equal(result.sourceChanged, false);
+    assert.deepEqual(result.pendingMigrationIds, [planC.REQUIRED_COIN_COMMERCE_INITIAL_CONFIRMATION_GUARD_MIGRATION_ID]);
+    assert.deepEqual(result.appliedMigrationIds, [planC.REQUIRED_COIN_COMMERCE_INITIAL_CONFIRMATION_GUARD_MIGRATION_ID]);
+    assert.equal(sha(readFileSync(sourcePath)), before);
+    assert.deepEqual(readdirSync(root), ["source.sqlite"]);
+    const source = new Database(sourcePath, { readonly: true, fileMustExist: true });
+    try {
+      assert.equal(schema.inspectCoinCommerceInitialConfirmationSchema({ database: source }).ok, true);
+      assert.equal(planC.inspectCoinCommerceInitialConfirmationGuardSchema({ database: source }).ok, false);
+    } finally { source.close(); }
+  } finally { state.close(); rmSync(root, { recursive: true, force: true }); }
+});
+
+test("unused extension inverse removes the Plan C ledger row together with the extension", () => withState({}, (state) => {
+  applyPlanC(state);
+  const result = schema.removeUnusedCoinCommerceInitialConfirmationMigration(input(state.database));
+  assert.equal(result.sourceChanged, true);
+  assert.equal(schema.inspectCoinCommerceSchema({ database: state.database }).ok, true);
+  assert.equal(state.database.prepare("select count(*) from platform_schema_migrations where migration_id=?").pluck().get(
+    planC.REQUIRED_COIN_COMMERCE_INITIAL_CONFIRMATION_GUARD_MIGRATION_ID
+  ), 0);
 }));

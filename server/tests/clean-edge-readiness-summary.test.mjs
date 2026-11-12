@@ -22,7 +22,8 @@ function readyInput(overrides = {}) {
     generatedAt: "2026-05-27T21:40:00.000Z",
     repoState: {
       branchSynced: true,
-      noOpenPrs: true,
+      openPrRefs: [],
+      blockingPrRefs: [],
       projectStateCheckPassed: true
     },
     subscriptionBoundary: {
@@ -68,8 +69,11 @@ test("clean edge readiness summary normalizes safe gate evidence", () => {
     },
     repoState: {
       branchSynced: true,
-      noOpenPrs: true,
-      projectStateCheckPassed: true
+      projectStateCheckPassed: true,
+      openPrScopeRecorded: true,
+      openPrRefs: [],
+      blockingPrRefs: [],
+      blockingOpenPrRefs: []
     },
     subscriptionBoundary: {
       subOnAliyun: true,
@@ -118,11 +122,25 @@ test("clean edge readiness summary normalizes safe gate evidence", () => {
   assert.doesNotMatch(JSON.stringify(summary), /secret|token=|https?:|customer@example\.com|\/sub\/clash\.yaml\?/);
 });
 
+test("clean edge readiness summary blocks only on scoped blocking PRs", () => {
+  const summary = buildCleanEdgeReadinessSummary(readyInput({
+    repoState: {
+      branchSynced: true,
+      openPrRefs: ["pr-810", "pr-812"],
+      blockingPrRefs: ["pr-812"],
+      projectStateCheckPassed: true
+    }
+  }));
+
+  assert.equal(summary.readiness.preconditionsReady, false);
+  assert.deepEqual(summary.readiness.blockers, ["scoped blocking PRs are still open"]);
+  assert.deepEqual(summary.repoState.blockingOpenPrRefs, ["pr-812"]);
+});
+
 test("clean edge readiness summary reports blockers and approval state without mutating anything", () => {
   const summary = buildCleanEdgeReadinessSummary(readyInput({
     repoState: {
       branchSynced: false,
-      noOpenPrs: false,
       projectStateCheckPassed: false
     },
     subscriptionBoundary: {
@@ -155,7 +173,7 @@ test("clean edge readiness summary reports blockers and approval state without m
   assert.equal(summary.readiness.executionAllowed, false);
   assert.deepEqual(summary.readiness.blockers, [
     "repository branch is not synced",
-    "open PR queue is not empty",
+    "open PR scope evidence is not recorded",
     "project-state check has not passed",
     "subscription boundary is not confirmed on Aliyun",
     "public health check is not verified",

@@ -1,0 +1,224 @@
+{
+  "$id": "https://github.com/FlyLink-com/proxy-gateway-minimal/ops/node-provisioning/schemas/node-runtime-plan.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Target-node side of the dual-side integration contract, rendered on the node from the same Node Profile and generation as the BWH integration plan. Contains only safe references, digests, and public-key fingerprints in the registration anchor format (sha256:<lowercase hex>). Private keys (WireGuard, SSH, agent token) are generated on the node and never appear in this plan or any artifact; protocol material is pulled by the agent from the control plane by materialRef, never embedded here. Generation is a safe-reference string, as the agent protocol carries it. A conforming plan never authorises service activation: both activation flags are const false — activation happens only through the later gated workflows (P5/P6 control services, P8 traffic services). The WireGuard address is pinned to the approved plan for JP-01 (10.77.0.2/32; peer AllowedIPs are /32 entries inside 10.77.0.0/24); semantic CIDR validation is additionally enforced by the dual-side gate.",
+  "properties": {
+    "activation": {
+      "additionalProperties": false,
+      "properties": {
+        "controlServicesEnabled": {
+          "const": false,
+          "type": "boolean"
+        },
+        "trafficServicesEnabled": {
+          "const": false,
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "controlServicesEnabled",
+        "trafficServicesEnabled"
+      ],
+      "type": "object"
+    },
+    "agent": {
+      "additionalProperties": false,
+      "properties": {
+        "authFingerprint": {
+          "description": "SHA-256 fingerprint of this node's agent token, anchor format; identical to the registration binding anchor agentAuthFingerprint. The token itself never appears.",
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "bwhEndpointRef": {
+          "pattern": "^[A-Za-z0-9._:-]{1,160}$",
+          "type": "string"
+        },
+        "releaseRef": {
+          "pattern": "^[A-Za-z0-9._:-]{1,160}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "releaseRef",
+        "authFingerprint",
+        "bwhEndpointRef"
+      ],
+      "type": "object"
+    },
+    "digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "firstBootPacketRef": {
+      "pattern": "^[A-Za-z0-9._:-]{1,160}$",
+      "type": "string"
+    },
+    "generation": {
+      "pattern": "^[A-Za-z0-9._:-]{1,160}$",
+      "type": "string"
+    },
+    "hostname": {
+      "pattern": "^[a-z0-9][a-z0-9-]{0,62}$",
+      "type": "string"
+    },
+    "imageManifestRef": {
+      "pattern": "^[A-Za-z0-9._:-]{1,160}$",
+      "type": "string"
+    },
+    "nodeRef": {
+      "pattern": "^[A-Za-z0-9._:-]{1,160}$",
+      "type": "string"
+    },
+    "planRef": {
+      "pattern": "^[A-Za-z0-9._:-]{1,160}$",
+      "type": "string"
+    },
+    "profileDigest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "providerRef": {
+      "pattern": "^[A-Za-z0-9._:-]{1,160}$",
+      "type": "string"
+    },
+    "regionRef": {
+      "pattern": "^[A-Za-z0-9._:-]{1,160}$",
+      "type": "string"
+    },
+    "roleRef": {
+      "pattern": "^[A-Za-z0-9._:-]{1,160}$",
+      "type": "string"
+    },
+    "schema": {
+      "const": "node-runtime-plan/v1",
+      "type": "string"
+    },
+    "services": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "channelRef": {
+            "pattern": "^[A-Za-z0-9._:-]{1,160}$",
+            "type": "string"
+          },
+          "configDigest": {
+            "pattern": "^[A-Za-z0-9._:+/-]{6,256}$",
+            "type": "string"
+          },
+          "runtimeAdapter": {
+            "enum": [
+              "xray",
+              "hysteria2",
+              "mihomo"
+            ],
+            "type": "string"
+          },
+          "statsListen": {
+            "enum": [
+              "127.0.0.1",
+              "::1"
+            ],
+            "type": "string"
+          },
+          "unitName": {
+            "pattern": "^[A-Za-z0-9@._-]+\\.service$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "channelRef",
+          "runtimeAdapter",
+          "unitName",
+          "configDigest",
+          "statsListen"
+        ],
+        "type": "object"
+      },
+      "minItems": 1,
+      "type": "array"
+    },
+    "wireguard": {
+      "additionalProperties": false,
+      "properties": {
+        "addressCidr": {
+          "description": "JP-01's approved tunnel address (2026-11-02 address plan).",
+          "enum": [
+            "10.77.0.2/32"
+          ],
+          "type": "string"
+        },
+        "allowedIps": {
+          "const": [
+            "10.77.0.1/32"
+          ],
+          "description": "Exact whitelist for JP-01 under the approved address plan: the node accepts only BWH's tunnel address.",
+          "type": "array"
+        },
+        "interfaceName": {
+          "const": "wg-child0",
+          "type": "string"
+        },
+        "ownPublicKey": {
+          "description": "This node's WireGuard public key (base64, 32 bytes); the gate recomputes ownPublicKeyFingerprint from the decoded bytes.",
+          "pattern": "^[A-Za-z0-9+/]{43}=$",
+          "type": "string"
+        },
+        "ownPublicKeyFingerprint": {
+          "description": "SHA-256 fingerprint of this node's WireGuard public key, anchor format; identical to the BWH plan's nodePeerPublicKeyFingerprint and to the registration binding anchor.",
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "peerPublicKey": {
+          "description": "BWH WireGuard public key (base64, 32 bytes) as received in the exchange; the gate recomputes peerPublicKeyFingerprint from it.",
+          "pattern": "^[A-Za-z0-9+/]{43}=$",
+          "type": "string"
+        },
+        "peerPublicKeyFingerprint": {
+          "description": "SHA-256 fingerprint of the BWH WireGuard public key as expected by the node, anchor format; identical to the BWH plan's bwhPeerPublicKeyFingerprint.",
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "addressCidr",
+        "allowedIps",
+        "interfaceName",
+        "ownPublicKey",
+        "ownPublicKeyFingerprint",
+        "peerPublicKey",
+        "peerPublicKeyFingerprint"
+      ],
+      "type": "object"
+    },
+    "wireguardPlanRef": {
+      "description": "The same wireguardPlanRef the BWH plan carries in wireguard.planRef and the E1 binding compares; WG_PLAN_REF_PATTERN plus the sensitive-text filter.",
+      "not": {
+        "pattern": "https?:|token=|[Ss][Ee][Cc][Rr][Ee][Tt]|[Cc][Rr][Ee][Dd][Ee][Nn][Tt][Ii][Aa][Ll]|[Pp][Aa][Ss][Ss][Ww][Oo][Rr][Dd]|[Pp][Rr][Ii][Vv][Aa][Tt][Ee]|[Cc][Uu][Ss][Tt][Oo][Mm][Ee][Rr]|@|sub/clash\\.yaml|(?:[0-9]{1,3}\\.){3}[0-9]{1,3}|[a-z0-9-]+\\.[a-z]{2,}"
+      },
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$",
+      "type": "string"
+    }
+  },
+  "required": [
+    "activation",
+    "agent",
+    "digest",
+    "firstBootPacketRef",
+    "generation",
+    "hostname",
+    "imageManifestRef",
+    "nodeRef",
+    "planRef",
+    "profileDigest",
+    "providerRef",
+    "regionRef",
+    "roleRef",
+    "schema",
+    "services",
+    "wireguard",
+    "wireguardPlanRef"
+  ],
+  "title": "Node Runtime Plan (dual-side contract, target-node side)",
+  "type": "object"
+}

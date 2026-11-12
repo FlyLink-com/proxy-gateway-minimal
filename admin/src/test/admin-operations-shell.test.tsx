@@ -209,30 +209,71 @@ describe("AdminOperationsShell", () => {
     expect(screen.getByTestId("monitor-format-link").getAttribute("href")).toBe("#/admin-baseline/userManagement");
   });
 
-  it("does not fetch until start; monitor 401 invokes onSessionExpired with GET /api/admin/accounts, signal, same-origin, no Authorization", async () => {
+  it("reads the formal dashboard summary on mount; monitor accounts stay idle until start", async () => {
     const onSessionExpired = vi.fn();
-    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+      if (url.startsWith("/api/admin/operations/dashboard-summary")) {
+        return new Response(JSON.stringify({ error: "not_found" }), {
+          status: 404,
+          headers: { "content-type": "application/json" }
+        });
+      }
       return new Response("expired", { status: 401 });
     });
     vi.stubGlobal("fetch", fetchMock);
 
     render(<AdminOperationsShell onSessionExpired={onSessionExpired} />);
-    expect(fetchMock).not.toHaveBeenCalled();
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalled();
+    });
+    expect(fetchMock.mock.calls.some((call) => String(call[0]).includes("/api/admin/platform/accounts"))).toBe(false);
+    const summaryCall = fetchMock.mock.calls.find((call) => String(call[0]).startsWith("/api/admin/operations/dashboard-summary"));
+    expect(summaryCall?.[0]).toBe("/api/admin/operations/dashboard-summary");
+    const summaryInit = summaryCall?.[1] as RequestInit;
+    expect(summaryInit?.credentials).toBe("same-origin");
+    expect(summaryInit?.cache).toBe("no-store");
+    expect(new Headers(summaryInit?.headers).has("Authorization")).toBe(false);
+    expect(onSessionExpired).not.toHaveBeenCalled();
+    expect(screen.getByRole("region", { name: "Registration trend" })).toBeTruthy();
+    expect(screen.getByRole("region", { name: "Traffic collector observation" })).toBeTruthy();
+    expect(screen.queryByText("Platform health")).toBeNull();
 
     fireEvent.click(screen.getByTestId("monitor-start"));
     await waitFor(() => {
       expect(onSessionExpired).toHaveBeenCalledTimes(1);
     });
 
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    const [input, init] = fetchMock.mock.calls[0] as [RequestInfo | URL, RequestInit | undefined];
-    const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
-    expect(url).toBe("/api/admin/platform/accounts");
+    const accountCall = fetchMock.mock.calls.find((call) => call[0] === "/api/admin/platform/accounts");
+    const init = accountCall?.[1] as RequestInit | undefined;
     expect(init?.method ?? "GET").toBe("GET");
     expect(init?.signal).toBeTruthy();
     expect(init?.credentials).toBe("same-origin");
-    const headers = new Headers(init?.headers);
-    expect(headers.has("Authorization")).toBe(false);
+    expect(new Headers(init?.headers).has("Authorization")).toBe(false);
+  });
+
+  it("expires the formal session when the dashboard summary returns 401", async () => {
+    const onSessionExpired = vi.fn();
+    const fetchMock = vi.fn<typeof fetch>(async () => new Response("no", { status: 401 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<AdminOperationsShell onSessionExpired={onSessionExpired} />);
+    await waitFor(() => {
+      expect(onSessionExpired).toHaveBeenCalledOnce();
+    });
+    expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/admin/operations/dashboard-summary");
+    expect(screen.getAllByText("Sign-in is required.").length).toBeGreaterThan(0);
+  });
+
+  it("keeps the baseline preview dashboard disconnected from the summary route", () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<AdminProductionBaselinePreview />);
+
+    expect(screen.getByText("Platform health")).toBeTruthy();
+    expect(screen.queryByRole("region", { name: "Registration trend" })).toBeNull();
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("monitor 403 does not invoke onSessionExpired", async () => {
@@ -286,8 +327,8 @@ describe("AdminOperationsShell", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
+    window.location.hash = "#/admin/userManagement";
     render(<AdminOperationsShell onSessionExpired={onSessionExpired} />);
-    fireEvent.click(screen.getByRole("button", { name: "用户管理" }));
     fireEvent.click(screen.getByTestId("user-start"));
     await waitFor(() => {
       expect(onSessionExpired).toHaveBeenCalledTimes(1);
@@ -328,7 +369,8 @@ describe("AdminOperationsShell", () => {
     expect(ledger.queryByRole("button")).toBeNull();
     expect(ledger.queryByRole("table")).toBeNull();
     expect(ledger.queryByText(/0 B|0 字节|尚无样本|合计一致/)).toBeNull();
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(fetchMock.mock.calls.every((call) => String(call[0]).startsWith("/api/admin/operations/dashboard-summary"))).toBe(true);
+    expect(fetchMock.mock.calls.some((call) => String(call[0]).includes("usage-ledger"))).toBe(false);
     expect(screen.getByTestId("admin-monitor-workspace")).toBeTruthy();
     expect(screen.getByTestId("monitor-page-id").textContent).toBe("usageMonitor");
     expect(ledger.getByRole("link", { name: "前往用户管理查看账户明细" }).getAttribute("href")).toBe("#/admin/userManagement");
@@ -363,7 +405,8 @@ describe("AdminOperationsShell", () => {
     render(<AdminOperationsShell />);
     expect(screen.getByRole("region", { name: "用量台账" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: /读取用量台账|重新读取/ })).toBeNull();
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(fetchMock.mock.calls.every((call) => String(call[0]).startsWith("/api/admin/operations/dashboard-summary"))).toBe(true);
+    expect(fetchMock.mock.calls.some((call) => String(call[0]).includes("usage-ledger"))).toBe(false);
   });
 
   it("preserves the existing monitor read and session guard beside the pending ledger", async () => {

@@ -1,11 +1,89 @@
 import { Router } from "express";
 import { requireAdminCapability } from "../middleware/admin-authorization.mjs";
+import { authorizeAdmin } from "../services/platform/admin-authorization.mjs";
+import { createAdminUserMonitorService } from "../services/platform/admin-user-monitor.mjs";
+import {
+  createUnavailableTrafficCollectorAdminProjection,
+  sanitizeTrafficCollectorAdminProjection
+} from "../services/platform/traffic-collector-admin-projection.mjs";
 import {
   createOperationsReadEnvelope
 } from "../services/platform/operations-read-envelope.mjs";
 import {
+  projectOperationsDashboardSummary
+} from "../services/platform/operations-dashboard-summary.mjs";
+import {
   projectOperationsOverviewReadModel
 } from "../services/platform/operations-overview-read-model.mjs";
+
+const DASHBOARD_DAY_MS = 86400000;
+const DASHBOARD_DEFAULT_RANGE_DAYS = 30;
+
+function defaultDashboardRange(now = new Date()) {
+  const todayUtcStart = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  return {
+    from: new Date(todayUtcStart - (DASHBOARD_DEFAULT_RANGE_DAYS - 1) * DASHBOARD_DAY_MS).toISOString(),
+    to: new Date(todayUtcStart + DASHBOARD_DAY_MS).toISOString()
+  };
+}
+
+function invalidQuery() {
+  const error = new Error("invalid_query");
+  error.code = "invalid_query";
+  return error;
+}
+
+function registrationGrowthFor(state, req) {
+  const query = req.query ?? {};
+  const keys = Object.keys(query);
+  if (keys.some((key) => key !== "from" && key !== "to")) throw invalidQuery();
+  const hasFrom = Object.prototype.hasOwnProperty.call(query, "from");
+  const hasTo = Object.prototype.hasOwnProperty.call(query, "to");
+  if (hasFrom !== hasTo) throw invalidQuery();
+  const decision = authorizeAdmin({
+    principal: req.adminPrincipal,
+    capability: "users.read"
+  });
+  if (!decision.allowed) return { availability: "not_authorized" };
+  const defaultRange = defaultDashboardRange();
+  const from = hasFrom ? query.from : defaultRange.from;
+  const to = hasTo ? query.to : defaultRange.to;
+  try {
+    const body = createAdminUserMonitorService({
+      controlStore: state.platform?.controlStore ?? null
+    }).readGrowth({ from, to });
+    return {
+      availability: "ready",
+      timezone: body.timezone,
+      definition: "account_created_at",
+      from: body.from,
+      to: body.to,
+      registeredCount: body.registeredCount,
+      otherCreatedCount: body.otherCreatedCount,
+      points: body.points.map((point) => ({
+        at: point.at,
+        registeredCount: point.registeredCount,
+        otherCreatedCount: point.otherCreatedCount,
+        coverage: "queried"
+      }))
+    };
+  } catch (error) {
+    if (error?.code === "invalid_query") throw error;
+    return { availability: "unavailable" };
+  }
+}
+
+function trafficCollectorFor(state) {
+  const store = state.platform?.trafficCollectorStatusStore;
+  if (!store || typeof store.read !== "function") {
+    return createUnavailableTrafficCollectorAdminProjection("not_configured");
+  }
+  try {
+    return sanitizeTrafficCollectorAdminProjection(store.read());
+  } catch {
+    return createUnavailableTrafficCollectorAdminProjection("invalid_observation");
+  }
+}
 
 function sendError(res, error) {
   if (error.code === "validation_error") {
@@ -177,6 +255,47 @@ export function adminSubscriptionRoutes(state) {
             }
           }));
         } catch {
+          res.status(500).json({ error: "internal_error" });
+        }
+      }
+    );
+
+    router.get(
+      "/api/admin/operations/dashboard-summary",
+      requireAdminCapability("operations.read"),
+      (req, res) => {
+        try {
+          const registrationGrowth = registrationGrowthFor(state, req);
+          const trafficCollector = trafficCollectorFor(state);
+          const data = projectOperationsDashboardSummary(core.overview(), {
+            registrationGrowth,
+            trafficCollector
+          });
+          const warnings = [{ code: "source_partial" }];
+          if (
+            data.registrationGrowth.availability === "unavailable"
+            || data.trafficCollector.availability === "unknown"
+          ) {
+            warnings.push({ code: "source_unavailable" });
+          }
+          res.set("Cache-Control", "no-store");
+          res.json(createOperationsReadEnvelope({
+            schemaVersion: "operations-dashboard-summary/v1",
+            freshness: "partial",
+            sourceState: "implemented_source",
+            data,
+            warnings,
+            access: {
+              allowed: true,
+              capability: "operations.read",
+              reasonCode: "allowed"
+            }
+          }));
+        } catch (error) {
+          if (error?.code === "invalid_query") {
+            res.status(400).json({ error: "invalid_query" });
+            return;
+          }
           res.status(500).json({ error: "internal_error" });
         }
       }

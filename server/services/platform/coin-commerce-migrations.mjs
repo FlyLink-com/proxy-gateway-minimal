@@ -15,6 +15,11 @@ import {
   REQUIRED_COIN_WALLET_MIGRATION_ID,
   inspectCoinWalletSchema
 } from "./coin-wallet-migrations.mjs";
+import {
+  REQUIRED_COIN_COMMERCE_INITIAL_CONFIRMATION_GUARD_MIGRATION_ID,
+  INITIAL_CONFIRMATION_GUARD_PLAN_C_STATEMENT,
+  INITIAL_CONFIRMATION_GUARD_PLAN_C_CHECKSUM
+} from "./coin-commerce-initial-confirmation-guard-plan-c-ddl.mjs";
 
 export const REQUIRED_COIN_COMMERCE_MIGRATION_ID =
   "20260726_001_coin_commerce_foundation";
@@ -1185,21 +1190,41 @@ function commerceNamespaceIsExact(database, extensionPresent = false) {
 }
 
 function initialConfirmationExtensionState(database) {
-  const ledger = objectRow(database, "table", "platform_schema_migrations")
-    ? database.prepare(`select ddl_checksum from platform_schema_migrations where migration_id = ?`)
+  const ledgerTablePresent = Boolean(objectRow(database, "table", "platform_schema_migrations"));
+  const ledger = ledgerTablePresent
+    ? database.prepare("select ddl_checksum from platform_schema_migrations where migration_id = ?")
       .get(REQUIRED_COIN_COMMERCE_INITIAL_CONFIRMATION_MIGRATION_ID)
     : null;
+  const guardLedger = ledgerTablePresent
+    ? database.prepare("select ddl_checksum from platform_schema_migrations where migration_id = ?")
+      .get(REQUIRED_COIN_COMMERCE_INITIAL_CONFIRMATION_GUARD_MIGRATION_ID)
+    : null;
   const objects = INITIAL_CONFIRMATION_OBJECTS.map(([type, name]) => objectRow(database, type, name));
-  const present = Boolean(ledger) || objects.some(Boolean);
-  if (!present) return { present: false, exact: false };
+  const present = Boolean(ledger) || Boolean(guardLedger) || objects.some(Boolean);
+  if (!present) {
+    return {
+      present: false,
+      exact: false,
+      guardMigrationApplied: false,
+      guardMigrationExact: false
+    };
+  }
+  const guardMigrationApplied = Boolean(guardLedger);
+  const guardMigrationExact = !guardLedger
+    || guardLedger.ddl_checksum === INITIAL_CONFIRMATION_GUARD_PLAN_C_CHECKSUM;
+  const guardKey = "trigger:coin_commerce_initial_confirmations_insert_guard";
   const exact = ledger?.ddl_checksum === INITIAL_CONFIRMATION_CHECKSUM
+    && guardMigrationExact
     && [...INITIAL_CONFIRMATION_OBJECT_SQL].every(([key, expected]) => {
       const [type, name] = key.split(":");
       const row = objectRow(database, type, name);
-      return Boolean(row) && normalizeSql(row.sql) === expected;
+      const expectedSql = key === guardKey && guardMigrationApplied
+        ? normalizeSql(INITIAL_CONFIRMATION_GUARD_PLAN_C_STATEMENT)
+        : expected;
+      return Boolean(row) && normalizeSql(row.sql) === expectedSql;
     })
     && commerceNamespaceIsExact(database, true);
-  return { present: true, exact };
+  return { present: true, exact, guardMigrationApplied, guardMigrationExact };
 }
 
 function commerceMigrationRow(database) {
@@ -1340,7 +1365,11 @@ function closedInspection(database) {
     counts[type === "index" ? "indexes" : `${type}s`] += 1;
     const key = `${type}:${name}`;
     const expectedSql = extension.exact && INITIAL_CONFIRMATION_OBJECT_SQL.has(key)
-      ? INITIAL_CONFIRMATION_OBJECT_SQL.get(key) : EXPECTED_OBJECT_SQL.get(key);
+      ? (extension.guardMigrationApplied
+        && key === "trigger:coin_commerce_initial_confirmations_insert_guard"
+          ? normalizeSql(INITIAL_CONFIRMATION_GUARD_PLAN_C_STATEMENT)
+          : INITIAL_CONFIRMATION_OBJECT_SQL.get(key))
+      : EXPECTED_OBJECT_SQL.get(key);
     if (normalizeSql(actual.sql) !== expectedSql) {
       reasons.push("commerce_owned_object_incompatible");
       schemaExact = false;
@@ -1574,7 +1603,12 @@ export function inspectCoinCommerceInitialConfirmationSchema({ database } = {}) 
     ok,
     schemaState: ok ? "ready" : "blocked",
     requiredMigrationId: REQUIRED_COIN_COMMERCE_INITIAL_CONFIRMATION_MIGRATION_ID,
-    checks: { ...foundation.checks, initialConfirmationExtension: extension.exact },
+    checks: {
+      ...foundation.checks,
+      initialConfirmationExtension: extension.exact,
+      initialConfirmationGuardPlanC: extension.guardMigrationApplied === true
+        && extension.guardMigrationExact === true
+    },
     reasonCodes: [...new Set([...foundation.reasonCodes, ...(!extension.exact
       ? [extension.present ? "commerce_initial_confirmation_schema_incompatible"
         : "commerce_initial_confirmation_migration_missing"] : [])])].sort()
@@ -1623,6 +1657,10 @@ function mutateInitialConfirmationMigration({
         connection.exec(`drop trigger ${name}`);
       }
       if (remove) {
+        if (state.guardMigrationApplied) {
+          connection.prepare("delete from platform_schema_migrations where migration_id = ?")
+            .run(REQUIRED_COIN_COMMERCE_INITIAL_CONFIRMATION_GUARD_MIGRATION_ID);
+        }
         for (const [type, name] of [...INITIAL_CONFIRMATION_OBJECTS].reverse()) {
           connection.exec(`drop ${type} ${name}`);
         }

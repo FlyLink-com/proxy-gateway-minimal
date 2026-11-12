@@ -4,6 +4,7 @@ import Database from "better-sqlite3";
 import express from "express";
 import { createApp } from "../app.mjs";
 import { adminSubscriptionRoutes } from "../routes/admin-subscriptions.mjs";
+import { buildTrafficCollectorAdminProjection } from "../services/platform/traffic-collector-admin-projection.mjs";
 import { createSubscriptionCore } from "../services/subscriptions/core.mjs";
 import { createSubscriptionRepository } from "../services/subscriptions/repository.mjs";
 import { createSubscriptionService } from "../services/subscriptions/service.mjs";
@@ -1300,3 +1301,510 @@ for (const [label, failureFactory] of [
     }
   });
 }
+
+test("dashboard summary returns 401 without a principal when capability authorization is enabled", async () => {
+  let overviewCalls = 0;
+  const state = fakeState();
+  state.platform = { adminAuthorizationEnabled: true };
+  state.subscriptions.service.overview = () => {
+    overviewCalls += 1;
+    return fakeService().overview();
+  };
+  const { server, baseUrl } = await listen(createApp(state));
+  try {
+    const { response, body } = await requestJson(baseUrl, "/api/admin/operations/dashboard-summary");
+    assert.equal(response.status, 401);
+    assert.deepEqual(body, { error: "admin_authentication_required" });
+    assert.equal(overviewCalls, 0);
+  } finally {
+    server.close();
+  }
+});
+
+test("dashboard summary stays unregistered when capability authorization is disabled", async () => {
+  let overviewCalls = 0;
+  const state = fakeState();
+  state.subscriptions.service.overview = () => {
+    overviewCalls += 1;
+    return {
+      ok: true,
+      counts: { total: 3, active: 2, expiring: 1, disabledOrExpired: 0 },
+      nodes: [{ name: "node-secret" }],
+      token: "must-not-cross"
+    };
+  };
+  const { server, baseUrl } = await listen(createApp(state));
+  try {
+    const summary = await requestJson(baseUrl, "/api/admin/operations/dashboard-summary");
+    assert.equal(summary.response.status, 404);
+    assert.equal(overviewCalls, 0);
+    assert.equal(JSON.stringify(summary.body).includes("access"), false);
+    assert.equal(JSON.stringify(summary.body).includes("operations.read"), false);
+
+    const legacy = await requestJson(baseUrl, "/api/admin/overview");
+    assert.equal(legacy.response.status, 200);
+    assert.equal(legacy.body.nodes[0].name, "node-secret");
+    assert.equal(overviewCalls, 1);
+
+    const operations = await requestJson(baseUrl, "/api/admin/operations/overview");
+    assert.equal(operations.response.status, 404);
+  } finally {
+    server.close();
+  }
+});
+
+test("dashboard summary returns subscription tenant counts and leaves other metrics unconnected", async () => {
+  const state = fakeState();
+  state.platform = { adminAuthorizationEnabled: true };
+  state.subscriptions.service.overview = () => ({
+    ok: true,
+    total: 0,
+    active: 0,
+    expiring: 0,
+    disabled: 0,
+    expired: 0,
+    counts: { total: 0, active: 0, expiring: 0, disabledOrExpired: 0 },
+    nodes: [{ name: "node-secret" }],
+    token: "must-not-cross",
+    subscriptionUrl: "https://gateway.example.invalid/sub/secret"
+  });
+  const app = express();
+  app.use((req, _res, next) => {
+    req.adminPrincipal = { capabilities: ["operations.read"] };
+    next();
+  });
+  app.use(adminSubscriptionRoutes(state));
+  const { server, baseUrl } = await listen(app);
+  try {
+    const { response, body } = await requestJson(baseUrl, "/api/admin/operations/dashboard-summary");
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get("cache-control"), "no-store");
+    assert.equal(body.schemaVersion, "operations-dashboard-summary/v1");
+    assert.equal(body.freshness, "partial");
+    assert.equal(body.sourceState, "implemented_source");
+    assert.match(body.generatedAt, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+    assert.deepEqual(body.warnings, [{ code: "source_partial" }]);
+    assert.deepEqual(body.data.subscriptions, {
+      availability: "ready",
+      definition: "subscription_tenants",
+      total: 0,
+      active: 0,
+      expiring: 0,
+      disabledOrExpired: 0
+    });
+    for (const key of ["platformHealth", "channelCoverage", "freshnessP95", "riskCandidates"]) {
+      assert.deepEqual(body.data[key], { availability: "not_connected" });
+    }
+    assert.deepEqual(body.data.registrationGrowth, { availability: "not_authorized" });
+    assert.deepEqual(body.data.trafficCollector, { availability: "not_connected", observedAt: null });
+    assert.equal(JSON.stringify(body).includes("node-secret"), false);
+    assert.equal(JSON.stringify(body).includes("must-not-cross"), false);
+    assert.equal(JSON.stringify(body).includes("subscriptionUrl"), false);
+  } finally {
+    server.close();
+  }
+});
+
+test("dashboard summary returns nonzero tenant counts only after operations.read allows it", async () => {
+  const state = fakeState();
+  state.platform = { adminAuthorizationEnabled: true };
+  state.subscriptions.service.overview = () => ({
+    ok: true,
+    counts: { total: 3, active: 2, expiring: 1, disabledOrExpired: 0 },
+    nodes: [{ name: "node-secret" }],
+    token: "must-not-cross"
+  });
+  const app = express();
+  app.use((req, _res, next) => {
+    req.adminPrincipal = { capabilities: ["operations.read"] };
+    next();
+  });
+  app.use(adminSubscriptionRoutes(state));
+  const { server, baseUrl } = await listen(app);
+  try {
+    const response = await fetch(`${baseUrl}/api/admin/operations/dashboard-summary`);
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.access.allowed, true);
+    assert.equal(body.access.capability, "operations.read");
+    assert.equal(body.access.reasonCode, "allowed");
+    assert.deepEqual(body.data.subscriptions, {
+      availability: "ready",
+      definition: "subscription_tenants",
+      total: 3,
+      active: 2,
+      expiring: 1,
+      disabledOrExpired: 0
+    });
+    assert.equal(JSON.stringify(body).includes("node-secret"), false);
+    assert.equal(JSON.stringify(body).includes("must-not-cross"), false);
+    assert.deepEqual(body.data.registrationGrowth, { availability: "not_authorized" });
+    assert.deepEqual(body.data.trafficCollector, { availability: "not_connected", observedAt: null });
+  } finally {
+    server.close();
+  }
+});
+
+test("dashboard summary requires operations.read when admin authorization is enabled", async () => {
+  let overviewCalls = 0;
+  const service = {
+    ...fakeService(),
+    overview: () => {
+      overviewCalls += 1;
+      return fakeService().overview();
+    }
+  };
+  const state = fakeState(service);
+  state.platform = { adminAuthorizationEnabled: true };
+  const app = express();
+  app.use((req, _res, next) => {
+    req.adminPrincipal = { capabilities: ["users.read"] };
+    next();
+  });
+  app.use(adminSubscriptionRoutes(state));
+  const { server, baseUrl } = await listen(app);
+  try {
+    const response = await fetch(`${baseUrl}/api/admin/operations/dashboard-summary`);
+    assert.equal(response.status, 403);
+    assert.deepEqual(await response.json(), {
+      error: "admin_capability_required",
+      capability: "operations.read"
+    });
+    assert.equal(overviewCalls, 0);
+  } finally {
+    server.close();
+  }
+});
+
+test("dashboard summary hides invalid subscription counts behind a safe internal error", async () => {
+  const state = fakeState();
+  state.platform = { adminAuthorizationEnabled: true };
+  state.subscriptions.service.overview = () => ({
+    counts: { total: "12", active: 1, expiring: 0, disabledOrExpired: 0 },
+    nodes: [{ name: "node-secret" }]
+  });
+  const app = express();
+  app.use((req, _res, next) => {
+    req.adminPrincipal = { capabilities: ["operations.read"] };
+    next();
+  });
+  app.use(adminSubscriptionRoutes(state));
+  const { server, baseUrl } = await listen(app);
+  try {
+    const response = await fetch(`${baseUrl}/api/admin/operations/dashboard-summary`);
+    assert.equal(response.status, 500);
+    assert.deepEqual(await response.json(), { error: "internal_error" });
+  } finally {
+    server.close();
+  }
+});
+
+function dashboardApp(state, capabilities) {
+  state.platform = { ...(state.platform ?? {}), adminAuthorizationEnabled: true };
+  const app = express();
+  app.use((req, _res, next) => {
+    req.adminPrincipal = { capabilities };
+    next();
+  });
+  app.use(adminSubscriptionRoutes(state));
+  return app;
+}
+
+test("dashboard summary defaults to exactly 30 UTC calendar days", async () => {
+  let growthQuery;
+  const state = fakeState();
+  state.platform = {
+    controlStore: {
+      listUserMonitorGrowthDays(input) {
+        growthQuery = input;
+        return [];
+      }
+    }
+  };
+  const requestStartedAt = Date.now();
+  const { server, baseUrl } = await listen(dashboardApp(state, ["operations.read", "users.read"]));
+  try {
+    const response = await fetch(`${baseUrl}/api/admin/operations/dashboard-summary`);
+    assert.equal(response.status, 200);
+    assert.ok(growthQuery);
+    const fromMs = Date.parse(growthQuery.from);
+    const toMs = Date.parse(growthQuery.to);
+    assert.equal(new Date(fromMs).toISOString(), growthQuery.from);
+    assert.equal(new Date(toMs).toISOString(), growthQuery.to);
+    assert.equal(fromMs % 86400000, 0);
+    assert.equal(toMs % 86400000, 0);
+    assert.equal(toMs - fromMs, 30 * 86400000);
+    const requestedToday = toMs - 86400000;
+    const beforeDay = Math.floor(requestStartedAt / 86400000) * 86400000;
+    const afterDay = Math.floor(Date.now() / 86400000) * 86400000;
+    assert.ok(requestedToday === beforeDay || requestedToday === afterDay);
+  } finally {
+    server.close();
+  }
+});
+
+test("dashboard summary projects queried UTC registration days and real zeros", async () => {
+  let growthCalls = 0;
+  const state = fakeState();
+  state.platform = {
+    controlStore: {
+      listUserMonitorGrowthDays() {
+        growthCalls += 1;
+        return [{
+          at: "2026-10-01T00:00:00.000Z",
+          registeredCount: 2,
+          otherCreatedCount: 1
+        }];
+      }
+    }
+  };
+  const { server, baseUrl } = await listen(dashboardApp(state, ["operations.read", "users.read"]));
+  try {
+    const shifted = await fetch(`${baseUrl}/api/admin/operations/dashboard-summary?from=2026-10-01T08:00:00.000%2B08:00&to=2026-10-03T08:00:00.000%2B08:00`);
+    assert.equal(shifted.status, 200);
+    const body = await shifted.json();
+    assert.equal(body.data.subscriptions.total, 1);
+    assert.deepEqual(body.data.registrationGrowth, {
+      availability: "ready",
+      timezone: "UTC",
+      definition: "account_created_at",
+      from: "2026-10-01T00:00:00.000Z",
+      to: "2026-10-03T00:00:00.000Z",
+      registeredCount: 2,
+      otherCreatedCount: 1,
+      points: [
+        {
+          at: "2026-10-01T00:00:00.000Z",
+          registeredCount: 2,
+          otherCreatedCount: 1,
+          coverage: "queried"
+        },
+        {
+          at: "2026-10-02T00:00:00.000Z",
+          registeredCount: 0,
+          otherCreatedCount: 0,
+          coverage: "queried"
+        }
+      ]
+    });
+    assert.equal(growthCalls, 1);
+    assert.equal(JSON.stringify(body).includes("email"), false);
+
+    const exact = await fetch(`${baseUrl}/api/admin/operations/dashboard-summary?from=2026-09-23T00:00:00.000Z&to=2026-10-24T00:00:00.000Z`);
+    assert.equal(exact.status, 200);
+    const over = await fetch(`${baseUrl}/api/admin/operations/dashboard-summary?from=2026-09-22T00:00:00.000Z&to=2026-10-24T00:00:00.000Z`);
+    assert.equal(over.status, 400);
+    assert.deepEqual(await over.json(), { error: "invalid_query" });
+  } finally {
+    server.close();
+  }
+});
+
+test("dashboard summary keeps subscription counts when registration growth cannot be read", async () => {
+  const state = fakeState();
+  state.platform = {
+    controlStore: {
+      listUserMonitorGrowthDays() {
+        return [{
+          at: "2026-10-01T00:00:00.000Z",
+          registeredCount: -1,
+          otherCreatedCount: 0
+        }];
+      }
+    }
+  };
+  const { server, baseUrl } = await listen(dashboardApp(state, ["operations.read", "users.read"]));
+  try {
+    const response = await fetch(`${baseUrl}/api/admin/operations/dashboard-summary?from=2026-10-01T00:00:00.000Z&to=2026-10-02T00:00:00.000Z`);
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.data.subscriptions.total, 1);
+    assert.deepEqual(body.data.registrationGrowth, { availability: "unavailable" });
+    assert.equal(JSON.stringify(body.data.registrationGrowth).includes("0"), false);
+    assert.equal(body.warnings.some((warning) => warning.code === "source_unavailable"), true);
+  } finally {
+    server.close();
+  }
+});
+
+test("dashboard summary rejects an invalid registration query before reading subscriptions", async () => {
+  let overviewCalls = 0;
+  let growthCalls = 0;
+  const state = fakeState();
+  state.subscriptions.service.overview = () => {
+    overviewCalls += 1;
+    return fakeService().overview();
+  };
+  state.platform = {
+    controlStore: {
+      listUserMonitorGrowthDays() {
+        growthCalls += 1;
+        return [];
+      }
+    }
+  };
+  const { server, baseUrl } = await listen(dashboardApp(state, ["operations.read"]));
+  try {
+    const response = await fetch(`${baseUrl}/api/admin/operations/dashboard-summary?from=2026-10-01T00:00:00.000Z`);
+    assert.equal(response.status, 400);
+    assert.deepEqual(await response.json(), { error: "invalid_query" });
+    assert.equal(overviewCalls, 0);
+    assert.equal(growthCalls, 0);
+  } finally {
+    server.close();
+  }
+});
+
+test("dashboard summary does not read registration growth without users.read", async () => {
+  let growthCalls = 0;
+  const state = fakeState();
+  state.platform = {
+    controlStore: {
+      listUserMonitorGrowthDays() {
+        growthCalls += 1;
+        return [];
+      }
+    }
+  };
+  const { server, baseUrl } = await listen(dashboardApp(state, ["operations.read"]));
+  try {
+    const response = await fetch(`${baseUrl}/api/admin/operations/dashboard-summary`);
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.deepEqual(body.data.registrationGrowth, { availability: "not_authorized" });
+    assert.equal(growthCalls, 0);
+    assert.equal(body.data.subscriptions.total, 1);
+  } finally {
+    server.close();
+  }
+});
+
+test("dashboard summary projects collector observation time without internal refs", async () => {
+  let reads = 0;
+  const observedAt = "2026-07-10T13:00:00.000Z";
+  const projection = buildTrafficCollectorAdminProjection({
+    summary: {
+      type: "traffic_usage_collect_once",
+      ok: true,
+      rawReportOk: true,
+      collectorCount: 1,
+      idleCollectorCount: 0,
+      observationCount: 1,
+      recordedCount: 1,
+      insertedCount: 1,
+      unresolvedCount: 0,
+      reports: [{
+        channelRef: "channel-secret",
+        collectorState: {
+          type: "traffic_collector_state",
+          health: "healthy",
+          condition: "ok",
+          sourceRef: "source-secret",
+          channelRef: "channel-secret",
+          lastCollectorSuccessAt: observedAt,
+          observationCount: 1,
+          unresolvedCount: 0,
+          safety: { redacted: true }
+        },
+        blockers: [],
+        observability: { statsApiReachable: true }
+      }],
+      customerEmail: "private@example.test",
+      token: "must-not-cross"
+    },
+    observedAt
+  });
+  const state = fakeState();
+  state.platform = {
+    trafficCollectorStatusStore: {
+      read() {
+        reads += 1;
+        return projection;
+      }
+    }
+  };
+  const { server, baseUrl } = await listen(dashboardApp(state, ["operations.read", "users.read"]));
+  try {
+    const response = await fetch(`${baseUrl}/api/admin/operations/dashboard-summary?from=2026-10-01T00:00:00.000Z&to=2026-10-02T00:00:00.000Z`);
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.deepEqual(body.data.trafficCollector, {
+      availability: "ready",
+      observedAt
+    });
+    assert.notEqual(body.generatedAt, observedAt);
+    assert.equal(reads, 1);
+    const encoded = JSON.stringify(body);
+    assert.equal(encoded.includes("channel-secret"), false);
+    assert.equal(encoded.includes("source-secret"), false);
+    assert.equal(encoded.includes("private@example.test"), false);
+    assert.equal(encoded.includes("must-not-cross"), false);
+  } finally {
+    server.close();
+  }
+});
+
+test("dashboard summary reports collector states without inventing an observation time", async () => {
+  const cases = [
+    [{ availability: "not_observed", observedAt: null }, { availability: "unknown", observedAt: null }],
+    [{ availability: "invalid_observation" }, { availability: "unknown", observedAt: null }]
+  ];
+  for (const [stored, expected] of cases) {
+    const state = fakeState();
+    state.platform = {
+      trafficCollectorStatusStore: { read: () => stored }
+    };
+    const { server, baseUrl } = await listen(dashboardApp(state, ["operations.read"]));
+    try {
+      const response = await fetch(`${baseUrl}/api/admin/operations/dashboard-summary`);
+      assert.equal(response.status, 200);
+      const body = await response.json();
+      assert.deepEqual(body.data.trafficCollector, expected);
+      assert.equal(JSON.stringify(body.data.trafficCollector).includes("channel"), false);
+    } finally {
+      server.close();
+    }
+  }
+
+  const thrown = fakeState();
+  thrown.platform = {
+    trafficCollectorStatusStore: {
+      read() {
+        throw new Error("collector-secret-failure");
+      }
+    }
+  };
+  const failed = await listen(dashboardApp(thrown, ["operations.read"]));
+  try {
+    const response = await fetch(`${failed.baseUrl}/api/admin/operations/dashboard-summary`);
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.deepEqual(body.data.trafficCollector, { availability: "unknown", observedAt: null });
+    assert.equal(JSON.stringify(body).includes("collector-secret-failure"), false);
+    assert.equal(body.warnings.some((warning) => warning.code === "source_unavailable"), true);
+  } finally {
+    failed.server.close();
+  }
+});
+
+test("dashboard summary does not read collector state before operations.read allows it", async () => {
+  let reads = 0;
+  const state = fakeState();
+  state.platform = {
+    adminAuthorizationEnabled: true,
+    trafficCollectorStatusStore: {
+      read() {
+        reads += 1;
+        return { availability: "available", observedAt: "2026-07-10T13:00:00.000Z", channelRef: "channel-secret" };
+      }
+    }
+  };
+  const { server, baseUrl } = await listen(createApp(state));
+  try {
+    const unauthenticated = await requestJson(baseUrl, "/api/admin/operations/dashboard-summary");
+    assert.equal(unauthenticated.response.status, 401);
+    assert.equal(reads, 0);
+  } finally {
+    server.close();
+  }
+});

@@ -996,21 +996,133 @@ test("subscription control store exposes only safe references in serialized summ
       createdAt: now,
       updatedAt: now
     });
+    store.createEntitlement({
+      id: "ent_public_summary",
+      accountId: "acct_public_summary",
+      plan: "monthly",
+      status: "active",
+      validFrom: now,
+      validUntil: "2026-12-07T00:00:00.000Z",
+      trafficLimitBytes: 1_000_000,
+      createdAt: now,
+      updatedAt: now
+    });
+    const request = store.createIssuanceRequest({
+      id: "pareq_public_summary",
+      accountId: "acct_public_summary",
+      entitlementId: "ent_public_summary",
+      approvalRef: "approval_public_summary",
+      status: "issued",
+      quantity: 1,
+      nodeId: "channel_public_summary",
+      purpose: "subscription",
+      requestedByRef: "operator_safe_ref",
+      createdAt: now,
+      updatedAt: now
+    });
     store.recordAuditEvent({
       id: "audit_safe",
-      entityType: "account",
-      entityRef: "acct_public_summary",
-      action: "created",
+      entityType: "issuance_request",
+      entityRef: request.id,
+      action: "issued",
       actorRef: "operator_safe_ref",
       createdAt: now,
-      metadata: {
-        publicEvidence: "summary-only"
-      }
+      metadata: { source: "platform:issue-subscription" }
     });
 
     const serialized = JSON.stringify(store.getAccountControlSummary("acct_public_summary"));
     assert.doesNotMatch(serialized, /owner@sensitive\.example/);
     assert.doesNotMatch(serialized, /subscriptionUrl|artifactSecret|token|password|credential/i);
+  });
+});
+
+test("subscription control store enforces the bounded legacy account metadata contract", () => {
+  withStore((store) => {
+    const now = "2026-11-08T00:00:00.000Z";
+    const account = store.createAccount({
+      id: "acct_account_metadata_contract",
+      ownerRef: "owner_account_metadata_contract",
+      status: "active",
+      createdAt: now,
+      updatedAt: now,
+      metadata: {
+        source: "operator_provisioning_form",
+        channel: "manual"
+      }
+    });
+    assert.deepEqual(account.metadata, {
+      source: "operator_provisioning_form",
+      channel: "manual"
+    });
+
+    assert.throws(() => store.createAccount({
+      id: "acct_account_metadata_unknown",
+      ownerRef: "owner_account_metadata_unknown",
+      status: "active",
+      createdAt: now,
+      updatedAt: now,
+      metadata: { unknownField: true }
+    }), { code: "validation_error" });
+
+    assert.throws(() => store.createAccount({
+      id: "acct_account_metadata_bad_digest",
+      ownerRef: "owner_account_metadata_bad_digest",
+      status: "active",
+      createdAt: now,
+      updatedAt: now,
+      metadata: { loginDigest: "not-a-sha256-digest" }
+    }), { code: "validation_error" });
+
+    assert.throws(() => store.createAccount({
+      id: "acct_account_metadata_bad_login",
+      ownerRef: "owner_account_metadata_bad_login",
+      status: "active",
+      createdAt: now,
+      updatedAt: now,
+      metadata: { loginRef: "not-an-email" }
+    }), { code: "validation_error" });
+  });
+});
+
+test("subscription control store preserves the registered legacy Portal account metadata shape", () => {
+  withStore((store) => {
+    const now = "2026-11-08T00:00:00.000Z";
+    const digest = "a".repeat(64);
+    const account = store.createAccount({
+      id: "acct_portal_registration_metadata",
+      ownerRef: "acct_portal_registration_metadata",
+      status: "active",
+      createdAt: now,
+      updatedAt: now,
+      metadata: {
+        initialAccount: false,
+        requireSecuritySetup: false,
+        registrationSource: "self_service_portal",
+        singleSubscriptionOnly: true,
+        subscriptionLimit: 1,
+        loginRef: "member@example.test",
+        displayRef: "member@example.test",
+        contactDigest: digest,
+        loginDigest: digest,
+        displayDigest: digest,
+        useCaseDigest: null,
+        intentPlan: "trial",
+        requestedDeviceCount: 1,
+        primaryRegion: "japan",
+        legalAgreementAccepted: true,
+        legalAgreementAcceptedAt: now,
+        termsVersion: "2026-07-02",
+        privacyVersion: "2026-07-02",
+        legalAgreementSourceIpDigest: null,
+        legalAgreementRequestKeyDigest: null,
+        registrationSourceIpDigest: null,
+        registrationRequestKeyDigest: null
+      }
+    });
+    assert.equal(account.metadata.registrationSource, "self_service_portal");
+    assert.equal(account.metadata.loginRef, "member@example.test");
+    assert.equal(account.metadata.loginDigest, digest);
+    assert.equal(account.metadata.legalAgreementAcceptedAt, now);
   });
 });
 
@@ -1133,7 +1245,7 @@ test("subscription control store persists safe edge desired-state notifications"
       nodeRef: "vultr-sgp-a",
       channelRef: "channel-sgp-a-hy2",
       desiredStateRef: "desired_state_channel-sgp-a-hy2_001",
-      generation: "gen_001",
+      generation: "gen_000000000000000000000000",
       reason: "order_delivered",
       status: "pending",
       createdAt: now,
@@ -1150,7 +1262,7 @@ test("subscription control store persists safe edge desired-state notifications"
       nodeRef: "vultr-sgp-a",
       channelRef: "channel-sgp-a-hy2",
       desiredStateRef: "desired_state_channel-sgp-a-hy2_001",
-      generation: "gen_001",
+      generation: "gen_000000000000000000000000",
       reason: "order_delivered",
       status: "acknowledged",
       createdAt: now,
@@ -1179,13 +1291,409 @@ test("subscription control store persists safe edge desired-state notifications"
       nodeRef: "vultr-sgp-a",
       channelRef: "channel-sgp-a-hy2",
       desiredStateRef: "desired_state_channel-sgp-a-hy2_unsafe",
-      generation: "gen_unsafe",
+      generation: "gen_333333333333333333333333",
       reason: "order_delivered",
       status: "pending",
       rawConfig: "users:\n- password: unsafe",
       createdAt: now,
       updatedAt: now
     }), /unsafe field is not allowed/);
+  });
+});
+
+test("subscription control store enforces the exact edge-node metadata contract", () => {
+  withStore((store) => {
+    const now = "2026-11-07T00:00:00.000Z";
+    const base = {
+      nodeRef: "edge-node-metadata-contract",
+      providerRef: "provider-synthetic",
+      regionRef: "region-synthetic",
+      roleRef: "data-plane",
+      channelRefs: ["channel-synthetic"],
+      imageManifestRef: "image-manifest-synthetic",
+      releaseRef: "release-synthetic",
+      firstBootPacketRef: "first_boot_synthetic",
+      registeredAt: now,
+      updatedAt: now
+    };
+    const metadata = {
+      source: "node-image-first-boot-packet",
+      receiptGateRequired: true,
+      imageSafeConfirmed: true,
+      artifactHashRecorded: true,
+      wireguardPlanRef: "wg-plan-synthetic",
+      wireguardPublicKeyFingerprint: `sha256:${"a".repeat(64)}`,
+      agentAuthFingerprint: `sha256:${"b".repeat(64)}`
+    };
+    assert.deepEqual(store.upsertEdgeRegisteredNode({
+      ...base, metadata
+    }).metadata, metadata);
+
+    const validWithoutOptionalFingerprints = {
+      source: "node-image-first-boot-packet",
+      receiptGateRequired: true,
+      imageSafeConfirmed: false,
+      artifactHashRecorded: false,
+      wireguardPlanRef: "wg-plan-synthetic"
+    };
+    assert.deepEqual(store.upsertEdgeRegisteredNode({
+      ...base, nodeRef: "edge-node-metadata-contract-minimal",
+      metadata: validWithoutOptionalFingerprints
+    }).metadata, validWithoutOptionalFingerprints);
+
+    const invalid = [
+      { ...metadata, extra: "not-allowed" },
+      { ...metadata, source: "test" },
+      { ...metadata, receiptGateRequired: false },
+      { ...metadata, imageSafeConfirmed: "true" },
+      { ...metadata, wireguardPlanRef: "wg-secret-plan" },
+      { ...metadata, wireguardPlanRef: "203.0.113.10" },
+      { ...metadata, wireguardPublicKeyFingerprint: "not-a-fingerprint" },
+      { ...metadata, agentAuthFingerprint: `sha256:${"A".repeat(64)}` }
+    ];
+    invalid.forEach((candidate, index) => {
+      assert.throws(() => store.upsertEdgeRegisteredNode({
+        ...base,
+        nodeRef: `edge-node-metadata-invalid-${index}`,
+        metadata: candidate
+      }), { code: "validation_error" });
+    });
+  });
+});
+
+test("subscription control store enforces registered portal event JSON at the request writer", () => {
+  withStore((store) => {
+    const now = "2026-11-07T00:00:00.000Z";
+    store.createAccount({
+      id: "acct_portal_event_contract",
+      ownerRef: "owner_portal_event_contract",
+      status: "active",
+      createdAt: now,
+      updatedAt: now
+    });
+    const base = {
+      id: "pareq_portal_event_contract",
+      portalUserRef: "acct_portal_event_contract",
+      plan: "monthly",
+      clientTarget: "clash",
+      durationDays: 30,
+      quantity: 1,
+      status: "delivered",
+      nextAction: "none",
+      noteProvided: false,
+      priorTrialState: "not_eligible",
+      submittedAt: now,
+      updatedAt: now
+    };
+    const event = { type: "delivery_generation_reissued", occurredAt: now };
+    assert.deepEqual(store.upsertPortalAccessRequest({
+      ...base, event
+    }).event, event);
+
+    const invalid = [
+      { type: "old_link_invalidated", occurredAt: now },
+      { type: "delivery_generation_reissued", occurredAt: now, rawMaterial: "not-allowed" },
+      { type: "subscription_disabled", occurredAt: now, previousStatus: "pending" },
+      { type: "traffic_supply_resumed", occurredAt: now, lifecycleRevisionRef: "https://example.invalid" }
+    ];
+    invalid.forEach((eventValue, index) => {
+      assert.throws(() => store.upsertPortalAccessRequest({
+        ...base,
+        id: `pareq_portal_event_invalid_${index}`,
+        event: eventValue
+      }), { code: "validation_error" });
+    });
+  });
+});
+
+test("subscription control store enforces registered audit metadata unions", () => {
+  withStore((store) => {
+    const now = "2026-11-07T00:00:00.000Z";
+    store.createAccount({
+      id: "acct_audit_contract",
+      ownerRef: "owner_audit_contract",
+      status: "active",
+      createdAt: now,
+      updatedAt: now
+    });
+    store.createEntitlement({
+      id: "ent_audit_contract",
+      accountId: "acct_audit_contract",
+      plan: "monthly",
+      status: "active",
+      validFrom: now,
+      validUntil: "2026-12-07T00:00:00.000Z",
+      trafficLimitBytes: 1_000_000,
+      createdAt: now,
+      updatedAt: now
+    });
+    const request = store.createIssuanceRequest({
+      id: "pareq_audit_contract",
+      accountId: "acct_audit_contract",
+      entitlementId: "ent_audit_contract",
+      approvalRef: "approval_audit_contract",
+      status: "issued",
+      quantity: 1,
+      nodeId: "channel_audit_contract",
+      purpose: "subscription",
+      requestedByRef: "operator_audit_contract",
+      createdAt: now,
+      updatedAt: now
+    });
+
+    const issued = store.recordAuditEvent({
+      id: "audit_issued_contract",
+      entityType: "issuance_request",
+      entityRef: request.id,
+      action: "issued",
+      actorRef: "operator_audit_contract",
+      createdAt: now,
+      metadata: { source: "platform:issue-subscription" }
+    });
+    assert.deepEqual(issued.metadata, { source: "platform:issue-subscription" });
+
+    const compensated = store.recordAuditEvent({
+      id: "audit_compensated_contract",
+      entityType: "issuance_request",
+      entityRef: request.id,
+      action: "issuance_failed_compensated",
+      actorRef: "operator_audit_contract",
+      createdAt: now,
+      metadata: { compensation: { artifactRevoked: true, tenantDisabled: false } }
+    });
+    assert.deepEqual(compensated.metadata, {
+      compensation: { artifactRevoked: true, tenantDisabled: false }
+    });
+
+    const trafficLimit = store.recordAuditEvent({
+      id: "audit_traffic_limit_contract",
+      entityType: "entitlement",
+      entityRef: "ent_audit_contract",
+      action: "traffic_limit_updated",
+      actorRef: "operator_audit_contract",
+      createdAt: now,
+      metadata: {
+        requestRef: request.id,
+        reasonCode: "operator_adjustment",
+        previousTrafficLimitBytes: 1_000_000,
+        trafficLimitBytes: 2_000_000
+      }
+    });
+    assert.equal(trafficLimit.metadata.trafficLimitBytes, 2_000_000);
+
+    const invalid = [
+      {
+        id: "audit_issued_extra",
+        entityType: "issuance_request",
+        entityRef: request.id,
+        action: "issued",
+        actorRef: "operator_audit_contract",
+        createdAt: now,
+        metadata: { source: "platform:issue-subscription", extra: true }
+      },
+      {
+        id: "audit_issued_source",
+        entityType: "issuance_request",
+        entityRef: request.id,
+        action: "issued",
+        actorRef: "operator_audit_contract",
+        createdAt: now,
+        metadata: { source: "unknown" }
+      },
+      {
+        id: "audit_compensation_type",
+        entityType: "issuance_request",
+        entityRef: request.id,
+        action: "issuance_failed_compensated",
+        actorRef: "operator_audit_contract",
+        createdAt: now,
+        metadata: { compensation: { artifactRevoked: "yes", tenantDisabled: false } }
+      },
+      {
+        id: "audit_traffic_reason",
+        entityType: "entitlement",
+        entityRef: "ent_audit_contract",
+        action: "traffic_limit_updated",
+        actorRef: "operator_audit_contract",
+        createdAt: now,
+        metadata: {
+          requestRef: request.id,
+          reasonCode: "https://example.invalid",
+          previousTrafficLimitBytes: 1_000_000,
+          trafficLimitBytes: 2_000_000
+        }
+      },
+      {
+        id: "audit_traffic_number",
+        entityType: "entitlement",
+        entityRef: "ent_audit_contract",
+        action: "traffic_limit_updated",
+        actorRef: "operator_audit_contract",
+        createdAt: now,
+        metadata: {
+          requestRef: request.id,
+          reasonCode: "operator_adjustment",
+          previousTrafficLimitBytes: "1000000",
+          trafficLimitBytes: 2_000_000
+        }
+      },
+      {
+        id: "audit_unknown_action",
+        entityType: "account",
+        entityRef: "acct_audit_contract",
+        action: "created",
+        actorRef: "operator_audit_contract",
+        createdAt: now,
+        metadata: { publicEvidence: "summary-only" }
+      }
+    ];
+    invalid.forEach((record) => {
+      assert.throws(() => store.recordAuditEvent(record), { code: "validation_error" });
+    });
+  });
+});
+
+test("subscription control store enforces the closed issuance metadata union", () => {
+  withStore((store) => {
+    const now = "2026-11-07T00:00:00.000Z";
+    store.createAccount({
+      id: "acct_issuance_metadata",
+      ownerRef: "owner_issuance_metadata",
+      status: "active",
+      createdAt: now,
+      updatedAt: now
+    });
+    store.createEntitlement({
+      id: "ent_issuance_metadata",
+      accountId: "acct_issuance_metadata",
+      plan: "monthly",
+      status: "active",
+      validFrom: now,
+      validUntil: "2026-12-07T00:00:00.000Z",
+      trafficLimitBytes: 1_000_000,
+      createdAt: now,
+      updatedAt: now
+    });
+    const base = {
+      accountId: "acct_issuance_metadata",
+      entitlementId: "ent_issuance_metadata",
+      approvalRef: "approval_issuance_metadata",
+      status: "planned",
+      quantity: 1,
+      nodeId: "channel_synthetic",
+      purpose: "subscription",
+      requestedByRef: "owner_issuance_metadata",
+      createdAt: now,
+      updatedAt: now
+    };
+    assert.deepEqual(store.createIssuanceRequest({
+      ...base, id: "issuance_metadata_empty"
+    }).metadata, {});
+    assert.deepEqual(store.createIssuanceRequest({
+      ...base, id: "issuance_metadata_cli",
+      metadata: { cli: "platform:issue-subscription" }
+    }).metadata, { cli: "platform:issue-subscription" });
+
+    const chain = {
+      commercialModel: "wallet_first_unique_v1",
+      resourceModel: "wallet_first_resource_chain_v1",
+      resourceModelVersion: 1,
+      initialTransitionRef: "wfxtransition_initial_safe",
+      lastTransitionRef: "wfxtransition_latest_safe"
+    };
+    assert.deepEqual(store.createIssuanceRequest({
+      ...base, id: "issuance_metadata_wallet_first", metadata: chain
+    }).metadata, chain);
+
+    const invalid = [
+      { cli: "unknown-command" },
+      { cli: "platform:issue-subscription", extra: true },
+      { commercialModel: "wallet_first_unique_v1" },
+      { ...chain, resourceModelVersion: 2 },
+      { ...chain, initialTransitionRef: "unsafe transition ref" },
+      { ...chain, lastTransitionRef: "https://example.invalid" },
+      { ...chain, extra: "not-allowed" },
+      []
+    ];
+    invalid.forEach((metadata, index) => {
+      assert.throws(() => store.createIssuanceRequest({
+        ...base,
+        id: `issuance_metadata_invalid_${index}`,
+        metadata
+      }), { code: "validation_error" });
+    });
+  });
+});
+
+test("subscription control store enforces the two observed desired-state generation formats", () => {
+  withStore((store) => {
+    const now = "2026-06-11T00:00:00.000Z";
+    const valid = [
+      "gen_aaaaaaaaaaaaaaaaaaaaaaaa",
+      "gen_scoped_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    ];
+    valid.forEach((generation, index) => {
+      const saved = store.recordEdgeDesiredStateNotification({
+        id: `edge_state_notify_generation_valid_${index}`,
+        nodeRef: "vultr-sgp-a",
+        channelRef: "channel-sgp-a-hy2",
+        desiredStateRef: `desired_state_generation_${index}`,
+        generation,
+        reason: "order_delivered",
+        status: "pending",
+        createdAt: now,
+        updatedAt: now
+      });
+      assert.equal(saved.generation, generation);
+    });
+
+    const invalid = [
+      "gen_001",
+      "gen_current",
+      "gen_scoped_client_supplied",
+      `gen_${"A".repeat(24)}`,
+      `gen_${"a".repeat(23)}`,
+      `gen_scoped_${"b".repeat(31)}`,
+      ` gen_${"a".repeat(24)} `,
+      123
+    ];
+    invalid.forEach((generation, index) => {
+      assert.throws(() => store.recordEdgeDesiredStateNotification({
+        id: `edge_state_notify_generation_invalid_${index}`,
+        nodeRef: "vultr-sgp-a",
+        channelRef: "channel-sgp-a-hy2",
+        desiredStateRef: `desired_state_generation_invalid_${index}`,
+        generation,
+        reason: "order_delivered",
+        status: "pending",
+        createdAt: now,
+        updatedAt: now
+      }), { code: "validation_error" });
+    });
+
+    const validGeneration = `gen_${"c".repeat(24)}`;
+    const base = {
+      id: "edge_state_notify_bad_ref",
+      nodeRef: "vultr-sgp-a",
+      channelRef: "channel-sgp-a-hy2",
+      desiredStateRef: "desired_state_valid_ref",
+      generation: validGeneration,
+      reason: "order_delivered",
+      status: "pending",
+      createdAt: now,
+      updatedAt: now
+    };
+    for (const [field, value] of [
+      ["id", "edge state notification"],
+      ["nodeRef", "node ref"],
+      ["channelRef", "channel ref"],
+      ["desiredStateRef", "desired state ref"]
+    ]) {
+      assert.throws(() => store.recordEdgeDesiredStateNotification({
+        ...base,
+        [field]: value
+      }), { code: "validation_error" });
+    }
   });
 });
 
@@ -1198,7 +1706,7 @@ test("subscription control store marks matching desired-state notification appli
       nodeRef: "vultr-sgp-a",
       channelRef: "channel-sgp-a-hy2",
       desiredStateRef: "desired_state_channel-sgp-a-hy2_current",
-      generation: "gen_current",
+      generation: "gen_111111111111111111111111",
       reason: "order_delivered",
       status: "pending",
       createdAt: now,
@@ -1209,7 +1717,7 @@ test("subscription control store marks matching desired-state notification appli
       nodeRef: "vultr-sgp-a",
       channelRef: "channel-sgp-a-hy2",
       desiredStateRef: "desired_state_channel-sgp-a-hy2_old",
-      generation: "gen_old",
+      generation: "gen_222222222222222222222222",
       reason: "order_delivered",
       status: "pending",
       createdAt: now,
@@ -1245,7 +1753,7 @@ test("subscription control store marks matching desired-state notification appli
       nodeRef: "vultr-sgp-a",
       channelRef: "channel-sgp-a-hy2",
       desiredStateRef: "desired_state_channel-sgp-a-hy2_current",
-      generation: "gen_current",
+      generation: "gen_111111111111111111111111",
       reason: "order_delivered",
       status: "pending",
       createdAt: now,
@@ -1259,7 +1767,7 @@ test("subscription control store marks matching desired-state notification appli
       nodeRef: "vultr-sgp-a",
       channelRef: "channel-sgp-a-hy2",
       desiredStateRef: "desired_state_channel-sgp-a-hy2_current",
-      generation: "gen_current",
+      generation: "gen_111111111111111111111111",
       reason: "order_delivered",
       status: "pending",
       lifecycleRevisionSafe: false,
@@ -1479,7 +1987,7 @@ test("subscription control store upgrades legacy portal access request schema", 
       edgeCredentialRef: "edgecred_pareq_legacy_upgrade_001",
       edgeMaterialDigest: "sha256:digest_pareq_legacy_upgrade_001",
       edgeLifecycleMutation: true,
-      event: { status: "auto_issued" }
+      event: null
     });
 
     assert.equal(saved.tenantId, "tenant_legacy_upgrade_001");
@@ -1961,6 +2469,38 @@ test("subscription control store persists portal passkey credentials without pub
 
     const serialized = JSON.stringify(store.getAccountControlSummary("acct_passkey_1"));
     assert.doesNotMatch(serialized, /webauthn-credential-id|credhash_abcdef|publicKeyJwk|safe-x|safe-y|credential/i);
+  });
+});
+
+test("subscription control store rejects invalid second-factor allowlists at the writer boundary", () => {
+  withStore((store) => {
+    const now = "2026-06-03T00:00:00.000Z";
+    store.createAccount({
+      id: "acct_factor_allowlist",
+      ownerRef: "owner_safe_ref",
+      status: "active",
+      createdAt: now,
+      updatedAt: now
+    });
+    const invalid = [
+      [],
+      ["sms"],
+      ["totp", "totp"],
+      ["totp", "passkey", "totp"],
+      [null]
+    ];
+    invalid.forEach((allowedFactors, index) => {
+      assert.throws(() => store.createPortalSecondFactorChallenge({
+        id: `mfa_challenge_invalid_${index}`,
+        accountId: "acct_factor_allowlist",
+        challengeHash: "challengehash_abcdef",
+        allowedFactors,
+        status: "active",
+        expiresAt: "2026-06-03T00:05:00.000Z",
+        createdAt: now,
+        updatedAt: now
+      }), { code: "validation_error" });
+    });
   });
 });
 

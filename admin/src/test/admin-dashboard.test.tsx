@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { WORKSPACE_LAYOUT_VERSION } from "../app/plugin-layout-store";
 import { DashboardPage } from "../pages/dashboard-page";
@@ -62,24 +62,24 @@ describe("admin dashboard page", () => {
     expect(document.querySelector("#dashboard-health-summary")?.getAttribute("data-owner-mode")).toBe("preview");
     expect(document.querySelector("#dashboard-health-summary")?.getAttribute("data-size-preset")).toBe("standard");
     expect(screen.queryByText("Overview metric widget set")).toBeNull();
-    expect(screen.getByLabelText("Operations Overview static health content")).not.toBeNull();
+    expect(screen.getByLabelText("Operations Overview summary")).not.toBeNull();
     expect(document.querySelectorAll("#dashboard-health-summary [data-figma-component='MetricCard'][data-ui-surface='metric-card']")).toHaveLength(4);
     expect(document.querySelectorAll("#dashboard-health-summary .admin-overview-metric-card")).toHaveLength(0);
-    expect(screen.getByText("Platform health")).not.toBeNull();
-    expect(screen.getByText("Good")).not.toBeNull();
-    expect(screen.getByText("Good · reviewable · latest source safe")).not.toBeNull();
-    expect(screen.getByText("Channel coverage")).not.toBeNull();
-    expect(screen.getByText("98.6%")).not.toBeNull();
-    expect(screen.getByText("Disconnected keeps layout")).not.toBeNull();
+    expect(screen.getByText("Subscription tenants")).not.toBeNull();
+    expect(screen.getAllByText("Reading").length).toBe(4);
+    expect(screen.queryByText("Good")).toBeNull();
+    expect(screen.queryByText("98.6%")).toBeNull();
+    expect(screen.getByText("Platform health not connected")).not.toBeNull();
+    expect(screen.getByText("Channel coverage not connected")).not.toBeNull();
     expect(screen.queryByText("Platform health · summary state")).toBeNull();
     expect(screen.queryByText("First-screen operator view for platform health, risk routing, and the next owner page.")).toBeNull();
     expect(screen.getByRole("heading", { name: "Risk Queue" })).not.toBeNull();
     expect(screen.getAllByLabelText("Audit / Workflow panel").length).toBe(2);
-    expect(screen.getByText("Computed review candidates. No case close, approval, or mutation action here.")).not.toBeNull();
-    expect(screen.getByText("All 18")).not.toBeNull();
-    expect(screen.getByText("High 5")).not.toBeNull();
-    expect(screen.getByText("Order traffic over limit")).not.toBeNull();
-    expect(screen.getByText("12 affected")).not.toBeNull();
+    expect(screen.getByText("Not connected. There is no computed risk source.")).not.toBeNull();
+    expect(screen.queryByText("All 18")).toBeNull();
+    expect(screen.queryByText("High 5")).toBeNull();
+    expect(screen.queryByText("Order traffic over limit")).toBeNull();
+    expect(screen.queryByText("12 affected")).toBeNull();
     expect(screen.queryByText("Reason · quota / delay / receipt")).toBeNull();
     expect(screen.getByRole("heading", { name: "Next Actions" })).not.toBeNull();
     expect(screen.getByLabelText("Overview owner page routing content")).not.toBeNull();
@@ -108,6 +108,147 @@ describe("admin dashboard page", () => {
     expect(screen.queryByText("Object timeline")).toBeNull();
     expect(screen.queryByText("Generate delivery preview")).toBeNull();
     expect(screen.queryByText("Save quota")).toBeNull();
+  });
+
+  test("renders real subscription tenant counts and does not invent health or coverage", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => summaryResponse(12, 8, 2, 2)));
+
+    render(<DashboardPage onNavigate={vi.fn()} onRiskCountChange={vi.fn()} />);
+
+    expect(await screen.findByText("Updated 2026-10-24T00:00:00.000Z")).not.toBeNull();
+    expect(screen.getByText("12")).not.toBeNull();
+    expect(screen.getByText("8")).not.toBeNull();
+    expect(screen.getAllByText("2").length).toBeGreaterThanOrEqual(2);
+    expect(screen.getByText("Subscription tenants, not online users.")).not.toBeNull();
+    expect(screen.getByText("Platform health not connected")).not.toBeNull();
+    expect(screen.getByText("Channel coverage not connected")).not.toBeNull();
+    expect(screen.queryByText("Good")).toBeNull();
+    expect(screen.queryByText("98.6%")).toBeNull();
+    expect(screen.queryByText("All 18")).toBeNull();
+    expect(screen.getByText(/2026-10-23T00:00:00.000Z Portal registrations 9/)).not.toBeNull();
+    expect(screen.getByText("Observed 2026-10-20T01:02:03.000Z")).not.toBeNull();
+    vi.unstubAllGlobals();
+  });
+
+  test("shows an unavailable registration source without inventing zero days", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => summaryResponse(4, 1, 0, 0, {
+      registrationGrowth: { availability: "unavailable" },
+      trafficCollector: { availability: "unknown", observedAt: null }
+    })));
+    render(<DashboardPage onNavigate={vi.fn()} onRiskCountChange={vi.fn()} />);
+    expect(await screen.findByText("Registration counts could not be read.")).not.toBeNull();
+    expect(screen.getByText("Traffic collector observation is unknown.")).not.toBeNull();
+    expect(screen.getByText("4")).not.toBeNull();
+    expect(screen.queryByText(/Portal registrations 0/)).toBeNull();
+    vi.unstubAllGlobals();
+  });
+
+  test("loads the selected seven day range without replacing an aborted request", async () => {
+    const calls: string[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      calls.push(String(input));
+      return summaryResponse(1, 1, 0, 0);
+    }));
+    render(<DashboardPage onNavigate={vi.fn()} onRiskCountChange={vi.fn()} />);
+    expect(await screen.findByText(/Portal registrations 9/)).not.toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Last 7 days" }));
+    await waitFor(() => expect(calls).toHaveLength(2));
+    expect(calls[0]).toBe("/api/admin/operations/dashboard-summary");
+    const query = new URL(calls[1], "http://localhost").searchParams;
+    const from = query.get("from") ?? "";
+    const to = query.get("to") ?? "";
+    expect(from).toMatch(/T00:00:00\.000Z$/);
+    expect(to).toMatch(/T00:00:00\.000Z$/);
+    expect(Date.parse(to) - Date.parse(from)).toBe(7 * 86400000);
+    vi.unstubAllGlobals();
+  });
+
+  test("rejects invalid UTC calendar dates and accepts inclusive date bounds", async () => {
+    const calls: string[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      calls.push(String(input));
+      return summaryResponse(1, 1, 0, 0);
+    }));
+    render(<DashboardPage onNavigate={vi.fn()} onRiskCountChange={vi.fn()} />);
+    expect(await screen.findByText(/Portal registrations 9/)).not.toBeNull();
+
+    const fromInput = screen.getByLabelText("UTC from") as HTMLInputElement;
+    const toInput = screen.getByLabelText("UTC to") as HTMLInputElement;
+    expect(fromInput.type).toBe("date");
+    expect(toInput.type).toBe("date");
+
+    fireEvent.change(fromInput, { target: { value: "2026-02-31" } });
+    fireEvent.change(toInput, { target: { value: "2026-03-01" } });
+    fireEvent.click(screen.getByRole("button", { name: "Apply UTC range" }));
+    expect(await screen.findByText("Use valid UTC dates.")).not.toBeNull();
+    expect(calls).toHaveLength(1);
+
+    fireEvent.change(fromInput, { target: { value: "2026-02-28" } });
+    fireEvent.click(screen.getByRole("button", { name: "Apply UTC range" }));
+    await waitFor(() => expect(calls).toHaveLength(2));
+    const query = new URL(calls[1], "http://localhost").searchParams;
+    expect(query.get("from")).toBe("2026-02-28T00:00:00.000Z");
+    expect(query.get("to")).toBe("2026-03-02T00:00:00.000Z");
+    vi.unstubAllGlobals();
+  });
+
+  test("renders a real zero without using it for unconnected metrics", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => summaryResponse(0, 0, 0, 0)));
+    render(<DashboardPage onNavigate={vi.fn()} onRiskCountChange={vi.fn()} />);
+    expect(await screen.findByText("Updated 2026-10-24T00:00:00.000Z")).not.toBeNull();
+    expect(screen.getAllByText("0")).toHaveLength(4);
+    expect(screen.getByText("Platform health not connected")).not.toBeNull();
+    expect(screen.queryByText("Good")).toBeNull();
+    vi.unstubAllGlobals();
+  });
+
+  test("shows session and permission failures, then retries into the latest summary", async () => {
+    let calls = 0;
+    vi.stubGlobal("fetch", vi.fn(async () => {
+      calls += 1;
+      if (calls === 1) return jsonResponse({ error: "admin_authentication_required" }, 401);
+      if (calls === 2) return jsonResponse({ error: "admin_capability_required" }, 403);
+      return summaryResponse(4, 3, 1, 0);
+    }));
+    render(<DashboardPage onNavigate={vi.fn()} onRiskCountChange={vi.fn()} />);
+
+    expect(await screen.findAllByText("Sign-in is required.")).toHaveLength(5);
+    expect(screen.getAllByText("—")).toHaveLength(4);
+    expect(screen.queryByText("0")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Retry summary" }));
+
+    expect(await screen.findAllByText("operations.read is required.")).toHaveLength(5);
+    expect(screen.queryByText("4")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Retry summary" }));
+
+    expect(await screen.findByText("Updated 2026-10-24T00:00:00.000Z")).not.toBeNull();
+    expect(screen.getByText("4")).not.toBeNull();
+    expect(screen.getByText("3")).not.toBeNull();
+    expect(calls).toBe(3);
+    vi.unstubAllGlobals();
+  });
+
+  test("aborts an in-flight summary when the page unmounts and does not keep its counts", async () => {
+    let resolveRequest: ((response: Response) => void) | undefined;
+    const fetchMock = vi.fn((_input: RequestInfo | URL, init?: RequestInit) => new Promise<Response>((resolve, reject) => {
+      const abort = () => reject(new DOMException("The operation was aborted.", "AbortError"));
+      if (init?.signal?.aborted) {
+        abort();
+        return;
+      }
+      init?.signal?.addEventListener("abort", abort, { once: true });
+      resolveRequest = resolve;
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+    const view = render(<DashboardPage onNavigate={vi.fn()} onRiskCountChange={vi.fn()} />);
+    expect(screen.getAllByText("Reading")).toHaveLength(4);
+    view.unmount();
+    expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({ signal: expect.any(AbortSignal) });
+    expect((fetchMock.mock.calls[0]?.[1] as RequestInit).signal?.aborted).toBe(true);
+    resolveRequest?.(summaryResponse(99, 1, 0, 0));
+    await Promise.resolve();
+    expect(document.body.textContent ?? "").not.toContain("99");
+    vi.unstubAllGlobals();
   });
 
   test("keeps fixture preview route in operator chrome without nested preview rows", () => {
@@ -322,6 +463,61 @@ describe("admin dashboard page", () => {
     expect(document.querySelector("#dashboard-next-actions")).not.toBeNull();
   });
 });
+
+function jsonResponse(body: unknown, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "content-type": "application/json" }
+  });
+}
+
+function summaryResponse(
+  total: number,
+  active: number,
+  expiring: number,
+  disabledOrExpired: number,
+  extras: { registrationGrowth?: unknown; trafficCollector?: unknown } = {}
+) {
+  return jsonResponse({
+    schemaVersion: "operations-dashboard-summary/v1",
+    generatedAt: "2026-10-24T00:00:00.000Z",
+    freshness: "partial",
+    sourceState: "implemented_source",
+    data: {
+      subscriptions: {
+        availability: "ready",
+        definition: "subscription_tenants",
+        total,
+        active,
+        expiring,
+        disabledOrExpired
+      },
+      platformHealth: { availability: "not_connected" },
+      channelCoverage: { availability: "not_connected" },
+      freshnessP95: { availability: "not_connected" },
+      riskCandidates: { availability: "not_connected" },
+      registrationGrowth: {
+        availability: "ready",
+        timezone: "UTC",
+        definition: "account_created_at",
+        from: "2026-10-23T00:00:00.000Z",
+        to: "2026-10-24T00:00:00.000Z",
+        registeredCount: 9,
+        otherCreatedCount: 8,
+        points: [{
+          at: "2026-10-23T00:00:00.000Z",
+          registeredCount: 9,
+          otherCreatedCount: 8,
+          coverage: "queried"
+        }]
+      },
+      trafficCollector: { availability: "partial", observedAt: "2026-10-20T01:02:03.000Z" },
+      ...extras
+    },
+    warnings: [{ code: "source_partial" }],
+    access: { allowed: true, capability: "operations.read", reasonCode: "allowed" }
+  });
+}
 
 function sectionAnchorOrder() {
   return Array.from(document.querySelectorAll(".page-anchor-group"))

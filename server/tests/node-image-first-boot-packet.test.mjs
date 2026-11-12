@@ -43,6 +43,13 @@ function readyInput(overrides = {}) {
       protectedMaterialInjectPlanned: true,
       agentNodeIdentityPlanned: true
     },
+    wireguard: {
+      planRef: "wg-plan-gccgw-child-v1",
+      tunnelAddressAssigned: true,
+      hostKeyGenerationPlanned: true,
+      peerPublicKeyExchangePlanned: true,
+      toolsPinnedInImageManifest: true
+    },
     runtime: {
       servicesDisabledInImage: true,
       xrayConfigTestPlanned: true,
@@ -80,7 +87,8 @@ test("node image first-boot packet summarizes safe refs without granting activat
     roleRef: "data-plane",
     channelRefCount: 3,
     imageManifestRef: "node-image-manifest-20260613",
-    releaseRef: "release-node-image-20260613"
+    releaseRef: "release-node-image-20260613",
+    wireguardPlanRef: "wg-plan-gccgw-child-v1"
   });
   assert.equal(packet.safety.summaryOnly, true);
   assert.equal(packet.safety.noRuntimeMutation, true);
@@ -108,6 +116,82 @@ test("node image first-boot packet requires receipt-gated render prerequisites b
     "material pull is not required",
     "subscription rendering is not confirmed receipt-gated"
   ]);
+});
+
+test("node image first-boot packet requires the wireguard plan before approval readiness", () => {
+  const packet = buildNodeImageFirstBootPacket(readyInput({
+    wireguard: {
+      planRef: "",
+      tunnelAddressAssigned: false,
+      hostKeyGenerationPlanned: false,
+      peerPublicKeyExchangePlanned: false,
+      toolsPinnedInImageManifest: false
+    }
+  }));
+
+  assert.equal(packet.packet.readyForFirstBootApproval, false);
+  assert.equal(packet.packet.firstBootApplyAllowed, false);
+  assert.deepEqual(packet.packet.blockers, [
+    "wireguard plan ref is required",
+    "wireguard tunnel address is not assigned",
+    "wireguard host key generation is not planned",
+    "wireguard peer public-key exchange is not planned",
+    "wireguard tools are not pinned in the image manifest"
+  ]);
+  assert.equal(packet.wireguard.planRef, "");
+  assert.equal(packet.wireguard.tunnelAddressAssigned, false);
+});
+
+test("node image first-boot packet rejects raw wireguard addresses and unknown wireguard fields", () => {
+  assert.throws(
+    () => buildNodeImageFirstBootPacket(readyInput({
+      wireguard: {
+        planRef: "10.77.0.2",
+        tunnelAddressAssigned: true,
+        hostKeyGenerationPlanned: true,
+        peerPublicKeyExchangePlanned: true,
+        toolsPinnedInImageManifest: true
+      }
+    })),
+    (error) => {
+      assert.match(error.message, /safe node image first-boot packet/);
+      assert.doesNotMatch(error.message, /10\.77/);
+      return true;
+    }
+  );
+
+  // IPv6 addresses and CIDR ranges are addresses too, not plan refs.
+  for (const planRef of ["fd00::1", "2001:db8::1", "fd00::/64", "10.77.0.0/24"]) {
+    assert.throws(
+      () => buildNodeImageFirstBootPacket(readyInput({
+        wireguard: {
+          planRef,
+          tunnelAddressAssigned: true,
+          hostKeyGenerationPlanned: true,
+          peerPublicKeyExchangePlanned: true,
+          toolsPinnedInImageManifest: true
+        }
+      })),
+      (error) => {
+        assert.match(error.message, /safe node image first-boot packet/);
+        return true;
+      }
+    );
+  }
+
+  assert.throws(
+    () => buildNodeImageFirstBootPacket(readyInput({
+      wireguard: {
+        planRef: "wg-plan-gccgw-child-v1",
+        tunnelAddressAssigned: true,
+        hostKeyGenerationPlanned: true,
+        peerPublicKeyExchangePlanned: true,
+        toolsPinnedInImageManifest: true,
+        privateKey: "raw-key-material"
+      }
+    })),
+    /safe node image first-boot packet/
+  );
 });
 
 test("node image first-boot packet separates operator approval from first-boot apply approval", () => {

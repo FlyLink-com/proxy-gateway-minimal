@@ -24,7 +24,7 @@ const condition = (job) => job.match(/^    if: (.+)$/mu)?.[1];
 const needs = (job) => job.match(/^    needs: (.+)$/mu)?.[1];
 
 test("ready PR CI keeps every job behind an explicit guard and stable final Validate", () => {
-  assert.match(workflow, /pull_request:\n    types: \[opened, synchronize, reopened, ready_for_review, converted_to_draft\]\n    branches:\n      - master/u);
+  assert.match(workflow, /pull_request:\n    types: \[opened, synchronize, reopened, ready_for_review\]\n    branches:\n      - master/u);
   assert.doesNotMatch(workflow.slice(0, workflow.indexOf("\npermissions:")), /paths(?:-ignore)?:/u);
   assert.match(workflow, /  push:\n    branches:\n      - master/u);
   assert.match(workflow, /  workflow_dispatch:/u);

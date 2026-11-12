@@ -1,6 +1,6 @@
 # Project Context
 
-Last updated: 2026-10-23 UTC.
+Last updated: 2026-11-12 UTC.
 
 ```yaml
 document_metadata:
@@ -8,21 +8,21 @@ document_metadata:
   lifecycle: active
   authority_scope: project_context
   superseded_by: null
-  last_verified_at: 2026-10-23
+  last_verified_at: 2026-11-12
   production_authority: false
 ```
 
 > Status:
 > - Type: Active current-state handoff
 > - Risk: C
-> - Source reconciliation cutoff:
->   `master@eadefd98357a6bb616c5dd54c984ec265695acad` (observed 2026-10-23 UTC)
+> - Most recent full source reconciliation record:
+>   `master@eadefd98357a6bb616c5dd54c984ec265695acad` (2026-10-23 UTC; historical snapshot, not current Master)
 > - Source/production boundary: #764 reset/collector and preserved #767 guard
 >   are recorded BWH overlays; #769 is desktop Portal only. Later merged
 >   deploy notes record the #785 three-module BWH overlay and the #786
 >   application `control-plane-pr786-c7b094592662-mixed` layered on it.
 >   None establishes a whole-master backend deployment. Merged source after 2026-10-11,
->   through the current cutoff, does not change this boundary. Current
+>   through the 2026-10-23 source cutoff, does not change this boundary. Current
 >   runtime alignment was not read
 > - Delivery navigation projection:
 >   [GCC WebOS — Delivery Project #1](https://github.com/orgs/FlyLink-com/projects/1)
@@ -41,27 +41,6 @@ This file is the compact entrypoint for continuing
 records under `docs/`, not in this handoff. It does not authorize production,
 provider, DNS, Nginx, systemd, firewall, schema, deploy, promotion, rollback,
 credential, payment, subscription-material, or customer-data actions.
-
-## Scoped continuation (2026-10-23)
-
-The newer [source reconciliation](CURRENT_RELEASE_STATE.md#source-reconciliation-2026-10-23)
-advances the source cutoff to `master@eadefd98357a6bb616c5dd54c984ec265695acad`
-and records the merged third-party distribution (#762/#771 and the Admin
-node workspace series), data-pack (#753), usage-ledger
-(#789/#790/#791/#792/#794; #793 is still an open Draft),
-distribution-routing (#796) and Admin user-commerce (#799) source lines,
-plus the current six open Draft PRs. The 2026-10-12 continuation below is
-superseded where it describes third-party subscription work as planning:
-that work landed as source on 2026-10-13 and is not deployed by either
-closeout. This is a GitHub-record reconciliation, not a fresh production
-read; merged source does not establish a whole-master backend deployment.
-Re-read the native PRs before work. The delivery navigation projection now
-points at the renamed FlyLink-com organization. That link update does not
-migrate the pinned read-only Project export contract:
-`project-state/project-v2-contract.json` still fixes `target.owner` and
-`target.repository` to the pre-rename `gccwebos-com` values, and changing
-that checksum-pinned contract is a separate reviewed contract change
-outside this docs-only alignment.
 
 ## Scoped continuation (2026-10-12)
 
@@ -149,6 +128,78 @@ Keep these distinctions explicit:
 - Except where an exact Deploy Note records the control-plane release, `master`,
   a migration, a default-off adapter, and a successful artifact run are
   source/build evidence, not deployed runtime state.
+
+## Scoped continuation (2026-10-23)
+
+The newer [source reconciliation](CURRENT_RELEASE_STATE.md#source-reconciliation-2026-10-23)
+advances the source cutoff to `master@eadefd98357a6bb616c5dd54c984ec265695acad`
+and records the merged third-party distribution (#762/#771 and the Admin
+node workspace series), data-pack (#753), usage-ledger
+(#789/#790/#791/#792/#794; #793 is still an open Draft),
+distribution-routing (#796) and Admin user-commerce (#799) source lines,
+plus the current six open Draft PRs. The 2026-10-12 continuation below is
+superseded where it describes third-party subscription work as planning:
+that work landed as source on 2026-10-13 and is not deployed by either
+closeout. This is a GitHub-record reconciliation, not a fresh production
+read; merged source does not establish a whole-master backend deployment.
+Re-read the native PRs before work. The delivery navigation projection now
+points at the renamed FlyLink-com organization. That link update does not
+migrate the pinned read-only Project export contract:
+`project-state/project-v2-contract.json` still fixes `target.owner` and
+`target.repository` to the pre-rename `gccwebos-com` values, and changing
+that checksum-pinned contract is a separate reviewed contract change
+outside this docs-only alignment.
+
+## DDD Context Map (2026-11-11; derived PR classification)
+
+The business spine above remains the stable architecture boundary. The detailed
+bounded-context catalogue, ownership distinctions, context relationships, and
+2026-11-11 PR-to-domain snapshot are maintained in
+[DDD Context Map](project-map/DDD_CONTEXT_MAP.md).
+
+That map is a derived classification, not a second live queue or a service
+decomposition plan. Native GitHub PRs still own current status, exact HEAD,
+reviews, and checks; source contracts and code own implemented behavior. Its
+PR snapshot does not refresh the source/production cutoffs or runtime evidence
+recorded elsewhere in this handoff.
+
+## Approved Cloudflare Control-Plane Target (2026-11-04; not deployed)
+
+The owner approved the target direction for Cloudflare Workers to host the
+control-plane API and one Cloudflare D1 database to become the authoritative
+business-control store after separately gated implementation and migration.
+
+Target responsibility split:
+
+- Cloudflare Worker: authenticated Admin / User Portal / client control-plane
+  API, domain services, authorization, safe audit, and the asynchronous D1
+  repository layer.
+- One D1 database: first target is the existing shared `control.sqlite`
+  boundary; domains that currently share this database remain in one
+  transactional control store.
+- BWH and edge nodes: data-plane agent, protocol runtimes, protected local
+  runtime material, config-test/apply, node health, and usage collection.
+- BWH agent communication: authenticated outbound polling/receipt protocol;
+  no direct D1 access, no D1 credentials on nodes, and no public Admin surface
+  on a data-plane node.
+
+This is an approved target, not current runtime state. The source cutoff still
+uses Node/Express, synchronous `better-sqlite3`, and SQLite. The root
+`wrangler.jsonc` remains static-assets-only; no Worker API, D1 binding, remote
+D1 resource, or production route has been created by this decision.
+
+The initial D1 scope is one database matching the shared `control.sqlite`
+path. `subscriptions.sqlite` and the optional third-party subscription store
+remain outside the first cutover until their ownership and API dependencies
+are explicitly resolved. Raw edge credential material remains in protected
+BWH custody and is never migrated into D1.
+
+No dual writes are permitted. SQLite remains authoritative until an exact
+Risk A migration and cutover gate is completed. Remote Cloudflare resources,
+secrets, routes, DNS, production data inventory, schema/data migration, and
+production cutover each require their own approval. See
+`docs/CLOUDFLARE_D1_DATABASE_EVALUATION.md` and
+`docs/CLOUDFLARE_PUBLIC_SITE_CI.md`.
 
 ## Repository And Delivery Index
 
