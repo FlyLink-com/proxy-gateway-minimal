@@ -1,6 +1,6 @@
 # Documentation Index
 
-Last updated: 2026-11-09 UTC.
+Last updated: 2026-11-11 UTC.
 
 ```yaml
 document_metadata:
@@ -8,7 +8,7 @@ document_metadata:
   lifecycle: active
   authority_scope: documentation_navigation
   superseded_by: null
-  last_verified_at: 2026-11-09
+  last_verified_at: 2026-11-11
   production_authority: false
 ```
 
@@ -63,6 +63,7 @@ directory restructure.
 | `README_EN.md` | English semantic mirror of `README.md`; keep product scope, phase boundaries, commands, links, and license notice aligned. | Active mirrored public entrypoint. | Read for English-language onboarding and parity review. |
 | `COMMUNITY_GUIDE.md` | External developer onboarding, repository map, local-safe commands, validation routing, and community boundaries. | Active operational guide; not an architecture or production authority. | Read when preparing a local development environment or contributing to a subsystem. |
 | `../CONTRIBUTING.md` | Contribution expectations, focused PR guidance, validation checklist, and license limitation. | Active contribution guide. | Read before opening a code or documentation Pull Request. |
+| `project-map/DDD_CONTEXT_MAP.md` | DDD bounded contexts, business-fact ownership, context relationships, and dated PR-to-domain mapping. | Active derived crosswalk; native PRs own mutable state and no production authority is granted. | Read before classifying or integrating a PR, then refresh the native PR and exact source head. |
 
 ## Subsystem Entry Points
 
@@ -89,6 +90,7 @@ release, deployment, runtime, or production authority.
 | `docs/CURRENT_RELEASE_STATE.md` | Compact documented snapshot of each release unit, unresolved production lineage, and master-only capabilities after Version Management Baseline v1. | Active release-state entrypoint; dated repository evidence only, not live inventory or execution authority. | Read first when resuming the project, then verify live before any Risk A action. |
 | `docs/PROJECT_CONTEXT.md` | Compact project model, dated source/production handoff, authority routing, validation baseline, and risk boundaries. | Active context and routing document; not a live queue, blocker inventory, or execution-history archive. | Read when resuming the repo, then resolve current work from fresh native Issue/PR records and use Project #1 only for navigation. |
 | `docs/VULTR_JAPAN_CONTROL_DATA_PLANE_STATUS.md` | Current target-direction baseline: BWH control plane with Vultr Japan child and Vultr Singapore data-plane capacity; the July 24 runtime facts remain historical. | Active docs/status baseline; architecture decision only, no execution authority or fresh live host/release proof. | Read before preparing the JP child-node gate or reconciling dated Vultr Japan control-plane records. |
+| `docs/JP_LEGACY_NODE_IDENTITY_CONTINUITY_LEDGER.md` | Append-only historical identity and continuity ledger distinguishing the early Japan production host, later `prod-edge-c` candidate, and BWH; includes the 2026-11-04 Identity Gate receipt (256 stale identities retained). | Active audit baseline; M0 remains BLOCKED; repository-recorded evidence only, not a live asset inventory or execution authority. | Read before continuing Issue #809 M0 retirement verification or JP child-node planning; require fresh exact-gate evidence for any new production read/action. |
 | `docs/CURRENT_SOURCE_AND_ARCHIVE_BOUNDARY.md` | Current checkout, historical local paths, generated-runtime folders, README update rule, and re-import guardrails for keeping outdated material out of the active project. | Active local source/archive boundary; no production, cloud, deploy, secret, runtime, or file-move authority by itself. | Read before using old checkouts, `docs/archive/`, `.worktrees/`, generated outputs, release packages, or previous execution artifacts as source material. Use `docs/MASTER_ARCHIVE_BOUNDARY.md` for disposition decisions. |
 | `docs/GIT_DOCS_ARCHIVE_CLOSEOUT_2026_07_09.md` | Dated Git/docs closeout index after the July 8/9 cleanup. | Historical repo-hygiene evidence; no current branch or worktree authority. | Read only to reconstruct the July closeout; inspect Git fresh for current state. |
 | `docs/FOUNDATION_FREEZE_2026_07_09.md` | Dated phase-foundation freeze record. | Historical phase evidence; no current sequencing or execution authority. | Read for foundation archaeology; use current contracts and native Issue/PR records for active work. |
@@ -216,6 +218,8 @@ security-alert counts and makes no current claim about them.
 | `docs/CI_MANUAL_VALIDATION.md` | Manual CI validation host workflow; target direction is local Linux manual CI, with historical Aliyun manual CI facts retained until the transition is validated. | Active runbook, not staging or deploy approval. | Read before using a manual validation host for repo-level CI evidence. |
 | `docs/CLOUDFLARE_PUBLIC_SITE_CI.md` | Repository-only CI contract for the `admin/dist-site` static lane, explicitly separated from the approved future control-plane Worker/D1 lane. | Active static-site CI boundary only; no Worker API, D1, DNS, secret, or production authority. | Read before changing public-site builds, the root `wrangler.jsonc`, or the separate Cloudflare delivery lanes. |
 | `docs/CLOUDFLARE_D1_DATABASE_EVALUATION.md` | Owner-approved Workers + D1 architecture and phased gates, including dated G2 acceptance, G3/G4 source merge, and G5 Staging/BWH Agent synthetic dry-run evidence. | G2 accepted with documented limitations; G5 Staging Worker/D1 and synthetic BWH Agent dry-run passed; production Node/Express + SQLite remains authoritative; G6–G8 and production cutover remain separately gated. | Read before Worker API, D1 schema/repository, BWH Agent, or control-plane migration work. |
+| `docs/D1_T2_C2_CRYPTO_WORKER_INTERFACE_CONTRACT_V1.md` | Versioned internal Crypto Worker API, per-caller authorization, key-family secret bindings, PII digest-only inputs, and failure behavior. | Source-only implementation; no Service Binding, real secret, public route, deployment, or production authority. | Read before wiring the control-plane Service Binding or adding a new crypto operation. |
+| `docs/D1_T2_C2_EXTERNAL_ESCROW_PROVIDER_EVALUATION_V1.md` | Compares external KMS candidates, non-exportable KEK, AAD binding, role separation, two-person recovery, audit, and restore requirements. | Source-only evaluation; no provider, account, KMS/HSM key, or escrow resource selected or created. | Read before selecting the concrete independent escrow provider. |
 | `docs/G2_D1_COMPATIBILITY_EVIDENCE_INDEX_2026-11-05.md` | Evidence index for the local SQLite ↔ Miniflare D1 compatibility work, including strict FK accounting, Scheme C, transaction counts, pagination, hashes, and remaining gaps. | G2 accepted with documented limitations on 2026-11-06; not full D1 equivalence or production migration approval. | Read when reviewing the G2 local compatibility result or its remaining evidence gaps. |
 | `docs/CONTROL_DATABASE_SCHEMA_MATRIX.md` | Source-level schema matrix for the 48-table core slice, with §6 linking six G1-21–G1-26 companion dossiers that complete the 70-table integrated inventory. | G1 source evidence only; not production-applied Schema proof or migration authority. | Read with the Cloudflare D1 architecture decision before planning local synthetic compatibility tests. |
 

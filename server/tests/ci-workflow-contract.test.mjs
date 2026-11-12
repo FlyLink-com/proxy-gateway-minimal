@@ -656,6 +656,27 @@ test("PR domain validation is least-privilege and blocks the CI prerequisite agg
   assert.match(aggregate, /test "\$DOMAIN_RESULT" = skipped/);
 });
 
+
+test("PR domain validation verifies the merged DDD authority snapshot at its exact HEAD", () => {
+  const workflow = readRepositoryFile(".github/workflows/pr-domain-validation.yml");
+  const ddd = jobBlock(workflow, "ddd-documents", "ci-workflow-contract");
+
+  assert.match(ddd, /PR_NUMBER: 856/);
+  assert.match(ddd, /EXPECTED_HEAD_REF: docs\/ddd-context-map-20261111/);
+  assert.match(ddd, /EXPECTED_BASE_REF: master/);
+  assert.match(ddd, /EXPECTED_HEAD_SHA: 2372094ff7c7deec860edc953fd5ed18bfd6c599/);
+  assert.match(ddd, /EXPECTED_BASE_SHA: b6e9b111a430b42c71ff10b80cbfdb2527b391ce/);
+  assert.match(ddd, /EXPECTED_MERGE_COMMIT_SHA: 3c5da93f95b34a4926cffe94f174270ddf22ed4f/);
+  assert.match(
+    ddd,
+    /\.state == "closed"[\s\S]*\.draft == false[\s\S]*\.merged_at != null[\s\S]*\.merge_commit_sha == \$merge_commit_sha/s
+  );
+  assert.match(ddd, /\.head\.sha == \$head_sha/);
+  assert.match(ddd, /\.base\.sha == \$base_sha/);
+  assert.match(ddd, /ref: 2372094ff7c7deec860edc953fd5ed18bfd6c599/);
+  assert.match(ddd, /git diff --check "\$EXPECTED_BASE_SHA\.\.\.\$EXPECTED_HEAD_SHA"/);
+});
+
 test("PR domain validation runs the workflow contract suite on the exact caller head", () => {
   const workflow = readRepositoryFile(".github/workflows/pr-domain-validation.yml");
   const contract = jobBlock(workflow, "ci-workflow-contract");

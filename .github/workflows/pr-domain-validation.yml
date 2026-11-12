@@ -1,6 +1,6 @@
 name: PR Domain Validation
 
-run-name: PR Domain Validation · C1 #844 / DDD #856
+run-name: PR Domain Validation · C1 #844 / merged DDD #856
 
 on:
   workflow_call:
@@ -10,7 +10,7 @@ permissions:
   pull-requests: read
 
 concurrency:
-  group: pr-domain-validation-6d106e17e0cb4a85889485ec36620ec2f349f397-99b348dc4dd67daec9492212ab7a0399c06daa7f
+  group: pr-domain-validation-6d106e17e0cb4a85889485ec36620ec2f349f397-2372094ff7c7deec860edc953fd5ed18bfd6c599
   cancel-in-progress: false
 
 jobs:
@@ -168,20 +168,22 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
-      - name: Verify PR #856 remains the expected open Draft
+      - name: Verify PR #856 was merged at the expected exact head
         env:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: 856
           EXPECTED_HEAD_REF: docs/ddd-context-map-20261111
           EXPECTED_BASE_REF: master
-          EXPECTED_HEAD_SHA: 99b348dc4dd67daec9492212ab7a0399c06daa7f
-          EXPECTED_BASE_SHA: 84b81ab0024a64607c9ca4ca2f05dd5c4529b5a0
+          EXPECTED_HEAD_SHA: 2372094ff7c7deec860edc953fd5ed18bfd6c599
+          EXPECTED_BASE_SHA: b6e9b111a430b42c71ff10b80cbfdb2527b391ce
+          EXPECTED_MERGE_COMMIT_SHA: 3c5da93f95b34a4926cffe94f174270ddf22ed4f
         shell: bash
         run: |
           set -euo pipefail
           [[ "$PR_NUMBER" =~ ^[0-9]+$ ]]
           [[ "$EXPECTED_HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]
           [[ "$EXPECTED_BASE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$EXPECTED_MERGE_COMMIT_SHA" =~ ^[0-9a-f]{40}$ ]]
           payload="$(curl --fail --silent --show-error \
             -H "Accept: application/vnd.github+json" \
             -H "Authorization: Bearer $GH_TOKEN" \
@@ -193,9 +195,11 @@ jobs:
             --arg base_ref "$EXPECTED_BASE_REF" \
             --arg head_sha "$EXPECTED_HEAD_SHA" \
             --arg base_sha "$EXPECTED_BASE_SHA" \
-            '.state == "open"
-             and .draft == true
-             and .merged_at == null
+            --arg merge_commit_sha "$EXPECTED_MERGE_COMMIT_SHA" \
+            '.state == "closed"
+             and .draft == false
+             and .merged_at != null
+             and .merge_commit_sha == $merge_commit_sha
              and .head.repo.full_name == $repo
              and .head.ref == $head_ref
              and .head.sha == $head_sha
@@ -203,13 +207,13 @@ jobs:
              and .base.sha == $base_sha
              and .base.repo.full_name == $repo' \
             <<< "$payload" >/dev/null
-          echo "Verified PR #$PR_NUMBER: $EXPECTED_BASE_SHA...$EXPECTED_HEAD_SHA"
+          echo "Verified merged PR #$PR_NUMBER: $EXPECTED_BASE_SHA...$EXPECTED_HEAD_SHA ($EXPECTED_MERGE_COMMIT_SHA)"
 
       - name: Checkout exact documentation head
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           repository: ${{ github.repository }}
-          ref: 99b348dc4dd67daec9492212ab7a0399c06daa7f
+          ref: 2372094ff7c7deec860edc953fd5ed18bfd6c599
           path: docs-target
           fetch-depth: 0
           persist-credentials: false
@@ -222,8 +226,8 @@ jobs:
       - name: Run full document authority and exact PR diff checks
         working-directory: docs-target
         env:
-          EXPECTED_HEAD_SHA: 99b348dc4dd67daec9492212ab7a0399c06daa7f
-          EXPECTED_BASE_SHA: 84b81ab0024a64607c9ca4ca2f05dd5c4529b5a0
+          EXPECTED_HEAD_SHA: 2372094ff7c7deec860edc953fd5ed18bfd6c599
+          EXPECTED_BASE_SHA: b6e9b111a430b42c71ff10b80cbfdb2527b391ce
         shell: bash
         run: |
           set -euo pipefail
@@ -281,7 +285,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: ddd-docs-validation-99b348dc4dd67daec9492212ab7a0399c06daa7f
+          name: ddd-docs-validation-2372094ff7c7deec860edc953fd5ed18bfd6c599
           path: ${{ runner.temp }}/pr-domain-validation/docs/
           if-no-files-found: warn
           retention-days: 14

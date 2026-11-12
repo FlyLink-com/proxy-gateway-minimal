@@ -30,6 +30,20 @@ Run the focused `node --test server/tests/<name>.test.mjs` command for the
 changed boundary, then `npm test` and
 `git diff --check origin/master...HEAD`.
 
+## C1 identity import rehearsal
+
+The Auth0 candidate has a local synthetic-only converter rehearsal. It does not
+read account data, decrypt TOTP keys, call a provider, or write an import file.
+Run:
+
+- npm run --silent platform:identity-import:rehearsal — emits only the redacted synthetic receipt JSON.
+- npm run test:portal-identity-import — runs the focused parser/converter tests.
+
+The source/test contract is documented in
+the C1 identity provider evaluation (../docs/D1_T2_C1_IDENTITY_PROVIDER_EVALUATION_V1.md).
+This local rehearsal is not provider acceptance or authorization to migrate
+real accounts.
+
 ## Admin login
 
 For the default-private boundary and explicitly approved public cookie-auth
@@ -76,6 +90,45 @@ zero total.
 `platform_payment_orders` is indexed by `(account_id, created_at, payment_order_ref)`.
 `platform_coin_commerce_orders` has no `created_at` index. This windowed
 aggregate can scan. This change does not add an index or migration.
+
+`GET /api/admin/operations/recharge-confirmation-gross` sums the quote
+`amount_minor` of recharge orders whose first authoritative charge confirmation
+falls in a UTC window. It is payment-confirmation gross in minor units. It is
+not revenue, net revenue, bank settlement, or profit. Coins credit is not
+required. The route is registered only when `ADMIN_AUTHORIZATION_ENABLED` is
+exactly true, then requires the existing Admin session and `operations.read`.
+It does not walk accounts and does not use `ADMIN_USER_COMMERCE_ENABLED`.
+
+A receipt qualifies only when `verification_result` is `verified`,
+`canonical_state` is `payment_succeeded`, and `charge_certainty` is
+`confirmed_charged`. The order is counted once, on the earliest qualifying
+receipt ordered by `accepted_at` then `receipt_ref`. Later capture, callback,
+and query successes do not add another amount. `from` and `to` filter that
+first `accepted_at` with the same half-open UTC rules as the order-status
+summary, including calendar validity. The clock is not the confirmation time.
+Every qualifying receipt, including one outside the requested window, must
+have an `accepted_at` that passes that same calendar check. A shape match such
+as month 13, 30 February, or hour 25 makes the whole read
+`source_unavailable`.
+
+`payment_verified` and `credited` are both confirmed charges and stay distinct
+statuses; this aggregate adds their quote minor units inside the same currency
+and `currency_exponent` group. `reconciliation_required` is omitted from the
+gross, `freshness` becomes `partial`, and `reconciliationExcluded.orderCount`
+reports how many such orders were left out. A quote mismatch, a non-canonical
+confirmation timestamp, or any other current status alongside a qualifying
+receipt fails the whole read as `source_unavailable`. An empty window with no
+exclusion is an empty group list and `freshness` `fresh`. A sum outside the
+safe integer range fails the whole read.
+
+`platform_payment_receipts` is indexed by
+`(payment_order_ref, accepted_at, receipt_ref)`. The observed plan walks that
+index for the qualifying pass and searches it again by `payment_order_ref` and
+`accepted_at` to choose the first receipt. `verification_result`,
+`canonical_state`, and `charge_certainty` are residual filters, not index keys.
+A later migration could add a partial index limited to confirmed receipts;
+every receipt insert would maintain it. This change does not add that index
+or any payment DDL.
 
 ## Subscription website metadata
 
