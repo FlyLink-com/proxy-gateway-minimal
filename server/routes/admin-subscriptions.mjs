@@ -17,7 +17,15 @@ import {
 } from "../services/platform/operations-overview-read-model.mjs";
 
 const DASHBOARD_DAY_MS = 86400000;
-const DASHBOARD_DEFAULT_RANGE_MS = 30 * DASHBOARD_DAY_MS;
+const DASHBOARD_DEFAULT_RANGE_DAYS = 30;
+
+function defaultDashboardRange(now = new Date()) {
+  const todayUtcStart = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  return {
+    from: new Date(todayUtcStart - (DASHBOARD_DEFAULT_RANGE_DAYS - 1) * DASHBOARD_DAY_MS).toISOString(),
+    to: new Date(todayUtcStart + DASHBOARD_DAY_MS).toISOString()
+  };
+}
 
 function invalidQuery() {
   const error = new Error("invalid_query");
@@ -37,9 +45,9 @@ function registrationGrowthFor(state, req) {
     capability: "users.read"
   });
   if (!decision.allowed) return { availability: "not_authorized" };
-  const now = new Date();
-  const from = hasFrom ? query.from : new Date(now.getTime() - DASHBOARD_DEFAULT_RANGE_MS).toISOString();
-  const to = hasTo ? query.to : now.toISOString();
+  const defaultRange = defaultDashboardRange();
+  const from = hasFrom ? query.from : defaultRange.from;
+  const to = hasTo ? query.to : defaultRange.to;
   try {
     const body = createAdminUserMonitorService({
       controlStore: state.platform?.controlStore ?? null

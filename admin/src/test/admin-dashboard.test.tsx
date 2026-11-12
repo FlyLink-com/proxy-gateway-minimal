@@ -154,8 +154,41 @@ describe("admin dashboard page", () => {
     fireEvent.click(screen.getByRole("button", { name: "Last 7 days" }));
     await waitFor(() => expect(calls).toHaveLength(2));
     expect(calls[0]).toBe("/api/admin/operations/dashboard-summary");
-    expect(calls[1]).toContain("/api/admin/operations/dashboard-summary?from=");
-    expect(calls[1]).toContain("to=");
+    const query = new URL(calls[1], "http://localhost").searchParams;
+    const from = query.get("from") ?? "";
+    const to = query.get("to") ?? "";
+    expect(from).toMatch(/T00:00:00\.000Z$/);
+    expect(to).toMatch(/T00:00:00\.000Z$/);
+    expect(Date.parse(to) - Date.parse(from)).toBe(7 * 86400000);
+    vi.unstubAllGlobals();
+  });
+
+  test("rejects invalid UTC calendar dates and accepts inclusive date bounds", async () => {
+    const calls: string[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      calls.push(String(input));
+      return summaryResponse(1, 1, 0, 0);
+    }));
+    render(<DashboardPage onNavigate={vi.fn()} onRiskCountChange={vi.fn()} />);
+    expect(await screen.findByText(/Portal registrations 9/)).not.toBeNull();
+
+    const fromInput = screen.getByLabelText("UTC from") as HTMLInputElement;
+    const toInput = screen.getByLabelText("UTC to") as HTMLInputElement;
+    expect(fromInput.type).toBe("date");
+    expect(toInput.type).toBe("date");
+
+    fireEvent.change(fromInput, { target: { value: "2026-02-31" } });
+    fireEvent.change(toInput, { target: { value: "2026-03-01" } });
+    fireEvent.click(screen.getByRole("button", { name: "Apply UTC range" }));
+    expect(await screen.findByText("Use valid UTC dates.")).not.toBeNull();
+    expect(calls).toHaveLength(1);
+
+    fireEvent.change(fromInput, { target: { value: "2026-02-28" } });
+    fireEvent.click(screen.getByRole("button", { name: "Apply UTC range" }));
+    await waitFor(() => expect(calls).toHaveLength(2));
+    const query = new URL(calls[1], "http://localhost").searchParams;
+    expect(query.get("from")).toBe("2026-02-28T00:00:00.000Z");
+    expect(query.get("to")).toBe("2026-03-02T00:00:00.000Z");
     vi.unstubAllGlobals();
   });
 

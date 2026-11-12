@@ -179,11 +179,21 @@ const DAY_MS = 86400000;
 const MAX_RANGE_MS = 31 * DAY_MS;
 
 function lastUtcRange(days: number) {
-  const to = new Date();
+  const now = new Date();
+  const todayUtcStart = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
   return {
-    from: new Date(to.getTime() - days * DAY_MS).toISOString(),
-    to: to.toISOString()
+    from: new Date(todayUtcStart - (days - 1) * DAY_MS).toISOString(),
+    to: new Date(todayUtcStart + DAY_MS).toISOString()
   };
+}
+
+function parseUtcDay(value: string): number | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+  const timestamp = Date.parse(`${value}T00:00:00.000Z`);
+  if (!Number.isFinite(timestamp) || new Date(timestamp).toISOString().slice(0, 10) !== value) {
+    return null;
+  }
+  return timestamp;
 }
 
 export function OperationsDashboardLive({
@@ -254,26 +264,27 @@ export function OperationsDashboardLive({
         <h3>Registration trend</h3>
         <p>UTC calendar days. Portal registrations count self-service portal accounts. Other created accounts are every other new account. These counts are not subscription tenants.</p>
         <div>
-          <button type="button" aria-pressed={range === null} onClick={() => { setRangeError(""); setRange(null); }}>Last 30 days</button>
+          <button type="button" aria-pressed={range === null} onClick={() => { setRangeError(""); setFromDay(""); setToDay(""); setRange(null); }}>Last 30 days</button>
           <button type="button" aria-pressed={range !== null && fromDay === "" && toDay === ""} onClick={() => { setRangeError(""); setFromDay(""); setToDay(""); setRange(lastUtcRange(7)); }}>Last 7 days</button>
         </div>
         <form aria-label="UTC registration range" onSubmit={(event) => {
           event.preventDefault();
-          if (!/^\d{4}-\d{2}-\d{2}$/.test(fromDay) || !/^\d{4}-\d{2}-\d{2}$/.test(toDay)) {
-            setRangeError("Use UTC dates.");
+          const fromMs = parseUtcDay(fromDay);
+          const toDayMs = parseUtcDay(toDay);
+          if (fromMs === null || toDayMs === null) {
+            setRangeError("Use valid UTC dates.");
             return;
           }
-          const fromMs = Date.parse(`${fromDay}T00:00:00.000Z`);
-          const toMs = Date.parse(`${toDay}T00:00:00.000Z`) + DAY_MS;
-          if (!Number.isFinite(fromMs) || !(fromMs < toMs) || toMs - fromMs > MAX_RANGE_MS) {
+          const toMs = toDayMs + DAY_MS;
+          if (!(fromMs < toMs) || toMs - fromMs > MAX_RANGE_MS) {
             setRangeError("The UTC range must be within 31 days.");
             return;
           }
           setRangeError("");
           setRange({ from: new Date(fromMs).toISOString(), to: new Date(toMs).toISOString() });
         }}>
-          <label>UTC from<input value={fromDay} onChange={(event) => setFromDay(event.target.value)} /></label>
-          <label>UTC to<input value={toDay} onChange={(event) => setToDay(event.target.value)} /></label>
+          <label>UTC from<input type="date" value={fromDay} onChange={(event) => setFromDay(event.target.value)} /></label>
+          <label>UTC to<input type="date" value={toDay} onChange={(event) => setToDay(event.target.value)} /></label>
           <button type="submit">Apply UTC range</button>
         </form>
         {rangeError ? <p>{rangeError}</p> : null}

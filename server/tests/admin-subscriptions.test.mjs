@@ -1510,6 +1510,39 @@ function dashboardApp(state, capabilities) {
   return app;
 }
 
+test("dashboard summary defaults to exactly 30 UTC calendar days", async () => {
+  let growthQuery;
+  const state = fakeState();
+  state.platform = {
+    controlStore: {
+      listUserMonitorGrowthDays(input) {
+        growthQuery = input;
+        return [];
+      }
+    }
+  };
+  const requestStartedAt = Date.now();
+  const { server, baseUrl } = await listen(dashboardApp(state, ["operations.read", "users.read"]));
+  try {
+    const response = await fetch(`${baseUrl}/api/admin/operations/dashboard-summary`);
+    assert.equal(response.status, 200);
+    assert.ok(growthQuery);
+    const fromMs = Date.parse(growthQuery.from);
+    const toMs = Date.parse(growthQuery.to);
+    assert.equal(new Date(fromMs).toISOString(), growthQuery.from);
+    assert.equal(new Date(toMs).toISOString(), growthQuery.to);
+    assert.equal(fromMs % 86400000, 0);
+    assert.equal(toMs % 86400000, 0);
+    assert.equal(toMs - fromMs, 30 * 86400000);
+    const requestedToday = toMs - 86400000;
+    const beforeDay = Math.floor(requestStartedAt / 86400000) * 86400000;
+    const afterDay = Math.floor(Date.now() / 86400000) * 86400000;
+    assert.ok(requestedToday === beforeDay || requestedToday === afterDay);
+  } finally {
+    server.close();
+  }
+});
+
 test("dashboard summary projects queried UTC registration days and real zeros", async () => {
   let growthCalls = 0;
   const state = fakeState();
