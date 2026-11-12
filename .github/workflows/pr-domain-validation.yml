@@ -153,7 +153,7 @@ jobs:
 
       - name: Upload C1 validation evidence
         if: always()
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: c1-auth0-validation-6d106e17e0cb4a85889485ec36620ec2f349f397
           path: ${{ runner.temp }}/pr-domain-validation/c1/
@@ -279,7 +279,7 @@ jobs:
 
       - name: Upload DDD validation evidence
         if: always()
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: ddd-docs-validation-99b348dc4dd67daec9492212ab7a0399c06daa7f
           path: ${{ runner.temp }}/pr-domain-validation/docs/
