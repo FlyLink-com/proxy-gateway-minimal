@@ -1,6 +1,6 @@
 # Architecture Map
 
-Last verified: 2026-11-11 UTC for the DDD context-map cross-reference; topology and runtime facts retain their cited cutoffs.
+Last verified: 2026-11-12 UTC for the DDD context-map cross-reference; topology and runtime facts retain their cited cutoffs.
 
 ```yaml
 document_metadata:
@@ -8,7 +8,7 @@ document_metadata:
   lifecycle: active
   authority_scope: architecture_map
   superseded_by: null
-  last_verified_at: 2026-11-11
+  last_verified_at: 2026-11-12
   production_authority: false
 ```
 
