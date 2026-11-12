@@ -4,47 +4,7 @@ run-name: PR Domain Validation · C1 #844 / DDD #856
 
 on:
   workflow_call:
-    inputs:
-      c1_pr_number:
-        description: C1 Auth0 validator PR number
-        required: true
-        type: number
-      c1_head_ref:
-        description: Expected C1 head branch
-        required: true
-        type: string
-      c1_base_ref:
-        description: Expected C1 base branch
-        required: true
-        type: string
-      c1_base_sha:
-        description: Exact C1 base commit SHA
-        required: true
-        type: string
-      c1_head_sha:
-        description: Exact C1 head commit SHA
-        required: true
-        type: string
-      docs_pr_number:
-        description: DDD documentation PR number
-        required: true
-        type: number
-      docs_head_ref:
-        description: Expected documentation head branch
-        required: true
-        type: string
-      docs_base_ref:
-        description: Expected documentation base branch
-        required: true
-        type: string
-      docs_base_sha:
-        description: Exact documentation base commit SHA
-        required: true
-        type: string
-      docs_head_sha:
-        description: Exact documentation head commit SHA
-        required: true
-        type: string
+
 permissions:
   contents: read
   pull-requests: read
