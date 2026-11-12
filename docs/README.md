@@ -63,6 +63,7 @@ directory restructure.
 | `README_EN.md` | English semantic mirror of `README.md`; keep product scope, phase boundaries, commands, links, and license notice aligned. | Active mirrored public entrypoint. | Read for English-language onboarding and parity review. |
 | `COMMUNITY_GUIDE.md` | External developer onboarding, repository map, local-safe commands, validation routing, and community boundaries. | Active operational guide; not an architecture or production authority. | Read when preparing a local development environment or contributing to a subsystem. |
 | `../CONTRIBUTING.md` | Contribution expectations, focused PR guidance, validation checklist, and license limitation. | Active contribution guide. | Read before opening a code or documentation Pull Request. |
+| `project-map/DDD_CONTEXT_MAP.md` | DDD bounded contexts, business-fact ownership, context relationships, and dated PR-to-domain mapping. | Active derived crosswalk; native PRs own mutable state and no production authority is granted. | Read before classifying or integrating a PR, then refresh the native PR and exact source head. |
 
 ## Subsystem Entry Points
 
@@ -226,7 +227,6 @@ They reference the reviewed lane taxonomy and dated compatibility snapshots in
 `project-state/*.json`; they do not create a current-work source of truth or
 any production authority. The
 authority/derivation matrix in `docs/project-map/ARCHITECTURE_MAP.md` governs
-| docs/project-map/DDD_CONTEXT_MAP.md | DDD bounded contexts, business-fact ownership, context relationships, and dated PR-to-domain mapping. | Active derived crosswalk; native PRs own mutable state and no production authority is granted. | Read before classifying or integrating a PR, then refresh the native PR and exact source head. |
 conflicts; every document in this layer is an index or derived view.
 
 | Document | Purpose | Status | When to read |
