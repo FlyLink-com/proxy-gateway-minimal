@@ -1,6 +1,6 @@
 name: PR Domain Validation
 
-run-name: PR Domain Validation · C1 #${{ inputs.c1_pr_number }} / DDD #${{ inputs.docs_pr_number }}
+run-name: PR Domain Validation · C1 #844 / DDD #856
 
 on:
   workflow_call:
@@ -45,65 +45,12 @@ on:
         description: Exact documentation head commit SHA
         required: true
         type: string
-  workflow_dispatch:
-    inputs:
-      c1_pr_number:
-        description: C1 Auth0 validator PR number
-        required: true
-        type: number
-        default: 844
-      c1_head_ref:
-        description: Expected C1 head branch
-        required: true
-        type: string
-        default: feat/c1-auth0-validator-20261108
-      c1_base_ref:
-        description: Expected C1 base branch
-        required: true
-        type: string
-        default: fix/t2-c1-c2-t1-reenroll-only-20261108
-      c1_base_sha:
-        description: Exact C1 base commit SHA
-        required: true
-        type: string
-        default: 4be493a06a55d245bd2d89a1019f62922ab251bb
-      c1_head_sha:
-        description: Exact C1 head commit SHA
-        required: true
-        type: string
-        default: 9f76c3b986741111c5c16fde23a16ab13614f465
-      docs_pr_number:
-        description: DDD documentation PR number
-        required: true
-        type: number
-        default: 856
-      docs_head_ref:
-        description: Expected documentation head branch
-        required: true
-        type: string
-        default: docs/ddd-context-map-20261111
-      docs_base_ref:
-        description: Expected documentation base branch
-        required: true
-        type: string
-        default: master
-      docs_base_sha:
-        description: Exact documentation base commit SHA
-        required: true
-        type: string
-        default: 84b81ab0024a64607c9ca4ca2f05dd5c4529b5a0
-      docs_head_sha:
-        description: Exact documentation head commit SHA
-        required: true
-        type: string
-        default: 99b348dc4dd67daec9492212ab7a0399c06daa7f
-
 permissions:
   contents: read
   pull-requests: read
 
 concurrency:
-  group: pr-domain-validation-${{ inputs.c1_head_sha }}-${{ inputs.docs_head_sha }}
+  group: pr-domain-validation-9f76c3b986741111c5c16fde23a16ab13614f465-99b348dc4dd67daec9492212ab7a0399c06daa7f
   cancel-in-progress: false
 
 jobs:
@@ -115,11 +62,11 @@ jobs:
       - name: Verify PR #844 remains the expected open Draft
         env:
           GH_TOKEN: ${{ github.token }}
-          PR_NUMBER: ${{ inputs.c1_pr_number }}
-          EXPECTED_HEAD_REF: ${{ inputs.c1_head_ref }}
-          EXPECTED_BASE_REF: ${{ inputs.c1_base_ref }}
-          EXPECTED_HEAD_SHA: ${{ inputs.c1_head_sha }}
-          EXPECTED_BASE_SHA: ${{ inputs.c1_base_sha }}
+          PR_NUMBER: 844
+          EXPECTED_HEAD_REF: feat/c1-auth0-validator-20261108
+          EXPECTED_BASE_REF: fix/t2-c1-c2-t1-reenroll-only-20261108
+          EXPECTED_HEAD_SHA: 9f76c3b986741111c5c16fde23a16ab13614f465
+          EXPECTED_BASE_SHA: 4be493a06a55d245bd2d89a1019f62922ab251bb
         shell: bash
         run: |
           set -euo pipefail
@@ -153,7 +100,7 @@ jobs:
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           repository: ${{ github.repository }}
-          ref: ${{ inputs.c1_head_sha }}
+          ref: 9f76c3b986741111c5c16fde23a16ab13614f465
           path: c1-target
           fetch-depth: 0
           persist-credentials: false
@@ -186,8 +133,8 @@ jobs:
       - name: Run all C1 syntax checks and the complete synthetic suite
         working-directory: c1-target
         env:
-          EXPECTED_HEAD_SHA: ${{ inputs.c1_head_sha }}
-          EXPECTED_BASE_SHA: ${{ inputs.c1_base_sha }}
+          EXPECTED_HEAD_SHA: 9f76c3b986741111c5c16fde23a16ab13614f465
+          EXPECTED_BASE_SHA: 4be493a06a55d245bd2d89a1019f62922ab251bb
         shell: bash
         run: |
           set -euo pipefail
@@ -216,7 +163,7 @@ jobs:
           node_sha="$(sha256sum "$out/node-check.log" | awk '{print $1}')"
           pip_sha="$(sha256sum "$out/pip-install.log" | awk '{print $1}')"
           {
-            echo "PR: #${{ inputs.c1_pr_number }}"
+            echo "PR: #844"
             echo "Base: $EXPECTED_BASE_SHA"
             echo "Head: $EXPECTED_HEAD_SHA"
             echo "Node: $(node --version)"
@@ -231,7 +178,7 @@ jobs:
 
           {
             echo "### C1 Auth0 synthetic validation"
-            echo "- Exact PR: #${{ inputs.c1_pr_number }}"
+            echo "- Exact PR: #844"
             echo "- Base: `$EXPECTED_BASE_SHA`"
             echo "- Head: `$EXPECTED_HEAD_SHA`"
             echo "- Runtime: Node $(node --version), Python $(python --version), bcrypt $(PYTHONPATH=tools/c1-auth0-validator/vendor python -c 'import bcrypt; print(bcrypt.__version__)')"
@@ -245,7 +192,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: c1-auth0-validation-${{ inputs.c1_head_sha }}
+          name: c1-auth0-validation-9f76c3b986741111c5c16fde23a16ab13614f465
           path: ${{ runner.temp }}/pr-domain-validation/c1/
           if-no-files-found: warn
           retention-days: 14
@@ -258,11 +205,11 @@ jobs:
       - name: Verify PR #856 remains the expected open Draft
         env:
           GH_TOKEN: ${{ github.token }}
-          PR_NUMBER: ${{ inputs.docs_pr_number }}
-          EXPECTED_HEAD_REF: ${{ inputs.docs_head_ref }}
-          EXPECTED_BASE_REF: ${{ inputs.docs_base_ref }}
-          EXPECTED_HEAD_SHA: ${{ inputs.docs_head_sha }}
-          EXPECTED_BASE_SHA: ${{ inputs.docs_base_sha }}
+          PR_NUMBER: 856
+          EXPECTED_HEAD_REF: docs/ddd-context-map-20261111
+          EXPECTED_BASE_REF: master
+          EXPECTED_HEAD_SHA: 99b348dc4dd67daec9492212ab7a0399c06daa7f
+          EXPECTED_BASE_SHA: 84b81ab0024a64607c9ca4ca2f05dd5c4529b5a0
         shell: bash
         run: |
           set -euo pipefail
@@ -296,7 +243,7 @@ jobs:
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           repository: ${{ github.repository }}
-          ref: ${{ inputs.docs_head_sha }}
+          ref: 99b348dc4dd67daec9492212ab7a0399c06daa7f
           path: docs-target
           fetch-depth: 0
           persist-credentials: false
@@ -309,8 +256,8 @@ jobs:
       - name: Run full document authority and exact PR diff checks
         working-directory: docs-target
         env:
-          EXPECTED_HEAD_SHA: ${{ inputs.docs_head_sha }}
-          EXPECTED_BASE_SHA: ${{ inputs.docs_base_sha }}
+          EXPECTED_HEAD_SHA: 99b348dc4dd67daec9492212ab7a0399c06daa7f
+          EXPECTED_BASE_SHA: 84b81ab0024a64607c9ca4ca2f05dd5c4529b5a0
         shell: bash
         run: |
           set -euo pipefail
@@ -335,7 +282,7 @@ jobs:
           diff_sha="$(sha256sum "$out/git-diff-check.log" | awk '{print $1}')"
           checker_blob="$(git rev-parse "HEAD:scripts/check-document-authority.mjs")"
           {
-            echo "PR: #${{ inputs.docs_pr_number }}"
+            echo "PR: #856"
             echo "Base: $EXPECTED_BASE_SHA"
             echo "Head: $EXPECTED_HEAD_SHA"
             echo "Node: $(node --version)"
@@ -350,7 +297,7 @@ jobs:
 
           {
             echo "### DDD document authority validation"
-            echo "- Exact PR: #${{ inputs.docs_pr_number }}"
+            echo "- Exact PR: #856"
             echo "- Base: `$EXPECTED_BASE_SHA`"
             echo "- Head: `$EXPECTED_HEAD_SHA`"
             echo "- Node: $(node --version)"
@@ -368,7 +315,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: ddd-docs-validation-${{ inputs.docs_head_sha }}
+          name: ddd-docs-validation-99b348dc4dd67daec9492212ab7a0399c06daa7f
           path: ${{ runner.temp }}/pr-domain-validation/docs/
           if-no-files-found: warn
           retention-days: 14
