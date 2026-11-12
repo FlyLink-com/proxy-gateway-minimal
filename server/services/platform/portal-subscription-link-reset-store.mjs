@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { portalAccessEventJson } from "./control-json-contracts.mjs";
 
 const TABLE = "platform_portal_subscription_link_resets";
 const COLUMNS = ["operation_key_digest", "request_ref", "owner_ref", "tenant_id", "previous_artifact_id",
@@ -207,7 +208,7 @@ export function createPortalSubscriptionLinkResetStore({ database, nowFn = () =>
         if (row.state === "completed") return operation;
         const updated = db.prepare(`update platform_portal_access_requests set artifact_id = ?, subscription_url = ?, event_json = ?, updated_at = ?
           where id = ? and portal_user_ref = ? and tenant_id = ? and artifact_id = ? and updated_at = ? and status = ?`)
-          .run(row.replacement_artifact_id, row.subscription_url, JSON.stringify({ type: "subscription_link_reset", occurredAt: at }), at,
+          .run(row.replacement_artifact_id, row.subscription_url, portalAccessEventJson({ type: "subscription_link_reset", occurredAt: at }), at,
             row.request_ref, row.owner_ref, row.tenant_id, row.previous_artifact_id, request.updated_at, request.status);
         if (updated.changes !== 1) throw fail();
         db.prepare(`update ${TABLE} set state = 'completed', completed_at = ? where operation_key_digest = ? and state = 'prepared'`)

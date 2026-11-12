@@ -1,0 +1,163 @@
+{
+  "$id": "https://github.com/FlyLink-com/proxy-gateway-minimal/ops/node-provisioning/schemas/agent-apply-receipt.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "The NORMALIZED per-channel apply receipt: the output shape of validateDataPlaneApplyReceipt in server/services/edge/data-plane-agent-protocol.mjs, which is what BWH stores and compares. That is why redacted is const true and materialDigests is required here — the normalizer always emits both — while the raw agent input may omit them (the normalizer defaults materialDigests to [] and adds redacted itself); the raw input contract is the protocol module, not this schema. Field-for-field mirror otherwise: single channelRef, boolean configTest / serviceActive / listenerPresent, credentialCount, materialDigests (digest strings or {channelRef, edgeCredentialRef, digest} entries), backup/rollback refs are basenames and never '.' or '..'.",
+  "properties": {
+    "appliedAt": {
+      "format": "date-time",
+      "type": "string"
+    },
+    "backupRef": {
+      "description": "Basename per optionalBackupBasename in the agent protocol: the charset/length pattern, never '.' or '..', never a path separator. Values like '...' or '::' are valid, exactly as the protocol admits.",
+      "not": {
+        "enum": [
+          ".",
+          ".."
+        ]
+      },
+      "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+      "type": "string"
+    },
+    "channelRef": {
+      "pattern": "^[A-Za-z0-9._:-]{1,160}$",
+      "type": "string"
+    },
+    "configTest": {
+      "type": "boolean"
+    },
+    "credentialCount": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "desiredStateRef": {
+      "pattern": "^[A-Za-z0-9._:-]{1,160}$",
+      "type": "string"
+    },
+    "generation": {
+      "pattern": "^[A-Za-z0-9._:-]{1,160}$",
+      "type": "string"
+    },
+    "listenerPresent": {
+      "type": "boolean"
+    },
+    "materialDigests": {
+      "items": {
+        "anyOf": [
+          {
+            "pattern": "^[A-Za-z0-9._:+/-]{6,256}$",
+            "type": "string"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "channelRef": {
+                "pattern": "^[A-Za-z0-9._:-]{1,160}$",
+                "type": "string"
+              },
+              "digest": {
+                "pattern": "^[A-Za-z0-9._:+/-]{6,256}$",
+                "type": "string"
+              },
+              "edgeCredentialRef": {
+                "pattern": "^[A-Za-z0-9._:-]{1,160}$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "channelRef",
+              "edgeCredentialRef",
+              "digest"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "type": "array"
+    },
+    "nodeRef": {
+      "pattern": "^[A-Za-z0-9._:-]{1,160}$",
+      "type": "string"
+    },
+    "reasonCode": {
+      "pattern": "^[A-Za-z0-9._:-]{1,160}$",
+      "type": "string"
+    },
+    "redacted": {
+      "const": true,
+      "type": "boolean"
+    },
+    "rollbackRef": {
+      "description": "Basename per optionalBackupBasename in the agent protocol: the charset/length pattern, never '.' or '..', never a path separator. Values like '...' or '::' are valid, exactly as the protocol admits.",
+      "not": {
+        "enum": [
+          ".",
+          ".."
+        ]
+      },
+      "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+      "type": "string"
+    },
+    "scopedTombstone": {
+      "additionalProperties": false,
+      "properties": {
+        "credentialDigests": {
+          "items": {
+            "pattern": "^sha256:[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "minItems": 1,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "sourceDesiredStateRef": {
+          "pattern": "^[A-Za-z0-9._:-]{1,160}$",
+          "type": "string"
+        },
+        "sourceGeneration": {
+          "pattern": "^[A-Za-z0-9._:-]{1,160}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "sourceDesiredStateRef",
+        "sourceGeneration",
+        "credentialDigests"
+      ],
+      "type": "object"
+    },
+    "serviceActive": {
+      "type": "boolean"
+    },
+    "status": {
+      "enum": [
+        "applied",
+        "failed",
+        "unchanged",
+        "stale",
+        "rejected"
+      ],
+      "type": "string"
+    },
+    "type": {
+      "const": "gccgw_data_plane_apply_receipt",
+      "type": "string"
+    }
+  },
+  "required": [
+    "type",
+    "nodeRef",
+    "generation",
+    "channelRef",
+    "status",
+    "configTest",
+    "serviceActive",
+    "listenerPresent",
+    "credentialCount",
+    "appliedAt",
+    "materialDigests",
+    "redacted"
+  ],
+  "title": "Agent Apply Receipt, normalized form (existing protocol, per channel)",
+  "type": "object"
+}

@@ -1533,11 +1533,18 @@ function downloadPasskeyExport(passkeyExport: PortalPasskeyExport) {
 export function UserPortalPage({
   initialSession,
   paymentRedirect = defaultPaymentRedirect,
-  portalClient
+  portalClient,
+  AdsConsentPanel
 }: {
   initialSession?: PortalSession;
   paymentRedirect?: (url: string) => void;
   portalClient: UserPortalClient;
+  AdsConsentPanel?: ComponentType<{
+    locale?: "zh" | "en" | "auto";
+    surface?: "site" | "portal";
+    sessionRef?: string;
+    adsConsentClient?: NonNullable<UserPortalClient["adsConsent"]>;
+  }>;
   onBackToAdmin?: () => void;
 }) {
   const { locale, setLocale } = usePublicLocalePreference();
@@ -2947,6 +2954,14 @@ export function UserPortalPage({
           "portal-use-main portal-v2-main",
           paymentFlowActive && "portal-v2-main-payment"
         )}>
+          {portalClient.adsConsent && AdsConsentPanel ? (
+            <AdsConsentPanel
+              locale={locale}
+              surface="portal"
+              sessionRef={portalSession.sessionRef}
+              adsConsentClient={portalClient.adsConsent}
+            />
+          ) : null}
           {!paymentFlowActive ? (
             <>
               <header className="portal-use-topbar portal-v2-topbar">

@@ -127,6 +127,43 @@ test("rejects malformed offer locales, delivery combinations, units, and Coin ty
   }
 });
 
+test("rejects unbounded or unsafe important notice text", () => {
+  const invalid = [
+    ["too many notices", Array.from({ length: 9 }, (_, index) => `notice ${index}`)],
+    ["oversized notice", ["a".repeat(513)]],
+    ["URL", ["See https://example.invalid/support"]],
+    ["markup", ["<script>alert(1)</script>"]],
+    ["email", ["Contact person@example.invalid"]],
+    ["phone", ["Call +1 (415) 555-0123"]],
+    ["IP address", ["Node 203.0.113.7 is unavailable"]],
+    ["secret-like assignment", ["token=synthetic_secret_value"]],
+    ["bearer token", ["Bearer synthetic-token-value-123456"]],
+    ["private key marker", ["-----BEGIN PRIVATE KEY-----"]]
+  ];
+  for (const [name, zh] of invalid) {
+    assert.throws(
+      () => normalizeCoinCommerceOffer({
+        ...monthlyBasicOffer(),
+        importantNotices: { zh, en: ["valid"] }
+      }),
+      (error) => error?.code === "invalid_commerce_locale",
+      name
+    );
+  }
+
+  const maximumCount = Array.from({ length: 8 }, (_, index) => `notice ${index}`);
+  assert.equal(normalizeCoinCommerceOffer({
+    ...monthlyBasicOffer(),
+    importantNotices: { zh: maximumCount, en: ["valid"] }
+  }).importantNotices.zh.length, 8);
+
+  const maximumBytes = "a".repeat(512);
+  assert.equal(normalizeCoinCommerceOffer({
+    ...monthlyBasicOffer(),
+    importantNotices: { zh: [maximumBytes], en: ["valid"] }
+  }).importantNotices.zh[0].length, 512);
+});
+
 test("rejects hostile important-notice arrays without leaking raw getter errors", () => {
   const rawMarker = "RAW_NOTICE_GETTER_MARKER";
   const cases = [

@@ -1,0 +1,16 @@
+[Unit]
+Description=Run the G4 control-plane Agent poll cycle on an interval
+
+# G4 contract slice — TEMPLATE, not installed.
+# AGT-POLL-2: the poll interval is deployment configuration carried
+# by this unit, not a code constant and not a configured production
+# fact. 60 seconds is the G1-30 design target; the operator sets the
+# deployed value here (OnUnitActiveSec) at the production gate.
+
+[Timer]
+OnBootSec=30
+OnUnitActiveSec=60
+Unit=gccgw-control-plane-agent.service
+
+[Install]
+WantedBy=timers.target

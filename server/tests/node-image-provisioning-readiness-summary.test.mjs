@@ -22,7 +22,8 @@ function readyInput(overrides = {}) {
     generatedAt: "2026-06-13T10:00:00.000Z",
     repoState: {
       branchSynced: true,
-      noOpenPrs: true,
+      openPrRefs: ["pr-810", "pr-812"],
+      blockingPrRefs: [],
       projectStateCheckPassed: true,
       artifactHashRecorded: true
     },
@@ -34,13 +35,17 @@ function readyInput(overrides = {}) {
       templatesParse: true,
       noSecretScanPassed: true,
       buildLogsSanitized: true,
-      imageManifestRecorded: true
+      imageManifestRecorded: true,
+      wireguardToolsPinnedInManifest: true
     },
     firstBoot: {
       nodeRefReviewed: true,
       providerInventoryCaptured: true,
       protectedMaterialOutOfImage: true,
       privateControlPlanePathReady: true,
+      wireguardPlanApproved: true,
+      wireguardTunnelAddressAssigned: true,
+      wireguardPeerPublicKeyExchangePlanned: true,
       edgeAgentInstalled: true,
       channelPlanReviewed: true
     },
@@ -107,6 +112,88 @@ test("node image readiness summary blocks activation when any receipt gate is mi
     "fresh receipt is not required",
     "subscription rendering is not confirmed receipt-gated"
   ]);
+});
+
+test("node image readiness summary blocks activation when wireguard facts are missing", () => {
+  const summary = buildNodeImageProvisioningReadinessSummary(readyInput({
+    imageBuild: {
+      noSecretBaseImage: true,
+      approvedReleaseSkeleton: true,
+      serviceUnitsDisabled: true,
+      runtimeBinariesValidated: true,
+      templatesParse: true,
+      noSecretScanPassed: true,
+      buildLogsSanitized: true,
+      imageManifestRecorded: true,
+      wireguardToolsPinnedInManifest: false
+    },
+    firstBoot: {
+      nodeRefReviewed: true,
+      providerInventoryCaptured: true,
+      protectedMaterialOutOfImage: true,
+      privateControlPlanePathReady: true,
+      wireguardPlanApproved: false,
+      wireguardTunnelAddressAssigned: false,
+      wireguardPeerPublicKeyExchangePlanned: false,
+      edgeAgentInstalled: true,
+      channelPlanReviewed: true
+    }
+  }));
+
+  assert.equal(summary.readiness.preconditionsReady, false);
+  assert.equal(summary.readiness.activationAllowed, false);
+  assert.deepEqual(summary.readiness.blockers, [
+    "wireguard tools are not pinned in the image manifest",
+    "wireguard plan is not approved",
+    "wireguard tunnel address is not assigned",
+    "wireguard peer public-key exchange is not planned"
+  ]);
+});
+
+test("node image readiness summary blocks only on scoped blocking PRs", () => {
+  const summary = buildNodeImageProvisioningReadinessSummary(readyInput({
+    repoState: {
+      branchSynced: true,
+      openPrRefs: ["pr-810", "pr-999"],
+      blockingPrRefs: ["pr-999"],
+      projectStateCheckPassed: true,
+      artifactHashRecorded: true
+    }
+  }));
+
+  assert.equal(summary.readiness.preconditionsReady, false);
+  assert.deepEqual(summary.readiness.blockers, ["scoped blocking PRs are still open"]);
+  assert.deepEqual(summary.repoState.blockingOpenPrRefs, ["pr-999"]);
+  assert.equal(summary.repoState.openPrScopeRecorded, true);
+});
+
+test("node image readiness summary blocks when open PR scope evidence is missing", () => {
+  const summary = buildNodeImageProvisioningReadinessSummary(readyInput({
+    repoState: {
+      branchSynced: true,
+      projectStateCheckPassed: true,
+      artifactHashRecorded: true
+    }
+  }));
+
+  assert.equal(summary.readiness.preconditionsReady, false);
+  assert.deepEqual(summary.readiness.blockers, ["open PR scope evidence is not recorded"]);
+  assert.equal(summary.repoState.openPrScopeRecorded, false);
+});
+
+test("node image readiness summary rejects unsafe open PR refs", () => {
+  assert.throws(
+    () => buildNodeImageProvisioningReadinessSummary(readyInput({
+      repoState: {
+        branchSynced: true,
+        openPrRefs: ["https://example.invalid/pull/1"],
+        blockingPrRefs: [],
+        projectStateCheckPassed: true,
+        artifactHashRecorded: true
+      }
+    })),
+    /safe node image provisioning readiness summary/
+  );
 });
 
 test("node image readiness summary separates activation approval from live-order smoke approval", () => {

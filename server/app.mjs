@@ -56,6 +56,7 @@ const PORTAL_SUBSCRIPTION_LINK_RESET_PATH = "/api/portal/access-requests/reset-l
 const USER_PORTAL_PUBLIC_PATHS = [
   "/api/portal/browser-session",
   "/api/portal/browser-session/logout",
+  "/api/portal/ads-consent",
   "/api/portal/human-challenges",
   "/api/portal/registration",
   "/api/portal/registration/email-verification",

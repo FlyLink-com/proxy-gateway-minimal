@@ -30,7 +30,8 @@ const ADMIN_CSS_IMPORTS = [
   "./styles/admin-os-workspace.css",
   "./styles/legacy-entrypoints.css",
   "./styles/user-portal-registration.css",
-  "./styles/responsive.css"
+  "./styles/responsive.css",
+  "./styles/ads-consent.css"
 ];
 
 const PORTAL_CSS_IMPORTS = [
@@ -44,7 +45,8 @@ const PORTAL_CSS_IMPORTS = [
   "./styles/portal-static-preserve/responsive.css",
   "./styles/portal-static-preserve/admin-os-visual-polish.css",
   "./styles/portal-static-preserve/user-portal-desktop.css",
-  "./styles/portal-static-preserve/user-portal-commerce.css"
+  "./styles/portal-static-preserve/user-portal-commerce.css",
+  "./styles/ads-consent.css"
 ];
 
 const PUBLIC_BUILD_INPUTS = [
@@ -175,8 +177,10 @@ void App;
 import page from "./features/user-portal/user-portal-page";
 import registration from "./features/user-portal/user-registration-page";
 import entry from "./features/user-portal/portal-entry";
+import consentPanel from "./features/ads-consent-preference-panel";
+import adsAttribution from "./features/ads-attribution";
 import "./portal-static-preserve.css";
-void [client, page, registration, entry];
+void [client, page, registration, entry, consentPanel, adsAttribution];
 `
   );
   writeFixtureFile(
@@ -188,8 +192,9 @@ void [client, page, registration, entry];
     rootDirectory,
     "admin/src/site-main.tsx",
     `import site from "./features/company-site/company-site-page";
+import adsAttribution from "./features/ads-attribution";
 import "./styles.css";
-void site;
+void [site, adsAttribution];
 `
   );
   writeFixtureFile(
@@ -279,7 +284,37 @@ export default panel;
   writeFixtureFile(
     rootDirectory,
     "admin/src/features/company-site/company-site-page.tsx",
-    "export default function CompanySitePage() {}\n"
+    `import consentPanel from "../ads-consent-preference-panel";
+import adsAttribution from "../ads-attribution";
+void [consentPanel, adsAttribution];
+export default function CompanySitePage() {}
+`
+  );
+  writeFixtureFile(
+    rootDirectory,
+    "admin/src/features/ads-attribution-contract.ts",
+    `export type PortalAdsClickDescriptor = {
+  type: "gclid" | "gbraid" | "wbraid";
+  value: string;
+  clickAt: number;
+  consent: { adUserData: true; adPersonalization: false };
+};
+`
+  );
+  writeFixtureFile(
+    rootDirectory,
+    "admin/src/features/ads-attribution.ts",
+    `import type { PortalAdsClickDescriptor } from "./ads-attribution-contract";
+export const adsAttributionFixture = true;
+void (null as unknown as PortalAdsClickDescriptor | null);
+`
+  );
+  writeFixtureFile(
+    rootDirectory,
+    "admin/src/features/ads-consent-preference-panel.tsx",
+    `import { adsAttributionFixture } from "./ads-attribution";
+export default adsAttributionFixture;
+`
   );
   writeFixtureFile(
     rootDirectory,

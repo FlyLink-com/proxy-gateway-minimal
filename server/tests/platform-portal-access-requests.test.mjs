@@ -12,6 +12,7 @@ import { createDataPlaneDesiredStateNotifier } from "../services/edge/data-plane
 import { createPortalAccessRequestService } from "../services/platform/portal-access-requests.mjs";
 import { COIN_COMMERCE_PRODUCTION_OFFERS } from "../services/platform/coin-commerce-production-catalog.mjs";
 import { createSqliteSubscriptionControlStore } from "../services/platform/subscription-control-db.mjs";
+import { seedAccountModelForTest } from "./helpers/account-model-seed.mjs";
 import { createSubscriptionCore } from "../services/subscriptions/core.mjs";
 import { createSubscriptionRepository } from "../services/subscriptions/repository.mjs";
 import { hashSubscriptionToken } from "../services/subscriptions/tokens.mjs";
@@ -327,14 +328,14 @@ function refreshStateMachineHarness({
 
 function withControlStore(fn) {
   const tempDir = mkdtempSync(join(tmpdir(), "portal-access-requests-"));
+  const database = new Database(join(tempDir, "control.sqlite"));
   let store;
   try {
-    store = createSqliteSubscriptionControlStore({
-      dbPath: join(tempDir, "control.sqlite")
-    });
-    return fn(store);
+    store = createSqliteSubscriptionControlStore({ database });
+    return fn(store, database);
   } finally {
     store?.close();
+    database.close();
     rmSync(tempDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 50 });
   }
 }
@@ -1191,7 +1192,7 @@ test("portal access request service auto-delivers 7-day orders when auto issuanc
 });
 
 test("commerce product fulfillment creates one stable account resource and replays across delivery refresh", () => {
-  withControlStore((store) => {
+  withControlStore((store, database) => {
     const runtimeCore = lifecycleRuntimeCore();
     const requests = createPortalAccessRequestService({
       nowFn: () => NOW,
@@ -1222,13 +1223,13 @@ test("commerce product fulfillment creates one stable account resource and repla
       createdAt: NOW,
       updatedAt: NOW
     });
-    store.createAccount({
+    seedAccountModelForTest(database, {
       id: "acct_wallet_first_commerce_fulfillment",
       ownerRef: "acct_wallet_first_commerce_fulfillment",
       status: "active",
       createdAt: NOW,
       updatedAt: NOW,
-      metadata: { commercialModel: "wallet_first_unique_v1" }
+      commercialModel: "wallet_first_unique_v1"
     });
 
     assert.equal(requests.isCommerceProductFulfillmentReady(), true);

@@ -1,8 +1,12 @@
 import { createHash } from "node:crypto";
 import { types as utilTypes } from "node:util";
 import { inspectCoinCommerceInitialConfirmationSchema } from "./coin-commerce-migrations.mjs";
-import { createCoinCommerceInitialConfirmationParticipant } from "./coin-commerce-store.mjs";
+import {
+  createCoinCommerceAdsRecoveryControls,
+  createCoinCommerceInitialConfirmationParticipant
+} from "./coin-commerce-store.mjs";
 import { COIN_COMMERCE_PRODUCTION_FULFILLMENT_OFFER_VERSIONS } from "./coin-commerce-production-catalog.mjs";
+import { coinCommerceSubscriptionFulfillmentMetadataJson } from "./control-json-contracts.mjs";
 
 // Operator-only capability. Intentionally not composed into HTTP or the coordinator.
 // Approval digests bind reviewed evidence; they are not an authentication scheme.
@@ -83,6 +87,7 @@ export function createCoinCommerceInitialConfirmation({ database, commerceStore,
       || typeof runtimeCore?.getTenant !== "function"
       || typeof runtimeCore?.listSubscriptionArtifacts !== "function") fail("invalid_input");
     const participant = createCoinCommerceInitialConfirmationParticipant({ store: commerceStore, database });
+    const adsRecovery = createCoinCommerceAdsRecoveryControls({ store: commerceStore, database });
 
     function schema() {
       if (!inspectCoinCommerceInitialConfirmationSchema({ database }).ok) fail("schema_not_ready");
@@ -228,11 +233,27 @@ export function createCoinCommerceInitialConfirmation({ database, commerceStore,
         const bound = Object.fromEntries(APPROVAL_FIELDS.map((key) => [key, approval[key]]));
         if (initialConfirmationApprovalDigest(bound) !== approval.approvalSha256) fail("approval_invalid");
         if (database.inTransaction) fail("invalid_input");
-        return database.transaction(() => {
+        let outcome;
+        try {
+          outcome = database.transaction(() => {
           schema();
           const selected = { accountId: approval.accountId, orderRef: approval.orderRef };
           const snapshot = participant.inspect(selected);
-          if (snapshot.confirmation) return committed(snapshot, approval);
+          if (snapshot.confirmation) {
+            // A committed confirmation already exists for this order.
+            // Re-run the participant's completion inside this
+            // transaction: for an already delivered order it performs
+            // its full delivered-state validation and re-queues the
+            // post-commit Ads enqueue (memory only; the participant
+            // never writes measurement data), so a recovery whose first
+            // post-commit flush failed can still fill the outbox from
+            // this replay. The flush after the transaction commits
+            // performs the write; a rollback discards the queue entry.
+            participant.complete({
+              confirmationRef: snapshot.confirmation.confirmation_ref
+            });
+            return committed(snapshot, approval);
+          }
           const now = clock();
           if (approval.expiresAt <= now) fail("approval_expired");
           if (Date.parse(approval.expiresAt) - Date.parse(now) > 86_400_000) fail("approval_invalid");
@@ -242,7 +263,7 @@ export function createCoinCommerceInitialConfirmation({ database, commerceStore,
           if (snapshot.command.updated_at > now || snapshot.order.updated_at !== snapshot.command.updated_at) fail("not_eligible");
           const effect = { id: evidence.refs.effectRef, entity_type: "coin_commerce_subscription_fulfillment",
             entity_ref: evidence.refs.entitlementRef, action: "subscription_fulfillment_applied",
-            actor_ref: "coin_commerce_fulfillment", created_at: now, metadata_json: JSON.stringify(evidence.metadata) };
+            actor_ref: "coin_commerce_fulfillment", created_at: now, metadata_json: coinCommerceSubscriptionFulfillmentMetadataJson(evidence.metadata) };
           const row = {
             confirmation_ref: `initial_confirm_${hash(approval.approvalSha256)}`,
             command_ref: snapshot.command.command_ref, order_ref: selected.orderRef, account_id: selected.accountId,
@@ -271,7 +292,22 @@ export function createCoinCommerceInitialConfirmation({ database, commerceStore,
             || canonical(after.confirmation) !== canonical(row)) fail("evidence_drift");
           committed(after, approval);
           return result(row, "confirmed");
-        }).immediate();
+          }).immediate();
+        } catch (error) {
+          // The recovery transaction failed and rolled back: discard the
+          // Ads enqueue the participant queued for this order, so it can
+          // never be flushed later against state this transaction did
+          // not commit.
+          adsRecovery.discardAdsRecoveryEnqueues([approval.orderRef]);
+          throw error;
+        }
+        // The transaction has committed. Flush this recovery's queued Ads
+        // enqueue explicitly, here and outside any transaction, instead
+        // of waiting for an unrelated later store operation. The flush
+        // re-reads the committed fulfillment state before writing and
+        // swallows its own failures (measurement only).
+        adsRecovery.flushAdsRecoveryEnqueues([approval.orderRef]);
+        return outcome;
       });
     }
     return Object.freeze({ prepare, execute });

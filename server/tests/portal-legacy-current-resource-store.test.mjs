@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import test from "node:test";
+import Database from "better-sqlite3";
 import { createSqliteSubscriptionControlStore } from "../services/platform/subscription-control-db.mjs";
+import { seedAccountModelForTest } from "./helpers/account-model-seed.mjs";
 
 const NOW = "2026-09-20T12:00:00.000Z";
 const FROM = "2026-09-01T12:00:00.000Z";
@@ -9,8 +11,24 @@ const UNTIL = "2026-10-01T12:00:00.000Z";
 const GB = 1024 ** 3;
 
 function fixture({ secondBinding = false, samples = true, subscriptionUrl = null, commercialModel, trafficLimitBytes = 50 * GB, validFrom = FROM, validUntil = UNTIL, requestEntitlementRef = "ent_legacy", requestPortalUserRef = "acct_legacy", requestTenantId = "tenant_legacy", requestArtifactId = "artifact_legacy" } = {}) {
-  const store = createSqliteSubscriptionControlStore({ dbPath: ":memory:" });
-  store.createAccount({ id: "acct_legacy", ownerRef: "owner_legacy", metadata: commercialModel ? { commercialModel } : undefined, createdAt: FROM, updatedAt: FROM });
+  const database = new Database(":memory:");
+  const store = createSqliteSubscriptionControlStore({ database });
+  if (commercialModel) {
+    seedAccountModelForTest(database, {
+      id: "acct_legacy",
+      ownerRef: "owner_legacy",
+      createdAt: FROM,
+      updatedAt: FROM,
+      commercialModel
+    });
+  } else {
+    store.createAccount({
+      id: "acct_legacy",
+      ownerRef: "owner_legacy",
+      createdAt: FROM,
+      updatedAt: FROM
+    });
+  }
   store.createEntitlement({ id: "ent_legacy", accountId: "acct_legacy", plan: "monthly", validFrom, validUntil, trafficLimitBytes, createdAt: FROM, updatedAt: FROM });
   store.createIssuanceRequest({ id: "req_legacy", accountId: "acct_legacy", entitlementId: "ent_legacy", approvalRef: "approval_legacy", status: "issued", nodeId: "node_legacy", purpose: "subscription", requestedByRef: "owner_legacy", createdAt: FROM, updatedAt: FROM });
   store.linkIssuedSubscription({ id: "link_legacy", requestId: "req_legacy", tenantRef: `tenantref_${createHash("sha256").update("tenant_legacy").digest("hex").slice(0, 16)}`, artifactRef: `artifactref_${createHash("sha256").update("artifact_legacy").digest("hex").slice(0, 16)}`, createdAt: FROM, updatedAt: FROM });
@@ -20,7 +38,13 @@ function fixture({ secondBinding = false, samples = true, subscriptionUrl = null
     store.linkIssuedSubscription({ id: "link_legacy_2", requestId: "req_legacy_2", tenantRef: "tenantref_2", artifactRef: "artifactref_2", createdAt: FROM, updatedAt: FROM });
   }
   if (samples) store.recordUsageSample({ id: "sample_legacy", sourceRef: "source_legacy", channelRef: "channel_legacy", edgeCredentialRef: "edgecred_req_legacy", accountId: "acct_legacy", entitlementId: "ent_legacy", requestId: "req_legacy", observedAt: "2026-09-20T11:59:00.000Z", intervalStartedAt: "2026-09-20T11:58:00.000Z", intervalEndedAt: "2026-09-20T11:59:00.000Z", uploadBytes: 100, downloadBytes: 900, totalBytes: 1000, sampleDigest: "digest_legacy", createdAt: "2026-09-20T11:59:00.000Z" });
-  return store;
+  return {
+    ...store,
+    close() {
+      store.close();
+      database.close();
+    }
+  };
 }
 
 test("legacy reader returns a read-only current bound resource and usage", () => {

@@ -30,6 +30,20 @@ Run the focused `node --test server/tests/<name>.test.mjs` command for the
 changed boundary, then `npm test` and
 `git diff --check origin/master...HEAD`.
 
+## C1 identity import rehearsal
+
+The Auth0 candidate has a local synthetic-only converter rehearsal. It does not
+read account data, decrypt TOTP keys, call a provider, or write an import file.
+Run:
+
+- npm run --silent platform:identity-import:rehearsal — emits only the redacted synthetic receipt JSON.
+- npm run test:portal-identity-import — runs the focused parser/converter tests.
+
+The source/test contract is documented in
+the C1 identity provider evaluation (../docs/D1_T2_C1_IDENTITY_PROVIDER_EVALUATION_V1.md).
+This local rehearsal is not provider acceptance or authorization to migrate
+real accounts.
+
 ## Admin login
 
 For the default-private boundary and explicitly approved public cookie-auth
@@ -112,9 +126,6 @@ safe integer range fails the whole read.
 index for the qualifying pass and searches it again by `payment_order_ref` and
 `accepted_at` to choose the first receipt. `verification_result`,
 `canonical_state`, and `charge_certainty` are residual filters, not index keys.
-A later migration could add a partial index limited to confirmed receipts;
-every receipt insert would maintain it. This change does not add that index
-or any payment DDL.
 
 ## Subscription website metadata
 

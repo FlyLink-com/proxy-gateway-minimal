@@ -436,6 +436,27 @@ function createInitialFulfillmentFixture({ nowFn, beforeApply } = {}) {
   };
 }
 
+function insertRawAudit(fixture, record) {
+  const database = new Database(fixture.controlDbPath);
+  try {
+    database.prepare(`
+      insert into platform_audit_events (
+        id, entity_type, entity_ref, action, actor_ref, created_at, metadata_json
+      ) values (?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      record.id,
+      record.entityType,
+      record.entityRef,
+      record.action,
+      record.actorRef,
+      record.createdAt,
+      JSON.stringify(record.metadata)
+    );
+  } finally {
+    database.close();
+  }
+}
+
 test("repeated subscription link resets preserve renewal eligibility and fulfillment recovery", () => {
   const fixture = createFixture();
   try {
@@ -1647,7 +1668,7 @@ test("fulfillment audit history does not control the account storefront", () => 
 
     assert.equal(storefrontEligibility(), true);
     assert.equal(purchaseEligibility(), false);
-    fixture.controlStore.recordAuditEvent({
+    insertRawAudit(fixture, {
       id: "effect_coin_commerce_malformed_future",
       entityType: "coin_commerce_subscription_fulfillment",
       entityRef: fixture.entitlementRef,
@@ -1666,7 +1687,7 @@ test("fulfillment audit history does not control the account storefront", () => 
 test("fresh fulfillment rejects malformed pre-existing Commerce history without mutation", () => {
   const fixture = createFixture();
   try {
-    fixture.controlStore.recordAuditEvent({
+    insertRawAudit(fixture, {
       id: "effect_coin_commerce_malformed_history",
       entityType: "coin_commerce_subscription_fulfillment",
       entityRef: fixture.entitlementRef,
@@ -2751,7 +2772,7 @@ test("a mismatched deterministic effect cannot bypass the active product switch 
   });
   try {
     const commandRef = "coincmd_fulfillment_mismatched_effect";
-    fixture.controlStore.recordAuditEvent({
+    insertRawAudit(fixture, {
       id: fulfillmentEffectRef(commandRef),
       entityType: "unrelated_control_event",
       entityRef: fixture.entitlementRef,
@@ -2885,7 +2906,7 @@ test("fulfillment replay fails closed on a branched, broken, or forged effect ch
     try {
       const { service, firstInput } = createTwoEffects(fixture);
       const commandRef = "coincmd_fulfillment_chain_forged";
-      fixture.controlStore.recordAuditEvent({
+      insertRawAudit(fixture, {
         id: "effect_coin_commerce_not_derived_from_command",
         entityType: "coin_commerce_subscription_fulfillment",
         entityRef: fixture.entitlementRef,
@@ -2911,7 +2932,7 @@ test("fulfillment replay fails closed on a branched, broken, or forged effect ch
       const laterAudit = fixture.controlStore.getAuditEvent(later.effectRef);
       const commandRef = "coincmd_fulfillment_chain_zero_length";
       const targetValidUntil = "2026-11-30T00:00:00.000Z";
-      fixture.controlStore.recordAuditEvent({
+      insertRawAudit(fixture, {
         id: fulfillmentEffectRef(commandRef),
         entityType: "coin_commerce_subscription_fulfillment",
         entityRef: fixture.entitlementRef,

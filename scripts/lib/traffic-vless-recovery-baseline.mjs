@@ -11,9 +11,12 @@ const CHANNELS = new Set(["channel-vultr-a-vless-reality-tcp", "channel-sgp-a-vl
 const FULL_METERING_SOURCES = Object.freeze({
   "channel-vultr-a-vless-reality-tcp": "full_metering_xray_cumulative_v1",
   "channel-sgp-a-vless-reality-tcp": "full_metering_xray_cumulative_v1",
+  "channel-vultr-jp-01-vless-reality-tcp": "full_metering_xray_cumulative_v1",
   "channel-vultr-a-hy2": "full_metering_hy2_cumulative_v1",
   "channel-sgp-a-hy2": "full_metering_hy2_cumulative_v1",
-  "channel-vultr-a-tuic": "full_metering_tuic_connections_v1"
+  "channel-vultr-jp-01-hy2": "full_metering_hy2_cumulative_v1",
+  "channel-vultr-a-tuic": "full_metering_tuic_connections_v1",
+  "channel-vultr-jp-01-tuic": "full_metering_tuic_connections_v1"
 });
 const MAX_AGE_MS = 300000;
 const MAX_CURSOR_AGE_MS = 900000;

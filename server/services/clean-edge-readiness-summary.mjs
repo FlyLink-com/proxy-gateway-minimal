@@ -1,3 +1,9 @@
+import {
+  openPrScopeBlockers,
+  openPrScopeOutput,
+  parseOpenPrScope
+} from "./readiness-open-pr-scope.mjs";
+
 const ALLOWED_TOP_LEVEL_KEYS = new Set([
   "generatedAt",
   "repoState",
@@ -10,7 +16,8 @@ const ALLOWED_TOP_LEVEL_KEYS = new Set([
 ]);
 const ALLOWED_REPO_STATE_KEYS = new Set([
   "branchSynced",
-  "noOpenPrs",
+  "openPrRefs",
+  "blockingPrRefs",
   "projectStateCheckPassed"
 ]);
 const ALLOWED_SUBSCRIPTION_BOUNDARY_KEYS = new Set([
@@ -79,6 +86,7 @@ function safeBooleanGroup(value, allowedKeys, outputKeys) {
 
 function buildBlockers({
   repoState,
+  openPrScope,
   subscriptionBoundary,
   edgeDns,
   stoppedNodes,
@@ -86,7 +94,7 @@ function buildBlockers({
 }) {
   const blockers = [];
   if (!repoState.branchSynced) blockers.push("repository branch is not synced");
-  if (!repoState.noOpenPrs) blockers.push("open PR queue is not empty");
+  blockers.push(...openPrScopeBlockers(openPrScope));
   if (!repoState.projectStateCheckPassed) blockers.push("project-state check has not passed");
   if (!subscriptionBoundary.subOnAliyun) {
     blockers.push("subscription boundary is not confirmed on Aliyun");
@@ -122,9 +130,9 @@ export function buildCleanEdgeReadinessSummary(input = {}) {
 
   const repoState = safeBooleanGroup(input.repoState, ALLOWED_REPO_STATE_KEYS, [
     "branchSynced",
-    "noOpenPrs",
     "projectStateCheckPassed"
   ]);
+  const openPrScope = parseOpenPrScope(input.repoState, safeSummaryError);
   const subscriptionBoundary = safeBooleanGroup(
     input.subscriptionBoundary,
     ALLOWED_SUBSCRIPTION_BOUNDARY_KEYS,
@@ -148,6 +156,7 @@ export function buildCleanEdgeReadinessSummary(input = {}) {
   ]);
   const blockers = buildBlockers({
     repoState,
+    openPrScope,
     subscriptionBoundary,
     edgeDns,
     stoppedNodes,
@@ -165,7 +174,10 @@ export function buildCleanEdgeReadinessSummary(input = {}) {
       executionAllowed: preconditionsReady && approval.exactApprovalReceived,
       blockers
     },
-    repoState,
+    repoState: {
+      ...repoState,
+      ...openPrScopeOutput(openPrScope)
+    },
     subscriptionBoundary,
     edgeDns,
     stoppedNodes,
