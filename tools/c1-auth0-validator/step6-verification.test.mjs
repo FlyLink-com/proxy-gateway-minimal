@@ -35,13 +35,13 @@ test("S0: TOTP implementation matches the RFC 6238 known-answer vector", () => {
   assert.equal(totpAt("GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ", 59000), "287082");
 });
 
-test("S1: import pipeline applies the gate per account (import / reset / no-proof hold / R1 decision hold)", () => {
+test("S1: import pipeline applies the gate per account (import / reset / no-proof hold / R1 implementation-proof hold)", () => {
   const byRef = Object.fromEntries(importReport.map((r) => [r.accountRef, r]));
   assert.equal(byRef.alice.action, "imported");
   assert.equal(byRef.bob.action, "reset_required");
   assert.equal(byRef.carol.action, "held_no_attestation");
-  assert.equal(byRef.dave.action, "held_r1_decision");
-  assert.deepEqual(byRef.dave.advisories, ["edge_whitespace_r1_decision_required"]);
+  assert.equal(byRef.dave.action, "held_r1_implementation_proof");
+  assert.deepEqual(byRef.dave.advisories, ["edge_whitespace_client_compatibility_proof_required"]);
   assert.equal(portal.inspectUser("alice@synthetic.test").storedForm, "custom_password_hash:scrypt");
   assert.equal(portal.inspectUser("bob@synthetic.test").credentialKind, null, "no credential was imported for bob");
   assert.equal(portal.inspectUser("carol@synthetic.test"), undefined, "held accounts are not imported at all");
@@ -140,8 +140,12 @@ test("S8: token integrity — a re-encoded payload with the original signature i
 });
 
 test("S9: session revocation is scoped to the issuing tenant", () => {
-  const { context } = portal.login("alice@synthetic.test", ALICE_PW);
+  const { context, token } = portal.login("alice@synthetic.test", ALICE_PW);
+  assert.equal(portal.verifyToken(token, NOW).sid, context.sessionRef,
+    "the token is valid before its session is revoked");
   portal.revokeSession(context.sessionRef);
   assert.equal(portal.isSessionRevoked(context.sessionRef), true);
   assert.equal(admin.isSessionRevoked(context.sessionRef), false);
+  assert.throws(() => portal.verifyToken(token, NOW), /token_revoked/,
+    "the issuing tenant verifier must reject a token after its session is revoked");
 });

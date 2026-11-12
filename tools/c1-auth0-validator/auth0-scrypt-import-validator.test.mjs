@@ -49,6 +49,32 @@ test("Auth0 Scrypt shape gate requires salt, UTF-8 password encoding, and exact 
   const nestedExtra = structuredClone(valid);
   nestedExtra.hash.unreviewed = true;
   assert.throws(() => validateAuth0ScryptObject(nestedExtra), /auth0_object_hash_invalid/);
+
+  const wrongKeylen = structuredClone(valid);
+  wrongKeylen.keylen = 32;
+  assert.throws(() => validateAuth0ScryptObject(wrongKeylen), /auth0_object_keylen_invalid/);
+  const wrongCost = structuredClone(valid);
+  wrongCost.cost = 16384;
+  assert.throws(() => validateAuth0ScryptObject(wrongCost), /auth0_object_cost_invalid/);
+  const wrongBlockSize = structuredClone(valid);
+  wrongBlockSize.blockSize = 16;
+  assert.throws(() => validateAuth0ScryptObject(wrongBlockSize), /auth0_object_block_size_invalid/);
+  const wrongParallelization = structuredClone(valid);
+  wrongParallelization.parallelization = 2;
+  assert.throws(() => validateAuth0ScryptObject(wrongParallelization), /auth0_object_parallelization_invalid/);
+
+  const shortHash = structuredClone(valid);
+  shortHash.hash.value = Buffer.alloc(32, 1).toString("base64");
+  assert.throws(() => validateAuth0ScryptObject(shortHash), /auth0_object_material_invalid/);
+  const shortSalt = structuredClone(valid);
+  shortSalt.salt.value = Buffer.alloc(8, 1).toString("base64");
+  assert.throws(() => validateAuth0ScryptObject(shortSalt), /auth0_object_material_invalid/);
+  const utf8Hash = structuredClone(valid);
+  utf8Hash.hash.encoding = "utf8";
+  assert.throws(() => validateAuth0ScryptObject(utf8Hash), /auth0_object_material_invalid/);
+  const hexSalt = structuredClone(valid);
+  hexSalt.salt.encoding = "hex";
+  assert.throws(() => validateAuth0ScryptObject(hexSalt), /auth0_object_material_invalid/);
 });
 
 test("known-answer: validator scrypt matches Python hashlib.scrypt byte-for-byte", () => {

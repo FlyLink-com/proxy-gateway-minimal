@@ -44,9 +44,9 @@ Therefore:
 
 ## 4. Meaning of the edge-whitespace attestation
 
-The four-field observation remains limited to `accountRef`, `bucket`, `edgeWhitespace`, and `observedAtMs`. It must never contain a password, password hash, exact byte length, or password fragment.
+The four-field attestation record remains limited to `accountRef`, `bucket`, `edgeWhitespace`, and `attestedAtMs`. It must never contain a password, password hash, exact byte length, or password fragment.
 
-`edgeWhitespace=true` is a compatibility marker; it does **not** by itself mean that the account must be reset. The account may use the imported verifier only through a first-party path whose trim-only behavior has been proven. Until that proof is complete, the synthetic validator's fail-closed hold is an **implementation-proof hold**, not a pending owner policy decision. An unproven hosted path follows the notified-reset fallback above.
+`edgeWhitespace=true` is a compatibility marker; it does **not** by itself mean that the account must be reset. The account may use the imported verifier only through a first-party path whose trim-only behavior has been proven. Until that proof is complete, the synthetic validator returns `r1_implementation_proof_hold` with advisory `edge_whitespace_client_compatibility_proof_required`. This is an **implementation-proof hold**, not a pending owner policy decision. An unproven hosted path follows the notified-reset fallback above.
 
 ## 5. Separate >72 UTF-8-byte rule
 

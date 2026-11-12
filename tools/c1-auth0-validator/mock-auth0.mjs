@@ -120,6 +120,8 @@ export function createMockTenant({ tenantRef, issuerRef, nowFn = () => Date.now(
       const ok = verify(null, Buffer.from(parts[0] + "." + parts[1]), key, Buffer.from(parts[2], "base64url"));
       if (!ok) throw fail("token_signature_invalid");
       if (payload.exp <= Math.floor(nowMs / 1000)) throw fail("token_expired");
+      if (typeof payload.sid !== "string" || payload.sid.length === 0) throw fail("token_session_invalid");
+      if (revocations.isRevoked({ issuerRef, sessionRef: payload.sid })) throw fail("token_revoked");
       return payload;
     },
 
@@ -141,10 +143,10 @@ export function createMockTenant({ tenantRef, issuerRef, nowFn = () => Date.now(
       const report = [];
       for (const account of accounts) {
         const classification = classifyAttestationRecord(account.attestation ?? undefined);
-        if (classification.eligibility === "r1_decision_hold") {
+        if (classification.eligibility === "r1_implementation_proof_hold") {
           report.push({
             accountRef: account.accountRef,
-            action: "held_r1_decision",
+            action: "held_r1_implementation_proof",
             advisories: [...classification.advisories]
           });
           continue;

@@ -106,11 +106,11 @@ export function classifyAttestationRecord(record) {
     return Object.freeze({ eligibility: "targeted_reset", advisories: Object.freeze([]) });
   }
   if (record.edgeWhitespace) {
-    // R1 normalization has not been approved. Hold this cohort instead of
-    // silently changing the old trim-before-hash login semantics.
+    // R1 trim-only policy is approved. Keep this cohort fail-closed until
+    // Browser/Android/Admin prove that normalization happens before Auth0.
     return Object.freeze({
-      eligibility: "r1_decision_hold",
-      advisories: Object.freeze(["edge_whitespace_r1_decision_required"])
+      eligibility: "r1_implementation_proof_hold",
+      advisories: Object.freeze(["edge_whitespace_client_compatibility_proof_required"])
     });
   }
   return Object.freeze({ eligibility: "importable", advisories: Object.freeze([]) });
