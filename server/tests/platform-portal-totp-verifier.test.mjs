@@ -23,6 +23,25 @@ test("portal TOTP verifier accepts enc-prefixed base32 secrets and adjacent time
   }), true);
 });
 
+test("portal TOTP verifier accepts the previous and next window and rejects codes two windows away", () => {
+  // Regression coverage for R5: the window codes below are pinned to the
+  // synthetic secret JBSWY3DPEHPK3PXP at 2026-06-06T00:00:00.000Z, whose
+  // current counter is 59356800. The pre-existing "adjacent" assertion used
+  // the next-window code (186022) only; the previous window was uncovered.
+  const verifier = createPortalTotpVerifier({
+    nowFn: () => "2026-06-06T00:00:00.000Z"
+  });
+  const secret = "enc:JBSWY3DPEHPK3PXP";
+
+  // Previous window (counter 59356799) and next window (counter 59356801).
+  assert.equal(verifier({ encryptedTotpSecret: secret, code: "484107" }), true);
+  assert.equal(verifier({ encryptedTotpSecret: secret, code: "186022" }), true);
+  // Two windows away in either direction (counters 59356798 / 59356802)
+  // falls outside the default window of 1 and must be rejected.
+  assert.equal(verifier({ encryptedTotpSecret: secret, code: "006438" }), false);
+  assert.equal(verifier({ encryptedTotpSecret: secret, code: "566299" }), false);
+});
+
 test("portal TOTP verifier fails closed for invalid formats and wrong codes", () => {
   const verifier = createPortalTotpVerifier({
     nowFn: () => "2026-06-06T00:00:00.000Z"

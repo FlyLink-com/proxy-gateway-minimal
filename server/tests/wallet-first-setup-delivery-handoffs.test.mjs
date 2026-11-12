@@ -5,6 +5,7 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import test from "node:test";
+import { seedAccountModelForTest } from "./helpers/account-model-seed.mjs";
 import { fileURLToPath } from "node:url";
 
 import Database from "better-sqlite3";
@@ -164,13 +165,13 @@ function createFixture({ migrateHandoffs = true, setupDeliveryRuntimeEscrow = nu
     idFactory: () => "tenant_setup_handoff_001",
     artifactIdFactory: () => "artifact_setup_handoff_001"
   });
-  controlStore.createAccount({
+  seedAccountModelForTest(controlDatabase, {
     id: "acct_setup_handoff",
     ownerRef: "owner_setup_handoff",
     status: "active",
     createdAt: now,
     updatedAt: now,
-    metadata: { commercialModel: "wallet_first_unique_v1" }
+    commercialModel: "wallet_first_unique_v1"
   });
   const adapters = createWalletFirstResourceEffectAdapters({
     controlStore,
