@@ -12,6 +12,7 @@ on:
 
 permissions:
   contents: read
+  pull-requests: read
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
@@ -224,6 +225,22 @@ jobs:
     name: Foundation inventory
     if: github.event_name == 'pull_request' && github.event.pull_request.draft == false
     uses: ./.github/workflows/control-plane-foundation-toolchain-inventory.yml
+
+  pr-domain-validation:
+    name: PR domain validation (C1 + DDD)
+    if: github.event_name == 'pull_request' && github.event.pull_request.base.ref == 'master' && github.event.pull_request.head.ref == 'ci/pr-domain-validation-20261112'
+    uses: ./.github/workflows/pr-domain-validation.yml
+    with:
+      c1_pr_number: 844
+      c1_head_ref: feat/c1-auth0-validator-20261108
+      c1_base_ref: fix/t2-c1-c2-t1-reenroll-only-20261108
+      c1_base_sha: 4be493a06a55d245bd2d89a1019f62922ab251bb
+      c1_head_sha: 9f76c3b986741111c5c16fde23a16ab13614f465
+      docs_pr_number: 856
+      docs_head_ref: docs/ddd-context-map-20261111
+      docs_base_ref: master
+      docs_base_sha: 84b81ab0024a64607c9ca4ca2f05dd5c4529b5a0
+      docs_head_sha: 99b348dc4dd67daec9492212ab7a0399c06daa7f
 
   checks-passed:
     name: Prerequisite checks

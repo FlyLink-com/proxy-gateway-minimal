@@ -1,0 +1,373 @@
+name: PR Domain Validation
+
+run-name: PR Domain Validation · C1 #${{ inputs.c1_pr_number }} / DDD #${{ inputs.docs_pr_number }}
+
+on:
+  workflow_call:
+    inputs:
+      c1_pr_number:
+        description: C1 Auth0 validator PR number
+        required: true
+        type: number
+      c1_head_ref:
+        description: Expected C1 head branch
+        required: true
+        type: string
+      c1_base_ref:
+        description: Expected C1 base branch
+        required: true
+        type: string
+      c1_base_sha:
+        description: Exact C1 base commit SHA
+        required: true
+        type: string
+      c1_head_sha:
+        description: Exact C1 head commit SHA
+        required: true
+        type: string
+      docs_pr_number:
+        description: DDD documentation PR number
+        required: true
+        type: number
+      docs_head_ref:
+        description: Expected documentation head branch
+        required: true
+        type: string
+      docs_base_ref:
+        description: Expected documentation base branch
+        required: true
+        type: string
+      docs_base_sha:
+        description: Exact documentation base commit SHA
+        required: true
+        type: string
+      docs_head_sha:
+        description: Exact documentation head commit SHA
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      c1_pr_number:
+        description: C1 Auth0 validator PR number
+        required: true
+        type: number
+        default: 844
+      c1_head_ref:
+        description: Expected C1 head branch
+        required: true
+        type: string
+        default: feat/c1-auth0-validator-20261108
+      c1_base_ref:
+        description: Expected C1 base branch
+        required: true
+        type: string
+        default: fix/t2-c1-c2-t1-reenroll-only-20261108
+      c1_base_sha:
+        description: Exact C1 base commit SHA
+        required: true
+        type: string
+        default: 4be493a06a55d245bd2d89a1019f62922ab251bb
+      c1_head_sha:
+        description: Exact C1 head commit SHA
+        required: true
+        type: string
+        default: 9f76c3b986741111c5c16fde23a16ab13614f465
+      docs_pr_number:
+        description: DDD documentation PR number
+        required: true
+        type: number
+        default: 856
+      docs_head_ref:
+        description: Expected documentation head branch
+        required: true
+        type: string
+        default: docs/ddd-context-map-20261111
+      docs_base_ref:
+        description: Expected documentation base branch
+        required: true
+        type: string
+        default: master
+      docs_base_sha:
+        description: Exact documentation base commit SHA
+        required: true
+        type: string
+        default: 84b81ab0024a64607c9ca4ca2f05dd5c4529b5a0
+      docs_head_sha:
+        description: Exact documentation head commit SHA
+        required: true
+        type: string
+        default: 99b348dc4dd67daec9492212ab7a0399c06daa7f
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: pr-domain-validation-${{ inputs.c1_head_sha }}-${{ inputs.docs_head_sha }}
+  cancel-in-progress: false
+
+jobs:
+  c1-auth0:
+    name: C1 Auth0 synthetic validator · exact SHA
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Verify PR #844 remains the expected open Draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ inputs.c1_pr_number }}
+          EXPECTED_HEAD_REF: ${{ inputs.c1_head_ref }}
+          EXPECTED_BASE_REF: ${{ inputs.c1_base_ref }}
+          EXPECTED_HEAD_SHA: ${{ inputs.c1_head_sha }}
+          EXPECTED_BASE_SHA: ${{ inputs.c1_base_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$PR_NUMBER" =~ ^[0-9]+$ ]]
+          [[ "$EXPECTED_HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$EXPECTED_BASE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          payload="$(curl --fail --silent --show-error \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER")"
+          jq -e \
+            --arg repo "$GITHUB_REPOSITORY" \
+            --arg head_ref "$EXPECTED_HEAD_REF" \
+            --arg base_ref "$EXPECTED_BASE_REF" \
+            --arg head_sha "$EXPECTED_HEAD_SHA" \
+            --arg base_sha "$EXPECTED_BASE_SHA" \
+            '.state == "open"
+             and .draft == true
+             and .merged_at == null
+             and .head.repo.full_name == $repo
+             and .head.ref == $head_ref
+             and .head.sha == $head_sha
+             and .base.ref == $base_ref
+             and .base.sha == $base_sha
+             and .base.repo.full_name == $repo' \
+            <<< "$payload" >/dev/null
+          echo "Verified PR #$PR_NUMBER: $EXPECTED_BASE_SHA...$EXPECTED_HEAD_SHA"
+
+      - name: Checkout exact C1 head
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          repository: ${{ github.repository }}
+          ref: ${{ inputs.c1_head_sha }}
+          path: c1-target
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Setup Node 22.23.1
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 22.23.1
+
+      - name: Setup Python 3.9.25
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: 3.9.25
+
+      - name: Install pinned bcrypt test dependency
+        working-directory: c1-target
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/pr-domain-validation/c1"
+          python -m pip install \
+            --disable-pip-version-check \
+            --no-warn-script-location \
+            --only-binary=:all: \
+            --target tools/c1-auth0-validator/vendor \
+            "bcrypt==5.0.0" \
+            2>&1 | tee "$RUNNER_TEMP/pr-domain-validation/c1/pip-install.log"
+          test "$(PYTHONPATH=tools/c1-auth0-validator/vendor python -c 'import bcrypt; print(bcrypt.__version__)')" = "5.0.0"
+
+      - name: Run all C1 syntax checks and the complete synthetic suite
+        working-directory: c1-target
+        env:
+          EXPECTED_HEAD_SHA: ${{ inputs.c1_head_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/pr-domain-validation/c1"
+          mkdir -p "$out"
+          test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD_SHA"
+          test "$(node --version)" = "v22.23.1"
+          test "$(python --version)" = "Python 3.9.25"
+          test "$(PYTHONPATH=tools/c1-auth0-validator/vendor python -c 'import bcrypt; print(bcrypt.__version__)')" = "5.0.0"
+
+          mapfile -d '' source_files < <(find tools/c1-auth0-validator -maxdepth 1 -type f -name '*.mjs' -print0 | sort -z)
+          test "${#source_files[@]}" -eq 9
+          : > "$out/node-check.log"
+          for file in "${source_files[@]}"; do
+            node --check "$file"
+            printf 'PASS\t%s\t%s\n' "$file" "$(git rev-parse "HEAD:$file")" >> "$out/node-check.log"
+          done
+
+          node --test --test-reporter=tap tools/c1-auth0-validator/*.test.mjs 2>&1 | tee "$out/c1-auth0.tap"
+          grep -Fxq '# tests 40' "$out/c1-auth0.tap"
+          grep -Fxq '# pass 40' "$out/c1-auth0.tap"
+          grep -Fxq '# fail 0' "$out/c1-auth0.tap"
+          grep -Fxq '# skipped 0' "$out/c1-auth0.tap"
+
+          tap_sha="$(sha256sum "$out/c1-auth0.tap" | awk '{print $1}')"
+          node_sha="$(sha256sum "$out/node-check.log" | awk '{print $1}')"
+          pip_sha="$(sha256sum "$out/pip-install.log" | awk '{print $1}')"
+          {
+            echo "PR: #${{ inputs.c1_pr_number }}"
+            echo "Base: $EXPECTED_BASE_SHA"
+            echo "Head: $EXPECTED_HEAD_SHA"
+            echo "Node: $(node --version)"
+            echo "Python: $(python --version)"
+            echo "bcrypt: $(PYTHONPATH=tools/c1-auth0-validator/vendor python -c 'import bcrypt; print(bcrypt.__version__)')"
+            echo "Syntax files: ${#source_files[@]} / 9"
+            echo "TAP SHA-256: $tap_sha"
+            echo "Node-check manifest SHA-256: $node_sha"
+            echo "pip install log SHA-256: $pip_sha"
+            cat "$out/node-check.log"
+          } > "$out/manifest.txt"
+
+          {
+            echo "### C1 Auth0 synthetic validation"
+            echo "- Exact PR: #${{ inputs.c1_pr_number }}"
+            echo "- Base: `$EXPECTED_BASE_SHA`"
+            echo "- Head: `$EXPECTED_HEAD_SHA`"
+            echo "- Runtime: Node $(node --version), Python $(python --version), bcrypt $(PYTHONPATH=tools/c1-auth0-validator/vendor python -c 'import bcrypt; print(bcrypt.__version__)')"
+            echo "- Syntax: ${#source_files[@]}/9 PASS"
+            echo "- Suite: 40/40 PASS, 0 failed, 0 skipped"
+            echo "- TAP SHA-256: `$tap_sha`"
+            echo "- Node-check manifest SHA-256: `$node_sha`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload C1 validation evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: c1-auth0-validation-${{ inputs.c1_head_sha }}
+          path: ${{ runner.temp }}/pr-domain-validation/c1/
+          if-no-files-found: warn
+          retention-days: 14
+
+  ddd-documents:
+    name: DDD document authority · exact SHA
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Verify PR #856 remains the expected open Draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ inputs.docs_pr_number }}
+          EXPECTED_HEAD_REF: ${{ inputs.docs_head_ref }}
+          EXPECTED_BASE_REF: ${{ inputs.docs_base_ref }}
+          EXPECTED_HEAD_SHA: ${{ inputs.docs_head_sha }}
+          EXPECTED_BASE_SHA: ${{ inputs.docs_base_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$PR_NUMBER" =~ ^[0-9]+$ ]]
+          [[ "$EXPECTED_HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$EXPECTED_BASE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          payload="$(curl --fail --silent --show-error \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER")"
+          jq -e \
+            --arg repo "$GITHUB_REPOSITORY" \
+            --arg head_ref "$EXPECTED_HEAD_REF" \
+            --arg base_ref "$EXPECTED_BASE_REF" \
+            --arg head_sha "$EXPECTED_HEAD_SHA" \
+            --arg base_sha "$EXPECTED_BASE_SHA" \
+            '.state == "open"
+             and .draft == true
+             and .merged_at == null
+             and .head.repo.full_name == $repo
+             and .head.ref == $head_ref
+             and .head.sha == $head_sha
+             and .base.ref == $base_ref
+             and .base.sha == $base_sha
+             and .base.repo.full_name == $repo' \
+            <<< "$payload" >/dev/null
+          echo "Verified PR #$PR_NUMBER: $EXPECTED_BASE_SHA...$EXPECTED_HEAD_SHA"
+
+      - name: Checkout exact documentation head
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          repository: ${{ github.repository }}
+          ref: ${{ inputs.docs_head_sha }}
+          path: docs-target
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Setup Node 22.23.1
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 22.23.1
+
+      - name: Run full document authority and exact PR diff checks
+        working-directory: docs-target
+        env:
+          EXPECTED_HEAD_SHA: ${{ inputs.docs_head_sha }}
+          EXPECTED_BASE_SHA: ${{ inputs.docs_base_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/pr-domain-validation/docs"
+          mkdir -p "$out"
+          test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD_SHA"
+          git cat-file -e "$EXPECTED_BASE_SHA^{commit}"
+          git merge-base --is-ancestor "$EXPECTED_BASE_SHA" "$EXPECTED_HEAD_SHA"
+          test "$(node --version)" = "v22.23.1"
+
+          set +e
+          npm run docs:authority:check 2>&1 | tee "$out/docs-authority-check.log"
+          check_status=${PIPESTATUS[0]}
+          npm run docs:authority:strict 2>&1 | tee "$out/docs-authority-strict.log"
+          strict_status=${PIPESTATUS[0]}
+          git diff --check "$EXPECTED_BASE_SHA...$EXPECTED_HEAD_SHA" > "$out/git-diff-check.log" 2>&1
+          diff_status=$?
+          set -e
+
+          check_sha="$(sha256sum "$out/docs-authority-check.log" | awk '{print $1}')"
+          strict_sha="$(sha256sum "$out/docs-authority-strict.log" | awk '{print $1}')"
+          diff_sha="$(sha256sum "$out/git-diff-check.log" | awk '{print $1}')"
+          checker_blob="$(git rev-parse "HEAD:scripts/check-document-authority.mjs")"
+          {
+            echo "PR: #${{ inputs.docs_pr_number }}"
+            echo "Base: $EXPECTED_BASE_SHA"
+            echo "Head: $EXPECTED_HEAD_SHA"
+            echo "Node: $(node --version)"
+            echo "Authority checker blob: $checker_blob"
+            echo "docs:authority:check exit: $check_status"
+            echo "docs:authority:strict exit: $strict_status"
+            echo "git diff --check exit: $diff_status"
+            echo "docs:authority:check log SHA-256: $check_sha"
+            echo "docs:authority:strict log SHA-256: $strict_sha"
+            echo "git diff --check log SHA-256: $diff_sha"
+          } > "$out/manifest.txt"
+
+          {
+            echo "### DDD document authority validation"
+            echo "- Exact PR: #${{ inputs.docs_pr_number }}"
+            echo "- Base: `$EXPECTED_BASE_SHA`"
+            echo "- Head: `$EXPECTED_HEAD_SHA`"
+            echo "- Node: $(node --version)"
+            echo "- Authority checker blob: `$checker_blob`"
+            echo "- docs:authority:check: exit $check_status; log SHA-256 `$check_sha`"
+            echo "- docs:authority:strict: exit $strict_status; log SHA-256 `$strict_sha`"
+            echo "- Exact `git diff --check base...head`: exit $diff_status; log SHA-256 `$diff_sha`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          test "$check_status" -eq 0
+          test "$strict_status" -eq 0
+          test "$diff_status" -eq 0
+
+      - name: Upload DDD validation evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ddd-docs-validation-${{ inputs.docs_head_sha }}
+          path: ${{ runner.temp }}/pr-domain-validation/docs/
+          if-no-files-found: warn
+          retention-days: 14
