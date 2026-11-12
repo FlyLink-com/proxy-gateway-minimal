@@ -362,11 +362,7 @@ test("TOTP Base32 validation rejects impossible encodings and oversized inputs",
   }), null);
 
   const oversizedLegacy = await reencryptLegacyD1TotpV2({
-    value: "v2:aes-256-gcm:" + "A".repeat(8193),
-    legacyKey: Buffer.alloc(32),
-    keyRing: ring,
-    scope: "portal",
-    credentialRef: "totp_credential_bounds"
+    value: "v2:aes-256-gcm:" + "A".repeat(8193)
   });
   assert.deepEqual(oversizedLegacy, { status: "quarantine" });
 });
@@ -409,24 +405,38 @@ test("TOTP tampering, unknown keys, malformed envelopes and legacy raw Base32 fa
   assert.deepEqual(legacy, { status: "re_enroll_required" });
 });
 
-test("legacy keyless v2 TOTP can be re-encrypted without returning plaintext", async () => {
+test("legacy TOTP values are retired under T1 without decrypting or re-encrypting", async () => {
+  const encResult = await reencryptLegacyD1TotpV2({ value: "enc:JBSWY3DPEHPK3PXP" });
+  assert.deepEqual(encResult, { status: "re_enroll_required" });
+
+  // Synthetic fixture only: the production classifier receives no legacy key.
   const legacyKey = Buffer.from("de".repeat(32), "hex");
   const legacyEnvelope = encryptLegacyV2("JBSWY3DPEHPK3PXP", legacyKey, randomBytes(12));
-  const newRing = totpRing("portal-totp-aes", "portal-v3", ["portal-v3"], {
-    "portal-v3": Buffer.from("ef".repeat(32), "hex")
-  });
-  const migrated = await reencryptLegacyD1TotpV2({
-    value: legacyEnvelope, legacyKey, keyRing: newRing, scope: "portal",
-    credentialRef: "totp_credential_005",
-    ivFactory: () => Uint8Array.from([3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3])
-  });
-  assert.equal(migrated.status, "reencrypted");
-  assert.match(migrated.envelope, /^v3:aes-256-gcm:portal-v3:/u);
-  assert.equal(Object.hasOwn(migrated, "plaintext"), false);
-  const protector = createD1TotpSecretProtector({ keyRing: newRing, scope: "portal" });
-  assert.equal(await protector.unprotect(migrated.envelope, { credentialRef: "totp_credential_005" }), "JBSWY3DPEHPK3PXP");
-});
+  const v2Result = await reencryptLegacyD1TotpV2({ value: legacyEnvelope });
+  assert.deepEqual(v2Result, { status: "re_enroll_required" });
+  assert.equal("envelope" in v2Result, false, "T1 must never produce a replacement envelope");
 
+  // A ciphertext change that preserves the encoded structure is still retired;
+  // the classifier intentionally does not authenticate or decrypt legacy bytes.
+  const flippedParts = legacyEnvelope.split(":");
+  const flippedCiphertext = Buffer.from(flippedParts[4], "base64url");
+  flippedCiphertext[0] ^= 0x01;
+  flippedParts[4] = flippedCiphertext.toString("base64url");
+  assert.deepEqual(
+    await reencryptLegacyD1TotpV2({ value: flippedParts.join(":") }),
+    { status: "re_enroll_required" }
+  );
+
+  // Values that cannot be parsed as a v2 envelope are quarantined.
+  const broken = legacyEnvelope.split(":").slice(0, 4).join(":");
+  assert.deepEqual(await reencryptLegacyD1TotpV2({ value: broken }), { status: "quarantine" });
+  const illegal = "v2:aes-256-gcm:!!!:AAAA:AAAA";
+  assert.deepEqual(await reencryptLegacyD1TotpV2({ value: illegal }), { status: "quarantine" });
+  assert.deepEqual(
+    await reencryptLegacyD1TotpV2({ value: "JBSWY3DPEHPK3PXP" }),
+    { status: "re_enroll_required" }
+  );
+});
 test("destroying a key ring zeroizes and disables its key material", async () => {
   const ring = createD1KeyRing({
     family: "pii-hmac", activeKeyId: "destroy-me", readKeyIds: ["destroy-me"],
