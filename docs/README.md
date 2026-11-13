@@ -1,6 +1,6 @@
 # Documentation Index
 
-Last updated: 2026-11-11 UTC.
+Last updated: 2026-11-12 UTC.
 
 ```yaml
 document_metadata:
@@ -8,7 +8,7 @@ document_metadata:
   lifecycle: active
   authority_scope: documentation_navigation
   superseded_by: null
-  last_verified_at: 2026-11-11
+  last_verified_at: 2026-11-12
   production_authority: false
 ```
 
@@ -217,6 +217,7 @@ security-alert counts and makes no current claim about them.
 | [`docs/CI_STATUS_LOG.md`](CI_STATUS_LOG.md) | Dated CI availability, exact-source hosted/local results and safe append-only run summaries. | Evidence index; no workflow, budget, execution or production authority. | Read for current reported CI blockers and the pending November 2026 latest-master manual check. |
 | `docs/CI_MANUAL_VALIDATION.md` | Manual CI validation host workflow; target direction is local Linux manual CI, with historical Aliyun manual CI facts retained until the transition is validated. | Active runbook, not staging or deploy approval. | Read before using a manual validation host for repo-level CI evidence. |
 | `docs/CLOUDFLARE_PUBLIC_SITE_CI.md` | Repository-only CI contract for the `admin/dist-site` static lane, explicitly separated from the approved future control-plane Worker/D1 lane. | Active static-site CI boundary only; no Worker API, D1, DNS, secret, or production authority. | Read before changing public-site builds, the root `wrangler.jsonc`, or the separate Cloudflare delivery lanes. |
+| `docs/C1_R1_PASSWORD_NORMALIZATION_SOURCE_PROOF_V1.md` | Browser Portal and Android R1 password-normalization evidence, plus Admin Portal-account local-password (scrypt) trim parity through the legacy-named `bootstrapToken` wire field; includes registration UI, request boundaries, synthetic vectors and the still-open Admin Hosted Login/Auth0 proof gate. | Active evidence; Admin Portal-account local password + TOTP parity is not proof of an Auth0 Hosted Login password path; no production Auth0, credential migration/reset campaign, BWH, remote D1 or deployment authority. | Read before changing first-party password entry points or closing the R1 edge-whitespace compatibility gate. |
 | `docs/CLOUDFLARE_D1_DATABASE_EVALUATION.md` | Owner-approved Workers + D1 architecture and phased gates, including dated G2 acceptance, G3/G4 source merge, and G5 Staging/BWH Agent synthetic dry-run evidence. | G2 accepted with documented limitations; G5 Staging Worker/D1 and synthetic BWH Agent dry-run passed; production Node/Express + SQLite remains authoritative; G6–G8 and production cutover remain separately gated. | Read before Worker API, D1 schema/repository, BWH Agent, or control-plane migration work. |
 | `docs/D1_T2_C2_CRYPTO_WORKER_INTERFACE_CONTRACT_V1.md` | Versioned internal Crypto Worker API, per-caller authorization, key-family secret bindings, PII digest-only inputs, and failure behavior. | Source-only implementation; no Service Binding, real secret, public route, deployment, or production authority. | Read before wiring the control-plane Service Binding or adding a new crypto operation. |
 | `docs/D1_T2_C2_EXTERNAL_ESCROW_PROVIDER_EVALUATION_V1.md` | Compares external KMS candidates, non-exportable KEK, AAD binding, role separation, two-person recovery, audit, and restore requirements. | Source-only evaluation; no provider, account, KMS/HSM key, or escrow resource selected or created. | Read before selecting the concrete independent escrow provider. |

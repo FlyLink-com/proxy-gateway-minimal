@@ -4,6 +4,7 @@ import {
   createAdminAuthClient,
   type AdminAuthErrorCode,
 } from "../app/admin-auth-client";
+import { PASSWORD_NORMALIZATION_VECTORS } from "./password-normalization-vectors";
 
 const FUTURE = "2099-01-01T00:00:00.000Z";
 const PAST = "2000-01-01T00:00:00.000Z";
@@ -98,6 +99,35 @@ describe("createAdminAuthClient", () => {
     expect(setItem).not.toHaveBeenCalled();
   });
 
+  it("applies shared trim-only vectors before the legacy Admin bootstrap-token request", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockImplementation(async () =>
+      jsonResponse(202, {
+        challenge: {
+          challengeRef: "admin_totp_challenge_1",
+          operatorRef: "acct_op1",
+          methods: ["totp"],
+          issuedAt: FUTURE,
+          expiresAt: FUTURE,
+        },
+      }),
+    );
+    const client = createAdminAuthClient({ fetcher });
+    const signal = new AbortController().signal;
+
+    for (const vector of PASSWORD_NORMALIZATION_VECTORS) {
+      await expect(client.login({ password: vector.input }, signal)).resolves.toEqual({
+        challengeRef: "admin_totp_challenge_1",
+        expiresAt: FUTURE,
+      });
+      const lastCall = fetcher.mock.calls[fetcher.mock.calls.length - 1];
+      expect(lastCall?.[0]).toBe("/api/admin-auth/login");
+      expect(JSON.parse(String(lastCall?.[1]?.body))).toEqual({
+        bootstrapToken: vector.expected,
+      });
+    }
+    expect(fetcher).toHaveBeenCalledTimes(PASSWORD_NORMALIZATION_VECTORS.length);
+  });
+
   it("projects authenticated session and setupRequired while stripping private extras", async () => {
     const fetcher = vi.fn<typeof fetch>();
     fetcher
@@ -190,6 +220,7 @@ describe("createAdminAuthClient", () => {
     const signal = new AbortController().signal;
     await expect(client.login({ operatorRef: "bad ref", password: "secret-pass" }, signal)).rejects.toSatisfy(expectError("invalid"));
     await expect(client.login({ operatorRef: "acct_op1", password: "" }, signal)).rejects.toSatisfy(expectError("invalid"));
+    await expect(client.login({ operatorRef: "acct_op1", password: " \t\uFEFF\u00A0\u3000\u2029" }, signal)).rejects.toSatisfy(expectError("invalid"));
     await expect(client.verify({ challengeRef: "admin_totp_challenge_1", code: "12 456" }, signal)).rejects.toSatisfy(expectError("invalid"));
     await expect(client.verify({ challengeRef: "bad ref", code: "123456" }, signal)).rejects.toSatisfy(expectError("invalid"));
     expect(fetcher).not.toHaveBeenCalled();
