@@ -174,7 +174,7 @@ test("approved service binding with an extra entrypoint fails closed", () => {
 });
 
 
-test("control-plane exact local ADMIN_AUTH_STATE binding and v1 migration are allowed", () => {
+test("control-plane exact local ADMIN_AUTH_STATE and PORTAL_AUTH_STATE bindings plus v1 and v2 migrations are allowed", () => {
   withFixture(null, ({ code, stdout }) => {
     assert.equal(code, 0, stdout);
     assert.match(stdout, /C2_POLICY_CHECK: PASS/);
@@ -289,7 +289,7 @@ test("control-plane requires the approved Durable Object declaration", () => {
     const path = "workers/control-plane/wrangler.control-plane.jsonc";
     const original = c[path];
     const updated = original.replace(
-      /  "durable_objects": \{\n    "bindings": \[\n      \{ "name": "ADMIN_AUTH_STATE", "class_name": "AdminAuthState" \}\n    \]\n  \},\n/,
+      /  "durable_objects": \{\n    "bindings": \[\n      \{ "name": "ADMIN_AUTH_STATE", "class_name": "AdminAuthState" \},\n      \{ "name": "PORTAL_AUTH_STATE", "class_name": "PortalAuthState" \}\n    \]\n  \},\n/,
       ""
     );
     assert.notEqual(updated, original, "fixture must remove the Durable Object declaration");
@@ -305,7 +305,7 @@ test("control-plane requires the approved Durable Object migration", () => {
     const path = "workers/control-plane/wrangler.control-plane.jsonc";
     const original = c[path];
     const updated = original.replace(
-      /  "migrations": \[\n    \{ "tag": "v1-admin-auth-state", "new_sqlite_classes": \["AdminAuthState"\] \}\n  \],\n/,
+      /  "migrations": \[\n    \{ "tag": "v1-admin-auth-state", "new_sqlite_classes": \["AdminAuthState"\] \},\n    \{ "tag": "v2-portal-auth-state", "new_sqlite_classes": \["PortalAuthState"\] \}\n  \],\n/,
       ""
     );
     assert.notEqual(updated, original, "fixture must remove the migration declaration");
