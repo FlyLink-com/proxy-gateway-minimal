@@ -1,0 +1,237 @@
+# M0-A2-1 v7 — BWH read-only metering diagnostic (v9 byte-stable checkout repair)
+
+```yaml
+document_metadata:
+  doc_type: operational
+  lifecycle: active
+  authority_scope: m0_a2_1_v7_read_only_diagnostic_runbook
+  superseded_by: null
+  last_verified_at: 2026-11-01
+  production_authority: false
+```
+
+**Status:** The operator-reported 20/20 local acceptance is bound only to code commit `0477799c809aa6d16b4ad121db9915fa5a604f70`. Since that result, the PR branch was synchronized with Master at `90d49058efc91179464a6df4157308fa707feb49` through merge commit `281be450f2bf966d7ddb188d12c8c1840f9aa646`, then changed by App source-parent hardening commit `f00b1c4e670297e7c8c825c08b46862fd73e6535` and test assertion correction `498592721fff376bcc79feef32e5d7c3b967a3e3`. The current code-bearing snapshot `498592721fff376bcc79feef32e5d7c3b967a3e3` has 21 test declarations and has **not** completed exact-snapshot local validation. The complete checksum, four syntax checks, self-test, and full test suite under Node `v22.16.0` remain pending. Hosted CI was skipped while Draft; this is not production-read authorization.
+
+## Purpose
+
+Prepare one narrowly scoped read-only pass to close the diagnostic gaps recorded in Issue #809 after M0-A2-1 v6:
+
+1. Bind `gccgw-full-metering-collect.service` to its actual `WorkingDirectory`, `ExecStart`, `OnFailure`, `FragmentPath`, and drop-ins.
+2. Verify the deployed full-metering collector directory against the exact 49-file content closure recorded by the existing proof manifest for `collector-plan-e834185cca07`.
+3. Inspect `gccgw-full-metering-collect-stop.service` and correlate its last invocation with the collector's recorded failure time without claiming causality from timestamps alone.
+4. Inspect the full-metering Timer separately.
+5. Inspect the distinct status writer `gccgw-traffic-usage-collect.service` and its Timer, then compare that writer—not the full-metering service—with the App's `EDGE_USAGE_COLLECTOR_STATUS_PATH` binding.
+6. If and only if the latest full-metering service invocation is still the recorded 2026-10-20 02:15:07 UTC invocation and has a valid `InvocationID`, read only that exact systemd journal invocation and extract a single allowlisted `errorCode` from the collector's redacted JSON message.
+7. Read the bounded status projection only after the corrected App-to-status-writer binding is matched, and pass it through the pinned App sanitizer.
+
+## What this package does not do
+
+- No SSH, network request, provider API, DNS, certificate, firewall, or Nginx access.
+- No `collect`, `--check`, `--preflight`, `--initialize`, or recovery command.
+- No `systemctl start`, `stop`, `restart`, `enable`, `disable`, `reset-failed`, `daemon-reload`, or unit-file edit.
+- No full-metering SQLite database read.
+- No full-metering journal directory, `checkpoint.json`, `pending.json`, `writer.lock`, or config-file read.
+- No environment-file content read. Baseline App/status-writer metadata requests omit `Environment`. Only after the status-writer `ExecStart` matches the resolved App release, and both units have no configured `EnvironmentFiles`, default/root identity, `DynamicUser=no`, and matching `PassEnvironment` / `UnsetEnvironment` metadata with no target-variable reference, does the script issue separate, per-unit `systemctl show --property=Environment` reads. `systemctl` emits the complete property transiently; the parser immediately extracts only `EDGE_USAGE_COLLECTOR_STATUS_PATH`, and unrelated values are not retained, logged, or printed. If the metadata gate fails, the `Environment` property is not requested. The full-metering unit never requests its environment. `/proc/<AppPID>/environ` is scanned in bounded chunks and only the target path value is retained.
+- No raw systemd `ExecStart`, fragment/drop-in paths, environment values, process IDs, invocation IDs, journal messages, or raw status JSON in output.
+- No automatic retry. Any blocked result is a stop point; another run requires separate approval.
+
+The targeted `journalctl` query is a bounded **systemd journal** read, not a read of the full-metering collector's own journal/checkpoint directory. It is skipped unless the current service `ExecMainStartTimestamp` exactly matches the recorded failure start and `InvocationID` is valid. The command is filtered by both `_SYSTEMD_INVOCATION_ID` and `_SYSTEMD_UNIT`, capped at 64 records / 1 MiB / 5 seconds. Only a unique `errorCode` matching the collector entrypoint's safe prefix allowlist is returned. Raw journal output is never printed.
+
+## Diagnostic boundaries and interpretation
+
+### Full-metering lane
+
+The script accepts only the historical deployed collector root:
+
+`/opt/gccwebos-runtime/collector-plan-e834185cca07`
+
+It requires the service `WorkingDirectory` and `ExecStart` to bind to that root, the known `traffic-full-metering-collect.mjs --collect --config ... --config-sha256 <64-hex>` argument shape, and all 49 pinned files to match their expected size and SHA-256. It also checks that the root and file closure contain no unexpected entries and are not symlinked or group/world writable.
+
+The result label is deliberately `49_file_closure_matched`; it does not claim that a historical tar archive SHA was reconstructed from filesystem metadata. The config body is not read; only the configured path and presence of a 64-hex digest argument are checked.
+
+### OnFailure and Timer
+
+`OnFailure` is checked against `gccgw-full-metering-collect-stop.service`. The stop unit's `ExecStart` is accepted only when systemd reports `path=/usr/bin/systemctl` and the complete `argv[]` is exactly `/usr/bin/systemctl stop gccgw-full-metering-collect.timer`. Shell wrappers, a different executable, extra arguments, repeated `argv[]` records, or a different target are rejected. The stop unit's last start is compared with the collector's last exit; the output is only `matched`, `not_matched`, or `unknown`. A time match is temporal correlation, not proof of causal execution. The complete `OnFailure` list is inspected: the diagnostic distinguishes the expected handler alone from the expected handler plus additional handlers, reports the additional-handler count, and treats malformed or duplicate expected entries as `unknown`.
+
+The full-metering Timer and status-writer Timer are separate records. An inactive one-shot service state is not interpreted as a disabled timer.
+
+### Status writer and App binding
+
+The correct comparison is:
+
+`proxy-gateway-candidate.service` ↔ `gccgw-traffic-usage-collect.service`
+
+not App ↔ `gccgw-full-metering-collect.service`.
+
+The status binding is reported `matched` only if the status writer's `ExecStart` is bound to `traffic-usage-collect-once.mjs --collect`, the status-writer `ExecStart` matches the resolved App release and both units pass the metadata gate before any `Environment` property is requested, the separately read target assignments match, the running App process contains that same absolute path, neither `PassEnvironment` nor `UnsetEnvironment` mentions the target variable, and both units use the default or explicit root identity. Any configured environment file makes the result `unknown`: `EnvironmentFile=` is applied after `Environment=` and can override the direct assignment, while this package intentionally does not read environment-file contents. Non-root or dynamic service identities also remain `unknown`; the package does not guess UID/GID mappings.
+
+Only after a match does the script read the status projection. The file is bounded to 256 KiB, must be a regular non-symlink with one link, root UID/GID ownership, and no group/world permissions. Every parent directory through `/` must also be a real root-owned directory with no group/world write permission. File and directory metadata are snapshotted before and after the read; inode, ownership, mode, size, timestamps, path resolution, and directory-chain drift fail closed. The App release's pinned sanitizer is used before any status data is printed.
+
+The producer projection remains explicitly partial: current source only defines the Japan TUIC credential-map producer and the SGP TUIC sidecar producer. It is not a complete producer map for all three Japan channels.
+
+### App release identity
+
+The caller must supply `--expected-release <exact-current-release-label>`. There is no hard-coded guessed release. At the beginning, the script records the `current` symlink target and its device/inode/metadata signature, verifies App `WorkingDirectory` and `/proc/<PID>/cwd`, and checks four previously pinned App-side projection/provenance modules. At the end, it re-resolves `current`, rechecks the App PID and process cwd, and requires the symlink target/signature and release directory to match the initial snapshot. Any drift blocks the result. Output remains `app_release_identity=label_only`; these checks are not a complete App artifact/source-commit proof.
+
+## Path and byte-level portability
+
+All paths read from Linux systemd are POSIX paths. `CURRENT_LINK` is built with `path.posix.join`, so a Windows Node test run keeps the same `/` separators as the Linux systemd values. Do not replace this with host-dependent `path.join`.
+
+The seven files listed in `SHA256SUMS` are byte-verified inputs. Their Git attributes use `-text !eol`, not `text eol=lf`: Git must write the committed blob bytes to the worktree unchanged. This specifically prevents `core.autocrlf=true` from converting LF blobs to CRLF during checkout. The rule is scoped to this diagnostic package and does not change the user's global Git configuration or other repository files.
+
+Use an **isolated checkout/worktree** of the exact commit being validated. For the first v9 check, the worktree must have been checked out after the `-text` rules were added. For a repeat check, the same isolated worktree may be reused after confirming `git rev-parse HEAD` equals the exact target commit and rechecking the effective attributes and EOL state. Do not switch or modify any other working directory with uncommitted changes. A repeat check does not require a new workspace or Node installation when the exact target commit and required Node runtime are already present.
+
+From Git Bash or WSL, inspect the effective settings:
+
+```bash
+git config --show-origin --get core.autocrlf || true
+git check-attr text eol -- \
+  docs/runbooks/m0-a2-1-v7/SHA256SUMS \
+  docs/runbooks/m0-a2-1-v7/VALIDATION.txt \
+  scripts/m0-a2-1-v7.mjs \
+  scripts/lib/m0-a2-1-v7-archive-pins.mjs
+git ls-files --eol -- \
+  scripts/m0-a2-1-v7.mjs \
+  scripts/lib/m0-a2-1-v7-diagnostic.mjs \
+  scripts/lib/m0-a2-1-v7-archive-pins.mjs \
+  server/tests/m0-a2-1-v7.test.mjs \
+  docs/runbooks/m0-a2-1-v7/README.md \
+  docs/runbooks/m0-a2-1-v7/VALIDATION.txt \
+  docs/runbooks/m0-a2-1-v7/REVIEW-REPORT.txt
+```
+
+Expected:
+- `git check-attr`: `text: unset` and `eol: unspecified` for each sampled path.
+- `git ls-files --eol`: every listed file reports `i/lf w/lf attr/-text`.
+- `core.autocrlf` may still be `true`; do not change global Git configuration. The package attributes must prevent conversion for these paths.
+- The worktree must reflect the exact target commit and the `-text` attributes. If any file reports `w/crlf`, stop; do not normalize the file manually and do not treat the checksum result as passed.
+
+## Runtime deadline
+
+The diagnostic enforces a 45-second elapsed-time budget at phase boundaries. This in-process check is a secondary guard, not a hard wall-clock limit: synchronous filesystem reads cannot be interrupted by a JavaScript timer. Any future host invocation MUST therefore be wrapped by GNU coreutils `timeout` with a 45-second TERM deadline and a 5-second KILL grace period. This bounds the complete process to at most 50 seconds. Exit status `124` or `137` is a timeout stop, not a completed diagnostic; do not retry under the same approval.
+
+## Local validation
+
+Use **Node v22.16.0 exactly** and run from the repository root in the same fresh isolated checkout. On Windows, use Git Bash or WSL with `sha256sum` available:
+
+```bash
+node --version
+# Expected: v22.16.0
+sha256sum -c docs/runbooks/m0-a2-1-v7/SHA256SUMS
+node --check scripts/m0-a2-1-v7.mjs
+node --check scripts/lib/m0-a2-1-v7-diagnostic.mjs
+node --check scripts/lib/m0-a2-1-v7-archive-pins.mjs
+node --check server/tests/m0-a2-1-v7.test.mjs
+node scripts/m0-a2-1-v7.mjs --self-test
+node --test server/tests/m0-a2-1-v7.test.mjs
+# Expected: 20/20 tests passed
+```
+
+### Recorded v9 Windows result — operator-reported (2026-10-31)
+
+- Isolated workspace: `D:\Projects\proxy-gateway-minimal-pr812-v9`.
+- Tested code commit: `5187edc19380fdb44dd2e0f531e9cfdf580b00e1`; the existing isolated workspace was already at this exact commit, so it was reused. No new workspace was created.
+- `core.autocrlf=true` remained unchanged.
+- Node: `v22.16.0` from the isolated toolchain directory. The system Node `v24.16.0` was not replaced.
+- The sampled `git check-attr` results were `text: unset` and `eol: unspecified`.
+- All seven checksum inputs reported `i/lf w/lf attr/-text`.
+- `sha256sum -c docs/runbooks/m0-a2-1-v7/SHA256SUMS`: 7/7 OK, exit code 0.
+- Four `node --check` commands: all exit code 0.
+- `node scripts/m0-a2-1-v7.mjs --self-test`: `m0_a2_1_v7_self_test=passed`, exit code 0.
+- `node --test server/tests/m0-a2-1-v7.test.mjs`: 18/18 passed, exit code 0.
+- The original working directory with uncommitted changes was not touched. No BWH/Provider connection or production read occurred.
+
+This result is recorded as operator-reported local evidence and applies to the exact tested code commit above. The subsequent evidence-archive commit changes only README, validation/review records, and the SHA256 manifest; it does not change diagnostic runtime or test code. The seven manifest entries are regenerated for that archive commit.
+
+### Subsequent archive-head checksum-only verification — operator-reported (2026-10-31)
+
+- Archive head checked: `92a4ea3454cce9e873a49fd692ea374ec2078609`.
+- After switching the same isolated v9 workspace to that exact commit, the operator reran only `sha256sum -c docs/runbooks/m0-a2-1-v7/SHA256SUMS`: **7/7 OK, exit code 0**.
+- All seven files reported `i/lf w/lf attr/-text`.
+- This was checksum-only. Node was not reinstalled, and the four `node --check` commands, `--self-test`, and `node --test` were not rerun against this archive head.
+- The full code validation above remains bound to `5187edc19380fdb44dd2e0f531e9cfdf580b00e1`. This follow-up is operator-reported local checksum evidence only, not a full test rerun, hosted CI result, or production read.
+
+### Latest operator-reported acceptance — exact f60 head (2026-10-31)
+
+- Workspace: `D:\\Projects\\proxy-gateway-minimal-pr812-v9` (existing isolated workspace reused).
+- Exact tested commit: `f60c0187c2fee3f3b0056d7fabfca70444b34f6c`.
+- Node `v22.16.0` from the isolated toolchain; system Node `v24.16.0` was not replaced.
+- SHA256 manifest: 7/7 OK; four `node --check` commands: all exit 0.
+- `--self-test`: `m0_a2_1_v7_self_test=passed`; `node --test`: 18/18 passed; all exit 0.
+- Original dirty working directory untouched; no BWH/Provider connection or production read.
+- This is operator-reported evidence for f60 only. It does not validate the later bounded-read / staged-environment follow-up branch.
+
+### Bounded-read and environment-gate follow-up — exact-head acceptance recorded
+
+- Every diagnostic file read now uses a chunked reader with a strict byte ceiling and a one-byte overflow probe: App source pins (1 MiB), each archive file (its manifest size), and status projection (256 KiB). The production diagnostic no longer calls `readFileSync`.
+- Baseline App/status-writer metadata no longer requests `Environment`. The property is fetched separately only after the status-writer `ExecStart` matches the resolved App release and both units pass the no-EnvironmentFiles/root-identity/PassEnvironment/UnsetEnvironment gate; only the target assignment is retained, and before/after selected values must match.
+- Two regression tests were added; the repository suite now declares 20 tests.
+- Operator-reported acceptance on exact commit `0f845aa289c96f347774dbcd24ac3d4d11ff2d38` used Node `v22.16.0`: checksum 7/7, four syntax checks, and self-test passed; the complete suite was 19/20 (exit 1). The sole failure was a stale static source assertion expecting `canReadTargetEnvironment(appBefore)` after production code had moved to `canReadStatusBindingEnvironment(appBefore, statusBefore)`. The assertion alone was updated in commit `1122a2dc71d0193f28db3d0857a4dda21bee38e3`; no production code changed. The correction was then validated on exact PR code head `0477799c809aa6d16b4ad121db9915fa5a604f70`: SHA256 7/7, four syntax checks, self-test, and 20/20 tests all passed under Node `v22.16.0`, each with exit code 0. This is operator-reported local evidence, not a hosted CI result or independent execution by GitHub. It applies to the exact code commit `0477799c809aa6d16b4ad121db9915fa5a604f70`. The documentation-synchronization commits that update this runbook, validation/review records, and checksum manifest are later commits; they do not change diagnostic runtime or test source, but the resulting exact PR head must still rerun the complete checksum, syntax, self-test, and 20-test suite before Ready. Do not describe the documentation-sync head as fully validated until that rerun is recorded.
+
+Record the exact output and exit code of every command. If Node is not exactly `v22.16.0`, stop and record the version mismatch; do not substitute another Node version. A skipped CI run is not a pass.
+
+`--self-test` exits before the production branch and makes no `systemctl` or `journalctl` call. It covers the direct status binding fixture, EnvironmentFile override rejection, the exact Node version pin, and additional OnFailure-handler reporting. The CLI entrypoint is guarded; the Node test suite imports the diagnostic module directly and tests parsers, bounded file reads, staged environment-read gates, service binding, current-pointer stability, exact stop-unit argv matching, status-writer binding, environment scanning, root service identity and status-file metadata, archive manifest integrity, exact-invocation error-code extraction, time correlation, the required external timeout wrapper, and the read-only command surface.
+
+## Future execution shape — NOT APPROVED BY THIS PR
+
+A future Risk A approval must name the target host, one exact time window, this exact script SHA-256, the expected App release label, and the one permitted command. After a separate approval only, the command shape is:
+
+```bash
+sudo /usr/bin/timeout --signal=TERM --kill-after=5s 45s \\
+  /usr/bin/node scripts/m0-a2-1-v7.mjs --expected-release '<exact-current-release-label>'
+```
+
+The timeout wrapper sends TERM at 45 seconds and KILL no later than 5 seconds afterward. Timeout exit status 124 or 137 is a stop; do not retry. Do not run this command as part of PR review, CI, local validation, or this preparation task. If the expected release is not supplied from a fresh authoritative read, do not run it.
+
+## M0 decision
+
+M0 remains **BLOCKED**. This package is diagnostic preparation only. It does not authorize M0-A2-2, M1–M8, production recovery, database/journal/checkpoint inspection, or Japan node creation.
+
+
+## Independent-review hardening follow-up (2026-10-31)
+
+- Exact runtime gate: production execution now accepts only Node `v22.16.0`, matching the documented validation runtime; other Node 22 patch/minor versions fail closed.
+- Environment binding: any nonempty App or status-writer `EnvironmentFiles` list prevents a `matched` result because env files can override direct `Environment=` assignments and are intentionally not read. The full-metering unit no longer requests its `Environment` property. The App process environment is scanned in bounded chunks; unrelated values are not retained. `PassEnvironment` / `UnsetEnvironment` references to the target variable and non-root/dynamic service identities are rejected.
+- Status-file trust: the status file must be root-owned, root-group-owned, private, single-link and non-symlinked; every parent directory through `/` must be a real root-owned directory without group/world write permission. File and directory metadata are checked before and after reading.
+- Failure handling: the full `OnFailure` list is inspected and additional handlers are reported rather than hidden.
+- The f60 head was operator-reported as 18/18 passed. This follow-up adds bounded reads and staged environment-property retrieval; the suite now declares 20 tests. Run the complete local validation block above in the isolated v9 workspace against the exact final follow-up commit before considering Ready. Hosted CI remains intentionally skipped while Draft; this follow-up does not authorize production reads or mutation.
+
+
+## Latest acceptance and current gate (2026-11-01)
+
+- Exact code commit locally checked: `0477799c809aa6d16b4ad121db9915fa5a604f70`.
+- The isolated workspace was clean before switching to that commit; the original dirty working directory was not touched.
+- Node `v22.16.0` was used from the separate toolchain directory.
+- SHA256 manifest: 7/7 OK; four `node --check` commands: 4/4 passed; `--self-test`: passed; `node --test`: 20/20 passed. All commands exited 0.
+- No BWH/Provider connection, SSH, production read, collector invocation, service/Timer action, or production mutation occurred.
+- This is operator-reported local evidence, not a hosted CI result or independent execution by GitHub. It applies to the exact code commit `0477799c809aa6d16b4ad121db9915fa5a604f70`. The documentation-synchronization commits that update this runbook, validation/review records, and checksum manifest are later commits; they do not change diagnostic runtime or test source, but the resulting exact PR head must still rerun the complete checksum, syntax, self-test, and 20-test suite before Ready. Do not describe the documentation-sync head as fully validated until that rerun is recorded.
+- PR #812 remains Draft. M0 remains BLOCKED. Hosted CI is skipped, not passed. A formal independent GitHub review and exact post-documentation-sync validation remain outstanding.
+
+
+## 2026-11-01 — Master synchronization and App source-parent hardening
+
+This section supersedes earlier statements that described the current branch as a documentation-only synchronization. Subsequent code changes are recorded here and require fresh exact-head validation.
+
+### Master synchronization
+
+- PR base is `master` at `90d49058efc91179464a6df4157308fa707feb49`.
+- Merge synchronization commit: `281be450f2bf966d7ddb188d12c8c1840f9aa646`; parents are the prior PR head `8a59c24a7596977b1cd7053d11b5ab4a0ddf0d8e` and Master `90d49058efc91179464a6df4157308fa707feb49`.
+- The overlapping `admin/src/test/portal-coins-marketplace.test.tsx` file was resolved by retaining the exact Master version, including the merged #813 fixed-date test repair. The other nine PR-specific files were retained.
+- The current branch was verified at zero commits behind Master; GitHub reported the PR mergeable with no conflict at the pre-documentation code snapshot.
+
+### App source-parent hardening
+
+- Production diagnostic and regression-test changes were committed in `f00b1c4e670297e7c8c825c08b46862fd73e6535`.
+- The source-pin verifier now enumerates every parent directory from `/` through each pinned App module's containing directory. Each directory must be a real, non-symlink directory owned by root UID/GID and must not be group/world writable.
+- Directory metadata and resolved paths are snapshotted and rechecked around pinned-file reads. The verifier repeats the directory-chain check after each file read and immediately before the dynamic import of the App sanitizer.
+- The test suite covers full ancestor enumeration, UID/GID and mode requirements, symlink rejection, path-traversal rejection, and the static ordering requirement that source pins are rechecked immediately before import.
+- A follow-up test-only static assertion correction was committed in `498592721fff376bcc79feef32e5d7c3b967a3e3`. The current test file contains 21 test declarations. This correction does not change production runtime code.
+
+### Exact-snapshot validation and hosted checks
+
+- Historical operator-reported local acceptance remains bound to `0477799c809aa6d16b4ad121db9915fa5a604f70`: checksum 7/7, four syntax checks, self-test, and 20/20 tests on Node `v22.16.0`. It does **not** validate the later Master synchronization or App source-parent hardening.
+- The current code-bearing snapshot is `498592721fff376bcc79feef32e5d7c3b967a3e3`. Its checksum verification, four `node --check` commands, `--self-test`, and full `node --test` run have not been executed or independently verified in this record. Record the actual output and exit code against the exact final PR head before Ready; do not infer a pass from the historical result.
+- On code snapshot `49859272`, GitHub Actions CI run `41296312350` was skipped because the PR remained Draft; its eight jobs were skipped. The trusted governance advisory run `41296310042` succeeded, but that advisory is not a source/test CI pass.
+- A fresh independent GitHub `APPROVED` review remains outstanding.
+
+Keep PR #812 Draft and M0 BLOCKED. No BWH/Provider access, SSH, production read, collector invocation, service/Timer action, recovery, or production mutation is authorized by these changes.

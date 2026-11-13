@@ -1,3 +1,9 @@
 *.sh text eol=lf
 *.py text eol=lf
 ops/bwh-supply-control/* text eol=lf
+
+# M0-A2-1 SHA256-verified inputs must be checked out byte-for-byte; do not apply core.autocrlf or EOL conversion.
+docs/runbooks/m0-a2-1-v7/** -text !eol
+scripts/m0-a2-1-v7.mjs -text !eol
+scripts/lib/m0-a2-1-v7-*.mjs -text !eol
+server/tests/m0-a2-1-v7.test.mjs -text !eol
