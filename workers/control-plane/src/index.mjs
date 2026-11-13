@@ -31,6 +31,9 @@ import {
   CHALLENGE_TTL_MS,
 } from "./repositories/challenge-repository.mjs";
 import { handleAgentDesiredState, handleAgentReceipt } from "./agent-protocol.mjs";
+import { handleAuth0IdentityProof } from "./oidc-gateway.mjs";
+import { AdminAuthState } from "./admin-auth-state.mjs";
+import { startAdminLogin, completeAdminLogin, getAdminSession, logoutAdminSession } from "./admin-auth.mjs";
 
 const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 100;
@@ -175,7 +178,8 @@ async function handleCreateChallenge(accountId, request, env) {
   const canonicalFactors = [...factors].sort();
   const scope = `POST:/v1/accounts/${accountId}/second-factor-challenges`;
   const fingerprint = await sha256Hex(
-    `${scope}\n${JSON.stringify({ allowedFactors: canonicalFactors })}`,
+    `${scope}
+${JSON.stringify({ allowedFactors: canonicalFactors })}`,
   );
 
   const challenges = new ChallengeRepository(env.CONTROL_DB);
@@ -248,6 +252,15 @@ export default {
         }
         return jsonResponse(200, { ok: true, service: "flylink-control-plane" });
       }
+      // C1: Portal keeps its isolated bearer-token identity proof. Admin uses
+      // Universal Login BFF sessions and never accepts a raw provider token as its cookie.
+      if (pathname === "/v1/auth/portal/identity") {
+        return await handleAuth0IdentityProof(request, env, "portal");
+      }
+      if (pathname === "/v1/auth/admin/login") return await startAdminLogin(request, env);
+      if (pathname === "/v1/auth/admin/callback") return await completeAdminLogin(request, env);
+      if (pathname === "/v1/auth/admin/identity") return await getAdminSession(request, env);
+      if (pathname === "/v1/auth/admin/logout") return await logoutAdminSession(request, env);
       if (pathname === "/v1/agent/desired-state") {
         if (request.method !== "GET") {
           return jsonError(405, "method_not_allowed", "method not allowed");
@@ -294,3 +307,7 @@ export default {
     }
   },
 };
+
+
+// Wrangler Durable Object class export; local-only binding until separately authorized.
+export { AdminAuthState };
