@@ -43,7 +43,7 @@ test("synthetic identity rehearsal passes locally and emits a redacted receipt o
   assert.equal(receipt.totp.importFactorIncluded, false);
   assert.equal(receipt.totp.legacyEncDisposition, "RE_ENROLL_REQUIRED");
   assert.equal(receipt.totp.legacyEncIsCiphertext, false);
-  assert.equal(receipt.totp.protectedV2Disposition, "BLOCKED_PENDING_C2_KEY_CUSTODY");
+  assert.equal(receipt.totp.legacyV2Disposition, "RE_ENROLL_REQUIRED");
   assert.equal(receipt.totp.secretMaterialIncluded, false);
   assert.ok(receipt.notRun.includes("Auth0 tenant or API import acceptance"));
 
@@ -121,27 +121,62 @@ test("R3: provider import record never contains TOTP factor material", () => {
   assert.equal(JSON.stringify(record).includes(fixture.legacyTotpSecret), false);
 });
 
-test("R3: legacy enc values require re-enrollment and v2 envelopes remain blocked pending C2", () => {
+test("T1: valid legacy TOTP formats require re-enrollment and malformed values quarantine", () => {
   assert.deepEqual(classifySyntheticLegacyTotpDisposition(null), { outcome: "none", nextAction: "none" });
+  assert.deepEqual(classifySyntheticLegacyTotpDisposition(""), { outcome: "none", nextAction: "none" });
   assert.deepEqual(classifySyntheticLegacyTotpDisposition(fixture.legacyTotpSecret), {
     outcome: "re_enroll_required",
     nextAction: "re_enroll",
     legacyEncoding: "base32_syntax_not_ciphertext"
   });
-  assert.deepEqual(classifySyntheticLegacyTotpDisposition("enc:NOT-BASE32!"), {
+  assert.deepEqual(classifySyntheticLegacyTotpDisposition("enc:JBS WY3D-PEHPK3PXP"), {
     outcome: "re_enroll_required",
     nextAction: "re_enroll",
-    legacyEncoding: "unverified_enc_prefix"
+    legacyEncoding: "base32_syntax_not_ciphertext"
   });
-  assert.deepEqual(classifySyntheticLegacyTotpDisposition("v2:aes-256-gcm:synthetic-envelope"), {
-    outcome: "blocked",
-    nextAction: "blocked_pending_c2_key_custody"
+  assert.deepEqual(classifySyntheticLegacyTotpDisposition("JBSWY3DPEHPK3PXP"), {
+    outcome: "re_enroll_required",
+    nextAction: "re_enroll",
+    legacyEncoding: "raw_base32"
   });
+
+  const validV2 = "v2:aes-256-gcm:" + Buffer.alloc(12).toString("base64url")
+    + ":" + Buffer.alloc(16).toString("base64url") + ":" + Buffer.from([1]).toString("base64url");
+  assert.deepEqual(classifySyntheticLegacyTotpDisposition(validV2), {
+    outcome: "re_enroll_required",
+    nextAction: "re_enroll",
+    legacyEncoding: "legacy_v2_envelope"
+  });
+
+  for (const malformed of [
+    "enc:NOT-BASE32!",
+    "v2:aes-256-gcm:synthetic-envelope",
+    "v2:aes-256-gcm:bad:bad:bad",
+    "malformed legacy payload",
+    "x".repeat(4097),
+    42,
+    { secret: "JBSWY3DPEHPK3PXP" }
+  ]) {
+    assert.deepEqual(classifySyntheticLegacyTotpDisposition(malformed), {
+      outcome: "quarantine",
+      nextAction: "manual_review"
+    });
+  }
+
   assert.throws(() => buildRecord({ legacyTotpSecret: fixture.legacyTotpSecret }), {
     code: "totp_secret_requires_reenrollment"
   });
+  assert.throws(() => buildRecord({ legacyTotpSecret: validV2 }), {
+    code: "totp_secret_requires_reenrollment"
+  });
   assert.throws(() => buildRecord({ legacyTotpSecret: "v2:aes-256-gcm:synthetic-envelope" }), {
-    code: "totp_secret_requires_c2_key_custody"
+    code: "totp_secret_format_quarantined"
+  });
+  assert.throws(() => buildRecord({ legacyTotpSecret: "enc:NOT-BASE32!" }), {
+    code: "totp_secret_format_quarantined"
+  });
+  assert.throws(() => buildRecord({ legacyTotpSecret: 42 }), {
+    code: "totp_secret_format_quarantined"
   });
 });
 
