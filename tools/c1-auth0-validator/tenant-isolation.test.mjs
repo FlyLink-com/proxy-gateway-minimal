@@ -1,5 +1,5 @@
 // Synthetic verification for step 5: Portal/Admin isolation + TOTP compatibility.
-// Exercises the approved primitives at PR #842's head (bc3f8c9a) through the
+// Exercises the approved primitives at Master baseline ea47d78e through the
 // step-5 surface contract. All identities, keys and secrets are synthetic.
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -133,6 +133,10 @@ test("TOTP key families are distinct, scope-bound, and cross-surface unprotect f
 
   const portalProtector = createD1TotpSecretProtector({ keyRing: portal, scope: "portal" });
   const adminProtector = createD1TotpSecretProtector({ keyRing: admin, scope: "admin" });
+  await assert.rejects(
+    () => portalProtector.protect("enc:" + SECRET, { credentialRef: "cred-legacy" }),
+    { code: "totp_secret_invalid" }
+  );
   const envelope = await portalProtector.protect(SECRET, { credentialRef: "cred-1" });
   assert.equal(await portalProtector.unprotect(envelope, { credentialRef: "cred-1" }), SECRET);
   assert.equal(await adminProtector.unprotect(envelope, { credentialRef: "cred-1" }), null,
@@ -150,6 +154,15 @@ function legacyV2Encrypt(base32Secret, keyBytes) {
 test("legacy TOTP disposition under T1: enc: and well-formed v2: re-enroll (material never transferred), structurally broken v2 quarantines", async () => {
   const encResult = await reencryptLegacyD1TotpV2({ value: "enc:" + SECRET });
   assert.deepEqual(encResult, { status: "re_enroll_required" });
+  assert.deepEqual(await reencryptLegacyD1TotpV2({ value: SECRET }), {
+    status: "re_enroll_required"
+  });
+  assert.deepEqual(await reencryptLegacyD1TotpV2({ value: "enc:NOT-BASE32!" }), {
+    status: "quarantine"
+  });
+  assert.deepEqual(await reencryptLegacyD1TotpV2({ value: 42 }), {
+    status: "quarantine"
+  });
 
   // T1 (owner decision 2026-11-08): a well-formed legacy v2 envelope is a
   // re-enrollment candidate only. The classifier must not decrypt it or hand

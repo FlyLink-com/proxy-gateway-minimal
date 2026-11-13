@@ -48,7 +48,7 @@ document_metadata:
 - Historical revoked-subject rebind policy; no automatic rebind policy is invented here.
 - Actual HMAC/AES key custody provider, accountable custodians, independent escrow, recovery, incident revocation and production rotation.
 - Wallet-first `idempotency_key_hash` and `session_binding_hash` compatibility; existing unkeyed SHA-256 storage is unchanged pending caller/retention/schema inventory and owner decision.
-- Legacy v2 TOTP source-to-target credential ownership proof; this branch only validates the helper's input envelope and target AAD behavior.
+- T1: legacy `enc:`, raw Base32 and structurally valid `v2:` TOTP values are invalidated at cutover and require Auth0-managed MFA re-enrollment. Malformed/unknown values quarantine. No legacy key access, decrypt, import, transfer or re-encryption is permitted; new Auth0 MFA lifecycle proof remains OPEN.
 - Full C1/C2 provider integration and independent review.
 
 ## Validation and gate status

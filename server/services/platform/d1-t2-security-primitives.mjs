@@ -625,7 +625,7 @@ async function importAesKey(rawKey, usages) {
 
 function normalizeLegacyBase32(value) {
   if (typeof value !== "string" || value.length > MAX_TOTP_SECRET_INPUT_CHARS) return null;
-  const compact = value.trim().replace(/^enc:/u, "").replace(/[\s-]/gu, "").toUpperCase();
+  const compact = value.trim().replace(/[\s-]/gu, "").toUpperCase();
   const match = /^([A-Z2-7]+)(=*)$/u.exec(compact);
   if (!match) return null;
   const normalized = match[1];
@@ -710,26 +710,38 @@ export function createD1TotpSecretProtector({ keyRing, scope, ivFactory } = {}) 
 }
 
 
+/**
+ * Owner decision T1 (2026-11-08): all legacy BWH TOTP factors are invalidated
+ * at cutover. This compatibility export classifies disposition only; it never
+ * reads a legacy key, decrypts, imports, transfers, or re-encrypts legacy data.
+ */
 export async function reencryptLegacyD1TotpV2({ value } = {}) {
   if (typeof value !== "string" || value.length > MAX_TOTP_ENVELOPE_CHARS) {
     return { status: "quarantine" };
   }
-  if (value.startsWith("enc:") || !value.startsWith("v2:")) {
+  const candidate = value.trim();
+  if (!candidate) return { status: "quarantine" };
+
+  if (candidate.startsWith("v2:")) {
+    const parts = candidate.split(":");
+    if (parts.length !== 5 || parts[0] !== "v2" || parts[1] !== "aes-256-gcm") {
+      return { status: "quarantine" };
+    }
+    const iv = base64UrlToBytes(parts[2]);
+    const tag = base64UrlToBytes(parts[3]);
+    const ciphertext = base64UrlToBytes(parts[4]);
+    if (!iv || iv.length !== 12 || !tag || tag.length !== 16
+      || !ciphertext || ciphertext.length === 0) {
+      return { status: "quarantine" };
+    }
     return { status: "re_enroll_required" };
   }
 
-  // T1 retires every legacy v2 factor. Validate envelope shape only:
-  // do not read a legacy key, decrypt ciphertext, or create a v3 envelope.
-  const parts = value.split(":");
-  if (parts.length !== 5 || parts[0] !== "v2" || parts[1] !== "aes-256-gcm") {
+  if (value.length > MAX_TOTP_SECRET_INPUT_CHARS) {
     return { status: "quarantine" };
   }
-  const iv = base64UrlToBytes(parts[2]);
-  const tag = base64UrlToBytes(parts[3]);
-  const ciphertext = base64UrlToBytes(parts[4]);
-  if (!iv || iv.length !== 12 || !tag || tag.length !== 16
-    || !ciphertext || ciphertext.length === 0) {
-    return { status: "quarantine" };
-  }
-  return { status: "re_enroll_required" };
+  const legacyBase32 = candidate.startsWith("enc:") ? candidate.slice(4) : candidate;
+  return normalizeLegacyBase32(legacyBase32)
+    ? { status: "re_enroll_required" }
+    : { status: "quarantine" };
 }
