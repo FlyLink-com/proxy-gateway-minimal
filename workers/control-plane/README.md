@@ -23,6 +23,8 @@ The runnable G3/G4 control-plane source slices for the approved Workers + D1 tar
 | `migrations/0001_accounts_slice.sql` | DDL copied verbatim from the G2 stage-1 DDL set (`ddl-set.json`, baseline `master@63082bae`) |
 | `migrations/0002_write_idempotency.sql` | G3 slice-local bounded-write idempotency store (not production DDL) |
 | `migrations/0003_agent_protocol_slice.sql` | G4 local-only node/channel, desired-state refs/digests, 120-second manifest claim/lease ledger, hashed Agent credentials, replay nonces, receipt ledger, credential events, and a partial unique index enforcing one active rotation candidate per current key |
+| `migrations/0004_identity_bindings_slice.sql` | C1 local-synthetic-only issuer/subject → opaque account binding table; not target D1 DDL |
+| `src/repositories/identity-binding-repository.mjs` | C1 strict active-binding resolution, collision planning and explicit revocation; no public binding-creation route |
 | `src/agent-protocol.mjs` | G4 signed desired-state and redacted receipt HTTP handlers; WebCrypto only |
 | `src/repositories/agent-repository.mjs` | G4 Agent credential, nonce, receipt and bounded key-rotation persistence |
 | `src/index.mjs` | Worker entrypoint and routing |
@@ -30,13 +32,16 @@ The runnable G3/G4 control-plane source slices for the approved Workers + D1 tar
 | `src/cursor.mjs` | Strict keyset cursor codec (base64url JSON `{createdAt, id}`) |
 | `src/digests.mjs` | SHA-256 hex + random token helpers (WebCrypto) |
 | `src/repositories/account-repository.mjs` | Async D1 repository: `findById`, `listDirectory` |
+| `src/portal-auth.mjs` | C1 Portal Access Token exchange, internal trusted-session resolver and logout; business-side resolver is not a public route |
+| `src/identity-boundary.mjs` | Worker-local mirror of the server identity-boundary contract; self-contained so the workerd module graph stays inside this package |
+| `src/portal-auth-state.mjs` | C1 local-only Durable Object state for revocable opaque Portal sessions |
 | `src/repositories/challenge-repository.mjs` | Async D1 repository for the write flow: idempotency lookup + atomic challenge issuance |
 | `seed/synthetic-seed.sql` | Obviously synthetic seed data (`acct-synth-*`) with same-timestamp groups |
 | `test/` | Node test runner + Miniflare suites (migration, repository, pagination, API, Agent protocol) plus the root G4 Agent contract tests |
 
-### Why the second table is second-factor challenges, not portal sessions
+### Why the initial account slice uses second-factor challenges, not portal sessions
 
-`platform_portal_sessions` was the first session-direction candidate,
+The initial `0001` account slice chose the second-factor challenge table; C1 later adds a separate local-only identity-binding table in migration `0004`. `platform_portal_sessions` was the first session-direction candidate,
 but its `entry_id` foreign key references `platform_portal_entries(id)`,
 so it is not DDL-self-contained.
 `platform_portal_second_factor_challenges` references only
@@ -44,16 +49,24 @@ so it is not DDL-self-contained.
 account-security direction, so the slice stays self-contained with two
 tables.
 
-## C1 Auth0 Access Token proof (development only)
+## Worker module boundary and identity-contract synchronization
 
-Two **isolated, read-only identity proof routes** are present in this source branch:
+The Worker module graph must remain entirely inside `workers/control-plane`. In particular, Worker source must never import from `../../../server` or any path that escapes this package root; workerd rejects such imports when Miniflare starts the Worker.
 
-| Route | Required bearer | Required scope | Additional policy |
+`src/identity-boundary.mjs` is a self-contained mirror of the four identity-boundary exports in `server/services/platform/d1-t2-identity-boundary.mjs`. The server module is the reference contract. When changing actor-context validation, binding record validation, binding resolution or collision planning, update both modules and both suites (`server/tests/d1-t2-identity-boundary.test.mjs` and `test/identity-boundary.test.mjs`) in the same commit. The Worker suite intentionally imports only its local mirror; do not reintroduce cross-package imports in Worker source or tests.
+
+## C1 Auth0 identity proof and Portal session (development only)
+
+Two isolated identity proof routes plus a Portal opaque-session exchange are present in this source branch:
+
+| Route | Required credential | Required scope | Additional policy |
 | --- | --- | --- | --- |
-| `GET /v1/auth/portal/identity` | Portal JWT Access Token, signed RS256 and validated against Portal JWKS | `read:portal_identity` | No mandatory MFA |
-| `GET /v1/auth/admin/identity` | Admin JWT Access Token, signed RS256 and validated against Admin JWKS | `read:admin_identity` | Namespaced completed-MFA claim containing `mfa` |
+| `GET /v1/auth/portal/identity` | Portal JWT Access Token, signed RS256 and validated against Portal JWKS | `read:portal_identity` | Identity proof only; no mandatory MFA |
+| `GET /v1/auth/admin/identity` | Same-origin Admin BFF opaque HttpOnly session cookie | N/A | 15-minute absolute session; recent completed-OTP claim required at issuance |
+| `POST /v1/auth/portal/session` | Portal JWT Access Token, signed RS256 and validated against Portal JWKS | `read:portal_identity` | Resolves one active Portal issuer/subject binding to an active opaque account and issues a revocable session |
+| `POST /v1/auth/portal/logout` | Opaque Portal session bearer | N/A | Revokes the corresponding Portal Durable Object session |
 
-The Portal route returns only a minimal verified external actor projection, **not** internal account/operator authorization. It never reads/writes D1. Admin uses a same-origin Backend-for-Frontend flow: `/v1/auth/admin/login` redirects to Auth0 Universal Login (Authorization Code + PKCE S256); `/v1/auth/admin/callback` validates one-time state, PKCE, ID Token nonce/subject and the verified Access Token MFA claim; `/v1/auth/admin/identity` reads a 15-minute opaque HttpOnly session; `/v1/auth/admin/logout` revokes it. No password/OTP grant or `offline_access` is used. Access/ID tokens are discarded after verification; session and short-lived transaction state live in the dedicated `AdminAuthState` Durable Object, never D1. The two Auth0 Post-Login Actions are separately ordered. `auth0-actions/admin-mfa-challenge.js` requires `event.user.enrolledFactors` to be an array; the tenant setting “Customize MFA Factors using Actions” must be enabled and the Post-Login trigger must be v3 or newer. An unavailable enrollment field fails closed as `admin_mfa_enrollment_state_unavailable` and is never treated as an empty enrollment. If OTP is already enrolled, the Action challenges OTP. If not, it challenges any existing supported non-email factor first (when present), then calls `enrollWith({type:'otp'})`. Enrollment and authentication are distinct operations: an enrollment-only transaction receives no MFA proof; the Assertion Action denies it with `admin_mfa_enrollment_completed_reauthenticate`, and the user must start a fresh login and complete an OTP challenge before a claim is issued. Transaction metadata is ephemeral and used only to distinguish this onboarding denial. The Admin DEVELOPMENT tenant has two Actions deployed and bound in Challenge → Assertion order, but its current Challenge copy is a diagnostic gate-bypass; the repository template has not yet been re-deployed verbatim. Exact-template retest remains open. The local Wrangler config binds the DO for local testing only. No remote Cloudflare namespace, Worker Secret, binding, route or Worker deployment has been created. Other G3 read/write and G4 Agent routes keep their original separate bearer checks. Missing configuration or unsuccessful verification fails closed. Identity/session endpoints never echo tokens or PII.
+The `GET /v1/auth/portal/identity` route remains a proof-only endpoint and never reads/writes D1. `POST /v1/auth/portal/session` exchanges a verified Portal Access Token for a random opaque session only after an exact active `issuer_ref + subject_ref` binding resolves to an active account. The local D1 binding stores only the logical tenant alias (`portal` or `admin`), provider subject reference, opaque account reference and lifecycle timestamps; the Portal Durable Object stores only the minimal actor projection, opaque binding-generation reference and expiry. The actual Auth0 issuer URL is validated by the surface-specific OIDC verifier and is not stored in this table. Provider tokens, email, display names, password credentials, TOTP material and email digests are not stored. The Portal token does not provide verified factor evidence in this slice, so the actor context asserts an empty factor list rather than inventing an MFA claim. The opaque session token is returned once in JSON only for this local synthetic slice; no browser storage or HttpOnly-cookie policy is claimed. `resolvePortalSession()` is an internal business-side resolver and is deliberately not exposed as a public route; the private service-binding integration, actual business route, same-origin/cookie boundary and login rate-limit gates remain open. Admin uses a same-origin Backend-for-Frontend flow: `/v1/auth/admin/login` redirects to Auth0 Universal Login (Authorization Code + PKCE S256); `/v1/auth/admin/callback` validates one-time state, PKCE, ID Token nonce/subject and the verified Access Token MFA claim; `/v1/auth/admin/identity` reads a 15-minute opaque HttpOnly session; `/v1/auth/admin/logout` revokes it. No password/OTP grant or `offline_access` is used. Access/ID tokens are discarded after verification; session and short-lived transaction state live in the dedicated `AdminAuthState` Durable Object, never D1. The two Auth0 Post-Login Actions are separately ordered. `auth0-actions/admin-mfa-challenge.js` requires `event.user.enrolledFactors` to be an array; the tenant setting “Customize MFA Factors using Actions” must be enabled and the Post-Login trigger must be v3 or newer. An unavailable enrollment field fails closed as `admin_mfa_enrollment_state_unavailable` and is never treated as an empty enrollment. If OTP is already enrolled, the Action challenges OTP. If not, it challenges any existing supported non-email factor first (when present), then calls `enrollWith({type:'otp'})`. Enrollment and authentication are distinct operations: an enrollment-only transaction receives no MFA proof; the Assertion Action denies it with `admin_mfa_enrollment_completed_reauthenticate`, and the user must start a fresh login and complete an OTP challenge before a claim is issued. Transaction metadata is ephemeral and used only to distinguish this onboarding denial. The Admin DEVELOPMENT tenant has two Actions deployed and bound in Challenge → Assertion order, but its current Challenge copy is a diagnostic gate-bypass; the repository template has not yet been re-deployed verbatim. Exact-template retest remains open. The local Wrangler config binds both DO classes for local testing only. The new `0004` identity-binding migration and Portal DO are synthetic source fixtures; no target D1 DDL, remote Cloudflare namespace, Worker Secret, Service Binding, route or Worker deployment has been created. Other G3 read/write and G4 Agent routes keep their original separate bearer checks. Missing configuration or unsuccessful verification fails closed. Identity/session endpoints never echo tokens or PII.
 
 Required environment bindings (not provisioned in this branch): `AUTH0_PORTAL_ISSUER`, `AUTH0_PORTAL_AUDIENCE`, `AUTH0_PORTAL_ALLOWED_CLIENT_IDS`, `AUTH0_ADMIN_ISSUER`, `AUTH0_ADMIN_AUDIENCE`, `AUTH0_ADMIN_ALLOWED_CLIENT_IDS`, `AUTH0_ADMIN_MFA_CLAIM`. Optional: `AUTH0_MAX_TOKEN_LIFETIME_SECONDS` (60–86400, default 7200). The client allowlists use comma-separated IDs. `AUTH0_ADMIN_MFA_CLAIM` is required and used by the Admin BFF to validate the namespaced OTP proof emitted by the Assertion Action. This claim proves only recent OTP completion for the configured Admin client; it does not grant internal operator or business permissions. The two scopes above are **provisional API-permission identifiers**, not approved or provisioned Auth0 resource configuration.
 
@@ -64,6 +77,8 @@ The implementation is in `src/oidc-gateway.mjs` and `test/oidc-gateway.test.mjs`
 | Route | Auth | Behavior |
 | --- | --- | --- |
 | `GET /healthz` | open | `{ "ok": true, "service": "flylink-control-plane" }` |
+| `POST /v1/auth/portal/session` | Portal JWT Access Token | Verified Portal subject → one active opaque account binding → revocable opaque session; no PII in response |
+| `POST /v1/auth/portal/logout` | Opaque Portal session bearer | Revoke the Portal session; idempotent for an already absent session |
 | `GET /v1/accounts/:accountId` | Bearer (read) | One account, safe projection only |
 | `GET /v1/accounts?status=&limit=&cursor=` | Bearer (read) | Keyset-paginated directory |
 | `POST /v1/accounts/:accountId/second-factor-challenges` | Bearer (write) | Issue one second-factor challenge; requires `Idempotency-Key` |
@@ -161,7 +176,7 @@ The suites run the real Worker entrypoint under Miniflare against a
 fresh local D1 database with the real migrations applied:
 
 - **migration** — the slice schema is created; CHECK and foreign-key
-  constraints are enforced; account deletion cascades to challenges.
+  constraints are enforced; account deletion cascades to challenges; C1 identity-binding indexes and lifecycle checks are present.
 - **repository** — `findById` projection and null-on-missing;
   `listDirectory` contract order and status filtering.
 - **pagination** — the five verified properties: same-timestamp stable
@@ -173,6 +188,7 @@ fresh local D1 database with the real migrations applied:
   key set, and JSON error shapes for 400 / 401 / 404 / 405.
 - **write-flow** — issuance projection, idempotent replay/conflict, privilege separation, fail-closed behavior and atomic rollback.
 - **agent-protocol** — Ed25519 manifest verification with the existing Agent verifier, refs/digests-only payloads, node/channel scope, timestamp and nonce replay checks, 120-second idempotent claim leases, redacted receipt binding and replay/conflict behavior, credential overlap/expiry/leak revocation, and a full Agent-client ↔ Worker ↔ local D1 cycle including lost claim/receipt response recovery without a second apply, narrowed-scope receipt deferral/recovery, and rejection of invalid rotation tokens before key reservation.
+- **identity-binding-repository / portal-auth / portal-auth-state** — opaque binding uniqueness and revocation, concurrent bind collision handling, account-delete restriction while a binding exists, Auth0 issuer/subject separation, active-account enforcement, opaque session creation/validation/revocation/expiry, and negative checks for unknown subjects, inactive accounts, cross-tenant tokens and PII/token persistence.
 - **Agent contract** — the existing `server/tests/agent-g4-contract.test.mjs` suite also runs in this targeted Worker workflow, including the persisted claim-key and pending-receipt retry semantics.
 
 CI (`.github/workflows/control-plane-worker.yml`) runs the same

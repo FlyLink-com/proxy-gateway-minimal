@@ -32,7 +32,9 @@ import {
 } from "./repositories/challenge-repository.mjs";
 import { handleAgentDesiredState, handleAgentReceipt } from "./agent-protocol.mjs";
 import { handleAuth0IdentityProof } from "./oidc-gateway.mjs";
+import { createPortalSession, logoutPortalSession } from "./portal-auth.mjs";
 import { AdminAuthState } from "./admin-auth-state.mjs";
+import { PortalAuthState } from "./portal-auth-state.mjs";
 import { startAdminLogin, completeAdminLogin, getAdminSession, logoutAdminSession } from "./admin-auth.mjs";
 
 const DEFAULT_LIMIT = 20;
@@ -252,11 +254,13 @@ export default {
         }
         return jsonResponse(200, { ok: true, service: "flylink-control-plane" });
       }
-      // C1: Portal keeps its isolated bearer-token identity proof. Admin uses
-      // Universal Login BFF sessions and never accepts a raw provider token as its cookie.
+      // C1: Portal identity proof is separate from its opaque application-session exchange.
+      // The session's business-side resolver is internal; no public account route is added here.
       if (pathname === "/v1/auth/portal/identity") {
         return await handleAuth0IdentityProof(request, env, "portal");
       }
+      if (pathname === "/v1/auth/portal/session") return await createPortalSession(request, env);
+      if (pathname === "/v1/auth/portal/logout") return await logoutPortalSession(request, env);
       if (pathname === "/v1/auth/admin/login") return await startAdminLogin(request, env);
       if (pathname === "/v1/auth/admin/callback") return await completeAdminLogin(request, env);
       if (pathname === "/v1/auth/admin/identity") return await getAdminSession(request, env);
@@ -310,4 +314,4 @@ export default {
 
 
 // Wrangler Durable Object class export; local-only binding until separately authorized.
-export { AdminAuthState };
+export { AdminAuthState, PortalAuthState };

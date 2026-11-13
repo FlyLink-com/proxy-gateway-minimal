@@ -11,11 +11,13 @@
   "compatibility_date": "2025-06-01",
   "durable_objects": {
     "bindings": [
-      { "name": "ADMIN_AUTH_STATE", "class_name": "AdminAuthState" }
+      { "name": "ADMIN_AUTH_STATE", "class_name": "AdminAuthState" },
+      { "name": "PORTAL_AUTH_STATE", "class_name": "PortalAuthState" }
     ]
   },
   "migrations": [
-    { "tag": "v1-admin-auth-state", "new_sqlite_classes": ["AdminAuthState"] }
+    { "tag": "v1-admin-auth-state", "new_sqlite_classes": ["AdminAuthState"] },
+    { "tag": "v2-portal-auth-state", "new_sqlite_classes": ["PortalAuthState"] }
   ],
   "d1_databases": [
     {
