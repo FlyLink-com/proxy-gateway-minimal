@@ -10,7 +10,7 @@ const ROOT = "/api/admin/third-party-subscriptions/distribution";
 const REVISION = "a".repeat(64);
 const ROUTES = ["monthly_basic", "monthly_plus", "yearly"].map((planId) => ({ planId, mode: "owned", nodeIds: [] }));
 
-async function fixture(t, { enabled = true, available = true, role = "admin", failure, supply, authEnabled = true } = {}) {
+async function fixture(t, { enabled = true, available = true, role = "admin", failure, supply, authEnabled = true, protocolRating } = {}) {
   const calls = [];
   const snapshot = { revision: REVISION, owned: { enabled: true, items: [] }, routes: ROUTES, candidates: [] };
   const store = {
@@ -18,7 +18,7 @@ async function fixture(t, { enabled = true, available = true, role = "admin", fa
     writeRoutes(body) { calls.push(["routes", body]); if (failure) throw failure; return snapshot; },
     writeOwned(body) { calls.push(["owned", body]); if (failure) throw failure; return snapshot; }
   };
-  const state = { platform: { adminAuthRoutesEnabled: authEnabled, adminAuth: {}, adminBrowserOrigin: "https://admin.example.test" }, subscriptionDistribution: { enabled, available, store, ...(supply ? { supply } : {}) } };
+  const state = { platform: { adminAuthRoutesEnabled: authEnabled, adminAuth: {}, adminBrowserOrigin: "https://admin.example.test" }, subscriptionDistribution: { enabled, available, store, ...(supply ? { supply } : {}) }, ...(protocolRating ? { protocolRating } : {}) };
   const app = express();
   app.use(express.json({ strict: false }));
   app.use((req, _res, next) => { if (role !== null) req.adminPrincipal = { role }; next(); });
@@ -185,6 +185,49 @@ test("real application enforces session, CIDR and Admin role on all distribution
       assert.equal(calls, expected === 200 ? 5 : 0);
     } finally { server.closeAllConnections(); server.close(); }
   }
+});
+
+test("protocol rating save is separate from supply and keeps the old policy on conflict", async (t) => {
+  const ratingRevision = "c".repeat(64);
+  const status = { installed: true, revision: ratingRevision, active: null, pending: null };
+  let saves = 0;
+  let resumes = 0;
+  const protocolRating = {
+    read() { return status; },
+    save(input) {
+      saves += 1;
+      assert.deepEqual(Object.keys(input).sort(), ["expectedRevision", "hy2", "ratingRevision", "tuic", "vless"]);
+      assert.equal(input.expectedRevision, ratingRevision);
+      status.revision = "d".repeat(64);
+      status.pending = { version: 1, state: "pending", effectiveNotBefore: "2026-10-20T00:00:00.000Z", multipliers: { vless: input.vless, hy2: input.hy2, tuic: input.tuic } };
+      return status;
+    }
+  };
+  const supply = {
+    isTransitioning: () => true,
+    read() { return { revision: "b".repeat(64), state: "paused", protocolsRunning: 0, collectorState: "paused", nativeDistributionEnabled: false, observedAt: null, canPause: false, canEnable: true }; },
+    async setEnabled() { resumes += 1; throw new Error("must-not-resume"); }
+  };
+  const f = await fixture(t, { protocolRating, supply });
+  const headers = { Origin: "https://admin.example.test" };
+  const body = { ratingRevision, vless: "1.0", hy2: "1.5", tuic: "1.0" };
+  assert.equal((await f.request("GET")).body.protocolRating.installed, true);
+  assert.equal((await f.request("PUT", { ...body, command: "tc" }, "/rating", headers)).response.status, 400);
+  assert.equal(saves, 0);
+  const legacy = await fixture(t, { authEnabled: false, protocolRating, supply });
+  assert.equal((await legacy.request("PUT", body, "/rating", headers)).response.status, 403);
+  const accepted = await f.request("PUT", body, "/rating", headers);
+  assert.equal(accepted.response.status, 200);
+  assert.equal(accepted.response.headers.get("cache-control"), "no-store");
+  assert.equal(accepted.body.protocolRating.pending.multipliers.hy2, "1.5");
+  assert.equal(accepted.body.bwhSupply.state, "paused");
+  assert.equal(saves, 1);
+  assert.equal(resumes, 0);
+  const conflict = await fixture(t, { protocolRating: { read: () => status, save() { throw Object.assign(new Error("secret-db-path"), { code: "rating_conflict" }); } }, supply });
+  const rejected = await conflict.request("PUT", body, "/rating", headers);
+  assert.equal(rejected.response.status, 409);
+  assert.equal(rejected.body.error, "protocol_rating_conflict");
+  assert.equal(rejected.raw.includes("secret-db-path"), false);
 });
 
 test("real app accepts the bounded 256-node Unicode save only at the owned PUT path", async (t) => {

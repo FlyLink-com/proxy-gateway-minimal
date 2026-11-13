@@ -7,6 +7,7 @@ import { readFullMeteringBindings } from "./traffic-vless-recovery-baseline.mjs"
 import { FULL_METERING_CHANNELS, runFullMeteringCollection } from "./full-metering-collection.mjs";
 import { createFullMeteringSourceDriver, fullMeteringRuntimeFingerprint } from "./full-metering-source-driver.mjs";
 import { createFullMeteringSampleWriter } from "./full-metering-sample-writer.mjs";
+import { freezeProtocolRatingDecisions } from "../../server/services/platform/protocol-traffic-rating.mjs";
 import { fullMeteringDigest } from "./full-metering-journal.mjs";
 
 const CHANNEL = "channel-vultr-a-hy2";
@@ -111,6 +112,7 @@ export function createDataPackFullMeteringSession({ database, controlStore, mate
     if (mode === "initialize" ? initialized : !initialized) fail("data_pack_metering_session_state_invalid");
     const result = await runFullMeteringCollection({ directory, context, activationId, mode,
       nowFn: now, readInventory, readSources, applySamples,
+      freezeRating: (samples) => freezeProtocolRatingDecisions(database, samples),
       ...(mode === "collect-pack-resets" ? { dataPackResetStore: controlStore } : {}) });
     if (mode === "initialize") initialized = true;
     return result;

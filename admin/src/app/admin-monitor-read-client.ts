@@ -95,6 +95,8 @@ export type MonitorEntitlement = {
   validUntil: string | null;
 };
 
+export type MonitorRatingState = "rated" | "unobserved" | "charge_missing" | "legacy";
+
 export type MonitorUsageRow = {
   accountId: string;
   entitlementId: string;
@@ -102,6 +104,9 @@ export type MonitorUsageRow = {
   status: string;
   usedBytes: number | null;
   observedAt: string | null;
+  rawUsedBytes?: number | null;
+  chargedUsedBytes?: number | null;
+  ratingState?: MonitorRatingState;
 };
 
 export type MonitorPoint = {
@@ -111,12 +116,18 @@ export type MonitorPoint = {
   totalBytes: number | null;
 };
 
+export type MonitorRatingBoundary = {
+  version: number;
+  effectiveNotBefore: string;
+};
+
 export type MonitorUsage = {
   items: MonitorUsageRow[];
   points: MonitorPoint[];
   generatedAt: string | null;
   from: string | null;
   to: string | null;
+  ratingBoundary?: MonitorRatingBoundary | null;
 };
 
 export type MonitorCollector = {
@@ -452,6 +463,11 @@ function mapUsedBytes(status: string, value: unknown): number | null {
   return null;
 }
 
+function mapRatingState(value: unknown): MonitorRatingState {
+  if (value === "rated" || value === "unobserved" || value === "charge_missing" || value === "legacy") return value;
+  return "legacy";
+}
+
 function mapUsageRow(value: unknown): MonitorUsageRow {
   if (!isRecord(value)) fail("invalid");
   const status = usageStatus(value);
@@ -461,7 +477,10 @@ function mapUsageRow(value: unknown): MonitorUsageRow {
     plan: sanitizePlan(value.plan),
     status,
     usedBytes: mapUsedBytes(status, value.usedBytes),
-    observedAt: isoOrNull(value.lastUsageObservedAt)
+    observedAt: isoOrNull(value.lastUsageObservedAt),
+    rawUsedBytes: optionalCounter(value.rawUsedBytes),
+    chargedUsedBytes: optionalCounter(value.chargedUsedBytes),
+    ratingState: mapRatingState(value.ratingState)
   };
 }
 
@@ -505,12 +524,16 @@ function mapUsage(body: Record<string, unknown>): MonitorUsage {
   }
   if (!isRecord(monitor.series)) fail("invalid");
   const range = isRecord(monitor.series.range) ? monitor.series.range : null;
+  const boundary = isRecord(monitor.ratingBoundary) ? monitor.ratingBoundary : null;
+  const version = boundary && Number.isInteger(boundary.version) && (boundary.version as number) > 0 ? boundary.version as number : null;
+  const effectiveNotBefore = boundary ? isoOrNull(boundary.effectiveNotBefore) : null;
   return {
     items: mapRecords(monitor.items, mapUsageRow),
     points: mapPoints(monitor.series.points),
     generatedAt: isoOrNull(monitor.generatedAt),
     from: range ? isoOrNull(range.from) : null,
-    to: range ? isoOrNull(range.to) : null
+    to: range ? isoOrNull(range.to) : null,
+    ratingBoundary: version !== null && effectiveNotBefore ? { version, effectiveNotBefore } : null
   };
 }
 

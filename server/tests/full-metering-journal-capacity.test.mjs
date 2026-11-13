@@ -6,7 +6,7 @@ import { mkdtempSync, rmSync, readFileSync, writeFileSync, readdirSync, existsSy
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { initializeFullMeteringJournal, readFullMeteringJournal, commitFullMeteringJournal,
-  recoverFullMeteringJournal, fullMeteringDigest } from "../../scripts/lib/full-metering-journal.mjs";
+  recoverFullMeteringJournal, admitPreRatingSwitchPending, fullMeteringDigest } from "../../scripts/lib/full-metering-journal.mjs";
 
 const context = { scopeDigest: "a".repeat(64), databaseIdentityDigest: "b".repeat(64) };
 const magic = Buffer.from("GCCFMJ2\n");
@@ -68,7 +68,12 @@ test("legacy pending replays into compressed checkpoint without replacing the or
   writeFileSync(join(directory, "pending.json"), legacy({ previousDigest: fullMeteringDigest({ sequence: 0 }),
     nextCheckpoint: next, samples: [{ id: "legacy-synthetic" }] }), { mode: 0o600 });
   const seen = [];
-  recoverFullMeteringJournal({ directory, context, applySamples: rows => seen.push(...rows) });
+  const applySamples = rows => seen.push(...rows);
+  assert.throws(() => recoverFullMeteringJournal({ directory, context, applySamples }), /full_metering_legacy_unadmitted/);
+  assert.deepEqual(seen, []);
+  assert.equal(readFullMeteringJournal({ directory, context }).sequence, 0);
+  admitPreRatingSwitchPending({ directory, context });
+  recoverFullMeteringJournal({ directory, context, applySamples });
   assert.deepEqual(seen, [{ id: "legacy-synthetic" }]);
   assert.deepEqual(readFullMeteringJournal({ directory, context }), next);
   assert.deepEqual(readFileSync(join(directory, "checkpoint.json")).subarray(0, 8), magic);
