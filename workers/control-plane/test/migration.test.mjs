@@ -28,6 +28,9 @@ test("migration applies and creates the slice schema verbatim", async (t) => {
     "index:agent_node_channels_status_idx",
     "index:agent_request_nonces_expires_idx",
     "index:platform_accounts_status_idx",
+    "index:platform_identity_bindings_active_account_idx",
+    "index:platform_identity_bindings_active_subject_idx",
+    "index:platform_identity_bindings_subject_idx",
     "index:platform_portal_second_factor_account_id_idx",
     "index:platform_portal_second_factor_status_idx",
     "table:agent_api_credentials",
@@ -40,6 +43,7 @@ test("migration applies and creates the slice schema verbatim", async (t) => {
     "table:agent_nodes",
     "table:agent_request_nonces",
     "table:platform_accounts",
+    "table:platform_identity_bindings",
     "table:platform_portal_second_factor_challenges",
     "table:platform_write_idempotency_keys",
   ]);

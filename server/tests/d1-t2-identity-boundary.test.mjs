@@ -79,11 +79,12 @@ test("actor context rejects expiry, excessive lifetime and future authentication
   }), { code: "identity_actor_context_time_invalid" });
 });
 
-test("actor context requires a known authentication factor and password or passkey", () => {
-  assert.throws(() => parseTrustedIdentityActorContext({ ...actor, factors: ["sms"] }, {
+test("identity-only actor context may assert no factor evidence; unknown factors are rejected", () => {
+  const parsed = parseTrustedIdentityActorContext({ ...actor, factors: [] }, {
     allowedIssuers: [issuerRef], nowMs: NOW
-  }), { code: "identity_actor_factors_invalid" });
-  assert.throws(() => parseTrustedIdentityActorContext({ ...actor, factors: ["totp"] }, {
+  });
+  assert.deepEqual(parsed.factors, []);
+  assert.throws(() => parseTrustedIdentityActorContext({ ...actor, factors: ["sms"] }, {
     allowedIssuers: [issuerRef], nowMs: NOW
   }), { code: "identity_actor_factors_invalid" });
 });

@@ -72,7 +72,7 @@ export function parseTrustedIdentityActorContext(input, {
     || authTimeMs > nowMs + clockSkewMs || authTimeMs > expiresAtMs) {
     throw fail("identity_actor_context_time_invalid");
   }
-  if (!Array.isArray(input.factors) || input.factors.length === 0) {
+  if (!Array.isArray(input.factors)) {
     throw fail("identity_actor_factors_invalid");
   }
   const actorFactors = new Set();
@@ -84,10 +84,6 @@ export function parseTrustedIdentityActorContext(input, {
     }
     actorFactors.add(factor);
   }
-  if (!actorFactors.has("password") && !actorFactors.has("passkey")) {
-    throw fail("identity_actor_factors_invalid");
-  }
-
   if (!Array.isArray(requiredFactors)) throw fail("identity_required_factors_invalid");
   const requiredFactorSet = new Set();
   for (let index = 0; index < requiredFactors.length; index += 1) {

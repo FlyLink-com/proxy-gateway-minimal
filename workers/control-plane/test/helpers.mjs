@@ -21,6 +21,7 @@ const migrationPaths = [
   fileURLToPath(new URL("../migrations/0001_accounts_slice.sql", import.meta.url)),
   fileURLToPath(new URL("../migrations/0002_write_idempotency.sql", import.meta.url)),
   fileURLToPath(new URL("../migrations/0003_agent_protocol_slice.sql", import.meta.url)),
+  fileURLToPath(new URL("../migrations/0004_identity_bindings_slice.sql", import.meta.url)),
 ];
 
 export async function applyMigration(db) {
