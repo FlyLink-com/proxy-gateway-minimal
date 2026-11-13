@@ -154,6 +154,7 @@ test("T1: valid legacy TOTP formats require re-enrollment and malformed values q
     "v2:aes-256-gcm:bad:bad:bad",
     "malformed legacy payload",
     "x".repeat(4097),
+    " ".repeat(8193) + validV2,
     42,
     { secret: "JBSWY3DPEHPK3PXP" }
   ]) {

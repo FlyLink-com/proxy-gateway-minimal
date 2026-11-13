@@ -175,6 +175,9 @@ export function classifySyntheticLegacyTotpDisposition(value) {
   if (typeof value !== "string") {
     return { outcome: "quarantine", nextAction: "manual_review" };
   }
+  if (value.length > 8192) {
+    return { outcome: "quarantine", nextAction: "manual_review" };
+  }
   const raw = value.trim();
   if (raw.startsWith("v2:")) {
     return isLegacyV2TotpEnvelope(raw)
