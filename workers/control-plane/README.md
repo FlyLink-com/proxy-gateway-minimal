@@ -33,6 +33,7 @@ The runnable G3/G4 control-plane source slices for the approved Workers + D1 tar
 | `src/digests.mjs` | SHA-256 hex + random token helpers (WebCrypto) |
 | `src/repositories/account-repository.mjs` | Async D1 repository: `findById`, `listDirectory` |
 | `src/portal-auth.mjs` | C1 Portal Access Token exchange, internal trusted-session resolver and logout; business-side resolver is not a public route |
+| `src/identity-boundary.mjs` | Worker-local mirror of the server identity-boundary contract; self-contained so the workerd module graph stays inside this package |
 | `src/portal-auth-state.mjs` | C1 local-only Durable Object state for revocable opaque Portal sessions |
 | `src/repositories/challenge-repository.mjs` | Async D1 repository for the write flow: idempotency lookup + atomic challenge issuance |
 | `seed/synthetic-seed.sql` | Obviously synthetic seed data (`acct-synth-*`) with same-timestamp groups |
@@ -47,6 +48,12 @@ so it is not DDL-self-contained.
 `platform_accounts(id)`, carries no triggers, and sits squarely in the
 account-security direction, so the slice stays self-contained with two
 tables.
+
+## Worker module boundary and identity-contract synchronization
+
+The Worker module graph must remain entirely inside `workers/control-plane`. In particular, Worker source must never import from `../../../server` or any path that escapes this package root; workerd rejects such imports when Miniflare starts the Worker.
+
+`src/identity-boundary.mjs` is a self-contained mirror of the four identity-boundary exports in `server/services/platform/d1-t2-identity-boundary.mjs`. The server module is the reference contract. When changing actor-context validation, binding record validation, binding resolution or collision planning, update both modules and both suites (`server/tests/d1-t2-identity-boundary.test.mjs` and `test/identity-boundary.test.mjs`) in the same commit. The Worker suite intentionally imports only its local mirror; do not reintroduce cross-package imports in Worker source or tests.
 
 ## C1 Auth0 identity proof and Portal session (development only)
 

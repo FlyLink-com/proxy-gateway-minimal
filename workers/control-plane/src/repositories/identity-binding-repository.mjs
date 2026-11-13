@@ -5,7 +5,7 @@ import {
   createD1IdentityBindingRecord,
   planD1IdentityBinding,
   resolveD1IdentityBinding,
-} from "../../../../server/services/platform/d1-t2-identity-boundary.mjs";
+} from "../identity-boundary.mjs";
 import { randomBase64Url } from "../digests.mjs";
 
 const PROJECTION = "id, account_id, issuer_ref, subject_ref, status, created_at_ms, updated_at_ms, revoked_at_ms";

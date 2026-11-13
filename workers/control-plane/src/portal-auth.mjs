@@ -9,7 +9,7 @@ import { verifyAuth0AccessTokenWithClaims } from "./oidc-gateway.mjs";
 import {
   IDENTITY_ACTOR_CONTEXT_AUDIENCE,
   parseTrustedIdentityActorContext,
-} from "../../../server/services/platform/d1-t2-identity-boundary.mjs";
+} from "./identity-boundary.mjs";
 
 const ACTOR_CONTEXT_TTL_MS = 5 * 60 * 1000;
 const MAX_SESSION_MS = 24 * 60 * 60 * 1000;

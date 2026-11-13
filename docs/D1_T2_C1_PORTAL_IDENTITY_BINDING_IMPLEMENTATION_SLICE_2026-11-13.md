@@ -1,5 +1,15 @@
 # C1 Portal identity binding and opaque session slice
 
+```yaml
+document_metadata:
+  doc_type: operational
+  lifecycle: active
+  authority_scope: source_only_c1_portal_identity_binding_implementation
+  superseded_by: null
+  last_verified_at: 2026-11-13
+  production_authority: false
+```
+
 - Status: source-only implementation candidate; not a C1 or T2 closure.
 - Work baseline: `55bd6435916ccce34171675a8add69d838e56cc3`.
 - Working branch: `t2-c1-portal-identity-binding-20261113`.
@@ -22,6 +32,12 @@ This implementation uses the decisions already approved by Yi; it does not reope
 - Stores only the minimal actor references, opaque binding-generation reference and expiry in a local-only Portal Durable Object. The provider JWT and raw session token are not persisted. Rebinding the same subject to the same account invalidates sessions issued under the prior binding generation.
 - Adds an internal `resolvePortalSession()` function that validates the opaque session, re-checks that the bound account remains active, and returns a strict trusted actor context for a future private business-side caller.
 - Adds explicit Portal logout/revocation.
+
+## Worker package boundary and synchronization rule
+
+- `workers/control-plane/src/identity-boundary.mjs` is a self-contained Worker-local mirror of the four identity-boundary exports used by this slice. It mirrors `server/services/platform/d1-t2-identity-boundary.mjs`; the Worker must not import that server path or any other file outside `workers/control-plane`.
+- The server module is the reference contract. Any change to actor-context validation, identity-binding record validation, binding resolution or collision planning must update the Worker mirror and both corresponding test files in the same commit.
+- `workers/control-plane/test/identity-boundary.test.mjs` mirrors the server contract tests but imports only the Worker-local module. Do not add cross-package server imports to Worker source or Worker tests.
 
 ## Important boundaries
 
