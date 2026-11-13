@@ -1,4 +1,5 @@
 import { createPortalReferralService } from './services/platform/portal-referral-service.mjs';
+import { openAdmittedBwhBandwidth } from "./services/platform/bwh-bandwidth-service.mjs";
 import { validateAdminPublicLogin } from "./middleware/admin-public-login.mjs";
 import { createHash, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
@@ -3202,6 +3203,22 @@ export function createRuntimeState(options = {}) {
     });
     subscriptionDistribution.supply = bwhSupplyService;
   }
+  let bwhBandwidth = options.bwhBandwidth ?? null;
+  let ownsBwhBandwidth = false;
+  if (!options.bwhBandwidth && envFlag(env.BWH_SHARED_BANDWIDTH_ADMITTED)) {
+    const bwhBandwidthDbPath = optionalEnvText(env.BWH_SHARED_BANDWIDTH_DB_PATH);
+    if (bwhBandwidthDbPath && isAbsolute(bwhBandwidthDbPath)) {
+      // A bad path stays unavailable. Throwing here would skip close() after
+      // the control database is already open.
+      try {
+        bwhBandwidth = openAdmittedBwhBandwidth({ dbPath: bwhBandwidthDbPath, admit: true });
+        ownsBwhBandwidth = true;
+      } catch {
+        bwhBandwidth = null;
+        ownsBwhBandwidth = false;
+      }
+    }
+  }
 
   // Only the store constructed here has a proven file binding. An injected
   // store (or an in-memory store) must not cause a read of the env/default DB.
@@ -3241,6 +3258,7 @@ export function createRuntimeState(options = {}) {
       }
       try { thirdPartyStore?.close?.(); } catch (error) { firstError ||= error; }
       try { distributionStore?.close?.(); } catch (error) { firstError ||= error; }
+      try { if (ownsBwhBandwidth) bwhBandwidth?.close(); } catch (error) { firstError ||= error; }
       for (const [owned, store] of [
         [ownsCoinsWalletStore, coinsWalletStore],
         [ownsControlStore, platformControlStore],
@@ -3338,6 +3356,7 @@ export function createRuntimeState(options = {}) {
       }
       try { thirdPartyStore?.close?.(); } catch (error) { firstError ||= error; }
       try { distributionStore?.close?.(); } catch (error) { firstError ||= error; }
+      try { if (ownsBwhBandwidth) bwhBandwidth?.close(); } catch (error) { firstError ||= error; }
       for (const [owned, store] of [
         [ownsControlStore, platformControlStore],
         [ownsSubscriptionStore, subscriptionStore]
@@ -3371,6 +3390,7 @@ export function createRuntimeState(options = {}) {
     services: { ssLocal, httpProxy },
     thirdPartySubscriptions,
     subscriptionDistribution,
+    bwhBandwidth,
     subscriptions: {
       store: subscriptionStore,
       core: subscriptionCore,
