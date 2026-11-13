@@ -173,6 +173,149 @@ test("approved service binding with an extra entrypoint fails closed", () => {
   });
 });
 
+
+test("control-plane exact local ADMIN_AUTH_STATE binding and v1 migration are allowed", () => {
+  withFixture(null, ({ code, stdout }) => {
+    assert.equal(code, 0, stdout);
+    assert.match(stdout, /C2_POLICY_CHECK: PASS/);
+  });
+});
+
+test("control-plane rejects any additional Durable Object binding", () => {
+  withFixture((c) => {
+    const path = "workers/control-plane/wrangler.control-plane.jsonc";
+    const original = c[path];
+    const updated = original.replace(
+      '{ "name": "ADMIN_AUTH_STATE", "class_name": "AdminAuthState" }',
+      '{ "name": "ADMIN_AUTH_STATE", "class_name": "AdminAuthState" },\n      { "name": "UNAPPROVED_STATE", "class_name": "UnapprovedState" }'
+    );
+    assert.notEqual(updated, original, "fixture must add an extra Durable Object binding");
+    c[path] = updated;
+  }, ({ code, stdout }) => {
+    assert.equal(code, 1);
+    assert.match(stdout, /"durable_objects" must exactly match/);
+  });
+});
+
+test("control-plane rejects a renamed Durable Object binding", () => {
+  withFixture((c) => {
+    const path = "workers/control-plane/wrangler.control-plane.jsonc";
+    const original = c[path];
+    const updated = original.replace('"name": "ADMIN_AUTH_STATE"', '"name": "OTHER_STATE"');
+    assert.notEqual(updated, original, "fixture must rename the Durable Object binding");
+    c[path] = updated;
+  }, ({ code, stdout }) => {
+    assert.equal(code, 1);
+    assert.match(stdout, /"durable_objects" must exactly match/);
+  });
+});
+
+test("control-plane rejects a different Durable Object class", () => {
+  withFixture((c) => {
+    const path = "workers/control-plane/wrangler.control-plane.jsonc";
+    const original = c[path];
+    const updated = original.replace('"class_name": "AdminAuthState"', '"class_name": "OtherClass"');
+    assert.notEqual(updated, original, "fixture must change the Durable Object class");
+    c[path] = updated;
+  }, ({ code, stdout }) => {
+    assert.equal(code, 1);
+    assert.match(stdout, /"durable_objects" must exactly match/);
+  });
+});
+
+test("control-plane rejects extra Durable Object binding fields", () => {
+  withFixture((c) => {
+    const path = "workers/control-plane/wrangler.control-plane.jsonc";
+    const original = c[path];
+    const updated = original.replace(
+      '"class_name": "AdminAuthState"',
+      '"class_name": "AdminAuthState", "script_name": "other-worker"'
+    );
+    assert.notEqual(updated, original, "fixture must add an unapproved Durable Object field");
+    c[path] = updated;
+  }, ({ code, stdout }) => {
+    assert.equal(code, 1);
+    assert.match(stdout, /"durable_objects" must exactly match/);
+  });
+});
+
+test("control-plane rejects a changed Durable Object migration tag", () => {
+  withFixture((c) => {
+    const path = "workers/control-plane/wrangler.control-plane.jsonc";
+    const original = c[path];
+    const updated = original.replace('"tag": "v1-admin-auth-state"', '"tag": "v2-unapproved"');
+    assert.notEqual(updated, original, "fixture must change the migration tag");
+    c[path] = updated;
+  }, ({ code, stdout }) => {
+    assert.equal(code, 1);
+    assert.match(stdout, /"migrations" must exactly match/);
+  });
+});
+
+test("control-plane rejects an additional Durable Object migration", () => {
+  withFixture((c) => {
+    const path = "workers/control-plane/wrangler.control-plane.jsonc";
+    const original = c[path];
+    const updated = original.replace(
+      '{ "tag": "v1-admin-auth-state", "new_sqlite_classes": ["AdminAuthState"] }',
+      '{ "tag": "v1-admin-auth-state", "new_sqlite_classes": ["AdminAuthState"] },\n    { "tag": "v2-extra", "new_sqlite_classes": ["ExtraClass"] }'
+    );
+    assert.notEqual(updated, original, "fixture must add an extra migration");
+    c[path] = updated;
+  }, ({ code, stdout }) => {
+    assert.equal(code, 1);
+    assert.match(stdout, /"migrations" must exactly match/);
+  });
+});
+
+test("control-plane rejects additional classes in the approved migration", () => {
+  withFixture((c) => {
+    const path = "workers/control-plane/wrangler.control-plane.jsonc";
+    const original = c[path];
+    const updated = original.replace(
+      '"new_sqlite_classes": ["AdminAuthState"]',
+      '"new_sqlite_classes": ["AdminAuthState", "ExtraClass"]'
+    );
+    assert.notEqual(updated, original, "fixture must add an extra migrated class");
+    c[path] = updated;
+  }, ({ code, stdout }) => {
+    assert.equal(code, 1);
+    assert.match(stdout, /"migrations" must exactly match/);
+  });
+});
+
+test("control-plane requires the approved Durable Object declaration", () => {
+  withFixture((c) => {
+    const path = "workers/control-plane/wrangler.control-plane.jsonc";
+    const original = c[path];
+    const updated = original.replace(
+      /  "durable_objects": \{\n    "bindings": \[\n      \{ "name": "ADMIN_AUTH_STATE", "class_name": "AdminAuthState" \}\n    \]\n  \},\n/,
+      ""
+    );
+    assert.notEqual(updated, original, "fixture must remove the Durable Object declaration");
+    c[path] = updated;
+  }, ({ code, stdout }) => {
+    assert.equal(code, 1);
+    assert.match(stdout, /"durable_objects" must exactly match/);
+  });
+});
+
+test("control-plane requires the approved Durable Object migration", () => {
+  withFixture((c) => {
+    const path = "workers/control-plane/wrangler.control-plane.jsonc";
+    const original = c[path];
+    const updated = original.replace(
+      /  "migrations": \[\n    \{ "tag": "v1-admin-auth-state", "new_sqlite_classes": \["AdminAuthState"\] \}\n  \],\n/,
+      ""
+    );
+    assert.notEqual(updated, original, "fixture must remove the migration declaration");
+    c[path] = updated;
+  }, ({ code, stdout }) => {
+    assert.equal(code, 1);
+    assert.match(stdout, /"migrations" must exactly match/);
+  });
+});
+
 test("TOML top-level account_id outside the allowlist fails", () => {
   withFixture((c) => {
     c["workers/crypto/wrangler.extra.toml"] = 'name = "extra-worker"\naccount_id = "22222222222222222222222222222222"\n';
