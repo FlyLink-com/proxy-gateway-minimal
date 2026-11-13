@@ -760,7 +760,7 @@ test("package and workflow contracts invoke each explicit profile without weaken
   );
   assert.equal(
     packageJson.scripts["test:server"],
-    "node scripts/source-validation-test-runner.mjs"
+    "node scripts/source-validation-test-runner.mjs && npm run test:c2-worker-config-policy"
   );
 
   const ci = readFileSync(resolve(REPOSITORY_ROOT, ".github/workflows/ci.yml"), "utf8");

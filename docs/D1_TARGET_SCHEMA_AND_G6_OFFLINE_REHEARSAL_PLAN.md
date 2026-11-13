@@ -1,5 +1,16 @@
 # D1 Target Schema & G6 Offline Migration Rehearsal Plan
 
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: active
+  authority_scope: d1_target_schema_g6_offline_rehearsal_plan
+  superseded_by: null
+  last_verified_at: 2026-11-10
+  production_authority: false
+```
+
+
 > **Status:** Draft proposal — repository-only, source/fixture-only.
 > **Source anchor:** `master@be261abc60f28bb2733764fa5364ab44b3e76844`.
 > **Risk boundary:** B for repository documentation and isolated synthetic/local D1 tests. This document authorizes no BWH access, production inventory, remote Cloudflare resources, production data export, D1 apply, Worker deployment, DNS, or traffic cutover.
@@ -283,7 +294,7 @@ Evidence freshness is explicitly qualified: the 18 historical migration hashes r
 No BWH or production database access occurred. No remote Cloudflare resource, D1 apply, Worker deployment, CI, PR, merge, or cutover occurred. Production presence of all source-defined objects remains NOT_OBSERVED.
 
 Next: T2 field disposition contract (KEEP / TRANSFORM / EXTERNALIZE / DEFER / CONDITIONAL), repository-only.
- 
+
 ## T2 execution record — 2026-11-07
 
 **Status: FIELD DISPOSITION MAP COMPLETE; STRUCTURAL REVIEW PASS WITH OPEN CONTRACT BLOCKERS. Not yet domain-owner approved or target-DDL approved.**
@@ -305,7 +316,7 @@ Open blockers remain explicit: named domain-owner approval; idempotency HMAC key
 
 This T2 map does not authorize production DDL or data loading. The next bounded work is to close these contracts using source evidence and synthetic vectors, then prepare T3 target DDL proposal. No BWH/production read, remote D1 mutation, Worker deployment, CI, PR, merge or cutover occurred. BWH remains the only production writer.
 
- 
+
 ## T2 source-level closure pass — 2026-11-07
 
 Base draft: 6d148796b251362ac8504677b62504eb39c39a3e. Source anchor: master at be261abc60f28bb2733764fa5364ab44b3e76844.
@@ -484,3 +495,49 @@ Audit inputs are now snapshotted as plain enumerable data before recursive unsaf
 - Shared metadata snapshot refactor: `a724b762f56f4d3f0afb459eb0574c4d56bfb60f`
 
 This is Draft-only hardening. No production data or secret was accessed. Repository Node tests, full suite and CI remain NOT RUN.
+
+## G6 preflight evidence refresh — 2026-11-08
+
+This update supersedes the historical checksum-evidence qualification in §2.1 for the current Draft source modules only.
+
+### Current-head source checksum execution
+
+- Exact Draft branch source head used for the imported migration modules: `79ccad29f39ab503d48c54d516fbb3c3b4bde846`.
+- Rechecked the 16 source migration modules against the current PR branch head `4dcf9f0c29717393200ed98bba33884c3a879df7`; all 16 module Git blob identities are unchanged from the imported test set.
+- 19/19 source migration IDs and DDL SHA-256 checksums match the pinned inventory.
+- Node v22.23.1, 5/5 registry tests PASS twice; combined inventory + migration tests 28/28 PASS twice.
+- No DB was opened; a throwing `better-sqlite3` stub ensured no database construction could occur during module import.
+
+### T2 field-disposition structural validation
+
+- Added a read-only contract/CLI that binds the field map to the exact source inventory Git blob and validates every source field row, table mapping, source column property, rule/retention/test reference, target-column inclusion and proposal-only authorization.
+- Exact coverage: 70 tables / 820 fields; 64 KEEP, 4 CONDITIONAL, 2 DEFER tables; 712 KEEP, 59 CONDITIONAL, 7 EXTERNALIZE, 19 TRANSFORM, 23 DEFER fields; 790 target candidates; 1 low-confidence field.
+- Node v22.23.1, CLI PASS; 12/12 tests PASS twice, 0 failed / 0 skipped.
+
+### What this does and does not establish
+
+This closes the source-checksum re-execution requirement and structural integrity checks for the current T2 field map. It does not approve the proposed field dispositions, conditional feature inclusion, key custody, identity/privacy/retention choices, or the remaining T2 owner decisions. The T2 formal decision is still required before T3 target DDL work under the current plan.
+
+G6 itself has **not** started: there is no target DDL proposal, deterministic SQLite fixture, offline transform/load rehearsal, recovery drill, or end-to-end reconciliation. No BWH connection, production database read, remote D1 resource, DDL apply, row load, Worker deployment, CI, merge, dual-write, or cutover occurred. BWH remains the only production control-data writer.
+
+## T2-C3 writer review evidence refresh — 2026-11-08
+
+Added the complete 26-field JSON writer/transform review and account metadata source/target contract:
+
+- `docs/D1_T2_C3_ACCOUNT_METADATA_SOURCE_TARGET_CONTRACT_V1.md`
+- `docs/D1_T2_C3_JSON_26_FIELD_WRITER_REVIEW_V1.md`
+
+All 26 JSON fields are accounted for: 24 active fields have identified source writer/reader/transform contracts and focused dynamic evidence; the two Passkey credential fields remain DEFERRED. The account metadata source writer preserves BWH compatibility through a bounded 26-field contract; the pure D1 projection gate rejects raw identity/display values and legacy unkeyed digests until Auth0 externalization and C2 keyed-digest custody are resolved. No values are silently dropped.
+
+The test evidence was recorded against source/test Git blobs confirmed byte-identical on the current PR #846 branch:
+- `subscription-control-db.mjs`: `2bbdc573ec13fd8774ee87bf0904ce8aa7c51454`.
+- `platform-subscription-control-db.test.mjs`: `e5ef7c2f87236457b2b01dc9e607905a76d73cb5`.
+- `control-json-contracts.mjs`: `9d76d64d897707e5689fe94c275f548ee858707c`.
+- `control-json-contracts.test.mjs`: `a60b27f3bdd5d6608e3ba4f8b574eba55fb0e442`.
+
+Recorded fixed-runtime evidence (Node v22.23.1, better-sqlite3 12.10.0, SQLite 3.53.1, isolated non-production sandbox):
+- Full SQLite control-store suite: 45/45 PASS twice.
+- Five focused suite groups: 290 distinct cases per pass, all five groups passed twice (580 successful test executions).
+- The exact per-run TAP hashes and group breakdown are in `docs/D1_T2_C3_JSON_26_FIELD_WRITER_REVIEW_V1.md`.
+
+This updates the historical C3 writer-review status. It does not mean D1 target data writing has been integrated or production rows have been inspected. C3 remains OPEN for Auth0 identity mapping and C2 keyed-digest replacement; T2 remains OPEN pending grouped owner decisions and independent review. T3 target DDL and G6 offline database rehearsal have not started under the current plan.

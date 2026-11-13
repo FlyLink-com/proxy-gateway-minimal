@@ -1586,7 +1586,9 @@ export function createPortalAccessRequestService(options = {}) {
     pendingRequest.nextAction = "traffic_supply_expiry_cleanup_pending";
     pendingRequest.subscriptionUrl = null;
     pendingRequest.event = {
-      ...cloneRecord(request.event),
+      type: "traffic_supply_suspended",
+      occurredAt: request.event.occurredAt,
+      previousStatus,
       lifecycleRevisionRef: lifecycleRevisionRefFor(request.event)
     };
     pendingRequest.updatedAt = intentRevision;

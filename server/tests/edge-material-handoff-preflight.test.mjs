@@ -420,7 +420,7 @@ test("material handoff lifecycle revision prevents clock-rollback desired-state 
         type: "traffic_supply_suspended",
         occurredAt: resumeAt,
         previousStatus: "delivered",
-        lifecycleRevisionRef: "lifecycle_revision_resume_a"
+        lifecycleRevisionRef: "lifecycle_ref_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
       }
     });
     const firstProjection = mutableStore.getLatestEdgeDesiredStateForChannel(
@@ -469,7 +469,7 @@ test("material handoff lifecycle revision prevents clock-rollback desired-state 
       updatedAt: "2026-06-13T12:02:00.000Z",
       event: {
         ...firstResume.event,
-        lifecycleRevisionRef: "lifecycle_revision_tombstone_b"
+        lifecycleRevisionRef: "lifecycle_ref_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
       }
     });
     const tombstoneProjection = mutableStore.getLatestEdgeDesiredStateForChannel(
@@ -482,7 +482,7 @@ test("material handoff lifecycle revision prevents clock-rollback desired-state 
       updatedAt: resumeAt,
       event: {
         ...firstResume.event,
-        lifecycleRevisionRef: "lifecycle_revision_resume_c"
+        lifecycleRevisionRef: "lifecycle_ref_cccccccccccccccccccccccccccccccc"
       }
     });
     const rollbackProjection = mutableStore.getLatestEdgeDesiredStateForChannel(
@@ -506,7 +506,7 @@ test("material handoff lifecycle revision prevents clock-rollback desired-state 
       event: {
         type: "traffic_supply_resumed",
         occurredAt: "2026-06-13T12:03:00.000Z",
-        lifecycleRevisionRef: "lifecycle_revision_resume_c"
+        lifecycleRevisionRef: "lifecycle_ref_cccccccccccccccccccccccccccccccc"
       }
     });
     const completedProjection = mutableStore.getLatestEdgeDesiredStateForChannel(

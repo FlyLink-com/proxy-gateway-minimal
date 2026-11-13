@@ -6,12 +6,16 @@ document_metadata:
   lifecycle: active
   authority_scope: c1_r1_password_normalization_source_proof
   superseded_by: null
-  last_verified_at: 2026-11-10
+  last_verified_at: 2026-11-12
   production_authority: false
 ```
 
 Date: 2026-11-10.
 Scope: source-level compatibility evidence for the owner-approved R1 trim-only contract in Browser Portal and Android, plus Admin local Portal-account password trim parity through the legacy-named `bootstrapToken` request field. All credential values in tests are synthetic.
+
+## 2026-11-12 Master synchronization note
+
+The R1 changes were reapplied to the current Master source tree `d5bb57553995c8dd7684bea386bafb39d64e5023`, rather than carrying forward the old stacked C1/C2 tree. The source blob references below now identify the Master-based versions. Historical evidence dates and the separate Android acceptance boundary are preserved.
 
 ## Approved contract
 
@@ -36,7 +40,7 @@ Registration and login use the same effective value before hashing or verificati
   - parser: `fe9de716ba7981896e93f8569b2b2f01b445ec49`
   - HTTP adapter: `385bb695acbf07da6e7479762800ca73e9795e13`
   - registration UI after correction: `8de57fbfbe8ea8df71a6261623eaa488d99c003f`
-  - Browser tests after correction: `dae6785b9c4fa253173916f4178ff89c2a910cb8`
+  - Browser tests after correction: `02a1ceba6472b909cebc624ac34e10b88de92d34`
 
 ## Admin boundary (local Portal-account password + TOTP)
 
@@ -53,7 +57,7 @@ Registration and login use the same effective value before hashing or verificati
   - Admin tests: `7ea16377c68ed9c6f355c0f1c34f1de61b7e8e35`
   - Admin route: `8a3f34a6bcb81d241012754766bf0003e68e6e4d`
   - Admin service: `e5aaf6f24440c442556af3aebc89f5ffff526dc5`
-  - Runtime wiring: `da3ddbe459d44d75e80cb196b2454ebbd6f3212c`
+  - Runtime wiring: `fd52ede2554c5a2d73cc528965bdcf61ddbdaa4c`
   - Portal password credential service: `ca9a5f201487f89202aff60e01f504c1622b4c28`
 
 ## Shared synthetic compatibility vectors

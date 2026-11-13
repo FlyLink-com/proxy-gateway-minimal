@@ -107,18 +107,13 @@ function hasExactKeys(value, expected) {
 }
 
 function decodeAuth0Bytes(field) {
-  if (!isRecord(field) || typeof field.value !== "string" || field.value.length === 0) return null;
-  if (field.encoding === "base64") {
-    if (!/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/u.test(field.value)) return null;
-    const bytes = Buffer.from(field.value, "base64");
-    return bytes.length > 0 && bytes.toString("base64") === field.value ? bytes : null;
-  }
-  if (field.encoding === "hex") {
-    if (!/^(?:[0-9a-fA-F]{2})+$/u.test(field.value)) return null;
-    return Buffer.from(field.value, "hex");
-  }
-  if (field.encoding === "utf8") return Buffer.from(field.value, "utf8");
-  return null;
+  // This migration route emits canonical standard Base64 for both binary
+  // materials. Do not accept alternate encodings in the contract validator.
+  if (!isRecord(field) || field.encoding !== "base64"
+    || typeof field.value !== "string" || field.value.length === 0) return null;
+  if (!/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/u.test(field.value)) return null;
+  const bytes = Buffer.from(field.value, "base64");
+  return bytes.length > 0 && bytes.toString("base64") === field.value ? bytes : null;
 }
 
 export function validateAuth0ScryptObject(obj) {
@@ -130,13 +125,18 @@ export function validateAuth0ScryptObject(obj) {
   if (!hasExactKeys(obj.password, ["encoding"]) || obj.password.encoding !== "utf8") {
     throw fail("auth0_object_password_encoding_invalid");
   }
-  if (!Number.isInteger(obj.keylen) || obj.keylen <= 0) throw fail("auth0_object_keylen_required");
-  if (!Number.isInteger(obj.cost) || obj.cost <= 1 || (obj.cost & (obj.cost - 1)) !== 0) throw fail("auth0_object_cost_invalid");
-  if (!Number.isInteger(obj.blockSize) || obj.blockSize <= 0) throw fail("auth0_object_block_size_invalid");
-  if (!Number.isInteger(obj.parallelization) || obj.parallelization <= 0) throw fail("auth0_object_parallelization_invalid");
+  // This is a validator for the repository's one approved legacy envelope,
+  // not a generic Scrypt parameter parser. Pin every parameter to the exact
+  // production derivation contract before accepting the import object.
+  if (obj.keylen !== LEGACY_SCRYPT.keyLength) throw fail("auth0_object_keylen_invalid");
+  if (obj.cost !== LEGACY_SCRYPT.N) throw fail("auth0_object_cost_invalid");
+  if (obj.blockSize !== LEGACY_SCRYPT.r) throw fail("auth0_object_block_size_invalid");
+  if (obj.parallelization !== LEGACY_SCRYPT.p) throw fail("auth0_object_parallelization_invalid");
   const hash = decodeAuth0Bytes(obj.hash);
   const salt = decodeAuth0Bytes(obj.salt);
-  if (!hash || hash.length !== obj.keylen || !salt) throw fail("auth0_object_material_invalid");
+  if (!hash || hash.length !== LEGACY_SCRYPT.keyLength || !salt || salt.length !== 16) {
+    throw fail("auth0_object_material_invalid");
+  }
   return true;
 }
 

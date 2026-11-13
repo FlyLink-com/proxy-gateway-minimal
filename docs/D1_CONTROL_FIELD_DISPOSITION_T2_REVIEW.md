@@ -1,5 +1,16 @@
 # T2 Field Disposition — Independent Structural Review
 
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: d1_control_field_disposition_t2_review
+  superseded_by: null
+  last_verified_at: 2026-11-10
+  production_authority: false
+```
+
+
 > **Review status:** STRUCTURAL PASS WITH OPEN CONTRACT BLOCKERS.
 > **Scope:** repository-only validation of the T2 field map against the T1 source inventory. This is not domain-owner approval, target DDL approval, production inventory, or migration authorization.
 > **Reviewed branch head:** `1fd17f0196cca62757440ee5f627767f85dae986`.

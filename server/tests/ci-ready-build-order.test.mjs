@@ -31,13 +31,14 @@ test("ready PR CI keeps every job behind an explicit guard and stable final Vali
   assert.match(workflow, /cancel-in-progress: true/u);
   assert.deepEqual(Object.keys(jobs), [
     "governance-evidence", "governance-snapshot", "source-checks", "foundation-inventory",
-    "checks-passed", "build-assets", "dependency-artifact", "validate"
+    "pr-domain-validation", "checks-passed", "build-assets", "dependency-artifact", "validate"
   ]);
   const expected = {
     "governance-evidence": `github.event_name != 'workflow_dispatch' && (${draftGuard})`,
     "governance-snapshot": "github.event_name == 'workflow_dispatch'",
     "source-checks": draftGuard,
     "foundation-inventory": readyPrGuard,
+    "pr-domain-validation": "github.event_name == 'pull_request' && github.event.pull_request.base.ref == 'master' && github.event.pull_request.head.ref == 'ci/pr-domain-validation-20261112'",
     "checks-passed": aggregateGuard,
     "build-assets": `(${draftGuard}) && !cancelled() && needs.checks-passed.result == 'success' && needs.source-checks.result == 'success'`,
     "dependency-artifact": `${readyPrGuard} && !cancelled() && needs.checks-passed.result == 'success'`,
@@ -50,7 +51,7 @@ test("ready PR CI keeps every job behind an explicit guard and stable final Vali
 });
 
 test("builds need successful applicable checks and required Validate aggregates both build lanes", () => {
-  assert.equal(needs(jobs["checks-passed"]), "[governance-evidence, governance-snapshot, source-checks, foundation-inventory]");
+  assert.equal(needs(jobs["checks-passed"]), "[governance-evidence, governance-snapshot, source-checks, foundation-inventory, pr-domain-validation]");
   assert.equal(needs(jobs["build-assets"]), "[checks-passed, source-checks]");
   assert.equal(needs(jobs["dependency-artifact"]), "checks-passed");
   assert.equal(needs(jobs.validate), "[checks-passed, build-assets, dependency-artifact]");
@@ -71,10 +72,12 @@ test("builds need successful applicable checks and required Validate aggregates 
 test("reusable PR lanes inherit caller source, stay read-only, and preserve non-PR artifact entrypoints", () => {
   const dependency = read("control-plane-dependency-artifact.yml");
   const foundation = read("control-plane-foundation-toolchain-inventory.yml");
+  const domain = read("pr-domain-validation.yml");
   assert.equal(jobs["dependency-artifact"].match(/^    uses: (.+)$/mu)?.[1], "./.github/workflows/control-plane-dependency-artifact.yml");
   assert.equal(jobs["foundation-inventory"].match(/^    uses: (.+)$/mu)?.[1], "./.github/workflows/control-plane-foundation-toolchain-inventory.yml");
-  assert.equal((workflow.match(/^    uses: \.\/\.github\/workflows\//gmu) ?? []).length, 2);
-  for (const source of [dependency, foundation]) {
+  assert.equal(jobs["pr-domain-validation"].match(/^    uses: (.+)$/mu)?.[1], "./.github/workflows/pr-domain-validation.yml");
+  assert.equal((workflow.match(/^    uses: \.\/\.github\/workflows\//gmu) ?? []).length, 3);
+  for (const source of [dependency, foundation, domain]) {
     assert.match(source, /^  workflow_call:/mu);
     assert.doesNotMatch(source, /^  pull_request:|pull_request_target:|workflow_run:/mu);
     assert.match(source, /permissions:\n  contents: read/u);
@@ -126,16 +129,21 @@ function assertStatus(script, env, expected, label) {
 test("actual prerequisite shell rejects every failure, cancellation, missing result, or unexpected skip", { skip: !bashAvailable }, () => {
   const script = scriptOf(jobs["checks-passed"]);
   const accepted = [
-    { EVENT_NAME: "pull_request", SOURCE_RESULT: "success", GOVERNANCE_RESULT: "success", SNAPSHOT_RESULT: "skipped", FOUNDATION_RESULT: "success" },
-    { EVENT_NAME: "push", SOURCE_RESULT: "success", GOVERNANCE_RESULT: "success", SNAPSHOT_RESULT: "skipped", FOUNDATION_RESULT: "skipped" },
-    { EVENT_NAME: "workflow_dispatch", SOURCE_RESULT: "success", GOVERNANCE_RESULT: "skipped", SNAPSHOT_RESULT: "success", FOUNDATION_RESULT: "skipped" }
+    { EVENT_NAME: "pull_request", SOURCE_RESULT: "success", GOVERNANCE_RESULT: "success", SNAPSHOT_RESULT: "skipped", FOUNDATION_RESULT: "success", DOMAIN_RESULT: "success", DOMAIN_REQUIRED: "true" },
+    { EVENT_NAME: "pull_request", SOURCE_RESULT: "success", GOVERNANCE_RESULT: "success", SNAPSHOT_RESULT: "skipped", FOUNDATION_RESULT: "success", DOMAIN_RESULT: "skipped", DOMAIN_REQUIRED: "false" },
+    { EVENT_NAME: "push", SOURCE_RESULT: "success", GOVERNANCE_RESULT: "success", SNAPSHOT_RESULT: "skipped", FOUNDATION_RESULT: "skipped", DOMAIN_RESULT: "skipped", DOMAIN_REQUIRED: "false" },
+    { EVENT_NAME: "workflow_dispatch", SOURCE_RESULT: "success", GOVERNANCE_RESULT: "skipped", SNAPSHOT_RESULT: "success", FOUNDATION_RESULT: "skipped", DOMAIN_RESULT: "skipped", DOMAIN_REQUIRED: "false" }
   ];
   for (const env of accepted) {
     assertStatus(script, env, 0, env.EVENT_NAME);
-    for (const field of Object.keys(env).filter((key) => key !== "EVENT_NAME")) {
+    for (const field of Object.keys(env).filter((key) => key !== "EVENT_NAME" && key !== "DOMAIN_REQUIRED")) {
       for (const value of ["success", "failure", "cancelled", "skipped", ""]) {
         if (value !== env[field]) assertStatus(script, { ...env, [field]: value }, 1, `${env.EVENT_NAME}/${field}/${value}`);
       }
+    }
+    if (env.EVENT_NAME === "pull_request") {
+      const opposite = env.DOMAIN_REQUIRED === "true" ? "false" : "true";
+      assertStatus(script, { ...env, DOMAIN_REQUIRED: opposite }, 1, `${env.EVENT_NAME}/DOMAIN_REQUIRED/${opposite}`);
     }
   }
   assertStatus(script, { ...accepted[0], EVENT_NAME: "workflow_run" }, 1, "workflow_run");

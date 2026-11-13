@@ -10,6 +10,7 @@ import {
   createD1LeaseTokenDigest,
   createD1PiiDigestEnvelope,
   createD1PiiLookupCandidates,
+  createD1PiiLookupCandidatesFromDigest,
   createD1ProviderEventEnvelope,
   createD1TotpSecretProtector,
   destroyD1KeyRing,
@@ -19,6 +20,7 @@ import {
   reencryptLegacyD1TotpV2,
   verifyD1IdempotencyEnvelope,
   verifyD1PiiDigestEnvelope,
+  verifyD1PiiDigestEnvelopeFromDigest,
   verifyD1ProviderEventEnvelope
 } from "../services/platform/d1-t2-security-primitives.mjs";
 
@@ -147,6 +149,41 @@ test("PII pseudonym known-answer vectors preserve all three approved domains", a
   }
 });
 
+test("PII digest-only lookup helpers preserve G6's precomputed-digest boundary", async () => {
+  const rawValue = "synthetic-user@example.test";
+  const legacyDigestHex = createHash("sha256")
+    .update(rawValue.trim().toLowerCase(), "utf8")
+    .digest("hex");
+  const fromDigest = await createD1PiiLookupCandidatesFromDigest({
+    keyRing: piiRing, domain: "account-email-lookup/v1", legacyDigestHex
+  });
+  const fromValue = await createD1PiiLookupCandidates({
+    keyRing: piiRing, domain: "account-email-lookup/v1", rawValue
+  });
+  assert.deepEqual(fromDigest, fromValue);
+  assert.equal(await verifyD1PiiDigestEnvelopeFromDigest({
+    envelope: fromDigest[0].envelope,
+    keyRing: piiRing,
+    domain: "account-email-lookup/v1",
+    legacyDigestHex
+  }), true);
+  assert.equal(await verifyD1PiiDigestEnvelopeFromDigest({
+    envelope: fromDigest[0].envelope,
+    keyRing: piiRing,
+    domain: "account-email-lookup/v1",
+    legacyDigestHex: rawValue
+  }), false);
+  await assert.rejects(
+    () => createD1PiiLookupCandidatesFromDigest({
+      keyRing: piiRing, domain: "account-email-lookup/v1", legacyDigestHex: rawValue
+    }),
+    { code: "legacy_digest_invalid" }
+  );
+  assert.equal(fromDigest[0].envelope.includes(rawValue), false);
+  assert.equal(fromDigest[0].envelope.includes(legacyDigestHex), false);
+});
+
+
 test("email lookup preserves trim-and-lowercase normalization", async () => {
   const canonical = await createD1PiiLookupCandidates({
     keyRing: piiRing, domain: "account-email-lookup/v1", rawValue: "synthetic-user@example.test"
@@ -254,6 +291,13 @@ test("configured D1 key-ring sets reject duplicate families and pairwise key reu
   });
 });
 
+test("configured D1 key-ring sets reject sparse arrays", () => {
+  const sparseKeyRingSet = new Array(1);
+  assert.throws(() => assertDistinctD1KeyRingSet(sparseKeyRingSet), {
+    code: "key_ring_set_invalid"
+  });
+});
+
 test("Portal and Admin TOTP key families reject identical key bytes", () => {
   const shared = Buffer.from("77".repeat(32), "hex");
   const portal = totpRing("portal-totp-aes", "portal-v1", ["portal-v1"], { "portal-v1": shared });
@@ -286,7 +330,7 @@ test("TOTP Base32 validation rejects impossible encodings and oversized inputs",
   });
   const protector = createD1TotpSecretProtector({ keyRing: ring, scope: "portal" });
   for (const invalid of [
-    "A", "AAA", "AB", "AAAB",
+    "A", "AAA", "AB", "AAAB", "MZ======", "MZXW7===",
     "JBSWY3DPEHPK3PXP=",
     "JBSWY3DPEHPK3PXAAA=",
     "A".repeat(4097)
@@ -300,20 +344,25 @@ test("TOTP Base32 validation rejects impossible encodings and oversized inputs",
     credentialRef: "totp_credential_bounds"
   });
   assert.match(valid, /^v3:aes-256-gcm:portal-bounds:/u);
-  const validPadded = await protector.protect("JBSWY3DPEHPK3PXAAA======", {
+  const validPadded = await protector.protect("MY======", {
     credentialRef: "totp_credential_bounds"
   });
   assert.match(validPadded, /^v3:aes-256-gcm:portal-bounds:/u);
+
+  const validWhitespace = await protector.protect("M Y======", {
+    credentialRef: "totp_credential_bounds"
+  });
+  assert.match(validWhitespace, /^v3:aes-256-gcm:portal-bounds:/u);
+  const validHyphen = await protector.protect("M-Y======", {
+    credentialRef: "totp_credential_bounds"
+  });
+  assert.match(validHyphen, /^v3:aes-256-gcm:portal-bounds:/u);
   assert.equal(await protector.unprotect("x".repeat(8193), {
     credentialRef: "totp_credential_bounds"
   }), null);
 
   const oversizedLegacy = await reencryptLegacyD1TotpV2({
-    value: "v2:aes-256-gcm:" + "A".repeat(8193),
-    legacyKey: Buffer.alloc(32),
-    keyRing: ring,
-    scope: "portal",
-    credentialRef: "totp_credential_bounds"
+    value: "v2:aes-256-gcm:" + "A".repeat(8193)
   });
   assert.deepEqual(oversizedLegacy, { status: "quarantine" });
 });
@@ -356,31 +405,38 @@ test("TOTP tampering, unknown keys, malformed envelopes and legacy raw Base32 fa
   assert.deepEqual(legacy, { status: "re_enroll_required" });
 });
 
-test("T1: only structurally valid legacy TOTP formats require re-enrollment", async () => {
+test("legacy TOTP values are retired under T1 without decrypting or re-encrypting", async () => {
+  const encResult = await reencryptLegacyD1TotpV2({ value: "enc:JBSWY3DPEHPK3PXP" });
+  assert.deepEqual(encResult, { status: "re_enroll_required" });
+
+  // Synthetic fixture only: the production classifier receives no legacy key.
   const legacyKey = Buffer.from("de".repeat(32), "hex");
   const legacyEnvelope = encryptLegacyV2("JBSWY3DPEHPK3PXP", legacyKey, randomBytes(12));
+  const v2Result = await reencryptLegacyD1TotpV2({ value: legacyEnvelope });
+  assert.deepEqual(v2Result, { status: "re_enroll_required" });
+  assert.equal("envelope" in v2Result, false, "T1 must never produce a replacement envelope");
 
-  assert.deepEqual(await reencryptLegacyD1TotpV2({ value: legacyEnvelope }), {
-    status: "re_enroll_required"
-  });
-  assert.deepEqual(await reencryptLegacyD1TotpV2({ value: "enc:JBSWY3DPEHPK3PXP" }), {
-    status: "re_enroll_required"
-  });
-  assert.deepEqual(await reencryptLegacyD1TotpV2({ value: "JBSWY3DPEHPK3PXP" }), {
-    status: "re_enroll_required"
-  });
-  for (const malformed of [
-    "v2:aes-256-gcm:synthetic-envelope",
-    "v2:aes-256-gcm:bad:bad:bad",
-    "enc:NOT-BASE32!",
-    "malformed legacy payload"
-  ]) {
-    assert.deepEqual(await reencryptLegacyD1TotpV2({ value: malformed }), {
-      status: "quarantine"
-    });
-  }
+  // A ciphertext change that preserves the encoded structure is still retired;
+  // the classifier intentionally does not authenticate or decrypt legacy bytes.
+  const flippedParts = legacyEnvelope.split(":");
+  const flippedCiphertext = Buffer.from(flippedParts[4], "base64url");
+  flippedCiphertext[0] ^= 0x01;
+  flippedParts[4] = flippedCiphertext.toString("base64url");
+  assert.deepEqual(
+    await reencryptLegacyD1TotpV2({ value: flippedParts.join(":") }),
+    { status: "re_enroll_required" }
+  );
+
+  // Values that cannot be parsed as a v2 envelope are quarantined.
+  const broken = legacyEnvelope.split(":").slice(0, 4).join(":");
+  assert.deepEqual(await reencryptLegacyD1TotpV2({ value: broken }), { status: "quarantine" });
+  const illegal = "v2:aes-256-gcm:!!!:AAAA:AAAA";
+  assert.deepEqual(await reencryptLegacyD1TotpV2({ value: illegal }), { status: "quarantine" });
+  assert.deepEqual(
+    await reencryptLegacyD1TotpV2({ value: "JBSWY3DPEHPK3PXP" }),
+    { status: "re_enroll_required" }
+  );
 });
-
 test("destroying a key ring zeroizes and disables its key material", async () => {
   const ring = createD1KeyRing({
     family: "pii-hmac", activeKeyId: "destroy-me", readKeyIds: ["destroy-me"],

@@ -1,5 +1,16 @@
 # D1 T2 Payment Action Custody Design v1 — Draft
 
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: active
+  authority_scope: d1_t2_payment_action_custody_design
+  superseded_by: null
+  last_verified_at: 2026-11-10
+  production_authority: false
+```
+
+
 Status: TECHNICAL RECOMMENDATION ONLY. No Durable Object, key, binding, route, migration or deployment was created.
 
 ## 1. Source problem
@@ -133,3 +144,67 @@ Before implementation, obtain explicit approval for:
 6. Payment-domain owner and independent security review.
 
 This document chooses a technical direction for review. It does not authorize implementation, key creation, deployment or D1 mutation.
+
+## 10. Source confirmation and synthetic contract prototype — 2026-11-08
+
+### Source confirmation
+
+The current `server/services/platform/payment-store.mjs` source confirms the original exposure:
+
+- `ORDER_TTL_MS` is 10 minutes, which is only order validity.
+- `next_action_url` is persisted in `platform_payment_receipts`.
+- `mapReceipt()` returns the raw URL in `nextAction.url`.
+- `ORDER_SELECT` reads the latest `next_action_url`, and `mapOrder()` returns it while the order is `entry_ready` or `pending`.
+- The inspected payment-store module contains no receipt/order purge path.
+
+Therefore, the raw capability custody issue is real in source; it is not merely a hypothetical D1 mapping concern.
+
+### Synthetic contract prototype
+
+Added:
+- `server/services/platform/payment-action-custody-contract.mjs`
+- `server/tests/payment-action-custody-contract.test.mjs`
+
+The provider-neutral helper demonstrates AES-256-GCM envelope creation, authenticated additional data bound to order/account/action/type/expiry, key-ID lookup, account/order/action authorization, pending/entry-ready gating, expiry denial, terminal transition with ciphertext removal, and caller-selected tombstone purge boundary. It performs no I/O and uses only synthetic key material in tests.
+
+The prototype is not a Durable Object implementation and is not wired into `payment-store.mjs`, the provider callback, Portal routes, or D1. No namespace, secret, binding, or deployment was created.
+
+The 14-case fixed Node v22.23.1 regression evidence is recorded after the latest run in the C4/C5 closeout notes. C4 remains OPEN pending Payment/Security owner approval of custody, key rotation, outage/recovery, and tombstone replay duration.
+
+## 11. Fixed Node 22.23.1 prototype regression — 2026-11-08
+
+The current synthetic contract module and test file were fetched from this branch and executed in an isolated non-production Vercel sandbox using Node v22.23.1:
+
+- 14/14 PASS, 0 failed, 0 skipped.
+- TAP SHA-256: `d3d28fb5c44277115cf0f392c594a457af2b8412e5788b09d6c72ba14ecff310`.
+- `node --check` passed for both the module and test file.
+
+The test scope covers encrypted envelope confidentiality, exact account/order/action binding, AES-GCM authenticated-data tamper detection, key lookup failure, expiry/order-state denial, terminal ciphertext removal, idempotent/conflicting terminal transitions, caller-selected tombstone purge boundaries, URL safety and payload/key bounds.
+
+This validates the pure synthetic contract only. It does not validate a Durable Object adapter, Worker authorization, provider callback integration, D1 pointer transaction, real key custody, outage/recovery, or production route behavior. C4 remains OPEN.
+
+## 12. Repeated fixed-runtime regression — 2026-11-08
+
+The same 14-case synthetic suite was repeated under Node v22.23.1:
+
+- 14/14 PASS, 0 failed, 0 skipped.
+- Run 2 TAP SHA-256: `e114c94e4dcbc82447acac5bbf66d9b30505450c1c9954f4be3165a58ed912e9`.
+
+Together with Section 11, this is two consecutive 14/14 passes. The two JavaScript files also passed `node --check` on the first run.
+
+
+## 2026-11-09｜Synthetic payment-action contract hardening
+
+The provider-neutral synthetic contract received three fail-closed improvements:
+
+1. AES-GCM authenticated additional data now includes the envelope `keyId`, preventing a key-ID substitution from succeeding even if two IDs temporarily resolve to identical key bytes.
+2. Active records and action envelopes require exact key sets; canonical nonce/ciphertext/tag encoding and the 4096-byte ciphertext bound are checked before pointer projection or resolution. Extra raw-value fields are rejected.
+3. Terminal timestamps cannot precede action creation; persisted tombstones enforce the same chronology and the existing `purgeAfter > terminalAt` rule.
+
+Evidence on exact source/test blobs in the #846 branch:
+
+- Contract source commit `efb99f751d0391e65788944fdd1f0a3db7fd45b4`, blob `611d3e352873a3800cd0e141dd64f36a9e26e000`.
+- Regression test commit `0f7e2a7db88916b6ecb96e3916e98d613b49767b`, blob `973ebe4147ad181f85e9d74dcf5815bce199653f`.
+- Node v22.23.1 isolated synthetic sandbox: 17/17 PASS twice; 0 failed / 0 skipped; `node --check` PASS.
+
+The exact blobs were hash-checked in the isolated sandbox before execution. This remains a pure in-memory contract: no Durable Object namespace, storage adapter, secret binding, key, resolver route, or D1 pointer write was created. The C4 proposal still requires explicit owner approval for the DO class/namespace, key custody/rotation, provider TTL and tombstone window, authenticated resolver, and recovery operations.

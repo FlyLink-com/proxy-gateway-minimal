@@ -268,11 +268,16 @@ export function assertDistinctKeyRings(left, right) {
 }
 
 export function assertDistinctD1KeyRingSet(keyRings) {
-  if (!Array.isArray(keyRings) || keyRings.length === 0
-    || keyRings.some((ring) => !ring || !keyRingSecrets.has(ring))) {
+  if (!Array.isArray(keyRings) || keyRings.length === 0) {
     throw fail("key_ring_set_invalid");
   }
-  const families = keyRings.map((ring) => ring.family);
+  const families = [];
+  for (let index = 0; index < keyRings.length; index += 1) {
+    if (!Object.hasOwn(keyRings, index)) throw fail("key_ring_set_invalid");
+    const ring = keyRings[index];
+    if (!ring || !keyRingSecrets.has(ring)) throw fail("key_ring_set_invalid");
+    families.push(ring.family);
+  }
   if (new Set(families).size !== families.length) {
     throw fail("key_ring_set_family_duplicate");
   }
@@ -512,10 +517,10 @@ export async function createD1PiiDigestEnvelope({ keyRing, domain, legacyDigestH
   });
 }
 
-export async function createD1PiiLookupCandidates({ keyRing, domain, rawValue } = {}) {
+export async function createD1PiiLookupCandidatesFromDigest({ keyRing, domain, legacyDigestHex } = {}) {
   requireKeyFamily(keyRing, "pii-hmac");
   validatePiiDomain(domain);
-  const legacyDigestHex = await legacyPiiDigest(rawValue, domain);
+  if (!LOWER_HEX_64_PATTERN.test(legacyDigestHex || "")) throw fail("legacy_digest_invalid");
   const candidates = [];
   for (const keyId of keyRing.readKeyIds) {
     candidates.push({
@@ -530,16 +535,34 @@ export async function createD1PiiLookupCandidates({ keyRing, domain, rawValue } 
   return candidates;
 }
 
-export async function verifyD1PiiDigestEnvelope({ envelope, keyRing, domain, rawValue } = {}) {
+export async function createD1PiiLookupCandidates({ keyRing, domain, rawValue } = {}) {
+  requireKeyFamily(keyRing, "pii-hmac");
+  validatePiiDomain(domain);
+  const legacyDigestHex = await legacyPiiDigest(rawValue, domain);
+  return createD1PiiLookupCandidatesFromDigest({ keyRing, domain, legacyDigestHex });
+}
+
+export async function verifyD1PiiDigestEnvelopeFromDigest({ envelope, keyRing, domain, legacyDigestHex } = {}) {
   try {
     requireKeyFamily(keyRing, "pii-hmac");
     validatePiiDomain(domain);
-    const legacyDigestHex = await legacyPiiDigest(rawValue, domain);
+    if (!LOWER_HEX_64_PATTERN.test(legacyDigestHex || "")) return false;
     return verifyEnvelope({
       envelope,
       keyRing,
       messageForKeyId: (keyId) => piiDigestMessage({ keyId, domain, legacyDigestHex })
     });
+  } catch {
+    return false;
+  }
+}
+
+export async function verifyD1PiiDigestEnvelope({ envelope, keyRing, domain, rawValue } = {}) {
+  try {
+    requireKeyFamily(keyRing, "pii-hmac");
+    validatePiiDomain(domain);
+    const legacyDigestHex = await legacyPiiDigest(rawValue, domain);
+    return verifyD1PiiDigestEnvelopeFromDigest({ envelope, keyRing, domain, legacyDigestHex });
   } catch {
     return false;
   }
@@ -602,7 +625,7 @@ async function importAesKey(rawKey, usages) {
 
 function normalizeLegacyBase32(value) {
   if (typeof value !== "string" || value.length > MAX_TOTP_SECRET_INPUT_CHARS) return null;
-  const compact = value.trim().replace(/[\\s-]/gu, "").toUpperCase();
+  const compact = value.trim().replace(/^enc:/u, "").replace(/[\s-]/gu, "").toUpperCase();
   const match = /^([A-Z2-7]+)(=*)$/u.exec(compact);
   if (!match) return null;
   const normalized = match[1];
@@ -686,37 +709,27 @@ export function createD1TotpSecretProtector({ keyRing, scope, ivFactory } = {}) 
   return Object.freeze({ protect, unprotect, reencrypt });
 }
 
-/**
- * Owner decision T1 (2026-11-08): legacy BWH TOTP values are invalidated at cutover.
- * This legacy-named export is retained only as a disposition classifier for callers;
- * it must never decrypt, transfer, or re-encrypt legacy material.
- */
-/**
- * Owner decision T1 (2026-11-08): legacy BWH TOTP values are invalidated at cutover.
- * This legacy-named export is retained only as a strict disposition classifier;
- * it never decrypts, transfers, imports, or re-encrypts legacy material.
- */
+
 export async function reencryptLegacyD1TotpV2({ value } = {}) {
   if (typeof value !== "string" || value.length > MAX_TOTP_ENVELOPE_CHARS) {
     return { status: "quarantine" };
   }
-  const candidate = value.trim();
-  if (candidate.startsWith("v2:")) {
-    const parts = candidate.split(":");
-    if (parts.length !== 5 || parts[0] !== "v2" || parts[1] !== "aes-256-gcm") {
-      return { status: "quarantine" };
-    }
-    const iv = base64UrlToBytes(parts[2]);
-    const tag = base64UrlToBytes(parts[3]);
-    const ciphertext = base64UrlToBytes(parts[4]);
-    if (!iv || iv.length !== 12 || !tag || tag.length !== 16
-      || !ciphertext || ciphertext.length === 0) {
-      return { status: "quarantine" };
-    }
+  if (value.startsWith("enc:") || !value.startsWith("v2:")) {
     return { status: "re_enroll_required" };
   }
-  const legacyBase32 = candidate.startsWith("enc:") ? candidate.slice(4) : candidate;
-  return normalizeLegacyBase32(legacyBase32)
-    ? { status: "re_enroll_required" }
-    : { status: "quarantine" };
+
+  // T1 retires every legacy v2 factor. Validate envelope shape only:
+  // do not read a legacy key, decrypt ciphertext, or create a v3 envelope.
+  const parts = value.split(":");
+  if (parts.length !== 5 || parts[0] !== "v2" || parts[1] !== "aes-256-gcm") {
+    return { status: "quarantine" };
+  }
+  const iv = base64UrlToBytes(parts[2]);
+  const tag = base64UrlToBytes(parts[3]);
+  const ciphertext = base64UrlToBytes(parts[4]);
+  if (!iv || iv.length !== 12 || !tag || tag.length !== 16
+    || !ciphertext || ciphertext.length === 0) {
+    return { status: "quarantine" };
+  }
+  return { status: "re_enroll_required" };
 }

@@ -1,10 +1,21 @@
 # D1 T2 Independent Review Packet v1.1 — Draft
 
-> **Status:** C1/C2 source-slice review APPROVED; full T2 independent review NOT COMPLETE. This remains a Draft full-scope packet and does not self-approve T2.
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: active
+  authority_scope: d1_t2_independent_review_packet
+  superseded_by: null
+  last_verified_at: 2026-11-10
+  production_authority: false
+```
+
+
+> **Status:** AWAITING A SEPARATE REVIEWER. This packet is not an independent review and does not self-approve T2.
 > **Source anchor:** `master@be261abc60f28bb2733764fa5364ab44b3e76844`.
 > **Draft branch:** `docs/d1-target-schema-g6-rehearsal-plan-20261107`.
-> **C1/C2 source-slice reviewer:** `gccltdco-cmd` — APPROVED on exact HEAD `bc3f8c9a` (Review ID `5817529933`). **Full T2 reviewer:** full-scope review not complete; independence evidence remains outstanding.
-> **C1/C2 source-slice target:** `bc3f8c9a713de05715f42f733b8fa72ba53d4477` via PR #842, baseline `bf200c474173d58d855fab66050a9c2b6b1ac4d4`; this slice is APPROVED. **Full T2 target:** pin a new exact final commit and all artifact hashes only after C1–C6 evidence is complete; never review a moving branch head.
+> **Reviewer:** NOT ASSIGNED.
+> **Review target:** Pin the exact commit and artifact hashes when the T2 evidence bundle is ready; do not review a moving branch head.
 > **Production authority:** BWH remains the only production writer.
 
 ## 1. Review scope
@@ -23,8 +34,8 @@ Review the full T2 closeout contract, not only the original lease/idempotency pr
 8. `docs/D1_CONTROL_SCHEMA_INVENTORY_V1.json` and `docs/D1_CONTROL_FIELD_DISPOSITION_T2_V1.json`
 9. `server/tests/d1-t2-security-vectors.test.mjs`
 10. `docs/D1_T2_IDENTITY_AUTH_CUSTODY_SOURCE_AUDIT_V1.md`
-11. `docs/D1_T2_C1_IDENTITY_AUTH_CUSTODY_DECISION_V1.md` (DRAFT proposal; partially owner-approved, with T1 and provider direction selected)
-12. `docs/D1_T2_C1_IDENTITY_PROVIDER_EVALUATION_V1.md` (DRAFT assessment; Auth0 Essentials + Bulk User Import owner-selected, tenant/proof pending)
+11. `docs/D1_T2_C1_IDENTITY_AUTH_CUSTODY_DECISION_V1.md` (DRAFT proposal; not owner-approved)
+12. `docs/D1_T2_C1_IDENTITY_PROVIDER_EVALUATION_V1.md` (DRAFT assessment; Auth0 candidate not selected)
 13. server/services/platform/portal-identity-import-rehearsal.mjs (local synthetic-only converter; no provider I/O)
 14. server/tests/platform-portal-identity-import-rehearsal.test.mjs and scripts/platform-identity-import-rehearsal.mjs (focused tests and redacted receipt command)
 15. `docs/D1_TARGET_SCHEMA_AND_G6_OFFLINE_REHEARSAL_PLAN.md`
@@ -37,8 +48,8 @@ Review the full T2 closeout contract, not only the original lease/idempotency pr
 - Verify `resolvePortalLoginAccount()` semantics: exact account-ID resolution, active-account scan by `loginRef`/`displayRef`, unique-match requirement, and ambiguity behavior.
 - Verify the identity source of truth, authorized lookup path, outage behavior, retention and deletion contract.
 - Reconcile the 11-column `platform_portal_password_credentials` DEFER disposition with the conditionally wired current password-login path; DEFER must not silently disable a supported feature.
-- Reconcile `platform_portal_totp_credentials.encrypted_totp_secret` EXTERNALIZE with the remaining TOTP state fields; prove real password hashes and TOTP secrets never enter D1, Worker payloads, logs, traces or evidence; only clearly synthetic, non-production fixtures may appear in tests.
-- Review the current BWH AES-256-GCM TOTP envelope and shared User Portal/Admin protector as source facts. Apply T1 to the target: Auth0-managed MFA, no first-party target TOTP AES keys, no legacy `enc:`/raw Base32/v2 import or transfer, and mandatory re-enrollment at cutover (Portal optional enrollment; Admin mandatory).
+- Reconcile `platform_portal_totp_credentials.encrypted_totp_secret` EXTERNALIZE with the remaining TOTP state fields; prove password hashes and TOTP secrets never enter D1, Worker payloads, logs, traces, fixtures or evidence.
+- Review the current AES-256-GCM TOTP envelope: no key ID, `USER_PORTAL_TOTP_SECRET_KEY`, shared User Portal/Admin protector, and legacy `enc:` / unprefixed Base32 behavior. Require key separation or explicit risk acceptance, key ID/rotation/re-encryption, and rejection/quarantine of legacy raw secret values.
 - Verify fixed PII domains, normalization, HMAC input bytes, key ID and rotation behavior.
 
 ### HMAC, lease and replay
@@ -46,7 +57,7 @@ Review the full T2 closeout contract, not only the original lease/idempotency pr
 - Verify all six lease-token issuer formats: five 64-lowercase-hex tokens and one prefixed UUIDv4 reservation token.
 - Verify six raw idempotency fields, uniqueness/replay scopes, and separate provider-event and PII key/domain families.
 - Verify the HMAC versioned envelope, key-ID grammar, byte-exact four-byte big-endian length prefix and NUL domain separator.
-- Separately review the generic v3 AES-GCM primitive for correct AAD/key-family behavior if it remains in the source slice, but record that it is not the selected Auth0/T1 production path. Verify the T1 classifier returns re-enrollment for structurally valid legacy formats and quarantine for malformed values; do not decrypt or re-encrypt legacy v2.
+- Separately verify AES-256-GCM TOTP envelope key IDs, key separation, old-key decrypt/new-key re-encrypt, tag/ciphertext tampering, unknown key and legacy `enc:` rejection/quarantine.
 - Verify unknown/missing key ID, malformed envelope and wrong domain fail closed without plaintext or bare-SHA fallback.
 - Independently review `platform_wallet_first_setup_delivery_handoffs.idempotency_key_hash` and `session_binding_hash`; do not silently classify them as one of the six raw fields.
 
@@ -81,7 +92,7 @@ A focused Node 22 formula check was run after correcting a domain-separator disc
 - the old-key and active-key email pseudonym known-answer outputs match the documented vectors;
 - the NUL-prefixed and literal-backslash-prefixed byte strings differ.
 
-The focused check passed. Before the latest normalization-test addition, the 13-case file was run from a byte-identical copy of GitHub blob `c61b5d6d54416524317f0c43bc4b4158583cf954` using Node v22.16.0: `node --test /tmp/d1-t2-security-vectors.test.mjs` — **13/13 PASS** (raw SHA-256 `ddbf91af45ea721192563e8fa4b5b14261bee3badab8000f95c44392d6545243`). The added 14th test covers source `normalizeEmail()` trim/lowercase behavior; that case was run separately under Node v22.16.0 — **1/1 PASS** (isolated script SHA-256 `f7a4375fea03ee48433afe0d96e28c22896fc8de8a2caa83df58e8fdbbffd08f`). Current full test file Git blob is `a20a49c77255d3b10a1c8ebff742f9aca4804765`; **the complete 14-case PII vector file has not yet been run as one suite under Node v22.23.1**. Separately, the full repository `npm test` was run at Node v22.23.1 on C1/C2 candidate HEAD `bc3f8c9a` and baseline `bf200c47`; see the 2026-11-08 review record below. The comparative result is zero new failures, not an all-green suite. PR #842 has no hosted CI run and no CI PASS is claimed. The full-scope reviewer must still run the current 14-case PII vector file from a pinned commit and record the exact command, Node version, output and file hash.
+The focused check passed. Before the latest normalization-test addition, the 13-case file was run from a byte-identical copy of GitHub blob `c61b5d6d54416524317f0c43bc4b4158583cf954` using Node v22.16.0: `node --test /tmp/d1-t2-security-vectors.test.mjs` — **13/13 PASS** (raw SHA-256 `ddbf91af45ea721192563e8fa4b5b14261bee3badab8000f95c44392d6545243`). The added 14th test covers source `normalizeEmail()` trim/lowercase behavior; that case was run separately under Node v22.16.0 — **1/1 PASS** (isolated script SHA-256 `f7a4375fea03ee48433afe0d96e28c22896fc8de8a2caa83df58e8fdbbffd08f`). Current full test file Git blob is `a20a49c77255d3b10a1c8ebff742f9aca4804765`; **the complete 14-case file has not yet been run as one suite**. The full repository test suite and CI have not been run. The independent reviewer must run the current 14-case file from the pinned review commit and record the exact command, Node version, output and file hash.
 
 ### Corrected discrepancy
 
@@ -135,7 +146,7 @@ T2 remains BLOCKED until all are resolved with evidence:
 3. Closed JSON schemas enforced at every writer; opaque-ref and generation grammar; independently verify the shared Audit SQL serializer and preserved atomicity.
 4. Payment action custody owner, encryption-key boundary, TTL, terminal purge, tombstone and outage/restore behavior.
 5. Named domain owners and approved retention rules; G2 residual probes or explicit risk acceptance.
-6. Full T2 reviewer signature on the exact final all-package commit. The C1/C2 source-slice review is now APPROVED at `bc3f8c9a`; this does not complete the full-scope C6 review or establish distinct natural-person independence.
+6. Separate reviewer signature on the exact final commit.
 
 The closeout execution matrix tracks acceptance criteria for each work package.
 
@@ -150,37 +161,3 @@ Reviewer must record one of:
 The review record must identify the reviewer, reviewed commit SHA, artifact hashes, commands, environment, results, findings, dispositions and approval scope.
 
 No approval, PR Ready transition, merge, deployment, production read, remote resource mutation or migration is authorized by this packet.
-
-
-## 7. Completed C1/C2 source-slice review — 2026-11-08
-
-This section records the bounded source-slice review. It does not replace the full T2 review specified above.
-
-### Exact GitHub binding
-
-- PR: [#842](https://github.com/FlyLink-com/proxy-gateway-minimal/pull/842), still OPEN / DRAFT.
-- Baseline: `bf200c474173d58d855fab66050a9c2b6b1ac4d4`.
-- Source HEAD: `bc3f8c9a713de05715f42f733b8fa72ba53d4477`.
-- Review ID: `5817529933`; reviewer account: `gccltdco-cmd`; state: `APPROVED`; submitted at `2026-11-08T10:28:54Z`.
-- The GitHub REST `commit_id` equals the PR head byte-for-byte. No review-dismissed event was found.
-- Scope: 10 commits / 10 files / +1,836 −14. The review was limited to this C1/C2 source slice.
-
-### Reviewed conclusions
-
-The approval body records review of identity-versus-password evidence separation; the then-current legacy TOTP fail-closed behavior; key-family isolation and cross-family reuse detection; generic TOTP v3 AES-256-GCM AAD binding to key ID, scope and credential reference; canonical Base32 padding/pad-bit validation; required-factor policy; explicit non-implementation of OIDC/JWT signature verification; and honest OPEN/PENDING status. That approval is pinned to bc3f8c9a and does not review the later T1 re-enrollment-only changes or make the generic v3 TOTP primitive a selected production path.
-
-### Test evidence
-
-- At exact HEAD, Node v22.23.1: four related repository test files passed **48/48**.
-- Full-suite baseline/candidate comparative results are recorded in the closeout matrix: zero new failure names; 28 added tests pass; 156 baseline failures remain; one timing-flake name was isolated 5/5 on each HEAD.
-- No hosted CI run exists for this Draft PR. This approval does not claim CI PASS.
-- The separate 14-case PII vector file remains outstanding as a one-suite Node v22.23.1 run.
-
-### What this approval does not close
-
-- C1 formal acceptance and C2 formal acceptance remain OPEN.
-- T2-C6 full review remains OPEN; PR #842 did not review all six T2 packages, the full 820-field disposition, all 26 JSON writer paths, payment custody, retention and G2 residuals.
-- A separate GitHub account is evidenced; distinct natural-person independence is not established by account separation alone.
-- No merge, Ready transition, deployment, BWH access, production key creation, production D1 operation, migration or writer-authority switch is authorized.
-
-See the closeout matrix and the companion remaining-owner-decisions and migration-readiness documents.

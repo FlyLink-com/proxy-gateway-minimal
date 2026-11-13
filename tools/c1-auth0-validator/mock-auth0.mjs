@@ -120,54 +120,82 @@ export function createMockTenant({ tenantRef, issuerRef, nowFn = () => Date.now(
       const ok = verify(null, Buffer.from(parts[0] + "." + parts[1]), key, Buffer.from(parts[2], "base64url"));
       if (!ok) throw fail("token_signature_invalid");
       if (payload.exp <= Math.floor(nowMs / 1000)) throw fail("token_expired");
+      if (typeof payload.sid !== "string" || payload.sid.length === 0) throw fail("token_session_invalid");
+      if (revocations.isRevoked({ issuerRef, sessionRef: payload.sid })) throw fail("token_revoked");
       return payload;
     },
 
     // Pipeline from steps 1-4: legacy accounts arrive with an envelope and
     // (optionally) an attestation record; the import gate decides each one.
     importLegacyAccounts(accounts) {
-      // Attestation is account-scoped evidence. Validate the complete batch
-      // before writing any user so a copied/misbound record cannot classify
-      // another account or leave a partially imported batch behind.
+      if (!Array.isArray(accounts)) throw fail("import_batch_invalid");
+
+      // Prepare the entire batch without side effects. The Map is keyed by
+      // email and token subjects use accountRef, so duplicate keys must fail
+      // closed instead of silently overwriting or aliasing identities.
+      const prepared = [];
+      const seenAccountRefs = new Set();
+      const seenEmails = new Set();
       for (const account of accounts) {
-        const attestation = account?.attestation;
+        if (!account || typeof account !== "object" || Array.isArray(account)) {
+          throw fail("import_account_invalid");
+        }
+        const { accountRef, email } = account;
+        if (typeof accountRef !== "string" || accountRef.length === 0) {
+          throw fail("import_account_ref_invalid");
+        }
+        if (typeof email !== "string" || email.length === 0) {
+          throw fail("import_email_invalid");
+        }
+        if (seenAccountRefs.has(accountRef)) throw fail("import_batch_duplicate_account_ref");
+        if (seenEmails.has(email)) throw fail("import_batch_duplicate_email");
+        seenAccountRefs.add(accountRef);
+        seenEmails.add(email);
+
+        const attestation = account.attestation;
         if (attestation !== undefined && attestation !== null) {
           classifyAttestationRecord(attestation); // validates the exact record shape
-          if (attestation.accountRef !== account.accountRef) {
+          if (attestation.accountRef !== accountRef) {
             throw fail("attestation_account_ref_mismatch");
           }
         }
+        const classification = classifyAttestationRecord(attestation ?? undefined);
+        const plan = classification.eligibility === "r1_implementation_proof_hold"
+          ? null
+          : planImport({
+            envelope: account.envelope,
+            attestedUtf8Bytes: attestedBytesFromRecord(attestation)
+          });
+        prepared.push({ accountRef, email, classification, plan });
       }
+
+      // All input, attestation, uniqueness, and import-plan validation has
+      // completed before the first user write.
       const report = [];
-      for (const account of accounts) {
-        const classification = classifyAttestationRecord(account.attestation ?? undefined);
-        if (classification.eligibility === "r1_decision_hold") {
+      for (const { accountRef, email, classification, plan } of prepared) {
+        if (classification.eligibility === "r1_implementation_proof_hold") {
           report.push({
-            accountRef: account.accountRef,
-            action: "held_r1_decision",
+            accountRef,
+            action: "held_r1_implementation_proof",
             advisories: [...classification.advisories]
           });
           continue;
         }
-        const plan = planImport({
-          envelope: account.envelope,
-          attestedUtf8Bytes: attestedBytesFromRecord(account.attestation)
-        });
         if (plan.action === "import") {
-          users.set(account.email, {
-            accountRef: account.accountRef, email: account.email, status: "active",
+          users.set(email, {
+            accountRef, email, status: "active",
             credential: { kind: "scrypt", auth0: plan.auth0 },
             advisories: [...classification.advisories]
           });
-          report.push({ accountRef: account.accountRef, action: "imported", advisories: [...classification.advisories] });
+          report.push({ accountRef, action: "imported", advisories: [...classification.advisories] });
         } else if (plan.action === "targeted_reset") {
-          users.set(account.email, {
-            accountRef: account.accountRef, email: account.email, status: "reset_required",
+          users.set(email, {
+            accountRef, email, status: "reset_required",
             credential: null, advisories: []
           });
-          report.push({ accountRef: account.accountRef, action: "reset_required", advisories: [] });
+          report.push({ accountRef, action: "reset_required", advisories: [] });
         } else {
-          report.push({ accountRef: account.accountRef, action: "held_no_attestation", advisories: [] });
+          report.push({ accountRef, action: "held_no_attestation", advisories: [] });
         }
       }
       return Object.freeze(report);
@@ -204,16 +232,21 @@ export function createMockTenant({ tenantRef, issuerRef, nowFn = () => Date.now(
       return Object.freeze({ outcome: "ok", context, token });
     },
 
-    // A reset_required user sets a fresh password (Auth0-side reset flow).
-    // Project rule: the new password must fit the 72-byte window — the reset
-    // must never recreate the hazard it exists to cure. No trimming: the new
-    // regime stores exactly what the user sets.
-    completeReset(email, newPassword) {
+    // Auth0-side reset boundary: Auth0 does not trim. First-party callers
+    // must apply String(value ?? "").trim() before sending the password here.
+    // Preserve exactly what this provider mock receives; do not hide a client
+    // normalization gap by trimming inside the simulated provider.
+    // The new password must also fit the 72-byte bcrypt window.
+    completeReset(email, passwordReceivedByAuth0) {
       const user = users.get(email);
       if (!user || user.status !== "reset_required") throw fail("reset_not_applicable");
-      if (typeof newPassword !== "string" || newPassword.length === 0) throw fail("reset_password_invalid");
-      if (utf8ByteLength(newPassword) > BCRYPT_INPUT_WINDOW_BYTES) throw fail("reset_password_over_72_bytes");
-      user.credential = { kind: "bcrypt", hashB64: simulateAuth0BcryptRehash(newPassword) };
+      if (typeof passwordReceivedByAuth0 !== "string" || passwordReceivedByAuth0.length === 0) {
+        throw fail("reset_password_invalid");
+      }
+      if (utf8ByteLength(passwordReceivedByAuth0) > BCRYPT_INPUT_WINDOW_BYTES) {
+        throw fail("reset_password_over_72_bytes");
+      }
+      user.credential = { kind: "bcrypt", hashB64: simulateAuth0BcryptRehash(passwordReceivedByAuth0) };
       user.status = "active";
       return true;
     },
@@ -228,6 +261,15 @@ export function createMockTenant({ tenantRef, issuerRef, nowFn = () => Date.now(
     hasTotp: (accountRef) => enrollments.has(accountRef),
 
     stepUpTotp(context, code, nowMs = nowFn()) {
+      // A factor enrollment is tenant-local. Never let a valid code from this
+      // tenant upgrade an actor context issued by the other tenant.
+      if (!context || typeof context !== "object" || context.issuerRef !== issuerRef) {
+        throw fail("totp_tenant_mismatch");
+      }
+      if (typeof context.accountRef !== "string" || context.accountRef.length === 0
+        || !Array.isArray(context.factors)) {
+        throw fail("totp_context_invalid");
+      }
       const enrollment = enrollments.get(context.accountRef);
       if (!enrollment) throw fail("totp_not_enrolled");
       if (!totpMatches(enrollment.secretBase32, code, nowMs)) throw fail("totp_code_invalid");

@@ -3,7 +3,8 @@ import test from "node:test";
 
 import {
   coinCommerceSubscriptionFulfillmentMetadataJson,
-  portalAccessEventJson
+  portalAccessEventJson,
+  projectAccountMetadataForD1
 } from "../services/platform/control-json-contracts.mjs";
 
 const NOW = "2026-11-07T00:00:00.000Z";
@@ -183,4 +184,132 @@ test("subscription fulfillment audit JSON rejects accessors and non-plain object
   assert.throws(() => coinCommerceSubscriptionFulfillmentMetadataJson([]), {
     code: "validation_error"
   });
+});
+
+test("D1 account metadata projection emits only the versioned safe business/legal allowlist", () => {
+  const result = projectAccountMetadataForD1({
+    initialAccount: false,
+    requireSecuritySetup: true,
+    registrationSource: "self_service_portal",
+    singleSubscriptionOnly: true,
+    subscriptionLimit: 1,
+    intentPlan: "trial",
+    requestedDeviceCount: 2,
+    primaryRegion: "japan",
+    legalAgreementAccepted: true,
+    legalAgreementAcceptedAt: NOW,
+    termsVersion: "2026-07-02",
+    privacyVersion: "2026-07-02"
+  });
+  assert.equal(result.status, "ready");
+  assert.deepEqual(result.blockers, []);
+  assert.deepEqual(result.sourceOnlyFields, []);
+  assert.deepEqual(JSON.parse(result.metadataJson), {
+    version: 1,
+    initialAccount: false,
+    requireSecuritySetup: true,
+    registrationSource: "self_service_portal",
+    singleSubscriptionOnly: true,
+    subscriptionLimit: 1,
+    intentPlan: "trial",
+    requestedDeviceCount: 2,
+    primaryRegion: "japan",
+    legalAgreementAccepted: true,
+    legalAgreementAcceptedAt: NOW,
+    termsVersion: "2026-07-02",
+    privacyVersion: "2026-07-02"
+  });
+});
+
+test("D1 account metadata projection drops only explicitly source-only markers", () => {
+  const result = projectAccountMetadataForD1({
+    source: "operator_provisioning_form",
+    channel: "manual",
+    synthetic: true
+  });
+  assert.equal(result.status, "ready");
+  assert.equal(result.metadataJson, '{"version":1}');
+  assert.deepEqual(result.sourceOnlyFields, ["channel", "source", "synthetic"]);
+});
+
+test("D1 account metadata projection blocks raw identity fields without echoing values", () => {
+  const result = projectAccountMetadataForD1({
+    loginRef: "member@example.test",
+    displayRef: "Member Example",
+    displayName: "Member Example"
+  });
+  assert.equal(result.status, "blocked");
+  assert.equal(result.metadataJson, null);
+  assert.deepEqual(result.blockers, [{
+    code: "identity_externalization_required",
+    fields: ["displayName", "displayRef", "loginRef"]
+  }]);
+  assert.doesNotMatch(JSON.stringify(result), /member@example\.test|Member Example/);
+});
+
+test("D1 account metadata projection blocks legacy unkeyed SHA-256 digests", () => {
+  const digest = "a".repeat(64);
+  const result = projectAccountMetadataForD1({
+    loginDigest: digest,
+    contactDigest: digest,
+    registrationSourceIpDigest: digest,
+    registrationRequestKeyDigest: digest
+  });
+  assert.equal(result.status, "blocked");
+  assert.equal(result.metadataJson, null);
+  assert.deepEqual(result.blockers, [{
+    code: "keyed_digest_replacement_required",
+    fields: [
+      "contactDigest",
+      "loginDigest",
+      "registrationRequestKeyDigest",
+      "registrationSourceIpDigest"
+    ]
+  }]);
+  assert.doesNotMatch(JSON.stringify(result), new RegExp(digest));
+});
+
+test("D1 account metadata projection reports identity and digest blockers together", () => {
+  const result = projectAccountMetadataForD1({
+    loginRef: "private@example.test",
+    loginDigest: "b".repeat(64)
+  });
+  assert.equal(result.status, "blocked");
+  assert.deepEqual(result.blockers.map((item) => item.code), [
+    "identity_externalization_required",
+    "keyed_digest_replacement_required"
+  ]);
+});
+
+test("D1 account metadata projection rejects unknown fields and malformed safe values", () => {
+  assert.throws(() => projectAccountMetadataForD1({ arbitrary: "not-allowed" }), {
+    code: "validation_error"
+  });
+  assert.throws(() => projectAccountMetadataForD1({ registrationSource: "admin" }), {
+    code: "validation_error"
+  });
+  assert.throws(() => projectAccountMetadataForD1({ requestedDeviceCount: 0 }), {
+    code: "validation_error"
+  });
+  assert.throws(() => projectAccountMetadataForD1({ legalAgreementAcceptedAt: "2026-02-30T00:00:00.000Z" }), {
+    code: "validation_error"
+  });
+  assert.throws(() => projectAccountMetadataForD1({ source: "https://example.invalid" }), {
+    code: "validation_error"
+  });
+});
+
+test("D1 account metadata projection rejects accessors, proxies and non-plain objects", () => {
+  const accessor = {};
+  Object.defineProperty(accessor, "registrationSource", {
+    enumerable: true,
+    get: () => "self_service_portal"
+  });
+  assert.throws(() => projectAccountMetadataForD1(accessor), { code: "validation_error" });
+  const proxy = new Proxy({}, { ownKeys() { throw new Error("raw trap marker"); } });
+  assert.throws(
+    () => projectAccountMetadataForD1(proxy),
+    (error) => error?.code === "validation_error" && !error.message.includes("raw trap marker")
+  );
+  assert.throws(() => projectAccountMetadataForD1([]), { code: "validation_error" });
 });

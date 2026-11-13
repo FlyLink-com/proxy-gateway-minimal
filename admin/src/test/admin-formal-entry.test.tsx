@@ -140,7 +140,7 @@ describe("admin formal entry", () => {
     expectLegacyKeyUnread(getItemSpy);
   });
 
-  it("authenticated session shows ten nav items without default business reads", async () => {
+  it("authenticated session shows ten nav items and reads only the dashboard summary", async () => {
     seedLegacySession();
     fetchMock.mockImplementation((input: unknown) => {
       if (pathOf(input) === AUTH_SESSION_PATH) {
@@ -164,7 +164,11 @@ describe("admin formal entry", () => {
     const nav = screen.getByRole("navigation", { name: "Admin 导航" });
     expect(nav.querySelectorAll("button").length).toBe(12);
     expect(nav.querySelectorAll("a").length).toBe(0);
-    expect(fetchPaths(fetchMock).filter((p) => p !== AUTH_SESSION_PATH)).toEqual([]);
+    await waitFor(() => {
+      expect(fetchPaths(fetchMock).filter((p) => p !== AUTH_SESSION_PATH)).toEqual([
+        "/api/admin/operations/dashboard-summary",
+      ]);
+    });
     expectLegacyKeyUnread(getItemSpy);
   });
 

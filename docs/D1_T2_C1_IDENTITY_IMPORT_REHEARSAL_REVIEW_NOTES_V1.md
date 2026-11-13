@@ -1,5 +1,16 @@
 # D1 T2-C1 Identity Import Rehearsal — Second-Pass Review Notes v1
 
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: d1_t2_c1_identity_import_rehearsal_review_notes
+  superseded_by: null
+  last_verified_at: 2026-11-10
+  production_authority: false
+```
+
+
 - Review date: 2026-11-07 (PST)
 - Reviewed branch: docs/d1-target-schema-g6-rehearsal-plan-20261107
 - Reviewed HEAD: 76bd676ddc3e1a214b6cdc9392ad40baea993088
@@ -10,11 +21,11 @@
 
 ## 1. Executive disposition
 
-The local synthetic rehearsal is useful as a narrow password-byte/schema compatibility probe. Its fixed-fixture allowlist, no-network/no-file behavior, T1 legacy TOTP disposition classification, and redacted CLI are appropriate for this phase.
+The local synthetic rehearsal is useful as a narrow byte/schema compatibility probe. Its fixed-fixture allowlist, no-network/no-file behavior, v2 TOTP rejection, and redacted CLI are appropriate for this phase.
 
-It does NOT establish a production-ready identity migration converter or complete C1 acceptance. Password-compatibility blockers, provider behavior, import reconciliation and account lifecycle compatibility remain unproven. T1 resolves target TOTP ownership to Auth0-managed MFA, but new-factor enrollment and lifecycle proof remain open.
+It does NOT establish a production-ready identity migration converter or complete C1 acceptance. Two password-compatibility blockers and the existing TOTP custody gate remain unresolved. Provider behavior, import reconciliation, and account lifecycle compatibility have not been tested.
 
-**Disposition: C1 OPEN; C2 OPEN; T2 BLOCKED. Do not promote to Ready, merge, deploy, create a tenant, or use real account material on the strength of this rehearsal.**
+**Disposition: C1 BLOCKED; C2 OPEN; T2 BLOCKED. Do not promote to Ready, merge, deploy, create a tenant, or use real account material on the strength of this rehearsal.**
 
 ## 2. Pinned source and local validation evidence
 
@@ -84,20 +95,20 @@ References:
 - https://support.auth0.com/center/s/article/customize-max-password-length
 - https://support.auth0.com/center/s/article/How-to-update-user-data-while-lazy-migration
 
-### C1-R3 — HISTORICAL: Legacy enc: TOTP fixture is synthetic-only; superseded by T1
+### C1-R3 — BLOCKER: Legacy enc: TOTP acceptance is synthetic-only and must not be generalized to production
 
-The current legacy verifier recognizes the enc: prefix as a marker for raw Base32; it is not encryption. This paragraph records the historical fixture only. The current rehearsal no longer maps any legacy TOTP value into an Auth0 import field.
+The current TOTP verifier strips the legacy enc: prefix and treats the remainder as Base32. That prefix is not encryption. The rehearsal normalizes the fixed synthetic enc:JBSWY3DPEHPK3PXP fixture into Auth0's unpadded Base32 field.
 
-The synthetic record builder emits no TOTP factor. Under T1, structurally valid enc:, raw Base32 and v2: legacy formats require re-enrollment; malformed formats are quarantined. No real secret was read or decrypted.
+The synthetic record builder is restricted to that exact fixture and rejects arbitrary TOTP values. It also fails closed for a v2: envelope without C2 key custody. No real secret was read or decrypted.
 
-T1 supersedes the earlier re-protection/transfer alternatives: all legacy enc:, raw Base32 and v2: values are invalidated at cutover and require Auth0 MFA re-enrollment. They are never loaded into the target. The existing BWH verifier remains unchanged until a separately authorized cutover; no source key is accessed in this phase.
+However, the D1 field-disposition and T2-C2 contracts explicitly require legacy enc:<base32> values to be re-registered, re-protected under an approved custody contract, or quarantined/rejected before a target load. The current TOTP secret field remains EXTERNALIZE; C2 key ID, key separation, rotation and old-value handling remain open.
 
-T1 acceptance requirements (no legacy TOTP import):
+Required before any real TOTP import:
 
-1. Prove new synthetic Auth0 MFA enrollment and verification.
-2. Verify the approved ±1 time window, lockout, recovery, revocation and outage behavior.
-3. Prove no legacy enc:, raw Base32 or v2: secret reaches the provider import record, D1, Worker, logs or evidence.
-4. Keep old BWH source values and runtime unchanged until a separately authorized cutover.
+1. Preserve the fixed synthetic-only guard.
+2. Do not feed production enc: or unprefixed Base32 values through this path.
+3. Obtain the separate C2 custody decision and the required Identity/Privacy and Security approvals.
+4. Choose re-enrollment or approved re-encryption/quarantine for historical values.
 
 References:
 - D1_CONTROL_FIELD_DISPOSITION_T2_V1.md
@@ -179,17 +190,11 @@ The focused test pass does not change the project gates:
 ## 5. Recommended next sequence
 
 1. Resolve C1-R1 password canonicalization and C1-R2 72-byte reset/enforcement policy with the accountable owners.
-2. Apply owner-selected T1: legacy enc: and v2: TOTP values are invalidated at cutover and require Auth0 MFA re-enrollment; no decryption, import, transfer or re-encryption.
+2. Keep legacy TOTP values quarantined from this import path until C2 approves custody and re-encryption/re-enrollment handling.
 3. Harden parser/verifier input bounds and add the previous-window TOTP regression.
 4. Define initial-import/upsert policy, metadata preservation, duplicate preflight and partial-import reconciliation.
-5. Only after separate authorization to create a non-production tenant, run the isolated Auth0 proof for Scrypt import, first-login rehash, 72-byte rejection, trim normalization, MFA enrollment/verification, lockout and tenant isolation.
+5. Only after provider and owner selection, run an isolated Auth0 synthetic tenant/API proof with readback and first-login rehash observation.
 6. Test C1-01 through C1-12, including lockout, Admin directory, Coins canary, outage/revocation and Android/browser parity.
 7. Obtain a reviewer who did not author the implementation to review the exact final commit. Until then, this remains an AI-assisted second-pass review, not formal independent sign-off.
 
 No source behavior or production authority is changed by this review note.
-
-
-## Owner decision update — T1 (2026-11-08)
-
-The earlier C1-R3 text described a synthetic-only enc: fixture and a possible C2-approved v2 conversion path. That path is superseded by the owner's T1 decision: legacy enc: and v2: TOTP values are invalidated at cutover; no real or synthetic legacy secret is a production migration input; users re-enroll with Auth0 MFA. Portal enrollment is optional and Admin enrollment mandatory. The repository's generic legacy classifier must return re_enroll_required and must not decrypt or re-encrypt. Synthetic provider proof is for new enrollment/verification and lifecycle behavior, not legacy secret import.
-

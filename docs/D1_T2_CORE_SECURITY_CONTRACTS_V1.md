@@ -1,5 +1,16 @@
 # D1 T2 Core Security Contracts v1.1 — Draft
 
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: active
+  authority_scope: d1_t2_core_security_contracts
+  superseded_by: null
+  last_verified_at: 2026-11-10
+  production_authority: false
+```
+
+
 > **Status:** DESIGN PROPOSAL / SYNTHETIC-TEST CONTRACT. Not domain-owner approval, not production DDL, not secret provisioning, not production migration authorization.
 > **Source anchor:** `master@be261abc60f28bb2733764fa5364ab44b3e76844`.
 > **Draft branch:** `docs/d1-target-schema-g6-rehearsal-plan-20261107`.
@@ -288,7 +299,7 @@ The source audit and synthetic vectors are complete for this pass, but T2 remain
 
 Repository-only documentation and synthetic test design. No production DB reads, BWH connection, real secrets, remote D1 mutation, Worker deployment, CI, PR, merge, dual-write, DNS or cutover. BWH remains production's only writer. A future G6 PASS authorizes consideration of the next separately approved step only.
 
- 
+
 ## 9. PII pseudonymization compatibility follow-up — 2026-11-07
 
 Detailed source-consumer mapping, field disposition, fixed PII domains, HMAC-over-legacy-digest encoding, historical transformation, rotation and fail-closed compatibility are specified in `docs/D1_T2_PII_PSEUDONYMIZATION_AND_HMAC_COMPATIBILITY_V1.md`.

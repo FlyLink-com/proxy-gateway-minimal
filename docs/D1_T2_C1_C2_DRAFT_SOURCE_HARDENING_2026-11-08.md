@@ -1,5 +1,15 @@
 # D1 T2-C1/C2 Draft Source Hardening — 2026-11-08
 
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: active
+  authority_scope: d1_t2_c1_c2_draft_source_hardening
+  superseded_by: null
+  last_verified_at: 2026-11-11
+  production_authority: false
+```
+
 ## Execution classification
 
 - Risk: B — repository-only server helper and test changes; no production behavior is activated by this branch.
@@ -33,12 +43,12 @@
 
 ## Still open — no owner decision inferred
 
-- Auth0 is owner-selected; non-production tenant allocation/proof and actual OIDC/JWKS signature verification remain open. No tenant is created in this branch.
+- Identity provider selection (Auth0 vs Keycloak), tenant/realm isolation and actual OIDC/JWKS signature verification.
 - Production provider adapter, gateway integration, session revocation and Admin directory path.
 - Historical revoked-subject rebind policy; no automatic rebind policy is invented here.
 - Actual HMAC/AES key custody provider, accountable custodians, independent escrow, recovery, incident revocation and production rotation.
 - Wallet-first `idempotency_key_hash` and `session_binding_hash` compatibility; existing unkeyed SHA-256 storage is unchanged pending caller/retention/schema inventory and owner decision.
-- T1 removes legacy v2 source-to-target transfer: legacy enc:, raw Base32 and v2: values are invalidated at cutover and require re-enrollment. This branch classifies valid legacy formats and quarantines malformed values; it does not decrypt or re-encrypt them. New Auth0 MFA lifecycle proof remains open.
+- Legacy v2 TOTP source-to-target credential ownership proof; this branch only validates the helper's input envelope and target AAD behavior.
 - Full C1/C2 provider integration and independent review.
 
 ## Validation and gate status
@@ -48,3 +58,29 @@
 - Full `npm test`, CI, PR, Ready transition, merge and deployment have **not** been performed.
 - C1 and C2 remain OPEN. T2 remains BLOCKED. T3 target DDL and G6 offline migration rehearsal remain gated.
 - BWH remains the only production writer.
+
+
+## G6 selective-integration reconciliation — 2026-11-11
+
+This integration slice is based on G6 staging commit
+`3490de6046a4fe48346984b22b0bba4a31546df4` and preserves the original
+source review anchor at #842 HEAD
+`bc3f8c9a713de05715f42f733b8fa72ba53d4477`.
+
+- The G6 `createD1PiiLookupCandidatesFromDigest` and
+  `verifyD1PiiDigestEnvelopeFromDigest` interfaces remain intact. The
+  digest-only PII path is retained; this integration does not restore
+  raw PII or ordinary SHA-256 persistence.
+- The TOTP Base32 normalizer uses the intended whitespace/hyphen class
+  `/[\s-]/gu`. The source-head escaped character class was corrected
+  because it matched a literal backslash or `s`, not whitespace.
+- The padded positive test vector was corrected to canonical
+  `MY======`; explicit whitespace, hyphen and non-zero pad-bit cases
+  were added.
+- This branch is a source-only integration candidate. No CI, full test
+  suite, Ready transition, merge, deployment, BWH access or production
+  database operation is claimed or authorized by this note.
+
+The original #842 branch, PR metadata and submitted review remain
+unchanged and are retained as source evidence. The new G6 integration
+candidate requires its own exact-HEAD review and validation.

@@ -64,7 +64,7 @@
 - 窗口时长由 Yi 在生产门禁包中裁定（越长覆盖越高、被迫重置越少；本设计不预设已接受数值）。
 - 窗口内成功登录过的账户按以下规则分类：
   - `within_72` 且 `edgeWhitespace=false`：可进入后续导入门。
-  - `within_72` 且 `edgeWhitespace=true`：**`r1_decision_hold`**。R1 统一密码规范尚未裁定，不得仅凭通知建议导入。
+  - `within_72` 且 `edgeWhitespace=true`：**`r1_implementation_proof_hold`**。R1 trim-only 政策已批准；在 Browser / Android / Admin 证明 Auth0 前归一化一致之前，继续 fail-closed 暂缓。无法证明的托管路径使用通知式用户主动重置。
   - `over_72`：定向通知并重置。
 - 窗口内从未成功登录的账户保持“未知”。切换时的处理默认是**不导入其密码哈希**，按批准的重置邀请流程恢复访问。
 - 密码在窗口内发生变更：以最新一次成功登录的证明为准（记录覆盖更新）。
@@ -74,7 +74,7 @@
 导入门与本设计对应：
 
 - attested `within_72` + `edgeWhitespace=false` → `import`（仍须通过其他 C1/T2 门）。
-- attested `within_72` + `edgeWhitespace=true` → `hold_r1_decision`，直到 Yi 对 R1 作出明确决定。
+- attested `within_72` + `edgeWhitespace=true` → `r1_implementation_proof_hold`，直到跨客户端 pre-Auth0 trim-only 实现与兼容性证明完成。
 - attested `over_72` → `targeted_reset`。
 - 无证明 → `hold_no_attestation` → 按第 6 节默认走重置邀请。
 
@@ -85,7 +85,7 @@
 | 证明写入失败 | 照常成功 | 未知—暂缓 |
 | 验证失败 | 失败 | 不产生记录 |
 | 记录形状非法 | 照常成功（拒绝落盘） | 未知—暂缓 |
-| `edgeWhitespace=true` 且 R1 未裁定 | 照常成功 | `r1_decision_hold` |
+| `edgeWhitespace=true` 且跨客户端证明未完成 | 照常成功 | `r1_implementation_proof_hold` |
 | 窗口外账户 | 不适用 | 未知 → 重置邀请 |
 
 ## 9. 生产实施门禁（未来单独申请，本轮不执行）

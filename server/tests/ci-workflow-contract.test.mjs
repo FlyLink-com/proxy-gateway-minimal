@@ -17,6 +17,11 @@ const EXPECTED_WORKFLOW_ACTIONS = {
     "actions/checkout",
     "actions/setup-node"
   ],
+  "codeql.yml": [
+    "actions/checkout",
+    "github/codeql-action/init",
+    "github/codeql-action/analyze"
+  ],
   "control-plane-artifact-ingress-v2.yml": [
     "actions/checkout",
     "actions/setup-node",
@@ -69,6 +74,17 @@ const EXPECTED_WORKFLOW_ACTIONS = {
     "actions/setup-node",
     "actions/upload-artifact"
   ],
+  "pr-domain-validation.yml": [
+    "actions/checkout",
+    "actions/setup-node",
+    "actions/setup-python",
+    "actions/upload-artifact",
+    "actions/checkout",
+    "actions/setup-node",
+    "actions/upload-artifact",
+    "actions/checkout",
+    "actions/setup-node"
+  ],
   "release-artifact.yml": [
     "actions/checkout",
     "actions/setup-node",
@@ -93,7 +109,7 @@ const EXPECTED_WORKFLOW_ACTIONS = {
     "actions/upload-artifact"
   ]
 };
-const EXPECTED_WORKFLOW_FILES = Object.keys(EXPECTED_WORKFLOW_ACTIONS);
+const EXPECTED_WORKFLOW_FILES = Object.keys(EXPECTED_WORKFLOW_ACTIONS).sort();
 const DEFAULT_CHECKOUT_PIN = "d23441a48e516b6c34aea4fa41551a30e30af803";
 // governance-validate.yml is an immutable trust root in its own trusted job. Its
 // two exact-SHA checkout positions remain on the base-reviewed pin until a
@@ -104,7 +120,7 @@ const REVIEWED_ACTION_PINS = {
   "actions/checkout": {
     sha: DEFAULT_CHECKOUT_PIN,
     annotation: "v6",
-    count: 25
+    count: 29
   },
   "actions/download-artifact": {
     sha: "3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c",
@@ -114,21 +130,39 @@ const REVIEWED_ACTION_PINS = {
   "actions/setup-node": {
     sha: "249970729cb0ef3589644e2896645e5dc5ba9c38",
     annotation: "v6",
-    count: 21
+    count: 24
+  },
+  "actions/setup-python": {
+    sha: "6d4fd22b20465ccc0f7354476588e8df7c9ca0e0",
+    annotation: "v7.1.0",
+    count: 1
   },
   "actions/upload-artifact": {
     sha: "043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",
     annotation: "v7",
-    count: 7
+    count: 9
+  },
+  "github/codeql-action/init": {
+    sha: "33d7b85da1a04171e211befe2c739303b9a4c066",
+    annotation: "v4",
+    count: 1
+  },
+  "github/codeql-action/analyze": {
+    sha: "33d7b85da1a04171e211befe2c739303b9a4c066",
+    annotation: "v4",
+    count: 1
   }
 };
-const EXPECTED_ACTION_REFERENCE_COUNT = 60;
+const EXPECTED_ACTION_REFERENCE_COUNT = 72;
 const EXPECTED_ACTION_REVISION_COUNTS = {
-  [`actions/checkout@${DEFAULT_CHECKOUT_PIN}`]: 23,
+  [`actions/checkout@${DEFAULT_CHECKOUT_PIN}`]: 27,
   [`actions/checkout@${TRUSTED_GOVERNANCE_CHECKOUT_PIN}`]: 2,
   [`actions/download-artifact@${REVIEWED_ACTION_PINS["actions/download-artifact"].sha}`]: 7,
-  [`actions/setup-node@${REVIEWED_ACTION_PINS["actions/setup-node"].sha}`]: 21,
-  [`actions/upload-artifact@${REVIEWED_ACTION_PINS["actions/upload-artifact"].sha}`]: 7
+  [`actions/setup-node@${REVIEWED_ACTION_PINS["actions/setup-node"].sha}`]: 24,
+  [`actions/setup-python@${REVIEWED_ACTION_PINS["actions/setup-python"].sha}`]: 1,
+  [`actions/upload-artifact@${REVIEWED_ACTION_PINS["actions/upload-artifact"].sha}`]: 9,
+  [`github/codeql-action/init@${REVIEWED_ACTION_PINS["github/codeql-action/init"].sha}`]: 1,
+  [`github/codeql-action/analyze@${REVIEWED_ACTION_PINS["github/codeql-action/analyze"].sha}`]: 1
 };
 // Keep this source-only guard dependency-free: every uncommented `uses` token is
 // reserved for this canonical one-line form and every other spelling fails closed.
@@ -276,7 +310,7 @@ function inspectWorkflowActionInventory(
     // Same-checkout reusable workflows are reviewed job calls, not third-party
     // Actions. Keep this exception exact and job-level; the DAG contract tests
     // bind their callers, permissions, conditions, and failure propagation.
-    if (workflowFile === "ci.yml" && /^    uses: \.\/\.github\/workflows\/(?:control-plane-dependency-artifact|control-plane-foundation-toolchain-inventory)\.yml$/u.test(line)) {
+    if (workflowFile === "ci.yml" && /^    uses: \.\/\.github\/workflows\/(?:control-plane-dependency-artifact|control-plane-foundation-toolchain-inventory|pr-domain-validation)\.yml$/u.test(line)) {
       continue;
     }
     const separator = reference.lastIndexOf("@");
@@ -530,6 +564,20 @@ test("all workflow Action references use the reviewed full commit inventory", ()
   );
 });
 
+test("CodeQL workflow uses least-privilege permissions and credential-free checkout", () => {
+  const workflow = readRepositoryFile(".github/workflows/codeql.yml");
+
+  assert.match(workflow, /^ +security-events: write$/mu);
+  assert.match(workflow, /^ +contents: read$/mu);
+  assert.doesNotMatch(workflow, /^ +(actions|packages): read$/mu);
+  assert.match(workflow, new RegExp(`uses: actions/checkout@${DEFAULT_CHECKOUT_PIN} # v6`));
+  assert.match(workflow, /^ +persist-credentials: false$/mu);
+  assert.equal(
+    (workflow.match(/^[ ]+uses: github\/codeql-action\/(?:init|analyze)@[a-f0-9]{40} # v4$/gmu) ?? []).length,
+    2
+  );
+});
+
 test("CI retains stable Validate, exact diff checks, and docs-only routing across test/build jobs", () => {
   const workflow = readRepositoryFile(".github/workflows/ci.yml");
   const validate = jobBlock(workflow, "source-checks", "foundation-inventory");
@@ -581,6 +629,68 @@ test("CI retains stable Validate, exact diff checks, and docs-only routing acros
   assert.match(authorityStep, /^\s*if: always\(\)/m);
   assert.match(authorityStep, /npm run docs:authority:strict/);
   assert.match(workflow, /permissions:\r?\n  contents: read/);
+});
+
+test("PR domain validation is least-privilege and blocks the CI prerequisite aggregate", () => {
+  const workflow = readRepositoryFile(".github/workflows/ci.yml");
+
+  assert.match(workflow, /^permissions:\r?\n  contents: read$/m);
+  assert.doesNotMatch(workflow, /^  pull-requests: read$/m);
+
+  const domain = jobBlock(workflow, "pr-domain-validation", "checks-passed");
+  assert.match(domain, /^    permissions:\r?\n      contents: read\r?\n      pull-requests: read$/m);
+  assert.match(domain, /^    uses: \.\/\.github\/workflows\/pr-domain-validation\.yml$/m);
+  assert.match(domain, /head\.ref == 'ci\/pr-domain-validation-20261112'/);
+
+  const aggregate = jobBlock(workflow, "checks-passed", "build-assets");
+  assert.match(aggregate, /needs: \[.*pr-domain-validation.*\]/);
+  assert.match(aggregate, /DOMAIN_RESULT: \$\{\{ needs\.pr-domain-validation\.result \}\}/);
+  assert.match(
+    aggregate,
+    /DOMAIN_REQUIRED: \$\{\{ github\.event_name == 'pull_request' && github\.event\.pull_request\.base\.ref == 'master' && github\.event\.pull_request\.head\.ref == 'ci\/pr-domain-validation-20261112' \}\}/
+  );
+  assert.match(
+    aggregate,
+    /if \[\[ "\$DOMAIN_REQUIRED" == "true" \]\]; then[\s\S]*test "\$DOMAIN_RESULT" = success[\s\S]*else[\s\S]*test "\$DOMAIN_RESULT" = skipped/s
+  );
+  assert.match(aggregate, /test "\$DOMAIN_RESULT" = skipped/);
+});
+
+
+test("PR domain validation verifies the merged DDD authority snapshot at its exact HEAD", () => {
+  const workflow = readRepositoryFile(".github/workflows/pr-domain-validation.yml");
+  const ddd = jobBlock(workflow, "ddd-documents", "ci-workflow-contract");
+
+  assert.match(ddd, /PR_NUMBER: 856/);
+  assert.match(ddd, /EXPECTED_HEAD_REF: docs\/ddd-context-map-20261111/);
+  assert.match(ddd, /EXPECTED_BASE_REF: master/);
+  assert.match(ddd, /EXPECTED_HEAD_SHA: 2372094ff7c7deec860edc953fd5ed18bfd6c599/);
+  assert.match(ddd, /EXPECTED_BASE_SHA: b6e9b111a430b42c71ff10b80cbfdb2527b391ce/);
+  assert.match(ddd, /EXPECTED_MERGE_COMMIT_SHA: 3c5da93f95b34a4926cffe94f174270ddf22ed4f/);
+  assert.match(
+    ddd,
+    /\.state == "closed"[\s\S]*\.draft == false[\s\S]*\.merged_at != null[\s\S]*\.merge_commit_sha == \$merge_commit_sha/s
+  );
+  assert.match(ddd, /\.head\.sha == \$head_sha/);
+  assert.match(ddd, /\.base\.sha == \$base_sha/);
+  assert.match(ddd, /ref: 2372094ff7c7deec860edc953fd5ed18bfd6c599/);
+  assert.match(ddd, /git diff --check "\$EXPECTED_BASE_SHA\.\.\.\$EXPECTED_HEAD_SHA"/);
+});
+
+
+test("validation workflow summaries avoid shell command substitution", () => {
+  const workflow = readRepositoryFile(".github/workflows/pr-domain-validation.yml");
+  assert.doesNotMatch(workflow, /^\s*echo .*\x60/m);
+});
+
+test("PR domain validation runs the workflow contract suite on the exact caller head", () => {
+  const workflow = readRepositoryFile(".github/workflows/pr-domain-validation.yml");
+  const contract = jobBlock(workflow, "ci-workflow-contract");
+
+  assert.match(contract, /^    permissions:\r?\n      contents: read$/m);
+  assert.match(contract, /ref: \$\{\{ github\.event\.pull_request\.head\.sha \}\}/);
+  assert.match(contract, /EXPECTED_CALLER_HEAD_SHA: \$\{\{ github\.event\.pull_request\.head\.sha \}\}/);
+  assert.match(contract, /node --test server\/tests\/ci-workflow-contract\.test\.mjs/);
 });
 
 test("CI separates read-only governance evidence from manual snapshot validation", () => {

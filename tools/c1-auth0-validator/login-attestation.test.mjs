@@ -27,7 +27,7 @@ test("over-72 effective password: over_72 bucket, targeted reset", () => {
   assert.equal(rec.classify("acct-002").eligibility, "targeted_reset");
 });
 
-test("edge whitespace with raw over 72 but trimmed within: bucket uses effective bytes, migration holds pending R1 decision", () => {
+test("edge whitespace with raw over 72 but trimmed within: bucket uses effective bytes, migration holds pending cross-client R1 proof", () => {
   const padded = " ".repeat(40) + "shortpw" + " ".repeat(40); // raw 87 bytes, trimmed 7 bytes
   const measurement = measurePresentedPassword(padded);
   assert.equal(measurement.rawUtf8Bytes, 87);
@@ -37,8 +37,8 @@ test("edge whitespace with raw over 72 but trimmed within: bucket uses effective
   const record = rec.recordSuccessfulLogin("acct-003", padded);
   assert.equal(record.bucket, "within_72");
   assert.deepEqual(rec.classify("acct-003"), {
-    eligibility: "r1_decision_hold",
-    advisories: ["edge_whitespace_r1_decision_required"]
+    eligibility: "r1_implementation_proof_hold",
+    advisories: ["edge_whitespace_client_compatibility_proof_required"]
   });
 });
 

@@ -22,7 +22,23 @@ const summary = {
     platformHealth: { availability: "not_connected" },
     channelCoverage: { availability: "not_connected" },
     freshnessP95: { availability: "not_connected" },
-    riskCandidates: { availability: "not_connected" }
+    riskCandidates: { availability: "not_connected" },
+    registrationGrowth: {
+      availability: "ready",
+      timezone: "UTC",
+      definition: "account_created_at",
+      from: "2026-10-01T00:00:00.000Z",
+      to: "2026-10-02T00:00:00.000Z",
+      registeredCount: 2,
+      otherCreatedCount: 0,
+      points: [{
+        at: "2026-10-01T00:00:00.000Z",
+        registeredCount: 2,
+        otherCreatedCount: 0,
+        coverage: "queried"
+      }]
+    },
+    trafficCollector: { availability: "ready", observedAt: "2026-10-20T01:02:03.000Z" }
   },
   warnings: [{ code: "source_partial" }],
   access: { allowed: true, capability: "operations.read", reasonCode: "allowed" }
@@ -43,6 +59,27 @@ describe("operations dashboard client", () => {
     expect(() => parseOperationsDashboardSummary({
       ...summary,
       data: { ...summary.data, nodes: [{ name: "node-secret" }] }
+    })).toThrow(OperationsDashboardReadError);
+    expect(() => parseOperationsDashboardSummary({
+      ...summary,
+      data: {
+        ...summary.data,
+        registrationGrowth: { availability: "not_authorized", registeredCount: 0 }
+      }
+    })).toThrow(OperationsDashboardReadError);
+    expect(() => parseOperationsDashboardSummary({
+      ...summary,
+      data: {
+        ...summary.data,
+        trafficCollector: { availability: "unknown", observedAt: "2026-10-20T01:02:03.000Z" }
+      }
+    })).toThrow(OperationsDashboardReadError);
+    expect(() => parseOperationsDashboardSummary({
+      ...summary,
+      data: {
+        ...summary.data,
+        trafficCollector: { availability: "ready", observedAt: "2026-10-20T01:02:03.000Z", channelRef: "channel-secret" }
+      }
     })).toThrow(OperationsDashboardReadError);
   });
 
@@ -71,6 +108,13 @@ describe("operations dashboard client", () => {
     await expect(readOperationsDashboardSummary({ fetcher: unauthenticated })).rejects.toMatchObject({ code: "session", status: 401 });
     const unavailable = vi.fn(async () => new Response("nope", { status: 503 }));
     await expect(readOperationsDashboardSummary({ fetcher: unavailable })).rejects.toMatchObject({ code: "unavailable", status: 503 });
+    const invalid = vi.fn<typeof fetch>(async () => new Response(JSON.stringify({ error: "invalid_query" }), { status: 400 }));
+    await expect(readOperationsDashboardSummary({
+      fetcher: invalid,
+      from: "2026-09-01T00:00:00.000Z",
+      to: "2026-10-24T00:00:00.000Z"
+    })).rejects.toMatchObject({ code: "invalid", status: 400 });
+    expect(invalid.mock.calls[0]?.[0]).toBe("/api/admin/operations/dashboard-summary?from=2026-09-01T00%3A00%3A00.000Z&to=2026-10-24T00%3A00%3A00.000Z");
     const controller = new AbortController();
     controller.abort();
     const aborted = vi.fn(async () => {
