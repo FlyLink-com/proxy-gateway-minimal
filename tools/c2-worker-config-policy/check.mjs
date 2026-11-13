@@ -249,7 +249,7 @@ for (const cfg of policy.configs ?? []) {
     if (!allowedKeys.has(key)) fail(cfg.path, `top-level key "${key}" is not in the allowlist`);
   }
   for (const [key, want] of Object.entries(cfg.requiredValues ?? {})) {
-    if (parsed[key] !== want) fail(cfg.path, `"${key}" must be ${JSON.stringify(want)}, found ${JSON.stringify(parsed[key])}`);
+    if (!isDeepStrictEqual(parsed[key], want)) fail(cfg.path, `"${key}" must exactly match ${JSON.stringify(want)}, found ${JSON.stringify(parsed[key])}`);
   }
   for (const [key, want] of Object.entries(cfg.requiredValuesIfPresent ?? {})) {
     if (Object.hasOwn(parsed, key) && parsed[key] !== want) fail(cfg.path, `"${key}" must be ${JSON.stringify(want)} when present, found ${JSON.stringify(parsed[key])}`);

@@ -44,12 +44,30 @@
         "main",
         "compatibility_date",
         "d1_databases",
-        "services"
+        "services",
+        "durable_objects",
+        "migrations"
       ],
       "path": "workers/control-plane/wrangler.control-plane.jsonc",
       "requiredValues": {
         "main": "src/index.mjs",
-        "name": "flylink-control-plane"
+        "name": "flylink-control-plane",
+        "durable_objects": {
+          "bindings": [
+            {
+              "name": "ADMIN_AUTH_STATE",
+              "class_name": "AdminAuthState"
+            }
+          ]
+        },
+        "migrations": [
+          {
+            "tag": "v1-admin-auth-state",
+            "new_sqlite_classes": [
+              "AdminAuthState"
+            ]
+          }
+        ]
       },
       "requiredValuesIfPresent": {
         "preview_urls": false,
@@ -57,7 +75,7 @@
       }
     }
   ],
-  "description": "C2 Worker configuration allowlist. Default-deny: any top-level key or binding not listed here fails. requiredBindings entries must be present exactly once; optionalBindings entries are dormant permissions and may be absent. Every present binding must exactly match one unused required or optional entry. Amending this file is a security-reviewed change (see docs/C2_CRYPTO_WORKER_DEPLOYMENT_AND_DRIFT_CONTROL_V1.md).",
+  "description": "C2 Worker configuration allowlist. Default-deny: any top-level key, binding, Durable Object binding, or migration not listed here fails. requiredBindings entries must be present exactly once; optionalBindings entries may be absent. Every present binding must exactly match one unused required or optional entry. The control-plane ADMIN_AUTH_STATE Durable Object binding and v1-admin-auth-state SQLite migration are pinned as exact structured values for local-only development; this does not authorize a remote namespace or migration. Amending this file is a security-reviewed change (see docs/C2_CRYPTO_WORKER_DEPLOYMENT_AND_DRIFT_CONTROL_V1.md).",
   "globalForbiddenStrings": [
     {
       "value": "00f7acc72af9e3a2d9557d2bf67bc8ce",

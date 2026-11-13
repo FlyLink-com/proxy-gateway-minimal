@@ -1,6 +1,6 @@
 # C2 Crypto Worker — Deployment Principal & Configuration Drift Control v1
 
-Last updated: 2026-11-10.
+Last updated: 2026-11-13.
 
 ```yaml
 document_metadata:
@@ -103,23 +103,34 @@ exit 0 = conforming, exit 1 = findings listed).
 
 Model: **default-deny**. For each in-scope JSONC Wrangler configuration,
 only the listed top-level keys may appear and pinned values must match
-exactly. Every binding entry must be an exact object match to one unused
-allowlisted entry: additional keys are rejected, including D1 identifiers
-such as `database_id` / `preview_database_id` and Service Binding fields
-such as `entrypoint`. Duplicate entries cannot consume the same allowance.
-Any new binding type, route, or surface fails closed until the policy is
-amended by a reviewed change.
+exactly. Structured objects and arrays in `requiredValues` are compared
+by deep equality, so nested keys, array entries, and migration lists
+cannot silently widen. Every binding entry must be an exact object match
+to one unused allowlisted entry: additional keys are rejected, including
+D1 identifiers such as `database_id` / `preview_database_id` and
+Service Binding fields such as `entrypoint`. Duplicate entries cannot
+consume the same allowance. Any new binding type, route, or surface
+fails closed until the policy is amended by a reviewed change.
 
 In scope today:
 
 - `workers/crypto/wrangler.crypto.jsonc` — no bindings of any kind, no
   routes, `workers_dev: false`, `preview_urls: false`, no `account_id`.
 - `workers/control-plane/wrangler.control-plane.jsonc` — exactly one D1
-  binding (`CONTROL_DB` → `flylink-control-dev`) and, as a dormant
-  permission for the future integration step, at most one Service Binding
-  (`CRYPTO` → `flylink-crypto-worker`). Using that permission still
-  requires the integration gate; the allowlist defines the maximum
-  permissible surface, not an approval to use it.
+  binding (`CONTROL_DB` → `flylink-control-dev`); exactly one Durable
+  Object binding (`ADMIN_AUTH_STATE` → class `AdminAuthState`); and
+  exactly one SQLite migration (`v1-admin-auth-state` creating only
+  `AdminAuthState`). The DO binding and migration are pinned as exact
+  structured values: no additional DO binding, class, migration, or
+  unapproved field is permitted. This declaration is for local-only
+  development; it does not authorize a remote namespace, remote migration,
+  or deployment. The DO is not a C2 key-custody/escrow domain and must not
+  store provider tokens, passwords, OTPs, authorization codes, or raw
+  cookies. As a dormant permission for a future integration step, at most
+  one Service Binding (`CRYPTO` → `flylink-crypto-worker`) is also
+  allowlisted. Using that permission still requires the integration gate;
+  the allowlist defines the maximum permissible source surface, not an
+  approval to use it.
 
 Global guards (all Wrangler configs in the repository):
 
@@ -151,8 +162,12 @@ are sufficient) records:
   workers.dev state, diffed against the approved manifest:
   - Crypto Worker: bindings = the four secret names of §5 only; routes =
     none; workers.dev = off.
-  - Control-plane Worker: bindings = `CONTROL_DB` (D1) and, once the
-    integration gate passes, `CRYPTO` (Service Binding); nothing else.
+  - Control-plane Worker: the source manifest pins `CONTROL_DB` (D1)
+    and the local-only `ADMIN_AUTH_STATE` Durable Object class/migration;
+    `CRYPTO` (Service Binding) may appear only after its separate
+    integration gate. The local DO declaration is not evidence that a
+    remote namespace exists or is approved. Any remote namespace creation
+    and remote migration require a separate explicit gate and readback.
 - Cloudflare audit log entries for the deploy window, confirming the
   acting principal was the per-Worker Editor token.
 
@@ -180,6 +195,8 @@ and the event is recorded before any retry.
 - First creation of the empty Workers (owner admin step, §3).
 - Issuance of each per-Worker Editor token.
 - The control-plane ↔ Crypto Worker Service Binding integration step.
+- Any remote Durable Object namespace creation or remote migration for
+  `ADMIN_AUTH_STATE`; the source-only local binding does not grant this.
 - Any deploy, and any production use of either Worker.
 - Any amendment that widens the allowlist (new binding type/target,
   routes, workers.dev) — reviewed as a security change in its own right.
