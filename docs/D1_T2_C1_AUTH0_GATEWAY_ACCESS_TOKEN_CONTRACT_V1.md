@@ -1,5 +1,15 @@
 # C1 Auth0 Gateway Access-Token Contract v1
 
+```yaml
+document_metadata:
+  doc_type: canonical
+  lifecycle: active
+  authority_scope: c1_auth0_gateway_access_token_contract
+  superseded_by: null
+  last_verified_at: 2026-11-13
+  production_authority: false
+```
+
 Date: 2026-11-09
 Status: Draft design contract; this document itself grants no resource-change authorization. A separate recorded approval covers only the Admin DEVELOPMENT Actions and synthetic-user hosted-flow validation; Production, Portal changes, Cloudflare remote resources, BWH and D1 remain excluded.
 
@@ -245,4 +255,3 @@ Yi supplied the real hosted-flow verification record for Admin DEVELOPMENT tenan
 - The positive hosted-flow result proves the provider-side sequence only with the diagnostic Challenge copy. It does not prove the repository Challenge template, first-time self-service enrollment, or the Worker callback end-to-end path.
 - Remaining: update the repository Challenge template and synthetic tests; deploy the exact repaired source to Admin DEVELOPMENT under the existing scope; verify the setting is enabled and enrollment state is populated; test first-time enrollment followed by a fresh OTP login; retest enrolled OTP and all negative paths; then complete Worker callback end-to-end tests and exact-HEAD independent security review.
 - No Production Auth0 tenant, Portal tenant configuration, Cloudflare remote resource, Worker deployment, BWH connection, D1 read/write, database migration, dual-write or cutover was performed.
-
