@@ -44,6 +44,32 @@ so it is not DDL-self-contained.
 account-security direction, so the slice stays self-contained with two
 tables.
 
+## C1 Auth0 identity proof and Admin BFF (development-only source)
+
+This source-only C1 slice adds isolated Portal/Admin identity proof and an Admin Backend-for-Frontend (BFF). It is not an internal account/operator authorization grant, production enablement, or a Cloudflare deployment.
+
+| Route | Trust boundary |
+| --- | --- |
+| `GET /v1/auth/portal/identity` | Verifies a Portal RS256 Access Token against the Portal issuer/JWKS and returns a minimal external actor projection; it does not resolve internal account permissions. |
+| `/v1/auth/admin/login` and `/v1/auth/admin/callback` | Auth0 Universal Login with Authorization Code + PKCE S256; one-time state, nonce, issuer/audience/client/subject and completed-MFA proof are checked. |
+| `GET /v1/auth/admin/identity` | Reads the short-lived opaque Admin BFF session; it does not accept a raw provider token as the session cookie. |
+| `/v1/auth/admin/logout` | Revokes the opaque session. |
+
+Admin provider tokens are verified in memory and discarded. The BFF uses a host-only Secure/HttpOnly/SameSite=Strict cookie, a 15-minute absolute session, and short-lived transaction state in the dedicated `AdminAuthState` Durable Object. The PKCE verifier is encrypted with transaction-bound AAD. No refresh token is retained; an unexpected Refresh Token is revoked and login fails closed. The two Post-Login Actions are ordered Challenge → Assertion; enrollment alone does not issue MFA proof, and a fresh completed OTP login is required.
+
+### Non-production evidence and remaining gates
+
+- Admin DEVELOPMENT C1-B retest: exact repository Challenge/Assertion templates were read back byte-identically; Action order and MFA customization were verified; T1–T5 passed against the synthetic user.
+- Auth0-issued callback E2E round 2: **10/11 PASS**. N2a browser-form callback replay is not separately proven; N2b protocol-level consume-once behavior is covered.
+- Still open before shared enablement: callback query-string redaction in edge/access logs; login rate limiting and abuse protection; verified same-origin hosting and cookie boundaries; the N2a browser replay proof; and final C1 owner acceptance.
+- This repository config binds the Durable Object for local testing only. No remote DO namespace, Worker Secret, binding, route, or Worker deployment is created by this branch.
+
+### Local/synthetic configuration names
+
+Required names (no real values are committed): `AUTH0_PORTAL_ISSUER`, `AUTH0_PORTAL_AUDIENCE`, `AUTH0_PORTAL_ALLOWED_CLIENT_IDS`, `AUTH0_ADMIN_ISSUER`, `AUTH0_ADMIN_AUDIENCE`, `AUTH0_ADMIN_ALLOWED_CLIENT_IDS`, `AUTH0_ADMIN_MFA_CLAIM`, `AUTH0_ADMIN_CLIENT_ID`, `AUTH0_ADMIN_CLIENT_SECRET`, `AUTH0_ADMIN_REDIRECT_URI`, `ADMIN_APP_ORIGIN`, and `AUTH0_ADMIN_TX_ENCRYPTION_KEY`. Optional: `AUTH0_MAX_TOKEN_LIFETIME_SECONDS`. The transaction key is a local/synthetic 32-byte Base64URL value; no real key or tenant secret belongs in source, CI logs, fixtures, or evidence.
+
+Implementation: `src/oidc-gateway.mjs`, `src/admin-auth.mjs`, `src/admin-auth-state.mjs`, and `auth0-actions/`. The focused test files cover OIDC/JWKS validation, BFF state/session behavior, Auth0 Action decisions, and workerd redirect handling. C1 remains OPEN until the remaining gates and a fresh exact-HEAD review are complete.
+
 ## API
 
 | Route | Auth | Behavior |
