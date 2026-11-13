@@ -1,6 +1,16 @@
 # C1 T1 Master-based migration for PR #843
 
-> Status: Draft integration work only. This record does not authorize Ready, merge, production cutover, Auth0 tenant changes, or any real-account operation.
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: active
+  authority_scope: c1_t1_master_based_migration
+  superseded_by: null
+  last_verified_at: 2026-11-12
+  production_authority: false
+```
+
+> Status: Draft integration work only. This record does not authorize merge, production cutover, Auth0 tenant changes, or any real-account operation. The owner has separately authorized a documentation-only correction and a new full Hosted CI validation cycle; this does not authorize merge or deployment.
 
 ## Baseline and provenance
 
@@ -8,6 +18,7 @@
 - Original PR: [#843](https://github.com/FlyLink-com/proxy-gateway-minimal/pull/843), original HEAD `4be493a06a55d245bd2d89a1019f62922ab251bb`, stacked on review-only PR #842.
 - Master-based migration branch: `fix/t1-master-ea47d78e-migration-20261113`.
 - Initial source/test migration commit: `9a79036292af6cad9033c19445631de0adf7fa66`.
+- At source/test HEAD `3f98d134ed7f6a8f18c144e0a47bb3396b1535e5`, the exact compare against the target baseline showed 4 commits ahead, 0 behind, and 7 changed files (2 documentation files and 5 source/test files). The documentation-only correction is separate from those source/test changes.
 - The old #843 source review and its docs-only follow-up approval are bound to the old PR history/HEAD. They do not approve this new branch or its complete source diff.
 
 ## T1 disposition contract
@@ -44,11 +55,21 @@ The original #843 PR contains 14 documentation files in addition to its source/t
 
 ## Verification status
 
-- Branch ancestry and diff were checked against the exact Master baseline: one source/test migration commit, six files changed, zero commits behind.
-- Static content checks confirmed that Master sparse-array and PII helper code remains present and that the old Identity Boundary source/test files were not changed.
-- The Node tests have **not** been executed for this new HEAD.
-- No Hosted CI or CodeQL workflow was dispatched. The old #843 focused-test evidence is not inherited.
-- Before Ready or merge, run the focused T1 tests, the full repository CI, all four required CodeQL analyzers, and obtain a fresh full-source review bound to the final exact HEAD. Treat every conditional SKIPPED as not PASS.
+### Evidence on source/test HEAD `3f98d134ed7f6a8f18c144e0a47bb3396b1535e5`
+
+- Exact compare against baseline `ea47d78e824322575ae65765500046f7d1cf4207`: 4 commits ahead, 0 behind, 7 changed files.
+- The pull-request-triggered CI run `43367814327` completed with conclusion `skipped` while the PR was Draft. It is not a CI pass.
+- CodeQL run `43367814248` completed successfully: Actions, C/C++, Python and JavaScript/TypeScript analyzers all succeeded (4/4).
+- Full Hosted CI dispatch run `43371211728` did start, but did not complete the full validation path. Governance snapshot succeeded. Source checks failed at `npm run docs:authority:strict` because this file lacked the required `document_metadata` block. The server tests, admin tests, certificate hooks and downstream build/artifact jobs were skipped or blocked; prerequisite and final validation jobs consequently failed.
+- Therefore no server/admin test pass count is claimed for this HEAD. The test commands were not reached in that failed run. The earlier #843 focused-test evidence and reviews are not inherited.
+
+### Authorized correction and next validation
+
+- The only permitted repository change in this correction is this Markdown file: add the required `document_metadata` block and accurately record the above verification state.
+- No business source or test file may be changed as part of this correction.
+- After verifying the documentation-only commit and exact new HEAD, transition the PR from Draft to Ready to trigger the standard pull-request Hosted CI workflow. The expected PR workflow has conditional skips for the workflow-dispatch-only Governance snapshot and the dedicated PR-domain-validation head ref; those are not applicable to this PR. Every applicable job must complete successfully, and every SKIPPED result must be recorded as SKIPPED rather than PASS.
+- Verify all four CodeQL analyzers on the new exact HEAD. Obtain a fresh full-source review bound to that exact HEAD before any later formal approval decision.
+- Any new CI failure must be diagnosed from its job logs; do not alter source or tests without separate authorization.
 
 ## Production and operational boundary
 
