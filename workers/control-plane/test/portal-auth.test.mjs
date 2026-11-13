@@ -127,6 +127,8 @@ test("Portal exchange binds verified Auth0 subject to one active account and iss
   assert.equal(resolved.actor.issuerRef, "portal");
   assert.equal(resolved.actor.subjectRef, subject);
   assert.equal(resolved.actor.accountRef, "acct-pg-101");
+  assert.equal(resolved.actor.issuedAtMs, nowSeconds * 1000);
+  assert.equal(resolved.actor.authTimeMs, null);
   assert.deepEqual(resolved.actor.factors, []);
   assert.deepEqual(resolved.account, {
     id: "acct-pg-101",
@@ -138,6 +140,8 @@ test("Portal exchange binds verified Auth0 subject to one active account and iss
   const stored = [...namespace.objects.values()][0].state.storage.data.get("record");
   assert.equal(stored.kind, "portal_session");
   assert.equal(stored.bindingRef, "idb-synth-acct-pg-101");
+  assert.equal(stored.actor.issuedAtMs, nowSeconds * 1000);
+  assert.equal(stored.actor.authTimeMs, null);
   assert.equal(JSON.stringify(stored).includes(accessToken), false);
   assert.equal(JSON.stringify(stored).includes("@"), false);
   assert.equal(JSON.stringify(stored).includes("email"), false);
@@ -166,6 +170,41 @@ test("Portal exchange binds verified Auth0 subject to one active account and iss
   }), e);
   assert.equal(logout.status, 200);
   assert.equal(await resolvePortalSession(sessionRequest, e, { now: now + 2000 }), null);
+});
+
+test("Portal auth keeps verified auth_time unchanged when a silent refresh issues a newer token", async (t) => {
+  resetOidcJwksCacheForTests();
+  const { mf, db } = await createWorker();
+  t.after(() => mf.dispose());
+  await bind(db);
+  const namespace = new FakeNamespace();
+  const e = env(db, namespace);
+  const previousAuthenticationTime = nowSeconds - 120;
+  const accessToken = tokenFor(subject, {
+    iat: nowSeconds,
+    auth_time: previousAuthenticationTime,
+  });
+  const created = await createPortalSession(new Request("https://worker.test/v1/auth/portal/session", {
+    method: "POST",
+    headers: { authorization: `Bearer ${accessToken}` },
+  }), e, { fetcher: fixtureFetch(), now });
+  assert.equal(created.status, 201);
+  const issued = await created.json();
+  const resolved = await resolvePortalSession(new Request("https://worker.test/internal/portal-session", {
+    headers: { authorization: `Bearer ${issued.sessionToken}` },
+  }), e, { now: now + 1000 });
+  assert.equal(resolved.actor.issuedAtMs, nowSeconds * 1000);
+  assert.equal(resolved.actor.authTimeMs, previousAuthenticationTime * 1000);
+  const stored = [...namespace.objects.values()][0].state.storage.data.get("record");
+  assert.equal(stored.actor.issuedAtMs, nowSeconds * 1000);
+  assert.equal(stored.actor.authTimeMs, previousAuthenticationTime * 1000);
+  for (const auth_time of [nowSeconds + 61, -1]) {
+    const invalid = await createPortalSession(new Request("https://worker.test/v1/auth/portal/session", {
+      method: "POST",
+      headers: { authorization: `Bearer ${tokenFor(subject, { auth_time })}` },
+    }), e, { fetcher: fixtureFetch(), now });
+    assert.equal(invalid.status, 401);
+  }
 });
 
 test("Portal exchange rejects unknown subjects, wrong tenants and inactive business accounts", async (t) => {

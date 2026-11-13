@@ -5,7 +5,7 @@
 export const IDENTITY_ACTOR_CONTEXT_AUDIENCE = "flylink-control-plane";
 
 const ACTOR_CONTEXT_KEYS = Object.freeze([
-  "accountRef", "audience", "authTimeMs", "expiresAtMs", "factors", "issuerRef", "sessionRef", "subjectRef"
+  "accountRef", "audience", "authTimeMs", "expiresAtMs", "factors", "issuerRef", "issuedAtMs", "sessionRef", "subjectRef"
 ]);
 const IDENTITY_BINDING_KEYS = Object.freeze([
   "accountRef", "createdAtMs", "issuerRef", "revokedAtMs", "status", "subjectRef", "updatedAtMs"
@@ -66,14 +66,18 @@ export function parseTrustedIdentityActorContext(input, {
   const sessionRef = requireOpaque(input.sessionRef, /^[A-Za-z0-9][A-Za-z0-9._-]{7,191}$/u, "identity_session_ref_invalid");
   if (input.audience !== IDENTITY_ACTOR_CONTEXT_AUDIENCE) throw fail("identity_actor_audience_invalid");
 
-  const authTimeMs = requireTimestamp(input.authTimeMs, "identity_auth_time_invalid");
+  const issuedAtMs = requireTimestamp(input.issuedAtMs, "identity_token_issued_at_invalid");
+  const authTimeMs = input.authTimeMs === null
+    ? null
+    : requireTimestamp(input.authTimeMs, "identity_auth_time_invalid");
   const expiresAtMs = requireTimestamp(input.expiresAtMs, "identity_context_expiry_invalid");
   if (!Number.isSafeInteger(nowMs) || !Number.isSafeInteger(maxLifetimeMs) || maxLifetimeMs <= 0
     || !Number.isSafeInteger(clockSkewMs) || clockSkewMs < 0) {
     throw fail("identity_context_clock_invalid");
   }
   if (expiresAtMs <= nowMs || expiresAtMs - nowMs > maxLifetimeMs
-    || authTimeMs > nowMs + clockSkewMs || authTimeMs > expiresAtMs) {
+    || issuedAtMs > nowMs + clockSkewMs || issuedAtMs > expiresAtMs
+    || (authTimeMs !== null && (authTimeMs > nowMs + clockSkewMs || authTimeMs > expiresAtMs))) {
     throw fail("identity_actor_context_time_invalid");
   }
   if (!Array.isArray(input.factors)) {
@@ -107,6 +111,7 @@ export function parseTrustedIdentityActorContext(input, {
     subjectRef,
     accountRef,
     sessionRef,
+    issuedAtMs,
     authTimeMs,
     expiresAtMs,
     factors: Object.freeze([...input.factors]),

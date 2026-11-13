@@ -18,6 +18,7 @@ const actor = {
   subjectRef: "auth0|synthetic-subject-001",
   accountRef: "acct_synthetic_001",
   sessionRef: "session_synthetic_0001",
+  issuedAtMs: NOW - 5_000,
   authTimeMs: NOW - 10_000,
   expiresAtMs: NOW + 60_000,
   factors: ["password", "totp"],
@@ -43,6 +44,17 @@ test("trusted actor context accepts only opaque, short-lived, gateway-projected 
   assert.equal(parsed.subjectRef, actor.subjectRef);
   assert.deepEqual(parsed.factors, ["password", "totp"]);
   assert.equal(Object.hasOwn(parsed, "email"), false);
+});
+
+test("trusted actor context keeps token issuance separate from nullable authentication time", () => {
+  const parsed = parseTrustedIdentityActorContext(actor, { allowedIssuers: [issuerRef], nowMs: NOW });
+  assert.equal(parsed.issuedAtMs, actor.issuedAtMs);
+  assert.equal(parsed.authTimeMs, actor.authTimeMs);
+  const withoutAuthenticationTime = parseTrustedIdentityActorContext({ ...actor, authTimeMs: null }, {
+    allowedIssuers: [issuerRef], nowMs: NOW
+  });
+  assert.equal(withoutAuthenticationTime.issuedAtMs, actor.issuedAtMs);
+  assert.equal(withoutAuthenticationTime.authTimeMs, null);
 });
 
 test("actor context rejects raw PII, credentials and unknown fields", () => {
@@ -78,6 +90,20 @@ test("actor context rejects expiry, excessive lifetime and future authentication
     allowedIssuers: [issuerRef], nowMs: NOW
   }), { code: "identity_actor_context_time_invalid" });
   assert.throws(() => parseTrustedIdentityActorContext({ ...actor, authTimeMs: NOW + 60_000 }, {
+    allowedIssuers: [issuerRef], nowMs: NOW
+  }), { code: "identity_actor_context_time_invalid" });
+  assert.throws(() => parseTrustedIdentityActorContext({ ...actor, authTimeMs: -1 }, {
+    allowedIssuers: [issuerRef], nowMs: NOW
+  }), { code: "identity_auth_time_invalid" });
+  assert.throws(() => parseTrustedIdentityActorContext({ ...actor, issuedAtMs: -1 }, {
+    allowedIssuers: [issuerRef], nowMs: NOW
+  }), { code: "identity_token_issued_at_invalid" });
+  assert.throws(() => parseTrustedIdentityActorContext({ ...actor, issuedAtMs: NOW + 30_001 }, {
+    allowedIssuers: [issuerRef], nowMs: NOW
+  }), { code: "identity_actor_context_time_invalid" });
+  assert.throws(() => parseTrustedIdentityActorContext({
+    ...actor, issuedAtMs: NOW + 25_000, expiresAtMs: NOW + 20_000
+  }, {
     allowedIssuers: [issuerRef], nowMs: NOW
   }), { code: "identity_actor_context_time_invalid" });
 });

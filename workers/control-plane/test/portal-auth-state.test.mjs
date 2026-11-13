@@ -27,7 +27,8 @@ const actor = {
   subjectRef: "auth0|portal-synthetic-001",
   accountRef: "acct-synthetic-001",
   sessionRef: "sess_synthetic-session-001",
-  authTimeMs: now - 1000,
+  issuedAtMs: now - 2000,
+  authTimeMs: null,
   factors: [],
   audience: "flylink-control-plane",
 };
@@ -51,6 +52,8 @@ test("PortalAuthState stores a strict opaque actor, validates expiry and revokes
   const stored = storage.data.get("record");
   assert.equal(JSON.stringify(stored).includes("@"), false);
   assert.equal(JSON.stringify(stored).includes("email"), false);
+  assert.equal(stored.actor.issuedAtMs, actor.issuedAtMs);
+  assert.equal(stored.actor.authTimeMs, null);
 
   const duplicate = await object.fetch(request("/session/create", {
     actor, bindingRef: "idb_synthetic-binding-001", createdAtMs: now, expiresAtMs: now + 60_000, nowMs: now,
@@ -65,6 +68,27 @@ test("PortalAuthState stores a strict opaque actor, validates expiry and revokes
   assert.equal(storage.alarm, null);
   const invalid = await object.fetch(request("/session/validate", { nowMs: now + 2000 }));
   assert.equal(invalid.status, 401);
+});
+
+test("PortalAuthState accepts null authTimeMs and rejects invalid issuance or authentication timestamps", async () => {
+  const invalidCases = [
+    { actor: { ...actor, issuedAtMs: -1 } },
+    { actor: { ...actor, issuedAtMs: now + 30_001 } },
+    { actor: { ...actor, issuedAtMs: now + 25_000 }, expiresAtMs: now + 20_000 },
+    { actor: { ...actor, authTimeMs: -1 } },
+    { actor: { ...actor, authTimeMs: now + 30_001 } },
+  ];
+  for (const candidate of invalidCases) {
+    const object = new PortalAuthState({ storage: new Storage() }, {});
+    const created = await object.fetch(request("/session/create", {
+      actor: candidate.actor,
+      bindingRef: "idb_synthetic-binding-001",
+      createdAtMs: now,
+      expiresAtMs: candidate.expiresAtMs ?? now + 60_000,
+      nowMs: now,
+    }));
+    assert.equal(created.status, 400);
+  }
 });
 
 test("PortalAuthState rejects unknown actor fields and expired or overlong sessions", async () => {

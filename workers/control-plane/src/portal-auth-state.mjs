@@ -4,7 +4,7 @@
 
 const MAX_SESSION_MS = 24 * 60 * 60 * 1000;
 const ACTOR_KEYS = Object.freeze([
-  "accountRef", "audience", "authTimeMs", "factors", "issuerRef", "sessionRef", "subjectRef",
+  "accountRef", "audience", "authTimeMs", "factors", "issuerRef", "issuedAtMs", "sessionRef", "subjectRef",
 ]);
 
 function json(status, body) {
@@ -32,8 +32,10 @@ function validActor(actor, nowMs, expiresAtMs) {
     || !validOpaque(actor.accountRef, /^[A-Za-z0-9][A-Za-z0-9_:/-]{0,127}$/u)
     || !validOpaque(actor.sessionRef, /^[A-Za-z0-9][A-Za-z0-9._-]{7,191}$/u)
     || actor.audience !== "flylink-control-plane"
-    || !Number.isSafeInteger(actor.authTimeMs) || actor.authTimeMs < 0
-    || actor.authTimeMs > nowMs + 30000 || actor.authTimeMs > expiresAtMs
+    || !Number.isSafeInteger(actor.issuedAtMs) || actor.issuedAtMs < 0
+    || actor.issuedAtMs > nowMs + 30000 || actor.issuedAtMs > expiresAtMs
+    || (actor.authTimeMs !== null && (!Number.isSafeInteger(actor.authTimeMs) || actor.authTimeMs < 0
+      || actor.authTimeMs > nowMs + 30000 || actor.authTimeMs > expiresAtMs))
     || !Array.isArray(actor.factors) || actor.factors.length !== 0) {
     return false;
   }
@@ -89,6 +91,7 @@ export class PortalAuthState {
         subjectRef: actor.subjectRef,
         accountRef: actor.accountRef,
         sessionRef: actor.sessionRef,
+        issuedAtMs: actor.issuedAtMs,
         authTimeMs: actor.authTimeMs,
         factors: [...actor.factors],
         audience: actor.audience,

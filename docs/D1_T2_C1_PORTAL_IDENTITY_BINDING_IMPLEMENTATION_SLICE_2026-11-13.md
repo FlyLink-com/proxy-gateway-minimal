@@ -39,6 +39,13 @@ This implementation uses the decisions already approved by Yi; it does not reope
 - The server module is the reference contract. Any change to actor-context validation, identity-binding record validation, binding resolution or collision planning must update the Worker mirror and both corresponding test files in the same commit.
 - `workers/control-plane/test/identity-boundary.test.mjs` mirrors the server contract tests but imports only the Worker-local module. Do not add cross-package server imports to Worker source or Worker tests.
 
+## Portal token timestamp semantics
+
+- `issuedAtMs` is the verified Access Token `iat` (token issuance time), expressed in milliseconds. It records when this token was issued; a silent refresh can update it without a new user authentication event.
+- `authTimeMs` is the verified OIDC `auth_time` claim, expressed in milliseconds. Portal Access Tokens may omit this claim; when it is absent or not a safe integer, the actor context and Portal DO record store `null`. The implementation must never substitute `iat` for `auth_time`.
+- When a valid `auth_time` is present, its non-negative timestamp and future-skew bounds are checked before storing it. Negative or too-far-future values are rejected.
+- Consumers must never interpret `issuedAtMs` as an authentication time. Any future step-up, recent-authentication or max-age authorization check must require `authTimeMs !== null` and apply its explicit policy to that verified authentication time; a null value is absence of authentication-time evidence, not permission to infer it from token issuance.
+
 ## Important boundaries
 
 - `0004_identity_bindings_slice.sql` is a local synthetic fixture, **not target D1 DDL**. No remote D1 migration or namespace was created.

@@ -55,12 +55,13 @@ async function stateCall(env, sessionHash, path, body) {
   return { status: result.status, data };
 }
 
-function trustedPortalActor({ subjectRef, accountRef, sessionRef, authTimeMs, expiresAtMs, nowMs }) {
+function trustedPortalActor({ subjectRef, accountRef, sessionRef, issuedAtMs, authTimeMs, expiresAtMs, nowMs }) {
   return parseTrustedIdentityActorContext({
     issuerRef: "portal",
     subjectRef,
     accountRef,
     sessionRef,
+    issuedAtMs,
     authTimeMs,
     expiresAtMs: Math.min(expiresAtMs, nowMs + ACTOR_CONTEXT_TTL_MS),
     factors: [],
@@ -106,14 +107,17 @@ export async function createPortalSession(request, env, {
   }
 
   const sessionExpiresAtMs = verified.actor.expiresAt * 1000;
+  const issuedAtMs = verified.actor.issuedAt * 1000;
   const nowSeconds = Math.floor(now / 1000);
   const authTimeSeconds = Number.isSafeInteger(verified.claims.auth_time)
     ? verified.claims.auth_time
-    : verified.actor.issuedAt;
+    : null;
+  const authTimeMs = authTimeSeconds === null ? null : authTimeSeconds * 1000;
   if (!Number.isSafeInteger(sessionExpiresAtMs) || sessionExpiresAtMs <= now
     || sessionExpiresAtMs - now > MAX_SESSION_MS
-    || !Number.isSafeInteger(authTimeSeconds) || authTimeSeconds < 0
-    || authTimeSeconds > nowSeconds + 60) {
+    || !Number.isSafeInteger(issuedAtMs) || issuedAtMs < 0
+    || (authTimeSeconds !== null && (!Number.isSafeInteger(authTimeMs)
+      || authTimeSeconds < 0 || authTimeSeconds > nowSeconds + 60))) {
     return unauthorized();
   }
 
@@ -140,7 +144,8 @@ export async function createPortalSession(request, env, {
       subjectRef: verified.actor.subject,
       accountRef,
       sessionRef,
-      authTimeMs: authTimeSeconds * 1000,
+      issuedAtMs,
+      authTimeMs,
       expiresAtMs: sessionExpiresAtMs,
       nowMs: now,
     });
@@ -153,6 +158,7 @@ export async function createPortalSession(request, env, {
     subjectRef: actor.subjectRef,
     accountRef: actor.accountRef,
     sessionRef: actor.sessionRef,
+    issuedAtMs: actor.issuedAtMs,
     authTimeMs: actor.authTimeMs,
     factors: [...actor.factors],
     audience: actor.audience,
