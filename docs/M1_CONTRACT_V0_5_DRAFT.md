@@ -2,14 +2,12 @@
 
 ```yaml
 document_metadata:
-  doc_type: governance
-  lifecycle: draft
+  doc_type: evidence
+  lifecycle: active
   authority_scope: m1_contract_v0_5
-  supplements: m1_contract_v0_4
-  source_anchor: master@c1d61e58d6eae9dd577216355632638fc95a46f8
-  verified_at: 2026-11-14
+  superseded_by: null
+  last_verified_at: 2026-11-14
   production_authority: false
-  migration_authority: false
 ```
 
 > **DRAFT FOR REVIEW.** This document-only revision is not formal T2 acceptance, retention approval, target DDL approval, data-load authorization, or production authorization.
