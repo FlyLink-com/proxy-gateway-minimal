@@ -569,3 +569,106 @@ test("a protector returning an unrecognized envelope still binds, and the bound 
     assertNoSecretMaterial(bound);
   });
 });
+
+test("reusing a consumed entry is rejected and adds no second bound event", () => {
+  // P2-1 (review fix): the entry-reuse rejection itself was covered by an
+  // existing test elsewhere, but no test locked the audit invariant that
+  // the bound event count stays at 1 after a reuse attempt.
+  withStore(({ store, database, clock }) => {
+    const service = createPortalService(store, clock);
+    const issued = service.issueDynamicEntry({
+      accountId: "acct_portal_1",
+      entitlementId: "ent_acct_portal_1",
+      approvalRef: "approval_portal_1",
+      issuedByRef: "operator_safe_ref",
+      expiresAt: FUTURE
+    });
+    service.enrollTotpCredential({
+      entryToken: issued.handoffMaterial.entryToken,
+      encryptedTotpSecret: `enc:${TEST_SECRET}`
+    });
+    assert.equal(auditEvents(database, "totp_enrollment_bound").length, 1);
+    assert.throws(() => service.enrollTotpCredential({
+      entryToken: issued.handoffMaterial.entryToken,
+      encryptedTotpSecret: `enc:${TEST_SECRET}`
+    }), /portal entry is not active/);
+    assert.equal(auditEvents(database, "totp_enrollment_bound").length, 1);
+    assert.equal(auditEvents(database, "totp_enrollment_started").length, 0);
+    assert.equal(auditEvents(database, "totp_enrollment_code_verified").length, 0);
+    assert.equal(
+      database.prepare("select count(*) from platform_portal_totp_credentials where account_id = 'acct_portal_1'").pluck().get(),
+      1
+    );
+    assertNoSecretMaterial(auditEvents(database));
+  });
+});
+
+test("retrying after expiry is rejected again and writes no binding evidence", () => {
+  // P2-1 (review fix): distinct from the single expired-confirm test —
+  // the first expired attempt deletes the pending enrollment, so a second
+  // attempt must fail differently and still write no bound event.
+  withStore(({ store, database, clock }) => {
+    const passwordService = createPasswordService(store, clock);
+    const service = createPortalService(store, clock, {
+      passwordCredentialService: passwordService,
+      allowPasswordOnlySessionForSetup: true
+    });
+    const sessionRef = setupSession(service, passwordService, "acct_portal_1");
+    const started = service.startTotpEnrollment({ sessionRef });
+    clock.value = LATER; // 301 seconds later: past the 300-second enrollment TTL.
+    assert.throws(() => service.confirmTotpEnrollment({
+      sessionRef,
+      enrollmentRef: started.enrollment.enrollmentRef,
+      code: STUB_CODE
+    }), /portal TOTP enrollment is expired/);
+    assert.throws(() => service.confirmTotpEnrollment({
+      sessionRef,
+      enrollmentRef: started.enrollment.enrollmentRef,
+      code: STUB_CODE
+    }), /portal TOTP enrollment is not active/);
+    assert.equal(auditEvents(database, "totp_enrollment_started").length, 1);
+    assert.equal(auditEvents(database, "totp_enrollment_code_verified").length, 0);
+    assert.equal(auditEvents(database, "totp_enrollment_bound").length, 0);
+    assert.equal(store.getActivePortalTotpCredential("acct_portal_1"), null);
+  });
+});
+
+test("a failing failed-verification audit write preserves the original verification error", () => {
+  // P3-5 (review fix): the failed event is best-effort evidence. If its
+  // write fails, the caller must still see the verification failure (so it
+  // can retry with a correct code), not an audit error. The enrollment
+  // stays pending and the retry's verified event still records the outcome.
+  withStore(({ store, database, clock }) => {
+    const passwordService = createPasswordService(store, clock);
+    const service = createPortalService(store, clock, {
+      passwordCredentialService: passwordService,
+      allowPasswordOnlySessionForSetup: true
+    });
+    const originalRecordAuditEvent = store.recordAuditEvent.bind(store);
+    store.recordAuditEvent = (input) => {
+      if (input.action === "totp_enrollment_code_verified" && input.metadata?.result === "failed") {
+        throw new Error("synthetic audit storage failure");
+      }
+      return originalRecordAuditEvent(input);
+    };
+    const sessionRef = setupSession(service, passwordService, "acct_portal_1");
+    const started = service.startTotpEnrollment({ sessionRef });
+    assert.throws(() => service.confirmTotpEnrollment({
+      sessionRef,
+      enrollmentRef: started.enrollment.enrollmentRef,
+      code: "000000"
+    }), /TOTP verification failed/);
+    assert.equal(auditEvents(database, "totp_enrollment_code_verified").length, 0);
+    assert.equal(store.getActivePortalTotpCredential("acct_portal_1"), null);
+    const completed = service.confirmTotpEnrollment({
+      sessionRef,
+      enrollmentRef: started.enrollment.enrollmentRef,
+      code: STUB_CODE
+    });
+    assert.equal(completed.binding.status, "bound");
+    assert.equal(auditEvents(database, "totp_enrollment_code_verified").length, 1);
+    assert.equal(auditEvents(database, "totp_enrollment_code_verified")[0].metadata.result, "verified");
+    assert.equal(auditEvents(database, "totp_enrollment_bound").length, 1);
+    assertNoSecretMaterial(auditEvents(database));
+  });
+});

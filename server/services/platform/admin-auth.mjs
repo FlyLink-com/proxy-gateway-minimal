@@ -443,11 +443,11 @@ export function createPortalAccountAdminAuthService(options = {}) {
   function totpEnrollmentEnvelopeFormat(encryptedTotpSecret) {
     if (encryptedTotpSecret.startsWith("v2:")) return "v2";
     if (encryptedTotpSecret.startsWith("enc:")) return "enc";
-    // B2-9 (G-08): the bound event is evidence, not a second gate. The
-    // production Admin enrollment always stores an enc envelope, but an
-    // injected protector may return a value with neither prefix. Failing
-    // the enrollment here would turn evidence into a behavior change, so
-    // an unrecognized envelope is recorded as "unknown" instead of throwing.
+    // B2-9 (G-08): the bound event is evidence, not a second gate. Admin
+    // stores `enc:${secret}` directly and never calls a protector, so this
+    // branch is unreachable for values this service produces; the helper
+    // stays total (same shape as the Portal helper) and records "unknown"
+    // rather than failing the enrollment if one ever arrives.
     return "unknown";
   }
 
@@ -515,7 +515,55 @@ export function createPortalAccountAdminAuthService(options = {}) {
     if (!totpVerifier({ encryptedTotpSecret: enrollment.encryptedTotpSecret, code: input.code })) {
       // B2-9 (G-08): a failed confirmation code is itself lifecycle
       // evidence — recorded without the code value. The enrollment stays
-      // pending so the operator may retry within its validity window.
+      // pending so the operator may retry within its validity window. The
+      // failed event is best-effort evidence: if its write fails, the
+      // original invalid_totp error is preserved instead of being masked
+      // by an audit error. (Success-path evidence stays fail-closed.)
+      try {
+        recordTotpEnrollmentAuditEvent({
+          id: totpEnrollmentAuditId(),
+          entityType: "totp_enrollment",
+          entityRef: accountId,
+          action: "totp_enrollment_code_verified",
+          actorRef: accountId,
+          createdAt: checkedAt,
+          metadata: {
+            enrollmentRef,
+            accountRef: accountId,
+            channel: "admin",
+            result: "failed",
+            verifiedAt: checkedAt
+          }
+        });
+      } catch {
+        // The failed attempt's evidence is lost, but the enrollment stays
+        // pending and the retry's verified event still records the outcome.
+      }
+      throw authError("invalid_totp");
+    }
+    const credentialRef = requiredText(credentialRefFactory(), "credentialRef");
+    // B2-9 (G-08): verification and binding evidence for the Admin setup.
+    // The credential row, the verified/bound events and the pending-entry
+    // deletion share one transaction (as in the Portal confirm), so an
+    // audit failure rolls the credential row back and leaves the enrollment
+    // retryable: no usable credential exists without its bound evidence,
+    // and assertNoActiveOperator no longer blocks a retry.
+    controlStore.runInTransaction(() => {
+      const credential = controlStore.createPortalTotpCredential({
+        id: credentialRef,
+        accountId,
+        encryptedTotpSecret: enrollment.encryptedTotpSecret,
+        status: "active",
+        failureCount: 0,
+        enrolledAt: checkedAt,
+        updatedAt: checkedAt
+      });
+      if (typeof controlStore.markPortalTotpVerified === "function") {
+        controlStore.markPortalTotpVerified(credentialRef, {
+          verifiedAt: checkedAt,
+          updatedAt: checkedAt
+        });
+      }
       recordTotpEnrollmentAuditEvent({
         id: totpEnrollmentAuditId(),
         entityType: "totp_enrollment",
@@ -527,67 +575,29 @@ export function createPortalAccountAdminAuthService(options = {}) {
           enrollmentRef,
           accountRef: accountId,
           channel: "admin",
-          result: "failed",
+          result: "verified",
           verifiedAt: checkedAt
         }
       });
-      throw authError("invalid_totp");
-    }
-    const credentialRef = requiredText(credentialRefFactory(), "credentialRef");
-    controlStore.createPortalTotpCredential({
-      id: credentialRef,
-      accountId,
-      encryptedTotpSecret: enrollment.encryptedTotpSecret,
-      status: "active",
-      failureCount: 0,
-      enrolledAt: checkedAt,
-      updatedAt: checkedAt
-    });
-    if (typeof controlStore.markPortalTotpVerified === "function") {
-      controlStore.markPortalTotpVerified(credentialRef, {
-        verifiedAt: checkedAt,
-        updatedAt: checkedAt
+      recordTotpEnrollmentAuditEvent({
+        id: totpEnrollmentAuditId(),
+        entityType: "totp_enrollment",
+        entityRef: accountId,
+        action: "totp_enrollment_bound",
+        actorRef: accountId,
+        createdAt: checkedAt,
+        metadata: {
+          enrollmentRef,
+          totpRef: credentialRef,
+          accountRef: accountId,
+          channel: "admin",
+          enrolledAt: checkedAt,
+          envelopeFormat: totpEnrollmentEnvelopeFormat(enrollment.encryptedTotpSecret),
+          accountMatches: credential.accountId === accountId
+        }
       });
-    }
-    // B2-9 (G-08): verification and binding evidence for the Admin setup.
-    // This confirm path is not transactional (unlike the Portal confirm),
-    // so an audit failure after the credential row is created propagates
-    // with the pending enrollment still in place; the credential row itself
-    // is not rolled back. The contract validation makes that path
-    // unreachable for values this service produces.
-    recordTotpEnrollmentAuditEvent({
-      id: totpEnrollmentAuditId(),
-      entityType: "totp_enrollment",
-      entityRef: accountId,
-      action: "totp_enrollment_code_verified",
-      actorRef: accountId,
-      createdAt: checkedAt,
-      metadata: {
-        enrollmentRef,
-        accountRef: accountId,
-        channel: "admin",
-        result: "verified",
-        verifiedAt: checkedAt
-      }
+      pendingEnrollments.delete(enrollmentRef);
     });
-    recordTotpEnrollmentAuditEvent({
-      id: totpEnrollmentAuditId(),
-      entityType: "totp_enrollment",
-      entityRef: accountId,
-      action: "totp_enrollment_bound",
-      actorRef: accountId,
-      createdAt: checkedAt,
-      metadata: {
-        enrollmentRef,
-        totpRef: credentialRef,
-        accountRef: accountId,
-        channel: "admin",
-        enrolledAt: checkedAt,
-        envelopeFormat: totpEnrollmentEnvelopeFormat(enrollment.encryptedTotpSecret),
-        accountMatches: true
-      }
-    });
-    pendingEnrollments.delete(enrollmentRef);
     return createSession({ sourceIpSafeRef: input.sourceIpSafeRef });
   }
 

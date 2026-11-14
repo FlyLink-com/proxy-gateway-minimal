@@ -555,22 +555,31 @@ export function createUserPortalAuthService({
     if (!verified) {
       // B2-9 (G-08): a failed confirmation code is itself lifecycle
       // evidence — recorded without the code value. The enrollment stays
-      // pending so the user may retry within its validity window.
-      recordTotpEnrollmentAuditEvent({
-        id: totpEnrollmentAuditId(),
-        entityType: "totp_enrollment",
-        entityRef: account.id,
-        action: "totp_enrollment_code_verified",
-        actorRef: account.id,
-        createdAt: checkedAt,
-        metadata: {
-          enrollmentRef,
-          accountRef: account.id,
-          channel: "portal",
-          result: "failed",
-          verifiedAt: checkedAt
-        }
-      });
+      // pending so the user may retry within its validity window. The
+      // failed event is best-effort evidence: if its write fails, the
+      // original verification error is preserved instead of being masked
+      // by an audit error, so the caller can retry with a correct code.
+      // (Success-path evidence stays fail-closed — see below.)
+      try {
+        recordTotpEnrollmentAuditEvent({
+          id: totpEnrollmentAuditId(),
+          entityType: "totp_enrollment",
+          entityRef: account.id,
+          action: "totp_enrollment_code_verified",
+          actorRef: account.id,
+          createdAt: checkedAt,
+          metadata: {
+            enrollmentRef,
+            accountRef: account.id,
+            channel: "portal",
+            result: "failed",
+            verifiedAt: checkedAt
+          }
+        });
+      } catch {
+        // The failed attempt's evidence is lost, but the enrollment stays
+        // pending and the retry's verified event still records the outcome.
+      }
       throw portalAuthError("validation_error", "TOTP verification failed");
     }
     return controlStore.runInTransaction(() => {
@@ -623,7 +632,7 @@ export function createUserPortalAuthService({
           channel: "portal",
           enrolledAt: checkedAt,
           envelopeFormat: totpEnrollmentEnvelopeFormat(enrollment.encryptedTotpSecret),
-          accountMatches: true
+          accountMatches: credential.accountId === account.id
         }
       });
       pendingTotpEnrollments.delete(enrollmentRef);
@@ -718,7 +727,7 @@ export function createUserPortalAuthService({
           channel: "entry",
           enrolledAt,
           envelopeFormat: totpEnrollmentEnvelopeFormat(encryptedTotpSecret),
-          accountMatches: true
+          accountMatches: credential.accountId === entry.accountId
         }
       });
       return {

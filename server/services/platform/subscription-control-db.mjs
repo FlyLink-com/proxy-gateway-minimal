@@ -8542,13 +8542,13 @@ if (entityType === "identity_deletion") {
 if (entityType === "totp_enrollment") {
       // B2-9 (G-08): TOTP enrollment lifecycle proof audit events. Metadata
       // carries only references, channels, results and timestamps — never
-      // secret material, verification codes or ciphertext. Keys are checked
-      // against the unsafe field list by recordAuditEvent before this runs,
-      // so no key here may contain email / password / secret / token /
-      // credential / raw. entityRef and actorRef are both bound to the
-      // enrolled account: enrollment is always self-service for that account
-      // (Portal self-enrollment, Admin self-setup, entry-path enrollment for
-      // the entry's account).
+      // secret material, verification codes or ciphertext. This branch runs
+      // before recordAuditEvent's unsafe-field check, so no key emitted here
+      // may contain email / password / secret / token / credential / raw;
+      // the exactObject whitelist below enforces that. entityRef and
+      // actorRef are both bound to the enrolled account: enrollment is
+      // always self-service for that account (Portal self-enrollment,
+      // Admin self-setup, entry-path enrollment for the entry's account).
       const enrollmentChannels = new Set(["portal", "admin", "entry"]);
       const enrollmentFormats = new Set(["v2", "enc", "unknown"]);
       if (action === "totp_enrollment_started") {
@@ -8605,6 +8605,12 @@ if (entityType === "totp_enrollment") {
         // entry path (which has no start step and no code verification).
         if ((metadata.enrollmentRef === undefined) === (metadata.entryRef === undefined)) {
           throw platformError("validation_error", "TOTP enrollment bound initiation reference is invalid");
+        }
+        // The initiation reference must match the channel: the entry path
+        // carries entryRef, the Portal/Admin confirm paths carry
+        // enrollmentRef. A crossed pairing is a writer bug, not evidence.
+        if ((metadata.channel === "entry") !== (metadata.entryRef !== undefined)) {
+          throw platformError("validation_error", "TOTP enrollment bound channel and initiation reference do not match");
         }
         if (metadata.enrollmentRef !== undefined) {
           safeControlRef(metadata.enrollmentRef, "enrollmentRef");
