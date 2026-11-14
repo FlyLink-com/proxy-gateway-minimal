@@ -21,16 +21,38 @@
 //   blocking tables named instead of deleting undecided data. In logical
 //   mode the account row stays (suspended) and only the personal originals
 //   are stripped from metadata.
-// - The freeze (step 1) is effective through the existing login paths,
-//   which already reject any account whose status is not 'active'; this
-//   module does not touch login, registration, TOTP, password or email
-//   display code.
+// - The freeze (step 1) is effective through the existing login paths
+//   that check account status (password login, session creation, session
+//   use, entry issuance), but it does NOT cover the second-factor
+//   completion paths: `completeSecondFactor` / `verifyTotpAndCreateSession`
+//   do not re-check account status, so a challenge issued before the
+//   freeze (300s TTL) plus a valid TOTP code can still create a new
+//   session row between steps 1 and 3. Three mitigations make the window
+//   fail-closed: step 3 revokes all credentials (after which those paths
+//   find no active credential), session use still checks account status
+//   (`getActiveSessionContext` rejects non-active accounts), and the
+//   step 7 read-back verification fails the job if any active session
+//   row exists. This module does not touch login code; making the
+//   second-factor completion paths re-check account status is a
+//   follow-up batch item (see below).
 // - "Recovery" here means safe resume / retry / compensation of a failed
 //   deletion task, never restoring already-deleted data. Deleted data is
 //   not restored by this module.
 // - No credential material, password, secret or personal-data original is
-//   read, logged or written by this module. Audit metadata carries only
-//   references, scope, results and timestamps.
+//   recorded, returned or persisted by this module. Stripping metadata
+//   necessarily reads it into memory; the originals are never written to
+//   audit metadata, proof records, job rows or logs. Audit metadata
+//   carries only references, scope, results and timestamps.
+// - A failed job can be explicitly abandoned (`abandonDeletion`, with an
+//   authorization basis and an audit event). Abandonment is terminal:
+//   the job cannot resume or recover, and it no longer blocks a new
+//   deletion request for the same account. Abandonment does NOT unfreeze
+//   the account: the account keeps its current status, and unfreezing is
+//   a separate decision.
+// - Follow-up batch items (out of scope for this batch, recorded here so
+//   they are not silently dropped): (a) second-factor completion paths
+//   re-check account status (see the freeze note above); (b) the
+//   unfreeze decision for abandoned jobs.
 
 import { randomBytes } from "node:crypto";
 
@@ -283,7 +305,7 @@ export class PortalIdentityDeletionService {
 
   runDeletion({ requestRef } = {}) {
     let job = this.getDeletionJob({ requestRef });
-    if (job.status === "completed") {
+    if (job.status === "completed" || job.status === "abandoned") {
       return job;
     }
     // One resume of a failed job counts as one job-level retry.
@@ -305,15 +327,94 @@ export class PortalIdentityDeletionService {
     if (!Number.isInteger(step) || step < 1 || step > 8) {
       throw deletionError("identity_deletion_step_invalid", "step must be an integer from 1 to 8");
     }
-    if (job.status === "completed") {
-      // A completed job is terminal: the proof is issued and the
-      // verification it rests on must not be re-run afterwards.
+    if (job.status === "completed" || job.status === "abandoned") {
+      // A completed or abandoned job is terminal: the proof is issued
+      // (completed) or the job was given up (abandoned), and no step
+      // may run afterwards.
       return job;
     }
     if (job.steps[step].status === "completed" && !force) {
       return job;
     }
+    if (force) {
+      // Force only re-runs a completed or failed step; it never starts
+      // a pending step out of order.
+      if (job.steps[step].status !== "completed" && job.steps[step].status !== "failed") {
+        throw deletionError(
+          "identity_deletion_step_invalid",
+          "force only re-runs a completed or failed step"
+        );
+      }
+    } else {
+      // A non-force call must run the steps in order: every prior step
+      // has to be completed first, so the step trail on the job always
+      // matches what actually ran.
+      const incompletePrior = job.steps
+        .slice(1, step)
+        .filter((entry) => entry.status !== "completed")
+        .map((entry) => entry.step);
+      if (incompletePrior.length > 0) {
+        throw deletionError(
+          "identity_deletion_step_out_of_order",
+          `prior steps must complete first: ${incompletePrior.join(", ")}`
+        );
+      }
+    }
     return this.#executeStep(job, step, { force, jobRetryCount: job.retryCount });
+  }
+
+  abandonDeletion({ requestRef, authorizationBasis, actorRef } = {}) {
+    // B2-4c fix (P2-2): only a failed job can be abandoned. Abandonment
+    // needs an authorization basis and is written to the audit trail;
+    // it is terminal (no resume, no recovery) and the job no longer
+    // blocks a new deletion request for the same account. The account
+    // is NOT unfrozen: it keeps its current status, and unfreezing is a
+    // separate decision (see the module header).
+    const job = this.getDeletionJob({ requestRef });
+    if (!IDENTITY_DELETION_AUTHORIZATION_BASES.includes(authorizationBasis)) {
+      throw deletionError(
+        "identity_deletion_validation_error",
+        "authorizationBasis must be owner_request or compliance_order"
+      );
+    }
+    const abandoningActor = requireRef(actorRef, "actorRef");
+    if (job.status !== "failed") {
+      throw deletionError(
+        "identity_deletion_job_not_abandonable",
+        "only a failed deletion job can be abandoned"
+      );
+    }
+    const abandonedAt = this.now();
+    return this.store.runInTransaction(() => {
+      const updated = this.store.updateIdentityDeletionJob({
+        id: job.id,
+        status: "abandoned",
+        currentStep: job.currentStep,
+        steps: job.steps,
+        failureReason: job.failureReason,
+        retryCount: job.retryCount,
+        proofRef: job.proofRef ?? null,
+        updatedAt: abandonedAt
+      });
+      this.store.recordAuditEvent({
+        id: mintRef("delaudit"),
+        entityType: "identity_deletion",
+        entityRef: job.accountId,
+        action: "identity_deletion_job_abandoned",
+        actorRef: abandoningActor,
+        createdAt: abandonedAt,
+        metadata: {
+          requestRef: job.requestId,
+          accountRef: job.accountId,
+          authorizationBasis,
+          abandonedAt,
+          failureReason: job.failureReason && job.failureReason.length > 0
+            ? job.failureReason
+            : "failed: no reason recorded"
+        }
+      });
+      return updated;
+    });
   }
 
   #validateScope(scope) {
@@ -623,6 +724,11 @@ export class PortalIdentityDeletionService {
   }
 
   #deletePersonalDataLogical(job, nowIso) {
+    // Deliberate: second-factor challenge rows are left to their natural
+    // 300s expiry instead of being deleted or revoked. That is harmless:
+    // completing a challenge needs an active TOTP credential, and step 3
+    // already revoked every credential for this account. The read-back
+    // verification intentionally does not assert on challenge rows.
     const result = this.store.redactAccountMetadataForDeletion({
       accountId: job.accountId,
       updatedAt: nowIso

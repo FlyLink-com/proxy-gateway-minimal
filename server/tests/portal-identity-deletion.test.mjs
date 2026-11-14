@@ -581,6 +581,193 @@ test("unknown job and unknown proof fail closed", () => withStore(({ service }) 
   );
 }));
 
+test("P1-1 fix: logical mode strips metadata.displayName from an initially issued account", () => withStore(({ store, service }) => {
+  // The initial-issuance path writes metadata.displayName; the old
+  // redact/deny-list only stripped loginRef / displayRef, so the
+  // display name survived the deletion while the read-back assertion
+  // still passed. The whitelist must strip it and the proof must
+  // still be issuable.
+  makeAccount(store, "acct-del-0001", {
+    displayName: "synth-display-name",
+    loginRef: "synth-user-0001@example.test",
+    displayRef: "synth-display-ref",
+    loginDigest: "11".repeat(32),
+    displayDigest: "22".repeat(32)
+  });
+  makePasswordCredential(store, "acct-del-0001", "pwd-del-0001");
+  request(service, { verificationMode: "logical" });
+  const done = service.runDeletion({ requestRef: "delreq-synth-0001" });
+  assert.equal(done.status, "completed");
+  assert.ok(done.proofRef);
+
+  const account = store.getAccount("acct-del-0001");
+  assert.equal(account.metadata.displayName, undefined);
+  assert.equal(account.metadata.loginRef, undefined);
+  assert.equal(account.metadata.displayRef, undefined);
+  assert.equal(account.metadata.loginDigest, "11".repeat(32));
+  assert.equal(account.metadata.displayDigest, "22".repeat(32));
+
+  const proof = service.getDeletionProof({ proofRef: done.proofRef });
+  const metadataAssertion = proof.verification.find(
+    (assertion) => assertion.name === "metadata_personal_fields_absent"
+  );
+  assert.equal(metadataAssertion.passed, true);
+}));
+
+test("P1-1 fix: whitelist strips an unknown metadata key in logical mode", () => withStore(({ database, store, service }) => {
+  // Any key not on the retainable whitelist is personal until proven
+  // otherwise: a future field must not silently survive a deletion.
+  // The creation path rejects unknown keys, so the legacy/foreign key
+  // is injected with direct SQL, as a row that predates the validation
+  // (or was written outside it) would carry it.
+  makeAccount(store, "acct-del-0001", {
+    loginDigest: "11".repeat(32)
+  });
+  database.prepare(
+    "update platform_accounts set metadata_json = ? where id = ?"
+  ).run(JSON.stringify({
+    nickname: "synth-nickname",
+    loginDigest: "11".repeat(32)
+  }), "acct-del-0001");
+  request(service, { verificationMode: "logical" });
+  const done = service.runDeletion({ requestRef: "delreq-synth-0001" });
+  assert.equal(done.status, "completed");
+  assert.ok(done.proofRef);
+
+  const account = store.getAccount("acct-del-0001");
+  assert.equal(account.metadata.nickname, undefined);
+  assert.equal(account.metadata.loginDigest, "11".repeat(32));
+}));
+
+test("P2-1 fix: a non-force step call requires all prior steps completed", () => withStore(({ database, store, service }) => {
+  fullAccount(store);
+  request(service);
+  assert.throws(
+    () => service.runDeletionStep({ requestRef: "delreq-synth-0001", step: 5 }),
+    (error) => error.code === "identity_deletion_step_out_of_order"
+  );
+  // Nothing ran: the account is still active, steps 1-4 are still
+  // pending, and no step audit event was written.
+  assert.equal(store.getAccount("acct-del-0001").status, "active");
+  const job = service.getDeletionJob({ requestRef: "delreq-synth-0001" });
+  assert.deepEqual(job.steps.slice(1, 5).map((entry) => entry.status), ["pending", "pending", "pending", "pending"]);
+  assert.equal(auditEventsFor(database, "acct-del-0001").length, 1);
+
+  // Running the steps in order works as before.
+  service.runDeletionStep({ requestRef: "delreq-synth-0001", step: 1 });
+  service.runDeletionStep({ requestRef: "delreq-synth-0001", step: 2 });
+  service.runDeletionStep({ requestRef: "delreq-synth-0001", step: 3 });
+  service.runDeletionStep({ requestRef: "delreq-synth-0001", step: 4 });
+  const done = service.runDeletion({ requestRef: "delreq-synth-0001" });
+  assert.equal(done.status, "completed");
+}));
+
+test("P2-1 fix: force only re-runs a completed or failed step, never a pending one", () => withStore(({ store, service }) => {
+  fullAccount(store);
+  request(service);
+  assert.throws(
+    () => service.runDeletionStep({ requestRef: "delreq-synth-0001", step: 3, force: true }),
+    (error) => error.code === "identity_deletion_step_invalid"
+  );
+  // Nothing ran: the credential is still active.
+  assert.equal(store.getPortalPasswordCredential("pwd-del-0001").status, "active");
+}));
+
+test("P2-2 fix: a failed job can be abandoned, and abandonment unblocks a new request", () => withStore(({ database, store, service }) => {
+  fullAccount(store);
+  store.createEntitlement({
+    id: "ent-del-0001",
+    accountId: "acct-del-0001",
+    plan: "synth-plan",
+    status: "active",
+    validFrom: NOW_ISO,
+    validUntil: LATER_ISO,
+    createdAt: NOW_ISO,
+    updatedAt: NOW_ISO
+  });
+  request(service);
+  assert.throws(
+    () => service.runDeletion({ requestRef: "delreq-synth-0001" }),
+    (error) => error.code === "identity_deletion_blocked_by_retained_rows"
+  );
+  const failed = service.getDeletionJob({ requestRef: "delreq-synth-0001" });
+  assert.equal(failed.status, "failed");
+
+  assert.throws(
+    () => service.abandonDeletion({
+      requestRef: "delreq-synth-0001",
+      authorizationBasis: "operator_whim",
+      actorRef: "admin:operator-synth-2"
+    }),
+    (error) => error.code === "identity_deletion_validation_error"
+  );
+
+  const abandoned = service.abandonDeletion({
+    requestRef: "delreq-synth-0001",
+    authorizationBasis: "compliance_order",
+    actorRef: "admin:operator-synth-2"
+  });
+  assert.equal(abandoned.status, "abandoned");
+  assert.equal(abandoned.proofRef, null);
+
+  const events = auditEventsFor(database, "acct-del-0001");
+  const abandonEvent = events.find((event) => event.action === "identity_deletion_job_abandoned");
+  assert.ok(abandonEvent);
+  const abandonMetadata = JSON.parse(abandonEvent.metadata_json);
+  assert.equal(abandonMetadata.authorizationBasis, "compliance_order");
+  assert.match(abandonMetadata.failureReason, /identity_deletion_blocked_by_retained_rows/);
+
+  // Terminal: resume and single-step calls return the job unchanged.
+  const resumed = service.runDeletion({ requestRef: "delreq-synth-0001" });
+  assert.equal(resumed.status, "abandoned");
+  assert.equal(resumed.proofRef, null);
+  const stepped = service.runDeletionStep({ requestRef: "delreq-synth-0001", step: 6 });
+  assert.equal(stepped.status, "abandoned");
+
+  // Abandonment does NOT unfreeze the account: it stays suspended.
+  // Unfreezing is a separate decision.
+  assert.equal(store.getAccount("acct-del-0001").status, "suspended");
+
+  // A second abandonment is rejected: only a failed job can be abandoned.
+  assert.throws(
+    () => service.abandonDeletion({
+      requestRef: "delreq-synth-0001",
+      authorizationBasis: "compliance_order",
+      actorRef: "admin:operator-synth-2"
+    }),
+    (error) => error.code === "identity_deletion_job_not_abandonable"
+  );
+
+  // The abandoned job no longer blocks a new deletion request.
+  const second = request(service, { requestRef: "delreq-synth-0002" });
+  assert.equal(second.status, "pending");
+  assert.equal(second.currentStep, 1);
+}));
+
+test("P2-2 fix: only a failed job can be abandoned", () => withStore(({ store, service }) => {
+  fullAccount(store);
+  request(service);
+  assert.throws(
+    () => service.abandonDeletion({
+      requestRef: "delreq-synth-0001",
+      authorizationBasis: "owner_request",
+      actorRef: "admin:operator-synth-2"
+    }),
+    (error) => error.code === "identity_deletion_job_not_abandonable"
+  );
+
+  const done = service.runDeletion({ requestRef: "delreq-synth-0001" });
+  assert.equal(done.status, "completed");
+  assert.throws(
+    () => service.abandonDeletion({
+      requestRef: "delreq-synth-0001",
+      authorizationBasis: "owner_request",
+      actorRef: "admin:operator-synth-2"
+    }),
+    (error) => error.code === "identity_deletion_job_not_abandonable"
+  );
+}));
+
 test("buildReadbackAssertions: physical needs absent rows, logical needs revoked rows", () => {
   const emptyState = {
     accountExists: false,

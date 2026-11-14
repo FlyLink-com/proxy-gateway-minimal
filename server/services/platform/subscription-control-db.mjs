@@ -1823,7 +1823,7 @@ export function createSqliteSubscriptionControlStore({
       authorization_basis text not null check (authorization_basis in ('owner_request', 'compliance_order')),
       verification_mode text not null check (verification_mode in ('physical', 'logical')),
       scope_json text not null default '[]',
-      status text not null check (status in ('pending', 'in_progress', 'completed', 'failed')),
+      status text not null check (status in ('pending', 'in_progress', 'completed', 'failed', 'abandoned')),
       current_step integer not null default 0 check (current_step >= 0 and current_step <= 8),
       steps_json text not null default '[]',
       failure_reason text,
@@ -8445,7 +8445,7 @@ export function createSqliteSubscriptionControlStore({
         ) {
           throw platformError("validation_error", "identity deletion step name is invalid");
         }
-        if (!["completed", "skipped", "already_completed"].includes(metadata.result)) {
+        if (!["completed", "skipped"].includes(metadata.result)) {
           throw platformError("validation_error", "identity deletion step result is invalid");
         }
         isoText(metadata.completedAt, "completedAt");
@@ -8512,6 +8512,27 @@ export function createSqliteSubscriptionControlStore({
           throw platformError("validation_error", "identity deletion verification mode is invalid");
         }
         isoText(metadata.issuedAt, "issuedAt");
+        return JSON.stringify(metadata);
+      }
+
+      if (action === "identity_deletion_job_abandoned") {
+        // B2-4c fix (P2-2): a failed job may be explicitly abandoned.
+        // The abandonment is terminal and audited; the account is NOT
+        // unfrozen by it (unfreezing is a separate decision).
+        exactObject(metadata, {
+          allowed: ["requestRef", "accountRef", "authorizationBasis", "abandonedAt", "failureReason"],
+          required: ["requestRef", "accountRef", "authorizationBasis", "abandonedAt", "failureReason"],
+          name: "identityDeletionJobAbandonedAuditMetadata"
+        });
+        safeControlRef(metadata.requestRef, "requestRef");
+        safeControlRef(metadata.accountRef, "accountRef");
+        if (!IDENTITY_DELETION_AUTHORIZATION_BASES.has(metadata.authorizationBasis)) {
+          throw platformError("validation_error", "identity deletion authorization basis is invalid");
+        }
+        isoText(metadata.abandonedAt, "abandonedAt");
+        if (typeof metadata.failureReason !== "string" || !metadata.failureReason) {
+          throw platformError("validation_error", "identity deletion abandonment failure reason is invalid");
+        }
         return JSON.stringify(metadata);
       }
 
@@ -9594,6 +9615,48 @@ export function createSqliteSubscriptionControlStore({
     "platform_identity_bindings"
   ]);
 
+  // B2-4c fix (P1-1): whitelist of platform_accounts.metadata_json keys
+  // that may survive a logical-mode deletion. Everything else is
+  // stripped — the personal originals (loginRef / displayRef /
+  // displayName) and any future unknown key. The list is closed because
+  // production writers of platform_accounts.metadata_json are exactly
+  // four call sites: portal-registration (self-service registration),
+  // portal-initial-account-issuance (displayName only),
+  // subscription-issuance plan/execute (source only), and the redaction
+  // below. The digests are one-way hashes; the remaining keys are
+  // non-personal flags, sources, plans, regions, versions or timestamps
+  // — none of them identifies or contacts a person.
+  const IDENTITY_DELETION_RETAINED_METADATA_KEYS = new Set([
+    // One-way digests.
+    "loginDigest",
+    "contactDigest",
+    "displayDigest",
+    "useCaseDigest",
+    "registrationSourceIpDigest",
+    "legalAgreementSourceIpDigest",
+    "legalAgreementRequestKeyDigest",
+    "registrationRequestKeyDigest",
+    // Non-personal flags, sources, plans, regions, versions, timestamps.
+    "initialAccount",
+    "requireSecuritySetup",
+    "registrationSource",
+    "singleSubscriptionOnly",
+    "subscriptionLimit",
+    "intentPlan",
+    "requestedDeviceCount",
+    "primaryRegion",
+    "legalAgreementAccepted",
+    "legalAgreementAcceptedAt",
+    "termsVersion",
+    "privacyVersion",
+    "source",
+    "channel",
+    "synthetic"
+  ]);
+  // Cross-check: this set is ACCOUNT_METADATA_FIELDS (the creation-time
+  // allowlist in accountMetadataJson) minus the three personal originals
+  // loginRef / displayRef / displayName. No other legitimate key exists.
+
   function mapIdentityDeletionJob(row) {
     if (!row) return null;
     return {
@@ -9714,7 +9777,7 @@ export function createSqliteSubscriptionControlStore({
       proofRef: optionalText(input.proofRef),
       updatedAt: isoText(input.updatedAt, "updatedAt")
     };
-    if (!["pending", "in_progress", "completed", "failed"].includes(record.status)) {
+    if (!["pending", "in_progress", "completed", "failed", "abandoned"].includes(record.status)) {
       throw platformError("validation_error", "identity deletion job status is invalid");
     }
     if (record.currentStep > 8) {
@@ -9916,17 +9979,20 @@ export function createSqliteSubscriptionControlStore({
   }
 
   function redactAccountMetadataForDeletion({ accountId, updatedAt }) {
-    // Logical mode only: strip the personal originals from metadata_json
-    // (loginRef / displayRef) while keeping the digests and every other
-    // field. The account row itself stays, in 'suspended' status.
+    // Logical mode only: strip every metadata key that is not on the
+    // retainable whitelist (see IDENTITY_DELETION_RETAINED_METADATA_KEYS).
+    // The personal originals (loginRef / displayRef / displayName) are
+    // stripped, and so is any future unknown key, so a new personal
+    // field cannot silently survive a deletion. The account row itself
+    // stays, in 'suspended' status.
     const account = getAccount(accountId);
     if (!account) {
       throw platformError("not_found", "account not found");
     }
     const metadata = { ...(account.metadata ?? {}) };
     const strippedKeys = [];
-    for (const key of ["loginRef", "displayRef"]) {
-      if (Object.prototype.hasOwnProperty.call(metadata, key)) {
+    for (const key of Object.keys(metadata)) {
+      if (!IDENTITY_DELETION_RETAINED_METADATA_KEYS.has(key)) {
         delete metadata[key];
         strippedKeys.push(key);
       }
@@ -9986,8 +10052,7 @@ export function createSqliteSubscriptionControlStore({
       accountExists: account !== null,
       accountStatus: account ? account.status : null,
       metadataHasPersonalFields:
-        Object.prototype.hasOwnProperty.call(metadata, "loginRef")
-        || Object.prototype.hasOwnProperty.call(metadata, "displayRef"),
+        Object.keys(metadata).some((key) => !IDENTITY_DELETION_RETAINED_METADATA_KEYS.has(key)),
       password: countCredentialRows("platform_portal_password_credentials", accountId),
       totp: countCredentialRows("platform_portal_totp_credentials", accountId),
       passkey: countCredentialRows("platform_portal_passkey_credentials", accountId),
