@@ -14,6 +14,7 @@ import { buildChannelSystemDecisionFlow } from "../services/channel-system-decis
 import { buildCleanEdgeReadinessSummary } from "../services/clean-edge-readiness-summary.mjs";
 import { createCleanStartControlPlanePackage } from "../services/platform/clean-start-control-plane.mjs";
 import { createPlatformControlSummary } from "../services/platform/control-plane-contract.mjs";
+import { maskEmail, maskEmailOrKeep } from "../services/platform/email-masking.mjs";
 import { buildProvisioningFormPackage } from "../services/platform/provisioning-form.mjs";
 import { createPartnerAttributionAdminReport } from "../services/platform/partner-attribution-admin-report.mjs";
 import { trafficLimitBytesForPlan } from "../services/platform/subscription-package-policy.mjs";
@@ -103,13 +104,26 @@ function summaryMatchesSearch(summary, context) {
   if (!context.text) {
     return true;
   }
-  return [
+  if ([
     summary.id,
     summary.email,
     summary.displayName,
     summary.organization,
     summary.status
-  ].some((value) => optionalAdminText(value).toLowerCase().includes(context.text));
+  ].some((value) => optionalAdminText(value).toLowerCase().includes(context.text))) {
+    return true;
+  }
+  // A full-email search still finds the account after masking: the stored
+  // summaries carry the masked email, so compare against the masked form of
+  // the searched email instead of the raw text. The digest match in
+  // summaryForControlStoreAccount is what authorizes the hit; this check
+  // only keeps the hit visible through the text filter.
+  if (context.email) {
+    const maskedEmail = maskEmail(context.email);
+    return [summary.email, summary.displayName]
+      .some((value) => optionalAdminText(value).toLowerCase() === maskedEmail);
+  }
+  return false;
 }
 
 function finiteNumber(value) {
@@ -305,11 +319,14 @@ function summaryForControlStoreAccount(controlStore, account, now, { search } = 
   const matchedLoginRef = metadataDigestMatchesEmailSearch(metadata, search) ? search.email : "";
   const loginRef = optionalAdminText(metadata.loginRef) || matchedLoginRef;
   const displayRef = optionalAdminText(metadata.displayRef);
-  const displayName = displayRef
+  // Display only: the admin list shows masked emails. A digest search hit
+  // echoes the searched email masked, never raw. A display label that is not
+  // an email (user-managed label, account id) passes through unchanged.
+  const displayName = maskEmailOrKeep(displayRef
     || optionalAdminText(metadata.displayName)
     || loginRef
     || optionalAdminText(account.ownerRef)
-    || account.id;
+    || account.id);
 
   return {
     id: account.id,
@@ -317,7 +334,7 @@ function summaryForControlStoreAccount(controlStore, account, now, { search } = 
     leadId: optionalAdminText(metadata.leadId) || null,
     status: account.status,
     organization: optionalAdminText(metadata.organization) || null,
-    email: loginRef || null,
+    email: loginRef ? maskEmail(loginRef) : null,
     displayName,
     entitlementCount: entitlements.length,
     usableEntitlementCount: entitlements.filter((entitlement) => entitlement.usable).length,

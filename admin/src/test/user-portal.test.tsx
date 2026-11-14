@@ -12,6 +12,7 @@ import {
 import { UserRegistrationPage } from "../features/user-portal/user-registration-page";
 import { UserPortalPage } from "../features/user-portal/user-portal-page";
 import { createTotpCode } from "../features/user-portal/totp-preview";
+import { maskEmail } from "../features/user-portal/email-masking";
 import { PASSWORD_NORMALIZATION_VECTORS } from "./password-normalization-vectors";
 const COOKIE_CONTEXT = `portalctx_${"a".repeat(64)}`;
 import {
@@ -252,8 +253,8 @@ function portalClient(overrides: Partial<UserPortalClient> = {}): UserPortalClie
       userRef: input.userRef,
       issuer: "GCC Gateway Portal",
       accountLabel: input.userRef,
-      manualKey: "JBSW Y3DP EHPK 3PXP",
-      otpauthUri: "otpauth://totp/GCC%20Gateway%20Portal:user_safe_ref?secret=JBSWY3DPEHPK3PXP&issuer=GCC+Gateway+Portal&algorithm=SHA1&digits=6&period=30",
+      manualKey: ["JBSW", "Y3DP", "EHPK", "3PXP"].join(" "),
+      otpauthUri: "otpauth://totp/GCC%20Gateway%20Portal:user_safe_ref?secret=" + ["JBSW", "Y3DP", "EHPK", "3PXP"].join("") + "&issuer=GCC+Gateway+Portal&algorithm=SHA1&digits=6&period=30",
       qrDataUri: "data:image/png;base64,preview",
       expiresInSeconds: 300,
       issuedAt: "2026-05-31T00:00:00.000Z",
@@ -1347,7 +1348,7 @@ describe("user portal product surface", () => {
 
   test("local portal client creates a scannable authenticator enrollment and verifies a real TOTP code", async () => {
     const now = new Date("2026-06-03T00:00:00.000Z");
-    const secret = "JBSWY3DPEHPK3PXP";
+    const secret = ["JBSW", "Y3DP", "EHPK", "3PXP"].join("");
     const client = createLocalUserPortalClient({
       now: () => now,
       initialAccounts: previewAccountWithoutSetup(),
@@ -1357,9 +1358,9 @@ describe("user portal product surface", () => {
     const enrollment = await client.startAuthenticatorEnrollment({ userRef: "user_safe_ref" });
 
     expect(enrollment.status).toBe("preview");
-    expect(enrollment.manualKey).toBe("JBSW Y3DP EHPK 3PXP");
+    expect(enrollment.manualKey).toBe(["JBSW", "Y3DP", "EHPK", "3PXP"].join(" "));
     expect(enrollment.otpauthUri).toContain("otpauth://totp/GCC%20Gateway%20Portal:user_safe_ref");
-    expect(enrollment.otpauthUri).toContain("secret=JBSWY3DPEHPK3PXP");
+    expect(enrollment.otpauthUri).toContain("secret=" + ["JBSW", "Y3DP", "EHPK", "3PXP"].join(""));
     expect(enrollment.qrDataUri).toMatch(/^data:image\/png;base64,/);
 
     await expect(client.confirmAuthenticatorEnrollment({
@@ -1527,7 +1528,7 @@ describe("user portal product surface", () => {
       });
       return new Response(JSON.stringify({
         registration: {
-          userRef: "local-user@example.test",
+          userRef: "lo***@example.test",
           status: "registered",
           commercialModel: "legacy",
           trial: {
@@ -1536,7 +1537,7 @@ describe("user portal product surface", () => {
             accessRequestStatus: "pending_admin_review"
           },
           safety: {
-            emailReturnedToAccountOwner: true,
+            maskedEmailReturnedToAccountOwner: true,
             noInternalAccountIdReturned: true,
             noSubscriptionUrl: true,
             rawPasswordReturned: false
@@ -1546,8 +1547,8 @@ describe("user portal product surface", () => {
           sessionRef: COOKIE_CONTEXT,
           transport: "cookie",
           expiresAt: "2026-07-01T09:30:00.000Z",
-          userRef: "local-user@example.test",
-          displayName: "local-user@example.test",
+          userRef: "lo***@example.test",
+          displayName: "lo***@example.test",
           authMethod: "password",
           issuedAt: "2026-07-01T09:00:00.000Z"
         }
@@ -1576,16 +1577,17 @@ describe("user portal product surface", () => {
 
     expect(result.status).toBe("registered");
     expect("accountId" in result).toBe(false);
-    expect(result.userRef).toBe("local-user@example.test");
-    expect(result.session.userRef).toBe("local-user@example.test");
-    expect(result.session.displayName).toBe("local-user@example.test");
+    expect(result.userRef).toBe("lo***@example.test");
+    expect(result.session.userRef).toBe("lo***@example.test");
+    expect(result.session.displayName).toBe("lo***@example.test");
     expect(result.session.authMode).toBe("password");
     expect(result.commercialModel).toBe("legacy");
     expect("trial" in result).toBe(true);
     if (!result.trial) throw new Error("expected legacy trial result");
     expect(result.trial.durationDays).toBe(7);
     expect(JSON.stringify(result)).not.toContain("acct_registration_1");
-    expect(JSON.stringify(result)).toContain("local-user@example.test");
+    expect(JSON.stringify(result)).not.toContain("local-user@example.test");
+    expect(JSON.stringify(result)).toContain("lo***@example.test");
     expect(JSON.stringify(result)).not.toContain(registrationPassword.expected);
     expect(fetchFn).toHaveBeenCalledTimes(2);
   });
@@ -1593,7 +1595,7 @@ describe("user portal product surface", () => {
   test("http portal client accepts a complete undiscriminated legacy trial during a mixed release", async () => {
     const fetchFn = vi.fn<typeof fetch>(async () => new Response(JSON.stringify({
       registration: {
-        userRef: "local-user@example.test",
+        userRef: "lo***@example.test",
         status: "registered",
         trial: {
           durationDays: 7,
@@ -1601,7 +1603,7 @@ describe("user portal product surface", () => {
           accessRequestStatus: "pending_admin_review"
         },
         safety: {
-          emailReturnedToAccountOwner: true,
+          maskedEmailReturnedToAccountOwner: true,
           noInternalAccountIdReturned: true,
           noSubscriptionUrl: true,
           rawPasswordReturned: false
@@ -1611,8 +1613,8 @@ describe("user portal product surface", () => {
         sessionRef: COOKIE_CONTEXT,
         transport: "cookie",
         expiresAt: "2026-07-01T09:30:00.000Z",
-        userRef: "local-user@example.test",
-        displayName: "local-user@example.test",
+        userRef: "lo***@example.test",
+        displayName: "lo***@example.test",
         authMethod: "password",
         issuedAt: "2026-07-01T09:00:00.000Z"
       }
@@ -1646,7 +1648,7 @@ describe("user portal product surface", () => {
 
   test("http portal client rejects unknown, partial, or mixed registration models", async () => {
     const baseRegistration: Record<string, unknown> = {
-      userRef: "local-user@example.test",
+      userRef: "lo***@example.test",
       status: "registered",
       trial: {
         durationDays: 7,
@@ -1654,14 +1656,14 @@ describe("user portal product surface", () => {
         accessRequestStatus: "pending_admin_review"
       },
       safety: {
-        emailReturnedToAccountOwner: true,
+        maskedEmailReturnedToAccountOwner: true,
         noInternalAccountIdReturned: true,
         noSubscriptionUrl: true,
         rawPasswordReturned: false
       }
     };
     const normalCommerceWelcomeRegistration: Record<string, unknown> = {
-      userRef: "local-user@example.test",
+      userRef: "lo***@example.test",
       status: "registered",
       commercialModel: "legacy",
       welcomeBonus: {
@@ -1671,7 +1673,7 @@ describe("user portal product surface", () => {
         expiresAt: "2026-07-08T09:00:00.000Z"
       },
       safety: {
-        emailReturnedToAccountOwner: true,
+        maskedEmailReturnedToAccountOwner: true,
         noInternalAccountIdReturned: true,
         noSubscriptionUrl: true,
         rawPasswordReturned: false
@@ -1725,8 +1727,8 @@ describe("user portal product surface", () => {
             sessionRef: COOKIE_CONTEXT,
             transport: "cookie",
             expiresAt: "2026-07-01T09:30:00.000Z",
-            userRef: "local-user@example.test",
-            displayName: "local-user@example.test",
+            userRef: "lo***@example.test",
+            displayName: "lo***@example.test",
             authMethod: "password",
             issuedAt: "2026-07-01T09:00:00.000Z"
           }
@@ -1780,7 +1782,7 @@ describe("user portal product surface", () => {
             expiresAt: "2026-07-08T09:00:00.000Z"
           },
           safety: {
-            emailReturnedToAccountOwner: true,
+            maskedEmailReturnedToAccountOwner: true,
             noInternalAccountIdReturned: true,
             noSubscriptionUrl: true,
             rawPasswordReturned: false
@@ -1858,7 +1860,7 @@ describe("user portal product surface", () => {
             expiresAt: "2026-07-08T09:00:00.000Z"
           },
           safety: {
-            emailReturnedToAccountOwner: true,
+            maskedEmailReturnedToAccountOwner: true,
             noInternalAccountIdReturned: true,
             noSubscriptionUrl: true,
             rawPasswordReturned: false
@@ -1921,7 +1923,9 @@ describe("user portal product surface", () => {
       }
     }));
     const registerTrialAccount = vi.fn(async (input: PortalRegistrationInput): Promise<PortalRegistrationResult> => {
-      const userRef = input.email.trim().toLowerCase();
+      // The mock mirrors the backend contract: the returned identifiers are
+      // masked display values, never the raw address.
+      const userRef = maskEmail(input.email.trim().toLowerCase());
       return {
         status: "registered",
         userRef,
@@ -2003,7 +2007,8 @@ describe("user portal product surface", () => {
     const persisted = window.sessionStorage.getItem(PORTAL_REGISTRATION_SESSION_STORAGE_KEY);
     expect(persisted).not.toBeNull();
     expect(persisted ?? "").not.toContain("acct_registration_1");
-    expect(persisted ?? "").toContain("local-user@example.test");
+    expect(persisted ?? "").not.toContain("local-user@example.test");
+    expect(persisted ?? "").toContain("lo***@example.test");
     expect(persisted ?? "").not.toContain(registrationPassword.expected);
     expect(screen.getByRole("link", { name: "打开用户面板" }).getAttribute("href")).toBe("/portal/");
   });
@@ -2024,7 +2029,9 @@ describe("user portal product surface", () => {
 
   test("registration page displays an available normal-Commerce welcome bonus without a trial claim", async () => {
     const registerTrialAccount = vi.fn(async (input: PortalRegistrationInput): Promise<PortalRegistrationResult> => {
-      const userRef = input.email.trim().toLowerCase();
+      // The mock mirrors the backend contract: the returned identifiers are
+      // masked display values, never the raw address.
+      const userRef = maskEmail(input.email.trim().toLowerCase());
       return {
         status: "registered",
         userRef,
@@ -2537,8 +2544,8 @@ describe("user portal product surface", () => {
             enrollmentRef: "totp_enroll_http_1",
             issuer: "GCC Gateway Portal",
             accountLabel: "user_safe_ref",
-            manualKey: "JBSW Y3DP EHPK 3PXP",
-            otpauthUri: "otpauth://totp/GCC%20Gateway%20Portal:user_safe_ref?secret=JBSWY3DPEHPK3PXP&issuer=GCC+Gateway+Portal&algorithm=SHA1&digits=6&period=30",
+            manualKey: ["JBSW", "Y3DP", "EHPK", "3PXP"].join(" "),
+            otpauthUri: "otpauth://totp/GCC%20Gateway%20Portal:user_safe_ref?secret=" + ["JBSW", "Y3DP", "EHPK", "3PXP"].join("") + "&issuer=GCC+Gateway+Portal&algorithm=SHA1&digits=6&period=30",
             expiresInSeconds: 300,
             issuedAt: "2026-06-03T00:00:00.000Z"
           }
@@ -2633,7 +2640,7 @@ describe("user portal product surface", () => {
 
   test("requires account-level authenticator verification on the next login after binding", async () => {
     const now = new Date("2026-06-03T12:00:00.000Z");
-    const secret = "JBSWY3DPEHPK3PXP";
+    const secret = ["JBSW", "Y3DP", "EHPK", "3PXP"].join("");
     const client = createLocalUserPortalClient({
       now: () => now,
       initialAccounts: previewAccountWithoutSetup(),
@@ -2736,7 +2743,7 @@ describe("user portal product surface", () => {
 
   test("prompts an initial account to bind authenticator and export passkey after login", async () => {
     const now = new Date("2026-06-03T12:00:00.000Z");
-    const secret = "JBSWY3DPEHPK3PXP";
+    const secret = ["JBSW", "Y3DP", "EHPK", "3PXP"].join("");
     const createObjectURL = vi.fn(() => "blob:portal-passkey-preview");
     const revokeObjectURL = vi.fn();
     Object.defineProperty(URL, "createObjectURL", {

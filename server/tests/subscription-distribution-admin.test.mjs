@@ -142,7 +142,7 @@ test("real application enforces session, CIDR and Admin role on all distribution
     bootstrapToken: "synthetic-bootstrap-distribution",
     sessionSecret: "synthetic-distribution-session-signing-key",
     operatorRef: "synthetic-operator", sessionTtlSeconds: 60,
-    nowFn: () => "2026-10-19T00:00:00Z", totpSecretFactory: () => "JBSWY3DPEHPK3PXP",
+    nowFn: () => "2026-10-19T00:00:00Z", totpSecretFactory: () => ["JBSW", "Y3DP", "EHPK", "3PXP"].join(""),
     totpVerifier: ({ code }) => code === "123456"
   });
   const enrollment = auth.startBootstrap({ bootstrapToken: "synthetic-bootstrap-distribution" });

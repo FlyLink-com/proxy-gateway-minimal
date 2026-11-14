@@ -39,6 +39,7 @@ import {
   createLocalPreviewInitialAccounts,
   previewPasswordForInitialAccount
 } from "./user-portal-preview-data";
+import { maskEmail, maskEmailOrKeep } from "./email-masking";
 import {
   createOtpauthUri,
   formatBase32Secret,
@@ -56,6 +57,9 @@ export function createLocalUserPortalClient(options: LocalUserPortalClientOption
       account.userRef,
       {
         ...account,
+        // Display only: the preview shows the masked email. The raw email
+        // stays the internal map key (userRef), never a display value.
+        displayName: maskEmailOrKeep(account.displayName ?? account.userRef),
         previewPassword: previewPasswordForInitialAccount(account, index, previewPassword)
       }
     ])
@@ -271,7 +275,7 @@ export function createLocalUserPortalClient(options: LocalUserPortalClientOption
       const issuedAt = now();
       initialAccounts.set(email, {
         userRef: email,
-        displayName: email,
+        displayName: maskEmail(email),
         issuedAt: issuedAt.toISOString(),
         previewPassword: password,
         requireSecuritySetup: false
@@ -280,7 +284,7 @@ export function createLocalUserPortalClient(options: LocalUserPortalClientOption
         status: "registered",
         userRef: email,
         commercialModel: "legacy",
-        session: sessionSummary(email, "password", issuedAt.toISOString(), email, stableRef("portal_session", email)),
+        session: sessionSummary(email, "password", issuedAt.toISOString(), maskEmail(email), stableRef("portal_session", email)),
         trial: {
           durationDays: 7,
           validUntil: expiresAtFromDays(issuedAt, 7),
@@ -318,7 +322,7 @@ export function createLocalUserPortalClient(options: LocalUserPortalClientOption
         if (!verified) {
           throw portalError("动态验证码无效或已过期。");
         }
-        return sessionSummary(accountId, input.mode, issuedAt.toISOString());
+        return sessionSummary(accountId, input.mode, issuedAt.toISOString(), maskEmailOrKeep(accountId));
       }
       if (input.mode === "password") {
         const loginRef = requiredText(input.accountId, "请输入电子邮箱。");
@@ -384,7 +388,7 @@ export function createLocalUserPortalClient(options: LocalUserPortalClientOption
       }
 
       secondFactorChallenges.delete(challengeRef);
-      return sessionSummary(challenge.userRef, input.factor === "passkey" ? "passkey" : "authenticator", now().toISOString());
+      return sessionSummary(challenge.userRef, input.factor === "passkey" ? "passkey" : "authenticator", now().toISOString(), maskEmailOrKeep(challenge.userRef));
     },
 
     async fetchCurrentState(input) {

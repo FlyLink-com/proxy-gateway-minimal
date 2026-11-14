@@ -1,4 +1,5 @@
 import { createHash, randomBytes } from "node:crypto";
+import { maskEmail } from "./email-masking.mjs";
 
 function portalAuthError(code, message) {
   const error = new Error(message);
@@ -348,7 +349,10 @@ export function createUserPortalAuthService({
 
   function publicBrowserSession({ session, account }) {
     const metadata = account.metadata && typeof account.metadata === "object" ? account.metadata : {};
-    const userRef = normalizeEmailLogin(metadata.loginRef) || "user_account";
+    // Display only: the session summary carries the masked email, never the
+    // raw login reference. Login resolution keeps using the raw email inside
+    // the server (G-02); the masked value is not an identifier.
+    const userRef = maskEmail(normalizeEmailLogin(metadata.loginRef));
     return {
       sessionRef: browserSessionContext(session.sessionRef),
       transport: "cookie",
@@ -794,7 +798,7 @@ export function createUserPortalAuthService({
       if (!account || account.status !== "active") {
         throw portalAuthError("invalid_login", "invalid_login");
       }
-      const publicRef = normalizeEmailLogin(input.loginRef) || "user_account";
+      const publicRef = maskEmail(normalizeEmailLogin(input.loginRef));
       const { session } = createSession({
         accountId,
         authMethod: "password",

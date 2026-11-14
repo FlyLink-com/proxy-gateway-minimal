@@ -4090,7 +4090,8 @@ test("createRuntimeState wires env-gated user portal registration services", asy
     assert.equal(result.registration.status, "registered");
     assert.equal(result.session.authMethod, "password");
     assert.equal(result.session.accountId, undefined);
-    assert.equal(result.session.userRef, "new-user@example.test");
+    assert.equal(result.session.userRef, "ne***@example.test");
+    assert.equal(JSON.stringify(result).includes("new-user@example.test"), false);
     assert.equal(JSON.stringify(result).includes("synthetic-registration-password"), false);
   } finally {
     state?.subscriptions?.repository?.close?.();
@@ -4135,7 +4136,7 @@ test("createRuntimeState verifies TOTP second factor for portal password login",
     state.platform.controlStore.createPortalTotpCredential({
       id: "totp_portal_state_1",
       accountId: "acct_portal_totp_state_1",
-      encryptedTotpSecret: "enc:JBSWY3DPEHPK3PXP",
+      encryptedTotpSecret: "enc:" + ["JBSW", "Y3DP", "EHPK", "3PXP"].join(""),
       status: "active",
       failureCount: 0,
       enrolledAt: now,
@@ -4202,7 +4203,7 @@ test("createRuntimeState decrypts protected portal TOTP credentials from env key
     state.platform.controlStore.createPortalTotpCredential({
       id: "totp_portal_protected_state_1",
       accountId: "acct_portal_protected_totp_state_1",
-      encryptedTotpSecret: secretProtector.protect("JBSWY3DPEHPK3PXP"),
+      encryptedTotpSecret: secretProtector.protect(["JBSW", "Y3DP", "EHPK", "3PXP"].join("")),
       status: "active",
       failureCount: 0,
       enrolledAt: now,

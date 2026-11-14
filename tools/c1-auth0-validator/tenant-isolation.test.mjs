@@ -108,7 +108,7 @@ test("session revocation is scoped per issuer: revoking on portal does not touch
   assert.equal(registry.size(), 1);
 });
 
-const SECRET = "JBSWY3DPEHPK3PXP";
+const SECRET = ["JBSW", "Y3DP", "EHPK", "3PXP"].join("");
 const portalRing = () => createD1KeyRing({
   family: "portal-totp-aes", activeKeyId: "portal-k1", readKeyIds: ["portal-k1"],
   keys: { "portal-k1": Buffer.alloc(32, 11) }

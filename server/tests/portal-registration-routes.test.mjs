@@ -279,19 +279,19 @@ test("portal registration creates an email-login account, seven-day trial, and p
       const registrationBody = await registrationResponse.json();
 
       assert.equal(registrationBody.registration.accountId, undefined);
-      assert.equal(registrationBody.registration.userRef, "local-user@example.test");
+      assert.equal(registrationBody.registration.userRef, "lo***@example.test");
       assert.equal(registrationBody.registration.status, "registered");
       assert.equal(registrationBody.registration.commercialModel, "legacy");
       assert.equal(registrationBody.registration.trial.durationDays, 7);
       assert.equal(registrationBody.registration.trial.validUntil, TRIAL_UNTIL);
       assert.equal(registrationBody.session.sessionRef, "portal_session_registration_1");
       assert.equal(registrationBody.session.accountId, undefined);
-      assert.equal(registrationBody.session.userRef, "local-user@example.test");
-      assert.equal(registrationBody.session.displayName, "local-user@example.test");
+      assert.equal(registrationBody.session.userRef, "lo***@example.test");
+      assert.equal(registrationBody.session.displayName, "lo***@example.test");
       assert.equal(registrationBody.session.authMethod, "password");
       assert.equal(registrationBody.handoff, undefined);
       assert.equal(registrationBody.registration.safety.noSubscriptionUrl, true);
-      assert.equal(registrationBody.registration.safety.emailReturnedToAccountOwner, true);
+      assert.equal(registrationBody.registration.safety.maskedEmailReturnedToAccountOwner, true);
       assert.equal(registrationBody.registration.safety.noInternalAccountIdReturned, true);
       assert.equal(registrationBody.registration.safety.rawPasswordReturned, false);
 
@@ -324,7 +324,8 @@ test("portal registration creates an email-login account, seven-day trial, and p
       assert.equal(store.getActivePortalPasswordCredential("acct_registration_1").status, "active");
 
       const serializedRegistration = JSON.stringify(registrationBody);
-      assert.equal(serializedRegistration.includes("local-user@example.test"), true);
+      assert.equal(serializedRegistration.includes("local-user@example.test"), false);
+      assert.equal(serializedRegistration.includes("lo***@example.test"), true);
       assert.equal(serializedRegistration.includes("acct_registration_1"), false);
       assert.equal(serializedRegistration.includes(REGISTRATION_PASSWORD), false);
       assert.equal(serializedRegistration.includes(REGISTRATION_EMAIL_CODE), false);

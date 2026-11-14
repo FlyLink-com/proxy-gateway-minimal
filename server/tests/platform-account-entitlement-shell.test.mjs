@@ -33,13 +33,14 @@ test("platform account shell converts a reviewed lead into an operator-safe acco
     leadId: "lead_1",
     status: "pending_review",
     organization: "Acme Research",
-    email: "ops@example.com",
+    email: "op***@example.com",
     displayName: "Acme Ops",
     entitlementCount: 0,
     usableEntitlementCount: 0,
     createdAt: NOW,
     updatedAt: NOW
   });
+  assert.equal(JSON.stringify(account).includes("ops@example.com"), false);
   assert.equal(JSON.stringify(shell.listAccounts()).includes("workflow automation details"), false);
 });
 

@@ -3,6 +3,7 @@ import {
   normalizePlatformAccount,
   normalizePlatformEntitlement
 } from "./control-plane-contract.mjs";
+import { maskEmailOrKeep } from "./email-masking.mjs";
 
 function platformError(code, message) {
   const error = new Error(message);
@@ -33,8 +34,10 @@ function summaryForAccount(account, entitlements, now) {
     leadId: account.leadId,
     status: account.status,
     organization: account.organization,
-    email: account.email,
-    displayName: account.displayName,
+    // Display only: the admin list shows the masked email, never the raw
+    // lead email. A non-email display label passes through unchanged.
+    email: maskEmailOrKeep(account.email),
+    displayName: maskEmailOrKeep(account.displayName),
     entitlementCount: entitlements.length,
     usableEntitlementCount,
     createdAt: account.createdAt,
