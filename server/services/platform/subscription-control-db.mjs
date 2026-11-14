@@ -1,5 +1,6 @@
 import { recordReferralRegistration } from './portal-referral-contract.mjs';
 import { createPortalSubscriptionLinkResetStore, verifyPortalSubscriptionLinkResetLineage } from "./portal-subscription-link-reset-store.mjs";
+import { IdentityBindingRepository } from "./d1-identity-binding-repository.mjs";
 import Database from "better-sqlite3";
 import { createHash, randomBytes } from "node:crypto";
 import { types as utilTypes } from "node:util";
@@ -1768,6 +1769,39 @@ export function createSqliteSubscriptionControlStore({
       on platform_portal_sessions(account_id);
     create index if not exists platform_portal_sessions_status_idx
       on platform_portal_sessions(status);
+
+    -- B2-2 (scope S): server-side mirror of the #864 Worker identity
+    -- bindings slice. Stores only opaque issuer / subject references and
+    -- an opaque account id. Raw email, display name, password, TOTP
+    -- material and email digests are deliberately absent. Production
+    -- target DDL remains gated by T3.
+    create table if not exists platform_identity_bindings (
+      id text primary key,
+      account_id text not null references platform_accounts(id) on delete restrict,
+      issuer_ref text not null check (issuer_ref in ('portal', 'admin')),
+      subject_ref text not null,
+      status text not null check (status in ('active', 'revoked')),
+      created_at_ms integer not null check (created_at_ms >= 0),
+      updated_at_ms integer not null check (updated_at_ms >= created_at_ms),
+      revoked_at_ms integer,
+      check (
+        (status = 'active' and revoked_at_ms is null)
+        or
+        (status = 'revoked' and revoked_at_ms is not null
+          and revoked_at_ms >= created_at_ms and revoked_at_ms <= updated_at_ms)
+      )
+    );
+
+    create unique index if not exists platform_identity_bindings_active_subject_idx
+      on platform_identity_bindings(issuer_ref, subject_ref)
+      where status = 'active';
+
+    create unique index if not exists platform_identity_bindings_active_account_idx
+      on platform_identity_bindings(account_id)
+      where status = 'active';
+
+    create index if not exists platform_identity_bindings_subject_idx
+      on platform_identity_bindings(issuer_ref, subject_ref, status);
   `);
 
   if (initializeSchema) ensureTableColumns(db, "platform_portal_access_requests", [
@@ -9466,6 +9500,7 @@ export function createSqliteSubscriptionControlStore({
     expireDuePortalRegistrationWelcomeCoinGrants,
     nextPortalRegistrationWelcomeCoinGrantWakeAt,
     resolvePortalLoginAccount,
+    identityBindingRepository() { return new IdentityBindingRepository(db); },
     getWalletFirstAccountForDeferredTransition,
     resolveExactWalletFirstResourceChainForDeferredTransition,
     readWalletFirstCurrentResourceProjection,
