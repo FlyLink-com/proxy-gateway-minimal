@@ -16,6 +16,9 @@ import {
   PortalIdentityDeletionService,
   buildReadbackAssertions
 } from "../services/platform/portal-identity-deletion.mjs";
+import {
+  createUserPortalAuthService
+} from "../services/platform/user-portal-auth.mjs";
 
 const NOW = 1794000000000;
 const NOW_ISO = new Date(NOW).toISOString();
@@ -149,6 +152,16 @@ function auditEventsFor(database, accountId) {
   return database.prepare(
     "select * from platform_audit_events where entity_ref = ? order by rowid"
   ).all(accountId);
+}
+
+// Second-factor completion under test: only the account-status re-check
+// is under test here, so the verifier accepts the single synthetic code.
+function createAuthService(store) {
+  return createUserPortalAuthService({
+    controlStore: store,
+    nowFn: () => NOW_ISO,
+    totpVerifier: ({ code }) => code === "123456"
+  });
 }
 
 test("request creates a job with step 0 completed and a requested audit event", () => withStore(({ database, store, service }) => {
@@ -799,3 +812,61 @@ test("buildReadbackAssertions: physical needs absent rows, logical needs revoked
     (error) => error.code === "identity_deletion_validation_error"
   );
 });
+
+test("followup (a): frozen account cannot complete verifyTotpAndCreateSession", () => withStore(({ store }) => {
+  makeAccount(store, "acct-del-0001");
+  makeTotpCredential(store, "acct-del-0001", "totp-del-0001");
+  const auth = createAuthService(store);
+  // Freeze through the real deletion step-1 write, not a hand-set flag,
+  // so the test proves the re-check reads the state the freeze writes.
+  store.freezeAccountForDeletion({ accountId: "acct-del-0001", updatedAt: NOW_ISO });
+  assert.equal(store.getAccount("acct-del-0001").status, "suspended");
+  assert.throws(
+    () => auth.verifyTotpAndCreateSession({ accountId: "acct-del-0001", code: "123456" }),
+    (error) => error.code === "invalid_login"
+  );
+  assert.equal(store.listPortalSessions({ accountId: "acct-del-0001" }).length, 0);
+  // The credential is still active: the rejection came from the account
+  // status re-check, not from credential revocation.
+  assert.equal(store.getActivePortalTotpCredential("acct-del-0001").id, "totp-del-0001");
+}));
+
+test("followup (a): frozen account cannot complete a pre-freeze second-factor challenge", () => withStore(({ store }) => {
+  makeAccount(store, "acct-del-0001");
+  makeTotpCredential(store, "acct-del-0001", "totp-del-0001");
+  makeChallenge(store, "acct-del-0001", "chal-del-0001");
+  const auth = createAuthService(store);
+  store.freezeAccountForDeletion({ accountId: "acct-del-0001", updatedAt: NOW_ISO });
+  assert.equal(store.getAccount("acct-del-0001").status, "suspended");
+  assert.throws(
+    () => auth.completeSecondFactor({ challengeRef: "chal-del-0001", factor: "totp", code: "123456" }),
+    (error) => error.code === "invalid_login"
+  );
+  assert.equal(store.listPortalSessions({ accountId: "acct-del-0001" }).length, 0);
+  // Rejected before the success transaction: the challenge is still
+  // active and the credential is still active.
+  assert.equal(store.getPortalSecondFactorChallenge("chal-del-0001").status, "active");
+  assert.equal(store.getActivePortalTotpCredential("acct-del-0001").id, "totp-del-0001");
+}));
+
+test("followup (a): active account completes verifyTotpAndCreateSession normally", () => withStore(({ store }) => {
+  makeAccount(store, "acct-del-0001");
+  makeTotpCredential(store, "acct-del-0001", "totp-del-0001");
+  const auth = createAuthService(store);
+  const result = auth.verifyTotpAndCreateSession({ accountId: "acct-del-0001", code: "123456" });
+  assert.equal(result.session.authMethod, "totp");
+  assert.equal(result.session.status, "active");
+  assert.equal(store.listPortalSessions({ accountId: "acct-del-0001" }).length, 1);
+}));
+
+test("followup (a): active account completes a second-factor challenge normally", () => withStore(({ store }) => {
+  makeAccount(store, "acct-del-0001");
+  makeTotpCredential(store, "acct-del-0001", "totp-del-0001");
+  makeChallenge(store, "acct-del-0001", "chal-del-0001");
+  const auth = createAuthService(store);
+  const result = auth.completeSecondFactor({ challengeRef: "chal-del-0001", factor: "totp", code: "123456" });
+  assert.equal(result.session.authMethod, "totp");
+  assert.equal(result.session.status, "active");
+  assert.equal(store.listPortalSessions({ accountId: "acct-del-0001" }).length, 1);
+  assert.equal(store.getPortalSecondFactorChallenge("chal-del-0001").status, "used");
+}));

@@ -23,18 +23,17 @@
 //   are stripped from metadata.
 // - The freeze (step 1) is effective through the existing login paths
 //   that check account status (password login, session creation, session
-//   use, entry issuance), but it does NOT cover the second-factor
-//   completion paths: `completeSecondFactor` / `verifyTotpAndCreateSession`
-//   do not re-check account status, so a challenge issued before the
-//   freeze (300s TTL) plus a valid TOTP code can still create a new
-//   session row between steps 1 and 3. Three mitigations make the window
-//   fail-closed: step 3 revokes all credentials (after which those paths
-//   find no active credential), session use still checks account status
+//   use, entry issuance). The second-factor completion paths
+//   (`completeSecondFactor` / `verifyTotpAndCreateSession`) now re-check
+//   account status too (follow-up batch, B2-4c followup): a challenge
+//   issued before the freeze (300s TTL) plus a valid TOTP code can no
+//   longer create a new session row once the account is suspended.
+//   The three mitigations below remain true as defence in depth: step 3
+//   revokes all credentials (after which those paths find no active
+//   credential), session use still checks account status
 //   (`getActiveSessionContext` rejects non-active accounts), and the
 //   step 7 read-back verification fails the job if any active session
-//   row exists. This module does not touch login code; making the
-//   second-factor completion paths re-check account status is a
-//   follow-up batch item (see below).
+//   row exists.
 // - "Recovery" here means safe resume / retry / compensation of a failed
 //   deletion task, never restoring already-deleted data. Deleted data is
 //   not restored by this module.
@@ -49,10 +48,10 @@
 //   deletion request for the same account. Abandonment does NOT unfreeze
 //   the account: the account keeps its current status, and unfreezing is
 //   a separate decision.
-// - Follow-up batch items (out of scope for this batch, recorded here so
-//   they are not silently dropped): (a) second-factor completion paths
-//   re-check account status (see the freeze note above); (b) the
-//   unfreeze decision for abandoned jobs.
+// - Follow-up batch items: (a) second-factor completion paths re-check
+//   account status — DONE in the B2-4c followup batch (see the freeze
+//   note above); (b) the unfreeze decision for abandoned jobs — still
+//   open (a business decision, not a code change).
 
 import { randomBytes } from "node:crypto";
 

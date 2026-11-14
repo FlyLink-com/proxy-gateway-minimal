@@ -441,6 +441,12 @@ test("user portal auth rejects TOTP verification when no credential row exists",
 test("user portal auth fails closed when the TOTP credential store is unavailable", () => {
   const service = createUserPortalAuthService({
     controlStore: {
+      // verifyTotpAndCreateSession re-checks account status first
+      // (same store read as the password-login check), so the
+      // unavailable-store failure must surface from that read too.
+      getAccount: () => {
+        throw new Error("control store unavailable");
+      },
       getActivePortalTotpCredential: () => {
         throw new Error("control store unavailable");
       }
