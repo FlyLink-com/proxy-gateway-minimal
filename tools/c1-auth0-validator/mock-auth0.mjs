@@ -56,8 +56,26 @@ export function totpAt(secretBase32, timestampMs, digits = 6) {
   const binary = ((mac[offset] & 127) << 24) | (mac[offset + 1] << 16) | (mac[offset + 2] << 8) | mac[offset + 3];
   return String(binary % (10 ** digits)).padStart(digits, "0");
 }
-function totpMatches(secretBase32, code, timestampMs) {
-  return [-30000, 0, 30000].some((delta) => totpAt(secretBase32, timestampMs + delta) === String(code));
+// B2-1 (G-11): a TOTP code is bound to the 30 s counter it was generated for.
+// Return that counter so the caller can record consumption; null means no
+// window matched. The ±30 s acceptance window itself is unchanged.
+function matchingTotpCounter(secretBase32, code, timestampMs) {
+  for (const delta of [-30000, 0, 30000]) {
+    const counter = Math.floor((timestampMs + delta) / 30000);
+    if (totpAt(secretBase32, timestampMs + delta) === String(code)) return counter;
+  }
+  return null;
+}
+
+// B2-1 (G-11): canonical fingerprint of an import record, so a cross-call
+// repeat can be told apart from a conflicting re-import. Key order is
+// normalized; a missing field and an explicit null canonicalize the same way.
+function canonicalJson(value) {
+  if (value === null || value === undefined) return "null";
+  if (typeof value !== "object") return JSON.stringify(value) ?? "null";
+  if (Array.isArray(value)) return "[" + value.map(canonicalJson).join(",") + "]";
+  const keys = Object.keys(value).sort();
+  return "{" + keys.map((k) => JSON.stringify(k) + ":" + canonicalJson(value[k])).join(",") + "}";
 }
 
 // The attestation record stores only a bucket; the import gate needs a byte
@@ -77,6 +95,13 @@ export function createMockTenant({ tenantRef, issuerRef, nowFn = () => Date.now(
   const jwk = { ...publicKey.export({ format: "jwk" }), kid, alg: "EdDSA", use: "sig" };
   const users = new Map();       // email -> user record (credentials never leave via inspect)
   const enrollments = new Map(); // accountRef -> { secretBase32 }
+  // B2-1 (G-11): email -> the import that wrote the user record, for
+  // cross-call idempotency / conflict detection. Held records write nothing
+  // and are never stored here.
+  const importRecords = new Map(); // email -> { accountRef, fingerprint, action, advisories }
+  // B2-1 (G-11): accountRef -> counters already consumed by a successful
+  // step-up. Counters only, never secrets; cleared on re-enrollment.
+  const consumedTotpCounters = new Map(); // accountRef -> Set<counter>
   const revocations = createSessionRevocationRegistry();
   let sessionSeq = 0;
 
@@ -166,13 +191,38 @@ export function createMockTenant({ tenantRef, issuerRef, nowFn = () => Date.now(
             envelope: account.envelope,
             attestedUtf8Bytes: attestedBytesFromRecord(attestation)
           });
-        prepared.push({ accountRef, email, classification, plan });
+        // B2-1 (G-11): cross-call check, still before the first user write so
+        // a conflicting batch writes nothing at all. Held records never reach
+        // importRecords, so a repeat of a held record simply re-holds.
+        const fingerprint = canonicalJson({
+          accountRef, email,
+          envelope: account.envelope ?? null,
+          attestation: account.attestation ?? null
+        });
+        const existing = importRecords.get(email);
+        if (existing) {
+          if (existing.accountRef !== accountRef) throw fail("import_duplicate_email");
+          if (existing.fingerprint !== fingerprint) throw fail("import_record_conflict");
+          prepared.push({
+            accountRef, email, classification, plan,
+            idempotent: true, replayAction: existing.action,
+            replayAdvisories: [...existing.advisories]
+          });
+          continue;
+        }
+        prepared.push({ accountRef, email, classification, plan, fingerprint });
       }
 
       // All input, attestation, uniqueness, and import-plan validation has
       // completed before the first user write.
       const report = [];
-      for (const { accountRef, email, classification, plan } of prepared) {
+      for (const { accountRef, email, classification, plan, fingerprint, idempotent, replayAction, replayAdvisories } of prepared) {
+        if (idempotent) {
+          // B2-1 (G-11): identical repeat — success with the original outcome,
+          // no write, no overwrite.
+          report.push({ accountRef, action: replayAction, advisories: [...replayAdvisories] });
+          continue;
+        }
         if (classification.eligibility === "r1_implementation_proof_hold") {
           report.push({
             accountRef,
@@ -187,11 +237,18 @@ export function createMockTenant({ tenantRef, issuerRef, nowFn = () => Date.now(
             credential: { kind: "scrypt", auth0: plan.auth0 },
             advisories: [...classification.advisories]
           });
+          importRecords.set(email, {
+            accountRef, fingerprint, action: "imported",
+            advisories: [...classification.advisories]
+          });
           report.push({ accountRef, action: "imported", advisories: [...classification.advisories] });
         } else if (plan.action === "targeted_reset") {
           users.set(email, {
             accountRef, email, status: "reset_required",
             credential: null, advisories: []
+          });
+          importRecords.set(email, {
+            accountRef, fingerprint, action: "reset_required", advisories: []
           });
           report.push({ accountRef, action: "reset_required", advisories: [] });
         } else {
@@ -256,6 +313,8 @@ export function createMockTenant({ tenantRef, issuerRef, nowFn = () => Date.now(
     enrollTotp(accountRef) {
       const secretBase32 = base32Encode(randomBytes(20));
       enrollments.set(accountRef, { secretBase32 });
+      // B2-1 (G-11): a new secret starts with a fresh counter set.
+      consumedTotpCounters.delete(accountRef);
       return Object.freeze({ secretBase32 });
     },
     hasTotp: (accountRef) => enrollments.has(accountRef),
@@ -272,7 +331,18 @@ export function createMockTenant({ tenantRef, issuerRef, nowFn = () => Date.now(
       }
       const enrollment = enrollments.get(context.accountRef);
       if (!enrollment) throw fail("totp_not_enrolled");
-      if (!totpMatches(enrollment.secretBase32, code, nowMs)) throw fail("totp_code_invalid");
+      // B2-1 (G-11): a consumed counter is a replay, not a valid code. This
+      // runs before the already-has-totp fast path, so presenting the same
+      // code twice never upgrades twice.
+      const counter = matchingTotpCounter(enrollment.secretBase32, code, nowMs);
+      if (counter === null) throw fail("totp_code_invalid");
+      let consumed = consumedTotpCounters.get(context.accountRef);
+      if (!consumed) {
+        consumed = new Set();
+        consumedTotpCounters.set(context.accountRef, consumed);
+      }
+      if (consumed.has(counter)) throw fail("totp_code_reused");
+      consumed.add(counter);
       if (context.factors.includes("totp")) return context;
       return Object.freeze({ ...context, factors: Object.freeze([...context.factors, "totp"]) });
     },
