@@ -120,10 +120,15 @@ export function createMockTenant({ tenantRef, issuerRef, nowFn = () => Date.now(
   function buildContext(user, factors, nowMs) {
     const sessionRef = "sess-" + (++sessionSeq).toString(16).padStart(4, "0") + randomBytes(4).toString("hex");
     const subjectRef = "auth0|" + user.accountRef;
+    // Mock drift fix (#864 dual-time semantics): the actor context carries
+    // both issuedAtMs (token issuance, from the token's iat) and authTimeMs
+    // (the authentication event). A login is a fresh authentication, so both
+    // are nowMs here; they must stay separate fields, never conflated.
     const context = Object.freeze({
       accountRef: user.accountRef, audience: "flylink-control-plane",
       authTimeMs: nowMs, expiresAtMs: nowMs + 120000,
-      factors: Object.freeze([...factors]), issuerRef, sessionRef, subjectRef
+      factors: Object.freeze([...factors]), issuedAtMs: nowMs,
+      issuerRef, sessionRef, subjectRef
     });
     return { context, token: issueToken({ subjectRef, sessionRef, factors, nowMs }) };
   }
