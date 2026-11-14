@@ -672,3 +672,69 @@ test("a failing failed-verification audit write preserves the original verificat
     assertNoSecretMaterial(auditEvents(database));
   });
 });
+
+test("an admin audit failure during confirm rolls the credential back and leaves the enrollment retryable", () => {
+  // P3-N1 (re-review fix): the P2-2 transactional fix on the Admin
+  // confirm path had no regression test. Fail the bound-event write so
+  // the whole transaction must roll back — including the verified event
+  // written before it — and the same enrollment must stay retryable.
+  withStore(({ store, database, clock }) => {
+    const passwordService = createPasswordService(store, clock);
+    const plainPassword = issuePassword(passwordService, "acct_admin_1");
+    const auth = createAdminService(store, clock, passwordService);
+    const started = auth.startBootstrap({ bootstrapToken: plainPassword });
+    const enrollmentRef = started.enrollment.enrollmentRef;
+    const originalRecordAuditEvent = store.recordAuditEvent.bind(store);
+    let failBoundOnce = true;
+    store.recordAuditEvent = (input) => {
+      if (failBoundOnce && input.action === "totp_enrollment_bound") {
+        failBoundOnce = false;
+        throw new Error("synthetic audit storage failure");
+      }
+      return originalRecordAuditEvent(input);
+    };
+    assert.throws(() => auth.confirmTotpEnrollment({ enrollmentRef, code: STUB_CODE }),
+      /synthetic audit storage failure/);
+    assert.equal(store.getActivePortalTotpCredential("acct_admin_1"), null);
+    assert.equal(auditEvents(database, "totp_enrollment_started").length, 1);
+    assert.equal(auditEvents(database, "totp_enrollment_code_verified").length, 0);
+    assert.equal(auditEvents(database, "totp_enrollment_bound").length, 0);
+    const session = auth.confirmTotpEnrollment({ enrollmentRef, code: STUB_CODE });
+    assert.equal(session.session.authMethod, "totp");
+    assert.equal(auditEvents(database, "totp_enrollment_code_verified").length, 1);
+    assert.equal(auditEvents(database, "totp_enrollment_code_verified")[0].metadata.result, "verified");
+    assert.equal(auditEvents(database, "totp_enrollment_bound").length, 1);
+    assert.equal(store.getActivePortalTotpCredential("acct_admin_1").status, "active");
+    assertNoSecretMaterial(auditEvents(database));
+  });
+});
+
+test("an admin failing failed-verification audit write preserves the original invalid_totp error", () => {
+  // P3-N1 (re-review fix): mirror of the Portal tolerance test for the
+  // Admin failed path — the failed event is best-effort evidence, and a
+  // write failure must not mask the invalid_totp outcome.
+  withStore(({ store, database, clock }) => {
+    const passwordService = createPasswordService(store, clock);
+    const plainPassword = issuePassword(passwordService, "acct_admin_1");
+    const auth = createAdminService(store, clock, passwordService);
+    const started = auth.startBootstrap({ bootstrapToken: plainPassword });
+    const enrollmentRef = started.enrollment.enrollmentRef;
+    const originalRecordAuditEvent = store.recordAuditEvent.bind(store);
+    store.recordAuditEvent = (input) => {
+      if (input.action === "totp_enrollment_code_verified" && input.metadata?.result === "failed") {
+        throw new Error("synthetic audit storage failure");
+      }
+      return originalRecordAuditEvent(input);
+    };
+    assert.throws(() => auth.confirmTotpEnrollment({ enrollmentRef, code: WRONG_CODE }),
+      { code: "invalid_totp" });
+    assert.equal(auditEvents(database, "totp_enrollment_code_verified").length, 0);
+    assert.equal(store.getActivePortalTotpCredential("acct_admin_1"), null);
+    const session = auth.confirmTotpEnrollment({ enrollmentRef, code: STUB_CODE });
+    assert.equal(session.session.authMethod, "totp");
+    assert.equal(auditEvents(database, "totp_enrollment_code_verified").length, 1);
+    assert.equal(auditEvents(database, "totp_enrollment_code_verified")[0].metadata.result, "verified");
+    assert.equal(auditEvents(database, "totp_enrollment_bound").length, 1);
+    assertNoSecretMaterial(auditEvents(database));
+  });
+});
