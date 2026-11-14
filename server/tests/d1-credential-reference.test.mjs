@@ -174,12 +174,12 @@ test("row guard rejects unknown keys and bad values", () => {
 test("row guard validates opaque account references and rejects secret-like values", () => {
   const validAccountRefs = [
     "acct_ref_1",
-    \`acct_\${HEX24()}\`,
-    \`acct_portal_\${HEX24()}\`,
+    "acct_" + HEX24(),
+    "acct_portal_" + HEX24(),
     "admin_operator_1"
   ];
   for (const accountRef of validAccountRefs) {
-    const row = validateD1CredentialRow(totpRow(\`portal_totp_\${HEX24()}\`, { accountRef }));
+    const row = validateD1CredentialRow(totpRow("portal_totp_" + HEX24(), { accountRef }));
     assert.equal(row.accountRef, accountRef);
   }
 
@@ -200,7 +200,7 @@ test("row guard validates opaque account references and rejects secret-like valu
   ];
   for (const accountRef of invalidAccountRefs) {
     assert.throws(
-      () => validateD1CredentialRow(totpRow(\`portal_totp_\${HEX24()}\`, { accountRef })),
+      () => validateD1CredentialRow(totpRow("portal_totp_" + HEX24(), { accountRef })),
       /credential_row_invalid/u,
       JSON.stringify(accountRef)
     );
@@ -225,15 +225,15 @@ test("row guard requires canonical UTC millisecond timestamps and valid calendar
   for (const field of timestampFields) {
     for (const value of invalidTimestamps) {
       assert.throws(
-        () => validateD1CredentialRow(totpRow(\`portal_totp_\${HEX24()}\`, { [field]: value })),
+        () => validateD1CredentialRow(totpRow("portal_totp_" + HEX24(), { [field]: value })),
         /credential_row_invalid/u,
-        \`\${field}: \${value}\`
+        field + ": " + value
       );
     }
   }
 
   const leapDay = "2024-02-29T23:59:59.999Z";
-  const valid = validateD1CredentialRow(totpRow(\`portal_totp_\${HEX24()}\`, {
+  const valid = validateD1CredentialRow(totpRow("portal_totp_" + HEX24(), {
     createdAt: leapDay
   }));
   assert.equal(valid.createdAt, leapDay);

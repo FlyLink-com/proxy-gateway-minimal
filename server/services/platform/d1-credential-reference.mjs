@@ -112,7 +112,7 @@ export function isValidCredentialRef(ref) {
   }
 }
 
-const CANONICAL_ISO_TIMESTAMP_PATTERN = /^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$/u;
+const CANONICAL_ISO_TIMESTAMP_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u;
 
 function requireIsoText(value, code) {
   if (value === null || value === undefined) return null;
