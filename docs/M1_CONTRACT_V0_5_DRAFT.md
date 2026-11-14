@@ -5,7 +5,7 @@ document_metadata:
   doc_type: governance
   lifecycle: draft
   authority_scope: m1_contract_v0_5
-  supersedes: m1_contract_v0_4
+  supplements: m1_contract_v0_4
   source_anchor: master@c1d61e58d6eae9dd577216355632638fc95a46f8
   verified_at: 2026-11-14
   production_authority: false
@@ -17,6 +17,8 @@ document_metadata:
 ## 1. Purpose, precedence and scope
 
 This revision consolidates the current source-review evidence, remaining business decisions, accountability model, and formal gates for M1/T2 closeout.
+
+This revision supplements v0.4; it does not replace it. v0.4 remains effective for its approved items (G-01, G-02, G-04, G-05, G-06, G-07, G-09, G-10B, G-11), D-01–D-10, C-01–C-10, and the B2 batch gates.
 
 The current authorization covers this independent Draft branch and Draft PR only. It does not authorize Ready, merge, CI, BWH or production access, customer-data access, real secret creation, remote D1 mutation, deployment, dual-write, migration, traffic split, DNS/route/schedule changes, or cutover.
 
@@ -32,7 +34,7 @@ A PR review marked APPROVED is source-review evidence bound to that exact HEAD. 
 |---|---:|---|---|---|
 | G-10A deletion proof | #870 | `7fb76ace` | APPROVED | HTTP trigger, unfinished-job/re-registration policy, unfreeze/re-auth policy, C5-dependent acceptance |
 | G-12 password specification R1 | #871 | `4ae2289d` | APPROVED | Named accountable owner and formal specification approval method; production format inventory remains separately gated |
-| G-03 masked email display | #872 | `2f6d86ec` | APPROVED | D1 writer/storage integration and decision on raw Leads email projection |
+| G-03 masked email display | #872 | `2f6d86ec` | APPROVED | D1 writer/storage integration and decision on raw Leads email projection; follow-up technical items OBS-5 and OBS-1 in progress |
 | G-08 TOTP enrollment lifecycle proof | #873 | `bf7393e9` | APPROVED | P-4 decisions, P-5 inventory authorization, named lifecycle/security owners, C5-dependent acceptance |
 
 These are four source-review completions, not four completed business gates. Each approval is valid only for its exact reviewed tree and authorizes no Ready transition, merge, production inventory, migration, or deployment.
@@ -87,7 +89,7 @@ Role labels are not named approvals. Do not invent owner names. Where multiple f
 | RET-02 | Raw usage samples | Data/Product: purpose, aggregation/minimization, finite TTL and workload justification | Exclude raw samples from initial D1 |
 | RET-03 | Financial ledger, payment receipts, commerce orders | Finance + Legal + Payment: jurisdiction-aware duration, immutable terminal behavior, disputes/reconciliation and legal hold | No guessed duration; preserve current authority; D1 copy deferred |
 | RET-04 | Audit events | Security/Compliance: retention, export access, legal hold, purge proof | No guessed duration; preserve integrity |
-| RET-05 | Idempotency receipts and provider-event dedupe | Payment/Commerce: maximum client retry, provider replay and reconciliation windows; exact bounds and HMAC key-ID overlap | D1 copy deferred pending approved bounds |
+| RET-05 | Idempotency receipts and provider-event dedupe | Payment/Commerce: maximum client retry, provider replay and reconciliation windows; exact bounds and retain corresponding HMAC key IDs | D1 copy deferred pending approved bounds |
 | RET-06 | Portal sessions and second-factor challenges | Identity/Security: bounded post-terminal audit window, purge cadence and evidence | Preserve active lifecycle; no inferred post-terminal TTL |
 | RET-07 | Portal access requests/events | Portal/Product: separate business expiry from event-history retention, terminal purge and redacted evidence | No inferred event-history TTL |
 | RET-08 | Deferred transitions and wallet-first quotes | Wallet/Commerce: reconciliation closure, replay/idempotency window, purge/tombstone period | Lease/quote TTL is not retention approval |
@@ -112,7 +114,7 @@ Each item remains OPEN until the repository records:
 - **G-10A:** service-layer deletion proof is not an HTTP-triggered user journey. Its irreversible deletion boundary must fail closed when C5-undecided tables contain residual rows. No production deletion is authorized.
 - **G-12:** R1 tests lock specified password behavior but do not designate the accountable password-policy owner or approve a production inventory.
 - **G-03:** masked presentation does not remove raw email from source storage, D1 writers, logs, or Leads projections. Storage custody and Leads display policy remain separate decisions.
-- **G-08:** enrollment audit proof must never contain TOTP secrets, codes, or ciphertext. P-4 lifecycle decisions and P-5 production inventory are separate gates; this contract does not authorize P-5 access.
+- **G-08:** enrollment audit proof must never contain TOTP secrets, codes, or ciphertext. General identity-binding tests alone cannot declare G-08 complete; the proof scope is strictly the TOTP enrollment lifecycle. P-4 lifecycle decisions and P-5 production inventory are separate gates; this contract does not authorize P-5 access.
 
 ## 6. Formal T2 acceptance
 
@@ -137,6 +139,7 @@ BWH remains the sole production writer unless a later separate explicit authoriz
 
 ## 8. Change log from v0.4
 
+- Positions v0.5 as a supplement to v0.4 (not a replacement); v0.4 remains effective for its approved items.
 - Distinguishes source-review completion from business/formal acceptance for G-10A, G-12, G-03 and G-08.
 - Adds role accountability while leaving unconfirmed domain-owner names blank.
 - Consolidates RET-02–RET-11 into decision domains and records safe interim D1 exclusion/defer dispositions.
