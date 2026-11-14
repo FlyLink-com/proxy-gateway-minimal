@@ -39,3 +39,7 @@ tools/g2-p1/.miniflare-d1/
 # G2-P2 probe runner transient artifacts (rebuilt on every run)
 tools/g2-p2/.g2-p2-run-build.sqlite
 tools/g2-p2/.miniflare-d1/
+
+# G2-P3 probe runner transient artifacts (rebuilt on every run)
+tools/g2-p3/.g2-p3-run-build.sqlite
+tools/g2-p3/.miniflare-d1/

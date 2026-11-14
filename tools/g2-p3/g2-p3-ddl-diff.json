@@ -1,0 +1,20 @@
+{
+  "meta": {
+    "baseline": "b4bac535",
+    "g2Baseline": "master 63082bae5d980c3905d6e7405329b19e6c4e38ac (stage-7 pagination evidence, pagination-results.json)",
+    "note": "Frozen comparison: each pagination query as frozen by stage 7 (63082bae) vs the live query text at the baseline (this checkout's own production source). Comparison is whitespace-normalized. The ledger query is byte-identical; the accounts query is identical after inlining the registration-source constant (a refactor into a named constant, not a semantic change)."
+  },
+  "ledger": {
+    "query": "coin-wallet-store.mjs listLedgerEntries",
+    "stage7FrozenSqlNormalizedSha256": "94b4ca3172d82ab01b7cb0ecb8f28bdbd9e7018c73e33e11f41602e47ef01aac",
+    "liveSqlNormalizedSha256": "94b4ca3172d82ab01b7cb0ecb8f28bdbd9e7018c73e33e11f41602e47ef01aac",
+    "identicalNormalized": true
+  },
+  "accounts": {
+    "query": "subscription-control-db.mjs listUserMonitorAccountDirectory",
+    "stage7FrozenSqlNormalizedSha256": "eb8f4a26faa44f8ebf53a2f4db7e542c2b7b008bcd122ead8e9d9b8782444fae",
+    "liveSqlNormalizedSha256AfterInlining": "eb8f4a26faa44f8ebf53a2f4db7e542c2b7b008bcd122ead8e9d9b8782444fae",
+    "identicalNormalizedAfterInlining": true,
+    "note": "Live directory query embeds ${USER_MONITOR_REGISTRATION_SOURCE_SQL}; the stage-7 frozen copy inlined the same CASE expression verbatim. Predicate, ORDER BY and LIMIT are identical; only the extraction into a named constant changed."
+  }
+}
