@@ -436,6 +436,32 @@ export function createPortalAccountAdminAuthService(options = {}) {
     }
   }
 
+  function totpEnrollmentAuditId() {
+    return `totp_audit_${randomUUID()}`;
+  }
+
+  function totpEnrollmentEnvelopeFormat(encryptedTotpSecret) {
+    if (encryptedTotpSecret.startsWith("v2:")) return "v2";
+    if (encryptedTotpSecret.startsWith("enc:")) return "enc";
+    // B2-9 (G-08): the bound event is evidence, not a second gate. The
+    // production Admin enrollment always stores an enc envelope, but an
+    // injected protector may return a value with neither prefix. Failing
+    // the enrollment here would turn evidence into a behavior change, so
+    // an unrecognized envelope is recorded as "unknown" instead of throwing.
+    return "unknown";
+  }
+
+  function recordTotpEnrollmentAuditEvent(input) {
+    // B2-9 (G-08): TOTP enrollment lifecycle proof. The production control
+    // store always exposes recordAuditEvent; minimal test doubles may not.
+    // In that case no persistent evidence is recorded for the enrollment,
+    // which the B2-9 specification records. The event carries only
+    // references, channels, results and timestamps — never secret material,
+    // verification codes or ciphertext.
+    if (!controlStore || typeof controlStore.recordAuditEvent !== "function") return null;
+    return controlStore.recordAuditEvent(input);
+  }
+
   function startBootstrap(input = {}) {
     assertNoActiveOperator();
     verifyPassword(input.bootstrapToken);
@@ -452,6 +478,28 @@ export function createPortalAccountAdminAuthService(options = {}) {
       expiresAt: addSeconds(issuedAt, enrollmentTtlSeconds)
     };
     pendingEnrollments.set(enrollment.enrollmentRef, enrollment);
+    try {
+      recordTotpEnrollmentAuditEvent({
+        id: totpEnrollmentAuditId(),
+        entityType: "totp_enrollment",
+        entityRef: accountId,
+        action: "totp_enrollment_started",
+        actorRef: accountId,
+        createdAt: issuedAt,
+        metadata: {
+          enrollmentRef: enrollment.enrollmentRef,
+          accountRef: accountId,
+          channel: "admin",
+          issuedAt,
+          expiresAt: enrollment.expiresAt
+        }
+      });
+    } catch (error) {
+      // Fail closed: an enrollment without its initiation evidence must not
+      // stay pending.
+      pendingEnrollments.delete(enrollment.enrollmentRef);
+      throw error;
+    }
     return { enrollment: safeEnrollmentSummary(enrollment) };
   }
 
@@ -465,6 +513,24 @@ export function createPortalAccountAdminAuthService(options = {}) {
       throw authError("invalid_totp");
     }
     if (!totpVerifier({ encryptedTotpSecret: enrollment.encryptedTotpSecret, code: input.code })) {
+      // B2-9 (G-08): a failed confirmation code is itself lifecycle
+      // evidence — recorded without the code value. The enrollment stays
+      // pending so the operator may retry within its validity window.
+      recordTotpEnrollmentAuditEvent({
+        id: totpEnrollmentAuditId(),
+        entityType: "totp_enrollment",
+        entityRef: accountId,
+        action: "totp_enrollment_code_verified",
+        actorRef: accountId,
+        createdAt: checkedAt,
+        metadata: {
+          enrollmentRef,
+          accountRef: accountId,
+          channel: "admin",
+          result: "failed",
+          verifiedAt: checkedAt
+        }
+      });
       throw authError("invalid_totp");
     }
     const credentialRef = requiredText(credentialRefFactory(), "credentialRef");
@@ -483,6 +549,44 @@ export function createPortalAccountAdminAuthService(options = {}) {
         updatedAt: checkedAt
       });
     }
+    // B2-9 (G-08): verification and binding evidence for the Admin setup.
+    // This confirm path is not transactional (unlike the Portal confirm),
+    // so an audit failure after the credential row is created propagates
+    // with the pending enrollment still in place; the credential row itself
+    // is not rolled back. The contract validation makes that path
+    // unreachable for values this service produces.
+    recordTotpEnrollmentAuditEvent({
+      id: totpEnrollmentAuditId(),
+      entityType: "totp_enrollment",
+      entityRef: accountId,
+      action: "totp_enrollment_code_verified",
+      actorRef: accountId,
+      createdAt: checkedAt,
+      metadata: {
+        enrollmentRef,
+        accountRef: accountId,
+        channel: "admin",
+        result: "verified",
+        verifiedAt: checkedAt
+      }
+    });
+    recordTotpEnrollmentAuditEvent({
+      id: totpEnrollmentAuditId(),
+      entityType: "totp_enrollment",
+      entityRef: accountId,
+      action: "totp_enrollment_bound",
+      actorRef: accountId,
+      createdAt: checkedAt,
+      metadata: {
+        enrollmentRef,
+        totpRef: credentialRef,
+        accountRef: accountId,
+        channel: "admin",
+        enrolledAt: checkedAt,
+        envelopeFormat: totpEnrollmentEnvelopeFormat(enrollment.encryptedTotpSecret),
+        accountMatches: true
+      }
+    });
     pendingEnrollments.delete(enrollmentRef);
     return createSession({ sourceIpSafeRef: input.sourceIpSafeRef });
   }

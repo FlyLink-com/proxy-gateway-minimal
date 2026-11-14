@@ -8398,7 +8398,7 @@ export function createSqliteSubscriptionControlStore({
       return JSON.stringify(metadata);
     }
 
-    if (entityType === "identity_deletion") {
+if (entityType === "identity_deletion") {
       // B2-4c (G-10A): deletion proof audit events. Metadata carries only
       // references, scope, results and timestamps — never deleted personal
       // data or credential material. Keys are checked against the unsafe
@@ -8537,6 +8537,98 @@ export function createSqliteSubscriptionControlStore({
       }
 
       throw platformError("validation_error", "identity deletion audit action is not allowed");
+    }
+
+if (entityType === "totp_enrollment") {
+      // B2-9 (G-08): TOTP enrollment lifecycle proof audit events. Metadata
+      // carries only references, channels, results and timestamps — never
+      // secret material, verification codes or ciphertext. Keys are checked
+      // against the unsafe field list by recordAuditEvent before this runs,
+      // so no key here may contain email / password / secret / token /
+      // credential / raw. entityRef and actorRef are both bound to the
+      // enrolled account: enrollment is always self-service for that account
+      // (Portal self-enrollment, Admin self-setup, entry-path enrollment for
+      // the entry's account).
+      const enrollmentChannels = new Set(["portal", "admin", "entry"]);
+      const enrollmentFormats = new Set(["v2", "enc", "unknown"]);
+      if (action === "totp_enrollment_started") {
+        exactObject(metadata, {
+          allowed: ["enrollmentRef", "accountRef", "channel", "issuedAt", "expiresAt"],
+          required: ["enrollmentRef", "accountRef", "channel", "issuedAt", "expiresAt"],
+          name: "totpEnrollmentStartedAuditMetadata"
+        });
+        safeControlRef(metadata.enrollmentRef, "enrollmentRef");
+        safeControlRef(metadata.accountRef, "accountRef");
+        if (!enrollmentChannels.has(metadata.channel) || metadata.channel === "entry") {
+          throw platformError("validation_error", "TOTP enrollment started channel is invalid");
+        }
+        isoText(metadata.issuedAt, "issuedAt");
+        isoText(metadata.expiresAt, "expiresAt");
+        if (new Date(metadata.expiresAt).getTime() <= new Date(metadata.issuedAt).getTime()) {
+          throw platformError("validation_error", "TOTP enrollment expiry must be after issuance");
+        }
+        if (entityRef !== metadata.accountRef || actorRef !== metadata.accountRef) {
+          throw platformError("validation_error", "TOTP enrollment started account binding is invalid");
+        }
+        return JSON.stringify(metadata);
+      }
+
+      if (action === "totp_enrollment_code_verified") {
+        exactObject(metadata, {
+          allowed: ["enrollmentRef", "accountRef", "channel", "result", "verifiedAt"],
+          required: ["enrollmentRef", "accountRef", "channel", "result", "verifiedAt"],
+          name: "totpEnrollmentCodeVerifiedAuditMetadata"
+        });
+        safeControlRef(metadata.enrollmentRef, "enrollmentRef");
+        safeControlRef(metadata.accountRef, "accountRef");
+        if (!enrollmentChannels.has(metadata.channel) || metadata.channel === "entry") {
+          throw platformError("validation_error", "TOTP enrollment code verified channel is invalid");
+        }
+        if (metadata.result !== "verified" && metadata.result !== "failed") {
+          throw platformError("validation_error", "TOTP enrollment code verified result is invalid");
+        }
+        isoText(metadata.verifiedAt, "verifiedAt");
+        if (entityRef !== metadata.accountRef || actorRef !== metadata.accountRef) {
+          throw platformError("validation_error", "TOTP enrollment code verified account binding is invalid");
+        }
+        return JSON.stringify(metadata);
+      }
+
+      if (action === "totp_enrollment_bound") {
+        exactObject(metadata, {
+          allowed: ["enrollmentRef", "entryRef", "totpRef", "accountRef", "channel", "enrolledAt", "envelopeFormat", "accountMatches"],
+          required: ["totpRef", "accountRef", "channel", "enrolledAt", "envelopeFormat", "accountMatches"],
+          name: "totpEnrollmentBoundAuditMetadata"
+        });
+        // Exactly one initiation reference: a live enrollment for the
+        // Portal/Admin confirm paths, or the consumed entry for the
+        // entry path (which has no start step and no code verification).
+        if ((metadata.enrollmentRef === undefined) === (metadata.entryRef === undefined)) {
+          throw platformError("validation_error", "TOTP enrollment bound initiation reference is invalid");
+        }
+        if (metadata.enrollmentRef !== undefined) {
+          safeControlRef(metadata.enrollmentRef, "enrollmentRef");
+        }
+        if (metadata.entryRef !== undefined) {
+          safeControlRef(metadata.entryRef, "entryRef");
+        }
+        safeControlRef(metadata.totpRef, "totpRef");
+        safeControlRef(metadata.accountRef, "accountRef");
+        if (!enrollmentChannels.has(metadata.channel)) {
+          throw platformError("validation_error", "TOTP enrollment bound channel is invalid");
+        }
+        isoText(metadata.enrolledAt, "enrolledAt");
+        if (!enrollmentFormats.has(metadata.envelopeFormat)) {
+          throw platformError("validation_error", "TOTP enrollment bound envelope format is invalid");
+        }
+        if (metadata.accountMatches !== true) {
+          throw platformError("validation_error", "TOTP enrollment bound consistency check must pass");
+        }
+        if (entityRef !== metadata.accountRef || actorRef !== metadata.accountRef) {
+          throw platformError("validation_error", "TOTP enrollment bound account binding is invalid");
+        }
+        return JSON.stringify(metadata);
+      }
     }
 
     throw platformError("validation_error", "audit entity/action JSON contract is not registered");

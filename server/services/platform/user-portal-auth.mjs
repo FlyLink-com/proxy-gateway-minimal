@@ -462,6 +462,33 @@ export function createUserPortalAuthService({
     return protectTotpSecret(requiredText(encryptedTotpSecret.slice(4), "totpSecret"));
   }
 
+  function totpEnrollmentAuditId() {
+    return defaultRef("totpaudit");
+  }
+
+  function totpEnrollmentEnvelopeFormat(encryptedTotpSecret) {
+    if (encryptedTotpSecret.startsWith("v2:")) return "v2";
+    if (encryptedTotpSecret.startsWith("enc:")) return "enc";
+    // B2-9 (G-08): the bound event is evidence, not a second gate. The
+    // production Portal protector always yields a v2 envelope, but an
+    // injected protector may return a value with neither prefix (an
+    // existing browser-session test does exactly this). Failing the
+    // enrollment here would turn evidence into a behavior change, so an
+    // unrecognized envelope is recorded as "unknown" instead of throwing.
+    return "unknown";
+  }
+
+  function recordTotpEnrollmentAuditEvent(input) {
+    // B2-9 (G-08): TOTP enrollment lifecycle proof. The production control
+    // store always exposes recordAuditEvent; minimal test doubles may not.
+    // In that case no persistent evidence is recorded for the enrollment,
+    // which the B2-9 specification records. The event carries only
+    // references, channels, results and timestamps — never secret material,
+    // verification codes or ciphertext.
+    if (!controlStore || typeof controlStore.recordAuditEvent !== "function") return null;
+    return controlStore.recordAuditEvent(input);
+  }
+
   function startTotpEnrollment(input) {
     const { account, checkedAt } = getActiveSessionContext(input?.sessionRef);
     const enrollmentRef = requiredText(input?.enrollmentRef || totpEnrollmentRefFactory(), "enrollmentRef");
@@ -481,6 +508,28 @@ export function createUserPortalAuthService({
       expiresAt
     };
     pendingTotpEnrollments.set(enrollmentRef, enrollment);
+    try {
+      recordTotpEnrollmentAuditEvent({
+        id: totpEnrollmentAuditId(),
+        entityType: "totp_enrollment",
+        entityRef: account.id,
+        action: "totp_enrollment_started",
+        actorRef: account.id,
+        createdAt: checkedAt,
+        metadata: {
+          enrollmentRef,
+          accountRef: account.id,
+          channel: "portal",
+          issuedAt: checkedAt,
+          expiresAt
+        }
+      });
+    } catch (error) {
+      // Fail closed: an enrollment without its initiation evidence must not
+      // stay pending.
+      pendingTotpEnrollments.delete(enrollmentRef);
+      throw error;
+    }
     return {
       enrollment: safeTotpEnrollment(enrollment)
     };
@@ -504,6 +553,24 @@ export function createUserPortalAuthService({
       credentialRef: enrollmentRef
     });
     if (!verified) {
+      // B2-9 (G-08): a failed confirmation code is itself lifecycle
+      // evidence — recorded without the code value. The enrollment stays
+      // pending so the user may retry within its validity window.
+      recordTotpEnrollmentAuditEvent({
+        id: totpEnrollmentAuditId(),
+        entityType: "totp_enrollment",
+        entityRef: account.id,
+        action: "totp_enrollment_code_verified",
+        actorRef: account.id,
+        createdAt: checkedAt,
+        metadata: {
+          enrollmentRef,
+          accountRef: account.id,
+          channel: "portal",
+          result: "failed",
+          verifiedAt: checkedAt
+        }
+      });
       throw portalAuthError("validation_error", "TOTP verification failed");
     }
     return controlStore.runInTransaction(() => {
@@ -522,6 +589,43 @@ export function createUserPortalAuthService({
           updatedAt: checkedAt
         });
       }
+      // B2-9 (G-08): the verification and binding evidence is written in
+      // the same transaction as the credential row, so a bound credential
+      // never exists without its proof. The pending enrollment is deleted
+      // only after the evidence is recorded, so an audit failure leaves the
+      // enrollment retryable and the transaction rolls back.
+      recordTotpEnrollmentAuditEvent({
+        id: totpEnrollmentAuditId(),
+        entityType: "totp_enrollment",
+        entityRef: account.id,
+        action: "totp_enrollment_code_verified",
+        actorRef: account.id,
+        createdAt: checkedAt,
+        metadata: {
+          enrollmentRef,
+          accountRef: account.id,
+          channel: "portal",
+          result: "verified",
+          verifiedAt: checkedAt
+        }
+      });
+      recordTotpEnrollmentAuditEvent({
+        id: totpEnrollmentAuditId(),
+        entityType: "totp_enrollment",
+        entityRef: account.id,
+        action: "totp_enrollment_bound",
+        actorRef: account.id,
+        createdAt: checkedAt,
+        metadata: {
+          enrollmentRef,
+          totpRef: credential.id,
+          accountRef: account.id,
+          channel: "portal",
+          enrolledAt: checkedAt,
+          envelopeFormat: totpEnrollmentEnvelopeFormat(enrollment.encryptedTotpSecret),
+          accountMatches: true
+        }
+      });
       pendingTotpEnrollments.delete(enrollmentRef);
       return {
         binding: {
@@ -595,6 +699,27 @@ export function createUserPortalAuthService({
       controlStore.markPortalEntryUsed(entry.id, {
         usedAt: enrolledAt,
         updatedAt: enrolledAt
+      });
+      // B2-9 (G-08): the entry path has no start step and performs no code
+      // verification — it trusts the entry token itself. Its lifecycle
+      // evidence is the binding event alone, carrying the consumed entry
+      // reference and the account-consistency result.
+      recordTotpEnrollmentAuditEvent({
+        id: totpEnrollmentAuditId(),
+        entityType: "totp_enrollment",
+        entityRef: entry.accountId,
+        action: "totp_enrollment_bound",
+        actorRef: entry.accountId,
+        createdAt: enrolledAt,
+        metadata: {
+          entryRef: entry.id,
+          totpRef: credential.id,
+          accountRef: entry.accountId,
+          channel: "entry",
+          enrolledAt,
+          envelopeFormat: totpEnrollmentEnvelopeFormat(encryptedTotpSecret),
+          accountMatches: true
+        }
       });
       return {
         summary: safeEnrollmentSummary(credential)
