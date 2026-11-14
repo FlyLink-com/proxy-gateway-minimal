@@ -1,3 +1,5 @@
+import { isMaskedEmailDisplay } from "./email-masking.mjs";
+
 const SAFE_CONTROL_REF_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_:/-]{0,127}$/;
 const UNSAFE_CONTROL_VALUE_PATTERN =
   /https?:|token=|secret|credential|password|private|customer|@|\/sub\/clash\.yaml|(?:\d{1,3}\.){3}\d{1,3}|[a-z0-9-]+\.[a-z]{2,}/i;
@@ -106,8 +108,14 @@ const ACCOUNT_METADATA_D1_SAFE_FIELDS = new Set([
   "termsVersion",
   "privacyVersion"
 ]);
-const ACCOUNT_METADATA_SOURCE_ONLY_FIELDS = new Set(["source", "channel", "synthetic"]);
-const ACCOUNT_METADATA_EXTERNALIZED_FIELDS = new Set(["displayName", "loginRef", "displayRef"]);
+// Raw email references never leave the source: loginRef / displayRef hold
+// the raw address in storage (E-01) and are source-only here, so their mere
+// presence no longer blocks projection of the D1-safe fields. The only email
+// display value that may be externalized is the masked form.
+const ACCOUNT_METADATA_SOURCE_ONLY_FIELDS = new Set([
+  "source", "channel", "synthetic", "loginRef", "displayRef"
+]);
+const ACCOUNT_METADATA_EXTERNALIZED_FIELDS = new Set(["displayName", "displayEmailMasked"]);
 const ACCOUNT_METADATA_UNKEYED_DIGEST_FIELDS = new Set([
   "contactDigest",
   "loginDigest",
@@ -123,9 +131,13 @@ const ACCOUNT_METADATA_UNKEYED_DIGEST_FIELDS = new Set([
  * Pure source-to-target projection gate for platform_accounts.metadata_json.
  *
  * This function deliberately does not externalize identity data or invent
- * keyed digests. Legacy PII and unkeyed SHA-256 values block projection until
- * Auth0 identity mapping and the separately approved C2 HMAC custody path
- * provide replacements. No raw source value is returned in a blocked result.
+ * keyed digests. Raw email references (loginRef / displayRef) are
+ * source-only and never reach D1; the only email display value that may be
+ * externalized is the masked form (displayEmailMasked), which must match
+ * the masked shape — a raw email passed under that name is rejected.
+ * Legacy PII and unkeyed SHA-256 values block projection until Auth0
+ * identity mapping and the separately approved C2 HMAC custody path provide
+ * replacements. No raw source value is returned in a blocked result.
  */
 export function projectAccountMetadataForD1(value) {
   const metadata = value == null ? {} : snapshotPlainObject(value);
@@ -147,6 +159,12 @@ export function projectAccountMetadataForD1(value) {
     && (typeof metadata.channel !== "string" || !/^[a-z][a-z0-9_-]{1,63}$/.test(metadata.channel))
   ) throw contractError();
   if (Object.hasOwn(metadata, "synthetic") && typeof metadata.synthetic !== "boolean") {
+    throw contractError();
+  }
+  if (
+    Object.hasOwn(metadata, "displayEmailMasked")
+    && !isMaskedEmailDisplay(metadata.displayEmailMasked)
+  ) {
     throw contractError();
   }
 

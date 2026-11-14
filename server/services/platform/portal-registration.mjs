@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import { maskEmail } from "./email-masking.mjs";
 import {
   TRIAL_DURATION_DAYS,
   TRIAL_TRAFFIC_LIMIT_BYTES
@@ -119,13 +120,16 @@ function safeRegistrationSummary({
 }) {
   const summary = {
     action: "portal_registration_created",
-    userRef,
+    // Display only: the registration response shows the masked email, never
+    // the raw address. The raw email stays in storage (E-01) and is used for
+    // login resolution inside the server only.
+    userRef: maskEmail(userRef),
     status: "registered",
     planIntent,
     nextAction: "enter_user_panel",
     safety: {
       noSubscriptionUrl: true,
-      emailReturnedToAccountOwner: true,
+      maskedEmailReturnedToAccountOwner: true,
       noInternalAccountIdReturned: true,
       rawPasswordReturned: false,
       rawEntryTokenVisibleOnce: false,

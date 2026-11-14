@@ -242,9 +242,58 @@ test("D1 account metadata projection blocks raw identity fields without echoing 
   assert.equal(result.metadataJson, null);
   assert.deepEqual(result.blockers, [{
     code: "identity_externalization_required",
-    fields: ["displayName", "displayRef", "loginRef"]
+    fields: ["displayName"]
   }]);
+  // Raw email references are source-only now: they never reach D1, and
+  // their presence no longer blocks projection of the safe fields.
+  assert.deepEqual(result.sourceOnlyFields, ["displayRef", "loginRef"]);
   assert.doesNotMatch(JSON.stringify(result), /member@example\.test|Member Example/);
+});
+
+test("D1 account metadata projection is ready when only raw email refs are present", () => {
+  const result = projectAccountMetadataForD1({
+    loginRef: "member@example.test",
+    displayRef: "member@example.test",
+    registrationSource: "self_service_portal",
+    intentPlan: "trial"
+  });
+  assert.equal(result.status, "ready");
+  assert.deepEqual(result.sourceOnlyFields, ["displayRef", "loginRef"]);
+  assert.doesNotMatch(result.metadataJson, /member@example\.test/);
+  assert.equal(JSON.parse(result.metadataJson).registrationSource, "self_service_portal");
+});
+
+test("D1 account metadata projection externalizes the masked display field only", () => {
+  const result = projectAccountMetadataForD1({
+    displayEmailMasked: "me***@example.test",
+    registrationSource: "self_service_portal"
+  });
+  assert.equal(result.status, "blocked");
+  assert.equal(result.metadataJson, null);
+  assert.deepEqual(result.blockers, [{
+    code: "identity_externalization_required",
+    fields: ["displayEmailMasked"]
+  }]);
+  assert.doesNotMatch(JSON.stringify(result), /me\*+\*\*@example\.test/);
+});
+
+test("D1 account metadata projection rejects a raw email as the masked field", () => {
+  assert.throws(() => projectAccountMetadataForD1({
+    displayEmailMasked: "member@example.test"
+  }), /invalid control JSON contract/);
+  assert.throws(() => projectAccountMetadataForD1({
+    displayEmailMasked: "member@example"
+  }), /invalid control JSON contract/);
+  // The fallback display value is a valid masked display.
+  const fallback = projectAccountMetadataForD1({
+    displayEmailMasked: "user_account",
+    registrationSource: "self_service_portal"
+  });
+  assert.equal(fallback.status, "blocked");
+  assert.deepEqual(fallback.blockers, [{
+    code: "identity_externalization_required",
+    fields: ["displayEmailMasked"]
+  }]);
 });
 
 test("D1 account metadata projection blocks legacy unkeyed SHA-256 digests", () => {
@@ -272,6 +321,7 @@ test("D1 account metadata projection blocks legacy unkeyed SHA-256 digests", () 
 test("D1 account metadata projection reports identity and digest blockers together", () => {
   const result = projectAccountMetadataForD1({
     loginRef: "private@example.test",
+    displayName: "Member Example",
     loginDigest: "b".repeat(64)
   });
   assert.equal(result.status, "blocked");
@@ -279,6 +329,8 @@ test("D1 account metadata projection reports identity and digest blockers togeth
     "identity_externalization_required",
     "keyed_digest_replacement_required"
   ]);
+  assert.deepEqual(result.blockers[0].fields, ["displayName"]);
+  assert.deepEqual(result.sourceOnlyFields, ["loginRef"]);
 });
 
 test("D1 account metadata projection rejects unknown fields and malformed safe values", () => {

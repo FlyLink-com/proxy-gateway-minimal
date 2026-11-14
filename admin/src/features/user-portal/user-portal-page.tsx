@@ -2937,7 +2937,7 @@ export function UserPortalPage({
             <span className="portal-avatar">{userDisplayName.charAt(0).toUpperCase()}</span>
             <div>
               <strong>{userDisplayName}</strong>
-              <small>{uiText(locale, "邮箱：", "Email: ")}{portalSession.userRef}</small>
+              <small>{uiText(locale, "邮箱：", "Email: ")}{userDisplayName}</small>
             </div>
             <button
               type="button"

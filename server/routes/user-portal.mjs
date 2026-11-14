@@ -265,6 +265,17 @@ export function userPortalRoutes(state, options = {}) {
     };
   }
 
+  // Like requirePortalSession, but returns null instead of throwing when
+  // no portal session can be resolved. Only for routes that do not
+  // require a session (see POST /api/portal/support-requests below).
+  function optionalPortalSession(req) {
+    try {
+      return requirePortalSession(req);
+    } catch {
+      return null;
+    }
+  }
+
   router.get("/api/portal/browser-session", (req, res) => {
     try {
       if (!browserSessions) { res.status(503).json({error:"portal_browser_unavailable"}); return; }
@@ -685,8 +696,18 @@ export function userPortalRoutes(state, options = {}) {
         error.code = "validation_error";
         throw error;
       }
+      // B2-6 P2-2: when a portal session exists, bind the request to the
+      // session account id, so a masked display value sent back by the
+      // client can never become the persisted owner ref (same rule as
+      // sessionScopedBody). This route does not require a session, so
+      // without one the submitted portalUserRef is kept as-is; that
+      // residual is a client-supplied display label, not an account link.
+      const session = optionalPortalSession(req);
+      const body = session
+        ? { ...(req.body ?? {}), portalUserRef: session.accountId }
+        : (req.body ?? {});
       res.status(201).json({
-        request: supportRequests.submitRequest(req.body ?? {})
+        request: supportRequests.submitRequest(body)
       });
     } catch (error) {
       sendPortalError(res, error);

@@ -31,6 +31,22 @@ function requestService() {
   });
 }
 
+function portalAuth(accountId = "account_safe_1") {
+  return {
+    requireSession(input = {}) {
+      if (input.sessionRef !== "portal_session_safe") {
+        const error = new Error("portal session is required");
+        error.code = "invalid_session";
+        throw error;
+      }
+      return {
+        sessionRef: input.sessionRef,
+        accountId
+      };
+    }
+  };
+}
+
 function supportBody() {
   return {
     portalUserRef: "user_safe_ref",
@@ -74,6 +90,54 @@ test("enabled portal route creates safe support form submissions", async () => {
     assert.equal(body.request.messageProvided, true);
     assert.equal(JSON.stringify(body).includes("Clash import fails"), false);
     assert.equal(JSON.stringify(body).includes("Telegram"), false);
+  } finally {
+    server.close();
+  }
+});
+
+test("support request owner ref comes from the portal session when one exists", async () => {
+  // B2-6 P2-2: a masked display value sent back by the client must never
+  // become the persisted owner ref; the session account id wins.
+  const { server, baseUrl } = await listen(createApp(fakeState({
+    userPortalRoutesEnabled: true,
+    userPortalAuth: portalAuth("account_safe_1"),
+    portalSupportRequests: requestService()
+  })));
+  try {
+    const response = await fetch(`${baseUrl}/api/portal/support-requests`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Portal-Session": "portal_session_safe"
+      },
+      body: JSON.stringify({ ...supportBody(), portalUserRef: "lo***@example.test" })
+    });
+    assert.equal(response.status, 201);
+    const body = await response.json();
+    assert.equal(body.request.portalUserRef, "account_safe_1");
+    assert.equal(JSON.stringify(body).includes("lo***@example.test"), false);
+  } finally {
+    server.close();
+  }
+});
+
+test("support request keeps the submitted owner ref without a session", async () => {
+  // B2-6 P2-2 residual: the route does not require a session, so an
+  // anonymous submission keeps its client-supplied owner ref as-is.
+  // The value is a display label, not an account link.
+  const { server, baseUrl } = await listen(createApp(fakeState({
+    userPortalRoutesEnabled: true,
+    portalSupportRequests: requestService()
+  })));
+  try {
+    const response = await fetch(`${baseUrl}/api/portal/support-requests`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...supportBody(), portalUserRef: "lo***@example.test" })
+    });
+    assert.equal(response.status, 201);
+    const body = await response.json();
+    assert.equal(body.request.portalUserRef, "lo***@example.test");
   } finally {
     server.close();
   }

@@ -94,7 +94,7 @@ test("admin platform routes convert reviewed leads into account shells", async (
         leadId: "lead_1",
         status: "pending_review",
         organization: "Acme Research",
-        email: "ops@example.com",
+        email: "op***@example.com",
         displayName: "Acme Ops",
         entitlementCount: 0,
         usableEntitlementCount: 0,
@@ -279,8 +279,8 @@ test("admin platform routes list portal registration accounts from control store
         leadId: null,
         status: "active",
         organization: null,
-        email: "local-user@example.test",
-        displayName: "local-user@example.test",
+        email: "lo***@example.test",
+        displayName: "lo***@example.test",
         entitlementCount: 1,
         usableEntitlementCount: 1,
         createdAt: now,
@@ -508,8 +508,10 @@ test("admin platform account search resolves legacy digest-only portal accounts 
       assert.equal(searched.status, 200);
       const searchedBody = await searched.json();
       assert.deepEqual(searchedBody.items.map((item) => item.id), ["acct_digest_only_1"]);
-      assert.equal(searchedBody.items[0].email, legacyEmail);
-      assert.equal(searchedBody.items[0].displayName, legacyEmail);
+      // A digest search hit echoes the searched email masked, never raw.
+      assert.equal(searchedBody.items[0].email, "le***@example.test");
+      assert.equal(searchedBody.items[0].displayName, "le***@example.test");
+      assert.equal(JSON.stringify(searchedBody).includes(legacyEmail), false);
       assert.equal(JSON.stringify(searchedBody).includes(legacyEmailDigest), false);
       assert.equal(JSON.stringify(searchedBody).includes(sha256Hex("synthetic-display-digest")), false);
     } finally {
