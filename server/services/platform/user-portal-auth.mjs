@@ -603,6 +603,17 @@ export function createUserPortalAuthService({
     const rememberMe = rememberPreference(input?.rememberMe);
     const accountId = requiredText(input?.accountId, "accountId");
     const code = requiredText(input?.code, "code");
+    // Re-check account status before verifying the code (same source and
+    // same fail-closed error as the password-login check): the deletion
+    // freeze writes status='suspended' to the account row, and a frozen
+    // account must not complete the second factor even while its TOTP
+    // credential is still active (steps 1-3 window). Checked before any
+    // credential work so a frozen account neither verifies a code nor
+    // burns a failure count.
+    const account = controlStore.getAccount(accountId);
+    if (!account || account.status !== "active") {
+      throw portalAuthError("invalid_login", "invalid_login");
+    }
     const credential = controlStore.getActivePortalTotpCredential(accountId);
     if (!credential) {
       throw portalAuthError("not_found", "active portal TOTP credential not found");
@@ -710,6 +721,16 @@ export function createUserPortalAuthService({
     }
     if (factor !== "totp") {
       throw portalAuthError("validation_error", "passkey second factor is not configured");
+    }
+
+    // Same account-status re-check as verifyTotpAndCreateSession: a
+    // challenge issued before the freeze must not complete once the
+    // account is suspended. Checked before any credential work; the
+    // challenge is left active (it expires on its own TTL) and no
+    // session is created. Fail closed.
+    const account = controlStore.getAccount(challenge.accountId);
+    if (!account || account.status !== "active") {
+      throw portalAuthError("invalid_login", "invalid_login");
     }
 
     const credential = controlStore.getActivePortalTotpCredential(challenge.accountId);
