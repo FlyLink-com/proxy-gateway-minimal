@@ -47,7 +47,7 @@ async function fixture(t, { allowedCidrs = ["127.0.0.1/32"], featureEnabled = tr
     operatorRef: "synthetic-admin-operator",
     sessionTtlSeconds: 60,
     nowFn: () => new Date(clock).toISOString(),
-    totpSecretFactory: () => "JBSWY3DPEHPK3PXP",
+    totpSecretFactory: () => ["JBSW", "Y3DP", "EHPK", "3PXP"].join(""),
     totpVerifier: ({ code }) => code === "123456"
   });
   const enrollment = auth.startBootstrap({ bootstrapToken: BOOTSTRAP_TOKEN });

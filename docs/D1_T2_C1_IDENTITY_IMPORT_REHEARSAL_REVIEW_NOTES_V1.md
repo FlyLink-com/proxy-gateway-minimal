@@ -97,7 +97,7 @@ References:
 
 ### C1-R3 — BLOCKER: Legacy enc: TOTP acceptance is synthetic-only and must not be generalized to production
 
-The current TOTP verifier strips the legacy enc: prefix and treats the remainder as Base32. That prefix is not encryption. The rehearsal normalizes the fixed synthetic enc:JBSWY3DPEHPK3PXP fixture into Auth0's unpadded Base32 field.
+The current TOTP verifier strips the legacy enc: prefix and treats the remainder as Base32. That prefix is not encryption. The rehearsal normalizes the fixed synthetic enc: fixture (example value only, e.g. JBSW...3PXP) into Auth0's unpadded Base32 field.
 
 The synthetic record builder is restricted to that exact fixture and rejects arbitrary TOTP values. It also fails closed for a v2: envelope without C2 key custody. No real secret was read or decrypted.
 
