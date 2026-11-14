@@ -81,3 +81,19 @@ test("portal TOTP verifier decrypts protected secret material without exposing b
     code: "049557"
   }), true);
 });
+
+test("portal TOTP verifier rejects v2 protected secrets when no protector is configured", () => {
+  const secretProtector = createPortalTotpSecretProtector({
+    key: PROTECTOR_KEY,
+    ivFactory: () => PROTECTOR_IV
+  });
+  const encryptedTotpSecret = secretProtector.protect("JBSWY3DPEHPK3PXP");
+
+  const verifier = createPortalTotpVerifier({
+    nowFn: () => "2026-06-06T00:00:00.000Z"
+  });
+  assert.equal(verifier({
+    encryptedTotpSecret,
+    code: "049557"
+  }), false);
+});
