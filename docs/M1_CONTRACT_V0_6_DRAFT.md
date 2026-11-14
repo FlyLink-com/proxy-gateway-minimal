@@ -43,7 +43,7 @@ The current authorization covers this independent Draft branch and Draft PR only
 
 ### 2.1 What the T2-02 matrix still says
 
-T2-02 (baseline `c1d61e58`, 2026-11-14) recorded 30 remaining items (C1 14, C2 5, C3 2, C4 2, C5 3, C6 4), 0 countable as done, T2 **BLOCKED**. The four packages merged after that baseline; they change the evidence for C1-08, C1-10, C1-12 and C1-13 as recorded in §3, but **no T2-02 item is re-scored by this document**. Re-scoring is a T2-03 closeout action, not a v0.6 claim.
+T2-02 (baseline `c1d61e58`, 2026-11-14) recorded 30 remaining items (C1 14, C2 5, C3 2, C4 2, C5 3, C6 4), 0 countable as done, T2 **BLOCKED**. The four packages merged after that baseline; they change the evidence for C1-08, C1-10 and C1-12 as recorded in §3, and for C1-13 as recorded in §2 and §5 (this document itself), but **no T2-02 item is re-scored by this document**. Re-scoring is a T2-03 closeout action, not a v0.6 claim.
 
 Production behavior that the four packages did **not** change: registration still writes the raw email (`portal-registration.mjs`, `loginRef`/`displayRef` raw values); login still resolves through the full-table scan (`resolvePortalLoginAccount`); the TOTP protector is still shared between Portal and Admin with no key ID; the payment helper still has zero production call sites; the payment URL is still stored as plaintext `next_action_url TEXT`.
 
@@ -61,7 +61,7 @@ B9 re-verification at `08ef7561` is complete (report `b9-master-reverify-2026-11
 
 - Pure-function module `server/services/platform/email-masking.mjs`: `maskEmail` (local part first 2 chars + `***` + `@` + full domain; local part under 2 chars keeps all visible chars + `***`; sub-address `user+tag@` masks the pre-`+` part and drops `+tag`; non-ASCII lowercased first; overlong local part masked the same way, never errors); invalid input returns fallback `user_account` (`EMAIL_DISPLAY_FALLBACK`), never throws; `maskEmailOrKeep` and `isMaskedEmailDisplay` accompany it.
 - Landing points, all verified: session summaries masked (`server/services/platform/user-portal-auth.mjs:355` in `publicBrowserSession`, `:935`); admin lists/search masked only, operator-typed raw email never echoed (`server/routes/admin-platform.mjs:122`, `:325`, `:337`); D1 projection gate tightened (`server/services/platform/control-json-contracts.mjs:118`: externalized set is now `displayName` + `displayEmailMasked`; `loginRef`/`displayRef` are no longer externalized).
-- The public RFC 6238 demo TOTP secret literal was removed from all 9 baseline files (35 occurrences) as a follow-up in the same batch; full-tree grep count is 0.
+- The public RFC 6238 demo TOTP secret literal was removed from all 9 baseline files (35 occurrences) as a follow-up in the same batch; at this baseline (`08ef7561`) the full-tree grep count is 1, not 0 — the single remaining occurrence is `server/tests/totp-enrollment-proof.test.mjs:26` (`TEST_SECRET`, the public RFC 6238 test vector, test use only), added by PR #873 after the #872 cleanup. It is not a production credential.
 
 **Residual / open.**
 
