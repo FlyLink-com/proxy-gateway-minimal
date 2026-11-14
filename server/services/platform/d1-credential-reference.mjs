@@ -112,9 +112,34 @@ export function isValidCredentialRef(ref) {
   }
 }
 
+const CANONICAL_ISO_TIMESTAMP_PATTERN = /^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$/u;
+
 function requireIsoText(value, code) {
   if (value === null || value === undefined) return null;
-  if (typeof value !== "string" || Number.isNaN(Date.parse(value))) throw fail(code);
+  if (
+    typeof value !== "string"
+    || !CANONICAL_ISO_TIMESTAMP_PATTERN.test(value)
+    || !Number.isFinite(Date.parse(value))
+    || new Date(Date.parse(value)).toISOString() !== value
+  ) {
+    throw fail(code);
+  }
+  return value;
+}
+
+const ACCOUNT_REF_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/u;
+const ACCOUNT_REF_SECRET_LIKE_PATTERN =
+  /(?:^|[_-])(?:bearer|token|secret|credential|password|private|customer)(?:[_-]|$)|^sk[-_]|^eyj[a-z0-9_-]{10,}$/iu;
+
+function requireOpaqueAccountRef(value, code) {
+  if (
+    typeof value !== "string"
+    || value.trim() !== value
+    || !ACCOUNT_REF_PATTERN.test(value)
+    || ACCOUNT_REF_SECRET_LIKE_PATTERN.test(value)
+  ) {
+    throw fail(code);
+  }
   return value;
 }
 
@@ -138,10 +163,7 @@ export function validateD1CredentialRow(input) {
     if (!D1_CREDENTIAL_ROW_FIELDS.includes(key)) throw fail("credential_row_unknown_field");
   }
   const reference = parseCredentialRef(input.reference);
-  if (typeof input.accountRef !== "string" || input.accountRef.length === 0
-    || input.accountRef.includes("@")) {
-    throw fail("credential_row_invalid");
-  }
+  const accountRef = requireOpaqueAccountRef(input.accountRef, "credential_row_invalid");
   if (!CREDENTIAL_ROW_STATUSES.has(input.status)) throw fail("credential_row_invalid");
   const failureCount = requireFailureCount(input.failureCount, "credential_row_invalid");
   const lockedUntil = requireIsoText(input.lockedUntil ?? null, "credential_row_invalid");
@@ -163,7 +185,7 @@ export function validateD1CredentialRow(input) {
   }
   return Object.freeze({
     reference: reference.namespace + "_" + reference.randomPart,
-    accountRef: input.accountRef,
+    accountRef,
     status: input.status,
     failureCount,
     lockedUntil,

@@ -171,6 +171,74 @@ test("row guard rejects unknown keys and bad values", () => {
   assert.throws(() => validateD1CredentialRow([]), /credential_row_invalid/u);
 });
 
+test("row guard validates opaque account references and rejects secret-like values", () => {
+  const validAccountRefs = [
+    "acct_ref_1",
+    \`acct_\${HEX24()}\`,
+    \`acct_portal_\${HEX24()}\`,
+    "admin_operator_1"
+  ];
+  for (const accountRef of validAccountRefs) {
+    const row = validateD1CredentialRow(totpRow(\`portal_totp_\${HEX24()}\`, { accountRef }));
+    assert.equal(row.accountRef, accountRef);
+  }
+
+  const invalidAccountRefs = [
+    "",
+    " ",
+    "   ",
+    "Bearer synthetic-token",
+    "Bearer_synthetic-token",
+    "https://example.invalid/account",
+    "user@example.com",
+    "203.0.113.1",
+    "example.invalid",
+    "acct_token_secret",
+    "acct_customer_123",
+    "sk_live_1234567890",
+    "eyJhbGciOiJIUzI1NiJ9"
+  ];
+  for (const accountRef of invalidAccountRefs) {
+    assert.throws(
+      () => validateD1CredentialRow(totpRow(\`portal_totp_\${HEX24()}\`, { accountRef })),
+      /credential_row_invalid/u,
+      JSON.stringify(accountRef)
+    );
+  }
+});
+
+test("row guard requires canonical UTC millisecond timestamps and valid calendar dates", () => {
+  const timestampFields = [
+    "lockedUntil", "enrolledAt", "createdAt",
+    "lastVerifiedAt", "revokedAt", "updatedAt"
+  ];
+  const invalidTimestamps = [
+    "1",
+    "2026-02-30",
+    "2026-02-30T00:00:00.000Z",
+    "2026-06-03T00:00:00Z",
+    "2026-06-03T00:00:00.000+00:00",
+    "2026-06-03 00:00:00",
+    "2026-13-01T00:00:00.000Z",
+    "2026-06-03T24:00:00.000Z"
+  ];
+  for (const field of timestampFields) {
+    for (const value of invalidTimestamps) {
+      assert.throws(
+        () => validateD1CredentialRow(totpRow(\`portal_totp_\${HEX24()}\`, { [field]: value })),
+        /credential_row_invalid/u,
+        \`\${field}: \${value}\`
+      );
+    }
+  }
+
+  const leapDay = "2024-02-29T23:59:59.999Z";
+  const valid = validateD1CredentialRow(totpRow(\`portal_totp_\${HEX24()}\`, {
+    createdAt: leapDay
+  }));
+  assert.equal(valid.createdAt, leapDay);
+});
+
 test("row guard fails closed on inconsistent state", () => {
   assert.throws(
     () => validateD1CredentialRow(totpRow(`portal_totp_${HEX24()}`, { revokedAt: NOW })),
