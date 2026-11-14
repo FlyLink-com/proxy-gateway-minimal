@@ -72,8 +72,12 @@ test("portal support request route stays unavailable unless explicitly enabled",
 });
 
 test("enabled portal route creates safe support form submissions", async () => {
+  // The auth service is present but no session is sent, so the request
+  // resolves through invalid_session and stays anonymous (B2-6 followup
+  // OBS-5: only invalid_session degrades to anonymous).
   const { server, baseUrl } = await listen(createApp(fakeState({
     userPortalRoutesEnabled: true,
+    userPortalAuth: portalAuth(),
     portalSupportRequests: requestService()
   })));
   try {
@@ -124,9 +128,12 @@ test("support request owner ref comes from the portal session when one exists", 
 test("support request keeps the submitted owner ref without a session", async () => {
   // B2-6 P2-2 residual: the route does not require a session, so an
   // anonymous submission keeps its client-supplied owner ref as-is.
-  // The value is a display label, not an account link.
+  // The value is a display label, not an account link. The auth service
+  // is present here, so the missing session resolves as invalid_session
+  // (B2-6 followup OBS-5) rather than as an unconfigured-service error.
   const { server, baseUrl } = await listen(createApp(fakeState({
     userPortalRoutesEnabled: true,
+    userPortalAuth: portalAuth(),
     portalSupportRequests: requestService()
   })));
   try {
@@ -138,6 +145,29 @@ test("support request keeps the submitted owner ref without a session", async ()
     assert.equal(response.status, 201);
     const body = await response.json();
     assert.equal(body.request.portalUserRef, "lo***@example.test");
+  } finally {
+    server.close();
+  }
+});
+
+test("support request fails loudly when the portal auth service is not configured", async () => {
+  // B2-6 followup OBS-5: optionalPortalSession only swallows
+  // invalid_session. With no auth service configured, the
+  // validation_error must propagate instead of silently degrading to an
+  // anonymous submission.
+  const { server, baseUrl } = await listen(createApp(fakeState({
+    userPortalRoutesEnabled: true,
+    portalSupportRequests: requestService()
+  })));
+  try {
+    const response = await fetch(`${baseUrl}/api/portal/support-requests`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(supportBody())
+    });
+    assert.equal(response.status, 400);
+    const body = await response.json();
+    assert.equal(body.error, "validation_error");
   } finally {
     server.close();
   }

@@ -268,11 +268,16 @@ export function userPortalRoutes(state, options = {}) {
   // Like requirePortalSession, but returns null instead of throwing when
   // no portal session can be resolved. Only for routes that do not
   // require a session (see POST /api/portal/support-requests below).
+  // Only session-resolution failures (invalid_session) degrade to
+  // anonymous; configuration and programming errors (e.g. validation_error
+  // when the auth service is not configured) still throw, so a missing
+  // auth service is never silently treated as an anonymous submission.
   function optionalPortalSession(req) {
     try {
       return requirePortalSession(req);
-    } catch {
-      return null;
+    } catch (error) {
+      if (error?.code === "invalid_session") return null;
+      throw error;
     }
   }
 
