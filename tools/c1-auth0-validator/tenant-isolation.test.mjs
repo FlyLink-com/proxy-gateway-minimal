@@ -21,7 +21,7 @@ function ctx({ issuerRef, factors = ["password"], subjectRef = "auth0|user-1", a
   return {
     accountRef, audience: "flylink-control-plane",
     authTimeMs: NOW - 1000, expiresAtMs: NOW + 60000,
-    factors, issuerRef, sessionRef, subjectRef
+    factors, issuedAtMs: NOW - 1000, issuerRef, sessionRef, subjectRef
   };
 }
 
