@@ -401,3 +401,56 @@ test("user portal auth protects dynamic entry TOTP enrollment before persistence
     assert.equal(stored.encryptedTotpSecret.startsWith("enc:"), false);
   });
 });
+
+test("user portal auth rejects TOTP verification when the credential is revoked", () => {
+  withStore((store) => {
+    const service = createService(store);
+    store.createPortalTotpCredential({
+      id: "totp_cred_revoked",
+      accountId: "acct_portal_1",
+      encryptedTotpSecret: "v2:test-protected:totp-secret",
+      status: "revoked",
+      failureCount: 0,
+      enrolledAt: NOW,
+      revokedAt: NOW,
+      updatedAt: NOW
+    });
+
+    assert.equal(store.getActivePortalTotpCredential("acct_portal_1"), null);
+    assert.throws(() => service.verifyTotpAndCreateSession({
+      accountId: "acct_portal_1",
+      code: "123456"
+    }), /active portal TOTP credential not found/);
+    assert.equal(store.listPortalSessions({ accountId: "acct_portal_1" }).length, 0);
+  });
+});
+
+test("user portal auth rejects TOTP verification when no credential row exists", () => {
+  withStore((store) => {
+    const service = createService(store);
+
+    assert.equal(store.getActivePortalTotpCredential("acct_portal_1"), null);
+    assert.throws(() => service.verifyTotpAndCreateSession({
+      accountId: "acct_portal_1",
+      code: "123456"
+    }), /active portal TOTP credential not found/);
+    assert.equal(store.listPortalSessions({ accountId: "acct_portal_1" }).length, 0);
+  });
+});
+
+test("user portal auth fails closed when the TOTP credential store is unavailable", () => {
+  const service = createUserPortalAuthService({
+    controlStore: {
+      getActivePortalTotpCredential: () => {
+        throw new Error("control store unavailable");
+      }
+    },
+    nowFn: () => NOW,
+    totpVerifier: () => true
+  });
+
+  assert.throws(() => service.verifyTotpAndCreateSession({
+    accountId: "acct_portal_1",
+    code: "123456"
+  }), /control store unavailable/);
+});

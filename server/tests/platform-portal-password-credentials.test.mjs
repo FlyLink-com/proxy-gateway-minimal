@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { randomUUID } from "node:crypto";
+import { randomUUID, scryptSync } from "node:crypto";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -45,6 +45,25 @@ function createService(store, options = {}) {
     credentialRefFactory: () => "pwd_cred_test_1",
     ...options
   });
+}
+
+function buildScryptHash(plainPassword) {
+  const salt = Buffer.from("0123456789abcdef", "utf8");
+  const derived = scryptSync(plainPassword, salt, 64, {
+    N: 32768,
+    r: 8,
+    p: 1,
+    maxmem: 64 * 1024 * 1024
+  });
+  return [
+    "scrypt",
+    "v=1",
+    "N=32768",
+    "r=8",
+    "p=1",
+    salt.toString("base64url"),
+    derived.toString("base64url")
+  ].join("$");
 }
 
 test("portal password credential service stores only a hash and verifies the password", () => {
@@ -130,4 +149,57 @@ test("portal password credential service rejects inactive accounts", () => {
       plainPassword: buildTestPassword()
     }), /invalid_login/);
   });
+});
+
+test("portal password credential service rejects a revoked credential even with the correct password", () => {
+  withStore((store) => {
+    seedAccount(store);
+    const service = createService(store);
+    const plainPassword = buildTestPassword();
+    store.createPortalPasswordCredential({
+      id: "pwd_cred_test_revoked",
+      accountId: "acct_password_1",
+      passwordHash: buildScryptHash(plainPassword),
+      status: "revoked",
+      failureCount: 0,
+      createdAt: NOW,
+      revokedAt: NOW,
+      updatedAt: NOW
+    });
+
+    assert.equal(store.getActivePortalPasswordCredential("acct_password_1"), null);
+    assert.throws(() => service.verifyPasswordCredential({
+      accountId: "acct_password_1",
+      plainPassword
+    }), /invalid_login/);
+  });
+});
+
+test("portal password credential service rejects login when no credential row exists", () => {
+  withStore((store) => {
+    seedAccount(store);
+    const service = createService(store);
+
+    assert.equal(store.getActivePortalPasswordCredential("acct_password_1"), null);
+    assert.throws(() => service.verifyPasswordCredential({
+      accountId: "acct_password_1",
+      plainPassword: buildTestPassword()
+    }), /invalid_login/);
+  });
+});
+
+test("portal password credential service fails closed when the credential store is unavailable", () => {
+  const service = createPortalPasswordCredentialService({
+    controlStore: {
+      getAccount: () => {
+        throw new Error("control store unavailable");
+      }
+    },
+    nowFn: () => NOW
+  });
+
+  assert.throws(() => service.verifyPasswordCredential({
+    accountId: "acct_password_1",
+    plainPassword: buildTestPassword()
+  }), /control store unavailable/);
 });
