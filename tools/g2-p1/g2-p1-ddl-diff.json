@@ -1,0 +1,115 @@
+{
+  "meta": {
+    "baseline": "ba6ca8bc",
+    "note": "Frozen comparison: G2 spike ddl-set.json (baseline master 63082bae5d980c3905d6e7405329b19e6c4e38ac) vs the e64b1112 regeneration. 44d2b02d and ba6ca8bc are both docs-only vs e64b1112 (one docs file each), so the DDL comparison stands at ba6ca8bc; the runner re-verifies the live schema against the fixture hashes.",
+    "g2Baseline": {
+      "file": "g2-spike/harness/ddl-set.json",
+      "sha256": "ea0f12a204d99c97dee8021e41badbdce8abd5a36d67f0eb2366b72444859a4a",
+      "objects": 249,
+      "tables": 70,
+      "indexes": 88,
+      "triggers": 91
+    },
+    "current": {
+      "file": "g2-p1-scratch/e64b1112-ddl-set.json",
+      "sha256": "44b4656c0b045ade626a25d05e8f2db164a377a05356ca7dcf8a1e57a2e5c32a",
+      "objects": 259,
+      "tables": 74,
+      "indexes": 94,
+      "triggers": 91
+    }
+  },
+  "added": [
+    {
+      "type": "index",
+      "name": "platform_identity_bindings_active_account_idx",
+      "table": "platform_identity_bindings"
+    },
+    {
+      "type": "index",
+      "name": "platform_identity_bindings_active_subject_idx",
+      "table": "platform_identity_bindings"
+    },
+    {
+      "type": "index",
+      "name": "platform_identity_bindings_subject_idx",
+      "table": "platform_identity_bindings"
+    },
+    {
+      "type": "index",
+      "name": "platform_identity_deletion_jobs_account_id_idx",
+      "table": "platform_identity_deletion_jobs"
+    },
+    {
+      "type": "index",
+      "name": "platform_identity_deletion_proofs_request_id_idx",
+      "table": "platform_identity_deletion_proofs"
+    },
+    {
+      "type": "index",
+      "name": "platform_identity_deletion_tombstones_request_id_idx",
+      "table": "platform_identity_deletion_tombstones"
+    },
+    {
+      "type": "table",
+      "name": "platform_identity_bindings",
+      "table": "platform_identity_bindings"
+    },
+    {
+      "type": "table",
+      "name": "platform_identity_deletion_jobs",
+      "table": "platform_identity_deletion_jobs"
+    },
+    {
+      "type": "table",
+      "name": "platform_identity_deletion_proofs",
+      "table": "platform_identity_deletion_proofs"
+    },
+    {
+      "type": "table",
+      "name": "platform_identity_deletion_tombstones",
+      "table": "platform_identity_deletion_tombstones"
+    }
+  ],
+  "removed": [],
+  "changed": [
+    {
+      "type": "trigger",
+      "name": "coin_commerce_initial_confirmations_insert_guard",
+      "table": "platform_coin_commerce_initial_confirmations",
+      "g2SqlSha256": "ac9d295aa095da9cca8d9e64ef17991ae650dba7d8d2a1d186e3ae020186f0be",
+      "currentSqlSha256": "a0c906387c191b33b4ba1edc1606946d31ab64e12a27045cb1f0c4f80ae47b0e"
+    }
+  ],
+  "fkSummary": {
+    "g2FkReferences": 126,
+    "currentFkReferences": 127,
+    "newFk": [
+      "platform_identity_bindings->platform_accounts"
+    ],
+    "removedFk": []
+  },
+  "araIndexesIdentical": [
+    {
+      "name": "account_resource_authorities_active_account_uidx",
+      "identical": true,
+      "sqlSha256": "cb798a583962abfd90e6e65b69e5b5e942db86d2f46a2f28c1dae013d5737f9e"
+    },
+    {
+      "name": "account_resource_authorities_active_entitlement_uidx",
+      "identical": true,
+      "sqlSha256": "a099240165eb55172a9593f2cd0519401c5de5e48bfe6eb2808cf97162bbd293"
+    },
+    {
+      "name": "account_resource_authorities_active_link_uidx",
+      "identical": true,
+      "sqlSha256": "ce1f98cc7ebdec057db264706da608778c0cbf90b38be62e6d55e068b347300f"
+    },
+    {
+      "name": "account_resource_authorities_active_request_uidx",
+      "identical": true,
+      "sqlSha256": "07a7ccfef8f5d2b68d697451e2ec4dafc505f30a12ce91f3e2f02d6b6b443f2c"
+    }
+  ],
+  "driftNote": "The one new FK (platform_identity_bindings.account_id -> platform_accounts(id), from B2-2 #867) is OUTSIDE the G2-58 scope and is recorded here as drift, not probed. The 4 ARA unique indexes are byte-identical to the G2 baseline."
+}
