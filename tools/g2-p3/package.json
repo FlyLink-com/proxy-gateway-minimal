@@ -1,0 +1,18 @@
+{
+  "name": "g2-p3-pagination-concurrency-probe",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "G2-P3 probe: concurrent pagination semantics for the ledger (C5-03-08) — no missed / no duplicated records before the cutoff watermark under concurrent writes, on both engines (better-sqlite3/SQLite <-> local Miniflare D1) with local synthetic data only.",
+  "engines": {
+    "node": "22.x"
+  },
+  "scripts": {
+    "probe": "node g2-p3-run.mjs",
+    "probe:sqlite-only": "node g2-p3-run.mjs --skip-d1"
+  },
+  "dependencies": {
+    "better-sqlite3": "12.10.0",
+    "miniflare": "4.20251109.0"
+  }
+}

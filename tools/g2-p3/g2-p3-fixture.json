@@ -1,0 +1,1727 @@
+{
+ "meta": {
+  "baseline": "b4bac535",
+  "baselineSubject": "test(g2-p2): CHECK de-guarding probe for the 18 guard-shielded CHECKs (C5-03-02) (#878)",
+  "generatedAt": "2026-11-14T16:28:41.664Z",
+  "generator": "scratch gen-fixture.mjs (not part of the PR); every case's expectation checked against the independent simulation before freezing; writer SQL trialled on SQLite by the runner before the dual-engine run",
+  "sourceNote": "Ledger pagination query is byte-identical (whitespace-normalized) to production listLedgerEntries at the baseline: extracted from server/services/platform/coin-wallet-store.mjs and verified identical to the stage-7 frozen copy. The experiment schema is built from this checkout's own migration modules (tools/g2-p3/lib/build-control-schema.mjs). Only RAISE-only guard triggers are omitted; see omissionUnion. Seed is the stage-7 seed verbatim (112 statements).",
+  "stage7": {
+   "baseline": "63082bae5d980c3905d6e7405329b19e6c4e38ac",
+   "paginationResultsSha256": "c26541f857f5b85352893c67c74a10fd7255dc3d4aac62fb753d3f2dea33f435",
+   "dataLayerChecks": "26/26 PASS (dual-engine, static dataset); concurrent-write snapshot semantics explicitly out of scope (§5)",
+   "appLayerChecks": "13/13 separately verified (source code, NOT engine evidence)"
+  },
+  "ddl": {
+   "objectSha256": "3055172e2dc4b6987826ab3d25fd855642ee007f54db8b630d20011f20b27c1c",
+   "tables": 74,
+   "indexesTotal": 94,
+   "triggersBuilt": 91,
+   "triggersOmitted": 33,
+   "triggersRemaining": 58,
+   "fkPragmaRows": 128,
+   "ledgerRows": 19,
+   "ledgerTableSqlSha256": "0d03a24329841a28e43a7ce881ae924fa70f57b98ab64453d865d7d974080313",
+   "fullSchemaObjectSha256": "6e98d3f1c8e5e622f94dd9fa488f54adca4e64e5b34c1207e54fd19ec68b4a70"
+  },
+  "omissionUnion": [
+   "account_resource_authorities_delete_deny",
+   "account_resource_authorities_insert_cas_guard",
+   "account_resource_authorities_insert_lineage_guard",
+   "account_resource_authorities_insert_state_guard",
+   "account_resource_authorities_revoke_only_update",
+   "coin_commerce_initial_confirmations_immutable_update",
+   "coin_commerce_initial_confirmations_insert_guard",
+   "coin_commerce_operation_receipts_identity_immutable_update",
+   "coin_commerce_orders_snapshot_immutable_update",
+   "commerce_authority_quote_bindings_insert_guard",
+   "commerce_authority_quote_bindings_update_deny",
+   "deferred_resource_transition_operation_receipts_identity_immutable_update",
+   "deferred_resource_transition_rebases_identity_immutable_update",
+   "deferred_resource_transition_rebases_transition_binding_insert",
+   "deferred_resource_transition_reservation_allocations_immutable_update",
+   "deferred_resource_transition_reservation_allocations_snapshot_binding_insert",
+   "deferred_resource_transition_reservations_identity_immutable_update",
+   "deferred_resource_transition_reservations_wallet_account_binding_insert",
+   "deferred_resource_transitions_effect_successor_snapshot_transition",
+   "deferred_resource_transitions_identity_immutable_update",
+   "deferred_resource_transitions_initial_state_reserved",
+   "deferred_resource_transitions_rebase_transition",
+   "deferred_resource_transitions_reservation_binding_insert",
+   "platform_coin_commerce_plan_switch_quotes_update_deny",
+   "platform_coin_ledger_entries_immutable_delete",
+   "platform_coin_ledger_entries_immutable_update",
+   "platform_payment_receipts_fact_immutable_update",
+   "platform_referral_accrual_origin_immutable",
+   "platform_referral_bindings_immutable_update",
+   "platform_referral_origins_immutable_update",
+   "platform_referral_profile_no_delete",
+   "platform_referral_touches_immutable_delete",
+   "platform_scheduled_plan_switches_status_transition"
+  ],
+  "watermark": {
+   "keys": [
+    [
+     "2026-03-05T12:00:00.000Z",
+     "le-pg-1040"
+    ],
+    [
+     "2026-03-05T12:00:00.000Z",
+     "le-pg-1039"
+    ],
+    [
+     "2026-03-05T12:00:00.000Z",
+     "le-pg-1038"
+    ],
+    [
+     "2026-03-05T12:00:00.000Z",
+     "le-pg-1037"
+    ],
+    [
+     "2026-03-05T12:00:00.000Z",
+     "le-pg-1036"
+    ],
+    [
+     "2026-03-05T12:00:00.000Z",
+     "le-pg-1035"
+    ],
+    [
+     "2026-03-05T12:00:00.000Z",
+     "le-pg-1034"
+    ],
+    [
+     "2026-03-05T12:00:00.000Z",
+     "le-pg-1033"
+    ],
+    [
+     "2026-03-05T12:00:00.000Z",
+     "le-pg-1032"
+    ],
+    [
+     "2026-03-05T12:00:00.000Z",
+     "le-pg-1031"
+    ],
+    [
+     "2026-03-05T12:00:00.000Z",
+     "le-pg-1030"
+    ],
+    [
+     "2026-03-05T12:00:00.000Z",
+     "le-pg-1029"
+    ],
+    [
+     "2026-03-05T12:00:00.000Z",
+     "le-pg-1028"
+    ],
+    [
+     "2026-03-05T12:00:00.000Z",
+     "le-pg-1027"
+    ],
+    [
+     "2026-03-05T12:00:00.000Z",
+     "le-pg-1026"
+    ],
+    [
+     "2026-03-05T12:00:00.000Z",
+     "le-pg-1025"
+    ],
+    [
+     "2026-03-05T12:00:00.000Z",
+     "le-pg-1024"
+    ],
+    [
+     "2026-03-05T12:00:00.000Z",
+     "le-pg-1023"
+    ],
+    [
+     "2026-03-05T12:00:00.000Z",
+     "le-pg-1022"
+    ],
+    [
+     "2026-03-05T12:00:00.000Z",
+     "le-pg-1021"
+    ],
+    [
+     "2026-03-05T12:00:00.000Z",
+     "le-pg-1020"
+    ],
+    [
+     "2026-03-05T12:00:00.000Z",
+     "le-pg-1019"
+    ],
+    [
+     "2026-03-05T12:00:00.000Z",
+     "le-pg-1018"
+    ],
+    [
+     "2026-03-05T12:00:00.000Z",
+     "le-pg-1017"
+    ],
+    [
+     "2026-03-05T12:00:00.000Z",
+     "le-pg-1016"
+    ],
+    [
+     "2026-03-05T12:00:00.000Z",
+     "le-pg-1015"
+    ],
+    [
+     "2026-03-05T12:00:00.000Z",
+     "le-pg-1014"
+    ],
+    [
+     "2026-03-05T12:00:00.000Z",
+     "le-pg-1013"
+    ],
+    [
+     "2026-03-05T12:00:00.000Z",
+     "le-pg-1012"
+    ],
+    [
+     "2026-03-05T12:00:00.000Z",
+     "le-pg-1011"
+    ],
+    [
+     "2026-03-05T12:00:00.000Z",
+     "le-pg-1010"
+    ],
+    [
+     "2026-03-05T12:00:00.000Z",
+     "le-pg-1009"
+    ],
+    [
+     "2026-03-05T12:00:00.000Z",
+     "le-pg-1008"
+    ],
+    [
+     "2026-03-05T12:00:00.000Z",
+     "le-pg-1007"
+    ],
+    [
+     "2026-03-05T12:00:00.000Z",
+     "le-pg-1006"
+    ],
+    [
+     "2026-03-05T12:00:00.000Z",
+     "le-pg-1005"
+    ],
+    [
+     "2026-03-05T12:00:00.000Z",
+     "le-pg-1004"
+    ],
+    [
+     "2026-03-05T12:00:00.000Z",
+     "le-pg-1003"
+    ],
+    [
+     "2026-03-05T12:00:00.000Z",
+     "le-pg-1002"
+    ],
+    [
+     "2026-03-05T12:00:00.000Z",
+     "le-pg-1001"
+    ],
+    [
+     "2026-02-05T12:00:00.000Z",
+     "le-pg-2020"
+    ],
+    [
+     "2026-02-05T12:00:00.000Z",
+     "le-pg-2019"
+    ],
+    [
+     "2026-02-05T12:00:00.000Z",
+     "le-pg-2018"
+    ],
+    [
+     "2026-02-05T12:00:00.000Z",
+     "le-pg-2017"
+    ],
+    [
+     "2026-02-05T12:00:00.000Z",
+     "le-pg-2016"
+    ],
+    [
+     "2026-02-05T12:00:00.000Z",
+     "le-pg-2015"
+    ],
+    [
+     "2026-02-05T12:00:00.000Z",
+     "le-pg-2014"
+    ],
+    [
+     "2026-02-05T12:00:00.000Z",
+     "le-pg-2013"
+    ],
+    [
+     "2026-02-05T12:00:00.000Z",
+     "le-pg-2012"
+    ],
+    [
+     "2026-02-05T12:00:00.000Z",
+     "le-pg-2011"
+    ],
+    [
+     "2026-02-05T12:00:00.000Z",
+     "le-pg-2010"
+    ],
+    [
+     "2026-02-05T12:00:00.000Z",
+     "le-pg-2009"
+    ],
+    [
+     "2026-02-05T12:00:00.000Z",
+     "le-pg-2008"
+    ],
+    [
+     "2026-02-05T12:00:00.000Z",
+     "le-pg-2007"
+    ],
+    [
+     "2026-02-05T12:00:00.000Z",
+     "le-pg-2006"
+    ],
+    [
+     "2026-02-05T12:00:00.000Z",
+     "le-pg-2005"
+    ],
+    [
+     "2026-02-05T12:00:00.000Z",
+     "le-pg-2004"
+    ],
+    [
+     "2026-02-05T12:00:00.000Z",
+     "le-pg-2003"
+    ],
+    [
+     "2026-02-05T12:00:00.000Z",
+     "le-pg-2002"
+    ],
+    [
+     "2026-02-05T12:00:00.000Z",
+     "le-pg-2001"
+    ]
+   ],
+   "sha256": "622cf067adfc090ac43e39c5578451521d8d77c7787f453da145bbe6bc74a316"
+  },
+  "seedSha256": "beb7e524ae3e9341d877b7434e0461870b1a0cd5bee4c2a2572597c9dd53e907",
+  "seedStatements": 112,
+  "ledgerSqlNormalizedSha256": "94b4ca3172d82ab01b7cb0ecb8f28bdbd9e7018c73e33e11f41602e47ef01aac",
+  "ledgerSqlSource": "server/services/platform/coin-wallet-store.mjs listLedgerEntries (baseline b4bac535)",
+  "accountsSql": {
+   "frozenNormalizedSha256": "eb8f4a26faa44f8ebf53a2f4db7e542c2b7b008bcd122ead8e9d9b8782444fae",
+   "liveNormalizedSha256AfterInlining": "eb8f4a26faa44f8ebf53a2f4db7e542c2b7b008bcd122ead8e9d9b8782444fae",
+   "identicalAfterInlining": true,
+   "note": "Live directory query embeds ${USER_MONITOR_REGISTRATION_SOURCE_SQL}; the stage-7 frozen copy inlined the same CASE expression verbatim. Predicate, ORDER BY and LIMIT are identical; only the extraction into a named constant changed.",
+   "accountsSqlSource": "server/services/platform/subscription-control-db.mjs listUserMonitorAccountDirectory (baseline b4bac535)"
+  }
+ },
+ "ledgerSql": "\n        select ledger.*, lot.coin_type as coin_type\n          from platform_coin_ledger_entries as ledger\n          left join platform_coin_lots as lot\n            on lot.lot_ref = ledger.lot_ref\n           and lot.wallet_ref = ledger.wallet_ref\n         where ledger.wallet_ref = ?\n           and (\n             ? is null\n             or ledger.occurred_at < ?\n             or (ledger.occurred_at = ? and ledger.entry_ref < ?)\n           )\n         order by ledger.occurred_at desc, ledger.entry_ref desc\n         limit ?\n      ",
+ "seedStatements": [
+  "INSERT INTO platform_accounts (id, owner_ref, status, created_at, updated_at, metadata_json) VALUES ('acct-pg-0101','owner-acct-pg-0101','suspended','2026-03-01T10:00:00.000Z','2026-03-01T10:00:00.000Z','{}')",
+  "INSERT INTO platform_accounts (id, owner_ref, status, created_at, updated_at, metadata_json) VALUES ('acct-pg-0102','owner-acct-pg-0102','suspended','2026-03-01T10:00:00.000Z','2026-03-01T10:00:00.000Z','{\"registrationSource\":\"self_service_portal\"}')",
+  "INSERT INTO platform_accounts (id, owner_ref, status, created_at, updated_at, metadata_json) VALUES ('acct-pg-0103','owner-acct-pg-0103','suspended','2026-03-01T10:00:00.000Z','2026-03-01T10:00:00.000Z','{}')",
+  "INSERT INTO platform_accounts (id, owner_ref, status, created_at, updated_at, metadata_json) VALUES ('acct-pg-0104','owner-acct-pg-0104','suspended','2026-03-01T10:00:00.000Z','2026-03-01T10:00:00.000Z','{\"registrationSource\":\"self_service_portal\"}')",
+  "INSERT INTO platform_accounts (id, owner_ref, status, created_at, updated_at, metadata_json) VALUES ('acct-pg-0105','owner-acct-pg-0105','suspended','2026-03-01T10:00:00.000Z','2026-03-01T10:00:00.000Z','{}')",
+  "INSERT INTO platform_accounts (id, owner_ref, status, created_at, updated_at, metadata_json) VALUES ('acct-pg-0106','owner-acct-pg-0106','suspended','2026-03-01T10:00:00.000Z','2026-03-01T10:00:00.000Z','{\"registrationSource\":\"self_service_portal\"}')",
+  "INSERT INTO platform_accounts (id, owner_ref, status, created_at, updated_at, metadata_json) VALUES ('acct-pg-0107','owner-acct-pg-0107','suspended','2026-03-01T10:00:00.000Z','2026-03-01T10:00:00.000Z','{}')",
+  "INSERT INTO platform_accounts (id, owner_ref, status, created_at, updated_at, metadata_json) VALUES ('acct-pg-0108','owner-acct-pg-0108','suspended','2026-03-01T10:00:00.000Z','2026-03-01T10:00:00.000Z','{\"registrationSource\":\"self_service_portal\"}')",
+  "INSERT INTO platform_accounts (id, owner_ref, status, created_at, updated_at, metadata_json) VALUES ('acct-pg-0109','owner-acct-pg-0109','suspended','2026-03-01T10:00:00.000Z','2026-03-01T10:00:00.000Z','{}')",
+  "INSERT INTO platform_accounts (id, owner_ref, status, created_at, updated_at, metadata_json) VALUES ('acct-pg-0110','owner-acct-pg-0110','suspended','2026-03-01T10:00:00.000Z','2026-03-01T10:00:00.000Z','{\"registrationSource\":\"self_service_portal\"}')",
+  "INSERT INTO platform_accounts (id, owner_ref, status, created_at, updated_at, metadata_json) VALUES ('acct-pg-0111','owner-acct-pg-0111','active','2026-03-01T10:00:00.000Z','2026-03-01T10:00:00.000Z','{}')",
+  "INSERT INTO platform_accounts (id, owner_ref, status, created_at, updated_at, metadata_json) VALUES ('acct-pg-0112','owner-acct-pg-0112','active','2026-03-01T10:00:00.000Z','2026-03-01T10:00:00.000Z','{\"registrationSource\":\"self_service_portal\"}')",
+  "INSERT INTO platform_accounts (id, owner_ref, status, created_at, updated_at, metadata_json) VALUES ('acct-pg-0113','owner-acct-pg-0113','active','2026-03-01T10:00:00.000Z','2026-03-01T10:00:00.000Z','{}')",
+  "INSERT INTO platform_accounts (id, owner_ref, status, created_at, updated_at, metadata_json) VALUES ('acct-pg-0114','owner-acct-pg-0114','active','2026-03-01T10:00:00.000Z','2026-03-01T10:00:00.000Z','{\"registrationSource\":\"self_service_portal\"}')",
+  "INSERT INTO platform_accounts (id, owner_ref, status, created_at, updated_at, metadata_json) VALUES ('acct-pg-0115','owner-acct-pg-0115','active','2026-03-01T10:00:00.000Z','2026-03-01T10:00:00.000Z','{}')",
+  "INSERT INTO platform_accounts (id, owner_ref, status, created_at, updated_at, metadata_json) VALUES ('acct-pg-0116','owner-acct-pg-0116','active','2026-03-01T10:00:00.000Z','2026-03-01T10:00:00.000Z','{\"registrationSource\":\"self_service_portal\"}')",
+  "INSERT INTO platform_accounts (id, owner_ref, status, created_at, updated_at, metadata_json) VALUES ('acct-pg-0117','owner-acct-pg-0117','active','2026-03-01T10:00:00.000Z','2026-03-01T10:00:00.000Z','{}')",
+  "INSERT INTO platform_accounts (id, owner_ref, status, created_at, updated_at, metadata_json) VALUES ('acct-pg-0118','owner-acct-pg-0118','active','2026-03-01T10:00:00.000Z','2026-03-01T10:00:00.000Z','{\"registrationSource\":\"self_service_portal\"}')",
+  "INSERT INTO platform_accounts (id, owner_ref, status, created_at, updated_at, metadata_json) VALUES ('acct-pg-0119','owner-acct-pg-0119','active','2026-03-01T10:00:00.000Z','2026-03-01T10:00:00.000Z','{}')",
+  "INSERT INTO platform_accounts (id, owner_ref, status, created_at, updated_at, metadata_json) VALUES ('acct-pg-0120','owner-acct-pg-0120','active','2026-03-01T10:00:00.000Z','2026-03-01T10:00:00.000Z','{\"registrationSource\":\"self_service_portal\"}')",
+  "INSERT INTO platform_accounts (id, owner_ref, status, created_at, updated_at, metadata_json) VALUES ('acct-pg-0121','owner-acct-pg-0121','active','2026-03-01T10:00:00.000Z','2026-03-01T10:00:00.000Z','{}')",
+  "INSERT INTO platform_accounts (id, owner_ref, status, created_at, updated_at, metadata_json) VALUES ('acct-pg-0122','owner-acct-pg-0122','active','2026-03-01T10:00:00.000Z','2026-03-01T10:00:00.000Z','{\"registrationSource\":\"self_service_portal\"}')",
+  "INSERT INTO platform_accounts (id, owner_ref, status, created_at, updated_at, metadata_json) VALUES ('acct-pg-0123','owner-acct-pg-0123','active','2026-03-01T10:00:00.000Z','2026-03-01T10:00:00.000Z','{}')",
+  "INSERT INTO platform_accounts (id, owner_ref, status, created_at, updated_at, metadata_json) VALUES ('acct-pg-0124','owner-acct-pg-0124','active','2026-03-01T10:00:00.000Z','2026-03-01T10:00:00.000Z','{\"registrationSource\":\"self_service_portal\"}')",
+  "INSERT INTO platform_accounts (id, owner_ref, status, created_at, updated_at, metadata_json) VALUES ('acct-pg-0125','owner-acct-pg-0125','active','2026-03-01T10:00:00.000Z','2026-03-01T10:00:00.000Z','{}')",
+  "INSERT INTO platform_accounts (id, owner_ref, status, created_at, updated_at, metadata_json) VALUES ('acct-pg-0126','owner-acct-pg-0126','active','2026-03-01T10:00:00.000Z','2026-03-01T10:00:00.000Z','{\"registrationSource\":\"self_service_portal\"}')",
+  "INSERT INTO platform_accounts (id, owner_ref, status, created_at, updated_at, metadata_json) VALUES ('acct-pg-0127','owner-acct-pg-0127','active','2026-03-01T10:00:00.000Z','2026-03-01T10:00:00.000Z','{}')",
+  "INSERT INTO platform_accounts (id, owner_ref, status, created_at, updated_at, metadata_json) VALUES ('acct-pg-0128','owner-acct-pg-0128','active','2026-03-01T10:00:00.000Z','2026-03-01T10:00:00.000Z','{\"registrationSource\":\"self_service_portal\"}')",
+  "INSERT INTO platform_accounts (id, owner_ref, status, created_at, updated_at, metadata_json) VALUES ('acct-pg-0129','owner-acct-pg-0129','active','2026-03-01T10:00:00.000Z','2026-03-01T10:00:00.000Z','{}')",
+  "INSERT INTO platform_accounts (id, owner_ref, status, created_at, updated_at, metadata_json) VALUES ('acct-pg-0130','owner-acct-pg-0130','active','2026-03-01T10:00:00.000Z','2026-03-01T10:00:00.000Z','{\"registrationSource\":\"self_service_portal\"}')",
+  "INSERT INTO platform_accounts (id, owner_ref, status, created_at, updated_at, metadata_json) VALUES ('acct-pg-0201','owner-acct-pg-0201','suspended','2026-02-01T10:00:00.000Z','2026-02-01T10:00:00.000Z','{}')",
+  "INSERT INTO platform_accounts (id, owner_ref, status, created_at, updated_at, metadata_json) VALUES ('acct-pg-0202','owner-acct-pg-0202','suspended','2026-02-01T10:00:00.000Z','2026-02-01T10:00:00.000Z','{}')",
+  "INSERT INTO platform_accounts (id, owner_ref, status, created_at, updated_at, metadata_json) VALUES ('acct-pg-0203','owner-acct-pg-0203','active','2026-02-01T10:00:00.000Z','2026-02-01T10:00:00.000Z','{}')",
+  "INSERT INTO platform_accounts (id, owner_ref, status, created_at, updated_at, metadata_json) VALUES ('acct-pg-0204','owner-acct-pg-0204','active','2026-02-01T10:00:00.000Z','2026-02-01T10:00:00.000Z','{}')",
+  "INSERT INTO platform_accounts (id, owner_ref, status, created_at, updated_at, metadata_json) VALUES ('acct-pg-0205','owner-acct-pg-0205','active','2026-02-01T10:00:00.000Z','2026-02-01T10:00:00.000Z','{}')",
+  "INSERT INTO platform_accounts (id, owner_ref, status, created_at, updated_at, metadata_json) VALUES ('acct-pg-0206','owner-acct-pg-0206','active','2026-02-01T10:00:00.000Z','2026-02-01T10:00:00.000Z','{}')",
+  "INSERT INTO platform_accounts (id, owner_ref, status, created_at, updated_at, metadata_json) VALUES ('acct-pg-0207','owner-acct-pg-0207','active','2026-02-01T10:00:00.000Z','2026-02-01T10:00:00.000Z','{}')",
+  "INSERT INTO platform_accounts (id, owner_ref, status, created_at, updated_at, metadata_json) VALUES ('acct-pg-0208','owner-acct-pg-0208','active','2026-02-01T10:00:00.000Z','2026-02-01T10:00:00.000Z','{}')",
+  "INSERT INTO platform_accounts (id, owner_ref, status, created_at, updated_at, metadata_json) VALUES ('acct-pg-0209','owner-acct-pg-0209','active','2026-02-01T10:00:00.000Z','2026-02-01T10:00:00.000Z','{}')",
+  "INSERT INTO platform_accounts (id, owner_ref, status, created_at, updated_at, metadata_json) VALUES ('acct-pg-0210','owner-acct-pg-0210','active','2026-02-01T10:00:00.000Z','2026-02-01T10:00:00.000Z','{}')",
+  "INSERT INTO platform_accounts (id, owner_ref, status, created_at, updated_at, metadata_json) VALUES ('acct-pg-0211','owner-acct-pg-0211','active','2026-02-01T10:00:00.000Z','2026-02-01T10:00:00.000Z','{}')",
+  "INSERT INTO platform_accounts (id, owner_ref, status, created_at, updated_at, metadata_json) VALUES ('acct-pg-0212','owner-acct-pg-0212','active','2026-02-01T10:00:00.000Z','2026-02-01T10:00:00.000Z','{}')",
+  "INSERT INTO platform_accounts (id, owner_ref, status, created_at, updated_at, metadata_json) VALUES ('acct-pg-0301','owner-acct-pg-0301','active','2026-01-05T09:00:00.000Z','2026-01-05T09:00:00.000Z','{}')",
+  "INSERT INTO platform_accounts (id, owner_ref, status, created_at, updated_at, metadata_json) VALUES ('acct-pg-0302','owner-acct-pg-0302','active','2026-01-04T09:00:00.000Z','2026-01-04T09:00:00.000Z','{}')",
+  "INSERT INTO platform_accounts (id, owner_ref, status, created_at, updated_at, metadata_json) VALUES ('acct-pg-0303','owner-acct-pg-0303','active','2026-01-03T09:00:00.000Z','2026-01-03T09:00:00.000Z','{}')",
+  "INSERT INTO platform_accounts (id, owner_ref, status, created_at, updated_at, metadata_json) VALUES ('acct-pg-0304','owner-acct-pg-0304','active','2026-01-02T09:00:00.000Z','2026-01-02T09:00:00.000Z','{}')",
+  "INSERT INTO platform_accounts (id, owner_ref, status, created_at, updated_at, metadata_json) VALUES ('acct-pg-0305','owner-acct-pg-0305','active','2026-01-01T09:00:00.000Z','2026-01-01T09:00:00.000Z','{}')",
+  "INSERT INTO platform_accounts (id, owner_ref, status, created_at, updated_at, metadata_json) VALUES ('acct-pg-0306','owner-acct-pg-0306','active','2025-12-31T09:00:00.000Z','2025-12-31T09:00:00.000Z','{}')",
+  "INSERT INTO platform_coin_wallets (wallet_ref, account_id, status, version, created_at, updated_at) VALUES ('wallet-pg-1','acct-pg-0301','active',0,'2025-12-01T00:00:00.000Z','2025-12-01T00:00:00.000Z')",
+  "INSERT INTO platform_coin_operation_receipts (operation_ref, wallet_ref, actor_scope, operation_type, idempotency_key, request_digest, status, previous_wallet_version, resulting_wallet_version, resulting_wallet_status, result_ref, safe_result_code, created_at, completed_at) VALUES ('wop-pg-1','wallet-pg-1','payment:adapter-x','credit','idem-pg-1','dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd','succeeded',0,60,'active','lot-pg-1','credit_applied','2025-12-01T00:00:00.000Z','2025-12-01T00:00:00.000Z')",
+  "INSERT INTO platform_coin_credit_origins (credit_origin_ref, wallet_ref, coin_type, source_type, source_ref, source_digest, operation_ref, lot_ref, created_at) VALUES ('origin-pg-1','wallet-pg-1','paid_coins','verified_payment_capture','settle-pg-1','dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd','wop-pg-1','lot-pg-1','2025-12-01T00:00:00.000Z')",
+  "INSERT INTO platform_coin_lots (lot_ref, wallet_ref, coin_type, credit_origin_ref, issued_units, pending_units, available_units, held_units, consumed_units, reversed_units, expired_units, source_type, source_ref, policy_ref, policy_version, expires_at, created_at, updated_at) VALUES ('lot-pg-1','wallet-pg-1','paid_coins','origin-pg-1',100000,0,100000,0,0,0,0,'verified_payment_capture','settle-pg-1',NULL,NULL,NULL,'2025-12-01T00:00:00.000Z','2025-12-01T00:00:00.000Z')",
+  "INSERT INTO platform_coin_ledger_entries (entry_ref, operation_ref, wallet_ref, lot_ref, operation, amount_units, hold_ref, order_ref, source_type, source_ref, actor_type, actor_ref, previous_wallet_version, resulting_wallet_version, resulting_wallet_status, occurred_at) VALUES ('le-pg-1001','wop-pg-1','wallet-pg-1','lot-pg-1','credit',1,NULL,NULL,'verified_payment_capture','settle-pg-1','payment_provider','adapter-x',0,1,'active','2026-03-05T12:00:00.000Z')",
+  "INSERT INTO platform_coin_ledger_entries (entry_ref, operation_ref, wallet_ref, lot_ref, operation, amount_units, hold_ref, order_ref, source_type, source_ref, actor_type, actor_ref, previous_wallet_version, resulting_wallet_version, resulting_wallet_status, occurred_at) VALUES ('le-pg-1002','wop-pg-1','wallet-pg-1','lot-pg-1','credit',1,NULL,NULL,'verified_payment_capture','settle-pg-1','payment_provider','adapter-x',1,2,'active','2026-03-05T12:00:00.000Z')",
+  "INSERT INTO platform_coin_ledger_entries (entry_ref, operation_ref, wallet_ref, lot_ref, operation, amount_units, hold_ref, order_ref, source_type, source_ref, actor_type, actor_ref, previous_wallet_version, resulting_wallet_version, resulting_wallet_status, occurred_at) VALUES ('le-pg-1003','wop-pg-1','wallet-pg-1','lot-pg-1','credit',1,NULL,NULL,'verified_payment_capture','settle-pg-1','payment_provider','adapter-x',2,3,'active','2026-03-05T12:00:00.000Z')",
+  "INSERT INTO platform_coin_ledger_entries (entry_ref, operation_ref, wallet_ref, lot_ref, operation, amount_units, hold_ref, order_ref, source_type, source_ref, actor_type, actor_ref, previous_wallet_version, resulting_wallet_version, resulting_wallet_status, occurred_at) VALUES ('le-pg-1004','wop-pg-1','wallet-pg-1','lot-pg-1','credit',1,NULL,NULL,'verified_payment_capture','settle-pg-1','payment_provider','adapter-x',3,4,'active','2026-03-05T12:00:00.000Z')",
+  "INSERT INTO platform_coin_ledger_entries (entry_ref, operation_ref, wallet_ref, lot_ref, operation, amount_units, hold_ref, order_ref, source_type, source_ref, actor_type, actor_ref, previous_wallet_version, resulting_wallet_version, resulting_wallet_status, occurred_at) VALUES ('le-pg-1005','wop-pg-1','wallet-pg-1','lot-pg-1','credit',1,NULL,NULL,'verified_payment_capture','settle-pg-1','payment_provider','adapter-x',4,5,'active','2026-03-05T12:00:00.000Z')",
+  "INSERT INTO platform_coin_ledger_entries (entry_ref, operation_ref, wallet_ref, lot_ref, operation, amount_units, hold_ref, order_ref, source_type, source_ref, actor_type, actor_ref, previous_wallet_version, resulting_wallet_version, resulting_wallet_status, occurred_at) VALUES ('le-pg-1006','wop-pg-1','wallet-pg-1','lot-pg-1','credit',1,NULL,NULL,'verified_payment_capture','settle-pg-1','payment_provider','adapter-x',5,6,'active','2026-03-05T12:00:00.000Z')",
+  "INSERT INTO platform_coin_ledger_entries (entry_ref, operation_ref, wallet_ref, lot_ref, operation, amount_units, hold_ref, order_ref, source_type, source_ref, actor_type, actor_ref, previous_wallet_version, resulting_wallet_version, resulting_wallet_status, occurred_at) VALUES ('le-pg-1007','wop-pg-1','wallet-pg-1','lot-pg-1','credit',1,NULL,NULL,'verified_payment_capture','settle-pg-1','payment_provider','adapter-x',6,7,'active','2026-03-05T12:00:00.000Z')",
+  "INSERT INTO platform_coin_ledger_entries (entry_ref, operation_ref, wallet_ref, lot_ref, operation, amount_units, hold_ref, order_ref, source_type, source_ref, actor_type, actor_ref, previous_wallet_version, resulting_wallet_version, resulting_wallet_status, occurred_at) VALUES ('le-pg-1008','wop-pg-1','wallet-pg-1','lot-pg-1','credit',1,NULL,NULL,'verified_payment_capture','settle-pg-1','payment_provider','adapter-x',7,8,'active','2026-03-05T12:00:00.000Z')",
+  "INSERT INTO platform_coin_ledger_entries (entry_ref, operation_ref, wallet_ref, lot_ref, operation, amount_units, hold_ref, order_ref, source_type, source_ref, actor_type, actor_ref, previous_wallet_version, resulting_wallet_version, resulting_wallet_status, occurred_at) VALUES ('le-pg-1009','wop-pg-1','wallet-pg-1','lot-pg-1','credit',1,NULL,NULL,'verified_payment_capture','settle-pg-1','payment_provider','adapter-x',8,9,'active','2026-03-05T12:00:00.000Z')",
+  "INSERT INTO platform_coin_ledger_entries (entry_ref, operation_ref, wallet_ref, lot_ref, operation, amount_units, hold_ref, order_ref, source_type, source_ref, actor_type, actor_ref, previous_wallet_version, resulting_wallet_version, resulting_wallet_status, occurred_at) VALUES ('le-pg-1010','wop-pg-1','wallet-pg-1','lot-pg-1','credit',1,NULL,NULL,'verified_payment_capture','settle-pg-1','payment_provider','adapter-x',9,10,'active','2026-03-05T12:00:00.000Z')",
+  "INSERT INTO platform_coin_ledger_entries (entry_ref, operation_ref, wallet_ref, lot_ref, operation, amount_units, hold_ref, order_ref, source_type, source_ref, actor_type, actor_ref, previous_wallet_version, resulting_wallet_version, resulting_wallet_status, occurred_at) VALUES ('le-pg-1011','wop-pg-1','wallet-pg-1','lot-pg-1','credit',1,NULL,NULL,'verified_payment_capture','settle-pg-1','payment_provider','adapter-x',10,11,'active','2026-03-05T12:00:00.000Z')",
+  "INSERT INTO platform_coin_ledger_entries (entry_ref, operation_ref, wallet_ref, lot_ref, operation, amount_units, hold_ref, order_ref, source_type, source_ref, actor_type, actor_ref, previous_wallet_version, resulting_wallet_version, resulting_wallet_status, occurred_at) VALUES ('le-pg-1012','wop-pg-1','wallet-pg-1','lot-pg-1','credit',1,NULL,NULL,'verified_payment_capture','settle-pg-1','payment_provider','adapter-x',11,12,'active','2026-03-05T12:00:00.000Z')",
+  "INSERT INTO platform_coin_ledger_entries (entry_ref, operation_ref, wallet_ref, lot_ref, operation, amount_units, hold_ref, order_ref, source_type, source_ref, actor_type, actor_ref, previous_wallet_version, resulting_wallet_version, resulting_wallet_status, occurred_at) VALUES ('le-pg-1013','wop-pg-1','wallet-pg-1','lot-pg-1','credit',1,NULL,NULL,'verified_payment_capture','settle-pg-1','payment_provider','adapter-x',12,13,'active','2026-03-05T12:00:00.000Z')",
+  "INSERT INTO platform_coin_ledger_entries (entry_ref, operation_ref, wallet_ref, lot_ref, operation, amount_units, hold_ref, order_ref, source_type, source_ref, actor_type, actor_ref, previous_wallet_version, resulting_wallet_version, resulting_wallet_status, occurred_at) VALUES ('le-pg-1014','wop-pg-1','wallet-pg-1','lot-pg-1','credit',1,NULL,NULL,'verified_payment_capture','settle-pg-1','payment_provider','adapter-x',13,14,'active','2026-03-05T12:00:00.000Z')",
+  "INSERT INTO platform_coin_ledger_entries (entry_ref, operation_ref, wallet_ref, lot_ref, operation, amount_units, hold_ref, order_ref, source_type, source_ref, actor_type, actor_ref, previous_wallet_version, resulting_wallet_version, resulting_wallet_status, occurred_at) VALUES ('le-pg-1015','wop-pg-1','wallet-pg-1','lot-pg-1','credit',1,NULL,NULL,'verified_payment_capture','settle-pg-1','payment_provider','adapter-x',14,15,'active','2026-03-05T12:00:00.000Z')",
+  "INSERT INTO platform_coin_ledger_entries (entry_ref, operation_ref, wallet_ref, lot_ref, operation, amount_units, hold_ref, order_ref, source_type, source_ref, actor_type, actor_ref, previous_wallet_version, resulting_wallet_version, resulting_wallet_status, occurred_at) VALUES ('le-pg-1016','wop-pg-1','wallet-pg-1','lot-pg-1','credit',1,NULL,NULL,'verified_payment_capture','settle-pg-1','payment_provider','adapter-x',15,16,'active','2026-03-05T12:00:00.000Z')",
+  "INSERT INTO platform_coin_ledger_entries (entry_ref, operation_ref, wallet_ref, lot_ref, operation, amount_units, hold_ref, order_ref, source_type, source_ref, actor_type, actor_ref, previous_wallet_version, resulting_wallet_version, resulting_wallet_status, occurred_at) VALUES ('le-pg-1017','wop-pg-1','wallet-pg-1','lot-pg-1','credit',1,NULL,NULL,'verified_payment_capture','settle-pg-1','payment_provider','adapter-x',16,17,'active','2026-03-05T12:00:00.000Z')",
+  "INSERT INTO platform_coin_ledger_entries (entry_ref, operation_ref, wallet_ref, lot_ref, operation, amount_units, hold_ref, order_ref, source_type, source_ref, actor_type, actor_ref, previous_wallet_version, resulting_wallet_version, resulting_wallet_status, occurred_at) VALUES ('le-pg-1018','wop-pg-1','wallet-pg-1','lot-pg-1','credit',1,NULL,NULL,'verified_payment_capture','settle-pg-1','payment_provider','adapter-x',17,18,'active','2026-03-05T12:00:00.000Z')",
+  "INSERT INTO platform_coin_ledger_entries (entry_ref, operation_ref, wallet_ref, lot_ref, operation, amount_units, hold_ref, order_ref, source_type, source_ref, actor_type, actor_ref, previous_wallet_version, resulting_wallet_version, resulting_wallet_status, occurred_at) VALUES ('le-pg-1019','wop-pg-1','wallet-pg-1','lot-pg-1','credit',1,NULL,NULL,'verified_payment_capture','settle-pg-1','payment_provider','adapter-x',18,19,'active','2026-03-05T12:00:00.000Z')",
+  "INSERT INTO platform_coin_ledger_entries (entry_ref, operation_ref, wallet_ref, lot_ref, operation, amount_units, hold_ref, order_ref, source_type, source_ref, actor_type, actor_ref, previous_wallet_version, resulting_wallet_version, resulting_wallet_status, occurred_at) VALUES ('le-pg-1020','wop-pg-1','wallet-pg-1','lot-pg-1','credit',1,NULL,NULL,'verified_payment_capture','settle-pg-1','payment_provider','adapter-x',19,20,'active','2026-03-05T12:00:00.000Z')",
+  "INSERT INTO platform_coin_ledger_entries (entry_ref, operation_ref, wallet_ref, lot_ref, operation, amount_units, hold_ref, order_ref, source_type, source_ref, actor_type, actor_ref, previous_wallet_version, resulting_wallet_version, resulting_wallet_status, occurred_at) VALUES ('le-pg-1021','wop-pg-1','wallet-pg-1','lot-pg-1','credit',1,NULL,NULL,'verified_payment_capture','settle-pg-1','payment_provider','adapter-x',20,21,'active','2026-03-05T12:00:00.000Z')",
+  "INSERT INTO platform_coin_ledger_entries (entry_ref, operation_ref, wallet_ref, lot_ref, operation, amount_units, hold_ref, order_ref, source_type, source_ref, actor_type, actor_ref, previous_wallet_version, resulting_wallet_version, resulting_wallet_status, occurred_at) VALUES ('le-pg-1022','wop-pg-1','wallet-pg-1','lot-pg-1','credit',1,NULL,NULL,'verified_payment_capture','settle-pg-1','payment_provider','adapter-x',21,22,'active','2026-03-05T12:00:00.000Z')",
+  "INSERT INTO platform_coin_ledger_entries (entry_ref, operation_ref, wallet_ref, lot_ref, operation, amount_units, hold_ref, order_ref, source_type, source_ref, actor_type, actor_ref, previous_wallet_version, resulting_wallet_version, resulting_wallet_status, occurred_at) VALUES ('le-pg-1023','wop-pg-1','wallet-pg-1','lot-pg-1','credit',1,NULL,NULL,'verified_payment_capture','settle-pg-1','payment_provider','adapter-x',22,23,'active','2026-03-05T12:00:00.000Z')",
+  "INSERT INTO platform_coin_ledger_entries (entry_ref, operation_ref, wallet_ref, lot_ref, operation, amount_units, hold_ref, order_ref, source_type, source_ref, actor_type, actor_ref, previous_wallet_version, resulting_wallet_version, resulting_wallet_status, occurred_at) VALUES ('le-pg-1024','wop-pg-1','wallet-pg-1','lot-pg-1','credit',1,NULL,NULL,'verified_payment_capture','settle-pg-1','payment_provider','adapter-x',23,24,'active','2026-03-05T12:00:00.000Z')",
+  "INSERT INTO platform_coin_ledger_entries (entry_ref, operation_ref, wallet_ref, lot_ref, operation, amount_units, hold_ref, order_ref, source_type, source_ref, actor_type, actor_ref, previous_wallet_version, resulting_wallet_version, resulting_wallet_status, occurred_at) VALUES ('le-pg-1025','wop-pg-1','wallet-pg-1','lot-pg-1','credit',1,NULL,NULL,'verified_payment_capture','settle-pg-1','payment_provider','adapter-x',24,25,'active','2026-03-05T12:00:00.000Z')",
+  "INSERT INTO platform_coin_ledger_entries (entry_ref, operation_ref, wallet_ref, lot_ref, operation, amount_units, hold_ref, order_ref, source_type, source_ref, actor_type, actor_ref, previous_wallet_version, resulting_wallet_version, resulting_wallet_status, occurred_at) VALUES ('le-pg-1026','wop-pg-1','wallet-pg-1','lot-pg-1','credit',1,NULL,NULL,'verified_payment_capture','settle-pg-1','payment_provider','adapter-x',25,26,'active','2026-03-05T12:00:00.000Z')",
+  "INSERT INTO platform_coin_ledger_entries (entry_ref, operation_ref, wallet_ref, lot_ref, operation, amount_units, hold_ref, order_ref, source_type, source_ref, actor_type, actor_ref, previous_wallet_version, resulting_wallet_version, resulting_wallet_status, occurred_at) VALUES ('le-pg-1027','wop-pg-1','wallet-pg-1','lot-pg-1','credit',1,NULL,NULL,'verified_payment_capture','settle-pg-1','payment_provider','adapter-x',26,27,'active','2026-03-05T12:00:00.000Z')",
+  "INSERT INTO platform_coin_ledger_entries (entry_ref, operation_ref, wallet_ref, lot_ref, operation, amount_units, hold_ref, order_ref, source_type, source_ref, actor_type, actor_ref, previous_wallet_version, resulting_wallet_version, resulting_wallet_status, occurred_at) VALUES ('le-pg-1028','wop-pg-1','wallet-pg-1','lot-pg-1','credit',1,NULL,NULL,'verified_payment_capture','settle-pg-1','payment_provider','adapter-x',27,28,'active','2026-03-05T12:00:00.000Z')",
+  "INSERT INTO platform_coin_ledger_entries (entry_ref, operation_ref, wallet_ref, lot_ref, operation, amount_units, hold_ref, order_ref, source_type, source_ref, actor_type, actor_ref, previous_wallet_version, resulting_wallet_version, resulting_wallet_status, occurred_at) VALUES ('le-pg-1029','wop-pg-1','wallet-pg-1','lot-pg-1','credit',1,NULL,NULL,'verified_payment_capture','settle-pg-1','payment_provider','adapter-x',28,29,'active','2026-03-05T12:00:00.000Z')",
+  "INSERT INTO platform_coin_ledger_entries (entry_ref, operation_ref, wallet_ref, lot_ref, operation, amount_units, hold_ref, order_ref, source_type, source_ref, actor_type, actor_ref, previous_wallet_version, resulting_wallet_version, resulting_wallet_status, occurred_at) VALUES ('le-pg-1030','wop-pg-1','wallet-pg-1','lot-pg-1','credit',1,NULL,NULL,'verified_payment_capture','settle-pg-1','payment_provider','adapter-x',29,30,'active','2026-03-05T12:00:00.000Z')",
+  "INSERT INTO platform_coin_ledger_entries (entry_ref, operation_ref, wallet_ref, lot_ref, operation, amount_units, hold_ref, order_ref, source_type, source_ref, actor_type, actor_ref, previous_wallet_version, resulting_wallet_version, resulting_wallet_status, occurred_at) VALUES ('le-pg-1031','wop-pg-1','wallet-pg-1','lot-pg-1','credit',1,NULL,NULL,'verified_payment_capture','settle-pg-1','payment_provider','adapter-x',30,31,'active','2026-03-05T12:00:00.000Z')",
+  "INSERT INTO platform_coin_ledger_entries (entry_ref, operation_ref, wallet_ref, lot_ref, operation, amount_units, hold_ref, order_ref, source_type, source_ref, actor_type, actor_ref, previous_wallet_version, resulting_wallet_version, resulting_wallet_status, occurred_at) VALUES ('le-pg-1032','wop-pg-1','wallet-pg-1','lot-pg-1','credit',1,NULL,NULL,'verified_payment_capture','settle-pg-1','payment_provider','adapter-x',31,32,'active','2026-03-05T12:00:00.000Z')",
+  "INSERT INTO platform_coin_ledger_entries (entry_ref, operation_ref, wallet_ref, lot_ref, operation, amount_units, hold_ref, order_ref, source_type, source_ref, actor_type, actor_ref, previous_wallet_version, resulting_wallet_version, resulting_wallet_status, occurred_at) VALUES ('le-pg-1033','wop-pg-1','wallet-pg-1','lot-pg-1','credit',1,NULL,NULL,'verified_payment_capture','settle-pg-1','payment_provider','adapter-x',32,33,'active','2026-03-05T12:00:00.000Z')",
+  "INSERT INTO platform_coin_ledger_entries (entry_ref, operation_ref, wallet_ref, lot_ref, operation, amount_units, hold_ref, order_ref, source_type, source_ref, actor_type, actor_ref, previous_wallet_version, resulting_wallet_version, resulting_wallet_status, occurred_at) VALUES ('le-pg-1034','wop-pg-1','wallet-pg-1','lot-pg-1','credit',1,NULL,NULL,'verified_payment_capture','settle-pg-1','payment_provider','adapter-x',33,34,'active','2026-03-05T12:00:00.000Z')",
+  "INSERT INTO platform_coin_ledger_entries (entry_ref, operation_ref, wallet_ref, lot_ref, operation, amount_units, hold_ref, order_ref, source_type, source_ref, actor_type, actor_ref, previous_wallet_version, resulting_wallet_version, resulting_wallet_status, occurred_at) VALUES ('le-pg-1035','wop-pg-1','wallet-pg-1','lot-pg-1','credit',1,NULL,NULL,'verified_payment_capture','settle-pg-1','payment_provider','adapter-x',34,35,'active','2026-03-05T12:00:00.000Z')",
+  "INSERT INTO platform_coin_ledger_entries (entry_ref, operation_ref, wallet_ref, lot_ref, operation, amount_units, hold_ref, order_ref, source_type, source_ref, actor_type, actor_ref, previous_wallet_version, resulting_wallet_version, resulting_wallet_status, occurred_at) VALUES ('le-pg-1036','wop-pg-1','wallet-pg-1','lot-pg-1','credit',1,NULL,NULL,'verified_payment_capture','settle-pg-1','payment_provider','adapter-x',35,36,'active','2026-03-05T12:00:00.000Z')",
+  "INSERT INTO platform_coin_ledger_entries (entry_ref, operation_ref, wallet_ref, lot_ref, operation, amount_units, hold_ref, order_ref, source_type, source_ref, actor_type, actor_ref, previous_wallet_version, resulting_wallet_version, resulting_wallet_status, occurred_at) VALUES ('le-pg-1037','wop-pg-1','wallet-pg-1','lot-pg-1','credit',1,NULL,NULL,'verified_payment_capture','settle-pg-1','payment_provider','adapter-x',36,37,'active','2026-03-05T12:00:00.000Z')",
+  "INSERT INTO platform_coin_ledger_entries (entry_ref, operation_ref, wallet_ref, lot_ref, operation, amount_units, hold_ref, order_ref, source_type, source_ref, actor_type, actor_ref, previous_wallet_version, resulting_wallet_version, resulting_wallet_status, occurred_at) VALUES ('le-pg-1038','wop-pg-1','wallet-pg-1','lot-pg-1','credit',1,NULL,NULL,'verified_payment_capture','settle-pg-1','payment_provider','adapter-x',37,38,'active','2026-03-05T12:00:00.000Z')",
+  "INSERT INTO platform_coin_ledger_entries (entry_ref, operation_ref, wallet_ref, lot_ref, operation, amount_units, hold_ref, order_ref, source_type, source_ref, actor_type, actor_ref, previous_wallet_version, resulting_wallet_version, resulting_wallet_status, occurred_at) VALUES ('le-pg-1039','wop-pg-1','wallet-pg-1','lot-pg-1','credit',1,NULL,NULL,'verified_payment_capture','settle-pg-1','payment_provider','adapter-x',38,39,'active','2026-03-05T12:00:00.000Z')",
+  "INSERT INTO platform_coin_ledger_entries (entry_ref, operation_ref, wallet_ref, lot_ref, operation, amount_units, hold_ref, order_ref, source_type, source_ref, actor_type, actor_ref, previous_wallet_version, resulting_wallet_version, resulting_wallet_status, occurred_at) VALUES ('le-pg-1040','wop-pg-1','wallet-pg-1','lot-pg-1','credit',1,NULL,NULL,'verified_payment_capture','settle-pg-1','payment_provider','adapter-x',39,40,'active','2026-03-05T12:00:00.000Z')",
+  "INSERT INTO platform_coin_ledger_entries (entry_ref, operation_ref, wallet_ref, lot_ref, operation, amount_units, hold_ref, order_ref, source_type, source_ref, actor_type, actor_ref, previous_wallet_version, resulting_wallet_version, resulting_wallet_status, occurred_at) VALUES ('le-pg-2001','wop-pg-1','wallet-pg-1','lot-pg-1','credit',1,NULL,NULL,'verified_payment_capture','settle-pg-1','payment_provider','adapter-x',40,41,'active','2026-02-05T12:00:00.000Z')",
+  "INSERT INTO platform_coin_ledger_entries (entry_ref, operation_ref, wallet_ref, lot_ref, operation, amount_units, hold_ref, order_ref, source_type, source_ref, actor_type, actor_ref, previous_wallet_version, resulting_wallet_version, resulting_wallet_status, occurred_at) VALUES ('le-pg-2002','wop-pg-1','wallet-pg-1','lot-pg-1','credit',1,NULL,NULL,'verified_payment_capture','settle-pg-1','payment_provider','adapter-x',41,42,'active','2026-02-05T12:00:00.000Z')",
+  "INSERT INTO platform_coin_ledger_entries (entry_ref, operation_ref, wallet_ref, lot_ref, operation, amount_units, hold_ref, order_ref, source_type, source_ref, actor_type, actor_ref, previous_wallet_version, resulting_wallet_version, resulting_wallet_status, occurred_at) VALUES ('le-pg-2003','wop-pg-1','wallet-pg-1','lot-pg-1','credit',1,NULL,NULL,'verified_payment_capture','settle-pg-1','payment_provider','adapter-x',42,43,'active','2026-02-05T12:00:00.000Z')",
+  "INSERT INTO platform_coin_ledger_entries (entry_ref, operation_ref, wallet_ref, lot_ref, operation, amount_units, hold_ref, order_ref, source_type, source_ref, actor_type, actor_ref, previous_wallet_version, resulting_wallet_version, resulting_wallet_status, occurred_at) VALUES ('le-pg-2004','wop-pg-1','wallet-pg-1','lot-pg-1','credit',1,NULL,NULL,'verified_payment_capture','settle-pg-1','payment_provider','adapter-x',43,44,'active','2026-02-05T12:00:00.000Z')",
+  "INSERT INTO platform_coin_ledger_entries (entry_ref, operation_ref, wallet_ref, lot_ref, operation, amount_units, hold_ref, order_ref, source_type, source_ref, actor_type, actor_ref, previous_wallet_version, resulting_wallet_version, resulting_wallet_status, occurred_at) VALUES ('le-pg-2005','wop-pg-1','wallet-pg-1','lot-pg-1','credit',1,NULL,NULL,'verified_payment_capture','settle-pg-1','payment_provider','adapter-x',44,45,'active','2026-02-05T12:00:00.000Z')",
+  "INSERT INTO platform_coin_ledger_entries (entry_ref, operation_ref, wallet_ref, lot_ref, operation, amount_units, hold_ref, order_ref, source_type, source_ref, actor_type, actor_ref, previous_wallet_version, resulting_wallet_version, resulting_wallet_status, occurred_at) VALUES ('le-pg-2006','wop-pg-1','wallet-pg-1','lot-pg-1','credit',1,NULL,NULL,'verified_payment_capture','settle-pg-1','payment_provider','adapter-x',45,46,'active','2026-02-05T12:00:00.000Z')",
+  "INSERT INTO platform_coin_ledger_entries (entry_ref, operation_ref, wallet_ref, lot_ref, operation, amount_units, hold_ref, order_ref, source_type, source_ref, actor_type, actor_ref, previous_wallet_version, resulting_wallet_version, resulting_wallet_status, occurred_at) VALUES ('le-pg-2007','wop-pg-1','wallet-pg-1','lot-pg-1','credit',1,NULL,NULL,'verified_payment_capture','settle-pg-1','payment_provider','adapter-x',46,47,'active','2026-02-05T12:00:00.000Z')",
+  "INSERT INTO platform_coin_ledger_entries (entry_ref, operation_ref, wallet_ref, lot_ref, operation, amount_units, hold_ref, order_ref, source_type, source_ref, actor_type, actor_ref, previous_wallet_version, resulting_wallet_version, resulting_wallet_status, occurred_at) VALUES ('le-pg-2008','wop-pg-1','wallet-pg-1','lot-pg-1','credit',1,NULL,NULL,'verified_payment_capture','settle-pg-1','payment_provider','adapter-x',47,48,'active','2026-02-05T12:00:00.000Z')",
+  "INSERT INTO platform_coin_ledger_entries (entry_ref, operation_ref, wallet_ref, lot_ref, operation, amount_units, hold_ref, order_ref, source_type, source_ref, actor_type, actor_ref, previous_wallet_version, resulting_wallet_version, resulting_wallet_status, occurred_at) VALUES ('le-pg-2009','wop-pg-1','wallet-pg-1','lot-pg-1','credit',1,NULL,NULL,'verified_payment_capture','settle-pg-1','payment_provider','adapter-x',48,49,'active','2026-02-05T12:00:00.000Z')",
+  "INSERT INTO platform_coin_ledger_entries (entry_ref, operation_ref, wallet_ref, lot_ref, operation, amount_units, hold_ref, order_ref, source_type, source_ref, actor_type, actor_ref, previous_wallet_version, resulting_wallet_version, resulting_wallet_status, occurred_at) VALUES ('le-pg-2010','wop-pg-1','wallet-pg-1','lot-pg-1','credit',1,NULL,NULL,'verified_payment_capture','settle-pg-1','payment_provider','adapter-x',49,50,'active','2026-02-05T12:00:00.000Z')",
+  "INSERT INTO platform_coin_ledger_entries (entry_ref, operation_ref, wallet_ref, lot_ref, operation, amount_units, hold_ref, order_ref, source_type, source_ref, actor_type, actor_ref, previous_wallet_version, resulting_wallet_version, resulting_wallet_status, occurred_at) VALUES ('le-pg-2011','wop-pg-1','wallet-pg-1','lot-pg-1','credit',1,NULL,NULL,'verified_payment_capture','settle-pg-1','payment_provider','adapter-x',50,51,'active','2026-02-05T12:00:00.000Z')",
+  "INSERT INTO platform_coin_ledger_entries (entry_ref, operation_ref, wallet_ref, lot_ref, operation, amount_units, hold_ref, order_ref, source_type, source_ref, actor_type, actor_ref, previous_wallet_version, resulting_wallet_version, resulting_wallet_status, occurred_at) VALUES ('le-pg-2012','wop-pg-1','wallet-pg-1','lot-pg-1','credit',1,NULL,NULL,'verified_payment_capture','settle-pg-1','payment_provider','adapter-x',51,52,'active','2026-02-05T12:00:00.000Z')",
+  "INSERT INTO platform_coin_ledger_entries (entry_ref, operation_ref, wallet_ref, lot_ref, operation, amount_units, hold_ref, order_ref, source_type, source_ref, actor_type, actor_ref, previous_wallet_version, resulting_wallet_version, resulting_wallet_status, occurred_at) VALUES ('le-pg-2013','wop-pg-1','wallet-pg-1','lot-pg-1','credit',1,NULL,NULL,'verified_payment_capture','settle-pg-1','payment_provider','adapter-x',52,53,'active','2026-02-05T12:00:00.000Z')",
+  "INSERT INTO platform_coin_ledger_entries (entry_ref, operation_ref, wallet_ref, lot_ref, operation, amount_units, hold_ref, order_ref, source_type, source_ref, actor_type, actor_ref, previous_wallet_version, resulting_wallet_version, resulting_wallet_status, occurred_at) VALUES ('le-pg-2014','wop-pg-1','wallet-pg-1','lot-pg-1','credit',1,NULL,NULL,'verified_payment_capture','settle-pg-1','payment_provider','adapter-x',53,54,'active','2026-02-05T12:00:00.000Z')",
+  "INSERT INTO platform_coin_ledger_entries (entry_ref, operation_ref, wallet_ref, lot_ref, operation, amount_units, hold_ref, order_ref, source_type, source_ref, actor_type, actor_ref, previous_wallet_version, resulting_wallet_version, resulting_wallet_status, occurred_at) VALUES ('le-pg-2015','wop-pg-1','wallet-pg-1','lot-pg-1','credit',1,NULL,NULL,'verified_payment_capture','settle-pg-1','payment_provider','adapter-x',54,55,'active','2026-02-05T12:00:00.000Z')",
+  "INSERT INTO platform_coin_ledger_entries (entry_ref, operation_ref, wallet_ref, lot_ref, operation, amount_units, hold_ref, order_ref, source_type, source_ref, actor_type, actor_ref, previous_wallet_version, resulting_wallet_version, resulting_wallet_status, occurred_at) VALUES ('le-pg-2016','wop-pg-1','wallet-pg-1','lot-pg-1','credit',1,NULL,NULL,'verified_payment_capture','settle-pg-1','payment_provider','adapter-x',55,56,'active','2026-02-05T12:00:00.000Z')",
+  "INSERT INTO platform_coin_ledger_entries (entry_ref, operation_ref, wallet_ref, lot_ref, operation, amount_units, hold_ref, order_ref, source_type, source_ref, actor_type, actor_ref, previous_wallet_version, resulting_wallet_version, resulting_wallet_status, occurred_at) VALUES ('le-pg-2017','wop-pg-1','wallet-pg-1','lot-pg-1','credit',1,NULL,NULL,'verified_payment_capture','settle-pg-1','payment_provider','adapter-x',56,57,'active','2026-02-05T12:00:00.000Z')",
+  "INSERT INTO platform_coin_ledger_entries (entry_ref, operation_ref, wallet_ref, lot_ref, operation, amount_units, hold_ref, order_ref, source_type, source_ref, actor_type, actor_ref, previous_wallet_version, resulting_wallet_version, resulting_wallet_status, occurred_at) VALUES ('le-pg-2018','wop-pg-1','wallet-pg-1','lot-pg-1','credit',1,NULL,NULL,'verified_payment_capture','settle-pg-1','payment_provider','adapter-x',57,58,'active','2026-02-05T12:00:00.000Z')",
+  "INSERT INTO platform_coin_ledger_entries (entry_ref, operation_ref, wallet_ref, lot_ref, operation, amount_units, hold_ref, order_ref, source_type, source_ref, actor_type, actor_ref, previous_wallet_version, resulting_wallet_version, resulting_wallet_status, occurred_at) VALUES ('le-pg-2019','wop-pg-1','wallet-pg-1','lot-pg-1','credit',1,NULL,NULL,'verified_payment_capture','settle-pg-1','payment_provider','adapter-x',58,59,'active','2026-02-05T12:00:00.000Z')",
+  "INSERT INTO platform_coin_ledger_entries (entry_ref, operation_ref, wallet_ref, lot_ref, operation, amount_units, hold_ref, order_ref, source_type, source_ref, actor_type, actor_ref, previous_wallet_version, resulting_wallet_version, resulting_wallet_status, occurred_at) VALUES ('le-pg-2020','wop-pg-1','wallet-pg-1','lot-pg-1','credit',1,NULL,NULL,'verified_payment_capture','settle-pg-1','payment_provider','adapter-x',59,60,'active','2026-02-05T12:00:00.000Z')"
+ ],
+ "cases": [
+  {
+   "id": "L1",
+   "title": "concurrent inserts with NEWER keys",
+   "kind": "insert-newer",
+   "pageSize": 5,
+   "schedule": [
+    {
+     "afterPage": 1,
+     "ops": [
+      {
+       "kind": "insert",
+       "ref": "le-pg-9001",
+       "occurred_at": "2026-03-06T12:00:00.000Z",
+       "sql": "INSERT INTO platform_coin_ledger_entries (entry_ref, operation_ref, wallet_ref, lot_ref, operation, amount_units, hold_ref, order_ref, source_type, source_ref, actor_type, actor_ref, previous_wallet_version, resulting_wallet_version, resulting_wallet_status, occurred_at) VALUES ('le-pg-9001','wop-pg-1','wallet-pg-1','lot-pg-1','credit',1,NULL,NULL,'verified_payment_capture','settle-pg-1','payment_provider','adapter-x',1000,1001,'active','2026-03-06T12:00:00.000Z')"
+      }
+     ]
+    },
+    {
+     "afterPage": 4,
+     "ops": [
+      {
+       "kind": "insert",
+       "ref": "le-pg-9002",
+       "occurred_at": "2026-03-06T12:00:00.000Z",
+       "sql": "INSERT INTO platform_coin_ledger_entries (entry_ref, operation_ref, wallet_ref, lot_ref, operation, amount_units, hold_ref, order_ref, source_type, source_ref, actor_type, actor_ref, previous_wallet_version, resulting_wallet_version, resulting_wallet_status, occurred_at) VALUES ('le-pg-9002','wop-pg-1','wallet-pg-1','lot-pg-1','credit',1,NULL,NULL,'verified_payment_capture','settle-pg-1','payment_provider','adapter-x',1002,1003,'active','2026-03-06T12:00:00.000Z')"
+      }
+     ]
+    },
+    {
+     "afterPage": 7,
+     "ops": [
+      {
+       "kind": "insert",
+       "ref": "le-pg-9003",
+       "occurred_at": "2026-03-06T12:00:00.000Z",
+       "sql": "INSERT INTO platform_coin_ledger_entries (entry_ref, operation_ref, wallet_ref, lot_ref, operation, amount_units, hold_ref, order_ref, source_type, source_ref, actor_type, actor_ref, previous_wallet_version, resulting_wallet_version, resulting_wallet_status, occurred_at) VALUES ('le-pg-9003','wop-pg-1','wallet-pg-1','lot-pg-1','credit',1,NULL,NULL,'verified_payment_capture','settle-pg-1','payment_provider','adapter-x',1004,1005,'active','2026-03-06T12:00:00.000Z')"
+      }
+     ]
+    },
+    {
+     "afterPage": 10,
+     "ops": [
+      {
+       "kind": "insert",
+       "ref": "le-pg-9004",
+       "occurred_at": "2026-03-06T12:00:00.000Z",
+       "sql": "INSERT INTO platform_coin_ledger_entries (entry_ref, operation_ref, wallet_ref, lot_ref, operation, amount_units, hold_ref, order_ref, source_type, source_ref, actor_type, actor_ref, previous_wallet_version, resulting_wallet_version, resulting_wallet_status, occurred_at) VALUES ('le-pg-9004','wop-pg-1','wallet-pg-1','lot-pg-1','credit',1,NULL,NULL,'verified_payment_capture','settle-pg-1','payment_provider','adapter-x',1006,1007,'active','2026-03-06T12:00:00.000Z')"
+      }
+     ]
+    }
+   ],
+   "expectation": {
+    "missed": [],
+    "duplicated": {},
+    "absent": [],
+    "extras": []
+   },
+   "productionReachability": "reachable",
+   "note": "New rows sort above every cursor (newer than all frozen rows), so an in-flight traversal never returns them. Frozen set must appear exactly once.",
+   "simulated": {
+    "pages": [
+     [
+      "le-pg-1040",
+      "le-pg-1039",
+      "le-pg-1038",
+      "le-pg-1037",
+      "le-pg-1036"
+     ],
+     [
+      "le-pg-1035",
+      "le-pg-1034",
+      "le-pg-1033",
+      "le-pg-1032",
+      "le-pg-1031"
+     ],
+     [
+      "le-pg-1030",
+      "le-pg-1029",
+      "le-pg-1028",
+      "le-pg-1027",
+      "le-pg-1026"
+     ],
+     [
+      "le-pg-1025",
+      "le-pg-1024",
+      "le-pg-1023",
+      "le-pg-1022",
+      "le-pg-1021"
+     ],
+     [
+      "le-pg-1020",
+      "le-pg-1019",
+      "le-pg-1018",
+      "le-pg-1017",
+      "le-pg-1016"
+     ],
+     [
+      "le-pg-1015",
+      "le-pg-1014",
+      "le-pg-1013",
+      "le-pg-1012",
+      "le-pg-1011"
+     ],
+     [
+      "le-pg-1010",
+      "le-pg-1009",
+      "le-pg-1008",
+      "le-pg-1007",
+      "le-pg-1006"
+     ],
+     [
+      "le-pg-1005",
+      "le-pg-1004",
+      "le-pg-1003",
+      "le-pg-1002",
+      "le-pg-1001"
+     ],
+     [
+      "le-pg-2020",
+      "le-pg-2019",
+      "le-pg-2018",
+      "le-pg-2017",
+      "le-pg-2016"
+     ],
+     [
+      "le-pg-2015",
+      "le-pg-2014",
+      "le-pg-2013",
+      "le-pg-2012",
+      "le-pg-2011"
+     ],
+     [
+      "le-pg-2010",
+      "le-pg-2009",
+      "le-pg-2008",
+      "le-pg-2007",
+      "le-pg-2006"
+     ],
+     [
+      "le-pg-2005",
+      "le-pg-2004",
+      "le-pg-2003",
+      "le-pg-2002",
+      "le-pg-2001"
+     ]
+    ],
+    "extras": [],
+    "pageCount": 12
+   }
+  },
+  {
+   "id": "L2",
+   "title": "concurrent inserts with OLDER keys",
+   "kind": "insert-older",
+   "pageSize": 5,
+   "schedule": [
+    {
+     "afterPage": 1,
+     "ops": [
+      {
+       "kind": "insert",
+       "ref": "le-pg-9101",
+       "occurred_at": "2026-02-04T12:00:00.000Z",
+       "sql": "INSERT INTO platform_coin_ledger_entries (entry_ref, operation_ref, wallet_ref, lot_ref, operation, amount_units, hold_ref, order_ref, source_type, source_ref, actor_type, actor_ref, previous_wallet_version, resulting_wallet_version, resulting_wallet_status, occurred_at) VALUES ('le-pg-9101','wop-pg-1','wallet-pg-1','lot-pg-1','credit',1,NULL,NULL,'verified_payment_capture','settle-pg-1','payment_provider','adapter-x',1008,1009,'active','2026-02-04T12:00:00.000Z')"
+      }
+     ]
+    },
+    {
+     "afterPage": 4,
+     "ops": [
+      {
+       "kind": "insert",
+       "ref": "le-pg-9102",
+       "occurred_at": "2026-02-04T12:00:00.000Z",
+       "sql": "INSERT INTO platform_coin_ledger_entries (entry_ref, operation_ref, wallet_ref, lot_ref, operation, amount_units, hold_ref, order_ref, source_type, source_ref, actor_type, actor_ref, previous_wallet_version, resulting_wallet_version, resulting_wallet_status, occurred_at) VALUES ('le-pg-9102','wop-pg-1','wallet-pg-1','lot-pg-1','credit',1,NULL,NULL,'verified_payment_capture','settle-pg-1','payment_provider','adapter-x',1010,1011,'active','2026-02-04T12:00:00.000Z')"
+      }
+     ]
+    },
+    {
+     "afterPage": 7,
+     "ops": [
+      {
+       "kind": "insert",
+       "ref": "le-pg-9103",
+       "occurred_at": "2026-02-04T12:00:00.000Z",
+       "sql": "INSERT INTO platform_coin_ledger_entries (entry_ref, operation_ref, wallet_ref, lot_ref, operation, amount_units, hold_ref, order_ref, source_type, source_ref, actor_type, actor_ref, previous_wallet_version, resulting_wallet_version, resulting_wallet_status, occurred_at) VALUES ('le-pg-9103','wop-pg-1','wallet-pg-1','lot-pg-1','credit',1,NULL,NULL,'verified_payment_capture','settle-pg-1','payment_provider','adapter-x',1012,1013,'active','2026-02-04T12:00:00.000Z')"
+      }
+     ]
+    },
+    {
+     "afterPage": 10,
+     "ops": [
+      {
+       "kind": "insert",
+       "ref": "le-pg-9104",
+       "occurred_at": "2026-02-04T12:00:00.000Z",
+       "sql": "INSERT INTO platform_coin_ledger_entries (entry_ref, operation_ref, wallet_ref, lot_ref, operation, amount_units, hold_ref, order_ref, source_type, source_ref, actor_type, actor_ref, previous_wallet_version, resulting_wallet_version, resulting_wallet_status, occurred_at) VALUES ('le-pg-9104','wop-pg-1','wallet-pg-1','lot-pg-1','credit',1,NULL,NULL,'verified_payment_capture','settle-pg-1','payment_provider','adapter-x',1014,1015,'active','2026-02-04T12:00:00.000Z')"
+      }
+     ]
+    }
+   ],
+   "expectation": {
+    "missed": [],
+    "duplicated": {},
+    "absent": [],
+    "extras": [
+     "le-pg-9104",
+     "le-pg-9103",
+     "le-pg-9102",
+     "le-pg-9101"
+    ]
+   },
+   "productionReachability": "reachable",
+   "note": "New rows sort after every frozen row, so they appear on tail pages as post-watermark extras. Frozen set must appear exactly once; extras are recorded, not counted as miss/dup.",
+   "simulated": {
+    "pages": [
+     [
+      "le-pg-1040",
+      "le-pg-1039",
+      "le-pg-1038",
+      "le-pg-1037",
+      "le-pg-1036"
+     ],
+     [
+      "le-pg-1035",
+      "le-pg-1034",
+      "le-pg-1033",
+      "le-pg-1032",
+      "le-pg-1031"
+     ],
+     [
+      "le-pg-1030",
+      "le-pg-1029",
+      "le-pg-1028",
+      "le-pg-1027",
+      "le-pg-1026"
+     ],
+     [
+      "le-pg-1025",
+      "le-pg-1024",
+      "le-pg-1023",
+      "le-pg-1022",
+      "le-pg-1021"
+     ],
+     [
+      "le-pg-1020",
+      "le-pg-1019",
+      "le-pg-1018",
+      "le-pg-1017",
+      "le-pg-1016"
+     ],
+     [
+      "le-pg-1015",
+      "le-pg-1014",
+      "le-pg-1013",
+      "le-pg-1012",
+      "le-pg-1011"
+     ],
+     [
+      "le-pg-1010",
+      "le-pg-1009",
+      "le-pg-1008",
+      "le-pg-1007",
+      "le-pg-1006"
+     ],
+     [
+      "le-pg-1005",
+      "le-pg-1004",
+      "le-pg-1003",
+      "le-pg-1002",
+      "le-pg-1001"
+     ],
+     [
+      "le-pg-2020",
+      "le-pg-2019",
+      "le-pg-2018",
+      "le-pg-2017",
+      "le-pg-2016"
+     ],
+     [
+      "le-pg-2015",
+      "le-pg-2014",
+      "le-pg-2013",
+      "le-pg-2012",
+      "le-pg-2011"
+     ],
+     [
+      "le-pg-2010",
+      "le-pg-2009",
+      "le-pg-2008",
+      "le-pg-2007",
+      "le-pg-2006"
+     ],
+     [
+      "le-pg-2005",
+      "le-pg-2004",
+      "le-pg-2003",
+      "le-pg-2002",
+      "le-pg-2001"
+     ],
+     [
+      "le-pg-9104",
+      "le-pg-9103",
+      "le-pg-9102",
+      "le-pg-9101"
+     ]
+    ],
+    "extras": [
+     "le-pg-9104",
+     "le-pg-9103",
+     "le-pg-9102",
+     "le-pg-9101"
+    ],
+    "pageCount": 13
+   }
+  },
+  {
+   "id": "L3",
+   "title": "concurrent inserts INTERLEAVED in the key range",
+   "kind": "insert-mid",
+   "pageSize": 5,
+   "schedule": [
+    {
+     "afterPage": 1,
+     "ops": [
+      {
+       "kind": "insert",
+       "ref": "le-pg-9201",
+       "occurred_at": "2026-02-20T12:00:00.000Z",
+       "sql": "INSERT INTO platform_coin_ledger_entries (entry_ref, operation_ref, wallet_ref, lot_ref, operation, amount_units, hold_ref, order_ref, source_type, source_ref, actor_type, actor_ref, previous_wallet_version, resulting_wallet_version, resulting_wallet_status, occurred_at) VALUES ('le-pg-9201','wop-pg-1','wallet-pg-1','lot-pg-1','credit',1,NULL,NULL,'verified_payment_capture','settle-pg-1','payment_provider','adapter-x',1016,1017,'active','2026-02-20T12:00:00.000Z')"
+      }
+     ]
+    },
+    {
+     "afterPage": 3,
+     "ops": [
+      {
+       "kind": "insert",
+       "ref": "le-pg-9202",
+       "occurred_at": "2026-02-20T12:00:00.000Z",
+       "sql": "INSERT INTO platform_coin_ledger_entries (entry_ref, operation_ref, wallet_ref, lot_ref, operation, amount_units, hold_ref, order_ref, source_type, source_ref, actor_type, actor_ref, previous_wallet_version, resulting_wallet_version, resulting_wallet_status, occurred_at) VALUES ('le-pg-9202','wop-pg-1','wallet-pg-1','lot-pg-1','credit',1,NULL,NULL,'verified_payment_capture','settle-pg-1','payment_provider','adapter-x',1018,1019,'active','2026-02-20T12:00:00.000Z')"
+      }
+     ]
+    },
+    {
+     "afterPage": 5,
+     "ops": [
+      {
+       "kind": "insert",
+       "ref": "le-pg-9203",
+       "occurred_at": "2026-02-20T12:00:00.000Z",
+       "sql": "INSERT INTO platform_coin_ledger_entries (entry_ref, operation_ref, wallet_ref, lot_ref, operation, amount_units, hold_ref, order_ref, source_type, source_ref, actor_type, actor_ref, previous_wallet_version, resulting_wallet_version, resulting_wallet_status, occurred_at) VALUES ('le-pg-9203','wop-pg-1','wallet-pg-1','lot-pg-1','credit',1,NULL,NULL,'verified_payment_capture','settle-pg-1','payment_provider','adapter-x',1020,1021,'active','2026-02-20T12:00:00.000Z')"
+      }
+     ]
+    },
+    {
+     "afterPage": 8,
+     "ops": [
+      {
+       "kind": "insert",
+       "ref": "le-pg-9204",
+       "occurred_at": "2026-02-20T12:00:00.000Z",
+       "sql": "INSERT INTO platform_coin_ledger_entries (entry_ref, operation_ref, wallet_ref, lot_ref, operation, amount_units, hold_ref, order_ref, source_type, source_ref, actor_type, actor_ref, previous_wallet_version, resulting_wallet_version, resulting_wallet_status, occurred_at) VALUES ('le-pg-9204','wop-pg-1','wallet-pg-1','lot-pg-1','credit',1,NULL,NULL,'verified_payment_capture','settle-pg-1','payment_provider','adapter-x',1022,1023,'active','2026-02-20T12:00:00.000Z')"
+      }
+     ]
+    }
+   ],
+   "expectation": {
+    "missed": [],
+    "duplicated": {},
+    "absent": [],
+    "extras": [
+     "le-pg-9204",
+     "le-pg-9203",
+     "le-pg-9202",
+     "le-pg-9201"
+    ]
+   },
+   "productionReachability": "reachable",
+   "note": "New rows sort between the two frozen tie groups, so they appear on mid pages. Frozen set must appear exactly once. All four inserts happen before the reader crosses the mid key range (page 9): an insert after page 10 would sort ahead of the page-10 cursor and never be returned — the same cursor-crossing rule L4 documents.",
+   "simulated": {
+    "pages": [
+     [
+      "le-pg-1040",
+      "le-pg-1039",
+      "le-pg-1038",
+      "le-pg-1037",
+      "le-pg-1036"
+     ],
+     [
+      "le-pg-1035",
+      "le-pg-1034",
+      "le-pg-1033",
+      "le-pg-1032",
+      "le-pg-1031"
+     ],
+     [
+      "le-pg-1030",
+      "le-pg-1029",
+      "le-pg-1028",
+      "le-pg-1027",
+      "le-pg-1026"
+     ],
+     [
+      "le-pg-1025",
+      "le-pg-1024",
+      "le-pg-1023",
+      "le-pg-1022",
+      "le-pg-1021"
+     ],
+     [
+      "le-pg-1020",
+      "le-pg-1019",
+      "le-pg-1018",
+      "le-pg-1017",
+      "le-pg-1016"
+     ],
+     [
+      "le-pg-1015",
+      "le-pg-1014",
+      "le-pg-1013",
+      "le-pg-1012",
+      "le-pg-1011"
+     ],
+     [
+      "le-pg-1010",
+      "le-pg-1009",
+      "le-pg-1008",
+      "le-pg-1007",
+      "le-pg-1006"
+     ],
+     [
+      "le-pg-1005",
+      "le-pg-1004",
+      "le-pg-1003",
+      "le-pg-1002",
+      "le-pg-1001"
+     ],
+     [
+      "le-pg-9204",
+      "le-pg-9203",
+      "le-pg-9202",
+      "le-pg-9201",
+      "le-pg-2020"
+     ],
+     [
+      "le-pg-2019",
+      "le-pg-2018",
+      "le-pg-2017",
+      "le-pg-2016",
+      "le-pg-2015"
+     ],
+     [
+      "le-pg-2014",
+      "le-pg-2013",
+      "le-pg-2012",
+      "le-pg-2011",
+      "le-pg-2010"
+     ],
+     [
+      "le-pg-2009",
+      "le-pg-2008",
+      "le-pg-2007",
+      "le-pg-2006",
+      "le-pg-2005"
+     ],
+     [
+      "le-pg-2004",
+      "le-pg-2003",
+      "le-pg-2002",
+      "le-pg-2001"
+     ]
+    ],
+    "extras": [
+     "le-pg-9204",
+     "le-pg-9203",
+     "le-pg-9202",
+     "le-pg-9201"
+    ],
+    "pageCount": 13
+   }
+  },
+  {
+   "id": "L4",
+   "title": "concurrent inserts inside a same-timestamp tie group",
+   "kind": "insert-tie",
+   "pageSize": 5,
+   "schedule": [
+    {
+     "afterPage": 2,
+     "ops": [
+      {
+       "kind": "insert",
+       "ref": "le-pg-1010a",
+       "occurred_at": "2026-03-05T12:00:00.000Z",
+       "sql": "INSERT INTO platform_coin_ledger_entries (entry_ref, operation_ref, wallet_ref, lot_ref, operation, amount_units, hold_ref, order_ref, source_type, source_ref, actor_type, actor_ref, previous_wallet_version, resulting_wallet_version, resulting_wallet_status, occurred_at) VALUES ('le-pg-1010a','wop-pg-1','wallet-pg-1','lot-pg-1','credit',1,NULL,NULL,'verified_payment_capture','settle-pg-1','payment_provider','adapter-x',1024,1025,'active','2026-03-05T12:00:00.000Z')"
+      }
+     ]
+    },
+    {
+     "afterPage": 5,
+     "ops": [
+      {
+       "kind": "insert",
+       "ref": "le-pg-1020a",
+       "occurred_at": "2026-03-05T12:00:00.000Z",
+       "sql": "INSERT INTO platform_coin_ledger_entries (entry_ref, operation_ref, wallet_ref, lot_ref, operation, amount_units, hold_ref, order_ref, source_type, source_ref, actor_type, actor_ref, previous_wallet_version, resulting_wallet_version, resulting_wallet_status, occurred_at) VALUES ('le-pg-1020a','wop-pg-1','wallet-pg-1','lot-pg-1','credit',1,NULL,NULL,'verified_payment_capture','settle-pg-1','payment_provider','adapter-x',1026,1027,'active','2026-03-05T12:00:00.000Z')"
+      }
+     ]
+    },
+    {
+     "afterPage": 8,
+     "ops": [
+      {
+       "kind": "insert",
+       "ref": "le-pg-1030a",
+       "occurred_at": "2026-03-05T12:00:00.000Z",
+       "sql": "INSERT INTO platform_coin_ledger_entries (entry_ref, operation_ref, wallet_ref, lot_ref, operation, amount_units, hold_ref, order_ref, source_type, source_ref, actor_type, actor_ref, previous_wallet_version, resulting_wallet_version, resulting_wallet_status, occurred_at) VALUES ('le-pg-1030a','wop-pg-1','wallet-pg-1','lot-pg-1','credit',1,NULL,NULL,'verified_payment_capture','settle-pg-1','payment_provider','adapter-x',1028,1029,'active','2026-03-05T12:00:00.000Z')"
+      }
+     ]
+    }
+   ],
+   "expectation": {
+    "missed": [],
+    "duplicated": {},
+    "absent": [],
+    "extras": [
+     "le-pg-1010a"
+    ]
+   },
+   "productionReachability": "reachable",
+   "note": "Tie-group inserts sort between frozen refs. Whether one is returned depends on the cursor at insert time: le-pg-1010a (inserted after page 2, key behind the cursor) is returned; le-pg-1020a / le-pg-1030a (inserted after pages 5/8, keys ahead of the cursor) are never returned. Frozen set must appear exactly once either way.",
+   "simulated": {
+    "pages": [
+     [
+      "le-pg-1040",
+      "le-pg-1039",
+      "le-pg-1038",
+      "le-pg-1037",
+      "le-pg-1036"
+     ],
+     [
+      "le-pg-1035",
+      "le-pg-1034",
+      "le-pg-1033",
+      "le-pg-1032",
+      "le-pg-1031"
+     ],
+     [
+      "le-pg-1030",
+      "le-pg-1029",
+      "le-pg-1028",
+      "le-pg-1027",
+      "le-pg-1026"
+     ],
+     [
+      "le-pg-1025",
+      "le-pg-1024",
+      "le-pg-1023",
+      "le-pg-1022",
+      "le-pg-1021"
+     ],
+     [
+      "le-pg-1020",
+      "le-pg-1019",
+      "le-pg-1018",
+      "le-pg-1017",
+      "le-pg-1016"
+     ],
+     [
+      "le-pg-1015",
+      "le-pg-1014",
+      "le-pg-1013",
+      "le-pg-1012",
+      "le-pg-1011"
+     ],
+     [
+      "le-pg-1010a",
+      "le-pg-1010",
+      "le-pg-1009",
+      "le-pg-1008",
+      "le-pg-1007"
+     ],
+     [
+      "le-pg-1006",
+      "le-pg-1005",
+      "le-pg-1004",
+      "le-pg-1003",
+      "le-pg-1002"
+     ],
+     [
+      "le-pg-1001",
+      "le-pg-2020",
+      "le-pg-2019",
+      "le-pg-2018",
+      "le-pg-2017"
+     ],
+     [
+      "le-pg-2016",
+      "le-pg-2015",
+      "le-pg-2014",
+      "le-pg-2013",
+      "le-pg-2012"
+     ],
+     [
+      "le-pg-2011",
+      "le-pg-2010",
+      "le-pg-2009",
+      "le-pg-2008",
+      "le-pg-2007"
+     ],
+     [
+      "le-pg-2006",
+      "le-pg-2005",
+      "le-pg-2004",
+      "le-pg-2003",
+      "le-pg-2002"
+     ],
+     [
+      "le-pg-2001"
+     ]
+    ],
+    "extras": [
+     "le-pg-1010a"
+    ],
+    "pageCount": 13
+   }
+  },
+  {
+   "id": "L5",
+   "title": "key-changing UPDATE of a NOT-YET-READ row (miss boundary)",
+   "kind": "update-miss",
+   "pageSize": 5,
+   "schedule": [
+    {
+     "afterPage": 1,
+     "ops": [
+      {
+       "kind": "update",
+       "ref": "le-pg-1030",
+       "occurred_at": "2026-03-06T12:00:00.000Z",
+       "sql": "UPDATE platform_coin_ledger_entries SET occurred_at = '2026-03-06T12:00:00.000Z' WHERE entry_ref = 'le-pg-1030'"
+      }
+     ]
+    }
+   ],
+   "expectation": {
+    "missed": [
+     "le-pg-1030"
+    ],
+    "duplicated": {},
+    "absent": [],
+    "extras": []
+   },
+   "productionReachability": "guarded-unreachable",
+   "omissions": [
+    {
+     "trigger": "platform_coin_ledger_entries_immutable_update",
+     "reason": "production guard rejects ANY update of a ledger entry (unconditional RAISE coin_ledger_immutable); omitted in the experiment schema so the boundary can be documented"
+    }
+   ],
+   "note": "le-pg-1030 sits on static page 3. Moving its occurred_at newer than the page-1 cursor moves it ahead of the reader, so it is never returned: exactly that row is MISSED. This is the mechanism boundary: keyset pagination cannot guarantee exactly-once if a sort key changes mid-traversal. Production guards make this write unreachable.",
+   "simulated": {
+    "pages": [
+     [
+      "le-pg-1040",
+      "le-pg-1039",
+      "le-pg-1038",
+      "le-pg-1037",
+      "le-pg-1036"
+     ],
+     [
+      "le-pg-1035",
+      "le-pg-1034",
+      "le-pg-1033",
+      "le-pg-1032",
+      "le-pg-1031"
+     ],
+     [
+      "le-pg-1029",
+      "le-pg-1028",
+      "le-pg-1027",
+      "le-pg-1026",
+      "le-pg-1025"
+     ],
+     [
+      "le-pg-1024",
+      "le-pg-1023",
+      "le-pg-1022",
+      "le-pg-1021",
+      "le-pg-1020"
+     ],
+     [
+      "le-pg-1019",
+      "le-pg-1018",
+      "le-pg-1017",
+      "le-pg-1016",
+      "le-pg-1015"
+     ],
+     [
+      "le-pg-1014",
+      "le-pg-1013",
+      "le-pg-1012",
+      "le-pg-1011",
+      "le-pg-1010"
+     ],
+     [
+      "le-pg-1009",
+      "le-pg-1008",
+      "le-pg-1007",
+      "le-pg-1006",
+      "le-pg-1005"
+     ],
+     [
+      "le-pg-1004",
+      "le-pg-1003",
+      "le-pg-1002",
+      "le-pg-1001",
+      "le-pg-2020"
+     ],
+     [
+      "le-pg-2019",
+      "le-pg-2018",
+      "le-pg-2017",
+      "le-pg-2016",
+      "le-pg-2015"
+     ],
+     [
+      "le-pg-2014",
+      "le-pg-2013",
+      "le-pg-2012",
+      "le-pg-2011",
+      "le-pg-2010"
+     ],
+     [
+      "le-pg-2009",
+      "le-pg-2008",
+      "le-pg-2007",
+      "le-pg-2006",
+      "le-pg-2005"
+     ],
+     [
+      "le-pg-2004",
+      "le-pg-2003",
+      "le-pg-2002",
+      "le-pg-2001"
+     ]
+    ],
+    "extras": [],
+    "pageCount": 12
+   }
+  },
+  {
+   "id": "L6",
+   "title": "key-changing UPDATE of an ALREADY-READ row (duplicate boundary)",
+   "kind": "update-dup",
+   "pageSize": 5,
+   "schedule": [
+    {
+     "afterPage": 1,
+     "ops": [
+      {
+       "kind": "update",
+       "ref": "le-pg-1040",
+       "occurred_at": "2026-02-04T12:00:00.000Z",
+       "sql": "UPDATE platform_coin_ledger_entries SET occurred_at = '2026-02-04T12:00:00.000Z' WHERE entry_ref = 'le-pg-1040'"
+      }
+     ]
+    }
+   ],
+   "expectation": {
+    "missed": [],
+    "duplicated": {
+     "le-pg-1040": 2
+    },
+    "absent": [],
+    "extras": []
+   },
+   "productionReachability": "guarded-unreachable",
+   "omissions": [
+    {
+     "trigger": "platform_coin_ledger_entries_immutable_update",
+     "reason": "production guard rejects ANY update of a ledger entry (unconditional RAISE coin_ledger_immutable); omitted in the experiment schema so the boundary can be documented"
+    }
+   ],
+   "note": "le-pg-1040 is read on page 1. Moving its occurred_at older than the page-1 cursor moves it behind the reader, so it is returned AGAIN on the tail page: exactly that row is DUPLICATED. Same boundary as L5. Production guards make this write unreachable.",
+   "simulated": {
+    "pages": [
+     [
+      "le-pg-1040",
+      "le-pg-1039",
+      "le-pg-1038",
+      "le-pg-1037",
+      "le-pg-1036"
+     ],
+     [
+      "le-pg-1035",
+      "le-pg-1034",
+      "le-pg-1033",
+      "le-pg-1032",
+      "le-pg-1031"
+     ],
+     [
+      "le-pg-1030",
+      "le-pg-1029",
+      "le-pg-1028",
+      "le-pg-1027",
+      "le-pg-1026"
+     ],
+     [
+      "le-pg-1025",
+      "le-pg-1024",
+      "le-pg-1023",
+      "le-pg-1022",
+      "le-pg-1021"
+     ],
+     [
+      "le-pg-1020",
+      "le-pg-1019",
+      "le-pg-1018",
+      "le-pg-1017",
+      "le-pg-1016"
+     ],
+     [
+      "le-pg-1015",
+      "le-pg-1014",
+      "le-pg-1013",
+      "le-pg-1012",
+      "le-pg-1011"
+     ],
+     [
+      "le-pg-1010",
+      "le-pg-1009",
+      "le-pg-1008",
+      "le-pg-1007",
+      "le-pg-1006"
+     ],
+     [
+      "le-pg-1005",
+      "le-pg-1004",
+      "le-pg-1003",
+      "le-pg-1002",
+      "le-pg-1001"
+     ],
+     [
+      "le-pg-2020",
+      "le-pg-2019",
+      "le-pg-2018",
+      "le-pg-2017",
+      "le-pg-2016"
+     ],
+     [
+      "le-pg-2015",
+      "le-pg-2014",
+      "le-pg-2013",
+      "le-pg-2012",
+      "le-pg-2011"
+     ],
+     [
+      "le-pg-2010",
+      "le-pg-2009",
+      "le-pg-2008",
+      "le-pg-2007",
+      "le-pg-2006"
+     ],
+     [
+      "le-pg-2005",
+      "le-pg-2004",
+      "le-pg-2003",
+      "le-pg-2002",
+      "le-pg-2001"
+     ],
+     [
+      "le-pg-1040"
+     ]
+    ],
+    "extras": [],
+    "pageCount": 13
+   }
+  },
+  {
+   "id": "L7",
+   "title": "DELETE of a NOT-YET-READ row (absent boundary)",
+   "kind": "delete-absent",
+   "pageSize": 5,
+   "schedule": [
+    {
+     "afterPage": 1,
+     "ops": [
+      {
+       "kind": "delete",
+       "ref": "le-pg-1020",
+       "sql": "DELETE FROM platform_coin_ledger_entries WHERE entry_ref = 'le-pg-1020'"
+      }
+     ]
+    }
+   ],
+   "expectation": {
+    "missed": [
+     "le-pg-1020"
+    ],
+    "duplicated": {},
+    "absent": [
+     "le-pg-1020"
+    ],
+    "extras": []
+   },
+   "productionReachability": "guarded-unreachable",
+   "omissions": [
+    {
+     "trigger": "platform_coin_ledger_entries_immutable_delete",
+     "reason": "production guard rejects ANY delete of a ledger entry (unconditional RAISE coin_ledger_immutable); omitted in the experiment schema so the boundary can be documented"
+    }
+   ],
+   "note": "le-pg-1020 sits on static page 5. Deleting it after page 1 means it is never returned: it is ABSENT (recorded as missed-by-deletion, not as a pagination miss). Every other frozen row must appear exactly once. Production guards make this write unreachable; no FK references the ledger table, so nothing else blocks the delete in the experiment schema.",
+   "simulated": {
+    "pages": [
+     [
+      "le-pg-1040",
+      "le-pg-1039",
+      "le-pg-1038",
+      "le-pg-1037",
+      "le-pg-1036"
+     ],
+     [
+      "le-pg-1035",
+      "le-pg-1034",
+      "le-pg-1033",
+      "le-pg-1032",
+      "le-pg-1031"
+     ],
+     [
+      "le-pg-1030",
+      "le-pg-1029",
+      "le-pg-1028",
+      "le-pg-1027",
+      "le-pg-1026"
+     ],
+     [
+      "le-pg-1025",
+      "le-pg-1024",
+      "le-pg-1023",
+      "le-pg-1022",
+      "le-pg-1021"
+     ],
+     [
+      "le-pg-1019",
+      "le-pg-1018",
+      "le-pg-1017",
+      "le-pg-1016",
+      "le-pg-1015"
+     ],
+     [
+      "le-pg-1014",
+      "le-pg-1013",
+      "le-pg-1012",
+      "le-pg-1011",
+      "le-pg-1010"
+     ],
+     [
+      "le-pg-1009",
+      "le-pg-1008",
+      "le-pg-1007",
+      "le-pg-1006",
+      "le-pg-1005"
+     ],
+     [
+      "le-pg-1004",
+      "le-pg-1003",
+      "le-pg-1002",
+      "le-pg-1001",
+      "le-pg-2020"
+     ],
+     [
+      "le-pg-2019",
+      "le-pg-2018",
+      "le-pg-2017",
+      "le-pg-2016",
+      "le-pg-2015"
+     ],
+     [
+      "le-pg-2014",
+      "le-pg-2013",
+      "le-pg-2012",
+      "le-pg-2011",
+      "le-pg-2010"
+     ],
+     [
+      "le-pg-2009",
+      "le-pg-2008",
+      "le-pg-2007",
+      "le-pg-2006",
+      "le-pg-2005"
+     ],
+     [
+      "le-pg-2004",
+      "le-pg-2003",
+      "le-pg-2002",
+      "le-pg-2001"
+     ]
+    ],
+    "extras": [],
+    "pageCount": 12
+   }
+  },
+  {
+   "id": "L8",
+   "title": "control: traversal with NO concurrent writes",
+   "kind": "control",
+   "pageSize": 5,
+   "schedule": [],
+   "expectation": {
+    "missed": [],
+    "duplicated": {},
+    "absent": [],
+    "extras": []
+   },
+   "productionReachability": "reachable",
+   "note": "Reproduces the stage-7 class-2 traversal on the new baseline: 60 rows, page size 5, 12 pages, frozen set exactly once.",
+   "simulated": {
+    "pages": [
+     [
+      "le-pg-1040",
+      "le-pg-1039",
+      "le-pg-1038",
+      "le-pg-1037",
+      "le-pg-1036"
+     ],
+     [
+      "le-pg-1035",
+      "le-pg-1034",
+      "le-pg-1033",
+      "le-pg-1032",
+      "le-pg-1031"
+     ],
+     [
+      "le-pg-1030",
+      "le-pg-1029",
+      "le-pg-1028",
+      "le-pg-1027",
+      "le-pg-1026"
+     ],
+     [
+      "le-pg-1025",
+      "le-pg-1024",
+      "le-pg-1023",
+      "le-pg-1022",
+      "le-pg-1021"
+     ],
+     [
+      "le-pg-1020",
+      "le-pg-1019",
+      "le-pg-1018",
+      "le-pg-1017",
+      "le-pg-1016"
+     ],
+     [
+      "le-pg-1015",
+      "le-pg-1014",
+      "le-pg-1013",
+      "le-pg-1012",
+      "le-pg-1011"
+     ],
+     [
+      "le-pg-1010",
+      "le-pg-1009",
+      "le-pg-1008",
+      "le-pg-1007",
+      "le-pg-1006"
+     ],
+     [
+      "le-pg-1005",
+      "le-pg-1004",
+      "le-pg-1003",
+      "le-pg-1002",
+      "le-pg-1001"
+     ],
+     [
+      "le-pg-2020",
+      "le-pg-2019",
+      "le-pg-2018",
+      "le-pg-2017",
+      "le-pg-2016"
+     ],
+     [
+      "le-pg-2015",
+      "le-pg-2014",
+      "le-pg-2013",
+      "le-pg-2012",
+      "le-pg-2011"
+     ],
+     [
+      "le-pg-2010",
+      "le-pg-2009",
+      "le-pg-2008",
+      "le-pg-2007",
+      "le-pg-2006"
+     ],
+     [
+      "le-pg-2005",
+      "le-pg-2004",
+      "le-pg-2003",
+      "le-pg-2002",
+      "le-pg-2001"
+     ]
+    ],
+    "extras": [],
+    "pageCount": 12
+   }
+  },
+  {
+   "id": "L9",
+   "title": "MIXED workload: newer + older + tie inserts + delete",
+   "kind": "mixed",
+   "pageSize": 5,
+   "schedule": [
+    {
+     "afterPage": 1,
+     "ops": [
+      {
+       "kind": "insert",
+       "ref": "le-pg-9001",
+       "occurred_at": "2026-03-06T12:00:00.000Z",
+       "sql": "INSERT INTO platform_coin_ledger_entries (entry_ref, operation_ref, wallet_ref, lot_ref, operation, amount_units, hold_ref, order_ref, source_type, source_ref, actor_type, actor_ref, previous_wallet_version, resulting_wallet_version, resulting_wallet_status, occurred_at) VALUES ('le-pg-9001','wop-pg-1','wallet-pg-1','lot-pg-1','credit',1,NULL,NULL,'verified_payment_capture','settle-pg-1','payment_provider','adapter-x',1030,1031,'active','2026-03-06T12:00:00.000Z')"
+      }
+     ]
+    },
+    {
+     "afterPage": 2,
+     "ops": [
+      {
+       "kind": "insert",
+       "ref": "le-pg-9101",
+       "occurred_at": "2026-02-04T12:00:00.000Z",
+       "sql": "INSERT INTO platform_coin_ledger_entries (entry_ref, operation_ref, wallet_ref, lot_ref, operation, amount_units, hold_ref, order_ref, source_type, source_ref, actor_type, actor_ref, previous_wallet_version, resulting_wallet_version, resulting_wallet_status, occurred_at) VALUES ('le-pg-9101','wop-pg-1','wallet-pg-1','lot-pg-1','credit',1,NULL,NULL,'verified_payment_capture','settle-pg-1','payment_provider','adapter-x',1032,1033,'active','2026-02-04T12:00:00.000Z')"
+      }
+     ]
+    },
+    {
+     "afterPage": 3,
+     "ops": [
+      {
+       "kind": "insert",
+       "ref": "le-pg-1010a",
+       "occurred_at": "2026-03-05T12:00:00.000Z",
+       "sql": "INSERT INTO platform_coin_ledger_entries (entry_ref, operation_ref, wallet_ref, lot_ref, operation, amount_units, hold_ref, order_ref, source_type, source_ref, actor_type, actor_ref, previous_wallet_version, resulting_wallet_version, resulting_wallet_status, occurred_at) VALUES ('le-pg-1010a','wop-pg-1','wallet-pg-1','lot-pg-1','credit',1,NULL,NULL,'verified_payment_capture','settle-pg-1','payment_provider','adapter-x',1034,1035,'active','2026-03-05T12:00:00.000Z')"
+      }
+     ]
+    },
+    {
+     "afterPage": 4,
+     "ops": [
+      {
+       "kind": "delete",
+       "ref": "le-pg-1020",
+       "sql": "DELETE FROM platform_coin_ledger_entries WHERE entry_ref = 'le-pg-1020'"
+      }
+     ]
+    },
+    {
+     "afterPage": 5,
+     "ops": [
+      {
+       "kind": "insert",
+       "ref": "le-pg-9201",
+       "occurred_at": "2026-02-20T12:00:00.000Z",
+       "sql": "INSERT INTO platform_coin_ledger_entries (entry_ref, operation_ref, wallet_ref, lot_ref, operation, amount_units, hold_ref, order_ref, source_type, source_ref, actor_type, actor_ref, previous_wallet_version, resulting_wallet_version, resulting_wallet_status, occurred_at) VALUES ('le-pg-9201','wop-pg-1','wallet-pg-1','lot-pg-1','credit',1,NULL,NULL,'verified_payment_capture','settle-pg-1','payment_provider','adapter-x',1036,1037,'active','2026-02-20T12:00:00.000Z')"
+      }
+     ]
+    }
+   ],
+   "expectation": {
+    "missed": [
+     "le-pg-1020"
+    ],
+    "duplicated": {},
+    "absent": [
+     "le-pg-1020"
+    ],
+    "extras": [
+     "le-pg-1010a",
+     "le-pg-9201",
+     "le-pg-9101"
+    ]
+   },
+   "productionReachability": "mixed",
+   "omissions": [
+    {
+     "trigger": "platform_coin_ledger_entries_immutable_delete",
+     "reason": "production guard rejects ANY delete of a ledger entry; omitted in the experiment schema for the delete leg of this mixed case only"
+    }
+   ],
+   "note": "Combined stress: the newer insert is never returned; the older, tie and mid inserts are returned as extras (in key order); the deleted row is absent; every other frozen row appears exactly once.",
+   "simulated": {
+    "pages": [
+     [
+      "le-pg-1040",
+      "le-pg-1039",
+      "le-pg-1038",
+      "le-pg-1037",
+      "le-pg-1036"
+     ],
+     [
+      "le-pg-1035",
+      "le-pg-1034",
+      "le-pg-1033",
+      "le-pg-1032",
+      "le-pg-1031"
+     ],
+     [
+      "le-pg-1030",
+      "le-pg-1029",
+      "le-pg-1028",
+      "le-pg-1027",
+      "le-pg-1026"
+     ],
+     [
+      "le-pg-1025",
+      "le-pg-1024",
+      "le-pg-1023",
+      "le-pg-1022",
+      "le-pg-1021"
+     ],
+     [
+      "le-pg-1019",
+      "le-pg-1018",
+      "le-pg-1017",
+      "le-pg-1016",
+      "le-pg-1015"
+     ],
+     [
+      "le-pg-1014",
+      "le-pg-1013",
+      "le-pg-1012",
+      "le-pg-1011",
+      "le-pg-1010a"
+     ],
+     [
+      "le-pg-1010",
+      "le-pg-1009",
+      "le-pg-1008",
+      "le-pg-1007",
+      "le-pg-1006"
+     ],
+     [
+      "le-pg-1005",
+      "le-pg-1004",
+      "le-pg-1003",
+      "le-pg-1002",
+      "le-pg-1001"
+     ],
+     [
+      "le-pg-9201",
+      "le-pg-2020",
+      "le-pg-2019",
+      "le-pg-2018",
+      "le-pg-2017"
+     ],
+     [
+      "le-pg-2016",
+      "le-pg-2015",
+      "le-pg-2014",
+      "le-pg-2013",
+      "le-pg-2012"
+     ],
+     [
+      "le-pg-2011",
+      "le-pg-2010",
+      "le-pg-2009",
+      "le-pg-2008",
+      "le-pg-2007"
+     ],
+     [
+      "le-pg-2006",
+      "le-pg-2005",
+      "le-pg-2004",
+      "le-pg-2003",
+      "le-pg-2002"
+     ],
+     [
+      "le-pg-2001",
+      "le-pg-9101"
+     ]
+    ],
+    "extras": [
+     "le-pg-1010a",
+     "le-pg-9201",
+     "le-pg-9101"
+    ],
+    "pageCount": 13
+   }
+  }
+ ]
+}
