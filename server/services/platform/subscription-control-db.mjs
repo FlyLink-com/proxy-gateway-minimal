@@ -50,6 +50,11 @@ const UNSAFE_FIELD_PARTS = [
 const SAFE_CONTROL_REF_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_:/-]{0,127}$/;
 const SAFE_EDGE_GENERATION_PATTERN = /^(?:gen_[a-f0-9]{24}|gen_scoped_[a-f0-9]{32})$/;
 const PORTAL_SECOND_FACTOR_TYPES = new Set(["totp", "passkey"]);
+// B2-4c (G-10A): identity deletion audit contract. The authorization basis
+// and verification mode are closed sets; the mode is a required per-job
+// parameter and is never silently defaulted.
+const IDENTITY_DELETION_AUTHORIZATION_BASES = new Set(["owner_request", "compliance_order"]);
+const IDENTITY_DELETION_VERIFICATION_MODES = new Set(["physical", "logical"]);
 const SAFE_AUTHORITY_REF_PATTERN = /^[A-Za-z0-9._:-]{1,128}$/;
 const AUTHORITY_SECRET_LIKE_PATTERN =
   /^(?:https?:|mailto:|bearer[ .:_-]|sk[-_]|eyj[a-z0-9_-]{10,})/i;
@@ -1802,6 +1807,62 @@ export function createSqliteSubscriptionControlStore({
 
     create index if not exists platform_identity_bindings_subject_idx
       on platform_identity_bindings(issuer_ref, subject_ref, status);
+
+    -- B2-4c (G-10A): identity deletion jobs, proofs and tombstones.
+    -- The job, proof and tombstone rows must survive the deletion of the
+    -- account row itself (physical verification mode), so the account
+    -- references here are plain text with no foreign key to
+    -- platform_accounts. The tombstone retains only owner-approved
+    -- financial/audit references; its retention rule is pending the C5
+    -- decision (retention_policy_ref stays 'pending-c5-decision' until
+    -- C5 rules, it is never silently defaulted to a real retention).
+    create table if not exists platform_identity_deletion_jobs (
+      id text primary key,
+      request_id text not null unique,
+      account_id text not null,
+      authorization_basis text not null check (authorization_basis in ('owner_request', 'compliance_order')),
+      verification_mode text not null check (verification_mode in ('physical', 'logical')),
+      scope_json text not null default '[]',
+      status text not null check (status in ('pending', 'in_progress', 'completed', 'failed')),
+      current_step integer not null default 0 check (current_step >= 0 and current_step <= 8),
+      steps_json text not null default '[]',
+      failure_reason text,
+      retry_count integer not null default 0 check (retry_count >= 0),
+      proof_ref text,
+      actor_ref text not null,
+      created_at text not null,
+      updated_at text not null
+    );
+
+    create index if not exists platform_identity_deletion_jobs_account_id_idx
+      on platform_identity_deletion_jobs(account_id);
+
+    create table if not exists platform_identity_deletion_proofs (
+      id text primary key,
+      request_id text not null,
+      account_ref text not null,
+      verification_mode text not null check (verification_mode in ('physical', 'logical')),
+      scope_json text not null default '[]',
+      verification_json text not null default '[]',
+      deferred_scope_json text not null default '[]',
+      issued_at text not null,
+      created_at text not null
+    );
+
+    create index if not exists platform_identity_deletion_proofs_request_id_idx
+      on platform_identity_deletion_proofs(request_id);
+
+    create table if not exists platform_identity_deletion_tombstones (
+      id text primary key,
+      request_id text not null,
+      account_ref text not null,
+      retained_categories_json text not null default '[]',
+      retention_policy_ref text not null default 'pending-c5-decision',
+      created_at text not null
+    );
+
+    create index if not exists platform_identity_deletion_tombstones_request_id_idx
+      on platform_identity_deletion_tombstones(request_id);
   `);
 
   if (initializeSchema) ensureTableColumns(db, "platform_portal_access_requests", [
@@ -8337,6 +8398,126 @@ export function createSqliteSubscriptionControlStore({
       return JSON.stringify(metadata);
     }
 
+    if (entityType === "identity_deletion") {
+      // B2-4c (G-10A): deletion proof audit events. Metadata carries only
+      // references, scope, results and timestamps — never deleted personal
+      // data or credential material. Keys are checked against the unsafe
+      // field list by recordAuditEvent before this runs, so no key here
+      // may contain email / password / secret / token / credential / raw.
+      if (action === "identity_deletion_requested") {
+        exactObject(metadata, {
+          allowed: ["requestRef", "accountRef", "authorizationBasis", "scope", "verificationMode"],
+          required: ["requestRef", "accountRef", "authorizationBasis", "scope", "verificationMode"],
+          name: "identityDeletionRequestedAuditMetadata"
+        });
+        safeControlRef(metadata.requestRef, "requestRef");
+        safeControlRef(metadata.accountRef, "accountRef");
+        if (!IDENTITY_DELETION_AUTHORIZATION_BASES.has(metadata.authorizationBasis)) {
+          throw platformError("validation_error", "identity deletion authorization basis is invalid");
+        }
+        if (!IDENTITY_DELETION_VERIFICATION_MODES.has(metadata.verificationMode)) {
+          throw platformError("validation_error", "identity deletion verification mode is invalid");
+        }
+        if (
+          !Array.isArray(metadata.scope)
+          || metadata.scope.length === 0
+          || metadata.scope.some((category) => typeof category !== "string" || !category)
+        ) {
+          throw platformError("validation_error", "identity deletion scope is invalid");
+        }
+        return JSON.stringify(metadata);
+      }
+
+      if (action === "identity_deletion_step_completed") {
+        exactObject(metadata, {
+          allowed: ["requestRef", "accountRef", "step", "stepName", "result", "completedAt", "counts"],
+          required: ["requestRef", "accountRef", "step", "stepName", "result", "completedAt"],
+          name: "identityDeletionStepCompletedAuditMetadata"
+        });
+        safeControlRef(metadata.requestRef, "requestRef");
+        safeControlRef(metadata.accountRef, "accountRef");
+        if (!Number.isSafeInteger(metadata.step) || metadata.step < 0 || metadata.step > 8) {
+          throw platformError("validation_error", "identity deletion step is invalid");
+        }
+        if (
+          typeof metadata.stepName !== "string"
+          || !/^[a-z][a-z0-9_]{0,63}$/.test(metadata.stepName)
+        ) {
+          throw platformError("validation_error", "identity deletion step name is invalid");
+        }
+        if (!["completed", "skipped", "already_completed"].includes(metadata.result)) {
+          throw platformError("validation_error", "identity deletion step result is invalid");
+        }
+        isoText(metadata.completedAt, "completedAt");
+        if (metadata.counts !== undefined) {
+          const counts = snapshotControlJsonObject(metadata.counts, "counts");
+          for (const [key, value] of Object.entries(counts)) {
+            if (
+              !/^[A-Za-z][A-Za-z0-9]{0,63}$/.test(key)
+              || !Number.isSafeInteger(value)
+              || value < 0
+            ) {
+              throw platformError("validation_error", "identity deletion step counts are invalid");
+            }
+          }
+        }
+        return JSON.stringify(metadata);
+      }
+
+      if (action === "identity_deletion_verified") {
+        exactObject(metadata, {
+          allowed: ["requestRef", "accountRef", "verificationMode", "verifiedAt", "assertions"],
+          required: ["requestRef", "accountRef", "verificationMode", "verifiedAt", "assertions"],
+          name: "identityDeletionVerifiedAuditMetadata"
+        });
+        safeControlRef(metadata.requestRef, "requestRef");
+        safeControlRef(metadata.accountRef, "accountRef");
+        if (!IDENTITY_DELETION_VERIFICATION_MODES.has(metadata.verificationMode)) {
+          throw platformError("validation_error", "identity deletion verification mode is invalid");
+        }
+        isoText(metadata.verifiedAt, "verifiedAt");
+        if (!Array.isArray(metadata.assertions) || metadata.assertions.length === 0) {
+          throw platformError("validation_error", "identity deletion verification assertions are invalid");
+        }
+        for (const assertion of metadata.assertions) {
+          exactObject(assertion, {
+            allowed: ["name", "expected", "actual", "passed"],
+            required: ["name", "expected", "actual", "passed"],
+            name: "identityDeletionVerificationAssertion"
+          });
+          if (
+            typeof assertion.name !== "string"
+            || !/^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(assertion.name)
+            || !["string", "number", "boolean"].includes(typeof assertion.expected)
+            || !["string", "number", "boolean"].includes(typeof assertion.actual)
+            || assertion.passed !== true
+          ) {
+            throw platformError("validation_error", "identity deletion verification assertion is invalid");
+          }
+        }
+        return JSON.stringify(metadata);
+      }
+
+      if (action === "identity_deletion_proof_issued") {
+        exactObject(metadata, {
+          allowed: ["requestRef", "accountRef", "proofRef", "verificationMode", "issuedAt", "verificationEventRef"],
+          required: ["requestRef", "accountRef", "proofRef", "verificationMode", "issuedAt", "verificationEventRef"],
+          name: "identityDeletionProofIssuedAuditMetadata"
+        });
+        safeControlRef(metadata.requestRef, "requestRef");
+        safeControlRef(metadata.accountRef, "accountRef");
+        safeControlRef(metadata.proofRef, "proofRef");
+        safeControlRef(metadata.verificationEventRef, "verificationEventRef");
+        if (!IDENTITY_DELETION_VERIFICATION_MODES.has(metadata.verificationMode)) {
+          throw platformError("validation_error", "identity deletion verification mode is invalid");
+        }
+        isoText(metadata.issuedAt, "issuedAt");
+        return JSON.stringify(metadata);
+      }
+
+      throw platformError("validation_error", "identity deletion audit action is not allowed");
+    }
+
     throw platformError("validation_error", "audit entity/action JSON contract is not registered");
   }
 
@@ -9384,6 +9565,448 @@ export function createSqliteSubscriptionControlStore({
     `).all(requiredText(accountId, "accountId")).map(mapPortalSession);
   }
 
+  // B2-4c (G-10A): identity deletion jobs, proofs and tombstones.
+  //
+  // The job/proof/tombstone rows must survive the deletion of the account
+  // row itself (physical verification mode), so the account references here
+  // are plain text with no foreign key to platform_accounts. Nothing in
+  // this block reads or writes credential material: revocation and
+  // deletion operate on row ids and status columns only.
+  //
+  // Tables that still reference an account and are NOT part of the
+  // deletion scope (entitlements, issuance requests, data-pack resources
+  // and rotations, quota counters, usage samples/rollups, device bindings,
+  // identity bindings) block step 5: deleting the account row would either
+  // cascade-delete them or fail on their NO ACTION / RESTRICT rules, and
+  // their handling is pending the C5 retention decision. The deletion
+  // service fails step 5 closed with the blocking tables named instead of
+  // deleting undecided data.
+  const IDENTITY_DELETION_BLOCKING_TABLES = Object.freeze([
+    "platform_entitlements",
+    "platform_issuance_requests",
+    "platform_data_pack_resources",
+    "platform_data_pack_artifact_rotations",
+    "platform_data_pack_credential_resets",
+    "platform_quota_counters",
+    "platform_usage_samples",
+    "platform_usage_rollups",
+    "platform_device_bindings",
+    "platform_identity_bindings"
+  ]);
+
+  function mapIdentityDeletionJob(row) {
+    if (!row) return null;
+    return {
+      id: row.id,
+      requestId: row.request_id,
+      accountId: row.account_id,
+      authorizationBasis: row.authorization_basis,
+      verificationMode: row.verification_mode,
+      scope: JSON.parse(row.scope_json),
+      status: row.status,
+      currentStep: row.current_step,
+      steps: JSON.parse(row.steps_json),
+      failureReason: row.failure_reason,
+      retryCount: row.retry_count,
+      proofRef: row.proof_ref,
+      actorRef: row.actor_ref,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at
+    };
+  }
+
+  function mapIdentityDeletionProof(row) {
+    if (!row) return null;
+    return {
+      id: row.id,
+      requestId: row.request_id,
+      accountRef: row.account_ref,
+      verificationMode: row.verification_mode,
+      scope: JSON.parse(row.scope_json),
+      verification: JSON.parse(row.verification_json),
+      deferredScope: JSON.parse(row.deferred_scope_json),
+      issuedAt: row.issued_at,
+      createdAt: row.created_at
+    };
+  }
+
+  function mapIdentityDeletionTombstone(row) {
+    if (!row) return null;
+    return {
+      id: row.id,
+      requestId: row.request_id,
+      accountRef: row.account_ref,
+      retainedCategories: JSON.parse(row.retained_categories_json),
+      retentionPolicyRef: row.retention_policy_ref,
+      createdAt: row.created_at
+    };
+  }
+
+  function createIdentityDeletionJob(input) {
+    assertNoUnsafeFields(input);
+    if (!IDENTITY_DELETION_AUTHORIZATION_BASES.has(input.authorizationBasis)) {
+      throw platformError("validation_error", "identity deletion authorization basis is invalid");
+    }
+    if (!IDENTITY_DELETION_VERIFICATION_MODES.has(input.verificationMode)) {
+      throw platformError("validation_error", "identity deletion verification mode is invalid");
+    }
+    const record = {
+      id: safeControlRef(input.id, "id"),
+      requestId: safeControlRef(input.requestId, "requestId"),
+      accountId: requiredText(input.accountId, "accountId"),
+      authorizationBasis: input.authorizationBasis,
+      verificationMode: input.verificationMode,
+      scopeJson: jsonArray(input.scope, "scope"),
+      status: requiredText(input.status || "pending", "status"),
+      currentStep: integer(input.currentStep ?? 0, "currentStep", { min: 0 }),
+      stepsJson: jsonArray(input.steps ?? [], "steps"),
+      failureReason: optionalText(input.failureReason),
+      retryCount: integer(input.retryCount ?? 0, "retryCount", { min: 0 }),
+      proofRef: optionalText(input.proofRef),
+      actorRef: safeControlRef(input.actorRef, "actorRef"),
+      createdAt: isoText(input.createdAt, "createdAt"),
+      updatedAt: isoText(input.updatedAt, "updatedAt")
+    };
+    sqliteRun(db.prepare(`
+      insert into platform_identity_deletion_jobs (
+        id, request_id, account_id, authorization_basis, verification_mode,
+        scope_json, status, current_step, steps_json, failure_reason,
+        retry_count, proof_ref, actor_ref, created_at, updated_at
+      ) values (
+        @id, @requestId, @accountId, @authorizationBasis, @verificationMode,
+        @scopeJson, @status, @currentStep, @stepsJson, @failureReason,
+        @retryCount, @proofRef, @actorRef, @createdAt, @updatedAt
+      )
+    `), record);
+    return getIdentityDeletionJob(record.id);
+  }
+
+  function getIdentityDeletionJob(id) {
+    return mapIdentityDeletionJob(db.prepare(
+      "select * from platform_identity_deletion_jobs where id = ?"
+    ).get(safeControlRef(id, "id")));
+  }
+
+  function getIdentityDeletionJobByRequestId(requestId) {
+    return mapIdentityDeletionJob(db.prepare(
+      "select * from platform_identity_deletion_jobs where request_id = ?"
+    ).get(safeControlRef(requestId, "requestId")));
+  }
+
+  function getPendingIdentityDeletionJobByAccountId(accountId) {
+    return mapIdentityDeletionJob(db.prepare(`
+      select * from platform_identity_deletion_jobs
+      where account_id = ? and status in ('pending', 'in_progress', 'failed')
+      order by created_at asc, id asc
+      limit 1
+    `).get(requiredText(accountId, "accountId")));
+  }
+
+  function updateIdentityDeletionJob(input) {
+    assertNoUnsafeFields(input);
+    const record = {
+      id: safeControlRef(input.id, "id"),
+      status: requiredText(input.status, "status"),
+      currentStep: integer(input.currentStep, "currentStep", { min: 0 }),
+      stepsJson: jsonArray(input.steps, "steps"),
+      failureReason: optionalText(input.failureReason),
+      retryCount: integer(input.retryCount ?? 0, "retryCount", { min: 0 }),
+      proofRef: optionalText(input.proofRef),
+      updatedAt: isoText(input.updatedAt, "updatedAt")
+    };
+    if (!["pending", "in_progress", "completed", "failed"].includes(record.status)) {
+      throw platformError("validation_error", "identity deletion job status is invalid");
+    }
+    if (record.currentStep > 8) {
+      throw platformError("validation_error", "identity deletion job step is invalid");
+    }
+    const result = sqliteRun(db.prepare(`
+      update platform_identity_deletion_jobs
+      set status = @status, current_step = @currentStep, steps_json = @stepsJson,
+        failure_reason = @failureReason, retry_count = @retryCount,
+        proof_ref = @proofRef, updated_at = @updatedAt
+      where id = @id
+    `), record);
+    if (result.changes !== 1) {
+      throw platformError("not_found", "identity deletion job not found");
+    }
+    return getIdentityDeletionJob(record.id);
+  }
+
+  function createIdentityDeletionProof(input) {
+    assertNoUnsafeFields(input);
+    if (!IDENTITY_DELETION_VERIFICATION_MODES.has(input.verificationMode)) {
+      throw platformError("validation_error", "identity deletion verification mode is invalid");
+    }
+    const record = {
+      id: safeControlRef(input.id, "id"),
+      requestId: safeControlRef(input.requestId, "requestId"),
+      accountRef: requiredText(input.accountRef, "accountRef"),
+      verificationMode: input.verificationMode,
+      scopeJson: jsonArray(input.scope, "scope"),
+      verificationJson: jsonArray(input.verification, "verification"),
+      deferredScopeJson: jsonArray(input.deferredScope ?? [], "deferredScope"),
+      issuedAt: isoText(input.issuedAt, "issuedAt"),
+      createdAt: isoText(input.createdAt, "createdAt")
+    };
+    sqliteRun(db.prepare(`
+      insert into platform_identity_deletion_proofs (
+        id, request_id, account_ref, verification_mode, scope_json,
+        verification_json, deferred_scope_json, issued_at, created_at
+      ) values (
+        @id, @requestId, @accountRef, @verificationMode, @scopeJson,
+        @verificationJson, @deferredScopeJson, @issuedAt, @createdAt
+      )
+    `), record);
+    return getIdentityDeletionProof(record.id);
+  }
+
+  function getIdentityDeletionProof(id) {
+    return mapIdentityDeletionProof(db.prepare(
+      "select * from platform_identity_deletion_proofs where id = ?"
+    ).get(safeControlRef(id, "id")));
+  }
+
+  function getIdentityDeletionProofByRequestId(requestId) {
+    return mapIdentityDeletionProof(db.prepare(
+      "select * from platform_identity_deletion_proofs where request_id = ?"
+    ).get(safeControlRef(requestId, "requestId")));
+  }
+
+  function createIdentityDeletionTombstone(input) {
+    assertNoUnsafeFields(input);
+    const record = {
+      id: safeControlRef(input.id, "id"),
+      requestId: safeControlRef(input.requestId, "requestId"),
+      accountRef: requiredText(input.accountRef, "accountRef"),
+      retainedCategoriesJson: jsonArray(input.retainedCategories, "retainedCategories"),
+      retentionPolicyRef: requiredText(
+        input.retentionPolicyRef || "pending-c5-decision", "retentionPolicyRef"
+      ),
+      createdAt: isoText(input.createdAt, "createdAt")
+    };
+    sqliteRun(db.prepare(`
+      insert into platform_identity_deletion_tombstones (
+        id, request_id, account_ref, retained_categories_json,
+        retention_policy_ref, created_at
+      ) values (
+        @id, @requestId, @accountRef, @retainedCategoriesJson,
+        @retentionPolicyRef, @createdAt
+      )
+    `), record);
+    return mapIdentityDeletionTombstone(db.prepare(
+      "select * from platform_identity_deletion_tombstones where id = ?"
+    ).get(record.id));
+  }
+
+  function listIdentityDeletionTombstonesByRequestId(requestId) {
+    return db.prepare(`
+      select * from platform_identity_deletion_tombstones
+      where request_id = ?
+      order by created_at asc, id asc
+    `).all(safeControlRef(requestId, "requestId")).map(mapIdentityDeletionTombstone);
+  }
+
+  function freezeAccountForDeletion({ accountId, updatedAt }) {
+    // Freeze is the persisted, queryable state that blocks new sessions:
+    // the portal and admin login paths already reject any account whose
+    // status is not 'active'. Re-freezing an already frozen account is a
+    // no-op, so the step is idempotent.
+    db.prepare(`
+      update platform_accounts
+      set status = 'suspended', updated_at = ?
+      where id = ? and status = 'active'
+    `).run(isoText(updatedAt, "updatedAt"), requiredText(accountId, "accountId"));
+    return getAccount(accountId);
+  }
+
+  function revokePortalPasswordCredentialsForAccount({ accountId, revokedAt, updatedAt }) {
+    // Locked rows are revoked too: a locked credential is still a live
+    // credential reference, and deletion must neutralize it.
+    const result = db.prepare(`
+      update platform_portal_password_credentials
+      set status = 'revoked', revoked_at = ?, updated_at = ?
+      where account_id = ? and status in ('active', 'locked') and revoked_at is null
+    `).run(
+      isoText(revokedAt, "revokedAt"),
+      isoText(updatedAt, "updatedAt"),
+      requiredText(accountId, "accountId")
+    );
+    return { revokedCount: result.changes };
+  }
+
+  function revokePortalTotpCredentialsForAccount({ accountId, revokedAt, updatedAt }) {
+    const result = db.prepare(`
+      update platform_portal_totp_credentials
+      set status = 'revoked', revoked_at = ?, updated_at = ?
+      where account_id = ? and status in ('active', 'locked') and revoked_at is null
+    `).run(
+      isoText(revokedAt, "revokedAt"),
+      isoText(updatedAt, "updatedAt"),
+      requiredText(accountId, "accountId")
+    );
+    return { revokedCount: result.changes };
+  }
+
+  function revokePortalPasskeyCredentialsForAccount({ accountId, revokedAt, updatedAt }) {
+    const result = db.prepare(`
+      update platform_portal_passkey_credentials
+      set status = 'revoked', revoked_at = ?, updated_at = ?
+      where account_id = ? and status in ('active', 'locked') and revoked_at is null
+    `).run(
+      isoText(revokedAt, "revokedAt"),
+      isoText(updatedAt, "updatedAt"),
+      requiredText(accountId, "accountId")
+    );
+    return { revokedCount: result.changes };
+  }
+
+  function deletePortalCredentialsForAccount({ accountId }) {
+    const account = requiredText(accountId, "accountId");
+    const counts = {};
+    for (const table of [
+      "platform_portal_password_credentials",
+      "platform_portal_totp_credentials",
+      "platform_portal_passkey_credentials"
+    ]) {
+      counts[table] = db.prepare(
+        `delete from ${table} where account_id = ?`
+      ).run(account).changes;
+    }
+    return counts;
+  }
+
+  function deletePortalSessionsForAccount({ accountId }) {
+    return {
+      deletedCount: db.prepare(
+        "delete from platform_portal_sessions where account_id = ?"
+      ).run(requiredText(accountId, "accountId")).changes
+    };
+  }
+
+  function deletePortalSecondFactorChallengesForAccount({ accountId }) {
+    return {
+      deletedCount: db.prepare(
+        "delete from platform_portal_second_factor_challenges where account_id = ?"
+      ).run(requiredText(accountId, "accountId")).changes
+    };
+  }
+
+  function deletePortalEntriesForAccount({ accountId }) {
+    return {
+      deletedCount: db.prepare(
+        "delete from platform_portal_entries where account_id = ?"
+      ).run(requiredText(accountId, "accountId")).changes
+    };
+  }
+
+  function deleteAccountRowForDeletion({ accountId }) {
+    // Only a frozen account row may be deleted through this path: either
+    // 'suspended' (set by the freeze step) or 'disabled' (already frozen
+    // before the request; logins reject both). The caller must have
+    // removed the in-scope personal rows first and verified that no
+    // out-of-scope referencing rows remain (see readIdentityDeletionState):
+    // the remaining cascade would otherwise delete undecided data, and
+    // the NO ACTION / RESTRICT tables would fail the delete.
+    const result = db.prepare(`
+      delete from platform_accounts
+      where id = ? and status in ('suspended', 'disabled')
+    `).run(requiredText(accountId, "accountId"));
+    return { deletedCount: result.changes };
+  }
+
+  function redactAccountMetadataForDeletion({ accountId, updatedAt }) {
+    // Logical mode only: strip the personal originals from metadata_json
+    // (loginRef / displayRef) while keeping the digests and every other
+    // field. The account row itself stays, in 'suspended' status.
+    const account = getAccount(accountId);
+    if (!account) {
+      throw platformError("not_found", "account not found");
+    }
+    const metadata = { ...(account.metadata ?? {}) };
+    const strippedKeys = [];
+    for (const key of ["loginRef", "displayRef"]) {
+      if (Object.prototype.hasOwnProperty.call(metadata, key)) {
+        delete metadata[key];
+        strippedKeys.push(key);
+      }
+    }
+    db.prepare(`
+      update platform_accounts
+      set metadata_json = ?, updated_at = ?
+      where id = ?
+    `).run(
+      JSON.stringify(metadata),
+      isoText(updatedAt, "updatedAt"),
+      requiredText(accountId, "accountId")
+    );
+    return { strippedKeys };
+  }
+
+  function countCredentialRows(table, accountId) {
+    const row = db.prepare(`
+      select
+        count(*) as total,
+        sum(case when status = 'active' then 1 else 0 end) as active,
+        sum(case when status = 'revoked' then 1 else 0 end) as revoked,
+        sum(case when status = 'locked' then 1 else 0 end) as locked
+      from ${table}
+      where account_id = ?
+    `).get(accountId);
+    return {
+      total: row.total,
+      active: row.active ?? 0,
+      revoked: row.revoked ?? 0,
+      locked: row.locked ?? 0
+    };
+  }
+
+  function readIdentityDeletionState({ accountId }) {
+    const account = getAccount(accountId);
+    const accountRow = db.prepare(
+      "select metadata_json from platform_accounts where id = ?"
+    ).get(requiredText(accountId, "accountId"));
+    const metadata = accountRow ? parseJsonObject(accountRow.metadata_json) : {};
+    const blocking = {};
+    for (const table of IDENTITY_DELETION_BLOCKING_TABLES) {
+      blocking[table] = db.prepare(
+        `select count(*) as count from ${table} where account_id = ?`
+      ).get(requiredText(accountId, "accountId")).count;
+    }
+    const sessionRow = db.prepare(`
+      select
+        count(*) as total,
+        sum(case when status = 'active' then 1 else 0 end) as active,
+        sum(case when status = 'revoked' then 1 else 0 end) as revoked,
+        sum(case when status = 'expired' then 1 else 0 end) as expired
+      from platform_portal_sessions
+      where account_id = ?
+    `).get(requiredText(accountId, "accountId"));
+    return {
+      accountExists: account !== null,
+      accountStatus: account ? account.status : null,
+      metadataHasPersonalFields:
+        Object.prototype.hasOwnProperty.call(metadata, "loginRef")
+        || Object.prototype.hasOwnProperty.call(metadata, "displayRef"),
+      password: countCredentialRows("platform_portal_password_credentials", accountId),
+      totp: countCredentialRows("platform_portal_totp_credentials", accountId),
+      passkey: countCredentialRows("platform_portal_passkey_credentials", accountId),
+      sessions: {
+        total: sessionRow.total,
+        active: sessionRow.active ?? 0,
+        revoked: sessionRow.revoked ?? 0,
+        expired: sessionRow.expired ?? 0
+      },
+      challenges: db.prepare(
+        "select count(*) as count from platform_portal_second_factor_challenges where account_id = ?"
+      ).get(requiredText(accountId, "accountId")).count,
+      entries: db.prepare(
+        "select count(*) as count from platform_portal_entries where account_id = ?"
+      ).get(requiredText(accountId, "accountId")).count,
+      blocking
+    };
+  }
+
   function getAccountControlSummary(accountId) {
     const account = getAccount(accountId);
     if (!account) {
@@ -9582,6 +10205,27 @@ export function createSqliteSubscriptionControlStore({
     getRevocationEvent,
     recordAuditEvent,
     getAuditEvent,
+    createIdentityDeletionJob,
+    getIdentityDeletionJob,
+    getIdentityDeletionJobByRequestId,
+    getPendingIdentityDeletionJobByAccountId,
+    updateIdentityDeletionJob,
+    createIdentityDeletionProof,
+    getIdentityDeletionProof,
+    getIdentityDeletionProofByRequestId,
+    createIdentityDeletionTombstone,
+    listIdentityDeletionTombstonesByRequestId,
+    freezeAccountForDeletion,
+    revokePortalPasswordCredentialsForAccount,
+    revokePortalTotpCredentialsForAccount,
+    revokePortalPasskeyCredentialsForAccount,
+    deletePortalCredentialsForAccount,
+    deletePortalSessionsForAccount,
+    deletePortalSecondFactorChallengesForAccount,
+    deletePortalEntriesForAccount,
+    deleteAccountRowForDeletion,
+    redactAccountMetadataForDeletion,
+    readIdentityDeletionState,
     upsertEdgeRegisteredNode,
     insertEdgeRegisteredNodeIfAbsent,
     getEdgeRegisteredNode,
