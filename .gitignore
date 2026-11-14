@@ -31,3 +31,7 @@ test-results/
 handoff/
 admin/dist-site/
 runtime-identities/
+
+# G2-P1 probe runner transient artifacts (rebuilt on every run)
+tools/g2-p1/.g2-p1-run-build.sqlite
+tools/g2-p1/.miniflare-d1/
