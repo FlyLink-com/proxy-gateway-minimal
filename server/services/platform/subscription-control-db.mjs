@@ -8398,7 +8398,7 @@ export function createSqliteSubscriptionControlStore({
       return JSON.stringify(metadata);
     }
 
-if (entityType === "identity_deletion") {
+    if (entityType === "identity_deletion") {
       // B2-4c (G-10A): deletion proof audit events. Metadata carries only
       // references, scope, results and timestamps — never deleted personal
       // data or credential material. Keys are checked against the unsafe
@@ -8539,7 +8539,7 @@ if (entityType === "identity_deletion") {
       throw platformError("validation_error", "identity deletion audit action is not allowed");
     }
 
-if (entityType === "totp_enrollment") {
+    if (entityType === "totp_enrollment") {
       // B2-9 (G-08): TOTP enrollment lifecycle proof audit events. Metadata
       // carries only references, channels, results and timestamps — never
       // secret material, verification codes or ciphertext. This branch runs
