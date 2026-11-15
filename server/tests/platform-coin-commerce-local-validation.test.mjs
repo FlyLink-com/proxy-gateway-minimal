@@ -326,20 +326,6 @@ function localHttp(baseUrl, { method = "GET", path, headers = {}, body } = {}) {
   });
 }
 
-async function waitThroughCancelWindow(handle, orderRef) {
-  const deadline = Date.now() + 3_000;
-  while (Date.now() < deadline) {
-    const response = await localHttp(handle.baseUrl, {
-      path: `/api/portal/commerce/orders/${orderRef}`,
-      headers: handle.portalHeaders.funded
-    });
-    const cancelUntil = Date.parse(response.json?.order?.cancelUntil || "");
-    if (Number.isFinite(cancelUntil) && Date.now() >= cancelUntil) return;
-    await new Promise((resolveDelay) => setTimeout(resolveDelay, 20));
-  }
-  throw new Error("synthetic cancel window did not elapse within bound");
-}
-
 test("importing the local validation module has no temporary-root or listener side effect", async () => {
   const before = ownedRoots();
   const module = await moduleUnderTest();
@@ -494,12 +480,26 @@ test("stop waits for the safe aggregate fulfillment-in-flight count before delet
       body: { quoteRef: quote.json.quote.quoteRef }
     });
     assert.equal(held.status, 201);
-    await waitThroughCancelWindow(handle, held.json.order.orderRef);
-    const runOnce = handle.runCoordinatorOnce();
-    const deadline = Date.now() + 2_000;
-    while (handle.inspect().fulfillmentInFlight !== 1 && Date.now() < deadline) {
-      await new Promise((resolveDelay) => setTimeout(resolveDelay, 10));
+    // Hold the event loop in microtasks until the cancel window has elapsed.
+    // The coordinator's background timer wakes at cancelUntil and would race
+    // this test's runCoordinatorOnce() for the fulfillment claim: whichever
+    // pass runs first completes the fulfillment, and the other pass finds
+    // nothing to do, so polling for fulfillmentInFlight === 1 could never
+    // observe the 50ms in-flight window. Promise continuations run before
+    // timer callbacks, so while this loop spins on `await Promise.resolve()`
+    // the background timer cannot fire. The runCoordinatorOnce() call below
+    // therefore runs first, clears the pending background timer, claims the
+    // command, and fulfillmentInFlight is observably 1 synchronously after
+    // it returns. The loop is bounded so a stuck clock fails loudly instead
+    // of spinning forever.
+    const cancelUntilMs = Date.parse(held.json.order.cancelUntil || "");
+    assert.ok(Number.isFinite(cancelUntilMs), "order response carries cancelUntil");
+    const spinDeadline = cancelUntilMs + 10_000;
+    while (Date.now() < cancelUntilMs) {
+      if (Date.now() > spinDeadline) throw new Error("cancel window did not elapse within bound");
+      await Promise.resolve();
     }
+    const runOnce = handle.runCoordinatorOnce();
     assert.equal(handle.inspect().fulfillmentInFlight, 1);
     let stopSettled = false;
     const stopping = handle.stop().then(() => { stopSettled = true; });
