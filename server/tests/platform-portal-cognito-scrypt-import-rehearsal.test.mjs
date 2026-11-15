@@ -98,7 +98,7 @@ test("Cognito parser enforces canonical Scrypt parameters and lowercase hex", ()
     valid.replace("$8$1$", "$16$1$"),
     valid.replace("$8$1$", "$8$2$"),
     valid.replace("001122", "00112Z"),
-    valid.replace("001122", "001122".toUpperCase()),
+    valid.replace(fixture.expectedHashHex.slice(0, 4), fixture.expectedHashHex.slice(0, 4).toUpperCase()),
     valid.slice(0, valid.lastIndexOf("$") + 1),
     valid + "$extra",
     "32768$8$1$" + "ab".repeat(15) + "$" + fixture.expectedHashHex,
