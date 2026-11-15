@@ -44,7 +44,7 @@ Resources:
         DefaultEmailOption: CONFIRM_WITH_CODE
         EmailSubject: FlyLink Admin verification code
         EmailMessage: 'Your FlyLink Admin verification code is {####}.'
-      MfaConfiguration: ON
+      MfaConfiguration: 'ON'
       EnabledMfas:
         - SOFTWARE_TOKEN_MFA
       UserPoolTags:
