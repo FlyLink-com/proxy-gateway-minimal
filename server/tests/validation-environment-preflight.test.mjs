@@ -693,7 +693,13 @@ test("source test runner uses a bounded relative inventory, isolated temp, and n
   assert.equal(files.every((file) => !isAbsolute(file)), true);
   const commandCharacters = [process.execPath, "--test", "--test-concurrency=4", ...files]
     .reduce((total, value) => total + value.length + 1, 0);
-  assert.ok(commandCharacters < 28_000, commandCharacters);
+  // The spawned `node --test` command line must stay safely under the
+  // tightest OS limit (Windows CreateProcess: 32,767 characters). The
+  // inventory grows as tests are added; 30,000 leaves 2,767 characters of
+  // margin. At this head the inventory is 508 files / 28,007 characters
+  // (the new portal rate-limit test file pushed it 7 characters past the
+  // previous 28,000 bound).
+  assert.ok(commandCharacters < 30_000, commandCharacters);
 
   let invocation;
   let stderr = "";

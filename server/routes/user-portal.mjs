@@ -1,6 +1,9 @@
 import { readReferralCookie } from './portal-referral.mjs';
 import { Router } from "express";
+import { isIP } from "node:net";
 import { types as utilTypes } from "node:util";
+import { ipKeyGenerator, rateLimit } from "express-rate-limit";
+import { normalizeIpAddress, resolveClientIp } from "../services/ip-address.mjs";
 import { createPortalBrowserSessionTransport } from "../services/platform/portal-browser-session-transport.mjs";
 import { snapshotPortalCurrentResourceService } from "../services/platform/portal-current-resource.mjs";
 import {
@@ -119,9 +122,63 @@ function sendPortalError(res, error) {
   res.status(500).json({ error: "internal_error" });
 }
 
+// Attempt limits for the Portal authorization routes, copied from the
+// established Admin values in server/routes/admin-auth.mjs (60_000 ms window,
+// 10 attempts, IPv6 /56). The numbers are owned by the Issue #854 owner
+// decision; do not tune them here.
+const PORTAL_AUTH_ATTEMPT_WINDOW_MS = 60_000;
+const PORTAL_AUTH_ATTEMPT_MAX = 10;
+const PORTAL_AUTH_IPV6_SUBNET = 56;
+const PORTAL_AUTH_SOURCE_IP = Symbol("portalAuthSourceIp");
+
+function normalizePortalSourceIp(value) {
+  const ip = typeof value === "string" ? normalizeIpAddress(value) : "";
+  if (!isIP(ip)) return "";
+  if (isIP(ip) !== 6) return ip;
+
+  // URL parsing is local: canonicalize legal IPv6 spellings before recognizing
+  // mapped IPv4. ipKeyGenerator only recognizes mapped dotted-decimal notation.
+  const canonical = new URL(`http://[${ip}]/`).hostname.slice(1, -1);
+  const mapped = /^::ffff:([0-9a-f]+):([0-9a-f]+)$/.exec(canonical);
+  if (!mapped) return canonical;
+  const high = Number.parseInt(mapped[1], 16);
+  const low = Number.parseInt(mapped[2], 16);
+  return [high >>> 8, high & 255, low >>> 8, low & 255].join(".");
+}
+
 export function userPortalRoutes(state, options = {}) {
   const router = Router();
   const auth = options.userPortalAuth || state.platform?.userPortalAuth;
+  const resolveClientIpFn = options.resolveClientIpFn || resolveClientIp;
+  const requireSourceIp = (req, res, next) => {
+    let sourceIp;
+    try {
+      sourceIp = normalizePortalSourceIp(resolveClientIpFn(req));
+    } catch {
+      sourceIp = "";
+    }
+    if (!isIP(sourceIp)) {
+      res.status(403).json({ error: "forbidden" });
+      return;
+    }
+    req[PORTAL_AUTH_SOURCE_IP] = sourceIp;
+    next();
+  };
+  const createAttemptRateLimit = () => rateLimit({
+    windowMs: PORTAL_AUTH_ATTEMPT_WINDOW_MS,
+    limit: PORTAL_AUTH_ATTEMPT_MAX,
+    standardHeaders: "draft-7",
+    legacyHeaders: false,
+    // Only the validated application resolver establishes the source address.
+    // Express trust-proxy settings and untrusted XFF never select this key.
+    keyGenerator: (req) => ipKeyGenerator(req[PORTAL_AUTH_SOURCE_IP], PORTAL_AUTH_IPV6_SUBNET),
+    message: { error: "Too Many Requests" }
+  });
+  const secondFactorAttemptRateLimit = createAttemptRateLimit();
+  const totpEnrollmentAttemptRateLimit = createAttemptRateLimit();
+  const totpEnrollmentConfirmAttemptRateLimit = createAttemptRateLimit();
+  const entryEnrollAttemptRateLimit = createAttemptRateLimit();
+  const sessionAttemptRateLimit = createAttemptRateLimit();
   const adsConsentStore = options.adsConsentStore || state.platform?.adsConsentStore;
   const browserSessions = options.browserSessions || createPortalBrowserSessionTransport({auth});
   router.use(browserSessions.middleware);
@@ -339,7 +396,7 @@ export function userPortalRoutes(state, options = {}) {
     }
   });
 
-  router.post("/api/portal/password/second-factor", async (req, res) => {
+  router.post("/api/portal/password/second-factor", requireSourceIp, secondFactorAttemptRateLimit, async (req, res) => {
     try {
       requireAuthService();
       const factor = req.body?.factor === "authenticator" ? "totp" : req.body?.factor;
@@ -414,7 +471,7 @@ export function userPortalRoutes(state, options = {}) {
     }
   });
 
-  router.post("/api/portal/security/totp/enrollment", async (req, res) => {
+  router.post("/api/portal/security/totp/enrollment", requireSourceIp, totpEnrollmentAttemptRateLimit, async (req, res) => {
     try {
       requireAuthService();
       res.status(201).json(await auth.startTotpEnrollment({
@@ -425,7 +482,7 @@ export function userPortalRoutes(state, options = {}) {
     }
   });
 
-  router.post("/api/portal/security/totp/enrollment/confirm", async (req, res) => {
+  router.post("/api/portal/security/totp/enrollment/confirm", requireSourceIp, totpEnrollmentConfirmAttemptRateLimit, async (req, res) => {
     try {
       requireAuthService();
       res.json(await auth.confirmTotpEnrollment({
@@ -438,7 +495,7 @@ export function userPortalRoutes(state, options = {}) {
     }
   });
 
-  router.post("/api/portal/entry/enroll", async (req, res) => {
+  router.post("/api/portal/entry/enroll", requireSourceIp, entryEnrollAttemptRateLimit, async (req, res) => {
     try {
       requireAuthService();
       verifyHumanChallenge(req);
@@ -506,7 +563,7 @@ export function userPortalRoutes(state, options = {}) {
     }
   });
 
-  router.post("/api/portal/session", async (req, res) => {
+  router.post("/api/portal/session", requireSourceIp, sessionAttemptRateLimit, async (req, res) => {
     try {
       requireAuthService();
       verifyHumanChallenge(req);
