@@ -16,6 +16,27 @@ export function normalizeIpAddress(value) {
   return ip;
 }
 
+// Canonicalize a resolved source address for use as an express-rate-limit
+// key. Shared by the admin-auth and portal-authority attempt limiters so the
+// mapping stays identical in both places: IPv4 is returned as-is, legal IPv6
+// spellings are canonicalized, and IPv4-mapped IPv6 is rendered as dotted
+// decimal because ipKeyGenerator only recognizes mapped dotted-decimal
+// notation. Returns "" for anything that is not a valid IP.
+export function normalizeRateLimitSourceIp(value) {
+  const ip = typeof value === "string" ? normalizeIpAddress(value) : "";
+  if (!isIP(ip)) return "";
+  if (isIP(ip) !== 6) return ip;
+
+  // URL parsing is local: canonicalize legal IPv6 spellings before recognizing
+  // mapped IPv4. ipKeyGenerator only recognizes mapped dotted-decimal notation.
+  const canonical = new URL(`http://[${ip}]/`).hostname.slice(1, -1);
+  const mapped = /^::ffff:([0-9a-f]+):([0-9a-f]+)$/.exec(canonical);
+  if (!mapped) return canonical;
+  const high = Number.parseInt(mapped[1], 16);
+  const low = Number.parseInt(mapped[2], 16);
+  return [high >>> 8, high & 255, low >>> 8, low & 255].join(".");
+}
+
 function ipv4ToInt(ip) {
   if (isIP(ip) !== 4) {
     return null;

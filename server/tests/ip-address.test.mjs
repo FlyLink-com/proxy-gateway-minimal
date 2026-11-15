@@ -4,6 +4,7 @@ import {
   createIpAllowlist,
   isPrivateOrLoopbackIp,
   normalizeIpAddress,
+  normalizeRateLimitSourceIp,
   resolveClientIp
 } from "../services/ip-address.mjs";
 
@@ -25,6 +26,24 @@ test("normalizeIpAddress handles IPv4-mapped IPv6 addresses and preserves invali
 
   for (const [input, expected] of cases) {
     assert.equal(normalizeIpAddress(input), expected, input);
+  }
+});
+
+test("normalizeRateLimitSourceIp canonicalizes keys the way ipKeyGenerator needs", () => {
+  const cases = [
+    ["203.0.113.10", "203.0.113.10"],
+    ["::ffff:203.0.113.10", "203.0.113.10"],
+    ["::ffff:cb00:710a", "203.0.113.10"],
+    ["2001:0DB8:0000:0000:0000:0000:0000:0001", "2001:db8::1"],
+    ["::1", "::1"],
+    ["not-an-ip", ""],
+    ["", ""],
+    [null, ""],
+    [123, ""]
+  ];
+
+  for (const [input, expected] of cases) {
+    assert.equal(normalizeRateLimitSourceIp(input), expected, String(input));
   }
 });
 

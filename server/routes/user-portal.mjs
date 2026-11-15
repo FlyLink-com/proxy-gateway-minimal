@@ -3,7 +3,7 @@ import { Router } from "express";
 import { isIP } from "node:net";
 import { types as utilTypes } from "node:util";
 import { ipKeyGenerator, rateLimit } from "express-rate-limit";
-import { normalizeIpAddress, resolveClientIp } from "../services/ip-address.mjs";
+import { normalizeRateLimitSourceIp, resolveClientIp } from "../services/ip-address.mjs";
 import { createPortalBrowserSessionTransport } from "../services/platform/portal-browser-session-transport.mjs";
 import { snapshotPortalCurrentResourceService } from "../services/platform/portal-current-resource.mjs";
 import {
@@ -12,6 +12,15 @@ import {
 import {
   snapshotWalletFirstCurrentResourceSetupDelivery
 } from "../services/platform/wallet-first-current-resource-setup-delivery.mjs";
+
+// B2-b P2: attempt limiting for the authority session entry. Thresholds reuse
+// the established admin-auth values (ADMIN_AUTH_ATTEMPT_* in
+// server/routes/admin-auth.mjs) — the admin-auth established values, not
+// numbers invented for this route.
+const PORTAL_AUTHORITY_ATTEMPT_WINDOW_MS = 60_000;
+const PORTAL_AUTHORITY_ATTEMPT_MAX = 10;
+const PORTAL_AUTHORITY_IPV6_SUBNET = 56;
+const PORTAL_AUTHORITY_SOURCE_IP = Symbol("portalAuthoritySourceIp");
 
 function sendPortalError(res, error) {
   if (["subscription_link_reset_conflict", "subscription_link_reset_state_changed"].includes(error.code)) {
@@ -51,6 +60,10 @@ function sendPortalError(res, error) {
   }
   if (error.code === "email_verification_unavailable") {
     res.status(503).json({ error: "email_verification_unavailable" });
+    return;
+  }
+  if (error.code === "identity_authority_unavailable") {
+    res.status(503).json({ error: "identity_authority_unavailable" });
     return;
   }
   if (error.code === "email_verification_rate_limited") {
@@ -131,21 +144,10 @@ const PORTAL_AUTH_ATTEMPT_MAX = 10;
 const PORTAL_AUTH_IPV6_SUBNET = 56;
 const PORTAL_AUTH_SOURCE_IP = Symbol("portalAuthSourceIp");
 
-function normalizePortalSourceIp(value) {
-  const ip = typeof value === "string" ? normalizeIpAddress(value) : "";
-  if (!isIP(ip)) return "";
-  if (isIP(ip) !== 6) return ip;
-
-  // URL parsing is local: canonicalize legal IPv6 spellings before recognizing
-  // mapped IPv4. ipKeyGenerator only recognizes mapped dotted-decimal notation.
-  const canonical = new URL(`http://[${ip}]/`).hostname.slice(1, -1);
-  const mapped = /^::ffff:([0-9a-f]+):([0-9a-f]+)$/.exec(canonical);
-  if (!mapped) return canonical;
-  const high = Number.parseInt(mapped[1], 16);
-  const low = Number.parseInt(mapped[2], 16);
-  return [high >>> 8, high & 255, low >>> 8, low & 255].join(".");
-}
-
+// Source-IP canonicalization for the limiters uses the shared helper
+// normalizeRateLimitSourceIp (server/services/ip-address.mjs); its logic is
+// identical to the local copy #885 carried here, so the copy is removed and
+// both the Portal and authority limiters share one helper.
 export function userPortalRoutes(state, options = {}) {
   const router = Router();
   const auth = options.userPortalAuth || state.platform?.userPortalAuth;
@@ -153,7 +155,7 @@ export function userPortalRoutes(state, options = {}) {
   const requireSourceIp = (req, res, next) => {
     let sourceIp;
     try {
-      sourceIp = normalizePortalSourceIp(resolveClientIpFn(req));
+      sourceIp = normalizeRateLimitSourceIp(resolveClientIpFn(req));
     } catch {
       sourceIp = "";
     }
@@ -162,6 +164,7 @@ export function userPortalRoutes(state, options = {}) {
       return;
     }
     req[PORTAL_AUTH_SOURCE_IP] = sourceIp;
+    req[PORTAL_AUTHORITY_SOURCE_IP] = sourceIp;
     next();
   };
   const createAttemptRateLimit = () => rateLimit({
@@ -193,6 +196,17 @@ export function userPortalRoutes(state, options = {}) {
   const currentResourceSetupDelivery = options.walletFirstCurrentResourceSetupDelivery
     || state.platform?.walletFirstCurrentResourceSetupDelivery;
   const currentResourceService = options.portalCurrentResourceService || state.platform?.portalCurrentResourceService;
+  const createAuthorityAttemptRateLimit = () => rateLimit({
+    windowMs: PORTAL_AUTHORITY_ATTEMPT_WINDOW_MS,
+    limit: PORTAL_AUTHORITY_ATTEMPT_MAX,
+    standardHeaders: "draft-7",
+    legacyHeaders: false,
+    // Only the validated application resolver establishes the source address.
+    // Express trust-proxy settings and untrusted XFF never select this key.
+    keyGenerator: (req) => ipKeyGenerator(req[PORTAL_AUTHORITY_SOURCE_IP], PORTAL_AUTHORITY_IPV6_SUBNET),
+    message: { error: "Too Many Requests" }
+  });
+  const authorityAttemptRateLimit = createAuthorityAttemptRateLimit();
   const resourceReader = () => currentResourceService
     ? snapshotPortalCurrentResourceService(currentResourceService)
     : snapshotWalletFirstCurrentResourceProjection(currentResourceProjection);
@@ -379,6 +393,44 @@ export function userPortalRoutes(state, options = {}) {
       const result = auth.verifyPasswordAndMaybeChallenge({
         accountId: req.body?.accountId,
         plainPassword: req.body?.plainPassword ?? req.body?.password,
+        rememberMe: req.body?.rememberMe ?? false,
+        requestContext: requestContext(req)
+      });
+      if (result.session) {
+        res.json({ session: completedSession(req, res, result.session, result.rememberMe === true) });
+        return;
+      }
+      if (result.result?.status === "second_factor_required") {
+        res.status(202).json({ challenge: result.result });
+        return;
+      }
+      res.json(result);
+    } catch (error) {
+      sendPortalError(res, error);
+    }
+  });
+
+  // B2-b (path A, B-A2): authority-first login. Accepts an authority
+  // Access Token only — never a plain password. Additive and config-gated:
+  // without an authority verifier the service answers
+  // identity_authority_unavailable (503); the password entry above is
+  // untouched until the Q4 transition decision. The full Authorization
+  // Code + PKCE browser flow (redirect/callback) is a separate step that
+  // needs a tenant; this route accepts a token the caller already holds.
+  // Attempt-limited like the admin-auth login entries (P2, CodeQL #100):
+  // every call does RS256 verification, so the entry is throttled per
+  // verified source IP before any token work happens.
+  router.post("/api/portal/authority/session", requireSourceIp, authorityAttemptRateLimit, async (req, res) => {
+    try {
+      requireAuthService();
+      verifyHumanChallenge(req, "portal_login", { required: true });
+      if (typeof auth.verifyAuthorityLoginAndMaybeChallenge !== "function") {
+        const error = new Error("identity authority login is not configured");
+        error.code = "validation_error";
+        throw error;
+      }
+      const result = await auth.verifyAuthorityLoginAndMaybeChallenge({
+        accessToken: req.body?.accessToken,
         rememberMe: req.body?.rememberMe ?? false,
         requestContext: requestContext(req)
       });

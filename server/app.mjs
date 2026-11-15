@@ -62,6 +62,7 @@ const USER_PORTAL_PUBLIC_PATHS = [
   "/api/portal/registration/email-verification",
   "/api/portal/password/session",
   "/api/portal/password/second-factor",
+  "/api/portal/authority/session",
   "/api/portal/entry/enroll",
   "/api/portal/session",
   "/api/portal/access-requests",
@@ -547,7 +548,7 @@ export function createApp(state, options = {}) {
   }));
   app.use(publicLeadRoutes(state));
   if (userPortalRoutesEnabled) {
-    app.use(userPortalRoutes(state, { browserSessions }));
+    app.use(userPortalRoutes(state, { browserSessions, resolveClientIpFn: clientIpResolver }));
   }
   app.get("/api/status", statusRoutes(state));
   if (localProxyControlRoutesEnabled(state)) {

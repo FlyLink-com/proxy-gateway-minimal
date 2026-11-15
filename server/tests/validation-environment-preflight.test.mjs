@@ -696,9 +696,9 @@ test("source test runner uses a bounded relative inventory, isolated temp, and n
   // The spawned `node --test` command line must stay safely under the
   // tightest OS limit (Windows CreateProcess: 32,767 characters). The
   // inventory grows as tests are added; 30,000 leaves 2,767 characters of
-  // margin. At this head the inventory is 509 files / 28,058 characters
-  // (the new portal rate-limit test file pushed it past the
-  // previous 28,000 bound).
+  // margin. At this head the inventory is 510 files / 28,103 characters
+  // (the new portal-authority-login test file adds 45 characters to the
+  // 509-file / 28,058-character master inventory).
   assert.ok(commandCharacters < 30_000, commandCharacters);
 
   let invocation;

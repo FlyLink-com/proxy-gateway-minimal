@@ -152,4 +152,34 @@ export class IdentityBindingRepository {
     ).run(revokedAtMs, revokedAtMs, id);
     return Number(result.changes ?? 0) === 1;
   }
+
+  // B2-b C2 companion (B2 design §5.4): physical deletion of a bound
+  // account is permanently blocked while any binding row exists — the
+  // step-5 blocking check counts rows regardless of status. So deletion
+  // revokes the account's bindings first and then removes the rows, in one
+  // transaction, before step 5 runs. Logical deletion never calls this:
+  // the account row (and its bindings) is retained.
+  deleteForAccount({ accountRef, revokedAtMs } = {}) {
+    if (typeof accountRef !== "string" || !accountRef.trim()
+      || !Number.isSafeInteger(revokedAtMs) || revokedAtMs < 0) {
+      const error = new Error("identity_binding_delete_invalid");
+      error.code = "identity_binding_delete_invalid";
+      throw error;
+    }
+    const run = this.db.transaction(() => {
+      const revoked = this.db.prepare(
+        `UPDATE platform_identity_bindings
+            SET status = 'revoked', updated_at_ms = ?, revoked_at_ms = ?
+          WHERE account_id = ? AND status = 'active'`
+      ).run(revokedAtMs, revokedAtMs, accountRef);
+      const deleted = this.db.prepare(
+        "DELETE FROM platform_identity_bindings WHERE account_id = ?"
+      ).run(accountRef);
+      return {
+        revokedCount: Number(revoked.changes ?? 0),
+        deletedCount: Number(deleted.changes ?? 0)
+      };
+    });
+    return run();
+  }
 }

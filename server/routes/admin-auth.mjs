@@ -1,7 +1,7 @@
 import { isIP } from "node:net";
 import { Router } from "express";
 import { ipKeyGenerator, rateLimit } from "express-rate-limit";
-import { normalizeIpAddress, resolveClientIp } from "../services/ip-address.mjs";
+import { normalizeRateLimitSourceIp, resolveClientIp } from "../services/ip-address.mjs";
 import { createAdminPrincipal } from "../services/platform/admin-auth.mjs";
 
 const ADMIN_AUTH_ATTEMPT_WINDOW_MS = 60_000;
@@ -33,21 +33,6 @@ function sourceIpSafeRef(req) {
   return `ip:${req[ADMIN_AUTH_SOURCE_IP]}`;
 }
 
-function normalizeAdminSourceIp(value) {
-  const ip = typeof value === "string" ? normalizeIpAddress(value) : "";
-  if (!isIP(ip)) return "";
-  if (isIP(ip) !== 6) return ip;
-
-  // URL parsing is local: canonicalize legal IPv6 spellings before recognizing
-  // mapped IPv4. ipKeyGenerator only recognizes mapped dotted-decimal notation.
-  const canonical = new URL(`http://[${ip}]/`).hostname.slice(1, -1);
-  const mapped = /^::ffff:([0-9a-f]+):([0-9a-f]+)$/.exec(canonical);
-  if (!mapped) return canonical;
-  const high = Number.parseInt(mapped[1], 16);
-  const low = Number.parseInt(mapped[2], 16);
-  return [high >>> 8, high & 255, low >>> 8, low & 255].join(".");
-}
-
 export const ADMIN_AUTH_PUBLIC_PATHS = [
   "/api/admin-auth/session",
   "/api/admin-auth/bootstrap/start",
@@ -64,7 +49,7 @@ export function adminAuthRoutes(state, options = {}) {
   const requireSourceIp = (req, res, next) => {
     let sourceIp;
     try {
-      sourceIp = normalizeAdminSourceIp(resolveClientIpFn(req));
+      sourceIp = normalizeRateLimitSourceIp(resolveClientIpFn(req));
     } catch {
       sourceIp = "";
     }

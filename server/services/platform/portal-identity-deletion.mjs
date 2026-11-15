@@ -552,12 +552,36 @@ export class PortalIdentityDeletionService {
         const passkey = this.store.revokePortalPasskeyCredentialsForAccount({
           accountId, revokedAt: nowIso, updatedAt: nowIso
         });
+        // B2-b C2 companion (B2 design §5.4): the step-5 blocking check
+        // counts platform_identity_bindings rows regardless of status, so
+        // a bound account can never complete physical deletion unless its
+        // binding rows are removed here, before step 5. Revoke-then-delete,
+        // physical mode only: logical deletion keeps the account row (and
+        // its bindings) by design. A store without
+        // identityBindingRepository skips the cleanup and records it:
+        // step 5 then fails closed for bound accounts.
+        let bindings = { revokedCount: 0, deletedCount: 0, skipped: true };
+        if (job.verificationMode === "physical"
+          && typeof this.store.identityBindingRepository === "function") {
+          const cleaned = this.store.identityBindingRepository().deleteForAccount({
+            accountRef: accountId,
+            revokedAtMs: Date.parse(nowIso)
+          });
+          bindings = { ...cleaned, skipped: false };
+        }
         return {
           result: "completed",
           counts: {
             pwdRevoked: password.revokedCount,
             totpRevoked: totp.revokedCount,
-            passkeyRevoked: passkey.revokedCount
+            passkeyRevoked: passkey.revokedCount,
+            bindingRevoked: bindings.revokedCount,
+            bindingDeleted: bindings.deletedCount,
+            // Integer flag (the step-count audit validator accepts only
+            // non-negative integers): 1 when the binding cleanup was
+            // skipped — logical mode keeps the rows by design, or the
+            // store has no identityBindingRepository.
+            bindingCleanupSkipped: bindings.skipped === true ? 1 : 0
           }
         };
       }

@@ -463,7 +463,10 @@ function accountMetadataJson(value) {
     }
 
     if (field === "registrationSource") {
-      if (entry !== "self_service_portal") throw platformError("validation_error", "account metadata registration source is invalid");
+      // B2-b B-A4: authority-registered accounts carry their own source so
+      // migration accounting can tell them apart from legacy password
+      // registrations. Additive only; the legacy value is unchanged.
+      if (!["self_service_portal", "authority_portal"].includes(entry)) throw platformError("validation_error", "account metadata registration source is invalid");
       normalized[field] = entry;
       continue;
     }
