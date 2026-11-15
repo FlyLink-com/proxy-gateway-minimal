@@ -108,9 +108,9 @@ export function adminAuthRoutes(state, options = {}) {
     }
   });
 
-  router.post("/api/admin-auth/bootstrap/start", requirePrivateSetup, requireSourceIp, bootstrapAttemptRateLimit, (req, res) => {
+  router.post("/api/admin-auth/bootstrap/start", requirePrivateSetup, requireSourceIp, bootstrapAttemptRateLimit, async (req, res) => {
     try {
-      res.status(201).json(auth.startBootstrap({
+      res.status(201).json(await auth.startBootstrap({
         bootstrapToken: req.body?.bootstrapToken
       }));
     } catch (error) {
@@ -118,9 +118,9 @@ export function adminAuthRoutes(state, options = {}) {
     }
   });
 
-  router.post("/api/admin-auth/totp/enrollment/confirm", requirePrivateSetup, requireSourceIp, enrollmentAttemptRateLimit, (req, res) => {
+  router.post("/api/admin-auth/totp/enrollment/confirm", requirePrivateSetup, requireSourceIp, enrollmentAttemptRateLimit, async (req, res) => {
     try {
-      const result = auth.confirmTotpEnrollment({
+      const result = await auth.confirmTotpEnrollment({
         enrollmentRef: req.body?.enrollmentRef,
         code: req.body?.code,
         sourceIpSafeRef: sourceIpSafeRef(req)
@@ -144,9 +144,9 @@ export function adminAuthRoutes(state, options = {}) {
     }
   });
 
-  router.post("/api/admin-auth/totp/verify", requireSourceIp, totpAttemptRateLimit, (req, res) => {
+  router.post("/api/admin-auth/totp/verify", requireSourceIp, totpAttemptRateLimit, async (req, res) => {
     try {
-      const result = auth.verifyTotp({
+      const result = await auth.verifyTotp({
         challengeRef: req.body?.challengeRef,
         code: req.body?.code,
         sourceIpSafeRef: sourceIpSafeRef(req)

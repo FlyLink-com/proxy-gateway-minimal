@@ -75,7 +75,13 @@ import {
 import {
   createWalletFirstSetupDeliveryEscrow
 } from "./services/platform/wallet-first-setup-delivery-escrow.mjs";
-import { createPortalTotpSecretProtector, createPortalTotpVerifier } from "./services/platform/portal-totp-verifier.mjs";
+import { createPortalTotpSecretProtector, createVersionedTotpVerifier } from "./services/platform/portal-totp-verifier.mjs";
+import {
+  assertDistinctKeyRings,
+  createD1TotpSecretProtector,
+  destroyD1KeyRing,
+  parseD1KeyRingSecret
+} from "./services/platform/d1-t2-security-primitives.mjs";
 import { createSqliteThirdPartySubscriptionStore } from "./services/platform/third-party-subscription-store.mjs";
 import { createSqliteSubscriptionDistributionStore } from "./services/platform/subscription-distribution-store.mjs";
 import { createBwhSupplyService } from "./services/platform/bwh-supply-service.mjs";
@@ -702,6 +708,24 @@ function createOptionalPortalTotpSecretProtector(value) {
     return createPortalTotpSecretProtector({ key });
   } catch (error) {
     throw runtimeValidationError(`USER_PORTAL_TOTP_SECRET_KEY ${error.message}`);
+  }
+}
+
+// M3-a (S-01/S-06): a v3 TOTP key ring is required, never optional. The
+// ring JSON is `{ activeKeyId, keys, readKeyIds }` with 32-byte base64url
+// keys (parseD1KeyRingSecret shape); Key IDs follow the M3 naming proposal
+// `<family>-<yyyy>-<nn>` (e.g. `portal-totp-aes-2026-01`). A missing or
+// malformed ring fails startup for that surface instead of silently
+// sharing the other surface's ring or falling back to the legacy key.
+function createRequiredTotpV3KeyRing(secretText, { family, envName }) {
+  const text = optionalEnvText(secretText);
+  if (!text) {
+    throw runtimeValidationError(`${envName} is required`);
+  }
+  try {
+    return parseD1KeyRingSecret(text, { family });
+  } catch (error) {
+    throw runtimeValidationError(`${envName} ${error.message}`);
   }
 }
 
@@ -2450,16 +2474,58 @@ export function createRuntimeState(options = {}) {
       nowFn: options.userPortalNowFn
     }) : null
   );
+  // M3-a (S-01/S-06): the shared v2 protector is now the legacy-read leg
+  // only. Each surface gets its own v3 key ring and protector; the two
+  // rings are asserted distinct at startup (M-01) and owned rings are
+  // destroyed on close. A surface with an injected verifier owns its own
+  // verification contract, so no ring is constructed for it; otherwise a
+  // missing ring fails startup for that surface instead of silently
+  // sharing the other surface's ring.
   const platformPortalTotpSecretProtector = options.userPortalTotpSecretProtector
     || createOptionalPortalTotpSecretProtector(env.USER_PORTAL_TOTP_SECRET_KEY);
-  const platformPortalTotpVerifier = options.userPortalTotpVerifier || createPortalTotpVerifier({
-    nowFn: options.userPortalNowFn,
-    secretProtector: platformPortalTotpSecretProtector
-  });
-  const platformAdminTotpVerifier = options.adminAuthTotpVerifier || createPortalTotpVerifier({
-    nowFn: options.adminAuthNowFn,
-    secretProtector: platformPortalTotpSecretProtector
-  });
+  const ownsPortalTotpV3KeyRing = userPortalRoutesEnabled
+    && !options.userPortalTotpVerifier && !options.userPortalTotpV3Protector
+    && !options.userPortalTotpV3KeyRing;
+  const platformPortalTotpV3KeyRing = options.userPortalTotpV3KeyRing
+    || (userPortalRoutesEnabled && !options.userPortalTotpVerifier && !options.userPortalTotpV3Protector
+      ? createRequiredTotpV3KeyRing(env.PORTAL_TOTP_AES_KEYRING_JSON, { family: "portal-totp-aes", envName: "PORTAL_TOTP_AES_KEYRING_JSON" })
+      : null);
+  const platformPortalTotpV3Protector = options.userPortalTotpV3Protector
+    || (platformPortalTotpV3KeyRing
+      ? createD1TotpSecretProtector({ keyRing: platformPortalTotpV3KeyRing, scope: "portal" })
+      : null);
+  const platformPortalTotpVerifier = options.userPortalTotpVerifier || (userPortalRoutesEnabled
+    ? createVersionedTotpVerifier({
+      nowFn: options.userPortalNowFn,
+      v2Protector: platformPortalTotpSecretProtector,
+      v3Protector: platformPortalTotpV3Protector
+    })
+    : null);
+  const ownsAdminTotpV3KeyRing = adminAuthRoutesEnabled
+    && !options.adminAuthTotpVerifier && !options.adminTotpV3Protector
+    && !options.adminTotpV3KeyRing;
+  const platformAdminTotpV3KeyRing = options.adminTotpV3KeyRing
+    || (adminAuthRoutesEnabled && !options.adminAuthTotpVerifier && !options.adminTotpV3Protector
+      ? createRequiredTotpV3KeyRing(env.ADMIN_TOTP_AES_KEYRING_JSON, { family: "admin-totp-aes", envName: "ADMIN_TOTP_AES_KEYRING_JSON" })
+      : null);
+  const platformAdminTotpV3Protector = options.adminTotpV3Protector
+    || (platformAdminTotpV3KeyRing
+      ? createD1TotpSecretProtector({ keyRing: platformAdminTotpV3KeyRing, scope: "admin" })
+      : null);
+  const platformAdminTotpVerifier = options.adminAuthTotpVerifier || (adminAuthRoutesEnabled
+    ? createVersionedTotpVerifier({
+      nowFn: options.adminAuthNowFn,
+      v2Protector: platformPortalTotpSecretProtector,
+      v3Protector: platformAdminTotpV3Protector
+    })
+    : null);
+  if (platformPortalTotpV3KeyRing && platformAdminTotpV3KeyRing) {
+    try {
+      assertDistinctKeyRings(platformPortalTotpV3KeyRing, platformAdminTotpV3KeyRing);
+    } catch (error) {
+      throw runtimeValidationError(`Portal/Admin TOTP key rings must not share key material (${error.message})`);
+    }
+  }
   const platformAdminAuth = options.platformAdminAuth || (
     adminAuthRoutesEnabled
       ? createPortalAccountAdminAuthService({
@@ -2469,6 +2535,7 @@ export function createRuntimeState(options = {}) {
         sessionSecret: env.ADMIN_AUTH_SESSION_SECRET,
         accountId: adminAuthPortalAccountId,
         totpVerifier: platformAdminTotpVerifier,
+        totpSecretProtector: platformAdminTotpV3Protector,
         totpSecretFactory: options.adminAuthTotpSecretFactory,
         enrollmentRefFactory: options.adminAuthEnrollmentRefFactory,
         credentialRefFactory: options.adminAuthCredentialRefFactory,
@@ -2486,7 +2553,7 @@ export function createRuntimeState(options = {}) {
       controlStore: platformControlStore,
       nowFn: options.userPortalNowFn,
       totpVerifier: platformPortalTotpVerifier,
-      totpSecretProtector: platformPortalTotpSecretProtector,
+      totpSecretProtector: platformPortalTotpV3Protector,
       passwordCredentialService: platformPortalPasswordCredentialService,
       allowPasswordOnlySessionForSetup: envFlag(env.USER_PORTAL_ALLOW_PASSWORD_ONLY_SETUP_SESSION)
     })
@@ -3230,6 +3297,24 @@ export function createRuntimeState(options = {}) {
   if (portalReferralRewardsEnabled) portalReferrals?.start();
 
   function close() {
+    // M3-a (S-06): zero the key material of env-constructed (owned) v3
+    // TOTP rings at shutdown. Injected rings belong to their caller and
+    // are never destroyed here. Returns the first destruction error, if any.
+    function destroyOwnedTotpV3KeyRings() {
+      let firstError;
+      for (const [owned, ring] of [
+        [ownsPortalTotpV3KeyRing, platformPortalTotpV3KeyRing],
+        [ownsAdminTotpV3KeyRing, platformAdminTotpV3KeyRing]
+      ]) {
+        if (!owned || !ring) continue;
+        try {
+          destroyD1KeyRing(ring);
+        } catch (error) {
+          firstError ||= error;
+        }
+      }
+      return firstError;
+    }
     if (!coinsCommerceEnabled) {
       if (closed) return;
       closed = true;
@@ -3253,6 +3338,7 @@ export function createRuntimeState(options = {}) {
           firstError ||= error;
         }
       }
+      firstError ||= destroyOwnedTotpV3KeyRings();
       if (firstError) throw firstError;
       return;
     }
@@ -3349,6 +3435,7 @@ export function createRuntimeState(options = {}) {
           firstError ||= error;
         }
       }
+      firstError ||= destroyOwnedTotpV3KeyRings();
       if (firstError) throw firstError;
     })();
     return closePromise;

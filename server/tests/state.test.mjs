@@ -4101,7 +4101,7 @@ test("createRuntimeState wires env-gated user portal registration services", asy
   }
 });
 
-test("createRuntimeState verifies TOTP second factor for portal password login", () => {
+test("createRuntimeState verifies TOTP second factor for portal password login", async () => {
   const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-portal-totp-wiring-"));
   const now = "2026-06-06T00:00:00.000Z";
   let state;
@@ -4150,7 +4150,7 @@ test("createRuntimeState verifies TOTP second factor for portal password login",
     assert.equal(challenge.result.status, "second_factor_required");
     assert.deepEqual(challenge.result.availableFactors, ["totp"]);
 
-    const completed = state.platform.userPortalAuth.completeSecondFactor({
+    const completed = await state.platform.userPortalAuth.completeSecondFactor({
       challengeRef: challenge.result.challengeRef,
       factor: "totp",
       code: "049557"
@@ -4163,7 +4163,7 @@ test("createRuntimeState verifies TOTP second factor for portal password login",
   }
 });
 
-test("createRuntimeState decrypts protected portal TOTP credentials from env key", () => {
+test("createRuntimeState decrypts protected portal TOTP credentials from env key", async () => {
   const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-portal-totp-protected-"));
   const now = "2026-06-06T00:00:00.000Z";
   const secretProtector = createPortalTotpSecretProtector({
@@ -4214,7 +4214,7 @@ test("createRuntimeState decrypts protected portal TOTP credentials from env key
       accountId: "acct_portal_protected_totp_state_1",
       plainPassword: "synthetic-password"
     });
-    const completed = state.platform.userPortalAuth.completeSecondFactor({
+    const completed = await state.platform.userPortalAuth.completeSecondFactor({
       challengeRef: challenge.result.challengeRef,
       factor: "totp",
       code: "049557"

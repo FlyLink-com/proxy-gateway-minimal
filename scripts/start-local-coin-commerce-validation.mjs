@@ -978,6 +978,11 @@ async function startLocalCoinCommerceValidationInternal(
     const env = {
       CONSOLE_TOKEN: consoleToken,
       USER_PORTAL_ROUTES_ENABLED: "true",
+      // M3-a (S-01): local synthetic validation starts the real runtime,
+      // so the Portal v3 ring is required at startup. Test-only key
+      // material, never a production key (same synthetic ring as the
+      // source-validation test environment).
+      PORTAL_TOTP_AES_KEYRING_JSON: "{\"activeKeyId\":\"portal-totp-aes-2026-01\",\"keys\":{\"portal-totp-aes-2026-01\":\"FVILbmjdQDbe5cq59trYrcIYWtt3PuESqwS9fv9xiOM\"},\"readKeyIds\":[\"portal-totp-aes-2026-01\"]}",
       COINS_WALLET_ENABLED: "true",
       COINS_COMMERCE_ENABLED: "true",
       ...(isPlanSwitchUi ? {

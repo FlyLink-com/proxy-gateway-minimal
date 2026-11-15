@@ -8570,7 +8570,7 @@ export function createSqliteSubscriptionControlStore({
       // always self-service for that account (Portal self-enrollment,
       // Admin self-setup, entry-path enrollment for the entry's account).
       const enrollmentChannels = new Set(["portal", "admin", "entry"]);
-      const enrollmentFormats = new Set(["v2", "enc", "unknown"]);
+      const enrollmentFormats = new Set(["v2", "v3", "enc", "unknown"]);
       if (action === "totp_enrollment_started") {
         exactObject(metadata, {
           allowed: ["enrollmentRef", "accountRef", "channel", "issuedAt", "expiresAt"],

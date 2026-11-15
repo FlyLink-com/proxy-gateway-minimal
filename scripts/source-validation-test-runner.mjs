@@ -35,7 +35,12 @@ const SOURCE_VALIDATION_SYNTHETIC_ENVIRONMENT = Object.freeze({
   SGP_HY2_HOST: "sgp.example.test",
   SGP_HY2_SNI: "sgp.example.test",
   SGP_HY2_STATIC_PASSWORD: "synthetic-sgp-hy2-password",
-  SS_PASSWORD: "synthetic-source-validation-password"
+  SS_PASSWORD: "synthetic-source-validation-password",
+  // M3-a (S-01): synthetic v3 TOTP key rings for the Portal and Admin
+  // surfaces. Test-only key material (never production keys); the two
+  // rings are independent and must never share key material.
+  PORTAL_TOTP_AES_KEYRING_JSON: "{\"activeKeyId\":\"portal-totp-aes-2026-01\",\"keys\":{\"portal-totp-aes-2026-01\":\"FVILbmjdQDbe5cq59trYrcIYWtt3PuESqwS9fv9xiOM\"},\"readKeyIds\":[\"portal-totp-aes-2026-01\"]}",
+  ADMIN_TOTP_AES_KEYRING_JSON: "{\"activeKeyId\":\"admin-totp-aes-2026-01\",\"keys\":{\"admin-totp-aes-2026-01\":\"4fnvXfxS9LQ2N8Ds5EqxzkWRWacxQj1bs7IiNMDqNQU\"},\"readKeyIds\":[\"admin-totp-aes-2026-01\"]}"
 });
 
 function environmentValue(environment, expectedKey) {

@@ -92,6 +92,7 @@ const RELEASE = "control-plane-welcome-coins-gate-test";
 const DIGEST = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const BASE_ENVIRONMENT = [
   "USER_PORTAL_ROUTES_ENABLED=true",
+  "PORTAL_TOTP_AES_KEYRING_JSON={\"activeKeyId\":\"portal-totp-aes-2026-01\",\"keys\":{\"portal-totp-aes-2026-01\":\"FVILbmjdQDbe5cq59trYrcIYWtt3PuESqwS9fv9xiOM\"},\"readKeyIds\":[\"portal-totp-aes-2026-01\"]}",
   "COINS_WALLET_ENABLED=true",
   "COINS_COMMERCE_ENABLED=true",
   "UNRELATED_PRESERVED_VALUE=still-private"

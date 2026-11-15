@@ -120,16 +120,15 @@ function unwrapTotpSecret(value, secretProtector) {
   return raw.startsWith("enc:") ? raw.slice("enc:".length) : raw;
 }
 
-function normalizeBase32Secret(value, secretProtector) {
-  const secret = unwrapTotpSecret(value, secretProtector);
+function normalizeBase32Secret(secret) {
   if (!secret) {
     return "";
   }
-  return secret.replace(/[\s-]/g, "").replace(/=+$/g, "").toUpperCase();
+  return String(secret).replace(/[\s-]/g, "").replace(/=+$/g, "").toUpperCase();
 }
 
-function decodeBase32(value, secretProtector) {
-  const normalized = normalizeBase32Secret(value, secretProtector);
+function decodeBase32Secret(secret) {
+  const normalized = normalizeBase32Secret(secret);
   if (!/^[A-Z2-7]+$/.test(normalized)) {
     return null;
   }
@@ -150,6 +149,10 @@ function decodeBase32(value, secretProtector) {
   return Buffer.from(bytes);
 }
 
+function decodeBase32(value, secretProtector) {
+  return decodeBase32Secret(unwrapTotpSecret(value, secretProtector));
+}
+
 function hotp({ key, counter, digits }) {
   const counterBuffer = Buffer.alloc(8);
   counterBuffer.writeBigUInt64BE(BigInt(counter));
@@ -166,6 +169,20 @@ function safeCodeEquals(left, right) {
   const leftBuffer = Buffer.from(String(left || ""));
   const rightBuffer = Buffer.from(String(right || ""));
   return leftBuffer.length === rightBuffer.length && timingSafeEqual(leftBuffer, rightBuffer);
+}
+
+function totpCodeMatches({ key, code, nowMs, periodSeconds, digits, window }) {
+  const currentCounter = Math.floor(nowMs / 1000 / periodSeconds);
+  for (let drift = -window; drift <= window; drift += 1) {
+    if (safeCodeEquals(hotp({
+      key,
+      counter: currentCounter + drift,
+      digits
+    }), code)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 export function createPortalTotpVerifier(options = {}) {
@@ -188,16 +205,66 @@ export function createPortalTotpVerifier(options = {}) {
     if (!Number.isFinite(nowMs)) {
       return false;
     }
-    const currentCounter = Math.floor(nowMs / 1000 / periodSeconds);
-    for (let drift = -window; drift <= window; drift += 1) {
-      if (safeCodeEquals(hotp({
-        key,
-        counter: currentCounter + drift,
-        digits
-      }), normalizedCode)) {
-        return true;
-      }
+    return totpCodeMatches({ key, code: normalizedCode, nowMs, periodSeconds, digits, window });
+  };
+}
+
+const V3_PROTECTED_SECRET_PREFIX = "v3:aes-256-gcm:";
+
+// M3-a (C2-01/C2-02, S-04): versioned TOTP verifier. Dispatches on the
+// stored envelope prefix so one verifier serves the whole transition:
+//   v3: -> the D1 v3 protector (createD1TotpSecretProtector), which binds
+//         the envelope to its credential row id via AAD; the row id must be
+//         supplied as credentialRef, otherwise verification fails closed.
+//   v2: -> the legacy v2 protector (transitional reads only; M3-c migrates).
+//   enc:/bare -> the legacy direct-Base32 path (transitional reads only).
+// Every leg fails closed to false: a missing protector, a failed decrypt,
+// a wrong scope, a wrong credentialRef or a tampered tag never falls
+// through to another leg. The verifier is async because the v3 protector
+// is WebCrypto-async; callers must await it (sync doubles keep working:
+// await is transparent for a synchronous return value).
+export function createVersionedTotpVerifier(options = {}) {
+  const nowFn = options.nowFn || (() => new Date().toISOString());
+  const periodSeconds = options.periodSeconds ?? DEFAULT_PERIOD_SECONDS;
+  const digits = options.digits ?? DEFAULT_DIGITS;
+  const window = options.window ?? DEFAULT_WINDOW;
+  const v2Protector = options.v2Protector || null;
+  const v3Protector = options.v3Protector || null;
+
+  return async function verifyVersionedTotp({ encryptedTotpSecret, code, credentialRef }) {
+    const normalizedCode = String(code || "").trim();
+    if (!new RegExp(`^\\d{${digits}}$`).test(normalizedCode)) {
+      return false;
     }
-    return false;
+    const raw = String(encryptedTotpSecret || "").trim();
+    let secret;
+    if (raw.startsWith(V3_PROTECTED_SECRET_PREFIX)) {
+      if (!v3Protector || typeof v3Protector.unprotect !== "function") {
+        return false;
+      }
+      secret = await v3Protector.unprotect(raw, { credentialRef });
+      if (!secret) {
+        return false;
+      }
+    } else if (raw.startsWith(PROTECTED_SECRET_PREFIX)) {
+      if (!v2Protector || typeof v2Protector.unprotect !== "function") {
+        return false;
+      }
+      secret = v2Protector.unprotect(raw);
+      if (!secret) {
+        return false;
+      }
+    } else {
+      secret = raw.startsWith("enc:") ? raw.slice("enc:".length) : raw;
+    }
+    const key = decodeBase32Secret(secret);
+    if (!key || key.length === 0) {
+      return false;
+    }
+    const nowMs = new Date(nowFn()).getTime();
+    if (!Number.isFinite(nowMs)) {
+      return false;
+    }
+    return totpCodeMatches({ key, code: normalizedCode, nowMs, periodSeconds, digits, window });
   };
 }

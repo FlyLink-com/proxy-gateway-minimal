@@ -24,7 +24,7 @@ const NOW = 1794000000000;
 const NOW_ISO = new Date(NOW).toISOString();
 const LATER_ISO = new Date(NOW + 3600000).toISOString();
 
-function withStore(fn) {
+async function withStore(fn) {
   const database = new Database(":memory:");
   let store;
   try {
@@ -33,7 +33,7 @@ function withStore(fn) {
       controlStore: store,
       now: () => NOW_ISO
     });
-    return fn({ database, store, service });
+    return await fn({ database, store, service });
   } finally {
     store?.close?.();
     database.close();
@@ -813,7 +813,7 @@ test("buildReadbackAssertions: physical needs absent rows, logical needs revoked
   );
 });
 
-test("followup (a): frozen account cannot complete verifyTotpAndCreateSession", () => withStore(({ store }) => {
+test("followup (a): frozen account cannot complete verifyTotpAndCreateSession", () => withStore(async ({ store }) => {
   makeAccount(store, "acct-del-0001");
   makeTotpCredential(store, "acct-del-0001", "totp-del-0001");
   const auth = createAuthService(store);
@@ -821,8 +821,8 @@ test("followup (a): frozen account cannot complete verifyTotpAndCreateSession", 
   // so the test proves the re-check reads the state the freeze writes.
   store.freezeAccountForDeletion({ accountId: "acct-del-0001", updatedAt: NOW_ISO });
   assert.equal(store.getAccount("acct-del-0001").status, "suspended");
-  assert.throws(
-    () => auth.verifyTotpAndCreateSession({ accountId: "acct-del-0001", code: "123456" }),
+  await assert.rejects(
+    auth.verifyTotpAndCreateSession({ accountId: "acct-del-0001", code: "123456" }),
     (error) => error.code === "invalid_login"
   );
   assert.equal(store.listPortalSessions({ accountId: "acct-del-0001" }).length, 0);
@@ -831,15 +831,15 @@ test("followup (a): frozen account cannot complete verifyTotpAndCreateSession", 
   assert.equal(store.getActivePortalTotpCredential("acct-del-0001").id, "totp-del-0001");
 }));
 
-test("followup (a): frozen account cannot complete a pre-freeze second-factor challenge", () => withStore(({ store }) => {
+test("followup (a): frozen account cannot complete a pre-freeze second-factor challenge", () => withStore(async ({ store }) => {
   makeAccount(store, "acct-del-0001");
   makeTotpCredential(store, "acct-del-0001", "totp-del-0001");
   makeChallenge(store, "acct-del-0001", "chal-del-0001");
   const auth = createAuthService(store);
   store.freezeAccountForDeletion({ accountId: "acct-del-0001", updatedAt: NOW_ISO });
   assert.equal(store.getAccount("acct-del-0001").status, "suspended");
-  assert.throws(
-    () => auth.completeSecondFactor({ challengeRef: "chal-del-0001", factor: "totp", code: "123456" }),
+  await assert.rejects(
+    auth.completeSecondFactor({ challengeRef: "chal-del-0001", factor: "totp", code: "123456" }),
     (error) => error.code === "invalid_login"
   );
   assert.equal(store.listPortalSessions({ accountId: "acct-del-0001" }).length, 0);
@@ -849,22 +849,22 @@ test("followup (a): frozen account cannot complete a pre-freeze second-factor ch
   assert.equal(store.getActivePortalTotpCredential("acct-del-0001").id, "totp-del-0001");
 }));
 
-test("followup (a): active account completes verifyTotpAndCreateSession normally", () => withStore(({ store }) => {
+test("followup (a): active account completes verifyTotpAndCreateSession normally", () => withStore(async ({ store }) => {
   makeAccount(store, "acct-del-0001");
   makeTotpCredential(store, "acct-del-0001", "totp-del-0001");
   const auth = createAuthService(store);
-  const result = auth.verifyTotpAndCreateSession({ accountId: "acct-del-0001", code: "123456" });
+  const result = await auth.verifyTotpAndCreateSession({ accountId: "acct-del-0001", code: "123456" });
   assert.equal(result.session.authMethod, "totp");
   assert.equal(result.session.status, "active");
   assert.equal(store.listPortalSessions({ accountId: "acct-del-0001" }).length, 1);
 }));
 
-test("followup (a): active account completes a second-factor challenge normally", () => withStore(({ store }) => {
+test("followup (a): active account completes a second-factor challenge normally", () => withStore(async ({ store }) => {
   makeAccount(store, "acct-del-0001");
   makeTotpCredential(store, "acct-del-0001", "totp-del-0001");
   makeChallenge(store, "acct-del-0001", "chal-del-0001");
   const auth = createAuthService(store);
-  const result = auth.completeSecondFactor({ challengeRef: "chal-del-0001", factor: "totp", code: "123456" });
+  const result = await auth.completeSecondFactor({ challengeRef: "chal-del-0001", factor: "totp", code: "123456" });
   assert.equal(result.session.authMethod, "totp");
   assert.equal(result.session.status, "active");
   assert.equal(store.listPortalSessions({ accountId: "acct-del-0001" }).length, 1);
