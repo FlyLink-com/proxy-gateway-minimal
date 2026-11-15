@@ -96,15 +96,33 @@ Portal preview:
 
 ~~~powershell
 $Stamp = [DateTime]::UtcNow.ToString("yyyyMMddTHHmmssZ")
-$PortalParams = @("ParameterKey=UserPoolName,ParameterValue=flylink-portal-nonprod", "ParameterKey=DomainPrefix,ParameterValue=<unique-portal-domain-prefix>", "ParameterKey=CallbackUrls,ParameterValue=https://portal-np.example.invalid/oidc/callback,flylink-portal://oauth/callback", "ParameterKey=LogoutUrls,ParameterValue=https://portal-np.example.invalid/logout")
-aws cloudformation create-change-set --stack-name flylink-cognito-portal-np --change-set-name "preview-portal-$Stamp" --change-set-type CREATE --template-body file://infra/cognito/nonprod/portal-user-pool.yaml --parameters $PortalParams --capabilities CAPABILITY_IAM --profile $Profile --region $Region
+$ParameterRoot = Join-Path ([System.IO.Path]::GetTempPath()) "flylink-cognito-poc"
+New-Item -ItemType Directory -Force -Path $ParameterRoot | Out-Null
+$Utf8NoBom = New-Object -TypeName System.Text.UTF8Encoding -ArgumentList $false
+
+$PortalParamsFile = Join-Path $ParameterRoot "portal-change-set-parameters.json"
+$PortalParams = @(
+  @{ ParameterKey = "UserPoolName"; ParameterValue = "flylink-portal-nonprod" },
+  @{ ParameterKey = "DomainPrefix"; ParameterValue = "<unique-portal-domain-prefix>" },
+  @{ ParameterKey = "CallbackUrls"; ParameterValue = "https://portal-np.example.invalid/oidc/callback,flylink-portal://oauth/callback" },
+  @{ ParameterKey = "LogoutUrls"; ParameterValue = "https://portal-np.example.invalid/logout" }
+)
+[System.IO.File]::WriteAllText($PortalParamsFile, ($PortalParams | ConvertTo-Json -Depth 4), $Utf8NoBom)
+aws cloudformation create-change-set --stack-name flylink-cognito-portal-np --change-set-name "preview-portal-$Stamp" --change-set-type CREATE --template-body file://infra/cognito/nonprod/portal-user-pool.yaml --parameters "file://$PortalParamsFile" --capabilities CAPABILITY_IAM --profile $Profile --region $Region
 ~~~
 
 Admin preview:
 
 ~~~powershell
-$AdminParams = @("ParameterKey=UserPoolName,ParameterValue=flylink-admin-nonprod", "ParameterKey=DomainPrefix,ParameterValue=<unique-admin-domain-prefix>", "ParameterKey=CallbackUrls,ParameterValue=https://admin-np.example.invalid/oidc/callback", "ParameterKey=LogoutUrls,ParameterValue=https://admin-np.example.invalid/logout")
-aws cloudformation create-change-set --stack-name flylink-cognito-admin-np --change-set-name "preview-admin-$Stamp" --change-set-type CREATE --template-body file://infra/cognito/nonprod/admin-user-pool.yaml --parameters $AdminParams --capabilities CAPABILITY_IAM --profile $Profile --region $Region
+$AdminParamsFile = Join-Path $ParameterRoot "admin-change-set-parameters.json"
+$AdminParams = @(
+  @{ ParameterKey = "UserPoolName"; ParameterValue = "flylink-admin-nonprod" },
+  @{ ParameterKey = "DomainPrefix"; ParameterValue = "<unique-admin-domain-prefix>" },
+  @{ ParameterKey = "CallbackUrls"; ParameterValue = "https://admin-np.example.invalid/oidc/callback" },
+  @{ ParameterKey = "LogoutUrls"; ParameterValue = "https://admin-np.example.invalid/logout" }
+)
+[System.IO.File]::WriteAllText($AdminParamsFile, ($AdminParams | ConvertTo-Json -Depth 4), $Utf8NoBom)
+aws cloudformation create-change-set --stack-name flylink-cognito-admin-np --change-set-name "preview-admin-$Stamp" --change-set-type CREATE --template-body file://infra/cognito/nonprod/admin-user-pool.yaml --parameters "file://$AdminParamsFile" --capabilities CAPABILITY_IAM --profile $Profile --region $Region
 ~~~
 
 Replace every example.invalid URI and every domain prefix before running. The example values are documentation placeholders, not approved callback URLs.
