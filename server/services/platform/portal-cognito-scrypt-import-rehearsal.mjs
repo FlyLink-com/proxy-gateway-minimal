@@ -137,7 +137,7 @@ export function createSyntheticCognitoImportRecord() {
 }
 
 function validateCognitoCsvHeader(header) {
-  if (!Array.isArray(header) || header.length < SYNTHETIC_COGNITO_HEADER.length || header.length > 128) {
+  if (!Array.isArray(header) || header.length > 128) {
     throw failure("cognito_csv_header_invalid");
   }
   const seen = new Set();
