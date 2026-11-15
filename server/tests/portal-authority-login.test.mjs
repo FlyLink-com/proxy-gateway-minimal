@@ -15,10 +15,18 @@
 //   masked display only; duplicates fail without orphan accounts.
 // - C2: physical deletion of a bound account completes (binding rows
 //   removed before step 5); logical deletion keeps the binding rows.
+// - B2-b P2 (CodeQL #100, HTTP route level): the authority session entry is
+//   attempt-limited per verified source IP (10 per 60 s, then 429); normal
+//   attempts below the limit succeed; untrusted X-Forwarded-For cannot open
+//   a fresh bucket. These three tests live in this file — not a separate
+//   file — because the source-validation runner bounds the total test-file
+//   inventory command line (28,000 chars); a new file would push it over.
 import assert from "node:assert/strict";
 import test from "node:test";
 import Database from "better-sqlite3";
 import { generateKeyPairSync, sign } from "node:crypto";
+import { createApp } from "../app.mjs";
+import { listen } from "./helpers/listen.mjs";
 import {
   createSqliteSubscriptionControlStore
 } from "../services/platform/subscription-control-db.mjs";
@@ -577,3 +585,142 @@ test("C2: logical deletion keeps the binding rows with the account row", () => w
     "resolved"
   );
 }));
+
+// ---------------------------------------------------------------------------
+// B2-b P2: HTTP-level attempt limiting for POST /api/portal/authority/session
+// (CodeQL #100). Real app + real HTTP via createApp/listen, mirroring the
+// admin-auth route tests. Synthetic auth/human-challenge stubs only.
+const AUTHORITY_SESSION_PATH = "/api/portal/authority/session";
+const HTTP_TEST_ROOT_DIR = new URL("../../", import.meta.url).pathname;
+
+function httpBaseState(platform = {}) {
+  return {
+    rootDir: HTTP_TEST_ROOT_DIR,
+    host: "127.0.0.1",
+    ports: { console: 3456, socks: 1080, httpProxy: 18180 },
+    consoleToken: "console-secret",
+    proxyConfig: { servers: [], pingHosts: [], nginx: {} },
+    services: {
+      ssLocal: { status: () => ({ running: false }) },
+      httpProxy: { status: () => ({ running: false }) }
+    },
+    // No trusted proxies configured: X-Forwarded-For is never trusted.
+    security: {},
+    platform,
+    isPortListening: async () => false,
+    runCommand: async () => ({ ok: true, stdout: "{}", stderr: "", code: 0, timedOut: false })
+  };
+}
+
+function rejectingAuthorityAuth() {
+  return {
+    async verifyAuthorityLoginAndMaybeChallenge() {
+      const error = new Error("invalid authority login");
+      error.code = "invalid_login";
+      throw error;
+    }
+  };
+}
+
+function acceptingAuthorityAuth() {
+  return {
+    async verifyAuthorityLoginAndMaybeChallenge() {
+      return {
+        session: {
+          sessionRef: "synthetic-authority-session",
+          accountId: "acct-authority-1",
+          expiresAt: "2026-05-31T00:30:00.000Z"
+        },
+        rememberMe: false
+      };
+    }
+  };
+}
+
+function acceptingHttpHumanChallenges() {
+  return { verifyChallenge() {} };
+}
+
+async function postAuthoritySession(baseUrl, { headers = {} } = {}) {
+  return fetch(`${baseUrl}${AUTHORITY_SESSION_PATH}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...headers },
+    body: JSON.stringify({ accessToken: "synthetic.invalid.token" })
+  });
+}
+
+test("authority session limits repeated attempts by source IP", async () => {
+  const state = httpBaseState({
+    userPortalRoutesEnabled: true,
+    userPortalAuth: rejectingAuthorityAuth(),
+    portalHumanChallenges: acceptingHttpHumanChallenges()
+  });
+  const { server, baseUrl } = await listen(createApp(state));
+  try {
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      const response = await postAuthoritySession(baseUrl);
+      assert.equal(response.status, 401);
+      assert.deepEqual(await response.json(), { error: "invalid_login" });
+    }
+
+    const limited = await postAuthoritySession(baseUrl);
+    assert.equal(limited.status, 429);
+    assert.equal(limited.headers.get("retry-after"), "60");
+    assert.deepEqual(await limited.json(), { error: "Too Many Requests" });
+  } finally {
+    server.close();
+  }
+});
+
+test("authority session allows normal attempts below the limit", async () => {
+  const state = httpBaseState({
+    userPortalRoutesEnabled: true,
+    userPortalAuth: acceptingAuthorityAuth(),
+    portalHumanChallenges: acceptingHttpHumanChallenges()
+  });
+  const { server, baseUrl } = await listen(createApp(state));
+  try {
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const response = await fetch(`${baseUrl}${AUTHORITY_SESSION_PATH}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ accessToken: "synthetic.valid.token" })
+      });
+      assert.equal(response.status, 200);
+      const body = await response.json();
+      assert.equal(body.session.sessionRef, "synthetic-authority-session");
+    }
+  } finally {
+    server.close();
+  }
+});
+
+test("untrusted XFF cannot bypass the authority session limiter", async () => {
+  const state = httpBaseState({
+    userPortalRoutesEnabled: true,
+    userPortalAuth: rejectingAuthorityAuth(),
+    portalHumanChallenges: acceptingHttpHumanChallenges()
+  });
+  const { server, baseUrl } = await listen(createApp(state));
+  try {
+    // A different client-supplied X-Forwarded-For on every attempt must not
+    // open a fresh bucket: the limiter key comes from the verified resolver
+    // (direct socket address), never from the untrusted header.
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      const response = await postAuthoritySession(baseUrl, {
+        headers: { "X-Forwarded-For": `203.0.113.${attempt + 1}` }
+      });
+      assert.equal(response.status, 401);
+      assert.deepEqual(await response.json(), { error: "invalid_login" });
+    }
+
+    const limited = await postAuthoritySession(baseUrl, {
+      headers: { "X-Forwarded-For": "203.0.113.99" }
+    });
+    assert.equal(limited.status, 429);
+    assert.equal(limited.headers.get("retry-after"), "60");
+    assert.deepEqual(await limited.json(), { error: "Too Many Requests" });
+  } finally {
+    server.close();
+  }
+});
