@@ -199,27 +199,43 @@ The current provider-neutral boundary helper remains the internal contract. This
 
 No step above grants production import or cutover authority.
 
-## 8. Current local result and remaining blockers
+## 8. Current implementation, local validation and remaining blockers
 
-Local synthetic-only implementation:
-- Converts the current source Scrypt envelope to Cognito's documented N$r$p$hexSalt$hexHash format.
-- Round-trips salt and derived-hash bytes.
-- Builds a fixed synthetic record using a verified example.test email.
-- Builds a synthetic CSV projection from a supplied pool-template header.
-- Omits all TOTP material.
-- Emits a redacted receipt only.
+### Local implementation
 
-Not yet run:
-- Node test suite on this branch.
-- Cognito import job in a real non-production User Pool.
-- Cognito acceptance of the exact 64-byte derived hash.
-- First sign-in and SRP migration.
-- Actual 71/72/73-byte password behavior in Cognito.
-- Actual Cognito TOTP enrollment, Admin MFA_SETUP and AMR/ACR claims.
-- OIDC Authorization Code + PKCE and Worker JWKS integration.
-- AWS account billing, region, quotas and email deliverability.
+- Converts the current source Scrypt envelope to Cognito's documented N$r$p$hexSalt$hexHash format without re-deriving or truncating the source digest.
+- Enforces the current source parameters (N=32768, r=8, p=1), a 16-byte fixture salt and a 64-byte derived key.
+- Builds a fixed synthetic import record and a CSV projection from the actual pool-specific template header.
+- Keeps the rehearsal CLI redacted: scripts/platform-cognito-scrypt-import-rehearsal.mjs emits only a receipt and never calls AWS or prints password material.
+- Adds scripts/platform-cognito-synthetic-import-csv.mjs as a separate, explicit writer. It accepts only a downloaded template header, writes one fixed synthetic row to a new file below the OS temp directory, uses mode 0600 on POSIX, refuses overwrite, and does not print the CSV or password hash.
+- Historical TOTP material is never included; the fixture disposition is re-enrollment required.
 
-No AWS-specific MCP connection is available in the current session, so no User Pool, IAM role, import job, domain, app client or AWS resource has been created. The live proof requires an authorized AWS console/CLI session in the user's AWS account. Do not send AWS access keys, secret keys, session tokens or password-bearing CSV contents into chat.
+### Non-production infrastructure artifacts
+
+- infra/cognito/nonprod/portal-user-pool.yaml: separate Portal pool, ESSENTIALS tier, email alias, optional TOTP, deletion protection, classic Hosted UI domain, isolated first-login bootstrap client, public OIDC code+PKCE client, and import CloudWatch Logs role.
+- infra/cognito/nonprod/admin-user-pool.yaml: separate Admin pool with required TOTP; otherwise the same isolated non-production resource topology.
+- docs/D1_T2_C1_COGNITO_AWS_CLI_RUNBOOK_V1.md: AWS SSO/account preflight, local validation, non-executed change-set preview commands, post-create verification, synthetic import workflow, first-login/MFA gates, cost and cleanup controls.
+- The bootstrap client enables USER_PASSWORD_AUTH only for the imported-hash first sign-in. The OIDC client is separate, has no client secret, uses the code grant and must use PKCE S256. The two pools have independent issuers and signing keys.
+
+### Local validation performed (2026-11-15)
+
+- Focused isolated Node 22.16 test harness: 8/8 tests passed, 0 failed, 0 skipped. This is not a full repository test run.
+- Synthetic CSV generator smoke test: one fixed synthetic row was written below the temp directory; POSIX mode was 0600; a second run refused to overwrite the existing file and left it intact.
+- Both CloudFormation YAML files parsed with PyYAML 6.0.3. Internal Ref/GetAtt target checks passed. Admin MfaConfiguration is explicitly quoted as the string 'ON' to avoid YAML 1.1 boolean coercion.
+- cfn-lint and AWS cloudformation validate-template were not run because those tools and an authorized AWS CLI session are not available in this execution environment.
+- The full root npm test suite and the repository package script have not been run in a complete repository checkout. PR #887 remains Draft, so Hosted CI is not treated as a pass.
+
+### Provider proof still outstanding
+
+- AWS non-production User Pool creation and confirmation that the SCRYPT import option is available.
+- Cognito acceptance of the exact 64-byte source-derived Scrypt hash. AWS documents the SCRYPT format and parameter ceilings, but its published example shows a 32-byte digest and the documentation does not specify the accepted digest-length range.
+- Real non-production import job success, first password verification and automatic SRP credential migration.
+- Actual Cognito 71/72/73 UTF-8-byte and Chinese multibyte first-login behavior.
+- Portal optional TOTP, Admin required TOTP/MFA_SETUP, and actual AMR/ACR claims after a completed TOTP challenge.
+- OIDC Authorization Code + PKCE, issuer/audience/JWKS validation and cross-pool rejection in the Worker.
+- AWS account billing, selected region, quotas and email delivery.
+
+No AWS profile was configured, no AWS account identity was queried, and no CloudFormation validation API call, change set, stack, User Pool, domain, app client, IAM role or import job was created. No CSV was generated from a real pool template or uploaded. One local synthetic fixture was generated only to smoke-test the writer and remained in the isolated temporary test workspace. No production users, hashes, TOTP secrets, Worker, D1, DO, Secrets, routes or bindings were accessed or modified.
 
 ## 9. Decision status
 
