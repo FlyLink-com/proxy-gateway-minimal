@@ -15,8 +15,8 @@ import {
 
 // B2-b P2: attempt limiting for the authority session entry. Thresholds reuse
 // the established admin-auth values (ADMIN_AUTH_ATTEMPT_* in
-// server/routes/admin-auth.mjs) — the #854 owner-decision values, not numbers
-// invented for this route.
+// server/routes/admin-auth.mjs) — the admin-auth established values, not
+// numbers invented for this route.
 const PORTAL_AUTHORITY_ATTEMPT_WINDOW_MS = 60_000;
 const PORTAL_AUTHORITY_ATTEMPT_MAX = 10;
 const PORTAL_AUTHORITY_IPV6_SUBNET = 56;
