@@ -314,6 +314,9 @@ test("portal registration creates an email-login account, seven-day trial, and p
       assert.equal(typeof account.metadata.loginDigest, "string");
       assert.equal(account.metadata.loginRef, "local-user@example.test");
       assert.equal(account.metadata.displayRef, "local-user@example.test");
+      // B2-a: registration writes the masked display value alongside the
+      // legacy raw references (the guard that removes them is B2-c, not here).
+      assert.equal(account.metadata.displayEmailMasked, "lo***@example.test");
       assert.equal(typeof account.metadata.registrationSourceIpDigest, "string");
       assert.equal(store.getEntitlement("ent_registration_trial_1").validUntil, TRIAL_UNTIL);
       assert.equal(

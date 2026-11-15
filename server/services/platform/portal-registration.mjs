@@ -323,6 +323,7 @@ export function createPortalRegistrationService(options = {}) {
           subscriptionLimit: 1,
           loginRef: email,
           displayRef: email,
+          displayEmailMasked: maskEmail(email),
           contactDigest: emailDigest,
           loginDigest: emailDigest,
           displayDigest: digest(displayName),

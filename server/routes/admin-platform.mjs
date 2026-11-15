@@ -14,7 +14,7 @@ import { buildChannelSystemDecisionFlow } from "../services/channel-system-decis
 import { buildCleanEdgeReadinessSummary } from "../services/clean-edge-readiness-summary.mjs";
 import { createCleanStartControlPlanePackage } from "../services/platform/clean-start-control-plane.mjs";
 import { createPlatformControlSummary } from "../services/platform/control-plane-contract.mjs";
-import { maskEmail, maskEmailOrKeep } from "../services/platform/email-masking.mjs";
+import { isMaskedEmailDisplay, maskEmail, maskEmailOrKeep } from "../services/platform/email-masking.mjs";
 import { buildProvisioningFormPackage } from "../services/platform/provisioning-form.mjs";
 import { createPartnerAttributionAdminReport } from "../services/platform/partner-attribution-admin-report.mjs";
 import { trafficLimitBytesForPlan } from "../services/platform/subscription-package-policy.mjs";
@@ -322,7 +322,12 @@ function summaryForControlStoreAccount(controlStore, account, now, { search } = 
   // Display only: the admin list shows masked emails. A digest search hit
   // echoes the searched email masked, never raw. A display label that is not
   // an email (user-managed label, account id) passes through unchanged.
-  const displayName = maskEmailOrKeep(displayRef
+  // B2-a: prefer the masked display value written at registration when it
+  // passes the masked-shape check; otherwise fall back to the legacy chain
+  // (which masks the raw display/login reference at display time).
+  const storedMaskedDisplay = optionalAdminText(metadata.displayEmailMasked);
+  const maskedDisplay = isMaskedEmailDisplay(storedMaskedDisplay) ? storedMaskedDisplay : null;
+  const displayName = maskedDisplay || maskEmailOrKeep(displayRef
     || optionalAdminText(metadata.displayName)
     || loginRef
     || optionalAdminText(account.ownerRef)
@@ -334,7 +339,7 @@ function summaryForControlStoreAccount(controlStore, account, now, { search } = 
     leadId: optionalAdminText(metadata.leadId) || null,
     status: account.status,
     organization: optionalAdminText(metadata.organization) || null,
-    email: loginRef ? maskEmail(loginRef) : null,
+    email: maskedDisplay || (loginRef ? maskEmail(loginRef) : null),
     displayName,
     entitlementCount: entitlements.length,
     usableEntitlementCount: entitlements.filter((entitlement) => entitlement.usable).length,

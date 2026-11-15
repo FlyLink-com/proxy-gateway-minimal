@@ -1081,6 +1081,29 @@ test("subscription control store enforces the bounded legacy account metadata co
       updatedAt: now,
       metadata: { loginRef: "not-an-email" }
     }), { code: "validation_error" });
+
+    // B2-a: displayEmailMasked is the one allowlisted key whose name
+    // contains "email". A masked display value is accepted; a raw email in
+    // that field is rejected at the write boundary, so the field can never
+    // hold one.
+    const masked = store.createAccount({
+      id: "acct_account_metadata_masked_display",
+      ownerRef: "owner_account_metadata_masked_display",
+      status: "active",
+      createdAt: now,
+      updatedAt: now,
+      metadata: { displayEmailMasked: "me***@example.test" }
+    });
+    assert.equal(masked.metadata.displayEmailMasked, "me***@example.test");
+
+    assert.throws(() => store.createAccount({
+      id: "acct_account_metadata_raw_display_email",
+      ownerRef: "owner_account_metadata_raw_display_email",
+      status: "active",
+      createdAt: now,
+      updatedAt: now,
+      metadata: { displayEmailMasked: "member@example.test" }
+    }), { code: "validation_error" });
   });
 });
 
