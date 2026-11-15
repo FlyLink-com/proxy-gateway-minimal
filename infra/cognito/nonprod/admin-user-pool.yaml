@@ -1,0 +1,188 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  FlyLink D1 C1 non-production Admin Cognito user pool.
+  Synthetic-only PoC. Admin TOTP is required. No production user data or production integration.
+
+Parameters:
+  UserPoolName:
+    Type: String
+    Default: flylink-admin-nonprod
+    MinLength: 1
+    MaxLength: 128
+    Description: Friendly name for the isolated Admin non-production user pool.
+  DomainPrefix:
+    Type: String
+    MinLength: 1
+    MaxLength: 63
+    AllowedPattern: '^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$'
+    ConstraintDescription: Use 1-63 lowercase letters, numbers, or hyphens; begin and end with a letter or number.
+    Description: Globally unique Cognito prefix domain in the selected AWS Region.
+  CallbackUrls:
+    Type: CommaDelimitedList
+    Description: Exact Admin browser redirect URI(s); use HTTPS except localhost.
+  LogoutUrls:
+    Type: CommaDelimitedList
+    Description: Exact Admin sign-out redirect URI(s).
+
+Resources:
+  AdminUserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName:
+        Ref: UserPoolName
+      UserPoolTier: ESSENTIALS
+      DeletionProtection: ACTIVE
+      AliasAttributes:
+        - email
+      AutoVerifiedAttributes:
+        - email
+      UsernameConfiguration:
+        CaseSensitive: false
+      EmailConfiguration:
+        EmailSendingAccount: COGNITO_DEFAULT
+      VerificationMessageTemplate:
+        DefaultEmailOption: CONFIRM_WITH_CODE
+        EmailSubject: FlyLink Admin verification code
+        EmailMessage: 'Your FlyLink Admin verification code is {####}.'
+      MfaConfiguration: ON
+      EnabledMfas:
+        - SOFTWARE_TOKEN_MFA
+      UserPoolTags:
+        project: flylink
+        environment: nonprod
+        surface: admin
+        data-class: synthetic-only
+        managed-by: cloudformation
+
+  AdminUserPoolDomain:
+    Type: AWS::Cognito::UserPoolDomain
+    Properties:
+      UserPoolId:
+        Ref: AdminUserPool
+      Domain:
+        Ref: DomainPrefix
+      ManagedLoginVersion: 1
+
+  AdminImportLogsRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Description: Allows Cognito to write Admin synthetic import-job results to CloudWatch Logs.
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: cognito-idp.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Policies:
+        - PolicyName: cognito-user-import-cloudwatch
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:DescribeLogStreams
+                  - logs:PutLogEvents
+                Resource:
+                  - Fn::Sub: 'arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/cognito/*'
+
+  AdminBootstrapClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      UserPoolId:
+        Ref: AdminUserPool
+      ClientName:
+        Fn::Sub: '${AWS::StackName}-first-login-bootstrap'
+      GenerateSecret: false
+      ExplicitAuthFlows:
+        - ALLOW_USER_PASSWORD_AUTH
+      AuthSessionValidity: 3
+      AccessTokenValidity: 5
+      IdTokenValidity: 5
+      TokenValidityUnits:
+        AccessToken: minutes
+        IdToken: minutes
+      EnableTokenRevocation: true
+      PreventUserExistenceErrors: ENABLED
+      ReadAttributes:
+        - email
+        - email_verified
+      WriteAttributes:
+        - email
+
+  AdminOidcClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      UserPoolId:
+        Ref: AdminUserPool
+      ClientName:
+        Fn::Sub: '${AWS::StackName}-oidc-pkce'
+      GenerateSecret: false
+      ExplicitAuthFlows:
+        - ALLOW_USER_SRP_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
+      AllowedOAuthFlowsUserPoolClient: true
+      AllowedOAuthFlows:
+        - code
+      AllowedOAuthScopes:
+        - openid
+        - email
+        - profile
+      CallbackURLs:
+        Ref: CallbackUrls
+      LogoutURLs:
+        Ref: LogoutUrls
+      SupportedIdentityProviders:
+        - COGNITO
+      AuthSessionValidity: 3
+      AccessTokenValidity: 5
+      IdTokenValidity: 5
+      RefreshTokenValidity: 1
+      TokenValidityUnits:
+        AccessToken: minutes
+        IdToken: minutes
+        RefreshToken: days
+      EnableTokenRevocation: true
+      PreventUserExistenceErrors: ENABLED
+      ReadAttributes:
+        - email
+        - email_verified
+      WriteAttributes:
+        - email
+
+Outputs:
+  UserPoolId:
+    Description: Admin non-production Cognito User Pool ID.
+    Value:
+      Ref: AdminUserPool
+  UserPoolArn:
+    Description: Admin non-production Cognito User Pool ARN.
+    Value:
+      Fn::GetAtt:
+        - AdminUserPool
+        - Arn
+  Issuer:
+    Description: OIDC issuer for Worker-side exact issuer validation.
+    Value:
+      Fn::Sub: 'https://cognito-idp.${AWS::Region}.amazonaws.com/${AdminUserPool}'
+  JwksUri:
+    Description: JWKS endpoint for the Admin User Pool.
+    Value:
+      Fn::Sub: 'https://cognito-idp.${AWS::Region}.amazonaws.com/${AdminUserPool}/.well-known/jwks.json'
+  BootstrapClientId:
+    Description: Temporary public client for imported-password first sign-in and MFA_SETUP only.
+    Value:
+      Ref: AdminBootstrapClient
+  OidcClientId:
+    Description: Public Authorization Code + PKCE client for Admin browser.
+    Value:
+      Ref: AdminOidcClient
+  ImportLogsRoleArn:
+    Description: Cognito import-job CloudWatch Logs role ARN.
+    Value:
+      Fn::GetAtt:
+        - AdminImportLogsRole
+        - Arn
