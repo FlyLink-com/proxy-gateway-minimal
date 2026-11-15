@@ -55,17 +55,17 @@ test("anonymous fixed-account status never reveals the configured account", () =
   }
 });
 
-test("omitted operator selects the fixed account but still requires its password and TOTP", () => {
+test("omitted operator selects the fixed account but still requires its password and TOTP", async () => {
   const { auth, accountId, passwordCalls } = fixedPortalAdminFixture();
   assert.throws(() => auth.login({ bootstrapToken: "wrong" }), { code: "invalid_admin_login" });
   const { challenge } = auth.login({ bootstrapToken: "synthetic-password" });
   assert.equal(challenge.operatorRef, accountId);
   assert.deepEqual(passwordCalls, [accountId, accountId]);
   assert.equal(auth.authenticateCookie({ cookieHeader: "" }), null);
-  assert.throws(() => auth.verifyTotp({ challengeRef: challenge.challengeRef, code: "000000" }), {
+  await assert.rejects(auth.verifyTotp({ challengeRef: challenge.challengeRef, code: "000000" }), {
     code: "invalid_totp"
   });
-  const result = auth.verifyTotp({ challengeRef: challenge.challengeRef, code: "654321" });
+  const result = await auth.verifyTotp({ challengeRef: challenge.challengeRef, code: "654321" });
   assert.equal(result.session.operatorRef, accountId);
   assert.match(result.sessionCookie, /HttpOnly; Secure; SameSite=Strict/);
   assert.equal(auth.sessionStatus({ cookieHeader: result.sessionCookie }).authenticated, true);

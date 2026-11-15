@@ -453,19 +453,24 @@ export function createUserPortalAuthService({
     };
   }
 
-  function protectTotpSecret(secret) {
+  // M3-a (S-02): new writes go through the v3 TOTP protector (async,
+  // WebCrypto). The protector requires the credential row id as
+  // credentialRef: callers mint it before protecting (scheme A, §2.4) so
+  // the envelope is bound to its row from initiation. A synchronous test
+  // double keeps working: await is transparent for a sync return value.
+  async function protectTotpSecret(secret, { credentialRef } = {}) {
     if (!totpSecretProtector || typeof totpSecretProtector.protect !== "function") {
       throw portalAuthError("validation_error", "portal TOTP secret protector is required");
     }
-    return requiredText(totpSecretProtector.protect(secret), "encryptedTotpSecret");
+    return requiredText(await totpSecretProtector.protect(secret, { credentialRef }), "encryptedTotpSecret");
   }
 
-  function protectIncomingTotpSecret(value) {
+  async function protectIncomingTotpSecret(value, { credentialRef } = {}) {
     const encryptedTotpSecret = requiredText(value, "encryptedTotpSecret");
     if (!encryptedTotpSecret.startsWith("enc:")) {
       throw portalAuthError("validation_error", "portal TOTP enrollment secret must use enc format before server-side protection");
     }
-    return protectTotpSecret(requiredText(encryptedTotpSecret.slice(4), "totpSecret"));
+    return protectTotpSecret(requiredText(encryptedTotpSecret.slice(4), "totpSecret"), { credentialRef });
   }
 
   function totpEnrollmentAuditId() {
@@ -473,6 +478,7 @@ export function createUserPortalAuthService({
   }
 
   function totpEnrollmentEnvelopeFormat(encryptedTotpSecret) {
+    if (encryptedTotpSecret.startsWith("v3:")) return "v3";
     if (encryptedTotpSecret.startsWith("v2:")) return "v2";
     if (encryptedTotpSecret.startsWith("enc:")) return "enc";
     // B2-9 (G-08): the bound event is evidence, not a second gate. The
@@ -495,20 +501,25 @@ export function createUserPortalAuthService({
     return controlStore.recordAuditEvent(input);
   }
 
-  function startTotpEnrollment(input) {
+  async function startTotpEnrollment(input) {
     const { account, checkedAt } = getActiveSessionContext(input?.sessionRef);
     const enrollmentRef = requiredText(input?.enrollmentRef || totpEnrollmentRefFactory(), "enrollmentRef");
+    // M3-a scheme A (§2.4): mint the credential row id at initiation and
+    // bind the v3 envelope to it. The same id must be used for the row at
+    // confirm time; a caller-supplied id that differs fails closed there.
+    const credentialRef = requiredText(credentialRefFactory(), "credentialRef");
     const secret = requiredText(totpSecretFactory(), "totpSecret");
     const expiresAt = addSeconds(checkedAt, 300);
     const issuer = requiredText(input?.issuer || totpIssuer, "issuer");
     const accountLabel = requiredText(input?.accountLabel || account.id, "accountLabel");
     const enrollment = {
       enrollmentRef,
+      credentialRef,
       accountId: account.id,
       issuer,
       accountLabel,
       secret,
-      encryptedTotpSecret: protectTotpSecret(secret),
+      encryptedTotpSecret: await protectTotpSecret(secret, { credentialRef }),
       otpauthUri: createTotpUri({ issuer, accountLabel, secret }),
       issuedAt: checkedAt,
       expiresAt
@@ -541,7 +552,7 @@ export function createUserPortalAuthService({
     };
   }
 
-  function confirmTotpEnrollment(input) {
+  async function confirmTotpEnrollment(input) {
     const { account, checkedAt } = getActiveSessionContext(input?.sessionRef);
     const enrollmentRef = requiredText(input?.enrollmentRef, "enrollmentRef");
     const enrollment = pendingTotpEnrollments.get(enrollmentRef);
@@ -552,11 +563,21 @@ export function createUserPortalAuthService({
       pendingTotpEnrollments.delete(enrollmentRef);
       throw portalAuthError("validation_error", "portal TOTP enrollment is expired");
     }
-    const verified = totpVerifier({
+    // M3-a scheme A (§2.4): the credential row id was minted at initiation
+    // and bound into the v3 envelope. A caller-supplied id must match it;
+    // a mismatch fails closed instead of creating a row the envelope was
+    // never bound to.
+    const credentialRef = input?.credentialRef
+      ? requiredText(input.credentialRef, "credentialRef")
+      : enrollment.credentialRef;
+    if (credentialRef !== enrollment.credentialRef) {
+      throw portalAuthError("validation_error", "portal TOTP credentialRef does not match the enrollment");
+    }
+    const verified = await totpVerifier({
       encryptedTotpSecret: enrollment.encryptedTotpSecret,
       code: requiredText(input?.code, "code"),
       accountId: account.id,
-      credentialRef: enrollmentRef
+      credentialRef: enrollment.credentialRef
     });
     if (!verified) {
       // B2-9 (G-08): a failed confirmation code is itself lifecycle
@@ -590,7 +611,7 @@ export function createUserPortalAuthService({
     }
     return controlStore.runInTransaction(() => {
       const credential = controlStore.createPortalTotpCredential({
-        id: requiredText(input?.credentialRef || credentialRefFactory(), "credentialRef"),
+        id: credentialRef,
         accountId: account.id,
         encryptedTotpSecret: enrollment.encryptedTotpSecret,
         status: "active",
@@ -694,16 +715,19 @@ export function createUserPortalAuthService({
     };
   }
 
-  function enrollTotpCredential(input) {
+  async function enrollTotpCredential(input) {
     const enrolledAt = now();
     const entryToken = requiredText(input?.entryToken, "entryToken");
-    const encryptedTotpSecret = protectIncomingTotpSecret(input?.encryptedTotpSecret);
+    // M3-a scheme A (§2.4): mint the credential row id before protecting,
+    // so the v3 envelope is bound to the row it will be stored under.
+    const credentialRef = requiredText(input?.credentialRef || credentialRefFactory(), "credentialRef");
+    const encryptedTotpSecret = await protectIncomingTotpSecret(input?.encryptedTotpSecret, { credentialRef });
     const entry = controlStore.findPortalEntryByTokenHash(hashEntryToken(entryToken));
     assertUsableEntry(entry, enrolledAt);
 
     return controlStore.runInTransaction(() => {
       const credential = controlStore.createPortalTotpCredential({
-        id: requiredText(input?.credentialRef || credentialRefFactory(), "credentialRef"),
+        id: credentialRef,
         accountId: entry.accountId,
         encryptedTotpSecret,
         status: "active",
@@ -742,7 +766,7 @@ export function createUserPortalAuthService({
     });
   }
 
-  function verifyTotpAndCreateSession(input) {
+  async function verifyTotpAndCreateSession(input) {
     const verifiedAt = now();
     const rememberMe = rememberPreference(input?.rememberMe);
     const accountId = requiredText(input?.accountId, "accountId");
@@ -766,7 +790,7 @@ export function createUserPortalAuthService({
       throw portalAuthError("validation_error", "portal TOTP credential is locked");
     }
 
-    const verified = totpVerifier({
+    const verified = await totpVerifier({
       encryptedTotpSecret: credential.encryptedTotpSecret,
       code,
       accountId,
@@ -845,7 +869,7 @@ export function createUserPortalAuthService({
     });
   }
 
-  function completeSecondFactor(input) {
+  async function completeSecondFactor(input) {
     const verifiedAt = now();
     const challengeRef = requiredText(input?.challengeRef, "challengeRef");
     const factor = requiredText(input?.factor, "factor");
@@ -885,7 +909,7 @@ export function createUserPortalAuthService({
       throw portalAuthError("validation_error", "portal TOTP credential is locked");
     }
 
-    const verified = totpVerifier({
+    const verified = await totpVerifier({
       encryptedTotpSecret: credential.encryptedTotpSecret,
       code: requiredText(input?.code, "code"),
       accountId: challenge.accountId,

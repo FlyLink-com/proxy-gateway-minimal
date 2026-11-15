@@ -8,7 +8,7 @@ import { createUserPortalAuthService } from "../services/platform/user-portal-au
 const START = "2026-09-06T12:00:00.000Z";
 const digest = (value) => createHash("sha256").update(value).digest("hex");
 const internalId = (value) => `portalbrowser_${digest(value)}`;
-function fixture(run) {
+async function fixture(run) {
   const db = new Database(":memory:");
   const store = createSqliteSubscriptionControlStore({ database: db });
   let now = START;
@@ -25,7 +25,7 @@ function fixture(run) {
   const login = (rememberMe = false, target = auth) => target.verifyPasswordAndMaybeChallenge({
     accountId: "acct_browser_test", plainPassword: "synthetic-test-value", rememberMe
   });
-  try { return run({ db, store, auth, service, login, setNow(value) { now = value; } }); }
+  try { return await run({ db, store, auth, service, login, setNow(value) { now = value; } }); }
   finally { store.close(); }
 }
 
@@ -124,7 +124,7 @@ test("conversion rotates and revokes the previous browser session in the same tr
   assert.equal(store.getPortalSession(internalId(second.cookieValue)).status, "active");
 }));
 
-test("second-factor remember preference is durable and cannot be upgraded in the final request", () => fixture(({ auth, login, service, store }) => {
+test("second-factor remember preference is durable and cannot be upgraded in the final request", () => fixture(async ({ auth, login, service, store }) => {
   store.createPortalTotpCredential({ id: "totp_browser_test", accountId: "acct_browser_test", encryptedTotpSecret: "synthetic-test-secret", enrolledAt: START, updatedAt: START });
   for (const rememberMe of [false, true]) {
     const challenge = login(rememberMe);
@@ -132,8 +132,8 @@ test("second-factor remember preference is durable and cannot be upgraded in the
     assert.equal(store.listPortalSessions({ accountId: "acct_browser_test" }).length, rememberMe ? 2 : 0);
     assert.equal(store.getPortalSecondFactorChallenge(challenge.result.challengeRef).rememberMe, rememberMe);
     const restarted = service();
-    if (!rememberMe) assert.throws(() => restarted.completeSecondFactor({ challengeRef: challenge.result.challengeRef, factor: "totp", code: "123456", rememberMe: true }), /remember/i);
-    const completed = restarted.completeSecondFactor({ challengeRef: challenge.result.challengeRef, factor: "totp", code: "123456" });
+    if (!rememberMe) await assert.rejects(restarted.completeSecondFactor({ challengeRef: challenge.result.challengeRef, factor: "totp", code: "123456", rememberMe: true }), /remember/i);
+    const completed = await restarted.completeSecondFactor({ challengeRef: challenge.result.challengeRef, factor: "totp", code: "123456" });
     assert.equal(completed.rememberMe, rememberMe);
     const browser = restarted.createBrowserSession({ sessionRef: completed.session.sessionRef, rememberMe: completed.rememberMe });
     assert.equal(browser.session.expiresAt, rememberMe ? "2026-09-13T12:00:00.000Z" : "2026-09-06T12:30:00.000Z");
@@ -193,28 +193,28 @@ test("malformed cookies and public/internal identifiers cannot enter the private
   assert.throws(() => auth.getBrowserSession({ sessionRef: internalId(result.cookieValue) }), { code: "invalid_session" });
 }));
 
-test("failed, expired, reused, and unsupported MFA do not create convertible sessions", () => fixture(({ auth, login, store, setNow }) => {
+test("failed, expired, reused, and unsupported MFA do not create convertible sessions", () => fixture(async ({ auth, login, store, setNow }) => {
   store.createPortalTotpCredential({ id: "totp_browser_negative", accountId: "acct_browser_test", encryptedTotpSecret: "synthetic-test-secret", enrolledAt: START, updatedAt: START });
   const first = login(true);
-  assert.throws(() => auth.completeSecondFactor({ challengeRef: first.result.challengeRef, factor: "totp", code: "000000" }));
+  await assert.rejects(auth.completeSecondFactor({ challengeRef: first.result.challengeRef, factor: "totp", code: "000000" }));
   assert.equal(store.listPortalSessions({ accountId: "acct_browser_test" }).length, 0);
-  const completed = auth.completeSecondFactor({ challengeRef: first.result.challengeRef, factor: "totp", code: "123456" });
-  assert.throws(() => auth.completeSecondFactor({ challengeRef: first.result.challengeRef, factor: "totp", code: "123456" }));
+  const completed = await auth.completeSecondFactor({ challengeRef: first.result.challengeRef, factor: "totp", code: "123456" });
+  await assert.rejects(auth.completeSecondFactor({ challengeRef: first.result.challengeRef, factor: "totp", code: "123456" }));
   const next = login(true);
   setNow("2026-09-06T12:05:00.000Z");
-  assert.throws(() => auth.completeSecondFactor({ challengeRef: next.result.challengeRef, factor: "totp", code: "123456" }));
+  await assert.rejects(auth.completeSecondFactor({ challengeRef: next.result.challengeRef, factor: "totp", code: "123456" }));
   assert.throws(() => auth.createBrowserSession({ sessionRef: completed.session.sessionRef, rememberMe: true }), { code: "invalid_session" });
   store.createPortalSecondFactorChallenge({ id: "portal_mfa_passkey", accountId: "acct_browser_test", challengeHash: "synthetic-hash", allowedFactors: ["passkey"], rememberMe: true, expiresAt: "2026-09-06T12:10:00.000Z", createdAt: "2026-09-06T12:05:00.000Z", updatedAt: "2026-09-06T12:05:00.000Z" });
-  assert.throws(() => auth.completeSecondFactor({ challengeRef: "portal_mfa_passkey", factor: "passkey", passkeyProof: "synthetic-proof" }), /passkey second factor is not configured/);
+  await assert.rejects(auth.completeSecondFactor({ challengeRef: "portal_mfa_passkey", factor: "passkey", passkeyProof: "synthetic-proof" }), /passkey second factor is not configured/);
   assert.equal(store.listPortalSessions({ accountId: "acct_browser_test" }).length, 1);
 }));
 
-test("malformed durable MFA preference fails closed before completing a challenge", () => fixture(({ auth, login, store, db }) => {
+test("malformed durable MFA preference fails closed before completing a challenge", () => fixture(async ({ auth, login, store, db }) => {
   store.createPortalTotpCredential({ id: "totp_browser_malformed", accountId: "acct_browser_test", encryptedTotpSecret: "synthetic-test-secret", enrolledAt: START, updatedAt: START });
   const challenge = login(false);
   for (const payload of ['{"version":1,"allowedFactors":["totp"],"rememberMe":"true"}', '{"version":2,"allowedFactors":["totp"],"rememberMe":true}', '{"version":1,"allowedFactors":["totp"],"rememberMe":true,"extra":1}', 'null']) {
     db.prepare("update platform_portal_second_factor_challenges set allowed_factors_json = ? where id = ?").run(payload, challenge.result.challengeRef);
-    assert.throws(() => auth.completeSecondFactor({ challengeRef: challenge.result.challengeRef, factor: "totp", code: "123456" }), { code: "validation_error" });
+    await assert.rejects(auth.completeSecondFactor({ challengeRef: challenge.result.challengeRef, factor: "totp", code: "123456" }), { code: "validation_error" });
   }
   assert.equal(store.listPortalSessions({ accountId: "acct_browser_test" }).length, 0);
 }));

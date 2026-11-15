@@ -328,6 +328,10 @@ export function createPortalAccountAdminAuthService(options = {}) {
   const sessionRefFactory = options.sessionRefFactory || (() => `admin_session_${randomUUID()}`);
   const totpSecretFactory = options.totpSecretFactory || randomBase32Secret;
   const totpVerifier = options.totpVerifier;
+  // M3-a (S-03): the Admin v3 protector. New Admin enrollments are
+  // encrypted with it (M-04: no more `enc:` writes); the v3 envelope is
+  // bound to the credential row id minted at startBootstrap (scheme A).
+  const totpSecretProtector = options.totpSecretProtector || null;
 
   if (!controlStore) {
     throw authError("validation_error", "controlStore is required");
@@ -342,6 +346,13 @@ export function createPortalAccountAdminAuthService(options = {}) {
   const pendingEnrollments = new Map();
   const pendingChallenges = new Map();
   const sessions = new Map();
+
+  async function protectTotpSecret(secret, { credentialRef } = {}) {
+    if (!totpSecretProtector || typeof totpSecretProtector.protect !== "function") {
+      throw authError("validation_error", "admin TOTP secret protector is required");
+    }
+    return requiredText(await totpSecretProtector.protect(secret, { credentialRef }), "encryptedTotpSecret");
+  }
 
   function now() {
     const value = nowFn();
@@ -441,13 +452,14 @@ export function createPortalAccountAdminAuthService(options = {}) {
   }
 
   function totpEnrollmentEnvelopeFormat(encryptedTotpSecret) {
+    if (encryptedTotpSecret.startsWith("v3:")) return "v3";
     if (encryptedTotpSecret.startsWith("v2:")) return "v2";
     if (encryptedTotpSecret.startsWith("enc:")) return "enc";
-    // B2-9 (G-08): the bound event is evidence, not a second gate. Admin
-    // stores `enc:${secret}` directly and never calls a protector, so this
-    // branch is unreachable for values this service produces; the helper
-    // stays total (same shape as the Portal helper) and records "unknown"
-    // rather than failing the enrollment if one ever arrives.
+    // B2-9 (G-08): the bound event is evidence, not a second gate. M3-a:
+    // new Admin enrollments are v3 envelopes, so "enc" is now reachable
+    // only for historical rows. The helper stays total and records
+    // "unknown" rather than failing the enrollment if an unrecognized
+    // value ever arrives.
     return "unknown";
   }
 
@@ -462,17 +474,21 @@ export function createPortalAccountAdminAuthService(options = {}) {
     return controlStore.recordAuditEvent(input);
   }
 
-  function startBootstrap(input = {}) {
+  async function startBootstrap(input = {}) {
     assertNoActiveOperator();
     verifyPassword(input.bootstrapToken);
     const issuedAt = now();
     const secret = requiredText(totpSecretFactory(), "totpSecret");
+    // M3-a scheme A (§2.4): mint the credential row id at initiation and
+    // bind the v3 envelope to it (M-04: no more `enc:` writes).
+    const credentialRef = requiredText(credentialRefFactory(), "credentialRef");
     const enrollment = {
       enrollmentRef: requiredText(enrollmentRefFactory(), "enrollmentRef"),
+      credentialRef,
       operatorRef: accountId,
       issuer,
       secret,
-      encryptedTotpSecret: `enc:${secret}`,
+      encryptedTotpSecret: await protectTotpSecret(secret, { credentialRef }),
       otpauthUri: createTotpUri({ issuer, operatorRef: accountId, secret }),
       issuedAt,
       expiresAt: addSeconds(issuedAt, enrollmentTtlSeconds)
@@ -503,7 +519,7 @@ export function createPortalAccountAdminAuthService(options = {}) {
     return { enrollment: safeEnrollmentSummary(enrollment) };
   }
 
-  function confirmTotpEnrollment(input = {}) {
+  async function confirmTotpEnrollment(input = {}) {
     assertNoActiveOperator();
     const checkedAt = now();
     const enrollmentRef = requiredText(input.enrollmentRef, "enrollmentRef");
@@ -512,7 +528,16 @@ export function createPortalAccountAdminAuthService(options = {}) {
       pendingEnrollments.delete(enrollmentRef);
       throw authError("invalid_totp");
     }
-    if (!totpVerifier({ encryptedTotpSecret: enrollment.encryptedTotpSecret, code: input.code })) {
+    // M3-a scheme A (§2.4): the credential row id was minted at
+    // startBootstrap and bound into the v3 envelope. A caller-supplied id
+    // must match it; a mismatch fails closed.
+    const credentialRef = input?.credentialRef
+      ? requiredText(input.credentialRef, "credentialRef")
+      : enrollment.credentialRef;
+    if (credentialRef !== enrollment.credentialRef) {
+      throw authError("invalid_totp");
+    }
+    if (!await totpVerifier({ encryptedTotpSecret: enrollment.encryptedTotpSecret, code: input.code, credentialRef: enrollment.credentialRef })) {
       // B2-9 (G-08): a failed confirmation code is itself lifecycle
       // evidence — recorded without the code value. The enrollment stays
       // pending so the operator may retry within its validity window. The
@@ -541,7 +566,6 @@ export function createPortalAccountAdminAuthService(options = {}) {
       }
       throw authError("invalid_totp");
     }
-    const credentialRef = requiredText(credentialRefFactory(), "credentialRef");
     // B2-9 (G-08): verification and binding evidence for the Admin setup.
     // The credential row, the verified/bound events and the pending-entry
     // deletion share one transaction (as in the Portal confirm), so an
@@ -624,7 +648,7 @@ export function createPortalAccountAdminAuthService(options = {}) {
     return { challenge };
   }
 
-  function verifyTotp(input = {}) {
+  async function verifyTotp(input = {}) {
     const checkedAt = now();
     const challengeRef = requiredText(input.challengeRef, "challengeRef");
     const challenge = pendingChallenges.get(challengeRef);
@@ -638,7 +662,7 @@ export function createPortalAccountAdminAuthService(options = {}) {
       pendingChallenges.delete(challengeRef);
       throw authError("invalid_totp");
     }
-    if (!totpVerifier({
+    if (!await totpVerifier({
       encryptedTotpSecret: credential.encryptedTotpSecret,
       code: input.code,
       accountId,

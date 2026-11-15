@@ -339,11 +339,11 @@ export function userPortalRoutes(state, options = {}) {
     }
   });
 
-  router.post("/api/portal/password/second-factor", (req, res) => {
+  router.post("/api/portal/password/second-factor", async (req, res) => {
     try {
       requireAuthService();
       const factor = req.body?.factor === "authenticator" ? "totp" : req.body?.factor;
-      const result = auth.completeSecondFactor({
+      const result = await auth.completeSecondFactor({
         challengeRef: req.body?.challengeRef,
         factor,
         code: req.body?.code ?? req.body?.totpCode,
@@ -414,10 +414,10 @@ export function userPortalRoutes(state, options = {}) {
     }
   });
 
-  router.post("/api/portal/security/totp/enrollment", (req, res) => {
+  router.post("/api/portal/security/totp/enrollment", async (req, res) => {
     try {
       requireAuthService();
-      res.status(201).json(auth.startTotpEnrollment({
+      res.status(201).json(await auth.startTotpEnrollment({
         sessionRef: requirePortalSession(req).sessionRef
       }));
     } catch (error) {
@@ -425,10 +425,10 @@ export function userPortalRoutes(state, options = {}) {
     }
   });
 
-  router.post("/api/portal/security/totp/enrollment/confirm", (req, res) => {
+  router.post("/api/portal/security/totp/enrollment/confirm", async (req, res) => {
     try {
       requireAuthService();
-      res.json(auth.confirmTotpEnrollment({
+      res.json(await auth.confirmTotpEnrollment({
         sessionRef: requirePortalSession(req).sessionRef,
         enrollmentRef: req.body?.enrollmentRef,
         code: req.body?.code
@@ -438,11 +438,11 @@ export function userPortalRoutes(state, options = {}) {
     }
   });
 
-  router.post("/api/portal/entry/enroll", (req, res) => {
+  router.post("/api/portal/entry/enroll", async (req, res) => {
     try {
       requireAuthService();
       verifyHumanChallenge(req);
-      const enrollment = auth.enrollTotpCredential({
+      const enrollment = await auth.enrollTotpCredential({
         entryToken: req.body?.entryToken,
         encryptedTotpSecret: req.body?.encryptedTotpSecret
       });
@@ -506,11 +506,11 @@ export function userPortalRoutes(state, options = {}) {
     }
   });
 
-  router.post("/api/portal/session", (req, res) => {
+  router.post("/api/portal/session", async (req, res) => {
     try {
       requireAuthService();
       verifyHumanChallenge(req);
-      const session = auth.verifyTotpAndCreateSession({
+      const session = await auth.verifyTotpAndCreateSession({
         accountId: req.body?.accountId,
         code: req.body?.code
       });

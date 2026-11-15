@@ -415,7 +415,7 @@ test("portal password session route returns second-factor challenge after passwo
       approvalRef: "approval_password_route_2",
       mustRotate: true
     });
-    auth.enrollTotpCredential({
+    await auth.enrollTotpCredential({
       entryToken,
       encryptedTotpSecret: "enc:route-totp-secret"
     });
@@ -519,7 +519,7 @@ test("portal password session route accepts frontend human challenge field alias
       approvalRef: "approval_password_route_alias",
       mustRotate: true
     });
-    auth.enrollTotpCredential({
+    await auth.enrollTotpCredential({
       entryToken,
       encryptedTotpSecret: "enc:route-totp-secret"
     });
@@ -566,7 +566,7 @@ test("portal password second-factor route consumes a challenge and returns a sco
       approvalRef: "approval_password_route_3",
       mustRotate: true
     });
-    auth.enrollTotpCredential({
+    await auth.enrollTotpCredential({
       entryToken,
       encryptedTotpSecret: "enc:route-totp-secret"
     });
@@ -644,7 +644,7 @@ test("portal password second-factor route locks TOTP after repeated failures", a
       approvalRef: "approval_password_route_4",
       mustRotate: true
     });
-    auth.enrollTotpCredential({
+    await auth.enrollTotpCredential({
       entryToken,
       encryptedTotpSecret: "enc:route-totp-secret"
     });
@@ -831,8 +831,8 @@ test("portal TOTP setup stores protected secret material after enrollment confir
     });
     const sessionRef = passwordResult.session.sessionRef;
 
-    const started = auth.startTotpEnrollment({ sessionRef });
-    const confirmed = auth.confirmTotpEnrollment({
+    const started = await auth.startTotpEnrollment({ sessionRef });
+    const confirmed = await auth.confirmTotpEnrollment({
       sessionRef,
       enrollmentRef: started.enrollment.enrollmentRef,
       code: "654321"

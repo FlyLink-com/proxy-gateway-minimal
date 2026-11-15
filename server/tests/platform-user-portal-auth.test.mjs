@@ -15,7 +15,7 @@ const TEST_TOTP_SECRET_PROTECTOR = {
   protect: (secret) => `v2:test-protected:${secret}`
 };
 
-function withStore(fn) {
+async function withStore(fn) {
   const tempDir = mkdtempSync(join(tmpdir(), "platform-user-portal-auth-"));
   let store;
   try {
@@ -23,7 +23,7 @@ function withStore(fn) {
       dbPath: join(tempDir, "control.sqlite")
     });
     seedAccountAndEntitlement(store);
-    return fn(store);
+    return await fn(store);
   } finally {
     store?.close();
     rmSync(tempDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 50 });
@@ -86,8 +86,8 @@ function buildTestPassword() {
   return randomUUID();
 }
 
-test("user portal auth issues dynamic entry with hash-only storage and visible-once handoff", () => {
-  withStore((store) => {
+test("user portal auth issues dynamic entry with hash-only storage and visible-once handoff", async () => {
+  await withStore(async (store) => {
     const service = createService(store);
     const result = service.issueDynamicEntry({
       accountId: "acct_portal_1",
@@ -115,8 +115,8 @@ test("user portal auth issues dynamic entry with hash-only storage and visible-o
   });
 });
 
-test("user portal auth consumes entry, enrolls TOTP, and creates a scoped session", () => {
-  withStore((store) => {
+test("user portal auth consumes entry, enrolls TOTP, and creates a scoped session", async () => {
+  await withStore(async (store) => {
     const service = createService(store);
     const issued = service.issueDynamicEntry({
       accountId: "acct_portal_1",
@@ -126,7 +126,7 @@ test("user portal auth consumes entry, enrolls TOTP, and creates a scoped sessio
       expiresAt: FUTURE
     });
 
-    const enrollment = service.enrollTotpCredential({
+    const enrollment = await service.enrollTotpCredential({
       entryToken: issued.handoffMaterial.entryToken,
       encryptedTotpSecret: "enc:totp-secret"
     });
@@ -135,7 +135,7 @@ test("user portal auth consumes entry, enrolls TOTP, and creates a scoped sessio
     assert.equal(enrollment.summary.credentialRef, "totp_cred_1");
     assert.equal(store.getPortalEntry("entry_portal_1").status, "used");
 
-    const verified = service.verifyTotpAndCreateSession({
+    const verified = await service.verifyTotpAndCreateSession({
       accountId: "acct_portal_1",
       code: "123456"
     });
@@ -150,8 +150,8 @@ test("user portal auth consumes entry, enrolls TOTP, and creates a scoped sessio
   });
 });
 
-test("user portal auth rejects reused entries and failed TOTP without creating sessions", () => {
-  withStore((store) => {
+test("user portal auth rejects reused entries and failed TOTP without creating sessions", async () => {
+  await withStore(async (store) => {
     const service = createService(store);
     const issued = service.issueDynamicEntry({
       accountId: "acct_portal_1",
@@ -161,17 +161,17 @@ test("user portal auth rejects reused entries and failed TOTP without creating s
       expiresAt: FUTURE
     });
 
-    service.enrollTotpCredential({
+    await service.enrollTotpCredential({
       entryToken: issued.handoffMaterial.entryToken,
       encryptedTotpSecret: "enc:totp-secret"
     });
 
-    assert.throws(() => service.enrollTotpCredential({
+    await assert.rejects(service.enrollTotpCredential({
       entryToken: issued.handoffMaterial.entryToken,
       encryptedTotpSecret: "enc:totp-secret-2"
     }), /portal entry is not active/);
 
-    assert.throws(() => service.verifyTotpAndCreateSession({
+    await assert.rejects(service.verifyTotpAndCreateSession({
       accountId: "acct_portal_1",
       code: "000000"
     }), /TOTP verification failed/);
@@ -182,8 +182,8 @@ test("user portal auth rejects reused entries and failed TOTP without creating s
   });
 });
 
-test("user portal auth creates first-login setup session from password when policy allows no factor", () => {
-  withStore((store) => {
+test("user portal auth creates first-login setup session from password when policy allows no factor", async () => {
+  await withStore(async (store) => {
     const passwordService = createPasswordService(store);
     const plainPassword = buildTestPassword();
     passwordService.issueInitialPasswordCredential({
@@ -211,8 +211,8 @@ test("user portal auth creates first-login setup session from password when poli
   });
 });
 
-test("user portal auth accepts a unique loginRef for password login", () => {
-  withStore((store) => {
+test("user portal auth accepts a unique loginRef for password login", async () => {
+  await withStore(async (store) => {
     const passwordService = createPasswordService(store);
     const plainPassword = buildTestPassword();
     passwordService.issueInitialPasswordCredential({
@@ -241,8 +241,8 @@ test("user portal auth accepts a unique loginRef for password login", () => {
   });
 });
 
-test("user portal auth requires second factor after password when TOTP is enabled", () => {
-  withStore((store) => {
+test("user portal auth requires second factor after password when TOTP is enabled", async () => {
+  await withStore(async (store) => {
     const passwordService = createPasswordService(store);
     const plainPassword = buildTestPassword();
     passwordService.issueInitialPasswordCredential({
@@ -261,7 +261,7 @@ test("user portal auth requires second factor after password when TOTP is enable
       issuedByRef: "operator_safe_ref",
       expiresAt: FUTURE
     });
-    service.enrollTotpCredential({
+    await service.enrollTotpCredential({
       entryToken: issued.handoffMaterial.entryToken,
       encryptedTotpSecret: "enc:totp-secret"
     });
@@ -275,14 +275,14 @@ test("user portal auth requires second factor after password when TOTP is enable
     assert.deepEqual(challenge.result.availableFactors, ["totp"]);
     assert.equal(store.listPortalSessions({ accountId: "acct_portal_1" }).length, 0);
 
-    assert.throws(() => service.completeSecondFactor({
+    await assert.rejects(service.completeSecondFactor({
       challengeRef: "mfa_challenge_1",
       factor: "totp",
       code: "000000"
     }), /TOTP verification failed/);
     assert.equal(store.listPortalSessions({ accountId: "acct_portal_1" }).length, 0);
 
-    const completed = service.completeSecondFactor({
+    const completed = await service.completeSecondFactor({
       challengeRef: "mfa_challenge_1",
       factor: "totp",
       code: "123456"
@@ -297,8 +297,8 @@ test("user portal auth requires second factor after password when TOTP is enable
   });
 });
 
-test("user portal auth keeps locked TOTP as a required second factor for password login", () => {
-  withStore((store) => {
+test("user portal auth keeps locked TOTP as a required second factor for password login", async () => {
+  await withStore(async (store) => {
     const passwordService = createPasswordService(store);
     const plainPassword = buildTestPassword();
     passwordService.issueInitialPasswordCredential({
@@ -321,13 +321,13 @@ test("user portal auth keeps locked TOTP as a required second factor for passwor
       issuedByRef: "operator_safe_ref",
       expiresAt: FUTURE
     });
-    service.enrollTotpCredential({
+    await service.enrollTotpCredential({
       entryToken: issued.handoffMaterial.entryToken,
       encryptedTotpSecret: "enc:totp-secret"
     });
 
     for (let attempt = 0; attempt < 2; attempt += 1) {
-      assert.throws(() => service.verifyTotpAndCreateSession({
+      await assert.rejects(service.verifyTotpAndCreateSession({
         accountId: "acct_portal_1",
         code: "000000"
       }), /TOTP verification failed/);
@@ -348,8 +348,8 @@ test("user portal auth keeps locked TOTP as a required second factor for passwor
   });
 });
 
-test("user portal auth requires a TOTP secret protector before setup enrollment", () => {
-  withStore((store) => {
+test("user portal auth requires a TOTP secret protector before setup enrollment", async () => {
+  await withStore(async (store) => {
     const passwordService = createPasswordService(store);
     const plainPassword = buildTestPassword();
     passwordService.issueInitialPasswordCredential({
@@ -368,15 +368,15 @@ test("user portal auth requires a TOTP secret protector before setup enrollment"
       plainPassword
     });
 
-    assert.throws(() => service.startTotpEnrollment({
+    await assert.rejects(service.startTotpEnrollment({
       sessionRef: session.session.sessionRef
     }), /portal TOTP secret protector is required/);
     assert.equal(store.getActivePortalTotpCredential("acct_portal_1"), null);
   });
 });
 
-test("user portal auth protects dynamic entry TOTP enrollment before persistence", () => {
-  withStore((store) => {
+test("user portal auth protects dynamic entry TOTP enrollment before persistence", async () => {
+  await withStore(async (store) => {
     const service = createService(store, {
       totpSecretProtector: {
         protect: (secret) => `v2:test-protected:${secret}`
@@ -391,7 +391,7 @@ test("user portal auth protects dynamic entry TOTP enrollment before persistence
       expiresAt: FUTURE
     });
 
-    service.enrollTotpCredential({
+    await service.enrollTotpCredential({
       entryToken: issued.handoffMaterial.entryToken,
       encryptedTotpSecret: "enc:totp-secret"
     });
@@ -402,8 +402,8 @@ test("user portal auth protects dynamic entry TOTP enrollment before persistence
   });
 });
 
-test("user portal auth rejects TOTP verification when the credential is revoked", () => {
-  withStore((store) => {
+test("user portal auth rejects TOTP verification when the credential is revoked", async () => {
+  await withStore(async (store) => {
     const service = createService(store);
     store.createPortalTotpCredential({
       id: "totp_cred_revoked",
@@ -417,7 +417,7 @@ test("user portal auth rejects TOTP verification when the credential is revoked"
     });
 
     assert.equal(store.getActivePortalTotpCredential("acct_portal_1"), null);
-    assert.throws(() => service.verifyTotpAndCreateSession({
+    await assert.rejects(service.verifyTotpAndCreateSession({
       accountId: "acct_portal_1",
       code: "123456"
     }), /active portal TOTP credential not found/);
@@ -425,12 +425,12 @@ test("user portal auth rejects TOTP verification when the credential is revoked"
   });
 });
 
-test("user portal auth rejects TOTP verification when no credential row exists", () => {
-  withStore((store) => {
+test("user portal auth rejects TOTP verification when no credential row exists", async () => {
+  await withStore(async (store) => {
     const service = createService(store);
 
     assert.equal(store.getActivePortalTotpCredential("acct_portal_1"), null);
-    assert.throws(() => service.verifyTotpAndCreateSession({
+    await assert.rejects(service.verifyTotpAndCreateSession({
       accountId: "acct_portal_1",
       code: "123456"
     }), /active portal TOTP credential not found/);
@@ -438,7 +438,7 @@ test("user portal auth rejects TOTP verification when no credential row exists",
   });
 });
 
-test("user portal auth fails closed when the TOTP credential store is unavailable", () => {
+test("user portal auth fails closed when the TOTP credential store is unavailable", async () => {
   const service = createUserPortalAuthService({
     controlStore: {
       // verifyTotpAndCreateSession re-checks account status first
@@ -455,7 +455,7 @@ test("user portal auth fails closed when the TOTP credential store is unavailabl
     totpVerifier: () => true
   });
 
-  assert.throws(() => service.verifyTotpAndCreateSession({
+  await assert.rejects(service.verifyTotpAndCreateSession({
     accountId: "acct_portal_1",
     code: "123456"
   }), /control store unavailable/);
