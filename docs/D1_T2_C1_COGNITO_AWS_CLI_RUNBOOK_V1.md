@@ -242,7 +242,9 @@ Also test first sign-in with 71, 72 and 73 UTF-8-byte passwords and the Chinese 
 - No CloudFormation validation call, change set, stack, User Pool, domain, app client, IAM role or import job was created.
 - No CSV was generated or uploaded.
 - No production user, password hash, TOTP secret, Worker, D1, DO, Secret, route or binding was accessed or modified.
-- CloudFormation local/static validation and the focused source tests remain to be completed on the final PR HEAD.
+- Local YAML parse and internal CloudFormation Ref/GetAtt checks passed for both templates; cfn-lint and AWS cloudformation validate-template were not run.
+- The focused isolated Node 22.16 harness passed 8/8 tests; the full repository test command and root suite were not run in a complete checkout.
+- The CSV writer smoke test created one local synthetic fixture under the temp directory, verified POSIX mode 0600 and confirmed that a second run does not overwrite the file. No CSV from a real pool template was uploaded to AWS.
 - C1 remains PARTIAL/BLOCKED and T2 remains BLOCKED until the full provider and identity-custody evidence is independently reviewed and accepted.
 
 ## 10. Official AWS references
