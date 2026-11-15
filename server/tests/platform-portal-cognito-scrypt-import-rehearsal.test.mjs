@@ -110,7 +110,7 @@ test("Cognito parser enforces canonical Scrypt parameters and lowercase hex", ()
   }
 });
 
-test("Cognito conversion preserves 71, 72 and 73 UTF-8-byte Scrypt passwords without a bcrypt truncation rule", () => {
+test("Local Scrypt conversion preserves 71, 72 and 73 UTF-8-byte passwords without a bcrypt truncation rule", () => {
   const cases = [
     { password: "a".repeat(71), bytes: 71 },
     { password: "a".repeat(72), bytes: 72 },
