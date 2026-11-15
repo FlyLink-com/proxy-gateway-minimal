@@ -1,4 +1,4 @@
-import { chmod, readFile, realpath, stat, unlink, writeFile } from "node:fs/promises";
+import { chmod, open, readFile, realpath, stat, unlink } from "node:fs/promises";
 import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
 import { tmpdir } from "node:os";
 import { buildSyntheticCognitoImportCsv } from "../server/services/platform/portal-cognito-scrypt-import-rehearsal.mjs";
@@ -50,8 +50,11 @@ if (!headerLine || headerLine.includes('"')) {
 const header = headerLine.split(",");
 const csv = buildSyntheticCognitoImportCsv(header);
 
+const outputFile = await open(outputPath, "wx", 0o600);
 try {
-  await writeFile(outputPath, csv, { encoding: "utf8", mode: 0o600, flag: "wx" });
+  await outputFile.writeFile(csv, { encoding: "utf8" });
+  await outputFile.sync();
+  await outputFile.close();
   if (process.platform !== "win32") {
     await chmod(outputPath, 0o600);
     const outputStat = await stat(outputPath);
@@ -60,6 +63,7 @@ try {
     }
   }
 } catch (error) {
+  await outputFile.close().catch(() => {});
   await unlink(outputPath).catch(() => {});
   throw error;
 }
