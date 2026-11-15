@@ -1,5 +1,6 @@
 import { recordReferralRegistration } from './portal-referral-contract.mjs';
 import { createPortalSubscriptionLinkResetStore, verifyPortalSubscriptionLinkResetLineage } from "./portal-subscription-link-reset-store.mjs";
+import { isMaskedEmailDisplay } from "./email-masking.mjs";
 import { IdentityBindingRepository } from "./d1-identity-binding-repository.mjs";
 import Database from "better-sqlite3";
 import { createHash, randomBytes } from "node:crypto";
@@ -301,7 +302,12 @@ function assertNoUnsafeFields(value, path = []) {
   }
   for (const [key, nested] of Object.entries(value)) {
     const normalizedKey = String(key).toLowerCase();
-    if (UNSAFE_FIELD_PARTS.some((part) => normalizedKey.includes(part))) {
+    // B2-a: "displayEmailMasked" is the one allowlisted account-metadata key
+    // whose name contains "email". Its value is a masked display label, not
+    // an email: the write boundary (accountMetadataJson) enforces the masked
+    // shape, so the name check is skipped for this exact key only.
+    if (normalizedKey !== "displayemailmasked"
+      && UNSAFE_FIELD_PARTS.some((part) => normalizedKey.includes(part))) {
       throw platformError("validation_error", "unsafe field is not allowed in subscription control database input");
     }
     assertNoUnsafeFields(nested, [...path, key]);
@@ -384,6 +390,7 @@ const ACCOUNT_METADATA_FIELDS = new Set([
   "displayName",
   "loginRef",
   "displayRef",
+  "displayEmailMasked",
   "initialAccount",
   "requireSecuritySetup",
   "registrationSource",
@@ -489,6 +496,19 @@ function accountMetadataJson(value) {
         throw platformError("validation_error", "account metadata display value is invalid");
       }
       normalized[field] = display;
+      continue;
+    }
+
+    if (field === "displayEmailMasked") {
+      // B2-a: the only allowlisted metadata value that may carry an
+      // email-shaped string is the masked display label. A raw email (or any
+      // other non-masked value) is rejected here so the field can never hold
+      // one; the projection gate and the session display readers enforce the
+      // same shape on read.
+      if (typeof entry !== "string" || !isMaskedEmailDisplay(entry)) {
+        throw platformError("validation_error", "account metadata display email is invalid");
+      }
+      normalized[field] = entry;
       continue;
     }
 

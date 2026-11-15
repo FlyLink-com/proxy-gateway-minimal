@@ -206,3 +206,160 @@ test("masked email never becomes an identifier: login still resolves by account"
     database.close();
   }
 });
+
+test("stored displayEmailMasked wins over the derived mask, and a raw value stored in that field is rejected", async () => {
+  const database = new Database(":memory:");
+  const store = createSqliteSubscriptionControlStore({ database });
+  try {
+    // A: stored masked value differs from what the legacy loginRef would
+    // derive (lo*** vs ot***). The stored value must win everywhere.
+    store.createAccount({
+      id: "acct_stored_masked_1",
+      ownerRef: "acct_stored_masked_1",
+      status: "active",
+      createdAt: NOW,
+      updatedAt: NOW,
+      metadata: {
+        registrationSource: "self_service_portal",
+        loginRef: "other@example.test",
+        displayRef: "other@example.test",
+        displayEmailMasked: "lo***@example.test"
+      }
+    });
+    // B: a raw email in displayEmailMasked. The write boundary rejects it,
+    // so it can only exist as a malformed historical row: inject it with raw
+    // SQL (the write-path audit's own precedent for malformed fixtures) and
+    // prove the display readers fall back to the derived mask instead.
+    store.createAccount({
+      id: "acct_raw_masked_field_1",
+      ownerRef: "acct_raw_masked_field_1",
+      status: "active",
+      createdAt: NOW,
+      updatedAt: NOW,
+      metadata: {
+        registrationSource: "self_service_portal",
+        loginRef: "member@example.test",
+        displayRef: "member@example.test"
+      }
+    });
+    {
+      const row = database.prepare(
+        "SELECT metadata_json FROM platform_accounts WHERE id = ?"
+      ).get("acct_raw_masked_field_1");
+      const metadata = JSON.parse(row.metadata_json);
+      metadata.displayEmailMasked = "member@example.test";
+      database.prepare(
+        "UPDATE platform_accounts SET metadata_json = ? WHERE id = ?"
+      ).run(JSON.stringify(metadata), "acct_raw_masked_field_1");
+    }
+    // C: no loginRef at all. The stored masked value is the only display
+    // source; without it the session would fall back to "user_account".
+    store.createAccount({
+      id: "acct_no_login_ref_1",
+      ownerRef: "acct_no_login_ref_1",
+      status: "active",
+      createdAt: NOW,
+      updatedAt: NOW,
+      metadata: {
+        registrationSource: "self_service_portal",
+        displayEmailMasked: "no***@example.test"
+      }
+    });
+
+    const auth = createUserPortalAuthService({
+      controlStore: store,
+      nowFn: () => NOW,
+      sessionRefFactory: (() => {
+        let index = 0;
+        return () => `portal_session_stored_${++index}`;
+      })(),
+      sessionExpiresAtFactory: () => SESSION_EXPIRES,
+      passwordCredentialService: { verifyPasswordCredential() {} },
+      allowPasswordOnlySessionForSetup: true,
+      totpVerifier: ({ code }) => code === "123456"
+    });
+
+    // Setup session: stored value wins for A; raw stored value is rejected
+    // for B and the derived mask is used instead.
+    const setupA = auth.createPasswordSetupSession({ accountId: "acct_stored_masked_1", loginRef: "other@example.test" });
+    assert.equal(setupA.session.userRef, "lo***@example.test");
+    assert.equal(setupA.session.displayName, "lo***@example.test");
+    assert.equal(JSON.stringify(setupA).includes("other@example.test"), false);
+    const setupB = auth.createPasswordSetupSession({ accountId: "acct_raw_masked_field_1", loginRef: "member@example.test" });
+    assert.equal(setupB.session.userRef, "me***@example.test");
+    assert.equal(setupB.session.displayName, "me***@example.test");
+    assert.equal(JSON.stringify(setupB).includes("member@example.test"), false);
+
+    // Browser session: stored value wins for A; C shows the stored value
+    // instead of the "user_account" fallback.
+    const loginA = auth.verifyPasswordAndMaybeChallenge({
+      accountId: "acct_stored_masked_1",
+      plainPassword: "synthetic-test-value"
+    });
+    const browserA = auth.createBrowserSession({ sessionRef: loginA.session.sessionRef });
+    assert.equal(auth.getBrowserSession({ cookieValue: browserA.cookieValue }).userRef, "lo***@example.test");
+    const loginC = auth.verifyPasswordAndMaybeChallenge({
+      accountId: "acct_no_login_ref_1",
+      plainPassword: "synthetic-test-value"
+    });
+    const browserC = auth.createBrowserSession({ sessionRef: loginC.session.sessionRef });
+    const sessionC = auth.getBrowserSession({ cookieValue: browserC.cookieValue });
+    assert.equal(sessionC.userRef, "no***@example.test");
+    assert.equal(sessionC.displayName, "no***@example.test");
+
+    // Admin list: the same stored values, never the raw login reference.
+    const leadQueue = createPlatformLeadReviewQueue({
+      nowFn: () => NOW,
+      idFactory: () => "lead_stored_1"
+    });
+    const accountShell = createPlatformAccountEntitlementShell({
+      nowFn: () => NOW,
+      accountIdFactory: () => "acct_shell_stored_1"
+    });
+    const { server, baseUrl } = await listen(createApp({
+      rootDir: ROOT,
+      host: "127.0.0.1",
+      ports: { console: 3456, socks: 1080, httpProxy: 18180 },
+      consoleToken: "secret",
+      proxyConfig: { servers: [], pingHosts: [], nginx: { host: "127.0.0.1", ports: [] } },
+      platform: { leadQueue, accountShell, controlStore: store },
+      services: {
+        ssLocal: {
+          start: async () => ({ ok: true }),
+          stop: async () => ({ ok: true }),
+          status: () => ({ running: false, starting: false })
+        },
+        httpProxy: {
+          start: async () => ({ ok: true }),
+          stop: async () => ({ ok: true }),
+          status: () => ({ running: false, starting: false })
+        }
+      },
+      isPortListening: async () => false
+    }));
+    try {
+      const listed = await fetch(`${baseUrl}/api/admin/platform/accounts`, {
+        headers: { Authorization: "Bearer secret" }
+      });
+      assert.equal(listed.status, 200);
+      const listedBody = await listed.json();
+      assert.equal(listedBody.items.length, 3);
+      const itemA = listedBody.items.find((item) => item.id === "acct_stored_masked_1");
+      assert.equal(itemA.email, "lo***@example.test");
+      assert.equal(itemA.displayName, "lo***@example.test");
+      const itemB = listedBody.items.find((item) => item.id === "acct_raw_masked_field_1");
+      assert.equal(itemB.email, "me***@example.test");
+      assert.equal(itemB.displayName, "me***@example.test");
+      const itemC = listedBody.items.find((item) => item.id === "acct_no_login_ref_1");
+      assert.equal(itemC.email, "no***@example.test");
+      assert.equal(itemC.displayName, "no***@example.test");
+      assert.equal(JSON.stringify(listedBody).includes("other@example.test"), false);
+      assert.equal(JSON.stringify(listedBody).includes("member@example.test"), false);
+    } finally {
+      server.close();
+    }
+  } finally {
+    store.close();
+    database.close();
+  }
+});

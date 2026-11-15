@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from "node:crypto";
-import { maskEmail } from "./email-masking.mjs";
+import { isMaskedEmailDisplay, maskEmail } from "./email-masking.mjs";
 
 function portalAuthError(code, message) {
   const error = new Error(message);
@@ -352,7 +352,13 @@ export function createUserPortalAuthService({
     // Display only: the session summary carries the masked email, never the
     // raw login reference. Login resolution keeps using the raw email inside
     // the server (G-02); the masked value is not an identifier.
-    const userRef = maskEmail(normalizeEmailLogin(metadata.loginRef));
+    // B2-a: prefer the masked display value written at registration; fall
+    // back to deriving it from the stored raw login reference (legacy
+    // accounts without a stored masked value), then to the fallback.
+    const storedMaskedDisplay = metadata.displayEmailMasked;
+    const userRef = isMaskedEmailDisplay(storedMaskedDisplay)
+      ? storedMaskedDisplay
+      : maskEmail(normalizeEmailLogin(metadata.loginRef));
     return {
       sessionRef: browserSessionContext(session.sessionRef),
       transport: "cookie",
@@ -932,7 +938,13 @@ export function createUserPortalAuthService({
       if (!account || account.status !== "active") {
         throw portalAuthError("invalid_login", "invalid_login");
       }
-      const publicRef = maskEmail(normalizeEmailLogin(input.loginRef));
+      // B2-a: prefer the masked display value stored on the account; fall
+      // back to deriving it from the caller-supplied login reference.
+      const accountMetadata = account.metadata && typeof account.metadata === "object" ? account.metadata : {};
+      const storedMaskedDisplay = accountMetadata.displayEmailMasked;
+      const publicRef = isMaskedEmailDisplay(storedMaskedDisplay)
+        ? storedMaskedDisplay
+        : maskEmail(normalizeEmailLogin(input.loginRef));
       const { session } = createSession({
         accountId,
         authMethod: "password",
