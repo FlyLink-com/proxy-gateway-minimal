@@ -21,6 +21,12 @@ export function resolveAccountByVerifiedActorContext({
   bindingRepository,
   actorContext,
   allowedIssuers,
+  // B2-b B-A3: the caller supplies the factors it requires. The previous
+  // hardcoded [] meant no factor was ever enforced; callers that already
+  // hold a verified context now pass the factors that context must prove
+  // (login: ["password"]; after the second factor: ["password", "totp"]).
+  // Default [] preserves the B2-2 contract for existing callers.
+  requiredFactors = [],
   nowMs = Date.now()
 } = {}) {
   if (!controlStore || typeof controlStore.getAccount !== "function") {
@@ -32,7 +38,7 @@ export function resolveAccountByVerifiedActorContext({
   const verified = parseTrustedIdentityActorContext(actorContext, {
     allowedIssuers,
     nowMs,
-    requiredFactors: []
+    requiredFactors
   });
   const resolved = bindingRepository.resolve({
     issuerRef: verified.issuerRef,

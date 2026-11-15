@@ -1,5 +1,9 @@
 import { createHash, randomBytes } from "node:crypto";
 import { isMaskedEmailDisplay, maskEmail } from "./email-masking.mjs";
+import {
+  IDENTITY_ACTOR_CONTEXT_AUDIENCE,
+  parseTrustedIdentityActorContext
+} from "./d1-t2-identity-boundary.mjs";
 
 function portalAuthError(code, message) {
   const error = new Error(message);
@@ -268,6 +272,11 @@ export function createUserPortalAuthService({
   totpVerifier,
   totpSecretProtector = null,
   passwordCredentialService,
+  // B2-b (path A): optional authority token verifier. Null (the default)
+  // means no identity authority is configured: the authority login entry
+  // fails closed and the password login path is untouched.
+  authorityTokenVerifier = null,
+  authorityAllowedIssuers = ["portal"],
   allowPasswordOnlySessionForSetup = false,
   totpMaxFailures = 5,
   totpLockSeconds = 900,
@@ -297,10 +306,10 @@ export function createUserPortalAuthService({
     }
   }
 
-  function createSession({ accountId, entryId = null, authMethod, issuedAt, expiresAt, rememberMe = false }) {
+  function createSession({ accountId, entryId = null, authMethod, issuedAt, expiresAt, rememberMe = false, sessionRef = null }) {
     const remembered = rememberPreference(rememberMe);
     const session = controlStore.createPortalSession({
-      id: legacySessionReference(requiredText(sessionRefFactory(), "sessionRef")),
+      id: legacySessionReference(requiredText(sessionRef ?? sessionRefFactory(), "sessionRef")),
       accountId,
       entryId,
       authMethod,
@@ -950,11 +959,142 @@ export function createUserPortalAuthService({
     });
   }
 
+  // B2-b (path A, B-A2): authority-first login. The caller presents an
+  // authority Access Token; the password is verified by the authority, never
+  // by this service. This entry is additive and config-gated: without an
+  // authorityTokenVerifier it fails closed, and the password login entry
+  // (verifyPasswordAndMaybeChallenge) is untouched until the Q4 transition
+  // decision.
+  //
+  // The resolver cannot be called with an "already verified" context here
+  // because the account is exactly what resolution must find: the context
+  // requires an accountRef. So this entry follows the Worker pattern
+  // (workers/control-plane/src/portal-auth.mjs:100-140): exact
+  // (issuer, subject) binding lookup first, then the boundary parser runs
+  // over the context built from the resolved account to enforce the time
+  // window, audience and shape. The sessionRef is issued before parsing
+  // (B2 design §5.1) and is the same one createSession persists; on any
+  // failure it is discarded — never stored, never reused.
+  //
+  // Factor evidence: a valid token proves the password factor only because
+  // the Portal client is database-connection-only (tenant configuration
+  // constraint, confirmed in C1-IDP proof). totp is proven only by a valid
+  // namespaced MFA claim in the token (Admin Action pattern); otherwise
+  // the account's enrolled second factor is challenged through the
+  // existing flow. Access Token validity is never equated with MFA
+  // completion. The required-factors policy itself is enforced by the
+  // mfaProven branch below (challenge unless totp is proven); the boundary
+  // parse additionally enforces time, audience and shape.
+  async function verifyAuthorityLoginAndMaybeChallenge(input) {
+    const verifiedAt = now();
+    const verifiedAtMs = Date.parse(verifiedAt);
+    const rememberMe = rememberPreference(input?.rememberMe);
+    if (!authorityTokenVerifier
+      || typeof authorityTokenVerifier.verifyAccessToken !== "function") {
+      throw portalAuthError("identity_authority_unavailable", "identity authority is not configured");
+    }
+    let verified;
+    try {
+      verified = await authorityTokenVerifier.verifyAccessToken(
+        requiredText(input?.accessToken, "accessToken")
+      );
+    } catch (error) {
+      if (error && error.code === "authority_jwks_unavailable") {
+        throw portalAuthError("identity_authority_unavailable", "identity authority is unavailable");
+      }
+      // Token failures are uniformly invalid_login: no detail leaks whether
+      // the token was expired, mis-issued, or forged.
+      throw portalAuthError("invalid_login", "invalid_login");
+    }
+    if (!authorityAllowedIssuers.includes("portal")) {
+      throw portalAuthError("invalid_login", "invalid_login");
+    }
+    const sessionRef = sessionRefFactory();
+    const mfaProven = verified.mfaProven === true;
+    const factors = mfaProven ? ["password", "totp"] : ["password"];
+    let account;
+    try {
+      if (typeof controlStore.identityBindingRepository !== "function") {
+        throw portalAuthError("validation_error", "identity binding repository is not configured");
+      }
+      const repository = controlStore.identityBindingRepository();
+      const resolved = repository.resolve({ issuerRef: "portal", subjectRef: verified.subject });
+      if (!resolved || resolved.outcome !== "resolved") {
+        throw portalAuthError("invalid_login", "invalid_login");
+      }
+      account = controlStore.getAccount(resolved.accountRef);
+      if (!account || account.status !== "active") {
+        throw portalAuthError("invalid_login", "invalid_login");
+      }
+      // Enforce the boundary contract (time window, audience, shape,
+      // factors) over the context built from the resolved account. The
+      // context is short-lived by construction: it expires at the token's
+      // expiry or 300 seconds from now, whichever is sooner.
+      parseTrustedIdentityActorContext({
+        accountRef: account.id,
+        audience: IDENTITY_ACTOR_CONTEXT_AUDIENCE,
+        authTimeMs: verified.authTimeMs ?? null,
+        expiresAtMs: Math.min(verified.expiresAt * 1000, verifiedAtMs + 300_000),
+        factors,
+        issuedAtMs: verifiedAtMs,
+        issuerRef: "portal",
+        sessionRef,
+        subjectRef: verified.subject
+      }, {
+        allowedIssuers: authorityAllowedIssuers,
+        nowMs: verifiedAtMs,
+        requiredFactors: [...factors]
+      });
+    } catch (error) {
+      // Identity errors (boundary / resolver / binding) fail closed as
+      // invalid_login so no authority detail leaks. Anything else —
+      // database, storage, programming errors — is infrastructure and
+      // must surface as a 500, not masquerade as a bad login.
+      if (error && (error.code === "invalid_login" || error.code === "validation_error")) throw error;
+      if (error && typeof error.code === "string" && error.code.startsWith("identity_")) {
+        throw portalAuthError("invalid_login", "invalid_login");
+      }
+      throw error;
+    }
+    const accountId = account.id;
+    const availableFactors = enabledSecondFactors(accountId);
+    if (availableFactors.length > 0 && !mfaProven) {
+      const expiresAt = addSeconds(verifiedAt, 300);
+      const challenge = controlStore.createPortalSecondFactorChallenge({
+        id: requiredText(secondFactorChallengeRefFactory(), "challengeRef"),
+        accountId,
+        challengeHash: `portalmfahash_${createHash("sha256").update(`${accountId}|${verifiedAt}|${availableFactors.join(",")}`).digest("hex")}`,
+        allowedFactors: availableFactors,
+        rememberMe,
+        status: "active",
+        expiresAt,
+        createdAt: verifiedAt,
+        updatedAt: verifiedAt
+      });
+      return {
+        result: safeSecondFactorChallenge(challenge)
+      };
+    }
+
+    if (!allowPasswordOnlySessionForSetup) {
+      throw portalAuthError("validation_error", "second factor is required");
+    }
+    return createSession({
+      accountId,
+      authMethod: "authority",
+      issuedAt: verifiedAt,
+      expiresAt: input?.expiresAt,
+      rememberMe,
+      sessionRef
+    });
+  }
+
   return {
     issueDynamicEntry,
     enrollTotpCredential,
     verifyTotpAndCreateSession,
     verifyPasswordAndMaybeChallenge,
+    verifyAuthorityLoginAndMaybeChallenge,
     createPasswordSetupSession(input = {}) {
       const issuedAt = now();
       const accountId = requiredText(input.accountId, "accountId");

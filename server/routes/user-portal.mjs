@@ -53,6 +53,10 @@ function sendPortalError(res, error) {
     res.status(503).json({ error: "email_verification_unavailable" });
     return;
   }
+  if (error.code === "identity_authority_unavailable") {
+    res.status(503).json({ error: "identity_authority_unavailable" });
+    return;
+  }
   if (error.code === "email_verification_rate_limited") {
     res.status(429).json({ error: "email_verification_rate_limited" });
     return;
@@ -379,6 +383,41 @@ export function userPortalRoutes(state, options = {}) {
       const result = auth.verifyPasswordAndMaybeChallenge({
         accountId: req.body?.accountId,
         plainPassword: req.body?.plainPassword ?? req.body?.password,
+        rememberMe: req.body?.rememberMe ?? false,
+        requestContext: requestContext(req)
+      });
+      if (result.session) {
+        res.json({ session: completedSession(req, res, result.session, result.rememberMe === true) });
+        return;
+      }
+      if (result.result?.status === "second_factor_required") {
+        res.status(202).json({ challenge: result.result });
+        return;
+      }
+      res.json(result);
+    } catch (error) {
+      sendPortalError(res, error);
+    }
+  });
+
+  // B2-b (path A, B-A2): authority-first login. Accepts an authority
+  // Access Token only — never a plain password. Additive and config-gated:
+  // without an authority verifier the service answers
+  // identity_authority_unavailable (503); the password entry above is
+  // untouched until the Q4 transition decision. The full Authorization
+  // Code + PKCE browser flow (redirect/callback) is a separate step that
+  // needs a tenant; this route accepts a token the caller already holds.
+  router.post("/api/portal/authority/session", async (req, res) => {
+    try {
+      requireAuthService();
+      verifyHumanChallenge(req, "portal_login", { required: true });
+      if (typeof auth.verifyAuthorityLoginAndMaybeChallenge !== "function") {
+        const error = new Error("identity authority login is not configured");
+        error.code = "validation_error";
+        throw error;
+      }
+      const result = await auth.verifyAuthorityLoginAndMaybeChallenge({
+        accessToken: req.body?.accessToken,
         rememberMe: req.body?.rememberMe ?? false,
         requestContext: requestContext(req)
       });

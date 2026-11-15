@@ -2555,6 +2555,10 @@ export function createRuntimeState(options = {}) {
       totpVerifier: platformPortalTotpVerifier,
       totpSecretProtector: platformPortalTotpV3Protector,
       passwordCredentialService: platformPortalPasswordCredentialService,
+      // B2-b (path A): optional authority verifier, injected by the caller
+      // once a tenant is configured. Null by default: the authority login
+      // entry fails closed and no tenant value is read here.
+      authorityTokenVerifier: options.platformPortalAuthorityTokenVerifier || null,
       allowPasswordOnlySessionForSetup: envFlag(env.USER_PORTAL_ALLOW_PASSWORD_ONLY_SETUP_SESSION)
     })
   ) : null;
