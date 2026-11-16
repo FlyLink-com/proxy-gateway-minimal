@@ -1,0 +1,83 @@
+name: Node Provisioning Dry Run
+
+on:
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: Safe node profile to summarize.
+        required: true
+        type: choice
+        options:
+          - jp-01
+
+permissions:
+  contents: read
+
+concurrency:
+  group: node-provisioning-dry-run-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    name: Render a non-executable node provisioning plan
+    if: github.ref == 'refs/heads/master'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout reviewed master commit
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Setup pinned Node runtime
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 22.23.1
+
+      - name: Run node provisioning contract tests
+        run: >-
+          node --test
+          server/tests/node-provisioning-dry-run.test.mjs
+          server/tests/node-provisioning-dry-run-workflow.test.mjs
+          server/tests/vultr-node-provisioning-adapter.test.mjs
+          server/tests/node-image-first-boot-packet.test.mjs
+
+      - name: Render JP-01 dry-run plan
+        shell: bash
+        env:
+          PROFILE: ${{ inputs.profile }}
+        run: |
+          set -euo pipefail
+          test "$PROFILE" = "jp-01"
+          node scripts/node-provisioning-dry-run.mjs --profile "$PROFILE" > "$RUNNER_TEMP/node-provisioning-plan.json"
+          node --input-type=module - "$RUNNER_TEMP/node-provisioning-plan.json" <<'NODE'
+          import { appendFileSync, readFileSync } from "node:fs";
+          const plan = JSON.parse(readFileSync(process.argv[2], "utf8"));
+          const lines = [
+            "## Node Provisioning Dry Run",
+            "",
+            `- Profile: ${plan.profileRef}`,
+            `- Status: ${plan.status}`,
+            `- Executable: ${plan.executable}`,
+            `- Provider API called: ${plan.safety.providerApiCalled}`,
+            `- Provider credentials read: ${plan.safety.providerCredentialsRead}`,
+            "",
+            "### C1 blockers",
+            ...(plan.c1.blockers.length ? plan.c1.blockers.map((item) => `- ${item}`) : ["- none"]),
+            "",
+            "### First-boot packet blockers",
+            ...(plan.firstBootPacketBlockers.length ? plan.firstBootPacketBlockers.map((item) => `- ${item}`) : ["- none"]),
+            ""
+          ];
+          appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${lines.join("\n")}\n`, "utf8");
+          NODE
+
+      - name: Upload redacted dry-run plan
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: node-provisioning-dry-run-${{ inputs.profile }}-${{ github.sha }}
+          path: ${{ runner.temp }}/node-provisioning-plan.json
+          if-no-files-found: error
+          retention-days: 7

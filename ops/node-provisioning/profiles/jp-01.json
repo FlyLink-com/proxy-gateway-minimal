@@ -1,0 +1,104 @@
+{
+  "schemaVersion": "1",
+  "profileRef": "jp-01",
+  "node": {
+    "nodeRef": "node-vultr-jp-01",
+    "providerRef": "provider-vultr",
+    "regionRef": "region-japan-pending-c1-gate",
+    "roleRef": "data-plane",
+    "channelRefs": [
+      "channel-vultr-jp-01-vless-reality-tcp",
+      "channel-vultr-jp-01-hy2",
+      "channel-vultr-jp-01-tuic"
+    ]
+  },
+  "image": {
+    "artifactRef": "c0-artifact-jp01-candidate-1",
+    "artifactSha256": "693d9f5afdfbc440870ecb7ec84bee8cc2af644574496f564f2c92ab59946442",
+    "rawImageSha256": "752f2e2358129d606f15467433fdf4aed1bd5fb18220136ea8e8e5de8ce2d883",
+    "asRunSha256": "12dedc1ecb3c170beb4b0bdfbbeb7432e29f0ef53947675a448d447227a65d7a",
+    "bomSha256": "4bb1ef0f3cc993db77de2971ca512ff0b796d25fb7da18c88df758c75e45fde9",
+    "sourceCommit": "eb83197e47155943087655ff7d4aad7a6c954849",
+    "artifactSha256Recorded": true,
+    "artifactAvailableToRunner": false,
+    "installedFiles": 40603,
+    "longestPathBytes": 185,
+    "asRunBytes": 1910,
+    "noSecretScanPassed": true,
+    "reproducibility": "content-level-only",
+    "fileInventorySha256": "d7e9ad1387329fc47c619c9d0a5c00572b425efd2f35190e8fed2f5d9ea1f574",
+    "artifactFileName": "jp01-candidate-1.img.zst"
+  },
+  "installation": {
+    "method": "rescue-dd",
+    "bootMode": "bios-mbr",
+    "instancePlanRef": "lightweight-vultr-plan-pending-c1-gate",
+    "sizeDecisionApproved": false,
+    "regionDecisionApproved": false,
+    "providerMutationApproved": false,
+    "biosBootVerified": false,
+    "firstBootAccessApproved": false,
+    "cloudInitPolicy": "pending-c1-review",
+    "sshService": "disabled",
+    "costCapApproved": false,
+    "firewallPlanApproved": false,
+    "managementAccessApproved": false,
+    "rollbackPlanApproved": false,
+    "validationPlanApproved": false,
+    "sizePlanRef": "lowest-cost-feasible-vultr-shared-cpu-pending-c1-gate",
+    "c1ApprovalReceived": false
+  },
+  "firstBoot": {
+    "node": {
+      "nodeRef": "node-vultr-jp-01",
+      "providerRef": "provider-vultr",
+      "regionRef": "region-japan-pending-c1-gate",
+      "roleRef": "data-plane",
+      "channelRefs": [
+        "channel-vultr-jp-01-vless-reality-tcp",
+        "channel-vultr-jp-01-hy2",
+        "channel-vultr-jp-01-tuic"
+      ]
+    },
+    "image": {
+      "imageManifestRef": "jp01-candidate-1-file-inventory-local-only",
+      "releaseRef": "source-eb83197e",
+      "artifactSha256Recorded": true,
+      "noSecretImageConfirmed": true
+    },
+    "controlPlane": {
+      "nodeRegistrationDryRunPassed": false,
+      "privateAgentRoutePlanned": false,
+      "protectedMaterialInjectPlanned": false,
+      "agentNodeIdentityPlanned": false
+    },
+    "wireguard": {
+      "planRef": "wg-plan-jp01-pending-c2-gate",
+      "tunnelAddressAssigned": false,
+      "hostKeyGenerationPlanned": false,
+      "peerPublicKeyExchangePlanned": false,
+      "toolsPinnedInImageManifest": false
+    },
+    "runtime": {
+      "servicesDisabledInImage": true,
+      "xrayConfigTestPlanned": false,
+      "hysteria2ConfigTestPlanned": false,
+      "tuicConfigTestPlanned": false,
+      "statsLoopbackOnly": false
+    },
+    "receiptGate": {
+      "desiredStatePullRequired": true,
+      "materialPullRequired": true,
+      "appliedReceiptRequired": true,
+      "renderWithholdsUntilReceipt": true
+    },
+    "approval": {
+      "exactApprovalReceived": false,
+      "firstBootApplyApproved": false
+    },
+    "notes": [
+      "First-boot packet is a safe planning input only",
+      "Cloud-init remains pending the C1 policy decision"
+    ]
+  }
+}

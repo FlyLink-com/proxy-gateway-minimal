@@ -1,0 +1,158 @@
+name: JP01 R2 Image Verify
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: jp01-r2-image-verify-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: Verify JP-01 R2 image metadata and checksum sidecar
+    if: github.ref == 'refs/heads/master'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    environment:
+      name: jp01-image-verify
+
+    steps:
+      - name: Checkout reviewed master commit
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Validate R2 endpoint and network without credentials
+        shell: bash
+        env:
+          R2_ACCOUNT_ID: ${{ vars.R2_ACCOUNT_ID }}
+          R2_BUCKET: ${{ vars.R2_BUCKET }}
+          R2_ENDPOINT: ${{ vars.R2_ENDPOINT }}
+          R2_REGION: ${{ vars.R2_REGION }}
+        run: |
+          set -euo pipefail
+          test "$R2_ACCOUNT_ID" = "17d66c001f9d851fa0d5a88cd311c2c0"
+          test "$R2_BUCKET" = "jp01-images"
+          test "$R2_REGION" = "auto"
+          expected_endpoint="https://$R2_ACCOUNT_ID.r2.cloudflarestorage.com"
+          test "$R2_ENDPOINT" = "$expected_endpoint"
+
+          http_status="$(curl --silent --show-error --output /dev/null \
+            --write-out '%{http_code}' --connect-timeout 10 --max-time 20 \
+            "$R2_ENDPOINT")"
+          test "$http_status" != "000"
+          echo "Unauthenticated R2 endpoint/TLS preflight completed (HTTP $http_status)."
+
+      - name: Read exact R2 image metadata and checksum sidecar
+        shell: bash
+        env:
+          R2_READ_ACCESS_KEY_ID: ${{ secrets.R2_READ_ACCESS_KEY_ID }}
+          R2_READ_SECRET_ACCESS_KEY: ${{ secrets.R2_READ_SECRET_ACCESS_KEY }}
+          R2_BUCKET: ${{ vars.R2_BUCKET }}
+          R2_ENDPOINT: ${{ vars.R2_ENDPOINT }}
+          R2_REGION: ${{ vars.R2_REGION }}
+        run: |
+          set -euo pipefail
+          set +x
+          umask 077
+
+          test -n "$R2_READ_ACCESS_KEY_ID"
+          test -n "$R2_READ_SECRET_ACCESS_KEY"
+          echo "::add-mask::$R2_READ_ACCESS_KEY_ID"
+          echo "::add-mask::$R2_READ_SECRET_ACCESS_KEY"
+
+          export AWS_ACCESS_KEY_ID="$R2_READ_ACCESS_KEY_ID"
+          export AWS_SECRET_ACCESS_KEY="$R2_READ_SECRET_ACCESS_KEY"
+          export AWS_DEFAULT_REGION="$R2_REGION"
+          export AWS_EC2_METADATA_DISABLED=true
+          export AWS_PAGER=""
+          export AWS_CONFIG_FILE="$RUNNER_TEMP/jp01-r2-empty-config"
+          export AWS_SHARED_CREDENTIALS_FILE="$RUNNER_TEMP/jp01-r2-empty-credentials"
+          : > "$AWS_CONFIG_FILE"
+          : > "$AWS_SHARED_CREDENTIALS_FILE"
+          unset R2_READ_ACCESS_KEY_ID R2_READ_SECRET_ACCESS_KEY
+
+          sidecar_file=""
+          cleanup() {
+            if [[ -n "$sidecar_file" ]]; then rm -f "$sidecar_file"; fi
+            rm -f "$AWS_CONFIG_FILE" "$AWS_SHARED_CREDENTIALS_FILE"
+            unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY
+          }
+          trap cleanup EXIT
+
+          command -v aws >/dev/null
+          aws --version
+
+          IFS='|' read -r image_name expected_sha256 < <(python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          profile = json.loads(Path("ops/node-provisioning/profiles/jp-01.json").read_text(encoding="utf-8"))
+          image = profile["image"]
+          print(f'{image["artifactFileName"]}|{image["artifactSha256"]}')
+          PY
+          )
+          [[ "$image_name" =~ ^[A-Za-z0-9][A-Za-z0-9_-]{0,80}\.img\.zst$ ]]
+          [[ "$expected_sha256" =~ ^[a-f0-9]{64}$ ]]
+
+          image_key="jp-01/c0/2026-11-02/$image_name"
+          sidecar_key="$image_key.sha256"
+          expected_image_size=2269994633
+          expected_sidecar_size=92
+
+          image_size="$(aws s3api head-object \
+            --bucket "$R2_BUCKET" \
+            --key "$image_key" \
+            --endpoint-url "$R2_ENDPOINT" \
+            --region "$R2_REGION" \
+            --query 'ContentLength' \
+            --output text)"
+          sidecar_size="$(aws s3api head-object \
+            --bucket "$R2_BUCKET" \
+            --key "$sidecar_key" \
+            --endpoint-url "$R2_ENDPOINT" \
+            --region "$R2_REGION" \
+            --query 'ContentLength' \
+            --output text)"
+
+          test "$image_size" = "$expected_image_size"
+          test "$sidecar_size" = "$expected_sidecar_size"
+
+          sidecar_file="$(mktemp "$RUNNER_TEMP/jp01-image-sidecar.XXXXXX")"
+          aws s3api get-object \
+            --bucket "$R2_BUCKET" \
+            --key "$sidecar_key" \
+            "$sidecar_file" \
+            --endpoint-url "$R2_ENDPOINT" \
+            --region "$R2_REGION" >/dev/null
+
+          actual_sidecar_size="$(wc -c < "$sidecar_file" | tr -d '[:space:]')"
+          test "$actual_sidecar_size" = "$expected_sidecar_size"
+
+          python3 - "$sidecar_file" "$expected_sha256" "$image_name" <<'PY'
+          import sys
+          from pathlib import Path
+
+          sidecar_path, expected_sha256, expected_name = sys.argv[1:]
+          parts = Path(sidecar_path).read_text(encoding="ascii").split()
+          if len(parts) != 2 or parts[0] != expected_sha256 or parts[1] != expected_name:
+              raise SystemExit("R2 checksum sidecar does not match the reviewed JP-01 profile")
+          PY
+
+          {
+            echo "## JP-01 R2 Image Verification"
+            echo
+            echo "- Result: PASS"
+            echo "- Bucket: $R2_BUCKET"
+            echo "- Image key: $image_key"
+            echo "- Image object size: $image_size bytes"
+            echo "- Checksum sidecar size: $sidecar_size bytes"
+            echo "- Sidecar SHA-256 matches profile: yes"
+            echo "- Full image downloaded: no"
+            echo "- R2 writes/deletes: none"
+            echo "- Vultr API / SSH / installation: not invoked"
+          } >> "$GITHUB_STEP_SUMMARY"
