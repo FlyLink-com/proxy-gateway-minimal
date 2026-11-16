@@ -7,8 +7,10 @@ import test from "node:test";
 import {
   AUTH0_BCRYPT_MAX_PASSWORD_BYTES,
   classifyAuth0FirstLoginPassword,
-  evaluateSyntheticAuth0FirstLoginPassword
+  evaluateSyntheticAuth0FirstLoginPassword,
+  parsePortalScryptPasswordHash
 } from "../services/platform/portal-identity-import-rehearsal.mjs";
+import { createPortalInitialAccountIssuanceService } from "../services/platform/portal-initial-account-issuance.mjs";
 import { createPortalPasswordCredentialService } from "../services/platform/portal-password-credentials.mjs";
 import { createPortalRegistrationService } from "../services/platform/portal-registration.mjs";
 import { createSqliteSubscriptionControlStore } from "../services/platform/subscription-control-db.mjs";
@@ -426,7 +428,9 @@ test("password spec: mustRotate carries no login semantics", () => {
       "portal_password_verified"
     );
 
-    // Registration path value: mustRotate false. Login ignores it either way.
+    // Direct-issuance simulation of the registration value (mustRotate
+    // false): this does NOT walk the registration path. The real
+    // registration/issuance paths are asserted in the dedicated test below.
     const issuedFalse = issuePassword(
       store, service, "acct_spec_rotate_false", "Rotate-False-2026!",
       { mustRotate: false }
@@ -523,6 +527,495 @@ test("password spec: salts shorter than 16 bytes are rejected at issuance", () =
     assert.throws(
       () => issuePassword(store, service, "acct_spec_salt_floor", "Salt-Floor-2026!"),
       (error) => error.code === "validation_error"
+    );
+  });
+});
+
+function createIssuanceService(store, accountId, initialPassword, credentialRef) {
+  return createPortalInitialAccountIssuanceService({
+    controlStore: store,
+    passwordCredentialService: createPortalPasswordCredentialService({
+      controlStore: store,
+      nowFn: () => NOW,
+      saltFactory: () => FIXED_SALT,
+      credentialRefFactory: () => credentialRef
+    }),
+    nowFn: () => NOW,
+    accountIdFactory: () => accountId,
+    passwordFactory: () => initialPassword
+  });
+}
+
+test("password spec: a lock expires after 900 seconds and a correct password restores the credential to active", () => {
+  withStore((store) => {
+    seedAccount(store, "acct_spec_lock_expiry");
+    let clock = NOW;
+    const service = createCredentialService(store, {
+      overrides: { nowFn: () => clock }
+    });
+    const password = ["Lock-", "Expiry-", "2026!"].join("");
+    issuePassword(store, service, "acct_spec_lock_expiry", password);
+    const credentialId = store.getActivePortalPasswordCredential("acct_spec_lock_expiry").id;
+
+    for (let attempt = 1; attempt <= 5; attempt++) {
+      assert.throws(
+        () => service.verifyPasswordCredential({
+          accountId: "acct_spec_lock_expiry",
+          plainPassword: ["Wrong-", "Password-", "2026!"].join("")
+        }),
+        (error) => error.code === "invalid_login"
+      );
+    }
+    const locked = store.getPortalPasswordCredential(credentialId);
+    assert.equal(locked.status, "locked");
+    assert.equal(locked.failureCount, 5);
+    assert.equal(locked.lockedUntil, "2026-06-03T00:15:00.000Z");
+    // The active-only lookup still hides the locked row.
+    assert.equal(store.getActivePortalPasswordCredential("acct_spec_lock_expiry"), null);
+
+    // One second before expiry the correct password still fails, and the
+    // attempt does not extend the lock (no new failure is recorded).
+    clock = "2026-06-03T00:14:59.000Z";
+    assert.throws(
+      () => service.verifyPasswordCredential({
+        accountId: "acct_spec_lock_expiry",
+        plainPassword: password
+      }),
+      (error) => error.code === "invalid_login"
+    );
+    assert.equal(store.getPortalPasswordCredential(credentialId).failureCount, 5);
+    assert.equal(store.getPortalPasswordCredential(credentialId).lockedUntil, "2026-06-03T00:15:00.000Z");
+
+    // Boundary: at lockedUntil itself the lock has expired (locked while
+    // lockedUntil > now). A correct password succeeds and the row is
+    // restored to active with the failure count cleared.
+    clock = "2026-06-03T00:15:00.000Z";
+    assert.equal(
+      service.verifyPasswordCredential({
+        accountId: "acct_spec_lock_expiry",
+        plainPassword: password
+      }).summary.action,
+      "portal_password_verified"
+    );
+    const restored = store.getPortalPasswordCredential(credentialId);
+    assert.equal(restored.status, "active");
+    assert.equal(restored.failureCount, 0);
+    assert.equal(restored.lockedUntil, null);
+    assert.equal(restored.lastVerifiedAt, "2026-06-03T00:15:00.000Z");
+
+    // Lock again, then let it expire: a wrong password after expiry counts
+    // as another consecutive failure and re-locks for a fresh 900 seconds.
+    for (let attempt = 1; attempt <= 5; attempt++) {
+      assert.throws(
+        () => service.verifyPasswordCredential({
+          accountId: "acct_spec_lock_expiry",
+          plainPassword: ["Wrong-", "Password-", "2026!"].join("")
+        }),
+        (error) => error.code === "invalid_login"
+      );
+    }
+    assert.equal(store.getPortalPasswordCredential(credentialId).lockedUntil, "2026-06-03T00:30:00.000Z");
+    clock = "2026-06-03T00:30:01.000Z";
+    assert.throws(
+      () => service.verifyPasswordCredential({
+        accountId: "acct_spec_lock_expiry",
+        plainPassword: ["Wrong-", "Password-", "2026!"].join("")
+      }),
+      (error) => error.code === "invalid_login"
+    );
+    const relocked = store.getPortalPasswordCredential(credentialId);
+    assert.equal(relocked.status, "locked");
+    assert.equal(relocked.failureCount, 6);
+    assert.equal(relocked.lockedUntil, "2026-06-03T00:45:01.000Z");
+
+    // After the fresh window, the correct password works again.
+    clock = "2026-06-03T00:45:02.000Z";
+    assert.equal(
+      service.verifyPasswordCredential({
+        accountId: "acct_spec_lock_expiry",
+        plainPassword: password
+      }).summary.action,
+      "portal_password_verified"
+    );
+    assert.equal(store.getPortalPasswordCredential(credentialId).status, "active");
+    assert.equal(store.getPortalPasswordCredential(credentialId).failureCount, 0);
+  });
+});
+
+test("password spec: failures then a success clears the failure count", () => {
+  withStore((store) => {
+    seedAccount(store, "acct_spec_clear_count");
+    const service = createCredentialService(store);
+    const password = ["Clear-", "Count-", "2026!"].join("");
+    issuePassword(store, service, "acct_spec_clear_count", password);
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      assert.throws(
+        () => service.verifyPasswordCredential({
+          accountId: "acct_spec_clear_count",
+          plainPassword: ["Wrong-", "Password-", "2026!"].join("")
+        }),
+        (error) => error.code === "invalid_login"
+      );
+    }
+    assert.equal(store.getActivePortalPasswordCredential("acct_spec_clear_count").failureCount, 3);
+    assert.equal(
+      service.verifyPasswordCredential({
+        accountId: "acct_spec_clear_count",
+        plainPassword: password
+      }).summary.action,
+      "portal_password_verified"
+    );
+    const row = store.getActivePortalPasswordCredential("acct_spec_clear_count");
+    assert.equal(row.failureCount, 0);
+    assert.equal(row.status, "active");
+    assert.equal(row.lockedUntil, null);
+    assert.equal(row.lastVerifiedAt, NOW);
+  });
+});
+
+test("password spec: admin re-issuance after a lock restores login with the new password", () => {
+  withStore((store) => {
+    seedAccount(store, "acct_spec_reissue");
+    const service = createCredentialService(store);
+    const oldPassword = ["Old-", "Locked-", "2026!"].join("");
+    issuePassword(store, service, "acct_spec_reissue", oldPassword);
+    const oldCredentialId = store.getActivePortalPasswordCredential("acct_spec_reissue").id;
+    for (let attempt = 1; attempt <= 5; attempt++) {
+      assert.throws(
+        () => service.verifyPasswordCredential({
+          accountId: "acct_spec_reissue",
+          plainPassword: ["Wrong-", "Password-", "2026!"].join("")
+        }),
+        (error) => error.code === "invalid_login"
+      );
+    }
+    assert.equal(store.getPortalPasswordCredential(oldCredentialId).status, "locked");
+
+    const issuance = createIssuanceService(
+      store, "acct_spec_reissue", ["Reissued-", "Admin-", "2026!"].join(""), "pwd_reissue_1"
+    );
+    const result = issuance.issuePortalInitialAccount({
+      accountId: "acct_spec_reissue",
+      ownerRef: "owner_safe_ref",
+      issuedByRef: "operator_safe_ref",
+      approvalRef: "approval_safe_ref"
+    });
+    assert.equal(result.summary.accountCreated, false);
+    assert.equal(result.summary.mustRotate, true);
+
+    // The locked row is superseded, not left live: the table now marks it
+    // revoked and only the new credential verifies.
+    assert.equal(store.getPortalPasswordCredential(oldCredentialId).status, "revoked");
+    assert.equal(
+      service.verifyPasswordCredential({
+        accountId: "acct_spec_reissue",
+        plainPassword: ["Reissued-", "Admin-", "2026!"].join("")
+      }).summary.action,
+      "portal_password_verified"
+    );
+    assert.throws(
+      () => service.verifyPasswordCredential({
+        accountId: "acct_spec_reissue",
+        plainPassword: oldPassword
+      }),
+      (error) => error.code === "invalid_login"
+    );
+  });
+});
+
+test("password spec: registration stores mustRotate false and admin issuance stores mustRotate true", () => {
+  withStore((store) => {
+    // Registration path (user-chosen password): mustRotate is false.
+    const registration = createRegistrationService(store);
+    const registered = registration.submitRegistration(
+      registrationInput("f2-reg@example.test", ["Reg-", "MustRotate-", "2026!"].join(""))
+    );
+    assert.equal(registered.registration.action, "portal_registration_created");
+    const registeredRow = store.getActivePortalPasswordCredential("acct_reg_min");
+    assert.equal(registeredRow.mustRotate, false);
+    const credentialService = createCredentialService(store);
+    assert.equal(
+      credentialService.verifyPasswordCredential({
+        accountId: "acct_reg_min",
+        plainPassword: ["Reg-", "MustRotate-", "2026!"].join("")
+      }).summary.action,
+      "portal_password_verified"
+    );
+
+    // Admin initial-issuance path (generated temporary password handed to
+    // the user): mustRotate is true, and the handoff says so explicitly.
+    const issuance = createIssuanceService(
+      store, "acct_f2_issued", ["Issued-", "Admin-", "2026!"].join(""), "pwd_f2_issued_1"
+    );
+    const issued = issuance.issuePortalInitialAccount({
+      ownerRef: "owner_safe_ref",
+      issuedByRef: "operator_safe_ref",
+      approvalRef: "approval_safe_ref"
+    });
+    assert.equal(issued.summary.accountCreated, true);
+    assert.equal(issued.summary.mustRotate, true);
+    assert.equal(issued.handoffMaterial.mustRotate, true);
+    assert.equal(issued.handoffMaterial.expiresOnFirstUse, true);
+    assert.equal(
+      store.getActivePortalPasswordCredential("acct_f2_issued").mustRotate,
+      true
+    );
+  });
+});
+
+test("password spec: registration measures length after trim and registers over-72-byte passwords for local login", () => {
+  withStore((store) => {
+    const registration = createRegistrationService(store);
+
+    // Trimmed length 6 is rejected; trimmed length 8 is accepted.
+    assert.throws(
+      () => registration.submitRegistration(
+        registrationInput("trim-len-6@example.test", "  aaaaaa  ")
+      ),
+      (error) => error.code === "validation_error"
+    );
+    const accepted = registration.submitRegistration(
+      registrationInput("trim-len-8@example.test", "  aaaaaaaa  ")
+    );
+    assert.equal(accepted.registration.action, "portal_registration_created");
+
+    // 100 characters register fine locally but classify as targeted reset
+    // for Auth0 first login (same对照 as the credential-layer test).
+    const over = registration.submitRegistration(
+      registrationInput("reg-72-over@example.test", "a".repeat(100))
+    );
+    assert.equal(over.registration.action, "portal_registration_created");
+    assert.deepEqual(classifyAuth0FirstLoginPassword("a".repeat(100)), {
+      outcome: "targeted_reset_required",
+      utf8Bytes: 100
+    });
+  });
+});
+
+test("password spec: trim covers the remaining ECMAScript whitespace and keeps non-whitespace controls", () => {
+  withStore((store) => {
+    const service = createCredentialService(store);
+
+    // Every remaining trimmable edge character (review §1): issue padded,
+    // verify bare.
+    const trimmable = ["\u000B", "\u000C", "\u2000", "\u2003", "\u200A", "\u202F", "\u205F", "\u2028"];
+    trimmable.forEach((ch, index) => {
+      const accountId = `acct_spec_trim_edge_${index}`;
+      seedAccount(store, accountId);
+      issuePassword(store, service, accountId, `${ch}${["Trim-", "Edge-", "2026!"].join("")}${ch}`);
+      assert.equal(
+        service.verifyPasswordCredential({
+          accountId,
+          plainPassword: ["Trim-", "Edge-", "2026!"].join("")
+        }).summary.action,
+        "portal_password_verified",
+        `U+${ch.codePointAt(0).toString(16)} must be trimmed`
+      );
+    });
+
+    // Not ECMAScript whitespace: kept as part of the password.
+    const kept = ["\u0085", "\u180E", "\u200B"];
+    kept.forEach((ch, index) => {
+      const accountId = `acct_spec_trim_kept_${index}`;
+      seedAccount(store, accountId);
+      const password = `${ch}${["Secret-", "2026!"].join("")}${ch}`;
+      issuePassword(store, service, accountId, password);
+      assert.equal(
+        service.verifyPasswordCredential({
+          accountId,
+          plainPassword: password
+        }).summary.action,
+        "portal_password_verified",
+        `U+${ch.codePointAt(0).toString(16)} must not be trimmed`
+      );
+      assert.throws(
+        () => service.verifyPasswordCredential({
+          accountId,
+          plainPassword: ["Secret-", "2026!"].join("")
+        }),
+        (error) => error.code === "invalid_login"
+      );
+    });
+
+    // Reverse direction: issue bare, verify padded.
+    seedAccount(store, "acct_spec_trim_reverse");
+    issuePassword(store, service, "acct_spec_trim_reverse", ["Reverse-", "Trim-", "2026!"].join(""));
+    assert.equal(
+      service.verifyPasswordCredential({
+        accountId: "acct_spec_trim_reverse",
+        plainPassword: "\u00A0 " + ["Reverse-", "Trim-", "2026!"].join("") + " \t"
+      }).summary.action,
+      "portal_password_verified"
+    );
+  });
+});
+
+test("password spec: parser fails closed for more malformed envelopes and tolerates padded base64url as documented", () => {
+  withStore((store) => {
+    const password = ["Spec-", "Check-", "2026!"].join("");
+    const valid = buildScryptHash(password, FIXED_SALT);
+    const parts = valid.split("$");
+    const shortDerived = Buffer.alloc(32).toString("base64url");
+    const variants = {
+      altered_r: valid.replace("r=8", "r=9"),
+      altered_p: valid.replace("p=1", "p=2"),
+      eight_segments: `${valid}$e30`,
+      empty_salt: [...parts.slice(0, 5), "", parts[6]].join("$"),
+      empty_hash: [...parts.slice(0, 5), parts[5], ""].join("$"),
+      short_derived_32_bytes: [...parts.slice(0, 5), parts[5], shortDerived].join("$"),
+      illegal_salt_chars: [...parts.slice(0, 5), "!!!", parts[6]].join("$")
+    };
+    for (const [name, hash] of Object.entries(variants)) {
+      const accountId = `acct_spec_parser_${name}`;
+      seedAccount(store, accountId);
+      store.createPortalPasswordCredential({
+        id: `pwd_parser_${name}`,
+        accountId,
+        passwordHash: hash,
+        status: "active",
+        failureCount: 0,
+        mustRotate: false,
+        createdAt: NOW,
+        updatedAt: NOW
+      });
+      const service = createCredentialService(store);
+      assert.throws(
+        () => service.verifyPasswordCredential({ accountId, plainPassword: password }),
+        (error) => error.code === "invalid_login",
+        `variant ${name} must fail with invalid_login`
+      );
+    }
+
+    // Documented leniency (spec §7): production decoding accepts '='
+    // padding, so a padded envelope still verifies here — while the strict
+    // rehearsal parser rejects the same envelope at the import gate.
+    for (const [name, hash] of Object.entries({
+      padded_salt: [...parts.slice(0, 5), `${parts[5]}==`, parts[6]].join("$"),
+      padded_hash: [...parts.slice(0, 5), parts[5], `${parts[6]}=`].join("$")
+    })) {
+      const accountId = `acct_spec_parser_${name}`;
+      seedAccount(store, accountId);
+      store.createPortalPasswordCredential({
+        id: `pwd_parser_${name}`,
+        accountId,
+        passwordHash: hash,
+        status: "active",
+        failureCount: 0,
+        mustRotate: false,
+        createdAt: NOW,
+        updatedAt: NOW
+      });
+      const service = createCredentialService(store);
+      assert.equal(
+        service.verifyPasswordCredential({ accountId, plainPassword: password }).summary.action,
+        "portal_password_verified",
+        `variant ${name} verifies under production leniency`
+      );
+      assert.throws(
+        () => parsePortalScryptPasswordHash(hash),
+        (error) => error.code === "legacy_scrypt_hash_invalid",
+        `variant ${name} must be rejected by the rehearsal parser`
+      );
+    }
+  });
+});
+
+test("password spec: empty password login is validation_error and numeric passwords coerce via String()", () => {
+  withStore((store) => {
+    seedAccount(store, "acct_spec_empty_login");
+    const service = createCredentialService(store);
+    // Missing input is validation_error, not invalid_login (spec R1-08):
+    // the caller already knows it sent nothing, so nothing leaks.
+    for (const bad of ["", "   "]) {
+      assert.throws(
+        () => service.verifyPasswordCredential({
+          accountId: "acct_spec_empty_login",
+          plainPassword: bad
+        }),
+        (error) => error.code === "validation_error"
+      );
+    }
+
+    // Current behavior (shared requiredText contract): a non-string
+    // password is coerced with String(), so 12345 and "12345" are the
+    // same password on this path. Nailed here so any change is deliberate.
+    seedAccount(store, "acct_spec_numeric");
+    issuePassword(store, service, "acct_spec_numeric", 12345);
+    assert.equal(
+      service.verifyPasswordCredential({
+        accountId: "acct_spec_numeric",
+        plainPassword: 12345
+      }).summary.action,
+      "portal_password_verified"
+    );
+    assert.equal(
+      service.verifyPasswordCredential({
+        accountId: "acct_spec_numeric",
+        plainPassword: "12345"
+      }).summary.action,
+      "portal_password_verified"
+    );
+  });
+});
+
+test("password spec: salts above 16 bytes verify locally but oversized salts are rejected at the rehearsal import gate", () => {
+  withStore((store) => {
+    for (const [name, size] of [["salt_17", 17], ["salt_32", 32], ["salt_65", 65]]) {
+      const accountId = `acct_spec_${name}`;
+      seedAccount(store, accountId);
+      const service = createCredentialService(store, {
+        prefix: `pwd_${name}`,
+        saltFactory: () => Buffer.alloc(size, 7)
+      });
+      const password = ["Salt-", "Size-", "2026!"].join("");
+      issuePassword(store, service, accountId, password);
+      assert.equal(
+        service.verifyPasswordCredential({ accountId, plainPassword: password }).summary.action,
+        "portal_password_verified",
+        `${size}-byte salt must verify locally`
+      );
+      const stored = store.getActivePortalPasswordCredential(accountId);
+      assert.equal(Buffer.from(stored.passwordHash.split("$")[5], "base64url").length, size);
+    }
+    // 65-byte salt: local login works, but the rehearsal parser (16–64
+    // bytes) refuses the envelope, so it could never be imported.
+    const oversized = store.getActivePortalPasswordCredential("acct_spec_salt_65").passwordHash;
+    assert.throws(
+      () => parsePortalScryptPasswordHash(oversized),
+      (error) => error.code === "legacy_scrypt_hash_invalid"
+    );
+    // 32-byte salt is inside the rehearsal window and parses fine.
+    const withinWindow = store.getActivePortalPasswordCredential("acct_spec_salt_32").passwordHash;
+    assert.equal(parsePortalScryptPasswordHash(withinWindow).salt.length, 32);
+  });
+});
+
+test("password spec: re-issuance revokes the previous credential row", () => {
+  withStore((store) => {
+    seedAccount(store, "acct_spec_revoke_old");
+    const service = createCredentialService(store);
+    issuePassword(store, service, "acct_spec_revoke_old", ["First-", "Password-", "2026!"].join(""));
+    const firstId = store.getActivePortalPasswordCredential("acct_spec_revoke_old").id;
+    issuePassword(store, service, "acct_spec_revoke_old", ["Second-", "Password-", "2026!"].join(""));
+    const secondId = store.getActivePortalPasswordCredential("acct_spec_revoke_old").id;
+    assert.notEqual(firstId, secondId);
+
+    const oldRow = store.getPortalPasswordCredential(firstId);
+    assert.equal(oldRow.status, "revoked");
+    assert.equal(oldRow.revokedAt, NOW);
+    assert.equal(
+      service.verifyPasswordCredential({
+        accountId: "acct_spec_revoke_old",
+        plainPassword: ["Second-", "Password-", "2026!"].join("")
+      }).summary.action,
+      "portal_password_verified"
+    );
+    assert.throws(
+      () => service.verifyPasswordCredential({
+        accountId: "acct_spec_revoke_old",
+        plainPassword: ["First-", "Password-", "2026!"].join("")
+      }),
+      (error) => error.code === "invalid_login"
     );
   });
 });

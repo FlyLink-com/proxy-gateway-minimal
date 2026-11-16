@@ -9495,6 +9495,21 @@ export function createSqliteSubscriptionControlStore({
     `).get(requiredText(accountId, "accountId")));
   }
 
+  function getVerifiablePortalPasswordCredential(accountId) {
+    // Verification must be able to see a locked row: a lock only means
+    // "no login until locked_until", not "credential gone". Returning the
+    // latest active-or-locked row lets verifyPasswordCredential enforce the
+    // lock window and auto-restore the row on a successful post-expiry
+    // login (markPortalPasswordVerified already flips it back to active).
+    // Revoked rows stay invisible here, exactly as in the active lookup.
+    return mapPortalPasswordCredential(db.prepare(`
+      select * from platform_portal_password_credentials
+      where account_id = ? and status in ('active', 'locked')
+      order by created_at desc, id desc
+      limit 1
+    `).get(requiredText(accountId, "accountId")));
+  }
+
   function recordPortalPasswordVerificationFailure(id, { updatedAt, lockedUntil } = {}) {
     const nextLockedUntil = optionalIsoText(lockedUntil, "lockedUntil");
     const result = db.prepare(`
@@ -10443,6 +10458,7 @@ export function createSqliteSubscriptionControlStore({
     createPortalPasswordCredential,
     getPortalPasswordCredential,
     getActivePortalPasswordCredential,
+    getVerifiablePortalPasswordCredential,
     recordPortalPasswordVerificationFailure,
     markPortalPasswordVerified,
     createPortalPasskeyCredential,
