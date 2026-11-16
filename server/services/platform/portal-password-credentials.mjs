@@ -145,6 +145,18 @@ export function createPortalPasswordCredentialService({
     if (salt.length < 16) {
       throw passwordError("validation_error", "password salt is too short");
     }
+    // Re-issuance supersedes every prior credential for the account: the
+    // verification lookup only ever reads the latest active-or-locked row,
+    // so an old row left marked 'active' would be unreachable yet still
+    // counted as live. Revoke prior active/locked rows (same scope as the
+    // deletion flow) so the table states what verification can reach.
+    // All production issuance paths run inside runInTransaction, so this
+    // revoke and the insert below commit or roll back together.
+    controlStore.revokePortalPasswordCredentialsForAccount({
+      accountId,
+      revokedAt: issuedAt,
+      updatedAt: issuedAt
+    });
     const credential = controlStore.createPortalPasswordCredential({
       id: requiredText(input?.credentialRef || credentialRefFactory(), "credentialRef"),
       accountId,
@@ -168,12 +180,24 @@ export function createPortalPasswordCredentialService({
     if (!account || account.status !== "active") {
       throw invalidLogin();
     }
-    const credential = controlStore.getActivePortalPasswordCredential(accountId);
+    const credential = controlStore.getVerifiablePortalPasswordCredential(accountId);
     if (!credential) {
       throw invalidLogin();
     }
-    if (credential.lockedUntil && new Date(credential.lockedUntil).getTime() > new Date(verifiedAt).getTime()) {
-      throw invalidLogin();
+    if (credential.status === "locked") {
+      // A locked row is only unusable until lockedUntil. Once the window
+      // has passed the credential is verifiable again: a correct password
+      // succeeds and markPortalPasswordVerified flips the row back to
+      // active (failure count cleared, lockedUntil cleared); a wrong
+      // password counts as another consecutive failure and re-locks for a
+      // fresh lockSeconds starting at that failure. A locked row with no
+      // (or unparsable) lockedUntil fails closed instead of auto-unlocking.
+      const lockedUntilMs = credential.lockedUntil
+        ? new Date(credential.lockedUntil).getTime()
+        : Number.NaN;
+      if (Number.isNaN(lockedUntilMs) || lockedUntilMs > new Date(verifiedAt).getTime()) {
+        throw invalidLogin();
+      }
     }
     if (!verifyEncodedPassword(plainPassword, credential.passwordHash)) {
       const shouldLock = credential.failureCount + 1 >= maxFailures;
