@@ -2,7 +2,7 @@
 
 - **版本**：v2.3（修订版）。底本为 v2.2（`phase4-production-readonly-authorization-request-v2.2-2026-11-16.md`，888 行，SHA-256 `e6ff346a4946c96dff7a26cc07a811450afd202ce98d3dd8a548c3bebc877851`，仍 PENDING）；**v2.2 原文未改写**，本文件为独立新文件。v2.1（857 行，SHA-256 `6868607150ba7c0636e46dd4a76a21b1a07bffa8fba6aad775bb1fc84193983d`，仍 PENDING）与 v2（795 行，SHA-256 `786e4ce886d8cdd2a62e70520c714543ac38829e3d82e71d8f87a01d2494d906`，仍 PENDING）与 v1（170 行，SHA-256 `d47851aa400e17e34e7649ad543171710a6238430702c1f7aadc06778060e492`）仍为冻结快照。
 - **修订依据**：v2.2 独立审查报告 `phase4-1-readonly-v2.2-independent-review-2026-11-16.md`（153 行，SHA-256 `075bb5356d399f583563291512571b634db9715df9e9aca4159469dbe78271ae`），结论**通过（可提交 Yi 书面批准）**，新发现 P3 1 项（V22-P3-1，§11 引言措辞，不阻塞提交）；以及 Phase 4.1 v2.3 任务书五项整改（S-03 编译选项、S-02 索引列定义、S-10 与 §3.3 白名单、S-06 LIMIT 10 关闭能力、S-15 明确列名）。逐项修订对照表见 §0。**本次只修订申请，不授权连接 BWH 或执行任何生产查询。**
-- **修订内容**（详见 §0 修订说明对照表，每项绑定审查报告 SHA 与本地合成验证证据）：(a) V23-1：S-03 增加 `PRAGMA compile_options`，S-03 由 8 次改为 9 次；(b) V23-2：S-02 对每个实际索引增加 `PRAGMA index_xinfo` 检查（219 次，`index_info` 仅作兼容补充，不另计数），索引引用须经 `index_list` 实测结果驱动并加双引号转义；(c) V23-3：S-10 改为每表 1 条多聚合查询，禁读字段用 `SUM(CASE WHEN {列} IS NULL THEN 1 ELSE 0 END)` 形式，§3.3 与 §7 明确把该形式的适用范围扩展到 S-10；(d) V23-4：S-06 LIMIT 10 三档关闭能力写明确（0 组证无重复、≤10 组枚举须等于组总数、>10 组保持 NOT PROVEN）；(e) V23-5：S-15 改明确列名 `migration_id, ddl_checksum, applied_at`，按 `migration_id` 排序（v2.2 的 `ORDER BY version` 引用不存在的列，本地合成库实测执行失败）；(f) V22-P3-1：§11 引言“§4 全部查询模板”改为“§4 其余查询模板（除 C1、C2、D1～D6 所列外）”；(g) V23-7：附录 C 8 条 CHECK 表达式中的 58 处 D1 目标列名纠正为源列名（`lease_token_hash`→`lease_token` 48 处、`event_dedupe_key_digest`→`event_dedupe_key` 4 处、`reserve_idempotency_key_digest`→`reserve_idempotency_key` 6 处；v2.2 沿用至今的列名错误，本地验证首次执行 284 条否定式时发现）。S-11 九条 SQL 零改动；B 方案仍为**推荐方案，待 Yi 确认**；查询量由 900 + k 次改为 **1120 + k 次**（+1 S-03、+219 S-02；分项闭合见 §5）。
+- **修订内容**（详见 §0 修订说明对照表，每项绑定审查报告 SHA 与本地合成验证证据）：(a) V23-1：S-03 增加 `PRAGMA compile_options`，S-03 由 8 次改为 9 次；(b) V23-2：S-02 对每个实际索引增加 `PRAGMA index_xinfo` 检查（219 次，`index_info` 仅作兼容补充，不另计数），索引引用须经 `index_list` 实测结果驱动并加双引号转义；(c) V23-3：S-10 改为每表 1 条多聚合查询，禁读字段用 `SUM(CASE WHEN {列} IS NULL THEN 1 ELSE 0 END)` 形式，§3.3 与 §7 明确把该形式的适用范围扩展到 S-10；(d) V23-4：S-06 LIMIT 10 三档关闭能力写明确（0 组证无重复、≤10 组枚举须等于组总数、>10 组保持 NOT PROVEN）；(e) V23-5：S-15 改明确列名 `migration_id, ddl_checksum, applied_at`，按 `migration_id` 排序（v2.2 的 `ORDER BY version` 引用不存在的列，本地合成库实测执行失败）；(f) V22-P3-1：§11 引言“§4 全部查询模板”改为“§4 其余查询模板（除 C1、C2、D1～D6 所列外）”；(g) V23-7：附录 C 8 条 CHECK 表达式中的 58 处 D1 目标列名纠正为源列名（`lease_token_hash`→`lease_token` 48 处、`event_dedupe_key_digest`→`event_dedupe_key` 4 处、`reserve_idempotency_key_digest`→`reserve_idempotency_key` 6 处；v2.2 沿用至今的列名错误，本地验证首次执行 284 条否定式时发现）；(h) V23-8：附录 C S08-C192 补上遗漏的 `next_action_url`（v2.2 沿用至今的转录错误，首轮独立审查逐条比对源 CHECK 时发现，见 §0 V23-8）；P3-1～P3-4：UNIQUE 部分索引 13→12 个、文中断尾 v2.2→v2.3、S-11 标签 a～i→a～f、SHA 清单补 sha256sum 机核格式（见 §0）。S-11 九条 SQL 零改动；B 方案仍为**推荐方案，待 Yi 确认**；查询量由 900 + k 次改为 **1120 + k 次**（+1 S-03、+219 S-02；分项闭合见 §5）。
 - **修订后状态**：申请中（PENDING）。修订后须经独立审查复核，再由 Yi 书面批准查询范围与执行窗口。未获批准前，不得连接 BWH 生产数据库，不得执行本申请中的任何查询。
 
 - 任务：Phase 4.1 第五批 · 交付九续（v2.3 修订；**仅为申请材料，不执行生产访问**）
@@ -13,7 +13,7 @@
 ## 0 · v2.3 修订说明（相对 v2.2 的逐项修订对照表）
 
 - **底本**：v2.2 `phase4-production-readonly-authorization-request-v2.2-2026-11-16.md`（888 行，SHA-256 `e6ff346a4946c96dff7a26cc07a811450afd202ce98d3dd8a548c3bebc877851`），**原文未改写**；v2.1（857 行，SHA-256 `6868607150ba7c0636e46dd4a76a21b1a07bffa8fba6aad775bb1fc84193983d`）与 v2（795 行，SHA-256 `786e4ce886d8cdd2a62e70520c714543ac38829e3d82e71d8f87a01d2494d906`）亦未改写。
-- **修订依据**：v2.2 独立审查报告 `phase4-1-readonly-v2.2-independent-review-2026-11-16.md`（153 行，SHA-256 `075bb5356d399f583563291512571b634db9715df9e9aca4159469dbe78271ae`），结论**通过（可提交 Yi 书面批准）**，新发现 P3 1 项（V22-P3-1，见下表）；以及 Phase 4.1 v2.3 任务书五项整改（V23-1～V23-5）。本章逐项列出 7 项修订（含 V22-P3-1 文字修正与 V23-7 附录 C 列名纠正）+ 2 项衍生说明；修订后交独立审查复核。
+- **修订依据**：v2.2 独立审查报告 `phase4-1-readonly-v2.2-independent-review-2026-11-16.md`（153 行，SHA-256 `075bb5356d399f583563291512571b634db9715df9e9aca4159469dbe78271ae`），结论**通过（可提交 Yi 书面批准）**，新发现 P3 1 项（V22-P3-1，见下表）；以及 Phase 4.1 v2.3 任务书五项整改（V23-1～V23-5）。本章逐项列出 12 项修订（含 V22-P3-1 文字修正、V23-7 附录 C 列名纠正、V23-8 附录 C S08-C192 纠正与 P3-1～P3-4 措辞/格式修正）+ 2 项衍生说明；修订后交独立审查复核。
 - **裁决状态不变**：当前正式裁决仍为 **NO-GO（生产迁移执行）**。本版不改变该状态，不关闭任何 NP 项，不授权连接 BWH、不授权执行任何生产查询。B 方案仍为**推荐方案，待 Yi 确认**，不构成业务决定。
 - **S-11 九条 SQL**：零改动（验证见本章末小节）。
 - **查询量**：固定数由 900 次 + k 次改为 **1120 次 + k 次**（+1 S-03、+219 S-02；分项闭合见 §5）。
@@ -28,8 +28,13 @@
 | V22-P3-1 | §11 引言“§4 全部查询模板”措辞过宽（v2.2 审查新发现 P3，不阻塞提交） | §11 引言改为“§4 其余查询模板（除 C1、C2、D1～D6 所列外）”；D1～D6 变更清单单列于 §11，附录 B 的单列例外口径不变。文字精度修订，不改变任何查询、计数或关闭标准 |
 | V23-N1 | §4 S-09 / S-10 模板与 §5 计数口径不一致（衍生说明，随 V23-3 一并修正） | §4 S-09 模板改写为每表 1 条多聚合查询的合并形式（每 TEXT 列 1 个 MAX(LENGTH()) 聚合项），单列形式保留为“单列抽查形式”；语义与计数不变（S-09 仍为 74 次）。S-10 见 V23-3 |
 | V23-7 | 附录 C CHECK 表达式引用了源 SQLite Schema 不存在的列名（8 条；v2.2 沿用至今，本地验证首次执行 284 条否定式时发现：`no such column: ...`）：`lease_token_hash`（6 条：S08-C012、C127、C133、C140、C214、C270）、`event_dedupe_key_digest`（1 条：S08-C193）、`reserve_idempotency_key_digest`（1 条：S08-C258）；三者均为 canonical 处置 JSON 中的 D1 TRANSFORM 目标列名，Master 源码 DDL 的源列名分别为 `lease_token`（`coin-commerce-migrations.mjs` 第 330、338–339 行）、`event_dedupe_key`（`payment-store-migrations.mjs` 第 89、126、136 行）、`reserve_idempotency_key`（`wallet-first-deferred-checkout-migrations.mjs` 第 96、138、148、158 行） | 附录 C 8 条表达式中的 58 处目标列名一律纠正为源列名（`lease_token_hash` 48 处、`event_dedupe_key_digest` 4 处、`reserve_idempotency_key_digest` 6 处；CHECK 表达式与否定式 WHERE 各半）；S-08 合并 CHECK 查询模板不变（按表展开，仍为 141 次）；284 条否定式本地合成验证全部可执行（见本章末验证小节）。CHECK 表达式只作 IS NULL / LENGTH > 0 的存在性判定，合并查询只返回计数，不读相关列原文 |
-| V23-OBS-1 | S-02 索引列定义核对的新发现（观察，不阻塞提交）：Master 建成的本地合成库实测 51 个 UNIQUE 约束自动索引中 17 个为复合多列约束，另有 13 个 UNIQUE 部分索引；二者的约束执行不在 S-06 的 34 列单列检查范围内 | 不扩大 S-06 范围（不悄悄增加查询）；附录 B NP-04 行增加注记，写明复合 UNIQUE 约束与 UNIQUE 部分索引的违反判定须另行申请补充查询；S-02 只验证其索引定义存在与列定义一致。NP-04 关闭标准仍限于 34 列单列检查 |
+| V23-OBS-1 | S-02 索引列定义核对的新发现（观察，不阻塞提交）：Master 建成的本地合成库实测 51 个 UNIQUE 约束自动索引中 17 个为复合多列约束，另有 12 个 UNIQUE 部分索引；二者的约束执行不在 S-06 的 34 列单列检查范围内 | 不扩大 S-06 范围（不悄悄增加查询）；附录 B NP-04 行增加注记，写明复合 UNIQUE 约束与 UNIQUE 部分索引的违反判定须另行申请补充查询；S-02 只验证其索引定义存在与列定义一致。NP-04 关闭标准仍限于 34 列单列检查 |
 
+| V23-8 | 附录 C S08-C192（`platform_payment_receipts` 多列状态机）的 CHECK 表达式遗漏 `next_action_url`：v2.3 原文为两列版（仅 `next_action_type` 与 `next_action_expires_at` 同为 NULL 或同为 NOT NULL），源 CHECK 为三列版（首轮独立审查 P2-1，唯一阻塞项） | v2.2 沿用至今的转录错误；附录 C 否定式弱于真实 CHECK：仅 `next_action_url` 失同步的行（如 type 为 NULL、url 非 NULL、expires 为 NULL）会被旧否定式判为通过，只漏报、不误报，NP-07 对该约束的证据不完整 | 附录 C S08-C192（CHECK 表达式列与否定式 WHERE 列） | 附录 C S08-C192（CHECK 表达式与否定式 WHERE 同步补上 `next_action_url is null` / `is not null`，与源 CHECK 逐字一致；§0 本表新增 V23-8 条目）；独立修订对照表同步新增 V23-8 | 源 CHECK 核对依据：Master 源码 `server/services/platform/payment-store-migrations.mjs` 第 110–124 行（`platform_payment_receipts` 表级 CHECK，三列同为 NULL 或三列同为 NOT NULL）+ 本地合成库 `sqlite_master` 平衡括号抽取的源 CHECK（空白归一化后逐字一致）；验证器 item 4：284/284 否定式执行通过，空库违反计数全 0，4/4 种子违规被检出，其中 S08-C192 种子行（仅 `next_action_url` 非 NULL）新否定式检出 1 行、旧两列式为 0（证实旧式漏报） |
+| V23-P3-1 | UNIQUE 部分索引数量“13 个”与实测不符，应为 12 个（首轮独立审查 P3-1） | 合成库实测：`PRAGMA index_list` unique=1 且 partial=1 共 12 行；`sqlite_master` 中 `CREATE UNIQUE INDEX … WHERE …` 共 12 条；两种方法一致；多计的 1 个为 74 表之外的 `portal_link_reset_pending_request_idx`，不在合成库内 | §0 V23-OBS-1；§4 S-02（2 处）；附录 B NP-04 注记；SQL 清单 §4 模板摘录（2 处）；修订对照表 V23-OBS-1 行；NP 矩阵 NP-04 行 | 8 处“13 个 UNIQUE 部分索引”全部改为 12 个；§0 本表新增 V23-P3-1 条目；独立修订对照表、SQL 清单、NP 矩阵同步修正 | 本修复组在合成库中重数：方法 (a) index_list unique=1 且 partial=1 共 12 行（逐名：account_resource_authorities 4 个、offer_versions_one_published、rotation_pending、credential_reset_pending、edge_active_request、transitions_one_active_account、identity_bindings 2 个、scheduled_one_scheduled）；方法 (b) sqlite_master 文本共 12 条；74 表之外的 portal_link_reset 索引在合成库中 0 命中；OBS-1 实质（复合/部分 UNIQUE 约束执行不在 S-06 的 34 列单列检查范围内）不受影响 |
+| V23-P3-2 | 文中断尾（附录 B 之后）仍写“本申请 v2.2 状态”（首轮独立审查 P3-2） | 全文复制 v2.2 时未更新该行；文末已正确写 v2.3 | 附录 B 之后断尾行（原第 558 行） | 改为“本申请 v2.3 状态”；全文检索无其他残留“v2.2 状态”页脚表述 | 文字修正，不改变任何查询、计数或关闭标准；全文检索确认仅该 1 处 |
+| V23-P3-3 | SQL 清单与重算报告把 S-11 九条写作“S-11a～i”，实际标签为 S-11a～f（首轮独立审查 P3-3） | 标签写法有误；计数 9 条无误（a 1、b 1、c 2、d 2、e 2、f 1） | SQL 清单分项表 S-11 行；重算报告分项表 S-11 行 | 两处均改为“S-11a～f”；全文检索两文件及其他交付物无同款笔误残留 | 文字修正，9 条计数不动；申请正文 §5 写法原本正确 |
+| V23-P3-4 | SHA 清单为 Markdown 表格，无法用 `sha256sum -c` 机核（首轮独立审查 P3-4） | 清单内“校验命令”小节的 `sha256sum <文件…>` 只能输出哈希、不能自动比对；`sha256sum -c` 复现失败（no properly formatted checksum lines found） | SHA 清单“校验命令”小节 | 在 SHA 清单内保留人类可读表格的同时，追加一段 sha256sum 标准格式（`SHA-256 + 两空格 + 文件名`，每行一项）的纯文本代码块，覆盖除清单自身外的 8 项交付物（含验证脚本与配套合成库构造脚本）；清单自身 SHA 不自指，仍以直接 `sha256sum` 命令核对（见清单“本清单自身”小节）；实测 `sha256sum -c` 通过 | 清单重生成后逐项复核每个 SHA 与实测一致；机核命令与输出见验证日志与协调员回报 |
 **v2.3 修订后验证（实测记录；未连接 BWH，未执行生产 SQL）**：
 
 - S-11 九条 SQL：从 v2.3 与 v2.2 文档原文重新抽取（S-11a 至 S-12 区块，剥离整行注释后按 `;` 切分），逐字比对 9/9 一致；空库实跑 9/9 通过（S-11a 返回基数全 0；S-11b/c/d/e 违反计数全 0；S-11e(2) 返回 (orphan_receipts=0, unversioned_receipts=0)；S-11f 返回 0 行）；合成违规库实跑 9/9 通过（S-11a (1, 1, 2, 2, 0)；S-11b 1；S-11c 1 / 0；S-11d 1 / 1；S-11e 1 / (1, 1)；S-11f ('paid_coins', 1, 85, 0, 5)；与 v2.2 实测值一致）。
@@ -38,7 +43,7 @@
 - S-03 compile_options：本地 SQLite 实测返回 58 行单列文本（示例：`COMPILER=gcc-13.3.0`、`ENABLE_JSON1` 等，见验证日志）；S-03 9 条全部执行通过。
 - S-15：v2.2 的 S-15（`SELECT * ... ORDER BY version`）在 Master 建成的本地合成库上执行失败（`no such column: version`，复现 1 次）；v2.3 的 S-15（明确 3 列，按 `migration_id` 排序）执行通过，返回 3 列（migration_id / ddl_checksum / applied_at）。
 - S-10 等价性：合并 CASE 形式与 v2.2 逐列 `COUNT(*) WHERE {列} IS NULL` 形式在合成库全部 858 列上逐项比对一致（858/858；空表上 SUM 返回 NULL，执行方按 0 计，与 v2.2 合并形式同口径）；禁读字段只走 CASE 形式，不返回原文、哈希、指纹或行级样本。
-- 附录 C CHECK 否定式：284 条逐项可执行，空库上违反计数全 0；3 处种子违规（leads 状态枚举、coin_lots issued_units、ads_consent ad_personalization）均被检出；其中 8 条原引用 v2.2 的 D1 目标列名（源 Schema 不存在该列），v2.3 已按 Master 源码 DDL 纠正为源列名（`lease_token_hash`→`lease_token` 6 条、`event_dedupe_key_digest`→`event_dedupe_key` 1 条、`reserve_idempotency_key_digest`→`reserve_idempotency_key` 1 条，见 V23-7）。
+- 附录 C CHECK 否定式：284 条逐项可执行，空库上违反计数全 0；4 处种子违规（leads 状态枚举、coin_lots issued_units、ads_consent ad_personalization、platform_payment_receipts 仅 `next_action_url` 失同步 S08-C192）均被检出（S08-C192 新否定式检出 1 行，旧两列式为 0，证实旧式漏报）；其中 8 条原引用 v2.2 的 D1 目标列名（源 Schema 不存在该列），v2.3 已按 Master 源码 DDL 纠正为源列名（`lease_token_hash`→`lease_token` 6 条、`event_dedupe_key_digest`→`event_dedupe_key` 1 条、`reserve_idempotency_key_digest`→`reserve_idempotency_key` 1 条，见 V23-7）。
 - S-06 LIMIT 10 三档：合成库 0 组、5 组、10 组、11 组、15 组重复列逐档验证，判定与预期一致（0 组证无重复；≤10 组枚举组数等于组总数；>10 组记 NOT PROVEN，不冒充全量）。
 - 50/41/2 重算：附录 B NOT NULL 列集 74 张表、639 列：含 created_at 的表 50 张、含 status 的表 41 张、含 purpose 的表 2 张（platform_coin_holds、platform_issuance_requests），与 §5 / S-12 一致（核验边界见 §5 重算注；Master 建成的合成库实测亦为 50/41/2）。
 - B 方案文字：v2.3 全文“推荐方案，待 Yi 确认”出现 9 处（≥8），全文无任何将 B 方案写成已批准/已确认/已决定的表述。
@@ -118,7 +123,7 @@ PRAGMA index_xinfo("{索引名}");     -- 逐索引执行，共 i = 219 次（�
 --   · 每键列记录排序方向（desc：0 = ASC、1 = DESC）与 collation（coll 列）；
 --     本 Schema 实测键列 324 个，全部 BINARY collation，314 ASC / 10 DESC；
 --   · partial（index_list 的 partial = 1）须记录 WHERE 谓词（取自 sqlite_master
---     的索引定义 SQL）；本 Schema 实测部分索引 22 个，其中 13 个为 UNIQUE 部分索引；
+--     的索引定义 SQL）；本 Schema 实测部分索引 22 个，其中 12 个为 UNIQUE 部分索引；
 --   · 索引名引用方式：标识符加双引号，内嵌双引号加倍转义（""）；索引名只取自
 --     index_list 实测结果，不得拼接未经验证的名字；验证见 §0（注入中和实测）。
 --   · 兼容补充：仅当执行环境的 SQLite 不支持 index_xinfo 时，改用
@@ -132,7 +137,7 @@ PRAGMA index_xinfo("{索引名}");     -- 逐索引执行，共 i = 219 次（�
 -- UNIQUE 约束自动索引 51 个，其中单列 34 个、复合多列 17 个）= 219。
 -- 219 的实测来源：Master 11dd1cfb 源码建成的本地合成库（见 §0），
 -- index_xinfo 总行数 543 行（键列 324 行 + rowid 辅助列 219 行，每索引 1 行）。
--- 补充说明（V23-OBS-1）：17 个复合 UNIQUE 约束与 13 个 UNIQUE 部分索引的
+-- 补充说明（V23-OBS-1）：17 个复合 UNIQUE 约束与 12 个 UNIQUE 部分索引的
 -- 约束执行不在 S-06 的 34 列单列检查范围内（见附录 B NP-04 注记）；S-02 只
 -- 验证其索引定义存在与列定义一致，不判定其约束是否被违反。
 -- S-03 库级元数据（v2.3：新增 PRAGMA compile_options，共 9 次）
@@ -524,7 +529,7 @@ SELECT migration_id, ddl_checksum, applied_at FROM platform_schema_migrations
 | NP-01 | SQLite 版本与编译选项 | S-03 | 可关闭 | 版本（`sqlite_version()`）与编译选项（`PRAGMA compile_options`，v2.3 新增查询）已记录，与仓库比对一致 |
 | NP-02 | 仓库外类型 | S-01 / S-02 | 可关闭 | 生产 Schema 与仓库逐字段比对，无仓库外类型 |
 | NP-03 | NULL 分布 | S-10 | 可关闭 | 每列空值计数已产出（每表 1 条多聚合查询；禁读字段只用 `SUM(CASE WHEN {列} IS NULL THEN 1 ELSE 0 END)` 形式，见 §4 S-10 与 §7 规则 2；普通字段空值计数与 v2.2 逐列形式返回值一致） |
-| NP-04 | 重复唯一键 | S-06 | 可关闭 | 34 列逐项按三档判定：组总数为 0 证无重复；组总数 1～10 时值枚举组数须等于组总数，否则记异常待裁决；组总数 > 10 的列保持 NOT PROVEN，除非获得额外范围明确的授权并完成完整裁决（LIMIT 10 保留）；重复项逐项列出（值枚举 + 组总数）并裁决（是否影响 D1 UNIQUE 约束装载）；2 个凭据列按修订后方式（仅计数）验证（R2-OBS-1；见 §7 例外声明）。注（V23-OBS-1）：17 个复合 UNIQUE 约束与 13 个 UNIQUE 部分索引的约束执行不在本申请 S-06 的 34 列单列检查范围内；S-02 只验证其索引定义，不判定其约束是否被违反；复合/部分 UNIQUE 的违反判定须另行申请补充查询 |
+| NP-04 | 重复唯一键 | S-06 | 可关闭 | 34 列逐项按三档判定：组总数为 0 证无重复；组总数 1～10 时值枚举组数须等于组总数，否则记异常待裁决；组总数 > 10 的列保持 NOT PROVEN，除非获得额外范围明确的授权并完成完整裁决（LIMIT 10 保留）；重复项逐项列出（值枚举 + 组总数）并裁决（是否影响 D1 UNIQUE 约束装载）；2 个凭据列按修订后方式（仅计数）验证（R2-OBS-1；见 §7 例外声明）。注（V23-OBS-1）：17 个复合 UNIQUE 约束与 12 个 UNIQUE 部分索引的约束执行不在本申请 S-06 的 34 列单列检查范围内；S-02 只验证其索引定义，不判定其约束是否被违反；复合/部分 UNIQUE 的违反判定须另行申请补充查询 |
 | NP-05 | 孤儿行 | S-07 | 可关闭 | 125 项孤儿计数全部为 0，或非 0 项逐项列出并裁决；“关 FK 写入历史”记为“无直接证据，以孤儿计数 + S-15 为间接证据”，不得写成已证无 |
 | NP-06 | 实际索引 | S-02 | 可关闭 | 生产索引全量（`index_list` 219 行：显式索引 94 个 + 自动索引 125 个）逐索引以 `index_xinfo` 比对键列定义一致：索引名、所属表、来源（显式 'c' / UNIQUE 自动索引 'u' / 主键自动索引 'pk'）、键列顺序、排序方向、collation、部分索引谓词；key = 0 的 rowid 辅助列不计入键列。DDL 16b 的 90 个索引为显式索引的子集（另 4 个为 2 张 DEFER 表的显式索引）；自动索引 125 个 = 主键自动索引 74 个 + UNIQUE 约束自动索引 51 个（含 17 个复合多列约束） |
 | NP-07 | CHECK 违反 | S-08 | 可关闭 | 284 条 CHECK 否定式判定 + 639 列 NOT NULL 违反计数已产出；违反为 0 或逐项列出并裁决 |
@@ -555,7 +560,7 @@ SELECT migration_id, ddl_checksum, applied_at FROM platform_schema_migrations
 **NP-13 超时同步（v2.2）**：NP 台账 NP-13 节 L150 的 60 秒表述（“单表扫描超 60 秒未返回即中止该查询并记录”）冻结正文不动；改写以本申请为准，台账同步以本注记为准——本申请统一阈值为单条 SQL 查询超时 30 秒（见 §9 注记）。
 
 ---
-*本申请 v2.2 状态：PENDING / NOT APPROVED / NO PRODUCTION AUTHORITY。未获 Yi 批准前，不得连接 BWH 生产数据库，不得执行本申请中的任何查询。基线 Master `11dd1cfb208b78a85ce77b8c8aef2b6763f9000a`。*
+*本申请 v2.3 状态：PENDING / NOT APPROVED / NO PRODUCTION AUTHORITY。未获 Yi 批准前，不得连接 BWH 生产数据库，不得执行本申请中的任何查询。基线 Master `11dd1cfb208b78a85ce77b8c8aef2b6763f9000a`。*
 
 ## 附录 B · S-08 NOT NULL 字段集（639 列，按表列出）
 
@@ -840,7 +845,7 @@ SELECT migration_id, ddl_checksum, applied_at FROM platform_schema_migrations
 | S08-C189 | `platform_payment_orders_legacy_archive_20260803` | `refund_remaining_days` | `(refund_remaining_days is null or refund_remaining_days >= 0)` | `WHERE ((refund_remaining_days is null or refund_remaining_days >= 0)) = 0` |
 | S08-C190 | `platform_payment_orders_legacy_archive_20260803` | `refund_status` | `(refund_status is null or refund_status in ('refund_requested', 'refund_approved', 'refund_pending_provider', 'refund_succeeded', 'refund_failed', 'refund_rejected'))` | `WHERE ((refund_status is null or refund_status in ('refund_requested', 'refund_approved', 'refund_pending_provider', 'refund_succeeded', 'refund_failed', 'refund_rejected'))) = 0` |
 | S08-C191 | `platform_payment_orders_legacy_archive_20260803` | `status` | `(status in ( 'pending_payment', 'payment_amount_mismatch', 'payment_failed', 'paid_pending_admin_review', 'paid_access_delivered', 'paid_delivery_blocked' ))` | `WHERE ((status in ( 'pending_payment', 'payment_amount_mismatch', 'payment_failed', 'paid_pending_admin_review', 'paid_access_delivered', 'paid_delivery_blocked' ))) = 0` |
-| S08-C192 | `platform_payment_receipts` | `—（多列状态机）` | `((next_action_type IS NULL AND next_action_expires_at IS NULL) OR (next_action_type IS NOT NULL AND next_action_expires_at IS NOT NULL))` | `WHERE (((next_action_type IS NULL AND next_action_expires_at IS NULL) OR (next_action_type IS NOT NULL AND next_action_expires_at IS NOT NULL))) = 0` |
+| S08-C192 | `platform_payment_receipts` | `—（多列状态机）` | `( ( next_action_type is null and next_action_url is null and next_action_expires_at is null ) or ( next_action_type is not null and next_action_url is not null and next_action_expires_at is not null ) )` | `WHERE (( ( next_action_type is null and next_action_url is null and next_action_expires_at is null ) or ( next_action_type is not null and next_action_url is not null and next_action_expires_at is not null ) )) = 0` |
 | S08-C193 | `platform_payment_receipts` | `—（多列状态机）` | `( ( verification_result = 'not_applicable' and event_dedupe_key is null and merchant_scope_digest is null and payload_digest is null ) or ( verification_result = 'verified' and canonical_state = 'payment_succeeded' and provider_order_ref is not null and provider_capture_ref is not null and event_dedupe_key is not null and length(merchant_scope_digest) = 64 and length(payload_digest) = 64 ) )` | `WHERE (( ( verification_result = 'not_applicable' and event_dedupe_key is null and merchant_scope_digest is null and payload_digest is null ) or ( verification_result = 'verified' and canonical_state = 'payment_succeeded' and provider_order_ref is not null and provider_capture_ref is not null and event_dedupe_key is not null and length(merchant_scope_digest) = 64 and length(payload_digest) = 64 ) )) = 0` |
 | S08-C194 | `platform_payment_receipts` | `amount_minor` | `(typeof(amount_minor) = 'integer' and amount_minor > 0)` | `WHERE ((typeof(amount_minor) = 'integer' and amount_minor > 0)) = 0` |
 | S08-C195 | `platform_payment_receipts` | `canonical_state` | `( canonical_state in ( 'entry_ready', 'pending', 'payment_succeeded', 'failed_no_charge', 'reconciliation_required' ) )` | `WHERE (( canonical_state in ( 'entry_ready', 'pending', 'payment_succeeded', 'failed_no_charge', 'reconciliation_required' ) )) = 0` |

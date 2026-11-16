@@ -6,6 +6,10 @@ and run the 14 validation items on local synthetic DBs built from Master
 
 Usage:
   python3 phase4-1-validate-v23-from-doc.py [--doc PATH] [--log PATH]
+      [--builder NAME] [--note TEXT]
+  --builder names the script that built the synthetic DB (recorded in the log
+  summary line; default build-full-db.mjs). --note is recorded as the first
+  log line, e.g. to mark a post-fix re-run.
 Defaults: doc = D1 files/...v2.3-2026-11-16.md (falls back to scratch draft),
 synthetic DB = ~/workspace/phase4-1-v23/synth-full.db (built by build-full-db.mjs).
 Writes: validation log, measured.json (for build-v2.3.py), expansion.json.
@@ -22,6 +26,8 @@ SYNTH = SCRATCH / "synth-full.db"
 ap = argparse.ArgumentParser()
 ap.add_argument("--doc", default=None)
 ap.add_argument("--log", default=None)
+ap.add_argument("--builder", default="build-full-db.mjs")
+ap.add_argument("--note", default=None)
 args = ap.parse_args()
 DOC = pathlib.Path(args.doc) if args.doc else (
     D / "phase4-production-readonly-authorization-request-v2.3-2026-11-16.md")
@@ -41,6 +47,8 @@ def record(no, name, ok, detail):
     log(f"[{'PASS' if ok else 'FAIL'}] Item {no} — {name}: {detail}")
 
 text = DOC.read_text(encoding="utf-8")
+if args.note:
+    log(f"note: {args.note}")
 log(f"doc: {DOC} sha256={hashlib.sha256(text.encode()).hexdigest()} lines={text.count(chr(10))}")
 log(f"synth db: {SYNTH} sha256={hashlib.sha256(SYNTH.read_bytes()).hexdigest()}")
 log(f"started: {START} (local)")
@@ -335,6 +343,14 @@ try:
                  "VALUES ('l-bad','w1','paid_coins','co-bad',-5,0,0,0,0,0,0,'synthetic','src1','2026-01-01T00:00:00.000Z','2026-01-01T00:00:00.000Z')")
     viol.execute("INSERT INTO platform_ads_consent_decisions (account_ref, decision, ad_user_data, ad_personalization, updated_at) "
                  "VALUES ('acct-x','granted',1,1,1735689600)")
+    # V23-8 (S08-C192): row violating ONLY the three-column next_action state
+    # machine — next_action_type NULL, next_action_url non-NULL,
+    # next_action_expires_at NULL. Every other receipts CHECK holds, so only
+    # the corrected C192 negation may count it; the old two-column form must
+    # count 0 (it missed exactly this shape). URL is a synthetic .invalid
+    # value; no row values are printed anywhere in the log.
+    viol.execute("INSERT INTO platform_payment_receipts (receipt_ref, payment_order_ref, attempt_ref, provider_request_ref, receipt_type, canonical_state, charge_certainty, provider_order_ref, provider_capture_ref, provider_event_ref, event_dedupe_key, merchant_scope_digest, payload_digest, next_action_type, next_action_url, next_action_expires_at, verification_result, amount_minor, currency, currency_exponent, expected_paid_coin_units, accepted_at) "
+                 "VALUES ('rcpt-c192','po-x','att-x','pr-x','create','entry_ready','unknown',NULL,NULL,NULL,NULL,NULL,NULL,NULL,'https://example.invalid/next-action',NULL,'not_applicable',1,'USD',2,1,'2026-01-01T00:00:00.000Z')")
     viol.execute("PRAGMA ignore_check_constraints=OFF")
     viol.commit()
     neg = []
@@ -343,13 +359,21 @@ try:
                     ("(ad_personalization = 0)", "platform_ads_consent_decisions")]:
         neg.append(run(viol, f'SELECT COUNT(*) FROM {qident(t)} WHERE ({expr}) = 0')[0][0])
     assert neg == [1, 1, 1], neg
+    # S08-C192 from the doc itself: new three-column negation must count the
+    # seeded url-only row (1); the old two-column form must count 0.
+    c192_expr = [e for (_i, _t, _c, e) in checks if _i == "S08-C192"]
+    assert len(c192_expr) == 1, c192_expr
+    c192_new = run(viol, f'SELECT COUNT(*) FROM platform_payment_receipts WHERE ({c192_expr[0]}) = 0')[0][0]
+    c192_old = run(viol, 'SELECT COUNT(*) FROM platform_payment_receipts WHERE (((next_action_type IS NULL AND next_action_expires_at IS NULL) OR (next_action_type IS NOT NULL AND next_action_expires_at IS NOT NULL))) = 0')[0][0]
+    assert (c192_new, c192_old) == (1, 0), (c192_new, c192_old)
     n_lease = sum(1 for (_id, _t, _c, expr) in checks if "lease_token" in expr)
     n_dedupe = sum(1 for (_id, _t, _c, expr) in checks if "event_dedupe_key" in expr)
     n_reserve = sum(1 for (_id, _t, _c, expr) in checks if "reserve_idempotency_key" in expr)
     assert (n_lease, n_dedupe, n_reserve) == (6, 1, 1), (n_lease, n_dedupe, n_reserve)
     record(4, "284 CHECK negations (each executes, =0 on empty; violations detected)",
            True, f"284/284 execute with 0 on empty DB (incl. 8 V23-7-corrected CHECKs: 6 lease_token, "
-                 f"1 event_dedupe_key, 1 reserve_idempotency_key); 3/3 seeded violations detected (counts {neg})")
+                 f"1 event_dedupe_key, 1 reserve_idempotency_key; incl. V23-8-corrected S08-C192); 4/4 seeded violations detected (counts {neg + [c192_new]}); "
+                 f"S08-C192 url-only row: new negation {c192_new}, old two-column negation {c192_old} (old form missed it)")
 except Exception as e:
     record(4, "284 CHECK negations (each executes, =0 on empty; violations detected)", False, f"{type(e).__name__}: {e}")
 
@@ -658,7 +682,7 @@ except Exception as e:
 npass = sum(1 for ok, _ in results.values() if ok)
 log(f"\nSUMMARY: {npass}/14 items PASS; S-02 quoting extra: {'PASS' if s02_extra_pass else 'FAIL'}")
 log(f"commands: python3 {pathlib.Path(__file__).name} --doc {DOC}")
-log(f"node: n/a (pure Python sqlite3 {sqlite3.sqlite_version}); synth DB built by build-full-db.mjs with Node v22.23.1")
+log(f"node: n/a (pure Python sqlite3 {sqlite3.sqlite_version}); synth DB built by {args.builder} with Node v22.23.1")
 log(f"finished: {time.strftime('%Y-%m-%dT%H:%M:%S%z')}")
 for no in sorted(results):
     ok, detail = results[no]
