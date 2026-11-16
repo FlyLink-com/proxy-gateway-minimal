@@ -35,6 +35,13 @@ import {
   coinCommerceSubscriptionFulfillmentMetadataJson,
   portalAccessEventJson
 } from "./control-json-contracts.mjs";
+import {
+  meteringResetReceiptId,
+  meteringResetReceiptType,
+  readMeteringResetReceiptRow,
+  verifyMeteringResetReceiptRow,
+  writeMeteringResetReceipt
+} from "./metering-reset-receipt.mjs";
 
 const UNSAFE_FIELD_PARTS = [
   "email",
@@ -7230,10 +7237,6 @@ export function createSqliteSubscriptionControlStore({
       || meteringResetTime(continuation.completedAt) > now) throw meteringResetInvalid();
   }
 
-  function meteringResetReceiptRef(rotationRef) {
-    return `pack_metering_reset_${sha256(`GCCWEBOS:DATA_PACK_METERING_RESET_RECEIPT:v1\0${rotationRef}`)}`;
-  }
-
   function assertDataPackResetEdgeApplied(current, now, resourceUsage) {
     const createdAt = db.prepare(`select created_at from platform_data_pack_credential_resets
       where rotation_ref = ?`).get(current.rotationRef)?.created_at;
@@ -7340,7 +7343,7 @@ export function createSqliteSubscriptionControlStore({
     return db.transaction(() => {
       const current = readDataPackCredentialReset(input.rotationRef);
       if (!current || current.accountId !== input.accountId || current.orderRef !== input.orderRef) throw meteringResetInvalid();
-      const receipt = getAuditEvent(meteringResetReceiptRef(input.rotationRef));
+      const receipt = getAuditEvent(meteringResetReceiptId(input.rotationRef));
       if (!receipt) return null;
       try {
         assertNoDuplicateObjectKeys(db.prepare("select metadata_json from platform_audit_events where id = ?")
@@ -7382,15 +7385,28 @@ export function createSqliteSubscriptionControlStore({
       }
       const current = readDataPackCredentialReset(proof.rotationRef);
       if (meteringResetCanonical(proof) !== meteringResetCanonical(currentMeteringResetProof(current, now))) throw meteringResetInvalid();
-      // The generic audit input filter rejects any field named "credential".
-      // This exact private shape contains only validated references and digests,
-      // never credential material; do not relax that generic audit API.
-      db.prepare(`insert into platform_audit_events
-        (id, entity_type, entity_ref, action, actor_ref, created_at, metadata_json)
-        values (?, ?, ?, ?, ?, ?, ?)`).run(meteringResetReceiptRef(proof.rotationRef),
-        "coin_commerce_data_pack_metering_reset", proof.rotationRef, "data_pack_metering_reset_completed",
-        "full_metering_collector", continuation.completedAt, JSON.stringify(metadata));
-      return getCoinCommerceDataPackMeteringResetReceipt(scope);
+      // M1-10 Option B: the receipt is written through the dedicated receipt
+      // mechanism (metering-reset-receipt.mjs), not through the generic audit
+      // path and not through inline SQL. The generic audit input filter
+      // rejects any field named "credential"; this exact private shape
+      // contains only validated references and digests, never credential
+      // material — and the generic filter is not relaxed for it.
+      const receiptType = meteringResetReceiptType("data_pack_metering_reset_completed");
+      const receiptRow = { id: meteringResetReceiptId(proof.rotationRef),
+        entityType: receiptType.entityType, entityRef: proof.rotationRef,
+        action: receiptType.action, actorRef: receiptType.actorRef,
+        createdAt: continuation.completedAt, metadataJson: JSON.stringify(metadata) };
+      writeMeteringResetReceipt(db, receiptRow);
+      // Read-back check, still inside this transaction: the stored row must
+      // be byte-identical to what was written, and the semantic receipt
+      // re-derived from live state must canonically equal it. Any mismatch
+      // throws reconciliation_required and this transaction rolls the insert
+      // back — no receipt row remains, the reset stays edge_applied, and the
+      // collector can retry the same receipt idempotently.
+      verifyMeteringResetReceiptRow(readMeteringResetReceiptRow(db, receiptRow.id), receiptRow);
+      const readBack = getCoinCommerceDataPackMeteringResetReceipt(scope);
+      if (!readBack || meteringResetCanonical(readBack) !== meteringResetCanonical(metadata)) throw meteringResetInvalid();
+      return readBack;
     }).immediate();
   }
 
