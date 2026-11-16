@@ -1,8 +1,10 @@
 import { createHash } from "node:crypto";
 import {
   summarizeUsageSamples,
-  usageCycleFiltersForBinding
+  usageCycleFiltersForBinding,
+  usageCycleForBinding
 } from "./usage-billing-cycle.mjs";
+import { preferRatedUsage } from "./protocol-traffic-rating.mjs";
 
 function trafficError(code, message) {
   const error = new Error(message);
@@ -81,6 +83,9 @@ function defaultSampleRefFactory({ sampleDigest }) {
 }
 
 function quotaDecision({ binding, usage }) {
+  if (usage?.historyUnobserved || (usage?.ratingMode === "rated" && usage.totalBytes === null)) {
+    return { status: "quota_observation_required", nextAction: "hold_traffic_supply_until_usage_is_known" };
+  }
   const trafficLimitBytes = Number(binding?.trafficLimitBytes ?? 0);
   const usedBytes = Number(usage?.totalBytes ?? 0);
   if (!trafficLimitBytes) {
@@ -172,12 +177,17 @@ export function createTrafficAccountingService({
       requestId: binding.requestId,
       createdAt: isoNow(nowFn)
     };
+    // The caller supplies a decision already frozen from the active policy.
+    // This entry does not invent one, and a missing property stays fail-closed.
+    const ratedRecord = Object.hasOwn(input, "ratingDecision")
+      ? { ...record, ratingDecision: input.ratingDecision }
+      : record;
     let usage;
     if (normalized.accountingMode === "cumulative") {
       if (typeof controlStore.recordCumulativeUsageSample !== "function") {
         throw trafficError("cumulative_cursor_store_required", "cumulative usage cursor store is required");
       }
-      usage = controlStore.recordCumulativeUsageSample(record);
+      usage = controlStore.recordCumulativeUsageSample(ratedRecord);
     } else {
       const sampleDigest = requiredText(sampleDigestFactory(normalized), "sampleDigest");
       const sampleId = requiredText(usageSampleRefFactory({
@@ -187,7 +197,7 @@ export function createTrafficAccountingService({
       }), "usageSampleRef");
       usage = controlStore.recordUsageSample({
         id: sampleId,
-        ...record,
+        ...ratedRecord,
         sampleDigest
       });
     }
@@ -250,16 +260,27 @@ function currentCycleUsageFor({ controlStore, binding, observedAt, fallbackRollu
       totalBytes: Number(fallbackRollup?.totalBytes ?? 0)
     };
   }
+  const filters = usageCycleFiltersForBinding(binding, observedAt);
+  const cycle = usageCycleForBinding(binding, observedAt);
   const samples = controlStore.listUsageSamples({
     accountId: binding.accountId,
     entitlementId: binding.entitlementId,
     requestId: binding.requestId,
-    ...usageCycleFiltersForBinding(binding, observedAt)
+    ...filters
   });
-  const summary = summarizeUsageSamples(samples);
+  const summary = preferRatedUsage(controlStore, {
+    accountId: binding.accountId,
+    entitlementId: binding.entitlementId,
+    requestId: binding.requestId,
+    cycleKey: cycle?.cadence === "lifetime" ? "lifetime" : cycle?.startedAt,
+    observedFrom: filters.observedFrom,
+    observedTo: filters.observedTo
+  }, summarizeUsageSamples(samples));
   return {
     uploadBytes: summary.uploadBytes,
     downloadBytes: summary.downloadBytes,
-    totalBytes: summary.totalBytes
+    totalBytes: summary.totalBytes,
+    ratingMode: summary.ratingMode,
+    historyUnobserved: summary.historyUnobserved === true
   };
 }

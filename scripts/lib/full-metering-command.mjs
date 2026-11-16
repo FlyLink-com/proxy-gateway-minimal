@@ -10,6 +10,7 @@ import { runFullMeteringCollection } from "./full-metering-collection.mjs";
 import { FULL_METERING_SCOPE, LOCAL_METERING_SCOPE, fullMeteringChannels } from "./full-metering-scope.mjs";
 import { fullMeteringDigest } from "./full-metering-journal.mjs";
 import { createFullMeteringSampleWriter } from "./full-metering-sample-writer.mjs";
+import { freezeProtocolRatingDecisions } from "../../server/services/platform/protocol-traffic-rating.mjs";
 import { createFullMeteringSourceDriver, validateFullMeteringSources } from "./full-metering-source-driver.mjs";
 import { readFullMeteringPlanSwitchProof } from "./full-metering-plan-switch-proof.mjs";
 
@@ -174,9 +175,10 @@ export async function runFullMeteringCommand(argv) {
       const controlStore = createSqliteSubscriptionControlStore({ database: db, initializeSchema: false });
       if (options.mode === "collect-pack-resets") dataPackResetStore = controlStore;
       const writer = createFullMeteringSampleWriter({ database: db, controlStore, readBindings, meteringScope, activationId: config.activationId });
-      applySamples = samples => { assertInputs(); return writer(samples); };
+      applySamples = (samples, rating) => { assertInputs(); return writer(samples, rating); };
     }
     return await runFullMeteringCollection({ ...options, directory: config.journalDirectory, context, activationId: config.activationId, meteringScope,
-      readInventory, readSources, readPlanSwitchProof, applySamples, materialApproval, billingWindowApproval, dataPackResetStore });
+      readInventory, readSources, readPlanSwitchProof, applySamples, materialApproval, billingWindowApproval, dataPackResetStore,
+      freezeRating: (samples) => freezeProtocolRatingDecisions(db, samples) });
   } finally { db.close(); }
 }

@@ -26,11 +26,19 @@ export type BwhSupplySnapshot = {
   protocolsRunning: number; collectorState: "running" | "paused" | "unknown";
   nativeDistributionEnabled: boolean; observedAt: string | null; canPause: boolean; canEnable: boolean;
 };
+export type ProtocolRatingMultipliers = { vless: string; hy2: string; tuic: string };
+export type ProtocolRatingPolicy = {
+  version: number; state: "pending" | "active"; effectiveNotBefore: string; multipliers: ProtocolRatingMultipliers;
+};
+export type ProtocolRatingSnapshot = {
+  installed: boolean; revision: string | null; active: ProtocolRatingPolicy | null; pending: ProtocolRatingPolicy | null;
+};
 export type DistributionSnapshot = {
   revision: string; owned: { enabled: boolean; items: OwnedDistributionNode[] };
   routes: DistributionRoute[]; candidates: DistributionCandidate[];
   automation?: DistributionAutomation;
   bwhSupply?: BwhSupplySnapshot;
+  protocolRating?: ProtocolRatingSnapshot;
 };
 export type OwnedDistributionSave = {
   revision: string; enabled: boolean;
@@ -45,6 +53,7 @@ export interface SubscriptionDistributionClient {
   saveRoutes(input: { revision: string; routes: DistributionRoute[] }, signal?: AbortSignal): Promise<DistributionSnapshot>;
   saveOwned(input: OwnedDistributionSave, signal?: AbortSignal): Promise<DistributionSnapshot>;
   setBwhSupply(input: { revision: string; supplyRevision: string; enabled: boolean }, signal?: AbortSignal): Promise<DistributionSnapshot>;
+  saveProtocolRating?(input: { ratingRevision: string; vless: string; hy2: string; tuic: string }, signal?: AbortSignal): Promise<DistributionSnapshot>;
 }
 
 function fail(): never { throw new DistributionError("invalid"); }
@@ -110,6 +119,38 @@ function bwhSupply(value: unknown): BwhSupplySnapshot {
     nativeDistributionEnabled: bool(item.nativeDistributionEnabled), observedAt: observationTime(item.observedAt),
     canPause: bool(item.canPause), canEnable: bool(item.canEnable) };
 }
+const MULTIPLIER = /^\d{1,2}(\.\d{1,4})?$/;
+export function protocolMultiplierUnits(value: string): number | null {
+  if (!MULTIPLIER.test(value)) return null;
+  const [whole, fraction = ""] = value.split(".");
+  const units = Number(whole) * 10000 + Number((fraction + "0000").slice(0, 4));
+  return units >= 1000 && units <= 100000 ? units : null;
+}
+function multiplierText(value: unknown): string {
+  if (typeof value !== "string" || protocolMultiplierUnits(value) === null) fail();
+  return value;
+}
+function ratingPolicy(value: unknown): ProtocolRatingPolicy | null {
+  if (value === null) return null;
+  const item = object(value);
+  keys(item, ["version", "state", "effectiveNotBefore", "multipliers"]);
+  if (!Number.isInteger(item.version) || (item.version as number) < 1 || (item.state !== "pending" && item.state !== "active")) fail();
+  const at = observationTime(item.effectiveNotBefore);
+  if (at === null) fail();
+  const multipliers = object(item.multipliers);
+  keys(multipliers, ["vless", "hy2", "tuic"]);
+  return { version: item.version as number, state: item.state, effectiveNotBefore: at,
+    multipliers: { vless: multiplierText(multipliers.vless), hy2: multiplierText(multipliers.hy2), tuic: multiplierText(multipliers.tuic) } };
+}
+function protocolRating(value: unknown): ProtocolRatingSnapshot {
+  const item = object(value);
+  keys(item, ["installed", "revision", "active", "pending"]);
+  if (item.installed !== true) {
+    if (item.installed !== false || item.revision !== null || item.active !== null || item.pending !== null) fail();
+    return { installed: false, revision: null, active: null, pending: null };
+  }
+  return { installed: true, revision: id(item.revision, REVISION), active: ratingPolicy(item.active), pending: ratingPolicy(item.pending) };
+}
 export function isVerifiedBwhSupplyState(value: BwhSupplySnapshot | undefined, enabled: boolean): boolean {
   return Boolean(value && value.state === (enabled ? "enabled" : "paused") && value.protocolsRunning === (enabled ? 3 : 0)
     && value.collectorState === (enabled ? "running" : "paused") && value.nativeDistributionEnabled === enabled);
@@ -138,7 +179,7 @@ async function readBoundedJson(response: Response, signal: AbortSignal): Promise
   } finally { reader.releaseLock(); }
 }
 function parseSnapshot(value: unknown): DistributionSnapshot {
-  const data = object(value); keys(data, ["revision", "owned", "routes", "candidates"], ["automation", "bwhSupply"]);
+  const data = object(value); keys(data, ["revision", "owned", "routes", "candidates"], ["automation", "bwhSupply", "protocolRating"]);
   const owned = object(data.owned); keys(owned, ["enabled", "items"]);
   const items = unique(array(owned.items, 256).map((value): OwnedDistributionNode => {
     const item = object(value);
@@ -159,7 +200,8 @@ function parseSnapshot(value: unknown): DistributionSnapshot {
   }));
   return { revision: id(data.revision, REVISION), owned: { enabled: bool(owned.enabled), items }, routes: routes(data.routes), candidates,
     ...(Object.hasOwn(data, "automation") ? { automation: automation(data.automation) } : {}),
-    ...(Object.hasOwn(data, "bwhSupply") ? { bwhSupply: bwhSupply(data.bwhSupply) } : {}) };
+    ...(Object.hasOwn(data, "bwhSupply") ? { bwhSupply: bwhSupply(data.bwhSupply) } : {}),
+    ...(Object.hasOwn(data, "protocolRating") ? { protocolRating: protocolRating(data.protocolRating) } : {}) };
 }
 
 export function createSubscriptionDistributionClient({ fetcher = fetch, timeoutMs = 15_000 }: { fetcher?: typeof fetch; timeoutMs?: number } = {}): SubscriptionDistributionClient {
@@ -228,6 +270,15 @@ export function createSubscriptionDistributionClient({ fetcher = fetch, timeoutM
           const actual = snapshot.owned.items.find((node) => node.id === selected.id);
           if (!actual || actual.enabled !== selected.enabled || actual.customName !== selected.customName || (actual.customCountryCode ?? null) !== selected.customCountryCode) fail();
         }
+        return snapshot;
+      });
+    },
+    saveProtocolRating(input, signal) {
+      const data = object(input); keys(data, ["ratingRevision", "vless", "hy2", "tuic"]);
+      const body = { ratingRevision: id(data.ratingRevision, REVISION), vless: multiplierText(data.vless), hy2: multiplierText(data.hy2), tuic: multiplierText(data.tuic) };
+      return request("/rating", body, signal).then((snapshot) => {
+        const pending = snapshot.protocolRating?.pending?.multipliers;
+        if (!pending || (["vless", "hy2", "tuic"] as const).some((key) => protocolMultiplierUnits(pending[key]) !== protocolMultiplierUnits(body[key]))) fail();
         return snapshot;
       });
     }

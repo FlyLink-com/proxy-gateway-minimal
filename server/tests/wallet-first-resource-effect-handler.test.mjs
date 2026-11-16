@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
 import { seedAccountModelForTest } from "./helpers/account-model-seed.mjs";
 
@@ -46,6 +49,14 @@ import {
 import {
   createSqliteSubscriptionStore
 } from "../services/subscriptions/repository.mjs";
+import { initializeFullMeteringJournal } from "../../scripts/lib/full-metering-journal.mjs";
+import { runProtocolRatingLifecycle } from "../../scripts/lib/protocol-traffic-rating-lifecycle.mjs";
+import {
+  freezeProtocolRatingDecisions,
+  protocolRatingRevision,
+  publishProtocolRatingPolicy
+} from "../services/platform/protocol-traffic-rating.mjs";
+import { usageCycleForBinding } from "../services/platform/usage-billing-cycle.mjs";
 
 const INITIAL_NOW = "2026-08-13T00:00:00.000Z";
 
@@ -450,6 +461,102 @@ test("control-store current-resource reader rejects a model mismatch and require
     }),
     { state: "reconciliation_required" }
   );
+});
+
+test("wallet-first overview reports a frozen charge and does not price a historical raw sample", async (t) => {
+  const fixture = createFixture();
+  const parent = mkdtempSync(join(tmpdir(), "wallet-rating-"));
+  t.after(() => {
+    fixture.close();
+    rmSync(parent, { recursive: true, force: true });
+  });
+  await fixture.handler.applyDeferredResourceTransition(initialInput());
+  const chain = fixture.handler.resolveCurrentResourceChain({ accountId: "acct_handler" });
+  const entitlement = fixture.controlStore.getEntitlement(chain.entitlementId);
+  const cycle = usageCycleForBinding(entitlement, INITIAL_NOW);
+  const historical = fixture.controlStore.recordUsageSample({
+    id: "usage_wallet_historical",
+    sourceRef: "full_metering_xray_cumulative_v1",
+    channelRef: "channel-vultr-a-vless-reality-tcp",
+    edgeCredentialRef: "edge_wallet_historical",
+    accountId: "acct_handler",
+    entitlementId: chain.entitlementId,
+    requestId: chain.requestId,
+    observedAt: INITIAL_NOW,
+    intervalStartedAt: INITIAL_NOW,
+    intervalEndedAt: INITIAL_NOW,
+    uploadBytes: 0,
+    downloadBytes: 100,
+    totalBytes: 100,
+    sampleDigest: "sha256:wallet-historical",
+    createdAt: INITIAL_NOW
+  });
+  assert.equal(historical.inserted, true);
+  const directory = join(parent, "journal");
+  const context = { scopeDigest: "c".repeat(64), databaseIdentityDigest: "d".repeat(64) };
+  initializeFullMeteringJournal({ directory, context, checkpoint: { sequence: 0, channels: [] } });
+  const lifecycle = { db: fixture.controlDatabase, directory, context, now: INITIAL_NOW };
+  await runProtocolRatingLifecycle({ ...lifecycle, action: "drain" });
+  await runProtocolRatingLifecycle({
+    ...lifecycle,
+    action: "baseline",
+    baselines: [{
+      accountId: "acct_handler",
+      entitlementId: chain.entitlementId,
+      requestId: chain.requestId,
+      cycleKey: cycle.startedAt,
+      windowStartedAt: cycle.startedAt,
+      boundaryObservedAt: INITIAL_NOW,
+      observation: "measured"
+    }]
+  });
+  publishProtocolRatingPolicy(fixture.controlDatabase, {
+    vless: "2.5", hy2: "1.0", tuic: "1.0", now: INITIAL_NOW,
+    expectedRevision: protocolRatingRevision(fixture.controlDatabase)
+  });
+  await runProtocolRatingLifecycle({ ...lifecycle, action: "activate" });
+  const observedAt = "2026-08-13T00:01:00.000Z";
+  const rated = {
+    id: "usage_wallet_rated_1",
+    sourceRef: "full_metering_xray_cumulative_v1",
+    channelRef: "channel-vultr-a-vless-reality-tcp",
+    edgeCredentialRef: "edge_wallet_rated",
+    accountId: "acct_handler",
+    entitlementId: chain.entitlementId,
+    requestId: chain.requestId,
+    observedAt,
+    intervalStartedAt: INITIAL_NOW,
+    intervalEndedAt: observedAt,
+    uploadBytes: 1,
+    downloadBytes: 0,
+    totalBytes: 1,
+    sampleDigest: "sha256:wallet-rated-1",
+    createdAt: observedAt
+  };
+  const decision = freezeProtocolRatingDecisions(fixture.controlDatabase, [{ record: rated }])[0];
+  const written = fixture.controlStore.recordUsageSample({ ...rated, ratingDecision: decision });
+  assert.equal(written.inserted, true);
+  const overview = fixture.controlStore.readWalletFirstCurrentResourceOverview({
+    accountId: "acct_handler", now: observedAt
+  });
+  assert.equal(overview.state, "available");
+  assert.equal(overview.usage.usedBytes, 102);
+  assert.equal(overview.usage.totalBytes, 50 * 1024 ** 3);
+  assert.equal(overview.usage.remainingBytes, overview.usage.totalBytes - 102);
+  assert.equal(overview.usage.collectionStatus, "measured");
+  assert.equal(overview.usage.cycleStartedAt, cycle.startedAt);
+  assert.equal(fixture.controlDatabase.prepare("select total_bytes from platform_usage_samples where id = ?").get(rated.id).total_bytes, 1);
+  assert.equal(fixture.controlDatabase.prepare("select total_bytes from platform_usage_samples where id = ?").get(historical.sample.id).total_bytes, 100);
+  assert.equal(Number(fixture.controlDatabase.prepare("select remainder from platform_protocol_rating_carry").get().remainder), 5000);
+  assert.equal(fixture.controlDatabase.prepare("select count(*) as count from platform_protocol_rating_charges").get().count, 1);
+  assert.doesNotMatch(JSON.stringify(overview), /edge_wallet|usage_wallet|acct_handler/);
+  fixture.controlDatabase.prepare("delete from platform_protocol_rating_charges").run();
+  assert.throws(
+    () => fixture.controlStore.readWalletFirstCurrentResourceOverview({ accountId: "acct_handler", now: observedAt }),
+    /rating_charge_missing/
+  );
+  assert.equal(fixture.controlDatabase.prepare("select total_bytes from platform_usage_samples where id = ?").get(rated.id).total_bytes, 1);
+  assert.equal(fixture.controlDatabase.prepare("select total_bytes from platform_usage_samples where id = ?").get(historical.sample.id).total_bytes, 100);
 });
 
 test("handler rejects a forged control/runtime pair even with matching public strings", () => {

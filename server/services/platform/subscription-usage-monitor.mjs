@@ -1,6 +1,8 @@
 import {
-  usageCycleFiltersForBinding
+  usageCycleFiltersForBinding,
+  usageCycleForBinding
 } from "./usage-billing-cycle.mjs";
+import { preferRatedUsage } from "./protocol-traffic-rating.mjs";
 
 const ACTIVITY_LEVELS = new Set([
   "never_seen",
@@ -569,8 +571,23 @@ function requestRow({ request, binding, controlStore, subscriptionCore, nowMs, n
     nowIso,
     fallbackRollups: cumulativeRollups
   });
-  const usage = sumRollups(rollups);
-  const usageStatus = usageStatusFor({ rollups, usage });
+  const rawUsage = sumRollups(rollups);
+  const cycle = usageCycleForBinding(resolvedBinding, nowIso);
+  const cycleFilters = usageCycleFiltersForBinding(resolvedBinding, nowIso);
+  const rated = preferRatedUsage(controlStore, {
+    accountId: resolvedBinding.accountId,
+    entitlementId: resolvedBinding.entitlementId,
+    requestId: request.id,
+    cycleKey: cycle?.cadence === "lifetime" ? "lifetime" : cycle?.startedAt,
+    observedFrom: cycleFilters.observedFrom,
+    observedTo: cycleFilters.observedTo
+  }, { uploadBytes: rawUsage.uploadBytes, downloadBytes: rawUsage.downloadBytes, totalBytes: rawUsage.usedBytes, lastObservedAt: rawUsage.lastObservedAt });
+  const observationRequired = rated.historyUnobserved === true || (rated.ratingMode === "rated" && rated.totalBytes == null);
+  const ratingState = observationRequired ? "unobserved" : rated.ratingMode === "rated" ? "rated" : "legacy";
+  const usage = !observationRequired && rated.ratingMode === "rated"
+    ? { ...rawUsage, uploadBytes: rated.uploadBytes, downloadBytes: rated.downloadBytes, usedBytes: rated.totalBytes }
+    : rawUsage;
+  const usageStatus = observationRequired ? "not_collected" : usageStatusFor({ rollups, usage });
   const issuedChannels = issuedChannelsFor({ request, binding: resolvedBinding });
   const lastRefreshAt = artifact?.lastSeenAt || usage.lastObservedAt || tenant?.lastUsedAt || null;
   const collectionStatus = collectionStatusFor({ usageStatus, usageCollectorConfigured });
@@ -595,7 +612,10 @@ function requestRow({ request, binding, controlStore, subscriptionCore, nowMs, n
     artifactLastSeenAt: safeIso(artifact?.lastSeenAt || null),
     refreshCount: safeNumber(artifact?.refreshCount),
     trafficLimitBytes: safeNumber(resolvedBinding.trafficLimitBytes || request.trafficLimitBytes),
-    usedBytes: usage.usedBytes,
+    usedBytes: observationRequired ? null : usage.usedBytes,
+    rawUsedBytes: rawUsage.usedBytes,
+    chargedUsedBytes: ratingState === "rated" ? rated.chargedTotalBytes ?? null : null,
+    ratingState,
     uploadBytes: usage.uploadBytes,
     downloadBytes: usage.downloadBytes,
     usageStatus,
@@ -709,8 +729,20 @@ export function buildSubscriptionUsageMonitor({
       rawEdgeCredentialReturned: false,
       usageCollectorConfigured: Boolean(usageCollectorConfigured),
       mutationAllowed: false
-    }
+    },
+    ratingBoundary: ratingBoundaryFor(controlStore)
   };
+}
+
+function ratingBoundaryFor(controlStore) {
+  if (typeof controlStore?.readProtocolRatingStatus !== "function") return null;
+  try {
+    const active = controlStore.readProtocolRatingStatus()?.active;
+    if (!active || active.state !== "active" || !Number.isInteger(active.version) || typeof active.effectiveNotBefore !== "string") return null;
+    return { version: active.version, effectiveNotBefore: active.effectiveNotBefore };
+  } catch {
+    return null;
+  }
 }
 
 function emptyMonitor({ generatedAt, filters }) {
@@ -732,6 +764,7 @@ function emptyMonitor({ generatedAt, filters }) {
       rawEdgeCredentialReturned: false,
       usageCollectorConfigured: false,
       mutationAllowed: false
-    }
+    },
+    ratingBoundary: null
   };
 }

@@ -41,7 +41,7 @@ function verifySources(sources, channels) {
 // ownership, runtime/config/material identity and generation before AND after a
 // non-clearing fetch. Public/caller-supplied counter batches are never accepted
 // by the production CLI. Tests inject disposable snapshots through this API.
-export async function runFullMeteringCollection({ directory, context, activationId, mode, meteringScope = FULL_METERING_SCOPE, materialApproval = null, billingWindowApproval = null, dataPackResetStore = null, nowFn = () => new Date().toISOString(), readInventory, readSources, readPlanSwitchProof, applySamples, onStage }) {
+export async function runFullMeteringCollection({ directory, context, activationId, mode, meteringScope = FULL_METERING_SCOPE, materialApproval = null, billingWindowApproval = null, dataPackResetStore = null, nowFn = () => new Date().toISOString(), readInventory, readSources, readPlanSwitchProof, applySamples, freezeRating = null, onStage }) {
   const selectedChannels = fullMeteringChannels(meteringScope);
   assertFullMeteringContextScope(context, meteringScope);
   const validateCheckpoint = checkpoint => {
@@ -263,7 +263,7 @@ export async function runFullMeteringCollection({ directory, context, activation
     if (mode === "initialize") {
       if (samples.length) fail("full_metering_initialization_charge_forbidden");
       initializeFullMeteringJournal({ directory, context, checkpoint: nextCheckpoint });
-    } else commitFullMeteringJournal({ directory, context, previousCheckpoint: previous, nextCheckpoint, samples, applySamples, onStage });
+    } else commitFullMeteringJournal({ directory, context, previousCheckpoint: previous, nextCheckpoint, samples, applySamples, freezeRating, onStage });
     if (packResets && resetProofs.length) {
       const receiptValue = nowFn(), receiptAt = receiptValue instanceof Date ? receiptValue.toISOString() : receiptValue;
       for (const record of nextCheckpoint.dataPackResetContinuations.slice(packHistory.length)) {

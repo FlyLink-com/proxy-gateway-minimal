@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { DATA_PACK_TECHNICAL_VALID_UNTIL, lifetimeDataPackQuotaBytesFor } from "../../server/services/platform/usage-billing-cycle.mjs";
+import { readProtocolRatedUsage } from "../../server/services/platform/protocol-traffic-rating.mjs";
 import { assertNoDuplicateObjectKeys } from "../../server/services/deployment/strict-json-scan.mjs";
 
 const PURPOSE = "coin_commerce_data_pack_fulfillment";
@@ -188,7 +189,13 @@ export function readFullMeteringDataPackBindings({ db, channels, nowMs, sources 
       from platform_usage_samples where account_id=? and entitlement_id=? and request_id=?
         and observed_at>=? and observed_at<=?`)
       .get(account.id, entitlement.id, request.id, entitlement.valid_from, now);
-    const used = measured.count === 0n ? null : integer(measured.total);
+    const rated = readProtocolRatedUsage(db, {
+      accountId: account.id, entitlementId: entitlement.id, requestId: request.id, cycleKey: "lifetime",
+      observedFrom: entitlement.valid_from, observedTo: now, inclusiveEnd: true
+    });
+    const used = rated.mode === "rated"
+      ? (rated.totalBytes === null ? null : integer(BigInt(rated.totalBytes)))
+      : (measured.count === 0n ? null : integer(measured.total));
     const reasons = [];
     if (account.status !== "active") reasons.push(`account_${account.status}`);
     if (entitlement.status !== "active") reasons.push(`entitlement_${entitlement.status}`);
@@ -196,7 +203,8 @@ export function readFullMeteringDataPackBindings({ db, channels, nowMs, sources 
     if (request.status !== "issued") reasons.push(`request_${request.status}`);
     if (link.status !== "active") reasons.push("links_inactive");
     if (credential.status !== "active") reasons.push(`credential_${credential.status}`);
-    if (used !== null && used >= quota) reasons.push("quota_exhausted");
+    if (rated.mode === "rated" && rated.historyUnobserved) reasons.push("quota_unobserved");
+    else if (used !== null && used >= quota) reasons.push("quota_exhausted");
     const evidence = { account, entitlement, request, resource, credential, link, effect, reset };
     const common = { sourceRef: sources[credential.edge_channel_ref], channelRef: credential.edge_channel_ref,
       edgeCredentialRef: credential.edge_credential_ref, materialDigest: credential.edge_material_digest,
