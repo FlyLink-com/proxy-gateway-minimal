@@ -471,7 +471,7 @@ describe("Portal server-backed Marketplace", () => {
     const plusCard = screen.getByRole("heading", { name: switchPlus.title.en }).closest("article")!;
     fireEvent.click(within(plusCard).getByRole("button"));
     const secondDialog = await screen.findByRole("dialog");
-    expect(within(secondDialog).getByText("Order amount").parentElement).toHaveTextContent("10 Coins");
+    expect(within(secondDialog).getByText("Amount due now").parentElement).toHaveTextContent("10 Coins");
     fireEvent.click(within(secondDialog).getByRole("button", { name: "Confirm purchase" }));
     await within(secondDialog).findByRole("button", { name: "Refresh Order" });
     await act(async () => fireEvent.click(within(secondDialog).getByRole("button", { name: "Refresh Order" })));
@@ -964,7 +964,7 @@ describe("Portal server-backed Marketplace", () => {
     const dialog = await screen.findByRole("dialog", { name: "确认 Coins 购买" });
     expect(within(dialog).getByText("本次套餐须知")).toBeInTheDocument();
     expect(within(dialog).queryByText("按订单状态交付")).not.toBeInTheDocument();
-    expect(within(dialog).getByText("30 天 · 每月 100 GB")).toBeInTheDocument();
+    expect(within(dialog).getByText("每月 100 GB · 30 天")).toBeInTheDocument();
     expect(within(dialog).getByText("已购 Coins、奖励 Coins")).toBeInTheDocument();
     expect(within(dialog).getByText("请确认商品和购买金额。")).toBeInTheDocument();
     expect(within(dialog).queryByText(/服务端报价|server Quote/)).not.toBeInTheDocument();
