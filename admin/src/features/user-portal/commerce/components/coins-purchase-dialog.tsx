@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import type {
   PortalCoinCommerceClientErrorCode,
   PortalCoinCommerceClient,
@@ -34,6 +34,7 @@ export type CoinsPurchaseDialogProps = {
   locale: CommerceLocale;
   onCancel: () => void;
   onConfirm: () => void;
+  onOpenRecharge?: () => void;
   onRefresh: () => void;
   onRequestClose: () => void;
   onRestoreFocus?: () => void;
@@ -56,8 +57,8 @@ function deliveryText(quote: PortalCoinQuote, locale: CommerceLocale) {
   if (delivery.kind === "subscription_plan") {
     return localized(
       locale,
-      `${delivery.durationDays} 天 · 每月 ${delivery.monthlyTrafficGb} GB`,
-      `${delivery.durationDays} days · ${delivery.monthlyTrafficGb} GB monthly`
+      `每月 ${delivery.monthlyTrafficGb} GB · ${delivery.durationDays} 天`,
+      `${delivery.monthlyTrafficGb} GB monthly · ${delivery.durationDays} days`
     );
   }
   return localized(
@@ -65,6 +66,38 @@ function deliveryText(quote: PortalCoinQuote, locale: CommerceLocale) {
     `${delivery.trafficGb} GB · 永不过期`,
     `${delivery.trafficGb} GB · never expires`
   );
+}
+
+function formatQuoteCountdown(remainingMs: number) {
+  const totalSeconds = Math.max(0, Math.floor(remainingMs / 1000));
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  const twoDigits = (value: number) => String(value).padStart(2, "0");
+  if (hours > 0) {
+    return `${twoDigits(hours)}:${twoDigits(minutes)}:${twoDigits(seconds)}`;
+  }
+  return `${twoDigits(minutes)}:${twoDigits(seconds)}`;
+}
+
+/**
+ * Display-only quote countdown anchored at the server-issued `expiresAt`.
+ * It never gates the confirm action: quote validity is decided by the
+ * server (`quote_expired` / `quote_stale`), never by this tick.
+ */
+function useQuoteCountdown(expiresAt: string) {
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      setNowMs(Date.now());
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [expiresAt]);
+  const remainingMs = Date.parse(expiresAt) - nowMs;
+  return {
+    remainingMs,
+    expired: Number.isFinite(remainingMs) && remainingMs <= 0
+  };
 }
 
 function balanceTotal(balance: PortalCoinQuote["balances"]["before"]) {
@@ -81,6 +114,8 @@ function QuoteFacts({
   const before = quote.balances.before;
   const after = quote.balances.after;
   const notices = quote.offer.importantNotices[locale];
+  const countdown = useQuoteCountdown(quote.expiresAt);
+  const planSwitch = quote.planSwitch;
   return (
     <div className="portal-coins-purchase-dialog__quote">
       <h3>{locale === "zh" ? quote.offer.title.zh : quote.offer.title.en}</h3>
@@ -104,10 +139,32 @@ function QuoteFacts({
           <dt>{localized(locale, "接受的 Coins", "Accepted Coins")}</dt>
           <dd>{portalCoinTypeListLabel(quote.offer.acceptedCoinTypes, locale)}</dd>
         </div>
-        <div>
-          <dt>{localized(locale, "订单金额", "Order amount")}</dt>
+        {planSwitch ? (
+          <div>
+            <dt>{localized(locale, "套餐标价", "List price")}</dt>
+            <dd>{quote.offer.baseCoinUnits} Coins</dd>
+          </div>
+        ) : null}
+        {planSwitch && planSwitch.creditUnits > 0 ? (
+          <div>
+            <dt>{localized(locale, "已付切换费用抵扣", "Paid switch credit")}</dt>
+            <dd>− {planSwitch.creditUnits} Coins</dd>
+          </div>
+        ) : null}
+        <div className="portal-coins-purchase-dialog__amount">
+          <dt>{localized(locale, "本次实际支付", "Amount due now")}</dt>
           <dd>{quote.amountUnits} Coins</dd>
         </div>
+        <div>
+          <dt>{localized(locale, "当前余额", "Current balance")}</dt>
+          <dd>{balanceTotal(before)} Coins</dd>
+        </div>
+        {quote.shortfallUnits > 0 ? (
+          <div className="portal-coins-purchase-dialog__shortfall">
+            <dt>{localized(locale, "还需充值", "Top-up needed")}</dt>
+            <dd>{quote.shortfallUnits} Coins</dd>
+          </div>
+        ) : null}
         <div>
           <dt>{localized(locale, "分配", "Allocation")}</dt>
           <dd>
@@ -142,6 +199,14 @@ function QuoteFacts({
             </time>
           </dd>
         </div>
+        <div className="portal-coins-purchase-dialog__countdown">
+          <dt>{localized(locale, "剩余时间", "Time left")}</dt>
+          <dd>
+            {countdown.expired
+              ? localized(locale, "报价已过期", "Quote expired")
+              : formatQuoteCountdown(countdown.remainingMs)}
+          </dd>
+        </div>
         <div>
           <dt>{localized(locale, "可购买状态", "Availability")}</dt>
           <dd>
@@ -149,10 +214,6 @@ function QuoteFacts({
               ? localized(locale, "可购买", "Available")
               : localized(locale, "余额不足", "Insufficient balance")}
           </dd>
-        </div>
-        <div>
-          <dt>{localized(locale, "缺少", "Shortfall")}</dt>
-          <dd>{quote.shortfallUnits} Coins</dd>
         </div>
       </dl>
     </div>
@@ -167,6 +228,7 @@ export function CoinsPurchaseDialog({
   locale,
   onCancel,
   onConfirm,
+  onOpenRecharge,
   onRefresh,
   onRequestClose,
   onRestoreFocus,
@@ -184,6 +246,18 @@ export function CoinsPurchaseDialog({
   useEffect(() => {
     if (errorCode && !order) errorRef.current?.focus();
   }, [errorCode, order]);
+  // The purchase dialog closes on recharge: the wallet recharge flow runs
+  // in the Wallet view, and returning re-opens the product with a fresh
+  // server quote. The expired quote is never reused.
+  const dialogTitle = showDataPackDelivery
+    ? localized(locale, "订阅交付", "Subscription delivery")
+    : quote?.planSwitch?.kind === "renewal"
+      ? localized(locale, "套餐续费", "Renew plan")
+      : quote?.planSwitch?.kind === "downgrade_scheduled"
+        ? localized(locale, "套餐降级", "Downgrade plan")
+        : quote?.planSwitch
+          ? localized(locale, "套餐升级", "Upgrade plan")
+          : localized(locale, "确认 Coins 购买", "Confirm Coins purchase");
   const liveText = errorCode
     ? portalCoinCommerceErrorText(errorCode, locale)
     : insufficient && quote
@@ -205,18 +279,27 @@ export function CoinsPurchaseDialog({
       onRequestClose={onRequestClose}
       onRestoreFocus={onRestoreFocus}
       panelClassName="portal-coins-purchase-dialog"
-      title={showDataPackDelivery
-        ? localized(locale, "订阅交付", "Subscription delivery")
-        : localized(locale, "确认 Coins 购买", "Confirm Coins purchase")}
+      title={dialogTitle}
       footer={quote && !order ? (
-        <button
-          className="portal-coins-dialog__primary"
-          disabled={insufficient || submitting || confirmDisabled}
-          type="button"
-          onClick={onConfirm}
-        >
-          {localized(locale, "确认购买", "Confirm purchase")}
-        </button>
+        <>
+          {insufficient && onOpenRecharge ? (
+            <button
+              className="portal-coins-dialog__secondary"
+              type="button"
+              onClick={onOpenRecharge}
+            >
+              {localized(locale, "去充值并支付 →", "Top up and pay →")}
+            </button>
+          ) : null}
+          <button
+            className="portal-coins-dialog__primary"
+            disabled={insufficient || submitting || confirmDisabled}
+            type="button"
+            onClick={onConfirm}
+          >
+            {localized(locale, "确认购买", "Confirm purchase")}
+          </button>
+        </>
       ) : null}
     >
       {order && resumingExistingOrder && !isPortalCoinOrderTerminal(order) ? (

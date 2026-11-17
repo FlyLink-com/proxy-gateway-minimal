@@ -89,7 +89,13 @@ export function MarketplaceOfferCard({
     : null;
 
   return (
-    <li className="portal-marketplace-card">
+    <li
+      className={
+        planAction?.action === "current_renew"
+          ? "portal-marketplace-card portal-marketplace-card--current"
+          : "portal-marketplace-card"
+      }
+    >
       <article>
         <h3>{title}</h3>
         <dl className="portal-marketplace-card__price">

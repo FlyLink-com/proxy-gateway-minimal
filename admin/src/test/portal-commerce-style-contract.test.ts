@@ -695,4 +695,49 @@ describe("Portal commerce desktop style contract", () => {
     expect(baseDeclaration(commerceStyles, `${panel} .portal-order-detail`, "width")).toBe("min(100%, 100cqw)");
     expect(baseDeclaration(commerceStyles, `${panel} .portal-order-detail`, "box-sizing")).toBe("border-box");
   });
+
+  test("redesigns the desktop shell with a blue-violet gradient backdrop and glass sidebar", () => {
+    expect(desktopStyles).toContain("radial-gradient(1100px 520px at 85% -10%, rgba(124, 58, 237, 0.32), transparent 60%)");
+    expect(desktopStyles).toContain("linear-gradient(180deg, #0b1030 0%, #0d1117 46%, #0a0d16 100%)");
+    expect(baseDeclaration(desktopStyles, ".portal-v2-sidebar", "background")).toBe("rgba(13, 17, 23, 0.72)");
+    expect(baseDeclaration(desktopStyles, ".portal-v2-logo", "background")).toBe("linear-gradient(135deg, #2563eb, #7c3aed)");
+    expect(baseDeclaration(desktopStyles, ".portal-v2-shell .portal-use-nav-item.active", "background")).toBe("linear-gradient(135deg, #2563eb, #7c3aed)");
+    // The light theme keeps its own flat shell background.
+    expect(desktopStyles).toContain('.portal-v2-shell[data-portal-theme="light"] {');
+  });
+
+  test("gives the dashboard hero a glass card with four gradient actions", () => {
+    expect(baseDeclaration(desktopStyles, ".portal-v2-hero-card", "border-radius")).toBe("20px");
+    expect(baseDeclaration(desktopStyles, ".portal-v2-hero-card", "backdrop-filter")).toBe("blur(14px)");
+    expect(baseDeclaration(desktopStyles, ".portal-v2-hero-action", "min-height")).toBe("44px");
+    expect(baseDeclaration(desktopStyles, ".portal-v2-hero-action", "border-radius")).toBe("12px");
+    expect(baseDeclaration(desktopStyles, ".portal-v2-hero-action--primary", "background")).toBe("linear-gradient(135deg, #2563eb, #7c3aed)");
+    expect(baseDeclaration(desktopStyles, ".portal-v2-hero-action--primary", "color")).toBe("#ffffff");
+  });
+
+  test("redesigns the Coins dialog as a centered Liquid Glass card with a gradient primary action", () => {
+    expect(baseDeclaration(commerceStyles, ".portal-coins-dialog-theme .portal-coins-dialog", "border-radius")).toBe("20px");
+    expect(baseDeclaration(commerceStyles, ".portal-coins-dialog-theme .portal-coins-dialog", "backdrop-filter")).toBe("blur(18px) saturate(1.25)");
+    expect(commerceStyles).toContain("--portal-coins-dialog-surface: linear-gradient(160deg, rgba(30, 41, 82, 0.94), rgba(22, 27, 34, 0.97))");
+    expect(commerceStyles).toContain("linear-gradient(135deg, #2563eb, #7c3aed)");
+    // The disabled primary stays on the frozen token (covered above); the
+    // enabled primary is the only gradient action.
+    expect(baseDeclaration(commerceStyles, ".portal-coins-dialog-theme .portal-coins-dialog button.portal-coins-dialog__secondary", "border-color")).toBe("var(--portal-coins-dialog-accent)");
+  });
+
+  test("marks the current plan card as selected without changing frozen card geometry", () => {
+    expect(commerceStyles).toContain(".portal-v2-shell .portal-marketplace-card--current article");
+    expect(commerceStyles).toContain("border-color: #7c5cff");
+    expect(baseDeclaration(commerceStyles, ".portal-v2-shell .portal-marketplace-card article", "border-radius")).toBe("18px");
+    expect(baseDeclaration(commerceStyles, ".portal-v2-shell .portal-marketplace-card article", "padding")).toBe("20px");
+  });
+
+  test("gives Marketplace and Wallet cards the same blue-violet glass tokens", () => {
+    expect(commerceStyles).toContain("--portal-commerce-primary: linear-gradient(135deg, #2563eb, #7c3aed)");
+    expect(commerceStyles).toContain("--portal-commerce-surface-raised: linear-gradient(160deg, rgba(30, 41, 82, 0.5), rgba(22, 27, 34, 0.94))");
+    expect(commerceStyles).toContain("--portal-wallet-surface: linear-gradient(160deg, rgba(30, 41, 82, 0.5), rgba(22, 27, 34, 0.94))");
+    // Frozen declarations still reference the tokens, not literal values.
+    expect(baseDeclaration(commerceStyles, ".portal-v2-shell .portal-marketplace-card__actions button.portal-marketplace-card__purchase", "background")).toBe("var(--portal-commerce-primary)");
+    expect(baseDeclaration(commerceStyles, ".portal-v2-shell .portal-marketplace-card article", "background")).toBe("var(--portal-commerce-surface-raised)");
+  });
 });

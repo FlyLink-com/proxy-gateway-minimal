@@ -310,8 +310,8 @@
 }
 
 .portal-v2-shell .portal-commerce-layout--wallet {
-  --portal-wallet-border: #30363d;
-  --portal-wallet-surface: #161b22;
+  --portal-wallet-border: rgba(139, 92, 246, 0.32);
+  --portal-wallet-surface: linear-gradient(160deg, rgba(30, 41, 82, 0.5), rgba(22, 27, 34, 0.94));
   --portal-wallet-text: #f0f6fc;
   --portal-wallet-muted: #8b949e;
   --portal-wallet-accent: #20d5e8;
@@ -782,8 +782,8 @@
   }
 
   .portal-v2-shell .modal-backdrop .portal-recharge-dialog {
-    --portal-wallet-border: #30363d;
-    --portal-wallet-surface: #161b22;
+    --portal-wallet-border: rgba(139, 92, 246, 0.32);
+    --portal-wallet-surface: linear-gradient(160deg, rgba(30, 41, 82, 0.55), rgba(22, 27, 34, 0.97));
     --portal-wallet-text: #f0f6fc;
     --portal-wallet-muted: #8b949e;
     --portal-wallet-accent: #20d5e8;
@@ -1272,14 +1272,14 @@
 
 .portal-v2-shell .portal-commerce-layout--marketplace {
   --portal-commerce-surface: #0d1117;
-  --portal-commerce-surface-raised: #161b22;
-  --portal-commerce-border: #30363d;
+  --portal-commerce-surface-raised: linear-gradient(160deg, rgba(30, 41, 82, 0.5), rgba(22, 27, 34, 0.94));
+  --portal-commerce-border: rgba(139, 92, 246, 0.35);
   --portal-commerce-text: #f0f6fc;
   --portal-commerce-muted: #8b949e;
   --portal-commerce-accent: #20d5e8;
-  --portal-commerce-primary: #20d5e8;
-  --portal-commerce-primary-border: rgba(32, 213, 232, 0.72);
-  --portal-commerce-on-primary: #06111f;
+  --portal-commerce-primary: linear-gradient(135deg, #2563eb, #7c3aed);
+  --portal-commerce-primary-border: rgba(139, 92, 246, 0.72);
+  --portal-commerce-on-primary: #ffffff;
   --portal-commerce-subtle: rgba(32, 213, 232, 0.1);
   --portal-commerce-disabled-surface: #1f2937;
   --portal-commerce-disabled-text: #94a3b8;
@@ -1771,9 +1771,9 @@
 }
 
 .portal-coins-dialog-theme[data-portal-theme="dark"] {
-  --portal-coins-dialog-surface: #161b22;
+  --portal-coins-dialog-surface: linear-gradient(160deg, rgba(30, 41, 82, 0.94), rgba(22, 27, 34, 0.97));
   --portal-coins-dialog-subtle: #0d1117;
-  --portal-coins-dialog-border: #30363d;
+  --portal-coins-dialog-border: rgba(139, 92, 246, 0.42);
   --portal-coins-dialog-text: #f0f6fc;
   --portal-coins-dialog-muted: #8b949e;
   --portal-coins-dialog-accent: #20d5e8;
@@ -1861,10 +1861,11 @@
   min-width: 0;
   flex-direction: column;
   border: 1px solid var(--portal-coins-dialog-border);
-  border-radius: 16px;
+  border-radius: 20px;
   background: var(--portal-coins-dialog-surface);
   color: var(--portal-coins-dialog-text);
-  box-shadow: 0 24px 72px rgba(1, 4, 9, 0.35);
+  box-shadow: 0 32px 80px rgba(2, 6, 23, 0.55), 0 0 0 1px rgba(139, 92, 246, 0.18);
+  backdrop-filter: blur(18px) saturate(1.25);
   overflow: hidden;
 }
 
@@ -2027,9 +2028,9 @@
   .portal-coins-dialog-theme
     .portal-coins-dialog
     button.portal-coins-dialog__primary {
-    border-color: var(--portal-coins-dialog-accent);
-    background: var(--portal-coins-dialog-accent);
-    color: var(--portal-coins-dialog-on-accent);
+    border-color: transparent;
+    background: linear-gradient(135deg, #2563eb, #7c3aed);
+    color: #ffffff;
   }
 
   .portal-coins-dialog-theme
@@ -2983,4 +2984,41 @@
   .portal-v2-shell .portal-orders-panel td.portal-order-empty-state::before {
     display: none;
   }
+}
+
+/* Desktop redesign (2026-11-17 concept): purchase-dialog amount rows,
+   countdown, recharge entry, and current-plan card highlight. */
+.portal-coins-dialog-theme .portal-coins-dialog button.portal-coins-dialog__secondary {
+  border-color: var(--portal-coins-dialog-accent);
+  background: var(--portal-coins-action-subtle-bg);
+}
+
+.portal-coins-dialog-theme .portal-coins-purchase-dialog__quote h3 {
+  color: var(--portal-coins-dialog-text);
+  font-size: 20px;
+}
+
+.portal-coins-dialog-theme
+  .portal-coins-dialog__body
+  .portal-coins-purchase-dialog__amount dd {
+  color: var(--portal-coins-dialog-text);
+  font-size: 20px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.portal-coins-dialog-theme
+  .portal-coins-dialog__body
+  .portal-coins-purchase-dialog__countdown dd,
+.portal-coins-dialog-theme
+  .portal-coins-dialog__body
+  .portal-coins-purchase-dialog__shortfall dd {
+  color: var(--portal-coins-status-attention-text);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.portal-v2-shell .portal-marketplace-card--current article {
+  border-color: #7c5cff;
+  box-shadow: 0 0 0 1px #7c5cff, 0 16px 40px rgba(124, 92, 255, 0.28);
 }
