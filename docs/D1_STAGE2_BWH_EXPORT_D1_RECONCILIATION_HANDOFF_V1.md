@@ -67,6 +67,23 @@ Bearer token is *not* a substitute for a signed export manifest):
   FK/invariant and immutable financial ledger checks; sealed total
   reconciliation receipt after all expected tables are covered.
 
+## Newer production-source discrepancy (Phase 6, 2026-11-17)
+
+The project owner's Notion overview was updated on 2026-11-18
+(https://app.notion.com/p/415dbee187838173ab58fb2cfec94475)
+with Phase 6 production BWH **read-only** findings: 20 missing tables,
+9 unapplied migrations, 2 reverse-drift tables, 3 tables outside the
+old inventory, and unresolved ledger anomalies. Phase 6 concludes
+**production migration NO-GO**; the existing read-only window is
+closed. The 70-table historical source inventory is no longer a
+production-schema census. Stage 2B source exporter must first reconcile
+the exact observed pr799 schema and owner decisions (not just clone
+the historical inventory), or remain entirely synthetic.
+
+This PR neither re-runs Phase 6 SQL nor extends its closed production
+read authorization. No production snapshot, row export or remote E4
+write is allowed based on the Stage 2A test results.
+
 ## Muse source-side Stage 2B tasks
 
 1. Review, in BWH repository source only, the approved first-D1 table
