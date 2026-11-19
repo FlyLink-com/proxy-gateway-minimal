@@ -6,6 +6,9 @@ import {
   Stage2MigrationError, STAGE2_SYNTHETIC_TABLES,
   stage2Digest, beginStage2Run, applyStage2Batch, reconcileStage2Snapshot,
 } from "../src/stage2-offline-migration.mjs";
+import {
+  readStage2SyntheticPage,syntheticPageToStage2Batch,
+} from "../src/stage2-synthetic-source.mjs";
 
 const epoch=3, t="2026-11-20T00:00:00.000Z", later="2026-11-21T00:00:00.000Z";
 const h="a".repeat(64), h2="b".repeat(64), h3="c".repeat(64);
@@ -243,4 +246,58 @@ test("S2A-11 rejected update/delete previous hash never mutates committed stagin
   ).bind(original.id).first();
   assert.deepEqual(JSON.parse(retained.projection_json),original);
   assert.equal(await count(db,"stage2_rehearsal_batches"),1);
+});
+
+test("S2A-12 a real bounded synthetic SQL source page loads into D1 inbox with exact keyset resume",async(ti)=>{
+  const {mf,db}=await setup();ti.after(()=>mf.dispose());
+  const source=[
+    acct("synth-acct-001"),acct("synth-acct-002"),
+    acct("synth-acct-003"),acct("synth-acct-004"),acct("synth-acct-005")
+  ];
+  await db.batch(source.map((row,i)=>db.prepare(
+    "INSERT INTO platform_accounts (id,owner_ref,status,created_at,updated_at,metadata_json) "+
+    "VALUES(?,?,?,?,?,?)"
+  ).bind(row.id,"private-source-only-"+i,row.status,row.created_at,row.updated_at,
+    '{"synth":"source-only"}')));
+  await beginStage2Run(db,{epoch,manifest:manifest()});
+  let afterPk=null,sequence=1;
+  const seen=[];
+  for(;;){
+    const page=await readStage2SyntheticPage(db,{table:"platform_accounts",afterPk,limit:2});
+    assert.ok(page.items.every(x=>!Object.hasOwn(x,"owner_ref")&&!Object.hasOwn(x,"metadata_json")));
+    if(!page.items.length)break;
+    seen.push(...page.items.map(x=>x.id));
+    const signed=await syntheticPageToStage2Batch(page,{
+      runId:"synth-stage2-run-a",sequence
+    });
+    assert.equal((await applyStage2Batch(db,{epoch,batch:signed})).rows,page.items.length);
+    afterPk=page.nextAfterPk;sequence+=1;
+    if(!page.hasMore)break;
+  }
+  assert.deepEqual(seen,source.map(x=>x.id));
+  assert.equal(sequence,4);
+  assert.equal(await count(db,"stage2_rehearsal_batches"),3);
+  assert.equal(await count(db,"stage2_rehearsal_rows"),5);
+  const expected={platform_accounts:await Promise.all(source.map(async row=>({
+    pk:row.id,fingerprint:await stage2Digest(row)
+  }))),platform_entitlements:[]};
+  const result=await reconcileStage2Snapshot(db,{runId:"synth-stage2-run-a",expected});
+  assert.equal(result.tables[0].count,5);
+  const stored=await db.prepare(
+    "SELECT projection_json FROM stage2_rehearsal_rows WHERE pk='synth-acct-001'"
+  ).first();
+  assert.equal(stored.projection_json.includes("private-source-only"),false);
+});
+
+test("S2A-13 synthetic source cursor rejects non-synthetic data and invalid page contract",async(ti)=>{
+  const {mf,db}=await setup({seed:true});ti.after(()=>mf.dispose());
+  await assert.rejects(readStage2SyntheticPage(db,{table:"platform_accounts",limit:2}),{
+    code:"stage2_source_projection_denied"
+  });
+  await assert.rejects(readStage2SyntheticPage(db,{table:"platform_accounts",limit:26}),{
+    code:"stage2_source_page_invalid"
+  });
+  await assert.rejects(syntheticPageToStage2Batch({table:"platform_accounts",items:[]},{
+    runId:"synth-stage2-run-a",sequence:1
+  }),{code:"stage2_source_page_invalid"});
 });
