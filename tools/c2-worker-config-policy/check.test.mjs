@@ -16,6 +16,7 @@ const policyFile = join(here, "policy.json");
 const REAL_FILES = [
   "workers/crypto/wrangler.crypto.jsonc",
   "workers/control-plane/wrangler.control-plane.jsonc",
+  "workers/control-plane/wrangler.staging.jsonc",
   "wrangler.jsonc",
   "wrangler.public-site.jsonc",
 ];
@@ -409,4 +410,57 @@ test("control-plane removing the required CONTROL_DB entry fails", () => {
     assert.equal(code, 1);
     assert.match(stdout, /d1_databases.*required binding/);
   });
+});
+
+test("staging Worker has the pinned Primary account and isolated D1 only", () => {
+  withFixture(null, ({ code, stdout }) => assert.equal(code, 0, stdout));
+  withFixture((c) => {
+    c["workers/control-plane/wrangler.staging.jsonc"] =
+      c["workers/control-plane/wrangler.staging.jsonc"].replace(
+        '"account_id": "17d66c001f9d851fa0d5a88cd311c2c0"',
+        '"account_id": "00000000000000000000000000000000"'
+      );
+  }, ({ code, stdout }) => {
+    assert.equal(code, 1);
+    assert.match(stdout, /account_id/);
+  });
+  withFixture((c) => {
+    c["workers/control-plane/wrangler.staging.jsonc"] =
+      c["workers/control-plane/wrangler.staging.jsonc"].replace(
+        '"database_id": "1ec6458a-0ac0-4ab0-92f3-5ba58b775acc"',
+        '"database_id": "05732071-22a5-4e04-834c-f5dd4407a462"'
+      );
+  }, ({ code, stdout }) => {
+    assert.equal(code, 1);
+    assert.match(stdout, /d1_databases/);
+  });
+});
+
+test("staging Worker rejects new DO and R2 bindings", () => {
+  withFixture((c) => {
+    c["workers/control-plane/wrangler.staging.jsonc"] =
+      c["workers/control-plane/wrangler.staging.jsonc"].replace(
+        '"preview_urls": false,',
+        '"preview_urls": false, "durable_objects": {"bindings": [{"name":"UNAPPROVED","class_name":"Unexpected"}]},'
+      );
+  }, ({ code, stdout }) => {
+    assert.equal(code, 1);
+    assert.match(stdout, /durable_objects/);
+  });
+});
+
+test("new Worker-owned Wrangler configs cannot bypass the policy", () => {
+  withFixture((c) => {
+    c["workers/control-plane/wrangler.rogue.jsonc"] =
+      '{"name":"rogue","account_id":"17d66c001f9d851fa0d5a88cd311c2c0"}';
+  }, ({ code, stdout }) => {
+    assert.equal(code, 1);
+    assert.match(stdout, /wrangler.rogue.jsonc: Worker configuration is not in the explicit allowlist/);
+  });
+  withFixture((c) => { c["workers/control-plane/wrangler.staging.jsonc"] = null; },
+    ({ code, stdout }) => {
+      assert.equal(code, 1);
+      assert.match(stdout, /wrangler.staging.jsonc: in-scope configuration file is missing/);
+    }
+  );
 });
