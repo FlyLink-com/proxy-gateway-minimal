@@ -1,5 +1,9 @@
 import { recordReferralRegistration } from './portal-referral-contract.mjs';
 import { createPortalSubscriptionLinkResetStore, verifyPortalSubscriptionLinkResetLineage } from "./portal-subscription-link-reset-store.mjs";
+import {
+  ensureWriterAuthority,
+  guardedTransaction,
+} from "./single-writer-authority.mjs";
 import { isMaskedEmailDisplay } from "./email-masking.mjs";
 import { IdentityBindingRepository } from "./d1-identity-binding-repository.mjs";
 import Database from "better-sqlite3";
@@ -1886,6 +1890,20 @@ export function createSqliteSubscriptionControlStore({
 
     create index if not exists platform_identity_deletion_tombstones_request_id_idx
       on platform_identity_deletion_tombstones(request_id);
+
+    -- D1 Stage 1B single-writer authority (singleton row, id = 1).
+    -- BWH remains the only production business writer while the phase
+    -- is BWH_ACTIVE; see single-writer-authority.mjs. The table is
+    -- created here so every store carries the durable record, but the
+    -- phase only ever changes through an explicit coordinator call.
+    create table if not exists platform_writer_authority (
+      id integer primary key check (id = 1),
+      authority text not null check (authority in ('BWH', 'D1')),
+      phase text not null check (phase in ('BWH_ACTIVE', 'FROZEN', 'D1_ACTIVE', 'RECOVERY')),
+      epoch integer not null check (epoch between 1 and 2147483647),
+      updated_at text not null,
+      receipt_ref text not null default ''
+    );
   `);
 
   if (initializeSchema) ensureTableColumns(db, "platform_portal_access_requests", [
@@ -1904,6 +1922,12 @@ export function createSqliteSubscriptionControlStore({
     { name: "edge_lifecycle_mutation", definition: "edge_lifecycle_mutation integer not null default 0" },
     { name: "event_json", definition: "event_json text not null default '{}'" }
   ]);
+
+  // D1 Stage 1B: every store that initializes the schema carries the
+  // durable writer-authority singleton (BWH_ACTIVE, epoch 1). Databases
+  // opened without schema initialization are untouched here; the guard
+  // creates the record lazily on its first guarded write instead.
+  if (initializeSchema) ensureWriterAuthority(db);
 
   function upsertLead(input, { expiresAt } = {}) {
     const record = {
@@ -10274,11 +10298,21 @@ export function createSqliteSubscriptionControlStore({
     }
   }
 
-  function runInTransaction(callback) {
+  // D1 Stage 1B: service-layer write transactions. Every call runs inside
+  // one BEGIN IMMEDIATE transaction whose first statement is the writer
+  // fence (phase BWH_ACTIVE, plus epoch match when a coordinator receipt
+  // supplies writerEpoch), so the fence and the business writes commit or
+  // roll back together and no other connection can freeze the database
+  // between the fence check and the first business write. The epoch, when
+  // supplied, must come from a durable coordinator receipt; it is never
+  // defaulted or guessed here. Callers without a receipt get the
+  // phase-only fence, which is what stops old and background processes
+  // that hold no epoch.
+  function runInTransaction(callback, options = {}) {
     if (typeof callback !== "function") {
       throw platformError("validation_error", "transaction callback is required");
     }
-    return db.transaction(callback)();
+    return guardedTransaction(db, options.writerEpoch, callback);
   }
 
   return {
