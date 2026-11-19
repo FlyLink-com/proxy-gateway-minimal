@@ -3,7 +3,7 @@
   // Never point CONTROL_DB here at flylink-control-migration-e4 or the BWH production store.
   // The source DO classes remain UNBOUND in this first remote baseline:
   // no remote DO namespaces or migrations are created by this configuration.
-  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "$schema": "node_modules/wrangler/config-schema.json",
   "name": "flylink-control-plane-staging",
   "main": "src/index.mjs",
   "compatibility_date": "2025-06-01",
