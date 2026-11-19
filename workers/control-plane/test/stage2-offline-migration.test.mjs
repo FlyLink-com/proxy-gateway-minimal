@@ -4,7 +4,8 @@ import { readFile } from "node:fs/promises";
 import { createWorker } from "./helpers.mjs";
 import {
   Stage2MigrationError, STAGE2_SYNTHETIC_TABLES,
-  stage2Digest, beginStage2Run, applyStage2Batch, reconcileStage2Snapshot,
+  stage2Digest, stage2ApprovedMappingDigest, stage2TargetSchemaDigest,
+  beginStage2Run, applyStage2Batch, reconcileStage2Snapshot,
 } from "../src/stage2-offline-migration.mjs";
 import {
   readStage2SyntheticPage,syntheticPageToStage2Batch,
@@ -12,13 +13,14 @@ import {
 
 const epoch=3, t="2026-11-20T00:00:00.000Z", later="2026-11-21T00:00:00.000Z";
 const h="a".repeat(64), h2="b".repeat(64), h3="c".repeat(64);
+let mappingDigest=h2, schemaDigest=h3; // replaced by actual fixture digests in setup()
 const acct=(id,status="active",updated_at=t)=>({id,status,created_at:t,updated_at});
 const entitlement=(id,account_id)=>({
   id,account_id,plan:"synth-monthly",status:"active",valid_from:t,valid_until:later,
 });
 const manifest=(runId="synth-stage2-run-a",sourceSnapshotId="synth-snapshot-a",tables=STAGE2_SYNTHETIC_TABLES)=>({
   runId,sourceSnapshotId,sourceSchemaSha256:h,
-  mappingSha256:h2,targetSchemaSha256:h3,tables,
+  mappingSha256:mappingDigest,targetSchemaSha256:schemaDigest,tables,
 });
 async function batch({runId="synth-stage2-run-a",table="platform_accounts",
     sequence=1,startAfterPk=null,changes}){
@@ -38,6 +40,8 @@ async function setup(opts={}) {
       .replace(/;\s*$/,"")).filter(Boolean);
   assert.equal(stmts.length,8);
   await result.db.batch(stmts.map(sql=>result.db.prepare(sql)));
+  mappingDigest=await stage2ApprovedMappingDigest();
+  schemaDigest=await stage2TargetSchemaDigest(result.db);
   return result;
 }
 async function count(db,table){
@@ -174,7 +178,7 @@ test("S2A-07 a committed batch cannot replay with changed payload or source mapp
   await applyStage2Batch(db,{epoch,batch:x});
   const y=await batch({changes:[await change(acct("synth-acct-001","suspended"))]});
   await assert.rejects(applyStage2Batch(db,{epoch,batch:y}),{code:"stage2_replay_conflict"});
-  await assert.rejects(beginStage2Run(db,{epoch,manifest:{...manifest(),mappingSha256:h3}}),{
+  await assert.rejects(beginStage2Run(db,{epoch,manifest:{...manifest(),sourceSchemaSha256:h3}}),{
     code:"stage2_run_conflict"
   });
   assert.equal(await count(db,"stage2_rehearsal_batches"),1);
@@ -300,4 +304,17 @@ test("S2A-13 synthetic source cursor rejects non-synthetic data and invalid page
   await assert.rejects(syntheticPageToStage2Batch({table:"platform_accounts",items:[]},{
     runId:"synth-stage2-run-a",sequence:1
   }),{code:"stage2_source_page_invalid"});
+});
+
+test("S2A-14 mapping/schema digests are checked against actual code and target DDL",async(ti)=>{
+  const {mf,db}=await setup();ti.after(()=>mf.dispose());
+  await assert.rejects(beginStage2Run(db,{epoch,manifest:{
+    ...manifest(),mappingSha256:h2
+  }}),{code:"stage2_mapping_mismatch"});
+  await assert.rejects(beginStage2Run(db,{epoch,manifest:{
+    ...manifest(),targetSchemaSha256:h3
+  }}),{code:"stage2_target_schema_mismatch"});
+  assert.equal(await count(db,"stage2_rehearsal_runs"),0);
+  const good=await beginStage2Run(db,{epoch,manifest:manifest()});
+  assert.equal(good.created,true);
 });
