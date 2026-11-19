@@ -237,6 +237,18 @@ for (const file of allConfigs) {
   }
 }
 
+// --- Every Worker-owned Wrangler config must be explicitly reviewed.
+// Without this check a new wrangler.* file would get only the global account
+// scan and could bypass the per-config binding and route policy.
+const explicitlyAllowedConfigs = new Set((policy.configs ?? []).map((cfg) => cfg.path));
+for (const file of allConfigs) {
+  const path = rel(file);
+  if ((path.startsWith("workers/control-plane/") || path.startsWith("workers/crypto/")) &&
+      !explicitlyAllowedConfigs.has(path)) {
+    fail(path, "Worker configuration is not in the explicit allowlist");
+  }
+}
+
 // --- Per-config allowlist evaluation.
 for (const cfg of policy.configs ?? []) {
   const file = join(root, cfg.path);
