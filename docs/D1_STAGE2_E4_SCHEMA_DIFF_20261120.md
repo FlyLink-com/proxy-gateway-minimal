@@ -86,6 +86,35 @@ This is a **metadata granularity discrepancy**, not proven DDL drift:
 the source inventory also records table-level PK constraints. Check
 full CREATE TABLE SQL, FK DAG and unique indexes before marking parity.
 
+## More recent BWH production read-only evidence (separate source)
+
+The historical JSON inventory above states **NOT_OBSERVED at its
+2026-11-07 source-only evidence cut**. This must not be mistaken for the
+current known production status. The owner's newer Notion Cloudflare
+project overview, updated **2026-11-18**, records a separately
+authorized **2026-11-17 production read-only** Phase 6 inspection of
+the BWH `pr799` Shared Control DB. Its reported findings are:
+
+- **20** production tables absent relative to the designed inventory;
+- **9** source migrations not applied;
+- **2** reverse-drift tables (production ahead of the current Master);
+- **3** business tables outside the earlier inventory scope;
+- legacy ledger inconsistency to investigate (`version_chain_breaks=20`);
+- migration admissibility remains **NO-GO** (16/16 criteria not yet met).
+
+Source (user-owned Notion evidence overview, not re-executed here):
+https://app.notion.com/p/415dbee187838173ab58fb2cfec94475 .
+The source record also says the read-only production query window
+was **closed** and later production access/SQL requires a separate
+explicitly scoped approval. This PR performs **no BWH query** and has
+not independently inspected the underlying raw Phase 6 evidence files.
+
+**Important:** The 70 ↔ 85 comparison here is strictly historical
+source-**definition** vs remote E4 structure. It does **not** replace
+the fresh production-source 74/80/81 scope reconciliation, nor does it
+show what customer data is present in pr799. Produce an exact,
+owner-approved source-presence/DDL decision before any BWH → E4 export.
+
 ## Eligibility gate remains BLOCKED
 
 The current T2 field-disposition JSON says **64 KEEP, 4 CONDITIONAL,
