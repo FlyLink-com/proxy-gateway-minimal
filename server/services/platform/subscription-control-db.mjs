@@ -10299,15 +10299,15 @@ export function createSqliteSubscriptionControlStore({
   }
 
   // D1 Stage 1B: service-layer write transactions. Every call runs inside
-  // one BEGIN IMMEDIATE transaction whose first statement is the writer
-  // fence (phase BWH_ACTIVE, plus epoch match when a coordinator receipt
-  // supplies writerEpoch), so the fence and the business writes commit or
-  // roll back together and no other connection can freeze the database
-  // between the fence check and the first business write. The epoch, when
-  // supplied, must come from a durable coordinator receipt; it is never
-  // defaulted or guessed here. Callers without a receipt get the
-  // phase-only fence, which is what stops old and background processes
-  // that hold no epoch.
+  // one BEGIN IMMEDIATE transaction whose first statement is the writer-
+  // fence call (which ensures the authority table with idempotent DDL,
+  // then reads and enforces the phase), so the fence and the business
+  // writes commit or roll back together and no other connection can
+  // freeze the database between the fence check and the first business
+  // write. The epoch, when supplied, must come from a durable
+  // coordinator receipt; it is never defaulted or guessed here. Callers
+  // without a receipt get the phase-only fence, which is what stops old
+  // and background processes that hold no epoch.
   function runInTransaction(callback, options = {}) {
     if (typeof callback !== "function") {
       throw platformError("validation_error", "transaction callback is required");

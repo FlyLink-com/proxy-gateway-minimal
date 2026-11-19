@@ -8,6 +8,7 @@
 
 import assert from "node:assert/strict";
 import test from "node:test";
+import { createHash } from "node:crypto";
 import Database from "better-sqlite3";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -41,6 +42,20 @@ import { createSqliteCoinWalletStore } from "../services/platform/coin-wallet-st
 
 const NOW = new Date("2026-11-20T00:00:00.000Z");
 const nowFn = () => new Date(NOW);
+
+// Test-local copy of the receipt's canonical JSON + digest, so a test
+// can recompute a valid digest over a tampered receipt and prove the
+// failure comes from the field check, not from a digest mismatch.
+function canonicalJson(value) {
+  if (value === null || typeof value !== "object") return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
+  const keys = Object.keys(value).sort();
+  return `{${keys.map((key) => `${JSON.stringify(key)}:${canonicalJson(value[key])}`).join(",")}}`;
+}
+
+function digestCanonical(value) {
+  return createHash("sha256").update(canonicalJson(value)).digest("hex");
+}
 
 async function tempDbFile(t) {
   const dir = await mkdtemp(join(tmpdir(), "stage1b-authority-"));
@@ -106,6 +121,36 @@ test("S1B-AUTH-1: ensureWriterAuthority initializes BWH_ACTIVE epoch 1 and is id
   } finally {
     db.close();
   }
+});
+
+test("S1B-AUTH-12: ensureWriterAuthority from two handles never raises a constraint", async (t) => {
+  const file = await tempDbFile(t);
+  const first = new Database(file);
+  const second = new Database(file);
+  t.after(() => {
+    try {
+      first.close();
+    } catch {
+      // Already closed.
+    }
+    try {
+      second.close();
+    } catch {
+      // Already closed.
+    }
+  });
+  // Both handles ensure the record and both read BWH_ACTIVE epoch 1.
+  // The synchronous driver cannot interleave the read and the insert
+  // inside one call, so this test proves cross-handle idempotency; the
+  // INSERT OR IGNORE itself is the guard for a true interleave.
+  const one = ensureWriterAuthority(first, { now: nowFn });
+  const two = ensureWriterAuthority(second, { now: nowFn });
+  assert.equal(one.phase, WRITER_PHASES.BWH_ACTIVE);
+  assert.equal(one.epoch, 1);
+  assert.equal(two.phase, WRITER_PHASES.BWH_ACTIVE);
+  assert.equal(two.epoch, 1);
+  assert.equal(countRows(first, "platform_writer_authority"), 1);
+  assert.equal(countRows(second, "platform_writer_authority"), 1);
 });
 
 test("S1B-AUTH-2: parseWriterEpoch accepts valid epochs and rejects malformed ones", () => {
@@ -397,6 +442,29 @@ test("S1B-FRZ-2: a tampered receipt fails verification", (t) => {
   );
 });
 
+test("S1B-FRZ-4: a receipt whose authority was changed to D1 fails verification even with a valid digest", (t) => {
+  const db = memoryDb(t);
+  createSyntheticBusinessTables(db);
+  insertSynthAccount(db, "acct-1");
+  const receipt = buildFreezeReceipt(db, {
+    snapshotId: "snap-synth-1",
+    checkpointId: "ckpt-synth-1",
+    now: nowFn,
+  });
+  // Recompute the digest over the tampered receipt, so the only reason
+  // verification can fail is the authority check itself.
+  const tampered = { ...receipt, authority: "D1" };
+  const { receiptDigest: _ignored, ...unsigned } = tampered;
+  tampered.receiptDigest = digestCanonical(unsigned);
+  assert.throws(
+    () => verifyFreezeReceipt(tampered),
+    (error) => {
+      assertWriterError(error, "freeze_receipt_invalid");
+      return true;
+    },
+  );
+});
+
 test("S1B-FRZ-3: freeze receipt does not change phase and requires BWH_ACTIVE", (t) => {
   const db = memoryDb(t);
   createSyntheticBusinessTables(db);
@@ -505,6 +573,33 @@ test("S1B-DLT-3: delta enumeration fails closed on bad inputs", (t) => {
   );
   assert.throws(
     () => enumerateSourceDeltas(db, { tables: DELTA_TABLES, checkpoint: { ...checkpoint, snapshotId: "" } }),
+    (error) => error?.code === "delta_checkpoint_invalid",
+  );
+});
+
+test("S1B-DLT-4: an interrupted snapshot fails enumeration loudly instead of returning a partial delta", (t) => {
+  const db = memoryDb(t);
+  createSyntheticBusinessTables(db);
+  insertSynthAccount(db, "acct-1");
+  const checkpoint = buildCheckpointManifest(db, { tables: DELTA_TABLES, snapshotId: "snap-1" });
+  // The snapshot is interrupted after the manifest was built: one table
+  // disappears before enumeration runs.
+  db.exec("drop table synth_credentials");
+  assert.throws(
+    () => enumerateSourceDeltas(db, { tables: DELTA_TABLES, checkpoint }),
+    (error) => error?.code === "delta_table_missing",
+  );
+  // A checkpoint cut short mid-build (no entry for a requested table)
+  // is rejected as invalid, not read as "every current row is new".
+  const fresh = memoryDb(t);
+  createSyntheticBusinessTables(fresh);
+  insertSynthAccount(fresh, "acct-1");
+  const cutShort = {
+    snapshotId: "snap-1",
+    tables: { synth_accounts: checkpoint.tables.synth_accounts },
+  };
+  assert.throws(
+    () => enumerateSourceDeltas(fresh, { tables: DELTA_TABLES, checkpoint: cutShort }),
     (error) => error?.code === "delta_checkpoint_invalid",
   );
 });

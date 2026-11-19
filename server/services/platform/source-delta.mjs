@@ -14,9 +14,16 @@
 // Known limitation, by design: a change that touches ONLY credential
 // columns does not change the fingerprint and therefore produces no
 // delta entry. That is the price of never letting credential material
-// (even hashed) influence an exported fingerprint. Credential tables
-// are small and are covered instead by the freeze receipt's high-water
-// mark plus a post-freeze reconciliation; see the Stage 1B inventory.
+// (even hashed) influence an exported fingerprint. Do NOT overstate the
+// mitigation: the freeze receipt's high-water mark records per-table
+// row counts, and max(updated_at) only for tables that carry
+// updated_at — tables without it (for example
+// platform_portal_edge_credentials) are covered by row count alone, so
+// a credential-only change that keeps the row count is not detectable
+// from the receipt either. A dedicated post-freeze reconciliation for
+// credential tables is follow-up work (inventory U-F18) and does not
+// exist in this PR; until then a credential-only change produces no
+// delta entry and must be treated as an open gap, not as covered.
 
 import { createHash } from "node:crypto";
 
@@ -154,7 +161,13 @@ export function enumerateSourceDeltas(db, { tables, checkpoint } = {}) {
     const { table, pk, excludeColumns } = assertTableSpec(spec);
     assertTableExists(db, table);
     assertPkColumn(db, table, pk);
-    const previous = checkpoint.tables[table] ?? {};
+    // A checkpoint that does not cover a requested table is incomplete
+    // (interrupted snapshot): fail closed instead of silently treating
+    // every current row as inserted.
+    if (!Object.hasOwn(checkpoint.tables, table)) {
+      throw deltaError("delta_checkpoint_invalid", `checkpoint does not cover table: ${table}`);
+    }
+    const previous = checkpoint.tables[table];
     if (typeof previous !== "object" || Array.isArray(previous)) {
       throw deltaError("delta_checkpoint_invalid", `checkpoint entries for ${table} must be an object`);
     }
