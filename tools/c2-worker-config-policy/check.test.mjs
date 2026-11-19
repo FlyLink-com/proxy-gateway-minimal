@@ -319,7 +319,7 @@ test("control-plane requires the approved Durable Object migration", () => {
 
 test("TOML top-level account_id outside the allowlist fails", () => {
   withFixture((c) => {
-    c["workers/crypto/wrangler.extra.toml"] = 'name = "extra-worker"\naccount_id = "22222222222222222222222222222222"\n';
+    c["tests/config-policy-fixture/wrangler.extra.toml"] = 'name = "extra-worker"\naccount_id = "22222222222222222222222222222222"\n';
   }, ({ code, stdout }) => {
     assert.equal(code, 1);
     assert.match(stdout, /top-level account_id is not an allowed account/);
@@ -328,7 +328,7 @@ test("TOML top-level account_id outside the allowlist fails", () => {
 
 test("TOML top-level Primary account_id passes and nested account_id is not a deploy target", () => {
   withFixture((c) => {
-    c["workers/crypto/wrangler.extra.toml"] = 'name = "extra-worker"\naccount_id = "17d66c001f9d851fa0d5a88cd311c2c0" # approved\n[vars]\naccount_id = "not-a-deploy-target"\n';
+    c["tests/config-policy-fixture/wrangler.extra.toml"] = 'name = "extra-worker"\naccount_id = "17d66c001f9d851fa0d5a88cd311c2c0" # approved\n[vars]\naccount_id = "not-a-deploy-target"\n';
   }, ({ code, stdout }) => assert.equal(code, 0, stdout));
 });
 
@@ -343,7 +343,7 @@ test("deleting an in-scope configuration fails", () => {
 test("quoted TOML top-level account_id keys are subject to the allowlist", () => {
   for (const key of ['"account_id"', "'account_id'"]) {
     withFixture((c) => {
-      c["workers/crypto/wrangler.extra.toml"] =
+      c["tests/config-policy-fixture/wrangler.extra.toml"] =
         key + ' = "22222222222222222222222222222222"\n';
     }, ({ code, stdout }) => {
       assert.equal(code, 1);
@@ -354,7 +354,7 @@ test("quoted TOML top-level account_id keys are subject to the allowlist", () =>
 
 test("quoted TOML Primary account_id passes and quoted nested account_id is ignored", () => {
   withFixture((c) => {
-    c["workers/crypto/wrangler.extra.toml"] =
+    c["tests/config-policy-fixture/wrangler.extra.toml"] =
       '"account_id" = "17d66c001f9d851fa0d5a88cd311c2c0" # approved\n' +
       "[vars]\n" +
       "'account_id' = \"not-a-deploy-target\"\n";
