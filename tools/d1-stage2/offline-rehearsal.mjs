@@ -273,3 +273,11 @@ export async function verifySyntheticCheckpointSet(db, rawPlan) {
   }
   return { runId: plan.runId, snapshotHash: plan.sourceHash, planHash: plan.planHash };
 }
+
+
+// Expose the *immutable* hard-coded two-table allowlist to the local
+// delta harness, without permitting any caller-supplied SQL identifiers.
+export function approvedSyntheticColumns(tableName) {
+  if (!Object.hasOwn(TABLES, tableName)) fail("stage2_table_disposition_denied");
+  return [...TABLES[tableName].columns];
+}
