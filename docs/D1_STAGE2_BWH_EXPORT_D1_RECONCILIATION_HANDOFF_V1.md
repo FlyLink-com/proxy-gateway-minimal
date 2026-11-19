@@ -9,12 +9,12 @@ production BWH access, export, freeze, or E4 mutation.
 
 ## Stage 2A actually delivered (synthetic-only)
 
-- `workers/control-plane/src/stage2-offline-migration.mjs`:
+- `workers/control-plane/test/support/stage2-offline-migration.mjs`:
   immutable manifest, 25-record bounded pages, SHA256 replay digest,
   monotone table-local sequence/checkpoint CAS, row-fingerprint
   compare-before-update/delete, atomic D1 batch/rollback, digest-only
   reconciliation. `createEpochFencedD1` wraps every write.
-- `workers/control-plane/src/stage2-synthetic-source.mjs`:
+- `workers/control-plane/test/support/stage2-synthetic-source.mjs`:
   select-only keyset page reader, initial-snapshot adapter; only synthetic
   `platform_accounts` and `platform_entitlements` allowlisted fields
   can be transferred, never raw identity/credential/payment values.
@@ -26,7 +26,7 @@ production BWH access, export, freeze, or E4 mutation.
 - `docs/D1_STAGE2_E4_SCHEMA_DIFF_20261120.md` pins the read-only
   E4 object comparison and warns on unapproved T2 dispositions.
 
-This is a bounded **engineering rehearsal**, not a production-eligible
+The implementation is stored under `test/support`, not the Worker `src` module tree, so the standard Worker source upload must not include it. No route invokes it.\n\nThis is a bounded **engineering rehearsal**, not a production-eligible
 target loader. Its SHA256 payload binds retries and detects corruption,
 but is **not a sender-authentication signature**.
 
