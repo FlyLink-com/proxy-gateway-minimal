@@ -33,8 +33,7 @@ BEGIN
       (OLD.phase = 'D1_ACTIVE' AND NEW.phase = 'RECOVERY' AND NEW.authority = 'D1') OR
       (OLD.phase = 'RECOVERY' AND NEW.phase = 'D1_ACTIVE' AND NEW.authority = 'D1')
     )
-  ) THEN RAISE(ABORT, 'writer_authority_transition_denied') END;
-END;
+  ) THEN RAISE(ABORT, 'writer_authority_transition_denied') END; END;
 
 CREATE TRIGGER platform_writer_authority_delete_guard
 BEFORE DELETE ON platform_writer_authority
@@ -57,8 +56,7 @@ BEGIN
     SELECT 1 FROM platform_writer_authority
       WHERE singleton = 1 AND authority = 'D1'
         AND phase = 'D1_ACTIVE' AND epoch = NEW.accepted_epoch
-  ) THEN RAISE(ABORT, 'writer_authority_denied') END;
-END;
+  ) THEN RAISE(ABORT, 'writer_authority_denied') END; END;
 
 CREATE TRIGGER platform_writer_gate_update_guard
 BEFORE UPDATE ON platform_writer_gate
@@ -67,5 +65,4 @@ BEGIN
     SELECT 1 FROM platform_writer_authority
       WHERE singleton = 1 AND authority = 'D1'
         AND phase = 'D1_ACTIVE' AND epoch = NEW.accepted_epoch
-  ) THEN RAISE(ABORT, 'writer_authority_denied') END;
-END;
+  ) THEN RAISE(ABORT, 'writer_authority_denied') END; END;
