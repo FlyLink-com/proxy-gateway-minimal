@@ -31,6 +31,10 @@ import {
   CHALLENGE_TTL_MS,
 } from "./repositories/challenge-repository.mjs";
 import { handleAgentDesiredState, handleAgentReceipt } from "./agent-protocol.mjs";
+import {
+  WriterAuthorityRepository, WriterAuthorityError, parseWriterEpoch,
+  classifyAuthorityBatchFailure
+} from "./writer-authority.mjs";
 import { handleAuth0IdentityProof } from "./oidc-gateway.mjs";
 import { createPortalSession, logoutPortalSession } from "./portal-auth.mjs";
 import { AdminAuthState } from "./admin-auth-state.mjs";
@@ -52,6 +56,13 @@ function jsonResponse(status, body, extraHeaders = {}) {
 
 function jsonError(status, code, message) {
   return jsonResponse(status, { error: { code, message } });
+}
+
+function writerAuthorityHttpError(error) {
+  if (!(error instanceof WriterAuthorityError)) return null;
+  const status = error.code === "writer_epoch_required" ? 400
+    : error.code === "writer_epoch_stale" ? 409 : 503;
+  return jsonError(status, error.code, "write authority does not permit this request");
 }
 
 function parseLimit(raw) {
@@ -175,6 +186,19 @@ async function handleCreateChallenge(accountId, request, env) {
       "allowedFactors must be a non-empty array of unique values from: email, sms, totp, webauthn",
     );
   }
+  // Fail closed on missing, stale, frozen, or BWH-owned writer authority.
+  // This is the early read check; the same epoch is checked AGAIN inside
+  // the D1 write transaction to close the race against a phase change.
+  let epoch;
+  try {
+    epoch = parseWriterEpoch(request.headers.get("x-writer-epoch"));
+    await new WriterAuthorityRepository(env.CONTROL_DB).assertWritable(epoch);
+  } catch (error) {
+    const denied = writerAuthorityHttpError(error);
+    if (denied) return denied;
+    throw error;
+  }
+
   // Canonical form: sorted, so semantically identical requests always
   // produce the same fingerprint and the same stored factor list.
   const canonicalFactors = [...factors].sort();
@@ -214,6 +238,7 @@ ${JSON.stringify({ allowedFactors: canonicalFactors })}`,
   };
   try {
     await challenges.issueChallengeAtomically({
+      epoch,
       challenge: {
         id: challengeId,
         accountId,
@@ -231,7 +256,11 @@ ${JSON.stringify({ allowedFactors: canonicalFactors })}`,
         createdAt,
       },
     });
-  } catch {
+  } catch (error) {
+    // The in-transaction guard wins over stale preflight reads; never
+    // reinterpret authority/epoch rejection as an idempotent replay.
+    const denied = writerAuthorityHttpError(classifyAuthorityBatchFailure(error));
+    if (denied) return denied;
     // A concurrent duplicate may have committed between the pre-check
     // and the batch; if so, answer from its record instead of failing.
     const committed = await challenges.findIdempotencyRecord(scope, idempotencyKey);
