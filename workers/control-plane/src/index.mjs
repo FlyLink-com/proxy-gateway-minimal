@@ -335,7 +335,11 @@ export default {
           : await handleListAccounts(request, env);
       }
       return jsonError(404, "not_found", "route not found");
-    } catch {
+    } catch (error) {
+      // Transactional G4/G3 fences report authority denial explicitly.
+      // Do not turn a stale-epoch rejection into a retryable 500.
+      const denied = writerAuthorityHttpError(error);
+      if (denied) return denied;
       return jsonError(500, "internal_error", "internal error");
     }
   },
