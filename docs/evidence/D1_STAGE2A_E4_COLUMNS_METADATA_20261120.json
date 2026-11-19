@@ -1,0 +1,1442 @@
+{
+  "schemaVersion": "1.0.0",
+  "artifact": "D1_STAGE2A_E4_COLUMNS_METADATA_20261120",
+  "capturedAt": "2026-11-20",
+  "sourceBaseline": "015fae70c47bb29534bc1c9b5fae15d5d2ea020b",
+  "sourceHistoricalInventory": "docs/D1_CONTROL_SCHEMA_INVENTORY_V1.json",
+  "cloudflareAccount": "17d66c001f9d851fa0d5a88cd311c2c0",
+  "e4DatabaseId": "05732071-22a5-4e04-834c-f5dd4407a462",
+  "readOnly": true,
+  "productionWriter": "BWH",
+  "e4RowDataCaptured": false,
+  "counts": {
+    "sourceTables": 70,
+    "targetTables": 85,
+    "sharedTables": 68,
+    "columnNames": 951,
+    "sharedDiffering": 2
+  },
+  "sourceOnly": [
+    "platform_ads_consent_decisions",
+    "platform_ads_click_consent_claims"
+  ],
+  "targetOnly": [
+    "agent_api_credentials",
+    "agent_apply_receipts",
+    "agent_credential_events",
+    "agent_desired_state_materials",
+    "agent_desired_states",
+    "agent_manifest_claims",
+    "agent_node_channels",
+    "agent_nodes",
+    "agent_request_nonces",
+    "platform_edge_desired_state_channels",
+    "platform_edge_desired_states",
+    "platform_identity_bindings",
+    "platform_identity_deletion_jobs",
+    "platform_identity_deletion_proofs",
+    "platform_identity_deletion_tombstones",
+    "platform_portal_subscription_link_resets",
+    "platform_write_idempotency_keys"
+  ],
+  "sharedColumnDiffs": [
+    {
+      "table": "platform_edge_apply_receipts",
+      "sourceOnly": [],
+      "targetOnly": [
+        "node_ref",
+        "generation",
+        "receipt_digest",
+        "reason_code",
+        "listener_present",
+        "credential_count"
+      ]
+    },
+    {
+      "table": "platform_payment_orders_legacy_archive_20260803",
+      "sourceOnly": [
+        "checkout_url",
+        "checkout_qr_code"
+      ],
+      "targetOnly": []
+    }
+  ],
+  "tables": [
+    {
+      "name": "agent_api_credentials",
+      "columns": [
+        "key_id",
+        "token_sha256",
+        "node_ref",
+        "channel_refs_json",
+        "status",
+        "activated_at",
+        "overlap_expires_at",
+        "rotation_from_key_id",
+        "last_authenticated_at",
+        "auth_confirmed_at",
+        "revoked_at",
+        "created_at"
+      ]
+    },
+    {
+      "name": "agent_apply_receipts",
+      "columns": [
+        "idempotency_key",
+        "fingerprint",
+        "node_ref",
+        "channel_ref",
+        "generation",
+        "desired_state_ref",
+        "material_digests_json",
+        "status",
+        "detail_mode",
+        "key_id",
+        "received_at"
+      ]
+    },
+    {
+      "name": "agent_credential_events",
+      "columns": [
+        "event_id",
+        "event_key",
+        "key_id",
+        "node_ref",
+        "event_type",
+        "occurred_at",
+        "detail_code"
+      ]
+    },
+    {
+      "name": "agent_desired_state_materials",
+      "columns": [
+        "desired_state_ref",
+        "channel_ref",
+        "edge_credential_ref",
+        "digest"
+      ]
+    },
+    {
+      "name": "agent_desired_states",
+      "columns": [
+        "desired_state_ref",
+        "node_ref",
+        "generation",
+        "status",
+        "issued_at",
+        "expires_at",
+        "created_at"
+      ]
+    },
+    {
+      "name": "agent_manifest_claims",
+      "columns": [
+        "idempotency_key",
+        "request_fingerprint",
+        "node_ref",
+        "channel_refs_json",
+        "desired_state_ref",
+        "generation",
+        "manifest_json",
+        "materials_json",
+        "signature",
+        "anti_replay_id",
+        "claimed_at",
+        "lease_until",
+        "status",
+        "created_at"
+      ]
+    },
+    {
+      "name": "agent_node_channels",
+      "columns": [
+        "node_ref",
+        "channel_ref",
+        "status"
+      ]
+    },
+    {
+      "name": "agent_nodes",
+      "columns": [
+        "node_ref",
+        "status",
+        "created_at",
+        "updated_at"
+      ]
+    },
+    {
+      "name": "agent_request_nonces",
+      "columns": [
+        "key_id",
+        "nonce",
+        "seen_at",
+        "expires_at"
+      ]
+    },
+    {
+      "name": "platform_account_resource_authorities",
+      "columns": [
+        "authority_ref",
+        "account_id",
+        "resource_request_id",
+        "entitlement_id",
+        "issued_link_id",
+        "status",
+        "version",
+        "previous_authority_ref",
+        "created_at",
+        "updated_at",
+        "created_by",
+        "reason",
+        "revoked_at",
+        "revoked_by",
+        "revocation_reason"
+      ]
+    },
+    {
+      "name": "platform_accounts",
+      "columns": [
+        "id",
+        "owner_ref",
+        "status",
+        "created_at",
+        "updated_at",
+        "metadata_json"
+      ]
+    },
+    {
+      "name": "platform_audit_events",
+      "columns": [
+        "id",
+        "entity_type",
+        "entity_ref",
+        "action",
+        "actor_ref",
+        "created_at",
+        "metadata_json"
+      ]
+    },
+    {
+      "name": "platform_coin_commerce_fulfillment_commands",
+      "columns": [
+        "command_ref",
+        "order_ref",
+        "account_id",
+        "payload_json",
+        "status",
+        "attempt_count",
+        "lease_generation",
+        "lease_token",
+        "lease_until",
+        "safe_failure_code",
+        "created_at",
+        "updated_at"
+      ]
+    },
+    {
+      "name": "platform_coin_commerce_fulfillment_receipts",
+      "columns": [
+        "receipt_ref",
+        "command_ref",
+        "effect_ref",
+        "status",
+        "safe_code",
+        "recorded_at"
+      ]
+    },
+    {
+      "name": "platform_coin_commerce_initial_confirmations",
+      "columns": [
+        "confirmation_ref",
+        "command_ref",
+        "order_ref",
+        "account_id",
+        "effect_ref",
+        "approval_sha256",
+        "inventory_sha256",
+        "effect_sha256",
+        "receipt_ref",
+        "operator_ref",
+        "resource_request_ref",
+        "entitlement_ref",
+        "issued_link_ref",
+        "failed_updated_at",
+        "attempt_count",
+        "lease_generation",
+        "confirmed_at"
+      ]
+    },
+    {
+      "name": "platform_coin_commerce_offer_versions",
+      "columns": [
+        "offer_version_ref",
+        "offer_ref",
+        "version",
+        "status",
+        "category",
+        "title_zh",
+        "title_en",
+        "summary_zh",
+        "summary_en",
+        "important_notices_zh_json",
+        "important_notices_en_json",
+        "base_coin_units",
+        "reference_currency",
+        "reference_amount_minor",
+        "accepted_coin_types_json",
+        "delivery_kind",
+        "duration_days",
+        "monthly_traffic_gb",
+        "traffic_gb",
+        "never_expires",
+        "discount_basis_points",
+        "created_at",
+        "published_at",
+        "retired_at"
+      ]
+    },
+    {
+      "name": "platform_coin_commerce_operation_receipts",
+      "columns": [
+        "operation_ref",
+        "account_id",
+        "actor_scope",
+        "operation_type",
+        "idempotency_key",
+        "request_digest",
+        "status",
+        "result_ref",
+        "safe_result_code",
+        "created_at",
+        "completed_at"
+      ]
+    },
+    {
+      "name": "platform_coin_commerce_order_events",
+      "columns": [
+        "event_ref",
+        "order_ref",
+        "event_type",
+        "safe_code",
+        "actor_type",
+        "actor_ref",
+        "occurred_at"
+      ]
+    },
+    {
+      "name": "platform_coin_commerce_orders",
+      "columns": [
+        "order_ref",
+        "account_id",
+        "quote_ref",
+        "offer_version_ref",
+        "hold_ref",
+        "amount_units",
+        "offer_snapshot_json",
+        "allocation_snapshot_json",
+        "payment_status",
+        "cancel_until",
+        "created_at",
+        "updated_at"
+      ]
+    },
+    {
+      "name": "platform_coin_commerce_plan_switch_quotes",
+      "columns": [
+        "quote_ref",
+        "account_id",
+        "entitlement_id",
+        "kind",
+        "from_offer_version_ref",
+        "to_offer_version_ref",
+        "snapshot_valid_from",
+        "snapshot_valid_until",
+        "list_price_units",
+        "credit_units",
+        "pending_credit_units",
+        "charge_units",
+        "cancels_switch_ref",
+        "effective_at",
+        "created_at"
+      ]
+    },
+    {
+      "name": "platform_coin_commerce_quotes",
+      "columns": [
+        "quote_ref",
+        "account_id",
+        "offer_version_ref",
+        "wallet_version",
+        "amount_units",
+        "applied_discount_basis_points",
+        "purchase_availability",
+        "shortfall_units",
+        "allocation_json",
+        "before_balance_json",
+        "after_balance_json",
+        "status",
+        "created_at",
+        "expires_at",
+        "consumed_at"
+      ]
+    },
+    {
+      "name": "platform_coin_credit_origins",
+      "columns": [
+        "credit_origin_ref",
+        "wallet_ref",
+        "coin_type",
+        "source_type",
+        "source_ref",
+        "source_digest",
+        "operation_ref",
+        "lot_ref",
+        "created_at"
+      ]
+    },
+    {
+      "name": "platform_coin_hold_allocations",
+      "columns": [
+        "allocation_ref",
+        "hold_ref",
+        "lot_ref",
+        "allocation_sequence",
+        "allocated_units",
+        "created_at"
+      ]
+    },
+    {
+      "name": "platform_coin_holds",
+      "columns": [
+        "hold_ref",
+        "wallet_ref",
+        "purpose",
+        "purpose_ref",
+        "amount_units",
+        "status",
+        "expires_at",
+        "created_at",
+        "updated_at"
+      ]
+    },
+    {
+      "name": "platform_coin_ledger_entries",
+      "columns": [
+        "entry_ref",
+        "operation_ref",
+        "wallet_ref",
+        "lot_ref",
+        "operation",
+        "amount_units",
+        "hold_ref",
+        "order_ref",
+        "source_type",
+        "source_ref",
+        "actor_type",
+        "actor_ref",
+        "previous_wallet_version",
+        "resulting_wallet_version",
+        "resulting_wallet_status",
+        "occurred_at"
+      ]
+    },
+    {
+      "name": "platform_coin_lots",
+      "columns": [
+        "lot_ref",
+        "wallet_ref",
+        "coin_type",
+        "credit_origin_ref",
+        "issued_units",
+        "pending_units",
+        "available_units",
+        "held_units",
+        "consumed_units",
+        "reversed_units",
+        "expired_units",
+        "source_type",
+        "source_ref",
+        "policy_ref",
+        "policy_version",
+        "expires_at",
+        "created_at",
+        "updated_at"
+      ]
+    },
+    {
+      "name": "platform_coin_operation_receipts",
+      "columns": [
+        "operation_ref",
+        "wallet_ref",
+        "actor_scope",
+        "operation_type",
+        "idempotency_key",
+        "request_digest",
+        "status",
+        "previous_wallet_version",
+        "resulting_wallet_version",
+        "resulting_wallet_status",
+        "result_ref",
+        "safe_result_code",
+        "created_at",
+        "completed_at"
+      ]
+    },
+    {
+      "name": "platform_coin_wallets",
+      "columns": [
+        "wallet_ref",
+        "account_id",
+        "status",
+        "version",
+        "created_at",
+        "updated_at"
+      ]
+    },
+    {
+      "name": "platform_commerce_authority_quote_bindings",
+      "columns": [
+        "quote_ref",
+        "authority_ref",
+        "account_id",
+        "authority_version",
+        "resource_request_id",
+        "entitlement_id",
+        "issued_link_id",
+        "created_at"
+      ]
+    },
+    {
+      "name": "platform_data_pack_artifact_rotations",
+      "columns": [
+        "rotation_ref",
+        "order_ref",
+        "account_id",
+        "link_ref",
+        "old_artifact_ref",
+        "replacement_artifact_ref",
+        "attempt",
+        "status",
+        "lease_ref",
+        "lease_until",
+        "created_at",
+        "updated_at"
+      ]
+    },
+    {
+      "name": "platform_data_pack_credential_resets",
+      "columns": [
+        "rotation_ref",
+        "order_ref",
+        "account_id",
+        "request_ref",
+        "entitlement_ref",
+        "edge_channel_ref",
+        "edge_credential_ref",
+        "old_edge_material_digest",
+        "new_edge_material_digest",
+        "status",
+        "lease_ref",
+        "lease_until",
+        "created_at",
+        "updated_at"
+      ]
+    },
+    {
+      "name": "platform_data_pack_edge_credentials",
+      "columns": [
+        "request_ref",
+        "entitlement_ref",
+        "edge_channel_ref",
+        "edge_credential_ref",
+        "edge_material_digest",
+        "status",
+        "created_at",
+        "updated_at"
+      ]
+    },
+    {
+      "name": "platform_data_pack_resources",
+      "columns": [
+        "order_ref",
+        "command_ref",
+        "account_id",
+        "request_ref",
+        "entitlement_ref",
+        "offer_version_ref",
+        "quota_bytes",
+        "commercial_never_expires",
+        "technical_valid_until",
+        "created_at"
+      ]
+    },
+    {
+      "name": "platform_deferred_resource_transition_events",
+      "columns": [
+        "event_ref",
+        "transition_ref",
+        "event_type",
+        "safe_code",
+        "actor_type",
+        "actor_ref",
+        "occurred_at"
+      ]
+    },
+    {
+      "name": "platform_deferred_resource_transition_operation_receipts",
+      "columns": [
+        "operation_ref",
+        "transition_ref",
+        "account_id",
+        "actor_scope",
+        "operation_type",
+        "idempotency_key",
+        "request_digest",
+        "status",
+        "result_ref",
+        "safe_result_code",
+        "created_at",
+        "completed_at"
+      ]
+    },
+    {
+      "name": "platform_deferred_resource_transition_rebases",
+      "columns": [
+        "settled_transition_ref",
+        "account_id",
+        "effect_ref",
+        "effect_entitlement_id",
+        "effect_request_id",
+        "effect_issued_link_id",
+        "effect_valid_until",
+        "state",
+        "lease_generation",
+        "lease_token",
+        "lease_until",
+        "safe_code",
+        "created_at",
+        "updated_at",
+        "completed_at"
+      ]
+    },
+    {
+      "name": "platform_deferred_resource_transition_reservation_allocations",
+      "columns": [
+        "allocation_ref",
+        "reservation_ref",
+        "lot_ref",
+        "coin_type_snapshot",
+        "allocation_sequence",
+        "amount_units",
+        "lot_expires_at_snapshot",
+        "created_at"
+      ]
+    },
+    {
+      "name": "platform_deferred_resource_transition_reservations",
+      "columns": [
+        "reservation_ref",
+        "account_id",
+        "wallet_ref",
+        "source_type",
+        "source_ref",
+        "amount_units",
+        "activation_at",
+        "expires_at",
+        "rebase_generation",
+        "state",
+        "lease_generation",
+        "lease_token",
+        "lease_until",
+        "created_at",
+        "updated_at"
+      ]
+    },
+    {
+      "name": "platform_deferred_resource_transitions",
+      "columns": [
+        "transition_ref",
+        "account_id",
+        "order_ref",
+        "reservation_ref",
+        "offer_version_ref",
+        "commercial_model",
+        "flow_kind",
+        "plan_rank",
+        "amount_units",
+        "offer_snapshot_json",
+        "allocation_snapshot_json",
+        "reserved_at",
+        "scheduled_for",
+        "expected_entitlement_id",
+        "expected_request_id",
+        "expected_issued_link_id",
+        "expected_valid_until",
+        "rebase_generation",
+        "state",
+        "lease_generation",
+        "lease_token",
+        "lease_until",
+        "effect_ref",
+        "effect_entitlement_id",
+        "effect_request_id",
+        "effect_issued_link_id",
+        "effect_valid_until",
+        "safe_code",
+        "settled_at",
+        "created_at",
+        "updated_at"
+      ]
+    },
+    {
+      "name": "platform_device_bindings",
+      "columns": [
+        "id",
+        "account_id",
+        "artifact_ref",
+        "device_ref",
+        "status",
+        "first_seen_at",
+        "last_seen_at"
+      ]
+    },
+    {
+      "name": "platform_edge_agent_leases",
+      "columns": [
+        "lease_ref",
+        "agent_ref",
+        "node_ref",
+        "channel_ref",
+        "desired_state_ref",
+        "status",
+        "acquired_at",
+        "renewed_at",
+        "expires_at"
+      ]
+    },
+    {
+      "name": "platform_edge_apply_receipts",
+      "columns": [
+        "id",
+        "channel_ref",
+        "desired_state_ref",
+        "status",
+        "add_count",
+        "revoke_count",
+        "rotate_count",
+        "unchanged_count",
+        "config_test_ok",
+        "service_active",
+        "listener_udp443",
+        "backup_ref",
+        "rollback_ref",
+        "applied_at",
+        "created_at",
+        "node_ref",
+        "generation",
+        "receipt_digest",
+        "reason_code",
+        "listener_present",
+        "credential_count"
+      ]
+    },
+    {
+      "name": "platform_edge_desired_state_channels",
+      "columns": [
+        "desired_state_ref",
+        "channel_ref"
+      ]
+    },
+    {
+      "name": "platform_edge_desired_state_notifications",
+      "columns": [
+        "id",
+        "node_ref",
+        "channel_ref",
+        "desired_state_ref",
+        "generation",
+        "reason",
+        "status",
+        "created_at",
+        "updated_at"
+      ]
+    },
+    {
+      "name": "platform_edge_desired_states",
+      "columns": [
+        "desired_state_ref",
+        "node_ref",
+        "generation",
+        "status",
+        "channel_refs_json",
+        "edge_credential_refs_json",
+        "material_digests_json",
+        "channel_count",
+        "edge_credential_count",
+        "digest_count",
+        "valid_until",
+        "created_at",
+        "updated_at"
+      ]
+    },
+    {
+      "name": "platform_edge_registered_nodes",
+      "columns": [
+        "node_ref",
+        "provider_ref",
+        "region_ref",
+        "role_ref",
+        "channel_refs_json",
+        "image_manifest_ref",
+        "release_ref",
+        "lifecycle",
+        "status",
+        "first_boot_packet_ref",
+        "registered_at",
+        "updated_at",
+        "metadata_json"
+      ]
+    },
+    {
+      "name": "platform_entitlements",
+      "columns": [
+        "id",
+        "account_id",
+        "plan",
+        "status",
+        "valid_from",
+        "valid_until",
+        "max_artifacts",
+        "max_devices",
+        "traffic_limit_bytes",
+        "created_at",
+        "updated_at"
+      ]
+    },
+    {
+      "name": "platform_identity_bindings",
+      "columns": [
+        "id",
+        "account_id",
+        "issuer_ref",
+        "subject_ref",
+        "status",
+        "created_at_ms",
+        "updated_at_ms",
+        "revoked_at_ms"
+      ]
+    },
+    {
+      "name": "platform_identity_deletion_jobs",
+      "columns": [
+        "id",
+        "request_id",
+        "account_id",
+        "authorization_basis",
+        "verification_mode",
+        "scope_json",
+        "status",
+        "current_step",
+        "steps_json",
+        "failure_reason",
+        "retry_count",
+        "proof_ref",
+        "actor_ref",
+        "created_at",
+        "updated_at"
+      ]
+    },
+    {
+      "name": "platform_identity_deletion_proofs",
+      "columns": [
+        "id",
+        "request_id",
+        "account_ref",
+        "verification_mode",
+        "scope_json",
+        "verification_json",
+        "deferred_scope_json",
+        "issued_at",
+        "created_at"
+      ]
+    },
+    {
+      "name": "platform_identity_deletion_tombstones",
+      "columns": [
+        "id",
+        "request_id",
+        "account_ref",
+        "retained_categories_json",
+        "retention_policy_ref",
+        "created_at"
+      ]
+    },
+    {
+      "name": "platform_issuance_requests",
+      "columns": [
+        "id",
+        "account_id",
+        "entitlement_id",
+        "approval_ref",
+        "status",
+        "quantity",
+        "node_id",
+        "purpose",
+        "requested_by_ref",
+        "created_at",
+        "updated_at",
+        "metadata_json"
+      ]
+    },
+    {
+      "name": "platform_issued_subscription_links",
+      "columns": [
+        "id",
+        "request_id",
+        "tenant_ref",
+        "artifact_ref",
+        "status",
+        "created_at",
+        "updated_at"
+      ]
+    },
+    {
+      "name": "platform_leads",
+      "columns": [
+        "id",
+        "status",
+        "organization",
+        "email",
+        "direction",
+        "stage",
+        "message",
+        "source",
+        "created_at",
+        "updated_at",
+        "expires_at"
+      ]
+    },
+    {
+      "name": "platform_payment_orders",
+      "columns": [
+        "payment_order_ref",
+        "account_id",
+        "offer_ref",
+        "create_idempotency_key",
+        "create_request_digest",
+        "quote_version",
+        "expected_paid_coin_units",
+        "amount_minor",
+        "currency",
+        "currency_exponent",
+        "quote_digest",
+        "adapter_key",
+        "payment_method",
+        "merchant_binding_ref",
+        "status",
+        "latest_receipt_ref",
+        "wallet_operation_ref",
+        "wallet_lot_ref",
+        "provider_order_ref",
+        "expires_at",
+        "created_at",
+        "updated_at"
+      ]
+    },
+    {
+      "name": "platform_payment_orders_legacy_archive_20260803",
+      "columns": [
+        "order_ref",
+        "portal_user_ref",
+        "plan",
+        "plan_label",
+        "amount_minor",
+        "money",
+        "currency",
+        "duration_days",
+        "client_target",
+        "channel",
+        "status",
+        "provider",
+        "provider_order_ref",
+        "access_request_ref",
+        "access_request_status",
+        "paid_at",
+        "created_at",
+        "updated_at",
+        "checkout_expires_at",
+        "checkout_url_scheme",
+        "refund_status",
+        "refund_requested_at",
+        "refund_approved_at",
+        "refund_amount_minor",
+        "refund_remaining_days",
+        "refund_reason_code",
+        "refund_provider_ref",
+        "refund_failed_reason"
+      ]
+    },
+    {
+      "name": "platform_payment_receipts",
+      "columns": [
+        "receipt_ref",
+        "payment_order_ref",
+        "attempt_ref",
+        "provider_request_ref",
+        "receipt_type",
+        "canonical_state",
+        "charge_certainty",
+        "provider_order_ref",
+        "provider_capture_ref",
+        "provider_event_ref",
+        "event_dedupe_key",
+        "merchant_scope_digest",
+        "payload_digest",
+        "next_action_type",
+        "next_action_url",
+        "next_action_expires_at",
+        "verification_result",
+        "amount_minor",
+        "currency",
+        "currency_exponent",
+        "expected_paid_coin_units",
+        "accepted_at"
+      ]
+    },
+    {
+      "name": "platform_portal_access_requests",
+      "columns": [
+        "id",
+        "portal_user_ref",
+        "plan",
+        "client_target",
+        "duration_days",
+        "quantity",
+        "status",
+        "next_action",
+        "note_provided",
+        "prior_trial_state",
+        "submitted_at",
+        "updated_at",
+        "reviewed_at",
+        "reviewed_by_ref",
+        "safe_reason_code",
+        "expires_at",
+        "valid_until",
+        "entitlement_ref",
+        "access_grant_ref",
+        "tenant_id",
+        "artifact_id",
+        "subscription_url",
+        "edge_channel_ref",
+        "edge_credential_ref",
+        "edge_material_digest",
+        "edge_lifecycle_mutation",
+        "event_json"
+      ]
+    },
+    {
+      "name": "platform_portal_edge_credentials",
+      "columns": [
+        "request_id",
+        "edge_channel_ref",
+        "edge_credential_ref",
+        "edge_material_digest",
+        "ordinal"
+      ]
+    },
+    {
+      "name": "platform_portal_entries",
+      "columns": [
+        "id",
+        "account_id",
+        "entitlement_id",
+        "token_hash",
+        "status",
+        "expires_at",
+        "max_uses",
+        "use_count",
+        "issued_by_ref",
+        "approval_ref",
+        "used_at",
+        "revoked_at",
+        "created_at",
+        "updated_at"
+      ]
+    },
+    {
+      "name": "platform_portal_passkey_credentials",
+      "columns": [
+        "id",
+        "account_id",
+        "credential_id",
+        "credential_id_hash",
+        "public_key_jwk_json",
+        "sign_count",
+        "transports_json",
+        "status",
+        "created_at",
+        "last_verified_at",
+        "revoked_at",
+        "updated_at"
+      ]
+    },
+    {
+      "name": "platform_portal_password_credentials",
+      "columns": [
+        "id",
+        "account_id",
+        "password_hash",
+        "status",
+        "failure_count",
+        "locked_until",
+        "must_rotate",
+        "created_at",
+        "last_verified_at",
+        "revoked_at",
+        "updated_at"
+      ]
+    },
+    {
+      "name": "platform_portal_registration_welcome_coin_grants",
+      "columns": [
+        "grant_ref",
+        "account_id",
+        "coin_type",
+        "amount_units",
+        "source_type",
+        "source_ref",
+        "source_digest",
+        "actor_scope",
+        "idempotency_key",
+        "expires_at",
+        "status",
+        "next_attempt_at",
+        "attempt_count",
+        "lease_generation",
+        "lease_token",
+        "lease_until",
+        "last_safe_code",
+        "credited_lot_ref",
+        "created_at",
+        "updated_at",
+        "credited_at"
+      ]
+    },
+    {
+      "name": "platform_portal_second_factor_challenges",
+      "columns": [
+        "id",
+        "account_id",
+        "challenge_hash",
+        "allowed_factors_json",
+        "status",
+        "failure_count",
+        "expires_at",
+        "used_at",
+        "created_at",
+        "updated_at"
+      ]
+    },
+    {
+      "name": "platform_portal_sessions",
+      "columns": [
+        "id",
+        "account_id",
+        "entry_id",
+        "auth_method",
+        "status",
+        "issued_at",
+        "expires_at",
+        "revoked_at",
+        "updated_at"
+      ]
+    },
+    {
+      "name": "platform_portal_subscription_link_resets",
+      "columns": [
+        "operation_key_digest",
+        "request_ref",
+        "owner_ref",
+        "tenant_id",
+        "previous_artifact_id",
+        "replacement_artifact_id",
+        "prepared_at",
+        "completed_at",
+        "state",
+        "source_digest"
+      ]
+    },
+    {
+      "name": "platform_portal_totp_credentials",
+      "columns": [
+        "id",
+        "account_id",
+        "encrypted_totp_secret",
+        "status",
+        "failure_count",
+        "locked_until",
+        "enrolled_at",
+        "last_verified_at",
+        "revoked_at",
+        "updated_at"
+      ]
+    },
+    {
+      "name": "platform_quota_counters",
+      "columns": [
+        "account_id",
+        "entitlement_id",
+        "metric",
+        "period",
+        "amount",
+        "updated_at"
+      ]
+    },
+    {
+      "name": "platform_referral_accruals",
+      "columns": [
+        "account_id",
+        "reward_units",
+        "reward_lot_ref",
+        "confirmation_at",
+        "risk_approved",
+        "refunded_paid_units",
+        "reversed_units",
+        "status",
+        "updated_at"
+      ]
+    },
+    {
+      "name": "platform_referral_bindings",
+      "columns": [
+        "account_id",
+        "referrer_id",
+        "touch_digest",
+        "registered_at"
+      ]
+    },
+    {
+      "name": "platform_referral_events",
+      "columns": [
+        "event_ref",
+        "account_id",
+        "kind",
+        "digest",
+        "occurred_at"
+      ]
+    },
+    {
+      "name": "platform_referral_origins",
+      "columns": [
+        "account_id",
+        "lot_ref",
+        "payment_order_ref",
+        "referrer_id",
+        "paid_units",
+        "credited_at",
+        "policy_json",
+        "created_at"
+      ]
+    },
+    {
+      "name": "platform_referral_policies",
+      "columns": [
+        "policy_ref",
+        "version",
+        "effective_at",
+        "policy_json",
+        "digest"
+      ]
+    },
+    {
+      "name": "platform_referral_profiles",
+      "columns": [
+        "account_id",
+        "code",
+        "status",
+        "created_at"
+      ]
+    },
+    {
+      "name": "platform_referral_touches",
+      "columns": [
+        "token_digest",
+        "referrer_id",
+        "observed_at",
+        "expires_at"
+      ]
+    },
+    {
+      "name": "platform_revocation_events",
+      "columns": [
+        "id",
+        "request_id",
+        "issued_link_id",
+        "tenant_ref",
+        "artifact_ref",
+        "reason_code",
+        "revoked_by_ref",
+        "created_at"
+      ]
+    },
+    {
+      "name": "platform_scheduled_plan_switches",
+      "columns": [
+        "switch_ref",
+        "account_id",
+        "entitlement_id",
+        "from_offer_version_ref",
+        "to_offer_version_ref",
+        "effective_at",
+        "paid_units",
+        "status",
+        "created_at",
+        "resolved_at",
+        "superseded_by_order_ref"
+      ]
+    },
+    {
+      "name": "platform_schema_migrations",
+      "columns": [
+        "migration_id",
+        "ddl_checksum",
+        "applied_at"
+      ]
+    },
+    {
+      "name": "platform_usage_counter_cursors",
+      "columns": [
+        "source_ref",
+        "channel_ref",
+        "edge_credential_ref",
+        "upload_bytes",
+        "download_bytes",
+        "observed_at",
+        "epoch",
+        "updated_at"
+      ]
+    },
+    {
+      "name": "platform_usage_rollups",
+      "columns": [
+        "edge_credential_ref",
+        "account_id",
+        "entitlement_id",
+        "request_id",
+        "channel_ref",
+        "upload_bytes",
+        "download_bytes",
+        "total_bytes",
+        "last_observed_at",
+        "updated_at"
+      ]
+    },
+    {
+      "name": "platform_usage_samples",
+      "columns": [
+        "id",
+        "source_ref",
+        "channel_ref",
+        "edge_credential_ref",
+        "account_id",
+        "entitlement_id",
+        "request_id",
+        "observed_at",
+        "interval_started_at",
+        "interval_ended_at",
+        "upload_bytes",
+        "download_bytes",
+        "total_bytes",
+        "sample_digest",
+        "created_at"
+      ]
+    },
+    {
+      "name": "platform_wallet_first_deferred_checkout_quotes",
+      "columns": [
+        "quote_ref",
+        "account_id",
+        "deferred_order_ref",
+        "offer_version_ref",
+        "offer_snapshot_json",
+        "wallet_version",
+        "amount_units",
+        "applied_discount_basis_points",
+        "purchase_availability",
+        "shortfall_units",
+        "allocation_json",
+        "before_balance_json",
+        "after_balance_json",
+        "flow_kind",
+        "scheduled_for",
+        "expected_entitlement_id",
+        "expected_request_id",
+        "expected_issued_link_id",
+        "expected_valid_until",
+        "status",
+        "transition_ref",
+        "reserve_actor_scope",
+        "reserve_idempotency_key",
+        "reserve_actor_type",
+        "reserve_actor_ref",
+        "created_at",
+        "expires_at",
+        "reserved_at"
+      ]
+    },
+    {
+      "name": "platform_wallet_first_resource_effect_runtime_claims",
+      "columns": [
+        "transition_ref",
+        "effect_ref",
+        "flow_kind",
+        "entitlement_id",
+        "request_id",
+        "issued_link_id",
+        "valid_until",
+        "node_id",
+        "status",
+        "lease_generation",
+        "lease_token",
+        "lease_until",
+        "safe_code",
+        "created_at",
+        "updated_at",
+        "recorded_at"
+      ]
+    },
+    {
+      "name": "platform_wallet_first_setup_delivery_handoffs",
+      "columns": [
+        "handoff_ref",
+        "account_id",
+        "initial_transition_ref",
+        "effect_ref",
+        "tenant_ref",
+        "artifact_ref",
+        "idempotency_key_hash",
+        "session_binding_hash",
+        "status",
+        "claim_generation",
+        "lease_until",
+        "created_at",
+        "updated_at",
+        "claimed_at",
+        "delivered_at",
+        "safe_code"
+      ]
+    },
+    {
+      "name": "platform_write_idempotency_keys",
+      "columns": [
+        "scope",
+        "idempotency_key",
+        "request_fingerprint",
+        "response_status",
+        "response_body_json",
+        "created_at"
+      ]
+    }
+  ]
+}
