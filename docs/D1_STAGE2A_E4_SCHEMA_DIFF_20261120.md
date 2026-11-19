@@ -83,12 +83,27 @@ database, protected edge-material files, and raw credential custody.
 
 This PR adds a synthetic-only, local Miniflare D1 rehearsal engine
 for the first **two** FK-linked business examples (`platform_accounts`,
-`platform_entitlements`). This is a test of checkpoint/transaction/replay
-mechanics, **not** a complete 70-table loader. It accepts only
-strictly whitelisted `s2s-` synthetic IDs, a local-fixture sentinel,
-and no credential or payment-capability fields. It is never imported
-by the deployed Worker route and cannot apply to E4 without
-constructing a prohibited local sentinel.
+`platform_entitlements`). It proves deterministic full snapshot load,
+atomic business-row + checkpoint commits, idempotent retries, corrupt
+checkpoint detection, and exact scoped reconciliation.
+
+Stage 2B adds **synthetic-only** incremental change replay:
+`tools/d1-stage2/offline-delta-replay.mjs`. It requires a completed
+immutable before-snapshot checkpoint, validates an after-snapshot
+identity, applies child-before-parent deletes followed by parent-before-
+child insert/update operations, checks the *entire old row state in the
+same D1 batch* before each update/delete, and checkpoints mutations
+atomically. Crashed/lost-ack retries resume by checkpoint and reject
+stale old rows instead of overwriting changes. Tests use only known
+`s2s-` fixtures, an explicit local-fixture sentinel and a local
+`CHECK(value=1)` abort table. No direct Worker HTTP route imports
+these Node tools.
+
+This is a mechanics rehearsal, **not** a complete 70-table loader or
+live CDC. Source BWH delta fingerprint enumeration in PR #896 does
+not carry approved row payloads, a durable ordered outbox, or the
+U-F18 credential-only reconciliation contract. None of those gaps
+is concealed or bypassed here.
 
 **Next required engineering:** independently checked target DDL for
 all approved tables; source-snapshot provenance/19 full migration
