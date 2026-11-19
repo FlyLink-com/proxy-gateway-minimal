@@ -46,6 +46,12 @@ test("migration applies and creates the slice schema verbatim", async (t) => {
     "table:platform_identity_bindings",
     "table:platform_portal_second_factor_challenges",
     "table:platform_write_idempotency_keys",
+    "table:platform_writer_authority",
+    "table:platform_writer_gate",
+    "trigger:platform_writer_authority_delete_guard",
+    "trigger:platform_writer_authority_transition_guard",
+    "trigger:platform_writer_gate_insert_guard",
+    "trigger:platform_writer_gate_update_guard",
   ]);
 });
 
