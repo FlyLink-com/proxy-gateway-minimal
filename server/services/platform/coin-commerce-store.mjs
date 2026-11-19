@@ -53,6 +53,7 @@ import {
   validateAccountResourceAuthorityCommerceSchema
 } from "./account-resource-authority-commerce-migrations.mjs";
 import { DATA_PACK_TECHNICAL_VALID_UNTIL } from "./usage-billing-cycle.mjs";
+import { assertWritable, isWriterAuthorityError } from "./single-writer-authority.mjs";
 
 const BUSY_TIMEOUT_MS = 2_000;
 const DEFAULT_CANCEL_WINDOW_MS = 3_000;
@@ -154,6 +155,11 @@ function isCommerceError(error) {
 
 function normalizeError(error) {
   if (isCommerceError(error)) return error;
+  // D1 Stage 1B: a writer-fence rejection keeps its own code so callers
+  // (and the migration coordinator) can tell a frozen / D1-active
+  // database apart from an infrastructure failure. Any other
+  // non-commerce error still maps to commerce_infrastructure_error.
+  if (isWriterAuthorityError(error)) return error;
   if (error?.code === "wallet_not_active") {
     return commerceError("wallet_not_active");
   }
@@ -962,7 +968,19 @@ export function createSqliteCoinCommerceStore(options = {}) {
     );
   }
 
+  // D1 Stage 1B: phase-only writer fence for the commerce connection.
+  // Every named write transaction below calls this as its first
+  // statement, inside the same BEGIN IMMEDIATE transaction as the
+  // business writes, so a frozen / D1-active database rejects the write
+  // before any ledger, order, or receipt effect. Internal writers hold
+  // no coordinator receipt, so no epoch is matched here; epoch matching
+  // stays with the coordinator-guarded path.
+  function assertCommerceWritable() {
+    assertWritable(db);
+  }
+
   const publishTransaction = db.transaction((normalizedOffer) => {
+    assertCommerceWritable();
     const existing = findOfferVersion(normalizedOffer.offerVersionRef);
     if (existing) {
       const projected = offerFromRow(existing);
@@ -1007,6 +1025,7 @@ export function createSqliteCoinCommerceStore(options = {}) {
   }
 
   const bootstrapTransaction = db.transaction((normalizedOffers) => {
+    assertCommerceWritable();
     const pending = [];
     for (const normalizedOffer of normalizedOffers) {
       const existing = findOfferVersion(normalizedOffer.offerVersionRef);
@@ -1128,6 +1147,7 @@ export function createSqliteCoinCommerceStore(options = {}) {
   }
 
   const retireTransaction = db.transaction(({ offerRef, offerVersionRef }) => {
+    assertCommerceWritable();
     const row = db.prepare(`
       select * from platform_coin_commerce_offer_versions
        where offer_ref = ? and offer_version_ref = ?
@@ -1200,6 +1220,7 @@ export function createSqliteCoinCommerceStore(options = {}) {
   }
 
   const createQuoteTransaction = db.transaction((request) => {
+    assertCommerceWritable();
     requireAccount(request.accountId);
     const authority = authorityEnabled
       ? resolveCurrentAuthority(request.accountId)
@@ -2243,6 +2264,7 @@ export function createSqliteCoinCommerceStore(options = {}) {
   }
 
   const confirmTransaction = db.transaction((request) => {
+    assertCommerceWritable();
     const occurredAt = readDatabaseUtc(db);
     const replay = resolveReceiptReplay({
       operationType: "confirm_order",
@@ -2485,6 +2507,7 @@ export function createSqliteCoinCommerceStore(options = {}) {
   }
 
   const cancelTransaction = db.transaction((request) => {
+    assertCommerceWritable();
     const occurredAt = readDatabaseUtc(db);
     const replay = resolveReceiptReplay({
       operationType: "cancel_order",
@@ -2875,6 +2898,7 @@ export function createSqliteCoinCommerceStore(options = {}) {
 
   const planSwitchCapture = planSwitchEnabled ? createPlanSwitchCaptureParticipant(db) : null;
   const claimCapturesTransaction = db.transaction((limit) => {
+    assertCommerceWritable();
     const occurredAt = readDatabaseUtc(db);
     const rows = db.prepare(`
       select order_ref
@@ -3554,6 +3578,7 @@ export function createSqliteCoinCommerceStore(options = {}) {
   }
 
   function captureOrderBody(orderRef, { recovery = false, occurredAtOverride } = {}) {
+    assertCommerceWritable();
     const occurredAt = occurredAtOverride ?? readDatabaseUtc(db);
     const order = findOrder(orderRef);
     if (!order) throw commerceError("commerce_not_found");
@@ -3808,6 +3833,7 @@ export function createSqliteCoinCommerceStore(options = {}) {
   }
 
   const recoverTransaction = db.transaction((request) => {
+    assertCommerceWritable();
     const occurredAt = readDatabaseUtc(db);
     let auditRows = [];
     let actionRows = [];
@@ -4019,6 +4045,7 @@ export function createSqliteCoinCommerceStore(options = {}) {
   }
 
   const claimCommandTransaction = db.transaction((leaseMs) => {
+    assertCommerceWritable();
     const occurredAt = readDatabaseUtc(db);
     const command = db.prepare(`
       select c.*
@@ -4156,6 +4183,7 @@ export function createSqliteCoinCommerceStore(options = {}) {
   }
 
   const completeCommandTransaction = db.transaction((request) => {
+    assertCommerceWritable();
     const occurredAt = readDatabaseUtc(db);
     const command = db.prepare(`
       select * from platform_coin_commerce_fulfillment_commands
@@ -4304,6 +4332,7 @@ export function createSqliteCoinCommerceStore(options = {}) {
   ]);
 
   const failCommandTransaction = db.transaction((request) => {
+    assertCommerceWritable();
     const occurredAt = readDatabaseUtc(db);
     const command = db.prepare(`
       select * from platform_coin_commerce_fulfillment_commands
@@ -4393,6 +4422,7 @@ export function createSqliteCoinCommerceStore(options = {}) {
   }
 
   const nextWakeTransaction = db.transaction(() => {
+    assertCommerceWritable();
     const occurredAt = readDatabaseUtc(db);
     const candidates = [];
     for (const command of db.prepare(`
