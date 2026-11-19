@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createWorker } from "./helpers.mjs";
+import { buildReceiptIdempotencyKey } from "../../../agent/g4/receipt.mjs";
 import { createEpochFencedD1 } from "../src/epoch-fenced-d1.mjs";
 import { WriterAuthorityRepository } from "../src/writer-authority.mjs";
 
@@ -108,4 +109,50 @@ test("fenced D1 rejects raw statements, CTE mutation on read methods, exec and u
   ]),{code:"writer_unfenced_statement_denied"});
   const row=await fenced.prepare("SELECT status FROM platform_accounts WHERE id = ?").bind("acct-pg-101").first();
   assert.equal(row.status,"active");
+});
+
+test("G4 receipt POST rejects stale/frozen authority before nonce or idempotent replay", async(t)=>{
+  const { mf, db, agent } = await createWorker();
+  t.after(()=>mf.dispose());
+  const desired = await mf.dispatchFetch(desiredUrl,{headers:agentHeaders(agent)});
+  assert.equal(desired.status,200);
+  const envelope=await desired.json();
+  const channelRef=agent.channelRefs[0];
+  const receipt={
+    type:"gccgw_data_plane_apply_receipt",
+    nodeRef:agent.nodeRef,
+    channelRef,
+    generation:envelope.manifest.generation,
+    desiredStateRef:envelope.manifest.desiredStateRef,
+    materialDigests:envelope.materials.filter(x=>x.channelRef===channelRef),
+    idempotencyKey:buildReceiptIdempotencyKey({
+      desiredStateRef:envelope.manifest.desiredStateRef,
+      generation:envelope.manifest.generation,
+      channelRef
+    }),
+    status:"applied", detail:{mode:"apply"}, redacted:true,
+  };
+  const send=(epoch)=>mf.dispatchFetch(origin+"/v1/agent/receipts",{
+    method:"POST",
+    headers:{
+      ...agentHeaders(agent,epoch),
+      "idempotency-key":receipt.idempotencyKey,
+      "content-type":"application/json"
+    },
+    body:JSON.stringify(receipt),
+  });
+  const stale=await send("2");
+  assert.equal(stale.status,409);
+  assert.equal((await stale.json()).error.code,"writer_epoch_stale");
+  assert.equal((await find(db,"SELECT COUNT(*) AS n FROM agent_apply_receipts")).n,0);
+  const success=await send("3");
+  assert.equal(success.status,201);
+  assert.equal((await find(db,"SELECT COUNT(*) AS n FROM agent_apply_receipts")).n,1);
+  await db.prepare(
+    "UPDATE platform_writer_authority SET phase='RECOVERY', epoch=4, changed_at='2026-11-20T00:00:05.000Z' WHERE singleton=1"
+  ).run();
+  const blocked=await send("3");
+  assert.equal(blocked.status,503);
+  assert.equal((await blocked.json()).error.code,"writer_authority_not_d1");
+  assert.equal((await find(db,"SELECT COUNT(*) AS n FROM agent_apply_receipts")).n,1);
 });
