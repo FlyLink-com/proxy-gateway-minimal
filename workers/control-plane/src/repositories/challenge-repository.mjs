@@ -1,7 +1,7 @@
 // Asynchronous D1 repository for the bounded write flow: issuing a
 // portal second-factor challenge under an idempotency key.
 //
-// The write is deliberately narrow — one INSERT into
+// The write is deliberately narrow — one authority/epoch guard, one INSERT into
 // platform_portal_second_factor_challenges plus one INSERT into
 // platform_write_idempotency_keys, executed as a single D1 batch. D1
 // batches are atomic, so the pair lands together or not at all: a
@@ -16,6 +16,8 @@
 // production flow it would be handed to the factor-delivery subsystem
 // at issuance time, which is out of scope for this local slice.
 
+import { WriterAuthorityRepository } from "../writer-authority.mjs";
+
 export const CHALLENGE_TTL_MS = 10 * 60 * 1000;
 
 export class ChallengeRepository {
@@ -24,6 +26,7 @@ export class ChallengeRepository {
       throw new TypeError("ChallengeRepository requires a D1Database binding");
     }
     this.db = db;
+    this.authority = new WriterAuthorityRepository(db);
   }
 
   async findIdempotencyRecord(scope, idempotencyKey) {
@@ -45,8 +48,9 @@ export class ChallengeRepository {
   //                responseBodyJson, createdAt }
   // Throws when either insert fails; the batch guarantees neither row
   // persists in that case.
-  async issueChallengeAtomically({ challenge, idempotency }) {
+  async issueChallengeAtomically({ challenge, idempotency, epoch }) {
     await this.db.batch([
+      this.authority.gateStatement(epoch),
       this.db
         .prepare(
           `INSERT INTO platform_portal_second_factor_challenges
