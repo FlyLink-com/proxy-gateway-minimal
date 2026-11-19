@@ -22,6 +22,7 @@ const migrationPaths = [
   fileURLToPath(new URL("../migrations/0002_write_idempotency.sql", import.meta.url)),
   fileURLToPath(new URL("../migrations/0003_agent_protocol_slice.sql", import.meta.url)),
   fileURLToPath(new URL("../migrations/0004_identity_bindings_slice.sql", import.meta.url)),
+  fileURLToPath(new URL("../migrations/0005_writer_authority_guard_slice.sql", import.meta.url)),
 ];
 
 export async function applyMigration(db) {
@@ -164,6 +165,7 @@ export async function createWorker({
   seed = true,
   withAgent = true,
   withAgentSigning = true,
+  writerPhase = "D1_ACTIVE",
 } = {}) {
   const bindings = {};
   if (withToken) bindings.CONTROL_PLANE_READ_TOKEN = READ_TOKEN;
@@ -186,6 +188,30 @@ export async function createWorker({
   });
   const db = await mf.getD1Database("CONTROL_DB");
   await applyMigration(db);
+  // Explicitly synthetic D1-authority fixture, never the remote default.
+  // The actual migration starts in BWH_ACTIVE at epoch 1 and has no
+  // production transition/activation route.
+  if (!["BWH_ACTIVE", "FROZEN", "D1_ACTIVE", "RECOVERY"].includes(writerPhase)) {
+    throw new TypeError("unknown synthetic writerPhase");
+  }
+  if (writerPhase !== "BWH_ACTIVE") {
+    await db.prepare(
+      "UPDATE platform_writer_authority SET authority = 'BWH', phase = 'FROZEN', epoch = 2, " +
+      "changed_at = '2026-11-20T00:00:00.000Z' WHERE singleton = 1"
+    ).run();
+  }
+  if (writerPhase === "D1_ACTIVE" || writerPhase === "RECOVERY") {
+    await db.prepare(
+      "UPDATE platform_writer_authority SET authority = 'D1', phase = 'D1_ACTIVE', epoch = 3, " +
+      "changed_at = '2026-11-20T00:00:01.000Z' WHERE singleton = 1"
+    ).run();
+  }
+  if (writerPhase === "RECOVERY") {
+    await db.prepare(
+      "UPDATE platform_writer_authority SET authority = 'D1', phase = 'RECOVERY', epoch = 4, " +
+      "changed_at = '2026-11-20T00:00:02.000Z' WHERE singleton = 1"
+    ).run();
+  }
   if (seed) {
     await seedFixture(db);
     if (withAgent) await seedAgentFixture(db);
@@ -213,6 +239,7 @@ export function writeAuthHeaders(idempotencyKey) {
     authorization: `Bearer ${WRITE_TOKEN}`,
     "content-type": "application/json",
   };
+  headers["x-writer-epoch"] = "3";
   if (idempotencyKey !== undefined) headers["idempotency-key"] = idempotencyKey;
   return headers;
 }
