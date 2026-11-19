@@ -187,12 +187,14 @@ test("S2A-08 sensitive columns, foreign identifiers and extra projections are de
     {...original,status:"unknown"},
     {...original,id:"real-customer-account-123"},
   ];
-  for(const projection of variants){
+  for(const [index,projection] of variants.entries()){
     const b=await batch({changes:[{
       op:"upsert",pk:projection.id,previousFingerprint:null,projection
     }]});
+    // A non-synthetic PK is rejected at the batch envelope boundary;
+    // unsafe fields on a valid synthetic ID fail the projection allowlist.
     await assert.rejects(applyStage2Batch(db,{epoch,batch:b}),{
-      code:"stage2_projection_denied"
+      code:index===3?"stage2_batch_invalid":"stage2_projection_denied"
     });
   }
   assert.equal(await count(db,"stage2_rehearsal_rows"),0);
