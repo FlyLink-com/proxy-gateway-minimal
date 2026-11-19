@@ -250,3 +250,26 @@ export async function runSyntheticOfflineMigration(db, rawPlan, { afterBatch = n
   }
   return { committed, resumed, receipt: await reconcileSyntheticRehearsal(db, rawPlan) };
 }
+
+
+// A delta rehearsal must trust an earlier completed source snapshot's
+// immutable checkpoint log, not a mutable "last seen row" flag. This
+// function only verifies checkpoint provenance; it is valid even after
+// a later delta has changed the target rows.
+export async function verifySyntheticCheckpointSet(db, rawPlan) {
+  const plan = normalizeSyntheticPlan(rawPlan);
+  await verifyLocalFixture(db, plan);
+  const run = await db.prepare(
+    "SELECT plan_hash,snapshot_hash FROM stage2_rehearsal_runs WHERE run_id=?"
+  ).bind(plan.runId).first();
+  if (run?.plan_hash !== plan.planHash || run?.snapshot_hash !== plan.sourceHash) {
+    fail("stage2_run_identity_mismatch");
+  }
+  for (const table of plan.tables) {
+    if (await completedBatches(db, plan, table)
+      !== batchesOf(table.rows, plan.batchSize).length) {
+      fail("stage2_checkpoint_incomplete");
+    }
+  }
+  return { runId: plan.runId, snapshotHash: plan.sourceHash, planHash: plan.planHash };
+}
