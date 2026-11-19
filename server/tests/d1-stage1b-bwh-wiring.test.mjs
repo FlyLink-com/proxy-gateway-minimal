@@ -389,10 +389,69 @@ test("S1B-WIRE-8: every named commerce write transaction calls the fence as its 
   for (const definition of FENCED_COMMERCE_WRITERS) {
     const at = lines.findIndex((line) => line.includes(definition));
     assert.notEqual(at, -1, `missing write transaction definition: ${definition}`);
-    const body = lines.slice(at + 1, at + 4);
+    // Literal first-statement check: the first non-blank line after the
+    // definition must be the fence call — not merely present nearby.
+    const firstStatement = lines.slice(at + 1).find((line) => line.trim().length > 0);
     assert.ok(
-      body.some((line) => /^\s*assertCommerceWritable\(\);$/.test(line)),
-      `fence is not the first statement of ${definition}`,
+      firstStatement !== undefined && /^\s*assertCommerceWritable\(\);$/.test(firstStatement),
+      `fence is not the first statement of ${definition}: ${firstStatement ?? "<none>"}`,
     );
+  }
+});
+
+test("S1B-WIRE-9: concurrent callbacks on two connections are both fenced by one freeze", (t) => {
+  const { directory, database, store } = commerceFixture(t);
+  const database2 = new Database(join(directory, "commerce.sqlite"));
+  database2.pragma("busy_timeout = 5000");
+  const store2 = createSqliteCoinCommerceStore({
+    database: database2,
+    commerceRefFactory: refFactory(),
+    walletRefFactory: refFactory(),
+  });
+  try {
+    // A second offer, so the two callbacks do not collide on one row.
+    const second = offer({
+      offerRef: "offer_monthly_premium",
+      offerVersionRef: "offerv_monthly_premium_v1",
+      title: { zh: "高级月卡", en: "Premium monthly plan" },
+    });
+    // A freeze lands between the two callbacks: both are rejected, on
+    // either connection, with no row written.
+    transitionWriterAuthority(database, { to: "FROZEN" });
+    assert.throws(
+      () => store.publishOfferVersion(second),
+      (error) => {
+        assertWriterError(error, "writer_authority_not_bwh");
+        return true;
+      },
+    );
+    assert.throws(
+      () => store2.publishOfferVersion(second),
+      (error) => {
+        assertWriterError(error, "writer_authority_not_bwh");
+        return true;
+      },
+    );
+    assert.equal(offerCount(database), 0);
+    // Abort re-admits both: each callback then commits on its own
+    // connection, sequentially.
+    transitionWriterAuthority(database, { to: "BWH_ACTIVE" });
+    const viaFirst = store.publishOfferVersion(second);
+    assert.equal(viaFirst.offerRef, "offer_monthly_premium");
+    assert.equal(offerCount(database), 1);
+    const viaSecond = store2.publishOfferVersion(offer());
+    assert.equal(viaSecond.offerRef, "offer_monthly_basic");
+    assert.equal(offerCount(database), 2);
+  } finally {
+    try {
+      store2.close();
+    } catch {
+      // Already closed.
+    }
+    try {
+      database2.close();
+    } catch {
+      // Already closed.
+    }
   }
 });

@@ -321,21 +321,25 @@ These bypass route auth/validation entirely. Any fence that only lives in HTTP m
   `transitionWriterAuthority` (epoch +1, `RECOVERY -> BWH_ACTIVE` blocked).
 - **Central store (C-01) — FENCED.** `runInTransaction(callback, options)` (`:10311`) now routes
   EVERY call through `guardedTransaction(db, options.writerEpoch, callback)`: one BEGIN IMMEDIATE
-  transaction whose first statement is the fence (phase BWH_ACTIVE, plus epoch match when a
+  transaction whose first statement is the fence call (which ensures the authority table with
+  idempotent DDL, then enforces phase BWH_ACTIVE, plus epoch match when a
   coordinator receipt supplies `writerEpoch`). Callers without a receipt get the phase-only fence.
   The former opt-in (`{ guarded: true }` / `writerEpoch`) is subsumed; no caller passes either,
-  and none needs to. The dead `assertBwhWritable` helper was removed. Tests S1B-WIRE-1…WIRE-3
+  and none needs to. Tests S1B-WIRE-1…WIRE-3
   cover the plain (no-options) path: commit while BWH_ACTIVE, reject while FROZEN / D1_ACTIVE /
   RECOVERY.
 - **Coin-commerce store (C-02) — FENCED.** All 13 named write transactions call
-  `assertCommerceWritable()` (phase-only `assertWritable(db)`) as their first statement, inside
+  `assertCommerceWritable()` (phase-only `assertWritable(db)`) as the first statement of each
+  (the call ensures the authority table with idempotent DDL, then enforces the phase; no
+  business write precedes the phase check), inside
   their already-IMMEDIATE transactions: publish / bootstrap / retire / createQuote / confirm /
   cancel / claimCaptures / capture (via `captureOrderBody`, also reached nested from claimCaptures
   and recover) / recover / claimCommand / completeCommand / failCommand / nextWake. The commerce
   store's `normalizeError` (`:156`) lets a `WriterAuthorityError` through unwrapped, so a fence
   rejection surfaces as `writer_authority_not_bwh` instead of `commerce_infrastructure_error`.
   Tests S1B-WIRE-4…WIRE-7 cover publish / quote / retire behaviorally; S1B-WIRE-8 asserts the
-  source-shape invariant (exactly 13 fence calls, one per named writer, first statement).
+  source-shape invariant (exactly 13 fence calls, one per named writer, first non-blank line
+  of each transaction body, checked literally).
 - `subscription-control-db.mjs` still calls `ensureWriterAuthority(db)` at schema init (`:1930`).
   `transitionWriterAuthority` still has **no caller**; the phase can only change if the coordinator
   calls it.
@@ -397,6 +401,13 @@ Wiring scope decided from this audit: this round fences the financial
 core — the central store's service-layer write transactions (C-01) and
 the coin-commerce store's named write transactions (C-02). Full
 per-connection wiring across all 9 connections is follow-up work.
+
+Deploy note: deploying this code creates `platform_writer_authority`
+(CREATE TABLE IF NOT EXISTS + singleton row BWH_ACTIVE epoch 1) on
+first guarded write / schema init. Write behavior is unchanged while
+BWH_ACTIVE and rollback is safe (dropping the code leaves the table
+inert), but record the table creation in the Deploy Note; do not treat
+this as a zero-schema-change deploy.
 "Line numbers are audit-time (pre-wiring) unless §15 states otherwise;
 this round's edits shifted lines in `subscription-control-db.mjs` and
 `coin-commerce-store.mjs` by a few lines, so cite function/symbol names
@@ -406,8 +417,8 @@ for the wired code, not the audit-time line numbers."
 
 | # | Path | What is fenced | Evidence |
 |---|---|---|---|
-| F-1 | C-01 `runInTransaction` default path (`subscription-control-db.mjs`, `runInTransaction` → `guardedTransaction`) | EVERY service-layer write transaction through the central store: all 15 call sites (`admin-auth.mjs:575`, `portal-access-requests.mjs:2331`, `portal-authority-registration.mjs:99`, `portal-identity-deletion.mjs:239,387,456`, `portal-initial-account-issuance.mjs:110`, `portal-registration.mjs:433`, `subscription-issuance.mjs:84`, `user-portal-auth.mjs:411,621,737,817,930,943`). One BEGIN IMMEDIATE transaction, fence first (phase BWH_ACTIVE, plus epoch match when a coordinator receipt supplies `writerEpoch`). The former opt-in (`{ guarded: true }` / `writerEpoch`) is subsumed; no caller passes either and none needs to. | Tests S1B-WIRE-1…WIRE-3 (`server/tests/d1-stage1b-bwh-wiring.test.mjs`): plain (no-options) commit while BWH_ACTIVE; reject with `writer_authority_not_bwh` while FROZEN / D1_ACTIVE / RECOVERY, no row written; abort re-admits. |
-| F-2 | C-02 coin-commerce 13 named write transactions (`coin-commerce-store.mjs`, `assertCommerceWritable()` first statement, already-IMMEDIATE) | publish / bootstrap / retire / createQuote / confirm / cancel / claimCaptures / capture (via `captureOrderBody`) / recover / claimCommand / completeCommand / failCommand / nextWake. Covers the order/payment-callback financial core (W-045…W-064 reached through these transactions) and the offer lifecycle (W-050/W-051/W-052 paths). | Tests S1B-WIRE-4…WIRE-7 (publish / quote / retire behaviorally: frozen → `writer_authority_not_bwh`, no row; abort → commit); S1B-WIRE-8 source-shape invariant (exactly 13 fence calls, one per named writer, first statement). |
+| F-1 | C-01 `runInTransaction` default path (`subscription-control-db.mjs`, `runInTransaction` → `guardedTransaction`) | EVERY service-layer write transaction through the central store: all 15 call sites (`admin-auth.mjs:575`, `portal-access-requests.mjs:2331`, `portal-authority-registration.mjs:99`, `portal-identity-deletion.mjs:239,387,456`, `portal-initial-account-issuance.mjs:110`, `portal-registration.mjs:433`, `subscription-issuance.mjs:84`, `user-portal-auth.mjs:411,621,737,817,930,943`). One BEGIN IMMEDIATE transaction, fence call first (the call ensures the authority table with idempotent DDL, then enforces phase BWH_ACTIVE, plus epoch match when a coordinator receipt supplies `writerEpoch`). The former opt-in (`{ guarded: true }` / `writerEpoch`) is subsumed; no caller passes either and none needs to. | Tests S1B-WIRE-1…WIRE-3 (`server/tests/d1-stage1b-bwh-wiring.test.mjs`): plain (no-options) commit while BWH_ACTIVE; reject with `writer_authority_not_bwh` while FROZEN / D1_ACTIVE / RECOVERY, no row written; abort re-admits. |
+| F-2 | C-02 coin-commerce 13 named write transactions (`coin-commerce-store.mjs`, `assertCommerceWritable()` as the first statement of each, already-IMMEDIATE) | publish / bootstrap / retire / createQuote / confirm / cancel / claimCaptures / capture (via `captureOrderBody`) / recover / claimCommand / completeCommand / failCommand / nextWake. Covers the order/payment-callback financial core (W-045…W-064 reached through these transactions) and the offer lifecycle (W-050/W-051/W-052 paths). | Tests S1B-WIRE-4…WIRE-7 (publish / quote / retire behaviorally: frozen → `writer_authority_not_bwh`, no row; abort → commit); S1B-WIRE-8 source-shape invariant (exactly 13 fence calls, one per named writer, first non-blank line of each transaction body, checked literally). |
 | F-3 | Writers nested inside a fenced transaction | Ads `safe*` writers W-146…W-148 (inside `confirmTransaction`); commerce-internal wallet participant calls inside confirm/capture transactions; `captureOrderBody` nested calls from claimCaptures (`:2916`) and recover (`:3906`) — the fence is re-checked (savepoint-nested, idempotent). | By construction (same transaction) + S1B-WIRE-8. |
 | F-4 | Fence-error observability (commerce) | `normalizeError` lets a `WriterAuthorityError` through unwrapped, so a fence rejection surfaces as `writer_authority_not_bwh` instead of `commerce_infrastructure_error`. Callers and the coordinator can tell a frozen / D1-active database apart from an infrastructure failure. | Tests S1B-WIRE-5…WIRE-7 assert the propagated `WriterAuthorityError` name + code. |
 
@@ -432,3 +443,4 @@ for the wired code, not the audit-time line numbers."
 | U-F15 | LATENT writers (15 entries) | Defined/exported, no production caller; no fence needed until/unless activated — re-check at activation. | W-012, W-013, W-021, W-023, W-024, W-051, W-052, W-073, W-076, W-095, W-152…W-156 |
 | U-F16 | Agent transport epoch forwarding (W-124) | Forwarding exists but defaults OFF and `run-once.mjs` does not enable it; production transport stays disabled until the approved staged handover. | W-121…W-124 |
 | U-F17 | UNTRACED items U-01…U-10 (§12) | Still open; no coverage claim is made for them. | U-01…U-10 |
+| U-F18 | Post-freeze credential-only reconciliation | Credential-only changes produce no delta entry (fingerprints exclude credential columns by design). The freeze receipt's high-water mark records row counts and max(updated_at) only where the column exists; `platform_portal_edge_credentials` has no `updated_at`, so it is covered by row count alone. A dedicated post-freeze reconciliation for credential tables does not exist yet — until then this is an open gap, not covered. | Credential tables (§5, `source-delta.mjs` limitation) |

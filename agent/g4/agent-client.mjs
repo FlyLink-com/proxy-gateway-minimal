@@ -43,10 +43,15 @@ export class AgentContractError extends Error {
 const WRITER_EPOCH_PATTERN = /^(0|[1-9][0-9]*)$/;
 const WRITER_EPOCH_MAX = 2147483647;
 
-// Stable writer error codes returned by the Worker (Stage 1A/1B). A
-// transport failure carrying one of these codes must surface as
-// retry_later with the code preserved: the client never falls back to a
-// local write and never retries with a different epoch.
+// Writer error codes the client preserves on a retry_later. Four are
+// returned by the Worker (Stage 1A/1B): writer_epoch_required,
+// writer_epoch_stale, writer_authority_not_d1,
+// writer_authority_unavailable. The fifth, writer_epoch_invalid, is
+// client-side only: this client raises it when the coordinator-issued
+// epoch is malformed, and the Worker never returns it. A transport
+// failure carrying one of these codes must surface as retry_later with
+// the code preserved: the client never falls back to a local write and
+// never retries with a different epoch.
 export const WRITER_ERROR_CODES = new Set([
   "writer_epoch_required",
   "writer_epoch_invalid",
@@ -320,13 +325,19 @@ export function createAgentClient({
         "no coordinator-issued writer epoch is available",
       );
     }
-    if (!isValidWriterEpoch(epoch)) {
+    // The coordinator receipt carries the epoch as a number; the wire
+    // header is always its decimal ASCII string. Normalize here so a
+    // numeric receipt epoch is accepted; isValidWriterEpoch still
+    // enforces the wire format (string, 1..2147483647, no leading
+    // zeroes), so 0, fractions, and out-of-range numbers stay invalid.
+    const epochText = typeof epoch === "number" ? String(epoch) : epoch;
+    if (!isValidWriterEpoch(epochText)) {
       throw new AgentContractError(
         "writer_epoch_invalid",
         "coordinator-issued writer epoch is malformed",
       );
     }
-    return { "x-writer-epoch": epoch };
+    return { "x-writer-epoch": epochText };
   }
 
   function buildHeaders() {

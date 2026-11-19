@@ -1,26 +1,23 @@
 // D1 Stage 1B — BWH freeze receipt (non-executing freeze contract).
 //
 // buildFreezeReceipt observes a database and returns a signed/traceable
-// receipt proving the preconditions for a coordinator-issued freeze:
-// the durable authority is BWH_ACTIVE at a known epoch, every in-flight
-// business transaction has drained, and the durable high-water mark is
-// recorded. It does NOT change the authority phase and it does NOT
-// freeze anything: the coordinator transitions the phase to FROZEN
-// separately (transitionWriterAuthority) after verifying the receipt.
-// Nothing in this module runs against production; it is exercised only
-// on synthetic databases in tests and on an explicit coordinator call.
+// receipt recording the preconditions for a coordinator-issued freeze:
+// the durable authority is BWH_ACTIVE at a known epoch, and the durable
+// high-water mark is recorded. It does NOT change the authority phase
+// and it does NOT freeze anything: the coordinator transitions the phase
+// to FROZEN separately (transitionWriterAuthority) after verifying the
+// receipt. Nothing in this module runs against production; it is
+// exercised only on synthetic databases in tests and on an explicit
+// coordinator call.
 //
-// Quiescence is asserted by holding one BEGIN IMMEDIATE transaction for
-// the whole snapshot read: while it is held no other connection can
-// hold a write lock, so no business write can be in flight on another
-// connection, and the single synchronous connection used here cannot
-// interleave a write inside the read. The receipt therefore records
-// writerQuiescenceAsserted: true only when that lock was actually held.
-//
-// The receipt is content-addressed: receiptDigest is the SHA-256 of the
-// canonical JSON of every other receipt field, so any later verifier
-// can detect tampering. Coordinator countersigning is a later-stage
-// concern and is intentionally not faked here.
+// What the receipt actually proves: one BEGIN IMMEDIATE transaction
+// was held for the whole snapshot read, so while it was held no other
+// connection could hold a write lock and no business write could be in
+// flight on another connection. That is the whole quiescence proof —
+// it does NOT prove schedulers stopped, in-flight jobs drained, or that
+// the listed outstanding jobs are complete: outstandingJobs is
+// caller-asserted, and stopping schedulers is the coordinator's job at
+// freeze time, not something this receipt observes.
 
 import { createHash } from "node:crypto";
 
@@ -161,6 +158,9 @@ export function verifyFreezeReceipt(receipt) {
   }
   if (receipt.version !== FREEZE_RECEIPT_VERSION) {
     throw freezeReceiptError(`freeze receipt version must be ${FREEZE_RECEIPT_VERSION}`);
+  }
+  if (receipt.authority !== "BWH") {
+    throw freezeReceiptError("freeze receipt authority must be BWH");
   }
   if (receipt.phase !== WRITER_PHASES.BWH_ACTIVE) {
     throw freezeReceiptError("freeze receipt phase must be BWH_ACTIVE");

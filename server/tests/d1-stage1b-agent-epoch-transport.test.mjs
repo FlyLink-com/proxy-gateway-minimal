@@ -337,3 +337,26 @@ test("S1B-AGT-10: a stale epoch on receipt submission keeps receipts pending", a
   const state = await stateStore.load();
   assert.equal(state.pendingReceipts.length, 2, "receipts stay pending after a stale epoch");
 });
+
+test("S1B-AGT-11: a numeric coordinator epoch is normalized to the wire header", async () => {
+  // The coordinator receipt carries the epoch as a number; the wire
+  // header is always its decimal ASCII string.
+  const { client, calls } = makeClient({
+    writerEpochForwarding: true,
+    epochProvider: () => 3,
+  });
+  await client.runOnce();
+  assert.equal(calls.fetchHeaders[0]["x-writer-epoch"], "3");
+  assert.ok(calls.fetchCalls > 0, "the fetch ran with the normalized epoch");
+  // Non-integer / out-of-range numbers stay invalid.
+  for (const badEpoch of [0, 1.5, 2147483648, -1]) {
+    const rejected = makeClient({
+      writerEpochForwarding: true,
+      epochProvider: () => badEpoch,
+    });
+    const outcome = await rejected.client.runOnce();
+    assert.equal(outcome.status, "retry_later", `epoch ${badEpoch}`);
+    assert.equal(outcome.code, "writer_epoch_invalid", `epoch ${badEpoch}`);
+    assert.equal(rejected.calls.fetchCalls, 0, `epoch ${badEpoch}`);
+  }
+});

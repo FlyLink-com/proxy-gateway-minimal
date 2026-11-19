@@ -140,8 +140,10 @@ export function ensureWriterAuthority(db, { now = () => new Date() } = {}) {
   const existing = readWriterAuthority(db);
   if (existing) return existing;
   const at = now().toISOString();
+  // INSERT OR IGNORE: two connections can pass the read above at the
+  // same time; the second insert must be a no-op, not SQLITE_CONSTRAINT.
   db.prepare(
-    `insert into ${WRITER_AUTHORITY_TABLE}
+    `insert or ignore into ${WRITER_AUTHORITY_TABLE}
        (id, authority, phase, epoch, updated_at, receipt_ref)
      values (1, 'BWH', 'BWH_ACTIVE', 1, ?, '')`,
   ).run(at);
@@ -206,12 +208,14 @@ export function assertWritable(db, expectedEpoch) {
 }
 
 // Run fn inside a single SQLite transaction whose first statement is the
-// writer fence. BEGIN IMMEDIATE holds the write lock from the start, so
-// no other connection can freeze the database between the fence check
-// and the first business write. Returns fn's return value; the whole
-// transaction (fence + business writes) rolls back on any throw. The
-// authority record itself is ensured (and committed) before the
-// transaction opens, so a business rollback never removes it.
+// writer-fence call: the call ensures the authority table (idempotent
+// DDL) and then reads and enforces the phase, before any business write.
+// BEGIN IMMEDIATE holds the write lock from the start, so no other
+// connection can freeze the database between the fence check and the
+// first business write. Returns fn's return value; the whole transaction
+// (fence + business writes) rolls back on any throw. The authority
+// record itself is ensured (and committed) before the transaction opens,
+// so a business rollback never removes it.
 export function guardedTransaction(db, expectedEpoch, fn) {
   if (typeof fn !== "function") {
     throw writerError("writer_authority_unavailable", "guarded transaction requires a callback");
