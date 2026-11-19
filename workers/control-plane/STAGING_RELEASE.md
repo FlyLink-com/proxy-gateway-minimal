@@ -1,6 +1,6 @@
 # Control-plane Worker — Primary-account staging release
 
-Status: staged code baseline only; **not a production business cutover**.
+Status: exact master baseline now **active on isolated Staging**; **not a production business cutover**.
 
 ## Exact resource identity (read back on 2026-11-20)
 
@@ -15,11 +15,21 @@ Status: staged code baseline only; **not a production business cutover**.
 | Primary source baseline | `master@11dd1cfb208b78a85ce77b8c8aef2b6763f9000a` |
 
 On 2026-11-20 the exact 15-module Worker source from the above commit was
-uploaded through the Cloudflare version API as **inactive** staging version 3:
-`289aef3b-e7f1-4e82-8ed4-c7c08d377565`. The upload retained existing
-`d1`, `secret_text`, and `plain_text` binding types without exporting any
-secret value. Upload success is not an active deployment, a smoke test, a DB
-migration, or approval for customer traffic.
+uploaded through the Cloudflare version API as staging version 3:
+`289aef3b-e7f1-4e82-8ed4-c7c08d377565`. After the dedicated Worker CI
+succeeded, the version was promoted to **100% of Staging traffic**, deployment
+`8a36048f-0441-49fb-bb65-557ee79a47e9` (Cloudflare timestamp:
+`2026-11-19T17:51:06Z`). A post-deployment Cloudflare API readback confirmed
+the exact version and `CONTROL_DB` staging D1 ID, and showed the existing
+`secret_text` and `plain_text` bindings intact. No secret values were
+retrieved. The earlier active Worker version was
+`6c1b8434-8a5d-4d9e-9085-e31852963263`, available as a known code rollback
+reference; a rollback does not restore database state.
+
+The remote HTTP `/healthz` probe has **not** been proven from this executor
+(the external URL was not reachable through its web verification tool).
+Cloudflare version upload and deployment API readback are confirmed, but HTTP
+smoke / Auth0 / DO / customer business readiness is **not** claimed.
 
 The repository's existing `wrangler.control-plane.jsonc` remains
 **local-only** and must not be pointed at real resources. The separate
