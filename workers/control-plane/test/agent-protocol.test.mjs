@@ -31,6 +31,7 @@ function headersFor(agent, overrides = {}) {
     "x-agent-node-ref": overrides.nodeRef ?? agent.nodeRef,
     "x-agent-timestamp": overrides.timestamp ?? new Date().toISOString(),
     "x-agent-nonce": overrides.nonce ?? "nonce-" + crypto.randomUUID(),
+    "x-writer-epoch": overrides.writerEpoch ?? "3",
     "idempotency-key": overrides.idempotencyKey ?? "claim:" + agent.nodeRef + ":" + crypto.randomUUID(),
   };
 }
@@ -339,7 +340,7 @@ test("G4 Agent client replaces a pending claim key when its authorized channel s
       const response = await fetchDesired(
         mf,
         agent,
-        { ...headers, "idempotency-key": idempotencyKey },
+        { ...headers, "x-writer-epoch": "3", "idempotency-key": idempotencyKey },
         channelRefs,
       );
       if (!response.ok) {
@@ -354,7 +355,7 @@ test("G4 Agent client replaces a pending claim key when its authorized channel s
       return envelope;
     },
     async submitReceipt(receipt, { headers }) {
-      const response = await postReceipt(mf, agent, receipt, headers);
+      const response = await postReceipt(mf, agent, receipt, { ...headers, "x-writer-epoch": "3" });
       if (!response.ok) throw new Error("receipt HTTP " + response.status);
       await response.json();
     },
@@ -442,7 +443,7 @@ test("G4 Agent client defers receipts outside narrowed scope and resumes them wh
       const response = await fetchDesired(
         mf,
         agent,
-        { ...headers, "idempotency-key": idempotencyKey },
+        { ...headers, "x-writer-epoch": "3", "idempotency-key": idempotencyKey },
         channelRefs,
       );
       if (!response.ok) {
@@ -456,7 +457,7 @@ test("G4 Agent client defers receipts outside narrowed scope and resumes them wh
     },
     async submitReceipt(receipt, { headers }) {
       submittedChannels.push(receipt.channelRef);
-      const response = await postReceipt(mf, agent, receipt, headers);
+      const response = await postReceipt(mf, agent, receipt, { ...headers, "x-writer-epoch": "3" });
       if (!response.ok) {
         const body = await response.json().catch(() => null);
         const error = new Error("receipt HTTP " + response.status);
@@ -553,7 +554,7 @@ test("G4 Agent client completes the Worker/D1 loop and recovers a lost receipt r
       const response = await fetchDesired(
         mf,
         agent,
-        { ...headers, "idempotency-key": idempotencyKey },
+        { ...headers, "x-writer-epoch": "3", "idempotency-key": idempotencyKey },
         channelRefs,
       );
       if (!response.ok) {
@@ -569,7 +570,7 @@ test("G4 Agent client completes the Worker/D1 loop and recovers a lost receipt r
       return envelope;
     },
     async submitReceipt(receipt, { headers }) {
-      const response = await postReceipt(mf, agent, receipt, headers);
+      const response = await postReceipt(mf, agent, receipt, { ...headers, "x-writer-epoch": "3" });
       if (!response.ok) throw new Error("receipt HTTP " + response.status);
       await response.json();
       if (loseFirstReceiptResponse) {
