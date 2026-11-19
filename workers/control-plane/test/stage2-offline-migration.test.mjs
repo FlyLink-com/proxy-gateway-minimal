@@ -6,10 +6,10 @@ import {
   Stage2MigrationError, STAGE2_SYNTHETIC_TABLES,
   stage2Digest, stage2ApprovedMappingDigest, stage2TargetSchemaDigest,
   beginStage2Run, applyStage2Batch, reconcileStage2Snapshot,
-} from "../src/stage2-offline-migration.mjs";
+} from "./support/stage2-offline-migration.mjs";
 import {
   readStage2SyntheticPage,syntheticPageToStage2Batch,
-} from "../src/stage2-synthetic-source.mjs";
+} from "./support/stage2-synthetic-source.mjs";
 
 const epoch=3, t="2026-11-20T00:00:00.000Z", later="2026-11-21T00:00:00.000Z";
 const h="a".repeat(64), h2="b".repeat(64), h3="c".repeat(64);
