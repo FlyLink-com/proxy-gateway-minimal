@@ -30,6 +30,24 @@ export async function stage2Digest(value) {
   const bytes=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(canonical(value)));
   return [...new Uint8Array(bytes)].map(x=>x.toString(16).padStart(2,"0")).join("");
 }
+
+export async function stage2ApprovedMappingDigest() {
+  return stage2Digest(TABLES);
+}
+
+// This hash binds the run to the actual installed *synthetic inbox*
+// schema, not to a caller-supplied unverified DDL version. E4 has a
+// separate target schema gate that this offline module does not satisfy.
+export async function stage2TargetSchemaDigest(db) {
+  const r=await db.prepare(
+    "SELECT type,name,sql FROM sqlite_master "+
+    "WHERE name LIKE 'stage2_rehearsal_%' AND type IN ('table','trigger') ORDER BY type,name"
+  ).all();
+  const objects=r?.results||[];
+  if(objects.length!==8 || objects.some(x=>typeof x.sql!=="string"||!x.sql))
+    bad("stage2_target_schema_unavailable");
+  return stage2Digest(objects);
+}
 function validateManifest(m) {
   if(!exact(m,["runId","sourceSnapshotId","sourceSchemaSha256","mappingSha256","targetSchemaSha256","tables"]) ||
     !REF.test(m.runId)||!REF.test(m.sourceSnapshotId)||
@@ -83,6 +101,10 @@ async function requireRun(db,runId){
 
 export async function beginStage2Run(db,{epoch,manifest}={}){
   validateManifest(manifest);
+  if(manifest.mappingSha256!==await stage2ApprovedMappingDigest())
+    bad("stage2_mapping_mismatch");
+  if(manifest.targetSchemaSha256!==await stage2TargetSchemaDigest(db))
+    bad("stage2_target_schema_mismatch");
   await new WriterAuthorityRepository(db).assertWritable(epoch);
   const f=getDb(db,epoch),serialized=canonical(manifest);
   const existing=await f.prepare("SELECT manifest_json FROM stage2_rehearsal_runs WHERE run_id=?").bind(manifest.runId).first();
