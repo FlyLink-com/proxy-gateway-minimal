@@ -125,7 +125,7 @@ test("current-resource overview exposes reset readiness only for the enabled leg
   const enabled = makeService({ resetAvailable: true }).service;
   const disabled = makeService({ resetAvailable: false }).service;
   assert.equal(enabled.getCurrentOverview({ accountId: ACCOUNT }).linkResetAvailable, true);
-  assert.equal(disabled.getCurrentOverview({ accountId: ACCOUNT }).linkResetAvailable, false);
+  assert.equal(disabled.getCurrentOverview({ accountId: ACCOUNT }).linkResetAvailable, undefined);
   assert.deepEqual(enabled.getCurrentOverview({ accountId: OTHER }), { state: "none" });
 });
 
