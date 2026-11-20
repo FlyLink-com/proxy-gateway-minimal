@@ -101,7 +101,7 @@ export function createPortalCurrentResourceService({
       }
       if (result.resource.state !== "available" || result.resource.setupAvailable !== true) return result.resource;
       try {
-        if (accessRequests?.canResetSubscriptionLink?.() === true) {
+        if (accessRequests?.canResetSubscriptionLink?.({ portalUserRef: accountId, requestRef: result.requestRef }) === true) {
           return { ...result.resource, linkResetAvailable: true };
         }
       } catch {
@@ -153,7 +153,7 @@ export function createPortalCurrentResourceService({
       const resource = result.resource;
       if (resource.resourceRef !== resourceRef) throw fail("not_found");
       if (typeof accessRequests?.canResetSubscriptionLink !== "function"
-        || accessRequests.canResetSubscriptionLink() !== true
+        || accessRequests.canResetSubscriptionLink({ portalUserRef: accountId, requestRef: result.requestRef }) !== true
         || typeof accessRequests.resetSubscriptionLink !== "function") {
         throw fail("subscription_link_reset_unavailable");
       }
