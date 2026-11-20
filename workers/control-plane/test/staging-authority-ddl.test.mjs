@@ -1,5 +1,4 @@
-// Safeguard: manual isolated Staging DDL must be byte-for-byte identical
-// to the reviewed Worker local slice, excluding only the leading comments.
+// Preserve the archived Staging v1 SQL body against local migration 0005.
 // This directory is intentionally NOT Wrangler's migrations_dir.
 import assert from "node:assert/strict";
 import test from "node:test";
@@ -12,7 +11,7 @@ const sqlBody=(text)=>{
   assert.notEqual(start,-1);
   return text.slice(start).trim();
 };
-test("manual Primary Staging DDL matches exactly the reviewed local epoch-fence migration",async()=>{
+test("archived Staging v1 SQL matches the reviewed local migration 0005",async()=>{
   const [a,b]=await Promise.all([readFile(source,"utf8"),readFile(staging,"utf8")]);
   assert.equal(sqlBody(b),sqlBody(a));
   assert.equal((b.match(/CREATE TRIGGER /g)||[]).length,4);

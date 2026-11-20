@@ -1,9 +1,9 @@
-# Isolated Staging D1 writer fence — one-time manual DDL
+# Isolated Staging D1 writer fence — v1 execution record
 
 Decision date: 2026-11-20.
-This directory is **not** configured as a Wrangler migrations directory.
-It is an explicit operator-reviewed SQL artifact for the existing
-Staging database. Do not let routine Worker deploys apply it.
+This directory preserves the operator-reviewed one-time v1 SQL applied
+to the isolated Staging database. The v1 execution is closed. Keep this
+directory outside Wrangler migration discovery and preserve the SQL for audit.
 
 ## Strict target and exclusions
 
@@ -15,41 +15,39 @@ Staging database. Do not let routine Worker deploys apply it.
 - **Never touch** migration target `flylink-control-migration-e4`
   (ID `05732071-22a5-4e04-834c-f5dd4407a462`),
   BWH production SQLite, another account or the public-site Worker.
-- Master baseline `11dd1cfb208b78a85ce77b8c8aef2b6763f9000a`;
-  Worker Stage 1A PR #894 and Stage 1B PR #895 remain Draft.
+- At the time of execution, the master baseline was
+  `11dd1cfb208b78a85ce77b8c8aef2b6763f9000a` and both Worker Stage 1A
+  PR #894 and Stage 1B PR #895 were Draft.
 - Actual Staging Worker Version 5 is `26c7f7ef-7d05-4c06-a435-df41b8fecda8`.
   Deployment `6aa8873e-4057-4f67-abcd-09ea9c9a76f7`.
 
-## Preflight / one-time apply
+## Recorded v1 procedure
 
-1. Read the current Cloudflare account identity, Staging D1 ID, Worker
-   deployment version, and live binding names/types. Abort on mismatch.
-2. Read-only query `sqlite_master`. Expect all **six** authority objects
-   (2 tables and 4 triggers) to be absent. Stop if any pre-exist; never
-   apply half a migration without investigating and restoring a
-   reconciled state. Existing Agent test rows are preserved.
-3. Review `authority-guard-v1.sql` against
+The approved procedure for this completed execution specified:
+
+1. Verify the Cloudflare account, Staging D1 identity, Worker version,
+   and live binding names/types.
+2. Use `sqlite_master` to verify absence of all **six** authority objects
+   (2 tables and 4 triggers), with existing Agent test rows preserved.
+3. Compare `authority-guard-v1.sql` with
    `../migrations/0005_writer_authority_guard_slice.sql`.
-   `test/staging-authority-ddl.test.mjs` enforces byte-identical SQL
-   bodies, with comments excluded. Use an atomic D1 API batch when
-   applying, not independent DDL statements with no recovery plan.
-4. Postflight query: both tables, all four triggers, exact singleton
+   `test/staging-authority-ddl.test.mjs` preserves byte equality of the SQL
+   bodies, excluding the leading comments. The execution used one atomic batch.
+4. Read back both tables, all four triggers, exact singleton
    `{authority:'BWH',phase:'BWH_ACTIVE',epoch:1}`,
-   gate row `{singleton:1,accepted_epoch:0}`. Query existing
-   non-authority row counts to confirm no change.
-5. Negative checks: attempt the gate UPSERT with epoch 1 under
-   `BWH_ACTIVE` and an invalid phase transition. Both must abort and
-   leave rows unchanged. Do **not** change Staging to `D1_ACTIVE`;
-   reaching that state cannot safely return to BWH_ACTIVE without the
-   reverse-reconciliation protocol.
-6. Record exact SQL identity, result and Cloudflare readback in the
-   owning PR. No migration is considered complete until both tables,
-   triggers, singleton, default authority and negative tests verify.
+   and gate row `{singleton:1,accepted_epoch:0}`. Verify unchanged
+   non-authority row counts.
+5. Confirm rejection of a gate UPSERT under `BWH_ACTIVE` and an invalid
+   phase transition, with authority state unchanged.
+6. Record the SQL identity, execution result, and readback in PR #897.
 
-Only the reviewed Staging D1 may receive this DDL. It is not an E4
-production schema change, a snapshot import, a BWH freeze, or an Agent
-live cutover. Only **synthetic** credentials/rows may be used in
-separately authorized test paths.
+## Additive guard after v1
+
+The v1 receipt covers the four triggers from `0005`. The local additive
+`0006_writer_authority_insert_guard_slice.sql` defines a fifth trigger
+that protects the seeded singleton from replacement. Remote coverage for
+`0006` remains pending a separately approved Staging change and readback.
+Keep v1 as a frozen record.
 
 The known unresolved integration items remain: BWH's unfenced
 U-F1..U-F18 and U-01..U-10 inventory, U-F18 credential-only deltas,

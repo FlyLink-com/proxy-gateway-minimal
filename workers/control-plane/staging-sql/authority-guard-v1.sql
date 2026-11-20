@@ -1,4 +1,4 @@
--- Reviewed one-time Cloudflare PRIMARY-account isolated STAGING D1 DDL.
+-- Frozen record of reviewed one-time Cloudflare isolated Staging D1 v1 DDL.
 -- Applies only to CONTROL_DB = 1ec6458a-0ac0-4ab0-92f3-5ba58b775acc.
 -- NEVER apply to E4, production BWH/SQLite, or any other Cloudflare account.
 -- Exact SQL body copied from synthetic 0005 migration (verified by repo test).
