@@ -97,10 +97,10 @@ export function createPortalCurrentResourceService({
     getCurrentOverview({ accountId }) {
       const result = read(accountId);
       if (result.model === "wallet_first") {
-        return {
-          ...snapshotWalletFirstCurrentResourceProjection(walletFirstProjection).getCurrentOverview({ accountId }),
-          linkResetAvailable: false
-        };
+        const resource = snapshotWalletFirstCurrentResourceProjection(walletFirstProjection).getCurrentOverview({ accountId });
+        return resource.state === "available"
+          ? { ...resource, linkResetAvailable: false }
+          : resource;
       }
       if (result.resource.state !== "available") return result.resource;
       let linkResetAvailable = false;
