@@ -96,8 +96,21 @@ export function createPortalCurrentResourceService({
   const service = Object.freeze({
     getCurrentOverview({ accountId }) {
       const result = read(accountId);
-      if (result.model === "wallet_first") return snapshotWalletFirstCurrentResourceProjection(walletFirstProjection).getCurrentOverview({ accountId });
-      return result.resource;
+      if (result.model === "wallet_first") {
+        return {
+          ...snapshotWalletFirstCurrentResourceProjection(walletFirstProjection).getCurrentOverview({ accountId }),
+          linkResetAvailable: false
+        };
+      }
+      if (result.resource.state !== "available") return result.resource;
+      let linkResetAvailable = false;
+      try {
+        linkResetAvailable = result.resource.setupAvailable === true
+          && accessRequests?.canResetSubscriptionLink?.() === true;
+      } catch {
+        linkResetAvailable = false;
+      }
+      return { ...result.resource, linkResetAvailable };
     },
     getCurrentResource({ accountId }) {
       const result = read(accountId);
@@ -121,6 +134,53 @@ export function createPortalCurrentResourceService({
         handoffRef: handoff(accountId, sessionRef, resource.resourceRef), kind: "subscription_url",
         subscriptionUrl: revealed.subscriptionUrl
       } };
+    },
+    resetCurrentResourceLink({ accountId, resourceRef, idempotencyKey, confirmed }) {
+      if (confirmed !== true
+        || typeof resourceRef !== "string"
+        || !/^resource_[a-f0-9]{64}$/.test(resourceRef)
+        || typeof idempotencyKey !== "string"
+        || idempotencyKey !== idempotencyKey.trim()
+        || !/^[A-Za-z0-9][A-Za-z0-9_-]{15,127}$/.test(idempotencyKey)) {
+        throw fail("validation_error");
+      }
+      const result = read(accountId);
+      // The legacy reset service is intentionally not a fallback for the
+      // wallet-first handoff/escrow model. That model needs its own rotation
+      // journal and runtime/escrow transaction before this action can open.
+      if (result.model !== "legacy") throw fail("subscription_link_reset_unavailable");
+      const resource = ownedAvailable(result);
+      if (resource.resourceRef !== resourceRef) throw fail("not_found");
+      if (typeof accessRequests?.canResetSubscriptionLink !== "function"
+        || accessRequests.canResetSubscriptionLink() !== true
+        || typeof accessRequests.resetSubscriptionLink !== "function") {
+        throw fail("subscription_link_reset_unavailable");
+      }
+      const updated = accessRequests.resetSubscriptionLink({
+        portalUserRef: accountId,
+        requestRef: result.requestRef,
+        idempotencyKey,
+        confirmed: true
+      });
+      if (updated?.id !== result.requestRef
+        || updated.portalUserRef !== accountId
+        || !["issued", "delivered"].includes(updated.status)
+        || updated.validUntil !== resource.validUntil
+        || updated.event?.type !== "subscription_link_reset"
+        || typeof updated.subscriptionUrl !== "string") {
+        throw fail(reconciliation);
+      }
+      let url;
+      try { url = new URL(updated.subscriptionUrl); } catch { throw fail(reconciliation); }
+      if (url.protocol !== "https:" || url.username || url.password || url.hash) {
+        throw fail(reconciliation);
+      }
+      return {
+        delivery: {
+          kind: "subscription_url",
+          subscriptionUrl: updated.subscriptionUrl
+        }
+      };
     },
     acknowledgeSetup({ accountId, sessionRef, handoffRef }) {
       session(sessionRef);
