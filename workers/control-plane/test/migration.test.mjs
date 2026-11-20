@@ -49,6 +49,7 @@ test("migration applies and creates the slice schema verbatim", async (t) => {
     "table:platform_writer_authority",
     "table:platform_writer_gate",
     "trigger:platform_writer_authority_delete_guard",
+    "trigger:platform_writer_authority_insert_guard",
     "trigger:platform_writer_authority_transition_guard",
     "trigger:platform_writer_gate_insert_guard",
     "trigger:platform_writer_gate_update_guard",

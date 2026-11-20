@@ -1,5 +1,15 @@
 # D1 Stage 1A — Writer Authority & Epoch Fence (source-only)
 
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: active
+  authority_scope: source_only_d1_stage1a_writer_epoch_contract
+  superseded_by: null
+  last_verified_at: 2026-11-19
+  production_authority: false
+```
+
 Date: 2026-11-20. Scope: Worker G3 bounded challenge write + synthetic local D1.
 Source branch: `feat/d1-single-writer-epoch-guard-20261120`.
 This is a code contract and **not** proof of BWH or production D1 write cutover.
@@ -34,7 +44,10 @@ This is a code contract and **not** proof of BWH or production D1 write cutover.
 ## Already implemented in Stage 1A
 
 - D1 singleton authority row and transactional gate; triggers forbid phase
-  skips, stale epoch reuse, deletion, and unsafe reverse handover.
+  skips, stale epoch reuse, deletion, and unsafe reverse handover. The
+  additive local-only `0006_writer_authority_insert_guard_slice.sql`
+  rejects reinsertion or replacement after seeding, even when recursive
+  triggers are off.
 - `WriterAuthorityRepository.current/assertWritable/gateStatement`.
 - G3 `POST /v1/accounts/:accountId/second-factor-challenges` uses the
   `x-writer-epoch` contract and the atomic gate.

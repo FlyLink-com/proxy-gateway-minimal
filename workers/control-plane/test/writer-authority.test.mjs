@@ -139,6 +139,21 @@ test("authority singleton forbids skipped phases, epoch replay, deletion and uns
   ).first()).phase, "RECOVERY");
 });
 
+test("authority singleton rejects replacement with recursive triggers disabled", async (t) => {
+  const { mf, db } = await createWorker({ writerPhase: "BWH_ACTIVE" });
+  t.after(() => mf.dispose());
+  await db.prepare("PRAGMA recursive_triggers = OFF").run();
+  const setting = await db.prepare("PRAGMA recursive_triggers").first();
+  assert.equal(setting.recursive_triggers, 0);
+  await assert.rejects(db.prepare(
+    "INSERT OR REPLACE INTO platform_writer_authority " +
+    "(singleton, authority, phase, epoch, changed_at) VALUES (1, 'D1', 'D1_ACTIVE', 1, 'synth')"
+  ).run(), /writer_authority_insert_denied/);
+  assert.deepEqual(await new WriterAuthorityRepository(db).current(), {
+    authority: "BWH", phase: "BWH_ACTIVE", epoch: 1
+  });
+});
+
 test("missing authority schema rejects writes before business transaction", async (t) => {
   const { mf, db } = await createWorker();
   t.after(() => mf.dispose());
