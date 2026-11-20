@@ -53,6 +53,7 @@ const ADMIN_CAPABILITY_PROTECTED_PATHS = [
   "/api/admin/operations/recharge-confirmation-gross"
 ];
 const PORTAL_SUBSCRIPTION_LINK_RESET_PATH = "/api/portal/access-requests/reset-link";
+const PORTAL_CURRENT_RESOURCE_LINK_RESET_PATH = "/api/portal/resources/current/reset-link";
 const USER_PORTAL_PUBLIC_PATHS = [
   "/api/portal/browser-session",
   "/api/portal/browser-session/logout",
@@ -71,6 +72,7 @@ const USER_PORTAL_PUBLIC_PATHS = [
   "/api/portal/resources/current/overview",
   "/api/portal/resources/current/setup",
   "/api/portal/resources/current/setup/ack",
+  PORTAL_CURRENT_RESOURCE_LINK_RESET_PATH,
   "/api/portal/access-requests/reveal",
   "/api/portal/access-requests/refresh",
   PORTAL_SUBSCRIPTION_LINK_RESET_PATH,
