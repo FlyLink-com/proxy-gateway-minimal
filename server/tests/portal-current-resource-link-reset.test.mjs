@@ -18,12 +18,12 @@ function failure(code) {
   return Object.assign(new Error("synthetic-private-internal-detail"), { code });
 }
 
-function makeService({ model = "legacy", resetAvailable = true, calls = [] } = {}) {
+function makeService({ model = "legacy", resetAvailable = true, setupAvailable = true, calls = [] } = {}) {
   const resource = {
     state: "available",
     plan: { id: "monthly", durationDays: 30, monthlyTrafficGb: 50 },
     validUntil: VALID_UNTIL,
-    setupAvailable: true,
+    setupAvailable,
     resourceRef: RESOURCE_REF,
     usage: {
       totalBytes: 50 * 1024 ** 3,
@@ -127,6 +127,18 @@ test("current-resource overview exposes reset readiness only for the enabled leg
   assert.equal(enabled.getCurrentOverview({ accountId: ACCOUNT }).linkResetAvailable, true);
   assert.equal(disabled.getCurrentOverview({ accountId: ACCOUNT }).linkResetAvailable, undefined);
   assert.deepEqual(enabled.getCurrentOverview({ accountId: OTHER }), { state: "none" });
+});
+
+test("current-resource reset capability stays absent when setup delivery is unavailable", () => {
+  const fixture = makeService({ setupAvailable: false });
+  assert.equal(fixture.service.getCurrentOverview({ accountId: ACCOUNT }).linkResetAvailable, undefined);
+  assert.throws(() => fixture.service.resetCurrentResourceLink({
+    accountId: ACCOUNT,
+    resourceRef: RESOURCE_REF,
+    idempotencyKey: IDEMPOTENCY_KEY,
+    confirmed: true
+  }), { code: "not_found" });
+  assert.deepEqual(fixture.calls, []);
 });
 
 test("current-resource reset maps the authenticated owner and rotates only a matching legacy resource", () => {
