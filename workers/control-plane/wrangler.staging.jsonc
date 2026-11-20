@@ -1,0 +1,21 @@
+{
+  // Remote STAGING only — exact Primary account and isolated staging database.
+  // Never point CONTROL_DB here at flylink-control-migration-e4 or the BWH production store.
+  // The source DO classes remain UNBOUND in this first remote baseline:
+  // no remote DO namespaces or migrations are created by this configuration.
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "flylink-control-plane-staging",
+  "main": "src/index.mjs",
+  "compatibility_date": "2025-06-01",
+  "account_id": "17d66c001f9d851fa0d5a88cd311c2c0",
+  "workers_dev": true,
+  "preview_urls": false,
+  "d1_databases": [
+    {
+      "binding": "CONTROL_DB",
+      "database_name": "flylink-control-plane-staging",
+      "database_id": "1ec6458a-0ac0-4ab0-92f3-5ba58b775acc",
+      "migrations_dir": "migrations-staging-explicit-only"
+    }
+  ]
+}

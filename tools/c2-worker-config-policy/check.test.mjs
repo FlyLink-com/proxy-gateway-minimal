@@ -16,6 +16,7 @@ const policyFile = join(here, "policy.json");
 const REAL_FILES = [
   "workers/crypto/wrangler.crypto.jsonc",
   "workers/control-plane/wrangler.control-plane.jsonc",
+  "workers/control-plane/wrangler.staging.jsonc",
   "wrangler.jsonc",
   "wrangler.public-site.jsonc",
 ];
@@ -318,7 +319,7 @@ test("control-plane requires the approved Durable Object migration", () => {
 
 test("TOML top-level account_id outside the allowlist fails", () => {
   withFixture((c) => {
-    c["workers/crypto/wrangler.extra.toml"] = 'name = "extra-worker"\naccount_id = "22222222222222222222222222222222"\n';
+    c["tests/config-policy-fixture/wrangler.extra.toml"] = 'name = "extra-worker"\naccount_id = "22222222222222222222222222222222"\n';
   }, ({ code, stdout }) => {
     assert.equal(code, 1);
     assert.match(stdout, /top-level account_id is not an allowed account/);
@@ -327,7 +328,7 @@ test("TOML top-level account_id outside the allowlist fails", () => {
 
 test("TOML top-level Primary account_id passes and nested account_id is not a deploy target", () => {
   withFixture((c) => {
-    c["workers/crypto/wrangler.extra.toml"] = 'name = "extra-worker"\naccount_id = "17d66c001f9d851fa0d5a88cd311c2c0" # approved\n[vars]\naccount_id = "not-a-deploy-target"\n';
+    c["tests/config-policy-fixture/wrangler.extra.toml"] = 'name = "extra-worker"\naccount_id = "17d66c001f9d851fa0d5a88cd311c2c0" # approved\n[vars]\naccount_id = "not-a-deploy-target"\n';
   }, ({ code, stdout }) => assert.equal(code, 0, stdout));
 });
 
@@ -342,7 +343,7 @@ test("deleting an in-scope configuration fails", () => {
 test("quoted TOML top-level account_id keys are subject to the allowlist", () => {
   for (const key of ['"account_id"', "'account_id'"]) {
     withFixture((c) => {
-      c["workers/crypto/wrangler.extra.toml"] =
+      c["tests/config-policy-fixture/wrangler.extra.toml"] =
         key + ' = "22222222222222222222222222222222"\n';
     }, ({ code, stdout }) => {
       assert.equal(code, 1);
@@ -353,7 +354,7 @@ test("quoted TOML top-level account_id keys are subject to the allowlist", () =>
 
 test("quoted TOML Primary account_id passes and quoted nested account_id is ignored", () => {
   withFixture((c) => {
-    c["workers/crypto/wrangler.extra.toml"] =
+    c["tests/config-policy-fixture/wrangler.extra.toml"] =
       '"account_id" = "17d66c001f9d851fa0d5a88cd311c2c0" # approved\n' +
       "[vars]\n" +
       "'account_id' = \"not-a-deploy-target\"\n";
@@ -409,4 +410,57 @@ test("control-plane removing the required CONTROL_DB entry fails", () => {
     assert.equal(code, 1);
     assert.match(stdout, /d1_databases.*required binding/);
   });
+});
+
+test("staging Worker has the pinned Primary account and isolated D1 only", () => {
+  withFixture(null, ({ code, stdout }) => assert.equal(code, 0, stdout));
+  withFixture((c) => {
+    c["workers/control-plane/wrangler.staging.jsonc"] =
+      c["workers/control-plane/wrangler.staging.jsonc"].replace(
+        '"account_id": "17d66c001f9d851fa0d5a88cd311c2c0"',
+        '"account_id": "00000000000000000000000000000000"'
+      );
+  }, ({ code, stdout }) => {
+    assert.equal(code, 1);
+    assert.match(stdout, /account_id/);
+  });
+  withFixture((c) => {
+    c["workers/control-plane/wrangler.staging.jsonc"] =
+      c["workers/control-plane/wrangler.staging.jsonc"].replace(
+        '"database_id": "1ec6458a-0ac0-4ab0-92f3-5ba58b775acc"',
+        '"database_id": "05732071-22a5-4e04-834c-f5dd4407a462"'
+      );
+  }, ({ code, stdout }) => {
+    assert.equal(code, 1);
+    assert.match(stdout, /d1_databases/);
+  });
+});
+
+test("staging Worker rejects new DO and R2 bindings", () => {
+  withFixture((c) => {
+    c["workers/control-plane/wrangler.staging.jsonc"] =
+      c["workers/control-plane/wrangler.staging.jsonc"].replace(
+        '"preview_urls": false,',
+        '"preview_urls": false, "durable_objects": {"bindings": [{"name":"UNAPPROVED","class_name":"Unexpected"}]},'
+      );
+  }, ({ code, stdout }) => {
+    assert.equal(code, 1);
+    assert.match(stdout, /durable_objects/);
+  });
+});
+
+test("new Worker-owned Wrangler configs cannot bypass the policy", () => {
+  withFixture((c) => {
+    c["workers/control-plane/wrangler.rogue.jsonc"] =
+      '{"name":"rogue","account_id":"17d66c001f9d851fa0d5a88cd311c2c0"}';
+  }, ({ code, stdout }) => {
+    assert.equal(code, 1);
+    assert.match(stdout, /wrangler.rogue.jsonc: Worker configuration is not in the explicit allowlist/);
+  });
+  withFixture((c) => { c["workers/control-plane/wrangler.staging.jsonc"] = null; },
+    ({ code, stdout }) => {
+      assert.equal(code, 1);
+      assert.match(stdout, /wrangler.staging.jsonc: in-scope configuration file is missing/);
+    }
+  );
 });
