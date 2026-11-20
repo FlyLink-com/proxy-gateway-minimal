@@ -1,5 +1,15 @@
 # Stage 2A — control.sqlite source-candidate vs E4 D1 read-only schema comparison
 
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: active
+  authority_scope: source_only_d1_stage2_e4_schema_comparison
+  superseded_by: null
+  last_verified_at: 2026-11-20
+  production_authority: false
+```
+
 Evidence date: 2026-11-20. Exact repository source inventory:
 `docs/D1_CONTROL_SCHEMA_INVENTORY_V1.json` from `015fae70c47bb29534bc1c9b5fae15d5d2ea020b`
 (its own evidence source cut is `be261abc...`, **not** a live BWH inspection).

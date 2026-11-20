@@ -20,24 +20,30 @@ const canonical = (x) => {
   return "{" + Object.keys(x).sort().map(k => JSON.stringify(k) + ":" + canonical(x[k])).join(",") + "}";
 };
 const hash = x => createHash("sha256").update(canonical(x), "utf8").digest("hex");
-const sourceOrder = ["platform_accounts", "platform_entitlements"];
-const deleteOrder = [...sourceOrder].reverse();
+const phaseOrder = [
+  ["delete", "platform_entitlements"],
+  ["upsert", "platform_accounts"],
+  ["upsert", "platform_entitlements"],
+  ["delete", "platform_accounts"],
+];
 
 function createChanges(before, after) {
   const oldTables = new Map(before.tables.map(t => [t.name, t.rows]));
   const newTables = new Map(after.tables.map(t => [t.name, t.rows]));
   const phases = [];
-  for (const name of deleteOrder) {
-    if (!oldTables.has(name)) continue;
-    const next = new Map(newTables.get(name).map(r => [r.id, r]));
-    const rows = oldTables.get(name).filter(r => !next.has(r.id))
-      .map(row => ({ kind: "delete", pk: row.id, before: row }));
-    phases.push({ key: "delta/delete/" + name, name, rows });
-  }
-  for (const name of sourceOrder) {
-    if (!oldTables.has(name)) continue;
-    const old = new Map(oldTables.get(name).map(r => [r.id, r]));
-    const rows = newTables.get(name).filter(r =>
+  for (const [kind, name] of phaseOrder) {
+    const previousRows = oldTables.get(name);
+    if (!previousRows) continue;
+    const nextRows = newTables.get(name);
+    if (kind === "delete") {
+      const nextIds = new Set(nextRows.map(row => row.id));
+      const rows = previousRows.filter(row => !nextIds.has(row.id))
+        .map(row => ({ kind: "delete", pk: row.id, before: row }));
+      phases.push({ key: "delta/delete/" + name, name, rows });
+      continue;
+    }
+    const old = new Map(previousRows.map(row => [row.id, row]));
+    const rows = nextRows.filter(r =>
       !old.has(r.id) || canonical(old.get(r.id)) !== canonical(r)
     ).map(row => ({ kind: old.has(row.id) ? "update" : "insert",
       pk: row.id, before: old.get(row.id) ?? null, after: row }));
@@ -150,9 +156,10 @@ export async function replaySyntheticOfflineDelta(db, rawBefore, rawAfter, { aft
     after: after.planHash, phases });
   const deltaRun = { runId: after.runId, beforeSnapshot: before.sourceHash,
     planHash, afterSnapshot: after.sourceHash };
-  const existing = await db.prepare(
+  const readRun = () => db.prepare(
     "SELECT plan_hash,snapshot_hash FROM stage2_rehearsal_runs WHERE run_id=?"
   ).bind(deltaRun.runId).first();
+  const existing = await readRun();
   if (existing && (existing.plan_hash !== deltaRun.planHash ||
       existing.snapshot_hash !== deltaRun.afterSnapshot)) fail("stage2_run_identity_mismatch");
   const prior = await db.prepare(
@@ -167,6 +174,11 @@ export async function replaySyntheticOfflineDelta(db, rawBefore, rawAfter, { aft
     "INSERT INTO stage2_rehearsal_runs(run_id,plan_hash,snapshot_hash) VALUES(?,?,?) " +
     "ON CONFLICT(run_id) DO NOTHING"
   ).bind(deltaRun.runId, deltaRun.planHash, deltaRun.afterSnapshot).run();
+  const registered = await readRun();
+  if (registered?.plan_hash !== deltaRun.planHash ||
+      registered?.snapshot_hash !== deltaRun.afterSnapshot) {
+    fail("stage2_run_identity_mismatch");
+  }
   let committed = 0, resumed = 0;
   for (const phase of phases) {
     const batches = groups(phase.rows, after.batchSize);

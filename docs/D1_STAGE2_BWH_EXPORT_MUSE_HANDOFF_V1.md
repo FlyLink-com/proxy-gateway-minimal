@@ -1,10 +1,19 @@
 # Stage 2 BWH → D1 source/export handoff and final migration gate (v1)
 
-**Date:** 2026-11-20  
-**Worker:** stacked Draft PRs #894 → #895 → #897 → #899.  
-**BWH source:** Muse Draft PR #896, exact head
-`015fae70c47bb29534bc1c9b5fae15d5d2ea020b`.  
-**Production writer:** BWH; no dual writes or automatic D1 activation.
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: active
+  authority_scope: source_only_d1_stage2_bwh_export_handoff
+  superseded_by: null
+  last_verified_at: 2026-11-20
+  production_authority: false
+```
+
+- Date: 2026-11-20.
+- Worker stack in the original handoff: #894 → #895 → #897 → #899.
+- BWH source candidate: Draft PR #896 at `015fae70c47bb29534bc1c9b5fae15d5d2ea020b`.
+- Production writer: BWH. D1 activation requires its own migration gate.
 
 This is an implementable **next task contract for Muse**, not an instruction
 to access BWH production, extract customer rows, or mutate remote E4. Do the

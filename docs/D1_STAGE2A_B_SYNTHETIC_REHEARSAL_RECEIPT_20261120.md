@@ -1,5 +1,15 @@
 # Stage 2A/B synthetic offline migration rehearsal — execution receipt
 
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: active
+  authority_scope: source_only_d1_stage2_synthetic_rehearsal_receipt
+  superseded_by: null
+  last_verified_at: 2026-11-20
+  production_authority: false
+```
+
 Date: 2026-11-20. Target branch:
 `feat/d1-stage2-offline-import-reconcile-20261120` (Draft PR #899,
 stacked on #897 → #895 → #894). No merge or Ready.
@@ -45,6 +55,16 @@ CI evidence:
   exact PR head before treating the final PR as independently reviewed.
 
 ## Exact limitations
+
+The source integration revision verifies the registered run identity before
+the first delta batch, including when another plan registers the same run
+first. Replay removes obsolete entitlements, upserts accounts and
+entitlements in foreign-key order, then deletes obsolete accounts. This
+supports retaining an entitlement while moving it to a different account.
+Verification is scoped to the versioned synthetic Miniflare fixture.
+Earlier delta runs have a different plan hash and reject with
+`stage2_run_identity_mismatch`. Repeat those rehearsals in a fresh disposable
+Miniflare fixture. Earlier full-snapshot checkpoints remain compatible.
 
 - These tools live under `tools/` and use **only a caller-supplied
   local Miniflare D1** protected by a dedicated

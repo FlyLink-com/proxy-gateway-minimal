@@ -58,7 +58,7 @@ async function count(db, table, where = "") {
   return (await db.prepare("SELECT COUNT(*) AS n FROM " + table + " " + where).first()).n;
 }
 
-test("Stage2B deletes FK children before parents, then updates/inserts in source FK order", async t => {
+test("Stage2B orders removals and upserts to preserve foreign keys", async t => {
   const db = await fixture(t);
   const phases = [];
   const r = await replaySyntheticOfflineDelta(db, before(), after(), {
@@ -69,11 +69,11 @@ test("Stage2B deletes FK children before parents, then updates/inserts in source
   assert.equal(r.receipt.status, "reconciled");
   assert.deepEqual(phases, [
     "delta/delete/platform_entitlements",
+    "delta/upsert/platform_accounts",
+    "delta/upsert/platform_accounts",
+    "delta/upsert/platform_entitlements",
+    "delta/upsert/platform_entitlements",
     "delta/delete/platform_accounts",
-    "delta/upsert/platform_accounts",
-    "delta/upsert/platform_accounts",
-    "delta/upsert/platform_entitlements",
-    "delta/upsert/platform_entitlements",
   ]);
   assert.equal(await count(db, "platform_accounts", "WHERE id LIKE 's2s-%'"), 2);
   assert.equal(await count(db, "platform_entitlements"), 2);
@@ -105,6 +105,20 @@ test("Stage2B interrupted after delete checkpoint resumes all remaining operatio
   assert.equal(result.resumed, 1);
   assert.equal(result.committed, 5);
   assert.equal(result.receipt.status, "reconciled");
+});
+
+test("Stage2B reparents a retained entitlement before deleting its old account", async t => {
+  const db = await fixture(t);
+  const target = plan("reparent-001", {
+    accounts: [account(1), account(3)],
+    entitlements: [entitlement(1, 1), entitlement(2, 3)],
+  });
+  const result = await replaySyntheticOfflineDelta(db, before(), target);
+  assert.equal(result.receipt.status, "reconciled");
+  assert.equal((await db.prepare(
+    "SELECT account_id FROM platform_entitlements WHERE id = 's2s-entitlement-002'",
+  ).first()).account_id, "s2s-account-003");
+  assert.equal(await count(db, "platform_accounts", "WHERE id = 's2s-account-002'"), 0);
 });
 
 test("Stage2B exact old-row guard fails closed on stale source after partial delta", async t => {
@@ -172,6 +186,21 @@ test("Stage2B changed snapshot identity under same delta run id rejects replay",
   await assert.rejects(replaySyntheticOfflineDelta(db, before(), different),
     { code: "stage2_run_identity_mismatch" });
   assert.equal(await count(db, "stage2_rehearsal_batches", "WHERE table_name LIKE 'delta/%'"), 6);
+});
+
+test("Stage2B rejects a different plan that registers the delta run first", async t => {
+  const db = await fixture(t);
+  await db.prepare(
+    "CREATE TRIGGER claim_delta_run_first BEFORE INSERT ON stage2_rehearsal_runs " +
+    "WHEN NEW.run_id = 's2s-run-after-001' AND NEW.plan_hash <> 'competing-plan' " +
+    "BEGIN INSERT INTO stage2_rehearsal_runs VALUES (NEW.run_id, 'competing-plan', 'competing-snapshot'); END",
+  ).run();
+  await assert.rejects(replaySyntheticOfflineDelta(db, before(), after()), {
+    code: "stage2_run_identity_mismatch",
+  });
+  assert.equal(await count(db, "stage2_rehearsal_batches", "WHERE table_name LIKE 'delta/%'"), 0);
+  assert.equal(await count(db, "platform_entitlements", "WHERE id = 's2s-entitlement-002'"), 1);
+  assert.equal(await count(db, "platform_accounts", "WHERE id = 's2s-account-003'"), 0);
 });
 
 test("Stage2B missing initial snapshot and invalid FK fail before any delta write", async t => {
