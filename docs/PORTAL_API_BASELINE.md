@@ -87,6 +87,7 @@ MFA challenge 本身另有期限。`sessionExpiresAtFactory` 影响的是转换�
 | `GET /api/portal/resources/current/overview` | `{resource}`；`no-store`、`Referrer-Policy: no-referrer`；不接受 query | current-resource facade；按服务端账户/商业模型读取 legacy 或 wallet-first projection（#737/#738） | [`gccwebos-mobile/src/api/current-resource.mjs`](https://github.com/gccltd/gccwebos-mobile/blob/835b79c32550a38c53f9e662d9055a5f93627972/src/api/current-resource.mjs)；portal-current-resource-composition、portal-wallet-first-current-resource-routes |
 | `POST /api/portal/resources/current/setup` | 200 setup delivery | current-resource facade 的 setup delivery；支持 legacy 与 wallet-first | `createCurrentResourceSetup`；同名 routes test |
 | `POST /api/portal/resources/current/setup/ack` | 204 空响应 | current-resource facade 的 setup acknowledgement；支持 legacy 与 wallet-first | `acknowledgeCurrentResourceSetup`；同名 routes test |
+| `POST /api/portal/resources/current/reset-link` | 200 `{delivery}`；必须显式确认；no-store | current-resource facade 的订阅下载链接重置；当前仅映射到已交付的 legacy 资源；wallet-first fail-closed | `resetCurrentResourceLink` → `resetSubscriptionLink`；portal-current-resource-link-reset tests |
 | `POST /api/portal/access-requests/reveal` / `refresh` / `disable` | 200 `{request}` | access-request/delivery lifecycle | `reveal/refresh/disableSubscription`；user-portal-routes、self-service-subscription-routes |
 | `POST /api/portal/support-requests` | 201 `{request}` | support request | `submitSupportRequest`；portal-support-request-routes |
 
