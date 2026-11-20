@@ -149,7 +149,11 @@ export function createPortalCurrentResourceService({
       // wallet-first handoff/escrow model. That model needs its own rotation
       // journal and runtime/escrow transaction before this action can open.
       if (result.model !== "legacy") throw fail("subscription_link_reset_unavailable");
-      const resource = ownedAvailable(result);
+      if (result.resource?.state === "reconciliation_required") throw fail(reconciliation);
+      if (result.resource?.state !== "available" || result.resource.setupAvailable !== true || !result.requestRef) {
+        throw fail("not_found");
+      }
+      const resource = result.resource;
       if (resource.resourceRef !== resourceRef) throw fail("not_found");
       if (typeof accessRequests?.canResetSubscriptionLink !== "function"
         || accessRequests.canResetSubscriptionLink() !== true
