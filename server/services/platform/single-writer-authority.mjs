@@ -4,10 +4,9 @@
 // docs/D1_STAGE1A_SINGLE_WRITER_EPOCH_CONTRACT_V1.md (PR #894) and the
 // handoff in docs/D1_STAGE1B_AGENT_EPOCH_MUSE_HANDOFF_V1.md (PR #895).
 //
-// This module is offline-only: it owns the durable BWH authority record
-// (singleton row in subscription-control.sqlite) and the in-transaction
-// guard every BWH business write must pass. It exposes NO HTTP route, NO
-// production activation path, and it never contacts BWH, a Worker, or D1.
+// This module owns the durable BWH authority record and the in-transaction
+// fence for the protected BWH write paths. It exposes no HTTP route or
+// cutover entry point and never opens a connection to a Worker or D1.
 // A phase transition only happens when the migration coordinator calls
 // transitionWriterAuthority explicitly; nothing here auto-promotes
 // authority, and RECOVERY -> BWH_ACTIVE stays blocked until reverse
@@ -26,6 +25,13 @@
 export const WRITER_EPOCH_MIN = 1;
 export const WRITER_EPOCH_MAX = 2147483647;
 export const WRITER_AUTHORITY_TABLE = "platform_writer_authority";
+const WRITER_AUTHORITY_MARKER = "platform_writer_authority_installed";
+const WRITER_AUTHORITY_GUARDS = {
+  insert: "platform_writer_authority_insert_guard",
+  delete: "platform_writer_authority_delete_guard",
+  transition: "platform_writer_authority_transition_guard",
+};
+const AUTHORITY_GUARD_NAMES = Object.values(WRITER_AUTHORITY_GUARDS);
 
 export const WRITER_PHASES = Object.freeze({
   BWH_ACTIVE: "BWH_ACTIVE",
@@ -105,65 +111,144 @@ export function parseWriterEpoch(value) {
 }
 
 export function writerAuthorityFromPhase(phase) {
-  return AUTHORITY_BY_PHASE[phase] ?? null;
+  return Object.hasOwn(AUTHORITY_BY_PHASE, phase) ? AUTHORITY_BY_PHASE[phase] : null;
 }
 
-function mapAuthorityRow(row) {
-  if (!row) return null;
+function schemaObjectType(db, name) {
+  return db.prepare("select type from main.sqlite_schema where name = ? collate nocase")
+    .get(name)?.type;
+}
+
+function readAuthoritySchema(db) {
+  const objects = new Map();
+  for (const object of db.prepare(`
+    select lower(name) as name, type, lower(tbl_name) as table_name
+      from main.sqlite_schema
+     where lower(name) in (?, ?, ?, ?, ?)
+  `).all(WRITER_AUTHORITY_TABLE, WRITER_AUTHORITY_MARKER, ...AUTHORITY_GUARD_NAMES)) {
+    if (objects.has(object.name)) {
+      throw writerError("writer_authority_unavailable", "writer authority schema name is ambiguous");
+    }
+    objects.set(object.name, object);
+  }
+  const marker = objects.get(WRITER_AUTHORITY_MARKER);
+  if (marker && marker.type !== "view") {
+    throw writerError("writer_authority_unavailable", "writer authority marker is invalid");
+  }
+  if (!marker && AUTHORITY_GUARD_NAMES.some(name => objects.has(name))) {
+    throw writerError("writer_authority_unavailable", "writer authority marker is missing");
+  }
+  const table = objects.get(WRITER_AUTHORITY_TABLE);
+  if ((table || marker) && table?.type !== "table") {
+    throw writerError("writer_authority_unavailable", "writer authority table is missing or invalid");
+  }
+  if (marker) {
+    for (const name of AUTHORITY_GUARD_NAMES) {
+      const guard = objects.get(name);
+      if (guard?.type !== "trigger" || guard.table_name !== WRITER_AUTHORITY_TABLE) {
+        throw writerError("writer_authority_unavailable", "writer authority guard is missing or invalid");
+      }
+    }
+  }
+  return { hasTable: Boolean(table), installed: Boolean(marker) };
+}
+
+// Absence means a legacy database only when neither object exists. An
+// empty, malformed or dropped installed authority table is an error.
+export function readWriterAuthority(db) {
+  if (!db || typeof db.prepare !== "function") return null;
+  return readAuthoritySchema(db).hasTable ? readAuthoritySingleton(db) : null;
+}
+
+function readAuthoritySingleton(db) {
+  let rows;
+  try {
+    rows = db
+      .prepare(`
+        select id, typeof(id) as id_type, authority, phase, epoch, typeof(epoch) as epoch_type,
+               updated_at, receipt_ref
+          from main.${WRITER_AUTHORITY_TABLE}
+      `)
+      .all();
+  } catch {
+    throw writerError("writer_authority_unavailable", "writer authority record could not be read");
+  }
+  const record = rows[0];
+  const expectedAuthority = record && writerAuthorityFromPhase(record.phase);
+  if (rows.length !== 1
+      || record.id_type !== "integer" || Number(record.id) !== 1
+      || record.epoch_type !== "integer"
+      || !Number.isSafeInteger(Number(record.epoch))
+      || Number(record.epoch) < WRITER_EPOCH_MIN || Number(record.epoch) > WRITER_EPOCH_MAX
+      || !expectedAuthority || expectedAuthority !== record.authority
+      || typeof record.updated_at !== "string" || typeof record.receipt_ref !== "string") {
+    throw writerError("writer_authority_unavailable", "writer authority singleton is missing or invalid");
+  }
   return {
-    id: Number(row.id),
-    authority: row.authority,
-    phase: row.phase,
-    epoch: Number(row.epoch),
-    updatedAt: row.updated_at,
-    receiptRef: row.receipt_ref ?? "",
+    id: 1,
+    authority: record.authority,
+    phase: record.phase,
+    epoch: Number(record.epoch),
+    updatedAt: record.updated_at,
+    receiptRef: record.receipt_ref,
   };
 }
 
-// Create the authority table and the singleton row when missing. Safe to
-// call repeatedly and safe inside a transaction (transactional DDL). The
-// initial state mirrors the Worker 0005 migration: BWH_ACTIVE, epoch 1.
-export function ensureWriterAuthority(db, { now = () => new Date() } = {}) {
-  if (!db || typeof db.prepare !== "function") {
-    throw writerError("writer_authority_unavailable", "writer authority requires a database handle");
-  }
+const TRANSITION_PREDICATE = Object.entries(ALLOWED_WRITER_TRANSITIONS).flatMap(([from, targets]) =>
+  [...targets].map((to) => `(OLD.phase = '${from}' AND NEW.phase = '${to}' AND NEW.authority = '${AUTHORITY_BY_PHASE[to]}')`)
+).join(" OR ");
+
+function installAuthorityGuards(db) {
   db.exec(`
-    create table if not exists ${WRITER_AUTHORITY_TABLE} (
-      id integer primary key check (id = 1),
-      authority text not null check (authority in ('BWH', 'D1')),
-      phase text not null check (phase in ('BWH_ACTIVE', 'FROZEN', 'D1_ACTIVE', 'RECOVERY')),
-      epoch integer not null check (epoch between 1 and 2147483647),
-      updated_at text not null,
-      receipt_ref text not null default ''
-    );
+    create view main.${WRITER_AUTHORITY_MARKER} as select 1 as installed;
+    create trigger main.${WRITER_AUTHORITY_GUARDS.insert}
+      before insert on ${WRITER_AUTHORITY_TABLE}
+      begin select raise(abort, 'writer_authority_insert_denied'); end;
+    create trigger main.${WRITER_AUTHORITY_GUARDS.delete}
+      before delete on ${WRITER_AUTHORITY_TABLE}
+      begin select raise(abort, 'writer_authority_delete_denied'); end;
+    create trigger main.${WRITER_AUTHORITY_GUARDS.transition}
+      before update on ${WRITER_AUTHORITY_TABLE}
+      when NEW.id is not 1 or typeof(NEW.epoch) != 'integer' or
+           NEW.epoch is not OLD.epoch + 1 or NEW.epoch > ${WRITER_EPOCH_MAX} or
+           not coalesce((${TRANSITION_PREDICATE}), 0)
+      begin select raise(abort, 'writer_authority_transition_denied'); end;
   `);
-  const existing = readWriterAuthority(db);
-  if (existing) return existing;
-  const at = now().toISOString();
-  // INSERT OR IGNORE: two connections can pass the read above at the
-  // same time; the second insert must be a no-op, not SQLITE_CONSTRAINT.
-  db.prepare(
-    `insert or ignore into ${WRITER_AUTHORITY_TABLE}
-       (id, authority, phase, epoch, updated_at, receipt_ref)
-     values (1, 'BWH', 'BWH_ACTIVE', 1, ?, '')`,
-  ).run(at);
-  return readWriterAuthority(db);
 }
 
-// Read the singleton row without creating anything. Returns null when the
-// table or the row is missing (for example a pre-migration database that
-// has never run a guarded write).
-export function readWriterAuthority(db) {
-  if (!db || typeof db.prepare !== "function") return null;
-  let row;
-  try {
-    row = db
-      .prepare(`select id, authority, phase, epoch, updated_at, receipt_ref from ${WRITER_AUTHORITY_TABLE} where id = 1`)
-      .get();
-  } catch {
-    return null;
+// Install a fresh authority record only on legacy databases. Bootstrap,
+// adoption of a valid existing record, and marker/guards are one SQLite
+// transaction so concurrent starts cannot publish a partially seeded state.
+export function ensureWriterAuthority(db, { now = () => new Date() } = {}) {
+  if (!db || typeof db.transaction !== "function") {
+    throw writerError("writer_authority_unavailable", "writer authority requires a database handle");
   }
-  return mapAuthorityRow(row);
+  return db.transaction(() => {
+    const { hasTable, installed } = readAuthoritySchema(db);
+    const existing = hasTable ? readAuthoritySingleton(db) : null;
+    if (installed) return existing;
+    if (!existing) {
+      db.exec(`
+        create table main.${WRITER_AUTHORITY_TABLE} (
+          id integer primary key check (id = 1),
+          authority text not null check (authority in ('BWH', 'D1')),
+          phase text not null check (phase in ('BWH_ACTIVE', 'FROZEN', 'D1_ACTIVE', 'RECOVERY')),
+          epoch integer not null check (typeof(epoch) = 'integer' and epoch between 1 and ${WRITER_EPOCH_MAX}),
+          updated_at text not null,
+          receipt_ref text not null default '',
+          check ((authority = 'BWH' and phase in ('BWH_ACTIVE', 'FROZEN'))
+              or (authority = 'D1' and phase in ('D1_ACTIVE', 'RECOVERY')))
+        );
+      `);
+      db.prepare(`
+        insert into main.${WRITER_AUTHORITY_TABLE}
+          (id, authority, phase, epoch, updated_at, receipt_ref)
+        values (1, 'BWH', 'BWH_ACTIVE', 1, ?, '')
+      `).run(now().toISOString());
+    }
+    installAuthorityGuards(db);
+    return existing ?? readAuthoritySingleton(db);
+  }).immediate();
 }
 
 // Validate an already-read authority record. Throws when the record
@@ -203,19 +288,18 @@ function assertWritableRecord(current, expectedEpoch) {
 // are stopped by the durable phase, not by an epoch they never had.
 // Throws WriterAuthorityError; returns the current record on success.
 export function assertWritable(db, expectedEpoch) {
-  const current = ensureWriterAuthority(db);
+  const { installed } = readAuthoritySchema(db);
+  const current = installed ? readAuthoritySingleton(db) : ensureWriterAuthority(db);
   return assertWritableRecord(current, expectedEpoch);
 }
 
-// Run fn inside a single SQLite transaction whose first statement is the
-// writer-fence call: the call ensures the authority table (idempotent
-// DDL) and then reads and enforces the phase, before any business write.
+// Run fn inside a single SQLite transaction whose first action reads and
+// enforces the authority state before any business write.
 // BEGIN IMMEDIATE holds the write lock from the start, so no other
 // connection can freeze the database between the fence check and the
 // first business write. Returns fn's return value; the whole transaction
 // (fence + business writes) rolls back on any throw. The authority
-// record itself is ensured (and committed) before the transaction opens,
-// so a business rollback never removes it.
+// record is installed separately on a legacy database's first guarded write.
 export function guardedTransaction(db, expectedEpoch, fn) {
   if (typeof fn !== "function") {
     throw writerError("writer_authority_unavailable", "guarded transaction requires a callback");
@@ -223,7 +307,7 @@ export function guardedTransaction(db, expectedEpoch, fn) {
   if (!db || typeof db.transaction !== "function") {
     throw writerError("writer_authority_unavailable", "guarded transaction requires a database handle");
   }
-  ensureWriterAuthority(db);
+  if (!schemaObjectType(db, WRITER_AUTHORITY_MARKER)) ensureWriterAuthority(db);
   return db.transaction(() => {
     const current = readWriterAuthority(db);
     assertWritableRecord(current, expectedEpoch);
@@ -244,10 +328,6 @@ export function transitionWriterAuthority(db, { to, expectedEpoch, receiptRef = 
   if (!Object.hasOwn(WRITER_PHASES, to)) {
     throw writerError("writer_transition_illegal", `unknown writer phase: ${String(to)}`, { to });
   }
-  // Ensure (and commit) the record before the transition transaction
-  // opens, so a rejected transition leaves the prior state untouched
-  // instead of rolling the record itself away.
-  ensureWriterAuthority(db, { now });
   return db.transaction(() => {
     const current = readWriterAuthority(db);
     if (!current) {
@@ -284,7 +364,7 @@ export function transitionWriterAuthority(db, { to, expectedEpoch, receiptRef = 
     }
     const at = now().toISOString();
     const changed = db.prepare(
-      `update ${WRITER_AUTHORITY_TABLE}
+      `update main.${WRITER_AUTHORITY_TABLE}
           set authority = ?, phase = ?, epoch = ?, updated_at = ?, receipt_ref = ?
         where id = 1 and phase = ? and epoch = ?`,
     ).run(AUTHORITY_BY_PHASE[to], to, nextEpoch, at, String(receiptRef ?? ""), current.phase, current.epoch);

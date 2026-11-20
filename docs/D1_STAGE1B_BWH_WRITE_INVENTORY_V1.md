@@ -402,12 +402,29 @@ core — the central store's service-layer write transactions (C-01) and
 the coin-commerce store's named write transactions (C-02). Full
 per-connection wiring across all 9 connections is follow-up work.
 
-Deploy note: deploying this code creates `platform_writer_authority`
-(CREATE TABLE IF NOT EXISTS + singleton row BWH_ACTIVE epoch 1) on
-first guarded write / schema init. Write behavior is unchanged while
-BWH_ACTIVE and rollback is safe (dropping the code leaves the table
-inert), but record the table creation in the Deploy Note; do not treat
-this as a zero-schema-change deploy.
+Normal BWH schema initialization installs the writer authority fence by
+default. A genuinely uninstalled legacy database opened without schema
+initialization installs it on the first guarded write. Installation uses
+one SQLite transaction to seed `BWH_ACTIVE / epoch 1` and create the
+independent `platform_writer_authority_installed` marker and three
+guards. An existing valid singleton is retained unchanged. An installed
+store with a missing or invalid singleton, table, or guard rejects writes.
+If both the table and its independent marker are removed, the database
+alone cannot distinguish the loss from an uninstalled legacy database.
+Coordinator transitions and freeze receipts require existing state.
+
+A later deployment must record this SQLite schema change and verify the
+existing writer state and recovery plan. Code rollback while the writer
+is fenced requires its own approval and protection against an older
+unfenced writer. The remaining writer coverage gaps still gate cutover.
+
+The synthetic delta manifest requires supported single-column keys with
+integer or text affinity and validates checkpoint fingerprints before
+emitting a delta. Real table, key, and field dispositions remain gated.
+Agent epoch forwarding remains off by default. With forwarding enabled,
+pending claims and receipts retain their original epoch across retries
+and restarts. Unbound or stale same-scope work stays queued for
+reconciliation.
 "Line numbers are audit-time (pre-wiring) unless §15 states otherwise;
 this round's edits shifted lines in `subscription-control-db.mjs` and
 `coin-commerce-store.mjs` by a few lines, so cite function/symbol names
@@ -417,7 +434,7 @@ for the wired code, not the audit-time line numbers."
 
 | # | Path | What is fenced | Evidence |
 |---|---|---|---|
-| F-1 | C-01 `runInTransaction` default path (`subscription-control-db.mjs`, `runInTransaction` → `guardedTransaction`) | EVERY service-layer write transaction through the central store: all 15 call sites (`admin-auth.mjs:575`, `portal-access-requests.mjs:2331`, `portal-authority-registration.mjs:99`, `portal-identity-deletion.mjs:239,387,456`, `portal-initial-account-issuance.mjs:110`, `portal-registration.mjs:433`, `subscription-issuance.mjs:84`, `user-portal-auth.mjs:411,621,737,817,930,943`). One BEGIN IMMEDIATE transaction, fence call first (the call ensures the authority table with idempotent DDL, then enforces phase BWH_ACTIVE, plus epoch match when a coordinator receipt supplies `writerEpoch`). The former opt-in (`{ guarded: true }` / `writerEpoch`) is subsumed; no caller passes either and none needs to. | Tests S1B-WIRE-1…WIRE-3 (`server/tests/d1-stage1b-bwh-wiring.test.mjs`): plain (no-options) commit while BWH_ACTIVE; reject with `writer_authority_not_bwh` while FROZEN / D1_ACTIVE / RECOVERY, no row written; abort re-admits. |
+| F-1 | C-01 `runInTransaction` default path (`subscription-control-db.mjs`, `runInTransaction` → `guardedTransaction`) | All 15 inventoried service-layer write transactions through this method use BEGIN IMMEDIATE, read the existing fence before business writes and require BWH_ACTIVE. When a coordinator receipt supplies `writerEpoch`, it must also match. Legacy initialization is separate from the guarded business transaction. | Tests S1B-WIRE-1…WIRE-3 (`server/tests/d1-stage1b-bwh-wiring.test.mjs`) verify ordinary BWH_ACTIVE commits, rejection while FROZEN / D1_ACTIVE / RECOVERY and resumption after abort. |
 | F-2 | C-02 coin-commerce 13 named write transactions (`coin-commerce-store.mjs`, `assertCommerceWritable()` as the first statement of each, already-IMMEDIATE) | publish / bootstrap / retire / createQuote / confirm / cancel / claimCaptures / capture (via `captureOrderBody`) / recover / claimCommand / completeCommand / failCommand / nextWake. Covers the order/payment-callback financial core (W-045…W-064 reached through these transactions) and the offer lifecycle (W-050/W-051/W-052 paths). | Tests S1B-WIRE-4…WIRE-7 (publish / quote / retire behaviorally: frozen → `writer_authority_not_bwh`, no row; abort → commit); S1B-WIRE-8 source-shape invariant (exactly 13 fence calls, one per named writer, first non-blank line of each transaction body, checked literally). |
 | F-3 | Writers nested inside a fenced transaction | Ads `safe*` writers W-146…W-148 (inside `confirmTransaction`); commerce-internal wallet participant calls inside confirm/capture transactions; `captureOrderBody` nested calls from claimCaptures (`:2916`) and recover (`:3906`) — the fence is re-checked (savepoint-nested, idempotent). | By construction (same transaction) + S1B-WIRE-8. |
 | F-4 | Fence-error observability (commerce) | `normalizeError` lets a `WriterAuthorityError` through unwrapped, so a fence rejection surfaces as `writer_authority_not_bwh` instead of `commerce_infrastructure_error`. Callers and the coordinator can tell a frozen / D1-active database apart from an infrastructure failure. | Tests S1B-WIRE-5…WIRE-7 assert the propagated `WriterAuthorityError` name + code. |

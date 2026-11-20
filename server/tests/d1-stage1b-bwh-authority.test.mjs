@@ -57,12 +57,20 @@ function digestCanonical(value) {
   return createHash("sha256").update(canonicalJson(value)).digest("hex");
 }
 
-async function tempDbFile(t) {
+async function tempDb(t) {
   const dir = await mkdtemp(join(tmpdir(), "stage1b-authority-"));
+  const handles = [];
   t.after(async () => {
+    for (const handle of handles) {
+      if (handle.open) handle.close();
+    }
     await rm(dir, { recursive: true, force: true });
   });
-  return join(dir, "synthetic.sqlite");
+  return () => {
+    const db = new Database(join(dir, "synthetic.sqlite"));
+    handles.push(db);
+    return db;
+  };
 }
 
 function memoryDb(t) {
@@ -105,6 +113,24 @@ function assertWriterError(error, code) {
   assert.equal(error?.code, code, `expected ${code}, got ${error?.code}: ${error?.message}`);
 }
 
+function createUnmarkedAuthorityTable(db) {
+  db.exec(`
+    create table platform_writer_authority (
+      id integer primary key, authority text, phase text, epoch integer,
+      updated_at text, receipt_ref text
+    );
+  `);
+}
+
+function insertUnmarkedAuthority(db, authority, phase, epoch) {
+  db.prepare("insert into platform_writer_authority values (1, ?, ?, ?, ?, 'existing')")
+    .run(authority, phase, epoch, NOW.toISOString());
+}
+
+function hasAuthorityMarker(db) {
+  return Boolean(db.prepare("select 1 from main.sqlite_schema where name = 'platform_writer_authority_installed'").get());
+}
+
 // --- Authority record and epoch parsing ---
 
 test("S1B-AUTH-1: ensureWriterAuthority initializes BWH_ACTIVE epoch 1 and is idempotent", () => {
@@ -124,25 +150,13 @@ test("S1B-AUTH-1: ensureWriterAuthority initializes BWH_ACTIVE epoch 1 and is id
 });
 
 test("S1B-AUTH-12: ensureWriterAuthority from two handles never raises a constraint", async (t) => {
-  const file = await tempDbFile(t);
-  const first = new Database(file);
-  const second = new Database(file);
-  t.after(() => {
-    try {
-      first.close();
-    } catch {
-      // Already closed.
-    }
-    try {
-      second.close();
-    } catch {
-      // Already closed.
-    }
-  });
+  const open = await tempDb(t);
+  const first = open();
+  const second = open();
   // Both handles ensure the record and both read BWH_ACTIVE epoch 1.
   // The synchronous driver cannot interleave the read and the insert
-  // inside one call, so this test proves cross-handle idempotency; the
-  // INSERT OR IGNORE itself is the guard for a true interleave.
+  // inside one call, so this test exercises cross-handle idempotency. The
+  // immediate transaction serializes the schema lookup and first insert.
   const one = ensureWriterAuthority(first, { now: nowFn });
   const two = ensureWriterAuthority(second, { now: nowFn });
   assert.equal(one.phase, WRITER_PHASES.BWH_ACTIVE);
@@ -151,6 +165,166 @@ test("S1B-AUTH-12: ensureWriterAuthority from two handles never raises a constra
   assert.equal(two.epoch, 1);
   assert.equal(countRows(first, "platform_writer_authority"), 1);
   assert.equal(countRows(second, "platform_writer_authority"), 1);
+});
+
+test("S1B-AUTH-13: a failed initial seed cannot leave a partial authority installation", (t) => {
+  const db = memoryDb(t);
+  assert.throws(() => ensureWriterAuthority(db, { now: () => new Date(NaN) }), RangeError);
+  assert.equal(readWriterAuthority(db), null);
+  assert.equal(hasAuthorityMarker(db), false);
+  assert.equal(ensureWriterAuthority(db, { now: nowFn }).epoch, 1);
+});
+
+test("S1B-AUTH-14: normal startup adopts an existing valid authority without changing its state", (t) => {
+  const db = memoryDb(t);
+  createUnmarkedAuthorityTable(db);
+  insertUnmarkedAuthority(db, "D1", "RECOVERY", 7);
+  const original = readWriterAuthority(db);
+
+  const store = createSqliteSubscriptionControlStore({ database: db });
+  assert.deepEqual(readWriterAuthority(db), original);
+  assert.equal(hasAuthorityMarker(db), true);
+  assert.throws(() => store.runInTransaction(() => assert.fail("callback ran")), {
+    code: "writer_authority_not_bwh",
+  });
+  assert.deepEqual(readWriterAuthority(db), original);
+});
+
+test("S1B-AUTH-15: empty and inconsistent preexisting authority tables fail closed without a marker", (t) => {
+  for (const entry of [null, ["D1", "BWH_ACTIVE", 1], ["BWH", "BWH_ACTIVE", 1.5]]) {
+    const db = memoryDb(t);
+    createUnmarkedAuthorityTable(db);
+    if (entry) insertUnmarkedAuthority(db, ...entry);
+    assert.throws(() => ensureWriterAuthority(db), { code: "writer_authority_unavailable" });
+    assert.throws(() => assertWritable(db), { code: "writer_authority_unavailable" });
+    assert.throws(() => guardedTransaction(db, undefined, () => assert.fail("callback ran")), {
+      code: "writer_authority_unavailable",
+    });
+    assert.equal(hasAuthorityMarker(db), false);
+    assert.equal(countRows(db, "platform_writer_authority"), entry ? 1 : 0);
+  }
+});
+
+test("S1B-AUTH-16: ordinary DML cannot replace or erase installed writer state", (t) => {
+  const db = memoryDb(t);
+  db.pragma("recursive_triggers = OFF");
+  ensureWriterAuthority(db, { now: nowFn });
+  const frozen = transitionWriterAuthority(db, { to: "FROZEN", now: nowFn });
+  assert.throws(() => db.prepare(`
+    insert or replace into platform_writer_authority
+      (id, authority, phase, epoch, updated_at, receipt_ref)
+    values (1, 'BWH', 'BWH_ACTIVE', 1, ?, '')
+  `).run(NOW.toISOString()), /writer_authority_insert_denied/);
+  assert.throws(() => db.exec("delete from platform_writer_authority"), /writer_authority_delete_denied/);
+  for (const sql of [
+    "update platform_writer_authority set authority = 'D1', phase = 'D1_ACTIVE', epoch = 2.5",
+    "update platform_writer_authority set authority = 'D1', phase = 'BWH_ACTIVE', epoch = 3",
+    "update platform_writer_authority set phase = 'BWH_ACTIVE', epoch = 1",
+  ]) {
+    assert.throws(() => db.exec(sql), /writer_authority_transition_denied/);
+  }
+  assert.deepEqual(readWriterAuthority(db), frozen);
+});
+
+test("S1B-AUTH-17: a dropped installed table cannot be re-created at startup or on protected writes", (t) => {
+  const db = memoryDb(t);
+  ensureWriterAuthority(db, { now: nowFn });
+  db.exec("drop table platform_writer_authority");
+  assert.equal(hasAuthorityMarker(db), true);
+  assert.throws(() => createSqliteSubscriptionControlStore({ database: db }), {
+    code: "writer_authority_unavailable",
+  });
+  assert.throws(() => assertWritable(db), { code: "writer_authority_unavailable" });
+  assert.throws(() => guardedTransaction(db, undefined, () => assert.fail("callback ran")), {
+    code: "writer_authority_unavailable",
+  });
+  assert.equal(db.prepare("select 1 from main.sqlite_schema where name = 'platform_writer_authority'").get(), undefined);
+});
+
+test("S1B-AUTH-18: a legacy store opened without schema initialization writes no authority until its first guarded write", (t) => {
+  const db = memoryDb(t);
+  const store = createSqliteSubscriptionControlStore({ database: db, initializeSchema: false });
+  assert.equal(readWriterAuthority(db), null);
+  assert.equal(hasAuthorityMarker(db), false);
+
+  assert.equal(store.runInTransaction(() => "legacy write"), "legacy write");
+  assert.equal(readWriterAuthority(db).phase, "BWH_ACTIVE");
+  assert.equal(hasAuthorityMarker(db), true);
+});
+
+test("S1B-AUTH-19: transition and freeze observation cannot initialize a legacy database", (t) => {
+  const db = memoryDb(t);
+  assert.throws(() => transitionWriterAuthority(db, { to: "FROZEN" }), {
+    code: "writer_authority_unavailable",
+  });
+  assert.throws(() => buildFreezeReceipt(db, { snapshotId: "snap", checkpointId: "checkpoint" }), {
+    code: "writer_authority_unavailable",
+  });
+  assert.equal(readWriterAuthority(db), null);
+  assert.equal(hasAuthorityMarker(db), false);
+});
+
+test("S1B-AUTH-20: an installed database rejects every missing main authority guard", (t) => {
+  for (const guard of [
+    "platform_writer_authority_insert_guard",
+    "platform_writer_authority_delete_guard",
+    "platform_writer_authority_transition_guard",
+  ]) {
+    const db = memoryDb(t);
+    ensureWriterAuthority(db);
+    db.exec(`drop trigger ${guard}`);
+    assert.equal(hasAuthorityMarker(db), true);
+    const expected = { code: "writer_authority_unavailable" };
+    assert.throws(() => readWriterAuthority(db), expected);
+    assert.throws(() => ensureWriterAuthority(db), expected);
+    assert.throws(() => assertWritable(db), expected);
+    assert.throws(() => guardedTransaction(db, undefined, () => assert.fail("callback ran")), expected);
+    assert.throws(() => transitionWriterAuthority(db, { to: "FROZEN" }), expected);
+    assert.throws(() => buildFreezeReceipt(db, { snapshotId: "snap", checkpointId: "checkpoint" }), expected);
+    assert.equal(db.prepare("select epoch from platform_writer_authority").pluck().get(), 1);
+  }
+});
+
+test("S1B-AUTH-21: marker type is checked even with a valid authority table", (t) => {
+  const db = memoryDb(t);
+  createUnmarkedAuthorityTable(db);
+  insertUnmarkedAuthority(db, "BWH", "BWH_ACTIVE", 1);
+  db.exec("create table platform_writer_authority_installed (installed integer)");
+  const expected = { code: "writer_authority_unavailable" };
+  assert.throws(() => readWriterAuthority(db), expected);
+  assert.throws(() => ensureWriterAuthority(db), expected);
+  assert.throws(() => transitionWriterAuthority(db, { to: "FROZEN" }), expected);
+  assert.throws(() => buildFreezeReceipt(db, { snapshotId: "snap", checkpointId: "checkpoint" }), expected);
+  assert.equal(db.prepare("select phase from platform_writer_authority").pluck().get(), "BWH_ACTIVE");
+});
+
+test("S1B-AUTH-22: same-name schema objects cannot substitute for installed authority guards", (t) => {
+  const replacements = [
+    "create view platform_writer_authority_insert_guard as select 1 as marker",
+    "create trigger platform_writer_authority_insert_guard before insert on synth_accounts begin select 1; end",
+  ];
+  for (const replacement of replacements) {
+    const db = memoryDb(t);
+    createSyntheticBusinessTables(db);
+    ensureWriterAuthority(db);
+    db.exec("drop trigger platform_writer_authority_insert_guard");
+    db.exec(replacement);
+    assert.throws(() => assertWritable(db), { code: "writer_authority_unavailable" });
+  }
+});
+
+test("S1B-AUTH-23: retained guards prevent a dropped marker from being adopted as legacy", (t) => {
+  const db = memoryDb(t);
+  ensureWriterAuthority(db);
+  db.exec("drop view platform_writer_authority_installed");
+  const expected = { code: "writer_authority_unavailable" };
+  assert.throws(() => readWriterAuthority(db), expected);
+  assert.throws(() => ensureWriterAuthority(db), expected);
+  assert.throws(() => guardedTransaction(db, undefined, () => assert.fail("callback ran")), expected);
+  assert.throws(() => transitionWriterAuthority(db, { to: "FROZEN" }), expected);
+  assert.throws(() => buildFreezeReceipt(db, { snapshotId: "snap", checkpointId: "checkpoint" }), expected);
+  assert.equal(hasAuthorityMarker(db), false);
+  assert.equal(db.prepare("select phase from platform_writer_authority").pluck().get(), "BWH_ACTIVE");
 });
 
 test("S1B-AUTH-2: parseWriterEpoch accepts valid epochs and rejects malformed ones", () => {
@@ -196,6 +370,7 @@ test("S1B-AUTH-4: guardedTransaction rolls back fence and business write togethe
 
 test("S1B-AUTH-5: legal transitions advance the epoch by exactly one", (t) => {
   const db = memoryDb(t);
+  ensureWriterAuthority(db, { now: nowFn });
   const frozen = transitionWriterAuthority(db, { to: "FROZEN", now: nowFn });
   assert.equal(frozen.phase, "FROZEN");
   assert.equal(frozen.authority, "BWH");
@@ -212,6 +387,7 @@ test("S1B-AUTH-5: legal transitions advance the epoch by exactly one", (t) => {
   assert.equal(resumed.epoch, 5);
 
   const db2 = memoryDb(t);
+  ensureWriterAuthority(db2, { now: nowFn });
   const aborted = transitionWriterAuthority(db2, { to: "FROZEN", now: nowFn });
   assert.equal(aborted.epoch, 2);
   const back = transitionWriterAuthority(db2, { to: "BWH_ACTIVE", now: nowFn });
@@ -258,6 +434,7 @@ test("S1B-AUTH-6: illegal transitions are rejected and change nothing", (t) => {
 
 test("S1B-AUTH-7: transition with a stale expected epoch is rejected", (t) => {
   const db = memoryDb(t);
+  ensureWriterAuthority(db, { now: nowFn });
   assert.throws(
     () => transitionWriterAuthority(db, { to: "FROZEN", expectedEpoch: "9", now: nowFn }),
     (error) => {
@@ -291,6 +468,7 @@ test("S1B-AUTH-8: stale-epoch and future-epoch writes are rejected without effec
 test("S1B-AUTH-9: a late queued job after freeze is rejected and writes nothing", (t) => {
   const db = memoryDb(t);
   createSyntheticBusinessTables(db);
+  ensureWriterAuthority(db, { now: nowFn });
   // The job was queued while BWH was active; the freeze lands first.
   insertSynthAccount(db, "acct-before-freeze");
   transitionWriterAuthority(db, { to: "FROZEN", now: nowFn });
@@ -308,6 +486,7 @@ test("S1B-AUTH-9: a late queued job after freeze is rejected and writes nothing"
 test("S1B-AUTH-10: a stale process after D1 activation is rejected", (t) => {
   const db = memoryDb(t);
   createSyntheticBusinessTables(db);
+  ensureWriterAuthority(db, { now: nowFn });
   transitionWriterAuthority(db, { to: "FROZEN", now: nowFn });
   transitionWriterAuthority(db, { to: "D1_ACTIVE", expectedEpoch: "2", now: nowFn });
   assert.equal(readWriterAuthority(db).epoch, 3);
@@ -333,8 +512,8 @@ test("S1B-AUTH-10: a stale process after D1 activation is rejected", (t) => {
 });
 
 test("S1B-AUTH-11: restart while frozen keeps fencing (durable record, not process memory)", async (t) => {
-  const path = await tempDbFile(t);
-  const first = new Database(path);
+  const open = await tempDb(t);
+  const first = open();
   first.exec(`
     create table synth_accounts (
       id text primary key, status text not null, updated_at text not null
@@ -345,14 +524,7 @@ test("S1B-AUTH-11: restart while frozen keeps fencing (durable record, not proce
   first.close();
 
   // A new process with a fresh handle reopens the same file.
-  const second = new Database(path);
-  t.after(() => {
-    try {
-      second.close();
-    } catch {
-      // Already closed.
-    }
-  });
+  const second = open();
   const reopened = readWriterAuthority(second);
   assert.equal(reopened.phase, "FROZEN");
   assert.equal(reopened.epoch, 2);
@@ -375,6 +547,7 @@ test("S1B-AUTH-11: restart while frozen keeps fencing (durable record, not proce
 test("S1B-FRZ-1: freeze receipt verifies and carries the pre-freeze evidence", (t) => {
   const db = memoryDb(t);
   createSyntheticBusinessTables(db);
+  ensureWriterAuthority(db, { now: nowFn });
   insertSynthAccount(db, "acct-1");
   insertSynthAccount(db, "acct-2", "suspended");
   db.prepare(
@@ -406,6 +579,7 @@ test("S1B-FRZ-1: freeze receipt verifies and carries the pre-freeze evidence", (
 test("S1B-FRZ-2: a tampered receipt fails verification", (t) => {
   const db = memoryDb(t);
   createSyntheticBusinessTables(db);
+  ensureWriterAuthority(db, { now: nowFn });
   insertSynthAccount(db, "acct-1");
   const receipt = buildFreezeReceipt(db, {
     snapshotId: "snap-synth-1",
@@ -445,6 +619,7 @@ test("S1B-FRZ-2: a tampered receipt fails verification", (t) => {
 test("S1B-FRZ-4: a receipt whose authority was changed to D1 fails verification even with a valid digest", (t) => {
   const db = memoryDb(t);
   createSyntheticBusinessTables(db);
+  ensureWriterAuthority(db, { now: nowFn });
   insertSynthAccount(db, "acct-1");
   const receipt = buildFreezeReceipt(db, {
     snapshotId: "snap-synth-1",
@@ -468,6 +643,7 @@ test("S1B-FRZ-4: a receipt whose authority was changed to D1 fails verification 
 test("S1B-FRZ-3: freeze receipt does not change phase and requires BWH_ACTIVE", (t) => {
   const db = memoryDb(t);
   createSyntheticBusinessTables(db);
+  ensureWriterAuthority(db, { now: nowFn });
   buildFreezeReceipt(db, { snapshotId: "snap-1", checkpointId: "ckpt-1", now: nowFn });
   assert.equal(readWriterAuthority(db).phase, "BWH_ACTIVE");
   assert.equal(readWriterAuthority(db).epoch, 1);
@@ -607,15 +783,8 @@ test("S1B-DLT-4: an interrupted snapshot fails enumeration loudly instead of ret
 // --- Store wiring: runInTransaction guarded path ---
 
 test("S1B-STORE-1: runInTransaction guarded path enforces the epoch through the store", async (t) => {
-  const path = await tempDbFile(t);
-  const db = new Database(path);
-  t.after(() => {
-    try {
-      db.close();
-    } catch {
-      // Already closed.
-    }
-  });
+  const open = await tempDb(t);
+  const db = open();
   const store = createSqliteSubscriptionControlStore({ database: db });
   assert.equal(readWriterAuthority(db).phase, "BWH_ACTIVE");
   assert.equal(readWriterAuthority(db).epoch, 1);

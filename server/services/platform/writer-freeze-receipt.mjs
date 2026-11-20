@@ -24,7 +24,6 @@ import { createHash } from "node:crypto";
 import {
   WRITER_PHASES,
   WriterAuthorityError,
-  ensureWriterAuthority,
   readWriterAuthority,
 } from "./single-writer-authority.mjs";
 
@@ -110,18 +109,18 @@ export function buildFreezeReceipt(
   if (!db || typeof db.transaction !== "function") {
     throw freezeReceiptError("freeze receipt requires a database handle");
   }
-  // Ensure (and commit) the record before the snapshot transaction
-  // opens, so the receipt read never creates state inside the snapshot.
-  ensureWriterAuthority(db, { now });
   // One immediate transaction: the write lock is held for the authority
   // read and the whole high-water scan, which is the quiescence proof.
   const receipt = db.transaction(() => {
     const current = readWriterAuthority(db);
-    if (!current || current.phase !== WRITER_PHASES.BWH_ACTIVE) {
+    if (!current) {
+      throw new WriterAuthorityError("writer_authority_unavailable", "writer authority record is missing");
+    }
+    if (current.phase !== WRITER_PHASES.BWH_ACTIVE) {
       throw new WriterAuthorityError(
         "writer_authority_not_bwh",
-        `freeze receipt requires phase BWH_ACTIVE, current phase is ${current?.phase ?? "unknown"}`,
-        { phase: current?.phase ?? null, epoch: current?.epoch ?? null },
+        `freeze receipt requires phase BWH_ACTIVE, current phase is ${current.phase}`,
+        { phase: current.phase, epoch: current.epoch },
       );
     }
     const highWaterMark = readHighWaterMark(db);

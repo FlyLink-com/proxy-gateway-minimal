@@ -157,7 +157,7 @@ test("S1B-AGT-3: forwarding without an available epoch fails closed before any c
   assert.equal(calls.fetchCalls, 0, "no transport call may be made without an epoch");
   assert.equal(calls.apply, 0);
   const state = await stateStore.load();
-  assert.ok(state.pendingClaim, "the pending claim is preserved for the next cycle");
+  assert.equal(state, null, "no unbound claim is created before an epoch is available");
 });
 
 test("S1B-AGT-4: malformed coordinator epochs fail closed without a transport call", async () => {
@@ -223,16 +223,20 @@ test("S1B-AGT-6: frozen authority on fetch retries later with no local fallback"
 
 test("S1B-AGT-7: a lost receipt acknowledgment retries with the same idempotency key", async () => {
   const stateStore = createMemoryStateStore();
+  let epoch = "3";
+  let fetchAttempts = 0;
   let submitAttempts = 0;
   const submittedKeys = [];
   const transport = {
     async fetchDesiredState(args) {
+      fetchAttempts += 1;
       return makeDesired({ generation: "gen-1" });
     },
     async submitReceipt(receipt, { headers } = {}) {
       submitAttempts += 1;
       submittedKeys.push(receipt.idempotencyKey);
       assert.equal(headers["x-writer-epoch"], "3", "recovered receipts also carry the epoch");
+      assert.equal(Object.hasOwn(receipt, "writerEpoch"), false, "queue metadata is not on the wire");
       if (submitAttempts === 1) throw new Error("synthetic ack lost");
     },
   };
@@ -240,7 +244,7 @@ test("S1B-AGT-7: a lost receipt acknowledgment retries with the same idempotency
     stateStore,
     transport,
     writerEpochForwarding: true,
-    epochProvider: () => "3",
+    epochProvider: () => epoch,
   });
   const first = await client.runOnce();
   assert.equal(first.status, "retry_later");
@@ -248,11 +252,27 @@ test("S1B-AGT-7: a lost receipt acknowledgment retries with the same idempotency
   assert.equal(calls.apply, 1, "apply runs exactly once despite the lost ack");
   const midState = await stateStore.load();
   assert.equal(midState.pendingReceipts.length, 2, "receipts stay pending after a lost ack");
+  assert.ok(midState.pendingReceipts.every((receipt) => receipt.writerEpoch === "3"));
 
-  const second = await client.runOnce();
+  const restarted = makeClient({
+    stateStore, transport, writerEpochForwarding: true, epochProvider: () => epoch,
+  });
+  epoch = "4";
+  const blocked = await restarted.client.runOnce();
+  assert.equal(blocked.status, "retry_later");
+  assert.equal(blocked.stage, "receipt");
+  assert.equal(blocked.code, "writer_epoch_stale");
+  assert.equal(submitAttempts, 1);
+  assert.equal(fetchAttempts, 1);
+  assert.equal(restarted.calls.apply, 0);
+  assert.deepEqual(await stateStore.load(), midState);
+
+  epoch = "3";
+  const second = await restarted.client.runOnce();
   assert.equal(second.status, "unchanged", "the generation is already recorded");
   assert.equal(second.receiptsRecovered, 2);
   assert.equal(calls.apply, 1, "the retry must not re-apply");
+  assert.equal(restarted.calls.apply, 0, "the restarted client does not re-apply");
   assert.equal(submitAttempts, 3, "two pending receipts are resubmitted once each");
   assert.equal(submittedKeys[1], submittedKeys[0], "resubmission reuses the receipt idempotency key");
   assert.notEqual(submittedKeys[2], submittedKeys[0], "the other channel has its own idempotency key");
@@ -260,7 +280,7 @@ test("S1B-AGT-7: a lost receipt acknowledgment retries with the same idempotency
   assert.deepEqual(endState.pendingReceipts, []);
 });
 
-test("S1B-AGT-8: recovered pending receipts are resubmitted with the epoch header", async () => {
+test("S1B-AGT-8: legacy receipts stay pending until their epoch is established", async () => {
   const receipt = buildChannelReceipt({
     nodeRef: NODE,
     channelRef: CHANNELS[0],
@@ -295,10 +315,18 @@ test("S1B-AGT-8: recovered pending receipts are resubmitted with the epoch heade
     epochProvider: () => "5",
   });
   const result = await client.runOnce();
-  assert.equal(result.status, "applied");
-  assert.equal(submitted.length, 3, "one recovered receipt plus two new receipts");
+  assert.equal(result.status, "retry_later");
+  assert.equal(result.stage, "receipt");
+  assert.equal(result.code, "writer_epoch_required");
+  assert.equal(submitted.length, 0);
+  assert.deepEqual((await stateStore.load()).pendingReceipts, [receipt]);
+
+  const legacyClient = makeClient({ stateStore, transport });
+  const legacyResult = await legacyClient.client.runOnce();
+  assert.equal(legacyResult.status, "applied");
+  assert.equal(submitted.length, 3, "forwarding off retains receipt recovery and new apply");
   assert.equal(submitted[0].receipt.idempotencyKey, "receipt-synth-recovery-1");
-  assert.equal(submitted[0].headers["x-writer-epoch"], "5");
+  assert.equal(Object.hasOwn(submitted[0].headers, "x-writer-epoch"), false);
 });
 
 test("S1B-AGT-9: isValidWriterEpoch accepts only the wire format", () => {
@@ -359,4 +387,88 @@ test("S1B-AGT-11: a numeric coordinator epoch is normalized to the wire header",
     assert.equal(outcome.code, "writer_epoch_invalid", `epoch ${badEpoch}`);
     assert.equal(rejected.calls.fetchCalls, 0, `epoch ${badEpoch}`);
   }
+});
+
+test("S1B-AGT-12: a pending claim keeps its idempotency key and epoch across restart", async () => {
+  const stateStore = createMemoryStateStore();
+  const calls = [];
+  let epoch = "3";
+  const transport = {
+    async fetchDesiredState({ headers, idempotencyKey }) {
+      calls.push({ epoch: headers["x-writer-epoch"], idempotencyKey });
+      if (calls.length === 1) throw new Error("synthetic claim response lost");
+      return makeDesired();
+    },
+    async submitReceipt() {},
+  };
+  const start = () => makeClient({
+    stateStore, transport, writerEpochForwarding: true, epochProvider: () => epoch,
+  });
+  assert.equal((await start().client.runOnce()).status, "retry_later");
+  const firstState = await stateStore.load();
+  assert.equal(firstState.pendingClaim.writerEpoch, "3");
+  assert.equal(firstState.pendingClaim.idempotencyKey, calls[0].idempotencyKey);
+  assert.equal(calls[0].epoch, "3");
+
+  epoch = "4";
+  const blocked = start();
+  const outcome = await blocked.client.runOnce();
+  assert.equal(outcome.status, "retry_later");
+  assert.equal(outcome.stage, "fetch");
+  assert.equal(outcome.code, "writer_epoch_stale");
+  assert.equal(blocked.calls.apply, 0);
+  assert.equal(calls.length, 1);
+  assert.deepEqual(await stateStore.load(), firstState);
+
+  epoch = "3";
+  assert.equal((await start().client.runOnce()).status, "applied");
+  assert.deepEqual(calls, [calls[0], calls[0]]);
+});
+
+test("S1B-AGT-13: an existing legacy claim cannot be assigned the current epoch", async () => {
+  const stateStore = createMemoryStateStore();
+  const legacy = makeClient({
+    stateStore,
+    transport: { async fetchDesiredState() { throw new Error("synthetic claim response lost"); } },
+  });
+  assert.equal((await legacy.client.runOnce()).status, "retry_later");
+  const legacyState = await stateStore.load();
+  assert.ok(legacyState.pendingClaim);
+  assert.equal(Object.hasOwn(legacyState.pendingClaim, "writerEpoch"), false);
+
+  const enabled = makeClient({ stateStore, writerEpochForwarding: true, epochProvider: () => "3" });
+  const result = await enabled.client.runOnce();
+  assert.equal(result.status, "retry_later");
+  assert.equal(result.stage, "fetch");
+  assert.equal(result.code, "writer_epoch_required");
+  assert.equal(enabled.calls.fetchCalls, 0);
+  assert.equal(enabled.calls.apply, 0);
+  assert.deepEqual(await stateStore.load(), legacyState);
+});
+
+test("S1B-AGT-14: receipts from one claim never switch epoch within a run", async () => {
+  const stateStore = createMemoryStateStore();
+  let epoch = "3";
+  const submittedEpochs = [];
+  const transport = {
+    async fetchDesiredState({ headers }) {
+      assert.equal(headers["x-writer-epoch"], "3");
+      return makeDesired();
+    },
+    async submitReceipt(receipt, { headers }) {
+      submittedEpochs.push(headers["x-writer-epoch"]);
+      epoch = "4";
+    },
+  };
+  const { client, calls } = makeClient({
+    stateStore, transport, writerEpochForwarding: true, epochProvider: () => epoch,
+  });
+  const result = await client.runOnce();
+  assert.equal(result.status, "retry_later");
+  assert.equal(result.stage, "receipt");
+  assert.equal(result.code, "writer_epoch_stale");
+  assert.equal(calls.apply, 1);
+  assert.deepEqual(submittedEpochs, ["3"]);
+  const state = await stateStore.load();
+  assert.deepEqual(state.pendingReceipts.map((receipt) => receipt.writerEpoch), ["3", "3"]);
 });

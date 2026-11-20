@@ -1890,20 +1890,6 @@ export function createSqliteSubscriptionControlStore({
 
     create index if not exists platform_identity_deletion_tombstones_request_id_idx
       on platform_identity_deletion_tombstones(request_id);
-
-    -- D1 Stage 1B single-writer authority (singleton row, id = 1).
-    -- BWH remains the only production business writer while the phase
-    -- is BWH_ACTIVE; see single-writer-authority.mjs. The table is
-    -- created here so every store carries the durable record, but the
-    -- phase only ever changes through an explicit coordinator call.
-    create table if not exists platform_writer_authority (
-      id integer primary key check (id = 1),
-      authority text not null check (authority in ('BWH', 'D1')),
-      phase text not null check (phase in ('BWH_ACTIVE', 'FROZEN', 'D1_ACTIVE', 'RECOVERY')),
-      epoch integer not null check (epoch between 1 and 2147483647),
-      updated_at text not null,
-      receipt_ref text not null default ''
-    );
   `);
 
   if (initializeSchema) ensureTableColumns(db, "platform_portal_access_requests", [
@@ -1923,10 +1909,9 @@ export function createSqliteSubscriptionControlStore({
     { name: "event_json", definition: "event_json text not null default '{}'" }
   ]);
 
-  // D1 Stage 1B: every store that initializes the schema carries the
-  // durable writer-authority singleton (BWH_ACTIVE, epoch 1). Databases
-  // opened without schema initialization are untouched here; the guard
-  // creates the record lazily on its first guarded write instead.
+  // Install the BWH authority fence on normal startup without changing
+  // existing state. Opening without schema initialization does not install
+  // authority until the first guarded write on an uninstalled legacy database.
   if (initializeSchema) ensureWriterAuthority(db);
 
   function upsertLead(input, { expiresAt } = {}) {
@@ -10299,12 +10284,10 @@ export function createSqliteSubscriptionControlStore({
   }
 
   // D1 Stage 1B: service-layer write transactions. Every call runs inside
-  // one BEGIN IMMEDIATE transaction whose first statement is the writer-
-  // fence call (which ensures the authority table with idempotent DDL,
-  // then reads and enforces the phase), so the fence and the business
-  // writes commit or roll back together and no other connection can
-  // freeze the database between the fence check and the first business
-  // write. The epoch, when supplied, must come from a durable
+  // one BEGIN IMMEDIATE business transaction that reads and enforces the
+  // authority before any write. Another connection cannot freeze the
+  // database between the fence and the first business write. The epoch,
+  // when supplied, must come from a durable
   // coordinator receipt; it is never defaulted or guessed here. Callers
   // without a receipt get the phase-only fence, which is what stops old
   // and background processes that hold no epoch.

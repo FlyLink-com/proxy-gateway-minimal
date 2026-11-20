@@ -22,6 +22,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
+  ensureWriterAuthority,
   readWriterAuthority,
   transitionWriterAuthority,
 } from "../services/platform/single-writer-authority.mjs";
@@ -43,12 +44,14 @@ import {
 const NOW = new Date("2026-11-20T00:00:00.000Z");
 const CLOCK = "2026-07-26T12:34:56.000Z";
 
-async function tempDbFile(t) {
+async function tempDb(t) {
   const dir = await mkdtemp(join(tmpdir(), "stage1b-wiring-"));
+  const db = new Database(join(dir, "synthetic.sqlite"));
   t.after(async () => {
+    db.close();
     await rm(dir, { recursive: true, force: true });
   });
-  return join(dir, "synthetic.sqlite");
+  return db;
 }
 
 function assertWriterError(error, code) {
@@ -68,15 +71,7 @@ function account(id) {
 // --- Central store: plain runInTransaction (no options) ---
 
 test("S1B-WIRE-1: plain runInTransaction commits while BWH_ACTIVE and leaves the epoch at 1", async (t) => {
-  const path = await tempDbFile(t);
-  const db = new Database(path);
-  t.after(() => {
-    try {
-      db.close();
-    } catch {
-      // Already closed.
-    }
-  });
+  const db = await tempDb(t);
   const store = createSqliteSubscriptionControlStore({ database: db });
   assert.equal(readWriterAuthority(db).phase, "BWH_ACTIVE");
 
@@ -87,15 +82,7 @@ test("S1B-WIRE-1: plain runInTransaction commits while BWH_ACTIVE and leaves the
 });
 
 test("S1B-WIRE-2: plain runInTransaction rejects while FROZEN and re-admits after abort", async (t) => {
-  const path = await tempDbFile(t);
-  const db = new Database(path);
-  t.after(() => {
-    try {
-      db.close();
-    } catch {
-      // Already closed.
-    }
-  });
+  const db = await tempDb(t);
   const store = createSqliteSubscriptionControlStore({ database: db });
   store.runInTransaction(() => store.createAccount(account("acct-wire-2a")));
   assert.equal(readWriterAuthority(db).epoch, 1);
@@ -119,15 +106,7 @@ test("S1B-WIRE-2: plain runInTransaction rejects while FROZEN and re-admits afte
 });
 
 test("S1B-WIRE-3: plain runInTransaction rejects after D1_ACTIVE and in RECOVERY", async (t) => {
-  const path = await tempDbFile(t);
-  const db = new Database(path);
-  t.after(() => {
-    try {
-      db.close();
-    } catch {
-      // Already closed.
-    }
-  });
+  const db = await tempDb(t);
   const store = createSqliteSubscriptionControlStore({ database: db });
 
   transitionWriterAuthority(db, { to: "FROZEN" });
@@ -280,6 +259,7 @@ test("S1B-WIRE-4: commerce publishOfferVersion commits while BWH_ACTIVE", (t) =>
 
 test("S1B-WIRE-5: commerce publishOfferVersion rejects while FROZEN with the fence code, not a wrapped infrastructure error", (t) => {
   const { database, store } = commerceFixture(t);
+  ensureWriterAuthority(database);
   transitionWriterAuthority(database, { to: "FROZEN" });
   assert.equal(readWriterAuthority(database).phase, "FROZEN");
 
@@ -379,7 +359,7 @@ test("S1B-WIRE-8: every named commerce write transaction calls the fence as its 
     "platform",
     "coin-commerce-store.mjs",
   );
-  const lines = readFileSync(storePath, "utf8").split("\n");
+  const lines = readFileSync(storePath, "utf8").split(/\r?\n/);
   const fenceLines = lines.filter((line) => /^\s*assertCommerceWritable\(\);$/.test(line));
   assert.equal(
     fenceLines.length,
@@ -399,7 +379,7 @@ test("S1B-WIRE-8: every named commerce write transaction calls the fence as its 
   }
 });
 
-test("S1B-WIRE-9: concurrent callbacks on two connections are both fenced by one freeze", (t) => {
+test("S1B-WIRE-9: write callbacks on two connections are fenced by the same freeze", (t) => {
   const { directory, database, store } = commerceFixture(t);
   const database2 = new Database(join(directory, "commerce.sqlite"));
   database2.pragma("busy_timeout = 5000");
@@ -415,8 +395,9 @@ test("S1B-WIRE-9: concurrent callbacks on two connections are both fenced by one
       offerVersionRef: "offerv_monthly_premium_v1",
       title: { zh: "高级月卡", en: "Premium monthly plan" },
     });
-    // A freeze lands between the two callbacks: both are rejected, on
-    // either connection, with no row written.
+    // The synchronous driver runs the callbacks sequentially. Both see
+    // the committed freeze on their own connection.
+    ensureWriterAuthority(database);
     transitionWriterAuthority(database, { to: "FROZEN" });
     assert.throws(
       () => store.publishOfferVersion(second),

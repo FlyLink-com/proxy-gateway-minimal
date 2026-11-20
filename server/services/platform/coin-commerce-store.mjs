@@ -971,9 +971,8 @@ export function createSqliteCoinCommerceStore(options = {}) {
   // D1 Stage 1B: phase-only writer fence for the commerce connection.
   // Every named write transaction below calls this as its first
   // statement, inside the same BEGIN IMMEDIATE transaction as the
-  // business writes. The fence call itself ensures the authority table
-  // (idempotent CREATE TABLE IF NOT EXISTS) and then reads and enforces
-  // the phase, so no business write precedes the phase check; a frozen
+  // business writes. The fence installs authority for an uninstalled legacy
+  // database on first use and enforces the existing state thereafter. A frozen
   // / D1-active database rejects the write before any ledger, order, or
   // receipt effect. Internal writers hold no coordinator receipt, so no
   // epoch is matched here; epoch matching stays with the

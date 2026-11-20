@@ -306,12 +306,11 @@ export function createAgentClient({
   const dryRun = config.dryRun !== false;
   const applyEnabled = config.applyEnabled === true;
 
-  // Resolve the writer-epoch header for one call. Throws
+  // Read and normalize the current coordinator epoch. Throws
   // AgentContractError (writer_epoch_required / writer_epoch_invalid)
   // when forwarding is enabled but no valid coordinator epoch is
   // available: fail closed, never send a guessed or default epoch.
-  function writerEpochHeader() {
-    if (!writerEpochForwarding) return {};
+  function coordinatorWriterEpoch() {
     if (typeof epochProvider !== "function") {
       throw new AgentContractError(
         "writer_epoch_required",
@@ -337,10 +336,10 @@ export function createAgentClient({
         "coordinator-issued writer epoch is malformed",
       );
     }
-    return { "x-writer-epoch": epochText };
+    return epochText;
   }
 
-  function buildHeaders() {
+  function buildHeaders(writerEpoch) {
     const headers = {};
     if (auth) {
       headers.authorization = `Bearer ${auth.token}`;
@@ -349,7 +348,22 @@ export function createAgentClient({
       headers["x-agent-timestamp"] = now().toISOString();
       headers["x-agent-nonce"] = randomUUID();
     }
-    return { ...headers, ...writerEpochHeader() };
+    if (writerEpochForwarding) {
+      if (writerEpoch === undefined || writerEpoch === null) {
+        throw new AgentContractError(
+          "writer_epoch_required",
+          "pending operation has no recorded writer epoch",
+        );
+      }
+      if (!isValidWriterEpoch(writerEpoch)) {
+        throw new AgentContractError("writer_epoch_invalid", "recorded writer epoch is malformed");
+      }
+      if (writerEpoch !== coordinatorWriterEpoch()) {
+        throw new AgentContractError("writer_epoch_stale", "recorded writer epoch is no longer current");
+      }
+      headers["x-writer-epoch"] = writerEpoch;
+    }
+    return headers;
   }
 
   async function runOnce() {
@@ -403,8 +417,8 @@ export function createAgentClient({
       }
       if (receiptsToRecover.length > 0) {
         try {
-          for (const receipt of receiptsToRecover) {
-            await transport.submitReceipt(receipt, { headers: buildHeaders() });
+          for (const { writerEpoch, ...receipt } of receiptsToRecover) {
+            await transport.submitReceipt(receipt, { headers: buildHeaders(writerEpoch) });
           }
         } catch (error) {
           // A writer-epoch/authority rejection keeps the receipts
@@ -440,43 +454,43 @@ export function createAgentClient({
         channelRefs: [...channelRefs].sort(),
       });
       let claimIdempotencyKey = state.pendingClaim?.idempotencyKey;
-      if (
-        typeof claimIdempotencyKey !== "string"
-        || !claimKeyPattern.test(claimIdempotencyKey)
-        || state.pendingClaim?.scopeFingerprint !== claimScopeFingerprint
-      ) {
-        claimIdempotencyKey = "claim:" + nodeRef + ":" + randomUUID();
-        state = {
-          ...state,
-          pendingClaim: {
-            idempotencyKey: claimIdempotencyKey,
-            scopeFingerprint: claimScopeFingerprint,
-          },
-        };
-        try {
-          await stateStore.save(state);
-        } catch (error) {
-          return {
-            status: "retry_later",
-            stage: "state",
-            error: String(error?.message ?? error),
-          };
-        }
-      }
-
+      let claimEpoch = state.pendingClaim?.writerEpoch;
       let desired;
       try {
+        if (
+          typeof claimIdempotencyKey !== "string"
+          || !claimKeyPattern.test(claimIdempotencyKey)
+          || state.pendingClaim?.scopeFingerprint !== claimScopeFingerprint
+        ) {
+          claimEpoch = writerEpochForwarding ? coordinatorWriterEpoch() : undefined;
+          claimIdempotencyKey = "claim:" + nodeRef + ":" + randomUUID();
+          state = {
+            ...state,
+            pendingClaim: {
+              idempotencyKey: claimIdempotencyKey,
+              scopeFingerprint: claimScopeFingerprint,
+              ...(writerEpochForwarding ? { writerEpoch: claimEpoch } : {}),
+            },
+          };
+          try {
+            await stateStore.save(state);
+          } catch (error) {
+            return {
+              status: "retry_later",
+              stage: "state",
+              error: String(error?.message ?? error),
+            };
+          }
+        }
         desired = await transport.fetchDesiredState({
           nodeRef,
           channelRefs,
-          headers: buildHeaders(),
+          headers: buildHeaders(claimEpoch),
           idempotencyKey: claimIdempotencyKey,
         });
       } catch (error) {
-        // Writer-epoch/authority rejections (stale epoch, frozen or
-        // non-D1 authority) keep the pending claim intact for the next
-        // cycle: the client retries with the same coordinator epoch
-        // after the coordinator re-issues it, never with a guess.
+        // Keep the persisted claim key and epoch after authority errors.
+        // A later cycle may replay them only if the coordinator agrees.
         const writerCode = writerErrorCode(error);
         if (writerCode) {
           return {
@@ -603,7 +617,11 @@ export function createAgentClient({
         desiredStateDigest: manifest.desiredStateDigest,
         desiredStateRef: manifest.desiredStateRef,
         pendingClaim: null,
-        pendingReceipts: receipts,
+        // The epoch belongs to the durable queue entry, not the wire receipt.
+        // Every receipt for a claim keeps the epoch used to obtain that claim.
+        pendingReceipts: writerEpochForwarding
+          ? receipts.map((receipt) => ({ ...receipt, writerEpoch: claimEpoch }))
+          : receipts,
         deferredReceipts: Array.isArray(state.deferredReceipts) ? state.deferredReceipts : [],
       };
       try {
@@ -614,7 +632,7 @@ export function createAgentClient({
 
       try {
         for (const receipt of receipts) {
-          await transport.submitReceipt(receipt, { headers: buildHeaders() });
+          await transport.submitReceipt(receipt, { headers: buildHeaders(claimEpoch) });
         }
       } catch (error) {
         // Receipts stay pending in appliedState: the next cycle

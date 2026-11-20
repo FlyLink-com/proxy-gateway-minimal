@@ -49,6 +49,7 @@ function deltaError(code, message) {
 }
 
 const SAFE_IDENTIFIER = /^[A-Za-z0-9_]+$/;
+const ROW_FINGERPRINT = /^[0-9a-f]{64}$/;
 
 function assertIdentifier(value, field) {
   if (typeof value !== "string" || !SAFE_IDENTIFIER.test(value)) {
@@ -74,12 +75,9 @@ export function fingerprintRow(row, { excludeColumns = [] } = {}) {
     throw deltaError("delta_row_invalid", "fingerprintRow requires a row object");
   }
   const excluded = new Set(excludeColumns);
-  const visible = {};
-  for (const key of Object.keys(row).sort()) {
-    if (excluded.has(key)) continue;
-    if (isCredentialColumn(key)) continue;
-    visible[key] = row[key] ?? null;
-  }
+  const visible = Object.fromEntries(Object.entries(row)
+    .filter(([key]) => !excluded.has(key) && !isCredentialColumn(key))
+    .map(([key, value]) => [key, value ?? null]));
   return createHash("sha256").update(canonicalJson(visible)).digest("hex");
 }
 
@@ -102,10 +100,36 @@ function assertTableExists(db, table) {
 }
 
 function assertPkColumn(db, table, pk) {
-  const columns = db.prepare(`pragma table_info(${table})`).all();
+  const columns = db.prepare(`pragma main.table_info("${table}")`).all();
   if (!columns.some((column) => column.name === pk)) {
     throw deltaError("delta_pk_missing", `delta pk column is missing: ${table}.${pk}`);
   }
+  const primaryKey = columns.filter((column) => column.pk > 0);
+  if (primaryKey.length !== 1 || primaryKey[0].name !== pk || isCredentialColumn(pk)) {
+    throw deltaError("delta_pk_unsupported", "delta requires a supported single-column primary key");
+  }
+  const declaredType = primaryKey[0].type.toUpperCase();
+  if (declaredType.includes("INT")) return "integer";
+  if (/CHAR|CLOB|TEXT/.test(declaredType)) return "text";
+  throw deltaError("delta_pk_unsupported", "delta primary keys require integer or text affinity");
+}
+
+function readFingerprints(db, table, pk, keyAffinity, excludeColumns) {
+  const rows = db.prepare(`select * from main."${table}" order by "${pk}" asc`).all();
+  const fingerprints = new Map();
+  for (const row of rows) {
+    const value = row[pk];
+    const valid = keyAffinity === "text" ? typeof value === "string" : Number.isSafeInteger(value);
+    if (!valid) {
+      throw deltaError("delta_pk_unsupported", "delta primary keys require text or safe integers of the declared affinity");
+    }
+    const key = String(value);
+    if (fingerprints.has(key)) {
+      throw deltaError("delta_pk_unsupported", "delta primary-key encoding must be unique");
+    }
+    fingerprints.set(key, fingerprintRow(row, { excludeColumns }));
+  }
+  return fingerprints;
 }
 
 // Build a checkpoint manifest for the given tables: { snapshotId,
@@ -120,19 +144,15 @@ export function buildCheckpointManifest(db, { tables, snapshotId } = {}) {
   if (!db || typeof db.prepare !== "function") {
     throw deltaError("delta_table_missing", "checkpoint manifest requires a database handle");
   }
-  const manifest = { snapshotId, tables: {} };
+  const fingerprintsByTable = new Map();
   for (const spec of tables) {
     const { table, pk, excludeColumns } = assertTableSpec(spec);
     assertTableExists(db, table);
-    assertPkColumn(db, table, pk);
-    const rows = db.prepare(`select * from ${table} order by ${pk} asc`).all();
-    const entries = {};
-    for (const row of rows) {
-      entries[String(row[pk])] = fingerprintRow(row, { excludeColumns });
-    }
-    manifest.tables[table] = entries;
+    const keyAffinity = assertPkColumn(db, table, pk);
+    const entries = readFingerprints(db, table, pk, keyAffinity, excludeColumns);
+    fingerprintsByTable.set(table, Object.fromEntries(entries));
   }
-  return manifest;
+  return { snapshotId, tables: Object.fromEntries(fingerprintsByTable) };
 }
 
 // Enumerate the delta between a checkpoint manifest and the current
@@ -143,7 +163,7 @@ export function buildCheckpointManifest(db, { tables, snapshotId } = {}) {
 export function enumerateSourceDeltas(db, { tables, checkpoint } = {}) {
   if (!checkpoint || typeof checkpoint !== "object" || Array.isArray(checkpoint)
     || typeof checkpoint.snapshotId !== "string" || checkpoint.snapshotId.length === 0
-    || !checkpoint.tables || typeof checkpoint.tables !== "object") {
+    || !checkpoint.tables || typeof checkpoint.tables !== "object" || Array.isArray(checkpoint.tables)) {
     throw deltaError("delta_checkpoint_invalid", "delta enumeration requires a valid checkpoint manifest");
   }
   if (!Array.isArray(tables) || tables.length === 0) {
@@ -160,7 +180,7 @@ export function enumerateSourceDeltas(db, { tables, checkpoint } = {}) {
   for (const spec of tables) {
     const { table, pk, excludeColumns } = assertTableSpec(spec);
     assertTableExists(db, table);
-    assertPkColumn(db, table, pk);
+    const keyAffinity = assertPkColumn(db, table, pk);
     // A checkpoint that does not cover a requested table is incomplete
     // (interrupted snapshot): fail closed instead of silently treating
     // every current row as inserted.
@@ -168,14 +188,13 @@ export function enumerateSourceDeltas(db, { tables, checkpoint } = {}) {
       throw deltaError("delta_checkpoint_invalid", `checkpoint does not cover table: ${table}`);
     }
     const previous = checkpoint.tables[table];
-    if (typeof previous !== "object" || Array.isArray(previous)) {
+    if (!previous || typeof previous !== "object" || Array.isArray(previous)) {
       throw deltaError("delta_checkpoint_invalid", `checkpoint entries for ${table} must be an object`);
     }
-    const rows = db.prepare(`select * from ${table} order by ${pk} asc`).all();
-    const current = new Map();
-    for (const row of rows) {
-      current.set(String(row[pk]), fingerprintRow(row, { excludeColumns }));
+    if (Object.values(previous).some(value => typeof value !== "string" || !ROW_FINGERPRINT.test(value))) {
+      throw deltaError("delta_checkpoint_invalid", "checkpoint entries must be SHA-256 fingerprints");
     }
+    const current = readFingerprints(db, table, pk, keyAffinity, excludeColumns);
     const inserted = [];
     const updated = [];
     for (const [pkValue, fingerprint] of current.entries()) {
