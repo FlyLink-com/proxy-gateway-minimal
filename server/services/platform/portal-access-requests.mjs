@@ -2361,13 +2361,16 @@ export function createPortalAccessRequestService(options = {}) {
       };
     },
 
-    canResetSubscriptionLink() {
+    canResetSubscriptionLink(input = {}) {
       if (!subscriptionLinkResetEnabled
         || typeof controlStore?.getPortalSubscriptionLinkResetStore !== "function"
         || typeof runtimeCore?.prepareSubscriptionArtifactRotation !== "function"
-        || typeof runtimeCore?.commitPreparedSubscriptionArtifactRotation !== "function") return false;
+        || typeof runtimeCore?.commitPreparedSubscriptionArtifactRotation !== "function"
+        || typeof input.portalUserRef !== "string"
+        || typeof input.requestRef !== "string") return false;
       try {
         controlStore.getPortalSubscriptionLinkResetStore({ nowFn });
+        getOwnedDeliveredRecord(input);
         return true;
       } catch {
         return false;
