@@ -2361,6 +2361,19 @@ export function createPortalAccessRequestService(options = {}) {
       };
     },
 
+    canResetSubscriptionLink() {
+      if (!subscriptionLinkResetEnabled
+        || typeof controlStore?.getPortalSubscriptionLinkResetStore !== "function"
+        || typeof runtimeCore?.prepareSubscriptionArtifactRotation !== "function"
+        || typeof runtimeCore?.commitPreparedSubscriptionArtifactRotation !== "function") return false;
+      try {
+        controlStore.getPortalSubscriptionLinkResetStore({ nowFn });
+        return true;
+      } catch {
+        return false;
+      }
+    },
+
     resetSubscriptionLink(input = {}) {
       // This operation rotates only the download artifact, never tenant tokens,
       // edge material, usage bindings or commercial resources.
