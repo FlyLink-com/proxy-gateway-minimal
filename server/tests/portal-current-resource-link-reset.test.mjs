@@ -36,7 +36,7 @@ function makeService({ model = "legacy", resetAvailable = true, calls = [] } = {
     }
   };
   const accessRequests = {
-    canResetSubscriptionLink() { return resetAvailable; },
+    canResetSubscriptionLink(input) { return resetAvailable && input?.portalUserRef === ACCOUNT && input?.requestRef === REQUEST_REF; },
     resetSubscriptionLink(input) {
       calls.push(structuredClone(input));
       if (input.portalUserRef !== ACCOUNT) throw failure("not_found");
