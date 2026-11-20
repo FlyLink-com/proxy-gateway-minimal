@@ -97,20 +97,17 @@ export function createPortalCurrentResourceService({
     getCurrentOverview({ accountId }) {
       const result = read(accountId);
       if (result.model === "wallet_first") {
-        const resource = snapshotWalletFirstCurrentResourceProjection(walletFirstProjection).getCurrentOverview({ accountId });
-        return resource.state === "available"
-          ? { ...resource, linkResetAvailable: false }
-          : resource;
+        return snapshotWalletFirstCurrentResourceProjection(walletFirstProjection).getCurrentOverview({ accountId });
       }
-      if (result.resource.state !== "available") return result.resource;
-      let linkResetAvailable = false;
+      if (result.resource.state !== "available" || result.resource.setupAvailable !== true) return result.resource;
       try {
-        linkResetAvailable = result.resource.setupAvailable === true
-          && accessRequests?.canResetSubscriptionLink?.() === true;
+        if (accessRequests?.canResetSubscriptionLink?.() === true) {
+          return { ...result.resource, linkResetAvailable: true };
+        }
       } catch {
-        linkResetAvailable = false;
+        // A capability hint is fail-closed and never blocks the resource overview.
       }
-      return { ...result.resource, linkResetAvailable };
+      return result.resource;
     },
     getCurrentResource({ accountId }) {
       const result = read(accountId);
