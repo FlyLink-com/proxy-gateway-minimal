@@ -369,7 +369,7 @@ export function createApp(state, options = {}) {
   // These sensitive routes can be rejected before their handlers by cookie/CSRF
   // or JSON parsing middleware. Those failures retain their privacy headers.
   const isSubscriptionLinkMutation = req => [
-    PORTAL_SUBSCRIPTION_LINK_RESET_PATH, "/api/portal/access-requests/refresh"
+    PORTAL_SUBSCRIPTION_LINK_RESET_PATH, PORTAL_CURRENT_RESOURCE_LINK_RESET_PATH, "/api/portal/access-requests/refresh"
   ].includes(req.path.toLowerCase().replace(/\/$/, ""));
   app.use((req, res, next) => {
     if (isSubscriptionLinkMutation(req)) {
