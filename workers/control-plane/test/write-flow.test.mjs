@@ -276,6 +276,7 @@ test("repository batch is atomic: a failing idempotency insert rolls back the ch
   const repository = new ChallengeRepository(db);
   await assert.rejects(
     repository.issueChallengeAtomically({
+      epoch: 3,
       challenge: {
         id: "chal-atomic-1",
         accountId: "acct-pg-102",
