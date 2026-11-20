@@ -52,6 +52,23 @@ test("G4 missing/stale/invalid epoch reject before Agent nonce consumption", asy
   assert.equal((await find(db,stateSql)).n,0);
 });
 
+test("G4 checks bearer and scope before exposing an epoch error", async (t) => {
+  const { mf, db, agent } = await createWorker();
+  t.after(() => mf.dispose());
+  const unauthorized = await mf.dispatchFetch(desiredUrl, {
+    headers: { ...agentHeaders(agent, null), authorization: "Bearer " + "x".repeat(32) },
+  });
+  assert.equal(unauthorized.status, 401);
+  assert.equal((await unauthorized.json()).error.code, "unauthorized");
+
+  const outsideScope = new URL(desiredUrl);
+  outsideScope.searchParams.set("channelRefs", "chan-synth-foreign");
+  const forbidden = await mf.dispatchFetch(outsideScope, { headers: agentHeaders(agent, "003") });
+  assert.equal(forbidden.status, 403);
+  assert.equal((await forbidden.json()).error.code, "scope_violation");
+  assert.equal((await find(db, "SELECT COUNT(*) AS n FROM agent_request_nonces")).n, 0);
+});
+
 test("G4 valid D1 epoch issues claim and records nonce through the fenced D1 adapter", async (t) => {
   const { mf, db, agent } = await createWorker();
   t.after(() => mf.dispose());
@@ -132,15 +149,19 @@ test("G4 receipt POST rejects stale/frozen authority before nonce or idempotent 
     }),
     status:"applied", detail:{mode:"apply"}, redacted:true,
   };
-  const send=(epoch)=>mf.dispatchFetch(origin+"/v1/agent/receipts",{
+  const send=(epoch, headers = {})=>mf.dispatchFetch(origin+"/v1/agent/receipts",{
     method:"POST",
     headers:{
       ...agentHeaders(agent,epoch),
       "idempotency-key":receipt.idempotencyKey,
-      "content-type":"application/json"
+      "content-type":"application/json",
+      ...headers
     },
     body:JSON.stringify(receipt),
   });
+  const unauthorized = await send(null, { authorization: "Bearer " + "x".repeat(32) });
+  assert.equal(unauthorized.status, 401);
+  assert.equal((await unauthorized.json()).error.code, "unauthorized");
   const stale=await send("2");
   assert.equal(stale.status,409);
   assert.equal((await stale.json()).error.code,"writer_epoch_stale");

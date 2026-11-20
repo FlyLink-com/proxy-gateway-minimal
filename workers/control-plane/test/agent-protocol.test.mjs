@@ -834,6 +834,13 @@ test("G4 expired overlap revokes only the candidate and retains the current key"
     "UPDATE agent_api_credentials SET activated_at = ?, overlap_expires_at = ? WHERE key_id = ?",
   ).bind(activatedAt, expiredAt, nextKeyId).run();
 
+  const missingEpochHeaders = headersFor(agent, { keyId: nextKeyId, token: nextToken });
+  delete missingEpochHeaders["x-writer-epoch"];
+  const withoutEpoch = await fetchDesired(mf, agent, missingEpochHeaders);
+  assert.equal(withoutEpoch.status, 401);
+  assert.equal((await withoutEpoch.json()).error.code, "credential_overlap_expired");
+  assert.equal((await repository.findCredential(nextKeyId)).status, "overlap");
+
   const expiredResponse = await fetchDesired(
     mf,
     agent,

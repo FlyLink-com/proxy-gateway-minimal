@@ -1,5 +1,15 @@
 # D1 Stage 1B — G4 Agent writer-epoch contract / Muse BWH handoff
 
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: active
+  authority_scope: source_only_d1_stage1b_agent_epoch_handoff
+  superseded_by: null
+  last_verified_at: 2026-11-20
+  production_authority: false
+```
+
 Date: 2026-11-20. Source: Worker stage 1A Draft PR #894,
 stage 1B Draft PR #895 (stacked on #894), staging baseline PR #893.
 Deployment principal: **gccltd.co2026@gmail.com** Primary Cloudflare
@@ -24,6 +34,9 @@ guard to all mutation batches. Reads remain SELECT-only. DML via
 `.all()`/`.first()` and raw `.exec()` are rejected. A query-level
 preflight check is not considered sufficient; all mutations need their
 own atomic fence, even during concurrent cutover.
+
+Agent credentials and node/channel scope are checked before disclosing epoch
+errors. Credential expiry cleanup uses the same transaction fence.
 
 The default D1 authority migration `0005_writer_authority_guard_slice.sql`
 is **synthetic/local only**, initialized as

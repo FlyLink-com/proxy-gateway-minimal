@@ -181,25 +181,12 @@ async function authenticateAgent(request, env, {
   if (!credential || credential.revoked_at) {
     return { response: jsonError(401, "unauthorized", "Agent credential is not active") };
   }
-
-  // Desired-state GET is NOT read-only: nonce consumption, credential
-  // heartbeat and manifest claims are writes, as are receipt acknowledgments.
-  // Check the request's epoch before the first database mutation; every
-  // subsequent .run()/.batch() goes through the same-transaction D1 gate.
-  let epoch, fencedDb;
-  try {
-    epoch = parseWriterEpoch(request.headers.get(WRITER_EPOCH_HEADER));
-    await new WriterAuthorityRepository(env.CONTROL_DB).assertWritable(epoch);
-    fencedDb = createEpochFencedD1(env.CONTROL_DB, epoch);
-  } catch (error) {
-    if (error instanceof WriterAuthorityError) {
-      const status = error.code === "writer_epoch_required" ? 400
-        : error.code === "writer_epoch_stale" ? 409 : 503;
-      return { response: jsonError(status, error.code, "write authority does not permit this request") };
-    }
-    throw error;
+  const presentedDigest = await sha256Hex(bearer[1]);
+  if (!constantTimeEqual(presentedDigest, credential.token_sha256)) {
+    return { response: jsonError(401, "unauthorized", "Agent credential is not active") };
   }
-  const repository = new AgentRepository(fencedDb);
+
+  let overlapExpired = false;
   if (credential.status === "overlap") {
     const activatedAt = Date.parse(credential.activated_at);
     const expiresAt = Date.parse(credential.overlap_expires_at);
@@ -211,10 +198,7 @@ async function authenticateAgent(request, env, {
     ) {
       return { response: jsonError(401, "credential_overlap_invalid", "Agent credential overlap is invalid") };
     }
-    if (now.getTime() >= expiresAt) {
-      await repository.expireOverlap(keyId, now.toISOString());
-      return { response: jsonError(401, "credential_overlap_expired", "Agent credential overlap expired") };
-    }
+    overlapExpired = now.getTime() >= expiresAt;
   } else if (credential.status !== "active") {
     return { response: jsonError(401, "unauthorized", "Agent credential is not active") };
   }
@@ -222,11 +206,6 @@ async function authenticateAgent(request, env, {
   if (Date.parse(credential.activated_at) > now.getTime()) {
     return { response: jsonError(401, "unauthorized", "Agent credential is not yet active") };
   }
-  const presentedDigest = await sha256Hex(bearer[1]);
-  if (!constantTimeEqual(presentedDigest, credential.token_sha256)) {
-    return { response: jsonError(401, "unauthorized", "Agent credential is not active") };
-  }
-
   let allowedChannels;
   try {
     allowedChannels = parseChannelRefs(JSON.parse(credential.channel_refs_json).join(","));
@@ -262,7 +241,29 @@ async function authenticateAgent(request, env, {
     return { response: jsonError(403, "scope_violation", "Agent channel assignment is outside the requested scope") };
   }
 
+  // Only a scoped Agent can observe epoch errors. The fence must hold before
+  // any mutation, including expiry cleanup and nonce consumption.
   const nowIso = now.toISOString();
+  let fencedDb;
+  try {
+    const epoch = parseWriterEpoch(request.headers.get(WRITER_EPOCH_HEADER));
+    await new WriterAuthorityRepository(env.CONTROL_DB).assertWritable(epoch);
+    fencedDb = createEpochFencedD1(env.CONTROL_DB, epoch);
+    if (overlapExpired) {
+      await new AgentRepository(fencedDb).expireOverlap(keyId, nowIso);
+    }
+  } catch (error) {
+    if (!(error instanceof WriterAuthorityError)) throw error;
+    if (!overlapExpired) {
+      const status = error.code === "writer_epoch_required" ? 400
+        : error.code === "writer_epoch_stale" ? 409 : 503;
+      return { response: jsonError(status, error.code, "write authority does not permit this request") };
+    }
+  }
+  if (overlapExpired) {
+    return { response: jsonError(401, "credential_overlap_expired", "Agent credential overlap expired") };
+  }
+  const repository = new AgentRepository(fencedDb);
   try {
     await repository.consumeNonce({ keyId, nonce, nowIso });
   } catch (error) {
