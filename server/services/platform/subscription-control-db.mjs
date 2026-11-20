@@ -1,5 +1,9 @@
 import { recordReferralRegistration } from './portal-referral-contract.mjs';
 import { createPortalSubscriptionLinkResetStore, verifyPortalSubscriptionLinkResetLineage } from "./portal-subscription-link-reset-store.mjs";
+import {
+  ensureWriterAuthority,
+  guardedTransaction,
+} from "./single-writer-authority.mjs";
 import { isMaskedEmailDisplay } from "./email-masking.mjs";
 import { IdentityBindingRepository } from "./d1-identity-binding-repository.mjs";
 import Database from "better-sqlite3";
@@ -1904,6 +1908,11 @@ export function createSqliteSubscriptionControlStore({
     { name: "edge_lifecycle_mutation", definition: "edge_lifecycle_mutation integer not null default 0" },
     { name: "event_json", definition: "event_json text not null default '{}'" }
   ]);
+
+  // Install the BWH authority fence on normal startup without changing
+  // existing state. Opening without schema initialization does not install
+  // authority until the first guarded write on an uninstalled legacy database.
+  if (initializeSchema) ensureWriterAuthority(db);
 
   function upsertLead(input, { expiresAt } = {}) {
     const record = {
@@ -10274,11 +10283,19 @@ export function createSqliteSubscriptionControlStore({
     }
   }
 
-  function runInTransaction(callback) {
+  // D1 Stage 1B: service-layer write transactions. Every call runs inside
+  // one BEGIN IMMEDIATE business transaction that reads and enforces the
+  // authority before any write. Another connection cannot freeze the
+  // database between the fence and the first business write. The epoch,
+  // when supplied, must come from a durable
+  // coordinator receipt; it is never defaulted or guessed here. Callers
+  // without a receipt get the phase-only fence, which is what stops old
+  // and background processes that hold no epoch.
+  function runInTransaction(callback, options = {}) {
     if (typeof callback !== "function") {
       throw platformError("validation_error", "transaction callback is required");
     }
-    return db.transaction(callback)();
+    return guardedTransaction(db, options.writerEpoch, callback);
   }
 
   return {

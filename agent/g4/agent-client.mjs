@@ -31,6 +31,46 @@ export class AgentContractError extends Error {
   }
 }
 
+// D1 Stage 1B writer-epoch forwarding (handoff docs/D1_STAGE1B_AGENT_
+// EPOCH_MUSE_HANDOFF_V1.md). x-writer-epoch is a decimal ASCII integer
+// in 1..2147483647 with no leading zeroes. It is NOT authentication:
+// the scoped bearer token, nonce, timestamp, key ID, nodeRef and
+// idempotency rules remain necessary. The epoch only ever comes from a
+// durable coordinator receipt via epochProvider; it is never generated,
+// defaulted, or guessed by this client. Forwarding is OFF by default:
+// production transport stays disabled until an approved staged handover
+// explicitly enables it.
+const WRITER_EPOCH_PATTERN = /^(0|[1-9][0-9]*)$/;
+const WRITER_EPOCH_MAX = 2147483647;
+
+// Writer error codes the client preserves on a retry_later. Four are
+// returned by the Worker (Stage 1A/1B): writer_epoch_required,
+// writer_epoch_stale, writer_authority_not_d1,
+// writer_authority_unavailable. The fifth, writer_epoch_invalid, is
+// client-side only: this client raises it when the coordinator-issued
+// epoch is malformed, and the Worker never returns it. A transport
+// failure carrying one of these codes must surface as retry_later with
+// the code preserved: the client never falls back to a local write and
+// never retries with a different epoch.
+export const WRITER_ERROR_CODES = new Set([
+  "writer_epoch_required",
+  "writer_epoch_invalid",
+  "writer_epoch_stale",
+  "writer_authority_not_d1",
+  "writer_authority_unavailable",
+]);
+
+export function isValidWriterEpoch(value) {
+  if (typeof value !== "string" || !WRITER_EPOCH_PATTERN.test(value)) return false;
+  const epoch = Number(value);
+  return Number.isSafeInteger(epoch) && epoch >= 1 && epoch <= WRITER_EPOCH_MAX;
+}
+
+export function writerErrorCode(error) {
+  const code = error?.code;
+  return typeof code === "string" && WRITER_ERROR_CODES.has(code) ? code : null;
+}
+
 // --- single-instance locks (AGT-POLL-3) -------------------------------
 
 export function createMemoryLock() {
@@ -255,19 +295,75 @@ export function createAgentClient({
   auth = null,
   config = {},
   now = () => new Date(),
+  // D1 Stage 1B: epochProvider supplies the coordinator-issued epoch
+  // (durable coordinator receipt) as a decimal ASCII string; it is
+  // consulted only when writerEpochForwarding is true. Both default to
+  // off: without an approved staged handover the client sends no
+  // x-writer-epoch header and behaves exactly as before.
+  epochProvider = null,
+  writerEpochForwarding = false,
 }) {
   const dryRun = config.dryRun !== false;
   const applyEnabled = config.applyEnabled === true;
 
-  function buildHeaders() {
-    if (!auth) return {};
-    return {
-      authorization: `Bearer ${auth.token}`,
-      "x-agent-key-id": auth.keyId,
-      "x-agent-node-ref": nodeRef,
-      "x-agent-timestamp": now().toISOString(),
-      "x-agent-nonce": randomUUID(),
-    };
+  // Read and normalize the current coordinator epoch. Throws
+  // AgentContractError (writer_epoch_required / writer_epoch_invalid)
+  // when forwarding is enabled but no valid coordinator epoch is
+  // available: fail closed, never send a guessed or default epoch.
+  function coordinatorWriterEpoch() {
+    if (typeof epochProvider !== "function") {
+      throw new AgentContractError(
+        "writer_epoch_required",
+        "writer epoch forwarding requires a coordinator epoch provider",
+      );
+    }
+    const epoch = epochProvider();
+    if (epoch === null || epoch === undefined) {
+      throw new AgentContractError(
+        "writer_epoch_required",
+        "no coordinator-issued writer epoch is available",
+      );
+    }
+    // The coordinator receipt carries the epoch as a number; the wire
+    // header is always its decimal ASCII string. Normalize here so a
+    // numeric receipt epoch is accepted; isValidWriterEpoch still
+    // enforces the wire format (string, 1..2147483647, no leading
+    // zeroes), so 0, fractions, and out-of-range numbers stay invalid.
+    const epochText = typeof epoch === "number" ? String(epoch) : epoch;
+    if (!isValidWriterEpoch(epochText)) {
+      throw new AgentContractError(
+        "writer_epoch_invalid",
+        "coordinator-issued writer epoch is malformed",
+      );
+    }
+    return epochText;
+  }
+
+  function buildHeaders(writerEpoch) {
+    const headers = {};
+    if (auth) {
+      headers.authorization = `Bearer ${auth.token}`;
+      headers["x-agent-key-id"] = auth.keyId;
+      headers["x-agent-node-ref"] = nodeRef;
+      headers["x-agent-timestamp"] = now().toISOString();
+      headers["x-agent-nonce"] = randomUUID();
+    }
+    if (writerEpochForwarding) {
+      if (writerEpoch === undefined || writerEpoch === null) {
+        throw new AgentContractError(
+          "writer_epoch_required",
+          "pending operation has no recorded writer epoch",
+        );
+      }
+      if (!isValidWriterEpoch(writerEpoch)) {
+        throw new AgentContractError("writer_epoch_invalid", "recorded writer epoch is malformed");
+      }
+      if (writerEpoch !== coordinatorWriterEpoch()) {
+        throw new AgentContractError("writer_epoch_stale", "recorded writer epoch is no longer current");
+      }
+      headers["x-writer-epoch"] = writerEpoch;
+    }
+    return headers;
   }
 
   async function runOnce() {
@@ -321,13 +417,18 @@ export function createAgentClient({
       }
       if (receiptsToRecover.length > 0) {
         try {
-          for (const receipt of receiptsToRecover) {
-            await transport.submitReceipt(receipt, { headers: buildHeaders() });
+          for (const { writerEpoch, ...receipt } of receiptsToRecover) {
+            await transport.submitReceipt(receipt, { headers: buildHeaders(writerEpoch) });
           }
         } catch (error) {
+          // A writer-epoch/authority rejection keeps the receipts
+          // pending for the next cycle: never drop them, never retry
+          // with a different epoch, never fall back to a local write.
+          const code = writerErrorCode(error);
           return {
             status: "retry_later",
             stage: "receipt",
+            ...(code ? { code } : {}),
             error: String(error?.message ?? error),
           };
         }
@@ -353,39 +454,52 @@ export function createAgentClient({
         channelRefs: [...channelRefs].sort(),
       });
       let claimIdempotencyKey = state.pendingClaim?.idempotencyKey;
-      if (
-        typeof claimIdempotencyKey !== "string"
-        || !claimKeyPattern.test(claimIdempotencyKey)
-        || state.pendingClaim?.scopeFingerprint !== claimScopeFingerprint
-      ) {
-        claimIdempotencyKey = "claim:" + nodeRef + ":" + randomUUID();
-        state = {
-          ...state,
-          pendingClaim: {
-            idempotencyKey: claimIdempotencyKey,
-            scopeFingerprint: claimScopeFingerprint,
-          },
-        };
-        try {
-          await stateStore.save(state);
-        } catch (error) {
-          return {
-            status: "retry_later",
-            stage: "state",
-            error: String(error?.message ?? error),
-          };
-        }
-      }
-
+      let claimEpoch = state.pendingClaim?.writerEpoch;
       let desired;
       try {
+        if (
+          typeof claimIdempotencyKey !== "string"
+          || !claimKeyPattern.test(claimIdempotencyKey)
+          || state.pendingClaim?.scopeFingerprint !== claimScopeFingerprint
+        ) {
+          claimEpoch = writerEpochForwarding ? coordinatorWriterEpoch() : undefined;
+          claimIdempotencyKey = "claim:" + nodeRef + ":" + randomUUID();
+          state = {
+            ...state,
+            pendingClaim: {
+              idempotencyKey: claimIdempotencyKey,
+              scopeFingerprint: claimScopeFingerprint,
+              ...(writerEpochForwarding ? { writerEpoch: claimEpoch } : {}),
+            },
+          };
+          try {
+            await stateStore.save(state);
+          } catch (error) {
+            return {
+              status: "retry_later",
+              stage: "state",
+              error: String(error?.message ?? error),
+            };
+          }
+        }
         desired = await transport.fetchDesiredState({
           nodeRef,
           channelRefs,
-          headers: buildHeaders(),
+          headers: buildHeaders(claimEpoch),
           idempotencyKey: claimIdempotencyKey,
         });
       } catch (error) {
+        // Keep the persisted claim key and epoch after authority errors.
+        // A later cycle may replay them only if the coordinator agrees.
+        const writerCode = writerErrorCode(error);
+        if (writerCode) {
+          return {
+            status: "retry_later",
+            stage: "fetch",
+            code: writerCode,
+            error: String(error?.message ?? error),
+          };
+        }
         if (error?.code === "claim_expired" || error?.statusCode === 410) {
           state = { ...state, pendingClaim: null };
           try {
@@ -503,7 +617,11 @@ export function createAgentClient({
         desiredStateDigest: manifest.desiredStateDigest,
         desiredStateRef: manifest.desiredStateRef,
         pendingClaim: null,
-        pendingReceipts: receipts,
+        // The epoch belongs to the durable queue entry, not the wire receipt.
+        // Every receipt for a claim keeps the epoch used to obtain that claim.
+        pendingReceipts: writerEpochForwarding
+          ? receipts.map((receipt) => ({ ...receipt, writerEpoch: claimEpoch }))
+          : receipts,
         deferredReceipts: Array.isArray(state.deferredReceipts) ? state.deferredReceipts : [],
       };
       try {
@@ -514,10 +632,19 @@ export function createAgentClient({
 
       try {
         for (const receipt of receipts) {
-          await transport.submitReceipt(receipt, { headers: buildHeaders() });
+          await transport.submitReceipt(receipt, { headers: buildHeaders(claimEpoch) });
         }
       } catch (error) {
-        return { status: "retry_later", stage: "receipt", error: String(error?.message ?? error) };
+        // Receipts stay pending in appliedState: the next cycle
+        // resubmits them with the same idempotency keys. A writer
+        // rejection is reported with its stable code, not swallowed.
+        const code = writerErrorCode(error);
+        return {
+          status: "retry_later",
+          stage: "receipt",
+          ...(code ? { code } : {}),
+          error: String(error?.message ?? error),
+        };
       }
 
       try {
