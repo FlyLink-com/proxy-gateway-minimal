@@ -1,3 +1,4 @@
+import { WriterAuthorityError } from "../writer-authority.mjs";
 // G4 Agent protocol repository. All data here is a local synthetic slice;
 // production schema adoption remains a separately gated migration.
 
@@ -59,6 +60,8 @@ export class AgentRepository {
         .bind(keyId, nonce, nowIso, expiresAt)
         .run();
     } catch (error) {
+      // Never reinterpret a transactional epoch rejection as a replay.
+      if (error instanceof WriterAuthorityError) throw error;
       const existing = await this.db
         .prepare("SELECT nonce FROM agent_request_nonces WHERE key_id = ? AND nonce = ?")
         .bind(keyId, nonce)
@@ -231,6 +234,7 @@ export class AgentRepository {
           ),
       ]);
     } catch (error) {
+      if (error instanceof WriterAuthorityError) throw error;
       const winner = await this.db
         .prepare(
           "SELECT key_id FROM agent_api_credentials " +

@@ -7,6 +7,8 @@ import {
   MAX_OVERLAP_MS,
   NonceReplayError,
 } from "./repositories/agent-repository.mjs";
+import { createEpochFencedD1 } from "./epoch-fenced-d1.mjs";
+import { WriterAuthorityRepository, WriterAuthorityError, parseWriterEpoch, WRITER_EPOCH_HEADER } from "./writer-authority.mjs";
 
 const REF_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const GENERATION_PATTERN = /^[A-Za-z0-9._:-]{1,128}$/;
@@ -174,11 +176,17 @@ async function authenticateAgent(request, env, {
     return { response: jsonError(401, "invalid_timestamp", "Agent timestamp is outside the allowed clock window") };
   }
 
-  const repository = new AgentRepository(env.CONTROL_DB);
-  const credential = await repository.findCredential(keyId);
+  // Read-only credential lookup may precede the write fence.
+  const credential = await new AgentRepository(env.CONTROL_DB).findCredential(keyId);
   if (!credential || credential.revoked_at) {
     return { response: jsonError(401, "unauthorized", "Agent credential is not active") };
   }
+  const presentedDigest = await sha256Hex(bearer[1]);
+  if (!constantTimeEqual(presentedDigest, credential.token_sha256)) {
+    return { response: jsonError(401, "unauthorized", "Agent credential is not active") };
+  }
+
+  let overlapExpired = false;
   if (credential.status === "overlap") {
     const activatedAt = Date.parse(credential.activated_at);
     const expiresAt = Date.parse(credential.overlap_expires_at);
@@ -190,10 +198,7 @@ async function authenticateAgent(request, env, {
     ) {
       return { response: jsonError(401, "credential_overlap_invalid", "Agent credential overlap is invalid") };
     }
-    if (now.getTime() >= expiresAt) {
-      await repository.expireOverlap(keyId, now.toISOString());
-      return { response: jsonError(401, "credential_overlap_expired", "Agent credential overlap expired") };
-    }
+    overlapExpired = now.getTime() >= expiresAt;
   } else if (credential.status !== "active") {
     return { response: jsonError(401, "unauthorized", "Agent credential is not active") };
   }
@@ -201,11 +206,6 @@ async function authenticateAgent(request, env, {
   if (Date.parse(credential.activated_at) > now.getTime()) {
     return { response: jsonError(401, "unauthorized", "Agent credential is not yet active") };
   }
-  const presentedDigest = await sha256Hex(bearer[1]);
-  if (!constantTimeEqual(presentedDigest, credential.token_sha256)) {
-    return { response: jsonError(401, "unauthorized", "Agent credential is not active") };
-  }
-
   let allowedChannels;
   try {
     allowedChannels = parseChannelRefs(JSON.parse(credential.channel_refs_json).join(","));
@@ -241,7 +241,29 @@ async function authenticateAgent(request, env, {
     return { response: jsonError(403, "scope_violation", "Agent channel assignment is outside the requested scope") };
   }
 
+  // Only a scoped Agent can observe epoch errors. The fence must hold before
+  // any mutation, including expiry cleanup and nonce consumption.
   const nowIso = now.toISOString();
+  let fencedDb;
+  try {
+    const epoch = parseWriterEpoch(request.headers.get(WRITER_EPOCH_HEADER));
+    await new WriterAuthorityRepository(env.CONTROL_DB).assertWritable(epoch);
+    fencedDb = createEpochFencedD1(env.CONTROL_DB, epoch);
+    if (overlapExpired) {
+      await new AgentRepository(fencedDb).expireOverlap(keyId, nowIso);
+    }
+  } catch (error) {
+    if (!(error instanceof WriterAuthorityError)) throw error;
+    if (!overlapExpired) {
+      const status = error.code === "writer_epoch_required" ? 400
+        : error.code === "writer_epoch_stale" ? 409 : 503;
+      return { response: jsonError(status, error.code, "write authority does not permit this request") };
+    }
+  }
+  if (overlapExpired) {
+    return { response: jsonError(401, "credential_overlap_expired", "Agent credential overlap expired") };
+  }
+  const repository = new AgentRepository(fencedDb);
   try {
     await repository.consumeNonce({ keyId, nonce, nowIso });
   } catch (error) {
@@ -258,7 +280,7 @@ async function authenticateAgent(request, env, {
     }
     throw error;
   }
-  return { credential, keyId, now };
+  return { credential, keyId, now, db: fencedDb };
 }
 
 export async function handleAgentDesiredState(request, env) {
@@ -287,12 +309,13 @@ export async function handleAgentDesiredState(request, env) {
     exactChannelSet: true,
   });
   if (auth.response) return auth.response;
+  const db = auth.db;
 
   const requestFingerprint = await sha256Hex(canonicalJson({
     nodeRef,
     channelRefs,
   }));
-  const existing = await env.CONTROL_DB
+  const existing = await db
     .prepare(
       "SELECT request_fingerprint, manifest_json, materials_json, signature, lease_until, status " +
       "FROM agent_manifest_claims WHERE idempotency_key = ?",
@@ -304,7 +327,7 @@ export async function handleAgentDesiredState(request, env) {
       return jsonError(409, "idempotency_conflict", "claim idempotency key was reused with a different scope");
     }
     if (existing.status === "expired" || Date.parse(existing.lease_until) <= auth.now.getTime()) {
-      await env.CONTROL_DB
+      await db
         .prepare(
           "UPDATE agent_manifest_claims SET status = 'expired' " +
           "WHERE idempotency_key = ? AND status = 'leased'",
@@ -320,7 +343,7 @@ export async function handleAgentDesiredState(request, env) {
     });
   }
 
-  const state = await env.CONTROL_DB
+  const state = await db
     .prepare(
       "SELECT desired_state_ref, node_ref, generation, status, expires_at " +
       "FROM agent_desired_states WHERE node_ref = ? AND status = 'active' " +
@@ -334,7 +357,7 @@ export async function handleAgentDesiredState(request, env) {
     return jsonError(410, "desired_state_expired", "active desired state has expired");
   }
 
-  const materialRows = await env.CONTROL_DB
+  const materialRows = await db
     .prepare(
       "SELECT channel_ref, edge_credential_ref, digest FROM agent_desired_state_materials " +
       "WHERE desired_state_ref = ? ORDER BY edge_credential_ref",
@@ -391,7 +414,7 @@ export async function handleAgentDesiredState(request, env) {
   const envelope = { manifest, signature, materials };
 
   try {
-    await env.CONTROL_DB
+    await db
       .prepare(
         "INSERT INTO agent_manifest_claims " +
         "(idempotency_key, request_fingerprint, node_ref, channel_refs_json, desired_state_ref, " +
@@ -415,8 +438,9 @@ export async function handleAgentDesiredState(request, env) {
         auth.now.toISOString(),
       )
       .run();
-  } catch {
-    const committed = await env.CONTROL_DB
+  } catch (error) {
+    if (error instanceof WriterAuthorityError) throw error;
+    const committed = await db
       .prepare(
         "SELECT request_fingerprint, manifest_json, materials_json, signature, lease_until, status " +
         "FROM agent_manifest_claims WHERE idempotency_key = ?",
@@ -619,8 +643,9 @@ export async function handleAgentReceipt(request, env) {
     channelRefs: [payload.channelRef],
   });
   if (auth.response) return auth.response;
+  const db = auth.db;
 
-  const state = await env.CONTROL_DB
+  const state = await db
     .prepare(
       "SELECT desired_state_ref, node_ref, generation, status FROM agent_desired_states " +
       "WHERE desired_state_ref = ? AND node_ref = ? AND generation = ?",
@@ -631,7 +656,7 @@ export async function handleAgentReceipt(request, env) {
     return jsonError(409, "receipt_binding_mismatch", "receipt does not match a retained desired-state generation");
   }
 
-  const expectedRows = await env.CONTROL_DB
+  const expectedRows = await db
     .prepare(
       "SELECT channel_ref, edge_credential_ref, digest FROM agent_desired_state_materials " +
       "WHERE desired_state_ref = ? AND channel_ref = ? ORDER BY edge_credential_ref",
@@ -651,20 +676,20 @@ export async function handleAgentReceipt(request, env) {
   }
 
   const fingerprint = await receiptFingerprint(payload, materialDigests);
-  const existing = await env.CONTROL_DB
+  const existing = await db
     .prepare(
       "SELECT fingerprint FROM agent_apply_receipts WHERE idempotency_key = ?",
     )
     .bind(payload.idempotencyKey)
     .first();
   if (existing) {
-    await markClaimsCompleted(env.CONTROL_DB, payload);
+    await markClaimsCompleted(db, payload);
     return replayReceipt(existing, fingerprint);
   }
 
   const receivedAt = auth.now.toISOString();
   try {
-    await env.CONTROL_DB
+    await db
       .prepare(
         "INSERT INTO agent_apply_receipts " +
         "(idempotency_key, fingerprint, node_ref, channel_ref, generation, desired_state_ref, " +
@@ -685,14 +710,15 @@ export async function handleAgentReceipt(request, env) {
         receivedAt,
       )
       .run();
-  } catch {
-    const committed = await env.CONTROL_DB
+  } catch (error) {
+    if (error instanceof WriterAuthorityError) throw error;
+    const committed = await db
       .prepare("SELECT fingerprint FROM agent_apply_receipts WHERE idempotency_key = ?")
       .bind(payload.idempotencyKey)
       .first();
     if (committed) return replayReceipt(committed, fingerprint);
     throw new Error("receipt write failed");
   }
-  await markClaimsCompleted(env.CONTROL_DB, payload);
+  await markClaimsCompleted(db, payload);
   return jsonResponse(201, { recorded: true, replayed: false });
 }
