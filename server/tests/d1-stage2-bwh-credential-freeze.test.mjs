@@ -44,16 +44,28 @@ const NOW = "2026-11-20T00:00:00.000Z";
 const SNAPSHOT_A = "s2s-snapshot-test-001";
 const SNAPSHOT_B = "s2s-snapshot-test-002";
 
-function makeSnapshot(t, snapshotId = SNAPSHOT_A, timeout = undefined) {
+function makeDatabaseFixture(t, filename) {
   const dir = mkdtempSync(join(tmpdir(), "stage2-cred-"));
-  const dbPath = join(dir, "snapshot.sqlite");
-  const db = timeout === undefined ? new Database(dbPath) : new Database(dbPath, { timeout });
-  const { metadata } = buildSyntheticSourceSnapshot({ db, snapshotId, now: NOW });
+  const dbPath = join(dir, filename);
+  const connections = [];
   t.after(() => {
-    try { db.close(); } catch { /* already closed */ }
+    for (const connection of connections.reverse()) {
+      if (connection.open) connection.close();
+    }
     rmSync(dir, { recursive: true, force: true });
   });
-  return { metadata, db, dir, dbPath };
+  return function openConnection(timeout) {
+    const connection = new Database(dbPath, timeout === undefined ? undefined : { timeout });
+    connections.push(connection);
+    return connection;
+  };
+}
+
+function makeSnapshot(t, snapshotId = SNAPSHOT_A, timeout) {
+  const openConnection = makeDatabaseFixture(t, "snapshot.sqlite");
+  const db = openConnection(timeout);
+  const { metadata } = buildSyntheticSourceSnapshot({ db, snapshotId, now: NOW });
+  return { metadata, db, openConnection };
 }
 
 function assertErrorCode(fn, code) {
@@ -113,10 +125,7 @@ test("S2S-CRED-2 a credential-only rotation is invisible to fingerprints but vis
 });
 
 test("S2S-CRED-3 rows that predate tracking are backfilled and flagged", (t) => {
-  const dir = mkdtempSync(join(tmpdir(), "stage2-cred-"));
-  t.after(() => rmSync(dir, { recursive: true, force: true }));
-  const db = new Database(join(dir, "plain.sqlite"));
-  t.after(() => { try { db.close(); } catch { /* already closed */ } });
+  const db = makeDatabaseFixture(t, "plain.sqlite")();
   db.exec(SNAPSHOT_FIXTURE_DDL.platform_portal_edge_credentials);
   db.prepare(`insert into platform_portal_edge_credentials (request_id, edge_channel_ref, edge_credential_ref, edge_material_digest, ordinal) values ('s2s-request-001', 's2s-channel-a', 's2s-cred-001', ?, 0)`)
     .run(syntheticMaterialDigest("s2s-cred-001"));
@@ -176,10 +185,7 @@ test("S2S-CRED-6 rotation detection reports rotated, added, deleted and unchange
 test("S2S-CRED-7 version digests do not depend on credential values", (t) => {
   const { db } = makeSnapshot(t);
   const manifestA = buildCredentialVersionManifest(db, { snapshotId: SNAPSHOT_A });
-  const dir = mkdtempSync(join(tmpdir(), "stage2-cred-"));
-  t.after(() => rmSync(dir, { recursive: true, force: true }));
-  const db2 = new Database(join(dir, "other.sqlite"));
-  t.after(() => { try { db2.close(); } catch { /* already closed */ } });
+  const db2 = makeDatabaseFixture(t, "other.sqlite")();
   db2.exec(SNAPSHOT_FIXTURE_DDL.platform_portal_edge_credentials);
   ensureCredentialVersionTracking(db2);
   for (const row of [
@@ -201,7 +207,7 @@ test("S2S-CRED-7 version digests do not depend on credential values", (t) => {
 // ---- Task 6: freeze execution and drain ----
 
 test("S2S-FRZ-1 write-lock receipt builds and verifies; a concurrent write lock rejects it", (t) => {
-  const { db, dbPath } = makeSnapshot(t, SNAPSHOT_A, 100);
+  const { db, openConnection } = makeSnapshot(t, SNAPSHOT_A, 100);
   const receipt = buildWriteLockReceipt(db, { snapshotId: SNAPSHOT_A, checkpointId: "s2s-checkpoint-001", outstandingJobs: [] });
   assert.equal(receipt.kind, "write-lock");
   assert.equal(receipt.snapshotId, SNAPSHOT_A);
@@ -209,14 +215,16 @@ test("S2S-FRZ-1 write-lock receipt builds and verifies; a concurrent write lock 
   assert.equal(verifyFreezeReceipt(receipt.receipt), true);
   assert.equal(receipt.receipt.phase, "BWH_ACTIVE");
   assert.equal(receipt.receipt.epoch, 1);
-  const db2 = new Database(dbPath, { timeout: 100 });
-  t.after(() => { try { db2.close(); } catch { /* already closed */ } });
+  const db2 = openConnection(100);
   db2.prepare("begin immediate").run();
-  t.after(() => { try { db2.prepare("rollback").run(); } catch { /* already rolled back */ } });
-  assert.throws(
-    () => buildWriteLockReceipt(db, { snapshotId: SNAPSHOT_A, checkpointId: "s2s-checkpoint-002", outstandingJobs: [] }),
-    (error) => error && (/busy|locked|timeout/i.test(error.message) || error.code === "freeze_receipt_invalid"),
-  );
+  try {
+    assert.throws(
+      () => buildWriteLockReceipt(db, { snapshotId: SNAPSHOT_A, checkpointId: "s2s-checkpoint-002", outstandingJobs: [] }),
+      (error) => error && (/busy|locked|timeout/i.test(error.message) || error.code === "freeze_receipt_invalid"),
+    );
+  } finally {
+    db2.prepare("rollback").run();
+  }
 });
 
 test("S2S-FRZ-2 scheduler quiescence requires positive evidence for every job", (t) => {
@@ -336,9 +344,8 @@ test("S2S-FRZ-6 the unfenced-writer coverage report starts at 28 open", (t) => {
 // ---- Task 7 (credential/freeze side): crash and integrity ----
 
 test("S2S-CRASH-6 cross-connection WAL reads see consistent states while another connection writes", (t) => {
-  const { db, dbPath } = makeSnapshot(t);
-  const db2 = new Database(dbPath);
-  t.after(() => { try { db2.close(); } catch { /* already closed */ } });
+  const { db, openConnection } = makeSnapshot(t);
+  const db2 = openConnection();
   const count = () => db.prepare(`select count(*) as n from platform_accounts`).get().n;
   assert.equal(count(), 3);
   db2.prepare("begin immediate").run();

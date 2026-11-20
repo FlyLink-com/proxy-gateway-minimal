@@ -499,9 +499,12 @@ test("S2S-CRASH-5 FK delete order: cascade removes children, and the manifest st
 // Sanity: better-sqlite3 is available in this test process.
 test("S2S-ENV-1 better-sqlite3 opens a database", (t) => {
   const dir = mkdtempSync(join(tmpdir(), "stage2-env-"));
-  t.after(() => rmSync(dir, { recursive: true, force: true }));
-  const probe = new Database(join(dir, "probe.sqlite"));
-  t.after(() => { try { probe.close(); } catch { /* already closed */ } });
+  let probe;
+  t.after(() => {
+    if (probe?.open) probe.close();
+    rmSync(dir, { recursive: true, force: true });
+  });
+  probe = new Database(join(dir, "probe.sqlite"));
   probe.exec(`create table probe (id integer primary key)`);
   probe.prepare(`insert into probe (id) values (1)`).run();
   assert.equal(probe.prepare(`select count(*) as n from probe`).get().n, 1);
