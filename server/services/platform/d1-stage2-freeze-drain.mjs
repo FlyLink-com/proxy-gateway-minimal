@@ -54,8 +54,9 @@ export const SCHEDULER_JOBS = Object.freeze([
 ]);
 
 // Unfenced-writer baseline from the 1B inventory §15.2 (U-F1..U-F18)
-// and §12 (U-01..U-10). One line each, copied from the inventory;
-// the inventory document is the authority for the full wording.
+// and §12 (U-01..U-10). One line each; the inventory document is the
+// authority for the full wording, except U-F18, whose note was updated
+// here to point at the Stage 2 credential detector (status still open).
 export const UNFENCED_WRITER_BASELINE = Object.freeze([
   { id: "U-F1", note: "standalone wallet connection (coin-wallet-store.mjs): direct wallet transactions unfenced" },
   { id: "U-F2", note: "payment store (own connection): no fence installed" },

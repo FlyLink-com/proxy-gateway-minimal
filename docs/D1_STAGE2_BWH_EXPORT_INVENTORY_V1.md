@@ -167,7 +167,7 @@ cherry-pick（`403cc669` + `763fb979`，树与 `015fae70` 一致）；阶段 2
 
 ## 9. 任务 7 — 崩溃与完整性测试
 
-新增测试 39 个，全部通过（见 §10）。覆盖的情形：
+新增测试 43 个，全部通过（见 §10）。覆盖的情形：
 
 - 跨连接 WAL 读写（未提交写对读者不可见、提交后可见、
   `wal_checkpoint(TRUNCATE)` 正常）。
@@ -181,20 +181,26 @@ cherry-pick（`403cc669` + `763fb979`，树与 `015fae70` 一致）；阶段 2
 - FK 父先子后与反向删除顺序：源端 DDL 是 ON DELETE CASCADE
   （删父自动删子，测试证实）；清单的 delete 顺序仍是子先父后，
   供 D1 端 RESTRICT 外键使用。
-- 带未批准列的恶意 manifest：未映射表拒绝导出；篡改过的页
-  hash 不符；篡改过的 checkpoint 导致相关行被报为 update
-  （强制复查，不静默接受）；幻影 PK 被报为 delete。
+- 带未批准列的恶意 manifest：带未批准列的页被拒（CONDITIONAL
+  的 `metadata_json` 与 DEFER 的 `edge_credential_ref` 各一例，
+  均为 hash 自洽的走私页；excludedColumns 与映射不符也被拒）；
+  未映射表拒绝导出；篡改过的页 hash 不符；篡改过的 checkpoint
+  导致相关行被报为 update（强制复查，不静默接受）；幻影 PK
+  被报为 delete。
 
 ## 10. 测试证据（本轮实际跑出的数字）
 
-- 新增测试：**39/39 通过、0 失败**
-  （`d1-stage2-bwh-export.test.mjs` 23 个 +
+- 新增测试：**43/43 通过、0 失败**
+  （`d1-stage2-bwh-export.test.mjs` 27 个 +
   `d1-stage2-bwh-credential-freeze.test.mjs` 16 个，
   Node v22.23.1，`node --test`）。
-- 全量 `npm test`（本轮分支，Node v22.23.1）：主套件 **7487 个测试、
-  7481 通过、0 失败、6 跳过**；C2 policy **30/30 通过**，
+- 全量 `npm test`（本轮分支，Node v22.23.1）：主套件 **7491 个测试、
+  7485 通过、0 失败、6 跳过**；C2 policy **30/30 通过**，
   `C2_POLICY_CHECK: PASS`。第一轮 7480 通过 / 1 失败（新文档缺
   `document_metadata`，已修），修后重跑 0 失败。
+- 复审第二轮（CHANGES REQUESTED）修复后重跑：新增 4 个测试
+  （S2S-EXP-7/8/9 走私列与 excludedColumns、S2S-MAN-8 行数
+  重算），全量 0 失败；新测试文件 43/43 通过。
 - PR #899 exact head `019c3d0d` 本地独立复核：Worker slice
   **178/178、0 失败**；C2 policy **30/30、0 失败**。
 

@@ -1,13 +1,14 @@
 // D1 Stage 2 — source manifest and synthetic WAL snapshot (task 1).
 //
-// Builds a consistent, immutable synthetic WAL snapshot of the source
-// and the metadata that identifies it: sourceSnapshotId, schema
-// digest, DB-boundary identity, migration-ledger digest, mapping
-// version, snapshot hash, authority + epoch, and the expected table
-// list. The snapshot is verified by recomputation (verify function
-// below); the hash IS the identity — any later modification changes
-// it, so a tampered snapshot fails verification instead of passing
-// silently.
+// Builds a consistent synthetic WAL snapshot of the source and the
+// metadata that identifies it: sourceSnapshotId, schema digest,
+// DB-boundary identity, migration-ledger digest, mapping version,
+// snapshot hash, authority + epoch, and the expected table list. The
+// snapshot is verified by recomputation (verify function below): a
+// pass means the contents agree with the hash recorded at issuance.
+// That is a self-consistency check, not proof against forgery — a
+// snapshot re-issued with a recomputed hash would pass, so the hash
+// itself must come from a trusted issuance.
 //
 // What the snapshot covers, honestly:
 // - The rehearsal subset only: platform_accounts,
@@ -350,9 +351,10 @@ export function buildSyntheticSourceSnapshot({
 
 // Recompute every digest from the live database and compare it with
 // the metadata. Returns { valid: true } on success; throws
-// SourceManifestError naming the first mismatched field. This is the
-// immutability check: a snapshot whose contents changed after the
-// metadata was issued fails here.
+// SourceManifestError naming the first mismatched field. A pass means
+// the contents agree with the hash recorded at issuance; it is a
+// self-consistency check, not proof the hash itself is trustworthy —
+// a snapshot re-issued with a recomputed hash would pass.
 export function verifySyntheticSourceSnapshot(db, metadata) {
   if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)
     || metadata.schemaVersion !== SNAPSHOT_SCHEMA_VERSION
@@ -403,6 +405,21 @@ export function verifySyntheticSourceSnapshot(db, metadata) {
     || JSON.stringify(presence.unexpected) !== JSON.stringify(metadata.unexpectedTables)) {
     throw manifestError("source_snapshot_tables_mismatch", "source snapshot expected-table dispositions do not match its metadata");
   }
+  // Row counts are recomputed from the database and compared before
+  // they enter the hash: the stored counts are never trusted on their
+  // own. The row digests above already cover the three materialized
+  // tables' contents, so this is defense-in-depth — and it is the only
+  // recomputed signal for the credentials table's row count, which has
+  // no row digest of its own.
+  const recomputedRowCounts = {};
+  for (const spec of SNAPSHOT_TABLES) {
+    recomputedRowCounts[spec.table] = db.prepare(`select count(*) as n from ${spec.table}`).get().n;
+  }
+  for (const table of Object.keys(recomputedRowCounts)) {
+    if (recomputedRowCounts[table] !== metadata.tableRowCounts?.[table]) {
+      throw manifestError("source_snapshot_rowcount_mismatch", `source snapshot row count mismatch: ${table}`);
+    }
+  }
   const recomputed = sha256Hex(canonicalJson({
     sourceSnapshotId: metadata.sourceSnapshotId,
     sourceCommit: metadata.sourceCommit,
@@ -411,7 +428,7 @@ export function verifySyntheticSourceSnapshot(db, metadata) {
     epoch: metadata.epoch,
     schemaDigest: metadata.schemaDigest,
     ledgerDigest: metadata.ledgerDigest,
-    tableRowCounts: metadata.tableRowCounts,
+    tableRowCounts: recomputedRowCounts,
     tableRowDigests: metadata.tableRowDigests,
     credentialManifestHash: metadata.credentialManifestHash,
     materializedTables: metadata.materializedTables,

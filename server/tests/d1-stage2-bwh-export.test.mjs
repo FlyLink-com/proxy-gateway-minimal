@@ -4,6 +4,7 @@
 // data, no real credential material, no network.
 import test from "node:test";
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -53,6 +54,28 @@ function makeSnapshot(t, snapshotId = SNAPSHOT_A) {
 
 function assertErrorCode(fn, code) {
   assert.throws(fn, (error) => error && error.code === code);
+}
+
+// Canonical JSON identical to the export module's: sorted keys, no spaces.
+function canonicalJson(value) {
+  if (value === null || typeof value !== "object") return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
+  const keys = Object.keys(value).sort();
+  return `{${keys.map((key) => `${JSON.stringify(key)}:${canonicalJson(value[key])}`).join(",")}}`;
+}
+
+// Add an unapproved column to every row of a page and recompute the
+// hash and byte length exactly as the issuer would, so the page is
+// hash-self-consistent: only the column-authorization check can catch it.
+function smuggleColumn(page, column, value) {
+  const rows = page.rows.map((row) => ({ ...row, [column]: value }));
+  return {
+    ...page,
+    columns: [...page.columns, column],
+    rows,
+    contentHash: createHash("sha256").update(canonicalJson(rows), "utf8").digest("hex"),
+    byteLength: Buffer.byteLength(canonicalJson(rows), "utf8"),
+  };
 }
 
 const CHECKPOINT_TABLES = [
@@ -143,6 +166,12 @@ test("S2S-MAN-7 ledger digest matches the pinned 19-entry registry", (t) => {
   assert.equal(expected.sourceMigrationHistory.length, 19);
   assert.ok(expected.sourceMigrationHistory.every((entry) => /^[0-9a-f]{64}$/.test(entry.ddlSha256)));
   assert.equal(isSourceManifestError(new Error("x")), false);
+});
+
+test("S2S-MAN-8 a metadata row count that disagrees with the database fails snapshot verification", (t) => {
+  const { metadata, db } = makeSnapshot(t);
+  const tampered = { ...metadata, tableRowCounts: { ...metadata.tableRowCounts, platform_accounts: 99 } };
+  assertErrorCode(() => verifySyntheticSourceSnapshot(db, tampered), "source_snapshot_rowcount_mismatch");
 });
 
 // ---- Task 2: safe export batches ----
@@ -240,6 +269,31 @@ test("S2S-EXP-6 a secret-looking value in an approved column is rejected", (t) =
     () => exportPage(db, { table: "platform_accounts", pk: "id", snapshotId: SNAPSHOT_A }),
     "export_sensitive_value_detected",
   );
+});
+
+test("S2S-EXP-7 a page smuggling CONDITIONAL metadata_json with a self-consistent hash is rejected", (t) => {
+  const { db } = makeSnapshot(t);
+  const page = exportPage(db, { table: "platform_accounts", pk: "id", snapshotId: SNAPSHOT_A, limit: 2 });
+  const smuggled = smuggleColumn(page, "metadata_json", "s2s-smuggled-metadata");
+  assertErrorCode(() => verifyExportPage(smuggled), "export_page_column_unapproved");
+});
+
+test("S2S-EXP-8 a page smuggling DEFER edge_credential_ref with a self-consistent hash is rejected", (t) => {
+  const { db } = makeSnapshot(t);
+  const page = exportPage(db, {
+    table: "platform_portal_edge_credentials",
+    pk: ["request_id", "edge_channel_ref"],
+    snapshotId: SNAPSHOT_A, limit: 2,
+  });
+  const smuggled = smuggleColumn(page, "edge_credential_ref", "s2s-smuggled-credential-ref");
+  assertErrorCode(() => verifyExportPage(smuggled), "export_page_column_unapproved");
+});
+
+test("S2S-EXP-9 a page whose excludedColumns disagree with the mapping is rejected", (t) => {
+  const { db } = makeSnapshot(t);
+  const page = exportPage(db, { table: "platform_accounts", pk: "id", snapshotId: SNAPSHOT_A, limit: 2 });
+  const wrongExcluded = { ...page, excludedColumns: page.excludedColumns.filter((entry) => entry.column !== "metadata_json") };
+  assertErrorCode(() => verifyExportPage(wrongExcluded), "export_page_column_unapproved");
 });
 
 // ---- Task 4: deletion / incremental manifest ----

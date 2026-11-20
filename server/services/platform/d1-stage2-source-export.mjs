@@ -309,16 +309,41 @@ export function exportPage(db, {
   };
 }
 
-// Recompute the page hash, byte length and PK ordering. Returns true;
-// throws ExportError on any mismatch.
+// Verify an export page: column authorization first (only KEEP columns
+// for the table, excludedColumns matching the candidate mapping), then
+// content hash, byte length, PK ordering and continuation token.
+// Returns true; throws ExportError on any mismatch. The hash check is
+// self-consistency only — it proves the rows agree with the hash the
+// page carries, not that the hash itself is trustworthy. The column
+// check is different: column authorization does not depend on any
+// secret, so it is enforced here, before the hash.
 export function verifyExportPage(page) {
   if (!page || typeof page !== "object" || Array.isArray(page)
     || page.schemaVersion !== EXPORT_SCHEMA_VERSION
     || typeof page.table !== "string" || !Array.isArray(page.pk) || page.pk.length === 0
     || !Array.isArray(page.columns) || !Array.isArray(page.rows)
+    || !Array.isArray(page.excludedColumns)
     || page.rowCount !== page.rows.length
     || typeof page.byteLength !== "number" || typeof page.contentHash !== "string") {
     throw exportError("export_page_invalid", "export page is malformed");
+  }
+  // A smuggled column with a recomputed hash would pass the hash check
+  // below, so the column list is authorized here, before the hash.
+  const allowedColumns = exportableColumns(page.table);
+  const unapproved = page.columns.filter((column) => !allowedColumns.includes(column));
+  if (unapproved.length > 0) {
+    throw exportError("export_page_column_unapproved", `export page carries unapproved columns for ${page.table}: ${unapproved.join(", ")}`);
+  }
+  const missing = allowedColumns.filter((column) => !page.columns.includes(column));
+  if (missing.length > 0) {
+    throw exportError("export_page_column_unapproved", `export page is missing approved columns for ${page.table}: ${missing.join(", ")}`);
+  }
+  if (new Set(page.columns).size !== page.columns.length) {
+    throw exportError("export_page_column_unapproved", `export page columns contain duplicates for ${page.table}`);
+  }
+  const expectedExcluded = excludedColumns(page.table, Object.keys(CANDIDATE_FIELD_DISPOSITIONS[page.table]));
+  if (canonicalJson(page.excludedColumns) !== canonicalJson(expectedExcluded)) {
+    throw exportError("export_page_column_unapproved", `export page excluded columns do not match the candidate mapping for ${page.table}`);
   }
   if (sha256Hex(canonicalJson(page.rows)) !== page.contentHash) {
     throw exportError("export_page_hash_mismatch", "export page content hash does not match its rows");
@@ -395,9 +420,6 @@ export function buildIncrementalManifest(db, {
   const credentialRotations = previousCredentialManifest && currentCredentialManifest
     ? detectCredentialRotations(previousCredentialManifest, currentCredentialManifest)
     : null;
-  if (tables.some((spec) => spec.table === CREDENTIALS_TABLE) && !credentialRotations) {
-    throw exportError("export_credential_manifest_missing", "credentials table requires previous and current version manifests");
-  }
   const orderedTables = [...REHEARSAL_APPLY_ORDER].filter((name) => name === CREDENTIALS_TABLE
     ? credentialRotations !== null
     : tables.some((spec) => spec.table === name));
