@@ -56,6 +56,9 @@ function makeService({ model = "legacy", resetAvailable = true, calls = [] } = {
         if (model === "wallet_first") {
           return { model: "wallet_first", resource };
         }
+        if (accountId !== ACCOUNT) {
+          return { model: "legacy", resource: { state: "none" }, requestRef: null };
+        }
         return {
           model: "legacy",
           resource,
@@ -123,7 +126,7 @@ test("current-resource overview exposes reset readiness only for the enabled leg
   const disabled = makeService({ resetAvailable: false }).service;
   assert.equal(enabled.getCurrentOverview({ accountId: ACCOUNT }).linkResetAvailable, true);
   assert.equal(disabled.getCurrentOverview({ accountId: ACCOUNT }).linkResetAvailable, false);
-  assert.equal(enabled.getCurrentOverview({ accountId: OTHER }).linkResetAvailable, true);
+  assert.deepEqual(enabled.getCurrentOverview({ accountId: OTHER }), { state: "none" });
 });
 
 test("current-resource reset maps the authenticated owner and rotates only a matching legacy resource", () => {
