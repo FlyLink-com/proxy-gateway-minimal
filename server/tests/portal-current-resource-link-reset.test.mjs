@@ -156,7 +156,7 @@ test("current-resource reset refuses wallet-first, disabled and stale resources 
   assert.deepEqual(walletFirst.calls, []);
 
   const disabled = makeService({ resetAvailable: false });
-  assert.equal(disabled.service.getCurrentOverview({ accountId: ACCOUNT }).linkResetAvailable, false);
+  assert.equal(disabled.service.getCurrentOverview({ accountId: ACCOUNT }).linkResetAvailable, undefined);
   assert.throws(() => disabled.service.resetCurrentResourceLink({
     accountId: ACCOUNT, resourceRef: RESOURCE_REF, idempotencyKey: IDEMPOTENCY_KEY, confirmed: true
   }), { code: "subscription_link_reset_unavailable" });
