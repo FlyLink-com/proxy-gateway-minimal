@@ -3,6 +3,7 @@
 // 7). All fixtures are synthetic (s2s- prefix). No production data,
 // no real credential material, no network.
 import test from "node:test";
+import { createHash } from "node:crypto";
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -66,6 +67,23 @@ function makeSnapshot(t, snapshotId = SNAPSHOT_A, timeout) {
   const db = openConnection(timeout);
   const { metadata } = buildSyntheticSourceSnapshot({ db, snapshotId, now: NOW });
   return { metadata, db, openConnection };
+}
+
+
+function canonicalJson(value) {
+  if (value === null || typeof value !== "object") return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
+  const keys = Object.keys(value).sort();
+  return `{${keys.map((key) => `${JSON.stringify(key)}:${canonicalJson(value[key])}`).join(",")}}`;
+}
+
+function rehashFreezeBundle(bundle) {
+  const bundleHash = createHash("sha256").update(canonicalJson({
+    snapshotId: bundle.snapshotId,
+    receipts: bundle.receipts,
+    phaseTransition: bundle.phaseTransition,
+  }), "utf8").digest("hex");
+  return { ...bundle, bundleHash };
 }
 
 function assertErrorCode(fn, code) {
@@ -321,9 +339,72 @@ test("S2S-FRZ-5 the readiness bundle holds all four receipts and never transitio
   assert.equal(verifyFreezeReadinessBundle(bundle).valid, true);
   const tampered = { ...bundle, bundleHash: "0".repeat(64) };
   assertErrorCode(() => verifyFreezeReadinessBundle(tampered), "freeze_bundle_hash_mismatch");
+
+  const changedRowCounts = {
+    ...bundle,
+    receipts: {
+      ...bundle.receipts,
+      hwmCompleteness: {
+        ...bundle.receipts.hwmCompleteness,
+        rowCounts: { ...bundle.receipts.hwmCompleteness.rowCounts, platform_accounts: 999 },
+      },
+    },
+  };
+  // A valid-looking HWM count change must be covered by the bundle hash.
+  assertErrorCode(() => verifyFreezeReadinessBundle(changedRowCounts), "freeze_bundle_hash_mismatch");
   assertErrorCode(
     () => buildFreezeReadinessBundle({ snapshotId: SNAPSHOT_A, writeLock, schedulerQuiescence, hwmCompleteness, now: () => new Date(NOW) }),
     "freeze_bundle_incomplete",
+  );
+});
+
+
+test("S2S-FRZ-7 rehashed bundles still reject false scheduler and pending callback receipts", (t) => {
+  const { db } = makeSnapshot(t);
+  const writeLock = buildWriteLockReceipt(db, { snapshotId: SNAPSHOT_A, checkpointId: "s2s-checkpoint-001", outstandingJobs: [] });
+  const schedulerQuiescence = buildSchedulerQuiescenceReceipt({ evidence: allQuiescedEvidence(), snapshotId: SNAPSHOT_A, now: () => new Date(NOW) });
+  const callbackDrain = buildCallbackDrainReceipt({ callbacks: [{ id: "cb-1", description: "x", settled: true }], snapshotId: SNAPSHOT_A, now: () => new Date(NOW) });
+  const hwmCompleteness = buildHwmCompletenessReceipt({
+    highWaterMark: createHighWaterMark({ seq: 1, snapshotId: SNAPSHOT_A }),
+    manifestSeq: 1,
+    rowCounts: { platform_accounts: 3 },
+    snapshotId: SNAPSHOT_A, now: () => new Date(NOW),
+  });
+  const bundle = buildFreezeReadinessBundle({
+    snapshotId: SNAPSHOT_A, writeLock, schedulerQuiescence, callbackDrain, hwmCompleteness,
+    now: () => new Date(NOW),
+  });
+
+  const schedulerTampered = {
+    ...bundle,
+    receipts: {
+      ...bundle.receipts,
+      schedulerQuiescence: {
+        ...bundle.receipts.schedulerQuiescence,
+        jobs: bundle.receipts.schedulerQuiescence.jobs.map((job) => (
+          job.id === "W-115" ? { ...job, quiesced: false } : job
+        )),
+      },
+    },
+  };
+  assertErrorCode(
+    () => verifyFreezeReadinessBundle(rehashFreezeBundle(schedulerTampered)),
+    "freeze_bundle_receipt_invalid",
+  );
+
+  const callbackTampered = {
+    ...bundle,
+    receipts: {
+      ...bundle.receipts,
+      callbackDrain: {
+        ...bundle.receipts.callbackDrain,
+        pending: [{ id: "cb-pending", settled: false }],
+      },
+    },
+  };
+  assertErrorCode(
+    () => verifyFreezeReadinessBundle(rehashFreezeBundle(callbackTampered)),
+    "freeze_bundle_receipt_invalid",
   );
 });
 
