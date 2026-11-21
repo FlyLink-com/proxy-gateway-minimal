@@ -304,6 +304,15 @@ export function buildFreezeReadinessBundle({
     throw freezeDrainError("freeze_bundle_incomplete", "freeze readiness bundle requires a write-lock receipt for this snapshot");
   }
   verifyFreezeReceipt(writeLock.receipt);
+  for (const [receipt, kind] of [
+    [schedulerQuiescence, "scheduler-quiescence"],
+    [callbackDrain, "callback-drain"],
+    [hwmCompleteness, "hwm-completeness"],
+  ]) {
+    if (!receipt || receipt.kind !== kind || receipt.snapshotId !== snapshotId) {
+      throw freezeDrainError("freeze_bundle_incomplete", "freeze readiness bundle requires a " + kind + " receipt for this snapshot");
+    }
+  }
   assertSchedulerQuiescenceReceipt(schedulerQuiescence, snapshotId);
   assertCallbackDrainReceipt(callbackDrain, snapshotId);
   assertHwmCompletenessReceipt(hwmCompleteness, snapshotId);
@@ -336,6 +345,15 @@ export function verifyFreezeReadinessBundle(bundle) {
     throw freezeDrainError("freeze_bundle_invalid", "freeze readiness bundle is missing its write-lock receipt");
   }
   verifyFreezeReceipt(writeLock.receipt);
+  for (const [receipt, kind] of [
+    [schedulerQuiescence, "scheduler-quiescence"],
+    [callbackDrain, "callback-drain"],
+    [hwmCompleteness, "hwm-completeness"],
+  ]) {
+    if (!receipt || receipt.kind !== kind || receipt.snapshotId !== bundle.snapshotId) {
+      throw freezeDrainError("freeze_bundle_invalid", "freeze readiness bundle is missing its " + kind + " receipt");
+    }
+  }
   assertSchedulerQuiescenceReceipt(schedulerQuiescence, bundle.snapshotId);
   assertCallbackDrainReceipt(callbackDrain, bundle.snapshotId);
   assertHwmCompletenessReceipt(hwmCompleteness, bundle.snapshotId);
