@@ -26,11 +26,20 @@ export type BwhSupplySnapshot = {
   protocolsRunning: number; collectorState: "running" | "paused" | "unknown";
   nativeDistributionEnabled: boolean; observedAt: string | null; canPause: boolean; canEnable: boolean;
 };
+export type BwhBandwidthState = "desired" | "applying" | "applied" | "failed" | "unknown";
+export type BwhBandwidthSnapshot = {
+  revision: string; state: BwhBandwidthState;
+  inboundEnabled: boolean; outboundEnabled: boolean; inboundMbps: string | null; outboundMbps: string | null;
+};
+export type BwhBandwidthSave = {
+  bandwidthRevision: string; inboundEnabled: boolean; outboundEnabled: boolean; inboundMbps: string; outboundMbps: string;
+};
 export type DistributionSnapshot = {
   revision: string; owned: { enabled: boolean; items: OwnedDistributionNode[] };
   routes: DistributionRoute[]; candidates: DistributionCandidate[];
   automation?: DistributionAutomation;
   bwhSupply?: BwhSupplySnapshot;
+  bwhBandwidth?: BwhBandwidthSnapshot;
 };
 export type OwnedDistributionSave = {
   revision: string; enabled: boolean;
@@ -45,6 +54,7 @@ export interface SubscriptionDistributionClient {
   saveRoutes(input: { revision: string; routes: DistributionRoute[] }, signal?: AbortSignal): Promise<DistributionSnapshot>;
   saveOwned(input: OwnedDistributionSave, signal?: AbortSignal): Promise<DistributionSnapshot>;
   setBwhSupply(input: { revision: string; supplyRevision: string; enabled: boolean }, signal?: AbortSignal): Promise<DistributionSnapshot>;
+  saveBwhBandwidth?(input: BwhBandwidthSave, signal?: AbortSignal): Promise<DistributionSnapshot>;
 }
 
 function fail(): never { throw new DistributionError("invalid"); }
@@ -99,6 +109,28 @@ function observationTime(value: unknown): string | null {
   if (!Number.isFinite(date.getTime()) || date.toISOString() !== `${match[1]}.${(match[2] ?? "").padEnd(3, "0")}Z`) fail();
   return value;
 }
+function mbpsText(value: unknown): string {
+  if (typeof value !== "string" || !/^\d{1,5}(\.\d)?$/.test(value)) fail();
+  const [whole, fraction = "0"] = value.split(".");
+  const bps = Number(whole) * 1_000_000 + Number(fraction) * 100_000;
+  if (!Number.isSafeInteger(bps) || bps < 100_000 || bps > 10_000_000_000) fail();
+  const major = Math.trunc(bps / 1_000_000);
+  const minor = Math.trunc((bps % 1_000_000) / 100_000);
+  return minor === 0 ? String(major) : `${major}.${minor}`;
+}
+function mbpsField(value: unknown): string | null {
+  return value === null ? null : mbpsText(value);
+}
+function bwhBandwidth(value: unknown): BwhBandwidthSnapshot {
+  const item = object(value);
+  keys(item, ["revision", "state", "inboundEnabled", "outboundEnabled", "inboundMbps", "outboundMbps"]);
+  if (!["desired", "applying", "applied", "failed", "unknown"].includes(item.state as string)) fail();
+  return {
+    revision: id(item.revision, REVISION), state: item.state as BwhBandwidthSnapshot["state"],
+    inboundEnabled: bool(item.inboundEnabled), outboundEnabled: bool(item.outboundEnabled),
+    inboundMbps: mbpsField(item.inboundMbps), outboundMbps: mbpsField(item.outboundMbps)
+  };
+}
 function bwhSupply(value: unknown): BwhSupplySnapshot {
   const item = object(value);
   keys(item, ["revision", "state", "protocolsRunning", "collectorState", "nativeDistributionEnabled", "observedAt", "canPause", "canEnable"]);
@@ -138,7 +170,7 @@ async function readBoundedJson(response: Response, signal: AbortSignal): Promise
   } finally { reader.releaseLock(); }
 }
 function parseSnapshot(value: unknown): DistributionSnapshot {
-  const data = object(value); keys(data, ["revision", "owned", "routes", "candidates"], ["automation", "bwhSupply"]);
+  const data = object(value); keys(data, ["revision", "owned", "routes", "candidates"], ["automation", "bwhSupply", "bwhBandwidth"]);
   const owned = object(data.owned); keys(owned, ["enabled", "items"]);
   const items = unique(array(owned.items, 256).map((value): OwnedDistributionNode => {
     const item = object(value);
@@ -159,7 +191,8 @@ function parseSnapshot(value: unknown): DistributionSnapshot {
   }));
   return { revision: id(data.revision, REVISION), owned: { enabled: bool(owned.enabled), items }, routes: routes(data.routes), candidates,
     ...(Object.hasOwn(data, "automation") ? { automation: automation(data.automation) } : {}),
-    ...(Object.hasOwn(data, "bwhSupply") ? { bwhSupply: bwhSupply(data.bwhSupply) } : {}) };
+    ...(Object.hasOwn(data, "bwhSupply") ? { bwhSupply: bwhSupply(data.bwhSupply) } : {}),
+    ...(Object.hasOwn(data, "bwhBandwidth") ? { bwhBandwidth: bwhBandwidth(data.bwhBandwidth) } : {}) };
 }
 
 export function createSubscriptionDistributionClient({ fetcher = fetch, timeoutMs = 15_000 }: { fetcher?: typeof fetch; timeoutMs?: number } = {}): SubscriptionDistributionClient {
@@ -210,6 +243,22 @@ export function createSubscriptionDistributionClient({ fetcher = fetch, timeoutM
           const actual = snapshot.routes.find((route) => route.planId === selected.planId);
           if (!actual || actual.mode !== selected.mode || actual.nodeIds.length !== selected.nodeIds.length || selected.nodeIds.some((id) => !actual.nodeIds.includes(id))) fail();
         }
+        return snapshot;
+      });
+    },
+    saveBwhBandwidth(input, signal) {
+      const data = object(input);
+      keys(data, ["bandwidthRevision", "inboundEnabled", "outboundEnabled", "inboundMbps", "outboundMbps"]);
+      const inboundEnabled = bool(data.inboundEnabled);
+      const outboundEnabled = bool(data.outboundEnabled);
+      const inboundMbps = mbpsText(data.inboundMbps);
+      const outboundMbps = mbpsText(data.outboundMbps);
+      const body = { bandwidthRevision: id(data.bandwidthRevision, REVISION), inboundEnabled, outboundEnabled, inboundMbps, outboundMbps };
+      return request("/bandwidth", body, signal).then((snapshot) => {
+        const actual = snapshot.bwhBandwidth;
+        if (!actual || actual.inboundEnabled !== inboundEnabled || actual.outboundEnabled !== outboundEnabled) fail();
+        if ((inboundEnabled ? actual.inboundMbps !== inboundMbps : actual.inboundMbps !== null)
+          || (outboundEnabled ? actual.outboundMbps !== outboundMbps : actual.outboundMbps !== null)) fail();
         return snapshot;
       });
     },

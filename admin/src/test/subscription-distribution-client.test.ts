@@ -216,6 +216,36 @@ describe("subscription distribution transport boundary", () => {
     await expect(client.saveOwned({ revision, enabled: true, nodes: [] })).rejects.toMatchObject({ code: "timeout" });
     expect(fetcher).toHaveBeenCalledOnce();
   });
+  it("parses optional total bandwidth and rejects extra or zero rates", async () => {
+    const plain = snapshot();
+    expect(await createSubscriptionDistributionClient({ fetcher: vi.fn().mockResolvedValue(response(plain)) }).read()).not.toHaveProperty("bwhBandwidth");
+    const bwhBandwidth = { revision: "c".repeat(64), state: "desired", inboundEnabled: true, outboundEnabled: false, inboundMbps: "1.5", outboundMbps: null };
+    expect((await createSubscriptionDistributionClient({ fetcher: vi.fn().mockResolvedValue(response({ ...snapshot(), bwhBandwidth })) }).read()).bwhBandwidth).toEqual(bwhBandwidth);
+    for (const broken of [
+      { ...bwhBandwidth, mark: "0xb100" },
+      { ...bwhBandwidth, state: "enabled" },
+      { ...bwhBandwidth, inboundMbps: "0" },
+      { ...bwhBandwidth, inboundMbps: "1.55" },
+      { ...bwhBandwidth, outboundMbps: 0 }
+    ]) {
+      await expect(createSubscriptionDistributionClient({ fetcher: vi.fn().mockResolvedValue(response({ ...snapshot(), bwhBandwidth: broken })) }).read()).rejects.toMatchObject({ code: "invalid" });
+    }
+  });
+  it("sends total bandwidth once and rejects a command field before the request", async () => {
+    const bandwidthRevision = "c".repeat(64);
+    const bwhBandwidth = { revision: "f".repeat(64), state: "desired", inboundEnabled: true, outboundEnabled: false, inboundMbps: "1.5", outboundMbps: null };
+    const fetcher = vi.fn().mockResolvedValue(response({ ...snapshot(), bwhBandwidth }));
+    const client = createSubscriptionDistributionClient({ fetcher });
+    const save = client.saveBwhBandwidth;
+    if (!save) throw new Error("missing bandwidth save");
+    const input = { bandwidthRevision, inboundEnabled: true, outboundEnabled: false, inboundMbps: "1.5", outboundMbps: "0.1" };
+    expect((await save(input)).bwhBandwidth).toEqual(bwhBandwidth);
+    expect(fetcher.mock.calls[0][0]).toBe("/api/admin/third-party-subscriptions/distribution/bandwidth");
+    expect(JSON.parse(String(fetcher.mock.calls[0][1].body))).toEqual(input);
+    expect(() => save({ ...input, command: "tc" } as typeof input)).toThrow(DistributionError);
+    expect(() => save({ ...input, inboundMbps: "0" })).toThrow(DistributionError);
+    expect(fetcher).toHaveBeenCalledOnce();
+  });
   it("does not dispatch an already-aborted read", async () => {
     const fetcher = vi.fn(); const controller = new AbortController(); controller.abort();
     await expect(createSubscriptionDistributionClient({ fetcher }).read(controller.signal)).rejects.toMatchObject({ name: "AbortError" });

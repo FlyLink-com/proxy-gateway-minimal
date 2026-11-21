@@ -4,7 +4,11 @@
 .subscription-distribution p { color: #526176; line-height: 1.6; }
 .subscription-distribution fieldset { margin: 1rem 0; padding: .9rem; border: 1px solid #d8e2ef; border-radius: 12px; min-width: 0; background: #f8faff; }
 .subscription-distribution legend { padding: 0 .4rem; font-weight: 600; }
-.subscription-distribution button, .subscription-distribution input:not([type=checkbox]):not([type=radio]), .subscription-distribution select { border: 1px solid #d8e2ef; border-radius: 9px; background: #fff; color: #31558a; min-height: 36px; padding: .4rem .65rem; }
+.subscription-distribution button, .subscription-distribution input:not([type=checkbox]):not([type=radio]):not([type=range]), .subscription-distribution select { border: 1px solid #d8e2ef; border-radius: 9px; background: #fff; color: #31558a; min-height: 36px; padding: .4rem .65rem; }
+.subscription-distribution-bandwidth { display: grid; gap: .7rem; margin: .4rem 0 .8rem; }
+.subscription-distribution-bandwidth div { display: flex; flex-wrap: wrap; align-items: center; gap: .55rem; }
+.subscription-distribution-bandwidth input[type=range] { flex: 1 1 140px; min-width: 120px; accent-color: #54bbff; }
+.subscription-distribution-bandwidth input[type=number] { width: 6.5rem; }
 .subscription-distribution button { cursor: pointer; }
 .subscription-distribution button:disabled { opacity: .5; cursor: default; }
 .subscription-distribution :is(button, input, select):focus-visible { outline: 2px solid #5089f5; outline-offset: 2px; }
