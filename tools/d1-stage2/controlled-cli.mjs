@@ -2,6 +2,7 @@
 // D1 Stage 2 controlled CLI: synthetic-only manual integration caller.
 // No production database, remote service, credential, scheduler, or cutover path.
 
+import { createHash } from "node:crypto";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -86,19 +87,19 @@ export function parseControlledCliArgs(argv = []) {
       return options;
     }
     if (argument === "--json") {
-      if (seen.has(argument)) fail("cli_argument_duplicate", "duplicate argument: " + argument);
+      if (seen.has(argument)) fail("cli_argument_duplicate", "duplicate argument");
       seen.add(argument);
       options.json = true;
       continue;
     }
     if (argument !== "--mode" && argument !== "--operator" && argument !== "--snapshot-id") {
-      fail("cli_argument_not_allowed", "argument is not allowlisted: " + argument);
+      fail("cli_argument_not_allowed", "argument is not allowlisted");
     }
-    if (seen.has(argument)) fail("cli_argument_duplicate", "duplicate argument: " + argument);
+    if (seen.has(argument)) fail("cli_argument_duplicate", "duplicate argument");
     seen.add(argument);
     const value = argv[index + 1];
     if (typeof value !== "string" || value.length === 0 || value.startsWith("--")) {
-      fail("cli_argument_value_missing", "argument requires a value: " + argument);
+      fail("cli_argument_value_missing", "argument requires a value");
     }
     if (argument === "--mode") options.mode = value;
     if (argument === "--operator") options.operator = value;
@@ -122,7 +123,13 @@ function countRows(db, table) {
 }
 
 function nextSnapshotId(snapshotId) {
-  const value = snapshotId.slice(0, 70) + "-next";
+  // Bind the derived id to the FULL parent id: a 12-hex-char prefix of the
+  // parent's SHA-256 digest distinguishes parents that share a long common
+  // prefix (the old slice(0, 70) truncation collided on those) and keeps the
+  // derived id valid at the maximum parent length. The kept parent prefix
+  // (60 chars) plus digest and "-next" stays within the 84-char pattern cap.
+  const digest = createHash("sha256").update(snapshotId, "utf8").digest("hex").slice(0, 12);
+  const value = snapshotId.slice(0, 60) + "-" + digest + "-next";
   if (!SNAPSHOT_ID_PATTERN.test(value) || value === snapshotId) {
     fail("cli_snapshot_id_invalid", "could not derive a valid next synthetic snapshot id");
   }

@@ -145,3 +145,89 @@ test("controlled CLI source has no network, environment-secret or remote D1 clie
   assert.doesNotMatch(source, /node:(?:http|https)|undici|WebSocket/);
   assert.doesNotMatch(source, /process\.env|CLOUDFLARE_API_TOKEN|D1Database|wrangler/);
 });
+
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+test("controlled CLI never echoes an unrecognized argument value into the JSON stop record", () => {
+  const sensitive = "ghp_FAKESECRET1234567890";
+  const result = run([
+    "--mode", "synthetic",
+    "--operator", "test-runner",
+    "--token=" + sensitive,
+    "--json",
+  ]);
+  assert.equal(result.exitCode, 2, result.stderr);
+  const report = JSON.parse(result.stdout);
+  assert.equal(report.status, "STOPPED");
+  assert.equal(report.stopCode, "cli_argument_not_allowed");
+  assert.equal(report.stopReason, "argument is not allowlisted");
+  assert.doesNotMatch(result.stdout, new RegExp(escapeRegExp(sensitive)));
+});
+
+test("controlled CLI never echoes an unrecognized argument value into the terminal stop record", () => {
+  const sensitive = "/home/operator/.ssh/id_ed25519";
+  const result = run([
+    "--mode", "synthetic",
+    "--operator", "test-runner",
+    sensitive,
+  ]);
+  assert.equal(result.exitCode, 2, result.stdout);
+  assert.doesNotMatch(result.stderr, new RegExp(escapeRegExp(sensitive)));
+  assert.match(result.stderr, /Stop: cli_argument_not_allowed — argument is not allowlisted/);
+});
+
+test("controlled CLI derives distinct next snapshot ids for parents sharing a long common prefix", () => {
+  const sharedPrefix = "s2s-" + "a".repeat(66);
+  const first = run([
+    "--mode", "synthetic",
+    "--operator", "test-runner",
+    "--snapshot-id", sharedPrefix + "xxx",
+    "--json",
+  ]);
+  const second = run([
+    "--mode", "synthetic",
+    "--operator", "test-runner",
+    "--snapshot-id", sharedPrefix + "yyy",
+    "--json",
+  ]);
+  assert.equal(first.exitCode, 0, first.stderr);
+  assert.equal(second.exitCode, 0, second.stderr);
+  const firstNext = JSON.parse(first.stdout).incrementalManifest.snapshotId;
+  const secondNext = JSON.parse(second.stdout).incrementalManifest.snapshotId;
+  assert.notEqual(firstNext, secondNext);
+  assert.match(firstNext, /^s2s-[a-z0-9-]{3,80}$/);
+  assert.match(secondNext, /^s2s-[a-z0-9-]{3,80}$/);
+});
+
+test("controlled CLI derives a valid next snapshot id for a maximum-length parent id", () => {
+  const parent = "s2s-" + "c".repeat(80);
+  assert.equal(parent.length, 84);
+  const result = run([
+    "--mode", "synthetic",
+    "--operator", "test-runner",
+    "--snapshot-id", parent,
+    "--json",
+  ]);
+  assert.equal(result.exitCode, 0, result.stderr);
+  const report = JSON.parse(result.stdout);
+  assert.equal(report.status, "PASS_SYNTHETIC_ONLY");
+  assert.match(report.incrementalManifest.snapshotId, /^s2s-[a-z0-9-]{3,80}$/);
+  assert.notEqual(report.incrementalManifest.snapshotId, parent);
+});
+
+test("controlled CLI does not stop on a parent id that ends in -next", () => {
+  const parent = "s2s-" + "b".repeat(66) + "-next";
+  assert.equal(parent.length, 75);
+  const result = run([
+    "--mode", "synthetic",
+    "--operator", "test-runner",
+    "--snapshot-id", parent,
+    "--json",
+  ]);
+  assert.equal(result.exitCode, 0, result.stderr);
+  const report = JSON.parse(result.stdout);
+  assert.equal(report.status, "PASS_SYNTHETIC_ONLY");
+  assert.notEqual(report.incrementalManifest.snapshotId, parent);
+});
