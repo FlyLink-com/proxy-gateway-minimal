@@ -231,6 +231,62 @@ export function buildHwmCompletenessReceipt({ highWaterMark, manifestSeq, rowCou
   };
 }
 
+// Receipt validators are shared by bundle construction and verification.
+// They enforce positive state independently of the unkeyed bundle digest.
+function assertSchedulerQuiescenceReceipt(receipt, snapshotId) {
+  if (!receipt || receipt.kind !== "scheduler-quiescence" || receipt.snapshotId !== snapshotId
+    || !Array.isArray(receipt.jobs) || receipt.jobs.length !== SCHEDULER_JOBS.length) {
+    throw freezeDrainError("freeze_scheduler_not_quiesced", "scheduler receipt must cover every known job for this snapshot");
+  }
+  const expected = new Map(SCHEDULER_JOBS.map((job) => [job.id, job]));
+  const seen = new Set();
+  for (const job of receipt.jobs) {
+    if (!job || typeof job !== "object" || Array.isArray(job) || typeof job.id !== "string"
+      || seen.has(job.id)) {
+      throw freezeDrainError("freeze_scheduler_not_quiesced", "scheduler receipt contains a malformed or duplicate job");
+    }
+    const definition = expected.get(job.id);
+    if (!definition || job.quiesced !== true || job.name !== definition.name
+      || job.evidence !== definition.evidence
+      || Object.keys(job).sort().join(",") !== "evidence,id,name,quiesced") {
+      throw freezeDrainError("freeze_scheduler_not_quiesced", "every known scheduler job must carry its positive quiesced evidence");
+    }
+    seen.add(job.id);
+  }
+  if (seen.size !== SCHEDULER_JOBS.length) {
+    throw freezeDrainError("freeze_scheduler_not_quiesced", "scheduler receipt is missing one or more known jobs");
+  }
+}
+
+function assertCallbackDrainReceipt(receipt, snapshotId) {
+  if (!receipt || receipt.kind !== "callback-drain" || receipt.snapshotId !== snapshotId
+    || !Number.isInteger(receipt.drained) || receipt.drained < 0
+    || !Array.isArray(receipt.pending)) {
+    throw freezeDrainError("freeze_callbacks_invalid", "callback-drain receipt is malformed");
+  }
+  if (receipt.pending.length !== 0) {
+    throw freezeDrainError("freeze_callback_pending", "callback-drain receipt still contains pending callbacks");
+  }
+}
+
+function assertHwmCompletenessReceipt(receipt, snapshotId) {
+  if (!receipt || receipt.kind !== "hwm-completeness" || receipt.snapshotId !== snapshotId
+    || !Number.isInteger(receipt.seq) || receipt.seq < 0
+    || !receipt.rowCounts || typeof receipt.rowCounts !== "object" || Array.isArray(receipt.rowCounts)) {
+    throw freezeDrainError("freeze_hwm_invalid", "HWM completeness receipt is malformed");
+  }
+  const counts = Object.entries(receipt.rowCounts);
+  if (counts.length === 0 || counts.some(([table, count]) =>
+    !/^[A-Za-z_][A-Za-z0-9_]*$/.test(table) || !Number.isInteger(count) || count < 0)) {
+    throw freezeDrainError("freeze_hwm_invalid", "HWM row counts must be named, non-negative integers");
+  }
+}
+
+function computeFreezeBundleHash(bundle) {
+  const { bundleHash: _bundleHash, ...unsigned } = bundle;
+  return sha256Hex(canonicalJson(unsigned));
+}
+
 // Bundle the four receipts. Verifies each receipt before bundling.
 // The bundle explicitly never transitions phase: phaseTransition is
 // always "none". The FROZEN transition is a separate coordinator
@@ -248,15 +304,9 @@ export function buildFreezeReadinessBundle({
     throw freezeDrainError("freeze_bundle_incomplete", "freeze readiness bundle requires a write-lock receipt for this snapshot");
   }
   verifyFreezeReceipt(writeLock.receipt);
-  for (const [receipt, kind] of [
-    [schedulerQuiescence, "scheduler-quiescence"],
-    [callbackDrain, "callback-drain"],
-    [hwmCompleteness, "hwm-completeness"],
-  ]) {
-    if (!receipt || receipt.kind !== kind || receipt.snapshotId !== snapshotId) {
-      throw freezeDrainError("freeze_bundle_incomplete", `freeze readiness bundle requires a ${kind} receipt for this snapshot`);
-    }
-  }
+  assertSchedulerQuiescenceReceipt(schedulerQuiescence, snapshotId);
+  assertCallbackDrainReceipt(callbackDrain, snapshotId);
+  assertHwmCompletenessReceipt(hwmCompleteness, snapshotId);
   const bundle = {
     schemaVersion: FREEZE_DRAIN_SCHEMA_VERSION,
     snapshotId,
@@ -264,57 +314,34 @@ export function buildFreezeReadinessBundle({
     phaseTransition: "none",
     timestamp: now().toISOString(),
   };
-  bundle.bundleHash = sha256Hex(canonicalJson({
-    snapshotId: bundle.snapshotId,
-    receipts: {
-      writeLock: bundle.receipts.writeLock.receipt.receiptDigest,
-      schedulerQuiescence: bundle.receipts.schedulerQuiescence.jobs.map((job) => job.id),
-      callbackDrain: bundle.receipts.callbackDrain.drained,
-      hwmCompleteness: bundle.receipts.hwmCompleteness.seq,
-    },
-    phaseTransition: bundle.phaseTransition,
-  }));
+  bundle.bundleHash = computeFreezeBundleHash(bundle);
   return bundle;
 }
 
-// Recompute the bundle hash and check all four receipts are present
-// for the same snapshot with phaseTransition "none". Returns true;
-// throws FreezeDrainError on any mismatch.
+// Recompute the digest over the complete bundle, including every field
+// of all four receipts. Positive scheduler, callback and HWM conditions
+// are revalidated before accepting the digest.
 export function verifyFreezeReadinessBundle(bundle) {
   if (!bundle || typeof bundle !== "object" || Array.isArray(bundle)
     || bundle.schemaVersion !== FREEZE_DRAIN_SCHEMA_VERSION
     || typeof bundle.snapshotId !== "string"
     || bundle.phaseTransition !== "none"
     || typeof bundle.bundleHash !== "string"
-    || !bundle.receipts || typeof bundle.receipts !== "object") {
+    || !bundle.receipts || typeof bundle.receipts !== "object" || Array.isArray(bundle.receipts)) {
     throw freezeDrainError("freeze_bundle_invalid", "freeze readiness bundle is malformed");
   }
+  assertSnapshotId(bundle.snapshotId);
   const { writeLock, schedulerQuiescence, callbackDrain, hwmCompleteness } = bundle.receipts;
   if (!writeLock || writeLock.kind !== "write-lock" || writeLock.snapshotId !== bundle.snapshotId) {
     throw freezeDrainError("freeze_bundle_invalid", "freeze readiness bundle is missing its write-lock receipt");
   }
   verifyFreezeReceipt(writeLock.receipt);
-  for (const [receipt, kind] of [
-    [schedulerQuiescence, "scheduler-quiescence"],
-    [callbackDrain, "callback-drain"],
-    [hwmCompleteness, "hwm-completeness"],
-  ]) {
-    if (!receipt || receipt.kind !== kind || receipt.snapshotId !== bundle.snapshotId) {
-      throw freezeDrainError("freeze_bundle_invalid", `freeze readiness bundle is missing its ${kind} receipt`);
-    }
-  }
-  const expected = sha256Hex(canonicalJson({
-    snapshotId: bundle.snapshotId,
-    receipts: {
-      writeLock: writeLock.receipt.receiptDigest,
-      schedulerQuiescence: schedulerQuiescence.jobs.map((job) => job.id),
-      callbackDrain: callbackDrain.drained,
-      hwmCompleteness: hwmCompleteness.seq,
-    },
-    phaseTransition: bundle.phaseTransition,
-  }));
+  assertSchedulerQuiescenceReceipt(schedulerQuiescence, bundle.snapshotId);
+  assertCallbackDrainReceipt(callbackDrain, bundle.snapshotId);
+  assertHwmCompletenessReceipt(hwmCompleteness, bundle.snapshotId);
+  const expected = computeFreezeBundleHash(bundle);
   if (expected !== bundle.bundleHash) {
-    throw freezeDrainError("freeze_bundle_hash_mismatch", "freeze readiness bundle hash does not match its contents");
+    throw freezeDrainError("freeze_bundle_hash_mismatch", "freeze readiness bundle hash does not match its complete contents");
   }
   return { valid: true };
 }
