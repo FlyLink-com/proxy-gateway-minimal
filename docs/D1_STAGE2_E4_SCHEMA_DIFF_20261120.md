@@ -1,5 +1,15 @@
 # Stage 2 — E4 target/schema boundary audit (read-only evidence)
 
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: active
+  authority_scope: d1_stage2_e4_schema_diff_20261120
+  superseded_by: null
+  last_verified_at: 2026-11-20
+  production_authority: false
+```
+
 Date: 2026-11-20. Source repository:
 `FlyLink-com/proxy-gateway-minimal@11dd1cfb208b78a85ce77b8c8aef2b6763f9000a`.
 Source-definition inventory: `docs/D1_CONTROL_SCHEMA_INVENTORY_V1.json`

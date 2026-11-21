@@ -1,5 +1,15 @@
 # Stage 2 — Muse BWH safe source export / D1 reconciliation handoff (draft)
 
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: active
+  authority_scope: source_only_d1_stage2_bwh_export_d1_reconciliation_handoff
+  superseded_by: null
+  last_verified_at: 2026-11-20
+  production_authority: false
+```
+
 Date: 2026-11-20. Worker Draft PR #898 (stacked on #897/#895/#894).
 Muse BWH predecessor Draft PR #896 at
 `015fae70c47bb29534bc1c9b5fae15d5d2ea020b`.
