@@ -1,5 +1,15 @@
 # D1 Stage 2 controlled CLI
 
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: active
+  authority_scope: d1_stage2_controlled_cli
+  superseded_by: null
+  last_verified_at: 2026-11-21
+  production_authority: false
+```
+
 ## Purpose
 
 The manually triggered controlled CLI connects the four Stage 2 source modules:
