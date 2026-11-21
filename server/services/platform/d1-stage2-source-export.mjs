@@ -413,10 +413,6 @@ export function verifyExportPage(page) {
   }
   return true;
 }
-}
-
-// A durable, ordered high-water mark.
-}
 
 // A durable, ordered high-water mark. seq is a manifest-issued
 // sequence, not a source transaction order. The manifest chain is
