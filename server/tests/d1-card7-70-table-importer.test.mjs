@@ -291,6 +291,206 @@ test("seven-column fixture: one lease + three receipts read back value-by-value 
   }
 });
 
+test("seven-column synthetic round-trip: D1 statement descriptors preserve every value in an in-memory target", (t) => {
+  const db = freshDb();
+  const target = new DatabaseSync(":memory:");
+  try {
+    // Add a second synthetic lease to cover both NULL and timestamp text.
+    const leaseBase = synthRow(db, "platform_edge_agent_leases");
+    const leaseColumnNames = Object.keys(leaseBase);
+    const timedLease = {
+      ...leaseBase,
+      lease_ref: "synth-z-lease-timed-002",
+      released_at: "2026-11-21T09:41:45.000Z",
+    };
+    db.prepare(
+      "INSERT INTO platform_edge_agent_leases (" +
+        leaseColumnNames.map((name) => '"' + name + '"').join(", ") +
+        ") VALUES (" + leaseColumnNames.map(() => "?").join(", ") + ")",
+    ).run(...leaseColumnNames.map((name) => timedLease[name]));
+
+    const sourceLeases = db.prepare(
+      'SELECT * FROM "platform_edge_agent_leases" ORDER BY lease_ref',
+    ).all();
+    const sourceReceipts = db.prepare(
+      'SELECT * FROM "platform_edge_apply_receipts" ORDER BY id',
+    ).all();
+    assert.equal(sourceLeases.length, 2);
+    assert.equal(sourceReceipts.length, 3);
+
+    function createTargetTable(table) {
+      const mapping = TABLE_MAPPING.find((entry) => entry.source === table);
+      assert.ok(mapping, "mapping exists for " + table);
+      const columns = targetColumnsFor(table);
+      const definitions = columns.map((name) => {
+        const column = mapping.columns.find((entry) => entry.name === name);
+        assert.ok(column, "target column exists in mapping: " + table + "." + name);
+        return '"' + name + '" ' + column.type + (column.pk ? " PRIMARY KEY" : "");
+      });
+      target.exec('CREATE TABLE "' + mapping.target + '" (' + definitions.join(", ") + ")");
+    }
+
+    createTargetTable("platform_edge_agent_leases");
+    createTargetTable("platform_edge_apply_receipts");
+
+    const transformedLeases = sourceLeases.map((row) => (
+      transformRow({ table: "platform_edge_agent_leases", row, gates: GATES_OPEN })
+    ));
+    assert.ok(transformedLeases.every((entry) => entry.row && !entry.deferred && !entry.rejected));
+    for (const entry of transformedLeases) {
+      for (const statement of buildD1BatchStatements({
+        table: "platform_edge_agent_leases",
+        rows: [entry.row],
+      })) {
+        target.prepare(statement.sql).run(...statement.params);
+      }
+    }
+
+    const transformedReceipts = sourceReceipts.map((row) => (
+      transformRow({ table: "platform_edge_apply_receipts", row, gates: GATES_OPEN })
+    ));
+    assert.ok(transformedReceipts[0].row);
+    assert.ok(transformedReceipts[1].row);
+    assert.equal(transformedReceipts[2].row, null);
+    assert.equal(transformedReceipts[2].deferred.reasonCode, "D-1");
+    for (const entry of transformedReceipts.filter((item) => item.row)) {
+      for (const statement of buildD1BatchStatements({
+        table: "platform_edge_apply_receipts",
+        rows: [entry.row],
+      })) {
+        target.prepare(statement.sql).run(...statement.params);
+      }
+    }
+
+    const targetLeases = target.prepare(
+      'SELECT * FROM "platform_edge_agent_leases" ORDER BY lease_ref',
+    ).all();
+    const targetReceipts = target.prepare(
+      'SELECT * FROM "platform_edge_apply_receipts" ORDER BY id',
+    ).all();
+    assert.equal(targetLeases.length, 2);
+    assert.equal(targetReceipts.length, 2);
+
+    // Rule 1: released_at NULL and timestamp text both survive round-trip.
+    assert.equal(targetLeases[0].released_at, null);
+    assert.equal(targetLeases[1].released_at, "2026-11-21T09:41:45.000Z");
+
+    // Rules 2–7: NULL and populated values survive; generation stays TEXT.
+    assert.equal(targetReceipts[0].node_ref, null);
+    assert.equal(targetReceipts[0].generation, null);
+    assert.equal(targetReceipts[0].receipt_digest, null);
+    assert.equal(targetReceipts[0].reason_code, null);
+    assert.equal(targetReceipts[0].listener_present, 0);
+    assert.equal(targetReceipts[0].credential_count, 0);
+
+    assert.equal(targetReceipts[1].node_ref, "synth-node-001");
+    assert.equal(targetReceipts[1].generation, "007");
+    assert.equal(typeof targetReceipts[1].generation, "string");
+    assert.equal(targetReceipts[1].reason_code, "synth-ok");
+    assert.equal(targetReceipts[1].listener_present, 1);
+    assert.equal(targetReceipts[1].credential_count, 2147483647);
+    assert.deepEqual(
+      [...Buffer.from(targetReceipts[1].receipt_digest, "utf8")],
+      [...Buffer.from(sourceReceipts[1].receipt_digest, "utf8")],
+    );
+    assert.ok(!targetReceipts.some((row) => row.id === sourceReceipts[2].id),
+      "a non-losslessly-storable digest defers the entire row");
+
+    const leaseColumns = targetColumnsFor("platform_edge_agent_leases");
+    const receiptColumns = targetColumnsFor("platform_edge_apply_receipts");
+    const leaseSourceKept = transformedLeases.map((entry) => entry.row);
+    const receiptSourceKept = transformedReceipts.filter((entry) => entry.row).map((entry) => entry.row);
+    const leaseSourceHash = hashTableRows(leaseSourceKept, leaseColumns);
+    const leaseTargetHash = hashTableRows(targetLeases, leaseColumns);
+    const receiptSourceHash = hashTableRows(receiptSourceKept, receiptColumns);
+    const receiptTargetHash = hashTableRows(targetReceipts, receiptColumns);
+    assert.equal(leaseSourceHash, leaseTargetHash);
+    assert.equal(receiptSourceHash, receiptTargetHash);
+
+    const leaseSourceFingerprints = leaseSourceKept.map((row) => hashRow(row, leaseColumns));
+    const leaseTargetFingerprints = targetLeases.map((row) => hashRow(row, leaseColumns));
+    const receiptSourceFingerprints = receiptSourceKept.map((row) => hashRow(row, receiptColumns));
+    const receiptTargetFingerprints = targetReceipts.map((row) => hashRow(row, receiptColumns));
+    assert.deepEqual(leaseSourceFingerprints, leaseTargetFingerprints);
+    assert.deepEqual(receiptSourceFingerprints, receiptTargetFingerprints);
+
+    const runId = "load-synth-seven-column-roundtrip";
+    const snapshotId = "synth-seven-column-roundtrip-20261121";
+    const leaseCheckpoint = createCheckpoint({
+      runId,
+      snapshotId,
+      snapshotRowsTotal: 5,
+      batch: { batchId: "SYNTH-LEASES-001", table: "platform_edge_agent_leases", rowOffset: 0, rowCount: 2 },
+      sourceCount: 2,
+      loadedCount: 2,
+      deferredCount: 0,
+      failedCount: 0,
+      sourceHash: leaseSourceHash,
+      targetHash: leaseTargetHash,
+      fkViolations: 0,
+      status: "LOADED",
+      note: "synthetic in-memory source-to-target readback",
+    });
+    const receiptCheckpoint = createCheckpoint({
+      runId,
+      snapshotId,
+      snapshotRowsTotal: 5,
+      batch: { batchId: "SYNTH-RECEIPTS-001", table: "platform_edge_apply_receipts", rowOffset: 0, rowCount: 3 },
+      sourceCount: 3,
+      loadedCount: 2,
+      deferredCount: 1,
+      failedCount: 0,
+      sourceHash: receiptSourceHash,
+      targetHash: receiptTargetHash,
+      fkViolations: 0,
+      status: "PENDING",
+      note: "hash covers the two losslessly kept rows; third row is deferred whole with D-1",
+    });
+    assert.equal(leaseCheckpoint.hash_match, true);
+    assert.equal(leaseCheckpoint.status, "LOADED");
+    assert.equal(receiptCheckpoint.hash_match, true);
+    assert.equal(receiptCheckpoint.status, "PENDING");
+    assert.equal(receiptCheckpoint.deferred_count, 1);
+
+    const evidence = {
+      schemaVersion: 1,
+      mode: "synthetic-only",
+      runId,
+      snapshotId,
+      perTableCounts: {
+        platform_edge_agent_leases: { source: 2, target: 2, deferred: 0 },
+        platform_edge_apply_receipts: { source: 3, target: 2, deferred: 1 },
+      },
+      checkpoints: [leaseCheckpoint, receiptCheckpoint],
+      rowFingerprints: {
+        platform_edge_agent_leases: {
+          source: leaseSourceFingerprints,
+          target: leaseTargetFingerprints,
+        },
+        platform_edge_apply_receipts: {
+          source: receiptSourceFingerprints,
+          target: receiptTargetFingerprints,
+        },
+      },
+      independentReviewReceipt: {
+        status: "PENDING_INDEPENDENT_REVIEW",
+        reviewer: null,
+        reviewedAt: null,
+        note: "A reviewer other than the implementation author must inspect this synthetic evidence before acceptance.",
+      },
+    };
+    const evidenceHash = createHash("sha256")
+      .update(JSON.stringify(evidence), "utf8")
+      .digest("hex");
+    assert.match(evidenceHash, /^[0-9a-f]{64}$/);
+    assert.equal(evidence.independentReviewReceipt.status, "PENDING_INDEPENDENT_REVIEW");
+    t.diagnostic("SEVEN_COLUMN_SYNTHETIC_EVIDENCE " + JSON.stringify({ ...evidence, evidenceHash }));
+  } finally {
+    target.close();
+    db.close();
+  }
+});
+
 // ---------------------------------------------------------------------------
 // Filter: EXTERNALIZE / TRANSFORM / gates / guards
 // ---------------------------------------------------------------------------
