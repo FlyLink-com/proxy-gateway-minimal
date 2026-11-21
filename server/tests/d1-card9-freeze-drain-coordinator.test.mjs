@@ -1,0 +1,534 @@
+// D1 Card 9 — Freeze/Drain coordinator tests.
+//
+// All fixtures are synthetic (s2s- prefix). No production data, no real
+// credential material, no network, no E4/D1 calls. Databases are
+// in-memory or temp files; the durable authority guard is the real
+// single-writer-authority implementation, so epoch +1 and the blocked
+// T4 transition are enforced by the same trigger production would use.
+import test from "node:test";
+import assert from "node:assert/strict";
+import Database from "better-sqlite3";
+
+import { ensureWriterAuthority, readWriterAuthority } from "../services/platform/single-writer-authority.mjs";
+import {
+  buildWriteLockReceipt,
+  buildSchedulerQuiescenceReceipt,
+  buildCallbackDrainReceipt,
+  buildHwmCompletenessReceipt,
+  buildFreezeReadinessBundle,
+  SCHEDULER_JOBS,
+  UNFENCED_WRITER_BASELINE,
+} from "../services/platform/d1-stage2-freeze-drain.mjs";
+import {
+  FREEZE_DRAIN_COORDINATOR_VERSION,
+  ROLLBACK_TRIGGERS,
+  VERIFICATION_CHECK_IDS,
+  buildWriterCoverageMatrix,
+  verifyWriterCoverageMatrix,
+  createDrainTracker,
+  buildDeltaCatchupReport,
+  verifyDeltaCatchupReport,
+  buildTwoSidedVerificationReport,
+  verifyTwoSidedVerificationReport,
+  createFreezeDrainCoordinator,
+  verifyCoordinatorLog,
+  verifyCoordinatorReceipt,
+  COORDINATOR_LOG_TABLE,
+} from "../services/platform/d1-card9-freeze-drain-coordinator.mjs";
+
+const SNAPSHOT = "s2s-card9-freeze-drain-001";
+const CHECKPOINT = "s2s-checkpoint-card9-001";
+
+function makeClock(t) {
+  let nowMs = Date.parse("2026-11-21T00:00:00.000Z");
+  const now = () => new Date(nowMs);
+  return {
+    now,
+    advance(ms) { nowMs += ms; },
+  };
+}
+
+function makeDb(t) {
+  const db = new Database(":memory:");
+  t.after(() => { if (db.open) db.close(); });
+  db.exec(`create table s2s_items (id integer primary key, value text not null, updated_at text not null);
+    create table s2s_notes (id integer primary key, body text not null);`);
+  db.prepare("insert into s2s_items (id, value, updated_at) values (1, 'a', '2026-11-21T00:00:00.000Z'), (2, 'b', '2026-11-21T00:01:00.000Z')").run();
+  db.prepare("insert into s2s_notes (id, body) values (1, 'n')").run();
+  ensureWriterAuthority(db);
+  return db;
+}
+
+function makeCoordinator(t) {
+  const clock = makeClock(t);
+  const db = makeDb(t);
+  const coordinator = createFreezeDrainCoordinator(db, { snapshotId: SNAPSHOT, now: clock.now });
+  return { db, coordinator, clock };
+}
+
+function buildBundle(db) {
+  const writeLock = buildWriteLockReceipt(db, { snapshotId: SNAPSHOT, checkpointId: CHECKPOINT, outstandingJobs: [] });
+  const schedulerQuiescence = buildSchedulerQuiescenceReceipt({
+    snapshotId: SNAPSHOT,
+    evidence: Object.fromEntries(SCHEDULER_JOBS.map((job) => [job.id, true])),
+  });
+  const callbackDrain = buildCallbackDrainReceipt({ snapshotId: SNAPSHOT, callbacks: [] });
+  const hwmCompleteness = buildHwmCompletenessReceipt({
+    snapshotId: SNAPSHOT,
+    highWaterMark: { seq: 7, snapshotId: SNAPSHOT },
+    manifestSeq: 7,
+    rowCounts: { s2s_items: 2 },
+  });
+  return buildFreezeReadinessBundle({ snapshotId: SNAPSHOT, writeLock, schedulerQuiescence, callbackDrain, hwmCompleteness });
+}
+
+// All 28 items closed: fence every baseline id except U-F17, which is
+// derived from U-01..U-10.
+function closedCoverage() {
+  const fenced = UNFENCED_WRITER_BASELINE.map((entry) => entry.id).filter((id) => id !== "U-F17");
+  return buildWriterCoverageMatrix({ fenced });
+}
+
+function drainedTracker(clock) {
+  const tracker = createDrainTracker({ timeoutMs: 60000, now: clock.now });
+  tracker.registerWrite("s2s-tx-1");
+  tracker.registerCallback("s2s-cb-1");
+  tracker.settleWrite("s2s-tx-1");
+  tracker.settleCallback("s2s-cb-1");
+  tracker.markSchedulerQuiesced();
+  tracker.recordHwmObservation({ rowCounts: { s2s_items: 2 }, maxUpdatedAt: { s2s_items: "2026-11-21T00:01:00.000Z" } });
+  tracker.recordHwmObservation({ rowCounts: { s2s_items: 2 }, maxUpdatedAt: { s2s_items: "2026-11-21T00:01:00.000Z" } });
+  return tracker;
+}
+
+function passingVerification() {
+  return buildTwoSidedVerificationReport({
+    snapshotId: SNAPSHOT,
+    checks: Object.fromEntries(VERIFICATION_CHECK_IDS.map((id) => [id, { passed: true, detail: `synthetic ${id}` }])),
+  });
+}
+
+function appliedDelta() {
+  return buildDeltaCatchupReport({
+    snapshotId: SNAPSHOT,
+    items: [{ table: "s2s_items", pk: "2", disposition: "applied" }],
+  });
+}
+
+function freezeHappy(t) {
+  const { db, coordinator, clock } = makeCoordinator(t);
+  const result = coordinator.freeze({
+    readinessBundle: buildBundle(db),
+    coverageMatrix: closedCoverage(),
+    drainTracker: drainedTracker(clock),
+    checkpointId: CHECKPOINT,
+  });
+  return { db, coordinator, clock, result };
+}
+
+function driveToD1(t) {
+  const ctx = freezeHappy(t);
+  const switched = ctx.coordinator.switchToD1({
+    deltaReport: appliedDelta(),
+    verificationReport: passingVerification(),
+    c1ApprovalRef: "s2s-c1-approval-001",
+    handover: { verifiedBy: "s2s-reviewer-001", verifiedAt: "2026-11-21T00:05:00.000Z", receiptRef: "s2s-handover-001" },
+  });
+  return { ...ctx, switched };
+}
+
+function codeOf(fn) {
+  try {
+    fn();
+  } catch (error) {
+    return error.code;
+  }
+  return null;
+}
+
+// --- Coverage matrix: M-1..M-8 --------------------------------------------
+
+test("M-1 baseline matrix lists 28 items, all open, cutover blocked", () => {
+  const matrix = buildWriterCoverageMatrix();
+  assert.equal(matrix.total, 28);
+  assert.equal(matrix.entries.length, 28);
+  assert.deepEqual(matrix.counts, { open: 28, fenced: 0, waived: 0, outOfScope: 0 });
+  assert.equal(matrix.cutoverBlocked, true);
+  assert.equal(matrix.openIds.length, 28);
+  assert.ok(matrix.openIds.includes("U-F1") && matrix.openIds.includes("U-F18") && matrix.openIds.includes("U-10"));
+  assert.equal(matrix.schemaVersion, FREEZE_DRAIN_COORDINATOR_VERSION);
+  assert.match(matrix.matrixDigest, /^[0-9a-f]{64}$/);
+  assert.deepEqual(verifyWriterCoverageMatrix(matrix), { valid: true, total: 28, openIds: matrix.openIds, cutoverBlocked: true });
+});
+
+test("M-2 fencing all 28 closes the gate; U-F17 is fenced via U-01..U-10", () => {
+  const matrix = closedCoverage();
+  assert.deepEqual(matrix.counts, { open: 0, fenced: 28, waived: 0, outOfScope: 0 });
+  assert.equal(matrix.cutoverBlocked, false);
+  assert.deepEqual(matrix.openIds, []);
+  assert.equal(matrix.entries.find((e) => e.id === "U-F17").status, "fenced");
+  assert.deepEqual(verifyWriterCoverageMatrix(matrix).cutoverBlocked, false);
+});
+
+test("M-3 U-F17 is derived: 9 of 10 untraced fenced leaves it open; direct set is refused", () => {
+  const fenced = UNFENCED_WRITER_BASELINE.map((e) => e.id).filter((id) => id !== "U-F17" && id !== "U-10");
+  const matrix = buildWriterCoverageMatrix({ fenced });
+  assert.equal(matrix.entries.find((e) => e.id === "U-F17").status, "open");
+  assert.equal(matrix.cutoverBlocked, true);
+  assert.equal(codeOf(() => buildWriterCoverageMatrix({ fenced: ["U-F17"] })), "freeze_coverage_uf17_derived");
+  assert.equal(codeOf(() => buildWriterCoverageMatrix({ waivers: { "U-F17": "s2s-waiver-1" } })), "freeze_coverage_uf17_derived");
+});
+
+test("M-4 waiver without a ref is refused; with a ref it closes that item", () => {
+  assert.equal(codeOf(() => buildWriterCoverageMatrix({ waivers: { "U-F1": "" } })), "freeze_coverage_waiver_invalid");
+  const fenced = UNFENCED_WRITER_BASELINE.map((e) => e.id).filter((id) => id !== "U-F17" && id !== "U-F1");
+  const matrix = buildWriterCoverageMatrix({ fenced, waivers: { "U-F1": "s2s-yi-waiver-2026-11-21-001" } });
+  const entry = matrix.entries.find((e) => e.id === "U-F1");
+  assert.equal(entry.status, "waived");
+  assert.equal(entry.evidence.ref, "s2s-yi-waiver-2026-11-21-001");
+  assert.equal(matrix.counts.waived, 1);
+  assert.equal(matrix.cutoverBlocked, false);
+});
+
+test("M-5 out-of-scope needs a basis; U-F9/U-F14 close as out-of-scope with inventory citation", () => {
+  assert.equal(codeOf(() => buildWriterCoverageMatrix({ outOfScope: { "U-F9": "" } })), "freeze_coverage_basis_invalid");
+  const fenced = UNFENCED_WRITER_BASELINE.map((e) => e.id).filter((id) => id !== "U-F17" && id !== "U-F9" && id !== "U-F14");
+  const matrix = buildWriterCoverageMatrix({
+    fenced,
+    outOfScope: {
+      "U-F9": "1B inventory §15.2: schema-ensure DDL, out of fence scope by operator discipline",
+      "U-F14": "1B inventory §15.2: schema-migration writers, DDL out of scope",
+    },
+  });
+  assert.equal(matrix.counts.outOfScope, 2);
+  assert.equal(matrix.cutoverBlocked, false);
+  assert.equal(matrix.entries.find((e) => e.id === "U-F9").evidence.kind, "out-of-scope");
+});
+
+test("M-6 unknown ids and conflicting dispositions are refused", () => {
+  assert.equal(codeOf(() => buildWriterCoverageMatrix({ fenced: ["U-F99"] })), "freeze_coverage_unknown");
+  assert.equal(codeOf(() => buildWriterCoverageMatrix({ fenced: ["U-F1"], waivers: { "U-F1": "s2s-w-1" } })), "freeze_coverage_conflict");
+  assert.equal(codeOf(() => buildWriterCoverageMatrix({ waivers: { "U-F1": "s2s-w-1" }, outOfScope: { "U-F1": "basis" } })), "freeze_coverage_conflict");
+});
+
+test("M-7 tampering with a matrix entry breaks its digest", () => {
+  const matrix = buildWriterCoverageMatrix();
+  const tampered = { ...matrix, entries: matrix.entries.map((e) => (e.id === "U-F1" ? { ...e, status: "fenced" } : e)) };
+  assert.equal(codeOf(() => verifyWriterCoverageMatrix(tampered)), "freeze_coverage_digest_mismatch");
+});
+
+test("M-8 mixed dispositions count correctly and close the gate", () => {
+  const fenced = UNFENCED_WRITER_BASELINE.map((e) => e.id).filter((id) => !["U-F17", "U-F1", "U-F9", "U-F14"].includes(id));
+  const matrix = buildWriterCoverageMatrix({
+    fenced,
+    waivers: { "U-F1": "s2s-yi-waiver-2026-11-21-002" },
+    outOfScope: { "U-F9": "DDL, operator discipline", "U-F14": "DDL, operator discipline" },
+  });
+  assert.deepEqual(matrix.counts, { open: 0, fenced: 25, waived: 1, outOfScope: 2 });
+  assert.equal(matrix.cutoverBlocked, false);
+});
+
+// --- Drain tracker: D-1..D-5 ----------------------------------------------
+
+test("D-1 drain stays pending until writes, callbacks, scheduler and HWM all settle", (t) => {
+  const { now } = makeClock(t);
+  const tracker = createDrainTracker({ timeoutMs: 60000, now });
+  tracker.registerWrite("s2s-tx-1");
+  tracker.registerCallback("s2s-cb-1");
+  assert.equal(codeOf(() => tracker.assertDrained()), "freeze_drain_pending");
+  tracker.settleWrite("s2s-tx-1");
+  tracker.settleCallback("s2s-cb-1");
+  assert.equal(codeOf(() => tracker.assertDrained()), "freeze_drain_pending");
+  tracker.markSchedulerQuiesced();
+  assert.equal(codeOf(() => tracker.assertDrained()), "freeze_drain_pending");
+  tracker.recordHwmObservation({ rowCounts: { s2s_items: 2 } });
+  assert.equal(codeOf(() => tracker.assertDrained()), "freeze_drain_pending");
+  tracker.recordHwmObservation({ rowCounts: { s2s_items: 2 } });
+  assert.equal(tracker.assertDrained().drained, true);
+});
+
+test("D-2 a single HWM observation is not stability; two identical ones are", (t) => {
+  const { now } = makeClock(t);
+  const tracker = createDrainTracker({ timeoutMs: 60000, now });
+  tracker.markSchedulerQuiesced();
+  tracker.recordHwmObservation({ rowCounts: { s2s_items: 2 } });
+  assert.equal(tracker.status().hwmStable, false);
+  tracker.recordHwmObservation({ rowCounts: { s2s_items: 2 } });
+  assert.equal(tracker.status().hwmStable, true);
+  assert.equal(tracker.status().drained, true);
+});
+
+test("D-3 a changed second HWM observation is not stable", (t) => {
+  const { now } = makeClock(t);
+  const tracker = createDrainTracker({ timeoutMs: 60000, now });
+  tracker.markSchedulerQuiesced();
+  tracker.recordHwmObservation({ rowCounts: { s2s_items: 2 } });
+  tracker.recordHwmObservation({ rowCounts: { s2s_items: 3 } });
+  assert.equal(tracker.status().hwmStable, false);
+  assert.equal(tracker.status().drained, false);
+});
+
+test("D-4 drain timeout stops the freeze instead of waiting silently", (t) => {
+  const clock = makeClock(t);
+  const tracker = createDrainTracker({ timeoutMs: 1000, now: clock.now });
+  tracker.registerWrite("s2s-tx-stuck");
+  tracker.markSchedulerQuiesced();
+  assert.equal(codeOf(() => tracker.assertDrained()), "freeze_drain_pending");
+  clock.advance(1001);
+  assert.equal(tracker.status().timedOut, true);
+  assert.equal(codeOf(() => tracker.assertDrained()), "freeze_drain_timeout");
+});
+
+test("D-5 settling an unknown id and double-registering are refused", (t) => {
+  const { now } = makeClock(t);
+  const tracker = createDrainTracker({ timeoutMs: 60000, now });
+  assert.equal(codeOf(() => tracker.settleWrite("s2s-nope")), "freeze_drain_unknown");
+  tracker.registerCallback("s2s-cb-1");
+  assert.equal(codeOf(() => tracker.registerCallback("s2s-cb-1")), "freeze_drain_duplicate");
+});
+
+// --- Delta + verification reports: V-1..V-4 ------------------------------
+
+test("V-1 empty delta needs explicit confirmation; undispositioned items are refused", () => {
+  assert.equal(codeOf(() => buildDeltaCatchupReport({ snapshotId: SNAPSHOT, items: [] })), "freeze_delta_empty_unconfirmed");
+  const empty = buildDeltaCatchupReport({ snapshotId: SNAPSHOT, items: [], confirmedEmpty: true });
+  assert.equal(empty.confirmedEmpty, true);
+  assert.equal(codeOf(() => buildDeltaCatchupReport({ snapshotId: SNAPSHOT, items: [{ table: "s2s_items", pk: "1", disposition: "applied" }], confirmedEmpty: true })), "freeze_delta_invalid");
+  assert.equal(codeOf(() => buildDeltaCatchupReport({ snapshotId: SNAPSHOT, items: [{ table: "s2s_items", pk: "1" }] })), "freeze_delta_undispositioned");
+  assert.deepEqual(verifyDeltaCatchupReport(empty), { valid: true });
+});
+
+test("V-2 verification report requires all fifteen checks", () => {
+  const partial = Object.fromEntries(VERIFICATION_CHECK_IDS.slice(0, 14).map((id) => [id, { passed: true }]));
+  assert.equal(VERIFICATION_CHECK_IDS.length, 15);
+  assert.equal(codeOf(() => buildTwoSidedVerificationReport({ snapshotId: SNAPSHOT, checks: partial })), "freeze_verification_incomplete");
+  assert.equal(codeOf(() => buildTwoSidedVerificationReport({ snapshotId: SNAPSHOT, checks: { ...partial, "V-8": { passed: "yes" } } })), "freeze_verification_invalid");
+});
+
+test("V-3 one failed check fails the verdict and blocks the switch gate", () => {
+  const checks = Object.fromEntries(VERIFICATION_CHECK_IDS.map((id) => [id, { passed: id !== "C-3" }]));
+  const report = buildTwoSidedVerificationReport({ snapshotId: SNAPSHOT, checks });
+  assert.equal(report.verdict, "fail");
+  assert.deepEqual(report.failedIds, ["C-3"]);
+  assert.deepEqual(verifyTwoSidedVerificationReport(report), { valid: true, verdict: "fail", failedIds: ["C-3"] });
+});
+
+test("V-4 tampering with either report breaks its digest", () => {
+  const delta = appliedDelta();
+  assert.equal(codeOf(() => verifyDeltaCatchupReport({ ...delta, items: [{ table: "s2s_items", pk: "9", disposition: "applied" }] })), "freeze_delta_digest_mismatch");
+  const verification = passingVerification();
+  const tampered = { ...verification, checks: { ...verification.checks, "C-1": { passed: false, detail: "" } } };
+  assert.equal(codeOf(() => verifyTwoSidedVerificationReport(tampered)), "freeze_verification_digest_mismatch");
+});
+
+// --- Coordinator state machine: S-1..S-16 ---------------------------------
+
+test("S-1 freeze happy path: BWH_ACTIVE epoch 1 -> FROZEN epoch 2 with chained receipts", (t) => {
+  const { db, coordinator, clock } = makeCoordinator(t);
+  const result = coordinator.freeze({
+    readinessBundle: buildBundle(db),
+    coverageMatrix: closedCoverage(),
+    drainTracker: drainedTracker(clock),
+    checkpointId: CHECKPOINT,
+  });
+  assert.equal(result.transitionId, "T1");
+  assert.deepEqual([result.authority.phase, result.authority.epoch], ["FROZEN", 2]);
+  assert.equal(result.freezeReceipt.phase, "BWH_ACTIVE");
+  assert.equal(result.freezeReceipt.epoch, 1);
+  assert.equal(result.coordinatorReceipt.seq, 1);
+  assert.equal(result.coordinatorReceipt.transitionId, "T1");
+  assert.equal(result.coordinatorReceipt.fromEpoch, 1);
+  assert.equal(result.coordinatorReceipt.toEpoch, 2);
+  assert.equal(readWriterAuthority(db).phase, "FROZEN");
+  assert.deepEqual(verifyCoordinatorLog(db), { valid: true, entries: 1 });
+  assert.deepEqual(verifyCoordinatorReceipt(db, result.coordinatorReceipt), { valid: true, seq: 1 });
+});
+
+test("S-2 freeze with open coverage is refused and the phase does not move", (t) => {
+  const { db, coordinator, clock } = makeCoordinator(t);
+  const openMatrix = buildWriterCoverageMatrix();
+  assert.equal(openMatrix.openIds.length, 28);
+  assert.equal(codeOf(() => coordinator.freeze({
+    readinessBundle: buildBundle(db),
+    coverageMatrix: openMatrix,
+    drainTracker: drainedTracker(clock),
+    checkpointId: CHECKPOINT,
+  })), "freeze_coverage_open");
+  assert.deepEqual([readWriterAuthority(db).phase, readWriterAuthority(db).epoch], ["BWH_ACTIVE", 1]);
+  assert.equal(coordinator.readLog().length, 0);
+});
+
+test("S-3 freeze with a tampered readiness bundle is refused and the phase does not move", (t) => {
+  const { db, coordinator, clock } = makeCoordinator(t);
+  const bundle = buildBundle(db);
+  const tampered = { ...bundle, bundleHash: "0".repeat(64) };
+  assert.equal(codeOf(() => coordinator.freeze({
+    readinessBundle: tampered,
+    coverageMatrix: closedCoverage(),
+    drainTracker: drainedTracker(clock),
+    checkpointId: CHECKPOINT,
+  })), "freeze_bundle_hash_mismatch");
+  assert.equal(readWriterAuthority(db).phase, "BWH_ACTIVE");
+});
+
+test("S-4 freeze with a pending drain is refused and the phase does not move", (t) => {
+  const { db, coordinator, clock } = makeCoordinator(t);
+  const tracker = createDrainTracker({ timeoutMs: 60000, now: clock.now });
+  tracker.registerWrite("s2s-tx-stuck");
+  assert.equal(codeOf(() => coordinator.freeze({
+    readinessBundle: buildBundle(db),
+    coverageMatrix: closedCoverage(),
+    drainTracker: tracker,
+    checkpointId: CHECKPOINT,
+  })), "freeze_drain_pending");
+  assert.equal(readWriterAuthority(db).phase, "BWH_ACTIVE");
+});
+
+test("S-5 a second freeze from FROZEN is refused", (t) => {
+  const ctx = freezeHappy(t);
+  // The bundle must be built while still BWH_ACTIVE: the write-lock
+  // receipt itself requires BWH_ACTIVE, so a bundle built after the
+  // first freeze would fail before the coordinator ever sees it.
+  const { db, coordinator, clock } = makeCoordinator(t);
+  const bundle = buildBundle(db);
+  coordinator.freeze({
+    readinessBundle: bundle,
+    coverageMatrix: closedCoverage(),
+    drainTracker: drainedTracker(clock),
+    checkpointId: CHECKPOINT,
+  });
+  assert.equal(codeOf(() => coordinator.freeze({
+    readinessBundle: bundle,
+    coverageMatrix: closedCoverage(),
+    drainTracker: drainedTracker(clock),
+    checkpointId: CHECKPOINT,
+  })), "freeze_coordinator_wrong_state");
+  assert.equal(readWriterAuthority(db).phase, "FROZEN");
+});
+
+test("S-6 switching straight from BWH_ACTIVE to D1_ACTIVE is refused (FROZEN must come first)", (t) => {
+  const { coordinator } = makeCoordinator(t);
+  assert.equal(codeOf(() => coordinator.switchToD1({
+    deltaReport: appliedDelta(),
+    verificationReport: passingVerification(),
+    c1ApprovalRef: "s2s-c1-approval-001",
+    handover: { verifiedBy: "s2s-reviewer-001", verifiedAt: "2026-11-21T00:05:00.000Z", receiptRef: "s2s-handover-001" },
+  })), "freeze_coordinator_wrong_state");
+});
+
+test("S-7 full path freeze -> switch: FROZEN epoch 2 -> D1_ACTIVE epoch 3, log chain holds", (t) => {
+  const { db, coordinator, switched } = driveToD1(t);
+  assert.equal(switched.transitionId, "T2");
+  assert.deepEqual([switched.authority.phase, switched.authority.epoch], ["D1_ACTIVE", 3]);
+  assert.equal(switched.coordinatorReceipt.seq, 2);
+  assert.deepEqual(verifyCoordinatorLog(db), { valid: true, entries: 2 });
+  assert.deepEqual(verifyCoordinatorReceipt(db, switched.coordinatorReceipt), { valid: true, seq: 2 });
+  assert.equal(coordinator.readLog()[1].transitionId, "T2");
+});
+
+test("S-8 switch with a failed verification check stays in FROZEN", (t) => {
+  const ctx = freezeHappy(t);
+  const checks = Object.fromEntries(VERIFICATION_CHECK_IDS.map((id) => [id, { passed: id !== "V-1" }]));
+  const report = buildTwoSidedVerificationReport({ snapshotId: SNAPSHOT, checks });
+  assert.equal(codeOf(() => ctx.coordinator.switchToD1({
+    deltaReport: appliedDelta(),
+    verificationReport: report,
+    c1ApprovalRef: "s2s-c1-approval-001",
+    handover: { verifiedBy: "s2s-reviewer-001", verifiedAt: "2026-11-21T00:05:00.000Z", receiptRef: "s2s-handover-001" },
+  })), "freeze_verification_failed");
+  assert.deepEqual([readWriterAuthority(ctx.db).phase, readWriterAuthority(ctx.db).epoch], ["FROZEN", 2]);
+});
+
+test("S-9 switch without a C1 approval ref is refused (the coordinator never self-approves)", (t) => {
+  const ctx = freezeHappy(t);
+  assert.equal(codeOf(() => ctx.coordinator.switchToD1({
+    deltaReport: appliedDelta(),
+    verificationReport: passingVerification(),
+    c1ApprovalRef: "",
+    handover: { verifiedBy: "s2s-reviewer-001", verifiedAt: "2026-11-21T00:05:00.000Z", receiptRef: "s2s-handover-001" },
+  })), "freeze_c1_approval_missing");
+  assert.equal(readWriterAuthority(ctx.db).phase, "FROZEN");
+});
+
+test("S-10 switch without a staged-handover verification is refused", (t) => {
+  const ctx = freezeHappy(t);
+  assert.equal(codeOf(() => ctx.coordinator.switchToD1({
+    deltaReport: appliedDelta(),
+    verificationReport: passingVerification(),
+    c1ApprovalRef: "s2s-c1-approval-001",
+    handover: { verifiedBy: "", verifiedAt: "2026-11-21T00:05:00.000Z", receiptRef: "s2s-handover-001" },
+  })), "freeze_handover_unverified");
+  assert.equal(readWriterAuthority(ctx.db).phase, "FROZEN");
+});
+
+test("S-11 enterRecovery accepts each of the four triggers and refuses unknown ones", (t) => {
+  for (const trigger of ROLLBACK_TRIGGERS) {
+    const { db, coordinator } = driveToD1(t);
+    const result = coordinator.enterRecovery({ trigger, detail: `synthetic ${trigger}` });
+    assert.equal(result.transitionId, "T3");
+    assert.deepEqual([result.authority.phase, result.authority.epoch], ["RECOVERY", 4]);
+    assert.equal(result.coordinatorReceipt.gateRefs.trigger, trigger);
+    assert.equal(readWriterAuthority(db).phase, "RECOVERY");
+  }
+  assert.equal(ROLLBACK_TRIGGERS.length, 4);
+  const fresh = driveToD1(t);
+  assert.equal(codeOf(() => fresh.coordinator.enterRecovery({ trigger: "operator-felt-like-it" })), "freeze_rollback_trigger_invalid");
+  assert.deepEqual([readWriterAuthority(fresh.db).phase, readWriterAuthority(fresh.db).epoch], ["D1_ACTIVE", 3]);
+});
+
+test("S-12 return to BWH (T4) is blocked from RECOVERY and from D1_ACTIVE", (t) => {
+  const { db, coordinator } = driveToD1(t);
+  assert.equal(codeOf(() => coordinator.returnToBwh()), "freeze_return_blocked");
+  assert.equal(readWriterAuthority(db).phase, "D1_ACTIVE");
+  coordinator.enterRecovery({ trigger: "e4-unavailable" });
+  assert.equal(codeOf(() => coordinator.returnToBwh()), "freeze_return_blocked");
+  assert.deepEqual([readWriterAuthority(db).phase, readWriterAuthority(db).epoch], ["RECOVERY", 4]);
+});
+
+test("S-13 unfreeze (T5): FROZEN -> BWH_ACTIVE lands on epoch 3, never back on epoch 1; re-freeze works", (t) => {
+  const ctx = freezeHappy(t);
+  const result = ctx.coordinator.unfreeze({ reason: "synthetic verification failure", voidedFreezeReceiptRef: ctx.result.freezeReceipt.receiptDigest });
+  assert.equal(result.transitionId, "T5");
+  assert.deepEqual([result.authority.phase, result.authority.epoch], ["BWH_ACTIVE", 3]);
+  assert.match(result.epochNote, /2 -> 3/);
+  const again = ctx.coordinator.freeze({
+    readinessBundle: buildBundle(ctx.db),
+    coverageMatrix: closedCoverage(),
+    drainTracker: drainedTracker(ctx.clock),
+    checkpointId: CHECKPOINT,
+  });
+  assert.deepEqual([again.authority.phase, again.authority.epoch], ["FROZEN", 4]);
+  assert.deepEqual(verifyCoordinatorLog(ctx.db), { valid: true, entries: 3 });
+});
+
+test("S-14 resume to D1 (R1) needs reverification; with it, RECOVERY -> D1_ACTIVE lands on epoch 5", (t) => {
+  const { db, coordinator } = driveToD1(t);
+  coordinator.enterRecovery({ trigger: "post-switch-mismatch" });
+  const failing = buildTwoSidedVerificationReport({
+    snapshotId: SNAPSHOT,
+    checks: Object.fromEntries(VERIFICATION_CHECK_IDS.map((id) => [id, { passed: id !== "C-1" }])),
+  });
+  assert.equal(codeOf(() => coordinator.resumeToD1({ reverificationReport: failing })), "freeze_verification_failed");
+  assert.equal(readWriterAuthority(db).phase, "RECOVERY");
+  const result = coordinator.resumeToD1({ reverificationReport: passingVerification() });
+  assert.deepEqual([result.authority.phase, result.authority.epoch], ["D1_ACTIVE", 5]);
+  assert.equal(result.transitionId, "R1");
+});
+
+test("S-15 entering RECOVERY from FROZEN is refused (nothing has switched yet)", (t) => {
+  const ctx = freezeHappy(t);
+  assert.equal(codeOf(() => ctx.coordinator.enterRecovery({ trigger: "e4-unavailable" })), "freeze_coordinator_wrong_state");
+  assert.equal(readWriterAuthority(ctx.db).phase, "FROZEN");
+});
+
+test("S-16 tampering with the durable log or a receipt is detected", (t) => {
+  const { db, coordinator, result } = freezeHappy(t);
+  db.prepare(`update ${COORDINATOR_LOG_TABLE} set receipt_digest = ? where seq = 1`).run("0".repeat(64));
+  assert.equal(codeOf(() => verifyCoordinatorLog(db)), "freeze_coordinator_log_broken");
+  assert.equal(codeOf(() => verifyCoordinatorReceipt(db, result.coordinatorReceipt)), "freeze_coordinator_receipt_invalid");
+  const tamperedReceipt = { ...result.coordinatorReceipt, toEpoch: 99 };
+  // Restore the log first so the receipt-field check (not the chain) is what fails.
+  db.prepare(`update ${COORDINATOR_LOG_TABLE} set receipt_digest = ? where seq = 1`).run(result.coordinatorReceipt.receiptDigest);
+  assert.deepEqual(verifyCoordinatorLog(db), { valid: true, entries: 1 });
+  assert.equal(codeOf(() => verifyCoordinatorReceipt(db, tamperedReceipt)), "freeze_coordinator_receipt_invalid");
+});
