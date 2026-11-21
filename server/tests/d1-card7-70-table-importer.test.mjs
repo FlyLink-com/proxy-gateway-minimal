@@ -76,6 +76,10 @@ function freshDb() {
   return createSyntheticFixtureDb(new DatabaseSync(":memory:"));
 }
 
+function sumCp(checkpoints, field) {
+  return checkpoints.reduce((n, c) => n + c[field], 0);
+}
+
 function synthRow(db, table, index = 0) {
   return db.prepare(`SELECT * FROM "${table}" ORDER BY rowid LIMIT 1 OFFSET ?`).get(index);
 }
@@ -501,16 +505,80 @@ test("importer module performs no network I/O", () => {
   assert.ok(!/fetch\s*\(|node:https|node:http|undici|XMLHttpRequest/.test(IMPORTER_SOURCE));
 });
 
+test("checkpoint hash_match is null when either hash is missing (C-1)", () => {
+  const plan = firstBatchPlan();
+  const batch = plan[0];
+  const mk = (sourceHash, targetHash) => createCheckpoint({
+    runId: "load-synth-001", snapshotId: SNAPSHOT_ID, snapshotRowsTotal: 6848, batch,
+    sourceCount: 1, loadedCount: 1, deferredCount: 0, failedCount: 0,
+    sourceHash, targetHash, fkViolations: 0, status: "LOADED",
+  });
+  assert.equal(mk(null, null).hash_match, null, "no hash on either side is unknown, not a match");
+  assert.equal(mk(undefined, undefined).hash_match, null);
+  assert.equal(mk("abc", null).hash_match, null);
+  assert.equal(mk(null, "abc").hash_match, null);
+  assert.equal(mk("abc", "abc").hash_match, true);
+  assert.equal(mk("abc", "zzz").hash_match, false);
+});
+
 // ---------------------------------------------------------------------------
 // Full synthetic dry run
 // ---------------------------------------------------------------------------
 
-test("full synthetic dry run (gates open): 103 checkpoints, deterministic hash, 4 rejections", () => {
+test("full synthetic dry run (gates open): checkpoints record actual rows, deterministic hash, 4 rejections", () => {
   const db = freshDb();
   const run = runSyntheticLoad({ db, snapshotId: SNAPSHOT_ID, sha256: SNAPSHOT_SHA, gates: GATES_OPEN });
   assert.equal(run.planBatchCount, 103);
   assert.equal(run.checkpoints.length, 103);
-  assert.ok(run.checkpoints.every((c) => c.status === "LOADED"));
+  // Checkpoint counts are this run's actual synthetic outcome, not the
+  // snapshot plan counts (C-1): checkpoint loaded/deferred/failed sums
+  // reconcile with the run totals for the 50 planned tables. The 44
+  // TABLE-NOT-LOADED rows of the 22 non-first-batch tables and the 2
+  // excluded samples rows have no plan batch, so checkpoint source rows
+  // total 106 (= 152 - 44 - 2), and checkpoint deferred is 13 (= 57 - 44),
+  // all of it D-1 (1) + SOURCE-INVENTORY-GAP (12).
+  const sum = (f) => run.checkpoints.reduce((n, c) => n + c[f], 0);
+  assert.equal(sum("loaded_count"), 89);
+  assert.equal(sum("loaded_count"), run.totals.loadedRows);
+  assert.equal(sum("deferred_count"), 13);
+  assert.equal(sum("failed_count"), 4);
+  assert.equal(sum("failed_count"), run.totals.rejectedRows);
+  assert.equal(sum("source_count"), 106);
+  assert.ok(run.checkpoints.every((c) => c.loaded_count <= c.source_count));
+  assert.ok(run.checkpoints.every((c) => c.hash_match === null), "no hashes in a synthetic dry run, so hash_match is null, never true");
+  // No checkpoint may claim a snapshot-scale load: the largest snapshot
+  // batch is 100 rows, but the fixture holds at most 2 rows per table,
+  // so no checkpoint loads more than 2 rows.
+  assert.ok(run.checkpoints.every((c) => c.loaded_count <= 2));
+  // A LOADED checkpoint means every actual row in that batch loaded;
+  // a batch with any deferred / rejected row is PENDING and re-runs.
+  assert.ok(run.checkpoints.every((c) => c.status === "LOADED"
+    ? (c.source_count > 0 && c.loaded_count === c.source_count && c.deferred_count === 0 && c.failed_count === 0)
+    : c.status === "PENDING"));
+  const resumed = resumePlan({ plan: firstBatchPlan(), checkpoints: run.checkpoints });
+  assert.ok(!resumed.skippedLoaded.includes("B-007"), "receipts first batch has a deferred row, must not be skipped");
+  // Review §6 three mismatch cases, re-checked against actuals:
+  // (1) receipts B-007..B-022 claimed 1,513 loaded; actual 2 loaded / 1 deferred.
+  const receiptCps = run.checkpoints.filter((c) => c.table === "platform_edge_apply_receipts");
+  assert.equal(receiptCps.length, 16);
+  assert.equal(sumCp(receiptCps, "loaded_count"), 2);
+  assert.equal(sumCp(receiptCps, "deferred_count"), 1);
+  assert.equal(receiptCps[0].loaded_count, 2);
+  assert.equal(receiptCps[0].deferred_count, 1);
+  assert.equal(receiptCps[0].status, "PENDING");
+  assert.ok(receiptCps.slice(1).every((c) => c.loaded_count === 0 && c.source_count === 0));
+  // (2) archive B-029 claimed 33/33 loaded; actual 1 loaded / 1 rejected.
+  const archiveCp = run.checkpoints.find((c) => c.table === "platform_payment_orders_legacy_archive_20260803");
+  assert.equal(archiveCp.loaded_count, 1);
+  assert.equal(archiveCp.failed_count, 1);
+  assert.equal(archiveCp.source_count, 2);
+  assert.equal(archiveCp.status, "PENDING");
+  // (3) G-1 desired_states B-027 claimed 3/3 loaded; actual 0 loaded / 3 deferred.
+  const desiredCp = run.checkpoints.find((c) => c.table === "platform_edge_desired_states");
+  assert.equal(desiredCp.loaded_count, 0);
+  assert.equal(desiredCp.deferred_count, 3);
+  assert.equal(desiredCp.source_count, 3);
+  assert.equal(desiredCp.status, "PENDING");
   assert.equal(run.integrity.ok, true);
   assert.match(run.databaseHash, /^[0-9a-f]{64}$/);
   // 140 fixture rows + 12 DDL-only snapshot rows.
@@ -552,6 +620,12 @@ test("full synthetic dry run (gates closed): ledger, password and legacy rows de
   assert.equal(ledger.loadedRows, 0);
   const pw = run.perTable.find((t) => t.table === "platform_portal_password_credentials");
   assert.equal(pw.loadedRows, 0);
+  // Checkpoints agree with the closed-gate run too: 84 loaded, no
+  // checkpoint claims a snapshot-scale load.
+  assert.equal(sumCp(run.checkpoints, "loaded_count"), 84);
+  assert.equal(sumCp(run.checkpoints, "loaded_count"), run.totals.loadedRows);
+  assert.ok(run.checkpoints.every((c) => c.loaded_count <= 2));
+  assert.ok(run.checkpoints.every((c) => c.hash_match === null));
 });
 
 test("synthetic values are deterministic helpers, not real data", () => {

@@ -564,7 +564,10 @@ export function createCheckpoint({ runId, snapshotId, snapshotRowsTotal, batch, 
     failed_count: failedCount,
     source_hash: sourceHash ?? null,
     target_hash: targetHash ?? null,
-    hash_match: sourceHash !== undefined && targetHash !== undefined ? sourceHash === targetHash : null,
+    // A hash comparison is only meaningful when both sides actually have a
+    // hash. Either side missing (null/undefined) means "unknown", never a
+    // match: null === null must not report hash_match: true (C-1 fix).
+    hash_match: sourceHash == null || targetHash == null ? null : sourceHash === targetHash,
     fk_check: fkViolations ?? 0,
     status,
     started_at: null,
@@ -741,12 +744,34 @@ export function runSyntheticLoad({ db, snapshotId, sha256, runId = "load-synth-0
     }
   }
 
-  const checkpoints = plan.map((batch) => createCheckpoint({
-    runId, snapshotId: identity.snapshotId, snapshotRowsTotal: sourceRows, batch,
-    sourceCount: batch.rowCount, loadedCount: batch.rowCount, deferredCount: 0,
-    failedCount: 0, sourceHash: null, targetHash: null, fkViolations: 0,
-    status: "LOADED", executor, note: "synthetic dry-run checkpoint; no E4 write",
-  }));
+  // Checkpoints must record THIS run's actual synthetic outcome, never the
+  // snapshot plan counts (C-1 fix). Per-table actuals come from perTable
+  // (rows really read / transformed in this run); a table's actual rows are
+  // attributed to its first plan batch, later batches of the same table
+  // processed no synthetic rows in this run and record 0. A batch is LOADED
+  // only when every actual row in it loaded (loaded === source > 0, no
+  // deferred / rejected rows); anything else is PENDING, so resumePlan
+  // re-runs it instead of skipping it as complete (Card 6 §5 resume
+  // contract). Snapshot-scale counts (e.g. receipts 1,513, archive 33)
+  // never appear as loaded_count here. Tables with no plan batch (the 22
+  // non-first-batch tables, TABLE-NOT-LOADED; the excluded samples table)
+  // have no checkpoint; their rows are recorded in perTable / deferred.
+  const perTableByName = new Map(perTable.map((t) => [t.table, t]));
+  const checkpoints = plan.map((batch) => {
+    const entry = perTableByName.get(batch.table);
+    const isFirstBatch = batch.batchIndex === 1;
+    const loadedCount = isFirstBatch ? (entry?.loadedRows ?? 0) : 0;
+    const deferredCount = isFirstBatch ? (entry?.deferredRows ?? 0) : 0;
+    const failedCount = isFirstBatch ? (entry?.rejectedRows ?? 0) : 0;
+    const sourceCount = loadedCount + deferredCount + failedCount;
+    const status = sourceCount > 0 && deferredCount === 0 && failedCount === 0 ? "LOADED" : "PENDING";
+    return createCheckpoint({
+      runId, snapshotId: identity.snapshotId, snapshotRowsTotal: sourceRows, batch,
+      sourceCount, loadedCount, deferredCount,
+      failedCount, sourceHash: null, targetHash: null, fkViolations: 0,
+      status, executor, note: "synthetic dry-run checkpoint; no E4 write; counts are actual synthetic rows processed in this run, not snapshot plan counts",
+    });
+  });
 
   return Object.freeze({
     runId, snapshotId: identity.snapshotId, sha256: identity.sha256,
