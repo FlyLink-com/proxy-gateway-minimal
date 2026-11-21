@@ -8,8 +8,8 @@
 | Notion 卡 | `41edbee1-8783-81a2-82c2-f56bef29c491`，标题“Muse｜核实 Cloudflare 套餐与 D1 导入批次预算”，并发工作组 C，状态：进行中 |
 | 基线 master | `b1e46fef4e98bbfdace900a4e8b2d36a4284e176`（开工前 `git ls-remote` 核对一致） |
 | 分支 | `feat/d1-import-batch-budget-20261121`（全新克隆 `~/workspace/d1-card13-budget/`，不复用旧 clone） |
-| 定稿提交 | `HEAD_SHA_PLACEHOLDER`（代码 + 测试 + 本报告定稿提交；见 §9） |
-| Draft PR | `PR_NUMBER_PLACEHOLDER`（只开 Draft，绝不 Ready、绝不合并；见 §9） |
+| 定稿提交 | `ba0901ce30430f9b43429393fb898b486e16bcad`（代码 + 测试 + 本报告定稿提交；见 §9） |
+| Draft PR | [#907](https://github.com/FlyLink-com/proxy-gateway-minimal/pull/907)（只开 Draft，绝不 Ready、绝不合并；见 §9） |
 | 生产 | 仍 pr799（未动）；E4 未动；未读不写生产 |
 | 核对日期 | 2026-11-21（官方文档页抓取时间 2026-11-21 13:00 UTC） |
 
@@ -225,7 +225,7 @@
 | 1 | 本报告 | `CARD13_D1_IMPORT_BATCH_BUDGET_2026-11-21.md`（仓库根目录，随 PR 提交） |
 | 2 | 分批预算算子 | `server/services/platform/d1-card13-import-batch-budget.mjs`（新文件，纯函数） |
 | 3 | 算子测试 | `server/tests/d1-card13-import-batch-budget.test.mjs`（新文件，**23/23 通过**，见下） |
-| 4 | Draft PR | `PR_NUMBER_PLACEHOLDER`，分支 `feat/d1-import-batch-budget-20261121`，head `HEAD_SHA_PLACEHOLDER` |
+| 4 | Draft PR | [#907](https://github.com/FlyLink-com/proxy-gateway-minimal/pull/907)，分支 `feat/d1-import-batch-budget-20261121`，分支 head 见下（定稿提交 `ba0901ce…`，本行补录提交见分支 head） |
 
 测试证据（`node --test server/tests/d1-card13-import-batch-budget.test.mjs`，Node v24.22.1，`~/workspace/d1-card13-budget/`）：**23 测试、23 通过、0 失败**。覆盖：官方限制常量逐项断言；100 绑定边界（28 列→3 行、21 列→4 行、5 行回执 105 绑定越界）；100 KB 字面语句切分（2,000 字节行 40 行进 80,000 cap、单行超 100 KB 字面装不下）；2 MB 单行边界（2,000,000 可装 / 2,000,001 延后 F-5）；30 秒批耗时边界（20 秒软 cap、30 秒拆批不重试）；50 MB 结果边界（40 MB 软 cap、超 50 MB 失败）；10 GB 单库边界；回执表 16 批 / 25 语句每批 / 最坏 7,565 写入；首批全量 103 批 / 1,412 语句 / 22,012 最坏写入 / 20,336 下限 / 7,497 FK 查找 / 13,696 对账读；批大小 250→63 批、1,000→52 批且写入不变；重试预算（2 次、60 秒、66,036）；暂停阈值（同表连续 2 批停表、全库累计 3 批停跑、60 分钟复核点、120 分钟硬停、F-6 30 分钟未恢复暂停）；快照漂移（6,848 vs 7,029 须重算）；卡 7 干跑口径（checkpoint 行数是合成轮次行数，绝不冒充快照行数）。
 
