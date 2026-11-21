@@ -8,7 +8,16 @@ const KEY_FAMILIES = new Set([
   "provider-event-hmac",
   "pii-hmac",
   "portal-totp-aes",
-  "admin-totp-aes"
+  "admin-totp-aes",
+  // Card #4 (D-6) / Q-7 design identifiers ONLY. These three names are
+  // whitelisted so the #4 catalog is complete, but they are NOT approved
+  // for production use and NO crypto operation in this file accepts them:
+  // every operation hardcodes its own family. Production use is gated by
+  // `assertD1Card4KeyFamilyProductionApproved` in
+  // `d1-card4-key-families.mjs`. See that module's header for the HOLD.
+  "lead-contact-aes",
+  "subscription-capability-aes",
+  "payment-action-aes"
 ]);
 
 const IDEMPOTENCY_DOMAINS = new Set([
