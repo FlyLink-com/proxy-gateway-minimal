@@ -320,6 +320,7 @@ export function exportPage(db, {
 export function verifyExportPage(page) {
   if (!page || typeof page !== "object" || Array.isArray(page)
     || page.schemaVersion !== EXPORT_SCHEMA_VERSION
+    || typeof page.snapshotId !== "string" || !EXPORT_ID_PATTERN.test(page.snapshotId)
     || typeof page.table !== "string" || !Array.isArray(page.pk) || page.pk.length === 0
     || !Array.isArray(page.columns) || !Array.isArray(page.rows)
     || !Array.isArray(page.excludedColumns)
@@ -327,8 +328,10 @@ export function verifyExportPage(page) {
     || typeof page.byteLength !== "number" || typeof page.contentHash !== "string") {
     throw exportError("export_page_invalid", "export page is malformed");
   }
-  // A smuggled column with a recomputed hash would pass the hash check
-  // below, so the column list is authorized here, before the hash.
+  // Authorize the declared column list first. The list is not trusted
+  // to describe the row objects: every row's actual own enumerable
+  // fields must match it exactly, so a caller cannot smuggle an extra
+  // field while leaving page.columns unchanged.
   const allowedColumns = exportableColumns(page.table);
   const unapproved = page.columns.filter((column) => !allowedColumns.includes(column));
   if (unapproved.length > 0) {
@@ -345,30 +348,70 @@ export function verifyExportPage(page) {
   if (canonicalJson(page.excludedColumns) !== canonicalJson(expectedExcluded)) {
     throw exportError("export_page_column_unapproved", `export page excluded columns do not match the candidate mapping for ${page.table}`);
   }
+
+  const declaredColumns = [...page.columns].sort();
+  for (const row of page.rows) {
+    if (!row || typeof row !== "object" || Array.isArray(row)) {
+      throw exportError("export_page_invalid", "each export row must be an object");
+    }
+    const actualColumns = Object.keys(row).sort();
+    if (canonicalJson(actualColumns) !== canonicalJson(declaredColumns)) {
+      throw exportError("export_page_column_unapproved", "an export row carries fields that do not exactly match the authorized column list");
+    }
+  }
+  // Scan the values actually present in each row, after proving that
+  // the row keys are exactly the authorized keys. Do not rely on the
+  // page.columns declaration alone as a proxy for row contents.
+  scanForSensitiveValues(page.rows, page.columns);
+
+  const pkColumns = assertPkTuple(page.pk);
+  if (new Set(pkColumns).size !== pkColumns.length
+    || pkColumns.some((column) => !allowedColumns.includes(column))) {
+    throw exportError("export_page_pk_invalid", "export page primary-key columns must be unique authorized columns");
+  }
+  const rowPks = page.rows.map((row) => pkColumns.map((column) => row[column]));
+  if (rowPks.some((tuple) => tuple.some((value) => value === null || value === undefined))) {
+    throw exportError("export_page_pk_invalid", "export page rows must contain every primary-key value");
+  }
+
   if (sha256Hex(canonicalJson(page.rows)) !== page.contentHash) {
     throw exportError("export_page_hash_mismatch", "export page content hash does not match its rows");
   }
   if (Buffer.byteLength(canonicalJson(page.rows), "utf8") !== page.byteLength) {
     throw exportError("export_page_length_mismatch", "export page byte length does not match its rows");
   }
-  for (let i = 1; i < page.rows.length; i += 1) {
-    const prev = page.pk.map((column) => page.rows[i - 1][column]);
-    const cur = page.pk.map((column) => page.rows[i][column]);
-    if (canonicalJson(prev) >= canonicalJson(cur)) {
+  for (let i = 1; i < rowPks.length; i += 1) {
+    if (canonicalJson(rowPks[i - 1]) >= canonicalJson(rowPks[i])) {
       throw exportError("export_page_order_invalid", "export page rows are not strictly PK-ordered");
     }
   }
-  if (page.rows.length > 0 && page.continuationToken !== null) {
+
+  if (rowPks.length === 0) {
+    if (page.startPk !== null || page.endPk !== null) {
+      throw exportError("export_page_boundary_mismatch", "an empty export page must have null startPk and endPk");
+    }
+    if (page.continuationToken !== null) {
+      throw exportError("export_page_token_mismatch", "an empty export page must not carry a continuation token");
+    }
+  } else {
+    const firstPk = rowPks[0];
+    const lastPk = rowPks[rowPks.length - 1];
+    if (!Array.isArray(page.startPk) || !Array.isArray(page.endPk)
+      || canonicalJson(page.startPk) !== canonicalJson(firstPk)
+      || canonicalJson(page.endPk) !== canonicalJson(lastPk)) {
+      throw exportError("export_page_boundary_mismatch", "export page startPk/endPk must be derived from its actual first and last rows");
+    }
+    if (typeof page.continuationToken !== "string" || page.continuationToken.length === 0) {
+      throw exportError("export_page_token_mismatch", "a non-empty export page must carry a continuation token");
+    }
     const decoded = decodeContinuationToken(page.continuationToken);
     if (decoded.table !== page.table || decoded.snapshotId !== page.snapshotId
-      || JSON.stringify(decoded.lastPk) !== JSON.stringify(page.endPk)) {
-      throw exportError("export_page_token_mismatch", "export page continuation token does not match its last row");
+      || canonicalJson(decoded.lastPk) !== canonicalJson(lastPk)) {
+      throw exportError("export_page_token_mismatch", "export page continuation token must bind to the actual last row");
     }
   }
-  if (page.rows.length === 0 && page.continuationToken !== null) {
-    throw exportError("export_page_token_mismatch", "an empty export page must not carry a continuation token");
-  }
   return true;
+}
 }
 
 // A durable, ordered high-water mark. seq is a manifest-issued
@@ -399,11 +442,15 @@ export function buildIncrementalManifest(db, {
 } = {}) {
   if (!highWaterMark || typeof highWaterMark !== "object"
     || !Number.isInteger(highWaterMark.seq) || highWaterMark.seq < 0
-    || typeof highWaterMark.snapshotId !== "string") {
-    throw exportError("export_hwm_invalid", "incremental manifest requires a valid high-water mark");
+    || typeof highWaterMark.snapshotId !== "string" || !EXPORT_ID_PATTERN.test(highWaterMark.snapshotId)) {
+    throw exportError("export_hwm_invalid", "incremental manifest requires a valid synthetic high-water mark");
   }
-  if (typeof previousSnapshotId !== "string" || previousSnapshotId.length === 0) {
-    throw exportError("export_checkpoint_invalid", "incremental manifest requires the previous snapshot id");
+  if (typeof previousSnapshotId !== "string" || !EXPORT_ID_PATTERN.test(previousSnapshotId)) {
+    throw exportError("export_checkpoint_invalid", "incremental manifest requires a valid previous synthetic snapshot id");
+  }
+  if (!checkpoint || typeof checkpoint !== "object" || Array.isArray(checkpoint)
+    || checkpoint.snapshotId !== previousSnapshotId) {
+    throw exportError("export_checkpoint_lineage", "checkpoint snapshot id must equal previousSnapshotId before diffing");
   }
   if (!Array.isArray(tables) || tables.length === 0) {
     throw exportError("export_table_invalid", "incremental manifest requires at least one table spec");
@@ -416,8 +463,19 @@ export function buildIncrementalManifest(db, {
       throw exportError("export_table_unmapped", `no apply order defined for table: ${spec.table}`);
     }
   }
+  const hasPreviousCredentialManifest = previousCredentialManifest !== undefined && previousCredentialManifest !== null;
+  const hasCurrentCredentialManifest = currentCredentialManifest !== undefined && currentCredentialManifest !== null;
+  if (hasPreviousCredentialManifest !== hasCurrentCredentialManifest) {
+    throw exportError("export_credential_manifest_invalid", "previous and current credential manifests must be supplied together");
+  }
+  if (hasPreviousCredentialManifest
+    && (previousCredentialManifest.snapshotId !== previousSnapshotId
+      || currentCredentialManifest.snapshotId !== highWaterMark.snapshotId)) {
+    throw exportError("export_credential_manifest_lineage", "credential manifests must match the previous and current snapshot ids");
+  }
+
   const deltas = enumerateSourceDeltas(db, { tables, checkpoint });
-  const credentialRotations = previousCredentialManifest && currentCredentialManifest
+  const credentialRotations = hasPreviousCredentialManifest
     ? detectCredentialRotations(previousCredentialManifest, currentCredentialManifest)
     : null;
   const orderedTables = [...REHEARSAL_APPLY_ORDER].filter((name) => name === CREDENTIALS_TABLE
