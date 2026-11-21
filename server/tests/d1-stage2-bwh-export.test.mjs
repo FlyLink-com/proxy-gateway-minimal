@@ -296,6 +296,61 @@ test("S2S-EXP-9 a page whose excludedColumns disagree with the mapping is reject
   assertErrorCode(() => verifyExportPage(wrongExcluded), "export_page_column_unapproved");
 });
 
+
+test("S2S-EXP-10 verifier rejects row-level field smuggling when page.columns is unchanged", (t) => {
+  const { db } = makeSnapshot(t);
+  const page = exportPage(db, { table: "platform_accounts", pk: "id", snapshotId: SNAPSHOT_A, limit: 2 });
+  for (const [column, value] of [
+    ["metadata_json", "s2s-smuggled-metadata"],
+    ["edge_credential_ref", "s2s-smuggled-credential-ref"],
+  ]) {
+    const rows = page.rows.map((row, index) => index === 0 ? { ...row, [column]: value } : row);
+    const canonical = canonicalJson(rows);
+    const rowSmuggled = {
+      ...page,
+      rows,
+      // Keep the declared columns untouched, but make the payload hash
+      // self-consistent exactly as an attacker could.
+      contentHash: createHash("sha256").update(canonical, "utf8").digest("hex"),
+      byteLength: Buffer.byteLength(canonical, "utf8"),
+    };
+    assertErrorCode(() => verifyExportPage(rowSmuggled), "export_page_column_unapproved");
+  }
+
+  const secretRows = page.rows.map((row, index) => index === 0 ? { ...row, owner_ref: "Bearer sk-abcdefgh12345678" } : row);
+  const secretCanonical = canonicalJson(secretRows);
+  const secretPage = {
+    ...page,
+    rows: secretRows,
+    contentHash: createHash("sha256").update(secretCanonical, "utf8").digest("hex"),
+    byteLength: Buffer.byteLength(secretCanonical, "utf8"),
+  };
+  assertErrorCode(() => verifyExportPage(secretPage), "export_sensitive_value_detected");
+});
+
+test("S2S-EXP-11 non-empty page boundaries and continuation token bind to actual row PKs", (t) => {
+  const { db } = makeSnapshot(t);
+  const page = exportPage(db, { table: "platform_accounts", pk: "id", snapshotId: SNAPSHOT_A, limit: 1 });
+  const forgedLastPk = ["s2s-account-003"];
+  const forgedTokenPayload = Buffer.from(JSON.stringify({
+    table: page.table,
+    lastPk: forgedLastPk,
+    snapshotId: page.snapshotId,
+  }), "utf8").toString("base64url");
+  const forgedBoundary = {
+    ...page,
+    endPk: forgedLastPk,
+    continuationToken: `s2s-ct-${forgedTokenPayload}`,
+  };
+  assertErrorCode(() => verifyExportPage(forgedBoundary), "export_page_boundary_mismatch");
+
+  const missingToken = { ...page, continuationToken: null };
+  assertErrorCode(() => verifyExportPage(missingToken), "export_page_token_mismatch");
+
+  const forgedStart = { ...page, startPk: ["s2s-account-003"] };
+  assertErrorCode(() => verifyExportPage(forgedStart), "export_page_boundary_mismatch");
+});
+
 // ---- Task 4: deletion / incremental manifest ----
 
 function checkpointAndModify(t, db) {
@@ -397,6 +452,46 @@ test("S2S-INC-4 a checkpoint that does not cover a table fails closed", (t) => {
       highWaterMark: createHighWaterMark({ seq: 1, snapshotId: SNAPSHOT_B }), previousSnapshotId: SNAPSHOT_A,
     }),
     (error) => error && error.code === "delta_checkpoint_invalid",
+  );
+});
+
+
+test("S2S-INC-5 stale checkpoint and credential manifests cannot be relabeled as a newer parent snapshot", (t) => {
+  const { db } = makeSnapshot(t);
+  const checkpoint = buildCheckpointManifest(db, { tables: CHECKPOINT_TABLES, snapshotId: SNAPSHOT_A });
+  const previousCredentialManifest = buildCredentialVersionManifest(db, { snapshotId: SNAPSHOT_A });
+  const currentCredentialManifest = buildCredentialVersionManifest(db, { snapshotId: SNAPSHOT_B });
+  const baseArgs = {
+    tables: CHECKPOINT_TABLES,
+    checkpoint,
+    previousCredentialManifest,
+    currentCredentialManifest,
+    highWaterMark: createHighWaterMark({ seq: 1, snapshotId: SNAPSHOT_B }),
+    previousSnapshotId: SNAPSHOT_A,
+  };
+
+  // Reproduces the stale-checkpoint chain: an A checkpoint cannot be
+  // presented as the B parent of a B -> C delta.
+  assertErrorCode(
+    () => buildIncrementalManifest(db, { ...baseArgs, previousSnapshotId: SNAPSHOT_B }),
+    "export_checkpoint_lineage",
+  );
+
+  const stalePreviousCredentials = buildCredentialVersionManifest(db, { snapshotId: SNAPSHOT_B });
+  assertErrorCode(
+    () => buildIncrementalManifest(db, { ...baseArgs, previousCredentialManifest: stalePreviousCredentials }),
+    "export_credential_manifest_lineage",
+  );
+
+  const staleCurrentCredentials = buildCredentialVersionManifest(db, { snapshotId: SNAPSHOT_A });
+  assertErrorCode(
+    () => buildIncrementalManifest(db, { ...baseArgs, currentCredentialManifest: staleCurrentCredentials }),
+    "export_credential_manifest_lineage",
+  );
+
+  assertErrorCode(
+    () => buildIncrementalManifest(db, { ...baseArgs, currentCredentialManifest: null }),
+    "export_credential_manifest_invalid",
   );
 });
 
