@@ -375,13 +375,20 @@ function usage() {
 }
 
 function stopRecord(error, operator = null) {
+  // ControlledCliError (from fail()) already carries a fixed code and a fixed
+  // message, so it is kept as-is. Any other runtime exception (filesystem,
+  // database, module) is mapped to a fixed generic code and a fixed generic
+  // message: the raw exception text is never written to the audit record,
+  // because it may contain a local path, URL, or other operator-supplied
+  // value that must not land in a retained log.
+  const isControlled = error instanceof ControlledCliError;
   return {
     schemaVersion: 1,
     event: "d1-stage2-controlled-cli",
     status: "STOPPED",
     operator,
-    stopCode: typeof error?.code === "string" ? error.code : "cli_execution_failed",
-    stopReason: error instanceof Error ? error.message : String(error),
+    stopCode: isControlled && typeof error.code === "string" ? error.code : "cli_execution_failed",
+    stopReason: isControlled ? error.message : "synthetic execution failed",
     safety: {
       syntheticOnly: true,
       notProductionEvidence: true,

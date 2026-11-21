@@ -231,3 +231,42 @@ test("controlled CLI does not stop on a parent id that ends in -next", () => {
   assert.equal(report.status, "PASS_SYNTHETIC_ONLY");
   assert.notEqual(report.incrementalManifest.snapshotId, parent);
 });
+
+test("controlled CLI never echoes an underlying runtime failure into the JSON stop record", () => {
+  const sensitive = "/home/operator/.config/d1-stage2/secret-db.sqlite";
+  const stdout = captureStream();
+  const stderr = captureStream();
+  const exitCode = runControlledCli({
+    argv: ["--mode", "synthetic", "--operator", "test-runner", "--json"],
+    stdout,
+    stderr,
+    now: () => {
+      throw new Error("ENOENT: no such file or directory, open '" + sensitive + "'");
+    },
+  });
+  assert.equal(exitCode, 1, stderr.value);
+  const report = JSON.parse(stdout.value);
+  assert.equal(report.status, "STOPPED");
+  assert.equal(report.stopCode, "cli_execution_failed");
+  assert.equal(report.stopReason, "synthetic execution failed");
+  assert.doesNotMatch(stdout.value, new RegExp(escapeRegExp(sensitive)));
+  assert.doesNotMatch(stdout.value, /ENOENT/);
+});
+
+test("controlled CLI never echoes an underlying runtime failure into the terminal stop record", () => {
+  const sensitive = "/home/operator/.config/d1-stage2/secret-db.sqlite";
+  const stdout = captureStream();
+  const stderr = captureStream();
+  const exitCode = runControlledCli({
+    argv: ["--mode", "synthetic", "--operator", "test-runner"],
+    stdout,
+    stderr,
+    now: () => {
+      throw new Error("ENOENT: no such file or directory, open '" + sensitive + "'");
+    },
+  });
+  assert.equal(exitCode, 1, stdout.value);
+  assert.doesNotMatch(stderr.value, new RegExp(escapeRegExp(sensitive)));
+  assert.doesNotMatch(stderr.value, /ENOENT/);
+  assert.match(stderr.value, /Stop: cli_execution_failed — synthetic execution failed/);
+});

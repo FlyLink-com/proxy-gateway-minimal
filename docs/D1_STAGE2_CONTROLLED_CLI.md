@@ -52,4 +52,4 @@ The scheduler and callback evidence in the generated report are synthetic fixtur
 
 ## Stop behavior
 
-The CLI exits non-zero and emits a STOPPED audit record when an argument is outside the allowlist, the mode is not synthetic, an identifier is invalid, or any module verification fails. It never falls back to a real database or remote target. Stop records carry a fixed error code and fixed message only; an unrecognized argument value is never echoed into the JSON or terminal output, so a mistyped path, URL, or credential cannot land in a retained log.
+The CLI exits non-zero and emits a STOPPED audit record when an argument is outside the allowlist, the mode is not synthetic, an identifier is invalid, or any module verification fails. It never falls back to a real database or remote target. Stop records carry a fixed error code and fixed message only; an unrecognized argument value is never echoed into the JSON or terminal output, and an underlying runtime failure is reported with a fixed generic code and message instead of the raw exception text, so a mistyped path, URL, or credential cannot land in a retained log.
