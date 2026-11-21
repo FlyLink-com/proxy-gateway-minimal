@@ -228,7 +228,7 @@ LP = 4 字节大端长度 + UTF-8；只存信封 `hmac-sha256:v1:<key-id>:<64 �
 ## 13. 执行记录（本轮：逐列补齐）
 
 - 基线：master `b1e46fef4e98bbfdace900a4e8b2d36a4284e176`，与任务基线一致；PR #903 Draft，分支 `feat/d1-#4-key-families-20261121`，head `08dea77db60e90ac94929327e46b0895c5cae2d0`。
-- 本轮分支：`feat/d1-card4-field-matrix-20261121`（自 `08dea77d`）；Draft PR 待开（见本节末）。
+- 本轮分支：`feat/d1-card4-field-matrix-20261121`（自 `08dea77d`）；Draft PR #911（head `d5094128`），Draft，未标 Ready。
 - T2 JSON 已核：`docs/D1_CONTROL_FIELD_DISPOSITION_T2_V1.json`，SHA `cdaf041b…`，单行 424 KB，70 表 / 820 字段；五份副本 SHA 一致。本轮用仓库内副本提取，未改原文件。
 - 八张表 129 列逐列枚举已补齐（§14）：计数 KEEP 67 / CONDITIONAL 29 / EXTERNALIZE 7 / TRANSFORM 3 / DEFER 23；与 T2 总量（KEEP 712 / TRANSFORM 19 / EXTERNALIZE 7 / DEFER 23 / CONDITIONAL 59）交叉核对一致——八张表含全部 7 个 EXTERNALIZE 与全部 23 个 DEFER。
 - 第 8 张表（`platform_accounts`）仍为候选：决策卡 D-6 原文（`E4_DECISION_CARDS.md` #4）不在仓库内（本轮已查，无此文件），本地只有 T2/C3 的账户元数据处置；本稿不把候选写成定论。§8 的 26 个 `metadata_json` 字段与 §14.8 的 6 个物理列均已列出。
