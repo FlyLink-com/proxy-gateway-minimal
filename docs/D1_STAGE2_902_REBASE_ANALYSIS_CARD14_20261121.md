@@ -94,7 +94,7 @@ add/add 冲突（21）：
 
 ## 5. 粗暴 rebase 会丢的东西（红线）
 
-以下文件只在 master 有、#902 head 没有；任何把 #902 head 内容整体搬过来的做法都会删掉它们：
+以下文件只在 master 有、#902 head 没有（c2-worker-config-policy 行除外，见该行备注）；任何把 #902 head 内容整体搬过来的做法都会删掉它们（c2 行则会回退 master 新增的 101 行）：
 
 | 文件 | 行数 | 来源 |
 |---|---|---|
@@ -102,12 +102,12 @@ add/add 冲突（21）：
 | `workers/control-plane/test/stage2-offline-migration.test.mjs` | 320 | #898 |
 | `workers/control-plane/test/support/stage2-synthetic-source.mjs` | 71 | #898 |
 | `workers/control-plane/test/fixtures/stage2-offline-inbox.sql` | 90 | #898 |
-| `workers/control-plane/wrangler.staging.jsonc` | 21 | #898 |
+| `workers/control-plane/wrangler.staging.jsonc` | 21 | #893（dfcd0d21） |
 | `docs/D1_STAGE2_BWH_EXPORT_D1_RECONCILIATION_HANDOFF_V1.md` | 142 | #898 评审增量 |
 | `docs/D1_STAGE2_E4_SCHEMA_DIFF_20261120.md` | 155 | #898 评审增量 |
-| `server/tests/d1-stage1b-source-delta-keys.test.mjs` | 65 | #898 评审增量 |
-| `tools/c2-worker-config-policy/`（check.mjs + check.test.mjs + policy.json） | 105 | #898 评审增量 |
-| `workers/control-plane/STAGING_RELEASE.md` | 77 | #898 评审增量 |
+| `server/tests/d1-stage1b-source-delta-keys.test.mjs` | 65 | #896（5f04020c） |
+| `tools/c2-worker-config-policy/`（check.mjs + check.test.mjs + policy.json） | 910（master 合计 313+466+131；902-head 已有旧版 301/412/100，master 新版相对新增 101 行、删除 4 行） | #893（dfcd0d21） |
+| `workers/control-plane/STAGING_RELEASE.md` | 77 | #893（dfcd0d21） |
 
 另：不要动 PR #902 本身（不改它的分支、不 rebase 它、不推它）。本卡的 rebase 工作到此为止，
 只输出方案；实际 rebase 与 #902 的后续由协调员 / Yi 定夺。
