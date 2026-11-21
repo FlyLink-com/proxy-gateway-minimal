@@ -4,20 +4,48 @@
 // deployed Worker. It never opens a BWH SQLite file or a remote Cloudflare
 // connection. Only caller-injected local Miniflare D1 plus an explicit
 // local-fixture sentinel is accepted. This is not a 70-table data importer.
+//
+// Card 14 (2026-11-21) fail-closed BWH->D1 wire contract, closing the four
+// #902 incompatibilities. No silent mapping, no silent drop, no silent
+// repair anywhere on this boundary:
+//   1. metadata_json is NEVER imported: the source export excludes it
+//      (CONDITIONAL, no approved allowlist) and this loader no longer
+//      requires it. A row carrying metadata_json is rejected with
+//      stage2_metadata_json_denied.
+//   2. Entitlement plan must be monthly/annual. Source values
+//      s2s-plan-basic/s2s-plan-plus have no owner-approved mapping and
+//      are rejected with stage2_plan_mapping_denied.
+//   3. Entitlement status suspended is never coerced to expired. It is
+//      rejected with stage2_suspended_status_denied, preserving the
+//      blocking semantics. (Account status suspended is a different,
+//      supported value on both sides and is unaffected.)
+//   4. The credential-version domain (platform_credential_versions,
+//      platform_portal_edge_credentials) is out of scope for this
+//      accounts/entitlements loader and is rejected with
+//      stage2_credential_version_denied. Credential versions must be
+//      handled independently, never smuggled through this loader.
 import { createHash } from "node:crypto";
 
 export class Stage2RehearsalError extends Error {
-  constructor(code) {
-    super(code);
+  constructor(code, message) {
+    super(message ?? code);
     this.name = "Stage2RehearsalError";
     this.code = code;
   }
 }
 
-const fail = (code) => { throw new Stage2RehearsalError(code); };
+const fail = (code, message) => { throw new Stage2RehearsalError(code, message); };
 const sha = (value) => createHash("sha256").update(value, "utf8").digest("hex");
 const idPattern = /^s2s-[a-z0-9-]{3,80}$/;
 const timePattern = /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/;
+
+// Credential-version domain tables. They are a separate reconciliation
+// concern (see server/services/platform/d1-stage2-credential-reconciliation.mjs)
+// and must never enter the accounts/entitlements loader.
+const CREDENTIAL_VERSION_TABLES = Object.freeze([
+  "platform_credential_versions",
+  "platform_portal_edge_credentials",
+]);
 
 function canonical(value) {
   if (value === null || typeof value !== "object") return JSON.stringify(value);
@@ -29,7 +57,10 @@ function canonical(value) {
 const TABLES = Object.freeze({
   platform_accounts: Object.freeze({
     pk: "id",
-    columns: Object.freeze(["id", "owner_ref", "status", "created_at", "updated_at", "metadata_json"]),
+    // Card 14: metadata_json is NOT an import column. The source export
+    // excludes it and the loader must not require it; a row carrying it
+    // is rejected explicitly in assertRow below.
+    columns: Object.freeze(["id", "owner_ref", "status", "created_at", "updated_at"]),
   }),
   platform_entitlements: Object.freeze({
     pk: "id",
@@ -50,6 +81,15 @@ function isTime(s) {
 function assertRow(table, row) {
   const spec = TABLES[table];
   if (!row || typeof row !== "object" || Array.isArray(row)) fail("stage2_row_invalid");
+  // Card 14 wire-1: metadata_json must never cross this loader boundary.
+  // It is CONDITIONAL with no approved allowlist, so it is neither
+  // imported nor silently dropped. Check before the exact-column gate so
+  // the rejection names the column instead of a generic disposition.
+  if (Object.hasOwn(row, "metadata_json")) {
+    fail("stage2_metadata_json_denied",
+      "metadata_json is not an approved import column (CONDITIONAL, no allowlist); " +
+      "row " + String(row.id ?? "?") + " in " + table + " is rejected, not imported or dropped");
+  }
   const names = Object.keys(row).sort();
   if (canonical(names) !== canonical([...spec.columns].sort())) fail("stage2_column_disposition_denied");
   if (!isSyntheticId(row.id)) fail("stage2_real_rows_denied");
@@ -57,10 +97,28 @@ function assertRow(table, row) {
     if (!isTime(row[k])) fail("stage2_timestamp_invalid");
   }
   if (table === "platform_accounts") {
-    if (!isSyntheticId(row.owner_ref) || !["active", "disabled", "suspended"].includes(row.status)
-      || row.metadata_json !== "{}") fail("stage2_real_rows_denied");
+    if (!isSyntheticId(row.owner_ref) || !["active", "disabled", "suspended"].includes(row.status)) {
+      fail("stage2_real_rows_denied");
+    }
   } else {
-    if (!isSyntheticId(row.account_id) || !["monthly", "annual"].includes(row.plan)
+    // Card 14 wire-2: no owner-approved plan mapping exists. Source plan
+    // values (s2s-plan-basic/s2s-plan-plus) are rejected, never converted
+    // to monthly/annual. Check before the generic gate so the rejection
+    // names the missing mapping.
+    if (!["monthly", "annual"].includes(row.plan)) {
+      fail("stage2_plan_mapping_denied",
+        "entitlement plan " + JSON.stringify(row.plan) + " has no owner-approved mapping to " +
+        "monthly/annual; row " + String(row.id ?? "?") + " is rejected, not converted");
+    }
+    // Card 14 wire-3: suspended is a blocking state, never coerced to
+    // expired. Check before the generic gate so the rejection preserves
+    // the blocking semantics explicitly.
+    if (row.status === "suspended") {
+      fail("stage2_suspended_status_denied",
+        "entitlement status suspended must not be coerced to expired; row " +
+        String(row.id ?? "?") + " is rejected with its blocking semantics preserved");
+    }
+    if (!isSyntheticId(row.account_id)
       || !["active", "expired"].includes(row.status)
       || !Number.isSafeInteger(row.max_artifacts) || row.max_artifacts < 0
       || !Number.isSafeInteger(row.max_devices) || row.max_devices < 0
@@ -78,6 +136,15 @@ export function normalizeSyntheticPlan(input) {
     fail("stage2_plan_invalid");
   }
   const names = input.tables.map(t => t?.name);
+  // Card 14 wire-4: the credential-version domain must be handled
+  // independently. Reject it with its own code before the generic table
+  // gate so the rejection names the domain instead of a generic
+  // disposition.
+  if (names.some(name => CREDENTIAL_VERSION_TABLES.includes(name))) {
+    fail("stage2_credential_version_denied",
+      "credential-version domain (" + CREDENTIAL_VERSION_TABLES.join(", ") + ") is out of scope " +
+      "for the accounts/entitlements loader; handle credential versions independently");
+  }
   const approved = ["platform_accounts", "platform_entitlements"].slice(0, names.length);
   if (canonical(names) !== canonical(approved)) fail("stage2_table_disposition_denied");
   const tables = input.tables.map(table => {
