@@ -1,5 +1,15 @@
 # Card 7 — seven-column synthetic round-trip evidence
 
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: active
+  authority_scope: d1_card7_seven_column_roundtrip
+  superseded_by: null
+  last_verified_at: 2026-11-21
+  production_authority: false
+```
+
 ## Scope
 
 This evidence is generated only from the in-memory 70-table synthetic fixture. The new test creates a second in-memory SQLite database as a stand-in target and executes the importer-generated D1 statement descriptors against that local database. It does not call the real E4 executor.
