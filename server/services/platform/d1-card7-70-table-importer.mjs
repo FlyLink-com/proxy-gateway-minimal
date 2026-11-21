@@ -150,7 +150,17 @@ function fail(code, detail) {
   throw error;
 }
 
+// Reconciliation fingerprint helper — NOT a password hash. The only values
+// hashed here are synthetic fixture labels and row fingerprints used to
+// compare source vs target (Card 6 §6.2). The `password_hash` column of
+// `platform_portal_password_credentials` is DEFER-disposition and KEEP-GATED:
+// transformRow drops it and targetColumnsFor excludes it from the hash
+// input, so no password value ever reaches this hash at runtime (verified
+// by direct execution: gates-open output row is empty, target columns are
+// []). The production digest algorithm is fixed by DDL finalisation, not
+// by this card (Card 6 §3.4).
 function sha256Hex(text) {
+  // codeql[js/insufficient-password-hash]: False positive. SHA-256 here is a reconciliation fingerprint over synthetic data, not credential storage; the password column is DEFER-excluded from every hash input at runtime.
   return createHash("sha256").update(text, "utf8").digest("hex");
 }
 

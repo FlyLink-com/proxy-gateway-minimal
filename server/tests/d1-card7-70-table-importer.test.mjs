@@ -567,6 +567,26 @@ test("gates are fail-closed by default: ledger D-3, password D-2, legacy CONDITI
   assert.notEqual(transformRow({ table: "platform_payment_orders_legacy_archive_20260803", row: synthRow(db, "platform_payment_orders_legacy_archive_20260803", 1), gates: GATES_OPEN }).row, null);
 });
 
+test("password value never enters the reconciliation hash input (CodeQL js/insufficient-password-hash false positive)", () => {
+  const db = freshDb();
+  const row = synthRow(db, "platform_portal_password_credentials", 0);
+  assert.notEqual(row.password_hash, null, "fixture row 1 must carry a password_hash value");
+  // Even with the gate explicitly open, every column of this table is
+  // DEFER, so the output row is empty — the password value is dropped.
+  const res = transformRow({ table: "platform_portal_password_credentials", row, gates: GATES_OPEN });
+  assert.equal(res.deferred, null);
+  assert.equal(res.rejected, null);
+  assert.deepEqual(Object.keys(res.row ?? {}), []);
+  assert.ok(!("password_hash" in (res.row ?? {})), "password_hash must not appear in the output row");
+  assert.ok(!JSON.stringify(res.row).includes(row.password_hash), "password value must not appear in the output row");
+  // targetColumnsFor excludes every DEFER column, so the reconciliation
+  // hash input for this table is empty — hashTableRows/hashRow can never
+  // hash the password value. The SHA-256 in sha256Hex is a row
+  // reconciliation fingerprint over synthetic data, not credential storage.
+  assert.deepEqual(targetColumnsFor("platform_portal_password_credentials"), []);
+  assert.equal(hashRow(res.row, targetColumnsFor("platform_portal_password_credentials")), hashRowValues([]));
+});
+
 test("DEFER / CREATE-EMPTY / NOT-IN-DDL tables defer whole rows, never silently drop", () => {
   const db = freshDb();
   const deferred = transformRow({ table: "platform_deferred_resource_transitions", row: synthRow(db, "platform_deferred_resource_transitions", 0), gates: GATES_OPEN });
