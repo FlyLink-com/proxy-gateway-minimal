@@ -1,0 +1,560 @@
+// D1 Card 7 — 70-table importer tests (synthetic data only).
+//
+// Everything here runs against an in-memory SQLite database built by
+// `d1-card7-synthetic-fixture.mjs`. No real BWH row is read, no E4 write
+// is attempted, no network call is made. The seven-column check mirrors
+// the Card 6 / S4 synthetic check (one synthetic lease + three synthetic
+// receipts, values read back value-by-value) and extends it to all 70
+// tables, batch checkpoint resume, count/hash reconciliation and failure
+// recovery.
+
+import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { DatabaseSync } from "node:sqlite";
+import test from "node:test";
+import {
+  TABLE_MAPPING,
+  SOURCE_TABLES_70,
+  E4_TARGET_ONLY_TABLES,
+  E4_CONDITIONALLY_MISSING_TABLES,
+  firstBatchTables,
+} from "../services/platform/d1-card7-70-table-mapping.mjs";
+import {
+  BATCH_SIZE,
+  CARD6_DDL_ONLY_TABLES,
+  E4_TARGET,
+  EXTERNALIZE_SOURCE_COLUMNS,
+  assertE4Target,
+  buildD1BatchStatements,
+  countSourceRows,
+  createCheckpoint,
+  executeD1Batch,
+  firstBatchPlan,
+  hashDatabase,
+  hashRow,
+  hashRowValues,
+  hashTableRows,
+  loadPlanOrder,
+  planBatchesForTable,
+  readSourcePage,
+  resumePlan,
+  runSyntheticLoad,
+  targetColumnsFor,
+  transformCredentialCount,
+  transformGeneration,
+  transformListenerPresent,
+  transformNodeRef,
+  transformReasonCode,
+  transformReceiptDigest,
+  transformReleasedAt,
+  transformRow,
+  verifyBatchApplied,
+  verifySourceIntegrity,
+} from "../services/platform/d1-card7-70-table-importer.mjs";
+import {
+  createSyntheticFixtureDb,
+  fixtureRowCounts,
+  syntheticValueFor,
+} from "../services/platform/d1-card7-synthetic-fixture.mjs";
+
+const IMPORTER_SOURCE = readFileSync(
+  new URL("../services/platform/d1-card7-70-table-importer.mjs", import.meta.url),
+  "utf8",
+);
+const SNAPSHOT_ID = "synth-phase8a-20261118T134920Z";
+const SNAPSHOT_SHA = "a".repeat(64);
+const GATES_OPEN = {
+  legacyArchiveQ6: true,
+  desiredStatesD2: true,
+  linkResetsD2: true,
+  ledgerDetermination: "H1",
+  passwordHandlingApproved: true,
+};
+
+function freshDb() {
+  return createSyntheticFixtureDb(new DatabaseSync(":memory:"));
+}
+
+function synthRow(db, table, index = 0) {
+  return db.prepare(`SELECT * FROM "${table}" ORDER BY rowid LIMIT 1 OFFSET ?`).get(index);
+}
+
+// ---------------------------------------------------------------------------
+// Mapping: 70 tables
+// ---------------------------------------------------------------------------
+
+test("mapping covers exactly the 70 source tables (68 same-name, 2 missing, 17 added)", () => {
+  assert.equal(TABLE_MAPPING.length, 70);
+  assert.equal(SOURCE_TABLES_70.length, 70);
+  assert.deepEqual(TABLE_MAPPING.map((t) => t.source), SOURCE_TABLES_70);
+  assert.equal(TABLE_MAPPING.filter((t) => t.target === t.source).length, 68);
+  assert.deepEqual(E4_CONDITIONALLY_MISSING_TABLES, [
+    "platform_ads_click_consent_claims",
+    "platform_ads_consent_decisions",
+  ]);
+  assert.equal(E4_TARGET_ONLY_TABLES.length, 17);
+  assert.equal(TABLE_MAPPING.filter((t) => t.target === null).length, 2);
+  assert.equal(new Set(TABLE_MAPPING.map((t) => t.source)).size, 70);
+});
+
+test("DDL v1.1 column total is 570 (545 on src70 DDL tables + 25 on the 3 DDL-only tables)", () => {
+  // The 48 src70 tables that exist in DDL v1.1 are exactly the mapped
+  // tables with an FK layer (ring tables included); the other 22 mapped
+  // tables are V2.2-only / not-in-DDL / excluded.
+  const ddlTables = TABLE_MAPPING.filter((t) => t.fkLayer !== null && t.fkLayer !== undefined);
+  assert.equal(ddlTables.length, 48);
+  const src70DdlCols = ddlTables.reduce((a, t) => a + t.columns.length, 0);
+  assert.equal(src70DdlCols, 545);
+  const ddlOnlyCols = CARD6_DDL_ONLY_TABLES.reduce((a, t) => a + t.columns.length, 0);
+  assert.equal(ddlOnlyCols, 25); // 13 + 2 + 10
+  assert.equal(src70DdlCols + ddlOnlyCols, 570);
+});
+
+test("first-batch snapshot rows total 6,848 over 50 tables (47 in mapping + 3 DDL-only)", () => {
+  const inMapping = firstBatchTables();
+  assert.equal(inMapping.length, 47);
+  const mappingRows = inMapping.reduce((a, t) => a + (t.snapshotRows ?? 0), 0);
+  const ddlOnlyRows = CARD6_DDL_ONLY_TABLES.reduce((a, t) => a + t.snapshotRows, 0);
+  assert.equal(ddlOnlyRows, 12); // 3 + 3 + 6
+  assert.equal(mappingRows + ddlOnlyRows, 6848);
+});
+
+test("first-batch plan is 103 batches at 100 rows per batch, per-table ceiling", () => {
+  const plan = firstBatchPlan();
+  assert.equal(plan.length, 103);
+  assert.equal(plan[0].batchId, "B-001");
+  assert.equal(plan[102].batchId, "B-103");
+  const byTable = (name) => plan.filter((b) => b.table === name);
+  assert.equal(byTable("platform_edge_apply_receipts").length, 16);
+  assert.equal(byTable("platform_portal_sessions").length, 12);
+  assert.equal(byTable("platform_portal_edge_credentials").length, 8);
+  assert.equal(byTable("platform_edge_desired_state_notifications").length, 4);
+  assert.equal(byTable("platform_audit_events").length, 3);
+  assert.equal(byTable("platform_accounts").length, 1);
+  assert.equal(plan.filter((b) => b.ringGroup === "lots-credit-origins").length, 2);
+  assert.equal(BATCH_SIZE, 100);
+});
+
+test("planBatchesForTable ceilings: 1513 -> 16, 100 -> 1, 101 -> 2, 0 -> none", () => {
+  assert.equal(planBatchesForTable("platform_edge_apply_receipts", 1513).length, 16);
+  assert.equal(planBatchesForTable("platform_accounts", 100).length, 1);
+  assert.equal(planBatchesForTable("platform_accounts", 101).length, 2);
+  assert.deepEqual(planBatchesForTable("platform_accounts", 0), []);
+});
+
+test("load order respects FK layers: parents first, ring together after layer 1", () => {
+  const order = loadPlanOrder();
+  assert.equal(order.length, 50);
+  const at = (name) => order.indexOf(name);
+  assert.ok(at("platform_accounts") < at("platform_coin_wallets"));
+  assert.ok(at("platform_coin_wallets") < at("platform_coin_commerce_orders"));
+  assert.ok(at("platform_coin_commerce_orders") < at("platform_coin_commerce_fulfillment_commands"));
+  assert.ok(at("platform_coin_commerce_fulfillment_commands") < at("platform_coin_commerce_fulfillment_receipts"));
+  assert.ok(at("platform_portal_entries") < at("platform_portal_sessions"));
+  assert.ok(at("platform_coin_commerce_initial_confirmations") > at("platform_issued_subscription_links"));
+  const lots = at("platform_coin_lots");
+  const origins = at("platform_coin_credit_origins");
+  assert.equal(Math.abs(lots - origins), 1, "ring tables load adjacently");
+  assert.ok(lots > at("platform_coin_wallets"), "ring loads after its layer-1 parents");
+  assert.ok(at("platform_coin_ledger_entries") < at("platform_usage_rollups"), "same-layer tables keep alphabetical order");
+});
+
+// ---------------------------------------------------------------------------
+// Seven signed rules, one function per rule
+// ---------------------------------------------------------------------------
+
+test("rule 1 released_at: NULL stays NULL, text passes through, non-text refused", () => {
+  assert.equal(transformReleasedAt(null), null);
+  assert.equal(transformReleasedAt(undefined), null);
+  assert.equal(transformReleasedAt("2026-11-18T13:49:20Z"), "2026-11-18T13:49:20Z");
+  assert.throws(() => transformReleasedAt(0), /seven_rule_violation/);
+});
+
+test("rule 2 node_ref: NULL stays NULL, reference kept, nothing generated", () => {
+  assert.equal(transformNodeRef(null), null);
+  assert.equal(transformNodeRef(undefined), null);
+  assert.equal(transformNodeRef("synth-node-001"), "synth-node-001");
+  assert.throws(() => transformNodeRef(42), /seven_rule_violation/);
+});
+
+test("rule 3 generation: TEXT verbatim incl. leading zeros; numbers refused, never coerced", () => {
+  assert.equal(transformGeneration("007"), "007");
+  assert.equal(transformGeneration("0"), "0");
+  assert.equal(transformGeneration(null), null);
+  assert.throws(() => transformGeneration(7), /generation_must_remain_text/);
+  assert.throws(() => transformGeneration(0), /generation_must_remain_text/);
+  assert.throws(() => transformGeneration(true), /generation_must_remain_text/);
+  // Static guard: the function itself contains no numeric coercion, so the
+  // superseded integer draft cannot resurface through this code path.
+  const fn = transformGeneration.toString();
+  assert.ok(!/parseInt|Number\(|BigInt/.test(fn), fn);
+  assert.ok(!/parseInt\(|Number\(|BigInt\(/.test(IMPORTER_SOURCE.split("transformGeneration")[1].slice(0, 400)));
+});
+
+test("rule 4 receipt_digest: verbatim when storable; BLOB / oversize defers the row with D-1", () => {
+  assert.deepEqual(transformReceiptDigest("synth-digest-abc123"), { value: "synth-digest-abc123", deferred: null });
+  assert.deepEqual(transformReceiptDigest(null), { value: null, deferred: null });
+  const blob = transformReceiptDigest(Buffer.from([0xff, 0xfe]));
+  assert.equal(blob.deferred?.reasonCode, "D-1");
+  assert.equal(blob.value, null);
+  const huge = transformReceiptDigest("x".repeat(2_000_001));
+  assert.equal(huge.deferred?.reasonCode, "D-1");
+});
+
+test("rule 5 reason_code: text and NULL verbatim, never enum-mapped", () => {
+  assert.equal(transformReasonCode("synth-ok"), "synth-ok");
+  assert.equal(transformReasonCode("weird-unlisted-code"), "weird-unlisted-code");
+  assert.equal(transformReasonCode(null), null);
+  assert.throws(() => transformReasonCode(3), /seven_rule_violation/);
+});
+
+test("rule 6 listener_present: integers 0/1 verbatim; booleans and strings refused", () => {
+  assert.equal(transformListenerPresent(0), 0);
+  assert.equal(transformListenerPresent(1), 1);
+  assert.throws(() => transformListenerPresent(true), /listener_present_must_be_0_or_1/);
+  assert.throws(() => transformListenerPresent("1"), /listener_present_must_be_0_or_1/);
+  assert.throws(() => transformListenerPresent(2), /listener_present_must_be_0_or_1/);
+});
+
+test("rule 7 credential_count: integers verbatim incl. boundaries; no truncation, no re-default", () => {
+  assert.equal(transformCredentialCount(0), 0);
+  assert.equal(transformCredentialCount(1), 1);
+  assert.equal(transformCredentialCount(2147483647), 2147483647);
+  assert.throws(() => transformCredentialCount("5"), /credential_count_must_be_integer/);
+  assert.throws(() => transformCredentialCount(1.5), /credential_count_must_be_integer/);
+});
+
+// ---------------------------------------------------------------------------
+// Synthetic fixture: in-memory SQLite, 70 tables
+// ---------------------------------------------------------------------------
+
+test("fixture builds all 70 tables in :memory: with >=1 synthetic row each", () => {
+  const db = freshDb();
+  const counts = fixtureRowCounts(db);
+  assert.equal(Object.keys(counts).length, 70);
+  for (const [table, n] of Object.entries(counts)) {
+    assert.ok(n >= 1, `${table} has ${n} rows`);
+  }
+  assert.equal(counts.platform_edge_agent_leases, 1);
+  assert.equal(counts.platform_edge_apply_receipts, 3);
+  assert.equal(counts.platform_usage_samples, 2);
+  const integrity = verifySourceIntegrity(db);
+  assert.equal(integrity.ok, true);
+  assert.equal(integrity.foreignKeyViolations, 0);
+});
+
+test("seven-column fixture: one lease + three receipts read back value-by-value from SQLite", () => {
+  const db = freshDb();
+  const lease = synthRow(db, "platform_edge_agent_leases");
+  assert.equal(lease.released_at, null);
+  const receipts = db.prepare(
+    'SELECT * FROM "platform_edge_apply_receipts" ORDER BY rowid',
+  ).all();
+  assert.equal(receipts.length, 3);
+  // Receipt 1: drift columns all NULL.
+  assert.equal(receipts[0].node_ref, null);
+  assert.equal(receipts[0].generation, null);
+  assert.equal(receipts[0].receipt_digest, null);
+  assert.equal(receipts[0].reason_code, null);
+  assert.equal(receipts[0].listener_present, 0);
+  assert.equal(receipts[0].credential_count, 0);
+  // Receipt 2: populated; generation keeps its leading zero as TEXT.
+  assert.equal(receipts[1].node_ref, "synth-node-001");
+  assert.equal(receipts[1].generation, "007");
+  assert.equal(typeof receipts[1].generation, "string");
+  assert.equal(receipts[1].receipt_digest, "synth-digest-abc123");
+  assert.equal(receipts[1].reason_code, "synth-ok");
+  assert.equal(receipts[1].listener_present, 1);
+  assert.equal(receipts[1].credential_count, 2147483647);
+  // Receipt 3: digest stored as a BLOB (node:sqlite returns BLOBs as
+  // Uint8Array) — not losslessly storable as TEXT.
+  assert.ok(receipts[2].receipt_digest instanceof Uint8Array);
+  const res = transformRow({ table: "platform_edge_apply_receipts", row: receipts[2], gates: GATES_OPEN });
+  assert.equal(res.row, null);
+  assert.equal(res.deferred?.reasonCode, "D-1");
+  // Receipts 1 and 2 filter through unchanged, value by value.
+  for (const [i, want] of [[0, receipts[0]], [1, receipts[1]]]) {
+    const out = transformRow({ table: "platform_edge_apply_receipts", row: want, gates: GATES_OPEN });
+    assert.equal(out.deferred, null, `receipt ${i} deferred`);
+    assert.equal(out.rejected, null, `receipt ${i} rejected`);
+    assert.equal(out.row.generation, want.generation);
+    assert.equal(out.row.node_ref, want.node_ref);
+    assert.equal(out.row.receipt_digest, want.receipt_digest);
+    assert.equal(out.row.reason_code, want.reason_code);
+    assert.equal(out.row.listener_present, want.listener_present);
+    assert.equal(out.row.credential_count, want.credential_count);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Filter: EXTERNALIZE / TRANSFORM / gates / guards
+// ---------------------------------------------------------------------------
+
+test("EXTERNALIZE: a non-null raw value rejects the whole row and never enters D1", () => {
+  const db = freshDb();
+  for (const [table, column, id] of [
+    ["platform_portal_access_requests", "subscription_url", "E-03"],
+    ["platform_portal_totp_credentials", "encrypted_totp_secret", "E-04"],
+    ["platform_payment_receipts", "next_action_url", "E-05"],
+  ]) {
+    const row = synthRow(db, table, 0);
+    assert.notEqual(row[column], null, `${table}.${column} fixture row 1 must carry a value`);
+    const res = transformRow({ table, row, gates: GATES_OPEN });
+    assert.equal(res.row, null);
+    assert.equal(res.rejected?.code, "externalized_value_present");
+    assert.equal(res.rejected?.id, id);
+    const clean = synthRow(db, table, 1);
+    assert.equal(clean[column], null);
+    const ok = transformRow({ table, row: clean, gates: GATES_OPEN });
+    assert.equal(ok.rejected, null);
+    assert.ok(!(column in (ok.row ?? {})), `${column} must not appear in the output row`);
+  }
+  assert.equal(EXTERNALIZE_SOURCE_COLUMNS.length, 8);
+});
+
+test("TRANSFORM digest-only: raw idempotency key becomes a digest, raw never leaves", () => {
+  const db = freshDb();
+  const row = synthRow(db, "platform_coin_operation_receipts", 0);
+  const res = transformRow({ table: "platform_coin_operation_receipts", row, gates: GATES_OPEN });
+  assert.equal(res.rejected, null);
+  assert.ok(!("idempotency_key" in res.row));
+  assert.match(res.row.idempotency_key_digest ?? "", /^[0-9a-f]{64}$/);
+  assert.equal(res.row.idempotency_key_digest, createHash("sha256")
+    .update(`d1-card7-synthetic-digest:platform_coin_operation_receipts:idempotency_key:${row.idempotency_key}`, "utf8")
+    .digest("hex"));
+  const stmts = buildD1BatchStatements({ table: "platform_coin_operation_receipts", rows: [res.row] });
+  assert.ok(stmts[0].sql.includes('"idempotency_key_digest"'));
+  assert.ok(!stmts[0].sql.includes('"idempotency_key"'));
+});
+
+test("TRANSFORM JSON: metadata_json is normalized with sorted keys; invalid JSON fails", () => {
+  const db = freshDb();
+  const row = { ...synthRow(db, "platform_audit_events", 0), metadata_json: '{"b":1,"a":{"d":4,"c":3}}' };
+  const res = transformRow({ table: "platform_audit_events", row, gates: GATES_OPEN });
+  assert.equal(res.row.metadata_json, '{"a":{"c":3,"d":4},"b":1}');
+  const bad = { ...row, metadata_json: "{not json" };
+  assert.throws(() => transformRow({ table: "platform_audit_events", row: bad, gates: GATES_OPEN }), /json_transform_invalid/);
+});
+
+test("M1-02: platform_accounts.metadata_json is never loaded", () => {
+  const db = freshDb();
+  const row = synthRow(db, "platform_accounts", 0);
+  assert.equal(typeof row.metadata_json, "string");
+  const res = transformRow({ table: "platform_accounts", row, gates: GATES_OPEN });
+  assert.equal(res.rejected, null);
+  assert.ok(!("metadata_json" in res.row));
+  assert.ok(!targetColumnsFor("platform_accounts").includes("metadata_json"));
+});
+
+test("gates are fail-closed by default: ledger D-3, password D-2, legacy CONDITIONAL-GATE", () => {
+  const db = freshDb();
+  const ledger = transformRow({ table: "platform_coin_ledger_entries", row: synthRow(db, "platform_coin_ledger_entries", 0), gates: {} });
+  assert.equal(ledger.deferred?.reasonCode, "D-3");
+  const pw = transformRow({ table: "platform_portal_password_credentials", row: synthRow(db, "platform_portal_password_credentials", 0), gates: {} });
+  assert.equal(pw.deferred?.reasonCode, "D-2");
+  const legacy = transformRow({ table: "platform_payment_orders_legacy_archive_20260803", row: synthRow(db, "platform_payment_orders_legacy_archive_20260803", 0), gates: {} });
+  assert.equal(legacy.deferred?.reasonCode, "CONDITIONAL-GATE");
+  // With the gates explicitly passed, the same rows load. (The legacy
+  // gates-open check uses fixture row 2: row 1 carries E-06/E-07 values
+  // and is rejected as EXTERNALIZE before any gate can pass it.)
+  assert.notEqual(transformRow({ table: "platform_coin_ledger_entries", row: synthRow(db, "platform_coin_ledger_entries", 0), gates: GATES_OPEN }).row, null);
+  assert.notEqual(transformRow({ table: "platform_portal_password_credentials", row: synthRow(db, "platform_portal_password_credentials", 0), gates: GATES_OPEN }).row, null);
+  assert.notEqual(transformRow({ table: "platform_payment_orders_legacy_archive_20260803", row: synthRow(db, "platform_payment_orders_legacy_archive_20260803", 1), gates: GATES_OPEN }).row, null);
+});
+
+test("DEFER / CREATE-EMPTY / NOT-IN-DDL tables defer whole rows, never silently drop", () => {
+  const db = freshDb();
+  const deferred = transformRow({ table: "platform_deferred_resource_transitions", row: synthRow(db, "platform_deferred_resource_transitions", 0), gates: GATES_OPEN });
+  assert.equal(deferred.deferred?.reasonCode, "TABLE-DEFERRED");
+  const empty = transformRow({ table: "platform_data_pack_resources", row: synthRow(db, "platform_data_pack_resources", 0), gates: GATES_OPEN });
+  assert.equal(empty.deferred?.reasonCode, "TABLE-NOT-LOADED");
+  const notInDdl = transformRow({ table: "platform_leads", row: synthRow(db, "platform_leads", 0), gates: GATES_OPEN });
+  assert.equal(notInDdl.deferred?.reasonCode, "TABLE-NOT-LOADED");
+});
+
+test("CONDITIONAL columns are omitted and recorded, never silently copied as KEEP", () => {
+  const db = freshDb();
+  const res = transformRow({ table: "platform_edge_desired_state_notifications", row: synthRow(db, "platform_edge_desired_state_notifications", 0), gates: GATES_OPEN });
+  assert.equal(res.rejected, null);
+  assert.ok(res.deferredColumns.includes("reason"));
+  assert.ok(!("reason" in res.row));
+});
+
+test("guards: unknown column rejected, missing NOT NULL rejected, samples refused", () => {
+  const db = freshDb();
+  const row = { ...synthRow(db, "platform_accounts", 0), mystery_column: "x" };
+  assert.equal(transformRow({ table: "platform_accounts", row, gates: GATES_OPEN }).rejected?.code, "unknown_source_column");
+  const missing = { ...synthRow(db, "platform_accounts", 0) };
+  delete missing.owner_ref;
+  assert.equal(transformRow({ table: "platform_accounts", row: missing, gates: GATES_OPEN }).rejected?.code, "missing_required_column");
+  assert.throws(() => countSourceRows(db, "platform_usage_samples"), /samples_table_excluded/);
+  assert.throws(() => readSourcePage(db, "platform_usage_samples"), /samples_table_excluded/);
+  assert.throws(() => readSourcePage(db, "platform_no_such_table"), /unknown_source_table/);
+});
+
+// ---------------------------------------------------------------------------
+// Count / hash reconciliation (Card 6 §6.2)
+// ---------------------------------------------------------------------------
+
+test("hash: NULL is the literal 6-char \\0NULL, integers are decimal text, '007' != 7", () => {
+  assert.equal(hashRowValues([null]), createHash("sha256").update("\\0NULL", "utf8").digest("hex"));
+  assert.equal(hashRowValues([7]), hashRowValues(["7"]));
+  assert.notEqual(hashRowValues(["007"]), hashRowValues([7]));
+  assert.notEqual(hashRowValues([null]), hashRowValues([""]));
+});
+
+test("hash: table hash is PK-ordered, database hash is name-ordered and deterministic", () => {
+  const cols = ["id", "generation"];
+  const rows = [
+    { id: "b", generation: "007" },
+    { id: "a", generation: null },
+  ];
+  const forward = hashTableRows(rows, cols);
+  const sorted = hashTableRows([...rows].sort((x, y) => x.id.localeCompare(y.id)), cols);
+  assert.notEqual(forward, sorted, "row order must change the table hash");
+  assert.equal(hashDatabase({ b: "x", a: "y" }), hashDatabase({ a: "y", b: "x" }));
+  assert.equal(hashRow({ id: "a", generation: "007" }, cols), hashRowValues(["a", "007"]));
+});
+
+// ---------------------------------------------------------------------------
+// Checkpoint resume + idempotency
+// ---------------------------------------------------------------------------
+
+test("checkpoint resume: LOADED skipped, FAILED re-run, snapshot change voids the run", () => {
+  const plan = firstBatchPlan();
+  const mk = (batch, status, snapshotId = SNAPSHOT_ID) => createCheckpoint({
+    runId: "load-synth-001", snapshotId, snapshotRowsTotal: 6848, batch,
+    sourceCount: batch.rowCount, loadedCount: status === "LOADED" ? batch.rowCount : 0,
+    deferredCount: 0, failedCount: status === "FAILED" ? 1 : 0,
+    sourceHash: null, targetHash: null, fkViolations: 0, status,
+  });
+  const checkpoints = [
+    mk(plan[0], "LOADED"),
+    mk(plan[1], "LOADED"),
+    mk(plan[2], "FAILED"),
+  ];
+  const resumed = resumePlan({ plan, checkpoints });
+  assert.equal(resumed.voided, false);
+  assert.deepEqual(resumed.skippedLoaded, ["B-001", "B-002"]);
+  assert.ok(resumed.toRun.some((b) => b.batchId === "B-003"), "FAILED batch re-runs whole");
+  assert.ok(!resumed.toRun.some((b) => b.batchId === "B-001"));
+  assert.ok(resumed.toRun.length < plan.length);
+
+  const voided = resumePlan({ plan, checkpoints: [mk(plan[0], "LOADED"), mk(plan[1], "LOADED", "other-snapshot")] });
+  assert.equal(voided.voided, true);
+  assert.deepEqual(voided.toRun, []);
+});
+
+test("checkpoint resume: a split ring group blocks both ring batches for manual handling", () => {
+  const plan = firstBatchPlan();
+  const ring = plan.filter((b) => b.ringGroup);
+  assert.equal(ring.length, 2);
+  const mk = (batch, status) => createCheckpoint({
+    runId: "load-synth-001", snapshotId: SNAPSHOT_ID, snapshotRowsTotal: 6848, batch,
+    sourceCount: batch.rowCount, loadedCount: status === "LOADED" ? batch.rowCount : 0,
+    deferredCount: 0, failedCount: 0, sourceHash: null, targetHash: null, fkViolations: 0, status,
+  });
+  const resumed = resumePlan({ plan, checkpoints: [mk(ring[0], "LOADED")] });
+  assert.ok(resumed.blocked.includes(ring[0].batchId));
+  assert.ok(resumed.blocked.includes(ring[1].batchId));
+  assert.ok(!resumed.toRun.some((b) => b.ringGroup));
+});
+
+test("idempotency: verifyBatchApplied distinguishes applied / hash-mismatch / not-applied", () => {
+  const applied = [{ batchId: "B-001", contentHash: "abc" }];
+  assert.deepEqual(verifyBatchApplied({ appliedBatches: applied, batchId: "B-001", contentHash: "abc" }), { applied: true, hashMatch: true });
+  assert.deepEqual(verifyBatchApplied({ appliedBatches: applied, batchId: "B-001", contentHash: "zzz" }), { applied: true, hashMatch: false });
+  assert.deepEqual(verifyBatchApplied({ appliedBatches: applied, batchId: "B-002", contentHash: "abc" }), { applied: false, hashMatch: null });
+});
+
+// ---------------------------------------------------------------------------
+// Executor interface: allowlist only, no execution
+// ---------------------------------------------------------------------------
+
+test("executor allowlist: only the exact E4 triple passes; anything else refused pre-request", () => {
+  assert.equal(assertE4Target(E4_TARGET), true);
+  assert.equal(assertE4Target({ databaseId: "05732071-22a5-4e04-834c-f5dd4407a462", databaseName: "flylink-control-migration-e4", accountId: "17d66c001f9d851fa0d5a88cd311c2c0" }), true);
+  for (const bad of [
+    { databaseId: "00000000-0000-0000-0000-000000000000", databaseName: "flylink-control-migration-e4", accountId: "17d66c001f9d851fa0d5a88cd311c2c0" },
+    { databaseId: "05732071-22a5-4e04-834c-f5dd4407a462", databaseName: "flylink-control-migration-staging", accountId: "17d66c001f9d851fa0d5a88cd311c2c0" },
+    { databaseId: "05732071-22a5-4e04-834c-f5dd4407a462", databaseName: "flylink-control-migration-e4", accountId: "other-account" },
+    null,
+  ]) {
+    assert.throws(() => assertE4Target(bad), /e4_target_not_allowed/);
+  }
+});
+
+test("executor: buildD1BatchStatements respects the 100-param / 100KB limits; execute always refuses", () => {
+  const db = freshDb();
+  const row = transformRow({ table: "platform_accounts", row: synthRow(db, "platform_accounts", 0), gates: GATES_OPEN }).row;
+  const stmts = buildD1BatchStatements({ table: "platform_accounts", rows: [row] });
+  assert.equal(stmts.length, 1);
+  assert.ok(stmts[0].sql.startsWith('INSERT INTO "platform_accounts"'));
+  assert.ok(stmts[0].params.length <= 100);
+  assert.ok(Buffer.byteLength(stmts[0].sql, "utf8") <= 100_000);
+  assert.throws(() => executeD1Batch(), /e4_executor_not_connected/);
+  assert.throws(() => buildD1BatchStatements({ table: "platform_ads_click_consent_claims", rows: [{}] }), /e4_target_not_allowed/);
+});
+
+test("importer module performs no network I/O", () => {
+  assert.ok(!/fetch\s*\(|node:https|node:http|undici|XMLHttpRequest/.test(IMPORTER_SOURCE));
+});
+
+// ---------------------------------------------------------------------------
+// Full synthetic dry run
+// ---------------------------------------------------------------------------
+
+test("full synthetic dry run (gates open): 103 checkpoints, deterministic hash, 4 rejections", () => {
+  const db = freshDb();
+  const run = runSyntheticLoad({ db, snapshotId: SNAPSHOT_ID, sha256: SNAPSHOT_SHA, gates: GATES_OPEN });
+  assert.equal(run.planBatchCount, 103);
+  assert.equal(run.checkpoints.length, 103);
+  assert.ok(run.checkpoints.every((c) => c.status === "LOADED"));
+  assert.equal(run.integrity.ok, true);
+  assert.match(run.databaseHash, /^[0-9a-f]{64}$/);
+  // 140 fixture rows + 12 DDL-only snapshot rows.
+  assert.equal(run.totals.sourceRows, 152);
+  // 4 EXTERNALIZE rejections: E-03, E-04, E-05, E-06 (row 1 of each table;
+  // the legacy row carries both E-06 and E-07 values and is rejected once).
+  assert.equal(run.totals.rejectedRows, 4);
+  assert.deepEqual(run.rejected.map((r) => r.id).sort(), ["E-03", "E-04", "E-05", "E-06"]);
+  // Samples table: 2 fixture rows, 0 loaded, recorded as excluded.
+  const samples = run.perTable.find((t) => t.table === "platform_usage_samples");
+  assert.equal(samples.excluded, true);
+  assert.equal(samples.loadedRows, 0);
+  assert.equal(samples.sourceRows, 2);
+  // DDL-only tables: planned but source-absent (gap G-1).
+  for (const extra of CARD6_DDL_ONLY_TABLES) {
+    const entry = run.perTable.find((t) => t.table === extra.source);
+    assert.equal(entry.sourceAbsentFromBaseline, true);
+    assert.equal(entry.loadedRows, 0);
+  }
+  // Receipts: 3 fixture rows -> 2 loaded, 1 deferred D-1.
+  const receipts = run.perTable.find((t) => t.table === "platform_edge_apply_receipts");
+  assert.equal(receipts.sourceRows, 3);
+  assert.equal(receipts.loadedRows, 2);
+  assert.ok(run.deferred.some((d) => d.table === "platform_edge_apply_receipts" && d.reasonCode === "D-1"));
+  // Determinism: a second identical run hashes identically.
+  const again = runSyntheticLoad({ db, snapshotId: SNAPSHOT_ID, sha256: SNAPSHOT_SHA, gates: GATES_OPEN });
+  assert.equal(again.databaseHash, run.databaseHash);
+  assert.equal(again.totals.loadedRows, run.totals.loadedRows);
+});
+
+test("full synthetic dry run (gates closed): ledger, password and legacy rows defer, nothing loads past a gate", () => {
+  const db = freshDb();
+  const run = runSyntheticLoad({ db, snapshotId: SNAPSHOT_ID, sha256: SNAPSHOT_SHA, gates: {} });
+  const codes = run.deferred.map((d) => `${d.table}:${d.reasonCode}`);
+  assert.ok(codes.some((c) => c === "platform_coin_ledger_entries:D-3"));
+  assert.ok(codes.some((c) => c === "platform_portal_password_credentials:D-2"));
+  assert.ok(codes.some((c) => c === "platform_payment_orders_legacy_archive_20260803:CONDITIONAL-GATE"));
+  const ledger = run.perTable.find((t) => t.table === "platform_coin_ledger_entries");
+  assert.equal(ledger.loadedRows, 0);
+  const pw = run.perTable.find((t) => t.table === "platform_portal_password_credentials");
+  assert.equal(pw.loadedRows, 0);
+});
+
+test("synthetic values are deterministic helpers, not real data", () => {
+  assert.equal(syntheticValueFor("platform_accounts", "id", 0), "synth-platform_accounts-id-0");
+  assert.equal(syntheticValueFor("platform_edge_apply_receipts", "generation", 1), "007");
+});
