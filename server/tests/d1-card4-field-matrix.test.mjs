@@ -13,8 +13,11 @@ import {
   verifyD1Card4FieldMatrixAgainstT2
 } from "../services/platform/d1-card4-field-matrix.mjs";
 
-// The T2 JSON is a repo artifact (not production data). The matrix is a verbatim
-// transcription of it, so the test loads the repo copy and verifies agreement.
+// The T2 JSON is a repo artifact (not production data). The matrix was
+// transcribed from it, then corrected per the matrix document §13/§14, so
+// the matrix now deliberately diverges from the unchanged T2 JSON on the
+// leads and password tables (see the divergence test below). The T2
+// assertions in this file are scoped to T2 facts unless marked "matrix".
 // All key material elsewhere in card #4 tests is synthetic; this file uses none.
 const T2_PATH = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -44,10 +47,10 @@ function countDispositions() {
 }
 
 // ---------------------------------------------------------------------------
-// Matrix shape: 8 tables, 129 columns, counts as documented.
+// Matrix shape: 8 tables, 128 columns, counts as documented.
 // ---------------------------------------------------------------------------
 
-test("matrix covers exactly the 8 tables, 129 columns", () => {
+test("matrix covers exactly the 8 tables, 128 columns", () => {
   assert.deepEqual([...D1_CARD4_FIELD_MATRIX_TABLES], [
     "platform_leads",
     "platform_portal_access_requests",
@@ -58,21 +61,21 @@ test("matrix covers exactly the 8 tables, 129 columns", () => {
     "platform_portal_passkey_credentials",
     "platform_accounts"
   ]);
-  assert.equal(matrixColumnCount(), 129);
+  assert.equal(matrixColumnCount(), 128);
   assert.deepEqual(D1_CARD4_FIELD_MATRIX_COUNTS, {
-    total: 129,
-    KEEP: 67,
-    CONDITIONAL: 29,
+    total: 128,
+    KEEP: 70,
+    CONDITIONAL: 28,
     EXTERNALIZE: 7,
-    TRANSFORM: 3,
-    DEFER: 23
+    TRANSFORM: 2,
+    DEFER: 21
   });
   assert.deepEqual(countDispositions(), {
-    KEEP: 67,
-    CONDITIONAL: 29,
+    KEEP: 70,
+    CONDITIONAL: 28,
     EXTERNALIZE: 7,
-    TRANSFORM: 3,
-    DEFER: 23
+    TRANSFORM: 2,
+    DEFER: 21
   });
 });
 
@@ -82,18 +85,50 @@ test("the 8th table stays a candidate, not confirmed", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Matrix agrees with the repo T2 JSON on every column.
+// Matrix vs the repo T2 JSON: exactly the three corrected-matrix
+// divergences, nothing else.
 // ---------------------------------------------------------------------------
 
-test("matrix matches the repo T2 JSON on all 129 columns", () => {
+test("matrix differs from the repo T2 JSON only by the three corrected-matrix divergences", () => {
   const t2 = loadT2();
   assert.equal(t2.counts.tables, 70);
   assert.equal(t2.counts.fields, 820);
-  const mismatches = verifyD1Card4FieldMatrixAgainstT2(t2);
-  assert.deepEqual(mismatches, []);
+  // The corrected matrix (docs/D1_CARD4_FIELD_MATRIX_2026-11-21.md §13/§14)
+  // deliberately diverges from the unchanged T2 JSON in exactly three ways:
+  // (1) platform_leads' 9 non-EXTERNALIZE columns are DEFER in the matrix
+  // (T2: 8 KEEP + 1 CONDITIONAL); (2) all 11
+  // platform_portal_password_credentials columns are KEEP in the matrix
+  // (T2: DEFER); (3) platform_accounts.metadata_json is removed from the
+  // matrix (T2 still lists it as TRANSFORM — the verifier only checks
+  // matrix columns against T2, so an extra T2 column produces no mismatch).
+  // The global T2 DEFER count (23) therefore also differs from the matrix
+  // DEFER count (21). Any mismatch outside this list is real drift.
+  assert.deepEqual(verifyD1Card4FieldMatrixAgainstT2(t2), [
+    "platform_leads.id: disposition KEEP != matrix DEFER",
+    "platform_leads.status: disposition KEEP != matrix DEFER",
+    "platform_leads.organization: disposition CONDITIONAL != matrix DEFER",
+    "platform_leads.direction: disposition KEEP != matrix DEFER",
+    "platform_leads.stage: disposition KEEP != matrix DEFER",
+    "platform_leads.source: disposition KEEP != matrix DEFER",
+    "platform_leads.created_at: disposition KEEP != matrix DEFER",
+    "platform_leads.updated_at: disposition KEEP != matrix DEFER",
+    "platform_leads.expires_at: disposition KEEP != matrix DEFER",
+    "platform_portal_password_credentials.id: disposition DEFER != matrix KEEP",
+    "platform_portal_password_credentials.account_id: disposition DEFER != matrix KEEP",
+    "platform_portal_password_credentials.password_hash: disposition DEFER != matrix KEEP",
+    "platform_portal_password_credentials.status: disposition DEFER != matrix KEEP",
+    "platform_portal_password_credentials.failure_count: disposition DEFER != matrix KEEP",
+    "platform_portal_password_credentials.locked_until: disposition DEFER != matrix KEEP",
+    "platform_portal_password_credentials.must_rotate: disposition DEFER != matrix KEEP",
+    "platform_portal_password_credentials.created_at: disposition DEFER != matrix KEEP",
+    "platform_portal_password_credentials.last_verified_at: disposition DEFER != matrix KEEP",
+    "platform_portal_password_credentials.revoked_at: disposition DEFER != matrix KEEP",
+    "platform_portal_password_credentials.updated_at: disposition DEFER != matrix KEEP",
+    "global DEFER 23 != 21"
+  ]);
 });
 
-test("the 7 EXTERNALIZE and 23 DEFER columns are exactly the sensitive ones", () => {
+test("T2 JSON holds 7 EXTERNALIZE and 23 DEFER columns (matrix: 7 EXTERNALIZE, 21 DEFER)", () => {
   const t2 = loadT2();
   const ext = [];
   const defer = [];
@@ -113,6 +148,18 @@ test("the 7 EXTERNALIZE and 23 DEFER columns are exactly the sensitive ones", ()
   assert.equal(defer.length, 23);
   assert.ok(defer.every((k) => k.startsWith("platform_portal_password_credentials.")
     || k.startsWith("platform_portal_passkey_credentials.")));
+  // Matrix-side composition (totals already pinned by the shape test):
+  // DEFER 21 = passkey 12 + leads 9; the password 11 are KEEP in the
+  // matrix, not DEFER.
+  const matrixDefer = [];
+  for (const table of D1_CARD4_FIELD_MATRIX_TABLES) {
+    for (const [column, entry] of Object.entries(D1_CARD4_FIELD_MATRIX[table])) {
+      if (entry.disposition === "DEFER") matrixDefer.push(`${table}.${column}`);
+    }
+  }
+  assert.equal(matrixDefer.length, 21);
+  assert.ok(matrixDefer.every((k) => k.startsWith("platform_portal_passkey_credentials.")
+    || k.startsWith("platform_leads.")));
 });
 
 // ---------------------------------------------------------------------------
@@ -122,7 +169,8 @@ test("the 7 EXTERNALIZE and 23 DEFER columns are exactly the sensitive ones", ()
 test("sensitive fields resolve to their matrix dispositions", () => {
   assert.equal(getD1Card4FieldDisposition("platform_leads", "email").disposition, "EXTERNALIZE");
   assert.equal(getD1Card4FieldDisposition("platform_leads", "message").disposition, "EXTERNALIZE");
-  assert.equal(getD1Card4FieldDisposition("platform_leads", "organization").disposition, "CONDITIONAL");
+  assert.equal(getD1Card4FieldDisposition("platform_leads", "organization").disposition, "DEFER");
+  assert.equal(getD1Card4FieldDisposition("platform_leads", "id").disposition, "DEFER");
   assert.equal(getD1Card4FieldDisposition("platform_portal_access_requests", "subscription_url").disposition, "EXTERNALIZE");
   assert.equal(getD1Card4FieldDisposition("platform_portal_access_requests", "event_json").disposition, "TRANSFORM");
   assert.equal(getD1Card4FieldDisposition("platform_portal_totp_credentials", "encrypted_totp_secret").disposition, "EXTERNALIZE");
@@ -131,9 +179,11 @@ test("sensitive fields resolve to their matrix dispositions", () => {
   assert.equal(getD1Card4FieldDisposition("platform_payment_orders_legacy_archive_20260803", "checkout_url").disposition, "EXTERNALIZE");
   assert.equal(getD1Card4FieldDisposition("platform_payment_orders_legacy_archive_20260803", "checkout_qr_code").disposition, "EXTERNALIZE");
   assert.equal(getD1Card4FieldDisposition("platform_payment_orders_legacy_archive_20260803", "order_ref").disposition, "CONDITIONAL");
-  assert.equal(getD1Card4FieldDisposition("platform_portal_password_credentials", "password_hash").disposition, "DEFER");
+  assert.equal(getD1Card4FieldDisposition("platform_portal_password_credentials", "password_hash").disposition, "KEEP");
   assert.equal(getD1Card4FieldDisposition("platform_portal_passkey_credentials", "public_key_jwk_json").disposition, "DEFER");
-  assert.equal(getD1Card4FieldDisposition("platform_accounts", "metadata_json").disposition, "TRANSFORM");
+  // platform_accounts.metadata_json was removed from the matrix (M1-02 (a));
+  // the lookup therefore returns null ("not covered"), never a default.
+  assert.equal(getD1Card4FieldDisposition("platform_accounts", "metadata_json"), null);
   assert.equal(getD1Card4FieldDisposition("platform_accounts", "id").disposition, "KEEP");
 });
 

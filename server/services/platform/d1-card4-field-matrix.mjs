@@ -2,10 +2,15 @@
  * Card #4 (D-6) · eight-table per-column field matrix — SOURCE-ONLY DRAFT.
  *
  * Scope: the per-column disposition of the 8 sensitive-field tables of
- * decision card #4, transcribed verbatim from
+ * decision card #4, transcribed from
  * `docs/D1_CONTROL_FIELD_DISPOSITION_T2_V1.json` (SHA cdaf041b…, 70 tables /
- * 820 fields). This module is code structure plus synthetic-data validation
- * only:
+ * 820 fields), with the three corrections in the matrix document
+ * (`docs/D1_CARD4_FIELD_MATRIX_2026-11-21.md` §13/§14) applied: the 9
+ * non-EXTERNALIZE `platform_leads` columns are DEFER, the 11
+ * `platform_portal_password_credentials` columns are KEEP, and
+ * `platform_accounts.metadata_json` is removed. ruleId / dataClass keep
+ * their T2 values, so only the disposition column carries the corrections.
+ * This module is code structure plus synthetic-data validation only:
  *
  * - It reads no production row, writes nothing to BWH/E4, executes no E4 DDL,
  *   and uses no real key. All key material in tests is synthetic.
@@ -19,7 +24,8 @@
  *
  * The verifier checks a T2-shaped object against this matrix and reports every
  * mismatch, so the matrix document (`docs/D1_CARD4_FIELD_MATRIX_2026-11-21.md`
- * §14) is machine-checkable against the T2 JSON.
+ * §14) is machine-checkable against the T2 JSON up to the known §13
+ * corrections (see `verifyD1Card4FieldMatrixAgainstT2`).
  */
 
 // The 8 tables, in matrix order (7 confirmed + 1 candidate).
@@ -38,20 +44,21 @@ export const D1_CARD4_FIELD_MATRIX_TABLES = Object.freeze([
 export const D1_CARD4_FIELD_MATRIX_CANDIDATE_TABLE = "platform_accounts";
 
 // Per-column matrix: table -> column -> { disposition, ruleId, dataClass }.
-// Transcribed verbatim from the T2 JSON (ordinal order preserved in the doc).
+// Transcribed from the T2 JSON (ordinal order preserved in the doc), with the
+// three §13/§14 corrections applied (see the header comment).
 export const D1_CARD4_FIELD_MATRIX = Object.freeze({
   "platform_leads": Object.freeze({
-    "id": Object.freeze({ disposition: "KEEP", ruleId: "R-OPAQUE-REF-KEEP", dataClass: "OPAQUE_REFERENCE" }),
-    "status": Object.freeze({ disposition: "KEEP", ruleId: "R-ENUM-KEEP", dataClass: "INTERNAL_CONTROL_DATA" }),
-    "organization": Object.freeze({ disposition: "CONDITIONAL", ruleId: "R-ORGANIZATION-CONDITIONAL", dataClass: "POTENTIAL_FREE_TEXT_OR_IDENTIFIER" }),
+    "id": Object.freeze({ disposition: "DEFER", ruleId: "R-OPAQUE-REF-KEEP", dataClass: "OPAQUE_REFERENCE" }),
+    "status": Object.freeze({ disposition: "DEFER", ruleId: "R-ENUM-KEEP", dataClass: "INTERNAL_CONTROL_DATA" }),
+    "organization": Object.freeze({ disposition: "DEFER", ruleId: "R-ORGANIZATION-CONDITIONAL", dataClass: "POTENTIAL_FREE_TEXT_OR_IDENTIFIER" }),
     "email": Object.freeze({ disposition: "EXTERNALIZE", ruleId: "R-EMAIL-EXT", dataClass: "DIRECT_PII" }),
-    "direction": Object.freeze({ disposition: "KEEP", ruleId: "R-ENUM-KEEP", dataClass: "INTERNAL_CONTROL_DATA" }),
-    "stage": Object.freeze({ disposition: "KEEP", ruleId: "R-ENUM-KEEP", dataClass: "INTERNAL_CONTROL_DATA" }),
+    "direction": Object.freeze({ disposition: "DEFER", ruleId: "R-ENUM-KEEP", dataClass: "INTERNAL_CONTROL_DATA" }),
+    "stage": Object.freeze({ disposition: "DEFER", ruleId: "R-ENUM-KEEP", dataClass: "INTERNAL_CONTROL_DATA" }),
     "message": Object.freeze({ disposition: "EXTERNALIZE", ruleId: "R-MESSAGE-EXT", dataClass: "DIRECT_PII" }),
-    "source": Object.freeze({ disposition: "KEEP", ruleId: "R-ENUM-KEEP", dataClass: "INTERNAL_CONTROL_DATA" }),
-    "created_at": Object.freeze({ disposition: "KEEP", ruleId: "R-TIME-KEEP", dataClass: "TIMESTAMP" }),
-    "updated_at": Object.freeze({ disposition: "KEEP", ruleId: "R-TIME-KEEP", dataClass: "TIMESTAMP" }),
-    "expires_at": Object.freeze({ disposition: "KEEP", ruleId: "R-TIME-KEEP", dataClass: "TIMESTAMP" }),
+    "source": Object.freeze({ disposition: "DEFER", ruleId: "R-ENUM-KEEP", dataClass: "INTERNAL_CONTROL_DATA" }),
+    "created_at": Object.freeze({ disposition: "DEFER", ruleId: "R-TIME-KEEP", dataClass: "TIMESTAMP" }),
+    "updated_at": Object.freeze({ disposition: "DEFER", ruleId: "R-TIME-KEEP", dataClass: "TIMESTAMP" }),
+    "expires_at": Object.freeze({ disposition: "DEFER", ruleId: "R-TIME-KEEP", dataClass: "TIMESTAMP" }),
   }),
   "platform_portal_access_requests": Object.freeze({
     "id": Object.freeze({ disposition: "KEEP", ruleId: "R-OPAQUE-REF-KEEP", dataClass: "OPAQUE_REFERENCE" }),
@@ -151,17 +158,17 @@ export const D1_CARD4_FIELD_MATRIX = Object.freeze({
     "refund_failed_reason": Object.freeze({ disposition: "CONDITIONAL", ruleId: "R-ARCHIVE-CONDITIONAL", dataClass: "FINANCIAL_OR_REWARD_CONTROL_FACT" }),
   }),
   "platform_portal_password_credentials": Object.freeze({
-    "id": Object.freeze({ disposition: "DEFER", ruleId: "R-PASSWORD-DEFER", dataClass: "FUTURE_AUTH_CREDENTIAL" }),
-    "account_id": Object.freeze({ disposition: "DEFER", ruleId: "R-PASSWORD-DEFER", dataClass: "FUTURE_AUTH_CREDENTIAL" }),
-    "password_hash": Object.freeze({ disposition: "DEFER", ruleId: "R-PASSWORD-DEFER", dataClass: "FUTURE_AUTH_CREDENTIAL" }),
-    "status": Object.freeze({ disposition: "DEFER", ruleId: "R-PASSWORD-DEFER", dataClass: "FUTURE_AUTH_CREDENTIAL" }),
-    "failure_count": Object.freeze({ disposition: "DEFER", ruleId: "R-PASSWORD-DEFER", dataClass: "FUTURE_AUTH_CREDENTIAL" }),
-    "locked_until": Object.freeze({ disposition: "DEFER", ruleId: "R-PASSWORD-DEFER", dataClass: "FUTURE_AUTH_CREDENTIAL" }),
-    "must_rotate": Object.freeze({ disposition: "DEFER", ruleId: "R-PASSWORD-DEFER", dataClass: "FUTURE_AUTH_CREDENTIAL" }),
-    "created_at": Object.freeze({ disposition: "DEFER", ruleId: "R-PASSWORD-DEFER", dataClass: "FUTURE_AUTH_CREDENTIAL" }),
-    "last_verified_at": Object.freeze({ disposition: "DEFER", ruleId: "R-PASSWORD-DEFER", dataClass: "FUTURE_AUTH_CREDENTIAL" }),
-    "revoked_at": Object.freeze({ disposition: "DEFER", ruleId: "R-PASSWORD-DEFER", dataClass: "FUTURE_AUTH_CREDENTIAL" }),
-    "updated_at": Object.freeze({ disposition: "DEFER", ruleId: "R-PASSWORD-DEFER", dataClass: "FUTURE_AUTH_CREDENTIAL" }),
+    "id": Object.freeze({ disposition: "KEEP", ruleId: "R-PASSWORD-DEFER", dataClass: "FUTURE_AUTH_CREDENTIAL" }),
+    "account_id": Object.freeze({ disposition: "KEEP", ruleId: "R-PASSWORD-DEFER", dataClass: "FUTURE_AUTH_CREDENTIAL" }),
+    "password_hash": Object.freeze({ disposition: "KEEP", ruleId: "R-PASSWORD-DEFER", dataClass: "FUTURE_AUTH_CREDENTIAL" }),
+    "status": Object.freeze({ disposition: "KEEP", ruleId: "R-PASSWORD-DEFER", dataClass: "FUTURE_AUTH_CREDENTIAL" }),
+    "failure_count": Object.freeze({ disposition: "KEEP", ruleId: "R-PASSWORD-DEFER", dataClass: "FUTURE_AUTH_CREDENTIAL" }),
+    "locked_until": Object.freeze({ disposition: "KEEP", ruleId: "R-PASSWORD-DEFER", dataClass: "FUTURE_AUTH_CREDENTIAL" }),
+    "must_rotate": Object.freeze({ disposition: "KEEP", ruleId: "R-PASSWORD-DEFER", dataClass: "FUTURE_AUTH_CREDENTIAL" }),
+    "created_at": Object.freeze({ disposition: "KEEP", ruleId: "R-PASSWORD-DEFER", dataClass: "FUTURE_AUTH_CREDENTIAL" }),
+    "last_verified_at": Object.freeze({ disposition: "KEEP", ruleId: "R-PASSWORD-DEFER", dataClass: "FUTURE_AUTH_CREDENTIAL" }),
+    "revoked_at": Object.freeze({ disposition: "KEEP", ruleId: "R-PASSWORD-DEFER", dataClass: "FUTURE_AUTH_CREDENTIAL" }),
+    "updated_at": Object.freeze({ disposition: "KEEP", ruleId: "R-PASSWORD-DEFER", dataClass: "FUTURE_AUTH_CREDENTIAL" }),
   }),
   "platform_portal_passkey_credentials": Object.freeze({
     "id": Object.freeze({ disposition: "DEFER", ruleId: "R-PASSKEY-DEFER", dataClass: "FUTURE_AUTH_CREDENTIAL" }),
@@ -183,18 +190,20 @@ export const D1_CARD4_FIELD_MATRIX = Object.freeze({
     "status": Object.freeze({ disposition: "KEEP", ruleId: "R-ENUM-KEEP", dataClass: "INTERNAL_CONTROL_DATA" }),
     "created_at": Object.freeze({ disposition: "KEEP", ruleId: "R-TIME-KEEP", dataClass: "TIMESTAMP" }),
     "updated_at": Object.freeze({ disposition: "KEEP", ruleId: "R-TIME-KEEP", dataClass: "TIMESTAMP" }),
-    "metadata_json": Object.freeze({ disposition: "TRANSFORM", ruleId: "R-METADATA-JSON", dataClass: "CONTROLLED_JSON" }),
   }),
 });
 
-// Expected per-disposition counts across the 8 tables (129 columns).
+// Expected per-disposition counts across the 8 tables (128 columns).
+// Corrected matrix (matrix doc §13/§14): the T2 JSON is unchanged, so the
+// matrix deliberately diverges from T2 on the leads and password tables
+// (see the verifier note below) and drops platform_accounts.metadata_json.
 export const D1_CARD4_FIELD_MATRIX_COUNTS = Object.freeze({
-  total: 129,
-  KEEP: 67,
-  CONDITIONAL: 29,
+  total: 128,
+  KEEP: 70,
+  CONDITIONAL: 28,
   EXTERNALIZE: 7,
-  TRANSFORM: 3,
-  DEFER: 23,
+  TRANSFORM: 2,
+  DEFER: 21,
 });
 
 /**
@@ -213,10 +222,20 @@ export function getD1Card4FieldDisposition(table, column) {
  * `t2` is expected to have the T2 shape: `{ counts, tables, fields }` where
  * `fields` is an array of `{ table, column, disposition, ruleId, dataClass }`.
  * Returns an array of mismatch strings; an empty array means the T2 object
- * agrees with the matrix on every one of the 129 columns (plus the global
+ * agrees with the matrix on every one of the 128 columns (plus the global
  * counts). Mismatches cover: a matrix column missing from T2, a T2 column
  * whose disposition / ruleId / dataClass differs from the matrix, a matrix
  * table missing from T2, and global count drift.
+ *
+ * Note: the repo T2 JSON is unchanged, so it does NOT agree with the
+ * corrected matrix: it still lists the 9 `platform_leads` columns as KEEP /
+ * CONDITIONAL, the 11 `platform_portal_password_credentials` columns as
+ * DEFER, and `platform_accounts.metadata_json` as TRANSFORM. Against the
+ * repo T2 JSON this verifier therefore returns exactly 21 mismatches (9
+ * leads + 11 password + the global DEFER count); the test asserts that
+ * exact list, so any mismatch outside it is real drift. An extra T2 column
+ * that is not in the matrix (e.g. the removed `metadata_json`) produces no
+ * mismatch, by design.
  */
 export function verifyD1Card4FieldMatrixAgainstT2(t2) {
   const mismatches = [];
@@ -250,7 +269,7 @@ export function verifyD1Card4FieldMatrixAgainstT2(t2) {
   const counts = t2.counts && t2.counts.fieldDispositions;
   if (counts) {
     if (counts.EXTERNALIZE !== 7) mismatches.push(`global EXTERNALIZE ${counts.EXTERNALIZE} != 7`);
-    if (counts.DEFER !== 23) mismatches.push(`global DEFER ${counts.DEFER} != 23`);
+    if (counts.DEFER !== 21) mismatches.push(`global DEFER ${counts.DEFER} != 21`);
   }
   if (typeof t2.counts?.fields === "number" && t2.counts.fields !== 820) {
     mismatches.push(`global fields ${t2.counts.fields} != 820`);
