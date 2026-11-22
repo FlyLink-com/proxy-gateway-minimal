@@ -12,13 +12,15 @@ import {
 } from "../services/subscriptions/subscription-route-resolver.mjs";
 import {
   summarizeUsageSamples,
-  usageCycleFiltersForBinding
+  usageCycleFiltersForBinding,
+  usageCycleForBinding
 } from "../services/platform/usage-billing-cycle.mjs";
 import {
   generateSubscriptionExpiryNotice,
   SUBSCRIPTION_RENEWAL_URL
 } from "../services/subscription-expiry-notice.mjs";
 import { applyThirdPartyProxyConfig } from "../services/platform/third-party-subscription-render.mjs";
+import { preferRatedUsage } from "../services/platform/protocol-traffic-rating.mjs";
 
 function safeRef(prefix, value) {
   return `${prefix}ref_${createHash("sha256").update(String(value)).digest("hex").slice(0, 16)}`;
@@ -72,16 +74,32 @@ export function subscriptionRoutes(state, options = {}) {
           at: usageNowIso(state),
           fallbackRollup: rollup
         });
+        if (currentCycleUsage.historyUnobserved || (currentCycleUsage.ratingMode === "rated" && currentCycleUsage.uploadBytes == null)) {
+          throw Object.assign(new Error("rating_observation_required"), { code: "rating_observation_required" });
+        }
         return {
           uploadBytes: nonNegativeInteger(currentCycleUsage.uploadBytes),
           downloadBytes: nonNegativeInteger(currentCycleUsage.downloadBytes),
           totalBytes: nonNegativeInteger(binding.trafficLimitBytes)
         };
       }
-    } catch {
+    } catch (error) {
+      if (typeof error?.code === "string" && error.code.startsWith("rating_")) throw error;
       return null;
     }
     return null;
+  }
+
+  function beginSubscriptionResponse(res, result) {
+    try {
+      return subscriptionLifecycle(result);
+    } catch (error) {
+      if (typeof error?.code === "string" && error.code.startsWith("rating_")) {
+        res.status(503).set("Cache-Control", "no-store").json({ error: "usage_observation_required" });
+        return undefined;
+      }
+      throw error;
+    }
   }
 
   function subscriptionLifecycle(result) {
@@ -165,7 +183,8 @@ export function subscriptionRoutes(state, options = {}) {
       protocol: req.protocol,
       host: req.get("host")
     })}/sub/a/${encodeURIComponent(resolved.rawArtifact)}/provider.yaml`;
-    const lifecycle = subscriptionLifecycle(resolved.result);
+    const lifecycle = beginSubscriptionResponse(res, resolved.result);
+    if (res.headersSent) return;
     const proxyConfig = applyThirdPartyProxyConfig(state, resolved.result);
     sendSubscriptionYaml(
       res,
@@ -180,7 +199,8 @@ export function subscriptionRoutes(state, options = {}) {
       return;
     }
 
-    const lifecycle = subscriptionLifecycle(resolved.result);
+    const lifecycle = beginSubscriptionResponse(res, resolved.result);
+    if (res.headersSent) return;
     const proxyConfig = applyThirdPartyProxyConfig(state, resolved.result);
     sendSubscriptionYaml(
       res,
@@ -195,7 +215,8 @@ export function subscriptionRoutes(state, options = {}) {
       return;
     }
 
-    const lifecycle = subscriptionLifecycle(resolved.result);
+    const lifecycle = beginSubscriptionResponse(res, resolved.result);
+    if (res.headersSent) return;
     const proxyConfig = applyThirdPartyProxyConfig(state, resolved.result);
     sendSubscriptionYaml(
       res,
@@ -218,7 +239,8 @@ export function subscriptionRoutes(state, options = {}) {
       return;
     }
 
-    const lifecycle = subscriptionLifecycle(result.result);
+    const lifecycle = beginSubscriptionResponse(res, result.result);
+    if (res.headersSent) return;
     const proxyConfig = applyThirdPartyProxyConfig(state, result.result);
     sendSubscriptionYaml(
       res,
@@ -243,12 +265,24 @@ function currentCycleUsageFor({ controlStore, binding, at, fallbackRollup }) {
       downloadBytes: nonNegativeInteger(fallbackRollup?.downloadBytes)
     };
   }
-  const summary = summarizeUsageSamples(controlStore.listUsageSamples({
+  const filters = usageCycleFiltersForBinding(binding, at);
+  const cycle = usageCycleForBinding(binding, at);
+  const summary = preferRatedUsage(controlStore, {
+    accountId: binding.accountId,
+    entitlementId: binding.entitlementId,
     requestId: binding.requestId,
-    ...usageCycleFiltersForBinding(binding, at)
-  }));
+    cycleKey: cycle?.cadence === "lifetime" ? "lifetime" : cycle?.startedAt,
+    observedFrom: filters.observedFrom,
+    observedTo: filters.observedTo
+  }, summarizeUsageSamples(controlStore.listUsageSamples({
+    requestId: binding.requestId,
+    ...filters
+  })));
   return {
     uploadBytes: summary.uploadBytes,
-    downloadBytes: summary.downloadBytes
+    downloadBytes: summary.downloadBytes,
+    chargedTotalBytes: summary.chargedTotalBytes ?? null,
+    ratingMode: summary.ratingMode || null,
+    historyUnobserved: summary.historyUnobserved === true
   };
 }

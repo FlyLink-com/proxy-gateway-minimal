@@ -161,6 +161,8 @@ The system-owned source stores only display/distribution overrides. Its explicit
 schema migration lives in the existing imported-source database and is never
 applied on application startup. See [distribution routing](../docs/SUBSCRIPTION_DISTRIBUTION_ROUTING.md)
 for limits, Admin APIs, source validation and the separate BWH supply cutover.
+Protocol traffic rating is a separate, default-off control-database migration.
+See [BWH protocol traffic rating](../docs/BWH_PROTOCOL_RATING.md).
 
 ## Release identity
 

@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { readProtocolRatedUsage } from "../platform/protocol-traffic-rating.mjs";
 
 const TECHNICAL_VALID_UNTIL = "9999-12-31T23:59:59.999Z";
 const DIGEST = /^sha256:[a-f0-9]{64}$/;
@@ -133,9 +134,14 @@ export function readDataPackDesiredStateRows(db, channelRef, nowMs) {
            and observed_at >= ? and observed_at <= ?
       `).get(candidate.account_id, candidate.entitlement_ref,
         candidate.request_ref, candidate.valid_from, new Date(nowMs).toISOString());
-      if (measured.sample_count > 0 && (!Number.isSafeInteger(measured.used_bytes)
-        || measured.used_bytes < 0)) throw invalidBinding();
-      if (measured.sample_count === 0 || measured.used_bytes < candidate.quota_bytes) {
+      const rated = readProtocolRatedUsage(db, {
+        accountId: candidate.account_id, entitlementId: candidate.entitlement_ref, requestId: candidate.request_ref,
+        cycleKey: "lifetime", observedFrom: candidate.valid_from, observedTo: new Date(nowMs).toISOString(), inclusiveEnd: true
+      });
+      const usedBytes = rated.mode === "rated" ? rated.totalBytes : (measured.sample_count > 0 ? measured.used_bytes : null);
+      if (usedBytes !== null && (!Number.isSafeInteger(usedBytes) || usedBytes < 0)) throw invalidBinding();
+      const usageKnown = rated.mode !== "rated" || rated.historyUnobserved !== true;
+      if (usageKnown && (usedBytes === null || usedBytes < candidate.quota_bytes)) {
         activeRows.push({ ...row, validUntilMs: Date.parse(candidate.valid_until) });
       }
     }

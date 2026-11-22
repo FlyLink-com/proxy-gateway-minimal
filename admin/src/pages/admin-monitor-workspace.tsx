@@ -164,6 +164,17 @@ function fmtGib(bytes: number | null | undefined): string {
   if (g > 0 && g < 0.000001) return "<0.000001";
   return g.toFixed(6).replace(/(\.\d*?)0+$/, "$1").replace(/\.$/, "");
 }
+function fmtRawBytes(row: MonitorUsageRow): string {
+  if (row.ratingState === "unobserved") return "未知";
+  if (row.rawUsedBytes == null || !Number.isSafeInteger(row.rawUsedBytes) || row.rawUsedBytes < 0) return "未知";
+  return `${row.rawUsedBytes} 字节`;
+}
+function fmtChargedBytes(row: MonitorUsageRow): string {
+  if (row.ratingState === "charge_missing") return "异常";
+  if (row.ratingState === "unobserved") return "未知";
+  if (row.ratingState !== "rated" || row.chargedUsedBytes == null) return "未启用倍率";
+  return `${row.chargedUsedBytes} 字节`;
+}
 function aged(iso: string | null | undefined): boolean {
   if (!iso) return true;
   const t = new Date(iso).getTime();
@@ -232,14 +243,16 @@ function DataTable({
   rowKeys,
   cells,
   empty,
+  scrollLabel = "可横向滚动的数据表",
 }: {
   columns: string[];
   rowKeys: string[];
   cells: ReactNode[][];
   empty: string;
+  scrollLabel?: string;
 }) {
   return (
-    <div className="admin-monitor-table-wrap">
+    <div className="admin-monitor-table-wrap" role="region" tabIndex={0} aria-label={scrollLabel}>
       <table className="admin-monitor-table">
         <thead>
           <tr>
@@ -517,6 +530,7 @@ export function AdminMonitorWorkspace({
               rowKeys={pagePoints.map((p, i) => `${(histPage - 1) * PAGE_SIZE + i}:${p.at ?? "na"}`)}
               cells={pagePoints.map((p) => [fmtTime(p.at), fmtGib(p.uploadBytes), fmtGib(p.downloadBytes), fmtGib(p.totalBytes)])}
               empty="无匹配记录"
+              scrollLabel="历史流量表格，可横向滚动"
             />
             <Pager page={histPage} pages={histPages} onPage={(n) => setPageMap((m) => ({ ...m, [histSpace]: n }))} />
           </>
@@ -646,19 +660,29 @@ export function AdminMonitorWorkspace({
         return (!statusSel || r.status === statusSel) && hit(search, [r.accountId, r.entitlementId, acc, r.plan, r.status, st(r.status)]);
       });
       const pg = paged(filtered);
+      const boundary = usage?.ratingBoundary;
       return (
         <>
+          <p className="admin-monitor-notice">
+            {boundary
+              ? `当前策略边界：${boundary.effectiveNotBefore}，已生效版本 ${boundary.version}。原始字节与额度扣减分开列出。`
+              : "当前没有已生效的协议倍率边界。原始字节与额度扣减分开列出。缺计费显示异常，未观测显示未知，不把未知填成 0。"}
+          </p>
           {filterBar(opts)}
           <DataTable
-            columns={["账户", "套餐", "已记录用量 GiB", "观测时间", "状态", "详情"]}
+            columns={["账户", "套餐", "已记录用量 GiB", "原始字节", "额度扣减", "观测时间", "状态", "详情"]}
             rowKeys={pg.rows.map((r, i) => `${i}:${r.accountId}:${r.entitlementId || "none"}`)}
             cells={pg.rows.map((r: MonitorUsageRow) => {
               const acc = accountRef(r.accountId, accountMap, joinOn);
               const when = r.observedAt ? fmtTime(r.observedAt) : "尚无采样";
+              const raw = fmtRawBytes(r);
+              const charged = fmtChargedBytes(r);
               return [
                 acc,
                 r.plan || "—",
                 fmtGib(r.usedBytes),
+                raw,
+                charged,
                 when === "—" ? "尚无采样" : when,
                 <StatusBadge value={r.status} />,
                 <SafeDetails
@@ -666,6 +690,8 @@ export function AdminMonitorWorkspace({
                     ["账户", acc],
                     ["套餐", r.plan || "—"],
                     ["已记录用量 GiB", fmtGib(r.usedBytes)],
+                    ["原始字节", raw],
+                    ["额度扣减", charged],
                     ["观测时间", r.observedAt ? fmtTime(r.observedAt) : "尚无采样"],
                     ["状态", st(r.status)],
                   ]}
@@ -673,6 +699,7 @@ export function AdminMonitorWorkspace({
               ];
             })}
             empty={listEmpty(sources.usage.phase, items.length, filtered.length, "用量来源不可用")}
+            scrollLabel="用量监视表格，可横向滚动"
           />
           <Pager page={pg.page} pages={pg.pages} onPage={setPage} />
           {historyBlock()}

@@ -1,4 +1,5 @@
 import { fullMeteringDigest } from "./full-metering-journal.mjs";
+import { PROTOCOL_RATING_JOURNAL_V1 } from "../../server/services/platform/protocol-traffic-rating.mjs";
 import { usageCycleForBinding } from "../../server/services/platform/usage-billing-cycle.mjs";
 import { fullMeteringChannels, FULL_METERING_SCOPE, LOCAL_METERING_SCOPE } from "./full-metering-scope.mjs";
 
@@ -52,15 +53,22 @@ export function createFullMeteringSampleWriter({ database, controlStore, readBin
   const channels = fullMeteringChannels(meteringScope);
   if (!database || !controlStore || typeof readBindings !== "function") fail("full_metering_writer_invalid");
   if ((meteringScope === LOCAL_METERING_SCOPE || activationId !== undefined) && (typeof activationId !== "string" || !REF.test(activationId))) fail("full_metering_writer_invalid");
-  return function applySamples(samples) {
+  return function applySamples(samples, ratingDecisions) {
     if (!Array.isArray(samples) || samples.length > 10000) fail("full_metering_batch_invalid");
+    const legacyV1 = ratingDecisions === PROTOCOL_RATING_JOURNAL_V1;
+    if (!legacyV1 && ratingDecisions !== undefined && (!Array.isArray(ratingDecisions) || ratingDecisions.length !== samples.length)) fail("full_metering_rating_invalid");
     const seen = new Set();
-    samples.forEach(sample => {
+    const decisions = new Map();
+    samples.forEach((sample, index) => {
       validate(sample);
       if (!channels.some(source => source.channelRef === sample.record.channelRef && source.sourceRef === sample.record.sourceRef)
         || (activationId !== undefined && sample.activationId !== activationId)) fail("full_metering_sample_scope_invalid");
       if (seen.has(sample.record.id)) fail("full_metering_sample_invalid"); seen.add(sample.record.id);
+      if (Array.isArray(ratingDecisions)) decisions.set(sample.record.id, ratingDecisions[index]);
     });
+    const ratedRecord = (record, decision) => legacyV1
+      ? { ...record, [PROTOCOL_RATING_JOURNAL_V1]: true }
+      : Array.isArray(ratingDecisions) ? { ...record, ratingDecision: decision ?? null } : record;
     return database.transaction(() => {
       let inventory;
       const known = new Map();
@@ -69,6 +77,8 @@ export function createFullMeteringSampleWriter({ database, controlStore, readBin
         const previous = controlStore.getUsageSampleByDigest(sample.record.sampleDigest);
         if (previous) {
           if (fullMeteringDigest(previous) !== fullMeteringDigest(sample.record)) fail("full_metering_sample_collision");
+          const outcome = controlStore.recordUsageSample(ratedRecord(sample.record, decisions.get(sample.record.id)));
+          if (outcome.inserted) fail("full_metering_sample_collision");
           continue;
         }
         if (!inventory) {
@@ -92,7 +102,7 @@ export function createFullMeteringSampleWriter({ database, controlStore, readBin
             || rollup.totalBytes !== rollup.uploadBytes + rollup.downloadBytes
             || (rollup.lastObservedAt && rollup.lastObservedAt > record.observedAt)) fail("full_metering_rollup_invalid");
         }
-        const outcome = controlStore.recordUsageSample(record);
+        const outcome = controlStore.recordUsageSample(ratedRecord(record, decisions.get(record.id)));
         if (!outcome.inserted || fullMeteringDigest(outcome.sample) !== fullMeteringDigest(record)) fail("full_metering_sample_collision");
       }
       return { insertedCount: pending.length, alreadyRecordedCount: samples.length - pending.length };
