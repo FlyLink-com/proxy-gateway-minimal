@@ -9,10 +9,14 @@ import {
 
 const timestamp = "2026-11-20T00:00:00.000Z";
 function fixtures(overrides = {}) {
+  // Card 14: loader-input rows no longer carry metadata_json (the loader
+  // rejects it with stage2_metadata_json_denied). The direct target-table
+  // seeds further below still insert metadata_json explicitly, because the
+  // local D1 table keeps the column with DEFAULT '{}'.
   const a = { id: "s2s-account-001", owner_ref: "s2s-owner-001", status: "active",
-    created_at: timestamp, updated_at: timestamp, metadata_json: "{}" };
+    created_at: timestamp, updated_at: timestamp };
   const b = { id: "s2s-account-002", owner_ref: "s2s-owner-002", status: "active",
-    created_at: timestamp, updated_at: timestamp, metadata_json: "{}" };
+    created_at: timestamp, updated_at: timestamp };
   const ent = {
     id: "s2s-entitlement-001", account_id: "s2s-account-001", plan: "monthly",
     status: "active", valid_from: timestamp, valid_until: "2026-12-20T00:00:00.000Z",
@@ -187,7 +191,7 @@ test("stage2 rejects production-looking values, unknown fields, duplicate keys a
   await assert.rejects(runSyntheticOfflineMigration(db, notSynthetic), { code: "stage2_real_rows_denied" });
   const personal = fixtures();
   personal.tables[0].rows[0].metadata_json = '{"email":"example@example.org"}';
-  await assert.rejects(runSyntheticOfflineMigration(db, personal), { code: "stage2_real_rows_denied" });
+  await assert.rejects(runSyntheticOfflineMigration(db, personal), { code: "stage2_metadata_json_denied" });
   const unknownField = fixtures();
   unknownField.tables[0].rows[0].email = "example@example.org";
   await assert.rejects(runSyntheticOfflineMigration(db, unknownField), { code: "stage2_column_disposition_denied" });
