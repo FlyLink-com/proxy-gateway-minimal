@@ -7,8 +7,9 @@ import { replaySyntheticOfflineDelta } from "../../../tools/d1-stage2/offline-de
 const now = "2026-11-20T00:00:00.000Z";
 const until = "2026-12-20T00:00:00.000Z";
 function account(n) {
+  // Card 14: loader-input rows no longer carry metadata_json.
   return { id: "s2s-account-00" + n, owner_ref: "s2s-owner-00" + n,
-    status: "active", created_at: now, updated_at: now, metadata_json: "{}" };
+    status: "active", created_at: now, updated_at: now };
 }
 function entitlement(n, acct) {
   return { id: "s2s-entitlement-00" + n, account_id: "s2s-account-00" + acct,

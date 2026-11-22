@@ -78,6 +78,11 @@ function smuggleColumn(page, column, value) {
   };
 }
 
+function makeContinuationToken(table, lastPk, snapshotId) {
+  const payload = canonicalJson({ table, lastPk, snapshotId });
+  return "s2s-ct-" + Buffer.from(payload, "utf8").toString("base64url");
+}
+
 const CHECKPOINT_TABLES = [
   { table: "platform_accounts", pk: "id" },
   { table: "platform_entitlements", pk: "id" },
@@ -296,6 +301,53 @@ test("S2S-EXP-9 a page whose excludedColumns disagree with the mapping is reject
   assertErrorCode(() => verifyExportPage(wrongExcluded), "export_page_column_unapproved");
 });
 
+test("S2S-EXP-10 a row cannot smuggle an undeclared field with a self-consistent hash", (t) => {
+  const { db } = makeSnapshot(t);
+  const page = exportPage(db, { table: "platform_accounts", pk: "id", snapshotId: SNAPSHOT_A, limit: 2 });
+  const rows = page.rows.map((row, index) => index === 0
+    ? { ...row, metadata_json: "s2s-smuggled-metadata" }
+    : row);
+  const smuggled = {
+    ...page,
+    rows,
+    contentHash: createHash("sha256").update(canonicalJson(rows), "utf8").digest("hex"),
+    byteLength: Buffer.byteLength(canonicalJson(rows), "utf8"),
+  };
+  assertErrorCode(() => verifyExportPage(smuggled), "export_page_row_column_unapproved");
+});
+
+test("S2S-EXP-11 verifier scans actual row values for sensitive material", (t) => {
+  const { db } = makeSnapshot(t);
+  const page = exportPage(db, { table: "platform_accounts", pk: "id", snapshotId: SNAPSHOT_A, limit: 2 });
+  const rows = page.rows.map((row, index) => index === 0
+    ? { ...row, owner_ref: "sk-abcdefgh12345678" }
+    : row);
+  const tampered = {
+    ...page,
+    rows,
+    contentHash: createHash("sha256").update(canonicalJson(rows), "utf8").digest("hex"),
+    byteLength: Buffer.byteLength(canonicalJson(rows), "utf8"),
+  };
+  assertErrorCode(() => verifyExportPage(tampered), "export_sensitive_value_detected");
+});
+
+test("S2S-EXP-12 page boundaries and continuation token must match actual row primary keys", (t) => {
+  const { db } = makeSnapshot(t);
+  const page = exportPage(db, { table: "platform_accounts", pk: "id", snapshotId: SNAPSHOT_A, limit: 2 });
+  const forged = {
+    ...page,
+    startPk: ["s2s-account-002"],
+    endPk: ["s2s-account-003"],
+    continuationToken: makeContinuationToken("platform_accounts", ["s2s-account-003"], SNAPSHOT_A),
+  };
+  assertErrorCode(() => verifyExportPage(forged), "export_page_boundary_mismatch");
+  assertErrorCode(() => verifyExportPage({ ...page, continuationToken: null }), "export_page_token_mismatch");
+  assertErrorCode(
+    () => exportPage(db, { table: "platform_accounts", pk: "status", snapshotId: SNAPSHOT_A, limit: 2 }),
+    "export_pk_unapproved",
+  );
+});
+
 // ---- Task 4: deletion / incremental manifest ----
 
 function checkpointAndModify(t, db) {
@@ -398,6 +450,48 @@ test("S2S-INC-4 a checkpoint that does not cover a table fails closed", (t) => {
     }),
     (error) => error && error.code === "delta_checkpoint_invalid",
   );
+});
+
+test("S2S-INC-5 checkpoint snapshot identity must match previousSnapshotId", (t) => {
+  const { db } = makeSnapshot(t);
+  const checkpoint = buildCheckpointManifest(db, { tables: CHECKPOINT_TABLES, snapshotId: SNAPSHOT_A });
+  const previousCredentialManifest = buildCredentialVersionManifest(db, { snapshotId: SNAPSHOT_A });
+  const currentCredentialManifest = buildCredentialVersionManifest(db, { snapshotId: SNAPSHOT_B });
+  assertErrorCode(() => buildIncrementalManifest(db, {
+    tables: CHECKPOINT_TABLES,
+    checkpoint,
+    previousCredentialManifest,
+    currentCredentialManifest,
+    highWaterMark: createHighWaterMark({ seq: 1, snapshotId: SNAPSHOT_B }),
+    previousSnapshotId: SNAPSHOT_B,
+  }), "export_checkpoint_identity_mismatch");
+});
+
+test("S2S-INC-6 credential manifests must be complete and match their snapshot identities", (t) => {
+  const { db } = makeSnapshot(t);
+  const checkpoint = buildCheckpointManifest(db, { tables: CHECKPOINT_TABLES, snapshotId: SNAPSHOT_A });
+  const previousCredentialManifest = buildCredentialVersionManifest(db, { snapshotId: SNAPSHOT_A });
+  const currentCredentialManifest = buildCredentialVersionManifest(db, { snapshotId: SNAPSHOT_B });
+  const common = {
+    tables: CHECKPOINT_TABLES,
+    checkpoint,
+    highWaterMark: createHighWaterMark({ seq: 1, snapshotId: SNAPSHOT_B }),
+    previousSnapshotId: SNAPSHOT_A,
+  };
+  assertErrorCode(() => buildIncrementalManifest(db, {
+    ...common,
+    previousCredentialManifest,
+  }), "export_credential_manifest_incomplete");
+  assertErrorCode(() => buildIncrementalManifest(db, {
+    ...common,
+    previousCredentialManifest: buildCredentialVersionManifest(db, { snapshotId: SNAPSHOT_B }),
+    currentCredentialManifest,
+  }), "export_credential_snapshot_mismatch");
+  assertErrorCode(() => buildIncrementalManifest(db, {
+    ...common,
+    previousCredentialManifest,
+    currentCredentialManifest: buildCredentialVersionManifest(db, { snapshotId: SNAPSHOT_A }),
+  }), "export_credential_snapshot_mismatch");
 });
 
 // ---- Task 7 (export side): crash and integrity ----
