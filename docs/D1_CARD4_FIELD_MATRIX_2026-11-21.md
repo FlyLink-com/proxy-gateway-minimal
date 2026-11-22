@@ -34,12 +34,12 @@ document_metadata:
 | 4 | `platform_payment_receipts` | `next_action_url` | 已确认（T2 EXTERNALIZE；Q-5） |
 | 5 | `platform_payment_orders_legacy_archive_20260803` | `checkout_url`、`checkout_qr_code`（E-06/E-07） | 已确认（T2 EXTERNALIZE；Q-6 HOLD） |
 | 6 | `platform_portal_password_credentials` | 全表 11 列 | 已确认（KEEP：原样留，见 §6） |
-| 7 | `platform_portal_passkey_credentials` | 全表 | 已确认（T2 DEFER） |
+| 7 | `platform_portal_passkey_credentials` | 全表 | 已确认（CONDITIONAL：有条件迁，见 §7） |
 | 8 | `platform_accounts`（5 列；`metadata_json` 已排除，见 §8） | 见 §8 | **候选，待确认**：决策卡 D-6 原文（`E4_DECISION_CARDS.md` #4）不在仓库内，但本地就绪目录有该文件（逐项查验报告 §3.7 已核对）；D-6 原文所列 8 张表里没有 `platform_accounts`，第 8 张表是否为 `platform_accounts` 仍须 Yi 定。本稿不把候选写成定论。 |
 
 逐列枚举已补齐：八张表共 128 列全部见 §14（从 `docs/D1_CONTROL_FIELD_DISPOSITION_T2_V1.json` 提取，SHA `cdaf041b…`，单行 424 KB）。
 T2 总量已核：KEEP 712 / TRANSFORM 19 / EXTERNALIZE 7 / DEFER 23 / CONDITIONAL 59，共 820 字段；
-八张表 128 列 = KEEP 70 / CONDITIONAL 28 / EXTERNALIZE 7 / TRANSFORM 2 / DEFER 21。
+八张表 128 列 = KEEP 70 / CONDITIONAL 40 / EXTERNALIZE 7 / TRANSFORM 2 / DEFER 9。
 跨表 TRANSFORM 族（租约、幂等、事件去重）见 §9；它们与八张表有交集但不单独占表位。
 
 每字段四列含义：**处置方式**（KEEP / TRANSFORM / EXTERNALIZE / DEFER / CONDITIONAL，以 T2 为准，本轮三处修正见 §13）；
@@ -99,11 +99,11 @@ DO 恢复到早先时点 → 以 D1 现态与指针为准，先对账再恢复�
 |---|---|---|---|---|
 | 全表 11 列 | KEEP：原样留，不转换、不销毁、不过期。依据：Yi 2026-11-19 第 9 项原文“密码字段口径：DDL 定稿时明确目标类型与转换规则，Auth0 决策到达前不装载密码原文”，批准方案 (a)（口径暂定）；“原样保留”出自已批 DDL 的 #9 摘要（DDL 第 154 行与第 1382–1383 行）+ Yi 2026-11-22 23:26 范围裁决（只迁用户账号、密码、订阅）。11 列名见 §14.6：`id`、`account_id`、`password_hash`、`status`、`failure_count`、`locked_until`、`must_rotate`、`created_at`、`last_verified_at`、`revoked_at`、`updated_at`（全部 KEEP；T2 规则名 R-PASSWORD-DEFER 保留以便溯源）。 | 不适用。密码哈希不重哈希（DDL 第 1383 行）、不转换：只存 scrypt 哈希编码，不存明文（DDL 第 1390–1391 行）。 | 有行即有语义；空值按源 NOT NULL 约束。 | 访问：D1 访问路径待 #9 门控放行后定；BWH 现有路径（`portal-password-credentials.mjs`，scrypt 校验）不在本卡改动范围。恢复：源行原样保留；装载时机受 #9 门控（Auth0/算法兼容与 #4 托管证据通过前不得装载，DDL 第 1384 行）。注意：T2 称 DEFER 的理由“生产没有密码校验行”与 DDL 注释 2026-11-18 快照 75 行（DDL 第 1380 行）不一致，该矛盾已登记在逐项查验报告 §3.4/§4.3，本稿未强行调和。测试：`T2-KEEP-001`、`T2-DIGEST-001`、`T2-NUMERIC-RANGE-001`、`T2-BOOLEAN-CHECK-001`、`T2-TIME-SEMANTICS-001`、`T2-OPAQUE-REF-001`（逐列见 §14.6）。 |
 
-## 7. `platform_portal_passkey_credentials`（DEFER）
+## 7. `platform_portal_passkey_credentials`（CONDITIONAL）
 
 | 字段 | 处置 | 摘要算法与输入规范 | 空值语义 | 访问与恢复测试 |
 |---|---|---|---|---|
-| 全表 12 列 | DEFER：不迁移凭据行。源审计未发现生产服务调用方；DEFER 是数据落点决定，不是“该能力未用/可静默停用”的证据。12 列名见 §14.7：`id`、`account_id`、`credential_id`、`credential_id_hash`、`public_key_jwk_json`、`sign_count`、`transports_json`、`status`、`created_at`、`last_verified_at`、`revoked_at`、`updated_at`（全部 DEFER，R-PASSKEY-DEFER）。 | 不适用。Passkey 迁移只允许公开 JWK，拒收含私有成员 `d` 的 JWK。 | 无行即无语义；不得用“空表已建”表示“已迁移”。 | 访问：无 D1 访问路径。恢复：非预期非空源行须 fail-closed，另行决策，不得静默省略。测试：`T2-DEFER-001`、`T2-FUTURE-AUTH-GATE-001`、`T2-DIGEST-001`、`T2-JSON-ALLOWLIST-001`、`T2-NUMERIC-RANGE-001`、`T2-TIME-SEMANTICS-001`、`T2-OPAQUE-REF-001`（逐列见 §14.7）。 |
+| 全表 12 列 | CONDITIONAL：有条件迁——进范围、不装数据；五条件全满足才装，任一不满足一行都不装：① Yi 已认 passkey 算“用户账号”、进迁移范围（Yi 2026-11-22 00:07 同意决策包 §6、00:46 令逐项确认）；② 补生产核查（到底有没有 passkey 行、有没有服务在调这张表）；③ 批专用 WebAuthn 合同（只许公开 JWK、含 `d` 的一律拒收；`credential_id` / `credential_id_hash` 唯一性；`sign_count` 默认 0；`transports_json` 默认 `'[]'`；批了之后 12 列是不是一起动）；④ 空表建不建待定；⑤ 装载时机另行定。原 DEFER 理由“源审计未发现生产服务调用方”在证据文件里找不到是哪次核查，改由条件 ② 补生产核查。12 列名见 §14.7：`id`、`account_id`、`credential_id`、`credential_id_hash`、`public_key_jwk_json`、`sign_count`、`transports_json`、`status`、`created_at`、`last_verified_at`、`revoked_at`、`updated_at`（全部 CONDITIONAL，R-PASSKEY-DEFER 规则名保留以便溯源）。 | 不适用。Passkey 迁移只允许公开 JWK，拒收含私有成员 `d` 的 JWK（`credential_id` / `credential_id_hash` 唯一性、`sign_count` 默认 0、`transports_json` 默认 `'[]'` 见 §14.7 表下注）。 | 无行即无语义；不得用“空表已建”表示“已迁移”。 | 访问：无 D1 访问路径。恢复：非预期非空源行须 fail-closed，另行决策，不得静默省略。测试：`T2-GATE-001`、`T2-FUTURE-AUTH-GATE-001`、`T2-DIGEST-001`、`T2-JSON-ALLOWLIST-001`、`T2-NUMERIC-RANGE-001`、`T2-TIME-SEMANTICS-001`、`T2-OPAQUE-REF-001`（逐列见 §14.7）。 |
 
 ## 8. `platform_accounts` · `metadata_json` 已排除（M1-02 方案 (a)；候选第 8 张表仍待确认）
 
@@ -197,7 +197,7 @@ DO 恢复到早先时点 → 以 D1 现态与指针为准，先对账再恢复�
 - 基线：master `b1e46fef4e98bbfdace900a4e8b2d36a4284e176`，与任务基线一致；PR #903 Draft，分支 `feat/d1-#4-key-families-20261121`，head `08dea77db60e90ac94929327e46b0895c5cae2d0`。
 - 本轮分支：`feat/d1-card4-field-matrix-20261121`（自 `08dea77d`）；Draft PR #911（head `d5094128`），Draft，未标 Ready。
 - T2 JSON 已核：`docs/D1_CONTROL_FIELD_DISPOSITION_T2_V1.json`，SHA `cdaf041b…`，单行 424 KB，70 表 / 820 字段；五份副本 SHA 一致。本轮用仓库内副本提取，未改原文件。
-- 八张表 128 列逐列枚举已补齐（§14）：计数 KEEP 70 / CONDITIONAL 28 / EXTERNALIZE 7 / TRANSFORM 2 / DEFER 21；与 T2 总量（KEEP 712 / TRANSFORM 19 / EXTERNALIZE 7 / DEFER 23 / CONDITIONAL 59）交叉核对——八张表含全部 7 个 EXTERNALIZE；DEFER 21 列 = passkey 表 12 列（T2 DEFER）+ 线索表 9 列（T2 为 KEEP/CONDITIONAL，本轮改为 DEFER）；密码表 11 列（T2 DEFER）本轮按 Yi 裁决改为 KEEP，不再计入 DEFER；TRANSFORM 19 个中八张表占 2 个，其余 17 个在八张表外；CONDITIONAL 59 个中八张表占 28 个，其余 31 个在八张表外。
+- 八张表 128 列逐列枚举已补齐（§14）：计数 KEEP 70 / CONDITIONAL 40 / EXTERNALIZE 7 / TRANSFORM 2 / DEFER 9；与 T2 总量（KEEP 712 / TRANSFORM 19 / EXTERNALIZE 7 / DEFER 23 / CONDITIONAL 59）交叉核对——八张表含全部 7 个 EXTERNALIZE；DEFER 9 列 = 线索表 9 列（T2 为 KEEP/CONDITIONAL，本轮改为 DEFER）；passkey 表 12 列（T2 DEFER）本轮按 Yi 2026-11-22 00:07 决策包 §6 改为 CONDITIONAL；密码表 11 列（T2 DEFER）本轮按 Yi 裁决改为 KEEP，不再计入 DEFER；TRANSFORM 19 个中八张表占 2 个，其余 17 个在八张表外；CONDITIONAL 59 个中八张表占 40 个（归档表 28 个 + passkey 表 12 个），其余 19 个在八张表外。
 - 第 8 张表（`platform_accounts`）仍为候选：决策卡 D-6 原文（`E4_DECISION_CARDS.md` #4）不在仓库内（本轮已查，无此文件），但本地就绪目录有该文件（逐项查验报告 §3.7 已核对）；D-6 原文所列 8 张表里没有 `platform_accounts`，是否为第 8 张表仍须 Yi 定，本稿不把候选写成定论。`metadata_json` 列及 26 个子字段已按 M1-02 方案 (a) 移除（见 §8）；§14.8 现为 5 个物理列。
 - Q-8、Q-10～Q-11 仍无本地定义，记 HOLD，未编造；Q-9 四组期限已按 Yi 2026-11-22 00:12 同意分法定（见本节新增记录）。
 - 上轮拦截：执行风险检查曾拦住 git / 测试操作（process.poll，call id `call_01a1fe7f42e877c89a95b2e867bcb092`，原文见协调日志）；Yi 2026-11-21 06:46 在主会话点选“同意，让它继续”，直接授权本轮继续，本轮据此建分支、提交、开 Draft PR、跑测试。
@@ -205,15 +205,16 @@ DO 恢复到早先时点 → 以 D1 现态与指针为准，先对账再恢复�
 - 最终字段合同仍 HOLD，批准权在 Yi，不在本卡。本稿任何行都不是最终合同。
 - 本轮修正（2026-11-22，PR #911 修正提交）：依据逐项查验报告 `CARD4_ITEM_CHECK_2026-11-22.md`（SHA `298b78c6…`）与 Yi 2026-11-22 23:26 范围裁决。改动：(1) `metadata_json` 列及 26 个子字段按 M1-02 方案 (a) 移除，见 §8；(2) 密码表 11 列 DEFER 改为 KEEP（原样留），见 §6；(3) 线索表其余 9 列改为 DEFER，见 §1；(4) §2/§4 叙述小计各补 1 列；(5) §0/§13“本地只有 T2/C3”按事实订正。修正后八张表 128 列 = KEEP 70 / CONDITIONAL 28 / EXTERNALIZE 7 / TRANSFORM 2 / DEFER 21。代码模块 `server/services/platform/d1-card4-field-matrix.mjs` 与测试 `server/tests/d1-card4-field-matrix.test.mjs` 仍按 T2 旧口径（129 列），本轮只改矩阵文件一个文件，未同步代码，同步与否另行定。
 - Q-9 四组期限（2026-11-22，PR #911 本提交）：Yi 2026-11-22 00:07 同意决策包全部 8 项（Q-9 选 B，先定要迁的四类）；Yi 2026-11-22 00:09 授权 TOTP 算“用户账号”的一部分（进迁移范围，跟账号同待遇）；Yi 2026-11-22 00:12 同意分法（取代 00:09 的统一填法）：密码表 11 列挂 RET-CREDENTIAL-90D（账号注销后 90 天内清掉）、TOTP 表 10 列挂 RET-CHALLENGE-90D（失效后留 90 天）、账号表 5 列挂 RET-ACCOUNT-5Y（账号注销后留 5 年）、订阅申请表 27 列挂 RET-AUTHZ-5Y（账号注销后留 5 年）。改后 RET-DEFAULT-TBD 0 列；总列数仍 128 列，处置计数 KEEP 70 / CONDITIONAL 28 / EXTERNALIZE 7 / TRANSFORM 2 / DEFER 21 不动。本轮只改矩阵文件一个文件，未同步代码。期限按 Yi 2026-11-22 00:12 同意分法；TOTP 算用户账号的一部分按 Yi 2026-11-22 00:09 授权填，Yi 可随时改。
+- passkey 对齐（2026-11-22，PR #911 本提交）：Yi 2026-11-22 00:07 同意决策包 §6（有条件迁——进范围、不装数据），00:46 令逐项确认；passkey 表 12 列 DEFER 改为 CONDITIONAL，见 §7/§14.7，五条件见 §7 与 §14.7 表下注，条件 ③ 四项（`credential_id` / `credential_id_hash` 唯一性、`sign_count` 默认 0、`transports_json` 默认 `'[]'`、只许公开 JWK、含 `d` 拒收）已补进相应列。改后八张表 128 列 = KEEP 70 / CONDITIONAL 40 / EXTERNALIZE 7 / TRANSFORM 2 / DEFER 9；DEFER 9 列只剩线索表 9 列；保留仍为 RET-DEFERRED 12 列（精确保留期限仍待决，见 §11）。本轮只改矩阵文件一个文件，未同步代码。
 
 ## 14. 八张表逐列枚举（T2 JSON 提取）
 
 > 本节原为 T2 JSON（`docs/D1_CONTROL_FIELD_DISPOSITION_T2_V1.json`，SHA `cdaf041b…`，70 表 / 820 字段）的逐字提取：八张表共 129 列，全部按 ordinal 列出；本轮修正后为 128 列（见 §13 修正记录）。
-> 每列的处置、规则、数据类、目标/纳入、保留、测试取自 JSON 原文；其中三处处置已按查验与裁决修正（线索表 9 列、密码表 11 列、`metadata_json` 移除），规则列与数据类保留 T2 原文以便溯源，处置列以本稿为准。敏感字段的详细处置（摘要算法、空值语义、访问与恢复）见 §1–§7；本节是逐列总表。
-> 计数核对：八张表 128 列 = KEEP 70 / CONDITIONAL 28 / EXTERNALIZE 7 / TRANSFORM 2 / DEFER 21；
+> 每列的处置、规则、数据类、目标/纳入、保留、测试取自 JSON 原文；其中四处处置已按查验与裁决修正（线索表 9 列、密码表 11 列、passkey 表 12 列、`metadata_json` 移除），规则列与数据类保留 T2 原文以便溯源，处置列以本稿为准。敏感字段的详细处置（摘要算法、空值语义、访问与恢复）见 §1–§7；本节是逐列总表。
+> 计数核对：八张表 128 列 = KEEP 70 / CONDITIONAL 40 / EXTERNALIZE 7 / TRANSFORM 2 / DEFER 9；
 > T2 总量为 KEEP 712 / TRANSFORM 19 / EXTERNALIZE 7 / DEFER 23 / CONDITIONAL 59，共 820 字段（T2 自身口径，不变）——
-> 八张表含全部 7 个 EXTERNALIZE；DEFER 21 列 = passkey 表 12 列（T2 DEFER）+ 线索表 9 列（T2 为 KEEP/CONDITIONAL，本稿因 DDL 无建表语句改为 DEFER）；密码表 11 列（T2 DEFER）本稿按 Yi 裁决改为 KEEP，不再计入 DEFER。TRANSFORM 19 个中八张表占 2 个（`event_json`、`event_dedupe_key`），其余 17 个在八张表外；
-> CONDITIONAL 59 个中八张表占 28 个（归档表 28 个），其余 31 个在八张表外。
+> 八张表含全部 7 个 EXTERNALIZE；DEFER 9 列 = 线索表 9 列（T2 为 KEEP/CONDITIONAL，本稿因 DDL 无建表语句改为 DEFER）；passkey 表 12 列（T2 DEFER）本稿按 Yi 2026-11-22 00:07 决策包 §6 改为 CONDITIONAL，见 §14.7；密码表 11 列（T2 DEFER）本稿按 Yi 裁决改为 KEEP，不再计入 DEFER。TRANSFORM 19 个中八张表占 2 个（`event_json`、`event_dedupe_key`），其余 17 个在八张表外；
+> CONDITIONAL 59 个中八张表占 40 个（归档表 28 个 + passkey 表 12 个），其余 19 个在八张表外。
 > 保留期限核对（Q-9，Yi 2026-11-22 00:12 同意分法）：RET-DEFAULT-TBD 0 列；`RET-CREDENTIAL-90D` 11 列（密码表，账号注销后 90 天内清掉）、`RET-CHALLENGE-90D` 10 列（TOTP 表，失效后留 90 天）、`RET-ACCOUNT-5Y` 5 列（账号表，账号注销后留 5 年）、`RET-AUTHZ-5Y` 27 列（订阅申请表，账号注销后留 5 年）；其余保留标签不变（线索 RET-LEAD-90D 11 列、回执 RET-FINANCIAL-TBD 21 列、归档 RET-ARCHIVE-TBD 30 列、幂等 RET-IDEMPOTENCY-TBD 1 列、passkey RET-DEFERRED 12 列）。期限按 Yi 2026-11-22 00:12 同意分法；TOTP 算用户账号的一部分按 Yi 2026-11-22 00:09 授权填，Yi 可随时改。
 
 ### 14.1 `platform_leads`（11 列；表处置 DEFER；源列 11；目标候选列 0）
@@ -357,22 +358,24 @@ DO 恢复到早先时点 → 以 D1 现态与指针为准，先对账再恢复�
 | 10 | `revoked_at` | TEXT (NULL) | KEEP | R-PASSWORD-DEFER | FUTURE_AUTH_CREDENTIAL | revoked_at / included | RET-CREDENTIAL-90D | T2-SCHEMA-001,T2-KEEP-001,T2-TIME-SEMANTICS-001,T2-FUTURE-AUTH-GATE-001 |
 | 11 | `updated_at` | TEXT (NOT NULL) | KEEP | R-PASSWORD-DEFER | FUTURE_AUTH_CREDENTIAL | updated_at / included | RET-CREDENTIAL-90D | T2-SCHEMA-001,T2-KEEP-001,T2-TIME-SEMANTICS-001,T2-FUTURE-AUTH-GATE-001 |
 
-### 14.7 `platform_portal_passkey_credentials`（12 列；表处置 DEFER；源列 12；目标候选列 0）
+### 14.7 `platform_portal_passkey_credentials`（12 列；表处置 CONDITIONAL；源列 12；目标候选列 12）
+
+> 条件（决策包 §6，Yi 2026-11-22 00:07 同意、00:46 令逐项确认；有条件迁——进范围、不装数据；五条件全满足才装，任一不满足一行都不装）：① Yi 已认 passkey 算“用户账号”、进迁移范围；② 补生产核查（到底有没有 passkey 行、有没有服务在调这张表）；③ 批专用 WebAuthn 合同：只许公开 JWK、含 `d` 的一律拒收（`public_key_jwk_json`）；`credential_id` / `credential_id_hash` 唯一性（`credential_id`、`credential_id_hash`）；`sign_count` 默认 0（`sign_count`）；`transports_json` 默认 `'[]'`（`transports_json`）；批了之后 12 列是不是一起动；④ 空表建不建待定；⑤ 装载时机另行定。规则列 R-PASSKEY-DEFER 保留 T2 原文以便溯源，处置列以本稿 CONDITIONAL 为准；保留仍为 RET-DEFERRED（精确保留期限仍待决，见 §11）。
 
 | # | 字段 | 类型 | 处置 | 规则 | 数据类 | 目标/纳入 | 保留 | 测试 |
 |---|---|---|---|---|---|---|---|---|
-| 1 | `id` (PK) | TEXT (NULL) | DEFER | R-PASSKEY-DEFER | FUTURE_AUTH_CREDENTIAL | — / deferred_until_feature_approval | RET-DEFERRED | T2-SCHEMA-001,T2-DEFER-001,T2-OPAQUE-REF-001,T2-FUTURE-AUTH-GATE-001 |
-| 2 | `account_id` | TEXT (NOT NULL) | DEFER | R-PASSKEY-DEFER | FUTURE_AUTH_CREDENTIAL | — / deferred_until_feature_approval | RET-DEFERRED | T2-SCHEMA-001,T2-DEFER-001,T2-OPAQUE-REF-001,T2-FUTURE-AUTH-GATE-001 |
-| 3 | `credential_id` | TEXT (NOT NULL) | DEFER | R-PASSKEY-DEFER | FUTURE_AUTH_CREDENTIAL | — / deferred_until_feature_approval | RET-DEFERRED | T2-SCHEMA-001,T2-DEFER-001,T2-OPAQUE-REF-001,T2-FUTURE-AUTH-GATE-001 |
-| 4 | `credential_id_hash` | TEXT (NOT NULL) | DEFER | R-PASSKEY-DEFER | FUTURE_AUTH_CREDENTIAL | — / deferred_until_feature_approval | RET-DEFERRED | T2-SCHEMA-001,T2-DEFER-001,T2-DIGEST-001,T2-FUTURE-AUTH-GATE-001 |
-| 5 | `public_key_jwk_json` | TEXT (NOT NULL) | DEFER | R-PASSKEY-DEFER | FUTURE_AUTH_CREDENTIAL | — / deferred_until_feature_approval | RET-DEFERRED | T2-SCHEMA-001,T2-DEFER-001,T2-JSON-ALLOWLIST-001,T2-FUTURE-AUTH-GATE-001 |
-| 6 | `sign_count` | INTEGER (NOT NULL) | DEFER | R-PASSKEY-DEFER | FUTURE_AUTH_CREDENTIAL | — / deferred_until_feature_approval | RET-DEFERRED | T2-SCHEMA-001,T2-DEFER-001,T2-NUMERIC-RANGE-001,T2-FUTURE-AUTH-GATE-001 |
-| 7 | `transports_json` | TEXT (NOT NULL) | DEFER | R-PASSKEY-DEFER | FUTURE_AUTH_CREDENTIAL | — / deferred_until_feature_approval | RET-DEFERRED | T2-SCHEMA-001,T2-DEFER-001,T2-JSON-ALLOWLIST-001,T2-FUTURE-AUTH-GATE-001 |
-| 8 | `status` | TEXT (NOT NULL) | DEFER | R-PASSKEY-DEFER | FUTURE_AUTH_CREDENTIAL | — / deferred_until_feature_approval | RET-DEFERRED | T2-SCHEMA-001,T2-DEFER-001,T2-FUTURE-AUTH-GATE-001 |
-| 9 | `created_at` | TEXT (NOT NULL) | DEFER | R-PASSKEY-DEFER | FUTURE_AUTH_CREDENTIAL | — / deferred_until_feature_approval | RET-DEFERRED | T2-SCHEMA-001,T2-DEFER-001,T2-TIME-SEMANTICS-001,T2-FUTURE-AUTH-GATE-001 |
-| 10 | `last_verified_at` | TEXT (NULL) | DEFER | R-PASSKEY-DEFER | FUTURE_AUTH_CREDENTIAL | — / deferred_until_feature_approval | RET-DEFERRED | T2-SCHEMA-001,T2-DEFER-001,T2-TIME-SEMANTICS-001,T2-FUTURE-AUTH-GATE-001 |
-| 11 | `revoked_at` | TEXT (NULL) | DEFER | R-PASSKEY-DEFER | FUTURE_AUTH_CREDENTIAL | — / deferred_until_feature_approval | RET-DEFERRED | T2-SCHEMA-001,T2-DEFER-001,T2-TIME-SEMANTICS-001,T2-FUTURE-AUTH-GATE-001 |
-| 12 | `updated_at` | TEXT (NOT NULL) | DEFER | R-PASSKEY-DEFER | FUTURE_AUTH_CREDENTIAL | — / deferred_until_feature_approval | RET-DEFERRED | T2-SCHEMA-001,T2-DEFER-001,T2-TIME-SEMANTICS-001,T2-FUTURE-AUTH-GATE-001 |
+| 1 | `id` (PK) | TEXT (NULL) | CONDITIONAL | R-PASSKEY-DEFER | FUTURE_AUTH_CREDENTIAL | id / conditional | RET-DEFERRED | T2-SCHEMA-001,T2-GATE-001,T2-OPAQUE-REF-001,T2-FUTURE-AUTH-GATE-001 |
+| 2 | `account_id` | TEXT (NOT NULL) | CONDITIONAL | R-PASSKEY-DEFER | FUTURE_AUTH_CREDENTIAL | account_id / conditional | RET-DEFERRED | T2-SCHEMA-001,T2-GATE-001,T2-OPAQUE-REF-001,T2-FUTURE-AUTH-GATE-001 |
+| 3 | `credential_id` | TEXT (NOT NULL) | CONDITIONAL | R-PASSKEY-DEFER | FUTURE_AUTH_CREDENTIAL | credential_id / conditional | RET-DEFERRED | T2-SCHEMA-001,T2-GATE-001,T2-OPAQUE-REF-001,T2-FUTURE-AUTH-GATE-001 |
+| 4 | `credential_id_hash` | TEXT (NOT NULL) | CONDITIONAL | R-PASSKEY-DEFER | FUTURE_AUTH_CREDENTIAL | credential_id_hash / conditional | RET-DEFERRED | T2-SCHEMA-001,T2-GATE-001,T2-DIGEST-001,T2-FUTURE-AUTH-GATE-001 |
+| 5 | `public_key_jwk_json` | TEXT (NOT NULL) | CONDITIONAL | R-PASSKEY-DEFER | FUTURE_AUTH_CREDENTIAL | public_key_jwk_json / conditional | RET-DEFERRED | T2-SCHEMA-001,T2-GATE-001,T2-JSON-ALLOWLIST-001,T2-FUTURE-AUTH-GATE-001 |
+| 6 | `sign_count` | INTEGER (NOT NULL) | CONDITIONAL | R-PASSKEY-DEFER | FUTURE_AUTH_CREDENTIAL | sign_count / conditional | RET-DEFERRED | T2-SCHEMA-001,T2-GATE-001,T2-NUMERIC-RANGE-001,T2-FUTURE-AUTH-GATE-001 |
+| 7 | `transports_json` | TEXT (NOT NULL) | CONDITIONAL | R-PASSKEY-DEFER | FUTURE_AUTH_CREDENTIAL | transports_json / conditional | RET-DEFERRED | T2-SCHEMA-001,T2-GATE-001,T2-JSON-ALLOWLIST-001,T2-FUTURE-AUTH-GATE-001 |
+| 8 | `status` | TEXT (NOT NULL) | CONDITIONAL | R-PASSKEY-DEFER | FUTURE_AUTH_CREDENTIAL | status / conditional | RET-DEFERRED | T2-SCHEMA-001,T2-GATE-001,T2-FUTURE-AUTH-GATE-001 |
+| 9 | `created_at` | TEXT (NOT NULL) | CONDITIONAL | R-PASSKEY-DEFER | FUTURE_AUTH_CREDENTIAL | created_at / conditional | RET-DEFERRED | T2-SCHEMA-001,T2-GATE-001,T2-TIME-SEMANTICS-001,T2-FUTURE-AUTH-GATE-001 |
+| 10 | `last_verified_at` | TEXT (NULL) | CONDITIONAL | R-PASSKEY-DEFER | FUTURE_AUTH_CREDENTIAL | last_verified_at / conditional | RET-DEFERRED | T2-SCHEMA-001,T2-GATE-001,T2-TIME-SEMANTICS-001,T2-FUTURE-AUTH-GATE-001 |
+| 11 | `revoked_at` | TEXT (NULL) | CONDITIONAL | R-PASSKEY-DEFER | FUTURE_AUTH_CREDENTIAL | revoked_at / conditional | RET-DEFERRED | T2-SCHEMA-001,T2-GATE-001,T2-TIME-SEMANTICS-001,T2-FUTURE-AUTH-GATE-001 |
+| 12 | `updated_at` | TEXT (NOT NULL) | CONDITIONAL | R-PASSKEY-DEFER | FUTURE_AUTH_CREDENTIAL | updated_at / conditional | RET-DEFERRED | T2-SCHEMA-001,T2-GATE-001,T2-TIME-SEMANTICS-001,T2-FUTURE-AUTH-GATE-001 |
 
 ### 14.8 `platform_accounts`（5 列；表处置 KEEP；源列 5；目标候选列 5）
 
