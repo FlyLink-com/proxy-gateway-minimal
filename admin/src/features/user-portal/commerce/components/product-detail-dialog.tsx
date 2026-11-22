@@ -57,6 +57,19 @@ export function CoinsDialogFrame({
     };
   }, []);
 
+  // The dialog theme wrapper is already fixed to the viewport, but the
+  // page behind it stays scrollable without a lock. Lock body scroll while
+  // any Coins dialog is mounted and restore the previous value on unmount.
+  // Only one Coins dialog is mounted at a time, so no nesting count is
+  // needed.
+  useEffect(() => {
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, []);
+
   function handleKeyDown(event: KeyboardEvent<HTMLElement>) {
     if (event.key === "Escape") {
       event.preventDefault();
@@ -133,8 +146,8 @@ export type ProductDetailDialogProps = {
 function deliveryText(offer: PortalCoinOffer, locale: CommerceLocale) {
   if (offer.delivery.kind === "subscription_plan") {
     return locale === "zh"
-      ? `${offer.delivery.durationDays} 天 · 每月 ${offer.delivery.monthlyTrafficGb} GB`
-      : `${offer.delivery.durationDays} days · ${offer.delivery.monthlyTrafficGb} GB monthly`;
+      ? `每月 ${offer.delivery.monthlyTrafficGb} GB · ${offer.delivery.durationDays} 天`
+      : `${offer.delivery.monthlyTrafficGb} GB monthly · ${offer.delivery.durationDays} days`;
   }
   return locale === "zh"
     ? `${offer.delivery.trafficGb} GB · 永不过期`

@@ -1,6 +1,7 @@
 import { createElement } from "react";
 import "@testing-library/jest-dom/vitest";
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -248,9 +249,10 @@ describe("Portal Coins dialogs", () => {
     expect(lockedAncestorKeyDown).not.toHaveBeenCalled();
   });
 
-  test("insufficient confirmation shows server facts and disables confirm without a recharge path", () => {
+  test("insufficient confirmation shows server facts, disables confirm, and offers a recharge path", () => {
     const onConfirm = vi.fn();
     const onRequestClose = vi.fn();
+    const onOpenRecharge = vi.fn();
     render(createElement(CoinsPurchaseDialog, {
       locale: "en",
       quote: insufficientQuote,
@@ -260,6 +262,7 @@ describe("Portal Coins dialogs", () => {
       errorCode: null,
       onConfirm,
       onCancel: vi.fn(),
+      onOpenRecharge,
       onRefresh: vi.fn(),
       onRequestClose
     }));
@@ -268,14 +271,19 @@ describe("Portal Coins dialogs", () => {
       name: "Confirm Coins purchase"
     });
     expect(within(dialog).getByText("Basic plan")).toBeInTheDocument();
-    expect(within(dialog).getByText("15 Coins")).toBeInTheDocument();
+    expect(within(dialog).getByText("Amount due now").parentElement)
+      .toHaveTextContent("Amount due now15 Coins");
+    expect(within(dialog).getByText("Current balance").parentElement)
+      .toHaveTextContent("Current balance10 Coins");
     expect(within(dialog).getByText("Allocation").parentElement)
       .toHaveTextContent("AllocationNone");
     expect(within(dialog).getByText(/Before: 10/)).toBeInTheDocument();
     expect(within(dialog).getByText(/After: 10/)).toBeInTheDocument();
     expect(within(dialog).getByText("Availability").parentElement)
       .toHaveTextContent("AvailabilityInsufficient balance");
-    expect(within(dialog).getByText(/Shortfall: 5 Coins/)).toBeInTheDocument();
+    expect(within(dialog).getByText("Top-up needed").parentElement)
+      .toHaveTextContent("Top-up needed5 Coins");
+    expect(within(dialog).getByText("Time left")).toBeInTheDocument();
     const expiry = dialog.querySelector("time");
     expect(expiry).toHaveAttribute("dateTime", "2026-07-27T20:00:00.000Z");
     expect(expiry).not.toHaveTextContent("2026-07-27T20:00:00.000Z");
@@ -293,11 +301,38 @@ describe("Portal Coins dialogs", () => {
     expect(confirm).toBeDisabled();
     fireEvent.click(confirm);
     expect(onConfirm).not.toHaveBeenCalled();
-    expect(within(dialog).queryByRole("button", {
-      name: "Open recharge"
-    })).not.toBeInTheDocument();
+    const recharge = within(dialog).getByRole("button", {
+      name: "Top up and pay →"
+    });
+    expect(recharge).toBeEnabled();
+    fireEvent.click(recharge);
+    expect(onOpenRecharge).toHaveBeenCalledTimes(1);
     fireEvent.keyDown(dialog, { key: "Escape" });
     expect(onRequestClose).toHaveBeenCalledTimes(1);
+  });
+
+  test("insufficient confirmation without a recharge handler shows no recharge entry", () => {
+    render(createElement(CoinsPurchaseDialog, {
+      locale: "en",
+      quote: insufficientQuote,
+      order: null,
+      submitting: false,
+      cancelling: false,
+      errorCode: null,
+      onConfirm: vi.fn(),
+      onCancel: vi.fn(),
+      onRefresh: vi.fn(),
+      onRequestClose: vi.fn()
+    }));
+    const dialog = screen.getByRole("dialog", {
+      name: "Confirm Coins purchase"
+    });
+    expect(within(dialog).queryByRole("button", {
+      name: "Top up and pay →"
+    })).not.toBeInTheDocument();
+    expect(within(dialog).getByRole("button", {
+      name: "Confirm purchase"
+    })).toBeDisabled();
   });
 
   test.each([
@@ -349,6 +384,22 @@ describe("Portal Coins dialogs", () => {
     const dialog = screen.getByRole("dialog");
     expect(dialog).toHaveTextContent(review);
     expect(dialog).toHaveTextContent(rules);
+    // Server-projected amounts only: list price from the offer, credit and
+    // charge from planSwitch, actual payment from amountUnits. No client
+    // recompute: 15 list − 5 credit = 5 due is shown, never derived here.
+    expect(dialog).toHaveAttribute("aria-labelledby");
+    expect(screen.getByRole("dialog", {
+      name: locale === "zh" ? "套餐升级" : "Upgrade plan"
+    })).toBeInTheDocument();
+    const listPrice = locale === "zh" ? "套餐标价" : "List price";
+    const credit = locale === "zh" ? "已付切换费用抵扣" : "Paid switch credit";
+    const due = locale === "zh" ? "本次实际支付" : "Amount due now";
+    expect(within(dialog).getByText(listPrice).parentElement)
+      .toHaveTextContent(`${listPrice}15 Coins`);
+    expect(within(dialog).getByText(credit).parentElement)
+      .toHaveTextContent(`${credit}− 5 Coins`);
+    expect(within(dialog).getByText(due).parentElement)
+      .toHaveTextContent(`${due}5 Coins`);
   });
 
   test("a quote without a plan switch omits the switch rules", () => {
@@ -383,6 +434,12 @@ describe("Portal Coins dialogs", () => {
     expect(screen.getByRole("dialog")).toHaveTextContent(
       "Review the product and purchase amount."
     );
+    // Without a plan switch there is no list-price/credit split to show.
+    expect(screen.getByRole("dialog")).not.toHaveTextContent("List price");
+    expect(screen.getByRole("dialog")).not.toHaveTextContent("Paid switch credit");
+    expect(screen.getByRole("dialog", {
+      name: "Confirm Coins purchase"
+    })).toBeInTheDocument();
   });
 
   test("submitting Order marks the dialog busy and locks Close and Escape", () => {
@@ -492,7 +549,7 @@ describe("Portal Coins dialogs", () => {
       expect(within(dialog).getByText(beforeText)).toBeInTheDocument();
       expect(within(dialog).getByText(afterText)).toBeInTheDocument();
       expect(within(dialog).getByText(
-        locale === "zh" ? "缺少" : "Shortfall"
+        locale === "zh" ? "还需充值" : "Top-up needed"
       ).parentElement).toHaveTextContent("5 Coins");
     }
   );
@@ -677,5 +734,138 @@ describe("Portal Coins dialogs", () => {
       );
       view.unmount();
     });
+  });
+
+  test("quote countdown ticks every second from the server expiry and is display-only", () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date("2026-07-27T19:50:00.000Z"));
+      render(createElement(CoinsPurchaseDialog, {
+        locale: "en",
+        quote: insufficientQuote,
+        order: null,
+        submitting: false,
+        cancelling: false,
+        errorCode: null,
+        onConfirm: vi.fn(),
+        onCancel: vi.fn(),
+        onRefresh: vi.fn(),
+        onRequestClose: vi.fn()
+      }));
+      const dialog = screen.getByRole("dialog");
+      expect(within(dialog).getByText("Time left").parentElement)
+        .toHaveTextContent("Time left10:00");
+      act(() => {
+        vi.advanceTimersByTime(1000);
+      });
+      expect(within(dialog).getByText("Time left").parentElement)
+        .toHaveTextContent("Time left09:59");
+      act(() => {
+        vi.advanceTimersByTime(599 * 1000);
+      });
+      expect(within(dialog).getByText("Time left").parentElement)
+        .toHaveTextContent("Time leftQuote expired");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test("an expired countdown never gates the confirm action", () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date("2026-07-27T20:00:01.000Z"));
+      render(createElement(CoinsPurchaseDialog, {
+        locale: "en",
+        quote: {
+          ...insufficientQuote,
+          purchaseAvailability: "available",
+          shortfallUnits: 0,
+          allocation: [{ coinType: "paid_coins", amountUnits: 15 }],
+          balances: {
+            before: { ...insufficientQuote.balances.before, paidCoins: 20 },
+            after: {
+              ...insufficientQuote.balances.after,
+              paidCoins: 5,
+              heldCoins: 15
+            }
+          }
+        },
+        order: null,
+        submitting: false,
+        cancelling: false,
+        errorCode: null,
+        onConfirm: vi.fn(),
+        onCancel: vi.fn(),
+        onRefresh: vi.fn(),
+        onRequestClose: vi.fn()
+      }));
+      const dialog = screen.getByRole("dialog");
+      expect(within(dialog).getByText("Time left").parentElement)
+        .toHaveTextContent("Time leftQuote expired");
+      // Display-only: validity stays with the server. The button is not
+      // disabled by the countdown; a stale quote fails server-side with
+      // quote_expired and the existing retry path re-quotes.
+      expect(within(dialog).getByRole("button", {
+        name: "Confirm purchase"
+      })).toBeEnabled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test("a renewal quote is titled as a renewal and shows the server price split", () => {
+    render(createElement(CoinsPurchaseDialog, {
+      locale: "zh",
+      quote: {
+        ...insufficientQuote,
+        purchaseAvailability: "available",
+        shortfallUnits: 0,
+        amountUnits: 180,
+        balances: {
+          before: { bonusCoins: 0, paidCoins: 70, rewardCoins: 0, heldCoins: 0 },
+          after: { bonusCoins: 0, paidCoins: 70, rewardCoins: 0, heldCoins: 0 }
+        },
+        offer: { ...offer, baseCoinUnits: 200 },
+        planSwitch: {
+          kind: "renewal",
+          creditUnits: 20,
+          chargeUnits: 180,
+          effectiveAt: null,
+          cancelsPendingDowngrade: false
+        }
+      },
+      order: null,
+      submitting: false,
+      cancelling: false,
+      errorCode: null,
+      onConfirm: vi.fn(),
+      onCancel: vi.fn(),
+      onRefresh: vi.fn(),
+      onRequestClose: vi.fn()
+    }));
+    const dialog = screen.getByRole("dialog", { name: "套餐续费" });
+    expect(within(dialog).getByText("套餐标价").parentElement)
+      .toHaveTextContent("套餐标价200 Coins");
+    expect(within(dialog).getByText("已付切换费用抵扣").parentElement)
+      .toHaveTextContent("已付切换费用抵扣− 20 Coins");
+    expect(within(dialog).getByText("本次实际支付").parentElement)
+      .toHaveTextContent("本次实际支付180 Coins");
+    expect(within(dialog).getByText("当前余额").parentElement)
+      .toHaveTextContent("当前余额70 Coins");
+    expect(within(dialog).queryByText("还需充值")).not.toBeInTheDocument();
+  });
+
+  test("an open Coins dialog locks body scroll and restores it on close", () => {
+    const previousOverflow = document.body.style.overflow;
+    expect(previousOverflow).toBe("");
+    const view = render(createElement(ProductDetailDialog, {
+      locale: "en",
+      offer,
+      onPreview: vi.fn(),
+      onRequestClose: vi.fn()
+    }));
+    expect(document.body.style.overflow).toBe("hidden");
+    view.unmount();
+    expect(document.body.style.overflow).toBe("");
   });
 });

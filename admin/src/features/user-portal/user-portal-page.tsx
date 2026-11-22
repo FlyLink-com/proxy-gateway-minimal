@@ -23,6 +23,7 @@ import {
   QrCode,
   ReceiptText,
   RefreshCw,
+  Rocket,
   Search,
   Settings,
   ShieldCheck,
@@ -30,6 +31,7 @@ import {
   UserCog,
   WalletCards,
   Wifi,
+  Zap,
   type LucideIcon
 } from "lucide-react";
 import { ModalFrame } from "../../shared/public/modal-frame";
@@ -2319,6 +2321,15 @@ export function UserPortalPage({
     setActiveView("marketplace");
   }
 
+  // One-click renewal from the dashboard hero: bump the revision so the
+  // Marketplace panel opens the current plan's purchase dialog once it can
+  // identify the current offer from the server plan-switch state.
+  const [renewRevision, setRenewRevision] = useState(0);
+  const requestRenewal = useCallback(() => {
+    setRenewRevision((revision) => revision + 1);
+    setActiveView("marketplace");
+  }, []);
+
   function closeOrderForm() {
     if (pending) return;
     setOrderFormOpen(false);
@@ -2848,7 +2859,7 @@ export function UserPortalPage({
               <ShieldCheck aria-hidden="true" />
             </span>
             <div>
-              <strong>GCC WebOS</strong>
+              <strong>飞连VPN</strong>
               <small>{uiText(locale, "用户中心", "User center")}</small>
             </div>
           </div>
@@ -2963,11 +2974,11 @@ export function UserPortalPage({
           {!paymentFlowActive ? (
             <>
               <header className="portal-use-topbar portal-v2-topbar">
-                <div className="portal-v2-mobile-brand" aria-label="GCC WebOS">
+                <div className="portal-v2-mobile-brand" aria-label="飞连VPN">
                   <span className="portal-v2-logo">
                     <ShieldCheck aria-hidden="true" />
                   </span>
-                  <strong>GCC WebOS</strong>
+                  <strong>飞连VPN</strong>
                 </div>
                 <div className="portal-v2-page-title">
                   <h1>{activeView === "dashboard" ? uiText(locale, "账户概览", "Account overview") : activeViewCopy.label}</h1>
@@ -3037,6 +3048,8 @@ export function UserPortalPage({
                 trafficPercent={trafficPercent}
                 trafficSummary={trafficSummary}
                 locale={locale}
+                walletBalance={authoritativeWalletBalance}
+                onRenewCurrentPlan={requestRenewal}
               />
             )
           ) : null}
@@ -3063,6 +3076,7 @@ export function UserPortalPage({
             <MarketplacePanel
               commerceClient={portalClient.commerce ?? null}
               commerceModelClient={portalClient.commerceModel ?? null}
+              autoRenewRevision={renewRevision}
               locale={locale}
               onSessionInvalid={invalidateSession}
               onOpenWallet={() => setActiveView("wallet")}
@@ -3265,6 +3279,18 @@ export function UserPortalPage({
   );
 }
 
+function portalGreeting(locale: PortalAuthLocale = "zh") {
+  const hour = new Date().getHours();
+  const period = hour >= 5 && hour < 11
+    ? uiText(locale, "上午好", "Good morning")
+    : hour >= 11 && hour < 13
+      ? uiText(locale, "中午好", "Good midday")
+      : hour >= 13 && hour < 18
+        ? uiText(locale, "下午好", "Good afternoon")
+        : uiText(locale, "晚上好", "Good evening");
+  return `${period}，${uiText(locale, "欢迎回到飞连VPN", "welcome back to FlinkVPN")}`;
+}
+
 function DashboardPanel({
   created,
   lifecycle,
@@ -3274,7 +3300,9 @@ function DashboardPanel({
   setActiveView,
   trafficPercent,
   trafficSummary,
-  locale
+  locale,
+  walletBalance,
+  onRenewCurrentPlan
 }: {
   created: CreatedSubscription | null;
   lifecycle: SubscriptionLifecycle;
@@ -3285,6 +3313,8 @@ function DashboardPanel({
   trafficPercent: number;
   trafficSummary: ReturnType<typeof aggregateTrafficUsage>;
   locale: PortalAuthLocale;
+  walletBalance: number | null;
+  onRenewCurrentPlan?: () => void;
 }) {
   const desktopViewport = useDesktopScrollRegion();
   const pendingOrders = pendingOrderCount(orderRows);
@@ -3333,6 +3363,86 @@ function DashboardPanel({
 
   return (
     <div className="portal-v2-stack">
+      {desktopViewport ? (
+        <section className="portal-v2-hero-block" aria-label={uiText(locale, "账户总览", "Account overview")}>
+          <div className="portal-v2-greeting">
+            <h2>{portalGreeting(locale)}</h2>
+            <p>{uiText(locale, "管理你的套餐、流量与订单，随时续费畅享安全稳定的全球连接服务。", "Manage your plan, traffic, and orders, and renew anytime for a secure, stable global connection.")}</p>
+          </div>
+          <div className="portal-v2-hero-card">
+            <div className="portal-v2-hero-card__cell">
+              <span className="portal-card-label"><ShieldCheck aria-hidden="true" /> {uiText(locale, "当前套餐", "Current plan")}</span>
+              <strong>{currentPlan ? currentPlan.label : uiText(locale, "未开通套餐", "No active plan")}</strong>
+              <small>
+                {resourceState === "active" ? (
+                  <>
+                    <span className={cn("portal-order-status", "active")}>{uiText(locale, "使用中", "In use")}</span>
+                    {" "}
+                    {uiText(locale, "有效期至 ", "Valid until ")}
+                    {selectedOrder ? expiryDisplay(created, lifecycle, locale) : entitlementExpiryDisplay(currentEntitlement, locale)}
+                  </>
+                ) : uiText(locale, "前往商城开通服务", "Buy a service in the Marketplace")}
+              </small>
+            </div>
+            <div className="portal-v2-hero-card__cell">
+              <span className="portal-card-label"><BarChart3 aria-hidden="true" /> {uiText(locale, "本月剩余流量", "Monthly traffic left")}</span>
+              <strong>
+                {hasTrafficAccess && planTrafficBytes > 0
+                  ? `${formatTrafficBytes(remainingTrafficBytes)} / ${formatTrafficBytes(planTrafficBytes)}`
+                  : "—"}
+              </strong>
+              {hasTrafficAccess && planTrafficBytes > 0 ? (
+                <div className="portal-traffic-meter" aria-hidden="true">
+                  <span style={{ width: `${Math.min(100, Math.max(0, 100 - trafficPercent))}%` }} />
+                </div>
+              ) : (
+                <small>{uiText(locale, "资源开通后显示", "Shown after the resource is active")}</small>
+              )}
+            </div>
+            <div className="portal-v2-hero-card__cell">
+              <span className="portal-card-label"><WalletCards aria-hidden="true" /> {uiText(locale, "钱包余额", "Wallet balance")}</span>
+              <strong>{walletBalance === null ? "—" : `${walletBalance} Coins`}</strong>
+              <small>{uiText(locale, "可用于套餐续费与抵扣", "Usable for plan renewal and credit")}</small>
+            </div>
+            <div className="portal-v2-hero-card__actions">
+              <button
+                className="portal-v2-hero-action portal-v2-hero-action--primary"
+                type="button"
+                onClick={onRenewCurrentPlan ?? (() => setActiveView("marketplace"))}
+              >
+                <Zap aria-hidden="true" />
+                {resourceState === "active" && currentPlan
+                  ? uiText(locale, "一键续费", "Renew in one tap")
+                  : uiText(locale, "去商城选套餐", "Browse plans")}
+              </button>
+              <button
+                className="portal-v2-hero-action"
+                type="button"
+                onClick={() => setActiveView("wallet")}
+              >
+                <WalletCards aria-hidden="true" />
+                {uiText(locale, "去充值", "Top up")}
+              </button>
+              <button
+                className="portal-v2-hero-action"
+                type="button"
+                onClick={() => setActiveView("orders")}
+              >
+                <ReceiptText aria-hidden="true" />
+                {uiText(locale, "我的订单", "My orders")}
+              </button>
+              <button
+                className="portal-v2-hero-action"
+                type="button"
+                onClick={() => setActiveView("start")}
+              >
+                <Rocket aria-hidden="true" />
+                {uiText(locale, "开始使用", "Start using")}
+              </button>
+            </div>
+          </div>
+        </section>
+      ) : null}
       {desktopViewport ? <section
         className="portal-v2-resource-state"
         aria-label={uiText(locale, "账户资源状态", "Account resource status")}

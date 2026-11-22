@@ -212,4 +212,51 @@ describe("Shared marketplace offer-card presentation", () => {
     expect(within(card).getByText(/Too little time remains to upgrade/)).toBeInTheDocument();
     expect(within(card).queryByText("This product is currently unavailable.")).toBeNull();
   });
+
+  test("the current plan card carries the selected-state hook for the redesign", () => {
+    const offer = offerFor("plan", 200);
+    const { container } = render(<ul>
+      <MarketplaceOfferCard
+        busy={false}
+        locale="zh"
+        mode="purchase"
+        offer={offer}
+        onPrimary={vi.fn()}
+        planAction={{
+          action: "current_renew",
+          chargeUnits: 200,
+          currentTitle: "200 GB 年度套餐",
+          currentValidUntil: "2027-10-14T00:00:00.000Z",
+          effectiveAt: null,
+          reasonCode: null
+        }}
+      />
+    </ul>);
+    expect(container.querySelector("li.portal-marketplace-card--current"))
+      .not.toBeNull();
+    expect(screen.getByRole("button", { name: /续费/ })).toBeEnabled();
+  });
+
+  test("a non-current plan card carries no selected-state hook", () => {
+    const offer = offerFor("plan", 30);
+    const { container } = render(<ul>
+      <MarketplaceOfferCard
+        busy={false}
+        locale="zh"
+        mode="purchase"
+        offer={offer}
+        onPrimary={vi.fn()}
+        planAction={{
+          action: "upgrade",
+          chargeUnits: 5,
+          currentTitle: "50 GB 月度套餐",
+          currentValidUntil: "2026-08-16T00:00:00.000Z",
+          effectiveAt: null,
+          reasonCode: null
+        }}
+      />
+    </ul>);
+    expect(container.querySelector("li.portal-marketplace-card--current"))
+      .toBeNull();
+  });
 });

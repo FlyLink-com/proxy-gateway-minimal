@@ -38,6 +38,7 @@ function isChinese(locale: PortalCommerceLocale) {
 type MarketplacePanelProps = PanelProps & {
   commerceClient: PortalCoinCommerceClient | null;
   commerceModelClient?: PortalCommerceModelClient | null;
+  autoRenewRevision?: number;
   onOpenWallet?: () => void;
   onSessionInvalid?: () => void;
   onWalletMutation?: () => void;
@@ -105,8 +106,10 @@ function safeCommerceFailure(error: unknown): {
 }
 
 function LegacyMarketplacePanel({
+  autoRenewRevision = 0,
   commerceClient,
   locale,
+  onOpenWallet,
   onSessionInvalid,
   onWalletMutation,
   sessionGeneration = 0,
@@ -444,6 +447,42 @@ function LegacyMarketplacePanel({
     void startProduct(productIntent.offerRef);
   }, [productIntent, startProduct]);
 
+  // One-click renewal from the dashboard: when the dashboard requests a
+  // renewal, this panel opens the current plan's purchase dialog as soon as
+  // the catalog and the server plan-switch state identify the current
+  // offer. The request is consumed once it fires, or once the panel knows
+  // there is no current plan to renew, or once the user opens any product
+  // dialog by hand — a stale request must never pop a dialog later while
+  // the user is browsing the Marketplace.
+  const autoRenewConsumedRef = useRef(0);
+  useEffect(() => {
+    if (autoRenewRevision <= 0 || autoRenewRevision <= autoRenewConsumedRef.current) return;
+    if (dialogVisible) {
+      autoRenewConsumedRef.current = autoRenewRevision;
+      return;
+    }
+    if (catalog.status !== "ready") return;
+    const currentOfferRef = planSwitchState?.current?.offerRef ?? null;
+    if (currentOfferRef) {
+      autoRenewConsumedRef.current = autoRenewRevision;
+      void startProduct(currentOfferRef);
+      return;
+    }
+    const planSwitchReadSettled = planSwitchResult !== null;
+    const planSwitchUnavailable = typeof commerceClient?.readPlanSwitchState !== "function";
+    if (planSwitchReadSettled || planSwitchUnavailable) {
+      autoRenewConsumedRef.current = autoRenewRevision;
+    }
+  }, [
+    autoRenewRevision,
+    catalog.status,
+    commerceClient,
+    dialogVisible,
+    planSwitchResult,
+    planSwitchState,
+    startProduct
+  ]);
+
   const activeOrderRef = purchaseFlow.order?.orderRef ?? null;
   useEffect(() => {
     if (productIntent && purchaseFlow.errorCode && !purchaseFlow.quote && !purchaseFlow.order) {
@@ -652,6 +691,10 @@ function LegacyMarketplacePanel({
               locale={locale}
               onCancel={purchaseFlow.cancelPurchase}
               onConfirm={purchaseFlow.confirmPurchase}
+              onOpenRecharge={onOpenWallet ? () => {
+                closeCoinsDialog();
+                onOpenWallet();
+              } : undefined}
               onRefresh={purchaseFlow.refreshOrder}
               onRequestClose={closeCoinsDialog}
               onRestoreFocus={restoreProductFocus}
