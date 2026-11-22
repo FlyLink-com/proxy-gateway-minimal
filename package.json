@@ -135,6 +135,7 @@
     "install:plan": "node bin/gccgw.mjs install plan",
     "install:preflight": "node bin/gccgw.mjs install preflight",
     "service:status": "node bin/gccgw.mjs service status",
+    "d1:stage2:controlled": "node tools/d1-stage2/controlled-cli.mjs",
     "test": "npm run test:server",
     "test:server": "node scripts/source-validation-test-runner.mjs && npm run test:c2-worker-config-policy",
     "test:c2-worker-config-policy": "node --test tools/c2-worker-config-policy/check.test.mjs && node tools/c2-worker-config-policy/check.mjs",
