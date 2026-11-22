@@ -4,10 +4,12 @@
  * Scope: the per-column disposition of the 8 sensitive-field tables of
  * decision card #4, transcribed from
  * `docs/D1_CONTROL_FIELD_DISPOSITION_T2_V1.json` (SHA cdaf041b…, 70 tables /
- * 820 fields), with the three corrections in the matrix document
+ * 820 fields), with the four corrections in the matrix document
  * (`docs/D1_CARD4_FIELD_MATRIX_2026-11-21.md` §13/§14) applied: the 9
  * non-EXTERNALIZE `platform_leads` columns are DEFER, the 11
- * `platform_portal_password_credentials` columns are KEEP, and
+ * `platform_portal_password_credentials` columns are KEEP, the 12
+ * `platform_portal_passkey_credentials` columns are CONDITIONAL (five
+ * conditions, matrix §7/§14.7; see `D1_CARD4_PASSKEY_CONDITIONS`), and
  * `platform_accounts.metadata_json` is removed. ruleId / dataClass keep
  * their T2 values, so only the disposition column carries the corrections.
  * This module is code structure plus synthetic-data validation only:
@@ -43,9 +45,27 @@ export const D1_CARD4_FIELD_MATRIX_TABLES = Object.freeze([
 // The 8th table is a candidate until decision-card D-6 text confirms it.
 export const D1_CARD4_FIELD_MATRIX_CANDIDATE_TABLE = "platform_accounts";
 
+// Passkey table conditions (matrix doc §7/§14.7; decision package §6:
+// Yi 2026-11-22 00:07 agreed conditional migration — in scope, no data
+// load; 00:46 ordered item-by-item confirmation). All 12 passkey columns
+// are CONDITIONAL: all five conditions must hold before any row loads.
+// Status as confirmed: C1 met, C2–C5 pending. The C3 per-column items
+// name their columns; every passkey column carries all five ids.
+export const D1_CARD4_PASSKEY_CONDITIONS = Object.freeze([
+  Object.freeze({ id: "C1", status: "MET", text: "Yi recognised passkey as part of \"user account\", in migration scope (Yi 2026-11-22 00:07 agreed decision package §6; 00:46 ordered item-by-item confirmation)." }),
+  Object.freeze({ id: "C2", status: "PENDING", text: "Supplementary production check: whether any passkey rows exist and whether any service calls this table." }),
+  Object.freeze({ id: "C3", status: "PENDING", text: "Approve a dedicated WebAuthn contract: public JWK only, reject any JWK containing private member `d` (public_key_jwk_json); credential_id / credential_id_hash uniqueness; sign_count default 0; transports_json default '[]'; whether all 12 columns move together once approved." }),
+  Object.freeze({ id: "C4", status: "PENDING", text: "Whether to build the empty table: TBD." }),
+  Object.freeze({ id: "C5", status: "PENDING", text: "Load timing: to be decided separately." }),
+]);
+
+// Condition ids applying to every passkey column.
+const PASSKEY_CONDITIONS = Object.freeze(["C1", "C2", "C3", "C4", "C5"]);
+
 // Per-column matrix: table -> column -> { disposition, ruleId, dataClass }.
+// Passkey columns additionally carry `conditions` (the five ids above).
 // Transcribed from the T2 JSON (ordinal order preserved in the doc), with the
-// three §13/§14 corrections applied (see the header comment).
+// four §13/§14 corrections applied (see the header comment).
 export const D1_CARD4_FIELD_MATRIX = Object.freeze({
   "platform_leads": Object.freeze({
     "id": Object.freeze({ disposition: "DEFER", ruleId: "R-OPAQUE-REF-KEEP", dataClass: "OPAQUE_REFERENCE" }),
@@ -171,18 +191,18 @@ export const D1_CARD4_FIELD_MATRIX = Object.freeze({
     "updated_at": Object.freeze({ disposition: "KEEP", ruleId: "R-PASSWORD-DEFER", dataClass: "FUTURE_AUTH_CREDENTIAL" }),
   }),
   "platform_portal_passkey_credentials": Object.freeze({
-    "id": Object.freeze({ disposition: "DEFER", ruleId: "R-PASSKEY-DEFER", dataClass: "FUTURE_AUTH_CREDENTIAL" }),
-    "account_id": Object.freeze({ disposition: "DEFER", ruleId: "R-PASSKEY-DEFER", dataClass: "FUTURE_AUTH_CREDENTIAL" }),
-    "credential_id": Object.freeze({ disposition: "DEFER", ruleId: "R-PASSKEY-DEFER", dataClass: "FUTURE_AUTH_CREDENTIAL" }),
-    "credential_id_hash": Object.freeze({ disposition: "DEFER", ruleId: "R-PASSKEY-DEFER", dataClass: "FUTURE_AUTH_CREDENTIAL" }),
-    "public_key_jwk_json": Object.freeze({ disposition: "DEFER", ruleId: "R-PASSKEY-DEFER", dataClass: "FUTURE_AUTH_CREDENTIAL" }),
-    "sign_count": Object.freeze({ disposition: "DEFER", ruleId: "R-PASSKEY-DEFER", dataClass: "FUTURE_AUTH_CREDENTIAL" }),
-    "transports_json": Object.freeze({ disposition: "DEFER", ruleId: "R-PASSKEY-DEFER", dataClass: "FUTURE_AUTH_CREDENTIAL" }),
-    "status": Object.freeze({ disposition: "DEFER", ruleId: "R-PASSKEY-DEFER", dataClass: "FUTURE_AUTH_CREDENTIAL" }),
-    "created_at": Object.freeze({ disposition: "DEFER", ruleId: "R-PASSKEY-DEFER", dataClass: "FUTURE_AUTH_CREDENTIAL" }),
-    "last_verified_at": Object.freeze({ disposition: "DEFER", ruleId: "R-PASSKEY-DEFER", dataClass: "FUTURE_AUTH_CREDENTIAL" }),
-    "revoked_at": Object.freeze({ disposition: "DEFER", ruleId: "R-PASSKEY-DEFER", dataClass: "FUTURE_AUTH_CREDENTIAL" }),
-    "updated_at": Object.freeze({ disposition: "DEFER", ruleId: "R-PASSKEY-DEFER", dataClass: "FUTURE_AUTH_CREDENTIAL" }),
+    "id": Object.freeze({ disposition: "CONDITIONAL", ruleId: "R-PASSKEY-DEFER", dataClass: "FUTURE_AUTH_CREDENTIAL", conditions: PASSKEY_CONDITIONS }),
+    "account_id": Object.freeze({ disposition: "CONDITIONAL", ruleId: "R-PASSKEY-DEFER", dataClass: "FUTURE_AUTH_CREDENTIAL", conditions: PASSKEY_CONDITIONS }),
+    "credential_id": Object.freeze({ disposition: "CONDITIONAL", ruleId: "R-PASSKEY-DEFER", dataClass: "FUTURE_AUTH_CREDENTIAL", conditions: PASSKEY_CONDITIONS }),
+    "credential_id_hash": Object.freeze({ disposition: "CONDITIONAL", ruleId: "R-PASSKEY-DEFER", dataClass: "FUTURE_AUTH_CREDENTIAL", conditions: PASSKEY_CONDITIONS }),
+    "public_key_jwk_json": Object.freeze({ disposition: "CONDITIONAL", ruleId: "R-PASSKEY-DEFER", dataClass: "FUTURE_AUTH_CREDENTIAL", conditions: PASSKEY_CONDITIONS }),
+    "sign_count": Object.freeze({ disposition: "CONDITIONAL", ruleId: "R-PASSKEY-DEFER", dataClass: "FUTURE_AUTH_CREDENTIAL", conditions: PASSKEY_CONDITIONS }),
+    "transports_json": Object.freeze({ disposition: "CONDITIONAL", ruleId: "R-PASSKEY-DEFER", dataClass: "FUTURE_AUTH_CREDENTIAL", conditions: PASSKEY_CONDITIONS }),
+    "status": Object.freeze({ disposition: "CONDITIONAL", ruleId: "R-PASSKEY-DEFER", dataClass: "FUTURE_AUTH_CREDENTIAL", conditions: PASSKEY_CONDITIONS }),
+    "created_at": Object.freeze({ disposition: "CONDITIONAL", ruleId: "R-PASSKEY-DEFER", dataClass: "FUTURE_AUTH_CREDENTIAL", conditions: PASSKEY_CONDITIONS }),
+    "last_verified_at": Object.freeze({ disposition: "CONDITIONAL", ruleId: "R-PASSKEY-DEFER", dataClass: "FUTURE_AUTH_CREDENTIAL", conditions: PASSKEY_CONDITIONS }),
+    "revoked_at": Object.freeze({ disposition: "CONDITIONAL", ruleId: "R-PASSKEY-DEFER", dataClass: "FUTURE_AUTH_CREDENTIAL", conditions: PASSKEY_CONDITIONS }),
+    "updated_at": Object.freeze({ disposition: "CONDITIONAL", ruleId: "R-PASSKEY-DEFER", dataClass: "FUTURE_AUTH_CREDENTIAL", conditions: PASSKEY_CONDITIONS }),
   }),
   "platform_accounts": Object.freeze({
     "id": Object.freeze({ disposition: "KEEP", ruleId: "R-OPAQUE-REF-KEEP", dataClass: "OPAQUE_REFERENCE" }),
@@ -195,15 +215,15 @@ export const D1_CARD4_FIELD_MATRIX = Object.freeze({
 
 // Expected per-disposition counts across the 8 tables (128 columns).
 // Corrected matrix (matrix doc §13/§14): the T2 JSON is unchanged, so the
-// matrix deliberately diverges from T2 on the leads and password tables
-// (see the verifier note below) and drops platform_accounts.metadata_json.
+// matrix deliberately diverges from T2 on the leads, password and passkey
+// tables (see the verifier note below) and drops platform_accounts.metadata_json.
 export const D1_CARD4_FIELD_MATRIX_COUNTS = Object.freeze({
   total: 128,
   KEEP: 70,
-  CONDITIONAL: 28,
+  CONDITIONAL: 40,
   EXTERNALIZE: 7,
   TRANSFORM: 2,
-  DEFER: 21,
+  DEFER: 9,
 });
 
 /**
@@ -230,9 +250,10 @@ export function getD1Card4FieldDisposition(table, column) {
  * Note: the repo T2 JSON is unchanged, so it does NOT agree with the
  * corrected matrix: it still lists the 9 `platform_leads` columns as KEEP /
  * CONDITIONAL, the 11 `platform_portal_password_credentials` columns as
- * DEFER, and `platform_accounts.metadata_json` as TRANSFORM. Against the
- * repo T2 JSON this verifier therefore returns exactly 21 mismatches (9
- * leads + 11 password + the global DEFER count); the test asserts that
+ * DEFER, the 12 `platform_portal_passkey_credentials` columns as DEFER,
+ * and `platform_accounts.metadata_json` as TRANSFORM. Against the
+ * repo T2 JSON this verifier therefore returns exactly 33 mismatches (9
+ * leads + 11 password + 12 passkey + the global DEFER count); the test asserts that
  * exact list, so any mismatch outside it is real drift. An extra T2 column
  * that is not in the matrix (e.g. the removed `metadata_json`) produces no
  * mismatch, by design.
@@ -269,7 +290,7 @@ export function verifyD1Card4FieldMatrixAgainstT2(t2) {
   const counts = t2.counts && t2.counts.fieldDispositions;
   if (counts) {
     if (counts.EXTERNALIZE !== 7) mismatches.push(`global EXTERNALIZE ${counts.EXTERNALIZE} != 7`);
-    if (counts.DEFER !== 21) mismatches.push(`global DEFER ${counts.DEFER} != 21`);
+    if (counts.DEFER !== 9) mismatches.push(`global DEFER ${counts.DEFER} != 9`);
   }
   if (typeof t2.counts?.fields === "number" && t2.counts.fields !== 820) {
     mismatches.push(`global fields ${t2.counts.fields} != 820`);
