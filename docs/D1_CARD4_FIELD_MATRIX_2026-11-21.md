@@ -163,12 +163,13 @@ DO 恢复到早先时点 → 以 D1 现态与指针为准，先对账再恢复�
 | 最终字段合同 | HOLD | Yi 裁决。GPT-6 的 PARTIAL TECHNICAL GO 只是技术意见，不是 Yi 的决定。本稿任何行都不是最终合同。 |
 | Q-6 归档 | HOLD / NO-GO | 归档存在与精确指纹的独立证明 + Yi 裁决；当前归档 URL/QR 不进入 D1。 |
 | Q-8 | HOLD | 本地决策文件无 Q-8 定义；PR #903 文述仅“Stage 0.2 不放行”。须 Yi/决策卡原文给出 Q-8 内容与放行条件。 |
-| Q-9～Q-11 | HOLD（未定义） | 本地决策文件无定义；PR #903 已记为未覆盖。本稿不编造。须决策卡原文。 |
+| Q-9（保留期限） | 部分已定：账号、密码、订阅、挑战四组期限已定（见 §14 保留列：密码 RET-CREDENTIAL-90D 11 列、TOTP RET-CHALLENGE-90D 10 列、账号 RET-ACCOUNT-5Y 5 列、订阅申请 RET-AUTHZ-5Y 27 列） | 金融/归档/用量/同意等其余期限仍待决，见“保留期限表”行。 |
+| Q-10～Q-11 | HOLD（未定义） | 本地决策文件无定义；PR #903 已记为未覆盖。本稿不编造。须决策卡原文。 |
 | Q-12 | 方向已采纳：不将掩码写入 D1 | 掩码方案见 §1；最终合同仍 HOLD，待 Yi 裁决。 |
 | 第 8 张表确认 | 待确认 | 决策卡 D-6 原文（`E4_DECISION_CARDS.md` #4）或 Yi 确认。 |
 | 各表其余列逐列枚举 | **已补齐** | 本轮从 `docs/D1_CONTROL_FIELD_DISPOSITION_T2_V1.json`（SHA `cdaf041b…`）提取，见 §14（八张表 128 列）。 |
 | 各 JSON 字段精确 allowlist | 待决（T2 待决） | 逐 JSON 字段的版本化 schema；通用扫描不足为凭。 |
-| 保留期限表 | 待决（T2 待决） | 金融/审计/会话/挑战/用量/同意证据的精确保留期限；业务到期 ≠ 保留批准。 |
+| 保留期限表 | 部分已定（四组），其余待决 | 密码/挑战/账号/订阅四组期限已定（见 §14 保留列）；金融/审计/会话/用量/同意证据及归档/幂等/passkey 的精确保留期限仍待决；业务到期 ≠ 保留批准。 |
 | 不透明引用语法与历史值一致性 | 待决（T2 待决） | 引用语法定义 + 对生产值的历史一致性测试；不得从 `_ref`/`_id` 后缀推断不透明。 |
 | 幂等 HMAC 密钥托管/版本/轮换 | 待决（T2 待决） | 密钥托管、版本、轮换与历史重放兼容设计；密钥未配给、未记录。 |
 | TOTP 密钥分离与轮换 | 待决 | Portal 与 Admin 是否用不同密钥、密钥 ID 与轮换/重加密行为的决定；历史 `enc:` 须重登记或隔离。 |
@@ -198,11 +199,12 @@ DO 恢复到早先时点 → 以 D1 现态与指针为准，先对账再恢复�
 - T2 JSON 已核：`docs/D1_CONTROL_FIELD_DISPOSITION_T2_V1.json`，SHA `cdaf041b…`，单行 424 KB，70 表 / 820 字段；五份副本 SHA 一致。本轮用仓库内副本提取，未改原文件。
 - 八张表 128 列逐列枚举已补齐（§14）：计数 KEEP 70 / CONDITIONAL 28 / EXTERNALIZE 7 / TRANSFORM 2 / DEFER 21；与 T2 总量（KEEP 712 / TRANSFORM 19 / EXTERNALIZE 7 / DEFER 23 / CONDITIONAL 59）交叉核对——八张表含全部 7 个 EXTERNALIZE；DEFER 21 列 = passkey 表 12 列（T2 DEFER）+ 线索表 9 列（T2 为 KEEP/CONDITIONAL，本轮改为 DEFER）；密码表 11 列（T2 DEFER）本轮按 Yi 裁决改为 KEEP，不再计入 DEFER；TRANSFORM 19 个中八张表占 2 个，其余 17 个在八张表外；CONDITIONAL 59 个中八张表占 28 个，其余 31 个在八张表外。
 - 第 8 张表（`platform_accounts`）仍为候选：决策卡 D-6 原文（`E4_DECISION_CARDS.md` #4）不在仓库内（本轮已查，无此文件），但本地就绪目录有该文件（逐项查验报告 §3.7 已核对）；D-6 原文所列 8 张表里没有 `platform_accounts`，是否为第 8 张表仍须 Yi 定，本稿不把候选写成定论。`metadata_json` 列及 26 个子字段已按 M1-02 方案 (a) 移除（见 §8）；§14.8 现为 5 个物理列。
-- Q-8、Q-9～Q-11 仍无本地定义，记 HOLD，未编造。
+- Q-8、Q-10～Q-11 仍无本地定义，记 HOLD，未编造；Q-9 四组期限已按 Yi 2026-11-22 00:12 同意分法定（见本节新增记录）。
 - 上轮拦截：执行风险检查曾拦住 git / 测试操作（process.poll，call id `call_01a1fe7f42e877c89a95b2e867bcb092`，原文见协调日志）；Yi 2026-11-21 06:46 在主会话点选“同意，让它继续”，直接授权本轮继续，本轮据此建分支、提交、开 Draft PR、跑测试。
 - 测试：新增 `server/tests/d1-card4-field-matrix.test.mjs`（矩阵与 T2 JSON 一致性验证，合成数据）；受影响模块 `server/tests/d1-card4-key-families.test.mjs`（PR #903，14/14）。实测数字见本轮回报，不抄 PR 文述。
 - 最终字段合同仍 HOLD，批准权在 Yi，不在本卡。本稿任何行都不是最终合同。
 - 本轮修正（2026-11-22，PR #911 修正提交）：依据逐项查验报告 `CARD4_ITEM_CHECK_2026-11-22.md`（SHA `298b78c6…`）与 Yi 2026-11-22 23:26 范围裁决。改动：(1) `metadata_json` 列及 26 个子字段按 M1-02 方案 (a) 移除，见 §8；(2) 密码表 11 列 DEFER 改为 KEEP（原样留），见 §6；(3) 线索表其余 9 列改为 DEFER，见 §1；(4) §2/§4 叙述小计各补 1 列；(5) §0/§13“本地只有 T2/C3”按事实订正。修正后八张表 128 列 = KEEP 70 / CONDITIONAL 28 / EXTERNALIZE 7 / TRANSFORM 2 / DEFER 21。代码模块 `server/services/platform/d1-card4-field-matrix.mjs` 与测试 `server/tests/d1-card4-field-matrix.test.mjs` 仍按 T2 旧口径（129 列），本轮只改矩阵文件一个文件，未同步代码，同步与否另行定。
+- Q-9 四组期限（2026-11-22，PR #911 本提交）：Yi 2026-11-22 00:07 同意决策包全部 8 项（Q-9 选 B，先定要迁的四类）；Yi 2026-11-22 00:09 授权 TOTP 算“用户账号”的一部分（进迁移范围，跟账号同待遇）；Yi 2026-11-22 00:12 同意分法（取代 00:09 的统一填法）：密码表 11 列挂 RET-CREDENTIAL-90D（账号注销后 90 天内清掉）、TOTP 表 10 列挂 RET-CHALLENGE-90D（失效后留 90 天）、账号表 5 列挂 RET-ACCOUNT-5Y（账号注销后留 5 年）、订阅申请表 27 列挂 RET-AUTHZ-5Y（账号注销后留 5 年）。改后 RET-DEFAULT-TBD 0 列；总列数仍 128 列，处置计数 KEEP 70 / CONDITIONAL 28 / EXTERNALIZE 7 / TRANSFORM 2 / DEFER 21 不动。本轮只改矩阵文件一个文件，未同步代码。期限按 Yi 2026-11-22 00:12 同意分法；TOTP 算用户账号的一部分按 Yi 2026-11-22 00:09 授权填，Yi 可随时改。
 
 ## 14. 八张表逐列枚举（T2 JSON 提取）
 
@@ -212,6 +214,7 @@ DO 恢复到早先时点 → 以 D1 现态与指针为准，先对账再恢复�
 > T2 总量为 KEEP 712 / TRANSFORM 19 / EXTERNALIZE 7 / DEFER 23 / CONDITIONAL 59，共 820 字段（T2 自身口径，不变）——
 > 八张表含全部 7 个 EXTERNALIZE；DEFER 21 列 = passkey 表 12 列（T2 DEFER）+ 线索表 9 列（T2 为 KEEP/CONDITIONAL，本稿因 DDL 无建表语句改为 DEFER）；密码表 11 列（T2 DEFER）本稿按 Yi 裁决改为 KEEP，不再计入 DEFER。TRANSFORM 19 个中八张表占 2 个（`event_json`、`event_dedupe_key`），其余 17 个在八张表外；
 > CONDITIONAL 59 个中八张表占 28 个（归档表 28 个），其余 31 个在八张表外。
+> 保留期限核对（Q-9，Yi 2026-11-22 00:12 同意分法）：RET-DEFAULT-TBD 0 列；`RET-CREDENTIAL-90D` 11 列（密码表，账号注销后 90 天内清掉）、`RET-CHALLENGE-90D` 10 列（TOTP 表，失效后留 90 天）、`RET-ACCOUNT-5Y` 5 列（账号表，账号注销后留 5 年）、`RET-AUTHZ-5Y` 27 列（订阅申请表，账号注销后留 5 年）；其余保留标签不变（线索 RET-LEAD-90D 11 列、回执 RET-FINANCIAL-TBD 21 列、归档 RET-ARCHIVE-TBD 30 列、幂等 RET-IDEMPOTENCY-TBD 1 列、passkey RET-DEFERRED 12 列）。期限按 Yi 2026-11-22 00:12 同意分法；TOTP 算用户账号的一部分按 Yi 2026-11-22 00:09 授权填，Yi 可随时改。
 
 ### 14.1 `platform_leads`（11 列；表处置 DEFER；源列 11；目标候选列 0）
 
@@ -233,48 +236,48 @@ DO 恢复到早先时点 → 以 D1 现态与指针为准，先对账再恢复�
 
 | # | 字段 | 类型 | 处置 | 规则 | 数据类 | 目标/纳入 | 保留 | 测试 |
 |---|---|---|---|---|---|---|---|---|
-| 1 | `id` (PK) | TEXT (NULL) | KEEP | R-OPAQUE-REF-KEEP | OPAQUE_REFERENCE | id / included | RET-DEFAULT-TBD | T2-SCHEMA-001,T2-KEEP-001,T2-OPAQUE-REF-001 |
-| 2 | `portal_user_ref` | TEXT (NOT NULL) | KEEP | R-OPAQUE-REF-KEEP | OPAQUE_REFERENCE | portal_user_ref / included | RET-DEFAULT-TBD | T2-SCHEMA-001,T2-KEEP-001,T2-OPAQUE-REF-001 |
-| 3 | `plan` | TEXT (NOT NULL) | KEEP | R-ENUM-KEEP | INTERNAL_CONTROL_DATA | plan / included | RET-DEFAULT-TBD | T2-SCHEMA-001,T2-KEEP-001 |
-| 4 | `client_target` | TEXT (NOT NULL) | KEEP | R-ENUM-KEEP | INTERNAL_CONTROL_DATA | client_target / included | RET-DEFAULT-TBD | T2-SCHEMA-001,T2-KEEP-001 |
-| 5 | `duration_days` | INTEGER (NOT NULL) | KEEP | R-INTEGER-KEEP | INTERNAL_CONTROL_DATA | duration_days / included | RET-DEFAULT-TBD | T2-SCHEMA-001,T2-KEEP-001,T2-NUMERIC-RANGE-001 |
-| 6 | `quantity` | INTEGER (NOT NULL) | KEEP | R-INTEGER-KEEP | INTERNAL_CONTROL_DATA | quantity / included | RET-DEFAULT-TBD | T2-SCHEMA-001,T2-KEEP-001,T2-NUMERIC-RANGE-001 |
-| 7 | `status` | TEXT (NOT NULL) | KEEP | R-ENUM-KEEP | INTERNAL_CONTROL_DATA | status / included | RET-DEFAULT-TBD | T2-SCHEMA-001,T2-KEEP-001 |
-| 8 | `next_action` | TEXT (NOT NULL) | KEEP | R-ENUM-KEEP | INTERNAL_CONTROL_DATA | next_action / included | RET-DEFAULT-TBD | T2-SCHEMA-001,T2-KEEP-001 |
-| 9 | `note_provided` | INTEGER (NOT NULL) | KEEP | R-BOOL-KEEP | BOOLEAN_FLAG | note_provided / included | RET-DEFAULT-TBD | T2-SCHEMA-001,T2-KEEP-001,T2-BOOLEAN-CHECK-001,T2-NUMERIC-RANGE-001 |
-| 10 | `prior_trial_state` | TEXT (NOT NULL) | KEEP | R-ENUM-KEEP | INTERNAL_CONTROL_DATA | prior_trial_state / included | RET-DEFAULT-TBD | T2-SCHEMA-001,T2-KEEP-001 |
-| 11 | `submitted_at` | TEXT (NOT NULL) | KEEP | R-TIME-KEEP | TIMESTAMP | submitted_at / included | RET-DEFAULT-TBD | T2-SCHEMA-001,T2-KEEP-001,T2-TIME-SEMANTICS-001 |
-| 12 | `updated_at` | TEXT (NOT NULL) | KEEP | R-TIME-KEEP | TIMESTAMP | updated_at / included | RET-DEFAULT-TBD | T2-SCHEMA-001,T2-KEEP-001,T2-TIME-SEMANTICS-001 |
-| 13 | `reviewed_at` | TEXT (NULL) | KEEP | R-TIME-KEEP | TIMESTAMP | reviewed_at / included | RET-DEFAULT-TBD | T2-SCHEMA-001,T2-KEEP-001,T2-TIME-SEMANTICS-001 |
-| 14 | `reviewed_by_ref` | TEXT (NULL) | KEEP | R-OPAQUE-REF-KEEP | OPAQUE_REFERENCE | reviewed_by_ref / included | RET-DEFAULT-TBD | T2-SCHEMA-001,T2-KEEP-001,T2-OPAQUE-REF-001 |
-| 15 | `safe_reason_code` | TEXT (NULL) | KEEP | R-ENUM-KEEP | INTERNAL_CONTROL_DATA | safe_reason_code / included | RET-DEFAULT-TBD | T2-SCHEMA-001,T2-KEEP-001 |
-| 16 | `expires_at` | TEXT (NULL) | KEEP | R-TIME-KEEP | TIMESTAMP | expires_at / included | RET-DEFAULT-TBD | T2-SCHEMA-001,T2-KEEP-001,T2-TIME-SEMANTICS-001 |
-| 17 | `valid_until` | TEXT (NULL) | KEEP | R-TIME-KEEP | TIMESTAMP | valid_until / included | RET-DEFAULT-TBD | T2-SCHEMA-001,T2-KEEP-001,T2-TIME-SEMANTICS-001 |
-| 18 | `entitlement_ref` | TEXT (NULL) | KEEP | R-OPAQUE-REF-KEEP | OPAQUE_REFERENCE | entitlement_ref / included | RET-DEFAULT-TBD | T2-SCHEMA-001,T2-KEEP-001,T2-OPAQUE-REF-001 |
-| 19 | `access_grant_ref` | TEXT (NULL) | KEEP | R-OPAQUE-REF-KEEP | OPAQUE_REFERENCE | access_grant_ref / included | RET-DEFAULT-TBD | T2-SCHEMA-001,T2-KEEP-001,T2-OPAQUE-REF-001 |
-| 20 | `tenant_id` | TEXT (NULL) | KEEP | R-OPAQUE-REF-KEEP | OPAQUE_REFERENCE | tenant_id / included | RET-DEFAULT-TBD | T2-SCHEMA-001,T2-KEEP-001,T2-OPAQUE-REF-001 |
-| 21 | `artifact_id` | TEXT (NULL) | KEEP | R-OPAQUE-REF-KEEP | OPAQUE_REFERENCE | artifact_id / included | RET-DEFAULT-TBD | T2-SCHEMA-001,T2-KEEP-001,T2-OPAQUE-REF-001 |
-| 22 | `subscription_url` | TEXT (NULL) | EXTERNALIZE | R-SUBSCRIPTION-URL-EXT | SECRET_OR_ACTION_CAPABILITY | — / excluded_from_d1 | RET-DEFAULT-TBD | T2-SCHEMA-001,T2-NO-LEAK-001,T2-CUSTODY-001 |
-| 23 | `edge_channel_ref` | TEXT (NULL) | KEEP | R-OPAQUE-REF-KEEP | OPAQUE_REFERENCE | edge_channel_ref / included | RET-DEFAULT-TBD | T2-SCHEMA-001,T2-KEEP-001,T2-OPAQUE-REF-001 |
-| 24 | `edge_credential_ref` | TEXT (NULL) | KEEP | R-OPAQUE-REF-KEEP | OPAQUE_REFERENCE | edge_credential_ref / included | RET-DEFAULT-TBD | T2-SCHEMA-001,T2-KEEP-001,T2-OPAQUE-REF-001 |
-| 25 | `edge_material_digest` | TEXT (NULL) | KEEP | R-DIGEST-KEEP | ONE_WAY_DIGEST | edge_material_digest / included | RET-DEFAULT-TBD | T2-SCHEMA-001,T2-KEEP-001,T2-DIGEST-001 |
-| 26 | `edge_lifecycle_mutation` | INTEGER (NOT NULL) | KEEP | R-BOOL-KEEP | BOOLEAN_FLAG | edge_lifecycle_mutation / included | RET-DEFAULT-TBD | T2-SCHEMA-001,T2-KEEP-001,T2-BOOLEAN-CHECK-001,T2-NUMERIC-RANGE-001 |
-| 27 | `event_json` | TEXT (NOT NULL) | TRANSFORM | R-METADATA-JSON | CONTROLLED_JSON | event_json / included_after_transform | RET-DEFAULT-TBD | T2-SCHEMA-001,T2-TRANSFORM-001,T2-JSON-ALLOWLIST-001 |
+| 1 | `id` (PK) | TEXT (NULL) | KEEP | R-OPAQUE-REF-KEEP | OPAQUE_REFERENCE | id / included | RET-AUTHZ-5Y | T2-SCHEMA-001,T2-KEEP-001,T2-OPAQUE-REF-001 |
+| 2 | `portal_user_ref` | TEXT (NOT NULL) | KEEP | R-OPAQUE-REF-KEEP | OPAQUE_REFERENCE | portal_user_ref / included | RET-AUTHZ-5Y | T2-SCHEMA-001,T2-KEEP-001,T2-OPAQUE-REF-001 |
+| 3 | `plan` | TEXT (NOT NULL) | KEEP | R-ENUM-KEEP | INTERNAL_CONTROL_DATA | plan / included | RET-AUTHZ-5Y | T2-SCHEMA-001,T2-KEEP-001 |
+| 4 | `client_target` | TEXT (NOT NULL) | KEEP | R-ENUM-KEEP | INTERNAL_CONTROL_DATA | client_target / included | RET-AUTHZ-5Y | T2-SCHEMA-001,T2-KEEP-001 |
+| 5 | `duration_days` | INTEGER (NOT NULL) | KEEP | R-INTEGER-KEEP | INTERNAL_CONTROL_DATA | duration_days / included | RET-AUTHZ-5Y | T2-SCHEMA-001,T2-KEEP-001,T2-NUMERIC-RANGE-001 |
+| 6 | `quantity` | INTEGER (NOT NULL) | KEEP | R-INTEGER-KEEP | INTERNAL_CONTROL_DATA | quantity / included | RET-AUTHZ-5Y | T2-SCHEMA-001,T2-KEEP-001,T2-NUMERIC-RANGE-001 |
+| 7 | `status` | TEXT (NOT NULL) | KEEP | R-ENUM-KEEP | INTERNAL_CONTROL_DATA | status / included | RET-AUTHZ-5Y | T2-SCHEMA-001,T2-KEEP-001 |
+| 8 | `next_action` | TEXT (NOT NULL) | KEEP | R-ENUM-KEEP | INTERNAL_CONTROL_DATA | next_action / included | RET-AUTHZ-5Y | T2-SCHEMA-001,T2-KEEP-001 |
+| 9 | `note_provided` | INTEGER (NOT NULL) | KEEP | R-BOOL-KEEP | BOOLEAN_FLAG | note_provided / included | RET-AUTHZ-5Y | T2-SCHEMA-001,T2-KEEP-001,T2-BOOLEAN-CHECK-001,T2-NUMERIC-RANGE-001 |
+| 10 | `prior_trial_state` | TEXT (NOT NULL) | KEEP | R-ENUM-KEEP | INTERNAL_CONTROL_DATA | prior_trial_state / included | RET-AUTHZ-5Y | T2-SCHEMA-001,T2-KEEP-001 |
+| 11 | `submitted_at` | TEXT (NOT NULL) | KEEP | R-TIME-KEEP | TIMESTAMP | submitted_at / included | RET-AUTHZ-5Y | T2-SCHEMA-001,T2-KEEP-001,T2-TIME-SEMANTICS-001 |
+| 12 | `updated_at` | TEXT (NOT NULL) | KEEP | R-TIME-KEEP | TIMESTAMP | updated_at / included | RET-AUTHZ-5Y | T2-SCHEMA-001,T2-KEEP-001,T2-TIME-SEMANTICS-001 |
+| 13 | `reviewed_at` | TEXT (NULL) | KEEP | R-TIME-KEEP | TIMESTAMP | reviewed_at / included | RET-AUTHZ-5Y | T2-SCHEMA-001,T2-KEEP-001,T2-TIME-SEMANTICS-001 |
+| 14 | `reviewed_by_ref` | TEXT (NULL) | KEEP | R-OPAQUE-REF-KEEP | OPAQUE_REFERENCE | reviewed_by_ref / included | RET-AUTHZ-5Y | T2-SCHEMA-001,T2-KEEP-001,T2-OPAQUE-REF-001 |
+| 15 | `safe_reason_code` | TEXT (NULL) | KEEP | R-ENUM-KEEP | INTERNAL_CONTROL_DATA | safe_reason_code / included | RET-AUTHZ-5Y | T2-SCHEMA-001,T2-KEEP-001 |
+| 16 | `expires_at` | TEXT (NULL) | KEEP | R-TIME-KEEP | TIMESTAMP | expires_at / included | RET-AUTHZ-5Y | T2-SCHEMA-001,T2-KEEP-001,T2-TIME-SEMANTICS-001 |
+| 17 | `valid_until` | TEXT (NULL) | KEEP | R-TIME-KEEP | TIMESTAMP | valid_until / included | RET-AUTHZ-5Y | T2-SCHEMA-001,T2-KEEP-001,T2-TIME-SEMANTICS-001 |
+| 18 | `entitlement_ref` | TEXT (NULL) | KEEP | R-OPAQUE-REF-KEEP | OPAQUE_REFERENCE | entitlement_ref / included | RET-AUTHZ-5Y | T2-SCHEMA-001,T2-KEEP-001,T2-OPAQUE-REF-001 |
+| 19 | `access_grant_ref` | TEXT (NULL) | KEEP | R-OPAQUE-REF-KEEP | OPAQUE_REFERENCE | access_grant_ref / included | RET-AUTHZ-5Y | T2-SCHEMA-001,T2-KEEP-001,T2-OPAQUE-REF-001 |
+| 20 | `tenant_id` | TEXT (NULL) | KEEP | R-OPAQUE-REF-KEEP | OPAQUE_REFERENCE | tenant_id / included | RET-AUTHZ-5Y | T2-SCHEMA-001,T2-KEEP-001,T2-OPAQUE-REF-001 |
+| 21 | `artifact_id` | TEXT (NULL) | KEEP | R-OPAQUE-REF-KEEP | OPAQUE_REFERENCE | artifact_id / included | RET-AUTHZ-5Y | T2-SCHEMA-001,T2-KEEP-001,T2-OPAQUE-REF-001 |
+| 22 | `subscription_url` | TEXT (NULL) | EXTERNALIZE | R-SUBSCRIPTION-URL-EXT | SECRET_OR_ACTION_CAPABILITY | — / excluded_from_d1 | RET-AUTHZ-5Y | T2-SCHEMA-001,T2-NO-LEAK-001,T2-CUSTODY-001 |
+| 23 | `edge_channel_ref` | TEXT (NULL) | KEEP | R-OPAQUE-REF-KEEP | OPAQUE_REFERENCE | edge_channel_ref / included | RET-AUTHZ-5Y | T2-SCHEMA-001,T2-KEEP-001,T2-OPAQUE-REF-001 |
+| 24 | `edge_credential_ref` | TEXT (NULL) | KEEP | R-OPAQUE-REF-KEEP | OPAQUE_REFERENCE | edge_credential_ref / included | RET-AUTHZ-5Y | T2-SCHEMA-001,T2-KEEP-001,T2-OPAQUE-REF-001 |
+| 25 | `edge_material_digest` | TEXT (NULL) | KEEP | R-DIGEST-KEEP | ONE_WAY_DIGEST | edge_material_digest / included | RET-AUTHZ-5Y | T2-SCHEMA-001,T2-KEEP-001,T2-DIGEST-001 |
+| 26 | `edge_lifecycle_mutation` | INTEGER (NOT NULL) | KEEP | R-BOOL-KEEP | BOOLEAN_FLAG | edge_lifecycle_mutation / included | RET-AUTHZ-5Y | T2-SCHEMA-001,T2-KEEP-001,T2-BOOLEAN-CHECK-001,T2-NUMERIC-RANGE-001 |
+| 27 | `event_json` | TEXT (NOT NULL) | TRANSFORM | R-METADATA-JSON | CONTROLLED_JSON | event_json / included_after_transform | RET-AUTHZ-5Y | T2-SCHEMA-001,T2-TRANSFORM-001,T2-JSON-ALLOWLIST-001 |
 
 ### 14.3 `platform_portal_totp_credentials`（10 列；表处置 KEEP；源列 10；目标候选列 9）
 
 | # | 字段 | 类型 | 处置 | 规则 | 数据类 | 目标/纳入 | 保留 | 测试 |
 |---|---|---|---|---|---|---|---|---|
-| 1 | `id` (PK) | TEXT (NULL) | KEEP | R-OPAQUE-REF-KEEP | OPAQUE_REFERENCE | id / included | RET-DEFAULT-TBD | T2-SCHEMA-001,T2-KEEP-001,T2-OPAQUE-REF-001,T2-TOTP-CUSTODY-001 |
-| 2 | `account_id` | TEXT (NOT NULL) | KEEP | R-OPAQUE-REF-KEEP | OPAQUE_REFERENCE | account_id / included | RET-DEFAULT-TBD | T2-SCHEMA-001,T2-KEEP-001,T2-OPAQUE-REF-001,T2-TOTP-CUSTODY-001 |
-| 3 | `encrypted_totp_secret` | TEXT (NOT NULL) | EXTERNALIZE | R-TOTP-EXT | SECRET_OR_ACTION_CAPABILITY | — / excluded_from_d1 | RET-DEFAULT-TBD | T2-SCHEMA-001,T2-NO-LEAK-001,T2-CUSTODY-001,T2-TOTP-CUSTODY-001 |
-| 4 | `status` | TEXT (NOT NULL) | KEEP | R-ENUM-KEEP | INTERNAL_CONTROL_DATA | status / included | RET-DEFAULT-TBD | T2-SCHEMA-001,T2-KEEP-001,T2-TOTP-CUSTODY-001 |
-| 5 | `failure_count` | INTEGER (NOT NULL) | KEEP | R-INTEGER-KEEP | INTERNAL_CONTROL_DATA | failure_count / included | RET-DEFAULT-TBD | T2-SCHEMA-001,T2-KEEP-001,T2-NUMERIC-RANGE-001,T2-TOTP-CUSTODY-001 |
-| 6 | `locked_until` | TEXT (NULL) | KEEP | R-TIME-KEEP | TIMESTAMP | locked_until / included | RET-DEFAULT-TBD | T2-SCHEMA-001,T2-KEEP-001,T2-TIME-SEMANTICS-001,T2-TOTP-CUSTODY-001 |
-| 7 | `enrolled_at` | TEXT (NOT NULL) | KEEP | R-TIME-KEEP | TIMESTAMP | enrolled_at / included | RET-DEFAULT-TBD | T2-SCHEMA-001,T2-KEEP-001,T2-TIME-SEMANTICS-001,T2-TOTP-CUSTODY-001 |
-| 8 | `last_verified_at` | TEXT (NULL) | KEEP | R-TIME-KEEP | TIMESTAMP | last_verified_at / included | RET-DEFAULT-TBD | T2-SCHEMA-001,T2-KEEP-001,T2-TIME-SEMANTICS-001,T2-TOTP-CUSTODY-001 |
-| 9 | `revoked_at` | TEXT (NULL) | KEEP | R-TIME-KEEP | TIMESTAMP | revoked_at / included | RET-DEFAULT-TBD | T2-SCHEMA-001,T2-KEEP-001,T2-TIME-SEMANTICS-001,T2-TOTP-CUSTODY-001 |
-| 10 | `updated_at` | TEXT (NOT NULL) | KEEP | R-TIME-KEEP | TIMESTAMP | updated_at / included | RET-DEFAULT-TBD | T2-SCHEMA-001,T2-KEEP-001,T2-TIME-SEMANTICS-001,T2-TOTP-CUSTODY-001 |
+| 1 | `id` (PK) | TEXT (NULL) | KEEP | R-OPAQUE-REF-KEEP | OPAQUE_REFERENCE | id / included | RET-CHALLENGE-90D | T2-SCHEMA-001,T2-KEEP-001,T2-OPAQUE-REF-001,T2-TOTP-CUSTODY-001 |
+| 2 | `account_id` | TEXT (NOT NULL) | KEEP | R-OPAQUE-REF-KEEP | OPAQUE_REFERENCE | account_id / included | RET-CHALLENGE-90D | T2-SCHEMA-001,T2-KEEP-001,T2-OPAQUE-REF-001,T2-TOTP-CUSTODY-001 |
+| 3 | `encrypted_totp_secret` | TEXT (NOT NULL) | EXTERNALIZE | R-TOTP-EXT | SECRET_OR_ACTION_CAPABILITY | — / excluded_from_d1 | RET-CHALLENGE-90D | T2-SCHEMA-001,T2-NO-LEAK-001,T2-CUSTODY-001,T2-TOTP-CUSTODY-001 |
+| 4 | `status` | TEXT (NOT NULL) | KEEP | R-ENUM-KEEP | INTERNAL_CONTROL_DATA | status / included | RET-CHALLENGE-90D | T2-SCHEMA-001,T2-KEEP-001,T2-TOTP-CUSTODY-001 |
+| 5 | `failure_count` | INTEGER (NOT NULL) | KEEP | R-INTEGER-KEEP | INTERNAL_CONTROL_DATA | failure_count / included | RET-CHALLENGE-90D | T2-SCHEMA-001,T2-KEEP-001,T2-NUMERIC-RANGE-001,T2-TOTP-CUSTODY-001 |
+| 6 | `locked_until` | TEXT (NULL) | KEEP | R-TIME-KEEP | TIMESTAMP | locked_until / included | RET-CHALLENGE-90D | T2-SCHEMA-001,T2-KEEP-001,T2-TIME-SEMANTICS-001,T2-TOTP-CUSTODY-001 |
+| 7 | `enrolled_at` | TEXT (NOT NULL) | KEEP | R-TIME-KEEP | TIMESTAMP | enrolled_at / included | RET-CHALLENGE-90D | T2-SCHEMA-001,T2-KEEP-001,T2-TIME-SEMANTICS-001,T2-TOTP-CUSTODY-001 |
+| 8 | `last_verified_at` | TEXT (NULL) | KEEP | R-TIME-KEEP | TIMESTAMP | last_verified_at / included | RET-CHALLENGE-90D | T2-SCHEMA-001,T2-KEEP-001,T2-TIME-SEMANTICS-001,T2-TOTP-CUSTODY-001 |
+| 9 | `revoked_at` | TEXT (NULL) | KEEP | R-TIME-KEEP | TIMESTAMP | revoked_at / included | RET-CHALLENGE-90D | T2-SCHEMA-001,T2-KEEP-001,T2-TIME-SEMANTICS-001,T2-TOTP-CUSTODY-001 |
+| 10 | `updated_at` | TEXT (NOT NULL) | KEEP | R-TIME-KEEP | TIMESTAMP | updated_at / included | RET-CHALLENGE-90D | T2-SCHEMA-001,T2-KEEP-001,T2-TIME-SEMANTICS-001,T2-TOTP-CUSTODY-001 |
 
 ### 14.4 `platform_payment_receipts`（22 列；表处置 KEEP；源列 22；目标候选列 21）
 
@@ -342,17 +345,17 @@ DO 恢复到早先时点 → 以 D1 现态与指针为准，先对账再恢复�
 
 | # | 字段 | 类型 | 处置 | 规则 | 数据类 | 目标/纳入 | 保留 | 测试 |
 |---|---|---|---|---|---|---|---|---|
-| 1 | `id` (PK) | TEXT (NULL) | KEEP | R-PASSWORD-DEFER | FUTURE_AUTH_CREDENTIAL | id / included | RET-DEFAULT-TBD | T2-SCHEMA-001,T2-KEEP-001,T2-OPAQUE-REF-001,T2-FUTURE-AUTH-GATE-001 |
-| 2 | `account_id` | TEXT (NOT NULL) | KEEP | R-PASSWORD-DEFER | FUTURE_AUTH_CREDENTIAL | account_id / included | RET-DEFAULT-TBD | T2-SCHEMA-001,T2-KEEP-001,T2-OPAQUE-REF-001,T2-FUTURE-AUTH-GATE-001 |
-| 3 | `password_hash` | TEXT (NOT NULL) | KEEP | R-PASSWORD-DEFER | FUTURE_AUTH_CREDENTIAL | password_hash / included | RET-DEFAULT-TBD | T2-SCHEMA-001,T2-KEEP-001,T2-DIGEST-001,T2-FUTURE-AUTH-GATE-001 |
-| 4 | `status` | TEXT (NOT NULL) | KEEP | R-PASSWORD-DEFER | FUTURE_AUTH_CREDENTIAL | status / included | RET-DEFAULT-TBD | T2-SCHEMA-001,T2-KEEP-001,T2-FUTURE-AUTH-GATE-001 |
-| 5 | `failure_count` | INTEGER (NOT NULL) | KEEP | R-PASSWORD-DEFER | FUTURE_AUTH_CREDENTIAL | failure_count / included | RET-DEFAULT-TBD | T2-SCHEMA-001,T2-KEEP-001,T2-NUMERIC-RANGE-001,T2-FUTURE-AUTH-GATE-001 |
-| 6 | `locked_until` | TEXT (NULL) | KEEP | R-PASSWORD-DEFER | FUTURE_AUTH_CREDENTIAL | locked_until / included | RET-DEFAULT-TBD | T2-SCHEMA-001,T2-KEEP-001,T2-TIME-SEMANTICS-001,T2-FUTURE-AUTH-GATE-001 |
-| 7 | `must_rotate` | INTEGER (NOT NULL) | KEEP | R-PASSWORD-DEFER | FUTURE_AUTH_CREDENTIAL | must_rotate / included | RET-DEFAULT-TBD | T2-SCHEMA-001,T2-KEEP-001,T2-BOOLEAN-CHECK-001,T2-NUMERIC-RANGE-001,T2-FUTURE-AUTH-GATE-001 |
-| 8 | `created_at` | TEXT (NOT NULL) | KEEP | R-PASSWORD-DEFER | FUTURE_AUTH_CREDENTIAL | created_at / included | RET-DEFAULT-TBD | T2-SCHEMA-001,T2-KEEP-001,T2-TIME-SEMANTICS-001,T2-FUTURE-AUTH-GATE-001 |
-| 9 | `last_verified_at` | TEXT (NULL) | KEEP | R-PASSWORD-DEFER | FUTURE_AUTH_CREDENTIAL | last_verified_at / included | RET-DEFAULT-TBD | T2-SCHEMA-001,T2-KEEP-001,T2-TIME-SEMANTICS-001,T2-FUTURE-AUTH-GATE-001 |
-| 10 | `revoked_at` | TEXT (NULL) | KEEP | R-PASSWORD-DEFER | FUTURE_AUTH_CREDENTIAL | revoked_at / included | RET-DEFAULT-TBD | T2-SCHEMA-001,T2-KEEP-001,T2-TIME-SEMANTICS-001,T2-FUTURE-AUTH-GATE-001 |
-| 11 | `updated_at` | TEXT (NOT NULL) | KEEP | R-PASSWORD-DEFER | FUTURE_AUTH_CREDENTIAL | updated_at / included | RET-DEFAULT-TBD | T2-SCHEMA-001,T2-KEEP-001,T2-TIME-SEMANTICS-001,T2-FUTURE-AUTH-GATE-001 |
+| 1 | `id` (PK) | TEXT (NULL) | KEEP | R-PASSWORD-DEFER | FUTURE_AUTH_CREDENTIAL | id / included | RET-CREDENTIAL-90D | T2-SCHEMA-001,T2-KEEP-001,T2-OPAQUE-REF-001,T2-FUTURE-AUTH-GATE-001 |
+| 2 | `account_id` | TEXT (NOT NULL) | KEEP | R-PASSWORD-DEFER | FUTURE_AUTH_CREDENTIAL | account_id / included | RET-CREDENTIAL-90D | T2-SCHEMA-001,T2-KEEP-001,T2-OPAQUE-REF-001,T2-FUTURE-AUTH-GATE-001 |
+| 3 | `password_hash` | TEXT (NOT NULL) | KEEP | R-PASSWORD-DEFER | FUTURE_AUTH_CREDENTIAL | password_hash / included | RET-CREDENTIAL-90D | T2-SCHEMA-001,T2-KEEP-001,T2-DIGEST-001,T2-FUTURE-AUTH-GATE-001 |
+| 4 | `status` | TEXT (NOT NULL) | KEEP | R-PASSWORD-DEFER | FUTURE_AUTH_CREDENTIAL | status / included | RET-CREDENTIAL-90D | T2-SCHEMA-001,T2-KEEP-001,T2-FUTURE-AUTH-GATE-001 |
+| 5 | `failure_count` | INTEGER (NOT NULL) | KEEP | R-PASSWORD-DEFER | FUTURE_AUTH_CREDENTIAL | failure_count / included | RET-CREDENTIAL-90D | T2-SCHEMA-001,T2-KEEP-001,T2-NUMERIC-RANGE-001,T2-FUTURE-AUTH-GATE-001 |
+| 6 | `locked_until` | TEXT (NULL) | KEEP | R-PASSWORD-DEFER | FUTURE_AUTH_CREDENTIAL | locked_until / included | RET-CREDENTIAL-90D | T2-SCHEMA-001,T2-KEEP-001,T2-TIME-SEMANTICS-001,T2-FUTURE-AUTH-GATE-001 |
+| 7 | `must_rotate` | INTEGER (NOT NULL) | KEEP | R-PASSWORD-DEFER | FUTURE_AUTH_CREDENTIAL | must_rotate / included | RET-CREDENTIAL-90D | T2-SCHEMA-001,T2-KEEP-001,T2-BOOLEAN-CHECK-001,T2-NUMERIC-RANGE-001,T2-FUTURE-AUTH-GATE-001 |
+| 8 | `created_at` | TEXT (NOT NULL) | KEEP | R-PASSWORD-DEFER | FUTURE_AUTH_CREDENTIAL | created_at / included | RET-CREDENTIAL-90D | T2-SCHEMA-001,T2-KEEP-001,T2-TIME-SEMANTICS-001,T2-FUTURE-AUTH-GATE-001 |
+| 9 | `last_verified_at` | TEXT (NULL) | KEEP | R-PASSWORD-DEFER | FUTURE_AUTH_CREDENTIAL | last_verified_at / included | RET-CREDENTIAL-90D | T2-SCHEMA-001,T2-KEEP-001,T2-TIME-SEMANTICS-001,T2-FUTURE-AUTH-GATE-001 |
+| 10 | `revoked_at` | TEXT (NULL) | KEEP | R-PASSWORD-DEFER | FUTURE_AUTH_CREDENTIAL | revoked_at / included | RET-CREDENTIAL-90D | T2-SCHEMA-001,T2-KEEP-001,T2-TIME-SEMANTICS-001,T2-FUTURE-AUTH-GATE-001 |
+| 11 | `updated_at` | TEXT (NOT NULL) | KEEP | R-PASSWORD-DEFER | FUTURE_AUTH_CREDENTIAL | updated_at / included | RET-CREDENTIAL-90D | T2-SCHEMA-001,T2-KEEP-001,T2-TIME-SEMANTICS-001,T2-FUTURE-AUTH-GATE-001 |
 
 ### 14.7 `platform_portal_passkey_credentials`（12 列；表处置 DEFER；源列 12；目标候选列 0）
 
@@ -375,8 +378,8 @@ DO 恢复到早先时点 → 以 D1 现态与指针为准，先对账再恢复�
 
 | # | 字段 | 类型 | 处置 | 规则 | 数据类 | 目标/纳入 | 保留 | 测试 |
 |---|---|---|---|---|---|---|---|---|
-| 1 | `id` (PK) | TEXT (NULL) | KEEP | R-OPAQUE-REF-KEEP | OPAQUE_REFERENCE | id / included | RET-DEFAULT-TBD | T2-SCHEMA-001,T2-KEEP-001,T2-OPAQUE-REF-001 |
-| 2 | `owner_ref` | TEXT (NOT NULL) | KEEP | R-OPAQUE-REF-KEEP | OPAQUE_REFERENCE | owner_ref / included | RET-DEFAULT-TBD | T2-SCHEMA-001,T2-KEEP-001,T2-OPAQUE-REF-001 |
-| 3 | `status` | TEXT (NOT NULL) | KEEP | R-ENUM-KEEP | INTERNAL_CONTROL_DATA | status / included | RET-DEFAULT-TBD | T2-SCHEMA-001,T2-KEEP-001 |
-| 4 | `created_at` | TEXT (NOT NULL) | KEEP | R-TIME-KEEP | TIMESTAMP | created_at / included | RET-DEFAULT-TBD | T2-SCHEMA-001,T2-KEEP-001,T2-TIME-SEMANTICS-001 |
-| 5 | `updated_at` | TEXT (NOT NULL) | KEEP | R-TIME-KEEP | TIMESTAMP | updated_at / included | RET-DEFAULT-TBD | T2-SCHEMA-001,T2-KEEP-001,T2-TIME-SEMANTICS-001 |
+| 1 | `id` (PK) | TEXT (NULL) | KEEP | R-OPAQUE-REF-KEEP | OPAQUE_REFERENCE | id / included | RET-ACCOUNT-5Y | T2-SCHEMA-001,T2-KEEP-001,T2-OPAQUE-REF-001 |
+| 2 | `owner_ref` | TEXT (NOT NULL) | KEEP | R-OPAQUE-REF-KEEP | OPAQUE_REFERENCE | owner_ref / included | RET-ACCOUNT-5Y | T2-SCHEMA-001,T2-KEEP-001,T2-OPAQUE-REF-001 |
+| 3 | `status` | TEXT (NOT NULL) | KEEP | R-ENUM-KEEP | INTERNAL_CONTROL_DATA | status / included | RET-ACCOUNT-5Y | T2-SCHEMA-001,T2-KEEP-001 |
+| 4 | `created_at` | TEXT (NOT NULL) | KEEP | R-TIME-KEEP | TIMESTAMP | created_at / included | RET-ACCOUNT-5Y | T2-SCHEMA-001,T2-KEEP-001,T2-TIME-SEMANTICS-001 |
+| 5 | `updated_at` | TEXT (NOT NULL) | KEEP | R-TIME-KEEP | TIMESTAMP | updated_at / included | RET-ACCOUNT-5Y | T2-SCHEMA-001,T2-KEEP-001,T2-TIME-SEMANTICS-001 |
