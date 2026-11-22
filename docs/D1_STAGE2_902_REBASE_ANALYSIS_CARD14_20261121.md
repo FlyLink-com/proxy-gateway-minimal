@@ -1,5 +1,15 @@
 # #902 冲突 / Rebase 分析（Card 14，2026-11-21）
 
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: d1_stage2_902_rebase_analysis_card14_20261121
+  superseded_by: null
+  last_verified_at: 2026-11-21
+  production_authority: false
+```
+
 > 本文档只做分析与方案，不执行 rebase，不动 PR #902 本身。
 > 核实基线：master `b1e46fef4e98bbfdace900a4e8b2d36a4284e176`（2026-11-21 `git ls-remote` + clone 后 `rev-parse` 一致）。
 
