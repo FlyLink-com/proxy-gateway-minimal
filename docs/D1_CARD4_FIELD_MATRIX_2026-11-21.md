@@ -42,7 +42,7 @@ T2 总量已核：KEEP 712 / TRANSFORM 19 / EXTERNALIZE 7 / DEFER 23 / CONDITION
 八张表 128 列 = KEEP 70 / CONDITIONAL 40 / EXTERNALIZE 7 / TRANSFORM 2 / DEFER 9。
 跨表 TRANSFORM 族（租约、幂等、事件去重）见 §9；它们与八张表有交集但不单独占表位。
 
-每字段四列含义：**处置方式**（KEEP / TRANSFORM / EXTERNALIZE / DEFER / CONDITIONAL，以 T2 为准，本轮三处修正见 §13）；
+每字段四列含义：**处置方式**（KEEP / TRANSFORM / EXTERNALIZE / DEFER / CONDITIONAL，以 T2 为准，本轮四处修正见 §13）；
 **摘要算法与输入规范**（精确到域分隔符与信封格式）；**空值语义**（NULL 与空串/缺失的区别）；
 **访问与恢复测试**（谁能读、怎么恢复、对应测试 ID）。
 
