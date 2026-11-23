@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 
 import { applyCoinDiscount } from "./coin-commerce-domain.mjs";
+import { assertWritable } from "./single-writer-authority.mjs";
 import { usageCycleForBinding } from "./usage-billing-cycle.mjs";
 import {
   COIN_COMMERCE_PRODUCTION_FULFILLMENT_OFFER_VERSIONS
@@ -377,6 +378,8 @@ export function discountedPlanSwitchAmount(decision, discountBasisPoints) {
 }
 
 export function insertPlanSwitchQuote(database, row) {
+  // U-F13 (W-068): phase fence, first statement.
+  assertWritable(database);
   return database.prepare(`
     insert into ${QUOTE_TABLE} (
       quote_ref, account_id, entitlement_id, kind,
@@ -405,6 +408,8 @@ export function insertPlanSwitchQuote(database, row) {
 }
 
 export function deliverScheduledPlanDowngrade(database, row) {
+  // U-F13 (W-068): phase fence, first statement.
+  assertWritable(database);
   const existing = database.prepare(`
     select *
       from ${SCHEDULED_TABLE}
@@ -449,6 +454,8 @@ export function supersedeScheduledPlanSwitch(database, {
   supersededByOrderRef,
   resolvedAt
 }) {
+  // U-F13 (W-069): phase fence, first statement.
+  assertWritable(database);
   return database.prepare(`
     update ${SCHEDULED_TABLE}
        set status = 'superseded',
@@ -465,6 +472,8 @@ export function markScheduledPlanSwitchApplied(database, {
   accountId,
   resolvedAt
 }) {
+  // U-F13 (W-069): phase fence, first statement.
+  assertWritable(database);
   return database.prepare(`
     update ${SCHEDULED_TABLE}
        set status = 'applied',
@@ -476,6 +485,8 @@ export function markScheduledPlanSwitchApplied(database, {
 }
 
 export function markScheduledPlanSwitchApplying(database, { switchRef, accountId }) {
+  // U-F13 (W-069): phase fence, first statement.
+  assertWritable(database);
   return database.prepare(`
     update ${SCHEDULED_TABLE} set status = 'applying'
      where switch_ref = ? and account_id = ? and status = 'scheduled'

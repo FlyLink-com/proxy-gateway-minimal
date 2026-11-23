@@ -26,6 +26,10 @@ import {
   markWalletFirstDeferredCheckoutQuoteReservedInTransaction,
   prepareWalletFirstDeferredCheckoutQuoteReservationInTransaction
 } from "./wallet-first-deferred-checkout-quote-contract.mjs";
+import {
+  assertWritable,
+  WriterAuthorityError
+} from "./single-writer-authority.mjs";
 
 const FACTORY_FIELDS = new Set([
   "dbPath",
@@ -131,6 +135,10 @@ function isStoreError(error) {
 
 function normalizeStoreError(error) {
   if (isStoreError(error)) return error;
+  // The writer-authority fence error must reach callers intact so a
+  // frozen-phase refusal is distinguishable from an infrastructure
+  // failure (same pass-through as the coin-commerce store).
+  if (error instanceof WriterAuthorityError) return error;
   if (
     typeof error?.code === "string"
     && (error.code.startsWith("SQLITE_BUSY") || error.code.startsWith("SQLITE_LOCKED"))
@@ -2122,11 +2130,15 @@ export function createSqliteDeferredResourceTransitionStore(options = {}) {
     return publicProjection(findTransition(transitionRef));
   }
 
-  const directReserveTransaction = db.transaction((context) => (
-    reserveTransitionBody(resolveDirectReserveRequest(context), normalizeNow(nowFn))
-  ));
+  const directReserveTransaction = db.transaction((context) => {
+    // U-F5: phase fence, first statement.
+    assertWritable(db);
+    return reserveTransitionBody(resolveDirectReserveRequest(context), normalizeNow(nowFn));
+  });
 
   const reserveCheckoutQuoteTransaction = db.transaction((request) => {
+    // U-F5: phase fence, first statement.
+    assertWritable(db);
     const occurredAt = normalizeNow(nowFn);
     const prepared = prepareWalletFirstDeferredCheckoutQuoteReservationInTransaction({
       database: db,
@@ -2180,6 +2192,8 @@ export function createSqliteDeferredResourceTransitionStore(options = {}) {
   }
 
   const claimTransaction = db.transaction((request) => {
+    // U-F5: phase fence, first statement.
+    assertWritable(db);
     const occurredAt = normalizeNow(nowFn);
     const leaseUntil = addMilliseconds(occurredAt, request.leaseMs);
     expireLeaseBoundTransitions(occurredAt);
@@ -2369,6 +2383,8 @@ export function createSqliteDeferredResourceTransitionStore(options = {}) {
   // the exact BEGIN IMMEDIATE transaction that the participant requires, so a
   // stale lease cannot validate a reservation for a newer worker.
   const verifyClaimedReservationTransaction = db.transaction((request) => {
+    // U-F5: phase fence, first statement.
+    assertWritable(db);
     const occurredAt = normalizeNow(nowFn);
     const row = findTransition(request.transitionRef);
     if (!row) throw storeError("deferred_transition_not_found");
@@ -2437,6 +2453,8 @@ export function createSqliteDeferredResourceTransitionStore(options = {}) {
   });
 
   const recoverEffectAppliedTransaction = db.transaction((request) => {
+    // U-F5: phase fence, first statement.
+    assertWritable(db);
     const occurredAt = normalizeNow(nowFn);
     const leaseUntil = addMilliseconds(occurredAt, request.leaseMs);
     for (let attempt = 0; attempt < 64; attempt += 1) {
@@ -2494,6 +2512,8 @@ export function createSqliteDeferredResourceTransitionStore(options = {}) {
   });
 
   const recordEffectTransaction = db.transaction((request) => {
+    // U-F5: phase fence, first statement.
+    assertWritable(db);
     const occurredAt = normalizeNow(nowFn);
     const replay = resolveReplay({
       operation: request.operation,
@@ -2553,6 +2573,8 @@ export function createSqliteDeferredResourceTransitionStore(options = {}) {
   });
 
   const settleTransaction = db.transaction((request) => {
+    // U-F5: phase fence, first statement.
+    assertWritable(db);
     const occurredAt = normalizeNow(nowFn);
     const replay = resolveReplay({
       operation: request.operation,
@@ -2667,6 +2689,8 @@ export function createSqliteDeferredResourceTransitionStore(options = {}) {
   });
 
   const cancelTransaction = db.transaction((request) => {
+    // U-F5: phase fence, first statement.
+    assertWritable(db);
     const occurredAt = normalizeNow(nowFn);
     const replay = resolveReplay({
       operation: request.operation,
@@ -2714,6 +2738,8 @@ export function createSqliteDeferredResourceTransitionStore(options = {}) {
   });
 
   const requireRequoteTransaction = db.transaction((request) => {
+    // U-F5: phase fence, first statement.
+    assertWritable(db);
     const occurredAt = normalizeNow(nowFn);
     const replay = resolveReplay({
       operation: request.operation,
@@ -2777,6 +2803,8 @@ export function createSqliteDeferredResourceTransitionStore(options = {}) {
   });
 
   const reconcileTransaction = db.transaction((request) => {
+    // U-F5: phase fence, first statement.
+    assertWritable(db);
     const occurredAt = normalizeNow(nowFn);
     const replay = resolveReplay({
       operation: request.operation,
@@ -2880,6 +2908,8 @@ export function createSqliteDeferredResourceTransitionStore(options = {}) {
   }
 
   const claimNextPendingRebaseTransaction = db.transaction((request) => {
+    // U-F5: phase fence, first statement.
+    assertWritable(db);
     const occurredAt = normalizeNow(nowFn);
     const leaseUntil = addMilliseconds(occurredAt, request.leaseMs);
     expireLeaseBoundRebases(occurredAt);
@@ -2912,6 +2942,8 @@ export function createSqliteDeferredResourceTransitionStore(options = {}) {
   });
 
   const applyClaimedRebaseTransaction = db.transaction((request) => {
+    // U-F5: phase fence, first statement.
+    assertWritable(db);
     const occurredAt = normalizeNow(nowFn);
     const replay = resolveReplay({
       operation: request.operation,
@@ -3172,6 +3204,8 @@ export function createSqliteDeferredResourceTransitionStore(options = {}) {
   });
 
   const reconcileRebaseTransaction = db.transaction((request) => {
+    // U-F5: phase fence, first statement.
+    assertWritable(db);
     const occurredAt = normalizeNow(nowFn);
     const replay = resolveReplay({
       operation: request.operation,

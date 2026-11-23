@@ -12,6 +12,7 @@ import {
   planD1IdentityBinding,
   resolveD1IdentityBinding
 } from "./d1-t2-identity-boundary.mjs";
+import { assertWritable } from "./single-writer-authority.mjs";
 
 const PROJECTION = "id, account_id, issuer_ref, subject_ref, status, created_at_ms, updated_at_ms, revoked_at_ms";
 const ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{7,127}$/;
@@ -87,6 +88,8 @@ export class IdentityBindingRepository {
   // This is an internal repository operation for a separately authorized
   // import/link workflow. No public route creates or rebinds identities.
   createActive(input) {
+    // U-F13 (W-020): phase fence, first statement.
+    assertWritable(this.db);
     const record = createD1IdentityBindingRecord(input);
     assertIssuerRef(record.issuerRef);
     if (record.status !== "active") {
@@ -130,6 +133,8 @@ export class IdentityBindingRepository {
   }
 
   revoke({ id, revokedAtMs } = {}) {
+    // U-F13 (W-021, NOISY resolved by dotted re-read): phase fence, first statement.
+    assertWritable(this.db);
     if (typeof id !== "string" || !ID_PATTERN.test(id)
       || !Number.isSafeInteger(revokedAtMs) || revokedAtMs < 0) {
       const error = new Error("identity_binding_revoke_invalid");
@@ -160,6 +165,8 @@ export class IdentityBindingRepository {
   // transaction, before step 5 runs. Logical deletion never calls this:
   // the account row (and its bindings) is retained.
   deleteForAccount({ accountRef, revokedAtMs } = {}) {
+    // U-F13 (W-022 / W-094): phase fence, first statement.
+    assertWritable(this.db);
     if (typeof accountRef !== "string" || !accountRef.trim()
       || !Number.isSafeInteger(revokedAtMs) || revokedAtMs < 0) {
       const error = new Error("identity_binding_delete_invalid");
