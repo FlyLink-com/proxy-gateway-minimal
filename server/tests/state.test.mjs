@@ -363,7 +363,7 @@ test("data-pack order handoff is absent by default and composed only with protec
     assert.equal(typeof optedIn.platform.coinCommerceDataPackRotationCoordinator.start, "function");
     optedIn.platform.coinCommerceDataPackRotationCoordinator.start();
     assert.deepEqual(optedIn.platform.coinCommerceDataPackRotationCoordinator.getStatus(), {
-      running: true, completedBatches: 1, failedBatches: 0, failedIntents: 0
+      running: true, completedBatches: 1, failedBatches: 0, failedIntents: 0, timerArmed: true
     });
     optedIn.platform.coinCommerceDataPackRotationCoordinator.stop();
     assert.throws(() => optedIn.platform.coinCommerceDataPackOrderDelivery.get({
