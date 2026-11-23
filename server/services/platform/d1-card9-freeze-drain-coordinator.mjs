@@ -61,6 +61,7 @@ import {
   transitionWriterAuthority,
 } from "./single-writer-authority.mjs";
 import {
+  SCHEDULER_JOBS,
   UNFENCED_WRITER_BASELINE,
   verifyFreezeReadinessBundle,
 } from "./d1-stage2-freeze-drain.mjs";
@@ -642,6 +643,184 @@ export function verifyCoordinatorReceipt(db, receipt) {
 }
 
 // ---------------------------------------------------------------------------
+// Snapshot-gate log + manifest (U-F10 D-2/D-3).
+//
+// The snapshot-gate script opens the live database file directly, so no
+// store fence can cover it. The coordinator therefore gates it in two
+// places: it issues a written run instruction only after the freeze
+// (G1) and drain (G2) gates hold, and T2 refuses to switch until the
+// snapshot manifest produced under that instruction is bound to the
+// freeze receipt (D-3). Every issue / refusal / binding / void is an
+// append-only, hash-chained log entry in d1_snapshot_gate_log, in the
+// same style as the coordinator transition log. The log never runs a
+// snapshot and never touches a database file: it only records the
+// instruction, the binding, and the refusal.
+// ---------------------------------------------------------------------------
+
+export const SNAPSHOT_GATE_LOG_TABLE = "d1_snapshot_gate_log";
+export const SNAPSHOT_GATE_LOG_GENESIS_DIGEST = createHash("sha256")
+  .update("d1-card9-snapshot-gate-log:genesis", "utf8")
+  .digest("hex");
+export const SNAPSHOT_GATE_LOG_KINDS = Object.freeze(["instruction", "refusal", "binding", "void"]);
+export const SNAPSHOT_GATE_MANIFEST_TYPE = "snapshot-gate-manifest";
+
+function snapshotGateLogDigest({ seq, kind, snapshotId, checkpointId, freezeReceiptDigest, gateRefs, operatorRef, windowStart, windowEnd, createdAt, previousDigest }) {
+  return sha256Hex(canonicalJson({
+    version: FREEZE_DRAIN_COORDINATOR_VERSION,
+    type: "snapshot-gate-log-entry",
+    seq, kind, snapshotId, checkpointId, freezeReceiptDigest, gateRefs, operatorRef, windowStart, windowEnd, createdAt, previousDigest,
+  }));
+}
+
+export function ensureSnapshotGateLog(db) {
+  assertDbHandle(db);
+  db.exec(`create table if not exists ${SNAPSHOT_GATE_LOG_TABLE} (
+    seq integer primary key,
+    kind text not null,
+    snapshot_id text not null,
+    checkpoint_id text not null,
+    freeze_receipt_digest text not null,
+    gate_refs text not null,
+    operator_ref text not null,
+    window_start text not null,
+    window_end text not null,
+    created_at text not null,
+    previous_digest text not null,
+    receipt_digest text not null
+  )`);
+  return true;
+}
+
+// Read-only: this never creates the snapshot-gate log table.
+export function readSnapshotGateLog(db) {
+  assertDbHandle(db);
+  const exists = db.prepare("select name from main.sqlite_schema where type = 'table' and name = ?").get(SNAPSHOT_GATE_LOG_TABLE);
+  if (!exists) return [];
+  return db.prepare(`select * from ${SNAPSHOT_GATE_LOG_TABLE} order by seq asc`).all().map((row) => ({
+    seq: row.seq,
+    kind: row.kind,
+    snapshotId: row.snapshot_id,
+    checkpointId: row.checkpoint_id,
+    freezeReceiptDigest: row.freeze_receipt_digest,
+    gateRefs: JSON.parse(row.gate_refs),
+    operatorRef: row.operator_ref,
+    windowStart: row.window_start,
+    windowEnd: row.window_end,
+    createdAt: row.created_at,
+    previousDigest: row.previous_digest,
+    receiptDigest: row.receipt_digest,
+  }));
+}
+
+export function issueSnapshotGateLogEntry(db, { kind, snapshotId, checkpointId = "", freezeReceiptDigest = "", gateRefs = {}, operatorRef = "", windowStart = "", windowEnd = "", now = () => new Date() } = {}) {
+  assertDbHandle(db);
+  assertSnapshotId(snapshotId);
+  if (!SNAPSHOT_GATE_LOG_KINDS.includes(kind)) {
+    throw coordinatorError("freeze_snapshot_gate_log_invalid", `unknown snapshot-gate log kind: ${String(kind)}`);
+  }
+  ensureSnapshotGateLog(db);
+  const existing = readSnapshotGateLog(db);
+  const seq = existing.length === 0 ? 1 : existing[existing.length - 1].seq + 1;
+  const previousDigest = existing.length === 0 ? SNAPSHOT_GATE_LOG_GENESIS_DIGEST : existing[existing.length - 1].receiptDigest;
+  const createdAt = now().toISOString();
+  const receiptDigest = snapshotGateLogDigest({ seq, kind, snapshotId, checkpointId, freezeReceiptDigest, gateRefs, operatorRef, windowStart, windowEnd, createdAt, previousDigest });
+  db.prepare(`insert into ${SNAPSHOT_GATE_LOG_TABLE}
+    (seq, kind, snapshot_id, checkpoint_id, freeze_receipt_digest, gate_refs, operator_ref, window_start, window_end, created_at, previous_digest, receipt_digest)
+    values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+    seq, kind, snapshotId, checkpointId, freezeReceiptDigest, JSON.stringify(gateRefs), operatorRef, windowStart, windowEnd, createdAt, previousDigest, receiptDigest,
+  );
+  return {
+    seq, kind, snapshotId, checkpointId, freezeReceiptDigest, gateRefs, operatorRef, windowStart, windowEnd, createdAt, previousDigest, receiptDigest,
+  };
+}
+
+export function verifySnapshotGateLog(db) {
+  const entries = readSnapshotGateLog(db);
+  let previousDigest = SNAPSHOT_GATE_LOG_GENESIS_DIGEST;
+  for (const entry of entries) {
+    if (entry.previousDigest !== previousDigest) {
+      throw coordinatorError("freeze_snapshot_gate_log_broken", `snapshot-gate log chain is broken at seq ${entry.seq}`);
+    }
+    const expected = snapshotGateLogDigest({
+      seq: entry.seq, kind: entry.kind, snapshotId: entry.snapshotId, checkpointId: entry.checkpointId,
+      freezeReceiptDigest: entry.freezeReceiptDigest, gateRefs: entry.gateRefs, operatorRef: entry.operatorRef,
+      windowStart: entry.windowStart, windowEnd: entry.windowEnd, createdAt: entry.createdAt,
+      previousDigest: entry.previousDigest,
+    });
+    if (expected !== entry.receiptDigest) {
+      throw coordinatorError("freeze_snapshot_gate_log_broken", `snapshot-gate log receipt digest mismatch at seq ${entry.seq}`);
+    }
+    previousDigest = entry.receiptDigest;
+  }
+  return { valid: true, entries: entries.length };
+}
+
+// A snapshot manifest binds one snapshot file to one freeze receipt.
+// quickCheck / foreignKeys must both be true: a snapshot that failed
+// acceptance cannot be given a legal manifest at all (U-F10 A6).
+export function buildSnapshotGateManifest({ snapshotId, checkpointId, freezeReceiptDigest, basename, sha256, byteCount, createdAt, quickCheck, foreignKeys, schemaVersion, journalMode } = {}) {
+  assertSnapshotId(snapshotId);
+  assertNonEmptyString(checkpointId, "checkpoint id", "freeze_snapshot_manifest_invalid");
+  if (typeof freezeReceiptDigest !== "string" || !/^[0-9a-f]{64}$/.test(freezeReceiptDigest)) {
+    throw coordinatorError("freeze_snapshot_manifest_invalid", "snapshot manifest requires a 64-hex freeze receipt digest");
+  }
+  assertNonEmptyString(basename, "snapshot basename", "freeze_snapshot_manifest_invalid");
+  if (typeof sha256 !== "string" || !/^[0-9a-f]{64}$/.test(sha256)) {
+    throw coordinatorError("freeze_snapshot_manifest_invalid", "snapshot manifest requires a 64-hex snapshot SHA-256");
+  }
+  if (!Number.isInteger(byteCount) || byteCount <= 0) {
+    throw coordinatorError("freeze_snapshot_manifest_invalid", "snapshot manifest requires a positive integer byte count");
+  }
+  if (typeof createdAt !== "string" || Number.isNaN(Date.parse(createdAt))) {
+    throw coordinatorError("freeze_snapshot_manifest_invalid", "snapshot manifest requires an ISO createdAt timestamp");
+  }
+  if (quickCheck !== true || foreignKeys !== true) {
+    throw coordinatorError("freeze_snapshot_manifest_invalid", "snapshot manifest requires quickCheck and foreignKeys both true (a failed snapshot cannot be manifested)");
+  }
+  if ((!Number.isInteger(schemaVersion) && (typeof schemaVersion !== "string" || schemaVersion.length === 0))
+    || (typeof schemaVersion === "string" && schemaVersion.length === 0)) {
+    throw coordinatorError("freeze_snapshot_manifest_invalid", "snapshot manifest requires a schema version (integer or non-empty string)");
+  }
+  assertNonEmptyString(journalMode, "journal mode", "freeze_snapshot_manifest_invalid");
+  const unsigned = {
+    type: SNAPSHOT_GATE_MANIFEST_TYPE,
+    version: FREEZE_DRAIN_COORDINATOR_VERSION,
+    snapshotId, checkpointId, freezeReceiptDigest, basename, sha256, byteCount, createdAt,
+    quickCheck, foreignKeys, schemaVersion, journalMode,
+  };
+  return { ...unsigned, manifestDigest: sha256Hex(canonicalJson(unsigned)) };
+}
+
+export function verifySnapshotGateManifest(manifest) {
+  if (!manifest || typeof manifest !== "object" || Array.isArray(manifest)
+    || manifest.type !== SNAPSHOT_GATE_MANIFEST_TYPE
+    || manifest.version !== FREEZE_DRAIN_COORDINATOR_VERSION
+    || typeof manifest.manifestDigest !== "string") {
+    throw coordinatorError("freeze_snapshot_manifest_invalid", "snapshot-gate manifest is malformed");
+  }
+  // Re-run the builder's shape checks (including the A6 acceptance
+  // rule) and then the digest, so a hand-built manifest with a
+  // recomputed digest over failing acceptance is still refused.
+  const rebuilt = buildSnapshotGateManifest({
+    snapshotId: manifest.snapshotId,
+    checkpointId: manifest.checkpointId,
+    freezeReceiptDigest: manifest.freezeReceiptDigest,
+    basename: manifest.basename,
+    sha256: manifest.sha256,
+    byteCount: manifest.byteCount,
+    createdAt: manifest.createdAt,
+    quickCheck: manifest.quickCheck,
+    foreignKeys: manifest.foreignKeys,
+    schemaVersion: manifest.schemaVersion,
+    journalMode: manifest.journalMode,
+  });
+  if (rebuilt.manifestDigest !== manifest.manifestDigest) {
+    throw coordinatorError("freeze_snapshot_manifest_digest_mismatch", "snapshot-gate manifest digest does not match its contents");
+  }
+  return { valid: true, manifestDigest: manifest.manifestDigest };
+}
+
+// ---------------------------------------------------------------------------
 // Coordinator
 // ---------------------------------------------------------------------------
 
@@ -721,6 +900,7 @@ export function createFreezeDrainCoordinator(db, { snapshotId, now = () => new D
   assertDbHandle(db);
   assertSnapshotId(snapshotId);
   ensureCoordinatorLog(db);
+  ensureSnapshotGateLog(db);
   // Scheduler wiring (P-2, scheduler-quiescence wiring, 2026-11-23):
   // the freeze-time caller must hold the live process's scheduler
   // references, because the coordinator itself cannot observe the
@@ -765,7 +945,7 @@ export function createFreezeDrainCoordinator(db, { snapshotId, now = () => new D
       return describeSchedulerWiring(schedulerRefs);
     },
 
-    freeze({ readinessBundle, coverageMatrix, drainTracker, checkpointId, outstandingJobs = [] } = {}) {
+    freeze({ readinessBundle, coverageMatrix, drainTracker, checkpointId, outstandingJobs = [], measurementDrain } = {}) {
       const current = requirePhase(WRITER_PHASES.BWH_ACTIVE, "freeze (T1)");
       verifyFreezeReadinessBundle(readinessBundle);
       verifyWriterCoverageMatrix(coverageMatrix);
@@ -779,11 +959,27 @@ export function createFreezeDrainCoordinator(db, { snapshotId, now = () => new D
       assertNonEmptyString(checkpointId, "checkpoint id", "freeze_coordinator_checkpoint_invalid");
       const freezeReceipt = buildFreezeReceipt(db, { snapshotId, checkpointId, outstandingJobs });
       verifyFreezeReceipt(freezeReceipt);
+      // U-F11 J2/J5: when the caller supplies the measurement drain
+      // counts, they must be equal non-negative integers (the queue
+      // length before freeze and the number discarded at freeze). A
+      // mismatch refuses the freeze; omitting the counts keeps the
+      // existing T1 signature compatible and records nothing.
+      let measurementGateRefs = {};
+      if (measurementDrain !== undefined) {
+        const { queueLengthBefore, discardedMeasurementEnqueues } = measurementDrain ?? {};
+        if (!Number.isInteger(queueLengthBefore) || queueLengthBefore < 0
+          || !Number.isInteger(discardedMeasurementEnqueues) || discardedMeasurementEnqueues < 0
+          || queueLengthBefore !== discardedMeasurementEnqueues) {
+          throw coordinatorError("freeze_measurement_drain_mismatch", "freeze (T1) measurement drain counts must be equal non-negative integers (queueLengthBefore === discardedMeasurementEnqueues)");
+        }
+        measurementGateRefs = { measurementQueueLengthBefore: queueLengthBefore, discardedMeasurementEnqueues };
+      }
       const gateRefs = {
         bundleHash: readinessBundle.bundleHash,
         coverageDigest: coverageMatrix.matrixDigest,
         freezeReceiptDigest: freezeReceipt.receiptDigest,
         drain: { inflightWrites: drainStatus.inflightWrites, inflightCallbacks: drainStatus.inflightCallbacks, hwmStable: drainStatus.hwmStable },
+        ...measurementGateRefs,
       };
       const receiptRef = transitionReceiptRef("T1", gateRefs);
       const { next, coordinatorReceipt } = transitionWithReceipt(db, {
@@ -791,6 +987,175 @@ export function createFreezeDrainCoordinator(db, { snapshotId, now = () => new D
         fromEpoch: current.epoch, snapshotId, receiptRef, gateRefs, now,
       });
       return { transitionId: "T1", authority: next, freezeReceipt, coordinatorReceipt };
+    },
+
+    // U-F10 D-2: issue a snapshot-gate run instruction. G1 requires
+    // phase FROZEN, a valid freeze receipt, and a T1 log entry for
+    // this snapshot whose freezeReceiptDigest matches the receipt. G2
+    // requires a scheduler-quiescence receipt with every job (W-116
+    // included) proven quiesced and a callback-drain receipt with no
+    // pending callbacks. Any gate failure is written to the
+    // snapshot-gate log as a `refusal` entry and then thrown as
+    // freeze_snapshot_gate_refused. A malformed operator / window is a
+    // caller error (freeze_snapshot_gate_invalid) and is not logged as
+    // a refusal. Issuing an instruction never runs a snapshot.
+    issueSnapshotGateInstruction({ freezeReceipt, schedulerQuiescence, callbackDrain, operator, windowStart, windowEnd } = {}) {
+      assertNonEmptyString(operator, "snapshot-gate operator", "freeze_snapshot_gate_invalid");
+      if (typeof windowStart !== "string" || Number.isNaN(Date.parse(windowStart))
+        || typeof windowEnd !== "string" || Number.isNaN(Date.parse(windowEnd))
+        || Date.parse(windowEnd) <= Date.parse(windowStart)) {
+        throw coordinatorError("freeze_snapshot_gate_invalid", "snapshot-gate instruction requires a valid window (windowStart / windowEnd ISO timestamps, end after start)");
+      }
+      const checkpointId = typeof freezeReceipt?.checkpointId === "string" ? freezeReceipt.checkpointId : "";
+      const receiptDigest = typeof freezeReceipt?.receiptDigest === "string" ? freezeReceipt.receiptDigest : "";
+      const refuse = (gate, reason) => {
+        issueSnapshotGateLogEntry(db, {
+          kind: "refusal", snapshotId, checkpointId, freezeReceiptDigest: receiptDigest,
+          gateRefs: { gate, reason }, operatorRef: operator, windowStart, windowEnd, now,
+        });
+        throw coordinatorError("freeze_snapshot_gate_refused", `snapshot-gate instruction refused (${gate}): ${reason}`);
+      };
+      const current = (() => {
+        try {
+          return readWriterAuthority(db);
+        } catch {
+          return null;
+        }
+      })();
+      if (!current || current.phase !== WRITER_PHASES.FROZEN) {
+        return refuse("G1", `phase must be FROZEN to run snapshot-gate, current phase is ${current?.phase ?? "unknown"}`);
+      }
+      try {
+        verifyFreezeReceipt(freezeReceipt);
+      } catch {
+        return refuse("G1", "freeze receipt failed verification");
+      }
+      const t1Entries = readCoordinatorLog(db).filter((entry) => entry.transitionId === "T1" && entry.snapshotId === snapshotId);
+      const latestT1 = t1Entries[t1Entries.length - 1];
+      if (!latestT1 || latestT1.gateRefs?.freezeReceiptDigest !== freezeReceipt.receiptDigest) {
+        return refuse("G1", "no T1 freeze entry for this snapshot matches the freeze receipt digest");
+      }
+      const schedulerOk = schedulerQuiescence
+        && schedulerQuiescence.kind === "scheduler-quiescence"
+        && schedulerQuiescence.snapshotId === snapshotId
+        && Array.isArray(schedulerQuiescence.jobs)
+        && schedulerQuiescence.jobs.length === SCHEDULER_JOBS.length
+        && schedulerQuiescence.jobs.every((job) => job && job.quiesced === true
+          && SCHEDULER_JOBS.some((known) => known.id === job.id && known.name === job.name && known.evidence === job.evidence))
+        && schedulerQuiescence.jobs.some((job) => job.id === "W-116" && job.quiesced === true);
+      if (!schedulerOk) {
+        return refuse("G2", "scheduler quiescence is not proven for every job (W-116 included)");
+      }
+      const drainOk = callbackDrain
+        && callbackDrain.kind === "callback-drain"
+        && callbackDrain.snapshotId === snapshotId
+        && Number.isInteger(callbackDrain.drained) && callbackDrain.drained >= 0
+        && Array.isArray(callbackDrain.pending) && callbackDrain.pending.length === 0;
+      if (!drainOk) {
+        return refuse("G2", "callback drain is not complete (pending callbacks remain)");
+      }
+      const entry = issueSnapshotGateLogEntry(db, {
+        kind: "instruction", snapshotId, checkpointId, freezeReceiptDigest: receiptDigest,
+        gateRefs: { freezeReceiptDigest: receiptDigest },
+        operatorRef: operator, windowStart, windowEnd, now,
+      });
+      return {
+        snapshotId, checkpointId, freezeReceiptDigest: receiptDigest,
+        operator, windowStart, windowEnd,
+        instructionDigest: entry.receiptDigest,
+      };
+    },
+
+    // U-F10 D-3 (bind half): bind a snapshot manifest to an issued
+    // instruction. The manifest must verify (digest + shapes,
+    // including the A6 rule that quickCheck/foreignKeys are both
+    // true) and match the instruction field for field; the
+    // instruction must exist in the snapshot-gate log and its
+    // manifest must not have been voided. A failed acceptance writes
+    // a `void` entry (the snapshot is dead) and throws
+    // freeze_snapshot_acceptance_failed; any other mismatch throws
+    // freeze_snapshot_bind_refused and writes no binding entry.
+    bindSnapshotManifest({ instruction, manifest, acceptance } = {}) {
+      if (!instruction || typeof instruction !== "object" || Array.isArray(instruction)
+        || typeof instruction.instructionDigest !== "string"
+        || instruction.snapshotId !== snapshotId) {
+        throw coordinatorError("freeze_snapshot_bind_refused", "snapshot manifest binding requires an instruction issued by this coordinator");
+      }
+      const issued = readSnapshotGateLog(db).find((entry) => entry.kind === "instruction"
+        && entry.snapshotId === snapshotId
+        && entry.receiptDigest === instruction.instructionDigest);
+      if (!issued) {
+        throw coordinatorError("freeze_snapshot_bind_refused", "snapshot manifest binding requires an instruction recorded in the snapshot-gate log");
+      }
+      try {
+        verifySnapshotGateManifest(manifest);
+      } catch (error) {
+        throw coordinatorError("freeze_snapshot_bind_refused", `snapshot manifest failed verification: ${error?.message ?? "invalid manifest"}`);
+      }
+      if (manifest.snapshotId !== instruction.snapshotId
+        || manifest.checkpointId !== instruction.checkpointId
+        || manifest.freezeReceiptDigest !== instruction.freezeReceiptDigest) {
+        throw coordinatorError("freeze_snapshot_bind_refused", "snapshot manifest does not match the instruction (snapshotId / checkpointId / freezeReceiptDigest)");
+      }
+      const voided = readSnapshotGateLog(db).some((entry) => entry.kind === "void"
+        && entry.snapshotId === snapshotId
+        && entry.gateRefs?.manifestDigest === manifest.manifestDigest);
+      if (voided) {
+        throw coordinatorError("freeze_snapshot_bind_refused", "snapshot manifest has been voided and cannot be bound");
+      }
+      if (!acceptance || acceptance.quickCheck !== true || acceptance.foreignKeys !== true) {
+        issueSnapshotGateLogEntry(db, {
+          kind: "void", snapshotId, checkpointId: manifest.checkpointId,
+          freezeReceiptDigest: manifest.freezeReceiptDigest,
+          gateRefs: { manifestDigest: manifest.manifestDigest, reason: "snapshot acceptance failed (quickCheck / foreignKeys)" },
+          operatorRef: instruction.operator ?? "", windowStart: instruction.windowStart ?? "", windowEnd: instruction.windowEnd ?? "", now,
+        });
+        throw coordinatorError("freeze_snapshot_acceptance_failed", "snapshot acceptance failed (quickCheck / foreignKeys not both true); the snapshot is voided and cannot be used");
+      }
+      const entry = issueSnapshotGateLogEntry(db, {
+        kind: "binding", snapshotId, checkpointId: manifest.checkpointId,
+        freezeReceiptDigest: manifest.freezeReceiptDigest,
+        gateRefs: {
+          manifestDigest: manifest.manifestDigest,
+          freezeReceiptDigest: manifest.freezeReceiptDigest,
+          instructionDigest: instruction.instructionDigest,
+          acceptance: { quickCheck: true, foreignKeys: true },
+        },
+        operatorRef: instruction.operator ?? "", windowStart: instruction.windowStart ?? "", windowEnd: instruction.windowEnd ?? "", now,
+      });
+      return {
+        snapshotId, manifestDigest: manifest.manifestDigest,
+        freezeReceiptDigest: manifest.freezeReceiptDigest,
+        bindingDigest: entry.receiptDigest,
+      };
+    },
+
+    // Void a snapshot manifest by digest. A voided manifest can never
+    // be bound afterwards, and a T2 switch that only has a voided
+    // binding is refused by the D-3 gate.
+    voidSnapshotManifest({ snapshotId: voidSnapshotId, manifestDigest, reason } = {}) {
+      if (voidSnapshotId !== snapshotId) {
+        throw coordinatorError("freeze_snapshot_void_invalid", "void requires this coordinator's snapshot id");
+      }
+      if (typeof manifestDigest !== "string" || !/^[0-9a-f]{64}$/.test(manifestDigest)) {
+        throw coordinatorError("freeze_snapshot_void_invalid", "void requires a 64-hex manifest digest");
+      }
+      assertNonEmptyString(reason, "void reason", "freeze_snapshot_void_invalid");
+      const entry = issueSnapshotGateLogEntry(db, {
+        kind: "void", snapshotId, checkpointId: "",
+        freezeReceiptDigest: "",
+        gateRefs: { manifestDigest, reason },
+        operatorRef: "", windowStart: "", windowEnd: "", now,
+      });
+      return { snapshotId, manifestDigest, voidDigest: entry.receiptDigest };
+    },
+
+    readSnapshotGateLog() {
+      return readSnapshotGateLog(db);
+    },
+
+    verifySnapshotGateLog() {
+      return verifySnapshotGateLog(db);
     },
 
     switchToD1({ deltaReport, verificationReport, c1ApprovalRef, handover = {} } = {}) {
@@ -813,9 +1178,31 @@ export function createFreezeDrainCoordinator(db, { snapshotId, now = () => new D
       if (typeof handover.verifiedAt !== "string" || Number.isNaN(Date.parse(handover.verifiedAt))) {
         throw coordinatorError("freeze_handover_unverified", "staged handover requires a verifiedAt ISO timestamp");
       }
+      // U-F10 D-3: T2 must not start until the snapshot taken under
+      // this freeze is bound to the freeze receipt. The binding gate
+      // runs after the other T2 gates so their refusal codes are
+      // preserved; a missing or voided binding refuses the switch
+      // here, still in FROZEN, before any phase move.
+      const t1Entries = readCoordinatorLog(db).filter((entry) => entry.transitionId === "T1" && entry.snapshotId === snapshotId);
+      const latestT1 = t1Entries[t1Entries.length - 1];
+      const boundFreezeDigest = latestT1?.gateRefs?.freezeReceiptDigest;
+      const gateLog = readSnapshotGateLog(db);
+      const voidedManifests = new Set(gateLog
+        .filter((entry) => entry.kind === "void" && entry.snapshotId === snapshotId)
+        .map((entry) => entry.gateRefs?.manifestDigest));
+      const binding = gateLog.find((entry) => entry.kind === "binding"
+        && entry.snapshotId === snapshotId
+        && entry.freezeReceiptDigest === boundFreezeDigest
+        && typeof entry.gateRefs?.manifestDigest === "string"
+        && !voidedManifests.has(entry.gateRefs.manifestDigest));
+      if (!binding) {
+        throw coordinatorError("freeze_snapshot_unbound", "switch to D1 (T2) requires a snapshot manifest bound to this freeze receipt; no live binding exists, staying in FROZEN");
+      }
       const gateRefs = {
         deltaDigest: deltaReport.reportDigest,
         verificationDigest: verificationReport.reportDigest,
+        snapshotBindingDigest: binding.receiptDigest,
+        snapshotManifestDigest: binding.gateRefs.manifestDigest,
         c1ApprovalRef,
         handover: { verifiedBy: handover.verifiedBy, verifiedAt: handover.verifiedAt, receiptRef: handover.receiptRef },
       };

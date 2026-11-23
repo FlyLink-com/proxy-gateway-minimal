@@ -25,6 +25,7 @@ import {
   FREEZE_DRAIN_COORDINATOR_VERSION,
   ROLLBACK_TRIGGERS,
   VERIFICATION_CHECK_IDS,
+  buildSnapshotGateManifest,
   buildWriterCoverageMatrix,
   verifyWriterCoverageMatrix,
   createDrainTracker,
@@ -131,6 +132,7 @@ function freezeHappy(t) {
 
 function driveToD1(t) {
   const ctx = freezeHappy(t);
+  bindFrozenSnapshot(ctx);
   const switched = ctx.coordinator.switchToD1({
     deltaReport: appliedDelta(),
     verificationReport: passingVerification(),
@@ -138,6 +140,45 @@ function driveToD1(t) {
     handover: { verifiedBy: "s2s-reviewer-001", verifiedAt: "2026-11-21T00:05:00.000Z", receiptRef: "s2s-handover-001" },
   });
   return { ...ctx, switched };
+}
+
+// U-F10 D-2/D-3: the full snapshot-gate chain for a frozen coordinator —
+// issue the run instruction (G1/G2), build a manifest for the snapshot
+// taken under it, and bind the manifest to the freeze receipt. T2
+// (switchToD1) refuses to run without this binding.
+function bindFrozenSnapshot(ctx) {
+  const { db, coordinator, result } = ctx;
+  const schedulerQuiescence = buildSchedulerQuiescenceReceipt({
+    snapshotId: SNAPSHOT,
+    evidence: Object.fromEntries(SCHEDULER_JOBS.map((job) => [job.id, true])),
+  });
+  const callbackDrain = buildCallbackDrainReceipt({ snapshotId: SNAPSHOT, callbacks: [] });
+  const instruction = coordinator.issueSnapshotGateInstruction({
+    freezeReceipt: result.freezeReceipt,
+    schedulerQuiescence,
+    callbackDrain,
+    operator: "s2s-operator-001",
+    windowStart: "2026-11-21T00:05:00.000Z",
+    windowEnd: "2026-11-21T00:10:00.000Z",
+  });
+  const manifest = buildSnapshotGateManifest({
+    snapshotId: SNAPSHOT,
+    checkpointId: CHECKPOINT,
+    freezeReceiptDigest: result.freezeReceipt.receiptDigest,
+    basename: "s2s-snapshot.sqlite",
+    sha256: "a".repeat(64),
+    byteCount: 4096,
+    createdAt: "2026-11-21T00:05:00.000Z",
+    quickCheck: true,
+    foreignKeys: true,
+    schemaVersion: 1,
+    journalMode: "delete",
+  });
+  return coordinator.bindSnapshotManifest({
+    instruction,
+    manifest,
+    acceptance: { quickCheck: true, foreignKeys: true },
+  });
 }
 
 function codeOf(fn) {
