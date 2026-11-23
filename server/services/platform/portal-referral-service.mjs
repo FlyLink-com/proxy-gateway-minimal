@@ -630,6 +630,55 @@ export function createPortalReferralService({
   }
   let timer = null,
     closed = false;
+  // W-115 quiescence wiring (scheduler-quiescence wiring, 2026-11-23):
+  // selective tick state for the freeze executor. `tickInFlight` is set
+  // on tick entry and cleared on exit, including the exception path, and
+  // `lastTickEndedAt` records when the latest tick finished. `stopTick()`
+  // only clears the interval: it never touches the wallet or the database
+  // connection and never sets `closed`, so `start()` can re-arm the tick
+  // afterwards. Nothing here disarms the tick on its own; the freeze
+  // executor calls `stopTick()` inside the freeze window.
+  let tickInFlight = false,
+    lastTickEndedAt = null,
+    tickTimerClearedAt = null,
+    tickWaiters = [];
+  function clearTickTimer() {
+    if (!timer) return;
+    clearInterval(timer);
+    timer = null;
+    tickTimerClearedAt ??= now();
+  }
+  // Stops only the tick and waits for the tick in flight at call time, if
+  // any, before reporting the stop evidence. The tick body is synchronous
+  // today, so in practice this wait only triggers if `stopTick()` is called
+  // re-entrantly from inside a tick or if the tick body later becomes
+  // asynchronous; the wait is kept so the contract holds in both cases.
+  // Never call `stopTick()` from inside a tick: the tick cannot finish
+  // until this wait resolves.
+  async function stopTick() {
+    clearTickTimer();
+    if (tickTimerClearedAt === null) tickTimerClearedAt = now();
+    if (tickInFlight) {
+      await new Promise((resolve) => {
+        tickWaiters.push(resolve);
+      });
+    }
+    return Object.freeze({
+      timerClearedAt: tickTimerClearedAt,
+      lastTickEndedAt,
+      tickInFlight: false,
+    });
+  }
+  // Read-only tick status for the freeze executor's pre-stop reading and
+  // post-stop check. `timerArmed` is a direct read; `tickInFlight` is the
+  // process-internal flag set by the tick body itself.
+  function getTickStatus() {
+    return Object.freeze({
+      timerArmed: timer !== null,
+      tickInFlight,
+      lastTickEndedAt,
+    });
+  }
   function start() {
     if (closed) throw referralError();
     if (!rewardsEnabled) return;
@@ -638,15 +687,29 @@ export function createPortalReferralService({
     // even when one account is blocked, and wraps for durable retry after restart.
     const tick = () => {
       if (closed || !rewardsEnabled) return;
+      tickInFlight = true;
       try {
-        reconcile();
-      } catch {
-        /* retry on next bounded tick */
-      }
-      try {
-        settle();
-      } catch {
-        /* retry internal ledger settlement on the next bounded tick */
+        try {
+          reconcile();
+        } catch {
+          /* retry on next bounded tick */
+        }
+        try {
+          settle();
+        } catch {
+          /* retry internal ledger settlement on the next bounded tick */
+        }
+      } finally {
+        tickInFlight = false;
+        try {
+          lastTickEndedAt = now();
+        } catch {
+          // A broken clock must not wedge a stopTick() waiter: keep the
+          // previous lastTickEndedAt and still release the waiters.
+        }
+        const waiters = tickWaiters;
+        tickWaiters = [];
+        for (const resolve of waiters) resolve();
       }
     };
     tick();
@@ -655,6 +718,8 @@ export function createPortalReferralService({
   }
   return {
     start,
+    stopTick,
+    getTickStatus,
     profile,
     createLink,
     capture,
@@ -668,7 +733,7 @@ export function createPortalReferralService({
     close() {
       if (closed) return;
       closed = true;
-      if (timer) clearInterval(timer);
+      clearTickTimer();
       wallet.close();
       if (owned) db.close();
     },

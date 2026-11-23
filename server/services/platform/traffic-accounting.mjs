@@ -44,6 +44,35 @@ function isoNow(nowFn) {
   return isoText(value instanceof Date ? value.toISOString() : value, "now");
 }
 
+// Drain-tracker hook (scheduler-quiescence wiring, 2026-11-23): brackets
+// a synchronous unit of work with register/settle so the freeze-time
+// drain tracker can observe it in flight (W-117 / W-118 sample writes,
+// METERING business calls). A settle failure never masks the work's own
+// error; a register failure fails closed before the work runs.
+function runTracked(register, settle, work) {
+  register();
+  let result;
+  let error;
+  let failed = false;
+  try {
+    result = work();
+  } catch (caught) {
+    error = caught;
+    failed = true;
+  }
+  try {
+    settle();
+  } catch (settleError) {
+    if (!failed) throw settleError;
+  }
+  if (failed) throw error;
+  return result;
+}
+
+// Process-wide service counter: tracker ids must stay unique even when
+// several traffic-accounting services share one drain tracker.
+let nextTrafficAccountingServiceId = 0;
+
 function accountingMode(value) {
   const normalized = text(value || "delta").toLowerCase().replace(/[\s_]+/g, "-");
   if (normalized === "delta" || normalized === "read-clear" || normalized === "read-and-clear") {
@@ -112,7 +141,13 @@ export function createTrafficAccountingService({
   controlStore,
   nowFn = () => new Date(),
   usageSampleRefFactory = defaultSampleRefFactory,
-  sampleDigestFactory = defaultSampleDigest
+  sampleDigestFactory = defaultSampleDigest,
+  // Optional drain tracker (createDrainTracker). When present, every
+  // business call registers a callback for its duration (METERING) and
+  // every sample write registers a write for its duration (W-117/W-118),
+  // so the freeze-time drain tracker can observe work in flight. When
+  // absent, behaviour is exactly as before: no tracking, no overhead.
+  drainTracker = null
 } = {}) {
   if (
     !controlStore
@@ -121,8 +156,33 @@ export function createTrafficAccountingService({
   ) {
     throw trafficError("validation_error", "controlStore with usage methods is required");
   }
+  if (
+    drainTracker !== null
+    && (
+      !drainTracker
+      || typeof drainTracker.registerWrite !== "function"
+      || typeof drainTracker.settleWrite !== "function"
+      || typeof drainTracker.registerCallback !== "function"
+      || typeof drainTracker.settleCallback !== "function"
+    )
+  ) {
+    throw trafficError("validation_error", "drainTracker with register/settle methods is required");
+  }
+  const serviceInstanceId = ++nextTrafficAccountingServiceId;
+  let observationSeq = 0;
+  let sampleSeq = 0;
 
   function recordUsageObservation(input = {}) {
+    if (!drainTracker) return recordUsageObservationInner(input);
+    const callbackId = `traffic-usage-${serviceInstanceId}-observation-${++observationSeq}`;
+    return runTracked(
+      () => drainTracker.registerCallback(callbackId),
+      () => drainTracker.settleCallback(callbackId),
+      () => recordUsageObservationInner(input)
+    );
+  }
+
+  function recordUsageObservationInner(input = {}) {
     const normalized = {
       accountingMode: accountingMode(input.accountingMode),
       sourceRef: requiredText(input.sourceRef, "sourceRef"),
@@ -172,24 +232,39 @@ export function createTrafficAccountingService({
       requestId: binding.requestId,
       createdAt: isoNow(nowFn)
     };
-    let usage;
-    if (normalized.accountingMode === "cumulative") {
-      if (typeof controlStore.recordCumulativeUsageSample !== "function") {
-        throw trafficError("cumulative_cursor_store_required", "cumulative usage cursor store is required");
+    const recordSample = () => {
+      if (normalized.accountingMode === "cumulative") {
+        if (typeof controlStore.recordCumulativeUsageSample !== "function") {
+          throw trafficError("cumulative_cursor_store_required", "cumulative usage cursor store is required");
+        }
+        return controlStore.recordCumulativeUsageSample(record);
       }
-      usage = controlStore.recordCumulativeUsageSample(record);
-    } else {
       const sampleDigest = requiredText(sampleDigestFactory(normalized), "sampleDigest");
       const sampleId = requiredText(usageSampleRefFactory({
         ...normalized,
         binding,
         sampleDigest
       }), "usageSampleRef");
-      usage = controlStore.recordUsageSample({
+      return controlStore.recordUsageSample({
         id: sampleId,
         ...record,
         sampleDigest
       });
+    };
+    // W-117 (recordUsageSample) / W-118 (recordCumulativeUsageSample):
+    // the sample write is bracketed with registerWrite/settleWrite so
+    // the drain tracker sees it in flight. Without a tracker this is a
+    // plain direct call, exactly as before.
+    let usage;
+    if (!drainTracker) {
+      usage = recordSample();
+    } else {
+      const writeId = `traffic-usage-${serviceInstanceId}-sample-${++sampleSeq}`;
+      usage = runTracked(
+        () => drainTracker.registerWrite(writeId, "usage-sample"),
+        () => drainTracker.settleWrite(writeId),
+        recordSample
+      );
     }
     const currentCycleUsage = currentCycleUsageFor({
       controlStore,

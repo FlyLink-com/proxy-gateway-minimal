@@ -465,9 +465,27 @@ export function createPortalRegistrationWelcomeBonusCoordinator(options = {}) {
     clearTimer();
   }
 
+  // W-112 quiescence read (scheduler-quiescence wiring, 2026-11-23):
+  // read-only snapshot for the freeze executor. `stop()` alone does not
+  // wait for the pass in flight (`activePass`), so the executor must read
+  // this after `stop()` and only treat the pass as settled once
+  // `activePassSettled` reads true. After `stop()` no new pass can start
+  // (`runOnce` rejects once stopped and the timer callback checks the
+  // lifecycle), so once this reads settled it stays settled. The caller
+  // polls this after `stop()` until settled (10-minute drain timeout
+  // owned by the caller) and records the timestamps.
+  function getStatus() {
+    return Object.freeze({
+      lifecycle,
+      timerArmed: timer !== null,
+      activePassSettled: activePass === null,
+    });
+  }
+
   return Object.freeze({
     runOnce,
     start,
-    stop
+    stop,
+    getStatus
   });
 }

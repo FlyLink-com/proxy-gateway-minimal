@@ -661,10 +661,76 @@ function transitionWithReceipt(db, { transitionId, from, to, fromEpoch, snapshot
   })();
 }
 
-export function createFreezeDrainCoordinator(db, { snapshotId, now = () => new Date() } = {}) {
+// Scheduler wiring contract (P-2): which live-process references the
+// freeze executor needs per scheduler job, and which methods it calls.
+//   W-111 coin-commerce coordinator: stop() (waits for the pass in flight)
+//   W-112 welcome-bonus coordinator: stop() + getStatus() (stop does not
+//         wait for the pass in flight; getStatus reports whether it settled)
+//   W-114 data-pack rotation coordinator: stop() + getStatus()
+//   W-115 portal referrals: stopTick() + getTickStatus()
+// Holding the references here does not stop, start, or observe anything:
+// the freeze executor still performs each §3 step in the window and
+// records the evidence; the wiring only makes the references available
+// in-process. This module never calls stop()/stopTick() itself.
+const SCHEDULER_WIRING = Object.freeze({
+  coinCommerceCoordinator: Object.freeze({ methods: ["stop"], statusFields: ["hasStop"] }),
+  welcomeBonusCoordinator: Object.freeze({ methods: ["stop", "getStatus"], statusFields: ["hasStop", "hasGetStatus"] }),
+  rotationCoordinator: Object.freeze({ methods: ["stop", "getStatus"], statusFields: ["hasStop", "hasGetStatus"] }),
+  portalReferrals: Object.freeze({ methods: ["stopTick", "getTickStatus"], statusFields: ["hasStopTick", "hasGetTickStatus"] }),
+});
+
+function validateSchedulerWiring(scheduler) {
+  if (scheduler === null || scheduler === undefined) return null;
+  if (typeof scheduler !== "object" || Array.isArray(scheduler)) {
+    throw coordinatorError("freeze_drain_scheduler_invalid", "scheduler wiring must be an object of live-process scheduler references or null");
+  }
+  const refs = {};
+  for (const key of Reflect.ownKeys(scheduler)) {
+    if (typeof key !== "string" || !Object.hasOwn(SCHEDULER_WIRING, key)) {
+      throw coordinatorError("freeze_drain_scheduler_invalid", `unknown scheduler wiring reference: ${String(key)}`);
+    }
+    const ref = scheduler[key];
+    if (ref === null || ref === undefined) continue;
+    if (typeof ref !== "object" && typeof ref !== "function") {
+      throw coordinatorError("freeze_drain_scheduler_invalid", `scheduler wiring reference ${key} must be an object or null`);
+    }
+    for (const method of SCHEDULER_WIRING[key].methods) {
+      if (typeof ref[method] !== "function") {
+        throw coordinatorError("freeze_drain_scheduler_invalid", `scheduler wiring reference ${key} must expose ${method}()`);
+      }
+    }
+    refs[key] = ref;
+  }
+  return Object.freeze(refs);
+}
+
+function describeSchedulerWiring(schedulerRefs) {
+  const description = {};
+  for (const [key, contract] of Object.entries(SCHEDULER_WIRING)) {
+    const ref = schedulerRefs?.[key] ?? null;
+    const entry = { present: ref !== null };
+    for (let index = 0; index < contract.methods.length; index += 1) {
+      entry[contract.statusFields[index]] = ref !== null && typeof ref[contract.methods[index]] === "function";
+    }
+    description[key] = Object.freeze(entry);
+  }
+  return Object.freeze(description);
+}
+
+export function createFreezeDrainCoordinator(db, { snapshotId, now = () => new Date(), scheduler = null } = {}) {
   assertDbHandle(db);
   assertSnapshotId(snapshotId);
   ensureCoordinatorLog(db);
+  // Scheduler wiring (P-2, scheduler-quiescence wiring, 2026-11-23):
+  // the freeze-time caller must hold the live process's scheduler
+  // references, because the coordinator itself cannot observe the
+  // scheduler (plan §1). The wiring is optional at construction so
+  // existing callers keep working, and fail-closed when supplied: a
+  // present reference must expose the methods the freeze executor needs
+  // for that job. A null reference means "not created in this process"
+  // (e.g. rotation coordinator when no data-pack material escrow is in
+  // place; portal referrals when referrals are disabled) and is allowed.
+  const schedulerRefs = validateSchedulerWiring(scheduler);
 
   function currentAuthority() {
     const current = readWriterAuthority(db);
@@ -689,6 +755,15 @@ export function createFreezeDrainCoordinator(db, { snapshotId, now = () => new D
   return {
     snapshotId,
     currentAuthority,
+    // Live-process scheduler references supplied at construction (P-2),
+    // or null when no wiring was supplied. The freeze executor calls
+    // each reference's stop()/read methods in the window; this module
+    // never calls them. See describeSchedulerWiring for the per-job
+    // presence/capability report.
+    scheduler: schedulerRefs,
+    schedulerWiring() {
+      return describeSchedulerWiring(schedulerRefs);
+    },
 
     freeze({ readinessBundle, coverageMatrix, drainTracker, checkpointId, outstandingJobs = [] } = {}) {
       const current = requirePhase(WRITER_PHASES.BWH_ACTIVE, "freeze (T1)");
