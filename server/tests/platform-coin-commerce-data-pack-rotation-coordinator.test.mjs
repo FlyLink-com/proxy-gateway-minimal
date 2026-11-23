@@ -52,7 +52,7 @@ test("pack rotation recovery runs a bounded batch at startup and periodically wi
   f.coordinator.stop();
   assert.equal(f.pending.size, 0);
   assert.deepEqual(f.coordinator.getStatus(), {
-    running: false, completedBatches: 2, failedBatches: 0, failedIntents: 0
+    running: false, completedBatches: 2, failedBatches: 0, failedIntents: 0, timerArmed: false
   });
 });
 
@@ -68,12 +68,12 @@ test("startup recovery failure leaves no timer and periodic failure is retried w
   second.failNext();
   second.tick();
   assert.deepEqual(second.coordinator.getStatus(), {
-    running: true, completedBatches: 1, failedBatches: 1, failedIntents: 0
+    running: true, completedBatches: 1, failedBatches: 1, failedIntents: 0, timerArmed: true
   });
   assert.equal(second.pending.size, 1);
   second.tick();
   assert.deepEqual(second.coordinator.getStatus(), {
-    running: true, completedBatches: 2, failedBatches: 1, failedIntents: 0
+    running: true, completedBatches: 2, failedBatches: 1, failedIntents: 0, timerArmed: true
   });
   second.coordinator.stop();
   assert.equal(second.pending.size, 0);
@@ -89,7 +89,7 @@ test("per-intent failures remain visible in aggregate without exposing order ref
   const f = fixture({ failedIntentCount: 1 });
   f.coordinator.start();
   assert.deepEqual(f.coordinator.getStatus(), {
-    running: true, completedBatches: 1, failedBatches: 0, failedIntents: 1
+    running: true, completedBatches: 1, failedBatches: 0, failedIntents: 1, timerArmed: true
   });
   f.coordinator.stop();
 });
