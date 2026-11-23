@@ -199,21 +199,30 @@ const TRANSITION_PREDICATE = Object.entries(ALLOWED_WRITER_TRANSITIONS).flatMap(
 ).join(" OR ");
 
 function installAuthorityGuards(db) {
-  db.exec(`
+  // One statement per prepare/run: several store database handles expose
+  // only prepare/transaction/pragma (no exec), and the fence's
+  // auto-install must work through those handles too.
+  db.prepare(`
     create view main.${WRITER_AUTHORITY_MARKER} as select 1 as installed;
+  `).run();
+  db.prepare(`
     create trigger main.${WRITER_AUTHORITY_GUARDS.insert}
       before insert on ${WRITER_AUTHORITY_TABLE}
       begin select raise(abort, 'writer_authority_insert_denied'); end;
+  `).run();
+  db.prepare(`
     create trigger main.${WRITER_AUTHORITY_GUARDS.delete}
       before delete on ${WRITER_AUTHORITY_TABLE}
       begin select raise(abort, 'writer_authority_delete_denied'); end;
+  `).run();
+  db.prepare(`
     create trigger main.${WRITER_AUTHORITY_GUARDS.transition}
       before update on ${WRITER_AUTHORITY_TABLE}
       when NEW.id is not 1 or typeof(NEW.epoch) != 'integer' or
            NEW.epoch is not OLD.epoch + 1 or NEW.epoch > ${WRITER_EPOCH_MAX} or
            not coalesce((${TRANSITION_PREDICATE}), 0)
       begin select raise(abort, 'writer_authority_transition_denied'); end;
-  `);
+  `).run();
 }
 
 // Install a fresh authority record only on legacy databases. Bootstrap,
@@ -228,7 +237,7 @@ export function ensureWriterAuthority(db, { now = () => new Date() } = {}) {
     const existing = hasTable ? readAuthoritySingleton(db) : null;
     if (installed) return existing;
     if (!existing) {
-      db.exec(`
+      db.prepare(`
         create table main.${WRITER_AUTHORITY_TABLE} (
           id integer primary key check (id = 1),
           authority text not null check (authority in ('BWH', 'D1')),
@@ -239,7 +248,7 @@ export function ensureWriterAuthority(db, { now = () => new Date() } = {}) {
           check ((authority = 'BWH' and phase in ('BWH_ACTIVE', 'FROZEN'))
               or (authority = 'D1' and phase in ('D1_ACTIVE', 'RECOVERY')))
         );
-      `);
+      `).run();
       db.prepare(`
         insert into main.${WRITER_AUTHORITY_TABLE}
           (id, authority, phase, epoch, updated_at, receipt_ref)

@@ -14,6 +14,10 @@ import {
   validateCoinWalletSchema
 } from "./coin-wallet-migrations.mjs";
 import {
+  assertWritable,
+  WriterAuthorityError
+} from "./single-writer-authority.mjs";
+import {
   validateDeferredResourceTransitionSchema
 } from "./deferred-resource-transition-migrations.mjs";
 
@@ -223,6 +227,10 @@ function isStoreError(error) {
 
 function normalizeStoreError(error) {
   if (isStoreError(error)) return error;
+  // The writer-authority fence error must reach callers intact so a
+  // frozen-phase refusal is distinguishable from an infrastructure
+  // failure (same pass-through as the coin-commerce store).
+  if (error instanceof WriterAuthorityError) return error;
   if (
     typeof error?.code === "string"
     && (
@@ -1398,6 +1406,9 @@ export function createSqliteCoinWalletStore(options = {}) {
   }
 
   const runCreditTransaction = db.transaction((request, occurredAt) => {
+    // U-F1: phase fence, first statement — no wallet write may land
+    // while the writer authority is not BWH_ACTIVE.
+    assertWritable(db);
     const replay = findReceipt({
       actorScope: request.operation.actorScope,
       operationType: OPERATION_TYPE_CREDIT,
@@ -1587,6 +1598,8 @@ export function createSqliteCoinWalletStore(options = {}) {
   });
 
   const runConfirmCreditTransaction = db.transaction((request) => {
+    // U-F1: phase fence, first statement.
+    assertWritable(db);
     const replay = findReceipt({
       actorScope: request.operation.actorScope,
       operationType: OPERATION_TYPE_CONFIRM_CREDIT,
@@ -1750,6 +1763,11 @@ export function createSqliteCoinWalletStore(options = {}) {
   });
 
   function createCoinHoldBody(request) {
+    // U-F1: phase fence, first statement. This body also backs the
+    // transaction-participant path (createCoinHoldInTransaction), where
+    // it runs inside the caller's already-fenced transaction; the check
+    // is idempotent there.
+    assertWritable(db);
     const replay = findReceipt({
       actorScope: request.operation.actorScope,
       operationType: OPERATION_TYPE_CREATE_HOLD,
@@ -2218,6 +2236,9 @@ export function createSqliteCoinWalletStore(options = {}) {
     request,
     operationType
   ) {
+    // U-F1: phase fence, first statement. Also backs the
+    // transaction-participant path (capture/release in transaction).
+    assertWritable(db);
     const replay = readLifecycleReplay({
       actorScope: request.operation.actorScope,
       operationType,
@@ -2388,6 +2409,8 @@ export function createSqliteCoinWalletStore(options = {}) {
   const runHoldLifecycleTransaction = db.transaction(holdLifecycleBody);
 
   const runExpireHoldTransaction = db.transaction((holdRef) => {
+    // U-F1: phase fence, first statement.
+    assertWritable(db);
     const hold = findHold(holdRef);
     if (!hold) throw storeError("hold_not_found");
     assertLifecycleHold(hold);
@@ -2536,6 +2559,8 @@ export function createSqliteCoinWalletStore(options = {}) {
   });
 
   const runExpireLotTransaction = db.transaction((lotRef) => {
+    // U-F1: phase fence, first statement.
+    assertWritable(db);
     const lot = findLot(lotRef);
     if (!lot) throw storeError("lot_not_found");
     assertLifecycleLot(lot);

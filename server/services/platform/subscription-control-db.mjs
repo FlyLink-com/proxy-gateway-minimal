@@ -1,6 +1,7 @@
 import { recordReferralRegistration } from './portal-referral-contract.mjs';
 import { createPortalSubscriptionLinkResetStore, verifyPortalSubscriptionLinkResetLineage } from "./portal-subscription-link-reset-store.mjs";
 import {
+  assertWritable,
   ensureWriterAuthority,
   guardedTransaction,
 } from "./single-writer-authority.mjs";
@@ -1915,6 +1916,8 @@ export function createSqliteSubscriptionControlStore({
   if (initializeSchema) ensureWriterAuthority(db);
 
   function upsertLead(input, { expiresAt } = {}) {
+    // U-F13: phase fence, first statement.
+    assertWritable(db);
     const record = {
       id: requiredText(input.id, "id"),
       status: requiredText(input.status || "new", "status"),
@@ -1970,11 +1973,15 @@ export function createSqliteSubscriptionControlStore({
   }
 
   function purgeExpiredLeads({ now } = {}) {
+    // U-F13: phase fence, first statement.
+    assertWritable(db);
     return db.prepare("delete from platform_leads where expires_at <= ?")
       .run(isoText(now, "now")).changes;
   }
 
   function createAccount(input) {
+    // U-F13: phase fence, first statement.
+    assertWritable(db);
     assertNoUnsafeFields(input);
     const record = {
       id: requiredText(input.id, "id"),
@@ -2314,6 +2321,8 @@ export function createSqliteSubscriptionControlStore({
   }
 
   function expireDuePortalRegistrationWelcomeCoinGrants(input) {
+    // U-F8 (W-112): phase fence, first statement.
+    assertWritable(db);
     exactObject(input, {
       allowed: ["now"],
       name: "welcomeCoinGrantExpiry"
@@ -2324,6 +2333,8 @@ export function createSqliteSubscriptionControlStore({
   }
 
   function claimNextPortalRegistrationWelcomeCoinGrant(input) {
+    // U-F8 (W-112): phase fence, first statement.
+    assertWritable(db);
     exactObject(input, {
       allowed: ["now", "leaseMs"],
       name: "welcomeCoinGrantClaim"
@@ -2428,6 +2439,8 @@ export function createSqliteSubscriptionControlStore({
   }
 
   function completePortalRegistrationWelcomeCoinGrant(input) {
+    // U-F8 (W-112): phase fence, first statement.
+    assertWritable(db);
     const lease = normalizePortalRegistrationWelcomeCoinGrantLease(
       input,
       "welcomeCoinGrantCompletion",
@@ -2454,6 +2467,8 @@ export function createSqliteSubscriptionControlStore({
   }
 
   function deferPortalRegistrationWelcomeCoinGrant(input) {
+    // U-F8 (W-112): phase fence, first statement.
+    assertWritable(db);
     const lease = normalizePortalRegistrationWelcomeCoinGrantLease(
       input,
       "welcomeCoinGrantDeferral",
@@ -2485,6 +2500,8 @@ export function createSqliteSubscriptionControlStore({
   }
 
   function markPortalRegistrationWelcomeCoinGrantReconciliationRequired(input) {
+    // U-F8 (W-112): phase fence, first statement.
+    assertWritable(db);
     const lease = normalizePortalRegistrationWelcomeCoinGrantLease(
       input,
       "welcomeCoinGrantReconciliation",
@@ -3955,6 +3972,8 @@ export function createSqliteSubscriptionControlStore({
   }
 
   function claimWalletFirstRuntimeEffectForDeferredTransition(input) {
+    // U-F13: phase fence, first statement.
+    assertWritable(db);
     const requested = walletFirstResourceEffectClaimInput(input);
     return db.transaction(() => {
       walletFirstResourceEffectRequireRuntimeClaimSchema();
@@ -4081,6 +4100,8 @@ export function createSqliteSubscriptionControlStore({
   }
 
   function markWalletFirstRuntimeEffectReconciliationRequiredForDeferredTransition(input) {
+    // U-F13: phase fence, first statement.
+    assertWritable(db);
     exactObject(input, {
       allowed: [
         "transitionRef", "flowKind", "successor", "nodeId", "now", "leaseGeneration",
@@ -4095,6 +4116,8 @@ export function createSqliteSubscriptionControlStore({
   }
 
   function recordWalletFirstRuntimeReceiptForDeferredTransition(input) {
+    // U-F13: phase fence, first statement.
+    assertWritable(db);
     exactObject(input, {
       allowed: [
         "transitionRef", "flowKind", "successor", "tenantId", "artifactId", "nodeId", "now",
@@ -4192,6 +4215,8 @@ export function createSqliteSubscriptionControlStore({
   }
 
   function walletFirstResourceEffectInsertInitialChain(prepared, runtimeReceipt, now) {
+    // U-F13: phase fence, first statement.
+    assertWritable(db);
     const requestMetadata = Object.freeze({
       commercialModel: WALLET_FIRST_RESOURCE_EFFECT_COMMERCIAL_MODEL,
       resourceModel: WALLET_FIRST_RESOURCE_CHAIN_MODEL,
@@ -4286,6 +4311,8 @@ export function createSqliteSubscriptionControlStore({
   }
 
   function walletFirstResourceEffectSwitchCurrentChain(prepared, runtimeReceipt, now) {
+    // U-F13: phase fence, first statement.
+    assertWritable(db);
     const current = walletFirstResourceEffectExactChain(prepared.accountId);
     if (
       !current
@@ -4920,6 +4947,8 @@ export function createSqliteSubscriptionControlStore({
   // normal runtime path invokes the same helper from effect completion's
   // immediate transaction, so it cannot create a post-settlement gap.
   function createWalletFirstSetupDeliveryHandoff(input) {
+    // U-F13: phase fence, first statement.
+    assertWritable(db);
     exactObject(input, {
       allowed: ["accountId", "handoffRef", "now"],
       name: "walletFirstSetupDeliveryCreate"
@@ -4957,6 +4986,8 @@ export function createSqliteSubscriptionControlStore({
   }
 
   function claimWalletFirstSetupDeliveryHandoff(input) {
+    // U-F13: phase fence, first statement.
+    assertWritable(db);
     const requested = walletFirstSetupDeliveryClaimInput(input);
     return db.transaction(() => {
       walletFirstSetupDeliveryRequireSchema();
@@ -5120,6 +5151,8 @@ export function createSqliteSubscriptionControlStore({
   }
 
   function acknowledgeWalletFirstSetupDeliveryHandoff(input) {
+    // U-F13: phase fence, first statement.
+    assertWritable(db);
     exactObject(input, {
       allowed: ["accountId", "handoffRef", "sessionBindingHash", "now"],
       name: "walletFirstSetupDeliveryAcknowledge"
@@ -5178,6 +5211,8 @@ export function createSqliteSubscriptionControlStore({
   }
 
   function markWalletFirstSetupDeliveryHandoffReconciliationRequired(input) {
+    // U-F13: phase fence, first statement.
+    assertWritable(db);
     exactObject(input, {
       allowed: ["accountId", "handoffRef", "sessionBindingHash", "safeCode", "now"],
       name: "walletFirstSetupDeliveryReconciliation"
@@ -5226,6 +5261,8 @@ export function createSqliteSubscriptionControlStore({
   }
 
   function createEntitlement(input) {
+    // U-F13: phase fence, first statement.
+    assertWritable(db);
     assertNoUnsafeFields(input);
     const record = {
       id: requiredText(input.id, "id"),
@@ -5650,6 +5687,8 @@ export function createSqliteSubscriptionControlStore({
   }
 
   function updateEntitlementTrafficLimit(id, { trafficLimitBytes, updatedAt }) {
+    // U-F13: phase fence, first statement.
+    assertWritable(db);
     assertNoUnsafeFields({ trafficLimitBytes, updatedAt });
     const result = db.prepare(`
       update platform_entitlements
@@ -5719,6 +5758,8 @@ export function createSqliteSubscriptionControlStore({
   }
 
   function deliverPlanSwitchDowngrade(input = {}) {
+    // U-F13: phase fence, first statement.
+    assertWritable(db);
     assertNoUnsafeFields(input);
     const row = {
       switchRef: safeControlRef(input.switchRef, "switchRef"),
@@ -5751,6 +5792,8 @@ export function createSqliteSubscriptionControlStore({
   }
 
   function completeScheduledPlanSwitch(input = {}) {
+    // U-F8 (W-111): phase fence, first statement.
+    assertWritable(db);
     assertNoUnsafeFields(input);
     return markScheduledPlanSwitchApplied(db, {
       switchRef: safeControlRef(input.switchRef, "switchRef"),
@@ -5760,6 +5803,8 @@ export function createSqliteSubscriptionControlStore({
   }
 
   function applyCoinCommerceSubscriptionFulfillment(input) {
+    // U-F13: phase fence, first statement.
+    assertWritable(db);
     assertNoUnsafeFields(input);
     let authority = null;
     if (input.authority !== undefined) {
@@ -6270,6 +6315,8 @@ export function createSqliteSubscriptionControlStore({
   }
 
   function createIssuanceRequest(input) {
+    // U-F13: phase fence, first statement.
+    assertWritable(db);
     assertNoUnsafeFields(input);
     const record = {
       id: requiredText(input.id, "id"),
@@ -6302,6 +6349,8 @@ export function createSqliteSubscriptionControlStore({
   }
 
   function setIssuanceRequestStatus(id, { status, updatedAt }) {
+    // U-F13: phase fence, first statement.
+    assertWritable(db);
     assertNoUnsafeFields({ status, updatedAt });
     const result = db.prepare(`
       update platform_issuance_requests
@@ -6315,6 +6364,8 @@ export function createSqliteSubscriptionControlStore({
   }
 
   function linkIssuedSubscription(input) {
+    // U-F13: phase fence, first statement.
+    assertWritable(db);
     assertNoUnsafeFields(input);
     const record = {
       id: requiredText(input.id, "id"),
@@ -6776,6 +6827,8 @@ export function createSqliteSubscriptionControlStore({
   // references only; runtime identity and handoff material are not created.
   // The order determines both IDs, so replay cannot allocate another quota.
   function reserveCoinCommerceDataPackIssuance(input = {}) {
+    // U-F13: phase fence, first statement.
+    assertWritable(db);
     exactObject(input, {
       allowed: ["commandRef", "orderRef", "accountId", "offerVersionRef",
         "quotaBytes", "nodeId", "now"],
@@ -6854,6 +6907,8 @@ export function createSqliteSubscriptionControlStore({
   // material bindings have been independently verified by the issuer. A
   // partial control write rolls back; replay cannot swap runtime identity.
   function completeCoinCommerceDataPackIssuance(input = {}) {
+    // U-F13: phase fence, first statement.
+    assertWritable(db);
     exactObject(input, {
       allowed: ["commandRef", "orderRef", "accountId", "requestRef",
         "entitlementRef", "nodeId", "tenantRef", "artifactRef", "now"],
@@ -6945,6 +7000,8 @@ export function createSqliteSubscriptionControlStore({
   // effects occur outside SQLite. An interrupted worker may be taken over only
   // after expiry, using the same replayable intent and deterministic artifact.
   function claimCoinCommerceDataPackArtifactRotation(input = {}) {
+    // U-F13: phase fence, first statement.
+    assertWritable(db);
     exactObject(input, { allowed: ["rotationRef", "orderRef", "accountId", "leaseRef", "now"],
       required: ["rotationRef", "orderRef", "accountId", "leaseRef", "now"],
       name: "dataPackArtifactRotationClaim" });
@@ -6971,6 +7028,8 @@ export function createSqliteSubscriptionControlStore({
   }
 
   function releaseCoinCommerceDataPackArtifactRotation(input = {}) {
+    // U-F13: phase fence, first statement.
+    assertWritable(db);
     exactObject(input, { allowed: ["rotationRef", "orderRef", "accountId", "leaseRef"],
       required: ["rotationRef", "orderRef", "accountId", "leaseRef"],
       name: "dataPackArtifactRotationRelease" });
@@ -7009,6 +7068,8 @@ export function createSqliteSubscriptionControlStore({
   // protected material capture occur outside this transaction; each stage is
   // replayable and no stage touches usage or the purchased quota.
   function beginCoinCommerceDataPackArtifactRotation(input = {}) {
+    // U-F13: phase fence, first statement.
+    assertWritable(db);
     exactObject(input, { allowed: ["rotationRef", "orderRef", "accountId", "now"],
       name: "dataPackArtifactRotation" });
     const rotationRef = safeControlRef(input.rotationRef, "rotationRef");
@@ -7063,6 +7124,8 @@ export function createSqliteSubscriptionControlStore({
   }
 
   function advanceCoinCommerceDataPackArtifactRotation(input = {}) {
+    // U-F13: phase fence, first statement.
+    assertWritable(db);
     exactObject(input, { allowed: ["rotationRef", "orderRef", "accountId", "leaseRef", "stage",
       "replacementArtifactRef", "attempt", "now"], required: ["rotationRef", "orderRef", "accountId",
       "leaseRef", "stage", "now"], name: "dataPackArtifactRotationAdvance" });
@@ -7377,6 +7440,8 @@ export function createSqliteSubscriptionControlStore({
   }
 
   function recordCoinCommerceDataPackMeteringResetReceipt(input = {}) {
+    // U-F13: phase fence, first statement.
+    assertWritable(db);
     meteringResetObject(input, ["proof", "continuation", "now"]);
     const now = meteringResetTime(input.now), { proof, continuation } = input;
     validateMeteringResetProof(proof);
@@ -7406,6 +7471,8 @@ export function createSqliteSubscriptionControlStore({
   // One order-owned intent spans protected staging, the control digest CAS,
   // edge apply and artifact rotation. It never stores material or usage rows.
   function beginCoinCommerceDataPackCredentialReset(input = {}) {
+    // U-F13: phase fence, first statement.
+    assertWritable(db);
     exactObject(input, { allowed: ["rotationRef", "orderRef", "accountId", "now"],
       required: ["rotationRef", "orderRef", "accountId", "now"],
       name: "dataPackCredentialReset" });
@@ -7465,6 +7532,8 @@ export function createSqliteSubscriptionControlStore({
   }
 
   function claimCoinCommerceDataPackCredentialReset(input = {}) {
+    // U-F13: phase fence, first statement.
+    assertWritable(db);
     exactObject(input, { allowed: ["rotationRef", "orderRef", "accountId", "leaseRef", "now"],
       required: ["rotationRef", "orderRef", "accountId", "leaseRef", "now"],
       name: "dataPackCredentialResetClaim" });
@@ -7489,6 +7558,8 @@ export function createSqliteSubscriptionControlStore({
   }
 
   function releaseCoinCommerceDataPackCredentialReset(input = {}) {
+    // U-F13: phase fence, first statement.
+    assertWritable(db);
     exactObject(input, { allowed: ["rotationRef", "orderRef", "accountId", "leaseRef"],
       required: ["rotationRef", "orderRef", "accountId", "leaseRef"],
       name: "dataPackCredentialResetRelease" });
@@ -7524,6 +7595,8 @@ export function createSqliteSubscriptionControlStore({
   }
 
   function advanceCoinCommerceDataPackCredentialReset(input = {}) {
+    // U-F13: phase fence, first statement.
+    assertWritable(db);
     exactObject(input, { allowed: ["rotationRef", "orderRef", "accountId", "leaseRef",
       "stage", "newEdgeMaterialDigest", "now"],
       required: ["rotationRef", "orderRef", "accountId", "leaseRef", "stage", "now"],
@@ -7623,6 +7696,8 @@ export function createSqliteSubscriptionControlStore({
   // may become a metering identity. This is source-only registration; it does
   // not apply a desired runtime state or assert collector convergence.
   function registerCoinCommerceDataPackEdgeCredential(input = {}) {
+    // U-F13: phase fence, first statement.
+    assertWritable(db);
     exactObject(input, {
       allowed: ["requestRef", "entitlementRef", "edgeChannelRef",
         "edgeCredentialRef", "edgeMaterialDigest", "now"],
@@ -7696,6 +7771,8 @@ export function createSqliteSubscriptionControlStore({
   // caller must prepare replacement protected material and later verify an
   // applied edge receipt; this database operation alone revokes no client.
   function rotateCoinCommerceDataPackEdgeCredential(input = {}) {
+    // U-F13: phase fence, first statement.
+    assertWritable(db);
     exactObject(input, {
       allowed: ["requestRef", "entitlementRef", "edgeChannelRef",
         "edgeCredentialRef", "oldEdgeMaterialDigest", "newEdgeMaterialDigest", "now"],
@@ -7770,6 +7847,8 @@ export function createSqliteSubscriptionControlStore({
   // endpoint. The exact captured Order must be checked by the Commerce store
   // before a caller uses this binding for a customer handoff.
   function createDataPackResource(input = {}) {
+    // U-F13: phase fence, first statement.
+    assertWritable(db);
     exactObject(input, {
       allowed: ["orderRef", "commandRef", "accountId", "requestRef", "entitlementRef",
         "offerVersionRef", "quotaBytes", "technicalValidUntil",
@@ -7837,6 +7916,8 @@ export function createSqliteSubscriptionControlStore({
   // separately verified runtime handoff are still required before the Order
   // may be marked delivered or any subscription material may be exposed.
   function applyCoinCommerceDataPackFulfillment(input = {}) {
+    // U-F13: phase fence, first statement.
+    assertWritable(db);
     exactObject(input, {
       allowed: ["orderRef", "commandRef", "accountId", "requestRef",
         "entitlementRef", "issuedLinkRef", "offerVersionRef", "quotaBytes",
@@ -8203,6 +8284,8 @@ export function createSqliteSubscriptionControlStore({
   }
 
   function upsertQuotaCounter(input) {
+    // U-F13: phase fence, first statement.
+    assertWritable(db);
     assertNoUnsafeFields(input);
     const record = {
       accountId: requiredText(input.accountId, "accountId"),
@@ -8255,6 +8338,8 @@ export function createSqliteSubscriptionControlStore({
   }
 
   function recordRevocation(input) {
+    // U-F13: phase fence, first statement.
+    assertWritable(db);
     assertNoUnsafeFields(input);
     const record = {
       id: requiredText(input.id, "id"),
@@ -8673,6 +8758,8 @@ export function createSqliteSubscriptionControlStore({
   }
 
   function recordAuditEvent(input) {
+    // U-F13: phase fence, first statement.
+    assertWritable(db);
     const snapshot = snapshotControlJsonObject(input, "audit event");
     const metadataJson = auditMetadataJson(snapshot);
     assertNoUnsafeFields({
@@ -8769,6 +8856,8 @@ export function createSqliteSubscriptionControlStore({
   // record) instead of a check-then-upsert sequence that two concurrent
   // writers could interleave into a silent overwrite.
   function insertEdgeRegisteredNodeIfAbsent(input) {
+    // U-F13: phase fence, first statement.
+    assertWritable(db);
     const record = edgeRegisteredNodeRecord(input);
     const info = sqliteRun(db.prepare(`
       insert into platform_edge_registered_nodes (
@@ -8911,6 +9000,8 @@ export function createSqliteSubscriptionControlStore({
   }
 
   function recordEdgeApplyReceipt(input) {
+    // U-F13: phase fence, first statement.
+    assertWritable(db);
     assertNoUnsafeFields(input);
     const actionCounts = input.actionCounts ?? {};
     const record = {
@@ -8961,6 +9052,8 @@ export function createSqliteSubscriptionControlStore({
   }
 
   function syncEdgeDesiredStateNotificationFromReceipt(record) {
+    // U-F13: phase fence, first statement.
+    assertWritable(db);
     const notificationStatus = (
       record.status === "applied"
       && record.configTestOk === 1
@@ -9007,6 +9100,8 @@ export function createSqliteSubscriptionControlStore({
   }
 
   function recordEdgeDesiredStateNotification(input) {
+    // U-F13: phase fence, first statement.
+    assertWritable(db);
     assertNoUnsafeFields(input);
     const now = isoText(input.updatedAt || input.createdAt, "updatedAt");
     const record = {
@@ -9095,6 +9190,8 @@ export function createSqliteSubscriptionControlStore({
   }
 
   function acquireEdgeAgentLease(input) {
+    // U-F13: phase fence, first statement.
+    assertWritable(db);
     assertNoUnsafeFields(input);
     const record = {
       leaseRef: requiredText(input.leaseRef, "leaseRef"),
@@ -9218,6 +9315,8 @@ export function createSqliteSubscriptionControlStore({
   }
 
   function upsertPortalAccessRequest(input) {
+    // U-F13: phase fence, first statement.
+    assertWritable(db);
     const record = {
       id: requiredText(input.id, "id"),
       portalUserRef: requiredText(input.portalUserRef, "portalUserRef"),
@@ -9348,6 +9447,8 @@ export function createSqliteSubscriptionControlStore({
   }
 
   function createPortalEntry(input) {
+    // U-F13: phase fence, first statement.
+    assertWritable(db);
     const record = {
       id: requiredText(input.id, "id"),
       accountId: requiredText(input.accountId, "accountId"),
@@ -9385,6 +9486,8 @@ export function createSqliteSubscriptionControlStore({
   }
 
   function markPortalEntryUsed(id, { usedAt, updatedAt }) {
+    // U-F13: phase fence, first statement.
+    assertWritable(db);
     const result = db.prepare(`
       update platform_portal_entries
       set status = 'used', use_count = use_count + 1, used_at = ?, updated_at = ?
@@ -9397,6 +9500,8 @@ export function createSqliteSubscriptionControlStore({
   }
 
   function createPortalTotpCredential(input) {
+    // U-F13: phase fence, first statement.
+    assertWritable(db);
     const record = {
       id: requiredText(input.id, "id"),
       accountId: requiredText(input.accountId, "accountId"),
@@ -9435,6 +9540,8 @@ export function createSqliteSubscriptionControlStore({
   }
 
   function recordPortalTotpVerificationFailure(id, { lockedUntil = null, updatedAt } = {}) {
+    // U-F13: phase fence, first statement.
+    assertWritable(db);
     const nextLockedUntil = optionalIsoText(lockedUntil, "lockedUntil");
     const result = db.prepare(`
       update platform_portal_totp_credentials
@@ -9454,6 +9561,8 @@ export function createSqliteSubscriptionControlStore({
   }
 
   function markPortalTotpVerified(id, { verifiedAt, updatedAt }) {
+    // U-F13: phase fence, first statement.
+    assertWritable(db);
     const result = db.prepare(`
       update platform_portal_totp_credentials
       set failure_count = 0, locked_until = null, last_verified_at = ?, updated_at = ?
@@ -9466,6 +9575,8 @@ export function createSqliteSubscriptionControlStore({
   }
 
   function createPortalPasswordCredential(input) {
+    // U-F13: phase fence, first statement.
+    assertWritable(db);
     const record = {
       id: requiredText(input.id, "id"),
       accountId: requiredText(input.accountId, "accountId"),
@@ -9505,6 +9616,8 @@ export function createSqliteSubscriptionControlStore({
   }
 
   function recordPortalPasswordVerificationFailure(id, { updatedAt, lockedUntil } = {}) {
+    // U-F13: phase fence, first statement.
+    assertWritable(db);
     const nextLockedUntil = optionalIsoText(lockedUntil, "lockedUntil");
     const result = db.prepare(`
       update platform_portal_password_credentials
@@ -9526,6 +9639,8 @@ export function createSqliteSubscriptionControlStore({
   }
 
   function markPortalPasswordVerified(id, { verifiedAt, updatedAt }) {
+    // U-F13: phase fence, first statement.
+    assertWritable(db);
     const result = db.prepare(`
       update platform_portal_password_credentials
       set failure_count = 0, status = 'active', locked_until = null,
@@ -9605,6 +9720,8 @@ export function createSqliteSubscriptionControlStore({
   }
 
   function createPortalSecondFactorChallenge(input) {
+    // U-F13: phase fence, first statement.
+    assertWritable(db);
     if (input.rememberMe !== undefined && typeof input.rememberMe !== "boolean") {
       throw platformError("validation_error", "rememberMe must be a boolean");
     }
@@ -9641,6 +9758,8 @@ export function createSqliteSubscriptionControlStore({
   }
 
   function markPortalSecondFactorChallengeUsed(id, { usedAt, updatedAt }) {
+    // U-F13: phase fence, first statement.
+    assertWritable(db);
     const result = db.prepare(`
       update platform_portal_second_factor_challenges
       set status = 'used', used_at = ?, updated_at = ?
@@ -9657,6 +9776,8 @@ export function createSqliteSubscriptionControlStore({
   }
 
   function recordPortalSecondFactorChallengeFailure(id, { locked = false, updatedAt } = {}) {
+    // U-F13: phase fence, first statement.
+    assertWritable(db);
     const result = db.prepare(`
       update platform_portal_second_factor_challenges
       set failure_count = failure_count + 1,
@@ -9671,6 +9792,8 @@ export function createSqliteSubscriptionControlStore({
   }
 
   function createPortalSession(input) {
+    // U-F13: phase fence, first statement.
+    assertWritable(db);
     const record = {
       id: requiredText(input.id, "id"),
       accountId: requiredText(input.accountId, "accountId"),
@@ -9697,6 +9820,8 @@ export function createSqliteSubscriptionControlStore({
   }
 
   function revokePortalSession(id, { revokedAt, updatedAt } = {}) {
+    // U-F13: phase fence, first statement.
+    assertWritable(db);
     const sessionId = requiredText(id, "id");
     // A repeated logout does not alter the first revocation timestamp. Expired
     // or already-revoked rows cannot be moved back into an active state.
@@ -9836,6 +9961,8 @@ export function createSqliteSubscriptionControlStore({
   }
 
   function createIdentityDeletionJob(input) {
+    // U-F13: phase fence, first statement.
+    assertWritable(db);
     assertNoUnsafeFields(input);
     if (!IDENTITY_DELETION_AUTHORIZATION_BASES.has(input.authorizationBasis)) {
       throw platformError("validation_error", "identity deletion authorization basis is invalid");
@@ -9896,6 +10023,8 @@ export function createSqliteSubscriptionControlStore({
   }
 
   function updateIdentityDeletionJob(input) {
+    // U-F13: phase fence, first statement.
+    assertWritable(db);
     assertNoUnsafeFields(input);
     const record = {
       id: safeControlRef(input.id, "id"),
@@ -9927,6 +10056,8 @@ export function createSqliteSubscriptionControlStore({
   }
 
   function createIdentityDeletionProof(input) {
+    // U-F13: phase fence, first statement.
+    assertWritable(db);
     assertNoUnsafeFields(input);
     if (!IDENTITY_DELETION_VERIFICATION_MODES.has(input.verificationMode)) {
       throw platformError("validation_error", "identity deletion verification mode is invalid");
@@ -9967,6 +10098,8 @@ export function createSqliteSubscriptionControlStore({
   }
 
   function createIdentityDeletionTombstone(input) {
+    // U-F13: phase fence, first statement.
+    assertWritable(db);
     assertNoUnsafeFields(input);
     const record = {
       id: safeControlRef(input.id, "id"),
@@ -10001,6 +10134,8 @@ export function createSqliteSubscriptionControlStore({
   }
 
   function freezeAccountForDeletion({ accountId, updatedAt }) {
+    // U-F13: phase fence, first statement.
+    assertWritable(db);
     // Freeze is the persisted, queryable state that blocks new sessions:
     // the portal and admin login paths already reject any account whose
     // status is not 'active'. Re-freezing an already frozen account is a
@@ -10014,6 +10149,8 @@ export function createSqliteSubscriptionControlStore({
   }
 
   function revokePortalPasswordCredentialsForAccount({ accountId, revokedAt, updatedAt }) {
+    // U-F13: phase fence, first statement.
+    assertWritable(db);
     // Locked rows are revoked too: a locked credential is still a live
     // credential reference, and deletion must neutralize it.
     const result = db.prepare(`
@@ -10029,6 +10166,8 @@ export function createSqliteSubscriptionControlStore({
   }
 
   function revokePortalTotpCredentialsForAccount({ accountId, revokedAt, updatedAt }) {
+    // U-F13: phase fence, first statement.
+    assertWritable(db);
     const result = db.prepare(`
       update platform_portal_totp_credentials
       set status = 'revoked', revoked_at = ?, updated_at = ?
@@ -10042,6 +10181,8 @@ export function createSqliteSubscriptionControlStore({
   }
 
   function revokePortalPasskeyCredentialsForAccount({ accountId, revokedAt, updatedAt }) {
+    // U-F13: phase fence, first statement.
+    assertWritable(db);
     const result = db.prepare(`
       update platform_portal_passkey_credentials
       set status = 'revoked', revoked_at = ?, updated_at = ?
@@ -10055,6 +10196,8 @@ export function createSqliteSubscriptionControlStore({
   }
 
   function deletePortalCredentialsForAccount({ accountId }) {
+    // U-F13: phase fence, first statement.
+    assertWritable(db);
     const account = requiredText(accountId, "accountId");
     const counts = {};
     for (const table of [
@@ -10070,6 +10213,8 @@ export function createSqliteSubscriptionControlStore({
   }
 
   function deletePortalSessionsForAccount({ accountId }) {
+    // U-F13: phase fence, first statement.
+    assertWritable(db);
     return {
       deletedCount: db.prepare(
         "delete from platform_portal_sessions where account_id = ?"
@@ -10078,6 +10223,8 @@ export function createSqliteSubscriptionControlStore({
   }
 
   function deletePortalSecondFactorChallengesForAccount({ accountId }) {
+    // U-F13: phase fence, first statement.
+    assertWritable(db);
     return {
       deletedCount: db.prepare(
         "delete from platform_portal_second_factor_challenges where account_id = ?"
@@ -10086,6 +10233,8 @@ export function createSqliteSubscriptionControlStore({
   }
 
   function deletePortalEntriesForAccount({ accountId }) {
+    // U-F13: phase fence, first statement.
+    assertWritable(db);
     return {
       deletedCount: db.prepare(
         "delete from platform_portal_entries where account_id = ?"
@@ -10094,6 +10243,8 @@ export function createSqliteSubscriptionControlStore({
   }
 
   function deleteAccountRowForDeletion({ accountId }) {
+    // U-F13: phase fence, first statement.
+    assertWritable(db);
     // Only a frozen account row may be deleted through this path: either
     // 'suspended' (set by the freeze step) or 'disabled' (already frozen
     // before the request; logins reject both). The caller must have
@@ -10109,6 +10260,8 @@ export function createSqliteSubscriptionControlStore({
   }
 
   function redactAccountMetadataForDeletion({ accountId, updatedAt }) {
+    // U-F13: phase fence, first statement.
+    assertWritable(db);
     // Logical mode only: strip every metadata key that is not on the
     // retainable whitelist (see IDENTITY_DELETION_RETAINED_METADATA_KEYS).
     // The personal originals (loginRef / displayRef / displayName) are
@@ -10299,7 +10452,13 @@ export function createSqliteSubscriptionControlStore({
   }
 
   return {
-    recordPortalReferralRegistration(input) { return recordReferralRegistration(db, input); },
+    recordPortalReferralRegistration(input) {
+      // U-F13 (W-019): phase fence, first statement. The write itself
+      // happens in portal-referral-contract.recordReferralRegistration;
+      // fencing this definition covers every callsite through the store.
+      assertWritable(db);
+      return recordReferralRegistration(db, input);
+    },
     getPortalSubscriptionLinkResetStore(options = {}) {
       return createPortalSubscriptionLinkResetStore({ database: db, nowFn: options.nowFn });
     },
