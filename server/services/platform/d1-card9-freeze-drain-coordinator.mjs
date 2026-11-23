@@ -43,6 +43,15 @@
 // and leaves the coordinator in FROZEN. The coordinator therefore
 // requires drain + scheduler quiescence before the receipt, and never
 // treats the receipt as proof that the switch is safe.
+// The phase transition and the coordinator-log entry for that same
+// transition ARE one atomic transaction (see transitionWithReceipt):
+// if the log write fails, the phase does not move.
+// Known limitation, also stated plainly (F6): a C1 approval ref and a
+// staged-handover ref are caller-supplied evidence strings. The
+// coordinator checks only that they are present and well-formed and
+// records them verbatim in the coordinator log, so a real approval can
+// be audited against its own record afterwards; it cannot tell a real
+// approval ref from a fabricated string by itself.
 
 import { createHash } from "node:crypto";
 
@@ -55,8 +64,7 @@ import {
   UNFENCED_WRITER_BASELINE,
   verifyFreezeReadinessBundle,
 } from "./d1-stage2-freeze-drain.mjs";
-import { verifyFreezeReceipt } from "./writer-freeze-receipt.mjs";
-import { buildFreezeReceipt } from "./writer-freeze-receipt.mjs";
+import { verifyFreezeReceipt, buildFreezeReceipt } from "./writer-freeze-receipt.mjs";
 
 export const FREEZE_DRAIN_COORDINATOR_VERSION = 1;
 export const COORDINATOR_RECEIPT_TYPE = "d1_freeze_drain_coordinator_receipt";
@@ -163,9 +171,17 @@ function deriveUf17Status(subEntries) {
 }
 
 function coverageMatrixDigest(entries) {
+  const counts = {
+    open: entries.filter((e) => e.status === "open").length,
+    fenced: entries.filter((e) => e.status === "fenced").length,
+    waived: entries.filter((e) => e.status === "waived").length,
+    outOfScope: entries.filter((e) => e.status === "out-of-scope").length,
+  };
   return sha256Hex(canonicalJson({
     version: FREEZE_DRAIN_COORDINATOR_VERSION,
     type: "writer-coverage-matrix",
+    total: entries.length,
+    counts,
     entries: entries.map((entry) => ({ id: entry.id, status: entry.status, evidence: entry.evidence })),
   }));
 }
@@ -267,6 +283,10 @@ export function verifyWriterCoverageMatrix(matrix) {
     || rebuilt.cutoverBlocked !== matrix.cutoverBlocked) {
     throw coordinatorError("freeze_coverage_invalid", "writer coverage matrix gate fields do not match its entries");
   }
+  if (rebuilt.total !== matrix.total
+    || JSON.stringify(rebuilt.counts) !== JSON.stringify(matrix.counts)) {
+    throw coordinatorError("freeze_coverage_invalid", "writer coverage matrix counts do not match its entries");
+  }
   return { valid: true, total: matrix.total, openIds: matrix.openIds, cutoverBlocked: matrix.cutoverBlocked };
 }
 
@@ -274,7 +294,9 @@ export function verifyWriterCoverageMatrix(matrix) {
 // Drain tracker (design §3: drain is complete only when all four hold)
 // ---------------------------------------------------------------------------
 
-export function createDrainTracker({ timeoutMs = 60000, now = () => new Date() } = {}) {
+// Default drain timeout is 10 minutes, matching R1 §2.4 / DET-01 §1.6.
+// Callers may still pass an explicit shorter timeout for tests.
+export function createDrainTracker({ timeoutMs = 600000, now = () => new Date() } = {}) {
   if (!Number.isInteger(timeoutMs) || timeoutMs <= 0) {
     throw coordinatorError("freeze_drain_timeout_invalid", "drain timeout must be a positive integer (ms)");
   }
@@ -428,6 +450,15 @@ export function verifyDeltaCatchupReport(report) {
   return { valid: true };
 }
 
+// Recompute the verdict from the checks themselves. The verdict and
+// failedIds a caller claims are never trusted: verify() recomputes
+// them here and rejects any report whose claimed values differ, even
+// if its digest was recomputed over the tampered values (C1 / F1).
+function deriveVerificationVerdict(checks) {
+  const failedIds = VERIFICATION_CHECK_IDS.filter((id) => !checks[id] || checks[id].passed !== true);
+  return { verdict: failedIds.length === 0 ? "pass" : "fail", failedIds };
+}
+
 export function buildTwoSidedVerificationReport({ snapshotId, checks = {}, now = () => new Date() } = {}) {
   assertSnapshotId(snapshotId);
   if (!checks || typeof checks !== "object" || Array.isArray(checks)) {
@@ -446,15 +477,16 @@ export function buildTwoSidedVerificationReport({ snapshotId, checks = {}, now =
     normalized[id] = { passed: check.passed, detail: typeof check.detail === "string" ? check.detail : "" };
   }
   const failedIds = VERIFICATION_CHECK_IDS.filter((id) => !normalized[id].passed);
+  const verdict = failedIds.length === 0 ? "pass" : "fail";
   return {
     type: "two-sided-verification-report",
     schemaVersion: FREEZE_DRAIN_COORDINATOR_VERSION,
     snapshotId,
     checks: normalized,
-    verdict: failedIds.length === 0 ? "pass" : "fail",
+    verdict,
     failedIds,
     timestamp: now().toISOString(),
-    reportDigest: reportDigest("two-sided-verification-report", snapshotId, { checks: normalized }),
+    reportDigest: reportDigest("two-sided-verification-report", snapshotId, { checks: normalized, verdict, failedIds }),
   };
 }
 
@@ -466,11 +498,22 @@ export function verifyTwoSidedVerificationReport(report) {
     throw coordinatorError("freeze_verification_invalid", "two-sided verification report is malformed");
   }
   assertSnapshotId(report.snapshotId);
-  const expected = reportDigest("two-sided-verification-report", report.snapshotId, { checks: report.checks });
+  if (!report.checks || typeof report.checks !== "object" || Array.isArray(report.checks)
+    || VERIFICATION_CHECK_IDS.some((id) => !report.checks[id] || typeof report.checks[id].passed !== "boolean")) {
+    throw coordinatorError("freeze_verification_invalid", "two-sided verification report checks are malformed");
+  }
+  if ((report.verdict !== "pass" && report.verdict !== "fail") || !Array.isArray(report.failedIds)) {
+    throw coordinatorError("freeze_verification_invalid", "two-sided verification report verdict / failedIds are malformed");
+  }
+  const recomputed = deriveVerificationVerdict(report.checks);
+  if (recomputed.verdict !== report.verdict || JSON.stringify(recomputed.failedIds) !== JSON.stringify(report.failedIds)) {
+    throw coordinatorError("freeze_verification_verdict_mismatch", "two-sided verification report verdict / failedIds do not match its checks");
+  }
+  const expected = reportDigest("two-sided-verification-report", report.snapshotId, { checks: report.checks, verdict: recomputed.verdict, failedIds: recomputed.failedIds });
   if (expected !== report.reportDigest) {
     throw coordinatorError("freeze_verification_digest_mismatch", "two-sided verification report digest does not match its contents");
   }
-  return { valid: true, verdict: report.verdict, failedIds: report.failedIds };
+  return { valid: true, verdict: recomputed.verdict, failedIds: recomputed.failedIds };
 }
 
 // ---------------------------------------------------------------------------
@@ -496,9 +539,15 @@ export function ensureCoordinatorLog(db) {
   return true;
 }
 
+// Read-only: this never creates the coordinator log table. A caller
+// that only reads (verifyLog / verifyCoordinatorReceipt / readLog on a
+// fresh database) must not mutate the schema (F4). Writers call
+// ensureCoordinatorLog explicitly (coordinator construction and
+// issueCoordinatorReceipt).
 export function readCoordinatorLog(db) {
   assertDbHandle(db);
-  ensureCoordinatorLog(db);
+  const exists = db.prepare("select name from main.sqlite_schema where type = 'table' and name = ?").get(COORDINATOR_LOG_TABLE);
+  if (!exists) return [];
   return db.prepare(`select * from ${COORDINATOR_LOG_TABLE} order by seq asc`).all().map((row) => ({
     seq: row.seq,
     transitionId: row.transition_id,
@@ -596,6 +645,22 @@ export function verifyCoordinatorReceipt(db, receipt) {
 // Coordinator
 // ---------------------------------------------------------------------------
 
+// One atomic transaction for a phase transition plus its coordinator
+// log entry (C3 / F2). better-sqlite3 nests the inner db.transaction
+// calls of transitionWriterAuthority / issueCoordinatorReceipt as
+// savepoints, so a failure in the log write rolls the phase move back
+// as well: the phase never moves without its log entry, and the log
+// never gains an entry for a phase that did not move.
+function transitionWithReceipt(db, { transitionId, from, to, fromEpoch, snapshotId, receiptRef, gateRefs, now }) {
+  return db.transaction(() => {
+    const next = transitionWriterAuthority(db, { to, expectedEpoch: fromEpoch, receiptRef, now });
+    const coordinatorReceipt = issueCoordinatorReceipt(db, {
+      transitionId, from, to, fromEpoch, toEpoch: next.epoch, snapshotId, receiptRef, gateRefs, now,
+    });
+    return { next, coordinatorReceipt };
+  })();
+}
+
 export function createFreezeDrainCoordinator(db, { snapshotId, now = () => new Date() } = {}) {
   assertDbHandle(db);
   assertSnapshotId(snapshotId);
@@ -646,10 +711,9 @@ export function createFreezeDrainCoordinator(db, { snapshotId, now = () => new D
         drain: { inflightWrites: drainStatus.inflightWrites, inflightCallbacks: drainStatus.inflightCallbacks, hwmStable: drainStatus.hwmStable },
       };
       const receiptRef = transitionReceiptRef("T1", gateRefs);
-      const next = transitionWriterAuthority(db, { to: WRITER_PHASES.FROZEN, expectedEpoch: current.epoch, receiptRef, now });
-      const coordinatorReceipt = issueCoordinatorReceipt(db, {
-        transitionId: "T1", from: current.phase, to: next.phase,
-        fromEpoch: current.epoch, toEpoch: next.epoch, snapshotId, receiptRef, gateRefs, now,
+      const { next, coordinatorReceipt } = transitionWithReceipt(db, {
+        transitionId: "T1", from: current.phase, to: WRITER_PHASES.FROZEN,
+        fromEpoch: current.epoch, snapshotId, receiptRef, gateRefs, now,
       });
       return { transitionId: "T1", authority: next, freezeReceipt, coordinatorReceipt };
     },
@@ -657,10 +721,17 @@ export function createFreezeDrainCoordinator(db, { snapshotId, now = () => new D
     switchToD1({ deltaReport, verificationReport, c1ApprovalRef, handover = {} } = {}) {
       const current = requirePhase(WRITER_PHASES.FROZEN, "switch to D1 (T2)");
       verifyDeltaCatchupReport(deltaReport);
-      verifyTwoSidedVerificationReport(verificationReport);
-      if (verificationReport.verdict !== "pass") {
-        throw coordinatorError("freeze_verification_failed", `two-sided verification failed: ${verificationReport.failedIds.join(", ")}; staying in FROZEN`, { failedIds: verificationReport.failedIds });
+      // Gate on the verdict recomputed from the checks by verify(),
+      // never on the verdict string the report itself carries (C1).
+      const verification = verifyTwoSidedVerificationReport(verificationReport);
+      if (verification.verdict !== "pass") {
+        throw coordinatorError("freeze_verification_failed", `two-sided verification failed: ${verification.failedIds.join(", ")}; staying in FROZEN`, { failedIds: verification.failedIds });
       }
+      // F6 (recorded limitation): these refs are checked only for
+      // presence / form and are recorded verbatim in the coordinator
+      // log, so a real approval can be audited against its own record
+      // afterwards. The coordinator cannot tell a real ref from a
+      // fabricated string by itself and never grants an approval.
       assertNonEmptyString(c1ApprovalRef, "C1 approval ref", "freeze_c1_approval_missing");
       assertNonEmptyString(handover.verifiedBy, "staged handover verifiedBy", "freeze_handover_unverified");
       assertNonEmptyString(handover.receiptRef, "staged handover receiptRef", "freeze_handover_unverified");
@@ -674,10 +745,9 @@ export function createFreezeDrainCoordinator(db, { snapshotId, now = () => new D
         handover: { verifiedBy: handover.verifiedBy, verifiedAt: handover.verifiedAt, receiptRef: handover.receiptRef },
       };
       const receiptRef = transitionReceiptRef("T2", gateRefs);
-      const next = transitionWriterAuthority(db, { to: WRITER_PHASES.D1_ACTIVE, expectedEpoch: current.epoch, receiptRef, now });
-      const coordinatorReceipt = issueCoordinatorReceipt(db, {
-        transitionId: "T2", from: current.phase, to: next.phase,
-        fromEpoch: current.epoch, toEpoch: next.epoch, snapshotId, receiptRef, gateRefs, now,
+      const { next, coordinatorReceipt } = transitionWithReceipt(db, {
+        transitionId: "T2", from: current.phase, to: WRITER_PHASES.D1_ACTIVE,
+        fromEpoch: current.epoch, snapshotId, receiptRef, gateRefs, now,
       });
       return { transitionId: "T2", authority: next, coordinatorReceipt };
     },
@@ -689,10 +759,9 @@ export function createFreezeDrainCoordinator(db, { snapshotId, now = () => new D
       }
       const gateRefs = { trigger, detail };
       const receiptRef = transitionReceiptRef("T3", gateRefs);
-      const next = transitionWriterAuthority(db, { to: WRITER_PHASES.RECOVERY, expectedEpoch: current.epoch, receiptRef, now });
-      const coordinatorReceipt = issueCoordinatorReceipt(db, {
-        transitionId: "T3", from: current.phase, to: next.phase,
-        fromEpoch: current.epoch, toEpoch: next.epoch, snapshotId, receiptRef, gateRefs, now,
+      const { next, coordinatorReceipt } = transitionWithReceipt(db, {
+        transitionId: "T3", from: current.phase, to: WRITER_PHASES.RECOVERY,
+        fromEpoch: current.epoch, snapshotId, receiptRef, gateRefs, now,
       });
       return { transitionId: "T3", authority: next, coordinatorReceipt };
     },
@@ -701,12 +770,21 @@ export function createFreezeDrainCoordinator(db, { snapshotId, now = () => new D
       const current = requirePhase(WRITER_PHASES.FROZEN, "unfreeze (T5)");
       assertNonEmptyString(reason, "unfreeze reason", "freeze_unfreeze_reason_missing");
       assertNonEmptyString(voidedFreezeReceiptRef, "voided freeze receipt ref", "freeze_unfreeze_receipt_missing");
+      // F5: the voided ref must be a freeze receipt this coordinator
+      // actually issued (a T1 log entry's freezeReceiptDigest), not
+      // any non-empty string, so the log can later show which freeze
+      // receipt was voided.
+      const issuedFreezeReceipts = readCoordinatorLog(db)
+        .filter((entry) => entry.transitionId === "T1")
+        .map((entry) => entry.gateRefs?.freezeReceiptDigest);
+      if (!issuedFreezeReceipts.includes(voidedFreezeReceiptRef)) {
+        throw coordinatorError("freeze_unfreeze_receipt_invalid", "voided freeze receipt ref does not match any freeze receipt issued by this coordinator");
+      }
       const gateRefs = { reason, voidedFreezeReceiptRef };
       const receiptRef = transitionReceiptRef("T5", gateRefs);
-      const next = transitionWriterAuthority(db, { to: WRITER_PHASES.BWH_ACTIVE, expectedEpoch: current.epoch, receiptRef, now });
-      const coordinatorReceipt = issueCoordinatorReceipt(db, {
-        transitionId: "T5", from: current.phase, to: next.phase,
-        fromEpoch: current.epoch, toEpoch: next.epoch, snapshotId, receiptRef, gateRefs, now,
+      const { next, coordinatorReceipt } = transitionWithReceipt(db, {
+        transitionId: "T5", from: current.phase, to: WRITER_PHASES.BWH_ACTIVE,
+        fromEpoch: current.epoch, snapshotId, receiptRef, gateRefs, now,
       });
       return {
         transitionId: "T5",
@@ -721,16 +799,17 @@ export function createFreezeDrainCoordinator(db, { snapshotId, now = () => new D
 
     resumeToD1({ reverificationReport } = {}) {
       const current = requirePhase(WRITER_PHASES.RECOVERY, "resume to D1 (R1)");
-      verifyTwoSidedVerificationReport(reverificationReport);
-      if (reverificationReport.verdict !== "pass") {
-        throw coordinatorError("freeze_verification_failed", `reverification failed: ${reverificationReport.failedIds.join(", ")}; staying in RECOVERY`, { failedIds: reverificationReport.failedIds });
+      // Gate on the verdict recomputed from the checks by verify(),
+      // never on the verdict string the report itself carries (C1).
+      const reverification = verifyTwoSidedVerificationReport(reverificationReport);
+      if (reverification.verdict !== "pass") {
+        throw coordinatorError("freeze_verification_failed", `reverification failed: ${reverification.failedIds.join(", ")}; staying in RECOVERY`, { failedIds: reverification.failedIds });
       }
       const gateRefs = { reverificationDigest: reverificationReport.reportDigest };
       const receiptRef = transitionReceiptRef("R1", gateRefs);
-      const next = transitionWriterAuthority(db, { to: WRITER_PHASES.D1_ACTIVE, expectedEpoch: current.epoch, receiptRef, now });
-      const coordinatorReceipt = issueCoordinatorReceipt(db, {
-        transitionId: "R1", from: current.phase, to: next.phase,
-        fromEpoch: current.epoch, toEpoch: next.epoch, snapshotId, receiptRef, gateRefs, now,
+      const { next, coordinatorReceipt } = transitionWithReceipt(db, {
+        transitionId: "R1", from: current.phase, to: WRITER_PHASES.D1_ACTIVE,
+        fromEpoch: current.epoch, snapshotId, receiptRef, gateRefs, now,
       });
       return { transitionId: "R1", authority: next, coordinatorReceipt };
     },

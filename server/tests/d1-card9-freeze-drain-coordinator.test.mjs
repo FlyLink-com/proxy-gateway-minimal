@@ -7,6 +7,8 @@
 // T4 transition are enforced by the same trigger production would use.
 import test from "node:test";
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
 import Database from "better-sqlite3";
 
 import { ensureWriterAuthority, readWriterAuthority } from "../services/platform/single-writer-authority.mjs";
@@ -33,6 +35,7 @@ import {
   createFreezeDrainCoordinator,
   verifyCoordinatorLog,
   verifyCoordinatorReceipt,
+  readCoordinatorLog,
   COORDINATOR_LOG_TABLE,
 } from "../services/platform/d1-card9-freeze-drain-coordinator.mjs";
 
@@ -318,7 +321,13 @@ test("V-4 tampering with either report breaks its digest", () => {
   assert.equal(codeOf(() => verifyDeltaCatchupReport({ ...delta, items: [{ table: "s2s_items", pk: "9", disposition: "applied" }] })), "freeze_delta_digest_mismatch");
   const verification = passingVerification();
   const tampered = { ...verification, checks: { ...verification.checks, "C-1": { passed: false, detail: "" } } };
-  assert.equal(codeOf(() => verifyTwoSidedVerificationReport(tampered)), "freeze_verification_digest_mismatch");
+  // Tampering with the checks changes the recomputed verdict, so the
+  // verdict check (C1) fires before the digest check; the report is
+  // still rejected.
+  assert.equal(codeOf(() => verifyTwoSidedVerificationReport(tampered)), "freeze_verification_verdict_mismatch");
+  // Tampering with only the digest (checks/verdict untouched) is
+  // caught by the digest check itself.
+  assert.equal(codeOf(() => verifyTwoSidedVerificationReport({ ...verification, reportDigest: "0".repeat(64) })), "freeze_verification_digest_mismatch");
 });
 
 // --- Coordinator state machine: S-1..S-16 ---------------------------------
@@ -385,7 +394,6 @@ test("S-4 freeze with a pending drain is refused and the phase does not move", (
 });
 
 test("S-5 a second freeze from FROZEN is refused", (t) => {
-  const ctx = freezeHappy(t);
   // The bundle must be built while still BWH_ACTIVE: the write-lock
   // receipt itself requires BWH_ACTIVE, so a bundle built after the
   // first freeze would fail before the coordinator ever sees it.
@@ -531,4 +539,155 @@ test("S-16 tampering with the durable log or a receipt is detected", (t) => {
   db.prepare(`update ${COORDINATOR_LOG_TABLE} set receipt_digest = ? where seq = 1`).run(result.coordinatorReceipt.receiptDigest);
   assert.deepEqual(verifyCoordinatorLog(db), { valid: true, entries: 1 });
   assert.equal(codeOf(() => verifyCoordinatorReceipt(db, tamperedReceipt)), "freeze_coordinator_receipt_invalid");
+});
+
+// --- C1/C3/C4 follow-up tests (PR #906 rereview, 2026-11-23) ------------
+
+// Canonical JSON + digest, replicating the coordinator's reportDigest
+// algorithm in the test so a forged report can be built with a
+// correctly recomputed digest over its tampered verdict.
+function testCanonicalJson(value) {
+  if (value === null || typeof value !== "object") return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map(testCanonicalJson).join(",")}]`;
+  const keys = Object.keys(value).sort();
+  return `{${keys.map((key) => `${JSON.stringify(key)}:${testCanonicalJson(value[key])}`).join(",")}}`;
+}
+
+function forgedVerificationReport({ snapshotId, checks, verdict, failedIds }) {
+  const normalized = {};
+  for (const id of VERIFICATION_CHECK_IDS) {
+    normalized[id] = { passed: checks[id].passed, detail: checks[id].detail ?? "" };
+  }
+  const reportDigest = createHash("sha256").update(testCanonicalJson({
+    version: FREEZE_DRAIN_COORDINATOR_VERSION,
+    type: "two-sided-verification-report",
+    snapshotId,
+    payload: { checks: normalized, verdict, failedIds },
+  }), "utf8").digest("hex");
+  return {
+    type: "two-sided-verification-report",
+    schemaVersion: FREEZE_DRAIN_COORDINATOR_VERSION,
+    snapshotId,
+    checks: normalized,
+    verdict,
+    failedIds,
+    timestamp: "2026-11-21T00:00:00.000Z",
+    reportDigest,
+  };
+}
+
+test("V-5 a forged verification report (failed check, verdict rewritten to pass, digest recomputed) is still rejected", (t) => {
+  const checks = Object.fromEntries(VERIFICATION_CHECK_IDS.map((id) => [id, { passed: id !== "C-3", detail: `synthetic ${id}` }]));
+  const forged = forgedVerificationReport({ snapshotId: SNAPSHOT, checks, verdict: "pass", failedIds: [] });
+  assert.equal(codeOf(() => verifyTwoSidedVerificationReport(forged)), "freeze_verification_verdict_mismatch");
+  // The same forgery must not open the T2 gate either.
+  const ctx = freezeHappy(t);
+  assert.equal(codeOf(() => ctx.coordinator.switchToD1({
+    deltaReport: appliedDelta(),
+    verificationReport: forged,
+    c1ApprovalRef: "s2s-c1-approval-001",
+    handover: { verifiedBy: "s2s-reviewer-001", verifiedAt: "2026-11-21T00:05:00.000Z", receiptRef: "s2s-handover-001" },
+  })), "freeze_verification_verdict_mismatch");
+  assert.deepEqual([readWriterAuthority(ctx.db).phase, readWriterAuthority(ctx.db).epoch], ["FROZEN", 2]);
+});
+
+test("V-6 tampering with a matrix counts/total is refused even when entries are untouched", () => {
+  const matrix = closedCoverage();
+  assert.equal(codeOf(() => verifyWriterCoverageMatrix({ ...matrix, counts: { open: 1, fenced: 27, waived: 0, outOfScope: 0 } })), "freeze_coverage_invalid");
+  assert.equal(codeOf(() => verifyWriterCoverageMatrix({ ...matrix, total: 99 })), "freeze_coverage_invalid");
+  assert.deepEqual(verifyWriterCoverageMatrix(matrix), { valid: true, total: 28, openIds: [], cutoverBlocked: false });
+});
+
+test("D-6 drain tracker defaults to the R1 10-minute timeout", (t) => {
+  const { now } = makeClock(t);
+  const tracker = createDrainTracker({ now });
+  assert.equal(tracker.status().timeoutMs, 600000);
+});
+
+test("S-17 transition + coordinator log are atomic: a failing log write leaves the phase unmoved", (t) => {
+  const { db, coordinator, clock } = makeCoordinator(t);
+  db.exec(`create trigger s2s_fail_receipt before insert on ${COORDINATOR_LOG_TABLE} begin select raise(abort, 's2s-forced-receipt-failure'); end;`);
+  let thrown = null;
+  try {
+    coordinator.freeze({
+      readinessBundle: buildBundle(db),
+      coverageMatrix: closedCoverage(),
+      drainTracker: drainedTracker(clock),
+      checkpointId: CHECKPOINT,
+    });
+  } catch (error) {
+    thrown = error;
+  }
+  assert.ok(thrown, "freeze must throw when the coordinator log write fails");
+  assert.deepEqual([readWriterAuthority(db).phase, readWriterAuthority(db).epoch], ["BWH_ACTIVE", 1]);
+  assert.equal(coordinator.readLog().length, 0);
+});
+
+test("S-18 reading the coordinator log never creates its table (read-only path)", (t) => {
+  const db = new Database(":memory:");
+  t.after(() => { if (db.open) db.close(); });
+  ensureWriterAuthority(db);
+  const tableBefore = db.prepare("select name from main.sqlite_schema where type = 'table' and name = ?").get(COORDINATOR_LOG_TABLE);
+  assert.equal(tableBefore, undefined);
+  assert.deepEqual(readCoordinatorLog(db), []);
+  assert.deepEqual(verifyCoordinatorLog(db), { valid: true, entries: 0 });
+  const tableAfter = db.prepare("select name from main.sqlite_schema where type = 'table' and name = ?").get(COORDINATOR_LOG_TABLE);
+  assert.equal(tableAfter, undefined);
+});
+
+test("S-19 unfreeze with an arbitrary voided receipt ref is refused; the real receipt still works", (t) => {
+  const ctx = freezeHappy(t);
+  assert.equal(codeOf(() => ctx.coordinator.unfreeze({ reason: "synthetic", voidedFreezeReceiptRef: "s2s-not-a-real-receipt" })), "freeze_unfreeze_receipt_invalid");
+  assert.deepEqual([readWriterAuthority(ctx.db).phase, readWriterAuthority(ctx.db).epoch], ["FROZEN", 2]);
+  const result = ctx.coordinator.unfreeze({ reason: "synthetic", voidedFreezeReceiptRef: ctx.result.freezeReceipt.receiptDigest });
+  assert.equal(result.transitionId, "T5");
+});
+
+test("S-20 the switch records the C1 approval and handover refs verbatim for audit (F6, recorded limitation)", (t) => {
+  const { switched } = driveToD1(t);
+  assert.equal(switched.coordinatorReceipt.gateRefs.c1ApprovalRef, "s2s-c1-approval-001");
+  assert.equal(switched.coordinatorReceipt.gateRefs.handover.receiptRef, "s2s-handover-001");
+  assert.equal(switched.coordinatorReceipt.gateRefs.handover.verifiedBy, "s2s-reviewer-001");
+});
+
+// --- 28-item dispositions landed on this branch: M-9 / M-10 -------------
+
+// U-F9 / U-F14 out-of-scope bases quote inventory §15.2 verbatim.
+// U-F15 waiver ref cites Yi's 2026-11-23 09:43 CST landing
+// authorization as recorded in the C-track task ("以上授权，及相关密钥
+// 制备由你来完成，阻塞有你来清理"); it is that authorization cited
+// as the ref, not a separately issued waiver number. If Yi later
+// issues a formal waiverRef it replaces this citation.
+const UF9_BASIS = "docs/D1_STAGE1B_BWH_WRITE_INVENTORY_V1.md §15.2 U-F9: \"Schema-ensure DDL (W-139…W-143) is DDL, not business writes — explicitly out of fence scope; it must run while BWH_ACTIVE by operator discipline.\"";
+const UF14_BASIS = "docs/D1_STAGE1B_BWH_WRITE_INVENTORY_V1.md §15.2 U-F14: \"DDL, not business writes; explicitly out of scope. Migrations run offline by operator and must not run against a frozen / D1-active database — operator discipline until the follow-up defines migration gating.\"";
+const UF15_WAIVER_REF = "yi-2026-11-23-0943-cst-d1-landing-authorization";
+
+test("M-9 U-F9/U-F14 land as out-of-scope and U-F15 as waived; the other 25 items stay open", () => {
+  const matrix = buildWriterCoverageMatrix({
+    outOfScope: { "U-F9": UF9_BASIS, "U-F14": UF14_BASIS },
+    waivers: { "U-F15": UF15_WAIVER_REF },
+  });
+  assert.equal(matrix.entries.find((e) => e.id === "U-F9").status, "out-of-scope");
+  assert.equal(matrix.entries.find((e) => e.id === "U-F9").evidence.basis, UF9_BASIS);
+  assert.equal(matrix.entries.find((e) => e.id === "U-F14").status, "out-of-scope");
+  assert.equal(matrix.entries.find((e) => e.id === "U-F14").evidence.basis, UF14_BASIS);
+  assert.equal(matrix.entries.find((e) => e.id === "U-F15").status, "waived");
+  assert.equal(matrix.entries.find((e) => e.id === "U-F15").evidence.ref, UF15_WAIVER_REF);
+  assert.deepEqual(matrix.counts, { open: 25, fenced: 0, waived: 1, outOfScope: 2 });
+  assert.equal(matrix.cutoverBlocked, true);
+  assert.deepEqual(verifyWriterCoverageMatrix(matrix), { valid: true, total: 28, openIds: matrix.openIds, cutoverBlocked: true });
+});
+
+test("M-10 U-F16 is locked: agent epoch forwarding defaults OFF and run-once does not enable it", () => {
+  const runOnce = readFileSync(new URL("../../agent/g4/run-once.mjs", import.meta.url), "utf8");
+  assert.ok(!runOnce.includes("writerEpochForwarding"), "run-once must not enable epoch forwarding");
+  assert.ok(!runOnce.includes("epochProvider"), "run-once must not supply an epoch provider");
+  const agentClient = readFileSync(new URL("../../agent/g4/agent-client.mjs", import.meta.url), "utf8");
+  assert.ok(agentClient.includes("writerEpochForwarding = false"), "forwarding must default OFF in the agent client");
+  // Default-OFF is also behaviourally locked by S1B-AGT-1 in
+  // server/tests/d1-stage1b-agent-epoch-transport.test.mjs (master).
+  // Forwarding can only be turned on by an approved staged handover.
+  const matrix = buildWriterCoverageMatrix({ fenced: ["U-F16"] });
+  assert.equal(matrix.entries.find((e) => e.id === "U-F16").status, "fenced");
+  assert.equal(matrix.cutoverBlocked, true);
 });
