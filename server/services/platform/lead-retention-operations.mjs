@@ -20,6 +20,10 @@ import Database from "better-sqlite3";
 import {
   createSqliteSubscriptionControlStore
 } from "./subscription-control-db.mjs";
+import {
+  assertWritable,
+  WriterAuthorityError
+} from "./single-writer-authority.mjs";
 
 export const PLATFORM_LEAD_RETENTION_MS = 90 * 24 * 60 * 60 * 1000;
 export const PLATFORM_LEAD_BACKUP_PRUNE_SAFETY_MS = 2 * 60 * 60 * 1000;
@@ -461,6 +465,11 @@ export function runLeadPurge({
       initializeSchema: false
     });
     const outcome = database.transaction(() => {
+      // U-F7: phase fence, first statement — the purge below
+      // (store.purgeExpiredLeads) must not land while the writer
+      // authority is not BWH_ACTIVE. Dry-run opens the database
+      // readonly and never reaches this transaction.
+      assertWritable(database);
       const eligibleLeadCount = countEligible();
       const deletedLeadCount = store.purgeExpiredLeads({ now });
       if (!quickCheckOk(database)) {
@@ -478,10 +487,14 @@ export function runLeadPurge({
       reasonCodes: []
     });
   } catch (error) {
+    // A fence refusal is a blocked purge, not a database failure: keep
+    // the fence code as the reason so the CLI result names the cause.
     return blockedCommandResult(
       "purge",
       apply,
-      error?.reasonCode || databaseFailureReason(error)
+      error instanceof WriterAuthorityError
+        ? "writer_authority_not_bwh"
+        : error?.reasonCode || databaseFailureReason(error)
     );
   } finally {
     database?.close();

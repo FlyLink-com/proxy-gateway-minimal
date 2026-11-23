@@ -5,6 +5,10 @@ import { digest, policySnapshot } from "./portal-referral-contract.mjs";
 import { validatePortalReferralSchema } from "./portal-referral-migrations.mjs";
 import { createPortalReferralService } from "./portal-referral-service.mjs";
 import { reverseReferralReward } from "./portal-referral-wallet.mjs";
+import {
+  assertWritable,
+  WriterAuthorityError
+} from "./single-writer-authority.mjs";
 
 const DELIBERATE = Symbol("admin-user-commerce");
 const ACCOUNT = /^[A-Za-z0-9_-]{1,64}$/;
@@ -294,6 +298,9 @@ export function createAdminUserCommerceService({
       opened.db.pragma("busy_timeout = 5000");
       return fn(opened.db);
     } catch (error) {
+      // The writer-authority fence error must reach callers intact so a
+      // frozen-phase refusal is distinguishable from source_unavailable.
+      if (error instanceof WriterAuthorityError) throw error;
       if (error?.[DELIBERATE]) throw error;
       fail("source_unavailable");
     } finally {
@@ -424,6 +431,9 @@ export function createAdminUserCommerceService({
   function updateRate(input) {
     const rate = readRate(input);
     return withDb((db) => {
+      // U-F6: per-call phase fence, first statement — the publishPolicy
+      // call below is fenced by U-F4 as well; this is the per-call door.
+      assertWritable(db);
       const now = clock();
       const current = loadCurrentPolicy(db, now);
       const effectiveAt = `${rate.effectiveDay}T00:00:00.000Z`;
@@ -479,6 +489,9 @@ export function createAdminUserCommerceService({
   function clawback(input) {
     const request = readClawback(input);
     return withDb((db) => {
+      // U-F6: per-call phase fence, first statement — covers the
+      // clawback transaction below (reverseReferralReward + event insert).
+      assertWritable(db);
       if (!referralReady(db)) fail("source_unavailable");
       const now = clock();
       const account = db.prepare(

@@ -6,6 +6,10 @@ import Database from "better-sqlite3";
 
 import { assertPaymentRechargeOffer } from "./payment-recharge-offer-catalog.mjs";
 import { validatePaymentStoreSchema } from "./payment-store-migrations.mjs";
+import {
+  assertWritable,
+  WriterAuthorityError
+} from "./single-writer-authority.mjs";
 
 const SAFE_REF_RE = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const DIGEST_RE = /^[a-f0-9]{64}$/;
@@ -329,6 +333,9 @@ export function createSqlitePaymentStore(options = {}) {
       merchantBindingRef,
     });
     const run = db.transaction(() => {
+      // U-F2: phase fence, first statement — no payment write may land
+      // while the writer authority is not BWH_ACTIVE.
+      assertWritable(db);
       const existing = db.prepare(`
         select payment_order_ref, create_request_digest
           from platform_payment_orders
@@ -382,7 +389,7 @@ export function createSqlitePaymentStore(options = {}) {
     try {
       return run.immediate();
     } catch (error) {
-      if (error?.code?.startsWith("payment_")) throw error;
+      if (error instanceof WriterAuthorityError || error?.code?.startsWith("payment_")) throw error;
       fail("payment_store_write_failed");
     }
   }
@@ -437,6 +444,9 @@ export function createSqlitePaymentStore(options = {}) {
     if (!RECEIPT_TYPES.has(request.receiptType)) fail("invalid_payment_store_request");
     const result = normalizeOperationResult(request.operationResult);
     const run = db.transaction(() => {
+      // U-F2: phase fence, first statement (covers the callback
+      // receipt path too — every recordOperationReceipt call lands here).
+      assertWritable(db);
       const order = findOrder(request.orderRef);
       if (!order) fail("payment_order_not_found");
       const sourceOrder = db.prepare(`
@@ -519,7 +529,7 @@ export function createSqlitePaymentStore(options = {}) {
       });
     });
     try { return run.immediate(); } catch (error) {
-      if (error?.code?.startsWith("payment_")) throw error;
+      if (error instanceof WriterAuthorityError || error?.code?.startsWith("payment_")) throw error;
       fail("payment_store_write_failed");
     }
   }
@@ -593,6 +603,8 @@ export function createSqlitePaymentStore(options = {}) {
     }
     const fact = normalizePaymentFact(request.paymentFact);
     const run = db.transaction(() => {
+      // U-F2: phase fence, first statement.
+      assertWritable(db);
       const order = db.prepare(`
         select * from platform_payment_orders where payment_order_ref = ?
       `).get(request.orderRef);
@@ -676,7 +688,7 @@ export function createSqlitePaymentStore(options = {}) {
       });
     });
     try { return run.immediate(); } catch (error) {
-      if (error?.code?.startsWith("payment_")) throw error;
+      if (error instanceof WriterAuthorityError || error?.code?.startsWith("payment_")) throw error;
       fail("payment_store_write_failed");
     }
   }
@@ -688,6 +700,8 @@ export function createSqlitePaymentStore(options = {}) {
     ]);
     for (const key of Object.keys(request)) request[key] = safeRef(request[key]);
     const run = db.transaction(() => {
+      // U-F2: phase fence, first statement.
+      assertWritable(db);
       const order = db.prepare(`
         select * from platform_payment_orders where payment_order_ref = ?
       `).get(request.orderRef);
@@ -740,7 +754,7 @@ export function createSqlitePaymentStore(options = {}) {
       return Object.freeze({ order: mapOrder(findOrder(request.orderRef)), replayed: false });
     });
     try { return run.immediate(); } catch (error) {
-      if (error?.code?.startsWith("payment_")) throw error;
+      if (error instanceof WriterAuthorityError || error?.code?.startsWith("payment_")) throw error;
       fail("payment_store_write_failed");
     }
   }
@@ -751,6 +765,8 @@ export function createSqlitePaymentStore(options = {}) {
     request.orderRef = safeRef(request.orderRef);
     request.receiptRef = safeRef(request.receiptRef);
     const run = db.transaction(() => {
+      // U-F2: phase fence, first statement.
+      assertWritable(db);
       const order = db.prepare(`
         select * from platform_payment_orders where payment_order_ref = ?
       `).get(request.orderRef);
@@ -772,7 +788,7 @@ export function createSqlitePaymentStore(options = {}) {
       return Object.freeze({ order: mapOrder(findOrder(request.orderRef)), replayed: false });
     });
     try { return run.immediate(); } catch (error) {
-      if (error?.code?.startsWith("payment_")) throw error;
+      if (error instanceof WriterAuthorityError || error?.code?.startsWith("payment_")) throw error;
       fail("payment_store_write_failed");
     }
   }
