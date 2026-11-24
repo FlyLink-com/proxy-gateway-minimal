@@ -172,14 +172,45 @@ export function createTrafficAccountingService({
   let observationSeq = 0;
   let sampleSeq = 0;
 
+  // Independent in-flight counters (scheduler-quiescence wiring,
+  // 2026-11-24): W-116 usage collection (business calls), W-117 delta
+  // sample writes, W-118 cumulative sample writes. These count work in
+  // THIS service instance whether or not a drain tracker is supplied;
+  // the drain tracker (P-2) remains the freeze-time bracketing
+  // mechanism. The writes are synchronous today, so a counter reads 1
+  // only while a call is executing on the stack (observable
+  // re-entrantly from the store) and 0 outside a call; it does not by
+  // itself prove no write will start after the read — that needs the
+  // freeze fence plus the drain tracker's assertDrained.
+  // getInFlightStatus() is read-only and returns a frozen snapshot.
+  let inFlightObservations = 0;
+  let inFlightDeltaSampleWrites = 0;
+  let inFlightCumulativeSampleWrites = 0;
+
+  function getInFlightStatus() {
+    return Object.freeze({
+      inFlightObservations,
+      inFlightDeltaSampleWrites,
+      inFlightCumulativeSampleWrites,
+      quiesced: inFlightObservations === 0
+        && inFlightDeltaSampleWrites === 0
+        && inFlightCumulativeSampleWrites === 0,
+    });
+  }
+
   function recordUsageObservation(input = {}) {
-    if (!drainTracker) return recordUsageObservationInner(input);
-    const callbackId = `traffic-usage-${serviceInstanceId}-observation-${++observationSeq}`;
-    return runTracked(
-      () => drainTracker.registerCallback(callbackId),
-      () => drainTracker.settleCallback(callbackId),
-      () => recordUsageObservationInner(input)
-    );
+    inFlightObservations += 1;
+    try {
+      if (!drainTracker) return recordUsageObservationInner(input);
+      const callbackId = `traffic-usage-${serviceInstanceId}-observation-${++observationSeq}`;
+      return runTracked(
+        () => drainTracker.registerCallback(callbackId),
+        () => drainTracker.settleCallback(callbackId),
+        () => recordUsageObservationInner(input)
+      );
+    } finally {
+      inFlightObservations -= 1;
+    }
   }
 
   function recordUsageObservationInner(input = {}) {
@@ -254,17 +285,33 @@ export function createTrafficAccountingService({
     // W-117 (recordUsageSample) / W-118 (recordCumulativeUsageSample):
     // the sample write is bracketed with registerWrite/settleWrite so
     // the drain tracker sees it in flight. Without a tracker this is a
-    // plain direct call, exactly as before.
-    let usage;
-    if (!drainTracker) {
-      usage = recordSample();
+    // plain direct call, exactly as before. The independent in-flight
+    // counter below counts the same write by kind, with or without a
+    // tracker, so getInFlightStatus() can read it.
+    const isCumulative = normalized.accountingMode === "cumulative";
+    if (isCumulative) {
+      inFlightCumulativeSampleWrites += 1;
     } else {
-      const writeId = `traffic-usage-${serviceInstanceId}-sample-${++sampleSeq}`;
-      usage = runTracked(
-        () => drainTracker.registerWrite(writeId, "usage-sample"),
-        () => drainTracker.settleWrite(writeId),
-        recordSample
-      );
+      inFlightDeltaSampleWrites += 1;
+    }
+    let usage;
+    try {
+      if (!drainTracker) {
+        usage = recordSample();
+      } else {
+        const writeId = `traffic-usage-${serviceInstanceId}-sample-${++sampleSeq}`;
+        usage = runTracked(
+          () => drainTracker.registerWrite(writeId, "usage-sample"),
+          () => drainTracker.settleWrite(writeId),
+          recordSample
+        );
+      }
+    } finally {
+      if (isCumulative) {
+        inFlightCumulativeSampleWrites -= 1;
+      } else {
+        inFlightDeltaSampleWrites -= 1;
+      }
     }
     const currentCycleUsage = currentCycleUsageFor({
       controlStore,
@@ -313,7 +360,8 @@ export function createTrafficAccountingService({
   }
 
   return {
-    recordUsageObservation
+    recordUsageObservation,
+    getInFlightStatus
   };
 }
 

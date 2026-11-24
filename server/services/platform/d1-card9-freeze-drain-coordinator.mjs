@@ -843,6 +843,7 @@ function transitionWithReceipt(db, { transitionId, from, to, fromEpoch, snapshot
 // Scheduler wiring contract (P-2): which live-process references the
 // freeze executor needs per scheduler job, and which methods it calls.
 //   W-111 coin-commerce coordinator: stop() (waits for the pass in flight)
+//         + getStatus() (lifecycle / timerArmed / inFlightSettled read)
 //   W-112 welcome-bonus coordinator: stop() + getStatus() (stop does not
 //         wait for the pass in flight; getStatus reports whether it settled)
 //   W-114 data-pack rotation coordinator: stop() + getStatus()
@@ -852,7 +853,7 @@ function transitionWithReceipt(db, { transitionId, from, to, fromEpoch, snapshot
 // records the evidence; the wiring only makes the references available
 // in-process. This module never calls stop()/stopTick() itself.
 const SCHEDULER_WIRING = Object.freeze({
-  coinCommerceCoordinator: Object.freeze({ methods: ["stop"], statusFields: ["hasStop"] }),
+  coinCommerceCoordinator: Object.freeze({ methods: ["stop", "getStatus"], statusFields: ["hasStop", "hasGetStatus"] }),
   welcomeBonusCoordinator: Object.freeze({ methods: ["stop", "getStatus"], statusFields: ["hasStop", "hasGetStatus"] }),
   rotationCoordinator: Object.freeze({ methods: ["stop", "getStatus"], statusFields: ["hasStop", "hasGetStatus"] }),
   portalReferrals: Object.freeze({ methods: ["stopTick", "getTickStatus"], statusFields: ["hasStopTick", "hasGetTickStatus"] }),
