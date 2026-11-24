@@ -293,7 +293,7 @@ function wiringDb(t) {
 
 function fakeScheduler() {
   return {
-    coinCommerceCoordinator: { stop: async () => {} },
+    coinCommerceCoordinator: { stop: async () => {}, getStatus: () => ({}) },
     welcomeBonusCoordinator: { stop: async () => {}, getStatus: () => ({}) },
     rotationCoordinator: { stop: () => {}, getStatus: () => ({}) },
     portalReferrals: { stopTick: async () => ({}), getTickStatus: () => ({}) },
@@ -305,7 +305,7 @@ test("P-2 coordinator without scheduler wiring reports every job absent", (t) =>
   const coordinator = createFreezeDrainCoordinator(db, { snapshotId: "s2s-wiring-absent-001" });
   assert.equal(coordinator.scheduler, null);
   assert.deepEqual(coordinator.schedulerWiring(), {
-    coinCommerceCoordinator: { present: false, hasStop: false },
+    coinCommerceCoordinator: { present: false, hasStop: false, hasGetStatus: false },
     welcomeBonusCoordinator: { present: false, hasStop: false, hasGetStatus: false },
     rotationCoordinator: { present: false, hasStop: false, hasGetStatus: false },
     portalReferrals: { present: false, hasStopTick: false, hasGetTickStatus: false },
@@ -322,7 +322,7 @@ test("P-2 coordinator with scheduler wiring holds the live references and report
   assert.equal(coordinator.scheduler.coinCommerceCoordinator, scheduler.coinCommerceCoordinator);
   assert.equal(coordinator.scheduler.portalReferrals, scheduler.portalReferrals);
   assert.deepEqual(coordinator.schedulerWiring(), {
-    coinCommerceCoordinator: { present: true, hasStop: true },
+    coinCommerceCoordinator: { present: true, hasStop: true, hasGetStatus: true },
     welcomeBonusCoordinator: { present: true, hasStop: true, hasGetStatus: true },
     rotationCoordinator: { present: true, hasStop: true, hasGetStatus: true },
     portalReferrals: { present: true, hasStopTick: true, hasGetTickStatus: true },
@@ -487,4 +487,98 @@ test("P-2 traffic service rejects a drain tracker without register/settle method
     () => createTrafficAccountingService({ controlStore: store, drainTracker: { registerWrite: () => {} } }),
     /drainTracker with register\/settle methods is required/,
   );
+});
+
+// ---------------------------------------------------------------------------
+// W-116 / W-117 / W-118: independent in-flight counters + read-only
+// getInFlightStatus() (2026-11-24). The counters count work in this
+// service instance with or without a drain tracker; the drain tracker
+// (P-2) remains the freeze-time bracketing mechanism. Because the
+// writes are synchronous, a counter reads 1 only while a call is
+// executing on the stack, so the tests read it re-entrantly from the
+// store stub — the same read the freeze executor would take.
+// ---------------------------------------------------------------------------
+
+const QUIESCED_STATUS = Object.freeze({
+  inFlightObservations: 0,
+  inFlightDeltaSampleWrites: 0,
+  inFlightCumulativeSampleWrites: 0,
+  quiesced: true,
+});
+
+test("W-116/W-117 getInFlightStatus counts the delta sample write in flight, then quiesces", () => {
+  let service;
+  let seenInFlight = null;
+  const store = trafficStore();
+  store.recordUsageSample = (record) => {
+    seenInFlight = service.getInFlightStatus();
+    return { inserted: true, sample: { id: record.id }, rollup: { uploadBytes: 10, downloadBytes: 20, totalBytes: 30 } };
+  };
+  service = createTrafficAccountingService({ controlStore: store });
+  assert.deepEqual(service.getInFlightStatus(), QUIESCED_STATUS);
+  assert.equal(Object.isFrozen(service.getInFlightStatus()), true);
+  const result = service.recordUsageObservation(observationInput());
+  assert.equal(result.ok, true);
+  assert.deepEqual(seenInFlight, {
+    inFlightObservations: 1,
+    inFlightDeltaSampleWrites: 1,
+    inFlightCumulativeSampleWrites: 0,
+    quiesced: false,
+  });
+  assert.deepEqual(service.getInFlightStatus(), QUIESCED_STATUS);
+});
+
+test("W-118 getInFlightStatus counts the cumulative sample write in flight, not the delta one", () => {
+  let service;
+  let seenInFlight = null;
+  const store = trafficStore();
+  store.recordCumulativeUsageSample = (record) => {
+    seenInFlight = service.getInFlightStatus();
+    return { inserted: true, sample: null, rollup: { uploadBytes: 10, downloadBytes: 20, totalBytes: 30 } };
+  };
+  service = createTrafficAccountingService({ controlStore: store });
+  const result = service.recordUsageObservation(observationInput({ accountingMode: "cumulative" }));
+  assert.equal(result.ok, true);
+  assert.deepEqual(seenInFlight, {
+    inFlightObservations: 1,
+    inFlightDeltaSampleWrites: 0,
+    inFlightCumulativeSampleWrites: 1,
+    quiesced: false,
+  });
+  assert.deepEqual(service.getInFlightStatus(), QUIESCED_STATUS);
+});
+
+test("W-116/W-117/W-118 counters return to zero when the sample write throws", () => {
+  const failure = new Error("sample store unavailable");
+  const store = trafficStore({ failSample: failure });
+  const service = createTrafficAccountingService({ controlStore: store });
+  assert.throws(() => service.recordUsageObservation(observationInput()), (error) => error === failure);
+  assert.deepEqual(service.getInFlightStatus(), QUIESCED_STATUS);
+  assert.throws(
+    () => service.recordUsageObservation(observationInput({ accountingMode: "cumulative" })),
+    (error) => error === failure,
+  );
+  assert.deepEqual(service.getInFlightStatus(), QUIESCED_STATUS);
+});
+
+test("W-116/W-117 counters work with a drain tracker and do not disturb its bracketing", () => {
+  let service;
+  let seenInFlight = null;
+  const store = trafficStore();
+  store.recordUsageSample = (record) => {
+    seenInFlight = service.getInFlightStatus();
+    return { inserted: true, sample: { id: record.id }, rollup: { uploadBytes: 10, downloadBytes: 20, totalBytes: 30 } };
+  };
+  const tracker = recordingTracker();
+  service = createTrafficAccountingService({ controlStore: store, drainTracker: tracker });
+  const result = service.recordUsageObservation(observationInput());
+  assert.equal(result.ok, true);
+  assert.deepEqual(seenInFlight, {
+    inFlightObservations: 1,
+    inFlightDeltaSampleWrites: 1,
+    inFlightCumulativeSampleWrites: 0,
+    quiesced: false,
+  });
+  assert.deepEqual(service.getInFlightStatus(), QUIESCED_STATUS);
+  assert.deepEqual(tracker.events.map(([kind]) => kind), ["registerCallback", "registerWrite", "settleWrite", "settleCallback"]);
 });

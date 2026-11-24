@@ -691,9 +691,28 @@ export function createCoinCommerceCoordinator(options = {}) {
     return stopPromise;
   }
 
+  // W-111 quiescence read (scheduler-quiescence wiring, 2026-11-24):
+  // read-only snapshot for the freeze executor. `stop()` waits for the
+  // pass in flight (`inFlight`) before flipping `lifecycle` to
+  // "stopped", so after `stop()` resolves `inFlightSettled` reads true
+  // and stays true (no new pass can start once stopped). `timerArmed`
+  // is a direct read of the pending-wake timer (`scheduled`); `stop()`
+  // clears it. The executor reads this before `stop()` (pre-stop
+  // baseline) and after `stop()` resolves (settled confirmation), and
+  // records the timestamps. The snapshot is frozen and exposes no
+  // mutable state.
+  function getStatus() {
+    return Object.freeze({
+      lifecycle,
+      timerArmed: scheduled !== null,
+      inFlightSettled: inFlight === null,
+    });
+  }
+
   return Object.freeze({
     start,
     runOnce,
-    stop
+    stop,
+    getStatus
   });
 }
