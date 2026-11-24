@@ -1,5 +1,7 @@
 import Database from "better-sqlite3";
 
+import { assertWritable } from "./single-writer-authority.mjs";
+
 const SAFE_ACCOUNT_REF = /^[A-Za-z0-9][A-Za-z0-9_:/-]{0,127}$/;
 const ADS_FLAG = "ADS_CLICK_BINDING_ENABLED";
 
@@ -177,6 +179,11 @@ export function recordAdsConsentDecision(db, input = {}, options = {}) {
     throw consentError("ads_consent_invalid");
   }
   const at = normalizeNow(options.now ?? (options.nowFn ? options.nowFn() : Date.now()));
+  // U-F3: phase fence, before any write — this guards both the schema
+  // ensure below (CREATE TABLE IF NOT EXISTS can write) and the
+  // consent transaction. The flag-off early return above stays first:
+  // flag off means no write at all, so nothing to fence.
+  assertWritable(db);
   ensureAdsConsentSchema(db);
 
   const transaction = db.transaction(() => {

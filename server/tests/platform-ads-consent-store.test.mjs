@@ -368,9 +368,13 @@ test("consent schema is created only by an enabled, explicit decision write", ()
       nowFn: () => NOW
     });
     store.recordConsent({ accountRef: ACCOUNT, adUserData: true });
+    // The fence installs the writer-authority record on the first write
+    // (U-F3); the consent tables are otherwise still the only schema the
+    // write creates.
     assert.deepEqual(tableNames(db), [
       "platform_ads_click_consent_claims",
-      "platform_ads_consent_decisions"
+      "platform_ads_consent_decisions",
+      "platform_writer_authority"
     ]);
     store.close();
   });
