@@ -85,7 +85,18 @@ export function createCoinCommerceDataPackRotationCoordinator({
   }
 
   function getStatus() {
-    return Object.freeze({ running, completedBatches, failedBatches, failedIntents });
+    // W-114 quiescence read (scheduler-quiescence wiring, 2026-11-23):
+    // `timerArmed` is a direct read of the pending-wake timer. `recover()`
+    // is synchronous, so there is no in-flight promise to read; the
+    // pending-wake conclusion is therefore an INFERENCE, not a direct
+    // promise read: after `stop()` clears the timer and sets
+    // `running = false`, no wake can fire, because `schedule()` is only
+    // re-armed from `start()` or from the recover completion callback,
+    // which is guarded by `if (running)`. The freeze executor records
+    // this inference as an inference (stop timestamp + post-stop
+    // `getStatus()` showing `running === false` and `timerArmed === false`
+    // + `completedBatches` unchanged over the observation window).
+    return Object.freeze({ running, completedBatches, failedBatches, failedIntents, timerArmed: timer !== null });
   }
 
   return Object.freeze({ start, stop, getStatus });

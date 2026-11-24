@@ -53,7 +53,7 @@ import {
   validateAccountResourceAuthorityCommerceSchema
 } from "./account-resource-authority-commerce-migrations.mjs";
 import { DATA_PACK_TECHNICAL_VALID_UNTIL } from "./usage-billing-cycle.mjs";
-import { assertWritable, isWriterAuthorityError } from "./single-writer-authority.mjs";
+import { assertWritable, isWriterAuthorityError, readWriterAuthority, WRITER_PHASES } from "./single-writer-authority.mjs";
 
 const BUSY_TIMEOUT_MS = 2_000;
 const DEFAULT_CANCEL_WINDOW_MS = 3_000;
@@ -585,15 +585,45 @@ export function createSqliteCoinCommerceStore(options = {}) {
   // Drops queued recovery enqueues without writing anything. Used when
   // the transaction that queued them has failed: those orders must never
   // be flushed later against state the transaction did not commit.
+  // Returns the number of enqueues dropped (U-F11 J2: the freeze drain
+  // records the discarded count in its receipt).
   function discardAdsRecoveryEnqueues(orderRefs) {
+    let discarded = 0;
     for (const orderRef of adsRecoveryBatch(orderRefs)) {
-      pendingAdsRecoveryEnqueues.delete(orderRef);
+      if (pendingAdsRecoveryEnqueues.delete(orderRef)) discarded += 1;
     }
+    return discarded;
+  }
+
+  // U-F11 J2: the freeze drain reads the queue length before discarding
+  // it, so the drain receipt can prove discarded == queued-before.
+  function pendingAdsRecoveryEnqueueCount() {
+    return pendingAdsRecoveryEnqueues.size;
   }
 
   function flushAdsRecoveryEnqueues(orderRefs) {
     const refs = adsRecoveryBatch(orderRefs);
     if (refs.length === 0) return;
+    // U-F11 J1: phase gate. Measurement flush writes real rows into
+    // the frozen database (platform_ads_conversion_outbox), so it must
+    // stop while the writer is not BWH_ACTIVE: FROZEN, D1_ACTIVE and
+    // RECOVERY all discard the batch without writing. A missing or
+    // unreadable authority record fails closed the same way
+    // (measurement only: never throws a business error). Only
+    // BWH_ACTIVE proceeds. The check is read-only and never installs
+    // authority. It runs before the ads-binding check and before the
+    // in-transaction self-guard, so a frozen flush discards even when
+    // the binding is on.
+    let current = null;
+    try {
+      current = readWriterAuthority(db);
+    } catch {
+      current = null;
+    }
+    if (current?.phase !== WRITER_PHASES.BWH_ACTIVE) {
+      discardAdsRecoveryEnqueues(refs);
+      return;
+    }
     if (!adsBindingEnabled()) {
       discardAdsRecoveryEnqueues(refs);
       return;
@@ -4587,7 +4617,8 @@ export function createSqliteCoinCommerceStore(options = {}) {
     database: db,
     participant: initialConfirmationParticipant,
     flushAdsRecoveryEnqueues,
-    discardAdsRecoveryEnqueues
+    discardAdsRecoveryEnqueues,
+    pendingAdsRecoveryEnqueueCount
   });
   return store;
 }
@@ -4614,6 +4645,7 @@ export function createCoinCommerceAdsRecoveryControls(input) {
   if (!binding || binding.database !== value.database) throw commerceError("invalid_store_contract");
   return Object.freeze({
     flushAdsRecoveryEnqueues: binding.flushAdsRecoveryEnqueues,
-    discardAdsRecoveryEnqueues: binding.discardAdsRecoveryEnqueues
+    discardAdsRecoveryEnqueues: binding.discardAdsRecoveryEnqueues,
+    pendingAdsRecoveryEnqueueCount: binding.pendingAdsRecoveryEnqueueCount
   });
 }

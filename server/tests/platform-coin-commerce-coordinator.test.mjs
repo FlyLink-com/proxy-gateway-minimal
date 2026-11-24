@@ -306,7 +306,7 @@ test("coordinator exposes a frozen lifecycle surface", () => {
     fulfillmentHandler: makeHandler()
   });
 
-  assert.deepEqual(Reflect.ownKeys(coordinator), ["start", "runOnce", "stop"]);
+  assert.deepEqual(Reflect.ownKeys(coordinator), ["start", "runOnce", "stop", "getStatus"]);
   assert.equal(Object.isFrozen(coordinator), true);
   for (const method of Reflect.ownKeys(coordinator)) {
     const descriptor = Object.getOwnPropertyDescriptor(coordinator, method);
@@ -314,6 +314,63 @@ test("coordinator exposes a frozen lifecycle surface", () => {
     assert.equal(typeof descriptor?.value, "function");
   }
   assert.deepEqual(log, []);
+});
+
+// ---------------------------------------------------------------------------
+// W-111: coin-commerce coordinator — getStatus() for the settled-pass read
+// ---------------------------------------------------------------------------
+
+test("W-111 getStatus reports lifecycle, timer, and whether the pass settled", async () => {
+  const log = [];
+  const scheduler = makeScheduler(log);
+  const coordinator = createCoinCommerceCoordinator({
+    store: makeStore(log),
+    fulfillmentHandler: makeHandler(),
+    scheduleFn: scheduler.scheduleFn,
+    clearScheduleFn: scheduler.clearScheduleFn,
+    nowFn: () => new Date("2026-07-27T00:00:00.000Z")
+  });
+
+  assert.deepEqual(coordinator.getStatus(), {
+    lifecycle: "idle", timerArmed: false, inFlightSettled: true,
+  });
+  assert.equal(Object.isFrozen(coordinator.getStatus()), true);
+  const firstStart = coordinator.start();
+  // beginPass runs synchronously; the microtask that clears inFlight
+  // only runs after the pass promise settles, so a synchronous read
+  // still sees the pass in flight — the exact state stop() waits out.
+  assert.equal(coordinator.getStatus().lifecycle, "running");
+  assert.equal(coordinator.getStatus().inFlightSettled, false);
+  await firstStart;
+  assert.deepEqual(coordinator.getStatus(), {
+    lifecycle: "running", timerArmed: true, inFlightSettled: true,
+  });
+  assert.equal(scheduler.active.size, 1);
+  await coordinator.stop();
+  assert.deepEqual(coordinator.getStatus(), {
+    lifecycle: "stopped", timerArmed: false, inFlightSettled: true,
+  });
+  assert.equal(scheduler.active.size, 0);
+});
+
+test("W-111 getStatus after stop() stays settled and start() stays rejected", async () => {
+  const scheduler = makeScheduler();
+  const coordinator = createCoinCommerceCoordinator({
+    store: makeStore(),
+    fulfillmentHandler: makeHandler(),
+    scheduleFn: scheduler.scheduleFn,
+    clearScheduleFn: scheduler.clearScheduleFn,
+    nowFn: () => new Date("2026-07-27T00:00:00.000Z")
+  });
+
+  await coordinator.start();
+  await coordinator.stop();
+  assert.equal(coordinator.getStatus().inFlightSettled, true);
+  assert.equal(coordinator.getStatus().inFlightSettled, true);
+  await expectCoordinatorRejection(
+    coordinator.start(),
+    "coin_commerce_coordinator_stopped"
+  );
 });
 
 test("coordinator snapshots every required Store method as an own data function", () => {

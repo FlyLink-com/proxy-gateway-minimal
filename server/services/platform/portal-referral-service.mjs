@@ -15,6 +15,7 @@ import {
 } from "./portal-referral-contract.mjs";
 import { paymentSettlementIdentity } from "./payment-recharge-coordinator.mjs";
 import { reverseReferralReward } from "./portal-referral-wallet.mjs";
+import { assertWritable } from "./single-writer-authority.mjs";
 
 const addDays = (date, days) =>
   timestamp(new Date(Date.parse(date) + days * 86400000));
@@ -79,6 +80,9 @@ export function createPortalReferralService({
     return row ? policySnapshot(JSON.parse(row.policy_json)) : null;
   }
   function event(eventRef, accountId, kind, payload) {
+    // U-F4: phase fence, first statement — the referral ledger insert
+    // below must not land while the writer authority is not BWH_ACTIVE.
+    assertWritable(db);
     requireRef(eventRef);
     requireRef(accountId);
     const hash = digest(JSON.stringify({ accountId, kind, payload }));
@@ -104,6 +108,8 @@ export function createPortalReferralService({
       hash = digest(json);
     return db
       .transaction(() => {
+        // U-F4: phase fence, first statement.
+        assertWritable(db);
         const prior = db
           .prepare(
             "select digest from platform_referral_policies where policy_ref=? and version=?",
@@ -143,6 +149,8 @@ export function createPortalReferralService({
   function createLink(accountId) {
     return db
       .transaction(() => {
+        // U-F4: phase fence, first statement.
+        assertWritable(db);
         active(accountId);
         const existing = db
           .prepare(
@@ -165,6 +173,8 @@ export function createPortalReferralService({
     if (!REFERRAL_CODE.test(code || "")) return null;
     return db
       .transaction(() => {
+        // U-F4: phase fence, first statement.
+        assertWritable(db);
         const at = now(),
           windowDays = rewardsEnabled ? policyAt(at)?.attributionDays : attributionDays;
         if (!windowDays) return null;
@@ -268,6 +278,8 @@ export function createPortalReferralService({
     if (!rewardsEnabled) return { status: "rewards_disabled" };
     return db
       .transaction(() => {
+        // U-F4: phase fence, first statement.
+        assertWritable(db);
         const existing = db
           .prepare(
             "select status from platform_referral_accruals where account_id=?",
@@ -364,6 +376,9 @@ export function createPortalReferralService({
       .immediate();
   }
   function releasePendingReward(row, eventRef, kind, basis = {}) {
+    // U-F4: phase fence, first statement (covers the direct accrual
+    // update below; the wallet confirm call is fenced by U-F1 as well).
+    assertWritable(db);
     const amount = row.reward_units - row.reversed_units;
     if (amount)
       wallet.confirmCoinCredit({
@@ -387,6 +402,8 @@ export function createPortalReferralService({
   }
   function settleAccount(accountId) {
     return db.transaction(() => {
+      // U-F4: phase fence, first statement.
+      assertWritable(db);
       if (closed || !rewardsEnabled) throw referralError("referral_rewards_disabled");
       const row = db.prepare("select * from platform_referral_accruals where account_id=?").get(accountId);
       if (!row || row.status !== "pending" || row.confirmation_at > now())
@@ -460,6 +477,8 @@ export function createPortalReferralService({
     return statuses;
   }
   function confirm(accountId, decisionRef) {
+    // U-F4: phase fence, first statement.
+    assertWritable(db);
     if (!rewardsEnabled) throw referralError("referral_rewards_disabled");
     if (typeof riskReader !== "function")
       throw referralError("referral_risk_unavailable");
@@ -501,6 +520,8 @@ export function createPortalReferralService({
       .immediate();
   }
   function applyRefund(observationRef) {
+    // U-F4: phase fence, first statement.
+    assertWritable(db);
     requireRef(observationRef);
     if (typeof refundReader !== "function")
       throw referralError("referral_refund_unavailable");
@@ -629,7 +650,58 @@ export function createPortalReferralService({
     return statuses;
   }
   let timer = null,
+    tickStopped = false,
     closed = false;
+  // W-115 quiescence wiring (scheduler-quiescence wiring, 2026-11-23):
+  // selective tick state for the freeze executor. `tickInFlight` is set
+  // on tick entry and cleared on exit, including the exception path, and
+  // `lastTickEndedAt` records when the latest tick finished. `stopTick()`
+  // only clears the interval: it never touches the wallet or the database
+  // connection and never sets `closed`, so `start()` can re-arm the tick
+  // afterwards. Nothing here disarms the tick on its own; the freeze
+  // executor calls `stopTick()` inside the freeze window.
+  let tickInFlight = false,
+    lastTickEndedAt = null,
+    tickTimerClearedAt = null,
+    tickWaiters = [];
+  function clearTickTimer() {
+    if (!timer) return;
+    clearInterval(timer);
+    timer = null;
+    tickTimerClearedAt ??= now();
+  }
+  // Stops only the tick and waits for the tick in flight at call time, if
+  // any, before reporting the stop evidence. The tick body is synchronous
+  // today, so in practice this wait only triggers if `stopTick()` is called
+  // re-entrantly from inside a tick or if the tick body later becomes
+  // asynchronous; the wait is kept so the contract holds in both cases.
+  // Never call `stopTick()` from inside a tick: the tick cannot finish
+  // until this wait resolves.
+  async function stopTick() {
+    clearTickTimer();
+    tickStopped = true;
+    if (tickTimerClearedAt === null) tickTimerClearedAt = now();
+    if (tickInFlight) {
+      await new Promise((resolve) => {
+        tickWaiters.push(resolve);
+      });
+    }
+    return Object.freeze({
+      timerClearedAt: tickTimerClearedAt,
+      lastTickEndedAt,
+      tickInFlight: false,
+    });
+  }
+  // Read-only tick status for the freeze executor's pre-stop reading and
+  // post-stop check. `timerArmed` is a direct read; `tickInFlight` is the
+  // process-internal flag set by the tick body itself.
+  function getTickStatus() {
+    return Object.freeze({
+      timerArmed: timer !== null,
+      tickInFlight,
+      lastTickEndedAt,
+    });
+  }
   function start() {
     if (closed) throw referralError();
     if (!rewardsEnabled) return;
@@ -638,23 +710,53 @@ export function createPortalReferralService({
     // even when one account is blocked, and wraps for durable retry after restart.
     const tick = () => {
       if (closed || !rewardsEnabled) return;
+      tickInFlight = true;
       try {
-        reconcile();
-      } catch {
-        /* retry on next bounded tick */
-      }
-      try {
-        settle();
-      } catch {
-        /* retry internal ledger settlement on the next bounded tick */
+        try {
+          reconcile();
+        } catch {
+          /* retry on next bounded tick */
+        }
+        try {
+          settle();
+        } catch {
+          /* retry internal ledger settlement on the next bounded tick */
+        }
+      } finally {
+        tickInFlight = false;
+        try {
+          lastTickEndedAt = now();
+        } catch {
+          // A broken clock must not wedge a stopTick() waiter: keep the
+          // previous lastTickEndedAt and still release the waiters.
+        }
+        const waiters = tickWaiters;
+        tickWaiters = [];
+        for (const resolve of waiters) resolve();
       }
     };
     tick();
     timer = setInterval(tick, 30000);
     timer.unref();
+    tickStopped = false;
+  }
+  // tickState() is the D3-A evidence for the scheduler-drain receipt
+  // ("tick timer cleared and no tick in flight"). Stopping the tick does
+  // NOT close the service or the database: reads stay available and
+  // start() can restart the tick afterwards.
+  function tickState() {
+    return Object.freeze({
+      jobId: "W-115",
+      running: timer !== null,
+      stopped: tickStopped,
+      rewardsEnabled,
+    });
   }
   return {
     start,
+    stopTick,
+    getTickStatus,
+    tickState,
     profile,
     createLink,
     capture,
@@ -668,7 +770,7 @@ export function createPortalReferralService({
     close() {
       if (closed) return;
       closed = true;
-      if (timer) clearInterval(timer);
+      clearTickTimer();
       wallet.close();
       if (owned) db.close();
     },

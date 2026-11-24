@@ -4,6 +4,7 @@
 // no real credential material, no network.
 import test from "node:test";
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -70,6 +71,18 @@ function makeSnapshot(t, snapshotId = SNAPSHOT_A, timeout) {
 
 function assertErrorCode(fn, code) {
   assert.throws(fn, (error) => error && error.code === code);
+}
+
+function canonicalJson(value) {
+  if (value === null || typeof value !== "object") return JSON.stringify(value);
+  if (Array.isArray(value)) return "[" + value.map(canonicalJson).join(",") + "]";
+  const keys = Object.keys(value).sort();
+  return "{" + keys.map((key) => JSON.stringify(key) + ":" + canonicalJson(value[key])).join(",") + "}";
+}
+
+function recomputeFreezeBundleHash(bundle) {
+  const { bundleHash: _bundleHash, ...unsigned } = bundle;
+  return createHash("sha256").update(canonicalJson(unsigned), "utf8").digest("hex");
 }
 
 function allQuiescedEvidence() {
@@ -325,6 +338,100 @@ test("S2S-FRZ-5 the readiness bundle holds all four receipts and never transitio
     () => buildFreezeReadinessBundle({ snapshotId: SNAPSHOT_A, writeLock, schedulerQuiescence, hwmCompleteness, now: () => new Date(NOW) }),
     "freeze_bundle_incomplete",
   );
+});
+
+test("S2S-FRZ-7 bundle hash covers complete receipts and verifies positive receipt states", (t) => {
+  const { db } = makeSnapshot(t);
+  const writeLock = buildWriteLockReceipt(db, {
+    snapshotId: SNAPSHOT_A,
+    checkpointId: "s2s-checkpoint-001",
+    outstandingJobs: [],
+  });
+  const schedulerQuiescence = buildSchedulerQuiescenceReceipt({
+    evidence: allQuiescedEvidence(),
+    snapshotId: SNAPSHOT_A,
+    now: () => new Date(NOW),
+  });
+  const callbackDrain = buildCallbackDrainReceipt({
+    callbacks: [{ id: "cb-1", description: "x", settled: true }],
+    snapshotId: SNAPSHOT_A,
+    now: () => new Date(NOW),
+  });
+  const hwmCompleteness = buildHwmCompletenessReceipt({
+    highWaterMark: createHighWaterMark({ seq: 1, snapshotId: SNAPSHOT_A }),
+    manifestSeq: 1,
+    rowCounts: { platform_accounts: 3 },
+    snapshotId: SNAPSHOT_A,
+    now: () => new Date(NOW),
+  });
+  const bundle = buildFreezeReadinessBundle({
+    snapshotId: SNAPSHOT_A,
+    writeLock,
+    schedulerQuiescence,
+    callbackDrain,
+    hwmCompleteness,
+    now: () => new Date(NOW),
+  });
+
+  const changedReceiptField = {
+    ...bundle,
+    receipts: {
+      ...bundle.receipts,
+      schedulerQuiescence: {
+        ...bundle.receipts.schedulerQuiescence,
+        timestamp: "2026-11-20T00:00:01.000Z",
+      },
+    },
+  };
+  assertErrorCode(() => verifyFreezeReadinessBundle(changedReceiptField), "freeze_bundle_hash_mismatch");
+
+  const schedulerNotQuiesced = {
+    ...bundle,
+    receipts: {
+      ...bundle.receipts,
+      schedulerQuiescence: {
+        ...bundle.receipts.schedulerQuiescence,
+        jobs: bundle.receipts.schedulerQuiescence.jobs.map((job, index) =>
+          index === 0 ? { ...job, quiesced: false } : job),
+      },
+    },
+  };
+  schedulerNotQuiesced.bundleHash = recomputeFreezeBundleHash(schedulerNotQuiesced);
+  assertErrorCode(() => verifyFreezeReadinessBundle(schedulerNotQuiesced), "freeze_scheduler_not_quiesced");
+
+  const callbackStillPending = {
+    ...bundle,
+    receipts: {
+      ...bundle.receipts,
+      callbackDrain: {
+        ...bundle.receipts.callbackDrain,
+        pending: [{ id: "cb-pending" }],
+      },
+    },
+  };
+  callbackStillPending.bundleHash = recomputeFreezeBundleHash(callbackStillPending);
+  assertErrorCode(() => verifyFreezeReadinessBundle(callbackStillPending), "freeze_callback_pending");
+
+  const invalidHwm = {
+    ...bundle,
+    receipts: {
+      ...bundle.receipts,
+      hwmCompleteness: {
+        ...bundle.receipts.hwmCompleteness,
+        rowCounts: { platform_accounts: -1 },
+      },
+    },
+  };
+  invalidHwm.bundleHash = recomputeFreezeBundleHash(invalidHwm);
+  assertErrorCode(() => verifyFreezeReadinessBundle(invalidHwm), "freeze_hwm_invalid");
+
+  assertErrorCode(() => buildFreezeReadinessBundle({
+    snapshotId: SNAPSHOT_A,
+    writeLock,
+    schedulerQuiescence: schedulerNotQuiesced.receipts.schedulerQuiescence,
+    callbackDrain,
+    hwmCompleteness,
+  }), "freeze_scheduler_not_quiesced");
 });
 
 test("S2S-FRZ-6 the unfenced-writer coverage report starts at 28 open", (t) => {

@@ -49,6 +49,7 @@ function snapshotCoordinator(platform, {
   let coordinator;
   let startDescriptor;
   let stopDescriptor;
+  let getStatusDescriptor;
   try {
     coordinator = platform[field];
     if (
@@ -70,6 +71,18 @@ function snapshotCoordinator(platform, {
     ) {
       throw errorFactory();
     }
+    // W-114: forward the read-only quiescence read when the coordinator
+    // has one (coin-commerce, welcome-bonus, rotation). It is optional:
+    // a coordinator without getStatus (e.g. deferred-transition) still
+    // snapshots with start/stop only. A present-but-not-a-function
+    // getStatus is a contract violation, like a bad start/stop.
+    getStatusDescriptor = Object.getOwnPropertyDescriptor(coordinator, "getStatus");
+    if (
+      getStatusDescriptor
+      && (!("value" in getStatusDescriptor) || typeof getStatusDescriptor.value !== "function")
+    ) {
+      throw errorFactory();
+    }
   } catch (error) {
     if (error?.code === expectedErrorCode) {
       throw error;
@@ -77,10 +90,14 @@ function snapshotCoordinator(platform, {
     throw errorFactory();
   }
 
-  return Object.freeze({
+  const snapshot = {
     start: () => startDescriptor.value.call(coordinator),
     stop: () => stopDescriptor.value.call(coordinator)
-  });
+  };
+  if (getStatusDescriptor) {
+    snapshot.getStatus = () => getStatusDescriptor.value.call(coordinator);
+  }
+  return Object.freeze(snapshot);
 }
 
 function snapshotCommerceCoordinator(state) {
@@ -129,7 +146,11 @@ function snapshotDeferredTransitionCoordinator(state) {
   });
 }
 
-function snapshotRuntimeCoordinators(state) {
+// Exported for the freeze executor and tests: the bound runtime
+// coordinator snapshots (start/stop, plus the read-only getStatus where
+// the coordinator has one). startProxyGateway keeps using this
+// internally; nothing else in the running process constructs it.
+export function snapshotRuntimeCoordinators(state) {
   return [
     snapshotCommerceCoordinator(state),
     snapshotDataPackRotationCoordinator(state),
