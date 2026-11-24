@@ -1,5 +1,7 @@
 import { createApp } from "./app.mjs";
 import { createRuntimeState } from "./state.mjs";
+import { createFreezeDrainCoordinator } from "./services/platform/d1-card9-freeze-drain-coordinator.mjs";
+import { deriveFreezeSnapshotId } from "./services/platform/d1-freeze-executor.mjs";
 
 function logStartup(logger, state) {
   if (!logger) return;
@@ -157,6 +159,78 @@ export function snapshotRuntimeCoordinators(state) {
     snapshotWelcomeBonusCoordinator(state),
     snapshotDeferredTransitionCoordinator(state)
   ].filter(Boolean);
+}
+
+// D1 Stage 2 — freeze wiring (P2, D6 harness). Instantiates the
+// freeze coordinator at startup from the already-built runtime state
+// and holds it (plus the wiring the freeze route needs) on
+// state.platform. No new database connection is opened: the
+// coordinator uses the control store's own handle
+// (platform.controlStore.database). No scheduler or write path is
+// changed; the snapshots are the same bound snapshots
+// snapshotRuntimeCoordinators() builds.
+//
+// The held coordinator's snapshot id is derived from the boot date
+// (R10 §5 A0 step 1: the deployment restart happens on execution
+// day, so the boot date is the execution date). The route accepts a
+// different snapshot id in the body and then builds a fresh
+// coordinator from this same held wiring.
+//
+// Never throws: if the wiring cannot be built (no database handle, a
+// coordinator contract error), the freeze route reports 503 and the
+// service still boots. A missing operator feature must never break
+// startup.
+export function installD1FreezeWiring(state, { logger = console, now = () => new Date() } = {}) {
+  const platform = state?.platform;
+  if (!platform || typeof platform !== "object") return null;
+  const db = platform.controlStore?.database ?? null;
+  if (!db || typeof db.prepare !== "function" || typeof db.transaction !== "function") {
+    logger?.warn?.("D1 freeze wiring not installed: control-store database handle is not available");
+    return null;
+  }
+  const scheduler = {
+    coinCommerceCoordinator: snapshotCommerceCoordinator(state),
+    rotationCoordinator: snapshotDataPackRotationCoordinator(state),
+    welcomeBonusCoordinator: snapshotWelcomeBonusCoordinator(state),
+    portalReferrals: platform.portalReferrals ?? null
+  };
+  const deferredSnapshot = snapshotDeferredTransitionCoordinator(state);
+  const schedulerEnabled = {
+    coinCommerce: platform.coinsCommerceEnabled === true,
+    welcomeBonus: platform.registrationWelcomeCoinsWorkerEnabled === true,
+    rotation: platform.coinsCommerceEnabled === true && platform.coinCommerceDataPackRotationCoordinator != null,
+    deferred: platform.walletFirstDeferredRuntimeEnabled === true,
+    portalReferrals: platform.portalReferralsEnabled === true
+  };
+  // W-114 not-created record (R10 §5 A1): the rotation coordinator is
+  // created only when coins commerce is enabled AND a data-pack
+  // material escrow is in place. The escrow itself is a
+  // createRuntimeState local, so its presence is derived: when
+  // commerce is on and no rotation coordinator was created, the
+  // escrow is the missing inner gate; when commerce is off the escrow
+  // is irrelevant and recorded as unknown.
+  const rotationCreation = {
+    coinsCommerceEnabled: platform.coinsCommerceEnabled === true,
+    dataPackMaterialEscrowPresent: platform.coinCommerceDataPackRotationCoordinator != null
+      ? true
+      : (platform.coinsCommerceEnabled === true ? false : null),
+    platformFieldPresent: platform.coinCommerceDataPackRotationCoordinator != null
+  };
+  const snapshotId = deriveFreezeSnapshotId(now());
+  const coordinator = createFreezeDrainCoordinator(db, { snapshotId, scheduler, now });
+  const wiring = {
+    db,
+    scheduler,
+    deferredSnapshot,
+    trafficAccounting: platform.trafficAccounting ?? null,
+    coinCommerceStore: platform.coinCommerceStore ?? null,
+    dbPath: process.env.SUBSCRIPTION_CONTROL_DB_PATH || process.env.CONTROL_DB_PATH || null,
+    schedulerEnabled,
+    rotationCreation
+  };
+  platform.d1FreezeCoordinator = coordinator;
+  platform.d1FreezeWiring = wiring;
+  return wiring;
 }
 
 function waitForListening(server) {
@@ -433,6 +507,11 @@ export async function startProxyGateway(options = {}) {
   try {
     state = options.state ?? createRuntimeState(options.runtimeOptions ?? options);
     coordinators = snapshotRuntimeCoordinators(state);
+    try {
+      installD1FreezeWiring(state, { logger });
+    } catch (error) {
+      logger?.warn?.(`D1 freeze wiring not installed: ${error?.code || error?.message || error}`);
+    }
     app = options.app ?? createApp(state);
     server = app.listen(state.ports.console, state.host);
     closeTracker = createServerCloseTracker(server);

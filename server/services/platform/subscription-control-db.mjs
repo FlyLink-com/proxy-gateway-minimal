@@ -10635,6 +10635,12 @@ export function createSqliteSubscriptionControlStore({
     revokePortalSession,
     listPortalSessions,
     getAccountControlSummary,
+    // Freeze executor (D1 Stage 2, D6 harness): the raw better-sqlite3
+    // handle the store already owns. The freeze coordinator and its
+    // receipts need db.prepare / db.transaction on this same
+    // connection; exposing the handle reuses the existing connection
+    // instead of opening a second one.
+    database: db,
     close
   };
 }

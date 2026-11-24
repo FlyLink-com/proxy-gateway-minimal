@@ -20,6 +20,7 @@ import { adminPlatformRoutes } from "./routes/admin-platform.mjs";
 import { adminUserMonitorRoutes } from "./routes/admin-user-monitor.mjs";
 import { adminUserCommerceRoutes } from "./routes/admin-user-commerce.mjs";
 import { adminOrderStatusSummaryRoutes } from "./routes/admin-order-status-summary.mjs";
+import { adminD1FreezeRoutes } from "./routes/admin-d1-freeze.mjs";
 import { adminRechargeConfirmationGrossRoutes } from "./routes/admin-recharge-confirmation-gross.mjs";
 import { adminThirdPartySubscriptionRoutes } from "./routes/admin-third-party-subscriptions.mjs";
 import { adminSubscriptionDistributionRoutes } from "./routes/admin-subscription-distribution.mjs";
@@ -579,6 +580,7 @@ export function createApp(state, options = {}) {
   if (state.platform?.adminAuthorizationEnabled === true) {
     app.use(adminOrderStatusSummaryRoutes(state));
     app.use(adminRechargeConfirmationGrossRoutes(state));
+    app.use(adminD1FreezeRoutes(state));
   }
   app.use(adminSubscriptionDistributionRoutes(state));
   app.use(adminThirdPartySubscriptionRoutes(state));
