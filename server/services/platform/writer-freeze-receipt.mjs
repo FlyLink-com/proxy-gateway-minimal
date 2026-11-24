@@ -70,7 +70,11 @@ function assertOutstandingJobs(jobs) {
 // updated_at where the table carries one. Tables are sorted by name so
 // the mark is deterministic. The authority table itself is excluded:
 // the authority row is recorded in the receipt's own phase/epoch fields.
-function readHighWaterMark(db) {
+//
+// Exported for the freeze executor (D1 Stage 2, D6 harness): the A2
+// drain proof reads this twice, 60 s apart, and requires the two
+// observations to be equal. Export only; no logic change.
+export function readHighWaterMark(db) {
   const tables = db
     .prepare(
       `select name from sqlite_master
