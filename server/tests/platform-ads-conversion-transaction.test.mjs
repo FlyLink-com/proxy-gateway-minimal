@@ -46,6 +46,7 @@ import {
 } from "../services/platform/wallet-first-deferred-checkout-migrations.mjs";
 import { createWalletFirstDeferredCheckoutAdapter } from "../services/platform/wallet-first-deferred-checkout-adapter.mjs";
 import { createSqliteCoinWalletStore } from "../services/platform/coin-wallet-store.mjs";
+import { ensureWriterAuthority } from "../services/platform/single-writer-authority.mjs";
 
 const FLAG = "ADS_CLICK_BINDING_ENABLED";
 const ADS_TABLES = [
@@ -121,6 +122,11 @@ const LEGACY_OFFER = COIN_COMMERCE_PRODUCTION_OFFERS[0];
 function legacyFixture() {
   const database = new Database(":memory:");
   database.pragma("foreign_keys = ON");
+  // U-F11 J1: the measurement-flush phase gate reads the writer
+  // authority. Without an installed authority record the flush fails
+  // closed and discards, so the fixture installs BWH_ACTIVE epoch 1
+  // (the same state production holds while unfrozen).
+  ensureWriterAuthority(database);
   const control = createSqliteSubscriptionControlStore({ database });
   applyCoinWalletMigrations({
     database,

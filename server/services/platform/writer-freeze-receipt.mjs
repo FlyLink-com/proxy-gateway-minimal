@@ -88,12 +88,22 @@ function readHighWaterMark(db) {
     const hasUpdatedAt = columns.some((column) => column.name === "updated_at");
     const rowCount = Number(db.prepare(`select count(*) as n from ${table}`).get().n);
     totalRows += rowCount;
+    // The mark is a stability fingerprint: two observations agree when
+    // the value agrees. Most tables carry updated_at as ISO text, but
+    // the ads-conversion tables carry it as integer epoch millis
+    // (ads-conversion-store.mjs schema), and verifyFreezeReceipt only
+    // accepts a string or null. Normalize to a string here so a
+    // production-shaped database (any confirmed order records an ads
+    // claim row) can produce a verifiable freeze receipt at all; the
+    // digest is computed over the normalized value, so build and verify
+    // stay consistent and stability comparison still holds.
+    const rawMaxUpdatedAt = hasUpdatedAt
+      ? db.prepare(`select max(updated_at) as m from ${table}`).get().m ?? null
+      : null;
     marks.push({
       table,
       rowCount,
-      maxUpdatedAt: hasUpdatedAt
-        ? db.prepare(`select max(updated_at) as m from ${table}`).get().m ?? null
-        : null,
+      maxUpdatedAt: rawMaxUpdatedAt === null ? null : String(rawMaxUpdatedAt),
     });
   }
   return { tables: marks, totalRows };
