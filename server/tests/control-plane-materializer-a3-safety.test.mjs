@@ -1169,6 +1169,72 @@ test("collectServiceNativeSmokeEvidence rejects malformed or unavailable system-
   }
 });
 
+test("collectServiceNativeSmokeEvidence accepts systemd 255 ANSI-prefixed system-call catalog", () => {
+  // BWH systemd 255 prefixes every @group member line with the SGR reset
+  // sequence ESC[0m (23 lines in the real catalog; first at @privileged
+  // member @chown). The catalog must parse exactly as its plain form.
+  const ESC = "\u001b[0m";
+  const ansiCatalogs = [
+    // Minimal: one @group member line carries the escape prefix.
+    [
+      "@default",
+      "    close",
+      "@system-service",
+      `    ${ESC}@default`,
+      "    read",
+      "    write",
+      ""
+    ].join("\n"),
+    // BWH-shaped: @privileged and @known carry escaped @group members and
+    // @system-service references them; every referenced group exists.
+    [
+      "@default",
+      "    close",
+      "    read",
+      "    write",
+      "@chown",
+      "    chown",
+      "    fchown",
+      "@clock",
+      "    clock_settime",
+      "@privileged",
+      `    ${ESC}@chown`,
+      `    ${ESC}@clock`,
+      "@system-service",
+      `    ${ESC}@default`,
+      `    ${ESC}@privileged`,
+      "    read",
+      "    write",
+      "@known",
+      `    ${ESC}@default`,
+      ""
+    ].join("\n")
+  ];
+  for (const syscallFilterCatalog of ansiCatalogs) {
+    const harness = serviceSmokeHarness({ syscallFilterCatalog });
+    const evidence = collectServiceSmoke(harness.runtime);
+    assert.equal(evidence.betterSqlite3Memory, true);
+    assert.equal(harness.wasStopped(), true);
+    assert.equal(harness.captures.size, 0);
+  }
+
+  // Stripping only removes the escape: an escaped but unknown group, and a
+  // member duplicated once the escape is removed, are still rejected.
+  const stillRejected = [
+    "@default\n    close\n@system-service\n    \u001b[0m@missing\n    read\n",
+    "@default\n    close\n@system-service\n    \u001b[0m@default\n    @default\n    read\n"
+  ];
+  for (const syscallFilterCatalog of stillRejected) {
+    const harness = serviceSmokeHarness({ syscallFilterCatalog });
+    assert.throws(
+      () => collectServiceSmoke(harness.runtime),
+      (error) => condition("worker_cleanup_uncertain")(error) && error.attentionRequired === true
+    );
+    assert.equal(harness.wasStopped(), true);
+    assert.equal(harness.captures.size, 0);
+  }
+});
+
 test("collectServiceNativeSmokeEvidence bounds the native launch and collection readbacks", () => {
   const harness = serviceSmokeHarness();
   collectServiceSmoke(harness.runtime);

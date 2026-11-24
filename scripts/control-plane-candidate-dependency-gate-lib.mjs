@@ -63,6 +63,12 @@ const A3_SYSTEM_CALL_CATALOG_MAX_BYTES = 256 * 1024;
 const A3_SYSTEM_CALL_CATALOG_MAX_GROUPS = 128;
 const A3_SYSTEM_CALL_CATALOG_MAX_LINES = 8192;
 const A3_SYSTEM_CALL_CATALOG_MAX_MEMBERS = 2048;
+// BWH systemd 255 prefixes @group member lines in `systemd-analyze
+// syscall-filter` output with the SGR reset sequence ESC[0m, and no
+// environment variable disables it, so the catalog parser strips SGR
+// sequences before validation. The sequence carries no token characters,
+// so stripping cannot join or create tokens.
+const A3_SYSTEM_CALL_CATALOG_ANSI_ESCAPE = /\x1b\[[0-9;]*[A-Za-z]/gu;
 const A3_SYSTEM_CALL_EXPANSION_MAX_DEPTH = 32;
 const A3_SYSTEM_CALL_EXPANSION_MAX_MEMBERS = 4096;
 const A3_SERVICE_SMOKE_COMPLETION_POLL_ATTEMPTS = 3_000;
@@ -871,7 +877,7 @@ function parseA3SystemctlProperties(output, expected, condition = "worker_cleanu
 }
 
 function parseSystemCallFilterCatalog(output) {
-  const lines = output.split(/\r?\n/);
+  const lines = output.replace(A3_SYSTEM_CALL_CATALOG_ANSI_ESCAPE, "").split(/\r?\n/);
   if (lines.length > A3_SYSTEM_CALL_CATALOG_MAX_LINES) fail("worker_cleanup_uncertain", true);
   const groups = new Map();
   let current = null;
