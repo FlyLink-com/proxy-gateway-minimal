@@ -149,9 +149,14 @@ async function stubCheckReferralCliProcess() {
   return { command: "ps -eo pid,args", found: false, matches: [] };
 }
 
-function makeExecutor(t, overrides = {}) {
-  const clock = makeClock();
-  const { db, controlStore } = makeDb(t);
+function makeExecutor(t, overrides = {}, shared = null) {
+  // `shared` reuses the durable database of an earlier round (same db,
+  // control store and clock) with fresh in-memory schedulers and a fresh
+  // coordinator — the shape of a new process after the post-unfreeze
+  // restart. `makeDb` (and its t.after close) runs only for the first
+  // round, so the shared handle is closed exactly once.
+  const clock = shared?.clock ?? makeClock();
+  const { db, controlStore } = shared ?? makeDb(t);
   const commerce = makeCommerceCoordinator();
   const welcome = makeWelcomeCoordinator(overrides.welcome ?? {});
   const rotation = overrides.rotation === null ? null : makeRotationCoordinator();
@@ -200,13 +205,14 @@ function makeExecutor(t, overrides = {}) {
 
 test("freeze executor runs A0→A3→B and returns the T1 receipt", async (t) => {
   const { db, executor } = makeExecutor(t);
+  const beforeEpoch = readWriterAuthority(db).epoch;
   const result = await executor.executeFreeze({});
   assert.equal(result.schemaVersion, "d1-freeze-execution/v1");
   assert.equal(result.snapshotId, SNAPSHOT);
   assert.equal(result.checkpointId, CHECKPOINT);
   assert.equal(result.transitionId, "T1");
   assert.equal(result.authority.phase, "FROZEN");
-  assert.equal(result.authority.epoch, 2);
+  assert.equal(result.authority.epoch, beforeEpoch + 1);
   assert.equal(result.freezeReceipt.snapshotId, SNAPSHOT);
   assert.equal(typeof result.freezeReceipt.receiptDigest, "string");
   assert.equal(result.freezeReceipt.receiptDigest.length, 64);
@@ -219,6 +225,7 @@ test("freeze executor runs A0→A3→B and returns the T1 receipt", async (t) =>
   assert.equal(readWriterAuthority(db).phase, "FROZEN");
   const evidence = result.executionEvidence;
   assert.equal(evidence.steps.a0Authority.phase, "BWH_ACTIVE");
+  assert.equal(evidence.steps.a0Authority.epoch, beforeEpoch);
   assert.equal(evidence.steps.a1SchedulerJobs["W-111"].post.inFlightSettled, true);
   assert.equal(evidence.steps.a1SchedulerJobs["W-112"].post.activePassSettled, true);
   assert.equal(evidence.steps.a1SchedulerJobs["W-113"].stopCalledAt.length, 24);
@@ -230,6 +237,38 @@ test("freeze executor runs A0→A3→B and returns the T1 receipt", async (t) =>
   assert.equal(evidence.steps.a2Hwm.trackerStatus.hwmStable, true);
   assert.equal(evidence.steps.a3Receipts.schedulerJobs, 11);
   assert.equal(evidence.steps.bPostFreeze.anomaly, false);
+});
+
+test("second freeze confirms the live epoch and writes confirmed epoch + 1", async (t) => {
+  // Regression: the A0 authority check used to demand a single fixed
+  // epoch, so the second freeze of a round (production: BWH_ACTIVE
+  // after the first freeze + unfreeze) was refused with 409
+  // freeze_authority_mismatch. A0 now only confirms the live state
+  // (BWH / BWH_ACTIVE) and records the confirmed epoch; the freeze
+  // writes confirmed epoch + 1 via the coordinator, whose durable
+  // guard enforces +1. No epoch value is hardcoded anywhere here —
+  // every epoch asserted below is derived from the confirmed value.
+  const first = makeExecutor(t);
+  const firstBefore = readWriterAuthority(first.db).epoch;
+  const firstResult = await first.executor.executeFreeze({});
+  assert.equal(firstResult.authority.epoch, firstBefore + 1);
+  assert.equal(firstResult.executionEvidence.steps.a0Authority.epoch, firstBefore);
+  assert.equal(readWriterAuthority(first.db).phase, "FROZEN");
+  const unfrozen = first.coordinator.unfreeze({
+    reason: "synthetic verification failure",
+    voidedFreezeReceiptRef: firstResult.freezeReceipt.receiptDigest
+  });
+  const confirmedEpoch = readWriterAuthority(first.db).epoch;
+  assert.deepEqual([unfrozen.authority.phase, unfrozen.authority.epoch], ["BWH_ACTIVE", confirmedEpoch]);
+  // Second round: fresh process shape (new schedulers, new coordinator,
+  // same durable database) — as after the post-unfreeze restart.
+  const second = makeExecutor(t, {}, { db: first.db, controlStore: first.controlStore, clock: first.clock });
+  const secondResult = await second.executor.executeFreeze({});
+  assert.equal(secondResult.transitionId, "T1");
+  assert.equal(secondResult.executionEvidence.steps.a0Authority.epoch, confirmedEpoch);
+  assert.equal(secondResult.authority.epoch, confirmedEpoch + 1);
+  assert.equal(readWriterAuthority(first.db).phase, "FROZEN");
+  assert.equal(readWriterAuthority(first.db).epoch, confirmedEpoch + 1);
 });
 
 test("coverage open refuses the freeze before any scheduler is stopped", async (t) => {
