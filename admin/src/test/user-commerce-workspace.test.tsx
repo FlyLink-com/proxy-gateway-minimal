@@ -1,7 +1,26 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { UserCommerceClient } from "../features/user-commerce/user-commerce-client";
+import { UserCommerceError, type UserCommerceClient } from "../features/user-commerce/user-commerce-client";
 import { UserCommerceWorkspace } from "../features/user-commerce/user-commerce-workspace";
+
+const IDEMPOTENCY_KEY = /^[A-Za-z0-9._:-]{1,128}$/;
+const CLAWBACK_RESULT = { clawbackRef: "claw-1", settlement: { ratePercent: 20, effectiveAt: "2026-09-08", availableRewardCoins: "60" } };
+
+async function openClawbackConfirmation(commerce: UserCommerceClient) {
+  render(<UserCommerceWorkspace client={commerce} />);
+  fireEvent.click(screen.getByRole("tab", { name: "分享结算" }));
+  fireEvent.click(screen.getByRole("button", { name: "查询" }));
+  expect(await screen.findByText(/当前比例 20%/)).toBeTruthy();
+  fireEvent.change(screen.getByLabelText("划扣 Coins"), { target: { value: "20" } });
+  fireEvent.change(screen.getAllByLabelText("用户编号")[1], { target: { value: "acct_sample" } });
+  fireEvent.change(screen.getByLabelText("原因"), { target: { value: "重复发放" } });
+  fireEvent.click(screen.getByRole("button", { name: "准备划扣" }));
+  expect(screen.getByRole("dialog")).toBeTruthy();
+}
+
+function clawbackKey(call: unknown) {
+  return (call as [{ idempotencyKey: string }])[0].idempotencyKey;
+}
 
 function client(): UserCommerceClient {
   return {
@@ -50,5 +69,47 @@ describe("user commerce workspace", () => {
     expect(commerce.clawback).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "确认提交" }));
     expect(await screen.findByText("奖励 Coins 划扣已提交。")).toBeTruthy();
+  });
+
+  it.each([
+    ["failed", "暂时无法读取，请稍后再试。"],
+    ["invalid", "查询条件或提交内容无效。"],
+    ["conflict", "结算正在处理，请稍后再试。"],
+    ["unavailable", "用户商业管理接口尚未启用。"]
+  ] as const)("retries a clawback with the same idempotency key after a %s error", async (code, statusText) => {
+    const clawback = vi.fn()
+      .mockRejectedValueOnce(new UserCommerceError(code))
+      .mockResolvedValue(CLAWBACK_RESULT);
+    const commerce: UserCommerceClient = { ...client(), clawback };
+    await openClawbackConfirmation(commerce);
+    fireEvent.click(screen.getByRole("button", { name: "确认提交" }));
+    expect(await screen.findByText(statusText)).toBeTruthy();
+    // The failed submission keeps its confirmation — and its key — open,
+    // so the retry replays the same clawback instead of minting a second one.
+    expect(screen.getByRole("dialog")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "确认提交" }));
+    expect(await screen.findByText("奖励 Coins 划扣已提交。")).toBeTruthy();
+    expect(clawback).toHaveBeenCalledTimes(2);
+    const keys = clawback.mock.calls.map(clawbackKey);
+    expect(keys[0]).toMatch(IDEMPOTENCY_KEY);
+    expect(keys[1]).toBe(keys[0]);
+  });
+
+  it("mints a new idempotency key for each new clawback confirmation", async () => {
+    const clawback = vi.fn(async () => CLAWBACK_RESULT);
+    const commerce: UserCommerceClient = { ...client(), clawback };
+    await openClawbackConfirmation(commerce);
+    fireEvent.click(screen.getByRole("button", { name: "确认提交" }));
+    expect(await screen.findByText("奖励 Coins 划扣已提交。")).toBeTruthy();
+    // Same account, coins, and reason, deliberately confirmed again: a
+    // new confirmation is a distinct clawback, so it must carry a new key.
+    fireEvent.click(screen.getByRole("button", { name: "准备划扣" }));
+    fireEvent.click(screen.getByRole("button", { name: "确认提交" }));
+    expect(await screen.findByText("奖励 Coins 划扣已提交。")).toBeTruthy();
+    expect(clawback).toHaveBeenCalledTimes(2);
+    const keys = clawback.mock.calls.map(clawbackKey);
+    expect(keys[0]).toMatch(IDEMPOTENCY_KEY);
+    expect(keys[1]).toMatch(IDEMPOTENCY_KEY);
+    expect(keys[1]).not.toBe(keys[0]);
   });
 });

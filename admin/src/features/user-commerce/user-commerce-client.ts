@@ -64,6 +64,10 @@ const IDEMPOTENCY_KEY = /^[A-Za-z0-9._:-]{1,128}$/;
 // identical account/coins/reason are two distinct requests, while a
 // retried submission replays instead of clawing back twice. The server
 // also derives a key from the request when none is sent.
+export function createClawbackIdempotencyKey(): string {
+  return newIdempotencyKey();
+}
+
 function newIdempotencyKey(): string {
   const random = globalThis.crypto?.randomUUID?.();
   if (typeof random === "string" && random.length > 0) return random;
