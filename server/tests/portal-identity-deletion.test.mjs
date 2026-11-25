@@ -13,6 +13,16 @@ import {
   createSqliteSubscriptionControlStore
 } from "../services/platform/subscription-control-db.mjs";
 import {
+  COIN_WALLET_MIGRATIONS,
+  REQUIRED_COIN_WALLET_MIGRATION_ID,
+  applyCoinWalletMigrations
+} from "../services/platform/coin-wallet-migrations.mjs";
+import {
+  PORTAL_REGISTRATION_WELCOME_BONUS_MIGRATIONS,
+  REQUIRED_PORTAL_REGISTRATION_WELCOME_BONUS_MIGRATION_ID,
+  applyPortalRegistrationWelcomeBonusMigrations
+} from "../services/platform/portal-registration-welcome-bonus-migrations.mjs";
+import {
   PortalIdentityDeletionService,
   buildReadbackAssertions
 } from "../services/platform/portal-identity-deletion.mjs";
@@ -445,6 +455,74 @@ test("step 5 fails closed when retained rows block the account delete, then resu
   assert.equal(done.retryCount, 1);
   assert.ok(done.proofRef);
   assert.equal(store.getAccount("acct-del-0001"), null);
+}));
+
+// G (#870 r4573479114): a registration welcome-coin grant is a financial
+// record (10 bonus coins) whose FK is ON DELETE CASCADE, so it must be
+// in the step-5 blocking list — otherwise the physical delete would
+// silently cascade-delete the grant row. The grants table lives in the
+// separate welcome-bonus migrations, so the test applies them first.
+test("step 5 fails closed when a welcome-coin grant row exists, then resumes once it is gone", () => withStore(({ database, store, service }) => {
+  applyCoinWalletMigrations({
+    database,
+    expectedMigrationId: REQUIRED_COIN_WALLET_MIGRATION_ID,
+    expectedDdlChecksum: COIN_WALLET_MIGRATIONS[0].ddlChecksum,
+    nowFn: () => new Date(NOW_ISO)
+  });
+  applyPortalRegistrationWelcomeBonusMigrations({
+    database,
+    expectedMigrationId: REQUIRED_PORTAL_REGISTRATION_WELCOME_BONUS_MIGRATION_ID,
+    expectedDdlChecksum: PORTAL_REGISTRATION_WELCOME_BONUS_MIGRATIONS.at(-1).ddlChecksum,
+    nowFn: () => new Date(NOW_ISO)
+  });
+  fullAccount(store);
+  const grant = store.enqueuePortalRegistrationWelcomeCoinGrant({
+    grantRef: "grant-del-0001",
+    accountId: "acct-del-0001",
+    coinType: "bonus_coins",
+    amountUnits: 10,
+    expiresAt: new Date(NOW + 7 * 24 * 3600 * 1000).toISOString(),
+    sourceType: "portal_registration_welcome_bonus",
+    sourceRef: "portal_registration_welcome_acct-del-0001",
+    sourceDigest: "a".repeat(64),
+    actorScope: "account:acct-del-0001",
+    idempotencyKey: "grant-del-0001",
+    now: NOW_ISO
+  });
+  assert.equal(grant.grantRef, "grant-del-0001");
+  assert.equal(
+    store.readIdentityDeletionState({ accountId: "acct-del-0001" })
+      .blocking["platform_portal_registration_welcome_coin_grants"],
+    1
+  );
+  request(service);
+  assert.throws(
+    () => service.runDeletion({ requestRef: "delreq-synth-0001" }),
+    (error) => error.code === "identity_deletion_blocked_by_retained_rows"
+  );
+  const failed = service.getDeletionJob({ requestRef: "delreq-synth-0001" });
+  assert.equal(failed.status, "failed");
+  assert.equal(failed.currentStep, 5);
+  assert.match(failed.failureReason, /platform_portal_registration_welcome_coin_grants:1/);
+  // No silent cascade: the grant row and the account row both survived.
+  assert.notEqual(store.getPortalRegistrationWelcomeCoinGrant({ grantRef: "grant-del-0001" }), null);
+  assert.notEqual(store.getAccount("acct-del-0001"), null);
+
+  database.prepare(
+    "delete from platform_portal_registration_welcome_coin_grants where grant_ref = ?"
+  ).run("grant-del-0001");
+  const done = service.runDeletion({ requestRef: "delreq-synth-0001" });
+  assert.equal(done.status, "completed");
+  assert.ok(done.proofRef);
+  assert.equal(store.getAccount("acct-del-0001"), null);
+}));
+
+test("readIdentityDeletionState counts a missing welcome-grants table as zero instead of failing", () => withStore(({ store }) => {
+  // The grants table is owned by a separate migration and is absent on a
+  // plain control-store database; the blocking read must not fail there.
+  makeAccount(store, "acct-del-0001");
+  const state = store.readIdentityDeletionState({ accountId: "acct-del-0001" });
+  assert.equal(state.blocking["platform_portal_registration_welcome_coin_grants"], 0);
 }));
 
 test("entry rows are deleted by step 5 once the blocking entitlement is gone", () => withStore(({ database, store, service }) => {
