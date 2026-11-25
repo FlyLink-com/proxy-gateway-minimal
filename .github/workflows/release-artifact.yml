@@ -26,6 +26,7 @@ jobs:
   classify:
     name: Classify release changes
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     outputs:
       lane: ${{ steps.changes.outputs.lane }}
       run_full: ${{ steps.changes.outputs.run_full }}
@@ -58,6 +59,7 @@ jobs:
   package:
     name: Package source artifact
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     needs: classify
     if: needs.classify.outputs.run_full != '0'
 
@@ -133,6 +135,7 @@ jobs:
   portal-static:
     name: Package Portal static artifact
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     needs: classify
     if: needs.classify.outputs.run_full != '0'
 
@@ -237,6 +240,7 @@ jobs:
   portal-web-static:
     name: Package Portal desktop static artifact
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     needs: classify
     if: needs.classify.outputs.run_full != '0'
 
@@ -341,6 +345,7 @@ jobs:
   admin-static:
     name: Package Admin static artifact
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     needs: classify
     if: needs.classify.outputs.run_full != '0'
 

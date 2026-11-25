@@ -21,7 +21,8 @@ jobs:
   governance-evidence:
     name: Governance evidence
     if: github.event_name != 'workflow_dispatch' && (github.event_name != 'pull_request' || github.event.pull_request.draft == false)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
 
     steps:
       - name: Checkout
@@ -67,7 +68,8 @@ jobs:
   governance-snapshot:
     name: Governance snapshot
     if: github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
 
     steps:
       - name: Checkout
@@ -89,6 +91,7 @@ jobs:
       run_full: ${{ steps.changes.outputs.run_full }}
     if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
 
     steps:
       - name: Checkout
@@ -225,19 +228,12 @@ jobs:
     if: github.event_name == 'pull_request' && github.event.pull_request.draft == false
     uses: ./.github/workflows/control-plane-foundation-toolchain-inventory.yml
 
-  pr-domain-validation:
-    name: PR domain validation (C1 + DDD)
-    if: github.event_name == 'pull_request' && github.event.pull_request.base.ref == 'master' && github.event.pull_request.head.ref == 'ci/pr-domain-validation-20261112'
-    permissions:
-      contents: read
-      pull-requests: read
-    uses: ./.github/workflows/pr-domain-validation.yml
-
   checks-passed:
     name: Prerequisite checks
-    needs: [governance-evidence, governance-snapshot, source-checks, foundation-inventory, pr-domain-validation]
+    needs: [governance-evidence, governance-snapshot, source-checks, foundation-inventory]
     if: always() && (github.event_name != 'pull_request' || github.event.pull_request.draft == false)
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
     steps:
       - name: Require every applicable prerequisite to succeed
         shell: bash
@@ -247,8 +243,6 @@ jobs:
           GOVERNANCE_RESULT: ${{ needs.governance-evidence.result }}
           SNAPSHOT_RESULT: ${{ needs.governance-snapshot.result }}
           FOUNDATION_RESULT: ${{ needs.foundation-inventory.result }}
-          DOMAIN_RESULT: ${{ needs.pr-domain-validation.result }}
-          DOMAIN_REQUIRED: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.ref == 'master' && github.event.pull_request.head.ref == 'ci/pr-domain-validation-20261112' }}
         run: |
           set -euo pipefail
           test "$SOURCE_RESULT" = success
@@ -257,23 +251,16 @@ jobs:
               test "$GOVERNANCE_RESULT" = success
               test "$SNAPSHOT_RESULT" = skipped
               test "$FOUNDATION_RESULT" = success
-              if [[ "$DOMAIN_REQUIRED" == "true" ]]; then
-                test "$DOMAIN_RESULT" = success
-              else
-                test "$DOMAIN_RESULT" = skipped
-              fi
               ;;
             push)
               test "$GOVERNANCE_RESULT" = success
               test "$SNAPSHOT_RESULT" = skipped
               test "$FOUNDATION_RESULT" = skipped
-              test "$DOMAIN_RESULT" = skipped
               ;;
             workflow_dispatch)
               test "$GOVERNANCE_RESULT" = skipped
               test "$SNAPSHOT_RESULT" = success
               test "$FOUNDATION_RESULT" = skipped
-              test "$DOMAIN_RESULT" = skipped
               ;;
             *) exit 1 ;;
           esac
@@ -283,6 +270,7 @@ jobs:
     needs: [checks-passed, source-checks]
     if: (github.event_name != 'pull_request' || github.event.pull_request.draft == false) && !cancelled() && needs.checks-passed.result == 'success' && needs.source-checks.result == 'success'
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
@@ -359,6 +347,7 @@ jobs:
     needs: [checks-passed, build-assets, dependency-artifact]
     if: always() && (github.event_name != 'pull_request' || github.event.pull_request.draft == false)
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
     steps:
       - name: Require checks and final builds to succeed
         shell: bash
