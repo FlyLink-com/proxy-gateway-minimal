@@ -40,6 +40,64 @@ export function syntheticValueFor(table, column, index) {
     if (column === "listener_present") return index === 0 ? 0 : 1;
     if (column === "credential_count") return index === 0 ? 0 : 2147483647;
   }
+  // TRANSFORM JSON columns: the importer validates each value against
+  // its versioned field-specific schema (d1-card7-70-table-importer.mjs
+  // CONTROLLED_JSON_SCHEMAS), so the fixture must emit a value that
+  // matches the real contract for that column — never a generic
+  // {"synth": true, ...} object, which the schemas reject as unknown
+  // fields. Each shape below mirrors the in-repo write contract for
+  // that column (see the importer header for the grounding).
+  if (table === "platform_audit_events" && column === "metadata_json") {
+    return JSON.stringify({
+      version: 1,
+      commandRef: `synth-command-${index}`,
+      orderRef: `synth-order-${index}`,
+      accountId: `synth-account-${index}`,
+      requestRef: `synth-request-${index}`,
+      entitlementRef: `synth-entitlement-${index}`,
+      issuedLinkRef: `synth-issued-link-${index}`,
+      tenantRef: `synth-tenant-${index}`,
+      artifactRef: `synth-artifact-${index}`,
+      offerVersionRef: `synth-offer-version-${index}`,
+      portalPlan: "monthly",
+      durationDays: 30,
+      monthlyTrafficGb: 50,
+      trafficLimitBytes: 50 * (1024 ** 3),
+      validFrom: "2026-11-21T00:00:00.000Z",
+      previousValidUntil: "2026-11-21T00:00:00.000Z",
+      targetValidUntil: "2026-12-21T00:00:00.000Z",
+    });
+  }
+  if (table === "platform_coin_commerce_fulfillment_commands" && column === "payload_json") {
+    return JSON.stringify({
+      offerVersionRef: `synth-offer-version-${index}`,
+      delivery: {
+        kind: "subscription_plan",
+        durationDays: 30,
+        monthlyTrafficGb: 50,
+        trafficGb: null,
+        neverExpires: false,
+        discountBasisPoints: 0,
+      },
+    });
+  }
+  if (table === "platform_edge_registered_nodes" && column === "metadata_json") {
+    return JSON.stringify({
+      source: "node-image-first-boot-packet",
+      receiptGateRequired: true,
+      imageSafeConfirmed: true,
+      artifactHashRecorded: false,
+      wireguardPlanRef: `synth-wg-plan-${index}`,
+      wireguardPublicKeyFingerprint: `sha256:${"a".repeat(64)}`,
+      agentAuthFingerprint: `sha256:${"b".repeat(64)}`,
+    });
+  }
+  if (table === "platform_issuance_requests" && column === "metadata_json") {
+    return JSON.stringify({ cli: "platform:issue-subscription" });
+  }
+  if (table === "platform_portal_access_requests" && column === "event_json") {
+    return JSON.stringify({ type: "delivery_generation_reissued", occurredAt: "2026-11-21T00:00:00.000Z" });
+  }
   if (column.endsWith("_json") || column === "payload_json" || column === "event_json") {
     return JSON.stringify({ synth: true, table, column, index });
   }
@@ -93,12 +151,18 @@ export function sourceColumnsFor(table) {
 
 function fixtureTableDdl(table) {
   const cols = sourceColumnsFor(table);
+  const pkCols = cols.filter((c) => c.pk).map((c) => c.name);
   const parts = cols.map((c) => {
     let def = `"${c.name}" ${c.type}`;
-    if (c.pk) def += " PRIMARY KEY";
+    // A composite key is a table-level PRIMARY KEY constraint:
+    // SQLite rejects two inline PRIMARY KEYs in one CREATE TABLE.
+    if (c.pk && pkCols.length === 1) def += " PRIMARY KEY";
     if (c.notNull && !c.pk) def += " NOT NULL";
     return def;
   });
+  if (pkCols.length > 1) {
+    parts.push(`PRIMARY KEY (${pkCols.map((name) => `"${name}"`).join(", ")})`);
+  }
   // Keep the fixture schema free of CHECK / FK clauses on purpose: the
   // fixture proves row filtering, batching, checkpointing and hashing, not
   // DDL trigger / FK enforcement (covered by the DDL S4 synthetic test).

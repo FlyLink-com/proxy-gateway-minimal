@@ -10,7 +10,7 @@
 // Test IDs:
 // - J-1..J-9: durable ordered delta journal (HWM, gap detection,
 //   tombstone, resumable replay, checkpoint / snapshot binding).
-// - U-1..U-4: U-F18 credential-only reconciliation over synthetic
+// - U-1..U-5: U-F18 credential-only reconciliation over synthetic
 //   credential version manifests, including the source/target final
 //   reconciliation loop.
 // - V-C1..V-C3: empirical re-verification of the three V-C checks
@@ -234,13 +234,13 @@ test("J-5 replay converges the target and a second replay is a no-op", async (t)
   appendSourceDelta(journal, { snapshotId: SNAPSHOT_A, delta });
 
   const first = await replayDeltaJournal(journal, { snapshotId: SNAPSHOT_A, apply: makeItemsApplier(source, target) });
-  assert.deepEqual(first, { completed: true, applied: 3, lastAppliedSeq: 3, failedSeq: null, error: null });
+  assert.deepEqual(first, { completed: true, applied: 3, skipped: 0, skippedSeqs: [], lastAppliedSeq: 3, failedSeq: null, error: null });
   assert.deepEqual([...sourceRowsById(target).entries()], [...sourceRowsById(source).entries()]);
   assert.equal(readCheckpoint(journal, { snapshotId: SNAPSHOT_A }).highWaterMark, 3);
   assert.equal(readCheckpoint(journal, { snapshotId: SNAPSHOT_A }).appliedSeq, 3);
 
   const second = await replayDeltaJournal(journal, { snapshotId: SNAPSHOT_A, apply: makeItemsApplier(source, target) });
-  assert.deepEqual(second, { completed: true, applied: 0, lastAppliedSeq: 3, failedSeq: null, error: null });
+  assert.deepEqual(second, { completed: true, applied: 0, skipped: 0, skippedSeqs: [], lastAppliedSeq: 3, failedSeq: null, error: null });
 });
 
 test("J-6 a crash mid-replay resumes from the checkpoint and still converges", async (t) => {
@@ -272,7 +272,7 @@ test("J-6 a crash mid-replay resumes from the checkpoint and still converges", a
   assert.equal(target.prepare("select label from items where id = 'b'").get().label, "two");
 
   const resumed = await replayDeltaJournal(journal, { snapshotId: SNAPSHOT_A, apply: makeItemsApplier(source, target) });
-  assert.deepEqual(resumed, { completed: true, applied: 2, lastAppliedSeq: 3, failedSeq: null, error: null });
+  assert.deepEqual(resumed, { completed: true, applied: 2, skipped: 0, skippedSeqs: [], lastAppliedSeq: 3, failedSeq: null, error: null });
   assert.deepEqual([...sourceRowsById(target).entries()], [...sourceRowsById(source).entries()]);
 });
 
@@ -298,6 +298,99 @@ test("J-7 tombstones persist after replay and a re-insert orders after its tombs
   const history = readJournalEntries(journal, { snapshotId: SNAPSHOT_A }).filter((e) => e.pk === "c");
   assert.deepEqual(history.map((e) => [e.seq, e.kind]), [[3, "delete"], [4, "insert"]]);
   assert.equal(verifyJournal(journal, { snapshotId: SNAPSHOT_A }).tombstoneCount, 1);
+});
+
+test("J-10 replay folds an update superseded by a later delete of the same PK (R)", async (t) => {
+  const source = makeItemsDb(t);
+  const target = makeItemsDb(t);
+  const journal = makeJournalDb(t);
+  // Same PK updated then deleted: the update's apply would re-fetch
+  // a source row that no longer exists. The fold must skip it.
+  appendDeltaEntries(journal, {
+    snapshotId: SNAPSHOT_A,
+    entries: [
+      { table: "items", pk: "b", kind: "update", fingerprint: fingerprintRow({ id: "b", label: "two-updated" }), previousFingerprint: fingerprintRow({ id: "b", label: "two" }) },
+      { table: "items", pk: "b", kind: "delete", previousFingerprint: fingerprintRow({ id: "b", label: "two-updated" }) },
+    ],
+  });
+  source.prepare("delete from items where id = ?").run("b");
+  const result = await replayDeltaJournal(journal, { snapshotId: SNAPSHOT_A, apply: makeItemsApplier(source, target) });
+  assert.deepEqual(result, { completed: true, applied: 1, skipped: 1, skippedSeqs: [1], lastAppliedSeq: 2, failedSeq: null, error: null });
+  assert.deepEqual([...sourceRowsById(target).entries()], [...sourceRowsById(source).entries()]);
+  assert.equal(readCheckpoint(journal, { snapshotId: SNAPSHOT_A }).appliedSeq, 2, "the pointer advances past the skipped entry too");
+});
+
+test("J-11 cross-checkpoint update+delete still folds at replay (R)", async (t) => {
+  const source = makeItemsDb(t);
+  const target = makeItemsDb(t);
+  const journal = makeJournalDb(t);
+  const tables = [{ table: "items", pk: "id" }];
+  const checkpoint1 = buildCheckpointManifest(source, { tables, snapshotId: SNAPSHOT_A });
+  source.prepare("update items set label = ? where id = ?").run("two-updated", "b");
+  appendSourceDelta(journal, { snapshotId: SNAPSHOT_A, delta: enumerateSourceDeltas(source, { tables, checkpoint: checkpoint1 }) });
+  const checkpoint2 = buildCheckpointManifest(source, { tables, snapshotId: SNAPSHOT_A });
+  source.prepare("delete from items where id = ?").run("b");
+  appendSourceDelta(journal, { snapshotId: SNAPSHOT_A, delta: enumerateSourceDeltas(source, { tables, checkpoint: checkpoint2 }) });
+  assert.deepEqual(
+    readJournalEntries(journal, { snapshotId: SNAPSHOT_A }).map((e) => [e.seq, e.kind, e.pk]),
+    [[1, "update", "b"], [2, "delete", "b"]],
+    "the two checkpoints enter the journal as two entries",
+  );
+  const result = await replayDeltaJournal(journal, { snapshotId: SNAPSHOT_A, apply: makeItemsApplier(source, target) });
+  assert.deepEqual(result, { completed: true, applied: 1, skipped: 1, skippedSeqs: [1], lastAppliedSeq: 2, failedSeq: null, error: null });
+  assert.deepEqual([...sourceRowsById(target).entries()], [...sourceRowsById(source).entries()]);
+});
+
+test("J-12 the fold is fail-closed: no tombstone, no skip; a throwing delete still blocks; a re-insert after a tombstone still applies (R)", async (t) => {
+  // (a) An update with no later tombstone whose apply throws still
+  // blocks the replay — it is a live write, not a superseded one.
+  const sourceA = makeItemsDb(t);
+  const targetA = makeItemsDb(t);
+  const journalA = makeJournalDb(t);
+  appendDeltaEntries(journalA, {
+    snapshotId: SNAPSHOT_A,
+    entries: [{ table: "items", pk: "b", kind: "update", fingerprint: fingerprintRow({ id: "b", label: "two-updated" }), previousFingerprint: fingerprintRow({ id: "b", label: "two" }) }],
+  });
+  sourceA.prepare("delete from items where id = ?").run("b");
+  const blocked = await replayDeltaJournal(journalA, { snapshotId: SNAPSHOT_A, apply: makeItemsApplier(sourceA, targetA) });
+  assert.equal(blocked.completed, false);
+  assert.equal(blocked.failedSeq, 1);
+  assert.equal(blocked.applied, 0);
+  assert.equal(blocked.skipped, 0);
+  assert.deepEqual(blocked.skippedSeqs, []);
+  assert.equal(readCheckpoint(journalA, { snapshotId: SNAPSHOT_A }).appliedSeq, 0);
+
+  // (b) A delete tombstone whose own apply throws still blocks.
+  const sourceB = makeItemsDb(t);
+  const targetB = makeItemsDb(t);
+  const journalB = makeJournalDb(t);
+  appendDeltaEntries(journalB, {
+    snapshotId: SNAPSHOT_A,
+    entries: [{ table: "items", pk: "c", kind: "delete", previousFingerprint: fingerprintRow({ id: "c", label: "three" }) }],
+  });
+  const throwingDelete = (entry) => {
+    if (entry.kind === "delete") throw new Error("synthetic delete applier failure");
+    return makeItemsApplier(sourceB, targetB)(entry);
+  };
+  const deleteBlocked = await replayDeltaJournal(journalB, { snapshotId: SNAPSHOT_A, apply: throwingDelete });
+  assert.equal(deleteBlocked.completed, false);
+  assert.equal(deleteBlocked.failedSeq, 1);
+
+  // (c) A re-insert after a tombstone is not superseded: it applies.
+  const sourceC = makeItemsDb(t);
+  const targetC = makeItemsDb(t);
+  const journalC = makeJournalDb(t);
+  appendDeltaEntries(journalC, {
+    snapshotId: SNAPSHOT_A,
+    entries: [
+      { table: "items", pk: "c", kind: "delete", previousFingerprint: fingerprintRow({ id: "c", label: "three" }) },
+      { table: "items", pk: "c", kind: "insert", fingerprint: fingerprintRow({ id: "c", label: "three-again" }) },
+    ],
+  });
+  sourceC.prepare("update items set label = ? where id = ?").run("three-again", "c");
+  const reinserted = await replayDeltaJournal(journalC, { snapshotId: SNAPSHOT_A, apply: makeItemsApplier(sourceC, targetC) });
+  assert.deepEqual(reinserted, { completed: true, applied: 2, skipped: 0, skippedSeqs: [], lastAppliedSeq: 2, failedSeq: null, error: null });
+  assert.equal(targetC.prepare("select label from items where id = 'c'").get().label, "three-again");
 });
 
 test("J-8 the checkpoint binds the journal to one credential manifest hash", (t) => {
@@ -451,6 +544,42 @@ test("U-4 entry digests are chained from the genesis hash", (t) => {
   });
   assert.equal(second, entries[1].entryDigest);
   assert.notEqual(GENESIS_JOURNAL_HASH, entries[0].entryDigest);
+});
+
+test("U-5 a delete-insert-delete cycle between manifests is reported rotated but never journalled (AC observation 2)", (t) => {
+  // Both manifests hold deleted = 1 for the same PK with different
+  // versions: the row was deleted, re-inserted, and deleted again
+  // between the two captures. detectCredentialRotations reports it
+  // as rotated (the only branch left for two tombstones whose
+  // versions differ) — a misclassification, but a fail-closed one:
+  // reconcile reports not-reconciled, and append refuses the entry
+  // because the current manifest entry is tombstoned.
+  const db = makeCredentialSnapshot(t, SNAPSHOT_A);
+  const pk = credentialPk("s2s-request-001", "s2s-channel-a");
+  db.prepare(`delete from platform_portal_edge_credentials where request_id = 's2s-request-001' and edge_channel_ref = 's2s-channel-a'`).run();
+  const before = buildCredentialVersionManifest(db, { snapshotId: SNAPSHOT_A });
+  assert.equal(before.entries.find((e) => e.pk === pk).deleted, 1);
+  assert.equal(before.entries.find((e) => e.pk === pk).version, 2);
+  db.prepare(`insert into platform_portal_edge_credentials (request_id, edge_channel_ref, edge_credential_ref, edge_material_digest, ordinal) values ('s2s-request-001', 's2s-channel-a', 's2s-cred-001-again', ?, 0)`)
+    .run(syntheticMaterialDigest("s2s-cred-001-again"));
+  db.prepare(`delete from platform_portal_edge_credentials where request_id = 's2s-request-001' and edge_channel_ref = 's2s-channel-a'`).run();
+  const after = buildCredentialVersionManifest(db, { snapshotId: SNAPSHOT_B });
+  assert.equal(after.entries.find((e) => e.pk === pk).deleted, 1);
+  assert.equal(after.entries.find((e) => e.pk === pk).version, 4);
+
+  const rotations = detectCredentialRotations(before, after);
+  assert.deepEqual(rotations.rotated, [{ pk, fromVersion: 2, toVersion: 4 }]);
+  assert.deepEqual(rotations.added, []);
+  assert.deepEqual(rotations.deleted, []);
+  const report = reconcileCredentialManifests(after, before, { snapshotId: SNAPSHOT_B });
+  assert.equal(report.reconciled, false);
+
+  const journal = makeJournalDb(t);
+  assertErrorCode(
+    () => appendCredentialRotations(journal, { snapshotId: SNAPSHOT_B, rotations, currentManifest: after }),
+    "delta_journal_entry_invalid",
+  );
+  assert.deepEqual(readJournalEntries(journal, { snapshotId: SNAPSHOT_B }), []);
 });
 
 // ---- V-C: empirical re-verification (measured, not inferred) ----

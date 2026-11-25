@@ -691,7 +691,10 @@ function present(surface, gate, nodeRef) {
     equalities: gate.equalities,
     state: gate.state
   };
-  if (nodeRef) output.node_ref = nodeRef;
+  // Only a whitelisted node ref is ever echoed. An unknown, mistyped or
+  // attacker-controlled --node-ref must never appear in the JSON output,
+  // including on the blocked/input_invalid path below.
+  if (nodeRef && Object.hasOwn(CHANNEL_BY_KIND_BY_NODE_REF, nodeRef)) output.node_ref = nodeRef;
   if (gate.code) output.code = gate.code;
   return output;
 }

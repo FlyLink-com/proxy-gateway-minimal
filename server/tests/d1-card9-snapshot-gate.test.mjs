@@ -103,8 +103,12 @@ function buildBundle(db) {
   return buildFreezeReadinessBundle({ snapshotId: SNAPSHOT, writeLock, schedulerQuiescence, callbackDrain, hwmCompleteness });
 }
 
+const FENCED_REF = "decisions/D3_28_ITEMS_DISPOSITION_R7_2026-11-24.md (R7-approved writer dispositions)";
+
 function closedCoverage() {
-  const fenced = UNFENCED_WRITER_BASELINE.map((entry) => entry.id).filter((id) => id !== "U-F17");
+  const fenced = Object.fromEntries(
+    UNFENCED_WRITER_BASELINE.map((entry) => entry.id).filter((id) => id !== "U-F17").map((id) => [id, FENCED_REF]),
+  );
   return buildWriterCoverageMatrix({ fenced });
 }
 

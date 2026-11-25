@@ -299,7 +299,12 @@ function buildBundle(db) {
 }
 
 function closedCoverage() {
-  const fenced = UNFENCED_WRITER_BASELINE.map((entry) => entry.id).filter((id) => id !== "U-F17");
+  // U (PR #906 r4662139139): every fenced claim carries the R7
+  // disposition record as its evidence ref.
+  const fenced = Object.fromEntries(
+    UNFENCED_WRITER_BASELINE.map((entry) => entry.id).filter((id) => id !== "U-F17")
+      .map((id) => [id, "decisions/D3_28_ITEMS_DISPOSITION_R7_2026-11-24.md (R7-approved writer dispositions)"]),
+  );
   return buildWriterCoverageMatrix({ fenced });
 }
 

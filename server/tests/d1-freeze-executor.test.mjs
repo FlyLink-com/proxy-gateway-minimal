@@ -27,6 +27,8 @@ import {
   resolveFreezeSnapshotId,
   D1_FREEZE_COVERAGE_EXPECTED_COUNTS,
   D1_FREEZE_COVERAGE_FENCED,
+  D1_FREEZE_COVERAGE_FENCED_REF,
+  D1_FREEZE_COVERAGE_FENCED_REFS,
   D1_FREEZE_COVERAGE_WAIVERS,
   D1_FREEZE_COVERAGE_WAIVER_AUTHORIZATION_IDS,
   D1_FREEZE_COVERAGE_OUT_OF_SCOPE
@@ -286,6 +288,54 @@ test("freeze executor runs A0→A3→B and returns the T1 receipt", async (t) =>
   assert.equal(evidence.steps.bPostFreeze.anomaly, false);
 });
 
+test("AB: the A2 write lock is built before the drain and its HWM is in the evidence", async (t) => {
+  const { db, executor } = makeExecutor(t);
+  const result = await executor.executeFreeze({});
+  const a2WriteLock = result.executionEvidence.steps.a2WriteLock;
+  assert.equal(typeof a2WriteLock, "object");
+  assert.match(a2WriteLock.receiptDigest, /^[0-9a-f]{64}$/);
+  assert.equal(typeof a2WriteLock.highWaterMark, "object");
+  assert.equal(a2WriteLock.highWaterMark.totalRows, result.executionEvidence.steps.a2Hwm.first.totalRows);
+  assert.deepEqual(result.executionEvidence.steps.a2Hwm.first, a2WriteLock.highWaterMark);
+  assert.deepEqual(result.executionEvidence.steps.a2Hwm.second, a2WriteLock.highWaterMark);
+  assert.equal(readWriterAuthority(db).phase, "FROZEN");
+});
+
+test("AB: a write landing during the A2 drain fails the freeze with freeze_write_lock_hwm_moved and the phase stays BWH_ACTIVE", async (t) => {
+  // Sleep call order in the happy path: the W-115 observation sleep
+  // is the 1st call (A1, before the A2 lock is built), the HWM
+  // interval sleep is the 2nd (A2, between the two HWM observations).
+  // The injected write lands exactly in that window: after the lock
+  // receipt and the first observation, before the second.
+  let sleepCalls = 0;
+  let injected = false;
+  const { db, clock, executor } = makeExecutor(t, {
+    executor: {
+      sleep: async (ms) => {
+        sleepCalls += 1;
+        if (sleepCalls === 2) {
+          db.prepare("insert into platform_audit_events (id, entity_type, entity_ref, action, actor_ref, created_at, metadata_json) values (?, ?, ?, ?, ?, ?, ?)")
+            .run("s2s-ab-write-001", "synthetic", "s2s-ab", "synthetic-write", "s2s-test", "2026-11-24T12:01:00.000Z", "{}");
+          injected = true;
+        }
+        clock.advance(ms);
+      },
+    },
+  });
+  await assert.rejects(
+    () => executor.executeFreeze({}),
+    (error) => {
+      assert.equal(error.code, "freeze_write_lock_hwm_moved");
+      assert.equal(typeof error.executionEvidence.steps.a2WriteLock, "object");
+      assert.match(error.executionEvidence.steps.a2WriteLock.receiptDigest, /^[0-9a-f]{64}$/);
+      assert.notDeepEqual(error.executionEvidence.steps.a2Hwm.second, error.executionEvidence.steps.a2WriteLock.highWaterMark);
+      return true;
+    }
+  );
+  assert.equal(injected, true, "the write must have landed during the HWM interval");
+  assert.equal(readWriterAuthority(db).phase, "BWH_ACTIVE");
+});
+
 // The freeze rule, parameterized: for any BWH_ACTIVE epoch the freeze
 // succeeds and lands on confirmed epoch + 1; while FROZEN at any epoch
 // it is refused with 409. Every epoch asserted is derived from the
@@ -330,7 +380,7 @@ for (const epoch of [2, 4, 8, 43]) {
 test("coverage open refuses the freeze before any scheduler is stopped", async (t) => {
   const { commerce, welcome, deferred, portal, executor } = makeExecutor(t);
   const openMatrix = buildWriterCoverageMatrix({
-    fenced: D1_FREEZE_COVERAGE_FENCED.filter((id) => id !== "U-F1"),
+    fenced: Object.fromEntries(D1_FREEZE_COVERAGE_FENCED.filter((id) => id !== "U-F1").map((id) => [id, D1_FREEZE_COVERAGE_FENCED_REFS[id]])),
     waivers: { ...D1_FREEZE_COVERAGE_WAIVERS },
     outOfScope: { ...D1_FREEZE_COVERAGE_OUT_OF_SCOPE }
   });
@@ -603,7 +653,7 @@ test("F20: expected counts derive from the R7 inputs (24 explicit fenced + deriv
 test("F20: a matrix with a different disposition is refused against the derived expectation", async (t) => {
   const { commerce, welcome, deferred, portal, executor } = makeExecutor(t);
   const movedMatrix = buildWriterCoverageMatrix({
-    fenced: [...D1_FREEZE_COVERAGE_FENCED, "U-F9"],
+    fenced: { ...D1_FREEZE_COVERAGE_FENCED_REFS, "U-F9": D1_FREEZE_COVERAGE_FENCED_REF },
     waivers: { ...D1_FREEZE_COVERAGE_WAIVERS },
     outOfScope: { "U-F14": D1_FREEZE_COVERAGE_OUT_OF_SCOPE["U-F14"] }
   });
@@ -626,7 +676,7 @@ test("F20: a matrix with a different disposition is refused against the derived 
 test("F20: a waiver citing an unknown authorization is refused fail-closed", async (t) => {
   const { commerce, welcome, deferred, portal, executor } = makeExecutor(t);
   const staleMatrix = buildWriterCoverageMatrix({
-    fenced: [...D1_FREEZE_COVERAGE_FENCED],
+    fenced: { ...D1_FREEZE_COVERAGE_FENCED_REFS },
     waivers: { "U-F15": "yi-2026-11-24-0000-cst-d1-landing-authorization-v2" },
     outOfScope: { ...D1_FREEZE_COVERAGE_OUT_OF_SCOPE }
   });

@@ -28,6 +28,7 @@ import {
   assertE4Target,
   buildD1BatchStatements,
   countSourceRows,
+  controlledJsonSchemaVersion,
   createCheckpoint,
   executeD1Batch,
   firstBatchPlan,
@@ -277,7 +278,10 @@ test("seven-column fixture: one lease + three receipts read back value-by-value 
   const res = transformRow({ table: "platform_edge_apply_receipts", row: receipts[2], gates: GATES_OPEN });
   assert.equal(res.row, null);
   assert.equal(res.deferred?.reasonCode, "D-1");
-  // Receipts 1 and 2 filter through unchanged, value by value.
+  // Receipts 1 and 2 filter through, value by value — except the two
+  // DEFER drift columns (P fix, CARD6 §3.3 #6/#7): listener_present
+  // and credential_count carry no target value and are absent from
+  // the output row, while the other drift columns still pass through.
   for (const [i, want] of [[0, receipts[0]], [1, receipts[1]]]) {
     const out = transformRow({ table: "platform_edge_apply_receipts", row: want, gates: GATES_OPEN });
     assert.equal(out.deferred, null, `receipt ${i} deferred`);
@@ -286,8 +290,8 @@ test("seven-column fixture: one lease + three receipts read back value-by-value 
     assert.equal(out.row.node_ref, want.node_ref);
     assert.equal(out.row.receipt_digest, want.receipt_digest);
     assert.equal(out.row.reason_code, want.reason_code);
-    assert.equal(out.row.listener_present, want.listener_present);
-    assert.equal(out.row.credential_count, want.credential_count);
+    assert.ok(!("listener_present" in out.row), `receipt ${i} must not carry listener_present (DEFER)`);
+    assert.ok(!("credential_count" in out.row), `receipt ${i} must not carry credential_count (DEFER)`);
   }
 });
 
@@ -375,20 +379,22 @@ test("seven-column synthetic round-trip: D1 statement descriptors preserve every
     assert.equal(targetLeases[0].released_at, null);
     assert.equal(targetLeases[1].released_at, "2026-11-21T09:41:45.000Z");
 
-    // Rules 2–7: NULL and populated values survive; generation stays TEXT.
+    // Rules 2–5: NULL and populated values survive; generation stays TEXT.
+    // Rules 6–7 (P fix): the two drift columns are DEFER — they are
+    // absent from the target columns and from the loaded rows.
     assert.equal(targetReceipts[0].node_ref, null);
     assert.equal(targetReceipts[0].generation, null);
     assert.equal(targetReceipts[0].receipt_digest, null);
     assert.equal(targetReceipts[0].reason_code, null);
-    assert.equal(targetReceipts[0].listener_present, 0);
-    assert.equal(targetReceipts[0].credential_count, 0);
+    assert.ok(!("listener_present" in targetReceipts[0]), "listener_present is DEFER, not loaded");
+    assert.ok(!("credential_count" in targetReceipts[0]), "credential_count is DEFER, not loaded");
 
     assert.equal(targetReceipts[1].node_ref, "synth-node-001");
     assert.equal(targetReceipts[1].generation, "007");
     assert.equal(typeof targetReceipts[1].generation, "string");
     assert.equal(targetReceipts[1].reason_code, "synth-ok");
-    assert.equal(targetReceipts[1].listener_present, 1);
-    assert.equal(targetReceipts[1].credential_count, 2147483647);
+    assert.ok(!("listener_present" in targetReceipts[1]), "listener_present is DEFER, not loaded");
+    assert.ok(!("credential_count" in targetReceipts[1]), "credential_count is DEFER, not loaded");
     assert.deepEqual(
       [...Buffer.from(targetReceipts[1].receipt_digest, "utf8")],
       [...Buffer.from(sourceReceipts[1].receipt_digest, "utf8")],
@@ -532,13 +538,144 @@ test("TRANSFORM digest-only: raw idempotency key becomes a digest, raw never lea
   assert.ok(!stmts[0].sql.includes('"idempotency_key"'));
 });
 
-test("TRANSFORM JSON: metadata_json is normalized with sorted keys; invalid JSON fails", () => {
+test("TRANSFORM JSON: metadata_json is validated against its versioned schema and normalized with sorted keys; invalid JSON fails", () => {
   const db = freshDb();
-  const row = { ...synthRow(db, "platform_audit_events", 0), metadata_json: '{"b":1,"a":{"d":4,"c":3}}' };
+  // A schema-valid fulfillment metadata value normalizes with sorted keys.
+  const row = {
+    ...synthRow(db, "platform_audit_events", 0),
+    metadata_json: '{"targetValidUntil":"2026-12-21T00:00:00.000Z","version":1,"commandRef":"synth-command-0","orderRef":"synth-order-0","accountId":"synth-account-0","requestRef":"synth-request-0","entitlementRef":"synth-entitlement-0","issuedLinkRef":"synth-issued-link-0","tenantRef":"synth-tenant-0","artifactRef":"synth-artifact-0","offerVersionRef":"synth-offer-version-0","portalPlan":"monthly","durationDays":30,"monthlyTrafficGb":50,"trafficLimitBytes":53687091200,"validFrom":"2026-11-21T00:00:00.000Z","previousValidUntil":"2026-11-21T00:00:00.000Z"}',
+  };
   const res = transformRow({ table: "platform_audit_events", row, gates: GATES_OPEN });
-  assert.equal(res.row.metadata_json, '{"a":{"c":3,"d":4},"b":1}');
+  assert.equal(res.rejected, null);
+  assert.equal(JSON.parse(res.row.metadata_json).commandRef, "synth-command-0");
+  assert.deepEqual(Object.keys(JSON.parse(res.row.metadata_json)), [...Object.keys(JSON.parse(res.row.metadata_json))].sort());
   const bad = { ...row, metadata_json: "{not json" };
   assert.throws(() => transformRow({ table: "platform_audit_events", row: bad, gates: GATES_OPEN }), /json_transform_invalid/);
+});
+
+test("TRANSFORM JSON (O): unknown and sensitive fields reject the row for every schema column", () => {
+  const db = freshDb();
+  const cases = [
+    {
+      table: "platform_audit_events", column: "metadata_json",
+      valid: '{"version":1,"commandRef":"synth-command-0","orderRef":"synth-order-0","accountId":"synth-account-0","requestRef":"synth-request-0","entitlementRef":"synth-entitlement-0","issuedLinkRef":"synth-issued-link-0","tenantRef":"synth-tenant-0","artifactRef":"synth-artifact-0","offerVersionRef":"synth-offer-version-0","portalPlan":"monthly","durationDays":30,"monthlyTrafficGb":50,"trafficLimitBytes":53687091200,"validFrom":"2026-11-21T00:00:00.000Z","previousValidUntil":"2026-11-21T00:00:00.000Z","targetValidUntil":"2026-12-21T00:00:00.000Z"}',
+      unknown: '{"version":1,"surpriseField":1}',
+      sensitive: '{"version":1,"apiToken":"synth-should-never-load"}',
+    },
+    {
+      table: "platform_coin_commerce_fulfillment_commands", column: "payload_json",
+      valid: '{"offerVersionRef":"synth-offer-version-0","delivery":{"kind":"subscription_plan","durationDays":30,"monthlyTrafficGb":50,"trafficGb":null,"neverExpires":false,"discountBasisPoints":0}}',
+      unknown: '{"offerVersionRef":"synth-offer-version-0","delivery":{"kind":"subscription_plan","durationDays":30,"monthlyTrafficGb":50,"trafficGb":null,"neverExpires":false,"discountBasisPoints":0},"extra":1}',
+      sensitive: '{"offerVersionRef":"synth-offer-version-0","delivery":{"kind":"subscription_plan","durationDays":30,"monthlyTrafficGb":50,"trafficGb":null,"neverExpires":false,"discountBasisPoints":0},"password":"x"}',
+    },
+    {
+      table: "platform_edge_registered_nodes", column: "metadata_json",
+      valid: `{"source":"node-image-first-boot-packet","receiptGateRequired":true,"imageSafeConfirmed":true,"artifactHashRecorded":false,"wireguardPlanRef":"synth-wg-plan-0","wireguardPublicKeyFingerprint":"sha256:${"a".repeat(64)}","agentAuthFingerprint":"sha256:${"b".repeat(64)}"}`,
+      unknown: '{"source":"node-image-first-boot-packet","receiptGateRequired":true,"imageSafeConfirmed":true,"artifactHashRecorded":false,"wireguardPlanRef":"synth-wg-plan-0","mysteryField":"x"}',
+      sensitive: '{"source":"node-image-first-boot-packet","receiptGateRequired":true,"imageSafeConfirmed":true,"artifactHashRecorded":false,"wireguardPlanRef":"synth-wg-plan-0","secret":"x"}',
+    },
+    {
+      table: "platform_issuance_requests", column: "metadata_json",
+      valid: '{"cli":"platform:issue-subscription"}',
+      unknown: '{"cli":"platform:issue-subscription","mystery":1}',
+      sensitive: '{"cli":"platform:issue-subscription","credential":"x"}',
+    },
+    {
+      table: "platform_portal_access_requests", column: "event_json",
+      valid: '{"type":"delivery_generation_reissued","occurredAt":"2026-11-21T00:00:00.000Z"}',
+      unknown: '{"type":"delivery_generation_reissued","occurredAt":"2026-11-21T00:00:00.000Z","extra":1}',
+      sensitive: '{"type":"delivery_generation_reissued","occurredAt":"2026-11-21T00:00:00.000Z","token":"x"}',
+    },
+  ];
+  for (const { table, column, valid, unknown, sensitive } of cases) {
+    // Fixture row 1: row 0 of portal_access_requests carries a
+    // non-null EXTERNALIZE subscription_url, which rejects the row
+    // before the JSON column is even reached.
+    const base = synthRow(db, table, 1);
+    const ok = transformRow({ table, row: { ...base, [column]: valid }, gates: GATES_OPEN });
+    assert.equal(ok.rejected, null, `${table}.${column} valid value must load`);
+    assert.equal(typeof ok.row[column], "string", `${table}.${column} must normalize to a string`);
+    assert.throws(
+      () => transformRow({ table, row: { ...base, [column]: unknown }, gates: GATES_OPEN }),
+      /json_unknown_field/,
+      `${table}.${column} must reject unknown fields`,
+    );
+    assert.throws(
+      () => transformRow({ table, row: { ...base, [column]: sensitive }, gates: GATES_OPEN }),
+      /json_sensitive_field/,
+      `${table}.${column} must reject sensitive fields`,
+    );
+  }
+});
+
+test("TRANSFORM JSON (O rework): real-row shapes from the r2 snapshot load — kind-conditional delivery, portal '{}' / old_link_invalidated, account + wallet-first audit, bind-existing edge", () => {
+  const db = freshDb();
+  const load = (table, column, value, rowIndex = 1) => {
+    const base = synthRow(db, table, rowIndex);
+    return transformRow({ table, row: { ...base, [column]: value }, gates: GATES_OPEN });
+  };
+  const reject = (table, column, value, pattern, rowIndex = 1) => {
+    assert.throws(() => load(table, column, value, rowIndex), pattern, `${table}.${column} ${value} must reject`);
+  };
+  // Fulfillment: subscription_plan carries trafficGb null (real rows);
+  // data_pack carries durationDays/monthlyTrafficGb null.
+  const plan = '{"offerVersionRef":"synth-offer-version-0","delivery":{"kind":"subscription_plan","durationDays":30,"monthlyTrafficGb":50,"trafficGb":null,"neverExpires":false,"discountBasisPoints":0}}';
+  const pack = '{"offerVersionRef":"synth-offer-version-0","delivery":{"kind":"data_pack","durationDays":null,"monthlyTrafficGb":null,"trafficGb":100,"neverExpires":true,"discountBasisPoints":null}}';
+  assert.equal(load("platform_coin_commerce_fulfillment_commands", "payload_json", plan).rejected, null);
+  assert.equal(load("platform_coin_commerce_fulfillment_commands", "payload_json", pack).rejected, null);
+  reject("platform_coin_commerce_fulfillment_commands", "payload_json",
+    '{"offerVersionRef":"synth-offer-version-0","delivery":{"kind":"subscription_plan","durationDays":30,"monthlyTrafficGb":50,"trafficGb":50,"neverExpires":false,"discountBasisPoints":0}}',
+    /trafficGb must be null/);
+  reject("platform_coin_commerce_fulfillment_commands", "payload_json",
+    '{"offerVersionRef":"synth-offer-version-0","delivery":{"kind":"data_pack","durationDays":30,"monthlyTrafficGb":null,"trafficGb":100,"neverExpires":true,"discountBasisPoints":null}}',
+    /durationDays must be null/);
+  reject("platform_coin_commerce_fulfillment_commands", "payload_json",
+    '{"offerVersionRef":"synth-offer-version-0","delivery":{"kind":"other","durationDays":30,"monthlyTrafficGb":50,"trafficGb":null,"neverExpires":false,"discountBasisPoints":0}}',
+    /kind must be subscription_plan or data_pack/);
+  // Portal: '{}' is the no-event encoding; old_link_invalidated is live.
+  assert.equal(load("platform_portal_access_requests", "event_json", "{}").rejected, null);
+  assert.equal(load("platform_portal_access_requests", "event_json", '{"type":"old_link_invalidated","occurredAt":"2026-11-21T00:00:00.000Z"}').rejected, null);
+  // Audit: account shape + wallet-first prepared shape (initial_activation).
+  assert.equal(load("platform_audit_events", "metadata_json", '{"approvalRef":"approval_local_user_lifecycle","reasonProvided":true}').rejected, null);
+  reject("platform_audit_events", "metadata_json", '{"approvalRef":"approval_local_user_lifecycle","reasonProvided":"yes"}', /reasonProvided must be a boolean/);
+  const walletFirstPrepared = JSON.stringify({
+    version: 1, transitionRef: "synth-transition-0", accountId: "synth-account-0",
+    flowKind: "initial_activation", offerVersionRef: "synth-offer-version-0",
+    durationDays: 30, monthlyTrafficGb: 50, portalPlan: "monthly",
+    scheduledFor: "2026-11-21T00:00:00.000Z", activationAt: "2026-11-21T00:00:00.000Z",
+    validUntil: "2026-12-21T00:00:00.000Z", effectRef: "synth-effect-0",
+    entitlementId: "synth-entitlement-0", requestId: "synth-request-0",
+    issuedLinkId: "synth-issued-link-0", nodeId: "synth-node-0",
+    accountDigest: "a".repeat(64),
+    expectedEntitlementId: null, expectedRequestId: null, expectedIssuedLinkId: null,
+    expectedValidUntil: null, currentTenantRef: null, currentArtifactRef: null,
+    currentInitialTransitionRef: null,
+  });
+  assert.equal(load("platform_audit_events", "metadata_json", walletFirstPrepared).rejected, null);
+  reject("platform_audit_events", "metadata_json",
+    walletFirstPrepared.replace('"initial_activation"', '"other_flow"'), /flowKind must be/);
+  // Edge: bind-existing-reviewed-node shape (real node-sgp-a row) loads
+  // alongside the first-boot shape.
+  const bindExisting = '{"source":"bind-existing-reviewed-node","registrationMode":"bind-existing-reviewed-node-only","poolRef":"pool-stable","receiptGateRequired":true,"protectedRefSet":"existing-protected-key-digest-refs","keyDigestRefsReviewed":true,"nodeAuthDigestPresent":true,"noRuntimeMaterialStored":true}';
+  assert.equal(load("platform_edge_registered_nodes", "metadata_json", bindExisting).rejected, null);
+  reject("platform_edge_registered_nodes", "metadata_json",
+    bindExisting.replace('"pool-stable"', '"pool-other"').replace('"bind-existing-reviewed-node-only"', '"other-mode"'),
+    /registrationMode must be/);
+});
+
+test("TRANSFORM JSON (O): every TRANSFORM JSON column has a registered versioned schema", () => {
+  const db = freshDb();
+  void db;
+  for (const [table, column] of [
+    ["platform_audit_events", "metadata_json"],
+    ["platform_coin_commerce_fulfillment_commands", "payload_json"],
+    ["platform_edge_registered_nodes", "metadata_json"],
+    ["platform_issuance_requests", "metadata_json"],
+    ["platform_portal_access_requests", "event_json"],
+  ]) {
+    assert.equal(controlledJsonSchemaVersion(table, column), 1, `${table}.${column} must carry schema version 1`);
+  }
+  assert.equal(controlledJsonSchemaVersion("platform_audit_events", "no_such_column"), null);
 });
 
 test("M1-02: platform_accounts.metadata_json is never loaded", () => {

@@ -27,6 +27,10 @@ const MFA_MAX_AGE_MS = 5 * 60 * 1000;
 const MFA_AUTH_TIME_MAX_AGE_SECONDS = 300;
 const ACCESS_TOKEN_MAX_LIFETIME_SECONDS = 86400;
 const ID_TOKEN_MAX_LIFETIME_SECONDS = 86400;
+// JWKS cache TTL, mirroring the Worker oidc-gateway CACHE_MS (300000):
+// a revoked key must stop being usable once the cache expires, instead of
+// staying trusted for the process lifetime.
+const JWKS_CACHE_TTL_MS = 5 * 60 * 1000;
 const SCOPE_PATTERN = /^[A-Za-z0-9:_-]+(?: [A-Za-z0-9:_-]+)*$/u;
 
 function authorityError(code, message) {
@@ -81,6 +85,7 @@ export function createPortalAuthorityTokenVerifier({
   mfaClaim = null,
   maxLifetimeSeconds = ACCESS_TOKEN_MAX_LIFETIME_SECONDS,
   clockSkewSeconds = CLOCK_SKEW_SECONDS,
+  jwksCacheTtlMs = JWKS_CACHE_TTL_MS,
   nowFn = () => Date.now()
 } = {}) {
   const verifiedIssuer = requiredConfigText(issuer, "issuer");
@@ -101,11 +106,18 @@ export function createPortalAuthorityTokenVerifier({
     || !Number.isSafeInteger(clockSkewSeconds) || clockSkewSeconds < 0) {
     throw authorityError("authority_config_invalid", "lifetime and clock skew must be safe integers");
   }
+  if (!Number.isSafeInteger(jwksCacheTtlMs) || jwksCacheTtlMs <= 0) {
+    throw authorityError("authority_config_invalid", "jwksCacheTtlMs must be a positive safe integer");
+  }
 
   let cachedJwks = null;
+  let cachedJwksExpiresAtMs = 0;
 
   async function loadJwks({ refresh = false } = {}) {
-    if (cachedJwks && !refresh) return cachedJwks;
+    // A cached JWKS is trusted only inside its TTL. Past expiry the keys
+    // are refetched, so a revoked key stops verifying; a failed refetch
+    // throws instead of serving the expired set (fail closed).
+    if (cachedJwks && !refresh && nowFn() < cachedJwksExpiresAtMs) return cachedJwks;
     let jwks;
     try {
       if (typeof fetchJwks === "function") {
@@ -125,6 +137,7 @@ export function createPortalAuthorityTokenVerifier({
       throw authorityError("authority_jwks_unavailable", "identity authority keys are unavailable");
     }
     cachedJwks = jwks;
+    cachedJwksExpiresAtMs = nowFn() + jwksCacheTtlMs;
     return jwks;
   }
 

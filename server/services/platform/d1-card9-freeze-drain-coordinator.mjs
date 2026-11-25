@@ -187,10 +187,40 @@ function coverageMatrixDigest(entries) {
   }));
 }
 
-export function buildWriterCoverageMatrix({ fenced = [], waivers = {}, outOfScope = {} } = {}) {
-  if (!Array.isArray(fenced)) {
-    throw coordinatorError("freeze_coverage_invalid", "fenced must be an array of baseline ids");
+function normalizeFencedInput(fenced) {
+  // U (PR #906 r4662139139): a fenced claim is evidence, not a bare
+  // flag — every fenced id needs a non-empty evidence ref, exactly
+  // like waivers need a ref and out-of-scope needs a basis. A bare
+  // id string carries no evidence and is refused, never defaulted.
+  const refs = new Map();
+  const add = (id, ref) => {
+    if (typeof id !== "string" || id.length === 0) {
+      throw coordinatorError("freeze_coverage_fence_evidence_invalid", "fenced entries require a baseline id");
+    }
+    if (refs.has(id)) {
+      throw coordinatorError("freeze_coverage_conflict", `writer coverage id ${id} has conflicting dispositions (fenced vs fenced)`);
+    }
+    assertNonEmptyString(ref, `fence evidence ref for ${id}`, "freeze_coverage_fence_evidence_invalid");
+    refs.set(id, ref);
+  };
+  if (Array.isArray(fenced)) {
+    for (const entry of fenced) {
+      if (!entry || typeof entry !== "object" || Array.isArray(entry) || typeof entry.id !== "string") {
+        throw coordinatorError("freeze_coverage_fence_evidence_invalid", "fenced entries must be {id, ref} objects: a bare id carries no fence evidence");
+      }
+      add(entry.id, entry.ref);
+    }
+    return refs;
   }
+  if (fenced && typeof fenced === "object") {
+    for (const [id, ref] of Object.entries(fenced)) add(id, ref);
+    return refs;
+  }
+  throw coordinatorError("freeze_coverage_fence_evidence_invalid", "fenced must be an object mapping baseline id to a fence evidence ref, or an array of {id, ref}");
+}
+
+export function buildWriterCoverageMatrix({ fenced = {}, waivers = {}, outOfScope = {} } = {}) {
+  const fencedRefs = normalizeFencedInput(fenced);
   for (const group of [waivers, outOfScope]) {
     if (!group || typeof group !== "object" || Array.isArray(group)) {
       throw coordinatorError("freeze_coverage_invalid", "waivers and outOfScope must be objects keyed by baseline id");
@@ -209,7 +239,7 @@ export function buildWriterCoverageMatrix({ fenced = [], waivers = {}, outOfScop
     }
     seen.set(id, disposition);
   };
-  for (const id of fenced) claim(id, "fenced");
+  for (const [id, ref] of fencedRefs) claim(id, "fenced");
   for (const [id, ref] of Object.entries(waivers)) {
     claim(id, "waived");
     assertNonEmptyString(ref, `waiver ref for ${id}`, "freeze_coverage_waiver_invalid");
@@ -225,7 +255,7 @@ export function buildWriterCoverageMatrix({ fenced = [], waivers = {}, outOfScop
     let evidence = null;
     if (disposition === "fenced") {
       status = "fenced";
-      evidence = { kind: "fenced" };
+      evidence = { kind: "fenced", ref: fencedRefs.get(baseline.id) };
     } else if (disposition === "waived") {
       status = "waived";
       evidence = { kind: "waiver", ref: waivers[baseline.id] };
@@ -273,7 +303,7 @@ export function verifyWriterCoverageMatrix(matrix) {
     throw coordinatorError("freeze_coverage_invalid", "writer coverage matrix is malformed");
   }
   const rebuilt = buildWriterCoverageMatrix({
-    fenced: matrix.entries.filter((e) => e.status === "fenced" && e.id !== "U-F17").map((e) => e.id),
+    fenced: Object.fromEntries(matrix.entries.filter((e) => e.status === "fenced" && e.id !== "U-F17").map((e) => [e.id, e.evidence?.ref ?? ""])),
     waivers: Object.fromEntries(matrix.entries.filter((e) => e.status === "waived" && e.id !== "U-F17").map((e) => [e.id, e.evidence?.ref ?? ""])),
     outOfScope: Object.fromEntries(matrix.entries.filter((e) => e.status === "out-of-scope" && e.id !== "U-F17").map((e) => [e.id, e.evidence?.basis ?? ""])),
   });
@@ -444,7 +474,56 @@ export function verifyDeltaCatchupReport(report) {
     throw coordinatorError("freeze_delta_invalid", "delta catch-up report is malformed");
   }
   assertSnapshotId(report.snapshotId);
-  const expected = reportDigest("delta-catchup-report", report.snapshotId, { items: report.items, confirmedEmpty: report.confirmedEmpty });
+  // Re-validate the build-time shape / disposition invariants, not
+  // just digest consistency (PR #906 r4662139130): a caller that
+  // recomputes the digest over a non-conforming report must still be
+  // refused. The builder's rules, re-run here over the normalized
+  // items: exact top-level shape, an items array of {table, pk,
+  // disposition} with disposition applied / confirmed-none, no
+  // duplicate table:pk, empty items only with confirmedEmpty true,
+  // non-empty items only with confirmedEmpty false, and
+  // allDispositioned true.
+  const expectedKeys = ["type", "schemaVersion", "snapshotId", "items", "confirmedEmpty", "allDispositioned", "timestamp", "reportDigest"];
+  const extraKeys = Object.keys(report).filter((key) => !expectedKeys.includes(key));
+  if (extraKeys.length > 0) {
+    throw coordinatorError("freeze_delta_invalid", `delta catch-up report carries unknown fields: ${extraKeys.join(", ")}`);
+  }
+  if (!Array.isArray(report.items)) {
+    throw coordinatorError("freeze_delta_invalid", "delta catch-up report requires an items array");
+  }
+  if (typeof report.confirmedEmpty !== "boolean") {
+    throw coordinatorError("freeze_delta_invalid", "delta catch-up report requires a boolean confirmedEmpty");
+  }
+  if (report.allDispositioned !== true) {
+    throw coordinatorError("freeze_delta_invalid", "delta catch-up report requires allDispositioned true");
+  }
+  if (typeof report.timestamp !== "string" || Number.isNaN(Date.parse(report.timestamp))) {
+    throw coordinatorError("freeze_delta_invalid", "delta catch-up report requires an ISO timestamp");
+  }
+  if (report.items.length === 0 && report.confirmedEmpty !== true) {
+    throw coordinatorError("freeze_delta_empty_unconfirmed", "an empty delta is not a default conclusion: run the enumeration and confirm it, or list the deltas");
+  }
+  if (report.items.length > 0 && report.confirmedEmpty === true) {
+    throw coordinatorError("freeze_delta_invalid", "delta report cannot list items and claim confirmed-empty at the same time");
+  }
+  const seen = new Set();
+  const normalized = report.items.map((item, index) => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) {
+      throw coordinatorError("freeze_delta_invalid", `delta item ${index} must be an object`);
+    }
+    assertNonEmptyString(item.table, `delta item ${index} table`, "freeze_delta_invalid");
+    assertNonEmptyString(item.pk, `delta item ${index} pk`, "freeze_delta_invalid");
+    if (item.disposition !== "applied" && item.disposition !== "confirmed-none") {
+      throw coordinatorError("freeze_delta_undispositioned", `delta item ${index} (${item.table}:${item.pk}) has no disposition (applied / confirmed-none)`);
+    }
+    const key = `${item.table}:${item.pk}`;
+    if (seen.has(key)) {
+      throw coordinatorError("freeze_delta_duplicate", `duplicate delta item: ${key}`);
+    }
+    seen.add(key);
+    return { table: item.table, pk: item.pk, disposition: item.disposition };
+  });
+  const expected = reportDigest("delta-catchup-report", report.snapshotId, { items: normalized, confirmedEmpty: report.confirmedEmpty });
   if (expected !== report.reportDigest) {
     throw coordinatorError("freeze_delta_digest_mismatch", "delta catch-up report digest does not match its contents");
   }
@@ -460,11 +539,18 @@ function deriveVerificationVerdict(checks) {
   return { verdict: failedIds.length === 0 ? "pass" : "fail", failedIds };
 }
 
-export function buildTwoSidedVerificationReport({ snapshotId, checks = {}, now = () => new Date() } = {}) {
+export function buildTwoSidedVerificationReport({ snapshotId, checks = {}, context = null, now = () => new Date() } = {}) {
   assertSnapshotId(snapshotId);
   if (!checks || typeof checks !== "object" || Array.isArray(checks)) {
     throw coordinatorError("freeze_verification_invalid", "two-sided verification requires a checks object");
   }
+  // V: an optional recovery context binds the report to one specific
+  // recovery (R1). When present it must name the recovery-resume
+  // purpose, the RECOVERY epoch, and the rollback trigger that
+  // entered it — and it is covered by the report digest, so it cannot
+  // be rewritten afterwards. A report without a context is a plain
+  // switch-time (T2) report and can never satisfy resumeToD1.
+  const normalizedContext = normalizeVerificationContext(context);
   const missing = VERIFICATION_CHECK_IDS.filter((id) => checks[id] === undefined);
   if (missing.length > 0) {
     throw coordinatorError("freeze_verification_incomplete", `two-sided verification is missing checks: ${missing.join(", ")}`, { failedIds: missing });
@@ -486,9 +572,24 @@ export function buildTwoSidedVerificationReport({ snapshotId, checks = {}, now =
     checks: normalized,
     verdict,
     failedIds,
+    context: normalizedContext,
     timestamp: now().toISOString(),
-    reportDigest: reportDigest("two-sided-verification-report", snapshotId, { checks: normalized, verdict, failedIds }),
+    reportDigest: reportDigest("two-sided-verification-report", snapshotId, { checks: normalized, verdict, failedIds, context: normalizedContext }),
   };
+}
+
+function normalizeVerificationContext(context) {
+  if (context === null || context === undefined) return null;
+  if (typeof context !== "object" || Array.isArray(context) || context.kind !== "recovery-resume") {
+    throw coordinatorError("freeze_verification_invalid", "verification context must be null or {kind: \"recovery-resume\", epoch, trigger}");
+  }
+  if (!Number.isInteger(context.epoch) || context.epoch < 1) {
+    throw coordinatorError("freeze_verification_invalid", "recovery verification context requires a positive integer epoch");
+  }
+  if (!ROLLBACK_TRIGGERS.includes(context.trigger)) {
+    throw coordinatorError("freeze_verification_invalid", `recovery verification context requires a known rollback trigger (expected one of ${ROLLBACK_TRIGGERS.join(", ")})`);
+  }
+  return { kind: "recovery-resume", epoch: context.epoch, trigger: context.trigger };
 }
 
 export function verifyTwoSidedVerificationReport(report) {
@@ -506,15 +607,20 @@ export function verifyTwoSidedVerificationReport(report) {
   if ((report.verdict !== "pass" && report.verdict !== "fail") || !Array.isArray(report.failedIds)) {
     throw coordinatorError("freeze_verification_invalid", "two-sided verification report verdict / failedIds are malformed");
   }
+  // The context is part of the verified shape: a report that never
+  // carried one verifies with context null, and a context that does
+  // not match the recovery-resume shape is refused even if its digest
+  // was recomputed over it.
+  const normalizedContext = normalizeVerificationContext(report.context ?? null);
   const recomputed = deriveVerificationVerdict(report.checks);
   if (recomputed.verdict !== report.verdict || JSON.stringify(recomputed.failedIds) !== JSON.stringify(report.failedIds)) {
     throw coordinatorError("freeze_verification_verdict_mismatch", "two-sided verification report verdict / failedIds do not match its checks");
   }
-  const expected = reportDigest("two-sided-verification-report", report.snapshotId, { checks: report.checks, verdict: recomputed.verdict, failedIds: recomputed.failedIds });
+  const expected = reportDigest("two-sided-verification-report", report.snapshotId, { checks: report.checks, verdict: recomputed.verdict, failedIds: recomputed.failedIds, context: normalizedContext });
   if (expected !== report.reportDigest) {
     throw coordinatorError("freeze_verification_digest_mismatch", "two-sided verification report digest does not match its contents");
   }
-  return { valid: true, verdict: recomputed.verdict, failedIds: recomputed.failedIds };
+  return { valid: true, verdict: recomputed.verdict, failedIds: recomputed.failedIds, context: normalizedContext };
 }
 
 // ---------------------------------------------------------------------------
@@ -949,6 +1055,14 @@ export function createFreezeDrainCoordinator(db, { snapshotId, now = () => new D
     freeze({ readinessBundle, coverageMatrix, drainTracker, checkpointId, outstandingJobs = [], measurementDrain } = {}) {
       const current = requirePhase(WRITER_PHASES.BWH_ACTIVE, "freeze (T1)");
       verifyFreezeReadinessBundle(readinessBundle);
+      // T: the bundle's own snapshot must be this coordinator's
+      // snapshot. verifyFreezeReadinessBundle only proves the bundle
+      // is internally consistent; without this binding a bundle built
+      // for a different freeze (different snapshot, different HWM)
+      // would pass the gate and freeze the wrong round.
+      if (readinessBundle.snapshotId !== snapshotId) {
+        throw coordinatorError("freeze_readiness_bundle_snapshot_mismatch", `readiness bundle snapshotId ${readinessBundle.snapshotId} does not match coordinator snapshotId ${snapshotId}`);
+      }
       verifyWriterCoverageMatrix(coverageMatrix);
       if (coverageMatrix.cutoverBlocked) {
         throw coordinatorError("freeze_coverage_open", `cannot freeze: ${coverageMatrix.openIds.length} writer coverage items still open: ${coverageMatrix.openIds.join(", ")}`, { openIds: coverageMatrix.openIds });
@@ -1268,7 +1382,26 @@ export function createFreezeDrainCoordinator(db, { snapshotId, now = () => new D
       if (reverification.verdict !== "pass") {
         throw coordinatorError("freeze_verification_failed", `reverification failed: ${reverification.failedIds.join(", ")}; staying in RECOVERY`, { failedIds: reverification.failedIds });
       }
-      const gateRefs = { reverificationDigest: reverificationReport.reportDigest };
+      // V (PR #906 r4662139149): the re-verification must be bound to
+      // THIS recovery. The expected (epoch, trigger) come from the
+      // latest T3 log entry for this snapshot — the recovery this
+      // resume is answering. A switch-time (T2) report carries no
+      // context at all, and a report built for a different recovery
+      // (different epoch or trigger) is refused, even with a passing
+      // verdict and a valid digest. No T3 entry means there is no
+      // recovery to resume from.
+      const recoveryEntries = readCoordinatorLog(db).filter((entry) => entry.transitionId === "T3" && entry.snapshotId === snapshotId);
+      const recoveryEntry = recoveryEntries[recoveryEntries.length - 1];
+      if (!recoveryEntry) {
+        throw coordinatorError("freeze_recovery_context_missing", "resumeToD1 (R1) requires a recorded recovery (T3) to bind the re-verification to");
+      }
+      const expectedEpoch = recoveryEntry.toEpoch;
+      const expectedTrigger = recoveryEntry.gateRefs?.trigger;
+      const context = reverification.context;
+      if (!context || context.kind !== "recovery-resume" || context.epoch !== expectedEpoch || context.trigger !== expectedTrigger) {
+        throw coordinatorError("freeze_reverification_context_mismatch", `re-verification report context does not match the recorded recovery (expected epoch ${expectedEpoch}, trigger ${expectedTrigger})`);
+      }
+      const gateRefs = { reverificationDigest: reverificationReport.reportDigest, recoveryEpoch: expectedEpoch, trigger: expectedTrigger };
       const receiptRef = transitionReceiptRef("R1", gateRefs);
       const { next, coordinatorReceipt } = transitionWithReceipt(db, {
         transitionId: "R1", from: current.phase, to: WRITER_PHASES.D1_ACTIVE,
