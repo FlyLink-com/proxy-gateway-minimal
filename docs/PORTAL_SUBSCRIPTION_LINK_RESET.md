@@ -125,6 +125,36 @@ Wallet-first current-resource delivery and the independent data-pack draft retai
 their own authorization paths; this endpoint must not bypass those model gates.
 The separate mobile repository is not modified by this PR.
 
+## Current-resource facade adapter (source-only, 2026-11-20)
+
+The mobile current-resource surface now has a separate
+`POST /api/portal/resources/current/reset-link` adapter. It accepts exactly
+`{resourceRef,idempotencyKey,confirmed:true}`; ownership and request/order
+references are resolved server-side from the authenticated account. It never
+accepts a client-supplied requestRef, owner, tenant, artifact ID or replacement
+URL.
+
+The adapter currently opens only when the current resource resolves to the
+legacy access-request model and the existing reset feature flag, reset schema,
+runtime rotation methods and delivered-resource checks are all available.
+Wallet-first current-resource delivery remains fail-closed: its setup handoff
+and encrypted escrow have a separate control/escrow lifecycle, and the legacy
+reset journal must not be used as a substitute for a wallet-first rotation
+journal. The current-resource overview exposes only a boolean capability hint;
+it never returns a subscription URL or other setup material.
+
+The mobile action requires a confirmation dialog and an explicit authenticated
+POST. Page render, GET, background effect and automatic clipboard copy remain
+prohibited. The frontend may retain only the operation idempotency key in
+session storage; the replacement URL remains in short-lived component memory.
+The old link is invalidated by the existing legacy reset operation. Plan,
+expiry, quota, usage, edge material and imported client-side copies are not
+changed by this action.
+
+This adapter is source implementation only. It does not enable
+`USER_PORTAL_SUBSCRIPTION_LINK_RESET_ENABLED`, apply the additive schema,
+configure production paths, reset a live account or deploy the backend.
+
 ## Contract and resource preservation
 
 `POST /api/portal/access-requests/reset-link` accepts exactly:

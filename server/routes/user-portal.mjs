@@ -707,6 +707,42 @@ export function userPortalRoutes(state, options = {}) {
     }
   });
 
+  router.post("/api/portal/resources/current/reset-link", async (req, res) => {
+    setSetupDeliveryResponseHeaders(res);
+    try {
+      requireNoQuery(req);
+      const session = requirePortalHeaderSession(req);
+      const body = requireExactBody(req, ["resourceRef", "idempotencyKey", "confirmed"]);
+      if (
+        body.confirmed !== true
+        || typeof body.resourceRef !== "string"
+        || !/^resource_[a-f0-9]{64}$/.test(body.resourceRef)
+        || typeof body.idempotencyKey !== "string"
+        || body.idempotencyKey !== body.idempotencyKey.trim()
+        || !/^[A-Za-z0-9][A-Za-z0-9_-]{15,127}$/.test(body.idempotencyKey)
+      ) {
+        const error = new Error("current resource link reset requires exact confirmed input");
+        error.code = "validation_error";
+        throw error;
+      }
+      const service = resourceReader();
+      if (typeof service.resetCurrentResourceLink !== "function") {
+        const error = new Error("current resource link reset is unavailable");
+        error.code = "subscription_link_reset_unavailable";
+        throw error;
+      }
+      const result = await service.resetCurrentResourceLink({
+        accountId: session.accountId,
+        resourceRef: body.resourceRef,
+        idempotencyKey: body.idempotencyKey,
+        confirmed: true
+      });
+      res.status(200).json(result);
+    } catch (error) {
+      sendPortalError(res, error && typeof error === "object" ? error : {});
+    }
+  });
+
   router.post("/api/portal/resources/current/setup/ack", (req, res) => {
     try {
       setSetupDeliveryResponseHeaders(res);
