@@ -3,6 +3,7 @@
 const PUBLIC = new Set([
   'POST /api/portal/human-challenges', 'POST /api/portal/password/session',
   'POST /api/portal/password/second-factor', 'POST /api/portal/session',
+  'POST /api/portal/authority/session',
   'POST /api/portal/registration', 'POST /api/portal/registration/email-verification',
   'POST /api/portal/entry/enroll', 'GET /api/portal/browser-session',
   'POST /api/portal/browser-session/logout',

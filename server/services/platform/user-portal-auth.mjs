@@ -1076,7 +1076,10 @@ export function createUserPortalAuthService({
       };
     }
 
-    if (!allowPasswordOnlySessionForSetup) {
+    // An MFA-proven login already satisfied the second factor, so the
+    // password-only restriction must not block it. Only a login with no
+    // proven second factor is password-only and stays restricted.
+    if (!mfaProven && !allowPasswordOnlySessionForSetup) {
       throw portalAuthError("validation_error", "second factor is required");
     }
     return createSession({

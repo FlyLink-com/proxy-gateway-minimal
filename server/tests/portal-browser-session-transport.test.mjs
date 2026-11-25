@@ -184,6 +184,20 @@ test('login success publishes HttpOnly host Cookie; remember uses server deadlin
   assert.match(remembered.headers['set-cookie'],/Expires=Tue, 01 Jan 2030 00:30:00 GMT/);
   assert.equal(JSON.stringify(session).includes(credential),false);
 });
+test('authority session login is public: an anonymous browser request reaches it without a session', () => {
+  const h=harness();
+  const anonymous = request({cookie:undefined, 'x-portal-session-context':undefined},
+    'POST', '/api/portal/authority/session');
+  const {res, next} = guard(h.transport, anonymous);
+  assert.equal(next, true);
+  assert.equal(h.reads(), 0);
+  // Contrast: the same anonymous browser request to a non-public path is
+  // still 401 for lack of a session.
+  const blocked = guard(h.transport, request({cookie:undefined, 'x-portal-session-context':undefined},
+    'POST', '/api/portal/coins/recharge/orders'));
+  assert.equal(blocked.next, false);
+  assert.equal(blocked.res.statusCode, 401);
+});
 test('logout binds context and only explicit successful revoke clears Cookie', () => {
   const h=harness(); const req=request({},'POST','/api/portal/browser-session/logout');
   const res=response(); h.transport.logout(req,res);
