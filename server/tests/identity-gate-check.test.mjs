@@ -754,6 +754,43 @@ test("unknown node ref is blocked in identity map mode", () => {
   assert.equal(gate.code, "input_invalid");
 });
 
+// Past-PR P1 (A, #822 r4441956513): an invalid --node-ref must never be
+// echoed into the JSON output, in any shape — not even on the blocked path.
+for (const invalidNodeRef of [
+  "node-unknown-99",
+  "node-vultr-jp-01 ",
+  " node-vultr-jp-01",
+  "Node-Vultr-JP-01",
+  "node-vultr-jp-01/../x",
+  "node-vultr-jp-01\" , \"injected\": true"
+]) {
+  test(`invalid node ref ${JSON.stringify(invalidNodeRef)} is blocked and never echoed`, () => {
+    const result = run([
+      ...gateArgs("xray", "xray-healthy.json", "map-healthy.json", "material-healthy.json"),
+      "--node-ref", invalidNodeRef
+    ]);
+    const gate = readGate(result);
+    assert.equal(result.status, 1);
+    assert.equal(gate.state, "blocked");
+    assert.equal(gate.code, "input_invalid");
+    assert.equal(gate.node_ref, undefined);
+    assert.equal(result.stdout.includes(invalidNodeRef), false);
+  });
+}
+
+for (const validNodeRef of ["vultr-japan-a", "node-vultr-jp-01"]) {
+  test(`whitelisted node ref ${validNodeRef} still echoes in identity map mode`, () => {
+    const result = run([
+      ...gateArgs("xray", "xray-healthy.json", "map-healthy.json", "material-healthy.json", "jp01-vless"),
+      "--node-ref", validNodeRef
+    ]);
+    const gate = readGate(result);
+    assert.equal(result.status, 0);
+    assert.equal(gate.state, "verified");
+    assert.equal(gate.node_ref, validNodeRef);
+  });
+}
+
 test("database and identity map together are blocked", () => {
   const gate = readGate(run([
     "--surface", "japan-vless",

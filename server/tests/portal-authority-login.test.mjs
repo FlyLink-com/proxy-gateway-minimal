@@ -255,6 +255,63 @@ test("B-A1: verifier reports JWKS outage instead of trusting the token", async (
   );
 });
 
+// Past-PR P1 (I, #883 r4577396349): the JWKS cache expires after its TTL
+// and refetches — a revoked key stops verifying. The TTL is injected short
+// and time is advanced through nowFn; nothing sleeps.
+test("B-A1: JWKS cache expires after its TTL and refetches revoked keys away", async () => {
+  let nowMs = NOW;
+  let fetches = 0;
+  let keys = [JWK];
+  const verifier = createPortalAuthorityTokenVerifier({
+    issuer: ISSUER,
+    audience: AUDIENCE,
+    clientIds: [CLIENT_ID],
+    fetchJwks: async () => { fetches += 1; return { keys }; },
+    mfaClaim: MFA_CLAIM,
+    nowFn: () => nowMs,
+    jwksCacheTtlMs: 1000
+  });
+  const verified = await verifier.verifyAccessToken(accessToken());
+  assert.equal(verified.subject, SUBJECT);
+  assert.equal(fetches, 1);
+  // Inside the TTL the cached keys are reused: no refetch.
+  nowMs += 999;
+  await verifier.verifyAccessToken(accessToken());
+  assert.equal(fetches, 1);
+  // Rotate: revoke k1, publish k2 only. Past the TTL the verifier must
+  // refetch, so the old key no longer verifies and the new key does.
+  const rotated = generateKeyPairSync("rsa", { modulusLength: 2048 });
+  const jwk2 = {
+    ...rotated.publicKey.export({ format: "jwk" }),
+    kid: "b2b-test-k2", kty: "RSA", use: "sig", alg: "RS256"
+  };
+  keys = [jwk2];
+  nowMs += 2;
+  await assert.rejects(
+    () => verifier.verifyAccessToken(accessToken()),
+    (error) => error.code === "authority_token_invalid"
+  );
+  assert.ok(fetches > 1);
+  const rotatedVerified = await verifier.verifyAccessToken(
+    accessToken({}, { kid: "b2b-test-k2", key: rotated.privateKey })
+  );
+  assert.equal(rotatedVerified.subject, SUBJECT);
+});
+
+test("B-A1: a non-positive JWKS cache TTL is a configuration error", () => {
+  assert.throws(
+    () => createPortalAuthorityTokenVerifier({
+      issuer: ISSUER,
+      audience: AUDIENCE,
+      clientIds: [CLIENT_ID],
+      fetchJwks: async () => ({ keys: [JWK] }),
+      nowFn: () => NOW,
+      jwksCacheTtlMs: 0
+    }),
+    (error) => error.code === "authority_config_invalid"
+  );
+});
+
 test("B-A1: ID token verifies subject + verified email under the expected nonce", async () => {
   const verifier = makeVerifier();
   const token = jwt({
@@ -449,6 +506,36 @@ test("B-A2: enrolled totp with a valid MFA claim creates a session directly", as
   assert.equal(result.session.authMethod, "authority");
   assert.equal(result.session.accountId, ACCOUNT_ID);
   assert.equal(result.result, undefined);
+}));
+
+// Past-PR P1 (H, #883 r4577396339): an MFA-proven login must not be
+// blocked by the password-only restriction (allowPasswordOnlySessionForSetup
+// defaults to false); a password-only login still is.
+test("B-A2: MFA-proven authority login is not blocked by the password-only restriction", async () => withStore(async ({ store }) => {
+  makeAccount(store);
+  bindAccount(store);
+  enrollTotp(store);
+  const service = createAuthService(storeWithoutLegacyLogin(store), {
+    allowPasswordOnlySessionForSetup: false
+  });
+  const result = await service.verifyAuthorityLoginAndMaybeChallenge({
+    accessToken: accessToken(mfaClaim())
+  });
+  assert.equal(result.session.authMethod, "authority");
+  assert.equal(result.session.accountId, ACCOUNT_ID);
+  assert.equal(result.result, undefined);
+}));
+
+test("B-A2: password-only authority login is still blocked when setup sessions are not allowed", async () => withStore(async ({ store }) => {
+  makeAccount(store);
+  bindAccount(store);
+  const service = createAuthService(storeWithoutLegacyLogin(store), {
+    allowPasswordOnlySessionForSetup: false
+  });
+  await assert.rejects(
+    () => service.verifyAuthorityLoginAndMaybeChallenge({ accessToken: accessToken() }),
+    (error) => error.code === "validation_error" && error.message === "second factor is required"
+  );
 }));
 
 // ---------------------------------------------------------------- B-A4 ---
