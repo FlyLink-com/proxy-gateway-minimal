@@ -28,6 +28,10 @@ import {
 } from "../services/platform/portal-referral-contract.mjs";
 import { createPortalReferralService } from "../services/platform/portal-referral-service.mjs";
 import { createAdminUserCommerceService } from "../services/platform/admin-user-commerce.mjs";
+import {
+  ensureWriterAuthority,
+  transitionWriterAuthority
+} from "../services/platform/single-writer-authority.mjs";
 
 const START = "2026-09-08T00:00:00.000Z";
 const POLICY = {
@@ -126,13 +130,12 @@ function fixture(t) {
   const wallet = createSqliteCoinWalletStore({ database: db, nowFn, refFactory: refs });
   const payments = createSqlitePaymentStore({ database: db, nowFn, refFactory: refs });
   const risks = new Map();
+  const refunds = new Map();
   const service = createPortalReferralService({
     database: db,
     nowFn,
     riskReader: (ref) => risks.get(ref),
-    refundReader: () => {
-      throw new Error("refund_reader_unused");
-    },
+    refundReader: (ref) => refunds.get(ref),
     attributionDays: 7,
     rewardsEnabled: true
   });
@@ -274,6 +277,17 @@ function fixture(t) {
     recharge,
     bind,
     confirmOrder,
+    refunds,
+    refund(orderRef, amount, ref = "refund_test", chargeback = false) {
+      refunds.set(ref, {
+        verified: true,
+        observationRef: ref,
+        paymentOrderRef: orderRef,
+        cumulativeRefundedPaidUnits: amount,
+        chargeback
+      });
+      return service.applyRefund(ref);
+    },
     setNow(value) { now = value; },
     approve() {
       risks.set("risk_test", {
@@ -403,7 +417,7 @@ test("rate publication is prospective and clawback reverses available reward coi
   assert.equal(JSON.stringify(result).includes(reason), false);
   assert.deepEqual(
     f.db.prepare("select reward_units, reversed_units from platform_referral_accruals").get(),
-    { reward_units: before.reward_units, reversed_units: 0 }
+    { reward_units: before.reward_units, reversed_units: 5 }
   );
   assert.deepEqual(
     f.db.prepare("select available_units, reversed_units from platform_coin_lots where coin_type = 'reward_coins'").get(),
@@ -412,7 +426,7 @@ test("rate publication is prospective and clawback reverses available reward coi
   assert.equal(f.db.prepare("select entry_ref from platform_coin_ledger_entries where entry_ref = ?").pluck().get(rewardEntry), rewardEntry);
   assert.equal(
     f.db.prepare("select digest from platform_referral_events where event_ref = ?").pluck().get(result.clawbackRef),
-    digest(JSON.stringify({ accountId: "promoter", kind: "admin_reward_clawback", coins: 5, reason }))
+    digest(JSON.stringify({ accountId: "promoter", kind: "admin_reward_clawback", coins: 5, reason, idempotencyKey: "request:promoter:5:重复发放" }))
   );
   assert.deepEqual(
     f.admin.readLedger({ accountId: "promoter", from: "2026-09-10", to: "2026-09-10" }),
@@ -442,4 +456,153 @@ test("share-user window over 100 rows conflicts instead of hiding accounts", (t)
   insertAccount.run("guest_overflow", "owner_guest_overflow", START, START);
   insertBinding.run("guest_overflow", "promoter", touch.touch_digest, "2026-08-01T00:00:00.000Z");
   assert.throws(() => f.admin.readShareUsers({ accountId: "promoter", from: "2026-08-01", to: "2026-08-01" }), { code: "conflict" });
+});
+
+function availableReward(t) {
+  const f = fixture(t);
+  f.bind("customer");
+  const orderRef = f.recharge();
+  f.service.accrue("customer");
+  f.setNow("2026-09-10T12:00:00.000Z");
+  f.approve();
+  return { ...f, orderRef };
+}
+
+function lotAndAccrual(db) {
+  return {
+    lot: db.prepare(
+      "select available_units, reversed_units from platform_coin_lots where coin_type = 'reward_coins'"
+    ).get(),
+    accrual: db.prepare(
+      "select reward_units, reversed_units, status from platform_referral_accruals"
+    ).get()
+  };
+}
+
+test("clawback then full refund completes instead of stranding reconciliation_required", (t) => {
+  const f = availableReward(t);
+  // 100 paid units at 12.5% accrue 12 reward coins.
+  assert.deepEqual(lotAndAccrual(f.db), {
+    lot: { available_units: 12, reversed_units: 0 },
+    accrual: { reward_units: 12, reversed_units: 0, status: "available" }
+  });
+  const clawed = f.admin.clawback({ accountId: "promoter", coins: "5", reason: "重复发放" });
+  assert.equal(clawed.clawbackRef.startsWith("clawback_"), true);
+  assert.deepEqual(lotAndAccrual(f.db), {
+    lot: { available_units: 7, reversed_units: 5 },
+    accrual: { reward_units: 12, reversed_units: 5, status: "available" }
+  });
+  // Full refund of the 100 paid units: target 12, difference 12 - 5 = 7,
+  // exactly the 7 still available on the lot.
+  assert.deepEqual(f.refund(f.orderRef, 100, "refund_full"), { status: "reversed" });
+  assert.deepEqual(lotAndAccrual(f.db), {
+    lot: { available_units: 0, reversed_units: 12 },
+    accrual: { reward_units: 12, reversed_units: 12, status: "reversed" }
+  });
+  // The clawback entries carry the admin actor; the refund entries keep
+  // the referral service actor.
+  const entries = f.db.prepare(`
+    select operation, amount_units, actor_type, actor_ref
+      from platform_coin_ledger_entries
+     where operation = 'available_to_reversed'
+     order by amount_units
+  `).all();
+  assert.deepEqual(entries, [
+    { operation: "available_to_reversed", amount_units: 5, actor_type: "admin", actor_ref: "admin_reward_clawback" },
+    { operation: "available_to_reversed", amount_units: 7, actor_type: "referral_service", actor_ref: "portal_referral" }
+  ]);
+});
+
+test("clawback then partial refund below the clawback amount neither throws nor moves the accrual backwards", (t) => {
+  const f = availableReward(t);
+  f.admin.clawback({ accountId: "promoter", coins: "8", reason: "重复发放" });
+  assert.deepEqual(lotAndAccrual(f.db), {
+    lot: { available_units: 4, reversed_units: 8 },
+    accrual: { reward_units: 12, reversed_units: 8, status: "available" }
+  });
+  // Refunding 28 of 100 paid units targets 12 - floor(72 * 12.5%) = 3
+  // reversed reward coins, below the 8 already clawed back.
+  assert.deepEqual(f.refund(f.orderRef, 28, "refund_partial"), { status: "available" });
+  assert.deepEqual(lotAndAccrual(f.db), {
+    lot: { available_units: 4, reversed_units: 8 },
+    accrual: { reward_units: 12, reversed_units: 8, status: "available" }
+  });
+});
+
+test("full refund without a prior clawback is unchanged", (t) => {
+  const f = availableReward(t);
+  assert.deepEqual(f.refund(f.orderRef, 100, "refund_full"), { status: "reversed" });
+  assert.deepEqual(lotAndAccrual(f.db), {
+    lot: { available_units: 0, reversed_units: 12 },
+    accrual: { reward_units: 12, reversed_units: 12, status: "reversed" }
+  });
+});
+
+test("clawback idempotency: same key replays, reused key with a different payload conflicts", (t) => {
+  const f = availableReward(t);
+  const reason = "重复发放";
+  const first = f.admin.clawback({ accountId: "promoter", coins: "5", reason, idempotencyKey: "ui-key-1" });
+  assert.deepEqual(lotAndAccrual(f.db).lot, { available_units: 7, reversed_units: 5 });
+  const replay = f.admin.clawback({ accountId: "promoter", coins: "5", reason, idempotencyKey: "ui-key-1" });
+  assert.equal(replay.clawbackRef, first.clawbackRef);
+  assert.deepEqual(replay.settlement, first.settlement);
+  assert.deepEqual(lotAndAccrual(f.db).lot, { available_units: 7, reversed_units: 5 });
+  assert.throws(
+    () => f.admin.clawback({ accountId: "promoter", coins: "6", reason, idempotencyKey: "ui-key-1" }),
+    { code: "conflict" }
+  );
+  assert.deepEqual(lotAndAccrual(f.db).lot, { available_units: 7, reversed_units: 5 });
+  // A different key for the same payload is a distinct clawback.
+  const second = f.admin.clawback({ accountId: "promoter", coins: "5", reason, idempotencyKey: "ui-key-2" });
+  assert.notEqual(second.clawbackRef, first.clawbackRef);
+  assert.deepEqual(lotAndAccrual(f.db).lot, { available_units: 2, reversed_units: 10 });
+  // Without a key the request itself is the key: an identical retry replays.
+  const derived = f.admin.clawback({ accountId: "promoter", coins: "2", reason });
+  assert.deepEqual(lotAndAccrual(f.db).lot, { available_units: 0, reversed_units: 12 });
+  const derivedReplay = f.admin.clawback({ accountId: "promoter", coins: "2", reason });
+  assert.equal(derivedReplay.clawbackRef, derived.clawbackRef);
+  assert.deepEqual(lotAndAccrual(f.db).lot, { available_units: 0, reversed_units: 12 });
+  assert.equal(
+    f.db.prepare("select count(*) from platform_referral_events where kind = 'admin_reward_clawback'").pluck().get(),
+    3
+  );
+  assert.throws(
+    () => f.admin.clawback({ accountId: "promoter", coins: "5", reason, idempotencyKey: "bad key!" }),
+    { code: "invalid_query" }
+  );
+});
+
+test("clawback refuses a freeze that lands between the outer check and the transaction", (t) => {
+  const f = availableReward(t);
+  ensureWriterAuthority(f.db);
+  let frozen = false;
+  const proxyDb = new Proxy(f.db, {
+    get(target, property) {
+      if (property === "transaction") {
+        return (...args) => {
+          if (!frozen) {
+            frozen = true;
+            transitionWriterAuthority(target, { to: "FROZEN", expectedEpoch: 1 });
+          }
+          return target.transaction(...args);
+        };
+      }
+      const value = Reflect.get(target, property, target);
+      return typeof value === "function" ? value.bind(target) : value;
+    }
+  });
+  const admin = createAdminUserCommerceService({
+    database: proxyDb,
+    nowFn: () => new Date("2026-09-10T12:00:00.000Z")
+  });
+  assert.throws(
+    () => admin.clawback({ accountId: "promoter", coins: "5", reason: "重复发放" }),
+    { code: "writer_authority_not_bwh" }
+  );
+  // The in-transaction fence fired before any business write.
+  assert.deepEqual(lotAndAccrual(f.db).lot, { available_units: 12, reversed_units: 0 });
+  assert.equal(
+    f.db.prepare("select count(*) from platform_referral_events where kind = 'admin_reward_clawback'").pluck().get(),
+    0
+  );
 });

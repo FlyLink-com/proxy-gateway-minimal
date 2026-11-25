@@ -31,7 +31,18 @@ describe("user commerce client", () => {
     const client = createUserCommerceClient({ fetcher });
     await expect(client.updateRate({ ratePercent: 15.5, effectiveAt: "2026-10-23" })).resolves.toMatchObject({ ratePercent: 15.5, effectiveAt: "2026-10-23" });
     await expect(client.clawback({ accountId: "acct_sample", coins: "20", reason: "重复发放" })).resolves.toMatchObject({ clawbackRef: "claw-1" });
-    expect(fetcher.mock.calls.map((call) => call[1]?.method)).toEqual(["PUT", "POST"]);
+    await expect(client.clawback({ accountId: "acct_sample", coins: "20", reason: "重复发放" })).resolves.toMatchObject({ clawbackRef: "claw-1" });
+    expect(fetcher.mock.calls.map((call) => call[1]?.method)).toEqual(["PUT", "POST", "POST"]);
+    // Each confirmed clawback carries its own idempotency key, so the
+    // second identical submission is a distinct request, not a replay
+    // of the first — while a retried submission reuses the same key.
+    const clawbackBodies = fetcher.mock.calls.slice(1).map((call) => JSON.parse(String(call[1]?.body)) as { idempotencyKey: string });
+    for (const body of clawbackBodies) {
+      expect(body.idempotencyKey).toMatch(/^[A-Za-z0-9._:-]{1,128}$/);
+    }
+    expect(clawbackBodies[0].idempotencyKey).not.toBe(clawbackBodies[1].idempotencyKey);
+    await expect(client.clawback({ accountId: "acct_sample", coins: "20", reason: "重复发放", idempotencyKey: "retry-1" })).resolves.toMatchObject({ clawbackRef: "claw-1" });
+    expect(JSON.parse(String(fetcher.mock.calls[3][1]?.body)).idempotencyKey).toBe("retry-1");
   });
 
   it("rejects an inverted date range before calling the network", async () => {

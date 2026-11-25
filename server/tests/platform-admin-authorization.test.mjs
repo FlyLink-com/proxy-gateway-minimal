@@ -79,7 +79,7 @@ test("Admin principal derives the fixed admin read-capability set from an active
   });
 });
 
-test("Super Admin principal adds audit read without activating mutation capabilities", () => {
+test("Super Admin principal adds audit read and the wallet write capability; ordinary Admin holds neither", () => {
   const principal = adminAuth.createAdminPrincipal?.({
     session: {
       sessionRef: "admin_session_2",
@@ -100,10 +100,39 @@ test("Super Admin principal adds audit read without activating mutation capabili
     "wallet.read",
     "catalog.read",
     "runtime.read",
-    "audit.read"
+    "audit.read",
+    "wallet.write"
   ]);
+  // wallet.write is the only mutation capability, and it is the
+  // super_admin gate for financial writes such as a reward clawback.
+  assert.deepEqual(
+    principal?.capabilities.filter((capability) => !capability.endsWith(".read")),
+    ["wallet.write"]
+  );
   assert.equal(
-    principal?.capabilities.some((capability) => !capability.endsWith(".read")),
+    adminAuth.authorizeAdmin({
+      principal,
+      capability: "wallet.write"
+    }).allowed,
+    true
+  );
+  assert.equal(
+    adminAuth.authorizeAdmin({
+      principal: {
+        ...principal,
+        role: "admin",
+        capabilities: [
+          "operations.read",
+          "users.read",
+          "commerce.read",
+          "payments.read",
+          "wallet.read",
+          "catalog.read",
+          "runtime.read"
+        ]
+      },
+      capability: "wallet.write"
+    }).allowed,
     false
   );
 });

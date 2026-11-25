@@ -155,10 +155,24 @@ test("user commerce routes enforce capabilities and pass the frontend contract t
     });
     assert.equal(rate.status, 200);
     assert.deepEqual(await rate.json(), { ratePercent: 15, effectiveAt: "2026-09-11", availableRewardCoins: "12" });
-    const clawback = await fetch(`${baseUrl}/api/admin/user-commerce/reward-clawbacks`, {
+    // A clawback is a financial write: the read capabilities alone are
+    // not enough — wallet.write is required.
+    const deniedClawback = await fetch(`${baseUrl}/api/admin/user-commerce/reward-clawbacks`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ accountId: "promoter", coins: "5", reason: "重复发放" })
+    });
+    assert.equal(deniedClawback.status, 403);
+    assert.deepEqual(await deniedClawback.json(), {
+      error: "admin_capability_required",
+      capability: "wallet.write"
+    });
+  });
+  await withServer(appFor(["users.read", "wallet.read", "wallet.write"]), async (baseUrl) => {
+    const clawback = await fetch(`${baseUrl}/api/admin/user-commerce/reward-clawbacks`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ accountId: "promoter", coins: "5", reason: "重复发放", idempotencyKey: "ui-key-1" })
     });
     assert.equal(clawback.status, 200);
     assert.equal((await clawback.json()).clawbackRef, "clawback_0123456789abcdef0123456789abcdef");
@@ -166,5 +180,5 @@ test("user commerce routes enforce capabilities and pass the frontend contract t
   assert.equal(calls[0][0], "orders");
   assert.deepEqual({ ...calls[0][1] }, { accountId: "customer", from: "2026-09-01", to: "2026-09-30" });
   assert.deepEqual(calls[1], ["rate", { ratePercent: 15, effectiveAt: "2026-09-11" }]);
-  assert.deepEqual(calls[2], ["clawback", { accountId: "promoter", coins: "5", reason: "重复发放" }]);
+  assert.deepEqual(calls[2], ["clawback", { accountId: "promoter", coins: "5", reason: "重复发放", idempotencyKey: "ui-key-1" }]);
 });

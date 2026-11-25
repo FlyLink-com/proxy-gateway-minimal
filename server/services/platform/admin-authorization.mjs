@@ -13,6 +13,15 @@ const SUPER_ADMIN_READ_CAPABILITIES = Object.freeze([
   "audit.read"
 ]);
 
+// The only mutation capability in the admin model. Financial writes must
+// never ride on a read capability: an ordinary admin session holds the
+// read set above and nothing else, so it cannot execute a clawback (or
+// any future wallet write gated on this capability). The capability is
+// minted by role here, exactly like audit.read — no per-operator grants.
+const SUPER_ADMIN_WRITE_CAPABILITIES = Object.freeze([
+  "wallet.write"
+]);
+
 export function createAdminPrincipal(input = {}) {
   const context = input && typeof input === "object" ? input : {};
   const session = context.session;
@@ -41,7 +50,7 @@ export function createAdminPrincipal(input = {}) {
     role,
     capabilities:
       role === "super_admin"
-        ? [...SUPER_ADMIN_READ_CAPABILITIES]
+        ? [...SUPER_ADMIN_READ_CAPABILITIES, ...SUPER_ADMIN_WRITE_CAPABILITIES]
         : [...ADMIN_READ_CAPABILITIES],
     authenticatedAt,
     expiresAt,
