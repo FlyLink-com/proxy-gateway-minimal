@@ -883,6 +883,10 @@ function parseSystemCallFilterCatalog(output) {
   let current = null;
   for (const line of lines) {
     if (line.trim() === "") continue;
+    // Comment lines are skipped wherever they appear: systemd 255 emits a
+    // trailing "# Ungrouped System Calls ..." block whose lines are not
+    // indented, so they must not be treated as group headers.
+    if (line.trimStart().startsWith("#")) continue;
     if (!/^[ \t]/u.test(line)) {
       if (!/^@[a-z0-9][a-z0-9-]*$/u.test(line) || groups.has(line)
         || groups.size >= A3_SYSTEM_CALL_CATALOG_MAX_GROUPS) fail("worker_cleanup_uncertain", true);
@@ -892,7 +896,6 @@ function parseSystemCallFilterCatalog(output) {
     }
     if (current === null) fail("worker_cleanup_uncertain", true);
     const member = line.trim();
-    if (member.startsWith("#")) continue;
     if (!/^(?:@[a-z0-9][a-z0-9-]*|[a-z0-9_]+)$/u.test(member)
       || current.has(member) || current.size >= A3_SYSTEM_CALL_CATALOG_MAX_MEMBERS) {
       fail("worker_cleanup_uncertain", true);

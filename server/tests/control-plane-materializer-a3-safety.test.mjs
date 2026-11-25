@@ -1235,6 +1235,81 @@ test("collectServiceNativeSmokeEvidence accepts systemd 255 ANSI-prefixed system
   }
 });
 
+test("collectServiceNativeSmokeEvidence accepts a system-call catalog with a trailing ungrouped comment block", () => {
+  // BWH systemd 255 appends an ungrouped block after the last group:
+  // "# Ungrouped System Calls ..." followed by "# <syscall>" lines, none
+  // indented. Comment lines are skipped wherever they appear, so the block
+  // must not be treated as a group header.
+  const ungroupedTail = [
+    "# Ungrouped System Calls (known but not included in any of the groups except @known):",
+    "#   ungrouped_a",
+    "#   ungrouped_b",
+    ""
+  ].join("\n");
+  const compactCatalog = [
+    "@default",
+    "    close",
+    "@system-service",
+    "    @default",
+    "    read",
+    "    write",
+    ""
+  ].join("\n") + ungroupedTail;
+  const compact = serviceSmokeHarness({ syscallFilterCatalog: compactCatalog });
+  const compactEvidence = collectServiceSmoke(compact.runtime);
+  assert.equal(compactEvidence.betterSqlite3Memory, true);
+  assert.equal(compact.wasStopped(), true);
+  assert.equal(compact.captures.size, 0);
+
+  // Full-scale BWH shape: 30 groups / 1111 lines, @default 62 members,
+  // @system-service 61 members, then the 82-line ungrouped block
+  // (1193 lines total, as observed on BWH).
+  const groupSpecs = [["@default", 62], ["@system-service", 61]];
+  for (let index = 0; index < 28; index++) {
+    groupSpecs.push([`@group-${String(index).padStart(2, "0")}`, index === 27 ? 40 : 34]);
+  }
+  const lines = [];
+  let serial = 0;
+  for (const [group, count] of groupSpecs) {
+    lines.push(group);
+    for (let n = 0; n < count; n++) {
+      lines.push(group === "@system-service" && n === 0
+        ? "    @default"
+        : `    syscall_${String(serial++).padStart(4, "0")}`);
+    }
+  }
+  const fullTail = ["# Ungrouped System Calls (known but not included in any of the groups except @known):"];
+  for (let n = 0; n < 81; n++) {
+    fullTail.push(`#   ungrouped_${String(n).padStart(2, "0")}`);
+  }
+  const fullCatalog = `${lines.join("\n")}\n${fullTail.join("\n")}\n`;
+  assert.equal(fullCatalog.split("\n").length - 1, 1193);
+  const full = serviceSmokeHarness({ syscallFilterCatalog: fullCatalog });
+  const fullEvidence = collectServiceSmoke(full.runtime);
+  assert.equal(fullEvidence.betterSqlite3Memory, true);
+  assert.equal(full.wasStopped(), true);
+  assert.equal(full.captures.size, 0);
+
+  // Skipping a comment cannot create a group or a member: a non-indented
+  // token after a comment is still rejected, a missing required group is
+  // still rejected, and a comment line cannot supply the members a group
+  // needs.
+  const stillRejected = [
+    "# a comment\nfoo\n@default\n    close\n@system-service\n    read\n",
+    "@default\n    close\n# Ungrouped System Calls (known but not included in any of the groups except @known):\n",
+    "@default\n    close\n@system-service\n# read\n"
+  ];
+  for (const syscallFilterCatalog of stillRejected) {
+    const harness = serviceSmokeHarness({ syscallFilterCatalog });
+    assert.throws(
+      () => collectServiceSmoke(harness.runtime),
+      (error) => condition("worker_cleanup_uncertain")(error) && error.attentionRequired === true
+    );
+    assert.equal(harness.wasStopped(), true);
+    assert.equal(harness.captures.size, 0);
+  }
+});
+
 test("collectServiceNativeSmokeEvidence bounds the native launch and collection readbacks", () => {
   const harness = serviceSmokeHarness();
   collectServiceSmoke(harness.runtime);
