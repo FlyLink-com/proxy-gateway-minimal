@@ -631,29 +631,17 @@ test("CI retains stable Validate, exact diff checks, and docs-only routing acros
   assert.match(workflow, /permissions:\r?\n  contents: read/);
 });
 
-test("PR domain validation is least-privilege and blocks the CI prerequisite aggregate", () => {
+test("CI no longer calls the one-time PR domain validation branch gate", () => {
   const workflow = readRepositoryFile(".github/workflows/ci.yml");
 
   assert.match(workflow, /^permissions:\r?\n  contents: read$/m);
   assert.doesNotMatch(workflow, /^  pull-requests: read$/m);
-
-  const domain = jobBlock(workflow, "pr-domain-validation", "checks-passed");
-  assert.match(domain, /^    permissions:\r?\n      contents: read\r?\n      pull-requests: read$/m);
-  assert.match(domain, /^    uses: \.\/\.github\/workflows\/pr-domain-validation\.yml$/m);
-  assert.match(domain, /head\.ref == 'ci\/pr-domain-validation-20261112'/);
+  assert.doesNotMatch(workflow, /^  pr-domain-validation:$/m);
+  assert.doesNotMatch(workflow, /pr-domain-validation/);
+  assert.doesNotMatch(workflow, /DOMAIN_RESULT|DOMAIN_REQUIRED/);
 
   const aggregate = jobBlock(workflow, "checks-passed", "build-assets");
-  assert.match(aggregate, /needs: \[.*pr-domain-validation.*\]/);
-  assert.match(aggregate, /DOMAIN_RESULT: \$\{\{ needs\.pr-domain-validation\.result \}\}/);
-  assert.match(
-    aggregate,
-    /DOMAIN_REQUIRED: \$\{\{ github\.event_name == 'pull_request' && github\.event\.pull_request\.base\.ref == 'master' && github\.event\.pull_request\.head\.ref == 'ci\/pr-domain-validation-20261112' \}\}/
-  );
-  assert.match(
-    aggregate,
-    /if \[\[ "\$DOMAIN_REQUIRED" == "true" \]\]; then[\s\S]*test "\$DOMAIN_RESULT" = success[\s\S]*else[\s\S]*test "\$DOMAIN_RESULT" = skipped/s
-  );
-  assert.match(aggregate, /test "\$DOMAIN_RESULT" = skipped/);
+  assert.match(aggregate, /needs: \[governance-evidence, governance-snapshot, source-checks, foundation-inventory\]/);
 });
 
 
