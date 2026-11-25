@@ -183,10 +183,17 @@ export function recordAdsConsentDecision(db, input = {}, options = {}) {
   // ensure below (CREATE TABLE IF NOT EXISTS can write) and the
   // consent transaction. The flag-off early return above stays first:
   // flag off means no write at all, so nothing to fence.
+  // The outer check is defense-in-depth only: a freeze landing between
+  // it and the transaction would bypass it, so the fence that holds is
+  // the assertWritable call that is the FIRST statement inside the
+  // transaction below. Schema setup runs inside the transaction too,
+  // after that fence, so it cannot write while frozen either.
   assertWritable(db);
-  ensureAdsConsentSchema(db);
 
   const transaction = db.transaction(() => {
+    // U-F3: phase fence, first statement inside the transaction.
+    assertWritable(db);
+    ensureAdsConsentSchema(db);
     db.prepare(`
       insert into platform_ads_consent_decisions (
         account_ref, decision, ad_user_data, ad_personalization, updated_at
