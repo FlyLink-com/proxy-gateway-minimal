@@ -7,6 +7,12 @@
 // composite key (request_id, edge_channel_ref) as pk:true, so keyset
 // pagination no longer falls back to request_id alone and drops rows
 // when one request_id spans several channels.
+// Q follow-up: the same zero-pk defect covered three more composite-PK
+// tables in the load set — platform_quota_counters
+// (account_id, entitlement_id, metric, period), platform_referral_policies
+// (policy_ref, version), platform_usage_counter_cursors
+// (source_ref, channel_ref, edge_credential_ref) — each now carries its
+// composite key as pk:true, with the same pagination proof below.
 
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
@@ -111,3 +117,94 @@ test("Q: keyset pagination returns every row when one request_id spans several c
   // And the rows arrive in composite-PK order.
   assert.deepEqual(seen, [...seen].sort());
 });
+
+// Q follow-up: the three further composite-PK tables that carried zero
+// pk:true columns (same defect class as Q). Keys verified against the
+// source DDL and the load executor's composite-PK list:
+// - platform_quota_counters: subscription-control-db.mjs
+//   PRIMARY KEY (account_id, entitlement_id, metric, period)
+// - platform_referral_policies: portal-referral-migrations.mjs
+//   primary key(policy_ref, version)
+// - platform_usage_counter_cursors: subscription-control-db.mjs
+//   primary key (source_ref, channel_ref, edge_credential_ref)
+const Q_FOLLOWUP_TABLES = [
+  {
+    table: "platform_quota_counters",
+    pk: ["account_id", "entitlement_id", "metric", "period"],
+    nonPk: ["amount", "updated_at"],
+    extraRows: [
+      { account_id: "synth-shared-account", entitlement_id: "synth-ent-a", metric: "upload", period: "2026-11", amount: 1, updated_at: "2026-11-25T00:00:00.000Z" },
+      { account_id: "synth-shared-account", entitlement_id: "synth-ent-a", metric: "download", period: "2026-11", amount: 2, updated_at: "2026-11-25T00:00:00.000Z" },
+      { account_id: "synth-shared-account", entitlement_id: "synth-ent-b", metric: "upload", period: "2026-11", amount: 3, updated_at: "2026-11-25T00:00:00.000Z" },
+      { account_id: "synth-other-account", entitlement_id: "synth-ent-a", metric: "upload", period: "2026-11", amount: 4, updated_at: "2026-11-25T00:00:00.000Z" },
+    ],
+  },
+  {
+    table: "platform_referral_policies",
+    pk: ["policy_ref", "version"],
+    nonPk: ["effective_at", "policy_json", "digest"],
+    extraRows: [
+      { policy_ref: "synth-shared-policy", version: 1, effective_at: "2026-11-25T00:00:00.000Z", policy_json: "{}", digest: "synth-digest-1" },
+      { policy_ref: "synth-shared-policy", version: 2, effective_at: "2026-11-25T00:00:00.000Z", policy_json: "{}", digest: "synth-digest-2" },
+      { policy_ref: "synth-shared-policy", version: 3, effective_at: "2026-11-25T00:00:00.000Z", policy_json: "{}", digest: "synth-digest-3" },
+      { policy_ref: "synth-other-policy", version: 1, effective_at: "2026-11-25T00:00:00.000Z", policy_json: "{}", digest: "synth-digest-4" },
+    ],
+  },
+  {
+    table: "platform_usage_counter_cursors",
+    pk: ["source_ref", "channel_ref", "edge_credential_ref"],
+    nonPk: ["upload_bytes", "download_bytes", "observed_at", "epoch", "updated_at"],
+    extraRows: [
+      { source_ref: "synth-shared-source", channel_ref: "synth-channel-a", edge_credential_ref: "synth-cred-a", upload_bytes: 1, download_bytes: 1, observed_at: "2026-11-25T00:00:00.000Z", epoch: 1, updated_at: "2026-11-25T00:00:00.000Z" },
+      { source_ref: "synth-shared-source", channel_ref: "synth-channel-a", edge_credential_ref: "synth-cred-b", upload_bytes: 2, download_bytes: 2, observed_at: "2026-11-25T00:00:00.000Z", epoch: 1, updated_at: "2026-11-25T00:00:00.000Z" },
+      { source_ref: "synth-shared-source", channel_ref: "synth-channel-b", edge_credential_ref: "synth-cred-a", upload_bytes: 3, download_bytes: 3, observed_at: "2026-11-25T00:00:00.000Z", epoch: 1, updated_at: "2026-11-25T00:00:00.000Z" },
+      { source_ref: "synth-other-source", channel_ref: "synth-channel-a", edge_credential_ref: "synth-cred-a", upload_bytes: 4, download_bytes: 4, observed_at: "2026-11-25T00:00:00.000Z", epoch: 1, updated_at: "2026-11-25T00:00:00.000Z" },
+    ],
+  },
+];
+
+for (const { table, pk, nonPk } of Q_FOLLOWUP_TABLES) {
+  test(`Q follow-up: ${table} carries the composite key (${pk.join(", ")})`, () => {
+    assert.deepEqual(pkColumnsFor(table), pk);
+    const mapping = tableMappingFor(table);
+    const byName = new Map(mapping.columns.map((c) => [c.name, c]));
+    for (const name of pk) assert.equal(byName.get(name).pk, true, `${name} must be pk:true`);
+    for (const name of nonPk) assert.equal(byName.get(name).pk, false, `${name} must stay pk:false`);
+  });
+}
+
+for (const { table, pk, extraRows } of Q_FOLLOWUP_TABLES) {
+  test(`Q follow-up: keyset pagination returns every ${table} row when the first PK column is shared`, () => {
+    const db = createSyntheticFixtureDb(new DatabaseSync(":memory:"));
+    // The fixture holds 2 rows; add rows that share the first PK column —
+    // the exact shape the first-column-only fallback dropped.
+    const extraKeys = [];
+    for (const row of extraRows) {
+      const cols = Object.keys(row);
+      const placeholders = cols.map(() => "?").join(", ");
+      db.prepare(
+        `INSERT INTO "${table}" (${cols.map((c) => `"${c}"`).join(", ")}) VALUES (${placeholders})`,
+      ).run(...cols.map((c) => row[c]));
+      extraKeys.push(pk.map((c) => String(row[c])).join("|"));
+    }
+    const total = db.prepare(`SELECT COUNT(*) AS n FROM "${table}"`).get().n;
+    assert.equal(total, 2 + extraRows.length);
+
+    // Page through with a small limit, keyed on the composite PK.
+    const seen = [];
+    let afterPk = null;
+    for (;;) {
+      const page = readSourcePage(db, table, { afterPk, limit: 2 });
+      if (page.length === 0) break;
+      for (const row of page) seen.push(pk.map((c) => String(row[c])).join("|"));
+      const last = page[page.length - 1];
+      afterPk = pk.map((c) => last[c]);
+      if (page.length < 2) break;
+    }
+    assert.equal(seen.length, total, "every row must be returned exactly once");
+    assert.equal(new Set(seen).size, total, "no row may repeat or drop");
+    for (const key of extraKeys) assert.ok(seen.includes(key), `shared-first-column row must survive pagination: ${key}`);
+    // And the rows arrive in composite-PK order.
+    assert.deepEqual(seen, [...seen].sort());
+  });
+}
