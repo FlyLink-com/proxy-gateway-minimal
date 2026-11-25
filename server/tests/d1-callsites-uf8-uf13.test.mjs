@@ -289,6 +289,50 @@ test("U-F13 accounts: createAccount/createEntitlement/update limit refuse in FRO
   });
 });
 
+// Z (#917 r4670926086): createAccount must fence the insert inside its
+// own transaction. The outer check alone is bypassable by a freeze
+// landing between it and the insert, so the test freezes the database
+// on the first transaction() call — exactly that window — and requires
+// the in-transaction fence to reject the write with no row inserted.
+test("U-F13 accounts: createAccount refuses a freeze landing immediately before its transaction", () => {
+  const database = new Database(":memory:");
+  let freezeOnce = false;
+  const freezingDb = {
+    open: true,
+    pragma: (...args) => database.pragma(...args),
+    exec: (...args) => database.exec(...args),
+    prepare: (...args) => database.prepare(...args),
+    transaction(fn) {
+      if (freezeOnce) {
+        freezeOnce = false;
+        transitionWriterAuthority(database, { to: "FROZEN", expectedEpoch: 1 });
+      }
+      return database.transaction(fn);
+    }
+  };
+  let store;
+  try {
+    store = createSqliteSubscriptionControlStore({ database: freezingDb });
+    ensureWriterAuthority(database);
+    makeAccount(store);
+    freezeOnce = true;
+    assert.equal(
+      codeOf(() => store.createAccount({
+        id: "acct_2", ownerRef: "owner_acct_2", status: "active",
+        createdAt: NOW, updatedAt: NOW
+      })),
+      "writer_authority_not_bwh"
+    );
+    assert.equal(store.getAccount("acct_1").id, "acct_1");
+    assert.equal(
+      database.prepare("select count(*) from platform_accounts").pluck().get(), 1
+    );
+  } finally {
+    store?.close?.();
+    database.close();
+  }
+});
+
 // --- Behavioral: portal ----------------------------------------------------
 test("U-F13 portal: entry/session/audit refuse in FROZEN", () => {
   withControlStore(({ database, store }) => {

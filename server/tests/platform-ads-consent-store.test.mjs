@@ -7,8 +7,13 @@ import {
   createSqliteAdsConsentStore,
   ensureAdsConsentSchema,
   getAdsConsentForAccount,
-  hasAdsConsentForAccount
+  hasAdsConsentForAccount,
+  recordAdsConsentDecision
 } from "../services/platform/ads-consent-store.mjs";
+import {
+  ensureWriterAuthority,
+  transitionWriterAuthority
+} from "../services/platform/single-writer-authority.mjs";
 import {
   ensureAdsConversionSchema,
   getAdsClickBinding,
@@ -376,6 +381,89 @@ test("consent schema is created only by an enabled, explicit decision write", ()
       "platform_ads_consent_decisions",
       "platform_writer_authority"
     ]);
+    store.close();
+  });
+});
+
+// X (#916 r4675209751): the consent fence must hold inside the
+// transaction, not only before it. A freeze landing between the outer
+// check and the transaction must be rejected by the in-transaction
+// check, and the schema setup inside the transaction must not write
+// while frozen either.
+test("FROZEN authority refuses a consent decision and leaves the row unchanged", () => {
+  withDb((db) => {
+    const store = createSqliteAdsConsentStore({
+      database: db,
+      env: ENABLED,
+      nowFn: () => NOW
+    });
+    store.recordConsent({ accountRef: ACCOUNT, adUserData: true });
+    assert.equal(hasAdsConsentForAccount(db, ACCOUNT), true);
+    ensureWriterAuthority(db);
+    transitionWriterAuthority(db, { to: "FROZEN", expectedEpoch: 1 });
+    assert.throws(
+      () => store.recordConsent({ accountRef: ACCOUNT, adUserData: false }),
+      (error) => error.code === "writer_authority_not_bwh"
+    );
+    assert.equal(hasAdsConsentForAccount(db, ACCOUNT), true);
+    assert.equal(store.getConsent({ accountRef: ACCOUNT }).decision, "granted");
+    store.close();
+  });
+});
+
+test("a freeze landing immediately before the transaction is rejected inside it", () => {
+  withDb((db) => {
+    ensureWriterAuthority(db);
+    // The delegating handle freezes the database on the first
+    // transaction() call — exactly the window between the outer
+    // assertWritable and the transaction in recordAdsConsentDecision.
+    // The outer check passes (still BWH_ACTIVE); only the FIRST
+    // statement inside the transaction can stop the write.
+    let freezeOnce = true;
+    const freezingDb = {
+      open: true,
+      prepare: (...args) => db.prepare(...args),
+      exec: (...args) => db.exec(...args),
+      pragma: (...args) => db.pragma(...args),
+      transaction(fn) {
+        if (freezeOnce) {
+          freezeOnce = false;
+          transitionWriterAuthority(db, { to: "FROZEN", expectedEpoch: 1 });
+        }
+        return db.transaction(fn);
+      }
+    };
+    assert.throws(
+      () => recordAdsConsentDecision(
+        freezingDb,
+        { accountRef: ACCOUNT, adUserData: true },
+        { env: ENABLED, now: NOW }
+      ),
+      (error) => error.code === "writer_authority_not_bwh"
+    );
+    // Nothing was written: the schema setup runs inside the same
+    // transaction, after the fence, so no consent table exists and no
+    // decision row was recorded.
+    assert.equal(tableNames(db).includes("platform_ads_consent_decisions"), false);
+    assert.equal(tableNames(db).includes("platform_ads_click_consent_claims"), false);
+    assert.equal(hasAdsConsentForAccount(db, ACCOUNT), false);
+  });
+});
+
+test("a frozen database creates no consent schema on a first decision write", () => {
+  withDb((db) => {
+    const store = createSqliteAdsConsentStore({
+      database: db,
+      env: ENABLED,
+      nowFn: () => NOW
+    });
+    ensureWriterAuthority(db);
+    transitionWriterAuthority(db, { to: "FROZEN", expectedEpoch: 1 });
+    assert.throws(
+      () => store.recordConsent({ accountRef: ACCOUNT, adUserData: true }),
+      (error) => error.code === "writer_authority_not_bwh"
+    );
+    assert.equal(tableNames(db).includes("platform_ads_consent_decisions"), false);
     store.close();
   });
 });
