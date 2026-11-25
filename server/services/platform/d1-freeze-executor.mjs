@@ -4,12 +4,15 @@
 // (decisions/D4_SCHEDULER_7ITEMS_DISPOSITION_R10_2026-11-24.md §5):
 // A0 (assign ids, verify authority, build coverage matrix) → A1 (T-2:
 // stop the schedulers, run the lead-purge CLI steps A–C, check no
-// referral-policy CLI process runs) → A2 (T-3: drain proof —
+// referral-policy CLI process runs) → A2 (T-3: build the freeze
+// write-lock receipt FIRST, then the drain proof —
 // getInFlightStatus() reads 0 plus two equal high-water-mark
-// observations 60 s apart) → A3 (T-4: markSchedulerQuiesced() plus
-// the four receipts and the readiness bundle) → B (T1: measurement
-// drain, then coordinator.freeze(), then post-freeze purge-CLI steps
-// D–E as fence verification).
+// observations 60 s apart, each required to equal the lock receipt's
+// HWM) → A3 (T-4: markSchedulerQuiesced() plus the four receipts and
+// the readiness bundle; the bundle's write-lock receipt is built
+// fresh and its HWM must still equal the A2 lock receipt's HWM) → B
+// (T1: measurement drain, then coordinator.freeze(), then post-freeze
+// purge-CLI steps D–E as fence verification).
 //
 // Everything the procedure needs is built live inside this process
 // from the startup-held wiring (the control-database handle, the
@@ -65,6 +68,16 @@ export const D1_FREEZE_COVERAGE_FENCED = Object.freeze([
   "U-01", "U-02", "U-03", "U-04", "U-05", "U-06", "U-07", "U-08",
   "U-09", "U-10"
 ]);
+// U (PR #906 r4662139139): every fenced claim needs an evidence
+// ref. The single ref for all 24 R7-fenced ids is the R7 disposition
+// record itself — the same record that already authorizes the
+// disposition (the record lives in the workspace decisions folder,
+// not in the repo, like the waiver authorization id below).
+export const D1_FREEZE_COVERAGE_FENCED_REF =
+  "decisions/D3_28_ITEMS_DISPOSITION_R7_2026-11-24.md (R7-approved writer dispositions)";
+export const D1_FREEZE_COVERAGE_FENCED_REFS = Object.freeze(
+  Object.fromEntries(D1_FREEZE_COVERAGE_FENCED.map((id) => [id, D1_FREEZE_COVERAGE_FENCED_REF])),
+);
 // Approved waiver-authorization allowlist (single source of truth
 // for the U-F15 waiver ref below). There is no live authorization
 // record store in-process to check against, so this allowlist IS the
@@ -94,7 +107,7 @@ export const D1_FREEZE_COVERAGE_OUT_OF_SCOPE = Object.freeze({
 // inputs stay current.
 export function deriveFreezeCoverageExpectedCounts() {
   return buildWriterCoverageMatrix({
-    fenced: [...D1_FREEZE_COVERAGE_FENCED],
+    fenced: { ...D1_FREEZE_COVERAGE_FENCED_REFS },
     waivers: { ...D1_FREEZE_COVERAGE_WAIVERS },
     outOfScope: { ...D1_FREEZE_COVERAGE_OUT_OF_SCOPE }
   }).counts;
@@ -125,6 +138,13 @@ export class FreezeExecutorError extends Error {
 
 function freezeExecutorError(code, message, executionEvidence) {
   return new FreezeExecutorError(code, message, executionEvidence);
+}
+
+// Both high-water marks come from the same readHighWaterMark()
+// builder, so their JSON serializations are deterministic and
+// comparable field by field.
+function sameHighWaterMark(a, b) {
+  return JSON.stringify(a) === JSON.stringify(b);
 }
 
 // Boot-date snapshot id (R10 §5 A0 step 1): the deployment restart
@@ -421,7 +441,7 @@ export function createD1FreezeExecutor({
     }
 
     const coverageMatrix = input.coverageMatrix ?? buildWriterCoverageMatrix({
-      fenced: [...D1_FREEZE_COVERAGE_FENCED],
+      fenced: { ...D1_FREEZE_COVERAGE_FENCED_REFS },
       waivers: { ...D1_FREEZE_COVERAGE_WAIVERS },
       outOfScope: { ...D1_FREEZE_COVERAGE_OUT_OF_SCOPE }
     });
@@ -665,7 +685,29 @@ export function createD1FreezeExecutor({
     schedulerEvidence["W-120"] = true;
     evidence.steps.a1SchedulerJobs = schedulerJobs;
 
-    // ---- A2 (T-3): drain proof ----
+    // ---- A2 (T-3): write lock first, then drain proof ----
+    // AB (PR #920 r4680744197): the freeze write lock is created at
+    // the START of A2, before the drain, so the drain happens under
+    // the lock instead of after it. The receipt's BEGIN IMMEDIATE is
+    // held only for its own build transaction, so the lock alone does
+    // not block writers for the whole drain — the durable enforcement
+    // is the HWM-equality gate below: any write landing in the window
+    // moves the HWM away from the lock receipt's HWM and fails the
+    // freeze (freeze_write_lock_hwm_moved) instead of leaking into
+    // the snapshot. Holding a BEGIN IMMEDIATE open across the async
+    // drain was considered and rejected: it would block every
+    // control-DB writer for 60 s+ (up to the 10-minute drain
+    // timeout), a behavior change beyond this item's scope.
+    // ensureDeltaJournal first, so the table set the receipt scans is
+    // stable before the lock is taken.
+    ensureDeltaJournal(db);
+    const a2WriteLock = buildWriteLockReceipt(db, { snapshotId, checkpointId, outstandingJobs });
+    const a2LockHighWaterMark = a2WriteLock.receipt.highWaterMark;
+    evidence.steps.a2WriteLock = {
+      receiptDigest: a2WriteLock.receipt.receiptDigest,
+      highWaterMark: a2LockHighWaterMark,
+      at: timestamp(),
+    };
     if (!trafficAccounting || typeof trafficAccounting.getInFlightStatus !== "function") {
       throw freezeExecutorError("freeze_traffic_accounting_missing", "drain proof needs the live traffic-accounting service (getInFlightStatus)", evidence);
     }
@@ -701,11 +743,32 @@ export function createD1FreezeExecutor({
     const hwmSecond = readHighWaterMark(db);
     tracker.recordHwmObservation(hwmSecond);
     evidence.steps.a2Hwm = { first: hwmFirst, second: hwmSecond, trackerStatus: tracker.status(), at: timestamp() };
+    // The two observations must each equal the A2 lock receipt's HWM:
+    // a write landing anywhere in the drain window moves the HWM and
+    // fails the freeze here, before any receipt or bundle is built.
+    if (!sameHighWaterMark(hwmFirst, a2LockHighWaterMark) || !sameHighWaterMark(hwmSecond, a2LockHighWaterMark)) {
+      throw freezeExecutorError(
+        "freeze_write_lock_hwm_moved",
+        "a write landed during the A2 drain: the high-water mark moved away from the A2 write-lock receipt's HWM — stop and report, do not freeze on a moved HWM",
+        evidence
+      );
+    }
 
     // ---- A3 (T-4): receipts + bundle ----
     tracker.markSchedulerQuiesced();
     evidence.steps.a3Tracker = { status: tracker.status(), at: timestamp() };
     const writeLock = buildWriteLockReceipt(db, { snapshotId, checkpointId, outstandingJobs });
+    // The bundle's write-lock receipt is built fresh here (its digest
+    // is the one the readiness bundle carries), but it must describe
+    // the same frozen state the A2 lock receipt captured: its HWM
+    // must still equal the A2 lock receipt's HWM.
+    if (!sameHighWaterMark(writeLock.receipt.highWaterMark, a2LockHighWaterMark)) {
+      throw freezeExecutorError(
+        "freeze_write_lock_hwm_moved",
+        "a write landed between the A2 drain and the A3 bundle: the fresh write-lock receipt's HWM does not match the A2 write-lock receipt's HWM — stop and report, do not freeze on a moved HWM",
+        evidence
+      );
+    }
     const schedulerQuiescence = buildSchedulerQuiescenceReceipt({ snapshotId, evidence: schedulerEvidence });
     const callbackDrain = buildCallbackDrainReceipt({
       snapshotId,

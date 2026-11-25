@@ -885,8 +885,8 @@ export const TABLE_MAPPING = Object.freeze([
       Object.freeze({ name: "generation", type: "TEXT", disposition: "KEEP", notNull: false, pk: false, note: "seven-rules" }),
       Object.freeze({ name: "receipt_digest", type: "TEXT", disposition: "KEEP", notNull: false, pk: false, note: "seven-rules" }),
       Object.freeze({ name: "reason_code", type: "TEXT", disposition: "KEEP", notNull: false, pk: false, note: "seven-rules" }),
-      Object.freeze({ name: "listener_present", type: "INTEGER", disposition: "KEEP", notNull: true, pk: false, note: "seven-rules" }),
-      Object.freeze({ name: "credential_count", type: "INTEGER", disposition: "KEEP", notNull: true, pk: false, note: "seven-rules" }),
+      Object.freeze({ name: "listener_present", type: "INTEGER", disposition: "DEFER", notNull: true, pk: false, note: "seven-rules; CARD6-3.3-#6 DEFER" }),
+      Object.freeze({ name: "credential_count", type: "INTEGER", disposition: "DEFER", notNull: true, pk: false, note: "seven-rules; CARD6-3.3-#7 DEFER" }),
     ]),
   }),
   Object.freeze({
@@ -1157,8 +1157,8 @@ export const TABLE_MAPPING = Object.freeze([
     fkLayer: 2,
     snapshotRows: 714,
     columns: Object.freeze([
-      Object.freeze({ name: "request_id", type: "TEXT", disposition: "KEEP", notNull: true, pk: false, note: "" }),
-      Object.freeze({ name: "edge_channel_ref", type: "TEXT", disposition: "KEEP", notNull: true, pk: false, note: "" }),
+      Object.freeze({ name: "request_id", type: "TEXT", disposition: "KEEP", notNull: true, pk: true, note: "" }),
+      Object.freeze({ name: "edge_channel_ref", type: "TEXT", disposition: "KEEP", notNull: true, pk: true, note: "" }),
       Object.freeze({ name: "edge_credential_ref", type: "TEXT", disposition: "KEEP", notNull: true, pk: false, note: "" }),
       Object.freeze({ name: "edge_material_digest", type: "TEXT", disposition: "KEEP", notNull: true, pk: false, note: "" }),
       Object.freeze({ name: "ordinal", type: "INTEGER", disposition: "KEEP", notNull: true, pk: false, note: "" }),
