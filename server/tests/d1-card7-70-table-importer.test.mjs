@@ -564,9 +564,9 @@ test("TRANSFORM JSON (O): unknown and sensitive fields reject the row for every 
     },
     {
       table: "platform_coin_commerce_fulfillment_commands", column: "payload_json",
-      valid: '{"offerVersionRef":"synth-offer-version-0","delivery":{"kind":"subscription_plan","durationDays":30,"monthlyTrafficGb":50,"trafficGb":50,"neverExpires":false,"discountBasisPoints":0}}',
-      unknown: '{"offerVersionRef":"synth-offer-version-0","delivery":{"kind":"subscription_plan","durationDays":30,"monthlyTrafficGb":50,"trafficGb":50,"neverExpires":false,"discountBasisPoints":0},"extra":1}',
-      sensitive: '{"offerVersionRef":"synth-offer-version-0","delivery":{"kind":"subscription_plan","durationDays":30,"monthlyTrafficGb":50,"trafficGb":50,"neverExpires":false,"discountBasisPoints":0},"password":"x"}',
+      valid: '{"offerVersionRef":"synth-offer-version-0","delivery":{"kind":"subscription_plan","durationDays":30,"monthlyTrafficGb":50,"trafficGb":null,"neverExpires":false,"discountBasisPoints":0}}',
+      unknown: '{"offerVersionRef":"synth-offer-version-0","delivery":{"kind":"subscription_plan","durationDays":30,"monthlyTrafficGb":50,"trafficGb":null,"neverExpires":false,"discountBasisPoints":0},"extra":1}',
+      sensitive: '{"offerVersionRef":"synth-offer-version-0","delivery":{"kind":"subscription_plan","durationDays":30,"monthlyTrafficGb":50,"trafficGb":null,"neverExpires":false,"discountBasisPoints":0},"password":"x"}',
     },
     {
       table: "platform_edge_registered_nodes", column: "metadata_json",
@@ -606,6 +606,61 @@ test("TRANSFORM JSON (O): unknown and sensitive fields reject the row for every 
       `${table}.${column} must reject sensitive fields`,
     );
   }
+});
+
+test("TRANSFORM JSON (O rework): real-row shapes from the r2 snapshot load — kind-conditional delivery, portal '{}' / old_link_invalidated, account + wallet-first audit, bind-existing edge", () => {
+  const db = freshDb();
+  const load = (table, column, value, rowIndex = 1) => {
+    const base = synthRow(db, table, rowIndex);
+    return transformRow({ table, row: { ...base, [column]: value }, gates: GATES_OPEN });
+  };
+  const reject = (table, column, value, pattern, rowIndex = 1) => {
+    assert.throws(() => load(table, column, value, rowIndex), pattern, `${table}.${column} ${value} must reject`);
+  };
+  // Fulfillment: subscription_plan carries trafficGb null (real rows);
+  // data_pack carries durationDays/monthlyTrafficGb null.
+  const plan = '{"offerVersionRef":"synth-offer-version-0","delivery":{"kind":"subscription_plan","durationDays":30,"monthlyTrafficGb":50,"trafficGb":null,"neverExpires":false,"discountBasisPoints":0}}';
+  const pack = '{"offerVersionRef":"synth-offer-version-0","delivery":{"kind":"data_pack","durationDays":null,"monthlyTrafficGb":null,"trafficGb":100,"neverExpires":true,"discountBasisPoints":null}}';
+  assert.equal(load("platform_coin_commerce_fulfillment_commands", "payload_json", plan).rejected, null);
+  assert.equal(load("platform_coin_commerce_fulfillment_commands", "payload_json", pack).rejected, null);
+  reject("platform_coin_commerce_fulfillment_commands", "payload_json",
+    '{"offerVersionRef":"synth-offer-version-0","delivery":{"kind":"subscription_plan","durationDays":30,"monthlyTrafficGb":50,"trafficGb":50,"neverExpires":false,"discountBasisPoints":0}}',
+    /trafficGb must be null/);
+  reject("platform_coin_commerce_fulfillment_commands", "payload_json",
+    '{"offerVersionRef":"synth-offer-version-0","delivery":{"kind":"data_pack","durationDays":30,"monthlyTrafficGb":null,"trafficGb":100,"neverExpires":true,"discountBasisPoints":null}}',
+    /durationDays must be null/);
+  reject("platform_coin_commerce_fulfillment_commands", "payload_json",
+    '{"offerVersionRef":"synth-offer-version-0","delivery":{"kind":"other","durationDays":30,"monthlyTrafficGb":50,"trafficGb":null,"neverExpires":false,"discountBasisPoints":0}}',
+    /kind must be subscription_plan or data_pack/);
+  // Portal: '{}' is the no-event encoding; old_link_invalidated is live.
+  assert.equal(load("platform_portal_access_requests", "event_json", "{}").rejected, null);
+  assert.equal(load("platform_portal_access_requests", "event_json", '{"type":"old_link_invalidated","occurredAt":"2026-11-21T00:00:00.000Z"}').rejected, null);
+  // Audit: account shape + wallet-first prepared shape (initial_activation).
+  assert.equal(load("platform_audit_events", "metadata_json", '{"approvalRef":"approval_local_user_lifecycle","reasonProvided":true}').rejected, null);
+  reject("platform_audit_events", "metadata_json", '{"approvalRef":"approval_local_user_lifecycle","reasonProvided":"yes"}', /reasonProvided must be a boolean/);
+  const walletFirstPrepared = JSON.stringify({
+    version: 1, transitionRef: "synth-transition-0", accountId: "synth-account-0",
+    flowKind: "initial_activation", offerVersionRef: "synth-offer-version-0",
+    durationDays: 30, monthlyTrafficGb: 50, portalPlan: "monthly",
+    scheduledFor: "2026-11-21T00:00:00.000Z", activationAt: "2026-11-21T00:00:00.000Z",
+    validUntil: "2026-12-21T00:00:00.000Z", effectRef: "synth-effect-0",
+    entitlementId: "synth-entitlement-0", requestId: "synth-request-0",
+    issuedLinkId: "synth-issued-link-0", nodeId: "synth-node-0",
+    accountDigest: "a".repeat(64),
+    expectedEntitlementId: null, expectedRequestId: null, expectedIssuedLinkId: null,
+    expectedValidUntil: null, currentTenantRef: null, currentArtifactRef: null,
+    currentInitialTransitionRef: null,
+  });
+  assert.equal(load("platform_audit_events", "metadata_json", walletFirstPrepared).rejected, null);
+  reject("platform_audit_events", "metadata_json",
+    walletFirstPrepared.replace('"initial_activation"', '"other_flow"'), /flowKind must be/);
+  // Edge: bind-existing-reviewed-node shape (real node-sgp-a row) loads
+  // alongside the first-boot shape.
+  const bindExisting = '{"source":"bind-existing-reviewed-node","registrationMode":"bind-existing-reviewed-node-only","poolRef":"pool-stable","receiptGateRequired":true,"protectedRefSet":"existing-protected-key-digest-refs","keyDigestRefsReviewed":true,"nodeAuthDigestPresent":true,"noRuntimeMaterialStored":true}';
+  assert.equal(load("platform_edge_registered_nodes", "metadata_json", bindExisting).rejected, null);
+  reject("platform_edge_registered_nodes", "metadata_json",
+    bindExisting.replace('"pool-stable"', '"pool-other"').replace('"bind-existing-reviewed-node-only"', '"other-mode"'),
+    /registrationMode must be/);
 });
 
 test("TRANSFORM JSON (O): every TRANSFORM JSON column has a registered versioned schema", () => {

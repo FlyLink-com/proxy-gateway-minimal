@@ -395,7 +395,13 @@ export function normalizeControlledJson(value, column, table = null) {
 // - Fulfillment-command payload: coin-commerce-store.mjs
 //   parseCommandPayload (exact top-level keys; delivery exact keys).
 // - Edge-node metadata: subscription-control-db.mjs
-//   edgeNodeMetadataJson (exact 7-key contract).
+//   edgeNodeMetadataJson (exact first-boot contract) + the
+//   bind-existing-reviewed-node shape pinned from the single real row
+//   (no in-repo writer for it exists; see the validator comment).
+// - Audit metadata: subscription-control-db.mjs auditMetadataJson
+//   (per-(entityType, action) shapes) + the account shape and the
+//   wallet-first shapes, pinned from the real rows / the wallet-first
+//   FromAudit key lists (see the union comment).
 // - Issuance metadata: subscription-control-db.mjs
 //   issuanceMetadataJson ({} / {cli} / data_pack / wallet-first chain).
 // - Audit metadata: subscription-control-db.mjs auditMetadataJson
@@ -511,11 +517,16 @@ const PORTAL_ACCESS_EVENT_KEYS = Object.freeze({
   traffic_supply_resumed: ["type", "occurredAt", "lifecycleRevisionRef"],
   delivery_generation_reissued: ["type", "occurredAt"],
   subscription_link_reset: ["type", "occurredAt"],
+  old_link_invalidated: ["type", "occurredAt"],
   wallet_first_resource_effect_applied: ["type", "transitionRef", "effectRef", "occurredAt"],
 });
 function validatePortalAccessEventJson(parsed, column) {
   controlledJsonPlainObject(parsed, column);
   controlledJsonScan(parsed, column);
+  // '{}' is the write contract's own no-event encoding
+  // (portalAccessEventJson returns "{}" for null/empty input,
+  // control-json-contracts.mjs:238): it carries no event and loads.
+  if (Object.keys(parsed).length === 0) return;
   // Unknown-field check first (the delegated contract reports every
   // shape violation with one generic code, which would hide an
   // unknown field behind json_transform_invalid).
@@ -526,6 +537,15 @@ function validatePortalAccessEventJson(parsed, column) {
   const unknown = Object.keys(parsed).filter((key) => !allowed.includes(key));
   if (unknown.length > 0) {
     fail("json_unknown_field", `${column} carries unknown fields: ${unknown.join(", ")}`);
+  }
+  // old_link_invalidated is a live event type in
+  // portal-access-requests.mjs:25, 387, 1091 ({type, occurredAt},
+  // same shape as delivery_generation_reissued) but
+  // portalAccessEventJson does not know it yet (contract stale vs
+  // live code): validate its timestamp here instead of delegating.
+  if (parsed.type === "old_link_invalidated") {
+    controlledJsonTimestamp(parsed.occurredAt, column, "occurredAt");
+    return;
   }
   try {
     portalAccessEventJson(parsed);
@@ -538,7 +558,27 @@ function validatePortalAccessEventJson(parsed, column) {
 // shape per coin-commerce-store.mjs parseCommandPayload: top-level
 // offerVersionRef + delivery (+ optional authority); delivery carries
 // exactly kind / durationDays / monthlyTrafficGb / trafficGb /
-// neverExpires / discountBasisPoints.
+// neverExpires / discountBasisPoints. Delivery values are
+// kind-conditional, mirroring normalizeDelivery
+// (coin-commerce-domain.mjs:188-215, via validateDelivery in
+// coin-commerce-store.mjs:3006, which maps subscription_plan -> plan
+// and anything else -> data_pack):
+// - subscription_plan: durationDays/monthlyTrafficGb positive (>= 1),
+//   trafficGb === null, neverExpires === false, discountBasisPoints
+//   an integer in 0..10000.
+// - data_pack: durationDays/monthlyTrafficGb === null, trafficGb
+//   positive (>= 1), neverExpires === true, discountBasisPoints === null.
+// Any other kind rejects. (The first version of this schema demanded
+// a non-negative integer for all three size fields regardless of kind,
+// which rejects every real row: real subscription-plan rows carry
+// trafficGb null, real data-pack rows carry durationDays /
+// monthlyTrafficGb null.)
+function controlledJsonPositiveInteger(value, column, field) {
+  if (!Number.isSafeInteger(value) || value < 1) {
+    fail("json_transform_invalid", `${column}.${field} must be a positive integer`);
+  }
+}
+
 function validateFulfillmentCommandPayloadJson(parsed, column) {
   controlledJsonPlainObject(parsed, column);
   controlledJsonScan(parsed, column);
@@ -546,29 +586,95 @@ function validateFulfillmentCommandPayloadJson(parsed, column) {
   controlledJsonSafeRef(parsed.offerVersionRef, column, "offerVersionRef");
   const delivery = controlledJsonPlainObject(parsed.delivery, column);
   controlledJsonExactKeys(delivery, column, ["kind", "durationDays", "monthlyTrafficGb", "trafficGb", "neverExpires", "discountBasisPoints"]);
-  if (typeof delivery.kind !== "string" || delivery.kind.length === 0) {
-    fail("json_transform_invalid", `${column}.delivery.kind must be a non-empty string`);
-  }
-  for (const field of ["durationDays", "monthlyTrafficGb", "trafficGb"]) {
-    controlledJsonNonNegativeInteger(delivery[field], column, `delivery.${field}`);
-  }
-  controlledJsonBoolean(delivery.neverExpires, column, "delivery.neverExpires");
-  if (!Number.isSafeInteger(delivery.discountBasisPoints) || delivery.discountBasisPoints < 0 || delivery.discountBasisPoints > 10000) {
-    fail("json_transform_invalid", `${column}.delivery.discountBasisPoints must be an integer in 0..10000`);
+  if (delivery.kind === "subscription_plan") {
+    controlledJsonPositiveInteger(delivery.durationDays, column, "delivery.durationDays");
+    controlledJsonPositiveInteger(delivery.monthlyTrafficGb, column, "delivery.monthlyTrafficGb");
+    if (delivery.trafficGb !== null) {
+      fail("json_transform_invalid", `${column}.delivery.trafficGb must be null for kind subscription_plan`);
+    }
+    if (delivery.neverExpires !== false) {
+      fail("json_transform_invalid", `${column}.delivery.neverExpires must be false for kind subscription_plan`);
+    }
+    if (!Number.isSafeInteger(delivery.discountBasisPoints) || delivery.discountBasisPoints < 0 || delivery.discountBasisPoints > 10000) {
+      fail("json_transform_invalid", `${column}.delivery.discountBasisPoints must be an integer in 0..10000`);
+    }
+  } else if (delivery.kind === "data_pack") {
+    if (delivery.durationDays !== null) {
+      fail("json_transform_invalid", `${column}.delivery.durationDays must be null for kind data_pack`);
+    }
+    if (delivery.monthlyTrafficGb !== null) {
+      fail("json_transform_invalid", `${column}.delivery.monthlyTrafficGb must be null for kind data_pack`);
+    }
+    controlledJsonPositiveInteger(delivery.trafficGb, column, "delivery.trafficGb");
+    if (delivery.neverExpires !== true) {
+      fail("json_transform_invalid", `${column}.delivery.neverExpires must be true for kind data_pack`);
+    }
+    if (delivery.discountBasisPoints !== null) {
+      fail("json_transform_invalid", `${column}.delivery.discountBasisPoints must be null for kind data_pack`);
+    }
+  } else {
+    fail("json_transform_invalid", `${column}.delivery.kind must be subscription_plan or data_pack`);
   }
   if (parsed.authority !== undefined) controlledJsonPlainObject(parsed.authority, column);
 }
 
-// platform_edge_registered_nodes.metadata_json — exact contract per
+// platform_edge_registered_nodes.metadata_json — two legitimate
+// shapes. (1) First-boot, exact contract per
 // subscription-control-db.mjs edgeNodeMetadataJson: source is the
 // first-boot packet marker, the gate flag is true, fingerprints are
-// sha256:hex when present.
+// sha256:hex when present. (2) Bind-existing-reviewed-node: NO writer
+// for this shape exists in the repo — edgeNodeMetadataJson only knows
+// the first-boot shape and no call site emits registrationMode /
+// protectedRefSet — so the shape below is pinned from the single real
+// row (node-sgp-a, r2 snapshot), the only evidence available: exact
+// source / registrationMode constants, poolRef / protectedRefSet as
+// safe refs, receiptGateRequired true (same gate as first-boot), and
+// the three review flags as booleans (their writer pins no value, so
+// they are not forced to true — a future row with a flag false must
+// not false-reject). Any other key set rejects.
+const EDGE_NODE_FIRST_BOOT_FIELDS = Object.freeze([
+  "source", "receiptGateRequired", "imageSafeConfirmed", "artifactHashRecorded", "wireguardPlanRef",
+]);
+const EDGE_NODE_FIRST_BOOT_OPTIONAL_FIELDS = Object.freeze([
+  "wireguardPublicKeyFingerprint", "agentAuthFingerprint",
+]);
+const EDGE_NODE_BIND_EXISTING_FIELDS = Object.freeze([
+  "source", "registrationMode", "poolRef", "receiptGateRequired",
+  "protectedRefSet", "keyDigestRefsReviewed", "nodeAuthDigestPresent",
+  "noRuntimeMaterialStored",
+]);
 function validateEdgeNodeMetadataJson(parsed, column) {
   controlledJsonPlainObject(parsed, column);
   controlledJsonScan(parsed, column);
+  const keys = Object.keys(parsed);
+  const isFirstBoot = keys.length >= EDGE_NODE_FIRST_BOOT_FIELDS.length
+    && EDGE_NODE_FIRST_BOOT_FIELDS.every((f) => Object.prototype.hasOwnProperty.call(parsed, f))
+    && keys.every((k) => EDGE_NODE_FIRST_BOOT_FIELDS.includes(k) || EDGE_NODE_FIRST_BOOT_OPTIONAL_FIELDS.includes(k));
+  const isBindExisting = keys.length === EDGE_NODE_BIND_EXISTING_FIELDS.length
+    && EDGE_NODE_BIND_EXISTING_FIELDS.every((f) => Object.prototype.hasOwnProperty.call(parsed, f));
+  if (!isFirstBoot && !isBindExisting) {
+    fail("json_unknown_field", `${column} does not match any known edge-node metadata shape (first-boot / bind-existing-reviewed-node): ${keys.join(", ")}`);
+  }
+  if (isBindExisting) {
+    if (parsed.source !== "bind-existing-reviewed-node") {
+      fail("json_transform_invalid", `${column}.source must be bind-existing-reviewed-node`);
+    }
+    if (parsed.registrationMode !== "bind-existing-reviewed-node-only") {
+      fail("json_transform_invalid", `${column}.registrationMode must be bind-existing-reviewed-node-only`);
+    }
+    controlledJsonSafeRef(parsed.poolRef, column, "poolRef");
+    if (parsed.receiptGateRequired !== true) {
+      fail("json_transform_invalid", `${column}.receiptGateRequired must be true`);
+    }
+    controlledJsonSafeRef(parsed.protectedRefSet, column, "protectedRefSet");
+    for (const field of ["keyDigestRefsReviewed", "nodeAuthDigestPresent", "noRuntimeMaterialStored"]) {
+      controlledJsonBoolean(parsed[field], column, field);
+    }
+    return;
+  }
   controlledJsonExactKeys(parsed, column,
-    ["source", "receiptGateRequired", "imageSafeConfirmed", "artifactHashRecorded", "wireguardPlanRef"],
-    ["wireguardPublicKeyFingerprint", "agentAuthFingerprint"]);
+    [...EDGE_NODE_FIRST_BOOT_FIELDS],
+    [...EDGE_NODE_FIRST_BOOT_OPTIONAL_FIELDS]);
   if (parsed.source !== "node-image-first-boot-packet") {
     fail("json_transform_invalid", `${column}.source must be node-image-first-boot-packet`);
   }
@@ -661,6 +767,26 @@ const AUDIT_METADATA_UNION_KEYS = Object.freeze(new Set([
   "abandonedAt", "failureReason", "enrollmentRef", "channel",
   "expiresAt", "entryRef", "totpRef", "enrolledAt", "envelopeFormat",
   "accountMatches",
+  // Account lifecycle shape: NO writer for this shape exists in the
+  // repo — auditMetadataJson has no `account` branch and no call site
+  // emits approvalRef + reasonProvided — so it is pinned from the 26
+  // real rows (account_disabled x24, account_updated x2, r2 snapshot):
+  // exactly {approvalRef, reasonProvided}. approvalRef is checked as
+  // a safe ref, reasonProvided as a boolean; no exact approvalRef
+  // constant is forced because no writer pins one.
+  "approvalRef", "reasonProvided",
+  // Wallet-first resource-effect shapes (subscription-control-db.mjs
+  // walletFirstResourceEffectPrepared / RuntimeReceipt / Receipt
+  // FromAudit key lists, :2891-2909): 22 keys — the review record
+  // says "21" but its list contains 22 distinct keys, all added here.
+  // Per-key rules below are pinned from those FromAudit functions.
+  "transitionRef", "flowKind", "scheduledFor", "activationAt",
+  "validUntil", "effectRef", "entitlementId", "requestId",
+  "issuedLinkId", "nodeId", "accountDigest",
+  "expectedEntitlementId", "expectedRequestId", "expectedIssuedLinkId",
+  "expectedValidUntil", "currentTenantRef", "currentArtifactRef",
+  "currentInitialTransitionRef", "tenantId", "artifactId",
+  "initialTransitionRef", "runtimeReceiptRef",
 ]));
 function validateAuditMetadataJson(parsed, column) {
   controlledJsonPlainObject(parsed, column);
@@ -700,17 +826,50 @@ function validateAuditMetadataJson(parsed, column) {
     && parsed.portalPlan !== "monthly" && parsed.portalPlan !== "yearly") {
     fail("json_transform_invalid", `${column}.portalPlan must be monthly or yearly`);
   }
-  for (const field of ["commandRef", "orderRef", "accountId", "requestRef", "entitlementRef", "issuedLinkRef", "tenantRef", "artifactRef", "offerVersionRef", "accountRef", "proofRef", "verificationEventRef", "enrollmentRef", "entryRef", "totpRef"]) {
+  for (const field of ["commandRef", "orderRef", "accountId", "requestRef", "entitlementRef", "issuedLinkRef", "tenantRef", "artifactRef", "offerVersionRef", "accountRef", "proofRef", "verificationEventRef", "enrollmentRef", "entryRef", "totpRef", "approvalRef", "transitionRef", "effectRef", "entitlementId", "requestId", "issuedLinkId", "nodeId", "initialTransitionRef", "runtimeReceiptRef"]) {
     if (Object.prototype.hasOwnProperty.call(parsed, field)) controlledJsonSafeRef(parsed[field], column, field);
   }
-  for (const field of ["validFrom", "previousValidUntil", "targetValidUntil", "technicalValidUntil", "completedAt", "verifiedAt", "issuedAt", "abandonedAt", "enrolledAt", "expiresAt"]) {
+  // Wallet-first expected/current chain refs are null for
+  // initial_activation and safe refs for scheduled_switch
+  // (PreparedFromAudit): only check the ref rule when non-null.
+  for (const field of ["expectedEntitlementId", "expectedRequestId", "expectedIssuedLinkId", "currentTenantRef", "currentArtifactRef", "currentInitialTransitionRef"]) {
+    if (Object.prototype.hasOwnProperty.call(parsed, field) && parsed[field] !== null) {
+      controlledJsonSafeRef(parsed[field], column, field);
+    }
+  }
+  for (const field of ["validFrom", "previousValidUntil", "targetValidUntil", "technicalValidUntil", "completedAt", "verifiedAt", "issuedAt", "abandonedAt", "enrolledAt", "expiresAt", "scheduledFor", "activationAt", "validUntil"]) {
     if (Object.prototype.hasOwnProperty.call(parsed, field)) controlledJsonTimestamp(parsed[field], column, field);
+  }
+  // Wallet-first expectedValidUntil is null for initial_activation
+  // and a timestamp for scheduled_switch.
+  if (Object.prototype.hasOwnProperty.call(parsed, "expectedValidUntil") && parsed.expectedValidUntil !== null) {
+    controlledJsonTimestamp(parsed.expectedValidUntil, column, "expectedValidUntil");
   }
   for (const field of ["durationDays", "monthlyTrafficGb", "trafficLimitBytes", "quotaBytes", "previousTrafficLimitBytes"]) {
     if (Object.prototype.hasOwnProperty.call(parsed, field)) controlledJsonNonNegativeInteger(parsed[field], column, field);
   }
-  for (const field of ["commercialNeverExpires", "accountMatches"]) {
+  for (const field of ["commercialNeverExpires", "accountMatches", "reasonProvided"]) {
     if (Object.prototype.hasOwnProperty.call(parsed, field)) controlledJsonBoolean(parsed[field], column, field);
+  }
+  if (Object.prototype.hasOwnProperty.call(parsed, "flowKind")
+    && parsed.flowKind !== "initial_activation" && parsed.flowKind !== "scheduled_switch") {
+    fail("json_transform_invalid", `${column}.flowKind must be initial_activation or scheduled_switch`);
+  }
+  // Wallet-first accountDigest is a sha256 hex digest
+  // (PreparedFromAudit: /^[a-f0-9]{64}$/).
+  if (Object.prototype.hasOwnProperty.call(parsed, "accountDigest")) {
+    if (typeof parsed.accountDigest !== "string" || !/^[a-f0-9]{64}$/.test(parsed.accountDigest)) {
+      fail("json_transform_invalid", `${column}.accountDigest must be a 64-char lowercase hex digest`);
+    }
+  }
+  // Wallet-first runtime ids (RuntimeReceiptFromAudit via
+  // walletFirstResourceEffectSafeRuntimeId: /^[A-Za-z0-9_-]{3,128}$/).
+  for (const field of ["tenantId", "artifactId"]) {
+    if (Object.prototype.hasOwnProperty.call(parsed, field)) {
+      if (typeof parsed[field] !== "string" || !/^[A-Za-z0-9_-]{3,128}$/.test(parsed[field])) {
+        fail("json_transform_invalid", `${column}.${field} must be a safe runtime identifier`);
+      }
+    }
   }
   if (Object.prototype.hasOwnProperty.call(parsed, "compensation")) {
     const compensation = controlledJsonPlainObject(parsed.compensation, column);

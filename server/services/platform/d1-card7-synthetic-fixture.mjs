@@ -75,7 +75,7 @@ export function syntheticValueFor(table, column, index) {
         kind: "subscription_plan",
         durationDays: 30,
         monthlyTrafficGb: 50,
-        trafficGb: 50,
+        trafficGb: null,
         neverExpires: false,
         discountBasisPoints: 0,
       },
