@@ -25,8 +25,9 @@
 // Scope and honesty:
 // - This is source-side only. It detects rotations in the source
 //   database; it does not prove the target holds the same versions.
-//   Until this is independently reviewed, U-F18 stays a cutover
-//   blocker; do not claim source/target parity.
+//   Independently reviewed 2026-11-25 (PASS, no blocking defect):
+//   decisions/INDEPENDENT_REVIEW_UF18_2026-11-25.md. U-F18 stays
+//   fenced with that evidence; do not claim source/target parity.
 // - The version table itself is a writer entry point: direct writes to
 //   it bypass the triggers. The manifest is only valid when read under
 //   the same BEGIN IMMEDIATE snapshot as the freeze receipt, and the

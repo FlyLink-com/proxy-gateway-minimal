@@ -70,26 +70,45 @@ function makeCoordinator(t) {
   return { db, coordinator, clock };
 }
 
-function buildBundle(db) {
-  const writeLock = buildWriteLockReceipt(db, { snapshotId: SNAPSHOT, checkpointId: CHECKPOINT, outstandingJobs: [] });
+function buildBundleFor(db, snapshotId) {
+  const writeLock = buildWriteLockReceipt(db, { snapshotId, checkpointId: CHECKPOINT, outstandingJobs: [] });
   const schedulerQuiescence = buildSchedulerQuiescenceReceipt({
-    snapshotId: SNAPSHOT,
+    snapshotId,
     evidence: Object.fromEntries(SCHEDULER_JOBS.map((job) => [job.id, true])),
   });
-  const callbackDrain = buildCallbackDrainReceipt({ snapshotId: SNAPSHOT, callbacks: [] });
+  const callbackDrain = buildCallbackDrainReceipt({ snapshotId, callbacks: [] });
   const hwmCompleteness = buildHwmCompletenessReceipt({
-    snapshotId: SNAPSHOT,
-    highWaterMark: { seq: 7, snapshotId: SNAPSHOT },
+    snapshotId,
+    highWaterMark: { seq: 7, snapshotId },
     manifestSeq: 7,
     rowCounts: { s2s_items: 2 },
   });
-  return buildFreezeReadinessBundle({ snapshotId: SNAPSHOT, writeLock, schedulerQuiescence, callbackDrain, hwmCompleteness });
+  return buildFreezeReadinessBundle({ snapshotId, writeLock, schedulerQuiescence, callbackDrain, hwmCompleteness });
+}
+
+function buildBundle(db) {
+  return buildBundleFor(db, SNAPSHOT);
+}
+
+// Recovery-bound verification report (V): a report for the recovery
+// that entered RECOVERY at `epoch` via `trigger`.
+function recoveryVerification(trigger, epoch) {
+  return buildTwoSidedVerificationReport({
+    snapshotId: SNAPSHOT,
+    checks: Object.fromEntries(VERIFICATION_CHECK_IDS.map((id) => [id, { passed: true, detail: `synthetic ${id}` }])),
+    context: { kind: "recovery-resume", epoch, trigger },
+  });
 }
 
 // All 28 items closed: fence every baseline id except U-F17, which is
-// derived from U-01..U-10.
+// derived from U-01..U-10. U: every fenced claim carries the R7
+// disposition record as its evidence ref.
+const FENCED_REF = "decisions/D3_28_ITEMS_DISPOSITION_R7_2026-11-24.md (R7-approved writer dispositions)";
+function fencedRefMap(ids) {
+  return Object.fromEntries(ids.map((id) => [id, FENCED_REF]));
+}
 function closedCoverage() {
-  const fenced = UNFENCED_WRITER_BASELINE.map((entry) => entry.id).filter((id) => id !== "U-F17");
+  const fenced = fencedRefMap(UNFENCED_WRITER_BASELINE.map((entry) => entry.id).filter((id) => id !== "U-F17"));
   return buildWriterCoverageMatrix({ fenced });
 }
 
@@ -215,17 +234,17 @@ test("M-2 fencing all 28 closes the gate; U-F17 is fenced via U-01..U-10", () =>
 });
 
 test("M-3 U-F17 is derived: 9 of 10 untraced fenced leaves it open; direct set is refused", () => {
-  const fenced = UNFENCED_WRITER_BASELINE.map((e) => e.id).filter((id) => id !== "U-F17" && id !== "U-10");
+  const fenced = fencedRefMap(UNFENCED_WRITER_BASELINE.map((e) => e.id).filter((id) => id !== "U-F17" && id !== "U-10"));
   const matrix = buildWriterCoverageMatrix({ fenced });
   assert.equal(matrix.entries.find((e) => e.id === "U-F17").status, "open");
   assert.equal(matrix.cutoverBlocked, true);
-  assert.equal(codeOf(() => buildWriterCoverageMatrix({ fenced: ["U-F17"] })), "freeze_coverage_uf17_derived");
+  assert.equal(codeOf(() => buildWriterCoverageMatrix({ fenced: { "U-F17": FENCED_REF } })), "freeze_coverage_uf17_derived");
   assert.equal(codeOf(() => buildWriterCoverageMatrix({ waivers: { "U-F17": "s2s-waiver-1" } })), "freeze_coverage_uf17_derived");
 });
 
 test("M-4 waiver without a ref is refused; with a ref it closes that item", () => {
   assert.equal(codeOf(() => buildWriterCoverageMatrix({ waivers: { "U-F1": "" } })), "freeze_coverage_waiver_invalid");
-  const fenced = UNFENCED_WRITER_BASELINE.map((e) => e.id).filter((id) => id !== "U-F17" && id !== "U-F1");
+  const fenced = fencedRefMap(UNFENCED_WRITER_BASELINE.map((e) => e.id).filter((id) => id !== "U-F17" && id !== "U-F1"));
   const matrix = buildWriterCoverageMatrix({ fenced, waivers: { "U-F1": "s2s-yi-waiver-2026-11-21-001" } });
   const entry = matrix.entries.find((e) => e.id === "U-F1");
   assert.equal(entry.status, "waived");
@@ -236,7 +255,7 @@ test("M-4 waiver without a ref is refused; with a ref it closes that item", () =
 
 test("M-5 out-of-scope needs a basis; U-F9/U-F14 close as out-of-scope with inventory citation", () => {
   assert.equal(codeOf(() => buildWriterCoverageMatrix({ outOfScope: { "U-F9": "" } })), "freeze_coverage_basis_invalid");
-  const fenced = UNFENCED_WRITER_BASELINE.map((e) => e.id).filter((id) => id !== "U-F17" && id !== "U-F9" && id !== "U-F14");
+  const fenced = fencedRefMap(UNFENCED_WRITER_BASELINE.map((e) => e.id).filter((id) => id !== "U-F17" && id !== "U-F9" && id !== "U-F14"));
   const matrix = buildWriterCoverageMatrix({
     fenced,
     outOfScope: {
@@ -250,19 +269,26 @@ test("M-5 out-of-scope needs a basis; U-F9/U-F14 close as out-of-scope with inve
 });
 
 test("M-6 unknown ids and conflicting dispositions are refused", () => {
-  assert.equal(codeOf(() => buildWriterCoverageMatrix({ fenced: ["U-F99"] })), "freeze_coverage_unknown");
-  assert.equal(codeOf(() => buildWriterCoverageMatrix({ fenced: ["U-F1"], waivers: { "U-F1": "s2s-w-1" } })), "freeze_coverage_conflict");
+  assert.equal(codeOf(() => buildWriterCoverageMatrix({ fenced: { "U-F99": FENCED_REF } })), "freeze_coverage_unknown");
+  assert.equal(codeOf(() => buildWriterCoverageMatrix({ fenced: { "U-F1": FENCED_REF }, waivers: { "U-F1": "s2s-w-1" } })), "freeze_coverage_conflict");
   assert.equal(codeOf(() => buildWriterCoverageMatrix({ waivers: { "U-F1": "s2s-w-1" }, outOfScope: { "U-F1": "basis" } })), "freeze_coverage_conflict");
 });
 
 test("M-7 tampering with a matrix entry breaks its digest", () => {
   const matrix = buildWriterCoverageMatrix();
   const tampered = { ...matrix, entries: matrix.entries.map((e) => (e.id === "U-F1" ? { ...e, status: "fenced" } : e)) };
-  assert.equal(codeOf(() => verifyWriterCoverageMatrix(tampered)), "freeze_coverage_digest_mismatch");
+  // The forged fenced entry carries no evidence ref, so the rebuild
+  // refuses it (U) before the digest comparison is even reached;
+  // either way the tampered matrix is rejected, never accepted.
+  assert.equal(codeOf(() => verifyWriterCoverageMatrix(tampered)), "freeze_coverage_fence_evidence_invalid");
+  // A tamper that keeps the evidence shape intact is caught by the
+  // digest comparison itself.
+  const tamperedWaived = { ...matrix, entries: matrix.entries.map((e) => (e.id === "U-F1" ? { ...e, status: "waived", evidence: { kind: "waived", ref: "s2s-forged" } } : e)) };
+  assert.equal(codeOf(() => verifyWriterCoverageMatrix(tamperedWaived)), "freeze_coverage_digest_mismatch");
 });
 
 test("M-8 mixed dispositions count correctly and close the gate", () => {
-  const fenced = UNFENCED_WRITER_BASELINE.map((e) => e.id).filter((id) => !["U-F17", "U-F1", "U-F9", "U-F14"].includes(id));
+  const fenced = fencedRefMap(UNFENCED_WRITER_BASELINE.map((e) => e.id).filter((id) => !["U-F17", "U-F1", "U-F9", "U-F14"].includes(id)));
   const matrix = buildWriterCoverageMatrix({
     fenced,
     waivers: { "U-F1": "s2s-yi-waiver-2026-11-21-002" },
@@ -354,7 +380,7 @@ test("V-3 one failed check fails the verdict and blocks the switch gate", () => 
   const report = buildTwoSidedVerificationReport({ snapshotId: SNAPSHOT, checks });
   assert.equal(report.verdict, "fail");
   assert.deepEqual(report.failedIds, ["C-3"]);
-  assert.deepEqual(verifyTwoSidedVerificationReport(report), { valid: true, verdict: "fail", failedIds: ["C-3"] });
+  assert.deepEqual(verifyTwoSidedVerificationReport(report), { valid: true, verdict: "fail", failedIds: ["C-3"], context: null });
 });
 
 test("V-4 tampering with either report breaks its digest", () => {
@@ -369,6 +395,107 @@ test("V-4 tampering with either report breaks its digest", () => {
   // Tampering with only the digest (checks/verdict untouched) is
   // caught by the digest check itself.
   assert.equal(codeOf(() => verifyTwoSidedVerificationReport({ ...verification, reportDigest: "0".repeat(64) })), "freeze_verification_digest_mismatch");
+});
+
+// --- S (PR #906 r4662139130): the verifier re-validates build-time
+// invariants, so a forged delta report with a recomputed digest is
+// still refused.
+
+function forgedDeltaReport({ snapshotId, items, confirmedEmpty, allDispositioned = true, extraTopLevel = {} }) {
+  const reportDigest = createHash("sha256").update(testCanonicalJson({
+    version: FREEZE_DRAIN_COORDINATOR_VERSION,
+    type: "delta-catchup-report",
+    snapshotId,
+    payload: { items, confirmedEmpty },
+  }), "utf8").digest("hex");
+  return {
+    type: "delta-catchup-report",
+    schemaVersion: FREEZE_DRAIN_COORDINATOR_VERSION,
+    snapshotId,
+    items,
+    confirmedEmpty,
+    allDispositioned,
+    timestamp: "2026-11-21T00:00:00.000Z",
+    reportDigest,
+    ...extraTopLevel,
+  };
+}
+
+test("V-7 forged delta reports (digest recomputed over non-conforming content) are still refused (S)", () => {
+  // Empty items + confirmedEmpty false: the digest is valid for the
+  // content, but the content is not a conclusion.
+  assert.equal(codeOf(() => verifyDeltaCatchupReport(forgedDeltaReport({ snapshotId: SNAPSHOT, items: [], confirmedEmpty: false }))), "freeze_delta_empty_unconfirmed");
+  // Illegal disposition.
+  assert.equal(codeOf(() => verifyDeltaCatchupReport(forgedDeltaReport({ snapshotId: SNAPSHOT, items: [{ table: "s2s_items", pk: "1", disposition: "pending" }], confirmedEmpty: false }))), "freeze_delta_undispositioned");
+  // Duplicate table:pk.
+  assert.equal(codeOf(() => verifyDeltaCatchupReport(forgedDeltaReport({
+    snapshotId: SNAPSHOT,
+    items: [
+      { table: "s2s_items", pk: "1", disposition: "applied" },
+      { table: "s2s_items", pk: "1", disposition: "applied" },
+    ],
+    confirmedEmpty: false,
+  }))), "freeze_delta_duplicate");
+  // Non-empty items + confirmedEmpty true contradict each other.
+  assert.equal(codeOf(() => verifyDeltaCatchupReport(forgedDeltaReport({ snapshotId: SNAPSHOT, items: [{ table: "s2s_items", pk: "1", disposition: "applied" }], confirmedEmpty: true }))), "freeze_delta_invalid");
+  // allDispositioned false is not a complete report.
+  assert.equal(codeOf(() => verifyDeltaCatchupReport(forgedDeltaReport({ snapshotId: SNAPSHOT, items: [{ table: "s2s_items", pk: "1", disposition: "applied" }], confirmedEmpty: false, allDispositioned: false }))), "freeze_delta_invalid");
+  // An extra field on an item: the verifier normalizes the items
+  // before recomputing the digest, so the forged digest (over the
+  // un-normalized items) no longer matches.
+  assert.equal(codeOf(() => verifyDeltaCatchupReport(forgedDeltaReport({ snapshotId: SNAPSHOT, items: [{ table: "s2s_items", pk: "1", disposition: "applied", note: "s2s-extra" }], confirmedEmpty: false }))), "freeze_delta_digest_mismatch");
+  // An unknown top-level field is refused even with a recomputed digest.
+  assert.equal(codeOf(() => verifyDeltaCatchupReport(forgedDeltaReport({ snapshotId: SNAPSHOT, items: [], confirmedEmpty: true, extraTopLevel: { reviewer: "s2s-reviewer-001" } }))), "freeze_delta_invalid");
+  // The conforming forged shape still verifies (the helper itself is sound).
+  assert.deepEqual(verifyDeltaCatchupReport(forgedDeltaReport({ snapshotId: SNAPSHOT, items: [{ table: "s2s_items", pk: "1", disposition: "applied" }], confirmedEmpty: false })), { valid: true });
+});
+
+// --- U (PR #906 r4662139139): a fenced claim needs an evidence ref.
+
+test("V-8 fenced claims without an evidence ref are refused; with a ref they verify (U)", () => {
+  assert.equal(codeOf(() => buildWriterCoverageMatrix({ fenced: ["U-F1"] })), "freeze_coverage_fence_evidence_invalid");
+  assert.equal(codeOf(() => buildWriterCoverageMatrix({ fenced: [{ id: "U-F1" }] })), "freeze_coverage_fence_evidence_invalid");
+  assert.equal(codeOf(() => buildWriterCoverageMatrix({ fenced: { "U-F1": "" } })), "freeze_coverage_fence_evidence_invalid");
+  assert.equal(codeOf(() => buildWriterCoverageMatrix({ fenced: [{ id: "U-F1", ref: "" }] })), "freeze_coverage_fence_evidence_invalid");
+  const viaMap = buildWriterCoverageMatrix({ fenced: { "U-F1": FENCED_REF } });
+  assert.equal(viaMap.entries.find((e) => e.id === "U-F1").status, "fenced");
+  assert.deepEqual(viaMap.entries.find((e) => e.id === "U-F1").evidence, { kind: "fenced", ref: FENCED_REF });
+  const viaArray = buildWriterCoverageMatrix({ fenced: [{ id: "U-F1", ref: FENCED_REF }] });
+  assert.deepEqual(viaArray.entries.find((e) => e.id === "U-F1").evidence, { kind: "fenced", ref: FENCED_REF });
+  // A matrix built the old way (fenced entries with no ref, digest
+  // recomputed over that shape) fails verification: the rebuild
+  // refuses the missing ref before any digest comparison.
+  const stripped = closedCoverage();
+  stripped.entries = stripped.entries.map((e) => (e.status === "fenced" && e.id !== "U-F17" ? { ...e, evidence: { kind: "fenced" } } : e));
+  const counts = {
+    open: stripped.entries.filter((e) => e.status === "open").length,
+    fenced: stripped.entries.filter((e) => e.status === "fenced").length,
+    waived: stripped.entries.filter((e) => e.status === "waived").length,
+    outOfScope: stripped.entries.filter((e) => e.status === "out-of-scope").length,
+  };
+  stripped.matrixDigest = createHash("sha256").update(testCanonicalJson({
+    version: FREEZE_DRAIN_COORDINATOR_VERSION,
+    type: "writer-coverage-matrix",
+    total: stripped.entries.length,
+    counts,
+    entries: stripped.entries.map((e) => ({ id: e.id, status: e.status, evidence: e.evidence })),
+  }), "utf8").digest("hex");
+  assert.equal(codeOf(() => verifyWriterCoverageMatrix(stripped)), "freeze_coverage_fence_evidence_invalid");
+});
+
+// --- T (PR #906 r4662139137): freeze binds the readiness bundle to
+// this coordinator's snapshot.
+
+test("T-1 freeze refuses a readiness bundle built for a different snapshot (T)", (t) => {
+  const { db, coordinator, clock } = makeCoordinator(t);
+  const foreignBundle = buildBundleFor(db, "s2s-other-snapshot-001");
+  assert.equal(codeOf(() => coordinator.freeze({
+    readinessBundle: foreignBundle,
+    coverageMatrix: closedCoverage(),
+    drainTracker: drainedTracker(clock),
+    checkpointId: CHECKPOINT,
+  })), "freeze_readiness_bundle_snapshot_mismatch");
+  assert.equal(readWriterAuthority(db).phase, "BWH_ACTIVE");
 });
 
 // --- Coordinator state machine: S-1..S-16 ---------------------------------
@@ -559,9 +686,30 @@ test("S-14 resume to D1 (R1) needs reverification; with it, RECOVERY -> D1_ACTIV
   });
   assert.equal(codeOf(() => coordinator.resumeToD1({ reverificationReport: failing })), "freeze_verification_failed");
   assert.equal(readWriterAuthority(db).phase, "RECOVERY");
-  const result = coordinator.resumeToD1({ reverificationReport: passingVerification() });
+  // enterRecovery landed on epoch 4 via trigger post-switch-mismatch,
+  // so the re-verification must be bound to exactly that recovery.
+  const result = coordinator.resumeToD1({ reverificationReport: recoveryVerification("post-switch-mismatch", 4) });
   assert.deepEqual([result.authority.phase, result.authority.epoch], ["D1_ACTIVE", 5]);
   assert.equal(result.transitionId, "R1");
+  assert.equal(result.coordinatorReceipt.gateRefs.recoveryEpoch, 4);
+  assert.equal(result.coordinatorReceipt.gateRefs.trigger, "post-switch-mismatch");
+  assert.match(result.coordinatorReceipt.gateRefs.reverificationDigest, /^[0-9a-f]{64}$/);
+});
+
+test("S-21 resume to D1 (R1) refuses a report bound to the wrong recovery (V)", (t) => {
+  const { db, coordinator } = driveToD1(t);
+  coordinator.enterRecovery({ trigger: "post-switch-mismatch" });
+  // A switch-time (T2) report carries no recovery context at all.
+  assert.equal(codeOf(() => coordinator.resumeToD1({ reverificationReport: passingVerification() })), "freeze_reverification_context_mismatch");
+  // A report for a different epoch is refused, even with a valid digest.
+  assert.equal(codeOf(() => coordinator.resumeToD1({ reverificationReport: recoveryVerification("post-switch-mismatch", 3) })), "freeze_reverification_context_mismatch");
+  // A report for a different trigger is refused.
+  assert.equal(codeOf(() => coordinator.resumeToD1({ reverificationReport: recoveryVerification("e4-unavailable", 4) })), "freeze_reverification_context_mismatch");
+  // A forged context (recomputed digest, wrong epoch) is refused too.
+  const checks = Object.fromEntries(VERIFICATION_CHECK_IDS.map((id) => [id, { passed: true, detail: `synthetic ${id}` }]));
+  const forged = forgedVerificationReport({ snapshotId: SNAPSHOT, checks, verdict: "pass", failedIds: [], context: { kind: "recovery-resume", epoch: 99, trigger: "post-switch-mismatch" } });
+  assert.equal(codeOf(() => coordinator.resumeToD1({ reverificationReport: forged })), "freeze_reverification_context_mismatch");
+  assert.equal(readWriterAuthority(db).phase, "RECOVERY");
 });
 
 test("S-15 entering RECOVERY from FROZEN is refused (nothing has switched yet)", (t) => {
@@ -594,7 +742,7 @@ function testCanonicalJson(value) {
   return `{${keys.map((key) => `${JSON.stringify(key)}:${testCanonicalJson(value[key])}`).join(",")}}`;
 }
 
-function forgedVerificationReport({ snapshotId, checks, verdict, failedIds }) {
+function forgedVerificationReport({ snapshotId, checks, verdict, failedIds, context = null }) {
   const normalized = {};
   for (const id of VERIFICATION_CHECK_IDS) {
     normalized[id] = { passed: checks[id].passed, detail: checks[id].detail ?? "" };
@@ -603,7 +751,7 @@ function forgedVerificationReport({ snapshotId, checks, verdict, failedIds }) {
     version: FREEZE_DRAIN_COORDINATOR_VERSION,
     type: "two-sided-verification-report",
     snapshotId,
-    payload: { checks: normalized, verdict, failedIds },
+    payload: { checks: normalized, verdict, failedIds, context },
   }), "utf8").digest("hex");
   return {
     type: "two-sided-verification-report",
@@ -612,6 +760,7 @@ function forgedVerificationReport({ snapshotId, checks, verdict, failedIds }) {
     checks: normalized,
     verdict,
     failedIds,
+    context,
     timestamp: "2026-11-21T00:00:00.000Z",
     reportDigest,
   };
@@ -728,7 +877,8 @@ test("M-10 U-F16 is locked: agent epoch forwarding defaults OFF and run-once doe
   // Default-OFF is also behaviourally locked by S1B-AGT-1 in
   // server/tests/d1-stage1b-agent-epoch-transport.test.mjs (master).
   // Forwarding can only be turned on by an approved staged handover.
-  const matrix = buildWriterCoverageMatrix({ fenced: ["U-F16"] });
+  const matrix = buildWriterCoverageMatrix({ fenced: { "U-F16": FENCED_REF } });
   assert.equal(matrix.entries.find((e) => e.id === "U-F16").status, "fenced");
+  assert.equal(matrix.entries.find((e) => e.id === "U-F16").evidence.ref, FENCED_REF);
   assert.equal(matrix.cutoverBlocked, true);
 });

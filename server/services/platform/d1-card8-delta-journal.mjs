@@ -620,6 +620,20 @@ export function verifyJournal(db, { snapshotId, expectedCredentialManifestHash =
 // receipt never claims an entry was applied unless the applied
 // pointer advanced past it.
 //
+// Fold (PR #905 r4676391420): an entry for (table, pk) is provably
+// superseded when a later delete tombstone for the same (table, pk)
+// is in the replay set — the classic case is an update followed by
+// a delete of the same PK, where the update's apply re-fetches a
+// source row that no longer exists and would otherwise block the
+// replay at the tombstone. Superseded entries are skipped WITHOUT
+// calling apply, but the applied pointer still advances past them
+// one at a time (same crash-resume semantics) and the receipt
+// records them as skipped, so the fold is visible, never silent.
+// Fail-closed: only entries superseded by a later tombstone for the
+// same PK are skipped. An unapplied write with no later tombstone
+// still blocks the replay, and a delete tombstone whose own apply
+// throws still blocks it — the fold never drops a live write.
+//
 // The journal carries fingerprints/versions only, so `apply` must
 // re-fetch the current row from the source by PK to mutate the
 // target; the journal itself can never reconstruct a row value.
@@ -636,34 +650,61 @@ export async function replayDeltaJournal(db, { snapshotId, fromSeq = null, apply
     throw journalError("delta_journal_entry_invalid", "replayDeltaJournal requires fromSeq >= 0");
   }
   const entries = readJournalEntries(db, { snapshotId, fromSeq: startSeq });
+  // Latest delete seq per (table, pk) inside the replay set. Any
+  // entry for the same key with a smaller seq is superseded by that
+  // tombstone; the tombstone itself (seq == latest) and anything
+  // after it are not superseded.
+  const lastDeleteSeqByKey = new Map();
+  for (const entry of entries) {
+    if (entry.kind === "delete") {
+      lastDeleteSeqByKey.set(`${entry.table}:${entry.pk}`, entry.seq);
+    }
+  }
   const at = new Date().toISOString();
   let applied = 0;
+  let skipped = 0;
+  const skippedSeqs = [];
   let lastAppliedSeq = startSeq;
+  const advancePointer = (seq) => {
+    const state = journalState(db, snapshotId);
+    upsertCheckpoint(db, {
+      snapshotId,
+      highWaterMark: state.highWaterMark,
+      appliedSeq: seq,
+      journalHash: state.journalHash,
+      credentialManifestHash: checkpoint?.credentialManifestHash ?? null,
+      now: at,
+    });
+    lastAppliedSeq = seq;
+  };
   for (const entry of entries) {
+    const lastDeleteSeq = lastDeleteSeqByKey.get(`${entry.table}:${entry.pk}`);
+    if (lastDeleteSeq !== undefined && entry.seq < lastDeleteSeq) {
+      // Provably superseded by the later tombstone for the same PK:
+      // skip without calling apply, but advance the pointer and
+      // record the skip so the fold stays auditable.
+      advancePointer(entry.seq);
+      skipped += 1;
+      skippedSeqs.push(entry.seq);
+      continue;
+    }
     try {
       await apply(entry);
     } catch (error) {
       return {
         completed: false,
         applied,
+        skipped,
+        skippedSeqs,
         lastAppliedSeq,
         failedSeq: entry.seq,
         error: error instanceof Error ? error.message : String(error),
       };
     }
-    const state = journalState(db, snapshotId);
-    upsertCheckpoint(db, {
-      snapshotId,
-      highWaterMark: state.highWaterMark,
-      appliedSeq: entry.seq,
-      journalHash: state.journalHash,
-      credentialManifestHash: checkpoint?.credentialManifestHash ?? null,
-      now: at,
-    });
+    advancePointer(entry.seq);
     applied += 1;
-    lastAppliedSeq = entry.seq;
   }
-  return { completed: true, applied, lastAppliedSeq, failedSeq: null, error: null };
+  return { completed: true, applied, skipped, skippedSeqs, lastAppliedSeq, failedSeq: null, error: null };
 }
 
 // U-F18 source/target final reconciliation over credential version
