@@ -1991,14 +1991,29 @@ export function createSqliteSubscriptionControlStore({
       updatedAt: isoText(input.updatedAt, "updatedAt"),
       metadataJson: accountMetadataJson(input.metadata)
     };
-    sqliteRun(db.prepare(`
-      insert into platform_accounts (
-        id, owner_ref, status, created_at, updated_at, metadata_json
-      ) values (
-        @id, @ownerRef, @status, @createdAt, @updatedAt, @metadataJson
-      )
-    `), record);
-    return getAccount(record.id);
+    // U-F13: the insert runs in its own IMMEDIATE transaction whose
+    // FIRST statement re-checks the fence. The outer check above is
+    // defense-in-depth only: a freeze landing between it and the insert
+    // would bypass it. IMMEDIATE (not deferred) matters because the
+    // store runs in WAL mode, where a deferred transaction's reads do
+    // not block a concurrent freeze; the immediate write lock is held
+    // from BEGIN, so no other connection can freeze between the fence
+    // and the insert. Nested callers (runInTransaction) already hold
+    // the outer immediate lock, and the inner transaction then runs as
+    // a savepoint under it.
+    const transaction = db.transaction(() => {
+      // U-F13: phase fence, first statement inside the transaction.
+      assertWritable(db);
+      sqliteRun(db.prepare(`
+        insert into platform_accounts (
+          id, owner_ref, status, created_at, updated_at, metadata_json
+        ) values (
+          @id, @ownerRef, @status, @createdAt, @updatedAt, @metadataJson
+        )
+      `), record);
+      return getAccount(record.id);
+    });
+    return transaction.immediate();
   }
 
   function getAccount(id) {
@@ -9852,11 +9867,17 @@ export function createSqliteSubscriptionControlStore({
   // Tables that still reference an account and are NOT part of the
   // deletion scope (entitlements, issuance requests, data-pack resources
   // and rotations, quota counters, usage samples/rollups, device bindings,
-  // identity bindings) block step 5: deleting the account row would either
-  // cascade-delete them or fail on their NO ACTION / RESTRICT rules, and
-  // their handling is pending the C5 retention decision. The deletion
-  // service fails step 5 closed with the blocking tables named instead of
-  // deleting undecided data.
+  // identity bindings, registration welcome-coin grants) block step 5:
+  // deleting the account row would either cascade-delete them or fail on
+  // their NO ACTION / RESTRICT rules, and their handling is pending the
+  // C5 retention decision. The deletion service fails step 5 closed
+  // with the blocking tables named instead of deleting undecided data.
+  // The welcome-coin grants table is a financial record (10 bonus coins
+  // per grant) whose FK is ON DELETE CASCADE, so without this entry a
+  // physical deletion would silently delete grant rows. It lives in the
+  // separate welcome-bonus migrations, not in this store's schema, so
+  // readIdentityDeletionState counts it as 0 when the table is absent
+  // (no table means no grant rows can exist).
   const IDENTITY_DELETION_BLOCKING_TABLES = Object.freeze([
     "platform_entitlements",
     "platform_issuance_requests",
@@ -9867,7 +9888,8 @@ export function createSqliteSubscriptionControlStore({
     "platform_usage_samples",
     "platform_usage_rollups",
     "platform_device_bindings",
-    "platform_identity_bindings"
+    "platform_identity_bindings",
+    "platform_portal_registration_welcome_coin_grants"
   ]);
 
   // B2-4c fix (P1-1): whitelist of platform_accounts.metadata_json keys
@@ -10318,9 +10340,19 @@ export function createSqliteSubscriptionControlStore({
     const metadata = accountRow ? parseJsonObject(accountRow.metadata_json) : {};
     const blocking = {};
     for (const table of IDENTITY_DELETION_BLOCKING_TABLES) {
-      blocking[table] = db.prepare(
-        `select count(*) as count from ${table} where account_id = ?`
-      ).get(requiredText(accountId, "accountId")).count;
+      // The welcome-coin grants table is owned by a separate migration
+      // and may be absent on databases where it was never applied; an
+      // absent table cannot hold rows, so it counts as 0 instead of
+      // failing the read. Every other blocking table is created by this
+      // store's own schema and must exist.
+      const exists = db.prepare(
+        "select 1 from sqlite_master where type = 'table' and name = ?"
+      ).pluck().get(table);
+      blocking[table] = exists
+        ? db.prepare(
+          `select count(*) as count from ${table} where account_id = ?`
+        ).get(requiredText(accountId, "accountId")).count
+        : 0;
     }
     const sessionRow = db.prepare(`
       select
