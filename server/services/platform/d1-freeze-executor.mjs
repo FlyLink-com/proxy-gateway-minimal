@@ -314,11 +314,15 @@ export function createD1FreezeExecutor({
     evidence.outstandingJobs = outstandingJobs;
 
     // ---- A0: assign ids, verify authority, build coverage matrix ----
+    // Confirm-then-write: confirm the live authority state (BWH /
+    // BWH_ACTIVE) and record the confirmed epoch value; the freeze
+    // itself writes confirmed epoch + 1 via the coordinator, whose
+    // durable guard enforces +1. No epoch value is ever assumed here.
     const authority = coordinator.currentAuthority();
-    if (authority.authority !== "BWH" || authority.phase !== "BWH_ACTIVE" || authority.epoch !== 1) {
+    if (authority.authority !== "BWH" || authority.phase !== "BWH_ACTIVE") {
       throw freezeExecutorError(
         "freeze_authority_mismatch",
-        `freeze requires authority BWH / phase BWH_ACTIVE / epoch 1 (verify only, never install); got ${JSON.stringify({ authority: authority.authority, phase: authority.phase, epoch: authority.epoch })}`,
+        `freeze requires authority BWH / phase BWH_ACTIVE (verify only, never install); got ${JSON.stringify({ authority: authority.authority, phase: authority.phase, epoch: authority.epoch })}`,
         evidence
       );
     }

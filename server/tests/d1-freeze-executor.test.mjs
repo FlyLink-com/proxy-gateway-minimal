@@ -11,7 +11,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { ensureWriterAuthority, readWriterAuthority } from "../services/platform/single-writer-authority.mjs";
+import { ensureWriterAuthority, readWriterAuthority, WRITER_AUTHORITY_TABLE } from "../services/platform/single-writer-authority.mjs";
 import { createSqliteSubscriptionControlStore } from "../services/platform/subscription-control-db.mjs";
 import { createTrafficAccountingService } from "../services/platform/traffic-accounting.mjs";
 import { createFreezeDrainCoordinator, buildWriterCoverageMatrix } from "../services/platform/d1-card9-freeze-drain-coordinator.mjs";
@@ -149,9 +149,14 @@ async function stubCheckReferralCliProcess() {
   return { command: "ps -eo pid,args", found: false, matches: [] };
 }
 
-function makeExecutor(t, overrides = {}) {
-  const clock = makeClock();
-  const { db, controlStore } = makeDb(t);
+function makeExecutor(t, overrides = {}, shared = null) {
+  // `shared` reuses the durable database of an earlier round (same db,
+  // control store and clock) with fresh in-memory schedulers and a fresh
+  // coordinator — the shape of a new process after the post-unfreeze
+  // restart. `makeDb` (and its t.after close) runs only for the first
+  // round, so the shared handle is closed exactly once.
+  const clock = shared?.clock ?? makeClock();
+  const { db, controlStore } = shared ?? makeDb(t);
   const commerce = makeCommerceCoordinator();
   const welcome = makeWelcomeCoordinator(overrides.welcome ?? {});
   const rotation = overrides.rotation === null ? null : makeRotationCoordinator();
@@ -198,15 +203,55 @@ function makeExecutor(t, overrides = {}) {
   return { db, controlStore, clock, commerce, welcome, rotation, deferred, portal, trafficAccounting, coinCommerceStore, coordinator, executor };
 }
 
+// Test-only seeding: place the durable authority at an arbitrary
+// (authority, phase, epoch). Production can only reach BWH_ACTIVE on
+// odd epochs (each freeze/unfreeze round adds two), so a value like a
+// large even epoch can never occur there — but the freeze rule must
+// not depend on the value, and a test that only exercises one value
+// could be passed by hardcoding that value. The durable guards are
+// dropped only to place the fixture and are reinstalled via
+// ensureWriterAuthority before the system under test runs; the helper
+// asserts they are back, so the freeze itself always runs under the
+// real guard (which still enforces epoch +1).
+const AUTHORITY_GUARD_OBJECTS = [
+  "platform_writer_authority_installed",
+  "platform_writer_authority_insert_guard",
+  "platform_writer_authority_delete_guard",
+  "platform_writer_authority_transition_guard",
+];
+
+function seedAuthority(db, { authority, phase, epoch }) {
+  for (const name of AUTHORITY_GUARD_OBJECTS) {
+    const row = db.prepare("select type from main.sqlite_schema where name = ?").get(name);
+    if (row?.type === "trigger") db.prepare(`drop trigger main."${name}"`).run();
+    else if (row?.type === "view") db.prepare(`drop view main."${name}"`).run();
+  }
+  db.prepare(`update main.${WRITER_AUTHORITY_TABLE} set authority = ?, phase = ?, epoch = ?, updated_at = ?, receipt_ref = '' where id = 1`)
+    .run(authority, phase, epoch, new Date().toISOString());
+  ensureWriterAuthority(db);
+  const installed = db.prepare(
+    "select count(*) as n from main.sqlite_schema where name in (?, ?, ?, ?)"
+  ).get(...AUTHORITY_GUARD_OBJECTS).n;
+  assert.equal(installed, AUTHORITY_GUARD_OBJECTS.length, "durable authority guards must be reinstalled before the freeze runs");
+  return readWriterAuthority(db);
+}
+
+function makeExecutorAtState(t, state) {
+  const { db, controlStore } = makeDb(t);
+  seedAuthority(db, state);
+  return makeExecutor(t, {}, { db, controlStore, clock: makeClock() });
+}
+
 test("freeze executor runs A0→A3→B and returns the T1 receipt", async (t) => {
   const { db, executor } = makeExecutor(t);
+  const beforeEpoch = readWriterAuthority(db).epoch;
   const result = await executor.executeFreeze({});
   assert.equal(result.schemaVersion, "d1-freeze-execution/v1");
   assert.equal(result.snapshotId, SNAPSHOT);
   assert.equal(result.checkpointId, CHECKPOINT);
   assert.equal(result.transitionId, "T1");
   assert.equal(result.authority.phase, "FROZEN");
-  assert.equal(result.authority.epoch, 2);
+  assert.equal(result.authority.epoch, beforeEpoch + 1);
   assert.equal(result.freezeReceipt.snapshotId, SNAPSHOT);
   assert.equal(typeof result.freezeReceipt.receiptDigest, "string");
   assert.equal(result.freezeReceipt.receiptDigest.length, 64);
@@ -219,6 +264,7 @@ test("freeze executor runs A0→A3→B and returns the T1 receipt", async (t) =>
   assert.equal(readWriterAuthority(db).phase, "FROZEN");
   const evidence = result.executionEvidence;
   assert.equal(evidence.steps.a0Authority.phase, "BWH_ACTIVE");
+  assert.equal(evidence.steps.a0Authority.epoch, beforeEpoch);
   assert.equal(evidence.steps.a1SchedulerJobs["W-111"].post.inFlightSettled, true);
   assert.equal(evidence.steps.a1SchedulerJobs["W-112"].post.activePassSettled, true);
   assert.equal(evidence.steps.a1SchedulerJobs["W-113"].stopCalledAt.length, 24);
@@ -231,6 +277,47 @@ test("freeze executor runs A0→A3→B and returns the T1 receipt", async (t) =>
   assert.equal(evidence.steps.a3Receipts.schedulerJobs, 11);
   assert.equal(evidence.steps.bPostFreeze.anomaly, false);
 });
+
+// The freeze rule, parameterized: for any BWH_ACTIVE epoch the freeze
+// succeeds and lands on confirmed epoch + 1; while FROZEN at any epoch
+// it is refused with 409. Every epoch asserted is derived from the
+// confirmed value read back from the database — no specific number
+// pair is written anywhere, so no single constant can pass.
+for (const epoch of [1, 3, 7, 42]) {
+  test(`freeze from BWH_ACTIVE epoch ${epoch} lands on confirmed epoch + 1`, async (t) => {
+    const { db, executor } = makeExecutorAtState(t, { authority: "BWH", phase: "BWH_ACTIVE", epoch });
+    const confirmed = readWriterAuthority(db).epoch;
+    const result = await executor.executeFreeze({});
+    assert.equal(result.transitionId, "T1");
+    assert.equal(result.executionEvidence.steps.a0Authority.epoch, confirmed);
+    assert.equal(result.authority.phase, "FROZEN");
+    assert.equal(result.authority.epoch, confirmed + 1);
+    assert.equal(readWriterAuthority(db).epoch, confirmed + 1);
+  });
+}
+
+for (const epoch of [2, 4, 8, 43]) {
+  test(`freeze while FROZEN at epoch ${epoch} is refused with 409`, async (t) => {
+    const { db, executor, commerce, welcome, deferred, portal } = makeExecutorAtState(t, { authority: "BWH", phase: "FROZEN", epoch });
+    const confirmed = readWriterAuthority(db).epoch;
+    await assert.rejects(
+      () => executor.executeFreeze({}),
+      (error) => {
+        assert.equal(error.code, "freeze_authority_mismatch");
+        return true;
+      }
+    );
+    // Refused at A0, before any scheduler is touched or anything is written.
+    assert.equal(commerce.state.stopCalls, 0);
+    assert.equal(welcome.state.stopCalls, 0);
+    assert.equal(deferred.state.stopCalls, 0);
+    assert.equal(portal.state.stopTickCalls, 0);
+    assert.deepEqual(
+      [readWriterAuthority(db).phase, readWriterAuthority(db).epoch],
+      ["FROZEN", confirmed]
+    );
+  });
+}
 
 test("coverage open refuses the freeze before any scheduler is stopped", async (t) => {
   const { commerce, welcome, deferred, portal, executor } = makeExecutor(t);
