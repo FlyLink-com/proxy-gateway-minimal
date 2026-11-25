@@ -14,13 +14,21 @@ import { join } from "node:path";
 import { ensureWriterAuthority, readWriterAuthority, WRITER_AUTHORITY_TABLE } from "../services/platform/single-writer-authority.mjs";
 import { createSqliteSubscriptionControlStore } from "../services/platform/subscription-control-db.mjs";
 import { createTrafficAccountingService } from "../services/platform/traffic-accounting.mjs";
-import { createFreezeDrainCoordinator, buildWriterCoverageMatrix } from "../services/platform/d1-card9-freeze-drain-coordinator.mjs";
+import { createFreezeDrainCoordinator, buildWriterCoverageMatrix, readCoordinatorLog } from "../services/platform/d1-card9-freeze-drain-coordinator.mjs";
+import { appendDeltaEntries } from "../services/platform/d1-card8-delta-journal.mjs";
 import {
   createD1FreezeExecutor,
   defaultRunPurgeCli,
   defaultCheckReferralCliProcess,
+  collectUsedFreezeSnapshotIds,
+  deriveFreezeCheckpointId,
+  deriveFreezeCoverageExpectedCounts,
+  deriveFreezeSnapshotId,
+  resolveFreezeSnapshotId,
+  D1_FREEZE_COVERAGE_EXPECTED_COUNTS,
   D1_FREEZE_COVERAGE_FENCED,
   D1_FREEZE_COVERAGE_WAIVERS,
+  D1_FREEZE_COVERAGE_WAIVER_AUTHORIZATION_IDS,
   D1_FREEZE_COVERAGE_OUT_OF_SCOPE
 } from "../services/platform/d1-freeze-executor.mjs";
 
@@ -171,7 +179,7 @@ function makeExecutor(t, overrides = {}, shared = null) {
     portalReferrals: portal
   };
   const coordinator = createFreezeDrainCoordinator(db, {
-    snapshotId: SNAPSHOT,
+    snapshotId: overrides.snapshotId ?? SNAPSHOT,
     now: clock.now,
     scheduler
   });
@@ -439,4 +447,215 @@ test("default referral-CLI process check finds no process running", async () => 
   assert.equal(result.command, "ps -eo pid,args");
   assert.equal(result.found, false);
   assert.deepEqual(result.matches, []);
+});
+
+// ---- F18: the A3 HWM gate is a dynamic journal-head == manifest-seq
+// comparison (same invariant buildHwmCompletenessReceipt enforces) ----
+
+function seedJournalEntries(db, snapshotId, count) {
+  const entries = Array.from({ length: count }, (_, i) => ({
+    seq: null,
+    table: "platform_coin_ledger_entries",
+    pk: `f18-test-pk-${i + 1}`,
+    kind: "insert",
+    fingerprint: "a".repeat(64)
+  }));
+  return appendDeltaEntries(db, { snapshotId, entries });
+}
+
+for (const { journal, manifest } of [
+  { journal: 0, manifest: 0 },
+  { journal: 1, manifest: 1 },
+  { journal: 3, manifest: 3 }
+]) {
+  test(`F18: freeze passes when journal head seq ${journal} equals manifest seq ${manifest}`, async (t) => {
+    const { db, executor } = makeExecutor(t, {
+      executor: { manifestSeqProvider: () => manifest }
+    });
+    if (journal > 0) seedJournalEntries(db, SNAPSHOT, journal);
+    const result = await executor.executeFreeze({});
+    assert.equal(result.transitionId, "T1");
+    assert.deepEqual(
+      [result.executionEvidence.steps.a3Journal.headSeq, result.executionEvidence.steps.a3Journal.manifestSeq],
+      [journal, manifest]
+    );
+  });
+}
+
+for (const { journal, manifest } of [
+  { journal: 0, manifest: 5 },
+  { journal: 3, manifest: 0 },
+  { journal: 3, manifest: 2 }
+]) {
+  test(`F18: freeze refuses with freeze_hwm_gap when journal head seq ${journal} != manifest seq ${manifest}`, async (t) => {
+    const { db, executor, commerce } = makeExecutor(t, {
+      executor: { manifestSeqProvider: () => manifest }
+    });
+    if (journal > 0) seedJournalEntries(db, SNAPSHOT, journal);
+    await assert.rejects(
+      () => executor.executeFreeze({}),
+      (error) => {
+        assert.equal(error.code, "freeze_hwm_gap");
+        assert.deepEqual(
+          [error.executionEvidence.steps.a3Journal.headSeq, error.executionEvidence.steps.a3Journal.manifestSeq],
+          [journal, manifest]
+        );
+        return true;
+      }
+    );
+    // The gap is only found at A3, after A1 stopped the schedulers,
+    // so the freeze never ran (phase still BWH_ACTIVE) and a retry
+    // needs a process restart. The gate can only trip on a real gap.
+    assert.equal(readWriterAuthority(db).phase, "BWH_ACTIVE");
+    assert.equal(commerce.state.stopCalls, 1);
+  });
+}
+
+test("F18: with no manifest provider wired (production shape), a non-empty journal fails closed", async (t) => {
+  const { db, executor } = makeExecutor(t);
+  seedJournalEntries(db, SNAPSHOT, 2);
+  await assert.rejects(
+    () => executor.executeFreeze({}),
+    (error) => {
+      assert.equal(error.code, "freeze_hwm_gap");
+      assert.equal(error.executionEvidence.steps.a3Journal.manifestSeq, 0);
+      assert.equal(error.executionEvidence.steps.a3Journal.headSeq, 2);
+      return true;
+    }
+  );
+  assert.equal(readWriterAuthority(db).phase, "BWH_ACTIVE");
+});
+
+// ---- F19: snapshot ids are unique per freeze, no manual suffix ----
+
+test("F19: deriveFreezeSnapshotId still derives the boot-date base id", () => {
+  assert.equal(deriveFreezeSnapshotId(new Date("2026-11-25T06:00:00.000Z")), "s2s-d1-freeze-20261125");
+  assert.equal(deriveFreezeSnapshotId(new Date("2026-11-24T12:00:00.000Z")), "s2s-d1-freeze-20261124");
+});
+
+for (const { base, used, expected } of [
+  { base: "s2s-d1-freeze-20261125", used: [], expected: "s2s-d1-freeze-20261125" },
+  { base: "s2s-d1-freeze-20261125", used: ["s2s-d1-freeze-20261125"], expected: "s2s-d1-freeze-20261125-r2" },
+  { base: "s2s-d1-freeze-20261125", used: ["s2s-d1-freeze-20261125", "s2s-d1-freeze-20261125-r2"], expected: "s2s-d1-freeze-20261125-r3" },
+  { base: "s2s-d1-freeze-20261125-r2", used: ["s2s-d1-freeze-20261125-r2"], expected: "s2s-d1-freeze-20261125-r3" }
+]) {
+  test(`F19: resolveFreezeSnapshotId(${base}, used=${JSON.stringify(used)}) -> ${expected}`, () => {
+    assert.equal(resolveFreezeSnapshotId(base, used), expected);
+  });
+}
+
+test("F19: the r2 id shape stays valid and its checkpoint derives from the date digits", () => {
+  assert.equal(resolveFreezeSnapshotId("s2s-d1-freeze-20261125-r2", []), "s2s-d1-freeze-20261125-r2");
+  assert.equal(deriveFreezeCheckpointId("s2s-d1-freeze-20261125-r2"), "chk-d1-freeze-20261125");
+  assert.equal(deriveFreezeCheckpointId("s2s-d1-freeze-20261124-r2"), "chk-d1-freeze-20261124");
+});
+
+test("F19: same-day second freeze on a shared database gets a distinct id with no manual suffix", async (t) => {
+  const first = makeExecutor(t);
+  const round1 = await first.executor.executeFreeze({});
+  assert.equal(round1.snapshotId, SNAPSHOT);
+  assert.equal(round1.freezeReceipt.snapshotId, SNAPSHOT);
+  // Simulate the unfreeze + process restart between rounds: authority
+  // back to BWH_ACTIVE at the next epoch, same boot date.
+  seedAuthority(first.db, { authority: "BWH", phase: "BWH_ACTIVE", epoch: readWriterAuthority(first.db).epoch + 1 });
+  const used = collectUsedFreezeSnapshotIds(first.db);
+  assert.deepEqual(used, [SNAPSHOT]);
+  const resolved = resolveFreezeSnapshotId(deriveFreezeSnapshotId(new Date("2026-11-24T12:00:00.000Z")), used);
+  assert.equal(resolved, `${SNAPSHOT}-r2`);
+  const second = makeExecutor(t, { snapshotId: resolved }, { db: first.db, controlStore: first.controlStore, clock: first.clock });
+  const round2 = await second.executor.executeFreeze({});
+  assert.equal(round2.snapshotId, `${SNAPSHOT}-r2`);
+  assert.equal(round2.checkpointId, CHECKPOINT);
+  assert.equal(round2.freezeReceipt.snapshotId, `${SNAPSHOT}-r2`);
+  assert.equal(round2.freezeReceipt.checkpointId, CHECKPOINT);
+  const t1Entries = readCoordinatorLog(first.db).filter((entry) => entry.transitionId === "T1");
+  assert.deepEqual(t1Entries.map((entry) => entry.snapshotId), [SNAPSHOT, `${SNAPSHOT}-r2`]);
+});
+
+test("F19: an explicitly supplied already-used snapshot id is refused before any scheduler stops", async (t) => {
+  const first = makeExecutor(t);
+  await first.executor.executeFreeze({});
+  seedAuthority(first.db, { authority: "BWH", phase: "BWH_ACTIVE", epoch: readWriterAuthority(first.db).epoch + 1 });
+  const second = makeExecutor(t, { snapshotId: `${SNAPSHOT}-r2` }, { db: first.db, controlStore: first.controlStore, clock: first.clock });
+  await assert.rejects(
+    () => second.executor.executeFreeze({ snapshotId: SNAPSHOT }),
+    (error) => {
+      assert.equal(error.code, "freeze_snapshot_id_conflict");
+      return true;
+    }
+  );
+  assert.equal(second.commerce.state.stopCalls, 0);
+  assert.equal(second.welcome.state.stopCalls, 0);
+  assert.equal(second.deferred.state.stopCalls, 0);
+  assert.equal(second.portal.state.stopTickCalls, 0);
+  assert.equal(readWriterAuthority(first.db).phase, "BWH_ACTIVE");
+});
+
+// ---- F20: coverage expected counts derive from the approved inputs ----
+
+test("F20: expected counts derive from the R7 inputs (24 explicit fenced + derived U-F17 = 25)", () => {
+  assert.equal(D1_FREEZE_COVERAGE_FENCED.length, 24);
+  assert.deepEqual(deriveFreezeCoverageExpectedCounts(), { open: 0, fenced: 25, waived: 1, outOfScope: 2 });
+  assert.deepEqual(D1_FREEZE_COVERAGE_EXPECTED_COUNTS, { open: 0, fenced: 25, waived: 1, outOfScope: 2 });
+  assert.equal(D1_FREEZE_COVERAGE_WAIVERS["U-F15"], D1_FREEZE_COVERAGE_WAIVER_AUTHORIZATION_IDS[0]);
+});
+
+test("F20: a matrix with a different disposition is refused against the derived expectation", async (t) => {
+  const { commerce, welcome, deferred, portal, executor } = makeExecutor(t);
+  const movedMatrix = buildWriterCoverageMatrix({
+    fenced: [...D1_FREEZE_COVERAGE_FENCED, "U-F9"],
+    waivers: { ...D1_FREEZE_COVERAGE_WAIVERS },
+    outOfScope: { "U-F14": D1_FREEZE_COVERAGE_OUT_OF_SCOPE["U-F14"] }
+  });
+  assert.deepEqual(movedMatrix.counts, { open: 0, fenced: 26, waived: 1, outOfScope: 1 });
+  await assert.rejects(
+    () => executor.executeFreeze({ coverageMatrix: movedMatrix }),
+    (error) => {
+      assert.equal(error.code, "freeze_coverage_open");
+      assert.deepEqual(error.executionEvidence.steps.a0Coverage.counts, { open: 0, fenced: 26, waived: 1, outOfScope: 1 });
+      assert.deepEqual(error.executionEvidence.steps.a0Coverage.expectedCounts, { open: 0, fenced: 25, waived: 1, outOfScope: 2 });
+      return true;
+    }
+  );
+  assert.equal(commerce.state.stopCalls, 0);
+  assert.equal(welcome.state.stopCalls, 0);
+  assert.equal(deferred.state.stopCalls, 0);
+  assert.equal(portal.state.stopTickCalls, 0);
+});
+
+test("F20: a waiver citing an unknown authorization is refused fail-closed", async (t) => {
+  const { commerce, welcome, deferred, portal, executor } = makeExecutor(t);
+  const staleMatrix = buildWriterCoverageMatrix({
+    fenced: [...D1_FREEZE_COVERAGE_FENCED],
+    waivers: { "U-F15": "yi-2026-11-24-0000-cst-d1-landing-authorization-v2" },
+    outOfScope: { ...D1_FREEZE_COVERAGE_OUT_OF_SCOPE }
+  });
+  await assert.rejects(
+    () => executor.executeFreeze({ coverageMatrix: staleMatrix }),
+    (error) => {
+      assert.equal(error.code, "freeze_coverage_waiver_unknown");
+      return true;
+    }
+  );
+  assert.equal(commerce.state.stopCalls, 0);
+  assert.equal(welcome.state.stopCalls, 0);
+  assert.equal(deferred.state.stopCalls, 0);
+  assert.equal(portal.state.stopTickCalls, 0);
+});
+
+// ---- r2-shaped round: the current round still passes end to end ----
+test("r2-shaped round still passes: s2s-d1-freeze-20261125-r2, empty journal, manifest 0, coverage 0/25/1/2", async (t) => {
+  const snapshotId = "s2s-d1-freeze-20261125-r2";
+  const { executor } = makeExecutor(t, { snapshotId });
+  const result = await executor.executeFreeze({});
+  assert.equal(result.transitionId, "T1");
+  assert.equal(result.snapshotId, snapshotId);
+  assert.equal(result.checkpointId, "chk-d1-freeze-20261125");
+  assert.equal(result.freezeReceipt.snapshotId, snapshotId);
+  assert.equal(result.freezeReceipt.checkpointId, "chk-d1-freeze-20261125");
+  assert.deepEqual(result.coverageMatrix.counts, { open: 0, fenced: 25, waived: 1, outOfScope: 2 });
+  assert.deepEqual(
+    [result.executionEvidence.steps.a3Journal.headSeq, result.executionEvidence.steps.a3Journal.manifestSeq],
+    [0, 0]
+  );
 });

@@ -40,6 +40,7 @@ import { fileURLToPath } from "node:url";
 import {
   buildWriterCoverageMatrix,
   createDrainTracker,
+  readCoordinatorLog,
   readSnapshotGateLog
 } from "./d1-card9-freeze-drain-coordinator.mjs";
 import {
@@ -58,27 +59,47 @@ export const D1_FREEZE_EXECUTION_SCHEMA_VERSION = "d1-freeze-execution/v1";
 // R7-approved coverage inputs, verbatim
 // (decisions/D3_28_ITEMS_DISPOSITION_R7_2026-11-24.md). U-F17 is
 // fenced by derivation (all U-01..U-10 fenced), never set directly.
-// Expected matrix counts: { open: 0, fenced: 25, waived: 1,
-// outOfScope: 2 }.
 export const D1_FREEZE_COVERAGE_FENCED = Object.freeze([
   "U-F1", "U-F2", "U-F3", "U-F4", "U-F5", "U-F6", "U-F7", "U-F8",
   "U-F10", "U-F11", "U-F12", "U-F13", "U-F16", "U-F18",
   "U-01", "U-02", "U-03", "U-04", "U-05", "U-06", "U-07", "U-08",
   "U-09", "U-10"
 ]);
+// Approved waiver-authorization allowlist (single source of truth
+// for the U-F15 waiver ref below). There is no live authorization
+// record store in-process to check against, so this allowlist IS the
+// check: the A0 gate refuses any waiver ref that is not on it
+// (fail-closed). When the authorization is superseded, replace the
+// entry here — in this one place — and the waiver below follows it;
+// a supersede that forgets this update fails the freeze loudly
+// instead of silently waiving on a stale record. Residual limitation:
+// the allowlist cannot itself detect a supersede; that stays an
+// operator step (update this list when Yi issues a new authorization).
+export const D1_FREEZE_COVERAGE_WAIVER_AUTHORIZATION_IDS = Object.freeze([
+  "yi-2026-11-23-0943-cst-d1-landing-authorization"
+]);
 export const D1_FREEZE_COVERAGE_WAIVERS = Object.freeze({
-  "U-F15": "yi-2026-11-23-0943-cst-d1-landing-authorization"
+  "U-F15": D1_FREEZE_COVERAGE_WAIVER_AUTHORIZATION_IDS[0]
 });
 export const D1_FREEZE_COVERAGE_OUT_OF_SCOPE = Object.freeze({
   "U-F9": "Schema-ensure DDL (W-139…W-143) is DDL, not business writes — explicitly out of fence scope; it must run while BWH_ACTIVE by operator discipline.",
   "U-F14": "DDL, not business writes; explicitly out of scope. Migrations run offline by operator and must not run against a frozen / D1-active database — operator discipline until the follow-up defines migration gating."
 });
-export const D1_FREEZE_COVERAGE_EXPECTED_COUNTS = Object.freeze({
-  open: 0,
-  fenced: 25,
-  waived: 1,
-  outOfScope: 2
-});
+// Expected matrix counts, derived from the same approved inputs
+// above — never literals. The matrix builder counts the derived
+// U-F17 entry, so for the current disposition the fenced count is 24
+// explicit entries + 1 derived = 25. Any disposition change moves
+// the expectation with it; the A0 gate compares the live matrix
+// against this derivation, so the counts cannot go stale while the
+// inputs stay current.
+export function deriveFreezeCoverageExpectedCounts() {
+  return buildWriterCoverageMatrix({
+    fenced: [...D1_FREEZE_COVERAGE_FENCED],
+    waivers: { ...D1_FREEZE_COVERAGE_WAIVERS },
+    outOfScope: { ...D1_FREEZE_COVERAGE_OUT_OF_SCOPE }
+  }).counts;
+}
+export const D1_FREEZE_COVERAGE_EXPECTED_COUNTS = Object.freeze(deriveFreezeCoverageExpectedCounts());
 
 const SNAPSHOT_ID_PATTERN = /^s2s-[a-z0-9-]{3,80}$/;
 const OBSERVATION_INTERVAL_MS = 60000;
@@ -108,12 +129,58 @@ function freezeExecutorError(code, message, executionEvidence) {
 
 // Boot-date snapshot id (R10 §5 A0 step 1): the deployment restart
 // happens on execution day, so the boot date is the execution date.
-// A second freeze the same day appends -<n> via the route body.
+// This is only the BASE id: a second freeze the same day no longer
+// needs a human to hand-append -<n> — see resolveFreezeSnapshotId,
+// which mints the next free -r<n> suffix from the live durable logs
+// at boot (start.mjs), and the executor's freeze_snapshot_id_conflict
+// guard, which refuses an explicitly supplied id that is already used.
 export function deriveFreezeSnapshotId(date = new Date()) {
   const stamp = date.toISOString().slice(0, 10).replaceAll("-", "");
   return `s2s-d1-freeze-${stamp}`;
 }
 
+// Snapshot ids already used by an earlier freeze, read live from the
+// durable logs (coordinator log T1 entries + snapshot-gate log).
+// Read-only: neither reader creates its table on a fresh database.
+export function collectUsedFreezeSnapshotIds(db) {
+  const used = new Set();
+  for (const entry of readCoordinatorLog(db)) {
+    if (typeof entry?.snapshotId === "string") used.add(entry.snapshotId);
+  }
+  for (const entry of readSnapshotGateLog(db)) {
+    if (typeof entry?.snapshotId === "string") used.add(entry.snapshotId);
+  }
+  return [...used];
+}
+
+// Mint a free snapshot id from a base id: the base itself when unused,
+// otherwise the next free -r<n> suffix (an already-suffixed base
+// continues its own numbering: X-r2 taken -> X-r3). The result always
+// matches s2s-[a-z0-9-]{3,80}, so checkpoint derivation and the route
+// pattern keep working unchanged.
+export function resolveFreezeSnapshotId(snapshotId, usedSnapshotIds = []) {
+  if (typeof snapshotId !== "string" || !SNAPSHOT_ID_PATTERN.test(snapshotId)) {
+    throw freezeExecutorError("freeze_validation_error", `snapshotId must match s2s-[a-z0-9-]{3,80}, got ${JSON.stringify(snapshotId)}`);
+  }
+  const used = new Set(usedSnapshotIds);
+  if (!used.has(snapshotId)) return snapshotId;
+  const stemMatch = snapshotId.match(/^(.*?)-r(\d+)$/);
+  const stem = stemMatch ? stemMatch[1] : snapshotId;
+  let n = stemMatch ? Number(stemMatch[2]) + 1 : 2;
+  let candidate = `${stem}-r${n}`;
+  while (used.has(candidate)) {
+    n += 1;
+    candidate = `${stem}-r${n}`;
+  }
+  if (!SNAPSHOT_ID_PATTERN.test(candidate)) {
+    throw freezeExecutorError("freeze_validation_error", `no free snapshot id derivable from ${JSON.stringify(snapshotId)} within s2s-[a-z0-9-]{3,80}`);
+  }
+  return candidate;
+}
+
+// Checkpoint id derives from the date digits embedded in the
+// snapshot id, so a suffixed id (s2s-d1-freeze-20261125-r2) keeps the
+// same checkpoint as its base (chk-d1-freeze-20261125).
 export function deriveFreezeCheckpointId(snapshotId, date = new Date()) {
   const match = typeof snapshotId === "string" ? snapshotId.match(/(\d{8})/) : null;
   const stamp = match ? match[1] : date.toISOString().slice(0, 10).replaceAll("-", "");
@@ -262,6 +329,12 @@ export function createD1FreezeExecutor({
   sleep = defaultSleep,
   runPurgeCli = defaultRunPurgeCli,
   checkReferralCliProcess = defaultCheckReferralCliProcess,
+  // Latest incremental manifest seq for this snapshot. The default
+  // (no manifest source wired) is 0: the A3 gate then requires an
+  // empty journal for this snapshot — the fresh-snapshot shape — and
+  // fails closed on any journal entry. Production has no manifest
+  // source wired yet; wire one before any round whose journal for
+  // that snapshot is non-empty, or the gate will (correctly) refuse.
   manifestSeqProvider = () => 0,
   drainTimeoutMs = DRAIN_TIMEOUT_MS,
   observationIntervalMs = OBSERVATION_INTERVAL_MS,
@@ -328,6 +401,25 @@ export function createD1FreezeExecutor({
     }
     evidence.steps.a0Authority = { authority: authority.authority, phase: authority.phase, epoch: authority.epoch, at: timestamp() };
 
+    // An explicitly supplied snapshot id that a previous freeze
+    // already used is refused here, before any scheduler is stopped:
+    // reusing it would write a second T1 under the same id and break
+    // the journal / snapshot-gate binding for the earlier round. The
+    // boot path never reaches this — start.mjs resolves a free id
+    // first — so this only fires on a stale explicit id (e.g. a route
+    // body repeating yesterday's id). A retry after a failed freeze is
+    // unaffected: a failed freeze writes no T1 entry, so its id is
+    // still free.
+    const usedSnapshotIds = collectUsedFreezeSnapshotIds(db);
+    evidence.steps.a0SnapshotId = { snapshotId, alreadyUsed: usedSnapshotIds.includes(snapshotId), at: timestamp() };
+    if (usedSnapshotIds.includes(snapshotId)) {
+      throw freezeExecutorError(
+        "freeze_snapshot_id_conflict",
+        `snapshotId ${snapshotId} was already used by an earlier freeze (coordinator / snapshot-gate log); retry without an explicit snapshotId so the boot-derived id is used, or supply a fresh id`,
+        evidence
+      );
+    }
+
     const coverageMatrix = input.coverageMatrix ?? buildWriterCoverageMatrix({
       fenced: [...D1_FREEZE_COVERAGE_FENCED],
       waivers: { ...D1_FREEZE_COVERAGE_WAIVERS },
@@ -339,24 +431,44 @@ export function createD1FreezeExecutor({
       waived: coverageMatrix.counts?.waived ?? -1,
       outOfScope: coverageMatrix.counts?.outOfScope ?? -1
     };
+    // Expected counts derived from the same approved inputs (F20):
+    // never literals, so a disposition change moves the expectation
+    // with it. The U-F17 derived entry is counted by the builder, so
+    // the current expectation is { open: 0, fenced: 25, waived: 1,
+    // outOfScope: 2 } (24 explicit fenced + 1 derived).
+    const expectedCounts = deriveFreezeCoverageExpectedCounts();
     evidence.steps.a0Coverage = {
       counts,
+      expectedCounts,
       cutoverBlocked: coverageMatrix.cutoverBlocked,
       openIds: coverageMatrix.openIds,
       matrixDigest: coverageMatrix.matrixDigest,
       at: timestamp()
     };
+    // Waiver refs must cite an authorization on the approved
+    // allowlist: a waiver citing an unknown (superseded, mistyped)
+    // authorization record is a fail-closed refusal, never a pass.
+    const unknownWaiver = (coverageMatrix.entries ?? []).find(
+      (entry) => entry.status === "waived" && !D1_FREEZE_COVERAGE_WAIVER_AUTHORIZATION_IDS.includes(entry.evidence?.ref)
+    );
+    if (unknownWaiver) {
+      throw freezeExecutorError(
+        "freeze_coverage_waiver_unknown",
+        `writer coverage waiver for ${unknownWaiver.id} cites authorization ${JSON.stringify(unknownWaiver.evidence?.ref)} which is not on the approved waiver-authorization allowlist`,
+        evidence
+      );
+    }
     // Checked BEFORE any scheduler is stopped: stops are terminal
     // in-process, so a coverage refusal must happen while everything
     // is still running.
     if (coverageMatrix.cutoverBlocked
-      || counts.open !== D1_FREEZE_COVERAGE_EXPECTED_COUNTS.open
-      || counts.fenced !== D1_FREEZE_COVERAGE_EXPECTED_COUNTS.fenced
-      || counts.waived !== D1_FREEZE_COVERAGE_EXPECTED_COUNTS.waived
-      || counts.outOfScope !== D1_FREEZE_COVERAGE_EXPECTED_COUNTS.outOfScope) {
+      || counts.open !== expectedCounts.open
+      || counts.fenced !== expectedCounts.fenced
+      || counts.waived !== expectedCounts.waived
+      || counts.outOfScope !== expectedCounts.outOfScope) {
       throw freezeExecutorError(
         "freeze_coverage_open",
-        `cannot freeze: writer coverage is not fully fenced (counts ${JSON.stringify(counts)}, cutoverBlocked ${coverageMatrix.cutoverBlocked}, open ${JSON.stringify(coverageMatrix.openIds)})`,
+        `cannot freeze: writer coverage is not fully fenced (counts ${JSON.stringify(counts)}, expected ${JSON.stringify(expectedCounts)}, cutoverBlocked ${coverageMatrix.cutoverBlocked}, open ${JSON.stringify(coverageMatrix.openIds)})`,
         evidence
       );
     }
@@ -607,10 +719,21 @@ export function createD1FreezeExecutor({
     const journalHeadSeq = journalEntries.length === 0 ? 0 : Math.max(...journalEntries.map((entry) => entry.seq));
     const manifestSeq = manifestSeqProvider({ snapshotId });
     evidence.steps.a3Journal = { entries: journalEntries.length, headSeq: journalHeadSeq, manifestSeq, at: timestamp() };
-    if (journalHeadSeq !== 0 || manifestSeq !== 0) {
+    // Dynamic HWM equality — the same invariant
+    // buildHwmCompletenessReceipt enforces below: the journal head for
+    // this snapshot must equal the latest manifest seq. No round
+    // number is assumed: a fresh snapshot (empty journal, manifest 0)
+    // passes, a later round with a matching manifest passes, and any
+    // gap fails closed. This still runs after A1 stopped the
+    // schedulers, so a genuine gap here needs a process restart before
+    // retry; the gate can only trip on a real gap, never on a valid
+    // round. (Deliberately no A0 pre-check: entries could still land
+    // between A0 and A3, so an early check could falsely refuse a
+    // round that would pass here.)
+    if (!Number.isInteger(manifestSeq) || manifestSeq < 0 || journalHeadSeq !== manifestSeq) {
       throw freezeExecutorError(
         "freeze_hwm_gap",
-        `first-round HWM convention requires journal head seq 0 and manifest seq 0; got journal ${journalHeadSeq}, manifest ${manifestSeq} — stop and report, do not build the HWM receipt`,
+        `HWM gap for snapshot ${snapshotId}: journal head seq ${journalHeadSeq} does not match latest manifest seq ${manifestSeq} — stop and report, do not build the HWM receipt`,
         evidence
       );
     }

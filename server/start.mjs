@@ -1,7 +1,7 @@
 import { createApp } from "./app.mjs";
 import { createRuntimeState } from "./state.mjs";
 import { createFreezeDrainCoordinator } from "./services/platform/d1-card9-freeze-drain-coordinator.mjs";
-import { deriveFreezeSnapshotId } from "./services/platform/d1-freeze-executor.mjs";
+import { collectUsedFreezeSnapshotIds, deriveFreezeSnapshotId, resolveFreezeSnapshotId } from "./services/platform/d1-freeze-executor.mjs";
 
 function logStartup(logger, state) {
   if (!logger) return;
@@ -172,9 +172,11 @@ export function snapshotRuntimeCoordinators(state) {
 //
 // The held coordinator's snapshot id is derived from the boot date
 // (R10 §5 A0 step 1: the deployment restart happens on execution
-// day, so the boot date is the execution date). The route accepts a
-// different snapshot id in the body and then builds a fresh
-// coordinator from this same held wiring.
+// day, so the boot date is the execution date), auto-suffixed -r2,
+// -r3, ... when a prior freeze already used that id — a same-day
+// second freeze needs no manual suffix. The route accepts a different
+// snapshot id in the body and then builds a fresh coordinator from
+// this same held wiring.
 //
 // Never throws: if the wiring cannot be built (no database handle, a
 // coordinator contract error), the freeze route reports 503 and the
@@ -216,7 +218,18 @@ export function installD1FreezeWiring(state, { logger = console, now = () => new
       : (platform.coinsCommerceEnabled === true ? false : null),
     platformFieldPresent: platform.coinCommerceDataPackRotationCoordinator != null
   };
-  const snapshotId = deriveFreezeSnapshotId(now());
+  // Boot-date base id, resolved against the live durable logs: when
+  // a prior freeze already used this id (same-day second freeze),
+  // the next free -r<n> suffix is minted. On any read failure the
+  // boot-date base is kept so startup never breaks — the executor's
+  // freeze_snapshot_id_conflict guard still refuses a reused id at
+  // freeze time.
+  let snapshotId = deriveFreezeSnapshotId(now());
+  try {
+    snapshotId = resolveFreezeSnapshotId(snapshotId, collectUsedFreezeSnapshotIds(db));
+  } catch (error) {
+    logger?.warn?.(`D1 freeze snapshot id conflict resolution failed, keeping boot-date id ${snapshotId}: ${error?.message || error}`);
+  }
   const coordinator = createFreezeDrainCoordinator(db, { snapshotId, scheduler, now });
   const wiring = {
     db,
