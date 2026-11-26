@@ -23,6 +23,7 @@ export function adminUserCommerceRoutes(state) {
   const router = Router();
   const usersRead = requireAdminCapability("users.read");
   const walletRead = requireAdminCapability("wallet.read");
+  const walletWrite = requireAdminCapability("wallet.write");
 
   function service() {
     const value = state.platform?.adminUserCommerce;
@@ -54,7 +55,10 @@ export function adminUserCommerceRoutes(state) {
   router.put("/api/admin/user-commerce/settlement-rate", usersRead, walletRead, (req, res) => {
     sendCommerce(res, () => service().updateRate(req.body));
   });
-  router.post("/api/admin/user-commerce/reward-clawbacks", usersRead, walletRead, (req, res) => {
+  // The clawback is a financial write: it requires the independent
+  // wallet.write capability (super_admin only), not just the read
+  // capabilities that protect the read endpoints above.
+  router.post("/api/admin/user-commerce/reward-clawbacks", usersRead, walletRead, walletWrite, (req, res) => {
     sendCommerce(res, () => service().clawback(req.body));
   });
   return router;

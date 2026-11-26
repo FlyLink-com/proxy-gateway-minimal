@@ -1,9 +1,14 @@
 import { useState } from "react";
-import { createUserCommerceClient, UserCommerceError, type CommerceOrder, type LedgerEntry, type SettlementSnapshot, type ShareUser, type UserCommerceClient } from "./user-commerce-client";
+import { createClawbackIdempotencyKey, createUserCommerceClient, UserCommerceError, type CommerceOrder, type LedgerEntry, type SettlementSnapshot, type ShareUser, type UserCommerceClient } from "./user-commerce-client";
 import "./user-commerce-workspace.styles.css";
 
 type Tab = "orders" | "ledger" | "shareUsers" | "settlement";
-type Confirmation = { kind: "rate"; ratePercent: number; effectiveAt: string } | { kind: "clawback"; accountId: string; coins: string; reason: string } | null;
+// The clawback confirmation owns one idempotency key: it is minted when
+// the operator prepares the clawback and is reused for every retry of
+// that same pending operation until its outcome is known, so a lost
+// response cannot mint a second clawback. A new preparation mints a new
+// key, so two deliberate clawbacks stay distinct.
+type Confirmation = { kind: "rate"; ratePercent: number; effectiveAt: string } | { kind: "clawback"; accountId: string; coins: string; reason: string; idempotencyKey: string } | null;
 
 const TABS: Array<{ id: Tab; label: string }> = [
   { id: "orders", label: "订单查询" },
@@ -137,7 +142,7 @@ export function UserCommerceWorkspace({
                 setStatus("划扣需要用户编号、正整数 Coins 和原因。");
                 return;
               }
-              setConfirmation({ kind: "clawback", accountId: clawAccount.trim(), coins: clawCoins, reason: clawReason.trim() });
+              setConfirmation({ kind: "clawback", accountId: clawAccount.trim(), coins: clawCoins, reason: clawReason.trim(), idempotencyKey: createClawbackIdempotencyKey() });
             }}>准备划扣</button>
           </div>
         </section>
@@ -151,15 +156,25 @@ export function UserCommerceWorkspace({
             <button type="button" onClick={() => setConfirmation(null)}>取消</button>
             <button className="user-commerce-primary" type="button" disabled={busy} onClick={() => void run(async () => {
               const pending = confirmation;
-              setConfirmation(null);
               if (pending.kind === "rate") {
+                setConfirmation(null);
                 const next = await commerce.updateRate({ ratePercent: pending.ratePercent, effectiveAt: pending.effectiveAt });
                 setSettlement(next);
                 setStatus("结算比例已提交。它会从生效日期起用于之后的分享奖励。");
               } else {
-                const result = await commerce.clawback({ accountId: pending.accountId, coins: pending.coins, reason: pending.reason });
-                setSettlement(result.settlement);
-                setStatus("奖励 Coins 划扣已提交。");
+                try {
+                  const result = await commerce.clawback({ accountId: pending.accountId, coins: pending.coins, reason: pending.reason, idempotencyKey: pending.idempotencyKey });
+                  setConfirmation(null);
+                  setSettlement(result.settlement);
+                  setStatus("奖励 Coins 划扣已提交。");
+                } catch (error) {
+                  // The outcome is unknown (for example the response was
+                  // lost): keep this confirmation, and its key, so a
+                  // retry replays the same clawback instead of minting
+                  // a second one. Cancelling discards the key.
+                  setConfirmation(pending);
+                  throw error;
+                }
               }
             })}>确认提交</button>
           </div>

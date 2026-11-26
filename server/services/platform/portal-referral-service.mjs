@@ -561,7 +561,12 @@ export function createPortalReferralService({
             ? row.reward_units -
               rewardUnits(row.paid_units - cumulative, policy)
             : 0;
-        const difference = target - row.reversed_units;
+        // A prior admin clawback already reversed part of this reward and
+        // recorded it on the accrual (see admin-user-commerce clawback), so
+        // the remaining difference can be below the accrual's reversed
+        // total. Clamp at zero: never pass a negative amount to
+        // reverseReferralReward, and never move the accrual backwards.
+        const difference = Math.max(0, target - row.reversed_units);
         const reversed =
           difference === 0 ||
           reverseReferralReward(db, {
@@ -584,7 +589,7 @@ export function createPortalReferralService({
           "update platform_referral_accruals set refunded_paid_units=?,reversed_units=?,status=?,updated_at=? where account_id=?",
         ).run(
           cumulative,
-          reversed ? target : row.reversed_units,
+          reversed ? Math.max(target, row.reversed_units) : row.reversed_units,
           status,
           now(),
           row.account_id,

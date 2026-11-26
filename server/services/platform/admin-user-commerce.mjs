@@ -1,4 +1,3 @@
-import { randomBytes } from "node:crypto";
 import Database from "better-sqlite3";
 import { isAbsolute } from "node:path";
 import { digest, policySnapshot } from "./portal-referral-contract.mjs";
@@ -107,14 +106,37 @@ function readRate(input) {
   return { rateBps, effectiveDay: readDay(input.effectiveAt) };
 }
 
+const IDEMPOTENCY_KEY = /^[A-Za-z0-9._:-]{1,128}$/;
+
 function readClawback(input) {
-  if (!plain(input) || !exact(input, ["accountId", "coins", "reason"])) fail("invalid_query");
+  if (!plain(input)) fail("invalid_query");
+  const keys = Object.keys(input).sort();
+  const withKey = keys.length === 4
+    && keys[0] === "accountId" && keys[1] === "coins"
+    && keys[2] === "idempotencyKey" && keys[3] === "reason";
+  const withoutKey = keys.length === 3
+    && keys[0] === "accountId" && keys[1] === "coins" && keys[2] === "reason";
+  if (!withKey && !withoutKey) fail("invalid_query");
   const accountId = readAccount(input.accountId);
   if (typeof input.coins !== "string" || !COINS.test(input.coins)) fail("invalid_query");
   if (typeof input.reason !== "string" || !LABEL.test(input.reason)) fail("invalid_query");
   const coins = Number(input.coins);
   if (!Number.isSafeInteger(coins) || coins < 1) fail("invalid_query");
-  return { accountId, coins, reason: input.reason };
+  // Idempotency key, following the coin-commerce receipt convention
+  // (/^[A-Za-z0-9._:-]{1,128}$/, same key + different payload is a
+  // conflict). When the caller supplies none, the key is derived
+  // deterministically from the request, so retrying the identical
+  // request returns the original clawback instead of clawing back twice.
+  let idempotencyKey;
+  if (withKey) {
+    if (typeof input.idempotencyKey !== "string" || !IDEMPOTENCY_KEY.test(input.idempotencyKey)) {
+      fail("invalid_query");
+    }
+    idempotencyKey = `key:${input.idempotencyKey}`;
+  } else {
+    idempotencyKey = `request:${accountId}:${coins}:${input.reason}`;
+  }
+  return { accountId, coins, reason: input.reason, idempotencyKey };
 }
 
 function publicTime(value) {
@@ -488,9 +510,22 @@ export function createAdminUserCommerceService({
 
   function clawback(input) {
     const request = readClawback(input);
+    // The clawback ref is derived deterministically from the idempotency
+    // key, so a retry replays against the same platform_referral_events
+    // row (event_ref is the primary key) instead of minting a fresh
+    // random ref and clawing back twice. 9 + 48 hex chars fits REF (64).
+    const clawbackRef = `clawback_${digest(request.idempotencyKey).slice(0, 48)}`;
+    const eventDigest = digest(JSON.stringify({
+      accountId: request.accountId,
+      kind: "admin_reward_clawback",
+      coins: request.coins,
+      reason: request.reason,
+      idempotencyKey: request.idempotencyKey
+    }));
     return withDb((db) => {
-      // U-F6: per-call phase fence, first statement — covers the
-      // clawback transaction below (reverseReferralReward + event insert).
+      // U-F6: per-call phase fence — the check inside the transaction
+      // below is the real fence; this outer check is defense-in-depth
+      // only and must never be relied on alone.
       assertWritable(db);
       if (!referralReady(db)) fail("source_unavailable");
       const now = clock();
@@ -498,9 +533,23 @@ export function createAdminUserCommerceService({
         "select status from platform_accounts where id = ?"
       ).get(request.accountId);
       if (!account || account.status !== "active") fail("conflict");
-      const clawbackRef = `clawback_${randomBytes(16).toString("hex")}`;
       try {
         db.transaction(() => {
+          // U-F6: phase fence, first statement inside the transaction —
+          // a freeze landing between the outer check and this transaction
+          // is rejected here, before any business write.
+          assertWritable(db);
+          const existing = db.prepare(`
+            select digest from platform_referral_events
+             where event_ref = ? and kind = 'admin_reward_clawback'
+          `).get(clawbackRef);
+          if (existing) {
+            // Same key, same payload: replay the original result without
+            // reversing anything again. Same key, different payload: the
+            // key was reused for a different clawback — fail closed.
+            if (existing.digest !== eventDigest) fail("conflict");
+            return;
+          }
           const lots = db.prepare(`
             select l.lot_ref, l.available_units, l.source_ref, l.reversed_units, o.paid_units
               from platform_coin_lots l
@@ -531,7 +580,8 @@ export function createAdminUserCommerceService({
                 sourceRef: lot.source_ref,
                 amount,
                 cumulative,
-                occurredAt: now
+                occurredAt: now,
+                actor: { actorType: "admin", actorRef: "admin_reward_clawback" }
               });
             } catch (error) {
               if (error?.code === "referral_wallet_binding_invalid" || error?.code === "referral_request_invalid") {
@@ -540,11 +590,23 @@ export function createAdminUserCommerceService({
               throw error;
             }
             if (reversed !== true) fail("conflict");
+            // Book the reversal on the linked accrual as well
+            // (reward_lot_ref is unique per accrual, so exactly one row).
+            // The refund path computes its remaining difference from the
+            // accrual's reversed_units; leaving the clawback off the
+            // accrual makes a later full refund ask the lot for more than
+            // remains and strand the account in reconciliation_required.
+            // Total lot reversed can never exceed issued (= reward_units),
+            // so the accrual's reversed_units <= reward_units check holds.
+            const booked = db.prepare(`
+              update platform_referral_accruals
+                 set reversed_units = reversed_units + ?, updated_at = ?
+               where reward_lot_ref = ?
+            `).run(amount, now, lot.lot_ref);
+            if (booked.changes !== 1) fail("conflict");
             remaining -= amount;
           }
           if (remaining !== 0) fail("conflict");
-          // Accrual reversed_units stays on the refund ledger. Writing the admin
-          // amount there can make a later refund compute a negative difference.
           db.prepare(`
             insert into platform_referral_events
               (event_ref, account_id, kind, digest, occurred_at)
@@ -552,12 +614,7 @@ export function createAdminUserCommerceService({
           `).run(
             clawbackRef,
             request.accountId,
-            digest(JSON.stringify({
-              accountId: request.accountId,
-              kind: "admin_reward_clawback",
-              coins: request.coins,
-              reason: request.reason
-            })),
+            eventDigest,
             now
           );
         }).immediate();

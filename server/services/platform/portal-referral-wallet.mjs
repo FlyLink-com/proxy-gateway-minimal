@@ -3,14 +3,25 @@ import { digest, referralError, units } from "./portal-referral-contract.mjs";
 
 // Wallet-owned operation: caller holds the same SQLite IMMEDIATE transaction.
 // Never reinterpret a reversal as consumption or expiration.
+// The ledger entries record the actor that ordered the reversal: the
+// refund path passes the referral service (default); an admin clawback
+// passes the admin actor so a manual adjustment is never misattributed
+// to the automatic referral service.
 export function reverseReferralReward(
   database,
-  { lotRef, sourceRef, amount, cumulative, occurredAt },
+  { lotRef, sourceRef, amount, cumulative, occurredAt, actor },
 ) {
   if (!database.inTransaction)
     throw referralError("referral_transaction_required");
   units(amount);
   units(cumulative);
+  const actorType = actor?.actorType ?? "referral_service";
+  const actorRef = actor?.actorRef ?? "portal_referral";
+  if (
+    typeof actorType !== "string" || !actorType
+    || typeof actorRef !== "string" || !actorRef
+  )
+    throw referralError("referral_request_invalid");
   if (!amount) return true;
   const lot = database
     .prepare("select * from platform_coin_lots where lot_ref=?")
@@ -74,7 +85,7 @@ export function reverseReferralReward(
         `insert into platform_coin_ledger_entries
       (entry_ref,operation_ref,wallet_ref,lot_ref,operation,amount_units,hold_ref,order_ref,source_type,
        source_ref,actor_type,actor_ref,previous_wallet_version,resulting_wallet_version,resulting_wallet_status,occurred_at)
-      values(?,?,?,?,?,?,null,null,'portal_referral_reversal',?,'referral_service','portal_referral',?,?,?,?)`,
+      values(?,?,?,?,?,?,null,null,'portal_referral_reversal',?,?,?,?,?,?,?)`,
       )
       .run(
         `ledger_entry_${randomUUID()}`,
@@ -84,6 +95,8 @@ export function reverseReferralReward(
         kind,
         part,
         sourceRef,
+        actorType,
+        actorRef,
         before,
         after,
         wallet.status,

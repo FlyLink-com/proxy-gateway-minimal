@@ -41,7 +41,7 @@ export type UserCommerceClient = {
   readShareUsers(query: CommerceQuery, signal?: AbortSignal): Promise<ShareUser[]>;
   readSettlement(signal?: AbortSignal): Promise<SettlementSnapshot>;
   updateRate(input: { ratePercent: number; effectiveAt: string }, signal?: AbortSignal): Promise<SettlementSnapshot>;
-  clawback(input: { accountId: string; coins: string; reason: string }, signal?: AbortSignal): Promise<{ clawbackRef: string; settlement: SettlementSnapshot }>;
+  clawback(input: { accountId: string; coins: string; reason: string; idempotencyKey?: string }, signal?: AbortSignal): Promise<{ clawbackRef: string; settlement: SettlementSnapshot }>;
 };
 
 export class UserCommerceError extends Error {
@@ -58,6 +58,21 @@ const ACCOUNT = /^[A-Za-z0-9_-]{1,64}$/;
 const REF = /^[A-Za-z0-9_-]{1,64}$/;
 const COINS = /^[1-9]\d{0,11}$/;
 const LABEL = /^[^\u0000-\u001f\u007f]{1,32}$/;
+const IDEMPOTENCY_KEY = /^[A-Za-z0-9._:-]{1,128}$/;
+
+// One fresh key per confirmed clawback, so two deliberate clawbacks with
+// identical account/coins/reason are two distinct requests, while a
+// retried submission replays instead of clawing back twice. The server
+// also derives a key from the request when none is sent.
+export function createClawbackIdempotencyKey(): string {
+  return newIdempotencyKey();
+}
+
+function newIdempotencyKey(): string {
+  const random = globalThis.crypto?.randomUUID?.();
+  if (typeof random === "string" && random.length > 0) return random;
+  return `clawback-${Date.now().toString(36)}-${Math.floor(Math.random() * 0xffffffff).toString(36)}`;
+}
 
 function exactKeys(value: object, keys: string[]) {
   const actual = Object.keys(value).sort();
@@ -218,10 +233,14 @@ export function createUserCommerceClient(options: { fetcher?: FetchLike } = {}):
       if (!ACCOUNT.test(input.accountId) || !COINS.test(input.coins) || !LABEL.test(input.reason)) {
         return Promise.reject(new UserCommerceError("invalid"));
       }
+      const idempotencyKey = input.idempotencyKey ?? newIdempotencyKey();
+      if (!IDEMPOTENCY_KEY.test(idempotencyKey)) {
+        return Promise.reject(new UserCommerceError("invalid"));
+      }
       return request(fetcher, `${ROOT}/reward-clawbacks`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ accountId: input.accountId, coins: input.coins, reason: input.reason })
+        body: JSON.stringify({ accountId: input.accountId, coins: input.coins, reason: input.reason, idempotencyKey })
       }, signal).then((value) => {
         if (!value || typeof value !== "object" || !exactKeys(value, ["clawbackRef", "settlement"])) throw new UserCommerceError("invalid");
         const row = value as { clawbackRef: unknown; settlement: unknown };
