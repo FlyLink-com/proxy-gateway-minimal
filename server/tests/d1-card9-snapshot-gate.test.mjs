@@ -124,18 +124,19 @@ function drainedTracker(clock) {
   return tracker;
 }
 
-function passingVerification(freezeReceiptDigest, snapshotId = SNAPSHOT) {
+function passingVerification(freezeReceiptDigest, snapshotId = SNAPSHOT, manifestDigest) {
   return buildTwoSidedVerificationReport({
     snapshotId,
-    context: freezeReceiptDigest ? { kind: "freeze-switch", freezeReceiptDigest } : null,
+    context: freezeReceiptDigest ? { kind: "freeze-switch", freezeReceiptDigest, manifestDigest } : null,
     checks: Object.fromEntries(VERIFICATION_CHECK_IDS.map((id) => [id, { passed: true, detail: `synthetic ${id}` }])),
   });
 }
 
-function appliedDelta(freezeReceiptDigest, snapshotId = SNAPSHOT) {
+function appliedDelta(freezeReceiptDigest, snapshotId = SNAPSHOT, manifestDigest) {
   return buildDeltaCatchupReport({
     snapshotId,
     freezeReceiptDigest,
+    manifestDigest,
     items: [{ table: "s2s_items", pk: "2", disposition: "applied" }],
   });
 }
@@ -173,13 +174,13 @@ function issueInstruction(ctx) {
   });
 }
 
-function syntheticManifest(ctx) {
+function syntheticManifest(ctx, fileDigest = "a".repeat(64)) {
   return buildSnapshotGateManifest({
     snapshotId: SNAPSHOT,
     checkpointId: CHECKPOINT,
     freezeReceiptDigest: ctx.result.freezeReceipt.receiptDigest,
     basename: "s2s-snapshot.sqlite",
-    sha256: "a".repeat(64),
+    sha256: fileDigest,
     byteCount: 4096,
     createdAt: WINDOW_START,
     quickCheck: true,
@@ -189,9 +190,8 @@ function syntheticManifest(ctx) {
   });
 }
 
-function bindSynthetic(ctx) {
+function bindSynthetic(ctx, manifest = syntheticManifest(ctx)) {
   const instruction = issueInstruction(ctx);
-  const manifest = syntheticManifest(ctx);
   return ctx.coordinator.bindSnapshotManifest({
     instruction,
     manifest,
@@ -199,11 +199,11 @@ function bindSynthetic(ctx) {
   });
 }
 
-function switchArgs(ctx) {
+function switchArgs(ctx, manifestDigest = syntheticManifest(ctx).manifestDigest) {
   const digest = ctx.result.freezeReceipt.receiptDigest;
   return {
-    deltaReport: appliedDelta(digest),
-    verificationReport: passingVerification(digest),
+    deltaReport: appliedDelta(digest, SNAPSHOT, manifestDigest),
+    verificationReport: passingVerification(digest, SNAPSHOT, manifestDigest),
     c1ApprovalRef: "s2s-c1-approval-001",
     handover: { verifiedBy: "s2s-reviewer-001", verifiedAt: "2026-11-21T00:05:00.000Z", receiptRef: "s2s-handover-001" },
   };
@@ -443,7 +443,7 @@ test("A4 frozen + drained + receipt issues an instruction, a real snapshot binds
   assert.deepEqual(verifySnapshotGateLog(ctx.db), { valid: true, entries: 2 });
 
   // The bound snapshot now opens T2.
-  const switched = ctx.coordinator.switchToD1(switchArgs(ctx));
+  const switched = ctx.coordinator.switchToD1(switchArgs(ctx, manifest.manifestDigest));
   assert.equal(switched.transitionId, "T2");
   assert.equal(switched.authority.phase, "D1_ACTIVE");
   assert.equal(switched.coordinatorReceipt.gateRefs.snapshotManifestDigest, manifest.manifestDigest);
@@ -546,4 +546,53 @@ test("A7 D-1 has a written ruling taking option B (document check)", (t) => {
   assert.ok(text.includes("D-1"), "ruling covers D-1");
   assert.ok(text.includes("取选项 B"), "ruling takes option B (coordinator phase gate + drain receipt as the equivalence proof)");
   assert.ok(text.includes("不补 systemd 单元"), "ruling states this round does not add a systemd unit");
+});
+
+test("T2 uses the exact live manifest named by both reports, not the first binding", (t) => {
+  const ctx = freezeHappy(t);
+  const first = bindSynthetic(ctx);
+  const second = bindSynthetic(ctx, syntheticManifest(ctx, "c".repeat(64)));
+  const digest = ctx.result.freezeReceipt.receiptDigest;
+  const evidence = switchArgs(ctx, second.manifestDigest);
+  for (const reports of [
+    { deltaReport: appliedDelta(digest, SNAPSHOT, first.manifestDigest) },
+    { verificationReport: passingVerification(digest, SNAPSHOT, first.manifestDigest) },
+    { deltaReport: appliedDelta(digest) },
+    { verificationReport: passingVerification(digest) },
+  ]) {
+    assert.equal(codeOf(() => ctx.coordinator.switchToD1({ ...evidence, ...reports })), "freeze_snapshot_report_manifest_mismatch");
+    assert.equal(ctx.coordinator.readLog().length, 1);
+    assert.equal(readWriterAuthority(ctx.db).phase, "FROZEN");
+  }
+  const unknownManifest = syntheticManifest(ctx, "d".repeat(64));
+  assert.equal(codeOf(() => ctx.coordinator.switchToD1(switchArgs(ctx, unknownManifest.manifestDigest))), "freeze_snapshot_unbound");
+  ctx.coordinator.voidSnapshotManifest({ snapshotId: SNAPSHOT, manifestDigest: first.manifestDigest, reason: "synthetic" });
+  assert.equal(codeOf(() => ctx.coordinator.switchToD1(switchArgs(ctx, first.manifestDigest))), "freeze_snapshot_unbound");
+  const switched = ctx.coordinator.switchToD1(evidence);
+  assert.equal(switched.coordinatorReceipt.gateRefs.snapshotManifestDigest, second.manifestDigest);
+  assert.equal(switched.coordinatorReceipt.gateRefs.snapshotBindingDigest, second.bindingDigest);
+});
+
+test("T2 follows the reported manifest even when an earlier binding is still live", (t) => {
+  const ctx = freezeHappy(t);
+  const first = bindSynthetic(ctx);
+  const second = bindSynthetic(ctx, syntheticManifest(ctx, "e".repeat(64)));
+  assert.notEqual(first.bindingDigest, second.bindingDigest);
+  const { coordinatorReceipt } = ctx.coordinator.switchToD1(switchArgs(ctx, second.manifestDigest));
+  assert.equal(coordinatorReceipt.gateRefs.snapshotManifestDigest, second.manifestDigest);
+  assert.equal(coordinatorReceipt.gateRefs.snapshotBindingDigest, second.bindingDigest);
+});
+
+test("a snapshot binding requires the persisted instruction fields", (t) => {
+  const ctx = freezeHappy(t);
+  const instruction = issueInstruction(ctx);
+  const manifest = syntheticManifest(ctx);
+  const acceptance = { quickCheck: true, foreignKeys: true };
+  for (const inconsistent of [{ checkpointId: "s2s-other-checkpoint" }, { freezeReceiptDigest: "f".repeat(64) }]) {
+    assert.equal(codeOf(() => ctx.coordinator.bindSnapshotManifest({
+      instruction: { ...instruction, ...inconsistent }, manifest, acceptance,
+    })), "freeze_snapshot_bind_refused");
+  }
+  assert.equal(ctx.coordinator.readSnapshotGateLog().length, 1);
+  assert.equal(ctx.coordinator.bindSnapshotManifest({ instruction, manifest, acceptance }).manifestDigest, manifest.manifestDigest);
 });

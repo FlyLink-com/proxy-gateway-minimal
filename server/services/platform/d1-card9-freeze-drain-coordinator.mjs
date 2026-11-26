@@ -433,14 +433,23 @@ function normalizeFreezeReceiptDigest(value, code) {
   return value;
 }
 
-function deltaFreezeBinding(value) {
+function optionalManifestBinding(value, code) {
+  if (value === undefined) return {};
+  if (typeof value !== "string" || !/^[0-9a-f]{64}$/.test(value)) {
+    throw coordinatorError(code, "snapshot manifest digest must be a SHA-256 hex digest");
+  }
+  return { manifestDigest: value };
+}
+
+function deltaFreezeBinding(value, manifestDigest) {
   // Historical reports remain readable, but do not satisfy the T2 gate.
-  return value === undefined ? {} : {
-    freezeReceiptDigest: normalizeFreezeReceiptDigest(value, "freeze_delta_invalid"),
+  return {
+    ...(value === undefined ? {} : { freezeReceiptDigest: normalizeFreezeReceiptDigest(value, "freeze_delta_invalid") }),
+    ...optionalManifestBinding(manifestDigest, "freeze_delta_invalid"),
   };
 }
 
-export function buildDeltaCatchupReport({ snapshotId, freezeReceiptDigest, items = [], confirmedEmpty = false, now = () => new Date() } = {}) {
+export function buildDeltaCatchupReport({ snapshotId, freezeReceiptDigest, manifestDigest, items = [], confirmedEmpty = false, now = () => new Date() } = {}) {
   assertSnapshotId(snapshotId);
   if (!Array.isArray(items)) {
     throw coordinatorError("freeze_delta_invalid", "delta catch-up report requires an items array");
@@ -468,7 +477,7 @@ export function buildDeltaCatchupReport({ snapshotId, freezeReceiptDigest, items
     seen.add(key);
     return { table: item.table, pk: item.pk, disposition: item.disposition };
   });
-  const binding = deltaFreezeBinding(freezeReceiptDigest);
+  const binding = deltaFreezeBinding(freezeReceiptDigest, manifestDigest);
   return {
     type: "delta-catchup-report",
     schemaVersion: FREEZE_DRAIN_COORDINATOR_VERSION,
@@ -499,7 +508,7 @@ export function verifyDeltaCatchupReport(report) {
   // duplicate table:pk, empty items only with confirmedEmpty true,
   // non-empty items only with confirmedEmpty false, and
   // allDispositioned true.
-  const expectedKeys = ["type", "schemaVersion", "snapshotId", "items", "freezeReceiptDigest", "confirmedEmpty", "allDispositioned", "timestamp", "reportDigest"];
+  const expectedKeys = ["type", "schemaVersion", "snapshotId", "items", "freezeReceiptDigest", "manifestDigest", "confirmedEmpty", "allDispositioned", "timestamp", "reportDigest"];
   const extraKeys = Object.keys(report).filter((key) => !expectedKeys.includes(key));
   if (extraKeys.length > 0) {
     throw coordinatorError("freeze_delta_invalid", `delta catch-up report carries unknown fields: ${extraKeys.join(", ")}`);
@@ -539,7 +548,7 @@ export function verifyDeltaCatchupReport(report) {
     seen.add(key);
     return { table: item.table, pk: item.pk, disposition: item.disposition };
   });
-  const binding = deltaFreezeBinding(report.freezeReceiptDigest);
+  const binding = deltaFreezeBinding(report.freezeReceiptDigest, report.manifestDigest);
   const expected = reportDigest("delta-catchup-report", report.snapshotId, { items: normalized, confirmedEmpty: report.confirmedEmpty, ...binding });
   if (expected !== report.reportDigest) {
     throw coordinatorError("freeze_delta_digest_mismatch", "delta catch-up report digest does not match its contents");
@@ -600,6 +609,7 @@ function normalizeVerificationContext(context) {
     return {
       kind: "freeze-switch",
       freezeReceiptDigest: normalizeFreezeReceiptDigest(context.freezeReceiptDigest, "freeze_verification_invalid"),
+      ...optionalManifestBinding(context.manifestDigest, "freeze_verification_invalid"),
     };
   }
   if (context.kind !== "recovery-resume") {
@@ -1280,14 +1290,17 @@ export function createFreezeDrainCoordinator(db, { snapshotId, now = () => new D
       if (!issued) {
         throw coordinatorError("freeze_snapshot_bind_refused", "snapshot manifest binding requires an instruction recorded in the snapshot-gate log");
       }
+      if (instruction.checkpointId !== issued.checkpointId || instruction.freezeReceiptDigest !== issued.freezeReceiptDigest) {
+        throw coordinatorError("freeze_snapshot_bind_refused", "snapshot instruction fields do not match the recorded instruction");
+      }
       try {
         verifySnapshotGateManifest(manifest);
       } catch (error) {
         throw coordinatorError("freeze_snapshot_bind_refused", `snapshot manifest failed verification: ${error?.message ?? "invalid manifest"}`);
       }
-      if (manifest.snapshotId !== instruction.snapshotId
-        || manifest.checkpointId !== instruction.checkpointId
-        || manifest.freezeReceiptDigest !== instruction.freezeReceiptDigest) {
+      if (manifest.snapshotId !== issued.snapshotId
+        || manifest.checkpointId !== issued.checkpointId
+        || manifest.freezeReceiptDigest !== issued.freezeReceiptDigest) {
         throw coordinatorError("freeze_snapshot_bind_refused", "snapshot manifest does not match the instruction (snapshotId / checkpointId / freezeReceiptDigest)");
       }
       const voided = readSnapshotGateLog(db).some((entry) => entry.kind === "void"
@@ -1301,7 +1314,7 @@ export function createFreezeDrainCoordinator(db, { snapshotId, now = () => new D
           kind: "void", snapshotId, checkpointId: manifest.checkpointId,
           freezeReceiptDigest: manifest.freezeReceiptDigest,
           gateRefs: { manifestDigest: manifest.manifestDigest, reason: "snapshot acceptance failed (quickCheck / foreignKeys)" },
-          operatorRef: instruction.operator ?? "", windowStart: instruction.windowStart ?? "", windowEnd: instruction.windowEnd ?? "", now,
+          operatorRef: issued.operatorRef, windowStart: issued.windowStart, windowEnd: issued.windowEnd, now,
         });
         throw coordinatorError("freeze_snapshot_acceptance_failed", "snapshot acceptance failed (quickCheck / foreignKeys not both true); the snapshot is voided and cannot be used");
       }
@@ -1314,7 +1327,7 @@ export function createFreezeDrainCoordinator(db, { snapshotId, now = () => new D
           instructionDigest: instruction.instructionDigest,
           acceptance: { quickCheck: true, foreignKeys: true },
         },
-        operatorRef: instruction.operator ?? "", windowStart: instruction.windowStart ?? "", windowEnd: instruction.windowEnd ?? "", now,
+        operatorRef: issued.operatorRef, windowStart: issued.windowStart, windowEnd: issued.windowEnd, now,
       });
       return {
         snapshotId, manifestDigest: manifest.manifestDigest,
@@ -1384,6 +1397,10 @@ export function createFreezeDrainCoordinator(db, { snapshotId, now = () => new D
       // runs after the other T2 gates so their refusal codes are
       // preserved; a missing or voided binding refuses the switch
       // here, still in FROZEN, before any phase move.
+      const manifestDigest = deltaReport.manifestDigest;
+      if (manifestDigest === undefined || verification.context.manifestDigest !== manifestDigest) {
+        throw coordinatorError("freeze_snapshot_report_manifest_mismatch", "T2 requires both reports to name the same accepted snapshot manifest digest");
+      }
       verifySnapshotGateLog(db);
       const gateLog = readSnapshotGateLog(db);
       const voidedManifests = new Set(gateLog
@@ -1392,10 +1409,12 @@ export function createFreezeDrainCoordinator(db, { snapshotId, now = () => new D
       const binding = gateLog.find((entry) => entry.kind === "binding"
         && entry.snapshotId === snapshotId
         && entry.freezeReceiptDigest === boundFreezeDigest
-        && typeof entry.gateRefs?.manifestDigest === "string"
-        && !voidedManifests.has(entry.gateRefs.manifestDigest));
+        && entry.gateRefs?.manifestDigest === manifestDigest
+        && entry.gateRefs.acceptance?.quickCheck === true
+        && entry.gateRefs.acceptance?.foreignKeys === true
+        && !voidedManifests.has(manifestDigest));
       if (!binding) {
-        throw coordinatorError("freeze_snapshot_unbound", "switch to D1 (T2) requires a snapshot manifest bound to this freeze receipt; no live binding exists, staying in FROZEN");
+        throw coordinatorError("freeze_snapshot_unbound", "switch to D1 (T2) requires a live, accepted binding for the reported manifest and this freeze receipt, staying in FROZEN");
       }
       const gateRefs = {
         freezeReceiptDigest: boundFreezeDigest,

@@ -124,18 +124,19 @@ function drainedTracker(clock) {
   return tracker;
 }
 
-function passingVerification(freezeReceiptDigest, snapshotId = SNAPSHOT) {
+function passingVerification(freezeReceiptDigest, snapshotId = SNAPSHOT, manifestDigest) {
   return buildTwoSidedVerificationReport({
     snapshotId,
-    context: freezeReceiptDigest ? { kind: "freeze-switch", freezeReceiptDigest } : null,
+    context: freezeReceiptDigest ? { kind: "freeze-switch", freezeReceiptDigest, manifestDigest } : null,
     checks: Object.fromEntries(VERIFICATION_CHECK_IDS.map((id) => [id, { passed: true, detail: `synthetic ${id}` }])),
   });
 }
 
-function appliedDelta(freezeReceiptDigest, snapshotId = SNAPSHOT) {
+function appliedDelta(freezeReceiptDigest, snapshotId = SNAPSHOT, manifestDigest) {
   return buildDeltaCatchupReport({
     snapshotId,
     freezeReceiptDigest,
+    manifestDigest,
     items: [{ table: "s2s_items", pk: "2", disposition: "applied" }],
   });
 }
@@ -153,10 +154,10 @@ function freezeHappy(t) {
 
 function driveToD1(t) {
   const ctx = freezeHappy(t);
-  bindFrozenSnapshot(ctx);
+  const { manifestDigest } = bindFrozenSnapshot(ctx);
   const switched = ctx.coordinator.switchToD1({
-    deltaReport: appliedDelta(ctx.result.freezeReceipt.receiptDigest),
-    verificationReport: passingVerification(ctx.result.freezeReceipt.receiptDigest),
+    deltaReport: appliedDelta(ctx.result.freezeReceipt.receiptDigest, SNAPSHOT, manifestDigest),
+    verificationReport: passingVerification(ctx.result.freezeReceipt.receiptDigest, SNAPSHOT, manifestDigest),
     c1ApprovalRef: "s2s-c1-approval-001",
     handover: { verifiedBy: "s2s-reviewer-001", verifiedAt: "2026-11-21T00:05:00.000Z", receiptRef: "s2s-handover-001" },
   });
@@ -888,10 +889,10 @@ test("M-10 U-F16 is locked: agent epoch forwarding defaults OFF and run-once doe
   assert.equal(matrix.cutoverBlocked, true);
 });
 
-function switchEvidence(digest) {
+function switchEvidence(digest, manifestDigest) {
   return {
-    deltaReport: appliedDelta(digest),
-    verificationReport: passingVerification(digest),
+    deltaReport: appliedDelta(digest, SNAPSHOT, manifestDigest),
+    verificationReport: passingVerification(digest, SNAPSHOT, manifestDigest),
     c1ApprovalRef: "s2s-c1-approval-current",
     handover: { verifiedBy: "s2s-reviewer", verifiedAt: "2026-11-21T00:05:00.000Z", receiptRef: "s2s-handover" },
   };
@@ -914,8 +915,8 @@ test("T2 independently requires snapshot and T1 binding in both reports", (t) =>
   const ctx = cycleFreeze(first);
   const digest = ctx.result.freezeReceipt.receiptDigest;
   assert.notEqual(digest, oldDigest);
-  bindFrozenSnapshot(ctx);
-  const valid = switchEvidence(digest);
+  const { manifestDigest } = bindFrozenSnapshot(ctx);
+  const valid = switchEvidence(digest, manifestDigest);
   const other = "s2s-other-snapshot";
   const scenarios = [
     [{ deltaReport: appliedDelta(digest, other) }, "freeze_delta_context_mismatch"],
@@ -979,5 +980,17 @@ test("freeze binding participates in both report digests", () => {
   assert.equal(codeOf(() => verifyDeltaCatchupReport({ ...delta, freezeReceiptDigest: other })), "freeze_delta_digest_mismatch");
   assert.equal(codeOf(() => verifyTwoSidedVerificationReport({
     ...report, context: { ...report.context, freezeReceiptDigest: other },
+  })), "freeze_verification_digest_mismatch");
+});
+
+test("the exact snapshot manifest digest is covered by both report digests", () => {
+  const freezeDigest = "a".repeat(64);
+  const manifest = "b".repeat(64);
+  const otherManifest = "c".repeat(64);
+  const delta = appliedDelta(freezeDigest, SNAPSHOT, manifest);
+  const report = passingVerification(freezeDigest, SNAPSHOT, manifest);
+  assert.equal(codeOf(() => verifyDeltaCatchupReport({ ...delta, manifestDigest: otherManifest })), "freeze_delta_digest_mismatch");
+  assert.equal(codeOf(() => verifyTwoSidedVerificationReport({
+    ...report, context: { ...report.context, manifestDigest: otherManifest },
   })), "freeze_verification_digest_mismatch");
 });
