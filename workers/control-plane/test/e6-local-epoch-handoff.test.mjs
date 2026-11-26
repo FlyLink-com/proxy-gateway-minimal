@@ -410,16 +410,47 @@ test("the local test launcher recovers receipts after T2 and keeps old-epoch wor
 
   // Simulate an on-disk unacknowledged receipt still carrying the old epoch.
   await writeFile(statePath, pending, { mode: 0o600 });
+  const oldSignedProjection = await readFile(handoffFile);
+  const verifyOldProjection = localEpochProvider({
+    baseUrl: origin, nodeRef: agent.nodeRef, handoffPath: handoffFile, publicKeyPath: pubFile,
+  });
+  const ledgerCounts = async () => Promise.all([
+    count("agent_manifest_claims"), count("agent_apply_receipts"), count("agent_request_nonces"),
+  ]);
   const recovery = coordinator.enterRecovery({ trigger: "e4-unavailable" });
   await mirrorFixtureAuthority(db, recovery.coordinatorReceipt);
+  assert.equal(String(verifyOldProjection()), String(receipt.toEpoch), "the old projection has not expired");
+  const beforeRecovery = await ledgerCounts();
+  observed.length = 0;
+  const recoveryClaimDir = join(root, "recovery-claim");
+  const recoveryClaim = await run({ GCCGW_G4_STATE_DIR: recoveryClaimDir });
+  assert.equal(recoveryClaim.code, "writer_authority_not_d1");
+  assert.equal(recoveryClaim.stage, "fetch");
+  await assert.rejects(stat(join(recoveryClaimDir, "applied")), { code: "ENOENT" });
   const third = await run();
   assert.equal(third.code, "writer_authority_not_d1");
   assert.equal(third.stage, "receipt");
+  assert.deepEqual(observed, [["claim", String(receipt.toEpoch)], ["receipt", String(receipt.toEpoch)]]);
   assert.deepEqual(await readFile(statePath), pending, "old receipts stay pending");
-  assert.equal(await count("agent_apply_receipts"), 2);
+  assert.deepEqual(await ledgerCounts(), beforeRecovery, "no claims, receipts or consumed nonces");
 
   const { coordinatorReceipt: resumed } = resumeAfterRecovery(coordinator, recovery.coordinatorReceipt);
   await mirrorFixtureAuthority(db, resumed);
+  // The publisher has not removed or renewed the signed file yet.
+  assert.deepEqual(await readFile(handoffFile), oldSignedProjection);
+  assert.equal(String(verifyOldProjection()), String(receipt.toEpoch));
+  const beforeStale = await ledgerCounts();
+  observed.length = 0;
+  const staleClaim = await run({ GCCGW_G4_STATE_DIR: recoveryClaimDir });
+  assert.equal(staleClaim.code, "writer_epoch_stale");
+  assert.equal(staleClaim.stage, "fetch");
+  const staleReceipt = await run();
+  assert.equal(staleReceipt.code, "writer_epoch_stale");
+  assert.equal(staleReceipt.stage, "receipt");
+  assert.deepEqual(observed, [["claim", String(receipt.toEpoch)], ["receipt", String(receipt.toEpoch)]]);
+  assert.deepEqual(await readFile(statePath), pending);
+  await assert.rejects(stat(join(recoveryClaimDir, "applied")), { code: "ENOENT" });
+  assert.deepEqual(await ledgerCounts(), beforeStale, "rejection does not mutate any of the three ledgers");
   await publish({ candidate: resumed });
   observed.length = 0;
   const afterResume = await run();
