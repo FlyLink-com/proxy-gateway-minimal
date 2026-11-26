@@ -525,7 +525,9 @@ export async function startProxyGateway(options = {}) {
     } catch (error) {
       logger?.warn?.(`D1 freeze wiring not installed: ${error?.code || error?.message || error}`);
     }
-    app = options.app ?? createApp(state);
+    app = options.app ?? createApp(state, {
+      d1SubscriptionUsageRead: options.d1SubscriptionUsageRead === true
+    });
     server = app.listen(state.ports.console, state.host);
     closeTracker = createServerCloseTracker(server);
     startupErrorMonitor = createStartupErrorMonitor(server);

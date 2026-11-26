@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { setTimeout as sleep } from "node:timers/promises";
 import { Router } from "express";
 import {
   generateClashProviderSubscription,
@@ -43,7 +44,7 @@ export function subscriptionRoutes(state, options = {}) {
     ? options.resolveClientIpFn
     : (req) => req.ip || req.socket?.remoteAddress || "";
 
-  function subscriptionTrafficUsage(result) {
+  async function subscriptionTrafficUsage(result) {
     const controlStore = state.platform?.controlStore;
     if (
       !controlStore
@@ -59,32 +60,56 @@ export function subscriptionRoutes(state, options = {}) {
     }
 
     const tenantRefs = [tenantId, safeRef("tenant", tenantId)];
+    let at;
     try {
-      for (const tenantRef of tenantRefs) {
-        const binding = controlStore.findUsageBindingByTenantRef(tenantRef);
-        if (!binding?.edgeCredentialRef) {
-          continue;
-        }
-        const rollup = controlStore.getUsageRollupByEdgeCredentialRef(binding.edgeCredentialRef);
-        const currentCycleUsage = currentCycleUsageFor({
-          controlStore,
-          binding,
-          at: usageNowIso(state),
-          fallbackRollup: rollup
-        });
-        return {
-          uploadBytes: nonNegativeInteger(currentCycleUsage.uploadBytes),
-          downloadBytes: nonNegativeInteger(currentCycleUsage.downloadBytes),
-          totalBytes: nonNegativeInteger(binding.trafficLimitBytes)
-        };
+      at = usageNowIso(state);
+    } catch {
+      return null;
+    }
+    if (options.d1UsageRead === true
+      && controlStore.d1SubscriptionUsageReadAvailable === true
+      && typeof controlStore.findUsageBindingByTenantRefAsync === "function"
+      && typeof controlStore.getUsageRollupByEdgeCredentialRefAsync === "function") {
+      // Bound the optional lookup for the whole response, not per query.
+      const controller = new AbortController();
+      const timer = new AbortController();
+      const deadline = sleep(500, null, { signal: timer.signal }).then(() => {
+        controller.abort();
+        return null;
+      }, () => null);
+      try {
+        const usage = await Promise.race([
+          readD1Usage(controlStore, tenantRefs, at, controller.signal),
+          deadline
+        ]);
+        if (usage) return usage;
+      } catch {
+        // Keep delivery on its established BWH path if a staged D1 read fails.
+      } finally {
+        timer.abort();
+        controller.abort();
       }
+    }
+    try {
+      const selected = preferredUsageBinding(controlStore, tenantRefs);
+      if (!selected) return null;
+      const { binding } = selected;
+      const rollup = controlStore.getUsageRollupByEdgeCredentialRef(binding.edgeCredentialRef);
+      const currentCycleUsage = currentCycleUsageFor({
+        controlStore, binding, at, fallbackRollup: rollup
+      });
+      return {
+        uploadBytes: nonNegativeInteger(currentCycleUsage.uploadBytes),
+        downloadBytes: nonNegativeInteger(currentCycleUsage.downloadBytes),
+        totalBytes: nonNegativeInteger(binding.trafficLimitBytes)
+      };
     } catch {
       return null;
     }
     return null;
   }
 
-  function subscriptionLifecycle(result) {
+  async function subscriptionLifecycle(result) {
     const tenant = result?.tenant;
     if (!tenant || !tenant.expiresAt) {
       return null;
@@ -93,7 +118,7 @@ export function subscriptionRoutes(state, options = {}) {
       status: tenant.status,
       expiresAt: tenant.expiresAt,
       validUntil: tenant.expiresAt,
-      usage: subscriptionTrafficUsage(result)
+      usage: await subscriptionTrafficUsage(result)
     };
   }
 
@@ -165,7 +190,7 @@ export function subscriptionRoutes(state, options = {}) {
       protocol: req.protocol,
       host: req.get("host")
     })}/sub/a/${encodeURIComponent(resolved.rawArtifact)}/provider.yaml`;
-    const lifecycle = subscriptionLifecycle(resolved.result);
+    const lifecycle = await subscriptionLifecycle(resolved.result);
     const proxyConfig = applyThirdPartyProxyConfig(state, resolved.result);
     sendSubscriptionYaml(
       res,
@@ -180,7 +205,7 @@ export function subscriptionRoutes(state, options = {}) {
       return;
     }
 
-    const lifecycle = subscriptionLifecycle(resolved.result);
+    const lifecycle = await subscriptionLifecycle(resolved.result);
     const proxyConfig = applyThirdPartyProxyConfig(state, resolved.result);
     sendSubscriptionYaml(
       res,
@@ -195,7 +220,7 @@ export function subscriptionRoutes(state, options = {}) {
       return;
     }
 
-    const lifecycle = subscriptionLifecycle(resolved.result);
+    const lifecycle = await subscriptionLifecycle(resolved.result);
     const proxyConfig = applyThirdPartyProxyConfig(state, resolved.result);
     sendSubscriptionYaml(
       res,
@@ -218,7 +243,7 @@ export function subscriptionRoutes(state, options = {}) {
       return;
     }
 
-    const lifecycle = subscriptionLifecycle(result.result);
+    const lifecycle = await subscriptionLifecycle(result.result);
     const proxyConfig = applyThirdPartyProxyConfig(state, result.result);
     sendSubscriptionYaml(
       res,
@@ -250,5 +275,58 @@ function currentCycleUsageFor({ controlStore, binding, at, fallbackRollup }) {
   return {
     uploadBytes: summary.uploadBytes,
     downloadBytes: summary.downloadBytes
+  };
+}
+
+
+function preferredUsageBinding(controlStore, tenantRefs) {
+  for (const tenantRef of tenantRefs) {
+    const binding = controlStore.findUsageBindingByTenantRef(tenantRef);
+    if (binding?.edgeCredentialRef) return { tenantRef, binding };
+  }
+  return null;
+}
+
+function usageBindingsMatch(local, remote) {
+  return local && [
+    "tenantRef", "linkId", "requestId", "accountId", "entitlementId", "edgeCredentialRef",
+    "plan", "validFrom", "validUntil", "trafficLimitBytes"
+  ].every(key => local[key] === remote[key]);
+}
+
+async function readD1Usage(controlStore, tenantRefs, at, signal) {
+  // The serving path keeps BWH's alias precedence. A staged D1 miss
+  // on that binding must not lead to a different tenant alias.
+  const selected = preferredUsageBinding(controlStore, tenantRefs);
+  if (!selected) return null;
+  signal.throwIfAborted();
+  const { tenantRef } = selected;
+  const binding = await controlStore.findUsageBindingByTenantRefAsync(tenantRef, { signal });
+  signal.throwIfAborted();
+  if (!binding?.edgeCredentialRef || !binding.requestId || !binding.entitlementId
+    || binding.tenantRef !== tenantRef || binding.requestStatus !== "issued"
+    || binding.entitlementStatus !== "active" || !usageBindingsMatch(selected.binding, binding)) {
+    return null;
+  }
+
+  let usage;
+  const useCycleSamples = typeof controlStore.listUsageSamples === "function";
+  if (!useCycleSamples) {
+    usage = await controlStore.getUsageRollupByEdgeCredentialRefAsync(
+      binding.edgeCredentialRef, { signal }
+    );
+    signal.throwIfAborted();
+    if (!usage || usage.requestId !== binding.requestId
+      || usage.edgeCredentialRef !== binding.edgeCredentialRef) return null;
+  }
+  // Recheck BWH after the await so a concurrent change in local preference
+  // or billing fields does not turn a previously matching comparison stale.
+  const current = preferredUsageBinding(controlStore, tenantRefs);
+  if (current?.tenantRef !== tenantRef || !usageBindingsMatch(current.binding, binding)) return null;
+  if (useCycleSamples) usage = currentCycleUsageFor({ controlStore, binding: current.binding, at });
+  return {
+    uploadBytes: nonNegativeInteger(usage.uploadBytes),
+    downloadBytes: nonNegativeInteger(usage.downloadBytes),
+    totalBytes: nonNegativeInteger(current.binding.trafficLimitBytes)
   };
 }

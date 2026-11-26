@@ -1271,13 +1271,29 @@ function mapPortalSession(row) {
 export function createSqliteSubscriptionControlStore({
   dbPath,
   database,
-  initializeSchema = true
+  initializeSchema = true,
+  // D1 read client (see d1-read-client.mjs). Null by default: the local
+  // SQLite path stays in effect and no D1 call is made. Pass a client
+  // only when the D1 read path is explicitly configured; this never
+  // activates D1_ACTIVE and never changes the write path.
+  d1ReadClient = null
 } = {}) {
   if (!database && !dbPath) {
     throw new Error("dbPath or database is required");
   }
   if (typeof initializeSchema !== "boolean") {
     throw new Error("initializeSchema must be boolean");
+  }
+  if (
+    d1ReadClient !== null
+    && (
+      typeof d1ReadClient !== "object"
+      || typeof d1ReadClient.query !== "function"
+      || typeof d1ReadClient.queryOne !== "function"
+      || typeof d1ReadClient.queryAllKeyset !== "function"
+    )
+  ) {
+    throw new Error("d1ReadClient must be a D1 read client or null");
   }
 
   if (initializeSchema) ensureParentDirectory(dbPath);
@@ -6406,16 +6422,20 @@ export function createSqliteSubscriptionControlStore({
   }
 
   function setIssuedLinkStatus(id, { status, updatedAt }) {
-    assertNoUnsafeFields({ status, updatedAt });
-    const result = db.prepare(`
-      update platform_issued_subscription_links
-      set status = ?, updated_at = ?
-      where id = ?
-    `).run(requiredText(status, "status"), isoText(updatedAt, "updatedAt"), requiredText(id, "id"));
-    if (result.changes !== 1) {
-      throw platformError("not_found", "issued link not found");
-    }
-    return getIssuedLink(id);
+    return db.transaction(() => {
+      // U-F13 (W-073, ex-LATENT): phase fence, first statement.
+      assertWritable(db);
+      assertNoUnsafeFields({ status, updatedAt });
+      const result = db.prepare(`
+        update platform_issued_subscription_links
+        set status = ?, updated_at = ?
+        where id = ?
+      `).run(requiredText(status, "status"), isoText(updatedAt, "updatedAt"), requiredText(id, "id"));
+      if (result.changes !== 1) {
+        throw platformError("not_found", "issued link not found");
+      }
+      return getIssuedLink(id);
+    }).immediate();
   }
 
   function listIssuedSubscriptionBindings(filters = {}) {
@@ -8169,7 +8189,11 @@ export function createSqliteSubscriptionControlStore({
 
   function recordUsageSample(input) {
     const record = usageSampleRecord(input);
-    const inserted = db.transaction(() => insertUsageSampleRecord(record))();
+    const inserted = db.transaction(() => {
+      // U-F8/U-F13: phase fence, first statement.
+      assertWritable(db);
+      return insertUsageSampleRecord(record);
+    }).immediate();
     return {
       inserted,
       sample: getUsageSampleByDigest(record.sampleDigest),
@@ -8197,6 +8221,9 @@ export function createSqliteSubscriptionControlStore({
   }
 
   function recordCumulativeUsageSample(input) {
+    // U-F8/U-F13: phase fence, first statement.
+    // Early rejection only; recheck under the write lock before touching the cursor.
+    assertWritable(db);
     const current = {
       sourceRef: requiredText(input.sourceRef, "sourceRef"),
       channelRef: requiredText(input.channelRef, "channelRef"),
@@ -8212,6 +8239,8 @@ export function createSqliteSubscriptionControlStore({
     };
 
     return db.transaction(() => {
+      // U-F8/U-F13: phase fence, first statement.
+      assertWritable(db);
       const cursor = getUsageCounterCursor(current);
       if (!cursor) {
         upsertUsageCounterCursor({
@@ -8295,7 +8324,7 @@ export function createSqliteSubscriptionControlStore({
         sample: getUsageSampleByDigest(sampleDigest),
         rollup: getUsageRollupByEdgeCredentialRef(current.edgeCredentialRef)
       };
-    })();
+    }).immediate();
   }
 
   function upsertQuotaCounter(input) {
@@ -8328,24 +8357,28 @@ export function createSqliteSubscriptionControlStore({
   }
 
   function bindDevice(input) {
-    assertNoUnsafeFields(input);
-    const record = {
-      id: requiredText(input.id, "id"),
-      accountId: requiredText(input.accountId, "accountId"),
-      artifactRef: requiredText(input.artifactRef, "artifactRef"),
-      deviceRef: requiredText(input.deviceRef, "deviceRef"),
-      status: requiredText(input.status || "active", "status"),
-      firstSeenAt: isoText(input.firstSeenAt, "firstSeenAt"),
-      lastSeenAt: isoText(input.lastSeenAt, "lastSeenAt")
-    };
-    sqliteRun(db.prepare(`
-      insert into platform_device_bindings (
-        id, account_id, artifact_ref, device_ref, status, first_seen_at, last_seen_at
-      ) values (
-        @id, @accountId, @artifactRef, @deviceRef, @status, @firstSeenAt, @lastSeenAt
-      )
-    `), record);
-    return getDeviceBinding(record.id);
+    return db.transaction(() => {
+      // U-F13 (W-076, ex-LATENT): phase fence, first statement.
+      assertWritable(db);
+      assertNoUnsafeFields(input);
+      const record = {
+        id: requiredText(input.id, "id"),
+        accountId: requiredText(input.accountId, "accountId"),
+        artifactRef: requiredText(input.artifactRef, "artifactRef"),
+        deviceRef: requiredText(input.deviceRef, "deviceRef"),
+        status: requiredText(input.status || "active", "status"),
+        firstSeenAt: isoText(input.firstSeenAt, "firstSeenAt"),
+        lastSeenAt: isoText(input.lastSeenAt, "lastSeenAt")
+      };
+      sqliteRun(db.prepare(`
+        insert into platform_device_bindings (
+          id, account_id, artifact_ref, device_ref, status, first_seen_at, last_seen_at
+        ) values (
+          @id, @accountId, @artifactRef, @deviceRef, @status, @firstSeenAt, @lastSeenAt
+        )
+      `), record);
+      return getDeviceBinding(record.id);
+    }).immediate();
   }
 
   function getDeviceBinding(id) {
@@ -8837,31 +8870,35 @@ export function createSqliteSubscriptionControlStore({
   // non-registration callers and test fixtures and must never be used to
   // overwrite an established registration identity binding.
   function upsertEdgeRegisteredNode(input) {
-    const record = edgeRegisteredNodeRecord(input);
-    sqliteRun(db.prepare(`
-      insert into platform_edge_registered_nodes (
-        node_ref, provider_ref, region_ref, role_ref, channel_refs_json,
-        image_manifest_ref, release_ref, lifecycle, status, first_boot_packet_ref,
-        registered_at, updated_at, metadata_json
-      ) values (
-        @nodeRef, @providerRef, @regionRef, @roleRef, @channelRefsJson,
-        @imageManifestRef, @releaseRef, @lifecycle, @status, @firstBootPacketRef,
-        @registeredAt, @updatedAt, @metadataJson
-      )
-      on conflict(node_ref) do update set
-        provider_ref = excluded.provider_ref,
-        region_ref = excluded.region_ref,
-        role_ref = excluded.role_ref,
-        channel_refs_json = excluded.channel_refs_json,
-        image_manifest_ref = excluded.image_manifest_ref,
-        release_ref = excluded.release_ref,
-        lifecycle = excluded.lifecycle,
-        status = excluded.status,
-        first_boot_packet_ref = excluded.first_boot_packet_ref,
-        updated_at = excluded.updated_at,
-        metadata_json = excluded.metadata_json
-    `), record);
-    return getEdgeRegisteredNode(record.nodeRef);
+    return db.transaction(() => {
+      // U-F13 (W-095, ex-LATENT): phase fence, first statement.
+      assertWritable(db);
+      const record = edgeRegisteredNodeRecord(input);
+      sqliteRun(db.prepare(`
+        insert into platform_edge_registered_nodes (
+          node_ref, provider_ref, region_ref, role_ref, channel_refs_json,
+          image_manifest_ref, release_ref, lifecycle, status, first_boot_packet_ref,
+          registered_at, updated_at, metadata_json
+        ) values (
+          @nodeRef, @providerRef, @regionRef, @roleRef, @channelRefsJson,
+          @imageManifestRef, @releaseRef, @lifecycle, @status, @firstBootPacketRef,
+          @registeredAt, @updatedAt, @metadataJson
+        )
+        on conflict(node_ref) do update set
+          provider_ref = excluded.provider_ref,
+          region_ref = excluded.region_ref,
+          role_ref = excluded.role_ref,
+          channel_refs_json = excluded.channel_refs_json,
+          image_manifest_ref = excluded.image_manifest_ref,
+          release_ref = excluded.release_ref,
+          lifecycle = excluded.lifecycle,
+          status = excluded.status,
+          first_boot_packet_ref = excluded.first_boot_packet_ref,
+          updated_at = excluded.updated_at,
+          metadata_json = excluded.metadata_json
+      `), record);
+      return getEdgeRegisteredNode(record.nodeRef);
+    }).immediate();
   }
 
   // Insert-only counterpart of upsertEdgeRegisteredNode: the single
@@ -8871,25 +8908,27 @@ export function createSqliteSubscriptionControlStore({
   // record) instead of a check-then-upsert sequence that two concurrent
   // writers could interleave into a silent overwrite.
   function insertEdgeRegisteredNodeIfAbsent(input) {
-    // U-F13: phase fence, first statement.
-    assertWritable(db);
-    const record = edgeRegisteredNodeRecord(input);
-    const info = sqliteRun(db.prepare(`
-      insert into platform_edge_registered_nodes (
-        node_ref, provider_ref, region_ref, role_ref, channel_refs_json,
-        image_manifest_ref, release_ref, lifecycle, status, first_boot_packet_ref,
-        registered_at, updated_at, metadata_json
-      ) values (
-        @nodeRef, @providerRef, @regionRef, @roleRef, @channelRefsJson,
-        @imageManifestRef, @releaseRef, @lifecycle, @status, @firstBootPacketRef,
-        @registeredAt, @updatedAt, @metadataJson
-      )
-      on conflict(node_ref) do nothing
-    `), record);
-    return {
-      inserted: info.changes > 0,
-      record: getEdgeRegisteredNode(record.nodeRef)
-    };
+    return db.transaction(() => {
+      // U-F13: phase fence, first statement.
+      assertWritable(db);
+      const record = edgeRegisteredNodeRecord(input);
+      const info = sqliteRun(db.prepare(`
+        insert into platform_edge_registered_nodes (
+          node_ref, provider_ref, region_ref, role_ref, channel_refs_json,
+          image_manifest_ref, release_ref, lifecycle, status, first_boot_packet_ref,
+          registered_at, updated_at, metadata_json
+        ) values (
+          @nodeRef, @providerRef, @regionRef, @roleRef, @channelRefsJson,
+          @imageManifestRef, @releaseRef, @lifecycle, @status, @firstBootPacketRef,
+          @registeredAt, @updatedAt, @metadataJson
+        )
+        on conflict(node_ref) do nothing
+      `), record);
+      return {
+        inserted: info.changes > 0,
+        record: getEdgeRegisteredNode(record.nodeRef)
+      };
+    }).immediate();
   }
 
   function getEdgeRegisteredNode(nodeRef) {
@@ -9673,32 +9712,36 @@ export function createSqliteSubscriptionControlStore({
   }
 
   function createPortalPasskeyCredential(input) {
-    const record = {
-      id: requiredText(input.id, "id"),
-      accountId: requiredText(input.accountId, "accountId"),
-      credentialId: requiredText(input.credentialId, "credentialId"),
-      credentialIdHash: requiredText(input.credentialIdHash, "credentialIdHash"),
-      publicKeyJwkJson: jsonObject(input.publicKeyJwk, "publicKeyJwk"),
-      signCount: integer(input.signCount ?? 0, "signCount", { min: 0 }),
-      transportsJson: jsonArray(input.transports ?? [], "transports"),
-      status: requiredText(input.status || "active", "status"),
-      createdAt: isoText(input.createdAt, "createdAt"),
-      lastVerifiedAt: optionalIsoText(input.lastVerifiedAt, "lastVerifiedAt"),
-      revokedAt: optionalIsoText(input.revokedAt, "revokedAt"),
-      updatedAt: isoText(input.updatedAt, "updatedAt")
-    };
-    sqliteRun(db.prepare(`
-      insert into platform_portal_passkey_credentials (
-        id, account_id, credential_id, credential_id_hash, public_key_jwk_json,
-        sign_count, transports_json, status, created_at, last_verified_at,
-        revoked_at, updated_at
-      ) values (
-        @id, @accountId, @credentialId, @credentialIdHash, @publicKeyJwkJson,
-        @signCount, @transportsJson, @status, @createdAt, @lastVerifiedAt,
-        @revokedAt, @updatedAt
-      )
-    `), record);
-    return getPortalPasskeyCredential(record.id);
+    return db.transaction(() => {
+      // U-F13 (W-012, ex-LATENT): phase fence, first statement.
+      assertWritable(db);
+      const record = {
+        id: requiredText(input.id, "id"),
+        accountId: requiredText(input.accountId, "accountId"),
+        credentialId: requiredText(input.credentialId, "credentialId"),
+        credentialIdHash: requiredText(input.credentialIdHash, "credentialIdHash"),
+        publicKeyJwkJson: jsonObject(input.publicKeyJwk, "publicKeyJwk"),
+        signCount: integer(input.signCount ?? 0, "signCount", { min: 0 }),
+        transportsJson: jsonArray(input.transports ?? [], "transports"),
+        status: requiredText(input.status || "active", "status"),
+        createdAt: isoText(input.createdAt, "createdAt"),
+        lastVerifiedAt: optionalIsoText(input.lastVerifiedAt, "lastVerifiedAt"),
+        revokedAt: optionalIsoText(input.revokedAt, "revokedAt"),
+        updatedAt: isoText(input.updatedAt, "updatedAt")
+      };
+      sqliteRun(db.prepare(`
+        insert into platform_portal_passkey_credentials (
+          id, account_id, credential_id, credential_id_hash, public_key_jwk_json,
+          sign_count, transports_json, status, created_at, last_verified_at,
+          revoked_at, updated_at
+        ) values (
+          @id, @accountId, @credentialId, @credentialIdHash, @publicKeyJwkJson,
+          @signCount, @transportsJson, @status, @createdAt, @lastVerifiedAt,
+          @revokedAt, @updatedAt
+        )
+      `), record);
+      return getPortalPasskeyCredential(record.id);
+    }).immediate();
   }
 
   function getPortalPasskeyCredential(id) {
@@ -9718,20 +9761,24 @@ export function createSqliteSubscriptionControlStore({
   }
 
   function markPortalPasskeyVerified(id, { verifiedAt, signCount, updatedAt }) {
-    const result = db.prepare(`
-      update platform_portal_passkey_credentials
-      set sign_count = ?, last_verified_at = ?, updated_at = ?
-      where id = ? and status = 'active'
-    `).run(
-      integer(signCount, "signCount", { min: 0 }),
-      isoText(verifiedAt, "verifiedAt"),
-      isoText(updatedAt, "updatedAt"),
-      requiredText(id, "id")
-    );
-    if (result.changes !== 1) {
-      throw platformError("not_found", "active portal passkey credential not found");
-    }
-    return getPortalPasskeyCredential(id);
+    return db.transaction(() => {
+      // U-F13 (W-013, ex-LATENT): phase fence, first statement.
+      assertWritable(db);
+      const result = db.prepare(`
+        update platform_portal_passkey_credentials
+        set sign_count = ?, last_verified_at = ?, updated_at = ?
+        where id = ? and status = 'active'
+      `).run(
+        integer(signCount, "signCount", { min: 0 }),
+        isoText(verifiedAt, "verifiedAt"),
+        isoText(updatedAt, "updatedAt"),
+        requiredText(id, "id")
+      );
+      if (result.changes !== 1) {
+        throw platformError("not_found", "active portal passkey credential not found");
+      }
+      return getPortalPasskeyCredential(id);
+    }).immediate();
   }
 
   function createPortalSecondFactorChallenge(input) {
@@ -10483,7 +10530,165 @@ export function createSqliteSubscriptionControlStore({
     return guardedTransaction(db, options.writerEpoch, callback);
   }
 
+  // D1 control-plane read path (2026-11-26, feat/d1-control-plane-read).
+  // Async variants of the pure-SQL reads. When the store was constructed
+  // with a D1 read client, the SELECT runs against E4 over the D1 HTTP
+  // API with D1-specific read queries. Only those remote reads may see
+  // an incomplete target. When no client is configured, the async
+  // method delegates to the strict local SQLite implementation. This never activates D1_ACTIVE
+  // and never changes the write path.
+  //
+  // Rules for the D1 path:
+  // - reads only: the client refuses any non-SELECT statement;
+  // - list pagination is PK keyset, never OFFSET;
+  // - NEVER call these from inside a better-sqlite3 transaction: a D1
+  //   read cannot see rows the local transaction has just written
+  //   (read-your-write breaks), so in-transaction re-reads
+  //   (recordUsageSample / recordCumulativeUsageSample returns, and the
+  //   confirm/capture re-reads) must keep using the sync local reads.
+  async function listIssuedSubscriptionBindingsAsync(filters = {}) {
+    if (!d1ReadClient) return listIssuedSubscriptionBindings(filters);
+    assertNoUnsafeFields(filters);
+    const clauses = [
+      "l.status = 'active'",
+      "(r.id is null or r.status = 'issued')",
+      "(e.id is null or e.status = 'active')"
+    ];
+    const params = [];
+    const accountId = optionalText(filters.accountId);
+    const nodeId = optionalText(filters.nodeId);
+    const tenantRef = optionalText(filters.tenantRef);
+    if (accountId) {
+      clauses.push("r.account_id = ?");
+      params.push(accountId);
+    }
+    if (nodeId) {
+      clauses.push("r.node_id = ?");
+      params.push(nodeId);
+    }
+    if (tenantRef) {
+      clauses.push("l.tenant_ref = ?");
+      params.push(tenantRef);
+    }
+    const selectList = `
+        l.id as link_id,
+        l.request_id,
+        l.tenant_ref,
+        l.artifact_ref,
+        l.status as link_status,
+        l.created_at as link_created_at,
+        l.updated_at as link_updated_at,
+        r.account_id,
+        r.entitlement_id,
+        r.status as request_status,
+        r.node_id,
+        e.plan,
+        e.status as entitlement_status,
+        e.valid_from,
+        e.valid_until,
+        e.traffic_limit_bytes`;
+    const rows = await d1ReadClient.queryAllKeyset({
+      pageQuery: (cursor) => {
+        const keyset = cursor
+          ? " and (l.created_at > ? or (l.created_at = ? and l.id > ?))"
+          : "";
+        const keysetParams = cursor
+          ? [cursor.createdAt, cursor.createdAt, cursor.id]
+          : [];
+        return {
+          sql: `
+            select ${selectList}
+            from platform_issued_subscription_links l
+            left join platform_issuance_requests r on r.id = l.request_id
+            left join platform_entitlements e on e.id = r.entitlement_id
+            where ${clauses.join(" and ")}${keyset}
+            order by l.created_at asc, l.id asc
+            limit ?`,
+          params: [...params, ...keysetParams],
+        };
+      },
+      keyOf: (row) => ({ createdAt: row.link_created_at, id: row.link_id }),
+    });
+    return rows.map(mapIssuedSubscriptionBinding);
+  }
+
+  async function findUsageBindingByTenantRefAsync(tenantRef, options) {
+    if (!d1ReadClient) return findUsageBindingByTenantRef(tenantRef);
+    const row = await d1ReadClient.queryOne(`
+      select
+        l.id as link_id,
+        l.request_id,
+        l.tenant_ref,
+        l.artifact_ref,
+        l.status as link_status,
+        l.created_at as link_created_at,
+        l.updated_at as link_updated_at,
+        r.account_id,
+        r.entitlement_id,
+        r.status as request_status,
+        r.node_id,
+        e.plan,
+        e.status as entitlement_status,
+        e.valid_from,
+        e.valid_until,
+        e.traffic_limit_bytes,
+        p.edge_credential_ref,
+        p.portal_user_ref
+      from platform_issued_subscription_links l
+      left join platform_issuance_requests r on r.id = l.request_id
+      left join platform_entitlements e on e.id = r.entitlement_id
+      left join platform_portal_access_requests p on p.id = r.id
+      where l.status = 'active'
+        and (r.id is null or r.status = 'issued')
+        and (e.id is null or e.status = 'active')
+        and l.tenant_ref = ?
+      order by l.created_at desc, l.id desc
+      limit 1
+    `, [requiredText(tenantRef, "tenantRef")], options);
+    return mapUsageBinding(row);
+  }
+
+  async function getUsageRollupByEdgeCredentialRefAsync(edgeCredentialRef, options) {
+    if (!d1ReadClient) {
+      return getUsageRollupByEdgeCredentialRef(edgeCredentialRef);
+    }
+    const row = await d1ReadClient.queryOne(`
+      select * from platform_usage_rollups
+      where edge_credential_ref = ?
+    `, [requiredText(edgeCredentialRef, "edgeCredentialRef")], options);
+    return mapUsageRollup(row);
+  }
+
+  async function listPortalEdgeCredentialsAsync(requestId) {
+    if (!d1ReadClient) return listPortalEdgeCredentials(requestId);
+    const rows = await d1ReadClient.query(`
+      select edge_channel_ref, edge_credential_ref, edge_material_digest
+      from platform_portal_edge_credentials
+      where request_id = ?
+      order by ordinal asc, edge_channel_ref asc
+    `, [requiredText(requestId, "requestId")]);
+    return rows.map(mapPortalEdgeCredential);
+  }
+
+  // Partial D1 port (documented): the desired-state and
+  // edge-credential binding reads also consult the data-pack desired
+  // state rows and other local-only helpers (readDataPackDesiredStateRows,
+  // getIssuanceRequest, lifetimeDataPackQuotaBytesFor), which have no
+  // D1 equivalent yet. Until those are ported, the async variants
+  // delegate to the local sync implementations so callers can already
+  // await a stable async shape. The D1 SQL port for these two is
+  // remaining work, not a silent local fallback at cutover: a store
+  // constructed with a D1 client still serves these two locally.
+  async function getLatestEdgeDesiredStateForChannelAsync(channelRef, filters = {}) {
+    return getLatestEdgeDesiredStateForChannel(channelRef, filters);
+  }
+
+  async function findIssuedSubscriptionBindingByEdgeCredentialRefAsync(edgeCredentialRef) {
+    return findIssuedSubscriptionBindingByEdgeCredentialRef(edgeCredentialRef);
+  }
+
   return {
+    d1SubscriptionUsageReadAvailable: Boolean(d1ReadClient),
     recordPortalReferralRegistration(input) {
       // U-F13 (W-019): phase fence, first statement. The write itself
       // happens in portal-referral-contract.recordReferralRegistration;
@@ -10561,14 +10766,18 @@ export function createSqliteSubscriptionControlStore({
     getIssuedLink,
     setIssuedLinkStatus,
     listIssuedSubscriptionBindings,
+    listIssuedSubscriptionBindingsAsync,
     findIssuedSubscriptionBindingByTenantRef,
     findIssuedSubscriptionBindingByEdgeCredentialRef,
+    findIssuedSubscriptionBindingByEdgeCredentialRefAsync,
     findUsageBindingByTenantRef,
+    findUsageBindingByTenantRefAsync,
     getThirdPartySubscriptionEligibilityByTenantRefs,
     recordUsageSample,
     recordCumulativeUsageSample,
     getUsageSampleByDigest,
     getUsageRollupByEdgeCredentialRef,
+    getUsageRollupByEdgeCredentialRefAsync,
     getUsageCounterCursor,
     listUsageRollupsByRequestId,
     listUsageSamples,
@@ -10625,6 +10834,8 @@ export function createSqliteSubscriptionControlStore({
     getEdgeRegisteredNode,
     listEdgeRegisteredNodes,
     getLatestEdgeDesiredStateForChannel,
+    getLatestEdgeDesiredStateForChannelAsync,
+    listPortalEdgeCredentialsAsync,
     recordEdgeApplyReceipt,
     getEdgeApplyReceipt,
     listEdgeApplyReceipts,
@@ -10672,6 +10883,10 @@ export function createSqliteSubscriptionControlStore({
     // receipts need db.prepare / db.transaction on this same
     // connection; exposing the handle reuses the existing connection
     // instead of opening a second one.
+    // D1 read client this store was constructed with (null when the
+    // local SQLite path is in effect). Read-only: it never activates
+    // D1_ACTIVE and never changes the write path.
+    d1ReadClient: d1ReadClient ?? null,
     database: db,
     close
   };

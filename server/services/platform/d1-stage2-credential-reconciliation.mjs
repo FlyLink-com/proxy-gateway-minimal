@@ -114,6 +114,20 @@ export function credentialVersionDigest({ pk, version, deleted, origin }) {
 // Idempotent (CREATE TABLE / TRIGGER IF NOT EXISTS). The triggers use
 // SQLite's own UTC clock for updated_at; updated_at is excluded from
 // every digest, so manifests stay deterministic.
+//
+// D1 fence note (2026-11-26, control-plane read work): no
+// assertWritable fence is added here, deliberately. This function
+// installs DDL, it is not a serving business write, and its only
+// caller is the offline source-manifest/export path
+// (d1-stage2-source-manifest.mjs), which runs against source/export
+// databases that carry no writer-authority row — fencing it would
+// install authority state onto those databases as a side effect.
+// There is also no serving method that writes the version table
+// directly (rows are trigger-derived); the fence surface for the
+// version table is therefore the credential write paths themselves
+// (upsertPortalAccessRequest / rotateCoinCommerceDataPackEdgeCredential,
+// both fenced), not this installer. If a serving writer for the
+// version table is ever added, it must carry its own fence.
 export function ensureCredentialVersionTracking(db) {
   if (!db || typeof db.exec !== "function" || typeof db.prepare !== "function") {
     throw credentialError("credential_tracking_unavailable", "credential version tracking requires a database handle");
