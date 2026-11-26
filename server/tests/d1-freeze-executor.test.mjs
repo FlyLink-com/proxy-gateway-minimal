@@ -33,6 +33,12 @@ import {
   D1_FREEZE_COVERAGE_WAIVER_AUTHORIZATION_IDS,
   D1_FREEZE_COVERAGE_OUT_OF_SCOPE
 } from "../services/platform/d1-freeze-executor.mjs";
+import {
+  ensureCredentialVersionTracking,
+  backfillCredentialVersions,
+  CREDENTIAL_VERSION_TABLE,
+  CREDENTIAL_VERSION_TRIGGERS,
+} from "../services/platform/d1-stage2-credential-reconciliation.mjs";
 
 const SNAPSHOT = "s2s-d1-freeze-20261124";
 const CHECKPOINT = "chk-d1-freeze-20261124";
@@ -47,8 +53,33 @@ function makeDb(t) {
   const db = new Database(":memory:");
   const controlStore = createSqliteSubscriptionControlStore({ database: db });
   ensureWriterAuthority(db);
+  // N1 (PR #927 r4697535888): the freeze gate requires credential
+  // version tracking installed, so the harness installs it — the
+  // default fixture is the producible pre-freeze state (tracking
+  // installed, zero credential rows). Tests for the refusal paths
+  // uninstall it explicitly with uninstallCredentialVersionTracking.
+  ensureCredentialVersionTracking(db);
   t.after(() => { controlStore.close(); });
   return { db, controlStore };
+}
+
+// N1 helpers. seedCredentialRow inserts a synthetic credential row
+// (parent access-request row first: the control store enforces the
+// FK). The digest is a fixed synthetic placeholder — the version
+// logic never depends on credential values.
+function seedCredentialRow(db, { requestId, channelRef, credentialRef, ordinal = 0 }) {
+  db.prepare(`insert into platform_portal_access_requests (id, portal_user_ref, plan, client_target, duration_days, quantity, status, next_action, prior_trial_state, submitted_at, updated_at) values (?, ?, 'monthly', 'clash', 30, 1, 'issued', 'none', 'none', '2026-11-24T12:00:00.000Z', '2026-11-24T12:00:00.000Z')`)
+    .run(requestId, `s2s-user-${requestId}`);
+  db.prepare(`insert into platform_portal_edge_credentials (request_id, edge_channel_ref, edge_credential_ref, edge_material_digest, ordinal) values (?, ?, ?, ?, ?)`)
+    .run(requestId, channelRef, credentialRef, "sha256:s2s-synthetic-material", ordinal);
+}
+
+// Model the pre-N1 database shape: no version table, no triggers.
+function uninstallCredentialVersionTracking(db) {
+  for (const name of CREDENTIAL_VERSION_TRIGGERS) {
+    db.prepare(`drop trigger if exists "${name}"`).run();
+  }
+  db.prepare(`drop table if exists "${CREDENTIAL_VERSION_TABLE}"`).run();
 }
 
 function makeCommerceCoordinator() {
@@ -334,6 +365,113 @@ test("AB: a write landing during the A2 drain fails the freeze with freeze_write
   );
   assert.equal(injected, true, "the write must have landed during the HWM interval");
   assert.equal(readWriterAuthority(db).phase, "BWH_ACTIVE");
+});
+
+// N1 (PR #927 r4697535888): A2 must not accept HWM stability unless
+// credential version tracking is installed and verified. The
+// credentials table has no updated_at column, so an in-place rotation
+// (same PK, same row count) is invisible to the HWM — only the
+// credential version manifest can see it.
+test("N1: freeze refuses with freeze_credential_tracking_missing when credential version tracking is not installed", async (t) => {
+  const { db, executor } = makeExecutor(t);
+  uninstallCredentialVersionTracking(db);
+  await assert.rejects(
+    () => executor.executeFreeze({}),
+    (error) => {
+      assert.equal(error.code, "freeze_credential_tracking_missing");
+      assert.equal(typeof error.executionEvidence.steps.a2CredentialLock, "undefined");
+      return true;
+    }
+  );
+  assert.equal(readWriterAuthority(db).phase, "BWH_ACTIVE");
+});
+
+test("N1: an in-place credential rotation during the A2 drain fails the freeze with freeze_credential_version_moved", async (t) => {
+  // Same injection point as the AB write test: the 2nd sleep is the
+  // HWM interval. The rotation updates only `ordinal` on the same PK:
+  // same row count, and the credentials table has no updated_at, so
+  // the per-table HWM signal on that table cannot see it — only the
+  // credential version manifest (version 1 -> 2) can.
+  let sleepCalls = 0;
+  let injected = false;
+  const { db, clock, executor } = makeExecutor(t, {
+    executor: {
+      sleep: async (ms) => {
+        sleepCalls += 1;
+        if (sleepCalls === 2) {
+          db.prepare(`update platform_portal_edge_credentials set ordinal = 1 where request_id = 's2s-request-001' and edge_channel_ref = 's2s-channel-a'`).run();
+          injected = true;
+        }
+        clock.advance(ms);
+      },
+    },
+  });
+  seedCredentialRow(db, { requestId: "s2s-request-001", channelRef: "s2s-channel-a", credentialRef: "s2s-cred-001" });
+  await assert.rejects(
+    () => executor.executeFreeze({}),
+    (error) => {
+      assert.equal(error.code, "freeze_credential_version_moved");
+      const lockHash = error.executionEvidence.steps.a2CredentialLock.manifestHash;
+      assert.match(lockHash, /^[0-9a-f]{64}$/);
+      assert.equal(error.executionEvidence.steps.a2Hwm.credentialManifestHashes.lock, lockHash);
+      assert.equal(error.executionEvidence.steps.a2Hwm.credentialManifestHashes.first, lockHash);
+      assert.notEqual(error.executionEvidence.steps.a2Hwm.credentialManifestHashes.second, lockHash);
+      return true;
+    }
+  );
+  assert.equal(injected, true, "the rotation must have landed during the HWM interval");
+  assert.equal(readWriterAuthority(db).phase, "BWH_ACTIVE");
+});
+
+test("N1: freeze passes with credential version tracking installed and seeded credential rows", async (t) => {
+  const { db, executor } = makeExecutor(t);
+  seedCredentialRow(db, { requestId: "s2s-request-001", channelRef: "s2s-channel-a", credentialRef: "s2s-cred-001" });
+  seedCredentialRow(db, { requestId: "s2s-request-002", channelRef: "s2s-channel-a", credentialRef: "s2s-cred-002" });
+  const beforeEpoch = readWriterAuthority(db).epoch;
+  const result = await executor.executeFreeze({});
+  assert.equal(result.authority.phase, "FROZEN");
+  assert.equal(result.authority.epoch, beforeEpoch + 1);
+  const lock = result.executionEvidence.steps.a2CredentialLock;
+  assert.equal(lock.liveRowCount, 2);
+  assert.equal(lock.tombstoneCount, 0);
+  assert.equal(lock.backfilledCount, 0);
+  assert.match(lock.manifestHash, /^[0-9a-f]{64}$/);
+  assert.equal(result.executionEvidence.steps.a2Hwm.credentialManifestHashes.first, lock.manifestHash);
+  assert.equal(result.executionEvidence.steps.a2Hwm.credentialManifestHashes.second, lock.manifestHash);
+  assert.equal(result.executionEvidence.steps.a3Receipts.credentialManifestHash, lock.manifestHash);
+  assert.equal(readWriterAuthority(db).phase, "FROZEN");
+});
+
+test("N1: credential rows that predate tracking are refused until backfilled, then the freeze passes with the weak baseline flagged", async (t) => {
+  const { db, controlStore, clock, executor } = makeExecutor(t);
+  // Rows predate tracking: uninstall, seed, reinstall without
+  // backfill — the live row has no version entry, so the manifest
+  // cannot be built and the freeze must refuse.
+  uninstallCredentialVersionTracking(db);
+  seedCredentialRow(db, { requestId: "s2s-request-001", channelRef: "s2s-channel-a", credentialRef: "s2s-cred-001" });
+  ensureCredentialVersionTracking(db);
+  await assert.rejects(
+    () => executor.executeFreeze({}),
+    (error) => {
+      assert.equal(error.code, "freeze_credential_tracking_missing");
+      return true;
+    }
+  );
+  assert.equal(readWriterAuthority(db).phase, "BWH_ACTIVE");
+  // Operator path: backfill the pre-existing row, then retry as a
+  // fresh process would (fresh schedulers/coordinator on the same
+  // durable database — a failed freeze needs a restart before retry;
+  // the refused round wrote no T1 entry, so the snapshot id is free).
+  const backfilled = backfillCredentialVersions(db, { now: () => new Date("2026-11-24T12:00:00.000Z") });
+  assert.equal(backfilled.backfilled, 1);
+  const retry = makeExecutor(t, {}, { db, controlStore, clock });
+  const beforeEpoch = readWriterAuthority(db).epoch;
+  const result = await retry.executor.executeFreeze({});
+  assert.equal(result.authority.phase, "FROZEN");
+  assert.equal(result.authority.epoch, beforeEpoch + 1);
+  assert.equal(result.executionEvidence.steps.a2CredentialLock.liveRowCount, 1);
+  assert.equal(result.executionEvidence.steps.a2CredentialLock.backfilledCount, 1);
+  assert.equal(readWriterAuthority(db).phase, "FROZEN");
 });
 
 // The freeze rule, parameterized: for any BWH_ACTIVE epoch the freeze

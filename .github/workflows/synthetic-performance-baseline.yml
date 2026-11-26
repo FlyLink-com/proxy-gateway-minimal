@@ -198,5 +198,5 @@ jobs:
             ${{ runner.temp }}/performance-reports/baseline-run-02.json
             ${{ runner.temp }}/performance-reports/baseline-run-03.json
             ${{ runner.temp }}/performance-reports/baseline-receipt.json
-          if-no-files-found: warn
+          if-no-files-found: error
           retention-days: 14

@@ -43,6 +43,14 @@ import { createHash } from "node:crypto";
 
 export const CREDENTIALS_TABLE = "platform_portal_edge_credentials";
 export const CREDENTIAL_VERSION_TABLE = "platform_credential_versions";
+// The three maintenance triggers, as one list: the single source of
+// truth for both installation (ensureCredentialVersionTracking) and
+// the installed check (assertCredentialVersionTrackingInstalled).
+export const CREDENTIAL_VERSION_TRIGGERS = Object.freeze([
+  `${CREDENTIAL_VERSION_TABLE}_on_insert`,
+  `${CREDENTIAL_VERSION_TABLE}_on_update`,
+  `${CREDENTIAL_VERSION_TABLE}_on_delete`,
+]);
 export const CREDENTIAL_VERSION_MANIFEST_VERSION = 1;
 
 export class CredentialReconciliationError extends Error {
@@ -125,10 +133,11 @@ export function ensureCredentialVersionTracking(db) {
       updated_at text not null
     );
   `);
+  const [onInsertTrigger, onUpdateTrigger, onDeleteTrigger] = CREDENTIAL_VERSION_TRIGGERS;
   // INSERT: a fresh row starts at version 1. A re-insert of a
   // previously deleted PK resumes the version instead of resetting it.
   db.exec(`
-    create trigger if not exists ${CREDENTIAL_VERSION_TABLE}_on_insert
+    create trigger if not exists ${onInsertTrigger}
     after insert on ${CREDENTIALS_TABLE}
     begin
       insert into ${CREDENTIAL_VERSION_TABLE}
@@ -146,7 +155,7 @@ export function ensureCredentialVersionTracking(db) {
   // version entry; the insert branch records it as backfilled so the
   // weak baseline is visible instead of silently versioned as 1.
   db.exec(`
-    create trigger if not exists ${CREDENTIAL_VERSION_TABLE}_on_update
+    create trigger if not exists ${onUpdateTrigger}
     after update on ${CREDENTIALS_TABLE}
     begin
       insert into ${CREDENTIAL_VERSION_TABLE}
@@ -163,7 +172,7 @@ export function ensureCredentialVersionTracking(db) {
   // DELETE: keep a tombstone with a bumped version so the deletion is
   // detectable from the manifest even though the live row is gone.
   db.exec(`
-    create trigger if not exists ${CREDENTIAL_VERSION_TABLE}_on_delete
+    create trigger if not exists ${onDeleteTrigger}
     after delete on ${CREDENTIALS_TABLE}
     begin
       insert into ${CREDENTIAL_VERSION_TABLE}
@@ -178,6 +187,37 @@ export function ensureCredentialVersionTracking(db) {
     end;
   `);
   return { tracked: true, table: CREDENTIAL_VERSION_TABLE };
+}
+
+// Prove credential version tracking is installed: the version table
+// AND all three maintenance triggers must be present. The version
+// table alone is not proof — a dropped trigger leaves a
+// consistent-looking manifest that never bumps, so a rotation during
+// a freeze drain would stay invisible. Fail closed on a missing
+// table or any missing trigger. This is a verify-only check: it never
+// installs anything (installing the triggers is a schema change the
+// operator performs before the round, with backfillCredentialVersions
+// for rows that predate tracking).
+export function assertCredentialVersionTrackingInstalled(db) {
+  if (!db || typeof db.prepare !== "function") {
+    throw credentialError("credential_tracking_unavailable", "credential version tracking requires a database handle");
+  }
+  const versionTable = db
+    .prepare(`select name from sqlite_master where type = 'table' and name = ?`)
+    .get(CREDENTIAL_VERSION_TABLE);
+  if (!versionTable) {
+    throw credentialError("credential_tracking_unavailable", "credential version table is missing; tracking is not installed");
+  }
+  const present = new Set(
+    db.prepare(`select name from sqlite_master where type = 'trigger' and name in (?, ?, ?)`)
+      .all(...CREDENTIAL_VERSION_TRIGGERS)
+      .map((row) => row.name),
+  );
+  const missing = CREDENTIAL_VERSION_TRIGGERS.filter((name) => !present.has(name));
+  if (missing.length !== 0) {
+    throw credentialError("credential_tracking_unavailable", `credential version triggers are missing: ${missing.join(", ")}; tracking is not installed`);
+  }
+  return { tracked: true, table: CREDENTIAL_VERSION_TABLE, triggers: [...CREDENTIAL_VERSION_TRIGGERS] };
 }
 
 // Backfill version entries for credential rows that predate tracking.

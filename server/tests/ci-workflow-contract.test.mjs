@@ -28,12 +28,6 @@ const EXPECTED_WORKFLOW_ACTIONS = {
     "actions/download-artifact",
     "actions/download-artifact"
   ],
-  "control-plane-artifact-ingress.yml": [
-    "actions/checkout",
-    "actions/setup-node",
-    "actions/download-artifact",
-    "actions/download-artifact"
-  ],
   "control-plane-dependency-artifact.yml": [
     "actions/checkout",
     "actions/setup-node",
@@ -120,17 +114,17 @@ const REVIEWED_ACTION_PINS = {
   "actions/checkout": {
     sha: DEFAULT_CHECKOUT_PIN,
     annotation: "v6",
-    count: 29
+    count: 28
   },
   "actions/download-artifact": {
     sha: "3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c",
     annotation: "v8.0.1",
-    count: 7
+    count: 5
   },
   "actions/setup-node": {
     sha: "249970729cb0ef3589644e2896645e5dc5ba9c38",
     annotation: "v6",
-    count: 24
+    count: 23
   },
   "actions/setup-python": {
     sha: "6d4fd22b20465ccc0f7354476588e8df7c9ca0e0",
@@ -153,12 +147,12 @@ const REVIEWED_ACTION_PINS = {
     count: 1
   }
 };
-const EXPECTED_ACTION_REFERENCE_COUNT = 72;
+const EXPECTED_ACTION_REFERENCE_COUNT = 68;
 const EXPECTED_ACTION_REVISION_COUNTS = {
-  [`actions/checkout@${DEFAULT_CHECKOUT_PIN}`]: 27,
+  [`actions/checkout@${DEFAULT_CHECKOUT_PIN}`]: 26,
   [`actions/checkout@${TRUSTED_GOVERNANCE_CHECKOUT_PIN}`]: 2,
-  [`actions/download-artifact@${REVIEWED_ACTION_PINS["actions/download-artifact"].sha}`]: 7,
-  [`actions/setup-node@${REVIEWED_ACTION_PINS["actions/setup-node"].sha}`]: 24,
+  [`actions/download-artifact@${REVIEWED_ACTION_PINS["actions/download-artifact"].sha}`]: 5,
+  [`actions/setup-node@${REVIEWED_ACTION_PINS["actions/setup-node"].sha}`]: 23,
   [`actions/setup-python@${REVIEWED_ACTION_PINS["actions/setup-python"].sha}`]: 1,
   [`actions/upload-artifact@${REVIEWED_ACTION_PINS["actions/upload-artifact"].sha}`]: 9,
   [`github/codeql-action/init@${REVIEWED_ACTION_PINS["github/codeql-action/init"].sha}`]: 1,
@@ -631,29 +625,17 @@ test("CI retains stable Validate, exact diff checks, and docs-only routing acros
   assert.match(workflow, /permissions:\r?\n  contents: read/);
 });
 
-test("PR domain validation is least-privilege and blocks the CI prerequisite aggregate", () => {
+test("CI no longer calls the one-time PR domain validation branch gate", () => {
   const workflow = readRepositoryFile(".github/workflows/ci.yml");
 
   assert.match(workflow, /^permissions:\r?\n  contents: read$/m);
   assert.doesNotMatch(workflow, /^  pull-requests: read$/m);
-
-  const domain = jobBlock(workflow, "pr-domain-validation", "checks-passed");
-  assert.match(domain, /^    permissions:\r?\n      contents: read\r?\n      pull-requests: read$/m);
-  assert.match(domain, /^    uses: \.\/\.github\/workflows\/pr-domain-validation\.yml$/m);
-  assert.match(domain, /head\.ref == 'ci\/pr-domain-validation-20261112'/);
+  assert.doesNotMatch(workflow, /^  pr-domain-validation:$/m);
+  assert.doesNotMatch(workflow, /pr-domain-validation/);
+  assert.doesNotMatch(workflow, /DOMAIN_RESULT|DOMAIN_REQUIRED/);
 
   const aggregate = jobBlock(workflow, "checks-passed", "build-assets");
-  assert.match(aggregate, /needs: \[.*pr-domain-validation.*\]/);
-  assert.match(aggregate, /DOMAIN_RESULT: \$\{\{ needs\.pr-domain-validation\.result \}\}/);
-  assert.match(
-    aggregate,
-    /DOMAIN_REQUIRED: \$\{\{ github\.event_name == 'pull_request' && github\.event\.pull_request\.base\.ref == 'master' && github\.event\.pull_request\.head\.ref == 'ci\/pr-domain-validation-20261112' \}\}/
-  );
-  assert.match(
-    aggregate,
-    /if \[\[ "\$DOMAIN_REQUIRED" == "true" \]\]; then[\s\S]*test "\$DOMAIN_RESULT" = success[\s\S]*else[\s\S]*test "\$DOMAIN_RESULT" = skipped/s
-  );
-  assert.match(aggregate, /test "\$DOMAIN_RESULT" = skipped/);
+  assert.match(aggregate, /needs: \[governance-evidence, governance-snapshot, source-checks, foundation-inventory\]/);
 });
 
 

@@ -56,6 +56,12 @@ import {
 } from "./d1-stage2-freeze-drain.mjs";
 import { ensureDeltaJournal, readJournalEntries } from "./d1-card8-delta-journal.mjs";
 import { readHighWaterMark } from "./writer-freeze-receipt.mjs";
+import {
+  assertCredentialVersionTrackingInstalled,
+  buildCredentialVersionManifest,
+  detectCredentialRotations,
+  isCredentialReconciliationError,
+} from "./d1-stage2-credential-reconciliation.mjs";
 
 export const D1_FREEZE_EXECUTION_SCHEMA_VERSION = "d1-freeze-execution/v1";
 
@@ -145,6 +151,60 @@ function freezeExecutorError(code, message, executionEvidence) {
 // comparable field by field.
 function sameHighWaterMark(a, b) {
   return JSON.stringify(a) === JSON.stringify(b);
+}
+
+// N1 (PR #927 r4697535888): credential version tracking gate.
+//
+// platform_portal_edge_credentials has no updated_at column, so an
+// in-place rotation (same PK, same row count) is invisible to the
+// per-table (rowCount, max(updated_at)) high-water mark. Before A2
+// accepts HWM stability it must prove tracking is installed and
+// verified, and the credential version manifest — the complete
+// fingerprint over (pk, version, deleted, origin) — must be
+// identical at the lock and at every drain observation.
+//
+// readCredentialManifest is verify-only: it never installs tracking.
+// Installing the triggers is a schema change the operator performs
+// before the round (with backfillCredentialVersions for rows that
+// predate tracking). Any failure — missing version table, missing
+// trigger, untracked live row, orphaned version — refuses the freeze
+// with freeze_credential_tracking_missing instead of freezing on a
+// blind HWM. A backfilled baseline is accepted (its weak-baseline
+// flag is recorded in the evidence as backfilledCount): rotations
+// before tracking stay invisible, rotations during the drain are not.
+function readCredentialManifest(db, snapshotId, evidence) {
+  try {
+    assertCredentialVersionTrackingInstalled(db);
+    return buildCredentialVersionManifest(db, { snapshotId });
+  } catch (error) {
+    if (isCredentialReconciliationError(error)) {
+      throw freezeExecutorError(
+        "freeze_credential_tracking_missing",
+        `credential version tracking is not installed or not verifiable (${error.code}: ${error.message}) — install credential version tracking and backfill pre-existing credential rows before freezing; do not freeze on a high-water mark that cannot see in-place credential rotations`,
+        evidence
+      );
+    }
+    throw error;
+  }
+}
+
+// The manifest comparison for one drain observation. Only counts are
+// reported (rotated/added/deleted); no credential PK or value ever
+// enters the message.
+function assertSameCredentialManifest(lockManifest, observedManifest, evidence) {
+  if (observedManifest.manifestHash === lockManifest.manifestHash) return;
+  let diffSummary = "";
+  try {
+    const diff = detectCredentialRotations(lockManifest, observedManifest);
+    diffSummary = `, rotated ${diff.rotated.length}, added ${diff.added.length}, deleted ${diff.deleted.length}`;
+  } catch {
+    diffSummary = "";
+  }
+  throw freezeExecutorError(
+    "freeze_credential_version_moved",
+    `credential versions moved during the A2 drain (manifest hash ${lockManifest.manifestHash.slice(0, 12)}… -> ${observedManifest.manifestHash.slice(0, 12)}…${diffSummary}) — an in-place credential rotation is invisible to the row-count/updated_at high-water mark, so the freeze is refused; stop and report, do not freeze on a moved credential manifest`,
+    evidence
+  );
 }
 
 // Boot-date snapshot id (R10 §5 A0 step 1): the deployment restart
@@ -686,6 +746,10 @@ export function createD1FreezeExecutor({
     evidence.steps.a1SchedulerJobs = schedulerJobs;
 
     // ---- A2 (T-3): write lock first, then drain proof ----
+    // N1 (PR #927 r4697535888): the credential lock manifest is built
+    // just before the write-lock receipt below and re-checked at each
+    // drain observation — HWM stability alone cannot see an in-place
+    // credential rotation, so it is never accepted without it.
     // AB (PR #920 r4680744197): the freeze write lock is created at
     // the START of A2, before the drain, so the drain happens under
     // the lock instead of after it. The receipt's BEGIN IMMEDIATE is
@@ -701,6 +765,22 @@ export function createD1FreezeExecutor({
     // ensureDeltaJournal first, so the table set the receipt scans is
     // stable before the lock is taken.
     ensureDeltaJournal(db);
+    // N1 (PR #927 r4697535888): the credential lock manifest is the
+    // baseline every drain observation is compared against. It is
+    // built before the write-lock receipt so the version table is
+    // stable when the receipt's HWM scan runs — a rotation between
+    // the manifest and the receipt would otherwise be unobservable.
+    // No tracking is installed here (see readCredentialManifest):
+    // without it the freeze refuses below instead of accepting an
+    // HWM that cannot see in-place credential rotations.
+    const credentialLockManifest = readCredentialManifest(db, snapshotId, evidence);
+    evidence.steps.a2CredentialLock = {
+      manifestHash: credentialLockManifest.manifestHash,
+      liveRowCount: credentialLockManifest.liveRowCount,
+      tombstoneCount: credentialLockManifest.tombstoneCount,
+      backfilledCount: credentialLockManifest.backfilledCount,
+      at: timestamp(),
+    };
     const a2WriteLock = buildWriteLockReceipt(db, { snapshotId, checkpointId, outstandingJobs });
     const a2LockHighWaterMark = a2WriteLock.receipt.highWaterMark;
     evidence.steps.a2WriteLock = {
@@ -739,10 +819,31 @@ export function createD1FreezeExecutor({
 
     const hwmFirst = readHighWaterMark(db);
     tracker.recordHwmObservation(hwmFirst);
+    // N1: the credential manifest is re-read at each HWM observation
+    // and must still equal the lock manifest — a version bump (an
+    // in-place rotation) moves the manifest hash even when the HWM
+    // does not move. The manifest gate runs before the HWM-equality
+    // gate below so a rotation is reported with its own code. The
+    // hashes are recorded in the evidence before the comparison, so
+    // a refusal still carries them.
+    const credentialFirst = readCredentialManifest(db, snapshotId, evidence);
+    evidence.steps.a2Hwm = {
+      first: hwmFirst,
+      credentialManifestHashes: {
+        lock: credentialLockManifest.manifestHash,
+        first: credentialFirst.manifestHash,
+      },
+      at: timestamp(),
+    };
+    assertSameCredentialManifest(credentialLockManifest, credentialFirst, evidence);
     await sleep(observationIntervalMs);
     const hwmSecond = readHighWaterMark(db);
     tracker.recordHwmObservation(hwmSecond);
-    evidence.steps.a2Hwm = { first: hwmFirst, second: hwmSecond, trackerStatus: tracker.status(), at: timestamp() };
+    const credentialSecond = readCredentialManifest(db, snapshotId, evidence);
+    evidence.steps.a2Hwm.second = hwmSecond;
+    evidence.steps.a2Hwm.credentialManifestHashes.second = credentialSecond.manifestHash;
+    evidence.steps.a2Hwm.trackerStatus = tracker.status();
+    assertSameCredentialManifest(credentialLockManifest, credentialSecond, evidence);
     // The two observations must each equal the A2 lock receipt's HWM:
     // a write landing anywhere in the drain window moves the HWM and
     // fails the freeze here, before any receipt or bundle is built.
@@ -769,6 +870,11 @@ export function createD1FreezeExecutor({
         evidence
       );
     }
+    // N1: the same re-check for the credential manifest — a rotation
+    // landing between the A2 drain and the A3 bundle must not leak
+    // into the bundle, mirroring the fresh-receipt HWM check above.
+    const credentialBundleManifest = readCredentialManifest(db, snapshotId, evidence);
+    assertSameCredentialManifest(credentialLockManifest, credentialBundleManifest, evidence);
     const schedulerQuiescence = buildSchedulerQuiescenceReceipt({ snapshotId, evidence: schedulerEvidence });
     const callbackDrain = buildCallbackDrainReceipt({
       snapshotId,
@@ -821,6 +927,7 @@ export function createD1FreezeExecutor({
       schedulerJobs: schedulerQuiescence.jobs.length,
       callbackDrained: callbackDrain.drained,
       hwmSeq: hwmCompleteness.seq,
+      credentialManifestHash: credentialBundleManifest.manifestHash,
       bundleHash: readinessBundle.bundleHash,
       at: timestamp()
     };

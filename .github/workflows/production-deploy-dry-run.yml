@@ -35,6 +35,7 @@ jobs:
   dry-run:
     name: Build deploy packet without host mutation
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     if: inputs.confirmation == 'dry-run production deploy'
 
     steps:

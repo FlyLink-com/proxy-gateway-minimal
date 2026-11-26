@@ -13,6 +13,7 @@ import { createApp } from "../app.mjs";
 import { installD1FreezeWiring } from "../start.mjs";
 import { adminD1FreezeRoutes } from "../routes/admin-d1-freeze.mjs";
 import { ensureWriterAuthority, readWriterAuthority } from "../services/platform/single-writer-authority.mjs";
+import { ensureCredentialVersionTracking } from "../services/platform/d1-stage2-credential-reconciliation.mjs";
 import { createSqliteSubscriptionControlStore } from "../services/platform/subscription-control-db.mjs";
 import { createTrafficAccountingService } from "../services/platform/traffic-accounting.mjs";
 import { listen } from "./helpers/listen.mjs";
@@ -110,6 +111,11 @@ function freezeState({ installWiring = true } = {}) {
   const database = new Database(":memory:");
   const controlStore = createSqliteSubscriptionControlStore({ database });
   ensureWriterAuthority(database);
+  // N1 (PR #927 r4697535888): the freeze gate requires credential
+  // version tracking installed — the fixture is the producible
+  // pre-freeze state, so tracking is installed here, as in the
+  // executor test harness. Without it the freeze refuses 409.
+  ensureCredentialVersionTracking(database);
   const state = {
     rootDir: ROOT_DIR,
     host: "127.0.0.1",

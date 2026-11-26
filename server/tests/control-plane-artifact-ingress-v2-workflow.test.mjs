@@ -3,10 +3,6 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import test from "node:test";
 
-const v1 = readFileSync(
-  resolve(process.cwd(), ".github/workflows/control-plane-artifact-ingress.yml"),
-  "utf8"
-);
 const v2 = readFileSync(
   resolve(process.cwd(), ".github/workflows/control-plane-artifact-ingress-v2.yml"),
   "utf8"
@@ -67,10 +63,7 @@ test("v2 ingress remains an independent manual workflow with a receiver-upgrade 
   );
 });
 
-test("adding v2 does not rewrite or silently route through the v1 workflow", () => {
-  assert.match(v1, /^name: Control Plane Artifact Ingress$/m);
-  assert.match(v1, /control-plane-artifact-ingress-packet-builder\.mjs/);
-  assert.doesNotMatch(v1, /ingress-v2|Ingress V2/);
+test("v2 does not route through the retired v1 producer scripts", () => {
   assert.doesNotMatch(v2, /control-plane-artifact-ingress-packet-builder\.mjs/);
   assert.doesNotMatch(v2, /control-plane-artifact-ingress-delivery-cli\.mjs/);
 });
