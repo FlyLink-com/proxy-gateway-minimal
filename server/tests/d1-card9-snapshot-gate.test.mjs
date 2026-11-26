@@ -36,6 +36,11 @@ import {
   UNFENCED_WRITER_BASELINE,
 } from "../services/platform/d1-stage2-freeze-drain.mjs";
 import {
+  ensureCredentialVersionTracking,
+  buildCredentialVersionManifest,
+} from "../services/platform/d1-stage2-credential-reconciliation.mjs";
+import { SNAPSHOT_FIXTURE_DDL } from "../services/platform/d1-stage2-source-manifest.mjs";
+import {
   buildSnapshotGateManifest,
   verifySnapshotGateManifest,
   buildWriterCoverageMatrix,
@@ -76,6 +81,10 @@ function makeDb(t) {
     create table s2s_notes (id integer primary key, body text not null);`);
   db.prepare("insert into s2s_items (id, value, updated_at) values (1, 'a', '2026-11-21T00:00:00.000Z'), (2, 'b', '2026-11-21T00:01:00.000Z')").run();
   db.prepare("insert into s2s_notes (id, body) values (1, 'n')").run();
+  // N5 (PR #932 r4701898636): the T1 freeze re-reads the credential
+  // manifest, so the fixture installs credential version tracking.
+  db.exec(SNAPSHOT_FIXTURE_DDL.platform_portal_edge_credentials);
+  ensureCredentialVersionTracking(db);
   ensureWriterAuthority(db);
   return db;
 }
@@ -100,7 +109,10 @@ function buildBundle(db) {
     manifestSeq: 7,
     rowCounts: { s2s_items: 2 },
   });
-  return buildFreezeReadinessBundle({ snapshotId: SNAPSHOT, writeLock, schedulerQuiescence, callbackDrain, hwmCompleteness });
+  // N5: the bundle carries the A2/A3 credential manifest hash — the
+  // baseline T1 re-verifies.
+  const credentialManifestHash = buildCredentialVersionManifest(db, { snapshotId: SNAPSHOT }).manifestHash;
+  return buildFreezeReadinessBundle({ snapshotId: SNAPSHOT, writeLock, schedulerQuiescence, callbackDrain, hwmCompleteness, credentialManifestHash });
 }
 
 const FENCED_REF = "decisions/D3_28_ITEMS_DISPOSITION_R7_2026-11-24.md (R7-approved writer dispositions)";
