@@ -435,6 +435,86 @@ test("the local test launcher recovers receipts after T2 and keeps old-epoch wor
   assert.deepEqual(reconciled.items.map((item) => item.result), ["applied_receipt_recorded", "applied_receipt_recorded"]);
   assert.deepEqual(await readFile(statePath), pending, "reconciliation is read-only");
   assert.equal(await count("agent_apply_receipts"), 2);
+
+  await t.test("full and partial interrupted applies require reconciliation, even after another epoch", async () => {
+    const cases = [
+      ["full", "GCCGW_TEST_EXIT_AFTER_LOCAL_APPLY"],
+      ["partial", "GCCGW_TEST_EXIT_AFTER_FIRST_MATERIAL"],
+    ];
+    const strandedCopies = [];
+    for (const [kind, failpoint] of cases) {
+      const crashDir = join(root, "crash-window-" + kind);
+      observed.length = 0;
+      const crashed = await promisify(execFile)(process.execPath,
+        [fileURLToPath(new URL("./fixtures/local-epoch-run-once.mjs", import.meta.url))], {
+          timeout: 10000, env: { ...env, GCCGW_G4_STATE_DIR: crashDir, [failpoint]: "true" },
+        }).then(() => null, (error) => error);
+      assert.equal(crashed?.code, 86);
+      assert.deepEqual(observed, [["claim", String(resumed.toEpoch)]]);
+      const crashStatePath = join(crashDir, "applied-state.json");
+      const before = await readFile(crashStatePath);
+      const stranded = JSON.parse(before);
+      assert.equal(stranded.pendingClaim, null);
+      assert.equal(stranded.pendingReceipts?.length ?? 0, 0);
+      assert.equal(stranded.generation ?? null, null);
+      assert.equal(stranded.pendingApply.writerEpoch, String(resumed.toEpoch));
+      assert.match(stranded.pendingApply.claimIdempotencyKey, /^claim:/);
+      assert.equal(stranded.pendingApply.generation, "gen-synth-001");
+      const applyDir = join(crashDir, "applied", "gen-synth-001");
+      const path = join(applyDir, "cred-synth-a");
+      const beforeRetry = await stat(path);
+      assert.equal(await readFile(path, "utf8"), "synthetic-material-a");
+      async function checkSecondMaterial() {
+        const second = join(applyDir, "cred-synth-b");
+        if (kind === "full") assert.equal(await readFile(second, "utf8"), "synthetic-material-b");
+        else await assert.rejects(readFile(second), { code: "ENOENT" });
+      }
+      await checkSecondMaterial();
+      observed.length = 0;
+      const immediate = await run({ GCCGW_G4_STATE_DIR: crashDir });
+      assert.equal(immediate.status, "skipped_locked");
+      async function checkRefuses() {
+        const restarted = await run({ GCCGW_G4_STATE_DIR: crashDir, GCCGW_TEST_ADVANCE_LOCK_CLOCK: "true" });
+        assert.equal(restarted.exitCode, 4);
+        assert.equal(restarted.code, "apply_reconciliation_required");
+        assert.deepEqual(observed, [], "no new claim or receipt");
+        assert.deepEqual(await readFile(crashStatePath), before, "intent retained byte-for-byte");
+        assert.equal((await stat(path)).ino, beforeRetry.ino, "no duplicate file apply");
+        await checkSecondMaterial();
+      }
+      await checkRefuses();
+      strandedCopies.push(checkRefuses);
+    }
+    const recoveryAgain = coordinator.enterRecovery({ trigger: "e4-unavailable" });
+    await mirrorFixtureAuthority(db, recoveryAgain.coordinatorReceipt);
+    const { coordinatorReceipt: next } = resumeAfterRecovery(coordinator, recoveryAgain.coordinatorReceipt);
+    await mirrorFixtureAuthority(db, next);
+    await publish({ candidate: next });
+    for (const checkRefuses of strandedCopies) await checkRefuses();
+    assert.equal(await count("agent_apply_receipts"), 2);
+  });
+
+  await t.test("intent persistence failure cannot reach the local effect or receipt", async () => {
+    const failedDir = join(root, "failed-intent");
+    observed.length = 0;
+    const out = await run({ GCCGW_G4_STATE_DIR: failedDir, GCCGW_TEST_FAIL_INTENT_SAVE: "true" });
+    assert.equal(out.code, "apply_intent_save_failed");
+    assert.deepEqual(observed.map(([kind]) => kind), ["claim"]);
+    await assert.rejects(stat(join(failedDir, "applied")), { code: "ENOENT" });
+    assert.equal(await count("agent_apply_receipts"), 2);
+  });
+
+  await t.test("invalid durable state blocks before network or file apply", async () => {
+    const invalidDir = join(root, "invalid-agent-state");
+    await mkdir(invalidDir);
+    await writeFile(join(invalidDir, "applied-state.json"), "{invalid", { mode: 0o600 });
+    observed.length = 0;
+    const rejected = await run({ GCCGW_G4_STATE_DIR: invalidDir });
+    assert.equal(rejected.code, "agent_state_unreadable");
+    assert.deepEqual(observed, []);
+    await assert.rejects(stat(join(invalidDir, "applied")), { code: "ENOENT" });
+  });
+
 });
 
 

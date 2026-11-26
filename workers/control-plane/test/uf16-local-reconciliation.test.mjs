@@ -179,3 +179,16 @@ test("offline CLI rejects a symbolic link rather than following its target", { s
   assert.equal(result.status, 2);
   assert.equal(JSON.parse(result.stdout).status, "invalid_evidence");
 });
+
+test("offline reconciliation never authorizes an interrupted apply without a receipt", (t) => {
+  const { agent, ledger } = copies(t, {
+    pendingApply: { claimIdempotencyKey: "private-claim", writerEpoch: "3", desiredStateDigest: "private-digest" },
+  }, []);
+  const report = execCli(agent, ledger);
+  assert.equal(report.status, 1);
+  assert.deepEqual(JSON.parse(report.stdout), {
+    schemaVersion: "uf16-offline-reconciliation/v1", status: "review_required", allowDispatch: false,
+    items: [{ source: "pending_apply", index: 0, result: "apply_intent_needs_review" }],
+  });
+  assert.equal(report.stdout.includes("private-"), false);
+});

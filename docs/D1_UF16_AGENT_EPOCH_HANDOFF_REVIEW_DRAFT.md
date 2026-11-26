@@ -39,3 +39,9 @@ node scripts/d1-uf16-reconcile-local.mjs --agent-state ./synthetic-agent.json --
 ```
 
 Stdout is a versioned redacted JSON report identifying records only by queue and ordinal. The same copies produce the same output. Exit 0 means only matching records or no queued evidence, not permission; 1 means evidence needs review; 2 means invalid input. Every result sets `allowDispatch: false`. There are no writes, database connections, launches or network calls; do not pass live state files. The 4 MiB per-copy limit is intentional.
+
+### Local interruption guard
+
+The test-only launcher enables the apply-intent guard and a strict durable JSON store. The guard saves the original claim key, epoch and desired-state identity before any local effect. It syncs the new state file before replacing the old file and syncs the containing directory. Invalid existing JSON is not treated as empty. The successful post-apply state atomically replaces the intent with the receipt queue. If the process stops before that replacement, restart retains the intent and reports `apply_reconciliation_required` before any new fetch, apply or receipt. A changed epoch or scope cannot clear the intent. The offline report surfaces it for review without printing its contents.
+
+Process-exit tests cover complete and partial local file artifacts, same-epoch and advanced-epoch restart, failure to persist the intent, and corrupt state. These tests do not prove physical power-loss durability or production node actuation. Production service startup does not enable this guard; a production state directory and recovery/clearing procedure still require separate review.

@@ -105,6 +105,10 @@ export function reconcileHistoricalAgentEvidence({ state, writerEpoch, receiptRo
     || (state.pendingClaim != null && !object(state.pendingClaim))) return invalid();
 
   const items = [];
+  if (Object.hasOwn(state, "pendingApply") && state.pendingApply !== null) {
+    // A pending intent cannot prove whether any or all effects landed.
+    items.push({ source: "pending_apply", index: 0, result: "apply_intent_needs_review" });
+  }
   const occurrences = new Map();
   for (const r of [...pending, ...deferred]) {
     if (object(r) && typeof r.idempotencyKey === "string") {

@@ -79,6 +79,12 @@ async function main() {
     },
   };
 
+  const stateStore = createJsonStateStore(join(stateDir, "applied-state.json"), { durable: true });
+  const saveState = stateStore.save;
+  stateStore.save = async (state) => {
+    if (state.pendingApply && process.env.GCCGW_TEST_FAIL_INTENT_SAVE === "true") throw new Error("synthetic save failure");
+    return saveState(state);
+  };
   const client = createAgentClient({
     nodeRef,
     channelRefs,
@@ -87,15 +93,25 @@ async function main() {
     writerEpochForwarding: true,
     materialStore: createFileMaterialStore(materialsDir),
     verifier: createManifestVerifier({ publicKeys }),
-    stateStore: createJsonStateStore(join(stateDir, "applied-state.json")),
-    lock: createFileLock(join(stateDir, "agent.lock")),
+    stateStore,
+    lock: createFileLock(join(stateDir, "agent.lock"), {
+      now: () => Date.now() + (process.env.GCCGW_TEST_ADVANCE_LOCK_CLOCK === "true" ? 121_000 : 0),
+    }),
     auth: { keyId, token },
     config: {
+      applyIntentEnabled: true,
       dryRun: process.env.GCCGW_G4_DRY_RUN !== "false",
       applyEnabled: process.env.GCCGW_G4_APPLY_ENABLED === "true",
     },
     apply: async ({ manifest, materials }) => {
+      if (process.env.GCCGW_TEST_EXIT_AFTER_FIRST_MATERIAL === "true") {
+        await writeAppliedMaterials(stateDir, manifest.generation, materials.slice(0, 1));
+        process.exit(86);
+      }
       await writeAppliedMaterials(stateDir, manifest.generation, materials);
+      // Test-only process boundary: files are visible but Agent state/receipt
+      // persistence has not run. Never installed by an Agent service.
+      if (process.env.GCCGW_TEST_EXIT_AFTER_LOCAL_APPLY === "true") process.exit(86);
     },
   });
 
