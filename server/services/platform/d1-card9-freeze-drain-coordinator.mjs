@@ -43,6 +43,16 @@
 // and leaves the coordinator in FROZEN. The coordinator therefore
 // requires drain + scheduler quiescence before the receipt, and never
 // treats the receipt as proof that the switch is safe.
+//
+// N5 (PR #932 r4701898636): the A3 -> T1 window IS guarded at the
+// receipt, not only at T2. freeze() re-reads the credential manifest
+// under the same immediate transaction that builds the T1 freeze
+// receipt and refuses when it moved away from the bundle's
+// credentialManifestHash (an in-place rotation is invisible to the
+// HWM), and refuses when the fresh receipt's HWM moved away from the
+// bundle's write-lock receipt HWM. The residual gap is receipt ->
+// transition only (synchronous, in-process, no await in between);
+// a write landing there is still caught by the T2 verification gate.
 // The phase transition and the coordinator-log entry for that same
 // transition ARE one atomic transaction (see transitionWithReceipt):
 // if the log write fails, the phase does not move.
@@ -65,6 +75,11 @@ import {
   UNFENCED_WRITER_BASELINE,
   verifyFreezeReadinessBundle,
 } from "./d1-stage2-freeze-drain.mjs";
+import {
+  assertCredentialVersionTrackingInstalled,
+  buildCredentialVersionManifest,
+  isCredentialReconciliationError,
+} from "./d1-stage2-credential-reconciliation.mjs";
 import { verifyFreezeReceipt, buildFreezeReceipt } from "./writer-freeze-receipt.mjs";
 
 export const FREEZE_DRAIN_COORDINATOR_VERSION = 1;
@@ -1011,6 +1026,39 @@ export function verifySnapshotGateManifest(manifest) {
 // Coordinator
 // ---------------------------------------------------------------------------
 
+// N5 (PR #932 r4701898636): re-read the credential manifest at T1
+// and compare it with the A2/A3 bundle baseline.
+// platform_portal_edge_credentials has no updated_at, so an in-place
+// rotation (same PK, same row count) is invisible to the HWM — only
+// the version manifest sees it. Fail-closed: missing tracking, an
+// unreadable manifest, or a moved hash all refuse the freeze. Only
+// hash prefixes enter the message; no credential PK or value ever does.
+function assertCredentialManifestUnmoved(db, snapshotId, baselineHash) {
+  let observed;
+  try {
+    assertCredentialVersionTrackingInstalled(db);
+    observed = buildCredentialVersionManifest(db, { snapshotId });
+  } catch (error) {
+    if (isCredentialReconciliationError(error)) {
+      throw coordinatorError(
+        "freeze_credential_tracking_missing",
+        `credential version tracking is not installed or not verifiable at T1 (${error.code}: ${error.message}) — install credential version tracking and backfill pre-existing credential rows before freezing; do not freeze on a high-water mark that cannot see in-place credential rotations`,
+      );
+    }
+    throw coordinatorError(
+      "freeze_credential_tracking_missing",
+      `credential manifest cannot be re-read at T1 (${error?.message ?? "unknown error"}) — refusing the freeze`,
+    );
+  }
+  if (observed.manifestHash !== baselineHash) {
+    throw coordinatorError(
+      "freeze_credential_version_moved",
+      `credential versions moved between the A3 bundle and the T1 freeze (manifest hash ${baselineHash.slice(0, 12)}… -> ${observed.manifestHash.slice(0, 12)}…) — an in-place credential rotation is invisible to the row-count/updated_at high-water mark, so the freeze is refused; stop and report, do not freeze on a moved credential manifest`,
+    );
+  }
+  return observed.manifestHash;
+}
+
 // One atomic transaction for a phase transition plus its coordinator
 // log entry (C3 / F2). better-sqlite3 nests the inner db.transaction
 // calls of transitionWriterAuthority / issueCoordinatorReceipt as
@@ -1168,8 +1216,31 @@ export function createFreezeDrainCoordinator(db, { snapshotId, now = () => new D
       }
       const drainStatus = drainTracker.assertDrained();
       assertNonEmptyString(checkpointId, "checkpoint id", "freeze_coordinator_checkpoint_invalid");
-      const freezeReceipt = buildFreezeReceipt(db, { snapshotId, checkpointId, outstandingJobs });
-      verifyFreezeReceipt(freezeReceipt);
+      // N5 (PR #932 r4701898636): the A3 -> T1 window. The bundle
+      // must carry the A2/A3 credential manifest hash — without it
+      // there is no baseline to re-verify against, so the freeze is
+      // refused rather than taken on a blind HWM.
+      const baselineCredentialManifestHash = readinessBundle.credentialManifestHash;
+      if (typeof baselineCredentialManifestHash !== "string" || !/^[0-9a-f]{64}$/.test(baselineCredentialManifestHash)) {
+        throw coordinatorError("freeze_readiness_bundle_credential_manifest_missing", "freeze (T1) requires the readiness bundle to carry the A2/A3 credential manifest hash (credentialManifestHash); a bundle without it cannot prove no credential rotation happened after A3 — refusing the freeze");
+      }
+      // The manifest re-read, the T1 receipt build and the HWM
+      // comparison run under one immediate transaction, so no
+      // concurrent writer can land between the re-read and the
+      // receipt. Belt-and-braces HWM check: the fresh receipt's HWM
+      // must still equal the bundle's write-lock receipt HWM, so a
+      // non-credential write landing in the A3 -> T1 window refuses
+      // the freeze here instead of leaking into the snapshot.
+      const { freezeReceipt, t1CredentialManifestHash } = underWriterLock(() => {
+        const observedManifestHash = assertCredentialManifestUnmoved(db, snapshotId, baselineCredentialManifestHash);
+        const receipt = buildFreezeReceipt(db, { snapshotId, checkpointId, outstandingJobs });
+        verifyFreezeReceipt(receipt);
+        const bundleHwm = readinessBundle.receipts.writeLock.receipt.highWaterMark;
+        if (JSON.stringify(receipt.highWaterMark) !== JSON.stringify(bundleHwm)) {
+          throw coordinatorError("freeze_t1_hwm_moved", "a write landed between the A3 bundle and the T1 freeze: the fresh freeze receipt's high-water mark does not match the bundle's write-lock receipt HWM — stop and report, do not freeze on a moved HWM");
+        }
+        return { freezeReceipt: receipt, t1CredentialManifestHash: observedManifestHash };
+      })();
       // U-F11 J2/J5: when the caller supplies the measurement drain
       // counts, they must be equal non-negative integers (the queue
       // length before freeze and the number discarded at freeze). A
@@ -1187,6 +1258,7 @@ export function createFreezeDrainCoordinator(db, { snapshotId, now = () => new D
       }
       const gateRefs = {
         bundleHash: readinessBundle.bundleHash,
+        credentialManifestHash: t1CredentialManifestHash,
         coverageDigest: coverageMatrix.matrixDigest,
         freezeReceiptDigest: freezeReceipt.receiptDigest,
         drain: { inflightWrites: drainStatus.inflightWrites, inflightCallbacks: drainStatus.inflightCallbacks, hwmStable: drainStatus.hwmStable },

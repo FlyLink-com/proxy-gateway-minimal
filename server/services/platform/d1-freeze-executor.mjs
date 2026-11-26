@@ -920,12 +920,18 @@ export function createD1FreezeExecutor({
       rowCounts,
       snapshotId
     });
+    // N5 (PR #932 r4701898636): the bundle carries the A3 credential
+    // manifest hash so the coordinator's T1 freeze can re-read the
+    // live manifest and refuse when a rotation landed after A3. The
+    // hash is digest-covered by the bundle; without it the T1 gate
+    // refuses the freeze (fail-closed).
     const readinessBundle = buildFreezeReadinessBundle({
       snapshotId,
       writeLock,
       schedulerQuiescence,
       callbackDrain,
-      hwmCompleteness
+      hwmCompleteness,
+      credentialManifestHash: credentialBundleManifest.manifestHash,
     });
     evidence.steps.a3Receipts = {
       writeLockKind: writeLock.kind,
