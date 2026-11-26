@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import assert from "node:assert/strict";
 import test from "node:test";
 import express from "express";
@@ -12,6 +13,8 @@ const binding = {
   requestStatus: "issued", entitlementStatus: "active", plan: "monthly",
   trafficLimitBytes: 5000, validFrom: "2026-11-01T00:00:00.000Z", validUntil: tenant.expiresAt
 };
+const aliasRef = `tenantref_${createHash("sha256").update(tenant.id).digest("hex").slice(0, 16)}`;
+const aliasBinding = { ...binding, tenantRef: aliasRef, linkId: "s2s-alias-link", requestId: "s2s-alias-request", edgeCredentialRef: "s2s-alias-credential", trafficLimitBytes: 7000 };
 const header = (up, down) =>
   `upload=${up}; download=${down}; total=5000; expire=${Date.parse(tenant.expiresAt) / 1000}`;
 const pathList = ["/sub/clash.yaml?token=synthetic", "/sub/a/synthetic",
@@ -23,7 +26,7 @@ async function fixture(t, { enabled = true, available = true, samples = false, m
     accountId: "synthetic-account", databaseId: "synthetic-db", token: "synthetic-token",
     fetchImpl: async (_url, { body, signal }) => {
       remoteReads++;
-      const { sql } = JSON.parse(body);
+      const { sql, params } = JSON.parse(body);
       if (mode === "timeout") {
         await new Promise((_, reject) => signal.addEventListener("abort", () => {
           aborted = true;
@@ -31,7 +34,7 @@ async function fixture(t, { enabled = true, available = true, samples = false, m
         }, { once: true }));
       }
       if (mode === "error") throw new Error("synthetic read unavailable");
-      const rows = mode === "missing" ? [] : sql.includes("binding")
+      const rows = mode === "alias-gap" ? (params[0] === aliasRef ? [aliasBinding] : []) : mode === "missing" ? [] : sql.includes("binding")
         ? [{ ...binding, ...(mode === "drift" ? { plan: "annual" } : {}),
             ...(mode === "partial" ? { entitlementStatus: null } : {}) }]
         : [{ ...binding, uploadBytes: 42, downloadBytes: 88,
@@ -42,7 +45,7 @@ async function fixture(t, { enabled = true, available = true, samples = false, m
   });
   const controlStore = {
     d1SubscriptionUsageReadAvailable: available,
-    findUsageBindingByTenantRef: ref => ref === tenant.id ? binding : null,
+    findUsageBindingByTenantRef: ref => ref === tenant.id ? binding : (mode === "alias-gap" && ref === aliasRef ? aliasBinding : null),
     getUsageRollupByEdgeCredentialRef: () => ({ uploadBytes: 7, downloadBytes: 11 }),
     findUsageBindingByTenantRefAsync: (ref, options) =>
       client.queryOne("select binding from fixture", [ref], options),
@@ -97,7 +100,7 @@ test("missing data or transport failure falls back to complete local usage", asy
   for (const mode of ["missing", "error"]) {
     const f = await fixture(t, { mode });
     await f.check(pathList[2], header(7, 11));
-    assert.equal(f.remoteReads(), mode === "missing" ? 2 : 1);
+    assert.equal(f.remoteReads(), 1);
   }
 });
 
@@ -105,7 +108,7 @@ test("partial D1 binding or unrelated rollup cannot supply subscription usage", 
   for (const mode of ["partial", "wrong-rollup"]) {
     const f = await fixture(t, { mode });
     await f.check(pathList[0], header(7, 11));
-    assert.equal(f.remoteReads(), 2);
+    assert.equal(f.remoteReads(), mode === "partial" ? 1 : 2);
   }
 });
 
@@ -126,4 +129,14 @@ test("cycle-scoped BWH samples keep their established semantics and reject D1 bi
       observedTo: "2026-12-01T00:00:00.000Z"
     });
   }
+});
+
+test("D1 partial migration must preserve local raw-tenant precedence over another valid alias", async t => {
+  const baseline = await fixture(t, { mode: "alias-gap", samples: true, enabled: false });
+  await baseline.check(pathList[0], header(19, 31));
+  assert.equal(baseline.sampleFilters().requestId, binding.requestId);
+  const optIn = await fixture(t, { mode: "alias-gap", samples: true });
+  await optIn.check(pathList[0], header(19, 31));
+  assert.equal(optIn.sampleFilters().requestId, binding.requestId);
+  assert.equal(optIn.remoteReads(), 1, "a D1 miss must not try the secondary alias");
 });

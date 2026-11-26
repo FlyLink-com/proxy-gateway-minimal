@@ -83,6 +83,7 @@ test("d1-read-client: SELECT-only guard refuses writes and PRAGMA", () => {
 test("d1-read-client: executor limits are enforced", () => {
   assert.deepEqual(D1_READ_LIMITS, {
     batchRows: 100,
+    maxKeysetPages: 10_000,
     maxParamsPerStatement: 100,
     maxStatementBytes: 100_000,
     maxRowBytes: 2_000_000,
@@ -228,4 +229,108 @@ test("d1-read-client: fromEnv returns null unless fully configured", () => {
     () => createD1ReadClient({ accountId: "a", databaseId: "d" }),
     (error) => error.code === "d1_read_invalid_config",
   );
+});
+
+function clientWithSyntheticPages(fetchImpl, nowFn) {
+  return createD1ReadClient({
+    accountId: "fixture", databaseId: "fixture", token: "fixture", fetchImpl, nowFn,
+    sleepImpl: async () => assert.fail("no retries required for this synthetic result")
+  });
+}
+const results = (rows) => new Response(JSON.stringify({ success: true, result: [{ results: rows }] }));
+
+test("the keyset helper detects a repeated composite cursor before requesting another page", async () => {
+  let calls = 0;
+  const client = clientWithSyntheticPages(async () => {
+    if (++calls > 2) return results([]);
+    return results([{ a: "same", b: 1 }]);
+  }, () => 0);
+  await assert.rejects(client.queryAllKeyset({
+    pageSize: 1,
+    pageQuery() {
+      return { sql: "select a, b from fixture limit ?", params: [] };
+    },
+    keyOf: ({ a, b }) => ({ a, b })
+  }), { code: "d1_read_invalid_result" });
+  assert.equal(calls, 2);
+});
+
+test("the keyset helper must reject a final page that finishes past its batch deadline", async () => {
+  let now = 0;
+  const client = clientWithSyntheticPages(async () => {
+    now = 600001;
+    return results([{ id: "only" }]);
+  }, () => now);
+  await assert.rejects(client.queryAllKeyset({
+    pageSize: 2,
+    pageQuery: () => ({ sql: "select id from fixture limit ?" }),
+    keyOf: ({ id }) => id
+  }), { code: "d1_read_batch_timeout" });
+});
+
+test("a page near the batch deadline cannot start a retry sleep", async () => {
+  let now = 0;
+  let calls = 0;
+  const client = clientWithSyntheticPages(async () => {
+    if (++calls === 1) {
+      now = 540000;
+      return results([{ id: 1 }]);
+    }
+    return errorResponse(500);
+  }, () => now);
+  await assert.rejects(client.queryAllKeyset({
+    pageSize: 1, pageQuery: () => ({ sql: "select id from fixture limit ?" }),
+    keyOf: ({ id }) => id
+  }), { code: "d1_read_batch_timeout" });
+  assert.equal(calls, 2);
+});
+
+test("keyset accumulation enforces a total byte budget across individually valid pages", async () => {
+  let calls = 0;
+  const rowData = "x".repeat(1_990_000);
+  const client = clientWithSyntheticPages(async () => results([{ id: ++calls, rowData }]), () => 0);
+  await assert.rejects(client.queryAllKeyset({
+    pageSize: 1, pageQuery: () => ({ sql: "select id, rowData from fixture limit ?" }),
+    keyOf: ({ id }) => id
+  }), { code: "d1_read_result_too_large" });
+  assert.equal(calls, 26);
+});
+
+test("keyset stops after the page cap even when a mock clock never moves", async () => {
+  let calls = 0;
+  const client = clientWithSyntheticPages(async () => results([{ id: ++calls }]), () => 0);
+  await assert.rejects(client.queryAllKeyset({
+    pageSize: 1, pageQuery: () => ({ sql: "select id from fixture limit ?" }),
+    keyOf: ({ id }) => id
+  }), { code: "d1_read_page_limit" });
+  assert.equal(calls, D1_READ_LIMITS.maxKeysetPages);
+});
+
+test("the shared deadline aborts a pending page body and prevents the next fetch", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  let readerStarted;
+  const bodyStarted = new Promise(resolve => { readerStarted = resolve; });
+  let fetches = 0;
+  let activeSignal;
+  const client = clientWithSyntheticPages(async (_url, { signal }) => {
+    fetches++;
+    activeSignal = signal;
+    return {
+      ok: true, status: 200,
+      json() {
+        readerStarted();
+        return new Promise(() => {});
+      }
+    };
+  }, () => 0);
+  const result = client.queryAllKeyset({
+    pageSize: 1, pageQuery: () => ({ sql: "select id from fixture limit ?" }),
+    keyOf: ({ id }) => id
+  });
+  const rejected = assert.rejects(result, { code: "d1_read_batch_timeout" });
+  await bodyStarted;
+  t.mock.timers.tick(D1_READ_LIMITS.batchWallClockMaxMs);
+  await rejected;
+  assert.equal(activeSignal.aborted, true);
+  assert.equal(fetches, 1);
 });

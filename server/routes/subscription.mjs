@@ -91,24 +91,18 @@ export function subscriptionRoutes(state, options = {}) {
       }
     }
     try {
-      for (const tenantRef of tenantRefs) {
-        const binding = controlStore.findUsageBindingByTenantRef(tenantRef);
-        if (!binding?.edgeCredentialRef) {
-          continue;
-        }
-        const rollup = controlStore.getUsageRollupByEdgeCredentialRef(binding.edgeCredentialRef);
-        const currentCycleUsage = currentCycleUsageFor({
-          controlStore,
-          binding,
-          at,
-          fallbackRollup: rollup
-        });
-        return {
-          uploadBytes: nonNegativeInteger(currentCycleUsage.uploadBytes),
-          downloadBytes: nonNegativeInteger(currentCycleUsage.downloadBytes),
-          totalBytes: nonNegativeInteger(binding.trafficLimitBytes)
-        };
-      }
+      const selected = preferredUsageBinding(controlStore, tenantRefs);
+      if (!selected) return null;
+      const { binding } = selected;
+      const rollup = controlStore.getUsageRollupByEdgeCredentialRef(binding.edgeCredentialRef);
+      const currentCycleUsage = currentCycleUsageFor({
+        controlStore, binding, at, fallbackRollup: rollup
+      });
+      return {
+        uploadBytes: nonNegativeInteger(currentCycleUsage.uploadBytes),
+        downloadBytes: nonNegativeInteger(currentCycleUsage.downloadBytes),
+        totalBytes: nonNegativeInteger(binding.trafficLimitBytes)
+      };
     } catch {
       return null;
     }
@@ -285,36 +279,54 @@ function currentCycleUsageFor({ controlStore, binding, at, fallbackRollup }) {
 }
 
 
-async function readD1Usage(controlStore, tenantRefs, at, signal) {
+function preferredUsageBinding(controlStore, tenantRefs) {
   for (const tenantRef of tenantRefs) {
-    signal.throwIfAborted();
-    const binding = await controlStore.findUsageBindingByTenantRefAsync(tenantRef, { signal });
-    if (!binding?.edgeCredentialRef || !binding.requestId || !binding.entitlementId
-      || binding.tenantRef !== tenantRef || binding.requestStatus !== "issued"
-      || binding.entitlementStatus !== "active") continue;
-    let usage;
-    if (typeof controlStore.listUsageSamples === "function") {
-      // Cumulative D1 rollups are not equivalent to the BWH billing-cycle
-      // samples. Only use a D1 binding if it matches the live local identity
-      // AND the fields that define the cycle and quota.
-      const local = controlStore.findUsageBindingByTenantRef(tenantRef);
-      if (!local || [
-        "linkId", "requestId", "accountId", "entitlementId", "edgeCredentialRef",
-        "plan", "validFrom", "validUntil", "trafficLimitBytes"
-      ].some(key => local[key] !== binding[key])) return null;
-      usage = currentCycleUsageFor({ controlStore, binding, at });
-    } else {
-      usage = await controlStore.getUsageRollupByEdgeCredentialRefAsync(
-        binding.edgeCredentialRef, { signal }
-      );
-      if (!usage || usage.requestId !== binding.requestId
-        || usage.edgeCredentialRef !== binding.edgeCredentialRef) return null;
-    }
-    return {
-      uploadBytes: nonNegativeInteger(usage.uploadBytes),
-      downloadBytes: nonNegativeInteger(usage.downloadBytes),
-      totalBytes: nonNegativeInteger(binding.trafficLimitBytes)
-    };
+    const binding = controlStore.findUsageBindingByTenantRef(tenantRef);
+    if (binding?.edgeCredentialRef) return { tenantRef, binding };
   }
   return null;
+}
+
+function usageBindingsMatch(local, remote) {
+  return local && [
+    "tenantRef", "linkId", "requestId", "accountId", "entitlementId", "edgeCredentialRef",
+    "plan", "validFrom", "validUntil", "trafficLimitBytes"
+  ].every(key => local[key] === remote[key]);
+}
+
+async function readD1Usage(controlStore, tenantRefs, at, signal) {
+  // The serving path keeps BWH's alias precedence. A staged D1 miss
+  // on that binding must not lead to a different tenant alias.
+  const selected = preferredUsageBinding(controlStore, tenantRefs);
+  if (!selected) return null;
+  signal.throwIfAborted();
+  const { tenantRef } = selected;
+  const binding = await controlStore.findUsageBindingByTenantRefAsync(tenantRef, { signal });
+  signal.throwIfAborted();
+  if (!binding?.edgeCredentialRef || !binding.requestId || !binding.entitlementId
+    || binding.tenantRef !== tenantRef || binding.requestStatus !== "issued"
+    || binding.entitlementStatus !== "active" || !usageBindingsMatch(selected.binding, binding)) {
+    return null;
+  }
+
+  let usage;
+  const useCycleSamples = typeof controlStore.listUsageSamples === "function";
+  if (!useCycleSamples) {
+    usage = await controlStore.getUsageRollupByEdgeCredentialRefAsync(
+      binding.edgeCredentialRef, { signal }
+    );
+    signal.throwIfAborted();
+    if (!usage || usage.requestId !== binding.requestId
+      || usage.edgeCredentialRef !== binding.edgeCredentialRef) return null;
+  }
+  // Recheck BWH after the await so a concurrent change in local preference
+  // or billing fields does not turn a previously matching comparison stale.
+  const current = preferredUsageBinding(controlStore, tenantRefs);
+  if (current?.tenantRef !== tenantRef || !usageBindingsMatch(current.binding, binding)) return null;
+  if (useCycleSamples) usage = currentCycleUsageFor({ controlStore, binding: current.binding, at });
+  return {
+    uploadBytes: nonNegativeInteger(usage.uploadBytes),
+    downloadBytes: nonNegativeInteger(usage.downloadBytes),
+    totalBytes: nonNegativeInteger(current.binding.trafficLimitBytes)
+  };
 }

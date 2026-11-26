@@ -18,7 +18,8 @@
 // (`executor/d1-load-executor-r2fix.mjs` lines 77-88): batch 100 rows,
 // <=100 bind params, single statement <=100 KB, single row <=2 MB,
 // 60 s call timeout, 30 s single-query budget (enforced by D1),
-// result <=50 MB. Pagination is PK keyset (`WHERE pk > ? / LIMIT`);
+// result <=50 MB. Pagination separately caps total bytes and page count.
+// Pagination is PK keyset (`WHERE pk > ? / LIMIT`);
 // OFFSET is never used. Retries: whole batch at most 2 retries,
 // single row at most 2 retries, 60 s apart; one batch wall-clock
 // ceiling 10 minutes.
@@ -28,11 +29,14 @@
 // No serving code path uses it until a store is explicitly given a
 // client, and D1_ACTIVE is never activated from here.
 
+import { setTimeout as sleep } from "node:timers/promises";
+
 const D1_API_BASE = "https://api.cloudflare.com/client/v4";
 
 // Executor limits (d1-load-executor-r2fix.mjs:77-88), reused verbatim.
 export const D1_READ_LIMITS = Object.freeze({
   batchRows: 100,
+  maxKeysetPages: 10_000,
   maxParamsPerStatement: 100,
   maxStatementBytes: 100_000,
   maxRowBytes: 2_000_000,
@@ -116,6 +120,9 @@ function byteLengthOfRow(row) {
 }
 
 function assertResultLimits(rows) {
+  if (!Array.isArray(rows)) {
+    throw d1ReadError("d1_read_invalid_result", "query result must be an array");
+  }
   let total = 0;
   for (const row of rows) {
     const size = byteLengthOfRow(row);
@@ -133,10 +140,53 @@ function assertResultLimits(rows) {
       );
     }
   }
-  return true;
+  return total;
 }
 
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+function withAbort(signal, task) {
+  signal.throwIfAborted();
+  return new Promise((resolve, reject) => {
+    const aborted = () => reject(signal.reason);
+    signal.addEventListener("abort", aborted, { once: true });
+    Promise.resolve().then(() => {
+      signal.throwIfAborted();
+      return task();
+    }).then(resolve, reject).finally(() => signal.removeEventListener("abort", aborted));
+  });
+}
+
+function batchTimeout() {
+  return d1ReadError("d1_read_batch_timeout", "D1 read exceeded the batch wall-clock ceiling");
+}
+
+function keyParts(key) {
+  const parts = key !== null && typeof key === "object"
+    && Object.getPrototypeOf(key) === Object.prototype
+    ? Object.entries(key)
+    : [[null, key]];
+  if (parts.length === 0 || parts.some(([, value]) =>
+    typeof value !== "string" && !(typeof value === "number" && Number.isFinite(value)))) {
+    throw d1ReadError("d1_read_invalid_config", "keyOf must return a scalar or composite cursor");
+  }
+  return parts;
+}
+
+function cursorAdvances(next, prior) {
+  if (next.length !== prior.length || next.some(([name, value], index) =>
+    name !== prior[index][0] || typeof value !== typeof prior[index][1])) {
+    throw d1ReadError("d1_read_invalid_result", "keyset cursor shape changed");
+  }
+  for (let i = 0; i < next.length; i += 1) {
+    const value = next[i][1];
+    const previous = prior[i][1];
+    if (value === previous) continue;
+    // Repository queries use SQLite BINARY order for text cursor columns.
+    return typeof value === "string"
+      ? Buffer.compare(Buffer.from(value), Buffer.from(previous)) > 0
+      : value > previous;
+  }
+  return false;
+}
 
 function cfErrorText(data) {
   if (!data) return "";
@@ -164,7 +214,7 @@ export function createD1ReadClient({
   token,
   fetchImpl = fetch,
   sleepImpl = sleep,
-  nowFn = () => Date.now(),
+  nowFn = () => performance.now(),
 } = {}) {
   if (typeof accountId !== "string" || !accountId.trim()) {
     throw d1ReadError("d1_read_invalid_config", "accountId is required");
@@ -194,7 +244,7 @@ export function createD1ReadClient({
           "Content-Type": "application/json",
         },
         body: JSON.stringify(body),
-        signal: signal ?? AbortSignal.timeout(D1_READ_LIMITS.callTimeoutMs),
+        signal,
       });
     } catch (error) {
       if (error?.name === "TimeoutError") {
@@ -216,41 +266,62 @@ export function createD1ReadClient({
     return (data.result && data.result[0] && data.result[0].results) || [];
   }
 
-  // Single SELECT with retries (whole-query retries, at most 2, 60 s apart).
-  async function query(sql, params = [], { signal } = {}) {
+  async function runBatch(task) {
+    const controller = new AbortController();
+    const startedAt = nowFn();
+    const timer = setTimeout(() => controller.abort(batchTimeout()), D1_READ_LIMITS.batchWallClockMaxMs);
+    function remaining() {
+      controller.signal.throwIfAborted();
+      const left = D1_READ_LIMITS.batchWallClockMaxMs - (nowFn() - startedAt);
+      if (left <= 0) throw batchTimeout();
+      return left;
+    }
+    try {
+      const result = await task({ signal: controller.signal, remaining });
+      remaining();
+      return result;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  async function queryWithRetries(sql, params, budget) {
     assertSelectOnly(sql);
     assertD1ReadLimits(sql, params);
-    // Request-path callers supply one deadline for the complete read chain.
-    // Do not use the offline retry cadence within that request.
+    for (let attempt = 0; ; attempt += 1) {
+      budget.remaining();
+      const attemptSignal = AbortSignal.any([
+        budget.signal, AbortSignal.timeout(D1_READ_LIMITS.callTimeoutMs)
+      ]);
+      try {
+        const rows = await withAbort(attemptSignal, () => postOnce(sql, params, attemptSignal));
+        budget.remaining();
+        return { rows, bytes: assertResultLimits(rows) };
+      } catch (caught) {
+        budget.remaining();
+        const error = attemptSignal.reason?.name === "TimeoutError"
+          ? d1ReadError("d1_read_timeout", "D1 query timed out after 60 s")
+          : caught;
+        if (!isRetryable(error) || attempt >= D1_READ_LIMITS.batchRetryMax) throw error;
+        if (budget.remaining() <= D1_READ_LIMITS.retryDelayMs) throw batchTimeout();
+        await withAbort(budget.signal, () => sleepImpl(D1_READ_LIMITS.retryDelayMs, undefined, {
+          signal: budget.signal
+        }));
+      }
+    }
+  }
+
+  async function query(sql, params = [], { signal } = {}) {
+    // Serving callers supply one deadline and never use the offline retries.
     if (signal) {
-      signal.throwIfAborted();
-      const rows = await postOnce(sql, params, signal);
+      assertSelectOnly(sql);
+      assertD1ReadLimits(sql, params);
+      const rows = await withAbort(signal, () => postOnce(sql, params, signal));
       signal.throwIfAborted();
       assertResultLimits(rows);
       return rows;
     }
-    const startedAt = nowFn();
-    let attempt = 0;
-    for (;;) {
-      try {
-        const rows = await postOnce(sql, params);
-        assertResultLimits(rows);
-        return rows;
-      } catch (error) {
-        const retryable = isRetryable(error);
-        const elapsed = nowFn() - startedAt;
-        if (
-          !retryable
-          || attempt >= D1_READ_LIMITS.batchRetryMax
-          || elapsed + D1_READ_LIMITS.retryDelayMs
-            > D1_READ_LIMITS.batchWallClockMaxMs
-        ) {
-          throw error;
-        }
-        attempt += 1;
-        await sleepImpl(D1_READ_LIMITS.retryDelayMs);
-      }
-    }
+    return runBatch(async budget => (await queryWithRetries(sql, params, budget)).rows);
   }
 
   async function queryOne(sql, params = [], options) {
@@ -261,9 +332,10 @@ export function createD1ReadClient({
   // PK keyset pagination: `WHERE pk > ?` + `LIMIT <pageSize>`, never
   // OFFSET. `pageQuery(cursor)` returns `{ sql, params }` for one page;
   // the SQL must end with `limit ?` and the helper appends the page
-  // size as the final parameter. `keyOf` extracts the cursor key from
-  // a row (or returns the row itself for composite cursors). Stops when
-  // a page is short or the batch wall-clock ceiling (10 min) is hit.
+  // size as the final parameter. keyOf returns a scalar or named
+  // composite cursor in the same ascending order as the SQL ORDER BY,
+  // using BINARY order for text. Fail closed on any non-advancing key,
+  // result/page cap breach, or shared deadline expiry.
   async function queryAllKeyset({
     pageQuery,
     keyOf,
@@ -285,38 +357,45 @@ export function createD1ReadClient({
         "pageSize must be between 1 and 100",
       );
     }
-    const startedAt = nowFn();
-    const rows = [];
-    let cursor = null;
-    for (;;) {
-      if (nowFn() - startedAt > D1_READ_LIMITS.batchWallClockMaxMs) {
-        throw d1ReadError(
-          "d1_read_batch_timeout",
-          "keyset pagination exceeded the 10 minute batch wall-clock ceiling",
-        );
+    return runBatch(async budget => {
+      const rows = [];
+      let cursor = null;
+      let prior = null;
+      let bytes = 0;
+      for (let pageNumber = 0; pageNumber < D1_READ_LIMITS.maxKeysetPages; pageNumber += 1) {
+        budget.remaining();
+        const { sql, params = [] } = pageQuery(cursor) ?? {};
+        if (typeof sql !== "string" || !sql.trim()) {
+          throw d1ReadError("d1_read_invalid_sql", "pageQuery must return sql");
+        }
+        if (/\bOFFSET\b/i.test(sql)) {
+          throw d1ReadError("d1_read_forbidden_statement", "keyset pagination never uses OFFSET");
+        }
+        if (!Array.isArray(params)) {
+          throw d1ReadError("d1_read_invalid_params", "params must be an array");
+        }
+        const page = await queryWithRetries(sql, [...params, pageSize], budget);
+        if (page.rows.length > pageSize) {
+          throw d1ReadError("d1_read_invalid_result", "keyset page exceeded its requested size");
+        }
+        bytes += page.bytes;
+        if (bytes > D1_READ_LIMITS.maxResultBytes) {
+          throw d1ReadError("d1_read_result_too_large", "combined keyset result exceeds 50 MB");
+        }
+        for (const row of page.rows) {
+          const key = keyOf(row);
+          const parts = keyParts(key);
+          if (prior !== null && !cursorAdvances(parts, prior)) {
+            throw d1ReadError("d1_read_invalid_result", "keyset cursor did not advance");
+          }
+          prior = parts;
+          cursor = key;
+        }
+        rows.push(...page.rows);
+        if (page.rows.length < pageSize) return rows;
       }
-      const { sql, params = [] } = pageQuery(cursor) ?? {};
-      if (typeof sql !== "string" || !sql.trim()) {
-        throw d1ReadError("d1_read_invalid_sql", "pageQuery must return sql");
-      }
-      if (/\bOFFSET\b/i.test(sql)) {
-        throw d1ReadError(
-          "d1_read_forbidden_statement",
-          "keyset pagination never uses OFFSET",
-        );
-      }
-      const page = await query(sql, [...params, pageSize]);
-      rows.push(...page);
-      if (page.length < pageSize) break;
-      cursor = keyOf(page[page.length - 1]);
-      if (cursor === undefined || cursor === null) {
-        throw d1ReadError(
-          "d1_read_invalid_config",
-          "keyOf must return the page cursor key",
-        );
-      }
-    }
-    return rows;
+      throw d1ReadError("d1_read_page_limit", "keyset pagination exceeded its page limit");
+    });
   }
 
   return Object.freeze({
