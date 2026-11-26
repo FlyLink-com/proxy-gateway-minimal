@@ -1,7 +1,7 @@
 // U-F16 local review prototype only. Not a production publishing contract.
 import { createPublicKey, verify } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { isValidWriterEpoch } from "./agent-client.mjs";
+import { isValidWriterEpoch } from "../../../../agent/g4/agent-client.mjs";
 
 const FIELDS = ["kind", "origin", "nodeRef", "epoch", "receiptDigest", "issuedAt", "expiresAt"];
 const KIND = "g4-local-epoch-handoff-v1";

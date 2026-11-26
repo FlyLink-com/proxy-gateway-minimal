@@ -271,10 +271,10 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 import { promisify } from "node:util";
-import { localEpochProvider, localHandoffBytes } from "../../../agent/g4/local-epoch-handoff.mjs";
+import { localEpochProvider, localHandoffBytes } from "./fixtures/local-epoch-handoff.mjs";
 import { reconcileHistoricalAgentEvidence } from "../../../agent/g4/local-epoch-reconciliation.mjs";
 
-test("the real oneshot recovers receipts after T2 and keeps old-epoch work pending after R1", async t => {
+test("the local test launcher recovers receipts after T2 and keeps old-epoch work pending after R1", async t => {
   const { db: source, coordinator, switched } = driveToD1(t);
   const receipt = switched.coordinatorReceipt;
   assert.equal(verifyCoordinatorReceipt(source, receipt).valid, true);
@@ -329,7 +329,7 @@ test("the real oneshot recovers receipts after T2 and keeps old-epoch work pendi
     GCCGW_G4_KEY_ID: agent.keyId, GCCGW_G4_TOKEN_FILE: token, GCCGW_G4_MANIFEST_KEYS_FILE: keys,
     GCCGW_G4_STATE_DIR: stateDir, GCCGW_G4_MATERIALS_DIR: materials,
     GCCGW_G4_DRY_RUN: "false", GCCGW_G4_APPLY_ENABLED: "true",
-    GCCGW_G4_LOCAL_EPOCH_PROTOTYPE: "true", GCCGW_G4_LOCAL_EPOCH_HANDOFF_FILE: handoffFile,
+    GCCGW_G4_LOCAL_EPOCH_HANDOFF_FILE: handoffFile,
     GCCGW_G4_LOCAL_EPOCH_PUBLIC_KEY_FILE: pubFile
   };
   async function publish({ expired = false, tamper = false, candidate = receipt } = {}) {
@@ -351,10 +351,10 @@ test("the real oneshot recovers receipts after T2 and keeps old-epoch work pendi
     await writeFile(handoffFile + ".new", JSON.stringify({ payload, signature }), { mode: 0o600 });
     await rename(handoffFile + ".new", handoffFile);
   }
-  async function run(overrides = {}) {
+  async function run(overrides = {}, launcher = "./fixtures/local-epoch-run-once.mjs") {
     let stdout, code = 0;
     try {
-      ({ stdout } = await promisify(execFile)(process.execPath, [fileURLToPath(new URL("../../../agent/g4/run-once.mjs", import.meta.url))],
+      ({ stdout } = await promisify(execFile)(process.execPath, [fileURLToPath(new URL(launcher, import.meta.url))],
         { timeout: 10000, env: { ...env, ...overrides } }));
     } catch (error) {
       ({ stdout, code } = error);
@@ -367,9 +367,9 @@ test("the real oneshot recovers receipts after T2 and keeps old-epoch work pendi
   assert.equal(observed.length, 0);
   // Default-off is the established behavior: no synthesized epoch.
   assert.equal((await run({
-    GCCGW_G4_LOCAL_EPOCH_PROTOTYPE: "false",
+    GCCGW_G4_LOCAL_EPOCH_PROTOTYPE: "true",
     GCCGW_G4_STATE_DIR: join(root, "legacy-state"),
-  })).code, "writer_epoch_required");
+  }, "../../../agent/g4/run-once.mjs")).code, "writer_epoch_required");
   assert.deepEqual(observed.splice(0), [["claim", undefined]]);
   assert.equal(await count("agent_manifest_claims"), 0);
   await publish({ tamper: true });

@@ -35,10 +35,8 @@ import {
   createFileLock,
   createFileMaterialStore,
   createJsonStateStore,
-  WRITER_ERROR_CODES,
 } from "./agent-client.mjs";
 import { createManifestVerifier } from "./manifest.mjs";
-import { localEpochProvider } from "./local-epoch-handoff.mjs";
 
 function requiredEnv(name) {
   const value = process.env[name];
@@ -124,14 +122,6 @@ export async function writeAppliedMaterials(stateDir, generation, materials) {
 async function main() {
   const baseUrl = validateBaseUrl(requiredEnv("GCCGW_G4_BASE_URL"));
   const nodeRef = requiredEnv("GCCGW_G4_NODE_REF");
-  // U-F16 local prototype: off by default, loopback-only, no redirects.
-  const localEpoch = process.env.GCCGW_G4_LOCAL_EPOCH_PROTOTYPE === "true";
-  const epochProvider = localEpoch ? localEpochProvider({
-    baseUrl,
-    nodeRef,
-    handoffPath: requiredEnv("GCCGW_G4_LOCAL_EPOCH_HANDOFF_FILE"),
-    publicKeyPath: requiredEnv("GCCGW_G4_LOCAL_EPOCH_PUBLIC_KEY_FILE"),
-  }) : null;
   const channelRefs = requiredEnv("GCCGW_G4_CHANNEL_REFS")
     .split(",")
     .map((ref) => ref.trim())
@@ -154,7 +144,6 @@ async function main() {
       url.searchParams.set("channelRefs", channelRefs.join(","));
       const response = await fetch(url, {
         headers: { ...headers, "idempotency-key": idempotencyKey },
-        ...(localEpoch ? { redirect: "error" } : {}),
       });
       if (!response.ok) {
         const body = await response.json().catch(() => null);
@@ -174,18 +163,8 @@ async function main() {
           "idempotency-key": receipt.idempotencyKey,
         },
         body: JSON.stringify(receipt),
-        ...(localEpoch ? { redirect: "error" } : {}),
       });
-      if (!response.ok) {
-        const error = new Error(`receipt submit failed: HTTP ${response.status}`);
-        error.statusCode = response.status;
-        // Keep the stable Writer codes, never copy the remote message.
-        if (localEpoch) {
-          const body = await response.json().catch(() => null);
-          if (WRITER_ERROR_CODES.has(body?.error?.code)) error.code = body.error.code;
-        }
-        throw error;
-      }
+      if (!response.ok) throw new Error(`receipt submit failed: HTTP ${response.status}`);
     },
   };
 
@@ -193,8 +172,6 @@ async function main() {
     nodeRef,
     channelRefs,
     transport,
-    epochProvider,
-    writerEpochForwarding: localEpoch,
     materialStore: createFileMaterialStore(materialsDir),
     verifier: createManifestVerifier({ publicKeys }),
     stateStore: createJsonStateStore(join(stateDir, "applied-state.json")),
