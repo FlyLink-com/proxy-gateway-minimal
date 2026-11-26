@@ -52,27 +52,17 @@ function desiredStateLifecycleRevision(row) {
   ) ? candidate : "";
   const required = TRAFFIC_LIFECYCLE_PENDING_ACTIONS.has(text(row.next_action));
   return {
-    // D1 dangling E6: a credential whose access_request was not migrated
-    // has no request id; fall back to the credential ref so the
-    // fingerprint sort never dereferences a null requestRef.
     fingerprint: lifecycleRevisionRef
       ? {
-        requestRef: row.request_id ?? row.edge_credential_ref ?? "",
+        requestRef: row.request_id,
         lifecycleRevisionRef
       }
       : {
-        requestRef: row.request_id ?? row.edge_credential_ref ?? "",
+        requestRef: row.request_id,
         updatedAt: row.updated_at
       },
     safe: !required || Boolean(lifecycleRevisionRef)
   };
-}
-
-// D1 dangling-reference log: a child row whose parent table was excluded
-// from the E4 load is "unmigrated" and is downgraded, never silently
-// dropped. Only synthetic refs are logged.
-function logDangling(kind, detail = {}) {
-  console.warn(`[d1-dangling] ${kind} ${JSON.stringify(detail)}`);
 }
 
 function mapEdgeRegisteredNode(row) {
@@ -136,8 +126,8 @@ export function createReadOnlyMaterialHandoffControlStore({ dbPath } = {}) {
           c.edge_channel_ref,
           c.edge_credential_ref,
           c.edge_material_digest
-        from platform_portal_edge_credentials c
-        left join platform_portal_access_requests r on r.id = c.request_id
+        from platform_portal_access_requests r
+        join platform_portal_edge_credentials c on c.request_id = r.id
         where c.edge_channel_ref = ?
         order by c.edge_credential_ref asc, r.updated_at asc, r.id asc
       `).all(safeChannelRef);
@@ -148,34 +138,20 @@ export function createReadOnlyMaterialHandoffControlStore({ dbPath } = {}) {
         return null;
       }
 
-      // D1 dangling E6: credentials without an access_request row are
-      // still delivered (see the mutable control store); their missing
-      // expiry is not treated as expired.
-      const unmigratedRows = portalRows.filter((row) => row.request_id === null);
-      if (unmigratedRows.length > 0) {
-        logDangling("edge_desired_state_unmigrated_credentials", {
-          channelRef: safeChannelRef,
-          count: unmigratedRows.length,
-          edgeCredentialRefs: unmigratedRows.map((row) => row.edge_credential_ref),
-        });
-      }
       const activeRows = [...portalRows
         .map((row) => ({
           ...row,
-          unmigrated: row.request_id === null,
           validUntilMs: Date.parse(row.valid_until)
         }))
         .filter((row) => (
-          row.unmigrated
-          || ["delivered", "issued"].includes(row.request_status)
+          ["delivered", "issued"].includes(row.request_status)
           || (
             row.request_status === "disabled"
             && row.next_action === "traffic_supply_resume_pending"
           )
         ))
         .filter((row) => row.edge_credential_ref && row.edge_material_digest)
-        .filter((row) => row.unmigrated
-          || (row.valid_until && !Number.isNaN(row.validUntilMs) && row.validUntilMs > nowMs)),
+        .filter((row) => row.valid_until && !Number.isNaN(row.validUntilMs) && row.validUntilMs > nowMs),
         ...pack.activeRows];
       if (new Set(activeRows.map((row) => row.edge_credential_ref)).size !== activeRows.length) {
         throw new Error("edge desired state credential collision");
@@ -202,14 +178,9 @@ export function createReadOnlyMaterialHandoffControlStore({ dbPath } = {}) {
       const lifecycleTimes = rows
         .flatMap((row) => [Date.parse(row.valid_until), Date.parse(row.updated_at)])
         .filter((value) => !Number.isNaN(value));
-      // D1 dangling E6: unmigrated credentials carry no expiry; fall back
-      // to the latest known lifecycle time (or now when there is none).
-      const finiteValidUntilMs = activeRows
-        .map((row) => row.validUntilMs)
-        .filter((value) => Number.isFinite(value));
-      const validUntil = finiteValidUntilMs.length > 0
-        ? new Date(Math.min(...finiteValidUntilMs)).toISOString()
-        : new Date(lifecycleTimes.length > 0 ? Math.max(...lifecycleTimes) : nowMs).toISOString();
+      const validUntil = activeRows.length > 0
+        ? new Date(Math.min(...activeRows.map((row) => row.validUntilMs))).toISOString()
+        : new Date(Math.max(...lifecycleTimes)).toISOString();
       const fingerprint = sha256(JSON.stringify({
         nodeRef,
         channelRef: safeChannelRef,

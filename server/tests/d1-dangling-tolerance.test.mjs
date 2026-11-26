@@ -1,11 +1,5 @@
-// D1 control-plane read — dangling-reference tolerance (E2/E4/E5/E6/E7/E8/E9).
-//
-// E4 dropped 11 foreign keys, so child rows can exist while their parent
-// row was never migrated. These tests prove each tolerant path degrades to
-// "unmigrated" instead of failing closed, and that a present-but-wrong
-// parent still fails closed. All fixtures are synthetic in-memory SQLite
-// databases built by the tests themselves; nothing here touches D1, BWH,
-// or any real control plane, and no secret ever enters a test artifact.
+// D1 read integration: BWH keeps its strict integrity checks even when
+// the D1 target may be incomplete. All fixtures use synthetic SQLite.
 
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
@@ -170,59 +164,47 @@ function insertPackCredential(database, { requestRef, entitlementRef, credential
   `).run(requestRef, entitlementRef, credentialRef, `sha256:${"b".repeat(64)}`, NOW, NOW);
 }
 
-test("E5/E6 dangling tolerance in the control store", (t) => {
+test("E5/E6: local SQLite never serves a link or desired credential without its parent", (t) => {
   const { database, store } = controlFixture(t);
-  // A migrated link whose issuance request never arrived (E5).
-  withoutForeignKeys(database, () => insertLink(database, "link_1", "req_missing", "tenant_1"));
-  // A data-pack credential whose issuance request never arrived (E5).
-  withoutForeignKeys(database, () => insertPackCredential(database, {
-    requestRef: "req_missing", entitlementRef: "ent_missing", credentialRef: "edgecred_pack_missing"
-  }));
-  // A credential whose access request never arrived (E6).
-  withoutForeignKeys(database, () => insertCredential(database, { requestId: "pareq_missing" }));
-  // A wallet-first account whose entitlement exists but whose request and
-  // portal rows never arrived.
+  withoutForeignKeys(database, () => {
+    insertLink(database, "link_1", "req_missing", "tenant_1");
+    insertPackCredential(database, {
+      requestRef: "req_missing", entitlementRef: "ent_missing", credentialRef: "edgecred_pack_missing"
+    });
+    insertCredential(database, { requestId: "pareq_missing" });
+  });
   insertAccount(database, "acct_wf", { commercialModel: "wallet_first_unique_v1" });
   insertEntitlement(database, "ent_wf", "acct_wf");
 
   const { lines } = captureWarnings(() => {
-    const bindings = store.listIssuedSubscriptionBindings();
-    assert.equal(bindings.length, 1);
-    assert.equal(bindings[0].tenantRef, "tenant_1");
-    assert.equal(bindings[0].requestStatus, null);
-    assert.equal(bindings[0].requestId, "req_missing");
-
-    const packBinding = store.findIssuedSubscriptionBindingByEdgeCredentialRef("edgecred_pack_missing");
-    assert.equal(packBinding.requestStatus, null);
-    assert.equal(packBinding.requestId, "req_missing");
-
-    const usage = store.findUsageBindingByTenantRef("tenant_1");
-    assert.equal(usage.tenantRef, "tenant_1");
-    assert.equal(usage.requestStatus, null);
-    assert.equal(usage.edgeCredentialRef, "edgecred_req_missing");
-
-    assert.deepEqual(store.getThirdPartySubscriptionEligibilityByTenantRefs(["tenant_1"]), {
-      state: "denied"
-    });
-
-    assert.deepEqual(store.resolveExactWalletFirstResourceChainForDeferredTransition({
+    assert.deepEqual(store.listIssuedSubscriptionBindings(), []);
+    assert.equal(store.findIssuedSubscriptionBindingByEdgeCredentialRef("edgecred_pack_missing"), null);
+    assert.equal(store.findUsageBindingByTenantRef("tenant_1"), null);
+    assert.throws(() => store.resolveExactWalletFirstResourceChainForDeferredTransition({
       accountId: "acct_wf"
-    }), { state: "none", activeChainCount: 0 });
-
-    const desired = store.getLatestEdgeDesiredStateForChannel("chan_1");
-    assert.deepEqual(desired.edgeCredentialRefs, ["edgecred_1"]);
+    }), { code: "validation_error" });
+    assert.throws(() => store.getLatestEdgeDesiredStateForChannel("chan_1"), {
+      code: "data_pack_edge_desired_state_reconciliation_required"
+    });
   });
-  const joined = lines.join("\n");
-  assert.match(joined, /data_pack_binding_unmigrated/);
-  assert.match(joined, /third_party_eligibility_denied_unmigrated/);
-  assert.match(joined, /wallet_first_chain_unmigrated/);
-  assert.match(joined, /edge_desired_state_unmigrated_credentials/);
+  assert.doesNotMatch(lines.join("\n"), /d1-dangling|acct_wf|req_missing|pareq_missing/);
 });
 
 test("E5: per-account binding lists stay strict (unmigrated links are not leaked)", (t) => {
   const { database, store } = controlFixture(t);
   withoutForeignKeys(database, () => insertLink(database, "link_1", "req_missing", "tenant_1"));
   assert.deepEqual(store.listIssuedSubscriptionBindings({ accountId: "acct_1" }), []);
+});
+
+test("E6: an orphan portal credential is withheld when its access request is absent", (t) => {
+  const { database, store } = controlFixture(t);
+  withoutForeignKeys(database, () => insertCredential(database, { requestId: "pareq_missing" }));
+  const { result, lines } = captureWarnings(() => store.getLatestEdgeDesiredStateForChannel("chan_1"));
+  assert.equal(result, null);
+  assert.doesNotMatch(lines.join("\n"), /d1-dangling|pareq_missing|edgecred_1/);
+  insertAccessRequest(database, "pareq_valid");
+  insertCredential(database, { requestId: "pareq_valid", credentialRef: "edgecred_valid" });
+  assert.deepEqual(store.getLatestEdgeDesiredStateForChannel("chan_1").edgeCredentialRefs, ["edgecred_valid"]);
 });
 
 test("E6: a credential whose request exists but is disabled is not delivered", (t) => {
@@ -309,7 +291,7 @@ function creditPaidCoins(store, accountId, amountUnits, idempotencyKey) {
   });
 }
 
-test("E4: an orphan hold allocation is excluded from held units instead of 503", (t) => {
+test("E4: a missing hold does not reduce the local held balance or bypass reconciliation", (t) => {
   const { database, store } = walletFixture(t);
   const credited = creditPaidCoins(store, "account_1", 25, "credit_orphan");
   // Simulate the E4 state: the allocation row arrived but its hold never did.
@@ -327,12 +309,14 @@ test("E4: an orphan hold allocation is excluded from held units instead of 503",
       ) values (?, ?, ?, 1, 5, ?)
     `).run("alloc_orphan", "hold_missing", credited.resultRef, NOW);
   });
-  const { result, lines } = captureWarnings(() => store.getWalletProjection({
-    walletRef: credited.walletRef
-  }));
-  assert.equal(result.spendableUnits, 20);
-  assert.equal(result.heldUnits, 0);
-  assert.match(lines.join("\n"), /wallet_orphan_allocations_excluded/);
+  const { lines } = captureWarnings(() => assert.throws(
+    () => store.getWalletProjection({ walletRef: credited.walletRef }),
+    { code: "wallet_infrastructure_error" }
+  ));
+  assert.equal(database.prepare(
+    "select held_units from platform_coin_lots where lot_ref = ?"
+  ).pluck().get(credited.resultRef), 5);
+  assert.doesNotMatch(lines.join("\n"), /d1-dangling|walletRef/);
 });
 
 test("E4: a present-but-drifting held allocation still fails closed", (t) => {
@@ -433,7 +417,7 @@ function commerceFixture(t) {
     }
     rmSync(directory, { recursive: true, force: true });
   });
-  return { database, store };
+  return { database, store, clock };
 }
 
 function commerceWalletOperation(id) {
@@ -549,20 +533,40 @@ function deleteHoldRow(database, orderRef) {
   });
 }
 
-test("E2: cancelling a held order whose hold row was never migrated succeeds", (t) => {
+test("E2: missing local hold requires reconciliation and cannot cancel the order", (t) => {
   const { database, store } = commerceFixture(t);
   commerceSeedWallet(store);
   const order = commerceHeldOrder(store);
   assert.equal(order.paymentStatus, "held");
-  // Simulate the E4 state: the hold row (and its allocations) never arrived.
   deleteHoldRow(database, order.orderRef);
-  const { result, lines } = captureWarnings(() => store.cancelOrder({
-    accountId: "acct_synthetic_1",
-    orderRef: order.orderRef,
-    operation: commerceOperation("cancel_unmigrated")
-  }));
-  assert.equal(result.paymentStatus, "cancelled");
-  assert.match(lines.join("\n"), /order_hold_unmigrated/);
+  const { lines } = captureWarnings(() => assert.throws(() => store.cancelOrder({
+    accountId: "acct_synthetic_1", orderRef: order.orderRef,
+    operation: commerceOperation("cancel_missing_hold")
+  }), { code: "reconciliation_required" }));
+  assert.equal(database.prepare(
+    "select payment_status from platform_coin_commerce_orders where order_ref = ?"
+  ).pluck().get(order.orderRef), "reconciliation_required");
+  assert.equal(database.prepare(
+    "select count(*) from platform_coin_commerce_order_events where order_ref = ? and event_type = 'order_cancelled'"
+  ).pluck().get(order.orderRef), 0);
+  assert.doesNotMatch(lines.join("\n"), /d1-dangling|orderRef|accountId/);
+});
+
+test("E2: an otherwise valid fulfillment lease cannot proceed without a captured hold", (t) => {
+  const { database, store, clock } = commerceFixture(t);
+  commerceSeedWallet(store);
+  const order = commerceHeldOrder(store);
+  clock.value = order.cancelUntil;
+  store.claimDueCaptures({ limit: 1 });
+  store.captureClaimedOrder({ orderRef: order.orderRef });
+  const claim = store.claimNextFulfillmentCommand({ leaseMs: 1000 });
+  const input = {
+    commandRef: claim.commandRef, orderRef: claim.orderRef, accountId: claim.accountId,
+    leaseGeneration: claim.leaseGeneration, leaseToken: claim.leaseToken
+  };
+  assert.equal(store.verifyCapturedFulfillmentClaim(input).commandRef, claim.commandRef);
+  deleteHoldRow(database, order.orderRef);
+  assert.throws(() => store.verifyCapturedFulfillmentClaim(input), { code: "reconciliation_required" });
 });
 
 test("E2: the recovery scan surfaces an unmigrated held order without failing", (t) => {
@@ -792,7 +796,7 @@ function referralSetup(t) {
   return f;
 }
 
-test("E7: settling with a missing referrer profile defers instead of throwing", (t) => {
+test("E7: local settlement blocks on a missing referrer profile", (t) => {
   const f = referralSetup(t);
   f.setNow("2026-09-15T00:00:00.000Z");
   withoutForeignKeys(f.database, () => {
@@ -804,11 +808,11 @@ test("E7: settling with a missing referrer profile defers instead of throwing", 
     `).run();
   });
   const { result, lines } = captureWarnings(() => f.service.settle({ limit: 10 }));
-  assert.deepEqual(result, ["pending_unmigrated"]);
-  assert.match(lines.join("\n"), /referral_profile_unmigrated/);
+  assert.deepEqual(result, ["settlement_blocked"]);
+  assert.doesNotMatch(lines.join("\n"), /d1-dangling|accountId|referrerId|customer|promoter/);
 });
 
-test("E8: confirming with a missing referrer profile defers instead of throwing", (t) => {
+test("E8: local confirmation refuses a missing referrer profile", (t) => {
   const f = referralSetup(t);
   f.setNow("2026-09-15T00:00:00.000Z");
   withoutForeignKeys(f.database, () => {
@@ -819,12 +823,12 @@ test("E8: confirming with a missing referrer profile defers instead of throwing"
       delete from platform_referral_profiles where account_id = 'promoter'
     `).run();
   });
-  const { result, lines } = captureWarnings(() => f.approve());
-  assert.deepEqual(result, { status: "pending_unmigrated", accountId: "customer" });
-  assert.match(lines.join("\n"), /referral_confirm_account_unmigrated|referral_profile_unmigrated/);
+  const { lines } = captureWarnings(() => assert.throws(() => f.approve(),
+    { code: "referral_account_ineligible" }));
+  assert.doesNotMatch(lines.join("\n"), /d1-dangling|accountId|referrerId|customer|promoter/);
 });
 
-test("E9: settling with a missing payment order defers instead of throwing", (t) => {
+test("E9: local settlement blocks when the payment order is absent", (t) => {
   const f = referralSetup(t);
   f.setNow("2026-09-15T00:00:00.000Z");
   const paymentOrderRef = f.database.prepare(`
@@ -836,8 +840,8 @@ test("E9: settling with a missing payment order defers instead of throwing", (t)
     `).run(paymentOrderRef);
   });
   const { result, lines } = captureWarnings(() => f.service.settle({ limit: 10 }));
-  assert.deepEqual(result, ["pending_unmigrated"]);
-  assert.match(lines.join("\n"), /referral_payment_order_unmigrated/);
+  assert.deepEqual(result, ["settlement_blocked"]);
+  assert.doesNotMatch(lines.join("\n"), /d1-dangling|accountId|referrerId|customer|promoter/);
 });
 
 // ---------------------------------------------------------------------------

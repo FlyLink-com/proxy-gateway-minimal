@@ -21,13 +21,6 @@ const addDays = (date, days) =>
   timestamp(new Date(Date.parse(date) + days * 86400000));
 const sourceRefFor = (account) =>
   `referral_origin_${digest(account).slice(0, 32)}`;
-
-// D1 dangling-reference log (see coin-commerce-store.mjs): a child row
-// whose parent table was excluded from the E4 load is "unmigrated" and
-// is downgraded, never silently dropped. Only synthetic refs are logged.
-function logDangling(kind, detail = {}) {
-  console.warn(`[d1-dangling] ${kind} ${JSON.stringify(detail)}`);
-}
 const internalConfirmationRef = (account) => `internal_confirm_${sourceRefFor(account)}`;
 export function createPortalReferralService({
   database,
@@ -228,14 +221,7 @@ export function createPortalReferralService({
     and r.payment_order_ref=o.payment_order_ref where o.wallet_lot_ref=?`,
       )
       .get(first.lot_ref);
-    // D1 dangling E9 (referral_origins.payment_order_ref ->
-    // payment_orders): the payment_orders parent table was not migrated,
-    // so the payment order row is absent. Absence is "unmigrated", not
-    // "payment not closed": callers skip settlement instead of throwing
-    // referral_payment_binding_invalid. A present order that is not
-    // credited is still "awaiting_payment_close" (below).
-    if (!order) return { status: "awaiting_payment_close", unmigrated: true };
-    if (order.status !== "credited")
+    if (!order || order.status !== "credited")
       return { status: "awaiting_payment_close" };
     const origin = db
       .prepare("select * from platform_coin_credit_origins where lot_ref=?")
@@ -425,14 +411,6 @@ export function createPortalReferralService({
       active(accountId);
       const origin = db.prepare("select * from platform_referral_origins where account_id=?").get(accountId);
       const verified = readFirstVerifiedRecharge(accountId);
-      // D1 dangling E9: a payment order that was not migrated skips
-      // settlement (status stays pending) instead of throwing
-      // referral_payment_binding_invalid. A present-but-unclosed payment
-      // still throws, as before.
-      if (verified.unmigrated) {
-        logDangling("referral_payment_order_unmigrated", { accountId });
-        return { status: "pending_unmigrated", accountId };
-      }
       if (!origin || verified.status) throw referralError("referral_payment_binding_invalid");
       const { first, order } = verified;
       const binding = db.prepare("select * from platform_referral_bindings where account_id=?").get(accountId);
@@ -442,21 +420,7 @@ export function createPortalReferralService({
         || binding?.referrer_id !== origin.referrer_id || binding.registered_at > origin.credited_at)
         throw referralError("referral_payment_binding_invalid");
       active(origin.referrer_id);
-      // D1 dangling E7/E8 (referral_bindings/origins.referrer_id ->
-      // referral_profiles): the profiles parent table was not migrated,
-      // so the referrer's profile row can be absent. Absence is
-      // "unmigrated": skip settlement (status stays pending) instead of
-      // throwing referral_account_ineligible. A present profile that is
-      // not active still throws, as before.
-      const referrerProfile = db.prepare("select status from platform_referral_profiles where account_id=?").get(origin.referrer_id);
-      if (!referrerProfile) {
-        logDangling("referral_profile_unmigrated", {
-          accountId,
-          referrerId: origin.referrer_id,
-        });
-        return { status: "pending_unmigrated", accountId };
-      }
-      if (referrerProfile.status !== "active")
+      if (db.prepare("select status from platform_referral_profiles where account_id=?").get(origin.referrer_id)?.status !== "active")
         throw referralError("referral_account_ineligible");
       const policy = policySnapshot(JSON.parse(origin.policy_json));
       if (JSON.stringify(policyAt(origin.credited_at)) !== JSON.stringify(policy)
@@ -541,22 +505,13 @@ export function createPortalReferralService({
         if (row.status !== "pending" || row.confirmation_at > now())
           throw referralError("referral_not_confirmable");
         active(row.referrer_id);
-        // D1 dangling E7/E8: see settleAccount — a missing referrer
-        // profile is "unmigrated", not ineligible: confirm skips instead
-        // of throwing referral_account_ineligible.
-        const confirmProfile = db
-          .prepare(
-            "select status from platform_referral_profiles where account_id=?",
-          )
-          .get(row.referrer_id);
-        if (!confirmProfile) {
-          logDangling("referral_profile_unmigrated", {
-            accountId,
-            referrerId: row.referrer_id,
-          });
-          return { status: "pending_unmigrated", accountId };
-        }
-        if (confirmProfile.status !== "active")
+        if (
+          db
+            .prepare(
+              "select status from platform_referral_profiles where account_id=?",
+            )
+            .get(row.referrer_id)?.status !== "active"
+        )
           throw referralError("referral_account_ineligible");
         const result = releasePendingReward(row, decisionRef, "risk_approved");
         db.prepare("update platform_referral_accruals set risk_approved=1 where account_id=?").run(accountId);

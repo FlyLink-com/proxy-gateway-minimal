@@ -32,8 +32,10 @@ async function fixture(t, { enabled = true, available = true, samples = false, m
       }
       if (mode === "error") throw new Error("synthetic read unavailable");
       const rows = mode === "missing" ? [] : sql.includes("binding")
-        ? [{ ...binding, ...(mode === "drift" ? { plan: "annual" } : {}) }]
-        : [{ ...binding, uploadBytes: 42, downloadBytes: 88 }];
+        ? [{ ...binding, ...(mode === "drift" ? { plan: "annual" } : {}),
+            ...(mode === "partial" ? { entitlementStatus: null } : {}) }]
+        : [{ ...binding, uploadBytes: 42, downloadBytes: 88,
+            ...(mode === "wrong-rollup" ? { requestId: "s2s-other-request" } : {}) }];
       return new Response(JSON.stringify({ success: true, result: [{ results: rows }] }));
     },
     sleepImpl: async () => assert.fail("request-path D1 read must not retry")
@@ -96,6 +98,14 @@ test("missing data or transport failure falls back to complete local usage", asy
     const f = await fixture(t, { mode });
     await f.check(pathList[2], header(7, 11));
     assert.equal(f.remoteReads(), mode === "missing" ? 2 : 1);
+  }
+});
+
+test("partial D1 binding or unrelated rollup cannot supply subscription usage", async t => {
+  for (const mode of ["partial", "wrong-rollup"]) {
+    const f = await fixture(t, { mode });
+    await f.check(pathList[0], header(7, 11));
+    assert.equal(f.remoteReads(), 2);
   }
 });
 

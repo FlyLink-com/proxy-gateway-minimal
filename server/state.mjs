@@ -1300,19 +1300,6 @@ function durableEdgeCredentialOrders({ controlStore, materialStore, nodeId } = {
   }
   return controlStore.listIssuedSubscriptionBindings()
     .map((binding) => {
-      // D1 dangling E6: when the access_request row was not migrated,
-      // the binding cannot be told apart from a portal binding by
-      // looking the request up — and a portal binding must not fall
-      // into the legacy recovery path. A binding whose request status
-      // is null (request row absent, i.e. unmigrated) is therefore
-      // treated as portal-owned and skipped here, like a binding whose
-      // portal request is found below.
-      if (binding.requestStatus == null) {
-        console.warn(`[d1-dangling] durable_edge_credential_order_unmigrated ${JSON.stringify({
-          requestId: binding.requestId,
-        })}`);
-        return null;
-      }
       // Portal records own their exact channel credentials and lifecycle state.
       // Their explicit list is supplied separately below; historical material is
       // not authority to reconstruct a removed channel or resurrect a disabled

@@ -1313,28 +1313,14 @@ export function createSqliteDeferredResourceTransitionStore(options = {}) {
              l.id as issued_link_id,
              l.request_id as issued_link_request_id
         from platform_entitlements e
-        left join platform_issuance_requests r on r.id = ?
-        left join platform_issued_subscription_links l on l.id = ?
+        join platform_issuance_requests r on r.id = ?
+        join platform_issued_subscription_links l on l.id = ?
        where e.id = ?
     `).get(
       request.expectedRequestId,
       request.expectedIssuedLinkId,
       request.expectedEntitlementId
     );
-    // D1 dangling E5: the issuance_requests parent table was not
-    // migrated, so the expected request row can be absent while the
-    // entitlement and link are present. That is "unmigrated", not a
-    // broken chain: skip the chain assertion (and log it) instead of
-    // throwing deferred_transition_expected_chain_invalid. A present
-    // request row that disagrees is still invalid (below).
-    if (row && row.request_id == null) {
-      console.warn(`[d1-dangling] deferred_chain_unmigrated ${JSON.stringify({
-        accountId: request.accountId,
-        expectedRequestId: request.expectedRequestId,
-        expectedIssuedLinkId: request.expectedIssuedLinkId,
-      })}`);
-      return;
-    }
     if (
       !row
       || row.entitlement_account_id !== request.accountId

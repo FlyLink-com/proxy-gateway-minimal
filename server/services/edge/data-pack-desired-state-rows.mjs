@@ -67,17 +67,6 @@ export function readDataPackDesiredStateRows(db, channelRef, nowMs) {
       };
       rows.push(row);
       if (candidate.credential_status !== "active") continue;
-      // D1 dangling E5: the issuance_requests row for this credential was
-      // not migrated. Withhold the credential (do not call it delivered)
-      // instead of throwing invalidBinding: the binding is unproven, not
-      // proven broken.
-      if (candidate.request_status == null && candidate.request_entitlement_id == null) {
-        console.warn(`[d1-dangling] data_pack_desired_state_unmigrated ${JSON.stringify({
-          channelRef,
-          requestRef: candidate.request_ref,
-        })}`);
-        continue;
-      }
       if (!candidate.account_id || !candidate.entitlement_status
         || candidate.request_entitlement_id !== candidate.entitlement_ref
         || candidate.entitlement_account_id !== candidate.account_id

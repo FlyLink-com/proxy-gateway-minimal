@@ -55,15 +55,6 @@ import {
 import { DATA_PACK_TECHNICAL_VALID_UNTIL } from "./usage-billing-cycle.mjs";
 import { assertWritable, isWriterAuthorityError, readWriterAuthority, WRITER_PHASES } from "./single-writer-authority.mjs";
 
-// D1 dangling-reference log: the parent tables of the 11 dangling edge
-// classes were excluded from the E4 load, so a child row can legitimately
-// have no parent row. Those cases are "unmigrated" and are downgraded,
-// never silently dropped; the log line is the audit trail. Only synthetic
-// refs are logged here, never account data, material, or tokens.
-function logDangling(kind, detail = {}) {
-  console.warn(`[d1-dangling] ${kind} ${JSON.stringify(detail)}`);
-}
-
 const BUSY_TIMEOUT_MS = 2_000;
 const DEFAULT_CANCEL_WINDOW_MS = 3_000;
 const DEFAULT_QUOTE_TTL_MS = 300_000;
@@ -1978,17 +1969,9 @@ export function createSqliteCoinCommerceStore(options = {}) {
         join platform_coin_wallets w on w.wallet_ref = h.wallet_ref
        where h.hold_ref = ?
     `).get(order.hold_ref);
-    if (!hold) {
-      // D1 dangling E2 (orders.hold_ref -> holds): the holds parent table
-      // was not migrated, so the hold row is absent. Absence is
-      // "unmigrated", not "invalid": skip the hold consistency check and
-      // let callers proceed without hold evidence. A hold row that exists
-      // but disagrees with the order is still invalid (below).
-      logDangling("order_hold_unmigrated", { orderRef: order.order_ref });
-      return { valid: true, hold: null, unmigrated: true };
-    }
     if (
-      !isSafeWalletReference(hold.hold_ref)
+      !hold
+      || !isSafeWalletReference(hold.hold_ref)
       || !isSafeWalletReference(hold.wallet_ref)
       || hold.wallet_account_id !== order.account_id
       || !["active", "frozen", "closed"].includes(hold.wallet_status)
@@ -2109,7 +2092,7 @@ export function createSqliteCoinCommerceStore(options = {}) {
       throw commerceError("commerce_infrastructure_error");
     }
     const binding = readOrderHoldInvariant(order);
-    if (!binding.valid || (binding.hold && binding.hold.status !== "released")) {
+    if (!binding.valid || binding.hold.status !== "released") {
       throw commerceError("commerce_infrastructure_error");
     }
     const events = db.prepare(`
@@ -2581,7 +2564,7 @@ export function createSqliteCoinCommerceStore(options = {}) {
       throw commerceError("cancel_window_closed");
     }
     const binding = readOrderHoldInvariant(order);
-    if (!binding.valid || (binding.hold && binding.hold.status !== "active")) {
+    if (!binding.valid || binding.hold.status !== "active") {
       markReconciliation(order, occurredAt);
       return CANCEL_RECONCILIATION;
     }
@@ -2593,21 +2576,15 @@ export function createSqliteCoinCommerceStore(options = {}) {
       occurredAt
     });
     const refs = deriveCommerceOperationRefs(request.orderRef);
-    // D1 dangling E2: an unmigrated hold has no wallet hold to release
-    // in the migrated data, so the release step is skipped and the
-    // order is cancelled on the record alone. A present hold is still
-    // released through the wallet participant, as before.
-    const release = binding.unmigrated
-      ? { ok: true, safeResultCode: "released", resultRef: order.hold_ref }
-      : walletParticipant.releaseCoinHoldInTransaction({
-        holdRef: order.hold_ref,
-        operation: {
-          actorScope: request.operation.actorScope,
-          idempotencyKey: refs.releaseOperationRef,
-          actorType: request.operation.actorType,
-          actorRef: request.operation.actorRef
-        }
-      });
+    const release = walletParticipant.releaseCoinHoldInTransaction({
+      holdRef: order.hold_ref,
+      operation: {
+        actorScope: request.operation.actorScope,
+        idempotencyKey: refs.releaseOperationRef,
+        actorType: request.operation.actorType,
+        actorRef: request.operation.actorRef
+      }
+    });
     if (
       release?.ok !== true
       || release.safeResultCode !== "released"
@@ -2716,7 +2693,7 @@ export function createSqliteCoinCommerceStore(options = {}) {
         throw commerceError("commerce_fulfillment_lease_lost");
       }
       const hold = readOrderHoldInvariant(order);
-      if (!hold.valid || (hold.hold && hold.hold.status !== "captured")) {
+      if (!hold.valid || hold.hold.status !== "captured") {
         throw commerceError("reconciliation_required");
       }
       return Object.freeze({
@@ -3403,12 +3380,7 @@ export function createSqliteCoinCommerceStore(options = {}) {
     const allocationCount = db.prepare(`select count(*) from platform_coin_hold_allocations where hold_ref = ?`).pluck().get(order.hold_ref);
     if (allocationCount < 1 || allocationCount > 100) throw commerceError("reconciliation_required");
     const binding = readOrderHoldInvariant(order);
-    if (!binding.valid || (binding.hold && binding.hold.status !== "captured")) throw commerceError("reconciliation_required");
-    // D1 dangling E2: an unmigrated hold has no wallet_ref for the
-    // capture proof to check against. The proof cannot be skipped (it
-    // is the capture evidence), so this order reconciles instead of
-    // proceeding without hold evidence.
-    if (!binding.hold) throw commerceError("reconciliation_required");
+    if (!binding.valid || binding.hold.status !== "captured") throw commerceError("reconciliation_required");
     const ledger = initialCaptureProof(order, binding.hold);
     const events = db.prepare(`select * from platform_coin_commerce_order_events where order_ref = ? order by occurred_at, event_ref limit 101`).all(orderRef);
     if (events.length > 100 || !events.some((event) => event.event_type === "fulfillment_failed"
@@ -3605,7 +3577,7 @@ export function createSqliteCoinCommerceStore(options = {}) {
 
   function releaseForRecovery(order, occurredAt, invariant = null) {
     const binding = invariant ?? readOrderHoldInvariant(order);
-    if (!binding.valid || !binding.hold) return false;
+    if (!binding.valid) return false;
     const hold = binding.hold;
     if (hold.status !== "active") return false;
     const refs = deriveCommerceOperationRefs(order.order_ref);
@@ -3653,7 +3625,7 @@ export function createSqliteCoinCommerceStore(options = {}) {
     if (!isOrderAuthorityActionable(order)) {
       if (order.payment_status === "captured") {
         const binding = readOrderHoldInvariant(order);
-        if (!binding.valid || (binding.hold && binding.hold.status !== "captured")) {
+        if (!binding.valid || binding.hold.status !== "captured") {
           return isolateCapturedOrder(order, occurredAt);
         }
         const command = db.prepare(`
@@ -3677,7 +3649,7 @@ export function createSqliteCoinCommerceStore(options = {}) {
     }
     if (order.payment_status === "captured") {
       const binding = readOrderHoldInvariant(order);
-      if (!binding.valid || (binding.hold && binding.hold.status !== "captured")) {
+      if (!binding.valid || binding.hold.status !== "captured") {
         return isolateCapturedOrder(order, occurredAt);
       }
       ensureOutbox(order, occurredAt);
@@ -3692,7 +3664,7 @@ export function createSqliteCoinCommerceStore(options = {}) {
       return projectOrderRow(findOrder(orderRef));
     }
     const hold = binding.hold;
-    if (hold && hold.status === "captured") {
+    if (hold.status === "captured") {
       const repaired = db.prepare(`
         update platform_coin_commerce_orders
            set payment_status = 'captured', updated_at = ?
@@ -3715,10 +3687,7 @@ export function createSqliteCoinCommerceStore(options = {}) {
       });
       return projectSuccessfulCapture(order);
     }
-    // D1 dangling E2: an unmigrated hold has no status to check; isolate
-    // the capture instead of attempting to capture a hold that is not
-    // in the migrated data.
-    if (!hold || hold.status !== "active") {
+    if (hold.status !== "active") {
       return isolateCapture(order, occurredAt, binding);
     }
     const refs = deriveCommerceOperationRefs(order.order_ref);
@@ -3805,31 +3774,26 @@ export function createSqliteCoinCommerceStore(options = {}) {
             o.payment_status = 'held'
             and (
               o.cancel_until <= ?
-              -- D1 dangling E2: a missing hold row is "unmigrated", not a
-              -- recovery trigger. Hold-dependent checks below only apply
-              -- when the hold row exists (h.hold_ref is not null).
-              or (h.hold_ref is not null and (
-                w.wallet_ref is null
-                or w.account_id <> o.account_id
-                or h.purpose <> 'product_purchase'
-                or h.purpose_ref <> o.order_ref
-                or h.amount_units <> o.amount_units
-                or h.status <> 'active'
-                or h.expires_at <= ?
-              ))
+              or h.hold_ref is null
+              or w.wallet_ref is null
+              or w.account_id <> o.account_id
+              or h.purpose <> 'product_purchase'
+              or h.purpose_ref <> o.order_ref
+              or h.amount_units <> o.amount_units
+              or h.status <> 'active'
+              or h.expires_at <= ?
             )
           )
           or (
             o.payment_status = 'captured'
             and (
-              (h.hold_ref is not null and (
-                w.wallet_ref is null
-                or w.account_id <> o.account_id
-                or h.purpose <> 'product_purchase'
-                or h.purpose_ref <> o.order_ref
-                or h.amount_units <> o.amount_units
-                or h.status <> 'captured'
-              ))
+              h.hold_ref is null
+              or w.wallet_ref is null
+              or w.account_id <> o.account_id
+              or h.purpose <> 'product_purchase'
+              or h.purpose_ref <> o.order_ref
+              or h.amount_units <> o.amount_units
+              or h.status <> 'captured'
               or c.command_ref is null
               or (c.status = 'processing' and c.lease_until <= ?)
             )
@@ -3866,13 +3830,6 @@ export function createSqliteCoinCommerceStore(options = {}) {
         and c.command_ref is not null
         and not (c.status = 'processing' and c.lease_until <= ?)
       )
-      or (
-        -- D1 dangling E2: a held/captured order whose hold row is absent
-        -- is "unmigrated", not healthy. The audit scan surfaces it
-        -- explicitly instead of silently excluding it.
-        o.payment_status in ('held', 'captured')
-        and h.hold_ref is null
-      )
     `;
     const select = (afterCursor) => {
       const keyset = afterCursor
@@ -3895,8 +3852,8 @@ export function createSqliteCoinCommerceStore(options = {}) {
       return db.prepare(`
         select o.*
           from platform_coin_commerce_orders o
-          left join platform_coin_holds h on h.hold_ref = o.hold_ref
-          left join platform_coin_wallets w on w.wallet_ref = h.wallet_ref
+          join platform_coin_holds h on h.hold_ref = o.hold_ref
+          join platform_coin_wallets w on w.wallet_ref = h.wallet_ref
           left join platform_coin_commerce_fulfillment_commands c
             on c.order_ref = o.order_ref
          where (${eligible})
@@ -3967,19 +3924,19 @@ export function createSqliteCoinCommerceStore(options = {}) {
         }
         if (
           order.cancel_until <= occurredAt
-          && hold?.status === "active"
+          && hold.status === "active"
           && hold.expires_at > occurredAt
         ) {
           result.readyForCapture += 1;
         } else if (
-          hold?.status === "active"
+          hold.status === "active"
           && hold.expires_at <= occurredAt
         ) {
           releaseForRecovery(order, occurredAt, binding);
           markReconciliation(order, occurredAt);
           result.expiredHoldReleased += 1;
         } else if (
-          !hold || hold.status !== "active"
+          hold.status !== "active"
         ) {
           markReconciliation(order, occurredAt);
           result.reconciliationRequired += 1;
@@ -4025,7 +3982,7 @@ export function createSqliteCoinCommerceStore(options = {}) {
         continue;
       }
       const binding = readOrderHoldInvariant(order);
-      if (!binding.valid || (binding.hold && binding.hold.status !== "captured")) {
+      if (!binding.valid || binding.hold.status !== "captured") {
         isolateCapturedOrder(order, occurredAt);
         result.reconciliationRequired += 1;
         continue;
@@ -4162,7 +4119,7 @@ export function createSqliteCoinCommerceStore(options = {}) {
       return null;
     }
     const binding = readOrderHoldInvariant(order);
-    if (!binding.valid || (binding.hold && binding.hold.status !== "captured")) {
+    if (!binding.valid || binding.hold.status !== "captured") {
       isolateCapturedOrder(order, occurredAt);
       return null;
     }
@@ -4275,7 +4232,7 @@ export function createSqliteCoinCommerceStore(options = {}) {
     const validated = validateCommandAndReceipt(command);
     if (validated.order.payment_status === "captured") {
       const binding = readOrderHoldInvariant(validated.order);
-      if (!binding.valid || (binding.hold && binding.hold.status !== "captured")) {
+      if (!binding.valid || binding.hold.status !== "captured") {
         isolateCapturedOrder(validated.order, occurredAt);
         return FULFILLMENT_LEASE_LOST;
       }
@@ -4424,7 +4381,7 @@ export function createSqliteCoinCommerceStore(options = {}) {
     const validated = validateCommandAndReceipt(command);
     if (validated.order.payment_status === "captured") {
       const binding = readOrderHoldInvariant(validated.order);
-      if (!binding.valid || (binding.hold && binding.hold.status !== "captured")) {
+      if (!binding.valid || binding.hold.status !== "captured") {
         isolateCapturedOrder(validated.order, occurredAt);
         return FULFILLMENT_LEASE_LOST;
       }
@@ -4514,7 +4471,7 @@ export function createSqliteCoinCommerceStore(options = {}) {
         && order.payment_status === "captured"
       ) {
         const binding = readOrderHoldInvariant(order);
-        if (!binding.valid || (binding.hold && binding.hold.status !== "captured")) {
+        if (!binding.valid || binding.hold.status !== "captured") {
           candidates.push(occurredAt);
         }
       }
