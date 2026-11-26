@@ -23,6 +23,13 @@ import {
 
 const BUSY_TIMEOUT_MS = 2000;
 const MAX_LEDGER_PAGE_SIZE = 500;
+
+// D1 dangling-reference log (see coin-commerce-store.mjs): a child row
+// whose parent table was excluded from the E4 load is "unmigrated" and
+// is downgraded, never silently dropped. Only synthetic refs are logged.
+function logDangling(kind, detail = {}) {
+  console.warn(`[d1-dangling] ${kind} ${JSON.stringify(detail)}`);
+}
 const OPERATION_TYPE_CREDIT = "credit_coins";
 const OPERATION_TYPE_CONFIRM_CREDIT = "confirm_coin_credit";
 const OPERATION_TYPE_CREATE_HOLD = "create_coin_hold";
@@ -2725,6 +2732,36 @@ export function createSqliteCoinWalletStore(options = {}) {
       const occurredAt = projectionAt === undefined
         ? readLockedDatabaseUtc()
         : normalizeTimestamp(projectionAt);
+      // D1 dangling E4 (hold_allocations.hold_ref -> holds): an allocation
+      // whose hold row was not migrated is an orphan. Its units are still
+      // inside the lot's held_units, but the integrity CTE below can only
+      // see allocations joined to a live hold, so the orphan amount is
+      // excluded from the held_units baseline (and logged) before the
+      // consistency check runs. Without this the wallet would 503 with
+      // wallet_infrastructure_error for every wallet holding orphans.
+      const orphanAllocations = db.prepare(`
+        select a.lot_ref,
+               sum(a.allocated_units) as allocated_units
+          from platform_coin_hold_allocations a
+          left join platform_coin_holds h
+            on h.hold_ref = a.hold_ref
+          join platform_coin_lots l
+            on l.lot_ref = a.lot_ref
+         where h.hold_ref is null
+           and l.wallet_ref = ?
+         group by a.lot_ref
+      `).all(wallet.walletRef);
+      const orphanUnits = orphanAllocations.reduce(
+        (sum, row) => sum + row.allocated_units,
+        0,
+      );
+      if (orphanAllocations.length > 0) {
+        logDangling("wallet_orphan_allocations_excluded", {
+          walletRef: wallet.walletRef,
+          lots: orphanAllocations.length,
+          units: orphanUnits,
+        });
+      }
       const aggregates = db.prepare(`
         select coin_type,
                count(*) as lot_count,
@@ -2736,9 +2773,18 @@ export function createSqliteCoinWalletStore(options = {}) {
                  else available_units
                end), 0) as available_units,
                coalesce(sum(pending_units), 0) as pending_units,
-               coalesce(sum(held_units), 0) as held_units
-          from platform_coin_lots
-         where wallet_ref = ?
+               coalesce(sum(l.held_units - coalesce(o.allocated_units, 0)), 0) as held_units
+          from platform_coin_lots l
+          left join (
+            select a.lot_ref,
+                   sum(a.allocated_units) as allocated_units
+              from platform_coin_hold_allocations a
+              left join platform_coin_holds h
+                on h.hold_ref = a.hold_ref
+             where h.hold_ref is null
+             group by a.lot_ref
+          ) o on o.lot_ref = l.lot_ref
+         where l.wallet_ref = ?
          group by coin_type
          order by coin_type
       `).all(occurredAt, wallet.walletRef);
@@ -2803,14 +2849,26 @@ export function createSqliteCoinWalletStore(options = {}) {
                  sum(allocated_units) as allocated_units
             from active_rows
            group by lot_ref
+        ),
+        orphan_totals as (
+          select a.lot_ref,
+                 sum(a.allocated_units) as allocated_units
+            from platform_coin_hold_allocations a
+            left join platform_coin_holds h
+              on h.hold_ref = a.hold_ref
+           where h.hold_ref is null
+           group by a.lot_ref
         )
         select (
                  select count(*)
                    from platform_coin_lots l
                    left join active_totals t
                      on t.lot_ref = l.lot_ref
+                   left join orphan_totals o
+                     on o.lot_ref = l.lot_ref
                   where l.wallet_ref = ?
-                    and l.held_units <> coalesce(t.allocated_units, 0)
+                    and l.held_units - coalesce(o.allocated_units, 0)
+                      <> coalesce(t.allocated_units, 0)
                ) as held_mismatch_count,
                (
                  select count(*)
@@ -3304,6 +3362,9 @@ export function createSqliteCoinWalletStore(options = {}) {
   }
 
   function expireDuePortalRegistrationWelcomeBonusCoinLots(input) {
+    // U-F1: phase fence, first statement — no wallet write may land
+    // while the writer authority is not BWH_ACTIVE.
+    assertWritable(db);
     assertOpen();
     try {
       const limit = normalizeExpireDuePortalRegistrationWelcomeBonusCoinLotsRequest(input);

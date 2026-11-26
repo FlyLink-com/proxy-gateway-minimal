@@ -707,17 +707,27 @@ function desiredStateLifecycleRevision(row) {
   ) ? candidate : "";
   const required = TRAFFIC_LIFECYCLE_PENDING_ACTIONS.has(text(row.next_action));
   return {
+    // D1 dangling E6: a credential whose access_request was not migrated
+    // has no request id; fall back to the credential ref so the
+    // fingerprint sort never dereferences a null requestRef.
     fingerprint: lifecycleRevisionRef
       ? {
-        requestRef: row.request_id,
+        requestRef: row.request_id ?? row.edge_credential_ref ?? "",
         lifecycleRevisionRef
       }
       : {
-        requestRef: row.request_id,
+        requestRef: row.request_id ?? row.edge_credential_ref ?? "",
         updatedAt: row.updated_at
       },
     safe: !required || Boolean(lifecycleRevisionRef)
   };
+}
+
+// D1 dangling-reference log (see coin-commerce-store.mjs): a child row
+// whose parent table was excluded from the E4 load is "unmigrated" and
+// is downgraded, never silently dropped. Only synthetic refs are logged.
+function logDangling(kind, detail = {}) {
+  console.warn(`[d1-dangling] ${kind} ${JSON.stringify(detail)}`);
 }
 
 function sqliteRun(statement, input) {
@@ -1271,13 +1281,29 @@ function mapPortalSession(row) {
 export function createSqliteSubscriptionControlStore({
   dbPath,
   database,
-  initializeSchema = true
+  initializeSchema = true,
+  // D1 read client (see d1-read-client.mjs). Null by default: the local
+  // SQLite path stays in effect and no D1 call is made. Pass a client
+  // only when the D1 read path is explicitly configured; this never
+  // activates D1_ACTIVE and never changes the write path.
+  d1ReadClient = null
 } = {}) {
   if (!database && !dbPath) {
     throw new Error("dbPath or database is required");
   }
   if (typeof initializeSchema !== "boolean") {
     throw new Error("initializeSchema must be boolean");
+  }
+  if (
+    d1ReadClient !== null
+    && (
+      typeof d1ReadClient !== "object"
+      || typeof d1ReadClient.query !== "function"
+      || typeof d1ReadClient.queryOne !== "function"
+      || typeof d1ReadClient.queryAllKeyset !== "function"
+    )
+  ) {
+    throw new Error("d1ReadClient must be a D1 read client or null");
   }
 
   if (initializeSchema) ensureParentDirectory(dbPath);
@@ -2801,6 +2827,19 @@ export function createSqliteSubscriptionControlStore({
       counts.portal_request_count
     ].map((value) => Number(value));
     if (countValues.every((value) => value === 0)) return null;
+    // D1 dangling E5: the issuance_requests / portal_access_requests
+    // parent tables were not migrated, so a wallet-first account can
+    // have its entitlement and its issued link but no request or portal
+    // row. That is "unmigrated", not an ambiguous chain: report no
+    // provable chain instead of throwing validation_error.
+    if (
+      counts.entitlement_count === 1
+      && counts.request_count === 0
+      && counts.portal_request_count === 0
+    ) {
+      logDangling("wallet_first_chain_unmigrated", { accountId });
+      return null;
+    }
     if (countValues.some((value) => value !== 1)) {
       throw platformError("validation_error", "wallet-first resource chain is ambiguous");
     }
@@ -2809,6 +2848,10 @@ export function createSqliteSubscriptionControlStore({
       throw platformError("validation_error", "wallet-first resource chain is ambiguous");
     }
     const row = rows[0];
+    if (row.request_id == null) {
+      logDangling("wallet_first_chain_unmigrated", { accountId });
+      return null;
+    }
     const validFrom = isoText(row.entitlement_valid_from, "entitlementValidFrom");
     const validUntil = isoText(row.entitlement_valid_until, "entitlementValidUntil");
     const offer = walletFirstResourceEffectOffer({
@@ -6208,9 +6251,12 @@ export function createSqliteSubscriptionControlStore({
               left join platform_coin_holds h on h.hold_ref = o.hold_ref
               left join platform_coin_wallets w on w.wallet_ref = h.wallet_ref
              where q.cancels_switch_ref = ?
-               and (h.hold_ref is null or w.account_id is null or h.status <> 'released'
+               -- D1 dangling E2: a missing hold row is "unmigrated", not
+               -- proof the credit is still reserved. Only a hold row that
+               -- exists and is not released blocks the due switch.
+               and (h.hold_ref is not null and (w.account_id is null or h.status <> 'released'
                  or w.account_id <> o.account_id or h.amount_units <> o.amount_units
-                 or h.purpose <> 'product_purchase' or h.purpose_ref <> o.order_ref)
+                 or h.purpose <> 'product_purchase' or h.purpose_ref <> o.order_ref))
              limit 1
           `).get(record.planSwitch.switchRef);
           if (reservedCredit) {
@@ -6406,6 +6452,8 @@ export function createSqliteSubscriptionControlStore({
   }
 
   function setIssuedLinkStatus(id, { status, updatedAt }) {
+    // U-F13 (W-073, ex-LATENT): phase fence, first statement.
+    assertWritable(db);
     assertNoUnsafeFields({ status, updatedAt });
     const result = db.prepare(`
       update platform_issued_subscription_links
@@ -6420,15 +6468,26 @@ export function createSqliteSubscriptionControlStore({
 
   function listIssuedSubscriptionBindings(filters = {}) {
     assertNoUnsafeFields(filters);
+    // D1 dangling E5 (links.request_id -> issuance_requests): the
+    // issuance_requests parent table was not migrated, so a link's
+    // request row is absent. The link is still listed, with the
+    // request-related fields null (mapped as requestStatus null, i.e.
+    // "unmigrated"); it is NOT dropped from the list.
     const clauses = [
       "l.status = 'active'",
-      "r.status = 'issued'",
-      "e.status = 'active'"
+      "(r.id is null or r.status = 'issued')",
+      "(e.id is null or e.status = 'active')"
     ];
     const params = [];
     const accountId = optionalText(filters.accountId);
     const nodeId = optionalText(filters.nodeId);
     const tenantRef = optionalText(filters.tenantRef);
+    // An unmigrated link cannot be attributed to an account or a node:
+    // the request row that carries account_id/node_id is absent. The
+    // account/node filters therefore stay strict (only a present request
+    // row can match); unmigrated links still appear in unfiltered lists.
+    // Per-account lists in E4 are empty until the request rows are
+    // backfilled — see the implementation report.
     if (accountId) {
       clauses.push("r.account_id = ?");
       params.push(accountId);
@@ -6461,8 +6520,8 @@ export function createSqliteSubscriptionControlStore({
         e.valid_until,
         e.traffic_limit_bytes
       from platform_issued_subscription_links l
-      join platform_issuance_requests r on r.id = l.request_id
-      join platform_entitlements e on e.id = r.entitlement_id
+      left join platform_issuance_requests r on r.id = l.request_id
+      left join platform_entitlements e on e.id = r.entitlement_id
       where ${clauses.join(" and ")}
       order by l.created_at asc, l.id asc
     `).all(...params).map(mapIssuedSubscriptionBinding);
@@ -6477,6 +6536,11 @@ export function createSqliteSubscriptionControlStore({
 
   function findIssuedSubscriptionBindingByEdgeCredentialRef(edgeCredentialRef) {
     const safeEdgeCredentialRef = requiredText(edgeCredentialRef, "edgeCredentialRef");
+    // D1 dangling E5: the issuance_requests / entitlements rows may be
+    // unmigrated. All four lookups below are LEFT JOINs with
+    // null-tolerant status filters; the credential lookup is keyed on
+    // the link's own request_id (not the request row) so a credential
+    // is still found when its request row is absent.
     const packRows = db.prepare(`
       select
         l.id as link_id, l.request_id, l.tenant_ref, l.artifact_ref,
@@ -6487,22 +6551,32 @@ export function createSqliteSubscriptionControlStore({
         e.traffic_limit_bytes, c.edge_credential_ref,
         c.edge_material_digest, null as portal_user_ref
       from platform_data_pack_edge_credentials c
-      join platform_issuance_requests r on r.id = c.request_ref
-      join platform_entitlements e on e.id = r.entitlement_id
-      join platform_issued_subscription_links l on l.request_id = r.id
+      left join platform_issuance_requests r on r.id = c.request_ref
+      left join platform_entitlements e on e.id = r.entitlement_id
+      left join platform_issued_subscription_links l on l.request_id = c.request_ref
       where c.edge_credential_ref = ? and c.status = 'active'
-        and c.entitlement_ref = e.id
-        and r.purpose = 'coin_commerce_data_pack_fulfillment'
-        and r.status = 'issued' and e.status = 'active' and l.status = 'active'
+        and (e.id is null or c.entitlement_ref = e.id)
+        and (r.id is null or r.purpose = 'coin_commerce_data_pack_fulfillment')
+        and (r.id is null or r.status = 'issued')
+        and (e.id is null or e.status = 'active') and l.status = 'active'
       limit 2
     `).all(safeEdgeCredentialRef);
     if (packRows.length > 1 || (packRows.length === 1 && (
-      packRows[0].node_id !== getIssuanceRequest(packRows[0].request_id)?.nodeId
-      || lifetimeDataPackQuotaBytesFor(packRows[0]) !== packRows[0].traffic_limit_bytes
-      || packRows[0].valid_until !== DATA_PACK_TECHNICAL_VALID_UNTIL
+      (packRows[0].request_status != null
+        && packRows[0].node_id !== getIssuanceRequest(packRows[0].request_id)?.nodeId)
+      || (packRows[0].traffic_limit_bytes != null
+        && lifetimeDataPackQuotaBytesFor(packRows[0]) !== packRows[0].traffic_limit_bytes)
+      || (packRows[0].valid_until != null
+        && packRows[0].valid_until !== DATA_PACK_TECHNICAL_VALID_UNTIL)
       || !/^sha256:[a-f0-9]{64}$/.test(packRows[0].edge_material_digest)
     ))) {
       throw platformError("reconciliation_required", "data pack edge binding drifted");
+    }
+    if (packRows.length === 1 && packRows[0].request_status == null) {
+      logDangling("data_pack_binding_unmigrated", {
+        edgeCredentialRef: safeEdgeCredentialRef,
+        requestId: packRows[0].request_id,
+      });
     }
     const packBinding = mapUsageBinding(packRows[0]);
     const durableCredential = mapUsageBinding(db.prepare(`
@@ -6526,14 +6600,14 @@ export function createSqliteSubscriptionControlStore({
         c.edge_credential_ref,
         p.portal_user_ref
       from platform_issued_subscription_links l
-      join platform_issuance_requests r on r.id = l.request_id
-      join platform_entitlements e on e.id = r.entitlement_id
-      join platform_portal_edge_credentials c on c.request_id = r.id
+      left join platform_issuance_requests r on r.id = l.request_id
+      left join platform_entitlements e on e.id = r.entitlement_id
+      left join platform_portal_edge_credentials c on c.request_id = l.request_id
       left join platform_portal_access_requests p on p.id = r.id
       where l.status = 'active'
-        and r.status = 'issued'
-        and e.status = 'active'
-        and r.purpose <> 'coin_commerce_data_pack_fulfillment'
+        and (r.id is null or r.status = 'issued')
+        and (e.id is null or e.status = 'active')
+        and (r.id is null or r.purpose <> 'coin_commerce_data_pack_fulfillment')
         and c.edge_credential_ref = ?
       order by l.created_at desc, c.ordinal asc, l.id desc
       limit 1
@@ -6566,14 +6640,14 @@ export function createSqliteSubscriptionControlStore({
         p.edge_credential_ref,
         p.portal_user_ref
       from platform_issued_subscription_links l
-      join platform_issuance_requests r on r.id = l.request_id
-      join platform_entitlements e on e.id = r.entitlement_id
+      left join platform_issuance_requests r on r.id = l.request_id
+      left join platform_entitlements e on e.id = r.entitlement_id
       left join platform_portal_access_requests p on p.id = r.id
       where l.status = 'active'
-        and r.status = 'issued'
-        and e.status = 'active'
-        and r.purpose <> 'coin_commerce_data_pack_fulfillment'
-        and coalesce(p.edge_credential_ref, 'edgecred_' || r.id) = ?
+        and (r.id is null or r.status = 'issued')
+        and (e.id is null or e.status = 'active')
+        and (r.id is null or r.purpose <> 'coin_commerce_data_pack_fulfillment')
+        and coalesce(p.edge_credential_ref, 'edgecred_' || l.request_id) = ?
       order by l.created_at desc, l.id desc
       limit 1
     `).get(safeEdgeCredentialRef));
@@ -6605,13 +6679,13 @@ export function createSqliteSubscriptionControlStore({
         p.edge_credential_ref,
         p.portal_user_ref
       from platform_issued_subscription_links l
-      join platform_issuance_requests r on r.id = l.request_id
-      join platform_entitlements e on e.id = r.entitlement_id
+      left join platform_issuance_requests r on r.id = l.request_id
+      left join platform_entitlements e on e.id = r.entitlement_id
       left join platform_portal_access_requests p on p.id = r.id
       where l.status = 'active'
-        and r.status = 'issued'
-        and e.status = 'active'
-        and r.purpose <> 'coin_commerce_data_pack_fulfillment'
+        and (r.id is null or r.status = 'issued')
+        and (e.id is null or e.status = 'active')
+        and (r.id is null or r.purpose <> 'coin_commerce_data_pack_fulfillment')
       order by l.created_at desc, l.id desc
     `).all();
 
@@ -6651,6 +6725,9 @@ export function createSqliteSubscriptionControlStore({
   }
 
   function findUsageBindingByTenantRef(tenantRef) {
+    // D1 dangling E5: see listIssuedSubscriptionBindings — the link is
+    // returned with null request fields when its issuance request row
+    // was not migrated.
     return mapUsageBinding(db.prepare(`
       select
         l.id as link_id,
@@ -6672,12 +6749,12 @@ export function createSqliteSubscriptionControlStore({
         p.edge_credential_ref,
         p.portal_user_ref
       from platform_issued_subscription_links l
-      join platform_issuance_requests r on r.id = l.request_id
-      join platform_entitlements e on e.id = r.entitlement_id
+      left join platform_issuance_requests r on r.id = l.request_id
+      left join platform_entitlements e on e.id = r.entitlement_id
       left join platform_portal_access_requests p on p.id = r.id
       where l.status = 'active'
-        and r.status = 'issued'
-        and e.status = 'active'
+        and (r.id is null or r.status = 'issued')
+        and (e.id is null or e.status = 'active')
         and l.tenant_ref = ?
       order by l.created_at desc, l.id desc
       limit 1
@@ -6733,7 +6810,20 @@ export function createSqliteSubscriptionControlStore({
       for (const row of rows) {
         if (!latest.has(row.tenant_ref)) latest.set(row.tenant_ref, row);
       }
-      if ([...latest.values()].some(row => !valid(row))) return { state: "denied" };
+      if ([...latest.values()].some(row => !valid(row))) {
+        // D1 dangling E5: a link whose issuance request was not migrated
+        // fails valid() and stays "denied" (this outcome is unchanged —
+        // whether "denied" is acceptable for unmigrated links is Yi's
+        // call); the denial is logged as unmigrated, not as a proven
+        // ineligible binding.
+        const unmigrated = [...latest.values()].filter((row) => row.request_status == null);
+        if (unmigrated.length > 0) {
+          logDangling("third_party_eligibility_denied_unmigrated", {
+            tenantRefs: unmigrated.map((row) => row.tenant_ref),
+          });
+        }
+        return { state: "denied" };
+      }
       const binding = latest.values().next().value;
       // An older rotated link may legitimately coexist with its replacement.
       // Concurrent live bindings must not silently pick a different owner/tier.
@@ -8169,7 +8259,11 @@ export function createSqliteSubscriptionControlStore({
 
   function recordUsageSample(input) {
     const record = usageSampleRecord(input);
-    const inserted = db.transaction(() => insertUsageSampleRecord(record))();
+    const inserted = db.transaction(() => {
+      // U-F8/U-F13: phase fence, first statement.
+      assertWritable(db);
+      return insertUsageSampleRecord(record);
+    })();
     return {
       inserted,
       sample: getUsageSampleByDigest(record.sampleDigest),
@@ -8197,6 +8291,8 @@ export function createSqliteSubscriptionControlStore({
   }
 
   function recordCumulativeUsageSample(input) {
+    // U-F8/U-F13: phase fence, first statement.
+    assertWritable(db);
     const current = {
       sourceRef: requiredText(input.sourceRef, "sourceRef"),
       channelRef: requiredText(input.channelRef, "channelRef"),
@@ -8212,6 +8308,8 @@ export function createSqliteSubscriptionControlStore({
     };
 
     return db.transaction(() => {
+      // U-F8/U-F13: phase fence, first statement.
+      assertWritable(db);
       const cursor = getUsageCounterCursor(current);
       if (!cursor) {
         upsertUsageCounterCursor({
@@ -8328,6 +8426,8 @@ export function createSqliteSubscriptionControlStore({
   }
 
   function bindDevice(input) {
+    // U-F13 (W-076, ex-LATENT): phase fence, first statement.
+    assertWritable(db);
     assertNoUnsafeFields(input);
     const record = {
       id: requiredText(input.id, "id"),
@@ -8837,6 +8937,8 @@ export function createSqliteSubscriptionControlStore({
   // non-registration callers and test fixtures and must never be used to
   // overwrite an established registration identity binding.
   function upsertEdgeRegisteredNode(input) {
+    // U-F13 (W-095, ex-LATENT): phase fence, first statement.
+    assertWritable(db);
     const record = edgeRegisteredNodeRecord(input);
     sqliteRun(db.prepare(`
       insert into platform_edge_registered_nodes (
@@ -8940,8 +9042,8 @@ export function createSqliteSubscriptionControlStore({
         c.edge_channel_ref,
         c.edge_credential_ref,
         c.edge_material_digest
-      from platform_portal_access_requests r
-      join platform_portal_edge_credentials c on c.request_id = r.id
+      from platform_portal_edge_credentials c
+      left join platform_portal_access_requests r on r.id = c.request_id
       where c.edge_channel_ref = ?
       order by c.edge_credential_ref asc, r.updated_at asc, r.id asc
     `).all(safeChannelRef);
@@ -8951,20 +9053,37 @@ export function createSqliteSubscriptionControlStore({
     if (rows.length === 0) {
       return null;
     }
+    // D1 dangling E6 (credentials.request_id -> access_requests): the
+    // access_requests parent table was not migrated, so a credential can
+    // have no request row. Such a credential is still delivered, with
+    // its portal user ref absent (there is no request to supply one)
+    // and marked unmigrated here; it is NOT dropped from the desired
+    // state, and its missing expiry is not treated as expired.
+    const unmigratedRows = portalRows.filter((row) => row.request_id === null);
+    if (unmigratedRows.length > 0) {
+      logDangling("edge_desired_state_unmigrated_credentials", {
+        channelRef: safeChannelRef,
+        count: unmigratedRows.length,
+        edgeCredentialRefs: unmigratedRows.map((row) => row.edge_credential_ref),
+      });
+    }
     const activeRows = [...portalRows
       .map((row) => ({
         ...row,
+        unmigrated: row.request_id === null,
         validUntilMs: Date.parse(row.valid_until)
       }))
       .filter((row) => (
-        ["delivered", "issued"].includes(row.request_status)
+        row.unmigrated
+        || ["delivered", "issued"].includes(row.request_status)
         || (
           row.request_status === "disabled"
           && row.next_action === "traffic_supply_resume_pending"
         )
       ))
       .filter((row) => row.edge_credential_ref && row.edge_material_digest)
-      .filter((row) => row.valid_until && !Number.isNaN(row.validUntilMs) && row.validUntilMs > nowMs),
+      .filter((row) => row.unmigrated
+        || (row.valid_until && !Number.isNaN(row.validUntilMs) && row.validUntilMs > nowMs)),
       ...pack.activeRows];
     if (new Set(activeRows.map((row) => row.edge_credential_ref)).size !== activeRows.length) {
       throw platformError("reconciliation_required", "edge desired state credential collision");
@@ -8989,9 +9108,15 @@ export function createSqliteSubscriptionControlStore({
     const lifecycleTimes = rows
       .flatMap((row) => [Date.parse(row.valid_until), Date.parse(row.updated_at)])
       .filter((value) => !Number.isNaN(value));
-    const validUntil = activeRows.length > 0
-      ? new Date(Math.min(...activeRows.map((row) => row.validUntilMs))).toISOString()
-      : new Date(Math.max(...lifecycleTimes)).toISOString();
+    // D1 dangling E6: unmigrated credentials carry no expiry, so they
+    // contribute no finite validUntilMs; the desired-state validity falls
+    // back to the latest known lifecycle time (or now when there is none).
+    const finiteValidUntilMs = activeRows
+      .map((row) => row.validUntilMs)
+      .filter((value) => Number.isFinite(value));
+    const validUntil = finiteValidUntilMs.length > 0
+      ? new Date(Math.min(...finiteValidUntilMs)).toISOString()
+      : new Date(lifecycleTimes.length > 0 ? Math.max(...lifecycleTimes) : nowMs).toISOString();
     const fingerprint = sha256(JSON.stringify({
       nodeRef,
       channelRef: safeChannelRef,
@@ -9673,6 +9798,8 @@ export function createSqliteSubscriptionControlStore({
   }
 
   function createPortalPasskeyCredential(input) {
+    // U-F13 (W-012, ex-LATENT): phase fence, first statement.
+    assertWritable(db);
     const record = {
       id: requiredText(input.id, "id"),
       accountId: requiredText(input.accountId, "accountId"),
@@ -9718,6 +9845,8 @@ export function createSqliteSubscriptionControlStore({
   }
 
   function markPortalPasskeyVerified(id, { verifiedAt, signCount, updatedAt }) {
+    // U-F13 (W-013, ex-LATENT): phase fence, first statement.
+    assertWritable(db);
     const result = db.prepare(`
       update platform_portal_passkey_credentials
       set sign_count = ?, last_verified_at = ?, updated_at = ?
@@ -10483,6 +10612,164 @@ export function createSqliteSubscriptionControlStore({
     return guardedTransaction(db, options.writerEpoch, callback);
   }
 
+  // D1 control-plane read path (2026-11-26, feat/d1-control-plane-read).
+  // Async variants of the pure-SQL reads. When the store was constructed
+  // with a D1 read client, the SELECT runs against E4 over the D1 HTTP
+  // API using the same SQL text as the sync path, so the dangling
+  // tolerance applies identically; when no client is configured the
+  // async method delegates to the local SQLite implementation, so
+  // behaviour is unchanged by default. This never activates D1_ACTIVE
+  // and never changes the write path.
+  //
+  // Rules for the D1 path:
+  // - reads only: the client refuses any non-SELECT statement;
+  // - list pagination is PK keyset, never OFFSET;
+  // - NEVER call these from inside a better-sqlite3 transaction: a D1
+  //   read cannot see rows the local transaction has just written
+  //   (read-your-write breaks), so in-transaction re-reads
+  //   (recordUsageSample / recordCumulativeUsageSample returns, and the
+  //   confirm/capture re-reads) must keep using the sync local reads.
+  async function listIssuedSubscriptionBindingsAsync(filters = {}) {
+    if (!d1ReadClient) return listIssuedSubscriptionBindings(filters);
+    assertNoUnsafeFields(filters);
+    const clauses = [
+      "l.status = 'active'",
+      "(r.id is null or r.status = 'issued')",
+      "(e.id is null or e.status = 'active')"
+    ];
+    const params = [];
+    const accountId = optionalText(filters.accountId);
+    const nodeId = optionalText(filters.nodeId);
+    const tenantRef = optionalText(filters.tenantRef);
+    if (accountId) {
+      clauses.push("r.account_id = ?");
+      params.push(accountId);
+    }
+    if (nodeId) {
+      clauses.push("r.node_id = ?");
+      params.push(nodeId);
+    }
+    if (tenantRef) {
+      clauses.push("l.tenant_ref = ?");
+      params.push(tenantRef);
+    }
+    const selectList = `
+        l.id as link_id,
+        l.request_id,
+        l.tenant_ref,
+        l.artifact_ref,
+        l.status as link_status,
+        l.created_at as link_created_at,
+        l.updated_at as link_updated_at,
+        r.account_id,
+        r.entitlement_id,
+        r.status as request_status,
+        r.node_id,
+        e.plan,
+        e.status as entitlement_status,
+        e.valid_from,
+        e.valid_until,
+        e.traffic_limit_bytes`;
+    const rows = await d1ReadClient.queryAllKeyset({
+      pageQuery: (cursor) => {
+        const keyset = cursor
+          ? " and (l.created_at > ? or (l.created_at = ? and l.id > ?))"
+          : "";
+        const keysetParams = cursor
+          ? [cursor.createdAt, cursor.createdAt, cursor.id]
+          : [];
+        return {
+          sql: `
+            select ${selectList}
+            from platform_issued_subscription_links l
+            left join platform_issuance_requests r on r.id = l.request_id
+            left join platform_entitlements e on e.id = r.entitlement_id
+            where ${clauses.join(" and ")}${keyset}
+            order by l.created_at asc, l.id asc
+            limit ?`,
+          params: [...params, ...keysetParams],
+        };
+      },
+      keyOf: (row) => ({ createdAt: row.link_created_at, id: row.link_id }),
+    });
+    return rows.map(mapIssuedSubscriptionBinding);
+  }
+
+  async function findUsageBindingByTenantRefAsync(tenantRef) {
+    if (!d1ReadClient) return findUsageBindingByTenantRef(tenantRef);
+    const row = await d1ReadClient.queryOne(`
+      select
+        l.id as link_id,
+        l.request_id,
+        l.tenant_ref,
+        l.artifact_ref,
+        l.status as link_status,
+        l.created_at as link_created_at,
+        l.updated_at as link_updated_at,
+        r.account_id,
+        r.entitlement_id,
+        r.status as request_status,
+        r.node_id,
+        e.plan,
+        e.status as entitlement_status,
+        e.valid_from,
+        e.valid_until,
+        e.traffic_limit_bytes,
+        p.edge_credential_ref,
+        p.portal_user_ref
+      from platform_issued_subscription_links l
+      left join platform_issuance_requests r on r.id = l.request_id
+      left join platform_entitlements e on e.id = r.entitlement_id
+      left join platform_portal_access_requests p on p.id = r.id
+      where l.status = 'active'
+        and (r.id is null or r.status = 'issued')
+        and (e.id is null or e.status = 'active')
+        and l.tenant_ref = ?
+      order by l.created_at desc, l.id desc
+      limit 1
+    `, [requiredText(tenantRef, "tenantRef")]);
+    return mapUsageBinding(row);
+  }
+
+  async function getUsageRollupByEdgeCredentialRefAsync(edgeCredentialRef) {
+    if (!d1ReadClient) {
+      return getUsageRollupByEdgeCredentialRef(edgeCredentialRef);
+    }
+    const row = await d1ReadClient.queryOne(`
+      select * from platform_usage_rollups
+      where edge_credential_ref = ?
+    `, [requiredText(edgeCredentialRef, "edgeCredentialRef")]);
+    return mapUsageRollup(row);
+  }
+
+  async function listPortalEdgeCredentialsAsync(requestId) {
+    if (!d1ReadClient) return listPortalEdgeCredentials(requestId);
+    const rows = await d1ReadClient.query(`
+      select edge_channel_ref, edge_credential_ref, edge_material_digest
+      from platform_portal_edge_credentials
+      where request_id = ?
+      order by ordinal asc, edge_channel_ref asc
+    `, [requiredText(requestId, "requestId")]);
+    return rows.map(mapPortalEdgeCredential);
+  }
+
+  // Partial D1 port (documented): the desired-state and
+  // edge-credential binding reads also consult the data-pack desired
+  // state rows and other local-only helpers (readDataPackDesiredStateRows,
+  // getIssuanceRequest, lifetimeDataPackQuotaBytesFor), which have no
+  // D1 equivalent yet. Until those are ported, the async variants
+  // delegate to the local sync implementations so callers can already
+  // await a stable async shape. The D1 SQL port for these two is
+  // remaining work, not a silent local fallback at cutover: a store
+  // constructed with a D1 client still serves these two locally.
+  async function getLatestEdgeDesiredStateForChannelAsync(channelRef, filters = {}) {
+    return getLatestEdgeDesiredStateForChannel(channelRef, filters);
+  }
+
+  async function findIssuedSubscriptionBindingByEdgeCredentialRefAsync(edgeCredentialRef) {
+    return findIssuedSubscriptionBindingByEdgeCredentialRef(edgeCredentialRef);
+  }
+
   return {
     recordPortalReferralRegistration(input) {
       // U-F13 (W-019): phase fence, first statement. The write itself
@@ -10561,14 +10848,18 @@ export function createSqliteSubscriptionControlStore({
     getIssuedLink,
     setIssuedLinkStatus,
     listIssuedSubscriptionBindings,
+    listIssuedSubscriptionBindingsAsync,
     findIssuedSubscriptionBindingByTenantRef,
     findIssuedSubscriptionBindingByEdgeCredentialRef,
+    findIssuedSubscriptionBindingByEdgeCredentialRefAsync,
     findUsageBindingByTenantRef,
+    findUsageBindingByTenantRefAsync,
     getThirdPartySubscriptionEligibilityByTenantRefs,
     recordUsageSample,
     recordCumulativeUsageSample,
     getUsageSampleByDigest,
     getUsageRollupByEdgeCredentialRef,
+    getUsageRollupByEdgeCredentialRefAsync,
     getUsageCounterCursor,
     listUsageRollupsByRequestId,
     listUsageSamples,
@@ -10625,6 +10916,8 @@ export function createSqliteSubscriptionControlStore({
     getEdgeRegisteredNode,
     listEdgeRegisteredNodes,
     getLatestEdgeDesiredStateForChannel,
+    getLatestEdgeDesiredStateForChannelAsync,
+    listPortalEdgeCredentialsAsync,
     recordEdgeApplyReceipt,
     getEdgeApplyReceipt,
     listEdgeApplyReceipts,
@@ -10672,6 +10965,10 @@ export function createSqliteSubscriptionControlStore({
     // receipts need db.prepare / db.transaction on this same
     // connection; exposing the handle reuses the existing connection
     // instead of opening a second one.
+    // D1 read client this store was constructed with (null when the
+    // local SQLite path is in effect). Read-only: it never activates
+    // D1_ACTIVE and never changes the write path.
+    d1ReadClient: d1ReadClient ?? null,
     database: db,
     close
   };

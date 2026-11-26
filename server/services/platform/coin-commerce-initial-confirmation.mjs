@@ -128,7 +128,22 @@ export function createCoinCommerceInitialConfirmation({ database, commerceStore,
         from platform_issued_subscription_links where id = ?`, refs.issuedLinkRef);
       const issuanceAudit = read(`select id, entity_type, entity_ref, action, actor_ref, created_at, metadata_json
         from platform_audit_events where id = ?`, `${refs.requestRef}_audit_issued`);
-      if (!account || account.status !== "active" || !entitlement || !issuance || !request || !link
+      // D1 dangling E5/E6: the issuance_requests / portal_access_requests
+      // parent tables were not migrated. A missing issuance or access
+      // request row is "unmigrated" — the eligibility proof cannot be
+      // completed, but the binding is not proven ineligible — so fail
+      // "unavailable" (retryable / unproven) instead of "not_eligible"
+      // (proven ineligible). A present row that disagrees is still
+      // not_eligible (below).
+      if (!issuance || !request) {
+        console.warn(`[d1-dangling] initial_confirmation_unmigrated ${JSON.stringify({
+          orderRef: order.order_ref,
+          issuanceMissing: !issuance,
+          requestMissing: !request,
+        })}`);
+        fail("unavailable");
+      }
+      if (!account || account.status !== "active" || !entitlement || !link
         || !issuanceAudit || entitlement.account_id !== account.id || request.portal_user_ref !== account.id
         || entitlement.status !== "active" || entitlement.plan !== payload.offerVersionRef
         || !timestamp(request.submitted_at) || !timestamp(entitlement.valid_until)
