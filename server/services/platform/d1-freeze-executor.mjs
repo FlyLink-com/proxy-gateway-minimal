@@ -44,6 +44,7 @@ import {
   buildWriterCoverageMatrix,
   createDrainTracker,
   readCoordinatorLog,
+  verifyCoordinatorLog,
   readSnapshotGateLog
 } from "./d1-card9-freeze-drain-coordinator.mjs";
 import {
@@ -480,6 +481,10 @@ export function createD1FreezeExecutor({
       );
     }
     evidence.steps.a0Authority = { authority: authority.authority, phase: authority.phase, epoch: authority.epoch, at: timestamp() };
+
+    // Refuse a missing/corrupt history before terminal scheduler stops.
+    // T1 checks it again in the same transaction as the state change.
+    verifyCoordinatorLog(db);
 
     // An explicitly supplied snapshot id that a previous freeze
     // already used is refused here, before any scheduler is stopped:

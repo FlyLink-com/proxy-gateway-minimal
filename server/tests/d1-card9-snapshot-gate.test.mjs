@@ -124,16 +124,18 @@ function drainedTracker(clock) {
   return tracker;
 }
 
-function passingVerification() {
+function passingVerification(freezeReceiptDigest, snapshotId = SNAPSHOT) {
   return buildTwoSidedVerificationReport({
-    snapshotId: SNAPSHOT,
+    snapshotId,
+    context: freezeReceiptDigest ? { kind: "freeze-switch", freezeReceiptDigest } : null,
     checks: Object.fromEntries(VERIFICATION_CHECK_IDS.map((id) => [id, { passed: true, detail: `synthetic ${id}` }])),
   });
 }
 
-function appliedDelta() {
+function appliedDelta(freezeReceiptDigest, snapshotId = SNAPSHOT) {
   return buildDeltaCatchupReport({
-    snapshotId: SNAPSHOT,
+    snapshotId,
+    freezeReceiptDigest,
     items: [{ table: "s2s_items", pk: "2", disposition: "applied" }],
   });
 }
@@ -197,10 +199,11 @@ function bindSynthetic(ctx) {
   });
 }
 
-function switchArgs() {
+function switchArgs(ctx) {
+  const digest = ctx.result.freezeReceipt.receiptDigest;
   return {
-    deltaReport: appliedDelta(),
-    verificationReport: passingVerification(),
+    deltaReport: appliedDelta(digest),
+    verificationReport: passingVerification(digest),
     c1ApprovalRef: "s2s-c1-approval-001",
     handover: { verifiedBy: "s2s-reviewer-001", verifiedAt: "2026-11-21T00:05:00.000Z", receiptRef: "s2s-handover-001" },
   };
@@ -440,7 +443,7 @@ test("A4 frozen + drained + receipt issues an instruction, a real snapshot binds
   assert.deepEqual(verifySnapshotGateLog(ctx.db), { valid: true, entries: 2 });
 
   // The bound snapshot now opens T2.
-  const switched = ctx.coordinator.switchToD1(switchArgs());
+  const switched = ctx.coordinator.switchToD1(switchArgs(ctx));
   assert.equal(switched.transitionId, "T2");
   assert.equal(switched.authority.phase, "D1_ACTIVE");
   assert.equal(switched.coordinatorReceipt.gateRefs.snapshotManifestDigest, manifest.manifestDigest);
@@ -451,7 +454,7 @@ test("A4 frozen + drained + receipt issues an instruction, a real snapshot binds
 
 test("A5 switch without any snapshot binding is refused and stays FROZEN", (t) => {
   const ctx = freezeHappy(t);
-  assert.equal(codeOf(() => ctx.coordinator.switchToD1(switchArgs())), "freeze_snapshot_unbound");
+  assert.equal(codeOf(() => ctx.coordinator.switchToD1(switchArgs(ctx))), "freeze_snapshot_unbound");
   assert.deepEqual([readWriterAuthority(ctx.db).phase, readWriterAuthority(ctx.db).epoch], ["FROZEN", 2]);
 });
 
@@ -477,7 +480,7 @@ test("A5 a manifest bound to a different freeze receipt cannot open T2", (t) => 
     acceptance: { quickCheck: true, foreignKeys: true },
   })), "freeze_snapshot_bind_refused");
   assert.equal(ctx.coordinator.readSnapshotGateLog().filter((entry) => entry.kind === "binding").length, 0);
-  assert.equal(codeOf(() => ctx.coordinator.switchToD1(switchArgs())), "freeze_snapshot_unbound");
+  assert.equal(codeOf(() => ctx.coordinator.switchToD1(switchArgs(ctx))), "freeze_snapshot_unbound");
   assert.equal(readWriterAuthority(ctx.db).phase, "FROZEN");
 });
 
@@ -515,7 +518,7 @@ test("A6 a snapshot that fails acceptance cannot be manifested, and a failed bin
     manifest,
     acceptance: { quickCheck: true, foreignKeys: true },
   })), "freeze_snapshot_bind_refused");
-  assert.equal(codeOf(() => ctx.coordinator.switchToD1(switchArgs())), "freeze_snapshot_unbound");
+  assert.equal(codeOf(() => ctx.coordinator.switchToD1(switchArgs(ctx))), "freeze_snapshot_unbound");
 });
 
 test("A6 an operator-voided manifest cannot open T2 even after a fresh instruction", (t) => {
@@ -526,7 +529,7 @@ test("A6 an operator-voided manifest cannot open T2 even after a fresh instructi
     manifestDigest: binding.manifestDigest,
     reason: "synthetic operator void",
   });
-  assert.equal(codeOf(() => ctx.coordinator.switchToD1(switchArgs())), "freeze_snapshot_unbound");
+  assert.equal(codeOf(() => ctx.coordinator.switchToD1(switchArgs(ctx))), "freeze_snapshot_unbound");
   assert.equal(readWriterAuthority(ctx.db).phase, "FROZEN");
 });
 
