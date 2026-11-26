@@ -181,7 +181,7 @@ export function createD1ReadClient({
   const endpoint =
     `${D1_API_BASE}/accounts/${accountId}/d1/database/${databaseId}/query`;
 
-  async function postOnce(sql, params) {
+  async function postOnce(sql, params, signal) {
     const body = params && params.length > 0 ? { sql, params } : { sql };
     let res;
     try {
@@ -194,7 +194,7 @@ export function createD1ReadClient({
           "Content-Type": "application/json",
         },
         body: JSON.stringify(body),
-        signal: AbortSignal.timeout(D1_READ_LIMITS.callTimeoutMs),
+        signal: signal ?? AbortSignal.timeout(D1_READ_LIMITS.callTimeoutMs),
       });
     } catch (error) {
       if (error?.name === "TimeoutError") {
@@ -217,9 +217,18 @@ export function createD1ReadClient({
   }
 
   // Single SELECT with retries (whole-query retries, at most 2, 60 s apart).
-  async function query(sql, params = []) {
+  async function query(sql, params = [], { signal } = {}) {
     assertSelectOnly(sql);
     assertD1ReadLimits(sql, params);
+    // Request-path callers supply one deadline for the complete read chain.
+    // Do not use the offline retry cadence within that request.
+    if (signal) {
+      signal.throwIfAborted();
+      const rows = await postOnce(sql, params, signal);
+      signal.throwIfAborted();
+      assertResultLimits(rows);
+      return rows;
+    }
     const startedAt = nowFn();
     let attempt = 0;
     for (;;) {
@@ -244,8 +253,8 @@ export function createD1ReadClient({
     }
   }
 
-  async function queryOne(sql, params = []) {
-    const rows = await query(sql, params);
+  async function queryOne(sql, params = [], options) {
+    const rows = await query(sql, params, options);
     return rows.length > 0 ? rows[0] : null;
   }
 

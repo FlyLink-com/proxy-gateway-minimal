@@ -599,6 +599,7 @@ export function createApp(state, options = {}) {
     }));
   }
   app.use(subscriptionRoutes(state, {
+    d1UsageRead: options.d1SubscriptionUsageRead === true,
     resolveClientIpFn: clientIpResolver
   }));
   app.use(diagnosticsRoutes(state));

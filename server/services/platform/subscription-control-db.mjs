@@ -10695,7 +10695,7 @@ export function createSqliteSubscriptionControlStore({
     return rows.map(mapIssuedSubscriptionBinding);
   }
 
-  async function findUsageBindingByTenantRefAsync(tenantRef) {
+  async function findUsageBindingByTenantRefAsync(tenantRef, options) {
     if (!d1ReadClient) return findUsageBindingByTenantRef(tenantRef);
     const row = await d1ReadClient.queryOne(`
       select
@@ -10727,18 +10727,18 @@ export function createSqliteSubscriptionControlStore({
         and l.tenant_ref = ?
       order by l.created_at desc, l.id desc
       limit 1
-    `, [requiredText(tenantRef, "tenantRef")]);
+    `, [requiredText(tenantRef, "tenantRef")], options);
     return mapUsageBinding(row);
   }
 
-  async function getUsageRollupByEdgeCredentialRefAsync(edgeCredentialRef) {
+  async function getUsageRollupByEdgeCredentialRefAsync(edgeCredentialRef, options) {
     if (!d1ReadClient) {
       return getUsageRollupByEdgeCredentialRef(edgeCredentialRef);
     }
     const row = await d1ReadClient.queryOne(`
       select * from platform_usage_rollups
       where edge_credential_ref = ?
-    `, [requiredText(edgeCredentialRef, "edgeCredentialRef")]);
+    `, [requiredText(edgeCredentialRef, "edgeCredentialRef")], options);
     return mapUsageRollup(row);
   }
 
@@ -10771,6 +10771,7 @@ export function createSqliteSubscriptionControlStore({
   }
 
   return {
+    d1SubscriptionUsageReadAvailable: Boolean(d1ReadClient),
     recordPortalReferralRegistration(input) {
       // U-F13 (W-019): phase fence, first statement. The write itself
       // happens in portal-referral-contract.recordReferralRegistration;

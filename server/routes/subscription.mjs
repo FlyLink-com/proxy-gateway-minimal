@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { setTimeout as sleep } from "node:timers/promises";
 import { Router } from "express";
 import {
   generateClashProviderSubscription,
@@ -43,7 +44,7 @@ export function subscriptionRoutes(state, options = {}) {
     ? options.resolveClientIpFn
     : (req) => req.ip || req.socket?.remoteAddress || "";
 
-  function subscriptionTrafficUsage(result) {
+  async function subscriptionTrafficUsage(result) {
     const controlStore = state.platform?.controlStore;
     if (
       !controlStore
@@ -59,6 +60,36 @@ export function subscriptionRoutes(state, options = {}) {
     }
 
     const tenantRefs = [tenantId, safeRef("tenant", tenantId)];
+    let at;
+    try {
+      at = usageNowIso(state);
+    } catch {
+      return null;
+    }
+    if (options.d1UsageRead === true
+      && controlStore.d1SubscriptionUsageReadAvailable === true
+      && typeof controlStore.findUsageBindingByTenantRefAsync === "function"
+      && typeof controlStore.getUsageRollupByEdgeCredentialRefAsync === "function") {
+      // Bound the optional lookup for the whole response, not per query.
+      const controller = new AbortController();
+      const timer = new AbortController();
+      const deadline = sleep(500, null, { signal: timer.signal }).then(() => {
+        controller.abort();
+        return null;
+      }, () => null);
+      try {
+        const usage = await Promise.race([
+          readD1Usage(controlStore, tenantRefs, at, controller.signal),
+          deadline
+        ]);
+        if (usage) return usage;
+      } catch {
+        // Keep delivery on its established BWH path if a staged D1 read fails.
+      } finally {
+        timer.abort();
+        controller.abort();
+      }
+    }
     try {
       for (const tenantRef of tenantRefs) {
         const binding = controlStore.findUsageBindingByTenantRef(tenantRef);
@@ -69,7 +100,7 @@ export function subscriptionRoutes(state, options = {}) {
         const currentCycleUsage = currentCycleUsageFor({
           controlStore,
           binding,
-          at: usageNowIso(state),
+          at,
           fallbackRollup: rollup
         });
         return {
@@ -84,7 +115,7 @@ export function subscriptionRoutes(state, options = {}) {
     return null;
   }
 
-  function subscriptionLifecycle(result) {
+  async function subscriptionLifecycle(result) {
     const tenant = result?.tenant;
     if (!tenant || !tenant.expiresAt) {
       return null;
@@ -93,7 +124,7 @@ export function subscriptionRoutes(state, options = {}) {
       status: tenant.status,
       expiresAt: tenant.expiresAt,
       validUntil: tenant.expiresAt,
-      usage: subscriptionTrafficUsage(result)
+      usage: await subscriptionTrafficUsage(result)
     };
   }
 
@@ -165,7 +196,7 @@ export function subscriptionRoutes(state, options = {}) {
       protocol: req.protocol,
       host: req.get("host")
     })}/sub/a/${encodeURIComponent(resolved.rawArtifact)}/provider.yaml`;
-    const lifecycle = subscriptionLifecycle(resolved.result);
+    const lifecycle = await subscriptionLifecycle(resolved.result);
     const proxyConfig = applyThirdPartyProxyConfig(state, resolved.result);
     sendSubscriptionYaml(
       res,
@@ -180,7 +211,7 @@ export function subscriptionRoutes(state, options = {}) {
       return;
     }
 
-    const lifecycle = subscriptionLifecycle(resolved.result);
+    const lifecycle = await subscriptionLifecycle(resolved.result);
     const proxyConfig = applyThirdPartyProxyConfig(state, resolved.result);
     sendSubscriptionYaml(
       res,
@@ -195,7 +226,7 @@ export function subscriptionRoutes(state, options = {}) {
       return;
     }
 
-    const lifecycle = subscriptionLifecycle(resolved.result);
+    const lifecycle = await subscriptionLifecycle(resolved.result);
     const proxyConfig = applyThirdPartyProxyConfig(state, resolved.result);
     sendSubscriptionYaml(
       res,
@@ -218,7 +249,7 @@ export function subscriptionRoutes(state, options = {}) {
       return;
     }
 
-    const lifecycle = subscriptionLifecycle(result.result);
+    const lifecycle = await subscriptionLifecycle(result.result);
     const proxyConfig = applyThirdPartyProxyConfig(state, result.result);
     sendSubscriptionYaml(
       res,
@@ -251,4 +282,39 @@ function currentCycleUsageFor({ controlStore, binding, at, fallbackRollup }) {
     uploadBytes: summary.uploadBytes,
     downloadBytes: summary.downloadBytes
   };
+}
+
+
+async function readD1Usage(controlStore, tenantRefs, at, signal) {
+  for (const tenantRef of tenantRefs) {
+    signal.throwIfAborted();
+    const binding = await controlStore.findUsageBindingByTenantRefAsync(tenantRef, { signal });
+    if (!binding?.edgeCredentialRef || !binding.requestId || !binding.entitlementId
+      || binding.tenantRef !== tenantRef || binding.requestStatus !== "issued"
+      || binding.entitlementStatus !== "active") continue;
+    let usage;
+    if (typeof controlStore.listUsageSamples === "function") {
+      // Cumulative D1 rollups are not equivalent to the BWH billing-cycle
+      // samples. Only use a D1 binding if it matches the live local identity
+      // AND the fields that define the cycle and quota.
+      const local = controlStore.findUsageBindingByTenantRef(tenantRef);
+      if (!local || [
+        "linkId", "requestId", "accountId", "entitlementId", "edgeCredentialRef",
+        "plan", "validFrom", "validUntil", "trafficLimitBytes"
+      ].some(key => local[key] !== binding[key])) return null;
+      usage = currentCycleUsageFor({ controlStore, binding, at });
+    } else {
+      usage = await controlStore.getUsageRollupByEdgeCredentialRefAsync(
+        binding.edgeCredentialRef, { signal }
+      );
+      if (!usage || usage.requestId !== binding.requestId
+        || usage.edgeCredentialRef !== binding.edgeCredentialRef) return null;
+    }
+    return {
+      uploadBytes: nonNegativeInteger(usage.uploadBytes),
+      downloadBytes: nonNegativeInteger(usage.downloadBytes),
+      totalBytes: nonNegativeInteger(binding.trafficLimitBytes)
+    };
+  }
+  return null;
 }
