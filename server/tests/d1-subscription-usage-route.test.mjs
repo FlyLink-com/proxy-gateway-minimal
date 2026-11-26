@@ -2,6 +2,8 @@ import { createHash } from "node:crypto";
 import assert from "node:assert/strict";
 import test from "node:test";
 import express from "express";
+import { fileURLToPath } from "node:url";
+import { startProxyGateway } from "../start.mjs";
 import { subscriptionRoutes } from "../routes/subscription.mjs";
 import { createD1ReadClient } from "../services/platform/d1-read-client.mjs";
 import { listen } from "./helpers/listen.mjs";
@@ -20,7 +22,7 @@ const header = (up, down) =>
 const pathList = ["/sub/clash.yaml?token=synthetic", "/sub/a/synthetic",
   "/sub/a/synthetic/profile.yaml", "/sub/a/synthetic/provider.yaml"];
 
-async function fixture(t, { enabled = true, available = true, samples = false, mode = "ok" } = {}) {
+async function fixture(t, { enabled = true, available = true, samples = false, mode = "ok", startup = false, startupOptIn } = {}) {
   let remoteReads = 0, aborted = false, sampleFilters;
   const client = createD1ReadClient({
     accountId: "synthetic-account", databaseId: "synthetic-db", token: "synthetic-token",
@@ -61,13 +63,30 @@ async function fixture(t, { enabled = true, available = true, samples = false, m
       port: 12345, method: "aes-256-gcm", password: "synthetic-only" }]
   };
   const resolve = () => ({ ok: true, tenant, proxyConfig });
-  const app = express();
-  app.use(subscriptionRoutes({
+  const state = {
     platform: { controlStore, usageNowFn: () => new Date("2026-11-26T00:00:00Z") },
     subscriptions: { core: { resolveSubscriptionToken: resolve, resolveSubscriptionArtifact: resolve } }
-  }, { d1UsageRead: enabled }));
-  const { server, baseUrl } = await listen(app);
-  t.after(() => { server.closeAllConnections(); server.close(); });
+  };
+  let baseUrl;
+  if (startup) {
+    const handle = await startProxyGateway({
+      state: {
+        ...state, rootDir: fileURLToPath(new URL("../../", import.meta.url)),
+        host: "127.0.0.1", ports: { console: 0 }, consoleToken: "synthetic-console-token",
+        services: { ssLocal: { stop: async () => {} }, httpProxy: { stop: async () => {} } },
+      },
+      logger: false,
+      ...(startupOptIn === undefined ? {} : { d1SubscriptionUsageRead: startupOptIn }),
+    });
+    t.after(() => handle.stop());
+    baseUrl = `http://127.0.0.1:${handle.server.address().port}`;
+  } else {
+    const app = express();
+    app.use(subscriptionRoutes(state, { d1UsageRead: enabled }));
+    const { server, baseUrl: url } = await listen(app);
+    t.after(() => { server.closeAllConnections(); server.close(); });
+    baseUrl = url;
+  }
   return {
     async check(path, expected) {
       const response = await fetch(baseUrl + path);
@@ -139,4 +158,20 @@ test("D1 partial migration must preserve local raw-tenant precedence over anothe
   await optIn.check(pathList[0], header(19, 31));
   assert.equal(optIn.sampleFilters().requestId, binding.requestId);
   assert.equal(optIn.remoteReads(), 1, "a D1 miss must not try the secondary alias");
+});
+
+
+test("normal startup keeps D1 usage opt-in strict and preserves one local fallback", async t => {
+  for (const [startupOptIn, mode, reads, up, down] of [
+    [undefined, "ok", 0, 7, 11],
+    ["true", "ok", 0, 7, 11],
+    [true, "ok", 2, 42, 88],
+    [true, "error", 1, 7, 11],
+  ]) {
+    await t.test(`startup opt-in ${typeof startupOptIn}=${startupOptIn}, mode=${mode}`, async st => {
+      const f = await fixture(st, { startup: true, startupOptIn, mode });
+      await f.check(pathList[0], header(up, down));
+      assert.equal(f.remoteReads(), reads);
+    });
+  }
 });
