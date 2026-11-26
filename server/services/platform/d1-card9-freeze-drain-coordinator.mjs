@@ -426,7 +426,30 @@ function reportDigest(type, snapshotId, payload) {
   return sha256Hex(canonicalJson({ version: FREEZE_DRAIN_COORDINATOR_VERSION, type, snapshotId, payload }));
 }
 
-export function buildDeltaCatchupReport({ snapshotId, items = [], confirmedEmpty = false, now = () => new Date() } = {}) {
+function normalizeFreezeReceiptDigest(value, code) {
+  if (typeof value !== "string" || !/^[0-9a-f]{64}$/.test(value)) {
+    throw coordinatorError(code, "freeze receipt digest must be a SHA-256 hex digest");
+  }
+  return value;
+}
+
+function optionalManifestBinding(value, code) {
+  if (value === undefined) return {};
+  if (typeof value !== "string" || !/^[0-9a-f]{64}$/.test(value)) {
+    throw coordinatorError(code, "snapshot manifest digest must be a SHA-256 hex digest");
+  }
+  return { manifestDigest: value };
+}
+
+function deltaFreezeBinding(value, manifestDigest) {
+  // Historical reports remain readable, but do not satisfy the T2 gate.
+  return {
+    ...(value === undefined ? {} : { freezeReceiptDigest: normalizeFreezeReceiptDigest(value, "freeze_delta_invalid") }),
+    ...optionalManifestBinding(manifestDigest, "freeze_delta_invalid"),
+  };
+}
+
+export function buildDeltaCatchupReport({ snapshotId, freezeReceiptDigest, manifestDigest, items = [], confirmedEmpty = false, now = () => new Date() } = {}) {
   assertSnapshotId(snapshotId);
   if (!Array.isArray(items)) {
     throw coordinatorError("freeze_delta_invalid", "delta catch-up report requires an items array");
@@ -454,15 +477,17 @@ export function buildDeltaCatchupReport({ snapshotId, items = [], confirmedEmpty
     seen.add(key);
     return { table: item.table, pk: item.pk, disposition: item.disposition };
   });
+  const binding = deltaFreezeBinding(freezeReceiptDigest, manifestDigest);
   return {
     type: "delta-catchup-report",
     schemaVersion: FREEZE_DRAIN_COORDINATOR_VERSION,
     snapshotId,
     items: normalized,
+    ...binding,
     confirmedEmpty,
     allDispositioned: true,
     timestamp: now().toISOString(),
-    reportDigest: reportDigest("delta-catchup-report", snapshotId, { items: normalized, confirmedEmpty }),
+    reportDigest: reportDigest("delta-catchup-report", snapshotId, { items: normalized, confirmedEmpty, ...binding }),
   };
 }
 
@@ -483,7 +508,7 @@ export function verifyDeltaCatchupReport(report) {
   // duplicate table:pk, empty items only with confirmedEmpty true,
   // non-empty items only with confirmedEmpty false, and
   // allDispositioned true.
-  const expectedKeys = ["type", "schemaVersion", "snapshotId", "items", "confirmedEmpty", "allDispositioned", "timestamp", "reportDigest"];
+  const expectedKeys = ["type", "schemaVersion", "snapshotId", "items", "freezeReceiptDigest", "manifestDigest", "confirmedEmpty", "allDispositioned", "timestamp", "reportDigest"];
   const extraKeys = Object.keys(report).filter((key) => !expectedKeys.includes(key));
   if (extraKeys.length > 0) {
     throw coordinatorError("freeze_delta_invalid", `delta catch-up report carries unknown fields: ${extraKeys.join(", ")}`);
@@ -523,7 +548,8 @@ export function verifyDeltaCatchupReport(report) {
     seen.add(key);
     return { table: item.table, pk: item.pk, disposition: item.disposition };
   });
-  const expected = reportDigest("delta-catchup-report", report.snapshotId, { items: normalized, confirmedEmpty: report.confirmedEmpty });
+  const binding = deltaFreezeBinding(report.freezeReceiptDigest, report.manifestDigest);
+  const expected = reportDigest("delta-catchup-report", report.snapshotId, { items: normalized, confirmedEmpty: report.confirmedEmpty, ...binding });
   if (expected !== report.reportDigest) {
     throw coordinatorError("freeze_delta_digest_mismatch", "delta catch-up report digest does not match its contents");
   }
@@ -544,12 +570,8 @@ export function buildTwoSidedVerificationReport({ snapshotId, checks = {}, conte
   if (!checks || typeof checks !== "object" || Array.isArray(checks)) {
     throw coordinatorError("freeze_verification_invalid", "two-sided verification requires a checks object");
   }
-  // V: an optional recovery context binds the report to one specific
-  // recovery (R1). When present it must name the recovery-resume
-  // purpose, the RECOVERY epoch, and the rollback trigger that
-  // entered it — and it is covered by the report digest, so it cannot
-  // be rewritten afterwards. A report without a context is a plain
-  // switch-time (T2) report and can never satisfy resumeToD1.
+  // Digest-covered context distinguishes a specific frozen T1 (T2) from
+  // a specific recovery (R1). Legacy null context is readable, not actionable.
   const normalizedContext = normalizeVerificationContext(context);
   const missing = VERIFICATION_CHECK_IDS.filter((id) => checks[id] === undefined);
   if (missing.length > 0) {
@@ -580,8 +602,18 @@ export function buildTwoSidedVerificationReport({ snapshotId, checks = {}, conte
 
 function normalizeVerificationContext(context) {
   if (context === null || context === undefined) return null;
-  if (typeof context !== "object" || Array.isArray(context) || context.kind !== "recovery-resume") {
-    throw coordinatorError("freeze_verification_invalid", "verification context must be null or {kind: \"recovery-resume\", epoch, trigger}");
+  if (typeof context !== "object" || Array.isArray(context)) {
+    throw coordinatorError("freeze_verification_invalid", "verification context must be an object");
+  }
+  if (context.kind === "freeze-switch") {
+    return {
+      kind: "freeze-switch",
+      freezeReceiptDigest: normalizeFreezeReceiptDigest(context.freezeReceiptDigest, "freeze_verification_invalid"),
+      ...optionalManifestBinding(context.manifestDigest, "freeze_verification_invalid"),
+    };
+  }
+  if (context.kind !== "recovery-resume") {
+    throw coordinatorError("freeze_verification_invalid", "verification context requires a known purpose");
   }
   if (!Number.isInteger(context.epoch) || context.epoch < 1) {
     throw coordinatorError("freeze_verification_invalid", "recovery verification context requires a positive integer epoch");
@@ -589,7 +621,15 @@ function normalizeVerificationContext(context) {
   if (!ROLLBACK_TRIGGERS.includes(context.trigger)) {
     throw coordinatorError("freeze_verification_invalid", `recovery verification context requires a known rollback trigger (expected one of ${ROLLBACK_TRIGGERS.join(", ")})`);
   }
-  return { kind: "recovery-resume", epoch: context.epoch, trigger: context.trigger };
+  const receiptDigest = context.recoveryReceiptDigest;
+  if (receiptDigest !== undefined && (typeof receiptDigest !== "string" || !/^[0-9a-f]{64}$/.test(receiptDigest))) {
+    throw coordinatorError("freeze_verification_invalid", "recovery receipt digest must be a SHA-256 hex digest");
+  }
+  // Older reports are still readable, but cannot authorize an R1.
+  return {
+    kind: "recovery-resume", epoch: context.epoch, trigger: context.trigger,
+    ...(receiptDigest === undefined ? {} : { recoveryReceiptDigest: receiptDigest }),
+  };
 }
 
 export function verifyTwoSidedVerificationReport(report) {
@@ -609,8 +649,7 @@ export function verifyTwoSidedVerificationReport(report) {
   }
   // The context is part of the verified shape: a report that never
   // carried one verifies with context null, and a context that does
-  // not match the recovery-resume shape is refused even if its digest
-  // was recomputed over it.
+  // not match the named purpose is refused even if its digest was recomputed.
   const normalizedContext = normalizeVerificationContext(report.context ?? null);
   const recomputed = deriveVerificationVerdict(report.checks);
   if (recomputed.verdict !== report.verdict || JSON.stringify(recomputed.failedIds) !== JSON.stringify(report.failedIds)) {
@@ -703,10 +742,34 @@ export function issueCoordinatorReceipt(db, { transitionId, from, to, fromEpoch,
 }
 
 export function verifyCoordinatorLog(db) {
-  const entries = readCoordinatorLog(db);
+  assertDbHandle(db);
+  return db.transaction(() => {
+    const entries = readVerifiedCoordinatorLog(db);
+    return { valid: true, entries: entries.length };
+  })();
+}
+
+// Call within a single SQLite transaction so the log and authority come
+// from the same read snapshot. A valid hash-chain prefix is not sufficient.
+function readVerifiedCoordinatorLog(db) {
+  let entries;
+  try {
+    entries = readCoordinatorLog(db);
+  } catch (error) {
+    if (!(error instanceof SyntaxError)) throw error;
+    throw coordinatorError("freeze_coordinator_log_broken", "coordinator log contains invalid gate references");
+  }
   let previousDigest = COORDINATOR_LOG_GENESIS_DIGEST;
+  let previousPhase = WRITER_PHASES.BWH_ACTIVE;
+  let previousEpoch = 1;
+  let seq = 0;
   for (const entry of entries) {
-    if (entry.previousDigest !== previousDigest) {
+    seq += 1;
+    if (entry.seq !== seq || entry.previousDigest !== previousDigest
+      || entry.from !== previousPhase || entry.fromEpoch !== previousEpoch
+      || entry.toEpoch !== previousEpoch + 1
+      || !FREEZE_DRAIN_TRANSITIONS.some((step) => !step.blocked && step.id === entry.transitionId
+        && step.from === entry.from && step.to === entry.to)) {
       throw coordinatorError("freeze_coordinator_log_broken", `coordinator log chain is broken at seq ${entry.seq}`);
     }
     const expected = coordinatorReceiptDigest({
@@ -719,8 +782,21 @@ export function verifyCoordinatorLog(db) {
       throw coordinatorError("freeze_coordinator_log_broken", `coordinator log receipt digest mismatch at seq ${entry.seq}`);
     }
     previousDigest = entry.receiptDigest;
+    previousPhase = entry.to;
+    previousEpoch = entry.toEpoch;
   }
-  return { valid: true, entries: entries.length };
+  const authority = readWriterAuthority(db);
+  const tip = entries.at(-1);
+  // No installed authority can be inspected as empty history, but only
+  // BWH_ACTIVE epoch 1 with an empty ref is a valid installed bootstrap.
+  const matchesAuthority = authority === null
+    ? !tip
+    : authority.phase === previousPhase && authority.epoch === previousEpoch
+      && authority.receiptRef === (tip?.receiptRef ?? "");
+  if (!matchesAuthority) {
+    throw coordinatorError("freeze_coordinator_log_authority_mismatch", "coordinator log tip does not match durable writer authority");
+  }
+  return entries;
 }
 
 export function verifyCoordinatorReceipt(db, receipt) {
@@ -731,6 +807,11 @@ export function verifyCoordinatorReceipt(db, receipt) {
     || typeof receipt.receiptDigest !== "string") {
     throw coordinatorError("freeze_coordinator_receipt_invalid", "coordinator receipt is malformed");
   }
+  assertDbHandle(db);
+  return db.transaction(() => verifyStoredCoordinatorReceipt(db, receipt))();
+}
+
+function verifyStoredCoordinatorReceipt(db, receipt) {
   const entries = readCoordinatorLog(db);
   const stored = entries.find((entry) => entry.seq === receipt.seq);
   if (!stored) {
@@ -744,7 +825,7 @@ export function verifyCoordinatorReceipt(db, receipt) {
   if (JSON.stringify(stored.gateRefs) !== JSON.stringify(receipt.gateRefs)) {
     throw coordinatorError("freeze_coordinator_receipt_invalid", "coordinator receipt gate refs do not match the durable log");
   }
-  verifyCoordinatorLog(db);
+  readVerifiedCoordinatorLog(db);
   return { valid: true, seq: receipt.seq };
 }
 
@@ -938,12 +1019,13 @@ export function verifySnapshotGateManifest(manifest) {
 // never gains an entry for a phase that did not move.
 function transitionWithReceipt(db, { transitionId, from, to, fromEpoch, snapshotId, receiptRef, gateRefs, now }) {
   return db.transaction(() => {
+    readVerifiedCoordinatorLog(db);
     const next = transitionWriterAuthority(db, { to, expectedEpoch: fromEpoch, receiptRef, now });
     const coordinatorReceipt = issueCoordinatorReceipt(db, {
       transitionId, from, to, fromEpoch, toEpoch: next.epoch, snapshotId, receiptRef, gateRefs, now,
     });
     return { next, coordinatorReceipt };
-  })();
+  }).immediate();
 }
 
 // Scheduler wiring contract (P-2): which live-process references the
@@ -1033,6 +1115,20 @@ export function createFreezeDrainCoordinator(db, { snapshotId, now = () => new D
       throw coordinatorError("freeze_coordinator_wrong_state", `${action} requires phase ${expected}, current phase is ${current.phase} (epoch ${current.epoch})`, { from: current.phase, to: expected });
     }
     return current;
+  }
+
+  function requireCurrentFreeze() {
+    const tip = readVerifiedCoordinatorLog(db).at(-1);
+    const digest = tip?.gateRefs?.freezeReceiptDigest;
+    if (tip?.transitionId !== "T1" || tip.snapshotId !== snapshotId
+      || typeof digest !== "string" || !/^[0-9a-f]{64}$/.test(digest)) {
+      throw coordinatorError("freeze_coordinator_freeze_context_mismatch", "current writer authority has no active T1 for this snapshot");
+    }
+    return digest;
+  }
+
+  function underWriterLock(fn) {
+    return db.transaction(fn).immediate;
   }
 
   function transitionReceiptRef(transitionId, gateRefs) {
@@ -1202,14 +1298,17 @@ export function createFreezeDrainCoordinator(db, { snapshotId, now = () => new D
       if (!issued) {
         throw coordinatorError("freeze_snapshot_bind_refused", "snapshot manifest binding requires an instruction recorded in the snapshot-gate log");
       }
+      if (instruction.checkpointId !== issued.checkpointId || instruction.freezeReceiptDigest !== issued.freezeReceiptDigest) {
+        throw coordinatorError("freeze_snapshot_bind_refused", "snapshot instruction fields do not match the recorded instruction");
+      }
       try {
         verifySnapshotGateManifest(manifest);
       } catch (error) {
         throw coordinatorError("freeze_snapshot_bind_refused", `snapshot manifest failed verification: ${error?.message ?? "invalid manifest"}`);
       }
-      if (manifest.snapshotId !== instruction.snapshotId
-        || manifest.checkpointId !== instruction.checkpointId
-        || manifest.freezeReceiptDigest !== instruction.freezeReceiptDigest) {
+      if (manifest.snapshotId !== issued.snapshotId
+        || manifest.checkpointId !== issued.checkpointId
+        || manifest.freezeReceiptDigest !== issued.freezeReceiptDigest) {
         throw coordinatorError("freeze_snapshot_bind_refused", "snapshot manifest does not match the instruction (snapshotId / checkpointId / freezeReceiptDigest)");
       }
       const voided = readSnapshotGateLog(db).some((entry) => entry.kind === "void"
@@ -1223,7 +1322,7 @@ export function createFreezeDrainCoordinator(db, { snapshotId, now = () => new D
           kind: "void", snapshotId, checkpointId: manifest.checkpointId,
           freezeReceiptDigest: manifest.freezeReceiptDigest,
           gateRefs: { manifestDigest: manifest.manifestDigest, reason: "snapshot acceptance failed (quickCheck / foreignKeys)" },
-          operatorRef: instruction.operator ?? "", windowStart: instruction.windowStart ?? "", windowEnd: instruction.windowEnd ?? "", now,
+          operatorRef: issued.operatorRef, windowStart: issued.windowStart, windowEnd: issued.windowEnd, now,
         });
         throw coordinatorError("freeze_snapshot_acceptance_failed", "snapshot acceptance failed (quickCheck / foreignKeys not both true); the snapshot is voided and cannot be used");
       }
@@ -1236,7 +1335,7 @@ export function createFreezeDrainCoordinator(db, { snapshotId, now = () => new D
           instructionDigest: instruction.instructionDigest,
           acceptance: { quickCheck: true, foreignKeys: true },
         },
-        operatorRef: instruction.operator ?? "", windowStart: instruction.windowStart ?? "", windowEnd: instruction.windowEnd ?? "", now,
+        operatorRef: issued.operatorRef, windowStart: issued.windowStart, windowEnd: issued.windowEnd, now,
       });
       return {
         snapshotId, manifestDigest: manifest.manifestDigest,
@@ -1273,12 +1372,20 @@ export function createFreezeDrainCoordinator(db, { snapshotId, now = () => new D
       return verifySnapshotGateLog(db);
     },
 
-    switchToD1({ deltaReport, verificationReport, c1ApprovalRef, handover = {} } = {}) {
+    switchToD1: underWriterLock(({ deltaReport, verificationReport, c1ApprovalRef, handover = {} } = {}) => {
       const current = requirePhase(WRITER_PHASES.FROZEN, "switch to D1 (T2)");
       verifyDeltaCatchupReport(deltaReport);
+      const boundFreezeDigest = requireCurrentFreeze();
+      if (deltaReport.snapshotId !== snapshotId || deltaReport.freezeReceiptDigest !== boundFreezeDigest) {
+        throw coordinatorError("freeze_delta_context_mismatch", "T2 delta report must match the current snapshot and active T1 freeze receipt");
+      }
       // Gate on the verdict recomputed from the checks by verify(),
       // never on the verdict string the report itself carries (C1).
       const verification = verifyTwoSidedVerificationReport(verificationReport);
+      if (verificationReport.snapshotId !== snapshotId || verification.context?.kind !== "freeze-switch"
+        || verification.context.freezeReceiptDigest !== boundFreezeDigest) {
+        throw coordinatorError("freeze_verification_context_mismatch", "T2 verification report must match the current snapshot and active T1 freeze receipt");
+      }
       if (verification.verdict !== "pass") {
         throw coordinatorError("freeze_verification_failed", `two-sided verification failed: ${verification.failedIds.join(", ")}; staying in FROZEN`, { failedIds: verification.failedIds });
       }
@@ -1298,9 +1405,11 @@ export function createFreezeDrainCoordinator(db, { snapshotId, now = () => new D
       // runs after the other T2 gates so their refusal codes are
       // preserved; a missing or voided binding refuses the switch
       // here, still in FROZEN, before any phase move.
-      const t1Entries = readCoordinatorLog(db).filter((entry) => entry.transitionId === "T1" && entry.snapshotId === snapshotId);
-      const latestT1 = t1Entries[t1Entries.length - 1];
-      const boundFreezeDigest = latestT1?.gateRefs?.freezeReceiptDigest;
+      const manifestDigest = deltaReport.manifestDigest;
+      if (manifestDigest === undefined || verification.context.manifestDigest !== manifestDigest) {
+        throw coordinatorError("freeze_snapshot_report_manifest_mismatch", "T2 requires both reports to name the same accepted snapshot manifest digest");
+      }
+      verifySnapshotGateLog(db);
       const gateLog = readSnapshotGateLog(db);
       const voidedManifests = new Set(gateLog
         .filter((entry) => entry.kind === "void" && entry.snapshotId === snapshotId)
@@ -1308,12 +1417,15 @@ export function createFreezeDrainCoordinator(db, { snapshotId, now = () => new D
       const binding = gateLog.find((entry) => entry.kind === "binding"
         && entry.snapshotId === snapshotId
         && entry.freezeReceiptDigest === boundFreezeDigest
-        && typeof entry.gateRefs?.manifestDigest === "string"
-        && !voidedManifests.has(entry.gateRefs.manifestDigest));
+        && entry.gateRefs?.manifestDigest === manifestDigest
+        && entry.gateRefs.acceptance?.quickCheck === true
+        && entry.gateRefs.acceptance?.foreignKeys === true
+        && !voidedManifests.has(manifestDigest));
       if (!binding) {
-        throw coordinatorError("freeze_snapshot_unbound", "switch to D1 (T2) requires a snapshot manifest bound to this freeze receipt; no live binding exists, staying in FROZEN");
+        throw coordinatorError("freeze_snapshot_unbound", "switch to D1 (T2) requires a live, accepted binding for the reported manifest and this freeze receipt, staying in FROZEN");
       }
       const gateRefs = {
+        freezeReceiptDigest: boundFreezeDigest,
         deltaDigest: deltaReport.reportDigest,
         verificationDigest: verificationReport.reportDigest,
         snapshotBindingDigest: binding.receiptDigest,
@@ -1327,12 +1439,16 @@ export function createFreezeDrainCoordinator(db, { snapshotId, now = () => new D
         fromEpoch: current.epoch, snapshotId, receiptRef, gateRefs, now,
       });
       return { transitionId: "T2", authority: next, coordinatorReceipt };
-    },
+    }),
 
-    enterRecovery({ trigger, detail = "" } = {}) {
+    enterRecovery: underWriterLock(({ trigger, detail = "" } = {}) => {
       const current = requirePhase(WRITER_PHASES.D1_ACTIVE, "enter recovery (T3)");
       if (!ROLLBACK_TRIGGERS.includes(trigger)) {
         throw coordinatorError("freeze_rollback_trigger_invalid", `unknown rollback trigger: ${String(trigger)} (expected one of ${ROLLBACK_TRIGGERS.join(", ")})`);
+      }
+      const active = readVerifiedCoordinatorLog(db).at(-1);
+      if (active?.snapshotId !== snapshotId) {
+        throw coordinatorError("freeze_recovery_context_mismatch", "T3 must refer to the recorded active D1 snapshot");
       }
       const gateRefs = { trigger, detail };
       const receiptRef = transitionReceiptRef("T3", gateRefs);
@@ -1341,21 +1457,16 @@ export function createFreezeDrainCoordinator(db, { snapshotId, now = () => new D
         fromEpoch: current.epoch, snapshotId, receiptRef, gateRefs, now,
       });
       return { transitionId: "T3", authority: next, coordinatorReceipt };
-    },
+    }),
 
-    unfreeze({ reason, voidedFreezeReceiptRef } = {}) {
+    unfreeze: underWriterLock(({ reason, voidedFreezeReceiptRef } = {}) => {
       const current = requirePhase(WRITER_PHASES.FROZEN, "unfreeze (T5)");
       assertNonEmptyString(reason, "unfreeze reason", "freeze_unfreeze_reason_missing");
       assertNonEmptyString(voidedFreezeReceiptRef, "voided freeze receipt ref", "freeze_unfreeze_receipt_missing");
-      // F5: the voided ref must be a freeze receipt this coordinator
-      // actually issued (a T1 log entry's freezeReceiptDigest), not
-      // any non-empty string, so the log can later show which freeze
-      // receipt was voided.
-      const issuedFreezeReceipts = readCoordinatorLog(db)
-        .filter((entry) => entry.transitionId === "T1")
-        .map((entry) => entry.gateRefs?.freezeReceiptDigest);
-      if (!issuedFreezeReceipts.includes(voidedFreezeReceiptRef)) {
-        throw coordinatorError("freeze_unfreeze_receipt_invalid", "voided freeze receipt ref does not match any freeze receipt issued by this coordinator");
+      // A verified FROZEN tip must be T1 for this snapshot. An earlier
+      // T1 was already consumed by its T2/T5 and cannot void this freeze.
+      if (voidedFreezeReceiptRef !== requireCurrentFreeze()) {
+        throw coordinatorError("freeze_unfreeze_receipt_invalid", "T5 requires the current, unconsumed T1 freeze receipt");
       }
       const gateRefs = { reason, voidedFreezeReceiptRef };
       const receiptRef = transitionReceiptRef("T5", gateRefs);
@@ -1372,9 +1483,9 @@ export function createFreezeDrainCoordinator(db, { snapshotId, now = () => new D
         // answered by the guard: NEW.epoch must equal OLD.epoch + 1).
         epochNote: `epoch incremented by exactly one (${current.epoch} -> ${next.epoch}); the durable guard forbids returning to epoch 1`,
       };
-    },
+    }),
 
-    resumeToD1({ reverificationReport } = {}) {
+    resumeToD1: underWriterLock(({ reverificationReport } = {}) => {
       const current = requirePhase(WRITER_PHASES.RECOVERY, "resume to D1 (R1)");
       // Gate on the verdict recomputed from the checks by verify(),
       // never on the verdict string the report itself carries (C1).
@@ -1382,33 +1493,34 @@ export function createFreezeDrainCoordinator(db, { snapshotId, now = () => new D
       if (reverification.verdict !== "pass") {
         throw coordinatorError("freeze_verification_failed", `reverification failed: ${reverification.failedIds.join(", ")}; staying in RECOVERY`, { failedIds: reverification.failedIds });
       }
-      // V (PR #906 r4662139149): the re-verification must be bound to
-      // THIS recovery. The expected (epoch, trigger) come from the
-      // latest T3 log entry for this snapshot — the recovery this
-      // resume is answering. A switch-time (T2) report carries no
-      // context at all, and a report built for a different recovery
-      // (different epoch or trigger) is refused, even with a passing
-      // verdict and a valid digest. No T3 entry means there is no
-      // recovery to resume from.
-      const recoveryEntries = readCoordinatorLog(db).filter((entry) => entry.transitionId === "T3" && entry.snapshotId === snapshotId);
-      const recoveryEntry = recoveryEntries[recoveryEntries.length - 1];
-      if (!recoveryEntry) {
-        throw coordinatorError("freeze_recovery_context_missing", "resumeToD1 (R1) requires a recorded recovery (T3) to bind the re-verification to");
+      // Only the verified current log tip can authorize R1. Verify its
+      // snapshot lineage and bind the report to that exact T3 receipt.
+      const entries = readVerifiedCoordinatorLog(db);
+      const recoveryEntry = entries.at(-1);
+      if (recoveryEntry?.transitionId !== "T3" || recoveryEntry.snapshotId !== snapshotId
+        || entries.at(-2)?.snapshotId !== snapshotId) {
+        throw coordinatorError("freeze_recovery_context_missing", "R1 requires the current T3 and active D1 history for this snapshot");
       }
-      const expectedEpoch = recoveryEntry.toEpoch;
       const expectedTrigger = recoveryEntry.gateRefs?.trigger;
       const context = reverification.context;
-      if (!context || context.kind !== "recovery-resume" || context.epoch !== expectedEpoch || context.trigger !== expectedTrigger) {
-        throw coordinatorError("freeze_reverification_context_mismatch", `re-verification report context does not match the recorded recovery (expected epoch ${expectedEpoch}, trigger ${expectedTrigger})`);
+      if (reverificationReport.snapshotId !== snapshotId || context?.kind !== "recovery-resume"
+        || context.epoch !== current.epoch || context.trigger !== expectedTrigger
+        || context.recoveryReceiptDigest !== recoveryEntry.receiptDigest) {
+        throw coordinatorError("freeze_reverification_context_mismatch", "R1 report does not match the current recovery snapshot, epoch, trigger and T3 receipt");
       }
-      const gateRefs = { reverificationDigest: reverificationReport.reportDigest, recoveryEpoch: expectedEpoch, trigger: expectedTrigger };
+      const gateRefs = {
+        reverificationDigest: reverificationReport.reportDigest,
+        recoveryEpoch: current.epoch,
+        recoveryReceiptDigest: recoveryEntry.receiptDigest,
+        trigger: expectedTrigger,
+      };
       const receiptRef = transitionReceiptRef("R1", gateRefs);
       const { next, coordinatorReceipt } = transitionWithReceipt(db, {
         transitionId: "R1", from: current.phase, to: WRITER_PHASES.D1_ACTIVE,
         fromEpoch: current.epoch, snapshotId, receiptRef, gateRefs, now,
       });
       return { transitionId: "R1", authority: next, coordinatorReceipt };
-    },
+    }),
 
     // T4 is intentionally sealed: RECOVERY -> BWH_ACTIVE is blocked
     // until reverse reconciliation is implemented and verified. This

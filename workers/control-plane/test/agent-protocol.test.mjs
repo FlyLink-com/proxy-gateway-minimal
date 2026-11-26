@@ -549,12 +549,17 @@ test("G4 Agent client completes the Worker/D1 loop and recovers a lost receipt r
   let loseFirstClaimResponse = true;
   let loseFirstReceiptResponse = true;
   let applyCount = 0;
+  const forwarded = [];
+  // This epoch is fixture-only; the test enters its synthetic D1_ACTIVE
+  // state during createWorker(). The transport itself must never add it.
+  const syntheticCoordinatorEpoch = 3;
   const transport = {
     async fetchDesiredState({ headers, channelRefs, idempotencyKey }) {
+      forwarded.push(["claim", headers["x-writer-epoch"]]);
       const response = await fetchDesired(
         mf,
         agent,
-        { ...headers, "x-writer-epoch": "3", "idempotency-key": idempotencyKey },
+        { ...headers, "idempotency-key": idempotencyKey },
         channelRefs,
       );
       if (!response.ok) {
@@ -570,7 +575,8 @@ test("G4 Agent client completes the Worker/D1 loop and recovers a lost receipt r
       return envelope;
     },
     async submitReceipt(receipt, { headers }) {
-      const response = await postReceipt(mf, agent, receipt, { ...headers, "x-writer-epoch": "3" });
+      forwarded.push(["receipt", headers["x-writer-epoch"]]);
+      const response = await postReceipt(mf, agent, receipt, headers);
       if (!response.ok) throw new Error("receipt HTTP " + response.status);
       await response.json();
       if (loseFirstReceiptResponse) {
@@ -598,6 +604,8 @@ test("G4 Agent client completes the Worker/D1 loop and recovers a lost receipt r
     lock: createMemoryLock(),
     auth: { keyId: agent.keyId, token: agent.token },
     config: { dryRun: false, applyEnabled: true },
+    epochProvider: () => syntheticCoordinatorEpoch,
+    writerEpochForwarding: true,
     apply: async () => { applyCount += 1; },
   });
 
@@ -629,6 +637,9 @@ test("G4 Agent client completes the Worker/D1 loop and recovers a lost receipt r
     "SELECT status FROM agent_manifest_claims WHERE status = ? LIMIT 1",
   ).bind("completed").first();
   assert.equal(completedClaim.status, "completed");
+  assert.deepEqual(forwarded.map(([kind]) => kind),
+    ["claim", "claim", "receipt", "receipt", "receipt", "claim"]);
+  assert.ok(forwarded.every(([, epoch]) => epoch === "3"));
 });
 
 test("G4 rotation rejects tokens outside the Bearer authentication contract before reserving a key", async (t) => {

@@ -19,7 +19,7 @@
 
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir, open, readFile, rename, rm, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { canonicalJson, desiredStateDigest } from "./manifest.mjs";
 import { buildChannelReceipt, buildReceiptIdempotencyKey } from "./receipt.mjs";
 
@@ -206,19 +206,50 @@ export function createMemoryStateStore(initial = null) {
   };
 }
 
-export function createJsonStateStore(path) {
+export function createJsonStateStore(path, { durable = false } = {}) {
   return {
+    durable,
     async load() {
       try {
-        return JSON.parse(await readFile(path, "utf8"));
-      } catch {
+        const state = JSON.parse(await readFile(path, "utf8"));
+        if (durable && (!state || typeof state !== "object" || Array.isArray(state))) {
+          throw new Error("invalid durable Agent state");
+        }
+        return state;
+      } catch (error) {
+        if (durable && error?.code !== "ENOENT") throw error;
         return null;
       }
     },
     async save(next) {
-      const tmp = `${path}.tmp`;
-      await writeFile(tmp, JSON.stringify(next, null, 2));
-      await rename(tmp, path);
+      const serialized = JSON.stringify(next, null, 2);
+      if (!durable) {
+        const tmp = `${path}.tmp`;
+        await writeFile(tmp, serialized);
+        await rename(tmp, path);
+        return;
+      }
+      // The intent must be durable before apply. Use a unique sibling,
+      // sync its data, then sync the containing directory after rename.
+      const tmp = `${path}.${randomUUID()}.tmp`;
+      const file = await open(tmp, "wx", 0o600);
+      try {
+        try {
+          await file.writeFile(serialized, "utf8");
+          await file.sync();
+        } finally {
+          await file.close();
+        }
+        await rename(tmp, path);
+        const parent = await open(dirname(path), "r");
+        try {
+          await parent.sync();
+        } finally {
+          await parent.close();
+        }
+      } finally {
+        await rm(tmp, { force: true });
+      }
     },
   };
 }
@@ -305,6 +336,7 @@ export function createAgentClient({
 }) {
   const dryRun = config.dryRun !== false;
   const applyEnabled = config.applyEnabled === true;
+  const applyIntentEnabled = config.applyIntentEnabled === true;
 
   // Read and normalize the current coordinator epoch. Throws
   // AgentContractError (writer_epoch_required / writer_epoch_invalid)
@@ -372,8 +404,21 @@ export function createAgentClient({
       return { status: "skipped_locked" };
     }
     try {
-      let state = await stateStore.load();
+      if (applyIntentEnabled && (!writerEpochForwarding || stateStore.durable !== true)) {
+        return { status: "rejected", stage: "state", code: "durable_apply_intent_required" };
+      }
+      let state;
+      try {
+        state = await stateStore.load();
+      } catch {
+        return { status: "rejected", stage: "state", code: "agent_state_unreadable" };
+      }
       if (!state || typeof state !== "object" || Array.isArray(state)) state = {};
+      if (Object.hasOwn(state, "pendingApply") && state.pendingApply !== null) {
+        // No guessing whether apply ran. Block before polling or receipt
+        // recovery even if the new process uses a different epoch or scope.
+        return { status: "rejected", stage: "apply_recovery", code: "apply_reconciliation_required" };
+      }
 
       let receiptsRecovered = 0;
       let receiptsDeferred = 0;
@@ -610,7 +655,37 @@ export function createAgentClient({
         return { status: "dry_run", generation: manifest.generation, receipts, receiptsDeferred };
       }
 
-      await apply({ manifest, materials: resolved });
+      if (applyIntentEnabled) {
+        const pendingApply = {
+          schemaVersion: "agent-apply-intent/v1",
+          claimIdempotencyKey,
+          writerEpoch: claimEpoch,
+          nodeRef,
+          generation: manifest.generation,
+          desiredStateRef: manifest.desiredStateRef,
+          desiredStateDigest: manifest.desiredStateDigest,
+        };
+        try {
+          await stateStore.save({ ...state, pendingApply });
+        } catch {
+          return { status: "retry_later", stage: "state", code: "apply_intent_save_failed" };
+        }
+        try {
+          if (claimEpoch !== coordinatorWriterEpoch()) {
+            return { status: "rejected", stage: "apply_recovery", code: "apply_reconciliation_required" };
+          }
+        } catch {
+          return { status: "rejected", stage: "apply_recovery", code: "apply_reconciliation_required" };
+        }
+        try {
+          await apply({ manifest, materials: resolved });
+        } catch {
+          // Effects may be partial. Preserve the intent, never invent receipts.
+          return { status: "rejected", stage: "apply_recovery", code: "apply_reconciliation_required" };
+        }
+      } else {
+        await apply({ manifest, materials: resolved });
+      }
 
       const appliedState = {
         generation: manifest.generation,
