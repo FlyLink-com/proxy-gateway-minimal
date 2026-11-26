@@ -621,7 +621,15 @@ function normalizeVerificationContext(context) {
   if (!ROLLBACK_TRIGGERS.includes(context.trigger)) {
     throw coordinatorError("freeze_verification_invalid", `recovery verification context requires a known rollback trigger (expected one of ${ROLLBACK_TRIGGERS.join(", ")})`);
   }
-  return { kind: "recovery-resume", epoch: context.epoch, trigger: context.trigger };
+  const receiptDigest = context.recoveryReceiptDigest;
+  if (receiptDigest !== undefined && (typeof receiptDigest !== "string" || !/^[0-9a-f]{64}$/.test(receiptDigest))) {
+    throw coordinatorError("freeze_verification_invalid", "recovery receipt digest must be a SHA-256 hex digest");
+  }
+  // Older reports are still readable, but cannot authorize an R1.
+  return {
+    kind: "recovery-resume", epoch: context.epoch, trigger: context.trigger,
+    ...(receiptDigest === undefined ? {} : { recoveryReceiptDigest: receiptDigest }),
+  };
 }
 
 export function verifyTwoSidedVerificationReport(report) {
@@ -1433,10 +1441,14 @@ export function createFreezeDrainCoordinator(db, { snapshotId, now = () => new D
       return { transitionId: "T2", authority: next, coordinatorReceipt };
     }),
 
-    enterRecovery({ trigger, detail = "" } = {}) {
+    enterRecovery: underWriterLock(({ trigger, detail = "" } = {}) => {
       const current = requirePhase(WRITER_PHASES.D1_ACTIVE, "enter recovery (T3)");
       if (!ROLLBACK_TRIGGERS.includes(trigger)) {
         throw coordinatorError("freeze_rollback_trigger_invalid", `unknown rollback trigger: ${String(trigger)} (expected one of ${ROLLBACK_TRIGGERS.join(", ")})`);
+      }
+      const active = readVerifiedCoordinatorLog(db).at(-1);
+      if (active?.snapshotId !== snapshotId) {
+        throw coordinatorError("freeze_recovery_context_mismatch", "T3 must refer to the recorded active D1 snapshot");
       }
       const gateRefs = { trigger, detail };
       const receiptRef = transitionReceiptRef("T3", gateRefs);
@@ -1445,7 +1457,7 @@ export function createFreezeDrainCoordinator(db, { snapshotId, now = () => new D
         fromEpoch: current.epoch, snapshotId, receiptRef, gateRefs, now,
       });
       return { transitionId: "T3", authority: next, coordinatorReceipt };
-    },
+    }),
 
     unfreeze: underWriterLock(({ reason, voidedFreezeReceiptRef } = {}) => {
       const current = requirePhase(WRITER_PHASES.FROZEN, "unfreeze (T5)");
@@ -1473,7 +1485,7 @@ export function createFreezeDrainCoordinator(db, { snapshotId, now = () => new D
       };
     }),
 
-    resumeToD1({ reverificationReport } = {}) {
+    resumeToD1: underWriterLock(({ reverificationReport } = {}) => {
       const current = requirePhase(WRITER_PHASES.RECOVERY, "resume to D1 (R1)");
       // Gate on the verdict recomputed from the checks by verify(),
       // never on the verdict string the report itself carries (C1).
@@ -1481,33 +1493,34 @@ export function createFreezeDrainCoordinator(db, { snapshotId, now = () => new D
       if (reverification.verdict !== "pass") {
         throw coordinatorError("freeze_verification_failed", `reverification failed: ${reverification.failedIds.join(", ")}; staying in RECOVERY`, { failedIds: reverification.failedIds });
       }
-      // V (PR #906 r4662139149): the re-verification must be bound to
-      // THIS recovery. The expected (epoch, trigger) come from the
-      // latest T3 log entry for this snapshot — the recovery this
-      // resume is answering. A switch-time (T2) report carries no
-      // context at all, and a report built for a different recovery
-      // (different epoch or trigger) is refused, even with a passing
-      // verdict and a valid digest. No T3 entry means there is no
-      // recovery to resume from.
-      const recoveryEntries = readCoordinatorLog(db).filter((entry) => entry.transitionId === "T3" && entry.snapshotId === snapshotId);
-      const recoveryEntry = recoveryEntries[recoveryEntries.length - 1];
-      if (!recoveryEntry) {
-        throw coordinatorError("freeze_recovery_context_missing", "resumeToD1 (R1) requires a recorded recovery (T3) to bind the re-verification to");
+      // Only the verified current log tip can authorize R1. Verify its
+      // snapshot lineage and bind the report to that exact T3 receipt.
+      const entries = readVerifiedCoordinatorLog(db);
+      const recoveryEntry = entries.at(-1);
+      if (recoveryEntry?.transitionId !== "T3" || recoveryEntry.snapshotId !== snapshotId
+        || entries.at(-2)?.snapshotId !== snapshotId) {
+        throw coordinatorError("freeze_recovery_context_missing", "R1 requires the current T3 and active D1 history for this snapshot");
       }
-      const expectedEpoch = recoveryEntry.toEpoch;
       const expectedTrigger = recoveryEntry.gateRefs?.trigger;
       const context = reverification.context;
-      if (!context || context.kind !== "recovery-resume" || context.epoch !== expectedEpoch || context.trigger !== expectedTrigger) {
-        throw coordinatorError("freeze_reverification_context_mismatch", `re-verification report context does not match the recorded recovery (expected epoch ${expectedEpoch}, trigger ${expectedTrigger})`);
+      if (reverificationReport.snapshotId !== snapshotId || context?.kind !== "recovery-resume"
+        || context.epoch !== current.epoch || context.trigger !== expectedTrigger
+        || context.recoveryReceiptDigest !== recoveryEntry.receiptDigest) {
+        throw coordinatorError("freeze_reverification_context_mismatch", "R1 report does not match the current recovery snapshot, epoch, trigger and T3 receipt");
       }
-      const gateRefs = { reverificationDigest: reverificationReport.reportDigest, recoveryEpoch: expectedEpoch, trigger: expectedTrigger };
+      const gateRefs = {
+        reverificationDigest: reverificationReport.reportDigest,
+        recoveryEpoch: current.epoch,
+        recoveryReceiptDigest: recoveryEntry.receiptDigest,
+        trigger: expectedTrigger,
+      };
       const receiptRef = transitionReceiptRef("R1", gateRefs);
       const { next, coordinatorReceipt } = transitionWithReceipt(db, {
         transitionId: "R1", from: current.phase, to: WRITER_PHASES.D1_ACTIVE,
         fromEpoch: current.epoch, snapshotId, receiptRef, gateRefs, now,
       });
       return { transitionId: "R1", authority: next, coordinatorReceipt };
-    },
+    }),
 
     // T4 is intentionally sealed: RECOVERY -> BWH_ACTIVE is blocked
     // until reverse reconciliation is implemented and verified. This

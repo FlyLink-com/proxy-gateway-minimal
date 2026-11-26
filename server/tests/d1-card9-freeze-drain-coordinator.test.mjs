@@ -92,11 +92,11 @@ function buildBundle(db) {
 
 // Recovery-bound verification report (V): a report for the recovery
 // that entered RECOVERY at `epoch` via `trigger`.
-function recoveryVerification(trigger, epoch) {
+function recoveryVerification(trigger, epoch, recoveryReceiptDigest, snapshotId = SNAPSHOT) {
   return buildTwoSidedVerificationReport({
-    snapshotId: SNAPSHOT,
+    snapshotId,
     checks: Object.fromEntries(VERIFICATION_CHECK_IDS.map((id) => [id, { passed: true, detail: `synthetic ${id}` }])),
-    context: { kind: "recovery-resume", epoch, trigger },
+    context: { kind: "recovery-resume", epoch, trigger, recoveryReceiptDigest },
   });
 }
 
@@ -685,7 +685,7 @@ test("S-13 unfreeze (T5): FROZEN -> BWH_ACTIVE lands on epoch 3, never back on e
 
 test("S-14 resume to D1 (R1) needs reverification; with it, RECOVERY -> D1_ACTIVE lands on epoch 5", (t) => {
   const { db, coordinator } = driveToD1(t);
-  coordinator.enterRecovery({ trigger: "post-switch-mismatch" });
+  const { coordinatorReceipt: recovery } = coordinator.enterRecovery({ trigger: "post-switch-mismatch" });
   const failing = buildTwoSidedVerificationReport({
     snapshotId: SNAPSHOT,
     checks: Object.fromEntries(VERIFICATION_CHECK_IDS.map((id) => [id, { passed: id !== "C-1" }])),
@@ -694,23 +694,24 @@ test("S-14 resume to D1 (R1) needs reverification; with it, RECOVERY -> D1_ACTIV
   assert.equal(readWriterAuthority(db).phase, "RECOVERY");
   // enterRecovery landed on epoch 4 via trigger post-switch-mismatch,
   // so the re-verification must be bound to exactly that recovery.
-  const result = coordinator.resumeToD1({ reverificationReport: recoveryVerification("post-switch-mismatch", 4) });
+  const result = coordinator.resumeToD1({ reverificationReport: recoveryVerification("post-switch-mismatch", 4, recovery.receiptDigest) });
   assert.deepEqual([result.authority.phase, result.authority.epoch], ["D1_ACTIVE", 5]);
   assert.equal(result.transitionId, "R1");
   assert.equal(result.coordinatorReceipt.gateRefs.recoveryEpoch, 4);
+  assert.equal(result.coordinatorReceipt.gateRefs.recoveryReceiptDigest, recovery.receiptDigest);
   assert.equal(result.coordinatorReceipt.gateRefs.trigger, "post-switch-mismatch");
   assert.match(result.coordinatorReceipt.gateRefs.reverificationDigest, /^[0-9a-f]{64}$/);
 });
 
 test("S-21 resume to D1 (R1) refuses a report bound to the wrong recovery (V)", (t) => {
   const { db, coordinator } = driveToD1(t);
-  coordinator.enterRecovery({ trigger: "post-switch-mismatch" });
+  const { coordinatorReceipt: recovery } = coordinator.enterRecovery({ trigger: "post-switch-mismatch" });
   // A switch-time (T2) report carries no recovery context at all.
   assert.equal(codeOf(() => coordinator.resumeToD1({ reverificationReport: passingVerification() })), "freeze_reverification_context_mismatch");
   // A report for a different epoch is refused, even with a valid digest.
-  assert.equal(codeOf(() => coordinator.resumeToD1({ reverificationReport: recoveryVerification("post-switch-mismatch", 3) })), "freeze_reverification_context_mismatch");
+  assert.equal(codeOf(() => coordinator.resumeToD1({ reverificationReport: recoveryVerification("post-switch-mismatch", 3, recovery.receiptDigest) })), "freeze_reverification_context_mismatch");
   // A report for a different trigger is refused.
-  assert.equal(codeOf(() => coordinator.resumeToD1({ reverificationReport: recoveryVerification("e4-unavailable", 4) })), "freeze_reverification_context_mismatch");
+  assert.equal(codeOf(() => coordinator.resumeToD1({ reverificationReport: recoveryVerification("e4-unavailable", 4, recovery.receiptDigest) })), "freeze_reverification_context_mismatch");
   // A forged context (recomputed digest, wrong epoch) is refused too.
   const checks = Object.fromEntries(VERIFICATION_CHECK_IDS.map((id) => [id, { passed: true, detail: `synthetic ${id}` }]));
   const forged = forgedVerificationReport({ snapshotId: SNAPSHOT, checks, verdict: "pass", failedIds: [], context: { kind: "recovery-resume", epoch: 99, trigger: "post-switch-mismatch" } });
@@ -992,5 +993,48 @@ test("the exact snapshot manifest digest is covered by both report digests", () 
   assert.equal(codeOf(() => verifyDeltaCatchupReport({ ...delta, manifestDigest: otherManifest })), "freeze_delta_digest_mismatch");
   assert.equal(codeOf(() => verifyTwoSidedVerificationReport({
     ...report, context: { ...report.context, manifestDigest: otherManifest },
+  })), "freeze_verification_digest_mismatch");
+});
+
+test("T3 and R1 stay bound to the recorded snapshot and the current recovery", (t) => {
+  const { db, coordinator } = driveToD1(t);
+  const foreignSnapshot = "s2s-other-snapshot";
+  const otherCoordinator = createFreezeDrainCoordinator(db, { snapshotId: foreignSnapshot });
+  const trigger = "post-switch-mismatch";
+  assert.equal(codeOf(() => otherCoordinator.enterRecovery({ trigger })), "freeze_recovery_context_mismatch");
+  assert.equal(coordinator.readLog().length, 2);
+
+  const first = coordinator.enterRecovery({ trigger }).coordinatorReceipt;
+  const reportForFirst = recoveryVerification(trigger, first.toEpoch, first.receiptDigest);
+  for (const report of [
+    recoveryVerification(trigger, first.toEpoch),
+    recoveryVerification(trigger, first.toEpoch, first.receiptDigest, foreignSnapshot),
+  ]) {
+    assert.equal(codeOf(() => coordinator.resumeToD1({ reverificationReport: report })), "freeze_reverification_context_mismatch");
+    assert.deepEqual([coordinator.currentAuthority().phase, coordinator.currentAuthority().epoch], ["RECOVERY", first.toEpoch]);
+    assert.equal(coordinator.readLog().length, 3);
+  }
+  assert.equal(codeOf(() => otherCoordinator.resumeToD1({ reverificationReport: reportForFirst })), "freeze_recovery_context_missing");
+  assert.equal(coordinator.resumeToD1({ reverificationReport: reportForFirst }).authority.phase, "D1_ACTIVE");
+
+  const second = coordinator.enterRecovery({ trigger }).coordinatorReceipt;
+  const reportWithOldReceipt = recoveryVerification(trigger, second.toEpoch, first.receiptDigest);
+  assert.equal(codeOf(() => coordinator.resumeToD1({ reverificationReport: reportWithOldReceipt })), "freeze_reverification_context_mismatch");
+  assert.deepEqual([coordinator.currentAuthority().phase, coordinator.currentAuthority().epoch], ["RECOVERY", second.toEpoch]);
+  assert.equal(coordinator.readLog().length, 5);
+
+  const reportForSecond = recoveryVerification(trigger, second.toEpoch, second.receiptDigest);
+  const resumed = coordinator.resumeToD1({ reverificationReport: reportForSecond });
+  assert.equal(resumed.authority.phase, "D1_ACTIVE");
+  assert.equal(resumed.coordinatorReceipt.gateRefs.recoveryReceiptDigest, second.receiptDigest);
+  assert.deepEqual(verifyCoordinatorLog(db), { valid: true, entries: 6 });
+});
+
+test("R1 reverification digest covers the T3 receipt identity", () => {
+  const original = recoveryVerification("post-switch-mismatch", 4, "a".repeat(64));
+  assert.equal(verifyTwoSidedVerificationReport(original).valid, true);
+  assert.equal(codeOf(() => verifyTwoSidedVerificationReport({
+    ...original,
+    context: { ...original.context, recoveryReceiptDigest: "b".repeat(64) },
   })), "freeze_verification_digest_mismatch");
 });
