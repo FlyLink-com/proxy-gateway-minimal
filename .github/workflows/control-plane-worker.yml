@@ -8,6 +8,7 @@ on:
     paths:
       - "workers/control-plane/**"
       - "agent/g4/**"
+      - "scripts/d1-uf16-reconcile-local.mjs"
       - "package.json"
       - "package-lock.json"
       - ".github/workflows/control-plane-worker.yml"
