@@ -6422,18 +6422,20 @@ export function createSqliteSubscriptionControlStore({
   }
 
   function setIssuedLinkStatus(id, { status, updatedAt }) {
-    // U-F13 (W-073, ex-LATENT): phase fence, first statement.
-    assertWritable(db);
-    assertNoUnsafeFields({ status, updatedAt });
-    const result = db.prepare(`
-      update platform_issued_subscription_links
-      set status = ?, updated_at = ?
-      where id = ?
-    `).run(requiredText(status, "status"), isoText(updatedAt, "updatedAt"), requiredText(id, "id"));
-    if (result.changes !== 1) {
-      throw platformError("not_found", "issued link not found");
-    }
-    return getIssuedLink(id);
+    return db.transaction(() => {
+      // U-F13 (W-073, ex-LATENT): phase fence, first statement.
+      assertWritable(db);
+      assertNoUnsafeFields({ status, updatedAt });
+      const result = db.prepare(`
+        update platform_issued_subscription_links
+        set status = ?, updated_at = ?
+        where id = ?
+      `).run(requiredText(status, "status"), isoText(updatedAt, "updatedAt"), requiredText(id, "id"));
+      if (result.changes !== 1) {
+        throw platformError("not_found", "issued link not found");
+      }
+      return getIssuedLink(id);
+    }).immediate();
   }
 
   function listIssuedSubscriptionBindings(filters = {}) {
@@ -8191,7 +8193,7 @@ export function createSqliteSubscriptionControlStore({
       // U-F8/U-F13: phase fence, first statement.
       assertWritable(db);
       return insertUsageSampleRecord(record);
-    })();
+    }).immediate();
     return {
       inserted,
       sample: getUsageSampleByDigest(record.sampleDigest),
@@ -8220,6 +8222,7 @@ export function createSqliteSubscriptionControlStore({
 
   function recordCumulativeUsageSample(input) {
     // U-F8/U-F13: phase fence, first statement.
+    // Early rejection only; recheck under the write lock before touching the cursor.
     assertWritable(db);
     const current = {
       sourceRef: requiredText(input.sourceRef, "sourceRef"),
@@ -8321,7 +8324,7 @@ export function createSqliteSubscriptionControlStore({
         sample: getUsageSampleByDigest(sampleDigest),
         rollup: getUsageRollupByEdgeCredentialRef(current.edgeCredentialRef)
       };
-    })();
+    }).immediate();
   }
 
   function upsertQuotaCounter(input) {
@@ -8354,26 +8357,28 @@ export function createSqliteSubscriptionControlStore({
   }
 
   function bindDevice(input) {
-    // U-F13 (W-076, ex-LATENT): phase fence, first statement.
-    assertWritable(db);
-    assertNoUnsafeFields(input);
-    const record = {
-      id: requiredText(input.id, "id"),
-      accountId: requiredText(input.accountId, "accountId"),
-      artifactRef: requiredText(input.artifactRef, "artifactRef"),
-      deviceRef: requiredText(input.deviceRef, "deviceRef"),
-      status: requiredText(input.status || "active", "status"),
-      firstSeenAt: isoText(input.firstSeenAt, "firstSeenAt"),
-      lastSeenAt: isoText(input.lastSeenAt, "lastSeenAt")
-    };
-    sqliteRun(db.prepare(`
-      insert into platform_device_bindings (
-        id, account_id, artifact_ref, device_ref, status, first_seen_at, last_seen_at
-      ) values (
-        @id, @accountId, @artifactRef, @deviceRef, @status, @firstSeenAt, @lastSeenAt
-      )
-    `), record);
-    return getDeviceBinding(record.id);
+    return db.transaction(() => {
+      // U-F13 (W-076, ex-LATENT): phase fence, first statement.
+      assertWritable(db);
+      assertNoUnsafeFields(input);
+      const record = {
+        id: requiredText(input.id, "id"),
+        accountId: requiredText(input.accountId, "accountId"),
+        artifactRef: requiredText(input.artifactRef, "artifactRef"),
+        deviceRef: requiredText(input.deviceRef, "deviceRef"),
+        status: requiredText(input.status || "active", "status"),
+        firstSeenAt: isoText(input.firstSeenAt, "firstSeenAt"),
+        lastSeenAt: isoText(input.lastSeenAt, "lastSeenAt")
+      };
+      sqliteRun(db.prepare(`
+        insert into platform_device_bindings (
+          id, account_id, artifact_ref, device_ref, status, first_seen_at, last_seen_at
+        ) values (
+          @id, @accountId, @artifactRef, @deviceRef, @status, @firstSeenAt, @lastSeenAt
+        )
+      `), record);
+      return getDeviceBinding(record.id);
+    }).immediate();
   }
 
   function getDeviceBinding(id) {
@@ -8865,33 +8870,35 @@ export function createSqliteSubscriptionControlStore({
   // non-registration callers and test fixtures and must never be used to
   // overwrite an established registration identity binding.
   function upsertEdgeRegisteredNode(input) {
-    // U-F13 (W-095, ex-LATENT): phase fence, first statement.
-    assertWritable(db);
-    const record = edgeRegisteredNodeRecord(input);
-    sqliteRun(db.prepare(`
-      insert into platform_edge_registered_nodes (
-        node_ref, provider_ref, region_ref, role_ref, channel_refs_json,
-        image_manifest_ref, release_ref, lifecycle, status, first_boot_packet_ref,
-        registered_at, updated_at, metadata_json
-      ) values (
-        @nodeRef, @providerRef, @regionRef, @roleRef, @channelRefsJson,
-        @imageManifestRef, @releaseRef, @lifecycle, @status, @firstBootPacketRef,
-        @registeredAt, @updatedAt, @metadataJson
-      )
-      on conflict(node_ref) do update set
-        provider_ref = excluded.provider_ref,
-        region_ref = excluded.region_ref,
-        role_ref = excluded.role_ref,
-        channel_refs_json = excluded.channel_refs_json,
-        image_manifest_ref = excluded.image_manifest_ref,
-        release_ref = excluded.release_ref,
-        lifecycle = excluded.lifecycle,
-        status = excluded.status,
-        first_boot_packet_ref = excluded.first_boot_packet_ref,
-        updated_at = excluded.updated_at,
-        metadata_json = excluded.metadata_json
-    `), record);
-    return getEdgeRegisteredNode(record.nodeRef);
+    return db.transaction(() => {
+      // U-F13 (W-095, ex-LATENT): phase fence, first statement.
+      assertWritable(db);
+      const record = edgeRegisteredNodeRecord(input);
+      sqliteRun(db.prepare(`
+        insert into platform_edge_registered_nodes (
+          node_ref, provider_ref, region_ref, role_ref, channel_refs_json,
+          image_manifest_ref, release_ref, lifecycle, status, first_boot_packet_ref,
+          registered_at, updated_at, metadata_json
+        ) values (
+          @nodeRef, @providerRef, @regionRef, @roleRef, @channelRefsJson,
+          @imageManifestRef, @releaseRef, @lifecycle, @status, @firstBootPacketRef,
+          @registeredAt, @updatedAt, @metadataJson
+        )
+        on conflict(node_ref) do update set
+          provider_ref = excluded.provider_ref,
+          region_ref = excluded.region_ref,
+          role_ref = excluded.role_ref,
+          channel_refs_json = excluded.channel_refs_json,
+          image_manifest_ref = excluded.image_manifest_ref,
+          release_ref = excluded.release_ref,
+          lifecycle = excluded.lifecycle,
+          status = excluded.status,
+          first_boot_packet_ref = excluded.first_boot_packet_ref,
+          updated_at = excluded.updated_at,
+          metadata_json = excluded.metadata_json
+      `), record);
+      return getEdgeRegisteredNode(record.nodeRef);
+    }).immediate();
   }
 
   // Insert-only counterpart of upsertEdgeRegisteredNode: the single
@@ -8901,25 +8908,27 @@ export function createSqliteSubscriptionControlStore({
   // record) instead of a check-then-upsert sequence that two concurrent
   // writers could interleave into a silent overwrite.
   function insertEdgeRegisteredNodeIfAbsent(input) {
-    // U-F13: phase fence, first statement.
-    assertWritable(db);
-    const record = edgeRegisteredNodeRecord(input);
-    const info = sqliteRun(db.prepare(`
-      insert into platform_edge_registered_nodes (
-        node_ref, provider_ref, region_ref, role_ref, channel_refs_json,
-        image_manifest_ref, release_ref, lifecycle, status, first_boot_packet_ref,
-        registered_at, updated_at, metadata_json
-      ) values (
-        @nodeRef, @providerRef, @regionRef, @roleRef, @channelRefsJson,
-        @imageManifestRef, @releaseRef, @lifecycle, @status, @firstBootPacketRef,
-        @registeredAt, @updatedAt, @metadataJson
-      )
-      on conflict(node_ref) do nothing
-    `), record);
-    return {
-      inserted: info.changes > 0,
-      record: getEdgeRegisteredNode(record.nodeRef)
-    };
+    return db.transaction(() => {
+      // U-F13: phase fence, first statement.
+      assertWritable(db);
+      const record = edgeRegisteredNodeRecord(input);
+      const info = sqliteRun(db.prepare(`
+        insert into platform_edge_registered_nodes (
+          node_ref, provider_ref, region_ref, role_ref, channel_refs_json,
+          image_manifest_ref, release_ref, lifecycle, status, first_boot_packet_ref,
+          registered_at, updated_at, metadata_json
+        ) values (
+          @nodeRef, @providerRef, @regionRef, @roleRef, @channelRefsJson,
+          @imageManifestRef, @releaseRef, @lifecycle, @status, @firstBootPacketRef,
+          @registeredAt, @updatedAt, @metadataJson
+        )
+        on conflict(node_ref) do nothing
+      `), record);
+      return {
+        inserted: info.changes > 0,
+        record: getEdgeRegisteredNode(record.nodeRef)
+      };
+    }).immediate();
   }
 
   function getEdgeRegisteredNode(nodeRef) {
@@ -9703,34 +9712,36 @@ export function createSqliteSubscriptionControlStore({
   }
 
   function createPortalPasskeyCredential(input) {
-    // U-F13 (W-012, ex-LATENT): phase fence, first statement.
-    assertWritable(db);
-    const record = {
-      id: requiredText(input.id, "id"),
-      accountId: requiredText(input.accountId, "accountId"),
-      credentialId: requiredText(input.credentialId, "credentialId"),
-      credentialIdHash: requiredText(input.credentialIdHash, "credentialIdHash"),
-      publicKeyJwkJson: jsonObject(input.publicKeyJwk, "publicKeyJwk"),
-      signCount: integer(input.signCount ?? 0, "signCount", { min: 0 }),
-      transportsJson: jsonArray(input.transports ?? [], "transports"),
-      status: requiredText(input.status || "active", "status"),
-      createdAt: isoText(input.createdAt, "createdAt"),
-      lastVerifiedAt: optionalIsoText(input.lastVerifiedAt, "lastVerifiedAt"),
-      revokedAt: optionalIsoText(input.revokedAt, "revokedAt"),
-      updatedAt: isoText(input.updatedAt, "updatedAt")
-    };
-    sqliteRun(db.prepare(`
-      insert into platform_portal_passkey_credentials (
-        id, account_id, credential_id, credential_id_hash, public_key_jwk_json,
-        sign_count, transports_json, status, created_at, last_verified_at,
-        revoked_at, updated_at
-      ) values (
-        @id, @accountId, @credentialId, @credentialIdHash, @publicKeyJwkJson,
-        @signCount, @transportsJson, @status, @createdAt, @lastVerifiedAt,
-        @revokedAt, @updatedAt
-      )
-    `), record);
-    return getPortalPasskeyCredential(record.id);
+    return db.transaction(() => {
+      // U-F13 (W-012, ex-LATENT): phase fence, first statement.
+      assertWritable(db);
+      const record = {
+        id: requiredText(input.id, "id"),
+        accountId: requiredText(input.accountId, "accountId"),
+        credentialId: requiredText(input.credentialId, "credentialId"),
+        credentialIdHash: requiredText(input.credentialIdHash, "credentialIdHash"),
+        publicKeyJwkJson: jsonObject(input.publicKeyJwk, "publicKeyJwk"),
+        signCount: integer(input.signCount ?? 0, "signCount", { min: 0 }),
+        transportsJson: jsonArray(input.transports ?? [], "transports"),
+        status: requiredText(input.status || "active", "status"),
+        createdAt: isoText(input.createdAt, "createdAt"),
+        lastVerifiedAt: optionalIsoText(input.lastVerifiedAt, "lastVerifiedAt"),
+        revokedAt: optionalIsoText(input.revokedAt, "revokedAt"),
+        updatedAt: isoText(input.updatedAt, "updatedAt")
+      };
+      sqliteRun(db.prepare(`
+        insert into platform_portal_passkey_credentials (
+          id, account_id, credential_id, credential_id_hash, public_key_jwk_json,
+          sign_count, transports_json, status, created_at, last_verified_at,
+          revoked_at, updated_at
+        ) values (
+          @id, @accountId, @credentialId, @credentialIdHash, @publicKeyJwkJson,
+          @signCount, @transportsJson, @status, @createdAt, @lastVerifiedAt,
+          @revokedAt, @updatedAt
+        )
+      `), record);
+      return getPortalPasskeyCredential(record.id);
+    }).immediate();
   }
 
   function getPortalPasskeyCredential(id) {
@@ -9750,22 +9761,24 @@ export function createSqliteSubscriptionControlStore({
   }
 
   function markPortalPasskeyVerified(id, { verifiedAt, signCount, updatedAt }) {
-    // U-F13 (W-013, ex-LATENT): phase fence, first statement.
-    assertWritable(db);
-    const result = db.prepare(`
-      update platform_portal_passkey_credentials
-      set sign_count = ?, last_verified_at = ?, updated_at = ?
-      where id = ? and status = 'active'
-    `).run(
-      integer(signCount, "signCount", { min: 0 }),
-      isoText(verifiedAt, "verifiedAt"),
-      isoText(updatedAt, "updatedAt"),
-      requiredText(id, "id")
-    );
-    if (result.changes !== 1) {
-      throw platformError("not_found", "active portal passkey credential not found");
-    }
-    return getPortalPasskeyCredential(id);
+    return db.transaction(() => {
+      // U-F13 (W-013, ex-LATENT): phase fence, first statement.
+      assertWritable(db);
+      const result = db.prepare(`
+        update platform_portal_passkey_credentials
+        set sign_count = ?, last_verified_at = ?, updated_at = ?
+        where id = ? and status = 'active'
+      `).run(
+        integer(signCount, "signCount", { min: 0 }),
+        isoText(verifiedAt, "verifiedAt"),
+        isoText(updatedAt, "updatedAt"),
+        requiredText(id, "id")
+      );
+      if (result.changes !== 1) {
+        throw platformError("not_found", "active portal passkey credential not found");
+      }
+      return getPortalPasskeyCredential(id);
+    }).immediate();
   }
 
   function createPortalSecondFactorChallenge(input) {

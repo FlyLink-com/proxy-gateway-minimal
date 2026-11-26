@@ -7,7 +7,7 @@
 // installs DDL and triggers, is not a serving write, and installs no
 // writer-authority state of its own.
 //
-// All fixtures are synthetic in-memory SQLite databases built by the tests
+// All fixtures are synthetic SQLite databases built by the tests
 // themselves; nothing here touches D1, BWH, or any real control plane, and
 // no secret ever enters a test artifact.
 
@@ -65,10 +65,9 @@ function assertWriterRefused(fn) {
 // Control store: usage samples, link status, passkeys, devices, nodes
 // ---------------------------------------------------------------------------
 
-function controlFixture(t) {
-  const database = new Database(":memory:");
+function controlFixture(t, database = new Database(":memory:"), handle = database) {
   database.pragma("foreign_keys = ON");
-  const store = createSqliteSubscriptionControlStore({ database });
+  const store = createSqliteSubscriptionControlStore({ database: handle });
   t.after(() => {
     try {
       store.close();
@@ -214,6 +213,102 @@ test("passkey, device, and node writers refuse while FROZEN and pass the fence w
     assert.throws(call, (error) => error.code !== "writer_authority_not_bwh");
   }
 });
+
+// Two connections to the same WAL database. At the authoritative phase read,
+// try the coordinator transition from the separate connection. It must wait
+// until the business write commits (busy here because timeout is zero).
+// Then freeze and verify the same writer cannot mutate the database.
+function nodeInput() {
+  return {
+    nodeRef: "node_1", providerRef: "provider_1", regionRef: "region_1", roleRef: "edge",
+    channelRefs: ["chan_1"], imageManifestRef: "image_1", releaseRef: "release_1",
+    firstBootPacketRef: "boot_1", registeredAt: NOW,
+    metadata: {
+      source: "node-image-first-boot-packet", receiptGateRequired: true,
+      imageSafeConfirmed: true, artifactHashRecorded: true, wireguardPlanRef: "wg_plan_1"
+    }
+  };
+}
+
+const concurrentWriters = [
+  ["setIssuedLinkStatus", (store) => store.setIssuedLinkStatus("link_1", { status: "revoked", updatedAt: NOW })],
+  ["bindDevice", (store) => store.bindDevice({
+    id: "device_1", accountId: "acct_1", artifactRef: "artifact_1", deviceRef: "hardware_1",
+    firstSeenAt: NOW, lastSeenAt: NOW
+  })],
+  ["upsertEdgeRegisteredNode", (store) => store.upsertEdgeRegisteredNode(nodeInput())],
+  ["insertEdgeRegisteredNodeIfAbsent", (store) => store.insertEdgeRegisteredNodeIfAbsent(nodeInput())],
+  ["createPortalPasskeyCredential", (store) => store.createPortalPasskeyCredential({
+    id: "passkey_2", accountId: "acct_1", credentialId: "synthetic-2",
+    credentialIdHash: "e".repeat(64), publicKeyJwk: { kty: "EC" }, createdAt: NOW, updatedAt: NOW
+  })],
+  ["markPortalPasskeyVerified", (store) => store.markPortalPasskeyVerified("passkey_1", {
+    signCount: 1, verifiedAt: NOW, updatedAt: NOW
+  })],
+  ["recordUsageSample", (store) => store.recordUsageSample(usageSampleInput())],
+  ["recordCumulativeUsageSample", (store) => store.recordCumulativeUsageSample(cumulativeSampleInput())]
+];
+
+for (const [name, write] of concurrentWriters) {
+  test(`${name} serializes its authority check and write against a separate SQLite connection`, (t) => {
+    const dir = mkdtempSync(join(tmpdir(), "d1-writer-order-"));
+    const path = join(dir, "control.sqlite");
+    const database = new Database(path, { timeout: 0 });
+    database.pragma("journal_mode = WAL");
+    const coordinator = new Database(path, { timeout: 0 });
+    t.after(() => {
+      coordinator.close();
+      database.close();
+      rmSync(dir, { recursive: true, force: true });
+    });
+    const freeze = () => transitionWriterAuthority(coordinator, {
+      to: WRITER_PHASES.FROZEN, expectedEpoch: 1
+    });
+    let interleave = false;
+    let attempts = 0;
+    const handle = new Proxy(database, {
+      get(target, key) {
+        if (key === "prepare") {
+          return (sql) => {
+            const stmt = target.prepare(sql);
+            if (!/from main\.platform_writer_authority\b/i.test(sql)) return stmt;
+            return {
+              all(...args) {
+                const rows = stmt.all(...args);
+                if (interleave) {
+                  // Cumulative usage performs an early check as well as the
+                  // authoritative read inside the write transaction.
+                  if (name === "recordCumulativeUsageSample" && !target.inTransaction) return rows;
+                  interleave = false;
+                  attempts += 1;
+                  assert.throws(freeze, (error) => error.code === "SQLITE_BUSY");
+                }
+                return rows;
+              }
+            };
+          };
+        }
+        const value = Reflect.get(target, key, target);
+        return typeof value === "function" ? value.bind(target) : value;
+      }
+    });
+    const { store } = controlFixture(t, database, handle);
+    activateWriter(database);
+    store.createPortalPasskeyCredential({
+      id: "passkey_1", accountId: "acct_1", credentialId: "synthetic-1",
+      credentialIdHash: "f".repeat(64), publicKeyJwk: { kty: "EC" }, createdAt: NOW, updatedAt: NOW
+    });
+
+    interleave = true;
+    assert.ok(write(store));
+    assert.equal(attempts, 1, "the second connection must try to freeze during the fence");
+    assert.equal(readWriterAuthority(coordinator).phase, WRITER_PHASES.BWH_ACTIVE);
+    assert.equal(freeze().phase, WRITER_PHASES.FROZEN);
+    const frozenState = database.serialize();
+    assertWriterRefused(() => write(store));
+    assert.deepEqual(database.serialize(), frozenState, "the refused writer must not mutate the database");
+  });
+}
 
 // ---------------------------------------------------------------------------
 // Wallet: welcome-bonus lot expiry
