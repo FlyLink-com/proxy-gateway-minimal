@@ -1,0 +1,146 @@
+M0-A2-1 v7 / v9 BYTE-STABLE CHECKOUT REPAIR REVIEW
+Disposition: Draft PR candidate only. The operator-reported 20/20 local acceptance is bound to exact code commit `0477799c809aa6d16b4ad121db9915fa5a604f70` and does not validate the later Master synchronization or App source-parent hardening. Current code-bearing snapshot `498592721fff376bcc79feef32e5d7c3b967a3e3` has 21 test declarations and has not completed exact-snapshot local validation. Hosted CI is skipped; a fresh independent GitHub `APPROVED` review remains outstanding. NOT approved for production execution.
+
+## Repair changes
+
+1. Retains the v8 `path.posix.join` fix for Linux systemd paths tested under Windows Node.
+2. Replaces targeted `text eol=lf` rules with `-text !eol` for the checksum manifest and SHA256-verified package inputs. This prevents Git checkout conversion from rewriting committed LF bytes when `core.autocrlf=true`.
+3. Documents expected `git check-attr` output (`text: unset`, `eol: unspecified`) and `git ls-files --eol` output (`i/lf w/lf attr/-text`).
+4. Allows reuse of an existing isolated workspace for repeat validation only after confirming exact HEAD and rechecking attributes/EOL state. The original dirty working directory remains out of scope.
+5. Requires Node `v22.16.0` exactly for the recorded runtime validation.
+6. Regenerates all seven SHA256SUMS entries after the final README, validation, and review edits.
+
+## v9 local validation evidence — operator-reported (2026-10-31)
+
+Tested code commit: `5187edc19380fdb44dd2e0f531e9cfdf580b00e1`
+Workspace: `D:\Projects\proxy-gateway-minimal-pr812-v9`
+
+- Node `v22.16.0` from the isolated toolchain directory; system Node `v24.16.0` left unchanged.
+- `core.autocrlf=true` remained set.
+- Attribute sample: `text: unset`, `eol: unspecified`.
+- Seven files: all `i/lf w/lf attr/-text`.
+- SHA256: 7/7 OK, exit code 0.
+- Four `node --check` commands: exit code 0.
+- Self-test: `m0_a2_1_v7_self_test=passed`, exit code 0.
+- Node test suite: 10/10 passed, exit code 0.
+- Existing isolated workspace reused; no new workspace or Node installation.
+- Original working directory with uncommitted changes untouched.
+- No BWH/Provider connection or production read.
+
+The results are recorded from the operator's report and apply to code commit `5187edc19380fdb44dd2e0f531e9cfdf580b00e1`. The following evidence-archive commit changes only README, validation/review records, and SHA256SUMS; it does not change diagnostic runtime or test source. Its seven manifest entries are regenerated.
+
+A subsequent checksum-only verification was reported after switching the same isolated v9 workspace to archive head `92a4ea3454cce9e873a49fd692ea374ec2078609`: only `sha256sum -c docs/runbooks/m0-a2-1-v7/SHA256SUMS` was rerun, with **7/7 OK and exit code 0**; all seven files reported `i/lf w/lf attr/-text`. Node was not reinstalled, and the four `node --check` commands, self-test, and `node --test` were not rerun against that archive head. This follow-up verifies only the archive head's checksum inputs; the full code-test results remain bound to `5187edc19380fdb44dd2e0f531e9cfdf580b00e1`. No hosted CI or production result is implied.
+
+## Earlier v8 failure retained as history
+
+- v8 used Node v24.16.0, not the required Node v22.16.0.
+- The checksum command returned 5/7 because two worktree files were CRLF while index blobs were LF.
+- Syntax checks 4/4, self-test, and tests 10/10 passed under Node v24.16.0.
+- This earlier failure remains in the record and is not overwritten by the later v9 result.
+
+## Other diagnostic limitations
+
+- Hosted CI remains skipped; no CI pass is claimed.
+- App identity remains label-only plus four code-slice pins; it is not a complete App artifact/source-commit proof.
+- The collector archive check proves the 49-file content closure, not a re-created tar archive digest.
+- Status projection producer coverage remains partial and does not prove complete Japan VLESS / Hy2 / TUIC source coverage.
+- Temporal correlation of the stop unit does not independently prove OnFailure causality.
+- Node target-host version and current production unit shape remain unknown until separately approved read-only work.
+
+## Safety review
+
+- No SSH, BWH / Provider connection, production systemd or journal read, collector invocation, service or Timer action, DB read, full-metering journal/checkpoint read, config read, environment-file read, or production mutation occurred in this documentation update.
+- The production diagnostic's fixed read-only command surface is unchanged.
+- No global Git configuration or local working directory was changed.
+- The PR remains Draft; this evidence does not authorize production execution.
+
+Decision: keep M0 BLOCKED. A production read requires separate exact Risk A approval bound to the final package SHA-256, expected release label, target, and time window. No M0-A2-2, M1–M8, recovery, or Japan node creation is authorized by this package.
+
+
+## Follow-up review repairs (2026-10-31)
+
+1. **App release pointer race:** `resolveAppRelease` now snapshots the `current` symlink target and its device/inode/metadata signature, checks that snapshot around resolution, and the final stability phase resolves the pointer again and compares the complete release binding including PID. A pointer swap/replacement during the diagnostic fails closed.
+2. **Stop-unit command identity:** replaced substring matching with an exact systemd ExecStart parser. It requires `path=/usr/bin/systemctl` and exactly three argv tokens: `/usr/bin/systemctl stop gccgw-full-metering-collect.timer`. Shell wrappers, alternate binaries, additional arguments, and repeated argv entries are rejected.
+3. **Hard wall-clock bound:** added phase-boundary elapsed-budget checks and changed the only documented future host command to GNU `timeout` with TERM at 45 seconds and a 5-second KILL grace. Exit 124/137 is a stop, not a successful diagnostic and not a retry signal.
+4. Added three regression tests; the repository test file now contains 13 test declarations. A separate standalone local Node v22.16.0 harness mirroring the added helper logic passed 12/12 assertions and its syntax check passed. The full repository test file was not run, so no 13/13 claim is made. No hosted CI is started while the PR remains Draft.
+
+No BWH/Provider access, SSH, production systemd/journal read, collector invocation, service/Timer action, or production mutation was performed by these repairs.
+
+
+## Independent-review remediation (2026-10-31)
+
+1. **EnvironmentFile override:** the App/status-writer binding now fails closed whenever either unit has a nonempty `EnvironmentFiles` list. Environment files are not read. The full-metering unit no longer requests the `Environment` property; only App and status-writer metadata are queried. `/proc/<AppPID>/environ` is scanned in bounded chunks, retaining only the requested status-path value. `PassEnvironment` / `UnsetEnvironment` references to the target variable are rejected.
+2. **Status-file ownership and path trust:** both units must have a default or explicit root identity; the status file must be root UID/GID-owned, private, single-link and non-symlinked. Every parent directory through `/` must be a real root-owned directory without group/world write permission. File and directory metadata are rechecked after reading.
+3. **Complete failure-handler reporting:** the entire `OnFailure` list is parsed. Extra handlers are surfaced by count; malformed or duplicate expected handlers become `unknown`.
+4. **Runtime pin:** the production gate now requires Node `v22.16.0` exactly, rather than accepting any `22.x` version.
+5. Added five regression tests; the test file now declares 18 tests. The complete repository test suite has NOT been run against this remediation commit in this environment. The existing isolated v9 workspace must run the documented checksum, syntax, self-test and full `node --test` commands against the exact final commit. Hosted CI remains skipped while Draft; no CI pass is claimed.
+
+No BWH/Provider access, SSH, production systemd/journal read, collector invocation, service/Timer action, database/config/environment-file read, or production mutation was performed.
+
+Disposition: keep PR #812 Draft and M0 BLOCKED until the exact final commit passes the isolated local validation and receives a fresh independent review. This remediation does not authorize production execution.
+
+
+Self-test fixture follow-up: the built-in `--self-test` now uses the same fail-closed root-identity / no-EnvironmentFiles fixture as the production binding contract and includes EnvironmentFile override, exact Node version, and additional-OnFailure assertions. This avoids retaining a stale positive fixture that would fail under the hardened resolver.
+
+
+## Bounded-read and staged-environment follow-up (2026-10-31)
+
+1. **Hard read ceilings:** introduced one chunked file reader that never reads more than the configured ceiling plus a single overflow-probe byte. App source pins are capped at 1 MiB each, archive files at their manifest-declared byte size, and the status projection at 256 KiB. A file that grows after metadata inspection fails closed. The production diagnostic no longer uses `readFileSync`.
+2. **Staged Environment inspection:** baseline App and status-writer systemd property lists no longer include `Environment`. The diagnostic requests that property separately only after the status-writer `ExecStart` matches the resolved App release and both unit metadata snapshots prove no nonempty `EnvironmentFiles`, default/root User and Group, `DynamicUser=no`, and matching `PassEnvironment` / `UnsetEnvironment` values with no target-variable reference. Each property response is parsed immediately; only the selected status-path assignment is retained. The selected values are re-read and compared during final stability verification. If the metadata gate fails, no Environment property request is made.
+3. **Regression coverage:** added tests for exact-limit and over-limit file reads, metadata-gated environment access, and resolving the status binding from separately selected values. The repository test file now declares 20 tests.
+4. **Validation disposition:** the operator reports full local validation on exact code head `0477799c809aa6d16b4ad121db9915fa5a604f70`: checksum 7/7, four syntax checks, self-test, and 20/20 tests under Node v22.16.0, all exit 0. This evidence applies to that exact code head, not the later documentation-only synchronization commit. Hosted CI remains skipped while Draft; no CI pass is claimed.
+
+No BWH/Provider access, SSH, production systemd/journal/status/SQLite/config/environment-file read, collector invocation, service/Timer action, or production mutation occurred. Keep PR #812 Draft and M0 BLOCKED.
+
+
+## Local validation failure and test-only correction (2026-10-31)
+
+The operator reports that exact commit `0f845aa289c96f347774dbcd24ac3d4d11ff2d38` was checked in a clean isolated workspace with Node `v22.16.0`: SHA256 7/7, four syntax checks, and self-test passed; the full suite returned 19/20 (exit 1). The only failure was a stale static assertion in the read-only-surface test expecting `canReadTargetEnvironment(appBefore)`, while the current production path correctly uses `canReadStatusBindingEnvironment(appBefore, statusBefore)`.
+
+Only that test assertion was updated in `1122a2dc71d0193f28db3d0857a4dda21bee38e3`. No production code was changed. The correction was subsequently validated on exact code head `0477799c809aa6d16b4ad121db9915fa5a604f70`: the operator reports SHA256 7/7, four syntax checks, self-test, and 20/20 tests passed under Node `v22.16.0`, all exit 0. The later documentation-only synchronization head still requires a complete rerun before Ready. Keep PR #812 Draft and M0 BLOCKED.
+
+
+## Exact code-head acceptance and review disposition (2026-11-01)
+
+### Local validation evidence — operator-reported
+
+- Exact tested code commit: `0477799c809aa6d16b4ad121db9915fa5a604f70`.
+- Isolated workspace was clean before switching; the original dirty working directory was left untouched.
+- Runtime: Node `v22.16.0` from the separate toolchain directory.
+- SHA256 7/7, four syntax checks 4/4, self-test passed, and `node --test` 20/20 passed; every command exited 0.
+- No BWH/Provider access, SSH, production read, collector invocation, service/Timer action, or production mutation occurred.
+
+### Static boundary review
+
+- The inspected production diagnostic uses fixed `systemctl show` and narrowly filtered `journalctl` invocations with `shell: false`; the journal query is conditional on the exact recorded invocation identity.
+- The inspected production path uses bounded file reads, guarded status-path/environment binding, before/after metadata checks, and no production `readFileSync` call.
+- The static review did not execute against BWH or inspect live production state. It is not a formal independent GitHub `APPROVED` review.
+- Known limits remain: App identity is label-only plus four code-slice pins; the archive check proves a 49-file content closure, not a reconstructed tar digest; producer coverage is partial; stop-unit timestamp correlation does not prove `OnFailure` causality; target-host Node version and current production unit shape remain unknown until separately approved read-only work.
+
+### Current disposition
+
+The 20/20 result is bound to code head `0477799c809aa6d16b4ad121db9915fa5a604f70`. This documentation synchronization changes only runbook/validation/review records and the checksum manifest; no diagnostic runtime or test source is changed. Nevertheless, the resulting exact PR head must rerun checksum 7/7, four syntax checks, self-test, and the complete 20-test suite under Node `v22.16.0` before Ready. Hosted CI remains skipped and is not a pass. PR #812 stays Draft; M0 stays BLOCKED; no production execution is authorized.
+
+
+## 2026-11-01 — current branch sync and App source-parent hardening review
+
+### Master synchronization
+
+- The PR base is Master `90d49058efc91179464a6df4157308fa707feb49`.
+- Merge commit `281be450f2bf966d7ddb188d12c8c1840f9aa646` has parents `8a59c24a7596977b1cd7053d11b5ab4a0ddf0d8e` (prior PR head) and `90d49058efc91179464a6df4157308fa707feb49` (Master).
+- The overlapping Marketplace test file was resolved in favor of the exact Master version, including the #813 fixed-date test repair; the other nine PR-specific files were retained. The branch was verified zero commits behind Master.
+
+### App source-parent hardening
+
+- Commit `f00b1c4e670297e7c8c825c08b46862fd73e6535` adds enumeration of the App release source-parent directory chain from `/` through each pinned module directory.
+- Each directory is checked as a real non-symlink directory with root UID/GID ownership and no group/world write bits. Resolved paths and metadata signatures are snapshotted and rechecked around source reads; the source pin gate is repeated immediately before the dynamic import of the App sanitizer.
+- Regression coverage checks the enumerated ancestor chain, owner/group, mode, symlink rejection, and path traversal rejection. Test-only assertion correction `498592721fff376bcc79feef32e5d7c3b967a3e3` fixes the static source assertion. The test file contains 21 test declarations.
+- This is a code-path inspection and test-source review only. No local execution of the 21-declaration suite was performed in this environment, so no current-head test pass is claimed. The historical operator-reported 20/20 result remains bound to `0477799c809aa6d16b4ad121db9915fa5a604f70`.
+
+### Hosted checks and disposition
+
+- On code snapshot `49859272`, CI run `41296312350` was skipped while Draft; its eight jobs were skipped. Trusted governance advisory run `41296310042` succeeded, but is not a source/test CI pass.
+- Exact final-head checksum 7/7, four syntax checks, self-test, and full `node --test` execution under Node `v22.16.0` remain pending.
+- A fresh independent GitHub `APPROVED` review remains outstanding. This report is not that approval.
+
+Keep PR #812 Draft and M0 BLOCKED. No BWH/Provider access, SSH, production systemd/journal/status/SQLite/config/environment-file read, collector invocation, service/Timer action, or production mutation is authorized.

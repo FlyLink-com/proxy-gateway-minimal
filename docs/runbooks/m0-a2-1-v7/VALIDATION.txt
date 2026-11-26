@@ -1,0 +1,163 @@
+M0-A2-1 v7 / v9 BYTE-STABLE CHECKOUT VALIDATION RECORD
+Date: 2026-10-31
+Status: HISTORICAL OPERATOR-REPORTED PASS on `0477799c809aa6d16b4ad121db9915fa5a604f70` ONLY — CURRENT CODE SNAPSHOT `498592721fff376bcc79feef32e5d7c3b967a3e3` HAS 21 TEST DECLARATIONS AND REQUIRES FULL EXACT-HEAD VALIDATION — HOSTED CI SKIPPED — PRODUCTION NOT AUTHORIZED.
+
+## v9 Windows local verification — operator-reported
+
+Tested code snapshot: `5187edc19380fdb44dd2e0f531e9cfdf580b00e1`
+Isolated workspace: `D:\Projects\proxy-gateway-minimal-pr812-v9`
+
+- The existing isolated workspace was already at the required commit and was reused; no new workspace was created.
+- `core.autocrlf=true` remained unchanged.
+- Node was `v22.16.0`, supplied from the isolated toolchain directory. The system Node `v24.16.0` was not replaced.
+- Attribute sample: `text: unset`, `eol: unspecified`.
+- All seven checksum inputs: `i/lf w/lf attr/-text`.
+- `sha256sum -c docs/runbooks/m0-a2-1-v7/SHA256SUMS`: 7/7 OK, exit code 0.
+- Four `node --check` commands: exit code 0.
+- `node scripts/m0-a2-1-v7.mjs --self-test`: `m0_a2_1_v7_self_test=passed`, exit code 0.
+- `node --test server/tests/m0-a2-1-v7.test.mjs`: 10/10 passed, exit code 0.
+- The original working directory with uncommitted changes was not switched or modified.
+- No new Node installation, BWH/Provider connection, SSH, or production read occurred.
+
+This section records the operator's local results. The exact tested code snapshot is `5187edc19380fdb44dd2e0f531e9cfdf580b00e1`; it is not a claim that hosted CI ran or that production was read.
+
+## v9 repair scope
+
+- Replaced the v8 targeted `text eol=lf` attributes with the more restrictive `-text !eol` rules for the diagnostic package's SHA256-verified inputs.
+- `-text` disables Git text/EOL conversion for these paths. The committed blob bytes (LF) are written to the worktree unchanged even when `core.autocrlf=true`.
+- The rules are scoped to `docs/runbooks/m0-a2-1-v7/**`, `scripts/m0-a2-1-v7.mjs`, `scripts/lib/m0-a2-1-v7-*.mjs`, and `server/tests/m0-a2-1-v7.test.mjs`.
+- README now allows reuse of the same isolated workspace for repeat checks after confirming the exact HEAD and rechecking attributes/EOL state; it continues to prohibit touching the original dirty directory.
+- All seven SHA256 entries are regenerated after the final README, validation, and review edits. The checksum manifest itself is intentionally not self-hashed.
+
+## v8 local result reported before v9
+
+- Environment: Windows, Node v24.16.0; Node v22.16.0 was not installed at that time.
+- `git check-attr`: sampled files reported `eol: lf`.
+- `sha256sum -c`: 5/7 passed; `scripts/m0-a2-1-v7.mjs` and `scripts/lib/m0-a2-1-v7-archive-pins.mjs` failed because the worktree held CRLF while the index held LF. Recomputing those two as LF matched the manifest.
+- Four `node --check` commands passed.
+- `--self-test` passed.
+- `node --test`: 10/10 passed on Node v24.16.0.
+- This earlier result was not a Node v22.16.0 validation and its original checksum command remained failed. It has not been relabeled as passed.
+
+## Evidence scope and remaining gates
+
+- The local v9 pass above applies to code commit `5187edc19380fdb44dd2e0f531e9cfdf580b00e1`.
+- The evidence-archive commit following that test changes only `README.md`, `VALIDATION.txt`, `REVIEW-REPORT.txt`, and `SHA256SUMS`; no diagnostic script or test source is changed.
+- The seven SHA256 entries are regenerated for the evidence-archive commit from the final file contents.
+- After switching the same isolated v9 workspace to the then-current archive head `92a4ea3454cce9e873a49fd692ea374ec2078609`, the operator reran only `sha256sum -c docs/runbooks/m0-a2-1-v7/SHA256SUMS`: **7/7 OK, exit code 0**; all seven files reported `i/lf w/lf attr/-text`.
+- This follow-up was checksum-only: Node was not reinstalled, and the four `node --check` commands, `--self-test`, and `node --test` were not rerun against that archive head.
+- The complete code-validation results above therefore remain bound to `5187edc19380fdb44dd2e0f531e9cfdf580b00e1`. The later checksum-only result does not imply a full test rerun, Hosted CI pass, or production read.
+- GitHub Actions / hosted CI remains skipped intentionally. Skipped jobs are not a pass.
+- The local test does not establish production state, deployed App identity, or authorization to read production.
+
+## Explicitly not performed
+
+- GitHub Actions / hosted CI execution.
+- SSH, BWH / Provider access, production systemd or journal reads.
+- App release or collector archive reads on production.
+- Status projection, SQLite, full-metering journal, checkpoint, config, environment-file, or credential reads.
+- Collector invocation, service/Timer action, install, restart, or production mutation.
+
+PR #812 remains Draft. M0 remains BLOCKED. Production execution, M0-A2-2, M1–M8, recovery, and Japan node creation remain unauthorized.
+
+
+## Follow-up code review — targeted local verification (2026-10-31)
+
+- App release binding now records the current symlink target plus device/inode/metadata signature, re-resolves the pointer at the end, and requires the same release and App PID.
+- Stop-unit inspection now requires the exact `/usr/bin/systemctl` executable and the complete argv `systemctl stop gccgw-full-metering-collect.timer`; shell wrappers and extra/repeated arguments fail closed.
+- A 45-second in-process elapsed budget is checked at phase boundaries. The future production command is additionally wrapped in GNU `timeout` with TERM at 45 seconds and KILL after a 5-second grace period (maximum 50 seconds). Timeout status 124/137 is a stop and must not be retried.
+- Added three regression tests for release-pointer stability, exact stop-unit argv, and the external timeout requirement. Expected suite size: 13 tests.
+
+Targeted helper checks were run locally with Node v22.16.0: a standalone harness mirroring the added release-binding and stop-unit parser logic passed 12/12 assertions; node --check on that harness exited 0. A GNU timeout probe that deliberately ignored TERM exited 137 after the configured kill grace, confirming the local timeout utility's hard-kill behavior. This does not represent execution of the repository's full 13-test node --test suite; that full suite remains NOT RUN in this environment and must be run in the isolated Windows workspace before any later production approval. Hosted CI remains intentionally skipped while the PR is Draft. No production read or mutation is authorized.
+
+
+## Independent-review hardening follow-up (2026-10-31)
+
+- PR #812 remains Draft; no Hosted CI was started. Draft CI guards remain in force.
+- The status-path binding now fails closed if either App or status-writer unit has any configured `EnvironmentFiles`, because those files can override direct `Environment=` assignments and their contents are outside the approved read scope. The full-metering unit no longer requests its Environment property. App `/proc/<PID>/environ` is scanned in bounded chunks, retaining only the single target variable value.
+- The binding also rejects target-variable references in `PassEnvironment` / `UnsetEnvironment` and rejects non-root or dynamic service identities.
+- Status projection reads now require root UID/GID ownership, private single-link regular file metadata, and a root-owned non-symlink parent-directory chain through `/` with no group/world write permission. File and directory metadata are compared before and after reading.
+- Full `OnFailure` lists are parsed; additional handlers are reported by count, while malformed/duplicate expected entries are `unknown`.
+- Production Node runtime is pinned to exact `v22.16.0`.
+- At the time of this earlier review, the repository test file declared 18 tests and the complete suite had not yet been run. The operator subsequently reported a full 18/18 pass on exact commit `f60c0187c2fee3f3b0056d7fabfca70444b34f6c` using Node `v22.16.0`. The current bounded-read / staged-environment follow-up adds two tests (20 total); its complete validation is still pending and must be run against its exact final commit. Do not transfer the f60 result to this later code.
+- No SSH, BWH/Provider connection, production systemd/journal/status/SQLite/config/environment-file read, collector invocation, service/Timer action, or production mutation occurred.
+
+Current gate: PR remains Draft; M0 remains BLOCKED. No production execution, M0-A2-2, M1–M8, recovery, or Japan node creation is authorized.
+
+- Built-in `--self-test` fixture was updated to the new no-EnvironmentFiles/root-identity contract and now checks the EnvironmentFile override, exact Node version, and additional-OnFailure behavior; this source change is included in the final manifest below.
+
+
+## Latest f60 local acceptance — operator-reported (2026-10-31)
+
+- Exact tested commit: `f60c0187c2fee3f3b0056d7fabfca70444b34f6c`.
+- Workspace: `D:\\Projects\\proxy-gateway-minimal-pr812-v9`; the original dirty directory was not touched.
+- Runtime: Node `v22.16.0` from the isolated toolchain; system Node `v24.16.0` unchanged.
+- `sha256sum -c docs/runbooks/m0-a2-1-v7/SHA256SUMS`: 7/7 OK, exit 0.
+- Four `node --check` commands: 4/4 exit 0.
+- `node scripts/m0-a2-1-v7.mjs --self-test`: passed, exit 0.
+- `node --test server/tests/m0-a2-1-v7.test.mjs`: 18/18 passed, exit 0.
+- No BWH/Provider connection, SSH, production read, or mutation.
+- This evidence applies only to f60 and does not validate the later follow-up branch.
+
+## Bounded-read and staged-environment follow-up — pending full validation
+
+- The diagnostic now reads App source pins in chunks with a 1 MiB ceiling, archive files with each manifest-declared size as the ceiling, and the status projection with a 256 KiB ceiling. Each reader probes at most one byte beyond its allowance and fails closed; production code contains no `readFileSync` call.
+- Baseline App/status-writer metadata omits `Environment`; the property is requested only after the status-writer `ExecStart` matches the resolved App release and both units pass the no-EnvironmentFiles/root-identity/PassEnvironment/UnsetEnvironment gate. Only the target assignment is retained and compared again at the end.
+- Baseline App/status-writer systemd metadata no longer requests `Environment`. Only after both units pass the EnvironmentFiles, root-identity, PassEnvironment and UnsetEnvironment metadata gate are their Environment properties queried separately. Only the target assignment is retained; before/after values must remain identical.
+- Added two regression tests. The repository test file now declares 20 tests.
+- Full checksum, four syntax checks, self-test, and 20/20 test execution on Node `v22.16.0` have not yet been recorded for the final follow-up commit. Do not treat the f60 18/18 result as validation of this branch.
+- Hosted CI remains skipped while Draft. No production access or mutation is authorized.
+
+
+## Operator-reported local acceptance on 0f845aa — 2026-10-31
+
+The operator confirmed the isolated workspace was clean before switching to exact commit `0f845aa289c96f347774dbcd24ac3d4d11ff2d38`. The original dirty working directory was not touched. Runtime was the isolated Node `v22.16.0`.
+
+| Check | Exit | Result |
+|---|---:|---|
+| `sha256sum -c docs/runbooks/m0-a2-1-v7/SHA256SUMS` | 0 | 7/7 OK |
+| Four `node --check` commands | 0 | 4/4 passed |
+| `node scripts/m0-a2-1-v7.mjs --self-test` | 0 | `m0_a2_1_v7_self_test=passed` |
+| `node --test server/tests/m0-a2-1-v7.test.mjs` | 1 | 19/20 passed; one static assertion failed |
+
+The only failure was in test `production branch has only fixed read commands and no systemd mutation or file-write APIs` at the assertion expecting the old source text `canReadTargetEnvironment(appBefore)`. The production path uses the newer combined gate `canReadStatusBindingEnvironment(appBefore, statusBefore)`; this is a stale test expectation, not a production read failure.
+
+## Test-only assertion correction — pending rerun
+
+- Updated only the stale static assertion to require `canReadStatusBindingEnvironment(appBefore, statusBefore)`.
+- Correction commit: `1122a2dc71d0193f28db3d0857a4dda21bee38e3`.
+- Production diagnostic code is unchanged by this correction.
+- The suite still declares 20 tests. No 20/20 result is claimed for the corrected head.
+- Repeat the full checksum, four syntax checks, self-test, and complete `node --test` suite using Node `v22.16.0` against the exact current PR head. If any check fails, stop and report the exact output and exit code.
+
+The PR remains Draft; M0 remains BLOCKED. No BWH/Provider connection, production read, service action, or mutation was performed.
+
+
+## Exact PR code-head local acceptance — operator-reported (2026-10-31)
+
+- Exact tested code commit: `0477799c809aa6d16b4ad121db9915fa5a604f70`.
+- The isolated workspace was clean before switching to this commit. The original working directory containing uncommitted changes was not touched.
+- Runtime: Node `v22.16.0` from the separate toolchain directory.
+- `sha256sum -c docs/runbooks/m0-a2-1-v7/SHA256SUMS`: 7/7 OK, exit code 0.
+- Four `node --check` commands: all passed, exit code 0.
+- `node scripts/m0-a2-1-v7.mjs --self-test`: `m0_a2_1_v7_self_test=passed`, exit code 0.
+- `node --test server/tests/m0-a2-1-v7.test.mjs`: 20/20 passed, exit code 0.
+- No BWH/Provider connection, SSH, production systemd/journal/status/SQLite/config/environment-file read, collector invocation, service/Timer action, or production mutation occurred.
+
+This is operator-reported local evidence, not a hosted CI result or independent execution by GitHub. It applies to the exact code commit `0477799c809aa6d16b4ad121db9915fa5a604f70`. The documentation-synchronization commits that update this runbook, validation/review records, and checksum manifest are later commits; they do not change diagnostic runtime or test source, but the resulting exact PR head must still rerun the complete checksum, syntax, self-test, and 20-test suite before Ready. Do not describe the documentation-sync head as fully validated until that rerun is recorded.
+Hosted CI remains skipped while the PR is Draft; skipped is not a pass. Production state and authorization are not established by this local test.
+
+
+## 2026-11-01 current code snapshot — Master sync and App source-parent hardening
+
+This section supersedes earlier "documentation-only synchronization" descriptions for the current branch. The historical local pass recorded above remains valid only for the exact commit it names.
+
+- Master synchronization commit: `281be450f2bf966d7ddb188d12c8c1840f9aa646`, with parents prior PR head `8a59c24a7596977b1cd7053d11b5ab4a0ddf0d8e` and Master `90d49058efc91179464a6df4157308fa707feb49`.
+- The overlapping `admin/src/test/portal-coins-marketplace.test.tsx` was resolved by keeping the current Master version, including the #813 fixed-date test repair. Nine other PR-specific files were retained.
+- App source-parent hardening commit: `f00b1c4e670297e7c8c825c08b46862fd73e6535`. It enumerates and validates each directory from `/` to the pinned source-module parent directories; requires real non-symlink directories, root UID/GID ownership, and no group/world write bits; snapshots and rechecks directory metadata around pinned-file reads; and repeats the check immediately before dynamic import.
+- Test assertion correction commit: `498592721fff376bcc79feef32e5d7c3b967a3e3`. The test file contains 21 test declarations, including coverage for ancestor enumeration, UID/GID, mode, symlink and traversal rejection, and the pre-import source recheck.
+- Current code-bearing snapshot: `498592721fff376bcc79feef32e5d7c3b967a3e3`. No exact-snapshot local checksum, syntax, self-test, or full test-suite result is recorded yet. Run the complete validation block in this file using Node `v22.16.0` against the exact final PR head and record actual outputs/exit codes. Do not transfer the earlier 20/20 result from `0477799c`.
+- For code snapshot `49859272`, CI run `41296312350` and its eight jobs were skipped while the PR was Draft. Governance advisory run `41296310042` succeeded; it is not a replacement for source checks or the test suite.
+- A fresh independent GitHub `APPROVED` review remains outstanding.
+
+No CI rerun was initiated by this documentation update. No BWH/Provider connection, SSH, production read, collector invocation, service/Timer action, or production mutation occurred. PR #812 remains Draft; M0 remains BLOCKED.
