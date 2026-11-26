@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import { assertWritable } from "./single-writer-authority.mjs";
 
 const FINAL_PORTAL_STATUSES = new Set(["delivered", "issued"]);
 const SAFE_REF_PATTERN = /^[A-Za-z0-9._:-]{1,128}$/;
@@ -8,7 +9,12 @@ const SAFE_ERROR_CODES = new Set([
   "account_resource_authority_invalid_contract",
   "account_resource_authority_target_invalid",
   "account_resource_authority_unavailable",
-  "account_resource_authority_version_conflict"
+  "account_resource_authority_version_conflict",
+  // D1 U-F13 (W-023/W-024): the writer-authority fence errors must pass
+  // through closeKnownError unchanged, not be masked as a conflict.
+  "writer_authority_not_bwh",
+  "writer_authority_unavailable",
+  "writer_epoch_stale"
 ]);
 
 function authorityError(code) {
@@ -306,6 +312,8 @@ export function createAccountResourceAuthorityStore({
   }
 
   const assignImmediate = database.transaction((input) => {
+    // U-F13 (W-023, ex-LATENT): phase fence, first statement.
+    assertWritable(database);
     const target = normalizeTarget(input, { initial: true });
     const now = normalizedNow(nowFn);
     const exact = exactTarget(target, now);
@@ -352,6 +360,8 @@ export function createAccountResourceAuthorityStore({
   }
 
   const reassignImmediate = database.transaction((input) => {
+    // U-F13 (W-024, ex-LATENT): phase fence, first statement.
+    assertWritable(database);
     const target = normalizeTarget(input);
     const revokedBy = requireRef(input.revokedBy);
     const revocationReason = requireRef(input.revocationReason);
