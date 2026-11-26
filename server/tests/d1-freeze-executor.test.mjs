@@ -11,10 +11,10 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { ensureWriterAuthority, readWriterAuthority, WRITER_AUTHORITY_TABLE } from "../services/platform/single-writer-authority.mjs";
+import { ensureWriterAuthority, readWriterAuthority } from "../services/platform/single-writer-authority.mjs";
 import { createSqliteSubscriptionControlStore } from "../services/platform/subscription-control-db.mjs";
 import { createTrafficAccountingService } from "../services/platform/traffic-accounting.mjs";
-import { createFreezeDrainCoordinator, buildWriterCoverageMatrix, readCoordinatorLog } from "../services/platform/d1-card9-freeze-drain-coordinator.mjs";
+import { createFreezeDrainCoordinator, buildWriterCoverageMatrix, readCoordinatorLog, COORDINATOR_LOG_TABLE } from "../services/platform/d1-card9-freeze-drain-coordinator.mjs";
 import { appendDeltaEntries } from "../services/platform/d1-card8-delta-journal.mjs";
 import {
   createD1FreezeExecutor,
@@ -244,43 +244,26 @@ function makeExecutor(t, overrides = {}, shared = null) {
   return { db, controlStore, clock, commerce, welcome, rotation, deferred, portal, trafficAccounting, coinCommerceStore, coordinator, executor };
 }
 
-// Test-only seeding: place the durable authority at an arbitrary
-// (authority, phase, epoch). Production can only reach BWH_ACTIVE on
-// odd epochs (each freeze/unfreeze round adds two), so a value like a
-// large even epoch can never occur there — but the freeze rule must
-// not depend on the value, and a test that only exercises one value
-// could be passed by hardcoding that value. The durable guards are
-// dropped only to place the fixture and are reinstalled via
-// ensureWriterAuthority before the system under test runs; the helper
-// asserts they are back, so the freeze itself always runs under the
-// real guard (which still enforces epoch +1).
-const AUTHORITY_GUARD_OBJECTS = [
-  "platform_writer_authority_installed",
-  "platform_writer_authority_insert_guard",
-  "platform_writer_authority_delete_guard",
-  "platform_writer_authority_transition_guard",
-];
-
-function seedAuthority(db, { authority, phase, epoch }) {
-  for (const name of AUTHORITY_GUARD_OBJECTS) {
-    const row = db.prepare("select type from main.sqlite_schema where name = ?").get(name);
-    if (row?.type === "trigger") db.prepare(`drop trigger main."${name}"`).run();
-    else if (row?.type === "view") db.prepare(`drop view main."${name}"`).run();
+// Advance the synthetic database through valid rounds, keeping the
+// coordinator history and authority consistent across process restarts.
+async function makeExecutorAtEpoch(t, epoch) {
+  const { db, controlStore } = makeDb(t);
+  const clock = makeClock();
+  while (readWriterAuthority(db).epoch < epoch) {
+    const snapshotId = `${SNAPSHOT}-prior-${readWriterAuthority(db).epoch}`;
+    const { executor } = makeExecutor(t, { snapshotId }, { db, controlStore, clock });
+    const round = await executor.executeFreeze({});
+    if (round.authority.epoch === epoch) break;
+    unfreezeRound(db, round);
   }
-  db.prepare(`update main.${WRITER_AUTHORITY_TABLE} set authority = ?, phase = ?, epoch = ?, updated_at = ?, receipt_ref = '' where id = 1`)
-    .run(authority, phase, epoch, new Date().toISOString());
-  ensureWriterAuthority(db);
-  const installed = db.prepare(
-    "select count(*) as n from main.sqlite_schema where name in (?, ?, ?, ?)"
-  ).get(...AUTHORITY_GUARD_OBJECTS).n;
-  assert.equal(installed, AUTHORITY_GUARD_OBJECTS.length, "durable authority guards must be reinstalled before the freeze runs");
-  return readWriterAuthority(db);
+  return makeExecutor(t, {}, { db, controlStore, clock });
 }
 
-function makeExecutorAtState(t, state) {
-  const { db, controlStore } = makeDb(t);
-  seedAuthority(db, state);
-  return makeExecutor(t, {}, { db, controlStore, clock: makeClock() });
+function unfreezeRound(db, round) {
+  return createFreezeDrainCoordinator(db, { snapshotId: round.snapshotId }).unfreeze({
+    reason: "synthetic test fixture",
+    voidedFreezeReceiptRef: round.freezeReceipt.receiptDigest,
+  });
 }
 
 test("freeze executor runs A0→A3→B and returns the T1 receipt", async (t) => {
@@ -479,9 +462,9 @@ test("N1: credential rows that predate tracking are refused until backfilled, th
 // it is refused with 409. Every epoch asserted is derived from the
 // confirmed value read back from the database — no specific number
 // pair is written anywhere, so no single constant can pass.
-for (const epoch of [1, 3, 7, 42]) {
+for (const epoch of [1, 3, 7, 41]) {
   test(`freeze from BWH_ACTIVE epoch ${epoch} lands on confirmed epoch + 1`, async (t) => {
-    const { db, executor } = makeExecutorAtState(t, { authority: "BWH", phase: "BWH_ACTIVE", epoch });
+    const { db, executor } = await makeExecutorAtEpoch(t, epoch);
     const confirmed = readWriterAuthority(db).epoch;
     const result = await executor.executeFreeze({});
     assert.equal(result.transitionId, "T1");
@@ -492,9 +475,9 @@ for (const epoch of [1, 3, 7, 42]) {
   });
 }
 
-for (const epoch of [2, 4, 8, 43]) {
+for (const epoch of [2, 4, 8, 42]) {
   test(`freeze while FROZEN at epoch ${epoch} is refused with 409`, async (t) => {
-    const { db, executor, commerce, welcome, deferred, portal } = makeExecutorAtState(t, { authority: "BWH", phase: "FROZEN", epoch });
+    const { db, executor, commerce, welcome, deferred, portal } = await makeExecutorAtEpoch(t, epoch);
     const confirmed = readWriterAuthority(db).epoch;
     await assert.rejects(
       () => executor.executeFreeze({}),
@@ -745,7 +728,7 @@ test("F19: same-day second freeze on a shared database gets a distinct id with n
   assert.equal(round1.freezeReceipt.snapshotId, SNAPSHOT);
   // Simulate the unfreeze + process restart between rounds: authority
   // back to BWH_ACTIVE at the next epoch, same boot date.
-  seedAuthority(first.db, { authority: "BWH", phase: "BWH_ACTIVE", epoch: readWriterAuthority(first.db).epoch + 1 });
+  unfreezeRound(first.db, round1);
   const used = collectUsedFreezeSnapshotIds(first.db);
   assert.deepEqual(used, [SNAPSHOT]);
   const resolved = resolveFreezeSnapshotId(deriveFreezeSnapshotId(new Date("2026-11-24T12:00:00.000Z")), used);
@@ -762,8 +745,8 @@ test("F19: same-day second freeze on a shared database gets a distinct id with n
 
 test("F19: an explicitly supplied already-used snapshot id is refused before any scheduler stops", async (t) => {
   const first = makeExecutor(t);
-  await first.executor.executeFreeze({});
-  seedAuthority(first.db, { authority: "BWH", phase: "BWH_ACTIVE", epoch: readWriterAuthority(first.db).epoch + 1 });
+  const round1 = await first.executor.executeFreeze({});
+  unfreezeRound(first.db, round1);
   const second = makeExecutor(t, { snapshotId: `${SNAPSHOT}-r2` }, { db: first.db, controlStore: first.controlStore, clock: first.clock });
   await assert.rejects(
     () => second.executor.executeFreeze({ snapshotId: SNAPSHOT }),
@@ -846,4 +829,12 @@ test("r2-shaped round still passes: s2s-d1-freeze-20261125-r2, empty journal, ma
     [result.executionEvidence.steps.a3Journal.headSeq, result.executionEvidence.steps.a3Journal.manifestSeq],
     [0, 0]
   );
+});
+
+test("A0 refuses an inconsistent coordinator history before stopping any scheduler", async (t) => {
+  const ctx = await makeExecutorAtEpoch(t, 3);
+  ctx.db.exec(`delete from ${COORDINATOR_LOG_TABLE}`);
+  await assert.rejects(() => ctx.executor.executeFreeze({}), { code: "freeze_coordinator_log_authority_mismatch" });
+  assert.deepEqual([ctx.commerce.state.stopCalls, ctx.welcome.state.stopCalls, ctx.portal.state.stopTickCalls], [0, 0, 0]);
+  assert.deepEqual([readWriterAuthority(ctx.db).phase, readWriterAuthority(ctx.db).epoch], ["BWH_ACTIVE", 3]);
 });
