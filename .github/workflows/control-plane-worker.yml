@@ -7,6 +7,10 @@ on:
   pull_request:
     paths:
       - "workers/control-plane/**"
+      - "agent/g4/**"
+      - "scripts/d1-uf16-reconcile-local.mjs"
+      - "package.json"
+      - "package-lock.json"
       - ".github/workflows/control-plane-worker.yml"
       - "tools/c2-worker-config-policy/**"
   workflow_dispatch:
@@ -36,8 +40,16 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: workers/control-plane/package-lock.json
-      - name: Install dependencies
+          cache-dependency-path: |
+            package-lock.json
+            workers/control-plane/package-lock.json
+      # The synthetic Coordinator → Worker → Agent fixture imports the
+      # repository's SQLite implementation. Use its existing locked dependency;
+      # do not add a native Node module to the deployable Worker package.
+      - name: Install repository test prerequisites
+        working-directory: .
+        run: npm ci --omit=dev
+      - name: Install Worker test dependencies
         run: npm ci
       - name: Run tests
         run: npm test
