@@ -38,7 +38,7 @@ Explicitly excluded:
 
 ## 2. Why Cognito is now the first PoC candidate
 
-AWS announced password-hash CSV import on 2026-07-15. Cognito supports BCRYPT, SCRYPT, ARGON2ID and PBKDF2_SHA256. With a password hash column and a job-level algorithm selection, imported users can sign in with their existing passwords. Cognito verifies the imported hash on first sign-in, then migrates the credential to its native authentication system. Subsequent sign-ins use Cognito SRP.
+AWS announced password-hash CSV import on 2026-07-15. Cognito supports BCRYPT, SCRYPT, ARGON2ID and PBKDF2_SHA256. With a password hash column and a job-level algorithm selection, Cognito can preserve existing passwords for compatible hashes. This does not yet establish compatibility for FlyLink’s 77 accounts: first prove the exact 64-byte source-derived digest with synthetic accounts in non-production. Real-account migration remains paused; do not assume either that existing passwords will work or that all users must reset them. Cognito verifies the imported hash on first sign-in, then migrates the credential to its native authentication system. Subsequent sign-ins use Cognito SRP.
 
 Official references:
 - https://aws.amazon.com/about-aws/whats-new/2026/07/amazon-cognito-password-hash-import/

@@ -151,6 +151,7 @@ Repeat for Admin. Verify:
 - Portal MfaConfiguration is OPTIONAL and EnabledMfas contains SOFTWARE_TOKEN_MFA.
 - Admin MfaConfiguration is ON and EnabledMfas contains SOFTWARE_TOKEN_MFA.
 - Both pools are on the expected feature plan and have DeletionProtection ACTIVE.
+- Both pools report AdminCreateUserConfig.AllowAdminCreateUserOnly=true. For a separately approved synthetic acceptance run, verify public sign-up is rejected; do not run this check against production.
 - OIDC clients have GenerateSecret=false, code grant, exact callbacks, token revocation and no password-auth flow.
 - Bootstrap clients have USER_PASSWORD_AUTH only and no OAuth grant.
 - Issuer and JWKS URIs match the exact pool IDs; the Worker must later enforce exact issuer and client/audience binding.

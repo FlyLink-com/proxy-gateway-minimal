@@ -32,6 +32,8 @@ Resources:
         Ref: UserPoolName
       UserPoolTier: ESSENTIALS
       DeletionProtection: ACTIVE
+      AdminCreateUserConfig:
+        AllowAdminCreateUserOnly: true
       AliasAttributes:
         - email
       AutoVerifiedAttributes:
