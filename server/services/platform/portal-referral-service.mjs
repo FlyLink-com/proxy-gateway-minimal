@@ -536,6 +536,11 @@ export function createPortalReferralService({
     units(fact.cumulativeRefundedPaidUnits);
     return db
       .transaction(() => {
+        // U-F4: phase fence, first statement inside the transaction —
+        // the outer check above is defense-in-depth only; a freeze
+        // landing between the outer check and this transaction is
+        // rejected here, before any business write.
+        assertWritable(db);
         const row = db
           .prepare(
             `select a.*,o.payment_order_ref,o.paid_units,o.policy_json from platform_referral_accruals a
