@@ -1,3 +1,4 @@
+// PROBE-946: trigger-path verification only - no behavior change (revert with branch).
 // Stage 2A: synthetic-only, local-D1 checkpoint + replay rehearsal.
 //
 // This is intentionally a Node-side offline tool, NOT imported by the
