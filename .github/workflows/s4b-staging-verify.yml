@@ -16,11 +16,17 @@ name: S4B Staging verification (GitHub Secrets)
 # - Secrets are read ONLY from env vars. No secret value is ever printed,
 #   written to disk (except the 0600 token file run-once.mjs requires,
 #   deleted in a finally block), or included in the results artifact.
-# - Required secrets: S4B_TEST_AGENT_TOKEN (48-char bearer token),
+# - Required secrets (in the GitHub Environment "s4b-staging", NOT at
+#   repo level): S4B_TEST_AGENT_TOKEN (48-char bearer token),
 #   CLOUDFLARE_API_TOKEN (must have D1 Edit on the Staging D1; the
 #   repo's existing secret is only proven for wrangler deploy, so
 #   replace it with a D1-Edit token, e.g. the FlyLink DevOps-Connector
-#   Token, if the D1 writes return 403).
+#   Token, if the D1 writes return 403). The job declares
+#   `environment: s4b-staging`; the environment is protected (deployment
+#   branches limited to master). Migration checklist (create the
+#   environment, set protection rules, move the two secrets there, then
+#   remove the repo-level copies) is in the PR description — do NOT run
+#   this workflow before that migration is done.
 # - Trigger: workflow_dispatch only, with a typed confirmation.
 
 on:
@@ -41,6 +47,7 @@ concurrency:
 jobs:
   verify:
     name: S4B Staging verification
+    environment: s4b-staging
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
@@ -64,10 +71,15 @@ jobs:
           node-version: 22
 
       - name: Require confirmation
+        # The input is passed via env, never interpolated into the shell
+        # command: a crafted confirmation value is compared as a plain
+        # string and can never be executed.
         shell: bash
+        env:
+          S4B_CONFIRMATION: ${{ inputs.confirmation }}
         run: |
           set -euo pipefail
-          test "${{ inputs.confirmation }}" = "run s4b staging verify"
+          test "$S4B_CONFIRMATION" = "run s4b staging verify"
 
       - name: Write verification script
         shell: bash
@@ -112,6 +124,103 @@ jobs:
             "platform_write_idempotency_keys", "d1_migrations",
             "platform_writer_authority", "platform_writer_gate",
           ];
+
+          // Row-by-row reconciliation: each table's primary-key columns,
+          // from workers/control-plane/migrations/0001-0006 (d1_migrations
+          // is a Cloudflare system table: its `name` column is UNIQUE).
+          const ROW_KEYS = {
+            agent_nodes: ["node_ref"],
+            agent_node_channels: ["node_ref", "channel_ref"],
+            agent_desired_states: ["desired_state_ref"],
+            agent_desired_state_materials: ["desired_state_ref", "edge_credential_ref"],
+            agent_api_credentials: ["key_id"],
+            agent_request_nonces: ["key_id", "nonce"],
+            agent_manifest_claims: ["idempotency_key"],
+            agent_apply_receipts: ["idempotency_key"],
+            agent_credential_events: ["event_id"],
+            platform_accounts: ["id"],
+            platform_portal_second_factor_challenges: ["id"],
+            platform_write_idempotency_keys: ["scope", "idempotency_key"],
+            d1_migrations: ["name"],
+            platform_writer_authority: ["singleton"],
+            platform_writer_gate: ["singleton"],
+          };
+
+          // Deterministic JSON: object keys sorted recursively, so the same
+          // row always hashes the same way regardless of column order.
+          function canonicalJson(value) {
+            if (value === null || typeof value !== "object") return JSON.stringify(value);
+            if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
+            const keys = Object.keys(value).sort();
+            return `{${keys.map((k) => `${JSON.stringify(k)}:${canonicalJson(value[k])}`).join(",")}}`;
+          }
+          function rowKey(table, row) {
+            const cols = ROW_KEYS[table] || [];
+            const parts = cols.map((c) => row[c]);
+            if (parts.some((p) => p === undefined)) return null; // fall back to hash
+            return JSON.stringify(parts);
+          }
+          function hashRow(row) { return sha256hex(canonicalJson(row)); }
+          // Full row snapshot: per table, a map from row key to content hash.
+          // Only hashes and keys are kept in memory; row contents are never
+          // stored in results.json (keys are synthetic identifiers).
+          async function snapshotRows() {
+            const snap = {};
+            for (const table of TABLES) {
+              const rows = await d1Rows(`SELECT * FROM ${table}`);
+              const map = {};
+              for (const row of rows) {
+                const key = rowKey(table, row) ?? hashRow(row);
+                map[key] = hashRow(row);
+              }
+              snap[table] = map;
+            }
+            return snap;
+          }
+          function snapshotFingerprint(snap) {
+            const perTable = {};
+            for (const table of TABLES) {
+              const hashes = Object.values(snap[table] || {}).sort();
+              perTable[table] = sha256hex(hashes.join("\n"));
+            }
+            return perTable;
+          }
+          // The rows this run may legitimately add, keyed by table. Anything
+          // else that appears between baseline and readback is unexpected.
+          function expectedNewKeys() {
+            return {
+              agent_nodes: new Set([JSON.stringify([NODE_REF])]),
+              agent_node_channels: new Set(CHANNELS.map((ch) => JSON.stringify([NODE_REF, ch]))),
+              agent_api_credentials: new Set([JSON.stringify([KEY_ID])]),
+              agent_desired_states: new Set([JSON.stringify([DESIRED_REF])]),
+              agent_desired_state_materials: new Set(CHANNELS.map((ch) =>
+                JSON.stringify([DESIRED_REF, `edge-synth-s4bv2-cred-${ch.split("-").pop()}`]))),
+            };
+          }
+          function reconcileRows(baselineSnap, afterSnap) {
+            const expected = expectedNewKeys();
+            const perTable = {};
+            let bad = 0;
+            for (const table of TABLES) {
+              const before = baselineSnap[table] || {};
+              const after = afterSnap[table] || {};
+              const missing = Object.keys(before).filter((k) => !(k in after));
+              const modified = Object.keys(before).filter((k) => k in after && before[k] !== after[k]);
+              const added = Object.keys(after).filter((k) => !(k in before));
+              const allowed = expected[table] || new Set();
+              const unexpected = added.filter((k) => !allowed.has(k));
+              if (missing.length > 0 || modified.length > 0 || unexpected.length > 0) bad += 1;
+              perTable[table] = {
+                baselineRows: Object.keys(before).length,
+                afterRows: Object.keys(after).length,
+                missing,
+                modified,
+                added,
+                unexpectedNew: unexpected,
+              };
+            }
+            return { perTable, bad };
+          }
 
           const results = {
             workflow: "s4b-staging-verify",
@@ -219,6 +328,7 @@ jobs:
             // 1. Baseline counts (read-only). A 403 here means the Cloudflare
             // token cannot read D1 at all — stop and say so plainly.
             let baseline;
+            let baselineRows;
             try {
               baseline = await d1Counts();
             } catch (e) {
@@ -231,7 +341,16 @@ jobs:
               }
               return;
             }
-            record("baseline", { conclusion: "PASS", counts: baseline });
+            // Row-by-row baseline: snapshot every row (key + SHA-256 of its
+            // canonical JSON) so the readback can prove no baseline row was
+            // modified and no foreign row was added. Counts alone cannot.
+            try {
+              baselineRows = await snapshotRows();
+            } catch (e) {
+              record("baseline", { conclusion: "FAIL", reason: "d1_baseline_rows_error", detail: String(e?.message ?? e) });
+              return;
+            }
+            record("baseline", { conclusion: "PASS", counts: baseline, rowFingerprints: snapshotFingerprint(baselineRows) });
 
             // 2. Register the credential (FK order: node -> channels -> credential).
             // Idempotent: re-runs detect existing rows and skip them.
@@ -408,29 +527,39 @@ jobs:
               detail: "no manifest claim exists without a successful fetch; a receipt cannot be submitted. The receipts route itself was probed (probe_receipts_empty).",
             });
 
-            // 7. Read-back: Worker zero writes. The fence rejects before nonce
-            // consumption and before the auth record write, so the new credential
-            // row must still have last_authenticated_at NULL and the nonce count
-            // must be unchanged. Only this run's own D1 inserts may differ.
+            // 7. Read-back: row-by-row reconciliation + Worker zero writes.
+            // Counts alone cannot catch a baseline row being modified or a
+            // foreign row being added, so every row is hashed (SHA-256 over
+            // its canonical JSON) and compared by primary key against the
+            // baseline snapshot. Only this run's own inserted rows may be
+            // new. The fence rejects before nonce consumption and before
+            // the auth record write, so the new credential row must still
+            // have last_authenticated_at NULL and the nonce count must be
+            // unchanged.
             try {
               const after = await d1Counts();
+              const afterRows = await snapshotRows();
               const diffs = {};
               for (const t of TABLES) {
                 if (after[t] !== baseline[t]) diffs[t] = { before: baseline[t], after: after[t] };
               }
+              const { perTable, bad } = reconcileRows(baselineRows, afterRows);
               const credAfter = await d1Rows("SELECT last_authenticated_at, revoked_at FROM agent_api_credentials WHERE key_id = ?", [KEY_ID]);
               const authUntouched = credAfter.length === 1 && !credAfter[0].last_authenticated_at && !credAfter[0].revoked_at;
               const noncesUnchanged = after.agent_request_nonces === baseline.agent_request_nonces;
               const onlyOwnRows = Object.keys(diffs).every((t) =>
                 ["agent_nodes", "agent_node_channels", "agent_api_credentials", "agent_desired_states", "agent_desired_state_materials"].includes(t));
+              const rowsReconciled = bad === 0;
               record("readback", {
-                conclusion: authUntouched && noncesUnchanged && onlyOwnRows ? "PASS" : "FAIL",
+                conclusion: authUntouched && noncesUnchanged && onlyOwnRows && rowsReconciled ? "PASS" : "FAIL",
                 countsAfter: after,
                 diffs,
+                rowReconciliation: perTable,
+                rowsReconciled,
                 lastAuthenticatedAtNull: authUntouched,
                 noncesUnchanged,
                 onlyOwnRowsChanged: onlyOwnRows,
-                detail: "Worker zero writes: last_authenticated_at still NULL, nonce count unchanged, only this run's own inserted rows differ",
+                detail: "Row-by-row: baseline rows unchanged (no missing/modified rows), only this run's own inserted rows are new; Worker zero writes: last_authenticated_at still NULL, nonce count unchanged",
               });
             } catch (e) {
               record("readback", { conclusion: "FAIL", reason: "readback_error", detail: String(e?.message ?? e) });
