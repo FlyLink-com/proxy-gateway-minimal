@@ -163,6 +163,32 @@ test("same-SHA evidence from another lane or without a full command cannot pass"
   assert.equal(r.ci[0].reason, "ci_provenance_unverified");
 });
 
+test("offline full Server pass requires the non-TAP policy step too", async (t) => {
+  const dir = await fixture(t);
+  const bundle = join(dir, "bundle.json");
+  await writeFile(join(dir, "run.log"), tap(1) + tap(2));
+  const row = { ...local, module: "server", profile: "full", worktreeClean: true, exitCode: 0, command: [
+    { cwd: ".", argv: ["node", "scripts/source-validation-test-runner.mjs", "--test-reporter=tap"] },
+    { cwd: ".", argv: ["node", "--test", "--test-reporter=tap", "tools/c2-worker-config-policy/check.test.mjs"] },
+    { cwd: ".", argv: ["node", "tools/c2-worker-config-policy/check.mjs"] },
+  ] };
+  await writeFile(bundle, JSON.stringify({ ...target, module: "server", tests: [
+    { ...row, attemptedSteps: 2 },
+    row,
+    { ...row, attemptedSteps: 4 },
+    { ...row, attemptedSteps: 3 },
+    { ...row, attemptedSteps: 2, exitCode: 1 },
+    { ...row, attemptedSteps: 2, signal: "SIGTERM" },
+    { ...row, attemptedSteps: 2, launchFailed: true },
+  ] }));
+  const result = spawnSync(process.execPath, [CLI, "--bundle", bundle, "--json"], { encoding: "utf8" });
+  assert.equal(result.status, 0, result.stderr);
+  const { tests } = JSON.parse(result.stdout);
+  assert.deepEqual(tests.map(({ status }) => status),
+    ["unverified", "unverified", "unverified", "passed", "failed", "interrupted", "not_run"]);
+  assert.ok(tests.slice(0, 3).every((test) => test.reason === "incomplete_step_evidence" && test.logComplete));
+});
+
 test("module CLI rejects manual, unknown and extra arguments", () => {
   for (const args of [["migration"], ["integration"], ["toString"], ["--help"], ["agent", "--test"]]) {
     const result = spawnSync(process.execPath, [CLI, "--module", ...args], { encoding: "utf8" });

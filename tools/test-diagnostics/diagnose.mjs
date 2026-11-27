@@ -209,7 +209,13 @@ export async function diagnose(input, directory, now = Date.now()) {
       tests.push({ source, node: row.node, status: exitCode !== null && exitCode !== 0 ? "failed" : "unverified", exitCode, reason: "missing_log" });
       continue;
     }
-    tests.push({ source, profile: row.profile, node: row.node, ...inspectTap(log, exitCode, expected) });
+    const parsed = inspectTap(log, exitCode, expected);
+    // TAP summaries do not cover non-TAP commands, such as the final Server policy check.
+    if (parsed.status === "passed" && row.profile === "full" && row.attemptedSteps !== profile.steps.length) {
+      parsed.status = "unverified";
+      parsed.reason = "incomplete_step_evidence";
+    }
+    tests.push({ source, profile: row.profile, node: row.node, ...parsed });
   }
   const ci = [];
   for (const row of asArray(input.ci)) {
