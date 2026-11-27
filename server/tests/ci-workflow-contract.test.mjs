@@ -96,6 +96,11 @@ const EXPECTED_WORKFLOW_ACTIONS = {
     "actions/upload-artifact"
   ],
   "runtime-certificate-sync.yml": ["actions/checkout"],
+  "s4b-staging-verify.yml": [
+    "actions/checkout",
+    "actions/setup-node",
+    "actions/upload-artifact"
+  ],
   "synthetic-performance-baseline.yml": [
     "actions/checkout",
     "actions/setup-node",
@@ -114,7 +119,7 @@ const REVIEWED_ACTION_PINS = {
   "actions/checkout": {
     sha: DEFAULT_CHECKOUT_PIN,
     annotation: "v6",
-    count: 28
+    count: 29
   },
   "actions/download-artifact": {
     sha: "3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c",
@@ -124,7 +129,7 @@ const REVIEWED_ACTION_PINS = {
   "actions/setup-node": {
     sha: "249970729cb0ef3589644e2896645e5dc5ba9c38",
     annotation: "v6",
-    count: 23
+    count: 24
   },
   "actions/setup-python": {
     sha: "6d4fd22b20465ccc0f7354476588e8df7c9ca0e0",
@@ -134,7 +139,7 @@ const REVIEWED_ACTION_PINS = {
   "actions/upload-artifact": {
     sha: "043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",
     annotation: "v7",
-    count: 9
+    count: 10
   },
   "github/codeql-action/init": {
     sha: "33d7b85da1a04171e211befe2c739303b9a4c066",
@@ -147,14 +152,14 @@ const REVIEWED_ACTION_PINS = {
     count: 1
   }
 };
-const EXPECTED_ACTION_REFERENCE_COUNT = 68;
+const EXPECTED_ACTION_REFERENCE_COUNT = 71;
 const EXPECTED_ACTION_REVISION_COUNTS = {
-  [`actions/checkout@${DEFAULT_CHECKOUT_PIN}`]: 26,
+  [`actions/checkout@${DEFAULT_CHECKOUT_PIN}`]: 27,
   [`actions/checkout@${TRUSTED_GOVERNANCE_CHECKOUT_PIN}`]: 2,
   [`actions/download-artifact@${REVIEWED_ACTION_PINS["actions/download-artifact"].sha}`]: 5,
-  [`actions/setup-node@${REVIEWED_ACTION_PINS["actions/setup-node"].sha}`]: 23,
+  [`actions/setup-node@${REVIEWED_ACTION_PINS["actions/setup-node"].sha}`]: 24,
   [`actions/setup-python@${REVIEWED_ACTION_PINS["actions/setup-python"].sha}`]: 1,
-  [`actions/upload-artifact@${REVIEWED_ACTION_PINS["actions/upload-artifact"].sha}`]: 9,
+  [`actions/upload-artifact@${REVIEWED_ACTION_PINS["actions/upload-artifact"].sha}`]: 10,
   [`github/codeql-action/init@${REVIEWED_ACTION_PINS["github/codeql-action/init"].sha}`]: 1,
   [`github/codeql-action/analyze@${REVIEWED_ACTION_PINS["github/codeql-action/analyze"].sha}`]: 1
 };
