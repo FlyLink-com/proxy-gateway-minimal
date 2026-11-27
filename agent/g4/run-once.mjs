@@ -27,24 +27,10 @@
 // production node-side config writers are an existing system and are
 // NOT replaced by this slice; wiring them in is a separate gate.
 
-import { createPublicKey, randomUUID } from "node:crypto";
-import { chmod, lstat, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import { chmod, lstat, mkdir, rename, rm, writeFile } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
-import {
-  createAgentClient,
-  createFileLock,
-  createFileMaterialStore,
-  createJsonStateStore,
-} from "./agent-client.mjs";
-import { createManifestVerifier } from "./manifest.mjs";
-
-function requiredEnv(name) {
-  const value = process.env[name];
-  if (typeof value !== "string" || value.length === 0) {
-    throw new Error(`${name} is required`);
-  }
-  return value;
-}
+import { runConfiguredCycle } from "./configured-cycle.mjs";
 
 export function validateBaseUrl(raw) {
   const parsed = new URL(raw);
@@ -120,73 +106,7 @@ export async function writeAppliedMaterials(stateDir, generation, materials) {
 }
 
 async function main() {
-  const baseUrl = validateBaseUrl(requiredEnv("GCCGW_G4_BASE_URL"));
-  const nodeRef = requiredEnv("GCCGW_G4_NODE_REF");
-  const channelRefs = requiredEnv("GCCGW_G4_CHANNEL_REFS")
-    .split(",")
-    .map((ref) => ref.trim())
-    .filter(Boolean);
-  const keyId = requiredEnv("GCCGW_G4_KEY_ID");
-  const token = (await readFile(requiredEnv("GCCGW_G4_TOKEN_FILE"), "utf8")).trim();
-  const keysJson = JSON.parse(await readFile(requiredEnv("GCCGW_G4_MANIFEST_KEYS_FILE"), "utf8"));
-  const publicKeys = new Map(
-    Object.entries(keysJson).map(([id, pem]) => [id, createPublicKey(pem)]),
-  );
-  const stateDir = requiredEnv("GCCGW_G4_STATE_DIR");
-  const materialsDir = requiredEnv("GCCGW_G4_MATERIALS_DIR");
-  await mkdir(stateDir, { recursive: true, mode: 0o700 });
-  await chmod(stateDir, 0o700);
-
-  const transport = {
-    async fetchDesiredState({ headers, idempotencyKey }) {
-      const url = new URL(`${baseUrl}/v1/agent/desired-state`);
-      url.searchParams.set("nodeRef", nodeRef);
-      url.searchParams.set("channelRefs", channelRefs.join(","));
-      const response = await fetch(url, {
-        headers: { ...headers, "idempotency-key": idempotencyKey },
-      });
-      if (!response.ok) {
-        const body = await response.json().catch(() => null);
-        const error = new Error("desired-state fetch failed: HTTP " + response.status);
-        error.statusCode = response.status;
-        if (body?.error?.code) error.code = body.error.code;
-        throw error;
-      }
-      return response.json();
-    },
-    async submitReceipt(receipt, { headers }) {
-      const response = await fetch(`${baseUrl}/v1/agent/receipts`, {
-        method: "POST",
-        headers: {
-          ...headers,
-          "content-type": "application/json",
-          "idempotency-key": receipt.idempotencyKey,
-        },
-        body: JSON.stringify(receipt),
-      });
-      if (!response.ok) throw new Error(`receipt submit failed: HTTP ${response.status}`);
-    },
-  };
-
-  const client = createAgentClient({
-    nodeRef,
-    channelRefs,
-    transport,
-    materialStore: createFileMaterialStore(materialsDir),
-    verifier: createManifestVerifier({ publicKeys }),
-    stateStore: createJsonStateStore(join(stateDir, "applied-state.json")),
-    lock: createFileLock(join(stateDir, "agent.lock")),
-    auth: { keyId, token },
-    config: {
-      dryRun: process.env.GCCGW_G4_DRY_RUN !== "false",
-      applyEnabled: process.env.GCCGW_G4_APPLY_ENABLED === "true",
-    },
-    apply: async ({ manifest, materials }) => {
-      await writeAppliedMaterials(stateDir, manifest.generation, materials);
-    },
-  });
-
-  const result = await client.runOnce();
+  const result = await runConfiguredCycle({ validateBaseUrl, writeAppliedMaterials });
   // The summary is safe to log: ids, generation and status only —
   // never material, digests of credentials beyond the manifest's own
   // desired-state digest, or tokens (AGT-DATA-1).
