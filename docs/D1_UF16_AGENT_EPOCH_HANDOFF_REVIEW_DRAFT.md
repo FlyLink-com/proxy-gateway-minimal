@@ -16,7 +16,7 @@ document_metadata:
 
 - The migration coordinator is the proposed publisher of an authenticated, short-lived projection of the current verified T2/R1 receipt. Before publishing, check the durable log and the current authoritative phase and epoch. A valid historical digest alone says nothing about currentness.
 - The Agent consumes a read-only projection, not a database. The projection should bind the intended environment and recipient, receipt digest, issue time, expiry and epoch. It must not contain credentials. No default epoch; missing, malformed, or expired handoffs stop the flow.
-- The test-only launcher accepts numeric loopback HTTP only. The service launcher stays unchanged and cannot enable epoch forwarding. Redirects are refused. The test uses a separate ephemeral Ed25519 key and validates the signature, target origin, node, and expiry, re-reading before each send. Nothing in this draft designates the production trust root, publisher process, transport, permissions, or failure SLO.
+- The test-only launcher accepts numeric loopback HTTP only. The installed service stays default-off and cannot enable epoch forwarding. Redirects are refused. The test uses a separate ephemeral Ed25519 key and validates the signature, target origin, node, and expiry, re-reading before each send. Nothing in this draft designates the production trust root, publisher process, transport, permissions, or failure SLO.
 - Worker/D1 authority remains the final gate. When the epoch changes, do not relabel a pending claim/receipt; keep old pending receipts for separately reviewed reconciliation. On a Worker rejection preserve the stable error code. Do not fall back to BWH writes.
 - Review must decide how to publish/revoke/rotate this projection, what policy resolves old pending state, and how to reconcile a local effect that was already in flight at phase change. The test does not prove instantaneous revocation of a signed projection or an end to in-flight node-side effects.
 
@@ -45,3 +45,31 @@ Stdout is a versioned redacted JSON report identifying records only by queue and
 The test-only launcher enables the apply-intent guard and a strict durable JSON store. The guard saves the original claim key, epoch and desired-state identity before any local effect. It syncs the new state file before replacing the old file and syncs the containing directory. Invalid existing JSON is not treated as empty. The successful post-apply state atomically replaces the intent with the receipt queue. If the process stops before that replacement, restart retains the intent and reports `apply_reconciliation_required` before any new fetch, apply or receipt. A changed epoch or scope cannot clear the intent. The offline report surfaces it for review without printing its contents.
 
 Process-exit tests cover complete and partial local file artifacts, same-epoch and advanced-epoch restart, failure to persist the intent, and corrupt state. These tests do not prove physical power-loss durability or production node actuation. Production service startup does not enable this guard; a production state directory and recovery/clearing procedure still require separate review.
+
+## S3 source candidate: shared startup composition
+
+The installed G4 CLI delegates to the same startup code used by the synthetic
+candidate, but it supplies no staged adapter. There is no environment switch
+for the installed CLI, no launch unit change, and M-10 stays in force. Only
+the separately invoked test harness supplies a local handoff reader. The
+staged path requires a numeric loopback HTTP origin, refuses redirects, uses
+durable intent storage and preserves stable Worker writer errors.
+
+Candidate duties to review, not an operating authorization:
+
+- **Issue:** the proposed coordinator verifies the current T2/R1 receipt,
+  durable journal and active phase/epoch before a publisher may provide a
+  short-lived projection. The Agent does not read either database directly.
+- **Revoke:** disable the old epoch at the Worker/D1 authority first. Then
+  withdraw the projection, stop publishing it, and inspect in-flight work.
+  Key removal is not evidence that an earlier node-side effect stopped.
+- **Rotate:** use a separate projection-signing key, not an Agent bearer token
+  or a manifest key. The synthetic oneshot only reads the configured public
+  key at startup; after replacement it rejects old signatures and accepts the
+  new matching projection. Key custody, rollout, and revocation timing for the
+  real environment are still subject to approval.
+- **Recover:** keep old pending receipts and interrupted apply intents as
+  evidence. Never relabel, replay, clear state, or fall back to writes on BWH.
+
+No production signers, real keys, remote target, node runtime apply, service
+rollout, or switch authorization are supplied by this candidate.

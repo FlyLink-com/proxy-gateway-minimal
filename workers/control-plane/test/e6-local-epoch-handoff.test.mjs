@@ -318,6 +318,7 @@ test("the local test launcher recovers receipts after T2 and keeps old-epoch wor
   const { publicKey, privateKey } = generateKeyPairSync("ed25519");
   await writeFile(pubFile, publicKey.export({ type: "spki", format: "pem" }));
   let dropped = false;
+  let redirectClaim = false;
   const observed = [];
   const proxy = createServer(async (req, res) => {
     try {
@@ -325,6 +326,10 @@ test("the local test launcher recovers receipts after T2 and keeps old-epoch wor
       for await (const chunk of req) buffers.push(chunk);
       const post = req.method === "POST";
       observed.push([post ? "receipt" : "claim", req.headers["x-writer-epoch"]]);
+      if (redirectClaim && req.url.startsWith("/v1/agent/desired-state")) {
+        res.writeHead(307, { location: "/redirect-must-not-run" }).end();
+        return;
+      }
       const headers = { ...req.headers };
       delete headers.host;
       delete headers.connection;
@@ -354,7 +359,7 @@ test("the local test launcher recovers receipts after T2 and keeps old-epoch wor
     GCCGW_G4_LOCAL_EPOCH_HANDOFF_FILE: handoffFile,
     GCCGW_G4_LOCAL_EPOCH_PUBLIC_KEY_FILE: pubFile
   };
-  async function publish({ expired = false, tamper = false, candidate = receipt } = {}) {
+  async function publish({ expired = false, tamper = false, candidate = receipt, signingKey = privateKey } = {}) {
     assert.equal(verifyCoordinatorReceipt(source, candidate).valid, true);
     const authority = readWriterAuthority(source);
     assert.equal(authority.phase, "D1_ACTIVE");
@@ -368,7 +373,7 @@ test("the local test launcher recovers receipts after T2 and keeps old-epoch wor
       receiptDigest: candidate.receiptDigest,
       issuedAt: expired ? now - 2000 : now, expiresAt: expired ? now - 1000 : now + 59_000
     };
-    const signature = sign(null, localHandoffBytes(payload), privateKey).toString("base64url");
+    const signature = sign(null, localHandoffBytes(payload), signingKey).toString("base64url");
     if (tamper) payload.epoch++;
     await writeFile(handoffFile + ".new", JSON.stringify({ payload, signature }), { mode: 0o600 });
     await rename(handoffFile + ".new", handoffFile);
@@ -385,7 +390,10 @@ test("the local test launcher recovers receipts after T2 and keeps old-epoch wor
     return { ...JSON.parse(stdout), exitCode: code };
   }
   const count = async table => (await db.prepare("SELECT COUNT(*) AS n FROM "+table).first()).n;
-  assert.equal((await run()).code, "writer_epoch_required");
+  const staged = (overrides = {}) => run(overrides, "./fixtures/local-epoch-entrypoint.mjs");
+  assert.equal((await staged()).code, "writer_epoch_required");
+  assert.equal((await staged({ GCCGW_G4_BASE_URL: "https://example.invalid",
+    GCCGW_G4_LOCAL_EPOCH_PUBLIC_KEY_FILE: join(root, "missing-key") })).code, "staged_startup_rejected");
   assert.equal(observed.length, 0);
   // Default-off is the established behavior: no synthesized epoch.
   assert.equal((await run({
@@ -395,13 +403,25 @@ test("the local test launcher recovers receipts after T2 and keeps old-epoch wor
   assert.deepEqual(observed.splice(0), [["claim", undefined]]);
   assert.equal(await count("agent_manifest_claims"), 0);
   await publish({ tamper: true });
-  assert.equal((await run()).code, "writer_epoch_invalid");
+  assert.equal((await staged()).code, "writer_epoch_invalid");
   await publish({ expired: true });
-  assert.equal((await run()).code, "writer_epoch_stale");
+  assert.equal((await staged()).code, "writer_epoch_stale");
   assert.equal(observed.length, 0);
 
   await publish();
-  const first = await run();
+  const rotated = generateKeyPairSync("ed25519");
+  await writeFile(pubFile, rotated.publicKey.export({ type: "spki", format: "pem" }));
+  assert.equal((await staged()).code, "writer_epoch_invalid", "removed signing key fails closed");
+  assert.deepEqual(observed, [], "local rejection does not contact the Worker");
+  await publish({ signingKey: rotated.privateKey });
+  redirectClaim = true;
+  const redirect = await staged({ GCCGW_G4_STATE_DIR: join(root, "redirect-state") });
+  redirectClaim = false;
+  assert.equal(redirect.status, "retry_later");
+  assert.deepEqual(observed.splice(0), [["claim", String(receipt.toEpoch)]],
+    "staged startup does not follow a redirect or forward a second request");
+  assert.equal(await count("agent_manifest_claims"), 0);
+  const first = await staged();
   assert.equal(first.status, "retry_later");
   assert.equal(first.stage, "receipt");
   assert.equal(await count("agent_apply_receipts"), 1);
@@ -424,7 +444,7 @@ test("the local test launcher recovers receipts after T2 and keeps old-epoch wor
   assert.deepEqual(recoverable.items.map((item) => item.result).sort(),
     ["applied_receipt_recorded", "receipt_missing"]);
 
-  const second = await run();
+  const second = await staged();
   assert.equal(second.status, "unchanged");
   assert.equal(await count("agent_apply_receipts"), 2);
   assert.equal((await stat(applied)).mtimeMs, originalStat.mtimeMs, "no repeated local apply");
@@ -445,11 +465,11 @@ test("the local test launcher recovers receipts after T2 and keeps old-epoch wor
   const beforeRecovery = await ledgerCounts();
   observed.length = 0;
   const recoveryClaimDir = join(root, "recovery-claim");
-  const recoveryClaim = await run({ GCCGW_G4_STATE_DIR: recoveryClaimDir });
+  const recoveryClaim = await staged({ GCCGW_G4_STATE_DIR: recoveryClaimDir });
   assert.equal(recoveryClaim.code, "writer_authority_not_d1");
   assert.equal(recoveryClaim.stage, "fetch");
   await assert.rejects(stat(join(recoveryClaimDir, "applied")), { code: "ENOENT" });
-  const third = await run();
+  const third = await staged();
   assert.equal(third.code, "writer_authority_not_d1");
   assert.equal(third.stage, "receipt");
   assert.deepEqual(observed, [["claim", String(receipt.toEpoch)], ["receipt", String(receipt.toEpoch)]]);
@@ -463,19 +483,19 @@ test("the local test launcher recovers receipts after T2 and keeps old-epoch wor
   assert.equal(String(verifyOldProjection()), String(receipt.toEpoch));
   const beforeStale = await ledgerCounts();
   observed.length = 0;
-  const staleClaim = await run({ GCCGW_G4_STATE_DIR: recoveryClaimDir });
+  const staleClaim = await staged({ GCCGW_G4_STATE_DIR: recoveryClaimDir });
   assert.equal(staleClaim.code, "writer_epoch_stale");
   assert.equal(staleClaim.stage, "fetch");
-  const staleReceipt = await run();
+  const staleReceipt = await staged();
   assert.equal(staleReceipt.code, "writer_epoch_stale");
   assert.equal(staleReceipt.stage, "receipt");
   assert.deepEqual(observed, [["claim", String(receipt.toEpoch)], ["receipt", String(receipt.toEpoch)]]);
   assert.deepEqual(await readFile(statePath), pending);
   await assert.rejects(stat(join(recoveryClaimDir, "applied")), { code: "ENOENT" });
   assert.deepEqual(await ledgerCounts(), beforeStale, "rejection does not mutate any of the three ledgers");
-  await publish({ candidate: resumed });
+  await publish({ candidate: resumed, signingKey: rotated.privateKey });
   observed.length = 0;
-  const afterResume = await run();
+  const afterResume = await staged();
   assert.equal(afterResume.code, "writer_epoch_stale");
   assert.equal(afterResume.stage, "receipt");
   assert.equal(observed.length, 0, "never forward or relabel a queued receipt from an older epoch");
@@ -542,7 +562,7 @@ test("the local test launcher recovers receipts after T2 and keeps old-epoch wor
     await mirrorFixtureAuthority(db, recoveryAgain.coordinatorReceipt);
     const { coordinatorReceipt: next } = resumeAfterRecovery(coordinator, recoveryAgain.coordinatorReceipt);
     await mirrorFixtureAuthority(db, next);
-    await publish({ candidate: next });
+    await publish({ candidate: next, signingKey: rotated.privateKey });
     for (const checkRefuses of strandedCopies) await checkRefuses();
     assert.equal(await count("agent_apply_receipts"), 2);
   });
