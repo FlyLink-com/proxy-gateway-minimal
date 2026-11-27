@@ -1814,6 +1814,60 @@ test("future-only account and exact-chain guards reject legacy, residual, and am
   }
 });
 
+// V-04 narrow (2026-11-27): the exact chain still refuses incomplete data
+// when the issuance request row itself never arrived. "Parent row missing"
+// is diagnostic-only; it never becomes a passing chain.
+test("exact chain refuses a missing issuance request row before reservation", () => {
+  const database = createFoundation();
+  try {
+    seedOffer(database, MONTHLY_50);
+    const clock = { value: "2030-09-01T00:00:00.000Z" };
+    const reservationParticipant = createTestReservationParticipant(database);
+    const store = createDeferredStore(database, clock, reservationParticipant);
+    seedAccount(database, "account_missing_request");
+    seedResourceChain(database, {
+      accountId: "account_missing_request",
+      entitlementId: "entitlement_missing_request",
+      requestId: "request_missing_request",
+      issuedLinkId: "link_missing_request",
+      validUntil: "2030-10-01T00:00:00.000Z"
+    });
+    database.pragma("foreign_keys = OFF");
+    try {
+      database.prepare(`
+        delete from platform_issuance_requests where id = ?
+      `).run("request_missing_request");
+    } finally {
+      database.pragma("foreign_keys = ON");
+    }
+    reservationParticipant.seedFunding({
+      accountId: "account_missing_request",
+      orderRef: "deferred_order_missing_request",
+      amountUnits: MONTHLY_50.baseCoinUnits
+    });
+    assert.throws(() => store.reserveTransition(reserveInput({
+      accountId: "account_missing_request",
+      orderRef: "deferred_order_missing_request",
+      plan: MONTHLY_50,
+      scheduledFor: "2030-10-01T00:00:00.000Z",
+      operationKey: "reserve_missing_request",
+      flowKind: "scheduled_switch",
+      expectedEntitlementId: "entitlement_missing_request",
+      expectedRequestId: "request_missing_request",
+      expectedIssuedLinkId: "link_missing_request",
+      expectedValidUntil: "2030-10-01T00:00:00.000Z"
+    })), (error) => error?.code === "deferred_transition_expected_chain_invalid");
+    assert.equal(database.prepare(`
+      select count(*) from platform_deferred_resource_transitions where account_id = ?
+    `).pluck().get("account_missing_request"), 0);
+    assert.equal(database.prepare(`
+      select count(*) from ${RESERVATIONS_TABLE} where account_id = ?
+    `).pluck().get("account_missing_request"), 0);
+  } finally {
+    database.close();
+  }
+});
+
 
 test("scheduled switch recovery crosses natural predecessor expiry only inside its reservation window", () => {
   const database = createFoundation();

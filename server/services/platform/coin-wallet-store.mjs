@@ -221,6 +221,14 @@ function storeError(code) {
   return error;
 }
 
+// V-04 narrow diagnostics (2026-11-27): count-only log line. Never include
+// an identifier; the diagnostic rows themselves carry the markers.
+function logV04Diagnostic(kind, count) {
+  if (count > 0) {
+    console.warn(`v04 unmigrated diagnostic: kind=${kind} count=${count}`);
+  }
+}
+
 function isStoreError(error) {
   return typeof error?.code === "string" && KNOWN_STORE_CODES.has(error.code);
 }
@@ -2866,6 +2874,49 @@ export function createSqliteCoinWalletStore(options = {}) {
     return read(() => findLot(assertNormalizedString(lotRef)));
   }
 
+  // V-04 narrow diagnostic (2026-11-27): read/audit visibility only.
+  // Groups hold allocations whose hold row never arrived, per lot, for one
+  // wallet. The orphan amounts are reported, NOT deducted: getWalletProjection
+  // keeps its original held_units comparison and still throws
+  // wallet_infrastructure_error on mismatch.
+  function diagnoseOrphanHoldAllocations(input) {
+    return read(() => {
+      const lookup = normalizeProjectionLookup(input);
+      const wallet = lookup.walletRef
+        ? findWalletByRef(lookup.walletRef)
+        : findWalletByAccountId(lookup.accountId);
+      const walletRef = wallet?.walletRef ?? lookup.walletRef ?? null;
+      if (!wallet) {
+        return { walletRef, orphanCount: 0, orphanUnits: 0, lots: [] };
+      }
+      const rows = db.prepare(`
+        select a.lot_ref as lot_ref,
+               count(*) as orphan_count,
+               coalesce(sum(a.allocated_units), 0) as orphan_units
+          from platform_coin_hold_allocations a
+          join platform_coin_lots l on l.lot_ref = a.lot_ref
+          left join platform_coin_holds h on h.hold_ref = a.hold_ref
+         where l.wallet_ref = ?
+           and h.hold_ref is null
+         group by a.lot_ref
+         order by a.lot_ref
+      `).all(wallet.walletRef);
+      const lots = rows.map((row) => ({
+        lotRef: row.lot_ref,
+        orphanUnits: row.orphan_units
+      }));
+      const orphanCount = rows.reduce((sum, row) => sum + row.orphan_count, 0);
+      const orphanUnits = lots.reduce((sum, lot) => sum + lot.orphanUnits, 0);
+      logV04Diagnostic("orphan-hold-allocations", orphanCount);
+      return {
+        walletRef: wallet.walletRef,
+        orphanCount,
+        orphanUnits,
+        lots
+      };
+    });
+  }
+
   function listLots(options = {}) {
     return read(() => {
       const value = assertPlainObject(options);
@@ -3358,6 +3409,7 @@ export function createSqliteCoinWalletStore(options = {}) {
     getWallet,
     getWalletByAccountId,
     getWalletProjection,
+    diagnoseOrphanHoldAllocations,
     listHolds,
     listLedgerEntries,
     listLots,

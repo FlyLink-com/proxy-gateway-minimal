@@ -97,6 +97,7 @@ const STORE_METHODS = [
   "listOrders",
   "claimDueCaptures",
   "captureClaimedOrder",
+  "diagnoseDanglingOrderHolds",
   "recoverNonTerminalOrders",
   "claimNextFulfillmentCommand",
   "completeFulfillmentCommand",
@@ -144,6 +145,14 @@ function commerceError(code) {
   const error = new Error("Coin commerce store operation rejected");
   error.code = code;
   return error;
+}
+
+// V-04 narrow diagnostics (2026-11-27): count-only log line. Never include
+// an identifier; the diagnostic rows themselves carry the markers.
+function logV04Diagnostic(kind, count) {
+  if (count > 0) {
+    console.warn(`v04 unmigrated diagnostic: kind=${kind} count=${count}`);
+  }
 }
 
 function isCommerceError(error) {
@@ -1960,18 +1969,26 @@ export function createSqliteCoinCommerceStore(options = {}) {
     }
     const hold = db.prepare(`
       select h.*,
+             w.wallet_ref as joined_wallet_ref,
              w.account_id as wallet_account_id,
              w.status as wallet_status,
              w.version as wallet_version,
              w.created_at as wallet_created_at,
              w.updated_at as wallet_updated_at
         from platform_coin_holds h
-        join platform_coin_wallets w on w.wallet_ref = h.wallet_ref
+        left join platform_coin_wallets w on w.wallet_ref = h.wallet_ref
        where h.hold_ref = ?
     `).get(order.hold_ref);
+    // A missing hold and a present hold whose wallet is missing are
+    // distinct diagnostic states. Both remain invalid.
+    if (!hold) {
+      return { valid: false, hold: null, holdMissing: true };
+    }
+    if (hold.joined_wallet_ref === null) {
+      return { valid: false, hold: null, walletMissing: true };
+    }
     if (
-      !hold
-      || !isSafeWalletReference(hold.hold_ref)
+      !isSafeWalletReference(hold.hold_ref)
       || !isSafeWalletReference(hold.wallet_ref)
       || hold.wallet_account_id !== order.account_id
       || !["active", "frozen", "closed"].includes(hold.wallet_status)
@@ -4037,6 +4054,43 @@ export function createSqliteCoinCommerceStore(options = {}) {
     };
   });
 
+  // V-04 narrow diagnostic (2026-11-27): read/audit visibility only.
+  // Reports a missing hold separately from a present hold missing its wallet.
+  // Keep this query separate from selectAuditRecoveryRows, which feeds
+  // recoverTransaction. Both missing edges stay fail-closed.
+  function diagnoseDanglingOrderHolds(diagnoseInput = {}) {
+    return execute(() => {
+      const value = assertPlainObject(diagnoseInput);
+      assertExactDataFields(value, new Set(["limit"]), new Set());
+      const limit = value.limit === undefined ? 100 : normalizeLimit(value.limit);
+      const rows = db.prepare(`
+        select o.order_ref, o.account_id, o.amount_units, o.payment_status,
+               o.hold_ref, o.updated_at,
+               h.hold_ref as joined_hold_ref
+          from platform_coin_commerce_orders o
+          left join platform_coin_holds h on h.hold_ref = o.hold_ref
+          left join platform_coin_wallets w on w.wallet_ref = h.wallet_ref
+         where o.payment_status in ('held', 'capture_pending', 'captured', 'capture_failed')
+           and (h.hold_ref is null or w.wallet_ref is null)
+         order by o.updated_at, o.order_ref
+         limit ?
+      `).all(limit);
+      const unmigratedRows = rows.map((row) => ({
+        orderRef: row.order_ref,
+        accountId: row.account_id,
+        amountUnits: row.amount_units,
+        paymentStatus: row.payment_status,
+        holdRef: row.hold_ref,
+        ...(row.joined_hold_ref === null ? { holdMissing: true } : { walletMissing: true })
+      }));
+      logV04Diagnostic("order-holds", unmigratedRows.length);
+      return {
+        unmigratedCount: unmigratedRows.length,
+        unmigratedRows
+      };
+    });
+  }
+
   function recoverNonTerminalOrders(recoverInput) {
     return execute(() => {
       const value = assertPlainObject(recoverInput);
@@ -4608,6 +4662,7 @@ export function createSqliteCoinCommerceStore(options = {}) {
     listOrders,
     claimDueCaptures,
     captureClaimedOrder,
+    diagnoseDanglingOrderHolds,
     recoverNonTerminalOrders,
     claimNextFulfillmentCommand,
     completeFulfillmentCommand,
