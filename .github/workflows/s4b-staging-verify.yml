@@ -27,6 +27,17 @@ name: S4B Staging verification (GitHub Secrets)
 #   environment, set protection rules, move the two secrets there, then
 #   remove the repo-level copies) is in the PR description — do NOT run
 #   this workflow before that migration is done.
+# - Fail-closed readiness gate (Codex P2 on #942): the `gate-environment-ready`
+#   job runs first and does NOT declare `environment:` (declaring it would let
+#   GitHub auto-create an unprotected environment). It uses only the read-only
+#   GitHub Environments API (GITHUB_TOKEN, `actions: read`) to confirm the
+#   `s4b-staging` environment exists AND its deployment branch policy is
+#   custom + master-only. Any failure to confirm — environment missing, no
+#   custom branch policy, API error — fails the run before the `verify` job
+#   starts, so no secret is read and nothing writes D1. The gate does NOT
+#   replace the migration: the repo-level secret copies are still there, and
+#   the migration (create env, set protection, move secrets, delete repo
+#   copies) is still a separate approval.
 # - Trigger: workflow_dispatch only, with a typed confirmation.
 
 on:
@@ -45,8 +56,74 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  gate-environment-ready:
+    name: Gate — staging environment protection ready
+    # FAIL-CLOSED readiness gate (Codex P2 on #942). This job MUST NOT
+    # declare `environment:` — if it did, GitHub would auto-create an
+    # unprotected `s4b-staging` environment the first time it ran.
+    # It runs before any job that declares the environment, reads a
+    # secret, or touches D1. It only calls the read-only GitHub
+    # Environments API and fails the run unless the environment exists
+    # AND its deployment branch policy is custom + master-only. Any
+    # failure to confirm (missing env, no custom branch policy, API
+    # error, unparseable response) fails the run: downstream jobs never
+    # start, no secret is read, nothing writes D1.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      # The Environments API is part of the Actions API family: the
+      # docs require "Actions" (read) for fine-grained tokens, and
+      # anyone with read access to the repository can use these
+      # endpoints. If this token cannot read the protection rules,
+      # the gate fails closed (cannot confirm -> stop) instead of
+      # passing.
+      actions: read
+    steps:
+      - name: Check s4b-staging environment protection
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          ENV_NAME="s4b-staging"
+          REPO="${GITHUB_REPOSITORY}"
+          fail() { echo "::error::environment-gate: $1"; exit 1; }
+
+          # 1. The environment must exist. A 404 here means the
+          # migration has not created it yet — fail closed.
+          if ! env_json=$(gh api "repos/${REPO}/environments/${ENV_NAME}" 2>"${RUNNER_TEMP}/env-error.txt"); then
+            cat "${RUNNER_TEMP}/env-error.txt" || true
+            fail "environment '${ENV_NAME}' not found or not readable (fail closed: protection cannot be confirmed)"
+          fi
+
+          # 2. The deployment branch policy must be custom (not
+          # protected-branches-only): custom_branch_policies true and
+          # protected_branches false.
+          custom=$(printf '%s' "${env_json}" | jq -r '.deployment_branch_policy.custom_branch_policies // false')
+          protected=$(printf '%s' "${env_json}" | jq -r '.deployment_branch_policy.protected_branches // false')
+          if [ "${custom}" != "true" ] || [ "${protected}" != "false" ]; then
+            fail "environment '${ENV_NAME}' has no custom deployment branch policy (custom=${custom}, protected=${protected})"
+          fi
+
+          # 3. The custom policy list must be exactly one branch policy
+          # for the master branch. total_count is server-side, so a
+          # paginated list cannot hide extra policies.
+          if ! policies_json=$(gh api "repos/${REPO}/environments/${ENV_NAME}/deployment-branch-policies" 2>"${RUNNER_TEMP}/policies-error.txt"); then
+            cat "${RUNNER_TEMP}/policies-error.txt" || true
+            fail "cannot list deployment branch policies for '${ENV_NAME}' (fail closed)"
+          fi
+          total=$(printf '%s' "${policies_json}" | jq -r '.total_count // -1')
+          first_name=$(printf '%s' "${policies_json}" | jq -r '.branch_policies[0].name // ""')
+          first_type=$(printf '%s' "${policies_json}" | jq -r '.branch_policies[0].type // "branch"')
+          if [ "${total}" != "1" ] || [ "${first_name}" != "master" ] || [ "${first_type}" != "branch" ]; then
+            fail "deployment branch policies for '${ENV_NAME}' are not master-only (total=${total}, name=${first_name}, type=${first_type})"
+          fi
+
+          echo "Environment '${ENV_NAME}' is protected: custom deployment branch policy, master only. Gate passed."
+
   verify:
     name: S4B Staging verification
+    needs: [gate-environment-ready]
     environment: s4b-staging
     runs-on: ubuntu-24.04
     timeout-minutes: 30
