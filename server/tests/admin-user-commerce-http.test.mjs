@@ -148,13 +148,19 @@ test("user commerce routes enforce capabilities and pass the frontend contract t
   await withServer(appFor(["users.read", "wallet.read"]), async (baseUrl) => {
     const ledger = await fetch(`${baseUrl}/api/admin/user-commerce/ledger?accountId=promoter&from=2026-09-01&to=2026-09-30`);
     assert.equal(ledger.status, 409);
-    const rate = await fetch(`${baseUrl}/api/admin/user-commerce/settlement-rate`, {
+    // The settlement rate is a policy mutation (it changes future reward
+    // payouts), so the read capabilities alone are not enough — the same
+    // wallet.write gate as the clawback applies.
+    const deniedRate = await fetch(`${baseUrl}/api/admin/user-commerce/settlement-rate`, {
       method: "PUT",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ ratePercent: 15, effectiveAt: "2026-09-11" })
     });
-    assert.equal(rate.status, 200);
-    assert.deepEqual(await rate.json(), { ratePercent: 15, effectiveAt: "2026-09-11", availableRewardCoins: "12" });
+    assert.equal(deniedRate.status, 403);
+    assert.deepEqual(await deniedRate.json(), {
+      error: "admin_capability_required",
+      capability: "wallet.write"
+    });
     // A clawback is a financial write: the read capabilities alone are
     // not enough — wallet.write is required.
     const deniedClawback = await fetch(`${baseUrl}/api/admin/user-commerce/reward-clawbacks`, {
@@ -176,9 +182,35 @@ test("user commerce routes enforce capabilities and pass the frontend contract t
     });
     assert.equal(clawback.status, 200);
     assert.equal((await clawback.json()).clawbackRef, "clawback_0123456789abcdef0123456789abcdef");
+    const rate = await fetch(`${baseUrl}/api/admin/user-commerce/settlement-rate`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ ratePercent: 15, effectiveAt: "2026-09-11" })
+    });
+    assert.equal(rate.status, 200);
+    assert.deepEqual(await rate.json(), { ratePercent: 15, effectiveAt: "2026-09-11", availableRewardCoins: "12" });
+  });
+  // The settlement-rate mutation is rate-limited (30/min): the 31st
+  // authorized PUT in the window is refused with 429.
+  await withServer(appFor(["users.read", "wallet.read", "wallet.write"]), async (baseUrl) => {
+    for (let i = 0; i < 30; i++) {
+      const ok = await fetch(`${baseUrl}/api/admin/user-commerce/settlement-rate`, {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ ratePercent: 15, effectiveAt: "2026-09-11" })
+      });
+      assert.equal(ok.status, 200);
+    }
+    const limited = await fetch(`${baseUrl}/api/admin/user-commerce/settlement-rate`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ ratePercent: 15, effectiveAt: "2026-09-11" })
+    });
+    assert.equal(limited.status, 429);
+    assert.deepEqual(await limited.json(), { error: "Too Many Requests" });
   });
   assert.equal(calls[0][0], "orders");
   assert.deepEqual({ ...calls[0][1] }, { accountId: "customer", from: "2026-09-01", to: "2026-09-30" });
-  assert.deepEqual(calls[1], ["rate", { ratePercent: 15, effectiveAt: "2026-09-11" }]);
-  assert.deepEqual(calls[2], ["clawback", { accountId: "promoter", coins: "5", reason: "重复发放", idempotencyKey: "ui-key-1" }]);
+  assert.deepEqual(calls[1], ["clawback", { accountId: "promoter", coins: "5", reason: "重复发放", idempotencyKey: "ui-key-1" }]);
+  assert.deepEqual(calls[2], ["rate", { ratePercent: 15, effectiveAt: "2026-09-11" }]);
 });

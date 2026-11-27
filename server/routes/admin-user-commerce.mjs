@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { rateLimit } from "express-rate-limit";
 import { requireAdminCapability } from "../middleware/admin-authorization.mjs";
 
 function sendCommerce(res, action) {
@@ -24,6 +25,17 @@ export function adminUserCommerceRoutes(state) {
   const usersRead = requireAdminCapability("users.read");
   const walletRead = requireAdminCapability("wallet.read");
   const walletWrite = requireAdminCapability("wallet.write");
+  // The settlement rate is a policy mutation, so it is rate-limited as well
+  // as capability-gated (30/min, matching the repo's sub rate-limit
+  // default): without this the route is flagged js/missing-rate-limiting,
+  // and a bare capability gate does not blunt a flood of mutations.
+  const settlementRateLimit = rateLimit({
+    windowMs: 60_000,
+    limit: 30,
+    standardHeaders: "draft-7",
+    legacyHeaders: false,
+    message: { error: "Too Many Requests" }
+  });
 
   function service() {
     const value = state.platform?.adminUserCommerce;
@@ -52,7 +64,11 @@ export function adminUserCommerceRoutes(state) {
   router.get("/api/admin/user-commerce/settlement", usersRead, (req, res) => {
     sendCommerce(res, () => service().readSettlement());
   });
-  router.put("/api/admin/user-commerce/settlement-rate", usersRead, walletRead, (req, res) => {
+  // The settlement rate is a policy mutation: changing it changes future
+  // reward payouts, so like the clawback below it requires the
+  // independent wallet.write capability (super_admin only), not just the
+  // read capabilities that protect the read endpoints above.
+  router.put("/api/admin/user-commerce/settlement-rate", settlementRateLimit, usersRead, walletRead, walletWrite, (req, res) => {
     sendCommerce(res, () => service().updateRate(req.body));
   });
   // The clawback is a financial write: it requires the independent
