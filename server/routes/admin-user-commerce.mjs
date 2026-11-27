@@ -52,7 +52,11 @@ export function adminUserCommerceRoutes(state) {
   router.get("/api/admin/user-commerce/settlement", usersRead, (req, res) => {
     sendCommerce(res, () => service().readSettlement());
   });
-  router.put("/api/admin/user-commerce/settlement-rate", usersRead, walletRead, (req, res) => {
+  // The settlement rate is a policy mutation: changing it changes future
+  // reward payouts, so like the clawback below it requires the
+  // independent wallet.write capability (super_admin only), not just the
+  // read capabilities that protect the read endpoints above.
+  router.put("/api/admin/user-commerce/settlement-rate", usersRead, walletRead, walletWrite, (req, res) => {
     sendCommerce(res, () => service().updateRate(req.body));
   });
   // The clawback is a financial write: it requires the independent
