@@ -190,6 +190,25 @@ test("user commerce routes enforce capabilities and pass the frontend contract t
     assert.equal(rate.status, 200);
     assert.deepEqual(await rate.json(), { ratePercent: 15, effectiveAt: "2026-09-11", availableRewardCoins: "12" });
   });
+  // The settlement-rate mutation is rate-limited (30/min): the 31st
+  // authorized PUT in the window is refused with 429.
+  await withServer(appFor(["users.read", "wallet.read", "wallet.write"]), async (baseUrl) => {
+    for (let i = 0; i < 30; i++) {
+      const ok = await fetch(`${baseUrl}/api/admin/user-commerce/settlement-rate`, {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ ratePercent: 15, effectiveAt: "2026-09-11" })
+      });
+      assert.equal(ok.status, 200);
+    }
+    const limited = await fetch(`${baseUrl}/api/admin/user-commerce/settlement-rate`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ ratePercent: 15, effectiveAt: "2026-09-11" })
+    });
+    assert.equal(limited.status, 429);
+    assert.deepEqual(await limited.json(), { error: "Too Many Requests" });
+  });
   assert.equal(calls[0][0], "orders");
   assert.deepEqual({ ...calls[0][1] }, { accountId: "customer", from: "2026-09-01", to: "2026-09-30" });
   assert.deepEqual(calls[1], ["clawback", { accountId: "promoter", coins: "5", reason: "重复发放", idempotencyKey: "ui-key-1" }]);

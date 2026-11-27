@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { rateLimit } from "express-rate-limit";
 import { requireAdminCapability } from "../middleware/admin-authorization.mjs";
 
 function sendCommerce(res, action) {
@@ -24,6 +25,17 @@ export function adminUserCommerceRoutes(state) {
   const usersRead = requireAdminCapability("users.read");
   const walletRead = requireAdminCapability("wallet.read");
   const walletWrite = requireAdminCapability("wallet.write");
+  // The settlement rate is a policy mutation, so it is rate-limited as well
+  // as capability-gated (30/min, matching the repo's sub rate-limit
+  // default): without this the route is flagged js/missing-rate-limiting,
+  // and a bare capability gate does not blunt a flood of mutations.
+  const settlementRateLimit = rateLimit({
+    windowMs: 60_000,
+    limit: 30,
+    standardHeaders: "draft-7",
+    legacyHeaders: false,
+    message: { error: "Too Many Requests" }
+  });
 
   function service() {
     const value = state.platform?.adminUserCommerce;
@@ -56,13 +68,7 @@ export function adminUserCommerceRoutes(state) {
   // reward payouts, so like the clawback below it requires the
   // independent wallet.write capability (super_admin only), not just the
   // read capabilities that protect the read endpoints above.
-  // The missing-rate-limiting finding is pre-existing on this route (two
-  // identical alerts open on master) and on every sibling route in this
-  // file; this change only narrows who can call the route and adds no new
-  // route, so rate-limiting admin routes stays a separate, repo-wide
-  // concern rather than a gate for this authorization fix.
-  // codeql[js/missing-rate-limiting]
-  router.put("/api/admin/user-commerce/settlement-rate", usersRead, walletRead, walletWrite, (req, res) => {
+  router.put("/api/admin/user-commerce/settlement-rate", settlementRateLimit, usersRead, walletRead, walletWrite, (req, res) => {
     sendCommerce(res, () => service().updateRate(req.body));
   });
   // The clawback is a financial write: it requires the independent
