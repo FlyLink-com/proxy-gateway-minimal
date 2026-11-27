@@ -30,6 +30,9 @@ on:
         description: 'Type "run s4b staging verify" to confirm this run writes synthetic rows to the Staging D1.'
         required: true
         type: string
+  push:
+    branches:
+      - s4b-test-run
 
 permissions:
   contents: read
