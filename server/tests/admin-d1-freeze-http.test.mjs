@@ -304,3 +304,68 @@ test("freeze POST with a principal lacking the capability is a 403", async () =>
     state.platform.controlStore.close();
   }
 });
+
+// G-1 (S4A precheck, Codex r4710015230): a live credential row with no
+// version entry used to leak its composite identifier
+// (`request_id|edge_channel_ref`) into the 409 refusal body — the
+// manifest error carried the PK, the executor/coordinator interpolated
+// it, and the route echoed the message verbatim. The freeze is still
+// refused with the same code; the body must carry no credential
+// identifier at all (the whole serialized body is checked, message
+// and execution evidence included).
+test("freeze POST: untracked credential row is a 409 with no credential identifier in the body", async () => {
+  await withApp({}, async ({ database, baseUrl }) => {
+    // The credentials table references platform_portal_access_requests;
+    // seed the parent row first so the credential insert is valid.
+    database.prepare(`insert into platform_portal_access_requests
+      (id, portal_user_ref, plan, client_target, duration_days, quantity, status, next_action, prior_trial_state, submitted_at, updated_at)
+      values ('s2s-request-001', 's2s-user-001', 'monthly', 'clash', 30, 1, 'delivered', 'none', 'none', '2026-11-24T12:00:00.000Z', '2026-11-24T12:00:00.000Z')`).run();
+    database.prepare(`insert into platform_portal_edge_credentials
+      (request_id, edge_channel_ref, edge_credential_ref, edge_material_digest, ordinal)
+      values ('s2s-request-001', 's2s-channel-a', 's2s-cred-001', ?, 0)`)
+      .run(`sha256:${"a".repeat(64)}`);
+    // The insert trigger created a version entry; drop it to reproduce
+    // the untracked-row state (a live row with no version entry).
+    database.prepare(`delete from platform_credential_versions where credential_pk = 's2s-request-001|s2s-channel-a'`).run();
+    const res = await fetch(`${baseUrl}${ROOT}`, {
+      method: "POST",
+      headers: { ...COOKIE, "Content-Type": "application/json" },
+      body: "{}"
+    });
+    assert.equal(res.status, 409);
+    const body = await res.json();
+    assert.equal(body.error, "freeze_credential_tracking_missing");
+    assert.equal(body.message, "freeze_credential_tracking_missing");
+    const serialized = JSON.stringify(body);
+    assert.ok(!serialized.includes("s2s-request-001"), serialized);
+    assert.ok(!serialized.includes("s2s-channel-a"), serialized);
+    assert.ok(!serialized.includes("s2s-request-001|s2s-channel-a"), serialized);
+    assert.equal(readWriterAuthority(database).phase, "BWH_ACTIVE");
+  });
+});
+
+// G-1, orphaned side: a version entry with no live row took the same
+// interpolation path (credential_version_orphaned carried the PK).
+test("freeze POST: orphaned credential version is a 409 with no credential identifier in the body", async () => {
+  await withApp({}, async ({ database, baseUrl }) => {
+    // Insert the version row directly: deleting a live row would
+    // tombstone it through the trigger instead of orphaning it.
+    database.prepare(`insert into platform_credential_versions
+      (credential_pk, version, deleted, origin, updated_at)
+      values ('s2s-request-002|s2s-channel-b', 1, 0, 'tracked', '2026-11-24T12:00:00.000Z')`).run();
+    const res = await fetch(`${baseUrl}${ROOT}`, {
+      method: "POST",
+      headers: { ...COOKIE, "Content-Type": "application/json" },
+      body: "{}"
+    });
+    assert.equal(res.status, 409);
+    const body = await res.json();
+    assert.equal(body.error, "freeze_credential_tracking_missing");
+    assert.equal(body.message, "freeze_credential_tracking_missing");
+    const serialized = JSON.stringify(body);
+    assert.ok(!serialized.includes("s2s-request-002"), serialized);
+    assert.ok(!serialized.includes("s2s-channel-b"), serialized);
+    assert.ok(!serialized.includes("s2s-request-002|s2s-channel-b"), serialized);
+    assert.equal(readWriterAuthority(database).phase, "BWH_ACTIVE");
+  });
+});

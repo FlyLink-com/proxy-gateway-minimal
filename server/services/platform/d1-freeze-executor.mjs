@@ -179,9 +179,12 @@ function readCredentialManifest(db, snapshotId, evidence) {
     return buildCredentialVersionManifest(db, { snapshotId });
   } catch (error) {
     if (isCredentialReconciliationError(error)) {
+      // Only the inner error code enters the message: the inner
+      // message may name a credential row, and this message is
+      // surfaced verbatim into the freeze refusal response.
       throw freezeExecutorError(
         "freeze_credential_tracking_missing",
-        `credential version tracking is not installed or not verifiable (${error.code}: ${error.message}) — install credential version tracking and backfill pre-existing credential rows before freezing; do not freeze on a high-water mark that cannot see in-place credential rotations`,
+        `credential version tracking is not installed or not verifiable (${error.code}) — install credential version tracking and backfill pre-existing credential rows before freezing; do not freeze on a high-water mark that cannot see in-place credential rotations`,
         evidence
       );
     }
