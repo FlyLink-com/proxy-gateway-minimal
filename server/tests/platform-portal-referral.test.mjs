@@ -4,7 +4,8 @@ import test from "node:test";
 import Database from "better-sqlite3";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   COIN_WALLET_MIGRATIONS,
   REQUIRED_COIN_WALLET_MIGRATION_ID,
@@ -29,6 +30,10 @@ import {
 import { runPortalReferralPolicyCli } from "../../scripts/platform-portal-referral-policy.mjs";
 import { runPortalReferralSchemaCli } from "../../scripts/platform-portal-referral-schema.mjs";
 import { createPortalReferralService } from "../services/platform/portal-referral-service.mjs";
+import {
+  ensureWriterAuthority,
+  transitionWriterAuthority,
+} from "../services/platform/single-writer-authority.mjs";
 
 const NOW = "2026-09-08T00:00:00.000Z";
 // createCoinHold compares expiresAt to SQLite wall-clock now, not fixture nowFn.
@@ -1326,4 +1331,129 @@ test("refund ledger failure rolls back its observation and all balances before r
   );
   f.db.exec("drop trigger fail_reversal");
   assert.equal(f.service.applyRefund("refund_test").status, "reversed");
+});
+
+test("applyRefund refuses a freeze that lands between the outer check and the transaction", (t) => {
+  const f = fixture(t);
+  f.bind();
+  const order = f.recharge();
+  f.service.accrue("customer");
+  f.setNow("2026-09-10T00:00:00.000Z");
+  f.approve();
+  // 100 paid units at 12.5% accrue 12 reward coins, all available.
+  assert.deepEqual(
+    f.db
+      .prepare("select available_units, reversed_units from platform_coin_lots where coin_type='reward_coins'")
+      .get(),
+    { available_units: 12, reversed_units: 0 },
+  );
+  ensureWriterAuthority(f.db);
+  // Same Proxy shape as the clawback freeze-landing test, with one
+  // adaptation: the freeze fires on the first transaction *invocation*,
+  // not on the first access to `db.transaction`. The referral service
+  // binds wallet-store transaction wrappers at construction, so an
+  // access-triggered freeze would land at construction — before
+  // applyRefund's outer check — instead of between the outer check
+  // and the transaction, which is the gap under test.
+  let frozen = false;
+  const proxyDb = new Proxy(f.db, {
+    get(target, property) {
+      if (property === "transaction") {
+        return (fn) => {
+          const run = target.transaction(fn);
+          // better-sqlite3 transaction wrappers carry .immediate /
+          // .deferred / .exclusive; forward them all so the wrapped
+          // handle behaves like the real one.
+          const invoke = (runner) => (...args) => {
+            if (!frozen) {
+              frozen = true;
+              transitionWriterAuthority(target, { to: "FROZEN", expectedEpoch: 1 });
+            }
+            return runner(...args);
+          };
+          const wrapped = invoke(run);
+          wrapped.immediate = invoke((...args) => run.immediate(...args));
+          wrapped.deferred = invoke((...args) => run.deferred(...args));
+          wrapped.exclusive = invoke((...args) => run.exclusive(...args));
+          return wrapped;
+        };
+      }
+      const value = Reflect.get(target, property, target);
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+  });
+  const refundService = createPortalReferralService({
+    database: proxyDb,
+    nowFn: () => new Date("2026-09-10T00:00:00.000Z"),
+    riskReader: (ref) => f.risks.get(ref),
+    refundReader: (ref) => f.refunds.get(ref),
+    rewardsEnabled: true,
+  });
+  t.after(() => refundService.close());
+  // Construction touches no transaction: the freeze still has not landed,
+  // so the outer check passes and the freeze lands inside applyRefund.
+  assert.equal(frozen, false);
+  f.refunds.set("refund_test", {
+    verified: true,
+    observationRef: "refund_test",
+    paymentOrderRef: order.orderRef,
+    cumulativeRefundedPaidUnits: 100,
+    chargeback: false,
+  });
+  assert.throws(
+    () => refundService.applyRefund("refund_test"),
+    { code: "writer_authority_not_bwh" },
+  );
+  assert.equal(frozen, true);
+  // The in-transaction fence fired before any business write.
+  assert.deepEqual(
+    f.db
+      .prepare("select available_units, reversed_units from platform_coin_lots where coin_type='reward_coins'")
+      .get(),
+    { available_units: 12, reversed_units: 0 },
+  );
+  assert.deepEqual(
+    f.db
+      .prepare("select reward_units, reversed_units, refunded_paid_units, status from platform_referral_accruals where account_id='customer'")
+      .get(),
+    { reward_units: 12, reversed_units: 0, refunded_paid_units: 0, status: "available" },
+  );
+  assert.equal(
+    f.db.prepare("select count(*) from platform_referral_events where event_ref='refund_test'").pluck().get(),
+    0,
+  );
+});
+
+// --- Source-shape invariant: applyRefund's inner fence -------------------
+// The FROZEN behavior test above pins the observable outcome, but
+// event()'s own U-F4 fence also fires inside the transaction, so it
+// would mask a missing inner fence. This pins the fix itself: the
+// in-transaction recheck must be the callback's first statement, so a
+// future reorder that moves a write before event() cannot reopen the
+// freeze-landing window (same shape as the W-063 pin in
+// d1-stage1b-bwh-wiring.test.mjs).
+const REFERRAL_FENCE = /^\s*assertWritable\(db\);$/;
+const referralServicePath = join(
+  dirname(fileURLToPath(import.meta.url)),
+  "..",
+  "services",
+  "platform",
+  "portal-referral-service.mjs",
+);
+
+test("applyRefund rechecks the writer authority as the first statement inside its transaction", () => {
+  const lines = readFileSync(referralServicePath, "utf8").split(/\r?\n/);
+  const applyRefund = lines.findIndex((line) => line.includes("function applyRefund("));
+  assert.notEqual(applyRefund, -1, "missing applyRefund definition");
+  const transaction = lines.findIndex(
+    (line, index) => index > applyRefund && line.includes(".transaction(() => {"),
+  );
+  assert.notEqual(transaction, -1, "missing applyRefund transaction");
+  const first = lines.findIndex(
+    (line, index) => index > transaction && line.trim() && !line.trimStart().startsWith("//"),
+  );
+  assert.ok(
+    first !== -1 && REFERRAL_FENCE.test(lines[first]),
+    `fence is not the first statement of applyRefund's transaction: ${lines[first] ?? "<none>"}`,
+  );
 });
