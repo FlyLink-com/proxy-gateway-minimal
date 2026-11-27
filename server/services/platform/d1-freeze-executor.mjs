@@ -179,9 +179,12 @@ function readCredentialManifest(db, snapshotId, evidence) {
     return buildCredentialVersionManifest(db, { snapshotId });
   } catch (error) {
     if (isCredentialReconciliationError(error)) {
+      // Only the inner error code enters the message: the inner
+      // message may name a credential row, and this message is
+      // surfaced verbatim into the freeze refusal response.
       throw freezeExecutorError(
         "freeze_credential_tracking_missing",
-        `credential version tracking is not installed or not verifiable (${error.code}: ${error.message}) — install credential version tracking and backfill pre-existing credential rows before freezing; do not freeze on a high-water mark that cannot see in-place credential rotations`,
+        `credential version tracking is not installed or not verifiable (${error.code}) — install credential version tracking and backfill pre-existing credential rows before freezing; do not freeze on a high-water mark that cannot see in-place credential rotations`,
         evidence
       );
     }
@@ -920,12 +923,18 @@ export function createD1FreezeExecutor({
       rowCounts,
       snapshotId
     });
+    // N5 (PR #932 r4701898636): the bundle carries the A3 credential
+    // manifest hash so the coordinator's T1 freeze can re-read the
+    // live manifest and refuse when a rotation landed after A3. The
+    // hash is digest-covered by the bundle; without it the T1 gate
+    // refuses the freeze (fail-closed).
     const readinessBundle = buildFreezeReadinessBundle({
       snapshotId,
       writeLock,
       schedulerQuiescence,
       callbackDrain,
-      hwmCompleteness
+      hwmCompleteness,
+      credentialManifestHash: credentialBundleManifest.manifestHash,
     });
     evidence.steps.a3Receipts = {
       writeLockKind: writeLock.kind,

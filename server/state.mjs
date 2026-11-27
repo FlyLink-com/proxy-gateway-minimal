@@ -45,6 +45,7 @@ import { createXsdPaymentRuntime } from "./services/platform/xsd-payment-runtime
 import { createChaoJiPayPaymentRuntime } from "./services/platform/chaojipay-payment-runtime.mjs";
 import { createProductionCnyPaymentRechargeOffers } from "./services/platform/production-cny-payment-recharge-price-book.mjs";
 import { createSqliteSubscriptionControlStore } from "./services/platform/subscription-control-db.mjs";
+import { createD1ReadClientFromEnv } from "./services/platform/d1-read-client.mjs";
 import { createAdminUsageLedgerReader } from "./services/platform/admin-usage-ledger-reader.mjs";
 import { createAdminUserCommerceService } from "./services/platform/admin-user-commerce.mjs";
 import { createAdminOrderStatusSummaryService } from "./services/platform/admin-order-status-summary.mjs";
@@ -1952,7 +1953,20 @@ export function createRuntimeState(options = {}) {
     ownsSubscriptionStore ? createSqliteSubscriptionStore({ dbPath: subscriptionDbPath }) : null
   );
   const ownsControlStore = !options.platformControlStore;
-  const platformControlStore = options.platformControlStore || createSqliteSubscriptionControlStore({ dbPath: controlDbPath });
+  // D1 control-plane read path (2026-11-26): the client is built only
+  // when the process environment carries all three values
+  // (CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID,
+  // CLOUDFLARE_D1_DATABASE_ID/D1_DATABASE_ID). Otherwise null, and the
+  // control store keeps serving from local SQLite. Constructing the
+  // client does not activate D1_ACTIVE, does not change the write path,
+  // and does not change subscription delivery: the sync reads stay the
+  // serving path until callers switch to the Async methods.
+  const d1ReadClient = options.d1ReadClient
+    ?? createD1ReadClientFromEnv(env);
+  const platformControlStore = options.platformControlStore || createSqliteSubscriptionControlStore({
+    dbPath: controlDbPath,
+    d1ReadClient,
+  });
   if (coinsCommercePlanSwitchEnabled) {
     let planSwitchSchemaReady = false;
     try {

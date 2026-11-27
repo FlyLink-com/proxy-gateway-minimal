@@ -3304,6 +3304,9 @@ export function createSqliteCoinWalletStore(options = {}) {
   }
 
   function expireDuePortalRegistrationWelcomeBonusCoinLots(input) {
+    // U-F1: phase fence, first statement — no wallet write may land
+    // while the writer authority is not BWH_ACTIVE.
+    assertWritable(db);
     assertOpen();
     try {
       const limit = normalizeExpireDuePortalRegistrationWelcomeBonusCoinLotsRequest(input);

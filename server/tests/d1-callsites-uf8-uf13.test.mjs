@@ -4,8 +4,13 @@
 // static completeness check below that pins every definition carries the
 // fence. Behavioral tests then prove the fence refuses at runtime for a
 // sample from each group, and that reads stay available in FROZEN.
-// The 7 LATENT items (W-012/W-013/W-023/W-024/W-073/W-076/W-095) belong to
-// U-F15 and are intentionally NOT fenced until activation.
+// The 7 LATENT items (W-012/W-013/W-023/W-024/W-073/W-076/W-095) were
+// U-F15 and intentionally NOT fenced until activation. The D1
+// control-plane read work (2026-11-26) fenced all 7; they are now in
+// the lists below (W-012/W-013/W-073/W-076/W-095 in CONTROL_DB_METHODS,
+// W-023/W-024 in the authority-store behavioral tests in
+// d1-control-plane-read-fences.test.mjs, because that store is a
+// separate module with its own fence shape).
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -126,19 +131,24 @@ function assertFenced(src, defPattern, dbExpr, label) {
 }
 
 const CONTROL_DB_METHODS = [
-  // U-F13 W-001..W-019 (minus LATENT W-012/W-013)
+  // U-F13 W-001..W-019 (W-012/W-013 fenced 2026-11-26, ex-LATENT)
   "upsertLead", "purgeExpiredLeads", "createAccount", "createPortalEntry",
   "markPortalEntryUsed", "createPortalTotpCredential",
   "recordPortalTotpVerificationFailure", "markPortalTotpVerified",
   "createPortalPasswordCredential", "recordPortalPasswordVerificationFailure",
-  "markPortalPasswordVerified", "createPortalSecondFactorChallenge",
+  "markPortalPasswordVerified", "createPortalPasskeyCredential",
+  "markPortalPasskeyVerified",
+  "createPortalSecondFactorChallenge",
   "markPortalSecondFactorChallengeUsed", "recordPortalSecondFactorChallengeFailure",
   "createPortalSession", "revokePortalSession", "recordPortalReferralRegistration",
-  // U-F13 W-065..W-077 (minus LATENT W-073/W-076)
+  // U-F13 W-065..W-077 (W-073/W-076 fenced 2026-11-26, ex-LATENT)
   "createEntitlement", "updateEntitlementTrafficLimit",
   "applyCoinCommerceSubscriptionFulfillment", "createIssuanceRequest",
   "setIssuanceRequestStatus", "linkIssuedSubscription",
+  "setIssuedLinkStatus", "bindDevice",
   "upsertPortalAccessRequest", "upsertQuotaCounter", "recordRevocation",
+  // U-F8 W-117/W-118 usage samples (fenced 2026-11-26)
+  "recordUsageSample", "recordCumulativeUsageSample",
   // U-F13 W-078..W-081 (NOISY W-080/W-081 resolved by dotted re-read)
   "walletFirstResourceEffectInsertInitialChain",
   "walletFirstResourceEffectSwitchCurrentChain",
@@ -156,8 +166,8 @@ const CONTROL_DB_METHODS = [
   "deletePortalCredentialsForAccount", "deletePortalSessionsForAccount",
   "deletePortalSecondFactorChallengesForAccount", "deletePortalEntriesForAccount",
   "deleteAccountRowForDeletion", "redactAccountMetadataForDeletion",
-  // U-F13 W-096..W-110 (minus LATENT W-095; NOISY W-102/W-103 resolved)
-  "insertEdgeRegisteredNodeIfAbsent", "recordEdgeApplyReceipt",
+  // U-F13 W-096..W-110 (W-095 fenced 2026-11-26, ex-LATENT; NOISY W-102/W-103 resolved)
+  "insertEdgeRegisteredNodeIfAbsent", "upsertEdgeRegisteredNode", "recordEdgeApplyReceipt",
   "syncEdgeDesiredStateNotificationFromReceipt",
   "recordEdgeDesiredStateNotification", "acquireEdgeAgentLease",
   "reserveCoinCommerceDataPackIssuance", "completeCoinCommerceDataPackIssuance",
@@ -223,7 +233,7 @@ test("U-F13/U-F8 static: every fenced definition carries the fence first", () =>
     join(HERE, "../services/platform/coin-wallet-store.mjs"), "utf8"
   );
   assert.equal(
-    wallet.split("// U-F1: phase fence").length - 1, 6
+    wallet.split("// U-F1: phase fence").length - 1, 7
   );
   // The authority install no longer needs db.exec (minimal handles).
   const authority = readFileSync(

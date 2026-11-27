@@ -22,6 +22,14 @@ import {
   UNFENCED_WRITER_BASELINE,
 } from "../services/platform/d1-stage2-freeze-drain.mjs";
 import {
+  ensureCredentialVersionTracking,
+  buildCredentialVersionManifest,
+  CREDENTIAL_VERSION_TABLE,
+  CREDENTIAL_VERSION_TRIGGERS,
+} from "../services/platform/d1-stage2-credential-reconciliation.mjs";
+import { SNAPSHOT_FIXTURE_DDL } from "../services/platform/d1-stage2-source-manifest.mjs";
+import { readHighWaterMark } from "../services/platform/writer-freeze-receipt.mjs";
+import {
   FREEZE_DRAIN_COORDINATOR_VERSION,
   ROLLBACK_TRIGGERS,
   VERIFICATION_CHECK_IDS,
@@ -59,8 +67,32 @@ function makeDb(t) {
     create table s2s_notes (id integer primary key, body text not null);`);
   db.prepare("insert into s2s_items (id, value, updated_at) values (1, 'a', '2026-11-21T00:00:00.000Z'), (2, 'b', '2026-11-21T00:01:00.000Z')").run();
   db.prepare("insert into s2s_notes (id, body) values (1, 'n')").run();
+  // N5 (PR #932 r4701898636): the T1 freeze re-reads the credential
+  // manifest, so the fixture installs credential version tracking
+  // with two live rows (the trigger versions every insert). The
+  // fixture DDL carries no FK to the access-request table.
+  db.exec(SNAPSHOT_FIXTURE_DDL.platform_portal_edge_credentials);
+  ensureCredentialVersionTracking(db);
+  seedCredentialRow(db, { requestId: "s2s-request-001", channelRef: "s2s-channel-a", credentialRef: "s2s-cred-001" });
+  seedCredentialRow(db, { requestId: "s2s-request-002", channelRef: "s2s-channel-a", credentialRef: "s2s-cred-002" });
   ensureWriterAuthority(db);
   return db;
+}
+
+// Synthetic credential row. The digest is a fixed placeholder — the
+// version logic never depends on credential values.
+function seedCredentialRow(db, { requestId, channelRef, credentialRef }) {
+  db.prepare(`insert into platform_portal_edge_credentials (request_id, edge_channel_ref, edge_credential_ref, edge_material_digest, ordinal) values (?, ?, ?, ?, ?)`).run(
+    requestId, channelRef, credentialRef, "sha256:s2s-synthetic-material", 0,
+  );
+}
+
+// Model the pre-N1 database shape: no version table, no triggers.
+function uninstallCredentialVersionTracking(db) {
+  for (const name of CREDENTIAL_VERSION_TRIGGERS) {
+    db.prepare(`drop trigger if exists "${name}"`).run();
+  }
+  db.prepare(`drop table if exists "${CREDENTIAL_VERSION_TABLE}"`).run();
 }
 
 function makeCoordinator(t) {
@@ -70,7 +102,7 @@ function makeCoordinator(t) {
   return { db, coordinator, clock };
 }
 
-function buildBundleFor(db, snapshotId) {
+function buildBundleFor(db, snapshotId, { withCredentialHash = true } = {}) {
   const writeLock = buildWriteLockReceipt(db, { snapshotId, checkpointId: CHECKPOINT, outstandingJobs: [] });
   const schedulerQuiescence = buildSchedulerQuiescenceReceipt({
     snapshotId,
@@ -83,7 +115,12 @@ function buildBundleFor(db, snapshotId) {
     manifestSeq: 7,
     rowCounts: { s2s_items: 2 },
   });
-  return buildFreezeReadinessBundle({ snapshotId, writeLock, schedulerQuiescence, callbackDrain, hwmCompleteness });
+  // N5: the bundle carries the A2/A3 credential manifest hash, read
+  // live from the database at bundle time — the baseline T1 re-verifies.
+  const credentialManifestHash = withCredentialHash
+    ? buildCredentialVersionManifest(db, { snapshotId }).manifestHash
+    : undefined;
+  return buildFreezeReadinessBundle({ snapshotId, writeLock, schedulerQuiescence, callbackDrain, hwmCompleteness, credentialManifestHash });
 }
 
 function buildBundle(db) {
@@ -499,6 +536,110 @@ test("T-1 freeze refuses a readiness bundle built for a different snapshot (T)",
     checkpointId: CHECKPOINT,
   })), "freeze_readiness_bundle_snapshot_mismatch");
   assert.equal(readWriterAuthority(db).phase, "BWH_ACTIVE");
+});
+
+// --- N5 (PR #932 r4701898636): T1 re-verifies the credential
+// manifest against the A2/A3 bundle baseline. The window under test
+// is A3 -> T1: a rotation landing after the bundle is built must
+// refuse the freeze, even though the HWM cannot see it. Assertions
+// compare derived values (live manifest hash, live HWM, phase);
+// no epoch / snapshot / hash value is hardcoded as a pass criterion.
+
+function n5FreezeArgs(db, clock, bundle) {
+  return {
+    readinessBundle: bundle,
+    coverageMatrix: closedCoverage(),
+    drainTracker: drainedTracker(clock),
+    checkpointId: CHECKPOINT,
+  };
+}
+
+test("N5-a credential rotation between A3 and T1 refuses the freeze (insert / delete)", (t) => {
+  const cases = [
+    {
+      name: "insert",
+      mutate(db) {
+        seedCredentialRow(db, { requestId: "s2s-request-003", channelRef: "s2s-channel-a", credentialRef: "s2s-cred-003" });
+      },
+    },
+    {
+      name: "delete",
+      mutate(db) {
+        db.prepare("delete from platform_portal_edge_credentials where request_id = ? and edge_channel_ref = ?").run("s2s-request-002", "s2s-channel-a");
+      },
+    },
+  ];
+  for (const { name, mutate } of cases) {
+    const { db, coordinator, clock } = makeCoordinator(t);
+    const bundle = buildBundle(db);
+    mutate(db);
+    assert.equal(codeOf(() => coordinator.freeze(n5FreezeArgs(db, clock, bundle))), "freeze_credential_version_moved", name);
+    assert.deepEqual([readWriterAuthority(db).phase, readWriterAuthority(db).epoch], ["BWH_ACTIVE", 1], name);
+    assert.equal(coordinator.readLog().length, 0, name);
+  }
+});
+
+test("N5-b no rotation: freeze proceeds and the T1 receipt binds the bundle manifest hash", (t) => {
+  const { db, coordinator, clock } = makeCoordinator(t);
+  const bundle = buildBundle(db);
+  const result = coordinator.freeze(n5FreezeArgs(db, clock, bundle));
+  assert.equal(result.authority.phase, "FROZEN");
+  // Derived, not hardcoded: the T1 gate ref must equal the hash the
+  // bundle carried and the live manifest still reads at T1.
+  assert.equal(result.coordinatorReceipt.gateRefs.credentialManifestHash, bundle.credentialManifestHash);
+  assert.equal(
+    result.coordinatorReceipt.gateRefs.credentialManifestHash,
+    buildCredentialVersionManifest(db, { snapshotId: SNAPSHOT }).manifestHash,
+  );
+});
+
+test("N5-c missing credential tracking at T1 refuses the freeze (fail-closed)", (t) => {
+  const { db, coordinator, clock } = makeCoordinator(t);
+  const bundle = buildBundle(db);
+  uninstallCredentialVersionTracking(db);
+  assert.equal(codeOf(() => coordinator.freeze(n5FreezeArgs(db, clock, bundle))), "freeze_credential_tracking_missing");
+  assert.deepEqual([readWriterAuthority(db).phase, readWriterAuthority(db).epoch], ["BWH_ACTIVE", 1]);
+  assert.equal(coordinator.readLog().length, 0);
+});
+
+test("N5-d in-place rotation refuses even though the credential table's HWM entry does not move", (t) => {
+  const { db, coordinator, clock } = makeCoordinator(t);
+  const bundle = buildBundle(db);
+  const credentialMark = (hwm) => hwm.tables.find((entry) => entry.table === "platform_portal_edge_credentials");
+  const markBefore = credentialMark(readHighWaterMark(db));
+  db.prepare("update platform_portal_edge_credentials set edge_credential_ref = ?, edge_material_digest = ? where request_id = ? and edge_channel_ref = ?").run(
+    "s2s-cred-001-rotated", "sha256:s2s-rotated-material", "s2s-request-001", "s2s-channel-a",
+  );
+  // The rotation is invisible to the HWM for the credentials table
+  // itself: same row count, and the table carries no updated_at.
+  // (Only the version table's trigger timestamp can move, which is
+  // the tracking working — not the HWM seeing the rotation.)
+  assert.deepEqual(credentialMark(readHighWaterMark(db)), markBefore);
+  assert.deepEqual(credentialMark(readHighWaterMark(db)), credentialMark(bundle.receipts.writeLock.receipt.highWaterMark));
+  assert.equal(codeOf(() => coordinator.freeze(n5FreezeArgs(db, clock, bundle))), "freeze_credential_version_moved");
+  assert.equal(readWriterAuthority(db).phase, "BWH_ACTIVE");
+  assert.equal(coordinator.readLog().length, 0);
+});
+
+test("N5-e a bundle without a credential manifest hash refuses the freeze (fail-closed)", (t) => {
+  const { db, coordinator, clock } = makeCoordinator(t);
+  const bundle = buildBundleFor(db, SNAPSHOT, { withCredentialHash: false });
+  assert.equal(bundle.credentialManifestHash, undefined);
+  assert.equal(codeOf(() => coordinator.freeze(n5FreezeArgs(db, clock, bundle))), "freeze_readiness_bundle_credential_manifest_missing");
+  assert.equal(readWriterAuthority(db).phase, "BWH_ACTIVE");
+  assert.equal(coordinator.readLog().length, 0);
+});
+
+test("N5-f a non-credential write between A3 and T1 refuses the freeze (HWM belt-and-braces)", (t) => {
+  const { db, coordinator, clock } = makeCoordinator(t);
+  const bundle = buildBundle(db);
+  db.prepare("insert into s2s_notes (id, body) values (2, 'late')").run();
+  // The manifest is untouched, so the manifest gate passes and the
+  // HWM comparison is what refuses.
+  assert.equal(buildCredentialVersionManifest(db, { snapshotId: SNAPSHOT }).manifestHash, bundle.credentialManifestHash);
+  assert.equal(codeOf(() => coordinator.freeze(n5FreezeArgs(db, clock, bundle))), "freeze_t1_hwm_moved");
+  assert.equal(readWriterAuthority(db).phase, "BWH_ACTIVE");
+  assert.equal(coordinator.readLog().length, 0);
 });
 
 // --- Coordinator state machine: S-1..S-16 ---------------------------------

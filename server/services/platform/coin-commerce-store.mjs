@@ -3403,6 +3403,11 @@ export function createSqliteCoinCommerceStore(options = {}) {
     },
     complete(input) {
       return initialConfirmationAction(() => {
+        // U-F8/U-F13 (W-063): phase fence, first statement. This
+        // participant runs inside a caller's transaction; the fence is
+        // the first statement of this callback, before any of the
+        // receipt/command/order writes below.
+        assertCommerceWritable();
         const value = assertPlainObject(input);
         assertExactDataFields(value, new Set(["confirmationRef"]));
         const row = initialConfirmationRow("confirmation", normalizeReference(value.confirmationRef));

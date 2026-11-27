@@ -20,6 +20,11 @@ import {
   UNFENCED_WRITER_BASELINE,
 } from "../../../server/services/platform/d1-stage2-freeze-drain.mjs";
 import {
+  ensureCredentialVersionTracking,
+  buildCredentialVersionManifest,
+} from "../../../server/services/platform/d1-stage2-credential-reconciliation.mjs";
+import { SNAPSHOT_FIXTURE_DDL } from "../../../server/services/platform/d1-stage2-source-manifest.mjs";
+import {
   VERIFICATION_CHECK_IDS,
   buildSnapshotGateManifest,
   buildWriterCoverageMatrix,
@@ -49,6 +54,19 @@ function makeDb(t) {
     create table s2s_notes (id integer primary key, body text not null);`);
   db.prepare("insert into s2s_items (id, value, updated_at) values (1, 'a', '2026-11-21T00:00:00.000Z'), (2, 'b', '2026-11-21T00:01:00.000Z')").run();
   db.prepare("insert into s2s_notes (id, body) values (1, 'n')").run();
+  // G-2 (S4A precheck, Codex r4710015248): the fixture must carry the
+  // same credential version tracking the T1 gate requires. Install the
+  // triggers first, then seed synthetic credential rows so the
+  // triggers record tracked version entries; the bundle built from
+  // this db then carries a manifest hash bound to the current
+  // snapshot. The T1 guard stays on — nothing here bypasses it.
+  db.exec(SNAPSHOT_FIXTURE_DDL.platform_portal_edge_credentials);
+  ensureCredentialVersionTracking(db);
+  const digest = `sha256:${"a".repeat(64)}`;
+  db.prepare(`insert into platform_portal_edge_credentials
+    (request_id, edge_channel_ref, edge_credential_ref, edge_material_digest, ordinal)
+    values ('s2s-request-001', 's2s-channel-a', 's2s-cred-001', ?, 0),
+           ('s2s-request-002', 's2s-channel-b', 's2s-cred-002', ?, 0)`).run(digest, digest);
   ensureWriterAuthority(db);
   return db;
 }
@@ -73,7 +91,11 @@ function buildBundleFor(db, snapshotId) {
     manifestSeq: 7,
     rowCounts: { s2s_items: 2 },
   });
-  return buildFreezeReadinessBundle({ snapshotId, writeLock, schedulerQuiescence, callbackDrain, hwmCompleteness });
+  // G-2: the readiness bundle carries the A2/A3 credential manifest
+  // hash for this snapshot, so the coordinator's T1 re-read has a
+  // baseline to verify against.
+  const credentialManifestHash = buildCredentialVersionManifest(db, { snapshotId }).manifestHash;
+  return buildFreezeReadinessBundle({ snapshotId, writeLock, schedulerQuiescence, callbackDrain, hwmCompleteness, credentialManifestHash });
 }
 
 function buildBundle(db) {

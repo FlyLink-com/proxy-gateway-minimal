@@ -114,6 +114,20 @@ export function credentialVersionDigest({ pk, version, deleted, origin }) {
 // Idempotent (CREATE TABLE / TRIGGER IF NOT EXISTS). The triggers use
 // SQLite's own UTC clock for updated_at; updated_at is excluded from
 // every digest, so manifests stay deterministic.
+//
+// D1 fence note (2026-11-26, control-plane read work): no
+// assertWritable fence is added here, deliberately. This function
+// installs DDL, it is not a serving business write, and its only
+// caller is the offline source-manifest/export path
+// (d1-stage2-source-manifest.mjs), which runs against source/export
+// databases that carry no writer-authority row — fencing it would
+// install authority state onto those databases as a side effect.
+// There is also no serving method that writes the version table
+// directly (rows are trigger-derived); the fence surface for the
+// version table is therefore the credential write paths themselves
+// (upsertPortalAccessRequest / rotateCoinCommerceDataPackEdgeCredential,
+// both fenced), not this installer. If a serving writer for the
+// version table is ever added, it must carry its own fence.
 export function ensureCredentialVersionTracking(db) {
   if (!db || typeof db.exec !== "function" || typeof db.prepare !== "function") {
     throw credentialError("credential_tracking_unavailable", "credential version tracking requires a database handle");
@@ -251,6 +265,13 @@ export function backfillCredentialVersions(db, { now = () => new Date() } = {}) 
 // no version entry is untracked (tracking was never installed or was
 // bypassed), and a version entry with deleted = 0 and no live row is
 // an orphaned version. Both are errors, not warnings.
+//
+// Error messages never carry the composite credential PK: these errors
+// are surfaced verbatim into freeze refusal responses (see the
+// coordinator's assertCredentialManifestUnmoved and the executor's
+// readCredentialManifest), so only the error code identifies the
+// failure class. Operators diagnose the affected rows by reading the
+// version table directly; the manifest itself still binds every pk.
 export function buildCredentialVersionManifest(db, { snapshotId } = {}) {
   if (typeof snapshotId !== "string" || snapshotId.length === 0) {
     throw credentialError("credential_snapshot_required", "credential version manifest requires a non-empty snapshotId");
@@ -280,10 +301,10 @@ export function buildCredentialVersionManifest(db, { snapshotId } = {}) {
       origin: row.origin,
     };
     if (entry.deleted === 0 && !livePks.has(entry.pk)) {
-      throw credentialError("credential_version_orphaned", `credential version has no live row: ${entry.pk}`);
+      throw credentialError("credential_version_orphaned", "credential version has no live row");
     }
     if (entry.deleted === 1 && livePks.has(entry.pk)) {
-      throw credentialError("credential_version_orphaned", `credential version is tombstoned but the row is live: ${entry.pk}`);
+      throw credentialError("credential_version_orphaned", "credential version is tombstoned but the row is live");
     }
     entry.versionDigest = credentialVersionDigest(entry);
     if (entry.origin === "backfilled") backfilledCount += 1;
@@ -291,7 +312,7 @@ export function buildCredentialVersionManifest(db, { snapshotId } = {}) {
   }
   for (const pk of livePks) {
     if (!entries.some((entry) => entry.pk === pk)) {
-      throw credentialError("credential_version_untracked", `live credential row has no version entry: ${pk}`);
+      throw credentialError("credential_version_untracked", "live credential row has no version entry");
     }
   }
   const manifestHash = sha256Hex(canonicalJson({

@@ -51,6 +51,10 @@ import {
   createDrainTracker,
   createFreezeDrainCoordinator,
 } from "../services/platform/d1-card9-freeze-drain-coordinator.mjs";
+import {
+  ensureCredentialVersionTracking,
+  buildCredentialVersionManifest,
+} from "../services/platform/d1-stage2-credential-reconciliation.mjs";
 
 const FLAG = "ADS_CLICK_BINDING_ENABLED";
 const SNAPSHOT = "s2s-measurement-flush-001";
@@ -89,6 +93,10 @@ function legacyFixture({ installAuthority = true } = {}) {
   // case (A7).
   if (installAuthority) ensureWriterAuthority(database);
   const control = createSqliteSubscriptionControlStore({ database });
+  // N5 (PR #932 r4701898636): the T1 freeze re-reads the credential
+  // manifest, so the fixture installs credential version tracking
+  // (the control store creates the credentials table; zero rows).
+  ensureCredentialVersionTracking(database);
   applyCoinWalletMigrations({
     database,
     expectedMigrationId: REQUIRED_COIN_WALLET_MIGRATION_ID,
@@ -295,7 +303,10 @@ function buildBundle(db) {
     manifestSeq: 7,
     rowCounts: { platform_coin_commerce_orders: 1 },
   });
-  return buildFreezeReadinessBundle({ snapshotId: SNAPSHOT, writeLock, schedulerQuiescence, callbackDrain, hwmCompleteness });
+  // N5: the bundle carries the A2/A3 credential manifest hash — the
+  // baseline T1 re-verifies.
+  const credentialManifestHash = buildCredentialVersionManifest(db, { snapshotId: SNAPSHOT }).manifestHash;
+  return buildFreezeReadinessBundle({ snapshotId: SNAPSHOT, writeLock, schedulerQuiescence, callbackDrain, hwmCompleteness, credentialManifestHash });
 }
 
 function closedCoverage() {

@@ -1,7 +1,7 @@
 // D1 Stage 1B — wiring of the phase-only writer fence into the
 // service-layer write paths: the central store's runInTransaction
-// default path and the coin-commerce store's 13 named write
-// transactions. The fence rejects a frozen / D1-active database before
+// default path, the coin-commerce store's 13 named write transactions,
+// and its W-063 caller-owned write participant. The fence rejects a frozen / D1-active database before
 // any business effect, and the commerce store lets the fence error
 // keep its own code (writer_authority_not_bwh) instead of wrapping it
 // as commerce_infrastructure_error, so callers can tell a frozen
@@ -333,7 +333,7 @@ test("S1B-WIRE-7: commerce retireOfferVersion rejects while FROZEN and the offer
   assert.equal(offerStatus(database, "offerv_monthly_basic_v1"), "retired");
 });
 
-// --- Source-shape invariant: all 13 named write transactions fenced ---
+// --- Source-shape invariant: named transactions and W-063 are fenced ---
 
 const FENCED_COMMERCE_WRITERS = [
   "const publishTransaction = db.transaction(",
@@ -351,32 +351,59 @@ const FENCED_COMMERCE_WRITERS = [
   "const nextWakeTransaction = db.transaction(",
 ];
 
-test("S1B-WIRE-8: every named commerce write transaction calls the fence as its first statement", () => {
-  const storePath = join(
-    dirname(fileURLToPath(import.meta.url)),
-    "..",
-    "services",
-    "platform",
-    "coin-commerce-store.mjs",
-  );
-  const lines = readFileSync(storePath, "utf8").split(/\r?\n/);
-  const fenceLines = lines.filter((line) => /^\s*assertCommerceWritable\(\);$/.test(line));
-  assert.equal(
-    fenceLines.length,
-    FENCED_COMMERCE_WRITERS.length,
-    `expected one fence call per named write transaction, got ${fenceLines.length}`,
-  );
-  for (const definition of FENCED_COMMERCE_WRITERS) {
-    const at = lines.findIndex((line) => line.includes(definition));
-    assert.notEqual(at, -1, `missing write transaction definition: ${definition}`);
-    // Literal first-statement check: the first non-blank line after the
-    // definition must be the fence call — not merely present nearby.
-    const firstStatement = lines.slice(at + 1).find((line) => line.trim().length > 0);
-    assert.ok(
-      firstStatement !== undefined && /^\s*assertCommerceWritable\(\);$/.test(firstStatement),
-      `fence is not the first statement of ${definition}: ${firstStatement ?? "<none>"}`,
-    );
+const COMMERCE_FENCE = /^\s*assertCommerceWritable\(\);$/;
+const commerceSourcePath = join(
+  dirname(fileURLToPath(import.meta.url)),
+  "..",
+  "services",
+  "platform",
+  "coin-commerce-store.mjs",
+);
+
+function assertCommerceFenceInventory(source) {
+  const lines = source.split(/\r?\n/);
+  function firstFenceAfter(at, label) {
+    const next = lines.findIndex((line, index) =>
+      index > at && line.trim() && !line.trimStart().startsWith("//"));
+    assert.ok(next !== -1 && COMMERCE_FENCE.test(lines[next]),
+      `fence is not the first statement of ${label}: ${lines[next] ?? "<none>"}`);
+    return next;
   }
+  const expected = FENCED_COMMERCE_WRITERS.map(definition => {
+    const at = lines.findIndex(line => line.includes(definition));
+    assert.notEqual(at, -1, `missing write transaction definition: ${definition}`);
+    return firstFenceAfter(at, definition);
+  });
+
+  // W-063 runs inside the caller's transaction, not a db.transaction()
+  // declared by this store. Verify the exact complete() callback, not inspect().
+  const participant = lines.indexOf("  const initialConfirmationParticipant = Object.freeze({");
+  assert.notEqual(participant, -1, "missing W-063 initial confirmation participant");
+  const participantEnd = lines.indexOf("  });", participant + 1);
+  const complete = lines.indexOf("    complete(input) {", participant + 1);
+  assert.ok(complete > participant && complete < participantEnd,
+    "missing W-063 initialConfirmationParticipant.complete()");
+  assert.equal(lines[complete + 1], "      return initialConfirmationAction(() => {",
+    "W-063 complete() must use the caller-transaction wrapper");
+  expected.push(firstFenceAfter(complete + 1, "W-063 complete() callback"));
+
+  const actual = lines.flatMap((line, index) => COMMERCE_FENCE.test(line) ? [index] : []);
+  assert.deepEqual(actual, expected.sort((a, b) => a - b),
+    "unexpected fence outside the inventoried transaction bodies");
+}
+
+test("S1B-WIRE-8: named commerce transactions and W-063 fence before business logic", () => {
+  assertCommerceFenceInventory(readFileSync(commerceSourcePath, "utf8"));
+});
+
+test("S1B-WIRE-8 regression: a late W-063 fence is rejected even when fence count stays the same", () => {
+  const source = readFileSync(commerceSourcePath, "utf8").replace(/\r\n/g, "\n");
+  const original = "        assertCommerceWritable();\n        const value = assertPlainObject(input);";
+  assert.ok(source.includes(original), "expected W-063 fixture anchor");
+  const late = source.replace(original,
+    "        const value = assertPlainObject(input);\n        assertCommerceWritable();");
+  assert.throws(() => assertCommerceFenceInventory(late),
+    /fence is not the first statement of W-063 complete/);
 });
 
 test("S1B-WIRE-9: write callbacks on two connections are fenced by the same freeze", (t) => {
