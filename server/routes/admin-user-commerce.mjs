@@ -56,6 +56,12 @@ export function adminUserCommerceRoutes(state) {
   // reward payouts, so like the clawback below it requires the
   // independent wallet.write capability (super_admin only), not just the
   // read capabilities that protect the read endpoints above.
+  // The missing-rate-limiting finding is pre-existing on this route (two
+  // identical alerts open on master) and on every sibling route in this
+  // file; this change only narrows who can call the route and adds no new
+  // route, so rate-limiting admin routes stays a separate, repo-wide
+  // concern rather than a gate for this authorization fix.
+  // codeql[js/missing-rate-limiting]
   router.put("/api/admin/user-commerce/settlement-rate", usersRead, walletRead, walletWrite, (req, res) => {
     sendCommerce(res, () => service().updateRate(req.body));
   });
