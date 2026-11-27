@@ -67,6 +67,12 @@ jobs:
           node-version: 22
 
       - name: Require confirmation
+        # Test branch only: a push to this dedicated branch IS the deliberate
+        # trigger, so the dispatch confirmation is required only for
+        # workflow_dispatch (where inputs.confirmation exists). On push the
+        # input is empty by design and the step is skipped. The master/PR
+        # version keeps the unconditional confirmation gate.
+        if: github.event_name == 'workflow_dispatch'
         shell: bash
         run: |
           set -euo pipefail
