@@ -137,6 +137,7 @@ const COIN_COMMERCE_STORE_FIELDS = Object.freeze([
   "listOrders",
   "claimDueCaptures",
   "captureClaimedOrder",
+  "diagnoseDanglingOrderHolds",
   "recoverNonTerminalOrders",
   "claimNextFulfillmentCommand",
   "completeFulfillmentCommand",
@@ -1328,7 +1329,12 @@ function durableEdgeCredentialOrders({ controlStore, materialStore, nodeId } = {
         validUntil: binding.validUntil,
         edgeChannelRef: nodeId || binding.nodeId,
         edgeCredentialRef: materialSummary.credentialRef,
-        edgeMaterialDigest: materialSummary.materialDigest
+        edgeMaterialDigest: materialSummary.materialDigest,
+        // V-04 narrow (2026-11-27): visibility marker only. This order is
+        // produced by the legacy path because no portal access request
+        // exists for the binding; the marker does not change dedup,
+        // priority, or lifecycle handling (those read only known fields).
+        requestStatus: null
       };
     })
     .filter(Boolean);

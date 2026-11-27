@@ -29,6 +29,7 @@ const STORE_METHODS = [
   "confirmCoinCredit",
   "createCoinHold",
   "creditCoins",
+  "diagnoseOrphanHoldAllocations",
   "expireCoinHold",
   "expireCoinLot",
   "expireDuePortalRegistrationWelcomeBonusCoinLots",
