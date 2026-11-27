@@ -1,5 +1,8 @@
-import { readFile, realpath, stat } from "node:fs/promises";
-import { isAbsolute, relative, resolve, dirname } from "node:path";
+import { mkdtemp, open, readFile, realpath, stat, writeFile } from "node:fs/promises";
+import { isAbsolute, join, relative, resolve, dirname } from "node:path";
+import { tmpdir } from "node:os";
+import { execFileSync, spawn } from "node:child_process";
+import { SOURCE_VALIDATION_EMPTY_ENV_RELATIVE_PATH, sanitizeSourceValidationChildEnvironment } from "../../scripts/source-validation-test-runner.mjs";
 
 const MODULES = {
   server: { label: "Server / SQLite", command: "npm test", tapSections: 2 },
@@ -8,6 +11,34 @@ const MODULES = {
   migration: { label: "Migration / reconciliation", command: "Run the exact authorized local synthetic suite from its PR or runbook." },
   integration: { label: "BWH / Worker / Agent joint validation", command: "Use the Worker suite or the pinned synthetic rehearsal receipt; do not run a remote rehearsal here." },
 };
+
+// These fixed Node invocations mirror the existing npm test scripts, with TAP explicit.
+const TAP = ["--test", "--test-reporter=tap"];
+const PROFILES = {
+  server: { full: { sections: 2, steps: [
+    [".", "scripts/source-validation-test-runner.mjs", "--test-reporter=tap"],
+    [".", ...TAP, "tools/c2-worker-config-policy/check.test.mjs"],
+    [".", "tools/c2-worker-config-policy/check.mjs"],
+  ] }, focused: { sections: 1 } },
+  worker: { full: { sections: 1, steps: [
+    ["workers/control-plane", ...TAP, "test/**/*.test.mjs", "../../server/tests/agent-g4-contract.test.mjs"],
+  ] }, focused: { sections: 1 } },
+  agent: { focused: { sections: 1, steps: [
+    [".", ...TAP, "server/tests/agent-g4-contract.test.mjs"],
+  ] } },
+  migration: {},
+  integration: {},
+};
+const DEFAULT_PROFILE = { server: "full", worker: "full", agent: "focused" };
+const commandReceipt = (steps) => steps.map(([cwd, ...argv]) => ({ cwd, argv: ["node", ...argv] }));
+function matchesCommand(command, steps) {
+  return Array.isArray(command) && command.length === steps.length && steps.every(([cwd, ...args], index) => {
+    const step = command[index];
+    const argv = ["node", ...args];
+    return step?.cwd === cwd && Array.isArray(step.argv) && step.argv.length === argv.length &&
+      argv.every((arg, n) => step.argv[n] === arg);
+  });
+}
 
 const ENV = ["local", "ci", "isolated", "staging", "production"];
 const SERVICES = {
@@ -137,10 +168,31 @@ export async function diagnose(input, directory, now = Date.now()) {
     const issue = identity(row, target);
     const source = index + 1;
     if (issue) { tests.push({ source, status: "unverified", reason: issue }); continue; }
+    if (row.module !== module) {
+      tests.push({ source, status: "unverified", reason: row.module === undefined ? "missing_test_module" : "wrong_module" }); continue;
+    }
+    const profile = typeof row.profile === "string" && Object.hasOwn(PROFILES[module], row.profile) ?
+      PROFILES[module][row.profile] : null;
+    if (!profile && (row.profile !== "manual" || !["migration", "integration"].includes(module))) {
+      tests.push({ source, status: "unverified", reason: "missing_or_invalid_test_profile" }); continue;
+    }
+    if (row.profile === "full" && (!matchesCommand(row.command, profile.steps) || row.worktreeClean !== true)) {
+      tests.push({ source, profile: row.profile, status: "unverified", reason: "missing_full_run_provenance" }); continue;
+    }
+    if (row.worktreeClean === false) {
+      tests.push({ source, profile: row.profile, status: "unverified", reason: "dirty_or_changed_worktree" }); continue;
+    }
+    if (row.signal) {
+      tests.push({ source, profile: row.profile, status: "interrupted", reason: "child_signal" }); continue;
+    }
+    if (row.launchFailed === true) {
+      tests.push({ source, profile: row.profile, status: "not_run", reason: "child_launch_failed" }); continue;
+    }
     requireValue(typeof row.node === "string" && NODES.test(row.node), "invalid_node_version");
     const exitCode = row.exitCode ?? null;
     requireValue(exitCode === null || Number.isInteger(exitCode) && exitCode >= 0 && exitCode <= 255, "invalid_exit_code");
-    const expected = row.expectedTapSections ?? configuration.tapSections;
+    const expected = profile?.sections ?? row.expectedTapSections;
+    requireValue(row.expectedTapSections === undefined || expected === row.expectedTapSections, "invalid_expected_tap_sections");
     requireValue(Number.isInteger(expected) && expected >= 1 && expected <= 16, "invalid_expected_tap_sections");
     requireValue(typeof row.log === "string" && /\.(log|tap)$/i.test(row.log) && !isAbsolute(row.log), "invalid_log_path");
     const base = await realpath(directory);
@@ -157,14 +209,15 @@ export async function diagnose(input, directory, now = Date.now()) {
       tests.push({ source, node: row.node, status: exitCode !== null && exitCode !== 0 ? "failed" : "unverified", exitCode, reason: "missing_log" });
       continue;
     }
-    tests.push({ source, node: row.node, ...inspectTap(log, exitCode, expected) });
+    tests.push({ source, profile: row.profile, node: row.node, ...inspectTap(log, exitCode, expected) });
   }
   const ci = [];
   for (const row of asArray(input.ci)) {
     requireValue(CI_LANES.includes(row?.lane) && CI_RESULTS.includes(row.result), "invalid_ci_receipt");
     const issue = identity(row, { env: "ci", sha });
     ci.push(issue ? { lane: row.lane, status: "unverified", reason: issue } :
-      { lane: row.lane, environment: "ci", status: row.result, runUrl: repoRunUrl(row.runUrl) });
+      { lane: row.lane, environment: "ci", status: "unverified", claimedResult: row.result,
+        reason: "ci_provenance_unverified", runUrl: repoRunUrl(row.runUrl) });
   }
   const services = [];
   for (const row of asArray(input.services)) {
@@ -197,6 +250,7 @@ export function formatReport(report) {
   const summaries = [`${report.label} | ${report.environment} | ${report.sha}`];
   for (const t of report.tests) {
     const details = [
+      t.profile,
       t.node && `Node ${t.node}`,
       Number.isInteger(t.exitCode) && `exit ${t.exitCode}`,
       t.logComplete === false && "incomplete log",
@@ -207,7 +261,7 @@ export function formatReport(report) {
     ].filter(Boolean);
     summaries.push(`Test${t.source ? ` [${t.source}]` : ""}: ${t.status}${details.length ? ` (${details.join("; ")})` : ""}`);
   }
-  for (const c of report.ci) summaries.push(`CI${c.lane ? ` [${c.lane}]` : ""}: ${c.status}${c.reason ? ` (${c.reason})` : ""}${c.runUrl ? ` ${c.runUrl}` : ""}`);
+  for (const c of report.ci) summaries.push(`CI${c.lane ? ` [${c.lane}]` : ""}: ${c.status}${c.claimedResult ? ` (reported: ${c.claimedResult})` : ""}${c.reason ? ` (${c.reason})` : ""}${c.runUrl ? ` ${c.runUrl}` : ""}`);
   for (const s of report.services) {
     const evidence = Object.entries(s.observed ?? {}).map(([key, value]) => `${key}=${value}`);
     if (s.unknownFields?.length) evidence.push(`unknown: ${s.unknownFields.join(", ")}`);
@@ -218,13 +272,114 @@ export function formatReport(report) {
   return summaries.join("\n");
 }
 
+function runStep(args, options, onChild) {
+  return new Promise((done) => {
+    const child = spawn(process.execPath, args, options);
+    let launchFailed = false;
+    onChild(child);
+    child.once("error", () => { launchFailed = true; });
+    child.once("close", (exitCode, signal) => {
+      onChild(null);
+      done({ exitCode, signal, launchFailed });
+    });
+  });
+}
+
+function readGit(root, env, args) {
+  return execFileSync("git", args, {
+    cwd: root, env, stdio: ["ignore", "pipe", "pipe"], encoding: "utf8", timeout: 10000,
+  }).trim();
+}
+
+export async function runModule(module, {
+  root = resolve(dirname(import.meta.filename), "../.."), temporaryRoot = tmpdir(),
+} = {}) {
+  requireValue(itemOf(module, DEFAULT_PROFILE), "module_not_runnable");
+  const profile = DEFAULT_PROFILE[module];
+  const { steps, sections } = PROFILES[module][profile];
+  const dir = await mkdtemp(join(temporaryRoot, `flylink-diagnostics-${module}-`));
+  const logName = "run.log";
+  const env = {
+    ...sanitizeSourceValidationChildEnvironment(),
+    HOME: dir, USERPROFILE: dir, TEMP: dir, TMP: dir, TMPDIR: dir, NODE_ENV: "test",
+    GIT_CONFIG_NOSYSTEM: "1", GIT_TERMINAL_PROMPT: "0",
+    DOTENV_CONFIG_PATH: resolve(root, SOURCE_VALIDATION_EMPTY_ENV_RELATIVE_PATH),
+    DOTENV_CONFIG_QUIET: "true", NO_COLOR: "1",
+  };
+  const sha = readGit(root, env, ["rev-parse", "HEAD"]);
+  requireValue(SHAS.test(sha), "module_checkout_unavailable");
+  const clean = readGit(root, env, ["status", "--porcelain", "--untracked-files=normal"]) === "";
+  const startedAt = new Date().toISOString();
+  const log = await open(join(dir, logName), "wx", 0o600);
+  let child = null;
+  let interrupted = null;
+  const interrupt = (signal) => { interrupted ??= signal; child?.kill(signal); };
+  process.on("SIGINT", interrupt);
+  process.on("SIGTERM", interrupt);
+  let result = { exitCode: null, signal: null, launchFailed: false };
+  let attemptedSteps = 0;
+  try {
+    for (const [cwd, ...args] of steps) {
+      if (interrupted) break;
+      attemptedSteps++;
+      result = await runStep(args, {
+        cwd: resolve(root, cwd), env, stdio: ["ignore", log.fd, log.fd], windowsHide: true,
+      }, (value) => { child = value; });
+      if (result.exitCode !== 0 || result.signal || result.launchFailed) break;
+    }
+  } finally {
+    process.off("SIGINT", interrupt);
+    process.off("SIGTERM", interrupt);
+    await log.close();
+  }
+  const signal = interrupted ?? result.signal;
+  let worktreeClean = false;
+  try {
+    worktreeClean = clean && readGit(root, env, ["rev-parse", "HEAD"]) === sha &&
+      readGit(root, env, ["status", "--porcelain", "--untracked-files=normal"]) === "";
+  } catch { /* checkout identity could not be verified after the run */ }
+  let parsed;
+  try { parsed = inspectTap(await boundedFile(join(dir, logName), 64 * 1024 * 1024), result.exitCode, sections); }
+  catch { parsed = { status: "unverified", logComplete: false, reason: "log_not_parsed" }; }
+  const status = signal ? "interrupted" : result.launchFailed ? "not_run" : result.exitCode !== null && result.exitCode !== 0 ? "failed" : parsed.status;
+  const receipt = { ...parsed, status, module, profile, environment: "local", sha, worktreeClean,
+    node: process.version, startedAt, endedAt: new Date().toISOString(),
+    exitCode: result.exitCode, signal, log: logName, expectedTapSections: sections,
+    command: commandReceipt(steps), launchFailed: result.launchFailed, attemptedSteps,
+  };
+  await writeFile(join(dir, "bundle.json"), JSON.stringify({
+    schemaVersion: 1, module, environment: "local", sha, tests: [receipt],
+  }, null, 2) + "\n", { flag: "wx", mode: 0o600 });
+  return { dir, receipt };
+}
+
 async function main(args) {
   if (args.length === 1 && args[0] === "--list") {
     console.log(JSON.stringify(MODULES, null, 2));
     return;
   }
+  if (args[0] === "--module" && args.length === 2) {
+    if (!itemOf(args[1], DEFAULT_PROFILE)) {
+      console.error("Module not runnable here. Use server, worker, or agent; migration and integration require a pinned runbook.");
+      process.exitCode = 2;
+      return;
+    }
+    try {
+      const { dir, receipt: r } = await runModule(args[1]);
+      console.log(formatReport({
+        label: MODULES[r.module].label, environment: "local", sha: r.sha, tests: [r], ci: [], services: [],
+      }));
+      if (!r.worktreeClean) console.log("Worktree not verified clean; this result is not exact-commit evidence.");
+      console.log(`Log: ${join(dir, "run.log")}\nReceipt: ${join(dir, "bundle.json")}`);
+      process.exitCode = r.signal ? 1 : r.exitCode || (r.status === "passed" ? 0 : 1);
+    } catch {
+      console.error("Module runner could not record the run.");
+      process.exitCode = 2;
+    }
+    return;
+  }
   if (args[0] !== "--bundle" || !(args.length === 2 || args.length === 3 && args[2] === "--json")) {
-    console.error("Usage: node tools/test-diagnostics/diagnose.mjs --list | --bundle <bundle.json> [--json]");
+    console.error("Usage: node tools/test-diagnostics/diagnose.mjs --list | --module <server|worker|agent> | --bundle <bundle.json> [--json]");
     process.exitCode = 2;
     return;
   }

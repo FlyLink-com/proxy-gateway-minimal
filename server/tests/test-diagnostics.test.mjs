@@ -1,17 +1,17 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtemp, rm, writeFile, symlink } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, rm, writeFile, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
-import { diagnose, formatReport, inspectTap } from "../../tools/test-diagnostics/diagnose.mjs";
+import { diagnose, formatReport, inspectTap, runModule } from "../../tools/test-diagnostics/diagnose.mjs";
 
 const CLI = fileURLToPath(new URL("../../tools/test-diagnostics/diagnose.mjs", import.meta.url));
 const NOW = Date.parse("2026-11-27T12:00:00Z");
 const SHA = "a".repeat(40);
 const target = { schemaVersion: 1, module: "worker", environment: "local", sha: SHA };
-const local = { environment: "local", sha: SHA, node: "v24.22.3", log: "run.log" };
+const local = { environment: "local", sha: SHA, module: "worker", profile: "focused", node: "v24.22.3", log: "run.log" };
 const tap = (pass, fail = 0, skipped = 0, todo = 0) => [
   "TAP version 13", "1..1", `# tests ${pass + fail + skipped + todo}`, "# suites 0", `# pass ${pass}`, `# fail ${fail}`,
   "# cancelled 0", `# skipped ${skipped}`, `# todo ${todo}`, "# duration_ms 10", "",
@@ -92,7 +92,8 @@ test("wrong environment or SHA remains unverified, while CI and service history 
     ],
   }, dir, NOW);
   assert.equal(r.tests[0].reason, "wrong_commit");
-  assert.equal(r.ci[0].status, "skipped");
+  assert.equal(r.ci[0].status, "unverified");
+  assert.equal(r.ci[0].claimedResult, "skipped");
   assert.match(r.ci[0].runUrl, /\/42$/);
   assert.equal(r.ci[1].reason, "wrong_commit");
   assert.equal(r.services[0].reason, "stale");
@@ -141,4 +142,77 @@ test("accepts a UTF-8 BOM manifest and Windows PowerShell UTF-16LE logs", async 
   const r = spawnSync(process.execPath, [CLI, "--bundle", bundle, "--json"], { encoding: "utf8" });
   assert.equal(r.status, 0, r.stderr);
   assert.equal(JSON.parse(r.stdout).tests[0].status, "passed");
+});
+
+test("same-SHA evidence from another lane or without a full command cannot pass", async (t) => {
+  const dir = await fixture(t);
+  await writeFile(join(dir, "run.log"), tap(1));
+  const r = await diagnose({ ...target, tests: [
+    { ...local, exitCode: 0, module: "agent" },
+    { ...local, exitCode: 0, profile: "full" },
+    { ...local, exitCode: 0, profile: undefined },
+    { ...local, exitCode: 0 },
+  ], ci: [{ sha: SHA, environment: "ci", lane: "worker", result: "success",
+    runUrl: "https://github.com/FlyLink-com/proxy-gateway-minimal/actions/runs/42" }] }, dir);
+  assert.deepEqual(r.tests.map(x => x.reason), [
+    "wrong_module", "missing_full_run_provenance", "missing_or_invalid_test_profile", null,
+  ]);
+  assert.equal(r.tests[3].profile, "focused");
+  assert.equal(r.tests[3].status, "passed");
+  assert.equal(r.ci[0].status, "unverified");
+  assert.equal(r.ci[0].reason, "ci_provenance_unverified");
+});
+
+test("module CLI rejects manual, unknown and extra arguments", () => {
+  for (const args of [["migration"], ["integration"], ["toString"], ["--help"], ["agent", "--test"]]) {
+    const result = spawnSync(process.execPath, [CLI, "--module", ...args], { encoding: "utf8" });
+    assert.equal(result.status, 2);
+  }
+});
+
+test("module runner isolates subprocess environment and keeps raw output, exit, and first failure", async (t) => {
+  const root = await fixture(t);
+  const results = await fixture(t);
+  const git = (...args) => {
+    const r = spawnSync("git", args, { cwd: root, encoding: "utf8" });
+    assert.equal(r.status, 0, r.stderr);
+    return r.stdout.trim();
+  };
+  git("init", "--quiet");
+  await mkdir(join(root, "server", "tests"), { recursive: true });
+  const path = join(root, "server", "tests", "agent-g4-contract.test.mjs");
+  const fixtureSource = [
+    'import { test } from "node:test";',
+    'import assert from "node:assert/strict";',
+    'test("fixture subprocess", () => { assert.equal(process.env.DIAGNOSTICS_PRIVATE_SENTINEL, undefined); console.error("stderr fixture"); });',
+  ].join("\n");
+  await writeFile(path, fixtureSource);
+  git("add", ".");
+  git("-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid", "commit", "--quiet", "-m", "Fixture");
+  process.env.DIAGNOSTICS_PRIVATE_SENTINEL = "must-not-reach-child";
+  t.after(() => { delete process.env.DIAGNOSTICS_PRIVATE_SENTINEL; });
+  const ok = await runModule("agent", { root, temporaryRoot: results });
+  assert.equal(ok.receipt.status, "passed");
+  assert.equal(ok.receipt.sha, git("rev-parse", "HEAD"));
+  assert.equal(ok.receipt.worktreeClean, true);
+  assert.equal(ok.receipt.profile, "focused");
+  assert.equal(ok.receipt.exitCode, 0);
+  assert.equal(ok.receipt.attemptedSteps, 1);
+  const log = await readFile(join(ok.dir, "run.log"), "utf8");
+  assert.match(log, /stderr fixture/);
+  assert.match(log, /^TAP version /m);
+  assert.doesNotMatch(log, /must-not-reach-child/);
+  const saved = JSON.parse(await readFile(join(ok.dir, "bundle.json"), "utf8"));
+  assert.deepEqual(saved.tests[0], ok.receipt);
+  const viewed = await diagnose(saved, ok.dir);
+  assert.equal(viewed.tests[0].status, "passed");
+
+  await writeFile(path, fixtureSource + '\ntest("private fixture failure", () => { throw Error("private detail"); });');
+  const bad = await runModule("agent", { root, temporaryRoot: results });
+  assert.notEqual(bad.dir, ok.dir);
+  assert.equal(bad.receipt.status, "failed");
+  assert.equal(bad.receipt.worktreeClean, false);
+  assert.equal(bad.receipt.exitCode, 1);
+  assert.ok(bad.receipt.firstFailure?.line);
+  assert.doesNotMatch(JSON.stringify(bad.receipt), /private fixture failure|private detail/);
 });
