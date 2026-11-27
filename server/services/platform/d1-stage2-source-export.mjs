@@ -1,3 +1,4 @@
+// PROBE-946: trigger-path verification only - no behavior change (revert with branch).
 // D1 Stage 2 — safe export row batches and incremental manifest
 // (tasks 2, 3, 4).
 //
