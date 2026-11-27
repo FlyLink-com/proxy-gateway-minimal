@@ -1969,21 +1969,23 @@ export function createSqliteCoinCommerceStore(options = {}) {
     }
     const hold = db.prepare(`
       select h.*,
+             w.wallet_ref as joined_wallet_ref,
              w.account_id as wallet_account_id,
              w.status as wallet_status,
              w.version as wallet_version,
              w.created_at as wallet_created_at,
              w.updated_at as wallet_updated_at
         from platform_coin_holds h
-        join platform_coin_wallets w on w.wallet_ref = h.wallet_ref
+        left join platform_coin_wallets w on w.wallet_ref = h.wallet_ref
        where h.hold_ref = ?
     `).get(order.hold_ref);
-    // V-04 narrow (2026-11-27): a well-formed order whose hold row never
-    // arrived is distinguishable from a malformed order and from a present
-    // but inconsistent hold. The signal is diagnostic/audit only; every
-    // caller still fails closed on !valid, exactly as before.
+    // A missing hold and a present hold whose wallet is missing are
+    // distinct diagnostic states. Both remain invalid.
     if (!hold) {
       return { valid: false, hold: null, holdMissing: true };
+    }
+    if (hold.joined_wallet_ref === null) {
+      return { valid: false, hold: null, walletMissing: true };
     }
     if (
       !isSafeWalletReference(hold.hold_ref)
@@ -4053,10 +4055,9 @@ export function createSqliteCoinCommerceStore(options = {}) {
   });
 
   // V-04 narrow diagnostic (2026-11-27): read/audit visibility only.
-  // Lists non-terminal orders whose hold row never arrived, each marked
-  // holdMissing. It is a separate query on purpose: selectAuditRecoveryRows
-  // feeds recoverTransaction, so widening it would double-count audit rows.
-  // Missing holds stay fail-closed everywhere (cancel / lease / capture).
+  // Reports a missing hold separately from a present hold missing its wallet.
+  // Keep this query separate from selectAuditRecoveryRows, which feeds
+  // recoverTransaction. Both missing edges stay fail-closed.
   function diagnoseDanglingOrderHolds(diagnoseInput = {}) {
     return execute(() => {
       const value = assertPlainObject(diagnoseInput);
@@ -4064,11 +4065,13 @@ export function createSqliteCoinCommerceStore(options = {}) {
       const limit = value.limit === undefined ? 100 : normalizeLimit(value.limit);
       const rows = db.prepare(`
         select o.order_ref, o.account_id, o.amount_units, o.payment_status,
-               o.hold_ref, o.updated_at
+               o.hold_ref, o.updated_at,
+               h.hold_ref as joined_hold_ref
           from platform_coin_commerce_orders o
           left join platform_coin_holds h on h.hold_ref = o.hold_ref
+          left join platform_coin_wallets w on w.wallet_ref = h.wallet_ref
          where o.payment_status in ('held', 'capture_pending', 'captured', 'capture_failed')
-           and h.hold_ref is null
+           and (h.hold_ref is null or w.wallet_ref is null)
          order by o.updated_at, o.order_ref
          limit ?
       `).all(limit);
@@ -4078,7 +4081,7 @@ export function createSqliteCoinCommerceStore(options = {}) {
         amountUnits: row.amount_units,
         paymentStatus: row.payment_status,
         holdRef: row.hold_ref,
-        holdMissing: true
+        ...(row.joined_hold_ref === null ? { holdMissing: true } : { walletMissing: true })
       }));
       logV04Diagnostic("order-holds", unmigratedRows.length);
       return {

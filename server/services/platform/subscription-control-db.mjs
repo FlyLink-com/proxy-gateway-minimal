@@ -6498,9 +6498,9 @@ export function createSqliteSubscriptionControlStore({
   }
 
   // V-04 narrow diagnostic (2026-11-27): read/audit visibility only. Lists
-  // issued subscription links whose issuance request or entitlement never
-  // arrived (mapped through the existing mapper, so requestStatus null is
-  // the established "unmigrated" signal). listIssuedSubscriptionBindings
+  // issued links missing their issuance request or entitlement. Keep the
+  // actual request status (including issued) and report the missing edge
+  // separately. listIssuedSubscriptionBindings
   // and the wallet-first / deferred exact chains keep refusing these rows.
   function diagnoseDanglingIssuedSubscriptionBindings(filters = {}) {
     assertNoUnsafeFields(filters);
@@ -6528,13 +6528,18 @@ export function createSqliteSubscriptionControlStore({
         e.status as entitlement_status,
         e.valid_from,
         e.valid_until,
-        e.traffic_limit_bytes
+        e.traffic_limit_bytes,
+        case when r.id is null then 'missing_request' else 'missing_entitlement' end
+          as diagnostic_reason
       from platform_issued_subscription_links l
       left join platform_issuance_requests r on r.id = l.request_id
       left join platform_entitlements e on e.id = r.entitlement_id
       where ${clauses.join(" and ")}
       order by l.created_at asc, l.id asc
-    `).all(...params).map(mapIssuedSubscriptionBinding);
+    `).all(...params).map((row) => ({
+      ...mapIssuedSubscriptionBinding(row),
+      diagnosticReason: row.diagnostic_reason
+    }));
     logV04Diagnostic("issued-subscription-bindings", unmigratedRows.length);
     return {
       unmigratedCount: unmigratedRows.length,

@@ -221,12 +221,14 @@ test("A1/A2 E5: diagnostic counts 144 dangling links; the strict list stays empt
     validUntil: null,
     trafficLimitBytes: null,
     createdAt: NOW,
-    updatedAt: NOW
+    updatedAt: NOW,
+    diagnosticReason: "missing_request"
   });
   const last = result.unmigratedRows.find((row) => row.id === "link_diag_143");
   assert.equal(last.requestId, "req_diag_143");
   assert.equal(last.tenantRef, "tenant_diag_143");
   assert.equal(last.requestStatus, null);
+  assert.equal(last.diagnosticReason, "missing_request");
   assert.deepEqual(lines, ["v04 unmigrated diagnostic: kind=issued-subscription-bindings count=144"]);
   assert.doesNotMatch(lines.join("\n"), /req_diag|link_diag|tenant_diag/);
   // Business side stays at zero for the dangling rows: only the migrated
@@ -235,6 +237,28 @@ test("A1/A2 E5: diagnostic counts 144 dangling links; the strict list stays empt
   assert.equal(listed.length, 1);
   assert.equal(listed[0].id, "link_1");
   assert.equal(listed[0].requestStatus, "issued");
+});
+
+test("E5: a missing entitlement keeps the actual issued request status", (t) => {
+  const { database, store } = controlFixture(t);
+  insertAccount(database, "acct_1");
+  withoutForeignKeys(database, () => {
+    insertIssuanceRequest(database, "req_1", "acct_1", "ent_missing");
+    insertLink(database, "link_1", "req_1", "tenant_1");
+    insertLink(database, "link_2", "req_missing", "tenant_2");
+  });
+  const before = totalChanges(database);
+  const { result, lines } = captureWarnings(() => store.diagnoseDanglingIssuedSubscriptionBindings());
+  assert.equal(totalChanges(database), before);
+  assert.equal(result.unmigratedCount, 2);
+  const byId = new Map(result.unmigratedRows.map((row) => [row.id, row]));
+  assert.equal(byId.get("link_1").requestStatus, "issued");
+  assert.equal(byId.get("link_1").entitlementStatus, null);
+  assert.equal(byId.get("link_1").diagnosticReason, "missing_entitlement");
+  assert.equal(byId.get("link_2").requestStatus, null);
+  assert.equal(byId.get("link_2").diagnosticReason, "missing_request");
+  assert.deepEqual(lines, ["v04 unmigrated diagnostic: kind=issued-subscription-bindings count=2"]);
+  assert.deepEqual(store.listIssuedSubscriptionBindings(), []);
 });
 
 test("A5: wallet-first exact chain still refuses a dangling link while the diagnostic sees it", (t) => {
@@ -619,6 +643,45 @@ test("A1/A2/A6 E2: diagnostic counts 34 held orders missing their hold; cancel s
   assert.equal(database.prepare(
     "select count(*) from platform_coin_commerce_order_events where order_ref = ? and event_type = 'order_cancelled'"
   ).pluck().get(orderRefs[0]), 0);
+});
+
+test("E2: a present hold with a missing wallet is not a missing hold and cancel still fails closed", (t) => {
+  const { database, store } = commerceFixture(t);
+  commerceSeedWallet(store);
+  store.publishOfferVersion(commerceOffer());
+  const missingHold = commerceHeldOrder(store, "missing_hold");
+  const missingWallet = commerceHeldOrder(store, "missing_wallet");
+  deleteHoldRows(database, [missingHold.orderRef]);
+  const presentHold = database.prepare(
+    "select hold_ref from platform_coin_commerce_orders where order_ref = ?"
+  ).pluck().get(missingWallet.orderRef);
+  const missingWalletRef = database.prepare(
+    "select wallet_ref from platform_coin_holds where hold_ref = ?"
+  ).pluck().get(presentHold);
+  const removed = withoutForeignKeys(database, () => database.prepare(
+    "delete from platform_coin_wallets where wallet_ref = ?"
+  ).run(missingWalletRef));
+  assert.equal(removed.changes, 1);
+  const before = totalChanges(database);
+  const { result, lines } = captureWarnings(() => store.diagnoseDanglingOrderHolds());
+  assert.equal(totalChanges(database), before);
+  assert.equal(result.unmigratedCount, 2);
+  const byRef = new Map(result.unmigratedRows.map((row) => [row.orderRef, row]));
+  assert.equal(byRef.get(missingHold.orderRef).holdMissing, true);
+  assert.equal(byRef.get(missingHold.orderRef).walletMissing, undefined);
+  assert.equal(byRef.get(missingWallet.orderRef).holdRef, presentHold);
+  assert.equal(byRef.get(missingWallet.orderRef).holdMissing, undefined);
+  assert.equal(byRef.get(missingWallet.orderRef).walletMissing, true);
+  assert.deepEqual(lines, ["v04 unmigrated diagnostic: kind=order-holds count=2"]);
+  for (const [index, order] of [missingHold, missingWallet].entries()) {
+    assert.throws(() => store.cancelOrder({
+      accountId: "acct_synthetic_1", orderRef: order.orderRef,
+      operation: commerceOperation("cancel_diag_gap_" + index)
+    }), { code: "reconciliation_required" });
+    assert.equal(database.prepare(
+      "select count(*) from platform_coin_commerce_order_events where order_ref = ? and event_type = 'order_cancelled'"
+    ).pluck().get(order.orderRef), 0);
+  }
 });
 
 test("A4 E2: diagnostic is empty and silent when every held order has its hold", (t) => {
