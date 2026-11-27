@@ -54,7 +54,11 @@ function sendFreezeError(res, error) {
     return;
   }
   if (isFreezeConflict(error)) {
-    res.status(409).json({ error: code, message: error?.message || code, ...(evidence !== undefined ? { executionEvidence: evidence } : {}) });
+    // The refusal message is the error code itself: internal error
+    // messages may name credential rows or other operator-only detail,
+    // and this body is returned to the caller. Refusal semantics
+    // (409 + error code) are unchanged.
+    res.status(409).json({ error: code, message: code, ...(evidence !== undefined ? { executionEvidence: evidence } : {}) });
     return;
   }
   res.status(500).json(body);

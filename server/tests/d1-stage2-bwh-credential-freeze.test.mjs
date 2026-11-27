@@ -434,6 +434,45 @@ test("S2S-FRZ-7 bundle hash covers complete receipts and verifies positive recei
   }), "freeze_scheduler_not_quiesced");
 });
 
+test("S2S-FRZ-8 the readiness bundle carries the credential manifest hash under its digest (N5)", (t) => {
+  const { db } = makeSnapshot(t);
+  // Derived baseline, not hardcoded: the live manifest hash at
+  // bundle time is what T1 re-verifies against.
+  const manifestHash = buildCredentialVersionManifest(db, { snapshotId: SNAPSHOT_A }).manifestHash;
+  const writeLock = buildWriteLockReceipt(db, { snapshotId: SNAPSHOT_A, checkpointId: "s2s-checkpoint-001", outstandingJobs: [] });
+  const schedulerQuiescence = buildSchedulerQuiescenceReceipt({ evidence: allQuiescedEvidence(), snapshotId: SNAPSHOT_A, now: () => new Date(NOW) });
+  const callbackDrain = buildCallbackDrainReceipt({ callbacks: [{ id: "cb-1", description: "x", settled: true }], snapshotId: SNAPSHOT_A, now: () => new Date(NOW) });
+  const hwmCompleteness = buildHwmCompletenessReceipt({
+    highWaterMark: createHighWaterMark({ seq: 1, snapshotId: SNAPSHOT_A }),
+    manifestSeq: 1,
+    rowCounts: { platform_accounts: 3 },
+    snapshotId: SNAPSHOT_A, now: () => new Date(NOW),
+  });
+  const receipts = { snapshotId: SNAPSHOT_A, writeLock, schedulerQuiescence, callbackDrain, hwmCompleteness, now: () => new Date(NOW) };
+  const bundle = buildFreezeReadinessBundle({ ...receipts, credentialManifestHash: manifestHash });
+  assert.equal(bundle.credentialManifestHash, manifestHash);
+  assert.deepEqual(verifyFreezeReadinessBundle(bundle), { valid: true });
+  // Tampering with the hash without recomputing breaks the digest.
+  assertErrorCode(
+    () => verifyFreezeReadinessBundle({ ...bundle, credentialManifestHash: "0".repeat(64) }),
+    "freeze_bundle_hash_mismatch",
+  );
+  // A malformed hash is refused even with a recomputed digest.
+  const malformed = { ...bundle, credentialManifestHash: "not-a-digest" };
+  malformed.bundleHash = recomputeFreezeBundleHash(malformed);
+  assertErrorCode(() => verifyFreezeReadinessBundle(malformed), "freeze_bundle_invalid");
+  // The builder refuses a malformed hash outright.
+  assertErrorCode(
+    () => buildFreezeReadinessBundle({ ...receipts, credentialManifestHash: "not-a-digest" }),
+    "freeze_bundle_invalid",
+  );
+  // A bundle without the hash still verifies (backward compatible);
+  // the T1 gate, not the bundle verifier, enforces its presence.
+  const legacy = buildFreezeReadinessBundle(receipts);
+  assert.equal(legacy.credentialManifestHash, undefined);
+  assert.deepEqual(verifyFreezeReadinessBundle(legacy), { valid: true });
+});
+
 test("S2S-FRZ-6 the unfenced-writer coverage report starts at 28 open", (t) => {
   const coverage = buildUnfencedWriterCoverage({ fencedIds: [] });
   assert.equal(coverage.total, 28);

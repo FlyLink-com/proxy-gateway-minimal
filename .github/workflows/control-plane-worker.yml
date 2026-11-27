@@ -13,6 +13,21 @@ on:
       - "package-lock.json"
       - ".github/workflows/control-plane-worker.yml"
       - "tools/c2-worker-config-policy/**"
+      # G-3 (S4A precheck): the Worker slice tests import these server
+      # modules directly, so a server-only change to any of them must
+      # trigger this workflow. #940 changed seven server files and
+      # never triggered it, because no server/** path was listed.
+      # Only the actually-imported dependencies are listed here, not
+      # the whole server/ tree. The Worker-side handoff fixture is
+      # already covered by workers/control-plane/** above.
+      - "server/services/platform/single-writer-authority.mjs"
+      - "server/services/platform/d1-stage2-freeze-drain.mjs"
+      - "server/services/platform/d1-card9-freeze-drain-coordinator.mjs"
+      - "server/services/platform/d1-freeze-executor.mjs"
+      - "server/services/platform/d1-stage2-credential-reconciliation.mjs"
+      - "server/services/platform/d1-stage2-source-manifest.mjs"
+      - "server/services/platform/writer-freeze-receipt.mjs"
+      - "server/tests/agent-g4-contract.test.mjs"
   workflow_dispatch:
 
 permissions:

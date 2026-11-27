@@ -291,12 +291,30 @@ function computeFreezeBundleHash(bundle) {
 // The bundle explicitly never transitions phase: phaseTransition is
 // always "none". The FROZEN transition is a separate coordinator
 // decision with its own receipt.
+//
+// N5 (PR #932 r4701898636): the bundle optionally carries the A2/A3
+// credential manifest hash (credentialManifestHash). When present it
+// is part of the digest-covered bundle, so the coordinator's T1
+// freeze can re-read the live credential manifest and refuse the
+// freeze when the manifest moved after A3 — an in-place credential
+// rotation is invisible to the row-count/updated_at high-water mark.
+// The field is optional here (older bundles still verify); the T1
+// gate itself is fail-closed and refuses a bundle that does not
+// carry it.
+function assertCredentialManifestHash(value) {
+  if (typeof value !== "string" || !/^[0-9a-f]{64}$/.test(value)) {
+    throw freezeDrainError("freeze_bundle_invalid", "credential manifest hash must be a SHA-256 hex digest");
+  }
+  return value;
+}
+
 export function buildFreezeReadinessBundle({
   snapshotId,
   writeLock,
   schedulerQuiescence,
   callbackDrain,
   hwmCompleteness,
+  credentialManifestHash,
   now = () => new Date(),
 } = {}) {
   assertSnapshotId(snapshotId);
@@ -321,6 +339,9 @@ export function buildFreezeReadinessBundle({
     snapshotId,
     receipts: { writeLock, schedulerQuiescence, callbackDrain, hwmCompleteness },
     phaseTransition: "none",
+    ...(credentialManifestHash === undefined
+      ? {}
+      : { credentialManifestHash: assertCredentialManifestHash(credentialManifestHash) }),
     timestamp: now().toISOString(),
   };
   bundle.bundleHash = computeFreezeBundleHash(bundle);
@@ -357,6 +378,9 @@ export function verifyFreezeReadinessBundle(bundle) {
   assertSchedulerQuiescenceReceipt(schedulerQuiescence, bundle.snapshotId);
   assertCallbackDrainReceipt(callbackDrain, bundle.snapshotId);
   assertHwmCompletenessReceipt(hwmCompleteness, bundle.snapshotId);
+  if (bundle.credentialManifestHash !== undefined) {
+    assertCredentialManifestHash(bundle.credentialManifestHash);
+  }
   const expected = computeFreezeBundleHash(bundle);
   if (expected !== bundle.bundleHash) {
     throw freezeDrainError("freeze_bundle_hash_mismatch", "freeze readiness bundle hash does not match its complete contents");
