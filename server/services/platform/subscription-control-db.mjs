@@ -120,6 +120,15 @@ function platformError(code, message) {
   return error;
 }
 
+// V-04 narrow diagnostics (2026-11-27): count-only log line. Never include
+// an identifier: the strict dangling-tolerance tests assert warning lines
+// carry no refs, and the diagnostic rows themselves carry the markers.
+function logV04Diagnostic(kind, count) {
+  if (count > 0) {
+    console.warn(`v04 unmigrated diagnostic: kind=${kind} count=${count}`);
+  }
+}
+
 function ensureParentDirectory(dbPath) {
   if (dbPath && dbPath !== ":memory:") {
     mkdirSync(dirname(dbPath), { recursive: true });
@@ -6488,6 +6497,51 @@ export function createSqliteSubscriptionControlStore({
     `).all(...params).map(mapIssuedSubscriptionBinding);
   }
 
+  // V-04 narrow diagnostic (2026-11-27): read/audit visibility only. Lists
+  // issued subscription links whose issuance request or entitlement never
+  // arrived (mapped through the existing mapper, so requestStatus null is
+  // the established "unmigrated" signal). listIssuedSubscriptionBindings
+  // and the wallet-first / deferred exact chains keep refusing these rows.
+  function diagnoseDanglingIssuedSubscriptionBindings(filters = {}) {
+    assertNoUnsafeFields(filters);
+    const clauses = ["l.status = 'active'", "(r.id is null or e.id is null)"];
+    const params = [];
+    const tenantRef = optionalText(filters.tenantRef);
+    if (tenantRef) {
+      clauses.push("l.tenant_ref = ?");
+      params.push(tenantRef);
+    }
+    const unmigratedRows = db.prepare(`
+      select
+        l.id as link_id,
+        l.request_id,
+        l.tenant_ref,
+        l.artifact_ref,
+        l.status as link_status,
+        l.created_at as link_created_at,
+        l.updated_at as link_updated_at,
+        r.account_id,
+        r.entitlement_id,
+        r.status as request_status,
+        r.node_id,
+        e.plan,
+        e.status as entitlement_status,
+        e.valid_from,
+        e.valid_until,
+        e.traffic_limit_bytes
+      from platform_issued_subscription_links l
+      left join platform_issuance_requests r on r.id = l.request_id
+      left join platform_entitlements e on e.id = r.entitlement_id
+      where ${clauses.join(" and ")}
+      order by l.created_at asc, l.id asc
+    `).all(...params).map(mapIssuedSubscriptionBinding);
+    logV04Diagnostic("issued-subscription-bindings", unmigratedRows.length);
+    return {
+      unmigratedCount: unmigratedRows.length,
+      unmigratedRows
+    };
+  }
+
   function findIssuedSubscriptionBindingByTenantRef(tenantRef) {
     const [binding] = listIssuedSubscriptionBindings({
       tenantRef: requiredText(tenantRef, "tenantRef")
@@ -9053,6 +9107,39 @@ export function createSqliteSubscriptionControlStore({
     };
   }
 
+  // V-04 narrow diagnostic (2026-11-27): read/audit visibility only. Lists
+  // portal edge credentials whose access request never arrived; they are
+  // NOT active credentials and this function never feeds the desired-state
+  // builder. The strict E6 behaviour of getLatestEdgeDesiredStateForChannel
+  // (withhold without the parent row) is unchanged.
+  function diagnoseDanglingEdgeDesiredState(channelRef, filters = {}) {
+    assertNoUnsafeFields(filters);
+    const safeChannelRef = requiredText(channelRef, "channelRef");
+    const rows = db.prepare(`
+      select
+        c.edge_channel_ref,
+        c.edge_credential_ref,
+        c.edge_material_digest
+      from platform_portal_edge_credentials c
+      left join platform_portal_access_requests r on r.id = c.request_id
+      where r.id is null
+        and c.edge_channel_ref = ?
+      order by c.edge_credential_ref asc
+    `).all(safeChannelRef);
+    const unmigratedRows = rows.map((row) => ({
+      edgeChannelRef: row.edge_channel_ref,
+      edgeCredentialRef: row.edge_credential_ref,
+      edgeMaterialDigest: row.edge_material_digest,
+      requestStatus: null
+    }));
+    logV04Diagnostic("edge-desired-state", unmigratedRows.length);
+    return {
+      channelRef: safeChannelRef,
+      unmigratedCount: unmigratedRows.length,
+      unmigratedRows
+    };
+  }
+
   function recordEdgeApplyReceipt(input) {
     // U-F13: phase fence, first statement.
     assertWritable(db);
@@ -10766,6 +10853,7 @@ export function createSqliteSubscriptionControlStore({
     getIssuedLink,
     setIssuedLinkStatus,
     listIssuedSubscriptionBindings,
+    diagnoseDanglingIssuedSubscriptionBindings,
     listIssuedSubscriptionBindingsAsync,
     findIssuedSubscriptionBindingByTenantRef,
     findIssuedSubscriptionBindingByEdgeCredentialRef,
@@ -10834,6 +10922,7 @@ export function createSqliteSubscriptionControlStore({
     getEdgeRegisteredNode,
     listEdgeRegisteredNodes,
     getLatestEdgeDesiredStateForChannel,
+    diagnoseDanglingEdgeDesiredState,
     getLatestEdgeDesiredStateForChannelAsync,
     listPortalEdgeCredentialsAsync,
     recordEdgeApplyReceipt,

@@ -97,6 +97,7 @@ const STORE_METHODS = [
   "listOrders",
   "claimDueCaptures",
   "captureClaimedOrder",
+  "diagnoseDanglingOrderHolds",
   "recoverNonTerminalOrders",
   "claimNextFulfillmentCommand",
   "completeFulfillmentCommand",
@@ -144,6 +145,14 @@ function commerceError(code) {
   const error = new Error("Coin commerce store operation rejected");
   error.code = code;
   return error;
+}
+
+// V-04 narrow diagnostics (2026-11-27): count-only log line. Never include
+// an identifier; the diagnostic rows themselves carry the markers.
+function logV04Diagnostic(kind, count) {
+  if (count > 0) {
+    console.warn(`v04 unmigrated diagnostic: kind=${kind} count=${count}`);
+  }
 }
 
 function isCommerceError(error) {
@@ -1969,9 +1978,15 @@ export function createSqliteCoinCommerceStore(options = {}) {
         join platform_coin_wallets w on w.wallet_ref = h.wallet_ref
        where h.hold_ref = ?
     `).get(order.hold_ref);
+    // V-04 narrow (2026-11-27): a well-formed order whose hold row never
+    // arrived is distinguishable from a malformed order and from a present
+    // but inconsistent hold. The signal is diagnostic/audit only; every
+    // caller still fails closed on !valid, exactly as before.
+    if (!hold) {
+      return { valid: false, hold: null, holdMissing: true };
+    }
     if (
-      !hold
-      || !isSafeWalletReference(hold.hold_ref)
+      !isSafeWalletReference(hold.hold_ref)
       || !isSafeWalletReference(hold.wallet_ref)
       || hold.wallet_account_id !== order.account_id
       || !["active", "frozen", "closed"].includes(hold.wallet_status)
@@ -4037,6 +4052,42 @@ export function createSqliteCoinCommerceStore(options = {}) {
     };
   });
 
+  // V-04 narrow diagnostic (2026-11-27): read/audit visibility only.
+  // Lists non-terminal orders whose hold row never arrived, each marked
+  // holdMissing. It is a separate query on purpose: selectAuditRecoveryRows
+  // feeds recoverTransaction, so widening it would double-count audit rows.
+  // Missing holds stay fail-closed everywhere (cancel / lease / capture).
+  function diagnoseDanglingOrderHolds(diagnoseInput = {}) {
+    return execute(() => {
+      const value = assertPlainObject(diagnoseInput);
+      assertExactDataFields(value, new Set(["limit"]), new Set());
+      const limit = value.limit === undefined ? 100 : normalizeLimit(value.limit);
+      const rows = db.prepare(`
+        select o.order_ref, o.account_id, o.amount_units, o.payment_status,
+               o.hold_ref, o.updated_at
+          from platform_coin_commerce_orders o
+          left join platform_coin_holds h on h.hold_ref = o.hold_ref
+         where o.payment_status in ('held', 'capture_pending', 'captured', 'capture_failed')
+           and h.hold_ref is null
+         order by o.updated_at, o.order_ref
+         limit ?
+      `).all(limit);
+      const unmigratedRows = rows.map((row) => ({
+        orderRef: row.order_ref,
+        accountId: row.account_id,
+        amountUnits: row.amount_units,
+        paymentStatus: row.payment_status,
+        holdRef: row.hold_ref,
+        holdMissing: true
+      }));
+      logV04Diagnostic("order-holds", unmigratedRows.length);
+      return {
+        unmigratedCount: unmigratedRows.length,
+        unmigratedRows
+      };
+    });
+  }
+
   function recoverNonTerminalOrders(recoverInput) {
     return execute(() => {
       const value = assertPlainObject(recoverInput);
@@ -4608,6 +4659,7 @@ export function createSqliteCoinCommerceStore(options = {}) {
     listOrders,
     claimDueCaptures,
     captureClaimedOrder,
+    diagnoseDanglingOrderHolds,
     recoverNonTerminalOrders,
     claimNextFulfillmentCommand,
     completeFulfillmentCommand,
