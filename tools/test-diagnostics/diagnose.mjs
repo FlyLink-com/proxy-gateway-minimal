@@ -91,13 +91,17 @@ export function inspectTap(log, exitCode, expected) {
   let bailout = false;
   let failureHint = null;
   let lastNonempty = null;
-  // Per-section TAP evidence. A section is only complete when its top-level
-  // result lines match its plan: Node counts nested subtests in the `# tests`
-  // summary, so the plan must never be compared against that summary total.
-  // Top-level result lines start at column 0; indented `ok`/`not ok` lines
-  // are subtests and are not counted here.
-  let plan = null;
-  let topLevelResults = 0;
+  // Each indentation level has its own numbering and plan. A parent result
+  // closes its children's level; Node's summary counts tests at every depth,
+  // but excludes suite wrappers (identified by their diagnostic type).
+  let levels;
+  let observed;
+  let lastResult;
+  const getLevel = (depth) => {
+    if (!levels.has(depth)) levels.set(depth, { results: 0, plan: null });
+    return levels.get(depth);
+  };
+  const matchesPlan = (level) => level != null && level.plan !== null && level.plan === level.results;
   const lines = log.split(/\r?\n/);
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i].replace(/\x1b\[[0-9;]*m/g, "");
@@ -115,19 +119,58 @@ export function inspectTap(log, exitCode, expected) {
       if (tap) incomplete = true;
       tap = true;
       pending = null;
-      plan = null;
-      topLevelResults = 0;
+      levels = new Map();
+      observed = { pass: 0, fail: 0, skipped: 0, todo: 0, suites: 0 };
+      lastResult = null;
     }
     if (!tap) continue;
     if (/^Bail out!/i.test(line)) bailout = true;
-    const failed = /^[ \t]*not ok (\d+)\b/.exec(line);
-    if (failed && !/\s+#\s+(?:TODO|SKIP)\b/i.test(line) && !firstFailure) {
-      firstFailure = { line: i + 1, testNumber: Number(failed[1]) };
+    const result = /^( *)(ok|not ok) (\d+)(?=\s|$)/.exec(line);
+    const plan = /^( *)1\.\.(\d+)$/.exec(line);
+    if (result) {
+      const depth = result[1].length;
+      const level = getLevel(depth);
+      const child = levels.get(depth + 4);
+      if (child) {
+        if (!matchesPlan(child)) incomplete = true;
+        levels.delete(depth + 4);
+      }
+      if (depth % 4 !== 0 || level.plan !== null ||
+          [...levels.keys()].some((indent) => indent > depth) ||
+          Number(result[3]) !== ++level.results) incomplete = true;
+      const directive = /\s+#\s+(TODO|SKIP)\b/i.exec(line)?.[1]?.toUpperCase();
+      const outcome = directive === "SKIP" ? "skipped" : directive === "TODO" ? "todo" :
+        result[2] === "not ok" ? "fail" : "pass";
+      if (outcome === "fail" && !firstFailure) firstFailure = { line: i + 1, testNumber: Number(result[3]) };
+      observed[outcome]++;
+      lastResult = { depth, outcome, inDetails: false, sawType: false };
+    } else if (plan) {
+      const depth = plan[1].length;
+      const level = getLevel(depth);
+      if (depth % 4 !== 0 || level.plan !== null ||
+          [...levels.keys()].some((indent) => indent > depth)) incomplete = true;
+      else level.plan = Number(plan[2]);
+      if (!matchesPlan(level)) incomplete = true;
+      if (depth === 0 && !pending) pending = {};
+      lastResult = null;
+    } else if (lastResult) {
+      const indent = " ".repeat(lastResult.depth + 2);
+      if (line === indent + "---") lastResult.inDetails = true;
+      else if (lastResult.inDetails && line === indent + "...") lastResult = null;
+      else if (lastResult.inDetails && (line === indent + "type: 'suite'" || line === indent + "type: 'test'")) {
+        if (lastResult.sawType) incomplete = true;
+        else if (line.endsWith("'suite'")) {
+          observed[lastResult.outcome]--;
+          observed.suites++;
+        }
+        lastResult.sawType = true;
+      } else if (!lastResult.inDetails && line.trim()) lastResult = null;
     }
-    const topLevelResult = /^(?:ok|not ok) (\d+)(?=\s|$)/.exec(line);
-    if (topLevelResult && Number(topLevelResult[1]) !== ++topLevelResults) incomplete = true;
-    const planLine = /^1\.\.(\d+)$/.exec(line);
-    if (planLine) { pending = {}; plan = Number(planLine[1]); }
+    const suites = /^# suites (\d+)$/.exec(line);
+    if (pending && suites) {
+      if (Object.hasOwn(pending, "suites")) incomplete = true;
+      pending.suites = Number(suites[1]);
+    }
     if (!pending) continue;
     const counter = /^# (tests|pass|fail|cancelled|skipped|todo) (\d+)$/.exec(line);
     if (!counter) continue;
@@ -136,8 +179,10 @@ export function inspectTap(log, exitCode, expected) {
     if (TAP_KEYS.every((key) => Object.hasOwn(pending, key))) {
       if (TAP_KEYS.every((key) => Number.isSafeInteger(pending[key])) &&
           pending.tests === TAP_KEYS.slice(1).reduce((sum, key) => sum + pending[key], 0) &&
-          topLevelResults === plan &&
-          (plan !== 0 || pending.tests === 0)) complete.push(pending);
+          levels.size === 1 && matchesPlan(levels.get(0)) &&
+          (pending.suites === undefined || pending.suites === observed.suites) &&
+          pending.pass === observed.pass && pending.skipped === observed.skipped &&
+          pending.todo === observed.todo && pending.fail + pending.cancelled === observed.fail) complete.push(pending);
       else incomplete = true;
       tap = false;
       pending = null;

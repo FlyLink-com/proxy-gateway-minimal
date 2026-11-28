@@ -122,6 +122,56 @@ test("real nested Node TAP passes when top-level results match the plan even tho
   assert.deepEqual(result.totals, { tests: 2, pass: 2, fail: 0, cancelled: 0, skipped: 0, todo: 0 });
 });
 
+test("a second TAP plan cannot replace a contradictory first plan", () => {
+  const invalid = tap(1).replace("1..1", "1..2\n1..1");
+  const result = inspectTap(invalid, 0, 1);
+  assert.equal(result.status, "unverified");
+  assert.equal(result.logComplete, false);
+});
+
+test("a TAP summary cannot turn a SKIP or TODO result into a pass", () => {
+  for (const input of [tap(0, 0, 1), tap(0, 0, 0, 1)]) {
+    const invalid = input.replace("# pass 0", "# pass 1").replace(/# (skipped|todo) 1/, "# $1 0");
+    const result = inspectTap(invalid, 0, 1);
+    assert.equal(result.status, "unverified");
+    assert.equal(result.logComplete, false);
+  }
+});
+
+test("real Node suite TAP with a missing nested result cannot pass", async (t) => {
+  const dir = await fixture(t);
+  const name = join(dir, "nested-suite.test.mjs");
+  await writeFile(name, [
+    'import { describe, it, test } from "node:test";',
+    'describe("suite", () => {',
+    '  it("skipped", { skip: true }, () => {});',
+    '  it("expected", { todo: true }, () => { throw new Error("expected"); });',
+    '  it("empty wrapper control", () => {});',
+    '});',
+    'describe("empty suite", () => {});',
+    'test("parent", async (t) => {',
+    '  await t.test("A", () => {}); await t.test("B", () => {});',
+    '});',
+    "",
+  ].join("\n"));
+  const env = { ...process.env };
+  delete env.NODE_TEST_CONTEXT;
+  const run = spawnSync(process.execPath, ["--test", "--test-reporter=tap", name], { encoding: "utf8", env });
+  assert.equal(run.status, 0, run.stderr);
+  assert.match(run.stdout, /^# suites 2$/m);
+  assert.equal(inspectTap(run.stdout, 0, 1).status, "passed");
+  for (const invalid of [
+    run.stdout.replace(/^    ok 2 - B\r?\n/m, ""),
+    run.stdout.replace(/^    1\.\.2\r?\n/m, ""),
+    run.stdout.replace(/^    1\.\.2\r?$/m, "    1..2\n    1..2"),
+  ]) {
+    assert.notEqual(invalid, run.stdout);
+    const result = inspectTap(invalid, 0, 1);
+    assert.equal(result.status, "unverified");
+    assert.equal(result.logComplete, false);
+  }
+});
+
 test("a missing native binding is hinted without changing the failure verdict", () => {
   const r = inspectTap("TAP version 13\n  not ok 2 - sensitive-value\n  Could not locate the bindings file\n", 1, 1);
   assert.equal(r.status, "failed");
