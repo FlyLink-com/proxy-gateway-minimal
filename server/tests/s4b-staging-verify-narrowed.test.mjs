@@ -228,6 +228,76 @@ function startStubD1(db, tables, { onAfterBaselineSnapshot } = {}) {
   const sqlLog = [];
   const snapshotTables = new Set();
   let mutated = false;
+  // Allowlist of the ONLY read-only SQL shapes the narrowed verification
+  // script issues (see s4b-verify.mjs in the workflow). The request's SQL
+  // text is matched against this list and is NEVER executed directly: a
+  // matching shape runs the corresponding pre-built prepared statement
+  // below, whose SQL text is a literal in this file (per-table statements
+  // are keyed by the fixed TABLES list, never by request text). Anything
+  // outside the allowlist is rejected before any execution, so no
+  // request-supplied SQL ever reaches the database (CodeQL
+  // js/sql-injection). The eight shapes are:
+  //   SELECT * FROM <table>                       (snapshotRows, baseline + readback)
+  //   SELECT COUNT(*) AS n FROM <table>           (d1Counts, baseline + readback)
+  //   SELECT key_id, node_ref, channel_refs_json, status, token_sha256,
+  //     revoked_at FROM agent_api_credentials WHERE key_id = ?
+  //                                               (precheck_credential)
+  //   SELECT node_ref, status FROM agent_nodes WHERE node_ref = ?
+  //                                               (verify_registered_state)
+  //   SELECT channel_ref, status FROM agent_node_channels
+  //     WHERE node_ref = ?                        (verify_registered_state)
+  //   SELECT singleton, authority, phase, epoch, changed_at
+  //     FROM platform_writer_authority            (verify_registered_state)
+  //   SELECT singleton, accepted_epoch FROM platform_writer_gate
+  //                                               (verify_registered_state)
+  //   SELECT last_authenticated_at, revoked_at FROM agent_api_credentials
+  //     WHERE key_id = ?                          (readback)
+  const selectAllByTable = new Map(tables.map((t) => [t, db.prepare(`SELECT * FROM ${t}`)]));
+  const selectCountByTable = new Map(tables.map((t) => [t, db.prepare(`SELECT COUNT(*) AS n FROM ${t}`)]));
+  const selectCredentialPrecheck = db.prepare(
+    "SELECT key_id, node_ref, channel_refs_json, status, token_sha256, revoked_at FROM agent_api_credentials WHERE key_id = ?",
+  );
+  const selectNode = db.prepare("SELECT node_ref, status FROM agent_nodes WHERE node_ref = ?");
+  const selectChannels = db.prepare("SELECT channel_ref, status FROM agent_node_channels WHERE node_ref = ?");
+  const selectAuthority = db.prepare("SELECT singleton, authority, phase, epoch, changed_at FROM platform_writer_authority");
+  const selectGate = db.prepare("SELECT singleton, accepted_epoch FROM platform_writer_gate");
+  const selectCredentialAfter = db.prepare("SELECT last_authenticated_at, revoked_at FROM agent_api_credentials WHERE key_id = ?");
+
+  // Returns the rows for an allowlisted shape, or null when the SQL is
+  // outside the allowlist (rejected before execution).
+  function runAllowedQuery(sql, params) {
+    if (typeof sql !== "string") return null;
+    const trimmed = sql.trim();
+    let m = /^SELECT \* FROM (\w+)$/.exec(trimmed);
+    if (m) {
+      const stmt = selectAllByTable.get(m[1]);
+      return stmt ? stmt.all() : null;
+    }
+    m = /^SELECT COUNT\(\*\) AS n FROM (\w+)$/.exec(trimmed);
+    if (m) {
+      const stmt = selectCountByTable.get(m[1]);
+      return stmt ? stmt.all() : null;
+    }
+    if (trimmed === "SELECT key_id, node_ref, channel_refs_json, status, token_sha256, revoked_at FROM agent_api_credentials WHERE key_id = ?") {
+      return selectCredentialPrecheck.all(...params);
+    }
+    if (trimmed === "SELECT node_ref, status FROM agent_nodes WHERE node_ref = ?") {
+      return selectNode.all(...params);
+    }
+    if (trimmed === "SELECT channel_ref, status FROM agent_node_channels WHERE node_ref = ?") {
+      return selectChannels.all(...params);
+    }
+    if (trimmed === "SELECT singleton, authority, phase, epoch, changed_at FROM platform_writer_authority") {
+      return selectAuthority.all();
+    }
+    if (trimmed === "SELECT singleton, accepted_epoch FROM platform_writer_gate") {
+      return selectGate.all();
+    }
+    if (trimmed === "SELECT last_authenticated_at, revoked_at FROM agent_api_credentials WHERE key_id = ?") {
+      return selectCredentialAfter.all(...params);
+    }
+    return null;
+  }
   const server = createServer((req, res) => {
     if (req.method !== "POST" || req.url !== "/query") {
       res.writeHead(404, { "content-type": "application/json" });
@@ -252,7 +322,7 @@ function startStubD1(db, tables, { onAfterBaselineSnapshot } = {}) {
       // baseline snapshot, then again for the readback. After all tables
       // have been served once, the baseline snapshot is complete; fire
       // the mid-run mutation hook exactly once, before the readback.
-      const m = /^SELECT \* FROM (\w+)$/.exec(sql.trim());
+      const m = typeof sql === "string" ? /^SELECT \* FROM (\w+)$/.exec(sql.trim()) : null;
       if (m && onAfterBaselineSnapshot && !mutated) {
         snapshotTables.add(m[1]);
         if (snapshotTables.size === tables.length) {
@@ -262,10 +332,17 @@ function startStubD1(db, tables, { onAfterBaselineSnapshot } = {}) {
       }
       let rows;
       try {
-        rows = db.prepare(sql).all(...params);
-      } catch (e) {
+        rows = runAllowedQuery(sql, params);
+      } catch {
+        // Never echo exception text in the response (CodeQL
+        // js/stack-trace-exposure): a fixed generic error only.
         res.writeHead(200, { "content-type": "application/json" });
-        res.end(JSON.stringify({ success: false, errors: [{ message: String(e?.message ?? e) }] }));
+        res.end(JSON.stringify({ success: false, errors: [{ message: "query_failed" }] }));
+        return;
+      }
+      if (rows === null) {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ success: false, errors: [{ message: "sql_not_allowed" }] }));
         return;
       }
       res.writeHead(200, { "content-type": "application/json" });
