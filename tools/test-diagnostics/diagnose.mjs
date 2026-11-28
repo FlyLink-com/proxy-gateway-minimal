@@ -91,6 +91,13 @@ export function inspectTap(log, exitCode, expected) {
   let bailout = false;
   let failureHint = null;
   let lastNonempty = null;
+  // Per-section TAP evidence. A section is only complete when its top-level
+  // result lines match its plan: Node counts nested subtests in the `# tests`
+  // summary, so the plan must never be compared against that summary total.
+  // Top-level result lines start at column 0; indented `ok`/`not ok` lines
+  // are subtests and are not counted here.
+  let plan = null;
+  let topLevelResults = 0;
   const lines = log.split(/\r?\n/);
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i].replace(/\x1b\[[0-9;]*m/g, "");
@@ -98,6 +105,9 @@ export function inspectTap(log, exitCode, expected) {
     if (!failureHint) {
       if (/heap out of memory/i.test(line)) failureHint = { kind: "node_heap_exhausted", line: i + 1 };
       else if (/ERR_DLOPEN_FAILED|NODE_MODULE_VERSION/i.test(line)) failureHint = { kind: "native_module_load", line: i + 1 };
+      // better-sqlite3 reports a missing native binding with this message
+      // (seen on Lucky); same native-module-load failure, only worded differently.
+      else if (/Could not locate the bindings file/i.test(line)) failureHint = { kind: "native_module_load", line: i + 1 };
       else if (/ERR_MODULE_NOT_FOUND|MODULE_NOT_FOUND/i.test(line)) failureHint = { kind: "dependency_missing", line: i + 1 };
       else if (/^\s*(?:code: ['"]ETIMEDOUT['"]|npm error signal SIG(?:TERM|KILL))\s*$/i.test(line)) failureHint = { kind: "timeout_or_process_signal", line: i + 1 };
     }
@@ -105,6 +115,8 @@ export function inspectTap(log, exitCode, expected) {
       if (tap) incomplete = true;
       tap = true;
       pending = null;
+      plan = null;
+      topLevelResults = 0;
     }
     if (!tap) continue;
     if (/^Bail out!/i.test(line)) bailout = true;
@@ -112,7 +124,10 @@ export function inspectTap(log, exitCode, expected) {
     if (failed && !/\s+#\s+(?:TODO|SKIP)\b/i.test(line) && !firstFailure) {
       firstFailure = { line: i + 1, testNumber: Number(failed[1]) };
     }
-    if (/^1\.\.\d+$/.test(line)) pending = {};
+    const topLevelResult = /^(?:ok|not ok) (\d+)(?=\s|$)/.exec(line);
+    if (topLevelResult && Number(topLevelResult[1]) !== ++topLevelResults) incomplete = true;
+    const planLine = /^1\.\.(\d+)$/.exec(line);
+    if (planLine) { pending = {}; plan = Number(planLine[1]); }
     if (!pending) continue;
     const counter = /^# (tests|pass|fail|cancelled|skipped|todo) (\d+)$/.exec(line);
     if (!counter) continue;
@@ -120,7 +135,9 @@ export function inspectTap(log, exitCode, expected) {
     pending[counter[1]] = Number(counter[2]);
     if (TAP_KEYS.every((key) => Object.hasOwn(pending, key))) {
       if (TAP_KEYS.every((key) => Number.isSafeInteger(pending[key])) &&
-          pending.tests === TAP_KEYS.slice(1).reduce((sum, key) => sum + pending[key], 0)) complete.push(pending);
+          pending.tests === TAP_KEYS.slice(1).reduce((sum, key) => sum + pending[key], 0) &&
+          topLevelResults === plan &&
+          (plan !== 0 || pending.tests === 0)) complete.push(pending);
       else incomplete = true;
       tap = false;
       pending = null;

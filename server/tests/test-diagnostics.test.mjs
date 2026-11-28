@@ -12,10 +12,19 @@ const NOW = Date.parse("2026-11-27T12:00:00Z");
 const SHA = "a".repeat(40);
 const target = { schemaVersion: 1, module: "worker", environment: "local", sha: SHA };
 const local = { environment: "local", sha: SHA, module: "worker", profile: "focused", node: "v24.22.3", log: "run.log" };
-const tap = (pass, fail = 0, skipped = 0, todo = 0) => [
-  "TAP version 13", "1..1", `# tests ${pass + fail + skipped + todo}`, "# suites 0", `# pass ${pass}`, `# fail ${fail}`,
-  "# cancelled 0", `# skipped ${skipped}`, `# todo ${todo}`, "# duration_ms 10", "",
-].join("\n");
+const tap = (pass, fail = 0, skipped = 0, todo = 0) => {
+  const total = pass + fail + skipped + todo;
+  const results = [];
+  let n = 0;
+  for (let i = 0; i < pass; i++) results.push(`ok ${++n} - fixture`);
+  for (let i = 0; i < fail; i++) results.push(`not ok ${++n} - fixture`);
+  for (let i = 0; i < skipped; i++) results.push(`ok ${++n} - fixture # SKIP`);
+  for (let i = 0; i < todo; i++) results.push(`ok ${++n} - fixture # TODO`);
+  return [
+    "TAP version 13", ...results, `1..${total}`, `# tests ${total}`, "# suites 0", `# pass ${pass}`, `# fail ${fail}`,
+    "# cancelled 0", `# skipped ${skipped}`, `# todo ${todo}`, "# duration_ms 10", "",
+  ].join("\n");
+};
 
 async function fixture(t) {
   const dir = await mkdtemp(join(tmpdir(), "gccgw-diagnostics-"));
@@ -42,6 +51,85 @@ test("a pass needs complete TAP and a captured zero exit; skipped-only is not a 
   assert.equal(inspectTap(tap(1) + tap(2), 0, 2).totals.pass, 3);
 });
 
+test("a TAP section with no top-level result lines is unverified, not passed", () => {
+  const missingDetail = [
+    "TAP version 13",
+    "1..1",
+    "# tests 1",
+    "# suites 0",
+    "# pass 1",
+    "# fail 0",
+    "# cancelled 0",
+    "# skipped 0",
+    "# todo 0",
+    "",
+  ].join("\n");
+
+  const result = inspectTap(missingDetail, 0, 1);
+  assert.equal(result.status, "unverified");
+  assert.equal(result.logComplete, false);
+
+  // Positive control: the same section with one top-level result line passes.
+  const withResult = inspectTap(missingDetail.replace("1..1", "ok 1 - fixture\n1..1"), 0, 1);
+  assert.equal(withResult.status, "passed");
+  assert.equal(withResult.logComplete, true);
+});
+
+test("top-level TAP result numbers must be consecutive within each section", () => {
+  const valid = tap(2);
+  for (const numbers of [[1, 1], [1, 3], [2, 1]]) {
+    let i = 0;
+    const invalid = valid.replace(/^ok \d+(?= )/gm, () => "ok " + numbers[i++]);
+    assert.equal(i, numbers.length);
+    const result = inspectTap(invalid, 0, 1);
+    assert.equal(result.status, "unverified", numbers.join(","));
+    assert.equal(result.logComplete, false);
+  }
+  assert.equal(inspectTap(valid + tap(1), 0, 2).status, "passed");
+});
+
+test("a zero TAP plan cannot claim nonzero test totals", () => {
+  const empty = tap(0);
+  for (const category of ["pass", "skipped", "todo"]) {
+    const invalid = empty.replace("# tests 0", "# tests 1").replace("# " + category + " 0", "# " + category + " 1");
+    const result = inspectTap(invalid, 0, 1);
+    assert.equal(result.status, "unverified", category);
+    assert.equal(result.logComplete, false);
+  }
+  const result = inspectTap(empty, 0, 1);
+  assert.equal(result.status, "no_tests_passed");
+  assert.equal(result.logComplete, true);
+});
+
+test("real nested Node TAP passes when top-level results match the plan even though the summary counts subtests", async (t) => {
+  const dir = await fixture(t);
+  const name = join(dir, "nested.test.mjs");
+  await writeFile(name, [
+    'import { test } from "node:test";',
+    'test("outer", async (t) => { await t.test("inner", () => {}); });',
+    "",
+  ].join("\n"));
+  const env = { ...process.env };
+  delete env.NODE_TEST_CONTEXT;
+  const run = spawnSync(process.execPath, ["--test", "--test-reporter=tap", name], { encoding: "utf8", env });
+  assert.equal(run.status, 0, run.stderr);
+  // Top-level plan is 1; the summary counts the outer test and its subtest.
+  assert.match(run.stdout, /^1\.\.1$/m);
+  assert.match(run.stdout, /^# tests 2$/m);
+  const result = inspectTap(run.stdout, run.status, 1);
+  assert.equal(result.status, "passed");
+  assert.equal(result.logComplete, true);
+  assert.deepEqual(result.totals, { tests: 2, pass: 2, fail: 0, cancelled: 0, skipped: 0, todo: 0 });
+});
+
+test("a missing native binding is hinted without changing the failure verdict", () => {
+  const r = inspectTap("TAP version 13\n  not ok 2 - sensitive-value\n  Could not locate the bindings file\n", 1, 1);
+  assert.equal(r.status, "failed");
+  assert.equal(r.logComplete, false);
+  assert.deepEqual(r.firstFailure, { line: 2, testNumber: 2 });
+  assert.deepEqual(r.failureHint, { kind: "native_module_load", line: 3 });
+});
+
 test("a nonzero exit or observed failure stays failed even when output was cut", () => {
   const r = inspectTap("TAP version 13\n  not ok 2 - sensitive-value\n  ERR_DLOPEN_FAILED\n", 1, 1);
   assert.equal(r.status, "failed");
@@ -51,7 +139,25 @@ test("a nonzero exit or observed failure stays failed even when output was cut",
   assert.doesNotMatch(JSON.stringify(r), /sensitive-value/);
   assert.equal(inspectTap(tap(1), 1, 1).status, "failed");
   assert.equal(inspectTap("TAP version 13\nBail out! secret\n", null, 1).status, "failed");
-  assert.equal(inspectTap("TAP version 13\nnot ok 1 - expected # TODO fix\n" + tap(1).split("\n").slice(1).join("\n"), 0, 1).status, "passed");
+  assert.equal(inspectTap("TAP version 13\nnot ok 1 - expected # TODO fix\n", 0, 1).status, "unverified");
+  // A TODO-marked failure is not a real failure: the run still passes when a
+  // real test passes alongside it. The log must be realistic: two top-level
+  // result lines against a 1..2 plan, with the summary counting the TODO test.
+  assert.equal(inspectTap([
+    "TAP version 13",
+    "not ok 1 - expected # TODO fix",
+    "ok 2 - fixture",
+    "1..2",
+    "# tests 2",
+    "# suites 0",
+    "# pass 1",
+    "# fail 0",
+    "# cancelled 0",
+    "# skipped 0",
+    "# todo 1",
+    "# duration_ms 10",
+    "",
+  ].join("\n"), 0, 1).status, "passed");
 });
 
 test("CLI consumes real Node TAP and locates the failed case without echoing its data", async (t) => {
