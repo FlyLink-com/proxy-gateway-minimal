@@ -177,3 +177,49 @@ test("G4 receipt POST rejects stale/frozen authority before nonce or idempotent 
   assert.equal((await blocked.json()).error.code,"writer_authority_not_d1");
   assert.equal((await find(db,"SELECT COUNT(*) AS n FROM agent_apply_receipts")).n,1);
 });
+// These two tests are group (a) of the S4B narrowed-verification regressions
+// (fix/s4b-narrowed-verify): the guards must decide before the desired-state
+// lookup, so an expired or missing desired state must not change the
+// rejection the probes see.
+
+test("G4 BWH fence rejects before desired-state lookup when the desired state is expired", async (t) => {
+  const { mf, db, agent } = await createWorker({ writerPhase: "BWH_ACTIVE" });
+  t.after(() => mf.dispose());
+  // Expire the seeded desired state in place (the S4B run 46110397283
+  // failure shape): the row stays active but its lease is already past.
+  await db.prepare(
+    "UPDATE agent_desired_states SET expires_at = ? WHERE desired_state_ref = ?",
+  ).bind("2026-11-27T07:04:50.776Z", "desired-synth-001").run();
+  const expired = await find(db, "SELECT expires_at FROM agent_desired_states WHERE desired_state_ref = 'desired-synth-001'");
+  assert.ok(Date.parse(expired.expires_at) < Date.now());
+
+  const noEpoch = await mf.dispatchFetch(desiredUrl, { headers: agentHeaders(agent, null) });
+  assert.equal(noEpoch.status, 400);
+  assert.equal((await noEpoch.json()).error.code, "writer_epoch_required");
+
+  const epochOne = await mf.dispatchFetch(desiredUrl, { headers: agentHeaders(agent, "1") });
+  assert.equal(epochOne.status, 503);
+  assert.equal((await epochOne.json()).error.code, "writer_authority_not_d1");
+
+  assert.equal((await find(db, stateSql)).n, 0);
+  assert.equal((await find(db, "SELECT COUNT(*) AS n FROM agent_manifest_claims")).n, 0);
+});
+
+test("G4 BWH fence rejects before desired-state lookup when no desired state exists", async (t) => {
+  const { mf, db, agent } = await createWorker({ writerPhase: "BWH_ACTIVE" });
+  t.after(() => mf.dispose());
+  await db.prepare("DELETE FROM agent_desired_state_materials WHERE desired_state_ref = ?").bind("desired-synth-001").run();
+  await db.prepare("DELETE FROM agent_desired_states WHERE desired_state_ref = ?").bind("desired-synth-001").run();
+  assert.equal((await find(db, "SELECT COUNT(*) AS n FROM agent_desired_states")).n, 0);
+
+  const noEpoch = await mf.dispatchFetch(desiredUrl, { headers: agentHeaders(agent, null) });
+  assert.equal(noEpoch.status, 400);
+  assert.equal((await noEpoch.json()).error.code, "writer_epoch_required");
+
+  const epochOne = await mf.dispatchFetch(desiredUrl, { headers: agentHeaders(agent, "1") });
+  assert.equal(epochOne.status, 503);
+  assert.equal((await epochOne.json()).error.code, "writer_authority_not_d1");
+
+  assert.equal((await find(db, stateSql)).n, 0);
+  assert.equal((await find(db, "SELECT COUNT(*) AS n FROM agent_manifest_claims")).n, 0);
+});
