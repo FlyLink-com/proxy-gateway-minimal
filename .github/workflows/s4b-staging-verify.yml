@@ -3,25 +3,30 @@ name: S4B Staging verification (GitHub Secrets)
 # Manual-only verification of the S4B Agent loop against the existing
 # Staging Worker + D1, using credentials held in GitHub Secrets.
 # - No deployment, no D1 creation, no config change, no Token creation.
-# - Writes ONLY synthetic rows to the existing Staging D1 (one node, two
-#   channels, one credential, one desired state, two materials), all with
-#   distinct synthetic PKs. Never touches the 20-row baseline.
+# - READ-ONLY against the Staging D1: this run issues no INSERT, UPDATE
+#   or DELETE. It verifies the already-registered credential (cred-02),
+#   node, channels and write-authority state by SELECT, then probes the
+#   Worker guards, then compares every row against the baseline
+#   snapshot. Any baseline row change fails the run. The desired state
+#   is deliberately NOT consulted: the guards (identity, scope, epoch,
+#   authority) decide before any desired-state lookup, so an expired or
+#   missing desired state must not affect this acceptance.
 # - The epoch fence is expected to reject the fetch (authority is still
 #   BWH/BWH_ACTIVE): formal entry -> 400 writer_epoch_required, direct
 #   probe with epoch 1 -> 503 writer_authority_not_d1. That is the fence
 #   working as designed, not a failure. The full claim-apply-receipt
 #   loop needs D1_ACTIVE, which is a separate approval and is NOT done
-#   here. A green run means "evidence collected, fence confirmed";
-#   it does NOT mean S4B passes.
+#   here. A green run means "credential verified, fence confirmed,
+#   baseline unchanged"; it does NOT mean S4B passes.
 # - Secrets are read ONLY from env vars. No secret value is ever printed,
 #   written to disk (except the 0600 token file run-once.mjs requires,
 #   deleted in a finally block), or included in the results artifact.
 # - Required secrets (in the GitHub Environment "s4b-staging", NOT at
 #   repo level): S4B_TEST_AGENT_TOKEN (48-char bearer token),
-#   CLOUDFLARE_API_TOKEN (must have D1 Edit on the Staging D1; the
+#   CLOUDFLARE_API_TOKEN (must be able to read the Staging D1; the
 #   repo's existing secret is only proven for wrangler deploy, so
-#   replace it with a D1-Edit token, e.g. the FlyLink DevOps-Connector
-#   Token, if the D1 writes return 403). The job declares
+#   replace it with a D1 token, e.g. the FlyLink DevOps-Connector
+#   Token, if the D1 reads return 403). The job declares
 #   `environment: s4b-staging`; the environment is protected (deployment
 #   branches limited to master). Migration checklist (create the
 #   environment, set protection rules, move the two secrets there, then
@@ -44,7 +49,7 @@ on:
   workflow_dispatch:
     inputs:
       confirmation:
-        description: 'Type "run s4b staging verify" to confirm this run writes synthetic rows to the Staging D1.'
+        description: 'Type "run s4b staging verify" to confirm this read-only verification run against the Staging D1 (no rows are written).'
         required: true
         type: string
 
@@ -134,8 +139,6 @@ jobs:
       S4B_KEY_ID: key-synth-s4bv2-cred-02
       S4B_NODE_REF: node-synth-s4bv2-cred-01
       S4B_CHANNEL_REFS: chan-synth-s4bv2-cred-hy2,chan-synth-s4bv2-cred-vless
-      S4B_DESIRED_STATE_REF: desired-synth-s4bv2-cred-001
-      S4B_GENERATION: gen-synth-s4bv2-cred-001
     steps:
       - name: Checkout
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
@@ -170,9 +173,13 @@ jobs:
           // S4B_TEST_AGENT_TOKEN). This script never prints a secret value, never
           // writes one to disk (except the 0600 token file run-once.mjs requires,
           // deleted in a finally block), and never includes one in results.json.
-          // The bearer token's SHA-256 digest is written to D1 (that is the
-          // Worker's storage format); only the digest LENGTH and a match/mismatch
-          // flag are recorded here, never the digest value itself.
+          // The bearer token's SHA-256 digest is compared in memory against the
+          // digest stored in D1 (that is the Worker's storage format); only the
+          // digest LENGTH and a match/mismatch flag are recorded here, never the
+          // digest value itself.
+          // This run is READ-ONLY against D1: it issues SELECT statements only.
+          // No node, channel, credential, desired-state or material row is
+          // inserted. The desired state is not consulted at all.
           import { createHash, generateKeyPairSync, randomUUID } from "node:crypto";
           import { chmod, mkdir, rm, writeFile } from "node:fs/promises";
           import { spawn } from "node:child_process";
@@ -184,8 +191,6 @@ jobs:
           const KEY_ID = process.env.S4B_KEY_ID;
           const NODE_REF = process.env.S4B_NODE_REF;
           const CHANNELS = (process.env.S4B_CHANNEL_REFS || "").split(",").filter(Boolean);
-          const DESIRED_REF = process.env.S4B_DESIRED_STATE_REF;
-          const GENERATION = process.env.S4B_GENERATION;
           const CF_TOKEN = process.env.CLOUDFLARE_API_TOKEN;
           const AGENT_TOKEN = process.env.S4B_TEST_AGENT_TOKEN;
           const RUNNER_TEMP = process.env.RUNNER_TEMP;
@@ -262,20 +267,10 @@ jobs:
             }
             return perTable;
           }
-          // The rows this run may legitimately add, keyed by table. Anything
-          // else that appears between baseline and readback is unexpected.
-          function expectedNewKeys() {
-            return {
-              agent_nodes: new Set([JSON.stringify([NODE_REF])]),
-              agent_node_channels: new Set(CHANNELS.map((ch) => JSON.stringify([NODE_REF, ch]))),
-              agent_api_credentials: new Set([JSON.stringify([KEY_ID])]),
-              agent_desired_states: new Set([JSON.stringify([DESIRED_REF])]),
-              agent_desired_state_materials: new Set(CHANNELS.map((ch) =>
-                JSON.stringify([DESIRED_REF, `edge-synth-s4bv2-cred-${ch.split("-").pop()}`]))),
-            };
-          }
+          // Strict row-by-row reconciliation: this run writes nothing, so
+          // ANY row that is missing, modified, or added between baseline
+          // and readback fails the run. There is no allowlist.
           function reconcileRows(baselineSnap, afterSnap) {
-            const expected = expectedNewKeys();
             const perTable = {};
             let bad = 0;
             for (const table of TABLES) {
@@ -284,16 +279,13 @@ jobs:
               const missing = Object.keys(before).filter((k) => !(k in after));
               const modified = Object.keys(before).filter((k) => k in after && before[k] !== after[k]);
               const added = Object.keys(after).filter((k) => !(k in before));
-              const allowed = expected[table] || new Set();
-              const unexpected = added.filter((k) => !allowed.has(k));
-              if (missing.length > 0 || modified.length > 0 || unexpected.length > 0) bad += 1;
+              if (missing.length > 0 || modified.length > 0 || added.length > 0) bad += 1;
               perTable[table] = {
                 baselineRows: Object.keys(before).length,
                 afterRows: Object.keys(after).length,
                 missing,
                 modified,
                 added,
-                unexpectedNew: unexpected,
               };
             }
             return { perTable, bad };
@@ -315,7 +307,6 @@ jobs:
           }
           function sha256hex(s) { return createHash("sha256").update(s).digest("hex"); }
           function nowIso() { return new Date().toISOString(); }
-          function plusMs(ms) { return new Date(Date.now() + ms).toISOString(); }
 
           async function d1(sql, params) {
             const body = params && params.length > 0 ? { sql, params } : { sql };
@@ -396,7 +387,7 @@ jobs:
               record("env", { conclusion: "BLOCKED", reason: "token_shape", detail: "S4B_TEST_AGENT_TOKEN does not match ^\\S{24,512}$" });
               return;
             }
-            if (!ACCOUNT_ID || !DATABASE_ID || !WORKER_URL || !KEY_ID || !NODE_REF || CHANNELS.length === 0 || !DESIRED_REF || !GENERATION || !RUNNER_TEMP || !WORKSPACE) {
+            if (!ACCOUNT_ID || !DATABASE_ID || !WORKER_URL || !KEY_ID || !NODE_REF || CHANNELS.length === 0 || !RUNNER_TEMP || !WORKSPACE) {
               record("env", { conclusion: "BLOCKED", reason: "missing_config", detail: "a required S4B_* env var is not set" });
               return;
             }
@@ -458,96 +449,45 @@ jobs:
               record("precheck_credential", { conclusion: "FAIL", reason: "d1_precheck_error", detail: String(e?.message ?? e) });
               return;
             }
-            // 2. Register the credential (FK order: node -> channels -> credential).
-            // Idempotent: re-runs detect existing rows and skip them.
-            const tokenDigest = sha256hex(AGENT_TOKEN);
-            const now = nowIso();
+            // 2. Read-only verification of the already-registered state.
+            // No row is inserted. The credential itself was already
+            // verified by the precheck (1b); here we verify the node row,
+            // the channel rows (exactly the expected set, each active),
+            // and the expected write-authority state. Any mismatch stops
+            // the run BEFORE the probes (BLOCKED).
             try {
-              const nodeRows = await d1Rows("SELECT node_ref FROM agent_nodes WHERE node_ref = ?", [NODE_REF]);
-              if (nodeRows.length === 0) {
-                await d1("INSERT INTO agent_nodes (node_ref, status, created_at, updated_at) VALUES (?, 'active', ?, ?)", [NODE_REF, now, now]);
-                record("register_node", { conclusion: "PASS", detail: "inserted" });
-              } else {
-                record("register_node", { conclusion: "PASS", detail: "already exists, skipped" });
-              }
-              for (const ch of CHANNELS) {
-                const chRows = await d1Rows("SELECT channel_ref FROM agent_node_channels WHERE node_ref = ? AND channel_ref = ?", [NODE_REF, ch]);
-                if (chRows.length === 0) {
-                  await d1("INSERT INTO agent_node_channels (node_ref, channel_ref, status) VALUES (?, ?, 'active')", [NODE_REF, ch]);
-                }
-              }
-              record("register_channels", { conclusion: "PASS", detail: `${CHANNELS.length} channels present` });
-              const credRows = await d1Rows("SELECT key_id, status, length(token_sha256) AS digest_len, revoked_at FROM agent_api_credentials WHERE key_id = ?", [KEY_ID]);
-              if (credRows.length === 0) {
-                await d1(
-                  "INSERT INTO agent_api_credentials (key_id, token_sha256, node_ref, channel_refs_json, status, activated_at, overlap_expires_at, rotation_from_key_id, last_authenticated_at, auth_confirmed_at, revoked_at, created_at) VALUES (?, ?, ?, ?, 'active', ?, NULL, NULL, NULL, NULL, NULL, ?)",
-                  [KEY_ID, tokenDigest, NODE_REF, JSON.stringify(CHANNELS), now, now],
-                );
-                record("register_credential", { conclusion: "PASS", detail: "inserted" });
-              } else {
-                // The stored digest is compared in memory only; only the
-                // match/mismatch flag is recorded, never the digest value.
-                const stored = await d1Rows("SELECT token_sha256 FROM agent_api_credentials WHERE key_id = ?", [KEY_ID]);
-                const matches = stored[0]?.token_sha256 === tokenDigest;
-                if (!matches || credRows[0]?.status !== "active" || credRows[0]?.revoked_at) {
-                  record("register_credential", { conclusion: "BLOCKED", reason: "key_id_exists_with_different_token", detail: "key_id already exists but does not match this secret token (or is not active). Rotate the secret or use a new key_id." });
-                  return;
-                }
-                record("register_credential", { conclusion: "PASS", detail: "already exists, digest matches, skipped" });
-              }
-              const verify = await d1Rows("SELECT key_id, node_ref, status, length(token_sha256) AS digest_len, revoked_at FROM agent_api_credentials WHERE key_id = ?", [KEY_ID]);
-              if (verify.length === 1 && verify[0].status === "active" && verify[0].digest_len === 64 && !verify[0].revoked_at) {
-                record("verify_credential", { conclusion: "PASS", detail: "1 row, active, digest_len 64, revoked_at null" });
-              } else {
-                record("verify_credential", { conclusion: "FAIL", reason: "credential_row_unexpected", detail: "row missing or status/digest/revoked_at unexpected" });
+              const nodeRows = await d1Rows("SELECT node_ref, status FROM agent_nodes WHERE node_ref = ?", [NODE_REF]);
+              if (nodeRows.length !== 1 || nodeRows[0].status !== "active") {
+                record("verify_registered_state", { conclusion: "BLOCKED", reason: "node_row_unexpected", detail: "expected exactly one active node row for this node_ref" });
                 return;
               }
-            } catch (e) {
-              if (e.http === 403) {
-                record("register_credential", { conclusion: "BLOCKED", reason: "d1_token_no_edit", detail: "D1 API refused the write (HTTP 403). CLOUDFLARE_API_TOKEN lacks D1 Edit. Replace the repo secret with a token that has D1 Edit (e.g. the FlyLink DevOps-Connector Token)." });
-              } else {
-                record("register_credential", { conclusion: "FAIL", reason: "d1_register_error", detail: String(e?.message ?? e) });
-              }
-              return;
-            }
-
-            // 3. Insert a new synthetic desired state (future expiry, active)
-            // plus one material row per channel. Skipped if an active desired
-            // state already exists for this node (one-active-per-node index).
-            try {
-              const activeRows = await d1Rows("SELECT desired_state_ref FROM agent_desired_states WHERE node_ref = ? AND status = 'active'", [NODE_REF]);
-              if (activeRows.length === 0) {
-                const issuedAt = new Date(Date.now() - 1000).toISOString();
-                const expiresAt = plusMs(60 * 60 * 1000);
-                await d1(
-                  "INSERT INTO agent_desired_states (desired_state_ref, node_ref, generation, status, issued_at, expires_at, created_at) VALUES (?, ?, ?, 'active', ?, ?, ?)",
-                  [DESIRED_REF, NODE_REF, GENERATION, issuedAt, expiresAt, now],
-                );
-                for (const ch of CHANNELS) {
-                  const edgeRef = `edge-synth-s4bv2-cred-${ch.split("-").pop()}`;
-                  const digest = sha256hex(`synthetic-material-s4bv2-cred-${ch.split("-").pop()}`);
-                  await d1(
-                    "INSERT INTO agent_desired_state_materials (desired_state_ref, channel_ref, edge_credential_ref, digest) VALUES (?, ?, ?, ?)",
-                    [DESIRED_REF, ch, edgeRef, digest],
-                  );
-                }
-                record("desired_state", { conclusion: "PASS", detail: "inserted active desired state + materials" });
-              } else {
-                record("desired_state", { conclusion: "PASS", detail: `active desired state already exists (${activeRows[0].desired_state_ref}), skipped` });
-              }
-              const dsVerify = await d1Rows("SELECT desired_state_ref, status, expires_at FROM agent_desired_states WHERE node_ref = ? AND status = 'active'", [NODE_REF]);
-              if (dsVerify.length === 1 && new Date(dsVerify[0].expires_at).getTime() > Date.now()) {
-                record("verify_desired_state", { conclusion: "PASS", detail: "1 active desired state, expires in the future" });
-              } else {
-                record("verify_desired_state", { conclusion: "FAIL", reason: "desired_state_unexpected", detail: "no active desired state or already expired" });
+              const chRows = await d1Rows("SELECT channel_ref, status FROM agent_node_channels WHERE node_ref = ?", [NODE_REF]);
+              const chOk = chRows.length === CHANNELS.length
+                && CHANNELS.every((ch) => chRows.some((r) => r.channel_ref === ch && r.status === "active"));
+              if (!chOk) {
+                record("verify_registered_state", { conclusion: "BLOCKED", reason: "channel_rows_unexpected", detail: "channel rows do not match the expected set (each active)" });
                 return;
               }
-            } catch (e) {
-              if (e.http === 403) {
-                record("desired_state", { conclusion: "BLOCKED", reason: "d1_token_no_edit", detail: "D1 API refused the write (HTTP 403). CLOUDFLARE_API_TOKEN lacks D1 Edit." });
-              } else {
-                record("desired_state", { conclusion: "FAIL", reason: "d1_desired_state_error", detail: String(e?.message ?? e) });
+              const authRows = await d1Rows("SELECT singleton, authority, phase, epoch, changed_at FROM platform_writer_authority");
+              const authOk = authRows.length === 1
+                && authRows[0].singleton === 1
+                && authRows[0].authority === "BWH"
+                && authRows[0].phase === "BWH_ACTIVE"
+                && authRows[0].epoch === 1
+                && authRows[0].changed_at === "1970-01-01T00:00:00.000Z";
+              if (!authOk) {
+                record("verify_registered_state", { conclusion: "BLOCKED", reason: "writer_authority_unexpected", detail: "expected exactly one authority row: BWH / BWH_ACTIVE / epoch 1" });
+                return;
               }
+              const gateRows = await d1Rows("SELECT singleton, accepted_epoch FROM platform_writer_gate");
+              const gateOk = gateRows.length === 1 && gateRows[0].singleton === 1 && gateRows[0].accepted_epoch === 0;
+              if (!gateOk) {
+                record("verify_registered_state", { conclusion: "BLOCKED", reason: "writer_gate_unexpected", detail: "expected exactly one gate row: accepted_epoch 0" });
+                return;
+              }
+              record("verify_registered_state", { conclusion: "PASS", detail: "1 active node row, channel set matches (each active), authority BWH / BWH_ACTIVE / epoch 1, gate accepted_epoch 0" });
+            } catch (e) {
+              record("verify_registered_state", { conclusion: "FAIL", reason: "registered_state_error", detail: String(e?.message ?? e) });
               return;
             }
 
@@ -633,14 +573,15 @@ jobs:
               detail: "no manifest claim exists without a successful fetch; a receipt cannot be submitted. The receipts route itself was probed (probe_receipts_empty).",
             });
 
-            // 7. Read-back: row-by-row reconciliation + Worker zero writes.
-            // Counts alone cannot catch a baseline row being modified or a
-            // foreign row being added, so every row is hashed (SHA-256 over
-            // its canonical JSON) and compared by primary key against the
-            // baseline snapshot. Only this run's own inserted rows may be
-            // new. The fence rejects before nonce consumption and before
-            // the auth record write, so the new credential row must still
-            // have last_authenticated_at NULL and the nonce count must be
+            // 7. Read-back: strict row-by-row reconciliation + Worker zero
+            // writes. Counts alone cannot catch a baseline row being
+            // modified or a foreign row being added, so every row is hashed
+            // (SHA-256 over its canonical JSON) and compared by primary key
+            // against the baseline snapshot. This run writes nothing, so
+            // ANY missing, modified, or added row fails the run. The fence
+            // rejects before nonce consumption and before the auth record
+            // write, so the credential row must still have
+            // last_authenticated_at NULL and the nonce count must be
             // unchanged.
             try {
               const after = await d1Counts();
@@ -653,19 +594,16 @@ jobs:
               const credAfter = await d1Rows("SELECT last_authenticated_at, revoked_at FROM agent_api_credentials WHERE key_id = ?", [KEY_ID]);
               const authUntouched = credAfter.length === 1 && !credAfter[0].last_authenticated_at && !credAfter[0].revoked_at;
               const noncesUnchanged = after.agent_request_nonces === baseline.agent_request_nonces;
-              const onlyOwnRows = Object.keys(diffs).every((t) =>
-                ["agent_nodes", "agent_node_channels", "agent_api_credentials", "agent_desired_states", "agent_desired_state_materials"].includes(t));
               const rowsReconciled = bad === 0;
               record("readback", {
-                conclusion: authUntouched && noncesUnchanged && onlyOwnRows && rowsReconciled ? "PASS" : "FAIL",
+                conclusion: authUntouched && noncesUnchanged && rowsReconciled ? "PASS" : "FAIL",
                 countsAfter: after,
                 diffs,
                 rowReconciliation: perTable,
                 rowsReconciled,
                 lastAuthenticatedAtNull: authUntouched,
                 noncesUnchanged,
-                onlyOwnRowsChanged: onlyOwnRows,
-                detail: "Row-by-row: baseline rows unchanged (no missing/modified rows), only this run's own inserted rows are new; Worker zero writes: last_authenticated_at still NULL, nonce count unchanged",
+                detail: "Row-by-row (strict): no baseline row added, removed, or modified; Worker zero writes: last_authenticated_at still NULL, nonce count unchanged",
               });
             } catch (e) {
               record("readback", { conclusion: "FAIL", reason: "readback_error", detail: String(e?.message ?? e) });
