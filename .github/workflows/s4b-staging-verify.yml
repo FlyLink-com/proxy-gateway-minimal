@@ -131,7 +131,7 @@ jobs:
       S4B_ACCOUNT_ID: 17d66c001f9d851fa0d5a88cd311c2c0
       S4B_DATABASE_ID: 1ec6458a-0ac0-4ab0-92f3-5ba58b775acc
       S4B_WORKER_URL: https://flylink-control-plane-staging.gccltd-co2026.workers.dev
-      S4B_KEY_ID: key-synth-s4bv2-cred-01
+      S4B_KEY_ID: key-synth-s4bv2-cred-02
       S4B_NODE_REF: node-synth-s4bv2-cred-01
       S4B_CHANNEL_REFS: chan-synth-s4bv2-cred-hy2,chan-synth-s4bv2-cred-vless
       S4B_DESIRED_STATE_REF: desired-synth-s4bv2-cred-001
@@ -429,6 +429,35 @@ jobs:
             }
             record("baseline", { conclusion: "PASS", counts: baseline, rowFingerprints: snapshotFingerprint(baselineRows) });
 
+            // 1b. Read-only precheck: the credential row for KEY_ID must
+            // already exist, be active, match the expected node/channel
+            // scope, and match the digest of the environment-injected
+            // token. Any mismatch stops the run BEFORE any D1 write.
+            const precheckDigest = sha256hex(AGENT_TOKEN);
+            try {
+              const preRows = await d1Rows("SELECT key_id, node_ref, channel_refs_json, status, token_sha256, revoked_at FROM agent_api_credentials WHERE key_id = ?", [KEY_ID]);
+              if (preRows.length !== 1) {
+                record("precheck_credential", { conclusion: "BLOCKED", reason: "credential_row_missing", detail: "expected exactly one credential row for this key_id; refusing to write" });
+                return;
+              }
+              const pre = preRows[0];
+              let scopeOk = false;
+              try {
+                const storedChannels = typeof pre.channel_refs_json === "string" ? JSON.parse(pre.channel_refs_json) : pre.channel_refs_json;
+                scopeOk = pre.node_ref === NODE_REF && Array.isArray(storedChannels) && JSON.stringify([...storedChannels].sort()) === JSON.stringify([...CHANNELS].sort());
+              } catch {
+                scopeOk = false;
+              }
+              const digestOk = pre.token_sha256 === precheckDigest;
+              if (pre.status !== "active" || pre.revoked_at || !scopeOk || !digestOk) {
+                record("precheck_credential", { conclusion: "BLOCKED", reason: "credential_precheck_mismatch", detail: "credential row status/scope/digest does not match the expected new credential; refusing to write" });
+                return;
+              }
+              record("precheck_credential", { conclusion: "PASS", detail: "1 row, active, scope matches, digest matches" });
+            } catch (e) {
+              record("precheck_credential", { conclusion: "FAIL", reason: "d1_precheck_error", detail: String(e?.message ?? e) });
+              return;
+            }
             // 2. Register the credential (FK order: node -> channels -> credential).
             // Idempotent: re-runs detect existing rows and skip them.
             const tokenDigest = sha256hex(AGENT_TOKEN);
