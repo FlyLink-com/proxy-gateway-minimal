@@ -161,7 +161,10 @@
     "cloudflare:site:verify": "npm run admin:site:verify",
     "cloudflare:site:dry-run": "npx --yes wrangler@4.99.0 deploy --config wrangler.jsonc --dry-run",
     "cloudflare:site:validate": "npm run cloudflare:site:build && npm run cloudflare:site:verify && npm run cloudflare:site:dry-run",
-    "admin:test": "npm run test --prefix admin"
+    "admin:test": "npm run test --prefix admin",
+    "platform:cognito-scrypt-import:rehearsal": "node scripts/platform-cognito-scrypt-import-rehearsal.mjs",
+    "test:portal-cognito-scrypt-import": "node --test server/tests/platform-portal-cognito-scrypt-import-rehearsal.test.mjs",
+    "platform:cognito-synthetic-import:csv": "node scripts/platform-cognito-synthetic-import-csv.mjs"
   },
   "devDependencies": {
     "@anthropic-ai/sdk": "^0.78.0",

@@ -1,0 +1,190 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  FlyLink D1 C1 non-production Portal Cognito user pool.
+  Synthetic-only PoC. No production user data or production integration.
+
+Parameters:
+  UserPoolName:
+    Type: String
+    Default: flylink-portal-nonprod
+    MinLength: 1
+    MaxLength: 128
+    Description: Friendly name for the isolated Portal non-production user pool.
+  DomainPrefix:
+    Type: String
+    MinLength: 1
+    MaxLength: 63
+    AllowedPattern: '^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$'
+    ConstraintDescription: Use 1-63 lowercase letters, numbers, or hyphens; begin and end with a letter or number.
+    Description: Globally unique Cognito prefix domain in the selected AWS Region.
+  CallbackUrls:
+    Type: CommaDelimitedList
+    Description: Exact Portal browser and Android redirect URIs; use HTTPS except localhost or a registered app URI scheme.
+  LogoutUrls:
+    Type: CommaDelimitedList
+    Description: Exact Portal sign-out redirect URIs.
+
+Resources:
+  PortalUserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName:
+        Ref: UserPoolName
+      UserPoolTier: ESSENTIALS
+      DeletionProtection: ACTIVE
+      AdminCreateUserConfig:
+        AllowAdminCreateUserOnly: true
+      AliasAttributes:
+        - email
+      AutoVerifiedAttributes:
+        - email
+      UsernameConfiguration:
+        CaseSensitive: false
+      EmailConfiguration:
+        EmailSendingAccount: COGNITO_DEFAULT
+      VerificationMessageTemplate:
+        DefaultEmailOption: CONFIRM_WITH_CODE
+        EmailSubject: FlyLink Portal verification code
+        EmailMessage: 'Your FlyLink Portal verification code is {####}.'
+      MfaConfiguration: OPTIONAL
+      EnabledMfas:
+        - SOFTWARE_TOKEN_MFA
+      UserPoolTags:
+        project: flylink
+        environment: nonprod
+        surface: portal
+        data-class: synthetic-only
+        managed-by: cloudformation
+
+  PortalUserPoolDomain:
+    Type: AWS::Cognito::UserPoolDomain
+    Properties:
+      UserPoolId:
+        Ref: PortalUserPool
+      Domain:
+        Ref: DomainPrefix
+      ManagedLoginVersion: 1
+
+  PortalImportLogsRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Description: Allows Cognito to write Portal synthetic import-job results to CloudWatch Logs.
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: cognito-idp.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Policies:
+        - PolicyName: cognito-user-import-cloudwatch
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:DescribeLogStreams
+                  - logs:PutLogEvents
+                Resource:
+                  - Fn::Sub: 'arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/cognito/*'
+
+  PortalBootstrapClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      UserPoolId:
+        Ref: PortalUserPool
+      ClientName:
+        Fn::Sub: '${AWS::StackName}-first-login-bootstrap'
+      GenerateSecret: false
+      ExplicitAuthFlows:
+        - ALLOW_USER_PASSWORD_AUTH
+      AuthSessionValidity: 3
+      AccessTokenValidity: 5
+      IdTokenValidity: 5
+      TokenValidityUnits:
+        AccessToken: minutes
+        IdToken: minutes
+      EnableTokenRevocation: true
+      PreventUserExistenceErrors: ENABLED
+      ReadAttributes:
+        - email
+        - email_verified
+      WriteAttributes:
+        - email
+
+  PortalOidcClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      UserPoolId:
+        Ref: PortalUserPool
+      ClientName:
+        Fn::Sub: '${AWS::StackName}-oidc-pkce'
+      GenerateSecret: false
+      ExplicitAuthFlows:
+        - ALLOW_USER_SRP_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
+      AllowedOAuthFlowsUserPoolClient: true
+      AllowedOAuthFlows:
+        - code
+      AllowedOAuthScopes:
+        - openid
+        - email
+        - profile
+      CallbackURLs:
+        Ref: CallbackUrls
+      LogoutURLs:
+        Ref: LogoutUrls
+      SupportedIdentityProviders:
+        - COGNITO
+      AuthSessionValidity: 3
+      AccessTokenValidity: 5
+      IdTokenValidity: 5
+      RefreshTokenValidity: 1
+      TokenValidityUnits:
+        AccessToken: minutes
+        IdToken: minutes
+        RefreshToken: days
+      EnableTokenRevocation: true
+      PreventUserExistenceErrors: ENABLED
+      ReadAttributes:
+        - email
+        - email_verified
+      WriteAttributes:
+        - email
+
+Outputs:
+  UserPoolId:
+    Description: Portal non-production Cognito User Pool ID.
+    Value:
+      Ref: PortalUserPool
+  UserPoolArn:
+    Description: Portal non-production Cognito User Pool ARN.
+    Value:
+      Fn::GetAtt:
+        - PortalUserPool
+        - Arn
+  Issuer:
+    Description: OIDC issuer for Worker-side exact issuer validation.
+    Value:
+      Fn::Sub: 'https://cognito-idp.${AWS::Region}.amazonaws.com/${PortalUserPool}'
+  JwksUri:
+    Description: JWKS endpoint for the Portal User Pool.
+    Value:
+      Fn::Sub: 'https://cognito-idp.${AWS::Region}.amazonaws.com/${PortalUserPool}/.well-known/jwks.json'
+  BootstrapClientId:
+    Description: Temporary public client for imported-password first sign-in only.
+    Value:
+      Ref: PortalBootstrapClient
+  OidcClientId:
+    Description: Public Authorization Code + PKCE client for Portal browser and Android.
+    Value:
+      Ref: PortalOidcClient
+  ImportLogsRoleArn:
+    Description: Cognito import-job CloudWatch Logs role ARN.
+    Value:
+      Fn::GetAtt:
+        - PortalImportLogsRole
+        - Arn
